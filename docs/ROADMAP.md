@@ -145,7 +145,7 @@ snap and flatpak paths are the least certain). Bundling the libraries is ADR 004
   states `.body_height`, a `Keepout` states `.max_height` (on the faces its `.layers` name, so a
   back-face part has its own limit); `check_placement` reports a part too tall where it stands, by
   name and with the numbers, a part with no stated height under a limit is a named warning
-  (`Board::heights_unchecked`, in `fab` and `fab-notes.txt` and the editor), the annealer keeps a
+  (`Board::heights_unchecked`, in `fab` and `fab-notes.txt` and the editor), an error when `constraints = "error"` is written or `--constraints error` is given, the annealer keeps a
   tall part out of a zone it is too tall for, and the PCB view draws the limit in amber. **Not built**:
   a height from a catalog column (catalogs are another change's), from the footprint's 3D model
   (no STEP reader, by decision), or from the DXF import; a keepout a part carries is checked but not

@@ -369,6 +369,18 @@ fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool) -> ExitCode {
     code
 }
 
+/// Whether constraints were asked to be strict, for this target and this run's
+/// `--constraints` (see [`netsmith::fab::constraints_strict`]).
+fn strict_heights(target: &Target, flag: Option<bool>) -> bool {
+    netsmith::fab::constraints_strict(
+        target
+            .project
+            .as_ref()
+            .and_then(|p| p.manifest.constraints.as_deref()),
+        flag,
+    )
+}
+
 fn run_fab(
     file: Option<&str>,
     out: Option<&Path>,
@@ -420,6 +432,7 @@ fn run_fab(
         allow_drc_violations,
         cross_check,
         only: None,
+        strict_heights: strict_heights(&target, constraints_warn),
     };
     let mut code = ExitCode::SUCCESS;
     for source in &target.files {
@@ -522,6 +535,7 @@ fn run_order(
         only: None,
         allow_drc_violations,
         cross_check,
+        strict_heights: strict_heights(&target, constraints_warn),
     };
     let out = out.unwrap_or(&target.fab_out);
     match netsmith::order::fab_order(

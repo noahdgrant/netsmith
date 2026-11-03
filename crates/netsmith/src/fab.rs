@@ -62,6 +62,17 @@ pub fn fab(
 /// How long the router may work on a board unless told otherwise.
 pub const DEFAULT_ROUTE_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// Whether constraints were asked to be strict: `--constraints error` for this run
+/// (`flag == Some(false)`, `Some(true)` being `warn`), else `constraints = "error"` in the
+/// manifest. Unset is not strict here, though a violated requirement is an error either way
+/// (ADR 0045, "Height limits", PROVISIONAL).
+pub fn constraints_strict(manifest: Option<&str>, flag: Option<bool>) -> bool {
+    match flag {
+        Some(warn) => !warn,
+        None => manifest == Some("error"),
+    }
+}
+
 /// How `fab` goes about it.
 #[derive(Debug, Clone)]
 pub struct FabOptions {
@@ -84,6 +95,11 @@ pub struct FabOptions {
     /// Make only the boards with these labels (`Unit`, `DevKit/carrier`) and skip the rest of
     /// the file. `None` makes every board. An order uses it (ADR 0035).
     pub only: Option<Vec<String>>,
+    /// Constraints were asked to be strict (`fab --constraints error`, or `constraints =
+    /// "error"` in the manifest, and not the default): a part under a height limit that states
+    /// no height is then an error and not a warning (ADR 0045, "Height limits", PROVISIONAL).
+    /// `--allow-drc-violations` does not waive it.
+    pub strict_heights: bool,
 }
 
 impl Default for FabOptions {
@@ -95,6 +111,7 @@ impl Default for FabOptions {
             allow_drc_violations: false,
             cross_check: false,
             only: None,
+            strict_heights: false,
         }
     }
 }
@@ -257,6 +274,16 @@ fn fab_board(
         // A part under a height limit that states no height is not a pass (ADR 0045,
         // "Height limits"): it is named, here and in the notes.
         let unchecked = board.heights_unchecked();
+        if options.strict_heights && !unchecked.is_empty() {
+            return Err(unchecked
+                .iter()
+                .map(|u| {
+                    fail(format!(
+                        "{u}; this is an error because constraints are strict (`--constraints error` or `constraints = \"error\"`), and `--allow-drc-violations` does not waive it: state the height, or run with `--constraints warn`"
+                    ))
+                })
+                .collect());
+        }
         for u in &unchecked {
             say(format!("{}: warning: {u}", built.label()));
         }

@@ -340,6 +340,17 @@ fn a_limit_that_is_nothing_or_names_no_face_is_refused() {
 
 /// `fab` of the board in a fresh folder, with `layout` as the layout file.
 fn fab(name: &str, extra: &str, layout: &str) -> (TempDir, Result<Vec<Fabricated>, String>) {
+    fab_with(name, extra, layout, false, false)
+}
+
+/// [`fab`], with strict constraints as `strict` and `--allow-drc-violations` as `allow`.
+fn fab_with(
+    name: &str,
+    extra: &str,
+    layout: &str,
+    strict: bool,
+    allow: bool,
+) -> (TempDir, Result<Vec<Fabricated>, String>) {
     let dir = TempDir::unused(&format!("height-{name}"));
     let file = dir.join("source").join("widget.pcb.toml");
     fs::create_dir_all(file.parent().unwrap()).unwrap();
@@ -356,6 +367,8 @@ fn fab(name: &str, extra: &str, layout: &str) -> (TempDir, Result<Vec<Fabricated
         None,
         &FabOptions {
             layout: Some(file),
+            strict_heights: strict,
+            allow_drc_violations: allow,
             ..FabOptions::default()
         },
     );
@@ -402,4 +415,49 @@ fn fab_stops_on_a_tall_part_the_layout_file_locks_under_the_lid() {
         "{e}"
     );
     assert!(!dir.join("fab/Widget/Widget-gerbers.zip").exists());
+}
+
+#[test]
+fn a_height_nobody_stated_is_a_warning_by_default_and_an_error_when_constraints_are_strict() {
+    // Only r1 states a height; the others stand under the lid or not, wherever the placer put
+    // them, and at least one of them is under it (the default run names them).
+    let extra = format!("    .r1.body_height &= 9mm\n{LID}");
+    let (_dir, made) = fab("unknown-default", &extra, "");
+    let notes = made.unwrap_or_else(|e| panic!("{e}"))[0].notes.clone();
+    assert!(
+        notes.contains("warning: height of R"),
+        "a warning, and the package is made: {notes}"
+    );
+    let (dir, made) = fab_with("unknown-strict", &extra, "", true, false);
+    let e = made.expect_err("strict constraints make an unknown height an error");
+    assert!(
+        e.contains("error: Widget: height of R")
+            && e.contains(
+                "is unchecked: the keepout `lid` limits parts on the top face to 3.00 mm"
+            )
+            && e.contains("constraints are strict")
+            && e.contains("does not waive it"),
+        "{e}"
+    );
+    assert!(!dir.join("fab/Widget/Widget-gerbers.zip").exists());
+    // `--allow-drc-violations` does not waive it.
+    let (_dir, made) = fab_with("unknown-allow", &extra, "", true, true);
+    assert!(made.is_err(), "not waived by --allow-drc-violations");
+    // Strict constraints with every height stated: nothing to refuse.
+    let all = format!("{HEIGHTS}{LID}");
+    let (_dir, made) = fab_with("known-strict", &all, "", true, false);
+    made.unwrap_or_else(|e| panic!("{e}"));
+}
+
+#[test]
+fn constraints_are_strict_only_when_the_run_or_the_manifest_says_error() {
+    use netsmith::fab::constraints_strict as strict;
+    // Unset: a violated requirement is an error, but an unknown height stays a warning.
+    assert!(!strict(None, None));
+    assert!(strict(Some("error"), None));
+    assert!(!strict(Some("warn"), None));
+    // `--constraints error|warn` (`Some(warn)`) wins over the manifest, both ways.
+    assert!(strict(Some("warn"), Some(false)));
+    assert!(strict(None, Some(false)));
+    assert!(!strict(Some("error"), Some(true)));
 }
