@@ -88,6 +88,16 @@ snap and flatpak paths are the least certain). Bundling the libraries is ADR 004
   catalogs is a maintainer's job and has not been run over them; the editor cannot check the
   standard rows inside the binary; no live price without writing a file; no second supplier; no
   price by quantity in the BOM.
+- Supplier data and generic passives, designed (ADR 0047, provisional, issues #8 and #9): price,
+  stock and their date come from a **provider** (a trait: price breaks and stock for an LCSC or
+  manufacturer's number, each answer saying whether it is JLCPCB assembly stock or LCSC retail
+  stock) when the bill of materials or `fab` is made, cached locally with a timestamp, and are
+  **unknown** (never guessed, never 0) offline; identity stays in the catalog rows. The solver
+  picks generic passives (E-series value, tolerance, package, power rating) and a separate step
+  resolves each to a row, JLCPCB Basic first, or reports it unresolved with the nearest
+  alternatives. ADR 0047 supersedes the data-in-files parts of ADR 0022 and ADR 0039 (the
+  `price`, `stock` and `date` columns, the stock-0 rule). Open: the nine questions at the end of
+  ADR 0047; no provider talks to a supplier (their terms of use are unread).
 - Outline from the enclosure (ADR 0045, C0 piece 3): `netsmith dxf import <file.dxf>` reads an ASCII DXF
   (`netsmith-dxf`: lines, arcs, circles, polylines with bulges, splines and ellipses as chords, block
   inserts, units, gaps reported) and prints an `Outline`, `Cutout`s and `MountingHole`s to paste, with
@@ -338,6 +348,7 @@ own design rules check; `libs fetch` and `libs vendor` of ADR 0041 for the rest.
 10. **Real catalog data** beyond the verified set (now only rows in `data/jlcpcb/catalog/*.csv`
     with a `source`, ADR 0022), then a real multi-board design.
     **Review ADR 0022** (catalogs as CSV files); it is provisional, to be reviewed by the maintainer.
+    **Review ADR 0047** (supplier data from a provider, generic passives); it is provisional, to be reviewed by the maintainer.
 
 ### Four layers: what is left
 

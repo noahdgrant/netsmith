@@ -233,6 +233,14 @@ A CSV file of the rows of one catalog: a header of the catalog's columns (field 
 **Catalog refresh**:
 `netsmith catalog refresh`, the opt-in command that checks each row of catalog files against LCSC's product record (never JLCPCB): the manufacturer's number and package. A row that agrees is VERIFIED and gets the day in its `checked` column, the one cell it writes (only if the file has the column); a row that disagrees is a CONFLICT and a part LCSC no longer lists is MISSING, and neither is changed. It never writes `price`, `stock`, `price_breaks`, `library` or `date` (JLCPCB's numbers, which LCSC's differ from), and says in a note when LCSC lists stock 0 where the row has some. A row with a `stock` of 0 is not offered. `catalog age` lists the rows whose date is older than 90 days, the age at which the editor's bill of materials calls a price stale (ADR 0039; a refresh never changes `date`).
 
+**Supply provider**:
+A source of price and stock for a part number, behind one trait: given an LCSC or manufacturer's number it answers with quotes, each saying its channel (JLCPCB assembly stock or LCSC retail stock), stock, price breaks and when it was read. Asked when the bill of materials or `fab` is made, cached with a timestamp, and when it has no answer price and stock are **unknown**, never guessed and never 0. Configured in the `[supply]` table of `netsmith.toml`; credentials never go there (ADR 0047, provisional).
+_Avoid_: Supplier feed, price list (a file provider reads one)
+
+**Generic part**:
+A passive the solver chooses by value alone: an E-series value with a tolerance, package and power rating, and no supplier or part number. A separate step resolves it to a catalog row (JLCPCB Basic first), or reports it unresolved with the nearest alternatives (ADR 0047, provisional).
+_Avoid_: Virtual part, ideal part
+
 **Bias**:
 The DC voltage across a part: a capacitor, a diode, a Zener or a TVS diode. A part with a `.bias` and a `bridge` placed between a rail's `pos` and `neg` has the rail's voltage as its `.bias` without being told; a design states `.bias` only for a part that is across no rail.
 

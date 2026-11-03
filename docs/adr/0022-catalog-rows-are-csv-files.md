@@ -1,5 +1,5 @@
 ---
-status: accepted (user review 2026-11-02)
+status: accepted (user review 2026-11-02). Item 4's `price`, `stock` and `date` columns and item 6's stock-0 rule are superseded by ADR 0047 (provisional): price and stock come from a provider, and the solver does not read stock.
 ---
 
 # Catalog rows are CSV files, one per catalog, and a project can add its own
