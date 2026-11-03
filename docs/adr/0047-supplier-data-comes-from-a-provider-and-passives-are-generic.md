@@ -82,7 +82,7 @@ cache_hours = 24
 
 The manifest has no field for a key, token or password, and its parser refuses an unknown key (as it does now), so a secret cannot be committed by mistake. A provider that needs a credential reads it from the environment (`NETSMITH_LCSC_KEY`, `NETSMITH_JLCAPI_KEY` and the secret that goes with it) or from a file in the user's configuration directory (`$XDG_CONFIG_HOME/netsmith/supply.toml`, never inside a project); a missing credential is the message "the lcsc provider needs NETSMITH_LCSC_KEY; set it in your environment", and then the lines are unknown. No provider that talks to a supplier is built by this ADR (Open questions).
 
-The **file provider** reads a local CSV, `lcsc,mpn,channel,stock,price_breaks,currency,date`, which a person writes from a supplier's export or by hand. It is how the tests work, and how a company with its own price list or a snapshot from a supplier's file download feeds the bill of materials with no network. The `catalog` provider (item 1) comes last in the chain.
+The **file provider** reads a local CSV, `lcsc,mpn,channel,stock,price_breaks,currency,date`, which a person writes from a supplier's export or by hand. It is how the tests work, and how a company with its own price list or a snapshot from a supplier's file download feeds the bill of materials with no network. The row's own cells (item 1) come last.
 
 **6. Generic passives and their resolution.** For a resistor the solver chooses among **generic parts**: a nominal value in a stated E-series (E12, E24 or E96), a tolerance, a package and a power rating, with no supplier and no part number. A generic part is an ordinary candidate that has no `lcsc` and says it is generic. The series is stated by the manifest's `series` key (E24 by default; the language is untouched, the series is policy of the project like `assembly`). The solver may pick any value of the series that satisfies the relations, so it is never stuck on a value that no known supplier row stocks. The power rating of a package is the usual one (0402 62.5 mW, 0603 100 mW, 0805 125 mW); these are packages' ratings, not a supplier's data. Capacitors, inductors and LEDs follow the same design (a capacitor also needs a bias curve, which a generic part has no source for, so it is not built first).
 
@@ -103,6 +103,18 @@ Change the value in the design and build again: the solver then checks every rel
 The alternatives are the rows nearest in value (first in the same package, then others), up to three. The bill of materials lists the part with the same message and the line stays unpriced. The re-check after a swap is the build itself: a different value written in the design (or chosen from the editor's list of parts) is solved again against every relation, so a swap that breaks a current limit is reported by the checks it breaks, as any change of value is. A later step may run that check for each alternative and show pass or fail beside it (Open questions).
 
 **7. Terms of use.** Nothing in this ADR contacts a supplier. No provider that does is built until the maintainer has read the supplier's terms and the official API's licence: JLCPCB's `robots.txt` disallows `/api` and ADR 0039 recorded that its terms could not be read. A real provider uses the supplier's official API with the user's own key; it is a trait implementation that does not change anything else here.
+
+## What the first implementation builds, and where it differs
+
+The first implementation (the pull request after this ADR) is the smallest slice that works from the manifest to the bill of materials:
+
+- `crates/netsmith/src/supply/`: the trait, `Quote`, `Channel`, the cache (`cache.rs`, the format above), the file provider (`file.rs`) and `Supply`, which applies the age rules and the channel. `Supply::lookup` answers `Quoted` or `Unknown(reason)`. The `[supply]` table is read by `Manifest`; `Project::supply()` builds it.
+- The last resort ("the `catalog` provider" above) is not a type: the bill of materials and `catalog age` fall back to the row's own `price`, `stock` and `date` cells when `Supply` has no answer, and say so ("catalog file, entered by hand").
+- The editor's bill of materials and `catalog age` use it, say `unknown` and why, and no longer call a standard row stale or undated: a line with no price is not stale. `BomLine` has three new fields: `supply`, `unknown` and `unresolved`.
+- `crates/netsmith-solve/src/generic.rs`: E12, E24 and E96, generic resistors in 0402, 0603 and 0805 at 1%, and `resolve`. The stock-0 rule is gone from `Table::candidates`. `crates/netsmith/src/resolve.rs` applies it to a board's sourcing; `fab` refuses an unresolved assembled part by name, and the bill of materials lists it. Stock reaches `resolve` through `Catalogs::with_availability`, which `Project::catalogs()` sets when a `[supply]` table exists, so every command that has the catalogs resolves the same way.
+- The generic parts come after the rows. The solver therefore takes a row of the value if there is one, even a row the provider says has stock 0, and the bill of materials shows that 0 (item 4: a stock of 0 is only ever a provider's answer). Passing over a sold-out row happens when a generic part is resolved.
+
+Not built: a provider that asks a supplier, the `--offline` flag (`Supply::with_offline` exists and is tested), generic capacitors, inductors and LEDs, running the checks for each alternative of an unresolved part, a named preferred-parts file, the quantity of an order across boards, and the editor's swap.
 
 ## What this replaces
 

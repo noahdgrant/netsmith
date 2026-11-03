@@ -289,7 +289,7 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
 
 /// Where one part comes from. A part the solver picked from a real catalog has its supplier
 /// number; a part with a pick but no `lcsc` is left for the fabrication step to refuse.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Sourced {
     pub refdes: String,
     pub kind: String,
@@ -307,6 +307,9 @@ pub struct Sourced {
     /// Whether the design or the catalog row said so. If not, the footprint decides when
     /// it is known: a through-hole footprint is soldered by hand.
     pub assembly_stated: bool,
+    /// Set for a generic part (ADR 0047): the solver chose its value and nothing else, and
+    /// `lcsc`, `mpn` and `library` are empty until it is resolved to a row of a catalog.
+    pub generic: Option<netsmith_solve::Generic>,
 }
 
 impl Sourced {
@@ -517,6 +520,7 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
             library: pick.and_then(|p| p.library),
             assembly,
             assembly_stated,
+            generic: pick.and_then(|p| p.generic.clone()),
         });
         parts.push(Part {
             refdes: refdes.clone(),

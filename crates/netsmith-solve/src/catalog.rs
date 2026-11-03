@@ -8,11 +8,22 @@
 //! JLCPCB and LCSC; a project adds its own with [`Catalogs::add_file`].
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use netsmith_check::FieldKind;
 use netsmith_quantity::Quantity;
 
+use crate::generic::{Generic, Series};
 use crate::table::Table;
+
+/// What a source of stock knows about a part (ADR 0047). The solver never asks: only the
+/// step that resolves a generic part to an orderable one does, so that a part with no stock
+/// is passed over there and not silently dropped from the catalog.
+pub trait Availability: std::fmt::Debug + Send + Sync {
+    /// Pieces in stock for the stock that matters to the project, or `None` if nobody
+    /// knows. `None` is not 0: an unknown stock never excludes a part.
+    fn stock(&self, lcsc: &str) -> Option<u64>;
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -138,6 +149,9 @@ pub struct Candidate {
     /// Who assembles the part when the design does not say: `fab`, `hand` or `none`
     /// (ADR 0024). The row's `assembly` cell, if it has one.
     pub assembly: Option<String>,
+    /// Set for a generic part (ADR 0047): it has no supplier number, and a later step
+    /// resolves it to a row of the catalog.
+    pub generic: Option<Generic>,
 }
 
 impl Candidate {
@@ -161,6 +175,8 @@ pub struct Catalogs {
     default_assembly: Option<String>,
     strict_guidelines: bool,
     constraints_warn: bool,
+    series: Option<Series>,
+    availability: Option<Arc<dyn Availability>>,
 }
 
 impl Catalogs {
@@ -207,6 +223,28 @@ impl Catalogs {
         self.constraints_warn
     }
 
+    /// Offer generic parts of this E-series after the rows of a catalog that has them
+    /// (ADR 0047). With `None`, the default, only rows are offered.
+    pub fn with_series(mut self, series: Option<Series>) -> Self {
+        self.series = series;
+        self
+    }
+
+    pub fn series(&self) -> Option<Series> {
+        self.series
+    }
+
+    /// Where the step that resolves generic parts asks about stock (ADR 0047). It travels
+    /// with the catalogs, like the project's other policies.
+    pub fn with_availability(mut self, availability: Arc<dyn Availability>) -> Self {
+        self.availability = Some(availability);
+        self
+    }
+
+    pub fn availability(&self) -> Option<&Arc<dyn Availability>> {
+        self.availability.as_ref()
+    }
+
     /// A catalog made in code. It replaces any file of the same name.
     pub fn insert(&mut self, catalog: Catalog) {
         self.tables.remove(&catalog.name);
@@ -248,8 +286,25 @@ impl Catalogs {
 
     /// The catalog `name` for a part whose `catalog name { ... }` lists `columns`, with every
     /// cell of a file read as its column's kind. `None` if there is no such catalog. An
-    /// error names the file and line of the cell.
+    /// error names the file and line of the cell. If the project states an E-series, the
+    /// generic parts of that series come after the rows (ADR 0047), so a value with a row is
+    /// picked as before and only a value without one is new.
     pub fn resolve(
+        &self,
+        name: &str,
+        columns: &[(String, FieldKind)],
+    ) -> Option<Result<Catalog, String>> {
+        let mut found = self.identity(name, columns)?;
+        if let (Ok(catalog), Some(series)) = (&mut found, self.series)
+            && let Some(generic) = crate::generic::candidates(series, name, columns)
+        {
+            catalog.candidates.extend(generic);
+        }
+        Some(found)
+    }
+
+    /// [`Self::resolve`], without generic parts: only the rows, which name real parts.
+    pub fn identity(
         &self,
         name: &str,
         columns: &[(String, FieldKind)],

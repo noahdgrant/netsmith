@@ -6,11 +6,19 @@ import { JobProgress } from '../components/JobProgress';
 import { analysis, board, catalogReport, job, pickPart, checkParts } from '../store';
 import { ageLabel, count, dollars } from '../util';
 
-/** When the line's price and stock were checked, and whether that is too long ago. */
+/** Where the line's price and stock come from, when, and whether that is too long ago; or why nobody knows them. */
 function freshness(l: BomLine, staleAfter: number): string {
+  if (l.unresolved) return l.unresolved;
   if (!l.lcsc) return '';
-  const when = `Price and stock read ${l.date ?? '(no date)'}, ${ageLabel(l.ageDays)}`;
-  return l.stale ? `${when}: older than ${staleAfter} days, check JLCPCB's parts page and update the row before relying on them` : when;
+  if (l.date == null) return `Price and stock unknown: ${l.unknown ?? 'no provider has them'}. Unknown is not 0.`;
+  const when = `Price and stock from ${l.supply ?? 'the catalog row'}, read ${l.date}, ${ageLabel(l.ageDays)}`;
+  return l.stale ? `${when}: older than ${staleAfter} days, ask the supplier again before relying on them` : when;
+}
+
+/** The small text under the price: the day it was read, or that it is unknown. */
+function readOn(l: BomLine): string {
+  if (l.unresolved) return 'unresolved';
+  return l.date ?? 'unknown';
 }
 
 /** What the check does, never writes and leaves unchecked, in the words of the command (one line each). */
@@ -88,7 +96,7 @@ function Rows({ lines, staleAfter }: { lines: BomLine[]; staleAfter: number }) {
       {lines.map((l) => (
         <tr key={l.designators.join(',')} onClick={() => pickPart(l.designators[0], true)}>
           <td class="des">
-            {l.stale && (
+            {(l.stale || l.unresolved) && (
               <span class="stale-dot" title={freshness(l, staleAfter)}>
                 {'\u25CF'}
               </span>
@@ -98,14 +106,14 @@ function Rows({ lines, staleAfter }: { lines: BomLine[]; staleAfter: number }) {
           <td class="num">{l.quantity}</td>
           <td title={l.kind}>{l.value}</td>
           <td title={l.footprint ?? ''}>{l.package ?? l.footprint ?? '-'}</td>
-          <td class="mono">{l.lcsc ?? (l.handSolder ? 'by hand' : 'none')}</td>
+          <td class="mono">{l.lcsc ?? (l.unresolved ? 'unresolved' : l.handSolder ? 'by hand' : 'none')}</td>
           <td>{l.library ? <span class={`pill ${l.library.toLowerCase()}`}>{l.library}</span> : ''}</td>
           <td class="num" title={`${dollars(l.lineUsd)} for ${l.quantity}. ${freshness(l, staleAfter)}`}>
-            {dollars(l.unitUsd)}
-            {l.lcsc && <div class={`checked${l.stale ? ' stale' : ''}`}>{l.date ?? 'no date'}</div>}
+            {l.lcsc && l.unitUsd == null ? 'unknown' : dollars(l.unitUsd)}
+            {(l.lcsc || l.unresolved) && <div class={`checked${l.stale || l.unresolved ? ' stale' : ''}`}>{readOn(l)}</div>}
           </td>
           <td class="num" title={freshness(l, staleAfter)}>
-            {count(l.stock)}
+            {l.lcsc && l.stock == null ? 'unknown' : count(l.stock)}
           </td>
         </tr>
       ))}

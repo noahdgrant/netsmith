@@ -13,10 +13,11 @@ use std::{
 };
 
 use netsmith_check::Loader;
-use netsmith_solve::Catalogs;
+use netsmith_solve::{Catalogs, Series};
 use serde::{Deserialize, Serialize};
 
 use crate::order::{self, Order, RawOrders, RenderedOrder};
+use crate::supply::{Cache, Channel, FileProvider, Supply};
 
 /// The manifest's file name.
 pub const MANIFEST: &str = "netsmith.toml";
@@ -69,11 +70,66 @@ pub struct Manifest {
     /// `--strict` do not govern it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub constraints: Option<String>,
+    /// The E-series the solver may pick generic resistors from when no catalog row works:
+    /// `"E12"`, `"E24"` (the default) or `"E96"` (ADR 0047, provisional). `"none"` offers
+    /// only the catalog's rows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub series: Option<String>,
     /// The `[order.<name>.boards]` tables (ADR 0035): which boards go into one fabrication
     /// order, and how many of each. They are not part of the `[project]` table; they are
     /// read and written beside it.
     #[serde(skip)]
     pub orders: Vec<Order>,
+    /// The `[supply]` table (ADR 0047, provisional): where price and stock come from. Read
+    /// and written beside `[project]`. It has no field for a key or a password.
+    #[serde(skip)]
+    pub supply: Option<SupplyConfig>,
+}
+
+/// The `[supply]` table of `netsmith.toml`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SupplyConfig {
+    /// `"file"`: prices and stock from a CSV file (`crate::supply::file`). Providers that
+    /// ask a supplier are not built.
+    pub provider: String,
+    /// The file of the `file` provider, relative to the project root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+    /// The stock the bill of materials shows: `"jlcpcb-assembly"` (the default) or
+    /// `"lcsc-retail"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
+    /// How many hours a cached answer is used without asking again (default 24).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_hours: Option<u64>,
+}
+
+impl SupplyConfig {
+    fn validate(&self) -> Result<(), String> {
+        if self.provider != "file" {
+            return Err(format!(
+                "{MANIFEST}: [supply] provider = {:?} is not one netsmith has: only \"file\" is built (providers that ask a supplier need the supplier's terms of use read first, ADR 0047)",
+                self.provider
+            ));
+        }
+        match &self.file {
+            None => {
+                return Err(format!(
+                    "{MANIFEST}: [supply] provider = \"file\" needs `file = \"supply/quotes.csv\"`, the CSV of prices and stock"
+                ));
+            }
+            Some(file) => check_relative("[supply] file", file)?,
+        }
+        if let Some(word) = &self.channel
+            && Channel::parse(word).is_none()
+        {
+            return Err(format!(
+                "{MANIFEST}: [supply] channel = {word:?} is not \"jlcpcb-assembly\" or \"lcsc-retail\""
+            ));
+        }
+        Ok(())
+    }
 }
 
 fn default_top_level() -> Vec<String> {
@@ -99,6 +155,8 @@ struct File {
     project: Manifest,
     #[serde(default)]
     order: RawOrders,
+    #[serde(default)]
+    supply: Option<SupplyConfig>,
 }
 
 /// [`File`] as it is written back.
@@ -107,6 +165,8 @@ struct Rendered<'a> {
     project: &'a Manifest,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     order: BTreeMap<String, RenderedOrder>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    supply: &'a Option<SupplyConfig>,
 }
 
 impl Manifest {
@@ -121,7 +181,9 @@ impl Manifest {
             assembly: None,
             guidelines: None,
             constraints: None,
+            series: None,
             orders: Vec::new(),
+            supply: None,
         }
     }
 
@@ -130,6 +192,7 @@ impl Manifest {
         toml::to_string(&Rendered {
             project: self,
             order: order::rendered(&self.orders),
+            supply: &self.supply,
         })
         .expect("a manifest of strings and a number is always TOML")
     }
@@ -139,6 +202,7 @@ impl Manifest {
     pub fn parse(text: &str) -> Result<Manifest, String> {
         let file: File = toml::from_str(text).map_err(|e| format!("{MANIFEST}: {e}"))?;
         let mut manifest = file.project;
+        manifest.supply = file.supply;
         manifest.validate()?;
         manifest.orders = order::check(text, file.order)?;
         Ok(manifest)
@@ -177,6 +241,17 @@ impl Manifest {
             return Err(format!(
                 "{MANIFEST}: constraints = {word:?} is not one of \"warn\" or \"error\""
             ));
+        }
+        if let Some(word) = &self.series
+            && word != "none"
+            && Series::parse(word).is_none()
+        {
+            return Err(format!(
+                "{MANIFEST}: series = {word:?} is not one of \"E12\", \"E24\", \"E96\" or \"none\""
+            ));
+        }
+        if let Some(supply) = &self.supply {
+            supply.validate()?;
         }
         for file in &self.top_level {
             check_relative("top_level", file)?;
@@ -232,6 +307,16 @@ pub fn is_project_name(name: &str) -> bool {
 }
 
 /// A path in the manifest stays inside the project: relative, and no `..`.
+/// The E-series of generic resistors a manifest's `series` asks for: E24 unless it says
+/// another or `"none"` (the manifest was validated).
+fn series_of(word: Option<&str>) -> Option<Series> {
+    match word {
+        None => Some(Series::E24),
+        Some("none") => None,
+        Some(word) => Series::parse(word),
+    }
+}
+
 fn check_relative(key: &str, path: &str) -> Result<(), String> {
     let inside = !path.is_empty()
         && Path::new(path)
@@ -304,14 +389,40 @@ impl Project {
         let mut catalogs = Catalogs::jlcpcb()
             .with_default_assembly(self.manifest.assembly.as_deref())
             .with_strict_guidelines(self.manifest.guidelines.as_deref() == Some("error"))
-            .with_constraints_warn(self.manifest.constraints.as_deref() == Some("warn"));
+            .with_constraints_warn(self.manifest.constraints.as_deref() == Some("warn"))
+            .with_series(series_of(self.manifest.series.as_deref()));
         for file in &self.manifest.catalogs {
             let path = self.root.join(file);
             let text = fs::read_to_string(&path).map_err(|e| format!("{MANIFEST}: {file}: {e}"))?;
             let name = catalog_name(file).expect("the manifest was validated");
             catalogs.add_file(name, file, &text)?;
         }
+        if self.manifest.supply.is_some() {
+            catalogs = catalogs.with_availability(self.supply()?.into_availability());
+        }
         Ok(catalogs)
+    }
+
+    /// The providers of the `[supply]` table, with the cache in front of them, read again on
+    /// each call. Without the table no provider is configured, and every price and stock is
+    /// unknown (ADR 0047).
+    pub fn supply(&self) -> Result<Supply, String> {
+        let Some(config) = &self.manifest.supply else {
+            return Ok(Supply::none());
+        };
+        let file = config.file.as_deref().expect("the manifest was validated");
+        let provider = FileProvider::open(&self.root.join(file), file)?;
+        let mut supply = Supply::none().with_provider(Box::new(provider));
+        if let Some(word) = &config.channel {
+            supply = supply.with_channel(Channel::parse(word).expect("the manifest was validated"));
+        }
+        if let Some(hours) = config.cache_hours {
+            supply = supply.with_cache_hours(hours);
+        }
+        if let Some(dir) = Cache::default_dir() {
+            supply = supply.with_cache_dir(dir);
+        }
+        Ok(supply)
     }
 
     /// The standard library and this project's modules.
@@ -504,7 +615,7 @@ impl Target {
     pub fn catalogs(&self) -> Result<Catalogs, String> {
         match &self.project {
             Some(project) => project.catalogs(),
-            None => Ok(Catalogs::jlcpcb()),
+            None => Ok(Catalogs::jlcpcb().with_series(series_of(None))),
         }
     }
 

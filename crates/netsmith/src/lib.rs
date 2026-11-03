@@ -12,6 +12,8 @@ pub mod libraries;
 pub mod order;
 pub mod project;
 pub mod refresh;
+pub mod resolve;
+pub mod supply;
 
 use std::path::{Path, PathBuf};
 
@@ -590,6 +592,9 @@ fn report(heading: &str, design: &Design, sourcing: &[Sourced], mapping: &Mappin
             _ if source.assembly == Assembly::None => "not fitted".to_string(),
             (Some(lcsc), Some(library)) => format!("{lcsc} {library}"),
             (Some(lcsc), None) => lcsc.clone(),
+            (None, _) if source.generic.is_some() => {
+                "generic, resolved to a part when the bill of materials or fab is made".to_string()
+            }
             (None, _) => "no LCSC number".to_string(),
         };
         out.push_str(&format!(

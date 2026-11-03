@@ -25,6 +25,7 @@ use netsmith_pcb::{
 use netsmith_solve::Catalogs;
 
 use crate::order::{BoardFacts, PanelFacts};
+use crate::resolve::resolve_generics;
 use crate::{Built, Libraries, outcome_with, render_problems};
 
 /// One board, made.
@@ -306,7 +307,23 @@ fn fab_board(
             fs::write(&file, text).map_err(|e| fail(format!("{}: {e}", file.display())))?;
         }
 
-        let entries = bom_entries(&built.sourcing, &libraries.mapping).map_err(&fail)?;
+        // A generic part (ADR 0047) becomes the row that stands for it now; one that no row
+        // stands for cannot be ordered, and is refused by name with the nearest rows.
+        let (sourcing, unresolved) = resolve_generics(&built.sourcing, catalogs);
+        let unresolved: Vec<String> = unresolved
+            .iter()
+            .filter(|u| {
+                built
+                    .sourcing
+                    .iter()
+                    .any(|s| s.refdes == u.refdes && s.assembled())
+            })
+            .map(|u| fail(u.line()))
+            .collect();
+        if !unresolved.is_empty() {
+            return Err(unresolved.concat());
+        }
+        let entries = bom_entries(&sourcing, &libraries.mapping).map_err(&fail)?;
         // Guidelines that the design goes against (ADR 0036) are for the person ordering, so
         // they are in `fab-notes.txt`.
         let mut extras = board.process_extras();
@@ -597,6 +614,7 @@ mod tests {
             library: None,
             assembly,
             assembly_stated: false,
+            generic: None,
         }
     }
 
