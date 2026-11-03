@@ -139,29 +139,26 @@ fn the_order_of_the_rows_is_the_order_they_are_tried_in() {
 }
 
 #[test]
-fn a_row_with_stock_0_is_not_offered_and_an_empty_stock_is_unknown_and_offered() {
-    // The first row would be taken, if it were offered.
+fn a_row_is_offered_whatever_its_stock_cell_says() {
+    // Stock is a fact about a day, not about a part: the solver does not read it (ADR 0047),
+    // so a sold-out row is picked and only the step that orders the part passes it over.
     let sold_out = file().replacen(",1000,", ",0,", 1);
     let c = catalogs(&[("zz9", &sold_out)]).unwrap();
-    let s = solved("", &c);
-    let msgs = messages(&s);
-    assert_eq!(msgs.len(), 1, "{msgs:#?}");
+    let s = solved(r#".mpn &= "ZZ9-33-S""#, &c);
+    assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
+    assert_eq!(s.picks[0].candidate, "ZZ9-33-S");
+    let msgs = messages(&solved("", &c));
     assert!(
-        msgs[0].contains("name the part with .mpn: ZZ9-33-D") && !msgs[0].contains("ZZ9-33-S"),
+        msgs[0].contains("name the part with .mpn: ZZ9-33-S, ZZ9-33-D"),
         "{}",
         msgs[0]
     );
-    let s = solved(r#".mpn &= "ZZ9-33-S""#, &c);
-    assert!(
-        s.picks.is_empty(),
-        "a sold-out part is not picked by name either"
-    );
-    // No stock cell says nothing about stock.
+    // An empty cell is picked as before.
     let unknown = file().replacen(",1000,", ",,", 1);
     let c = catalogs(&[("zz9", &unknown)]).unwrap();
     let s = solved(r#".mpn &= "ZZ9-33-S""#, &c);
     assert_eq!(s.picks[0].candidate, "ZZ9-33-S");
-    // Its cells are still read: a mistake in a sold-out row is reported.
+    // Its cells are still read: a mistake in a row is reported.
     let wrong = sold_out.replacen("0.3V", "0.3A", 1);
     let c = catalogs(&[("zz9", &wrong)]).unwrap();
     let s = solved("", &c);

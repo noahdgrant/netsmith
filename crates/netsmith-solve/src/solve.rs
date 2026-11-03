@@ -67,6 +67,9 @@ pub struct Pick {
     pub library: Option<Library>,
     /// The row's default for who assembles the part (ADR 0024).
     pub assembly: Option<String>,
+    /// Set if the candidate is a generic part (ADR 0047): it has no part number yet, and
+    /// [`crate::resolve`] finds the row that stands for it.
+    pub generic: Option<crate::Generic>,
     /// How many candidates fit the design's constraints but failed a relation first.
     pub rejected: usize,
 }
@@ -1490,6 +1493,7 @@ impl Solver<'_> {
                         mpn: c.mpn.clone(),
                         library: c.library,
                         assembly: c.assembly.clone(),
+                        generic: c.generic.clone(),
                         rejected: examined,
                     });
                     if self.search(jobs, group, depth + 1, search) {

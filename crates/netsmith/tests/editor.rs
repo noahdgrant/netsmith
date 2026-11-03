@@ -960,11 +960,19 @@ fn the_bom_dates_each_price_and_marks_the_old_ones_stale() {
     let resistor = bom.lines.iter().find(|l| l.kind == "Resistor").unwrap();
     assert_eq!(resistor.date.as_deref(), Some("2026-10-31"));
     assert_eq!((resistor.age_days, resistor.stale), (Some(2), false));
-    // A standard row ships no date, so its age is unknown and a sourced part is stale.
+    // A standard row ships no date and the project has no supply provider, so the price and
+    // stock are unknown. Unknown is not stale.
     let led = bom.lines.iter().find(|l| l.kind == "Led").unwrap();
     assert_eq!(
         (led.date.as_deref(), led.age_days, led.stale),
-        (None, None, true)
+        (None, None, false)
+    );
+    assert!(
+        led.unknown
+            .as_deref()
+            .is_some_and(|u| u.contains("no supply provider is configured")),
+        "{:?}",
+        led.unknown
     );
     assert!(bom.note.contains("Check parts against LCSC"));
     assert!(
@@ -980,12 +988,12 @@ fn the_bom_dates_each_price_and_marks_the_old_ones_stale() {
     let resistor = bom.lines.iter().find(|l| l.kind == "Resistor").unwrap();
     assert_eq!((resistor.age_days, resistor.stale), (Some(93), true));
     let led = bom.lines.iter().find(|l| l.kind == "Led").unwrap();
-    assert_eq!((led.age_days, led.stale), (None, true));
-    // A part by hand has a row too (the `header` catalog, which ships no date: stale as well).
+    assert_eq!((led.age_days, led.stale), (None, false));
+    // A part by hand has a row too (the `header` catalog, which ships no date): unknown.
     assert!(
         bom.hand
             .iter()
-            .all(|l| l.date.is_none() && l.age_days.is_none() && l.stale),
+            .all(|l| l.date.is_none() && l.age_days.is_none() && !l.stale && l.unknown.is_some()),
         "{:?}",
         bom.hand
     );

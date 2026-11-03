@@ -55,7 +55,7 @@ The surface finish is not in `order.txt` (`finish not stated`): the user chooses
 ## Before ordering
 
 1. Open `<Board>.svg` and `view` the schematic. Check connectors and orientation by eye.
-2. Check every BOM line: value, package, LCSC number. Stock and price in the catalog are JLCPCB's snapshot, entered by hand, so check stock on the order page; `netsmith catalog age` says how old they are (from `date`). `netsmith catalog refresh --dry-run` does not update them: it only checks each row's manufacturer's number and package against LCSC's record and notes when LCSC lists stock 0, which means look at JLCPCB's page (it uses the network, so only when the user wants it).
+2. Check every BOM line: value, package, LCSC number. Price and stock come from the project's supply provider (`[supply]` in `netsmith.toml`) and are `unknown` where it has none, so check stock on the order page; `netsmith catalog age` says how old they are and which are unknown. An unresolved generic part stops `fab` with the nearest rows: pick one of them in the design. `netsmith catalog refresh --dry-run` does not update them: it only checks each row's manufacturer's number and package against LCSC's record and notes when LCSC lists stock 0, which means look at JLCPCB's page (it uses the network, so only when the user wants it).
 3. JLCPCB normally charges a loading fee for each unique Extended part, unless it flags the part Preferred. Count the Extended parts in the build report and confirm the fee on the order page.
 4. In JLCPCB's order preview, check the flagged rotations and that each part sits on its pads.
 5. Run JLCPCB's own design check. netsmith holds to the published limits but cannot run it. Pass its findings to the user.

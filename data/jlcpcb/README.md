@@ -2,7 +2,7 @@
 
 `catalog/*.csv` hold the LCSC ("C") numbers that netsmith offers: one file for each catalog (`resistor.csv`, `capacitor.csv`, `led.csv`, `ldo.csv` and the eight of the standard kinds below), one row for each part. `considered.csv` holds the parts that were looked at and not offered, with the reason.
 
-**Price and stock are not shipped.** The `price`, `stock`, `date` and `checked` cells of every row, and the `stock`, `unit_price_usd` and `checked` cells of `considered.csv`, are empty, because a supplier's price and stock go stale within days. An empty `stock` means unknown, never zero (the solver offers such a row), and an empty `price` leaves the bill of materials without a price for the line. A part's availability, price and library type must be read from the supplier (JLCPCB's parts page, LCSC's page for the number) before ordering. What the files do record is the identity of each part: its LCSC number, manufacturer's number, package, library type (Basic or Extended) as it was read, the electrical values from the record or datasheet, and where they were read.
+**Price and stock are not shipped.** The `price`, `stock`, `date` and `checked` cells of every row, and the `stock`, `unit_price_usd` and `checked` cells of `considered.csv`, are empty, because a supplier's price and stock go stale within days. A price and a stock come from a supply provider when the bill of materials is made (ADR 0047); an empty cell means unknown, never zero, and the solver does not read these columns at all. A part's availability, price and library type must be read from the supplier (JLCPCB's parts page, LCSC's page for the number) before ordering. What the files do record is the identity of each part: its LCSC number, manufacturer's number, package, library type (Basic or Extended) as it was read, the electrical values from the record or datasheet, and where they were read.
 
 ## The files
 
@@ -175,7 +175,7 @@ A part in `std/` that states numbers from a datasheet records the document and t
 
 `netsmith catalog refresh` repeats **the LCSC cross-check only** for each row; JLCPCB data is not fetched (ADR 0039, decisions of 2026-11-02). It compares LCSC's manufacturer's number and package with the row's and, for a row that agrees (`VERIFIED`), writes the day in the `checked` column (`--dry-run` shows the diff, `--lcsc C5446` does one row). **It never writes `price`, `stock`, `price_breaks`, `library` or `date`.** A row whose LCSC record has another `mpn` or package than the row is a CONFLICT, and a part LCSC no longer lists is MISSING; both are left as they were. A new row's `checked` is empty until a refresh verifies it. LCSC's terms of use for the record the command asks for have not been read; a person must read them before the command is advertised.
 
-A project that keeps its own prices and stock in its own catalog files (`price`, `stock`, `date`, ADR 0022) gets them in its bill of materials, with the age of each `date` and a stale mark after 90 days; a standard row has none of them, so its line has no price, and `netsmith catalog age` lists it as having no date.
+A project that keeps its own prices and stock in its own catalog files (`price`, `stock`, `date`, ADR 0022) gets them in its bill of materials as the last resort, after a supply provider's answer, with the age of each `date` and a stale mark after 90 days; a standard row has none of them, so its line says its price and stock are unknown unless a provider has the part, and `netsmith catalog age` counts it as unknown.
 
 ## Re-checking one row
 

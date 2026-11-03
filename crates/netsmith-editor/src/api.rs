@@ -392,12 +392,24 @@ pub struct BomLine {
     pub line_usd: Option<f64>,
     #[ts(type = "number | null")]
     pub stock: Option<u64>,
-    /// The day the catalog row's price and stock were read, `2026-10-31` (its `date` column).
+    /// The day the price and stock were read, `2026-10-31`: the day of the provider's
+    /// answer (ADR 0047), or the row's `date` cell if no provider answered. `None` if
+    /// they are unknown.
     pub date: Option<String>,
     /// How many days before today that was.
     pub age_days: Option<i32>,
-    /// The row is older than [`Bom::stale_after_days`], or has no date.
+    /// The price and stock were read more than [`Bom::stale_after_days`] days ago. A line
+    /// whose price is unknown is not stale: see [`BomLine::unknown`].
     pub stale: bool,
+    /// Where the price and stock come from and which stock it is: `file, JLCPCB assembly
+    /// stock`. `None` if they are unknown.
+    pub supply: Option<String>,
+    /// Why the price and stock are unknown, for a part with a supplier number that no
+    /// provider has an answer for (ADR 0047). Never a guess, and never a stock of 0.
+    pub unknown: Option<String>,
+    /// For a generic part that no catalog row stands for: what is wanted and the nearest
+    /// rows (ADR 0047). Such a line has no supplier number and cannot be ordered.
+    pub unresolved: Option<String>,
     /// Soldered by hand: the board house does not place it.
     pub hand_solder: bool,
 }

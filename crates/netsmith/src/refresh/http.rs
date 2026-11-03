@@ -106,7 +106,13 @@ impl Default for Network {
 /// `$NETSMITH_CACHE_DIR`, else `$XDG_CACHE_HOME/netsmith`, else `~/.cache/netsmith`, and
 /// `catalog-refresh` in it.
 pub fn default_cache_dir() -> Option<PathBuf> {
-    let base = if let Some(d) = std::env::var_os("NETSMITH_CACHE_DIR") {
+    Some(cache_base()?.join("catalog-refresh"))
+}
+
+/// netsmith's cache directory: `$NETSMITH_CACHE_DIR`, else `$XDG_CACHE_HOME/netsmith`, else
+/// `~/.cache/netsmith`. Each kind of cached answer has a directory of its own below it.
+pub fn cache_base() -> Option<PathBuf> {
+    Some(if let Some(d) = std::env::var_os("NETSMITH_CACHE_DIR") {
         PathBuf::from(d)
     } else if let Some(d) = std::env::var_os("XDG_CACHE_HOME") {
         PathBuf::from(d).join("netsmith")
@@ -114,8 +120,7 @@ pub fn default_cache_dir() -> Option<PathBuf> {
         PathBuf::from(std::env::var_os("HOME")?)
             .join(".cache")
             .join("netsmith")
-    };
-    Some(base.join("catalog-refresh"))
+    })
 }
 
 /// An answer, and when it was got (Unix seconds).

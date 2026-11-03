@@ -81,10 +81,14 @@ cargo run -p netsmith -- fab examples/two_boards.nsm --out fab # two boards, a p
 cargo run -p netsmith -- compare out/LedExample/LedExample.kicad_sch fab/LedExample/LedExample.kicad_pcb
 ```
 
-A catalog row's `price`, `stock` and `library` are JLCPCB's numbers, entered by hand from its parts
-page, with a `date` (the day they were read). The catalogs that ship with netsmith leave `price`,
-`stock`, `date` and `checked` empty (they go stale): a part's availability and price must be read
-from the supplier before ordering. `netsmith catalog refresh` (opt-in, ADR 0039) is a
+A part's price and stock come from a **supply provider** when the bill of materials or `fab` is
+made (ADR 0047, provisional), not from the catalog files: the `[supply]` table of `netsmith.toml`
+names it (only `provider = "file"` is built, a CSV of quotes on this machine; no provider asks a
+supplier), the answer says whether it is JLCPCB assembly stock or LCSC retail stock, and where no
+provider has the part price and stock are **unknown** (never guessed, never 0). A catalog row's own
+`price`, `stock` and `date` cells (JLCPCB's numbers, entered by hand) are read only as the last
+resort; the catalogs that ship with netsmith leave them and `checked` empty, and the solver never
+reads them. `netsmith catalog refresh` (opt-in, ADR 0039) is a
 **check, not a data update**: it asks LCSC's product record for each row and compares the
 manufacturer's number and package with the row's. A row that agrees is `VERIFIED` and gets the day
 in its `checked` column, the one cell the command ever writes (a file without the column is
@@ -95,8 +99,9 @@ JLCPCB's parts page by hand. A row whose manufacturer's number or package disagr
 record is reported `CONFLICT`, a part LCSC no longer lists `MISSING`; neither is changed or deleted
 (`--dry-run` prints the diff; `--only` and `--lcsc` choose rows; `--offline` uses what an earlier
 run kept). **JLCPCB data is not fetched**. `netsmith catalog age` lists the rows whose price and stock
-(`date`) are older than 90 days. The solver never needs the network, and a row with a `stock` of 0
-is not offered. LCSC's endpoint is unofficial and **LCSC's terms of use have not been read**: a
+were read more than 90 days ago (by the provider, else by the row's `date`) and the rows whose price
+and stock are unknown. The solver never needs the network and does not read stock, so a row with
+a `stock` of 0 is offered like any other (ADR 0047). LCSC's endpoint is unofficial and **LCSC's terms of use have not been read**: a
 person must read them before this is advertised. Official APIs (JLCAPI, the LCSC API; both need an
 account) are future work, and would let a refresh fetch JLCPCB's own numbers. Meanwhile it asks
 politely and only when told to.
@@ -189,8 +194,8 @@ than 16 parts is drawn by module, a box for each instance, with a list to jump t
 between boxes as named stubs), the power tree (each
 rail with its voltage, its loads and the current it can give, from the solved model), the
 system (the boards of a `system` and their joins, or the members of a board), the bill of
-materials (grouped as `bom.csv` is, with LCSC number, Basic or Extended, price and stock where the
-row states them), the PCB (placed at once, routed on demand with its stages and a Cancel button, layers to
+materials (grouped as `bom.csv` is, with LCSC number, Basic or Extended, price and stock where a supply
+provider or the row gives them, `unknown` where not), the PCB (placed at once, routed on demand with its stages and a Cancel button, layers to
 show and hide; a canvas to select parts by click, box or list, with their pads, nets and ratsnest, move
 them by dragging on a grid, rotate (`R`), flip (`F`) and lock (`L`) them, draw and move keepouts, and
 undo and redo every edit; each edit is written to the layout file `<stem>.pcb.toml`; a list of what is
@@ -198,7 +203,7 @@ wrong with the board, with where, from netsmith's placement check, its connectio
 panel (`Build` writes the KiCad schematics, `Fab` runs the design rules check and offers the
 Gerber zip, BOM and placement file to download, and an Order section makes a named order of
 `netsmith.toml` with its summary and combined BOM to download). The schematic's layout is automatic. A long job (routing, `fab`, a build) runs while the editor
-stays usable and says how long it took. The bill of materials dates each line's price and stock, marks one older than 90 days, and has a "Check parts against LCSC" button (the same code as `catalog refresh`, for the project's own catalog files, with a preview and an offline mode; it writes no price or stock and says so). A file
+stays usable and says how long it took. The bill of materials says where each line's price and stock come from and when they were read, marks one older than 90 days, says `unknown` where no provider has them, and has a "Check parts against LCSC" button (the same code as `catalog refresh`, for the project's own catalog files, with a preview and an offline mode; it writes no price or stock and says so). A file
 that changes on disk is read again; a mistake in the source is shown and the last drawing that
 built stays on screen, marked stale.
 
@@ -339,7 +344,8 @@ published limits but cannot run it).
 
 ## Known limits
 
-- `netsmith catalog refresh` and the editor's "Check parts against LCSC" (ADR 0039) do not fetch JLCPCB data. So the library, price and stock are JLCPCB's hand-entered numbers, which nothing refreshes (the standard catalogs ship none: a part's price and stock must be read from the supplier before ordering) and which the bill of materials marks stale after 90 days; the command only verifies each row's manufacturer's number and package against LCSC's record, writes the day in `checked`, and notes when LCSC lists stock 0. LCSC's terms of use have not been read (a person must read them before the command is advertised); the official APIs (JLCAPI, the LCSC API) need an account and come after v0.1.0.
+- No provider asks a supplier (ADR 0047): the one built reads a local CSV of quotes, so live price and stock need a person to put them in that file until a real provider is added (the LCSC API and JLCAPI need accounts, and the suppliers' terms of use are unread). Generic resistors (an E-series value with no supplier, `series` in `[project]`, E24 by default) are picked by the solver when no catalog row works and resolved to a row, Basic first, when the bill of materials or `fab` is made; an unresolved one stops `fab` with the nearest rows. Only resistors are generic so far; the alternatives are not re-checked against the design's relations; and the solver still prefers a row to a generic value, so it can pick a row whose stock the provider says is 0 (the bill of materials shows the 0).
+- `netsmith catalog refresh` and the editor's "Check parts against LCSC" (ADR 0039) do not fetch JLCPCB data. So the library is JLCPCB's hand-entered number, which nothing refreshes (the standard catalogs ship none) and the price and stock of a row with no provider are the row's hand-entered cells, marked stale after 90 days; the command only verifies each row's manufacturer's number and package against LCSC's record, writes the day in `checked`, and notes when LCSC lists stock 0. LCSC's terms of use have not been read (a person must read them before the command is advertised); the official APIs (JLCAPI, the LCSC API) need an account and come after v0.1.0.
 - `netsmith dxf import` (ADR 0045) reads an enclosure's outline from an ASCII DXF, but the board model has only a rectangle with equal rounded corners, so an outline that is an L, a polygon or has unequal corners, and a cutout that is not a rounded rectangle, a slot or a circle, is refused with its size and edge count (a polygon outline is ADR 0045 step C8). Holes must be `MountingHole` packages (`M2` 2.2 mm, `M3` 3.2 mm). Binary DXF, `SPLINE`s without control points or periodic, `INSERT`s with unequal scales on arcs, drawings not flat in the XY plane, and an island inside a cutout are refused with a message; text, dimensions and hatches are skipped with a warning. `--write` writes the layout file as `Layout::to_text` does, so a comment in it is not kept (the diff shows it); the source is never written.
 - Fabrication files (ADR 0034, provisional): netsmith writes the Gerbers, drill files and placement file itself, and JLCPCB has not yet taken them (every package it accepted before was KiCad's); the cross-check agrees with KiCad's own plot of the examples and of the synthetic boards, but the order preview is the check that counts. The pours are written with clear polarity, which KiCad does not write; copper islands and slivers under the zone's minimum thickness are not removed, and a thermal spoke into another net's clearance stays as a stub. Silkscreen text is netsmith's own stroke font (not KiCad's), a character it lacks is a box named in `fab-notes.txt`, and text boxes and curves are not plotted. Blind and buried vias, pad stacks, hatched zones and overlapping zones of different nets on one layer are refused with the item named. The design rules check (ADR 0037, provisional) is netsmith's own and checks what KiCad's reports on the boards netsmith makes; it does not check impedance, acid traps, copper slivers and islands of a pour, thermal starvation, stackup rules, differential pairs or lengths, custom rules (`.kicad_dru`) or blind and buried vias, and a pour is checked by its outline, not by a computed fill. Silkscreen text is checked with netsmith's own font, so a text that only just clears a pad can differ from KiCad's verdict.
 - Placement requirements (ADR 0045, provisional) are built for a part's or a module's own
@@ -493,7 +499,7 @@ published limits but cannot run it).
   `Catalogs::sample()` is a full E24 set with no supplier numbers, for testing the solver
   (`data/sample/`). A catalog file is read for a part when the solver uses it, so a mistake
   in one is found then, with its file and line. The order of the rows is the selection
-  policy and nothing sorts it. Stock and price in a row are a snapshot, and the standard rows state none. There is no shared
+  policy and nothing sorts it. Stock and price are not in the rows (ADR 0047): a supply provider gives them, and the standard rows state none. There is no shared
   catalog between projects, and a catalog name used by two part kinds with different columns
   is not checked.
 - Worst-case values are exact for formulas that rise or fall steadily in each variable, which
