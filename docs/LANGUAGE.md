@@ -3270,7 +3270,7 @@ error: Vague: `r.body_height` is 2mm..5mm, a range, and a position, a size or a 
 
 ### Labels
 
-A `Label` is silkscreen text: a part with no pins that is fitted by nobody, placed like any other part. `.text` is what it prints and `.height` how tall; unset, the process's least text height, and never less. The reference designator of a label is `LBL1`, and it is not in the schematic.
+A `Label` is silkscreen text: a part with no pins that is fitted by nobody, placed like any other part. `.text` is what it prints and `.text_height` how tall (it was `.height` before the part height of _Height limits_ took that name); unset, the process's least text height, and never less. The reference designator of a label is `LBL1`, and it is not in the schematic.
 
 ```nsm evaluate
 import std::parts::mechanical::Label
@@ -3282,7 +3282,7 @@ board Marked {
     }
     .revision: Label {
         .text &= "REV A"
-        .height &= 1.2mm
+        .text_height &= 1.2mm
     }
 }
 ```
@@ -4791,7 +4791,7 @@ Parts are numbered by their letters in the order of their paths, and every kind 
 | `std::parts::mechanical::PlatedHole` | A plated mounting hole. One pin `p1`, the plating, that the board joins to a net or leaves open. |
 | `std::parts::mechanical::Fiducial` | A fiducial mark. No pins. |
 | `std::parts::mechanical::TestPoint` | A test point. One pin `p1`, which must be on a net. |
-| `std::parts::mechanical::Label` | Silkscreen text. No pins. `.text` and `.height`. |
+| `std::parts::mechanical::Label` | Silkscreen text. No pins. `.text` and `.text_height`. |
 
 ### Interfaces
 

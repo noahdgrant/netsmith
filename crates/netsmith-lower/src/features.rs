@@ -329,7 +329,7 @@ fn outline_of(model: &Model, inst: InstId, errors: &mut Vec<String>) -> Outline 
     }
 }
 
-/// The `Label` parts of the model: their text and height.
+/// The `Label` parts of the model: their text and text height.
 fn labels(model: &Model, least_text: f64, errors: &mut Vec<String>) -> Vec<Label> {
     let mut parts: Vec<(String, InstId)> = model
         .instances()
@@ -348,15 +348,19 @@ fn labels(model: &Model, least_text: f64, errors: &mut Vec<String>) -> Vec<Label
                 continue;
             }
         };
-        let height = range(model, id, "height").map(|(lo, _)| lo);
+        let height = range(model, id, "text_height").map(|(lo, _)| lo);
         if let Some(h) = height
             && h < least_text - 1e-9
         {
             errors.push(format!(
-                "`{path}.height` is {h} mm, under the process's least text height of {least_text} mm"
+                "`{path}.text_height` is {h} mm, under the process's least text height of {least_text} mm"
             ));
         }
-        found.push(Label { path, text, height });
+        found.push(Label {
+            path,
+            text,
+            text_height: height,
+        });
     }
     found
 }

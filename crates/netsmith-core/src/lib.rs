@@ -284,9 +284,9 @@ pub struct Label {
     /// The part's path in the design.
     pub path: String,
     pub text: String,
-    /// The height the design asks for, in mm, if it does. The process's least text height
-    /// otherwise.
-    pub height: Option<f64>,
+    /// The height of the letters the design asks for (`.text_height`), in mm, if it does.
+    /// The process's least text height otherwise.
+    pub text_height: Option<f64>,
 }
 
 /// A field of a part's or module's `.place` that holds a range (ADR 0045). All are measured

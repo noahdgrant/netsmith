@@ -894,7 +894,7 @@ impl Board {
                     .labels
                     .iter()
                     .find(|l| l.path == part.path)
-                    .and_then(|l| l.height)
+                    .and_then(|l| l.text_height)
                     .unwrap_or(rules.min_text_height);
                 parts.push(Placed {
                     refdes: part.refdes.clone(),
