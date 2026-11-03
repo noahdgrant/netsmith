@@ -9,19 +9,50 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// A folder in the temporary directory that is removed when it is dropped.
+/// The environment variable that keeps the folders of [`TempDir`] after a test, so that a
+/// failure can be inspected: set `NETSMITH_KEEP_TEST_DIRS=1`.
+pub const KEEP_VARIABLE: &str = "NETSMITH_KEEP_TEST_DIRS";
+
+/// A folder in the temporary directory that is removed when it is dropped, also when the
+/// test that holds it panics. The name is `netsmith-<label>-<process id>-<count>`, so that
+/// a leftover folder says what made it. With `NETSMITH_KEEP_TEST_DIRS=1` in the
+/// environment the folder is kept.
+///
+/// It dereferences to [`Path`], so `dir.join("x")` and `fs::write(&dir, ..)` read as they do
+/// with a `PathBuf`. Keep it alive for as long as the test uses the folder: bind it to a
+/// name (`_dir`, not `_`), because `_` drops it at once.
+#[derive(Debug)]
 pub struct TempDir(PathBuf);
 
 impl TempDir {
+    /// Makes the folder, empty.
     pub fn new(label: &str) -> TempDir {
+        let dir = TempDir::unused(label);
+        std::fs::create_dir_all(&dir.0).expect("the temporary directory can be written");
+        dir
+    }
+
+    /// Makes the folder, empty, in `parent` instead of the system's temporary directory (for
+    /// a program that cannot read from there, such as Windows KiCad).
+    pub fn new_in(parent: &Path, label: &str) -> TempDir {
+        let dir = TempDir::unused_in(parent, label);
+        std::fs::create_dir_all(&dir.0).expect("the temporary directory can be written");
+        dir
+    }
+
+    /// Picks a name and makes nothing: for a test that needs a folder that does not exist
+    /// yet. What is made there is removed when the guard is dropped.
+    pub fn unused(label: &str) -> TempDir {
+        TempDir::unused_in(&std::env::temp_dir(), label)
+    }
+
+    fn unused_in(parent: &Path, label: &str) -> TempDir {
         static COUNT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
+        TempDir(parent.join(format!(
             "netsmith-{label}-{}-{}",
             std::process::id(),
             COUNT.fetch_add(1, Ordering::SeqCst)
-        ));
-        std::fs::create_dir_all(&path).expect("the temporary directory can be written");
-        TempDir(path)
+        )))
     }
 
     pub fn path(&self) -> &Path {
@@ -29,10 +60,62 @@ impl TempDir {
     }
 }
 
+impl std::ops::Deref for TempDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for TempDir {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
 impl Drop for TempDir {
     fn drop(&mut self) {
+        if keeps(std::env::var_os(KEEP_VARIABLE).as_deref()) {
+            return;
+        }
         let _ = std::fs::remove_dir_all(&self.0);
     }
+}
+
+/// A path to a file named `name` in a [`TempDir`] of its own; the file is not made. The folder,
+/// and so the file, is removed when the guard is dropped.
+#[derive(Debug)]
+pub struct TempFile {
+    _dir: TempDir,
+    path: PathBuf,
+}
+
+impl TempFile {
+    pub fn new(label: &str, name: &str) -> TempFile {
+        let dir = TempDir::new(label);
+        let path = dir.join(name);
+        TempFile { _dir: dir, path }
+    }
+}
+
+impl std::ops::Deref for TempFile {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl AsRef<Path> for TempFile {
+    fn as_ref(&self) -> &Path {
+        &self.path
+    }
+}
+
+/// Whether the value of `NETSMITH_KEEP_TEST_DIRS` asks to keep the folders.
+fn keeps(value: Option<&std::ffi::OsStr>) -> bool {
+    value.is_some_and(|v| !v.is_empty() && v != "0")
 }
 
 const FONT: &str = "(effects (font (size 1.27 1.27)))";
@@ -579,4 +662,90 @@ pub fn sample_symbols() -> PathBuf {
 /// Our sample footprint libraries.
 pub fn sample_footprints() -> PathBuf {
     sample_root().join("footprints")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsStr;
+
+    /// The tests of removal mean nothing when the person running them asked to keep the
+    /// folders.
+    fn kept_on_request() -> bool {
+        keeps(std::env::var_os(KEEP_VARIABLE).as_deref())
+    }
+
+    #[test]
+    fn a_dropped_folder_is_removed_with_what_is_in_it() {
+        if kept_on_request() {
+            return;
+        }
+        let dir = TempDir::new("testlib-drop");
+        let path = dir.path().to_path_buf();
+        std::fs::create_dir_all(dir.join("deep")).unwrap();
+        std::fs::write(dir.join("deep/file"), "x").unwrap();
+        assert!(path.is_dir());
+        drop(dir);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn a_folder_is_removed_when_the_test_panics() {
+        if kept_on_request() {
+            return;
+        }
+        let seen = std::sync::Mutex::new(None);
+        let result = std::panic::catch_unwind(|| {
+            let dir = TempDir::new("testlib-panic");
+            std::fs::write(dir.join("file"), "x").unwrap();
+            *seen.lock().unwrap() = Some(dir.path().to_path_buf());
+            panic!("the test fails");
+        });
+        assert!(result.is_err());
+        let path = seen.lock().unwrap().take().unwrap();
+        assert!(!path.exists(), "{} was left behind", path.display());
+    }
+
+    #[test]
+    fn a_temp_file_is_a_path_in_a_folder_that_goes_with_it() {
+        if kept_on_request() {
+            return;
+        }
+        let file = TempFile::new("testlib-file", "a.txt");
+        let folder = file.parent().unwrap().to_path_buf();
+        assert!(folder.is_dir() && !file.exists());
+        std::fs::write(&file, "x").unwrap();
+        drop(file);
+        assert!(!folder.exists());
+    }
+
+    #[test]
+    fn an_unused_folder_is_not_made_but_what_is_made_there_is_removed() {
+        if kept_on_request() {
+            return;
+        }
+        let dir = TempDir::unused("testlib-unused");
+        assert!(!dir.exists());
+        std::fs::create_dir_all(dir.join("a")).unwrap();
+        let path = dir.path().to_path_buf();
+        drop(dir);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn folders_have_distinct_names_that_say_what_made_them() {
+        let (a, b) = (TempDir::new("testlib-names"), TempDir::new("testlib-names"));
+        assert_ne!(a.path(), b.path());
+        let name = a.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(name.starts_with("netsmith-testlib-names-"), "{name}");
+    }
+
+    #[test]
+    fn the_keep_variable_asks_to_keep_the_folders() {
+        assert!(!keeps(None));
+        assert!(!keeps(Some(OsStr::new(""))));
+        assert!(!keeps(Some(OsStr::new("0"))));
+        assert!(keeps(Some(OsStr::new("1"))));
+        assert!(keeps(Some(OsStr::new("yes"))));
+    }
 }

@@ -563,6 +563,7 @@ name = "netsmith-editor"
 version = "0.0.1"
 dependencies = [
  "axum",
+ "netsmith-kicad",
  "serde",
  "serde_json",
  "tokio",
@@ -574,6 +575,7 @@ dependencies = [
 name = "netsmith-fab"
 version = "0.0.1"
 dependencies = [
+ "netsmith-kicad",
  "serde_json",
  "zip",
 ]

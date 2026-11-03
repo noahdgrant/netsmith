@@ -2,9 +2,10 @@
 //! checks and the order that names a panel need no KiCad; the cross-check with KiCad's plot of
 //! the panel board skips when KiCad is not installed.
 
+use netsmith_kicad::testlib::TempDir;
 use std::fs;
 use std::io::Read as _;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use netsmith::Libraries;
@@ -15,11 +16,8 @@ use netsmith_solve::Catalogs;
 
 const PANEL: &str = include_str!("../../../examples/led_panel.nsm");
 
-fn out(name: &str) -> PathBuf {
-    let dir =
-        std::env::temp_dir().join(format!("netsmith-panel-test-{}-{name}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    dir
+fn out(name: &str) -> TempDir {
+    TempDir::unused(&format!("panel-test-{name}"))
 }
 
 fn make(text: &str, dir: &Path) -> Result<Vec<netsmith::fab::Fabricated>, String> {
@@ -131,7 +129,6 @@ fn a_panel_of_six_boards_has_six_times_the_holes_parts_and_one_outline() {
         12
     );
     assert!(made[1].facts.panel.is_some() && made[0].facts.panel.is_none());
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -164,7 +161,6 @@ fn the_panel_board_agrees_with_kicads_plot_of_it() {
         panel.notes
     );
     assert!(panel.notes.contains("Edge_Cuts.gbr"), "{}", panel.notes);
-    let _ = fs::remove_dir_all(&dir);
 }
 
 /// `PANEL` with `from` replaced by `to`, which must be there.
@@ -230,7 +226,6 @@ fn a_panel_that_the_board_house_would_refuse_says_why_with_the_numbers() {
         e.contains("LedTile is 0.4 mm thick and a V-cut board is at least 0.6 mm thick"),
         "{e}"
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -325,12 +320,11 @@ fn the_panel_definition_is_checked_like_the_rest_of_the_language() {
         e.contains("panel P: `LedTile` is not a stand-alone board of this file"),
         "{e}"
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 // ---- orders ------------------------------------------------------------------------------
 
-fn project(name: &str, orders: &str) -> PathBuf {
+fn project(name: &str, orders: &str) -> TempDir {
     let root = out(name);
     fs::create_dir_all(root.join("src")).unwrap();
     fs::write(root.join("src/panel.nsm"), PANEL).unwrap();
@@ -375,7 +369,6 @@ fn an_order_may_name_a_panel_and_its_quantity_counts_panels() {
     );
     assert!(dir.join("LedPanel/LedPanel-gerbers.zip").is_file());
     assert!(dir.join("LedPanel/cell/LedTile/bom.csv").is_file());
-    let _ = fs::remove_dir_all(&root);
 }
 
 #[test]
@@ -408,7 +401,6 @@ fn a_board_and_a_panel_may_both_be_ordered_and_a_plain_fab_makes_both() {
     );
     assert!(root.join("fab/LedPanel/panel.svg").is_file());
     assert!(root.join("fab/LedTile/LedTile-gerbers.zip").is_file());
-    let _ = fs::remove_dir_all(&root);
 }
 
 #[test]
@@ -423,5 +415,4 @@ fn an_order_that_names_neither_a_board_nor_a_panel_lists_both() {
         ) && said.contains("the boards and panels are: LedTile, LedPanel"),
         "{said}"
     );
-    let _ = fs::remove_dir_all(&root);
 }

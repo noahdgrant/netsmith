@@ -5,6 +5,7 @@
 mod common;
 
 use netsmith_core::{Design, Features, Net, Outline, Part, PinRef};
+use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::{Board, FootprintLibrary, PlaceOptions, PlacementProblem, Rect};
 
 use common::process;
@@ -19,8 +20,7 @@ const PADS_OUT: &str = "(footprint \"PADSOUT\" (version 20241229) (generator \"n
     (fp_rect (start -1.1 -0.5) (end 1.1 0.5) (stroke (width 0.05) (type solid)) (fill none) (layer \"F.CrtYd\")))\n";
 
 fn board(count: usize, size: (f64, f64)) -> Result<Board, netsmith_pcb::BoardError> {
-    let folder = std::env::temp_dir().join(format!("netsmith-edge-wall-{}", std::process::id()));
-    std::fs::create_dir_all(&folder).unwrap();
+    let folder = TempDir::new("edge-wall");
     std::fs::write(folder.join("PADSOUT.kicad_mod"), PADS_OUT).unwrap();
     let parts: Vec<Part> = (1..=count)
         .map(|i| Part {
@@ -68,7 +68,7 @@ fn board(count: usize, size: (f64, f64)) -> Result<Board, netsmith_pcb::BoardErr
     .unwrap();
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
     let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
-        .with_library("t", folder);
+        .with_library("t", folder.path());
     Board::from_design_placed(&design, &mapping, &library, &PlaceOptions::default())
 }
 

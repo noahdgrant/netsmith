@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::board::tests::SAMPLE;
+use netsmith_kicad::testlib::TempFile;
 
 fn entry(designators: &[&str], value: &str, lcsc: Option<&str>) -> BomEntry {
     BomEntry {
@@ -37,10 +38,8 @@ fn all_top_board() -> String {
     SAMPLE.replace("(layer \"B.Cu\")", "(layer \"F.Cu\")")
 }
 
-fn write_pcb(test: &str, text: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("netsmith-fab-test-{}-{test}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let pcb = dir.join("sample.kicad_pcb");
+fn write_pcb(test: &str, text: &str) -> TempFile {
+    let pcb = TempFile::new(&format!("fab-test-{test}"), "sample.kicad_pcb");
     std::fs::write(&pcb, text).unwrap();
     pcb
 }

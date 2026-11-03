@@ -2,6 +2,7 @@
 #![allow(dead_code)] // each test file uses some of these
 
 use netsmith_core::{Design, Net, Part, PinRef};
+use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::{Board, FootprintLibrary, PlaceOptions, Pt, Rect};
 
 /// The least distance from any pad, track or via to the board edge, from the board model.
@@ -440,16 +441,12 @@ fn synthetic_board_with(
         nets,
     };
 
-    let folder = synthetic_folder();
-    // One file per size, so that boards with different packages do not meet.
+    // A folder of its own for each board, so that boards with different packages do not
+    // meet; it is removed when the board is made.
+    let folder = TempDir::new("synthetic");
     let name = format!("QUAD{per_side}");
-    let file = folder.join(format!("{name}.kicad_mod"));
-    if !file.is_file() {
-        let text = quad_footprint(per_side).replace("\"QUAD\"", &format!("\"{name}\""));
-        let staging = folder.join(format!("{name}.{:?}.tmp", std::thread::current().id()));
-        std::fs::write(&staging, text).unwrap();
-        std::fs::rename(&staging, &file).unwrap();
-    }
+    let text = quad_footprint(per_side).replace("\"QUAD\"", &format!("\"{name}\""));
+    std::fs::write(folder.join(format!("{name}.kicad_mod")), text).unwrap();
     let mapping = netsmith_kicad::Mapping::parse(
         &format!(
             "[[part]]\nkind = \"Quad\"\npackage = \"QUAD\"\nsymbol = \"synth:Q\"\nfootprint = \"synth:{name}\"\n"
@@ -462,7 +459,7 @@ fn synthetic_board_with(
     Board::from_design_placed(
         &design,
         &mapping,
-        &fixtures().with_library("synth", folder),
+        &fixtures().with_library("synth", folder.path()),
         placement,
     )
     .unwrap_or_else(|e| panic!("{e}"))
@@ -620,14 +617,13 @@ pub fn land_grid_board_sized(
         parts,
         nets: all,
     };
-    let folder = synthetic_folder();
+    let folder = TempDir::new("synthetic");
     let tag = land_grid_tag(pad_size);
-    let file = folder.join(format!("LGA{tag}.kicad_mod"));
-    if !file.is_file() {
-        let staging = folder.join(format!("LGA{tag}.{:?}.tmp", std::thread::current().id()));
-        std::fs::write(&staging, land_grid_footprint(side, pad_size)).unwrap();
-        std::fs::rename(&staging, &file).unwrap();
-    }
+    std::fs::write(
+        folder.join(format!("LGA{tag}.kicad_mod")),
+        land_grid_footprint(side, pad_size),
+    )
+    .unwrap();
     let mapping = netsmith_kicad::Mapping::parse(
         &format!("[[part]]\nkind = \"Lga\"\npackage = \"LGA{tag}\"\nsymbol = \"synth:L\"\nfootprint = \"synth:LGA{tag}\"\n"),
         "synthetic",
@@ -635,17 +631,11 @@ pub fn land_grid_board_sized(
     )
     .unwrap();
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
-    let board = Board::from_design(&design, &mapping, &fixtures().with_library("synth", folder))
-        .unwrap_or_else(|e| panic!("{e}"));
+    let board = Board::from_design(
+        &design,
+        &mapping,
+        &fixtures().with_library("synth", folder.path()),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
     (board, walled)
-}
-
-/// The folder the generated footprints are written to, one for each test process.
-fn synthetic_folder() -> &'static std::path::Path {
-    static FOLDER: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
-    FOLDER.get_or_init(|| {
-        let dir = std::env::temp_dir().join(format!("netsmith-synthetic-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    })
 }

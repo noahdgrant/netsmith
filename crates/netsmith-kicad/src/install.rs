@@ -409,38 +409,8 @@ mod tests {
     use super::*;
     use std::fs;
 
-    fn tree() -> tempfile_dir::Dir {
-        tempfile_dir::Dir::new()
-    }
-
-    /// A small temporary folder that is removed on drop (no extra dependency).
-    mod tempfile_dir {
-        use std::path::{Path, PathBuf};
-
-        pub struct Dir(PathBuf);
-
-        impl Dir {
-            pub fn new() -> Self {
-                use std::sync::atomic::{AtomicU32, Ordering};
-                static N: AtomicU32 = AtomicU32::new(0);
-                let path = std::env::temp_dir().join(format!(
-                    "netsmith-install-{}-{}",
-                    std::process::id(),
-                    N.fetch_add(1, Ordering::Relaxed)
-                ));
-                std::fs::create_dir_all(&path).unwrap();
-                Dir(path)
-            }
-            pub fn path(&self) -> &Path {
-                &self.0
-            }
-        }
-
-        impl Drop for Dir {
-            fn drop(&mut self) {
-                let _ = std::fs::remove_dir_all(&self.0);
-            }
-        }
+    fn tree() -> crate::testlib::TempDir {
+        crate::testlib::TempDir::new("install")
     }
 
     /// A fake `share/kicad` at `share`: one symbol library and one footprint library.

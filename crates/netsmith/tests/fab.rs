@@ -2,8 +2,9 @@
 //! that cross-check netsmith's files and design rules check against KiCad's skip when it is
 //! not installed.
 
+use netsmith_kicad::testlib::TempDir;
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -23,10 +24,8 @@ fn kicad() -> Option<KicadCliExe> {
     KicadCliExe::locate()
 }
 
-fn out(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("netsmith-fab-test-{}-{name}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    dir
+fn out(name: &str) -> TempDir {
+    TempDir::unused(&format!("fab-test-{name}"))
 }
 
 /// A file of the board's Gerber zip.
@@ -123,7 +122,6 @@ fn the_led_board_becomes_a_complete_package() {
         );
     }
     assert!(made[0].gerber_files.iter().any(|f| f.ends_with("PTH.drl")));
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -174,7 +172,6 @@ fn who_assembles_a_part_decides_the_bom_the_placement_file_and_the_notes() {
         "{notes}"
     );
     assert!(notes.contains("design rules check: passed"), "{notes}");
-    let _ = fs::remove_dir_all(&dir);
 }
 
 /// The LED board with its LED and resistor in a module that offers who assembles them
@@ -228,7 +225,6 @@ fn a_module_that_offers_assembly_lets_the_board_move_its_parts_out_of_the_bom() 
     assert!(bom.contains(",D1,") && bom.contains(",R1,"), "{bom}");
     let notes = read(&dir, "OfferedAssembly", "fab-notes.txt");
     assert!(notes.contains("hand-solder: J1\n"), "{notes}");
-    let _ = fs::remove_dir_all(&dir);
 
     // The board chooses `hand`: the module's parts are in neither file and in the notes.
     let dir = out("offered-hand");
@@ -247,7 +243,6 @@ fn a_module_that_offers_assembly_lets_the_board_move_its_parts_out_of_the_bom() 
     assert!(!cpl.contains("D1,") && !cpl.contains("R1,"), "{cpl}");
     let notes = read(&dir, "OfferedAssembly", "fab-notes.txt");
     assert!(notes.contains("hand-solder: D1, J1, R1\n"), "{notes}");
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -274,7 +269,6 @@ fn the_regulator_board_becomes_a_complete_package() {
         notes.contains("rotation unverified") && notes.contains("U1"),
         "{notes}"
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -326,7 +320,6 @@ fn the_four_layer_board_becomes_a_package_with_its_inner_layers() {
     // The board file holds the zones unfilled, as netsmith writes them.
     let pcb = read(&dir, "FourLayerExample", "FourLayerExample.kicad_pcb");
     assert!(pcb.contains("(zone") && !pcb.contains("filled_polygon"));
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -370,14 +363,13 @@ fn making_a_package_twice_gives_identical_files() {
         "cpl.csv",
         "LedExample.kicad_pcb",
     ] {
-        let path = |d: &PathBuf| d.join("LedExample").join(file);
+        let path = |d: &Path| d.join("LedExample").join(file);
         assert_eq!(
             fs::read(path(&a)).unwrap(),
             fs::read(path(&b)).unwrap(),
             "{file} differs"
         );
     }
-    let _ = (fs::remove_dir_all(&a), fs::remove_dir_all(&b));
 }
 
 #[test]
@@ -400,7 +392,6 @@ fn a_part_with_no_part_number_is_refused_and_nothing_is_written() {
             .join("LedExample-gerbers.zip")
             .exists()
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -503,7 +494,6 @@ fn each_board_of_a_system_gets_a_package_of_its_own_and_passes_the_design_rules(
     }
     let bom = fs::read_to_string(dir.join("TwoBoards/led/bom.csv")).unwrap();
     assert!(bom.contains("C25076") && bom.contains("C2286"), "{bom}");
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -565,7 +555,7 @@ fn fab_says_which_stage_it_is_in_so_that_a_long_run_is_not_silent() {
 fn fab_with_layout(
     name: &str,
     layout: &str,
-) -> (PathBuf, Result<Vec<netsmith::fab::Fabricated>, String>) {
+) -> (TempDir, Result<Vec<netsmith::fab::Fabricated>, String>) {
     let cli = KicadCliExe::locate().expect("the caller checked that KiCad is here");
     let dir = out(name);
     let file = dir.join("source").join("outline_and_pours.pcb.toml");
@@ -630,7 +620,6 @@ fn the_outline_and_pours_example_passes_kicads_check_with_its_layout_file() {
         notes.contains("F.Cu is a pour on GND, B.Cu is a pour on GND"),
         "{notes}"
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -651,7 +640,6 @@ fn a_layout_file_entry_for_a_part_that_is_gone_stops_fab_naming_it() {
         "{err}"
     );
     assert!(!dir.join("fab").exists(), "nothing is written");
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -659,13 +647,12 @@ fn an_example_whose_keepout_has_no_place_is_stopped_by_the_placement_check() {
     if kicad().is_none() {
         return;
     }
-    let (dir, made) = fab_with_layout("no-place", "version = 1\n");
+    let (_dir, made) = fab_with_layout("no-place", "version = 1\n");
     let err = made.expect_err("the keepout has nowhere to be");
     assert!(
         err.contains("the keepout `antenna` has no position"),
         "{err}"
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -694,7 +681,6 @@ fn a_part_the_layout_file_puts_on_the_bottom_is_on_the_back_in_the_package() {
         "OutlineAndPours.kicad_pcb",
     );
     assert!(pcb.contains("(layer \"B.Cu\")"), "a footprint on the back");
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -704,7 +690,7 @@ fn without_kicad_the_check_runs_and_the_files_are_the_same_bytes() {
     // bytes, because they are netsmith's own and so is the check (ADR 0037).
     let with = out("no-kicad-with");
     let without = out("no-kicad-without");
-    let run = |dir: &PathBuf, kicad: Option<&dyn KicadCli>| {
+    let run = |dir: &Path, kicad: Option<&dyn KicadCli>| {
         fab_with_options(
             "led.nsm",
             LED,
@@ -729,16 +715,13 @@ fn without_kicad_the_check_runs_and_the_files_are_the_same_bytes() {
             "LedExample.kicad_pcb",
             "fab-notes.txt",
         ] {
-            let path = |d: &PathBuf| d.join("LedExample").join(file);
+            let path = |d: &Path| d.join("LedExample").join(file);
             assert_eq!(
                 fs::read(path(&with)).unwrap(),
                 fs::read(path(&without)).unwrap(),
                 "{file} depends on KiCad"
             );
         }
-    }
-    for d in [&with, &without] {
-        let _ = fs::remove_dir_all(d);
     }
 }
 
@@ -770,7 +753,6 @@ fn cross_checked(name: &str, source: &str) {
             board.notes
         );
     }
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]

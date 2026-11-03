@@ -3,6 +3,7 @@
 
 mod common;
 
+use netsmith_kicad::testlib::TempDir;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -23,14 +24,8 @@ const TODAY: &str = "2026-11-02";
 const STD: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/jlcpcb/catalog");
 
 /// An empty directory of its own.
-fn dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "netsmith-refresh-test-{}-{name}",
-        std::process::id()
-    ));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
+fn dir(name: &str) -> TempDir {
+    TempDir::new(&format!("refresh-test-{name}"))
 }
 
 fn write(root: &Path, file: &str, text: &str) -> PathBuf {

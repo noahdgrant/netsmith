@@ -2,11 +2,8 @@
 //! `guidelines = "error"` in `netsmith.toml` or `--strict` for one run, shown by the
 //! command line, the fab notes and the editor.
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use netsmith_kicad::testlib::TempDir;
+use std::{fs, path::Path, process::Command};
 
 use netsmith::editor::Workspace;
 use netsmith::project::{Manifest, Target};
@@ -48,17 +45,13 @@ board Heater {{
     )
 }
 
-fn dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "netsmith-guidelines-test-{}-{name}",
-        std::process::id()
-    ));
-    let _ = fs::remove_dir_all(&dir);
+fn dir(name: &str) -> TempDir {
+    let dir = TempDir::new(&format!("guidelines-test-{name}"));
     fs::create_dir_all(dir.join("src")).unwrap();
     dir
 }
 
-fn project(name: &str, manifest_line: &str, width: &str) -> PathBuf {
+fn project(name: &str, manifest_line: &str, width: &str) -> TempDir {
     let root = dir(name);
     fs::write(
         root.join("netsmith.toml"),

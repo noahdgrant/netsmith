@@ -2,8 +2,9 @@
 
 mod common;
 
+use netsmith_kicad::testlib::{TempDir, TempFile};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use netsmith::build_with;
@@ -20,14 +21,8 @@ const LED: &str = include_str!("../../../examples/led.nsm");
 const STATUS: &str = include_str!("../../../examples/status_indicator.nsm");
 
 /// An empty directory of its own.
-fn dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "netsmith-project-test-{}-{name}",
-        std::process::id()
-    ));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
+fn dir(name: &str) -> TempDir {
+    TempDir::new(&format!("project-test-{name}"))
 }
 
 fn write(root: &Path, file: &str, text: &str) {
@@ -58,8 +53,8 @@ fn files_in(root: &Path) -> Vec<String> {
 }
 
 /// A project in a directory named `name`, as `netsmith init` makes it.
-fn scaffold(name: &str) -> PathBuf {
-    let root = dir(name).join(name);
+fn scaffold(name: &str) -> TempFile {
+    let root = TempFile::new(&format!("project-test-{name}"), name);
     fs::create_dir_all(&root).unwrap();
     init(&root, None).unwrap_or_else(|e| panic!("{e}"));
     root
@@ -69,7 +64,7 @@ fn scaffold(name: &str) -> PathBuf {
 
 #[test]
 fn init_makes_the_project_files_and_says_what_to_run() {
-    let root = dir("fresh").join("my-sensor");
+    let root = TempFile::new("project-test-fresh", "my-sensor");
     fs::create_dir_all(&root).unwrap();
     let said = init(&root, None).unwrap();
 
@@ -148,7 +143,7 @@ fn init_says_nothing_about_git_inside_a_repository() {
 
 #[test]
 fn init_takes_the_name_from_the_option_or_refuses_one_it_cannot_use() {
-    let root = dir("named").join("not a name!");
+    let root = TempFile::new("project-test-named", "not a name!");
     fs::create_dir_all(&root).unwrap();
     let e = init(&root, None).unwrap_err();
     assert!(e.contains("`not a name!`") && e.contains("--name"), "{e}");
@@ -167,7 +162,7 @@ fn init_takes_the_name_from_the_option_or_refuses_one_it_cannot_use() {
 
 #[test]
 fn init_refuses_to_overwrite_and_lists_what_exists() {
-    let root = dir("exists").join("p");
+    let root = TempFile::new("project-test-exists", "p");
     write(&root, "netsmith.toml", "mine\n");
     write(&root, "src/main.nsm", "mine\n");
     let e = init(&root, None).unwrap_err();
@@ -196,7 +191,7 @@ fn init_refuses_to_overwrite_and_lists_what_exists() {
     let after: Vec<String> = files_in(&root).iter().map(|f| read(&root, f)).collect();
     assert_eq!(before, after);
 
-    let root = dir("only-main").join("p");
+    let root = TempFile::new("project-test-only-main", "p");
     write(&root, "src/main.nsm", "mine\n");
     let e = init(&root, None).unwrap_err();
     assert!(
@@ -205,7 +200,7 @@ fn init_refuses_to_overwrite_and_lists_what_exists() {
     );
     assert_eq!(files_in(&root), ["src/main.nsm"]);
 
-    let root = dir("src-file").join("p");
+    let root = TempFile::new("project-test-src-file", "p");
     write(&root, "src", "a file\n");
     let e = init(&root, None).unwrap_err();
     assert!(e.contains("src (not a directory)"), "{e}");
@@ -225,7 +220,7 @@ fn init_refuses_inside_another_project() {
 
 #[test]
 fn init_adds_to_a_gitignore_and_keeps_a_readme() {
-    let root = dir("keep").join("p");
+    let root = TempFile::new("project-test-keep", "p");
     write(&root, ".gitignore", "target");
     write(&root, "README.md", "my own readme\n");
     let said = init(&root, None).unwrap();
@@ -237,12 +232,12 @@ fn init_adds_to_a_gitignore_and_keeps_a_readme() {
     );
 
     // Whatever spelling already ignores a directory is enough.
-    let root = dir("keep-out").join("p");
+    let root = TempFile::new("project-test-keep-out", "p");
     write(&root, ".gitignore", "out/\n# fab\n");
     init(&root, None).unwrap();
     assert_eq!(read(&root, ".gitignore"), "out/\n# fab\n/fab/\n");
 
-    let root = dir("keep-all").join("p");
+    let root = TempFile::new("project-test-keep-all", "p");
     write(&root, ".gitignore", "/out/\n/fab/\n");
     let said = init(&root, None).unwrap();
     assert_eq!(read(&root, ".gitignore"), "/out/\n/fab/\n");
@@ -306,7 +301,7 @@ fn claude_code_finds_the_scaffolded_skills_through_a_relative_link() {
 
 #[test]
 fn init_keeps_an_agents_md_and_says_what_to_add() {
-    let root = dir("own-agents").join("p");
+    let root = TempFile::new("project-test-own-agents", "p");
     write(&root, "AGENTS.md", "mine\n");
     let said = init(&root, None).unwrap();
     assert_eq!(read(&root, "AGENTS.md"), "mine\n");
@@ -324,7 +319,7 @@ fn init_keeps_an_agents_md_and_says_what_to_add() {
 
 #[test]
 fn init_keeps_a_guide_a_skill_and_a_claude_directory_that_exist() {
-    let root = dir("own-guidance").join("p");
+    let root = TempFile::new("project-test-own-guidance", "p");
     write(&root, "docs/netsmith/LANGUAGE.md", "old guide\n");
     write(
         &root,
@@ -407,9 +402,14 @@ fn the_scaffolded_project_passes_fab() {
 fn the_manifest_is_found_from_a_directory_below_the_root() {
     let root = scaffold("deep");
     write(&root, "docs/notes/x.txt", "");
-    for start in [&root, &root.join("src"), &root.join("docs/notes")] {
+    for start in [
+        root.to_path_buf(),
+        root.join("src"),
+        root.join("docs/notes"),
+    ] {
+        let start = &start;
         let found = Project::find(start).unwrap().expect("a project");
-        assert_eq!(found.root, root, "from {}", start.display());
+        assert_eq!(found.root, *root, "from {}", start.display());
         let target = Target::resolve_from(start, None).unwrap();
         assert_eq!(target.files[0].path, root.join("src/main.nsm"));
         assert_eq!(target.build_out, root.join("out"));
@@ -506,7 +506,7 @@ fn a_named_file_in_a_project_keeps_the_default_directories_but_sees_its_modules(
 
 /// The status indicator example split in two: its module in `src/parts/status.nsm`, and
 /// the board that imports it in `src/main.nsm`.
-fn split_project(name: &str) -> PathBuf {
+fn split_project(name: &str) -> TempDir {
     let root = dir(name);
     let (library, board) = STATUS.split_once("board IndicatorExample").unwrap();
     write(&root, "netsmith.toml", &Manifest::new(name).render());
@@ -649,7 +649,7 @@ fn netsmith(cwd: &Path, args: &[&str]) -> std::process::Output {
 
 #[test]
 fn init_then_build_from_a_subdirectory_through_the_program() {
-    let root = dir("program").join("blink");
+    let root = TempFile::new("project-test-program", "blink");
     fs::create_dir_all(&root).unwrap();
 
     let init = netsmith(&root, &["init"]);
@@ -726,7 +726,7 @@ fn the_editor_shows_a_project_and_builds_again_when_a_module_changes() {
 }
 
 /// A project that is only a library: `top_level = []`, and a module under `src/`.
-fn library_project(name: &str) -> PathBuf {
+fn library_project(name: &str) -> TempDir {
     let root = dir(name);
     write(
         &root,
@@ -781,7 +781,7 @@ fn a_library_only_project_lists_no_top_level_file_and_its_commands_say_so() {
 const TWO_BOARDS: &str = include_str!("../../../examples/two_boards.nsm");
 
 /// A project whose only top-level file holds a `system`.
-fn system_project(name: &str) -> PathBuf {
+fn system_project(name: &str) -> TempDir {
     let root = dir(name);
     write(
         &root,
@@ -886,7 +886,7 @@ const ZZ9_CSV: &str = "mpn,package,vout.voltage,dropout,max_current,library,pric
 ZZ9-33-S,SOT-23-5,3.3V +/- 2%,0.3V,0.5A,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n";
 
 /// A project whose `netsmith.toml` lists `catalogs`, with the regulator module and board.
-fn catalog_project(name: &str, catalogs: &str, csv: &str) -> PathBuf {
+fn catalog_project(name: &str, catalogs: &str, csv: &str) -> TempDir {
     let root = dir(name);
     write(
         &root,

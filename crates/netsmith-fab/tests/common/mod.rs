@@ -427,12 +427,10 @@ pub fn kicad_findings(
     use std::sync::atomic::{AtomicUsize, Ordering};
     static RUNS: AtomicUsize = AtomicUsize::new(0);
     let cli = netsmith_fab::KicadCliExe::locate()?;
-    let dir = std::env::temp_dir().join(format!(
-        "netsmith-drc-{}-{}-{name}",
-        std::process::id(),
+    let dir = netsmith_kicad::testlib::TempDir::new(&format!(
+        "drc-{name}-{}",
         RUNS.fetch_add(1, Ordering::SeqCst)
     ));
-    std::fs::create_dir_all(&dir).ok()?;
     let path = dir.join(format!("{name}.kicad_pcb"));
     std::fs::write(&path, pcb).ok()?;
     if !pro.is_empty() {
@@ -441,6 +439,5 @@ pub fn kicad_findings(
     let json = cli
         .drc_json(&path)
         .unwrap_or_else(|e| panic!("{name}: {e}"));
-    let _ = std::fs::remove_dir_all(&dir);
     Some(netsmith_fab::drc::kicad::parse(&json).unwrap())
 }
