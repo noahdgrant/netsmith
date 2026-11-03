@@ -161,7 +161,7 @@ fn max_height_of(model: &Model, inst: InstId, path: &str, errors: &mut Vec<Strin
     Some(limit)
 }
 
-/// The heights the design states for its parts (`.body_height`), by path. A part that does
+/// The heights the design states for its parts (`.height`), by path. A part that does
 /// not state one is not listed: its height is unknown (ADR 0045, "Height limits").
 fn heights(model: &Model, errors: &mut Vec<String>) -> Vec<PartHeight> {
     let mut parts: Vec<(String, InstId)> = model
@@ -172,12 +172,12 @@ fn heights(model: &Model, errors: &mut Vec<String>) -> Vec<PartHeight> {
     parts.sort();
     let mut found = Vec::new();
     for (path, id) in parts {
-        let Some(height) = exact(model, id, "body_height", errors) else {
+        let Some(height) = exact(model, id, "height", errors) else {
             continue;
         };
         if height < 0.0 {
             errors.push(format!(
-                "`{path}.body_height` is {height} mm, and a part does not stand below the board"
+                "`{path}.height` is {height} mm, and a part does not stand below the board"
             ));
             continue;
         }

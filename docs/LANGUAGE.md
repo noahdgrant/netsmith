@@ -3202,9 +3202,9 @@ error: Open: `k` allows tracks, vias, copper and parts, and forbids nothing
 
 ### Height limits
 
-**Provisional: to be reviewed by the maintainer (ADR 0045, "Height limits").** A board that fits in plan view can still hit a lid, a bracket or a neighbouring board. A part states how tall its body stands with the built-in member `.body_height` (one value, from the face of the board it is on to the top of its body), and a `Keepout` states the tallest a part may stand where it is with `.max_height`. A keepout that states `.max_height` and none of `.tracks`, `.vias`, `.copper` and `.parts` forbids nothing else: it only limits height. `.layers` says which face it limits (`"top"` for the parts on the top face, `"bottom"` for the parts on the bottom, `"all"` for both), so a part on the back has its own limit: two keepouts over the same area, one for each face.
+**Provisional: to be reviewed by the maintainer (ADR 0045, "Height limits").** A board that fits in plan view can still hit a lid, a bracket or a neighbouring board. A part states how tall its body stands with the built-in member `.height` (one value, from the face of the board it is on to the top of its body), and a `Keepout` states the tallest a part may stand where it is with `.max_height`. A keepout that states `.max_height` and none of `.tracks`, `.vias`, `.copper` and `.parts` forbids nothing else: it only limits height. `.layers` says which face it limits (`"top"` for the parts on the top face, `"bottom"` for the parts on the bottom, `"all"` for both), so a part on the back has its own limit: two keepouts over the same area, one for each face.
 
-A part that states no `.body_height` has no height: it is not taken as flat and not guessed. Where a limit covers its body, `fab` and the editor print a warning that names it (`height of R3 (`r3`) is unchecked ...`), and `fab` writes it in `fab-notes.txt`. With `constraints = "error"` in `netsmith.toml`, or `fab --constraints error`, it is an error that stops `fab` instead (`--constraints warn` wins over the manifest, and `--allow-drc-violations` does not waive it). A part that does state one is kept out from under a zone it is too tall for by the placer, and the placement check names it, with the numbers, if it stands there anyway. The footprint's 3D model is not read.
+A part that states no `.height` has no height: it is not taken as flat and not guessed. Where a limit covers its body, `fab` and the editor print a warning that names it (`height of R3 (`r3`) is unchecked ...`), and `fab` writes it in `fab-notes.txt`. With `constraints = "error"` in `netsmith.toml`, or `fab --constraints error`, it is an error that stops `fab` instead (`--constraints warn` wins over the manifest, and `--allow-drc-violations` does not waive it). A part that does state one is kept out from under a zone it is too tall for by the placer, and the placement check names it, with the numbers, if it stands there anyway. The footprint's 3D model is not read.
 
 ```nsm solve place
 import std::parts::passive::Resistor
@@ -3238,8 +3238,8 @@ board Ribbed {
     .flat: Resistor { .resistance &= 15kohm +/- 1% }
     .rail.pos ~> .tall ~> .rail.neg
     .rail.pos ~> .flat ~> .rail.neg
-    .tall.body_height &= 9mm
-    .flat.body_height &= 0.5mm
+    .tall.height &= 9mm
+    .flat.height &= 0.5mm
 }
 ```
 
@@ -3260,12 +3260,12 @@ board Vague {
         .stackup.thickness &= 1.6mm
     }
     .r: Resistor { .resistance &= 15kohm +/- 1% }
-    .r.body_height &= 2mm..5mm
+    .r.height &= 2mm..5mm
 }
 ```
 
 ```text
-error: Vague: `r.body_height` is 2mm..5mm, a range, and a position, a size or a height is one value: say it with `&= 2mm`
+error: Vague: `r.height` is 2mm..5mm, a range, and a position, a size or a height is one value: say it with `&= 2mm`
 ```
 
 ### Labels

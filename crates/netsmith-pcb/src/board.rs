@@ -165,7 +165,7 @@ pub struct Placed {
     /// Which side of the part its reference text is on.
     pub reference_side: ReferenceSide,
     /// How tall the body stands above its face of the board, in mm, as the design states it
-    /// (`.body_height`, ADR 0045 "Height limits"). `None` is unknown, never zero.
+    /// (`.height`, ADR 0045 "Height limits"). `None` is unknown, never zero.
     pub height: Option<f64>,
 }
 
@@ -493,7 +493,7 @@ impl std::fmt::Display for HeightUnchecked {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "height of {} (`{}`) is unchecked: the keepout `{}` limits parts on the {} face to {:.2} mm and the part states no height (say `.{}.body_height &= 8mm`, with the real number)",
+            "height of {} (`{}`) is unchecked: the keepout `{}` limits parts on the {} face to {:.2} mm and the part states no height (say `.{}.height &= 8mm`, with the real number)",
             self.refdes,
             self.path,
             self.keepout,

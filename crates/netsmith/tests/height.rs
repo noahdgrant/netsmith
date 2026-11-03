@@ -78,11 +78,11 @@ fn place(parts: usize, extra: &str, sides: &[(&str, Side)]) -> Board {
 }
 
 /// The tall part and the others: `r1` is 9 mm tall and `r2` to `r5` 1 mm.
-const HEIGHTS: &str = "    .r1.body_height &= 9mm
-    .r2.body_height &= 1mm
-    .r3.body_height &= 1mm
-    .r4.body_height &= 1mm
-    .r5.body_height &= 1mm
+const HEIGHTS: &str = "    .r1.height &= 9mm
+    .r2.height &= 1mm
+    .r3.height &= 1mm
+    .r4.height &= 1mm
+    .r5.height &= 1mm
 ";
 
 fn too_tall(board: &Board) -> Vec<PlacementProblem> {
@@ -197,7 +197,7 @@ fn a_tall_part_where_it_stands_under_the_lid_is_named_with_the_numbers() {
         assert!(text.contains(want), "{want:?} is not in {text:?}");
     }
     // A part exactly as tall as the limit is not too tall.
-    let mut board = place(5, &format!("{LID}    .r1.body_height &= 3mm\n"), &[]);
+    let mut board = place(5, &format!("{LID}    .r1.height &= 3mm\n"), &[]);
     board
         .parts
         .iter_mut()
@@ -210,7 +210,7 @@ fn a_tall_part_where_it_stands_under_the_lid_is_named_with_the_numbers() {
 #[test]
 fn a_part_with_no_height_is_reported_by_name_and_not_as_too_tall() {
     // Only r1 states a height. The others stand where they stand, maybe under the lid.
-    let extra = format!("    .r1.body_height &= 2mm\n{LID}");
+    let extra = format!("    .r1.height &= 2mm\n{LID}");
     let mut board = place(4, &extra, &[]);
     // Put R2 under the lid.
     let top = board.outline.min;
@@ -239,7 +239,7 @@ fn a_part_with_no_height_is_reported_by_name_and_not_as_too_tall() {
 
 #[test]
 fn a_board_with_no_height_limit_reports_nothing() {
-    let board = place(4, "    .r1.body_height &= 9mm\n", &[]);
+    let board = place(4, "    .r1.height &= 9mm\n", &[]);
     assert_eq!(board.heights_unchecked(), vec![]);
     assert_eq!(too_tall(&board), vec![]);
 }
@@ -307,11 +307,11 @@ fn refused(extra: &str) -> String {
 
 #[test]
 fn a_height_that_is_not_one_positive_value_is_refused_with_its_name() {
-    let e = refused("    .r1.body_height &= 2mm..5mm\n");
-    assert!(e.contains("`r1.body_height` is 2mm..5mm, a range"), "{e}");
-    let e = refused("    .r1.body_height &= -1mm\n");
+    let e = refused("    .r1.height &= 2mm..5mm\n");
+    assert!(e.contains("`r1.height` is 2mm..5mm, a range"), "{e}");
+    let e = refused("    .r1.height &= -1mm\n");
     assert!(
-        e.contains("`r1.body_height` is -1 mm, and a part does not stand below the board"),
+        e.contains("`r1.height` is -1 mm, and a part does not stand below the board"),
         "{e}"
     );
 }
@@ -378,7 +378,7 @@ fn fab_with(
 #[test]
 fn fab_places_a_tall_part_clear_of_the_lid_and_names_the_parts_it_cannot_check() {
     // r1 is tall and r2 low; r3 to r5 state nothing, and stand where the placer put them.
-    let extra = format!("    .r1.body_height &= 9mm\n    .r2.body_height &= 1mm\n{LID}");
+    let extra = format!("    .r1.height &= 9mm\n    .r2.height &= 1mm\n{LID}");
     let (_dir, made) = fab("clear", &extra, "");
     let made = made.unwrap_or_else(|e| panic!("{e}"));
     let notes = &made[0].notes;
@@ -405,7 +405,7 @@ fn fab_places_a_tall_part_clear_of_the_lid_and_names_the_parts_it_cannot_check()
 
 #[test]
 fn fab_stops_on_a_tall_part_the_layout_file_locks_under_the_lid() {
-    let extra = format!("    .r1.body_height &= 9mm\n{LID}");
+    let extra = format!("    .r1.height &= 9mm\n{LID}");
     let layout = "version = 1\n\n[Widget.parts.r1]\nat = [20.0, 6.0]\nrotation = 0.0\nside = \"top\"\nlock = true\n";
     let (dir, made) = fab("locked", &extra, layout);
     let e = made.expect_err("a 9 mm part under a 3 mm lid must stop fab");
@@ -421,7 +421,7 @@ fn fab_stops_on_a_tall_part_the_layout_file_locks_under_the_lid() {
 fn a_height_nobody_stated_is_a_warning_by_default_and_an_error_when_constraints_are_strict() {
     // Only r1 states a height; the others stand under the lid or not, wherever the placer put
     // them, and at least one of them is under it (the default run names them).
-    let extra = format!("    .r1.body_height &= 9mm\n{LID}");
+    let extra = format!("    .r1.height &= 9mm\n{LID}");
     let (_dir, made) = fab("unknown-default", &extra, "");
     let notes = made.unwrap_or_else(|e| panic!("{e}"))[0].notes.clone();
     assert!(

@@ -142,7 +142,7 @@ snap and flatpak paths are the least certain). Bundling the libraries is ADR 004
   and drag clamp (C4), "pin here" (C5), `layout check --json` (C6), mating across boards (C7), a
   polygon outline (C8). 
 - Height limits (ADR 0045, C3, section 11; **provisional, to be reviewed by the maintainer**): a part
-  states `.body_height`, a `Keepout` states `.max_height` (on the faces its `.layers` name, so a
+  states `.height`, a `Keepout` states `.max_height` (on the faces its `.layers` name, so a
   back-face part has its own limit); `check_placement` reports a part too tall where it stands, by
   name and with the numbers, a part with no stated height under a limit is a named warning
   (`Board::heights_unchecked`, in `fab` and `fab-notes.txt` and the editor), an error when `constraints = "error"` is written or `--constraints error` is given, the annealer keeps a
