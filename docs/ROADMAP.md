@@ -88,7 +88,7 @@ snap and flatpak paths are the least certain). Bundling the libraries is ADR 004
   catalogs is a maintainer's job and has not been run over them; the editor cannot check the
   standard rows inside the binary; no live price without writing a file; no second supplier; no
   price by quantity in the BOM.
-- Supplier data and generic passives, designed (ADR 0047, provisional, issues #8 and #9): price,
+- Supplier data and generic passives (ADR 0047, provisional, issues #8 and #9; designed, and a first slice built: the provider trait, the cache, a `file` provider, `unknown` in the bill of materials and `catalog age`, generic E-series resistors resolved at BOM and `fab` time): price,
   stock and their date come from a **provider** (a trait: price breaks and stock for an LCSC or
   manufacturer's number, each answer saying whether it is JLCPCB assembly stock or LCSC retail
   stock) when the bill of materials or `fab` is made, cached locally with a timestamp, and are
@@ -97,7 +97,9 @@ snap and flatpak paths are the least certain). Bundling the libraries is ADR 004
   resolves each to a row, JLCPCB Basic first, or reports it unresolved with the nearest
   alternatives. ADR 0047 supersedes the data-in-files parts of ADR 0022 and ADR 0039 (the
   `price`, `stock` and `date` columns, the stock-0 rule). Open: the nine questions at the end of
-  ADR 0047; no provider talks to a supplier (their terms of use are unread).
+  ADR 0047; no provider talks to a supplier (their terms of use are unread). Not built: the LCSC
+  and JLCAPI providers, generic capacitors, inductors and LEDs, re-running the checks for each
+  nearest alternative, an `--offline` flag, a named preferred-parts file.
 - Outline from the enclosure (ADR 0045, C0 piece 3): `netsmith dxf import <file.dxf>` reads an ASCII DXF
   (`netsmith-dxf`: lines, arcs, circles, polylines with bulges, splines and ellipses as chords, block
   inserts, units, gaps reported) and prints an `Outline`, `Cutout`s and `MountingHole`s to paste, with

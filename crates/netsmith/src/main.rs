@@ -14,7 +14,8 @@ use netsmith::compare::{Request, Verdict, compare_files};
 use netsmith::editor::Workspace;
 use netsmith::fab::{FabOptions, fab_with_options};
 use netsmith::init::init;
-use netsmith::project::Target;
+use netsmith::project::{Project, Target};
+use netsmith::supply::Supply;
 use netsmith::{Libraries, build_with};
 use netsmith_check::Loader;
 use netsmith_fab::{KicadCli, KicadCliExe};
@@ -218,7 +219,15 @@ fn run_catalog_age(paths: &[std::path::PathBuf], only: &[String], days: u32) -> 
         Err(e) => return fail(e.to_string()),
     };
     let today = refresh::date_of(refresh::now_secs());
-    match refresh::resolve_targets(&cwd, paths).and_then(|t| refresh::age(&t, only, days, &today)) {
+    // The supply provider of the project that contains the directory, if there is one.
+    let supply =
+        match Project::find(&cwd).and_then(|p| p.map_or(Ok(Supply::none()), |p| p.supply())) {
+            Ok(supply) => supply,
+            Err(e) => return fail(e),
+        };
+    match refresh::resolve_targets(&cwd, paths)
+        .and_then(|t| refresh::age(&t, only, days, &today, &supply))
+    {
         Ok(report) => {
             print!("{}", refresh::render_age(&report));
             ExitCode::SUCCESS

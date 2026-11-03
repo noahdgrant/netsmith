@@ -21,10 +21,10 @@ mod targets;
 
 use std::{fs, path::Path};
 
-pub use date::{age_days, date_of, now_secs};
+pub use date::{age_days, date_of, days_of, now_secs};
 pub use http::{
-    Endpoints, Fetcher, LCSC_URL_VAR, Network, USER_AGENT, check_endpoint, default_cache_dir,
-    is_lcsc_number,
+    Endpoints, Fetcher, LCSC_URL_VAR, Network, USER_AGENT, cache_base, check_endpoint,
+    default_cache_dir, is_lcsc_number,
 };
 pub use records::{Product, package_matches, parse_product};
 pub use targets::{Target, resolve_targets};
@@ -32,13 +32,15 @@ pub use targets::{Target, resolve_targets};
 use csvfile::CsvFile;
 use http::Got;
 
+use crate::supply::{Lookup, PartKey, Supply};
+
 /// What every refresh says about itself, first in its summary and in the editor: what it does,
 /// what it never writes and why, and what has not been checked (ADR 0039).
 pub const NOTICE: &str = "\
 JLCPCB data is not fetched: netsmith asks LCSC only.
 This is a check against LCSC's product record: each row's manufacturer's number and package (CONFLICT if they differ, MISSING if LCSC no longer lists the part). A row that agrees gets today's date in its `checked` column, if the file has one.
 Never written: price, stock, price_breaks, library, date. They are JLCPCB's numbers, entered by hand, and LCSC's price and stock differ from them. Where LCSC's stock suggests a row needs a look (stock 0), the report says so; read JLCPCB's parts page by hand.
-A row with stock 0 is not offered; that is the stock entered by hand. `netsmith catalog age` lists the rows whose price and stock (`date`) are old.
+The solver does not read stock (ADR 0047): price and stock come from a supply provider, and `netsmith catalog age` lists the rows whose price and stock are old or unknown.
 LCSC's terms of use have not been read: a person must read them before this command is advertised. Official APIs (JLCAPI, the LCSC API) need an account and are future work.
 ";
 
@@ -344,7 +346,7 @@ fn refresh_row(
             stock.map_or("no stock entered".to_string(), |n| format!("stock {n}"))
         )),
         (Some(n), Some(0)) if n > 0 => notes.push(format!(
-            "the row has stock 0, so the solver does not offer it, and LCSC lists stock {n}: the row is not changed; check JLCPCB's parts page by hand"
+            "the row has stock 0 and LCSC lists stock {n}: the row is not changed; check JLCPCB's parts page by hand"
         )),
         _ => {}
     }
@@ -475,16 +477,20 @@ pub fn render_summary(report: &Report) -> String {
 
 // ---- age -------------------------------------------------------------------------------
 
-/// A row whose numbers are old.
+/// A row whose numbers are old, or not known.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Aged {
     pub file: String,
     pub line: usize,
     pub lcsc: String,
-    /// The `date` cell, `None` if the row has none.
+    /// The day the price and stock were read: the supply provider's answer, else the row's
+    /// `date` cell. `None` if they are unknown, or the cell is not a date.
     pub date: Option<String>,
     /// How many days before today, `None` if there is no date or it is not one.
     pub days: Option<i64>,
+    /// Why nobody knows the price and stock (ADR 0047), for a row in
+    /// [`AgeReport::unknown`]; `None` for a row in [`AgeReport::old`].
+    pub unknown: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -493,22 +499,30 @@ pub struct AgeReport {
     pub days: u32,
     /// Rows with an `lcsc` number, which are the rows with a price to age.
     pub rows: usize,
+    /// Rows whose price and stock were read more than `days` days ago, or whose `date` cell
+    /// is not a date.
     pub old: Vec<Aged>,
+    /// Rows whose price and stock are unknown: no provider has the part and the row has no
+    /// `date`. Unknown is not old, and not zero.
+    pub unknown: Vec<Aged>,
 }
 
-/// The rows of `targets` whose `date` is more than `days` days before `today`, or that have no
-/// date.
+/// The rows of `targets` whose price and stock were read more than `days` days before
+/// `today`, and the rows whose price and stock are unknown. What is known comes from
+/// `supply` (ADR 0047) and, for a row it has no answer for, from the row's own `date` cell.
 pub fn age(
     targets: &[Target],
     only: &[String],
     days: u32,
     today: &str,
+    supply: &Supply,
 ) -> Result<AgeReport, String> {
     let mut report = AgeReport {
         today: today.to_string(),
         days,
         rows: 0,
         old: Vec::new(),
+        unknown: Vec::new(),
     };
     for target in targets {
         if !only.is_empty() && !only.contains(&target.catalog) {
@@ -527,19 +541,34 @@ pub fn age(
                 continue;
             }
             report.rows += 1;
-            let date = cols
-                .date
-                .map(|c| file.value(record, c).trim().to_string())
-                .filter(|d| !d.is_empty());
-            let age = date.as_deref().and_then(|d| age_days(d, today));
-            if age.is_none_or(|a| a > i64::from(days)) {
-                report.old.push(Aged {
-                    file: target.shown.clone(),
-                    line: file.line(record),
-                    lcsc,
-                    date,
-                    days: age,
-                });
+            let cell = |c: Option<usize>| {
+                c.map(|c| file.value(record, c).trim().to_string())
+                    .filter(|d| !d.is_empty())
+            };
+            let key = PartKey {
+                lcsc: Some(lcsc.clone()),
+                mpn: cell(cols.mpn),
+            };
+            let aged = |date: Option<String>, days: Option<i64>, unknown: Option<String>| Aged {
+                file: target.shown.clone(),
+                line: file.line(record),
+                lcsc: lcsc.clone(),
+                date,
+                days,
+                unknown,
+            };
+            let (date, why) = match supply.lookup(&key) {
+                Lookup::Quoted(q) => (Some(date_of(q.fetched)), String::new()),
+                Lookup::Unknown(why) => (cell(cols.date), why),
+            };
+            match date {
+                None => report.unknown.push(aged(None, None, Some(why))),
+                Some(date) => {
+                    let age = age_days(&date, today);
+                    if age.is_none_or(|a| a > i64::from(days)) {
+                        report.old.push(aged(Some(date), age, None));
+                    }
+                }
             }
         }
     }
@@ -550,22 +579,33 @@ pub fn render_age(report: &AgeReport) -> String {
     let mut out = String::new();
     for a in &report.old {
         let how = match (&a.date, a.days) {
-            (Some(d), Some(n)) => format!("{d}, {n} days old"),
+            (Some(d), Some(n)) => format!("read {d}, {n} days ago"),
             (Some(d), None) => format!("date `{d}` is not like 2026-10-31"),
-            (None, _) => "no date".to_string(),
+            (None, _) => "unknown".to_string(),
         };
         out.push_str(&format!("{}:{} {}: {how}\n", a.file, a.line, a.lcsc));
     }
+    for a in &report.unknown {
+        out.push_str(&format!(
+            "{}:{} {}: price and stock unknown ({})\n",
+            a.file,
+            a.line,
+            a.lcsc,
+            a.unknown.as_deref().unwrap_or("no answer")
+        ));
+    }
     out.push_str(&format!(
-        "{} of {} rows are older than {} days on {}{}\n",
+        "{} of {} rows have a price and stock read more than {} days before {}; {} of {} have them unknown{}\n",
         report.old.len(),
         report.rows,
         report.days,
         report.today,
-        if report.old.is_empty() {
+        report.unknown.len(),
+        report.rows,
+        if report.old.is_empty() && report.unknown.is_empty() {
             ""
         } else {
-            "; check them on JLCPCB's parts page and edit the rows by hand (`netsmith catalog refresh` does not write price or stock, ADR 0039)"
+            "; configure a supply provider ([supply] in netsmith.toml, ADR 0047) or read the supplier's page by hand (`netsmith catalog refresh` does not write price or stock, ADR 0039)"
         }
     ));
     out

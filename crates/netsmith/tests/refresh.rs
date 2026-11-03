@@ -15,6 +15,7 @@ use netsmith::refresh::{
     self, Options, Status, Target, age, refresh as run, render_age, render_diff, render_summary,
     resolve_targets,
 };
+use netsmith::supply::Supply;
 use netsmith_solve::parse_csv;
 
 /// 2026-11-02 12:00 UTC.
@@ -312,13 +313,13 @@ fn lcsc_listing_no_stock_is_reported_as_information_and_the_row_keeps_its_stock(
         ]
     );
 
-    // The row has stock 0 (the solver does not offer it) and LCSC has some: said, not changed.
+    // The row has stock 0 and LCSC has some: said, not changed.
     let (text, fake) = (row("0"), Fake::fixtures());
     let (report, after) = go(&text, &fake);
     assert_eq!(
         report.files[0].rows[0].notes,
         [
-            "the row has stock 0, so the solver does not offer it, and LCSC lists stock 1085700: the row is not changed; check JLCPCB's parts page by hand"
+            "the row has stock 0 and LCSC lists stock 1085700: the row is not changed; check JLCPCB's parts page by hand"
         ]
     );
     assert!(after.contains(",Basic,0.0011,0,2026-11-01,2026-11-02,"));
@@ -927,7 +928,7 @@ fn with_no_argument_outside_a_project_and_the_repository_there_is_nothing_to_act
 // ---- age -------------------------------------------------------------------------------
 
 #[test]
-fn age_lists_the_rows_older_than_the_days_and_the_rows_with_no_date() {
+fn age_lists_the_rows_older_than_the_days_and_the_rows_whose_price_is_unknown() {
     let root = dir("age");
     write(
         &root,
@@ -941,7 +942,8 @@ fn age_lists_the_rows_older_than_the_days_and_the_rows_with_no_date() {
          C5,F,1,soon,e\n",
     );
     let targets = resolve_targets(&root, &[PathBuf::from("r.csv")]).unwrap();
-    let report = age(&targets, &[], 90, TODAY).unwrap();
+    let none = Supply::none();
+    let report = age(&targets, &[], 90, TODAY, &none).unwrap();
     assert_eq!(report.rows, 5);
     let old: Vec<(&str, Option<i64>)> = report
         .old
@@ -949,19 +951,56 @@ fn age_lists_the_rows_older_than_the_days_and_the_rows_with_no_date() {
         .map(|a| (a.lcsc.as_str(), a.days))
         .collect();
     // 2026-08-04 is exactly 90 days before: not older than 90.
-    assert_eq!(old, [("C3", Some(91)), ("C4", None), ("C5", None)]);
+    assert_eq!(old, [("C3", Some(91)), ("C5", None)]);
+    // No date and no provider: unknown, which is not old.
+    let unknown: Vec<&str> = report.unknown.iter().map(|a| a.lcsc.as_str()).collect();
+    assert_eq!(unknown, ["C4"]);
     assert_eq!(
         render_age(&report),
-        "r.csv:4 C3: 2026-08-03, 91 days old\n\
-         r.csv:5 C4: no date\n\
+        "r.csv:4 C3: read 2026-08-03, 91 days ago\n\
          r.csv:7 C5: date `soon` is not like 2026-10-31\n\
-         3 of 5 rows are older than 90 days on 2026-11-02; check them on JLCPCB's parts page and edit the rows by hand (`netsmith catalog refresh` does not write price or stock, ADR 0039)\n"
+         r.csv:5 C4: price and stock unknown (no supply provider is configured ([supply] in netsmith.toml))\n\
+         2 of 5 rows have a price and stock read more than 90 days before 2026-11-02; 1 of 5 have them unknown; configure a supply provider ([supply] in netsmith.toml, ADR 0047) or read the supplier's page by hand (`netsmith catalog refresh` does not write price or stock, ADR 0039)\n"
     );
-    let report = age(&targets, &[], 400, TODAY).unwrap();
-    assert_eq!(report.old.len(), 2);
-    let none = age(&targets, &["other".to_string()], 90, TODAY).unwrap();
-    assert!(none.old.is_empty());
-    assert!(render_age(&none).ends_with("0 of 0 rows are older than 90 days on 2026-11-02\n"));
+    let report = age(&targets, &[], 400, TODAY, &none).unwrap();
+    assert_eq!(report.old.len(), 1);
+    let other = age(&targets, &["other".to_string()], 90, TODAY, &none).unwrap();
+    assert!(other.old.is_empty() && other.unknown.is_empty());
+    assert_eq!(
+        render_age(&other),
+        "0 of 0 rows have a price and stock read more than 90 days before 2026-11-02; 0 of 0 have them unknown\n"
+    );
+}
+
+#[test]
+fn a_provider_answer_ages_a_row_in_place_of_its_date_cell() {
+    let root = dir("age-provider");
+    write(
+        &root,
+        "r.csv",
+        "lcsc,price,date\nC900001,1,2020-01-01\nC900002,,\nC900003,,\n",
+    );
+    let quotes = "lcsc,channel,stock,price_breaks,date\n\
+                  C900001,jlcpcb-assembly,50,1:0.01,2026-11-01\n\
+                  C900002,jlcpcb-assembly,,,2026-06-01\n";
+    let supply = Supply::none().with_provider(Box::new(
+        netsmith::supply::FileProvider::parse("quotes.csv", quotes).unwrap(),
+    ));
+    let targets = resolve_targets(&root, &[PathBuf::from("r.csv")]).unwrap();
+    let report = age(&targets, &[], 90, TODAY, &supply).unwrap();
+    // C900001's old date cell is not what counts: the provider read it yesterday.
+    let old: Vec<(&str, Option<i64>)> = report
+        .old
+        .iter()
+        .map(|a| (a.lcsc.as_str(), a.days))
+        .collect();
+    assert_eq!(old, [("C900002", Some(154))]);
+    assert_eq!(report.unknown.len(), 1);
+    assert_eq!(report.unknown[0].lcsc, "C900003");
+    assert_eq!(
+        report.unknown[0].unknown.as_deref(),
+        Some("file does not list the part")
+    );
 }
 
 // ---- the command -----------------------------------------------------------------------
@@ -1094,32 +1133,31 @@ fn the_command_lists_old_rows() {
     write(
         &root,
         "r.csv",
-        "lcsc,price,date\nC1,1,2020-01-01\nC2,1,2999-01-01\n",
+        "lcsc,price,date\nC1,1,2020-01-01\nC2,1,2999-01-01\nC3,,\n",
     );
     let out = netsmith(&root, &fake, &["catalog", "age", "r.csv", "--days", "30"]);
     assert_eq!(out.status.code(), Some(0));
     let out = String::from_utf8_lossy(&out.stdout);
-    assert!(out.starts_with("r.csv:2 C1: 2020-01-01, "), "{out}");
+    assert!(out.starts_with("r.csv:2 C1: read 2020-01-01, "), "{out}");
     assert!(
-        out.contains("1 of 2 rows are older than 30 days on 20"),
+        out.contains("r.csv:4 C3: price and stock unknown (no supply provider"),
         "{out}"
     );
+    assert!(
+        out.contains("1 of 3 rows have a price and stock read more than 30 days before 20"),
+        "{out}"
+    );
+    assert!(out.contains("1 of 3 have them unknown"), "{out}");
 }
 
 #[test]
-fn the_standard_catalogs_ship_no_date_so_every_row_is_listed_by_age_as_undated() {
+fn the_standard_catalogs_ship_no_price_so_without_a_provider_every_row_is_unknown_not_old() {
     let targets = resolve_targets(Path::new(STD), &[PathBuf::from(".")]).unwrap();
-    let report = age(&targets, &[], u32::MAX, "2026-11-02").unwrap();
+    let report = age(&targets, &[], u32::MAX, "2026-11-02", &Supply::none()).unwrap();
     assert!(report.rows > 300);
-    assert_eq!(report.old.len(), report.rows);
-    assert!(
-        report
-            .old
-            .iter()
-            .all(|a| a.date.is_none() && a.days.is_none()),
-        "{:?}",
-        report.old
-    );
+    assert!(report.old.is_empty(), "{:?}", report.old);
+    assert_eq!(report.unknown.len(), report.rows);
+    assert!(!render_age(&report).contains("undated"));
 }
 
 #[test]

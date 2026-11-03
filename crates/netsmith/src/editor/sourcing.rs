@@ -1,5 +1,7 @@
 //! The bill of materials: the lowered sourcing, grouped as `bom.csv` is, with what the
-//! parts catalog records about each part.
+//! catalog records about each part and what the supply provider says about its price and
+//! stock (ADR 0047). A generic part is first resolved to the catalog row that stands for it.
+//! A price or stock nobody can give is unknown, and the line says why.
 
 use netsmith_editor::{
     ApiError,
@@ -10,23 +12,27 @@ use netsmith_solve::Catalogs;
 
 use super::analysis::BoardData;
 use crate::refresh;
+use crate::resolve::resolve_generics;
+use crate::supply::{Lookup, PartKey, Quote, Supply};
 
 /// Parts that are the same kind, value, package and number go on one line.
 pub fn bom(
     data: &BoardData,
     catalogs: &Catalogs,
+    supply: &Supply,
     today: &str,
     own_catalogs: Vec<String>,
 ) -> Result<Bom, ApiError> {
     let built = &data.built;
     let libraries = data.libraries()?;
     let mut lines: Vec<BomLine> = Vec::new();
+    let (sourcing, unresolved) = resolve_generics(&built.sourcing, catalogs);
     // A part with `.assembly` `none` is on no bill of materials.
     for (part, source) in built
         .design
         .parts
         .iter()
-        .zip(&built.sourcing)
+        .zip(&sourcing)
         .filter(|(_, s)| s.assembly != Assembly::None)
     {
         let footprint = libraries
@@ -53,7 +59,6 @@ pub fn bom(
                 line.quantity += 1;
             }
             None => {
-                let record = source.lcsc.as_deref().and_then(|n| catalogs.supplier(n));
                 lines.push(BomLine {
                     designators: vec![part.refdes.clone()],
                     quantity: 1,
@@ -64,12 +69,18 @@ pub fn bom(
                     lcsc: source.lcsc.clone(),
                     mpn: source.mpn.clone(),
                     library: source.library.map(|l| l.to_string()),
-                    unit_usd: record.as_ref().and_then(|r| r.unit_price_usd),
+                    unit_usd: None,
                     line_usd: None,
-                    stock: record.as_ref().and_then(|r| r.stock),
-                    date: record.as_ref().and_then(|r| r.date.clone()),
+                    stock: None,
+                    date: None,
                     age_days: None,
                     stale: false,
+                    supply: None,
+                    unknown: None,
+                    unresolved: unresolved
+                        .iter()
+                        .find(|u| u.refdes == part.refdes)
+                        .map(|u| u.message.clone()),
                     hand_solder: source.assembly == Assembly::Hand,
                 });
             }
@@ -77,15 +88,7 @@ pub fn bom(
     }
     for line in &mut lines {
         line.designators.sort_by_key(|d| designator_key(d));
-        line.line_usd = line.unit_usd.map(|p| p * f64::from(line.quantity));
-        // A row with a part number and no date, or an old one, is stale. A made-up part has
-        // no record and nothing to be stale about.
-        let age = line
-            .date
-            .as_deref()
-            .and_then(|d| refresh::age_days(d, today));
-        line.age_days = age.and_then(|a| i32::try_from(a).ok());
-        line.stale = line.lcsc.is_some() && age.is_none_or(|a| a > i64::from(refresh::STALE_DAYS));
+        price(line, catalogs, supply, today);
     }
     lines.sort_by_key(|l| designator_key(&l.designators[0]));
     let (hand, lines): (Vec<_>, Vec<_>) = lines.into_iter().partition(|l| l.hand_solder);
@@ -93,24 +96,102 @@ pub fn bom(
         let priced: Vec<f64> = lines.iter().filter_map(|l| l.line_usd).collect();
         (!priced.is_empty()).then(|| priced.iter().sum())
     };
+    let unpriced = lines
+        .iter()
+        .filter(|l| l.unit_usd.is_none() && (l.lcsc.is_some() || l.unresolved.is_some()))
+        .count();
+    let mut note = String::from(
+        "Price and stock come from the supply provider the project configures ([supply] in \
+         netsmith.toml), cached with the time they were read. Where no provider has the part, \
+         a catalog row's own price, stock and date cells (JLCPCB's numbers, entered by hand) \
+         are used if it has them; otherwise they are unknown: nothing guesses them, and an \
+         unknown stock is not 0. They move, so check the supplier before ordering. JLCPCB \
+         assembly stock and LCSC retail stock differ; each line says which one it shows. \
+         \"Check parts against LCSC\" only verifies each row's manufacturer's number and \
+         package against LCSC's record and never writes a price or stock. \
+         The total is for one board, without the feeder fee JLCPCB charges for each Extended \
+         part and without shipping.",
+    );
+    if unpriced > 0 {
+        note.push_str(&format!(
+            " The total leaves out {unpriced} line{} with no known price.",
+            if unpriced == 1 { "" } else { "s" }
+        ));
+    }
     Ok(Bom {
         board: built.label(),
         lines,
         hand,
         total_usd,
-        note: "Price and stock are the rows of the catalog files (built into netsmith and the \
-               project's own) as they were last read, on the date shown; they move, so check \
-               JLCPCB's parts page before ordering. They are JLCPCB's numbers, entered by hand; \
-               nothing fetches them. \
-               \"Check parts against LCSC\" only verifies each row's manufacturer's number and \
-               package against LCSC's record and never writes a price or stock. The standard \
-               catalogs ship no price, stock or date: read them from the supplier. \
-               The total is for one board, without the feeder fee JLCPCB charges for each \
-               Extended part and without shipping."
-            .to_string(),
+        note,
         stale_after_days: refresh::STALE_DAYS,
         catalogs: own_catalogs,
     })
+}
+
+/// Fill in a line's price, stock and the day they were read from the provider; if it has
+/// nothing, from the catalog row's own cells; and if that has nothing, say they are unknown
+/// and why.
+fn price(line: &mut BomLine, catalogs: &Catalogs, supply: &Supply, today: &str) {
+    // A made-up part (no number) has nothing to look up and shows nothing.
+    let Some(lcsc) = line.lcsc.clone() else {
+        return;
+    };
+    let key = PartKey {
+        lcsc: Some(lcsc.clone()),
+        mpn: line.mpn.clone(),
+    };
+    let reason = match supply.lookup(&key) {
+        Lookup::Quoted(quote) => {
+            if quote.currency == "USD" {
+                use_quote(line, &quote, today);
+                return;
+            }
+            format!(
+                "{} answered in {}, and only US dollars are shown",
+                quote.provider, quote.currency
+            )
+        }
+        Lookup::Unknown(why) => why,
+    };
+    // The cells of the catalog row, entered by hand, are the last resort.
+    if let Some(record) = catalogs.supplier(&lcsc)
+        && (record.unit_price_usd.is_some() || record.stock.is_some())
+    {
+        line.unit_usd = record.unit_price_usd;
+        line.stock = record.stock;
+        line.date = record.date.clone();
+        line.supply = Some("catalog file, entered by hand".to_string());
+        age(line, today, record.date.as_deref());
+        line.line_usd = line.unit_usd.map(|p| p * f64::from(line.quantity));
+        return;
+    }
+    line.unknown = Some(reason);
+}
+
+fn use_quote(line: &mut BomLine, quote: &Quote, today: &str) {
+    let day = refresh::date_of(quote.fetched);
+    line.stock = quote.stock;
+    line.date = Some(day.clone());
+    line.supply = Some(quote.source());
+    if let Some((unit, from)) = quote.price_for(line.quantity) {
+        line.unit_usd = Some(unit);
+        line.line_usd = Some(unit * f64::from(line.quantity));
+        if let Some(from) = from {
+            line.supply = Some(format!(
+                "{}; the price is for {from} pieces or more",
+                quote.source()
+            ));
+        }
+    }
+    age(line, today, Some(&day));
+}
+
+/// How old the numbers are, and whether that is more than the stale age.
+fn age(line: &mut BomLine, today: &str, date: Option<&str>) {
+    let age = date.and_then(|d| refresh::age_days(d, today));
+    line.age_days = age.and_then(|a| i32::try_from(a).ok());
+    line.stale = age.is_some_and(|a| a > i64::from(refresh::STALE_DAYS));
 }
 
 /// `C2` before `C10`: the letters, then the number.

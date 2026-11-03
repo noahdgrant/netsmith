@@ -22,7 +22,7 @@
 //! | `mpn` | the manufacturer's part number; also a field of the part if its catalog lists `.mpn` |
 //! | `library` | JLCPCB's `Basic`, `Extended` or `Preferred` |
 //! | `assembly` | who assembles the part when the design does not say: `fab`, `hand` or `none` (ADR 0024) |
-//! | `price`, `stock` | the board house's (JLCPCB's) snapshot, USD and pieces, entered by hand; `netsmith catalog refresh` never writes them (ADR 0039). A row whose `stock` is `0` is never offered; an empty cell is unknown and is offered |
+//! | `price`, `stock` | the board house's (JLCPCB's) snapshot, USD and pieces, entered by hand; `netsmith catalog refresh` never writes them (ADR 0039). The solver does not read them: a row is offered whatever its stock (ADR 0047), and only the bill of materials shows them, after a supply provider's answer |
 //! | `price_breaks` | the board house's price at each quantity, `1:0.0019 1000:0.0015` (pieces:USD), entered by hand; nothing reads it |
 //! | `source` | where the row was read. Required when the row has an `lcsc` or `mpn` |
 //! | `date` | the day the `price` and `stock` were read, `2026-10-31`; the bill of materials and `netsmith catalog age` take the age of the numbers from it |
@@ -316,9 +316,6 @@ impl Table {
         };
         let mut out = Vec::new();
         for row in &self.rows {
-            // A part JLCPCB holds none of cannot be ordered, so it is not offered (ADR 0039).
-            // Its cells are still read, so a mistake in a sold-out row is still reported.
-            let sold_out = row.cell("stock") == Some("0");
             for column in &row.header.names {
                 let is_fixed = FIXED.contains(&column.as_str());
                 if !is_fixed && !columns.iter().any(|(c, _)| c == column) {
@@ -344,9 +341,6 @@ impl Table {
                     values.push((column.clone(), value));
                 }
             }
-            if sold_out {
-                continue;
-            }
             out.push(Candidate {
                 name: row.name.clone(),
                 label: row.label.clone(),
@@ -355,6 +349,7 @@ impl Table {
                 mpn: (!row.mpn.is_empty()).then(|| row.mpn.clone()),
                 library: row.library,
                 assembly: row.cell("assembly").map(str::to_string),
+                generic: None,
             });
         }
         Ok(out)

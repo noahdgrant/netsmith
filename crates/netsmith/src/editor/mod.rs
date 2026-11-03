@@ -256,7 +256,17 @@ impl Backend for Workspace {
             .as_ref()
             .map(|p| p.manifest.catalogs.clone())
             .unwrap_or_default();
-        sourcing::bom(state.snapshot.board(board)?, &catalogs, &today, own)
+        let supply = match &self.target.project {
+            Some(project) => project.supply().map_err(ApiError::internal)?,
+            None => crate::supply::Supply::none(),
+        };
+        sourcing::bom(
+            state.snapshot.board(board)?,
+            &catalogs,
+            &supply,
+            &today,
+            own,
+        )
     }
 
     fn refresh_catalogs(

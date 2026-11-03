@@ -439,6 +439,7 @@ fn a_catalog_row_may_state_who_assembles_its_part_and_the_design_overrides_it() 
                 mpn: None,
                 library: None,
                 assembly: assembly.map(str::to_string),
+                generic: None,
             }],
         });
         c

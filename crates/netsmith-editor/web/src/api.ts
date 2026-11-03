@@ -217,7 +217,9 @@ export type BomLine = { designators: Array<string>, quantity: number, value: str
  */
 library: string | null, unitUsd: number | null, lineUsd: number | null, stock: number | null, 
 /**
- * The day the catalog row's price and stock were read, `2026-10-31` (its `date` column).
+ * The day the price and stock were read, `2026-10-31`: the day of the provider's
+ * answer (ADR 0047), or the row's `date` cell if no provider answered. `None` if
+ * they are unknown.
  */
 date: string | null, 
 /**
@@ -225,9 +227,25 @@ date: string | null,
  */
 ageDays: number | null, 
 /**
- * The row is older than [`Bom::stale_after_days`], or has no date.
+ * The price and stock were read more than [`Bom::stale_after_days`] days ago. A line
+ * whose price is unknown is not stale: see [`BomLine::unknown`].
  */
 stale: boolean, 
+/**
+ * Where the price and stock come from and which stock it is: `file, JLCPCB assembly
+ * stock`. `None` if they are unknown.
+ */
+supply: string | null, 
+/**
+ * Why the price and stock are unknown, for a part with a supplier number that no
+ * provider has an answer for (ADR 0047). Never a guess, and never a stock of 0.
+ */
+unknown: string | null, 
+/**
+ * For a generic part that no catalog row stands for: what is wanted and the nearest
+ * rows (ADR 0047). Such a line has no supplier number and cannot be ordered.
+ */
+unresolved: string | null, 
 /**
  * Soldered by hand: the board house does not place it.
  */
