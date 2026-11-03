@@ -1,0 +1,5 @@
+# Saved endpoint responses
+
+Captured once, on 2026-11-02, from the LCSC product record (ADR 0039) for ten rows of the standard catalogs (C5446, C25102, C25104, C2480, C8545, C2286, C1549, C113952, C14709, C20984) and for two numbers that exercise the failure cases: C22369487 (LCSC has `"result": null`) and C999999999 (an LCSC `null`). `lcsc-<code>.json` is the answer of the product record. Prices and stock are as that day's (a refresh reads only the stock of these, for a note, and never writes it). The same day the files `jlc-<code>.json`, saved answers of JLCPCB's parts-library search, were removed, with the code that read them (ADR 0039, the 2026-11-02 decision). A test checks that only `lcsc-*.json` files are here.
+
+The answers are reduced to the fields `netsmith catalog refresh` reads and a few that give context (the brand, the name). The full answers also carry signed download links with an expiring token and image links, which do not belong in a repository. The tests serve these files from a server on 127.0.0.1 (`tests/common/endpoints.rs`); nothing in the test suite reaches the real endpoints.

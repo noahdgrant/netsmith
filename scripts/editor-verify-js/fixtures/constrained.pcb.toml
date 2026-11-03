@@ -1,0 +1,9 @@
+version = 1
+
+# The power header, put by hand 28 mm from where the case wants it.
+[Cased.parts."power"]
+at = [30.0, 12.0]
+rotation = 90.0
+side = "top"
+lock = false
+source = "hand"

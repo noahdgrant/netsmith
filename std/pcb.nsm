@@ -1,0 +1,59 @@
+//! The shape of a board: its outline, the holes cut inside it, and the areas where copper or
+//! parts are kept out (ADR 0020, ADR 0029).
+//!
+//! Lengths are in the board's own frame: the origin is the outline's top left corner, x
+//! grows to the right and y downward, as on screen. A board states the size of its shapes;
+//! where a shape is, when the board does not say, comes from the layout file beside the
+//! source (ADR 0030).
+
+/// The board edge: a rectangle with rounded corners, the member `.outline` of a board. A
+/// board with none is as big as the parts need. A range says how big the board may be:
+/// `.width &= 0mm..60mm` is at most 60 mm and the placer takes the least that holds the
+/// parts; a single value is that size, and the placer fails, naming the overflow, if the
+/// parts do not fit.
+interface Outline {
+    /// The extent in x and in y.
+    .width: Length
+    .height: Length
+    /// The radius of the four corners. Square corners if unstated.
+    .corner_radius: Length
+}
+
+/// A hole cut through the board, inside the outline: a rectangle with optional rounded
+/// corners. Its place is `.x` and `.y`, the corner nearest the origin, or the layout file's
+/// entry for the cutout's name.
+interface Cutout {
+    .x: Length
+    .y: Length
+    .width: Length
+    .height: Length
+    /// The radius of the four corners. Square corners if unstated.
+    .corner_radius: Length
+}
+
+/// An area where something is not allowed. A keepout is a member of a board, with its place
+/// in the board's frame, or a member of a part, with its place in the part's own frame (the
+/// frame of its footprint, turned with the part), so that an antenna part carries its
+/// no-copper area with it.
+///
+/// What it forbids is stated in four fields, each `"forbid"` or `"allow"`, and a keepout
+/// that states none forbids all four. The language has no boolean, so the words stand for
+/// one.
+interface Keepout {
+    /// The corner nearest the origin (of the board, or of the part), and the size.
+    .x: Length
+    .y: Length
+    .width: Length
+    .height: Length
+    /// The copper layers it applies to: `"all"` (the default), or one or more of `"top"`,
+    /// `"bottom"`, `"inner1"` and `"inner2"` separated by commas.
+    .layers: String
+    /// Tracks may not run through it.
+    .tracks: String
+    /// Vias may not be put in it.
+    .vias: String
+    /// No copper pour is filled in it.
+    .copper: String
+    /// No part is placed with its courtyard in it.
+    .parts: String
+}

@@ -1,0 +1,4 @@
+# The page's sources and its committed bundle are hashed byte for byte (crates/netsmith-editor/
+# build_web.rs): git must not change their line endings on any system.
+crates/netsmith-editor/web/** -text
+crates/netsmith-editor/web-dist/** -text

@@ -1,0 +1,80 @@
+//! Buses: the signals of a serial interface, joined as one.
+//!
+//! Who drives a signal is not said here. It is said by the pin kind in the pin table of the
+//! part that has the bus (ADR 0016): the master's `mosi` is an `output` and the slave's is an
+//! `input`, and the checker's rules do the rest. Two outputs on one net are refused, and an
+//! `input` that is connected to nothing is refused, so a bus joined the wrong way round is found
+//! without a rule of its own. Names are those of the device that has the bus. Levels are the
+//! supply of the part (see `std::logic::Logic`).
+
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+/// A UART: a transmit line `tx`, a receive line `rx`, and the flow-control lines `rts` and
+/// `cts`. The names are the device's own, so the lines of two devices cross: the board joins
+/// one device's `tx` to the other's `rx` and the reverse, a pin at a time, because `~` between
+/// two UARTs would join `tx` to `tx`. That is two outputs on one net, and the checker says so.
+/// A device without flow control gives no pin to `rts` and `cts` and leaves them alone.
+interface Uart {
+    .tx: Pin
+    .rx: Pin
+    .rts: Pin
+    .cts: Pin
+}
+
+/// An SPI bus: the clock `sclk`, the data out of the master `mosi`, the data out of the slave
+/// `miso`, and the select `cs`. Both ends call the lines the same, so the master and the
+/// slave join with `~`: the master's `mosi` is an output and the slave's an input, and the
+/// pin kinds catch a master joined to a master.
+interface Spi {
+    .sclk: Pin
+    .mosi: Pin
+    .miso: Pin
+    .cs: Pin
+}
+
+/// An I2C bus: the data line `sda` and the clock `scl`. Both are open-drain: they are pulled
+/// to the supply by a resistor on the bus, one on each line, and no device drives them high.
+/// `std::bus::I2cPullups` is that resistor pair. The checker refuses a line that has no
+/// resistor to a rail's positive pin (ADR 0044).
+interface I2c {
+    .sda: Pin
+    .scl: Pin
+}
+
+/// A serial-wire debug port: the data line `swdio`, the clock `swclk`, the trace output `swo`
+/// and the reset `reset`. The target's `swo` is an output, its `swclk` an input and its `swdio`
+/// a bidirectional pin; a probe's connector has passive pins.
+interface Swd {
+    .swdio: Pin
+    .swclk: Pin
+    .swo: Pin
+    .reset: Pin
+}
+
+/// A USB 2.0 port: the data pair `dp` and `dm` and the bus power `vbus`, whose `pos` is VBUS
+/// and whose `neg` is the ground. The host and the device join with `~`: D+ to D+ and D- to
+/// D-. `vbus.current` is negative at the host, which supplies, and positive at a device that
+/// draws.
+interface Usb2 {
+    .dp: Pin
+    .dm: Pin
+    .vbus: Rail
+}
+
+/// The two pull-up resistors of an I2C bus, one on `sda` and one on `scl`, to the positive
+/// pin of `supply`. The board states the resistance, as a value with its tolerance
+/// (`.pullups.resistance &= 4.7kohm +/- 5%`), and the solver picks resistors that stay inside
+/// it. There is one pair for the whole bus, wherever it sits; two pairs on one bus are in
+/// parallel and the board's concern.
+module I2cPullups {
+    .bus: I2c
+    .supply: Rail
+    .resistance: Resistance
+    .sda_pullup: Resistor
+    .scl_pullup: Resistor
+    .resistance == .sda_pullup.resistance
+    .resistance == .scl_pullup.resistance
+    .supply.pos ~> .sda_pullup ~> .bus.sda
+    .supply.pos ~> .scl_pullup ~> .bus.scl
+}

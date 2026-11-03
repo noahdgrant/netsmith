@@ -1,0 +1,48 @@
+{
+ "code": 200,
+ "msg": null,
+ "result": {
+  "productCode": "C5446",
+  "productModel": "XC6206P332MR-G",
+  "brandNameEn": "TOREX",
+  "encapStandard": "SOT-23-3L",
+  "stockNumber": 166870,
+  "productPriceList": [
+   {
+    "ladder": 5,
+    "productPrice": "0.1495",
+    "usdPrice": 0.1495
+   },
+   {
+    "ladder": 50,
+    "productPrice": "0.1228",
+    "usdPrice": 0.1228
+   },
+   {
+    "ladder": 150,
+    "productPrice": "0.1090",
+    "usdPrice": 0.109
+   },
+   {
+    "ladder": 500,
+    "productPrice": "0.0977",
+    "usdPrice": 0.0977
+   },
+   {
+    "ladder": 3000,
+    "productPrice": "0.0937",
+    "usdPrice": 0.0937
+   },
+   {
+    "ladder": 6000,
+    "productPrice": "0.0910",
+    "usdPrice": 0.091
+   }
+  ],
+  "catalogName": "Voltage Regulators - Linear, Low Drop Out (LDO) Regulators",
+  "productNameEn": "Low ESR Cap. Compatible Positive Voltage Regulators",
+  "minBuyNumber": 5,
+  "currencyType": "USD"
+ },
+ "ok": true
+}

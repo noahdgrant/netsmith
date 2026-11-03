@@ -1,0 +1,25 @@
+//! A small board with a requirement on where a header goes, for the editor recipes. The layout
+//! file beside it puts the header by hand where the requirement does not allow it, so the
+//! editor has a constraint finding to show.
+
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+import std::pcb::Outline
+
+board Cased {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .outline: Outline {
+        .width &= 40mm
+        .height &= 24mm
+    }
+    .power: Header1x2
+    .aux: Header1x2
+
+    // Case drawing, slot A: the header's body is 1.5 mm in from the left edge and centred along it.
+    .power.place.left &= 1.5mm +/- 0.1mm
+    .power.place.y    >= .outline.height / 2 - 0.1mm
+    .power.place.y    <= .outline.height / 2 + 0.1mm
+    .power.place.side &= "top"
+}

@@ -1,0 +1,617 @@
+# What KiCad calls the standard library's parts: which symbol draws them and which
+# footprint carries them. This is the only place KiCad's names appear (ADR 0016, ADR 0021).
+# A project adds its own parts in a `kicad.toml` at its root; a (kind, package) pair that is
+# in both files is an error, so there is one answer.
+#
+# `default = true` marks the footprint used when the part was never given a package.
+
+[[part]]
+kind = "Resistor"
+package = "0402"
+symbol = "Device:R"
+footprint = "Resistor_SMD:R_0402_1005Metric"
+
+[[part]]
+kind = "Resistor"
+package = "0603"
+symbol = "Device:R"
+footprint = "Resistor_SMD:R_0603_1608Metric"
+
+[[part]]
+kind = "Resistor"
+package = "0805"
+symbol = "Device:R"
+footprint = "Resistor_SMD:R_0805_2012Metric"
+
+[[part]]
+kind = "Capacitor"
+package = "0402"
+symbol = "Device:C"
+footprint = "Capacitor_SMD:C_0402_1005Metric"
+
+[[part]]
+kind = "Capacitor"
+package = "0603"
+symbol = "Device:C"
+footprint = "Capacitor_SMD:C_0603_1608Metric"
+
+[[part]]
+kind = "Capacitor"
+package = "0805"
+symbol = "Device:C"
+footprint = "Capacitor_SMD:C_0805_2012Metric"
+
+[[part]]
+kind = "LinearRegulator"
+package = "SOT-23"
+symbol = "Regulator_Linear:AP1117-15"
+footprint = "Package_TO_SOT_SMD:SOT-23"
+
+[part.pin_names]
+IN = "VI"
+OUT = "VO"
+
+[[part]]
+kind = "LinearRegulator"
+package = "SOT-223"
+symbol = "Regulator_Linear:AP1117-15"
+footprint = "Package_TO_SOT_SMD:SOT-223-3_TabPin2"
+
+[part.pin_names]
+IN = "VI"
+OUT = "VO"
+
+[[part]]
+kind = "Led"
+package = "0402"
+symbol = "Device:LED"
+footprint = "LED_SMD:LED_0402_1005Metric"
+
+[[part]]
+kind = "Led"
+package = "0603"
+default = true
+symbol = "Device:LED"
+footprint = "LED_SMD:LED_0603_1608Metric"
+
+[[part]]
+kind = "Led"
+package = "0805"
+symbol = "Device:LED"
+footprint = "LED_SMD:LED_0805_2012Metric"
+
+# The standard library's other kinds (ADR 0023), mapped to KiCad 9's stock symbols and
+# footprints. Every row is checked against the installed libraries by a test
+# (crates/netsmith/tests/kicad_rows.rs): its pads, the symbol's pin names and electrical types.
+
+[[part]]
+kind = "Diode"
+package = "SOD-123"
+default = true
+symbol = "Device:D"
+footprint = "Diode_SMD:D_SOD-123"
+
+[[part]]
+kind = "Diode"
+package = "SOD-323"
+symbol = "Device:D"
+footprint = "Diode_SMD:D_SOD-323"
+
+[[part]]
+kind = "Diode"
+package = "SMA"
+symbol = "Device:D"
+footprint = "Diode_SMD:D_SMA"
+
+[[part]]
+kind = "Diode"
+package = "SMB"
+symbol = "Device:D"
+footprint = "Diode_SMD:D_SMB"
+
+[[part]]
+kind = "Schottky"
+package = "SOD-123"
+default = true
+symbol = "Device:D_Schottky"
+footprint = "Diode_SMD:D_SOD-123"
+
+[[part]]
+kind = "Schottky"
+package = "SOD-323"
+symbol = "Device:D_Schottky"
+footprint = "Diode_SMD:D_SOD-323"
+
+[[part]]
+kind = "Schottky"
+package = "SMA"
+symbol = "Device:D_Schottky"
+footprint = "Diode_SMD:D_SMA"
+
+[[part]]
+kind = "Schottky"
+package = "SMB"
+symbol = "Device:D_Schottky"
+footprint = "Diode_SMD:D_SMB"
+
+[[part]]
+kind = "Zener"
+package = "SOD-123"
+default = true
+symbol = "Device:D_Zener"
+footprint = "Diode_SMD:D_SOD-123"
+
+[[part]]
+kind = "Zener"
+package = "SOD-323"
+symbol = "Device:D_Zener"
+footprint = "Diode_SMD:D_SOD-323"
+
+[[part]]
+kind = "Zener"
+package = "SMA"
+symbol = "Device:D_Zener"
+footprint = "Diode_SMD:D_SMA"
+
+[[part]]
+kind = "Zener"
+package = "SMB"
+symbol = "Device:D_Zener"
+footprint = "Diode_SMD:D_SMB"
+
+[[part]]
+kind = "Tvs"
+package = "SOD-123"
+default = true
+symbol = "Device:D_Zener"
+footprint = "Diode_SMD:D_SOD-123"
+
+[[part]]
+kind = "Tvs"
+package = "SOD-323"
+symbol = "Device:D_Zener"
+footprint = "Diode_SMD:D_SOD-323"
+
+[[part]]
+kind = "Tvs"
+package = "SMA"
+symbol = "Device:D_Zener"
+footprint = "Diode_SMD:D_SMA"
+
+[[part]]
+kind = "Tvs"
+package = "SMB"
+symbol = "Device:D_Zener"
+footprint = "Diode_SMD:D_SMB"
+
+[[part]]
+kind = "Inductor"
+package = "0402"
+symbol = "Device:L"
+footprint = "Inductor_SMD:L_0402_1005Metric"
+
+[part.pin_names]
+A = "1"
+B = "2"
+
+[[part]]
+kind = "Inductor"
+package = "0603"
+symbol = "Device:L"
+footprint = "Inductor_SMD:L_0603_1608Metric"
+
+[part.pin_names]
+A = "1"
+B = "2"
+
+[[part]]
+kind = "Inductor"
+package = "0805"
+symbol = "Device:L"
+footprint = "Inductor_SMD:L_0805_2012Metric"
+
+[part.pin_names]
+A = "1"
+B = "2"
+
+[[part]]
+kind = "Inductor"
+package = "1210"
+symbol = "Device:L"
+footprint = "Inductor_SMD:L_1210_3225Metric"
+
+[part.pin_names]
+A = "1"
+B = "2"
+
+[[part]]
+kind = "FerriteBead"
+package = "0402"
+symbol = "Device:FerriteBead"
+footprint = "Inductor_SMD:L_0402_1005Metric"
+
+[[part]]
+kind = "FerriteBead"
+package = "0603"
+symbol = "Device:FerriteBead"
+footprint = "Inductor_SMD:L_0603_1608Metric"
+
+[[part]]
+kind = "FerriteBead"
+package = "0805"
+symbol = "Device:FerriteBead"
+footprint = "Inductor_SMD:L_0805_2012Metric"
+
+[[part]]
+kind = "Crystal"
+package = "2012"
+symbol = "Device:Crystal"
+footprint = "Crystal:Crystal_SMD_2012-2Pin_2.0x1.2mm"
+
+[part.pin_names]
+A = "1"
+B = "2"
+
+[[part]]
+kind = "Crystal"
+package = "3215"
+symbol = "Device:Crystal"
+footprint = "Crystal:Crystal_SMD_3215-2Pin_3.2x1.5mm"
+
+[part.pin_names]
+A = "1"
+B = "2"
+
+[[part]]
+kind = "Crystal"
+package = "5032"
+symbol = "Device:Crystal"
+footprint = "Crystal:Crystal_SMD_5032-2Pin_5.0x3.2mm"
+
+[part.pin_names]
+A = "1"
+B = "2"
+
+[[part]]
+kind = "Fuse"
+package = "0603"
+symbol = "Device:Fuse"
+footprint = "Fuse:Fuse_0603_1608Metric"
+
+[[part]]
+kind = "Fuse"
+package = "1206"
+symbol = "Device:Fuse"
+footprint = "Fuse:Fuse_1206_3216Metric"
+
+[[part]]
+kind = "Switch"
+package = "B3U-1000P"
+default = true
+symbol = "Switch:SW_SPST"
+footprint = "Button_Switch_SMD:SW_SPST_B3U-1000P"
+
+[[part]]
+kind = "Switch"
+package = "CK_RS282G05A3"
+symbol = "Switch:SW_SPST"
+footprint = "Button_Switch_SMD:SW_SPST_CK_RS282G05A3"
+
+[[part]]
+kind = "NMosfet"
+package = "SOT-23"
+default = true
+symbol = "Transistor_FET:Q_NMOS_GSD"
+footprint = "Package_TO_SOT_SMD:SOT-23"
+
+[[part]]
+kind = "PMosfet"
+package = "SOT-23"
+default = true
+symbol = "Transistor_FET:Q_PMOS_GSD"
+footprint = "Package_TO_SOT_SMD:SOT-23"
+
+[[part]]
+kind = "Header1x2"
+package = "2.54mm"
+default = true
+symbol = "Connector_Generic:Conn_01x02"
+footprint = "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
+
+[part.pin_names]
+P1 = "Pin_1"
+P2 = "Pin_2"
+
+[[part]]
+kind = "Header1x4"
+package = "2.54mm"
+default = true
+symbol = "Connector_Generic:Conn_01x04"
+footprint = "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"
+
+[part.pin_names]
+P1 = "Pin_1"
+P2 = "Pin_2"
+P3 = "Pin_3"
+P4 = "Pin_4"
+
+[[part]]
+kind = "Header1x8"
+package = "2.54mm"
+default = true
+symbol = "Connector_Generic:Conn_01x08"
+footprint = "Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical"
+
+[part.pin_names]
+P1 = "Pin_1"
+P2 = "Pin_2"
+P3 = "Pin_3"
+P4 = "Pin_4"
+P5 = "Pin_5"
+P6 = "Pin_6"
+P7 = "Pin_7"
+P8 = "Pin_8"
+
+[[part]]
+kind = "Header1x10"
+package = "2.54mm"
+default = true
+symbol = "Connector_Generic:Conn_01x10"
+footprint = "Connector_PinHeader_2.54mm:PinHeader_1x10_P2.54mm_Vertical"
+
+[part.pin_names]
+P1 = "Pin_1"
+P2 = "Pin_2"
+P3 = "Pin_3"
+P4 = "Pin_4"
+P5 = "Pin_5"
+P6 = "Pin_6"
+P7 = "Pin_7"
+P8 = "Pin_8"
+P9 = "Pin_9"
+P10 = "Pin_10"
+
+[[part]]
+kind = "Socket1x2"
+package = "2.54mm"
+default = true
+symbol = "Connector:Conn_01x02_Socket"
+footprint = "Connector_PinSocket_2.54mm:PinSocket_1x02_P2.54mm_Vertical"
+
+[part.pin_names]
+P1 = "Pin_1"
+P2 = "Pin_2"
+
+[[part]]
+kind = "Socket1x4"
+package = "2.54mm"
+default = true
+symbol = "Connector:Conn_01x04_Socket"
+footprint = "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical"
+
+[part.pin_names]
+P1 = "Pin_1"
+P2 = "Pin_2"
+P3 = "Pin_3"
+P4 = "Pin_4"
+
+[[part]]
+kind = "Socket1x8"
+package = "2.54mm"
+default = true
+symbol = "Connector:Conn_01x08_Socket"
+footprint = "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical"
+
+[part.pin_names]
+P1 = "Pin_1"
+P2 = "Pin_2"
+P3 = "Pin_3"
+P4 = "Pin_4"
+P5 = "Pin_5"
+P6 = "Pin_6"
+P7 = "Pin_7"
+P8 = "Pin_8"
+
+[[part]]
+kind = "Socket1x10"
+package = "2.54mm"
+default = true
+symbol = "Connector:Conn_01x10_Socket"
+footprint = "Connector_PinSocket_2.54mm:PinSocket_1x10_P2.54mm_Vertical"
+
+[part.pin_names]
+P1 = "Pin_1"
+P2 = "Pin_2"
+P3 = "Pin_3"
+P4 = "Pin_4"
+P5 = "Pin_5"
+P6 = "Pin_6"
+P7 = "Pin_7"
+P8 = "Pin_8"
+P9 = "Pin_9"
+P10 = "Pin_10"
+
+[[part]]
+kind = "Header2x3"
+package = "2.54mm"
+default = true
+symbol = "Connector_Generic:Conn_02x03_Odd_Even"
+footprint = "Connector_PinHeader_2.54mm:PinHeader_2x03_P2.54mm_Vertical"
+
+[part.pin_names]
+P1 = "Pin_1"
+P2 = "Pin_2"
+P3 = "Pin_3"
+P4 = "Pin_4"
+P5 = "Pin_5"
+P6 = "Pin_6"
+
+[[part]]
+kind = "Header2x5"
+package = "2.54mm"
+default = true
+symbol = "Connector_Generic:Conn_02x05_Odd_Even"
+footprint = "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical"
+
+[part.pin_names]
+P1 = "Pin_1"
+P2 = "Pin_2"
+P3 = "Pin_3"
+P4 = "Pin_4"
+P5 = "Pin_5"
+P6 = "Pin_6"
+P7 = "Pin_7"
+P8 = "Pin_8"
+P9 = "Pin_9"
+P10 = "Pin_10"
+
+[[part]]
+kind = "Header2x10"
+package = "2.54mm"
+default = true
+symbol = "Connector_Generic:Conn_02x10_Odd_Even"
+footprint = "Connector_PinHeader_2.54mm:PinHeader_2x10_P2.54mm_Vertical"
+
+[part.pin_names]
+P1 = "Pin_1"
+P2 = "Pin_2"
+P3 = "Pin_3"
+P4 = "Pin_4"
+P5 = "Pin_5"
+P6 = "Pin_6"
+P7 = "Pin_7"
+P8 = "Pin_8"
+P9 = "Pin_9"
+P10 = "Pin_10"
+P11 = "Pin_11"
+P12 = "Pin_12"
+P13 = "Pin_13"
+P14 = "Pin_14"
+P15 = "Pin_15"
+P16 = "Pin_16"
+P17 = "Pin_17"
+P18 = "Pin_18"
+P19 = "Pin_19"
+P20 = "Pin_20"
+
+[[part]]
+kind = "Coax"
+package = "SMA_Amphenol_132134"
+default = true
+symbol = "Connector:Conn_Coaxial"
+footprint = "Connector_Coaxial:SMA_Amphenol_132134_Vertical"
+
+[part.pin_names]
+SIGNAL = "In"
+SHIELD = "Ext"
+
+[[part]]
+kind = "UsbCPower"
+package = "GCT_USB4125_6P"
+default = true
+symbol = "Connector:USB_C_Receptacle_PowerOnly_6P"
+footprint = "Connector_USB:USB_C_Receptacle_GCT_USB4125-xx-x_6P_TopMnt_Horizontal"
+
+[part.pin_names]
+SHELL = "SHIELD"
+
+[[part]]
+kind = "UsbC2"
+package = "GCT_USB4105_16P"
+default = true
+symbol = "Connector:USB_C_Receptacle_USB2.0_16P"
+footprint = "Connector_USB:USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal"
+
+[part.pin_names]
+SHELL = "SHIELD"
+
+[[part]]
+kind = "UsbC2"
+package = "HRO_TYPE-C-31-M-12"
+symbol = "Connector:USB_C_Receptacle_USB2.0_16P"
+footprint = "Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12"
+
+[part.pin_names]
+SHELL = "SHIELD"
+
+[[part]]
+kind = "ProgrammingPads6"
+package = "TC2030-NL"
+default = true
+symbol = "Connector_Generic:Conn_02x03_Odd_Even"
+footprint = "Connector:Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical"
+
+[part.pin_names]
+P1 = "Pin_1"
+P2 = "Pin_2"
+P3 = "Pin_3"
+P4 = "Pin_4"
+P5 = "Pin_5"
+P6 = "Pin_6"
+
+[[part]]
+kind = "MountingHole"
+package = "M3"
+default = true
+symbol = "Mechanical:MountingHole"
+footprint = "MountingHole:MountingHole_3.2mm_M3"
+
+[[part]]
+kind = "MountingHole"
+package = "M2"
+symbol = "Mechanical:MountingHole"
+footprint = "MountingHole:MountingHole_2.2mm_M2"
+
+[[part]]
+kind = "PlatedHole"
+package = "M3"
+default = true
+symbol = "Mechanical:MountingHole_Pad"
+footprint = "MountingHole:MountingHole_3.2mm_M3_Pad"
+
+[[part]]
+kind = "PlatedHole"
+package = "M2"
+symbol = "Mechanical:MountingHole_Pad"
+footprint = "MountingHole:MountingHole_2.2mm_M2_Pad"
+
+[[part]]
+kind = "Fiducial"
+package = "1mm"
+default = true
+symbol = "Mechanical:Fiducial"
+footprint = "Fiducial:Fiducial_1mm_Mask2mm"
+
+[[part]]
+kind = "TestPoint"
+package = "D1.0mm"
+symbol = "Connector:TestPoint"
+footprint = "TestPoint:TestPoint_Pad_D1.0mm"
+
+[part.pin_names]
+TP = "1"
+
+[[part]]
+kind = "TestPoint"
+package = "D1.5mm"
+default = true
+symbol = "Connector:TestPoint"
+footprint = "TestPoint:TestPoint_Pad_D1.5mm"
+
+[part.pin_names]
+TP = "1"
+
+[[part]]
+kind = "TestPoint"
+package = "D2.0mm"
+symbol = "Connector:TestPoint"
+footprint = "TestPoint:TestPoint_Pad_D2.0mm"
+
+[part.pin_names]
+TP = "1"
+
+[[part]]
+kind = "Sn74lvc1g04"
+package = "SOT-23-5"
+symbol = "74xGxx:74LVC1G04"
+footprint = "Package_TO_SOT_SMD:SOT-23-5"

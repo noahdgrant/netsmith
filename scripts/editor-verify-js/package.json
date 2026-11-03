@@ -1,0 +1,9 @@
+{
+  "name": "netsmith-editor-verify",
+  "private": true,
+  "type": "module",
+  "description": "Drives the netsmith editor in a headless browser: launch, doctor, drive, evidence, cleanup.",
+  "engines": { "node": ">=20" },
+  "scripts": { "test": "node --test" },
+  "devDependencies": { "playwright": "^1.64.0" }
+}

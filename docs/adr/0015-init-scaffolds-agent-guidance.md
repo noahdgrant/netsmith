@@ -1,0 +1,15 @@
+---
+status: accepted
+---
+
+# `netsmith init` scaffolds the guidance an agent needs
+
+ADR 0011 had `netsmith init` write only the project: `netsmith.toml`, `src/main.nsm`, `.gitignore` and `README.md`. That left an agent in a new project with a language it has never seen and no word of the rules that matter (build before claiming it works, a part number needs a source, ask before a language decision). The skills that say this lived in netsmith's repository, where a person who installed the `netsmith` command does not have them. This reverses the earlier choice not to create an `AGENTS.md`: `init` now also writes the guidance, so a project is usable by an agent from the first command.
+
+It writes three things, each only if absent. `AGENTS.md` is short and about the project: what netsmith is, the three commands (`build`, `editor`, `fab`), where the guide is, which skills exist, and three rules: run `netsmith build` before saying a design works, a catalog part needs a source, and ask the user before a decision about the language or its semantics. The skills are the `netsmith-*` ones, in `.agents/skills/<name>/SKILL.md`, with `.claude/skills` a relative link to `../.agents/skills`, as in this repository. The `netsmith-dev-*` skills are for working on netsmith and are not copied. The language guide is `docs/netsmith/LANGUAGE.md`, and the skills point at that path (in netsmith's own repository the guide is `docs/LANGUAGE.md`, and the skill says so).
+
+The text is embedded in the binary with `include_str!` from files in this repository: the guide is `docs/LANGUAGE.md`, the skills are the files in `.agents/skills/`, and the project's `AGENTS.md` is `crates/netsmith/templates/AGENTS.md` (the repository's own `AGENTS.md` is for contributors, so it cannot be the template). There is no second copy to rot, and tests check that the scaffold equals those files, that the list of embedded skills is every `netsmith-*` directory, and that the project's `AGENTS.md` names exactly the skills it gets.
+
+`init` still never overwrites. An existing `AGENTS.md` is not touched, and `init` prints one line saying to add a pointer to the guide and the skills, because merging text into a file the user owns is a decision for the user. A guide, a skill or `.claude/skills` that exists is kept. Where a symlink cannot be made (some Windows set-ups, file systems without links) `.claude/skills` is a copy of the skills, and `init` says so. This is the only way `init` falls back, and it says that the two must then be kept the same.
+
+The files are copies made once. A newer netsmith does not update them, and there is no command to refresh them yet; that is open in `docs/ROADMAP.md`. We accepted this over a command that rewrites files in the project, because the files are the project's to edit and a tool that silently replaced them would undo those edits. Claude Code reads `CLAUDE.md`, not `AGENTS.md`; the scaffold does not write one (this repository's `CLAUDE.md` is a one-line import of `AGENTS.md`), so a Claude Code user adds that line.

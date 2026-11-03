@@ -1,0 +1,29 @@
+//! Digital signals.
+
+import std::sources::Rail
+
+/// A digital line together with the rail that defines its logic levels. The line swings
+/// between the rail's `neg` and `pos`.
+///
+/// The four levels are voltages relative to the rail's `neg`, as a part's datasheet gives
+/// them, and a part states those that it has. A connection between two lines does not
+/// equate them: each belongs to its own pin (ADR 0046).
+///
+/// - `vih`: the lowest voltage an input reads as high.
+/// - `vil`: the highest voltage an input reads as low.
+/// - `voh`: the lowest voltage an output drives a high to, at the load the datasheet names.
+/// - `vol`: the highest voltage an output drives a low to, at the load the datasheet names.
+///
+/// After the rails are solved, the solver requires of each output on a net that its `voh`
+/// is always at least the `vih` of every input there, and its `vol` at most their `vil`; it
+/// says "not evaluated" when a level has no value or the two grounds are not the same net.
+/// The pin `.line` has `.abs_min` and `.abs_max`, which the solver checks against the
+/// worst-case voltage of its net in the same way.
+interface Logic {
+    .line: Pin
+    .reference: Rail
+    .vih: Voltage
+    .vil: Voltage
+    .voh: Voltage
+    .vol: Voltage
+}

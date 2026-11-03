@@ -1,0 +1,59 @@
+# PCB view
+
+## How to get to it
+
+Right pane, tab "PCB". The board is placed as soon as the tab opens (the layout file `<stem>.pcb.toml` beside the source, if there is one, is applied: ADR 0032); "Place and route" runs the router and draws the tracks. "Layers" toggles groups of the drawing.
+
+## Driving it
+
+`scripts/editor-verify drive pcb`; `drive four-layer` after `launch --fixture four_layer`.
+
+1. The tab shows the outline, the footprints with pads coloured by net, and the key. Needs KiCad's footprint libraries (`NETSMITH_KICAD_FOOTPRINTS` or an install netsmith finds, ADR 0021); without them the view says why.
+2. Click "Place and route": a chip says `routed: N tracks, M vias` and the button becomes "Route again". An unrouted connection or a placement problem is listed in red.
+3. Layers: untick "Silkscreen": the silk groups (`.l-silk`) are hidden.
+4. A four-layer board draws each plane as a dashed border in its net's colour and lists it in the key.
+5. The "DRC" chip shows the last `fab` result for the board: "run Fab to check" until the build panel has run it.
+
+### A big board: `drive big-pcb` after `launch --fixture big`
+
+The drawing has no key: the board fills the canvas, and the nets are in the Nets tab of the panel at the side ("Panel" in the toolbar shows or hides it), each with its colour and pad count. The filter narrows the list; hovering a net lights it on the board and dims the rest, a click picks it (a click on a track or via picks its net too; a click on a pad selects its part, which lights its nets). "Place and route" shows the job under the toolbar and in the status bar: the stage (`BigBoard: placed 89 parts on a 70 by 76 mm board`, `routing, try 1 of 3: 12 of 40 connections done`), a clock, and a Cancel button that stops the router and keeps what it routed (the chip then says `stopped`). The editor, and the other tabs, stay usable while it runs; when it ends the toolbar says how long it took. A route started here is kept when another tab is opened meanwhile.
+
+## The canvas: select, move, rotate, flip, lock, undo (ADR 0030 E0 and E1)
+
+`launch --fixture outline_and_pours` (twelve parts, a cutout, a keepout, a layout file that places the keepout); `drive pcb-select` and `drive pcb-edit`. Both start by putting `main.pcb.toml` back as the fixture has it, so they can run in any order. Hide the source pane ("Source" in the top bar) to give the board the room.
+
+- **Select**: click a part (its courtyard is the target; the smallest under the pointer wins), Shift or Ctrl+click adds or removes, a drag on empty board draws a box that takes every part it touches, a click on empty board clears, Ctrl+A takes all. The list on the right ("Parts") selects too and zooms to the part. The inspector over the list shows the selected part's place, turn, face, who placed it, its pads with their nets (click a net to light it) and a link to its source line; a double click on a part opens its declaration. The nets of the selection are lit, everything else dims, and the ratsnest lines that end on the selection are drawn thicker.
+- **Hover**: a tooltip names the part, its value, kind and package, and for a pad its number and net; over a track or via, the net; over a keepout's edge, what it forbids.
+- **Pan and zoom**: the wheel zooms about the pointer, the right or middle button drags the board (the main button belongs to selecting and moving), "Fit" or a double click on the background fits. The grid dots appear when they are far enough apart to read; the cursor's place (mm from the outline's corner) is in the toolbar.
+- **Move**: drag a part (or the selection: all the unlocked parts move by the same amount). It snaps to the grid in the toolbar (0.05 mm to 2.54 mm, or none; kept in the browser). The ratsnest follows while dragging. The part's entry is written to `<stem>.pcb.toml` when the button goes up.
+- **Keys** (not while typing in a field or the source editor): `R` turns the selection 90 degrees counter-clockwise (`Shift+R` the other way; a selection turns about its middle), `F` puts it on the other face (the footprint is mirrored left to right; a selection mirrors about its middle), `L` locks or unlocks (a locked part has a padlock, does not move on drag, `R` or `F`, and the placer leaves it where it is), `Delete` hands the part back to the placer (its entry is removed), arrows nudge by the grid (Shift: ten times), `Esc` cancels a drag, then the tool, then the selection, `K` is the keepout tool (below). The buttons in the inspector do the same.
+- **Undo and redo**: `Ctrl+Z`, `Ctrl+Shift+Z` or `Ctrl+Y`, and the toolbar buttons, over every edit of the canvas, including keepouts. The history is the page's; it is dropped if the layout file changes under it (the server answers 409).
+- **What is written**: only the parts touched get an entry (`at`, `rotation`, `side`, `lock`, `source = "hand"`), the other tables and the other parts' entries are kept, and a part with no entry is placed by the placer as before. Every edit throws away the routed copper: it no longer fits (the chip says so by going back to "placed"; route again).
+
+## Keepouts (ADR 0029, ADR 0030)
+
+`drive pcb-keepout` (fixture `outline_and_pours`). The outline, the cutouts and the keepouts the source declares are drawn (`data-keepout`, `data-cutout`); the outline and the cutouts are not edited. The Keepout button, or `K`, is the rectangle tool: its options (layers, and what it forbids: tracks, vias, copper, parts) are in the toolbar while it is on; drag a rectangle on the board (it snaps to the grid) and it is drawn and written as `[Board.keepouts.keepout1]` with a `size`. A picked keepout has eight handles to resize it by and can be dragged by its border (a drag inside it moves it once it is picked); the inspector changes its layers and what it forbids; `Delete` removes it; undo and redo cover all of it. A keepout the source sizes and does not place (the example's `antenna`) is moved the same way and only its `at` is written; one whose place the source states, or that a part carries, is shown and not moved. The router, the placement check (a part in a keepout that forbids parts is a finding), the placer and KiCad's rule areas obey a drawn keepout like any other.
+
+## Findings (ADR 0030)
+
+`drive pcb-findings`. The chip in the toolbar says how many findings there are (red if any is an error); it opens the Findings tab. Each finding has a rule (`overlap`, `outside_outline`, `in_keepout`... netsmith's; `clearance`, `courtyards_overlap`... KiCad's), a message with the numbers, and its place in mm from the outline's corner. A click zooms to it, marks it on the board and selects the parts it names. netsmith's checks are recomputed after every edit; the connections still to route and netsmith's design rules check of the copper (tag `netsmith`, source `drc`; the rules are KiCad's names: `clearance`, `hole_to_hole`, `copper_edge_clearance`, `silk_over_copper`...) are findings only once the board is routed. "Also ask KiCad" runs KiCad's design rules check as a second opinion (a few seconds, shown as a job; `kicad-cli` is found as `fab` finds it), and its findings stay in the list until the layout changes; without KiCad the tab says so and the netsmith findings stay.
+
+### Constraint findings (ADR 0045): `launch --fixture constrained`, `drive pcb-constraints`
+
+The fixture is `scripts/editor-verify-js/fixtures/constrained.nsm` with a layout file beside it that puts the header by hand where its `.place` requirement does not allow. The finding has the rule `constraint`, is an error (as `fab` makes it) and says the requirement's line, the part, the drawing measured (`F.Fab`), the measured value, the window and how far over; the picked finding shows all of it (a row is cut after six lines). A click zooms, marks and selects the part; Release (the placer keeps to the requirement) clears it and undo brings it back with the same numbers. The windows and the drag clamp are not drawn yet (ADR 0045 C4).
+
+## Panels (ADR 0040)
+
+`drive panel` (fixture `led_panel`). A `panel` is listed in the tree with the badge `N`; a click on it opens the PCB view of the board it repeats with the panel drawn instead of the board (`data-testid="panel-preview"`): the boards outlined and named (`LedTile 1` ... `LedTile 6`), the cut lines dashed, the rails with their tooling holes and fiducials, and the panel checks beneath (errors and advice, from `GET /api/panel?name=`). It is read only: the grid is in the source. "Show the board" returns to the board; a board that a panel repeats has a "Panel <name>" button in its toolbar.
+
+## Gotchas
+
+- The drawing the canvas gets is `PcbScene.svg` from `GET /api/pcb/scene?board=`, with the part boxes and pads beside it as data; `POST /api/pcb/edit` is the only way a position changes. Both are typed in `api.rs`.
+- Recipes click where the scene says (`pcb-helpers.mjs` turns a sheet position into a window position with the drawing's `getScreenCTM`); a hover or a click that lands on the ratsnest or the reference text would miss the pad, so those layers have `pointer-events: none`.
+- Recipes name a part by its instance path (`PART` in `pcb-helpers.mjs`: `stage.output_cap`) and read its designator from the scene (`labelOf`), never write `C1` or `U7`: designators follow the kind of the part and the placer and have changed before. The placer also chooses the turn a part starts with, so a recipe checks a quarter turn against the turn it read, not against 0.
+- The server is the binary: after changing the page, `cargo build -p netsmith`, then `cleanup` and `launch` again, or the recipe drives the old page.
+- A flip or a first entry changes what the derived placer is told (`place_options`: the faces of the parts with entries), so the other, derived parts may move too. That is the placer's, not the editor's.
+
+- Every kind of drawing is in a group `l-...` (see the head of `crates/netsmith-pcb/src/svg.rs`); add new drawings to a group or the toggles miss them.
+- The drawing the page gets is `svg::render_view` (no key); `fab` still writes `svg::render` with the key.
+- Routing is per board and is forgotten when the files are built again.

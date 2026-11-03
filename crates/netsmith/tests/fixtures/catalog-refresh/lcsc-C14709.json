@@ -1,0 +1,48 @@
+{
+ "code": 200,
+ "msg": null,
+ "result": {
+  "productCode": "C14709",
+  "productModel": "BLM18PG121SN1D",
+  "brandNameEn": "muRata",
+  "encapStandard": "0603",
+  "stockNumber": 1602400,
+  "productPriceList": [
+   {
+    "ladder": 50,
+    "productPrice": "0.0138",
+    "usdPrice": 0.0138
+   },
+   {
+    "ladder": 500,
+    "productPrice": "0.0106",
+    "usdPrice": 0.0106
+   },
+   {
+    "ladder": 1500,
+    "productPrice": "0.0091",
+    "usdPrice": 0.0091
+   },
+   {
+    "ladder": 4000,
+    "productPrice": "0.0077",
+    "usdPrice": 0.0077
+   },
+   {
+    "ladder": 24000,
+    "productPrice": "0.0072",
+    "usdPrice": 0.0072
+   },
+   {
+    "ladder": 48000,
+    "productPrice": "0.0070",
+    "usdPrice": 0.007
+   }
+  ],
+  "catalogName": "Ferrite Beads and Chips",
+  "productNameEn": "FERRITE BEAD 120Ω 0603 1LN",
+  "minBuyNumber": 50,
+  "currencyType": "USD"
+ },
+ "ok": true
+}

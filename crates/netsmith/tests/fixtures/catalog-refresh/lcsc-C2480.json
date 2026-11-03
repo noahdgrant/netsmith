@@ -1,0 +1,48 @@
+{
+ "code": 200,
+ "msg": null,
+ "result": {
+  "productCode": "C2480",
+  "productModel": "SS14",
+  "brandNameEn": "MDD(Microdiode Semiconductor)",
+  "encapStandard": "SMA(DO-214AC)",
+  "stockNumber": 1282850,
+  "productPriceList": [
+   {
+    "ladder": 50,
+    "productPrice": "0.0193",
+    "usdPrice": 0.0193
+   },
+   {
+    "ladder": 500,
+    "productPrice": "0.0154",
+    "usdPrice": 0.0154
+   },
+   {
+    "ladder": 1500,
+    "productPrice": "0.0136",
+    "usdPrice": 0.0136
+   },
+   {
+    "ladder": 5000,
+    "productPrice": "0.0097",
+    "usdPrice": 0.0097
+   },
+   {
+    "ladder": 25000,
+    "productPrice": "0.0092",
+    "usdPrice": 0.0092
+   },
+   {
+    "ladder": 50000,
+    "productPrice": "0.0088",
+    "usdPrice": 0.0088
+   }
+  ],
+  "catalogName": "Single Diodes",
+  "productNameEn": "DIODE SCHOTTKY 40V SMA(DO-214AC)",
+  "minBuyNumber": 50,
+  "currencyType": "USD"
+ },
+ "ok": true
+}

@@ -1,0 +1,50 @@
+//! The layers a board is built from.
+
+/// What a board is built from: how many copper layers, how thick the finished board is, and
+/// how heavy the copper is. A manufacturer's process fixes some of these and leaves the
+/// rest for the board to choose.
+interface Stackup {
+    /// Copper layers.
+    .layers: Number
+    /// The finished board, copper and mask included.
+    .thickness: Length
+    /// Finished outer copper, in ounces per square foot.
+    .copper_weight: Number
+
+    // How a board of more than two layers is built up, from the top: outer copper, prepreg,
+    // inner copper, core, inner copper, prepreg, outer copper. A two-layer process leaves
+    // these unstated; a process with inner layers states every one.
+
+    /// The copper of an inner layer.
+    .inner_copper: Length
+    /// The prepreg between an outer copper layer and the inner one beside it.
+    .prepreg: Length
+    /// The core between the inner copper layers.
+    .core: Length
+    /// The relative permittivity of the prepreg and of the core.
+    .prepreg_epsilon: Number
+    .core_epsilon: Number
+}
+
+/// An inner copper layer that is one sheet of copper on a net: a power or ground plane.
+/// A process with inner layers has one `Plane` for each (`.inner1`, `.inner2`), and the
+/// board says which net each is (`.process.inner1.net &= "GND"`), because only a board
+/// names nets (ADR 0005).
+interface Plane {
+    /// The net the layer is poured on.
+    .net: String
+}
+
+/// A copper pour on an outer layer: copper filled round the tracks and joined to its net,
+/// the member `.top` or `.bottom` of a process. Unlike a `Plane` it leaves room for the
+/// tracks and for copper of other nets, and it is optional: an outer layer whose pour has
+/// no net has no pour. The board names the net (`.process.top.net &= "GND"`), because only
+/// a board names nets (ADR 0005). Where two layers carry the same net, vias stitch them.
+interface Pour {
+    /// The net the layer is poured on.
+    .net: String
+    /// The most space between the stitching vias that join the pour to the other layers of
+    /// its net, in mm. The tool uses the top of the range: `.stitch_pitch &= 0mm..8mm`
+    /// puts a via at least every 8 mm. Unset means the pads' own vias only.
+    .stitch_pitch: Length
+}

@@ -1,0 +1,59 @@
+//! Mechanical parts: what is on the board and not in the circuit, or on one net by a screw,
+//! and text on the silkscreen.
+//!
+//! None of these has a value to pick, so none has a catalog. A hole, a fiducial and a test
+//! point are fitted by nobody, so each states `.assembly &= "none"` and is on no BOM and no
+//! placement file (ADR 0024).
+
+/// A mounting hole with no copper: a drill for a screw that touches no net. It has no pins,
+/// so it is on no net.
+part MountingHole {
+    .designator &= "H"
+    .assembly &= "none"
+    .package: Package
+}
+
+/// A mounting hole plated through, with a pad that a screw bonds to a net (the chassis, or
+/// ground). Its one pin `p1` is the plating: the board joins it to a net, or leaves it open
+/// for a hole whose pad floats.
+part PlatedHole {
+    .designator &= "H"
+
+    pins {
+        .p1 passive "1" "1"
+    }
+
+    .assembly &= "none"
+    .package: Package
+}
+
+/// A fiducial: a bare copper mark that the pick-and-place machine locates the board by. It
+/// has no pins, so it is on no net.
+part Fiducial {
+    .designator &= "FID"
+    .assembly &= "none"
+    .package: Package
+}
+
+/// A test point: one pad on a net, to touch with a probe. Its pin `p1` is `required`, because
+/// a test point on no net tests nothing.
+part TestPoint {
+    .designator &= "TP"
+
+    pins {
+        .p1 passive "TP" "1" required
+    }
+
+    .assembly &= "none"
+    .package: Package
+}
+
+/// A line of text printed on the silkscreen: a revision, a name, a polarity mark. It has no
+/// pins, is fitted by nobody, and is placed like any other part. Its height is at least the
+/// process's smallest text; unset, it is that.
+part Label {
+    .designator &= "LBL"
+    .assembly &= "none"
+    .text: String
+    .height: Length
+}

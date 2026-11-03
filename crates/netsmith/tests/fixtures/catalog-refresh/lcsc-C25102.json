@@ -1,0 +1,43 @@
+{
+ "code": 200,
+ "msg": null,
+ "result": {
+  "productCode": "C25102",
+  "productModel": "0402WGF3000TCE",
+  "brandNameEn": "UNI-ROYAL",
+  "encapStandard": "0402",
+  "stockNumber": 456600,
+  "productPriceList": [
+   {
+    "ladder": 100,
+    "productPrice": "0.0019",
+    "usdPrice": 0.0019
+   },
+   {
+    "ladder": 1000,
+    "productPrice": "0.0015",
+    "usdPrice": 0.0015
+   },
+   {
+    "ladder": 3000,
+    "productPrice": "0.0013",
+    "usdPrice": 0.0013
+   },
+   {
+    "ladder": 10000,
+    "productPrice": "0.0012",
+    "usdPrice": 0.0012
+   },
+   {
+    "ladder": 50000,
+    "productPrice": "0.0010",
+    "usdPrice": 0.001
+   }
+  ],
+  "catalogName": "Chip Resistor - Surface Mount",
+  "productNameEn": "RES 300Ω ±1% 62.5mW 0402",
+  "minBuyNumber": 100,
+  "currencyType": "USD"
+ },
+ "ok": true
+}

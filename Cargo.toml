@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["crates/netsmith-core", "crates/netsmith-kicad", "crates/netsmith-lang", "crates/netsmith-quantity", "crates/netsmith-check", "crates/netsmith-solve", "crates/netsmith-lower", "crates/netsmith", "crates/netsmith-view", "crates/netsmith-pcb", "crates/netsmith-fab", "crates/netsmith-netlist", "crates/netsmith-editor", "crates/netsmith-dxf"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+license = "MIT"
+
+# The placer and the router are loops over thousands of small steps: a debug build of the
+# rest of the workspace is quick to build and to step through, and this crate is optimised so
+# that its tests (a board of seventy parts is placed and routed) take seconds, not minutes.
+[profile.dev.package.netsmith-pcb]
+opt-level = 2

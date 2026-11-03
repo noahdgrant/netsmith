@@ -1,0 +1,63 @@
+import { describe, expect, it } from 'vitest';
+import { tokenize } from './nsm';
+
+const kinds = (line: string) => tokenize(line).map((t) => [line.slice(t.from, t.to), t.kind]);
+
+describe('tokenize', () => {
+  it('reads a member declaration', () => {
+    expect(kinds('.r1: Resistor {')).toEqual([
+      ['.', 'punct'],
+      ['r1', 'member'],
+      [':', 'punct'],
+      ['Resistor', 'type'],
+      ['{', 'punct'],
+    ]);
+  });
+
+  it('reads narrowing, units, tolerances and ranges', () => {
+    expect(kinds('.v &= 3.3V +/- 5%')).toEqual([
+      ['.', 'punct'],
+      ['v', 'member'],
+      ['&=', 'operator'],
+      ['3.3V', 'number'],
+      ['+/-', 'operator'],
+      ['5%', 'number'],
+    ]);
+    expect(kinds('0mA..50mA').map((t) => t[0])).toEqual(['0mA', '..', '50mA']);
+    expect(kinds('1..5')[0]).toEqual(['1', 'number']);
+  });
+
+  it('reads connections and member paths', () => {
+    expect(kinds('.a.pos ~> .r1 ~> .a.neg').filter((t) => t[1] === 'operator')).toEqual([
+      ['~>', 'operator'],
+      ['~>', 'operator'],
+    ]);
+    expect(kinds('stage.vout').map((t) => t[1])).toEqual(['name', 'punct', 'member']);
+  });
+
+  it('reads comments and doc comments to the end of the line', () => {
+    expect(kinds('// plain')).toEqual([['// plain', 'comment']]);
+    expect(kinds('/// about the next')).toEqual([['/// about the next', 'doc']]);
+    expect(kinds('//! about the file')).toEqual([['//! about the file', 'doc']]);
+    expect(kinds('//// four is plain')[0][1]).toBe('comment');
+    expect(kinds('.a: R // tail').at(-1)).toEqual(['// tail', 'comment']);
+  });
+
+  it('reads imports, keywords and strings', () => {
+    const k = kinds('import std::parts::passive::{Resistor, Led}');
+    expect(k[0]).toEqual(['import', 'keyword']);
+    expect(k.filter((t) => t[1] === 'namespace').map((t) => t[0])).toEqual(['std', 'parts', 'passive']);
+    expect(kinds('board Led {')[0]).toEqual(['board', 'keyword']);
+    expect(kinds('.pos.net &= "VIN"').at(-1)).toEqual(['"VIN"', 'string']);
+  });
+
+  it('marks an unclosed string and a block comment as errors, as the compiler does', () => {
+    expect(kinds('"open').at(-1)?.[1]).toBe('error');
+    expect(kinds('/* no */')[0]).toEqual(['/*', 'error']);
+  });
+
+  it('reads a hex number and a quoted name', () => {
+    expect(kinds('0x1A')).toEqual([['0x1A', 'number']]);
+    expect(kinds(".'5': Pin")[1]).toEqual(["'5'", 'quoted']);
+  });
+});

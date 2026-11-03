@@ -1,0 +1,43 @@
+{
+ "code": 200,
+ "msg": null,
+ "result": {
+  "productCode": "C25104",
+  "productModel": "0402WGF3300TCE",
+  "brandNameEn": "UNI-ROYAL",
+  "encapStandard": "0402",
+  "stockNumber": 1085700,
+  "productPriceList": [
+   {
+    "ladder": 100,
+    "productPrice": "0.0011",
+    "usdPrice": 0.0011
+   },
+   {
+    "ladder": 1000,
+    "productPrice": "0.0009",
+    "usdPrice": 0.0009
+   },
+   {
+    "ladder": 3000,
+    "productPrice": "0.0008",
+    "usdPrice": 0.0008
+   },
+   {
+    "ladder": 10000,
+    "productPrice": "0.0007",
+    "usdPrice": 0.0007
+   },
+   {
+    "ladder": 50000,
+    "productPrice": "0.0005",
+    "usdPrice": 0.0005
+   }
+  ],
+  "catalogName": "Chip Resistor - Surface Mount",
+  "productNameEn": "RES 330Ω ±1% 62.5mW 0402",
+  "minBuyNumber": 100,
+  "currencyType": "USD"
+ },
+ "ok": true
+}

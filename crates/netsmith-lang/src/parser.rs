@@ -1,0 +1,895 @@
+//! Recursive-descent parser. Statements end at a newline or `;`. Newlines are
+//! ignored inside parentheses and after an infix or connection operator, so long
+//! expressions and chains can wrap.
+//!
+//! The parser never looks at whitespace: the lexer already decided which dots are
+//! member access and which start a name.
+
+use crate::ast::*;
+use crate::error::{ParseError, Span};
+use crate::lexer::{Tok, Token, lex};
+
+pub fn parse(src: &str) -> Result<File, ParseError> {
+    Parser {
+        toks: lex(src)?,
+        pos: 0,
+        depth: 0,
+        last_end: 0,
+    }
+    .file()
+}
+
+/// Parse `src` as one expression and nothing else: `10kohm +/- 1%`, `1.8V..5.5V`. A
+/// catalog cell is written this way (ADR 0022). The spans in an error are into `src`.
+pub fn parse_expr(src: &str) -> Result<Expr, ParseError> {
+    let mut parser = Parser {
+        toks: lex(src)?,
+        pos: 0,
+        depth: 0,
+        last_end: 0,
+    };
+    let e = parser.expr()?;
+    if parser.at(&Tok::Eof) {
+        Ok(e)
+    } else {
+        Err(unexpected(parser.peek(), "the end of the value"))
+    }
+}
+
+struct Parser {
+    toks: Vec<Token>,
+    pos: usize,
+    /// Open parentheses; newlines are not significant while this is above zero.
+    depth: usize,
+    last_end: usize,
+}
+
+type Res<T> = Result<T, ParseError>;
+
+/// `///` lines collected before an item, with the span of the first for errors.
+struct Docs {
+    lines: Vec<String>,
+    first: Option<Span>,
+}
+
+impl Docs {
+    fn is_empty(&self) -> bool {
+        self.lines.is_empty()
+    }
+}
+
+impl Parser {
+    fn peek(&mut self) -> &Token {
+        if self.depth > 0 {
+            while self.toks[self.pos].tok == Tok::Newline {
+                self.pos += 1;
+            }
+        }
+        &self.toks[self.pos]
+    }
+
+    fn bump(&mut self) -> Token {
+        self.peek();
+        let t = self.toks[self.pos].clone();
+        if t.tok != Tok::Eof {
+            self.pos += 1;
+        }
+        self.last_end = t.span.end;
+        t
+    }
+
+    fn at(&mut self, tok: &Tok) -> bool {
+        &self.peek().tok == tok
+    }
+
+    fn eat(&mut self, tok: &Tok) -> bool {
+        let found = self.at(tok);
+        if found {
+            self.bump();
+        }
+        found
+    }
+
+    fn expect(&mut self, tok: &Tok, what: &str) -> Res<Token> {
+        if self.at(tok) {
+            Ok(self.bump())
+        } else {
+            Err(unexpected(self.peek(), what))
+        }
+    }
+
+    fn skip_newlines(&mut self) {
+        while self.peek().tok == Tok::Newline {
+            self.pos += 1;
+        }
+    }
+
+    fn skip_separators(&mut self) {
+        while matches!(self.peek().tok, Tok::Newline | Tok::Semi) {
+            self.pos += 1;
+        }
+    }
+
+    fn end_statement(&mut self, in_block: bool) -> Res<()> {
+        match self.peek().tok {
+            Tok::Newline | Tok::Semi => {
+                self.bump();
+                Ok(())
+            }
+            Tok::Eof => Ok(()),
+            Tok::RBrace if in_block => Ok(()),
+            _ => Err(unexpected(self.peek(), "end of line or `;`")),
+        }
+    }
+
+    fn span_from(&self, start: usize) -> Span {
+        Span::new(start, self.last_end)
+    }
+
+    fn ident(&mut self, what: &str) -> Res<Ident> {
+        let t = self.peek().clone();
+        match t.tok {
+            Tok::Ident(name) => {
+                self.bump();
+                Ok(Ident {
+                    name,
+                    quoted: false,
+                    span: t.span,
+                })
+            }
+            Tok::QuotedIdent(name) => {
+                self.bump();
+                Ok(Ident {
+                    name,
+                    quoted: true,
+                    span: t.span,
+                })
+            }
+            _ => Err(unexpected(&t, what)),
+        }
+    }
+
+    /// Consecutive `//!` lines.
+    fn inner_docs(&mut self) -> Vec<String> {
+        let mut lines = Vec::new();
+        loop {
+            self.skip_separators();
+            match self.peek().tok.clone() {
+                Tok::DocInner(text) => {
+                    self.bump();
+                    lines.push(text);
+                }
+                _ => return lines,
+            }
+        }
+    }
+
+    /// Consecutive `///` lines.
+    fn outer_docs(&mut self) -> Docs {
+        let mut docs = Docs {
+            lines: Vec::new(),
+            first: None,
+        };
+        loop {
+            self.skip_separators();
+            let t = self.peek().clone();
+            match t.tok {
+                Tok::DocOuter(text) => {
+                    self.bump();
+                    docs.first.get_or_insert(t.span);
+                    docs.lines.push(text);
+                }
+                _ => return docs,
+            }
+        }
+    }
+
+    fn misplaced_inner_doc(&mut self) -> Option<ParseError> {
+        let t = self.peek().clone();
+        matches!(t.tok, Tok::DocInner(_)).then(|| {
+            ParseError::new(
+                t.span,
+                "inner doc comments (`//!`) belong at the very start of a file or definition",
+            )
+        })
+    }
+
+    fn file(mut self) -> Res<File> {
+        let mut file = File {
+            inner_docs: self.inner_docs(),
+            imports: Vec::new(),
+            definitions: Vec::new(),
+        };
+        loop {
+            self.skip_separators();
+            if let Some(e) = self.misplaced_inner_doc() {
+                return Err(e);
+            }
+            let docs = self.outer_docs();
+            let t = self.peek().clone();
+            match &t.tok {
+                Tok::Eof if docs.is_empty() => return Ok(file),
+                Tok::Ident(k) if k == "import" && docs.is_empty() => {
+                    file.imports.push(self.import()?)
+                }
+                Tok::Ident(k) if DefKind::from_keyword(k).is_some() => {
+                    file.definitions.push(self.definition(docs)?)
+                }
+                // Docs only get the blame when the next thing really is not a definition.
+                Tok::Eof | Tok::Ident(_) if !docs.is_empty() && is_import_or_end(&t.tok) => {
+                    return Err(ParseError::new(
+                        docs.first.expect("docs is not empty"),
+                        "this doc comment is not followed by a definition",
+                    ));
+                }
+                _ => {
+                    return Err(unexpected(
+                        &t,
+                        "`import`, `board`, `system`, `panel`, `part`, `interface` or `module`",
+                    ));
+                }
+            }
+            self.end_statement(false)?;
+        }
+    }
+
+    fn import(&mut self) -> Res<Import> {
+        let start = self.bump().span.start;
+        let mut path = vec![self.ident("a module name after `import`")?];
+        let mut names = None;
+        while self.eat(&Tok::ColonColon) {
+            if self.eat(&Tok::LBrace) {
+                names = Some(self.name_list()?);
+                break;
+            }
+            path.push(self.ident("a name after `::`")?);
+        }
+        Ok(Import {
+            path,
+            names,
+            span: self.span_from(start),
+        })
+    }
+
+    fn name_list(&mut self) -> Res<Vec<Ident>> {
+        let mut names = Vec::new();
+        loop {
+            self.skip_newlines();
+            if self.eat(&Tok::RBrace) {
+                return Ok(names);
+            }
+            names.push(self.ident("a name to import")?);
+            self.skip_newlines();
+            if !self.eat(&Tok::Comma) {
+                self.expect(&Tok::RBrace, "`,` or `}`")?;
+                return Ok(names);
+            }
+        }
+    }
+
+    fn definition(&mut self, docs: Docs) -> Res<Definition> {
+        let keyword = self.bump();
+        let Tok::Ident(word) = &keyword.tok else {
+            unreachable!("caller checked the keyword")
+        };
+        let kind = DefKind::from_keyword(word).expect("caller checked the keyword");
+        let name = self.ident(&format!("a name for the {word}"))?;
+        let open = self.expect(&Tok::LBrace, &format!("`{{` after the {word} name"))?;
+        let inner_docs = self.inner_docs();
+        let items = self.block(open.span)?;
+        Ok(Definition {
+            docs: docs.lines,
+            inner_docs,
+            kind,
+            name,
+            items,
+            span: self.span_from(keyword.span.start),
+        })
+    }
+
+    /// Items up to and including the closing `}`.
+    fn block(&mut self, open: Span) -> Res<Vec<Item>> {
+        let mut items = Vec::new();
+        loop {
+            self.skip_separators();
+            if let Some(e) = self.misplaced_inner_doc() {
+                return Err(e);
+            }
+            let docs = self.outer_docs();
+            match self.peek().tok {
+                Tok::RBrace | Tok::Eof if !docs.is_empty() => {
+                    return Err(ParseError::new(
+                        docs.first.expect("docs is not empty"),
+                        "this doc comment is not followed by a declaration",
+                    ));
+                }
+                Tok::RBrace => {
+                    self.bump();
+                    return Ok(items);
+                }
+                Tok::Eof => return Err(ParseError::new(open, "this `{` is never closed")),
+                _ => {}
+            }
+            items.push(self.item(docs)?);
+            self.end_statement(true)?;
+        }
+    }
+
+    /// The token after the next one, without consuming anything.
+    fn peek_second(&self) -> &Tok {
+        &self.toks[(self.pos + 1).min(self.toks.len() - 1)].tok
+    }
+
+    fn item(&mut self, docs: Docs) -> Res<Item> {
+        let start = self.peek().span.start;
+        let doc_span = docs.first;
+        let docs = docs.lines;
+        let only_decls = |item: Item| -> Res<Item> {
+            match (doc_span, &item) {
+                (
+                    Some(at),
+                    Item::Bridge(_)
+                    | Item::Catalog(_)
+                    | Item::Pins(_)
+                    | Item::Tie(_)
+                    | Item::Constraint(_)
+                    | Item::Connect(_),
+                ) => Err(ParseError::new(
+                    at,
+                    "doc comments can only be attached to declarations",
+                )),
+                _ => Ok(item),
+            }
+        };
+
+        // `bridge`, `catalog`, `tie` and `pins` are keywords at the start of a statement.
+        if let Tok::Ident(word) = self.peek().tok.clone() {
+            let starts_name = matches!(
+                self.peek_second(),
+                Tok::LeadingDot | Tok::Ident(_) | Tok::QuotedIdent(_)
+            );
+            match word.as_str() {
+                "bridge" if starts_name => return only_decls(self.bridge(start)?),
+                "catalog" if starts_name => return only_decls(self.catalog(start)?),
+                "tie" if starts_name => return only_decls(self.tie(start)?),
+                "pins" if matches!(self.peek_second(), Tok::LBrace | Tok::Str(_)) => {
+                    return only_decls(self.pins(start)?);
+                }
+                _ => {}
+            }
+        }
+        let lhs = self.expr()?;
+        let t = self.peek().clone();
+        match t.tok {
+            Tok::Colon => {
+                let name = as_path(lhs, "a name before `:`")?;
+                self.bump();
+                let ty = self.type_path()?;
+                let body = if self.at(&Tok::LBrace) {
+                    let open = self.bump();
+                    Some(self.block(open.span)?)
+                } else {
+                    None
+                };
+                Ok(Item::Decl(Decl {
+                    docs,
+                    name,
+                    ty,
+                    body,
+                    span: self.span_from(start),
+                }))
+            }
+            Tok::Eq => Err(ParseError::new(
+                t.span,
+                "there is no `=`: use `&=` to narrow a value, or `==` for an equation that must hold",
+            )),
+            Tok::AmpEq | Tok::EqEq | Tok::GtEq | Tok::LtEq => {
+                let op = match t.tok {
+                    Tok::AmpEq => CmpOp::Narrow,
+                    Tok::EqEq => CmpOp::EqEq,
+                    Tok::GtEq => CmpOp::Ge,
+                    _ => CmpOp::Le,
+                };
+                self.bump();
+                self.skip_newlines();
+                let rhs = self.expr()?;
+                only_decls(Item::Constraint(Constraint {
+                    lhs,
+                    op,
+                    rhs,
+                    span: self.span_from(start),
+                }))
+            }
+            Tok::Tilde | Tok::TildeArrow => {
+                let first = as_path(lhs, "a name before `~`")?;
+                let mut rest = Vec::new();
+                loop {
+                    let op = match self.peek().tok {
+                        Tok::Tilde => ConnectOp::Same,
+                        Tok::TildeArrow => ConnectOp::Series,
+                        _ => break,
+                    };
+                    self.bump();
+                    self.skip_newlines();
+                    rest.push((op, self.path()?));
+                }
+                only_decls(Item::Connect(Connect {
+                    first,
+                    rest,
+                    span: self.span_from(start),
+                }))
+            }
+            _ => Err(unexpected(&t, "`:`, `&=`, `==`, `>=`, `<=`, `~` or `~>`")),
+        }
+    }
+
+    fn bridge(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let from = self.path()?;
+        self.expect(&Tok::TildeArrow, "`~>` between the two terminals")?;
+        let to = self.path()?;
+        Ok(Item::Bridge(Bridge {
+            from,
+            to,
+            span: self.span_from(start),
+        }))
+    }
+
+    fn tie(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let a = self.path()?;
+        self.expect(&Tok::Tilde, "`~` between the two pins of a `tie`")?;
+        self.skip_newlines();
+        let b = self.path()?;
+        if self.at(&Tok::Tilde) || self.at(&Tok::TildeArrow) {
+            return Err(ParseError::new(
+                self.peek().span,
+                "a `tie` joins exactly two pins: `tie .a ~ .b`",
+            ));
+        }
+        Ok(Item::Tie(Tie {
+            a,
+            b,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// `pins "PACKAGE" { rows }` or `pins { rows }`.
+    fn pins(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let package = match self.peek().tok.clone() {
+            Tok::Str(name) => {
+                let span = self.bump().span;
+                if name.is_empty() {
+                    return Err(ParseError::new(span, "a package name cannot be empty"));
+                }
+                Some((name, span))
+            }
+            _ => None,
+        };
+        let what = if package.is_some() {
+            "`{` after the package name"
+        } else {
+            "`{` or a package name in quotes after `pins`"
+        };
+        let open = self.expect(&Tok::LBrace, what)?;
+        let mut rows = Vec::new();
+        loop {
+            self.skip_separators();
+            let t = self.peek().clone();
+            match t.tok {
+                Tok::DocOuter(_) | Tok::DocInner(_) => {
+                    return Err(ParseError::new(
+                        t.span,
+                        "a pin table takes `//` notes, not doc comments",
+                    ));
+                }
+                Tok::RBrace => {
+                    self.bump();
+                    break;
+                }
+                Tok::Eof => return Err(ParseError::new(open.span, "this `{` is never closed")),
+                _ => {
+                    rows.push(self.pin_row()?);
+                    self.end_statement(true)?;
+                }
+            }
+        }
+        Ok(Item::Pins(Pins {
+            package,
+            rows,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// `.pin kind "NAME" "pad" ["pad" ...] [fn FUNCTION ...] [optional | required]`
+    fn pin_row(&mut self) -> Res<PinRow> {
+        let start = self.peek().span.start;
+        if !self.at(&Tok::LeadingDot) {
+            let t = self.peek().clone();
+            return Err(unexpected(
+                &t,
+                "a pin such as `.sense` at the start of a row",
+            ));
+        }
+        let pin = self.path()?;
+        let pin_text = pin.to_source();
+
+        let t = self.peek().clone();
+        let kind = match &t.tok {
+            Tok::Ident(word) => PinKind::from_word(word).ok_or_else(|| {
+                ParseError::new(
+                    t.span,
+                    format!("unknown pin kind `{word}`; the kinds are {}", kind_list()),
+                )
+            })?,
+            _ => {
+                return Err(unexpected(
+                    &t,
+                    &format!("a pin kind ({}) after `{pin_text}`", kind_list()),
+                ));
+            }
+        };
+        self.bump();
+
+        let t = self.peek().clone();
+        let (name, name_span) = match &t.tok {
+            Tok::Str(name) => (name.clone(), t.span),
+            _ => {
+                return Err(unexpected(
+                    &t,
+                    &format!(
+                        "the datasheet name of `{pin_text}` as a quoted string such as \"SENSE\""
+                    ),
+                ));
+            }
+        };
+        self.bump();
+
+        let mut pads: Vec<Pad> = Vec::new();
+        loop {
+            let t = self.peek().clone();
+            match &t.tok {
+                Tok::Str(text) => {
+                    self.bump();
+                    pads.push(Pad {
+                        text: text.clone(),
+                        span: t.span,
+                    });
+                }
+                Tok::Number(n) => {
+                    return Err(ParseError::new(
+                        t.span,
+                        format!(
+                            "a pad is text: write \"{}\" with quotes, not `{}`",
+                            n.text, n.text
+                        ),
+                    ));
+                }
+                _ if pads.is_empty() => {
+                    return Err(unexpected(
+                        &t,
+                        &format!("a pad of `{pin_text}` as a quoted string such as \"3\""),
+                    ));
+                }
+                _ => break,
+            }
+        }
+
+        let mut functions = Vec::new();
+        if matches!(&self.peek().tok, Tok::Ident(w) if w == "fn") {
+            self.bump();
+            loop {
+                let t = self.peek().clone();
+                match &t.tok {
+                    Tok::Ident(w) if w != "optional" && w != "required" => {
+                        let name = self.ident("a function name")?;
+                        let kind = self.function_kind(&name)?;
+                        functions.push(PinFunction { name, kind });
+                    }
+                    Tok::Str(_) | Tok::Number(_) | Tok::QuotedIdent(_) => {
+                        return Err(ParseError::new(
+                            t.span,
+                            "a function is a plain name such as UART1_TX, without quotes",
+                        ));
+                    }
+                    _ => break,
+                }
+            }
+            if functions.is_empty() {
+                return Err(unexpected(
+                    &self.peek().clone(),
+                    "a function name after `fn`, such as `fn GPIO UART1_TX`",
+                ));
+            }
+        }
+
+        let t = self.peek().clone();
+        let requirement = match &t.tok {
+            Tok::Ident(w) if w == "optional" => Some((Requirement::Optional, t.span)),
+            Tok::Ident(w) if w == "required" => Some((Requirement::Required, t.span)),
+            _ => None,
+        };
+        if requirement.is_some() {
+            self.bump();
+        }
+
+        Ok(PinRow {
+            pin,
+            kind,
+            name,
+            name_span,
+            pads,
+            functions,
+            requirement,
+            span: self.span_from(start),
+        })
+    }
+
+    /// The kind after a function's name, `UART1_TX:output`, if it has one. The colon touches
+    /// both words, so that a function's kind is not mistaken for a later statement.
+    fn function_kind(&mut self, name: &Ident) -> Res<Option<(PinKind, Span)>> {
+        let colon = self.peek().clone();
+        if colon.tok != Tok::Colon {
+            return Ok(None);
+        }
+        if colon.span.start != name.span.end {
+            return Err(ParseError::new(
+                colon.span,
+                format!(
+                    "write the kind of function `{}` against its name, as `{}:output` (no spaces)",
+                    name.name, name.name
+                ),
+            ));
+        }
+        self.bump();
+        let t = self.peek().clone();
+        let kind = match &t.tok {
+            Tok::Ident(word) if t.span.start == colon.span.end => PinKind::from_word(word)
+                .ok_or_else(|| {
+                    ParseError::new(
+                        t.span,
+                        format!("unknown pin kind `{word}`; the kinds are {}", kind_list()),
+                    )
+                })?,
+            _ => {
+                return Err(unexpected(
+                    &t,
+                    &format!("a pin kind ({}) right after `{}:`", kind_list(), name.name),
+                ));
+            }
+        };
+        self.bump();
+        Ok(Some((kind, t.span)))
+    }
+
+    fn catalog(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let name = self.ident("a catalog name")?;
+        let key = if matches!(&self.peek().tok, Tok::Ident(w) if w == "by") {
+            self.bump();
+            Some(self.path()?)
+        } else {
+            None
+        };
+        self.expect(
+            &Tok::LBrace,
+            if key.is_some() {
+                "`{` after the key of the catalog"
+            } else {
+                "`{` or `by` after the catalog name"
+            },
+        )?;
+        let mut fields = Vec::new();
+        loop {
+            self.skip_newlines();
+            if self.eat(&Tok::RBrace) {
+                break;
+            }
+            fields.push(self.path()?);
+            self.skip_newlines();
+            if !self.eat(&Tok::Comma) {
+                self.expect(&Tok::RBrace, "`,` or `}`")?;
+                break;
+            }
+        }
+        Ok(Item::Catalog(Catalog {
+            name,
+            key,
+            fields,
+            span: self.span_from(start),
+        }))
+    }
+
+    fn type_path(&mut self) -> Res<TypePath> {
+        let mut segments = vec![self.ident("a type name")?];
+        while self.eat(&Tok::ColonColon) {
+            segments.push(self.ident("a name after `::`")?);
+        }
+        Ok(TypePath { segments })
+    }
+
+    fn path(&mut self) -> Res<Path> {
+        let start = self.peek().span.start;
+        let leading_dot = self.eat(&Tok::LeadingDot);
+        let mut segments = vec![self.ident("a name")?];
+        while self.eat(&Tok::Dot) {
+            segments.push(self.ident("a name after `.`")?);
+        }
+        Ok(Path {
+            leading_dot,
+            segments,
+            span: self.span_from(start),
+        })
+    }
+
+    // expr := range
+    // range := tol ("..", tol)?       tol := add ("+/-" add)?
+    // add := mul (("+" | "-") mul)*   mul := unary (("*" | "/") unary)*
+    fn expr(&mut self) -> Res<Expr> {
+        let lo = self.tolerance()?;
+        if self.eat(&Tok::DotDot) {
+            self.skip_newlines();
+            let hi = self.tolerance()?;
+            let span = Span::new(lo.span().start, hi.span().end);
+            return Ok(Expr::Range {
+                lo: Box::new(lo),
+                hi: Box::new(hi),
+                span,
+            });
+        }
+        Ok(lo)
+    }
+
+    fn tolerance(&mut self) -> Res<Expr> {
+        let center = self.additive()?;
+        if self.eat(&Tok::PlusMinus) {
+            self.skip_newlines();
+            let tol = self.additive()?;
+            let span = Span::new(center.span().start, tol.span().end);
+            return Ok(Expr::Tolerance {
+                center: Box::new(center),
+                tol: Box::new(tol),
+                span,
+            });
+        }
+        Ok(center)
+    }
+
+    fn additive(&mut self) -> Res<Expr> {
+        let mut lhs = self.multiplicative()?;
+        loop {
+            let op = match self.peek().tok {
+                Tok::Plus => BinOp::Add,
+                Tok::Minus => BinOp::Sub,
+                _ => return Ok(lhs),
+            };
+            self.bump();
+            self.skip_newlines();
+            let rhs = self.multiplicative()?;
+            lhs = binary(op, lhs, rhs);
+        }
+    }
+
+    fn multiplicative(&mut self) -> Res<Expr> {
+        let mut lhs = self.unary()?;
+        loop {
+            let op = match self.peek().tok {
+                Tok::Star => BinOp::Mul,
+                Tok::Slash => BinOp::Div,
+                _ => return Ok(lhs),
+            };
+            self.bump();
+            self.skip_newlines();
+            let rhs = self.unary()?;
+            lhs = binary(op, lhs, rhs);
+        }
+    }
+
+    fn unary(&mut self) -> Res<Expr> {
+        if self.at(&Tok::Minus) {
+            let start = self.bump().span.start;
+            let inner = self.unary()?;
+            return Ok(Expr::Neg(Box::new(inner), self.span_from(start)));
+        }
+        self.primary()
+    }
+
+    fn primary(&mut self) -> Res<Expr> {
+        let t = self.peek().clone();
+        match t.tok {
+            Tok::Number(n) => {
+                self.bump();
+                Ok(Expr::Number(n, t.span))
+            }
+            Tok::Str(s) => {
+                self.bump();
+                Ok(Expr::Str(s, t.span))
+            }
+            Tok::LeadingDot | Tok::Ident(_) | Tok::QuotedIdent(_) => Ok(Expr::Path(self.path()?)),
+            Tok::LParen => {
+                self.bump();
+                self.depth += 1;
+                let inner = self.expr()?;
+                let close = self.expect(&Tok::RParen, "`)`")?;
+                self.depth -= 1;
+                Ok(Expr::Paren(
+                    Box::new(inner),
+                    Span::new(t.span.start, close.span.end),
+                ))
+            }
+            _ => Err(unexpected(&t, "a value")),
+        }
+    }
+}
+
+/// `power, input, output, bidirectional, passive or no_connect`
+fn kind_list() -> String {
+    let words: Vec<&str> = PinKind::ALL.iter().map(|k| k.word()).collect();
+    let (last, init) = words.split_last().expect("there are kinds");
+    format!("{} and {last}", init.join(", "))
+}
+
+fn binary(op: BinOp, lhs: Expr, rhs: Expr) -> Expr {
+    let span = Span::new(lhs.span().start, rhs.span().end);
+    Expr::Binary {
+        op,
+        lhs: Box::new(lhs),
+        rhs: Box::new(rhs),
+        span,
+    }
+}
+
+fn as_path(expr: Expr, what: &str) -> Res<Path> {
+    match expr {
+        Expr::Path(p) => Ok(p),
+        other => Err(ParseError::new(other.span(), format!("expected {what}"))),
+    }
+}
+
+fn unexpected(found: &Token, what: &str) -> ParseError {
+    ParseError::new(
+        found.span,
+        format!("expected {what}, found {}", describe(&found.tok)),
+    )
+}
+
+fn describe(tok: &Tok) -> String {
+    let symbol = |s: &str| format!("`{s}`");
+    match tok {
+        Tok::Ident(s) => symbol(s),
+        Tok::QuotedIdent(s) => format!("`'{s}'`"),
+        Tok::Number(n) => symbol(&n.text),
+        Tok::Str(_) => "a string".into(),
+        Tok::LBrace => symbol("{"),
+        Tok::RBrace => symbol("}"),
+        Tok::LParen => symbol("("),
+        Tok::RParen => symbol(")"),
+        Tok::Comma => symbol(","),
+        Tok::Semi => symbol(";"),
+        Tok::Colon => symbol(":"),
+        Tok::ColonColon => symbol("::"),
+        Tok::Dot | Tok::LeadingDot => symbol("."),
+        Tok::DotDot => symbol(".."),
+        Tok::Tilde => symbol("~"),
+        Tok::TildeArrow => symbol("~>"),
+        Tok::AmpEq => symbol("&="),
+        Tok::Eq => symbol("="),
+        Tok::EqEq => symbol("=="),
+        Tok::GtEq => symbol(">="),
+        Tok::LtEq => symbol("<="),
+        Tok::Plus => symbol("+"),
+        Tok::Minus => symbol("-"),
+        Tok::Star => symbol("*"),
+        Tok::Slash => symbol("/"),
+        Tok::PlusMinus => symbol("+/-"),
+        Tok::DocOuter(_) => "a doc comment".into(),
+        Tok::DocInner(_) => "an inner doc comment".into(),
+        Tok::Newline => "end of line".into(),
+        Tok::Eof => "end of file".into(),
+    }
+}
+
+fn is_import_or_end(tok: &Tok) -> bool {
+    matches!(tok, Tok::Eof) || matches!(tok, Tok::Ident(k) if k == "import")
+}

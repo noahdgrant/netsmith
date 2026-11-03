@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# The lifecycle for checking the netsmith editor in a real browser; see
+# .agents/skills/netsmith-dev-verify-editor/SKILL.md. Needs Node 20 or newer: it uses the
+# one on PATH, else the newest in ~/.nvm. The driver is in scripts/editor-verify-js.
+set -eu
+here="$(cd "$(dirname "$0")" && pwd)"
+node_ok() { command -v node >/dev/null 2>&1 && [ "$(node -p 'process.versions.node.split(".")[0]')" -ge 20 ]; }
+if ! node_ok; then
+    nvm_node="$(ls -d "$HOME"/.nvm/versions/node/v*/bin 2>/dev/null | sort -V | tail -n1 || true)"
+    if [ -n "$nvm_node" ]; then PATH="$nvm_node:$PATH"; export PATH; fi
+fi
+if ! node_ok; then
+    echo "editor-verify needs Node 20 or newer (try: source ~/.nvm/nvm.sh && nvm use 22)" >&2
+    exit 2
+fi
+# `doctor` reports a missing Playwright; the other commands install it.
+if [ ! -d "$here/editor-verify-js/node_modules" ] && [ "${1:-}" != "doctor" ]; then
+    (cd "$here/editor-verify-js" && npm ci --no-audit --no-fund >&2)
+fi
+exec node "$here/editor-verify-js/cli.mjs" "$@"

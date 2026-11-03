@@ -1,0 +1,55 @@
+//! A small status-light board.
+
+import std::parts::connector::Header1x2
+import std::parts::passive::{Resistor, Led, Capacitor}
+import std::sources::Rail
+import std::logic::Logic
+import std::mfg::jlcpcb::TwoLayer
+
+/// A reusable status light indicator with a logic input and local power filtering.
+module StatusIndicator {
+    .power: Rail
+    .enable: Logic
+    .enable.reference ~ .power
+
+    .current_limit: Resistor {
+        .resistance &= 1kohm +/- 1%
+    }
+    .led: Led {
+        .color &= "GREEN"
+        // It must light from a 3.3 V rail. An emerald green is up to 3.4 V, which could not.
+        .forward_voltage &= 1.8V..2.5V
+    }
+    .bypass: Capacitor {
+        .capacitance &= 100nF +/- 20%
+    }
+
+    .enable.line ~> .current_limit ~> .led ~> .power.neg
+    .power.pos   ~> .bypass        ~> .power.neg
+}
+
+board IndicatorExample {
+    /// Made by JLCPCB's two-layer process, on a board 1.6 mm thick.
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+
+    /// The board runs from a 3.3 V rail and exposes one logic input.
+    .power_3v3: Rail {
+        .voltage &= 3.3V +/- 5%
+    }
+    .status_enable: Logic
+    .status_indicator:  StatusIndicator
+
+    /// The rail comes in through one header, and the enable signal through another.
+    .power_in: Header1x2
+    .enable_in: Header1x2
+
+    .power_3v3 ~ .status_enable.reference
+    .power_3v3 ~ .status_indicator.power
+    .status_enable ~ .status_indicator.enable
+    .power_3v3.pos ~ .power_in.p1
+    .power_3v3.neg ~ .power_in.p2
+    .status_enable.line ~ .enable_in.p1
+    .power_3v3.neg ~ .enable_in.p2
+}

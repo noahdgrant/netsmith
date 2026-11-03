@@ -1,0 +1,5 @@
+version = 1
+
+# Where the antenna keepout is, in mm from the outline's top left corner.
+[OutlineAndPours.keepouts.antenna]
+at = [18.0, 2.0]

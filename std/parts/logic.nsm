@@ -1,0 +1,64 @@
+//! Logic ICs, with the logic levels and absolute maximums of their datasheets (ADR 0046).
+//!
+//! A part here states the numbers of one datasheet and says which table and row each came
+//! from. Where a level depends on the supply, the part is restricted to the supply range of
+//! the row it states, and a board outside that range is refused.
+
+import std::logic::Logic
+import std::sources::Rail
+
+/// A single inverter, TI's SN74LVC1G04 (datasheet SCES214AF, April 1999, revised October
+/// 2025), in the 5-pin SOT-23 package (DBV). The part is modelled for a supply of 3 V to
+/// 3.6 V, the row of the datasheet's table 5.3 (Recommended Operating Conditions) that
+/// gives its input thresholds; the datasheet gives others for other supplies, which are not
+/// stated here, and a supply outside 3 V to 3.6 V is refused.
+///
+/// - Input `a`: `vih` is 2 V and `vil` is 0.8 V (table 5.3, VCC = 3 V to 3.6 V).
+/// - Output `y`: `voh` is VCC - 0.1 V and `vol` is 0.1 V, at the 100 uA load of the first
+///   rows of table 5.5 (IOH = -100 uA, IOL = 100 uA, VCC = 1.65 V to 5.5 V, the same over
+///   -40 C to 85 C and -40 C to 125 C). They are the levels at a light load such as the
+///   input of a CMOS part, and are not the levels at the larger currents of the other
+///   rows (2.4 V at -16 mA, 2.3 V at -24 mA at VCC = 3 V): a load that draws more than
+///   100 uA is not covered.
+/// - Absolute maximums (table 5.1): the input `a` is -0.5 V to 6.5 V (VI); the output `y`
+///   is -0.5 V to VCC + 0.5 V (VO, in the high or low state).
+///
+/// The supply current is not stated: the datasheet gives only the static 10 uA maximum
+/// (table 5.5, ICC) and the dynamic current depends on the switching, so a board states
+/// `.vcc.current` for its use.
+part Sn74lvc1g04 {
+    .designator &= "U"
+
+    .vcc: Rail
+    .a: Logic
+    .y: Logic
+    .a.reference ~ .vcc
+    .y.reference ~ .vcc
+
+    // Table 5.3, the rows of VIH and VIL for VCC = 3 V to 3.6 V.
+    .vcc.voltage >= 3V
+    .vcc.voltage <= 3.6V
+    .a.vih &= 2V
+    .a.vil &= 0.8V
+
+    // Table 5.5, IOH = -100 uA and IOL = 100 uA.
+    .y.voh &= .vcc.voltage - 0.1V
+    .y.vol &= 0.1V
+
+    // Table 5.1.
+    .a.line.abs_min &= -0.5V
+    .a.line.abs_max &= 6.5V
+    .y.line.abs_min &= -0.5V
+    .y.line.abs_max &= .vcc.voltage + 0.5V
+
+    // Section 4, Pin Functions: pad 1 NC, 2 A, 3 GND, 4 Y, 5 VCC (DBV, DCK and DRL).
+    pins "SOT-23-5" {
+        .nc       no_connect "NC"  "1"
+        .vcc.neg  power      "GND" "3"
+        .vcc.pos  power      "VCC" "5"
+        .a.line   input      "A"   "2"
+        .y.line   output     "Y"   "4"
+    }
+
+    .package: Package
+}

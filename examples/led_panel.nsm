@@ -1,0 +1,57 @@
+//! One LED board, ten of them on a panel: three across and two down, cut apart by V-cuts,
+//! with 5 mm rails that carry the tooling holes and fiducials JLCPCB's assembly needs.
+//!
+//! The board is an ordinary stand-alone `board`; the `panel` only repeats it. A V-cut runs
+//! straight across the whole panel, so the board is a rectangle with square corners, and its
+//! copper keeps 0.4 mm from the edge, the least JLCPCB allows next to a V-cut.
+
+import std::parts::connector::Header1x2
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+import std::mfg::jlcpcb::{TwoLayer, VCutPanel}
+import std::pcb::Outline
+
+/// A status LED on a 40 x 30 mm board.
+board LedTile {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+        // Copper stays 0.4 mm from the edge, as a V-cut needs.
+        .min_edge_clearance &= 0.4mm..1m
+    }
+    .outline: Outline {
+        .width &= 40mm
+        .height &= 30mm
+        .corner_radius &= 0mm
+    }
+
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+
+    .led: Led {
+        .current &= 5mA..15mA
+    }
+
+    .r1: Resistor {}
+
+    /// The supply comes in through this header.
+    .power_in: Header1x2
+    .supply.pos ~ .power_in.p1
+    .supply.neg ~ .power_in.p2
+
+    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
+
+    .supply.pos ~> .r1 ~> .led ~> .supply.neg
+}
+
+/// Six `LedTile` boards, three across and two down, with 5 mm rails.
+panel LedPanel {
+    .cell: LedTile
+    .fab: VCutPanel {
+        .columns &= 3
+        .rows &= 2
+        .rail &= 5mm
+    }
+}

@@ -1,0 +1,314 @@
+//! Gull-wing small-outline packages: SOIC, SSOP, TSSOP and MSOP, two columns of leads.
+//!
+//! The lead dimensions are the JEDEC outlines (MS-012 and MS-013 for SOIC, MO-150 for
+//! SSOP, MO-153 for TSSOP, MO-187 for MSOP) as the manufacturers' drawings and KiCad's
+//! footprint scripts record them; the pads follow IPC-7351B at nominal density ([`ipc`]).
+
+use super::ipc::{self, GULL_WING, GULL_WING_FINE, Inside, Size};
+use super::outline::{Body, dual_pads, two_columns};
+use crate::footprint::Footprint;
+
+/// One package.
+struct Package {
+    name: &'static str,
+    description: &'static str,
+    pins: usize,
+    pitch: f64,
+    /// Across the columns, then along them.
+    body: (f64, f64),
+    /// Tip to tip of the leads of the two columns.
+    overall: Size,
+    lead_width: Size,
+    lead_length: Size,
+    /// Whether the fine-pitch fillets apply although the pitch is above 0.625 mm, where
+    /// the standard asks for them: KiCad's MSOP-8 uses them, the plain ones would leave
+    /// its pads 0.15 mm apart.
+    fine: bool,
+}
+
+// A table row: every argument is a column.
+#[allow(clippy::too_many_arguments)]
+const fn pkg(
+    name: &'static str,
+    description: &'static str,
+    pins: usize,
+    pitch: f64,
+    body: (f64, f64),
+    overall: (f64, f64),
+    lead_width: (f64, f64),
+    lead_length: (f64, f64),
+    fine: bool,
+) -> Package {
+    Package {
+        name,
+        description,
+        pins,
+        pitch,
+        body,
+        overall: Size::range(overall.0, overall.1),
+        lead_width: Size::range(lead_width.0, lead_width.1),
+        lead_length: Size::range(lead_length.0, lead_length.1),
+        fine,
+    }
+}
+
+/// JEDEC MS-012 (narrow body SOIC): 3.9 mm body, 6.0 mm +- 0.2 over the leads.
+const MS012: ((f64, f64), (f64, f64), (f64, f64)) = ((5.8, 6.2), (0.31, 0.51), (0.4, 1.27));
+/// JEDEC MS-013 (wide body SOIC): 7.5 mm body, 10.3 mm +- 0.33 over the leads.
+const MS013: ((f64, f64), (f64, f64), (f64, f64)) = ((9.97, 10.63), (0.31, 0.51), (0.4, 1.27));
+/// JEDEC MO-153 (TSSOP): 4.4 mm body, 6.4 mm over the leads.
+const MO153: ((f64, f64), (f64, f64), (f64, f64)) = ((6.4, 6.4), (0.17, 0.30), (0.45, 0.75));
+/// JEDEC MO-150 (SSOP): 5.3 mm body, 7.8 mm +- 0.4 over the leads.
+const MO150: ((f64, f64), (f64, f64), (f64, f64)) = ((7.4, 8.2), (0.22, 0.38), (0.55, 0.95));
+
+const SOIC: &str = "Small outline IC, gull-wing leads, 1.27 mm pitch";
+const TSSOP: &str = "Thin shrink small outline package, 0.65 mm pitch";
+const SSOP: &str = "Shrink small outline package, 0.65 mm pitch";
+
+const PACKAGES: &[Package] = &[
+    pkg(
+        "SOIC-8_3.9x4.9mm_P1.27mm",
+        SOIC,
+        8,
+        1.27,
+        (3.9, 4.9),
+        MS012.0,
+        MS012.1,
+        MS012.2,
+        false,
+    ),
+    pkg(
+        "SOIC-14_3.9x8.7mm_P1.27mm",
+        SOIC,
+        14,
+        1.27,
+        (3.9, 8.65),
+        MS012.0,
+        MS012.1,
+        MS012.2,
+        false,
+    ),
+    pkg(
+        "SOIC-16_3.9x9.9mm_P1.27mm",
+        SOIC,
+        16,
+        1.27,
+        (3.9, 9.9),
+        MS012.0,
+        MS012.1,
+        MS012.2,
+        false,
+    ),
+    pkg(
+        "SOIC-16W_7.5x10.3mm_P1.27mm",
+        SOIC,
+        16,
+        1.27,
+        (7.5, 10.3),
+        MS013.0,
+        MS013.1,
+        MS013.2,
+        false,
+    ),
+    pkg(
+        "SOIC-18W_7.5x11.6mm_P1.27mm",
+        SOIC,
+        18,
+        1.27,
+        (7.5, 11.55),
+        MS013.0,
+        MS013.1,
+        MS013.2,
+        false,
+    ),
+    pkg(
+        "SOIC-20W_7.5x12.8mm_P1.27mm",
+        SOIC,
+        20,
+        1.27,
+        (7.5, 12.8),
+        MS013.0,
+        MS013.1,
+        MS013.2,
+        false,
+    ),
+    pkg(
+        "SOIC-24W_7.5x15.4mm_P1.27mm",
+        SOIC,
+        24,
+        1.27,
+        (7.5, 15.4),
+        MS013.0,
+        MS013.1,
+        MS013.2,
+        false,
+    ),
+    pkg(
+        "SOIC-28W_7.5x17.9mm_P1.27mm",
+        SOIC,
+        28,
+        1.27,
+        (7.5, 17.9),
+        MS013.0,
+        MS013.1,
+        MS013.2,
+        false,
+    ),
+    pkg(
+        "TSSOP-8_4.4x3mm_P0.65mm",
+        TSSOP,
+        8,
+        0.65,
+        (4.4, 3.0),
+        MO153.0,
+        MO153.1,
+        MO153.2,
+        false,
+    ),
+    pkg(
+        "TSSOP-14_4.4x5mm_P0.65mm",
+        TSSOP,
+        14,
+        0.65,
+        (4.4, 5.0),
+        MO153.0,
+        MO153.1,
+        MO153.2,
+        false,
+    ),
+    pkg(
+        "TSSOP-16_4.4x5mm_P0.65mm",
+        TSSOP,
+        16,
+        0.65,
+        (4.4, 5.0),
+        MO153.0,
+        MO153.1,
+        MO153.2,
+        false,
+    ),
+    pkg(
+        "TSSOP-20_4.4x6.5mm_P0.65mm",
+        TSSOP,
+        20,
+        0.65,
+        (4.4, 6.5),
+        MO153.0,
+        MO153.1,
+        MO153.2,
+        false,
+    ),
+    pkg(
+        "TSSOP-24_4.4x7.8mm_P0.65mm",
+        TSSOP,
+        24,
+        0.65,
+        (4.4, 7.8),
+        MO153.0,
+        MO153.1,
+        MO153.2,
+        false,
+    ),
+    pkg(
+        "TSSOP-28_4.4x9.7mm_P0.65mm",
+        TSSOP,
+        28,
+        0.65,
+        (4.4, 9.7),
+        MO153.0,
+        MO153.1,
+        MO153.2,
+        false,
+    ),
+    pkg(
+        "MSOP-8_3x3mm_P0.65mm",
+        "Mini small outline package, 0.65 mm pitch",
+        8,
+        0.65,
+        (3.0, 3.0),
+        (4.65, 5.15),
+        (0.22, 0.38),
+        (0.4, 0.8),
+        true,
+    ),
+    pkg(
+        "MSOP-10_3x3mm_P0.5mm",
+        "Mini small outline package, 0.5 mm pitch",
+        10,
+        0.5,
+        (3.0, 3.0),
+        (4.65, 5.15),
+        (0.17, 0.33),
+        (0.4, 0.8),
+        false,
+    ),
+    pkg(
+        "SSOP-16_5.3x6.2mm_P0.65mm",
+        SSOP,
+        16,
+        0.65,
+        (5.3, 6.2),
+        (7.6, 7.9),
+        (0.25, 0.38),
+        (0.63, 1.03),
+        false,
+    ),
+    pkg(
+        "SSOP-20_5.3x7.2mm_P0.65mm",
+        SSOP,
+        20,
+        0.65,
+        (5.3, 7.2),
+        MO150.0,
+        MO150.1,
+        MO150.2,
+        false,
+    ),
+];
+
+/// Every `Library:Name` this module generates.
+pub fn names() -> Vec<String> {
+    PACKAGES
+        .iter()
+        .map(|p| format!("Package_SO:{}", p.name))
+        .collect()
+}
+
+/// The footprint named `library:name`, if it is a package of this module.
+pub fn generate(library: &str, name: &str) -> Option<Footprint> {
+    if library != "Package_SO" {
+        return None;
+    }
+    let p = PACKAGES.iter().find(|p| p.name == name)?;
+    Some(gull_wing(p))
+}
+
+fn gull_wing(p: &Package) -> Footprint {
+    let class = if p.fine || p.pitch <= 0.625 {
+        &GULL_WING_FINE
+    } else {
+        &GULL_WING
+    };
+    let land = ipc::land(
+        class,
+        p.overall,
+        Inside::Length(p.lead_length),
+        p.lead_width,
+    );
+    let pads = dual_pads(p.pins / 2, p.pitch, &land);
+    two_columns(
+        "Package_SO",
+        p.name,
+        &format!(
+            "{}, {} pins, IPC-7351B nominal density, generated by netsmith",
+            p.description, p.pins
+        ),
+        "SO",
+        &pads,
+        Body {
+            width: p.body.0,
+            length: p.body.1,
+        },
+        class.courtyard,
+    )
+}

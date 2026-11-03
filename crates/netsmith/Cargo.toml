@@ -1,0 +1,28 @@
+[package]
+name = "netsmith"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+netsmith-check = { path = "../netsmith-check" }
+netsmith-core = { path = "../netsmith-core" }
+netsmith-dxf = { path = "../netsmith-dxf" }
+netsmith-editor = { path = "../netsmith-editor" }
+netsmith-fab = { path = "../netsmith-fab" }
+netsmith-kicad = { path = "../netsmith-kicad" }
+netsmith-lang = { path = "../netsmith-lang" }
+netsmith-lower = { path = "../netsmith-lower" }
+netsmith-netlist = { path = "../netsmith-netlist" }
+netsmith-pcb = { path = "../netsmith-pcb" }
+netsmith-quantity = { path = "../netsmith-quantity" }
+netsmith-solve = { path = "../netsmith-solve" }
+netsmith-view = { path = "../netsmith-view" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+toml = "1.1.8"
+ureq = "3"
+
+[dev-dependencies]
+zip = { version = "6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+tungstenite = "0.30.0"

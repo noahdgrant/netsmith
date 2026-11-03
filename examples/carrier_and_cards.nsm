@@ -1,0 +1,179 @@
+//! A carrier board with two sockets and two plug-in cards, mated in a system.
+//!
+//! Every board is a PCB of its own with its own `GND` and `3V3` nets. The carrier has a controller
+//! and two 1x10 sockets; the sensor card plugs into one and the serial card into the other. A
+//! card has a 1x10 header wired to what it takes from the carrier: power on one card and an SPI
+//! bus on the other. The system mates each socket with a header, and the checker does the rest:
+//! it pairs contact N with contact N, finds what each board has behind each contact, joins the
+//! rails the mates carry (so there is no `~` of the ports to write), checks that a signal has
+//! one driver and that every mate carries a ground, and reports which grounds are one.
+//!
+//! The controller and the two chips are invented parts, written here to keep the example
+//! whole; they have no KiCad symbol, so this file is checked and solved but not exported.
+
+import std::bus::{Spi, Uart}
+import std::parts::connector::{Header1x10, Socket1x10}
+import std::parts::passive::Fuse
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+/// A controller with a UART and an SPI master. Invented; not a real part.
+part Controller {
+    .vdd: Rail
+    .uart: Uart
+    .spi: Spi
+
+    pins {
+        .vdd.pos  power  "VDD"  "1"
+        .vdd.neg  power  "VSS"  "2"
+        .uart.tx  output "TX"   "3"
+        .uart.rx  input  "RX"   "4"
+        .spi.sclk output "SCK"  "5"
+        .spi.mosi output "MOSI" "6"
+        .spi.miso input  "MISO" "7"
+        .spi.cs   output "CS"   "8"
+    }
+}
+
+/// An SPI sensor. Invented.
+part SpiSensor {
+    .vdd: Rail
+    .spi: Spi
+
+    pins {
+        .vdd.pos  power  "VDD"  "1"
+        .vdd.neg  power  "GND"  "2"
+        .spi.sclk input  "SCLK" "3"
+        .spi.mosi input  "SDI"  "4"
+        .spi.miso output "SDO"  "5"
+        .spi.cs   input  "CSN"  "6"
+    }
+}
+
+/// A UART transceiver. Invented.
+part SerialChip {
+    .vdd: Rail
+    .uart: Uart
+
+    pins {
+        .vdd.pos  power  "VDD"  "1"
+        .vdd.neg  power  "VSS"  "2"
+        .uart.tx  output "TX"   "3"
+        .uart.rx  input  "RX"   "4"
+    }
+}
+
+/// The carrier: it takes 3.3 V from outside, gives it to the cards through its sockets, and
+/// brings the controller's UART and SPI to them.
+///
+/// Both sockets have the same pinout, 1 GND, 2 3V3, 3 to 6 the SPI bus (the card is the
+/// slave), 7 and 8 the UART (7 is the controller's `tx`), 9 3V3 and 10 GND.
+board Carrier {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+
+    /// Supplied from outside the system.
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .min_track &= 0.5mm..1m
+    }
+    /// What the carrier gives to its cards, through a fuse: up to 500 mA.
+    .cards: Rail {
+        .pos.net &= "3V3_CARDS"
+        .neg.net &= "GND"
+        .min_track &= 0.5mm..1m
+        .current &= 0mA..500mA
+    }
+    .fuse: Fuse
+    .supply.pos ~> .fuse ~> .cards.pos
+    .supply.neg ~ .cards.neg
+    // The fuse drops a little of the supply; the cards get what is left.
+    .cards.voltage == .supply.voltage - .fuse.drop
+
+    .mcu: Controller {
+        .vdd.current &= 20mA..60mA
+    }
+    .supply ~ .mcu.vdd
+
+    .slot_a: Socket1x10
+    .slot_b: Socket1x10
+
+    .cards.neg ~ .slot_a.p1
+    .cards.pos ~ .slot_a.p2
+    .mcu.spi.sclk ~ .slot_a.p3
+    .mcu.spi.mosi ~ .slot_a.p4
+    .mcu.spi.miso ~ .slot_a.p5
+    .mcu.spi.cs ~ .slot_a.p6
+    .cards.pos ~ .slot_a.p9
+    .cards.neg ~ .slot_a.p10
+
+    .cards.neg ~ .slot_b.p1
+    .cards.pos ~ .slot_b.p2
+    .mcu.uart.tx ~ .slot_b.p7
+    .mcu.uart.rx ~ .slot_b.p8
+    .cards.pos ~ .slot_b.p9
+    .cards.neg ~ .slot_b.p10
+}
+
+/// A card with a sensor on SPI. Its header goes into the carrier's first socket.
+board SensorCard {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+
+    .supply: Rail {
+        .pos.net &= "3V3_CARD"
+        .neg.net &= "GND"
+        .current &= -30mA..-5mA
+    }
+    .sensor: SpiSensor
+    .supply ~ .sensor.vdd
+
+    .j1: Header1x10
+    .supply.neg ~ .j1.p1
+    .supply.pos ~ .j1.p2
+    .sensor.spi.sclk ~ .j1.p3
+    .sensor.spi.mosi ~ .j1.p4
+    .sensor.spi.miso ~ .j1.p5
+    .sensor.spi.cs ~ .j1.p6
+    .supply.pos ~ .j1.p9
+    .supply.neg ~ .j1.p10
+}
+
+/// A card with a UART chip. Its header goes into the carrier's second socket. The UART
+/// crosses: the card's `tx` is on contact 8, where the controller has its `rx`.
+board SerialCard {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+
+    .supply: Rail {
+        .pos.net &= "3V3_CARD"
+        .neg.net &= "GND"
+        .current &= -60mA..-10mA
+    }
+    .chip: SerialChip
+    .supply ~ .chip.vdd
+
+    .j1: Header1x10
+    .supply.neg ~ .j1.p1
+    .supply.pos ~ .j1.p2
+    .chip.uart.rx ~ .j1.p7
+    .chip.uart.tx ~ .j1.p8
+    .supply.pos ~ .j1.p9
+    .supply.neg ~ .j1.p10
+}
+
+system CarrierAndCards {
+    .carrier: Carrier
+    .sensor: SensorCard
+    .serial: SerialCard
+
+    // The sensor card's header goes into socket A, the serial card's into socket B. A mate
+    // joins contact N to contact N and derives the rails it carries, so no port is joined here.
+    .carrier.slot_a.mating ~ .sensor.j1.mating
+    .carrier.slot_b.mating ~ .serial.j1.mating
+}

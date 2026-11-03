@@ -1,0 +1,91 @@
+# UNVERIFIED DRAFT. This file was written without being able to run GitHub Actions: no workflow
+# run, no runner image, no package-manager install below has been tried. scripts/release-build.sh
+# was run on Linux (WSL, x86_64-unknown-linux-gnu) only; the macOS and Windows legs, the KiCad
+# installs and the upload step are untested. Expect to fix them on the first run on a tag.
+#
+# On a tag `v*` it builds netsmith on Linux, macOS and Windows runners with scripts/release-build.sh
+# (release build, `netsmith --version`, a smoke test of init/build/fab and the editor page, then a
+# tar.gz or zip with LICENSE, README.md and checksums) and attaches the archives and their .sha256
+# files to a draft GitHub release. No Node is installed: the editor's page is the committed bundle.
+# `build` and `fab` need KiCad's libraries, so each runner installs KiCad for the smoke test; the
+# archives do not contain KiCad (a user needs KiCad's libraries too, see the README).
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            kicad: linux
+          - os: macos-latest
+            kicad: macos
+          - os: windows-latest
+            kicad: windows
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # The paths are where each package puts KiCad 9's libraries. Unverified: check them on the
+      # first run (the smoke test stops with the missing path if one is wrong).
+      - name: KiCad libraries (Linux)
+        if: matrix.kicad == 'linux'
+        run: |
+          sudo add-apt-repository -y ppa:kicad/kicad-9.0-releases
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends kicad-symbols kicad-footprints
+          echo "NETSMITH_KICAD_SYMBOLS=/usr/share/kicad/symbols" >> "$GITHUB_ENV"
+          echo "NETSMITH_KICAD_FOOTPRINTS=/usr/share/kicad/footprints" >> "$GITHUB_ENV"
+
+      - name: KiCad libraries (macOS)
+        if: matrix.kicad == 'macos'
+        run: |
+          brew install --cask kicad
+          echo "NETSMITH_KICAD_SYMBOLS=/Applications/KiCad/KiCad.app/Contents/SharedSupport/symbols" >> "$GITHUB_ENV"
+          echo "NETSMITH_KICAD_FOOTPRINTS=/Applications/KiCad/KiCad.app/Contents/SharedSupport/footprints" >> "$GITHUB_ENV"
+
+      - name: KiCad libraries (Windows)
+        if: matrix.kicad == 'windows'
+        run: |
+          choco install kicad --yes --no-progress
+          echo "NETSMITH_KICAD_SYMBOLS=C:/Program Files/KiCad/9.0/share/kicad/symbols" >> "$GITHUB_ENV"
+          echo "NETSMITH_KICAD_FOOTPRINTS=C:/Program Files/KiCad/9.0/share/kicad/footprints" >> "$GITHUB_ENV"
+
+      - name: Build, smoke test and pack
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: scripts/release-build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: netsmith-${{ matrix.os }}
+          path: dist-release/*
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-release
+          merge-multiple: true
+      - name: Draft release with the archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l dist-release
+          gh release create "$GITHUB_REF_NAME" dist-release/* --repo "$GITHUB_REPOSITORY" --draft --title "$GITHUB_REF_NAME" --generate-notes

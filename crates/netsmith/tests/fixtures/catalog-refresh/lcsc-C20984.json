@@ -1,0 +1,48 @@
+{
+ "code": 200,
+ "msg": null,
+ "result": {
+  "productCode": "C20984",
+  "productModel": "SMD1206P020TF",
+  "brandNameEn": "RUILON",
+  "encapStandard": "1206",
+  "stockNumber": 90645,
+  "productPriceList": [
+   {
+    "ladder": 5,
+    "productPrice": "0.0928",
+    "usdPrice": 0.0928
+   },
+   {
+    "ladder": 50,
+    "productPrice": "0.0727",
+    "usdPrice": 0.0727
+   },
+   {
+    "ladder": 150,
+    "productPrice": "0.0627",
+    "usdPrice": 0.0627
+   },
+   {
+    "ladder": 500,
+    "productPrice": "0.0552",
+    "usdPrice": 0.0552
+   },
+   {
+    "ladder": 2500,
+    "productPrice": "0.0488",
+    "usdPrice": 0.0488
+   },
+   {
+    "ladder": 4500,
+    "productPrice": "0.0458",
+    "usdPrice": 0.0458
+   }
+  ],
+  "catalogName": "PTC Resettable Fuses",
+  "productNameEn": "PTC RESET FUSE 24V 200mA 1206",
+  "minBuyNumber": 5,
+  "currencyType": "USD"
+ },
+ "ok": true
+}

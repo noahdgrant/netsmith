@@ -1,0 +1,48 @@
+{
+ "code": 200,
+ "msg": null,
+ "result": {
+  "productCode": "C113952",
+  "productModel": "SMAJ5.0A",
+  "brandNameEn": "MDD(Microdiode Semiconductor)",
+  "encapStandard": "DO-214AC(SMA)",
+  "stockNumber": 463640,
+  "productPriceList": [
+   {
+    "ladder": 20,
+    "productPrice": "0.0413",
+    "usdPrice": 0.0413
+   },
+   {
+    "ladder": 200,
+    "productPrice": "0.0327",
+    "usdPrice": 0.0327
+   },
+   {
+    "ladder": 600,
+    "productPrice": "0.0289",
+    "usdPrice": 0.0289
+   },
+   {
+    "ladder": 5000,
+    "productPrice": "0.0211",
+    "usdPrice": 0.0211
+   },
+   {
+    "ladder": 10000,
+    "productPrice": "0.0200",
+    "usdPrice": 0.02
+   },
+   {
+    "ladder": 20000,
+    "productPrice": "0.0192",
+    "usdPrice": 0.0192
+   }
+  ],
+  "catalogName": "TVS Diodes",
+  "productNameEn": "TVS DIODE 5VWM 9.2VC DO-214AC(SMA)",
+  "minBuyNumber": 20,
+  "currencyType": "USD"
+ },
+ "ok": true
+}

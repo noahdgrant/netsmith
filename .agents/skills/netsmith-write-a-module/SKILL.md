@@ -1,0 +1,39 @@
+---
+name: netsmith-write-a-module
+description: Turn a repeated or reusable circuit into a netsmith module or interface in src/, with the right interface. Use when a board repeats a circuit, when a file grows past one screen, or when asked to share a circuit between boards.
+---
+
+# Write a module
+
+The language guide (`docs/netsmith/LANGUAGE.md`) has the sections "Modules", "Interfaces" and "Imports".
+
+## When
+
+Make a module when a circuit appears twice or has a name of its own: a regulator stage, a status light, a filter. Keep one-off parts on the board.
+
+## How
+
+1. Create `src/<name>.nsm`. It is the project module `src::<name>`. A file in `src/parts/x.nsm` is `src::parts::x`.
+2. Define the module. Declare what a user may set or connect: rails (`.vin: Rail`), pins, and declared values (`.ripple: Voltage`).
+3. Put the parts inside. Join them with `~` and `~>`, using the module's own members.
+4. Connect the module's rails to the parts' rails with `~`, as the guide's regulator stage does.
+5. In the board: `import src::<name>::Module`, declare `.stage: Module`, and set it only through its interface (`.stage.vout.voltage &= 3.3V +/- 5%`).
+6. Run `netsmith build src/main.nsm`.
+
+## Rules
+
+- A user cannot reach the parts inside a module, so expose anything a user may need to set, as a rail or a declared value. Relate the declared value to the inner part inside the module.
+- To let the board choose who assembles a module's parts, declare `.assembly_mode: String` and write `.j.assembly &= .assembly_mode` for each part inside (ADR 0042). The board writes `.block.assembly_mode &= "hand"`; left alone, the parts are assembled as if on the board. Do not offer it unless a user may want it.
+- A module states only what is always true. Leave voltages, currents and tolerances for the board to narrow.
+- A module never names a net. The board names a module's nets through its rails and pins.
+- Two instances are independent. Give each its own values from the board.
+- A module with no parts, only quantities and pins, is an `interface`. Use one when several modules need the same bundle of pins.
+- The module's own rail is a port: from inside it supplies what is inside. State loads on the board's consuming rail and let the balance carry them in.
+
+## Boards that plug into each other
+
+A module is a circuit on one board; a connector between boards is not a module. Wire a connector on the board and mate it in a `system` (`.carrier.slot.mating ~ .card.j1.mating`): a system reaches a connector's `.mating` and nothing else of the board, so a module cannot offer its connector's pins to a system. Put the connector on the board, and expose to it the rail or bus the module has (`.stage.vout ~ .out`, then `.out.pos ~ .j1.p2`). Share the card's circuit between boards as a module, and the connector on each board.
+
+## Check
+
+`netsmith build` passes with two instances of the module on a board, each with different values, and no instance reaches another's parts.

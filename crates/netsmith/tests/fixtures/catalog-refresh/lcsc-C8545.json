@@ -1,0 +1,48 @@
+{
+ "code": 200,
+ "msg": null,
+ "result": {
+  "productCode": "C8545",
+  "productModel": "2N7002",
+  "brandNameEn": "JSCJ",
+  "encapStandard": "SOT-23",
+  "stockNumber": 2689250,
+  "productPriceList": [
+   {
+    "ladder": 50,
+    "productPrice": "0.0167",
+    "usdPrice": 0.0167
+   },
+   {
+    "ladder": 500,
+    "productPrice": "0.0130",
+    "usdPrice": 0.013
+   },
+   {
+    "ladder": 3000,
+    "productPrice": "0.0114",
+    "usdPrice": 0.0114
+   },
+   {
+    "ladder": 6000,
+    "productPrice": "0.0102",
+    "usdPrice": 0.0102
+   },
+   {
+    "ladder": 24000,
+    "productPrice": "0.0097",
+    "usdPrice": 0.0097
+   },
+   {
+    "ladder": 51000,
+    "productPrice": "0.0093",
+    "usdPrice": 0.0093
+   }
+  ],
+  "catalogName": "Single FETs, MOSFETs",
+  "productNameEn": "MOSFET N-CH 60V 115mA SOT-23",
+  "minBuyNumber": 50,
+  "currencyType": "USD"
+ },
+ "ok": true
+}

@@ -1,0 +1,81 @@
+//! Transistors.
+//!
+//! Every voltage and current of a MOSFET here is a magnitude, so an N-channel and a P-channel
+//! part are checked with the same relations. The two are different kinds because the current
+//! runs the other way in a `~>` chain: a low-side N-channel switch is entered at the drain,
+//! a high-side P-channel switch at the source.
+
+/// An N-channel enhancement MOSFET. Current flows from drain to source.
+///
+/// `.drain_source_voltage` and `.gate_source_voltage` are the stresses the design puts on it,
+/// which only the design knows: the voltage the drain-to-source path blocks while it is off
+/// and the voltage the gate is driven to while it is on. They are checked against the
+/// datasheet's maxima, and the gate drive against the threshold: the gate must be driven
+/// above `.gate_threshold` in the worst case or the channel is not on. `.gate_threshold` is a
+/// range, the datasheet's minimum and maximum; `.on_resistance` is the datasheet's, at the
+/// drive its table names.
+part NMosfet {
+    .designator &= "Q"
+
+    pins {
+        .gate   input   "G" "1"
+        .source passive "S" "2"
+        .drain  passive "D" "3"
+    }
+
+    .max_drain_source_voltage: Voltage
+    .max_drain_current: Current
+    .max_gate_source_voltage: Voltage
+    /// The gate-source voltage at which the channel starts to conduct.
+    .gate_threshold: Voltage
+    .on_resistance: Resistance
+    /// The voltage the drain-source path blocks while off. A design states it.
+    .drain_source_voltage: Voltage
+    /// The gate-source voltage while on. A design states it.
+    .gate_source_voltage: Voltage
+    /// Through-current, drain to source.
+    .current: Current
+
+    .drain_source_voltage <= .max_drain_source_voltage
+    .gate_source_voltage <= .max_gate_source_voltage
+    .gate_source_voltage >= .gate_threshold
+    .current <= .max_drain_current
+    bridge .drain ~> .source
+
+    .package: Package
+    catalog n_mosfet { .max_drain_source_voltage, .max_drain_current, .max_gate_source_voltage, .gate_threshold, .on_resistance, .package }
+}
+
+/// A P-channel enhancement MOSFET. Current flows from source to drain. Voltages and currents
+/// are magnitudes (see `NMosfet`), so `.gate_source_voltage` is positive for a gate that is
+/// driven below its source.
+part PMosfet {
+    .designator &= "Q"
+
+    pins {
+        .gate   input   "G" "1"
+        .source passive "S" "2"
+        .drain  passive "D" "3"
+    }
+
+    .max_drain_source_voltage: Voltage
+    .max_drain_current: Current
+    .max_gate_source_voltage: Voltage
+    /// The magnitude of the gate-source voltage at which the channel starts to conduct.
+    .gate_threshold: Voltage
+    .on_resistance: Resistance
+    /// The magnitude of the voltage the drain-source path blocks while off. A design states it.
+    .drain_source_voltage: Voltage
+    /// The magnitude of the gate-source voltage while on. A design states it.
+    .gate_source_voltage: Voltage
+    /// Through-current, source to drain.
+    .current: Current
+
+    .drain_source_voltage <= .max_drain_source_voltage
+    .gate_source_voltage <= .max_gate_source_voltage
+    .gate_source_voltage >= .gate_threshold
+    .current <= .max_drain_current
+    bridge .source ~> .drain
+
+    .package: Package
+}

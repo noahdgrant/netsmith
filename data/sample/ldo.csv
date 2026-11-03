@@ -1,0 +1,5 @@
+name,label,vout.voltage,dropout,max_current,max_power,package
+1.8V 1A LDO,LDO-1.8V,1.8V +/- 2%,1.1V,1A,1W,SOT-223
+2.5V 1A LDO,LDO-2.5V,2.5V +/- 2%,1.1V,1A,1W,SOT-223
+3.3V 1A LDO,LDO-3.3V,3.3V +/- 2%,1.1V,1A,1W,SOT-223
+5V 1A LDO,LDO-5V,5V +/- 2%,1.1V,1A,1W,SOT-223

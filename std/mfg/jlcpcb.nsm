@@ -1,0 +1,314 @@
+//! JLCPCB's standard processes.
+//!
+//! Every number is from JLCPCB's published capabilities page,
+//! https://jlcpcb.com/capabilities/pcb-capabilities (fetched 2026-11-01). Nothing is from
+//! memory. They are the numbers the page gives for 1 and 2 layer boards with 1 oz outer
+//! copper:
+//!
+//! - minimum track width and spacing: 0.10 / 0.10 mm (4 / 4 mil)
+//! - minimum via hole and diameter: 0.15 / 0.25 mm (0.10 / 0.20 mm only for boards up to
+//!   1 mm thick with an ENIG or OSP finish, so not stated here)
+//! - minimum drill diameter, 2 layers: 0.15 mm
+//! - plated annular ring, 2 layers, 1 oz: 0.25 mm recommended, 0.18 mm absolute minimum
+//! - hole to hole spacing: 0.20 mm via to via, 0.45 mm pad to pad
+//! - copper to a routed board edge: 0.2 mm
+//! - silkscreen: 0.15 mm least line width, 1.0 mm (40 mil) least text height, 0.15 mm
+//!   between a pad and silkscreen
+//! - solder mask bridge, 1 oz: 0.10 mm for green, red, yellow, blue and purple, 0.13 mm for
+//!   black and white
+//! - FR-4 thickness: 0.4, 0.6, 0.8, 1.0, 1.2, 1.6 and 2.0 mm
+//! - outer copper on 2 layers: 1, 2, 2.5, 3.5 or 4.5 oz. Track and space limits are given
+//!   per weight, so `TwoLayer` is the 1 oz process.
+//!
+//! - vias in pads: the page lists "epoxy filled and capped" vias of 0.15 mm to 0.55 mm, which
+//!   is what lets a via sit in a pad ("vias can be placed within BGA pads using filled and
+//!   plated-over vias"); a soldermask-plugged via is not one, because it needs no mask
+//!   opening on either side. The page calls the range "via diameters"; it is taken as the
+//!   limit of the via's size, and the router uses a via in a pad only if the via's copper
+//!   disc is no wider than it.
+//!
+//! Where the page lists more than one number, the one stated here is the one that holds
+//! everywhere on the board: the pad to pad hole spacing, the mask bridge for any colour.
+//! A limit is a lower bound, so it is written `lo..1m`: ranges are closed, and `1m`, longer
+//! than any board, stands for "no upper limit".
+
+import std::mfg::stackup::{Plane, Pour, Stackup}
+
+/// JLCPCB's standard two-layer rigid board, 1 oz copper. Each `min_` field is the least the
+/// process can make; a board narrows it up to be made with more margin
+/// (`.process.min_track &= 0.15mm..1m`), never below, and the rules the board is routed
+/// and checked to are the bottom of what is left. The thickness is any the process offers,
+/// so a board that is to be made says which.
+interface TwoLayer {
+    /// Who makes it, and where the numbers are published.
+    .fabricator: String
+    .source:     String
+    .fabricator &= "JLCPCB"
+    .source     &= "https://jlcpcb.com/capabilities/pcb-capabilities"
+
+    /// The narrowest track.
+    .min_track: Length
+    .min_track &= 0.1mm..1m
+    /// The least space between copper of different nets.
+    .min_clearance: Length
+    .min_clearance &= 0.1mm..1m
+    /// The smallest drilled hole, which is a via's drill.
+    .min_drill: Length
+    .min_drill &= 0.15mm..1m
+    /// The smallest copper disc of a via.
+    .min_via_diameter: Length
+    .min_via_diameter &= 0.25mm..1m
+    /// The least copper left round a drilled hole.
+    .min_annular_ring: Length
+    .min_annular_ring &= 0.18mm..1m
+    /// The least space between the edges of two holes.
+    .min_hole_to_hole: Length
+    .min_hole_to_hole &= 0.45mm..1m
+    /// The least space between copper and a routed board edge.
+    .min_edge_clearance: Length
+    .min_edge_clearance &= 0.2mm..1m
+    /// The thinnest silkscreen stroke.
+    .min_silk_width: Length
+    .min_silk_width &= 0.15mm..1m
+    /// The smallest silkscreen text.
+    .min_text_height: Length
+    .min_text_height &= 1mm..1m
+    /// The least space between silkscreen and a pad.
+    .min_silk_to_pad: Length
+    .min_silk_to_pad &= 0.15mm..1m
+    /// The least solder mask left between two pads.
+    .min_mask_bridge: Length
+    .min_mask_bridge &= 0.13mm..1m
+    /// The largest via JLCPCB fills with epoxy and caps with copper, which a via may be to
+    /// stand in a pad: 0.55 mm, the top of its range for filled and capped vias. This is an
+    /// upper bound, unlike the `min_` fields, and the router may use a via in a pad up to
+    /// it; the board narrows it to `0mm` where it does not want the extra process step
+    /// (`.process.via_in_pad &= 0mm`). A via in a pad that is not filled and capped
+    /// draws solder away from the joint, so a board that has one needs the fabricator to
+    /// fill and cap it, and `fab` says so in `fab-notes.txt`.
+    .via_in_pad: Length
+    .via_in_pad &= 0mm..0.55mm
+
+    /// How far above the board's temperature a loaded track may heat: the rise the
+    /// IPC-2221 track width check (ADR 0036) designs to. Not a number JLCPCB publishes, so
+    /// the process leaves it unstated; a board that states none is checked at 10 K, a
+    /// conservative default of this tool's and not a sourced figure, and the finding says
+    /// so.
+    /// It is an upper bound, like `via_in_pad`: `.process.max_temperature_rise &= 20K`
+    /// allows 20 K.
+    .max_temperature_rise: Temperature
+
+    .stackup: Stackup
+    .stackup.layers       &= 2
+    .stackup.thickness    &= 0.4mm..2mm
+    .stackup.copper_weight &= 1
+
+    /// The pours on the outer layers, which the board names the nets of
+    /// (`.process.top.net &= "GND"`).
+    .top: Pour
+    .bottom: Pour
+}
+
+/// JLCPCB's standard four-layer rigid board: 1 oz outer copper, 0.5 oz inner copper, 1.6 mm
+/// thick. The inner layers are planes, and the board names the net of each
+/// (`.process.inner1.net &= "GND"`, `.process.inner2.net &= "3V3"`); the router draws signals
+/// on the outer layers only.
+///
+/// Numbers are from the page's multilayer rows, https://jlcpcb.com/capabilities/pcb-capabilities
+/// (fetched 2026-11-01), and the stackup from https://jlcpcb.com/impedance (fetched
+/// 2026-11-01). Nothing is from memory.
+///
+/// - minimum track width and spacing, 1 oz multilayer: 0.09 / 0.09 mm (3.5 / 3.5 mil). The
+///   space is stated as 0.10 mm because the page's pad to track clearance is 0.10 mm
+///   (0.09 mm only locally for BGA pads) and one space holds everywhere on the board.
+/// - minimum via hole and diameter, multilayer: 0.15 / 0.25 mm (0.10 / 0.20 mm only up to
+///   1 mm thick with an ENIG or OSP finish, so not stated here)
+/// - minimum drill diameter, multilayer: 0.15 mm (the page also lists 0.10 mm "more costly")
+/// - plated annular ring, multilayer, 1 oz: 0.20 mm recommended, 0.15 mm absolute minimum
+/// - hole to hole spacing: 0.20 mm via to via, 0.45 mm pad to pad
+/// - copper to a routed board edge: 0.2 mm
+/// - inner layer copper to a via hole: 0.2 mm; to a plated through-hole pad hole: 0.3 mm.
+///   0.3 mm is stated, because a plane's space to a hole is one number and 0.3 mm holds for
+///   both.
+/// - silkscreen: 0.15 mm least line width, 1.0 mm least text height, 0.15 mm pad to
+///   silkscreen
+/// - solder mask bridge, 1 oz: 0.10 mm for green, red, yellow, blue and purple, 0.13 mm for
+///   black and white
+/// - finished outer copper on multilayer boards: 1 oz or 2 oz; inner copper 0.5 oz (the
+///   default), 1 oz or 2 oz. `FourLayer` is the 1 oz outer, 0.5 oz inner process.
+///
+/// The stackup is the page's four-layer `JLC04161H-7628` build, which is also its "no
+/// requirement" default: outer copper 0.035 mm, prepreg 7628 x 1 0.2104 mm, inner copper
+/// 0.0152 mm, core 1.065 mm, inner copper 0.0152 mm, prepreg 7628 x 1 0.2104 mm, outer
+/// copper 0.035 mm, 1.5862 mm in all. The page's thickness selector offers 0.8, 1.0, 1.2,
+/// 1.6 and 2.0 mm, but its text holds one set of tables only, and 1.5862 mm matches 1.6 mm,
+/// so that is taken as the 1.6 mm build. Relative permittivity: 7628 prepreg 4.4, core 4.6.
+/// The stackups of the other thicknesses were not read, so `FourLayer` offers 1.6 mm only,
+/// and a board that asks for another thickness is told the field is contradicted.
+interface FourLayer {
+    /// Who makes it, and where the numbers are published.
+    .fabricator: String
+    .source:     String
+    .fabricator &= "JLCPCB"
+    .source     &= "https://jlcpcb.com/capabilities/pcb-capabilities"
+
+    /// The narrowest track.
+    .min_track: Length
+    .min_track &= 0.09mm..1m
+    /// The least space between copper of different nets.
+    .min_clearance: Length
+    .min_clearance &= 0.1mm..1m
+    /// The smallest drilled hole, which is a via's drill.
+    .min_drill: Length
+    .min_drill &= 0.15mm..1m
+    /// The smallest copper disc of a via.
+    .min_via_diameter: Length
+    .min_via_diameter &= 0.25mm..1m
+    /// The least copper left round a drilled hole.
+    .min_annular_ring: Length
+    .min_annular_ring &= 0.15mm..1m
+    /// The least space between the edges of two holes.
+    .min_hole_to_hole: Length
+    .min_hole_to_hole &= 0.45mm..1m
+    /// The least space between copper and a routed board edge.
+    .min_edge_clearance: Length
+    .min_edge_clearance &= 0.2mm..1m
+    /// The least space between a plane and the hole of a via or a through-hole pad that is
+    /// not on its net.
+    .min_plane_hole_clearance: Length
+    .min_plane_hole_clearance &= 0.3mm..1m
+    /// The thinnest silkscreen stroke.
+    .min_silk_width: Length
+    .min_silk_width &= 0.15mm..1m
+    /// The smallest silkscreen text.
+    .min_text_height: Length
+    .min_text_height &= 1mm..1m
+    /// The least space between silkscreen and a pad.
+    .min_silk_to_pad: Length
+    .min_silk_to_pad &= 0.15mm..1m
+    /// The least solder mask left between two pads.
+    .min_mask_bridge: Length
+    .min_mask_bridge &= 0.13mm..1m
+    /// The largest via JLCPCB fills with epoxy and caps with copper, which a via may be to
+    /// stand in a pad: 0.55 mm, the top of its range for filled and capped vias. This is an
+    /// upper bound, unlike the `min_` fields, and the router may use a via in a pad up to
+    /// it; the board narrows it to `0mm` where it does not want the extra process step
+    /// (`.process.via_in_pad &= 0mm`). A via in a pad that is not filled and capped
+    /// draws solder away from the joint, so a board that has one needs the fabricator to
+    /// fill and cap it, and `fab` says so in `fab-notes.txt`.
+    .via_in_pad: Length
+    .via_in_pad &= 0mm..0.55mm
+
+    /// How far above the board's temperature a loaded track may heat: the rise the
+    /// IPC-2221 track width check (ADR 0036) designs to. Not a number JLCPCB publishes, so
+    /// the process leaves it unstated; a board that states none is checked at 10 K, a
+    /// conservative default of this tool's and not a sourced figure, and the finding says
+    /// so.
+    /// It is an upper bound, like `via_in_pad`: `.process.max_temperature_rise &= 20K`
+    /// allows 20 K.
+    .max_temperature_rise: Temperature
+
+    .stackup: Stackup
+    .stackup.layers          &= 4
+    .stackup.thickness       &= 1.6mm
+    .stackup.copper_weight   &= 1
+    .stackup.inner_copper    &= 0.0152mm
+    .stackup.prepreg         &= 0.2104mm
+    .stackup.core            &= 1.065mm
+    .stackup.prepreg_epsilon &= 4.4
+    .stackup.core_epsilon    &= 4.6
+
+    /// The first and second inner layers, counted from the top. The board names their nets.
+    .inner1: Plane
+    .inner2: Plane
+
+    /// The pours on the outer layers, which the board names the nets of.
+    .top: Pour
+    .bottom: Pour
+}
+
+/// JLCPCB's V-cut panel: one board repeated in a grid, the boards side by side with no space
+/// between them, cut apart along straight lines that run across the whole panel, with optional
+/// handling rails round the grid. A `panel` member (`.fab: VCutPanel { ... }`) says how many
+/// boards, and `fab` checks the panel against the numbers below.
+///
+/// Every number is from JLCPCB's pages, read 2026-11-02 (ADR 0040):
+///
+/// - `https://jlcpcb.com/capabilities/pcb-capabilities`: V-cut copper clearance 0.4 mm,
+///   panel 70 x 70 mm to 475 x 475 mm, zero board spacing, groove angle 25 degrees, two
+///   V-cuts at least 2 mm apart (3 mm recommended), handling rails 5 to 8 mm, tooling holes
+///   2 mm and fiducials 1 mm centred 3.85 mm from the panel edges for assembly, V-cut boards
+///   0.6 mm thick or more (the V-cut tolerance row says "PCB thickness >= 0.6 mm").
+/// - `https://jlcpcb.com/help/article/pcb-panelization`: at most 25 V-cut lines along either
+///   side, V-cut not on 0.4 mm boards, not in economic assembly, 70 x 70 mm at least and
+///   475 x 475 mm at most.
+/// - `https://jlcpcb.com/blog/v-cut-panelization-standards`: copper at least 0.4 mm from the
+///   V-cut centreline (1.0 mm recommended), the lines drawn on the same layer as the board
+///   outline and marked "V-CUT", fiducial centres at least 3.85 mm from the board edge, and
+///   fiducials and tooling holes added by the customer when Gerbers are supplied.
+/// - `https://jlcpcb.com/help/article/pcb-assembly-faqs`: a panel for assembly no bigger than
+///   250 x 250 mm; V-cut available in standard assembly only.
+///
+/// Where the pages differ the stricter number is the one stated: the V-cut line count and
+/// the 475 mm limit are the same everywhere, but an assembled panel is held to 250 mm (the
+/// assembly FAQ) instead of 475 mm, and the copper clearance of 0.4 mm is the hard limit
+/// while the 1.0 mm of the blog is `.advised_edge_clearance`, a note and not a refusal. A limit
+/// that is a lower bound is written `lo..1m`, an upper bound `0mm..hi`, as in `TwoLayer`.
+interface VCutPanel {
+    /// Who makes it, and where the numbers are published.
+    .fabricator: String
+    .source:     String
+    .fabricator &= "JLCPCB"
+    .source     &= "https://jlcpcb.com/capabilities/pcb-capabilities"
+
+    /// Boards across the panel (the number of cells in a row).
+    .columns: Number
+    /// Boards down the panel (the number of rows).
+    .rows: Number
+    /// The width of the handling rail on all four sides; `0mm` is no rail. A rail carries
+    /// the tooling holes and fiducials that assembly needs, and is cut off along its own
+    /// V-cut line.
+    .rail: Length
+    .rail &= 0mm..8mm
+
+    /// The least width of a rail that is made, which is the least a rail carrying tooling
+    /// holes and fiducials can have.
+    .min_rail: Length
+    .min_rail &= 5mm..1m
+    /// The smallest panel side that can be V-cut.
+    .min_size: Length
+    .min_size &= 70mm..1m
+    /// The largest panel side that can be V-cut.
+    .max_size: Length
+    .max_size &= 0mm..475mm
+    /// The largest panel side when JLCPCB assembles the panel.
+    .max_assembled_size: Length
+    .max_assembled_size &= 0mm..250mm
+    /// The most V-cut lines along one side of the panel.
+    .max_cuts: Number
+    .max_cuts &= 0..25
+    /// The least space between two parallel V-cut lines.
+    .min_cut_spacing: Length
+    .min_cut_spacing &= 2mm..1m
+    /// The space between two parallel V-cut lines that JLCPCB recommends.
+    .advised_cut_spacing: Length
+    .advised_cut_spacing &= 3mm
+    /// The least space between copper and the V-cut edge of a board.
+    .min_edge_clearance: Length
+    .min_edge_clearance &= 0.4mm..1m
+    /// The space between copper and the V-cut that JLCPCB recommends.
+    .advised_edge_clearance: Length
+    .advised_edge_clearance &= 1mm
+    /// The thinnest board that can be V-cut.
+    .min_thickness: Length
+    .min_thickness &= 0.6mm..1m
+    /// The diameter of the tooling holes on the rails.
+    .tooling_hole: Length
+    .tooling_hole &= 2mm
+    /// The diameter of the copper of a fiducial on the rails.
+    .fiducial: Length
+    .fiducial &= 1mm
+    /// How far the centre of a fiducial is from the panel edges.
+    .fiducial_offset: Length
+    .fiducial_offset &= 3.85mm
+}

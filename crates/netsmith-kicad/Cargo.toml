@@ -1,0 +1,11 @@
+[package]
+name = "netsmith-kicad"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+netsmith-core = { path = "../netsmith-core" }
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.1.8"
+uuid = { version = "1", features = ["v5"] }

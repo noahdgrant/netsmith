@@ -1,0 +1,119 @@
+//! A four-layer regulator board with a fixed, rounded outline, a cutout, mounting holes and
+//! fiducials, a ground pour on both outer layers stitched to the ground plane, a no-copper
+//! keepout for an antenna, and wide tracks for the supply nets.
+//!
+//! The keepout's place is not in this file: it is in `outline_and_pours.pcb.toml` beside it,
+//! where an editor or a placer writes where things are.
+
+import std::parts::connector::Header1x2
+import std::parts::mechanical::{Fiducial, Label, MountingHole}
+import std::parts::passive::Capacitor
+import std::parts::regulator::LinearRegulator
+import std::pcb::{Cutout, Keepout, Outline}
+import std::sources::Rail
+import std::mfg::jlcpcb::FourLayer
+
+/// A linear regulator with a capacitor on its input and on its output.
+module LdoStage {
+    .vin:  Rail
+    .vout: Rail
+
+    .regulator:  LinearRegulator
+    // What each capacitor must still have in use, after the voltage across it and its tolerance
+    // have taken their share.
+    .input_cap:  Capacitor { .effective_capacitance >= 1uF }
+    .output_cap: Capacitor { .effective_capacitance >= 4.7uF }
+
+    .vin ~ .regulator.vin
+    .regulator.vout ~ .vout
+
+    // A capacitor must be rated for at least one and a half times the rail it sits on.
+    .input_cap.max_voltage  >= .vin.voltage * 1.5
+    .output_cap.max_voltage >= .vout.voltage * 1.5
+
+    .vin.pos  ~> .input_cap  ~> .vin.neg
+    .vout.pos ~> .output_cap ~> .vout.neg
+}
+
+board OutlineAndPours {
+    /// JLCPCB's four-layer process. The inner layers are a ground plane and a 3.3 V plane, and
+    /// the outer layers are poured with ground, tied to the ground plane by a via at least
+    /// every 8 mm.
+    .process: FourLayer {
+        .inner1.net &= "GND"
+        .inner2.net &= "3V3"
+        .top.net &= "GND"
+        .bottom.net &= "GND"
+        .top.stitch_pitch &= 0mm..8mm
+        .bottom.stitch_pitch &= 0mm..8mm
+    }
+
+    /// 50 by 36 mm, with rounded corners.
+    .outline: Outline {
+        .width &= 50mm
+        .height &= 36mm
+        .corner_radius &= 3mm
+    }
+
+    /// A rounded slot cut through the board, 6 mm in from the left edge.
+    .slot: Cutout {
+        .x &= 6mm
+        .y &= 12mm
+        .width &= 3mm
+        .height &= 12mm
+        .corner_radius &= 1mm
+    }
+
+    /// Where an antenna would be: no copper and no parts on the top layer. The layout file
+    /// says where.
+    .antenna: Keepout {
+        .width &= 14mm
+        .height &= 5mm
+        .layers &= "top"
+        .vias &= "allow"
+    }
+
+    /// The input rail is supplied from outside the board, and carries up to an amp: its nets
+    /// are drawn at least 0.4 mm wide, and so is the ground they return on.
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+        .min_track &= 0.4mm..1m
+    }
+
+    .stage: LdoStage {
+        .vout.voltage &= 3.3V +/- 5%
+    }
+
+    /// What the outside world draws from the output.
+    .output: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..50mA
+        .min_track &= 0.3mm..1m
+    }
+
+    .input ~ .stage.vin
+    .stage.vout ~ .output
+
+    .power_in: Header1x2
+    .power_out: Header1x2
+    .input.pos ~ .power_in.p1
+    .input.neg ~ .power_in.p2
+    .output.pos ~ .power_out.p1
+    .output.neg ~ .power_out.p2
+
+    /// Mounting holes go in the corners of the outline, and so do the fiducials.
+    .hole1: MountingHole
+    .hole2: MountingHole
+    .hole3: MountingHole
+    .hole4: MountingHole
+    .fiducial1: Fiducial
+    .fiducial2: Fiducial
+
+    /// Text on the silkscreen, placed like any other part.
+    .revision: Label {
+        .text &= "REV A"
+    }
+}

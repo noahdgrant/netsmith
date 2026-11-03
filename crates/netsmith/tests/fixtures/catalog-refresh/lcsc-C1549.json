@@ -1,0 +1,43 @@
+{
+ "code": 200,
+ "msg": null,
+ "result": {
+  "productCode": "C1549",
+  "productModel": "0402CG180J500NT",
+  "brandNameEn": "FH",
+  "encapStandard": "0402",
+  "stockNumber": 779100,
+  "productPriceList": [
+   {
+    "ladder": 100,
+    "productPrice": "0.0018",
+    "usdPrice": 0.0018
+   },
+   {
+    "ladder": 1000,
+    "productPrice": "0.0014",
+    "usdPrice": 0.0014
+   },
+   {
+    "ladder": 3000,
+    "productPrice": "0.0012",
+    "usdPrice": 0.0012
+   },
+   {
+    "ladder": 10000,
+    "productPrice": "0.0010",
+    "usdPrice": 0.001
+   },
+   {
+    "ladder": 50000,
+    "productPrice": "0.0008",
+    "usdPrice": 0.0008
+   }
+  ],
+  "catalogName": "Ceramic Capacitors",
+  "productNameEn": "CAP CER 18pF 50V C0G 0402",
+  "minBuyNumber": 100,
+  "currencyType": "USD"
+ },
+ "ok": true
+}

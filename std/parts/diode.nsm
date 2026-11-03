@@ -1,0 +1,149 @@
+//! Diodes.
+//!
+//! Library parts state only what is always true of them; a design narrows the rest. The
+//! pads are KiCad's convention for a diode (cathode 1, anode 2), as for `Led`. A diode is
+//! not a symmetric part, so the checker does not know which way round it sits across a rail:
+//! the voltage across it, `.bias`, is a magnitude (see `Diode`).
+
+/// A rectifier or switching diode. Current flows from anode to cathode.
+///
+/// `.bias` is the voltage across the diode in the direction it blocks. A diode placed between
+/// a rail's `pos` and `neg` takes it from that rail, the way a capacitor does (ADR 0013); a
+/// design states it for a diode that is across no rail, such as a reverse-polarity diode on
+/// an input (the voltage it must block is the one the input can be wired to). The sign of the
+/// rail is not looked at, so a diode wired the wrong way round across a rail is not found by
+/// this rating.
+///
+/// A rating is a bound the datasheet gives, so each is checked in the worst case:
+/// `.current <= .max_forward_current` and `.bias <= .max_reverse_voltage`. A rating the design
+/// does not reach (a current it does not state) is listed as not evaluated.
+part Diode {
+    .designator &= "D"
+
+    pins {
+        .anode   passive "A" "2"
+        .cathode passive "K" "1"
+    }
+
+    .forward_voltage: Voltage
+    /// The largest voltage the diode blocks (repetitive peak reverse voltage).
+    .max_reverse_voltage: Voltage
+    /// The largest continuous (average) forward current.
+    .max_forward_current: Current
+    /// Through-current, anode to cathode.
+    .current: Current
+    /// Voltage at the anode relative to the cathode.
+    .drop: Voltage
+    /// The DC voltage across the diode in the direction it blocks.
+    .bias: Voltage
+
+    .drop == .forward_voltage
+    .current <= .max_forward_current
+    .bias <= .max_reverse_voltage
+    bridge .anode ~> .cathode
+
+    .package: Package
+}
+
+/// A Schottky diode: a `Diode` with a low forward voltage and a metal junction. It has the
+/// same fields and ratings, and is its own kind because it is a different symbol and a
+/// different catalog, and because a design says which it needs ("a Schottky for the
+/// reverse-polarity drop").
+part Schottky {
+    .designator &= "D"
+
+    pins {
+        .anode   passive "A" "2"
+        .cathode passive "K" "1"
+    }
+
+    .forward_voltage: Voltage
+    /// The largest voltage the diode blocks (repetitive peak reverse voltage).
+    .max_reverse_voltage: Voltage
+    /// The largest continuous (average) forward current.
+    .max_forward_current: Current
+    /// Through-current, anode to cathode.
+    .current: Current
+    /// Voltage at the anode relative to the cathode.
+    .drop: Voltage
+    /// The DC voltage across the diode in the direction it blocks.
+    .bias: Voltage
+
+    .drop == .forward_voltage
+    .current <= .max_forward_current
+    .bias <= .max_reverse_voltage
+    bridge .anode ~> .cathode
+
+    .package: Package
+    catalog schottky { .forward_voltage, .max_reverse_voltage, .max_forward_current, .package }
+}
+
+/// A Zener diode, used in its reverse direction: it conducts from cathode to anode above
+/// `.zener_voltage`. The voltage is a range because of the tolerance
+/// (`.zener_voltage &= 5.1V +/- 5%`).
+///
+/// A Zener is used two ways, so the part states neither. As a clamp, the rail across it must
+/// stay below the breakdown, and the design says so with one line,
+/// `.z.bias <= .z.zener_voltage`, which holds only if the highest rail is under the lowest
+/// breakdown. As a shunt regulator, it sits across the rail it makes and the rail's voltage
+/// is the Zener's. What is always true is the power limit: the voltage across it times the
+/// current through it, cathode to anode, is at most `.max_power`.
+part Zener {
+    .designator &= "D"
+
+    pins {
+        .anode   passive "A" "2"
+        .cathode passive "K" "1"
+    }
+
+    /// The breakdown voltage, with its tolerance.
+    .zener_voltage: Voltage
+    .max_power: Power
+    /// Through-current in the breakdown direction, cathode to anode.
+    .current: Current
+    /// The DC voltage across the diode, cathode relative to anode. A Zener placed between a
+    /// rail's `pos` and `neg` takes it from that rail.
+    .bias: Voltage
+
+    .bias * .current <= .max_power
+    bridge .cathode ~> .anode
+
+    .package: Package
+    catalog zener { .zener_voltage, .max_power, .package }
+}
+
+/// A unidirectional transient-voltage-suppression diode. It does not conduct below
+/// `.standoff_voltage` and clamps to `.clamping_voltage` when the current through it is the
+/// peak pulse current `.peak_pulse_current`. Cathode to the protected line, anode to ground.
+///
+/// What is always true is that the rail across it stays below the stand-off, or it would
+/// conduct in normal use: `.bias <= .standoff_voltage`, with `.bias` taken from the rail it
+/// is across. What it protects is the board's to say. A design states the lowest absolute
+/// maximum of what is behind the diode as `.protected_limit` (a voltage, from that part's
+/// datasheet), and then the clamping voltage is checked against it.
+part Tvs {
+    .designator &= "D"
+
+    pins {
+        .anode   passive "A" "2"
+        .cathode passive "K" "1"
+    }
+
+    /// The reverse stand-off (working) voltage: the most the line may carry without the
+    /// diode conducting.
+    .standoff_voltage: Voltage
+    /// The voltage across the diode while it carries `.peak_pulse_current`.
+    .clamping_voltage: Voltage
+    .peak_pulse_current: Current
+    /// The absolute maximum voltage of the part this one protects. A design states it.
+    .protected_limit: Voltage
+    /// The DC voltage across the diode, cathode relative to anode.
+    .bias: Voltage
+
+    .bias <= .standoff_voltage
+    .clamping_voltage <= .protected_limit
+    bridge .cathode ~> .anode
+
+    .package: Package
+    catalog tvs { .standoff_voltage, .clamping_voltage, .peak_pulse_current, .package }
+}

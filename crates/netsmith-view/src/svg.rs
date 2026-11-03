@@ -1,0 +1,520 @@
+//! Draw a laid-out design as an SVG.
+//!
+//! Every wire, junction, label, pin and part carries `data-net`, `data-ref` or `data-pin`
+//! so the page can highlight them. Coordinates are millimetres on the sheet, so the
+//! drawing scales with the viewer.
+
+use std::fmt::Write as _;
+
+use netsmith_core::{Design, DesignError};
+use netsmith_kicad::{Mapping, SymbolLib};
+
+use crate::geom::{Dir, Orient, Pt};
+use crate::glyph::{Fill, GlyphPin, P, Shape};
+use crate::layout::{Anchor, Layout, PlacedPart, Text, layout};
+use crate::sheets::{Group, TITLE_SIZE, layout_sheets};
+
+/// Wires and symbol lines are never drawn thinner than this.
+const MIN_LINE: f64 = 0.2;
+const WIRE_WIDTH: f64 = 0.25;
+const PIN_TEXT: f64 = 1.0;
+const JUNCTION_RADIUS: f64 = 0.45;
+const HIT_WIDTH: f64 = 2.0;
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ViewError {
+    /// The design is not consistent, so there is nothing sensible to draw.
+    Design(DesignError),
+}
+
+impl std::fmt::Display for ViewError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Design(e) => write!(f, "cannot draw the design: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for ViewError {}
+
+impl From<DesignError> for ViewError {
+    fn from(e: DesignError) -> Self {
+        Self::Design(e)
+    }
+}
+
+const STYLE: &str = "\
+.schematic{--sheet:#fbfaf3;--wire:#0a7a3c;--body:#7b2020;--fill:#fff6bd;--pin:#7b2020;--text:#1d4f5e;--net:#075c2b;--hit:#e8590c;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+.schematic .sheet{fill:var(--sheet)}
+.schematic .module-frame{fill:#0a7a3c0a;stroke:#6f9a86;stroke-width:1.2;stroke-dasharray:6 4;vector-effect:non-scaling-stroke}
+.schematic .module-title{fill:#2f5f4a;font-weight:700}
+.schematic .module-sheet:hover .module-frame{fill:#0a7a3c18}
+.schematic text{fill:var(--text);stroke:none}
+.schematic .net-label{fill:var(--net);font-weight:600}
+.schematic .ref{font-weight:700}
+.schematic .pin-name,.schematic .pin-number{fill:var(--pin)}
+.schematic .line{fill:none;stroke:var(--wire);stroke-linecap:round;stroke-linejoin:round}
+.schematic .hit{fill:none;stroke:transparent;pointer-events:stroke}
+.schematic .junction{fill:var(--wire)}
+.schematic .pin-line{stroke:var(--pin);stroke-linecap:round}
+.schematic .pin-end{fill:transparent;stroke:none}
+.schematic .s{stroke:var(--body);stroke-linecap:round;stroke-linejoin:round}
+.schematic .f-none{fill:none}
+.schematic .f-outline{fill:var(--body)}
+.schematic .f-background{fill:var(--fill)}
+.schematic .missing .s{stroke-dasharray:1 .6}
+.schematic.has-on .wire:not(.on),.schematic.has-on .junction:not(.on),.schematic.has-on .net-label:not(.on),.schematic.has-on .part:not(.on):not(.touches){opacity:.22}
+.schematic .on .line,.schematic .junction.on,.schematic .on .pin-line{stroke:var(--hit);stroke-width:.5}
+.schematic .junction.on{fill:var(--hit)}
+.schematic text.on,.schematic .on text{fill:var(--hit)}
+.schematic .part.on .s{stroke:var(--hit)}
+.schematic .pin.on .pin-line{stroke:var(--hit);stroke-width:.5}
+";
+
+/// Draw `design` as one SVG document.
+pub fn render_svg(
+    design: &Design,
+    mapping: &Mapping,
+    lib: &SymbolLib,
+) -> Result<String, ViewError> {
+    let l = layout(design, mapping, lib)?;
+    Ok(draw(design, &l))
+}
+
+/// Draw `design` with its parts in boxes by `groups` (see [`crate::sheets`]).
+pub fn render_svg_by_module(
+    design: &Design,
+    groups: &[Group],
+    mapping: &Mapping,
+    lib: &SymbolLib,
+) -> Result<String, ViewError> {
+    let l = layout_sheets(design, groups, mapping, lib)?;
+    Ok(draw(design, &l))
+}
+
+fn draw(design: &Design, l: &Layout) -> String {
+    let b = l.bounds;
+    let view = format!(
+        "{} {} {} {}",
+        n(b.min.x),
+        n(b.min.y),
+        n(b.width()),
+        n(b.height())
+    );
+    let mut out = String::new();
+    let w = &mut out;
+    let _ = writeln!(
+        w,
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"schematic\" viewBox=\"{view}\" data-board=\"{}\" data-bounds=\"{view}\">",
+        esc(&design.name)
+    );
+    let _ = writeln!(w, "<title>{}</title>", esc(&design.name));
+    let _ = writeln!(w, "<style>\n{STYLE}</style>");
+    let _ = writeln!(
+        w,
+        "<rect class=\"sheet\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>",
+        n(b.min.x),
+        n(b.min.y),
+        n(b.width()),
+        n(b.height())
+    );
+
+    if !l.sheets.is_empty() {
+        let _ = writeln!(w, "<g class=\"sheets\">");
+        for sheet in &l.sheets {
+            let f = sheet.frame;
+            let _ = writeln!(
+                w,
+                "<g class=\"module-sheet\" data-module=\"{}\" data-bounds=\"{} {} {} {}\"><rect class=\"module-frame\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>",
+                esc(&sheet.name),
+                n(f.min.x),
+                n(f.min.y),
+                n(f.width()),
+                n(f.height()),
+                n(f.min.x),
+                n(f.min.y),
+                n(f.width()),
+                n(f.height())
+            );
+            text_element(w, &sheet.title, "module-title", TITLE_SIZE, "");
+            let _ = writeln!(w, "</g>");
+        }
+        let _ = writeln!(w, "</g>");
+    }
+
+    let _ = writeln!(w, "<g class=\"parts\">");
+    for p in &l.parts {
+        draw_part(w, design, p);
+    }
+    let _ = writeln!(w, "</g>");
+
+    let _ = writeln!(w, "<g class=\"wires\">");
+    for wire in &l.wires {
+        let points = wire
+            .points
+            .iter()
+            .map(|p| format!("{},{}", n(p.x), n(p.y)))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let _ = writeln!(
+            w,
+            "<g class=\"wire\" data-net=\"{}\"><polyline class=\"hit\" stroke-width=\"{HIT_WIDTH}\" points=\"{points}\"/><polyline class=\"line\" stroke-width=\"{WIRE_WIDTH}\" points=\"{points}\"/></g>",
+            esc(&design.nets[wire.net].name)
+        );
+    }
+    let _ = writeln!(w, "</g>");
+
+    let _ = writeln!(w, "<g class=\"junctions\">");
+    for j in &l.junctions {
+        let _ = writeln!(
+            w,
+            "<circle class=\"junction\" data-net=\"{}\" cx=\"{}\" cy=\"{}\" r=\"{JUNCTION_RADIUS}\"/>",
+            esc(&design.nets[j.net].name),
+            n(j.at.x),
+            n(j.at.y)
+        );
+    }
+    let _ = writeln!(w, "</g>");
+
+    let _ = writeln!(w, "<g class=\"labels\">");
+    for label in &l.labels {
+        text_element(
+            w,
+            &label.text,
+            "net-label",
+            1.27,
+            &format!(" data-net=\"{}\"", esc(&design.nets[label.net].name)),
+        );
+    }
+    let _ = writeln!(w, "</g>");
+    let _ = writeln!(w, "</svg>");
+    out
+}
+
+fn draw_part(w: &mut String, design: &Design, p: &PlacedPart) {
+    let part = &design.parts[p.part];
+    let class = if p.glyph.symbol.is_some() {
+        "part"
+    } else {
+        "part missing"
+    };
+    let _ = writeln!(
+        w,
+        "<g class=\"{class}\" data-ref=\"{}\" data-kind=\"{}\">",
+        esc(&part.refdes),
+        esc(&part.kind)
+    );
+    let mut summary = format!("{} {} {}", part.refdes, part.kind, part.value);
+    if let Some(package) = &part.package {
+        let _ = write!(summary, " ({package})");
+    }
+    if let Some(why) = &p.glyph.missing {
+        let _ = write!(summary, "\nNo symbol: {why}");
+    }
+    let _ = writeln!(w, "<title>{}</title>", esc(&summary));
+
+    let at = |q: P| -> Pt {
+        let r = p.orient.apply(q);
+        Pt::new(p.at.x + r.x, p.at.y + r.y)
+    };
+    for shape in &p.glyph.shapes {
+        draw_shape(w, shape, &at);
+    }
+    for (pin, placed) in p.glyph.pins.iter().zip(&p.pins) {
+        if pin.hidden {
+            continue;
+        }
+        let net = placed
+            .net
+            .map(|i| format!(" data-net=\"{}\"", esc(&design.nets[i].name)))
+            .unwrap_or_default();
+        let _ = writeln!(
+            w,
+            "<g class=\"pin\" data-ref=\"{}\" data-pin=\"{}\"{net}>",
+            esc(&part.refdes),
+            esc(&placed.id)
+        );
+        draw_pin(w, pin, placed.at, p, &p.orient);
+        let _ = writeln!(w, "</g>");
+    }
+    text_element(w, &p.reference, "ref", 1.27, "");
+    if let Some(v) = &p.value {
+        text_element(w, v, "value", 1.27, "");
+    }
+    let _ = writeln!(w, "</g>");
+}
+
+fn draw_pin(w: &mut String, pin: &GlyphPin, at: Pt, part: &PlacedPart, orient: &Orient) {
+    let toward = orient.dir(pin.toward_body);
+    let inner = at.step(toward, pin.length);
+    let _ = writeln!(
+        w,
+        "<line class=\"pin-line\" stroke-width=\"{MIN_LINE}\" x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\"/>",
+        n(at.x),
+        n(at.y),
+        n(inner.x),
+        n(inner.y)
+    );
+    let _ = writeln!(
+        w,
+        "<circle class=\"pin-end\" cx=\"{}\" cy=\"{}\" r=\"1.1\"/>",
+        n(at.x),
+        n(at.y)
+    );
+    if part.glyph.show_numbers {
+        let mid = Pt::new((at.x + inner.x) / 2.0, (at.y + inner.y) / 2.0);
+        let t = if toward.is_vertical() {
+            Text {
+                text: pin.id.clone(),
+                at: Pt::new(mid.x - 0.4, mid.y + 0.35),
+                anchor: Anchor::End,
+            }
+        } else {
+            Text {
+                text: pin.id.clone(),
+                at: Pt::new(mid.x, mid.y - 0.4),
+                anchor: Anchor::Middle,
+            }
+        };
+        text_element(w, &t, "pin-number", PIN_TEXT, "");
+    }
+    if part.glyph.show_names && !pin.name.is_empty() {
+        let offset = part.glyph.name_offset;
+        let t = match toward {
+            Dir::Right => Text {
+                text: pin.name.clone(),
+                at: Pt::new(inner.x + offset, inner.y + 0.35),
+                anchor: Anchor::Start,
+            },
+            Dir::Left => Text {
+                text: pin.name.clone(),
+                at: Pt::new(inner.x - offset, inner.y + 0.35),
+                anchor: Anchor::End,
+            },
+            Dir::Down => Text {
+                text: pin.name.clone(),
+                at: Pt::new(inner.x, inner.y + offset + 1.0),
+                anchor: Anchor::Middle,
+            },
+            Dir::Up => Text {
+                text: pin.name.clone(),
+                at: Pt::new(inner.x, inner.y - offset - 0.2),
+                anchor: Anchor::Middle,
+            },
+        };
+        text_element(w, &t, "pin-name", PIN_TEXT, "");
+    }
+}
+
+fn draw_shape(w: &mut String, shape: &Shape, at: &dyn Fn(P) -> Pt) {
+    let class = |fill: Fill| match fill {
+        Fill::None => "s f-none",
+        Fill::Outline => "s f-outline",
+        Fill::Background => "s f-background",
+    };
+    let sw = |width: f64| n(width.max(MIN_LINE));
+    match shape {
+        Shape::Rect { a, b, width, fill } => {
+            let (p, q) = (at(*a), at(*b));
+            let _ = writeln!(
+                w,
+                "<rect class=\"{}\" stroke-width=\"{}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>",
+                class(*fill),
+                sw(*width),
+                n(p.x.min(q.x)),
+                n(p.y.min(q.y)),
+                n((p.x - q.x).abs()),
+                n((p.y - q.y).abs())
+            );
+        }
+        Shape::Poly { pts, width, fill } => {
+            let points = pts
+                .iter()
+                .map(|&q| {
+                    let p = at(q);
+                    format!("{},{}", n(p.x), n(p.y))
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            let _ = writeln!(
+                w,
+                "<polyline class=\"{}\" stroke-width=\"{}\" points=\"{points}\"/>",
+                class(*fill),
+                sw(*width)
+            );
+        }
+        Shape::Circle {
+            center,
+            radius,
+            width,
+            fill,
+        } => {
+            let c = at(*center);
+            let _ = writeln!(
+                w,
+                "<circle class=\"{}\" stroke-width=\"{}\" cx=\"{}\" cy=\"{}\" r=\"{}\"/>",
+                class(*fill),
+                sw(*width),
+                n(c.x),
+                n(c.y),
+                n(*radius)
+            );
+        }
+        Shape::Arc {
+            start,
+            mid,
+            end,
+            width,
+            fill,
+        } => {
+            let _ = writeln!(
+                w,
+                "<path class=\"{}\" stroke-width=\"{}\" d=\"{}\"/>",
+                class(*fill),
+                sw(*width),
+                arc_path(at(*start), at(*mid), at(*end))
+            );
+        }
+        Shape::Text {
+            at: pos,
+            text,
+            size,
+        } => {
+            let p = at(*pos);
+            let t = Text {
+                text: text.clone(),
+                at: Pt::new(p.x, p.y + size * 0.35),
+                anchor: Anchor::Middle,
+            };
+            text_element(w, &t, "pin-name", *size, "");
+        }
+    }
+}
+
+/// An SVG path for the circular arc from `start` through `mid` to `end`, all on the sheet.
+fn arc_path(start: Pt, mid: Pt, end: Pt) -> String {
+    let cross = (mid.x - start.x) * (end.y - mid.y) - (mid.y - start.y) * (end.x - mid.x);
+    let line = || {
+        format!(
+            "M {} {} L {} {}",
+            n(start.x),
+            n(start.y),
+            n(end.x),
+            n(end.y)
+        )
+    };
+    if cross.abs() < 1e-9 {
+        return line();
+    }
+    // Circle through three points.
+    let d =
+        2.0 * (start.x * (mid.y - end.y) + mid.x * (end.y - start.y) + end.x * (start.y - mid.y));
+    let sq = |p: Pt| p.x * p.x + p.y * p.y;
+    let cx =
+        (sq(start) * (mid.y - end.y) + sq(mid) * (end.y - start.y) + sq(end) * (start.y - mid.y))
+            / d;
+    let cy =
+        (sq(start) * (end.x - mid.x) + sq(mid) * (start.x - end.x) + sq(end) * (mid.x - start.x))
+            / d;
+    let r = ((start.x - cx).powi(2) + (start.y - cy).powi(2)).sqrt();
+    // On the sheet y grows downward, so a positive cross product turns clockwise, which
+    // SVG calls the positive sweep.
+    let sweep = cross > 0.0;
+    let angle = |p: Pt| (p.y - cy).atan2(p.x - cx);
+    let tau = std::f64::consts::TAU;
+    let swept = if sweep {
+        (angle(end) - angle(start)).rem_euclid(tau)
+    } else {
+        (angle(start) - angle(end)).rem_euclid(tau)
+    };
+    format!(
+        "M {} {} A {} {} 0 {} {} {} {}",
+        n(start.x),
+        n(start.y),
+        n(r),
+        n(r),
+        u8::from(swept > std::f64::consts::PI),
+        u8::from(sweep),
+        n(end.x),
+        n(end.y)
+    )
+}
+
+fn text_element(w: &mut String, t: &Text, class: &str, size: f64, attrs: &str) {
+    let anchor = match t.anchor {
+        Anchor::Start => "start",
+        Anchor::Middle => "middle",
+        Anchor::End => "end",
+    };
+    let _ = writeln!(
+        w,
+        "<text class=\"{class}\"{attrs} font-size=\"{}\" text-anchor=\"{anchor}\" x=\"{}\" y=\"{}\">{}</text>",
+        n(size),
+        n(t.at.x),
+        n(t.at.y),
+        esc(&t.text)
+    );
+}
+
+/// A number with at most three decimals and no trailing zeros, never `-0`.
+fn n(v: f64) -> String {
+    let mut s = format!("{v:.3}");
+    if s.contains('.') {
+        while s.ends_with('0') {
+            s.pop();
+        }
+        if s.ends_with('.') {
+            s.pop();
+        }
+    }
+    if s == "-0" { "0".to_string() } else { s }
+}
+
+fn esc(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn numbers_are_short_and_never_negative_zero() {
+        assert_eq!(n(1.0), "1");
+        assert_eq!(n(-0.0001), "0");
+        assert_eq!(n(2.5400001), "2.54");
+        assert_eq!(n(-3.81), "-3.81");
+    }
+
+    #[test]
+    fn text_is_escaped() {
+        assert_eq!(esc("a<b & \"c\""), "a&lt;b &amp; &quot;c&quot;");
+    }
+
+    #[test]
+    fn a_half_circle_is_an_arc_with_the_right_sweep() {
+        // Left to right over the top on a y-down sheet turns clockwise.
+        let d = arc_path(Pt::new(-1.0, 0.0), Pt::new(0.0, -1.0), Pt::new(1.0, 0.0));
+        assert_eq!(d, "M -1 0 A 1 1 0 0 1 1 0");
+        // Over the bottom turns the other way.
+        let d = arc_path(Pt::new(-1.0, 0.0), Pt::new(0.0, 1.0), Pt::new(1.0, 0.0));
+        assert_eq!(d, "M -1 0 A 1 1 0 0 0 1 0");
+    }
+
+    #[test]
+    fn three_points_in_a_line_are_a_line() {
+        let d = arc_path(Pt::new(0.0, 0.0), Pt::new(1.0, 0.0), Pt::new(2.0, 0.0));
+        assert_eq!(d, "M 0 0 L 2 0");
+    }
+}

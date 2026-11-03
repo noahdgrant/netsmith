@@ -1,0 +1,10 @@
+[package]
+name = "netsmith-solve"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+netsmith-check = { path = "../netsmith-check" }
+netsmith-lang = { path = "../netsmith-lang" }
+netsmith-quantity = { path = "../netsmith-quantity" }

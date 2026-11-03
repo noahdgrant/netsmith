@@ -1,0 +1,192 @@
+//! Voltage regulators.
+
+import std::parts::passive::{Capacitor, Inductor, Resistor}
+import std::sources::Rail
+
+/// A linear regulator with a fixed output. Its input and output share a ground. Which
+/// pad is which depends on the package, so there is a pin table for each package its
+/// catalog has. The output's ground (`.vout.neg`) is joined to the input's inside the part,
+/// so it needs no row.
+part LinearRegulator {
+    .designator &= "U"
+
+    .vin:  Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+
+    .dropout:     Voltage
+    .max_current: Current
+    .max_power:   Power
+    .vin.voltage >= .vout.voltage + .dropout
+
+    // What the input draws is what the output supplies; the regulator's own quiescent
+    // current is ignored.
+    .vin.current == -.vout.current
+
+    // It must be able to supply what is drawn from it, and survive the heat of doing so.
+    -.vout.current <= .max_current
+    (.vin.voltage - .vout.voltage) * (-.vout.current) <= .max_power
+
+    // Pad 1 is ground, 2 the output and 3 the input, in both packages.
+    pins "SOT-23" {
+        .vin.pos  power "IN"  "3"
+        .vin.neg  power "GND" "1"
+        .vout.pos power "OUT" "2"
+    }
+    pins "SOT-223" {
+        .vin.pos  power "IN"  "3"
+        .vin.neg  power "GND" "1"
+        .vout.pos power "OUT" "2"
+    }
+
+    .package: Package
+    catalog ldo { .vout.voltage, .dropout, .max_current, .max_power, .package }
+}
+
+/// The resistor divider that sets the output of an adjustable regulator: `rtop` from the
+/// output to the feedback pin and `rbottom` from the feedback pin to ground, so the regulator
+/// holds the feedback pin at its reference `vref` and the output at
+/// `vref * (1 + rtop / rbottom)` (ADR 0025). The board states the output it wants
+/// (`.divider.vout &= 3.8V +/- 3%`) and the regulator's reference with its tolerance
+/// (`.divider.vref &= 1.0V +/- 1%`, from the datasheet), and the solver picks two resistors
+/// whose tolerances keep the output inside the wanted range in the worst case. The output is
+/// a plain voltage and the pins are plain pins, so the divider adds nothing to the currents
+/// of a rail; the board joins `top` to the positive pin of the output rail, `bottom` to its
+/// negative pin and `fb` to the regulator's feedback pin.
+///
+/// The feedback pin draws nothing (its bias current is ignored), so the same current runs
+/// through both resistors, `(vout - vref) / rtop` and `vref / rbottom`, and each resistor's
+/// power rating is checked against it.
+module FeedbackDivider {
+    /// Joined to the positive pin of the output the divider measures.
+    .top: Pin
+    /// The tap, joined to the regulator's feedback pin.
+    .fb: Pin
+    /// Joined to the output's ground.
+    .bottom: Pin
+    /// The regulator's reference voltage at the feedback pin, with its tolerance.
+    .vref: Voltage
+    /// The output voltage the divider sets.
+    .vout: Voltage
+    .rtop: Resistor
+    .rbottom: Resistor
+
+    .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
+    .rtop.current == (.vout - .vref) / .rtop.resistance
+    .rbottom.current == .vref / .rbottom.resistance
+
+    .top ~ .rtop.a
+    .rtop.b ~ .fb
+    .fb ~ .rbottom.a
+    .rbottom.b ~ .bottom
+}
+
+/// What a switching (buck) regulator IC says about itself, for `BuckStage` (ADR 0025). A
+/// concrete IC is a `part` with a `.buck: Buck` member and a `vin` rail, and it writes three
+/// things:
+///
+/// - its pin table, against the pins of this interface (`.buck.sw.pos`, `.buck.fb`) and its
+///   supply pins (`.vin.pos`, `.vin.neg`), with `.buck.sw.neg ~ .vin.neg` joined inside the
+///   part, as `LinearRegulator` does for its output;
+/// - its datasheet numbers as narrowings (`.buck.fsw &= 1.2MHz +/- 15%`);
+/// - the one relation that ties its input to its output, what it draws from what it
+///   supplies over the whole efficiency range:
+///   `.vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)`.
+///
+/// A switching frequency that a resistor sets is one more relation the IC writes, for example
+/// `.buck.fsw == 24GHz * 1ohm / .rt` with `.rt: Resistance` a field of the IC that the board
+/// states against its `RT` resistor. A number the IC leaves open makes the relations that use
+/// it not evaluated, which is no error.
+interface Buck {
+    /// The switching node as a supply: its `pos` is the IC's switch pin and its `voltage` the
+    /// output voltage it averages to, and the load current comes out of it (the `current` is
+    /// negative: the IC supplies). The inductor is between this and the output.
+    .sw: Rail
+    /// The feedback pin, to be joined to the tap of the divider.
+    .fb: Pin
+    /// The reference at the feedback pin, with its tolerance.
+    .vref: Voltage
+    /// The switching frequency, with its tolerance.
+    .fsw: Frequency
+    .min_input_voltage: Voltage
+    .max_input_voltage: Voltage
+    /// The largest continuous output current.
+    .max_output_current: Current
+    /// The efficiency over the load range, as a range of fractions (`0.85..0.95`).
+    .efficiency: Number
+    /// The smallest inductance the datasheet allows (a table of recommended values is not
+    /// one number; the IC states the smallest).
+    .min_inductance: Inductance
+    /// The capacitance the datasheet asks for on the input and the output, as effective
+    /// capacitance in use (ADR 0013).
+    .min_input_capacitance: Capacitance
+    .min_output_capacitance: Capacitance
+}
+
+/// Everything around a buck converter IC except the IC (ADR 0025): the inductor, the input
+/// and output capacitors, and the feedback divider that sets the output. The board states the
+/// input rail, the output it wants (`.stage.vout.voltage &= 1.8V +/- 3%`) and its load
+/// (`.output.current &= 0mA..1A`), places the IC, and joins four pairs of interfaces:
+/// `.input ~ .stage.vin`, `.input ~ .u.vin`, `.stage.vout ~ .output` and
+/// `.stage.buck ~ .u.buck`. The stage's own input draws no DC current: the converter's is the
+/// IC's `vin`, which is on the same net.
+///
+/// From the IC's numbers the stage states what is always true of a buck converter and the
+/// solver checks it in the worst case:
+///
+/// - the input stays inside the IC's range and above the output, and the load is at most its
+///   largest output current;
+/// - the ripple current of the inductor is `(vin - vout) * vout / (vin * L * fsw)`, largest at
+///   the highest input, and the inductor must carry the load plus half the ripple without
+///   saturating: `isat >= iout + ripple / 2`. In a chain the inductor's `.current` is the
+///   load, the average (ADR 0014), so the half ripple is added here and the part's own
+///   `current <= saturation_current` is the weaker check of the average;
+/// - the inductor is at least the IC's minimum, and each capacitor has at least the effective
+///   capacitance the IC asks for at the voltage across it.
+///
+/// The divider's current and the quiescent current of the IC are not added to the load, so
+/// the inductor carries the load: `.inductor.current == -.vout.current`. The divider's pins
+/// are on the output net and are not modelled, so the balance there is not complete and
+/// cannot say that itself (ADR 0027).
+/// There is one capacitor on each side: an IC that asks for more states the bigger
+/// capacitance. The IC's recommended inductance is its `min_inductance`; the converter's
+/// stability and its loop are not modelled.
+module BuckStage {
+    /// Joined to the IC's `buck`.
+    .buck: Buck
+    .vin: Rail
+    .vout: Rail
+    .divider: FeedbackDivider
+    .inductor: Inductor
+    .input_cap: Capacitor
+    .output_cap: Capacitor
+    /// The peak-to-peak ripple current of the inductor.
+    .ripple: Current
+
+    .vin.current &= 0A
+    .inductor.current == -.vout.current
+
+    .vin.neg ~ .vout.neg
+    .buck.sw.neg ~ .vin.neg
+    .buck.sw.voltage == .vout.voltage
+    .divider.top ~ .vout.pos
+    .divider.bottom ~ .vout.neg
+    .divider.fb ~ .buck.fb
+    .divider.vref == .buck.vref
+    .divider.vout == .vout.voltage
+
+    .buck.sw.pos ~> .inductor ~> .vout.pos
+    .vin.pos ~> .input_cap ~> .vin.neg
+    .vout.pos ~> .output_cap ~> .vout.neg
+
+    .vin.voltage >= .buck.min_input_voltage
+    .vin.voltage <= .buck.max_input_voltage
+    .vin.voltage >= .vout.voltage
+    -.vout.current <= .buck.max_output_current
+
+    .ripple == (.vin.voltage - .vout.voltage) * .vout.voltage / (.vin.voltage * .inductor.inductance * .buck.fsw)
+    .inductor.current + .ripple / 2 <= .inductor.saturation_current
+    .inductor.inductance >= .buck.min_inductance
+    .input_cap.effective_capacitance >= .buck.min_input_capacitance
+    .output_cap.effective_capacitance >= .buck.min_output_capacitance
+}

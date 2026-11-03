@@ -1,0 +1,21 @@
+//! Power rails.
+
+/// A DC power rail: two terminals and the voltage between them. A rail on a board that
+/// nothing on the board drives is supplied from outside it.
+///
+/// `current` is what whatever is behind the rail draws from the net through `pos`: positive
+/// when it draws, negative when it supplies. A design states the load side
+/// (`.output.current &= 0mA..50mA`); the checker adds up the rails on each net so that
+/// what is drawn equals what is supplied (ADR 0007).
+interface Rail {
+    .pos: Pin
+    .neg: Pin
+    .voltage: Voltage
+    .current: Current
+    /// The narrowest track the nets of this rail are routed with: a lower bound, written as
+    /// a range (`.min_track &= 0.5mm..1m`). Both pins get it, since the return current is the
+    /// same current. A net takes the widest of the rails on it, so `GND` is as wide as the
+    /// widest rail that returns to it (ADR 0020). Unset, the net is routed at the process's
+    /// least.
+    .min_track: Length
+}

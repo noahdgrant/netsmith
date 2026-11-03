@@ -1,0 +1,60 @@
+//! `scripts/editor-verify`, the tool that drives the editor in a headless browser. Its
+//! `doctor --no-browser` needs only Node 20 or newer, so it is tested here; the rest needs a
+//! browser and is exercised by running the recipes (skill `netsmith-dev-verify-editor`).
+
+use std::{path::Path, process::Command};
+
+fn script() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/editor-verify")
+}
+
+/// Whether the wrapper can find a Node of at least 20, as it does: on `PATH`, else in `~/.nvm`.
+fn have_node() -> bool {
+    Command::new("bash")
+        .arg("-c")
+        .arg(
+            r#"node_ok() { command -v node >/dev/null 2>&1 && [ "$(node -p 'process.versions.node.split(".")[0]')" -ge 20 ]; }
+               node_ok || { d="$(ls -d "$HOME"/.nvm/versions/node/v*/bin 2>/dev/null | sort -V | tail -n1)"; [ -n "$d" ] && PATH="$d:$PATH" && node_ok; }"#,
+        )
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+#[test]
+fn doctor_reports_what_is_installed_without_a_browser() {
+    if !have_node() {
+        eprintln!("skipped: no Node 20 or newer");
+        return;
+    }
+    let out = Command::new(script())
+        .args(["doctor", "--no-browser"])
+        .env("NETSMITH_BIN", env!("CARGO_BIN_EXE_netsmith"))
+        .output()
+        .expect("the script runs");
+    let said = String::from_utf8_lossy(&out.stdout);
+    let web = Path::new(env!("CARGO_MANIFEST_DIR")).join("../netsmith-editor/web/dist/index.html");
+    for line in ["ok   node: v", "ok   netsmith binary: "] {
+        assert!(said.contains(line), "{line}: {said}");
+    }
+    assert!(
+        !said.contains("chromium") && !said.contains("playwright"),
+        "{said}"
+    );
+    // The page is built when Node was there at build time; doctor says so either way.
+    assert_eq!(said.contains("ok   web bundle"), web.is_file(), "{said}");
+    assert_eq!(out.status.success(), web.is_file(), "{said}");
+}
+
+#[test]
+fn an_unknown_command_prints_the_usage_and_exits_2() {
+    if !have_node() {
+        return;
+    }
+    let out = Command::new(script()).arg("nonsense").output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        said.contains("usage: scripts/editor-verify") && said.contains("cleanup"),
+        "{said}"
+    );
+}

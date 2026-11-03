@@ -1,0 +1,4762 @@
+# The netsmith language
+
+netsmith reads `.nsm` files. A file describes boards: the parts on them, the nets that join the pins, and the requirements the parts must meet. netsmith checks the file, picks real parts that meet the requirements in the worst case, and writes files for KiCad and for a board house.
+
+This guide has a quick start, then one section for each construct of the language. Each section gives what the construct means, its syntax, a complete example, its rules, and the message you get when you misuse it. The last section lists the standard library.
+
+`netsmith init` copies this guide into a project as `docs/netsmith/LANGUAGE.md`. Vocabulary is in `GLOSSARY.md` and the reasons for the design are in `docs/adr/`, in netsmith's source repository.
+
+## How to read the examples
+
+Every block marked `nsm` in this guide is a complete file. The test `crates/netsmith/tests/guide.rs` checks each one, solves those marked `solve`, and compares every message with what the tool prints. A block marked `nsm-fragment` is a piece of a file and is not run.
+
+To run an example, save it and use `netsmith build`:
+
+```sh
+netsmith build main.nsm --out out
+```
+
+`build` checks the file, solves it, and writes a KiCad schematic. In the netsmith source repository, `cargo run -p netsmith -- build main.nsm` does the same, and `cargo run -p netsmith-check --example check -- main.nsm` and `cargo run -p netsmith-solve --example solve -- main.nsm` print what the checker and the solver worked out.
+
+## Quick start
+
+`examples/led.nsm` is an LED on a 5 V supply with a resistor that sets its current. The solver picks the resistor.
+
+```nsm solve report file=examples/led.nsm
+import std::parts::connector::Header1x2
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+board LedExample {
+    /// Made by JLCPCB's two-layer process, on a board 1.6 mm thick.
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+
+    .led: Led {
+        .current &= 5mA..15mA
+    }
+
+    .r1: Resistor {}
+
+    /// The supply comes in through this header.
+    .power_in: Header1x2
+    .supply.pos ~ .power_in.p1
+    .supply.neg ~ .power_in.p2
+
+    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
+
+    .supply.pos ~> .r1 ~> .led ~> .supply.neg
+}
+```
+
+```text
+board LedExample
+  D1   Led             KT-0603R        LED_SMD:LED_0603_1608Metric                                C2286 Basic
+  J1   Header1x2       Conn_01x02      Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical hand-soldered
+  R1   Resistor        330             Resistor_SMD:R_0402_1005Metric                             C25104 Basic
+  net GND: D1.1, J1.2
+  net VCC: J1.1, R1.1
+  net net-led.anode: D1.2, R1.2
+```
+
+Read it from the top.
+
+- `import` brings in definitions from the standard library.
+- `board LedExample { ... }` defines one board.
+- `.process: TwoLayer { ... }` gives the board a member named `process` of type `TwoLayer`. It says which factory makes the board. `.stackup.thickness &= 1.6mm` chooses a thickness.
+- `.supply: Rail { ... }` is a member named `supply`, a `Rail`. `.voltage &= 5V +/- 5%` narrows its voltage to 4.75 V to 5.25 V. `.pos.net &= "VCC"` names the net on its positive pin.
+- `.led: Led { .current &= 5mA..15mA }` is an LED that must carry 5 mA to 15 mA.
+- `.r1: Resistor {}` is a resistor with nothing stated. The solver picks its value.
+- `.supply.pos ~ .power_in.p1` puts two pins on one net.
+- `.led.current == ...` is a relation. It ties the LED current to the resistor the solver will pick.
+- `.supply.pos ~> .r1 ~> .led ~> .supply.neg` is a series chain: positive pin, resistor, LED, negative pin.
+
+The report shows what the solver chose: a 330 ohm resistor and a red LED, both from JLCPCB's Basic library. The relation decides it. With the supply at 4.75 V to 5.25 V, a forward voltage of 1.8 V to 2.4 V and a 1% 330 ohm resistor, the current stays between 5 mA and 15 mA (about 7.05 mA to 10.56 mA, in fact). The resistor is a 0402 part: its 62.5 mW rating holds for the current it really carries (see Resistor power).
+
+The rest of this guide explains each construct. Statement order never matters, so you may write the statements of a block in any order.
+
+## Definitions: board, part, interface, module, system, panel
+
+A definition is a named, reusable description. There are six kinds.
+
+| Keyword | Meaning |
+|---|---|
+| `board` | One physical board: a process, parts and modules. It is built and ordered. |
+| `part` | A component with pins and quantities, such as a resistor. |
+| `interface` | A typed set of pins and quantities that is connected as one, such as a `Rail`. |
+| `module` | A reusable sub-circuit placed on a board or in another module. |
+| `system` | Several boards and the joins between their ports (see Systems). |
+| `panel` | One board repeated in a grid on one fabrication panel (see Panels). |
+
+Syntax:
+
+```nsm-fragment
+kind Name {
+    ...members and statements...
+}
+```
+
+A file holds any number of definitions. Names are case sensitive. By convention definitions are `CamelCase` and members are `snake_case`.
+
+```nsm
+import std::parts::passive::Resistor
+
+/// A two-pin screw terminal.
+part Terminal2 {
+    pins {
+        .p1 passive "P1" "1"
+        .p2 passive "P2" "2"
+    }
+}
+
+/// A signal line and the ground it is measured against.
+interface Signal {
+    .line: Pin
+    .ground: Pin
+    .level: Voltage
+}
+
+/// Holds a signal line low until something drives it.
+module Pulldown {
+    .input: Signal
+    .r: Resistor { .resistance &= 10kohm +/- 1% }
+    .input.line ~> .r ~> .input.ground
+}
+
+board Probe {
+    .sig: Signal { .level &= 3.3V }
+    .hold: Pulldown
+    .sig ~ .hold.input
+    .terminal: Terminal2
+    .sig.line ~ .terminal.p1
+    .sig.ground ~ .terminal.p2
+}
+```
+
+Rules.
+
+- A definition holds members (`.name: Type`) and statements (constraints, connections, `bridge`, `catalog`).
+- A `part` is the only definition that may hold `bridge` and `catalog`.
+- A board is placed only in a system or a panel, never in another board or a module.
+- Today a part can be built into a schematic only if the exporter knows its name: `Resistor`, `Capacitor`, `Led`, `LinearRegulator` and `Header1x2`. Another part checks and solves, and `build` stops with the message below.
+
+Misuse: a board inside a board.
+
+```nsm fails
+import std::sources::Rail
+
+board Inner {
+    .a: Rail
+}
+
+board Outer {
+    .inner: Inner
+}
+```
+
+```text
+error: a board cannot be placed inside a board; boards are placed only in a system or a panel
+  --> main.nsm:8:13
+  |
+8 |     .inner: Inner
+  |             ^^^^^
+```
+
+Misuse: a part the exporter does not know.
+
+```nsm fails
+part Chip {
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+}
+
+board Uses {
+    .u: Chip
+}
+```
+
+```text
+error: Uses: U1: there is no KiCad symbol for a `Chip` yet
+```
+
+## Members
+
+A member is a named thing inside a definition: a pin, a value, a part, a module or an interface. You declare one with `.name: Type`. A declaration may have a block that sets members of the new thing.
+
+```nsm
+import std::parts::passive::Capacitor
+import std::sources::Rail
+
+board Members {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .bypass: Capacitor {
+        .effective_capacitance >= 1uF
+        .max_voltage >= supply.voltage * 2
+    }
+    .supply.pos ~> .bypass ~> .supply.neg
+}
+```
+
+Rules.
+
+- `.name` is a member of the block you are writing in. A path continues with dots: `.supply.pos.net`.
+- A name without the leading dot is looked up outward. `supply.voltage` inside the `.bypass` block finds the board's `supply`. The search goes through the enclosing blocks of the same definition, innermost first.
+- At the top level of a definition a bare name finds nothing, because nothing encloses it. Write the dot.
+- A bare name never leaves its definition. A module cannot see the board that uses it.
+- A declaration needs a single name: `.name: Type`. A name is declared once per block.
+- Statements end at a newline or at `;`.
+- A name that is not a plain identifier is written in single quotes: `.'1'`.
+
+Types you can declare: `Pin`; the quantities `Number`, `Voltage`, `Current`, `Resistance`, `Capacitance`, `Inductance`, `Frequency`, `Time`, `Length`, `Power`, `Charge`, `Temperature` (kelvin, `10K`; a rise is a difference, so it is kelvin too); the text types `String`, `Package`, `Color`; and any definition you can name.
+
+Misuse: a typo, a bare name where the dot belongs, and a name declared twice.
+
+```nsm fails
+import std::parts::passive::Resistor
+
+board Typo {
+    .r1: Resistor { .resitance &= 1kohm +/- 1% }
+}
+```
+
+```text
+error: `resitance` is not a member of this Resistor
+  --> main.nsm:4:22
+  |
+4 |     .r1: Resistor { .resitance &= 1kohm +/- 1% }
+  |                      ^^^^^^^^^
+```
+
+```nsm fails
+import std::parts::passive::Resistor
+
+board Bare {
+    .r1: Resistor
+    r1.resistance &= 1kohm +/- 1%
+}
+```
+
+```text
+error: `r1` is not defined in any enclosing block; write `.r1` for a member of this block
+  --> main.nsm:5:5
+  |
+5 |     r1.resistance &= 1kohm +/- 1%
+  |     ^^
+```
+
+```nsm fails
+import std::parts::passive::Resistor
+
+board Twice {
+    .r: Resistor
+    .r: Resistor
+}
+```
+
+```text
+error: `r` is already declared in this block
+  --> main.nsm:5:5
+  |
+5 |     .r: Resistor
+  |     ^^
+```
+
+## Values: units, ranges and tolerances
+
+Every value is a quantity with a dimension, and it is always a range in the worst case. A single number is a range with equal ends.
+
+Literals.
+
+| Form | Meaning |
+|---|---|
+| `3.3V`, `10kohm`, `100nF`, `5mA` | A number and a unit, with an SI prefix. |
+| `1.8V..2.2V` | A range, low end first. |
+| `3.3V +/- 5%` | A value and a relative tolerance: 3.135 V to 3.465 V. |
+| `100ohm +/- 5ohm` | A value and an absolute tolerance, in the value's unit. |
+| `20ppm` | A relative fraction, like `%`. |
+| `"VCC"` | Text. |
+
+Units: `m`, `g`, `s`, `A`, `K`, `V`, `ohm` (or `Ω`), `W`, `F`, `H`, `Hz`, `S`, `C`. Prefixes: `f p n u (or µ) m k M G T`. Lowercase `m` is milli and uppercase `M` is mega, so `1mohm` is a milliohm and `1Mohm` is a megohm. Arithmetic uses `+ - * /` and parentheses. A sum or difference needs the same dimension. A product or quotient makes a new one.
+
+```nsm solve
+import std::parts::passive::{Resistor, Capacitor}
+import std::sources::Rail
+
+board Units {
+    .rail: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .r1: Resistor { .resistance &= 4.7kohm +/- 1% }
+    .r2: Resistor { .resistance &= 100ohm +/- 5ohm }
+    .r3: Resistor { .resistance &= 900ohm..1.1kohm }
+    .c1: Capacitor { .capacitance &= 100nF +/- 20% }
+    .rail.pos ~> .r1 ~> .r2 ~> .r3 ~> .c1 ~> .rail.neg
+}
+```
+
+Rules.
+
+- A range or a tolerance needs fixed numbers on both sides. `.x &= .y +/- 1%` is an error.
+- A value has a dimension and a field accepts only its own: a `Voltage` field takes volts.
+- A divisor whose range includes zero is an error.
+
+Misuse.
+
+```nsm fails
+import std::parts::passive::Resistor
+
+board WrongUnit {
+    .r1: Resistor { .resistance &= 5mA }
+}
+```
+
+```text
+error: `r1.resistance` holds Ω, but this value is A
+  --> main.nsm:4:21
+  |
+4 |     .r1: Resistor { .resistance &= 5mA }
+  |                     ^^^^^^^^^^^^^^^^^^
+```
+
+```nsm fails
+import std::sources::Rail
+
+board Mixed {
+    .a: Rail { .voltage &= 3V + 2mA }
+}
+```
+
+```text
+error: cannot add V and A
+  --> main.nsm:4:28
+  |
+4 |     .a: Rail { .voltage &= 3V + 2mA }
+  |                            ^^^^^^^^
+```
+
+```nsm fails
+import std::sources::Rail
+
+board Unknown {
+    .a: Rail { .voltage &= 3parsec }
+}
+```
+
+```text
+error: unknown unit `parsec`
+  --> main.nsm:4:28
+  |
+4 |     .a: Rail { .voltage &= 3parsec }
+  |                            ^^^^^^^
+```
+
+```nsm fails
+import std::sources::Rail
+
+board Backwards {
+    .a: Rail { .voltage &= 3V..1V }
+}
+```
+
+```text
+error: the low end of the range is above the high end
+  --> main.nsm:4:28
+  |
+4 |     .a: Rail { .voltage &= 3V..1V }
+  |                            ^^^^^^
+```
+
+## Narrowing and relations
+
+Four operators put requirements on values. There is no plain `=`.
+
+| Operator | Meaning |
+|---|---|
+| `&=` | Narrowing. Restrict a field to the values that its current range and the new constant, range, tolerance or expression all allow. |
+| `==` | An equation between quantities. It must hold in the worst case. |
+| `>=` and `<=` | A bound. It must hold for every value the two sides can take. |
+
+A `&=` with a constant on the right narrows the field at once. A statement that mentions another field is a relation: the solver evaluates it once it has the numbers.
+
+```nsm solve
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Divider {
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .top: Resistor {}
+    .bottom: Resistor { .resistance &= 10kohm +/- 1% }
+    .out: Rail { .voltage &= 3.3V +/- 7% }
+    .supply.pos ~> .top ~> .bottom ~> .supply.neg
+    .top.b ~ .out.pos
+    .supply.neg ~ .out.neg
+    .out.voltage == .supply.voltage * .bottom.resistance / (.top.resistance + .bottom.resistance)
+}
+```
+
+Here `.bottom.resistance` narrows at once. `.out.voltage == ...` waits for the solver, which picks `.top` so that the divider output always stays within 3.3 V +/- 7%.
+
+Rules.
+
+- Use `&=` to say what a field may be, and a constant on its right.
+- Use `==` for an equation whose right side mentions other fields. When the left field has a range, the computed range must lie inside it. When it has none yet, it takes the computed one. When it has a range and this is the only equation on it, it then takes the computed range too, since the equation says what the value is: a window of current that a resistor's value fixes becomes the current that resistor lets through, and what depends on the current (a power) is worked out from that.
+- Use `>=` and `<=` for limits: `.output_cap.max_voltage >= .vout.voltage * 1.5` holds only if the lowest rating is above the highest voltage times 1.5.
+- Narrowing is an intersection. Two narrowings that do not overlap are a contradiction, whatever their order.
+- A narrowed value cannot be loosened later. A library therefore states only what is always true, and a board narrows the rest.
+- `=` is not an operator. `.x = 5V` and `.x = <expression>` are errors that name the two operators above.
+
+Misuse: a plain `=`.
+
+```nsm fails
+import std::sources::Rail
+
+board Plain {
+    .a: Rail { .voltage = 5V }
+}
+```
+
+```text
+error: there is no `=`: use `&=` to narrow a value, or `==` for an equation that must hold
+  --> main.nsm:4:25
+  |
+4 |     .a: Rail { .voltage = 5V }
+  |                         ^
+```
+
+Misuse: two narrowings that do not overlap, and a bound that cannot hold.
+
+```nsm fails
+import std::parts::passive::Resistor
+
+board Contradiction {
+    .r1: Resistor { .resistance &= 1kohm +/- 1% }
+    .r1.resistance &= 2kohm +/- 1%
+}
+```
+
+```text
+error: contradiction on `r1.resistance`: it is already 990Ω..1.01kΩ, which does not overlap 1.98kΩ..2.02kΩ
+  --> main.nsm:5:5
+  |
+5 |     .r1.resistance &= 2kohm +/- 1%
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+```nsm fails
+import std::sources::Rail
+
+board Bound {
+    .a: Rail { .voltage &= 3V }
+    .b: Rail { .voltage &= 5V }
+    .b.voltage <= .a.voltage
+}
+```
+
+```text
+error: b.voltage must always be at most a.voltage, but 5V is not always below 3V
+  --> main.nsm:6:5
+  |
+6 |     .b.voltage <= .a.voltage
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+## Connections: `~` and `~>`
+
+`~` puts two pins on one net, or joins two interfaces of the same kind: their pins pair by name and their values become equal. `~>` runs a series chain from a pin through parts to another pin. Each part in a chain needs a `bridge`.
+
+```nsm
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+
+board Chains {
+    .supply: Rail {
+        .voltage &= 5V
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .a: Resistor
+    .b: Resistor
+    .led: Led
+
+    // These two lines make the same nets.
+    .supply.pos ~> .a ~> .b ~> .led ~> .supply.neg
+    // .supply.pos ~ .a.a
+    // .a.b ~ .b.a
+    // .b.b ~ .led.anode
+    // .led.cathode ~ .supply.neg
+}
+```
+
+A part declares its bridge: `bridge .a ~> .b` in `Resistor` says that a chain enters at pin `a` and leaves at pin `b`. `Led` enters at `anode` and leaves at `cathode`.
+
+Rules.
+
+- `~` joins pin to pin, or interface to interface when both are the same definition. It does not join a pin and an interface.
+- `~>` starts at a pin. A part in the chain is entered at the first pin of its bridge and left at the second. Chains may continue from a part, `.a ~> .b`, and may end at a pin.
+- `a ~> pin ~> b` puts `a`, the pin and `b` on one net.
+- A chain is a statement about nets. It does not model the physics of the series current. Write the equation yourself, as `examples/led.nsm` does.
+- A system joins ports with `~` only (see Systems).
+
+Misuse.
+
+```nsm fails
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+board NoBridge {
+    .supply: Rail
+    .header: Header1x2
+    .supply.pos ~> .header ~> .supply.neg
+}
+```
+
+```text
+error: `.header` cannot be used in a `~>` chain: `Header1x2` has no `bridge`
+  --> main.nsm:7:20
+  |
+7 |     .supply.pos ~> .header ~> .supply.neg
+  |                    ^^^^^^^
+```
+
+```nsm fails
+import std::sources::Rail
+import std::logic::Logic
+
+board Mismatch {
+    .supply: Rail
+    .signal: Logic
+    .supply ~ .signal
+}
+```
+
+```text
+error: cannot connect a `Rail` to a `Logic`
+  --> main.nsm:7:15
+  |
+7 |     .supply ~ .signal
+  |               ^^^^^^^
+```
+
+```nsm fails
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Kinds {
+    .supply: Rail
+    .r1: Resistor
+    .supply ~ .r1.a
+}
+```
+
+```text
+error: `~` joins two pins or two interfaces of the same kind
+  --> main.nsm:7:15
+  |
+7 |     .supply ~ .r1.a
+  |               ^^^^^
+```
+
+## Nets and net names
+
+A net is all the pins joined at one node. Only a board names a net (ADR 0005). Naming is a narrowing of the `net` field of a pin: `.supply.pos.net &= "VCC"`. Every pin that asks for `VCC` is on the net `VCC`. A net nobody names is called `net-` and its smallest terminal path, for example `net-led.anode`.
+
+```nsm
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Named {
+    .supply: Rail {
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .r1: Resistor
+    .supply.pos ~> .r1 ~> .supply.neg
+}
+```
+
+Rules.
+
+- A module, part or interface that wrote `.net &=` would give every instance of itself the same net name, so the checker refuses it outside a board. A board names a module's nets through the module's rails and pins: `.stage.vout.pos.net &= "3V3"`.
+- The rule covers any field called `net`, such as the net of a plane in a manufacturing process.
+- Pins that are joined and name their net differently are an error.
+- Two boards of a system may both have `GND`. They are different nets.
+
+Misuse.
+
+```nsm fails
+import std::sources::Rail
+
+module Stage {
+    .supply: Rail
+    .supply.pos.net &= "VCC"
+}
+
+board Uses {
+    .stage: Stage
+}
+```
+
+```text
+error: `supply.pos.net` names a net, and only a board names nets: set it where the board uses this, so that every instance does not share one name
+  --> main.nsm:5:5
+  |
+5 |     .supply.pos.net &= "VCC"
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^
+error: `stage.supply.pos.net` names a net, and only a board names nets: set it where the board uses this, so that every instance does not share one name
+  --> main.nsm:5:5
+  |
+5 |     .supply.pos.net &= "VCC"
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+```nsm fails
+import std::sources::Rail
+import std::parts::passive::Resistor
+
+board Disagree {
+    .supply: Rail { .pos.net &= "A" }
+    .r: Resistor
+    .supply.pos ~ .r.a
+    .r.a.net &= "B"
+}
+```
+
+```text
+error: these pins are connected but name their net differently: `A` on `supply.pos`, `B` on `r.a`
+  --> main.nsm:8:5
+  |
+8 |     .r.a.net &= "B"
+  |     ^^^^^^^^^^^^^^^
+```
+
+## Parts
+
+A part has pins, quantities, relations between them, a bridge for chains, and a catalog.
+
+```nsm
+/// A resistor with a through-current and voltage drop tied together by Ohm's law.
+part SimpleResistor {
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+
+    .resistance: Resistance
+    /// Through-current, a to b.
+    .current: Current
+    /// Voltage at a relative to b.
+    .drop: Voltage
+
+    .drop == .current * .resistance
+    bridge .a ~> .b
+
+    .package: Package
+    catalog resistor { .resistance, .package }
+}
+```
+
+Rules.
+
+- A pin of a part is a row of its `pins` table (next section), which also gives its pads: the identifiers that its symbol and footprint share, such as `"1"`, `"A1"` or `"EP"`. A pin has no `.pad` field. Its `.net` is the net name, set by a board, and its `.function` is what a board chooses for a pin that has several.
+- A pin declared as `.name: Pin` has no row, so it has no pad. It is for a pin that the part joins to one that has pads (an alias, see below), and in a module or interface, where a pin passes a connection along.
+- A part states only what is always true of it. It does not fix a value a design might change, and it names no KiCad symbol or footprint (ADR 0002).
+- `bridge .a ~> .b` names the two terminals a chain enters and leaves by. A part has at most one.
+- `catalog name { .field, ... }` lists the fields the solver fills from a catalog (next section). The standard catalogs are `resistor`, `capacitor`, `led`, `ldo`, `schottky`, `zener`, `tvs`, `ferrite_bead`, `inductor`, `fuse`, `n_mosfet`, `crystal` and `header` (the contact rating of a pin header or socket, ADR 0040). A part naming another is reported as "not chosen: there is no `x` catalog to choose from".
+- A part with no catalog, such as `Header2x5`, is placed as written. A through-hole part is soldered by hand unless `.assembly` says otherwise (next section).
+
+Misuse.
+
+```nsm fails
+part Bad {
+    .a: Pin
+    .b: Pin
+    bridge .a ~> .a
+}
+```
+
+```text
+error: a bridge needs two different terminals
+  --> main.nsm:4:5
+  |
+4 |     bridge .a ~> .a
+  |     ^^^^^^^^^^^^^^^
+```
+
+### Who assembles a part
+
+Every part has a text field `.assembly` that it does not declare (declaring it again is an error). It says who puts the part on the board, and `fab` honours it (ADR 0024, provisional):
+
+| Value | Meaning |
+|---|---|
+| `"fab"` | The board house places and solders it: a BOM line and a placement row. |
+| `"hand"` | Soldered by hand: not in the BOM or the placement file, and listed in `fab-notes.txt` as `hand-solder:`. |
+| `"none"` | Not fitted by anyone, such as a hole or a fiducial: in neither file, and listed in `fab-notes.txt` as `not fitted`. |
+
+Where the value comes from, weakest first (ADR 0028 amends ADR 0024):
+
+| | Says |
+|---|---|
+| 1 | The built-in rule: a through-hole part is `"hand"` and every other part is `"fab"`. |
+| 2 | The project's default, `assembly = "fab"`, `"hand"` or `"none"` under `[project]` in `netsmith.toml`. It is for every part of every board that nothing below speaks for. |
+| 3 | The part kind's own statement: `MountingHole`, `PlatedHole`, `Fiducial`, `TestPoint` and `ProgrammingPads6` are `"none"`, and neither the project nor a board can change that. |
+| 4 | The catalog file's optional `assembly` column: the picked row's value. |
+| 5 | The board narrowing it on a part it owns: `.assembly &= "hand"`; or narrowing the value that a module offers for its parts (below). |
+
+```toml
+[project]
+name = "blink"
+assembly = "fab"
+```
+
+With that manifest the header of the example below is placed by the board house too, and a board that wants one part by hand still says so on the part. Rows 3 and 5 are one field, so a board that contradicts a kind gets the usual empty-intersection error. There is no per-board default: the project has one, and a part says otherwise on itself. Any other word is refused when the board is built: ``error: B: `j1` has `.assembly` "solder", which is not "fab", "hand" or "none"``. A part marked `"hand"` or `"none"` still counts in the solver and in the current balance.
+
+```nsm
+import std::parts::connector::Header1x2
+import std::parts::mechanical::MountingHole
+import std::parts::passive::Resistor
+
+board Assembly {
+    /// Let the board house solder this header too.
+    .j1: Header1x2 {
+        .assembly &= "fab"
+    }
+    /// This resistor goes on by hand.
+    .r1: Resistor {
+        .assembly &= "hand"
+    }
+    .hole: MountingHole
+}
+```
+
+A part inside a module is not the board's to name (ADR 0004), so a module that wants the board to choose who assembles its parts offers the choice as a value of its own and ties its parts to it (ADR 0042). Declare a `String`, and narrow the part's `.assembly` by it inside the module:
+
+```nsm solve
+import std::parts::connector::Header1x2
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+
+/// An LED with its resistor. The board chooses who solders them.
+module Indicator {
+    .supply: Rail
+    .assembly_mode: String
+    .led: Led { .current &= 5mA..15mA }
+    .r1: Resistor
+    .led.assembly &= .assembly_mode
+    .r1.assembly &= .assembly_mode
+    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
+    .supply.pos ~> .r1 ~> .led ~> .supply.neg
+}
+
+board Lamps {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .header: Header1x2
+    .input.pos ~ .header.p1
+    .input.neg ~ .header.p2
+    /// Soldered by the board house, like any part.
+    .fitted: Indicator
+    /// Soldered by hand: the board narrows what the module offers.
+    .spare: Indicator {
+        .assembly_mode &= "hand"
+    }
+    .input ~ .fitted.supply
+    .input ~ .spare.supply
+}
+```
+
+- The tie is a text relation inside the module, `.led.assembly &= .assembly_mode`. It counts as the design's own `.assembly &=` on that part (row 5 of the table above): the board's narrowing of the module's value is the last word, and the project's default, the catalog row and the built-in rule only speak when it is not set.
+- A board that leaves `.assembly_mode` alone has said nothing: the tie narrows nothing, no note is printed for it, and the parts are assembled as if they stood on the board. Two instances of the module are separate, and each has its own value.
+- Any word other than `"fab"`, `"hand"` and `"none"` is refused when the board is built, naming the part by its path: ``error: Lamps: `spare.led` has `.assembly` "solder", which is not "fab", "hand" or "none"``. A kind that states `"none"` (`Fiducial`, `MountingHole`) cannot be tied to a different word: the usual empty-intersection error names the part, as ``contradiction on `mark.fiducial.assembly`: it is already "none", which does not overlap "fab"``.
+- A module may pass the value on to a module inside it, `.inner.assembly_mode &= .assembly_mode`. Call the value `.assembly_mode` in every module that offers it, so that boards read alike.
+- The board still cannot write `.spare.led.assembly`; it sees only what the module offers.
+
+```nsm fails
+import std::parts::connector::Header1x2
+
+module Block {
+    .j: Header1x2
+}
+
+board Reach {
+    .block: Block
+    .block.j.assembly &= "hand"
+}
+```
+
+```text
+error: `j` is inside `Block` and is not part of its interface; set it through a rail, a pin, or a value that `Block` declares
+  --> main.nsm:9:12
+  |
+9 |     .block.j.assembly &= "hand"
+  |            ^
+```
+
+### Designators
+
+Every part has a text field `.designator` that it does not declare (declaring it again is an error), as it has `.assembly`. It holds the letters of the part's reference designator on the schematic, the bill of materials and the placement file; the number after them counts the parts that have the same letters, from 1, in the order of their paths (ADR 0046, user decision). The letters follow IEEE 315 and ASME Y14.44 usage: `K` a relay, `BZ` a buzzer, `BT` a battery, `T` a transformer, `U` an integrated circuit.
+
+Each standard kind states its own letters, because they are always true of it, and nothing can change them: `Resistor` is `"R"`, `Capacitor` `"C"`, `Inductor` `"L"`, `FerriteBead` `"FB"`, `Led`, `Diode`, `Schottky`, `Zener` and `Tvs` `"D"`, `NMosfet` and `PMosfet` `"Q"`, `Crystal` `"Y"`, `Fuse` `"F"`, `Switch` `"SW"`, every header, socket, `Coax`, `UsbCPower`, `UsbC2` and `ProgrammingPads6` `"J"`, `TestPoint` `"TP"`, `MountingHole` and `PlatedHole` `"H"`, `Fiducial` `"FID"`, `Label` `"LBL"` and `LinearRegulator` `"U"`. A part you define states its own letters in its body, `.designator &= "BZ"`, or leaves them out; a part with none is `"U"`. A board may give the letters to a part of its own that states none, with the same `&=` (a part inside a module is the module's, ADR 0004). A test fails when a part of the standard library has no letters, so a new kind gets them on purpose.
+
+```nsm
+part Buzzer {
+    .designator &= "BZ"
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+}
+
+part Chip {
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+}
+
+board Letters {
+    /// `BZ1`: its kind says so.
+    .alarm: Buzzer
+    /// `U1`: a part that says nothing is an integrated circuit.
+    .mcu: Chip
+    /// `IC1`: the board says so, because the part does not.
+    .codec: Chip {
+        .designator &= "IC"
+    }
+}
+```
+
+Letters that are not one or more capital letters are refused when the board is built, naming the part, because the number is added after them:
+
+```nsm fails
+part Chip {
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+}
+
+board Letters {
+    .mcu: Chip {
+        .designator &= "U1"
+    }
+}
+```
+
+```text
+error: Letters: `mcu` has `.designator` "U1", which is not one or more capital letters such as "R" or "IC"
+```
+
+A kind's letters are one value, so a board that contradicts them gets the usual empty-intersection error at the part: ``contradiction on `r.designator`: it is already "R", which does not overlap "Z"``. A saved placement is keyed by the part's path, not by its designator (ADR 0032), so changing letters moves no part in the layout file. A fab package that was ordered before the letters changed keeps the designators it was made with.
+
+## Pins, packages and ties
+
+A part's `pins` block is the datasheet's pin table. Each row is one pin: its path, its kind, the name the datasheet prints, its pads, and optionally its functions and whether it may float. A block named for a package applies when the part is in that package; a block with no package applies to every package, for a part whose pads do not depend on it (ADR 0016).
+
+```nsm-fragment
+pins "DFN-8-EP" {
+    //  pin        kind           name     pads
+    .vout.pos      power          "OUT"    "1" "2"
+    .pa2           bidirectional  "PA2"    "12"  fn GPIO UART1_TX
+    .boot0         input          "BOOT0"  "31"  optional
+}
+tie .sense ~ .vout.pos
+```
+
+A row is `.path kind "NAME" "pad" ["pad" ...] [fn FUNCTION[:kind] ...] [optional | required]`, on one line, or ended by `;`. The names and pads are text, so they are quoted. A function is a plain name, with a kind of its own after a colon when the datasheet gives one (see Functions).
+
+| Kind | Meaning | Must be connected? |
+|---|---|---|
+| `power` | A pin of a supply. Whether it takes or gives power is the sign of its rail's `current`. | Yes, unless `optional` |
+| `input` | A signal the part reads. | Yes, unless `optional` |
+| `output` | A signal the part drives. | No, unless `required` |
+| `bidirectional` | A signal in both directions. | No, unless `required` |
+| `passive` | A pin with no direction, such as a resistor's. | No, unless `required` |
+| `no_connect` | A pin that must stay open. | Never connected |
+
+"Connected" means that another pin is on its net: a pin of another part, or a rail the board declares, which is supplied from outside. A net made only of the part's own pins does not count.
+
+Here is a regulator in two packages. It is invented for this guide and is not a part you can buy. The DFN has a sense pin and an exposed pad; the SOT-23-5 has neither.
+
+```nsm module=src::ldo9
+import std::sources::Rail
+
+/// A fixed-output LDO. Illustrative; not a real part.
+part Ldo9 {
+    .vin:  Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg          // `vout.neg` needs no row: it is joined to `vin.neg`
+
+    .dropout:     Voltage
+    .max_current: Current
+    .vin.voltage >= .vout.voltage + .dropout
+    .vin.current == -.vout.current
+    -.vout.current <= .max_current
+
+    pins "DFN-8-EP" {
+        //  pin        kind        name     pads
+        .vout.pos      power       "OUT"    "1" "2"
+        .sense         input       "SENSE"  "3"
+        .vin.neg       power       "GND"    "4" "9"
+        .nc            no_connect  "NC"     "5"
+        .en            input       "EN"     "6"
+        .vin.pos       power       "IN"     "7" "8"
+    }
+    pins "SOT-23-5" {
+        .vin.pos       power       "IN"     "1"
+        .vin.neg       power       "GND"    "2"
+        .en            input       "EN"     "3"
+        .nc            no_connect  "NC"     "4"
+        .vout.pos      power       "OUT"    "5"
+    }
+    tie .sense ~ .vout.pos
+
+    .package: Package
+    catalog ldo9 { .vout.voltage, .dropout, .max_current, .package }
+}
+```
+
+A board for it. `build` would stop at export, because there is no KiCad symbol for an `Ldo9` yet, so this block is checked and not built.
+
+```nsm
+import src::ldo9::Ldo9
+import std::sources::Rail
+
+board LdoBoard {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .u: Ldo9 {
+        .package &= "DFN-8-EP"
+        .vout.voltage &= 3.3V +/- 5%
+    }
+    .output: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..50mA
+    }
+    .input ~ .u.vin
+    .u.vout ~ .output
+
+    .u.sense ~ .u.vout.pos     // the part ties these
+    .u.en ~ .u.vin.pos         // always on
+}
+```
+
+Rules.
+
+- A row names a plain pin of the part (`.sense`), which the row declares, or a pin of one of its interfaces (`.vout.pos`). Naming a pin that is already declared with `: Pin`, or an interface, or a value, is an error.
+- A part has one unnamed table or one table for each package, not both. A table that names a package needs a `.package: Package` in the part.
+- A pin has one kind, one datasheet name and one `optional` or `required` in every package. Its pads and functions may differ. A pin that only some packages have does not exist in the others.
+- Several pads on a row are one pin that the package brings out more than once: `"1" "2"`. Each becomes a pin of the net in the schematic.
+- A pin that has no row but is joined inside the part to one that has (`.vout.neg` and `.vin.neg` above) is an alias and needs no pad. A pin with no row and no alias that is on a net is an error, once for the part.
+- A pad belongs to one pin, unless the part joins the pins that share it.
+- `optional` is for a `power` or `input` pin that may float; `required` is for an `output`, `bidirectional` or `passive` pin that may not. Neither is accepted where it changes nothing.
+- `fn` lists what a pin can be. A connected pin with more than one function needs the board to choose: `.u.pa2.function &= "UART1_TX"`. There is no default function. One function cannot be chosen on two pins of a part. A function may carry its own kind, `fn GPIO:bidirectional UART1_TX:output` (next sections).
+- `tie .a ~ .b` says that the board must put the two pins on one net. The tie is skipped in a package that lacks either pin.
+- The faults on a board are reported when it is checked. A rule that needs the package waits for the solver when the board does not name the package (a catalog row chooses it). The solver does not choose a catalog row whose package lacks a pin that the board connects.
+- Two `power` pins that are both supplies on one net are not checked yet.
+
+Messages.
+
+A pin that must be connected and is not:
+
+```nsm fails
+import src::ldo9::Ldo9
+import std::sources::Rail
+
+board EnLeftOpen {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .u: Ldo9 { .package &= "DFN-8-EP" }
+    .output: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .input ~ .u.vin
+    .u.vout ~ .output
+    .u.sense ~ .u.vout.pos
+}
+```
+
+```text
+error: `u.en` is an input that must be connected (pad 6, `EN`), but nothing else is on its net
+   --> main.nsm:10:5
+   |
+10 |     .u: Ldo9 { .package &= "DFN-8-EP" }
+   |     ^^^^^^^^
+```
+
+The message points at the line that declares the part, and names the pad and the datasheet name so you can find the pin on the datasheet.
+
+A tie that the board does not make:
+
+```nsm fails
+import src::ldo9::Ldo9
+import std::sources::Rail
+
+board SenseOnTheInput {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .u: Ldo9 { .package &= "DFN-8-EP" }
+    .output: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .input ~ .u.vin
+    .u.vout ~ .output
+    .u.sense ~ .u.vin.pos
+    .u.en ~ .u.vin.pos
+}
+```
+
+```text
+error: `u.sense` must be on the same net as `u.vout.pos` (`Ldo9` ties them), but `u.sense` is on net `VIN` with `input.pos`, `u.en`, `u.vin.pos`
+   --> src/ldo9.nsm:31:5
+   |
+31 |     tie .sense ~ .vout.pos
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A `no_connect` pin that has something on its net:
+
+```nsm fails
+import src::ldo9::Ldo9
+import std::sources::Rail
+
+board NoConnectUsed {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .u: Ldo9 { .package &= "DFN-8-EP" }
+    .output: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .input ~ .u.vin
+    .u.vout ~ .output
+    .u.sense ~ .u.vout.pos
+    .u.en ~ .u.vin.pos
+    .u.nc ~ .u.vout.pos
+}
+```
+
+```text
+error: `u.nc` is a no_connect pin (pad 5, `NC`) but it is on net `3V3` with `output.pos`, `u.sense`, `u.vout.pos`
+   --> main.nsm:10:5
+   |
+10 |     .u: Ldo9 { .package &= "DFN-8-EP" }
+   |     ^^^^^^^^
+```
+
+A pin that the package does not have, connected:
+
+```nsm fails
+import src::ldo9::Ldo9
+import std::sources::Rail
+
+board SenseInTheSmallPackage {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .u: Ldo9 { .package &= "SOT-23-5" }
+    .output: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .input ~ .u.vin
+    .u.vout ~ .output
+    .u.sense ~ .u.vout.pos
+    .u.en ~ .u.vin.pos
+}
+```
+
+```text
+error: `u.sense` (`SENSE`) does not exist in package `SOT-23-5` of `Ldo9`, but the board connects it; the packages that have it: `DFN-8-EP`
+   --> main.nsm:10:5
+   |
+10 |     .u: Ldo9 { .package &= "SOT-23-5" }
+   |     ^^^^^^^^
+```
+
+Leave the sense pin out and the same board is fine in the SOT-23-5: the tie is skipped there. In a package the part has no table for, the message lists the tables it has:
+
+```nsm fails
+import src::ldo9::Ldo9
+import std::sources::Rail
+
+board UnknownPackage {
+    .input: Rail { .pos.net &= "VIN" }
+    .u: Ldo9 { .package &= "QFN-9" }
+    .input ~ .u.vin
+}
+```
+
+```text
+error: `u` is a `Ldo9` in package `QFN-9`, which has no pin table; its tables are for `DFN-8-EP`, `SOT-23-5`
+  --> main.nsm:6:5
+  |
+6 |     .u: Ldo9 { .package &= "QFN-9" }
+  |     ^^^^^^^^
+```
+
+### Functions
+
+A pin with several functions is shared between peripherals, and the board decides which it is. The microcontroller here is also invented.
+
+```nsm module=src::mcu
+import std::sources::Rail
+
+/// A microcontroller with a few of its pins. Illustrative; not a real part.
+part Mcu32 {
+    .vdd: Rail
+    .vdd.voltage >= 1.7V
+    .vdd.voltage <= 3.6V
+    .vdd.current &= 1mA..25mA
+
+    pins "QFN-32" {
+        .vdd.pos power         "VDD"   "1" "17" "32"
+        .vdd.neg power         "VSS"   "8" "24" "33"
+        .nrst    input         "NRST"  "4"
+        .pa2     bidirectional "PA2"   "12" fn GPIO UART1_TX SPI1_SCK
+        .pb6     bidirectional "PB6"   "14" fn GPIO UART1_TX
+        .boot0   input         "BOOT0" "31" optional
+    }
+
+    .package: Package
+    .mpn: String
+    catalog mcu by .mpn { .mpn, .package }
+}
+```
+
+```nsm
+import src::mcu::Mcu32
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Uart {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: Mcu32 { .package &= "QFN-32" }
+    .load: Resistor
+    .supply ~ .u.vdd
+    .u.nrst ~ .supply.pos
+    .u.pa2 ~ .load.a
+    .u.pa2.function &= "UART1_TX"
+}
+```
+
+```nsm fails
+import src::mcu::Mcu32
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board NoFunction {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: Mcu32 { .package &= "QFN-32" }
+    .load: Resistor
+    .supply ~ .u.vdd
+    .u.nrst ~ .supply.pos
+    .u.pa2 ~ .load.a
+}
+```
+
+```text
+error: `u.pa2` has several functions (GPIO, UART1_TX, SPI1_SCK) and is connected: choose one with `.u.pa2.function &= "GPIO"`
+   --> main.nsm:11:5
+   |
+11 |     .u: Mcu32 { .package &= "QFN-32" }
+   |     ^^^^^^^^^
+```
+
+A function that the pin does not offer, and one function on two pins:
+
+```nsm fails
+import src::mcu::Mcu32
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board WrongFunction {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: Mcu32 { .package &= "QFN-32" }
+    .load: Resistor
+    .supply ~ .u.vdd
+    .u.nrst ~ .supply.pos
+    .u.pa2 ~ .load.a
+    .u.pa2.function &= "I2C1_SDA"
+}
+```
+
+```text
+error: `u.pa2` cannot be `I2C1_SDA`; its functions are GPIO, UART1_TX, SPI1_SCK
+   --> main.nsm:16:5
+   |
+16 |     .u.pa2.function &= "I2C1_SDA"
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+```nsm fails
+import src::mcu::Mcu32
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board OneFunctionTwice {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: Mcu32 { .package &= "QFN-32" }
+    .load: Resistor
+    .load2: Resistor
+    .supply ~ .u.vdd
+    .u.nrst ~ .supply.pos
+    .u.pa2 ~ .load.a
+    .u.pb6 ~ .load2.a
+    .u.pa2.function &= "UART1_TX"
+    .u.pb6.function &= "UART1_TX"
+}
+```
+
+```text
+error: function `UART1_TX` is chosen on both `u.pa2` and `u.pb6`
+   --> main.nsm:19:5
+   |
+19 |     .u.pb6.function &= "UART1_TX"
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### A kind for each function
+
+A pin has one kind, and a function chosen for it may be a different direction: a pin that is a GPIO is bidirectional, as a UART transmitter it is an output, as a receiver an input. Write the kind of a function after its name with a colon and no spaces, as the datasheet gives it (ADR 0046; KiCad's alternate pin definitions each have their own electrical type, and this is the same idea). The pin's own kind stays the default for the pin and for every function written without a colon, and it is what the symbol and the other pin rules use. The net rules use the kind of the function the board chose: an `output` function is an output on its net, an `input` function an input. A function's kind is one of the pin kinds (`power`, `input`, `output`, `bidirectional`, `passive`, `no_connect`).
+
+Do not guess the kind from the function's name. Write it only where the datasheet says which way the function goes; a function with no kind has the pin's.
+
+```nsm
+/// A microcontroller with one pin. Illustrative; not a real part.
+part Mcu8 {
+    pins {
+        .pa2 bidirectional "PA2" "1" fn GPIO:bidirectional UART1_TX:output UART1_RX:input
+    }
+}
+
+board Link {
+    .a: Mcu8
+    .b: Mcu8
+    .a.pa2 ~ .b.pa2
+    .a.pa2.function &= "UART1_TX"
+    .b.pa2.function &= "UART1_RX"
+}
+```
+
+A function that disagrees with how its net is used is refused, naming the part, the pin, the function and its kind. Two transmitters on one net are two outputs, and two receivers on one net have nothing to drive them:
+
+```nsm fails
+/// A microcontroller with one pin. Illustrative; not a real part.
+part Mcu8 {
+    pins {
+        .pa2 bidirectional "PA2" "1" fn GPIO:bidirectional UART1_TX:output UART1_RX:input
+    }
+}
+
+board TwoTransmitters {
+    .a: Mcu8
+    .b: Mcu8
+    .a.pa2 ~ .b.pa2
+    .a.pa2.function &= "UART1_TX"
+    .b.pa2.function &= "UART1_TX"
+}
+```
+
+```text
+error: net `net-a.pa2` has two outputs: `a.pa2` (`Mcu8` function `UART1_TX`, an output), `b.pa2` (`Mcu8` function `UART1_TX`, an output)
+  --> main.nsm:9:5
+  |
+9 |     .a: Mcu8
+  |     ^^^^^^^^
+```
+
+```nsm fails
+/// A microcontroller with one pin. Illustrative; not a real part.
+part Mcu8 {
+    pins {
+        .pa2 bidirectional "PA2" "1" fn GPIO:bidirectional UART1_TX:output UART1_RX:input
+    }
+}
+
+board TwoReceivers {
+    .a: Mcu8
+    .b: Mcu8
+    .a.pa2 ~ .b.pa2
+    .a.pa2.function &= "UART1_RX"
+    .b.pa2.function &= "UART1_RX"
+}
+```
+
+```text
+error: net `net-a.pa2` has only inputs (`a.pa2` (`Mcu8` function `UART1_RX`, an input), `b.pa2` (`Mcu8` function `UART1_RX`, an input)): nothing drives it, so it floats; join an output, a bidirectional pin or a rail to it, or a pull resistor, or choose another function for a pin whose function makes it an input
+  --> main.nsm:9:5
+  |
+9 |     .a: Mcu8
+  |     ^^^^^^^^
+```
+
+The same pins with `GPIO` chosen on either side are a bidirectional pin on the net, and are accepted. A kind that is not one of the six is a parse error: ``unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive and no_connect``.
+
+### Outputs
+
+Two outputs on one net would fight, so the checker refuses them. An output and a bidirectional pin may share a net.
+
+```nsm fails
+part Driver {
+    pins {
+        .out output "OUT" "1"
+        .gnd passive "GND" "2"
+    }
+}
+
+board Fight {
+    .a: Driver
+    .b: Driver
+    .a.out ~ .b.out
+}
+```
+
+```text
+error: net `net-a.out` has two outputs: `a.out`, `b.out`
+  --> main.nsm:9:5
+  |
+9 |     .a: Driver
+  |     ^^^^^^^^^^
+```
+
+### Pads
+
+Pads are checked after the solver has chosen the package, because they depend on it. Two pins on one pad are an error unless the part joins them, which makes them one pin:
+
+```nsm fails
+part Shared {
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "1"
+    }
+}
+
+board SamePad {
+    .p: Shared
+    .q: Shared
+    .p.a ~ .q.a
+}
+```
+
+```text
+error: pad 1 of `Shared` is given to both `a` and `b`; two pins share a pad only if the part joins them
+  --> main.nsm:4:9
+  |
+4 |         .b passive "B" "1"
+  |         ^^^^^^^^^^^^^^^^^^
+```
+
+A pin that is on a net and has no row, and is not joined to a pin that has one, is reported once for its part:
+
+```nsm fails
+part NoPad {
+    pins {
+        .a passive "A" "1"
+    }
+    .b: Pin
+}
+
+board Loose {
+    .p: NoPad
+    .q: NoPad
+    .p.a ~ .q.a
+    .p.b ~ .q.b
+}
+```
+
+```text
+error: `p` is a `NoPad` and its pins (`b`) have no pads, so it cannot be placed on a symbol; add them to a `pins` table of `NoPad`, which says which pad each pin is
+  --> main.nsm:9:5
+  |
+9 |     .p: NoPad
+  |     ^^^^^^^^^
+error: `q` is a `NoPad` and its pins (`b`) have no pads, so it cannot be placed on a symbol; add them to a `pins` table of `NoPad`, which says which pad each pin is
+   --> main.nsm:10:5
+   |
+10 |     .q: NoPad
+   |     ^^^^^^^^^
+```
+
+The table is also checked against the KiCad symbol and footprint the part is exported with. `build` and `fab` stop when a pad of the table is not a pad of the footprint or a pin of the symbol, when a footprint pad or symbol pin belongs to no pin of the table, when the symbol names the pin otherwise than the table's datasheet name (after the `pin_names` of `kicad.toml`), or when the symbol's electrical type does not suit the pin's kind. Each message names the part and both sides, for example `pad 3 is the input pin `en` (`EN`) in the part, but pin 3 of the symbol `tiny:Chip` is named `ENABLE``. This is a fact about your libraries and not about the circuit, so `check` does not report it.
+
+### Mistakes in a table
+
+A pin has one kind and one datasheet name in every package:
+
+```nsm fails
+part TwoAnswers {
+    .package: Package
+    pins "A" {
+        .x input "X" "1"
+    }
+    pins "B" {
+        .x output "X" "1"
+    }
+}
+
+board Empty {
+}
+```
+
+```text
+error: `.x` is an output named `X` in `pins "B"` but an input named `X` in `pins "A"`; a pin has one kind and one datasheet name in every package
+  --> main.nsm:7:9
+  |
+7 |         .x output "X" "1"
+  |         ^^^^^^^^^^^^^^^^^
+```
+
+A row that stops early, an unknown kind and a pad without quotes are caught by the parser, at the token that is wrong:
+
+```nsm fails
+part Short {
+    pins {
+        .a passive "A"
+    }
+}
+```
+
+```text
+error: expected a pad of `.a` as a quoted string such as "3", found end of line
+  --> main.nsm:3:23
+  |
+3 |         .a passive "A"
+  |                       ^
+```
+
+```nsm fails
+part UnknownKind {
+    pins {
+        .a tristate "A" "1"
+    }
+}
+```
+
+```text
+error: unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive and no_connect
+  --> main.nsm:3:12
+  |
+3 |         .a tristate "A" "1"
+  |            ^^^^^^^^
+```
+
+```nsm fails
+part BarePad {
+    pins {
+        .a passive "A" 1
+    }
+}
+```
+
+```text
+error: a pad is text: write "1" with quotes, not `1`
+  --> main.nsm:3:24
+  |
+3 |         .a passive "A" 1
+  |                        ^
+```
+
+## Catalogs and how the solver picks parts
+
+A catalog is the list of real parts that a part's fields are matched against. Each real part is a candidate with one value per column. `catalog resistor { .resistance, .max_power, .package }` makes `resistance`, `max_power` and `package` the columns of a resistor.
+
+The solver works in four steps.
+
+1. Propagate. Connected interfaces hold one value, so the solver narrows them to what all of them allow. A field that an equation defines takes the computed value.
+2. Pick. For each part with an unset catalog column, take candidates in catalog order. A candidate fits when each column value lies within the range the design allows. Use the first candidate for which every relation that mentions the part holds.
+3. Verify. Check every relation again with the picks in place.
+4. Report. Whatever fails is reported with the numbers. Whatever could not be evaluated is listed as not evaluated.
+
+Rules.
+
+- Order is the policy. The solver takes the first candidate that works, so the order of the rows in the catalog's file decides which part you get, and nothing sorts it. The JLCPCB catalogs list Basic parts first (no feeder fee), then ascending price, then ascending value. The result is the cheapest Basic part that works.
+- The check is the worst case. A requirement on a result must contain the whole range the inputs can produce, not a typical value.
+- Parts that share a relation are searched together, depth first, and a failed choice backtracks. The search stops after 250,000 combinations and says so.
+- A column the design leaves alone takes the candidate's value, so `.r1: Resistor {}` works.
+- Narrow only what the design needs. A tighter range removes candidates.
+- A part number is in a catalog only with a recorded source: a row that names a part has a `source` cell, or the file does not load (next section).
+- A catalog may be keyed by one of its columns: `catalog mcu by .mpn { .mpn, .package }`. The solver does not choose a row of a keyed catalog for you, because the first fitting row is right for a regulator and wrong for a microcontroller. Name the part with `.u.mpn &= "..."`, which leaves one row. If you do not, the message lists the candidates: `` `u` is an `Mcu32`; name the part with .mpn: MCU32-A, MCU32-B ``.
+- A catalog's `package` column picks the part's pin table. The pads are in the table (previous section), not in the catalog. A row whose package lacks a pin that the board connects is skipped, and the message says so when nothing else is left.
+
+The JLCPCB catalogs hold 1% resistors (0402 E24 from 10 ohm to 1 Mohm, Basic 0603, 250 mW 0805), Basic 0402 and 0603 ceramic capacitors, LEDs in five colors, one fixed-output linear regulator, and a few Schottky, Zener and TVS diodes, ferrite beads, power inductors, resettable fuses, N-channel MOSFETs and crystals (ADR 0025). A resistor's rating, `max_power`, is a column: a row with an empty cell is never offered. `data/jlcpcb/README.md` lists every row and its source.
+
+### Catalog files
+
+The rows of a catalog are data, not code. A catalog is one CSV file named after it: `resistor.csv` is the `resistor` catalog. The standard catalogs are `data/jlcpcb/catalog/*.csv` in netsmith's source and ship inside the program. A project adds files of its own, which is how it gets a part netsmith does not list, and lists them in `netsmith.toml` (ADR 0022):
+
+```toml
+[project]
+name = "blink"
+catalogs = ["catalogs/resistor.csv", "catalogs/mcu.csv"]
+```
+
+The first line of a file names the columns. Two kinds of column can be there, in any order.
+
+- The columns of the part: the paths of the fields in its `catalog X { ... }` declaration, without the leading dot (`resistance`, `package`, `vout.voltage`, `mpn`). A cell of a quantity column is a value as the language writes it, with its unit: `10kohm +/- 1%`, `1.8V..5.5V`, `0.3V`. It must be in the dimension of the field. A cell of a text column is its text as it is, without quotes: `0402`, `SOT-23-5`. An empty cell means the row has no value there, and it fits no design that asks for one.
+- The fixed columns, all optional except as noted: `lcsc` (the supplier's number), `mpn` (the manufacturer's; also a column of the part if its catalog lists `.mpn`), `library` (`Basic`, `Extended` or `Preferred`), `price` and `stock` (JLCPCB's snapshot, entered by hand; **a row whose `stock` is `0` is not offered**, and an empty `stock` is unknown and is), `price_breaks` (`1:0.0019 1000:0.0015`, the price for one piece from each quantity; entered by hand and read by nothing), `date` (`2026-10-31`, the day the `price` and `stock` were read), `checked` (`2026-11-02`, the day `catalog refresh` last found the row's `mpn` and `package` equal to LCSC's record; empty if never, read by nothing), `name` and `label` (what a message calls the row, and what the schematic's value field shows; both default to the `mpn`, then the `lcsc`), `notes`, and `source`. **A row with an `lcsc` or an `mpn` must have a `source`**: the URL or text that says where its numbers were read. A row with neither is a made-up part and needs a `name`.
+
+`price`, `stock` and `library` are JLCPCB's numbers and `date` is the day they were read: they are a hand-entered snapshot (the standard catalogs that ship in netsmith leave `price`, `stock`, `date` and `checked` empty: read a part's price and stock from the supplier before ordering), and `netsmith catalog refresh` never writes them (it asks LCSC, never JLCPCB, and only verifies the row and records the day in `checked`; see Commands). `netsmith catalog age` lists the rows whose `date` is old. The solver never asks; it reads the file.
+
+A file named like a standard catalog adds its rows after the standard ones, so the standard parts are tried first. A part, by `lcsc` or by `mpn`, is in a catalog once; a file that repeats a standard part is refused. A capacitor's `effective_capacitance` cell is its curve of bias (ADR 0013): `derate capacitance by bias: 0:1 5:0.5` is the `capacitance` of the row after the part keeps 1 at 0 V and 0.5 at 5 V, and nothing after the colon means that no curve is published for the part.
+
+A project's file, `catalogs/resistor.csv`, adds a 316 ohm resistor to the standard resistors, and a board asks for it:
+
+```csv file=catalogs/resistor.csv set=own
+mpn,resistance,max_power,package,library,price,stock,date,source
+ACME-R316,316ohm +/- 1%,62.5mW,0402,Basic,0.0011,5000,2026-10-31,https://example.invalid/acme-r316.pdf
+```
+
+```nsm solve report catalogs=own
+import std::parts::passive::Resistor
+
+board OwnPart {
+    .r1: Resistor { .resistance &= 316ohm +/- 1% }
+}
+```
+
+```text
+board OwnPart
+  R1   Resistor        ACME-R316       Resistor_SMD:R_0402_1005Metric                             no LCSC number
+```
+
+A part that is an IC is named by its key. The catalog of the `Mcu32` above is `catalogs/mcu.csv`:
+
+```csv file=catalogs/mcu.csv set=ic
+mpn,package,library,price,stock,date,source
+MCU32-A,QFN-32,Extended,1.20,300,2026-10-31,https://example.invalid/mcu32-a.pdf
+MCU32-B,QFN-32,Extended,1.45,120,2026-10-31,https://example.invalid/mcu32-b.pdf
+```
+
+```nsm fails catalogs=ic
+import src::mcu::Mcu32
+import std::sources::Rail
+
+board WhichMcu {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: Mcu32 { .package &= "QFN-32" }
+    .supply ~ .u.vdd
+    .u.nrst ~ .supply.pos
+}
+```
+
+```text
+error: `u` is an `Mcu32`; name the part with .mpn: MCU32-A, MCU32-B
+   --> main.nsm:10:5
+   |
+10 |     .u: Mcu32 { .package &= "QFN-32" }
+   |     ^^^^^^^^^
+```
+
+A file is read when it is used, and a mistake names the file and line. A row with a part number and no source, and a part twice:
+
+```csv fails file=catalogs/resistor.csv
+mpn,resistance,package
+ACME-R316,316ohm +/- 1%,0402
+```
+
+```text
+catalogs/resistor.csv:2: the row for mpn ACME-R316 has no source; every part in a catalog needs the URL or text it was read from in its `source` column
+```
+
+```csv fails file=catalogs/resistor.csv
+mpn,resistance,package,source
+ACME-R316,316ohm +/- 1%,0402,https://example.invalid/a
+ACME-R316,316ohm +/- 1%,0402,https://example.invalid/b
+```
+
+```text
+catalogs/resistor.csv:3: the mpn `ACME-R316` is already a row at catalogs/resistor.csv:2; a part is in a catalog once
+```
+
+A column the part does not list, and a value in the wrong unit, are found when a board uses the catalog, because only then is it known what the columns hold:
+
+```csv file=catalogs/resistor.csv set=typo
+mpn,resistence,package,source
+ACME-R316,316ohm +/- 1%,0402,https://example.invalid/acme-r316.pdf
+```
+
+```nsm fails catalogs=typo
+import std::parts::passive::Resistor
+
+board Typo {
+    .r1: Resistor { .resistance &= 316ohm +/- 1% }
+}
+```
+
+```text
+error: `r1` cannot be chosen from the `resistor` catalog: catalogs/resistor.csv:1: `resistence` is not a column of `catalog resistor`, which lists .resistance, .max_power, .package
+  --> main.nsm:4:5
+  |
+4 |     .r1: Resistor { .resistance &= 316ohm +/- 1% }
+  |     ^^^^^^^^^^^^^
+```
+
+```csv file=catalogs/resistor.csv set=unit
+mpn,resistance,max_power,package,source
+ACME-R316,316V +/- 1%,62.5mW,0402,https://example.invalid/acme-r316.pdf
+```
+
+```nsm fails catalogs=unit
+import std::parts::passive::Resistor
+
+board Unit {
+    .r1: Resistor { .resistance &= 316ohm +/- 1% }
+}
+```
+
+```text
+error: `r1` cannot be chosen from the `resistor` catalog: catalogs/resistor.csv:2: `resistance` of `catalog resistor`: `316V +/- 1%` is in V, but this column holds Ω
+  --> main.nsm:4:5
+  |
+4 |     .r1: Resistor { .resistance &= 316ohm +/- 1% }
+  |     ^^^^^^^^^^^^^
+```
+
+Messages.
+
+When no candidate fits the constraints, the catalog has nothing:
+
+```nsm fails
+import std::parts::passive::Resistor
+
+board NoValue {
+    .r1: Resistor { .resistance &= 12.3kohm +/- 1% }
+}
+```
+
+```text
+error: the `resistor` catalog has nothing for `r1`, which needs resistance within 12.17kΩ..12.43kΩ
+  --> main.nsm:4:5
+  |
+4 |     .r1: Resistor { .resistance &= 12.3kohm +/- 1% }
+  |     ^^^^^^^^^^^^^
+```
+
+The message points at the line that declares the part in your board, and names it by its path (`r1`, or `stage.regulator` when it is inside a module). When several parts are picked together and one of them has no candidate, that part is the one named, whatever the others could do.
+
+When candidates fit but none keeps every relation true, the message names the closest one and the relation that failed:
+
+```nsm fails
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board TooTight {
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .top: Resistor {}
+    .bottom: Resistor { .resistance &= 10kohm +/- 1% }
+    .out: Rail { .voltage &= 3.3V +/- 5% }
+    .supply.pos ~> .top ~> .bottom ~> .supply.neg
+    .top.b ~ .out.pos
+    .supply.neg ~ .out.neg
+    .out.voltage == .supply.voltage * .bottom.resistance / (.top.resistance + .bottom.resistance)
+}
+```
+
+```text
+error: no combination of candidates satisfies `bottom` and `top` together: the closest, bottom = 10kΩ 1% 0603 C25804 and top = 5.1kΩ 1% 0603 C23186, fails because `out.voltage` must stay within 3.135V..3.465V, but ((supply.voltage * bottom.resistance) / (top.resistance + bottom.resistance)) works out to 3.124V..3.501V
+   --> main.nsm:16:5
+   |
+16 |     .out.voltage == .supply.voltage * .bottom.resistance / (.top.resistance + .bottom.resistance)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+Read it this way. The closest choice was 10 kohm over 5.1 kohm. Its output spans 3.124 V to 3.500 V, wider than 3.135 V to 3.465 V. To fix it, loosen the requirement, use tighter parts, or change the circuit. The solver will not pick a part that only works at the typical value.
+
+## Interfaces
+
+An interface is a typed set of pins and quantities that is connected as one. `std::sources::Rail` is one: a positive pin, a negative pin, a voltage and a current. Two interfaces of one definition join with `~`.
+
+```nsm
+import std::parts::passive::Resistor
+
+/// A pair of wires that carry a differential signal.
+interface Pair {
+    .p: Pin
+    .n: Pin
+    .swing: Voltage
+}
+
+module Termination {
+    .line: Pair
+    .r: Resistor { .resistance &= 100ohm +/- 1% }
+    .line.p ~> .r ~> .line.n
+}
+
+board Link {
+    .bus: Pair { .swing &= 400mV }
+    .term: Termination
+    .bus ~ .term.line
+}
+```
+
+Rules.
+
+- An interface may hold pins, quantities and other interfaces. It may hold no parts.
+- An interface with no pins is a bundle of quantities. A manufacturing process is one.
+- `a ~ b` joins the pins that have the same name and makes equal the values that have the same name. It does not equate `current` fields (see Load current).
+- Joining two different interfaces is an error (shown in Connections).
+
+## Modules
+
+A module is a reusable sub-circuit. Its interfaces, pins and declared values are its interface to the outside. The parts and modules inside it are private (ADR 0004).
+
+```nsm solve
+import std::parts::connector::Header1x2
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+
+/// An LED with the resistor that sets its current.
+module Indicator {
+    .supply: Rail
+    .led: Led { .current &= 5mA..15mA }
+    .r1: Resistor
+    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
+    .supply.pos ~> .r1 ~> .led ~> .supply.neg
+}
+
+board Lamp {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .lamp: Indicator
+    .input ~ .lamp.supply
+    .header: Header1x2
+    .input.pos ~ .header.p1
+    .input.neg ~ .header.p2
+}
+```
+
+Rules.
+
+- A board sets a module through the module's rails, pins and declared values: `.lamp.supply.voltage`. It cannot write `.lamp.led.current`.
+- A module author exposes anything a user may need to set, as a rail or a declared value.
+- Two instances of a module are separate. Their internal nets get names from their instance paths, so they never collide.
+- A module may hold modules and parts. It names no nets.
+
+Misuse.
+
+```nsm fails
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+module Stage {
+    .supply: Rail
+    .r1: Resistor
+    .supply.pos ~> .r1 ~> .supply.neg
+}
+
+board Reach {
+    .stage: Stage
+    .stage.r1.resistance &= 1kohm +/- 1%
+}
+```
+
+```text
+error: `r1` is inside `Stage` and is not part of its interface; set it through a rail, a pin, or a value that `Stage` declares
+   --> main.nsm:12:12
+   |
+12 |     .stage.r1.resistance &= 1kohm +/- 1%
+   |            ^^
+```
+
+## Systems and ports
+
+A system holds boards and says which of their ports meet. A port is an interface that a board declares directly, such as `.output: Rail`. Everything else of a board is private (ADR 0010).
+
+```nsm solve
+import std::parts::connector::Header1x2
+import std::parts::passive::{Resistor, Led}
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+
+module Stage {
+    .vin: Rail
+    .vout: Rail
+    .regulator: LinearRegulator
+    .vin ~ .regulator.vin
+    .regulator.vout ~ .vout
+}
+
+/// Turns the 5 V it is given into 3.3 V for another board.
+board Source {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .stage: Stage {
+        .vout.voltage &= 3.3V +/- 5%
+    }
+    .output: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..50mA
+    }
+    .input ~ .stage.vin
+    .stage.vout ~ .output
+    .in_header: Header1x2
+    .out_header: Header1x2
+    .input.pos ~ .in_header.p1
+    .input.neg ~ .in_header.p2
+    .output.pos ~ .out_header.p1
+    .output.neg ~ .out_header.p2
+}
+
+board Lamp {
+    .input: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .led: Led { .current &= 5mA..20mA }
+    .r1: Resistor
+    .in_header: Header1x2
+    .input.pos ~ .in_header.p1
+    .input.neg ~ .in_header.p2
+    .led.current == (.input.voltage - .led.forward_voltage) / .r1.resistance
+    // The LED is a part, so the board states what it takes from its input.
+    .input.current == -.led.current
+    .input.pos ~> .r1 ~> .led ~> .input.neg
+}
+
+system Demo {
+    .power: Source
+    .lamp: Lamp
+    .power.output ~ .lamp.input
+}
+```
+
+Rules.
+
+- A system holds boards and nothing else. The same board may be placed twice, each as its own member.
+- `~` in a system joins two ports of the same kind on different boards. It equates their values and balances their currents. It does not put pins on a net. A connector that carries a port is mated instead, which joins the ports it carries (below).
+- A system narrows a board through the board's ports and declared values: `.power.output.voltage &= 3.3V +/- 5%`.
+- A system names no nets.
+- `build` and `fab` write each board of a system to `<out>/<System>/<member>/`.
+
+Misuse.
+
+```nsm fails
+import std::sources::Rail
+
+board A {
+    .output: Rail
+}
+
+board B {
+    .input: Rail
+}
+
+system S {
+    .a: A
+    .b: B
+    .a.output.pos.net &= "X"
+    .a.output ~ .b.input.pos
+}
+```
+
+```text
+error: `a.output.pos.net` names a net, and a system does not: each board names its own nets, and a system only says which ports meet
+   --> main.nsm:14:5
+   |
+14 |     .a.output.pos.net &= "X"
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+error: a system joins two ports of the same kind; a pin is not a port
+   --> main.nsm:15:17
+   |
+15 |     .a.output ~ .b.input.pos
+   |                 ^^^^^^^^^^^^
+```
+
+### Connectors that mate
+
+Boards that plug into each other do it through connectors, and a system says which. `~` between the `.mating` of two connectors says they are mated, contact N to contact N (ADR 0040). Every pin header and socket of the standard library states its `.mating` (`std::parts::connector::Mating`): its `kind`, `gender`, `pitch`, `rows` and `positions`, and, when its datasheet rates it, the current of one contact, `pin_current`. A system can reach a connector's `.mating` and nothing else of it.
+
+The system names no pin and no net. After the nets of the boards are known, the checker reads what each board has behind each contact, a role: ground (the net is the `neg` of a rail), power (the `pos` of a rail), a signal (a part's `input`, `output` or `bidirectional` pin is on it) or open. Then:
+
+- The two connectors must mate: the same kind, rows, positions and pitch, and a header with a socket. A header does not mate with a header.
+- Contact N of one board meets contact N of the other, with the rules a board already has on a net: two outputs are refused, an `input` with nothing that drives it on either board is refused, ground against power or a signal is a short. A power contact against a power contact equates their voltages, as `~` of rails does, and an open contact is fine against anything but an input.
+- A mate that carries power or a signal must carry a ground: a contact that is ground on both boards.
+- The ports the mate carries are joined by it: a port of one board whose pins are all on contacts that a port of the same kind on the other board has its pins on is joined to it, as an explicit `~` of the two would join them (values equated, currents balanced). A `~` between ports that the mate carries is refused with a message naming the mate, so a join has one spelling. A port no connector carries (a soldered lead) is still joined with `~`. If a board has two ports on the same contacts, the mate cannot say which is joined, and says so.
+- Each board keeps its own ground net. The system reports the ground groups: which boards share a ground through the mated ground contacts.
+- The contacts carry the current. The rated current of one contact (`pin_current`) times the contacts that carry a rail's `pos`, or the ground the rails return through, is at least the current of the rail, in either direction. A connector that is rated is picked from the `header` catalog (`data/jlcpcb/catalog/header.csv`, one row for each series and pin count from a public datasheet), so the solver chooses a row that works. A connector with no rating is not checked, and the check is listed as not evaluated.
+- A pinout that also works with one connector turned end for end, and that neither connector keys (`.mating.keyed`), is a guideline finding (`mating`): the plug-in can go in the wrong way round and the checker cannot tell.
+
+A carrier with two sockets and two plug-in cards, with power, a UART and an SPI bus over the mates. The parts are invented, so the example is checked and solved and not exported:
+
+```nsm evaluate file=examples/carrier_and_cards.nsm
+//! A carrier board with two sockets and two plug-in cards, mated in a system.
+//!
+//! Every board is a PCB of its own with its own `GND` and `3V3` nets. The carrier has a controller
+//! and two 1x10 sockets; the sensor card plugs into one and the serial card into the other. A
+//! card has a 1x10 header wired to what it takes from the carrier: power on one card and an SPI
+//! bus on the other. The system mates each socket with a header, and the checker does the rest:
+//! it pairs contact N with contact N, finds what each board has behind each contact, joins the
+//! rails the mates carry (so there is no `~` of the ports to write), checks that a signal has
+//! one driver and that every mate carries a ground, and reports which grounds are one.
+//!
+//! The controller and the two chips are invented parts, written here to keep the example
+//! whole; they have no KiCad symbol, so this file is checked and solved but not exported.
+
+import std::bus::{Spi, Uart}
+import std::parts::connector::{Header1x10, Socket1x10}
+import std::parts::passive::Fuse
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+/// A controller with a UART and an SPI master. Invented; not a real part.
+part Controller {
+    .vdd: Rail
+    .uart: Uart
+    .spi: Spi
+
+    pins {
+        .vdd.pos  power  "VDD"  "1"
+        .vdd.neg  power  "VSS"  "2"
+        .uart.tx  output "TX"   "3"
+        .uart.rx  input  "RX"   "4"
+        .spi.sclk output "SCK"  "5"
+        .spi.mosi output "MOSI" "6"
+        .spi.miso input  "MISO" "7"
+        .spi.cs   output "CS"   "8"
+    }
+}
+
+/// An SPI sensor. Invented.
+part SpiSensor {
+    .vdd: Rail
+    .spi: Spi
+
+    pins {
+        .vdd.pos  power  "VDD"  "1"
+        .vdd.neg  power  "GND"  "2"
+        .spi.sclk input  "SCLK" "3"
+        .spi.mosi input  "SDI"  "4"
+        .spi.miso output "SDO"  "5"
+        .spi.cs   input  "CSN"  "6"
+    }
+}
+
+/// A UART transceiver. Invented.
+part SerialChip {
+    .vdd: Rail
+    .uart: Uart
+
+    pins {
+        .vdd.pos  power  "VDD"  "1"
+        .vdd.neg  power  "VSS"  "2"
+        .uart.tx  output "TX"   "3"
+        .uart.rx  input  "RX"   "4"
+    }
+}
+
+/// The carrier: it takes 3.3 V from outside, gives it to the cards through its sockets, and
+/// brings the controller's UART and SPI to them.
+///
+/// Both sockets have the same pinout, 1 GND, 2 3V3, 3 to 6 the SPI bus (the card is the
+/// slave), 7 and 8 the UART (7 is the controller's `tx`), 9 3V3 and 10 GND.
+board Carrier {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+
+    /// Supplied from outside the system.
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .min_track &= 0.5mm..1m
+    }
+    /// What the carrier gives to its cards, through a fuse: up to 500 mA.
+    .cards: Rail {
+        .pos.net &= "3V3_CARDS"
+        .neg.net &= "GND"
+        .min_track &= 0.5mm..1m
+        .current &= 0mA..500mA
+    }
+    .fuse: Fuse
+    .supply.pos ~> .fuse ~> .cards.pos
+    .supply.neg ~ .cards.neg
+    // The fuse drops a little of the supply; the cards get what is left.
+    .cards.voltage == .supply.voltage - .fuse.drop
+
+    .mcu: Controller {
+        .vdd.current &= 20mA..60mA
+    }
+    .supply ~ .mcu.vdd
+
+    .slot_a: Socket1x10
+    .slot_b: Socket1x10
+
+    .cards.neg ~ .slot_a.p1
+    .cards.pos ~ .slot_a.p2
+    .mcu.spi.sclk ~ .slot_a.p3
+    .mcu.spi.mosi ~ .slot_a.p4
+    .mcu.spi.miso ~ .slot_a.p5
+    .mcu.spi.cs ~ .slot_a.p6
+    .cards.pos ~ .slot_a.p9
+    .cards.neg ~ .slot_a.p10
+
+    .cards.neg ~ .slot_b.p1
+    .cards.pos ~ .slot_b.p2
+    .mcu.uart.tx ~ .slot_b.p7
+    .mcu.uart.rx ~ .slot_b.p8
+    .cards.pos ~ .slot_b.p9
+    .cards.neg ~ .slot_b.p10
+}
+
+/// A card with a sensor on SPI. Its header goes into the carrier's first socket.
+board SensorCard {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+
+    .supply: Rail {
+        .pos.net &= "3V3_CARD"
+        .neg.net &= "GND"
+        .current &= -30mA..-5mA
+    }
+    .sensor: SpiSensor
+    .supply ~ .sensor.vdd
+
+    .j1: Header1x10
+    .supply.neg ~ .j1.p1
+    .supply.pos ~ .j1.p2
+    .sensor.spi.sclk ~ .j1.p3
+    .sensor.spi.mosi ~ .j1.p4
+    .sensor.spi.miso ~ .j1.p5
+    .sensor.spi.cs ~ .j1.p6
+    .supply.pos ~ .j1.p9
+    .supply.neg ~ .j1.p10
+}
+
+/// A card with a UART chip. Its header goes into the carrier's second socket. The UART
+/// crosses: the card's `tx` is on contact 8, where the controller has its `rx`.
+board SerialCard {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+
+    .supply: Rail {
+        .pos.net &= "3V3_CARD"
+        .neg.net &= "GND"
+        .current &= -60mA..-10mA
+    }
+    .chip: SerialChip
+    .supply ~ .chip.vdd
+
+    .j1: Header1x10
+    .supply.neg ~ .j1.p1
+    .supply.pos ~ .j1.p2
+    .chip.uart.rx ~ .j1.p7
+    .chip.uart.tx ~ .j1.p8
+    .supply.pos ~ .j1.p9
+    .supply.neg ~ .j1.p10
+}
+
+system CarrierAndCards {
+    .carrier: Carrier
+    .sensor: SensorCard
+    .serial: SerialCard
+
+    // The sensor card's header goes into socket A, the serial card's into socket B. A mate
+    // joins contact N to contact N and derives the rails it carries, so no port is joined here.
+    .carrier.slot_a.mating ~ .sensor.j1.mating
+    .carrier.slot_b.mating ~ .serial.j1.mating
+}
+```
+
+Mistakes in a mate. Some invented parts for the examples:
+
+```nsm module=src::kit
+import std::parts::connector::Mating
+
+/// A part with one output pin. Invented.
+part Out {
+    pins {
+        .y output "Y" "1"
+    }
+}
+
+/// A part with one input pin. Invented.
+part In {
+    pins {
+        .a input "A" "1"
+    }
+}
+
+/// A 1x4 header at 2 mm pitch, which does not fit a 2.54 mm socket. Invented.
+part Header1x4Fine {
+    pins {
+        .p1 passive "P1" "1"
+        .p2 passive "P2" "2"
+        .p3 passive "P3" "3"
+        .p4 passive "P4" "4"
+    }
+
+    .mating: Mating {
+        .kind &= "pin_header"
+        .gender &= "header"
+        .pitch &= 2mm
+        .rows &= 1
+        .positions &= 4
+    }
+}
+```
+
+A header does not go into a header:
+
+```nsm fails
+import std::parts::connector::Header1x4
+import std::sources::Rail
+
+board Carrier {
+    .gnd: Rail { .neg.net &= "GND" }
+    .slot: Header1x4
+    .gnd.neg ~ .slot.p1
+}
+
+board Card {
+    .gnd: Rail { .neg.net &= "GND" }
+    .j1: Header1x4
+    .gnd.neg ~ .j1.p1
+}
+
+system Kit {
+    .carrier: Carrier
+    .card: Card
+    .carrier.slot.mating ~ .card.j1.mating
+}
+```
+
+```text
+error: `.carrier.slot` and `.card.j1` are both headers (Header1x4 and Header1x4); a header mates with a socket
+   --> main.nsm:19:5
+   |
+19 |     .carrier.slot.mating ~ .card.j1.mating
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+The count and the pitch must agree:
+
+```nsm fails
+import std::parts::connector::{Header1x2, Socket1x4}
+import src::kit::Header1x4Fine
+import std::sources::Rail
+
+board Carrier {
+    .gnd: Rail { .neg.net &= "GND" }
+    .slot_a: Socket1x4
+    .slot_b: Socket1x4
+    .gnd.neg ~ .slot_a.p1
+    .gnd.neg ~ .slot_b.p1
+}
+
+board Short {
+    .gnd: Rail { .neg.net &= "GND" }
+    .j1: Header1x2
+    .gnd.neg ~ .j1.p1
+}
+
+board Fine {
+    .gnd: Rail { .neg.net &= "GND" }
+    .j1: Header1x4Fine
+    .gnd.neg ~ .j1.p1
+}
+
+system Kit {
+    .carrier: Carrier
+    .short: Short
+    .fine: Fine
+    .carrier.slot_a.mating ~ .short.j1.mating
+    .carrier.slot_b.mating ~ .fine.j1.mating
+}
+```
+
+```text
+error: `.carrier.slot_a` (Socket1x4) has 4 positions and `.short.j1` (Header1x2) has 2; a mate joins contact N to contact N, so both need the same number
+   --> main.nsm:29:5
+   |
+29 |     .carrier.slot_a.mating ~ .short.j1.mating
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: `.carrier.slot_b` (Socket1x4) has a pitch of 2.54mm and `.fine.j1` (Header1x4Fine) has 2mm; they do not fit together
+   --> main.nsm:30:5
+   |
+30 |     .carrier.slot_b.mating ~ .fine.j1.mating
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A signal needs one driver. Two outputs on one contact, or an input that nothing drives, are refused:
+
+```nsm fails
+import src::kit::{In, Out}
+import std::parts::connector::{Header1x4, Socket1x4}
+import std::sources::Rail
+
+board Carrier {
+    .gnd: Rail { .neg.net &= "GND" }
+    .tx: Out
+    .rx: In
+    .slot: Socket1x4
+    .gnd.neg ~ .slot.p1
+    .tx.y ~ .slot.p2
+    .rx.a ~ .slot.p3
+}
+
+board Card {
+    .gnd: Rail { .neg.net &= "GND" }
+    .tx: Out
+    .rx: In
+    .j1: Header1x4
+    .gnd.neg ~ .j1.p1
+    .tx.y ~ .j1.p2
+    .rx.a ~ .j1.p3
+}
+
+system Kit {
+    .carrier: Carrier
+    .card: Card
+    .carrier.slot.mating ~ .card.j1.mating
+}
+```
+
+```text
+error: contact 2 of the mated connectors is an output on both boards, and two outputs cannot share a net: `.carrier.slot` pin 2 is on net `net-slot.p2`, a signal (output `carrier.tx.y`); `.card.j1` pin 2 is on net `net-j1.p2`, a signal (output `card.tx.y`); a mate joins contact N to contact N, so if one is meant to be turned end for end, its pin 2 would meet pin 3
+   --> main.nsm:28:5
+   |
+28 |     .carrier.slot.mating ~ .card.j1.mating
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: contact 3 of the mated connectors has an input and nothing that drives it on either board: `.carrier.slot` pin 3 is on net `net-rx.a`, a signal (input `carrier.rx.a`); `.card.j1` pin 3 is on net `net-j1.p3`, a signal (input `card.rx.a`); a mate joins contact N to contact N, so if one is meant to be turned end for end, its pin 3 would meet pin 2
+   --> main.nsm:28:5
+   |
+28 |     .carrier.slot.mating ~ .card.j1.mating
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A mate that carries a signal and no ground is refused, because the two boards would share no reference:
+
+```nsm fails
+import src::kit::{In, Out}
+import std::parts::connector::{Header1x4, Socket1x4}
+
+board Carrier {
+    .tx: Out
+    .slot: Socket1x4
+    .tx.y ~ .slot.p2
+}
+
+board Card {
+    .rx: In
+    .j1: Header1x4
+    .rx.a ~ .j1.p2
+}
+
+system Kit {
+    .carrier: Carrier
+    .card: Card
+    .carrier.slot.mating ~ .card.j1.mating
+}
+```
+
+```text
+error: the mate of `.carrier.slot` and `.card.j1` carries power or signals (contact 2 is a signal on `.carrier.slot` and a signal on `.card.j1`) but no ground: no contact is ground on both boards, so the two boards share no ground
+   --> main.nsm:19:5
+   |
+19 |     .carrier.slot.mating ~ .card.j1.mating
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A port that a mate carries is not joined again with `~`:
+
+```nsm fails
+import std::parts::connector::{Header1x2, Socket1x2}
+import std::sources::Rail
+
+board Carrier {
+    .out: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..100mA
+    }
+    .slot: Socket1x2
+    .out.neg ~ .slot.p1
+    .out.pos ~ .slot.p2
+}
+
+board Card {
+    .supply: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= -50mA..-10mA
+    }
+    .j1: Header1x2
+    .supply.neg ~ .j1.p1
+    .supply.pos ~ .j1.p2
+}
+
+system Kit {
+    .carrier: Carrier
+    .card: Card
+    .carrier.slot.mating ~ .card.j1.mating
+    .carrier.out ~ .card.supply
+}
+```
+
+```text
+error: `.carrier.out` and `.card.supply` are already joined by the mate of `.carrier.slot` and `.card.j1` at contacts 1, 2; the mate derives this join, so remove this one (a port join is for ports that no connector carries)
+   --> main.nsm:31:5
+   |
+31 |     .carrier.out ~ .card.supply
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A system reaches a connector's `.mating` and nothing else of it:
+
+```nsm fails
+import std::parts::connector::{Header1x2, Socket1x2}
+import std::sources::Rail
+
+board Carrier {
+    .slot: Socket1x2
+}
+
+board Card {
+    .supply: Rail
+    .j1: Header1x2
+}
+
+system Kit {
+    .carrier: Carrier
+    .card: Card
+    .carrier.slot.p1 ~ .card.supply.pos
+}
+```
+
+```text
+error: `p1` is inside `slot`, a `Socket1x2`; a system can reach only the `.mating` of a connector
+   --> main.nsm:16:19
+   |
+16 |     .carrier.slot.p1 ~ .card.supply.pos
+   |                   ^^
+```
+
+A pinout that reads the same from both ends is insertable the wrong way round, and the two rails here would swap. The finding is a guideline (ADR 0036): `warning:` on the command line, an error with `--strict`. A keyed connector (`.slot: Socket1x4 { .mating.keyed &= "polarised" }`) goes in one way and is not reported:
+
+```nsm solve warns
+import std::parts::connector::{Header1x4, Socket1x4}
+import std::sources::Rail
+
+board Carrier {
+    .a: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "RAIL_A"
+        .neg.net &= "GND"
+        .min_track &= 0.5mm..1m
+    }
+    .b: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "RAIL_B"
+        .neg.net &= "GND"
+        .min_track &= 0.5mm..1m
+    }
+    .slot: Socket1x4
+    .a.neg ~ .slot.p1
+    .a.pos ~ .slot.p2
+    .b.pos ~ .slot.p3
+    .b.neg ~ .slot.p4
+}
+
+board Card {
+    .a: Rail {
+        .pos.net &= "RAIL_A"
+        .neg.net &= "GND"
+        .min_track &= 0.5mm..1m
+    }
+    .b: Rail {
+        .pos.net &= "RAIL_B"
+        .neg.net &= "GND"
+        .min_track &= 0.5mm..1m
+    }
+    .j1: Header1x4
+    .a.neg ~ .j1.p1
+    .a.pos ~ .j1.p2
+    .b.pos ~ .j1.p3
+    .b.neg ~ .j1.p4
+}
+
+system Kit {
+    .carrier: Carrier
+    .card: Card
+    .carrier.slot.mating ~ .card.j1.mating
+}
+```
+
+```text
+Kit/carrier: mating guideline: the pinout of the mate of `.carrier.slot` and `.card.j1` also works with one connector turned end for end, and neither is keyed: contact 2 (RAIL_A on `.carrier.slot`, RAIL_A on `.card.j1`) and contact 3 (RAIL_B on `.carrier.slot`, RAIL_B on `.card.j1`) would swap places and every contact would still be accepted; only a keyed connector (`.mating.keyed`) goes in one way
+```
+
+## Panels
+
+A panel repeats one board in a grid on one fabrication panel, cut apart by V-cuts (ADR 0040). The board stays a stand-alone `board`: the panel only says how many copies there are and in what grid, and the board house's rules for such a panel come from a standard-library interface, as a board's process does. A panel names no nets and joins nothing.
+
+```nsm solve
+import std::parts::connector::Header1x2
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+import std::mfg::jlcpcb::{TwoLayer, VCutPanel}
+import std::pcb::Outline
+
+board Tile {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+        // Copper at least 0.4 mm from the edge, as a V-cut needs.
+        .min_edge_clearance &= 0.4mm..1m
+    }
+    // A V-cut runs straight across the panel: a rectangle with square corners.
+    .outline: Outline {
+        .width &= 40mm
+        .height &= 30mm
+        .corner_radius &= 0mm
+    }
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .led: Led {
+        .current &= 5mA..15mA
+    }
+    .r1: Resistor {}
+    .power_in: Header1x2
+    .supply.pos ~ .power_in.p1
+    .supply.neg ~ .power_in.p2
+    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
+    .supply.pos ~> .r1 ~> .led ~> .supply.neg
+}
+
+panel TilePanel {
+    .cell: Tile
+    .fab: VCutPanel {
+        .columns &= 3
+        .rows &= 2
+        .rail &= 5mm
+    }
+}
+```
+
+Rules.
+
+- `.cell: Board` names the board that is repeated. It is a `board` defined in the same file and placed in no system; a board a system places is made as the system's, not alone.
+- `.fab: VCutPanel { ... }` is the board house's V-cut panel (`std::mfg::jlcpcb::VCutPanel`). `.columns` and `.rows` say the grid and have no default. `.rail` is the width of the handling rail round the grid, `0mm` (the default) for none; a rail carries the tooling holes and fiducials that assembly needs, and is 5 mm to 8 mm. The boards sit side by side with no space between them. Every other field is a limit of the board house with its source in `std/mfg/jlcpcb.nsm`.
+- A panel holds that board and its rules and nothing else. It joins nothing, names no nets, and configures nothing inside its board.
+- `netsmith fab` makes the board's own package in `fab/<Panel>/cell/<Board>/` and the panel's in `fab/<Panel>/`: one Gerber set for the whole panel (the boards' layers moved to their cells, one outline, the V-cut lines on `Edge.Cuts` marked "V-CUT", the drills merged, the tooling holes and fiducials of the rails), a bill of materials and a placement file for all the cells, `fab-notes.txt`, the panel as a `.kicad_pcb` (which KiCad can plot; `--cross-check` compares), and `panel.svg`. Designators in `bom.csv` and `cpl.csv` carry the cell (`R1_3` is `R1` of the third cell, counted along the rows from the top left).
+- An order may name a panel, and its quantity then counts panels: `LedPanel = 3` in `[order.run.boards]` is three panels (see Orders).
+- `fab` refuses a panel the board house would refuse, with the numbers: a panel outside 70 x 70 mm to 475 x 475 mm (250 x 250 mm if it is assembled), more than 25 lines along a side, lines closer than 2 mm, a board thinner than 0.6 mm, copper nearer the edge than 0.4 mm, an assembled panel without rails, a rail under 5 mm. Rounded corners are refused too.
+
+Misuse: no board house rules.
+
+```nsm fails
+board Tile {
+}
+
+panel P {
+    .cell: Tile
+}
+```
+
+```text
+error: panel P: it does not say who makes it, and a panel needs the board house's rules: add `import std::mfg::jlcpcb::VCutPanel` and `.fab: VCutPanel { .columns &= 3; .rows &= 2 }`
+```
+
+Misuse: the grid is not stated.
+
+```nsm fails
+import std::mfg::jlcpcb::VCutPanel
+
+board Tile {
+}
+
+panel P {
+    .cell: Tile
+    .fab: VCutPanel {
+        .rows &= 2
+    }
+}
+```
+
+```text
+error: panel P: `fab` is a `VCutPanel` and has no value for `columns`: say how many, for example `.fab: VCutPanel { .columns &= 3 }`
+```
+
+Misuse: a panel holds boards, not parts or joins.
+
+```nsm fails
+import std::mfg::jlcpcb::VCutPanel
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Tile {
+    .supply: Rail
+}
+
+panel P {
+    .cell: Tile
+    .fab: VCutPanel {
+        .columns &= 2
+        .rows &= 2
+    }
+    .r1: Resistor {}
+    .cell.supply ~ .cell.supply
+}
+```
+
+```text
+error: a panel holds the board it repeats and its fabricator's panel rules, but `Resistor` is a part
+   --> main.nsm:15:10
+   |
+15 |     .r1: Resistor {}
+   |          ^^^^^^^^
+error: a panel joins nothing: it repeats one board in a grid, and the boards stay apart
+   --> main.nsm:16:5
+   |
+16 |     .cell.supply ~ .cell.supply
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+## Load current
+
+A `Rail` has a `current` field: the current drawn from the net through the rail's `pos` pin by whatever is behind the rail. It is positive when the thing draws and negative when it supplies (ADR 0007). A design states the consuming side.
+
+```nsm solve
+import std::parts::connector::Header1x2
+import std::parts::passive::Capacitor
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+
+module Stage {
+    .vin: Rail
+    .vout: Rail
+    .regulator: LinearRegulator
+    .vin ~ .regulator.vin
+    .regulator.vout ~ .vout
+}
+
+board Supply {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .stage: Stage {
+        .vout.voltage &= 3.3V +/- 5%
+    }
+    .output: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..50mA
+    }
+    .input ~ .stage.vin
+    .stage.vout ~ .output
+    .in_header: Header1x2
+    .out_header: Header1x2
+    .input.pos ~ .in_header.p1
+    .input.neg ~ .in_header.p2
+    .output.pos ~ .out_header.p1
+    .output.neg ~ .out_header.p2
+}
+```
+
+The checker records one balance for each net and scope: the currents of the rails there add up to zero. A scope is a board or a module. The solver uses the balances while it propagates. When one current on a net is unknown, it is the negative of the rest. Here it works out that the regulator supplies 0 to 50 mA, and that the board's input draws the same.
+
+Rules.
+
+- `~` between rails equates every field except `current`. A rail can feed several loads, so equal currents would be wrong.
+- A module's own rail is a port. From inside, it supplies what is inside, so it counts with its sign flipped.
+- `LinearRegulator` states that its input draws what its output supplies, that the output current is at most `.max_current`, and that `(vin - vout) * current` is at most `.max_power`.
+- The first part of a `~>` chain that starts on a rail's net adds its through-current to that net's sum (ADR 0014). The solver sets the current of a rail from the rest of the net; a part's current is set from a net only when the net has two terms (a fuse in series with a load), and is otherwise verified, never solved by subtraction (ADR 0026). If its own relations do not determine it, the relations that use it are `not evaluated`. A balance is set or verified only when it is complete (ADR 0027): every part pin on the net is a term or belongs to a part that draws nothing at DC (one that states no `current`, has no rail and has only `passive` pins: a capacitor, a header, a test point). An `input` or `no_connect` pin of a part that has a `Rail` also draws nothing (its leakage is ignored; the rail is the part's supply). A pin that is none of these, such as an inductor joined with `~`, an IC's output or bidirectional pin, or an input of a part with no rail, leaves the balance incomplete, and the build lists those pins in a note.
+- A net with two or more unknown currents stays unsolved without a message.
+- A range stated on a current is a budget (ADR 0038), like the range of a field an equation states: what the rest of a complete net determines must lie inside it, and need not fill it. The stated current then holds the narrower value. Where two or more currents are stated, or one is worked out from the net, the currents only have to be able to add up to zero.
+
+A module that draws through a divider, with the board stating the most it may draw:
+
+```nsm solve
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+module Monitor {
+    .vin: Rail
+    .r_top: Resistor { .resistance &= 100kohm +/- 1% }
+    .r_bottom: Resistor { .resistance &= 100kohm +/- 1% }
+    .r_top.current == .vin.voltage / (.r_top.resistance + .r_bottom.resistance)
+    .vin.pos ~> .r_top ~> .r_bottom ~> .vin.neg
+}
+
+board Sensor {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 3%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .monitor: Monitor { .vin.current &= 0A..20uA }
+    .supply ~ .monitor.vin
+}
+```
+
+The divider draws 15.84 uA to 17.17 uA, which is inside the 20 uA, so the build passes and `monitor.vin.current` is that range. With `.vin.current &= 0A..10uA` the circuit draws more than the budget and the build fails:
+
+```nsm fails
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+module Monitor {
+    .vin: Rail
+    .r_top: Resistor { .resistance &= 100kohm +/- 1% }
+    .r_bottom: Resistor { .resistance &= 100kohm +/- 1% }
+    .r_top.current == .vin.voltage / (.r_top.resistance + .r_bottom.resistance)
+    .vin.pos ~> .r_top ~> .r_bottom ~> .vin.neg
+}
+
+board Sensor {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 3%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .monitor: Monitor { .vin.current &= 0A..10uA }
+    .supply ~ .monitor.vin
+}
+```
+
+```text
+error: the currents on net `3V3` do not add up: `-monitor.vin.current` must stay within -10uA..0A, but the others on it work out to -17.17uA..-15.84uA (all of them: `monitor.r_top.current` is 15.84uA..17.17uA, `-monitor.vin.current` is -10uA..0A)
+   --> main.nsm:18:25
+   |
+18 |     .monitor: Monitor { .vin.current &= 0A..10uA }
+   |                         ^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+Misuse: a load larger than the regulator can give.
+
+```nsm fails
+import std::parts::connector::Header1x2
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+
+module Stage {
+    .vin: Rail
+    .vout: Rail
+    .regulator: LinearRegulator
+    .vin ~ .regulator.vin
+    .regulator.vout ~ .vout
+}
+
+board Overload {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .stage: Stage {
+        .vout.voltage &= 3.3V +/- 5%
+    }
+    .output: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..150mA
+    }
+    .input ~ .stage.vin
+    .stage.vout ~ .output
+    .in_header: Header1x2
+    .out_header: Header1x2
+    .input.pos ~ .in_header.p1
+    .input.neg ~ .in_header.p2
+    .output.pos ~ .out_header.p1
+    .output.neg ~ .out_header.p2
+}
+```
+
+```text
+error: no `ldo` candidate satisfies `stage.regulator`: the closest of the 1 that fit, XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446, fails because -stage.regulator.vout.current must always be at most stage.regulator.max_current, but 0A..150mA is not always below 100mA (the currents on net `3V3` in `stage`: stage.regulator.vout.current (-150mA..0A) + -stage.vout.current (-150mA..0A) add up to zero; net `3V3`: output.current (0A..150mA) + stage.vout.current (-150mA..0A) add up to zero)
+   --> std/parts/regulator.nsm:27:5
+   |
+27 |     -.vout.current <= .max_current
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+Misuse: two boards that disagree about the current at a join.
+
+```nsm fails
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+
+module Stage {
+    .vin: Rail
+    .vout: Rail
+    .regulator: LinearRegulator
+    .vin ~ .regulator.vin
+    .regulator.vout ~ .vout
+}
+
+board Source {
+    .input: Rail
+    .stage: Stage
+    .output: Rail { .current &= 0mA..50mA }
+    .input ~ .stage.vin
+    .stage.vout ~ .output
+}
+
+board Sink {
+    .input: Rail { .current &= -100mA }
+}
+
+system Demo {
+    .power: Source
+    .load: Sink
+    .power.output ~ .load.input
+}
+```
+
+```text
+error: the currents at the join `load.input ~ power.output` cannot add up to zero: `load.input.current` (board `Sink`) is -100mA and `power.output.current` (board `Source`) is 0A..50mA, which add up to -100mA..-50mA
+   --> main.nsm:21:20
+   |
+21 |     .input: Rail { .current &= -100mA }
+   |                    ^^^^^^^^^^^^^^^^^^
+```
+
+## Capacitors: marked value, effective capacitance and bias
+
+A `Capacitor` has two capacitances because they are two quantities (ADR 0013).
+
+- `.capacitance` is the marked value with its tolerance, as on a bill of materials. Use it for a bypass capacitor where you mean a part.
+- `.effective_capacitance` is what the circuit can use: the marked value after the DC bias across the part and after the tolerance, in the worst case over the range the bias can take. Use it where a datasheet asks for capacitance in use, such as a regulator's output capacitor.
+- `.bias` is the DC voltage across the capacitor. A capacitor placed between a rail's `pos` and `neg` takes its bias from that rail. State `.bias` only for a capacitor that is across no rail.
+
+```nsm solve report
+import std::parts::passive::Capacitor
+import std::sources::Rail
+
+board Caps {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .bypass: Capacitor { .capacitance &= 100nF +/- 20% }
+    .bulk: Capacitor { .effective_capacitance >= 1uF }
+    .supply.pos ~> .bypass ~> .supply.neg
+    .supply.pos ~> .bulk ~> .supply.neg
+}
+```
+
+```text
+board Caps
+  C1   Capacitor       4.7u            Capacitor_SMD:C_0402_1005Metric                            C23733 Basic
+  C2   Capacitor       100n            Capacitor_SMD:C_0402_1005Metric                            C1525 Basic
+  net 3V3: C1.1, C2.1
+  net GND: C1.2, C2.2
+```
+
+The solver picks the cheapest Basic part whose effective capacitance stays at or above 1 uF. A marked 1 uF part does not qualify: the 25 V one keeps about 0.7 of its value at 3.465 V, before the tolerance.
+
+Rules.
+
+- The solver evaluates the effective capacitance from the part's published curve (the `effective_capacitance` cell of `data/jlcpcb/catalog/capacitor.csv`). A part with no curve is refused, but only when the design constrains `.effective_capacitance`.
+- Temperature and ageing are not modelled. The curves are typical data at 25 C.
+- State what you need after derating (`.effective_capacitance >= 4.7uF`), not the marked value.
+
+Misuse: a capacitor in a chain that is across no rail, and a requirement no part meets.
+
+```nsm fails
+import std::parts::passive::{Capacitor, Resistor}
+import std::sources::Rail
+
+board NoBias {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .r1: Resistor { .resistance &= 1kohm +/- 1% }
+    .filter: Capacitor { .effective_capacitance >= 1uF }
+    .supply.pos ~> .r1 ~> .filter ~> .supply.neg
+}
+```
+
+```text
+error: the `capacitor` catalog has nothing for `filter`, which needs nothing in particular (`filter.bias` is not known, so `filter.effective_capacitance` cannot be worked out: place `filter` between a rail's pos and neg, whose voltage is known, or state `filter.bias`)
+   --> main.nsm:11:5
+   |
+11 |     .filter: Capacitor { .effective_capacitance >= 1uF }
+   |     ^^^^^^^^^^^^^^^^^^
+```
+
+```nsm fails
+import std::parts::passive::Capacitor
+import std::sources::Rail
+
+board TooBig {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .bypass: Capacitor { .effective_capacitance >= 100uF }
+    .supply.pos ~> .bypass ~> .supply.neg
+}
+```
+
+```text
+error: no `capacitor` candidate satisfies `bypass`: the closest of the 31 that fit, 47uF 20% 6.3V X5R 0805 C16780, fails because bypass.effective_capacitance must always be at least 100uF, but 16.09uF..26.7uF is not always above 100uF (`bypass.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
+   --> main.nsm:10:26
+   |
+10 |     .bypass: Capacitor { .effective_capacitance >= 100uF }
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+## The process of a board
+
+A board is made by one manufacturing process. Its design rules and stackup come from a definition in the standard library, and the board has it as a member named `process` (ADR 0008, ADR 0012).
+
+```nsm solve
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+
+board Bare {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+        .min_track &= 0.15mm..1m
+    }
+    .header: Header1x2
+}
+```
+
+Rules.
+
+- Each rule is the least the factory can make, written as a range. `.min_track &= 0.1mm..1m` says the least track is at least 0.1 mm. A board narrows it upward for margin. The rule used is the bottom of what is left.
+- Ranges are closed, so `1m` stands for no upper limit.
+- A board must choose `.stackup.thickness`. The process offers 0.4 mm to 2 mm, and netsmith will not pick.
+- A board with no `process` builds and views as a schematic. `fab` stops and says to add `import std::mfg::jlcpcb::TwoLayer` and `.process: TwoLayer`. There is no default.
+- `.max_temperature_rise` is the rise in kelvin that the track width check designs to (see Track width against current). The process leaves it unstated and it is 10 K when the board does too: `.process.max_temperature_rise &= 20K`.
+- `std::mfg::jlcpcb::FourLayer` has two inner planes. The board names the net of each: `.process.inner1.net &= "GND"`. See `examples/four_layer.nsm`. A plane on a net the board does not have is an error. `FourLayer` offers 1.6 mm only.
+
+`netsmith fab` on a board without one prints (this block is not run by the guide test):
+
+```text
+error: LedExample: `LedExample` does not say how it is made, and a PCB needs design rules: add `import std::mfg::jlcpcb::TwoLayer` and `.process: TwoLayer` to the board
+```
+
+Misuse.
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+
+board Thick {
+    .process: TwoLayer {
+        .stackup.thickness &= 3mm
+    }
+}
+```
+
+```text
+error: contradiction on `process.stackup.thickness`: it is already 400um..2mm, which does not overlap 3mm
+  --> main.nsm:5:9
+  |
+5 |         .stackup.thickness &= 3mm
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+```nsm fails
+import std::parts::passive::Resistor
+import std::sources::Rail
+import std::mfg::jlcpcb::FourLayer
+
+board Planes {
+    .process: FourLayer {
+        .stackup.thickness &= 1.6mm
+        .inner1.net &= "VCC"
+        .inner2.net &= "GND"
+    }
+    .supply: Rail {
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+    }
+    .r1: Resistor { .resistance &= 1kohm +/- 1% }
+    .supply.pos ~> .r1 ~> .supply.neg
+}
+```
+
+```text
+error: Planes: `process.inner1` is a plane on the net `VCC`, but the board has no net of that name (its nets: `5V`, `GND`)
+```
+
+## The shape of a board
+
+Beyond its parts and nets, a board can say how wide its power tracks are, how big it is and what is cut out of it, where copper is poured, and where tracks, vias, copper or parts are not allowed (ADR 0020, ADR 0029). Each is a member of the board, or a field of one, in the standard library: `std::pcb` has `Outline`, `Cutout` and `Keepout`, `std::mfg::stackup` has `Pour`, and a `Rail` has `.min_track`. Nothing here adds a construct. A board that says none of it is laid out as before.
+
+Lengths are in the board's own frame: the origin is the outline's top left corner, x grows to the right and y downward. A board states how big a shape is. Where a shape is, when the board does not say, is in the layout file (see below), because placement lives in one place.
+
+### Track widths by rail
+
+A rail's `.min_track` is the narrowest track its nets are drawn with. It is a lower bound, written as a range like a process rule, and the bottom of what is left is the width. Both pins of the rail get it. A net takes the widest `.min_track` of the rails on it, so `GND` below is 0.8 mm without anyone saying so. `~` between rails equates the width too, so a module's rail carries it.
+
+```nsm solve
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+import std::sources::Rail
+
+board Widths {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .input: Rail {
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+        .min_track &= 0.8mm..1m
+    }
+    .output: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .min_track &= 0.5mm..1m
+    }
+    .in: Header1x2
+    .out: Header1x2
+    .input.pos ~ .in.p1
+    .input.neg ~ .in.p2
+    .output.pos ~ .out.p1
+    .output.neg ~ .out.p2
+}
+```
+
+The router draws `VIN` and `GND` at 0.8 mm and `3V3` at 0.5 mm, and the `.kicad_pro` has a net class for each width. A width under the process's least track is the process's least. Signals have no rail: widen them all with `.process.min_track`. The width is checked against the rail's current, below.
+
+### Track width against current
+
+A track that carries current heats. A rail's `.min_track` sets the width of its nets, and the solver knows the worst-case current each rail draws (`.current`, see Load current), so netsmith checks that the width can carry it (ADR 0036). It uses the IPC-2221 formula, `I = k * dT^0.44 * A^0.725`, where `I` is the current in amperes, `dT` the temperature rise in kelvin, `A` the track's cross-section in square mils (its width times the copper's thickness), and `k` is 0.048 for a track on an outer layer and 0.024 on an inner layer. netsmith draws tracks on the outer layers only, so it uses 0.048 and the outer copper of the process (`.stackup.copper_weight` ounces, 0.035 mm each).
+
+A net carries the largest current of the things on it: the rails that have a pin on it, and the series parts (`~>` chains) whose bridge ends on it, so the nets between the parts of a chain take the chain's current. Its tracks are as wide as the widest `.min_track` of the rails on it, and never narrower than the process's least track. A rail that states no `.min_track` is therefore checked at the process's least track, so a 2 A rail drawn at 0.1 mm is a finding and not silent. The temperature rise is `.process.max_temperature_rise`, in kelvin, an upper bound like `via_in_pad`; it is 10 K when the board states none, and the finding says so. 10 K is a conservative default of netsmith's and is not a number from a fabricator. The planes of a four-layer board and the nets of a pour are areas and not tracks, and are not checked.
+
+```nsm solve warns
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+board Heater {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .load: Rail {
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+        .current &= 0A..2A
+        .min_track &= 0.2mm..1m
+    }
+    .source: Rail {
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+        .current &= -2A..0A
+    }
+    .supply: Header1x2
+    .out: Header1x2
+    .supply.p1 ~ .source.pos
+    .supply.p2 ~ .source.neg
+    .out.p1 ~ .load.pos
+    .out.p2 ~ .load.neg
+}
+```
+
+```text
+Heater: IPC-2221 guideline: net `5V` carries up to 2 A (rail `load`: 0 mA to 2 A) but its tracks are 0.2 mm wide (a rail's `.min_track`), in 1 oz (0.035 mm) outer copper; at a temperature rise of 10 K (the default) that width carries 745 mA and IPC-2221 needs 0.79 mm: give a rail on the net `.min_track &= 0.79mm..1m`, or allow a higher `.process.max_temperature_rise`
+Heater: IPC-2221 guideline: net `GND` carries up to 2 A (rail `load`: 0 mA to 2 A) but its tracks are 0.2 mm wide (a rail's `.min_track`), in 1 oz (0.035 mm) outer copper; at a temperature rise of 10 K (the default) that width carries 745 mA and IPC-2221 needs 0.79 mm: give a rail on the net `.min_track &= 0.79mm..1m`, or allow a higher `.process.max_temperature_rise`
+```
+
+Rules.
+
+- This is a guideline and not a limit of the fabricator (ADR 0030): `build` and `fab` print each finding as `warning: ...`, `fab` also writes it in `fab-notes.txt`, and the editor lists it as a warning at the rail or part that carries the current. The board still builds.
+- To make a finding stop the build, put `guidelines = "error"` in the `[project]` table of `netsmith.toml`, or pass `--strict` to `build` or `fab` for one run. The message is then an error at the same line.
+- IPC-2221 is a conservative design guide, and IPC-2152 is more accurate (it counts the board's thickness and the copper next to the track). netsmith implements IPC-2221 only. A track the check passes is not therefore good for a certain temperature, and one it flags may be fine; read the number as a prompt to decide.
+- The router may draw a track narrower than its net's width where there is no room (the stub at a pad is the net's width, and the pad's own copper carries the rest). The check is of the width asked for.
+
+### The outline and cutouts
+
+The member `.outline` is the board edge: a rectangle with rounded corners. A range is a limit, and the placer takes the smallest board that holds the parts inside it: `.width &= 0mm..60mm` is at most 60 mm. A single value is exactly that size. Without an `.outline` the board is as big as its parts need. A `Cutout` is a rectangular hole inside the outline, with an optional corner radius. Its corner nearest the origin is `.x`, `.y`, or the layout file's entry for its name; stating both is an error.
+
+```nsm solve
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+import std::pcb::{Cutout, Outline}
+
+board Shaped {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .outline: Outline {
+        .width &= 60mm
+        .height &= 0mm..40mm
+        .corner_radius &= 3mm
+    }
+    .slot: Cutout {
+        .x &= 5mm
+        .y &= 8mm
+        .width &= 3mm
+        .height &= 12mm
+        .corner_radius &= 1mm
+    }
+    .header: Header1x2
+}
+```
+
+When the parts do not fit, `fab` stops and says by how much (the margin round the parts is the process's copper to edge space plus one track and its space, 0.4 mm for JLCPCB's, the same as for a board sized to fit; this block is not run by the guide test):
+
+```text
+error: Shaped: `Shaped`: the parts need 63.4 x 21 mm (courtyards and 0.4 mm margin) and the outline allows 60 x 40 mm: 3.4 mm over in x
+```
+
+The numbers are the rows the placer starts from, and it says them only after it has tried the size: it packs and turns the parts in the outline whatever the rows need (a part wider than the board is turned), and refuses only if that ends with courtyards over each other or parts outside. The message then ends with what it ended with: `; placing them in the outline anyway ended with 85 pair(s) of courtyards overlapping, 52 part(s) outside the outline or inside its 0.4 mm margin`. It then lists the ten pairs of courtyards that overlap the most (the names, the shared area in mm2 and its size, where it is from the outline's top left corner and the side of the outline it is nearest) and the ten parts furthest out (each with how far outside which edge, or inside the margin, or into which cutout), and names all the others, so the whole list is in the message that `fab` prints and the editor shows. There is no `--json` output for it yet.
+
+When the enclosure is a DXF, `netsmith dxf import` writes the outline, the cutouts and the mounting holes for you (see Commands): the outline and cutouts as members to paste, the holes as `MountingHole` parts, and their places, which come from the case and not from the placer, in the layout file with `lock = true`. A hole whose place the layout file gives is not put in a corner.
+
+Mounting holes, plated holes and fiducials go in the corners of a fixed outline, holes first, clockwise from the top left, and clear of a rounded corner. A board with no outline lays them out with the other parts. A part in a rounded corner, over a cutout or outside the outline is found by the placement check and named.
+
+Misuse.
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+import std::pcb::Outline
+
+board Tiny {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .outline: Outline {
+        .width &= 3mm
+        .height &= 40mm
+        .corner_radius &= 2mm
+    }
+}
+```
+
+```text
+error: Tiny: `outline.corner_radius` is 2 mm, more than half of the shape's shorter side (3 mm)
+```
+
+### Pours
+
+The process has a pour on each outer layer, `.top` and `.bottom`. A pour with a net is copper filled round the tracks, joined to its net with KiCad's thermal reliefs; a pour with no net is no pour. `.stitch_pitch` is the most space between the vias that join the pour to the other layers of its net (an inner plane, or the pour on the other side): the tool uses the top of the range and puts the vias on a grid after routing, in what the routing leaves free.
+
+```nsm solve
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::FourLayer
+
+board Poured {
+    .process: FourLayer {
+        .inner1.net &= "GND"
+        .inner2.net &= "3V3"
+        .top.net &= "GND"
+        .bottom.net &= "GND"
+        .top.stitch_pitch &= 0mm..8mm
+        .bottom.stitch_pitch &= 0mm..8mm
+    }
+    .in: Header1x2
+    .out: Header1x2
+    .in.p1 ~ .out.p1
+    .in.p1.net &= "3V3"
+    .in.p2 ~ .out.p2
+    .in.p2.net &= "GND"
+}
+```
+
+A pour on a net the board does not have is an error that lists the nets, as for a plane. The pads of the pour's net keep the via the router puts beside them; the pour is KiCad's to fill (`fab` has it fill the zones before it checks and plots the board).
+
+### Keepouts
+
+A `Keepout` is an area where something is not allowed. Four fields say what, each `"forbid"` or `"allow"`, and one that states none forbids all four (the language has no boolean, so the words stand for one): `.tracks`, `.vias`, `.copper` (the pours are not filled there) and `.parts` (no part's courtyard, and no pad). `.layers` is `"all"` (the default) or `"top"`, `"bottom"`, `"inner1"`, `"inner2"` separated by commas. The router, the stitching vias and the placement check keep to it, and the board file has it as a KiCad rule area, so KiCad's check and fill do too.
+
+A keepout is a member of a board, with its place in the board's frame, or a member of a part, in the part's own frame (the footprint's, turned with the part), so that a part carries its own no-copper zone. A part states it relative to itself and nothing else.
+
+```nsm evaluate
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+import std::pcb::Keepout
+
+part Radio {
+    .package: Package
+    .antenna: Keepout {
+        .x &= -1mm
+        .y &= -9mm
+        .width &= 12mm
+        .height &= 8mm
+        .layers &= "top"
+        .vias &= "allow"
+    }
+}
+
+board Wireless {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .no_copper: Keepout {
+        .x &= 40mm
+        .y &= 0mm
+        .width &= 20mm
+        .height &= 6mm
+        .tracks &= "allow"
+    }
+    .radio: Radio
+    .header: Header1x2
+}
+```
+
+Misuse.
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+import std::pcb::Keepout
+
+board Open {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .k: Keepout {
+        .width &= 5mm
+        .height &= 5mm
+        .tracks &= "allow"
+        .vias &= "allow"
+        .copper &= "allow"
+        .parts &= "allow"
+    }
+}
+```
+
+```text
+error: Open: `k` allows tracks, vias, copper and parts, and forbids nothing
+```
+
+### Labels
+
+A `Label` is silkscreen text: a part with no pins that is fitted by nobody, placed like any other part. `.text` is what it prints and `.height` how tall; unset, the process's least text height, and never less. The reference designator of a label is `LBL1`, and it is not in the schematic.
+
+```nsm evaluate
+import std::parts::mechanical::Label
+import std::mfg::jlcpcb::TwoLayer
+
+board Marked {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .revision: Label {
+        .text &= "REV A"
+        .height &= 1.2mm
+    }
+}
+```
+
+### Where a part goes
+
+A case, a panel or a carrier fixes where some parts must be: a connector's mouth at a slot, a button under its cap. Every part and every module has a built-in member `.place` (ADR 0045) that holds the requirements. It is narrowed with the ordinary operators, like `.assembly`: `&=` for a value or a range (`2mm +/- 0.1mm`, `1mm..2mm`), `>=` and `<=` for a bound or an expression, such as half the outline's height. A tolerance needs a constant on both sides, so a window round an expression is two bounds. Declaring `.place` yourself is an error. Order never matters.
+
+| Field | Meaning |
+|---|---|
+| `.x`, `.y` | the centre of the part's body |
+| `.left`, `.right`, `.top`, `.bottom` | the edges of the body's box, after the part is turned |
+| `.rotation` | degrees counterclockwise on screen, as in the layout file; a plain number, a multiple of 90 |
+| `.side` | `"top"` or `"bottom"` |
+
+Positions are lengths in the board's frame (the outline's top left corner is the origin, x right, y down), and they are measured from the **body**: the outline the footprint draws on its fabrication layer (`F.Fab`), else its courtyard. The case states the shell of a connector, not the origin the footprint's author chose, so a requirement survives a change of package. The layout file's `at` stays the footprint's origin; the check converts, and every finding says which drawing it used. A field the board leaves alone is unconstrained.
+
+```nsm solve
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+import std::pcb::Outline
+
+module Sensor {
+    /// The body's centre along the case's slot, offered to the board.
+    .slot_y: Length
+    .j: Header1x2
+    .j.place.y &= .slot_y
+}
+
+board Cased {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .outline: Outline {
+        .width &= 40mm
+        .height &= 24mm
+    }
+    .power: Header1x2
+    .sensor: Sensor
+
+    // Case drawing, slot A: the header's body is 1.5 mm in from the left edge, turned, and
+    // centred along it.
+    .power.place.left     &= 1.5mm +/- 0.1mm
+    .power.place.y        >= .outline.height / 2 - 0.1mm
+    .power.place.y        <= .outline.height / 2 + 0.1mm
+    .power.place.rotation &= 90
+    .power.place.side     &= "top"
+
+    // The whole sensor block stays right of 20 mm.
+    .sensor.place.left >= 20mm
+    // A module hands out the part's place only through a value it declares.
+    .sensor.slot_y &= 8mm +/- 0.2mm
+}
+```
+
+The requirements are hard. A requirement that leaves one place and one turn (every field a single value) fixes the part like `lock = true` in the layout file. Any other puts the part in a window the placer keeps to, and it gives the module's parts the half of the module's requirements that keeps them in (a least `.left` or `.top`, a most `.right` or `.bottom`). A part the layout file locks is checked against them before anything is placed; a part it merely moves is measured afterwards. The layout file keeps the solution; the source keeps only the requirement, never a solved position.
+
+`netsmith build` refuses what can be seen without a placement: bounds that leave nothing, a rotation that is not a multiple of 90, a side that is neither `"top"` nor `"bottom"`, and a requirement measured from an outline that has no fixed size.
+
+```nsm fails
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+
+board Squeezed {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .j: Header1x2
+    .j.place.y >= 12mm
+    .j.place.y <= 3mm
+}
+```
+
+```text
+error: the requirements on `j.place.y` cannot all hold: it must be at least 12mm (`j.place.y >= 12mm`) and at most 3mm (`j.place.y <= 3mm`)
+   --> main.nsm:10:5
+   |
+10 |     .j.place.y <= 3mm
+   |     ^^^^^^^^^^^^^^^^^
+```
+
+```nsm fails
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+import std::pcb::Outline
+
+board Stretchy {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .outline: Outline {
+        .width &= 40mm
+        .height &= 20mm..30mm
+    }
+    .j: Header1x2
+    .j.place.y >= .outline.height / 2
+}
+```
+
+```text
+error: Stretchy: `j.place.y` is measured from the outline's top left corner, and `outline.height` does not state one size, so the board has no fixed outline; give `outline.height` a single value (`&= 30mm`), or state the position without it
+```
+
+#### A part that hangs over the board edge
+
+A plug that sticks out of the case has part of its courtyard outside the outline. That is an error ("not wholly inside the board outline") unless the design says the part may hang over that edge. **Provisional: this rule is to be reviewed by the maintainer (ADR 0045, "Built: overhang").** The design says it with a requirement it can already write: a window for an edge of the **body** that lies at or beyond the same edge of the outline. `.j.place.left &= -0.5mm +/- 0.1mm` puts the body's left edge 0.5 mm past the board's left edge, and `.plug.place.bottom >= .outline.height` puts its bottom edge on the board's bottom edge or past it (flush counts). Only the part's own `left`, `right`, `top` and `bottom` say it, and only when the whole window is at or beyond the edge. A window on `.x` or `.y`, a bound a module states for its parts, or an unlocked entry of the layout file puts the part somewhere but does not say it may hang over, so the courtyard past the edge is the error it always was. A part the layout file locks (`lock = true`) may hang over every edge its courtyard is past, since the lock is the person saying where it is.
+
+```nsm solve place
+import std::parts::connector::Header1x4
+import std::mfg::jlcpcb::TwoLayer
+import std::pcb::Outline
+
+board Plugged {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .outline: Outline {
+        .width &= 40mm
+        .height &= 24mm
+    }
+    .j: Header1x4
+
+    // Case drawing, slot C: the header's body sticks 0.5 mm out of the left edge.
+    .j.place.left &= -0.5mm +/- 0.1mm
+}
+```
+
+For a part that may hang over an edge, the placer and the check do this, and nothing else:
+
+- **The room it takes** is its courtyard clipped to the outline, with the margin (0.4 mm for JLCPCB's process) kept on the sides that are on the board and none on the side that hangs over. A connector wider than the board no longer stops the placer before it starts, and a locked part that hangs over counts as the part that is inside.
+- **Overlap** with the courtyards of other parts, keepouts and cutouts is measured on the clipped courtyard, so two parts hanging over the same edge do not conflict beyond it.
+- **Copper is not waived.** Every pad is still inside the outline and the process's copper to edge space from it, so the placer keeps them there and a pad outside is an error with its distance.
+- **The body's centre may be off the board** in the direction an edge field states (provisional, to be reviewed by the maintainer). A part whose `.bottom` window starts 25 mm past a 60 mm board may be required with its 40 mm body, and so its centre, 5 mm below it, as long as its pads stay inside. A window on `.x` or `.y` keeps the old rule: a centre that is outside the outline is refused with the numbers, and so is a centre outside by an edge the part's edge fields do not state.
+- **A direction nobody stated is an error**, and the finding says how far past which edge, which edges are stated, and the line that would allow it.
+- **Not checked:** the body (`F.Fab`) may be anywhere, the part of the courtyard outside the outline is not measured, and neither is how far the part hangs beyond what its window says. Silkscreen and text outside the board still get the design rules check's silk to edge clearance warning, as in KiCad.
+
+`fab` writes each overhang to `fab-notes.txt` and prints it as it places: `overhang: J1 hangs over the left edge: its courtyard is 0.50 mm past it (`j.place.left (main.nsm:14)` allows -0.6 to -0.4 mm)`. The variants below run the real checks. The first states the position by the body's centre, which is not an overhang.
+
+```nsm solve place refused
+import std::parts::connector::Header1x4
+import std::mfg::jlcpcb::TwoLayer
+import std::pcb::Outline
+
+board Plugged {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .outline: Outline {
+        .width &= 40mm
+        .height &= 24mm
+    }
+    .j: Header1x4
+
+    .j.place.x &= 1.3mm
+}
+```
+
+```text
+error: Plugged: J1 is not wholly inside the board outline: its courtyard is 0.50 mm past the left edge, and the design does not say it may hang over an edge; to allow it past the left edge, require the body to reach it, for example `.j.place.left <= 0mm`
+```
+
+The next states an overhang that is too much: the header's pads end up 0.05 mm from the board edge, nearer than the process allows.
+
+```nsm solve place refused
+import std::parts::connector::Header1x4
+import std::mfg::jlcpcb::TwoLayer
+import std::pcb::Outline
+
+board Plugged {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .outline: Outline {
+        .width &= 40mm
+        .height &= 24mm
+    }
+    .j: Header1x4
+
+    .j.place.left &= -1mm +/- 0.1mm
+}
+```
+
+```text
+error: Plugged: a pad of J1 is 0.05 mm from the board edge
+```
+
+The last states the left edge, and its centre along it puts it past the top edge too:
+
+```nsm solve place refused
+import std::parts::connector::Header1x4
+import std::mfg::jlcpcb::TwoLayer
+import std::pcb::Outline
+
+board Plugged {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .outline: Outline {
+        .width &= 40mm
+        .height &= 24mm
+    }
+    .j: Header1x4
+
+    .j.place.left &= -0.5mm +/- 0.1mm
+    .j.place.y &= 5.1mm
+}
+```
+
+```text
+error: Plugged: J1 is not wholly inside the board outline: its courtyard is 0.52 mm past the top edge, and the design says it may hang over only the left edge (`j.place.left (main.nsm:15)` allows -0.6 to -0.4 mm); to allow it past the top edge, require the body to reach it, for example `.j.place.top <= 0mm`
+```
+
+`netsmith fab` measures every requirement on the board it made and prints a finding for each one not met, with the measured value, the window allowed and how far over it is. A violated requirement is an error that stops `fab`, like a design rules error; it is not a guideline, so `guidelines` and `--strict` do not govern it. `constraints = "warn"` under `[project]` in `netsmith.toml`, or `--constraints warn` for one run, lists them as warnings instead (`"error"` is the default). `fab --constraints error|warn` wins over the manifest, so `--constraints error` stops `fab` even when the manifest says `warn`. `--allow-drc-violations` waives design rules, not requirements: with it, an unmet requirement still stops `fab` ("does not waive them"). The notes of the package count the requirements met, and say how many were not and that they are only warnings. Output of the check for a header moved by hand (this block is not run by the guide test):
+
+```text
+error [constraint] constraint power.place.left (cased.nsm:25) is violated: the left edge of the body of J1 (F.Fab) is 28.73 mm from the left edge of the outline, and it allows 1.4 to 1.6 mm (27.13 mm over)
+```
+
+The editor lists the same findings with the placement's. Relations between two parts (a pitch, an offset), part heights and keep-out zones by height are not built yet (ADR 0045, C2 and C3), and the editor does not yet draw the windows (C4).
+
+### The layout file
+
+Where parts, keepouts and cutouts are, when the source does not say, is in `<stem>.pcb.toml` beside the source file: `board.nsm` has `board.pcb.toml`. The file is optional and never needed to build. An editor or a placer writes it, and `fab` and the editor read it. The source holds requirements on positions (see _Where a part goes_), never a solved position.
+
+```toml
+version = 1
+
+# One table for each board of the file, keyed by the board's name.
+[OutlineAndPours]
+seed = 3              # another arrangement of the parts the file does not place; absent is 0
+
+[OutlineAndPours.parts."stage.output_cap"]
+at = [31.5, 22.0]     # mm from the outline's top left corner, y down
+rotation = 90         # degrees, counterclockwise on screen
+side = "top"          # "top" or "bottom"
+lock = true           # the placer leaves it where it is
+source = "hand"       # "hand", "auto" or "regen": who wrote it
+
+[OutlineAndPours.keepouts.antenna]   # a Keepout or Cutout that states no `.x`, `.y`
+at = [18.0, 2.0]
+```
+
+Parts are keyed by their path in the design, which a renumbered reference designator does not change. A part with no entry is placed by the placer (ADR 0033): it derives a placement from the circuit alone, keeping the parts of a module together, a decoupling capacitor next to the power pins it bridges, connectors at the edges and wire short, and places them round the parts the file places. The same circuit, file and `seed` always give the same board; another `seed` gives another arrangement. A build puts every part that has an entry where the file says; the placer places the others round the parts that are locked (`lock = true`) and does not react to the others, so moving a part by hand moves nothing else. `place_subset` places some parts and leaves the rest, but no command asks for it yet. An entry for a part, keepout or cutout that the board does not have, or a table for a board the file does not have, is an error that names it and lists what exists. A keepout or cutout that states `.x` and `.y` in the source and has an entry as well is an error: a thing has one place. `side = "bottom"` puts a part on the back. `examples/outline_and_pours.nsm` and `examples/outline_and_pours.pcb.toml` use all of this.
+
+## Imports
+
+`import` brings definitions into a file. Paths start at `std` for the standard library or `src` for the files of your project.
+
+```nsm-fragment
+import std::parts::passive::Resistor
+import std::parts::passive::{Resistor, Led}
+import src::power::Bypassed
+```
+
+A project file `src/power.nsm` is the module `src::power`:
+
+```nsm module=src::power
+//! Power stages.
+
+import std::parts::passive::Capacitor
+import std::sources::Rail
+
+/// A rail with a bypass capacitor across it.
+module Bypassed {
+    .rail: Rail
+    .cap: Capacitor { .capacitance &= 100nF +/- 20% }
+    .rail.pos ~> .cap ~> .rail.neg
+}
+```
+
+```nsm solve
+import src::power::Bypassed
+import std::sources::Rail
+
+board Filtered {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .filter: Bypassed
+    .supply ~ .filter.rail
+}
+```
+
+Rules.
+
+- An import names a module path and a definition. The last segment is the definition. There is no import of a whole module.
+- A name is imported once. Importing a name that the file defines or already imports is an error.
+- A type is written as a bare name. `A::B` in a type position is not supported.
+
+Misuse.
+
+```nsm fails
+import std::parts::passive::Resistors
+
+board Empty {
+}
+```
+
+```text
+error: module `std::parts::passive` has no definition `Resistors`
+  --> main.nsm:1:29
+  |
+1 | import std::parts::passive::Resistors
+  |                             ^^^^^^^^^
+```
+
+```nsm fails
+import src::powr::Bypassed
+
+board Empty {
+}
+```
+
+```text
+error: unknown module `src::powr`
+  --> main.nsm:1:1
+  |
+1 | import src::powr::Bypassed
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+## Comments
+
+| Form | Meaning |
+|---|---|
+| `// text` | A comment to the end of the line. |
+| `/// text` | A doc comment on the declaration or definition that follows. |
+| `//! text` | A doc comment on the file (at its top) or on the definition it is inside (at the start of its body). |
+
+```nsm
+//! A file with every comment form.
+
+import std::parts::passive::Resistor
+
+/// A resistor on its own.
+board Documented {
+    //! The board has one resistor.
+
+    // Not a doc comment.
+    /// The only part.
+    .r1: Resistor
+}
+```
+
+Rules.
+
+- A `///` line attaches to a declaration or a definition. On a statement it is an error.
+- Inside a part, `///` goes only on a declaration (`.resistance: Resistance`) or on a definition. A `pins` block, a row of a pin table, `catalog`, `tie`, `bridge`, a relation and a connection are statements: put a `//` comment on them. The message is the one below (`doc comments can only be attached to declarations`, and for a pin table row `a pin table takes `//` notes, not doc comments`).
+- `////` is a plain comment.
+- There are no block comments: only `//`, `///` and `//!` exist. `/*` is an error.
+- Doc comments are kept in the syntax tree and printed back. The tools do not show them yet.
+
+Misuse.
+
+```nsm fails
+import std::parts::passive::Resistor
+
+board Stray {
+    .r1: Resistor
+    /// about nothing
+    .r1.resistance &= 1kohm +/- 1%
+}
+```
+
+```text
+error: doc comments can only be attached to declarations
+  --> main.nsm:5:5
+  |
+5 |     /// about nothing
+  |     ^^^^^^^^^^^^^^^^^
+```
+
+A block comment is the other misuse.
+
+```nsm fails
+import std::parts::passive::Resistor
+
+board Block {
+    .r1: Resistor /* the only part */
+}
+```
+
+```text
+error: block comments do not exist; use `//`
+  --> main.nsm:4:19
+  |
+4 |     .r1: Resistor /* the only part */
+  |                   ^^
+```
+
+## Projects and netsmith.toml
+
+A project is a directory with a `netsmith.toml` at its root (ADR 0011). `netsmith init` makes one in the current directory. It writes `netsmith.toml`, `src/main.nsm` (a working LED board), `.gitignore` and `README.md`, and for the agents that work in the project an `AGENTS.md`, the skills in `.agents/skills/` (with `.claude/skills` linking to them) and this guide as `docs/netsmith/LANGUAGE.md` (ADR 0015). It never overwrites a file; an `AGENTS.md` that exists is left alone and `init` says so.
+
+```toml
+[project]
+name = "blink"
+top_level = ["src/main.nsm"]
+out = "out"
+fab = "fab"
+kicad = 9
+```
+
+Only `name` is required.
+
+| Key | Meaning |
+|---|---|
+| `name` | The project name. |
+| `top_level` | The files that hold boards or systems. `top_level = []` is a project of modules only: `build` and `fab` with no file then say `error: this project has no boards`. |
+| `out` | Where `netsmith build` writes. |
+| `fab` | Where `netsmith fab` writes. |
+| `kicad` | The KiCad version of the files. Only 9 is accepted. |
+| `catalogs` | The project's own catalog files, one per catalog and named by it (`catalogs/acme_ldo.csv` is the catalog `acme_ldo`), in addition to the standard ones. See Catalog files. |
+| `assembly` | Optional. Who assembles a part nothing else speaks for: `"fab"`, `"hand"` or `"none"`. See Who assembles a part. |
+| `guidelines` | Optional. What a design that goes against a guideline gets: `"warn"` (the default) reports it and builds, `"error"` refuses to build. `--strict` asks for `"error"` for one run. See Track width against current. |
+
+### Orders
+
+An order says which boards go into one fabrication order and how many of each (ADR 0035). It is a table `[order.<name>.boards]` beside `[project]`: each key is a board as its output folder is named (`Board`, or `System/member`), or a system's name for all its members, and the value is the quantity.
+
+```toml
+[project]
+name = "product"
+top_level = ["src/devkit/devkit.nsm", "src/unit/unit.nsm"]
+
+[order.devkit.boards]
+"DevKit/carrier" = 2
+"DevKit/power_card" = 1
+Unit = 10
+
+[order.spares.boards]
+DevKit = 5
+```
+
+`netsmith fab --order` lists the orders. `netsmith fab --order devkit` makes only those boards, in `fab/orders/devkit/<board>/`, and writes `order.txt` (each board's layers, size, thickness, hand-solder parts and notes, the combined bill of materials, the unverified items) and `order-bom.csv` (each LCSC number with copies x parts per board, no spares). A plain `netsmith fab` still makes every board. See `docs/PROJECT-LAYOUT.md`.
+
+- An order name is letters, digits, `-` and `_`. A quantity is a whole number of 1 or more.
+- A board name that is not in the project, or a board named twice (`DevKit` and `"DevKit/carrier"` in one order), is an error with the manifest line, listing the boards that exist.
+- A key may be a panel (ADR 0040), and its quantity then counts panels: `LedPanel = 3` orders three panels, so 18 boards if the panel holds six. `order.txt` says so, and `order-bom.csv` multiplies the panel's parts by the quantity. A board may be ordered loose and in a panel; the two are summed in the bill of materials.
+
+Rules.
+
+- The commands look for `netsmith.toml` in the current directory and then in each parent.
+- With no file argument, `netsmith build`, `fab` and `editor` act on `top_level`. With a file they act on that file and still see the project's modules.
+- Every other file under `src/` is a module: `src/parts/status.nsm` is `src::parts::status`.
+- Paths in the manifest stay inside the project, and a catalog file is named for its catalog. An unknown key is refused with its line.
+- A file name that cannot be written in an import is refused, naming the file.
+
+Misuse.
+
+```text
+$ netsmith build        # netsmith.toml has `topl = [...]`
+/path/to/project: netsmith.toml: TOML parse error at line 3, column 1
+  |
+3 | topl = ["src/main.nsm"]
+  | ^^^^
+unknown field `topl`, expected one of `name`, `top_level`, `out`, `fab`, `kicad`, `catalogs`
+```
+
+```text
+$ netsmith fab --order devkit        # "Unitt" is not a board of the project
+netsmith.toml:8: order `devkit` names `Unitt`, but the project has no such board, panel or system; the boards and panels are: DevKit/carrier, DevKit/power_card, Unit
+```
+
+## Commands
+
+```sh
+netsmith init [--name <name>]          # a project in the current directory
+netsmith build [file.nsm] [--out dir] [--strict] # check, solve, write a KiCad schematic
+netsmith editor [file.nsm] [--port n]  # edit and view in a browser (default port 8787)
+netsmith fab [file.nsm] [--out dir] [--strict] # files for a board house (boards and panels), after a design rules check
+netsmith fab --order [name] [--out dir] # a named order of boards and quantities; no name lists the orders
+netsmith compare <a> <b> [options]     # are two designs the same circuit?
+netsmith catalog refresh [path...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]
+netsmith catalog age [path...] [--days <n>] [--only <catalog>]  # rows whose date is older than n days (default 90)
+netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]  # an enclosure's outline, cutouts and holes as source to paste
+```
+
+`editor` serves the editor on `127.0.0.1` and prints the address to open: a project tree, the source with the compiler's and solver's messages beside the lines they are about, and views of the selected board (schematic, power tree, system, bill of materials, PCB) with buttons for `build` and `fab` (ADR 0019). A board of more than 16 parts is drawn in a box for each module instance. Errors and warnings are listed first, and the notes (relations not evaluated, balances left incomplete) in a closed section. It checks the text as you type without writing it, saves with `Ctrl+S`, reads a file again when it changes on disk, and with no file acts on the project like `build`.
+
+`--strict` (on `build` and `fab`) makes a finding against a guideline an error for this run, like `guidelines = "error"` in `netsmith.toml`; without it a finding is a warning.
+
+`fab` writes the Gerbers, drill files and placement file itself and runs netsmith's own design rules check (ADR 0037), so it does not need KiCad. An error of the check (a clearance, a short, a missing connection, a hole, the edge, a courtyard, a keepout) stops `fab` unless you pass `--allow-drc-violations` (which never waives a `[constraint]` finding: a requirement on where a part goes is relaxed only by `constraints = "warn"` or `--constraints warn`), and `fab-notes.txt` then says the board is not clean; its warnings (silkscreen on a pad, a narrow mask web, a via in a pad) are listed in the notes. `--cross-check` compares the files and the findings with KiCad's own plot and design rules check of the same board (it needs KiCad's command-line tool: `$KICAD_CLI`, then `kicad-cli` on `PATH`, then Windows KiCad 9 under WSL). It writes, for each board, a Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb` and `.kicad_pro`, and an `.svg`. Read `fab-notes.txt` before you order.
+
+`catalog refresh` is the one command that uses the network, and it is opt-in (ADR 0039): nothing else, and never the solver, asks anyone anything. **JLCPCB data is not fetched**: the command asks LCSC only (ADR 0039, the 2026-11-02 decision). For each row with an `lcsc` number it reads LCSC's record of that part and checks the manufacturer's number and the package against the row. A row that agrees is `VERIFIED`, and if the file has a `checked` column it gets the day there: that is the only cell the command ever writes. It **never writes `price`, `stock`, `price_breaks`, `library` or `date`**: the board is assembled from JLCPCB's parts library, those cells are JLCPCB's numbers entered by hand, and LCSC's price (often at a first break above one piece) and stock differ from them. It may say, as a note and not a finding, that LCSC lists stock 0 where the row has some (or the reverse), so you read JLCPCB's parts page by hand; the age of the numbers is still `date`, so a refresh never makes a stale row fresh. It keeps the order, quoting and line endings of the file, so the result is a small diff. With no path it acts on the catalogs listed under `catalogs` in the project's `netsmith.toml` and, in the netsmith repository, on `data/jlcpcb/catalog/`; a path is a catalog file or a directory of them (the standard catalogs inside the binary cannot be written, so they are checked in the repository and arrive with a release). A row is reported, not changed, when the records disagree with it: `CONFLICT` if the manufacturer's number or the package is not the row's, `MISSING` if LCSC no longer lists the number (a row is never deleted); `SKIPPED` is a row `--offline` has no kept answer for. `--dry-run` prints the diff, cell by cell, and writes nothing; `--only` and `--lcsc` choose catalogs and rows. The exit code is 0, 1 if any row is `CONFLICT` or `MISSING`, and 2 when the run had to stop (the endpoint refused, or answered in another shape: nothing is written then). LCSC's endpoint is unofficial and LCSC's terms of use have not been read: a person must read them before the command is advertised, and official APIs (JLCAPI, the LCSC API; they need an account) are future work (ADR 0039). Meanwhile the command is polite: one request at a time, `--delay` milliseconds apart (default 500), a User-Agent that says what it is, answers kept for `--cache-ttl` hours (default 24; `--no-cache` keeps none) and retried with a growing wait. `--offline` asks nothing and uses the kept answers of any age. `catalog age` prints the rows whose `date` is older than `--days` days (or missing) and how many there are; the editor's bill of materials marks the same rows and has a "Check parts against LCSC" button for the project's own catalogs.
+
+`dxf import` reads the board outline of an enclosure from an ASCII DXF file (ADR 0045) and prints, to paste, the `import` lines, an `.outline: Outline`, a `Cutout` for each loop inside it, a `MountingHole` for each circle on the holes layer, and the places of the cutouts and holes as the layout file has them. It writes no source. `--write <file.nsm>` merges the places into `<stem>.pcb.toml` beside that file (the holes `lock = true`, so the placer leaves them where the case has them) and prints a diff of the file; `--board` names the board when the file has more than one. The reader takes `LINE`, `ARC`, `CIRCLE`, `LWPOLYLINE` (closed flag, bulges), `POLYLINE` with `VERTEX`, `SPLINE` and `ELLIPSE` (as chords within 0.005 mm), and `INSERT` of blocks (translate, rotate, scale, mirror); text, dimensions and the like are not read and are counted in a warning. Binary DXF is refused. Units come from `$INSUNITS` (millimetre, centimetre, metre, inch); a file without them needs `--units`. Edges whose ends are within 0.001 mm join into closed loops; a gap is listed with its size and place. The one loop that is not inside another is the outline and the loops inside it are cutouts; two outer loops, a loop that crosses itself or another, or a loop inside a cutout is an error. `--layer` names the layer of the board edge and `--holes-layer` the layer of the holes (both may be repeated); with neither, the one layer that has lines or arcs is used, and if there are several the error lists them with their entity counts. A circle on the outline layer is a round `Cutout`; on the holes layer it is a hole, which must be a `MountingHole` package, `M2` (2.2 mm) or `M3` (3.2 mm). The board's frame is the outline's top left corner with y down, and the output says which point of the drawing that is. The outline must be a rectangle with equal rounded corners and each cutout a rounded rectangle, a slot or a circle: any other shape is refused with its size and edge count, because the board model has no polygon outline yet (ADR 0045 step C8).
+
+`compare` checks a design against another by connectivity, for example a port against the KiCad design it came from. `<a>` and `<b>` are each a `.kicad_sch`, a `.kicad_pcb`, a KiCad netlist (the XML of `kicad-cli sch export netlist --format kicadxml`) or a `.nsm` file, which is built as `build` does; `--board <name>` picks the board of a `.nsm` file that has several (`Name`, or `System/member`). Net names and, by default, designators may differ between the two; components are matched by value, footprint (without its library) and how their pins are wired. It prints `match` with the designators and net names that correspond, or each difference: a component with no counterpart, a pair that differs in value or footprint, a net whose pins differ (each pin in its own side's designators), a net with no counterpart. The exit code is 0 for a match, 1 for a difference and 2 for a mistake or when the comparison could not be decided (many interchangeable parts and a search past its bound). Options:
+
+- `--by-refdes`: designators are identity; a component matches only the component with the same designator.
+- `--map <file>`: lines `A_ref B_ref` fix pairs of designators; the rest are matched by wiring. Blank lines and `#` comments are ignored. Not with `--by-refdes`.
+- `--ignore-unconnected`: leave out nets of a single pin on both sides.
+- `--loose-values`: values that read as the same number agree (`4k7` and `4.7k`, `100n` and `0.1uF`).
+
+Power ports and flags (`#PWR`, `#FLG`) are not parts. A pin joined to nothing is on no net, so it differs only from a pin that is joined to something. Reading a `.kicad_sch` needs KiCad's command-line tool, found as for `fab`.
+
+## Standard parts
+
+The library has the parts a two-sided four-layer board is made of, and the interfaces they talk over (ADR 0023). They state what a datasheet says. Each rating is a field that the part leaves open and a relation that is always true of it: a design narrows the field with `&=`, as it narrows a resistance, and the solver checks the relation in the worst case. A rating the design never states is listed as not evaluated, and is no error. Most of them have a small catalog of real parts (ADR 0025): a design that states no rating gets the first row that works, and a rating it does state must be a range that contains the row's (`.zener_voltage &= 4.7V..5.5V` takes a row that reads `4.8V..5.4V`). The guide's examples state what the board needs and let the catalog supply the rest. `build` stops at the export of any of them that has no KiCad symbol yet (see Parts), so the examples here are checked and solved and not built (the guide marks them `evaluate`).
+
+### Voltage across a part
+
+A diode, a Zener, a TVS diode and a capacitor have a `.bias`: the DC voltage across them. A part placed between a rail's `pos` and `neg` takes it from that rail (ADR 0013), so a rating on the voltage across the part needs no line of its own. A part across no rail has no bias until the design states `.bias`. The sign of the rail is not looked at, so a diode wired the wrong way round across a rail is not found by these ratings.
+
+| Part | What is always true | What the design states |
+|---|---|---|
+| `std::parts::diode::Diode`, `std::parts::diode::Schottky` | `.bias <= .max_reverse_voltage`, `.current <= .max_forward_current` | The ratings. |
+| `std::parts::diode::Zener` | `.bias * .current <= .max_power` | `.zener_voltage` with its tolerance. For a clamp, the line `.z.bias <= .z.zener_voltage`. Catalog `zener`. |
+| `std::parts::diode::Tvs` | `.bias <= .standoff_voltage`, `.clamping_voltage <= .protected_limit` | The ratings, and `.protected_limit`: the absolute maximum of what is behind it. Catalog `tvs`. |
+
+A 12 V input with a fuse and a TVS diode. The values are the board's own, as if copied from datasheets.
+
+```nsm evaluate
+import std::parts::diode::Tvs
+import std::parts::passive::Fuse
+import std::sources::Rail
+
+board Protected {
+    .input: Rail {
+        .voltage &= 12V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .load: Rail {
+        .current &= 100mA..400mA
+        .pos.net &= "VFUSED"
+        .neg.net &= "GND"
+    }
+    .fuse: Fuse { .rated_current &= 1A }
+    .tvs: Tvs { .protected_limit &= 36V }
+    .input.pos ~> .fuse ~> .load.pos
+    .input.pos ~> .tvs ~> .input.neg
+    .input.neg ~ .load.neg
+}
+```
+
+The rail across the TVS diode must stay under its stand-off, and the clamp must stay under what the board says it protects:
+
+```nsm fails
+import std::parts::diode::Tvs
+import std::sources::Rail
+
+board Standoff {
+    .input: Rail {
+        .voltage &= 12V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .tvs: Tvs { .protected_limit &= 20V }
+    .input.pos ~> .tvs ~> .input.neg
+}
+```
+
+```text
+error: no `tvs` candidate satisfies `tvs`: the closest of the 9 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
+    --> std/parts/diode.nsm:143:5
+    |
+143 |     .bias <= .standoff_voltage
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A Zener used as a clamp, and a diode that blocks less than the rail it sits across:
+
+```nsm fails
+import std::parts::diode::{Diode, Zener}
+import std::sources::Rail
+
+board Clamp {
+    .input: Rail {
+        .voltage &= 12V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .z: Zener { .zener_voltage &= 4.7V..5.5V }
+    .z.bias <= .z.zener_voltage
+    .d: Diode { .max_reverse_voltage &= 10V }
+    .input.pos ~> .z ~> .input.neg
+    .input.pos ~> .d ~> .input.neg
+}
+```
+
+```text
+error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C5V1 5.1V 500mW Zener SOD-123 C2117, fails because z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 4.8V..5.4V
+   --> main.nsm:11:5
+   |
+11 |     .z.bias <= .z.zener_voltage
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: d.bias must always be at most d.max_reverse_voltage, but 11.4V..12.6V is not always below 10V
+   --> std/parts/diode.nsm:42:5
+   |
+42 |     .bias <= .max_reverse_voltage
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 4.7V..5.5V
+   --> main.nsm:11:5
+   |
+11 |     .z.bias <= .z.zener_voltage
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### Resistor power
+
+A `Resistor` has a power rating, `.max_power`, and states that the power it dissipates, `.drop * .current`, is at most that rating, in the worst case over the ranges of its current and its resistance. The rating is a column of the `resistor` catalog (JLCPCB lists it for every part: 62.5 mW for the 0402 parts, 100 mW for the 0603 and 250 mW for the KOA 0805 parts), so the solver picks a resistor that is big enough as well as one of the right value. A design that needs more says so with the rating or the package: `.r.max_power >= 250mW`.
+
+The worst case is over the current the circuit really carries. `.led.current &= 5mA..15mA` is a window the LED must stay in, and `.led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance` says what the current is for the resistor that was tried: once the resistor is known, the current is the equation's range (7.05 mA to 10.56 mA for 330 ohm), and the resistor is checked at that, not at the 15 mA that ends the window. A window that is not tied to the circuit by an equation (`.current &= 45mA..49mA` on a resistor alone) is still taken at its upper end.
+
+A resistor whose current nothing states has no power to check, and the relation is listed as not evaluated. A catalog row with no `max_power` (an empty cell) is an unrated part: it is never offered to any design, and the "nothing for it" message says how many rows were left out for that reason. Fill the cell from the datasheet or leave the part out.
+
+A 10 ohm resistor that carries 1 A dissipates 10 W. The catalog's biggest 10 ohm part is rated 250 mW, so the solver names it as the closest and says by how much it fails:
+
+```nsm fails
+import std::parts::passive::Resistor
+
+board Hot {
+    .r: Resistor {
+        .resistance &= 10ohm +/- 1%
+        .current &= 1A
+    }
+}
+```
+
+```text
+error: no `resistor` candidate satisfies `r`: the closest of the 3 that fit, 10Ω 1% 0805 C317221, fails because (r.drop * r.current) must always be at most r.max_power, but 9.9W..10.1W is not always below 250mW
+   --> std/parts/passive.nsm:31:5
+   |
+31 |     .drop * .current <= .max_power
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+And a row without a rating:
+
+```csv file=catalogs/resistor.csv set=unrated
+mpn,resistance,max_power,package,library,price,stock,date,source
+ACME-R316,316ohm +/- 1%,,0402,Basic,0.0011,5000,2026-10-31,https://example.invalid/acme-r316.pdf
+```
+
+```nsm fails catalogs=unrated
+import std::parts::passive::Resistor
+
+board Unrated {
+    .r: Resistor { .resistance &= 316ohm +/- 1% }
+}
+```
+
+```text
+error: the `resistor` catalog has nothing for `r`, which needs resistance within 312.8Ω..319.2Ω (rows with an empty cell are never offered, since a part with no stated rating cannot be shown to stay within it: 1 for `max_power`)
+  --> main.nsm:4:5
+  |
+4 |     .r: Resistor { .resistance &= 316ohm +/- 1% }
+  |     ^^^^^^^^^^^^
+```
+
+### Adjustable outputs
+
+An adjustable regulator holds its feedback pin at a reference voltage `vref`, and a divider from the output to the pin sets the output: `vout = vref * (1 + rtop / rbottom)`. `std::parts::regulator::FeedbackDivider` is that divider as a module (ADR 0025). Its interface is three pins, `top` (joined to the output's positive pin), `fb` (the regulator's feedback pin) and `bottom` (the output's ground), and two voltages: `vref`, which the board states with the datasheet's tolerance, and `vout`, the output it wants. The solver picks `rtop` and `rbottom` from the resistor catalog so that, with the tolerance of the reference and of both resistors, the output stays inside the wanted range in the worst case. It evaluates the formula tightly (each resistance appears in the ratio once and the reference once), so the tolerance a design has to allow is the real one.
+
+The feedback pin is taken to draw nothing, so the divider carries `(vout - vref) / rtop` through both resistors, and each resistor's power rating is checked against it. The divider is pins and voltages and no rail, so it adds nothing to the currents that are summed at a net (ADR 0007): its current, a few microamps to a milliamp, is not added to the load.
+
+A 3.8 V output from a 1.0 V reference, each good to 1%, with the output allowed 3% either way:
+
+```nsm solve
+import std::parts::regulator::FeedbackDivider
+import std::sources::Rail
+
+board Adjustable {
+    .divider: FeedbackDivider {
+        .vref &= 1.0V +/- 1%
+        .vout &= 3.8V +/- 3%
+    }
+    .out: Rail {
+        .pos.net &= "VOUT"
+        .neg.net &= "GND"
+    }
+    .divider.top ~ .out.pos
+    .divider.bottom ~ .out.neg
+    .out.voltage == .divider.vout
+}
+```
+
+The solver picks 6.2 kohm over 2.2 kohm, whose worst-case output is 3.686 V to 3.914 V. The reference and the two resistors are each good to 1%, which already moves the output by about 2.5%, so asking for 2% either way cannot be met. The message names the closest pair and the range its output works out to:
+
+```nsm fails
+import std::parts::regulator::FeedbackDivider
+import std::sources::Rail
+
+board TooTight {
+    .divider: FeedbackDivider {
+        .vref &= 1.0V +/- 1%
+        .vout &= 3.8V +/- 2%
+    }
+    .out: Rail {
+        .pos.net &= "VOUT"
+        .neg.net &= "GND"
+    }
+    .divider.top ~ .out.pos
+    .divider.bottom ~ .out.neg
+    .out.voltage == .divider.vout
+}
+```
+
+```text
+error: no combination of candidates satisfies `divider.rbottom` and `divider.rtop` together: the closest, divider.rbottom = 20kΩ 1% 0402 C25765 and divider.rtop = 56kΩ 1% 0603 C23206, fails because `divider.vout` must stay within 3.724V..3.876V, but (divider.vref * (1 + (divider.rtop.resistance / divider.rbottom.resistance))) works out to 3.707V..3.896V
+   --> std/parts/regulator.nsm:74:5
+   |
+74 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+An output below the reference cannot be made, because the divider can only raise it: `.vout &= 0.9V +/- 1%` with a 1.0 V reference is refused in the same way.
+
+### Switching regulators
+
+A buck converter is an IC, an inductor, two capacitors and a feedback divider. The IC is the one part that differs, so the library splits the work (ADR 0025). `std::parts::regulator::Buck` is an interface of what a datasheet says: the switching node `sw` (a rail the IC supplies, joined to the inductor), the feedback pin `fb`, the reference `vref`, the switching frequency `fsw`, the input range, the largest output current, the efficiency as a range, the smallest inductance and the capacitance asked for on each side. `std::parts::regulator::BuckStage` is a module of everything else: the inductor and the two capacitors, picked from the catalogs, and a `FeedbackDivider` that sets the output from the reference.
+
+A concrete IC is a `part` that writes its pin table, its datasheet numbers and one relation, the input current from the output current and the efficiency (`vin = vout * iout / efficiency` over the whole efficiency range, so it reaches the supply as any load does, ADR 0007 and ADR 0014). This one is invented for this guide:
+
+```nsm module=src::zbk2
+import std::parts::regulator::Buck
+import std::sources::Rail
+
+/// A 2 A buck converter for 4.5 V to 6 V. Illustrative; not a real part.
+part Zbk2 {
+    .vin: Rail
+    .buck: Buck {
+        .vref &= 0.8V +/- 1.5%
+        .fsw &= 1.2MHz +/- 15%
+        .min_input_voltage &= 4.5V
+        .max_input_voltage &= 6V
+        .max_output_current &= 2A
+        .efficiency &= 0.85..0.95
+        .min_inductance &= 1.5uH
+        .min_input_capacitance &= 2uF
+        .min_output_capacitance &= 10uF
+    }
+    .buck.sw.neg ~ .vin.neg
+    .vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)
+
+    pins {
+        //  pin          kind    name   pads
+        .vin.pos       power   "VIN"  "1" "2"
+        .vin.neg       power   "GND"  "3" "9"
+        .buck.sw.pos   power   "SW"   "4" "5"
+        .buck.fb       input   "FB"   "6"
+        .en            input   "EN"   "7"
+    }
+}
+```
+
+The board places the IC and the stage, states the input and the output it wants, and joins the supply to both, the stage's output to the load and the IC's `buck` to the stage's:
+
+```nsm evaluate
+import src::zbk2::Zbk2
+import std::parts::regulator::BuckStage
+import std::sources::Rail
+
+board Converter {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+        .current &= 0mA..1A
+    }
+    .u: Zbk2
+    .stage: BuckStage { .vout.voltage &= 1.8V +/- 3% }
+
+    .input ~ .stage.vin
+    .input ~ .u.vin
+    .stage.vout ~ .output
+    .stage.buck ~ .u.buck
+    .u.en ~ .input.pos
+}
+```
+
+The solver picks the inductor (a 2.2 uH 1210 part saturating at 3.6 A, whose tolerance still leaves 1.76 uH, over the IC's 1.5 uH), a capacitor for each side that keeps the effective capacitance the IC asks for at the voltage across it, and the two divider resistors. The supply draws 0 to 459 mA for the 0 to 1 A load. The ripple current is `(vin - vout) * vout / (vin * L * fsw)`, 0.30 A to 0.67 A here, and the inductor must carry the load plus half of it: 1.33 A of 3.6 A.
+
+Misuse: a load larger than the IC can give (an input above its range, such as 12 V, is refused the same way, by `stage.vin.voltage must always be at most stage.buck.max_input_voltage`).
+
+```nsm fails
+import src::zbk2::Zbk2
+import std::parts::regulator::BuckStage
+import std::sources::Rail
+
+board Overload {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+        .current &= 0mA..3A
+    }
+    .u: Zbk2
+    .stage: BuckStage { .vout.voltage &= 1.8V +/- 3% }
+
+    .input ~ .stage.vin
+    .input ~ .u.vin
+    .stage.vout ~ .output
+    .stage.buck ~ .u.buck
+    .u.en ~ .input.pos
+}
+```
+
+```text
+error: -stage.vout.current must always be at most stage.buck.max_output_current, but 0A..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..0A) add up to zero; net `1V8` in `stage`: -stage.inductor.current (0A..3A) + -stage.vout.current (-3A..0A) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (0A..3A) + stage.inductor.current (0A..3A) add up to zero; net `net-stage.inductor.a`: stage.buck.sw.current (0A..3A) + u.buck.sw.current (-3A..0A) add up to zero)
+    --> std/parts/regulator.nsm:185:5
+    |
+185 |     -.vout.current <= .buck.max_output_current
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A frequency set by a resistor is a relation the IC writes. Here `rt_value` is a field of the IC and the board states the resistor against it; the stage then uses the frequency that follows:
+
+```nsm-fragment
+part Zbk3 {
+    .rt_value: Resistance
+    .buck.fsw == 24GHz * 1ohm / .rt_value
+    pins {
+        .rt passive "RT" "8"
+    }
+}
+```
+
+```nsm-fragment
+.rt: Resistor { .resistance &= 20kohm +/- 1% }
+.u.rt ~ .rt.a
+.rt.b ~ .input.neg
+.u.rt_value == .rt.resistance
+```
+
+What is not modelled: the divider's current and the IC's quiescent current are not added to the load, the loop and its stability are not checked (the IC's capacitor and inductor ranges stand for them), the inductor's saturation is its datasheet current at a fall of the inductance (30% for the catalog's parts) and not a curve, and one capacitor stands for each side's capacitors.
+
+### Current through a part
+
+A `Fuse`, `Inductor`, `FerriteBead`, `Switch`, `Diode`, `Schottky`, `NMosfet` and `PMosfet` have a `bridge` and a `.current`, the current through it, and state that it is at most the part's rating: `.rated_current`, `.saturation_current`, `.max_forward_current` or `.max_drain_current`. In a `~>` chain from a rail the current is the draw of what is behind the chain (ADR 0014), so a fuse is checked against the budget of its load with no line of its own. An inductor outside a chain gets its current from the design: state the largest current through it, the peak and not the average.
+
+```nsm fails
+import std::parts::passive::Fuse
+import std::sources::Rail
+
+board Budget {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .load: Rail {
+        .current &= 100mA..3A
+        .pos.net &= "VFUSED"
+        .neg.net &= "GND"
+    }
+    .fuse: Fuse {}
+    .input.pos ~> .fuse ~> .load.pos
+    .input.neg ~ .load.neg
+}
+```
+
+```text
+error: no `fuse` candidate satisfies `fuse`: the closest of the 6 that fit, SMD1206P200TF 2A 6V resettable fuse 1206 C20988, fails because fuse.current must always be at most fuse.rated_current, but 100mA..3A is not always below 2A (the currents on net `VFUSED`: -fuse.current (100mA..3A) + load.current (100mA..3A) add up to zero; net `VIN`: fuse.current (100mA..3A) + input.current (-3A..-100mA) add up to zero)
+    --> std/parts/passive.nsm:202:5
+    |
+202 |     .current <= .rated_current
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+```nsm fails
+import std::parts::passive::Inductor
+import std::sources::Rail
+
+board Saturates {
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .l: Inductor {
+        .inductance &= 2.2uH +/- 30%
+        .current &= 5A
+    }
+    .supply.pos ~ .l.a
+    .supply.neg ~ .l.b
+}
+```
+
+```text
+error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758, fails because l.current must always be at most l.saturation_current, but 5A is not always below 3.6A
+    --> std/parts/passive.nsm:124:5
+    |
+124 |     .current <= .saturation_current
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+`Crystal` has `.frequency` (state it with its tolerance, `16MHz +/- 20ppm`) and `.load_capacitance`, and no relation: the two load capacitors are the design's. `FerriteBead` has `.impedance` at `.impedance_frequency`.
+
+### Transistors
+
+`NMosfet` and `PMosfet` have the pins `gate` (an input, which must be connected), `source` and `drain`. All their voltages and currents are magnitudes. The design states the stress it puts on the part: `.drain_source_voltage`, the voltage the part blocks while off, and `.gate_source_voltage`, the voltage the gate is driven to while on. They are checked against the maxima, and the gate drive against the threshold, which is a range: the drive must be above the highest threshold.
+
+```nsm fails
+import std::parts::transistor::NMosfet
+import std::sources::Rail
+
+board Switch {
+    .supply: Rail {
+        .voltage &= 12V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .logic: Rail {
+        .voltage &= 1.2V +/- 5%
+        .pos.net &= "1V2"
+        .neg.net &= "GND"
+    }
+    .q: NMosfet {
+        .drain_source_voltage &= supply.voltage
+        .gate_source_voltage &= logic.voltage
+    }
+    .q.gate ~ .logic.pos
+    .q.source ~ .supply.neg
+    .q.drain ~ .supply.pos
+}
+```
+
+```text
+error: no `n_mosfet` candidate satisfies `q`: the closest of the 2 that fit, AO3400A 30V 5.7A N-MOSFET SOT-23 C20917, fails because q.gate_source_voltage must always be at least q.gate_threshold, but 1.14V..1.26V is not always above 650mV..1.45V
+   --> std/parts/transistor.nsm:41:5
+   |
+41 |     .gate_source_voltage >= .gate_threshold
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### Capacitor voltage rating
+
+`Capacitor` does not state a derating: a design that wants one writes it, in the capacitor, in one line that does not name the rail, because `.bias` is the rail across it. Here every capacitor on a 12 V input is rated for 1.5 times the voltage it sees:
+
+```nsm fails
+import std::parts::passive::Capacitor
+import std::sources::Rail
+
+board Derate {
+    .input: Rail {
+        .voltage &= 12V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .bulk: Capacitor {
+        .capacitance &= 47uF +/- 20%
+        .max_voltage >= .bias * 1.5
+    }
+    .input.pos ~> .bulk ~> .input.neg
+}
+```
+
+```text
+error: no `capacitor` candidate satisfies `bulk`: the closest of the 1 that fit, 47uF 20% 6.3V X5R 0805 C16780, fails because bulk.max_voltage must always be at least (bulk.bias * 1.5), but 6.3V is not always above 17.1V..18.9V
+   --> main.nsm:12:9
+   |
+12 |         .max_voltage >= .bias * 1.5
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A capacitor across no rail has no bias to rate: state `.bias`, or place it between a rail's `pos` and `neg`.
+
+### Connectors, switches and mechanical parts
+
+The connectors are `Header1x2`, `Header1x4`, `Header1x8`, `Header1x10`, the sockets `Socket1x2`, `Socket1x4`, `Socket1x8`, `Socket1x10`, and the two-row headers `Header2x3`, `Header2x5` and `Header2x10`. A pin is `pN`, on pad N, and contact N of a connector is its pin `pN`: a header and its socket number so that contact N meets contact N. There is one definition for each size because the language has no parameter for a count: a part with `N` pins has `N` rows in its table. The pitch is the package (`.package &= "2.54mm"`), which the export mapping reads. Each states its `.mating` (kind, gender, pitch, rows, positions), which a system uses to mate boards (see Systems and ports). The single-row ones are rated at 3 A a contact, from the datasheets of the `header` catalog; the two-row headers have no row, are unrated, and the check of the current through a mate lists them as not evaluated.
+
+`Coax` has `signal` and `shield`. `ProgrammingPads6` is six pads, `p1` to `p6`, for a spring-pin programming cable; the board decides what each carries. `UsbCPower` is a six-contact USB Type-C receptacle with power only: a `.vbus` rail (the receptacle supplies, so its current is negative and follows from the loads on the net), the two configuration pins `cc1` and `cc2`, and the `shell`. A device that takes power from a source needs a 5.1 kohm pull-down from each configuration pin to ground, written as a resistor in a chain. `UsbC2` is the sixteen-contact USB 2.0 receptacle: the same pins, the `Usb2` port, and the open sideband pins `sbu1` and `sbu2`.
+
+```nsm evaluate
+import std::parts::connector::UsbCPower
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board UsbPowered {
+    .usb: UsbCPower {
+        .vbus.voltage &= 5V +/- 5%
+        .vbus.pos.net &= "VBUS"
+        .vbus.neg.net &= "GND"
+    }
+    .system: Rail { .current &= 0mA..400mA }
+    .usb.vbus ~ .system
+    .rd1: Resistor { .resistance &= 5.1kohm +/- 1% }
+    .rd2: Resistor { .resistance &= 5.1kohm +/- 1% }
+    .usb.cc1 ~> .rd1 ~> .usb.vbus.neg
+    .usb.cc2 ~> .rd2 ~> .usb.vbus.neg
+}
+```
+
+`MountingHole`, `PlatedHole`, `Fiducial`, `TestPoint`, `Label` and `ProgrammingPads6` are fitted by nobody (`.assembly` is `"none"`), so they are on no BOM. `MountingHole` and `Fiducial` have no pins, so they are on no net. `PlatedHole` has one pin, `p1`, which is the plating: a board joins it to a net or leaves it open. `TestPoint` has one pin, `p1`, which must be on a net.
+
+```nsm evaluate
+import std::parts::mechanical::{Fiducial, MountingHole, PlatedHole, TestPoint}
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Mechanical {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .r1: Resistor { .resistance &= 1kohm +/- 1% }
+    .supply.pos ~> .r1 ~> .supply.neg
+    .hole: MountingHole
+    .fid: Fiducial
+    .screw: PlatedHole
+    .screw.p1 ~ .supply.neg
+    .tp: TestPoint
+    .tp.p1 ~ .supply.pos
+}
+```
+
+### Logic levels and absolute maximums
+
+A digital line is a `Logic` (`std::logic::Logic`): a pin `.line` and the rail `.reference` whose `neg` is its ground. It also has four voltages, `.vih`, `.vil`, `.voh` and `.vol`, as a datasheet gives them (ADR 0046). A part states those it has, with fixed volts or with an equation on its rail: `.in.vih &= 2V`, `.in.vih &= 0.7 * .vdd.voltage`, `.out.voh &= .vdd.voltage - 0.1V`. Every pin also has `.abs_min` and `.abs_max`, the voltages it survives relative to its ground, stated the same way: `.in.line.abs_max &= 3.6V`.
+
+After the rails are solved, the solver checks two things. A fault is an error; a check that cannot be made is a note `not evaluated: ...`, never a pass.
+
+- **Levels.** For every output or bidirectional `Logic` line on a net and every input or bidirectional `Logic` line on it, the output's `voh` must always be at least the input's `vih`, and its `vol` at most the input's `vil`, in the worst case of both ranges. A level with no value, or two lines whose grounds (`reference.neg`) are not on one net or in one ground group, is not evaluated. A pair in which neither line states a level is not looked at.
+- **Absolute maximum.** A pin with `.abs_min` or `.abs_max` must have a net whose worst-case voltage relative to its ground stays within them. The net's voltage is the hull of: its ground (0 V), each rail whose `pos` is on it, each `Logic` line that drives it (between its reference rail's `neg` and its voltage), and each rail or ground that a resistor joins it to (a pull-up or a pull-down). It is not evaluated for a pin that is not the `.line` of a `Logic` (its ground is not known), for a net that something drives that is not a `Logic` line, for a rail or driver on another ground, and for a net nothing sets.
+
+Join the lines of two parts pin to pin, `.a.out.line ~ .b.in.line`, and each part's reference rail to its own supply. Joining the two `Logic`s (`.a.out ~ .b.in`) also joins their reference rails, which is right only when both parts have the same supply; it does not equate their levels, which are each pin's own.
+
+The levels below are invented, from no datasheet: `Driver` drives within 0.1 V of its supply and `Receiver` reads a high from 70 % of its supply.
+
+```nsm evaluate
+import std::logic::Logic
+import std::sources::Rail
+
+/// Invented: drives a high to its supply less 0.1 V and a low to 0.1 V.
+part Driver {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.voh &= .vdd.voltage - 0.1V
+    .out.vol &= 0.1V
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+/// Invented: reads a high from 70 % of its supply and a low up to 30 %.
+part Receiver {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.vih &= 0.7 * .vdd.voltage
+    .in.vil &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos  power "VDD" "1"
+        .vdd.neg  power "GND" "2"
+        .in.line  input "IN"  "3"
+    }
+}
+
+board Agree {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .a: Driver
+    .b: Receiver
+    .supply ~ .a.vdd
+    .supply ~ .b.vdd
+    .a.out.line ~ .b.in.line
+}
+```
+
+The same driver into a receiver on a 5 V supply is refused with the numbers: a high of 3.035 V is not enough for 70 % of 5 V.
+
+```nsm fails
+import std::logic::Logic
+import std::sources::Rail
+
+/// Invented: drives a high to its supply less 0.1 V and a low to 0.1 V.
+part Driver {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.voh &= .vdd.voltage - 0.1V
+    .out.vol &= 0.1V
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+/// Invented: reads a high from 70 % of its supply and a low up to 30 %.
+part Receiver {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.vih &= 0.7 * .vdd.voltage
+    .in.vil &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos  power "VDD" "1"
+        .vdd.neg  power "GND" "2"
+        .in.line  input "IN"  "3"
+    }
+}
+
+board Mismatch {
+    .low: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .high: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC5"
+        .neg.net &= "GND"
+    }
+    .a: Driver
+    .b: Receiver
+    .low ~ .a.vdd
+    .high ~ .b.vdd
+    .a.out.line ~ .b.in.line
+}
+```
+
+```text
+error: net `net-a.out.line`: `a.out.voh` is 3.035V..3.365V but `b.in.vih` needs 3.325V..3.675V: a high of 3.035V is not always read as a high, which takes 3.675V
+   --> main.nsm:43:5
+   |
+43 |     .a: Driver
+   |     ^^^^^^^^^^
+```
+
+The library has one real part that states levels, `std::parts::logic::Sn74lvc1g04`, a single inverter from TI's datasheet SCES214AF, modelled for a supply of 3 V to 3.6 V. Its source is in the definition, table by table: `vih` 2 V and `vil` 0.8 V (table 5.3), `voh` as VCC - 0.1 V and `vol` 0.1 V at 100 uA (table 5.5), and the absolute maximums of table 5.1. It is drawn with KiCad's `74xGxx:74LVC1G04`. Two of them in a row, with a header on the input, check and solve with one note, because nothing on the board sets the voltage of the header's net:
+
+```nsm evaluate
+import std::parts::connector::Header1x2
+import std::parts::logic::Sn74lvc1g04
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+board Inverters {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u1: Sn74lvc1g04 { .package &= "SOT-23-5" }
+    .u2: Sn74lvc1g04 { .package &= "SOT-23-5" }
+    .j: Header1x2
+    .supply ~ .u1.vcc
+    .supply ~ .u2.vcc
+    .j.p1 ~ .u1.a.line
+    .u1.y.line ~ .u2.a.line
+    .j.p2 ~ .u2.y.line
+}
+```
+
+The note, in `netsmith build`'s output: `not evaluated: the absolute maximum of `u1.a.line` against net `net-j.p1`: nothing sets its voltage: no rail is on it and no `Logic` line drives it`.
+
+The level checks apply only to lines that are `Logic`: `Uart`, `Spi` and `I2c` pins are plain pins and are not judged. A rating of a pin with no `Logic` (its `.abs_max` stated on a plain `Pin`) is listed as not evaluated.
+
+### Buses
+
+An interface that joins devices says nothing about who drives which line. The pin kinds in the part's table say it (`output`, `input`, `bidirectional`), and the rules of the previous sections do the rest: two outputs on one net are refused, and so are an `input` with nothing on its net and a net of nothing but inputs. The buses are `std::bus::Uart`, `Spi`, `I2c`, `Swd` and `Usb2`. The names are the device's own.
+
+- A UART's `tx` and `rx` cross: the board joins one device's `tx` to the other's `rx` and back, one pin at a time. `~` between two `Uart` interfaces would join `tx` to `tx`.
+- An SPI bus does not cross. The master's `mosi` is an output and the slave's is an input, and the two join with `~`.
+- An I2C bus needs a pull-up on each line, and the checker refuses a line without one. `std::bus::I2cPullups` is the pair, with the resistance as a value (`.pullups.resistance &= 4.7kohm +/- 5%`) and a supply rail.
+- A debug port `Swd` meets a programming connector pin by pin: the connector's pins are passive.
+- `Usb2` joins a host and a device with `~`: D+ to D+. `vbus` is a `Rail`.
+
+Some invented parts for the examples. A UART has the same pins at both ends, so one part serves for both; SPI has a master and a slave.
+
+```nsm module=src::devices
+import std::bus::{I2c, Spi, Swd, Uart, Usb2}
+import std::sources::Rail
+
+/// A part with a UART. Illustrative; not a real part.
+part Uart32 {
+    .vdd: Rail
+    .uart: Uart
+
+    pins {
+        .vdd.pos       power         "VDD"    "1"
+        .vdd.neg       power         "VSS"    "2"
+        .uart.tx       output        "TX"     "3"
+        .uart.rx       input         "RX"     "4"
+    }
+}
+
+/// An SPI master. Illustrative.
+part SpiMaster {
+    .vdd: Rail
+    .spi: Spi
+
+    pins {
+        .vdd.pos       power         "VDD"    "1"
+        .vdd.neg       power         "VSS"    "2"
+        .spi.sclk      output        "SCK"    "3"
+        .spi.mosi      output        "MOSI"   "4"
+        .spi.miso      input         "MISO"   "5"
+        .spi.cs        output        "CS"     "6"
+    }
+}
+
+/// An SPI slave. Illustrative.
+part SpiSlave {
+    .vdd: Rail
+    .spi: Spi
+
+    pins {
+        .vdd.pos       power         "VDD"    "1"
+        .vdd.neg       power         "GND"    "2"
+        .spi.sclk      input         "SCLK"   "3"
+        .spi.mosi      input         "SDI"    "4"
+        .spi.miso      output        "SDO"    "5"
+        .spi.cs        input         "CSN"    "6"
+    }
+}
+
+/// A controller with an I2C port, a debug port and USB. Illustrative.
+part Controller {
+    .vdd: Rail
+    .i2c: I2c
+    .swd: Swd
+    .usb: Usb2
+    .usb.vbus.neg ~ .vdd.neg
+    .usb.vbus.current &= 0A
+
+    pins {
+        .vdd.pos       power         "VDD"    "1"
+        .vdd.neg       power         "VSS"    "2"
+        .i2c.sda       bidirectional "SDA"    "3"
+        .i2c.scl       bidirectional "SCL"    "4"
+        .swd.swdio     bidirectional "SWDIO"  "5"
+        .swd.swclk     input         "SWCLK"  "6"
+        .swd.swo       output        "SWO"    "7"
+        .swd.reset     input         "NRST"   "8" optional
+        .usb.dp        bidirectional "DP"     "9"
+        .usb.dm        bidirectional "DM"     "10"
+        .usb.vbus.pos  input         "VBUS"   "11" optional
+    }
+}
+
+/// Anything on an I2C bus. Illustrative.
+part Sensor {
+    .vdd: Rail
+    .i2c: I2c
+
+    pins {
+        .vdd.pos       power         "VDD"    "1"
+        .vdd.neg       power         "GND"    "2"
+        .i2c.sda       bidirectional "SDA"    "3"
+        .i2c.scl       bidirectional "SCL"    "4"
+    }
+}
+```
+
+The board that joins them as the buses want:
+
+```nsm evaluate
+import src::devices::{Controller, Sensor, SpiMaster, SpiSlave, Uart32}
+import std::bus::I2cPullups
+import std::parts::connector::{ProgrammingPads6, UsbC2}
+import std::sources::Rail
+
+board Buses {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .ctl: Controller
+    .sensor: Sensor
+    .master: SpiMaster
+    .flash: SpiSlave
+    .a: Uart32
+    .b: Uart32
+    .supply ~ .ctl.vdd
+    .supply ~ .sensor.vdd
+    .supply ~ .master.vdd
+    .supply ~ .flash.vdd
+    .supply ~ .a.vdd
+    .supply ~ .b.vdd
+
+    // The UART crosses.
+    .a.uart.tx ~ .b.uart.rx
+    .a.uart.rx ~ .b.uart.tx
+    // SPI joins as it is named.
+    .master.spi ~ .flash.spi
+    // I2C, with a pull-up on each line.
+    .ctl.i2c ~ .sensor.i2c
+    .pullups: I2cPullups { .resistance &= 4.7kohm +/- 5% }
+    .supply ~ .pullups.supply
+    .ctl.i2c ~ .pullups.bus
+
+    // A programming connector on the debug port.
+    .prog: ProgrammingPads6
+    .prog.p1 ~ .supply.pos
+    .prog.p2 ~ .ctl.swd.swdio
+    .prog.p3 ~ .ctl.swd.reset
+    .prog.p4 ~ .ctl.swd.swclk
+    .prog.p5 ~ .supply.neg
+    .prog.p6 ~ .ctl.swd.swo
+
+    // The USB port.
+    .usb: UsbC2 {
+        .usb.vbus.voltage &= 5V +/- 5%
+    }
+    .ctl.usb ~ .usb.usb
+}
+```
+
+A UART joined with `~` has two outputs on a net:
+
+```nsm fails
+import src::devices::Uart32
+import std::sources::Rail
+
+board Straight {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .a: Uart32
+    .b: Uart32
+    .supply ~ .a.vdd
+    .supply ~ .b.vdd
+    .a.uart ~ .b.uart
+}
+```
+
+```text
+error: net `net-a.uart.rx` has only inputs (`a.uart.rx`, `b.uart.rx`): nothing drives it, so it floats; join an output, a bidirectional pin or a rail to it, or a pull resistor
+   --> main.nsm:10:5
+   |
+10 |     .a: Uart32
+   |     ^^^^^^^^^^
+error: net `net-a.uart.tx` has two outputs: `a.uart.tx`, `b.uart.tx`
+   --> main.nsm:10:5
+   |
+10 |     .a: Uart32
+   |     ^^^^^^^^^^
+```
+
+A receive line left open:
+
+```nsm fails
+import src::devices::Uart32
+import std::sources::Rail
+
+board OneWay {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .a: Uart32
+    .b: Uart32
+    .supply ~ .a.vdd
+    .supply ~ .b.vdd
+    .a.uart.tx ~ .b.uart.rx
+}
+```
+
+```text
+error: `a.uart.rx` is an input that must be connected (pad 4, `RX`), but nothing else is on its net
+   --> main.nsm:10:5
+   |
+10 |     .a: Uart32
+   |     ^^^^^^^^^^
+```
+
+Two masters on one SPI bus:
+
+```nsm fails
+import src::devices::SpiMaster
+import std::sources::Rail
+
+board TwoMasters {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .a: SpiMaster
+    .b: SpiMaster
+    .supply ~ .a.vdd
+    .supply ~ .b.vdd
+    .a.spi ~ .b.spi
+}
+```
+
+```text
+error: net `net-a.spi.cs` has two outputs: `a.spi.cs`, `b.spi.cs`
+   --> main.nsm:10:5
+   |
+10 |     .a: SpiMaster
+   |     ^^^^^^^^^^^^^
+error: net `net-a.spi.miso` has only inputs (`a.spi.miso`, `b.spi.miso`): nothing drives it, so it floats; join an output, a bidirectional pin or a rail to it, or a pull resistor
+   --> main.nsm:10:5
+   |
+10 |     .a: SpiMaster
+   |     ^^^^^^^^^^^^^
+error: net `net-a.spi.mosi` has two outputs: `a.spi.mosi`, `b.spi.mosi`
+   --> main.nsm:10:5
+   |
+10 |     .a: SpiMaster
+   |     ^^^^^^^^^^^^^
+error: net `net-a.spi.sclk` has two outputs: `a.spi.sclk`, `b.spi.sclk`
+   --> main.nsm:10:5
+   |
+10 |     .a: SpiMaster
+   |     ^^^^^^^^^^^^^
+```
+
+A net whose part pins are all `input` has nothing that drives it, and is refused with the net and the pins (above: the two `rx` of the straight UART; an enable pin wired to another enable pin). An `output`, a `bidirectional` pin, a `power` pin, a `passive` pin (a pull resistor, a connector), a rail the board declares, or a port of the board itself each count as a driver, and so does a pin of a part that has no pin table, which the checker knows nothing about (ADR 0044).
+
+An `I2c` bus (`std::bus::I2c`, by that name) is open-drain, so each of its two lines needs a pull-up: a resistor, or a chain of resistors, from the line to the `pos` of a rail. One resistor on a line is enough for that line, and `I2cPullups` is one on each. A line tied to the rail itself, or pulled down to `neg`, is not a pull-up. Two cases are not judged, because the pull-up may be where this board cannot see it: a bus that is a port of the board, and a line that reaches a connector (a part of several passive pins and no `bridge`). A bus with no pull-up:
+
+```nsm fails
+import src::devices::Sensor
+import std::sources::Rail
+
+board NoPullups {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .a: Sensor
+    .b: Sensor
+    .supply ~ .a.vdd
+    .supply ~ .b.vdd
+    .a.i2c ~ .b.i2c
+}
+```
+
+```text
+error: net `net-a.i2c.scl` carries the scl line of an I2C bus (`a.i2c.scl`, `b.i2c.scl`) and has no pull-up: no resistor joins it to the positive pin of a rail; add `std::bus::I2cPullups` to the bus, or a resistor from a rail's `pos` to the line
+   --> main.nsm:10:5
+   |
+10 |     .a: Sensor
+   |     ^^^^^^^^^^
+error: net `net-a.i2c.sda` carries the sda line of an I2C bus (`a.i2c.sda`, `b.i2c.sda`) and has no pull-up: no resistor joins it to the positive pin of a rail; add `std::bus::I2cPullups` to the bus, or a resistor from a rail's `pos` to the line
+   --> main.nsm:10:5
+   |
+10 |     .a: Sensor
+   |     ^^^^^^^^^^
+```
+
+## The standard library
+
+The library is `.nsm` source in `std/`. It states only what is always true of a part. Import a definition by its full path, for example `import std::parts::passive::Resistor`.
+
+Parts are numbered by their letters in the order of their paths, and every kind states its own letters in its definition (`.designator &= "R"` in `Resistor`): `R` resistor, `C` capacitor, `L` inductor, `FB` ferrite bead, `D` LED, diode, Schottky, Zener and TVS, `Q` MOSFET, `Y` crystal, `F` fuse, `SW` switch, `J` header, socket, coax, USB-C and programming pads, `TP` test point, `H` mounting hole and plated hole, `FID` fiducial, `LBL` label, `U` linear regulator (ADR 0046; see Designators).
+
+### Parts
+
+| Definition | What it is |
+|---|---|
+| `std::parts::passive::Resistor` | A resistor with `.resistance`, a through-current and a voltage drop tied by Ohm's law. Passive pins `a` and `b` (pads 1 and 2), bridge `a ~> b`. Requires `.drop * .current <= .max_power`. Catalog `resistor`: resistance, max_power, package. |
+| `std::parts::passive::Capacitor` | A ceramic capacitor with `.capacitance`, `.effective_capacitance`, `.bias` and `.max_voltage`. Pins `a` and `b`, bridge `a ~> b`. Catalog `capacitor`. |
+| `std::parts::passive::Led` | A light-emitting diode with `.color`, `.forward_voltage`, `.current` and `.drop`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Catalog `led`. |
+| `std::parts::regulator::LinearRegulator` | A fixed-output linear regulator. Rails `vin` and `vout` that share a ground, a pin table for SOT-23 and one for SOT-223, `.dropout`, `.max_current`, `.max_power`. It requires `vin >= vout + dropout`, a supplied current within `.max_current` and a dissipation within `.max_power`. Catalog `ldo`. |
+| `std::parts::connector::Header1x2` | A single-row header with two pins `p1` and `p2`. Soldered by hand. |
+| `std::parts::connector::Header1x4` | A single-row header with 4 pins `p1` to `p4`, pin N on pad N. |
+| `std::parts::connector::Header1x8` | A single-row header with 8 pins `p1` to `p8`, pin N on pad N. |
+| `std::parts::connector::Header1x10` | A single-row header with 10 pins `p1` to `p10`, pin N on pad N. |
+| `std::parts::connector::Socket1x2` | A single-row socket with 2 positions `p1` to `p2`, the mate of `Header1x2`. |
+| `std::parts::connector::Socket1x4` | A single-row socket with 4 positions `p1` to `p4`, the mate of `Header1x4`. |
+| `std::parts::connector::Socket1x8` | A single-row socket with 8 positions `p1` to `p8`, the mate of `Header1x8`. |
+| `std::parts::connector::Socket1x10` | A single-row socket with 10 positions `p1` to `p10`, the mate of `Header1x10`. |
+| `std::parts::connector::Header2x3` | A two-row header with 6 pins `p1` to `p6`, pin N on pad N. |
+| `std::parts::connector::Header2x5` | A two-row header with 10 pins `p1` to `p10`, pin N on pad N. |
+| `std::parts::connector::Header2x10` | A two-row header with 20 pins `p1` to `p20`, pin N on pad N. |
+| `std::parts::connector::Coax` | A coaxial (RF) connector: pins `signal` and `shield`, `.impedance`, `.max_frequency`. |
+| `std::parts::connector::UsbCPower` | A USB Type-C receptacle, power only: rail `vbus` (pos on VBUS, neg on GND), pins `cc1`, `cc2`, `shell`. |
+| `std::parts::connector::UsbC2` | A USB Type-C receptacle for USB 2.0: the pins `cc1`, `cc2`, `shell`, `sbu1`, `sbu2`, and the port `usb` (`Usb2`). |
+| `std::parts::connector::ProgrammingPads6` | Six pads `p1` to `p6` for a spring-pin programming cable. The board decides what each carries. |
+| `std::parts::passive::Inductor` | An inductor: `.inductance`, `.saturation_current`, `.dc_resistance`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .saturation_current`. Catalog `inductor`. |
+| `std::parts::passive::FerriteBead` | A ferrite bead: `.impedance` at `.impedance_frequency`, `.rated_current`, `.dc_resistance`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current`. Catalog `ferrite_bead`. |
+| `std::parts::passive::Crystal` | A two-terminal crystal: `.frequency` (with its tolerance) and `.load_capacitance`. Pins `a`, `b`. Catalog `crystal`. |
+| `std::parts::passive::Fuse` | A fuse: `.rated_current`, `.rated_voltage`, `.resistance`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current`. Catalog `fuse`. |
+| `std::parts::passive::Switch` | A single-pole single-throw switch or button: `.rated_current`, `.rated_voltage`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current`. |
+| `std::parts::diode::Diode` | A diode: `.forward_voltage`, `.max_reverse_voltage`, `.max_forward_current`, `.bias`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Requires `.bias <= .max_reverse_voltage` and `.current <= .max_forward_current`. |
+| `std::parts::diode::Schottky` | A Schottky diode, with the fields and ratings of `Diode`. Catalog `schottky`. |
+| `std::parts::diode::Zener` | A Zener diode: `.zener_voltage` (with tolerance), `.max_power`, `.bias`. Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias * .current <= .max_power`. |
+| `std::parts::diode::Tvs` | A unidirectional TVS diode: `.standoff_voltage`, `.clamping_voltage`, `.peak_pulse_current`, `.protected_limit`, `.bias`. Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias <= .standoff_voltage` and `.clamping_voltage <= .protected_limit`. |
+| `std::parts::transistor::NMosfet` | An N-channel MOSFET: pins `gate` (input), `source`, `drain`, bridge `drain ~> source`. Maxima for drain-source voltage, drain current and gate-source voltage; `.gate_threshold`; `.on_resistance`. Requires the stresses `.drain_source_voltage` and `.gate_source_voltage` and `.current` within them, and the gate drive above the threshold. Catalog `n_mosfet`. |
+| `std::parts::transistor::PMosfet` | A P-channel MOSFET: as `NMosfet` with bridge `source ~> drain`; voltages are magnitudes. |
+| `std::parts::logic::Sn74lvc1g04` | A single inverter, TI SN74LVC1G04 (SCES214AF), for a supply of 3 V to 3.6 V: rail `vcc`, lines `a` (input) and `y` (output) as `Logic` with the levels and absolute maximums of the datasheet, SOT-23-5. No catalog row. |
+| `std::parts::mechanical::MountingHole` | A drill with no copper. No pins. |
+| `std::parts::mechanical::PlatedHole` | A plated mounting hole. One pin `p1`, the plating, that the board joins to a net or leaves open. |
+| `std::parts::mechanical::Fiducial` | A fiducial mark. No pins. |
+| `std::parts::mechanical::TestPoint` | A test point. One pin `p1`, which must be on a net. |
+| `std::parts::mechanical::Label` | Silkscreen text. No pins. `.text` and `.height`. |
+
+### Interfaces
+
+| Definition | What it is |
+|---|---|
+| `std::sources::Rail` | A DC rail: pins `pos` and `neg`, a `.voltage`, a `.current` (the draw) and a `.min_track` (the narrowest track of its nets). |
+| `std::parts::regulator::Buck` | What a buck converter IC says about itself: the switching node `sw` (a rail the IC supplies), the feedback pin `fb`, `vref`, `fsw`, the input range, `max_output_current`, `efficiency`, `min_inductance` and the capacitance asked for on each side. A concrete IC is a part with a `.buck: Buck` member (ADR 0025). |
+| `std::logic::Logic` | A digital line `.line`, the `.reference` rail that defines its levels, and the levels `.vih`, `.vil`, `.voh` and `.vol` a part may state (ADR 0046). |
+| `std::bus::Uart` | Pins `tx`, `rx`, `rts`, `cts`, named by the device. The board crosses `tx` and `rx`. |
+| `std::bus::Spi` | Pins `sclk`, `mosi`, `miso`, `cs`. |
+| `std::bus::I2c` | Pins `sda` and `scl`. |
+| `std::bus::Swd` | Pins `swdio`, `swclk`, `swo`, `reset`. |
+| `std::bus::Usb2` | Pins `dp` and `dm` and a rail `vbus`. |
+| `std::parts::connector::Mating` | What a connector says about how it meets another (ADR 0040), the member `.mating` of a header or socket: `.kind` (`"pin_header"`), `.gender` (`"header"` or `"socket"`), `.pitch`, `.rows`, `.positions`, `.pin_current` (the rated current of one contact, from the `header` catalog; unset is unrated) and `.keyed` (`"none"`, or `"shrouded"` or `"polarised"`; unset is the same as `"none"`). A system mates two with `~`. |
+| `std::mfg::stackup::Stackup` | Layers, thickness, copper weight and, for inner layers, the prepreg and core. |
+| `std::mfg::stackup::Plane` | An inner layer that is one sheet of copper on a net. The board names the net. |
+| `std::mfg::stackup::Pour` | Copper poured on an outer layer, `.top` or `.bottom` of a process: a `.net` and the most space between stitching vias, `.stitch_pitch`. |
+| `std::pcb::Outline` | The board edge, the board's member `.outline`: `.width`, `.height` (ranges allowed) and `.corner_radius`. |
+| `std::pcb::Cutout` | A rectangular hole inside the outline: `.x`, `.y`, `.width`, `.height`, `.corner_radius`. |
+| `std::pcb::Keepout` | An area of a board, or of a part in the part's own frame, where tracks, vias, copper or parts are not allowed: `.x`, `.y`, `.width`, `.height`, `.layers` and `.tracks`, `.vias`, `.copper`, `.parts` (each `"forbid"`, the default, or `"allow"`). |
+
+### Modules
+
+| Definition | What it is |
+|---|---|
+| `std::parts::regulator::FeedbackDivider` | The resistors that set an adjustable output: pins `top`, `fb`, `bottom`, voltages `vref` and `vout`, with `vout == vref * (1 + rtop / rbottom)` in the worst case. |
+| `std::parts::regulator::BuckStage` | Everything around a buck converter IC: inductor, input and output capacitors and a `FeedbackDivider`, with ports `vin`, `vout` and `buck`. Checks the input range, the output current, the ripple and the inductor's saturation, and the capacitance the IC asks for. |
+| `std::bus::I2cPullups` | The two pull-up resistors of an I2C bus: a `bus` (`I2c`), a `supply` (`Rail`) and a `.resistance` the board states. |
+
+### Manufacturing processes
+
+| Definition | What it is |
+|---|---|
+| `std::mfg::jlcpcb::TwoLayer` | JLCPCB's two-layer board, 1 oz copper. Rules from `.min_track` to `.min_mask_bridge`, `.max_temperature_rise` (the rise the track width check designs to, unstated by the process), `.via_in_pad` (the largest via the fabricator fills and caps so that it may stand in a pad: an upper bound, `0mm` refuses vias in pads), `.stackup`, and the outer pours `.top` and `.bottom`. Thickness 0.4 mm to 2 mm, chosen by the board. |
+| `std::mfg::jlcpcb::FourLayer` | JLCPCB's four-layer board, 1 oz outer and 0.5 oz inner copper, 1.6 mm. Planes `.inner1` and `.inner2`, each on a net the board names. |
+| `std::mfg::jlcpcb::VCutPanel` | JLCPCB's V-cut panel, the member `.fab` of a `panel`: `.columns`, `.rows` and `.rail`, and the limits of the board house (panel size, lines, line spacing, copper clearance, thickness, tooling holes and fiducials), each with its source. |
+
+Every number in a process cites its source in a doc comment in `std/mfg/jlcpcb.nsm`.

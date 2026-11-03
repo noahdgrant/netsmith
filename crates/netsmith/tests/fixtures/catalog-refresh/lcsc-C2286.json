@@ -1,0 +1,48 @@
+{
+ "code": 200,
+ "msg": null,
+ "result": {
+  "productCode": "C2286",
+  "productModel": "KT-0603R",
+  "brandNameEn": "Hubei KENTO Elec",
+  "encapStandard": "0603",
+  "stockNumber": 4353800,
+  "productPriceList": [
+   {
+    "ladder": 100,
+    "productPrice": "0.0077",
+    "usdPrice": 0.0077
+   },
+   {
+    "ladder": 1000,
+    "productPrice": "0.0059",
+    "usdPrice": 0.0059
+   },
+   {
+    "ladder": 4000,
+    "productPrice": "0.0046",
+    "usdPrice": 0.0046
+   },
+   {
+    "ladder": 8000,
+    "productPrice": "0.0040",
+    "usdPrice": 0.004
+   },
+   {
+    "ladder": 48000,
+    "productPrice": "0.0038",
+    "usdPrice": 0.0038
+   },
+   {
+    "ladder": 100000,
+    "productPrice": "0.0036",
+    "usdPrice": 0.0036
+   }
+  ],
+  "catalogName": "LED Indication - Discrete",
+  "productNameEn": "LED RED WATER CLEAR 0603 SMD",
+  "minBuyNumber": 100,
+  "currencyType": "USD"
+ },
+ "ok": true
+}

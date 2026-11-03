@@ -1,0 +1,229 @@
+//! Two-terminal parts.
+//!
+//! Library parts state only what is always true of them; a design narrows the
+//! rest. Names of symbols and footprints belong to the per-tool export mappings,
+//! not here. A `pins` table is the datasheet's pin table: the pads here are the same in
+//! every package.
+
+/// A resistor. Its through-current and voltage drop are tied together by Ohm's law, and the
+/// power it dissipates, `.drop * .current`, is at most `.max_power`, in the worst case over the
+/// ranges of the current and the resistance. A design that does not reach the check (a resistor
+/// whose current nothing states) lists it as not evaluated. A catalog row with no `max_power`
+/// is an unrated part and is never picked.
+part Resistor {
+    .designator &= "R"
+
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+
+    .resistance: Resistance
+    /// The power rating at the ambient temperature the datasheet names, not derated.
+    .max_power: Power
+    /// Through-current, a to b. In a `~>` chain from a rail, the first part's is drawn from the
+    /// net the chain starts on (ADR 0014).
+    .current: Current
+    /// Voltage at a relative to b.
+    .drop: Voltage
+
+    .drop == .current * .resistance
+    .drop * .current <= .max_power
+    bridge .a ~> .b
+
+    .package: Package
+    catalog resistor { .resistance, .max_power, .package }
+}
+
+/// A ceramic capacitor. At DC it passes no current, so it has no `current` and adds nothing
+/// to the sum of currents at a net.
+///
+/// `.capacitance` is the marked value with its tolerance, as on a bill of materials.
+/// `.effective_capacitance` is what the circuit can use: the marked value after the DC
+/// voltage across the part has taken its share, and after the tolerance, in the worst case
+/// over the range `.bias` can take. A design states what it needs of the second where that
+/// matters (a regulator's output capacitor) and of the first where it means a marked part
+/// (a bypass capacitor). The solver works the effective value out from the part's published
+/// curve and refuses a part that has none, but only when the design asks for it.
+///
+/// `.bias` is the voltage across the capacitor. A capacitor placed between a rail's `pos`
+/// and `neg` takes it from that rail; a design states it only for one that is across no rail.
+part Capacitor {
+    .designator &= "C"
+
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+
+    /// The marked value, with its tolerance.
+    .capacitance: Capacitance
+    /// The capacitance left at `.bias` and within the tolerance, over the whole range
+    /// `.bias` can take.
+    .effective_capacitance: Capacitance
+    /// The DC voltage across the capacitor, in either direction.
+    .bias: Voltage
+    .max_voltage: Voltage
+    bridge .a ~> .b
+
+    .package: Package
+    catalog capacitor { .capacitance, .effective_capacitance, .max_voltage, .package }
+}
+
+/// A light-emitting diode. Current flows from anode to cathode.
+part Led {
+    .designator &= "D"
+
+    pins {
+        .anode   passive "A" "2"
+        .cathode passive "K" "1"
+    }
+
+    .color:           Color
+    .forward_voltage: Voltage
+    /// Through-current, anode to cathode. An LED does not conduct the other way, so a supply
+    /// that could fall short of the forward voltage (a 3.3 V rail and a 3.4 V part) cannot
+    /// drive it.
+    .current: Current
+    .drop:    Voltage
+
+    .drop == .forward_voltage
+    .current >= 0mA
+    bridge .anode ~> .cathode
+
+    .package: Package
+    catalog led { .color, .forward_voltage, .package }
+}
+
+/// An inductor. `.inductance` is the marked value with its tolerance. `.saturation_current`
+/// is the current at which the inductance has fallen by the datasheet's stated fraction; a
+/// design that drives more than that has less inductance than it counted on, so
+/// `.current <= .saturation_current` is checked. `.current` is the largest current through the
+/// part, the peak and not the average, when it carries a ripple; in a `~>` chain it is the
+/// draw of what is behind the chain (ADR 0014), the average, and a design that knows the ripple
+/// adds half of it to the saturation check itself (`BuckStage` does). The winding's resistance
+/// drops `.current * .dc_resistance`.
+part Inductor {
+    .designator &= "L"
+
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+
+    .inductance: Inductance
+    .saturation_current: Current
+    /// The resistance of the winding at DC.
+    .dc_resistance: Resistance
+    /// Through-current, a to b.
+    .current: Current
+    /// Voltage at a relative to b.
+    .drop: Voltage
+
+    .drop == .current * .dc_resistance
+    .current <= .saturation_current
+    bridge .a ~> .b
+
+    .package: Package
+    catalog inductor { .inductance, .saturation_current, .dc_resistance, .package }
+}
+
+/// A ferrite bead: a lossy inductor that blocks high frequencies. `.impedance` is the
+/// magnitude at `.impedance_frequency`, where the datasheet gives it, and `.rated_current` is
+/// the largest DC current. The bead's DC resistance drops `.current * .dc_resistance`.
+part FerriteBead {
+    .designator &= "FB"
+
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+
+    .impedance: Resistance
+    /// The frequency at which `.impedance` is specified.
+    .impedance_frequency: Frequency
+    .rated_current: Current
+    .dc_resistance: Resistance
+    /// Through-current, a to b.
+    .current: Current
+    /// Voltage at a relative to b.
+    .drop: Voltage
+
+    .drop == .current * .dc_resistance
+    .current <= .rated_current
+    bridge .a ~> .b
+
+    .package: Package
+    catalog ferrite_bead { .impedance, .impedance_frequency, .rated_current, .dc_resistance, .package }
+}
+
+/// A quartz crystal with two terminals. `.frequency` is the nominal frequency and its
+/// tolerance together, as a range: a 16 MHz crystal good to 20 ppm is
+/// `.frequency &= 16MHz +/- 20ppm`. `.load_capacitance` is the capacitance the datasheet
+/// calibrates the frequency for, as seen across the two terminals. The two load capacitors
+/// are the design's.
+part Crystal {
+    .designator &= "Y"
+
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+
+    .frequency: Frequency
+    .load_capacitance: Capacitance
+
+    .package: Package
+    catalog crystal { .frequency, .load_capacitance, .package }
+}
+
+/// A fuse, or a resettable fuse in its hold rating: a thermal link that opens above
+/// `.rated_current` and that carries up to it. A design puts it in a `~>` chain and its
+/// `.current` is the draw of whatever is behind it (ADR 0014), checked against the rating.
+/// `.rated_voltage` is the highest voltage it can interrupt. `.resistance` is the cold
+/// resistance, which drops `.current * .resistance`.
+part Fuse {
+    .designator &= "F"
+
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+
+    .rated_current: Current
+    .rated_voltage: Voltage
+    .resistance: Resistance
+    /// Through-current, a to b.
+    .current: Current
+    /// Voltage at a relative to b.
+    .drop: Voltage
+
+    .drop == .current * .resistance
+    .current <= .rated_current
+    bridge .a ~> .b
+
+    .package: Package
+    catalog fuse { .rated_current, .rated_voltage, .resistance, .package }
+}
+
+/// A single-pole single-throw switch or push button: it joins its two terminals while it is
+/// closed. In a `~>` chain it is taken as closed, and `.current` is checked against
+/// `.rated_current`.
+part Switch {
+    .designator &= "SW"
+
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+
+    .rated_current: Current
+    .rated_voltage: Voltage
+    /// Through-current, a to b, while closed.
+    .current: Current
+
+    .current <= .rated_current
+    bridge .a ~> .b
+
+    .package: Package
+}

@@ -1,0 +1,97 @@
+// What the PCB recipes share (this file is not a recipe: recipes are in recipes/).
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+export const BOARD = 'OutlineAndPours';
+
+/** Put the layout file back as the fixture has it (`outline_and_pours` unless `original` says
+ * otherwise), and load the page again, so every recipe starts from the same board whatever ran
+ * before it. */
+export async function fresh({ page, url, project }, original = path.join(here, '../../examples/outline_and_pours.pcb.toml')) {
+  const layout = path.join(project, 'src/main.pcb.toml');
+  fs.copyFileSync(original, layout);
+  await page.goto(url);
+  await page.waitForSelector('.app');
+  // Give the server's watcher the moment it needs to notice the file.
+  await page.waitForTimeout(700);
+  await page.reload();
+  await page.waitForSelector('.app');
+}
+
+/** Hide the source pane, so the board has the room, and open the PCB tab. */
+export async function openPcb(page, board = BOARD) {
+  await page.selectOption('.boardpick select', board);
+  const source = page.locator('.pane.source, .source').first();
+  if (await source.isVisible().catch(() => false)) await page.getByRole('button', { name: 'Source' }).click();
+  await page.getByText('PCB', { exact: true }).click();
+  await page.waitForSelector('.pcb-host svg[data-ready], .pcb-host svg');
+  await page.waitForSelector('.pcb-overlay');
+}
+
+/** The board's scene, as the server has it now. */
+export async function scene(page, board = BOARD) {
+  return page.evaluate(async (b) => (await fetch(`/api/pcb/scene?board=${encodeURIComponent(b)}`)).json(), board);
+}
+
+/** Where a point of the sheet (mm) is in the browser window. */
+export async function screenAt(page, x, y) {
+  return page.evaluate(
+    ([px, py]) => {
+      const svg = document.querySelector('.pcb-host svg:not(.pcb-overlay)');
+      const m = svg.getScreenCTM();
+      return { x: m.a * px + m.c * py + m.e, y: m.b * px + m.d * py + m.f };
+    },
+    [x, y],
+  );
+}
+
+/** The parts of the fixture, by instance path. A recipe names a part by what it is (the path in
+ * the source), never by its designator: the letters and numbers of designators are the placer's
+ * and the catalog's to choose and have changed before. */
+export const PART = {
+  inputCap: 'stage.input_cap',
+  outputCap: 'stage.output_cap',
+  regulator: 'stage.regulator',
+  powerIn: 'power_in',
+};
+
+/** The part at `path` in a scene. */
+export function partOf(s, path) {
+  const p = s.parts.find((q) => q.path === path);
+  if (!p) throw new Error(`the board has no part ${path} (it has ${s.parts.map((q) => q.path).join(', ')})`);
+  return p;
+}
+
+/** What the page calls a part: its designator, however the scene spells that field. */
+export const labelOf = (p) => p.designator ?? p.refdes;
+
+/** A part by path with where its middle is in the window. */
+export async function partAt(page, path, board = BOARD) {
+  const s = await scene(page, board);
+  const p = partOf(s, path);
+  const c = p.courtyard;
+  return { part: p, scene: s, centre: await screenAt(page, c.x + c.width / 2, c.y + c.height / 2) };
+}
+
+/** Drag from one window position to another in a few steps. */
+export async function drag(page, from, to, options = {}) {
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down(options);
+  const steps = 8;
+  for (let i = 1; i <= steps; i++) {
+    await page.mouse.move(from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps);
+  }
+  await page.mouse.up(options);
+}
+
+/** Wait until the board has been placed again after an edit: the scene's stamp moved on. */
+export async function settled(page, before, board = BOARD) {
+  for (let i = 0; i < 50; i++) {
+    const s = await scene(page, board);
+    if (s.layoutStamp !== before) return s;
+    await page.waitForTimeout(100);
+  }
+  throw new Error('the layout file was not written');
+}
