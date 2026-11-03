@@ -254,6 +254,12 @@ fn fab_board(
         for hang in board.hangs() {
             say(format!("{}: {hang}", built.label()));
         }
+        // A part under a height limit that states no height is not a pass (ADR 0045,
+        // "Height limits"): it is named, here and in the notes.
+        let unchecked = board.heights_unchecked();
+        for u in &unchecked {
+            say(format!("{}: warning: {u}", built.label()));
+        }
         say(format!(
             "{}: placed on a {} by {} mm board",
             built.label(),
@@ -329,6 +335,7 @@ fn fab_board(
         let mut extras = board.process_extras();
         // The notes say which part hangs over which edge, how far, and who said it may.
         extras.extend(board.hangs().into_iter().map(|h| format!("overhang: {h}")));
+        extras.extend(unchecked.iter().map(|u| format!("warning: {u}")));
         extras.extend(
             built
                 .guideline_warnings()

@@ -56,4 +56,9 @@ interface Keepout {
     .copper: String
     /// No part is placed with its courtyard in it.
     .parts: String
+    /// The tallest a part may stand in it, on the faces `.layers` names (PROVISIONAL, ADR
+    /// 0045): a lid rib, a bracket or a neighbouring board. A part states its height with
+    /// `.body_height`; one that does not is reported, never taken as flat. A keepout that
+    /// states this and none of the four above forbids nothing else.
+    .max_height: Length
 }

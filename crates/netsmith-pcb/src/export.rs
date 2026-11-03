@@ -738,8 +738,13 @@ pub fn kicad_pcb(board: &Board) -> String {
         };
         items.push(zone(board, &layer, net_number(&pour.net)));
     }
-    for area in board.keepout_areas() {
-        items.push(rule_area(board, &area));
+    // A keepout that only limits height is no rule area: KiCad has nothing to say about it.
+    for area in board
+        .keepout_areas()
+        .iter()
+        .filter(|a| a.forbids_anything())
+    {
+        items.push(rule_area(board, area));
     }
     items.extend(edge_cuts(
         &board.outline_shape(),

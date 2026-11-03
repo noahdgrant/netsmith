@@ -119,6 +119,9 @@ pub(crate) struct Problem<'a> {
     /// For each part, where the design's requirements let it be (ADR 0045); empty or `None`
     /// is anywhere. A part is only ever put inside its want.
     pub wants: &'a [Option<Want>],
+    /// The areas that limit how tall a part may stand (ADR 0045, "Height limits"): a part
+    /// with a stated height over a zone's limit, on a face the zone limits, is kept out of it.
+    pub zones: &'a [crate::place::HeightZone],
 }
 
 /// What a run ended with.
@@ -331,6 +334,8 @@ struct Model {
     /// Whether the requirements let the part hang over the board edge (ADR 0045): its walls
     /// are the design's along the axes it holds, and its pads stay inside the outline.
     overhangs: bool,
+    /// The boxes the part is too tall to stand in, on the face it is on.
+    no_go: Vec<Rect>,
 }
 
 /// A [`Want`] in the engine's terms, for each of the part's four turns (as the annealer
@@ -621,6 +626,15 @@ impl<'a> Engine<'a> {
                         .get(i)
                         .and_then(Option::as_ref)
                         .is_some_and(|w| w.overhangs),
+                    no_go: match parts[i].height {
+                        Some(h) => p
+                            .zones
+                            .iter()
+                            .filter(|z| z.rules_out(h, parts[i].side))
+                            .map(|z| z.rect)
+                            .collect(),
+                        None => Vec::new(),
+                    },
                 }
             })
             .collect();
@@ -1186,7 +1200,7 @@ impl<'a> Engine<'a> {
                 }
             }
         }
-        for k in self.p.keepouts {
+        for k in self.p.keepouts.iter().chain(&model.no_go) {
             let depth = penetration(&court, k, KEEPOUT_GAP);
             if depth > 0.0 {
                 c.soft += W_GAP * depth;
@@ -1482,12 +1496,12 @@ impl<'a> Engine<'a> {
                 worst = worst.max(past + wall);
             }
         }
-        for k in self.p.keepouts {
+        for k in self.p.keepouts.iter().chain(&self.models[i].no_go) {
             let depth = penetration(&court, k, 0.0);
             if depth > 1e-6 {
                 let at = k.centre();
                 why.push(format!(
-                    "{depth:.2} mm into a keepout or cutout at ({:.1}, {:.1})",
+                    "{depth:.2} mm into a keepout, cutout or height limit at ({:.1}, {:.1})",
                     at.x - r.min.x,
                     at.y - r.min.y
                 ));
@@ -2013,6 +2027,7 @@ mod tests {
             corner_radius: 0.0,
             fixed: &fixed,
             keepouts: &[],
+            zones: &[],
             cutouts: &[],
             pours: false,
             seed: 0,
@@ -2059,6 +2074,7 @@ mod tests {
             corner_radius: 0.0,
             fixed: &fixed,
             keepouts: &[],
+            zones: &[],
             cutouts: &[],
             pours: false,
             seed: 3,

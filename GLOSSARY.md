@@ -92,6 +92,9 @@ _Avoid_: Slot, notch, hole (a hole is drilled)
 An area of a board, or of a part in its own frame, where tracks, vias, copper pours or parts are not allowed (`std::pcb::Keepout`), on the layers it names. It is a KiCad rule area in the board file.
 _Avoid_: Exclusion zone, restricted area
 
+**Height limit**:
+The tallest a part may stand where a keepout is (`std::pcb::Keepout`'s `.max_height`, provisional, ADR 0045 section 11), on the faces the keepout's `.layers` name. A part states how tall it is with `.body_height`; one that does not has an unknown height, which is reported by name and never taken as zero.
+
 **Placement requirement**:
 A range on where a part, or the parts of a module, may go, stated in the board's source on the built-in `.place` of the part or module (`.usb.place.left &= -0.5mm +/- 0.05mm`, ADR 0045). The fields are `x`, `y`, `left`, `right`, `top`, `bottom`, `rotation` and `side`. It comes from the case, panel or carrier, not from the part, so a board states it. The placer keeps to it, and `fab` stops with the numbers if the board does not meet it (`constraints = "warn"` or `--constraints warn` lists it instead; `--constraints error` overrides the manifest, and `--allow-drc-violations` does not waive it). The solved position is not in the source: it stays in the layout file.
 _Avoid_: Constraint (as the name of the thing a person writes: a finding is a `constraint` finding), position (a position is what the layout file holds)

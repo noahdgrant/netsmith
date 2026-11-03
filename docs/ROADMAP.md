@@ -138,9 +138,18 @@ snap and flatpak paths are the least certain). Bundling the libraries is ADR 004
   **Not built**: `Board::check_constraints` as a method of `netsmith-pcb` (the check is the rule on
   the board file, so there is one measurement; `netsmith-pcb` cannot depend on `netsmith-fab`),
   module `.place` box checks for `.x`/`.y`,
-  relations between two parts (C2), heights and `Keepout.max_height` (C3), the editor's overlays
+  relations between two parts (C2), the catalog `height` column and `MountingHole.head_diameter` (C3), the editor's window overlays
   and drag clamp (C4), "pin here" (C5), `layout check --json` (C6), mating across boards (C7), a
   polygon outline (C8). 
+- Height limits (ADR 0045, C3, section 11; **provisional, to be reviewed by the maintainer**): a part
+  states `.body_height`, a `Keepout` states `.max_height` (on the faces its `.layers` name, so a
+  back-face part has its own limit); `check_placement` reports a part too tall where it stands, by
+  name and with the numbers, a part with no stated height under a limit is a named warning
+  (`Board::heights_unchecked`, in `fab` and `fab-notes.txt` and the editor), the annealer keeps a
+  tall part out of a zone it is too tall for, and the PCB view draws the limit in amber. **Not built**:
+  a height from a catalog column (catalogs are another change's), from the footprint's 3D model
+  (no STEP reader, by decision), or from the DXF import; a keepout a part carries is checked but not
+  avoided; the editor's drag clamp.
 - Overhang (ADR 0045, K2, section 10; **provisional, to be reviewed by the maintainer**): a part whose own `.place.left/right/top/bottom` window is at or beyond the same
   outline edge, or that the layout file locks, may hang over that edge. The placer's fit test
   counts a part that stays as its courtyard clipped to the outline; the check does not report the

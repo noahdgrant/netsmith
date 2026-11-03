@@ -383,6 +383,14 @@ impl<'a> Checker<'a> {
                 let field = self.model.add_field(id, name, FieldKind::Text);
                 self.model.add_member(id, name, Member::Field(field));
             }
+            // And one for how tall its body stands above the board (ADR 0045, "Height
+            // limits", PROVISIONAL): the part or the board states it, and lowering reads it.
+            // A part that does not has no height, which is not a height of zero.
+            let field =
+                self.model
+                    .add_field(id, "body_height", FieldKind::Quantity(Dimension::LENGTH));
+            self.model
+                .add_member(id, "body_height", Member::Field(field));
         }
         // Every part and module has a `.place` for the requirements on where it goes on the
         // board (ADR 0045): the board narrows its fields like any others.

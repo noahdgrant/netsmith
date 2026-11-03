@@ -154,7 +154,9 @@ fn a_position_that_is_a_range_is_refused() {
         "    .slot: Cutout {\n        .x &= 10mm..12mm\n        .y &= 1mm\n        .width &= 8mm\n        .height &= 4mm\n    }\n",
     ));
     assert!(
-        text.contains("`slot.x` is 10mm..12mm, a range, and a position or a size is one value"),
+        text.contains(
+            "`slot.x` is 10mm..12mm, a range, and a position, a size or a height is one value"
+        ),
         "{text}"
     );
 }

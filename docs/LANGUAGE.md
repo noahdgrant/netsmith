@@ -3200,6 +3200,74 @@ board Open {
 error: Open: `k` allows tracks, vias, copper and parts, and forbids nothing
 ```
 
+### Height limits
+
+**Provisional: to be reviewed by the maintainer (ADR 0045, "Height limits").** A board that fits in plan view can still hit a lid, a bracket or a neighbouring board. A part states how tall its body stands with the built-in member `.body_height` (one value, from the face of the board it is on to the top of its body), and a `Keepout` states the tallest a part may stand where it is with `.max_height`. A keepout that states `.max_height` and none of `.tracks`, `.vias`, `.copper` and `.parts` forbids nothing else: it only limits height. `.layers` says which face it limits (`"top"` for the parts on the top face, `"bottom"` for the parts on the bottom, `"all"` for both), so a part on the back has its own limit: two keepouts over the same area, one for each face.
+
+A part that states no `.body_height` has no height: it is not taken as flat and not guessed. Where a limit covers its body, `fab` and the editor print a warning that names it (`height of R3 (`r3`) is unchecked ...`), and `fab` writes it in `fab-notes.txt`. A part that does state one is kept out from under a zone it is too tall for by the placer, and the placement check names it, with the numbers, if it stands there anyway. The footprint's 3D model is not read.
+
+```nsm solve place
+import std::parts::passive::Resistor
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+import std::pcb::{Outline, Keepout}
+
+board Ribbed {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .outline: Outline {
+        .width &= 40mm
+        .height &= 30mm
+    }
+    .rail: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    // The case's lid has ribs over the top 18 mm: nothing taller than 3 mm there.
+    .ribs: Keepout {
+        .x &= 0mm
+        .y &= 0mm
+        .width &= 40mm
+        .height &= 18mm
+        .layers &= "top"
+        .max_height &= 3mm
+    }
+    .tall: Resistor { .resistance &= 15kohm +/- 1% }
+    .flat: Resistor { .resistance &= 15kohm +/- 1% }
+    .rail.pos ~> .tall ~> .rail.neg
+    .rail.pos ~> .flat ~> .rail.neg
+    .tall.body_height &= 9mm
+    .flat.body_height &= 0.5mm
+}
+```
+
+The placer put `.tall` in the part of the board the ribs leave free. Placed by hand under the ribs (a layout file that locks it there), the check says:
+
+```text
+error: Ribbed: R2 (`tall`) stands 9.00 mm tall on the top face, and the keepout `ribs` allows 3.00 mm there (6.00 mm too tall), where its body is, around (20.0, 6.0) mm from the board's top left corner
+```
+
+Misuse: a height is one value, above or at zero, and a limit is above zero.
+
+```nsm fails
+import std::parts::passive::Resistor
+import std::mfg::jlcpcb::TwoLayer
+
+board Vague {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .r: Resistor { .resistance &= 15kohm +/- 1% }
+    .r.body_height &= 2mm..5mm
+}
+```
+
+```text
+error: Vague: `r.body_height` is 2mm..5mm, a range, and a position, a size or a height is one value: say it with `&= 2mm`
+```
+
 ### Labels
 
 A `Label` is silkscreen text: a part with no pins that is fitted by nobody, placed like any other part. `.text` is what it prints and `.height` how tall; unset, the process's least text height, and never less. The reference designator of a label is `LBL1`, and it is not in the schematic.
@@ -3433,7 +3501,7 @@ error: Plugged: J1 is not wholly inside the board outline: its courtyard is 0.52
 error [constraint] constraint power.place.left (cased.nsm:25) is violated: the left edge of the body of J1 (F.Fab) is 28.73 mm from the left edge of the outline, and it allows 1.4 to 1.6 mm (27.13 mm over)
 ```
 
-The editor lists the same findings with the placement's. Relations between two parts (a pitch, an offset), part heights and keep-out zones by height are not built yet (ADR 0045, C2 and C3), and the editor does not yet draw the windows (C4).
+The editor lists the same findings with the placement's. Relations between two parts (a pitch, an offset) are not built yet (ADR 0045, C2), and the editor does not yet draw the windows (C4); height limits are in _Height limits_ above.
 
 ### The layout file
 
@@ -4743,7 +4811,7 @@ Parts are numbered by their letters in the order of their paths, and every kind 
 | `std::mfg::stackup::Pour` | Copper poured on an outer layer, `.top` or `.bottom` of a process: a `.net` and the most space between stitching vias, `.stitch_pitch`. |
 | `std::pcb::Outline` | The board edge, the board's member `.outline`: `.width`, `.height` (ranges allowed) and `.corner_radius`. |
 | `std::pcb::Cutout` | A rectangular hole inside the outline: `.x`, `.y`, `.width`, `.height`, `.corner_radius`. |
-| `std::pcb::Keepout` | An area of a board, or of a part in the part's own frame, where tracks, vias, copper or parts are not allowed: `.x`, `.y`, `.width`, `.height`, `.layers` and `.tracks`, `.vias`, `.copper`, `.parts` (each `"forbid"`, the default, or `"allow"`). |
+| `std::pcb::Keepout` | An area of a board, or of a part in the part's own frame, where tracks, vias, copper or parts are not allowed: `.x`, `.y`, `.width`, `.height`, `.layers` and `.tracks`, `.vias`, `.copper`, `.parts` (each `"forbid"`, the default, or `"allow"`); and, provisionally, `.max_height`, the tallest a part may stand there (see _Height limits_), with which the four default to `"allow"`. |
 
 ### Modules
 

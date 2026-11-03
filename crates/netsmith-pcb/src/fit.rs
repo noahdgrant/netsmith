@@ -154,7 +154,7 @@ pub(crate) fn fit(
                 .all(|c| shape.depth(c) >= rules.copper_to_edge - 1e-9)
         });
         done = pads_clear
-            && (keepouts.is_empty() || {
+            && ((keepouts.is_empty() && placement.height_zones.is_empty()) || {
                 // The mechanical parts are in the corners, and stay: with them in the run, their
                 // reference text and silkscreen are kept clear of too.
                 let count = placed.len();
