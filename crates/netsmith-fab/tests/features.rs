@@ -102,8 +102,7 @@ fn the_board_agrees_with_kicads_own_plot() {
         eprintln!("skipped: no KiCad");
         return;
     };
-    let dir = std::env::temp_dir().join(format!("netsmith-fab-features-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = netsmith_kicad::testlib::TempDir::new("fab-features");
     std::fs::write(dir.join("features.kicad_pcb"), BOARD).unwrap();
     std::fs::write(
         dir.join("features.kicad_pro"),
@@ -112,7 +111,6 @@ fn the_board_agrees_with_kicads_own_plot() {
     .unwrap();
     let report = check(&dir.join("features.kicad_pcb"), &kicad, &Limits::default())
         .unwrap_or_else(|e| panic!("{e}"));
-    let _ = std::fs::remove_dir_all(&dir);
     assert!(report.ok(), "{report}");
     // Every layer was compared: four copper, mask, paste and silkscreen of both faces
     // (two of them empty at the back are still compared), and the outline.

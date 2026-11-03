@@ -1,8 +1,8 @@
 //! `netsmith dxf import` (ADR 0045, C0 piece 3): an enclosure's DXF becomes an outline, a
 //! cutout and mounting holes that the fab pipeline accepts. The DXF is written here by hand.
 
+use netsmith_kicad::testlib::TempDir;
 use std::fs;
-use std::path::PathBuf;
 
 use netsmith::Libraries;
 use netsmith::dxf::{Request, import, render, write_layout};
@@ -89,11 +89,8 @@ fn request() -> Request {
     }
 }
 
-fn temp(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("netsmith-dxf-test-{}-{name}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
+fn temp(name: &str) -> TempDir {
+    TempDir::new(&format!("dxf-test-{name}"))
 }
 
 #[test]
@@ -246,7 +243,6 @@ fn write_merges_into_the_layout_file_prints_a_diff_and_leaves_the_source_alone()
         update.contains("-at = [5.0, 5.5]") && update.contains("+at = [6.0, 5.5]"),
         "{update}"
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -263,7 +259,6 @@ fn write_names_the_boards_when_the_choice_is_wrong() {
     let e = write_layout(&source, Some("C"), &imported).unwrap_err();
     assert!(e.contains("no board `C`") && e.contains("A, B"), "{e}");
     assert!(!dir.join("two.pcb.toml").exists());
-    let _ = fs::remove_dir_all(&dir);
 }
 
 /// The example board with its outline, slot and holes replaced by what the DXF said.
@@ -352,7 +347,6 @@ fn a_board_with_the_imported_outline_goes_through_fab_with_the_holes_where_the_c
         .unwrap_or_else(|e| panic!("{e}"));
         assert!(report.ok(), "{report}");
     }
-    let _ = fs::remove_dir_all(&dir);
 }
 
 fn netsmith(args: &[&str]) -> std::process::Output {
@@ -420,5 +414,4 @@ fn the_command_prints_the_source_to_paste_and_writes_only_the_layout_file() {
             .unwrap()
             .contains("binary DXF")
     );
-    let _ = fs::remove_dir_all(&dir);
 }

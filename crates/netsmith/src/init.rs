@@ -385,9 +385,7 @@ mod tests {
 
     #[test]
     fn skills_are_copied_where_a_symlink_cannot_be_made() {
-        let dir = std::env::temp_dir().join(format!("netsmith-init-copy-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let dir = netsmith_kicad::testlib::TempDir::new("init-copy");
         let said = link_skills(&dir, |_, _| Err(io::ErrorKind::PermissionDenied.into())).unwrap();
         assert!(
             said.contains("copy") && said.contains("symlinks are not available"),
@@ -402,7 +400,6 @@ mod tests {
         // An existing `.claude/skills` is kept, whatever it is.
         let said = link_skills(&dir, |_, _| unreachable!()).unwrap();
         assert!(said.starts_with("kept"), "{said}");
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

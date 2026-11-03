@@ -56,16 +56,13 @@ fn drc(name: &str, pcb: &str, pro: &str) -> Option<Report> {
     // Tests run side by side, so each run gets a folder of its own.
     static RUNS: AtomicUsize = AtomicUsize::new(0);
     let serial = RUNS.fetch_add(1, Ordering::SeqCst);
-    let dir =
-        std::env::temp_dir().join(format!("netsmith-pcb-test-{}-{serial}", std::process::id()));
-    std::fs::create_dir_all(&dir).ok()?;
+    let dir = TempDir::new(&format!("pcb-test-{serial}"));
     let path = dir.join(format!("{name}.kicad_pcb"));
     std::fs::write(&path, pcb).ok()?;
     std::fs::write(path.with_extension("kicad_pro"), pro).ok()?;
     let json = cli
         .drc_json(&path)
         .unwrap_or_else(|e| panic!("{name}: {e}"));
-    let _ = std::fs::remove_dir_all(&dir);
     let theirs = kicad::parse(&json).unwrap();
 
     let ours = netsmith_fab::drc::check(pcb, Some(pro), &Default::default())
@@ -1173,8 +1170,7 @@ fn pour_covers(name: &str, b: &Board, net: &str, points: &[Pt]) -> Option<Vec<bo
     }
     let temp = run("cmd.exe", &["/c", "echo %TEMP%"])?;
     let temp = PathBuf::from(run("wslpath", &[temp.trim_end_matches('\r')])?);
-    let dir = temp.join(format!("netsmith-pcb-pour-{}-{name}", std::process::id()));
-    std::fs::create_dir_all(&dir).ok()?;
+    let dir = TempDir::new_in(&temp, &format!("pcb-pour-{name}"));
     std::fs::write(dir.join("b.kicad_pcb"), kicad_pcb(b)).ok()?;
     std::fs::write(dir.join("b.kicad_pro"), kicad_pro(b)).ok()?;
     let spots: Vec<String> = points
@@ -1201,7 +1197,6 @@ fn pour_covers(name: &str, b: &Board, net: &str, points: &[Pt]) -> Option<Vec<bo
         command
     })
     .ok()?;
-    let _ = std::fs::remove_dir_all(&dir);
     assert!(ran.success(), "KiCad's python failed:\n{}", ran.report());
     Some(
         String::from_utf8_lossy(&ran.output.stdout)

@@ -44,8 +44,7 @@ fn erc(name: &str, schematic: &str) -> Option<Vec<String>> {
     let temp = PathBuf::from(run("wslpath", &[temp.trim_end_matches('\r')])?);
     static RUNS: AtomicUsize = AtomicUsize::new(0);
     let serial = RUNS.fetch_add(1, Ordering::SeqCst);
-    let dir = temp.join(format!("netsmith-erc-test-{}-{serial}", std::process::id()));
-    std::fs::create_dir_all(&dir).ok()?;
+    let dir = TempDir::new_in(&temp, &format!("erc-test-{serial}"));
     std::fs::write(dir.join(format!("{name}.kicad_sch")), schematic).ok()?;
     let win = run("wslpath", &["-w", dir.to_str()?])?;
     let report = format!("{win}\\erc.json");
@@ -71,7 +70,6 @@ fn erc(name: &str, schematic: &str) -> Option<Vec<String>> {
         ran.report()
     );
     let text = std::fs::read_to_string(dir.join("erc.json")).ok()?;
-    let _ = std::fs::remove_dir_all(&dir);
 
     let report: serde_json::Value = serde_json::from_str(&text).ok()?;
     let found = report["sheets"]

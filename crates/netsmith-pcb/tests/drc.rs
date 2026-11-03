@@ -3,6 +3,7 @@
 //! connections as the ratsnest, a 70-part board must be checked in a couple of seconds, and
 //! where KiCad is installed its check must agree with ours on a sample of them.
 
+use netsmith_kicad::testlib::TempDir;
 use std::time::Instant;
 
 use netsmith_fab::drc::{self, Extras, Report, kicad};
@@ -26,15 +27,13 @@ fn ours(board: &Board) -> Report {
 /// KiCad's check of the same files compared with ours, or `None` if KiCad is not here.
 fn against_kicad(name: &str, board: &Board, mine: &Report) -> Option<kicad::Comparison> {
     let cli = KicadCliExe::locate()?;
-    let dir = std::env::temp_dir().join(format!("netsmith-pcb-drc-{}-{name}", std::process::id()));
-    std::fs::create_dir_all(&dir).ok()?;
+    let dir = TempDir::new(&format!("pcb-drc-{name}"));
     let path = dir.join(format!("{name}.kicad_pcb"));
     std::fs::write(&path, kicad_pcb(board)).ok()?;
     std::fs::write(path.with_extension("kicad_pro"), kicad_pro(board)).ok()?;
     let json = cli
         .drc_json(&path)
         .unwrap_or_else(|e| panic!("{name}: {e}"));
-    let _ = std::fs::remove_dir_all(&dir);
     Some(kicad::compare(mine, &kicad::parse(&json).unwrap(), 0.1))
 }
 

@@ -3,6 +3,7 @@
 
 mod common;
 
+use netsmith_kicad::testlib::TempDir;
 use std::time::{Duration, Instant};
 
 use netsmith_pcb::{PlaceOptions, Quality, Ratsnest, RouteOptions, route_with};
@@ -290,9 +291,7 @@ fn the_placement_of_the_big_boards_is_measured() {
 fn crosscheck(name: &str, board: &netsmith_pcb::Board) -> Option<netsmith_fab::crosscheck::Report> {
     use netsmith_fab::crosscheck::{Limits, check};
     let cli = netsmith_fab::KicadCliExe::locate()?;
-    let dir =
-        std::env::temp_dir().join(format!("netsmith-pcb-cross-{}-{name}", std::process::id()));
-    std::fs::create_dir_all(&dir).ok()?;
+    let dir = TempDir::new(&format!("pcb-cross-{name}"));
     let pcb = dir.join(format!("{name}.kicad_pcb"));
     std::fs::write(&pcb, netsmith_pcb::kicad_pcb(board)).ok()?;
     std::fs::write(
@@ -301,7 +300,6 @@ fn crosscheck(name: &str, board: &netsmith_pcb::Board) -> Option<netsmith_fab::c
     )
     .ok()?;
     let report = check(&pcb, &cli, &Limits::default()).unwrap_or_else(|e| panic!("{e}"));
-    let _ = std::fs::remove_dir_all(&dir);
     Some(report)
 }
 

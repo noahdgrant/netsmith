@@ -3,6 +3,7 @@
 ## Working in the repo
 
 - Build and test with `cargo test`; lint with `cargo clippy --all-targets`.
+- A test that needs a folder takes it from `netsmith_kicad::testlib::TempDir` (or `TempFile`), which removes it when the test ends, also on a panic; set `NETSMITH_KEEP_TEST_DIRS=1` to keep the folders of a failing run. Bind the guard to a name, never to `_`.
 - Start a project in a directory with `netsmith init` (ADR 0011, ADR 0015); with a `netsmith.toml`, `build`, `fab` and `editor` need no file.
 - Build a board with `cargo run -p netsmith -- build examples/led.nsm --out out`; make the files for a board house with `... -- fab examples/led.nsm --out fab`; edit and see it in a browser with `... -- editor examples/led.nsm` (ADR 0019; the page is committed as a built bundle in `crates/netsmith-editor/web-dist`, so only a change to its sources in `crates/netsmith-editor/web` needs Node 20 or newer and `scripts/web-bundle update`).
 - A part number goes into a catalog only with a recorded source (`data/jlcpcb/README.md`).

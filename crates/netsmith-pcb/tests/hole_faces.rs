@@ -6,6 +6,7 @@
 
 mod common;
 
+use netsmith_kicad::testlib::TempDir;
 use std::collections::BTreeMap;
 
 use netsmith_core::{Design, Features, Net, Outline, Part, PinRef};
@@ -47,12 +48,7 @@ fn board(
     size: (f64, f64),
     options: &PlaceOptions,
 ) -> Result<Board, netsmith_pcb::BoardError> {
-    let folder = std::env::temp_dir().join(format!(
-        "netsmith-hole-faces-{}-{}",
-        std::process::id(),
-        header.len()
-    ));
-    std::fs::create_dir_all(&folder).unwrap();
+    let folder = TempDir::new("hole-faces");
     std::fs::write(folder.join("ANGLE.kicad_mod"), header).unwrap();
     std::fs::write(folder.join("BIG.kicad_mod"), BIG).unwrap();
     let part = |refdes: &str, package: &str| Part {
@@ -93,7 +89,7 @@ fn board(
     .unwrap();
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
     let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
-        .with_library("t", folder);
+        .with_library("t", folder.path());
     Board::from_design_placed(&design, &mapping, &library, options)
 }
 

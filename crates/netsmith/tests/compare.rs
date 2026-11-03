@@ -2,6 +2,7 @@
 //! KiCad (`kicad-cli sch export netlist`), so they skip when it is not installed; the
 //! rest need no KiCad.
 
+use netsmith_kicad::testlib::TempDir;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -17,14 +18,8 @@ use netsmith_solve::Catalogs;
 const LED: &str = include_str!("../../../examples/led.nsm");
 const REGULATOR: &str = include_str!("../../../examples/linear_regulator.nsm");
 
-fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "netsmith-compare-test-{}-{name}",
-        std::process::id()
-    ));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
+fn scratch(name: &str) -> TempDir {
+    TempDir::new(&format!("compare-test-{name}"))
 }
 
 /// Build with our own small KiCad libraries, so that no KiCad is needed to make the files.
@@ -71,7 +66,6 @@ fn the_generated_schematic_matches_its_own_board() {
         let Compared(verdict, text) = same(&sch, &pcb, &kicad);
         assert_eq!(verdict, Verdict::Match, "{name}: {text}");
         assert!(text.starts_with("A: "), "{text}");
-        let _ = fs::remove_dir_all(&dir);
     }
 }
 
@@ -88,7 +82,6 @@ fn the_source_matches_its_schematic_and_its_board() {
         let Compared(verdict, text) = same(&nsm, other, &kicad);
         assert_eq!(verdict, Verdict::Match, "{text}");
     }
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -104,7 +97,6 @@ fn a_schematic_compared_with_itself_matches() {
         text.contains("same designator") && text.contains("same name"),
         "{text}"
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -148,7 +140,6 @@ fn renumbered_designators_and_other_net_names_still_match() {
         "{}",
         done.text
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -167,7 +158,6 @@ fn a_resistor_of_another_value_is_found_by_kicad_too() {
         out.contains("1 difference") && out.contains("A is 330") && out.contains("B is 470"),
         "{out}"
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 /// The netlist of the LED example as `netsmith build` sees it, which needs no KiCad.
@@ -265,7 +255,6 @@ fn the_command_exits_0_for_a_match_1_for_a_difference_and_2_for_a_mistake() {
     let (code, _, err) = run(&[&a, &b, Path::new("--map"), &map]);
     assert_eq!(code, Some(2));
     assert!(err.contains("R9"), "{err}");
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -287,5 +276,4 @@ fn a_board_is_chosen_by_name_when_a_file_has_several() {
     assert!(e.contains("`Nope`") && e.contains("TwoBoards/power"), "{e}");
     let done = compare_files(&request(Some("TwoBoards/power")), None).unwrap();
     assert_eq!(done.verdict, Verdict::Match);
-    let _ = fs::remove_dir_all(&dir);
 }

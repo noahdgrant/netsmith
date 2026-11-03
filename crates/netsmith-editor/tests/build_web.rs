@@ -14,32 +14,25 @@ use std::{
     fs,
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU32, Ordering},
     time::Duration,
 };
 
 use build_web::{Done, INSTALL_STAMP, Provided};
-
-static COUNTER: AtomicU32 = AtomicU32::new(0);
+use netsmith_kicad::testlib::TempDir;
 
 /// A scratch directory with a `web/` (sources and a lockfile) and a `bin/` with a fake `node`
 /// and `npm`. The fake npm appends each command to `log`; `ci` makes `node_modules`; `run build`
 /// makes `dist/index.html` and an asset. A file `fail-ci` or `fail-build` in `web/` makes that
 /// step print its text and exit 2; `slow` makes the build sleep a moment.
 struct Fixture {
-    root: PathBuf,
+    root: TempDir,
     web: PathBuf,
     bin: PathBuf,
 }
 
 impl Fixture {
     fn new(node_version: &str) -> Fixture {
-        let root = std::env::temp_dir().join(format!(
-            "ns-build-web-{}-{}",
-            std::process::id(),
-            COUNTER.fetch_add(1, Ordering::SeqCst)
-        ));
-        let _ = fs::remove_dir_all(&root);
+        let root = TempDir::new("build-web");
         let web = root.join("web");
         let bin = root.join("bin");
         fs::create_dir_all(web.join("src")).unwrap();
@@ -101,12 +94,6 @@ esac
             .filter(|l| !l.contains("--version"))
             .map(str::to_string)
             .collect()
-    }
-}
-
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.root);
     }
 }
 
@@ -294,11 +281,11 @@ fn the_message_for_a_binary_without_the_page_names_the_manual_command() {
 
 #[test]
 fn search_dirs_orders_nvm_versions_newest_first() {
-    let root = std::env::temp_dir().join(format!("ns-nvm-{}", std::process::id()));
+    let root = TempDir::new("nvm");
     for v in ["v20.13.1", "v22.23.4", "v22.9.0"] {
         fs::create_dir_all(root.join(".nvm/versions/node").join(v).join("bin")).unwrap();
     }
-    let dirs = build_web::search_dirs(None, Some(root.clone().into()));
+    let dirs = build_web::search_dirs(None, Some(root.path().to_path_buf().into()));
     let names: Vec<String> = dirs
         .iter()
         .map(|d| {
@@ -311,7 +298,6 @@ fn search_dirs_orders_nvm_versions_newest_first() {
         })
         .collect();
     assert_eq!(names, ["v22.23.4", "v22.9.0", "v20.13.1"]);
-    let _ = fs::remove_dir_all(root);
 }
 
 /// A committed bundle (`web-dist`) of the fixture's sources as they are now.

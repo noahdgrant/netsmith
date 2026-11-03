@@ -1,8 +1,9 @@
 //! Orders (ADR 0035): `[order.*]` in `netsmith.toml` and `netsmith fab --order`. The mistakes
 //! and the listing and the orders themselves need no KiCad (ADR 0037).
 
+use netsmith_kicad::testlib::TempDir;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use netsmith::Libraries;
@@ -16,10 +17,8 @@ const TWO_BOARDS: &str = include_str!("../../../examples/two_boards.nsm");
 
 /// A project with a board `LedExample` and a system `TwoBoards` of two boards, and the
 /// `[order.*]` tables `orders`.
-fn project(name: &str, orders: &str) -> PathBuf {
-    let root =
-        std::env::temp_dir().join(format!("netsmith-order-test-{}-{name}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+fn project(name: &str, orders: &str) -> TempDir {
+    let root = TempDir::new(&format!("order-test-{name}"));
     fs::create_dir_all(root.join("src")).unwrap();
     fs::write(root.join("src/led.nsm"), LED).unwrap();
     fs::write(root.join("src/two.nsm"), TWO_BOARDS).unwrap();
@@ -98,7 +97,6 @@ fn an_unknown_board_stops_the_order_and_lists_the_boards_that_exist() {
         "{err}"
     );
     assert!(!root.join("fab").exists(), "nothing is written");
-    let _ = fs::remove_dir_all(&root);
 }
 
 #[test]
@@ -114,7 +112,6 @@ fn an_order_without_kicad_is_made_and_its_boards_pass_the_check() {
     let notes = fs::read_to_string(dir.join("LedExample/fab-notes.txt")).unwrap();
     assert!(notes.contains("design rules check: passed"), "{notes}");
     assert!(dir.join("LedExample/LedExample-gerbers.zip").is_file());
-    let _ = fs::remove_dir_all(&root);
 }
 
 #[test]
@@ -167,8 +164,6 @@ fn the_program_lists_the_orders_and_refuses_an_unknown_one() {
     let none = project("cli-none", "");
     let listed = netsmith(&none, &["fab", "--order"]);
     assert!(String::from_utf8_lossy(&listed.stdout).contains("has no orders"));
-    let _ = fs::remove_dir_all(&root);
-    let _ = fs::remove_dir_all(&none);
 }
 
 /// How many of the parts with LCSC number `lcsc` one board's `bom.csv` lists.
@@ -256,7 +251,6 @@ fn an_order_makes_only_its_boards_and_a_summary_with_the_numbers_scaled() {
         summary.contains(&format!("unverified items: {unverified}")),
         "{summary}"
     );
-    let _ = fs::remove_dir_all(&root);
 }
 
 #[test]
@@ -286,7 +280,6 @@ fn a_system_in_an_order_is_all_its_members_and_a_new_run_replaces_the_old_folder
     make(&root, "system", Some(&cli)).unwrap_or_else(|e| panic!("{e}"));
     assert!(!fab.join("TwoBoards/power").exists());
     assert!(fab.join("TwoBoards/led/bom.csv").is_file());
-    let _ = fs::remove_dir_all(&root);
 }
 
 #[test]
@@ -314,5 +307,4 @@ fn the_program_makes_an_order_into_the_out_directory() {
             && stdout.contains("wrote "),
         "{stdout}"
     );
-    let _ = fs::remove_dir_all(&root);
 }

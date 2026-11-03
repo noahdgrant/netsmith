@@ -6,6 +6,7 @@
 mod common;
 
 use netsmith_core::{Cutout, Design, Features, Net, Outline, Part, PinRef};
+use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::{Board, FootprintLibrary, PlaceOptions, Rect};
 
 use common::process;
@@ -20,8 +21,7 @@ const TIGHT: &str = "(footprint \"TIGHT\" (version 20241229) (generator \"netsmi
 
 /// `count` tight parts, in a chain of nets, on a board of `size` mm with a cutout.
 fn tight_board(count: usize, size: (f64, f64), cutout: Cutout) -> Board {
-    let folder = std::env::temp_dir().join(format!("netsmith-cutout-pads-{}", std::process::id()));
-    std::fs::create_dir_all(&folder).unwrap();
+    let folder = TempDir::new("cutout-pads");
     std::fs::write(folder.join("TIGHT.kicad_mod"), TIGHT).unwrap();
     let parts: Vec<Part> = (1..=count)
         .map(|i| Part {
@@ -71,7 +71,7 @@ fn tight_board(count: usize, size: (f64, f64), cutout: Cutout) -> Board {
     .unwrap();
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
     let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
-        .with_library("t", folder);
+        .with_library("t", folder.path());
     Board::from_design_placed(&design, &mapping, &library, &PlaceOptions::default())
         .unwrap_or_else(|e| panic!("{e}"))
 }

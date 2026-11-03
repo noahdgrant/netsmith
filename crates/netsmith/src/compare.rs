@@ -226,13 +226,11 @@ mod tests {
 
     #[test]
     fn a_schematic_without_kicad_says_how_to_find_it() {
-        let dir = std::env::temp_dir().join(format!("netsmith-compare-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
+        let dir = netsmith_kicad::testlib::TempDir::new("compare");
         let sch = dir.join("x.kicad_sch");
         fs::write(&sch, "(kicad_sch)").unwrap();
         let e = load(sch.to_str().unwrap(), None, None).unwrap_err();
         assert!(e.contains("KICAD_CLI"), "{e}");
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -218,11 +218,12 @@ pub fn scratch_name() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use netsmith_kicad::testlib::TempFile;
     use std::collections::HashSet;
     use std::sync::atomic::AtomicUsize;
 
-    fn temp(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("{}-{name}", scratch_name()))
+    fn temp(name: &str) -> TempFile {
+        TempFile::new("fab-exclusive", name)
     }
 
     #[test]
@@ -250,7 +251,7 @@ mod tests {
         static MOST: AtomicUsize = AtomicUsize::new(0);
         let workers: Vec<_> = (0..6)
             .map(|_| {
-                let path = path.clone();
+                let path = path.to_path_buf();
                 thread::spawn(move || {
                     for _ in 0..5 {
                         let _held = lock(&path, Duration::from_secs(30)).unwrap();
@@ -266,7 +267,6 @@ mod tests {
             w.join().unwrap();
         }
         assert_eq!(MOST.load(Ordering::SeqCst), 1);
-        let _ = fs::remove_file(path);
     }
 
     #[test]
@@ -288,7 +288,6 @@ mod tests {
         );
         drop(other);
         lock(&path, Duration::from_millis(200)).unwrap();
-        let _ = fs::remove_file(path);
     }
 
     fn shell(script: &str) -> impl Fn() -> Command {
@@ -325,8 +324,6 @@ mod tests {
             "{:?}",
             ran.earlier
         );
-        let _ = fs::remove_file(lock_file);
-        let _ = fs::remove_file(marker);
     }
 
     #[test]
@@ -345,7 +342,6 @@ mod tests {
         assert!(report.contains("accept4 failed 110"), "{report}");
         assert!(report.contains("exit status 1"), "{report}");
         assert!(report.contains("earlier attempt 2 of 3"), "{report}");
-        let _ = fs::remove_file(lock_file);
     }
 
     #[test]
@@ -365,8 +361,6 @@ mod tests {
         assert!(!ran.success() && ran.earlier.is_empty());
         assert!(ran.report().contains("bad board") && ran.report().contains("exit status 3"));
         assert_eq!(fs::read_to_string(&counter).unwrap().lines().count(), 1);
-        let _ = fs::remove_file(lock_file);
-        let _ = fs::remove_file(counter);
     }
 
     #[test]
@@ -385,8 +379,6 @@ mod tests {
         .unwrap();
         assert!(ran.success());
         assert!(ran.earlier[0].contains("signal"), "{:?}", ran.earlier);
-        let _ = fs::remove_file(lock_file);
-        let _ = fs::remove_file(marker);
     }
 
     #[test]
@@ -400,6 +392,5 @@ mod tests {
         )
         .unwrap_err();
         assert!(e.to_string().contains("/nonexistent/kicad-cli.exe"), "{e}");
-        let _ = fs::remove_file(lock_file);
     }
 }

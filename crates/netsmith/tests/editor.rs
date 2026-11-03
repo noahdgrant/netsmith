@@ -1,5 +1,6 @@
 //! The editor's backend over a project on disk, and the whole server over a socket.
 
+use netsmith_kicad::testlib::TempDir;
 use std::{
     fs,
     io::{Read, Write},
@@ -30,12 +31,8 @@ const TWO_BOARDS: &str = include_str!("../../../examples/two_boards.nsm");
 const MODULE: &str = "//! A module.\n\nimport std::sources::Rail\n\n/// A supply.\ninterface Supply {\n    .rail: Rail\n}\n";
 
 /// A project: `two_boards.nsm` as its one top-level file, and a module beside it.
-fn project(name: &str) -> (PathBuf, Workspace) {
-    let root = std::env::temp_dir().join(format!(
-        "netsmith-editor-test-{}-{name}",
-        std::process::id()
-    ));
-    let _ = fs::remove_dir_all(&root);
+fn project(name: &str) -> (TempDir, Workspace) {
+    let root = TempDir::new(&format!("editor-test-{name}"));
     fs::create_dir_all(root.join("src")).unwrap();
     fs::write(
         root.join("netsmith.toml"),
@@ -55,9 +52,7 @@ fn line_of(text: &str, needle: &str) -> u32 {
 
 #[test]
 fn a_project_that_never_built_has_problems_and_no_boards() {
-    let root =
-        std::env::temp_dir().join(format!("netsmith-editor-test-{}-never", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+    let root = TempDir::new("editor-test-never");
     fs::create_dir_all(root.join("src")).unwrap();
     fs::write(root.join("netsmith.toml"), "[project]\nname = \"demo\"\n").unwrap();
     fs::write(
@@ -84,7 +79,7 @@ fn a_project_that_never_built_has_problems_and_no_boards() {
 
 #[test]
 fn the_tree_lists_files_by_role_with_their_definitions() {
-    let (_, editor) = project("tree");
+    let (_root, editor) = project("tree");
     let tree = editor.project();
     assert_eq!(tree.title, "demo");
     assert!(tree.has_manifest);
@@ -242,7 +237,7 @@ fn a_check_of_unsaved_text_reports_the_real_message_where_it_is_and_writes_nothi
 
 #[test]
 fn a_part_knows_where_it_and_what_contains_it_are_declared() {
-    let (_, editor) = project("detail");
+    let (_root, editor) = project("detail");
     let power = editor.board("TwoBoards/power").unwrap();
     let regulator = power
         .parts
@@ -269,7 +264,7 @@ fn a_part_knows_where_it_and_what_contains_it_are_declared() {
 
 #[test]
 fn the_power_tree_is_read_from_the_solved_model() {
-    let (_, editor) = project("power");
+    let (_root, editor) = project("power");
     let tree = editor.power("TwoBoards").unwrap();
     let node = |id: &str| {
         tree.nodes
@@ -346,7 +341,7 @@ fn the_power_tree_is_read_from_the_solved_model() {
 
 #[test]
 fn the_system_view_shows_boards_ports_and_joins_or_the_members_of_a_board() {
-    let (_, editor) = project("system");
+    let (_root, editor) = project("system");
     let system = editor.system("TwoBoards").unwrap();
     assert_eq!(system.kind, "system");
     let names: Vec<&str> = system.nodes.iter().map(|n| n.name.as_str()).collect();
@@ -431,7 +426,7 @@ fn the_system_view_shows_boards_ports_and_joins_or_the_members_of_a_board() {
 
 #[test]
 fn the_bom_groups_parts_like_the_fab_bom_with_price_and_stock() {
-    let (_, editor) = project("bom");
+    let (_root, editor) = project("bom");
     let bom = editor.bom("TwoBoards/led").unwrap();
     assert_eq!(bom.lines.len(), 2);
     let led = bom.lines.iter().find(|l| l.kind == "Led").unwrap();
@@ -459,7 +454,7 @@ fn the_bom_groups_parts_like_the_fab_bom_with_price_and_stock() {
 
 #[test]
 fn go_to_definition_follows_imports_types_and_members() {
-    let (_, editor) = project("definition");
+    let (_root, editor) = project("definition");
     let at = |needle: &str, nth: usize| TWO_BOARDS.match_indices(needle).nth(nth).unwrap().0;
     let find = |offset: usize| {
         editor
@@ -514,7 +509,7 @@ fn the_pcb_is_placed_at_once_and_routed_on_demand() {
         );
         return;
     }
-    let (_, editor) = project("pcb");
+    let (_root, editor) = project("pcb");
     let placed = editor.pcb_scene("TwoBoards/led").unwrap().svg;
     assert!(placed.contains("class=\"l-pads\"") && placed.contains("class=\"l-silk\""));
     let (say, heard) = listener();
@@ -553,7 +548,7 @@ fn the_editor_answers_while_a_board_is_being_routed_and_while_fab_runs() {
     if !FootprintLibrary::installed().root().exists() {
         return;
     }
-    let (_, editor) = project("busy");
+    let (_root, editor) = project("busy");
     let editor = Arc::new(editor);
     // What the job says is told from inside the job, on its thread: if the job held the lock
     // the editor keeps its state behind, a request made from there would never be answered.
@@ -587,7 +582,7 @@ fn a_route_can_be_cancelled_and_keeps_what_it_has() {
     if !FootprintLibrary::installed().root().exists() {
         return;
     }
-    let (_, editor) = project("cancel");
+    let (_root, editor) = project("cancel");
     let (say, _) = listener();
     // The cancel flag is cleared when a route starts, so one before it changes nothing.
     editor.cancel_route();
@@ -655,7 +650,7 @@ fn fab_makes_the_package_and_offers_its_files() {
 }
 
 /// The same project with an order of the two boards, for the build panel's orders.
-fn project_with_order(name: &str, orders: &str) -> (PathBuf, Workspace) {
+fn project_with_order(name: &str, orders: &str) -> (TempDir, Workspace) {
     let (root, _) = project(name);
     let manifest = fs::read_to_string(root.join("netsmith.toml")).unwrap();
     fs::write(root.join("netsmith.toml"), format!("{manifest}{orders}")).unwrap();
@@ -666,7 +661,7 @@ fn project_with_order(name: &str, orders: &str) -> (PathBuf, Workspace) {
 
 #[test]
 fn the_orders_of_the_manifest_are_listed_with_their_boards_and_quantities() {
-    let (_, editor) = project_with_order(
+    let (_root, editor) = project_with_order(
         "orders-list",
         "[order.devkit.boards]\n\"TwoBoards/led\" = 5\nTwoBoards = 2\n",
     );
@@ -679,7 +674,7 @@ fn the_orders_of_the_manifest_are_listed_with_their_boards_and_quantities() {
         .map(|b| (b.name.as_str(), b.quantity))
         .collect();
     assert_eq!(boards, [("TwoBoards/led", 5), ("TwoBoards", 2)]);
-    let (_, none) = project("orders-none");
+    let (_root, none) = project("orders-none");
     assert!(none.orders().is_empty());
 
     let (say, _) = listener();
@@ -855,11 +850,7 @@ fn the_server_serves_the_project_and_tells_the_page_when_a_file_changes() {
 
 #[test]
 fn the_bom_reads_price_and_stock_from_the_projects_own_catalog_files_too() {
-    let root = std::env::temp_dir().join(format!(
-        "netsmith-editor-test-{}-catalog",
-        std::process::id()
-    ));
-    let _ = fs::remove_dir_all(&root);
+    let root = TempDir::new("editor-test-catalog");
     fs::create_dir_all(root.join("src")).unwrap();
     fs::create_dir_all(root.join("catalogs")).unwrap();
     fs::write(
@@ -913,12 +904,8 @@ fn the_bom_reads_price_and_stock_from_the_projects_own_catalog_files_too() {
 }
 
 /// A project whose one catalog file has a part only it has, a day-old row for the LED example.
-fn project_with_priced_catalog(name: &str) -> (PathBuf, String) {
-    let root = std::env::temp_dir().join(format!(
-        "netsmith-editor-test-{}-{name}",
-        std::process::id()
-    ));
-    let _ = fs::remove_dir_all(&root);
+fn project_with_priced_catalog(name: &str) -> (TempDir, String) {
+    let root = TempDir::new(&format!("editor-test-{name}"));
     fs::create_dir_all(root.join("src")).unwrap();
     fs::create_dir_all(root.join("catalogs")).unwrap();
     fs::write(
@@ -1109,7 +1096,7 @@ fn the_check_runs_the_command_over_the_projects_catalogs_and_writes_only_checked
 fn the_check_says_why_it_cannot_and_what_a_blocked_endpoint_did() {
     let say: Say = Arc::new(|_: &str| {});
     // A project that lists no catalogs: the standard ones are built in.
-    let (_, editor) = project("refresh-none");
+    let (_root, editor) = project("refresh-none");
     let r = editor.refresh_catalogs(false, false, &say).unwrap();
     let why = r.error.unwrap();
     assert!(
@@ -1490,7 +1477,7 @@ fn an_edit_takes_the_routed_copper_away() {
     if !footprints_here() {
         return;
     }
-    let (_, editor) = project("unroute");
+    let (_root, editor) = project("unroute");
     let (say, _) = listener();
     editor.route(LED, &say).unwrap();
     let routed = editor.pcb_scene(LED).unwrap();
@@ -1516,7 +1503,7 @@ const POURS_LAYOUT: &str = include_str!("../../../examples/outline_and_pours.pcb
 const POURS_BOARD: &str = "OutlineAndPours";
 
 /// The four-layer example with its keepout, cutout and layout file as a project.
-fn pours_project(name: &str) -> (PathBuf, Workspace) {
+fn pours_project(name: &str) -> (TempDir, Workspace) {
     let (root, _) = project(name);
     fs::write(root.join("src/main.nsm"), POURS).unwrap();
     fs::write(root.join("src/main.pcb.toml"), POURS_LAYOUT).unwrap();
@@ -1568,7 +1555,7 @@ fn the_scene_says_where_each_keepout_comes_from_and_the_outline_has_four_layers(
     if !footprints_here() {
         return;
     }
-    let (_, editor) = pours_project("kscene");
+    let (_root, editor) = pours_project("kscene");
     let scene = editor.pcb_scene(POURS_BOARD).unwrap();
     assert_eq!(scene.layers, ["top", "inner1", "inner2", "bottom"]);
     let antenna = scene.keepouts.iter().find(|k| k.name == "antenna").unwrap();
@@ -1766,7 +1753,7 @@ fn a_drawn_keepout_that_forbids_parts_is_a_problem_for_a_part_in_it() {
     if !footprints_here() {
         return;
     }
-    let (_, editor) = pours_project("kparts");
+    let (_root, editor) = pours_project("kparts");
     let scene = editor.pcb_scene(POURS_BOARD).unwrap();
     let scene = editor
         .pcb_edit(&keepout_edit(
@@ -1821,7 +1808,7 @@ fn a_placement_problem_is_a_finding_with_the_box_it_is_about() {
     if !footprints_here() {
         return;
     }
-    let (_, editor) = project("findings");
+    let (_root, editor) = project("findings");
     let clean = editor.pcb_findings(LED).unwrap();
     assert_eq!(clean.findings, [], "the placer's own placement is clean");
     assert!(!clean.routed);
@@ -1916,7 +1903,7 @@ fn what_the_router_left_is_a_finding_between_its_pads_once_the_board_is_routed()
     if !footprints_here() {
         return;
     }
-    let (_, editor) = project("unrouted");
+    let (_root, editor) = project("unrouted");
     let (say, _) = listener();
     editor.route(LED, &say).unwrap();
     let found = editor.pcb_findings(LED).unwrap();
@@ -1937,7 +1924,7 @@ fn kicads_check_is_run_on_demand_and_its_findings_have_places() {
     if !footprints_here() {
         return;
     }
-    let (_, editor) = project("kicad");
+    let (_root, editor) = project("kicad");
     let scene = overlapped(&editor);
     let (say, heard) = listener();
     let found = editor.pcb_drc(LED, &say).unwrap();
@@ -1993,9 +1980,7 @@ const PANEL: &str = include_str!("../../../examples/led_panel.nsm");
 
 #[test]
 fn a_panel_is_listed_and_drawn_from_its_boards_placed_size() {
-    let root =
-        std::env::temp_dir().join(format!("netsmith-editor-test-{}-panel", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+    let root = TempDir::new("editor-test-panel");
     fs::create_dir_all(root.join("src")).unwrap();
     fs::write(
         root.join("netsmith.toml"),
@@ -2047,5 +2032,4 @@ fn a_panel_is_listed_and_drawn_from_its_boards_placed_size() {
         "{:?}",
         view.findings
     );
-    let _ = fs::remove_dir_all(&root);
 }

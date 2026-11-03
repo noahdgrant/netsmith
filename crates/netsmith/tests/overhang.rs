@@ -3,8 +3,8 @@
 //! sticks out of the bottom edge by a stated requirement, and 30 small parts. The libraries
 //! are our sample ones plus an invented project library for the plug, so no KiCad is needed.
 
+use netsmith_kicad::testlib::TempDir;
 use std::fs;
-use std::path::PathBuf;
 use std::time::Instant;
 
 use netsmith::Libraries;
@@ -143,14 +143,8 @@ const DECLARED: &str =
 ";
 
 struct Run {
-    dir: PathBuf,
+    dir: TempDir,
     made: Result<Vec<Fabricated>, String>,
-}
-
-impl Drop for Run {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.dir);
-    }
 }
 
 fn fab(name: &str, source: &str, layout: &str) -> Run {
@@ -164,8 +158,7 @@ fn fab_checked(name: &str, source: &str, layout: &str, cross: bool) -> Run {
 
 /// [`fab_checked`], with the plug's footprint `footprint`.
 fn fab_with_footprint(name: &str, footprint: &str, source: &str, layout: &str, cross: bool) -> Run {
-    let dir = std::env::temp_dir().join(format!("netsmith-overhang-{}-{name}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
+    let dir = TempDir::unused(&format!("overhang-{name}"));
     let project = dir.join("project");
     let libs = libraries(&project, footprint);
     let file = project.join("widget.pcb.toml");
@@ -420,7 +413,7 @@ fn a_part_wider_than_the_board_is_turned_by_the_placer_and_the_rows_do_not_veto(
 
 /// Place `source` (no routing), and say how long it took.
 fn placed(source: &str, layout: Option<&netsmith_pcb::Layout>) -> (Result<Board, String>, f64) {
-    let dir = netsmith_kicad::testlib::TempDir::new("overhang-placed");
+    let dir = TempDir::new("overhang-placed");
     let libs = libraries(dir.path(), PLUG_FOOTPRINT);
     let built = netsmith::build_with(
         "widget.nsm",

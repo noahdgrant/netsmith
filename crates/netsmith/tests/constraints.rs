@@ -3,8 +3,8 @@
 //! file with every number, and a violation stops `fab` unless the project says `warn`.
 //! The numbers are an invented case drawing.
 
+use netsmith_kicad::testlib::TempDir;
 use std::fs;
-use std::path::PathBuf;
 
 use netsmith::Libraries;
 use netsmith::fab::{FabOptions, Fabricated, fab_with_options};
@@ -55,13 +55,8 @@ board Widget {
 }
 ";
 
-fn out(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "netsmith-constraints-test-{}-{name}",
-        std::process::id()
-    ));
-    let _ = fs::remove_dir_all(&dir);
-    dir
+fn out(name: &str) -> TempDir {
+    TempDir::unused(&format!("constraints-test-{name}"))
 }
 
 /// `fab` of `source` with `layout` as the layout file (none if empty).
@@ -70,7 +65,7 @@ fn fab(
     source: &str,
     layout: &str,
     catalogs: &Catalogs,
-) -> (PathBuf, Result<Vec<Fabricated>, String>) {
+) -> (TempDir, Result<Vec<Fabricated>, String>) {
     fab_waiving(name, source, layout, catalogs, false)
 }
 
@@ -81,7 +76,7 @@ fn fab_waiving(
     layout: &str,
     catalogs: &Catalogs,
     allow: bool,
-) -> (PathBuf, Result<Vec<Fabricated>, String>) {
+) -> (TempDir, Result<Vec<Fabricated>, String>) {
     let dir = out(name);
     let file = dir.join("source").join("widget.pcb.toml");
     fs::create_dir_all(file.parent().unwrap()).unwrap();
@@ -134,7 +129,6 @@ fn the_placer_meets_the_requirements_and_the_package_says_so() {
         .find_map(|l| l.trim().strip_prefix("(at "))
         .expect("its place");
     assert!(at.trim_end_matches(')').ends_with(" 90"), "{at}");
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -145,9 +139,7 @@ fn the_same_source_gives_the_same_board() {
     let read = |name: &str| {
         let (dir, made) = fab(name, BOARD, "", &Catalogs::jlcpcb());
         made.unwrap_or_else(|e| panic!("{e}"));
-        let pcb = fs::read_to_string(dir.join("fab/Widget/Widget.kicad_pcb")).unwrap();
-        let _ = fs::remove_dir_all(&dir);
-        pcb
+        fs::read_to_string(dir.join("fab/Widget/Widget.kicad_pcb")).unwrap()
     };
     assert_eq!(read("same-a"), read("same-b"));
 }
@@ -173,7 +165,6 @@ fn a_part_moved_by_hand_out_of_its_window_stops_fab_with_every_number() {
         !dir.join("fab/Widget/Widget-gerbers.zip").exists(),
         "nothing is packaged"
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -182,7 +173,7 @@ fn with_constraints_warn_the_same_board_is_packaged_and_the_notes_list_them() {
         return;
     }
     let catalogs = Catalogs::jlcpcb().with_constraints_warn(true);
-    let (dir, made) = fab("warned", BOARD, MOVED, &catalogs);
+    let (_dir, made) = fab("warned", BOARD, MOVED, &catalogs);
     let made = made.unwrap_or_else(|e| panic!("{e}"));
     let notes = &made[0].notes;
     assert!(
@@ -191,7 +182,6 @@ fn with_constraints_warn_the_same_board_is_packaged_and_the_notes_list_them() {
             && notes.contains("27.13 mm over"),
         "{notes}"
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -199,7 +189,7 @@ fn a_part_locked_in_the_layout_file_against_a_requirement_is_refused_before_plac
     if !have_libraries() {
         return;
     }
-    let (dir, made) = fab(
+    let (_dir, made) = fab(
         "locked",
         BOARD,
         &format!("{MOVED}lock = true\n"),
@@ -214,7 +204,6 @@ fn a_part_locked_in_the_layout_file_against_a_requirement_is_refused_before_plac
             && e.contains("unlock it and let the placer move it, or change the requirement"),
         "{e}"
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -227,7 +216,7 @@ fn requirements_that_cannot_be_met_together_say_which_and_with_what() {
         "    .led.place.top >= 3mm\n",
         "    .led.place.left >= 10mm\n    .led.place.right <= 10.5mm\n",
     );
-    let (dir, made) = fab("squeezed", &source, "", &Catalogs::jlcpcb());
+    let (_dir, made) = fab("squeezed", &source, "", &Catalogs::jlcpcb());
     let e = made.expect_err("the LED cannot fit between 10 and 10.5 mm");
     assert!(
         e.contains("D1 (`led`) cannot meet its requirements")
@@ -236,7 +225,6 @@ fn requirements_that_cannot_be_met_together_say_which_and_with_what() {
             && e.contains("at most 10.5 mm"),
         "{e}"
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -293,7 +281,6 @@ fn a_point_pins_the_part_and_a_keep_in_is_two_windows() {
     // The layout file's own entries are not needed: the source holds the requirement and the
     // board file the solution.
     assert!(!dir.join("source/widget.pcb.toml").exists());
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -316,14 +303,12 @@ fn allow_drc_violations_does_not_waive_a_requirement_only_warn_does() {
     );
     // With `warn` the same run goes through, and the notes say what is not met.
     let catalogs = Catalogs::jlcpcb().with_constraints_warn(true);
-    let (dir2, made) = fab_waiving("waived-warn", BOARD, MOVED, &catalogs, true);
+    let (_dir2, made) = fab_waiving("waived-warn", BOARD, MOVED, &catalogs, true);
     let notes = made.unwrap_or_else(|e| panic!("{e}"))[0].notes.clone();
     assert!(
         notes.contains("constraints: 2 of 5 satisfied; 3 not met, listed as warnings because the project or this run asked for `constraints = \"warn\"`"),
         "{notes}"
     );
-    let _ = fs::remove_dir_all(&dir);
-    let _ = fs::remove_dir_all(&dir2);
 }
 
 /// A project whose manifest says `manifest` (a line, or none) and whose layout file moves the
@@ -338,15 +323,13 @@ fn run_fab(name: &str, manifest: &str, args: &[&str]) -> std::process::Output {
     .unwrap();
     fs::write(root.join("src/main.nsm"), BOARD).unwrap();
     fs::write(root.join("src/main.pcb.toml"), MOVED).unwrap();
-    let run = std::process::Command::new(env!("CARGO_BIN_EXE_netsmith"))
+    std::process::Command::new(env!("CARGO_BIN_EXE_netsmith"))
         .arg("fab")
         .args(args)
         .args(["--out", "fab"])
         .current_dir(&root)
         .output()
-        .unwrap();
-    let _ = fs::remove_dir_all(&root);
-    run
+        .unwrap()
 }
 
 #[test]
