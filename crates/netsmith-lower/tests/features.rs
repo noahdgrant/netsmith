@@ -154,7 +154,9 @@ fn a_position_that_is_a_range_is_refused() {
         "    .slot: Cutout {\n        .x &= 10mm..12mm\n        .y &= 1mm\n        .width &= 8mm\n        .height &= 4mm\n    }\n",
     ));
     assert!(
-        text.contains("`slot.x` is 10mm..12mm, a range, and a position or a size is one value"),
+        text.contains(
+            "`slot.x` is 10mm..12mm, a range, and a position, a size or a height is one value"
+        ),
         "{text}"
     );
 }
@@ -286,7 +288,7 @@ fn label_board(fields: &str) -> String {
 #[test]
 fn a_label_is_a_part_whose_value_is_its_text() {
     let d = lowered(&label_board(
-        "        .text &= \"REV A\"\n        .height &= 1.5mm\n",
+        "        .text &= \"REV A\"\n        .text_height &= 1.5mm\n",
     ))
     .unwrap();
     assert_eq!(d.parts.len(), 1);
@@ -299,7 +301,7 @@ fn a_label_is_a_part_whose_value_is_its_text() {
         ("LBL1", "Label", "REV A")
     );
     assert_eq!(d.features.labels.len(), 1);
-    assert_eq!(d.features.labels[0].height, Some(1.5));
+    assert_eq!(d.features.labels[0].text_height, Some(1.5));
 }
 
 #[test]
@@ -310,10 +312,10 @@ fn a_label_with_no_text_or_text_too_small_is_refused_with_the_numbers() {
         "{text}"
     );
     let text = errors_of(&label_board(
-        "        .text &= \"x\"\n        .height &= 0.8mm\n",
+        "        .text &= \"x\"\n        .text_height &= 0.8mm\n",
     ));
     assert!(
-        text.contains("`rev.height` is 0.8 mm, under the process's least text height of 1 mm"),
+        text.contains("`rev.text_height` is 0.8 mm, under the process's least text height of 1 mm"),
         "{text}"
     );
 }

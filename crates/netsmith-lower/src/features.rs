@@ -7,7 +7,7 @@
 
 use netsmith_check::{Domain, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
-    Cutout, Features, Keepout, Label, Outline, PlaceBound, PlaceField, Placement, Pour,
+    Cutout, Features, Keepout, Label, Outline, PartHeight, PlaceBound, PlaceField, Placement, Pour,
 };
 use netsmith_lang::Span;
 
@@ -30,7 +30,7 @@ fn exact(model: &Model, inst: InstId, name: &str, errors: &mut Vec<String>) -> O
         Domain::Quantity(q) if q.is_point() || (q.hi() - q.lo()).abs() < 1e-12 => Some(mm(q.lo())),
         Domain::Quantity(q) => {
             errors.push(format!(
-                "`{}.{name}` is {q}, a range, and a position or a size is one value: say it with `&= {}mm`",
+                "`{}.{name}` is {q}, a range, and a position, a size or a height is one value: say it with `&= {}mm`",
                 model.path_of(inst),
                 mm(q.lo())
             ));
@@ -49,8 +49,15 @@ fn range(model: &Model, inst: InstId, name: &str) -> Option<(f64, f64)> {
 }
 
 /// `"forbid"` or `"allow"`: whether a keepout forbids what the field names. Unstated is
-/// forbidden.
-fn forbids(model: &Model, inst: InstId, name: &str, errors: &mut Vec<String>) -> bool {
+/// `unstated`: forbidden, except for a keepout that states a height limit, which forbids
+/// nothing it does not say.
+fn forbids(
+    model: &Model,
+    inst: InstId,
+    name: &str,
+    unstated: bool,
+    errors: &mut Vec<String>,
+) -> bool {
     match domain(model, inst, name) {
         Some(Domain::Text(t)) if t == "forbid" => true,
         Some(Domain::Text(t)) if t == "allow" => false,
@@ -61,7 +68,7 @@ fn forbids(model: &Model, inst: InstId, name: &str, errors: &mut Vec<String>) ->
             ));
             true
         }
-        _ => true,
+        _ => unstated,
     }
 }
 
@@ -140,6 +147,43 @@ fn net_widths(model: &Model) -> Vec<(String, f64)> {
     }
     widths.sort_by(|a, b| a.0.cmp(&b.0));
     widths
+}
+
+/// The height limit a keepout states, in mm: one value above zero, or none.
+fn max_height_of(model: &Model, inst: InstId, path: &str, errors: &mut Vec<String>) -> Option<f64> {
+    let limit = exact(model, inst, "max_height", errors)?;
+    if limit <= 0.0 {
+        errors.push(format!(
+            "`{path}.max_height` is {limit} mm, and a part cannot stand under a limit of nothing: forbid parts there with `.parts &= \"forbid\"` instead"
+        ));
+        return None;
+    }
+    Some(limit)
+}
+
+/// The heights the design states for its parts (`.height`), by path. A part that does
+/// not state one is not listed: its height is unknown (ADR 0045, "Height limits").
+fn heights(model: &Model, errors: &mut Vec<String>) -> Vec<PartHeight> {
+    let mut parts: Vec<(String, InstId)> = model
+        .instances()
+        .filter(|(_, i)| i.kind == InstKind::Part)
+        .map(|(id, _)| (model.path_of(id), id))
+        .collect();
+    parts.sort();
+    let mut found = Vec::new();
+    for (path, id) in parts {
+        let Some(height) = exact(model, id, "height", errors) else {
+            continue;
+        };
+        if height < 0.0 {
+            errors.push(format!(
+                "`{path}.height` is {height} mm, and a part does not stand below the board"
+            ));
+            continue;
+        }
+        found.push(PartHeight { path, height });
+    }
+    found
 }
 
 /// The outer pours of the process: the layers whose pour has a net.
@@ -285,7 +329,7 @@ fn outline_of(model: &Model, inst: InstId, errors: &mut Vec<String>) -> Outline 
     }
 }
 
-/// The `Label` parts of the model: their text and height.
+/// The `Label` parts of the model: their text and text height.
 fn labels(model: &Model, least_text: f64, errors: &mut Vec<String>) -> Vec<Label> {
     let mut parts: Vec<(String, InstId)> = model
         .instances()
@@ -304,15 +348,19 @@ fn labels(model: &Model, least_text: f64, errors: &mut Vec<String>) -> Vec<Label
                 continue;
             }
         };
-        let height = range(model, id, "height").map(|(lo, _)| lo);
+        let height = range(model, id, "text_height").map(|(lo, _)| lo);
         if let Some(h) = height
             && h < least_text - 1e-9
         {
             errors.push(format!(
-                "`{path}.height` is {h} mm, under the process's least text height of {least_text} mm"
+                "`{path}.text_height` is {h} mm, under the process's least text height of {least_text} mm"
             ));
         }
-        found.push(Label { path, text, height });
+        found.push(Label {
+            path,
+            text,
+            text_height: height,
+        });
     }
     found
 }
@@ -330,6 +378,7 @@ pub(crate) fn features_of(
         net_widths: net_widths(model),
         pours: pours(model, nets, errors),
         labels: labels(model, least_text, errors),
+        heights: heights(model, errors),
         ..Features::default()
     };
 
@@ -387,13 +436,20 @@ pub(crate) fn features_of(
                     ));
                 }
                 let layer_list = layers_of(model, id, layers, errors);
+                let max_height = max_height_of(model, id, &path, errors);
+                if max_height.is_some() && !layer_list.iter().any(|l| l == "top" || l == "bottom") {
+                    errors.push(format!(
+                        "`{path}` states `.max_height` and its `.layers` name neither \"top\" nor \"bottom\", the faces a part stands on, so it limits nothing"
+                    ));
+                }
+                let unstated = max_height.is_none();
                 let flags = [
-                    forbids(model, id, "tracks", errors),
-                    forbids(model, id, "vias", errors),
-                    forbids(model, id, "copper", errors),
-                    forbids(model, id, "parts", errors),
+                    forbids(model, id, "tracks", unstated, errors),
+                    forbids(model, id, "vias", unstated, errors),
+                    forbids(model, id, "copper", unstated, errors),
+                    forbids(model, id, "parts", unstated, errors),
                 ];
-                if flags == [false; 4] {
+                if flags == [false; 4] && max_height.is_none() {
                     errors.push(format!(
                         "`{path}` allows tracks, vias, copper and parts, and forbids nothing"
                     ));
@@ -409,6 +465,7 @@ pub(crate) fn features_of(
                         vias: flags[1],
                         copper: flags[2],
                         parts: flags[3],
+                        max_height,
                     });
                 }
             }

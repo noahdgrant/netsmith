@@ -37,6 +37,8 @@ const BACKGROUND: &str = "#0d1117";
 const OUTLINE: &str = "#f2ed7d";
 /// The colour of a keepout: an area where something is not allowed.
 const KEEPOUT: &str = "#e8505b";
+/// The colour of an area that only limits how tall a part may stand (ADR 0045, C4).
+const HEIGHT_LIMIT: &str = "#e0a030";
 const COURTYARD: &str = "#ff26e2";
 const FAB: &str = "#5f7a99";
 const SILK: &str = "#f0ead6";
@@ -431,18 +433,50 @@ fn draw(board: &Board, with_key: bool) -> String {
         .filter(|(_, forbidden)| *forbidden)
         .map(|(name, _)| name)
         .collect();
+        // An area that only limits height is amber and says the limit on the sheet, so that
+        // a lid rib or a bracket can be seen against the parts (ADR 0045, C4).
+        let colour = if k.forbids_anything() {
+            KEEPOUT
+        } else {
+            HEIGHT_LIMIT
+        };
+        let mut title = if what.is_empty() {
+            String::new()
+        } else {
+            format!("no {} on {}", what.join(", "), k.layers.join(", "))
+        };
+        if let Some(limit) = k.max_height {
+            if !title.is_empty() {
+                title.push_str("; ");
+            }
+            title.push_str(&format!(
+                "parts at most {} mm tall on {}",
+                n(limit),
+                k.layers.join(", ")
+            ));
+        }
         let _ = writeln!(
             out,
-            r#"<rect data-keepout="{}" x="{}" y="{}" width="{}" height="{}" fill="{KEEPOUT}" fill-opacity="0.12" stroke="{KEEPOUT}" stroke-width="0.1" stroke-dasharray="0.8 0.5"><title>{}: no {} on {}</title></rect>"#,
+            r#"<rect data-keepout="{}" x="{}" y="{}" width="{}" height="{}" fill="{colour}" fill-opacity="0.12" stroke="{colour}" stroke-width="0.1" stroke-dasharray="0.8 0.5"><title>{}: {}</title></rect>"#,
             escape(&k.name),
             n(k.rect.min.x),
             n(k.rect.min.y),
             n(k.rect.width()),
             n(k.rect.height()),
             escape(&k.name),
-            what.join(", "),
-            k.layers.join(", ")
+            escape(&title)
         );
+        if let Some(limit) = k.max_height {
+            let _ = writeln!(
+                out,
+                r#"<text data-height-limit="{}" x="{}" y="{}" font-size="{}" fill="{HEIGHT_LIMIT}" font-family="monospace" dominant-baseline="hanging">max {} mm</text>"#,
+                escape(&k.name),
+                n(k.rect.min.x + 0.4),
+                n(k.rect.min.y + 0.3),
+                n(KEY_TEXT),
+                n(limit)
+            );
+        }
     }
     for (cutout, shape) in board.cutout_shapes() {
         let _ = writeln!(
@@ -741,6 +775,43 @@ mod tests {
     }
 
     #[test]
+    fn a_height_limit_is_drawn_in_amber_with_its_number_and_is_no_rule_area() {
+        let mut board = led();
+        board.keepouts.push(crate::board::BoardKeepout {
+            name: "lid_ribs".into(),
+            part: None,
+            at: Some(Pt::new(1.0, 1.0)),
+            size: (4.0, 2.0),
+            layers: vec!["top".into()],
+            tracks: false,
+            vias: false,
+            copper: false,
+            parts: false,
+            max_height: Some(3.0),
+            drawn: false,
+        });
+        let view = render_view(&board);
+        assert!(
+            view.contains(r#"<rect data-keepout="lid_ribs" "#)
+                && view.contains(HEIGHT_LIMIT)
+                && view.contains("lid_ribs: parts at most 3 mm tall on top")
+                && view.contains(r#"data-height-limit="lid_ribs""#)
+                && view.contains(">max 3 mm</text>"),
+            "{view}"
+        );
+        // KiCad has no height to enforce: a zone that forbids nothing is not a rule area.
+        assert!(!crate::export::kicad_pcb(&board).contains("lid_ribs"));
+        // One that forbids something as well is both.
+        board.keepouts[0].tracks = true;
+        let view = render_view(&board);
+        assert!(
+            view.contains("lid_ribs: no tracks on top; parts at most 3 mm tall on top"),
+            "{view}"
+        );
+        assert!(crate::export::kicad_pcb(&board).contains("lid_ribs"));
+    }
+
+    #[test]
     fn a_keepout_and_a_cutout_name_themselves() {
         let mut board = led();
         board.keepouts.push(crate::board::BoardKeepout {
@@ -753,6 +824,7 @@ mod tests {
             vias: false,
             copper: false,
             parts: false,
+            max_height: None,
             drawn: false,
         });
         board.cutouts.push(crate::board::BoardCutout {

@@ -96,6 +96,28 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
             .map(|k| k.rect)
     };
     let mut ids = Ids(Vec::new());
+    // A part under a height limit that states no height: a warning that names it, never a
+    // pass (ADR 0045, "Height limits", PROVISIONAL).
+    let unchecked: Vec<PcbFinding> = board
+        .heights_unchecked()
+        .into_iter()
+        .map(|u| {
+            let area = courtyard(&u.refdes)
+                .zip(keepout(&u.keepout))
+                .map(|(a, b)| a.union(&b))
+                .unwrap_or(board.outline);
+            let id = ids.id(format!("placement:height_unchecked:{}", u.refdes));
+            make(
+                id,
+                FindingSource::Placement,
+                Severity::Warning,
+                "height_unchecked",
+                u.to_string(),
+                area,
+                vec![u.refdes.clone()],
+            )
+        })
+        .collect();
     board
         .check_placement()
         .into_iter()
@@ -141,6 +163,13 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
                     vec![refdes],
                     courtyard(refdes).zip(keepout(k)).map(|(a, b)| a.union(&b)),
                 ),
+                PlacementProblem::TooTall {
+                    refdes, keepout: k, ..
+                } => (
+                    "too_tall",
+                    vec![refdes],
+                    courtyard(refdes).zip(keepout(k)).map(|(a, b)| a.union(&b)),
+                ),
                 PlacementProblem::CutoutOutsideOutline { cutout: c } => {
                     ("cutout_outside_outline", vec![], cutout(c))
                 }
@@ -171,6 +200,7 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
                 parts,
             )
         })
+        .chain(unchecked)
         .collect()
 }
 

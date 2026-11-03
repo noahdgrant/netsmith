@@ -47,7 +47,7 @@ use netsmith_core::Design;
 
 use crate::board::{Board, BoardKeepout, ReferenceSide, Side};
 use crate::geometry::{Pt, Rect};
-use crate::place::{Fixed, ORIGIN, PlaceOptions};
+use crate::place::{Fixed, HeightZone, ORIGIN, PlaceOptions};
 
 /// The version of the file format this reads and writes.
 pub const VERSION: u32 = 1;
@@ -467,6 +467,36 @@ pub fn clear_of(design: &Design, layout: Option<&Layout>) -> Vec<Rect> {
     cutouts.into_iter().chain(keepouts).chain(drawn).collect()
 }
 
+/// The areas that limit how tall a part may stand (a keepout with a `max_height`), wherever
+/// the source or the layout file puts them, in the placer's coordinates. A keepout a part
+/// carries moves with the part and is left out, as in [`clear_of`]: the placement check
+/// still measures it.
+pub fn height_zones(design: &Design, layout: Option<&Layout>) -> Vec<HeightZone> {
+    let entries = layout.and_then(|l| l.boards.get(&design.name));
+    design
+        .features
+        .keepouts
+        .iter()
+        .filter(|k| k.part.is_none())
+        .filter_map(|k| {
+            let limit = k.max_height?;
+            let at = k.at.or_else(|| {
+                let p = entries?.keepouts.get(&k.name)?;
+                Some((p.at[0], p.at[1]))
+            })?;
+            let min = ORIGIN + Pt::new(at.0, at.1);
+            let on = |layer: &str| k.layers.iter().any(|l| l == layer);
+            Some(HeightZone {
+                name: k.name.clone(),
+                rect: Rect::new(min, Pt::new(min.x + k.size.0, min.y + k.size.1)),
+                front: on("top"),
+                back: on("bottom"),
+                limit,
+            })
+        })
+        .collect()
+}
+
 /// The boxes of the cutouts that have a place, wherever the source or the layout file puts
 /// them: the part of [`clear_of`] to which a pad keeps the process's distance from copper to
 /// an edge as well as the courtyards keeping out.
@@ -505,6 +535,7 @@ pub fn place_options(design: &Design, layout: Option<&Layout>) -> PlaceOptions {
     let mut options = PlaceOptions {
         keepouts: clear_of(design, layout),
         cutouts: cutouts_of(design, layout),
+        height_zones: height_zones(design, layout),
         ..PlaceOptions::default()
     };
     if let Some(entries) = layout.and_then(|l| l.boards.get(&design.name)) {
@@ -612,6 +643,7 @@ fn drawn_keepout(
         vias,
         copper,
         parts,
+        max_height: None,
         drawn: true,
     })
 }

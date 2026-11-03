@@ -77,6 +77,36 @@ pub struct PlaceOptions {
     /// board's process, which `Board::from_design_placed` fills in. `None`: 2.0 mm
     /// ([`Rules::DEFAULT_EDGE_WALL`]).
     pub wall: Option<f64>,
+    /// The areas that limit how tall a part may stand, in the board's coordinates (ADR 0045,
+    /// "Height limits", PROVISIONAL). A part with a stated height above a zone's limit keeps
+    /// its courtyard out of the zone on the faces the zone limits; a part with no stated
+    /// height is not kept out (nobody knows whether it fits; the check reports it).
+    pub height_zones: Vec<HeightZone>,
+}
+
+/// An area that limits the height of the parts standing in it, on one or both faces.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HeightZone {
+    /// The keepout it comes from.
+    pub name: String,
+    pub rect: Rect,
+    /// The faces it limits.
+    pub front: bool,
+    pub back: bool,
+    /// The tallest a part may stand in it, in mm.
+    pub limit: f64,
+}
+
+impl HeightZone {
+    /// Whether a part of `height` mm on `side` may not stand in the zone.
+    pub(crate) fn rules_out(&self, height: f64, side: Side) -> bool {
+        let on = if side == Side::Back {
+            self.back
+        } else {
+            self.front
+        };
+        on && height > self.limit + 0.0005
+    }
 }
 
 impl PlaceOptions {
@@ -819,7 +849,11 @@ fn refine(
     if let Some(size) = options.fit {
         region = Rect::new(ORIGIN, Pt::new(ORIGIN.x + size.0, ORIGIN.y + size.1));
     }
-    for k in &options.keepouts {
+    for k in options
+        .keepouts
+        .iter()
+        .chain(options.height_zones.iter().map(|z| &z.rect))
+    {
         if options.fit.is_none() {
             region = region.union(&k.expanded(options.wall()));
         }
@@ -845,6 +879,7 @@ fn refine(
         pours: context.pours,
         seed: options.seed,
         wants: &wants,
+        zones: &options.height_zones,
     };
     let outcome = anneal::anneal(parts, &problem, 1.0);
     if !outcome.feasible {
@@ -874,8 +909,10 @@ fn refine(
     };
     let (needs, lo, hi) = needs_of(court, all, options.wall());
     let size = (needs.0.ceil(), needs.1.ceil());
-    let pinned =
-        fixed.iter().any(|&f| f) || !options.keepouts.is_empty() || !options.wants.is_empty();
+    let pinned = fixed.iter().any(|&f| f)
+        || !options.keepouts.is_empty()
+        || !options.height_zones.is_empty()
+        || !options.wants.is_empty();
     if pinned {
         let width = (court.max.x + hi.0 - ORIGIN.x).max(size.0).ceil();
         let height = (court.max.y + hi.1 - ORIGIN.y).max(size.1).ceil();
@@ -923,6 +960,7 @@ pub(crate) fn anneal_within(
         pours: context.pours,
         seed: options.seed,
         wants: &wants,
+        zones: &options.height_zones,
     };
     let outcome = anneal::anneal(parts, &problem, 1.0);
     if !outcome.feasible {
@@ -1008,6 +1046,7 @@ pub fn place_subset(
         .collect();
     keepouts.extend(cutouts.iter().copied());
     let planes: Vec<String> = board.planes.iter().map(|p| p.net.clone()).collect();
+    let zones = board.height_zones();
     // The region the parts may be in is the outline's part of the region.
     let region = Rect::new(
         Pt::new(
@@ -1031,6 +1070,7 @@ pub fn place_subset(
         pours: !board.pours.is_empty(),
         seed: seed ^ scope_of(parts),
         wants: &[],
+        zones: &zones,
     };
     // The parts are kept in the region by a keepout round it.
     let mut walls = keepouts.clone();

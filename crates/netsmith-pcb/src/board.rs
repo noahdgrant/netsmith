@@ -109,6 +109,14 @@ pub enum Side {
 }
 
 impl Side {
+    /// The face's word in messages and the layout file: `top` or `bottom`.
+    pub fn word(self) -> &'static str {
+        match self {
+            Side::Front => "top",
+            Side::Back => "bottom",
+        }
+    }
+
     /// The outer copper layer of this face.
     pub fn copper(self) -> CopperLayer {
         match self {
@@ -156,6 +164,9 @@ pub struct Placed {
     pub side: Side,
     /// Which side of the part its reference text is on.
     pub reference_side: ReferenceSide,
+    /// How tall the body stands above its face of the board, in mm, as the design states it
+    /// (`.height`, ADR 0045 "Height limits"). `None` is unknown, never zero.
+    pub height: Option<f64>,
 }
 
 impl Placed {
@@ -432,6 +443,20 @@ pub enum PlacementProblem {
     InKeepout { refdes: String, keepout: String },
     /// A pad is inside a keepout that forbids tracks, so no track can reach it.
     PadInKeepout { refdes: String, keepout: String },
+    /// A part is taller than the height limit of a keepout it stands under (ADR 0045,
+    /// "Height limits", PROVISIONAL).
+    TooTall {
+        refdes: String,
+        path: String,
+        keepout: String,
+        /// The part's height and the keepout's limit, in mm.
+        height: f64,
+        limit: f64,
+        /// The face of the board the part is on.
+        side: Side,
+        /// The centre of the part's body, in mm from the outline's top left corner.
+        at: (f64, f64),
+    },
     /// A cutout is not wholly inside the outline.
     CutoutOutsideOutline { cutout: String },
     /// A cutout or a keepout is nowhere: the design does not say where, and the layout file
@@ -446,6 +471,37 @@ pub enum PlacementProblem {
         distance: f64,
         least: f64,
     },
+}
+
+/// How much taller than a limit a part may be before it is reported: half a micrometre, as
+/// the rest of the checks measure.
+const HEIGHT_TOLERANCE: f64 = 0.0005;
+
+/// A part under a height limit that states no height (ADR 0045, "Height limits",
+/// PROVISIONAL): whether it fits is unknown, which is not a pass.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HeightUnchecked {
+    pub refdes: String,
+    pub path: String,
+    pub keepout: String,
+    /// The limit, in mm.
+    pub limit: f64,
+    pub side: Side,
+}
+
+impl std::fmt::Display for HeightUnchecked {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "height of {} (`{}`) is unchecked: the keepout `{}` limits parts on the {} face to {:.2} mm and the part states no height (say `.{}.height &= 8mm`, with the real number)",
+            self.refdes,
+            self.path,
+            self.keepout,
+            self.side.word(),
+            self.limit,
+            self.path
+        )
+    }
 }
 
 /// A part's courtyard past an edge of the outline, which the design says it may be.
@@ -526,6 +582,22 @@ impl std::fmt::Display for PlacementProblem {
             Self::InKeepout { refdes, keepout } => write!(
                 f,
                 "{refdes} overlaps the keepout `{keepout}`, which forbids parts"
+            ),
+            Self::TooTall {
+                refdes,
+                path,
+                keepout,
+                height,
+                limit,
+                side,
+                at,
+            } => write!(
+                f,
+                "{refdes} (`{path}`) stands {height:.2} mm tall on the {} face, and the keepout `{keepout}` allows {limit:.2} mm there ({:.2} mm too tall), where its body is, around ({:.1}, {:.1}) mm from the board's top left corner",
+                side.word(),
+                height - limit,
+                at.0,
+                at.1
             ),
             Self::PadInKeepout { refdes, keepout } => write!(
                 f,
@@ -638,6 +710,9 @@ pub struct BoardKeepout {
     pub vias: bool,
     pub copper: bool,
     pub parts: bool,
+    /// The tallest a part may stand in it, in mm, on the faces in `layers` (ADR 0045,
+    /// "Height limits", PROVISIONAL).
+    pub max_height: Option<f64>,
     /// Drawn in the editor and kept in the layout file, not stated in the source (ADR 0029).
     pub drawn: bool,
 }
@@ -654,9 +729,22 @@ pub struct KeepoutArea {
     pub vias: bool,
     pub copper: bool,
     pub parts: bool,
+    pub max_height: Option<f64>,
 }
 
 impl KeepoutArea {
+    /// Whether it forbids any of tracks, vias, copper and parts: a keepout that only limits
+    /// height does not, and is no rule area for KiCad.
+    pub fn forbids_anything(&self) -> bool {
+        self.tracks || self.vias || self.copper || self.parts
+    }
+
+    /// Whether its height limit applies to parts on a face: it does when its layers name
+    /// that face's outer layer.
+    pub fn limits_height_on(&self, side: Side) -> bool {
+        self.max_height.is_some() && self.on(side.copper())
+    }
+
     /// Whether it applies to a copper layer, `top` or `bottom`.
     pub fn on(&self, layer: CopperLayer) -> bool {
         let name = match layer {
@@ -789,6 +877,11 @@ impl Board {
                 placement.cutouts.push(rect);
             }
         }
+        for zone in crate::layout::height_zones(design, None) {
+            if !placement.height_zones.contains(&zone) {
+                placement.height_zones.push(zone);
+            }
+        }
         let placement = &placement;
 
         let mut loaded: HashMap<String, Footprint> = HashMap::new();
@@ -801,7 +894,7 @@ impl Board {
                     .labels
                     .iter()
                     .find(|l| l.path == part.path)
-                    .and_then(|l| l.height)
+                    .and_then(|l| l.text_height)
                     .unwrap_or(rules.min_text_height);
                 parts.push(Placed {
                     refdes: part.refdes.clone(),
@@ -819,6 +912,7 @@ impl Board {
                         .copied()
                         .unwrap_or_default(),
                     reference_side: ReferenceSide::default(),
+                    height: None,
                 });
                 continue;
             }
@@ -859,6 +953,12 @@ impl Board {
                     .copied()
                     .unwrap_or_default(),
                 reference_side: ReferenceSide::default(),
+                height: design
+                    .features
+                    .heights
+                    .iter()
+                    .find(|h| h.path == part.path)
+                    .map(|h| h.height),
             });
         }
 
@@ -1017,6 +1117,7 @@ impl Board {
                     vias: k.vias,
                     copper: k.copper,
                     parts: k.parts,
+                    max_height: k.max_height,
                     drawn: false,
                 })
                 .collect(),
@@ -1201,6 +1302,24 @@ impl Board {
                     vias: k.vias,
                     copper: k.copper,
                     parts: k.parts,
+                    max_height: k.max_height,
+                })
+            })
+            .collect()
+    }
+
+    /// The areas that limit how tall a part may stand, for the placer.
+    pub(crate) fn height_zones(&self) -> Vec<crate::place::HeightZone> {
+        self.keepout_areas()
+            .into_iter()
+            .filter(|k| k.carrier.is_none())
+            .filter_map(|k| {
+                Some(crate::place::HeightZone {
+                    front: k.limits_height_on(Side::Front),
+                    back: k.limits_height_on(Side::Back),
+                    limit: k.max_height?,
+                    name: k.name,
+                    rect: k.rect,
                 })
             })
             .collect()
@@ -1280,6 +1399,39 @@ impl Board {
                         edge,
                         by,
                         stated: stated.by(),
+                    });
+                }
+            }
+        }
+        found
+    }
+
+    /// The parts that stand under a height limit and state no height, so that whether they
+    /// fit is not known (ADR 0045, "Height limits", PROVISIONAL). Not a pass: each is named,
+    /// with the keepout and its limit. A label has no body and is left out.
+    pub fn heights_unchecked(&self) -> Vec<HeightUnchecked> {
+        let keepouts = self.keepout_areas();
+        let mut found = Vec::new();
+        for a in self
+            .parts
+            .iter()
+            .filter(|a| a.height.is_none() && a.kind != "Label")
+        {
+            let body = a.body();
+            for k in keepouts
+                .iter()
+                .filter(|k| k.carrier.as_deref() != Some(a.path.as_str()))
+            {
+                if let Some(limit) = k.max_height
+                    && k.limits_height_on(a.side)
+                    && body.overlaps(&k.rect)
+                {
+                    found.push(HeightUnchecked {
+                        refdes: a.refdes.clone(),
+                        path: a.path.clone(),
+                        keepout: k.name.clone(),
+                        limit,
+                        side: a.side,
                     });
                 }
             }
@@ -1390,6 +1542,32 @@ impl Board {
                         refdes: a.refdes.clone(),
                         keepout: k.name.clone(),
                     });
+                }
+            }
+            // A part taller than the limit of a keepout it stands under, on its face. The body
+            // is what stands there (the footprint's fabrication outline, else its courtyard).
+            if let Some(height) = a.height {
+                let body = a.body();
+                for k in keepouts
+                    .iter()
+                    .filter(|k| k.carrier.as_deref() != Some(a.path.as_str()))
+                {
+                    let Some(limit) = k.max_height else { continue };
+                    if k.limits_height_on(a.side)
+                        && body.overlaps(&k.rect)
+                        && height > limit + HEIGHT_TOLERANCE
+                    {
+                        let centre = body.centre();
+                        problems.push(PlacementProblem::TooTall {
+                            refdes: a.refdes.clone(),
+                            path: a.path.clone(),
+                            keepout: k.name.clone(),
+                            height,
+                            limit,
+                            side: a.side,
+                            at: (centre.x - self.outline.min.x, centre.y - self.outline.min.y),
+                        });
+                    }
                 }
             }
             for (cutout, hole) in &cutouts {

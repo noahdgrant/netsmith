@@ -260,6 +260,22 @@ pub struct Keepout {
     pub vias: bool,
     pub copper: bool,
     pub parts: bool,
+    /// The tallest a part may stand where the keepout is, in mm, on the faces in `layers`
+    /// (ADR 0045, "Height limits", PROVISIONAL). `None`: no height limit. A keepout that
+    /// states a limit and none of `tracks`, `vias`, `copper` and `parts` forbids nothing else.
+    pub max_height: Option<f64>,
+}
+
+/// How tall a part stands above the board, as the design states it (ADR 0045, "Height
+/// limits", PROVISIONAL). A part the design does not state a height for is not here: its
+/// height is unknown, and it is reported as such where a limit applies to it, never taken
+/// as zero.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PartHeight {
+    /// The part's path in the design.
+    pub path: String,
+    /// In mm, from the face of the board it is on to the top of its body.
+    pub height: f64,
 }
 
 /// A line of silkscreen text: a `Label` part. The part's value is the text.
@@ -268,9 +284,9 @@ pub struct Label {
     /// The part's path in the design.
     pub path: String,
     pub text: String,
-    /// The height the design asks for, in mm, if it does. The process's least text height
-    /// otherwise.
-    pub height: Option<f64>,
+    /// The height of the letters the design asks for (`.text_height`), in mm, if it does.
+    /// The process's least text height otherwise.
+    pub text_height: Option<f64>,
 }
 
 /// A field of a part's or module's `.place` that holds a range (ADR 0045). All are measured
@@ -372,6 +388,8 @@ pub struct Features {
     pub cutouts: Vec<Cutout>,
     pub pours: Vec<Pour>,
     pub keepouts: Vec<Keepout>,
+    /// The heights the design states for parts, by path (ADR 0045, "Height limits").
+    pub heights: Vec<PartHeight>,
     pub labels: Vec<Label>,
     /// Requirements on where parts and modules go (ADR 0045), by path.
     pub constraints: Vec<Placement>,

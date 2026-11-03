@@ -49,8 +49,8 @@ pub mod validate;
 pub use anneal::{Ended, OutsideAt, OverlapAt};
 pub use board::{
     Board, BoardCutout, BoardError, BoardKeepout, BoardNet, BoardPour, CopperLayer, Hang,
-    HoleNeighbour, KeepoutArea, PadRef, Placed, PlacementProblem, Plane, ReferenceSide, Side,
-    Track, Via,
+    HeightUnchecked, HoleNeighbour, KeepoutArea, PadRef, Placed, PlacementProblem, Plane,
+    ReferenceSide, Side, Track, Via,
 };
 pub use export::{kicad_pcb, kicad_pro};
 pub use footprint::{
@@ -60,7 +60,7 @@ pub use footprint::{
 pub use geometry::{Pt, Rect};
 pub use layout::{BoardLayout, Layout, LayoutError, apply_layout, place_options};
 pub use overhang::{Edge, Edges, Overhang};
-pub use place::{DoesNotFit, Fixed, PlaceError, PlaceOptions, place_subset};
+pub use place::{DoesNotFit, Fixed, HeightZone, PlaceError, PlaceOptions, place_subset};
 pub use quality::{DecouplingDistance, Quality, crossings};
 pub use ratsnest::{Ratline, Ratsnest};
 pub use route::{RouteOptions, Routing, route, route_with};

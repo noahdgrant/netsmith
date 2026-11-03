@@ -49,11 +49,11 @@ part TestPoint {
 }
 
 /// A line of text printed on the silkscreen: a revision, a name, a polarity mark. It has no
-/// pins, is fitted by nobody, and is placed like any other part. Its height is at least the
+/// pins, is fitted by nobody, and is placed like any other part. Its `.text_height` is at least the
 /// process's smallest text; unset, it is that.
 part Label {
     .designator &= "LBL"
     .assembly &= "none"
     .text: String
-    .height: Length
+    .text_height: Length
 }
