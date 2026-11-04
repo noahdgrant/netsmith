@@ -47,6 +47,7 @@ import {
 } from '../store';
 import { firstLine, plural, seconds } from '../util';
 import { useElapsed } from './JobProgress';
+import { Logo } from './Logo';
 
 /** What `section` is for, in its tab's tooltip. */
 const SECTION_HINT: Record<Section, string> = {
@@ -144,7 +145,7 @@ export function TopBar() {
   };
   return (
     <header class="topbar">
-      <div class="brand">netsmith</div>
+      <div class="brand"><Logo /></div>
       <label class="boardpick" title="The board the sections show">
         Board
         <select

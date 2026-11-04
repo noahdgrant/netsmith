@@ -213,7 +213,13 @@ fn a_footprint_that_draws_both_courtyards_does_not_fit_there() {
     let error = board(&angle(&["F.CrtYd", "B.CrtYd"]), (14.0, 22.0), &options)
         .unwrap_err()
         .to_string();
-    assert!(error.contains("the parts need"), "{error}");
+    // Two parts, neither bigger than the board, whose courtyards overlap: the message names
+    // the pair (not the rows' size, which is not a certain shortfall).
+    assert!(
+        error.contains("2 part(s) do not fit the outline of 14.0 x 22.0 mm")
+            && error.contains("J1/U1 "),
+        "{error}"
+    );
 }
 
 // ---- KiCad's own courtyard checks on the same boards (ADR 0031, the two-face rule) ----

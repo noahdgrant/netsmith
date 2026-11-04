@@ -1,6 +1,6 @@
 # netsmith
 
-Circuits as code, in Rust. `README.md` says what it is and how to run it.
+A language and tools for designing electronics as code. `README.md` says what it is and how to run it.
 
 ## Build, test, lint
 

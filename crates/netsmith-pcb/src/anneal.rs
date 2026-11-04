@@ -52,6 +52,12 @@ const POUR_GAP: f64 = 0.8;
 pub(crate) const TEXT_EDGE: f64 = 0.5;
 /// The space wanted between a courtyard and a keepout.
 const KEEPOUT_GAP: f64 = 0.25;
+/// How far a part's body is kept from a height-limited zone it is too tall for, in mm (ADR 0045
+/// section 11, owner decision 2026-11-04). PROVISIONAL: the placer's own small clearance for
+/// keepouts, [`KEEPOUT_GAP`]. The process's copper clearance (0.1 to 0.2 mm) is smaller than
+/// the 0.25 mm the placer already wants beside a keepout, and a height limit is not copper,
+/// so the placer's constant is used and a process with more clearance changes nothing here.
+const HEIGHT_ZONE_MARGIN: f64 = KEEPOUT_GAP;
 /// A pad is kept this much further than the rule from a cutout, so that the rounding of
 /// positions on the grid never leaves it a hair nearer than the placement check allows.
 const PAD_SLACK: f64 = 1e-6;
@@ -162,6 +168,71 @@ pub struct Ended {
     /// The relations between two parts that do not hold, each as a sentence with the numbers
     /// (ADR 0045, section 3).
     pub relations: Vec<String>,
+}
+
+impl Ended {
+    /// The parts that break a rule when the run ended: those outside first, the furthest
+    /// first, then those only in an overlapping pair; each once.
+    pub fn names(&self) -> Vec<String> {
+        let mut names: Vec<String> = Vec::new();
+        let others = self
+            .overlapping
+            .iter()
+            .flat_map(|o| [o.a.as_str(), o.b.as_str()]);
+        for name in self
+            .outside_parts
+            .iter()
+            .map(|o| o.part.as_str())
+            .chain(others)
+        {
+            if !names.iter().any(|n| n == name) {
+                names.push(name.to_string());
+            }
+        }
+        names
+    }
+
+    /// Every part that is out, with how far, and every overlapping pair with its area, in
+    /// two lists on one line, the worst first: `outside the outline or inside its margin, by
+    /// mm past what is kept clear (the margin from the edge, a keepout, a pad's distance):
+    /// R21 0.85, R3 0.80; courtyards overlapping, by mm2: R1/R2 10.00`.
+    pub fn compact(&self) -> String {
+        let mut lists = Vec::new();
+        if !self.outside_parts.is_empty() {
+            let items: Vec<String> = self
+                .outside_parts
+                .iter()
+                .map(|o| {
+                    if o.worst > 1e-9 {
+                        format!("{} {:.2}", o.part, o.worst)
+                    } else {
+                        // Nothing past a line: the reference text, or a requirement.
+                        format!("{} (text or a requirement)", o.part)
+                    }
+                })
+                .collect();
+            lists.push(format!(
+                "outside the outline or inside its margin, by mm past what is kept clear: {}",
+                items.join(", ")
+            ));
+        }
+        if !self.overlapping.is_empty() {
+            let items: Vec<String> = self
+                .overlapping
+                .iter()
+                .map(|o| format!("{}/{} {:.2}", o.a, o.b, o.area))
+                .collect();
+            lists.push(format!(
+                "courtyards overlapping, by mm2: {}",
+                items.join(", ")
+            ));
+        }
+        if lists.is_empty() {
+            "a rule broken that no count names".to_string()
+        } else {
+            lists.join("; ")
+        }
+    }
 }
 
 /// Two courtyards that overlap when a run ended.
@@ -374,6 +445,8 @@ struct Model {
     may: Edges,
     /// The boxes the part is too tall to stand in, on the face it is on.
     no_go: Vec<Rect>,
+    /// Whether the footprint draws no fabrication outline, so that its courtyard is its body.
+    body_is_courtyard: bool,
 }
 
 /// A [`Want`] in the engine's terms, for each of the part's four turns (as the annealer
@@ -719,6 +792,7 @@ impl<'a> Engine<'a> {
                             .collect(),
                         None => Vec::new(),
                     },
+                    body_is_courtyard: parts[i].footprint.body_is_courtyard,
                 }
             })
             .collect();
@@ -1297,6 +1371,20 @@ impl<'a> Engine<'a> {
         self.shape(i).court.translated(self.pos(i))
     }
 
+    /// What part `i` takes against a height-limited zone: its body, the same box the check
+    /// measures (`Board::check_placement`), grown by [`HEIGHT_ZONE_MARGIN`], so that a clear
+    /// result passes the check. A footprint that draws no fabrication outline has only its
+    /// courtyard, which stays as it is (ADR 0045 section 11).
+    fn zone_box(&self, i: usize) -> Rect {
+        if self.models[i].body_is_courtyard {
+            return self.court(i);
+        }
+        self.shape(i)
+            .body
+            .translated(self.pos(i))
+            .expanded(HEIGHT_ZONE_MARGIN)
+    }
+
     /// The room part `i` takes against other courtyards: its courtyard, clipped to the
     /// outline if the design says it may hang over an edge (as `Board::check_placement`
     /// counts it, so that two parts that hang over the same edge may overlap beyond it).
@@ -1574,12 +1662,19 @@ impl<'a> Engine<'a> {
                 }
             }
         }
-        for k in self.p.keepouts.iter().chain(&model.no_go) {
-            let depth = penetration(&court, k, KEEPOUT_GAP);
+        let tall = self.zone_box(i);
+        for (k, part) in self
+            .p
+            .keepouts
+            .iter()
+            .map(|k| (k, &court))
+            .chain(model.no_go.iter().map(|k| (k, &tall)))
+        {
+            let depth = penetration(part, k, KEEPOUT_GAP);
             if depth > 0.0 {
                 c.soft += W_GAP * depth;
-                if penetration(&court, k, 0.0) > 1e-6 {
-                    c.hard += W_HARD * (penetration(&court, k, 0.0) + 0.05);
+                if penetration(part, k, 0.0) > 1e-6 {
+                    c.hard += W_HARD * (penetration(part, k, 0.0) + 0.05);
                 }
             }
         }
@@ -1894,8 +1989,15 @@ impl<'a> Engine<'a> {
                 worst = worst.max(past + wall);
             }
         }
-        for k in self.p.keepouts.iter().chain(&self.models[i].no_go) {
-            let depth = penetration(&court, k, 0.0);
+        let tall = self.zone_box(i);
+        for (k, part) in self
+            .p
+            .keepouts
+            .iter()
+            .map(|k| (k, &court))
+            .chain(self.models[i].no_go.iter().map(|k| (k, &tall)))
+        {
+            let depth = penetration(part, k, 0.0);
             if depth > 1e-6 {
                 let at = k.centre();
                 why.push(format!(
@@ -2569,5 +2671,108 @@ mod tests {
         // One part stating it is enough for it to take only the room it has on the board.
         let one = run(&mut board, &[Edges::default(), bottom]);
         assert!(one.hard == 0.0, "{one:?}");
+    }
+    /// A 30 by 10 mm board with a zone over its left 20 mm and a free strip 10 mm wide
+    /// beside it. `R1` is 14 mm tall with a body 6 by 4 mm; its courtyard goes 4.5 mm past
+    /// the body on one side (an edge connector's shell), so that the whole courtyard needs
+    /// 10.5 mm and the strip, less the board's 2 mm wall, has 8 mm. `R2` to `R4` are small.
+    /// Returns the board and the zone.
+    fn lid_beside_a_strip() -> (Board, Rect) {
+        let mut board = resistors(&["", "", "", ""]);
+        let body = Rect::new(Pt::new(-3.0, -2.0), Pt::new(3.0, 2.0));
+        let tall = &mut board.parts[0];
+        tall.footprint.body = body;
+        tall.footprint.body_is_courtyard = false;
+        tall.footprint.courtyard = Rect::new(Pt::new(-7.5, -2.5), Pt::new(3.5, 2.5));
+        tall.height = Some(14.0);
+        for small in &mut board.parts[1..] {
+            small.height = Some(1.0);
+        }
+        board.outline = Rect::new(Pt::new(0.0, 0.0), Pt::new(30.0, 10.0));
+        (board, Rect::new(Pt::new(0.0, 0.0), Pt::new(20.0, 10.0)))
+    }
+
+    fn run_beside_strip(
+        board: &mut Board,
+        zones: &[crate::place::HeightZone],
+        keepouts: &[Rect],
+    ) -> bool {
+        let fixed = [false; 4];
+        let problem = Problem {
+            nets: &board.nets.clone(),
+            rules: &board.rules.clone(),
+            planes: &[],
+            region: board.outline,
+            corner_radius: 0.0,
+            fixed: &fixed,
+            keepouts,
+            zones,
+            cutouts: &[],
+            pours: false,
+            seed: 0,
+            wants: &[],
+            offsets: &[],
+            overhangs: &[],
+            outline: board.outline,
+        };
+        anneal(&mut board.parts, &problem, 1.0).feasible
+    }
+
+    fn lid(rect: Rect) -> crate::place::HeightZone {
+        crate::place::HeightZone {
+            name: "lid".into(),
+            rect,
+            front: true,
+            back: false,
+            limit: 10.0,
+        }
+    }
+
+    #[test]
+    fn a_part_is_kept_out_of_a_height_limit_by_its_body_and_a_margin_not_by_its_courtyard() {
+        // Owner decision 2026-11-04 (issue #29, ADR 0045 section 11). The courtyard is 10.5 mm
+        // wide and the strip beside the zone has 8 mm inside the wall: the body fits, the
+        // courtyard does not.
+        let (mut board, zone) = lid_beside_a_strip();
+        assert!(run_beside_strip(&mut board, &[lid(zone)], &[]));
+        let tall = &board.parts[0];
+        let body = tall.body();
+        assert!(
+            body.min.x >= zone.max.x + HEIGHT_ZONE_MARGIN - 1e-6,
+            "the body is at x = {:.2} mm, {:.2} mm from the zone",
+            body.min.x,
+            body.min.x - zone.max.x
+        );
+        assert!(
+            tall.courtyard().min.x < zone.max.x,
+            "the courtyard goes into the zone, where only the body is kept out"
+        );
+        // What the check measures: no part of the body is in the zone.
+        assert!(!body.overlaps(&zone));
+        for small in &board.parts[1..] {
+            assert!(!small.courtyard().overlaps(&tall.courtyard()));
+        }
+        // The same inputs give the same board.
+        let (mut again, zone) = lid_beside_a_strip();
+        assert!(run_beside_strip(&mut again, &[lid(zone)], &[]));
+        let poses =
+            |b: &Board| -> Vec<(Pt, f64)> { b.parts.iter().map(|p| (p.at, p.rotation)).collect() };
+        assert_eq!(poses(&board), poses(&again));
+    }
+
+    #[test]
+    fn a_part_that_draws_no_fabrication_outline_is_kept_out_by_its_courtyard() {
+        // Its courtyard is its body, as the check reads it: no margin is added to that.
+        let (mut board, zone) = lid_beside_a_strip();
+        let court = board.parts[0].footprint.courtyard;
+        board.parts[0].footprint.body = court;
+        board.parts[0].footprint.body_is_courtyard = true;
+        assert!(!run_beside_strip(&mut board, &[lid(zone)], &[]));
+    }
+
+    #[test]
+    fn a_keepout_for_parts_still_keeps_the_whole_courtyard_out() {
+        let (mut board, zone) = lid_beside_a_strip();
+        assert!(!run_beside_strip(&mut board, &[], &[zone]));
     }
 }
