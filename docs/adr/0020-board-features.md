@@ -1,5 +1,5 @@
 ---
-status: accepted (user decision 2026-11-02)
+status: accepted (user decision 2026-11-02); item 7A amended by ADR 0048 (requirements on placement go to the physical file, solutions stay in the layout file)
 ---
 
 # Board features: net classes, pours, outline, mechanical parts, silkscreen, panels, placement
