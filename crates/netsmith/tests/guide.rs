@@ -12,6 +12,9 @@
 //!   not place, and the next ` ```text ` block is the findings as `fab` prints them.
 //! - ` ```nsm solve warns ` must build, and the next ` ```text ` block is the guideline
 //!   warnings (ADR 0036), one per line, as the command line prints them after `warning: `.
+//! - ` ```nsm solve notes ` must build, and the next ` ```text ` block is the notes that name a
+//!   net whose tracks were not sized from its current (ADR 0036), one per line, as the
+//!   command line prints them after `note: `.
 //! - ` ```nsm fails ` must not build, and the next ` ```text ` block is the exact message.
 
 //! - ` file=examples/led.nsm ` on any of them makes the block equal that file.
@@ -325,6 +328,29 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
                     assert!(
                         same(&next.text, &warnings),
                         "{at}: the warnings differ.\n--- guide\n{}\n--- tool\n{warnings}",
+                        next.text
+                    );
+                }
+            }
+            if b.has("notes") {
+                let notes: String = built
+                    .iter()
+                    .flat_map(|x| x.notes.iter())
+                    .filter(|n| n.contains("are not sized from their current"))
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                assert!(
+                    !notes.is_empty(),
+                    "{at}: this block should say a net is not sized and does not"
+                );
+                let next = next_text();
+                if bless {
+                    rewrites.push((next.body.0, next.body.1, notes));
+                } else {
+                    assert!(
+                        same(&next.text, &notes),
+                        "{at}: the notes differ.\n--- guide\n{}\n--- tool\n{notes}",
                         next.text
                     );
                 }

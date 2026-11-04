@@ -285,3 +285,52 @@ fn a_board_with_the_finding_still_builds_through_outcome_for_tools_that_only_rea
     .unwrap_or_else(|p| panic!("{}", netsmith::render_problems(&p)));
     assert_eq!(outcome.boards[0].guidelines.len(), 2);
 }
+
+// ---- the router sizes every net (issue #4, ADR 0036 amendment) -----------------------
+
+/// The heater with no `.min_track` anywhere, so that the width is the router's to work out.
+fn unstated_project(name: &str, manifest_line: &str) -> TempDir {
+    let root = dir(name);
+    fs::write(
+        root.join("netsmith.toml"),
+        format!("[project]\nname = \"heater\"\n{manifest_line}\n"),
+    )
+    .unwrap();
+    let src = board("0.2mm").replace("        .min_track &= 0.2mm..1m\n", "");
+    assert!(!src.contains("min_track"));
+    fs::write(root.join("src/main.nsm"), src).unwrap();
+    root
+}
+
+#[test]
+fn a_board_that_states_no_width_is_not_warned_and_is_routed_at_the_width_the_current_needs() {
+    // Under `--strict` too: there is nothing to refuse.
+    let root = unstated_project("sized", "");
+    let run = netsmith(&root, &["fab", "--allow-drc-violations", "--strict"]);
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert!(run.status.success(), "{said}");
+    assert!(!said.contains("guideline"), "{said}");
+    let notes = fs::read_to_string(root.join("fab/Heater/fab-notes.txt")).unwrap();
+    assert!(!notes.contains("IPC-2221"), "{notes}");
+    // The board file draws 5V and GND at 0.79 mm (2 A needs 0.7814 mm in 1 oz at 10 K).
+    let pcb = fs::read_to_string(root.join("fab/Heater/Heater.kicad_pcb")).unwrap();
+    assert!(
+        pcb.contains("(width 0.79)"),
+        "no track of 0.79 mm in the board"
+    );
+    let pro = fs::read_to_string(root.join("fab/Heater/Heater.kicad_pro")).unwrap();
+    assert!(pro.contains("Track_0.79mm"), "a net class of 0.79 mm");
+}
+
+#[test]
+fn the_editor_shows_no_warning_for_a_net_the_router_sized() {
+    let root = unstated_project("editor-sized", "");
+    let editor = Workspace::open(Target::resolve_from(&root, None).unwrap()).unwrap();
+    let a = editor.analysis();
+    assert_eq!(a.errors, 0, "{:?}", a.problems);
+    assert!(
+        !a.problems.iter().any(|p| p.message.contains("IPC-2221")),
+        "{:?}",
+        a.problems
+    );
+}

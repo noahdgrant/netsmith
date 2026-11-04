@@ -257,7 +257,7 @@ pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> Tra
         .collect();
     loop {
         let mut grew = false;
-        for (pins, c) in carriers.iter().filter(|(_, c)| !c.is_rail) {
+        for (pins, _) in carriers.iter().filter(|(_, c)| !c.is_rail) {
             let touched: Vec<usize> = (0..supplied.len())
                 .filter(|&i| pins.iter().any(|p| model.nets()[i].pins.contains(p)))
                 .collect();
@@ -303,7 +303,8 @@ pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> Tra
             .map(|(_, w)| *w);
         let Some((worst, lo, hi)) = worst else {
             if !unknown.is_empty() && stated.is_none() && supplied[index] {
-                plan.notes.push(unknown_note(&net.name, &unknown, process.min_track));
+                plan.notes
+                    .push(unknown_note(&net.name, &unknown, process.min_track));
             }
             continue;
         };
@@ -311,7 +312,8 @@ pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> Tra
         // the net from the known ones, and say so (the check below still holds the net to
         // what is known).
         if !unknown.is_empty() && stated.is_none() && supplied[index] {
-            plan.notes.push(unknown_note(&net.name, &unknown, process.min_track));
+            plan.notes
+                .push(unknown_note(&net.name, &unknown, process.min_track));
         }
         if hi <= 0.0 {
             continue;
@@ -331,7 +333,9 @@ pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> Tra
         }
         let source = match stated {
             Some(_) => "a rail's `.min_track`",
-            None => "the process's least, because no rail on it states a `.min_track` and a current on it is not known",
+            None => {
+                "the process's least, because no rail on it states a `.min_track` and a current on it is not known"
+            }
         };
         let range = if lo == hi {
             amps(hi)
@@ -362,10 +366,12 @@ pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> Tra
     plan
 }
 
-/// The note for a net whose tracks were not sized from its current.
+/// The note for a net whose tracks were not sized from its current. The carriers come first
+/// so that the editor, which puts a note at the first path it finds in the text, puts it at
+/// one of them and not at a generated net name.
 fn unknown_note(net: &str, unknown: &[&str], least: f64) -> String {
     format!(
-        "net `{net}`: its tracks are not sized from its current because the current of {} is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so they are the process's least, {} mm; state that current, or give a rail on the net a `.min_track`",
+        "the current of {} is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `{net}` are not sized from their current and are the process's least, {} mm; state that current, or give a rail on the net a `.min_track`",
         unknown.join(", "),
         mm(least),
     )

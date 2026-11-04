@@ -161,7 +161,13 @@ fn a_rail_with_no_min_track_is_drawn_at_the_width_its_current_needs() {
         [("5V".to_string(), 0.79), ("GND".to_string(), 0.79)]
     );
     // 0.4 A is what a 0.1 mm track carries (450 mA at 10 K): the process's least, no entry.
-    assert!(lowered_of(&board(0.4, "", "")).design.features.net_widths.is_empty());
+    assert!(
+        lowered_of(&board(0.4, "", ""))
+            .design
+            .features
+            .net_widths
+            .is_empty()
+    );
     // 0.5 A needs 0.12 mm (0.1148 rounded up).
     let half = lowered_of(&board(0.5, "", ""));
     assert_eq!(width_of(&half, "5V"), Some(0.12));
@@ -388,7 +394,12 @@ fn the_node_between_a_fuse_and_a_diode_is_drawn_at_the_width_its_current_needs()
         .find(|n| n.name.contains("diode") || n.name.contains("fuse"))
         .expect("the node has a generated name");
     // 2 A needs 0.7814 mm in 1 oz at 10 K; rounded up to 0.01 mm.
-    assert_eq!(width_of(&l, &node.name), Some(0.79), "{:?}", l.design.features.net_widths);
+    assert_eq!(
+        width_of(&l, &node.name),
+        Some(0.79),
+        "{:?}",
+        l.design.features.net_widths
+    );
     // The router and the check agree: nothing to warn about, nothing stated.
     assert!(l.guidelines.is_empty(), "{:?}", l.guidelines);
     assert!(l.notes.is_empty(), "{:?}", l.notes);
@@ -405,7 +416,11 @@ fn the_rails_on_such_a_chain_are_sized_too() {
 #[test]
 fn a_small_current_leaves_the_net_at_the_process_least() {
     let l = lowered_of(&fuse_diode("        .current &= 1mA..20mA\n", "", ""));
-    assert!(l.design.features.net_widths.is_empty(), "{:?}", l.design.features.net_widths);
+    assert!(
+        l.design.features.net_widths.is_empty(),
+        "{:?}",
+        l.design.features.net_widths
+    );
     assert!(l.guidelines.is_empty() && l.notes.is_empty());
 }
 
@@ -422,14 +437,23 @@ fn the_width_follows_the_temperature_rise() {
 
 #[test]
 fn a_stated_min_track_is_an_override_and_is_still_checked() {
-    let src = fuse_diode("        .current &= 1A..2A\n        .min_track &= 0.3mm..1m\n", "", "");
+    let src = fuse_diode(
+        "        .current &= 1A..2A\n        .min_track &= 0.3mm..1m\n",
+        "",
+        "",
+    );
     let l = lowered_of(&src);
     assert_eq!(width_of(&l, "VOUT"), Some(0.3));
     let found = about(&l.guidelines, "VOUT");
     assert_eq!(found.len(), 1, "{:?}", l.guidelines);
     assert!(found[0].contains("(a rail's `.min_track`)") && found[0].contains("needs 0.79 mm"));
     // The node between the parts has no rail: it is sized from the current.
-    let node: Vec<_> = l.design.nets.iter().filter(|n| n.name.starts_with("net-")).collect();
+    let node: Vec<_> = l
+        .design
+        .nets
+        .iter()
+        .filter(|n| n.name.starts_with("net-"))
+        .collect();
     assert_eq!(node.len(), 1);
     assert_eq!(width_of(&l, &node[0].name), Some(0.79));
 }
@@ -439,15 +463,23 @@ fn a_net_whose_current_is_not_known_is_not_sized_and_is_named() {
     // Two rails that draw an unstated current on one net: the solver can work out neither.
     let src = fuse_diode("", "", "");
     let l = lowered_of(&src);
-    assert!(l.design.features.net_widths.is_empty(), "{:?}", l.design.features.net_widths);
+    assert!(
+        l.design.features.net_widths.is_empty(),
+        "{:?}",
+        l.design.features.net_widths
+    );
     let said = |net: &str, who: &str| {
         l.notes.iter().any(|n| {
-            n.starts_with(&format!(
-                "net `{net}`: its tracks are not sized from its current because the current of {who} is not known"
-            )) && n.contains("the process's least, 0.1 mm")
+            n.starts_with(&format!("the current of {who} is not known"))
+                && n.contains(&format!("so the tracks of net `{net}` are not sized"))
+                && n.contains("the process's least, 0.1 mm")
         })
     };
-    assert!(said("net-diode.anode", "part `fuse`, part `diode`"), "{:?}", l.notes);
+    assert!(
+        said("net-diode.anode", "part `fuse`, part `diode`"),
+        "{:?}",
+        l.notes
+    );
     assert!(said("VOUT", "rail `load`, part `diode`"), "{:?}", l.notes);
     assert!(l.guidelines.is_empty(), "nothing is known to be too narrow");
 }
