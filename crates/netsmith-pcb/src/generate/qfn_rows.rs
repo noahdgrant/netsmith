@@ -4,7 +4,9 @@
 use super::qfn::{Package, in_library, qfn};
 
 #[rustfmt::skip]
-pub(super) const MORE: [Package; 223] = [
+// A pad of 3.14 mm is a measurement, not pi.
+#[allow(clippy::approx_constant)]
+pub(super) static MORE: [Package; 223] = [
     in_library(qfn("DFN-10-1EP_3x3mm_P0.5mm_EP1.58x2.35mm", 0, 5, 0.5, (3.0, 3.0), (3.0, 3.0), (0.18, 0.3), (0.3, 0.5), (1.58, 2.35), (2, 2), 0.0), "Package_DFN_QFN"),
     in_library(qfn("DFN-10-1EP_3x3mm_P0.5mm_EP1.65x2.38mm", 0, 5, 0.5, (2.9, 3.1), (2.9, 3.1), (0.2, 0.3), (0.28, 0.48), (1.65, 2.38), (2, 2), 0.0), "Package_DFN_QFN"),
     in_library(qfn("LFCSP-WD-10-1EP_3x3mm_P0.5mm_EP1.64x2.38mm", 0, 5, 0.5, (2.9, 3.1), (2.9, 3.1), (0.2, 0.3), (0.3, 0.5), (1.64, 2.38), (2, 3), 0.0), "Package_CSP"),

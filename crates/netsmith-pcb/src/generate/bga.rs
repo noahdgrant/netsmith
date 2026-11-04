@@ -5,8 +5,8 @@
 //! number from the top left (A1): the letters skip I, O, Q, S, X and Z as JEDEC does, and
 //! continue with AA, AB, ... after Y. The courtyard is 1 mm outside the body. The diameter of
 //! a ball's pad is a number from each package's drawing (the pad diameter in KiCad's name where
-//! it has one) and is recorded in the table, as there is no rule for it: packages of one
-//! pitch have pads from 0.2 to 0.5 mm. Only the footprints that this reproduces to 0.01 mm
+//! it has one) and is recorded in the table, as there is no rule for it: at a pitch of 0.5 mm the
+//! pads run from 0.2 to 0.35 mm. Only the footprints that this reproduces to 0.01 mm
 //! are generated; a grid with balls left out, rows or columns with two pitches, and bodies
 //! whose courtyard KiCad draws by another rule are read from KiCad's library (ADR 0043).
 

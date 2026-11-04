@@ -83,7 +83,7 @@ pub(super) const fn qfn(
     }
 }
 
-const PACKAGES: &[&[Package]] = &[&FIRST, &MORE];
+static PACKAGES: &[&[Package]] = &[&FIRST, &MORE];
 
 /// The same row, for a name whose library its start does not say.
 pub(super) const fn in_library(mut p: Package, library: &'static str) -> Package {
