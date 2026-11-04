@@ -97,7 +97,15 @@ fn pins_of(import: &str, kind: &str) -> Vec<(String, PinKind, String, Vec<String
         .tables
         .iter()
         .flat_map(|t| t.rows.iter())
-        .map(|r| (m.path_of(r.pin), r.kind, r.name.clone(), r.pads.clone()))
+        .map(|r| {
+            let path = m.path_of(r.pin);
+            (
+                path.strip_prefix("m.").unwrap_or(&path).to_string(),
+                r.kind,
+                r.name.clone(),
+                r.pads.clone(),
+            )
+        })
         .collect();
     rows.sort_by(|a, b| a.0.cmp(&b.0));
     rows
