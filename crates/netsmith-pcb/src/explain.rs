@@ -449,7 +449,11 @@ impl<'a> Context<'a> {
     }
 
     fn name(w: &Win) -> String {
-        format!("{} (`{}`)", w.part.refdes, w.part.path)
+        Self::name_of(w.part)
+    }
+
+    fn name_of(part: &Placed) -> String {
+        format!("{} (`{}`)", part.refdes, part.path)
     }
 
     /// The lines of the windows, once each, joined.
@@ -530,9 +534,9 @@ impl<'a> Context<'a> {
                     quote(self.design, &p.source, &id(p)),
                     quote(self.design, &q.source, &id(q)),
                     what(p.b.field),
-                    format!("{} (`{}`)", b.refdes, b.path),
+                    Self::name_of(b),
                     what(p.a.field),
-                    format!("{} (`{}`)", a.refdes, a.path),
+                    Self::name_of(a),
                     range_text(p.lo, p.hi, "mm"),
                     range_text(window.0, window.1, "mm"),
                     number(gap)
