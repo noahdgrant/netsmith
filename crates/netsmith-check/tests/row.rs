@@ -1,4 +1,4 @@
-//! The `row` statement of a physical file (ADR 0048, "Syntax decisions" 11): it lowers to
+//! The `row` statement of a physical file (ADR 0048, "Syntax decisions" 10): it lowers to
 //! the relations the equation form states, and every refusal names the statement.
 
 use netsmith_check::*;

@@ -127,7 +127,7 @@ pub enum Item {
 }
 
 /// `row .pads.tp1 .. .pads.tp12 along x pitch 2.54mm +/- 0.05mm`: a numbered run of parts on
-/// one line, each neighbour at the pitch along the axis (ADR 0048, "Syntax decisions" 11).
+/// one line, each neighbour at the pitch along the axis (ADR 0048, "Syntax decisions" 10).
 /// The checker lowers it to the same relations the equation form states.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Row {

@@ -1,4 +1,4 @@
-//! The `row` statement of a physical file (ADR 0048, "Syntax decisions" 11): a numbered run of
+//! The `row` statement of a physical file (ADR 0048, "Syntax decisions" 10): a numbered run of
 //! parts on one line, each neighbour at a pitch. It is lowered here to the relations the
 //! equation form states, one pitch and one alignment for each pair of neighbours, each with
 //! the span of the row statement, so the solver, the placer and the check meet nothing new.

@@ -359,6 +359,8 @@ error [constraint] constraint radio.row_b.place.x - radio.row_a.place.x (widget.
 
 The ADR's `Board::check_placement` is not where the check lives; as for the other requirements (section 8) it is the design rules check on the board file, so `fab`, the editor and the cross-check measure the same file.
 
+**A row statement lowers to these (ADR 0048 decision 10, PROVISIONAL).** `row .pads.tp1 .. .pads.tp12 along x pitch 2.54mm +/- 0.05mm` in the physical file is, for each pair of neighbours, the two relations `.pads.tp(n+1).place.x - .pads.tp(n).place.x == 2.54mm +/- 0.05mm` and `.pads.tp(n+1).place.y == .pads.tp(n).place.y`. The checker makes them, each with the span of the row statement, so the model, the `Offset`, the placer and the check are unchanged; a finding quotes the relation's two parts and the row statement's file and line.
+
 **Editor.** The findings list shows the finding (rule `constraint`, the id is the relation's name, both parts are listed). The thin line between the two parts with the window (section 4) is not built.
 
 **Not done.** A module's box or a turn as an end of a relation; a relation among three places; the line in the PCB view; a drag in the editor that keeps a relation (the finding appears after the drop).

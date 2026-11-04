@@ -1,4 +1,4 @@
-//! The `row` statement of a physical file (ADR 0048, "Syntax decisions" 11), from the file to
+//! The `row` statement of a physical file (ADR 0048, "Syntax decisions" 10), from the file to
 //! the package: the placer holds the pitch and the common line, and a pad moved by hand is a
 //! finding that names the statement's line and the two neighbours. The board is invented: a
 //! module of twelve one-pin-pair headers that stand for a row of test pads.
