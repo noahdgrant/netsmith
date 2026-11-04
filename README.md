@@ -231,16 +231,21 @@ construction and joins the pads, vias and tracks of a plane's net that lie under
 asks KiCad; the `.kicad_pcb` `fab` writes keeps them unfilled until you open it in KiCad and
 press `B`.
 
-A board can also say how wide the tracks of a rail are (`.min_track` on a `Rail`), how big it is
-and what is cut out of it (`.outline`, `Cutout`), where the outer layers are poured with a net
-(`.process.top.net &= "GND"`, with stitching vias), where tracks, vias, copper or parts are
-not allowed (`Keepout`, on a board or carried by a part) and what is printed on the silkscreen
-(`Label`). Where things are, when the source does not say, is in an optional layout file beside
-it, `<stem>.pcb.toml`. `examples/outline_and_pours.nsm` uses all of it, and `docs/LANGUAGE.md`
-("The shape of a board") explains each (ADR 0020, ADR 0029, ADR 0032).
+A board can also say how wide the tracks of a rail are (`.min_track` on a `Rail`) and where the
+outer layers are poured with a net (`.process.top.net &= "GND"`, with stitching vias). Physical
+intent, what the case and the layout designer require rather than what the circuit requires, is in
+a file of its own beside the source, `<stem>.physical.nsm`, as `physical for Board { ... }` (ADR
+0048): how big the board is and what is cut out of it (`.outline`, `Cutout`), where tracks, vias,
+copper or parts are not allowed (`Keepout`; a keepout carried by a part stays in the part), the
+mounting holes, fiducials and labels (`MountingHole`, `Fiducial`, `Label`, in its `case { }`
+section), and every requirement on where a part goes. The same in a board's circuit source is an
+error that names the file. Where things are, when neither says, is in an optional layout file,
+`<stem>.pcb.toml`. `examples/outline_and_pours.nsm` and `examples/outline_and_pours.physical.nsm`
+use all of it, and `docs/LANGUAGE.md` ("The physical file", "The shape of a board") explains each
+(ADR 0020, ADR 0029, ADR 0032, ADR 0048).
 
-A case, a panel or a carrier can fix where a part goes. The board says so on the built-in `.place`
-of the part or module (`.usb.place.left &= -0.5mm +/- 0.05mm`, also `x`, `y`, `right`, `top`,
+A case, a panel or a carrier can fix where a part goes. The board's physical file says so on the
+built-in `.place` of the part or module, by the path of the part even inside a module (`.usb.place.left &= -0.5mm +/- 0.05mm`, also `x`, `y`, `right`, `top`,
 `bottom`, `rotation` and `side`), measured from the part's body (its `F.Fab` outline, else its
 courtyard) and from the outline's top left corner (ADR 0045). The placer keeps to the requirements, a
 single value fixes the part like a lock, the layout file keeps the solved position, and `fab` measures
@@ -348,19 +353,32 @@ published limits but cannot run it).
 
 - No provider asks a supplier (ADR 0047): the one built reads a local CSV of quotes, so live price and stock need a person to put them in that file until a real provider is added (the LCSC API and JLCAPI need accounts, and the suppliers' terms of use are unread). Generic resistors (an E-series value with no supplier, `series` in `[project]`, E24 by default) are picked by the solver when no catalog row works and resolved to a row, Basic first, when the bill of materials or `fab` is made; an unresolved one stops `fab` with the nearest rows. Only resistors are generic so far; the alternatives are not re-checked against the design's relations; and the solver still prefers a row to a generic value, so it can pick a row whose stock the provider says is 0 (the bill of materials shows the 0).
 - `netsmith catalog refresh` and the editor's "Check parts against LCSC" (ADR 0039) do not fetch JLCPCB data. So the library is JLCPCB's hand-entered number, which nothing refreshes (the standard catalogs ship none) and the price and stock of a row with no provider are the row's hand-entered cells, marked stale after 90 days; the command only verifies each row's manufacturer's number and package against LCSC's record, writes the day in `checked`, and notes when LCSC lists stock 0. LCSC's terms of use have not been read (a person must read them before the command is advertised); the official APIs (JLCAPI, the LCSC API) need an account and come after v0.1.0.
-- `netsmith dxf import` (ADR 0045) reads an enclosure's outline from an ASCII DXF, but the board model has only a rectangle with equal rounded corners, so an outline that is an L, a polygon or has unequal corners, and a cutout that is not a rounded rectangle, a slot or a circle, is refused with its size and edge count (a polygon outline is ADR 0045 step C8). Holes must be `MountingHole` packages (`M2` 2.2 mm, `M3` 3.2 mm). Binary DXF, `SPLINE`s without control points or periodic, `INSERT`s with unequal scales on arcs, drawings not flat in the XY plane, and an island inside a cutout are refused with a message; text, dimensions and hatches are skipped with a warning. `--write` writes the layout file as `Layout::to_text` does, so a comment in it is not kept (the diff shows it); the source is never written.
+- `netsmith dxf import` (ADR 0045, ADR 0048) reads an enclosure's outline from an ASCII DXF, but the board model has only a rectangle with equal rounded corners, so an outline that is an L, a polygon or has unequal corners, and a cutout that is not a rounded rectangle, a slot or a circle, is refused with its size and edge count (a polygon outline is ADR 0045 step C8). Holes must be `MountingHole` packages (`M2` 2.2 mm, `M3` 3.2 mm). Binary DXF, `SPLINE`s without control points or periodic, `INSERT`s with unequal scales on arcs, drawings not flat in the XY plane, and an island inside a cutout are refused with a message; text, dimensions and hatches are skipped with a warning. `--write` edits the board's physical file at its syntax tree's spans, so a comment in it and every line it does not name is kept (the diff shows what changed); the circuit source and the layout file are never written.
 - Fabrication files (ADR 0034, provisional): netsmith writes the Gerbers, drill files and placement file itself, and JLCPCB has not yet taken them (every package it accepted before was KiCad's); the cross-check agrees with KiCad's own plot of the examples and of the synthetic boards, but the order preview is the check that counts. The pours are written with clear polarity, which KiCad does not write; copper islands and slivers under the zone's minimum thickness are not removed, and a thermal spoke into another net's clearance stays as a stub. Silkscreen text is netsmith's own stroke font (not KiCad's), a character it lacks is a box named in `fab-notes.txt`, and text boxes and curves are not plotted. Blind and buried vias, pad stacks, hatched zones and overlapping zones of different nets on one layer are refused with the item named. The design rules check (ADR 0037, provisional) is netsmith's own and checks what KiCad's reports on the boards netsmith makes; it does not check impedance, acid traps, copper slivers and islands of a pour, thermal starvation, stackup rules, differential pairs or lengths, custom rules (`.kicad_dru`) or blind and buried vias, and a pour is checked by its outline, not by a computed fill. Silkscreen text is checked with netsmith's own font, so a text that only just clears a pad can differ from KiCad's verdict.
 - Placement requirements (ADR 0045, provisional) are built for a part's or a module's own
   `.place` (C0a and C0b): the fields `x`, `y`, `left`, `right`, `top`, `bottom`, `rotation` and
   `side`, hard in the placer, measured by the design rules check on the board file. Not built:
-  a requirement between two parts (a pitch, an offset), part heights and height-limited zones,
-  the editor's windows and ghosts and a drag that stops at a
-  window (the editor lists the findings only), "pin here" in the editor, a requirement on a part
-  inside a module except through a value the module declares, and a polygon outline. A part
+  evaluating a requirement between two parts (a pitch, an offset: the physical file accepts the
+  equation form and keeps it, ADR 0048), part heights from a catalog, the editor's windows and
+  ghosts and a drag that stops at a window (the editor lists the findings only), "pin here" in the
+  editor, and a polygon outline. A part
   turned or moved by a layout file `at` is measured, not corrected. The check measures the
   body of a footprint as the footprint draws it: a connector whose shell is not on `F.Fab` is
   measured by its courtyard, and the finding says so. A window narrower than the placer's 0.05 mm
   grid is one value, its middle.
+- The physical file (ADR 0048, board level, issue #52): `physical for Board { ... }` in `<stem>.physical.nsm`,
+  found by stem beside the source like the layout file, with a nested `case { }` section; a path in it
+  reaches a part inside a module and may state only `.place`, a part's `.height` and what the file declares.
+  The old form (a board's `Outline`, `Cutout`, `Keepout`, `MountingHole`, `Fiducial`, `Label` or `.place` in its
+  circuit source) is an error from this change on, with no grace period (ADR 0001). **Provisional, to be
+  reviewed by the maintainer**: a module's or a part's own source may still state a `.place` or a keepout (the
+  module layer, anchors and a `Region` are not built); a board's circuit source may still state a part's
+  `.height` (ADR 0048 decision 9 says the physical file "may narrow" it, so there are two places); the
+  outline, cutouts, holes, fiducials and labels are refused outside `case { }` and a keepout is allowed
+  anywhere in the unit; a module's `.place.side` is carried to its parts when the module is read; a relation
+  between two parts is kept, not evaluated; a physical file for a `system`, a `panel` or a module is refused.
+  The editor reads the physical file (its tree lists it and the PCB view draws it); keepouts it draws are
+  still written to the layout file, not to the physical file.
 - Overhang (ADR 0045, section 10, **provisional**, to be reviewed by the maintainer): a part hangs over the board edge only where its own `.place.left`, `.right`,
   `.top` or `.bottom` window is at or beyond that edge (a lock in the layout file does not say it; a locked part states every edge it is past, like any other). The
   courtyard past that edge is then clipped, its pads must stay inside, a direction not stated

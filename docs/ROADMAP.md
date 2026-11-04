@@ -100,10 +100,20 @@ snap and flatpak paths are the least certain). Bundling the libraries is ADR 004
   ADR 0047; no provider talks to a supplier (their terms of use are unread). Not built: the LCSC
   and JLCAPI providers, generic capacitors, inductors and LEDs, re-running the checks for each
   nearest alternative, an `--offline` flag, a named preferred-parts file.
+- The physical file (ADR 0048, board level; issue #52): `physical for Board { ... }` in `<stem>.physical.nsm` beside
+  the source, a nested `case { }` section, plain paths into modules for physical intent only, `.place.side` on a
+  module for every part of it, the old form an error that names where it goes, `dxf import --write` and the editor's
+  tree and PCB view reading it, the guide's second kind of block (` ```nsm-physical `). Provisional (listed in the
+  README, Known limits): `.height` in either file; a keepout anywhere in the unit; the module's own `.place`. Open:
+  the editor writing the keepouts it draws, and moving a keepout it placed, to the physical file instead of the layout
+  file (needs the same span edit, `netsmith::physical::edit`, now built for `dxf import --write`); the module layer
+  (how a module's file attaches, anchors, `Region`); a physical file for a `system` or a `panel`; evaluating a relation
+  between two parts (ADR 0045 C2); lifting `case { }` into a shared `enclosure` (issue #46).
 - Outline from the enclosure (ADR 0045, C0 piece 3): `netsmith dxf import <file.dxf>` reads an ASCII DXF
   (`netsmith-dxf`: lines, arcs, circles, polylines with bulges, splines and ellipses as chords, block
-  inserts, units, gaps reported) and prints an `Outline`, `Cutout`s and `MountingHole`s to paste, with
-  their places merged into the layout file by `--write` (a diff, the source never written). Open: a
+  inserts, units, gaps reported) and prints an `Outline`, `Cutout`s and `MountingHole`s to paste into the
+  `case` section of the physical file, with their places as requirements; `--write` edits `<stem>.physical.nsm`
+  at its spans so its comments stay (a diff, the circuit source never written; ADR 0048). Open: a
   **polygon outline** (ADR 0045 step C8: the board model, placer fit test, router, DRC edge distances,
   Gerber and Edge.Cuts writers and the editor all take a rectangle with equal rounded corners), so an L
   or any polygon outline is refused by name; holes only of the `MountingHole` packages; `PlatedHole`s,

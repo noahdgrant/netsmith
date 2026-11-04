@@ -600,6 +600,7 @@ version = "0.0.1"
 dependencies = [
  "netsmith-check",
  "netsmith-core",
+ "netsmith-kicad",
  "netsmith-lang",
  "netsmith-quantity",
  "netsmith-solve",
