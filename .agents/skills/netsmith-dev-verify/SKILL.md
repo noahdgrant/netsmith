@@ -5,7 +5,7 @@ description: Run netsmith's quality gates and the real-KiCad checks (fmt, clippy
 
 # Verify a change to netsmith
 
-Entry point: `AGENTS.md`. Run these from the repository root, in a worktree of your own.
+Entry point: `AGENTS.md`. Run these from the repository root.
 
 ## Gates
 
@@ -66,15 +66,8 @@ After changing that code, or when a KiCad test fails only in a full run, run `sc
 
 A clean DRC means the board meets the process's published limits. It does not mean JLCPCB's own check accepts it.
 
-## Parallel work
-
-- Give each agent its own git worktree and branch.
-- Give each its own cargo target directory: `export CARGO_TARGET_DIR=/tmp/target-<branch>`.
-- Give each its own output directories (`/tmp/fab-<branch>`).
-- Do not edit files another agent owns. Stage files by explicit path when you commit.
-
 ## When a gate fails
 
 - Fix the cause. Do not weaken a test or silence a lint.
 - A new behaviour needs a test, including its failure messages. Messages must name the numbers and fields involved.
-- Done means every gate passes in your worktree and you can say what you did not verify.
+- Done means every gate passes and you can say what you did not verify.
