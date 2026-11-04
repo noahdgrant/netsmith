@@ -158,7 +158,7 @@ pub fn bench() -> Bench {
         let s = |l: &[&str]| l.iter().map(|x| x.to_string()).collect::<Vec<_>>();
         let mut gnd = s(&[
             "J3.2", "U4.1", "C2.2", "C3.2", "R2.2", "C1.2", "U1.4", "C4.2", "C5.2", "D1.1", "D2.1",
-            "R6.2", "R7.2", "J7.2",
+            "R6.2", "R7.2", "J7.2", "J8.2",
         ]);
         gnd.extend((2..=10).map(|i| format!("U2.{i}")));
         gnd.extend((101..125).map(|i| format!("U5.{i}")));
