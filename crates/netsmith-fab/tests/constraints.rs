@@ -24,6 +24,7 @@ fn set(list: Vec<Constraint>) -> Constraints {
     Constraints {
         list,
         sides: Vec::new(),
+        relations: Vec::new(),
         severity: Severity::Error,
     }
 }
@@ -251,6 +252,7 @@ fn a_face_is_checked_too() {
             part: "J1".into(),
             side: "bottom".into(),
         }],
+        relations: Vec::new(),
         severity: Severity::Error,
     };
     let o = &measure(&c, &board())[0];

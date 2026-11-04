@@ -507,6 +507,7 @@ mod tests {
                 hi: 501.0,
             }],
             sides: Vec::new(),
+            relations: Vec::new(),
             severity,
         };
         let found = constraint_findings(&board, &constraints(drc::Severity::Error));

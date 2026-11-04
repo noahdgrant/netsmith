@@ -1,10 +1,13 @@
 //! The design's requirements on where parts go (ADR 0045) as the design rules check wants
 //! them: which footprints each is about, what it measures and the range it allows.
 
-use netsmith_check::Sources;
+use netsmith_check::{SourceId, Sources};
 use netsmith_core::{Design, PlaceField};
 use netsmith_fab::drc::Severity;
-use netsmith_fab::drc::constraints::{Constraint, Constraints, Measure, SideRule};
+use netsmith_fab::drc::constraints::{
+    Constraint, Constraints, Measure, Relation, RelationEnd, SideRule,
+};
+use netsmith_lang::Span;
 use netsmith_lower::Sites;
 
 /// Say where the design states each requirement: `widget.nsm:14`, or several places
@@ -12,16 +15,7 @@ use netsmith_lower::Sites;
 /// found, and `sources` the files the spans point into.
 pub fn name_sources(design: &mut Design, sites: &Sites, sources: &Sources) {
     for (index, field, spans) in sites {
-        let mut lines: Vec<String> = Vec::new();
-        for (source, span) in spans {
-            let s = sources.get(*source);
-            let line = s.text[..span.start.min(s.text.len())].matches('\n').count() + 1;
-            let place = format!("{}:{line}", s.name);
-            if !lines.contains(&place) {
-                lines.push(place);
-            }
-        }
-        let text = lines.join(", ");
+        let text = lines_of(spans, sources);
         let Some(placement) = design.features.constraints.get_mut(*index) else {
             continue;
         };
@@ -32,6 +26,28 @@ pub fn name_sources(design: &mut Design, sites: &Sites, sources: &Sources) {
         {
             b.source = text;
         }
+    }
+}
+
+/// The lines that state something, `widget.nsm:14`, separated by commas.
+fn lines_of(spans: &[(SourceId, Span)], sources: &Sources) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    for (source, span) in spans {
+        let s = sources.get(*source);
+        let line = s.text[..span.start.min(s.text.len())].matches('\n').count() + 1;
+        let place = format!("{}:{line}", s.name);
+        if !lines.contains(&place) {
+            lines.push(place);
+        }
+    }
+    lines.join(", ")
+}
+
+/// Say where the design states each relation between two parts (`design.features.offsets`,
+/// in the order of `sites`).
+pub fn name_offset_sources(design: &mut Design, sites: &[(SourceId, Span)], sources: &Sources) {
+    for (offset, site) in design.features.offsets.iter_mut().zip(sites) {
+        offset.source = lines_of(std::slice::from_ref(site), sources);
     }
 }
 
@@ -50,7 +66,7 @@ fn measure(field: PlaceField) -> Measure {
 /// The requirements of `design` for the check, if it has any. A violation is a warning when
 /// `warn` is set (`constraints = "warn"`), else an error.
 pub fn of_design(design: &Design, warn: bool) -> Option<Constraints> {
-    if design.features.constraints.is_empty() {
+    if design.features.constraints.is_empty() && design.features.offsets.is_empty() {
         return None;
     }
     let mut list = Vec::new();
@@ -89,9 +105,43 @@ pub fn of_design(design: &Design, warn: bool) -> Option<Constraints> {
             });
         }
     }
+    // A relation between two parts names both by designator and by path.
+    let end = |path: &str, field: PlaceField| {
+        design
+            .parts
+            .iter()
+            .find(|part| part.path == path)
+            .map(|part| RelationEnd {
+                part: part.refdes.clone(),
+                path: path.to_string(),
+                measure: measure(field),
+            })
+    };
+    let relations = design
+        .features
+        .offsets
+        .iter()
+        .filter_map(|o| {
+            Some(Relation {
+                id: format!(
+                    "{}.place.{} - {}.place.{}",
+                    o.b.path,
+                    o.b.field.word(),
+                    o.a.path,
+                    o.a.field.word()
+                ),
+                source: o.source.clone(),
+                a: end(&o.a.path, o.a.field)?,
+                b: end(&o.b.path, o.b.field)?,
+                lo: o.lo,
+                hi: o.hi,
+            })
+        })
+        .collect();
     Some(Constraints {
         list,
         sides,
+        relations,
         severity: if warn {
             Severity::Warning
         } else {

@@ -90,11 +90,39 @@ pub struct SideRule {
     pub side: String,
 }
 
+/// One end of a [`Relation`]: a field of one part's body.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RelationEnd {
+    /// The reference designator of the footprint.
+    pub part: String,
+    /// The part's path in the design, which the message names beside the designator.
+    pub path: String,
+    /// What is measured: along x (`X`, `Left`, `Right`) or along y (`Y`, `Top`, `Bottom`).
+    pub measure: Measure,
+}
+
+/// A requirement on two parts together (ADR 0045, section 3): the measure of `b` minus the
+/// measure of `a`, along one axis, is in `lo..=hi`. The two are measured on the body of each
+/// footprint, so no outline is needed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Relation {
+    /// What the design calls it: `radio.row_b.place.x - radio.row_a.place.x`.
+    pub id: String,
+    /// Where the design states it: `widget.physical.nsm:14`; empty if not known.
+    pub source: String,
+    pub a: RelationEnd,
+    pub b: RelationEnd,
+    pub lo: f64,
+    pub hi: f64,
+}
+
 /// Every requirement of a board, and how a violation counts.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Constraints {
     pub list: Vec<Constraint>,
     pub sides: Vec<SideRule>,
+    /// Requirements on two parts together.
+    pub relations: Vec<Relation>,
     /// What a violation is: an error stops `fab`, a warning is listed (`constraints = "warn"`).
     pub severity: Severity,
 }
@@ -212,6 +240,9 @@ impl Constraints {
         }
         for s in &self.sides {
             out.push(side_of(art, s));
+        }
+        for r in &self.relations {
+            out.push(relation_of(art, r));
         }
         out
     }
@@ -389,6 +420,108 @@ impl Constraints {
     /// caller chose, in the order of the requirements.
     pub fn findings(&self, art: &Artwork) -> Vec<Finding> {
         outcome_findings(&self.measure(art), self.severity)
+    }
+}
+
+/// What a body's box measures for `measure`, along its axis, in the frame of the sheet.
+fn along(body: &Bounds, measure: Measure) -> f64 {
+    match measure {
+        Measure::X => (body.min.x + body.max.x) / 2.0,
+        Measure::Y => (body.min.y + body.max.y) / 2.0,
+        Measure::Left => body.min.x,
+        Measure::Right => body.max.x,
+        Measure::Top => body.min.y,
+        Measure::Bottom => body.max.y,
+        Measure::Rotation => 0.0,
+    }
+}
+
+fn relation_of(art: &Artwork, r: &Relation) -> Outcome {
+    let name = if r.source.is_empty() {
+        r.id.clone()
+    } else {
+        format!("{} ({})", r.id, r.source)
+    };
+    let parts = vec![r.b.part.clone(), r.a.part.clone()];
+    let unmeasurable = |why: String| Outcome {
+        id: r.id.clone(),
+        source: r.source.clone(),
+        satisfied: false,
+        parts: parts.clone(),
+        at: Pt::default(),
+        measured: None,
+        allowed: (r.lo, r.hi),
+        over: f64::INFINITY,
+        margin: 0.0,
+        body: String::new(),
+        message: why,
+    };
+    let find = |end: &RelationEnd| {
+        let back = art
+            .footprints
+            .iter()
+            .find(|f| f.part == end.part)
+            .is_some_and(|f| f.back);
+        body_of(art, &end.part, back)
+    };
+    let (Some((body_a, layer_a)), Some((body_b, layer_b))) = (find(&r.a), find(&r.b)) else {
+        let missing: Vec<&str> = [&r.a, &r.b]
+            .into_iter()
+            .filter(|e| find(e).is_none())
+            .map(|e| e.part.as_str())
+            .collect();
+        return unmeasurable(format!(
+            "constraint {name} is violated: {} is not on the board",
+            missing.join(" and ")
+        ));
+    };
+    let value = along(&body_b, r.b.measure) - along(&body_a, r.a.measure);
+    let over = (r.lo - value).max(value - r.hi).max(0.0);
+    let satisfied = over <= super::checks::EPS;
+    let margin = if satisfied {
+        (value - r.lo).min(r.hi - value)
+    } else {
+        0.0
+    };
+    let who = |end: &RelationEnd, layer: &str| {
+        format!(
+            "{} of the body of {} (`{}`, {layer})",
+            end.measure.what(),
+            end.part,
+            end.path
+        )
+    };
+    let axis = if matches!(r.b.measure, Measure::X | Measure::Left | Measure::Right) {
+        "x"
+    } else {
+        "y"
+    };
+    let centre = |b: &Bounds| Pt::new((b.min.x + b.max.x) / 2.0, (b.min.y + b.max.y) / 2.0);
+    let (ca, cb) = (centre(&body_a), centre(&body_b));
+    Outcome {
+        id: r.id.clone(),
+        source: r.source.clone(),
+        satisfied,
+        parts,
+        at: Pt::new((ca.x + cb.x) / 2.0, (ca.y + cb.y) / 2.0),
+        measured: Some(value),
+        allowed: (r.lo, r.hi),
+        over,
+        margin,
+        body: format!("{layer_b}, {layer_a}"),
+        message: format!(
+            "constraint {name} is {}: {} minus {} is {} mm along {axis}, and it allows {}{}",
+            if satisfied { "satisfied" } else { "violated" },
+            who(&r.b, &layer_b),
+            who(&r.a, &layer_a),
+            n(value),
+            range_text(r.lo, r.hi, "mm"),
+            if satisfied {
+                String::new()
+            } else {
+                format!(" ({} mm over)", n(over))
+            }
+        ),
     }
 }
 
