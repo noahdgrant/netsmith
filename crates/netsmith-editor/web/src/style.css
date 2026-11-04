@@ -413,3 +413,6 @@ td.des { font-weight: 600; }
 
 /* the schematic's side panel is as tall as the drawing */
 .schematic-body .inspector { max-height: none; border-bottom: none; }
+
+/* the editor's hover note on a token the .nsm colouring marks as not valid */
+.cm-invalid-tip { padding: 4px 8px; max-width: 420px; font: 12px/1.4 var(--sans); color: var(--text); }
