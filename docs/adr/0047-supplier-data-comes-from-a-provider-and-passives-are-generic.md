@@ -1,5 +1,5 @@
 ---
-status: provisional (written by the agent from issues #8 and #9, 2026-11-03; to be reviewed by the maintainer; open questions 1 and 7 decided by the owner, 2026-11-03, see _Owner decisions, 2026-11-03_). Supersedes the data-in-files parts of ADR 0022 (items 4 and 6: the `price`, `stock` and `date` columns and the stock-0 rule) and of ADR 0039 (items 9 and 10, the ages, and `catalog age` reading `date`). The identity check of `catalog refresh` stays.
+status: provisional (written by the agent from issues #8 and #9, 2026-11-03; to be reviewed by the maintainer; open questions 1, 2, 5 and 7 decided by the owner (2026-11-03 and 2026-11-04), see _Owner decisions, 2026-11-03_). Supersedes the data-in-files parts of ADR 0022 (items 4 and 6: the `price`, `stock` and `date` columns and the stock-0 rule) and of ADR 0039 (items 9 and 10, the ages, and `catalog age` reading `date`). The identity check of `catalog refresh` stays.
 ---
 
 # Price and stock come from a provider when the bill of materials is made, and passives are generic until a later step resolves them
@@ -131,10 +131,10 @@ Not built: a provider that asks a supplier, the `--offline` flag (`Supply::with_
 ## Open questions for the maintainer
 
 1. **Is the `[supply]` table in `netsmith.toml` the way to configure a provider?** The alternative is a user-level file only (a provider is a property of the person, not the project) with the channel in the manifest. **Decided by the owner, 2026-11-03: the `[supply]` table, with credentials given by environment-variable name and never stored.**
-2. **The key for the series is `series` in `[project]`.** A syntax-free choice that is still a user-facing name. The alternative is a statement in the language (`series E96`), which is the maintainer's to decide.
+2. **The key for the series is `series` in `[project]`.** A syntax-free choice that is still a user-facing name. The alternative is a statement in the language (`series E96`), which is the maintainer's to decide. **Decided by the owner, 2026-11-04: the `series` key in `[project]`; the language does not state a series.**
 3. **Generic parts appended after the identity rows or instead of them?** Appended keeps every design as it is; instead is the clean model and changes which part existing designs get.
 4. **Is "JLCPCB Basic, then Preferred, then Extended, then file order" the preferred-parts list, or is it a file of its own** (`preferred.csv`, a project's list that wins)?
-5. **The price rule for a quantity below the first break** ("from N pieces") and the 24 hour and 90 day numbers.
+5. **The price rule for a quantity below the first break** ("from N pieces") and the 24 hour and 90 day numbers. **Decided by the owner, 2026-11-04: keep all three: a quantity below the first break is shown at the first break's price and marked "from N pieces", the cache lasts 24 hours, and a price is stale after 90 days.**
 6. **Which real providers, and in which order:** the LCSC API, JLCAPI, an aggregator (the Nexar API, which Altium's bill of materials and KiCost use) or a community snapshot (the KiCad JLCPCB plugin downloads one daily). Each needs the maintainer to read its terms and to decide whose key a user brings.
 7. **Capacitors, inductors and LEDs as generic parts.** A capacitor needs a bias curve for its effective capacitance (ADR 0013); a generic capacitor has none. One option is a generic dielectric class with a conservative curve, which is a modelling decision. **Decided by the owner, 2026-11-03: not a conservative curve and not a derating rule; a generic ceramic capacitor resolves only to a catalog row that has a recorded DC-bias curve, and one with no such row is reported unresolved, by name.**
 8. **Should the editor offer a swap with the checks run for each alternative,** and should `fab` refuse an unresolved part (this ADR says it does) or build without it?
