@@ -127,6 +127,9 @@ fn a_pad_moved_by_hand_is_a_finding_with_the_row_s_line_and_the_two_neighbours()
 
 #[test]
 fn parts_are_numbered_in_natural_order_so_the_names_and_the_labels_agree() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let loader = Loader::std().with_physical("widget.nsm", "widget.physical.nsm", PHYSICAL);
     let built = build_with(
         "widget.nsm",
