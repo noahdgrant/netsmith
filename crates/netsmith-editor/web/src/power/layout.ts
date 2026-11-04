@@ -48,7 +48,7 @@ export const PAD = 36;
 /** The space between nodes of a layer. */
 export const GAP_Y = 26;
 /** The least space between two layers, for the edges between them. */
-export const GAP_X = 64;
+export const GAP_X = 44;
 /** The space one edge's vertical run takes in the gap. */
 const LANE = 14;
 /** The height of the lane a long edge keeps in a layer it passes. */

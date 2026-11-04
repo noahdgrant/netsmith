@@ -293,6 +293,10 @@ describe('selecting', () => {
     expect(move(l, links, 'VIN', 'left')).toBeNull();
     const down = move(l, links, 'V5', 'right');
     expect(['s2', 's3']).toContain(down);
+    // Left and Right again end where they began, whichever branch was taken.
+    expect(move(l, links, 'V5', 'right', 's3')).toBe('s3');
+    expect(move(l, links, 'V5', 'right', 's2')).toBe('s2');
+    expect(move(l, links, 'V5', 'right', 'nonsense')).toBe(down);
     const other = move(l, links, down, down === 's2' ? 'down' : 'up');
     expect(['s2', 's3']).toContain(other);
     expect(other).not.toBe(down);

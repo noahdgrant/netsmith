@@ -34,9 +34,10 @@ export function upstream(links: Link[], id: string): Path {
 export type Move = 'up' | 'down' | 'left' | 'right';
 
 /** The node an arrow key goes to from `id`: left to what feeds it, right to what it feeds, up and
- * down to the neighbours in its layer. Null when there is none. With nothing selected, any key
+ * down to the neighbours in its layer; `prefer` is taken when it is one of the ends of a left or
+ * right move. Null when there is none. With nothing selected, any key
  * picks the first node of the first layer. */
-export function move(layout: TreeLayout, links: Link[], id: string | null, key: Move): string | null {
+export function move(layout: TreeLayout, links: Link[], id: string | null, key: Move, prefer: string | null = null): string | null {
   const first = layout.layers.find((l) => l.length)?.[0] ?? null;
   if (id === null) return first;
   const here = layout.nodes.find((n) => n.id === id);
@@ -58,5 +59,6 @@ export function move(layout: TreeLayout, links: Link[], id: string | null, key: 
     .filter((l) => (key === 'left' ? l.to === id : l.from === id))
     .map((l) => (key === 'left' ? l.from : l.to))
     .filter((n) => place.has(n));
-  return nearest(ends);
+  // Going back the way one came is the likeliest wish: Left then Right ends where it began.
+  return prefer && ends.includes(prefer) ? prefer : nearest(ends);
 }
