@@ -71,6 +71,11 @@ const VIA: i64 = 150;
 /// A via standing in a pad costs a process step the fabricator charges for, so a path uses
 /// one only when no path without is shorter than this much more: 60 mm of track.
 const VIA_IN_PAD: i64 = 600;
+/// What it costs to put a track, or a via, through a cell another net's copper keeps it
+/// from, when the router looks for the nets least in the way of a line: a track crosses a
+/// few cells of another track, so crossing one costs several times this.
+const SOFT: i64 = 100;
+const SOFT_VIA: i64 = 300;
 /// A step through a cell where the track has to be narrower costs this much more: a necked
 /// down track carries less and is harder to make, so it is kept short.
 const NECK: i64 = 30;
@@ -319,6 +324,14 @@ struct Masks {
     /// How often lines have fought over each cell while the router negotiated, which makes
     /// a track through it dearer. Empty when it is not negotiating.
     history: [Vec<u8>; 2],
+    /// Cells that other nets' routed copper keeps tracks and vias from, which a search for
+    /// the nets least in the way may cross at a price.
+    soft: Option<Soft>,
+}
+
+struct Soft {
+    track: [Vec<bool>; 2],
+    via: Vec<bool>,
 }
 
 impl Masks {
@@ -330,6 +343,7 @@ impl Masks {
             via: vec![false; window.cells()],
             wide: None,
             history: [Vec::new(), Vec::new()],
+            soft: None,
         }
     }
 
@@ -340,6 +354,23 @@ impl Masks {
     /// Whether a track on the cell has to be necked down.
     fn necked(&self, layer: usize, i: usize, j: usize) -> bool {
         self.wide.as_ref().is_some_and(|w| w[layer][self.at(i, j)])
+    }
+
+    /// What it costs, beyond a step, to put a track on a cell that other nets' routed copper
+    /// keeps tracks from.
+    fn soft_cost(&self, layer: usize, i: usize, j: usize) -> i64 {
+        match &self.soft {
+            Some(soft) if soft.track[layer][self.at(i, j)] => SOFT,
+            _ => 0,
+        }
+    }
+
+    /// The same for a via.
+    fn soft_via_cost(&self, i: usize, j: usize) -> i64 {
+        match &self.soft {
+            Some(soft) if soft.via[self.at(i, j)] => SOFT_VIA,
+            _ => 0,
+        }
     }
 
     /// What it costs, beyond a step, to put a track on the cell.
@@ -366,58 +397,157 @@ struct Obstacles {
     via_keepouts: Vec<(Form, f64)>,
 }
 
-/// The cells of `window` that a track, or a via, of `net` may not use, given what is in the
-/// way.
+/// How many obstacles keep each cell of a window from tracks on each layer, and from vias.
+/// A cell is open when its count is zero. Counting is what lets one net's own pads be taken
+/// away again from counts made for all of them.
+struct Counts {
+    window: Window,
+    track: [Vec<u16>; 2],
+    via: Vec<u16>,
+}
+
+impl Counts {
+    fn new(window: Window) -> Counts {
+        Counts {
+            window,
+            track: [vec![0; window.cells()], vec![0; window.cells()]],
+            via: vec![0; window.cells()],
+        }
+    }
+
+    /// Add one (`up`) or take away one obstacle's reach: the cells within the rules' space
+    /// of it, plus the room, for a track of `width` and for a via.
+    fn stamp(
+        &mut self,
+        grid: &Grid,
+        rules: &crate::rules::Rules,
+        o: &Obstacle,
+        reach: Reach,
+        up: bool,
+    ) {
+        let Reach { room, width } = reach;
+        let window = self.window;
+        let track_reach = o.clearance + width / 2.0 + room;
+        let via_reach = o.clearance + rules.via_diameter / 2.0 + room;
+        let bounds = o.form.bounds();
+        let far = track_reach.max(via_reach);
+        // Most obstacles are nowhere near a small window.
+        let corner = |i: usize, j: usize| grid.centre(i, j);
+        let seen = Rect::new(
+            corner(window.i0, window.j0),
+            corner(window.i0 + window.nx - 1, window.j0 + window.ny - 1),
+        );
+        if !seen.expanded(PITCH).overlaps(&bounds.expanded(far)) {
+            return;
+        }
+        // Look as far as either goes: a track wider than a via reaches further than it.
+        for (i, j) in grid.cells_near(&window, &bounds, far) {
+            let d = o.form.distance(grid.centre(i, j));
+            let at = window.index(i, j);
+            let bump = |c: &mut u16| {
+                if up {
+                    *c += 1;
+                } else {
+                    *c -= 1;
+                }
+            };
+            for layer in [FRONT, BACK] {
+                if o.layers[layer] && d < track_reach {
+                    bump(&mut self.track[layer][at]);
+                }
+            }
+            if d < via_reach {
+                bump(&mut self.via[at]);
+            }
+        }
+    }
+
+    fn stamp_keepout(&mut self, grid: &Grid, form: &Form, reach: f64) {
+        for (i, j) in grid.cells_near(&self.window, &form.bounds(), reach) {
+            if form.distance(grid.centre(i, j)) < reach {
+                let at = self.window.index(i, j);
+                self.via[at] += 1;
+            }
+        }
+    }
+}
+
+/// What the copper that never moves keeps cells from, over the whole board, for one room
+/// and track width: the board's edge, the pads, the holes and the keepouts.
+struct Base {
+    counts: Counts,
+}
+
+impl Base {
+    fn new(board: &Board, grid: &Grid, fixed: &Obstacles, reach: Reach) -> Base {
+        let mut counts = Counts::new(Window::full(grid));
+        let (outline, rules) = (&board.outline, &board.rules);
+        for j in 0..grid.ny {
+            for i in 0..grid.nx {
+                let p = grid.centre(i, j);
+                if !outline.contains(&Rect::new(p, p)) {
+                    let at = counts.window.index(i, j);
+                    counts.track[FRONT][at] += 1;
+                    counts.track[BACK][at] += 1;
+                    counts.via[at] += 1;
+                }
+            }
+        }
+        for o in &fixed.list {
+            counts.stamp(grid, rules, o, reach, true);
+        }
+        for (form, keep) in &fixed.via_keepouts {
+            counts.stamp_keepout(grid, form, *keep);
+        }
+        Base { counts }
+    }
+}
+
+/// The cells of `window` that a track, or a via, of `net` may not use: what never moves
+/// (`base`, less the net's own pads, `own`), the copper routed so far of other nets
+/// (`routed`), and the keep-outs of the holes of routed vias (`keepouts`).
+#[allow(clippy::too_many_arguments)]
 fn masks_for(
     grid: &Grid,
     window: Window,
     board: &Board,
-    obstacles: &[&Obstacle],
+    base: &Base,
+    own: &[&Obstacle],
+    routed: &[&Obstacle],
     keepouts: &[(Form, f64)],
     net: usize,
     reach: Reach,
 ) -> Masks {
-    let (outline, rules) = (&board.outline, &board.rules);
-    let Reach { room, width } = reach;
+    let rules = &board.rules;
+    let mut counts = Counts::new(window);
+    let from = &base.counts;
+    for layer in [FRONT, BACK] {
+        copy_window(&from.track[layer], &mut counts.track[layer], grid, window);
+    }
+    copy_window(&from.via, &mut counts.via, grid, window);
+    for o in own {
+        counts.stamp(grid, rules, o, reach, false);
+    }
+    for o in routed.iter().filter(|o| o.net != Some(net)) {
+        counts.stamp(grid, rules, o, reach, true);
+    }
+    for (form, keep) in keepouts {
+        counts.stamp_keepout(grid, form, *keep);
+    }
     let mut m = Masks::open(window);
-    for j in window.j0..window.j0 + window.ny {
-        for i in window.i0..window.i0 + window.nx {
-            let p = grid.centre(i, j);
-            if !outline.contains(&Rect::new(p, p)) {
-                let at = m.at(i, j);
-                m.track[FRONT][at] = true;
-                m.track[BACK][at] = true;
-                m.via[at] = true;
-            }
-        }
+    for layer in [FRONT, BACK] {
+        m.track[layer] = counts.track[layer].iter().map(|&c| c > 0).collect();
     }
-    for o in obstacles.iter().filter(|o| o.net != Some(net)) {
-        let track_reach = o.clearance + width / 2.0 + room;
-        let via_reach = o.clearance + rules.via_diameter / 2.0 + room;
-        let bounds = o.form.bounds();
-        // Look as far as either goes: a track wider than a via reaches further than it.
-        for (i, j) in grid.cells_near(&window, &bounds, track_reach.max(via_reach)) {
-            let d = o.form.distance(grid.centre(i, j));
-            let at = m.at(i, j);
-            for layer in [FRONT, BACK] {
-                if o.layers[layer] && d < track_reach {
-                    m.track[layer][at] = true;
-                }
-            }
-            if d < via_reach {
-                m.via[at] = true;
-            }
-        }
-    }
-    for (form, reach) in keepouts {
-        for (i, j) in grid.cells_near(&window, &form.bounds(), *reach) {
-            if form.distance(grid.centre(i, j)) < *reach {
-                let at = m.at(i, j);
-                m.via[at] = true;
-            }
-        }
-    }
+    m.via = counts.via.iter().map(|&c| c > 0).collect();
     m
+}
+
+/// The rows of a window out of counts over the whole grid.
+fn copy_window(whole: &[u16], out: &mut [u16], grid: &Grid, window: Window) {
+    for j in 0..window.ny {
+        let from = (window.j0 + j) * grid.nx + window.i0;
+        out[j * window.nx..(j + 1) * window.nx].copy_from_slice(&whole[from..from + window.nx]);
+    }
 }
 
 /// A cell on a layer: where a path starts or ends, and so is open whatever the masks say.
@@ -691,13 +821,16 @@ fn search(
             relax(
                 next,
                 d,
-                STEP + turn + neck + masks.history_cost(layer, next.0, next.1),
+                STEP + turn
+                    + neck
+                    + masks.history_cost(layer, next.0, next.1)
+                    + masks.soft_cost(layer, next.0, next.1),
             );
         }
         let other = 1 - layer;
         let at = masks.at(i, j);
         if !masks.via[at] && (!masks.track[other][at] || open((i, j, other))) {
-            relax((i, j, other), NO_DIRECTION, VIA);
+            relax((i, j, other), NO_DIRECTION, VIA + masks.soft_via_cost(i, j));
         }
     }
     Err(Miss::Blocked)
@@ -922,6 +1055,10 @@ struct Router<'a> {
     board: &'a Board,
     grid: Grid,
     fixed: Obstacles,
+    /// The obstacles of `fixed` that each net's pads make, as indices into its list.
+    fixed_by_net: Vec<Vec<usize>>,
+    /// What the fixed obstacles keep cells from, for each room and track width asked for.
+    bases: RefCell<HashMap<(u64, u64), std::rc::Rc<Base>>>,
     lines: Vec<Ratline>,
     /// The net of each line, as an index into the board's nets.
     nets: Vec<usize>,
@@ -974,9 +1111,18 @@ impl<'a> Router<'a> {
                 (in_pad(board, &l.from, l.from_at, &grid), to)
             })
             .collect();
+        let fixed = initial_obstacles(board);
+        let mut fixed_by_net = vec![Vec::new(); board.nets.len()];
+        for (k, o) in fixed.list.iter().enumerate() {
+            if let Some(n) = o.net {
+                fixed_by_net[n].push(k);
+            }
+        }
         Router {
             board,
-            fixed: initial_obstacles(board),
+            fixed,
+            fixed_by_net,
+            bases: RefCell::new(HashMap::new()),
             grid,
             lines,
             nets,
@@ -990,6 +1136,54 @@ impl<'a> Router<'a> {
             cancel: options.cancel,
             last_report: Cell::new(Instant::now()),
         }
+    }
+
+    /// The masks of a window for a net: see [`masks_for`].
+    fn masks(
+        &self,
+        window: Window,
+        net: usize,
+        (routed, keepouts): (&[&Obstacle], &[(Form, f64)]),
+        (soft, soft_keepouts): (&[&Obstacle], &[(Form, f64)]),
+        reach: Reach,
+    ) -> Masks {
+        let key = (reach.room.to_bits(), reach.width.to_bits());
+        let base = self
+            .bases
+            .borrow_mut()
+            .entry(key)
+            .or_insert_with(|| {
+                std::rc::Rc::new(Base::new(self.board, &self.grid, &self.fixed, reach))
+            })
+            .clone();
+        let own: Vec<&Obstacle> = self.fixed_by_net[net]
+            .iter()
+            .map(|&k| &self.fixed.list[k])
+            .collect();
+        let mut m = masks_for(
+            &self.grid, window, self.board, &base, &own, routed, keepouts, net, reach,
+        );
+        if !soft.is_empty() || !soft_keepouts.is_empty() {
+            // The cells only the soft copper keeps tracks and vias from.
+            let mut counts = Counts::new(window);
+            for o in soft.iter().filter(|o| o.net != Some(net)) {
+                counts.stamp(&self.grid, &self.board.rules, o, reach, true);
+            }
+            for (form, keep) in soft_keepouts {
+                counts.stamp_keepout(&self.grid, form, *keep);
+            }
+            m.soft = Some(Soft {
+                track: [FRONT, BACK].map(|l| {
+                    (0..window.cells())
+                        .map(|c| counts.track[l][c] > 0 && !m.track[l][c])
+                        .collect()
+                }),
+                via: (0..window.cells())
+                    .map(|c| counts.via[c] > 0 && !m.via[c])
+                    .collect(),
+            });
+        }
+        m
     }
 
     /// The width a line's tracks are drawn at: its net's (ADR 0020).
@@ -1063,14 +1257,33 @@ impl<'a> Router<'a> {
         state: &State,
         ignore: &[usize],
         room: f64,
+        soft: bool,
     ) -> Option<(Routed, Vec<Spot>)> {
         let others: Vec<&Routed> = state
             .routed
             .iter()
             .filter(|r| !ignore.contains(&self.nets[r.line]))
             .collect();
-        let (list, mut keepouts) = self.copper_of(&others);
-        let obstacles: Vec<&Obstacle> = self.fixed.list.iter().chain(list.iter()).collect();
+        let (list, routed_keepouts) = self.copper_of(&others);
+        // A soft search goes through the copper of other nets at a price, to find the nets
+        // that are least in the way; what it finds is not copper that can be drawn.
+        let obstacles: Vec<&Obstacle> = if soft {
+            self.fixed.list.iter().collect()
+        } else {
+            self.fixed.list.iter().chain(list.iter()).collect()
+        };
+        let routed: Vec<&Obstacle> = list.iter().collect();
+        let (hard, hard_keepouts): (&[&Obstacle], &[(Form, f64)]) = if soft {
+            (&[], &[])
+        } else {
+            (&routed, &routed_keepouts)
+        };
+        let (soft_list, soft_keepouts): (&[&Obstacle], &[(Form, f64)]) = if soft {
+            (&routed, &routed_keepouts)
+        } else {
+            (&[], &[])
+        };
+        let mut keepouts = hard_keepouts.to_vec();
         keepouts.extend(self.fixed.via_keepouts.iter().copied());
         let (from, to) = &self.ends[line];
         let goal = if self.lines[line].to_plane {
@@ -1104,13 +1317,11 @@ impl<'a> Router<'a> {
             }
             tried = Some(window);
             let rules = &self.board.rules;
-            let mut masks = masks_for(
-                &self.grid,
+            let mut masks = self.masks(
                 window,
-                self.board,
-                &obstacles,
-                &keepouts,
                 net,
+                (hard, hard_keepouts),
+                (soft_list, soft_keepouts),
                 Reach {
                     room,
                     width: track_width,
@@ -1119,13 +1330,11 @@ impl<'a> Router<'a> {
             // With the least room, a track that cannot pass between two pads at its full
             // width may pass at the narrowest the process makes.
             if room == ROOM_TIGHT && track_width > rules.min_track_width + 1e-9 {
-                let narrow = masks_for(
-                    &self.grid,
+                let narrow = self.masks(
                     window,
-                    self.board,
-                    &obstacles,
-                    &keepouts,
                     net,
+                    (hard, hard_keepouts),
+                    (soft_list, soft_keepouts),
                     Reach {
                         room,
                         width: rules.min_track_width,
@@ -1352,7 +1561,7 @@ impl<'a> Router<'a> {
                     state.failed.len()
                 )
             });
-            match self.try_line(line, &state, &[], ROOM_LOOSE) {
+            match self.try_line(line, &state, &[], ROOM_LOOSE, false) {
                 Some((routed, _)) => state.routed.push(routed),
                 None => state.failed.push(line),
             }
@@ -1375,7 +1584,7 @@ impl<'a> Router<'a> {
                             state.failed.len()
                         )
                     });
-                    if let Some((routed, _)) = self.try_line(line, &state, &[], room) {
+                    if let Some((routed, _)) = self.try_line(line, &state, &[], room, false) {
                         state.routed.push(routed);
                         state.failed.retain(|&f| f != line);
                     }
@@ -1409,18 +1618,12 @@ impl<'a> Router<'a> {
         state
     }
 
-    /// Where a line would go if no other net's copper stood in its way, and the nets whose
-    /// copper that path comes near: those a path routed through everything else's copper
-    /// comes near. `None` if there is no such path.
+    /// Where a line would go if the copper of other nets could be crossed, at a price per
+    /// cell ([`SOFT`]), and the nets whose copper that path comes near: the nets least in the
+    /// line's way, not all that lie between its ends. `None` if even that has no path.
     fn contested(&self, line: usize, state: &State, room: f64) -> Option<(Vec<Spot>, Vec<usize>)> {
         let net = self.nets[line];
-        let others: Vec<usize> = state
-            .routed
-            .iter()
-            .map(|r| self.nets[r.line])
-            .filter(|&n| n != net)
-            .collect();
-        let (_, path) = self.try_line(line, state, &others, room)?;
+        let (_, path) = self.try_line(line, state, &[], room, true)?;
         let rules = &self.board.rules;
         let reach = rules.clearance + MARGIN + self.width_of(line) + PITCH;
         let mut found = Vec::new();
@@ -1513,7 +1716,7 @@ impl<'a> Router<'a> {
                 let mut again: Vec<usize> = gone.iter().map(|r| r.line).collect();
                 again.sort_by(|&a, &b| self.lines[a].length().total_cmp(&self.lines[b].length()));
                 // The line first, and then what was ripped up for it.
-                match self.try_line(line, state, &[], room) {
+                match self.try_line(line, state, &[], room, false) {
                     Some((routed, _)) => {
                         state.routed.push(routed);
                         state.failed.retain(|&f| f != line);
@@ -1525,7 +1728,7 @@ impl<'a> Router<'a> {
                     }
                 }
                 for l in again {
-                    match self.try_line(l, state, &[], room) {
+                    match self.try_line(l, state, &[], room, false) {
                         Some((routed, _)) => state.routed.push(routed),
                         None => state.failed.push(l),
                     }
@@ -1560,13 +1763,13 @@ impl<'a> Router<'a> {
             let mut again: Vec<usize> = gone.iter().map(|r| r.line).collect();
             again.sort_by(|&a, &b| self.lines[a].length().total_cmp(&self.lines[b].length()));
 
-            let Some((first, _)) = self.try_line(line, &trial, &[], room) else {
+            let Some((first, _)) = self.try_line(line, &trial, &[], room, false) else {
                 continue;
             };
             trial.routed.push(first);
             let mut ok = true;
             for l in again {
-                match self.try_line(l, &trial, &[], room) {
+                match self.try_line(l, &trial, &[], room, false) {
                     Some((r, _)) => trial.routed.push(r),
                     None => {
                         ok = false;
@@ -2196,6 +2399,99 @@ mod tests {
             );
         }
         assert!(!board.vias.is_empty());
+    }
+
+    /// Copper of another net across the whole grid on both layers: a wall two cells thick at
+    /// columns `i` and `i + 1`, except for the rows in `gap`.
+    fn soft_wall(grid: &Grid, masks: &mut Masks, i: usize, gap: std::ops::Range<usize>) {
+        let cells = masks.window.cells();
+        let mut soft = Soft {
+            track: [vec![false; cells], vec![false; cells]],
+            via: vec![false; cells],
+        };
+        for j in (0..grid.ny).filter(|j| !gap.contains(j)) {
+            for i in [i, i + 1] {
+                let at = masks.at(i, j);
+                soft.track[FRONT][at] = true;
+                soft.track[BACK][at] = true;
+                soft.via[at] = true;
+            }
+        }
+        masks.soft = Some(soft);
+    }
+
+    #[test]
+    fn a_soft_search_crosses_copper_that_a_hard_one_cannot() {
+        let (grid, mut masks) = open_grid();
+        soft_wall(&grid, &mut masks, 15, 0..0);
+        // Hard masks do not see the wall; the soft ones price it, and the path goes through
+        // because no way round exists.
+        let path = find(&masks, &[(0, 5, FRONT)], Goal::Spots(&[(30, 5, FRONT)])).unwrap();
+        assert_eq!(path.len(), 31);
+        assert!(path.contains(&(15, 5, FRONT)));
+    }
+
+    #[test]
+    fn a_soft_search_goes_round_copper_by_a_gap_when_the_gap_is_not_far() {
+        let (grid, mut masks) = open_grid();
+        // The wall is open at rows 8 and 9, three rows from the line: the detour costs 160
+        // (six steps and four turns), crossing the wall's two cells 200 (SOFT, 100 each).
+        soft_wall(&grid, &mut masks, 15, 8..10);
+        let path = find(&masks, &[(0, 5, FRONT)], Goal::Spots(&[(30, 5, FRONT)])).unwrap();
+        assert!(path.contains(&(15, 8, FRONT)), "{path:?}");
+        assert!(!path.contains(&(15, 5, FRONT)));
+    }
+
+    #[test]
+    fn a_soft_path_does_not_stop_at_a_gap_that_costs_more_than_the_wall() {
+        let (grid, mut masks) = open_grid();
+        // Open only at row 9, eight rows from the line, whose detour costs 260: the path
+        // crosses the wall.
+        soft_wall(&grid, &mut masks, 15, 9..10);
+        let path = find(&masks, &[(0, 1, FRONT)], Goal::Spots(&[(30, 1, FRONT)])).unwrap();
+        assert!(path.contains(&(15, 1, FRONT)), "{path:?}");
+    }
+
+    #[test]
+    fn masks_made_from_the_cached_fixed_copper_leave_a_nets_own_pads_open() {
+        let board = Board::from_design(
+            &four_layer_design(),
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+        )
+        .unwrap();
+        let router = Router::new(&board, &RouteOptions::default());
+        let window = Window::full(&router.grid);
+        let reach = Reach {
+            room: ROOM_LOOSE,
+            width: board.rules.track_width,
+        };
+        // For every net, a cell on its own pad is open to it, and shut to every other net.
+        for (n, net) in board.nets.iter().enumerate() {
+            let own = net.pads.first().expect("a net has pads");
+            let part = board.part(&own.refdes).unwrap();
+            let pad = part.footprint.pads_numbered(&own.number).next().unwrap();
+            let (i, j) = router.grid.cell(part.pad_centre(pad));
+            let (front, _) = part.pad_layers(pad);
+            let layer = if front { FRONT } else { BACK };
+            let mine = router.masks(window, n, (&[], &[]), (&[], &[]), reach);
+            assert!(
+                !mine.track[layer][mine.at(i, j)],
+                "{}: its own pad {own:?} is shut to it",
+                net.name
+            );
+            let other = (n + 1) % board.nets.len();
+            {
+                let theirs = router.masks(window, other, (&[], &[]), (&[], &[]), reach);
+                assert!(
+                    theirs.track[layer][theirs.at(i, j)],
+                    "{}: the pad of {} is open to {}",
+                    net.name,
+                    net.name,
+                    board.nets[other].name
+                );
+            }
+        }
     }
 
     #[test]

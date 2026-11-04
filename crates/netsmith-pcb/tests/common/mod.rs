@@ -208,6 +208,99 @@ fn quad_footprint(per_side: usize) -> String {
     )
 }
 
+/// A module with pads of 0.6 mm on a 1.1 mm pitch in `rings` rings round a hollow centre, on
+/// a grid of `side` by `side` places: `4 * (side - 1)` pads in the outer ring, 8 fewer in the
+/// next, and so on. `side` 12 and 2 rings make 44 + 36 = 80 pads. The pads are numbered ring
+/// by ring, clockwise from the top left. The footprint's name is `QUAD`, for the caller to
+/// replace.
+pub fn module_footprint(side: usize, rings: usize) -> String {
+    let (pitch, pad) = (1.1, 0.6);
+    let mut pads = String::new();
+    let mut number = 0;
+    for ring in 0..rings {
+        let n = side - 2 * ring;
+        let mut cells: Vec<(usize, usize)> = Vec::new();
+        for c in 0..n - 1 {
+            cells.push((ring, ring + c));
+        }
+        for r in 0..n - 1 {
+            cells.push((ring + r, ring + n - 1));
+        }
+        for c in 0..n - 1 {
+            cells.push((ring + n - 1, ring + n - 1 - c));
+        }
+        for r in 0..n - 1 {
+            cells.push((ring + n - 1 - r, ring));
+        }
+        for (row, col) in cells {
+            let x = (col as f64 - (side as f64 - 1.0) / 2.0) * pitch;
+            let y = (row as f64 - (side as f64 - 1.0) / 2.0) * pitch;
+            number += 1;
+            pads += &format!(
+                "(pad \"{number}\" smd rect (at {x:.3} {y:.3}) (size {pad} {pad}) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\")) "
+            );
+        }
+    }
+    let court = side as f64 * pitch / 2.0 + 0.3;
+    let lines = [
+        ((-court, -court), (court, -court)),
+        ((court, -court), (court, court)),
+        ((court, court), (-court, court)),
+        ((-court, court), (-court, -court)),
+    ]
+    .map(|(a, b)| {
+        format!(
+            "(fp_line (start {} {}) (end {} {}) (stroke (width 0.05) (type solid)) (layer \"F.CrtYd\")) ",
+            a.0, a.1, b.0, b.1
+        )
+    })
+    .concat();
+    format!(
+        "(footprint \"QUAD\" (version 20241229) (generator \"netsmith-test\") (layer \"F.Cu\") \
+         (property \"Reference\" \"REF**\" (at 0 {} 0) (layer \"F.SilkS\") \
+         (effects (font (size 1 1) (thickness 0.15)))) \
+         (property \"Value\" \"QUAD\" (at 0 {} 0) (layer \"F.Fab\") \
+         (effects (font (size 1 1) (thickness 0.15)))) \
+         (attr smd) {lines}{pads})\n",
+        -court - 0.7,
+        court + 0.7
+    )
+}
+
+/// A tight board in the style of a real one that was placed and then not routed to the end:
+/// about a hundred parts on both faces in a small area, round a module of 80 pads of 0.6 mm
+/// on a 1.1 mm pitch (two rings round a hollow centre). 80 0402 resistors and capacitors and
+/// 18 regulators in SOT-23, odd ones on the back; 60 of the module's pads join a signal, the
+/// others ground and the supply. `area` is the outline's size in mm, width and height.
+/// Seed `seed` decides the circuit and the placement.
+pub fn tight_board(seed: u64, area: (f64, f64)) -> Board {
+    let mut sides = std::collections::BTreeMap::new();
+    for k in (2..=80).step_by(2) {
+        let refdes = format!("{}{k}", if (k - 1) % 3 == 0 { "C" } else { "R" });
+        sides.insert(refdes, netsmith_pcb::Side::Back);
+    }
+    for k in (2..=18).step_by(2) {
+        sides.insert(format!("Q{k}"), netsmith_pcb::Side::Back);
+    }
+    let placement = PlaceOptions {
+        sides,
+        fit: Some(area),
+        seed,
+        ..PlaceOptions::default()
+    };
+    synthetic_board_with(
+        false,
+        seed,
+        80,
+        18,
+        20,
+        60,
+        40,
+        &placement,
+        Some(&module_footprint(12, 2)),
+    )
+}
+
 /// A random-looking board of the size a real one is, made from a seed: `chips` two-pad
 /// parts and `regulators` three-pad parts round one package with `4 * per_side` pads. Of
 /// the signal nets, `ic_nets` join a pad of the package to a pin of another part and
@@ -244,7 +337,7 @@ pub fn synthetic_board_placed(
     placement: &PlaceOptions,
 ) -> Board {
     synthetic_board_with(
-        false, seed, chips, regulators, per_side, ic_nets, part_nets, placement,
+        false, seed, chips, regulators, per_side, ic_nets, part_nets, placement, None,
     )
 }
 
@@ -262,7 +355,7 @@ pub fn synthetic_board_structured(
     placement: &PlaceOptions,
 ) -> Board {
     synthetic_board_with(
-        true, seed, chips, regulators, per_side, ic_nets, part_nets, placement,
+        true, seed, chips, regulators, per_side, ic_nets, part_nets, placement, None,
     )
 }
 
@@ -276,6 +369,7 @@ fn synthetic_board_with(
     ic_nets: usize,
     part_nets: usize,
     placement: &PlaceOptions,
+    module: Option<&str>,
 ) -> Board {
     let mut state = seed;
     let mut next = move |bound: usize| {
@@ -444,8 +538,14 @@ fn synthetic_board_with(
     // A folder of its own for each board, so that boards with different packages do not
     // meet; it is removed when the board is made.
     let folder = TempDir::new("synthetic");
-    let name = format!("QUAD{per_side}");
-    let text = quad_footprint(per_side).replace("\"QUAD\"", &format!("\"{name}\""));
+    let name = if module.is_some() {
+        format!("MODULE{}", 4 * per_side)
+    } else {
+        format!("QUAD{per_side}")
+    };
+    let text = module
+        .map_or_else(|| quad_footprint(per_side), str::to_string)
+        .replace("\"QUAD\"", &format!("\"{name}\""));
     std::fs::write(folder.join(format!("{name}.kicad_mod")), text).unwrap();
     let mapping = netsmith_kicad::Mapping::parse(
         &format!(
