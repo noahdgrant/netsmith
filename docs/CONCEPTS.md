@@ -54,5 +54,5 @@ A `board` is the unit that is lowered and exported: one board gives one schemati
 
 ## Not built yet
 
-- **Panels of different boards, routed tabs and mouse bites.** A `panel` of identical boards on a V-cut grid is built (ADR 0040, P0); the rest of ADR 0040's plan (P1 to P3) is not. See `docs/ROADMAP.md`.
+- **Panels of different boards, routed tabs and mouse bites.** A `panel` of identical boards on a V-cut grid is built (ADR 0040, P0); the rest of ADR 0040's plan (P1 to P3) is not. See issue #62.
 - **Hierarchical sheets.** A module is flattened into its board today; drawing it as its own schematic sheet is open.
