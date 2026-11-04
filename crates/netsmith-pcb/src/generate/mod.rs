@@ -18,6 +18,7 @@ mod outline;
 mod qfn;
 mod qfp;
 mod sot;
+mod tab;
 
 use std::sync::OnceLock;
 
@@ -29,6 +30,7 @@ pub fn generate(id: &str) -> Option<Footprint> {
     chip::generate(library, name)
         .or_else(|| gullwing::generate(library, name))
         .or_else(|| sot::generate(library, name))
+        .or_else(|| tab::generate(library, name))
         .or_else(|| diode::generate(library, name))
         .or_else(|| qfn::generate(library, name))
         .or_else(|| qfp::generate(library, name))
@@ -42,6 +44,7 @@ pub fn names() -> &'static [String] {
         let mut all = chip::names();
         all.extend(gullwing::names());
         all.extend(sot::names());
+        all.extend(tab::names());
         all.extend(diode::names());
         all.extend(qfn::names());
         all.extend(qfp::names());
@@ -304,6 +307,63 @@ mod tests {
         assert_eq!(
             fp.courtyard,
             Rect::new(Pt::new(-5.15, -5.15), Pt::new(5.15, 5.15))
+        );
+    }
+
+    #[test]
+    fn a_dpak_has_its_tab_as_one_pad_with_four_paste_openings_of_the_same_number() {
+        let fp = generate("Package_TO_SOT_SMD:TO-252-3_TabPin2").unwrap();
+        // Three leads, and the tab: pad 2 is the middle lead and the tab, which is a copper
+        // pad with the mask opening and four copper pads that carry the paste.
+        assert_eq!(fp.pad_numbers(), ["1", "2", "3"]);
+        assert_eq!(fp.pads_numbered("2").count(), 1 + 1 + 4);
+        let tab = fp
+            .pads_numbered("2")
+            .find(|p| p.layers == ["F.Cu", "F.Mask"])
+            .unwrap();
+        assert!(near(tab.at.x, 1.26) && near(tab.width, 6.4) && near(tab.height, 5.8));
+        let paste: Vec<_> = fp
+            .pads_numbered("2")
+            .filter(|p| p.layers == ["F.Cu", "F.Paste"])
+            .collect();
+        assert_eq!(paste.len(), 4);
+        assert!(
+            paste
+                .iter()
+                .all(|p| near(p.width, 3.05) && near(p.height, 2.75))
+        );
+        assert_eq!(
+            fp.courtyard,
+            Rect::new(Pt::new(-6.39, -3.5), Pt::new(4.71, 3.5))
+        );
+        // The same tab on a package with the tab as its fourth pin, or its sixth.
+        assert_eq!(
+            generate("Package_TO_SOT_SMD:TO-252-5_TabPin6")
+                .unwrap()
+                .pads_numbered("6")
+                .count(),
+            5
+        );
+        let four_pin = generate("Package_TO_SOT_SMD:TO-252-4").unwrap();
+        let mut four = four_pin.pad_numbers();
+        four.sort();
+        assert_eq!(four, ["1", "2", "3", "4", "5"]);
+    }
+
+    #[test]
+    fn a_sot_89_has_a_tab_pad_that_reaches_beyond_its_anchor() {
+        let fp = generate("Package_TO_SOT_SMD:SOT-89-3").unwrap();
+        let mut numbers = fp.pad_numbers();
+        numbers.sort();
+        assert_eq!(numbers, ["1", "2", "3"]);
+        let tab = fp.pads_numbered("2").next().unwrap();
+        // The anchor is 1.475 mm wide at x = -1.8625; the polygon runs on to x = 2.0.
+        assert!(near(tab.width, 1.475) && near(tab.at.x, -1.8625));
+        assert!(near(tab.bounds().max.x, 2.0), "{:?}", tab.bounds());
+        assert!(near(tab.bounds().min.x, -2.6), "{:?}", tab.bounds());
+        assert_eq!(
+            fp.courtyard,
+            Rect::new(Pt::new(-2.85, -2.5), Pt::new(2.25, 2.5))
         );
     }
 }
