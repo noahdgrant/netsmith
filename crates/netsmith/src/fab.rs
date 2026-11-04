@@ -216,6 +216,28 @@ pub fn fab_with_options(
     Ok(made)
 }
 
+/// The file in the board's fab folder that lists every part's final place and state when
+/// the parts do not fit (PROVISIONAL, ADR 0033).
+const PLACEMENT_FAILURE: &str = "placement-failure.txt";
+
+/// The refusal's message, with the full list written to `placement-failure.txt` in `out` and
+/// named; if it cannot be written, the message says so and carries the list.
+fn placement_failure(e: &netsmith_pcb::DoesNotFit, out: &Path) -> String {
+    let file = out.join(PLACEMENT_FAILURE);
+    let written = std::fs::create_dir_all(out).and_then(|()| std::fs::write(&file, e.full_report()));
+    match written {
+        Ok(()) => format!(
+            "{e}\n  every part's final place and state ({} parts) is in {}",
+            e.parts.len(),
+            file.display()
+        ),
+        Err(err) => format!(
+            "{e}\n  (the list of every part's final place and state could not be written to {}: {err})",
+            file.display()
+        ),
+    }
+}
+
 /// One board, made: placed, routed, written and packaged, with the work's results kept for
 /// a panel that repeats it.
 struct BoardRun {
@@ -284,7 +306,10 @@ fn fab_board(
             &libraries.footprints,
             &place_options(&built.design, layout.as_ref().map(|l| &l.0)),
         )
-        .map_err(|e| fail(e.to_string()))?;
+        .map_err(|e| match e {
+            netsmith_pcb::BoardError::DoesNotFit(e) => fail(placement_failure(&e, out)),
+            e => fail(e.to_string()),
+        })?;
         if let Some((layout, file)) = layout {
             apply_layout(&mut board, layout, file).map_err(|e| fail(e.to_string()))?;
         }
