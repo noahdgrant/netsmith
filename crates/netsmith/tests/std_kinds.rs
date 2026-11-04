@@ -85,10 +85,13 @@ fn with(src: &str, extra: &str) -> String {
 
 /// The pins of `kind`, from its pin table: (path, pin kind, datasheet name, pads).
 fn pins_of(import: &str, kind: &str) -> Vec<(String, PinKind, String, Vec<String>)> {
-    let src = format!("import {import}::{kind}\nboard B {{\n    .x: {kind}\n}}\n");
+    // In a module: a board declares its own mounting holes and fiducials in its physical file.
+    let src = format!(
+        "import {import}::{kind}\nmodule M {{\n    .x: {kind}\n}}\nboard B {{\n    .m: M\n}}\n"
+    );
     let c = run(&src);
     let m = &c.board("B").expect("the board checks").model;
-    let x = m.inst_at("x").unwrap();
+    let x = m.inst_at("m.x").unwrap();
     let mut rows: Vec<_> = m
         .instance(x)
         .tables
@@ -244,11 +247,13 @@ fn the_mechanical_parts_and_the_programming_pads_are_fitted_by_nobody() {
         ("std::parts::mechanical", "TestPoint"),
         ("std::parts::connector", "ProgrammingPads6"),
     ] {
-        let src = format!("import {import}::{kind}\nboard B {{\n    .x: {kind}\n}}\n");
+        let src = format!(
+            "import {import}::{kind}\nmodule M {{\n    .x: {kind}\n}}\nboard B {{\n    .m: M\n}}\n"
+        );
         let c = run(&src);
         let m = &c.board("B").expect("the board checks").model;
         assert_eq!(
-            m.domain_at("x.assembly"),
+            m.domain_at("m.x.assembly"),
             Some(&netsmith_check::Domain::Text("none".into())),
             "{kind}"
         );
