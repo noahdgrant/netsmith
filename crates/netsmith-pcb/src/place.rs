@@ -1598,6 +1598,44 @@ mod tests {
     }
 
     #[test]
+    fn a_part_too_long_for_the_outline_starts_turned_and_one_that_may_not_turn_does_not() {
+        let board = placed_with(resistors(3, "0603"), &PlaceOptions::default()).unwrap();
+        let mut board = board;
+        board.parts.iter_mut().for_each(|p| p.rotation = 0.0);
+        let mut parts = board.parts.clone();
+        // R1 is 40 mm long, R2 as well but locked, R3 small.
+        for p in &mut parts[..2] {
+            p.footprint.courtyard = Rect::new(Pt::new(-20.0, -2.0), Pt::new(20.0, 2.0));
+        }
+        let mut options = PlaceOptions {
+            fit: Some((20.0, 60.0)),
+            ..PlaceOptions::default()
+        };
+        let fixed = [false, true, false];
+        turn_to_fit(&mut parts, &fixed, &options);
+        let turns: Vec<f64> = parts.iter().map(|p| p.rotation).collect();
+        assert_eq!(turns, vec![90.0, 0.0, 0.0]);
+        assert!((parts[0].courtyard().height() - 40.0).abs() < 1e-9);
+        // Turned again it is not turned further, and in an outline it fits as it is nothing
+        // changes.
+        turn_to_fit(&mut parts, &fixed, &options);
+        assert_eq!(parts[0].rotation, 90.0);
+        options.fit = Some((60.0, 20.0));
+        let mut again = board.parts.clone();
+        again[0].footprint.courtyard = Rect::new(Pt::new(-20.0, -2.0), Pt::new(20.0, 2.0));
+        turn_to_fit(&mut again, &[false; 3], &options);
+        assert_eq!(again[0].rotation, 0.0);
+        // A part that fits no turn is left alone: the error names it (see `oversize`).
+        options.fit = Some((20.0, 30.0));
+        turn_to_fit(&mut again, &[false; 3], &options);
+        assert_eq!(again[0].rotation, 0.0);
+        let found = oversize(&again, &[false; 3], &options, (20.0, 30.0));
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].part, "R1");
+        assert_eq!(found[0].tried.len(), 4);
+    }
+
+    #[test]
     fn rows_that_overflow_the_size_do_not_decide_that_the_parts_do_not_fit() {
         // The rows put 44 0603s in lines 26 mm long, which need more than 20 mm; the annealer
         // packs them closer and they all fit on the front.
