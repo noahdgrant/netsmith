@@ -2,7 +2,7 @@
 
 ## How to get to it
 
-Right pane, tab "PCB". The board is placed as soon as the tab opens (the layout file `<stem>.pcb.toml` beside the source, if there is one, is applied: ADR 0032); "Place and route" runs the router and draws the tracks. "Layers" toggles groups of the drawing.
+Right pane, tab "PCB". The board is placed as soon as the tab opens (the physical file `<stem>.physical.nsm` beside the source, if there is one, is read with the board: ADR 0048; the layout file `<stem>.pcb.toml`, if there is one, is applied: ADR 0032); "Place and route" runs the router and draws the tracks. "Layers" toggles groups of the drawing.
 
 ## Driving it
 
@@ -20,7 +20,7 @@ The drawing has no key: the board fills the canvas, and the nets are in the Nets
 
 ## The canvas: select, move, rotate, flip, lock, undo (ADR 0030 E0 and E1)
 
-`launch --fixture outline_and_pours` (twelve parts, a cutout, a keepout, a layout file that places the keepout); `drive pcb-select` and `drive pcb-edit`. Both start by putting `main.pcb.toml` back as the fixture has it, so they can run in any order. Hide the source pane ("Source" in the top bar) to give the board the room.
+`launch --fixture outline_and_pours` (twelve parts, a cutout, a keepout, a physical file that sizes them, and a layout file that places the keepout: the launcher takes the keepout's `.x` and `.y` out of the example's physical file so the recipes can move it); `drive pcb-select` and `drive pcb-edit`. Both start by putting `main.pcb.toml` back as the fixture has it, so they can run in any order. Hide the source pane ("Source" in the top bar) to give the board the room.
 
 - **Select**: click a part (its courtyard is the target; the smallest under the pointer wins), Shift or Ctrl+click adds or removes, a drag on empty board draws a box that takes every part it touches, a click on empty board clears, Ctrl+A takes all. The list on the right ("Parts") selects too and zooms to the part. The inspector over the list shows the selected part's place, turn, face, who placed it, its pads with their nets (click a net to light it) and a link to its source line; a double click on a part opens its declaration. The nets of the selection are lit, everything else dims, and the ratsnest lines that end on the selection are drawn thicker.
 - **Hover**: a tooltip names the part, its value, kind and package, and for a pad its number and net; over a track or via, the net; over a keepout's edge, what it forbids.
@@ -40,7 +40,7 @@ The drawing has no key: the board fills the canvas, and the nets are in the Nets
 
 ### Constraint findings (ADR 0045): `launch --fixture constrained`, `drive pcb-constraints`
 
-The fixture is `scripts/editor-verify-js/fixtures/constrained.nsm` with a layout file beside it that puts the header by hand where its `.place` requirement does not allow. The finding has the rule `constraint`, is an error (as `fab` makes it) and says the requirement's line, the part, the drawing measured (`F.Fab`), the measured value, the window and how far over; the picked finding shows all of it (a row is cut after six lines). A click zooms, marks and selects the part; Release (the placer keeps to the requirement) clears it and undo brings it back with the same numbers. The windows and the drag clamp are not drawn yet (ADR 0045 C4).
+The fixture is `scripts/editor-verify-js/fixtures/constrained.nsm` with its physical file (the requirement) and a layout file beside it that puts the header by hand where its `.place` requirement does not allow. The finding has the rule `constraint`, is an error (as `fab` makes it) and says the requirement's line, the part, the drawing measured (`F.Fab`), the measured value, the window and how far over; the picked finding shows all of it (a row is cut after six lines). A click zooms, marks and selects the part; Release (the placer keeps to the requirement) clears it and undo brings it back with the same numbers. The windows and the drag clamp are not drawn yet (ADR 0045 C4).
 
 ## Panels (ADR 0040)
 
