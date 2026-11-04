@@ -250,10 +250,12 @@ when one is not met. That is its own policy, not a guideline: `constraints = "wa
 instead; `--constraints error` forces errors over a manifest that says `warn`, and
 `--allow-drc-violations` does not waive them. `docs/LANGUAGE.md` ("Where a part goes") explains it.
 
-A net's track width is checked against the worst-case current the solver found on it, by the
-IPC-2221 formula for the copper weight and temperature rise of the process (10 K unless
-`.process.max_temperature_rise` says otherwise; ADR 0036). A rail with no `.min_track` is checked
-at the process's least track. This is a guideline, not a fabricator's limit: `build` and `fab`
+The router draws every net at the width IPC-2221 needs for the worst-case current the solver found
+on it, for the copper weight and temperature rise of the process (10 K unless
+`.process.max_temperature_rise` says otherwise; ADR 0036), so a net no rail touches, such as the
+node between a fuse and a diode, needs nothing stated. A net whose current is not known is drawn at
+the process's least track and named in a note. A `.min_track` on a rail is an override, and a width
+narrower than the current needs is checked. This is a guideline, not a fabricator's limit: `build` and `fab`
 warn (and `fab-notes.txt` lists it), the editor shows a warning, and `guidelines = "error"` in
 `netsmith.toml`, or `--strict` for one run, makes it stop the build.
 
@@ -573,15 +575,16 @@ published limits but cannot run it).
 - The router draws tracks at the process's narrowest track and its vias at the smallest the
   process allows, so the boards are as fine as the factory's published limits (JLCPCB: 0.1 mm
   track and space). For more margin, narrow the process in the board. A rail's `.min_track`
-  makes the nets on it wider (net classes, ADR 0020); a signal that is not on a rail is as wide
-  as the rest, and a wide track is necked down to the least between pads and out of
+  makes the nets on it wider (net classes, ADR 0020), and a net whose current the solver knows
+  is drawn as wide as IPC-2221 needs (ADR 0036); any other net is as wide as the rest, and a wide track is necked down to the least between pads and out of
   fine-pitch pads. The via is the process's, whatever the net. What the router calls routed
   is measured on the copper itself against the clearance of the other nets, so a net that
   cannot pass at any width is reported not routed rather than drawn too close.
 - The track width check (ADR 0036, provisional) is IPC-2221, which is a conservative guide; IPC-2152
   is more accurate and is not implemented. The 10 K temperature rise is a default of netsmith's,
   not a sourced figure. A net is checked against the largest single current on it (a ground
-  shared by several rails carries their sum where they join), at the width asked for (the router
+  shared by several rails carries their sum where they join; the IPC constants were taken from
+  published derivations and not read from the standard), at the width asked for (the router
   may neck a track down between pads), and planes and pours are not checked. The router draws on
   the outer layers only, so the inner-layer constant is unused.
 - With an `.outline` the placer lays the parts out inside it (`PlaceOptions::fit`) and refuses,
