@@ -662,7 +662,7 @@ What else the migration touches for this example:
 
 ## 10. Questions for the owner, ranked
 
-The file is decided. These are the open choices, ranked by what they block. The first three block building the board's file.
+The file is decided. **Questions 1 to 7 were answered on 2026-11-04, each as the lean the note gave, with one addition: the board's mounting holes, fiducials and labels go in the case section, and a part's `.height` stays on the part (ADR 0048, "Syntax decisions").** Questions 8 and 9 are open and are not needed until the module layer and a physical file for a `system` or a `panel` are built. The list below is kept as asked.
 
 1. **The file's name, extension, header and pairing** (section 2). Is it `physical for Trellis` in `trellis.physical.nsm`, found beside the source, or something else? Lean: that.
 2. **How does the board's file reach into a module, and are anchors an alias or a pose?** (Section 4.) Lean: a plain path, and an `anchor` alias.
