@@ -1,0 +1,355 @@
+//! An invented power architecture for checking the editor's Power tree: a 12 V input, a
+//! protection stage, three regulators of different kinds (a buck, a linear regulator and a
+//! boost), a filter, a load switch and a backup diode, eight rails, many loads and one rail
+//! whose microcontroller has 22 reference pins that draw nothing. Nothing here is a real board:
+//! each stage is a part that only states what it draws and what it supplies, so the board solves
+//! and the editor shows it, but it cannot be written to KiCad (the parts have no pads).
+
+import std::parts::connector::Header1x2
+import std::parts::passive::Capacitor
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+/// What one circuit draws from one rail.
+part Load {
+    .power: Rail
+
+    pins {
+        .power.pos power "VCC" "1"
+        .power.neg power "GND" "2"
+    }
+}
+
+/// A microcontroller: its supply, and 22 reference pins that draw no current.
+part Mcu {
+    .vdd: Rail
+    .vdd.current &= 1mA..25mA
+    .pa0_ref: Rail
+    .pa0_ref.current &= 0A
+    .pa1_ref: Rail
+    .pa1_ref.current &= 0A
+    .pa2_ref: Rail
+    .pa2_ref.current &= 0A
+    .pa3_ref: Rail
+    .pa3_ref.current &= 0A
+    .pa4_ref: Rail
+    .pa4_ref.current &= 0A
+    .pa5_ref: Rail
+    .pa5_ref.current &= 0A
+    .pa6_ref: Rail
+    .pa6_ref.current &= 0A
+    .pa7_ref: Rail
+    .pa7_ref.current &= 0A
+    .pb0_ref: Rail
+    .pb0_ref.current &= 0A
+    .pb1_ref: Rail
+    .pb1_ref.current &= 0A
+    .pb2_ref: Rail
+    .pb2_ref.current &= 0A
+    .pb3_ref: Rail
+    .pb3_ref.current &= 0A
+    .pb4_ref: Rail
+    .pb4_ref.current &= 0A
+    .pb5_ref: Rail
+    .pb5_ref.current &= 0A
+    .pb6_ref: Rail
+    .pb6_ref.current &= 0A
+    .pb7_ref: Rail
+    .pb7_ref.current &= 0A
+    .pc0_ref: Rail
+    .pc0_ref.current &= 0A
+    .pc1_ref: Rail
+    .pc1_ref.current &= 0A
+    .pc2_ref: Rail
+    .pc2_ref.current &= 0A
+    .pc3_ref: Rail
+    .pc3_ref.current &= 0A
+    .pc4_ref: Rail
+    .pc4_ref.current &= 0A
+    .pc5_ref: Rail
+    .pc5_ref.current &= 0A
+
+    .pa0_ref.neg ~ .vdd.neg
+    .pa1_ref.neg ~ .vdd.neg
+    .pa2_ref.neg ~ .vdd.neg
+    .pa3_ref.neg ~ .vdd.neg
+    .pa4_ref.neg ~ .vdd.neg
+    .pa5_ref.neg ~ .vdd.neg
+    .pa6_ref.neg ~ .vdd.neg
+    .pa7_ref.neg ~ .vdd.neg
+    .pb0_ref.neg ~ .vdd.neg
+    .pb1_ref.neg ~ .vdd.neg
+    .pb2_ref.neg ~ .vdd.neg
+    .pb3_ref.neg ~ .vdd.neg
+    .pb4_ref.neg ~ .vdd.neg
+    .pb5_ref.neg ~ .vdd.neg
+    .pb6_ref.neg ~ .vdd.neg
+    .pb7_ref.neg ~ .vdd.neg
+    .pc0_ref.neg ~ .vdd.neg
+    .pc1_ref.neg ~ .vdd.neg
+    .pc2_ref.neg ~ .vdd.neg
+    .pc3_ref.neg ~ .vdd.neg
+    .pc4_ref.neg ~ .vdd.neg
+    .pc5_ref.neg ~ .vdd.neg
+
+    pins {
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .pa0_ref.pos power "PA0" "3"
+        .pa1_ref.pos power "PA1" "4"
+        .pa2_ref.pos power "PA2" "5"
+        .pa3_ref.pos power "PA3" "6"
+        .pa4_ref.pos power "PA4" "7"
+        .pa5_ref.pos power "PA5" "8"
+        .pa6_ref.pos power "PA6" "9"
+        .pa7_ref.pos power "PA7" "10"
+        .pb0_ref.pos power "PB0" "11"
+        .pb1_ref.pos power "PB1" "12"
+        .pb2_ref.pos power "PB2" "13"
+        .pb3_ref.pos power "PB3" "14"
+        .pb4_ref.pos power "PB4" "15"
+        .pb5_ref.pos power "PB5" "16"
+        .pb6_ref.pos power "PB6" "17"
+        .pb7_ref.pos power "PB7" "18"
+        .pc0_ref.pos power "PC0" "19"
+        .pc1_ref.pos power "PC1" "20"
+        .pc2_ref.pos power "PC2" "21"
+        .pc3_ref.pos power "PC3" "22"
+        .pc4_ref.pos power "PC4" "23"
+        .pc5_ref.pos power "PC5" "24"
+    }
+}
+
+/// Reverse-polarity and surge protection: it passes what is drawn behind it.
+part ProtectionStage {
+    .vin: Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+    .vin.current == -.vout.current
+
+    pins {
+        .vin.pos  power "VIN"  "1"
+        .vin.neg  power "GND"  "2"
+        .vout.pos power "VOUT" "3"
+    }
+}
+
+/// A buck converter: it draws less current than it supplies, at its efficiency.
+part BuckConverter {
+    .vin: Rail
+    .vout: Rail
+    .max_current: Current
+    .efficiency: Number
+    .vin.neg ~ .vout.neg
+    .vin.voltage >= .vout.voltage
+    .vin.current == -.vout.current * .vout.voltage / (.vin.voltage * .efficiency)
+    -.vout.current <= .max_current
+
+    pins {
+        .vin.pos  power "VIN"  "1"
+        .vin.neg  power "GND"  "2"
+        .vout.pos power "VOUT" "3"
+    }
+}
+
+/// A boost converter: it draws more current than it supplies.
+part BoostConverter {
+    .vin: Rail
+    .vout: Rail
+    .max_current: Current
+    .efficiency: Number
+    .vin.neg ~ .vout.neg
+    .vin.voltage <= .vout.voltage
+    .vin.current == -.vout.current * .vout.voltage / (.vin.voltage * .efficiency)
+    -.vout.current <= .max_current
+
+    pins {
+        .vin.pos  power "VIN"  "1"
+        .vin.neg  power "GND"  "2"
+        .vout.pos power "VOUT" "3"
+    }
+}
+
+/// A linear regulator with a capacitor on each side.
+module LdoStage {
+    .vin:  Rail
+    .vout: Rail
+
+    .regulator:  LinearRegulator
+    .input_cap:  Capacitor { .effective_capacitance >= 1uF }
+    .output_cap: Capacitor { .effective_capacitance >= 4.7uF }
+
+    .vin ~ .regulator.vin
+    .regulator.vout ~ .vout
+
+    .input_cap.max_voltage  >= .vin.voltage * 1.5
+    .output_cap.max_voltage >= .vout.voltage * 1.5
+
+    .vin.pos  ~> .input_cap  ~> .vin.neg
+    .vout.pos ~> .output_cap ~> .vout.neg
+}
+
+/// A ferrite bead and capacitor that keep the digital supply's noise off an analog rail.
+part FilterStage {
+    .vin: Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+    .vin.current == -.vout.current
+
+    pins {
+        .vin.pos  power "VIN"  "1"
+        .vin.neg  power "GND"  "2"
+        .vout.pos power "VOUT" "3"
+    }
+}
+
+/// A switch that powers a rail only when it is asked to.
+part LoadSwitch {
+    .vin: Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+    .vin.current == -.vout.current
+
+    pins {
+        .vin.pos  power "VIN"  "1"
+        .vin.neg  power "GND"  "2"
+        .vout.pos power "VOUT" "3"
+    }
+}
+
+/// An ideal diode that keeps a backup rail up when its supply goes.
+part BackupDiode {
+    .vin: Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+    .vin.current == -.vout.current
+
+    pins {
+        .vin.pos  power "VIN"  "1"
+        .vin.neg  power "GND"  "2"
+        .vout.pos power "VOUT" "3"
+    }
+}
+
+board Cairn {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+
+    /// The input is supplied from outside the board.
+    .input: Rail {
+        .voltage &= 9V..13.8V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .power_in: Header1x2
+    .input.pos ~ .power_in.p1
+    .input.neg ~ .power_in.p2
+
+    .protect: ProtectionStage {
+        .vout.voltage &= 8.6V..13.3V
+        .vout.pos.net &= "VPROT"
+        .vout.neg.net &= "GND"
+    }
+    .buck: BuckConverter {
+        .vout.voltage &= 5V +/- 3%
+        .max_current &= 3A
+        .efficiency &= 0.86..0.94
+        .vout.pos.net &= "V5"
+        .vout.neg.net &= "GND"
+    }
+    .ldo: LdoStage {
+        .vout.voltage &= 3.3V +/- 5%
+        .vout.pos.net &= "V3V3"
+        .vout.neg.net &= "GND"
+    }
+    .boost: BoostConverter {
+        .vout.voltage &= 12V +/- 5%
+        .max_current &= 400mA
+        .efficiency &= 0.82..0.9
+        .vout.pos.net &= "V12"
+        .vout.neg.net &= "GND"
+    }
+    .analog: FilterStage {
+        .vout.voltage &= 3.3V +/- 5%
+        .vout.pos.net &= "VANA"
+        .vout.neg.net &= "GND"
+    }
+    .sense_switch: LoadSwitch {
+        .vout.voltage &= 3.3V +/- 5%
+        .vout.pos.net &= "VSENS"
+        .vout.neg.net &= "GND"
+    }
+    .backup: BackupDiode {
+        .vout.voltage &= 3V..3.3V
+        .vout.pos.net &= "VBKP"
+        .vout.neg.net &= "GND"
+    }
+
+    .input ~ .protect.vin
+    .protect.vout ~ .buck.vin
+    .buck.vout ~ .ldo.vin
+    .buck.vout ~ .boost.vin
+    .ldo.vout ~ .analog.vin
+    .ldo.vout ~ .sense_switch.vin
+    .ldo.vout ~ .backup.vin
+
+    // The loads, by rail.
+    .mcu: Mcu
+    .radio: Load { .power.current &= 0mA..30mA }
+    .flash: Load { .power.current &= 0mA..15mA }
+    .ldo.vout ~ .mcu.vdd
+    .ldo.vout ~ .mcu.pa0_ref
+    .ldo.vout ~ .mcu.pa1_ref
+    .ldo.vout ~ .mcu.pa2_ref
+    .ldo.vout ~ .mcu.pa3_ref
+    .ldo.vout ~ .mcu.pa4_ref
+    .ldo.vout ~ .mcu.pa5_ref
+    .ldo.vout ~ .mcu.pa6_ref
+    .ldo.vout ~ .mcu.pa7_ref
+    .ldo.vout ~ .mcu.pb0_ref
+    .ldo.vout ~ .mcu.pb1_ref
+    .ldo.vout ~ .mcu.pb2_ref
+    .ldo.vout ~ .mcu.pb3_ref
+    .ldo.vout ~ .mcu.pb4_ref
+    .ldo.vout ~ .mcu.pb5_ref
+    .ldo.vout ~ .mcu.pb6_ref
+    .ldo.vout ~ .mcu.pb7_ref
+    .ldo.vout ~ .mcu.pc0_ref
+    .ldo.vout ~ .mcu.pc1_ref
+    .ldo.vout ~ .mcu.pc2_ref
+    .ldo.vout ~ .mcu.pc3_ref
+    .ldo.vout ~ .mcu.pc4_ref
+    .ldo.vout ~ .mcu.pc5_ref
+    .ldo.vout ~ .radio.power
+    .ldo.vout ~ .flash.power
+
+    .fan: Load { .power.current &= 0mA..180mA }
+    .heater: Load { .power.current &= 0mA..120mA }
+    .buck.vout ~ .fan.power
+    .buck.vout ~ .heater.power
+
+    .lamp_driver: Load { .power.current &= 0mA..40mA }
+    .valve: Load { .power.current &= 0mA..150mA }
+    .boost.vout ~ .lamp_driver.power
+    .boost.vout ~ .valve.power
+
+    .adc: Load { .power.current &= 1mA..6mA }
+    .reference: Load { .power.current &= 0.5mA..1mA }
+    .analog.vout ~ .adc.power
+    .analog.vout ~ .reference.power
+
+    .thermistor: Load { .power.current &= 0mA..1mA }
+    .strain: Load { .power.current &= 0mA..4mA }
+    .imu: Load { .power.current &= 0mA..2mA }
+    .sense_switch.vout ~ .thermistor.power
+    .sense_switch.vout ~ .strain.power
+    .sense_switch.vout ~ .imu.power
+
+    .clock: Load { .power.current &= 1uA..4uA }
+    .backup.vout ~ .clock.power
+
+    .surge_monitor: Load { .power.current &= 0mA..2mA }
+    .protect.vout ~ .surge_monitor.power
+}

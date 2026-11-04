@@ -4,7 +4,7 @@
 use netsmith_check::{Domain, InstId, InstKind, Member, Model, Sources};
 use netsmith_editor::{
     ApiError,
-    api::{Budget, Draw, Edge, EdgeKind, PowerNode, PowerTree, Range},
+    api::{Budget, Draw, Edge, EdgeKind, PowerNode, PowerTree, Range, Stage},
 };
 use netsmith_quantity::{Dimension, Quantity};
 
@@ -66,6 +66,21 @@ fn node_id(prefix: Option<&str>, net: &str) -> String {
     }
 }
 
+/// Amperes below which an end of a current range is residue of the arithmetic, not a current:
+/// a supply whose load can be nothing has a range that ends at zero, and the solver's end of it
+/// can be a hair above (`5e-324`), which must not turn the supply into a load.
+const NEGLIGIBLE: f64 = 1e-12;
+
+/// Whether a current range is a supply's: it ends at zero or below and starts below it.
+fn supplies(q: &Quantity) -> bool {
+    q.hi() <= NEGLIGIBLE && q.lo() < -NEGLIGIBLE
+}
+
+/// Whether a current range is a draw's: it starts at zero or above and ends above it.
+fn draws(q: &Quantity) -> bool {
+    q.lo() >= -NEGLIGIBLE && q.hi() > NEGLIGIBLE
+}
+
 fn range_of(q: &Quantity) -> Range {
     Range {
         lo: q.lo(),
@@ -93,6 +108,7 @@ fn sum(dim: Dimension, ranges: impl Iterator<Item = (f64, f64)>) -> Option<Quant
 fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) -> PowerTree {
     let mut nodes: Vec<PowerNode> = Vec::new();
     let mut edges: Vec<Edge> = Vec::new();
+    let mut stages: Vec<Stage> = Vec::new();
     // For each node, the capacity edges give it.
     let mut capacity: Vec<(String, f64, String, InstId)> = Vec::new();
 
@@ -137,7 +153,7 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
                     at: Some(api_location(locate(sources, src, span))),
                 };
                 match &range {
-                    Some(q) if q.hi() <= 0.0 && q.lo() < 0.0 => node.supplies.push(item),
+                    Some(q) if supplies(q) => node.supplies.push(item),
                     _ => node.loads.push(item),
                 }
             }
@@ -168,12 +184,12 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
             let inputs: Vec<InstId> = rails
                 .iter()
                 .copied()
-                .filter(|r| current(*r).is_some_and(|q| q.lo() >= 0.0 && q.hi() > 0.0))
+                .filter(|r| current(*r).is_some_and(|q| draws(&q)))
                 .collect();
             let outputs: Vec<InstId> = rails
                 .iter()
                 .copied()
-                .filter(|r| current(*r).is_some_and(|q| q.hi() <= 0.0 && q.lo() < 0.0))
+                .filter(|r| current(*r).is_some_and(|q| supplies(&q)))
                 .collect();
             // Every rail it takes feeds every rail it makes.
             for (&input, &output) in inputs
@@ -201,6 +217,8 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
                 }
                 maybe_capacity(model, *scope, id, &mut capacity, &to);
                 let (src, span) = inst.at();
+                stages.retain(|s| s.label != label);
+                stages.push(stage_of(model, id, &label));
                 edges.push(Edge {
                     from,
                     to,
@@ -215,6 +233,7 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
         title: String::new(),
         nodes,
         edges,
+        stages,
     };
     for (node, limit, from, _) in capacity {
         if let Some(n) = tree.nodes.iter_mut().find(|n| n.id == node) {
@@ -230,6 +249,31 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
     }
     classify(&mut tree);
     tree
+}
+
+/// What the solver settled for the efficiency of the converter `inst`: the first field called
+/// `efficiency` on it or on something inside it.
+fn stage_of(model: &Model, inst: InstId, label: &str) -> Stage {
+    let holder = std::iter::once(inst)
+        .chain(
+            model
+                .instances()
+                .filter(|(i, _)| model.is_inside(*i, inst))
+                .map(|(i, _)| i),
+        )
+        .find_map(|i| match model.member(i, "efficiency") {
+            Some(Member::Field(f)) => Some(f),
+            _ => None,
+        });
+    let settled = holder.and_then(|f| match &model.field(f).domain {
+        Domain::Quantity(q) => Some(range_of(q)),
+        _ => None,
+    });
+    Stage {
+        label: label.to_string(),
+        efficiency_unsettled: holder.is_some() && settled.is_none(),
+        efficiency: settled,
+    }
 }
 
 /// Record what `inst`, or a part inside it, can give: its `max_current`.
@@ -329,6 +373,7 @@ mod tests {
             title: String::new(),
             nodes: vec![n],
             edges: Vec::new(),
+            stages: Vec::new(),
         };
         classify(&mut tree);
         (
@@ -350,6 +395,18 @@ mod tests {
             Budget::Within
         );
         assert_eq!(budget(node(loads(), None)).0, Budget::Unlimited);
+    }
+
+    #[test]
+    fn a_supply_whose_range_ends_a_hair_above_zero_is_still_a_supply() {
+        let tiny = Quantity::interval(Dimension::CURRENT, -0.19, 5e-324).unwrap();
+        assert!(supplies(&tiny) && !draws(&tiny));
+        let load = Quantity::interval(Dimension::CURRENT, 0.0, 0.04).unwrap();
+        assert!(draws(&load) && !supplies(&load));
+        let nothing = Quantity::interval(Dimension::CURRENT, 0.0, 0.0).unwrap();
+        assert!(!draws(&nothing) && !supplies(&nothing));
+        let mixed = Quantity::interval(Dimension::CURRENT, -0.01, 0.01).unwrap();
+        assert!(!draws(&mixed) && !supplies(&mixed));
     }
 
     #[test]
