@@ -968,13 +968,10 @@ impl Board {
         let mut placement = placement.clone();
         let plan = crate::constraints::plan(design, &parts, &placement, rules.clearance)
             .map_err(BoardError::Constraints)?;
-        // A part the layout file locks may hang over wherever its courtyard is outside; the
-        // others, where their requirements say so.
+        // A part may hang over an edge only where its own requirements say so; a lock in the
+        // layout file does not (owner decision, 2026-11-03, ADR 0045 section 10).
         let mut overhang = placement.overhang.clone();
         overhang.extend(plan.overhang);
-        for refdes in placement.fixed.keys() {
-            overhang.insert(refdes.clone(), Overhang::Locked);
-        }
         placement.overhang = overhang.clone();
         placement.fixed.extend(plan.fixed);
         placement.wants = plan.wants;
@@ -2036,9 +2033,6 @@ pub(crate) mod tests {
                 && text.contains("the design says it may hang over only the bottom edge (`j1.place.right (a.nsm:3)` allows at least 36 mm)"),
             "{text}"
         );
-        // A lock in the layout file allows every edge.
-        board.overhang.insert("J1".into(), Overhang::Locked);
-        assert_eq!(about(&board, "J1"), vec![]);
     }
 
     #[test]

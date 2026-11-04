@@ -308,6 +308,25 @@ fn stated_edges(reqs: &[Req], width: Option<f64>, height: Option<f64>) -> Edges 
     edges
 }
 
+/// The overhang a part's requirements state on the edges `may`, with the requirements that
+/// say it, or `None` when they state none.
+fn stated_overhang(reqs: &[Req], may: Edges) -> Option<Overhang> {
+    may.any().then(|| Overhang::Stated {
+        edges: may,
+        says: reqs
+            .iter()
+            .filter(|r| {
+                !r.inherited
+                    && Edge::ALL
+                        .into_iter()
+                        .any(|e| may.has(e) && r.field.word() == e.word())
+            })
+            .map(Req::says)
+            .collect::<Vec<_>>()
+            .join(", "),
+    })
+}
+
 fn turns_allowed(reqs: &[Req]) -> [bool; 4] {
     let mut ok = [true; 4];
     for r in reqs.iter().filter(|r| r.field == PlaceField::Rotation) {
@@ -413,6 +432,12 @@ pub(crate) fn plan(
                     bad.join("; ")
                 ));
             }
+            // A lock fixes where the part is; it does not say it may hang over an edge. Only
+            // the part's own requirements do (owner decision, 2026-11-03, ADR 0045 section 10).
+            let may = stated_edges(&reqs, width, height);
+            if let Some(stated) = stated_overhang(&reqs, may) {
+                plan.overhang.insert(part.refdes.clone(), stated);
+            }
             decided.push((
                 part.refdes.clone(),
                 ORIGIN + f.at,
@@ -423,7 +448,7 @@ pub(crate) fn plan(
                     number(f.at.x),
                     number(f.at.y)
                 ),
-                Edges::ALL,
+                may,
             ));
             continue;
         }
@@ -519,24 +544,8 @@ pub(crate) fn plan(
 
         plan.sides.insert(part.refdes.clone(), side);
         let live: Vec<usize> = (0..4).filter(|&q| reach[q].is_some()).collect();
-        if may.any() {
-            plan.overhang.insert(
-                part.refdes.clone(),
-                Overhang::Stated {
-                    edges: may,
-                    says: reqs
-                        .iter()
-                        .filter(|r| {
-                            !r.inherited
-                                && [Edge::Left, Edge::Right, Edge::Top, Edge::Bottom]
-                                    .into_iter()
-                                    .any(|e| may.has(e) && r.field.word() == e.word())
-                        })
-                        .map(Req::says)
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                },
-            );
+        if let Some(stated) = stated_overhang(&reqs, may) {
+            plan.overhang.insert(part.refdes.clone(), stated);
         }
         let pinned = live.len() == 1
             && reach[live[0]].is_some_and(|r| {
