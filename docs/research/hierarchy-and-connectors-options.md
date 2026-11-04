@@ -10,7 +10,7 @@ Issue #16 lists six things:
 4. Partial mates, isolated grounds, pin 1 and stack height.
 5. Several supplying ports on one join are checked pessimistically.
 
-Sources for what exists: `docs/LANGUAGE.md` ("Modules", "Systems and ports", "Connectors that mate"), ADR 0004, 0005, 0010, 0021, 0040, 0042, 0045, `README.md` (Known limits), `docs/ROADMAP.md` ("Systems: what is left"), `std/parts/connector.nsm`.
+Sources for what exists: `docs/LANGUAGE.md` ("Modules", "Systems and ports", "Connectors that mate"), ADR 0004, 0005, 0010, 0021, 0040, 0042, 0045, issue #16, `std/parts/connector.nsm`.
 
 ## Summary
 
@@ -31,7 +31,7 @@ A module is flattened into its board. `docs/CONCEPTS.md` says so ("Hierarchical 
 - What the sheet's pins are. The module's interfaces and pins are its interface, so they are the natural sheet pins, with the port's name as the label.
 - One file per instance, or one file per definition used several times. KiCad allows both: each sheet is its own `.kicad_sch`, and one sheet can be used several times ([KiCad schematic editor manual](https://docs.kicad.org/9.0/en/eeschema/eeschema.html)). Per definition is smaller and reads like the source. Per instance is simpler for references, because netsmith numbers designators across the whole board by instance path (`GLOSSARY.md`, _Designator_).
 - Net names. A sheet's inner nets would keep their instance-path names. Horizon EDA says that on flattening "the topmost net's name and class are used" ([schematic editor](https://docs.horizon-eda.org/en/latest/imp-sch.html)); netsmith's board-names-the-nets rule gives the same answer without a special case.
-- `netsmith compare`: it reads a `.kicad_sch` through `kicad-cli`, which "finds its other sheets only in the root sheet's directory" (README, Known limits). Sheets must be written beside the root, or compare keeps failing on hierarchical output.
+- `netsmith compare`: it reads a `.kicad_sch` through `kicad-cli`, which "finds its other sheets only in the root sheet's directory" (issue #67). Sheets must be written beside the root, or compare keeps failing on hierarchical output.
 
 ### Option S1. Every module instance is a sheet, no syntax
 

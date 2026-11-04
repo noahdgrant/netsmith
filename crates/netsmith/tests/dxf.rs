@@ -133,7 +133,7 @@ fn the_import_prints_source_for_the_outline_cutout_and_holes() {
 }
 
 #[test]
-fn an_l_shaped_outline_is_refused_with_its_size_and_the_roadmap() {
+fn an_l_shaped_outline_is_refused_with_its_size_and_the_issue() {
     let pts = [
         (0.0, 0.0),
         (40.0, 0.0),

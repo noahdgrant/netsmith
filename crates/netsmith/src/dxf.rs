@@ -11,7 +11,7 @@
 //! an agent) to paste.
 //!
 //! An outline or cutout that is not a rounded rectangle needs a polygon outline, which the
-//! board model does not have (ADR 0045 step C8; `docs/ROADMAP.md`): it is refused with its
+//! board model does not have (ADR 0045 step C8, issue #57): it is refused with its
 //! size and edge count, and nothing is printed.
 
 use std::fmt::Write as _;
@@ -103,7 +103,7 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
     let not_representable = |what: &str, p: &Polygon| {
         format!(
             "{what} is not a rectangle with equal rounded corners ({}): it needs a polygon outline, \
-             which the board model does not have yet (ADR 0045 step C8, docs/ROADMAP.md)",
+             which the board model does not have yet (ADR 0045 step C8, issue #57)",
             p.describe()
         )
     };

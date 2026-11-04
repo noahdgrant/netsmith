@@ -13,6 +13,7 @@
 use super::draw::{Drawing, PadSpec};
 use super::ipc::{self, GULL_WING, GULL_WING_FINE, Inside, Size};
 use super::outline::quad_frame;
+use super::qfn::exposed_pad;
 use crate::footprint::{Footprint, Mount};
 use crate::geometry::Pt;
 
@@ -32,6 +33,8 @@ struct Package {
     body: f64,
     pitch: f64,
     lead_width: Size,
+    /// The exposed pad under the body, and the paste openings across and down.
+    exposed: Option<((f64, f64), (usize, usize))>,
 }
 
 // The lead widths that reproduce KiCad 9.0's pads; the datasheets of the packages differ
@@ -49,6 +52,22 @@ const fn pkg(kind: &'static str, pins: usize, body: f64, pitch: f64, lead_width:
         body,
         pitch,
         lead_width,
+        exposed: None,
+    }
+}
+
+const fn pkg_ep(
+    kind: &'static str,
+    pins: usize,
+    body: f64,
+    pitch: f64,
+    lead_width: Size,
+    exposed: (f64, f64),
+    paste: (usize, usize),
+) -> Package {
+    Package {
+        exposed: Some((exposed, paste)),
+        ..pkg(kind, pins, body, pitch, lead_width)
     }
 }
 
@@ -69,18 +88,42 @@ const PACKAGES: &[Package] = &[
     pkg("VQFP", 100, 14.0, 0.5, W_0_5),
     pkg("VQFP", 128, 14.0, 0.4, W_0_4),
     pkg("VQFP", 176, 20.0, 0.4, W_0_4),
+    // With an exposed pad (the lead widths of the plain packages of the same pitch).
+    pkg_ep("EQFP", 144, 20.0, 0.5, W_0_5, (4.0, 4.0), (3, 3)),
+    pkg_ep("EQFP", 144, 20.0, 0.5, W_0_5, (5.0, 5.0), (4, 4)),
+    pkg_ep("EQFP", 144, 20.0, 0.5, W_0_5, (6.61, 5.615), (5, 4)),
+    pkg_ep("EQFP", 144, 20.0, 0.5, W_0_5, (7.2, 6.35), (6, 5)),
+    pkg_ep("LQFP", 144, 20.0, 0.5, W_0_5, (6.5, 6.5), (3, 3)),
+    pkg_ep("LQFP", 48, 7.0, 0.5, W_0_5, (3.6, 3.6), (3, 3)),
+    pkg_ep("LQFP", 52, 10.0, 0.65, W_0_65_A, (4.8, 4.8), (3, 3)),
+    pkg_ep("LQFP", 64, 10.0, 0.5, W_0_5, (6.5, 6.5), (5, 5)),
+    pkg_ep("TQFP", 100, 14.0, 0.5, W_0_5, (5.0, 5.0), (4, 4)),
+    pkg_ep("TQFP", 48, 7.0, 0.5, W_0_5, (4.11, 4.11), (4, 4)),
+    pkg_ep("TQFP", 48, 7.0, 0.5, W_0_5, (5.0, 5.0), (4, 4)),
 ];
 
 /// The name KiCad gives the footprint: `TQFP-48_7x7mm_P0.5mm`.
 fn name_of(p: &Package) -> String {
-    format!(
-        "{}-{}_{}x{}mm_P{}mm",
-        p.kind,
-        p.pins,
-        name_number(p.body),
-        name_number(p.body),
-        name_number(p.pitch)
-    )
+    match p.exposed {
+        None => format!(
+            "{}-{}_{}x{}mm_P{}mm",
+            p.kind,
+            p.pins,
+            name_number(p.body),
+            name_number(p.body),
+            name_number(p.pitch)
+        ),
+        Some(((ex, ey), _)) => format!(
+            "{}-{}-1EP_{}x{}mm_P{}mm_EP{}x{}mm",
+            p.kind,
+            p.pins,
+            name_number(p.body),
+            name_number(p.body),
+            name_number(p.pitch),
+            name_number(ex),
+            name_number(ey)
+        ),
+    }
 }
 
 /// A number as KiCad writes it in a name: `7`, `0.5`, `0.65`.
@@ -167,6 +210,9 @@ fn quad_flat_pack(p: &Package, name: &str) -> Footprint {
     );
     for pad in &pads {
         drawing.pad(pad);
+    }
+    if let Some((size, paste)) = p.exposed {
+        exposed_pad(&mut drawing, p.pins + 1, size, paste);
     }
     quad_frame(
         drawing,

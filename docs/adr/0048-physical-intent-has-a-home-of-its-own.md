@@ -61,7 +61,7 @@ The owner's test board has no physical line in netsmith source today, so for it 
 - `docs/LANGUAGE.md`: 23 `.place.` lines and 10 `Outline {` lines in examples that `crates/netsmith/tests/guide.rs` runs. That test takes one complete file from each ` ```nsm ` block, so a board with a physical file needs a second kind of block.
 - About a dozen Rust files that read or test `.place`, `Outline` and `Keepout` in `netsmith-check`, `netsmith-solve`, `netsmith-lower`, `netsmith-pcb`, `netsmith-fab` and `netsmith`, and `netsmith dxf import` (see below).
 - Four skills: `netsmith-use-constraints`, `netsmith-design-a-board`, `netsmith-write-nsm` and `netsmith-read-errors`. `netsmith init` copies them into projects (ADR 0015), so a project made earlier keeps the old text.
-- `README.md` (design rules and Known limits) and `docs/ROADMAP.md`.
+- `README.md` and `docs/DESIGN-RULES.md`.
 
 `netsmith dxf import` prints an `Outline`, `Cutout`s and `MountingHole`s to paste, and with `--write` puts the places of cutouts and holes in the layout file and never writes the source (ADR 0045 section 9). After decision 7 the places are requirements, so `--write` has a physical file to write. That is the first time a netsmith command writes source text, and it needs the span-based edit that ADR 0045 section 4 sketched for the editor (C5), because a comment in the physical file must survive. This ADR does not change the command.
 

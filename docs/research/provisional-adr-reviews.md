@@ -95,11 +95,11 @@ The front matter of 0021, 0022, 0031, 0033, 0034 and 0037 says `accepted (user r
 **Cost to reverse.** High. Everything in `fab` depends on it. Going back to `kicad-cli` plots would reinstate the dependency.
 
 **Findings.**
-- The ADR says: "JLCPCB has not been given these files." A cross-check against KiCad's plot is evidence of agreement with KiCad, not of acceptance by the factory. `docs/ROADMAP.md` item 5 ("JLCPCB DFM") is still open for the same reason. This is the single biggest risk in the whole set of ADRs.
+- The ADR says: "JLCPCB has not been given these files." A cross-check against KiCad's plot is evidence of agreement with KiCad, not of acceptance by the factory. Issue #12 ("JLCPCB checks") is still open for the same reason. This is the single biggest risk in the whole set of ADRs.
 - The pour is written with clear polarity inside a copper file, which "KiCad does not" write; the ADR asks to look at the planes in the order preview first.
 - Silkscreen letters differ from KiCad's (own font), and the comparison tolerance for silk is 0.6 mm.
 - ADR 0034's "The design rules check without KiCad" section points forward to 0037, correctly.
-- The pick-and-place rotation is verified only for the packages in `rotation.rs` (README, Known limits). Parts on the back have rotation unverified.
+- The pick-and-place rotation is verified only for the packages in `rotation.rs` (issue #12). Parts on the back have rotation unverified.
 
 **Recommendation: accept the design, and keep the status provisional until one real package has been uploaded to JLCPCB's order preview and its own check, and the planes and silkscreen have been looked at.** `netsmith-prepare-fab-order` already lists the preview checklist; one board and one result written into the ADR would close this. The owner is the only one who can do it.
 

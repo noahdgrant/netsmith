@@ -234,7 +234,7 @@ KitPanel = 3                # three panels: 3 carriers and 12 sensors
 
 ## Known limits if this is built as proposed
 
-Wire-to-board and FFC are not modelled until a harness exists. Orientation of pin 1 on the PCB and stack height are not checked until the layout and 3D data exist. A panel is one board house's rules at a time. Parts A and B (connector mating and grounds) and part C as far as P0 are built (the two sections at the end). The rest of part C (P1 onward) and part D are not: `README.md` "Known limits" and `docs/ROADMAP.md` ("Ordering boards and panels") say so.
+Wire-to-board and FFC are not modelled until a harness exists. Orientation of pin 1 on the PCB and stack height are not checked until the layout and 3D data exist. A panel is one board house's rules at a time. Parts A and B (connector mating and grounds) and part C as far as P0 are built (the two sections at the end). The rest of part C (P1 onward) and part D are not: issues #16 and #62 say so.
 
 ## Built: connector mating and grounds (A and B)
 
@@ -256,7 +256,7 @@ Parts A and B are built, with the recommended options and the user's decision (o
 
 **Changes of behaviour.** `examples/two_boards.nsm` mates a header with a socket (the LED board's connector is now a `Socket1x2`) and no longer joins the ports. A `Socket1x2` has a sample symbol and footprint in `netsmith_kicad::testlib` (the sample libraries now also have the 1x4 pair). The editor's System view lists the mates and ground groups (`SystemView.mates` and `.groundGroups`, typed in `api.rs` like the rest). `compare` and `fab` take nothing new; headers and sockets are in the BOM as hand-soldered parts with an LCSC number, as they were as hand-soldered parts without one.
 
-**Not built, and listed in the README and the roadmap.** Edge connectors and `card_thickness`; flat cables and wire to board (need a cable or harness definition, A4); a partial mate and isolated grounds (questions 8); stacking, side, mount and `.mated_height` (need the layout file and part heights); pin 1 on the PCB (a layout check); a rating for the two-row headers; derating of several loaded contacts. Messages are one line each, with the nets and pins of both sides (the multi-line form of the examples above would need a notes field on diagnostics).
+**Not built, and listed in issues #16 and #62.** Edge connectors and `card_thickness`; flat cables and wire to board (need a cable or harness definition, A4); a partial mate and isolated grounds (questions 8); stacking, side, mount and `.mated_height` (need the layout file and part heights); pin 1 on the PCB (a layout check); a rating for the two-row headers; derating of several loaded contacts. Messages are one line each, with the nets and pins of both sides (the multi-line form of the examples above would need a notes field on diagnostics).
 
 ## Built: P0
 

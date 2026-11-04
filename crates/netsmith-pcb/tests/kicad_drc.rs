@@ -1506,7 +1506,7 @@ fn a_board_laid_out_by_a_file_passes_kicads_check() {
         return;
     };
     // A library footprint's silkscreen can be clipped by the mask wherever the placer puts it
-    // (ROADMAP, silkscreen of footprints); the copper is what is tested.
+    // (issue #58, silkscreen of library footprints); the copper is what is tested.
     assert_eq!(copper_only(&report), Vec::<&String>::new());
     assert_eq!(report.unconnected, 0);
 }
