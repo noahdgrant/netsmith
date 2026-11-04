@@ -30,7 +30,7 @@ code { font-family: var(--mono); font-size: 12px; background: var(--panel-2); pa
 /* top bar */
 .topbar { display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 40px; background: var(--panel); border-bottom: 1px solid var(--line); border-top: 2px solid var(--accent); }
 .brand { display: flex; align-items: center; margin-right: 12px; }
-.brand .logo { display: block; height: 28px; width: auto; }
+.brand .logo { display: block; height: 30px; width: auto; }
 .boardpick { display: flex; align-items: center; gap: 8px; color: var(--muted); }
 select { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; }
 .tool { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 3px 12px; cursor: pointer; }
