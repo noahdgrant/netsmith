@@ -27,6 +27,56 @@ use netsmith_solve::{Library, Solution};
 /// the one kind that has no letters of its own (IEEE 315, ASME Y14.44).
 const DEFAULT_LETTERS: &str = "U";
 
+/// The order in which parts are numbered: paths compared segment by segment, and a number at
+/// the end of a segment compared as a number, so `pads.tp2` comes before `pads.tp10` and
+/// `.tp02` and `.tp2` stay apart (the shorter digit string first). The same inputs always
+/// give the same order, and a path without such a number sorts as plain text does.
+pub fn natural_path_order(a: &str, b: &str) -> std::cmp::Ordering {
+    let mut left = a.split('.');
+    let mut right = b.split('.');
+    loop {
+        match (left.next(), right.next()) {
+            (None, None) => return std::cmp::Ordering::Equal,
+            (None, Some(_)) => return std::cmp::Ordering::Less,
+            (Some(_), None) => return std::cmp::Ordering::Greater,
+            (Some(x), Some(y)) => {
+                let order = natural_segment_order(x, y);
+                if order.is_ne() {
+                    return order;
+                }
+            }
+        }
+    }
+}
+
+/// `tp` and `10` of `tp10`; a segment that does not end in digits has none.
+fn split_trailing_number(segment: &str) -> (&str, Option<&str>) {
+    let stem = segment.trim_end_matches(|c: char| c.is_ascii_digit());
+    if stem.len() == segment.len() {
+        (segment, None)
+    } else {
+        (stem, Some(&segment[stem.len()..]))
+    }
+}
+
+fn natural_segment_order(a: &str, b: &str) -> std::cmp::Ordering {
+    let ((stem_a, num_a), (stem_b, num_b)) = (split_trailing_number(a), split_trailing_number(b));
+    stem_a.cmp(stem_b).then_with(|| match (num_a, num_b) {
+        (None, None) => std::cmp::Ordering::Equal,
+        (None, Some(_)) => std::cmp::Ordering::Less,
+        (Some(_), None) => std::cmp::Ordering::Greater,
+        (Some(x), Some(y)) => {
+            // Without leading zeros the longer string is the larger number; the zeros are
+            // only a tie-break, so that two spellings never compare equal.
+            let (tx, ty) = (x.trim_start_matches('0'), y.trim_start_matches('0'));
+            tx.len()
+                .cmp(&ty.len())
+                .then_with(|| tx.cmp(ty))
+                .then_with(|| x.len().cmp(&y.len()))
+        }
+    })
+}
+
 /// The letters of a part's reference designator (ADR 0046): the field `.designator` that its
 /// kind or the design states, else `U`. Letters that are not one or more capital letters
 /// (`A` to `Z`) are reported, because the number follows them and a designator with a digit,
@@ -479,13 +529,14 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
     });
 
     // Parts are numbered in path order, so the numbering does not depend on the order the
-    // source declares them in.
+    // source declares them in. A number at the end of a segment counts as a number
+    // (`tp2` before `tp10`, ADR 0048).
     let mut ids: Vec<(String, InstId)> = model
         .instances()
         .filter(|(_, i)| i.kind == InstKind::Part)
         .map(|(id, _)| (model.path_of(id), id))
         .collect();
-    ids.sort_by(|a, b| a.0.cmp(&b.0));
+    ids.sort_by(|a, b| natural_path_order(&a.0, &b.0));
 
     let mut counters: BTreeMap<String, usize> = BTreeMap::new();
     let mut refdes_of: HashMap<InstId, String> = HashMap::new();

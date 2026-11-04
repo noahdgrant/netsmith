@@ -816,7 +816,7 @@ error: `j` is inside `Block` and is not part of its interface; set it through a 
 
 ### Designators
 
-Every part has a text field `.designator` that it does not declare (declaring it again is an error), as it has `.assembly`. It holds the letters of the part's reference designator on the schematic, the bill of materials and the placement file; the number after them counts the parts that have the same letters, from 1, in the order of their paths (ADR 0046, user decision). The letters follow IEEE 315 and ASME Y14.44 usage: `K` a relay, `BZ` a buzzer, `BT` a battery, `T` a transformer, `U` an integrated circuit.
+Every part has a text field `.designator` that it does not declare (declaring it again is an error), as it has `.assembly`. It holds the letters of the part's reference designator on the schematic, the bill of materials and the placement file; the number after them counts the parts that have the same letters, from 1, in the order of their paths (ADR 0046, user decision), where a number at the end of a path segment counts as a number: `.pads.tp2` is `TP2` and `.pads.tp10` comes after `.pads.tp9` (owner decision, 2026-11-04, ADR 0048). The letters follow IEEE 315 and ASME Y14.44 usage: `K` a relay, `BZ` a buzzer, `BT` a battery, `T` a transformer, `U` an integrated circuit.
 
 Each standard kind states its own letters, because they are always true of it, and nothing can change them: `Resistor` is `"R"`, `Capacitor` `"C"`, `Inductor` `"L"`, `FerriteBead` `"FB"`, `Led`, `Diode`, `Schottky`, `Zener` and `Tvs` `"D"`, `NMosfet` and `PMosfet` `"Q"`, `Crystal` `"Y"`, `Fuse` `"F"`, `Switch` `"SW"`, every header, socket, `Coax`, `UsbCPower`, `UsbC2` and `ProgrammingPads6` `"J"`, `TestPoint` `"TP"`, `MountingHole` and `PlatedHole` `"H"`, `Fiducial` `"FID"`, `Label` `"LBL"` and `LinearRegulator` `"U"`. A part you define states its own letters in its body, `.designator &= "BZ"`, or leaves them out; a part with none is `"U"`. A board may give the letters to a part of its own that states none, with the same `&=` (a part inside a module is the module's, ADR 0004). A test fails when a part of the standard library has no letters, so a new kind gets them on purpose.
 
@@ -3774,6 +3774,88 @@ The solver does not evaluate a relation between two parts, because placement is 
 error [constraint] constraint radio.row_b.place.x - radio.row_a.place.x (paired.physical.nsm:11) is violated: the centre of the body of J2 (`radio.row_b`, F.Fab) minus the centre of the body of J1 (`radio.row_a`, F.Fab) is 16 mm along x, and it allows 17.45 to 17.55 mm (1.45 mm over)
 ```
 
+#### A row of parts
+
+A row of test pads, or of the pins of a bank of switches, is a numbered run of parts on one line, each a fixed distance from the next. The `row` statement says it once, in the physical file only (owner decision, 2026-11-04, ADR 0048): `row .pads.tp1 .. .pads.tp4 along x pitch 2.54mm +/- 0.05mm`. The first and the last part name the run: the same path up to the last segment, then a name that ends in a number, and every number between them is a part (`tp1`, `tp2`, `tp3`, `tp4`). `along x` or `along y` is the axis of the pitch. The statement puts the parts on one line (the other axis equal) and each one at the pitch from the one before it, within the window; a pitch without a window is held exactly, like a relation without one. A negative pitch runs the row the other way. The pitch is a length.
+
+```nsm solve place
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+
+module Pads {
+    .tp1: Header1x2
+    .tp2: Header1x2
+    .tp3: Header1x2
+    .tp4: Header1x2
+}
+
+board Probed {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .pads: Pads
+}
+```
+
+```nsm-physical
+import std::pcb::Outline
+
+physical for Probed {
+    case {
+        .outline: Outline {
+            .width &= 50mm
+            .height &= 30mm
+        }
+    }
+
+    // Test fixture drawing: the four pads are 5 mm apart on one line near the bottom edge.
+    .pads.tp1.place.y >= .outline.height - 8mm
+    row .pads.tp1 .. .pads.tp4 along x pitch 5mm +/- 0.05mm
+}
+```
+
+The statement is the same as the equations it stands for: for each pair of neighbours `.pads.tp2.place.x - .pads.tp1.place.x == 5mm +/- 0.05mm` and `.pads.tp2.place.y == .pads.tp1.place.y`, so the placer holds it and `fab` measures it with no new mechanism. The distance of the whole row from the edge, or its face, is stated on a part or a module as before (`.pads.place.side &= "top"` puts every pad on the top face). A finding names the row's file and line, and the two neighbours it is about:
+
+```text
+error [constraint] constraint pads.tp3.place.x - pads.tp2.place.x (probed.physical.nsm:13) is violated: the centre of the body of J3 (`pads.tp3`, F.Fab) minus the centre of the body of J2 (`pads.tp2`, F.Fab) is 7 mm along x, and it allows 4.95 to 5.05 mm (1.95 mm over)
+```
+
+The parts of a row are numbered in natural order, so the names and the labels agree: `.pads.tp2` is `J2` and `tp10` follows `tp9` (see _Designators_). A run is refused, with the statement quoted, when it is not one: an end that does not end in a number, ends with different names or in different modules, a first number above the last, a run of one part, a part missing between the ends (a gap), an end that is not a part (a module, a value), or a pitch that is not a length. A number written with leading zeros keeps the width of the first (`tp01 .. tp12`). A `row` in the circuit source is an error that says it belongs in the physical file.
+
+Misuse: a gap in the run.
+
+```nsm fails
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+
+module Pads {
+    .tp1: Header1x2
+    .tp2: Header1x2
+    .tp4: Header1x2
+}
+
+board Gappy {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .pads: Pads
+}
+```
+
+```nsm-physical
+physical for Gappy {
+    row .pads.tp1 .. .pads.tp4 along x pitch 5mm
+}
+```
+
+```text
+error: `row .pads.tp1 .. .pads.tp4` has a gap: `pads` has no member `tp3`, and a row is every number from the first to the last
+  --> main.physical.nsm:2:5
+  |
+2 |     row .pads.tp1 .. .pads.tp4 along x pitch 5mm
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
 #### A part that hangs over the board edge
 
 A plug that sticks out of the case has part of its courtyard outside the outline. That is an error ("not wholly inside the board outline") unless the design says the part may hang over that edge. **The owner decided the rule on 2026-11-03 (ADR 0045, section 10); how a module states an overhang for its parts is still open.** The design says it with a requirement it can already write: a window for an edge of the **body** that lies at or beyond the same edge of the outline. `.j.place.left &= -0.5mm +/- 0.1mm` puts the body's left edge 0.5 mm past the board's left edge, and `.plug.place.bottom >= .outline.height` puts its bottom edge on the board's bottom edge or past it (flush counts). Only the part's own `left`, `right`, `top` and `bottom` say it, and only when the whole window is at or beyond the edge. A window on `.x` or `.y`, a bound a module states for its parts, or an entry of the layout file puts the part somewhere but does not say it may hang over, so the courtyard past the edge is the error it always was. That holds for a part the layout file locks (`lock = true`) too: the lock fixes where the part is, and the part must still state every edge its courtyard is past, like any other (owner decision, 2026-11-03). A locked part past an edge nobody stated gets the error below, naming the edge, the distance and the line that would allow it.
@@ -5178,7 +5260,7 @@ error: net `net-a.i2c.sda` carries the sda line of an I2C bus (`a.i2c.sda`, `b.i
 
 The library is `.nsm` source in `std/`. It states only what is always true of a part. Import a definition by its full path, for example `import std::parts::passive::Resistor`.
 
-Parts are numbered by their letters in the order of their paths, and every kind states its own letters in its definition (`.designator &= "R"` in `Resistor`): `R` resistor, `C` capacitor, `L` inductor, `FB` ferrite bead, `D` LED, diode, Schottky, Zener and TVS, `Q` MOSFET, `Y` crystal, `F` fuse, `SW` switch, `J` header, socket, coax, USB-C and programming pads, `TP` test point, `H` mounting hole and plated hole, `FID` fiducial, `LBL` label, `U` linear regulator (ADR 0046; see Designators).
+Parts are numbered by their letters in the order of their paths (a number at the end of a segment sorts as a number: `tp2` before `tp10`), and every kind states its own letters in its definition (`.designator &= "R"` in `Resistor`): `R` resistor, `C` capacitor, `L` inductor, `FB` ferrite bead, `D` LED, diode, Schottky, Zener and TVS, `Q` MOSFET, `Y` crystal, `F` fuse, `SW` switch, `J` header, socket, coax, USB-C and programming pads, `TP` test point, `H` mounting hole and plated hole, `FID` fiducial, `LBL` label, `U` linear regulator (ADR 0046; see Designators).
 
 ### Parts
 

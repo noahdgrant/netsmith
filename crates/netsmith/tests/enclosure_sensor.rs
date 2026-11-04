@@ -81,6 +81,11 @@ fn the_enclosure_sensor_example_meets_every_requirement_and_passes_the_design_ru
     let footprints = pcb.matches("(footprint \"").count();
     assert!((40..=60).contains(&footprints), "{footprints} footprints");
     assert_eq!(pcb.matches("TestPoint_Pad_D1.5mm").count(), 12);
+    // The pads are numbered in natural order: `.pads.tp2` is TP2 and `tp10` follows `tp9`, so
+    // the names of the physical file and the labels of the board agree.
+    for n in 1..=12 {
+        assert!(pcb.contains(&format!("\"TP{n}\"")), "TP{n} is on the board");
+    }
     // The back-side module: three resistors and two LEDs are on the back, and its third LED is
     // the exception on the front.
     let on_back = pcb

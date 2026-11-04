@@ -402,6 +402,8 @@ physical for Trellis {
 
 **Lean.** L1 now. It is the form ADR 0045 designed and the owner's test board needs two or three of them. The fixture's pitch is where it is clumsy; if a fixture of a dozen or more pads is written by hand, that is the case to design L3's `pitch` for, with an example in hand.
 
+**Decided later (owner, 2026-11-04, issue #81, ADR 0048 decision 10).** A fixture of twelve pads was written by hand and cost 22 lines, so the `pitch` form was designed: not L3's list of paths, but a range of names, `row .pads.tp1 .. .pads.tp12 along x pitch 2.54mm +/- 0.05mm`, which lowers to the equations of L1.
+
 ## 6. A face for a module
 
 Today `.place.side` on a module is refused. The layout designer decides faces by module (the supply on the bottom). The question is what a face on a module means and where a part that disagrees goes.

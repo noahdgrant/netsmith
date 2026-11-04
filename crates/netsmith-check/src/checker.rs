@@ -848,6 +848,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
+                Item::Row(r) => self.row(r),
                 Item::Connect(c) if self.phys.is_none() => self.connect(c),
                 Item::Bridge(b) if self.phys.is_none() => self.bridge(b),
                 Item::Catalog(c) if self.phys.is_none() => self.catalog(c),

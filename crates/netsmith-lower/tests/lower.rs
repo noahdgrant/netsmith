@@ -1061,3 +1061,48 @@ fn designators_are_numbered_for_each_letter_in_path_order() {
         ]
     );
 }
+
+#[test]
+fn a_number_at_the_end_of_a_path_segment_sorts_as_a_number() {
+    let body: String = [10, 2, 1, 11, 9]
+        .iter()
+        .map(|n| format!("    .tp{n}: Chip\n"))
+        .collect();
+    let got = designators_with(&body).unwrap();
+    // `.tp2` is `U3` (after `ic`, `tp1`), not `U6`; `tp10` follows `tp9`.
+    let of = |path: &str| {
+        got.iter()
+            .find(|(p, _)| p == path)
+            .map(|(_, r)| r.clone())
+            .unwrap()
+    };
+    assert_eq!(
+        [
+            of("ic"),
+            of("tp1"),
+            of("tp2"),
+            of("tp9"),
+            of("tp10"),
+            of("tp11")
+        ],
+        ["U1", "U2", "U3", "U4", "U5", "U6"]
+    );
+}
+
+#[test]
+fn natural_order_compares_segments_in_turn_and_is_total() {
+    use netsmith_lower::natural_path_order as order;
+    use std::cmp::Ordering::{Equal, Greater, Less};
+    assert_eq!(order("pads.tp2", "pads.tp10"), Less);
+    assert_eq!(order("pads.tp10", "pads.tp9"), Greater);
+    assert_eq!(order("a10.x", "a2.y"), Greater);
+    assert_eq!(order("a", "a.b"), Less);
+    assert_eq!(order("a", "a1"), Less);
+    assert_eq!(order("pads.tp2", "pads.tp2"), Equal);
+    // Two spellings of one number are still ordered, so the numbering is deterministic.
+    assert_eq!(order("tp02", "tp2"), Greater);
+    assert_eq!(order("tp2", "tp02"), Less);
+    // Text compares as before.
+    assert_eq!(order("led", "r1"), Less);
+    assert_eq!(order("b1", "a9"), Greater);
+}

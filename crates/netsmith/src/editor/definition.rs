@@ -187,6 +187,15 @@ fn visit<'a>(
                 path(p, inside);
             }
         }
+        Item::Row(r) => {
+            path(&r.first, inside);
+            path(&r.last, inside);
+            let mut paths = Vec::new();
+            expr_paths(&r.pitch, &mut paths);
+            for p in paths {
+                path(p, inside);
+            }
+        }
         Item::Bridge(b) => {
             path(&b.from, inside);
             path(&b.to, inside);

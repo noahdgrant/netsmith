@@ -122,6 +122,41 @@ pub enum Item {
     Tie(Tie),
     /// A `case { ... }` section; only a physical file may hold one.
     Case(Case),
+    /// A `row .a1 .. .a12 along x pitch 2.54mm` statement; only a physical file may hold one.
+    Row(Row),
+}
+
+/// `row .pads.tp1 .. .pads.tp12 along x pitch 2.54mm +/- 0.05mm`: a numbered run of parts on
+/// one line, each neighbour at the pitch along the axis (ADR 0048, "Syntax decisions" 10).
+/// The checker lowers it to the same relations the equation form states.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Row {
+    /// The first part of the run (`.pads.tp1`).
+    pub first: Path,
+    /// The last part of the run (`.pads.tp12`).
+    pub last: Path,
+    /// The axis the pitch is along.
+    pub axis: Axis,
+    pub axis_span: Span,
+    /// The distance between a part and the next: a length, with or without a window.
+    pub pitch: Expr,
+    pub span: Span,
+}
+
+/// `x` or `y` after `along`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Axis {
+    X,
+    Y,
+}
+
+impl Axis {
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::X => "x",
+            Self::Y => "y",
+        }
+    }
 }
 
 /// What a pin is electrically. The kinds are a closed set (ADR 0016); a checker reads them,

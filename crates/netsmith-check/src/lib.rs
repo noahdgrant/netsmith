@@ -12,6 +12,7 @@ mod mate;
 mod model;
 mod pinout;
 mod pins;
+mod row;
 
 pub use checker::physical_file_name;
 pub use diag::{Diagnostic, Source, SourceId, Sources};
