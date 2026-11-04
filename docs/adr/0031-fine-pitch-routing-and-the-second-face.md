@@ -34,6 +34,4 @@ The placer takes `PlaceOptions` (`crates/netsmith-pcb/src/place.rs`). Its fields
 
 ## Left open
 
-Follow-up (owner review, 2026-11-04): cross-check the pad-box rule for a hole part that draws its courtyard on one face only against KiCad's own courtyard check, on a footprint of that kind, as ADR 0037 does for the other rules. Another agent is doing this; it is not done yet, and this ADR does not claim it is.
-
-Rotation and mirroring of bottom parts in the position file are unmeasured. A footprint's 3D model is copied unchanged for a part on the back. Connectors are not moved to the back. A mask opening drawn in a footprint keeps vias away but not tracks. Fan-out before routing, push and shove, and a router that sees more than two layers are not done.
+Rotation and mirroring of bottom parts in the position file are unmeasured. A footprint's 3D model is copied unchanged for a part on the back. Connectors are not moved to the back. A mask opening drawn in a footprint keeps vias away but not tracks. Fan-out before routing, push and shove, and a router that sees more than two layers are not done. *Follow-up (2026-11-04):* the two-face rule was checked against KiCad 9's DRC (`hole_faces.rs`, 16 boards): KiCad flags nothing the rule passes, `courtyards_overlap` agrees layer by layer, and where the rule keeps a courtyard off a part's pads KiCad's `pth_inside_courtyard` (ignored by default) flags only the holes, so the rule is stricter by about 0.55 mm round the pads.
