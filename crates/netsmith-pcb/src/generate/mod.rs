@@ -16,6 +16,7 @@ mod header;
 pub mod ipc;
 mod outline;
 mod qfn;
+mod qfp;
 mod sot;
 
 use std::sync::OnceLock;
@@ -30,6 +31,7 @@ pub fn generate(id: &str) -> Option<Footprint> {
         .or_else(|| sot::generate(library, name))
         .or_else(|| diode::generate(library, name))
         .or_else(|| qfn::generate(library, name))
+        .or_else(|| qfp::generate(library, name))
         .or_else(|| header::generate(library, name))
 }
 
@@ -42,6 +44,7 @@ pub fn names() -> &'static [String] {
         all.extend(sot::names());
         all.extend(diode::names());
         all.extend(qfn::names());
+        all.extend(qfp::names());
         all.extend(header::names());
         all.sort();
         all.dedup();
@@ -89,6 +92,9 @@ mod tests {
             "Nothing:R_0402_1005Metric",
             "R_0402_1005Metric",
             "Package_SO:SOIC-9_3.9x4.9mm_P1.27mm",
+            // A QFP of a maker's own drawing, which is not the MS-026 pattern.
+            "Package_QFP:LQFP-64_10x10mm_P0.5mm",
+            "Package_QFP:TQFP-47_7x7mm_P0.5mm",
             "Connector_PinHeader_2.54mm:PinHeader_1x2_P2.54mm_Vertical",
             "Connector_PinHeader_2.54mm:PinHeader_1x41_P2.54mm_Vertical",
             "Connector_PinHeader_2.54mm:PinHeader_3x02_P2.54mm_Vertical",
@@ -279,5 +285,25 @@ mod tests {
         assert_eq!(at(&header, "5"), Pt::new(0.0, 4.0));
         assert!(near(header.pads[1].drill.unwrap().width, 0.8));
         assert!(near(header.pads[1].width, 1.35));
+    }
+
+    #[test]
+    fn a_tqfp_48_has_twelve_pads_on_each_edge_numbered_counterclockwise_from_the_left_top() {
+        let fp = generate("Package_QFP:TQFP-48_7x7mm_P0.5mm").unwrap();
+        assert_eq!(fp.pads.len(), 48);
+        let at = |n: &str| fp.pads_numbered(n).next().unwrap().at;
+        // JEDEC MS-026: 9.0 mm over the leads, 0.6 mm leads: pads 1.475 x 0.3 mm centred
+        // 4.1625 mm from the middle, the courtyard 0.25 mm outside the pads.
+        assert!(near(at("1").x, -4.1625) && near(at("1").y, -2.75));
+        assert!(near(at("12").y, 2.75) && near(at("13").x, -2.75) && near(at("13").y, 4.1625));
+        assert!(near(at("25").x, 4.1625) && near(at("25").y, 2.75));
+        assert!(near(at("37").x, 2.75) && near(at("37").y, -4.1625));
+        assert!(near(fp.pads[0].width, 1.475) && near(fp.pads[0].height, 0.3));
+        // The pads of the top and bottom edges are turned a quarter.
+        assert!(near(fp.pads[12].width, 0.3) && near(fp.pads[12].height, 1.475));
+        assert_eq!(
+            fp.courtyard,
+            Rect::new(Pt::new(-5.15, -5.15), Pt::new(5.15, 5.15))
+        );
     }
 }
