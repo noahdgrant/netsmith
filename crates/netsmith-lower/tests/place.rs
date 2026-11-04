@@ -340,15 +340,23 @@ fn a_relation_between_parts_is_no_bound_on_either_and_no_note() {
 }
 
 #[test]
-fn a_relation_that_cannot_be_held_names_both_places_and_the_numbers() {
-    let e = lowered_two(
-        "    .k.place.x - .j.place.x == 17.5mm\n    .k.place.x - .j.place.x == 12mm +/- 0.1mm\n",
-    )
-    .map(|l| offsets(&l));
-    // Each alone is fine; two that disagree are the placer's to report, with both lines.
-    assert!(e.is_ok(), "{e:?}");
-    let e = lowered_two("    .k.place.x >= .j.place.x + 5mm\n    .k.place.x <= .j.place.x + 4mm\n");
-    assert!(e.is_ok());
+fn a_relation_that_can_never_be_held_names_both_places_and_the_numbers() {
+    // The sum of the places has to lie in 2.5 to 1.5 mm: the left side is wider than the right.
+    let e = lowered_two("    .k.place.x - .j.place.x + (0mm..2mm) == 3mm +/- 0.5mm\n").unwrap_err();
+    assert_eq!(e.len(), 1, "{e:?}");
+    assert!(
+        e[0].starts_with("`k.place.x` minus `j.place.x` cannot be held:")
+            && e[0].contains("leaves it at least 2.5 mm and at most 1.5 mm"),
+        "{}",
+        e[0]
+    );
+}
+
+#[test]
+fn two_relations_that_disagree_are_the_placers_to_report() {
+    let l = lowered_two("    .k.place.x >= .j.place.x + 5mm\n    .k.place.x <= .j.place.x + 4mm\n")
+        .unwrap();
+    assert_eq!(offsets(&l).len(), 2);
 }
 
 #[test]

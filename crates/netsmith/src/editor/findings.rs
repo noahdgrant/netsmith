@@ -537,6 +537,50 @@ mod tests {
     }
 
     #[test]
+    fn an_unmet_relation_between_two_parts_is_a_finding_that_names_both() {
+        use drc::constraints::{Measure, Relation, RelationEnd};
+        let board = placed("led");
+        let end = |i: usize| RelationEnd {
+            part: board.parts[i].refdes.clone(),
+            path: board.parts[i].path.clone(),
+            measure: Measure::X,
+        };
+        let constraints = Constraints {
+            list: Vec::new(),
+            sides: Vec::new(),
+            relations: vec![Relation {
+                id: "r1.place.x - d1.place.x".into(),
+                source: "led.physical.nsm:12".into(),
+                a: end(0),
+                b: end(1),
+                lo: 500.0,
+                hi: 501.0,
+            }],
+            severity: drc::Severity::Error,
+        };
+        let found = constraint_findings(&board, &constraints);
+        assert_eq!(found.len(), 1, "{found:#?}");
+        let f = &found[0];
+        assert_eq!(f.id, "constraint:r1.place.x - d1.place.x");
+        assert_eq!(
+            (f.rule.as_str(), f.severity),
+            ("constraint", Severity::Error)
+        );
+        assert_eq!(
+            f.parts,
+            [board.parts[1].refdes.clone(), board.parts[0].refdes.clone()]
+        );
+        assert!(
+            f.message
+                .contains("constraint r1.place.x - d1.place.x (led.physical.nsm:12) is violated")
+                && f.message.contains("it allows 500 to 501 mm")
+                && f.message.ends_with("mm over)"),
+            "{}",
+            f.message
+        );
+    }
+
+    #[test]
     fn a_clean_placement_has_no_finding_and_an_overlap_is_found_where_the_courtyards_meet() {
         let mut board = placed("led");
         assert_eq!(placement_findings(&board), []);

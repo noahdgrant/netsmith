@@ -361,3 +361,26 @@ fn a_part_whose_own_window_cannot_reach_the_relation_is_reported_with_the_number
         "{e}"
     );
 }
+
+#[test]
+fn two_relations_that_cannot_both_hold_are_reported_by_the_check_and_not_looped_on() {
+    if !have_libraries() {
+        return;
+    }
+    let physical = physical_with(
+        "    .radio.row_b.place.x - .radio.row_a.place.x >= 20mm\n    .radio.row_b.place.x - .radio.row_a.place.x <= 18mm\n",
+    );
+    let started = std::time::Instant::now();
+    let (_dir, made) = fab("contradiction", &physical, "", &Catalogs::jlcpcb());
+    let e = made.expect_err("no placement holds both");
+    assert!(
+        e.contains("error [constraint] constraint radio.row_b.place.x - radio.row_a.place.x (widget.physical.nsm:")
+            && e.contains("minus the centre of the body of J3 (`radio.row_a`, F.Fab) is "),
+        "{e}"
+    );
+    assert!(
+        started.elapsed().as_secs() < 60,
+        "it took {:?}",
+        started.elapsed()
+    );
+}
