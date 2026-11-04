@@ -37,7 +37,7 @@ function DefRow({ file, def }: { file: TreeFile; def: Def }) {
       class="row def"
       title={`${def.kind} ${def.name}, line ${def.line}`}
       onClick={() => {
-        void goTo({ file: file.path, line: def.line, column: 1, endLine: def.line, endColumn: 1 });
+        void goTo({ file: file.path, line: def.line, column: 1, endLine: def.line, endColumn: 1 }, def.name);
         viewBoardOfDefinition(def.kind, def.name);
       }}
     >

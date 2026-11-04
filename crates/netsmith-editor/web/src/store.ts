@@ -118,7 +118,7 @@ export const panelShown = signal<string | null>(null);
 export const detail = signal<BoardDetail | null>(null);
 
 /** Asks the editor to put the cursor at a place. `nonce` makes the same place twice a new ask. */
-export const reveal = signal<{ at: Location; nonce: number } | null>(null);
+export const reveal = signal<{ at: Location; name?: string; nonce: number } | null>(null);
 export const cursor = signal<{ file: string; line: number; column: number } | null>(null);
 /** The part picked in a view. */
 export const selected = signal<string | null>(null);
@@ -395,8 +395,9 @@ export async function reload(path: string) {
   live.value = null;
 }
 
-/** Open the file at a place and put the cursor there. */
-export async function goTo(at: Location) {
+/** Open the file at a place and put the cursor there. `name` is the definition whose line it
+ * is, when that is all that is known (the tree): the cursor goes to the name on the line. */
+export async function goTo(at: Location, name?: string) {
   try {
     await openFile(at.file);
   } catch (e) {
@@ -404,7 +405,7 @@ export async function goTo(at: Location) {
     return;
   }
   revealSource();
-  reveal.value = { at, nonce: ++nonce };
+  reveal.value = { at, name, nonce: ++nonce };
 }
 
 export function pickPart(refdes: string | null, jump = false) {
