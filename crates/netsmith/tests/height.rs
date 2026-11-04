@@ -13,9 +13,8 @@ use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::{Board, PlacementProblem, Pt, Side, place_options};
 use netsmith_solve::Catalogs;
 
-/// The board: a rail and `parts` resistors between its nets. `extra` is the rest of the
-/// board's body.
-fn source(parts: usize, extra: &str) -> String {
+/// The board: a rail and `parts` resistors between its nets.
+fn source(parts: usize) -> String {
     let mut body = String::new();
     for n in 1..=parts {
         body += &format!(
@@ -25,25 +24,44 @@ fn source(parts: usize, extra: &str) -> String {
     format!(
         "import std::parts::passive::Resistor
 import std::sources::Rail
-import std::pcb::{{Outline, Keepout}}
 import std::mfg::jlcpcb::TwoLayer
 
 board Widget {{
     .process: TwoLayer {{
         .stackup.thickness &= 1.6mm
     }}
-    .outline: Outline {{
-        .width &= 40mm
-        .height &= 30mm
-    }}
     .rail: Rail {{
         .voltage &= 5V +/- 5%
         .pos.net &= \"VCC\"
         .neg.net &= \"GND\"
     }}
-{body}{extra}}}
+{body}}}
 "
     )
+}
+
+/// The physical file of the board: its outline, and `extra`, the rest of its physical
+/// statements (the zones with a height limit, and the heights of parts, which a physical
+/// file may state for the board).
+fn physical(extra: &str) -> String {
+    format!(
+        "import std::pcb::{{Outline, Keepout}}
+
+physical for Widget {{
+    case {{
+        .outline: Outline {{
+            .width &= 40mm
+            .height &= 30mm
+        }}
+    }}
+{extra}}}
+"
+    )
+}
+
+/// The standard library and the physical file of `extra`.
+fn loader(extra: &str) -> Loader {
+    Loader::std().with_physical("widget.nsm", "widget.physical.nsm", &physical(extra))
 }
 
 /// A lid over the top 18 mm that allows 3 mm on the top face.
@@ -62,8 +80,8 @@ fn place(parts: usize, extra: &str, sides: &[(&str, Side)]) -> Board {
     let libraries = Libraries::sample();
     let built = build_with(
         "widget.nsm",
-        &source(parts, extra),
-        &Loader::std(),
+        &source(parts),
+        &loader(extra),
         &Catalogs::jlcpcb(),
         &libraries,
     )
@@ -98,8 +116,8 @@ fn a_part_states_its_height_and_a_keepout_its_limit() {
     let libraries = Libraries::sample();
     let built = build_with(
         "widget.nsm",
-        &source(5, &format!("{HEIGHTS}{LID}")),
-        &Loader::std(),
+        &source(5),
+        &loader(&format!("{HEIGHTS}{LID}")),
         &Catalogs::jlcpcb(),
         &libraries,
     )
@@ -296,8 +314,8 @@ fn a_back_face_part_has_its_own_limit() {
 fn refused(extra: &str) -> String {
     build_with(
         "widget.nsm",
-        &source(2, extra),
-        &Loader::std(),
+        &source(2),
+        &loader(extra),
         &Catalogs::jlcpcb(),
         &Libraries::sample(),
     )
@@ -359,8 +377,8 @@ fn fab_with(
     }
     let made = fab_with_options(
         "widget.nsm",
-        &source(5, extra),
-        &Loader::std(),
+        &source(5),
+        &loader(extra),
         &dir.join("fab"),
         &Catalogs::jlcpcb(),
         &Libraries::sample(),

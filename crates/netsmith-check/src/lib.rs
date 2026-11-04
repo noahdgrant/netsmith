@@ -13,6 +13,7 @@ mod model;
 mod pinout;
 mod pins;
 
+pub use checker::physical_file_name;
 pub use diag::{Diagnostic, Source, SourceId, Sources};
 pub use faults::{pin_faults, pin_faults_solved};
 pub use loader::Loader;

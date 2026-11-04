@@ -96,6 +96,11 @@ with. Check JLCPCB's order preview for those.
 - A board outline is a rectangle with equal rounded corners (#57). A panel repeats one board
   on a V-cut grid (#62).
 - The placer and router can leave a tight board unrouted (#3, #58).
+- Physical intent (the outline, cutouts, holes, keepouts and where parts must be) is in a file of
+  its own beside a board, `<stem>.physical.nsm`, and the same lines in the board are an error
+  (ADR 0048, #52). The board level is built; the module layer, a physical file for a `system` or
+  a `panel`, evaluating a relation between two parts, and the editor writing its keepouts to that
+  file (it writes the layout file) are not. The provisional readings are in the ADR's "Built".
 - Several of the decisions in `docs/adr/` are provisional and unreviewed (#10).
 
 ## Licence

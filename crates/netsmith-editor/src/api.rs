@@ -53,6 +53,9 @@ pub enum FileRole {
     Std,
     /// `netsmith.toml`.
     Manifest,
+    /// `<stem>.physical.nsm` beside a top-level file or a module: the physical intent of its
+    /// boards (ADR 0048).
+    Physical,
 }
 
 /// A definition in a file: `board`, `system`, `panel`, `part`, `interface` or `module`.

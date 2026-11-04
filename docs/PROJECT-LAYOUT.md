@@ -42,6 +42,8 @@ Naming one file builds only that file's boards: `netsmith fab src/unit/unit.nsm`
 
 Modules are shared by importing them: `import src::modules::power::LdoStage` works from any file of the project.
 
+A board's physical intent (its outline, cutouts, mounting holes, keepouts and where its parts must be, ADR 0048) is in a file beside its source with the same stem and the suffix `.physical.nsm`: `src/unit/unit.nsm` has `src/unit/unit.physical.nsm`, as the layout file is `unit.pcb.toml`. The file holds `physical for Board { ... }` units, is optional, and is not a module: nothing imports it.
+
 ## Example: a development kit and a production unit
 
 A repo with a development kit (a carrier board and plug-in boards, joined as a system) and a production unit that reuses the same regulator and sensor circuits:

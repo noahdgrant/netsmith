@@ -138,7 +138,7 @@ fn run_dxf_import(
     }
     let mut written = None;
     if let Some(source) = write {
-        match dxf::write_layout(source, board, &imported) {
+        match dxf::write_physical(source, board, &imported) {
             Ok((b, diff)) => written = Some((b, diff)),
             Err(e) => return fail(e),
         }
@@ -149,7 +149,7 @@ fn run_dxf_import(
         dxf::render(&imported, board_name, &name, written.is_some())
     );
     if let Some((_, diff)) = written {
-        println!("\n// layout file written; what changed:");
+        println!("\n// physical file written; what changed:");
         print!("{diff}");
     }
     ExitCode::SUCCESS

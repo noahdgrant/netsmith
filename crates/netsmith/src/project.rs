@@ -441,7 +441,9 @@ impl Project {
                     fs::read_to_string(&m.path).map_err(|e| format!("{}: {e}", m.path.display()))?
                 }
             };
-            loader.insert(&m.key, &m.name(&self.root), &text);
+            let name = m.name(&self.root);
+            loader.insert(&m.key, &name, &text);
+            crate::physical::attach(&mut loader, &name, &m.path, unsaved)?;
         }
         Ok(loader)
     }
@@ -492,6 +494,7 @@ fn collect(dir: &Path, prefix: &[String], out: &mut Vec<Module>) -> Result<(), S
             inner.push(file_name);
             collect(&path, &inner, out)?;
         } else if kind.is_file()
+            && !crate::physical::is_physical_file(&file_name)
             && let Some(stem) = file_name.strip_suffix(".nsm")
         {
             if !is_identifier(stem) {
@@ -604,10 +607,15 @@ impl Target {
 
     /// [`Target::loader`] with the text of modules an editor has changed and not saved.
     pub fn loader_with(&self, unsaved: &HashMap<PathBuf, String>) -> Result<Loader, String> {
-        match &self.project {
-            Some(project) => project.loader_with(unsaved),
-            None => Ok(Loader::std()),
+        let mut loader = match &self.project {
+            Some(project) => project.loader_with(unsaved)?,
+            None => Loader::std(),
+        };
+        // A top-level file may stand outside `src/`: it has its physical file all the same.
+        for file in &self.files {
+            crate::physical::attach(&mut loader, &file.name, &file.path, unsaved)?;
         }
+        Ok(loader)
     }
 
     /// The catalogs a build picks parts from: the standard ones, and the project's own if
@@ -623,6 +631,13 @@ impl Target {
     /// project's modules and its catalog files.
     pub fn watched(&self) -> Vec<PathBuf> {
         let mut paths: Vec<PathBuf> = self.files.iter().map(|f| f.path.clone()).collect();
+        // The physical file of a source, if there is one, builds the source again too.
+        paths.extend(
+            self.files
+                .iter()
+                .map(|f| crate::physical::physical_path(&f.path))
+                .filter(|p| p.is_file()),
+        );
         if let Some(project) = &self.project {
             paths.push(project.root.join(MANIFEST));
             let mapping = project.root.join(netsmith_kicad::PROJECT_FILE);
@@ -637,13 +652,13 @@ impl Target {
                     .map(|c| project.root.join(c)),
             );
             // A name that is no module is reported by `loader`, not here.
-            paths.extend(
-                project
-                    .modules()
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|m| m.path),
-            );
+            for module in project.modules().unwrap_or_default() {
+                let physical = crate::physical::physical_path(&module.path);
+                paths.push(module.path);
+                if physical.is_file() {
+                    paths.push(physical);
+                }
+            }
         }
         paths
     }

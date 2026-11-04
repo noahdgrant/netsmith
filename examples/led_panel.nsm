@@ -2,14 +2,14 @@
 //! with 5 mm rails that carry the tooling holes and fiducials JLCPCB's assembly needs.
 //!
 //! The board is an ordinary stand-alone `board`; the `panel` only repeats it. A V-cut runs
-//! straight across the whole panel, so the board is a rectangle with square corners, and its
-//! copper keeps 0.4 mm from the edge, the least JLCPCB allows next to a V-cut.
+//! straight across the whole panel, so the board is a rectangle with square corners (its
+//! outline is in `led_panel.physical.nsm`), and its copper keeps 0.4 mm from the edge, the
+//! least JLCPCB allows next to a V-cut.
 
 import std::parts::connector::Header1x2
 import std::parts::passive::{Resistor, Led}
 import std::sources::Rail
 import std::mfg::jlcpcb::{TwoLayer, VCutPanel}
-import std::pcb::Outline
 
 /// A status LED on a 40 x 30 mm board.
 board LedTile {
@@ -18,12 +18,6 @@ board LedTile {
         // Copper stays 0.4 mm from the edge, as a V-cut needs.
         .min_edge_clearance &= 0.4mm..1m
     }
-    .outline: Outline {
-        .width &= 40mm
-        .height &= 30mm
-        .corner_radius &= 0mm
-    }
-
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"

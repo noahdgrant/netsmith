@@ -18,6 +18,8 @@ const REGULATOR: &str = include_str!("../../../examples/linear_regulator.nsm");
 const FOUR_LAYER: &str = include_str!("../../../examples/four_layer.nsm");
 const TWO_BOARDS: &str = include_str!("../../../examples/two_boards.nsm");
 const OUTLINE_AND_POURS: &str = include_str!("../../../examples/outline_and_pours.nsm");
+const OUTLINE_AND_POURS_PHYSICAL: &str =
+    include_str!("../../../examples/outline_and_pours.physical.nsm");
 const OUTLINE_AND_POURS_LAYOUT: &str = include_str!("../../../examples/outline_and_pours.pcb.toml");
 
 fn kicad() -> Option<KicadCliExe> {
@@ -136,12 +138,16 @@ fn who_assembles_a_part_decides_the_bom_the_placement_file_and_the_notes() {
              import std::parts::mechanical::{Fiducial, MountingHole}\n",
         )
         .replace(
+            "board LedExample",
+            "module Mech {\n    .hole: MountingHole\n    .fid: Fiducial\n}\n\nboard LedExample",
+        )
+        .replace(
             "    .led: Led {\n",
             "    .led: Led {\n        .assembly &= \"hand\"\n",
         )
         .replace(
             "    .supply.pos ~> .r1",
-            "    .hole: MountingHole\n    .fid: Fiducial\n    .pads: ProgrammingPads6\n\
+            "    .mech: Mech\n    .pads: ProgrammingPads6\n\
              \x20   .pads.p1 ~ .supply.pos\n    .pads.p2 ~ .supply.neg\n    .supply.pos ~> .r1",
         );
     let dir = out("assembly");
@@ -556,6 +562,15 @@ fn fab_with_layout(
     name: &str,
     layout: &str,
 ) -> (TempDir, Result<Vec<netsmith::fab::Fabricated>, String>) {
+    fab_with_physical(name, OUTLINE_AND_POURS_PHYSICAL, layout)
+}
+
+/// [`fab_with_layout`], with `physical` as the example's physical file.
+fn fab_with_physical(
+    name: &str,
+    physical: &str,
+    layout: &str,
+) -> (TempDir, Result<Vec<netsmith::fab::Fabricated>, String>) {
     let cli = KicadCliExe::locate().expect("the caller checked that KiCad is here");
     let dir = out(name);
     let file = dir.join("source").join("outline_and_pours.pcb.toml");
@@ -564,7 +579,11 @@ fn fab_with_layout(
     let made = fab_with_options(
         "outline_and_pours.nsm",
         OUTLINE_AND_POURS,
-        &netsmith_check::Loader::std(),
+        &netsmith_check::Loader::std().with_physical(
+            "outline_and_pours.nsm",
+            "outline_and_pours.physical.nsm",
+            physical,
+        ),
         &dir.join("fab"),
         &Catalogs::jlcpcb(),
         &Libraries::standard(),
@@ -601,7 +620,7 @@ fn the_outline_and_pours_example_passes_kicads_check_with_its_layout_file() {
         8,
         "four corners of the outline and of the slot"
     );
-    // The keepout is where the layout file says: (18, 2) from the outline's corner at (20, 20).
+    // The keepout is where the physical file says: (18, 2) from the outline's corner at (20, 20).
     assert!(pcb.contains("(xy 38 22)"), "the keepout's corner");
     assert!(pcb.contains("(fp_text user \"REV A\""), "the label");
     // The ground pours are filled copper in the Gerbers, and the board is four layers.
@@ -647,7 +666,10 @@ fn an_example_whose_keepout_has_no_place_is_stopped_by_the_placement_check() {
     if kicad().is_none() {
         return;
     }
-    let (_dir, made) = fab_with_layout("no-place", "version = 1\n");
+    let physical =
+        OUTLINE_AND_POURS_PHYSICAL.replace("        .x &= 18mm\n        .y &= 2mm\n", "");
+    assert_ne!(physical, OUTLINE_AND_POURS_PHYSICAL);
+    let (_dir, made) = fab_with_physical("no-place", &physical, "version = 1\n");
     let err = made.expect_err("the keepout has nowhere to be");
     assert!(
         err.contains("the keepout `antenna` has no position"),

@@ -23,7 +23,10 @@ const MODULES: [&str; 7] = [
 /// The pinout of `kind` in `package`, from the pin tables of the source.
 fn pinout_of(kind: &str, package: &str) -> Pinout {
     for module in MODULES {
-        let src = format!("import {module}::{kind}\nboard B {{\n    .x: {kind}\n}}\n");
+        // In a module: a board declares its mounting holes and fiducials in its physical file.
+        let src = format!(
+            "import {module}::{kind}\nmodule M {{\n    .x: {kind}\n}}\nboard B {{\n    .m: M\n}}\n"
+        );
         let checked = check("test.nsm", &src, &Loader::std());
         // A required pin left open is a fault of the board, not of the kind: the board
         // still has a model.
@@ -31,7 +34,7 @@ fn pinout_of(kind: &str, package: &str) -> Pinout {
             continue;
         };
         let model = &board.model;
-        let Some(x) = model.inst_at("x") else {
+        let Some(x) = model.inst_at("m.x") else {
             continue;
         };
         let Some(table) = model.table_for(x, package) else {
@@ -44,7 +47,7 @@ fn pinout_of(kind: &str, package: &str) -> Pinout {
                 .map(|r| PartPin {
                     name: model
                         .path_of(r.pin)
-                        .strip_prefix("x.")
+                        .strip_prefix("m.x.")
                         .unwrap_or_default()
                         .to_string(),
                     datasheet: r.name.clone(),

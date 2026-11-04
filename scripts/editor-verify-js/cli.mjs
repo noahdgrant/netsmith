@@ -151,7 +151,19 @@ async function launch() {
   } else {
     fs.copyFileSync(fixture, path.join(project, 'src/main.nsm'));
     // The layout file beside the fixture, if it has one (ADR 0032): `x.pcb.toml` is `main.pcb.toml`.
-    const layout = fixture.replace(/\.nsm$/, '.pcb.toml');
+    let layout = fixture.replace(/\.nsm$/, '.pcb.toml');
+    // The physical file beside the fixture, if it has one (ADR 0048): `x.physical.nsm` is `main.physical.nsm`.
+    const physical = fixture.replace(/\.nsm$/, '.physical.nsm');
+    if (physical !== fixture && fs.existsSync(physical)) {
+      let text = fs.readFileSync(physical, 'utf8');
+      if (path.basename(fixture) === 'outline_and_pours.nsm') {
+        // The recipes move the antenna keepout, which only a keepout the source does not place
+        // allows: the layout file beside the fixture says where it is.
+        text = text.replace('        .x &= 18mm\n        .y &= 2mm\n', '');
+        layout = path.join(here, 'fixtures/outline_and_pours.pcb.toml');
+      }
+      fs.writeFileSync(path.join(project, 'src/main.physical.nsm'), text);
+    }
     if (layout !== fixture && fs.existsSync(layout)) fs.copyFileSync(layout, path.join(project, 'src/main.pcb.toml'));
     // A module, so the tree and the imports have something to show.
     fs.writeFileSync(

@@ -91,6 +91,23 @@ impl Workspace {
                 readonly: true,
             });
         }
+        // The physical file beside each source that has one (ADR 0048).
+        let physical: Vec<Entry> = entries
+            .iter()
+            .filter(|e| matches!(e.role, FileRole::TopLevel | FileRole::Module))
+            .filter_map(|e| {
+                let source = e.fs.as_ref()?;
+                let file = crate::physical::physical_path(source);
+                file.is_file().then(|| Entry {
+                    path: netsmith_check::physical_file_name(&e.path),
+                    role: FileRole::Physical,
+                    fs: Some(file),
+                    embedded: None,
+                    readonly: false,
+                })
+            })
+            .collect();
+        entries.extend(physical);
         let loader = Loader::std();
         for (_, file, text) in loader.modules() {
             entries.push(Entry {

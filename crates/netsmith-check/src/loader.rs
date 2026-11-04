@@ -6,6 +6,9 @@ use std::collections::HashMap;
 pub struct Loader {
     /// `std::parts::passive` to (display name, source text).
     modules: HashMap<String, (String, String)>,
+    /// A source file's name (as `check` is given it, or as `insert` names a module) to the
+    /// physical file beside it: its display name and text (ADR 0048).
+    physical: HashMap<String, (String, String)>,
 }
 
 impl Loader {
@@ -89,6 +92,28 @@ impl Loader {
             module.to_string(),
             (file_name.to_string(), text.to_string()),
         );
+    }
+
+    /// Pair the physical file `file_name` (text `text`) with the source file called
+    /// `source_name`: the name `check` is given for the top-level file, or the file name
+    /// `insert` gave a module. The checker puts a unit `physical for Board` with the board
+    /// of that name in that file (ADR 0048).
+    pub fn attach_physical(&mut self, source_name: &str, file_name: &str, text: &str) {
+        self.physical.insert(
+            source_name.to_string(),
+            (file_name.to_string(), text.to_string()),
+        );
+    }
+
+    /// [`Loader::attach_physical`] on a loader that is being built.
+    pub fn with_physical(mut self, source_name: &str, file_name: &str, text: &str) -> Self {
+        self.attach_physical(source_name, file_name, text);
+        self
+    }
+
+    /// The physical file paired with a source file: its name and text.
+    pub(crate) fn physical_of(&self, source_name: &str) -> Option<&(String, String)> {
+        self.physical.get(source_name)
     }
 
     /// Every module, sorted by name: its name (`std::sources`), the file name it is shown

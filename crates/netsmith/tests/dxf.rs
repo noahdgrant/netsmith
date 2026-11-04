@@ -5,13 +5,15 @@ use netsmith_kicad::testlib::TempDir;
 use std::fs;
 
 use netsmith::Libraries;
-use netsmith::dxf::{Request, import, render, write_layout};
+use netsmith::dxf::{Request, import, render, write_physical};
 use netsmith::fab::{FabOptions, fab_with_options};
 use netsmith_dxf::Units;
 use netsmith_fab::KicadCliExe;
 use netsmith_solve::Catalogs;
 
 const OUTLINE_AND_POURS: &str = include_str!("../../../examples/outline_and_pours.nsm");
+const OUTLINE_AND_POURS_PHYSICAL: &str =
+    include_str!("../../../examples/outline_and_pours.physical.nsm");
 const OUTLINE_AND_POURS_LAYOUT: &str = include_str!("../../../examples/outline_and_pours.pcb.toml");
 
 fn pair(code: i32, value: impl std::fmt::Display) -> String {
@@ -100,32 +102,29 @@ fn the_import_prints_source_for_the_outline_cutout_and_holes() {
         imported.imports,
         "import std::pcb::{Cutout, Outline}\nimport std::parts::mechanical::MountingHole\n"
     );
+    // The places are requirements the case fixes, in the board's frame (origin top left,
+    // y down): the cutout states `.x` and `.y`, a hole the centre of its body.
     assert_eq!(
         imported.members,
         ".outline: Outline {\n    .width &= 50mm\n    .height &= 36mm\n    .corner_radius &= 3mm\n}\n\n\
-         .cutout1: Cutout {\n    .width &= 3mm\n    .height &= 12mm\n    .corner_radius &= 1mm\n}\n\n\
-         .hole1: MountingHole { .package &= \"M3\" }\n\
-         .hole2: MountingHole { .package &= \"M3\" }\n\
-         .hole3: MountingHole { .package &= \"M3\" }\n\
-         .hole4: MountingHole { .package &= \"M3\" }\n"
+         .cutout1: Cutout {\n    .x &= 6mm\n    .y &= 12mm\n    .width &= 3mm\n    .height &= 12mm\n    .corner_radius &= 1mm\n}\n\n\
+         .hole1: MountingHole { .package &= \"M3\" }\n.hole1.place.x &= 5mm\n.hole1.place.y &= 5.5mm\n\
+         .hole2: MountingHole { .package &= \"M3\" }\n.hole2.place.x &= 45mm\n.hole2.place.y &= 5.5mm\n\
+         .hole3: MountingHole { .package &= \"M3\" }\n.hole3.place.x &= 5mm\n.hole3.place.y &= 30.5mm\n\
+         .hole4: MountingHole { .package &= \"M3\" }\n.hole4.place.x &= 45mm\n.hole4.place.y &= 30.5mm\n"
     );
     let text = render(&imported, Some("Case"), "case.dxf", false);
-    // The places are the layout file's, in the board's frame (origin top left, y down).
     assert!(
-        text.contains("[Case.cutouts.cutout1]\nat = [6.0, 12.0]"),
+        text.contains("physical for Case {\n    case {\n        .outline: Outline {"),
         "{text}"
     );
     assert!(
-        text.contains("[Case.parts.hole1]\nat = [5.0, 5.5]"),
+        text.contains("        .hole4.place.y &= 30.5mm\n    }\n}\n"),
         "{text}"
     );
     assert!(
-        text.contains("[Case.parts.hole4]\nat = [45.0, 30.5]"),
-        "{text}"
-    );
-    assert!(
-        text.contains("lock = true"),
-        "the placer leaves a hole where the case has it"
+        !text.contains("pcb.toml") && !text.contains("lock = true"),
+        "no place is for the layout file: {text}"
     );
     assert!(
         text.contains("(x - 100, 236 - y)"),
@@ -201,48 +200,82 @@ fn inches_without_a_flag_and_a_file_with_no_units_with_one() {
 }
 
 #[test]
-fn write_merges_into_the_layout_file_prints_a_diff_and_leaves_the_source_alone() {
+fn write_edits_the_physical_file_keeps_its_comments_and_leaves_the_source_alone() {
     let dir = temp("write");
     let source = dir.join("case.nsm");
     fs::write(&source, OUTLINE_AND_POURS).unwrap();
-    fs::write(dir.join("case.pcb.toml"), OUTLINE_AND_POURS_LAYOUT).unwrap();
+    let physical = dir.join("case.physical.nsm");
+    // The example's physical file, with a comment of its own that has to survive.
+    let old = OUTLINE_AND_POURS_PHYSICAL.replace(
+        "    /// No copper and no parts on the top layer",
+        "    // Kept: the antenna is the radio team's.\n    /// No copper and no parts on the top layer",
+    );
+    fs::write(&physical, &old).unwrap();
     let imported = import(&enclosure(), "case.dxf", &request()).unwrap();
-    let (board, diff) = write_layout(&source, None, &imported).unwrap();
+    let (board, diff) = write_physical(&source, None, &imported).unwrap();
     assert_eq!(board, "OutlineAndPours");
     assert_eq!(
         fs::read_to_string(&source).unwrap(),
         OUTLINE_AND_POURS,
         "the source is never written"
     );
-    let layout = fs::read_to_string(dir.join("case.pcb.toml")).unwrap();
-    // What was there is kept and the places are added.
+    let text = fs::read_to_string(&physical).unwrap();
+    // What was there is kept, the new members are in the case section, and the file parses.
     assert!(
-        layout.contains("[OutlineAndPours.keepouts.antenna]"),
-        "{layout}"
+        text.contains("// Kept: the antenna is the radio team's."),
+        "{text}"
+    );
+    assert!(text.contains(".antenna: Keepout {"), "{text}");
+    assert!(text.contains(".fiducial1: Fiducial"), "{text}");
+    assert!(text.contains("        .hole2.place.x &= 45mm\n"), "{text}");
+    assert!(text.contains(".cutout1: Cutout {"), "{text}");
+    assert_eq!(text.matches(".hole1: MountingHole").count(), 1, "{text}");
+    netsmith_lang::parse(&text).unwrap();
+    assert!(diff.contains("+        .hole1.place.x &= 5mm"), "{diff}");
+    assert!(
+        !diff.contains("-    // Kept"),
+        "the comment is not in the diff: {diff}"
     );
     assert!(
-        layout.contains("[OutlineAndPours.parts.hole2]\nat = [45.0, 5.5]"),
-        "{layout}"
+        !dir.join("case.pcb.toml").exists(),
+        "no place is for the layout file"
     );
-    assert!(diff.contains("+[OutlineAndPours.parts.hole1]"), "{diff}");
-    assert!(
-        diff.contains("comments in the layout file are not kept"),
-        "{diff}"
-    );
-    assert!(
-        diff.contains("-# Where the antenna keepout is"),
-        "the lost comment shows: {diff}"
-    );
-    // The same import again changes nothing, and a moved hole is an update shown in the diff.
-    let (_, again) = write_layout(&source, Some("OutlineAndPours"), &imported).unwrap();
+    // The same import again changes nothing, and a hole moved in the drawing is an update
+    // shown in the diff.
+    let (_, again) = write_physical(&source, Some("OutlineAndPours"), &imported).unwrap();
     assert!(again.contains("no change"), "{again}");
-    let mut moved = imported.clone();
-    moved.layout.parts.get_mut("hole1").unwrap().at = [6.0, 5.5];
-    let (_, update) = write_layout(&source, None, &moved).unwrap();
+    let moved = import(
+        &enclosure().replace("105\n20\n230.5", "106\n20\n230.5"),
+        "case.dxf",
+        &request(),
+    )
+    .unwrap();
     assert!(
-        update.contains("-at = [5.0, 5.5]") && update.contains("+at = [6.0, 5.5]"),
+        moved.members.contains(".hole1.place.x &= 6mm"),
+        "{}",
+        moved.members
+    );
+    let (_, update) = write_physical(&source, None, &moved).unwrap();
+    assert!(
+        update.contains("-        .hole1.place.x &= 5mm")
+            && update.contains("+        .hole1.place.x &= 6mm"),
         "{update}"
     );
+}
+
+#[test]
+fn write_makes_the_physical_file_when_there_is_none() {
+    let dir = temp("write-new");
+    let source = dir.join("case.nsm");
+    fs::write(&source, "board Case {\n}\n").unwrap();
+    let imported = import(&enclosure(), "case.dxf", &request()).unwrap();
+    write_physical(&source, None, &imported).unwrap();
+    let text = fs::read_to_string(dir.join("case.physical.nsm")).unwrap();
+    assert!(
+        text.starts_with("//! The physical intent of Case.\n\nimport std::pcb::Outline\nimport std::pcb::Cutout\nimport std::parts::mechanical::MountingHole\n\nphysical for Case {\n    case {\n        .outline: Outline {"),
+        "{text}"
+    );
+    netsmith_lang::parse(&text).unwrap();
 }
 
 #[test]
@@ -251,68 +284,54 @@ fn write_names_the_boards_when_the_choice_is_wrong() {
     let source = dir.join("two.nsm");
     fs::write(&source, "board A {\n}\nboard B {\n}\n").unwrap();
     let imported = import(&enclosure(), "case.dxf", &request()).unwrap();
-    let e = write_layout(&source, None, &imported).unwrap_err();
+    let e = write_physical(&source, None, &imported).unwrap_err();
     assert!(
         e.contains("2 boards (A, B)") && e.contains("--board"),
         "{e}"
     );
-    let e = write_layout(&source, Some("C"), &imported).unwrap_err();
+    let e = write_physical(&source, Some("C"), &imported).unwrap_err();
     assert!(e.contains("no board `C`") && e.contains("A, B"), "{e}");
-    assert!(!dir.join("two.pcb.toml").exists());
+    assert!(!dir.join("two.physical.nsm").exists());
 }
 
-/// The example board with its outline, slot and holes replaced by what the DXF said.
-fn imported_board() -> String {
+/// The example's physical file with its outline, slot and holes replaced by what the DXF said,
+/// made as `dxf import --write` makes it: on a physical file that has the old ones.
+fn imported_physical(dir: &std::path::Path) -> String {
     let imported = import(&enclosure(), "case.dxf", &request()).unwrap();
-    let start = OUTLINE_AND_POURS.find("    /// 50 by 36 mm").unwrap();
-    let end = OUTLINE_AND_POURS.find("    /// Where an antenna").unwrap();
-    let holes = OUTLINE_AND_POURS.find("    /// Mounting holes go").unwrap();
-    let holes_end = OUTLINE_AND_POURS.find("    .fiducial1").unwrap();
-    let indent = |s: &str| {
-        s.lines()
-            .map(|l| {
-                if l.is_empty() {
-                    String::new()
-                } else {
-                    format!("    {l}")
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
-    let mut source = String::new();
-    source += &OUTLINE_AND_POURS[..start];
-    source += &indent(imported.members.split("\n\n.hole1").next().unwrap());
-    source += "\n\n";
-    source += &OUTLINE_AND_POURS[end..holes];
-    source += &indent(&format!(
-        ".hole1{}",
-        imported.members.split("\n\n.hole1").nth(1).unwrap()
-    ));
-    source += "\n";
-    source += &OUTLINE_AND_POURS[holes_end..];
-    source
+    let nsm = dir.join("case.nsm");
+    fs::write(&nsm, OUTLINE_AND_POURS).unwrap();
+    // The slot is another loop than the import's `cutout1`: take it out first.
+    let start = OUTLINE_AND_POURS_PHYSICAL
+        .find("        /// A rounded slot")
+        .unwrap();
+    let end = OUTLINE_AND_POURS_PHYSICAL
+        .find("        /// Mounting holes go")
+        .unwrap();
+    let old = format!(
+        "{}{}",
+        &OUTLINE_AND_POURS_PHYSICAL[..start],
+        &OUTLINE_AND_POURS_PHYSICAL[end..]
+    );
+    fs::write(dir.join("case.physical.nsm"), old).unwrap();
+    write_physical(&nsm, None, &imported).unwrap();
+    fs::read_to_string(dir.join("case.physical.nsm")).unwrap()
 }
 
 #[test]
 fn a_board_with_the_imported_outline_goes_through_fab_with_the_holes_where_the_case_has_them() {
-    let source = imported_board();
-    assert!(
-        source.contains(".cutout1: Cutout") && !source.contains(".slot:"),
-        "{source}"
-    );
     let dir = temp("fab");
-    let nsm = dir.join("case.nsm");
-    fs::write(&nsm, &source).unwrap();
+    let physical = imported_physical(&dir);
+    assert!(
+        physical.contains(".cutout1: Cutout") && !physical.contains(".slot:"),
+        "{physical}"
+    );
     fs::write(dir.join("case.pcb.toml"), OUTLINE_AND_POURS_LAYOUT).unwrap();
-    let imported = import(&enclosure(), "case.dxf", &request()).unwrap();
-    write_layout(&nsm, None, &imported).unwrap();
 
     let cli = KicadCliExe::locate();
     let made = fab_with_options(
         "case.nsm",
-        &source,
-        &netsmith_check::Loader::std(),
+        OUTLINE_AND_POURS,
+        &netsmith_check::Loader::std().with_physical("case.nsm", "case.physical.nsm", &physical),
         &dir.join("fab"),
         &Catalogs::jlcpcb(),
         &Libraries::standard(),
@@ -357,7 +376,7 @@ fn netsmith(args: &[&str]) -> std::process::Output {
 }
 
 #[test]
-fn the_command_prints_the_source_to_paste_and_writes_only_the_layout_file() {
+fn the_command_prints_the_source_to_paste_and_writes_only_the_physical_file() {
     let dir = temp("cli");
     let dxf = dir.join("case.dxf");
     fs::write(&dxf, enclosure()).unwrap();
@@ -380,20 +399,21 @@ fn the_command_prints_the_source_to_paste_and_writes_only_the_layout_file() {
     assert!(printed.status.success(), "{printed:?}");
     let text = String::from_utf8(printed.stdout).unwrap();
     assert!(
-        text.contains(".outline: Outline {") && text.contains("[YourBoard.parts.hole1]"),
+        text.contains(".outline: Outline {") && text.contains("physical for YourBoard {"),
         "{text}"
     );
     assert!(
-        !dir.join("case.pcb.toml").exists(),
+        !dir.join("case.physical.nsm").exists(),
         "nothing is written without --write"
     );
 
     let written = args(&["--write", nsm.to_str().unwrap()]);
     assert!(written.status.success(), "{written:?}");
     let text = String::from_utf8(written.stdout).unwrap();
-    assert!(text.contains("+[Case.parts.hole1]"), "{text}");
-    let layout = fs::read_to_string(dir.join("case.pcb.toml")).unwrap();
-    assert!(layout.contains("[Case.cutouts.cutout1]"), "{layout}");
+    assert!(text.contains("+        .hole1.place.x &= 5mm"), "{text}");
+    let physical = fs::read_to_string(dir.join("case.physical.nsm")).unwrap();
+    assert!(physical.contains(".cutout1: Cutout {"), "{physical}");
+    assert!(!dir.join("case.pcb.toml").exists());
     assert_eq!(fs::read_to_string(&nsm).unwrap(), "board Case {\n}\n");
 
     // Without --layer the reader asks which layer: it lists them.

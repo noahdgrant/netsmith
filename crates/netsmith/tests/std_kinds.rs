@@ -85,16 +85,27 @@ fn with(src: &str, extra: &str) -> String {
 
 /// The pins of `kind`, from its pin table: (path, pin kind, datasheet name, pads).
 fn pins_of(import: &str, kind: &str) -> Vec<(String, PinKind, String, Vec<String>)> {
-    let src = format!("import {import}::{kind}\nboard B {{\n    .x: {kind}\n}}\n");
+    // In a module: a board declares its own mounting holes and fiducials in its physical file.
+    let src = format!(
+        "import {import}::{kind}\nmodule M {{\n    .x: {kind}\n}}\nboard B {{\n    .m: M\n}}\n"
+    );
     let c = run(&src);
     let m = &c.board("B").expect("the board checks").model;
-    let x = m.inst_at("x").unwrap();
+    let x = m.inst_at("m.x").unwrap();
     let mut rows: Vec<_> = m
         .instance(x)
         .tables
         .iter()
         .flat_map(|t| t.rows.iter())
-        .map(|r| (m.path_of(r.pin), r.kind, r.name.clone(), r.pads.clone()))
+        .map(|r| {
+            let path = m.path_of(r.pin);
+            (
+                path.strip_prefix("m.").unwrap_or(&path).to_string(),
+                r.kind,
+                r.name.clone(),
+                r.pads.clone(),
+            )
+        })
         .collect();
     rows.sort_by(|a, b| a.0.cmp(&b.0));
     rows
@@ -244,11 +255,13 @@ fn the_mechanical_parts_and_the_programming_pads_are_fitted_by_nobody() {
         ("std::parts::mechanical", "TestPoint"),
         ("std::parts::connector", "ProgrammingPads6"),
     ] {
-        let src = format!("import {import}::{kind}\nboard B {{\n    .x: {kind}\n}}\n");
+        let src = format!(
+            "import {import}::{kind}\nmodule M {{\n    .x: {kind}\n}}\nboard B {{\n    .m: M\n}}\n"
+        );
         let c = run(&src);
         let m = &c.board("B").expect("the board checks").model;
         assert_eq!(
-            m.domain_at("x.assembly"),
+            m.domain_at("m.x.assembly"),
             Some(&netsmith_check::Domain::Text("none".into())),
             "{kind}"
         );
@@ -267,7 +280,8 @@ fn the_mechanical_parts_and_the_programming_pads_are_fitted_by_nobody() {
 fn a_test_point_on_no_net_is_refused_and_a_plated_hole_may_float() {
     let m = messages(
         "import std::parts::mechanical::{TestPoint, PlatedHole, MountingHole, Fiducial}\n\
-         board B {\n    .tp: TestPoint\n    .h: PlatedHole\n    .m: MountingHole\n    .f: Fiducial\n}\n",
+         module Mech {\n    .m: MountingHole\n    .f: Fiducial\n}\n\
+         board B {\n    .tp: TestPoint\n    .h: PlatedHole\n    .mech: Mech\n}\n",
     );
     assert_eq!(m.len(), 1, "{m:#?}");
     assert!(

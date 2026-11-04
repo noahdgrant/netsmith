@@ -6,6 +6,18 @@ use netsmith_core::{PlaceField, Placement};
 use netsmith_lower::{Lowered, lower};
 use netsmith_solve::{Catalogs, solve};
 
+/// `check` of a source that states its board's physical intent inside the board, as the
+/// language took it before ADR 0048: split into the circuit source and the physical file
+/// that the language takes now (`netsmith_kicad::testlib::split_physical`).
+fn check_split(src: &str) -> netsmith_check::Checked {
+    let (circuit, physical) = netsmith_kicad::testlib::split_physical(src);
+    let mut loader = Loader::std();
+    if let Some(physical) = physical {
+        loader.attach_physical("t.nsm", "t.physical.nsm", &physical);
+    }
+    check("t.nsm", &circuit, &loader)
+}
+
 const HEAD: &str = "\
 import std::parts::connector::Header1x2
 import std::parts::passive::Resistor
@@ -29,7 +41,7 @@ fn lowered_in(outline: &str, body: &str) -> Result<Lowered, Vec<String>> {
     let src = format!(
         "{HEAD}board B {{\n    .outline: Outline {{ {outline} }}\n    .j: Header1x2\n{body}}}\n"
     );
-    let c = check("t.nsm", &src, &Loader::std());
+    let c = check_split(&src);
     assert!(c.is_ok(), "{}", c.render());
     let s = solve(&c.boards[0], &Catalogs::jlcpcb());
     if !s.diagnostics.is_empty() {
@@ -129,7 +141,7 @@ fn a_module_has_a_box_and_offers_a_part_through_a_value() {
 #[test]
 fn an_offer_the_board_leaves_alone_is_no_requirement_and_no_note() {
     let src = format!("{HEAD}board B {{\n    .p: Pair\n}}\n");
-    let c = check("t.nsm", &src, &Loader::std());
+    let c = check_split(&src);
     assert!(c.is_ok(), "{}", c.render());
     let s = solve(&c.boards[0], &Catalogs::jlcpcb());
     assert!(s.diagnostics.is_empty());

@@ -1518,13 +1518,22 @@ fn an_edit_takes_the_routed_copper_away() {
 // ---- keepouts on the canvas ----
 
 const POURS: &str = include_str!("../../../examples/outline_and_pours.nsm");
-const POURS_LAYOUT: &str = include_str!("../../../examples/outline_and_pours.pcb.toml");
+/// The example's physical file with the antenna keepout's place taken out of it: the layout
+/// file below says where it is, which is what these tests move and draw.
+fn pours_physical() -> String {
+    let physical = include_str!("../../../examples/outline_and_pours.physical.nsm")
+        .replace("        .x &= 18mm\n        .y &= 2mm\n", "");
+    assert!(!physical.contains(".x &= 18mm"));
+    physical
+}
+const POURS_LAYOUT: &str = "version = 1\n\n[OutlineAndPours.keepouts.antenna]\nat = [18.0, 2.0]\n";
 const POURS_BOARD: &str = "OutlineAndPours";
 
 /// The four-layer example with its keepout, cutout and layout file as a project.
 fn pours_project(name: &str) -> (TempDir, Workspace) {
     let (root, _) = project(name);
     fs::write(root.join("src/main.nsm"), POURS).unwrap();
+    fs::write(root.join("src/main.physical.nsm"), pours_physical()).unwrap();
     fs::write(root.join("src/main.pcb.toml"), POURS_LAYOUT).unwrap();
     let editor = Workspace::open(Target::resolve_from(&root, None).unwrap())
         .unwrap_or_else(|e| panic!("{e}"));
@@ -1996,6 +2005,7 @@ fn kicads_check_is_run_on_demand_and_its_findings_have_places() {
 }
 
 const PANEL: &str = include_str!("../../../examples/led_panel.nsm");
+const PANEL_PHYSICAL: &str = include_str!("../../../examples/led_panel.physical.nsm");
 
 #[test]
 fn a_panel_is_listed_and_drawn_from_its_boards_placed_size() {
@@ -2007,6 +2017,7 @@ fn a_panel_is_listed_and_drawn_from_its_boards_placed_size() {
     )
     .unwrap();
     fs::write(root.join("src/panel.nsm"), PANEL).unwrap();
+    fs::write(root.join("src/panel.physical.nsm"), PANEL_PHYSICAL).unwrap();
     let editor = Workspace::open(Target::resolve_from(&root, None).unwrap()).unwrap();
     let analysis = editor.analysis();
     assert_eq!(analysis.errors, 0, "{:?}", analysis.problems);
@@ -2051,4 +2062,74 @@ fn a_panel_is_listed_and_drawn_from_its_boards_placed_size() {
         "{:?}",
         view.findings
     );
+}
+
+// ---- the physical file (ADR 0048) --------------------------------------------------------
+
+#[test]
+fn the_tree_lists_a_physical_file_and_a_mistake_in_it_is_a_problem_at_its_line() {
+    use netsmith_editor::api::FileRole;
+    let (root, editor) = pours_project("physical-tree");
+    let tree = editor.project();
+    let physical: Vec<_> = tree
+        .files
+        .iter()
+        .filter(|f| f.role == FileRole::Physical)
+        .map(|f| f.path.as_str())
+        .collect();
+    assert_eq!(physical, ["src/main.physical.nsm"]);
+    // It reads like a source file, and its board builds with it.
+    let content = editor.read_file("src/main.physical.nsm").unwrap();
+    assert!(content.text.contains("physical for OutlineAndPours"));
+    assert_eq!(
+        editor.analysis().errors,
+        0,
+        "{:?}",
+        editor.analysis().problems
+    );
+
+    // An unsaved change to it is checked with the board, and the problem is at its line.
+    let text = content.text.replace(
+        "        .corner_radius &= 3mm\n",
+        "        .corner_radius &= 3mm\n        .nope &= 1mm\n",
+    );
+    let checked = editor.check("src/main.physical.nsm", &text).unwrap();
+    assert_eq!(checked.errors, 1, "{:?}", checked.problems);
+    let at = checked.problems[0].at.as_ref().unwrap();
+    assert_eq!(at.file, "src/main.physical.nsm");
+    assert_eq!(at.line, line_of(&text, ".nope"));
+    assert!(checked.problems[0].message.contains("nope"));
+    // Nothing was written.
+    assert_eq!(
+        fs::read_to_string(root.join("src/main.physical.nsm")).unwrap(),
+        content.text
+    );
+}
+
+#[test]
+fn the_pcb_view_draws_the_outline_and_the_keepout_the_physical_file_states() {
+    let (root, _) = pours_project("physical-scene");
+    // The example as it is: the physical file states the antenna's place, the layout file none.
+    fs::write(
+        root.join("src/main.physical.nsm"),
+        include_str!("../../../examples/outline_and_pours.physical.nsm"),
+    )
+    .unwrap();
+    fs::write(root.join("src/main.pcb.toml"), "version = 1\n").unwrap();
+    let editor = Workspace::open(Target::resolve_from(&root, None).unwrap())
+        .unwrap_or_else(|e| panic!("{e}"));
+    let scene = editor.pcb_scene(POURS_BOARD).unwrap();
+    let antenna = scene
+        .keepouts
+        .iter()
+        .find(|k| k.name == "antenna")
+        .expect("the antenna keepout");
+    // Sized and placed by the source (the physical file), so the editor does not move it.
+    assert_eq!(antenna.origin, KeepoutOrigin::Source);
+    let area = antenna.area.unwrap();
+    assert_eq!(
+        (area.x - scene.origin_x, area.y - scene.origin_y),
+        (18.0, 2.0)
+    );
+    assert_eq!((antenna.width, antenna.height), (14.0, 5.0));
 }

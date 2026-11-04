@@ -1,15 +1,14 @@
-//! A four-layer regulator board with a fixed, rounded outline, a cutout, mounting holes and
-//! fiducials, a ground pour on both outer layers stitched to the ground plane, a no-copper
-//! keepout for an antenna, and wide tracks for the supply nets.
+//! A four-layer regulator board with a ground pour on both outer layers stitched to the ground
+//! plane, and wide tracks for the supply nets.
 //!
-//! The keepout's place is not in this file: it is in `outline_and_pours.pcb.toml` beside it,
-//! where an editor or a placer writes where things are.
+//! The case is not in this file: the rounded outline, the cutout, the mounting holes, the
+//! fiducials, the label and the no-copper keepout for an antenna are in
+//! `outline_and_pours.physical.nsm` beside it (ADR 0048). Where the placer put things is in
+//! `outline_and_pours.pcb.toml`.
 
 import std::parts::connector::Header1x2
-import std::parts::mechanical::{Fiducial, Label, MountingHole}
 import std::parts::passive::Capacitor
 import std::parts::regulator::LinearRegulator
-import std::pcb::{Cutout, Keepout, Outline}
 import std::sources::Rail
 import std::mfg::jlcpcb::FourLayer
 
@@ -48,31 +47,6 @@ board OutlineAndPours {
         .bottom.stitch_pitch &= 0mm..8mm
     }
 
-    /// 50 by 36 mm, with rounded corners.
-    .outline: Outline {
-        .width &= 50mm
-        .height &= 36mm
-        .corner_radius &= 3mm
-    }
-
-    /// A rounded slot cut through the board, 6 mm in from the left edge.
-    .slot: Cutout {
-        .x &= 6mm
-        .y &= 12mm
-        .width &= 3mm
-        .height &= 12mm
-        .corner_radius &= 1mm
-    }
-
-    /// Where an antenna would be: no copper and no parts on the top layer. The layout file
-    /// says where.
-    .antenna: Keepout {
-        .width &= 14mm
-        .height &= 5mm
-        .layers &= "top"
-        .vias &= "allow"
-    }
-
     /// The input rail is supplied from outside the board, and carries up to an amp: its nets
     /// are drawn at least 0.4 mm wide, and so is the ground they return on.
     .input: Rail {
@@ -103,17 +77,4 @@ board OutlineAndPours {
     .input.neg ~ .power_in.p2
     .output.pos ~ .power_out.p1
     .output.neg ~ .power_out.p2
-
-    /// Mounting holes go in the corners of the outline, and so do the fiducials.
-    .hole1: MountingHole
-    .hole2: MountingHole
-    .hole3: MountingHole
-    .hole4: MountingHole
-    .fiducial1: Fiducial
-    .fiducial2: Fiducial
-
-    /// Text on the silkscreen, placed like any other part.
-    .revision: Label {
-        .text &= "REV A"
-    }
 }

@@ -76,9 +76,27 @@ fn libraries(dir: &std::path::Path, footprint: &str) -> Libraries {
     )
 }
 
+/// A board's circuit source and its physical file.
+struct Design {
+    circuit: String,
+    physical: String,
+}
+
+impl Design {
+    /// The circuit source with `from` replaced by `to`.
+    fn replace(mut self, from: &str, to: &str) -> Self {
+        self.circuit = self.circuit.replace(from, to);
+        self
+    }
+
+    fn loader(&self) -> Loader {
+        Loader::std().with_physical("widget.nsm", "widget.physical.nsm", &self.physical)
+    }
+}
+
 /// The board: the plug, `small` small parts (20 resistors and the rest capacitors) all between
-/// the two supply nets, and `extra` lines.
-fn source(width: u32, height: u32, small: usize, extra: &str) -> String {
+/// the two supply nets, and in its physical file the outline and `extra` lines.
+fn source(width: u32, height: u32, small: usize, extra: &str) -> Design {
     let mut parts = String::new();
     for n in 1..=small {
         if n % 3 == 0 {
@@ -91,10 +109,9 @@ fn source(width: u32, height: u32, small: usize, extra: &str) -> String {
             );
         }
     }
-    format!(
+    let circuit = format!(
         "import std::parts::passive::{{Resistor, Capacitor}}
 import std::sources::Rail
-import std::pcb::Outline
 import std::mfg::jlcpcb::TwoLayer
 
 /// An invented wide plug whose body sticks out of the case.
@@ -112,10 +129,6 @@ board Widget {{
     .process: TwoLayer {{
         .stackup.thickness &= 1.6mm
     }}
-    .outline: Outline {{
-        .width &= {width}mm
-        .height &= {height}mm
-    }}
     .rail: Rail {{
         .voltage &= 5V +/- 5%
         .pos.net &= \"VCC\"
@@ -128,9 +141,23 @@ board Widget {{
     .rail.pos ~ .plug.p2
     .rail.neg ~ .plug.p3
     .rail.neg ~ .plug.p4
-{parts}{extra}}}
+{parts}}}
 "
-    )
+    );
+    let physical = format!(
+        "import std::pcb::Outline
+
+physical for Widget {{
+    case {{
+        .outline: Outline {{
+            .width &= {width}mm
+            .height &= {height}mm
+        }}
+    }}
+{extra}}}
+"
+    );
+    Design { circuit, physical }
 }
 
 /// The plug turned so that its pads are at the top and its body ends 15 mm (14.5 to 15.5)
@@ -147,17 +174,23 @@ struct Run {
     made: Result<Vec<Fabricated>, String>,
 }
 
-fn fab(name: &str, source: &str, layout: &str) -> Run {
+fn fab(name: &str, source: &Design, layout: &str) -> Run {
     fab_checked(name, source, layout, false)
 }
 
 /// [`fab`], with KiCad's plot and design rules check compared with netsmith's if `cross`.
-fn fab_checked(name: &str, source: &str, layout: &str, cross: bool) -> Run {
+fn fab_checked(name: &str, source: &Design, layout: &str, cross: bool) -> Run {
     fab_with_footprint(name, PLUG_FOOTPRINT, source, layout, cross)
 }
 
 /// [`fab_checked`], with the plug's footprint `footprint`.
-fn fab_with_footprint(name: &str, footprint: &str, source: &str, layout: &str, cross: bool) -> Run {
+fn fab_with_footprint(
+    name: &str,
+    footprint: &str,
+    source: &Design,
+    layout: &str,
+    cross: bool,
+) -> Run {
     let dir = TempDir::unused(&format!("overhang-{name}"));
     let project = dir.join("project");
     let libs = libraries(&project, footprint);
@@ -168,8 +201,8 @@ fn fab_with_footprint(name: &str, footprint: &str, source: &str, layout: &str, c
     let cli = if cross { KicadCliExe::locate() } else { None };
     let made = fab_with_options(
         "widget.nsm",
-        source,
-        &Loader::std(),
+        &source.circuit,
+        &source.loader(),
         &dir.join("fab"),
         &Catalogs::jlcpcb(),
         &libs,
@@ -210,7 +243,7 @@ fn a_plug_that_hangs_over_the_bottom_edge_by_a_stated_requirement_places_routes_
     // The notes say what hangs over, how far, and which requirement said it may.
     assert!(
         notes.contains("warning: J1 hangs over the bottom edge: its courtyard is ")
-            && notes.contains("mm past it (`plug.place.bottom (widget.nsm:")
+            && notes.contains("mm past it (`plug.place.bottom (widget.physical.nsm:")
             && notes.contains(")` allows 74.5 to 75.5 mm)"),
         "{notes}"
     );
@@ -299,7 +332,7 @@ fn an_overhang_in_a_direction_nobody_stated_is_still_an_error_beside_the_stated_
     let e = failure(&run);
     assert!(
         e.contains("J1 is not wholly inside the board outline: its courtyard is 4.00 mm past the right edge, ")
-            && e.contains("and the design says it may hang over only the bottom edge (`plug.place.bottom (widget.nsm:")
+            && e.contains("and the design says it may hang over only the bottom edge (`plug.place.bottom (widget.physical.nsm:")
             && e.contains("for example `.plug.place.right >= outline.width`"),
         "{e}"
     );
@@ -367,7 +400,7 @@ fn a_plug_locked_in_the_layout_file_may_hang_over_the_edge_its_requirement_state
         made[0].notes.contains("design rules check: passed")
             && made[0]
                 .notes
-                .contains("warning: J1 hangs over the bottom edge: its courtyard is 16.00 mm past it (`plug.place.bottom (widget.nsm:"),
+                .contains("warning: J1 hangs over the bottom edge: its courtyard is 16.00 mm past it (`plug.place.bottom (widget.physical.nsm:"),
         "{}",
         made[0].notes
     );
@@ -438,13 +471,13 @@ fn a_part_wider_than_the_board_is_turned_by_the_placer_and_the_rows_do_not_veto(
 }
 
 /// Place `source` (no routing), and say how long it took.
-fn placed(source: &str, layout: Option<&netsmith_pcb::Layout>) -> (Result<Board, String>, f64) {
+fn placed(source: &Design, layout: Option<&netsmith_pcb::Layout>) -> (Result<Board, String>, f64) {
     let dir = TempDir::new("overhang-placed");
     let libs = libraries(dir.path(), PLUG_FOOTPRINT);
     let built = netsmith::build_with(
         "widget.nsm",
-        source,
-        &Loader::std(),
+        &source.circuit,
+        &source.loader(),
         &Catalogs::jlcpcb(),
         &libs,
     )

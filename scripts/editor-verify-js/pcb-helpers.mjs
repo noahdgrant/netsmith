@@ -9,7 +9,7 @@ export const BOARD = 'OutlineAndPours';
 /** Put the layout file back as the fixture has it (`outline_and_pours` unless `original` says
  * otherwise), and load the page again, so every recipe starts from the same board whatever ran
  * before it. */
-export async function fresh({ page, url, project }, original = path.join(here, '../../examples/outline_and_pours.pcb.toml')) {
+export async function fresh({ page, url, project }, original = path.join(here, 'fixtures/outline_and_pours.pcb.toml')) {
   const layout = path.join(project, 'src/main.pcb.toml');
   fs.copyFileSync(original, layout);
   await page.goto(url);

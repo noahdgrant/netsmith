@@ -12,3 +12,4 @@ netsmith-solve = { path = "../netsmith-solve" }
 
 [dev-dependencies]
 netsmith-quantity = { path = "../netsmith-quantity" }
+netsmith-kicad = { path = "../netsmith-kicad" }

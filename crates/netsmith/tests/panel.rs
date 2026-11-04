@@ -9,21 +9,38 @@ use std::path::Path;
 use std::process::Command;
 
 use netsmith::Libraries;
-use netsmith::fab::{FabOptions, fab, fab_with_options};
+use netsmith::fab::{FabOptions, fab_with_options};
 use netsmith_check::Loader;
 use netsmith_fab::{KicadCli, KicadCliExe};
 use netsmith_solve::Catalogs;
 
 const PANEL: &str = include_str!("../../../examples/led_panel.nsm");
+/// The physical file of the board the panel repeats: its outline.
+const PANEL_PHYSICAL: &str = include_str!("../../../examples/led_panel.physical.nsm");
+
+/// The standard library and the example's physical file, paired with `panel.nsm`.
+fn loader() -> Loader {
+    Loader::std().with_physical("panel.nsm", "panel.physical.nsm", PANEL_PHYSICAL)
+}
 
 fn out(name: &str) -> TempDir {
     TempDir::unused(&format!("panel-test-{name}"))
 }
 
 fn make(text: &str, dir: &Path) -> Result<Vec<netsmith::fab::Fabricated>, String> {
-    fab(
+    make_with(text, PANEL_PHYSICAL, dir)
+}
+
+/// [`make`], with `physical` as the board's physical file.
+fn make_with(
+    text: &str,
+    physical: &str,
+    dir: &Path,
+) -> Result<Vec<netsmith::fab::Fabricated>, String> {
+    netsmith::fab::fab_with(
         "panel.nsm",
         text,
+        &Loader::std().with_physical("panel.nsm", "panel.physical.nsm", physical),
         dir,
         &Catalogs::jlcpcb(),
         &Libraries::standard(),
@@ -144,7 +161,7 @@ fn the_panel_board_agrees_with_kicads_plot_of_it() {
     let made = fab_with_options(
         "panel.nsm",
         PANEL,
-        &Loader::std(),
+        &loader(),
         &dir,
         &Catalogs::jlcpcb(),
         &Libraries::standard(),
@@ -210,8 +227,10 @@ fn a_panel_that_the_board_house_would_refuse_says_why_with_the_numbers() {
         "{e}"
     );
     // The board's corners.
-    let e = make(
-        &changed(".corner_radius &= 0mm", ".corner_radius &= 2mm"),
+    assert!(PANEL_PHYSICAL.contains(".corner_radius &= 0mm"));
+    let e = make_with(
+        PANEL,
+        &PANEL_PHYSICAL.replace(".corner_radius &= 0mm", ".corner_radius &= 2mm"),
         &dir,
     )
     .unwrap_err();
@@ -328,6 +347,7 @@ fn project(name: &str, orders: &str) -> TempDir {
     let root = out(name);
     fs::create_dir_all(root.join("src")).unwrap();
     fs::write(root.join("src/panel.nsm"), PANEL).unwrap();
+    fs::write(root.join("src/panel.physical.nsm"), PANEL_PHYSICAL).unwrap();
     fs::write(
         root.join("netsmith.toml"),
         format!("[project]\nname = \"kit\"\ntop_level = [\"src/panel.nsm\"]\n{orders}"),

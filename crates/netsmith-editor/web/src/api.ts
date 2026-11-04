@@ -15,7 +15,7 @@ message: string,
  */
 rendered: string, at: Location | null, };
 
-export type FileRole = "top_level" | "module" | "std" | "manifest";
+export type FileRole = "top_level" | "module" | "std" | "manifest" | "physical";
 
 export type Def = { kind: string, name: string, line: number, };
 
