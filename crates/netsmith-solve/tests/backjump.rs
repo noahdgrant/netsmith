@@ -219,3 +219,15 @@ fn the_same_design_gives_the_same_answer_every_time() {
         assert_eq!(first.trials, again.trials);
     }
 }
+
+#[test]
+fn scratch_trials() {
+    for n in 1..=7 {
+        let s = run(&bench(n, true), &catalogs(3));
+        eprintln!("n = {n}: {} trials", s.trials);
+    }
+    for n in 1..=7 {
+        let s = run(&bench_mid(n.max(2), ".u02.resistance + .z.resistance >= 1Mohm"), &catalogs(3));
+        eprintln!("mid n = {n}: {} trials", s.trials);
+    }
+}
