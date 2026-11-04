@@ -267,7 +267,8 @@ fn the_mechanical_parts_and_the_programming_pads_are_fitted_by_nobody() {
 fn a_test_point_on_no_net_is_refused_and_a_plated_hole_may_float() {
     let m = messages(
         "import std::parts::mechanical::{TestPoint, PlatedHole, MountingHole, Fiducial}\n\
-         board B {\n    .tp: TestPoint\n    .h: PlatedHole\n    .m: MountingHole\n    .f: Fiducial\n}\n",
+         module Mech {\n    .m: MountingHole\n    .f: Fiducial\n}\n\
+         board B {\n    .tp: TestPoint\n    .h: PlatedHole\n    .mech: Mech\n}\n",
     );
     assert_eq!(m.len(), 1, "{m:#?}");
     assert!(
