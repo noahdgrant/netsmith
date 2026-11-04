@@ -1,0 +1,14 @@
+//! The case of the LED board. A V-cut runs straight across the whole panel, so the outline is
+//! a rectangle with square corners.
+
+import std::pcb::Outline
+
+physical for LedTile {
+    case {
+        .outline: Outline {
+            .width &= 40mm
+            .height &= 30mm
+            .corner_radius &= 0mm
+        }
+    }
+}

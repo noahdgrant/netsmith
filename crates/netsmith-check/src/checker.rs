@@ -1030,8 +1030,8 @@ impl<'a> Checker<'a> {
 
 const CASE_OUTSIDE: &str = "a `case { }` section belongs in a physical file (`physical for Board { case { ... } }`, ADR 0048)";
 
-/// `led.nsm` has its physical file in `led.physical.nsm`.
-pub(crate) fn physical_file_name(source: &str) -> String {
+/// `led.nsm` has its physical file in `led.physical.nsm` (ADR 0048).
+pub fn physical_file_name(source: &str) -> String {
     format!(
         "{}.physical.nsm",
         source.strip_suffix(".nsm").unwrap_or(source)

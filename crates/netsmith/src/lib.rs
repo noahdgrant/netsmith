@@ -10,6 +10,7 @@ pub mod init;
 pub mod layout;
 pub mod libraries;
 pub mod order;
+pub mod physical;
 pub mod project;
 pub mod refresh;
 pub mod resolve;

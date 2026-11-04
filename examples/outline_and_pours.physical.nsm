@@ -1,0 +1,47 @@
+//! The case and the antenna's clear area of the four-layer regulator board.
+
+import std::parts::mechanical::{Fiducial, Label, MountingHole}
+import std::pcb::{Cutout, Keepout, Outline}
+
+physical for OutlineAndPours {
+    case {
+        /// 50 by 36 mm, with rounded corners.
+        .outline: Outline {
+            .width &= 50mm
+            .height &= 36mm
+            .corner_radius &= 3mm
+        }
+
+        /// A rounded slot cut through the board, 6 mm in from the left edge.
+        .slot: Cutout {
+            .x &= 6mm
+            .y &= 12mm
+            .width &= 3mm
+            .height &= 12mm
+            .corner_radius &= 1mm
+        }
+
+        /// Mounting holes go in the corners of the outline, and so do the fiducials.
+        .hole1: MountingHole
+        .hole2: MountingHole
+        .hole3: MountingHole
+        .hole4: MountingHole
+        .fiducial1: Fiducial
+        .fiducial2: Fiducial
+
+        /// Text on the silkscreen, placed like any other part.
+        .revision: Label {
+            .text &= "REV A"
+        }
+    }
+
+    /// No copper and no parts on the top layer where the antenna is, 18 mm along the top edge.
+    .antenna: Keepout {
+        .x &= 18mm
+        .y &= 2mm
+        .width &= 14mm
+        .height &= 5mm
+        .layers &= "top"
+        .vias &= "allow"
+    }
+}

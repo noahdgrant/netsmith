@@ -205,6 +205,11 @@ fn visit<'a>(
                 path(&row.pin, inside);
             }
         }
+        Item::Case(case) => {
+            for inner in &case.items {
+                visit(inner, inside, out);
+            }
+        }
     }
 }
 

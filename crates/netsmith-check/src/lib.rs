@@ -15,6 +15,7 @@ mod pins;
 
 pub use diag::{Diagnostic, Source, SourceId, Sources};
 pub use faults::{pin_faults, pin_faults_solved};
+pub use checker::physical_file_name;
 pub use loader::Loader;
 pub use model::{
     Balance, Catalog, Chain, Contact, ContactSide, Domain, Draw, Field, FieldId, FieldKind,
