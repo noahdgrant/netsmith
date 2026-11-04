@@ -8,6 +8,7 @@
 //! Every generated footprint is checked against KiCad's own of the same name by a test
 //! (`tests/generated_vs_kicad.rs`) when KiCad's libraries are installed.
 
+mod bga;
 mod chip;
 mod crystal;
 mod diode;
@@ -38,6 +39,7 @@ pub fn generate(id: &str) -> Option<Footprint> {
         .or_else(|| qfp::generate(library, name))
         .or_else(|| header::generate(library, name))
         .or_else(|| crystal::generate(library, name))
+        .or_else(|| bga::generate(library, name))
 }
 
 /// Every `Library:Name` that [`generate`] answers, in a fixed order.
@@ -53,6 +55,7 @@ pub fn names() -> &'static [String] {
         all.extend(qfp::names());
         all.extend(header::names());
         all.extend(crystal::names());
+        all.extend(bga::names());
         all.sort();
         all.dedup();
         all
@@ -344,6 +347,28 @@ mod tests {
         let plain = generate("Package_QFP:LQFP-48_7x7mm_P0.5mm").unwrap();
         assert_eq!(fp.pads[0], plain.pads[0]);
         assert_eq!(fp.courtyard, plain.courtyard);
+    }
+
+    #[test]
+    fn a_bga_has_circular_pads_on_the_grid_lettered_from_the_top_left_without_i_o_q_s_x_z() {
+        let fp = generate("Package_BGA:BGA-144_13.0x13.0mm_Layout12x12_P1.0mm").unwrap();
+        assert_eq!(fp.pads.len(), 144);
+        let at = |n: &str| fp.pads_numbered(n).next().unwrap().at;
+        assert!(near(at("A1").x, -5.5) && near(at("A1").y, -5.5));
+        // Row letters: A B C D E F G H J K L M; the twelfth row is M.
+        assert!(near(at("M12").x, 5.5) && near(at("M12").y, 5.5));
+        assert!(fp.pads_numbered("I1").next().is_none());
+        assert_eq!(fp.pads[0].shape, PadShape::Circle);
+        assert!(near(fp.pads[0].width, 0.5));
+        assert_eq!(
+            fp.courtyard,
+            Rect::new(Pt::new(-7.5, -7.5), Pt::new(7.5, 7.5))
+        );
+        // After Y the rows continue AA, AB, ...
+        let big = generate("Package_BGA:BGA-1156_35.0x35.0mm_Layout34x34_P1.0mm").unwrap();
+        assert!(big.pads_numbered("AA1").next().is_some());
+        assert!(big.pads_numbered("AN34").next().is_some());
+        assert!(big.pads_numbered("AO1").next().is_none());
     }
 
     #[test]
