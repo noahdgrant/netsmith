@@ -17,6 +17,7 @@ mod header;
 pub mod ipc;
 mod outline;
 mod qfn;
+mod qfn_rows;
 mod qfp;
 mod sot;
 mod tab;
@@ -252,6 +253,17 @@ mod tests {
         let lead = fp.pads_numbered("1").next().unwrap();
         let inner = lead.at.x.abs() - lead.width / 2.0;
         assert!(inner >= 1.7 / 2.0 + 0.2 - 1e-9, "{inner}");
+    }
+
+    #[test]
+    fn a_row_whose_name_does_not_say_its_library_is_found_only_in_that_library() {
+        let id = "Package_CSP:LFCSP-16-1EP_3x3mm_P0.5mm_EP1.7x1.7mm";
+        let fp = generate(id).unwrap();
+        assert_eq!(fp.pads.len(), 16 + 1 + 4);
+        assert!(names().iter().any(|n| n == id));
+        assert!(generate("Package_DFN_QFN:LFCSP-16-1EP_3x3mm_P0.5mm_EP1.7x1.7mm").is_none());
+        // A maker's part named by its drawing, in the library its start does not say.
+        assert!(generate("Package_SON:Texas_X2SON-4_1x1mm_P0.65mm").is_none());
     }
 
     #[test]
