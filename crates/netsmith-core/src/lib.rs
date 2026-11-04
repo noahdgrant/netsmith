@@ -377,6 +377,41 @@ impl Placement {
     }
 }
 
+/// One end of an [`Offset`]: a field of the `.place` of a part, by the part's path.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OffsetEnd {
+    /// The path of the part in the design: `radio.row_a`.
+    pub path: String,
+    /// The field of its place that is measured (never `rotation`).
+    pub field: PlaceField,
+}
+
+/// A relation between the places of two parts (ADR 0045, section 3): the measure of `b`
+/// minus the measure of `a` is in the window. `.radio.row_b.place.x - .radio.row_a.place.x ==
+/// 17.5mm +/- 0.05mm` is `b` = `radio.row_b`, `a` = `radio.row_a`, a window of 17.45 to 17.55
+/// mm. Both ends are measured along the same axis, in millimetres, in the frame of the
+/// layout file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Offset {
+    pub a: OffsetEnd,
+    pub b: OffsetEnd,
+    pub lo: f64,
+    pub hi: f64,
+    /// Where the design states it: `widget.physical.nsm:14`. Empty until the caller that
+    /// knows the source files fills it.
+    pub source: String,
+}
+
+impl Offset {
+    /// Whether the relation is along x (else along y).
+    pub fn along_x(&self) -> bool {
+        matches!(
+            self.a.field,
+            PlaceField::X | PlaceField::Left | PlaceField::Right
+        )
+    }
+}
+
 /// What a design says about the board beyond its parts and nets (ADR 0020). Everything is
 /// optional; a design that says none of it is laid out as before.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -393,6 +428,8 @@ pub struct Features {
     pub labels: Vec<Label>,
     /// Requirements on where parts and modules go (ADR 0045), by path.
     pub constraints: Vec<Placement>,
+    /// Relations between the places of two parts (ADR 0045, section 3).
+    pub offsets: Vec<Offset>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -975,6 +975,7 @@ impl Board {
         placement.overhang = overhang.clone();
         placement.fixed.extend(plan.fixed);
         placement.wants = plan.wants;
+        placement.offsets = plan.offsets;
         for part in &mut parts {
             if let Some(&side) = plan.sides.get(&part.refdes) {
                 part.side = side;

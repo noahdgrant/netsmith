@@ -336,6 +336,8 @@ pub struct Lowered {
     /// Where the design states each requirement on a position (ADR 0045), for a caller that
     /// has the source files to put in `design.features.constraints[..].source`.
     pub constraint_sites: Sites,
+    /// Where the design states each of `design.features.offsets`, in the same order.
+    pub offset_sites: Vec<(netsmith_check::SourceId, netsmith_lang::Span)>,
 }
 
 /// A panel as the specification `fab` builds it from: the board it repeats, the grid and the
@@ -607,6 +609,8 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
     let mut features = features::features_of(model, &net_names, layers, least_text, &mut errors);
     let (constraints, constraint_sites) = features::placements(model, &mut errors);
     features.constraints = constraints;
+    let (offsets, offset_sites) = features::offsets(model, &mut errors);
+    features.offsets = offsets;
     // Tracks sized from the current of nets no rail gave a width (ADR 0036).
     let plan = match &process {
         Some(process) => guidelines::plan_tracks(model, process, &features),
@@ -630,6 +634,7 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
             guidelines: guideline_findings,
             notes: plan.notes,
             constraint_sites,
+            offset_sites,
         })
     } else {
         errors.sort();

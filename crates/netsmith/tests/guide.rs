@@ -144,11 +144,26 @@ fn placement_findings(design: &netsmith_core::Design, libraries: &Libraries) -> 
     );
     match placed {
         Err(e) => vec![format!("error: {}: {e}", design.name)],
-        Ok(board) => board
-            .check_placement()
-            .iter()
-            .map(|p| format!("error: {}: {p}", design.name))
-            .collect(),
+        Ok(board) => {
+            let mut found: Vec<String> = board
+                .check_placement()
+                .iter()
+                .map(|p| format!("error: {}: {p}", design.name))
+                .collect();
+            // The requirements on where parts go, measured on the board as `fab` does.
+            if let Some(constraints) = netsmith::constraints::of_design(design, false) {
+                match netsmith_fab::artwork::Artwork::parse(&netsmith_pcb::kicad_pcb(&board)) {
+                    Ok(art) => found.extend(
+                        constraints
+                            .findings(&art)
+                            .iter()
+                            .map(|f| format!("error: {}: {}", design.name, f.message)),
+                    ),
+                    Err(e) => found.push(format!("error: {}: {e}", design.name)),
+                }
+            }
+            found
+        }
     }
 }
 

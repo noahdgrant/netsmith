@@ -3044,7 +3044,7 @@ physical for Cased {
 
 - **`case { ... }`** is the section for what the case fixes: the outline, the cutouts, the mounting holes (`MountingHole`), the fiducials (`Fiducial`) and the labels (`Label`) of the board. It holds the same statements as the rest of the unit, and lifts out unchanged if a case is ever shared. These five belong in it; a keepout may be anywhere in the unit.
 - **A path may cross a module boundary here and nowhere else.** `.sensor.j.place.left` names the header inside the `Sensor` module. The circuit source still cannot reach into a module (ADR 0004); the physical file can, to state physical intent about the part. A statement may set or compare only a part's `.place`, a part's `.height`, and what the unit declares itself (the fields of its `.outline`, `.window`, `.rib`). Anything that changes what a part is, or a connection, is refused.
-- **A relation between two parts** is the equation of _Where a part goes_: `.b.x - .a.x == 17.5mm +/- 0.05mm`.
+- **A relation between two parts** is the equation of _Where a part goes_: `.b.place.x - .a.place.x == 17.5mm +/- 0.05mm`. The placer holds it and `fab` measures it (_A relation between two parts_).
 - **`.place.side` on a module** is a requirement on every part of it, at any depth. A module with an exception states the faces of its parts one by one and none for itself; two lines that disagree are an error that names both.
 - The case numbers are the maintainer's file to review: put the source of each (a drawing, a sheet) in a comment above the line, and never invent one.
 
@@ -3726,6 +3726,52 @@ physical for Stretchy {
 error: Stretchy: `j.place.y` is measured from the outline's top left corner, and `outline.height` does not state one size, so the board has no fixed outline; give `outline.height` a single value (`&= 30mm`), or state the position without it
 ```
 
+#### A relation between two parts
+
+Some requirements are between two parts and fix neither: two rows of sockets a datasheet puts 17.5 mm apart, an antenna header that is on the line of its cable. They are written as the equation of the fields, in the physical file, and they may reach into modules by path, at any depth. A relation is the measure of one part's body minus the measure of another's, along one axis, in a window. `==` with a range is the window (`17.5mm +/- 0.05mm`, or `.a.place.y == .b.place.y` for a window of zero), and `>=` and `<=` give a one-sided window.
+
+```nsm solve place
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+
+module Radio {
+    .row_a: Header1x2
+    .row_b: Header1x2
+}
+
+board Paired {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .radio: Radio
+    .antenna: Header1x2
+}
+```
+
+```nsm-physical
+import std::pcb::Outline
+
+physical for Paired {
+    case {
+        .outline: Outline {
+            .width &= 50mm
+            .height &= 30mm
+        }
+    }
+
+    // Datasheet figure 4: the two rows are 17.5 mm +/- 0.05 mm apart, centre to centre.
+    .radio.row_b.place.x - .radio.row_a.place.x == 17.5mm +/- 0.05mm
+    // Cable drawing: the antenna header is on the line of row A.
+    .antenna.place.y == .radio.row_a.place.y
+}
+```
+
+The solver does not evaluate a relation between two parts, because placement is not a solver output; the placer and the check do (ADR 0045, section 12; provisional). The placer treats the relation as a hard requirement like the others: it moves the two parts together until the measure is in the window, and a window narrower than its 0.05 mm grid is met exactly by putting one of the parts off the grid by a few hundredths of a millimetre. The same inputs give the same board. A relation is one equation of two fields of two different parts, each with the coefficient 1 and -1 (a sum, a product, a turn, a module's own `.place` and two fields of one part stay in the file unevaluated, and the build lists them as `not evaluated`), along one axis (`x`, `left` and `right`, or `y`, `top` and `bottom`), with everything else a constant, such as `.outline.width / 2`. A window that can never be held is an error of `build`; two parts that the requirements or the layout file's locks have already fixed, or one fixed and one whose own window cannot reach the relation, are refused before placing with the numbers. A relation that the placed board does not meet is a finding, as any other requirement is, and stops `fab`:
+
+```text
+error [constraint] constraint radio.row_b.place.x - radio.row_a.place.x (paired.physical.nsm:11) is violated: the centre of the body of J2 (`radio.row_b`, F.Fab) minus the centre of the body of J1 (`radio.row_a`, F.Fab) is 16 mm along x, and it allows 17.45 to 17.55 mm (1.45 mm over)
+```
+
 #### A part that hangs over the board edge
 
 A plug that sticks out of the case has part of its courtyard outside the outline. That is an error ("not wholly inside the board outline") unless the design says the part may hang over that edge. **The owner decided the rule on 2026-11-03 (ADR 0045, section 10); how a module states an overhang for its parts is still open.** The design says it with a requirement it can already write: a window for an edge of the **body** that lies at or beyond the same edge of the outline. `.j.place.left &= -0.5mm +/- 0.1mm` puts the body's left edge 0.5 mm past the board's left edge, and `.plug.place.bottom >= .outline.height` puts its bottom edge on the board's bottom edge or past it (flush counts). Only the part's own `left`, `right`, `top` and `bottom` say it, and only when the whole window is at or beyond the edge. A window on `.x` or `.y`, a bound a module states for its parts, or an entry of the layout file puts the part somewhere but does not say it may hang over, so the courtyard past the edge is the error it always was. That holds for a part the layout file locks (`lock = true`) too: the lock fixes where the part is, and the part must still state every edge its courtyard is past, like any other (owner decision, 2026-11-03). A locked part past an edge nobody stated gets the error below, naming the edge, the distance and the line that would allow it.
@@ -3870,7 +3916,7 @@ error: Plugged: J1 is not wholly inside the board outline: its courtyard is 0.52
 error [constraint] constraint power.place.left (cased.physical.nsm:13) is violated: the left edge of the body of J1 (F.Fab) is 28.73 mm from the left edge of the outline, and it allows 1.4 to 1.6 mm (27.13 mm over)
 ```
 
-The editor lists the same findings with the placement's. A relation between two parts (a pitch, an offset) is written in the equation form, `.b.place.x - .a.place.x == 17.5mm +/- 0.05mm`, in the same file (ADR 0048); the checker accepts it and keeps it, but the placer and the check do not evaluate it yet (ADR 0045, C2: the solver prints a note that says so), and the editor does not yet draw the windows (C4). Height limits are in _Height limits_ above.
+The editor lists the same findings with the placement's, a relation between two parts among them (_A relation between two parts_); it does not yet draw the windows or a line between the two parts (ADR 0045, C4). Height limits are in _Height limits_ above.
 
 ### The layout file
 

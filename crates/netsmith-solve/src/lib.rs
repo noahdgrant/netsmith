@@ -20,6 +20,6 @@ pub use generic::{
     nearest, resolve,
 };
 pub use levels::NotEvaluated;
-pub use place::{Window, window};
+pub use place::{PlaceOffset, Window, offsets, window};
 pub use solve::{Pick, Solution, Unresolved, solve, solve_system};
 pub use table::{Record, Supplier, Table, parse_csv};
