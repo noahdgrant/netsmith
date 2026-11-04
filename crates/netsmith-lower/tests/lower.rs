@@ -315,12 +315,14 @@ fn a_part_is_assembled_by_the_fab_unless_the_design_says_otherwise() {
     );
 }
 
-/// [`assembly_of`] with the project's default (ADR 0028) and a mounting hole added.
+/// [`assembly_of`] with the project's default (ADR 0028) and a mounting hole added (in a
+/// module: a board's own hole is declared in its physical file).
 fn assembly_with_default(default: &str, body: &str) -> Vec<(String, Assembly, bool)> {
     let src = format!(
         "import std::parts::connector::Header1x2\nimport std::parts::mechanical::MountingHole\n\
          import std::parts::passive::{{Led, Resistor}}\n\
-         board B {{\n    .d: Led\n    .h: MountingHole\n    .j: Header1x2\n    .r: Resistor {{ .resistance &= 330ohm +/- 1% }}\n{body}}}\n"
+         module Mech {{\n    .h: MountingHole\n}}\n\
+         board B {{\n    .d: Led\n    .h: Mech\n    .j: Header1x2\n    .r: Resistor {{ .resistance &= 330ohm +/- 1% }}\n{body}}}\n"
     );
     let c = check("t.nsm", &src, &Loader::std());
     assert!(c.is_ok(), "{}", c.render());

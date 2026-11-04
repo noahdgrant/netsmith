@@ -749,3 +749,154 @@ mod tests {
         assert!(keeps(Some(OsStr::new("yes"))));
     }
 }
+
+// ---- sources written before the physical file ---------------------------------------
+
+/// A source text that states a board's outline, cutouts, holes, keepouts and `.place`
+/// requirements inside the board, as the language took them before ADR 0048, split into the
+/// two files that the language takes now: the circuit source, and the text of the physical
+/// file (none when the source had no physical statement).
+///
+/// This is for tests of a later stage (the lowering, the placer, the checks) that build many
+/// boards from strings and care about what is stated, not which file it is in. It splits
+/// each `board Name { ... }` at its top-level statements (four spaces in): a declaration of
+/// an `Outline`, `Cutout`, `MountingHole`, `Fiducial` or `Label` goes in the `case { }`
+/// section, a `Keepout` and a statement on a `.place` go in the unit `physical for Name`.
+/// The tests of the pairing, the reach and the errors write real files.
+pub fn split_physical(source: &str) -> (String, Option<String>) {
+    const CASE_TYPES: [&str; 5] = ["Outline", "Cutout", "MountingHole", "Fiducial", "Label"];
+    fn declared_type(line: &str) -> Option<&str> {
+        let rest = line.strip_prefix("    .")?;
+        let colon = rest.find(": ")?;
+        let name = &rest[..colon];
+        if !name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
+        {
+            return None;
+        }
+        let ty = rest[colon + 2..].trim_start();
+        let end = ty
+            .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .unwrap_or(ty.len());
+        Some(&ty[..end])
+    }
+    let mut circuit = String::new();
+    let mut physical = String::new();
+    let mut board: Option<String> = None;
+    // The lines of the statement being collected, and where it goes: 0 circuit, 1 board
+    // level of the physical file, 2 its case section.
+    let mut chunk: Vec<&str> = Vec::new();
+    let mut place = 0;
+    let mut case = String::new();
+    let mut loose = String::new();
+    let mut flush = |chunk: &mut Vec<&str>,
+                     place: usize,
+                     circuit: &mut String,
+                     case: &mut String,
+                     loose: &mut String| {
+        let text: String = chunk.iter().map(|l| format!("{l}\n")).collect();
+        match place {
+            0 => circuit.push_str(&text),
+            1 => loose.push_str(&text),
+            _ => case.push_str(&text),
+        }
+        chunk.clear();
+    };
+    for line in source.lines() {
+        let Some(name) = &board else {
+            if let Some(rest) = line.strip_prefix("board ")
+                && line.trim_end().ends_with('{')
+            {
+                board = Some(
+                    rest.chars()
+                        .take_while(|c| c.is_alphanumeric() || *c == '_')
+                        .collect(),
+                );
+            }
+            circuit.push_str(line);
+            circuit.push('\n');
+            continue;
+        };
+        if line == "}" {
+            flush(&mut chunk, place, &mut circuit, &mut case, &mut loose);
+            if !case.is_empty() || !loose.is_empty() {
+                physical.push_str(&format!("physical for {name} {{\n"));
+                if !case.is_empty() {
+                    physical.push_str("    case {\n");
+                    for l in case.lines() {
+                        physical.push_str(&format!("    {l}\n"));
+                    }
+                    physical.push_str("    }\n");
+                }
+                physical.push_str(&loose);
+                physical.push_str("}\n\n");
+            }
+            case.clear();
+            loose.clear();
+            board = None;
+            circuit.push_str("}\n");
+            continue;
+        }
+        let starts = line.starts_with("    ")
+            && !line.starts_with("     ")
+            && !line.trim_start().starts_with('}');
+        let comment = line.trim_start().starts_with("//");
+        if starts || (chunk.is_empty() && !line.trim().is_empty()) {
+            // A new statement (or a comment above one) begins. Comments held so far belong
+            // to the statement that follows them.
+            let held_comments = chunk.iter().all(|l| l.trim_start().starts_with("//"));
+            if !held_comments {
+                flush(&mut chunk, place, &mut circuit, &mut case, &mut loose);
+            }
+            if !comment {
+                place = match declared_type(line) {
+                    Some(ty) if CASE_TYPES.contains(&ty) => 2,
+                    Some("Keepout") => 1,
+                    _ if line.contains(".place.") => 1,
+                    _ => 0,
+                };
+            }
+        }
+        chunk.push(line);
+    }
+    let text = if physical.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "import std::pcb::{{Cutout, Keepout, Outline}}\nimport std::parts::mechanical::{{Fiducial, Label, MountingHole}}\n\n{}",
+            physical.trim_end()
+        ) + "\n")
+    };
+    (circuit, text)
+}
+
+#[cfg(test)]
+mod split_tests {
+    use super::split_physical;
+
+    #[test]
+    fn a_board_is_split_into_its_circuit_and_its_physical_statements() {
+        let (circuit, physical) = split_physical(
+            "import a::B\nboard X {\n    .a: R\n    // the case\n    .outline: Outline {\n        .width &= 4mm\n    }\n    .a.place.x &= 1mm\n    .zone: Keepout { .x &= 1mm }\n    .b.height &= 2mm\n}\n",
+        );
+        assert_eq!(
+            circuit,
+            "import a::B\nboard X {\n    .a: R\n    .b.height &= 2mm\n}\n"
+        );
+        let physical = physical.unwrap();
+        assert!(
+            physical.contains(
+                "physical for X {\n    case {\n        // the case\n        .outline: Outline {\n            .width &= 4mm\n        }\n    }\n    .a.place.x &= 1mm\n    .zone: Keepout { .x &= 1mm }\n}"
+            ),
+            "{physical}"
+        );
+    }
+
+    #[test]
+    fn a_board_without_physical_statements_has_no_physical_file() {
+        let (circuit, physical) = split_physical("board X {\n    .a: R\n}\n");
+        assert_eq!(circuit, "board X {\n    .a: R\n}\n");
+        assert_eq!(physical, None);
+    }
+}

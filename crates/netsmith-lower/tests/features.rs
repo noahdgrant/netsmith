@@ -6,8 +6,20 @@ use netsmith_core::Design;
 use netsmith_lower::lower;
 use netsmith_solve::{Catalogs, solve};
 
+/// `check` of a source that states its board's physical intent inside the board, as the
+/// language took it before ADR 0048: split into the circuit source and the physical file
+/// that the language takes now (`netsmith_kicad::testlib::split_physical`).
+fn check_split(src: &str) -> netsmith_check::Checked {
+    let (circuit, physical) = netsmith_kicad::testlib::split_physical(src);
+    let mut loader = Loader::std();
+    if let Some(physical) = physical {
+        loader.attach_physical("t.nsm", "t.physical.nsm", &physical);
+    }
+    check("t.nsm", &circuit, &loader)
+}
+
 fn lowered(src: &str) -> Result<Design, Vec<String>> {
-    let c = check("t.nsm", src, &Loader::std());
+    let c = check_split(src);
     assert!(c.is_ok(), "{}", c.render());
     let s = solve(&c.boards[0], &Catalogs::jlcpcb());
     assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
