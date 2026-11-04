@@ -1860,6 +1860,56 @@ mod tests {
 
     use super::*;
 
+    fn refusal(tries: usize) -> DoesNotFit {
+        DoesNotFit {
+            needs: (30.0, 40.0),
+            outline: (35.0, 60.0),
+            ended: Some(Box::new(Ended {
+                outside: 1,
+                outside_parts: vec![anneal::OutsideAt {
+                    part: "U1".into(),
+                    why: vec!["0.004 mm inside the 0.75 mm margin at the left edge".into()],
+                    worst: 0.004,
+                }],
+                ..Ended::default()
+            })),
+            wall: 0.75,
+            oversize: Vec::new(),
+            area: (100.0, 3000.0),
+            parts: Vec::new(),
+            tries,
+        }
+    }
+
+    #[test]
+    fn a_refusal_says_how_many_tries_were_made_and_shows_a_small_shortfall_with_its_digits() {
+        let message = refusal(5).to_string();
+        assert!(message.contains("U1 0.004"), "{message}");
+        assert!(!message.contains("U1 0.00 "), "{message}");
+        assert!(
+            message.contains("the placer made 5 tries (the first, then 4 more"),
+            "{message}"
+        );
+        // One try is not worth a line.
+        assert!(!refusal(1).to_string().contains("tries"));
+    }
+
+    #[test]
+    fn the_seeds_of_the_retries_are_derived_from_the_given_one_and_differ() {
+        let seeds: Vec<u64> = (1..=RETRIES).map(|k| derived_seed(7, k)).collect();
+        assert_eq!(
+            seeds,
+            (1..=RETRIES)
+                .map(|k| derived_seed(7, k))
+                .collect::<Vec<_>>()
+        );
+        for (i, a) in seeds.iter().enumerate() {
+            assert_ne!(*a, 7);
+            assert!(seeds[i + 1..].iter().all(|b| a != b));
+        }
+        assert_ne!(derived_seed(7, 1), derived_seed(8, 1));
+    }
+
     fn part(refdes: &str, kind: &str, package: Option<&str>) -> Part {
         Part {
             refdes: refdes.into(),

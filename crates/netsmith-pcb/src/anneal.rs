@@ -2542,6 +2542,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_shortfall_that_is_real_is_never_shown_as_zero() {
+        assert_eq!(short(0.8), "0.80");
+        assert_eq!(short(0.05), "0.05");
+        assert_eq!(short(0.004), "0.004");
+        assert_eq!(short(0.0004), "0.0004");
+        // Below what the placement check itself ignores there is nothing to show.
+        assert_eq!(short(2e-6), "<0.0001");
+        for v in [0.0123, 0.0049, 0.00051, 0.00011] {
+            assert!(
+                short(v).parse::<f64>().is_ok_and(|shown| shown > 0.0),
+                "{v} is shown as {}",
+                short(v)
+            );
+        }
+    }
+
+    #[test]
     fn the_random_numbers_and_the_exponential_are_the_same_on_every_machine() {
         // The generator is SplitMix64: the first outputs for a seed are fixed numbers.
         let mut r = Rng::new(0);
