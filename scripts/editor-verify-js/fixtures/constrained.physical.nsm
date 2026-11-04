@@ -1,0 +1,16 @@
+import std::pcb::Outline
+
+physical for Cased {
+    case {
+        .outline: Outline {
+            .width &= 40mm
+            .height &= 24mm
+        }
+    }
+
+    // Case drawing, slot A: the header's body is 1.5 mm in from the left edge and centred along it.
+    .power.place.left &= 1.5mm +/- 0.1mm
+    .power.place.y    >= .outline.height / 2 - 0.1mm
+    .power.place.y    <= .outline.height / 2 + 0.1mm
+    .power.place.side &= "top"
+}
