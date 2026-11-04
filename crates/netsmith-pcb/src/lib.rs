@@ -60,7 +60,7 @@ pub use footprint::{
 pub use geometry::{Pt, Rect};
 pub use layout::{BoardLayout, Layout, LayoutError, apply_layout, place_options};
 pub use overhang::{Edge, Edges, Overhang};
-pub use place::{DoesNotFit, Fixed, HeightZone, PlaceError, PlaceOptions, place_subset};
+pub use place::{DoesNotFit, Fixed, HeightZone, Oversize, PlaceError, PlaceOptions, place_subset};
 pub use quality::{DecouplingDistance, Quality, crossings};
 pub use ratsnest::{Ratline, Ratsnest};
 pub use route::{RouteOptions, Routing, route, route_with};

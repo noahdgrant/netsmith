@@ -153,10 +153,69 @@ pub struct DoesNotFit {
     pub ended: Option<Box<Ended>>,
     /// The space kept between a courtyard and the board edge, in mm.
     pub wall: f64,
+    /// The parts whose courtyard is too big for the outline in every turn they may take. The
+    /// rows' size in `needs` says nothing about these (the rows are not the least the parts
+    /// need), so when there are any the message names them instead of giving `needs`.
+    pub oversize: Vec<Oversize>,
+}
+
+/// A part that does not fit the outline in any turn it may take.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Oversize {
+    pub part: String,
+    pub kind: String,
+    /// Each turn tried, in degrees, with the courtyard's width and height in that turn.
+    pub tried: Vec<(f64, (f64, f64))>,
+    /// Whether the turn is the part's own to choose; if not, a layout file or a requirement
+    /// fixed it (or limited it to the turns tried).
+    pub free: bool,
+}
+
+impl std::fmt::Display for Oversize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let sizes: Vec<String> = self
+            .tried
+            .iter()
+            .map(|(angle, (w, h))| format!("{w:.1} x {h:.1} mm turned {angle} degrees"))
+            .collect();
+        write!(
+            f,
+            "{} ({}) has a courtyard of {}",
+            self.part,
+            self.kind,
+            sizes.join(", ")
+        )?;
+        if !self.free {
+            write!(
+                f,
+                " (only the turns a layout file or a requirement leave it were tried)"
+            )?;
+        }
+        Ok(())
+    }
 }
 
 impl std::fmt::Display for DoesNotFit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if !self.oversize.is_empty() {
+            let wall = (self.wall * 100.0).round() / 100.0;
+            let inside = |v: f64| (v - 2.0 * self.wall).max(0.0);
+            write!(
+                f,
+                "the outline is {:.1} x {:.1} mm, which leaves {:.1} x {:.1} mm for a courtyard inside its {} mm margin, and a part is bigger in every turn it may take: ",
+                self.outline.0,
+                self.outline.1,
+                inside(self.outline.0),
+                inside(self.outline.1),
+                wall
+            )?;
+            let parts: Vec<String> = self.oversize.iter().map(ToString::to_string).collect();
+            write!(f, "{}", parts.join("; "))?;
+            if let Some(e) = &self.ended {
+                write_ended(f, e, self.wall)?;
+            }
+            return Ok(());
+        }
         let (over_x, over_y) = (self.needs.0 - self.outline.0, self.needs.1 - self.outline.1);
         let mut over = Vec::new();
         if over_x > 0.0 {
@@ -176,41 +235,47 @@ impl std::fmt::Display for DoesNotFit {
             over.join(", ")
         )?;
         if let Some(e) = &self.ended {
-            let mut left = Vec::new();
-            if e.overlaps > 0 {
-                left.push(format!("{} pair(s) of courtyards overlapping", e.overlaps));
-            }
-            if e.outside > 0 {
-                left.push(format!(
-                    "{} part(s) outside the outline or inside its {} mm margin",
-                    e.outside,
-                    (self.wall * 100.0).round() / 100.0
-                ));
-            }
-            if e.silk > 0 {
-                left.push(format!(
-                    "{} pair(s) with reference text or silkscreen over the other's pads",
-                    e.silk
-                ));
-            }
-            if !e.relations.is_empty() {
-                left.push(format!(
-                    "{} relation(s) between parts not held",
-                    e.relations.len()
-                ));
-            }
-            if left.is_empty() {
-                left.push("a rule broken that no count names".to_string());
-            }
-            write!(
-                f,
-                "; placing them in the outline anyway ended with {}",
-                left.join(", ")
-            )?;
-            write_offenders(f, e)?;
+            write_ended(f, e, self.wall)?;
         }
         Ok(())
     }
+}
+
+/// What the annealer ended with, after the sentence that says the parts do not fit.
+fn write_ended(f: &mut std::fmt::Formatter<'_>, e: &Ended, wall: f64) -> std::fmt::Result {
+    let mut left = Vec::new();
+    if e.overlaps > 0 {
+        left.push(format!("{} pair(s) of courtyards overlapping", e.overlaps));
+    }
+    if e.outside > 0 {
+        left.push(format!(
+            "{} part(s) outside the outline or inside its {} mm margin",
+            e.outside,
+            (wall * 100.0).round() / 100.0
+        ));
+    }
+    if e.silk > 0 {
+        left.push(format!(
+            "{} pair(s) with reference text or silkscreen over the other's pads",
+            e.silk
+        ));
+    }
+    if !e.relations.is_empty() {
+        left.push(format!(
+            "{} relation(s) between parts not held",
+            e.relations.len()
+        ));
+    }
+    if left.is_empty() {
+        left.push("a rule broken that no count names".to_string());
+    }
+    write!(
+        f,
+        "; placing them in the outline anyway ended with {}",
+        left.join(", ")
+    )?;
+    write_offenders(f, e)?;
+    Ok(())
 }
 
 /// How many offenders are described one by one; the rest are only named.
@@ -710,6 +775,7 @@ pub(crate) fn arrange_best(
     context: &Context,
 ) -> Result<Rect, DoesNotFit> {
     let fixed = apply_fixed(parts, options);
+    turn_to_fit(parts, &fixed, options);
     let mut arrangement = arrange_free(parts, &fixed, options);
     let Some(fit) = options.fit else {
         return refine(parts, nets, options, context, &fixed, &arrangement, true);
@@ -776,6 +842,102 @@ pub(crate) fn arrange_best(
         &arrangement,
         rows_fit,
     )
+}
+
+/// The room for a courtyard inside an outline of `fit`: the outline less the margin on each
+/// side.
+fn inside(fit: (f64, f64), options: &PlaceOptions) -> (f64, f64) {
+    (
+        (fit.0 - 2.0 * options.wall()).max(0.0),
+        (fit.1 - 2.0 * options.wall()).max(0.0),
+    )
+}
+
+/// Whether a part's turn is the placer's to choose. A part the layout file locks, one with
+/// requirements on its place (they may limit its turns, which the annealer knows) and one
+/// that may hang over an edge (its courtyard is allowed past it) are not.
+fn turn_is_free(part: &Placed, fixed: bool, options: &PlaceOptions) -> bool {
+    !fixed
+        && !options.wants.contains_key(&part.refdes)
+        && !options.overhang.contains_key(&part.refdes)
+}
+
+/// Turn the part whose courtyard is too big for the outline to fit in the turn it has, and
+/// fits it turned a quarter (PROVISIONAL, ADR 0033): the rows, which are where the annealer
+/// starts, never turn a part, and a part longer than the outline's short side starts far
+/// outside it. The turn is by 90 degrees, so the same input gives the same board. A part
+/// that fits as it is, one that fits in neither turn (the annealer tries them all; the error
+/// says so, see [`oversize`]) and one whose turn is not the placer's to choose stay as they
+/// are.
+fn turn_to_fit(parts: &mut [Placed], fixed: &[bool], options: &PlaceOptions) {
+    let Some(fit) = options.fit else { return };
+    let (width, height) = inside(fit, options);
+    for (i, part) in parts.iter_mut().enumerate() {
+        if !turn_is_free(part, fixed[i], options) {
+            continue;
+        }
+        let court = part.courtyard();
+        let fits = |w: f64, h: f64| w <= width + 1e-9 && h <= height + 1e-9;
+        if !fits(court.width(), court.height()) && fits(court.height(), court.width()) {
+            part.rotation = (part.rotation + 90.0).rem_euclid(360.0);
+        }
+    }
+}
+
+/// The parts that do not fit `fit` in any turn they may take, with every turn tried and the
+/// courtyard's size in it. A part that may hang over an edge is not one.
+fn oversize(
+    parts: &[Placed],
+    fixed: &[bool],
+    options: &PlaceOptions,
+    fit: (f64, f64),
+) -> Vec<Oversize> {
+    let (width, height) = inside(fit, options);
+    let mut found = Vec::new();
+    for (i, part) in parts.iter().enumerate() {
+        if options.overhang.contains_key(&part.refdes) {
+            continue;
+        }
+        let court = part.courtyard();
+        let turns: Vec<f64> = if fixed[i] {
+            vec![part.rotation]
+        } else if let Some(want) = options.wants.get(&part.refdes) {
+            (0..4)
+                .filter(|&q| want.reach[q].is_some())
+                .map(|q| q as f64 * 90.0)
+                .collect()
+        } else {
+            (0..4)
+                .map(|k| (part.rotation + 90.0 * f64::from(k)).rem_euclid(360.0))
+                .collect()
+        };
+        // A requirement's turns are absolute; the size in a turn follows from the part's own.
+        let tried: Vec<(f64, (f64, f64))> = turns
+            .iter()
+            .map(|&angle| {
+                let quarters = ((angle - part.rotation) / 90.0).round().rem_euclid(2.0);
+                let size = if quarters == 0.0 {
+                    (court.width(), court.height())
+                } else {
+                    (court.height(), court.width())
+                };
+                (angle, size)
+            })
+            .collect();
+        if !tried.is_empty()
+            && tried
+                .iter()
+                .all(|(_, (w, h))| *w > width + 1e-9 || *h > height + 1e-9)
+        {
+            found.push(Oversize {
+                part: part.refdes.clone(),
+                kind: part.kind.clone(),
+                tried,
+                free: turn_is_free(part, fixed[i], options),
+            });
+        }
+    }
+    found
 }
 
 /// Whether the courtyards could fit `fit` on the faces they are on: the area of those on a
@@ -933,6 +1095,7 @@ fn refine(
                 needs: rows.needs,
                 outline: fit,
                 ended: Some(Box::new(outcome.ended)),
+                oversize: oversize(parts, fixed, options, fit),
             });
         }
         restore(parts, rows_at);
@@ -1455,12 +1618,67 @@ mod tests {
                 && !message.contains("over in x"),
             "{message}"
         );
-        // A board narrower than a part is over in x.
+        // A board 3 mm wide is narrower than an 0603 as it lies but not as it is turned: the
+        // placer turns it (it used to refuse, because the rows never turn a part).
         options.fit = Some((3.0, 200.0));
+        let board = placed_with(resistors(4, "0603"), &options).unwrap();
+        assert!(
+            board
+                .parts
+                .iter()
+                .all(|p| p.rotation.rem_euclid(180.0) == 90.0)
+        );
+        assert_eq!(board.check_placement(), vec![]);
+        // A board narrower than a part in every turn names the part and its courtyard in
+        // each turn, and not the rows' size.
+        options.fit = Some((1.0, 200.0));
         let message = placed_with(resistors(4, "0603"), &options)
             .unwrap_err()
             .to_string();
-        assert!(message.contains("mm over in x"), "{message}");
+        assert!(
+            message.contains("R1 (Resistor) has a courtyard of")
+                && message.contains("turned 90 degrees")
+                && !message.contains("the parts need"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn a_part_too_long_for_the_outline_starts_turned_and_one_that_may_not_turn_does_not() {
+        let board = placed_with(resistors(3, "0603"), &PlaceOptions::default()).unwrap();
+        let mut board = board;
+        board.parts.iter_mut().for_each(|p| p.rotation = 0.0);
+        let mut parts = board.parts.clone();
+        // R1 is 40 mm long, R2 as well but locked, R3 small.
+        for p in &mut parts[..2] {
+            p.footprint.courtyard = Rect::new(Pt::new(-20.0, -2.0), Pt::new(20.0, 2.0));
+        }
+        let mut options = PlaceOptions {
+            fit: Some((20.0, 60.0)),
+            ..PlaceOptions::default()
+        };
+        let fixed = [false, true, false];
+        turn_to_fit(&mut parts, &fixed, &options);
+        let turns: Vec<f64> = parts.iter().map(|p| p.rotation).collect();
+        assert_eq!(turns, vec![90.0, 0.0, 0.0]);
+        assert!((parts[0].courtyard().height() - 40.0).abs() < 1e-9);
+        // Turned again it is not turned further, and in an outline it fits as it is nothing
+        // changes.
+        turn_to_fit(&mut parts, &fixed, &options);
+        assert_eq!(parts[0].rotation, 90.0);
+        options.fit = Some((60.0, 20.0));
+        let mut again = board.parts.clone();
+        again[0].footprint.courtyard = Rect::new(Pt::new(-20.0, -2.0), Pt::new(20.0, 2.0));
+        turn_to_fit(&mut again, &[false; 3], &options);
+        assert_eq!(again[0].rotation, 0.0);
+        // A part that fits no turn is left alone: the error names it (see `oversize`).
+        options.fit = Some((20.0, 30.0));
+        turn_to_fit(&mut again, &[false; 3], &options);
+        assert_eq!(again[0].rotation, 0.0);
+        let found = oversize(&again, &[false; 3], &options, (20.0, 30.0));
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].part, "R1");
+        assert_eq!(found[0].tried.len(), 4);
     }
 
     #[test]

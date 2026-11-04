@@ -88,3 +88,4 @@ What made the difference, found by measuring (on the synthetic boards, four seed
 - **Hierarchical placement** (arrange each module, then place the blocks) is not built; cohesion is the cost above.
 - **The weights** were tuned on four boards (one not in this repository) and a handful of seeds, and the variation between seeds on one board is large. The numbers are for seed 0.
 - A footprint's own silkscreen text and strokes that clip each other or the mask (a library module's footprint) are the library's and stay.
+- **Turning at the start** (2026-11-04, PROVISIONAL): with a size to fit, a part that is too big for the outline as it lies but fits turned 90 degrees starts turned (`place::turn_to_fit`), unless the layout file locks it or a requirement or an overhang governs it; and a refusal names a part that fits no turn instead of giving the rows' size. See ADR 0045, section 10.
