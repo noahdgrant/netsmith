@@ -403,11 +403,13 @@ published limits but cannot run it).
   Claude Code reads instead of `AGENTS.md`; add `@AGENTS.md` to one.
 - Footprints for the common packages are made by netsmith itself (ADR 0043, provisional):
   chips 0201 to 2512 (R, C, L, LED, diode, fuse), SOD-123/323, SMA/SMB/SMC, SOT-23 and
-  SOT-223, SOIC, TSSOP, MSOP and two SSOP, 30 named QFN, DFN, WSON and HVSON, and pin
-  headers and sockets. They follow IPC-7351B at nominal density and agree with KiCad 9.0's
-  footprints of the same name to 0.01 mm in the pads (344 of 424 in the courtyard too; the
+  SOT-223, SOT-89, DPAK, SOIC, TSSOP, MSOP and two SSOP, 30 named QFN, DFN, WSON and HVSON,
+  16 named LQFP, TQFP and VQFP, 18 SMD crystals, and pin headers and sockets. They follow
+  IPC-7351B at nominal density (the diodes, SOT-223, SOT-89, DPAK and crystals use recorded
+  pads) and agree with KiCad 9.0's
+  footprints of the same name to 0.01 mm in the pads (388 of 468 in the courtyard too; the
   80 2.54 mm sockets differ by 0.05 mm there). A generated name wins over any file, so
-  those footprints need no library. Every other footprint (BGA, QFP, crystals, other
+  those footprints need no library. Every other footprint (BGA, other QFP, other crystals, other
   connectors, fiducials, mounting holes, X2SON) is still read from a library file.
 - Symbols, and the footprints without a generator, come from KiCad's libraries at run time (ADR 0016, ADR 0021,
   provisional): the installed ones (`NETSMITH_KICAD_SYMBOLS`, `NETSMITH_KICAD_FOOTPRINTS`, else

@@ -316,10 +316,10 @@ its current and its heat. Open:
 
 ## Generated footprints (ADR 0043, provisional)
 
-Done: generators for chips, SOD/SMx diodes, SOT-23 and SOT-223, SOIC/TSSOP/MSOP/SSOP, QFN/DFN/WSON/HVSON
-(30 named packages) and pin headers/sockets, consulted before any library file, checked against
-KiCad 9.0's footprints by `crates/netsmith-pcb/tests/generated_vs_kicad.rs`. Open: QFP, BGA, DPAK,
-SOT-89, crystals, X2SON, SSOP 14/24/28 and more QFN/DFN rows (each must agree with KiCad's footprint or
+Done: generators for chips, SOD/SMx diodes, SOT-23, SOT-223 and SOT-89, DPAK, SOIC/TSSOP/MSOP/SSOP,
+QFN/DFN/WSON/HVSON (30 named packages), LQFP/TQFP/VQFP (16), SMD crystals (18) and pin headers/sockets, consulted before any library file, checked against
+KiCad 9.0's footprints by `crates/netsmith-pcb/tests/generated_vs_kicad.rs`. Open: BGA, the QFPs of
+a maker's own drawing and those with an exposed pad, TO-263, X2SON, SSOP 14/24/28 and more QFN/DFN rows (each must agree with KiCad's footprint or
 state why not); a check of the generators that does not need KiCad installed (a snapshot of the
 numbers); pad shapes and silkscreen of the generated footprints have been judged only by netsmith's
 own design rules check; `libs fetch` and `libs vendor` of ADR 0041 for the rest.

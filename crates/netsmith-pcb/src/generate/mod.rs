@@ -9,6 +9,7 @@
 //! (`tests/generated_vs_kicad.rs`) when KiCad's libraries are installed.
 
 mod chip;
+mod crystal;
 mod diode;
 mod draw;
 mod gullwing;
@@ -16,7 +17,9 @@ mod header;
 pub mod ipc;
 mod outline;
 mod qfn;
+mod qfp;
 mod sot;
+mod tab;
 
 use std::sync::OnceLock;
 
@@ -28,9 +31,12 @@ pub fn generate(id: &str) -> Option<Footprint> {
     chip::generate(library, name)
         .or_else(|| gullwing::generate(library, name))
         .or_else(|| sot::generate(library, name))
+        .or_else(|| tab::generate(library, name))
         .or_else(|| diode::generate(library, name))
         .or_else(|| qfn::generate(library, name))
+        .or_else(|| qfp::generate(library, name))
         .or_else(|| header::generate(library, name))
+        .or_else(|| crystal::generate(library, name))
 }
 
 /// Every `Library:Name` that [`generate`] answers, in a fixed order.
@@ -40,9 +46,12 @@ pub fn names() -> &'static [String] {
         let mut all = chip::names();
         all.extend(gullwing::names());
         all.extend(sot::names());
+        all.extend(tab::names());
         all.extend(diode::names());
         all.extend(qfn::names());
+        all.extend(qfp::names());
         all.extend(header::names());
+        all.extend(crystal::names());
         all.sort();
         all.dedup();
         all
@@ -89,6 +98,9 @@ mod tests {
             "Nothing:R_0402_1005Metric",
             "R_0402_1005Metric",
             "Package_SO:SOIC-9_3.9x4.9mm_P1.27mm",
+            // A QFP of a maker's own drawing, which is not the MS-026 pattern.
+            "Package_QFP:LQFP-64_10x10mm_P0.5mm",
+            "Package_QFP:TQFP-47_7x7mm_P0.5mm",
             "Connector_PinHeader_2.54mm:PinHeader_1x2_P2.54mm_Vertical",
             "Connector_PinHeader_2.54mm:PinHeader_1x41_P2.54mm_Vertical",
             "Connector_PinHeader_2.54mm:PinHeader_3x02_P2.54mm_Vertical",
@@ -279,5 +291,99 @@ mod tests {
         assert_eq!(at(&header, "5"), Pt::new(0.0, 4.0));
         assert!(near(header.pads[1].drill.unwrap().width, 0.8));
         assert!(near(header.pads[1].width, 1.35));
+    }
+
+    #[test]
+    fn a_tqfp_48_has_twelve_pads_on_each_edge_numbered_counterclockwise_from_the_left_top() {
+        let fp = generate("Package_QFP:TQFP-48_7x7mm_P0.5mm").unwrap();
+        assert_eq!(fp.pads.len(), 48);
+        let at = |n: &str| fp.pads_numbered(n).next().unwrap().at;
+        // JEDEC MS-026: 9.0 mm over the leads, 0.6 mm leads: pads 1.475 x 0.3 mm centred
+        // 4.1625 mm from the middle, the courtyard 0.25 mm outside the pads.
+        assert!(near(at("1").x, -4.1625) && near(at("1").y, -2.75));
+        assert!(near(at("12").y, 2.75) && near(at("13").x, -2.75) && near(at("13").y, 4.1625));
+        assert!(near(at("25").x, 4.1625) && near(at("25").y, 2.75));
+        assert!(near(at("37").x, 2.75) && near(at("37").y, -4.1625));
+        assert!(near(fp.pads[0].width, 1.475) && near(fp.pads[0].height, 0.3));
+        // The pads of the top and bottom edges are turned a quarter.
+        assert!(near(fp.pads[12].width, 0.3) && near(fp.pads[12].height, 1.475));
+        assert_eq!(
+            fp.courtyard,
+            Rect::new(Pt::new(-5.15, -5.15), Pt::new(5.15, 5.15))
+        );
+    }
+
+    #[test]
+    fn a_dpak_has_its_tab_as_one_pad_with_four_paste_openings_of_the_same_number() {
+        let fp = generate("Package_TO_SOT_SMD:TO-252-3_TabPin2").unwrap();
+        // Three leads, and the tab: pad 2 is the middle lead and the tab, which is a copper
+        // pad with the mask opening and four copper pads that carry the paste.
+        assert_eq!(fp.pad_numbers(), ["1", "2", "3"]);
+        assert_eq!(fp.pads_numbered("2").count(), 1 + 1 + 4);
+        let tab = fp
+            .pads_numbered("2")
+            .find(|p| p.layers == ["F.Cu", "F.Mask"])
+            .unwrap();
+        assert!(near(tab.at.x, 1.26) && near(tab.width, 6.4) && near(tab.height, 5.8));
+        let paste: Vec<_> = fp
+            .pads_numbered("2")
+            .filter(|p| p.layers == ["F.Cu", "F.Paste"])
+            .collect();
+        assert_eq!(paste.len(), 4);
+        assert!(
+            paste
+                .iter()
+                .all(|p| near(p.width, 3.05) && near(p.height, 2.75))
+        );
+        assert_eq!(
+            fp.courtyard,
+            Rect::new(Pt::new(-6.39, -3.5), Pt::new(4.71, 3.5))
+        );
+        // The same tab on a package with the tab as its fourth pin, or its sixth.
+        assert_eq!(
+            generate("Package_TO_SOT_SMD:TO-252-5_TabPin6")
+                .unwrap()
+                .pads_numbered("6")
+                .count(),
+            5
+        );
+        let four_pin = generate("Package_TO_SOT_SMD:TO-252-4").unwrap();
+        let mut four = four_pin.pad_numbers();
+        four.sort();
+        assert_eq!(four, ["1", "2", "3", "4", "5"]);
+    }
+
+    #[test]
+    fn a_sot_89_has_a_tab_pad_that_reaches_beyond_its_anchor() {
+        let fp = generate("Package_TO_SOT_SMD:SOT-89-3").unwrap();
+        let mut numbers = fp.pad_numbers();
+        numbers.sort();
+        assert_eq!(numbers, ["1", "2", "3"]);
+        let tab = fp.pads_numbered("2").next().unwrap();
+        // The anchor is 1.475 mm wide at x = -1.8625; the polygon runs on to x = 2.0.
+        assert!(near(tab.width, 1.475) && near(tab.at.x, -1.8625));
+        assert!(near(tab.bounds().max.x, 2.0), "{:?}", tab.bounds());
+        assert!(near(tab.bounds().min.x, -2.6), "{:?}", tab.bounds());
+        assert_eq!(
+            fp.courtyard,
+            Rect::new(Pt::new(-2.85, -2.5), Pt::new(2.25, 2.5))
+        );
+    }
+
+    #[test]
+    fn a_smd_crystal_has_the_recorded_pads_and_the_courtyard_of_its_drawing() {
+        let fp = generate("Crystal:Crystal_SMD_3215-2Pin_3.2x1.5mm").unwrap();
+        assert_eq!(fp.pad_numbers(), ["1", "2"]);
+        let at = |n: &str| fp.pads_numbered(n).next().unwrap().at;
+        // Pad 1 is on the right in this drawing (Epson FC-135).
+        assert!(near(at("1").x, 1.25) && near(at("2").x, -1.25));
+        assert!(near(fp.pads[0].width, 1.0) && near(fp.pads[0].height, 1.8));
+        assert_eq!(fp.pads[0].shape, PadShape::Rect);
+        assert_eq!(
+            fp.courtyard,
+            Rect::new(Pt::new(-2.0, -1.15), Pt::new(2.0, 1.15))
+        );
+        let four = generate("Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm").unwrap();
+        assert_eq!(four.pads.len(), 4);
     }
 }

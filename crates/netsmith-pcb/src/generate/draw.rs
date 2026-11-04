@@ -71,6 +71,9 @@ pub enum Kind {
     PasteOnly,
     /// Copper and mask on the front, no paste: the exposed pad's copper.
     SmdNoPaste,
+    /// Copper and paste on the front, no mask opening: one opening of the stencil over a
+    /// large pad, drawn as a pad of the same net.
+    CopperPaste,
     /// Plated through hole, with this drill diameter.
     Through(f64),
 }
@@ -198,6 +201,7 @@ impl Drawing {
             Kind::Smd => ("smd", "\"F.Cu\" \"F.Mask\" \"F.Paste\""),
             Kind::PasteOnly => ("smd", "\"F.Paste\""),
             Kind::SmdNoPaste => ("smd", "\"F.Cu\" \"F.Mask\""),
+            Kind::CopperPaste => ("smd", "\"F.Cu\" \"F.Paste\""),
             Kind::Through(_) => ("thru_hole", "\"*.Cu\" \"*.Mask\""),
         };
         let shape = match pad.shape {
@@ -227,6 +231,34 @@ impl Drawing {
             );
         }
         self.body.push_str(")\n");
+    }
+
+    /// A surface-mount pad that is a rectangle `anchor` mm in size at `at` plus a filled
+    /// polygon, the corners of which are given relative to `at`: a tab that is not a
+    /// rectangle (KiCad's `custom` pad).
+    pub fn custom_pad(
+        &mut self,
+        number: impl ToString,
+        at: Pt,
+        anchor: (f64, f64),
+        outline: &[Pt],
+    ) {
+        let pts: String = outline
+            .iter()
+            .map(|p| format!("(xy {} {}) ", num(p.x), num(p.y)))
+            .collect();
+        let _ = writeln!(
+            self.body,
+            "(pad \"{}\" smd custom (at {} {}) (size {} {}) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\") \
+             (options (clearance outline) (anchor rect)) \
+             (primitives (gr_poly (pts {}) (width 0) (fill yes))))",
+            number.to_string(),
+            num(at.x),
+            num(at.y),
+            num(anchor.0),
+            num(anchor.1),
+            pts.trim_end()
+        );
     }
 
     /// The text of the file. The reference is put `above` the origin and the value `below`.

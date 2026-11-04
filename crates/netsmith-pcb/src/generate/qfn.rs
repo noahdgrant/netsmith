@@ -8,8 +8,9 @@
 //! the part. The dimensions of each package are the manufacturers' drawings, which the name
 //! of each row's source in KiCad's footprint scripts cites (ADR 0043).
 
-use super::draw::{Draw, Drawing, Kind, PadSpec, Shape};
+use super::draw::{Drawing, Kind, PadSpec, Shape};
 use super::ipc::{self, FLAT_NO_LEAD, Inside, Size};
+use super::outline::quad_frame;
 use crate::footprint::{Footprint, Mount};
 use crate::geometry::Pt;
 
@@ -547,13 +548,8 @@ fn no_lead(p: &Package) -> Footprint {
         ),
         "QFN DFN",
     );
-    let mut bounds = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
     for pad in &pads {
         drawing.pad(pad);
-        bounds.0 = bounds.0.min(pad.at.x - pad.size.0 / 2.0);
-        bounds.1 = bounds.1.min(pad.at.y - pad.size.1 / 2.0);
-        bounds.2 = bounds.2.max(pad.at.x + pad.size.0 / 2.0);
-        bounds.3 = bounds.3.max(pad.at.y + pad.size.1 / 2.0);
     }
 
     // The exposed pad, and the paste on it.
@@ -588,71 +584,12 @@ fn no_lead(p: &Package) -> Footprint {
     }
 
     let body = (p.body.0.nominal(), p.body.1.nominal());
-    let (hw, hh) = (body.0 / 2.0, body.1 / 2.0);
-    let court = (
-        bounds.0.abs().max(bounds.2).max(hw) + FLAT_NO_LEAD.courtyard,
-        bounds.1.abs().max(bounds.3).max(hh) + FLAT_NO_LEAD.courtyard,
-    );
-    drawing.courtyard(Pt::new(-court.0, -court.1), Pt::new(court.0, court.1));
-
-    // The body, with the corner by pin 1 cut off by a quarter of the shorter side.
-    let cut = (body.0.min(body.1) / 4.0).min(1.0);
-    drawing.polygon(
-        Draw::Fab,
-        &[
-            Pt::new(-hw + cut, -hh),
-            Pt::new(hw, -hh),
-            Pt::new(hw, hh),
-            Pt::new(-hw, hh),
-            Pt::new(-hw, -hh + cut),
-        ],
-        false,
-    );
-    drawing.fab_reference((body.0.min(body.1) * 0.25).clamp(0.3, 1.0));
-
-    // Silkscreen: the corners of the body, stopping short of the pads, and a marker at
-    // pin 1's corner.
-    let clear = super::outline::SILK_TO_COPPER;
-    let (sx, sy) = (hw + 0.11, hh + 0.11);
-    let first_y = |pad: &PadSpec| pad.at.y.abs() + pad.size.1 / 2.0 + clear;
-    let first_x = |pad: &PadSpec| pad.at.x.abs() + pad.size.0 / 2.0 + clear;
-    // The nearest pad to a corner on each edge is the outermost one.
-    let vertical_stop = pads.iter().take(n_down).map(first_y).fold(0.0, f64::max);
-    let horizontal_stop = if n_across > 0 {
-        pads[n_down..n_down + n_across]
-            .iter()
-            .map(first_x)
-            .fold(0.0, f64::max)
-    } else {
-        sx - 0.5
-    };
-    for (cx, cy) in [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
-        if sy > vertical_stop + 0.05 {
-            drawing.line(
-                Draw::Silk,
-                Pt::new(cx * sx, cy * sy),
-                Pt::new(cx * sx, cy * vertical_stop),
-            );
-        }
-        if sx > horizontal_stop + 0.05 {
-            drawing.line(
-                Draw::Silk,
-                Pt::new(cx * sx, cy * sy),
-                Pt::new(cx * horizontal_stop, cy * sy),
-            );
-        }
-    }
-    let apex = Pt::new(-sx, -sy);
-    drawing.polygon(
-        Draw::Silk,
-        &[
-            apex,
-            Pt::new(apex.x - 0.24, apex.y - 0.33),
-            Pt::new(apex.x + 0.24, apex.y - 0.33),
-        ],
-        true,
-    );
-
-    let reference_y = -(court.1 + 0.7);
-    drawing.finish(reference_y, -reference_y)
+    quad_frame(
+        drawing,
+        &pads,
+        n_down,
+        n_across,
+        body,
+        FLAT_NO_LEAD.courtyard,
+    )
 }
