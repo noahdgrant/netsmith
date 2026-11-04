@@ -342,7 +342,7 @@ fn fab_board(
 
         // A generic part (ADR 0047) becomes the row that stands for it now; one that no row
         // stands for cannot be ordered, and is refused by name with the nearest rows.
-        let (sourcing, unresolved) = resolve_generics(&built.sourcing, catalogs);
+        let (sourcing, unresolved) = resolve_generics(&built.sourcing, &built.rechecks, catalogs);
         let unresolved: Vec<String> = unresolved
             .iter()
             .filter(|u| {

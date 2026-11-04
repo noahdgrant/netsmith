@@ -15,7 +15,10 @@ pub use catalog::{
     Availability, Candidate, Catalog, Catalogs, Derating, DeratingError, Library, Value,
 };
 pub use eval::{EvalError, Val, eval};
-pub use generic::{Generic, Orderable, Series, resolve};
+pub use generic::{
+    Alternative, CHANGE_THE_VALUE, Generic, Need, Orderable, Sense, Series, Spec, alternatives,
+    nearest, resolve,
+};
 pub use levels::NotEvaluated;
 pub use place::{Window, window};
 pub use solve::{Pick, Solution, Unresolved, solve, solve_system};

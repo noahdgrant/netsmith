@@ -13,7 +13,7 @@ use std::sync::Arc;
 use netsmith_check::FieldKind;
 use netsmith_quantity::Quantity;
 
-use crate::generic::{Generic, Series};
+use crate::generic::{Generic, Sense, Series};
 use crate::table::Table;
 
 /// What a source of stock knows about a part (ADR 0047). The solver never asks: only the
@@ -31,6 +31,9 @@ pub enum Value {
     Text(String),
     /// A value that depends on another field of the same part (see [`Derating`]).
     Derated(Derating),
+    /// A value a generic part (ADR 0047) cannot know and the design supplies: the solver
+    /// reads it from the design when it picks the part. Only generic parts have it.
+    Open(Sense),
 }
 
 /// A capacitor's effective capacitance: the marked value with its tolerance, and the fraction
@@ -177,6 +180,7 @@ pub struct Catalogs {
     constraints_warn: bool,
     series: Option<Series>,
     availability: Option<Arc<dyn Availability>>,
+    pins: Vec<(String, String)>,
 }
 
 impl Catalogs {
@@ -243,6 +247,25 @@ impl Catalogs {
 
     pub fn availability(&self) -> Option<&Arc<dyn Availability>> {
         self.availability.as_ref()
+    }
+
+    /// These catalogs, but the part at `path` (`r1`, as the solver and its messages name it) may only be the
+    /// row called `row`. That is how a build asks "would the design still work with this
+    /// alternative?": the whole design is solved again with the one part held to the row, so
+    /// every relation that mentions it is checked (ADR 0047).
+    pub fn with_pin(&self, path: &str, row: &str) -> Self {
+        let mut out = self.clone();
+        out.pins.push((path.to_string(), row.to_string()));
+        out
+    }
+
+    /// The row a part is held to, if any.
+    pub fn pinned(&self, path: &str) -> Option<&str> {
+        self.pins
+            .iter()
+            .rev()
+            .find(|(p, _)| p == path)
+            .map(|(_, row)| row.as_str())
     }
 
     /// A catalog made in code. It replaces any file of the same name.
