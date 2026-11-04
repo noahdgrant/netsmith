@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 522 128" role="img">
+  <title>netsmith</title>
+  <path d="M34.1 71.6L93.9 71.6M64 71.6L64 94.1M64 94.1L49 115M64 94.1L79 115M49 115L79 115M69.6 30.4L40.5 10" fill="none" stroke="#e8873a" stroke-width="5.6"/>
+  <rect x="68.6" y="18.6" width="11.2" height="29.9" rx="2.8" fill="none" stroke="#e8873a" stroke-width="5.6" transform="rotate(35 74.2 33.6)"/>
+  <g fill="#e8873a"><circle cx="34.1" cy="71.6" r="7.5"/><circle cx="64" cy="71.6" r="7.5"/><circle cx="93.9" cy="71.6" r="7.5"/><circle cx="64" cy="94.1" r="7.5"/><circle cx="49" cy="115" r="7.5"/><circle cx="79" cy="115" r="7.5"/><circle cx="40.5" cy="10" r="7.5"/></g>
+  <path d="M150 88V40H174L183.6 49.6V88M200.4 64H234V49.6L224.4 40H210L200.4 49.6V78.4L210 88H234M262.8 18.4V78.4L272.4 88H279.6M250.8 40H279.6" fill="none" stroke="#d6d9de" stroke-width="8.4"/>
+  <path d="M330 40H306L296.4 49.6V54.4L306 64H320.4L330 73.6V78.4L320.4 88H296.4M346.8 88V40H361.2L369.6 48.4V88M369.6 48.4L378 40H392.4L400.8 48.4V88M417.6 88V40M446.4 18.4V78.4L456 88H463.2M434.4 40H463.2M480 88V18.4M480 40H504L513.6 49.6V88" fill="none" stroke="#e8873a" stroke-width="8.4"/>
+  <circle cx="417.6" cy="24.4" r="5.8" fill="#e8873a"/>
+</svg>
