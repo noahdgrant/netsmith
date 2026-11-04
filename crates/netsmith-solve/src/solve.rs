@@ -51,6 +51,10 @@ pub struct Solution {
     /// The logic level and absolute maximum checks that could not be made, and why
     /// (ADR 0046): never a pass.
     pub not_evaluated: Vec<crate::levels::NotEvaluated>,
+    /// How many candidates the search tried in all, over every group of parts: the effort
+    /// spent choosing parts. Tests use it to show that a failing design is not searched
+    /// once per combination of parts that have nothing to do with the failure.
+    pub trials: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -188,6 +192,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         derived: HashSet::new(),
         stated: stated_currents(model),
         sole_equation: sole_equations(model),
+        trials: 0,
     };
     for c in s.propagate() {
         s.report(c.source, c.span, c.message);
@@ -225,6 +230,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         diagnostics: s.diagnostics,
         default_assembly: catalogs.default_assembly().map(str::to_string),
         not_evaluated,
+        trials: s.trials,
     }
 }
 
@@ -268,6 +274,8 @@ struct Solver<'a> {
     /// (through the field or any field joined to it). Only such an equation narrows a field
     /// that has a range; see `propagate`.
     sole_equation: Vec<bool>,
+    /// Candidates tried so far, over every group.
+    trials: usize,
 }
 
 /// The currents in a balance that the design gave a range (`.x.current &= a..b`) and that
@@ -1335,7 +1343,9 @@ impl Solver<'_> {
                 .iter()
                 .any(|c| self.fits(job.part, &job.columns, c))
         });
-        if starved.is_none() && self.search(jobs, group, 0, &mut search) {
+        let solved = starved.is_none() && self.search(jobs, group, 0, &mut search);
+        self.trials += search.trials;
+        if solved {
             self.picks.extend(search.picks);
             return;
         }
