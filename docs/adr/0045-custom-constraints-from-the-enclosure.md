@@ -1,5 +1,5 @@
 ---
-status: accepted (user decisions 2026-11-02); C0a, C0b and C0c built, provisional until the user reviews them
+status: accepted (user decisions 2026-11-02); sections 3 and 8 and open question 8 amended by ADR 0048 (the home of requirements moves from the board's source to the physical file); C0a, C0b and C0c built, provisional until the user reviews them
 ---
 
 # Custom constraints from the enclosure

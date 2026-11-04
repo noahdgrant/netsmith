@@ -96,8 +96,12 @@ _Avoid_: Exclusion zone, restricted area
 The tallest a part may stand where a keepout is (`std::pcb::Keepout`'s `.max_height`, provisional, ADR 0045 section 11), on the faces the keepout's `.layers` name. A part states how tall it is with `.height`; one that does not has an unknown height, which is reported by name and never taken as zero.
 
 **Placement requirement**:
-A range on where a part, or the parts of a module, may go, stated in the board's source on the built-in `.place` of the part or module (`.usb.place.left &= -0.5mm +/- 0.05mm`, ADR 0045). The fields are `x`, `y`, `left`, `right`, `top`, `bottom`, `rotation` and `side`. It comes from the case, panel or carrier, not from the part, so a board states it. The placer keeps to it, and `fab` stops with the numbers if the board does not meet it (`constraints = "warn"` or `--constraints warn` lists it instead; `--constraints error` overrides the manifest, and `--allow-drc-violations` does not waive it). The solved position is not in the source: it stays in the layout file.
+A range on where a part, or the parts of a module, may go, stated in the board's source on the built-in `.place` of the part or module (`.usb.place.left &= -0.5mm +/- 0.05mm`, ADR 0045). The fields are `x`, `y`, `left`, `right`, `top`, `bottom`, `rotation` and `side`. It comes from the case, panel or carrier, not from the part, so a board states it. The placer keeps to it, and `fab` stops with the numbers if the board does not meet it (`constraints = "warn"` or `--constraints warn` lists it instead; `--constraints error` overrides the manifest, and `--allow-drc-violations` does not waive it). The solved position is not in the source: it stays in the layout file. ADR 0048 moves the requirement itself out of the source into the physical file; the old form is an error from that change on.
 _Avoid_: Constraint (as the name of the thing a person writes: a finding is a `constraint` finding), position (a position is what the layout file holds)
+
+**Physical intent**:
+What the case, the product and the layout designer require of a board, as opposed to what the circuit requires: the outline, openings, mounting holes, where a connector, antenna or sensor must be, a spacing or alignment between two parts, a module's face, a region with a height limit, a pattern of test pads, keepouts a board draws, local pours. It is requirements, never solutions. It is written in the **physical file**, a file of its own apart from the circuit source (owner decision 2026-11-04, ADR 0048). The name "physical file" is a placeholder: the name, extension and header are not chosen, and no syntax exists yet. The circuit source keeps what the circuit's checks consume (process, stackup, plane nets, assembly, designator letters, currents, impedance, pairs).
+_Avoid_: PCB constraints (it is not the circuit's constraint and not a result), sidecar (the layout file is the sidecar)
 
 **Overhang**:
 A part whose courtyard is past an edge of the outline on purpose, such as a plug that sticks out of the case. The design says it may (provisional, ADR 0045, section 10): a requirement on the part's own `.place.left`, `.right`, `.top` or `.bottom` whose whole window is at or beyond the same edge of the outline, or a lock in the layout file. Then the courtyard past that edge is not an error and counts as clipped to the outline; pads are still checked, a direction not stated is still an error, and `fab` lists each overhang in `fab-notes.txt`. The body (`F.Fab`) is not checked.
@@ -112,7 +116,7 @@ A part that prints text on the silkscreen (`std::parts::mechanical::Label`). It 
 _Avoid_: Text, annotation, legend
 
 **Layout file**:
-`<stem>.pcb.toml` beside a source file: where parts (keyed by their path in the design), keepouts and cutouts are, when the source does not say, with rotation, side and a lock. Optional, written by an editor or a placer, never by the language (ADR 0032). It holds the solution; a requirement on it is in the source (_Placement requirement_).
+`<stem>.pcb.toml` beside a source file: where parts (keyed by their path in the design), keepouts and cutouts are, when the source does not say, with rotation, side and a lock. Optional, written by an editor or a placer, never by the language (ADR 0032). It holds the solution; a requirement on it is in the source today and in the physical file after ADR 0048 (_Placement requirement_, _Physical intent_).
 _Avoid_: Sidecar (the word for what it is, not its name), placement file (that is the pick-and-place file for the board house)
 
 **Derived placement**:
@@ -290,7 +294,7 @@ Restricting a field to the values that both its current limit and a new constrai
 A constraint that mentions other fields, so it waits for the solver instead of narrowing a field now. `==` states an equation that must hold in the worst case; `>=` and `<=` state bounds. There is no plain `=` (ADR 0018).
 
 **Editor**:
-`netsmith editor`: a web app served on 127.0.0.1 by the netsmith binary, with a project tree, a source editor that shows the compiler's and solver's messages beside their lines, the views of a board, and the build and fab buttons (ADR 0019). A long job runs on the server while the page stays usable. It writes `.nsm` files and nothing else of the design. It replaces the schematic viewer, which is gone.
+`netsmith editor`: a web app served on 127.0.0.1 by the netsmith binary, with a project tree, a source editor that shows the compiler's and solver's messages beside their lines, the views of a board, and the build and fab buttons (ADR 0019). A long job runs on the server while the page stays usable. It writes the source files (in its source pane), the physical file (the requirements a person draws, such as a keepout) and the layout file (the solution the PCB view moves). Today a requirement it writes goes to the source; ADR 0048 moves it to the physical file. It replaces the schematic viewer, which is gone.
 _Avoid_: Viewer, IDE, GUI
 
 **View**:
