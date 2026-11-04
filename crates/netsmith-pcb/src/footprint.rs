@@ -1115,11 +1115,11 @@ mod tests {
         assert!(library.load("mine:Mine").is_ok());
         // Another stock footprint names every place looked at and both variables.
         let text = library
-            .load("Package_QFP:LQFP-48_7x7mm_P0.5mm")
+            .load("Package_QFP:LQFP-64_10x10mm_P0.5mm")
             .unwrap_err()
             .to_string();
         assert!(
-            text.contains("footprint `Package_QFP:LQFP-48_7x7mm_P0.5mm` not found"),
+            text.contains("footprint `Package_QFP:LQFP-64_10x10mm_P0.5mm` not found"),
             "{text}"
         );
         assert!(

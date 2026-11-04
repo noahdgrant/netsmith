@@ -9,6 +9,7 @@
 //! (`tests/generated_vs_kicad.rs`) when KiCad's libraries are installed.
 
 mod chip;
+mod crystal;
 mod diode;
 mod draw;
 mod gullwing;
@@ -35,6 +36,7 @@ pub fn generate(id: &str) -> Option<Footprint> {
         .or_else(|| qfn::generate(library, name))
         .or_else(|| qfp::generate(library, name))
         .or_else(|| header::generate(library, name))
+        .or_else(|| crystal::generate(library, name))
 }
 
 /// Every `Library:Name` that [`generate`] answers, in a fixed order.
@@ -49,6 +51,7 @@ pub fn names() -> &'static [String] {
         all.extend(qfn::names());
         all.extend(qfp::names());
         all.extend(header::names());
+        all.extend(crystal::names());
         all.sort();
         all.dedup();
         all
@@ -365,5 +368,22 @@ mod tests {
             fp.courtyard,
             Rect::new(Pt::new(-2.85, -2.5), Pt::new(2.25, 2.5))
         );
+    }
+
+    #[test]
+    fn a_smd_crystal_has_the_recorded_pads_and_the_courtyard_of_its_drawing() {
+        let fp = generate("Crystal:Crystal_SMD_3215-2Pin_3.2x1.5mm").unwrap();
+        assert_eq!(fp.pad_numbers(), ["1", "2"]);
+        let at = |n: &str| fp.pads_numbered(n).next().unwrap().at;
+        // Pad 1 is on the right in this drawing (Epson FC-135).
+        assert!(near(at("1").x, 1.25) && near(at("2").x, -1.25));
+        assert!(near(fp.pads[0].width, 1.0) && near(fp.pads[0].height, 1.8));
+        assert_eq!(fp.pads[0].shape, PadShape::Rect);
+        assert_eq!(
+            fp.courtyard,
+            Rect::new(Pt::new(-2.0, -1.15), Pt::new(2.0, 1.15))
+        );
+        let four = generate("Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm").unwrap();
+        assert_eq!(four.pads.len(), 4);
     }
 }
