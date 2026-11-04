@@ -251,7 +251,7 @@ board Example {
 
 **Option 5C: derived text.** Print the net name beside each connector pad. That is derivable from the design with no statement, and a board might want it off; it is a later switch on the connector, not text in the source.
 
-**Logos and images.** Out of scope. An image needs a bitmap-to-polygon importer, a file format and a licence record; a logo that is a footprint in a KiCad library could come through the part mapping once IC parts load libraries (ROADMAP backlog 1), without a new construct. The fab's order-number marker (whether it prints and where) is a fact on the fab's pages to source; it is not stated here.
+**Logos and images.** Out of scope. An image needs a bitmap-to-polygon importer, a file format and a licence record; a logo that is a footprint in a KiCad library could come through the part mapping once IC parts load libraries (issue #64), without a new construct. The fab's order-number marker (whether it prints and where) is a fact on the fab's pages to source; it is not stated here.
 
 **Recommendation: 5A**, reference designators unchanged, no logos.
 
@@ -272,13 +272,13 @@ panel Order {
 }
 ```
 
-**Recommendation: defer.** Panels are a fab step and not a circuit step, they add a new definition kind and a new package writer (merging outlines, tabs as routed slots, rails and fiducials), and a fab can panelise from the separate packages that `fab` already writes. It is noted in the ROADMAP; if built, it is a `panel` and not a part of `system`. Until then each board is ordered on its own.
+**Recommendation: defer.** Panels are a fab step and not a circuit step, they add a new definition kind and a new package writer (merging outlines, tabs as routed slots, rails and fiducials), and a fab can panelise from the separate packages that `fab` already writes. It is tracked in issue #62; if built, it is a `panel` and not a part of `system`. Until then each board is ordered on its own.
 
 ## 7. Placement: constraints, grouping and where hand placement lives
 
 **Need.** Decoupling capacitors near the supply pins of their part, parts of one module together, a connector on an edge, a part kept away from heat, and a way to keep a layout somebody drew.
 
-**Option 7A: a sidecar layout file beside the source, with no placement in the source.** `Board.layout` (format to choose; one `path: x y rotation side [locked]` line per instance, keyed by instance path such as `stage.output_cap`, which does not change when reference designators are renumbered), read by `build` and `fab`. A part with no entry is placed by the autoplacer; a `locked` entry is fixed and the autoplacer places the rest round it; an entry for a path that no longer exists is an error naming it. The viewer-to-editor step (ROADMAP backlog 9) writes the file, and until then `netsmith layout` could write what autoplace chose, so that it can be edited and locked. This is the atopile arrangement the screenshots show (a layout per build beside `main.ato`, plus "Re-autoplace" that re-places what is not locked) and the one that fits R7: netsmith owns the stored placement, the generated `.kicad_pcb` is a pure function of source plus sidecar, and nothing is read back from KiCad. Source stays free of geometry (R2, R1).
+**Option 7A: a sidecar layout file beside the source, with no placement in the source.** `Board.layout` (format to choose; one `path: x y rotation side [locked]` line per instance, keyed by instance path such as `stage.output_cap`, which does not change when reference designators are renumbered), read by `build` and `fab`. A part with no entry is placed by the autoplacer; a `locked` entry is fixed and the autoplacer places the rest round it; an entry for a path that no longer exists is an error naming it. The viewer-to-editor step (issue #59) writes the file, and until then `netsmith layout` could write what autoplace chose, so that it can be edited and locked. This is the atopile arrangement the screenshots show (a layout per build beside `main.ato`, plus "Re-autoplace" that re-places what is not locked) and the one that fits R7: netsmith owns the stored placement, the generated `.kicad_pcb` is a pure function of source plus sidecar, and nothing is read back from KiCad. Source stays free of geometry (R2, R1).
 
 **Option 7B: constraints in the source** (`nsm-new`):
 
@@ -292,7 +292,7 @@ module Decoupled {
 
 A module author can state what is always true of the circuit (a decoupling capacitor belongs by the pin it decouples), and the hint travels with the module, which a sidecar cannot do. But `near` is an unordered relation over geometry that needs a distance and a checker, it cannot say a fixed position (so a sidecar is needed anyway, R1), and the module can name only its own parts (R4).
 
-**Option 7C: derive it.** The circuit already says it: a capacitor between a rail's two pins on the net of a supply pin of a part is a decoupling capacitor (the checker derives `.bias` the same way). The autoplacer weighs those connections by pad distance, and groups parts by module path (the instance path is known). This needs the IC parts of ROADMAP backlog 1 for typed supply pins.
+**Option 7C: derive it.** The circuit already says it: a capacitor between a rail's two pins on the net of a supply pin of a part is a decoupling capacitor (the checker derives `.bias` the same way). The autoplacer weighs those connections by pad distance, and groups parts by module path (the instance path is known). This needs the IC parts of issue #64 for typed supply pins.
 
 **Recommendation: 7A and 7C, no `near` in the language.** Placement geometry is stored in one place (the sidecar), and what the circuit implies is derived. A `near` or `group` statement waits for a case the derived placement gets wrong; adding it then is a decision with a real example. The same sidecar holds fixed positions of mechanical parts, labels and, later, keepouts and the outline's notches.
 
@@ -332,4 +332,4 @@ Suggested order, each step passing the existing gate: 1, 3, 4, 2, 7 (sidecar), t
 
 ## Consequences
 
-Each recommended option adds an interface or a part and no grammar, so ADR 0001 and ADR 0004 hold, and a board names its nets and its stackup layers as before. The cost is a sidecar file, a second artefact next to the source that has to be kept in step with it (the stale-path error is the guard), and a placer that has to become much better than the present row layout before a fixed outline is useful. Known limits that remain until their steps land are in `README.md` and `docs/ROADMAP.md` ("Four layers: what is left"); this ADR changes neither until a decision is made.
+Each recommended option adds an interface or a part and no grammar, so ADR 0001 and ADR 0004 hold, and a board names its nets and its stackup layers as before. The cost is a sidecar file, a second artefact next to the source that has to be kept in step with it (the stale-path error is the guard), and a placer that has to become much better than the present row layout before a fixed outline is useful. Known limits that remain until their steps land are in issue #60; this ADR changes neither until a decision is made.
