@@ -18,9 +18,11 @@
 //! range the inputs can produce, not just a typical value. Parts that share a relation are
 //! picked together by a depth-first search over their candidates (parts in path order,
 //! candidates in catalog order): a choice that makes a later part impossible is undone and
-//! the next candidate is tried, up to a fixed number of trials.
+//! the next candidate is tried, up to a fixed number of trials. A failure remembers which
+//! earlier parts it depends on, and the search goes back to the nearest of them rather than
+//! choosing the parts in between again (conflict-directed backjumping).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use netsmith_check::{
     Balance, Board, Diagnostic, Domain, Draw, FieldId, FieldKind, InstId, InstKind, Model, RExpr,
@@ -51,6 +53,10 @@ pub struct Solution {
     /// The logic level and absolute maximum checks that could not be made, and why
     /// (ADR 0046): never a pass.
     pub not_evaluated: Vec<crate::levels::NotEvaluated>,
+    /// How many candidates the search tried in all, over every group of parts: the effort
+    /// spent choosing parts. Tests use it to show that a failing design is not searched
+    /// once per combination of parts that have nothing to do with the failure.
+    pub trials: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -154,6 +160,8 @@ struct Conflict {
     source: SourceId,
     span: Span,
     message: String,
+    /// The fields whose values the conflict was found in.
+    fields: Vec<FieldId>,
 }
 
 struct Rejection {
@@ -161,6 +169,64 @@ struct Rejection {
     message: String,
     margin: f64,
     at: (SourceId, Span),
+    /// The fields whose values the rejection and its message were worked out from.
+    reads: Vec<FieldId>,
+}
+
+/// How a search of a group's parts ended.
+enum Outcome {
+    /// Every part has a candidate; they are in the search's picks.
+    Solved,
+    /// No candidate for the part at some depth works with the choices before it. The set
+    /// holds the depths of the earlier parts whose choices that failure depends on (see
+    /// [`Coupling`]); a failure that does not depend on the part just above is not undone
+    /// by changing that part.
+    Failed(BTreeSet<usize>),
+    /// The search stopped at the trial limit.
+    GaveUp,
+}
+
+/// Which parts can see each other's choices. A part's choice sets its columns; propagation
+/// then carries the values along the connections, the equations and the balances of
+/// currents, and nowhere else. The fields those join form a class, and a value in a class
+/// depends only on the choices of parts whose columns are in it. A check that reads some
+/// fields (a relation, a conflict, the domains that decide which candidates fit) is
+/// therefore settled by the parts that share a class with them, and by no others.
+struct Coupling {
+    /// For each job, the classes of its columns.
+    columns: Vec<HashSet<usize>>,
+    /// For each job, the classes of every field inside its part.
+    inside: Vec<HashSet<usize>>,
+    /// The class of each field.
+    class: Vec<usize>,
+}
+
+impl Coupling {
+    /// The depths below `depth` of the parts whose columns share a class with `reads`.
+    fn earlier(&self, jobs_at: &[usize], depth: usize, reads: &HashSet<usize>) -> BTreeSet<usize> {
+        (0..depth)
+            .filter(|&p| !self.columns[jobs_at[p]].is_disjoint(reads))
+            .collect()
+    }
+
+    fn classes_of(&self, fields: &[FieldId]) -> HashSet<usize> {
+        fields.iter().map(|f| self.class[f.0]).collect()
+    }
+}
+
+fn find(parent: &mut [usize], x: usize) -> usize {
+    if parent[x] != x {
+        let root = find(parent, parent[x]);
+        parent[x] = root;
+    }
+    parent[x]
+}
+
+fn union(parent: &mut [usize], a: usize, b: usize) {
+    let (ra, rb) = (find(parent, a), find(parent, b));
+    if ra != rb {
+        parent[ra] = rb;
+    }
 }
 
 pub fn solve(board: &Board, catalogs: &Catalogs) -> Solution {
@@ -188,6 +254,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         derived: HashSet::new(),
         stated: stated_currents(model),
         sole_equation: sole_equations(model),
+        trials: 0,
     };
     for c in s.propagate() {
         s.report(c.source, c.span, c.message);
@@ -225,6 +292,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         diagnostics: s.diagnostics,
         default_assembly: catalogs.default_assembly().map(str::to_string),
         not_evaluated,
+        trials: s.trials,
     }
 }
 
@@ -268,6 +336,8 @@ struct Solver<'a> {
     /// (through the field or any field joined to it). Only such an equation narrows a field
     /// that has a range; see `propagate`.
     sole_equation: Vec<bool>,
+    /// Candidates tried so far, over every group.
+    trials: usize,
 }
 
 /// The currents in a balance that the design gave a range (`.x.current &= a..b`) and that
@@ -407,6 +477,7 @@ impl Solver<'_> {
                                 source,
                                 span,
                                 message,
+                                fields: vec![a, b],
                             });
                         }
                     }
@@ -441,10 +512,13 @@ impl Solver<'_> {
                                 self.model.path_of_field(*f)
                             );
                             if said.insert(message.clone()) {
+                                let mut fields = vec![*f];
+                                fields_in(&r.rhs, &mut fields);
                                 conflicts.push(Conflict {
                                     source: r.source,
                                     span: r.span,
                                     message,
+                                    fields,
                                 });
                             }
                         }
@@ -1192,8 +1266,9 @@ impl Solver<'_> {
             }
         }
 
+        let coupling = self.coupling(&jobs);
         for group in self.group_jobs(&jobs) {
-            self.solve_group(&jobs, &group);
+            self.solve_group(&jobs, &group, &coupling);
         }
     }
 
@@ -1255,24 +1330,55 @@ impl Solver<'_> {
         true
     }
 
+    /// The classes of fields that propagation joins, and which jobs' columns and parts are in
+    /// them. Only what propagation does joins fields: a connection, an equation (`==` or
+    /// `&=`) and the currents of a balance. A bound (`>=`, `<=`) only judges.
+    fn coupling(&self, jobs: &[Job]) -> Coupling {
+        let n_fields = self.model.fields().count();
+        let mut parent: Vec<usize> = (0..n_fields).collect();
+        for (a, b) in self.model.equalities() {
+            union(&mut parent, a.0, b.0);
+        }
+        for r in self.model.relations() {
+            if !matches!(r.op, CmpOp::EqEq | CmpOp::Narrow) {
+                continue;
+            }
+            let mut fields = Vec::new();
+            fields_in(&r.lhs, &mut fields);
+            fields_in(&r.rhs, &mut fields);
+            for w in fields.windows(2) {
+                union(&mut parent, w[0].0, w[1].0);
+            }
+        }
+        for b in self.model.balances() {
+            for w in b.draws.windows(2) {
+                union(&mut parent, w[0].field.0, w[1].field.0);
+            }
+        }
+        let class: Vec<usize> = (0..n_fields).map(|f| find(&mut parent, f)).collect();
+        let columns = jobs
+            .iter()
+            .map(|job| job.columns.iter().map(|(f, _)| class[f.0]).collect())
+            .collect();
+        let mut inside: Vec<HashSet<usize>> = vec![HashSet::new(); jobs.len()];
+        for (id, field) in self.model.fields() {
+            for (j, job) in jobs.iter().enumerate() {
+                if self.model.is_inside(field.owner, job.part) {
+                    inside[j].insert(class[id.0]);
+                }
+            }
+        }
+        Coupling {
+            columns,
+            inside,
+            class,
+        }
+    }
+
     /// Split the parts to pick into groups that share a relation. Parts in different
     /// groups cannot affect each other, so each group is searched on its own: one part
     /// with no valid choice does not undo the picks of parts unrelated to it.
     fn group_jobs(&self, jobs: &[Job]) -> Vec<Vec<usize>> {
-        fn find(parent: &mut Vec<usize>, x: usize) -> usize {
-            if parent[x] != x {
-                let root = find(parent, parent[x]);
-                parent[x] = root;
-            }
-            parent[x]
-        }
-        fn union(parent: &mut Vec<usize>, a: usize, b: usize) {
-            let (ra, rb) = (find(parent, a), find(parent, b));
-            if ra != rb {
-                parent[ra] = rb;
-            }
-        }
-
         // Fields joined by a connection hold one value, so they count as one.
         let n_fields = self.model.fields().count();
         let mut fparent: Vec<usize> = (0..n_fields).collect();
@@ -1323,7 +1429,7 @@ impl Solver<'_> {
     /// Find a choice for every part in a group that satisfies every relation together,
     /// backing up when a later part has nothing that works. The first solution in catalog
     /// order (parts in path order) is the one used.
-    fn solve_group(&mut self, jobs: &[Job], group: &[usize]) {
+    fn solve_group(&mut self, jobs: &[Job], group: &[usize], coupling: &Coupling) {
         let mut search = Search::default();
         // A part with no candidate that fits what the design already says cannot be chosen
         // whatever the others are, so that is the cause to report. Searching first would
@@ -1335,7 +1441,13 @@ impl Solver<'_> {
                 .iter()
                 .any(|c| self.fits(job.part, &job.columns, c))
         });
-        if starved.is_none() && self.search(jobs, group, 0, &mut search) {
+        let solved = starved.is_none()
+            && matches!(
+                self.search(jobs, group, 0, &mut search, coupling),
+                Outcome::Solved
+            );
+        self.trials += search.trials;
+        if solved {
             self.picks.extend(search.picks);
             return;
         }
@@ -1449,11 +1561,28 @@ impl Solver<'_> {
     /// Depth-first: choose a candidate for the part at `depth`, then the rest. Every
     /// relation that can be evaluated is checked as soon as it can, so a bad choice is
     /// dropped before the parts after it are tried.
-    fn search(&mut self, jobs: &[Job], group: &[usize], depth: usize, search: &mut Search) -> bool {
+    ///
+    /// Conflict-directed backjumping: a failure says which earlier parts' choices it
+    /// depends on (see [`Coupling`]). When every way of choosing the parts after this one
+    /// fails for reasons that do not include this part, no other candidate for it can help,
+    /// so the search goes straight back to the nearest part the failure does depend on,
+    /// instead of choosing the parts in between again and reaching the same failure each
+    /// time. What it skips could only fail the same way, so the first solution, and the
+    /// closest failure, are those of the plain search; the remaining candidates of a skipped
+    /// part are still tried (without going deeper) so that the closest failure is the same.
+    fn search(
+        &mut self,
+        jobs: &[Job],
+        group: &[usize],
+        depth: usize,
+        search: &mut Search,
+        coupling: &Coupling,
+    ) -> Outcome {
         if depth == group.len() {
-            return true;
+            return Outcome::Solved;
         }
         let job = &jobs[group[depth]];
+        let inside = &coupling.inside[group[depth]];
         let fitting: Vec<&Candidate> = job
             .catalog
             .candidates
@@ -1463,11 +1592,16 @@ impl Solver<'_> {
         if depth == 0 {
             search.first_level_fits = fitting.len();
         }
+        // Which candidates fit depends on the domains of this part's fields.
+        let mut conflict = coupling.earlier(group, depth, inside);
         if fitting.is_empty() {
             search.no_fit.get_or_insert(group[depth]);
-            return false;
+            return Outcome::Failed(conflict);
         }
 
+        // Set once the parts after this one failed without depending on it: the choices of
+        // the parts before it that they depend on.
+        let mut jump: Option<BTreeSet<usize>> = None;
         // Candidates whose every completion failed. A later candidate that behaves the same
         // fails the same way, so it is not tried.
         let mut failed: Vec<&Candidate> = Vec::new();
@@ -1477,11 +1611,16 @@ impl Solver<'_> {
             }
             if search.trials >= MAX_TRIALS {
                 search.gave_up = true;
-                return false;
+                return Outcome::GaveUp;
             }
             search.trials += 1;
             let snapshot = self.model.clone();
             match self.try_candidate(job.part, &job.columns, c) {
+                Ok(()) if jump.is_some() => {
+                    // The parts after this one would fail again, as they did.
+                    self.model = snapshot;
+                    failed.push(c);
+                }
                 Ok(()) => {
                     search.chosen.push(format!("{} = {}", job.path, c.name));
                     search.picks.push(Pick {
@@ -1496,14 +1635,22 @@ impl Solver<'_> {
                         generic: c.generic.clone(),
                         rejected: examined,
                     });
-                    if self.search(jobs, group, depth + 1, search) {
-                        return true;
+                    let outcome = self.search(jobs, group, depth + 1, search, coupling);
+                    if let Outcome::Solved = outcome {
+                        return outcome;
                     }
                     search.chosen.pop();
                     search.picks.pop();
                     self.model = snapshot;
-                    if search.gave_up {
-                        return false;
+                    match outcome {
+                        Outcome::Failed(mut depends_on) => {
+                            if depends_on.remove(&depth) {
+                                conflict.extend(depends_on);
+                            } else {
+                                jump = Some(depends_on);
+                            }
+                        }
+                        _ => return Outcome::GaveUp,
                     }
                     failed.push(c);
                 }
@@ -1525,10 +1672,14 @@ impl Solver<'_> {
                             at: r.at,
                         });
                     }
+                    // The rejection was worked out from these fields and the candidate's own.
+                    let mut reads = coupling.classes_of(&r.reads);
+                    reads.extend(inside.iter().copied());
+                    conflict.extend(coupling.earlier(group, depth, &reads));
                 }
             }
         }
-        false
+        Outcome::Failed(jump.unwrap_or(conflict))
     }
 
     /// Whether the design cannot tell two candidates of one part apart: they are equal in
@@ -1764,13 +1915,18 @@ impl Solver<'_> {
             self.model.set_domain(*f, value);
         }
 
-        let reject = |this: &mut Self, message: String, margin: f64, at: (SourceId, Span)| {
+        let reject = |this: &mut Self,
+                      message: String,
+                      margin: f64,
+                      at: (SourceId, Span),
+                      reads: Vec<FieldId>| {
             this.model = backup.clone();
             Err(Rejection {
                 candidate: c.name.clone(),
                 message,
                 margin,
                 at,
+                reads,
             })
         };
 
@@ -1780,6 +1936,7 @@ impl Solver<'_> {
                 conflict.message,
                 1.0,
                 (conflict.source, conflict.span),
+                conflict.fields,
             );
         }
 
@@ -1797,10 +1954,15 @@ impl Solver<'_> {
             })
             .cloned()
             .collect();
+        // The relations are checked in order, so the one that fails is the first, and the
+        // rejection depends on every relation up to it.
+        let mut reads = Vec::new();
         for r in &relevant {
+            fields_in(&r.lhs, &mut reads);
+            fields_in(&r.rhs, &mut reads);
             if let Verdict::Fail { message, margin } = self.verify(r) {
                 let message = self.with_currents(r, message);
-                return reject(self, message, margin, (r.source, r.span));
+                return reject(self, message, margin, (r.source, r.span), reads);
             }
         }
         Ok(())
