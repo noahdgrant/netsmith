@@ -9,8 +9,8 @@
 //! then the caller draws every pad, via and track dark again. What the reader sees is the
 //! pour with the clearances cut out, which is the fill.
 //!
-//! This is the same picture KiCad's fill makes, with these differences (also in the README's
-//! Known limits): copper that no pad, via or track of the net reaches (islands) is not
+//! This is the same picture KiCad's fill makes, with these differences (also issue #61):
+//! copper that no pad, via or track of the net reaches (islands) is not
 //! removed, and slivers narrower than the zone's minimum thickness are not trimmed.
 
 use crate::artwork::{Artwork, Connect, PadKind, Shape, TrackShape, Zone};
