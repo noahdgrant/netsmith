@@ -6,7 +6,7 @@ status: accepted
 
 Amends ADR 0008 (the process) and ADR 0012 (four layers, which left via in pad open).
 
-A real board has a module whose pads are 0.6 mm squares on a 1.1 mm pitch, parts on both faces, and 200 connections. The router left the pads inside the module unrouted: it kept half a cell and a margin beyond the rules from every obstacle, which closed the 0.5 mm between two pads, and a track with its two spaces needs 0.3 mm.
+A real board has a module whose pads are 0.6 mm squares on a 1.1 mm pitch, and parts on both faces. The router left the pads inside the module unrouted: it kept half a cell and a margin beyond the rules from every obstacle, which closed the 0.5 mm between two pads, and a track with its two spaces needs 0.3 mm.
 
 ## How a line is routed now
 
