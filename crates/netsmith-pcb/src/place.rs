@@ -82,7 +82,8 @@ pub struct PlaceOptions {
     pub wall: Option<f64>,
     /// The areas that limit how tall a part may stand, in the board's coordinates (ADR 0045,
     /// "Height limits", PROVISIONAL). A part with a stated height above a zone's limit keeps
-    /// its courtyard out of the zone on the faces the zone limits; a part with no stated
+    /// its body (grown by a small margin; its courtyard if the footprint draws no fabrication
+    /// outline) out of the zone on the faces the zone limits; a part with no stated
     /// height is not kept out (nobody knows whether it fits; the check reports it).
     pub height_zones: Vec<HeightZone>,
 }
