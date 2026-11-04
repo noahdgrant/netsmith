@@ -177,13 +177,20 @@ snap and flatpak paths are the least certain). Bundling the libraries is ADR 004
 - Track width against current (ADR 0036, provisional): IPC-2221 on each net's worst-case current
   (rails and series parts), the process's copper weight and `.process.max_temperature_rise`
   (10 K default); a guideline, so it warns, and `guidelines = "error"` or `--strict` blocks.
-  Open: IPC-2152, sums at shared grounds, necked-down runs and vias, tracks on inner layers.
+  Open: IPC-2152, necked-down runs and vias, tracks on inner layers.
 - The router sizes every net (issue #4, ADR 0036 amendment, provisional): a net no rail gives a
   `.min_track` is drawn at the width IPC-2221 needs for the current the solver worked out
   (the fuse-to-diode node of a `~>` chain included); a net with an unknown current is named in
   a note and keeps the process's least; a stated `.min_track` stays an override. Open: the IPC
   constants were not checked against the standard itself, and a net with two unknown currents
   (issue #18) is not sized.
+- A net carries the sum of its currents (issue #4, ADR 0036 amendment 2, provisional):
+  Kirchhoff's current law per net with every load on at once, so a ground shared by a 2 A and
+  a 1 A rail is sized for 3 A; a regulator's input is the current its model draws (output
+  current for a linear one, power balance with the efficiency for a switching one), unknown
+  and unsized when the part states none. Open: a ground is pessimistic where a regulator's
+  output load and its input both return through it, no quiescent current for a linear
+  regulator (the part model has none), no duty cycle or correlation between loads.
 - Four-layer boards (ADR 0012): `std::mfg::jlcpcb::FourLayer` with JLCPCB's multilayer rows and
   its 1.6 mm `JLC04161H-7628` build-up; the board names the net of each inner layer
   (`.process.inner1.net &= "GND"`); the `.kicad_pcb` gets the stackup and a zone per plane;

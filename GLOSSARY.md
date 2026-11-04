@@ -66,7 +66,7 @@ Copper filled on an outer layer round the tracks and joined to one net, such as 
 _Avoid_: Copper fill, ground plane (that is a plane)
 
 **Net class**:
-The width the tracks of a net are drawn at. A rail may state it (`.min_track` on a `Rail`, an override; a net takes the widest of its rails). A net no rail states a width for is drawn at the width IPC-2221 needs for its current, when the solver knows every current on it; otherwise at the process's least, and a note names the net. Not a list of nets; the rail names them. A stated width is checked against the net's current by IPC-2221 (ADR 0036).
+The width the tracks of a net are drawn at. A rail may state it (`.min_track` on a `Rail`, an override; a net takes the widest of its rails). A net no rail states a width for is drawn at the width IPC-2221 needs for its current (the sum of the loads on it or returning through it, all on at once), when the solver knows every current on it; otherwise at the process's least, and a note names the net. Not a list of nets; the rail names them. A stated width is checked against the net's current by IPC-2221 (ADR 0036).
 _Avoid_: Track class, width rule
 
 **Guideline**:
