@@ -7,7 +7,9 @@ mod common;
 
 use netsmith_kicad::testlib::TempDir;
 
-use netsmith_core::{Design, Features, Net, Outline, Part, PinRef};
+use netsmith_core::{
+    Design, Features, Net, Outline, Part, PinRef, PlaceBound, PlaceField, Placement,
+};
 use netsmith_pcb::{
     Board, BoardError, Fixed, FootprintLibrary, PlaceOptions, Pt, ReferenceSide, Side,
 };
@@ -55,6 +57,19 @@ fn board_with(
     count: usize,
     options: &PlaceOptions,
 ) -> Result<Board, BoardError> {
+    board_of_kind("Header", header, size, count, Vec::new(), options)
+}
+
+/// [`board_with`] with the long part of the kind `kind` ("Header" is a connector, which the
+/// placer treats apart; "Module" is an ordinary part).
+fn board_of_kind(
+    kind: &str,
+    header: (f64, f64),
+    size: (f64, f64),
+    count: usize,
+    constraints: Vec<Placement>,
+    options: &PlaceOptions,
+) -> Result<Board, BoardError> {
     let folder = TempDir::new("turn-to-fit");
     std::fs::write(
         folder.join("LONG.kicad_mod"),
@@ -67,14 +82,18 @@ fn board_with(
         kind: kind.into(),
         value: package.into(),
         package: Some(package.into()),
-        path: String::new(),
+        path: if refdes == "J1" {
+            "long".into()
+        } else {
+            String::new()
+        },
         pins: Vec::new(),
     };
     let pin = |refdes: &str, pin: &str| PinRef {
         refdes: refdes.into(),
         pin: pin.into(),
     };
-    let mut parts = vec![part("J1", "Header", "LONG")];
+    let mut parts = vec![part("J1", kind, "LONG")];
     let mut nets = Vec::new();
     for i in 1..=count {
         let refdes = format!("R{i}");
@@ -97,6 +116,7 @@ fn board_with(
                 height: (size.1, size.1),
                 corner_radius: 0.0,
             }),
+            constraints,
             ..Features::default()
         },
         parts,
@@ -104,6 +124,7 @@ fn board_with(
     };
     let mapping = netsmith_kicad::Mapping::parse(
         "[[part]]\nkind = \"Header\"\npackage = \"LONG\"\nsymbol = \"t:R\"\nfootprint = \"t:LONG\"\n\
+         [[part]]\nkind = \"Module\"\npackage = \"LONG\"\nsymbol = \"t:R\"\nfootprint = \"t:LONG\"\n\
          [[part]]\nkind = \"Resistor\"\npackage = \"SMALL\"\nsymbol = \"t:R\"\nfootprint = \"t:SMALL\"\n",
         "turn",
         std::path::Path::new("."),
@@ -244,4 +265,211 @@ fn through(w: f64, h: f64) -> String {
         nx = -x,
         ny = -y,
     )
+}
+
+/// What the design states of the long part (path `long`): its face and some bounds.
+fn states(side: Option<&str>, bounds: &[(PlaceField, f64, f64)]) -> Vec<Placement> {
+    vec![Placement {
+        path: "long".into(),
+        module: false,
+        bounds: bounds
+            .iter()
+            .map(|&(field, lo, hi)| PlaceBound {
+                field,
+                lo,
+                hi,
+                source: String::new(),
+            })
+            .collect(),
+        side: side.map(str::to_string),
+        side_source: String::new(),
+    }]
+}
+
+/// The long part as a module (not a connector, which the placer sets apart) of 37 x 15 mm
+/// on a 35 x 60 mm outline with a dozen small parts: it fits only turned a quarter.
+fn long_part(constraints: Vec<Placement>) -> Result<Board, BoardError> {
+    board_of_kind(
+        "Module",
+        (37.0, 15.0),
+        (35.0, 60.0),
+        12,
+        constraints,
+        &PlaceOptions::default(),
+    )
+}
+
+#[test]
+fn a_part_that_states_only_a_face_is_turned_to_fit() {
+    let b = long_part(states(Some("bottom"), &[])).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(b.check_placement(), vec![]);
+    let j = b.part("J1").unwrap();
+    assert_eq!(j.side, Side::Back);
+    assert_eq!(j.rotation.rem_euclid(180.0), 90.0, "turned {}", j.rotation);
+}
+
+#[test]
+fn a_part_that_states_only_a_window_on_its_edge_is_turned_to_fit_and_keeps_the_window() {
+    // Its left edge 2 to 6 mm from the outline's: a window that leaves the turn free.
+    for side in [None, Some("bottom")] {
+        let b = long_part(states(side, &[(PlaceField::Left, 2.0, 6.0)]))
+            .unwrap_or_else(|e| panic!("{side:?}: {e}"));
+        assert_eq!(b.check_placement(), vec![], "{side:?}");
+        let j = b.part("J1").unwrap();
+        assert_eq!(
+            j.rotation.rem_euclid(180.0),
+            90.0,
+            "{side:?}: {}",
+            j.rotation
+        );
+        let left = j.body().min.x - b.outline.min.x;
+        assert!(
+            (2.0 - 1e-3..=6.0 + 1e-3).contains(&left),
+            "{side:?}: left {left}"
+        );
+    }
+}
+
+#[test]
+fn a_part_that_states_a_window_on_its_centre_is_turned_to_fit() {
+    let b =
+        long_part(states(None, &[(PlaceField::X, 10.0, 25.0)])).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(b.check_placement(), vec![]);
+    assert_eq!(b.part("J1").unwrap().rotation.rem_euclid(180.0), 90.0);
+}
+
+#[test]
+fn a_part_with_a_stated_rotation_keeps_it() {
+    // Stated 90: it is the turn that fits, and it is kept.
+    let b = long_part(states(
+        Some("bottom"),
+        &[(PlaceField::Rotation, 90.0, 90.0)],
+    ))
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(b.check_placement(), vec![]);
+    assert_eq!(b.part("J1").unwrap().rotation, 90.0);
+    // Stated 0: 37 mm across a 35 mm board. It is not turned against the requirement, and
+    // the refusal names it with the one turn it may take.
+    let message = long_part(states(Some("bottom"), &[(PlaceField::Rotation, 0.0, 0.0)]))
+        .expect_err("a stated turn that cannot fit")
+        .to_string();
+    assert!(message.contains("J1 (Module)"), "{message}");
+    assert!(
+        message.contains("37.0 x 15.0 mm turned 0 degrees"),
+        "{message}"
+    );
+    assert!(!message.contains("turned 90 degrees"), "{message}");
+    assert!(
+        message.contains("only the turns a layout file"),
+        "{message}"
+    );
+}
+
+/// A board of `count` small parts forced on the front of a `size` outline: more than one face
+/// holds, but not more than two faces would.
+fn crowded(count: usize, size: (f64, f64)) -> netsmith_pcb::DoesNotFit {
+    let mut options = PlaceOptions::default();
+    options
+        .sides
+        .extend((1..=count).map(|i| (format!("R{i}"), Side::Front)));
+    options.sides.insert("J1".into(), Side::Front);
+    match board_of_kind("Module", (4.0, 2.5), size, count, Vec::new(), &options) {
+        Err(BoardError::DoesNotFit(e)) => e,
+        Err(e) => panic!("another refusal: {e}"),
+        Ok(_) => panic!("{count} parts fit {size:?} on one face"),
+    }
+}
+
+#[test]
+fn a_refusal_leads_with_every_part_that_does_not_fit_and_how_far_out() {
+    let error = crowded(120, (30.0, 40.0));
+    let message = error.to_string();
+    let first = message.lines().next().unwrap();
+    // It leads with the parts that are wrong, and says how many.
+    let (head, lists) = first
+        .split_once(" part(s) do not fit the outline of 30.0 x 40.0 mm: ")
+        .unwrap_or_else(|| panic!("{message}"));
+    let count: usize = head.parse().unwrap_or_else(|_| panic!("{message}"));
+    assert!(
+        lists.contains("outside the outline or inside its margin, by mm past"),
+        "{message}"
+    );
+    // Every part that is out or overlapped is in the line, not only the first few.
+    let named: std::collections::BTreeSet<&str> = lists
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| {
+            (w.starts_with('R') || w.starts_with('J'))
+                && w.len() > 1
+                && w[1..].chars().all(|c| c.is_ascii_digit())
+        })
+        .collect();
+    assert_eq!(named.len(), count, "{first}");
+    assert!(count > 10, "{message}");
+    // The rows' size is not the shortfall, and no area makes it certain.
+    assert!(!message.contains("the parts need"), "{message}");
+    assert!(!message.contains("mm over in"), "{message}");
+    assert!(!message.contains("the courtyards add up"), "{message}");
+}
+
+#[test]
+fn a_refusal_that_is_certain_from_the_courtyards_alone_gives_the_area() {
+    // 40 small parts on both faces of 10 x 10 mm: more courtyard than the faces hold.
+    let message = crowded_both(40, (10.0, 10.0)).to_string();
+    assert!(message.contains("the parts need "), "{message}");
+    assert!(message.contains("the courtyards add up to "), "{message}");
+    assert!(
+        message.contains(" part(s) do not fit the outline of 10.0 x 10.0 mm: "),
+        "{message}"
+    );
+}
+
+/// [`crowded`], with the parts free to be on either face.
+fn crowded_both(count: usize, size: (f64, f64)) -> netsmith_pcb::DoesNotFit {
+    match board_of_kind(
+        "Module",
+        (4.0, 2.5),
+        size,
+        count,
+        Vec::new(),
+        &PlaceOptions::default(),
+    ) {
+        Err(BoardError::DoesNotFit(e)) => e,
+        Err(e) => panic!("another refusal: {e}"),
+        Ok(_) => panic!("{count} parts fit {size:?}"),
+    }
+}
+
+#[test]
+fn the_full_list_has_every_part_with_its_place_and_state() {
+    let error = crowded(120, (30.0, 40.0));
+    let report = error.full_report();
+    assert_eq!(error.parts.len(), 121);
+    // The message first, then one line for each of the 121 parts.
+    assert!(report.starts_with(&error.to_string()), "{report}");
+    let lines: Vec<&str> = report.lines().filter(|l| l.contains(" turned ")).collect();
+    assert_eq!(lines.len(), 121, "{report}");
+    for p in &error.parts {
+        let line = lines
+            .iter()
+            .find(|l| l.starts_with(&format!("{} (", p.part)))
+            .unwrap_or_else(|| panic!("no line for {}: {report}", p.part));
+        assert!(line.contains(" top at ("), "{line}");
+        assert!(line.contains(" courtyard "), "{line}");
+        assert!(line.ends_with(": ok") || !p.state.is_empty(), "{line}");
+    }
+    // A part that is out says how far, with the numbers, and one that is fine says ok.
+    let state = |name: &str| &error.parts.iter().find(|p| p.part == name).unwrap().state;
+    let out = error.parts.iter().find(|p| !p.state.is_empty()).unwrap();
+    assert!(
+        report.contains(&format!(" mm: {}\n", out.state.join("; "))),
+        "{report}"
+    );
+    assert!(
+        state(&out.part).iter().any(|s| s.contains(" mm")),
+        "{out:?}"
+    );
+    assert!(
+        error.parts.iter().any(|p| p.state.is_empty()),
+        "no part is fine"
+    );
 }

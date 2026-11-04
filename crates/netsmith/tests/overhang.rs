@@ -375,10 +375,33 @@ fn a_plug_whose_pads_cannot_stay_inside_is_not_placed_and_the_placer_says_what_i
     let run = fab("pads-free", &source(35, 60, 30, extra), "");
     let e = failure(&run);
     assert!(
-        e.contains("the parts need ")
+        e.contains(" part(s) do not fit the outline of 35.0 x 60.0 mm: ")
             && e.contains("placing them in the outline anyway ended with ")
             && e.contains("part(s) outside the outline or inside its 0.4 mm margin"),
         "{e}"
+    );
+    // The rows' size is not what is wrong, and is not given; J1 leads, with how far.
+    assert!(!e.contains("the parts need "), "{e}");
+    assert!(e.contains("by mm past what is kept clear: J1 "), "{e}");
+    // The full list is in a file beside the board's output, and the message names it.
+    let file = run.dir.join("fab").join("placement-failure.txt");
+    assert!(
+        e.contains(&format!("is in {}", file.display())),
+        "the message names {}: {e}",
+        file.display()
+    );
+    let list = fs::read_to_string(&file).unwrap_or_else(|err| panic!("{}: {err}", file.display()));
+    assert!(
+        list.contains("part(s) do not fit the outline of 35.0 x 60.0 mm"),
+        "{list}"
+    );
+    // One line for every part: the plug, the 30 resistors and the capacitor.
+    let parts = list.lines().filter(|l| l.contains(" courtyard ")).count();
+    assert_eq!(parts, 32, "{list}");
+    assert!(
+        list.lines()
+            .any(|l| l.starts_with("J1 (") && l.contains("a pad is ")),
+        "{list}"
     );
     // The part is named, with the way it is outside.
     assert!(
@@ -543,7 +566,7 @@ fn too_many_parts_for_the_outline_are_refused_with_what_the_placer_ended_with() 
     let e = board.expect_err("100 parts do not fit 12 x 12 mm");
     eprintln!("100 parts in 12 x 12 mm: refused in {seconds:.2} s: {e}");
     assert!(
-        e.contains("the parts need ")
+        e.contains(" part(s) do not fit the outline of 12.0 x 12.0 mm: ")
             && e.contains("placing them in the outline anyway ended with "),
         "{e}"
     );
