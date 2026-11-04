@@ -2,7 +2,7 @@
 
 ## How to get to it
 
-The left column of the page. Sections: top-level files (with the boards, systems and modules defined in each, letter badges B, S, M), modules under `src/`, the manifest (`ro`), and the standard library (collapsed, read-only).
+The left column of the Source section (key 7). Sections: top-level files (with the boards, systems and modules defined in each, letter badges B, S, M), modules under `src/`, the manifest (`ro`), and the standard library (collapsed, read-only).
 
 ## Driving it
 

@@ -1,13 +1,13 @@
 // The power tree: rails as cards with voltage, loads and the budget against the supply.
 export const fixture = 'two_boards';
 
-export async function run({ page, shot, step, expect }) {
+export async function run({ page, shot, step, expect, section }) {
   step('open the Power tree tab');
-  await page.getByText('Power tree', { exact: true }).click();
+  await section('power');
   await page.waitForSelector('.card.power');
   const cards = await page.locator('.card.power').count();
   expect(cards >= 3, `a card for each rail net of the system (${cards})`);
-  const text = await page.locator('.graph-host').innerText();
+  const text = await page.locator('.sec-power .graph-host').innerText();
   expect(text.includes('3V3') && text.includes('VIN'), 'the VIN and 3V3 nets');
   expect(/of 100mA/.test(text), 'the regulator limit of 100mA as the capacity');
   await shot('power-tree');

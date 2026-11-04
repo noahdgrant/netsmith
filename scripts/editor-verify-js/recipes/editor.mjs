@@ -5,8 +5,9 @@ import path from 'node:path';
 
 export const fixture = 'two_boards';
 
-export async function run({ page, shot, step, expect, project }) {
+export async function run({ page, shot, step, expect, project, section }) {
   const file = path.join(project, 'src/main.nsm');
+  await section('source');
   await page.waitForSelector('.cm-content');
 
   step('the source is highlighted');
@@ -67,12 +68,14 @@ export async function run({ page, shot, step, expect, project }) {
   step('a mistake saved to disk shows in the page and keeps the last good drawing');
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('.r1: Resistor {}', '.r1: Nothing {}'));
   await page.waitForFunction(() => document.querySelector('.statusbar .counts .e')?.textContent.includes('1'), null, { timeout: 10000 });
+  await section('schematic');
   await page.waitForSelector('.schematic-view .banner');
+  expect((await page.locator('.schematic-view .banner').innerText()).includes('mistake'), 'a banner on the schematic: the source has a mistake');
+  await shot('mistake-on-disk');
+  await section('source');
   if (!(await page.locator('.problem').count())) await page.locator('.problems-head').click();
   await page.locator('.problem.error').first().click();
   await page.waitForSelector('.cm-lintRange-error');
-  expect((await page.locator('.schematic-view .banner').innerText()).includes('mistake'), 'a banner on the schematic: the source has a mistake');
-  await shot('mistake-on-disk');
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('.r1: Nothing {}', '.r1: Resistor {}'));
   await page.waitForFunction(() => document.querySelector('.statusbar .counts .e')?.textContent.includes('0'), null, { timeout: 10000 });
   expect(true, 'the mistake cleared once fixed on disk');

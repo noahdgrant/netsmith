@@ -42,10 +42,10 @@ export async function run(tools) {
   step('click it: the canvas zooms to it, marks it and selects the part');
   await page.getByRole('button', { name: 'Fit' }).click();
   await page.waitForTimeout(200);
-  const zoomBefore = await page.locator('.zoombar span').innerText();
+  const zoomBefore = await page.locator('.pcb-host .zoombar span').innerText();
   await page.locator('[data-testid=finding]').click();
   await page.waitForTimeout(300);
-  expect((await page.locator('.zoombar span').innerText()) !== zoomBefore, 'the zoom changed');
+  expect((await page.locator('.pcb-host .zoombar span').innerText()) !== zoomBefore, 'the zoom changed');
   expect((await page.locator('.pcb-overlay .mark.on').count()) === 1, 'the finding is highlighted');
   expect((await page.locator('[data-testid=part-inspector] h3').innerText()).startsWith(name), `${name} is selected`);
   expect(await shown(), 'the picked finding shows all of its message');

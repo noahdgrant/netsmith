@@ -2,7 +2,8 @@
 // and the read-only standard library.
 export const fixture = 'two_boards';
 
-export async function run({ page, shot, step, expect }) {
+export async function run({ page, shot, step, expect, section }) {
+  await section('source');
   step('read the tree');
   // The tree arrives a moment after the page (the driver waits for `.app` only).
   await page.waitForSelector('.sidebar .row.file');
@@ -17,7 +18,8 @@ export async function run({ page, shot, step, expect }) {
   await page.locator('.heading', { hasText: /standard library/i }).click();
   await page.locator('.row.file', { hasText: 'passive.nsm' }).click();
   await page.waitForSelector('.tab.active:has-text("passive.nsm")');
-  expect((await page.locator('.cm-content').innerText()).includes('part Resistor'), 'the library source in the editor');
+  await page.waitForFunction(() => document.querySelector('.cm-content')?.innerText.includes('part Resistor'));
+  expect(true, 'the library source in the editor');
   await page.locator('.cm-content').click();
   await page.keyboard.type('x');
   expect(!(await page.locator('.cm-content').innerText()).startsWith('x'), 'the library file refusing edits');

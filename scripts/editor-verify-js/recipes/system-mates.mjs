@@ -2,11 +2,11 @@
 // contacts, the ports the mates join, and the ground group (ADR 0040).
 export const fixture = 'carrier_and_cards';
 
-export async function run({ page, shot, step, expect }) {
+export async function run({ page, shot, step, expect, section }) {
   step('open the System tab');
-  await page.getByText('System', { exact: true }).first().click();
+  await section('system');
   await page.waitForSelector('.card.sys');
-  const graph = await page.locator('.graph-host').innerText();
+  const graph = await page.locator('.sec-system .graph-host').innerText();
   expect(graph.includes('Carrier') && graph.includes('SensorCard') && graph.includes('SerialCard'), 'the three boards');
   expect(graph.includes('carrier.cards ~ sensor.supply'), 'the join the first mate derives');
   expect(graph.includes('carrier.cards ~ serial.supply'), 'the join the second mate derives');

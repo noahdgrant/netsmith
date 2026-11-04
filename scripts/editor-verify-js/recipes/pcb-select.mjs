@@ -58,11 +58,11 @@ export async function run(tools) {
   await shot('box-select');
 
   step('wheel zooms, the right button pans');
-  const before = await page.locator('.zoombar span').innerText();
+  const before = await page.locator('.pcb-host .zoombar span').innerText();
   await page.mouse.move(c2.centre.x, c2.centre.y);
   await page.mouse.wheel(0, -600);
   await page.waitForTimeout(200);
-  expect((await page.locator('.zoombar span').innerText()) !== before, 'the zoom changed');
+  expect((await page.locator('.pcb-host .zoombar span').innerText()) !== before, 'the zoom changed');
   await drag(page, { x: 600, y: 700 }, { x: 500, y: 650 }, { button: 'right' });
   await shot('zoomed');
   expect(BOARD.length > 0, 'done');

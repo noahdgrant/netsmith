@@ -2,14 +2,15 @@
 // the PCB view with its boards named, the cut lines and the panel checks (ADR 0040).
 export const fixture = 'led_panel';
 
-export async function run({ page, shot, step, expect }) {
-  await page.waitForSelector('.schematic');
+export async function run({ page, shot, step, expect, section }) {
+  await section('source');
   step('the tree lists the panel');
   const row = page.locator('.row.def', { hasText: 'LedPanel' });
   await row.waitFor();
   expect((await row.locator('.badge.k-panel').count()) === 1, 'a panel badge');
-  step('click it: the PCB view draws the panel');
+  step('click it: the PCB section draws the panel');
   await row.click();
+  await section('pcb');
   await page.waitForSelector('[data-testid="panel-preview"] svg');
   const drawing = await page.locator('.panel-drawing').innerHTML();
   expect(drawing.includes('LedTile 6') && drawing.includes('stroke-dasharray'), 'six named cells and the cut lines');

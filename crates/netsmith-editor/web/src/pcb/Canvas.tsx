@@ -407,6 +407,8 @@ export function Canvas(props: {
       fitKey={`${sc.board}:${drawing.width}x${drawing.height}`}
       class={`pcb-host tool-${activeTool}`}
       primaryPans={false}
+      keys={false}
+      memoKey={`pcb|${sc.board}`}
       onView={setZoom}
       focus={focus}
     >

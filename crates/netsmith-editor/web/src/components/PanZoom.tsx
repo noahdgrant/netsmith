@@ -1,11 +1,10 @@
 import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
-interface View {
-  k: number;
-  x: number;
-  y: number;
-}
+import { ViewMemo, type ViewState as View, fitView } from '../sheets';
+
+/** The view each canvas had when it was left, for the session, by `memoKey`. */
+export const viewMemo = new ViewMemo();
 
 const MIN = 0.05;
 const MAX = 80;
@@ -25,6 +24,13 @@ export function PanZoom(props: {
   primaryPans?: boolean;
   /** Told the zoom (canvas pixels to screen pixels) whenever it changes. */
   onView?: (k: number) => void;
+  /** The part of the canvas that "fit" shows (canvas pixels); the whole canvas when absent. */
+  fitBox?: { x: number; y: number; w: number; h: number };
+  /** Where the view is remembered for the session: coming back to this key shows the zoom and
+   * place it was left at, until Fit. */
+  memoKey?: string;
+  /** Whether the keys F and 0 (fit), + and - (zoom) work while the canvas has the focus. */
+  keys?: boolean;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>({ k: 1, x: 0, y: 0 });
@@ -35,19 +41,44 @@ export function PanZoom(props: {
   const primary = props.primaryPans !== false;
   useEffect(() => props.onView?.(view.k), [view.k]);
 
+  const fb = props.fitBox;
+  const fitBoxOf = () => fb ?? { x: 0, y: 0, w: props.width, h: props.height };
+  const memoKey = props.memoKey;
+  const memoRef = useRef(memoKey);
+  memoRef.current = memoKey;
+
+  /** Set the view; one the person made (not a fit) is remembered under `memoKey`. */
+  const put = (v: View, remember = true) => {
+    setView(v);
+    const key = memoRef.current;
+    if (key) {
+      if (remember) viewMemo.set(key, v);
+      else viewMemo.drop(key);
+    }
+  };
+
   const fit = useCallback(() => {
     const el = box.current;
-    if (!el || !props.width || !props.height) return;
-    const k = Math.min(el.clientWidth / props.width, el.clientHeight / props.height) * 0.97;
-    fitK.current = k;
-    setView({
-      k,
-      x: (el.clientWidth - props.width * k) / 2,
-      y: (el.clientHeight - props.height * k) / 2,
-    });
-  }, [props.width, props.height]);
+    const b = fitBoxOf();
+    if (!el || !b.w || !b.h || !el.clientWidth || !el.clientHeight) return;
+    const v = fitView(el.clientWidth, el.clientHeight, b);
+    fitK.current = v.k;
+    put(v, false);
+  }, [props.width, props.height, fb?.x, fb?.y, fb?.w, fb?.h]);
 
-  useLayoutEffect(fit, [props.fitKey, fit]);
+  useLayoutEffect(() => {
+    const el = box.current;
+    const kept = memoKey ? viewMemo.get(memoKey) : undefined;
+    if (kept && el && el.clientWidth) {
+      const b = fitBoxOf();
+      fitK.current = fitView(el.clientWidth, el.clientHeight, b).k;
+      moved.current = true;
+      setView(kept);
+    } else {
+      moved.current = false;
+      fit();
+    }
+  }, [props.fitKey, memoKey, fit]);
 
   useLayoutEffect(() => {
     const f = props.focus;
@@ -55,7 +86,7 @@ export function PanZoom(props: {
     if (!f || !el) return;
     const k = Math.min(el.clientWidth / f.w, el.clientHeight / f.h) * 0.94;
     moved.current = true;
-    setView({ k, x: el.clientWidth / 2 - (f.x + f.w / 2) * k, y: el.clientHeight / 2 - (f.y + f.h / 2) * k });
+    put({ k, x: el.clientWidth / 2 - (f.x + f.w / 2) * k, y: el.clientHeight / 2 - (f.y + f.h / 2) * k });
   }, [props.focus?.seq]);
 
   useEffect(() => {
@@ -83,7 +114,12 @@ export function PanZoom(props: {
     const k = Math.min(Math.max(v.k * factor, fitK.current * MIN), fitK.current * MAX);
     const f = k / v.k;
     moved.current = true;
-    setView({ k, x: px - (px - v.x) * f, y: py - (py - v.y) * f });
+    put({ k, x: px - (px - v.x) * f, y: py - (py - v.y) * f });
+  }
+
+  function refit() {
+    moved.current = false;
+    fit();
   }
 
   function zoomCentre(factor: number) {
@@ -97,9 +133,26 @@ export function PanZoom(props: {
     <div
       class={`panzoom ${props.class ?? ''}`}
       ref={box}
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        if (props.keys === false || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (e.key === 'f' || e.key === 'F' || e.key === '0') {
+          e.preventDefault();
+          refit();
+        } else if (e.key === '+' || e.key === '=') {
+          e.preventDefault();
+          zoomCentre(1.25);
+        } else if (e.key === '-' || e.key === '_') {
+          e.preventDefault();
+          zoomCentre(0.8);
+        }
+      }}
       onPointerDown={(e) => {
         const pans = primary ? e.button === 0 : e.button === 1 || e.button === 2;
-        if (!pans || (e.target as Element).closest('.no-pan')) return;
+        if ((e.target as Element).closest('.no-pan')) return;
+        // The canvas takes the focus, so its keys work; the hit targets keep their own clicks.
+        box.current?.focus({ preventScroll: true });
+        if (!pans) return;
         drag.current = { x: e.clientX, y: e.clientY, id: e.pointerId, view: latest.current, active: false };
       }}
       onPointerMove={(e) => {
@@ -113,7 +166,7 @@ export function PanZoom(props: {
         }
         if (d.active) {
           moved.current = true;
-          setView({ ...d.view, x: d.view.x + dx, y: d.view.y + dy });
+          put({ ...d.view, x: d.view.x + dx, y: d.view.y + dy });
         }
       }}
       onPointerUp={(e) => {
@@ -131,10 +184,7 @@ export function PanZoom(props: {
         if (!primary) e.preventDefault();
       }}
       onDblClick={(e) => {
-        if (!(e.target as Element).closest('.hit-target')) {
-          moved.current = false;
-          fit();
-        }
+        if (!(e.target as Element).closest('.hit-target')) refit();
       }}
     >
       <div
@@ -155,13 +205,7 @@ export function PanZoom(props: {
         <button title="Zoom in" onClick={() => zoomCentre(1.25)}>
           +
         </button>
-        <button
-          title="Fit to the window"
-          onClick={() => {
-            moved.current = false;
-            fit();
-          }}
-        >
+        <button title="Fit to the window (F)" onClick={refit}>
           Fit
         </button>
       </div>

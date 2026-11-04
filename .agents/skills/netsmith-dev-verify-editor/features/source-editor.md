@@ -2,7 +2,7 @@
 
 ## How to get to it
 
-The middle pane: tabs for open files, the CodeMirror editor, and a Problems panel under it (click its header or the counts in the status bar to open it).
+The section "Source" (the last, key 7): the project tree on the left, then tabs for open files, the CodeMirror editor, and a Problems panel under it (click its header or the counts in the status bar to open it). The status bar is in every section. After a click-through from another section the file tabs begin with a "Back to ..." button.
 
 ## Driving it
 
@@ -12,7 +12,7 @@ The middle pane: tabs for open files, the CodeMirror editor, and a Problems pane
 2. Click the problem: the cursor goes to that line. Undo (`Ctrl+Z`): the squiggle goes.
 3. Type a comment at the top and press `Ctrl+S`: the dot on the tab goes and the file on disk starts with the comment.
 4. `Ctrl+click` on `Resistor` in a declaration: a tab for `std/parts/passive.nsm` opens at `part Resistor`.
-5. Change the file on disk from outside: the editor shows the new text within a second (it has no unsaved edits). Write a mistake to disk: the squiggle, the count and a "last drawing that built" banner on the schematic appear; fix it on disk and they go.
+5. Change the file on disk from outside: the editor shows the new text within a second (it has no unsaved edits). Write a mistake to disk: the squiggle, the count and a "last drawing that built" banner on the schematic (open the Schematic section to see it) appear; fix it on disk and they go.
 
 ### Errors, warnings and notes: `drive big-problems` after `launch --fixture big`
 

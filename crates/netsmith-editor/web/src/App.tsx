@@ -1,18 +1,32 @@
-import { useEffect } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { Editor } from './components/Editor';
 import {
   Conflict,
-  Pane,
   ProblemsPanel,
+  SectionStrip,
   StatusBar,
+  TabMenu,
   Tabs,
   Toast,
   TopBar,
-  ViewTabs,
+  dragging,
+  tabMenu,
 } from './components/Chrome';
 import { Sidebar } from './components/Sidebar';
-import { activeFile, activeView, save, showEditor, showView } from './store';
+import { type Section, SECTIONS, canSplit, clampSplit, closePane, sectionOfKey, splitRight } from './layout';
+import {
+  activeFile,
+  back,
+  goBack,
+  layout,
+  requestBack,
+  save,
+  setFocusPane,
+  showSection,
+  visible,
+  windowWidth,
+} from './store';
 import { Bom } from './views/Bom';
 import { Build } from './views/Build';
 import { Pcb } from './views/Pcb';
@@ -20,8 +34,8 @@ import { Power } from './views/Power';
 import { Schematic } from './views/Schematic';
 import { System } from './views/System';
 
-function View() {
-  switch (activeView.value) {
+function SectionBody({ section }: { section: Section }) {
+  switch (section) {
     case 'schematic':
       return <Schematic />;
     case 'power':
@@ -34,47 +48,205 @@ function View() {
       return <Pcb />;
     case 'build':
       return <Build />;
+    case 'source':
+      return (
+        <div class="source-section">
+          <Sidebar />
+          <div class="code">
+            <Tabs />
+            <Conflict />
+            <Editor />
+            <ProblemsPanel />
+          </div>
+        </div>
+      );
   }
 }
 
-export function App() {
+/** Sections that keep what they are showing (the editor's text and cursor, a zoom, a scroll)
+ * while another section is on screen, by staying in the page, hidden. The PCB view's keys
+ * work on the whole window, so it leaves the page instead and finds its zoom again. */
+const KEPT: Section[] = ['schematic', 'power', 'system', 'bom', 'build', 'source'];
+
+/** The shortcuts, wherever the focus is except in a field or the source editor (where Alt and
+ * Ctrl still work). */
+function useShortcuts() {
   useEffect(() => {
-    // Ctrl+S saves the file on show, wherever the focus is.
+    const typing = (t: EventTarget | null) =>
+      !!(t as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"], .cm-editor');
     const key = (e: KeyboardEvent) => {
+      // Ctrl+S saves the file on show, wherever the focus is.
       if ((e.ctrlKey || e.metaKey) && e.key === 's' && !e.defaultPrevented) {
         e.preventDefault();
         if (activeFile.value) void save(activeFile.value);
+        return;
       }
+      if (e.key === 'Escape' && tabMenu.peek()) {
+        tabMenu.value = null;
+        return;
+      }
+      if (e.defaultPrevented) return;
+      const focused = visible.peek().find((p) => p.index === layout.peek().focus) ?? visible.peek()[0];
+      // Back from a click-through, from the source.
+      if (back.peek() && focused?.section === 'source') {
+        if (e.key === 'Escape' || (e.altKey && e.key === 'ArrowLeft')) {
+          e.preventDefault();
+          requestBack();
+          return;
+        }
+      }
+      // Ctrl+\ splits the window, or closes the second pane.
+      if ((e.ctrlKey || e.metaKey) && e.key === '\\') {
+        e.preventDefault();
+        const l = layout.peek();
+        if (l.panes.length === 2 && visible.peek().length === 2) layout.value = closePane(l, 1);
+        else if (canSplit(windowWidth.peek())) layout.value = splitRight(l);
+        return;
+      }
+      const section = sectionOfKey(e.key);
+      if (!section) return;
+      const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+      if (plain ? typing(e.target) : e.shiftKey) return;
+      e.preventDefault();
+      showSection(section);
     };
-    window.addEventListener('keydown', key);
-    return () => window.removeEventListener('keydown', key);
+    window.addEventListener('keydown', key, true);
+    const resize = () => (windowWidth.value = window.innerWidth);
+    window.addEventListener('resize', resize);
+    // The browser's Back button, after a click-through, goes back.
+    const pop = () => back.peek() && goBack();
+    window.addEventListener('popstate', pop);
+    return () => {
+      window.removeEventListener('keydown', key, true);
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('popstate', pop);
+    };
   }, []);
+}
+
+/** The divider between two panes: dragged, or moved by the arrow keys; a double click makes the
+ * panes equal. */
+function Divider({ area }: { area: preact.RefObject<HTMLDivElement> }) {
+  const [active, setActive] = useState(false);
+  const set = (share: number) => {
+    const w = area.current?.clientWidth ?? 0;
+    layout.value = { ...layout.peek(), split: clampSplit(share, w) };
+  };
   return (
-    <div class="app">
+    <div
+      class={`divider ${active ? 'active' : ''}`}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize the panes. Double-click for equal panes."
+      aria-valuenow={Math.round(layout.value.split * 100)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      tabIndex={0}
+      title="Drag to resize the panes; double-click for equal panes"
+      onPointerDown={(e) => {
+        const el = e.currentTarget as HTMLElement;
+        el.setPointerCapture(e.pointerId);
+        setActive(true);
+      }}
+      onPointerMove={(e) => {
+        if (!active || !area.current) return;
+        const r = area.current.getBoundingClientRect();
+        set((e.clientX - r.left) / r.width);
+      }}
+      onPointerUp={(e) => {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+        setActive(false);
+      }}
+      onDblClick={() => set(0.5)}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          e.preventDefault();
+          e.stopPropagation();
+          set(layout.value.split + (e.key === 'ArrowLeft' ? -0.02 : 0.02));
+        }
+      }}
+    />
+  );
+}
+
+/** Where the dragged tab would land, drawn over the window. */
+function DropZone() {
+  const d = dragging.value;
+  if (!d?.drop) return null;
+  const l = layout.value;
+  const left = 'side' in d.drop ? d.drop.side === 'left' : d.drop.pane === 0;
+  const share = l.panes.length === 2 ? (left ? l.split : 1 - l.split) : 0.5;
+  return (
+    <div
+      class="drop-zone"
+      style={{ left: left ? 0 : `${(1 - share) * 100}%`, width: `${share * 100}%` }}
+    >
+      <span>
+        {SECTIONS.find((s) => s.id === d.section)?.label}
+        {' → '}
+        {l.panes.length === 2 ? (left ? 'left pane' : 'right pane') : left ? 'split left' : 'split right'}
+      </span>
+    </div>
+  );
+}
+
+export function App() {
+  useShortcuts();
+  const area = useRef<HTMLDivElement>(null);
+  const vis = visible.value;
+  const l = layout.value;
+  const two = vis.length === 2;
+  // Every section that is on screen or kept: it sits in the grid cell of its pane, or, hidden,
+  // under the first pane's.
+  // The source is always in the page, so the editor and the tree are ready when it is shown.
+  const seen = useRef(new Set<Section>(['source']));
+  for (const p of vis) seen.current.add(p.section);
+  const mounted = SECTIONS.map((s) => s.id).filter(
+    (id) => seen.current.has(id) && (KEPT.includes(id) || vis.some((p) => p.section === id)),
+  );
+  const dragged = dragging.value;
+  return (
+    <div class={`app ${dragged ? 'dragging' : ''}`}>
       <TopBar />
-      <div class="body">
-        <Sidebar />
-        <main class="panes">
-          {showEditor.value && (
-            <Pane class="source">
-              <Tabs />
-              <Conflict />
-              <Editor />
-              <ProblemsPanel />
-            </Pane>
-          )}
-          {showView.value && (
-            <Pane class="views">
-              <ViewTabs />
-              <div class="view-body">
-                <View />
-              </div>
-            </Pane>
-          )}
-        </main>
+      <div
+        ref={area}
+        class="panes-area"
+        style={{
+          gridTemplateColumns: two ? `minmax(0, ${l.split}fr) 6px minmax(0, ${1 - l.split}fr)` : 'minmax(0, 1fr)',
+        }}
+        onPointerDownCapture={(e) => {
+          const cell = (e.target as Element).closest('[data-pane]');
+          if (cell) setFocusPane(Number(cell.getAttribute('data-pane')));
+        }}
+      >
+        {vis.map((p, i) => (
+          <div key={`strip${i}`} class="pane-strip" data-pane={p.index} style={{ gridColumn: two ? (i === 0 ? 1 : 3) : 1, gridRow: 1 }}>
+            <SectionStrip pane={p} />
+          </div>
+        ))}
+        {mounted.map((id) => {
+          const at = vis.findIndex((p) => p.section === id);
+          const shown = at >= 0;
+          return (
+            <section
+              key={id}
+              class={`section sec-${id} ${shown ? '' : 'away'}`}
+              data-section={id}
+              data-pane={shown ? vis[at].index : undefined}
+              aria-hidden={!shown}
+              style={{ gridColumn: shown && two ? (at === 0 ? 1 : 3) : 1, gridRow: 2 }}
+            >
+              <SectionBody section={id} />
+            </section>
+          );
+        })}
+        {two && <Divider area={area} />}
+        <DropZone />
       </div>
       <StatusBar />
+      <TabMenu />
       <Toast />
+      {dragged && <div class="drag-ghost" style={{ left: dragged.x + 12, top: dragged.y + 12 }}>{SECTIONS.find((s) => s.id === dragged.section)?.label}</div>}
     </div>
   );
 }

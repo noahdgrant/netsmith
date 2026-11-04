@@ -2,10 +2,10 @@
 // and the fixture has no [supply] table, so the price and stock are unknown (ADR 0047), not 0 and not "no date".
 export const fixture = 'two_boards';
 
-export async function run({ page, shot, step, expect }) {
+export async function run({ page, shot, step, expect, section }) {
   await page.selectOption('.boardpick select', 'TwoBoards/led');
   step('open the BOM tab');
-  await page.getByText('BOM', { exact: true }).click();
+  await section('bom');
   await page.waitForSelector('table.grid');
   const text = await page.locator('table.grid').innerText();
   expect(text.includes('C2286') && text.includes('C25076'), 'the LCSC numbers of the LED and the resistor');

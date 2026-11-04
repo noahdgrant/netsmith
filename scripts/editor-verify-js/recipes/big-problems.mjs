@@ -2,7 +2,8 @@
 // with a count, each note going to its source line; the status bar counts leave notes out.
 export const fixture = 'big';
 
-export async function run({ page, shot, step, expect }) {
+export async function run({ page, shot, step, expect, section }) {
+  await section('source');
   step('the status bar counts errors and warnings, not notes');
   const bar = await page.locator('.statusbar .counts').innerText();
   expect(/0\s+▲\s*0|⊗ 0\s*▲ 0/.test(bar.replace(/\n/g, ' ')), `no errors and no warnings (${bar.replace(/\n/g, ' ')})`);

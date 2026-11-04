@@ -2,14 +2,13 @@
 // loads heaviest first, and a red state when a supply is overdrawn.
 export const fixture = 'big';
 
-export async function run({ page, shot, step, expect }) {
-  await page.getByRole('button', { name: 'Source' }).click();
+export async function run({ page, shot, step, expect, section }) {
   step('open the Power tree tab');
-  await page.getByText('Power tree', { exact: true }).click();
+  await section('power');
   await page.waitForSelector('.card.power');
   const cards = await page.locator('.card.power').count();
   expect(cards >= 9, `a card for VIN and each of the 8 rails (${cards})`);
-  const text = await page.locator('.graph-host').innerText();
+  const text = await page.locator('.sec-power .graph-host').innerText();
   expect(!/0\.0000000/.test(text), 'no number with a string of zeros');
   expect(/\d(m|u)?A\.\.\d/.test(text), 'currents with a unit prefix');
   const columns = await page.evaluate(() => new Set([...document.querySelectorAll('.card.power')].map((c) => c.style.left)).size);
@@ -36,7 +35,7 @@ export async function run({ page, shot, step, expect }) {
     await route.fulfill({ response, json: tree });
   });
   await page.reload();
-  await page.getByText('Power tree', { exact: true }).click();
+  await section('power');
   await page.waitForSelector('.card.power.bad');
   expect((await page.locator('.card.power.bad').count()) === 1, 'one red card');
   expect(await page.locator('.card.power.bad .over-badge').isVisible(), 'a badge that says OVER');

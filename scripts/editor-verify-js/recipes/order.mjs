@@ -1,9 +1,9 @@
 // The build panel's orders: pick one, run it, read the summary, download its files.
 export const fixture = 'two_boards';
 
-export async function run({ page, shot, step, expect }) {
+export async function run({ page, shot, step, expect, section }) {
   step('open the Build tab');
-  await page.locator('.tabbar.views .tab', { hasText: /^Build$/ }).click();
+  await section('build');
   await page.waitForSelector('.order-pick select');
   const listed = await page.locator('.order-pick select option').allInnerTexts();
   expect(listed.includes('demo'), `the order demo is listed (${listed.join(', ')})`);

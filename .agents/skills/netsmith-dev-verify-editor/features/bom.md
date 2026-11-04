@@ -2,7 +2,7 @@
 
 ## How to get to it
 
-Right pane, tab "BOM". One line for each distinct part, as `bom.csv` groups them; parts soldered by hand are below, under their own heading.
+The section "BOM" (key 4). One line for each distinct part, as `bom.csv` groups them; parts soldered by hand are below, under their own heading.
 
 ## Driving it
 
