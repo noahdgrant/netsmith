@@ -29,6 +29,7 @@
 mod anneal;
 pub mod board;
 pub mod constraints;
+mod explain;
 pub mod export;
 mod fit;
 pub mod footprint;
@@ -52,6 +53,7 @@ pub use board::{
     HeightUnchecked, HoleNeighbour, KeepoutArea, PadRef, Placed, PlacementProblem, Plane,
     ReferenceSide, Side, Track, Via,
 };
+pub use explain::RequirementReport;
 pub use export::{kicad_pcb, kicad_pro};
 pub use footprint::{
     Drill, Footprint, FootprintError, FootprintLibrary, Graphic, Layer, Mount, Pad, PadKind,
