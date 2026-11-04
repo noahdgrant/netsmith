@@ -20,7 +20,7 @@ part ${name} {
 }
 `;
 
-const module = (name, doc = 'A stand-in module.') => `//! An invented sheet for the file tree.
+const module = (name, doc = 'A stand-in module.') => `//! An invented module file for the file tree.
 
 import std::sources::Rail
 
