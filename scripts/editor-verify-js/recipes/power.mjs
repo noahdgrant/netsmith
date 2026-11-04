@@ -16,4 +16,6 @@ export async function run({ page, shot, step, expect, section }) {
   await page.locator('.card.power .line.link', { hasText: 'stage.vin' }).first().click();
   await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('.vin'));
   expect(true, 'the cursor on the rail declaration');
+  const marks = await page.locator('.cm-selectionMatch').count();
+  expect(marks < 5, `no run of marks in the source after the click-through (${marks})`);
 }

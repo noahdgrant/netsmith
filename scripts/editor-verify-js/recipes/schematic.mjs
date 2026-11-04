@@ -15,6 +15,8 @@ export async function run({ page, shot, step, expect, section }) {
   await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('.r1'));
   const line = await page.locator('.cm-activeLine').innerText();
   expect(line.includes('.r1: Resistor'), `the cursor on the line that declares R1 (${line.trim()})`);
+  const marks = await page.locator('.cm-selectionMatch').count();
+  expect(marks < 5, `a click-through does not mark every occurrence of what it selected (${marks} marks)`);
   expect((await page.locator('.statusbar').innerText()).match(/Ln (\d+)/) !== null, 'the status bar shows the line');
   expect((await page.locator('.back-btn').innerText()).includes('Schematic'), 'a Back button that names the schematic');
   await shot('clicked-r1');
