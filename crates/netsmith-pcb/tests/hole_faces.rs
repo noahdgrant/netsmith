@@ -215,3 +215,135 @@ fn a_footprint_that_draws_both_courtyards_does_not_fit_there() {
         .to_string();
     assert!(error.contains("the parts need"), "{error}");
 }
+
+// ---- KiCad's own courtyard checks on the same boards (ADR 0031, the two-face rule) ----
+
+/// What KiCad's DRC says about the courtyards of a board: whether it reports
+/// `courtyards_overlap` (two courtyards on one layer) and `pth_inside_courtyard` (a plated
+/// hole inside another footprint's courtyard, on either face). KiCad ignores the second by
+/// default, so the project file is given an error severity for it. `None` where KiCad is not
+/// installed (the test then skips).
+fn kicad_courtyard_findings(b: &Board) -> Option<(bool, bool)> {
+    use netsmith_fab::{KicadCli, KicadCliExe, drc::kicad};
+    let cli = KicadCliExe::locate()?;
+    let dir = TempDir::new("hole-faces-kicad");
+    let path = dir.join("faces.kicad_pcb");
+    std::fs::write(&path, netsmith_pcb::kicad_pcb(b)).unwrap();
+    let pro = netsmith_pcb::kicad_pro(b);
+    let on = pro.replacen(
+        "\"rule_severities\": {",
+        "\"rule_severities\": {\"pth_inside_courtyard\": \"error\",",
+        1,
+    );
+    assert_ne!(
+        on, pro,
+        "the project file has no rule_severities to change:\n{pro}"
+    );
+    std::fs::write(path.with_extension("kicad_pro"), on).unwrap();
+    let found = kicad::parse(&cli.drc_json(&path).unwrap()).unwrap();
+    let has = |kind: &str| found.iter().any(|f| f.kind == kind);
+    Some((has("courtyards_overlap"), has("pth_inside_courtyard")))
+}
+
+/// A board with the header `J1` (courtyard on `layers`, pads at the top) and the big part
+/// `U1` on `side`, its centre `down` mm below the header's pads, so its courtyard edge is
+/// `down - 4` mm below the pads' centres.
+fn two_parts(layers: &[&str], side: Side, down: f64) -> Board {
+    let mut b = stacked(&angle(layers), down);
+    b.parts[1].side = side;
+    b
+}
+
+#[test]
+fn kicads_own_checks_never_flag_what_the_two_face_rule_passes() {
+    // Each row: the header's courtyard layers, the face of the big part, how far down it is
+    // (15: its courtyard over the header's body and clear of the pads; 2: over the pads),
+    // then what netsmith's placement check says (an overlap) and what KiCad's DRC says
+    // (`courtyards_overlap`, `pth_inside_courtyard`).
+    type Row = (&'static [&'static str], Side, f64, bool, bool, bool);
+    const TABLE: &[Row] = &[
+        // One courtyard drawn, on the front: on the back the big part may stand over the
+        // body (both agree), but not over the pads (KiCad's hole check agrees; its courtyard
+        // check, layer by layer, does not see it).
+        (&["F.CrtYd"], Side::Back, 15.0, false, false, false),
+        (&["F.CrtYd"], Side::Back, 2.0, true, false, true),
+        (&["F.CrtYd"], Side::Front, 15.0, true, true, false),
+        (&["F.CrtYd"], Side::Front, 2.0, true, true, true),
+        // One courtyard drawn, on the back: the same with the faces swapped.
+        (&["B.CrtYd"], Side::Back, 15.0, true, true, false),
+        (&["B.CrtYd"], Side::Back, 2.0, true, true, true),
+        (&["B.CrtYd"], Side::Front, 15.0, false, false, false),
+        (&["B.CrtYd"], Side::Front, 2.0, true, false, true),
+        // Both drawn: the whole courtyard counts on both faces.
+        (&["F.CrtYd", "B.CrtYd"], Side::Back, 15.0, true, true, false),
+        (&["F.CrtYd", "B.CrtYd"], Side::Back, 2.0, true, true, true),
+        (
+            &["F.CrtYd", "B.CrtYd"],
+            Side::Front,
+            15.0,
+            true,
+            true,
+            false,
+        ),
+        (&["F.CrtYd", "B.CrtYd"], Side::Front, 2.0, true, true, true),
+        // None drawn: netsmith uses the box made from the pads; KiCad has no courtyard to
+        // overlap, and finds only the hole inside the other part's courtyard.
+        (&[], Side::Back, 15.0, false, false, false),
+        (&[], Side::Back, 2.0, true, false, true),
+        (&[], Side::Front, 15.0, false, false, false),
+        (&[], Side::Front, 2.0, true, false, true),
+    ];
+    for &(layers, side, down, ours, overlap, hole) in TABLE {
+        let b = two_parts(layers, side, down);
+        let Some(kicad) = kicad_courtyard_findings(&b) else {
+            eprintln!("skipped: kicad-cli is not installed");
+            return;
+        };
+        let what = format!("header courtyard {layers:?}, big part on {side:?}, {down} mm down");
+        assert_eq!(overlaps(&b).len() == 1, ours, "netsmith, {what}");
+        assert_eq!(kicad, (overlap, hole), "KiCad, {what}");
+        // The direction that matters: a board netsmith passes is clean for both of KiCad's
+        // courtyard checks.
+        if overlaps(&b).is_empty() {
+            assert_eq!(
+                kicad,
+                (false, false),
+                "netsmith passes, KiCad flags: {what}"
+            );
+        }
+        // A courtyard overlap KiCad reports is on one layer, and netsmith finds it too.
+        if overlap {
+            assert!(
+                ours,
+                "KiCad flags a courtyard overlap netsmith passes: {what}"
+            );
+        }
+    }
+}
+
+#[test]
+fn netsmith_keeps_a_wider_band_round_the_pads_than_kicads_hole_check() {
+    // The big part on the back, the header drawing its courtyard on the front only. The big
+    // part's courtyard edge is `edge` mm below the pads' centres. The holes are 1 mm wide,
+    // the pads 1.7 mm and the process's clearance 0.2 mm: netsmith keeps the courtyard out
+    // of 0.85 + 0.2 mm, KiCad's `pth_inside_courtyard` only out of the hole's 0.5 mm. So
+    // between 0.5 and 1.05 mm netsmith flags what KiCad does not; the other way round there
+    // is nothing (PROVISIONAL, ADR 0031).
+    for (edge, ours, kicad_hole) in [
+        (0.3, true, true),
+        (0.45, true, true),
+        (0.55, true, false),
+        (0.9, true, false),
+        (1.0, true, false),
+        (1.1, false, false),
+        (1.5, false, false),
+    ] {
+        let b = two_parts(&["F.CrtYd"], Side::Back, 4.0 + edge);
+        let Some(kicad) = kicad_courtyard_findings(&b) else {
+            eprintln!("skipped: kicad-cli is not installed");
+            return;
+        };
+        assert_eq!(overlaps(&b).len() == 1, ours, "netsmith, edge {edge}");
+        assert_eq!(kicad, (false, kicad_hole), "KiCad, edge {edge}");
+    }
+}
