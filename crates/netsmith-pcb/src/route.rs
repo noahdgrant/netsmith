@@ -2401,6 +2401,99 @@ mod tests {
         assert!(!board.vias.is_empty());
     }
 
+    /// Copper of another net across the whole grid on both layers: a wall two cells thick at
+    /// columns `i` and `i + 1`, except for the rows in `gap`.
+    fn soft_wall(grid: &Grid, masks: &mut Masks, i: usize, gap: std::ops::Range<usize>) {
+        let cells = masks.window.cells();
+        let mut soft = Soft {
+            track: [vec![false; cells], vec![false; cells]],
+            via: vec![false; cells],
+        };
+        for j in (0..grid.ny).filter(|j| !gap.contains(j)) {
+            for i in [i, i + 1] {
+                let at = masks.at(i, j);
+                soft.track[FRONT][at] = true;
+                soft.track[BACK][at] = true;
+                soft.via[at] = true;
+            }
+        }
+        masks.soft = Some(soft);
+    }
+
+    #[test]
+    fn a_soft_search_crosses_copper_that_a_hard_one_cannot() {
+        let (grid, mut masks) = open_grid();
+        soft_wall(&grid, &mut masks, 15, 0..0);
+        // Hard masks do not see the wall; the soft ones price it, and the path goes through
+        // because no way round exists.
+        let path = find(&masks, &[(0, 5, FRONT)], Goal::Spots(&[(30, 5, FRONT)])).unwrap();
+        assert_eq!(path.len(), 31);
+        assert!(path.contains(&(15, 5, FRONT)));
+    }
+
+    #[test]
+    fn a_soft_search_goes_round_copper_by_a_gap_when_the_gap_is_not_far() {
+        let (grid, mut masks) = open_grid();
+        // The wall is open at rows 8 and 9, three rows from the line: the detour costs 160
+        // (six steps and four turns), crossing the wall's two cells 200 (SOFT, 100 each).
+        soft_wall(&grid, &mut masks, 15, 8..10);
+        let path = find(&masks, &[(0, 5, FRONT)], Goal::Spots(&[(30, 5, FRONT)])).unwrap();
+        assert!(path.contains(&(15, 8, FRONT)), "{path:?}");
+        assert!(!path.contains(&(15, 5, FRONT)));
+    }
+
+    #[test]
+    fn a_soft_path_does_not_stop_at_a_gap_that_costs_more_than_the_wall() {
+        let (grid, mut masks) = open_grid();
+        // Open only at row 9, eight rows from the line, whose detour costs 260: the path
+        // crosses the wall.
+        soft_wall(&grid, &mut masks, 15, 9..10);
+        let path = find(&masks, &[(0, 1, FRONT)], Goal::Spots(&[(30, 1, FRONT)])).unwrap();
+        assert!(path.contains(&(15, 1, FRONT)), "{path:?}");
+    }
+
+    #[test]
+    fn masks_made_from_the_cached_fixed_copper_leave_a_nets_own_pads_open() {
+        let board = Board::from_design(
+            &four_layer_design(),
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+        )
+        .unwrap();
+        let router = Router::new(&board, &RouteOptions::default());
+        let window = Window::full(&router.grid);
+        let reach = Reach {
+            room: ROOM_LOOSE,
+            width: board.rules.track_width,
+        };
+        // For every net, a cell on its own pad is open to it, and shut to every other net.
+        for (n, net) in board.nets.iter().enumerate() {
+            let own = net.pads.first().expect("a net has pads");
+            let part = board.part(&own.refdes).unwrap();
+            let pad = part.footprint.pads_numbered(&own.number).next().unwrap();
+            let (i, j) = router.grid.cell(part.pad_centre(pad));
+            let (front, _) = part.pad_layers(pad);
+            let layer = if front { FRONT } else { BACK };
+            let mine = router.masks(window, n, (&[], &[]), (&[], &[]), reach);
+            assert!(
+                !mine.track[layer][mine.at(i, j)],
+                "{}: its own pad {own:?} is shut to it",
+                net.name
+            );
+            let other = (n + 1) % board.nets.len();
+            {
+                let theirs = router.masks(window, other, (&[], &[]), (&[], &[]), reach);
+                assert!(
+                    theirs.track[layer][theirs.at(i, j)],
+                    "{}: the pad of {} is open to {}",
+                    net.name,
+                    net.name,
+                    board.nets[other].name
+                );
+            }
+        }
+    }
+
     #[test]
     fn distances_are_to_the_edge_of_the_form() {
         let rect = Form::Rect(Rect::new(Pt::new(0.0, 0.0), Pt::new(2.0, 1.0)));

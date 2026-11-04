@@ -35,3 +35,32 @@ The placer takes `PlaceOptions` (`crates/netsmith-pcb/src/place.rs`). Its fields
 ## Left open
 
 Rotation and mirroring of bottom parts in the position file are unmeasured. A footprint's 3D model is copied unchanged for a part on the back. Connectors are not moved to the back. A mask opening drawn in a footprint keeps vias away but not tracks. Fan-out before routing, push and shove, and a router that sees more than two layers are not done. *Follow-up (2026-11-04):* the two-face rule was checked against KiCad 9's DRC (`hole_faces.rs`, 16 boards): KiCad flags nothing the rule passes, `courtyards_overlap` agrees layer by layer, and where the rule keeps a courtyard off a part's pads KiCad's `pth_inside_courtyard` (ignored by default) flags only the holes, so the rule is stricter by about 0.55 mm round the pads.
+
+## Tight boards that place but do not route (issue #3; PROVISIONAL: the causes below are read from pictures of the copper, not proved)
+
+**Reproduction.** `tight_board` in `crates/netsmith-pcb/tests/common/mod.rs` is an invented board, not any real design: 99 parts (80 0402 resistors and capacitors, 18 SOT-23 regulators, half of each on the back) round one module of 80 pads, 0.6 mm square on a 1.1 mm pitch in two rings round a hollow centre (44 + 36 pads), four layers, 106 nets, squeezed by the placer into 27 x 25 mm (`PlaceOptions::fit`). `NETSMITH_AREA=27x25 NETSMITH_SEEDS=0..12 cargo test --release -p netsmith-pcb --test tight measured -- --ignored --nocapture` prints, per seed, the lines left, the tries and the time. At 50 x 42 mm (2100 mm2, as in the issue) this board routes completely in under a second, so the issue's board is denser per part than the invented one; 27 x 25 mm is where the invented board fails the way the issue says (unrouted ends nearly all on the module). Seed 5 does not place in 27 x 25 mm.
+
+**Numbers** (release build, seeds 0 to 11, default `RouteOptions`, lines left per seed):
+
+| | seeds that complete | lines left, 11 placed seeds | per seed (0,1,2,3,4,6,7,8,9,10,11) | time |
+|---|---|---|---|---|
+| before (7f33de6) | 2 of 11 | 46 | 0 2 4 5 7 9 5 7 5 0 2 | 528 s |
+| after | 2 of 11 | 41 | 0 1 5 2 6 6 5 8 6 0 2 | 474 s |
+
+That is a small gain, not the fix: the same two seeds complete, five seeds leave fewer lines and three leave more. Every board still passes the design rules check on what it routed.
+
+**What was found.**
+- Of the 41 lines left, 39 have an end on the module, as in the issue. The pictures of the copper show two causes. (1) *Sealed pockets*: a pad of the outer ring next to the board edge has a strip 1 to 1.4 mm wide beside it, the only way out. Two other nets' vias in the strip, one each side of the pad, close it on both layers (a via is 0.45 mm and keeps 0.15 mm), and the pad is left in a pocket with free copper cells and no way out. Negotiation can free it only by ripping a neighbour that then has no way out itself. (2) *The hollow*: a pad of the inner ring leaves into the hollow by a via, and the back face under the module is where the placer put back parts (faces share area), so the way from the via on the back is shut. The channels between pads are one cell (0.1 mm) wide, so one track in a channel takes it from both pads beside it.
+- The old negotiation ripped up *every* net its ideal path came near, 12 to 20 nets for a line crossing the module's neighbourhood, and routed them again in the order of length; most of those failed again and the walk was random. The best state is kept, so it never got worse, but it rarely got better.
+- More rounds help by chance, not by design: with 50 rounds instead of 6 the old router finished two seeds that 6 rounds did not (219 s for one) and the new one finished one (7 s); another 2 to 3 seeds did not change at 20 or 50 rounds. The cost of a history cell (10 to 400) made no difference on four seeds.
+
+**What was changed** (`route.rs`).
+1. *The nets least in the way.* The search for the nets to rip up (`contested`, used by the rip-up and the negotiation) now crosses the copper of other nets at a price (`SOFT`, 100 per cell; a via 300) instead of at none. The path is the one with the fewest crossings, and only the nets it crosses are ripped up. The unit tests `a_soft_search_*` show it crosses a wall when no way round is cheaper and goes round by a gap when one is. This changes which lines the router rips up, so seeds that completed in one order may now complete in another or not at all (seed 10 now needs two tries, not one).
+2. *Fixed copper counted once.* `masks_for` stamped every pad, edge and keepout of the board for each of the 30 000 to 40 000 searches of a hard board. The fixed obstacles are counted once for each room and track width (`Base`), and a net's own pads are taken away again for that net (`Counts::stamp` with `up = false`); the masks are what they were (with only this change, seed 1 left the same two lines after the same number of searches). Obstacles away from the window are skipped without a loop. The mask time on seed 1 went from 28 s to 17 s of 67 s. The search itself is now more than half of what is left (33 s).
+
+**Tried and not kept.**
+- *Starting the next try with the lines the last left* (a real "failed first" order, up to 4 extra tries): the same lines or others failed; no seed changed, and the time doubled.
+- *A finer grid* (0.05 mm cells, margin 0.02 mm): 3 seeds of 3 left 0, 2, 2 against 1, 5, 2 for the coarse grid with the soft search, at twice the time. It changes every existing routed board and is not kept.
+- *The placer* (`anneal.rs`): a soft cost for a part standing on the other face under a fine-pitch grid (a footprint of at least 40 pads, most with three neighbours within 1.5 times the nearest, nearest within 1.3 mm), 4 per mm of depth like the gap cost. 12 seeds: 1 completed, 65 lines left, against 2 and 46 before. Moving the parts from under the module raised the density beside it more than it cleared the back, so it is not kept. A hard keep-out would do the same; the escape gap the placer keeps on the same face (0.03 mm a pad, to 2.5 mm) is already 2.4 mm for this module.
+
+**Left open** (#3 stays open): a router that can move a track (push and shove) or reserve a pad's way out before the others are routed (a fan-out stage that places the vias of the inner ring together, tracks in line); the placer weighing the capacity of the strip between a module and the edge. A board of this density with a fine-pitch grid next to an edge is the case none of this reaches.
