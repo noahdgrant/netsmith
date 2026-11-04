@@ -643,6 +643,20 @@ fn restore(parts: &mut [Placed], saved: Vec<(Pt, f64, ReferenceSide)>) {
 }
 
 /// The want of each part, in the order of `parts`.
+/// The edges each part's requirements say it may hang over.
+fn overhangs_of(parts: &[Placed], options: &PlaceOptions) -> Vec<overhang::Edges> {
+    parts
+        .iter()
+        .map(|p| {
+            options
+                .overhang
+                .get(&p.refdes)
+                .map(Overhang::edges)
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
 fn wants_of(parts: &[Placed], options: &PlaceOptions) -> Vec<Option<Want>> {
     parts
         .iter()
@@ -860,6 +874,7 @@ fn refine(
     }
     // Where a requirement puts a part is part of the board.
     let wants = wants_of(parts, options);
+    let overhangs = overhangs_of(parts, options);
     for (part, want) in parts.iter().zip(&wants) {
         if let (Some(extent), None) = (want.as_ref().and_then(Want::extent), options.fit) {
             let size = part.courtyard();
@@ -879,6 +894,8 @@ fn refine(
         pours: context.pours,
         seed: options.seed,
         wants: &wants,
+        overhangs: &overhangs,
+        outline: region,
         zones: &options.height_zones,
     };
     let outcome = anneal::anneal(parts, &problem, 1.0);
@@ -948,6 +965,7 @@ pub(crate) fn anneal_within(
     let before = snapshot(parts);
     let fixed = apply_fixed(parts, options);
     let wants = wants_of(parts, options);
+    let overhangs = overhangs_of(parts, options);
     let problem = Problem {
         nets,
         rules: context.rules,
@@ -960,6 +978,8 @@ pub(crate) fn anneal_within(
         pours: context.pours,
         seed: options.seed,
         wants: &wants,
+        overhangs: &overhangs,
+        outline: region,
         zones: &options.height_zones,
     };
     let outcome = anneal::anneal(parts, &problem, 1.0);
@@ -1047,6 +1067,17 @@ pub fn place_subset(
     keepouts.extend(cutouts.iter().copied());
     let planes: Vec<String> = board.planes.iter().map(|p| p.net.clone()).collect();
     let zones = board.height_zones();
+    let overhangs: Vec<overhang::Edges> = board
+        .parts
+        .iter()
+        .map(|p| {
+            board
+                .overhang
+                .get(&p.refdes)
+                .map(Overhang::edges)
+                .unwrap_or_default()
+        })
+        .collect();
     // The region the parts may be in is the outline's part of the region.
     let region = Rect::new(
         Pt::new(
@@ -1070,6 +1101,8 @@ pub fn place_subset(
         pours: !board.pours.is_empty(),
         seed: seed ^ scope_of(parts),
         wants: &[],
+        overhangs: &overhangs,
+        outline: board.outline,
         zones: &zones,
     };
     // The parts are kept in the region by a keepout round it.

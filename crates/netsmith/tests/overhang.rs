@@ -209,7 +209,7 @@ fn a_plug_that_hangs_over_the_bottom_edge_by_a_stated_requirement_places_routes_
     );
     // The notes say what hangs over, how far, and which requirement said it may.
     assert!(
-        notes.contains("overhang: J1 hangs over the bottom edge: its courtyard is ")
+        notes.contains("warning: J1 hangs over the bottom edge: its courtyard is ")
             && notes.contains("mm past it (`plug.place.bottom (widget.nsm:")
             && notes.contains(")` allows 74.5 to 75.5 mm)"),
         "{notes}"
@@ -355,20 +355,46 @@ fn a_plug_whose_pads_cannot_stay_inside_is_not_placed_and_the_placer_says_what_i
 }
 
 #[test]
-fn a_plug_locked_in_the_layout_file_may_hang_over_where_the_lock_puts_it() {
-    // No requirement: the lock puts the plug's origin at (17.5, 55) turned 90 degrees, and
-    // the body, 40 mm long, ends 5 mm past the bottom edge.
+fn a_plug_locked_in_the_layout_file_may_hang_over_the_edge_its_requirement_states() {
+    // The lock puts the plug's origin at (17.5, 55) turned 90 degrees, and the body, 40 mm
+    // long, ends 15 mm past the bottom edge. The design says that edge may be passed.
     let layout =
         "version = 1\n[Widget.parts.plug]\nat = [17.5, 55.0]\nrotation = 90.0\nlock = true\n";
-    let run = fab("locked", &source(35, 60, 30, ""), layout);
+    let said = "    .plug.place.bottom >= .outline.height\n";
+    let run = fab("locked", &source(35, 60, 30, said), layout);
     let made = run.made.as_ref().unwrap_or_else(|e| panic!("{e}"));
     assert!(
         made[0].notes.contains("design rules check: passed")
             && made[0]
                 .notes
-                .contains("overhang: J1 hangs over the bottom edge: its courtyard is 16.00 mm past it (locked in the layout file)"),
+                .contains("warning: J1 hangs over the bottom edge: its courtyard is 16.00 mm past it (`plug.place.bottom (widget.nsm:"),
         "{}",
         made[0].notes
+    );
+}
+
+#[test]
+fn a_locked_plug_past_an_edge_nobody_stated_is_an_undeclared_overhang() {
+    // Owner decision, 2026-11-03 (ADR 0045, section 10): a lock does not allow an edge. The
+    // same lock as above, with no requirement, is the error, which names the line to write.
+    let layout =
+        "version = 1\n[Widget.parts.plug]\nat = [17.5, 55.0]\nrotation = 90.0\nlock = true\n";
+    let run = fab("locked-unstated", &source(35, 60, 30, ""), layout);
+    let e = failure(&run);
+    assert!(
+        e.contains("J1 is not wholly inside the board outline: its courtyard is 16.00 mm past the bottom edge")
+            && e.contains("does not say it may hang over an edge")
+            && e.contains("outline.height"),
+        "{e}"
+    );
+    // A requirement the lock meets, but whose window reaches inside the board, does not
+    // state the overhang either.
+    let said = "    .plug.place.bottom >= .outline.height - 20mm\n";
+    let run = fab("locked-inside-window", &source(35, 60, 30, said), layout);
+    let e = failure(&run);
+    assert!(
+        e.contains("its courtyard is 16.00 mm past the bottom edge"),
+        "{e}"
     );
 }
 
@@ -405,7 +431,7 @@ fn a_part_wider_than_the_board_is_turned_by_the_placer_and_the_rows_do_not_veto(
     let made = run.made.as_ref().unwrap_or_else(|e| panic!("{e}"));
     assert!(
         made[0].notes.contains("design rules check: passed")
-            && !made[0].notes.contains("overhang:"),
+            && !made[0].notes.contains("hangs over"),
         "{}",
         made[0].notes
     );
@@ -526,7 +552,7 @@ fn a_body_whose_centre_is_off_the_board_may_be_required_when_the_edge_field_stat
     assert!(
         notes.contains("design rules check: passed")
             && notes.contains("constraints: 2 of 2 satisfied")
-            && notes.contains("overhang: J1 hangs over the bottom edge"),
+            && notes.contains("warning: J1 hangs over the bottom edge"),
         "{notes}"
     );
 }

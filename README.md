@@ -362,7 +362,7 @@ published limits but cannot run it).
   measured by its courtyard, and the finding says so. A window narrower than the placer's 0.05 mm
   grid is one value, its middle.
 - Overhang (ADR 0045, section 10, **provisional**, to be reviewed by the maintainer): a part hangs over the board edge only where its own `.place.left`, `.right`,
-  `.top` or `.bottom` window is at or beyond that edge, or the layout file locks it. The
+  `.top` or `.bottom` window is at or beyond that edge (a lock in the layout file does not say it; a locked part states every edge it is past, like any other). The
   courtyard past that edge is then clipped, its pads must stay inside, a direction not stated
   is an error, and the body (`F.Fab`), the silkscreen and text outside the board are not
   checked (the silk to edge clearance stays a warning). A window on `.x` or `.y`, a module's
@@ -584,8 +584,10 @@ published limits but cannot run it).
   cannot pass at any width is reported not routed rather than drawn too close.
 - The track width check (ADR 0036, provisional) is IPC-2221, which is a conservative guide; IPC-2152
   is more accurate and is not implemented. The 10 K temperature rise is a default of netsmith's,
-  not a sourced figure. A net is checked against the largest single current on it (a ground
-  shared by several rails carries their sum where they join; the IPC constants were taken from
+  not a sourced figure. A net carries the sum of the currents on it, with every load on at once
+  (Kirchhoff's current law, ADR 0036 amendment 2: pessimistic at a ground that a regulator's
+  output load and its input both return through, and it adds no quiescent current to a linear
+  regulator because the part model has none; the IPC constants were taken from
   published derivations and not read from the standard), at the width asked for (the router
   may neck a track down between pads), and planes and pours are not checked. The router draws on
   the outer layers only, so the inner-layer constant is unused.

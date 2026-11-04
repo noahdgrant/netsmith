@@ -151,18 +151,18 @@ snap and flatpak paths are the least certain). Bundling the libraries is ADR 004
   (no STEP reader, by decision), or from the DXF import; a keepout a part carries is checked but not
   avoided; the editor's drag clamp.
 - Overhang (ADR 0045, K2, section 10; **provisional, to be reviewed by the maintainer**): a part whose own `.place.left/right/top/bottom` window is at or beyond the same
-  outline edge, or that the layout file locks, may hang over that edge. The placer's fit test
+  outline edge may hang over that edge (a locked part states every edge it is past, like any other; owner decision, 2026-11-03). The placer's fit test
   counts a part that stays as its courtyard clipped to the outline; the check does not report the
   courtyard past a stated edge, measures overlap on the clipped courtyard, and still reports a pad
   outside or too near the edge and an overhang in a direction nobody stated, with the edge and the
-  numbers; `fab` prints each overhang and writes it to `fab-notes.txt`. The rows pre-check no
+  numbers; `fab` prints each overhang as a warning and writes it to `fab-notes.txt` among the warnings; the annealer clips an overhanging courtyard to the outline as the check does. The rows pre-check no
   longer vetoes: the annealer runs in the given size first, and "does not fit" is said only if it
   ends with overlaps or parts outside. Tests: `crates/netsmith/tests/overhang.rs` (an invented
   35 x 60 mm board with a 42 mm plug and 30 small parts), `overhang.rs` and the placer's unit tests,
-  and the guide (`nsm solve place`). **Open**: the rule itself (edge fields only, a lock allows
-  every edge), a limit on how far a part may hang, whether `fab` should warn, the annealer's
-  stricter whole-courtyard separation of two parts hanging over the same edge, and silkscreen over
-  the edge (a warning, as KiCad). The courtyard wall is now derived from the process (0.4 mm for JLCPCB's, not a fixed 2.0 mm; ADR 0033, provisional) and the hole-part two-face rule changed (ADR 0031, provisional).
+  and the guide (`nsm solve place`). **Decided 2026-11-03 and built** (issue #11): edge fields only, a lock allows no edge by
+  itself, `fab` warns, no limit on how far a part may hang, silkscreen over the edge stays a
+  warning (as KiCad), the annealer agrees with the check. **Open**: whether a module can state
+  an overhang for its parts. The courtyard wall is now derived from the process (0.4 mm for JLCPCB's, not a fixed 2.0 mm; ADR 0033, provisional) and the hole-part two-face rule changed (ADR 0031, provisional).
 - Fixes on a verification board (`placer2` branch; the last three provisional, to
   review): a pad keeps the process's edge distance from a cutout in the placer as in the check;
   the router's masks looked only as far as a via reaches, so rails wider than a via (0.6 and
@@ -177,13 +177,20 @@ snap and flatpak paths are the least certain). Bundling the libraries is ADR 004
 - Track width against current (ADR 0036, provisional): IPC-2221 on each net's worst-case current
   (rails and series parts), the process's copper weight and `.process.max_temperature_rise`
   (10 K default); a guideline, so it warns, and `guidelines = "error"` or `--strict` blocks.
-  Open: IPC-2152, sums at shared grounds, necked-down runs and vias, tracks on inner layers.
+  Open: IPC-2152, necked-down runs and vias, tracks on inner layers.
 - The router sizes every net (issue #4, ADR 0036 amendment, provisional): a net no rail gives a
   `.min_track` is drawn at the width IPC-2221 needs for the current the solver worked out
   (the fuse-to-diode node of a `~>` chain included); a net with an unknown current is named in
   a note and keeps the process's least; a stated `.min_track` stays an override. Open: the IPC
   constants were not checked against the standard itself, and a net with two unknown currents
   (issue #18) is not sized.
+- A net carries the sum of its currents (issue #4, ADR 0036 amendment 2, provisional):
+  Kirchhoff's current law per net with every load on at once, so a ground shared by a 2 A and
+  a 1 A rail is sized for 3 A; a regulator's input is the current its model draws (output
+  current for a linear one, power balance with the efficiency for a switching one), unknown
+  and unsized when the part states none. Open: a ground is pessimistic where a regulator's
+  output load and its input both return through it, no quiescent current for a linear
+  regulator (the part model has none), no duty cycle or correlation between loads.
 - Four-layer boards (ADR 0012): `std::mfg::jlcpcb::FourLayer` with JLCPCB's multilayer rows and
   its 1.6 mm `JLC04161H-7628` build-up; the board names the net of each inner layer
   (`.process.inner1.net &= "GND"`); the `.kicad_pcb` gets the stackup and a zone per plane;

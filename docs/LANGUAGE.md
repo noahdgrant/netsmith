@@ -3002,7 +3002,7 @@ The router draws `VIN` and `GND` at 0.8 mm and `3V3` at 0.5 mm, and the `.kicad_
 
 A track that carries current heats. The solver knows the worst-case current each rail draws (`.current`, see Load current) and, through the series parts of a chain, the current of the nets between them, so netsmith draws every net at a width that can carry it and checks any width you state yourself (ADR 0036). It uses the IPC-2221 formula, `I = k * dT^0.44 * A^0.725`, where `I` is the current in amperes, `dT` the temperature rise in kelvin, `A` the track's cross-section in square mils (its width times the copper's thickness), and `k` is 0.048 for a track on an outer layer and 0.024 on an inner layer. netsmith draws tracks on the outer layers only, so it uses 0.048 and the outer copper of the process (`.stackup.copper_weight` ounces, 0.035 mm each).
 
-A net carries the largest current of the things on it: the rails that have a pin on it, and the series parts (`~>` chains) whose bridge ends on it, so the nets between the parts of a chain take the chain's current. You do not have to state a width for it. A net no rail gives a `.min_track` is drawn at the width IPC-2221 needs for that current (rounded up to 0.01 mm), when the solver knows every current on the net: a 2 A node between a fuse and a diode is drawn at 0.79 mm with nothing written, and the check has nothing to say. A `.min_track` on a rail is an override: the net is drawn at the widest one, never narrower than the process's least track, and the check warns when IPC-2221 needs more. The temperature rise is `.process.max_temperature_rise`, in kelvin, an upper bound like `via_in_pad`; it is 10 K when the board states none, and the finding says so. 10 K is a conservative default of netsmith's and is not a number from a fabricator. The planes of a four-layer board and the nets of a pour are areas and not tracks, and are not sized or checked.
+A net carries the current that Kirchhoff's current law says it must, the way an EE adds it up (ADR 0036, PROVISIONAL): the sum of the currents of the loads that draw from it (a supply net) or return through it (a ground, or any shared return), with every load on at the same time as the worst case. Two loads of 2 A and 1 A on separate supplies that share a `GND` make `GND` a 3 A net, where each supply net carries its own. The things that count are the rails with a pin on the net and the series parts (`~>` chains) whose bridge ends on it, so the nets between the parts of a chain take the chain's current. A regulator is a load on its input net and a supply on its output net, each with the current the solver worked out: a linear regulator draws what its output supplies, and a switching regulator draws `Pout / efficiency / Vin`, from the efficiency its part model states, so its input net is sized for that and not for the output current. A part model that states no efficiency leaves the input current unknown, and the net is not sized (below). The sum is pessimistic where a current is counted twice: a ground that the load of a regulator's output and the regulator's own input both return through carries the sum of the two, though the load's return goes to the regulator and only the input's goes on to the source. You do not have to state a width for it. A net no rail gives a `.min_track` is drawn at the width IPC-2221 needs for that current (rounded up to 0.01 mm), when the solver knows every current on the net: a 2 A node between a fuse and a diode is drawn at 0.79 mm with nothing written, and the check has nothing to say. A `.min_track` on a rail is an override: the net is drawn at the widest one, never narrower than the process's least track, and the check warns when IPC-2221 needs more. The temperature rise is `.process.max_temperature_rise`, in kelvin, an upper bound like `via_in_pad`; it is 10 K when the board states none, and the finding says so. 10 K is a conservative default of netsmith's and is not a number from a fabricator. The planes of a four-layer board and the nets of a pour are areas and not tracks, and are not sized or checked.
 
 When a current on the net is not known (the solver leaves the currents of a net with two or more unknown ones unsolved), netsmith does not guess: the net keeps the process's least track and `build` prints a note that names the net and the carriers whose current is missing:
 
@@ -3077,6 +3077,57 @@ board Heater {
 ```text
 Heater: IPC-2221 guideline: net `5V` carries up to 2 A (rail `load`: 0 mA to 2 A) but its tracks are 0.2 mm wide (a rail's `.min_track`), in 1 oz (0.035 mm) outer copper; at a temperature rise of 10 K (the default) that width carries 745 mA and IPC-2221 needs 0.79 mm: give a rail on the net `.min_track &= 0.79mm..1m`, or allow a higher `.process.max_temperature_rise`
 Heater: IPC-2221 guideline: net `GND` carries up to 2 A (rail `load`: 0 mA to 2 A) but its tracks are 0.2 mm wide (a rail's `.min_track`), in 1 oz (0.035 mm) outer copper; at a temperature rise of 10 K (the default) that width carries 745 mA and IPC-2221 needs 0.79 mm: give a rail on the net `.min_track &= 0.79mm..1m`, or allow a higher `.process.max_temperature_rise`
+```
+
+A ground is sized for the sum of what returns through it. Here two supplies share `GND`: the 5 V one carries 2 A, the 3.3 V one 1 A, and the `GND` track that the rail `load_a` states at 1 mm carries 2.39 A at 10 K, enough for the 2 A of `5V` but not for the 3 A that return together:
+
+```nsm solve warns
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+board Shared {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .source_a: Rail {
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+        .current &= -2A..0A
+    }
+    .source_b: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= -1A..0A
+    }
+    .load_a: Rail {
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+        .current &= 0A..2A
+        .min_track &= 1mm..1m
+    }
+    .load_b: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0A..1A
+    }
+    .in_a: Header1x2
+    .in_b: Header1x2
+    .out_a: Header1x2
+    .out_b: Header1x2
+    .in_a.p1 ~ .source_a.pos
+    .in_a.p2 ~ .source_a.neg
+    .in_b.p1 ~ .source_b.pos
+    .in_b.p2 ~ .source_b.neg
+    .out_a.p1 ~ .load_a.pos
+    .out_a.p2 ~ .load_a.neg
+    .out_b.p1 ~ .load_b.pos
+    .out_b.p2 ~ .load_b.neg
+}
+```
+
+```text
+Shared: IPC-2221 guideline: net `GND` carries up to 3 A (the sum of the currents on it with every load on at once: rail `load_a` 2 A + rail `load_b` 1 A) but its tracks are 1 mm wide (a rail's `.min_track`), in 1 oz (0.035 mm) outer copper; at a temperature rise of 10 K (the default) that width carries 2.39 A and IPC-2221 needs 1.37 mm: give a rail on the net `.min_track &= 1.37mm..1m`, or allow a higher `.process.max_temperature_rise`
 ```
 
 Rules.
@@ -3429,7 +3480,7 @@ error: Stretchy: `j.place.y` is measured from the outline's top left corner, and
 
 #### A part that hangs over the board edge
 
-A plug that sticks out of the case has part of its courtyard outside the outline. That is an error ("not wholly inside the board outline") unless the design says the part may hang over that edge. **Provisional: this rule is to be reviewed by the maintainer (ADR 0045, "Built: overhang").** The design says it with a requirement it can already write: a window for an edge of the **body** that lies at or beyond the same edge of the outline. `.j.place.left &= -0.5mm +/- 0.1mm` puts the body's left edge 0.5 mm past the board's left edge, and `.plug.place.bottom >= .outline.height` puts its bottom edge on the board's bottom edge or past it (flush counts). Only the part's own `left`, `right`, `top` and `bottom` say it, and only when the whole window is at or beyond the edge. A window on `.x` or `.y`, a bound a module states for its parts, or an unlocked entry of the layout file puts the part somewhere but does not say it may hang over, so the courtyard past the edge is the error it always was. A part the layout file locks (`lock = true`) may hang over every edge its courtyard is past, since the lock is the person saying where it is.
+A plug that sticks out of the case has part of its courtyard outside the outline. That is an error ("not wholly inside the board outline") unless the design says the part may hang over that edge. **The owner decided the rule on 2026-11-03 (ADR 0045, section 10); how a module states an overhang for its parts is still open.** The design says it with a requirement it can already write: a window for an edge of the **body** that lies at or beyond the same edge of the outline. `.j.place.left &= -0.5mm +/- 0.1mm` puts the body's left edge 0.5 mm past the board's left edge, and `.plug.place.bottom >= .outline.height` puts its bottom edge on the board's bottom edge or past it (flush counts). Only the part's own `left`, `right`, `top` and `bottom` say it, and only when the whole window is at or beyond the edge. A window on `.x` or `.y`, a bound a module states for its parts, or an entry of the layout file puts the part somewhere but does not say it may hang over, so the courtyard past the edge is the error it always was. That holds for a part the layout file locks (`lock = true`) too: the lock fixes where the part is, and the part must still state every edge its courtyard is past, like any other (owner decision, 2026-11-03). A locked part past an edge nobody stated gets the error below, naming the edge, the distance and the line that would allow it.
 
 ```nsm solve place
 import std::parts::connector::Header1x4
@@ -3453,14 +3504,14 @@ board Plugged {
 
 For a part that may hang over an edge, the placer and the check do this, and nothing else:
 
-- **The room it takes** is its courtyard clipped to the outline, with the margin (0.4 mm for JLCPCB's process) kept on the sides that are on the board and none on the side that hangs over. A connector wider than the board no longer stops the placer before it starts, and a locked part that hangs over counts as the part that is inside.
-- **Overlap** with the courtyards of other parts, keepouts and cutouts is measured on the clipped courtyard, so two parts hanging over the same edge do not conflict beyond it.
+- **The room it takes** is its courtyard clipped to the outline, with the margin (0.4 mm for JLCPCB's process) kept on the sides that are on the board and none on the side that hangs over. A connector wider than the board no longer stops the placer before it starts, and a locked part that states its overhang counts as the part that is inside.
+- **Overlap** with the courtyards of other parts, keepouts and cutouts is measured on the clipped courtyard, so two parts hanging over the same edge do not conflict beyond it, in the placer's cost as in the check.
 - **Copper is not waived.** Every pad is still inside the outline and the process's copper to edge space from it, so the placer keeps them there and a pad outside is an error with its distance.
 - **The body's centre may be off the board** in the direction an edge field states (provisional, to be reviewed by the maintainer). A part whose `.bottom` window starts 25 mm past a 60 mm board may be required with its 40 mm body, and so its centre, 5 mm below it, as long as its pads stay inside. A window on `.x` or `.y` keeps the old rule: a centre that is outside the outline is refused with the numbers, and so is a centre outside by an edge the part's edge fields do not state.
 - **A direction nobody stated is an error**, and the finding says how far past which edge, which edges are stated, and the line that would allow it.
 - **Not checked:** the body (`F.Fab`) may be anywhere, the part of the courtyard outside the outline is not measured, and neither is how far the part hangs beyond what its window says. Silkscreen and text outside the board still get the design rules check's silk to edge clearance warning, as in KiCad.
 
-`fab` writes each overhang to `fab-notes.txt` and prints it as it places: `overhang: J1 hangs over the left edge: its courtyard is 0.50 mm past it (`j.place.left (main.nsm:14)` allows -0.6 to -0.4 mm)`. The variants below run the real checks. The first states the position by the body's centre, which is not an overhang.
+`fab` prints each overhang as a warning as it places and lists it among the warnings in `fab-notes.txt`: `warning: J1 hangs over the left edge: its courtyard is 0.50 mm past it (`j.place.left (main.nsm:14)` allows -0.6 to -0.4 mm)`. The variants below run the real checks. The first states the position by the body's centre, which is not an overhang.
 
 ```nsm solve place refused
 import std::parts::connector::Header1x4

@@ -6,6 +6,8 @@ The owner said: "I think we might need to think more about what information goes
 
 Issue #2 itself asks for three things that would add to this pile: a minimum or exact gap and alignment between parts (ADR 0045 C2), a face for a group of parts (`side` for a module), and agreement between the annealer and the overhang check (ADR 0045 section 10 (i)). They are the "min gap, alignment, face for a group" of section 3.
 
+Superseded in part (2026-11-04): the owner asked for a durable solution at the scale of a real, complicated board; the second-round note [durable-home-for-pcb-intent.md](durable-home-for-pcb-intent.md) redoes the question and withdraws this note's recommendation to keep one file.
+
 ## Summary
 
 - Today a board's `.nsm` file holds the circuit and also the outline, keepouts, height limits and requirements on where parts go. The layout file holds solved positions. The manifest holds three policy switches that touch the board. That is already three places, and a few facts sit in the wrong one or in two (section 1.2).
