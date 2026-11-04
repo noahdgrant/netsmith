@@ -278,7 +278,7 @@ _Avoid_: Symbol table, library table
 A symbol file (`.kicad_sym`) or footprint folder (`.pretty`) of a project's own, listed in its `kicad.toml` as a `[[library]]`, so that its parts map to symbols and footprints KiCad does not ship.
 
 **Unit**:
-One of the drawings of a KiCad symbol that has several, such as the two amplifiers and the supply of a dual op-amp. All units of a part are placed in the schematic, each with the part's reference.
+One of the drawings of a KiCad symbol that has several, such as the two amplifiers and the supply of a dual op-amp. The KiCad schematic places all units of a part, each with the part's reference; the editor's schematic draws a part of several units as one box with every pin, and a symbol of more than 60 pins as one box with its pins in labelled groups.
 
 **Ratsnest**:
 The connections a board still needs, drawn as straight lines between pads, before any track is routed.
@@ -308,6 +308,10 @@ _Avoid_: Viewer, IDE, GUI
 **View**:
 One way the editor shows a board built from the source: the schematic, the power tree, the system, the bill of materials or the PCB. Each is computed from the checked and solved model, and none is edited: the source is.
 _Avoid_: Page
+
+**Power symbol**:
+How the editor's schematic draws a rail: the negative side of a rail (where the current returns) with the ground symbol, bars that shrink away from a wire, and the positive side with the supply symbol, a stem with an arrow head and the net's name beside it. Which nets are which comes from the checked model (a `Rail`'s `pos` and `neg`), never from the names; the ground symbols carry their names only when a board has more than one ground. Each pin on a rail has a wire to its own symbol, and pins next to each other on one rail share a bus and a symbol. The KiCad schematic file does not use them.
+_Avoid_: Net label (a power symbol is drawn instead of one), power port
 
 **Power tree**:
 The view of a board's rails as nodes: the voltage of each net a rail draws from, the currents on it, and what the part that supplies it can give, joined by the regulators and stages that make one rail from another and by the joins of a system. The numbers are the solver's, in the worst case.
