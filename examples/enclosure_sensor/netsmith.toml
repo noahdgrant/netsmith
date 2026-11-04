@@ -1,0 +1,6 @@
+[project]
+name = "enclosure_sensor"
+top_level = ["enclosure_sensor.nsm"]
+out = "out"
+fab = "fab"
+kicad = 9
