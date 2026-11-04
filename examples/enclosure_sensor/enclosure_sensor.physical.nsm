@@ -86,37 +86,14 @@ physical for EnclosureSensor {
     .lights.r_b.place.side &= "bottom"
     .lights.r_c.place.side &= "bottom"
 
-    // 7. The test pads: on the front, 2.54 mm apart in one row near the bottom edge. The pitch
-    //    of a row of twelve costs 22 lines, one for the distance between each pad and the next
-    //    (11) and one to keep each on the first pad's line (11), because a relation is one
-    //    equation of two parts along one axis; the face of all twelve is one line because they
-    //    are in a module, and the row's distance from the edge is one more. (The pads are
-    //    numbered in the order of their paths, so `.pads.tp2` is TP5 on the board: `tp10`
-    //    sorts before `tp2`.)
+    // 7. The test pads: on the front, 2.54 mm apart in one row near the bottom edge. One row
+    //    statement holds the twelve on one line, each pad at the pitch from the one before; the
+    //    face of all twelve is one line because they are in a module, and the row's distance
+    //    from the edge is one more. (The pads are numbered in natural order, so `.pads.tp2` is
+    //    TP2 on the board and `tp10` follows `tp9`.)
     .pads.place.side &= "top"
     .pads.tp1.place.y >= .outline.height - 8mm
-    .pads.tp2.place.x - .pads.tp1.place.x == 2.54mm +/- 0.05mm
-    .pads.tp3.place.x - .pads.tp2.place.x == 2.54mm +/- 0.05mm
-    .pads.tp4.place.x - .pads.tp3.place.x == 2.54mm +/- 0.05mm
-    .pads.tp5.place.x - .pads.tp4.place.x == 2.54mm +/- 0.05mm
-    .pads.tp6.place.x - .pads.tp5.place.x == 2.54mm +/- 0.05mm
-    .pads.tp7.place.x - .pads.tp6.place.x == 2.54mm +/- 0.05mm
-    .pads.tp8.place.x - .pads.tp7.place.x == 2.54mm +/- 0.05mm
-    .pads.tp9.place.x - .pads.tp8.place.x == 2.54mm +/- 0.05mm
-    .pads.tp10.place.x - .pads.tp9.place.x == 2.54mm +/- 0.05mm
-    .pads.tp11.place.x - .pads.tp10.place.x == 2.54mm +/- 0.05mm
-    .pads.tp12.place.x - .pads.tp11.place.x == 2.54mm +/- 0.05mm
-    .pads.tp2.place.y == .pads.tp1.place.y
-    .pads.tp3.place.y == .pads.tp1.place.y
-    .pads.tp4.place.y == .pads.tp1.place.y
-    .pads.tp5.place.y == .pads.tp1.place.y
-    .pads.tp6.place.y == .pads.tp1.place.y
-    .pads.tp7.place.y == .pads.tp1.place.y
-    .pads.tp8.place.y == .pads.tp1.place.y
-    .pads.tp9.place.y == .pads.tp1.place.y
-    .pads.tp10.place.y == .pads.tp1.place.y
-    .pads.tp11.place.y == .pads.tp1.place.y
-    .pads.tp12.place.y == .pads.tp1.place.y
+    row .pads.tp1 .. .pads.tp12 along x pitch 2.54mm +/- 0.05mm
 
     // 8. The lid has a rib over a region of the front: nothing taller than 3 mm there. The
     //    parts the datasheets give a height for are kept out of it when they are too tall.
