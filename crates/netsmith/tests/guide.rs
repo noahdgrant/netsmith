@@ -16,7 +16,10 @@
 //!   net whose tracks were not sized from its current (ADR 0036), one per line, as the
 //!   command line prints them after `note: `.
 //! - ` ```nsm fails ` must not build, and the next ` ```text ` block is the exact message.
-
+//! - ` ```nsm-physical ` directly after an ` ```nsm ` block is that block's physical file
+//!   (ADR 0048, `main.physical.nsm` beside `main.nsm`): the block is checked and built with
+//!   it. Whatever the ` ```nsm ` block promises (a message in the next ` ```text ` block,
+//!   which then follows the physical block) holds for the two files together.
 //! - ` file=examples/led.nsm ` on any of them makes the block equal that file.
 //! - ` ```csv file=catalogs/resistor.csv ` is a project's catalog file (ADR 0022): it adds its
 //!   rows to the catalog named by the file, for the `nsm` blocks that use the same `set=`
@@ -217,7 +220,15 @@ fn the_orders_in_the_guide_are_read_and_their_error_is_the_real_one() {
 fn every_fence_says_what_it_is() {
     let guide = guide();
     for b in blocks(&guide) {
-        let known = ["nsm", "nsm-fragment", "text", "sh", "toml", "csv"];
+        let known = [
+            "nsm",
+            "nsm-physical",
+            "nsm-fragment",
+            "text",
+            "sh",
+            "toml",
+            "csv",
+        ];
         assert!(
             b.info.first().is_some_and(|w| known.contains(&w.as_str())),
             "docs/LANGUAGE.md:{}: a fenced block must start with one of {known:?}, not {:?}",
@@ -243,8 +254,20 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
     // (first line, last line, new text) of message blocks to rewrite.
     let mut rewrites: Vec<(usize, usize, String)> = Vec::new();
     let mut ran = 0;
+    let mut with_physical = 0;
 
     for (n, b) in blocks.iter().enumerate() {
+        if b.is("nsm-physical") {
+            let at = format!("docs/LANGUAGE.md:{}", b.line);
+            assert!(
+                n > 0 && blocks[n - 1].is("nsm"),
+                "{at}: an nsm-physical block is the physical file of the nsm block right before it"
+            );
+            if let Some(file) = b.value("file") {
+                let real = fs::read_to_string(root().join(file)).expect("the named file exists");
+                assert!(same(&b.text, &real), "{at}: the block differs from {file}");
+            }
+        }
         if b.is("csv") && b.has("fails") {
             let at = format!("docs/LANGUAGE.md:{}", b.line);
             let file = b.value("file").expect("a csv block needs file=");
@@ -277,9 +300,23 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
             let real = fs::read_to_string(root().join(file)).expect("the named file exists");
             assert!(same(&b.text, &real), "{at}: the block differs from {file}");
         }
+        // The physical file of this block, if the block after it is one; the message block
+        // follows it.
+        let physical = blocks.get(n + 1).filter(|next| next.is("nsm-physical"));
+        let after = n + 1 + usize::from(physical.is_some());
+        let block_loader = match physical {
+            Some(p) => {
+                with_physical += 1;
+                loader
+                    .clone()
+                    .with_physical("main.nsm", "main.physical.nsm", &p.text)
+            }
+            None => loader.clone(),
+        };
+        let loader = &block_loader;
         let next_text = || {
             blocks
-                .get(n + 1)
+                .get(after)
                 .filter(|next| next.is("text"))
                 .unwrap_or_else(|| panic!("{at}: the next block must be a ```text block"))
         };
@@ -293,7 +330,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
         };
 
         if b.has("fails") {
-            let message = match build_with(name, &b.text, &loader, &catalogs, &Libraries::sample())
+            let message = match build_with(name, &b.text, loader, &catalogs, &Libraries::sample())
             {
                 Ok(_) => panic!("{at}: this block should fail and it builds"),
                 Err(message) => message,
@@ -309,7 +346,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
                 );
             }
         } else if b.has("solve") {
-            let built = build_with(name, &b.text, &loader, &catalogs, &Libraries::sample())
+            let built = build_with(name, &b.text, loader, &catalogs, &Libraries::sample())
                 .unwrap_or_else(|e| panic!("{at}: should build:\n{e}"));
             if b.has("warns") {
                 let warnings: String = built
@@ -399,7 +436,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
                 }
             }
         } else if b.has("evaluate") {
-            let checked = check(name, &b.text, &loader);
+            let checked = check(name, &b.text, loader);
             assert!(checked.is_ok(), "{at}: should check:\n{}", checked.render());
             for board in checked.standalone_boards() {
                 let solution = solve(board, &catalogs);
@@ -426,11 +463,15 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
                 );
             }
         } else {
-            let checked = check(name, &b.text, &loader);
+            let checked = check(name, &b.text, loader);
             assert!(checked.is_ok(), "{at}: should check:\n{}", checked.render());
         }
     }
     assert!(ran >= 20, "the guide runs only {ran} examples");
+    assert!(
+        with_physical >= 5,
+        "the guide runs only {with_physical} examples with a physical file"
+    );
 
     if bless && !rewrites.is_empty() {
         let mut lines: Vec<String> = markdown.lines().map(str::to_string).collect();
