@@ -882,10 +882,31 @@ pub fn resolve(
                 .join(", ")
         ));
     }
-    message.push_str(
-        " Change the value in the design and build again: the solver then checks every relation again with it.",
-    );
+    message.push_str(CHANGE_THE_VALUE);
     Err(message)
+}
+
+/// The advice that ends the message of an unresolved part.
+pub const CHANGE_THE_VALUE: &str = " Change the value in the design and build again: the solver then checks every relation again with it.";
+
+/// The rows nearest a generic part that do not stand for it, up to three, or none if the
+/// catalog cannot be read. These are the alternatives the message offers and that a build
+/// can check the design against.
+pub fn alternatives(generic: &Generic, catalogs: &Catalogs) -> Vec<Alternative> {
+    let Some(Ok(catalog)) = catalogs.identity(&generic.catalog, &kinds(&generic.catalog)) else {
+        return Vec::new();
+    };
+    let rows: Vec<&Candidate> = catalog
+        .candidates
+        .iter()
+        .filter(|c| c.lcsc.is_some() || c.mpn.is_some())
+        .collect();
+    let fits: Vec<&Candidate> = rows
+        .iter()
+        .copied()
+        .filter(|c| misses(generic, c).is_empty())
+        .collect();
+    nearest(generic, &rows, &fits)
 }
 
 fn part_word(catalog: &str) -> &str {

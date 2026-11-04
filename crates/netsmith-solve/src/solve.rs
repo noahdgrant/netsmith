@@ -257,6 +257,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         sole_equation: sole_equations(model),
         trials: 0,
     };
+    s.relax_pinned();
     for c in s.propagate() {
         s.report(c.source, c.span, c.message);
     }
@@ -1199,6 +1200,35 @@ impl Solver<'_> {
 
     // ---- picking -------------------------------------------------------------
 
+    /// A part held to one row (`Catalogs::with_pin`) stands in for a part the design stated
+    /// a value for. The design's statements about the numbers of its catalog columns (its
+    /// value, a rating) are what the alternative replaces, so they are dropped before
+    /// anything is propagated from them; the statements about text (the package, the
+    /// colour) and every relation stay, and judge the alternative.
+    fn relax_pinned(&mut self) {
+        let parts: Vec<(InstId, String)> = self
+            .model
+            .instances()
+            .filter(|(_, i)| i.kind == InstKind::Part && i.catalog.is_some())
+            .map(|(id, _)| (id, self.model.path_of(id)))
+            .filter(|(_, path)| self.catalogs.pinned(path).is_some())
+            .collect();
+        for (id, _) in parts {
+            let fields = self
+                .model
+                .instance(id)
+                .catalog
+                .as_ref()
+                .map(|c| c.fields.clone())
+                .unwrap_or_default();
+            for f in fields {
+                if matches!(self.model.field(f).kind, FieldKind::Quantity(_)) {
+                    self.model.set_domain(f, Domain::Unset);
+                }
+            }
+        }
+    }
+
     fn pick_parts(&mut self) {
         let mut parts: Vec<(String, InstId)> = self
             .model
@@ -1254,7 +1284,12 @@ impl Solver<'_> {
                     });
                 }
                 Some(Ok(cat)) if self.unnamed_key(part, &path, &catalog, &columns, &cat) => {}
-                Some(Ok(cat)) => {
+                Some(Ok(mut cat)) => {
+                    // A part held to one row (`Catalogs::with_pin`) is offered only that row.
+                    if let Some(row) = self.catalogs.pinned(&path) {
+                        cat.candidates
+                            .retain(|c| c.generic.is_none() && c.name == row);
+                    }
                     let used = columns.iter().map(|(f, _)| self.mentioned(*f)).collect();
                     jobs.push(Job {
                         part,

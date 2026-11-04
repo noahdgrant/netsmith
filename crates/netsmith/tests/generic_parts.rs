@@ -93,6 +93,8 @@ fn a_generic_capacitor_inductor_and_led_are_each_listed_unresolved_by_name() {
     );
     assert!(why.contains("needs a recorded DC-bias curve"), "{why}");
     assert!(why.contains("Nearest in the catalog:"), "{why}");
+    // The design's checks were run again with each of those rows in its place.
+    assert!(why.contains("C1525 passes every check"), "{why}");
 
     let l = line("Inductor");
     let why = l.unresolved.as_deref().expect("an unresolved inductor");
@@ -137,4 +139,49 @@ fn fab_refuses_each_unresolved_generic_part_by_name() {
         assert!(e.contains(&format!("{refdes}: unresolved")), "{refdes}: {e}");
     }
     assert!(e.contains("DC-bias curve"), "{e}");
+}
+
+#[test]
+fn each_alternative_is_checked_again_and_the_message_says_which_pass() {
+    // An inductor of 3.3 uH +/- 20% that carries 2 A. The two nearest 3.3 uH and 4.7 uH rows
+    // saturate at 1.25 A and 1 A, so with either in its place the design fails its own
+    // check; the 2.2 uH row saturates at 3.6 A and passes.
+    let root = TempDir::new("generic-parts-recheck");
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(root.join("netsmith.toml"), "[project]\nname = \"saturates\"\n").unwrap();
+    fs::write(
+        root.join("src/main.nsm"),
+        r#"import std::parts::passive::Inductor
+import std::sources::Rail
+
+board Saturates {
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .l: Inductor {
+        .inductance &= 3.3uH +/- 20%
+        .current &= 2A
+    }
+    .supply.pos ~ .l.a
+    .supply.neg ~ .l.b
+}
+"#,
+    )
+    .unwrap();
+    let bom = bom_of(&open(&root));
+    let l = bom.lines.iter().find(|l| l.kind == "Inductor").unwrap();
+    let why = l.unresolved.as_deref().expect("an unresolved inductor");
+    assert!(why.contains("saturation current at least 2 A"), "{why}");
+    assert!(
+        why.contains("LQH32PN3R3NN0L 3.3uH 1.25A inductor 1210 C337905 fails: l.current must always be at most l.saturation_current, but 2A is not always below 1.25A"),
+        "{why}"
+    );
+    assert!(
+        why.contains("MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758 passes every check"),
+        "{why}"
+    );
+    // The advice still ends the message.
+    assert!(why.ends_with("checks every relation again with it."), "{why}");
 }

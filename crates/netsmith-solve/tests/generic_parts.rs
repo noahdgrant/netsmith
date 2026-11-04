@@ -313,3 +313,36 @@ fn the_unchanged_catalogs_still_give_rows_first() {
     assert!(s.picks[0].generic.is_none());
     assert!(s.picks[0].lcsc.is_some());
 }
+
+// ---- holding a part to one row ------------------------------------------------------
+
+#[test]
+fn a_part_held_to_a_row_is_solved_with_that_row_and_its_stated_value_left_out() {
+    // The design says 130 nF +/- 10%; the 120 nF row is not that, so held to it the design
+    // still solves (the stated value is what the alternative replaces) and the pick is the
+    // row. Without the pin the same catalog gives a generic part.
+    let c = catalogs("capacitor", CAPS);
+    let board = cap_board("");
+    let free = solved(&board, &c);
+    assert!(free.picks[0].generic.is_some());
+    let pinned = solved(&board, &c.with_pin("c", "120nF 10V curve"));
+    assert!(pinned.diagnostics.is_empty(), "{:?}", pinned.diagnostics);
+    assert_eq!(pinned.picks[0].lcsc.as_deref(), Some("C900102"));
+    assert!(pinned.picks[0].generic.is_none());
+}
+
+#[test]
+fn a_part_held_to_a_row_that_breaks_a_relation_is_refused_with_the_relation() {
+    let c = catalogs("capacitor", CAPS);
+    let board = cap_board("        .max_voltage >= 12V\n");
+    // The 10 V row cannot carry the 12 V the design demands.
+    let pinned = solved(&board, &c.with_pin("c", "120nF 10V curve"));
+    assert_eq!(pinned.diagnostics.len(), 1, "{:?}", pinned.diagnostics);
+    assert!(
+        pinned.diagnostics[0]
+            .message
+            .contains("c.max_voltage must always be at least"),
+        "{}",
+        pinned.diagnostics[0].message
+    );
+}

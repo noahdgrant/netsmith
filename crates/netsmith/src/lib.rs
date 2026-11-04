@@ -39,6 +39,10 @@ pub struct Built {
     /// Where each part of the design comes from, in the design's order: its LCSC number,
     /// manufacturer part number and JLCPCB library, and whether the board house places it.
     pub sourcing: Vec<Sourced>,
+    /// For each generic part that no catalog row stands for, the board's checks run again
+    /// with each nearest alternative in its place (ADR 0047). Empty if every generic part
+    /// has a row.
+    pub rechecks: Vec<resolve::Recheck>,
     /// The text of the `.kicad_sch`.
     pub schematic: String,
     /// The text of the `.kicad_pro`.
@@ -258,7 +262,7 @@ pub fn outcome_with(
             )?;
         }
         let notes = notes(&solution, None);
-        built.push(export(
+        let mut one = export(
             None,
             &board.name,
             lowered,
@@ -266,7 +270,14 @@ pub fn outcome_with(
             &solution.model,
             &checked.sources,
             libraries,
-        )?);
+        )?;
+        one.rechecks = resolve::recheck_alternatives(
+            &solution,
+            &one.design.parts,
+            catalogs,
+            &|pinned: &Catalogs| solve(board, pinned),
+        );
+        built.push(one);
     }
     for system in &checked.systems {
         if system.boards.is_empty() {
@@ -289,7 +300,7 @@ pub fn outcome_with(
                 refuse_guidelines(&label, &lowered.guidelines, &scoped, &checked.sources)?;
             }
             let notes = notes(&solution, Some(member.inst));
-            built.push(export(
+            let mut one = export(
                 Some(&system.name),
                 &member.name,
                 lowered,
@@ -297,7 +308,14 @@ pub fn outcome_with(
                 &scoped,
                 &checked.sources,
                 libraries,
-            )?);
+            )?;
+            one.rechecks = resolve::recheck_alternatives(
+                &solution,
+                &one.design.parts,
+                catalogs,
+                &|pinned: &Catalogs| solve_system(system, pinned),
+            );
+            built.push(one);
         }
         solved.push(SolvedSystem {
             name: system.name.clone(),
@@ -567,6 +585,7 @@ fn export(
         project,
         design,
         sourcing,
+        rechecks: Vec::new(),
         schematic,
         notes,
         guidelines: lowered.guidelines,
