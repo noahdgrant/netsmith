@@ -1,10 +1,10 @@
 ---
-status: accepted (user review 2026-11-02)
+status: accepted in design, provisional until a package has been through JLCPCB's order preview (owner review 2026-11-04)
 ---
 
 # netsmith writes its own fabrication files
 
-ADR 0021's "Direction" says netsmith must not need KiCad installed. Step 2 of the roadmap is the fabrication files: until now `kicad-cli` plotted the Gerbers, drilled the Excellon files and wrote the position file. Now netsmith writes all three from the board file, and `kicad-cli` is only an optional witness. The choices below are provisional, to be reviewed by the maintainer.
+ADR 0021's "Direction" says netsmith must not need KiCad installed. Step 2 of the roadmap is the fabrication files: until now `kicad-cli` plotted the Gerbers, drilled the Excellon files and wrote the position file. Now netsmith writes all three from the board file, and `kicad-cli` is only an optional witness. The owner accepted the design on 2026-11-04. The ADR stays provisional until the condition under "When this ADR stops being provisional" is met.
 
 ## What was built (`crates/netsmith-fab`)
 
@@ -47,6 +47,12 @@ The pour's difference is islands and spokes: KiCad removes a spoke or a patch of
 - A pad's `remove_unused_layers` is approximated: an inner layer keeps the pad if a track of its net ends on the pad or a zone of its net covers it (KiCad asks the connectivity engine).
 - Text: our font, so the silkscreen's letters differ from KiCad's; `bold` is ignored; text boxes, curves (`fp_curve`) and images are not plotted and are named in the notes.
 - Without a `.kicad_pro` beside the board the zone fill uses no edge clearance and the zone's own hole clearance (netsmith always writes one).
+
+## When this ADR stops being provisional
+
+One real package goes through JLCPCB's order preview and JLCPCB's own design check (issue #12). The person who does it looks at the planes (the pours are written in clear polarity inside a copper file, which KiCad does not do) and at the silkscreen (our font), and writes the result into this ADR: the board, the date, what the preview showed, and any file JLCPCB refused or changed. Only the owner can do this, since it needs an order account. Until that entry exists, nothing in this ADR claims that JLCPCB accepts these files.
+
+Result: none yet.
 
 ## The roadmap
 

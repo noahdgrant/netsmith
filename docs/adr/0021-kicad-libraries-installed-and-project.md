@@ -1,10 +1,10 @@
 ---
-status: accepted (user review 2026-11-02)
+status: accepted (owner review 2026-11-04). The Linux, macOS, snap and flatpak library lookups are unverified (issue #6).
 ---
 
 # KiCad libraries: installed and project
 
-ADR 0016 decided that the symbols and footprints of a part are read from the installed KiCad libraries and that a part's kind and package are mapped to their names in a TOML file. This ADR records what was built for its steps 1, 2, 3, 6, 11 and 13, and the decisions taken while building them. The choices below are provisional, to be reviewed by the maintainer. Two of them replace ADR 0016: a multi-unit symbol is supported, and a project's own libraries are supported.
+ADR 0016 decided that the symbols and footprints of a part are read from the installed KiCad libraries and that a part's kind and package are mapped to their names in a TOML file. This ADR records what was built for its steps 1, 2, 3, 6, 11 and 13, and the decisions taken while building them. The owner reviewed the choices below on 2026-11-04 and accepted them. Two of them replace ADR 0016: a multi-unit symbol is supported, and a project's own libraries are supported.
 
 ## What was built
 
@@ -14,7 +14,7 @@ ADR 0016 decided that the symbols and footprints of a part are read from the ins
 
 **A pinout is validated against its symbol and footprint** (`crates/netsmith-pcb/src/validate.rs`, ADR 0016 decision 8): every pad of the pinout is a numbered pad of the footprint and a pin of the symbol, and the other way round; the symbol pin on a pad has the datasheet name after `pin_names` (case does not matter, a symbol pin named `~` is unnamed and accepted); the symbol pin's electrical type suits the kind. Every message names the part, the package and both sides. `build` and `fab` run it for every part with a pin table before the schematic is written, and stop with all the messages (`crates/netsmith/tests/pinout.rs`, with invented libraries). A test (`crates/netsmith/tests/kicad_rows.rs`) takes each row of `std/kicad.toml`, the pinout of its kind in that package from the standard library's own source, and checks it against the installed libraries (skipped without KiCad) and, for the kinds they hold, against our sample libraries.
 
-**The emitter reads from the loader.** One net label for each distinct point and net (stacked pads share one), a `no_connect` flag on every pin that no net reaches, and the power-flag rule from the symbol's electrical types as before. The five examples export byte for byte what they did before the loader existed, and pass KiCad's electrical rules check with no violation (`crates/netsmith/tests/erc.rs` runs it).
+**The emitter reads from the loader.** One net label for each distinct point and net (stacked pads share one), a `no_connect` flag on every pin that no net reaches, and the power-flag rule from the symbol's electrical types as before. The five examples that existed then exported byte for byte what they did before the loader existed, and passed KiCad's electrical rules check with no violation (`crates/netsmith/tests/erc.rs` runs it). `examples/` now holds eight `.nsm` files; this sentence is not a claim about them.
 
 **The viewer reads from the loader** (`netsmith-view`): `Glyph::for_part` takes the mapping and the `SymbolLib`; a hidden pin that repeats a shown pin's point and name resolves its pad and is not drawn; bidirectional and tri-state pins have a `Flow`; the units of a symbol are drawn one below the other; and the box drawn where there is no symbol lists every pin of the package from the part's pin facts (supplies on top, grounds below, inputs left, outputs right, no-connects last, the chosen function beside the name). A missing library gives the box and the reason as its tooltip.
 
@@ -42,7 +42,7 @@ One lookup (`crates/netsmith-kicad/src/install.rs`) serves the symbol loader, th
 
 A folder counts only if it holds a `*.kicad_sym` file (symbols) or a `*.pretty` folder (footprints). netsmith is tested with KiCad 9; 8 is a fallback that nobody has tried. Finding nothing is not an error by itself: it is raised when a symbol or footprint of an installed library is asked for, and says what was looked for, every place tried and why it did not count, and the two variables to set. A design that uses only a project's own libraries, or footprints the generators make (ADR 0043), builds with no KiCad install.
 
-Verification: the WSL place is the only one tried on a real install (Windows KiCad 9.0). The Linux, macOS, Windows, snap and flatpak places follow the layouts those packages are known to use and are tested only against invented install trees (`Search::under`); the machine this was written on has no Linux, snap or flatpak KiCad. The snap and flatpak paths are the least certain.
+Verification: the WSL place is the only one tried on a real install (Windows KiCad 9.0). The Linux, macOS, Windows, snap and flatpak places follow the layouts those packages are known to use and are tested only against invented install trees (`Search::under`); the machine this was written on has no Linux, snap or flatpak KiCad. The snap and flatpak paths are the least certain. The owner accepted this ADR on 2026-11-04 with these lookups still unverified. They stay unverified until someone runs them on a real Linux, macOS, snap or flatpak install (issue #6).
 
 ## The standard rows and the USB-C pads
 
