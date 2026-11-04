@@ -1,0 +1,258 @@
+//! An invented sensor board that goes in a small enclosure: a USB-C power input, a 3.3 V
+//! regulator, a small memory chip, a plug-in radio carrier, a chip antenna with its coax
+//! connector, a row of test pads, a plug for the sensor head and three indicator LEDs.
+//!
+//! Everything the case and the layout designer require of the board is in
+//! `enclosure_sensor.physical.nsm` beside this file (ADR 0048): its comments walk through each
+//! statement. This file is only the circuit. The three parts it defines (`SensorPlug16`,
+//! `Memory`, `ChipAntenna`) are invented and use KiCad's stock symbols and footprints through
+//! the project's `kicad.toml`; the board is not a design to build.
+
+import std::bus::{I2c, I2cPullups}
+import std::parts::connector::{Coax, Socket1x10, UsbCPower}
+import std::parts::mechanical::TestPoint
+import std::parts::passive::{Capacitor, Led, Resistor, Switch}
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+/// The plug for the sensor head: sixteen pins in one row, 2.54 mm apart, so 40.6 mm long, on
+/// a horizontal pin header whose pins stick out at the side. Pin 1 is ground, pin 2 the 3.3 V
+/// supply, pins 3 and 4 the I2C bus, and pins 5 to 16 are free for the test pads.
+part SensorPlug16 {
+    .designator &= "J"
+
+    pins {
+        .p1  passive "P1"  "1"
+        .p2  passive "P2"  "2"
+        .p3  passive "P3"  "3"
+        .p4  passive "P4"  "4"
+        .p5  passive "P5"  "5"
+        .p6  passive "P6"  "6"
+        .p7  passive "P7"  "7"
+        .p8  passive "P8"  "8"
+        .p9  passive "P9"  "9"
+        .p10 passive "P10" "10"
+        .p11 passive "P11" "11"
+        .p12 passive "P12" "12"
+        .p13 passive "P13" "13"
+        .p14 passive "P14" "14"
+        .p15 passive "P15" "15"
+        .p16 passive "P16" "16"
+    }
+
+    .package: Package
+}
+
+/// An invented I2C memory chip in an 8-pin package, standing in for the board's controller.
+part Memory {
+    .designator &= "U"
+
+    .vcc: Rail
+    .i2c: I2c
+
+    pins "SOIC-8" {
+        .a0       input         "A0"  "1"
+        .a1       input         "A1"  "2"
+        .a2       input         "A2"  "3"
+        .vcc.neg  power         "GND" "4"
+        .i2c.sda  bidirectional "SDA" "5"
+        .i2c.scl  input         "SCL" "6"
+        .wp       input         "WP"  "7"
+        .vcc.pos  power         "VCC" "8"
+    }
+
+    .package: Package
+}
+
+/// An invented 2.4 GHz chip antenna.
+part ChipAntenna {
+    .designator &= "AE"
+
+    pins {
+        .feed  input   "FEED"  "1"
+        .trace passive "TRACE" "2"
+    }
+
+    .package: Package
+}
+
+/// A linear regulator with a capacitor on its input and on its output.
+module LdoStage {
+    .vin:  Rail
+    .vout: Rail
+
+    .regulator:  LinearRegulator
+    .input_cap:  Capacitor { .effective_capacitance >= 1uF }
+    .output_cap: Capacitor { .effective_capacitance >= 4.7uF }
+
+    .vin ~ .regulator.vin
+    .regulator.vout ~ .vout
+
+    .input_cap.max_voltage  >= .vin.voltage * 1.5
+    .output_cap.max_voltage >= .vout.voltage * 1.5
+
+    .vin.pos  ~> .input_cap  ~> .vin.neg
+    .vout.pos ~> .output_cap ~> .vout.neg
+}
+
+/// The plug-in radio carrier's two socket rows, 10 contacts each, and its supply capacitor.
+module RadioSockets {
+    .power: Rail
+    .row_a: Socket1x10
+    .row_b: Socket1x10
+    .bypass: Capacitor { .capacitance &= 100nF +/- 20% }
+
+    .power.pos ~ .row_a.p1
+    .power.neg ~ .row_a.p2
+    .power.pos ~ .row_b.p1
+    .power.neg ~ .row_b.p2
+    .power.pos ~> .bypass ~> .power.neg
+}
+
+/// Three indicator LEDs, each with its own series resistor.
+module Indicators {
+    .power: Rail
+
+    .led_a: Led { .color &= "GREEN" }
+    .led_b: Led { .color &= "GREEN" }
+    .led_c: Led { .color &= "GREEN" }
+    .r_a: Resistor { .resistance &= 330ohm +/- 1% }
+    .r_b: Resistor { .resistance &= 330ohm +/- 1% }
+    .r_c: Resistor { .resistance &= 330ohm +/- 1% }
+
+
+    .power.pos ~> .r_a ~> .led_a ~> .power.neg
+    .power.pos ~> .r_b ~> .led_b ~> .power.neg
+    .power.pos ~> .r_c ~> .led_c ~> .power.neg
+}
+
+/// Twelve test pads, one for each free pin of the plug. They are in a module only so that the
+/// physical file can name them together (`.pads.place.side`).
+module TestRow {
+    .s1: Pin
+    .s2: Pin
+    .s3: Pin
+    .s4: Pin
+    .s5: Pin
+    .s6: Pin
+    .s7: Pin
+    .s8: Pin
+    .s9: Pin
+    .s10: Pin
+    .s11: Pin
+    .s12: Pin
+
+    .tp1: TestPoint
+    .tp2: TestPoint
+    .tp3: TestPoint
+    .tp4: TestPoint
+    .tp5: TestPoint
+    .tp6: TestPoint
+    .tp7: TestPoint
+    .tp8: TestPoint
+    .tp9: TestPoint
+    .tp10: TestPoint
+    .tp11: TestPoint
+    .tp12: TestPoint
+
+    .s1 ~ .tp1.p1
+    .s2 ~ .tp2.p1
+    .s3 ~ .tp3.p1
+    .s4 ~ .tp4.p1
+    .s5 ~ .tp5.p1
+    .s6 ~ .tp6.p1
+    .s7 ~ .tp7.p1
+    .s8 ~ .tp8.p1
+    .s9 ~ .tp9.p1
+    .s10 ~ .tp10.p1
+    .s11 ~ .tp11.p1
+    .s12 ~ .tp12.p1
+}
+
+board EnclosureSensor {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+
+    // Power: USB-C in, 3.3 V out.
+    .usb: UsbCPower {
+        .assembly &= "hand"
+        .vbus.voltage &= 5V +/- 5%
+        .vbus.pos.net &= "VBUS"
+        .vbus.neg.net &= "GND"
+    }
+    .rd1: Resistor { .resistance &= 5.1kohm +/- 1% }
+    .rd2: Resistor { .resistance &= 5.1kohm +/- 1% }
+    .usb.cc1 ~> .rd1 ~> .usb.vbus.neg
+    .usb.cc2 ~> .rd2 ~> .usb.vbus.neg
+
+    .ldo: LdoStage {
+        .vout.voltage &= 3.3V +/- 5%
+    }
+    .usb.vbus ~ .ldo.vin
+
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..100mA
+    }
+    .ldo.vout ~ .supply
+
+    // The controller stand-in, its bus, and a write-protect switch.
+    .mcu: Memory { .package &= "SOIC-8"; .assembly &= "hand" }
+    .mcu.vcc ~ .supply
+    .mcu.a0 ~ .supply.neg
+    .mcu.a1 ~ .supply.neg
+    .mcu.a2 ~ .supply.neg
+    .mcu_bypass: Capacitor { .capacitance &= 100nF +/- 20% }
+    .supply.pos ~> .mcu_bypass ~> .supply.neg
+    .bus: I2c
+    .bus ~ .mcu.i2c
+    .pullups: I2cPullups { .resistance &= 4.7kohm +/- 5% }
+    .pullups.bus ~ .bus
+    .pullups.supply ~ .supply
+    .wp_switch: Switch { .assembly &= "hand" }
+    .wp_pullup: Resistor { .resistance &= 10kohm +/- 5% }
+    .wp_pullup.a ~ .supply.pos
+    .wp_pullup.b ~ .mcu.wp
+    .wp_switch.a ~ .mcu.wp
+    .wp_switch.b ~ .supply.neg
+
+    // The plug for the sensor head.
+    .plug: SensorPlug16 { .package &= "2.54mm-horizontal"; .assembly &= "hand" }
+    .plug.p1 ~ .supply.neg
+    .plug.p2 ~ .supply.pos
+    .plug.p3 ~ .bus.sda
+    .plug.p4 ~ .bus.scl
+
+    // The test pads, one on each free pin of the plug.
+    .pads: TestRow
+    .plug.p5  ~ .pads.s1
+    .plug.p6  ~ .pads.s2
+    .plug.p7  ~ .pads.s3
+    .plug.p8  ~ .pads.s4
+    .plug.p9  ~ .pads.s5
+    .plug.p10 ~ .pads.s6
+    .plug.p11 ~ .pads.s7
+    .plug.p12 ~ .pads.s8
+    .plug.p13 ~ .pads.s9
+    .plug.p14 ~ .pads.s10
+    .plug.p15 ~ .pads.s11
+    .plug.p16 ~ .pads.s12
+
+    // The plug-in radio carrier's sockets.
+    .radio: RadioSockets
+    .radio.power ~ .supply
+
+    // The antenna and its coax connector.
+    .coax: Coax { .assembly &= "hand" }
+    .antenna: ChipAntenna { .package &= "2450AT43F0100"; .assembly &= "hand" }
+    .coax.signal ~ .antenna.feed
+    .coax.shield ~ .supply.neg
+
+    // The indicator LEDs.
+    .lights: Indicators
+    .lights.power ~ .supply
+}

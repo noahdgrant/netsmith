@@ -1,0 +1,44 @@
+# What KiCad calls the three parts this example defines itself (ADR 0021). All three use
+# KiCad's own stock symbols and footprints, so the project has no library of its own.
+
+[[part]]
+kind = "SensorPlug16"
+package = "2.54mm-horizontal"
+default = true
+symbol = "Connector_Generic:Conn_01x16"
+footprint = "Connector_PinHeader_2.54mm:PinHeader_1x16_P2.54mm_Horizontal"
+
+[part.pin_names]
+P1 = "Pin_1"
+P2 = "Pin_2"
+P3 = "Pin_3"
+P4 = "Pin_4"
+P5 = "Pin_5"
+P6 = "Pin_6"
+P7 = "Pin_7"
+P8 = "Pin_8"
+P9 = "Pin_9"
+P10 = "Pin_10"
+P11 = "Pin_11"
+P12 = "Pin_12"
+P13 = "Pin_13"
+P14 = "Pin_14"
+P15 = "Pin_15"
+P16 = "Pin_16"
+
+[[part]]
+kind = "Memory"
+package = "SOIC-8"
+default = true
+symbol = "Memory_EEPROM:24LC16"
+footprint = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
+
+[[part]]
+kind = "ChipAntenna"
+package = "2450AT43F0100"
+default = true
+symbol = "Device:Antenna_Chip"
+footprint = "RF_Antenna:Johanson_2450AT43F0100"
+
+[part.pin_names]
+TRACE = "PCB_Trace"

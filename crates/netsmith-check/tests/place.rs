@@ -101,12 +101,20 @@ fn a_part_on_the_other_face_conflicts_with_its_module_and_the_message_says_so() 
         "{}",
         m[0]
     );
-    // The order of the two lines does not matter.
+    // The order of the two lines does not matter: the part's line names the module's.
     let c = run(
         "board B {\n    .b: Block\n}\n",
         "physical for B {\n    .b.place.side &= \"bottom\"\n    .b.j.place.side &= \"top\"\n}\n",
     );
-    assert_eq!(c.diagnostics.len(), 1, "{}", c.render());
+    let m = messages(&c);
+    assert_eq!(m.len(), 1, "{}", c.render());
+    assert!(
+        m[0].contains("`b` is on the bottom face, which is a requirement on every part of it (stated at t.physical.nsm:2)")
+            && m[0].contains("but `b.j.place.side` is \"top\"")
+            && m[0].contains("state the faces of its parts one by one"),
+        "{}",
+        m[0]
+    );
 }
 
 #[test]

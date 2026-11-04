@@ -359,15 +359,7 @@ impl Checker<'_> {
                 && old != face
             {
                 let part_path = self.model.path_of(part);
-                let stated = self.model.field(side).narrowed_at.first().copied();
-                let at = stated
-                    .map(|(src, sp)| {
-                        let source = self.sources.get(src);
-                        let (line, _) =
-                            netsmith_lang::ParseError::new(sp, "").line_col(&source.text);
-                        format!(" (stated at {}:{line})", source.name)
-                    })
-                    .unwrap_or_default();
+                let at = self.stated_at(side);
                 let source = self.cur_source();
                 self.report(
                     source,
@@ -380,6 +372,37 @@ impl Checker<'_> {
             }
             self.narrow(side, Domain::Text(face.to_string()), span);
         }
+    }
+
+    /// ` (stated at file:line)` for the first statement that narrowed `field`, or nothing.
+    fn stated_at(&self, field: FieldId) -> String {
+        let Some((src, sp)) = self.model.field(field).narrowed_at.first().copied() else {
+            return String::new();
+        };
+        let source = self.sources.get(src);
+        let (line, _) = netsmith_lang::ParseError::new(sp, "").line_col(&source.text);
+        format!(" (stated at {}:{line})", source.name)
+    }
+
+    /// The module above a part that already states the face `old` for every part of it, when
+    /// `field` is the part's own `.place.side`: the face it asks for now is the other one.
+    fn module_with_face(&self, field: FieldId, old: &Domain) -> Option<(String, FieldId)> {
+        if self.model.field(field).name != "side" || !self.model.is_place_field(field) {
+            return None;
+        }
+        let part = self.model.instance(self.model.field(field).owner).parent?;
+        let mut cur = self.model.instance(part).parent;
+        while let Some(inst) = cur {
+            if self.model.instance(inst).kind == InstKind::Module
+                && let Some(Member::Inst(place)) = self.model.member(inst, "place")
+                && let Some(Member::Field(side)) = self.model.member(place, "side")
+                && &self.model.field(side).domain == old
+            {
+                return Some((self.model.path_of(inst), side));
+            }
+            cur = self.model.instance(inst).parent;
+        }
+        None
     }
 
     fn narrow(&mut self, field: FieldId, new: Domain, span: Span) {
@@ -404,13 +427,30 @@ impl Checker<'_> {
                     self.face_of_module(field, face, span);
                 }
             }
-            None => self.report(
-                source,
-                span,
-                format!(
-                    "contradiction on `{path}`: it is already {old}, which does not overlap {new}"
-                ),
-            ),
+            None => {
+                // A part's face against the face its module states for every part of it: say
+                // so, as the other order of the two lines does.
+                if let (Domain::Text(face), Domain::Text(other)) = (&old, &new)
+                    && let Some((module_path, module_side)) = self.module_with_face(field, &old)
+                {
+                    let at = self.stated_at(module_side);
+                    self.report(
+                        source,
+                        span,
+                        format!(
+                            "`{module_path}` is on the {face} face, which is a requirement on every part of it{at}, but `{path}` is \"{other}\"; a module with a part on the other face cannot state a face, state the faces of its parts one by one"
+                        ),
+                    );
+                    return;
+                }
+                self.report(
+                    source,
+                    span,
+                    format!(
+                        "contradiction on `{path}`: it is already {old}, which does not overlap {new}"
+                    ),
+                );
+            }
         }
     }
 }

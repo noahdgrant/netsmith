@@ -3048,6 +3048,8 @@ physical for Cased {
 - **`.place.side` on a module** is a requirement on every part of it, at any depth. A module with an exception states the faces of its parts one by one and none for itself; two lines that disagree are an error that names both.
 - The case numbers are the maintainer's file to review: put the source of each (a drawing, a sheet) in a comment above the line, and never invent one.
 
+`examples/enclosure_sensor/` is a complete invented board that states all of this in its physical file, and each statement has a comment that says what it asks for: a rounded outline with a cutout, mounting holes and fiducials, a 40 mm plug that hangs over an edge, an antenna and a coax connector on one line, two socket rows a fixed distance apart, a module on the back with one part on the front, a row of twelve test pads on a pitch, and a height limit. It is a project, because it defines three invented parts and maps them to KiCad's stock footprints in its own `kicad.toml`; `crates/netsmith/tests/enclosure_sensor.rs` runs `fab` on it and checks that every requirement is met.
+
 The placer keeps to every requirement, `fab` measures them on the board and stops on one not met, and the editor draws the file's outline and keepouts. A requirement that is a single value fixes the part, like a lock in the layout file.
 
 Misuse: the old place.

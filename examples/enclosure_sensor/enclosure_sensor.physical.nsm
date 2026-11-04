@@ -1,0 +1,136 @@
+//! The enclosure of the sensor board and every requirement on where its parts go (ADR 0048).
+//!
+//! Every number here is invented. In a real project each one would carry the drawing it comes
+//! from in a comment above the line; here the comment says what the line asks for. Where the
+//! parts end up is not here: it is the placer's, and the same inputs give the same board.
+
+import std::parts::mechanical::{Fiducial, MountingHole}
+import std::pcb::{Cutout, Keepout, Outline}
+
+physical for EnclosureSensor {
+    case {
+        // 1. The outline: 90 x 62 mm with 3 mm rounded corners, and one cutout, a slot for a
+        //    strap, 8 x 4 mm, with its corner 30 mm in and 44 mm down.
+        .outline: Outline {
+            .width &= 90mm
+            .height &= 62mm
+            .corner_radius &= 3mm
+        }
+        .strap: Cutout {
+            .x &= 30mm
+            .y &= 44mm
+            .width &= 8mm
+            .height &= 4mm
+            .corner_radius &= 1mm
+        }
+
+        // 2. Four mounting holes and two fiducials. A hole or a fiducial whose place is stated
+        //    below is put there and not in a corner.
+        .hole1: MountingHole
+        .hole2: MountingHole
+        .hole3: MountingHole
+        .hole4: MountingHole
+        .fiducial1: Fiducial
+        .fiducial2: Fiducial
+    }
+
+    // 2. Their places, from the case drawing: 4.5 mm in from each corner; the fiducials are
+    //    near two opposite corners.
+    .hole1.place.x &= 4.5mm
+    .hole1.place.y &= 4.5mm
+    .hole2.place.x &= 85.5mm
+    .hole2.place.y &= 4.5mm
+    .hole3.place.x &= 4.5mm
+    .hole3.place.y &= 57.5mm
+    .hole4.place.x &= 85.5mm
+    .hole4.place.y &= 57.5mm
+    .fiducial1.place.x &= 12mm
+    .fiducial1.place.y &= 3mm
+    .fiducial2.place.x &= 78mm
+    .fiducial2.place.y &= 59mm
+
+    // 3. The sensor plug (16 pins, 40.6 mm long) is fixed at the left edge and sticks out of
+    //    it. Its pins point out of the case (turned 180 degrees), its body box is 8 mm past the
+    //    edge (the only line that says it may hang over: `.left` states the edge, and an `.x`
+    //    would not), and it is centred along the edge. Its pads stay inside the board. `fab`
+    //    lists the overhang as a warning, and the silkscreen of the part that is outside the
+    //    board gets the design rules check's silk to edge warnings.
+    .plug.place.rotation &= 180
+    .plug.place.left &= -8mm +/- 0.1mm
+    .plug.place.y >= .outline.height / 2 - 0.5mm
+    .plug.place.y <= .outline.height / 2 + 0.5mm
+    .plug.place.side &= "top"
+
+    // 4. The antenna and its coax connector are on one centreline near the right edge (the
+    //    relation, in equation form), the antenna's centreline is within a window of the drawing
+    //    (the position), and the connector is at the right edge.
+    .antenna.place.y &= 31mm +/- 0.5mm
+    .coax.place.y == .antenna.place.y
+    .coax.place.right >= .outline.width - 4mm
+    .coax.place.right <= .outline.width - 1mm
+
+    // 5. The radio carrier's two socket rows are 22.86 mm apart (0.9 inch, from the carrier's
+    //    datasheet), on one line, and both stand upright.
+    .radio.row_b.place.x - .radio.row_a.place.x == 22.86mm +/- 0.05mm
+    .radio.row_a.place.y == .radio.row_b.place.y
+    .radio.row_a.place.rotation &= 0
+    .radio.row_b.place.rotation &= 0
+
+    // 6. The indicators are on the back, except one LED that is on the front where the case
+    //    has a light pipe. A module with an exception cannot state `.lights.place.side` too
+    //    (it would contradict the LED's line), so each part states its own face.
+    .lights.led_a.place.side &= "bottom"
+    .lights.led_b.place.side &= "bottom"
+    .lights.led_c.place.side &= "top"
+    .lights.r_a.place.side &= "bottom"
+    .lights.r_b.place.side &= "bottom"
+    .lights.r_c.place.side &= "bottom"
+
+    // 7. The test pads: on the front, 2.54 mm apart in one row near the bottom edge. The pitch
+    //    of a row of twelve costs 22 lines, one for the distance between each pad and the next
+    //    (11) and one to keep each on the first pad's line (11), because a relation is one
+    //    equation of two parts along one axis; the face of all twelve is one line because they
+    //    are in a module, and the row's distance from the edge is one more. (The pads are
+    //    numbered in the order of their paths, so `.pads.tp2` is TP5 on the board: `tp10`
+    //    sorts before `tp2`.)
+    .pads.place.side &= "top"
+    .pads.tp1.place.y >= .outline.height - 8mm
+    .pads.tp2.place.x - .pads.tp1.place.x == 2.54mm +/- 0.05mm
+    .pads.tp3.place.x - .pads.tp2.place.x == 2.54mm +/- 0.05mm
+    .pads.tp4.place.x - .pads.tp3.place.x == 2.54mm +/- 0.05mm
+    .pads.tp5.place.x - .pads.tp4.place.x == 2.54mm +/- 0.05mm
+    .pads.tp6.place.x - .pads.tp5.place.x == 2.54mm +/- 0.05mm
+    .pads.tp7.place.x - .pads.tp6.place.x == 2.54mm +/- 0.05mm
+    .pads.tp8.place.x - .pads.tp7.place.x == 2.54mm +/- 0.05mm
+    .pads.tp9.place.x - .pads.tp8.place.x == 2.54mm +/- 0.05mm
+    .pads.tp10.place.x - .pads.tp9.place.x == 2.54mm +/- 0.05mm
+    .pads.tp11.place.x - .pads.tp10.place.x == 2.54mm +/- 0.05mm
+    .pads.tp12.place.x - .pads.tp11.place.x == 2.54mm +/- 0.05mm
+    .pads.tp2.place.y == .pads.tp1.place.y
+    .pads.tp3.place.y == .pads.tp1.place.y
+    .pads.tp4.place.y == .pads.tp1.place.y
+    .pads.tp5.place.y == .pads.tp1.place.y
+    .pads.tp6.place.y == .pads.tp1.place.y
+    .pads.tp7.place.y == .pads.tp1.place.y
+    .pads.tp8.place.y == .pads.tp1.place.y
+    .pads.tp9.place.y == .pads.tp1.place.y
+    .pads.tp10.place.y == .pads.tp1.place.y
+    .pads.tp11.place.y == .pads.tp1.place.y
+    .pads.tp12.place.y == .pads.tp1.place.y
+
+    // 8. The lid has a rib over a region of the front: nothing taller than 3 mm there. The
+    //    parts the datasheets give a height for are kept out of it when they are too tall.
+    .rib: Keepout {
+        .x &= 22mm
+        .y &= 0mm
+        .width &= 30mm
+        .height &= 16mm
+        .layers &= "top"
+        .max_height &= 3mm
+    }
+    .plug.height &= 9.2mm
+    .radio.row_a.height &= 8.5mm
+    .radio.row_b.height &= 8.5mm
+    .wp_switch.height &= 4.3mm
+    .usb.height &= 3.2mm
+}
