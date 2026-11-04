@@ -463,28 +463,27 @@ fn pegs(seed: u64) -> Result<Board, BoardError> {
 }
 
 #[test]
-fn a_hole_pinned_inside_a_keepout_for_parts_is_accepted_for_every_seed_and_stays_at_its_pin() {
-    // The requirement that pins a part decides (ADR 0045 section 10, PROVISIONAL): the holes
-    // were refused for standing in the keepout, whichever seed.
+fn a_hole_pinned_inside_a_keepout_for_parts_is_refused_the_same_way_for_every_seed() {
+    // A requirement that pins a part does not override a keepout that forbids parts (the rule
+    // of `crates/netsmith/tests/conflicts.rs`, ADR 0045 section 13): it is a finding for
+    // every seed, naming both holes and the keepout, and the holes stay at their pins.
+    let outcomes: Vec<String> = (0..4).map(|seed| outcome(&pegs(seed))).collect();
+    assert!(
+        outcomes.iter().all(|o| *o == outcomes[0]),
+        "the seeds differ: {outcomes:#?}"
+    );
+    for want in [
+        "H1 overlaps the keepout `peg_bases`, which forbids parts",
+        "H2 overlaps the keepout `peg_bases`, which forbids parts",
+    ] {
+        assert!(outcomes[0].contains(want), "no `{want}` in {outcomes:#?}");
+    }
     for seed in 0..4 {
-        let result = pegs(seed);
-        let b = result
-            .as_ref()
-            .unwrap_or_else(|e| panic!("seed {seed}: {e}"));
-        assert_eq!(b.check_placement(), vec![], "seed {seed}");
+        let b = pegs(seed).expect("the board is made, with findings");
         for (name, x, y) in [("H1", 6.0, 8.0), ("H2", 29.0, 8.0)] {
             let c = b.part(name).unwrap().body().centre();
             let (dx, dy) = (c.x - b.outline.min.x - x, c.y - b.outline.min.y - y);
             assert!(dx.abs() < 1e-3 && dy.abs() < 1e-3, "{name}: {dx} {dy}");
-        }
-        // A part nobody pinned still keeps out of the keepout.
-        let keep = b.keepout_areas()[0].rect;
-        for p in b.parts.iter().filter(|p| !p.has_hole()) {
-            assert!(
-                !p.courtyard().overlaps(&keep),
-                "{} in the keepout",
-                p.refdes
-            );
         }
     }
 }

@@ -470,9 +470,6 @@ struct Model {
     /// Whether the requirements let the part hang over the board edge (ADR 0045): its walls
     /// are the design's along the axes it holds, and its pads stay inside the outline.
     overhangs: bool,
-    /// Whether the requirements put the part at one point: a keepout that forbids parts does
-    /// not keep it out (B6).
-    pinned: bool,
     /// The edges the part may hang over: its courtyard counts clipped to the outline against
     /// other courtyards.
     may: Edges,
@@ -815,11 +812,6 @@ impl<'a> Engine<'a> {
                         .get(i)
                         .and_then(Option::as_ref)
                         .is_some_and(|w| w.overhangs),
-                    pinned: p
-                        .wants
-                        .get(i)
-                        .and_then(Option::as_ref)
-                        .is_some_and(|w| w.pinned),
                     may: p.overhangs.get(i).copied().unwrap_or_default(),
                     no_go: match parts[i].height {
                         Some(h) => p
@@ -1705,9 +1697,6 @@ impl<'a> Engine<'a> {
             .p
             .keepouts
             .iter()
-            // A part the requirements put at one point is where they say, in a keepout that
-            // forbids parts too; a cutout is still kept clear (B6).
-            .filter(|k| !model.pinned || self.p.cutouts.contains(k))
             .map(|k| (k, &court))
             .chain(model.no_go.iter().map(|k| (k, &tall)))
         {
@@ -2035,7 +2024,6 @@ impl<'a> Engine<'a> {
             .p
             .keepouts
             .iter()
-            .filter(|k| !self.models[i].pinned || self.p.cutouts.contains(k))
             .map(|k| (k, &court))
             .chain(self.models[i].no_go.iter().map(|k| (k, &tall)))
         {

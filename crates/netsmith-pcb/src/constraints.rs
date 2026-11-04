@@ -57,10 +57,6 @@ pub struct Want {
     /// Whether the requirements say, for some turn, that the part hangs over an edge of the
     /// outline (see [`crate::overhang`]).
     pub overhangs: bool,
-    /// Whether the requirements put the part at one point (a window of no width along both
-    /// axes in every turn they leave). A requirement that pins a part decides where it is,
-    /// even inside a keepout that forbids parts (PROVISIONAL, ADR 0045 section 10).
-    pub pinned: bool,
 }
 
 /// The index of a right angle in [`Want::reach`], or `None` for any other angle.
@@ -110,9 +106,6 @@ pub(crate) struct Plan {
     pub overhang: BTreeMap<String, Overhang>,
     /// The relations between two parts, which the annealer keeps and the check measures.
     pub offsets: Vec<PlanOffset>,
-    /// The parts whose requirements put them at one point, whether or not one turn is left
-    /// (B6, PROVISIONAL): they are not refused for standing in a keepout that forbids parts.
-    pub pinned: std::collections::BTreeSet<String>,
 }
 
 /// A relation between two parts' places for the placer (ADR 0045, section 3): the measure of
@@ -600,14 +593,6 @@ pub(crate) fn plan(
         if let Some(stated) = stated_overhang(&reqs, may) {
             plan.overhang.insert(part.refdes.clone(), stated);
         }
-        let at_a_point = live.iter().all(|&q| {
-            reach[q].is_some_and(|r| {
-                r.x.0 == r.x.1 && r.y.0 == r.y.1 && r.x.0.is_finite() && r.y.0.is_finite()
-            })
-        });
-        if at_a_point {
-            plan.pinned.insert(part.refdes.clone());
-        }
         let pinned = live.len() == 1
             && reach[live[0]].is_some_and(|r| {
                 r.x.0 == r.x.1 && r.y.0 == r.y.1 && r.x.0.is_finite() && r.y.0.is_finite()
@@ -650,7 +635,6 @@ pub(crate) fn plan(
                         holds_x,
                         holds_y,
                         overhangs: may.any(),
-                        pinned: at_a_point,
                     },
                 );
             }
