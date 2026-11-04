@@ -101,6 +101,8 @@ mod tests {
             // A QFP of a maker's own drawing, which is not the MS-026 pattern.
             "Package_QFP:LQFP-64_10x10mm_P0.5mm",
             "Package_QFP:TQFP-47_7x7mm_P0.5mm",
+            // Wolfspeed's pad numbering (the tab is pin 1), not the Infineon pattern.
+            "Package_TO_SOT_SMD:TO-263-2_TabPin1",
             "Connector_PinHeader_2.54mm:PinHeader_1x2_P2.54mm_Vertical",
             "Connector_PinHeader_2.54mm:PinHeader_1x41_P2.54mm_Vertical",
             "Connector_PinHeader_2.54mm:PinHeader_3x02_P2.54mm_Vertical",
@@ -351,6 +353,31 @@ mod tests {
         let mut four = four_pin.pad_numbers();
         four.sort();
         assert_eq!(four, ["1", "2", "3", "4", "5"]);
+    }
+
+    #[test]
+    fn a_d2pak_has_the_dpak_structure_on_the_pg_to263_pads() {
+        let fp = generate("Package_TO_SOT_SMD:TO-263-5_TabPin3").unwrap();
+        // Five leads, the third sharing its number with the tab (copper, and four paste
+        // openings of the same number).
+        assert_eq!(fp.pads_numbered("3").count(), 1 + 1 + 4);
+        let tab = fp
+            .pads_numbered("3")
+            .find(|p| p.layers == ["F.Cu", "F.Mask"] && p.width > 5.0)
+            .unwrap();
+        assert!(near(tab.at.x, 1.5) && near(tab.width, 9.4) && near(tab.height, 10.8));
+        let lead = fp.pads_numbered("1").next().unwrap();
+        assert!(near(lead.at.x, -7.65) && near(lead.at.y, -3.4));
+        assert!(near(lead.width, 4.6) && near(lead.height, 1.1));
+        assert_eq!(
+            fp.courtyard,
+            Rect::new(Pt::new(-10.2, -5.65), Pt::new(6.45, 5.65))
+        );
+        // The nine-pin parts' stencil openings are not pads: no number, no copper.
+        let nine = generate("Package_TO_SOT_SMD:TO-263-9_TabPin10").unwrap();
+        let openings: Vec<_> = nine.pads.iter().filter(|p| p.number.is_empty()).collect();
+        assert_eq!(openings.len(), 4);
+        assert!(openings.iter().all(|p| p.layers == ["F.Paste"]));
     }
 
     #[test]
