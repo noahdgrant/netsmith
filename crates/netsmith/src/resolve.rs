@@ -62,7 +62,7 @@ mod tests {
     use std::sync::Arc;
 
     use netsmith_lower::Assembly;
-    use netsmith_solve::{Availability, Generic, Series};
+    use netsmith_solve::{Availability, Generic, Series, Spec};
 
     use super::*;
 
@@ -103,11 +103,13 @@ mod tests {
             assembly_stated: false,
             generic: Some(Generic {
                 catalog: "resistor".into(),
-                series: Series::E96,
-                nominal: 249.0,
-                tolerance_percent: 1.0,
                 package: "0402".into(),
-                max_power: 0.0625,
+                spec: Spec::Resistor {
+                    series: Series::E96,
+                    nominal: 249.0,
+                    tolerance_percent: 1.0,
+                    max_power: 0.0625,
+                },
             }),
         }
     }

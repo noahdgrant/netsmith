@@ -13,7 +13,7 @@ use std::sync::Arc;
 use netsmith_check::FieldKind;
 use netsmith_quantity::Quantity;
 
-use crate::generic::{Generic, Series};
+use crate::generic::{Generic, Sense, Series};
 use crate::table::Table;
 
 /// What a source of stock knows about a part (ADR 0047). The solver never asks: only the
@@ -31,6 +31,9 @@ pub enum Value {
     Text(String),
     /// A value that depends on another field of the same part (see [`Derating`]).
     Derated(Derating),
+    /// A value a generic part (ADR 0047) cannot know and the design supplies: the solver
+    /// reads it from the design when it picks the part. Only generic parts have it.
+    Open(Sense),
 }
 
 /// A capacitor's effective capacitance: the marked value with its tolerance, and the fraction

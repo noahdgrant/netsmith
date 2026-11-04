@@ -7,13 +7,17 @@
 //! the bill of materials or the fab package is made: it finds the row of the catalog that is
 //! at least as good (Basic first), or says which rows are nearest.
 //!
-//! Only resistors are generic so far. A capacitor also needs a bias curve (ADR 0013), which a
-//! generic part has no source for.
+//! Capacitors, inductors and LEDs are generic too (ADR 0047, provisional), with one
+//! difference: a rating a generic part cannot know is left **open**. The solver fills it in
+//! from the design when the part is picked (what the design states, or the least a relation
+//! demands) and the generic part remembers it as a [`Need`], so the row that [`resolve`]
+//! finds has to meet it. A generic capacitor has no bias curve, so it resolves only to a row
+//! that has a recorded one (owner decision, 2026-11-03).
 
 use netsmith_check::FieldKind;
 use netsmith_quantity::{Dimension, Quantity};
 
-use crate::catalog::{Candidate, Catalogs, Library, Value};
+use crate::catalog::{Candidate, Catalogs, Derating, Library, Value};
 
 /// An E-series: the values of one decade that a tolerance class is built on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,7 +75,12 @@ impl Series {
     /// Every value of the series from 1 ohm up to 9.76 Mohm, rising. A value is the nearest
     /// double to its decimal digits, so `3.3` times 100 is exactly 330.
     pub fn resistances(self) -> Vec<f64> {
-        (0..=6)
+        self.values(0..=6)
+    }
+
+    /// The values of the decades `10^exp` for each `exp` given, rising.
+    pub fn values(self, decades: std::ops::RangeInclusive<i32>) -> Vec<f64> {
+        decades
             .flat_map(|exp| {
                 self.decade().iter().map(move |m| {
                     format!("{m}e{exp}")
@@ -80,6 +89,15 @@ impl Series {
                 })
             })
             .collect()
+    }
+
+    /// The series capacitors and inductors are offered in: the project's, but never E96,
+    /// which is a resistor series (PROVISIONAL, ADR 0047).
+    pub fn for_reactive(self) -> Series {
+        match self {
+            Series::E96 => Series::E24,
+            other => other,
+        }
     }
 }
 
@@ -90,31 +108,277 @@ const PACKAGES: [(&str, f64); 3] = [("0402", 0.0625), ("0603", 0.1), ("0805", 0.
 /// The tolerance of a generic resistor, in percent. E24 and E96 values are made at 1%.
 const TOLERANCE_PERCENT: f64 = 1.0;
 
+/// The packages a generic capacitor can be: the sizes the capacitor mapping has
+/// (`std/kicad.toml`). A package is a name, not a rating.
+const CAPACITOR_PACKAGES: [&str; 3] = ["0402", "0603", "0805"];
+
+/// The tolerances a generic capacitor can have, widest first: the standard classes M, K and
+/// J of IEC 60062. The widest is the weakest claim, so it is tried first and is the easiest
+/// to resolve.
+const CAPACITOR_TOLERANCES: [f64; 3] = [20.0, 10.0, 5.0];
+
+/// The packages a generic inductor can be (`std/kicad.toml`).
+const INDUCTOR_PACKAGES: [&str; 4] = ["0402", "0603", "0805", "1210"];
+
+/// The tolerances a generic inductor can have, widest first.
+const INDUCTOR_TOLERANCES: [f64; 3] = [30.0, 20.0, 10.0];
+
+/// The packages a generic LED can be (`std/kicad.toml`).
+const LED_PACKAGES: [&str; 3] = ["0402", "0603", "0805"];
+
+/// How the solver reads a column that a generic part leaves open.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sense {
+    /// Only what the design states for the field: a colour, a forward voltage. A value
+    /// that other values are worked out from is never guessed, so a generic part that
+    /// finds the design asking for the field without stating it is not used.
+    Stated,
+    /// A rating where more is better (a voltage or current rating): the least that any
+    /// relation of the design demands of it.
+    AtLeast,
+    /// A rating where less is better (a winding's resistance): the most that any relation
+    /// of the design allows.
+    AtMost,
+}
+
+/// What the design asks of a column a generic part left open, as found when the part was
+/// picked. The row that stands for the part has to meet it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Need {
+    /// Nothing: the design neither states the field nor demands anything of it. The solver
+    /// then did not check it, and the check that mentions it is listed as not evaluated.
+    Nothing,
+    /// The design states this text (`RED`).
+    Text(String),
+    /// The design states a range, in the field's base unit. The row's value must lie in it.
+    Within { lo: f64, hi: f64 },
+    /// A relation demands at least this much.
+    AtLeast(f64),
+    /// A relation allows at most this much.
+    AtMost(f64),
+}
+
+impl Need {
+    fn is_nothing(&self) -> bool {
+        matches!(self, Need::Nothing)
+    }
+
+    fn met_by(&self, value: Option<&Value>) -> bool {
+        let quantity = match value {
+            Some(Value::Quantity(q)) => Some(q),
+            _ => None,
+        };
+        match self {
+            Need::Nothing => true,
+            Need::Text(t) => matches!(value, Some(Value::Text(v)) if v == t),
+            Need::Within { lo, hi } => quantity.is_some_and(|q| {
+                q.lo() >= lo - lo.abs() * 1e-9 - 1e-15 && q.hi() <= hi + hi.abs() * 1e-9 + 1e-15
+            }),
+            Need::AtLeast(x) => quantity.is_some_and(|q| q.lo() >= x - x.abs() * 1e-9),
+            Need::AtMost(x) => quantity.is_some_and(|q| q.hi() <= x + x.abs() * 1e-9),
+        }
+    }
+
+    /// `at least 10 V`, or `` for nothing.
+    fn describe(&self, unit: &str) -> String {
+        match self {
+            Need::Nothing => String::new(),
+            Need::Text(t) => t.clone(),
+            Need::Within { lo, hi } => format!("{}..{}", si(*lo, unit), si(*hi, unit)),
+            Need::AtLeast(x) => format!("at least {}", si(*x, unit)),
+            Need::AtMost(x) => format!("at most {}", si(*x, unit)),
+        }
+    }
+}
+
+/// What a generic part is, by kind.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Spec {
+    /// A value of an E-series with a tolerance and the package's usual power rating.
+    Resistor {
+        series: Series,
+        /// In ohms.
+        nominal: f64,
+        tolerance_percent: f64,
+        /// In watts.
+        max_power: f64,
+    },
+    /// A ceramic capacitor's marked value. Its effective capacitance is unknown: a generic
+    /// capacitor has no bias curve, and resolves only to a row that has one.
+    Capacitor {
+        series: Series,
+        /// In farads.
+        nominal: f64,
+        tolerance_percent: f64,
+        /// The rated voltage the design demands.
+        max_voltage: Need,
+    },
+    Inductor {
+        series: Series,
+        /// In henries.
+        nominal: f64,
+        tolerance_percent: f64,
+        saturation_current: Need,
+        dc_resistance: Need,
+    },
+    Led {
+        color: Need,
+        forward_voltage: Need,
+    },
+}
+
 /// What a generic part asks of the part that stands for it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Generic {
     /// The catalog its row must be in (`resistor`).
     pub catalog: String,
-    pub series: Series,
-    /// The value, in ohms.
-    pub nominal: f64,
-    pub tolerance_percent: f64,
     pub package: String,
-    /// The power it must be able to dissipate, in watts.
-    pub max_power: f64,
+    pub spec: Spec,
 }
 
 impl Generic {
-    /// `340 ohm 1% 0402 62.5 mW (E24)`.
+    /// The value, in the base unit of its dimension. An LED has none.
+    pub fn nominal(&self) -> Option<f64> {
+        match &self.spec {
+            Spec::Resistor { nominal, .. }
+            | Spec::Capacitor { nominal, .. }
+            | Spec::Inductor { nominal, .. } => Some(*nominal),
+            Spec::Led { .. } => None,
+        }
+    }
+
+    /// The series the value is from. An LED has none.
+    pub fn series(&self) -> Option<Series> {
+        match &self.spec {
+            Spec::Resistor { series, .. }
+            | Spec::Capacitor { series, .. }
+            | Spec::Inductor { series, .. } => Some(*series),
+            Spec::Led { .. } => None,
+        }
+    }
+
+    /// The column that holds the value, for a kind that has one.
+    fn value_column(&self) -> Option<&'static str> {
+        match &self.spec {
+            Spec::Resistor { .. } => Some("resistance"),
+            Spec::Capacitor { .. } => Some("capacitance"),
+            Spec::Inductor { .. } => Some("inductance"),
+            Spec::Led { .. } => None,
+        }
+    }
+
+    /// `340 ohm 1% 0402 62.5 mW (E24)`, `100 nF 10% 0402 at least 10 V (E24)`,
+    /// `RED LED 0603 forward voltage 1.8 V..2.2 V`.
     pub fn describe(&self) -> String {
-        format!(
-            "{} ohm {}% {} {} mW ({})",
-            number(self.nominal),
-            number(self.tolerance_percent),
-            self.package,
-            number(self.max_power * 1000.0),
-            self.series.name()
-        )
+        let with = |parts: Vec<String>| {
+            parts
+                .into_iter()
+                .filter(|p| !p.is_empty())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        match &self.spec {
+            Spec::Resistor {
+                series,
+                nominal,
+                tolerance_percent,
+                max_power,
+            } => format!(
+                "{} ohm {}% {} {} mW ({})",
+                number(*nominal),
+                number(*tolerance_percent),
+                self.package,
+                number(max_power * 1000.0),
+                series.name()
+            ),
+            Spec::Capacitor {
+                series,
+                nominal,
+                tolerance_percent,
+                max_voltage,
+            } => format!(
+                "{} {}% {}{} ({}, needs a recorded DC-bias curve)",
+                si(*nominal, "F"),
+                number(*tolerance_percent),
+                self.package,
+                rated(max_voltage, "rated voltage", "V"),
+                series.name()
+            ),
+            Spec::Inductor {
+                series,
+                nominal,
+                tolerance_percent,
+                saturation_current,
+                dc_resistance,
+            } => format!(
+                "{} {}% {}{}{} ({})",
+                si(*nominal, "H"),
+                number(*tolerance_percent),
+                self.package,
+                rated(saturation_current, "saturation current", "A"),
+                rated(dc_resistance, "DC resistance", "ohm"),
+                series.name()
+            ),
+            Spec::Led {
+                color,
+                forward_voltage,
+            } => with(vec![
+                format!(
+                    "{}LED {}",
+                    if let Need::Text(t) = color {
+                        format!("{t} ")
+                    } else {
+                        String::new()
+                    },
+                    self.package
+                ),
+                rated(forward_voltage, "forward voltage", "V")
+                    .trim_start_matches(", ")
+                    .to_string(),
+            ]),
+        }
+    }
+
+    /// The same generic part with the needs the solver read from the design when it picked
+    /// the part. `needs` is keyed by catalog column.
+    pub fn with_needs(&self, needs: &[(String, Need)]) -> Generic {
+        let find = |key: &str| {
+            needs
+                .iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, n)| n.clone())
+                .unwrap_or(Need::Nothing)
+        };
+        let mut out = self.clone();
+        match &mut out.spec {
+            Spec::Resistor { .. } => {}
+            Spec::Capacitor { max_voltage, .. } => *max_voltage = find("max_voltage"),
+            Spec::Inductor {
+                saturation_current,
+                dc_resistance,
+                ..
+            } => {
+                *saturation_current = find("saturation_current");
+                *dc_resistance = find("dc_resistance");
+            }
+            Spec::Led {
+                color,
+                forward_voltage,
+            } => {
+                *color = find("color");
+                *forward_voltage = find("forward_voltage");
+            }
+        }
+        out
+    }
+}
+
+/// `, rated voltage at least 10 V`, or nothing if the design asks nothing.
+fn rated(need: &Need, what: &str, unit: &str) -> String {
+    if need.is_nothing() {
+        String::new()
+    } else {
+        format!(", {what} {}", need.describe(unit))
     }
 }
 
@@ -124,16 +388,36 @@ fn number(x: f64) -> String {
     text.trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
-/// The schematic's value field for a resistance: `330`, `2.2k`, `1M`.
-fn label(ohms: f64) -> String {
-    let (scaled, suffix) = if ohms >= 1e6 {
-        (ohms / 1e6, "M")
-    } else if ohms >= 1e3 {
-        (ohms / 1e3, "k")
-    } else {
-        (ohms, "")
-    };
-    format!("{}{suffix}", number(scaled))
+/// A quantity with an SI prefix: `100 nF`, `2.2 uH`, `7.875 V`.
+fn si(x: f64, unit: &str) -> String {
+    let (scaled, prefix) = scaled(x);
+    format!("{} {prefix}{unit}", number(scaled))
+}
+
+fn scaled(x: f64) -> (f64, &'static str) {
+    let a = x.abs();
+    let table = [
+        (1e6, "M"),
+        (1e3, "k"),
+        (1.0, ""),
+        (1e-3, "m"),
+        (1e-6, "u"),
+        (1e-9, "n"),
+        (1e-12, "p"),
+    ];
+    for (factor, prefix) in table {
+        if a >= factor * (1.0 - 1e-9) {
+            return (x / factor, prefix);
+        }
+    }
+    (x / 1e-12, "p")
+}
+
+/// The schematic's value field: `330`, `2.2k`, `1M` for a resistance; `100n` for a
+/// capacitance; `2.2u` for an inductance.
+fn label(x: f64) -> String {
+    let (scaled, prefix) = scaled(x);
+    format!("{}{prefix}", number(scaled))
 }
 
 /// The generic candidates of a catalog, in the order they are tried (smallest package first,
@@ -144,35 +428,69 @@ pub fn candidates(
     catalog: &str,
     columns: &[(String, FieldKind)],
 ) -> Option<Vec<Candidate>> {
-    if catalog != "resistor" {
+    let known: &[&str] = match catalog {
+        "resistor" => &["resistance", "max_power", "package"],
+        "capacitor" => &["capacitance", "effective_capacitance", "max_voltage", "package"],
+        "inductor" => &[
+            "inductance",
+            "saturation_current",
+            "dc_resistance",
+            "package",
+        ],
+        "led" => &["color", "forward_voltage", "package"],
+        _ => return None,
+    };
+    if !columns.iter().all(|(name, _)| known.contains(&name.as_str())) {
         return None;
     }
-    let known = |name: &str| ["resistance", "max_power", "package"].contains(&name);
-    if !columns.iter().all(|(name, _)| known(name))
-        || !columns.iter().any(|(n, _)| n == "resistance")
+    let value_column = match catalog {
+        "resistor" => Some("resistance"),
+        "capacitor" => Some("capacitance"),
+        "inductor" => Some("inductance"),
+        _ => None,
+    };
+    if let Some(v) = value_column
+        && !columns.iter().any(|(n, _)| n == v)
     {
         return None;
     }
-    let tolerance = Quantity::literal(TOLERANCE_PERCENT, Some("%"))
-        .ok()?
-        .quantity;
+    match catalog {
+        "resistor" => resistors(series, catalog, columns),
+        "capacitor" => capacitors(series.for_reactive(), catalog, columns),
+        "inductor" => inductors(series.for_reactive(), catalog, columns),
+        _ => leds(catalog, columns),
+    }
+}
+
+fn centered(nominal: f64, dim: Dimension, percent: f64) -> Option<Quantity> {
+    let center = Quantity::point(dim, nominal).ok()?;
+    let tolerance = Quantity::literal(percent, Some("%")).ok()?.quantity;
+    Quantity::tolerance(&center, &tolerance, true).ok()
+}
+
+fn resistors(
+    series: Series,
+    catalog: &str,
+    columns: &[(String, FieldKind)],
+) -> Option<Vec<Candidate>> {
     let mut out = Vec::new();
     for (package, power) in PACKAGES {
         for ohms in series.resistances() {
-            let center = Quantity::point(Dimension::RESISTANCE, ohms).ok()?;
             let generic = Generic {
                 catalog: catalog.to_string(),
-                series,
-                nominal: ohms,
-                tolerance_percent: TOLERANCE_PERCENT,
                 package: package.to_string(),
-                max_power: power,
+                spec: Spec::Resistor {
+                    series,
+                    nominal: ohms,
+                    tolerance_percent: TOLERANCE_PERCENT,
+                    max_power: power,
+                },
             };
             let mut values = Vec::new();
             for (name, _) in columns {
                 let value = match name.as_str() {
                     "resistance" => {
-                        Value::Quantity(Quantity::tolerance(&center, &tolerance, true).ok()?)
+                        Value::Quantity(centered(ohms, Dimension::RESISTANCE, TOLERANCE_PERCENT)?)
                     }
                     "max_power" => Value::Quantity(Quantity::point(Dimension::POWER, power).ok()?),
                     _ => Value::Text(package.to_string()),
@@ -187,6 +505,143 @@ pub fn candidates(
                 ..Candidate::default()
             });
         }
+    }
+    Some(out)
+}
+
+fn capacitors(
+    series: Series,
+    catalog: &str,
+    columns: &[(String, FieldKind)],
+) -> Option<Vec<Candidate>> {
+    // 1 pF up to 100 uF.
+    let values: Vec<f64> = series
+        .values(-12..=-4)
+        .into_iter()
+        .filter(|&f| f <= 1e-4 * (1.0 + 1e-9))
+        .collect();
+    let mut out = Vec::new();
+    for package in CAPACITOR_PACKAGES {
+        for percent in CAPACITOR_TOLERANCES {
+            for &farads in &values {
+                let marked = centered(farads, Dimension::CAPACITANCE, percent)?;
+                let generic = Generic {
+                    catalog: catalog.to_string(),
+                    package: package.to_string(),
+                    spec: Spec::Capacitor {
+                        series,
+                        nominal: farads,
+                        tolerance_percent: percent,
+                        max_voltage: Need::Nothing,
+                    },
+                };
+                let mut cells = Vec::new();
+                for (name, _) in columns {
+                    let value = match name.as_str() {
+                        "capacitance" => Value::Quantity(marked),
+                        // No published curve: the effective capacitance is unknown, as for a
+                        // row whose cell is `derate capacitance by bias:` with nothing after.
+                        "effective_capacitance" => Value::Derated(Derating {
+                            marked,
+                            against: "bias".to_string(),
+                            curve: Vec::new(),
+                        }),
+                        "max_voltage" => Value::Open(Sense::AtLeast),
+                        _ => Value::Text(package.to_string()),
+                    };
+                    cells.push((name.clone(), value));
+                }
+                out.push(Candidate {
+                    name: format!("generic {}", generic.describe()),
+                    label: label(farads),
+                    columns: cells,
+                    generic: Some(generic),
+                    ..Candidate::default()
+                });
+            }
+        }
+    }
+    Some(out)
+}
+
+fn inductors(
+    series: Series,
+    catalog: &str,
+    columns: &[(String, FieldKind)],
+) -> Option<Vec<Candidate>> {
+    // 1 nH up to 1 mH.
+    let values: Vec<f64> = series
+        .values(-9..=-3)
+        .into_iter()
+        .filter(|&h| h <= 1e-3 * (1.0 + 1e-9))
+        .collect();
+    let mut out = Vec::new();
+    for package in INDUCTOR_PACKAGES {
+        for percent in INDUCTOR_TOLERANCES {
+            for &henries in &values {
+                let marked = centered(henries, Dimension::INDUCTANCE, percent)?;
+                let generic = Generic {
+                    catalog: catalog.to_string(),
+                    package: package.to_string(),
+                    spec: Spec::Inductor {
+                        series,
+                        nominal: henries,
+                        tolerance_percent: percent,
+                        saturation_current: Need::Nothing,
+                        dc_resistance: Need::Nothing,
+                    },
+                };
+                let mut cells = Vec::new();
+                for (name, _) in columns {
+                    let value = match name.as_str() {
+                        "inductance" => Value::Quantity(marked),
+                        "saturation_current" => Value::Open(Sense::AtLeast),
+                        "dc_resistance" => Value::Open(Sense::AtMost),
+                        _ => Value::Text(package.to_string()),
+                    };
+                    cells.push((name.clone(), value));
+                }
+                out.push(Candidate {
+                    name: format!("generic {}", generic.describe()),
+                    label: label(henries),
+                    columns: cells,
+                    generic: Some(generic),
+                    ..Candidate::default()
+                });
+            }
+        }
+    }
+    Some(out)
+}
+
+fn leds(catalog: &str, columns: &[(String, FieldKind)]) -> Option<Vec<Candidate>> {
+    let mut out = Vec::new();
+    for package in LED_PACKAGES {
+        let generic = Generic {
+            catalog: catalog.to_string(),
+            package: package.to_string(),
+            spec: Spec::Led {
+                color: Need::Nothing,
+                forward_voltage: Need::Nothing,
+            },
+        };
+        let cells = columns
+            .iter()
+            .map(|(name, _)| {
+                let value = match name.as_str() {
+                    "color" | "forward_voltage" => Value::Open(Sense::Stated),
+                    _ => Value::Text(package.to_string()),
+                };
+                (name.clone(), value)
+            })
+            .collect();
+        out.push(Candidate {
+            name: format!("generic {}", generic.describe()),
+            label: "LED".to_string(),
+            columns: cells,
+            generic: Some(generic),
+            ..Candidate::default()
+        });
     }
     Some(out)
 }
@@ -212,19 +667,34 @@ fn rank(library: Option<Library>) -> u8 {
     }
 }
 
-/// The columns a generic resistor is matched on.
-fn kinds() -> Vec<(String, FieldKind)> {
-    vec![
-        (
-            "resistance".to_string(),
-            FieldKind::Quantity(Dimension::RESISTANCE),
-        ),
-        (
-            "max_power".to_string(),
-            FieldKind::Quantity(Dimension::POWER),
-        ),
-        ("package".to_string(), FieldKind::Text),
-    ]
+/// The columns a generic part of this catalog is matched on.
+fn kinds(catalog: &str) -> Vec<(String, FieldKind)> {
+    let q = |name: &str, dim| (name.to_string(), FieldKind::Quantity(dim));
+    let text = |name: &str| (name.to_string(), FieldKind::Text);
+    match catalog {
+        "capacitor" => vec![
+            q("capacitance", Dimension::CAPACITANCE),
+            q("effective_capacitance", Dimension::CAPACITANCE),
+            q("max_voltage", Dimension::VOLTAGE),
+            text("package"),
+        ],
+        "inductor" => vec![
+            q("inductance", Dimension::INDUCTANCE),
+            q("saturation_current", Dimension::CURRENT),
+            q("dc_resistance", Dimension::RESISTANCE),
+            text("package"),
+        ],
+        "led" => vec![
+            text("color"),
+            q("forward_voltage", Dimension::VOLTAGE),
+            text("package"),
+        ],
+        _ => vec![
+            q("resistance", Dimension::RESISTANCE),
+            q("max_power", Dimension::POWER),
+            text("package"),
+        ],
+    }
 }
 
 fn quantity_of(c: &Candidate, key: &str) -> Option<Quantity> {
@@ -234,13 +704,101 @@ fn quantity_of(c: &Candidate, key: &str) -> Option<Quantity> {
     }
 }
 
+/// Why a row does not stand for a generic part.
+#[derive(Debug, Clone, PartialEq)]
+enum Miss {
+    Package,
+    Value,
+    Tolerance,
+    /// A rating or a stated value the row does not meet (the column).
+    Rating(&'static str),
+    /// A capacitor row with no recorded DC-bias curve.
+    NoCurve,
+}
+
+/// What a row lacks to stand for a generic part: empty if it stands for it.
+fn misses(generic: &Generic, row: &Candidate) -> Vec<Miss> {
+    let mut out = Vec::new();
+    if !matches!(row.column("package"), Some(Value::Text(p)) if *p == generic.package) {
+        out.push(Miss::Package);
+    }
+    if let (Some(nominal), Some(column)) = (generic.nominal(), generic.value_column()) {
+        let tolerance = match &generic.spec {
+            Spec::Resistor {
+                tolerance_percent, ..
+            }
+            | Spec::Capacitor {
+                tolerance_percent, ..
+            }
+            | Spec::Inductor {
+                tolerance_percent, ..
+            } => *tolerance_percent,
+            Spec::Led { .. } => 0.0,
+        };
+        match quantity_of(row, column) {
+            Some(q) if (q.mid() - nominal).abs() <= nominal * 1e-6 => {
+                let want_lo = nominal * (1.0 - tolerance / 100.0);
+                let want_hi = nominal * (1.0 + tolerance / 100.0);
+                let slack = nominal * 1e-9;
+                if q.lo() < want_lo - slack || q.hi() > want_hi + slack {
+                    out.push(Miss::Tolerance);
+                }
+            }
+            _ => out.push(Miss::Value),
+        }
+    }
+    match &generic.spec {
+        Spec::Resistor { max_power, .. } => {
+            if !quantity_of(row, "max_power").is_some_and(|p| p.lo() >= *max_power) {
+                out.push(Miss::Rating("max_power"));
+            }
+        }
+        Spec::Capacitor { max_voltage, .. } => {
+            if !max_voltage.met_by(row.column("max_voltage")) {
+                out.push(Miss::Rating("max_voltage"));
+            }
+            // Owner decision, 2026-11-03: only a row with a recorded DC-bias curve.
+            if !matches!(row.column("effective_capacitance"), Some(Value::Derated(d)) if !d.curve.is_empty())
+            {
+                out.push(Miss::NoCurve);
+            }
+        }
+        Spec::Inductor {
+            saturation_current,
+            dc_resistance,
+            ..
+        } => {
+            if !saturation_current.met_by(row.column("saturation_current")) {
+                out.push(Miss::Rating("saturation_current"));
+            }
+            if !dc_resistance.met_by(row.column("dc_resistance")) {
+                out.push(Miss::Rating("dc_resistance"));
+            }
+        }
+        Spec::Led {
+            color,
+            forward_voltage,
+        } => {
+            if !color.met_by(row.column("color")) {
+                out.push(Miss::Rating("color"));
+            }
+            if !forward_voltage.met_by(row.column("forward_voltage")) {
+                out.push(Miss::Rating("forward_voltage"));
+            }
+        }
+    }
+    out
+}
+
 /// Find the row of the catalog that stands for a generic part, or say why there is none.
 ///
 /// A row fits when it has the package, the nominal value (to a millionth), a tolerance no
-/// wider and a power rating no lower. Among the rows that fit the order is the
-/// preferred-parts list: Basic, then Preferred, then Extended, and inside a class the order
-/// of the file. `stock` is asked about each fitting row's LCSC number: a row it answers `0`
-/// for is passed over, and a row it knows nothing about (`None`) is kept.
+/// wider, and every rating the part asked for: a resistor's power rating no lower, a
+/// capacitor's voltage and (always) a recorded DC-bias curve, an inductor's saturation
+/// current and DC resistance, an LED's colour and forward voltage. Among the rows that fit
+/// the order is the preferred-parts list: Basic, then Preferred, then Extended, and inside a
+/// class the order of the file. `stock` is asked about each fitting row's LCSC number: a row
+/// it answers `0` for is passed over, and a row it knows nothing about (`None`) is kept.
 ///
 /// The error is the message for the part: what was asked for, and the nearest rows.
 pub fn resolve(
@@ -248,7 +806,7 @@ pub fn resolve(
     catalogs: &Catalogs,
     stock: &dyn Fn(&str) -> Option<u64>,
 ) -> Result<Orderable, String> {
-    let Some(Ok(catalog)) = catalogs.identity(&generic.catalog, &kinds()) else {
+    let Some(Ok(catalog)) = catalogs.identity(&generic.catalog, &kinds(&generic.catalog)) else {
         return Err(format!(
             "unresolved: there is no readable `{}` catalog to find {} in",
             generic.catalog,
@@ -260,23 +818,10 @@ pub fn resolve(
         .iter()
         .filter(|c| c.lcsc.is_some() || c.mpn.is_some())
         .collect();
-    let want_lo = generic.nominal * (1.0 - generic.tolerance_percent / 100.0);
-    let want_hi = generic.nominal * (1.0 + generic.tolerance_percent / 100.0);
-    let slack = generic.nominal * 1e-9;
     let mut fits: Vec<&Candidate> = rows
         .iter()
         .copied()
-        .filter(|c| {
-            let Some(r) = quantity_of(c, "resistance") else {
-                return false;
-            };
-            let power_ok = quantity_of(c, "max_power").is_some_and(|p| p.lo() >= generic.max_power);
-            matches!(c.column("package"), Some(Value::Text(p)) if *p == generic.package)
-                && (r.mid() - generic.nominal).abs() <= generic.nominal * 1e-6
-                && r.lo() >= want_lo - slack
-                && r.hi() <= want_hi + slack
-                && power_ok
-        })
+        .filter(|c| misses(generic, c).is_empty())
         .collect();
     fits.sort_by_key(|c| rank(c.library));
     let mut passed_over = Vec::new();
@@ -306,44 +851,118 @@ pub fn resolve(
             passed_over.join("; ")
         ));
     }
-    let mut near: Vec<(&Candidate, f64)> = rows
+    // A capacitor row that matches in everything but has no recorded DC-bias curve.
+    let no_curve: Vec<&str> = rows
         .iter()
-        .copied()
-        .filter_map(|c| {
-            let r = quantity_of(c, "resistance")?.mid();
-            (r > 0.0).then(|| (c, (r / generic.nominal).ln().abs()))
-        })
-        .filter(|(c, _)| !fits.iter().any(|f| std::ptr::eq(*f, *c)))
+        .filter(|c| misses(generic, c) == [Miss::NoCurve])
+        .map(|c| c.name.as_str())
         .collect();
-    let same_package = |c: &Candidate| matches!(c.column("package"), Some(Value::Text(p)) if *p == generic.package);
-    near.sort_by(|a, b| {
-        (!same_package(a.0))
-            .cmp(&!same_package(b.0))
-            .then(a.1.total_cmp(&b.1))
-            .then(rank(a.0.library).cmp(&rank(b.0.library)))
-    });
-    let alternatives: Vec<String> = near
-        .iter()
-        .take(3)
-        .map(|(c, _)| {
-            let r = quantity_of(c, "resistance").map_or(0.0, |q| q.mid());
-            let percent = (r - generic.nominal) / generic.nominal * 100.0;
-            let library = c.library.map(|l| format!(", {l}")).unwrap_or_default();
-            format!("{} ({percent:+.1}%{library})", c.name)
-        })
-        .collect();
+    if !no_curve.is_empty() {
+        let shown: Vec<&str> = no_curve.iter().copied().take(3).collect();
+        message.push_str(&format!(
+            " {} row(s) match but have no recorded DC-bias curve, which a generic ceramic capacitor requires: {}{}.",
+            no_curve.len(),
+            shown.join(", "),
+            if no_curve.len() > shown.len() { ", ..." } else { "" }
+        ));
+    }
+    let alternatives = nearest(generic, &rows, &fits);
     if alternatives.is_empty() {
-        message.push_str(" The catalog has no resistor to offer instead.");
+        message.push_str(&format!(
+            " The catalog has no {} to offer instead.",
+            part_word(&generic.catalog)
+        ));
     } else {
         message.push_str(&format!(
             " Nearest in the catalog: {}.",
-            alternatives.join(", ")
+            alternatives
+                .iter()
+                .map(|a| a.line.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     }
     message.push_str(
         " Change the value in the design and build again: the solver then checks every relation again with it.",
     );
     Err(message)
+}
+
+fn part_word(catalog: &str) -> &str {
+    match catalog {
+        "resistor" => "resistor",
+        "capacitor" => "capacitor",
+        "inductor" => "inductor",
+        "led" => "LED",
+        other => other,
+    }
+}
+
+/// A row near a generic part, for a message and for the re-check of an alternative.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Alternative {
+    /// The row's name.
+    pub name: String,
+    pub lcsc: Option<String>,
+    pub mpn: Option<String>,
+    /// The row's value, in the base unit, if the kind has one.
+    pub value: Option<f64>,
+    /// `330Ω Basic (-7.7%, Basic)`.
+    pub line: String,
+}
+
+/// The three rows nearest a generic part that do not stand for it: same package first, then
+/// nearest in value (an LED: the same colour first), then Basic first.
+pub fn nearest(generic: &Generic, rows: &[&Candidate], fits: &[&Candidate]) -> Vec<Alternative> {
+    let column = generic.value_column();
+    let nominal = generic.nominal();
+    let same_package = |c: &Candidate| matches!(c.column("package"), Some(Value::Text(p)) if *p == generic.package);
+    let same_color = |c: &Candidate| match &generic.spec {
+        Spec::Led {
+            color: Need::Text(t),
+            ..
+        } => matches!(c.column("color"), Some(Value::Text(v)) if v == t),
+        _ => true,
+    };
+    let mut near: Vec<(&Candidate, f64)> = rows
+        .iter()
+        .copied()
+        .filter(|c| !fits.iter().any(|f| std::ptr::eq(*f, *c)))
+        .filter_map(|c| match (column, nominal) {
+            (Some(col), Some(n)) => {
+                let v = quantity_of(c, col)?.mid();
+                (v > 0.0).then(|| (c, (v / n).ln().abs()))
+            }
+            _ => Some((c, 0.0)),
+        })
+        .collect();
+    near.sort_by(|a, b| {
+        (!same_color(a.0))
+            .cmp(&!same_color(b.0))
+            .then((!same_package(a.0)).cmp(&!same_package(b.0)))
+            .then(a.1.total_cmp(&b.1))
+            .then(rank(a.0.library).cmp(&rank(b.0.library)))
+    });
+    near.iter()
+        .take(3)
+        .map(|(c, _)| {
+            let value = column.and_then(|col| quantity_of(c, col)).map(|q| q.mid());
+            let library = c.library.map(|l| format!(", {l}")).unwrap_or_default();
+            let line = match (value, nominal) {
+                (Some(v), Some(n)) => {
+                    format!("{} ({:+.1}%{library})", c.name, (v - n) / n * 100.0)
+                }
+                _ => format!("{}{}", c.name, c.library.map(|l| format!(" ({l})")).unwrap_or_default()),
+            };
+            Alternative {
+                name: c.name.clone(),
+                lcsc: c.lcsc.clone(),
+                mpn: c.mpn.clone(),
+                value,
+                line,
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]

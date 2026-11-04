@@ -33,6 +33,7 @@ use netsmith_lang::ast::CmpOp;
 use netsmith_quantity::{Dimension, Quantity};
 
 use crate::catalog::{Candidate, Catalog, Catalogs, Derating, DeratingError, Library, Value};
+use crate::generic::{Need, Sense};
 use crate::eval::{EvalError, Val, eval, fields_in};
 
 /// The result of solving one board.
@@ -1616,12 +1617,12 @@ impl Solver<'_> {
             search.trials += 1;
             let snapshot = self.model.clone();
             match self.try_candidate(job.part, &job.columns, c) {
-                Ok(()) if jump.is_some() => {
+                Ok(_) if jump.is_some() => {
                     // The parts after this one would fail again, as they did.
                     self.model = snapshot;
                     failed.push(c);
                 }
-                Ok(()) => {
+                Ok(needs) => {
                     search.chosen.push(format!("{} = {}", job.path, c.name));
                     search.picks.push(Pick {
                         part: job.part,
@@ -1632,7 +1633,7 @@ impl Solver<'_> {
                         mpn: c.mpn.clone(),
                         library: c.library,
                         assembly: c.assembly.clone(),
-                        generic: c.generic.clone(),
+                        generic: c.generic.as_ref().map(|g| g.with_needs(&needs)),
                         rejected: examined,
                     });
                     let outcome = self.search(jobs, group, depth + 1, search, coupling);
@@ -1726,6 +1727,7 @@ impl Solver<'_> {
             let domain = &self.model.field(*f).domain;
             match (c.column(key), domain) {
                 (None, _) => false,
+                (Some(Value::Open(sense)), _) => self.need_of(*f, *sense).is_some(),
                 (Some(Value::Derated(d)), domain) => match self.derated(part, d) {
                     Ok(q) => match domain {
                         Domain::Quantity(want) => want.encloses(&q).unwrap_or(false),
@@ -1843,12 +1845,18 @@ impl Solver<'_> {
                 .catalog
                 .candidates
                 .iter()
+                .filter(|c| c.generic.is_none())
                 .filter_map(|c| match c.column(key) {
                     Some(Value::Derated(d)) => Some(d),
                     _ => None,
                 })
                 .collect();
-            if derated.is_empty() || !self.asked(*f) {
+            let generic = job
+                .catalog
+                .candidates
+                .iter()
+                .any(|c| c.generic.is_some() && matches!(c.column(key), Some(Value::Derated(_))));
+            if (derated.is_empty() && !generic) || !self.asked(*f) {
                 continue;
             }
             let (mut none, mut short) = (0, 0);
@@ -1882,6 +1890,12 @@ impl Solver<'_> {
                     "data only up to {known_to} V, but the bias reaches {wanted} V, for {short}"
                 ));
             }
+            if generic {
+                why.push(
+                    "generic parts have no recorded bias curve, and a generic ceramic capacitor is never used where the effective capacitance matters"
+                        .to_string(),
+                );
+            }
             if !why.is_empty() {
                 return Some(format!(
                     "`{}.{key}` is unknown for some candidates, so they were not used: {}",
@@ -1900,12 +1914,27 @@ impl Solver<'_> {
         part: InstId,
         columns: &[(FieldId, String)],
         c: &Candidate,
-    ) -> Result<(), Rejection> {
+    ) -> Result<Vec<(String, Need)>, Rejection> {
         let backup = self.model.clone();
+        let mut needs: Vec<(String, Need)> = Vec::new();
         for (f, key) in columns {
             let value = match c.column(key).expect("`fits` checked the column") {
                 Value::Quantity(q) => Domain::Quantity(*q),
                 Value::Text(t) => Domain::Text(t.clone()),
+                Value::Open(sense) => {
+                    // A generic part takes what the design says. A relation's demand is
+                    // taken exactly, so the relation holds with nothing to spare and any
+                    // row that meets the need holds it too.
+                    let need = self.need_of(*f, *sense).unwrap_or(Need::Nothing);
+                    if let (Need::AtLeast(x) | Need::AtMost(x), FieldKind::Quantity(dim)) =
+                        (&need, self.model.field(*f).kind)
+                        && let Ok(q) = Quantity::point(dim, *x)
+                    {
+                        self.model.set_domain(*f, Domain::Quantity(q));
+                    }
+                    needs.push((key.clone(), need));
+                    continue;
+                }
                 Value::Derated(d) => match self.derated(part, d) {
                     Ok(q) => Domain::Quantity(q),
                     // The design does not ask for it, and `fits` let it through.
@@ -1965,6 +1994,70 @@ impl Solver<'_> {
                 return reject(self, message, margin, (r.source, r.span), reads);
             }
         }
-        Ok(())
+        Ok(needs)
+    }
+
+    /// What the design asks of a field that a generic part leaves open (ADR 0047), or `None`
+    /// if it asks something the part cannot meet by taking it: a value that other values are
+    /// worked out from (`Sense::Stated`) must be stated.
+    ///
+    /// A stated text or range is the need. A rating (`AtLeast`, `AtMost`) with no statement
+    /// is the most extreme bound that a relation of the form `rating >= expression` or
+    /// `rating <= expression` puts on it, if the expression has a value. If nothing bounds
+    /// it the need is `Nothing`: the field stays unknown and a check that mentions it is
+    /// listed as not evaluated, as for any unknown value.
+    fn need_of(&self, field: FieldId, sense: Sense) -> Option<Need> {
+        match self.domain(field) {
+            Domain::Text(t) => return Some(Need::Text(t)),
+            Domain::Quantity(q) => {
+                return Some(Need::Within {
+                    lo: q.lo(),
+                    hi: q.hi(),
+                });
+            }
+            Domain::Unset => {}
+        }
+        match sense {
+            Sense::Stated => (!self.asked(field)).then_some(Need::Nothing),
+            Sense::AtLeast => {
+                let demand = self
+                    .bounds_on(field, true)
+                    .into_iter()
+                    .fold(None, |m: Option<f64>, x| Some(m.map_or(x, |m| m.max(x))));
+                Some(demand.map_or(Need::Nothing, Need::AtLeast))
+            }
+            Sense::AtMost => {
+                let allowed = self
+                    .bounds_on(field, false)
+                    .into_iter()
+                    .fold(None, |m: Option<f64>, x| Some(m.map_or(x, |m| m.min(x))));
+                Some(allowed.map_or(Need::Nothing, Need::AtMost))
+            }
+        }
+    }
+
+    /// The bounds relations put on a field by naming it alone on one side: for `above`, the
+    /// highest value of the other side of each `field >= x` (the field must be at least that);
+    /// otherwise the lowest value of the other side of each `field <= x`.
+    fn bounds_on(&self, field: FieldId, above: bool) -> Vec<f64> {
+        let mut out = Vec::new();
+        for r in self.model.relations() {
+            let (larger, smaller) = match r.op {
+                CmpOp::Ge => (&r.lhs, &r.rhs),
+                CmpOp::Le => (&r.rhs, &r.lhs),
+                _ => continue,
+            };
+            let (mine, other) = if above {
+                (larger, smaller)
+            } else {
+                (smaller, larger)
+            };
+            if matches!(mine, RExpr::Field(f) if *f == field)
+                && let Ok(Val::Q(q)) = eval(&self.model, other)
+            {
+                out.push(if above { q.hi() } else { q.lo() });
+            }
+        }
+        out
     }
 }

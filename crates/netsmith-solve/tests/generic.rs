@@ -49,8 +49,11 @@ fn with_a_series_the_solver_picks_a_generic_part_for_a_value_no_row_has() {
     let pick = &s.picks[0];
     assert!(pick.lcsc.is_none() && pick.mpn.is_none());
     let generic = pick.generic.as_ref().expect("a generic part");
-    assert_eq!(generic.series, Series::E24);
-    assert_eq!((generic.nominal, generic.package.as_str()), (390.0, "0402"));
+    assert_eq!(generic.series(), Some(Series::E24));
+    assert_eq!(
+        (generic.nominal(), generic.package.as_str()),
+        (Some(390.0), "0402")
+    );
     assert_eq!(pick.label, "390");
     assert_eq!(generic.describe(), "390 ohm 1% 0402 62.5 mW (E24)");
 }
@@ -76,25 +79,21 @@ fn e96_offers_values_e24_does_not() {
     let want = board("2.21kohm +/- 1%");
     assert!(solved(&want, &catalogs(Some(Series::E24))).picks.is_empty());
     let s = solved(&want, &catalogs(Some(Series::E96)));
-    assert_eq!(s.picks[0].generic.as_ref().unwrap().nominal, 2210.0);
+    assert_eq!(s.picks[0].generic.as_ref().unwrap().nominal(), Some(2210.0));
 }
 
 #[test]
-fn a_catalog_that_is_not_the_resistor_catalog_has_no_generic_parts() {
+fn a_catalog_that_has_no_generic_parts_gets_none() {
     use netsmith_check::FieldKind;
     use netsmith_quantity::Dimension;
     let mut c = Catalogs::empty().with_series(Some(Series::E24));
-    c.add_file(
-        "capacitor",
-        "catalogs/capacitor.csv",
-        "name,capacitance\nzz,1uF\n",
-    )
-    .unwrap();
+    c.add_file("fuse", "catalogs/fuse.csv", "name,rated_current\nzz,1A\n")
+        .unwrap();
     let kinds = [(
-        "capacitance".to_string(),
-        FieldKind::Quantity(Dimension::CAPACITANCE),
+        "rated_current".to_string(),
+        FieldKind::Quantity(Dimension::CURRENT),
     )];
-    let got = c.resolve("capacitor", &kinds).unwrap().unwrap();
+    let got = c.resolve("fuse", &kinds).unwrap().unwrap();
     assert_eq!(got.candidates.len(), 1);
     assert!(got.candidates[0].generic.is_none());
 }
@@ -106,6 +105,19 @@ fn generic_of(source: &str, series: Series) -> netsmith_solve::Generic {
     s.picks[0].generic.clone().expect("a generic part")
 }
 
+/// Change the value and the power rating of a generic resistor.
+fn set_resistor(g: &mut netsmith_solve::Generic, ohms: f64, watts: f64) {
+    match &mut g.spec {
+        netsmith_solve::Spec::Resistor {
+            nominal, max_power, ..
+        } => {
+            *nominal = ohms;
+            *max_power = watts;
+        }
+        other => panic!("not a resistor: {other:?}"),
+    }
+}
+
 fn never(_: &str) -> Option<u64> {
     None
 }
@@ -115,7 +127,7 @@ fn a_generic_part_resolves_to_a_row_that_is_at_least_as_good_basic_first() {
     // A generic 330 ohm 1% 0402 is what the rows also have; E24 offers 330 but a row is
     // found first by the solver, so build the generic directly.
     let mut g = generic_of(&board("390ohm +/- 1%"), Series::E24);
-    g.nominal = 330.0;
+    set_resistor(&mut g, 330.0, 0.0625);
     let got = resolve(&g, &catalogs(Some(Series::E24)), &never).unwrap();
     // Two 0402 rows have the value; the Basic one is preferred though it is second.
     assert_eq!(got.lcsc.as_deref(), Some("C900001"));
@@ -125,9 +137,8 @@ fn a_generic_part_resolves_to_a_row_that_is_at_least_as_good_basic_first() {
 #[test]
 fn a_package_and_a_power_rating_are_matched_too() {
     let mut g = generic_of(&board("390ohm +/- 1%"), Series::E24);
-    g.nominal = 330.0;
+    set_resistor(&mut g, 330.0, 0.1);
     g.package = "0603".into();
-    g.max_power = 0.1;
     assert_eq!(
         resolve(&g, &catalogs(None), &never)
             .unwrap()
@@ -136,14 +147,14 @@ fn a_package_and_a_power_rating_are_matched_too() {
         Some("C900004")
     );
     // More power than the 0603 row has: nothing fits.
-    g.max_power = 0.125;
+    set_resistor(&mut g, 330.0, 0.125);
     assert!(resolve(&g, &catalogs(None), &never).is_err());
 }
 
 #[test]
 fn a_row_the_provider_says_has_no_stock_is_passed_over_and_an_unknown_stock_is_not() {
     let mut g = generic_of(&board("390ohm +/- 1%"), Series::E24);
-    g.nominal = 330.0;
+    set_resistor(&mut g, 330.0, 0.0625);
     let c = catalogs(None);
     let sold_out = |lcsc: &str| (lcsc == "C900001").then_some(0);
     let got = resolve(&g, &c, &sold_out).unwrap();
