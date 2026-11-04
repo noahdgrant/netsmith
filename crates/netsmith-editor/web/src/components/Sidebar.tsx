@@ -17,6 +17,7 @@ import {
 const LABELS: Record<FileRole, string> = {
   top_level: 'Top level',
   module: 'Modules',
+  physical: 'Physical files',
   manifest: 'Project',
   std: 'Standard library',
 };
@@ -137,6 +138,7 @@ export function Sidebar() {
       <div class="tree">
         <Section role="top_level" files={by('top_level')} filter={filter} />
         <Section role="module" files={by('module')} filter={filter} />
+        <Section role="physical" files={by('physical')} filter={filter} />
         <Section role="manifest" files={by('manifest')} filter={filter} />
         <Section role="std" files={by('std')} filter={filter} />
       </div>

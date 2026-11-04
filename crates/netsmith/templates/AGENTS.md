@@ -23,6 +23,7 @@ This is a netsmith project: circuits as code. Boards are written in `.nsm` files
 
 ## Rules
 
+- A board's circuit source holds the circuit. What the case and the layout designer require (the outline, cutouts, mounting holes, keepouts, where a part must be) is physical intent and goes in the board's physical file beside it, `src/<stem>.physical.nsm`, as `physical for Board { ... }`; a board that states it itself is an error that says where it goes. Read the guide's "The physical file".
 - Run `netsmith build` before you say a design works. Say what it printed.
 - A catalog part needs a source for its number. Do not write a part number from memory. The project's own parts are rows of `catalogs/<catalog>.csv`, listed under `catalogs` in `netsmith.toml`; a row that names a part has a `source` cell.
 - Ask the user before a decision about the language or its semantics. Present the options; do not choose.
