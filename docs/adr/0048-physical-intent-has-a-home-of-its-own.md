@@ -1,5 +1,5 @@
 ---
-status: accepted (owner decisions 2026-11-04) for decisions 1 to 7 and 10; the file's name, extension and header, anchors, relations, a face for a module and a body region are open
+status: accepted (owner decisions 2026-11-04) for decisions 1 to 7 and 10 and for the syntax choices recorded under "Syntax decisions"; anchors in module files, how a module file attaches, a physical file for a `system` or a `panel`, and the exact list of what leaves are open
 ---
 
 # Physical intent is written in a file of its own, apart from the circuit source
@@ -78,18 +78,25 @@ A block would have avoided these. The owner chose the file knowing them.
 - **The checker reads across files** to put a board's physical file together with the board, and a module's with the module.
 - More places for a newcomer to look. The checker needs a read-only reach into modules, a new rule for a language that has kept modules closed since ADR 0004. The language needs several constructs, none designed here.
 
+## Syntax decisions (owner, 2026-11-04)
+
+The owner chose these from `docs/research/physical-file-syntax-options.md`, each time the option the note leaned to. The examples are in that note and use invented names; nothing has been parsed or built.
+
+1. **Header, name and pairing.** The unit is `physical`, and the file starts `physical for Trellis { ... }` (N1: it names the board it belongs to, and one file may hold the units of several boards). The file is `trellis.physical.nsm`, found beside the source by stem, as the layout file is (P1). The word is `physical`, the glossary's term.
+2. **Reach.** A board's physical file names a part inside a module by a plain path (R1), for example `.radio.row_a.place.left &= 8mm +/- 0.2mm`. The checker allows a path to cross a module boundary only to state physical intent, and an attempt to change what a part is, or a connection, is an error. A marked reach (`->`) is not added.
+3. **Anchors.** An anchor is an alias for a path, declared in a module's physical file (A1: `anchor .dock = .row_a`). Anchors come with the module layer; until then a board's file uses paths.
+4. **Relations between two parts.** The equation form of ADR 0045 (L1), for example `.radio.row_b.place.x - .radio.row_a.place.x == 17.5mm +/- 0.05mm`. A `pitch` form for a row of pads is not added now. If a real fixture of a dozen or more pads is written by hand, that is the case to design one for.
+5. **A face for a module.** `.place.side` on a module is a hard requirement on every part of it (M1). A module with an exception states its parts' faces one by one (M3). A group construct (M2) is not added.
+6. **A body region with a height limit.** A `Region` carried by a part and stated in the module's physical file (G2), so that it moves with the part. Until the module layer exists the keepout with `.max_height` (ADR 0045 section 11) stands. A `Region` is a new type; its exact members are not decided.
+7. **The case section** is a nested `case { ... }` inside the physical file (C1), so that a shared `enclosure` definition (issue #46) can take it unchanged.
+8. **Mounting holes, fiducials and labels** of a board are declared in the physical file's case section. They have no circuit meaning, and `netsmith dxf import --write` puts hole positions in the physical file (decision 7), so one thing is not split across two files.
+9. **A part's `.height`** is stated on the part definition, which is the datasheet fact (a catalog column later, issue #27). A board's physical file may narrow it for the board (ADR 0045 section 11).
+
 ## Not decided here
 
 These are the owner's, because they are language design (`AGENTS.md`). `docs/research/physical-file-syntax-options.md` gives options and the effect of each.
 
-- **The file's name, extension and header form**, how a board's file is paired with its board, and whether the file reads as the same language as the circuit source (the research assumes it does).
-- **Anchors**: their spelling, and the exact rules of the reach by path.
-- **Relations between two parts** (decision 8): a fixed spacing, an alignment, a pitch (ADR 0045 C2).
-- **A face for a module** (decision 9): `.place.side` on a module, which is refused today, or a group, and what happens when a part in the module says otherwise.
-- **A body region with a height limit** (decision 9) as a first-class thing.
-- **How a module's physical file attaches to its module**, what a board's file may override of it, and whether the module layer may state an overhang.
-- **How the case section is marked.**
+- **How a module's physical file attaches to its module** (T1, T2 or T3 of the note), what a board's file may override of it, and whether the module layer may state an overhang.
 - **A physical file for a `system` or a `panel`** (ADR 0040). Mounting holes of a panel, mated-connector alignment across boards and a panel's rails are not designed.
 - **The shared `enclosure` definition** (issue #46).
-- **Where parts that exist for the board's body are declared**: mounting holes, fiducials and labels are parts with no circuit meaning. A part's `.height` is a fact about the part, and ADR 0045 section 11 lets a board narrow it. Neither is placed by decision 6.
 - **The exact list of what leaves** under decision 10 beyond `.place`, `Outline`, `Cutout` and board-drawn `Keepout`.
