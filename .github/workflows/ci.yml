@@ -62,4 +62,5 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - run: cargo test --workspace
+      # --no-fail-fast: one run lists every failing test, not just the first test binary that fails.
+      - run: cargo test --workspace --no-fail-fast

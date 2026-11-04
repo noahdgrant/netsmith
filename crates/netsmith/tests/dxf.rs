@@ -328,6 +328,11 @@ fn a_board_with_the_imported_outline_goes_through_fab_with_the_holes_where_the_c
     fs::write(dir.join("case.pcb.toml"), OUTLINE_AND_POURS_LAYOUT).unwrap();
 
     let cli = KicadCliExe::locate();
+    // The fab pipeline reads the footprints from KiCad's stock libraries, which come with KiCad.
+    if cli.is_none() {
+        eprintln!("skipped: no KiCad to read the footprints from");
+        return;
+    }
     let made = fab_with_options(
         "case.nsm",
         OUTLINE_AND_POURS,
