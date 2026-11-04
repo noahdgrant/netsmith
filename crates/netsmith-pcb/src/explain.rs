@@ -476,6 +476,9 @@ impl<'a> Context<'a> {
             } else {
                 String::new()
             };
+            if !clip {
+                self.relations_together(&mut seen, &mut found);
+            }
             self.relations(&wins, &note, &mut seen, &mut found);
             self.pairs(&wins, &note, &mut seen, &mut found);
             self.areas(&wins, &note, &mut seen, &mut found);
@@ -485,6 +488,57 @@ impl<'a> Context<'a> {
             }
         }
         found
+    }
+
+    /// Two relations between the same two parts, of the same fields, whose windows have no
+    /// value in common: no places of the parts hold both.
+    fn relations_together(&self, seen: &mut BTreeSet<String>, found: &mut Vec<String>) {
+        let offsets = &self.design.features.offsets;
+        let id = |o: &netsmith_core::Offset| {
+            format!(
+                "{}.place.{} - {}.place.{}",
+                o.b.path,
+                o.b.field.word(),
+                o.a.path,
+                o.a.field.word()
+            )
+        };
+        for (i, p) in offsets.iter().enumerate() {
+            for (k, q) in offsets.iter().enumerate().skip(i + 1) {
+                let key = format!("relations:{i}:{k}");
+                // `q` as it reads with the ends of `p`: swapped ends negate the window.
+                let window = if (&q.a, &q.b) == (&p.a, &p.b) {
+                    (q.lo, q.hi)
+                } else if (&q.a, &q.b) == (&p.b, &p.a) {
+                    (-q.hi, -q.lo)
+                } else {
+                    continue;
+                };
+                let gap = (p.lo - window.1).max(window.0 - p.hi);
+                if seen.contains(&key) || gap.is_nan() || gap <= TOLERANCE {
+                    continue;
+                }
+                seen.insert(key);
+                let (Some(a), Some(b)) = (
+                    self.parts.iter().find(|x| x.path == p.a.path),
+                    self.parts.iter().find(|x| x.path == p.b.path),
+                ) else {
+                    continue;
+                };
+                found.push(format!(
+                    "{}; {}: they ask for {} of the body of {} minus {} of the body of {} to be {} and {}, and no value is in both ({} mm apart)",
+                    quote(self.design, &p.source, &id(p)),
+                    quote(self.design, &q.source, &id(q)),
+                    what(p.b.field),
+                    format!("{} (`{}`)", b.refdes, b.path),
+                    what(p.a.field),
+                    format!("{} (`{}`)", a.refdes, a.path),
+                    range_text(p.lo, p.hi, "mm"),
+                    range_text(window.0, window.1, "mm"),
+                    number(gap)
+                ));
+            }
+        }
     }
 
     /// A relation whose window the windows of its two parts leave no way to meet.

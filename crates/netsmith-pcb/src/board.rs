@@ -117,7 +117,8 @@ fn explained(
         ORIGIN,
         Pt::new(ORIGIN.x + error.outline.0, ORIGIN.y + error.outline.1),
     );
-    error.requirements = crate::explain::explain(design, &ended, outline, base, rules);
+    error.requirements =
+        crate::explain::explain(design, &ended, outline, base, rules).map(Box::new);
     error
 }
 

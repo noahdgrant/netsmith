@@ -144,6 +144,32 @@ fn a_relation_the_windows_of_its_parts_cannot_meet_is_named_with_the_three_lines
 }
 
 #[test]
+fn two_relations_between_the_same_parts_that_no_value_meets_are_named() {
+    let extra = "    .r2.place.x - .r1.place.x >= 20mm
+    .r2.place.x - .r1.place.x <= 18mm
+";
+    let report = report(2, (40, 30), extra);
+    assert_eq!(report.conflicts.len(), 1, "{report}");
+    let conflict = &report.conflicts[0];
+    for want in [
+        "widget.physical.nsm:10 `.r2.place.x - .r1.place.x >= 20mm`; widget.physical.nsm:11 `.r2.place.x - .r1.place.x <= 18mm`",
+        "the centre of the body of R2 (`r2`) minus the centre of the body of R1 (`r1`) to be at least 20 mm and at most 18 mm, and no value is in both (2 mm apart)",
+    ] {
+        assert!(conflict.contains(want), "{want:?} is not in {conflict:?}");
+    }
+    // The same two, one of them written the other way round.
+    let extra = "    .r2.place.x - .r1.place.x >= 20mm
+    .r1.place.x - .r2.place.x >= -18mm
+";
+    let report = self::report(2, (40, 30), extra);
+    assert_eq!(report.conflicts.len(), 1, "{report}");
+    assert!(
+        report.conflicts[0].contains("and at most 18 mm, and no value is in both (2 mm apart)"),
+        "{report}"
+    );
+}
+
+#[test]
 fn a_part_the_lines_pin_inside_a_keepout_is_named_with_the_keepout() {
     let extra = "    .r1.place.x &= 20mm
     .r1.place.y &= 10mm
@@ -274,11 +300,8 @@ fn an_unmet_line_is_listed_without_a_cause_when_no_conflict_is_proved() {
     assert_eq!(report.conflicts, Vec::<String>::new());
     assert_eq!(report.unmet.len(), 1, "{report}");
     let unmet = &report.unmet[0];
-    for want in [
-        "widget.physical.nsm:10 `.r1.place.x >= 20mm` and widget.physical.nsm:11 `.r1.place.x <= 30mm`: the centre of the body of R1 (`r1`, F.Fab) is 5 mm, and it allows 20 to 30 mm (15 mm out)",
-    ] {
-        assert!(unmet.contains(want), "{want:?} is not in {unmet:?}");
-    }
+    let want = "widget.physical.nsm:10 `.r1.place.x >= 20mm` and widget.physical.nsm:11 `.r1.place.x <= 30mm`: the centre of the body of R1 (`r1`, F.Fab) is 5 mm, and it allows 20 to 30 mm (15 mm out)";
+    assert!(unmet.contains(want), "{want:?} is not in {unmet:?}");
     let text = report.to_string();
     assert!(
         text.starts_with("1 requirement(s) of the physical file are not met where the placer ended; no two lines could be proved to conflict, so no cause is named:\n    "),
@@ -361,7 +384,7 @@ fn a_line_that_puts_a_part_off_the_board_is_named_with_the_outline() {
     );
     let report = match board {
         Ok(board) => board.explain_requirements(&design, &place_options(&design, None)),
-        Err(BoardError::DoesNotFit(error)) => error.requirements,
+        Err(BoardError::DoesNotFit(error)) => error.requirements.map(|r| *r),
         Err(e) => panic!("{e}"),
     }
     .expect("a report");

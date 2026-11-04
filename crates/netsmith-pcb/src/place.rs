@@ -165,12 +165,12 @@ pub struct DoesNotFit {
     pub area: (f64, f64),
     /// Every part, where the placer ended with it and in what state, in the order of the
     /// design: for the full list [`DoesNotFit::full_report`] writes.
-    pub parts: Vec<PartState>,
+    pub parts: Box<[PartState]>,
     /// The requirements of the physical file that are not met where the placer ended, and
     /// the lines that cannot all hold where that is proved (PROVISIONAL, ADR 0045). Filled
     /// by `Board::from_design_placed`, which knows the design; `None` before, and for a
     /// design that states no requirement.
-    pub requirements: Option<crate::explain::RequirementReport>,
+    pub requirements: Option<Box<crate::explain::RequirementReport>>,
 }
 
 /// One part's place and state at the end of a placement that did not fit.
@@ -1272,7 +1272,7 @@ fn refine(
                 outline: fit,
                 oversize: oversize(parts, fixed, options, fit),
                 area: (area, 2.0 * room.0 * room.1),
-                parts: part_states(parts, fixed, &outcome.ended),
+                parts: part_states(parts, fixed, &outcome.ended).into_boxed_slice(),
                 requirements: None,
                 ended: Some(Box::new(outcome.ended)),
             });

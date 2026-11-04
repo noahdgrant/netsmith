@@ -373,9 +373,20 @@ fn two_relations_that_cannot_both_hold_are_reported_by_the_check_and_not_looped_
     let started = std::time::Instant::now();
     let (_dir, made) = fab("contradiction", &physical, "", &Catalogs::jlcpcb());
     let e = made.expect_err("no placement holds both");
+    // Since the placer ends on an arrangement that holds neither, `fab` stops before routing
+    // and names the two lines that cannot both hold, and the one that is not met (issue #80).
     assert!(
-        e.contains("error [constraint] constraint radio.row_b.place.x - radio.row_a.place.x (widget.physical.nsm:")
-            && e.contains("minus the centre of the body of J3 (`radio.row_a`, F.Fab) is "),
+        e.contains("no placement meets every requirement of the physical file")
+            && e.contains("these lines cannot both hold: widget.physical.nsm:")
+            && e.contains("`.radio.row_b.place.x - .radio.row_a.place.x >= 20mm`")
+            && e.contains("`.radio.row_b.place.x - .radio.row_a.place.x <= 18mm`")
+            && e.contains(
+                "to be at least 20 mm and at most 18 mm, and no value is in both (2 mm apart)"
+            ),
+        "{e}"
+    );
+    assert!(
+        e.contains("minus the centre of the body of J3 (`radio.row_a`) is "),
         "{e}"
     );
     assert!(

@@ -380,10 +380,12 @@ fn fab_board(
             errors.extend(problems.iter().map(|p| fail(p.clone())));
             return Err(errors);
         }
-        // Without a fault in the arrangement, requirements that are not met would be found
-        // by the check after routing; say so now, with the same list, unless constraints are
-        // only warnings for this run.
-        if let Some(report) = unmet.filter(|r| !r.unmet.is_empty())
+        // The placer's own arrangement, with no layout file to move parts after it, that does
+        // not meet a requirement would be found by the check after routing; say so now, with
+        // the same list, unless constraints are only warnings for this run. (With a layout
+        // file the positions are the file's, and the check after routing measures those.)
+        if layout.is_none()
+            && let Some(report) = unmet.filter(|r| !r.unmet.is_empty())
             && !catalogs.constraints_warn()
         {
             return Err(fail(requirement_failure(&report, &[], &board, out)));
