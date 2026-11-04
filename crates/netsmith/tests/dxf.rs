@@ -67,6 +67,19 @@ fn file(insunits: Option<i32>, entities: &str) -> String {
         + &pair(0, "EOF")
 }
 
+/// A file whose LAYER table declares `layers`, with `entities` drawn.
+fn file_declaring(layers: &[&str], entities: &str) -> String {
+    let mut table = pair(0, "SECTION") + &pair(2, "TABLES") + &pair(0, "TABLE") + &pair(2, "LAYER");
+    for l in layers {
+        table += &(pair(0, "LAYER") + &pair(2, l) + &pair(70, 0));
+    }
+    table += &(pair(0, "ENDTAB") + &pair(0, "ENDSEC"));
+    let plain = file(Some(4), entities);
+    let at = plain.find(&pair(0, "SECTION")).unwrap();
+    let end = plain[at..].find(&pair(0, "ENDSEC")).unwrap() + at + pair(0, "ENDSEC").len();
+    format!("{}{}{}", &plain[..end], table, &plain[end..])
+}
+
 /// An enclosure section 50 x 36 with rounded corners, a rounded slot and four holes, placed
 /// away from the drawing's origin and with y up.
 fn enclosure() -> String {
@@ -171,6 +184,79 @@ fn a_hole_that_is_no_mounting_hole_package_is_refused_with_the_packages() {
     assert!(
         err.contains("diameter of 4.5 mm") && err.contains("M2 (2.2 mm) and M3 (3.2 mm)"),
         "{err}"
+    );
+}
+
+#[test]
+fn a_hole_of_another_size_names_the_nearest_package_and_the_issue() {
+    let mut e = rounded("EDGE", 0.0, 0.0, 50.0, 30.0, 2.0);
+    e += &circle("HOLES", (5.0, 5.0), 1.1875);
+    let err = import(&file(Some(4), &e), "x.dxf", &request()).unwrap_err();
+    assert!(
+        err.contains("diameter of 2.375 mm")
+            && err.contains("the nearest is M2 (2.2 mm, 0.175 mm smaller than the drawn hole)")
+            && err.contains("issue #89"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_holes_layer_the_file_declares_but_leaves_empty_is_accepted() {
+    let e = rounded("EDGE", 0.0, 0.0, 50.0, 30.0, 2.0);
+    let text = file_declaring(&["0", "EDGE", "HOLES"], &e);
+    let imported = import(&text, "x.dxf", &request()).unwrap();
+    assert!(
+        !imported.members.contains("MountingHole"),
+        "{}",
+        imported.members
+    );
+    assert!(
+        imported.report.iter().any(|l| l == "holes layer: HOLES"),
+        "{:?}",
+        imported.report
+    );
+    assert!(imported.report.iter().any(|l| l.contains("0 holes")));
+}
+
+#[test]
+fn a_holes_layer_that_is_nowhere_in_the_file_is_an_error_listing_the_layers() {
+    let e = rounded("EDGE", 0.0, 0.0, 50.0, 30.0, 2.0);
+    let text = file_declaring(&["0", "EDGE"], &e);
+    let err = import(&text, "x.dxf", &request()).unwrap_err();
+    assert!(
+        err.contains("no layer `HOLES`")
+            && err.contains("`EDGE`")
+            && err.contains("`0` (declared, nothing on it)"),
+        "{err}"
+    );
+}
+
+#[test]
+fn an_opening_that_crosses_the_board_edge_is_left_out_with_a_note_and_the_rest_is_imported() {
+    let mut e = rounded("EDGE", 100.0, 200.0, 150.0, 236.0, 3.0);
+    // A window in a wall: 10 x 6 mm, its left part over the board's right edge.
+    e += &(line("EDGE", (145.0, 210.0), (155.0, 210.0))
+        + &line("EDGE", (155.0, 210.0), (155.0, 216.0))
+        + &line("EDGE", (155.0, 216.0), (145.0, 216.0))
+        + &line("EDGE", (145.0, 216.0), (145.0, 210.0)));
+    e += &circle("HOLES", (105.0, 230.5), 1.6);
+    let imported = import(&file(Some(4), &e), "case.dxf", &request()).unwrap();
+    assert!(imported.members.contains(".outline: Outline"));
+    assert!(imported.members.contains(".hole1: MountingHole"));
+    assert!(!imported.members.contains("Cutout"), "{}", imported.members);
+    let note = imported
+        .warnings
+        .iter()
+        .find(|w| w.contains("crosses the board edge"))
+        .unwrap_or_else(|| panic!("{:?}", imported.warnings));
+    // The drawing's y 216 is the board's y 20 (the outline's top is 236): 236 - 216.
+    assert!(
+        note.contains("opening 1")
+            && note.contains("layer `EDGE`")
+            && note.contains("10 x 6 mm")
+            && note.contains("(45, 20)")
+            && note.contains("issue #90"),
+        "{note}"
     );
 }
 

@@ -74,6 +74,9 @@ pub(crate) struct Block {
 pub(crate) struct Dxf {
     /// `$INSUNITS`, if the header has it.
     pub insunits: Option<i32>,
+    /// The names of the layers the `LAYER` table declares, whether or not anything is drawn
+    /// on them.
+    pub layers: Vec<String>,
     pub blocks: HashMap<String, Block>,
     /// The entities of the model: of the `ENTITIES` section.
     pub entities: Vec<Raw>,
@@ -150,6 +153,11 @@ pub(crate) fn parse(text: &str) -> Result<Dxf, Error> {
                 }
             }
             ("ENTITIES", _) => dxf.entities.push(raw),
+            ("TABLES", "LAYER") => {
+                if let Some(name) = raw.text(2) {
+                    dxf.layers.push(name.to_string());
+                }
+            }
             _ => {}
         }
         Ok(())
