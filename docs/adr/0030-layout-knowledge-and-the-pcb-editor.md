@@ -172,7 +172,7 @@ The library cannot be loosened by a board (R3) except through the sidecar, which
 |---|---|---|---|
 | P0 | Read the sidecar: fixed and locked parts; write what autoplace chose (`netsmith layout`). Placer places the rest round them. | sidecar (ADR 0020 7A) | M |
 | P1 | Annealing on wire length and overlap with pad centres, rotations, module cohesion by path, connectors toward edges, fixed outline fit and its overflow message. No new language. | `Part.path` | L |
-| P2 | Derived decoupling pairs and escape rings; typed supply pins. | IC parts with `power` pins on boards (ROADMAP backlog 1) | M |
+| P2 | Derived decoupling pairs and escape rings; typed supply pins. | IC parts with `power` pins on boards (issue #64) | M |
 | P3 | `layout` blocks: parse, check, constraint terms, findings, `vias` and `route` read by the router. | language (this ADR, A1) | L |
 | P4 | Hierarchical placement; regenerate a module (c). | P1, partial routing | L |
 | P5 | Two sides, congestion-aware cost, loop area from routed copper, learned weights from A5. | double-sided assembly (backlog 4) | L |
@@ -218,7 +218,7 @@ There is no `layout set` command: the sidecar is a plain TOML file and the agent
   "hint": "move C3 toward pad 12, or waive with a reason" }
 ```
 
-`kind` is `constraint`, `overlap`, `outside`, `edge`, `unrouted` or `drc`. A DRC finding needs its coordinates: until netsmith has its own DRC (ROADMAP, "Self-contained"), `kicad-cli pcb drc --format json` is read for them instead of the counts the gate reads now.
+`kind` is `constraint`, `overlap`, `outside`, `edge`, `unrouted` or `drc`. A DRC finding needs its coordinates: until netsmith has its own DRC (ADR 0037), `kicad-cli pcb drc --format json` is read for them instead of the counts the gate reads now.
 
 **The loop.** `build` (the circuit is right) then `place` then `route` then `layout check` then, if the agent can see, `layout render`; read the findings, fix the cause, repeat. Each pass is seconds, not the minutes of a long agent run, because the deterministic part is fast and the agent is only asked what a tool cannot decide.
 
@@ -303,7 +303,7 @@ P0 and E0, E1 first (a sidecar and a board one can move and lock: the editor bec
 
 ## Consequences
 
-Layout facts live with the part they come from, with a source, and the compiler checks their pin names. The board source keeps no geometry, so ADR 0001 and ADR 0020 R2 hold. The cost is one new block in the language, a second file beside the sidecar (the routes cache), a placer that must become much better than the rows before any of it shows, and a stricter router (obstacle tracks, net filter). Constraints are findings and not blockers: a design that cannot meet a datasheet number says so with a reason, and the report shows it. Known limits stay in `README.md` and `docs/ROADMAP.md` ("Layout") until each step lands.
+Layout facts live with the part they come from, with a source, and the compiler checks their pin names. The board source keeps no geometry, so ADR 0001 and ADR 0020 R2 hold. The cost is one new block in the language, a second file beside the sidecar (the routes cache), a placer that must become much better than the rows before any of it shows, and a stricter router (obstacle tracks, net filter). Constraints are findings and not blockers: a design that cannot meet a datasheet number says so with a reason, and the report shows it. Open steps are tracked in issue #59 until each lands.
 
 ## Open questions for the user, in order
 

@@ -93,10 +93,10 @@ C needs care to be worth doing. KiCad's own footprints for chip passives, SOT, S
 
 - The schematic viewer and editor draw symbols with their own renderer (`netsmith-view`, `glyph.rs`): `Glyph::for_part` takes the mapping and a `SymbolLib` and reads the `Sexp` of the symbol (rectangles, polylines, circles, arcs, pins). No KiCad program is run. Where a symbol is missing it draws a box with the part's pins and the reason.
 - The PCB view and the placement, router, design rules check and fabrication files read the `.kicad_mod` / `.kicad_pcb` text through `netsmith-pcb::footprint` and `netsmith-fab::artwork` only. No KiCad program is run (ADR 0034, ADR 0037).
-- `grep` for `kicad-cli` and `KicadCli` finds these remaining users, all optional: `fab --cross-check` and the editor's Findings witness (a second opinion), `tests/erc.rs` and `scripts/check-kicad.sh` (ERC, which netsmith does not do itself: ROADMAP step 3), and `compare` on a `.kicad_sch` (§5). The `Program Files` default path survives only in `symbols.rs`, `footprint.rs` and `kicad.rs` (the CLI locator).
-- The 3D model files are never read (§1). The editor has no 3D view (README "Known limits").
+- `grep` for `kicad-cli` and `KicadCli` finds these remaining users, all optional: `fab --cross-check` and the editor's Findings witness (a second opinion), `tests/erc.rs` and `scripts/check-kicad.sh` (ERC, which netsmith does not do itself: issue #61), and `compare` on a `.kicad_sch` (§5). The `Program Files` default path survives only in `symbols.rs`, `footprint.rs` and `kicad.rs` (the CLI locator).
+- The 3D model files are never read (§1). The editor has no 3D view (issue #19).
 
-So after stages 1 to 3 below the only thing a binary-alone user cannot do is ERC and the optional cross-checks, as the roadmap already says.
+So after stages 1 to 3 below the only thing a binary-alone user cannot do is ERC and the optional cross-checks, as issue #61 says.
 
 ## 5. The netlist: reading `.kicad_sch` directly
 
@@ -142,7 +142,7 @@ The rules, in the order the algorithm applies them:
 | 2 | `netsmith libs fetch`: a lock file in the repo (`std/kicad-libs.lock`: repository URLs, tag `9.0.9.1`, which is commit `930ff67...` in the symbols repository and `8ec1aeb...` in the footprints one, and a sha256 for each file netsmith reads); downloads the symbol libraries and footprint files the std rows and the project's rows name (or all with `--all`) from the pinned commit's raw URLs into the cache, verifies each file's sha256 and refuses on a mismatch naming file, expected and found; `--from <dir or archive>` for an offline mirror; tests use a local directory mirror, never the network | M | owner Q1, Q3 |
 | 3 | `netsmith libs vendor`: copies the used symbols (flattened, one `.kicad_sym` per project) and footprints into `libs/`, writes the `[[library]]` stanzas, `NOTICE` and the licence text, and sets the mapping of the std rows to the vendored names or keeps them stock; idempotent | M | owner Q2, Q5 |
 | 4a to 4d | `.kicad_sch` reader (§5), with the differential harness | L (4 x M) | none |
-| 5 | `compare` and the editor stop looking for `kicad-cli` unless asked; ROADMAP and README "Known limits" updated | S | stage 4 |
+| 5 | `compare` and the editor stop looking for `kicad-cli` unless asked; the issues #5 and #61 updated | S | stage 4 |
 | 6 | (optional) built-in symbols and footprints: chip passives, LED, diodes, SOT-23, headers first, tested against the fetched ones to 0.01 mm | L, one package at a time | owner Q2, Q6 |
 
 Order: 1, 2 then 4a; 3 and 4b to 4d next; 5; 6 only if wanted. 1 to 3 together are the answer to "no KiCad installed". 4 and 5 are the answer to "compare without kicad-cli".

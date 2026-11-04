@@ -34,7 +34,7 @@ The feedback pin draws nothing. An output below the reference is refused with th
 
 **One capacitor on each side**, picked for the effective capacitance the IC asks for at the voltage across it (ADR 0013). The catalog's Basic capacitors lose most of their capacitance at a few volts, so an IC that asks for 10 uF or more at 12 V finds no capacitor; the guide's invented IC is 4.5 V to 6 V. The IC's recommended inductance is its `min_inductance`, one number.
 
-**Not modelled**: loop stability, dropout and minimum on-time (the output must be at most the input), light-load modes, the divider's and the IC's quiescent current in the load, the second capacitor an IC may ask for. Each is a known limit in the ROADMAP.
+**Not modelled**: loop stability, dropout and minimum on-time (the output must be at most the input), light-load modes, the divider's and the IC's quiescent current in the load, the second capacitor an IC may ask for. Each is open in issue #63.
 
 The worked example is an invented IC, `Zbk2`, in the guide (`docs/LANGUAGE.md`, "Switching regulators") and in `crates/netsmith/tests/std_models.rs`. Nothing about a real part is in the library or the guide.
 
