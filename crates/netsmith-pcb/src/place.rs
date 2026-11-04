@@ -165,7 +165,12 @@ pub struct DoesNotFit {
     pub area: (f64, f64),
     /// Every part, where the placer ended with it and in what state, in the order of the
     /// design: for the full list [`DoesNotFit::full_report`] writes.
-    pub parts: Vec<PartState>,
+    pub parts: Box<[PartState]>,
+    /// The requirements of the physical file that are not met where the placer ended, and
+    /// the lines that cannot all hold where that is proved (PROVISIONAL, ADR 0045). Filled
+    /// by `Board::from_design_placed`, which knows the design; `None` before, and for a
+    /// design that states no requirement.
+    pub requirements: Option<Box<crate::explain::RequirementReport>>,
     /// How many times the placer tried before it gave up: the first run, then runs from the
     /// same start with a large part put in a corner first and with seeds derived from the
     /// given one (B2 and B5, PROVISIONAL). The state above is that of the closest.
@@ -228,6 +233,16 @@ impl std::fmt::Display for Oversize {
 
 impl std::fmt::Display for DoesNotFit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.write_refusal(f)?;
+        if let Some(report) = &self.requirements {
+            write!(f, "\n{}", report.render("  "))?;
+        }
+        Ok(())
+    }
+}
+
+impl DoesNotFit {
+    fn write_refusal(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if !self.oversize.is_empty() {
             let wall = (self.wall * 100.0).round() / 100.0;
             let inside = |v: f64| (v - 2.0 * self.wall).max(0.0);
@@ -1576,7 +1591,8 @@ fn refine(
                 outline: fit,
                 oversize: oversize(parts, fixed, options, fit),
                 area: (area, 2.0 * room.0 * room.1),
-                parts: part_states(parts, fixed, &outcome.ended),
+                parts: part_states(parts, fixed, &outcome.ended).into_boxed_slice(),
+                requirements: None,
                 ended: Some(Box::new(outcome.ended)),
                 tries,
             });
@@ -1876,7 +1892,8 @@ mod tests {
             wall: 0.75,
             oversize: Vec::new(),
             area: (100.0, 3000.0),
-            parts: Vec::new(),
+            parts: Box::default(),
+            requirements: None,
             tries,
         }
     }

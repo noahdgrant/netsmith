@@ -430,6 +430,10 @@ pub struct Features {
     pub constraints: Vec<Placement>,
     /// Relations between the places of two parts (ADR 0045, section 3).
     pub offsets: Vec<Offset>,
+    /// The text of each line of the physical file that states a requirement, by the
+    /// `file:line` the `source` fields name (`widget.physical.nsm:14`), so that a message can
+    /// quote the line. Filled by the caller that knows the source files; empty otherwise.
+    pub line_texts: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -155,17 +155,21 @@ impl PlanOffset {
 }
 
 /// One requirement on one part, with where it comes from.
-struct Req {
-    field: PlaceField,
-    lo: f64,
-    hi: f64,
+pub(crate) struct Req {
+    pub(crate) field: PlaceField,
+    pub(crate) lo: f64,
+    pub(crate) hi: f64,
     /// Whether a module the part is in states it for all its parts.
     inherited: bool,
     /// `usb.place.left (widget.nsm:14)`
     label: String,
+    /// `usb.place.left`
+    pub(crate) id: String,
+    /// `widget.nsm:14`, or several places separated by commas; empty if unknown.
+    pub(crate) source: String,
 }
 
-fn range_text(lo: f64, hi: f64, unit: &str) -> String {
+pub(crate) fn range_text(lo: f64, hi: f64, unit: &str) -> String {
     let n = |v: f64| format!("{}", (v * 1e4).round() / 1e4);
     match (lo.is_finite(), hi.is_finite()) {
         (true, true) if (hi - lo).abs() < 1e-9 => format!("{} {unit}", n(lo)),
@@ -196,7 +200,7 @@ fn label(path: &str, field: &str, source: &str) -> String {
 
 /// The requirements that apply to the part at `path`: its own, and the ones of the modules
 /// it is in that keep a part inside (a least `left` or `top`, a most `right` or `bottom`).
-fn requirements(design: &Design, path: &str) -> (Vec<Req>, Option<(String, String)>) {
+pub(crate) fn requirements(design: &Design, path: &str) -> (Vec<Req>, Option<(String, String)>) {
     let mut reqs = Vec::new();
     let mut side = None;
     for p in &design.features.constraints {
@@ -215,6 +219,8 @@ fn requirements(design: &Design, path: &str) -> (Vec<Req>, Option<(String, Strin
                     hi,
                     inherited: false,
                     label: text,
+                    id: format!("{}.place.{}", p.path, b.field.word()),
+                    source: b.source.clone(),
                 });
                 continue;
             }
@@ -230,6 +236,8 @@ fn requirements(design: &Design, path: &str) -> (Vec<Req>, Option<(String, Strin
                     hi,
                     inherited: true,
                     label: format!("{text}, which holds for every part of the module"),
+                    id: format!("{}.place.{}", p.path, b.field.word()),
+                    source: b.source.clone(),
                 });
             }
         }
@@ -241,13 +249,13 @@ fn requirements(design: &Design, path: &str) -> (Vec<Req>, Option<(String, Strin
 }
 
 /// The body of a footprint with origin at 0, turned `angle`, on the face `side`.
-fn body_at(part: &Placed, angle: f64, side: Side) -> Rect {
+pub(crate) fn body_at(part: &Placed, angle: f64, side: Side) -> Rect {
     part.footprint.body.rotated_for(side == Side::Back, angle)
 }
 
 /// How far a body at `at` is from meeting `req`, in mm: 0 when it does, else by how much it
 /// misses. The measure of the field, in the frame of the outline.
-fn miss(req: &Req, body: Rect, rotation: f64) -> f64 {
+pub(crate) fn miss(req: &Req, body: Rect, rotation: f64) -> f64 {
     let (v, scale) = match req.field {
         PlaceField::X => (body.centre().x - ORIGIN.x, 1.0),
         PlaceField::Y => (body.centre().y - ORIGIN.y, 1.0),
@@ -269,7 +277,7 @@ fn miss(req: &Req, body: Rect, rotation: f64) -> f64 {
 }
 
 /// The measure of the field of a body, for a message.
-fn measured(field: PlaceField, body: Rect) -> f64 {
+pub(crate) fn measured(field: PlaceField, body: Rect) -> f64 {
     match field {
         PlaceField::X => body.centre().x - ORIGIN.x,
         PlaceField::Y => body.centre().y - ORIGIN.y,
@@ -375,7 +383,7 @@ fn stated_overhang(reqs: &[Req], may: Edges) -> Option<Overhang> {
     })
 }
 
-fn turns_allowed(reqs: &[Req]) -> [bool; 4] {
+pub(crate) fn turns_allowed(reqs: &[Req]) -> [bool; 4] {
     let mut ok = [true; 4];
     for r in reqs.iter().filter(|r| r.field == PlaceField::Rotation) {
         for (q, allowed) in ok.iter_mut().enumerate() {
@@ -386,7 +394,7 @@ fn turns_allowed(reqs: &[Req]) -> [bool; 4] {
     ok
 }
 
-fn number(v: f64) -> String {
+pub(crate) fn number(v: f64) -> String {
     format!("{}", (v * 1e3).round() / 1e3)
 }
 
@@ -768,7 +776,7 @@ pub(crate) fn plan(
 }
 
 /// What a field measures, as a person says it.
-fn what(field: PlaceField) -> &'static str {
+pub(crate) fn what(field: PlaceField) -> &'static str {
     match field {
         PlaceField::X | PlaceField::Y => "the centre",
         PlaceField::Left => "the left edge",
