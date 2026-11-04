@@ -42,6 +42,7 @@ The surface finish is not in `order.txt` (`finish not stated`): the user chooses
 |---|---|
 | `process:` | The factory rules used. Confirm the layer count and thickness are what the user wants. |
 | `hand-solder:` | These parts are not in the BOM. Tell the user to buy and solder them. |
+| `the board house does not assemble these (hand-solder, and no LCSC part number ...)` | Parts whose catalog row has no supplier number, marked `hand`: they are not in `bom.csv`, so the user must buy them. |
 | `not fitted` | These parts (holes, fiducials, programming pads) are in neither the BOM nor the placement file. Nothing to buy. |
 | `rotation unverified:` | A part's placement rotation has not been checked against an assembled board. Look at it in the order preview. |
 | `vias in pads:` | Some vias stand in surface-mount pads. Choose the fabricator's epoxy filled and capped (plated over) vias on the order form, which costs extra; the Gerbers do not say it. If the user does not want that, put `.process.via_in_pad &= 0mm` in the board and fab again (some pads may then be unroutable). |

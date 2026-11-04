@@ -143,7 +143,7 @@ impl std::fmt::Display for Error {
                 }
                 write!(
                     f,
-                    "add the part numbers, or allow listing them as unassembled (Options::allow_missing_lcsc, --allow-missing-lcsc)"
+                    "add the part numbers, or allow listing them as unassembled (Options::allow_missing_lcsc, or --allow-missing-lcsc of the netsmith-fab example; `netsmith fab` has no such flag and refuses these parts earlier, naming them: say `.assembly &= \"hand\"` for them in the design)"
                 )
             }
             Self::Cli(e) => write!(f, "{e}"),

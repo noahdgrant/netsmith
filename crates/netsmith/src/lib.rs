@@ -9,6 +9,7 @@ pub mod fab;
 pub mod init;
 pub mod layout;
 pub mod libraries;
+pub mod no_supplier;
 pub mod order;
 pub mod physical;
 pub mod project;

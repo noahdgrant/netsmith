@@ -245,6 +245,34 @@ fn fab_board(
         let fail = |what: String| format!("error: {}: {what}\n", built.label());
         let name = &built.design.name;
 
+        // A generic part (ADR 0047) becomes the row that stands for it now; one that no row
+        // stands for cannot be ordered, and is refused by name with the nearest rows.
+        let (sourcing, unresolved) = resolve_generics(&built.sourcing, &built.rechecks, catalogs);
+        let unresolved: Vec<String> = unresolved
+            .iter()
+            .filter(|u| {
+                built
+                    .sourcing
+                    .iter()
+                    .any(|s| s.refdes == u.refdes && s.assembled())
+            })
+            .map(|u| fail(u.line()))
+            .collect();
+        // Every part to assemble needs a supplier part number. All that lack one are named
+        // together, now and not after the routing, with what to write to say that the board
+        // house is not to assemble them.
+        let unnumbered = crate::no_supplier::find(built, &sourcing);
+        if !unnumbered.is_empty() || !unresolved.is_empty() {
+            let mut errors = unresolved.concat();
+            if !unnumbered.is_empty() {
+                errors.push_str(&fail(crate::no_supplier::message(
+                    &built.board,
+                    &unnumbered,
+                )));
+            }
+            return Err(errors);
+        }
+
         say(format!(
             "{}: placing {} parts",
             built.label(),
@@ -340,26 +368,11 @@ fn fab_board(
             fs::write(&file, text).map_err(|e| fail(format!("{}: {e}", file.display())))?;
         }
 
-        // A generic part (ADR 0047) becomes the row that stands for it now; one that no row
-        // stands for cannot be ordered, and is refused by name with the nearest rows.
-        let (sourcing, unresolved) = resolve_generics(&built.sourcing, &built.rechecks, catalogs);
-        let unresolved: Vec<String> = unresolved
-            .iter()
-            .filter(|u| {
-                built
-                    .sourcing
-                    .iter()
-                    .any(|s| s.refdes == u.refdes && s.assembled())
-            })
-            .map(|u| fail(u.line()))
-            .collect();
-        if !unresolved.is_empty() {
-            return Err(unresolved.concat());
-        }
         let entries = bom_entries(&sourcing, &libraries.mapping).map_err(&fail)?;
         // Guidelines that the design goes against (ADR 0036) are for the person ordering, so
         // they are in `fab-notes.txt`.
         let mut extras = board.process_extras();
+        extras.extend(crate::no_supplier::note(&sourcing));
         // The notes say which part hangs over which edge, how far, and who said it may; each
         // is a warning (owner decision, 2026-11-03, ADR 0045 section 10).
         extras.extend(board.hangs().into_iter().map(|h| format!("warning: {h}")));

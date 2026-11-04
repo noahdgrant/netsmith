@@ -746,6 +746,8 @@ board Assembly {
 }
 ```
 
+A part that the board house is to assemble (`"fab"`) must have a supplier part number, an `lcsc` in its catalog row. `fab` checks that before it places or routes anything, and refuses with all the parts that have none in one message: each reference designator, its path, what its row says (the manufacturer's number), and what to write and where. There is no flag for it: the design says who does not assemble the part, with `.assembly &= "hand"` (or `"none"`) on the part in the board, in the module's definition for a part inside a module, or in the `assembly` column of the part's own catalog row. The part is then out of `bom.csv` and `cpl.csv`, and `fab-notes.txt` lists it under `hand-solder:` and, if its catalog row has a manufacturer's number and no `lcsc`, in a line saying the board house does not assemble it and that you buy it yourself. `--allow-drc-violations` does not waive this.
+
 A part inside a module is not the board's to name (ADR 0004), so a module that wants the board to choose who assembles its parts offers the choice as a value of its own and ties its parts to it (ADR 0042). Declare a `String`, and narrow the part's `.assembly` by it inside the module:
 
 ```nsm solve
