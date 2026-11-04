@@ -603,6 +603,7 @@ mod tests {
             paste_margin: None,
             paste_ratio: None,
             zone_connect: None,
+            thermal_angle: None,
             remove_unused_layers: false,
             clearance: None,
         }
