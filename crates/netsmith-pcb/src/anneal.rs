@@ -170,6 +170,71 @@ pub struct Ended {
     pub relations: Vec<String>,
 }
 
+impl Ended {
+    /// The parts that break a rule when the run ended: those outside first, the furthest
+    /// first, then those only in an overlapping pair; each once.
+    pub fn names(&self) -> Vec<String> {
+        let mut names: Vec<String> = Vec::new();
+        let others = self
+            .overlapping
+            .iter()
+            .flat_map(|o| [o.a.as_str(), o.b.as_str()]);
+        for name in self
+            .outside_parts
+            .iter()
+            .map(|o| o.part.as_str())
+            .chain(others)
+        {
+            if !names.iter().any(|n| n == name) {
+                names.push(name.to_string());
+            }
+        }
+        names
+    }
+
+    /// Every part that is out, with how far, and every overlapping pair with its area, in
+    /// two lists on one line, the worst first: `outside the outline or inside its margin, by
+    /// mm past what is kept clear (the margin from the edge, a keepout, a pad's distance):
+    /// R21 0.85, R3 0.80; courtyards overlapping, by mm2: R1/R2 10.00`.
+    pub fn compact(&self) -> String {
+        let mut lists = Vec::new();
+        if !self.outside_parts.is_empty() {
+            let items: Vec<String> = self
+                .outside_parts
+                .iter()
+                .map(|o| {
+                    if o.worst > 1e-9 {
+                        format!("{} {:.2}", o.part, o.worst)
+                    } else {
+                        // Nothing past a line: the reference text, or a requirement.
+                        format!("{} (text or a requirement)", o.part)
+                    }
+                })
+                .collect();
+            lists.push(format!(
+                "outside the outline or inside its margin, by mm past what is kept clear: {}",
+                items.join(", ")
+            ));
+        }
+        if !self.overlapping.is_empty() {
+            let items: Vec<String> = self
+                .overlapping
+                .iter()
+                .map(|o| format!("{}/{} {:.2}", o.a, o.b, o.area))
+                .collect();
+            lists.push(format!(
+                "courtyards overlapping, by mm2: {}",
+                items.join(", ")
+            ));
+        }
+        if lists.is_empty() {
+            "a rule broken that no count names".to_string()
+        } else {
+            lists.join("; ")
+        }
+    }
+}
+
 /// Two courtyards that overlap when a run ended.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OverlapAt {
