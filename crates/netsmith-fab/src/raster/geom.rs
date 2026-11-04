@@ -247,8 +247,8 @@ pub(crate) fn fill(
                 }
             }
             Rule::EvenOdd => {
-                for pair in crossings.chunks_exact(2) {
-                    emit(pair[0].0, pair[1].0);
+                for [a, b] in crossings.as_chunks::<2>().0 {
+                    emit(a.0, b.0);
                 }
             }
         }

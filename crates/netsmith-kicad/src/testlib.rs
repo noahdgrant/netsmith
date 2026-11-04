@@ -9,6 +9,26 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+/// Whether KiCad's stock symbol and footprint libraries are installed on this machine
+/// (found as [`crate::install`] describes). A test that builds a board from the stock
+/// libraries (`Libraries::standard()`) cannot run without them.
+pub fn kicad_libraries_installed() -> bool {
+    use crate::install::{Kind, locate};
+    locate(Kind::Symbols).is_ok() && locate(Kind::Footprints).is_ok()
+}
+
+/// For a test that needs KiCad's stock libraries: `true` when they are not here, after
+/// printing why, so that the test starts with
+/// `if skip_without_kicad_libraries() { return; }` and the run says it was skipped
+/// (`cargo test -- --nocapture` shows the line).
+pub fn skip_without_kicad_libraries() -> bool {
+    if kicad_libraries_installed() {
+        return false;
+    }
+    eprintln!("skipped: no KiCad symbol and footprint libraries are installed");
+    true
+}
+
 /// The environment variable that keeps the folders of [`TempDir`] after a test, so that a
 /// failure can be inspected: set `NETSMITH_KEEP_TEST_DIRS=1`.
 pub const KEEP_VARIABLE: &str = "NETSMITH_KEEP_TEST_DIRS";

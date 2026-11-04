@@ -368,7 +368,7 @@ fn fab_board(
             fs::write(&file, text).map_err(|e| fail(format!("{}: {e}", file.display())))?;
         }
 
-        let entries = bom_entries(&sourcing, &libraries.mapping).map_err(&fail)?;
+        let entries = bom_entries(&sourcing, &libraries.mapping).map_err(fail)?;
         // Guidelines that the design goes against (ADR 0036) are for the person ordering, so
         // they are in `fab-notes.txt`.
         let mut extras = board.process_extras();

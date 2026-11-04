@@ -348,16 +348,16 @@ pub fn lower_panel(panel: &Panel) -> Result<PanelSpec, Vec<String>> {
     let model = &panel.model;
     let name = &panel.name;
     let Some(cell) = panel.cell.clone() else {
-        return Err(vec![format!(
-            "it has no board to repeat: add `.cell: SomeBoard`"
-        )]);
+        return Err(vec![
+            "it has no board to repeat: add `.cell: SomeBoard`".to_string(),
+        ]);
     };
     let kind = match model.member(model.root, "fab") {
         Some(Member::Inst(fab)) => model.instance(fab).type_name.clone(),
         _ => {
-            return Err(vec![format!(
-                "it does not say who makes it, and a panel needs the board house's rules: add `import std::mfg::jlcpcb::VCutPanel` and `.fab: VCutPanel {{ .columns &= 3; .rows &= 2 }}`"
-            )]);
+            return Err(vec![
+                "it does not say who makes it, and a panel needs the board house's rules: add `import std::mfg::jlcpcb::VCutPanel` and `.fab: VCutPanel { .columns &= 3; .rows &= 2 }`".to_string(),
+            ]);
         }
     };
     let mut field = |path: &str| -> Option<Domain> {
