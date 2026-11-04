@@ -4,7 +4,7 @@
 import type { RailModel, StageModel } from './model';
 
 export const RAIL_W = 264;
-export const STAGE_W = 176;
+export const STAGE_W = 200;
 /** The room above and below the content of a card. */
 const PAD_TOP = 9;
 const PAD_BOTTOM = 8;

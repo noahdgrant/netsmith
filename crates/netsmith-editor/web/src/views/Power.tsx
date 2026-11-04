@@ -174,7 +174,7 @@ function RailCard({
             </>
           ) : (
             <>
-              Over by <b>{amps(-r.headroom).num} {amps(-r.headroom).unit}</b>: the supply gives {amps(r.capacity.hi).num} {amps(r.capacity.hi).unit}
+              Over by <b>{amps(-r.headroom).num} {amps(-r.headroom).unit}</b> of {amps(r.capacity.hi).num} {amps(r.capacity.hi).unit}
             </>
           )
         ) : (
