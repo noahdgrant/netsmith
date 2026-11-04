@@ -19,16 +19,11 @@ const BOARD: &str = "\
 import std::parts::connector::Header1x2
 import std::parts::passive::{Resistor, Led}
 import std::sources::Rail
-import std::pcb::Outline
 import std::mfg::jlcpcb::TwoLayer
 
 board Widget {
     .process: TwoLayer {
         .stackup.thickness &= 1.6mm
-    }
-    .outline: Outline {
-        .width &= 40mm
-        .height &= 24mm
     }
     .supply: Rail {
         .voltage &= 5V +/- 5%
@@ -44,6 +39,20 @@ board Widget {
     .supply.neg ~ .power_in.p2
     .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
     .supply.pos ~> .r1 ~> .led ~> .supply.neg
+}
+";
+
+/// The case drawing of `BOARD`, in its physical file (ADR 0048).
+const PHYSICAL: &str = "\
+import std::pcb::Outline
+
+physical for Widget {
+    case {
+        .outline: Outline {
+            .width &= 40mm
+            .height &= 24mm
+        }
+    }
 
     // Case drawing, slot A: the header's body is 1.5 mm in from the left edge, centred.
     .power_in.place.left &= 1.5mm +/- 0.1mm
@@ -59,20 +68,21 @@ fn out(name: &str) -> TempDir {
     TempDir::unused(&format!("constraints-test-{name}"))
 }
 
-/// `fab` of `source` with `layout` as the layout file (none if empty).
+/// `fab` of `BOARD` with `physical` as its physical file and `layout` as the layout file
+/// (none if empty).
 fn fab(
     name: &str,
-    source: &str,
+    physical: &str,
     layout: &str,
     catalogs: &Catalogs,
 ) -> (TempDir, Result<Vec<Fabricated>, String>) {
-    fab_waiving(name, source, layout, catalogs, false)
+    fab_waiving(name, physical, layout, catalogs, false)
 }
 
 /// [`fab`], with `--allow-drc-violations` as `allow`.
 fn fab_waiving(
     name: &str,
-    source: &str,
+    physical: &str,
     layout: &str,
     catalogs: &Catalogs,
     allow: bool,
@@ -85,8 +95,8 @@ fn fab_waiving(
     }
     let made = fab_with_options(
         "widget.nsm",
-        source,
-        &Loader::std(),
+        BOARD,
+        &Loader::std().with_physical("widget.nsm", "widget.physical.nsm", physical),
         &dir.join("fab"),
         catalogs,
         &Libraries::standard(),
@@ -109,7 +119,7 @@ fn the_placer_meets_the_requirements_and_the_package_says_so() {
     if !have_libraries() {
         return;
     }
-    let (dir, made) = fab("met", BOARD, "", &Catalogs::jlcpcb());
+    let (dir, made) = fab("met", PHYSICAL, "", &Catalogs::jlcpcb());
     let made = made.unwrap_or_else(|e| panic!("{e}"));
     assert!(
         made[0].notes.contains("design rules check: passed")
@@ -137,7 +147,7 @@ fn the_same_source_gives_the_same_board() {
         return;
     }
     let read = |name: &str| {
-        let (dir, made) = fab(name, BOARD, "", &Catalogs::jlcpcb());
+        let (dir, made) = fab(name, PHYSICAL, "", &Catalogs::jlcpcb());
         made.unwrap_or_else(|e| panic!("{e}"));
         fs::read_to_string(dir.join("fab/Widget/Widget.kicad_pcb")).unwrap()
     };
@@ -152,10 +162,10 @@ fn a_part_moved_by_hand_out_of_its_window_stops_fab_with_every_number() {
     if !have_libraries() {
         return;
     }
-    let (dir, made) = fab("moved", BOARD, MOVED, &Catalogs::jlcpcb());
+    let (dir, made) = fab("moved", PHYSICAL, MOVED, &Catalogs::jlcpcb());
     let e = made.expect_err("the header is nowhere near its window");
     assert!(
-        e.contains("error [constraint] constraint power_in.place.left (widget.nsm:")
+        e.contains("error [constraint] constraint power_in.place.left (widget.physical.nsm:")
             && e.contains("the left edge of the body of J1 (F.Fab) is 28.73 mm from the left edge of the outline, and it allows 1.4 to 1.6 mm (27.13 mm over)")
             && e.contains("the centre of the body of J1 (F.Fab) is 6.27 mm from the top edge of the outline, and it allows 11.9 to 12.1 mm (5.63 mm over)")
             && e.contains("J1 is turned 0 degrees, and it allows 90 degrees (90 degrees over)"),
@@ -173,7 +183,7 @@ fn with_constraints_warn_the_same_board_is_packaged_and_the_notes_list_them() {
         return;
     }
     let catalogs = Catalogs::jlcpcb().with_constraints_warn(true);
-    let (_dir, made) = fab("warned", BOARD, MOVED, &catalogs);
+    let (_dir, made) = fab("warned", PHYSICAL, MOVED, &catalogs);
     let made = made.unwrap_or_else(|e| panic!("{e}"));
     let notes = &made[0].notes;
     assert!(
@@ -191,7 +201,7 @@ fn a_part_locked_in_the_layout_file_against_a_requirement_is_refused_before_plac
     }
     let (_dir, made) = fab(
         "locked",
-        BOARD,
+        PHYSICAL,
         &format!("{MOVED}lock = true\n"),
         &Catalogs::jlcpcb(),
     );
@@ -212,11 +222,11 @@ fn requirements_that_cannot_be_met_together_say_which_and_with_what() {
         return;
     }
     // The header's body is wider than the strip the second line leaves.
-    let source = BOARD.replace(
+    let physical = PHYSICAL.replace(
         "    .led.place.top >= 3mm\n",
         "    .led.place.left >= 10mm\n    .led.place.right <= 10.5mm\n",
     );
-    let (_dir, made) = fab("squeezed", &source, "", &Catalogs::jlcpcb());
+    let (_dir, made) = fab("squeezed", &physical, "", &Catalogs::jlcpcb());
     let e = made.expect_err("the LED cannot fit between 10 and 10.5 mm");
     assert!(
         e.contains("D1 (`led`) cannot meet its requirements")
@@ -267,11 +277,11 @@ fn a_point_pins_the_part_and_a_keep_in_is_two_windows() {
     if !have_libraries() {
         return;
     }
-    let source = BOARD.replace(
+    let physical = PHYSICAL.replace(
         "    .led.place.right <= 38mm\n    .led.place.top >= 3mm\n",
         "    .led.place.x &= 20mm\n    .led.place.y &= 12mm\n    .led.place.rotation &= 0\n    .r1.place.left >= 24mm\n    .r1.place.right <= 34mm\n",
     );
-    let (dir, made) = fab("pinned", &source, "", &Catalogs::jlcpcb());
+    let (dir, made) = fab("pinned", &physical, "", &Catalogs::jlcpcb());
     let made = made.unwrap_or_else(|e| panic!("{e}"));
     assert!(
         made[0].notes.contains("constraints: 8 of 8 satisfied"),
@@ -288,7 +298,7 @@ fn allow_drc_violations_does_not_waive_a_requirement_only_warn_does() {
     if !have_libraries() {
         return;
     }
-    let (dir, made) = fab_waiving("waived", BOARD, MOVED, &Catalogs::jlcpcb(), true);
+    let (dir, made) = fab_waiving("waived", PHYSICAL, MOVED, &Catalogs::jlcpcb(), true);
     let e = made.expect_err("a requirement is not a design rule");
     assert!(
         e.contains("3 requirement(s) of the design on where parts go are not met")
@@ -303,7 +313,7 @@ fn allow_drc_violations_does_not_waive_a_requirement_only_warn_does() {
     );
     // With `warn` the same run goes through, and the notes say what is not met.
     let catalogs = Catalogs::jlcpcb().with_constraints_warn(true);
-    let (_dir2, made) = fab_waiving("waived-warn", BOARD, MOVED, &catalogs, true);
+    let (_dir2, made) = fab_waiving("waived-warn", PHYSICAL, MOVED, &catalogs, true);
     let notes = made.unwrap_or_else(|e| panic!("{e}"))[0].notes.clone();
     assert!(
         notes.contains("constraints: 2 of 5 satisfied; 3 not met, listed as warnings because the project or this run asked for `constraints = \"warn\"`"),
@@ -322,6 +332,7 @@ fn run_fab(name: &str, manifest: &str, args: &[&str]) -> std::process::Output {
     )
     .unwrap();
     fs::write(root.join("src/main.nsm"), BOARD).unwrap();
+    fs::write(root.join("src/main.physical.nsm"), PHYSICAL).unwrap();
     fs::write(root.join("src/main.pcb.toml"), MOVED).unwrap();
     std::process::Command::new(env!("CARGO_BIN_EXE_netsmith"))
         .arg("fab")
