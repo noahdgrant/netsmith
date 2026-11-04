@@ -17,9 +17,12 @@ A generator turns the parameters of a package into a `Footprint`, the model that
 | SOT-23 (-3, -5, -6), SOT-223 | `Package_TO_SOT_SMD:SOT-23` ... | SOT-23: IPC formulas from JEDEC TO-236 and MO-178; SOT-223: recorded pads |
 | SOIC, TSSOP, MSOP, SSOP | `Package_SO:SOIC-8_3.9x4.9mm_P1.27mm` ... (18 names) | IPC formulas from JEDEC MS-012, MS-013, MO-153, MO-187, MO-150 |
 | QFN, DFN, WSON, HVSON | `Package_DFN_QFN:QFN-16-1EP_3x3mm_P0.5mm_EP1.7x1.7mm` ... (30 names) | IPC formulas for flat no-lead, exposed pad kept 0.2 mm clear, paste openings covering 65 % |
+| LQFP, TQFP, VQFP | `Package_QFP:TQFP-48_7x7mm_P0.5mm` ... (16 names) | IPC formulas for gull wings, fine-pitch fillets from 0.625 mm, from JEDEC MS-026: 2.0 mm over the leads beyond the body, leads 0.45 to 0.75 mm |
+| DPAK (TO-252), SOT-89 | `Package_TO_SOT_SMD:TO-252-3_TabPin2`, `SOT-89-3` ... (6 + 4 names) | recorded pads (Infineon PG-TO252, Microchip 3L SOT-89, Ricoh SOT-89-5); the DPAK tab is one pad with four paste openings, the SOT-89 tab a `custom` pad |
+| SMD crystals | `Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm` ... (18 names, 0603 to 7050, 1.2 x 1.0 mm and the hand-soldering pads) | recorded pads and courtyards |
 | Pin headers and sockets | `PinHeader_1x04_P2.54mm_Vertical`, `PinSocket_2x05_P2.00mm_Vertical`, 1 or 2 rows, 1 to 40 per row | pad 0.7 of the pitch, drill 1.0 mm (0.8 mm at 2.0 mm), pin 1 square |
 
-`generate::names()` lists the 424 names; a name outside the list is not generated (`Package_SO:SOIC-9_...` is `None`, not a guess). The QFN family is a list of named packages, because the lead and exposed pad dimensions of a QFN of a given outline differ from one maker to the next (KiCad has one footprint per datasheet); a package not in the list needs a library file.
+`generate::names()` lists the 468 names; a name outside the list is not generated (`Package_SO:SOIC-9_...` is `None`, not a guess). The QFN family is a list of named packages, because the lead and exposed pad dimensions of a QFN of a given outline differ from one maker to the next (KiCad has one footprint per datasheet); a package not in the list needs a library file. The same holds for the QFPs: KiCad's other QFPs are from one maker's drawing each (NXP's SOT outlines, ON Semiconductor's, Microchip's hand-drawn rectangular pads, with other lead spans and lengths), and only those 16 that are the plain MS-026 pattern are generated.
 
 ## The rule: IPC-7351B, nominal density
 
@@ -37,6 +40,8 @@ with `Snom = Lnom - 2 Tnom` and `CS = sqrt(CL^2 + 2 CT^2)` when the datasheet gi
 
 - **IPC-7351B and IPC-SM-782** are paid documents and were not read. The formulas, the fillet goals (tables 3-2, 3-3, 3-15, median column) and the rounding grids were taken from the published configuration files and comments of `kicad-footprint-generator`, which tabulate them; the body and terminal envelopes of chips are the IPC-SM-782 numbers as the same repository's data files record them. These are numbers and formulas, which are facts, not the repository's code.
 - **`kicad-footprint-generator`** (`gitlab.com/kicad/libraries/kicad-footprint-generator`): its README says GPL-3.0-or-later, with some MIT and LGPL files. Its Python (`ipc_pad_size_calculators.py`, the no-lead generator) was read to learn the formula for the span of a lead, the exposed-pad clearance rule and the paste coverage; the Rust here was written from that maths, shares no code or structure with it, and is MIT like the rest of netsmith. Whether reading GPL code to learn a published formula taints what is written is the owner's to judge; the formulas are IPC's.
+- **JEDEC MS-026** (the outline of the thin and low profile quad flat packs) gives the QFP rows: a lead span of the body plus 2.0 mm as a basic dimension (no tolerance), a lead 0.45 to 0.75 mm long. The lead widths per pitch (0.13 to 0.23 mm at 0.4 mm, 0.17 to 0.27 mm at 0.5 mm, 0.30 to 0.45 mm at 0.8 mm, and for the two 0.65 mm rows 0.17 to 0.27 mm or 0.22 to 0.33 mm) are the ranges that reproduce KiCad 9.0's pads; the datasheets of the packages differ from one maker to the next within MS-026's ranges, and a width of a datasheet that was not read is not claimed.
+- **Recorded pads** (DPAK, SOT-89, crystals): the pads and courtyards are numbers read from KiCad 9.0's footprints of the same name, which cite Infineon's PG-TO252 drawings, Microchip's 3L SOT-89 drawing (C04-029C), Ricoh's SOT-89-5 outline and the crystal makers' datasheets named in each row of `generate/crystal.rs`. The drawings themselves were not read. The numbers are facts about those footprints, not their expression; the same basis as SOT-223 above.
 - **JEDEC outlines** (MS-012, MS-013, MO-150, MO-153, MO-187, MO-178, TO-236) and manufacturers' drawings are the lead dimensions of the gull-wing and SOT rows. The QFN, DFN, WSON and HVSON rows take the body, lead and exposed pad dimensions from the datasheets that KiCad's data files cite per package (ST, Analog Devices, Microchip, Nordic and others); the datasheet URL of each is in that repository's `data/package/no_lead/`.
 - **KiCad's footprints** (CC-BY-SA 4.0 with the design exception, ADR 0041) are used as the check, not copied: the test below reads them from an installed KiCad; none is in this repository. The recorded pad sizes of SOD, SMx and SOT-223, and a few fitted inputs (below), are facts about those footprints (numbers), stated as such.
 
@@ -46,7 +51,7 @@ with `Snom = Lnom - 2 Tnom` and `CS = sqrt(CL^2 + 2 CT^2)` when the datasheet gi
 
 ## Validation
 
-`crates/netsmith-pcb/tests/generated_vs_kicad.rs` compares every generated footprint with the footprint of the same name in the installed KiCad 9.0 libraries (skipped without them): the pad count, numbers, kind, shape, layers, hole, and the box of every pad (so a pad turned a quarter agrees), within 0.01 mm, and the courtyard within 0.01 mm. A difference needs an entry in the test's `DIFFERENCES` table with its bound and reason, and an entry that nothing needs fails the test. `cargo test -p netsmith-pcb --test generated_vs_kicad -- --nocapture` prints the table. Result against KiCad 9.0 (installed, 2026-11-02): 344 of 424 agree; 80 differ, all in the courtyard.
+`crates/netsmith-pcb/tests/generated_vs_kicad.rs` compares every generated footprint with the footprint of the same name in the installed KiCad 9.0 libraries (skipped without them): the pad count, numbers, kind, shape, layers, hole, and the box of every pad (so a pad turned a quarter agrees), within 0.01 mm, and the courtyard within 0.01 mm. A difference needs an entry in the test's `DIFFERENCES` table with its bound and reason, and an entry that nothing needs fails the test. `cargo test -p netsmith-pcb --test generated_vs_kicad -- --nocapture` prints the table. Result against KiCad 9.0 (installed, 2026-11-03 for the QFP, DPAK, SOT-89 and crystal rows, 2026-11-02 for the others): 388 of 468 agree; 80 differ, all in the courtyard.
 
 | Family | Generated | Agree within 0.01 mm | Largest pad deviation | Largest courtyard deviation |
 |---|---|---|---|---|
@@ -55,6 +60,9 @@ with `Snom = Lnom - 2 Tnom` and `CS = sqrt(CL^2 + 2 CT^2)` when the datasheet gi
 | SOT-23, -3, -5, -6, SOT-223 | 6 | 6 | 0.000 | 0.000 |
 | SOIC, TSSOP, MSOP, SSOP | 18 | 18 | 0.000 | 0.000 |
 | QFN, DFN, WSON, HVSON | 30 | 30 | 0.004 | 0.010 (a rounding tie in the courtyard) |
+| LQFP, TQFP, VQFP | 16 | 16 | 0.000 | 0.000 |
+| TO-252 (DPAK), SOT-89 | 10 | 10 | 0.000 | 0.000 |
+| SMD crystals | 18 | 18 | 0.000 | 0.000 |
 | Pin headers, 2.54 and 2.0 mm, and 2.0 mm sockets | 240 | 240 | 0.000 | 0.000 |
 | 2.54 mm pin sockets | 80 | 0 | 0.000 | 0.050 |
 
@@ -63,7 +71,8 @@ Where KiCad differs by design or was not matched:
 - **2.54 mm pin sockets**: KiCad draws the courtyard 0.04 to 0.05 mm inside body plus 0.5 mm, which its headers and 2.0 mm sockets do not. The pads agree. Not imitated (a 0.05 mm courtyard is immaterial; recorded in `DIFFERENCES`).
 - **SSOP**: only SSOP-16 and SSOP-20 (5.3 mm) are generated. KiCad's other 5.3 mm SSOPs (14, 24, 28) are older hand-drawn footprints with square pads of other sizes, and some of its SSOP-8 variants come from one vendor's drawing each; they are not IPC patterns, so they have no generator.
 - **Inputs fitted to KiCad 9.0.** SOT-23 has lead length 0.3 to 0.6 mm (the current generator data has 0.4 to 0.6, which would give an inner gap 0.05 mm longer); MSOP-10 has 4.65 to 5.15 mm over the leads. These are the values that reproduce the footprints of the libraries the user has.
-- **Not generated**: X2SON (KiCad's are Texas Instruments drawings, one each), BGA, QFP, LGA, DPAK, SOT-89, crystals, connectors other than pin headers, mounting holes and fiducials (the std rows that name those still read KiCad's library: `Crystal`, `Button_Switch_SMD`, `MountingHole`, `Fiducial`).
+- **QFP courtyard**: KiCad draws the courtyard of its generated QFPs as a polygon with the corners notched; the `Footprint` model keeps a rectangle, and the rectangle is the polygon's bounding box, which is what the test compares. The generated courtyard is therefore the larger shape near each corner (conservative).
+- **Not generated**: X2SON (KiCad's are Texas Instruments drawings, one each), BGA, LGA, the QFPs of one maker's drawing and those with an exposed pad, PQFP/MQFP/EQFP, TO-263 and TO-252-2_TabPin1 (Wolfspeed's pads), crystals named for a maker's part and through-hole crystals, connectors other than pin headers, mounting holes and fiducials (the std rows that name those still read KiCad's library: `Button_Switch_SMD`, `MountingHole`, `Fiducial`).
 
 A pad that is wrong makes a wrong board, so the check matters more than the generator. Without KiCad installed the test cannot run (CI without it skips); the unit tests in `generate/mod.rs` pin the numbers of one footprint per family from the values above, and the examples' DRC and fabrication files are the second check: all six examples (`examples/*.nsm`) pass `fab`'s design rules check with generated footprints, and `fab --cross-check` of `linear_regulator.nsm` shows 0 findings that KiCad's check has and netsmith's lacks, or the reverse (the pad, mask and copper layers agree with KiCad's plot; the silkscreen differs, as expected, because the drawing is netsmith's own).
 
