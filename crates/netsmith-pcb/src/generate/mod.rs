@@ -328,6 +328,25 @@ mod tests {
     }
 
     #[test]
+    fn a_qfp_with_an_exposed_pad_has_it_numbered_after_the_leads_with_its_paste_in_a_grid() {
+        let fp = generate("Package_QFP:LQFP-48-1EP_7x7mm_P0.5mm_EP3.6x3.6mm").unwrap();
+        // 48 leads, the pad, and nine paste openings of 0.97 mm.
+        assert_eq!(fp.pads.len(), 48 + 1 + 9);
+        let ep = fp.pads_numbered("49").next().unwrap();
+        assert!(near(ep.width, 3.6) && near(ep.height, 3.6));
+        let paste: Vec<_> = fp.pads.iter().filter(|p| p.number.is_empty()).collect();
+        assert!(
+            paste
+                .iter()
+                .all(|p| near(p.width, 0.97) && near(p.height, 0.97))
+        );
+        // The leads are those of the plain package of the same name.
+        let plain = generate("Package_QFP:LQFP-48_7x7mm_P0.5mm").unwrap();
+        assert_eq!(fp.pads[0], plain.pads[0]);
+        assert_eq!(fp.courtyard, plain.courtyard);
+    }
+
+    #[test]
     fn a_dpak_has_its_tab_as_one_pad_with_four_paste_openings_of_the_same_number() {
         let fp = generate("Package_TO_SOT_SMD:TO-252-3_TabPin2").unwrap();
         // Three leads, and the tab: pad 2 is the middle lead and the tab, which is a copper

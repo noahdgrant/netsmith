@@ -570,16 +570,35 @@ fn no_lead(p: &Package) -> Footprint {
         drawing.pad(pad);
     }
 
-    // The exposed pad, and the paste on it.
-    let (ex, ey) = p.exposed;
+    exposed_pad(&mut drawing, leads + 1, p.exposed, p.paste);
+
+    let body = (p.body.0.nominal(), p.body.1.nominal());
+    quad_frame(
+        drawing,
+        &pads,
+        n_down,
+        n_across,
+        body,
+        FLAT_NO_LEAD.courtyard,
+    )
+}
+
+/// The exposed pad at the centre, numbered `number`, with the paste on it cut into
+/// `paste` openings across and down that cover 65 % of it, as stencil openings that are
+/// not pads. Shared with the quad flat packs that have an exposed pad.
+pub(super) fn exposed_pad(
+    drawing: &mut Drawing,
+    number: usize,
+    (ex, ey): (f64, f64),
+    (px, py): (usize, usize),
+) {
     drawing.pad(&PadSpec::new(
-        leads + 1,
+        number,
         Kind::SmdNoPaste,
         Shape::Rect,
         Pt::new(0.0, 0.0),
         (ex, ey),
     ));
-    let (px, py) = p.paste;
     let scale = PASTE_COVERAGE.sqrt();
     let size = (
         ipc::round_to(ex * scale / px as f64, 0.01),
@@ -600,14 +619,4 @@ fn no_lead(p: &Package) -> Footprint {
             ));
         }
     }
-
-    let body = (p.body.0.nominal(), p.body.1.nominal());
-    quad_frame(
-        drawing,
-        &pads,
-        n_down,
-        n_across,
-        body,
-        FLAT_NO_LEAD.courtyard,
-    )
 }
