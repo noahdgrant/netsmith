@@ -46,6 +46,9 @@ impl std::error::Error for CliError {}
 /// fill, which only KiCad can compute. Each method has KiCad fill the zones first, on its
 /// own copy, so a check and a plot see the copper that the board house will make.
 pub trait KicadCli {
+    /// KiCad's version as `kicad-cli version` prints it (`9.0.0`). The cross-check needs it
+    /// to know which known difference of a release applies ([`crate::crosscheck`]).
+    fn version(&self) -> Result<String, CliError>;
     /// KiCad's design rules check as its JSON report, with every severity and every
     /// violation of tracks, so that it can be compared with netsmith's own
     /// ([`crate::drc::kicad`]). The text has `violations` and `unconnected_items`, each with
@@ -373,6 +376,25 @@ impl Stage<'_> {
 }
 
 impl KicadCli for KicadCliExe {
+    fn version(&self) -> Result<String, CliError> {
+        let ran = exclusive::run(|| {
+            let mut command = Command::new(&self.exe);
+            command.arg("version");
+            command
+        })?;
+        let said = String::from_utf8_lossy(&ran.output.stdout)
+            .trim()
+            .to_string();
+        if ran.success() && !said.is_empty() {
+            Ok(said)
+        } else {
+            Err(CliError::Failed {
+                command: format!("{} version", self.exe.display()),
+                output: ran.report(),
+            })
+        }
+    }
+
     fn drc_json(&self, pcb: &Path) -> Result<String, CliError> {
         let stage = self.stage(pcb)?;
         let report = stage.dir.join("drc.json");

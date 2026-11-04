@@ -600,9 +600,12 @@ mod tests {
             drill: None,
             layers: vec!["F.Cu".into()],
             mask_margin: None,
+            own_mask_margin: false,
+            footprint_mask_margin: None,
             paste_margin: None,
             paste_ratio: None,
             zone_connect: None,
+            thermal_angle: None,
             remove_unused_layers: false,
             clearance: None,
         }

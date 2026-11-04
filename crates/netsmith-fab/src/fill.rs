@@ -224,7 +224,7 @@ fn around_copper(
         };
         if own(&pad.net) && mode != Connect::None {
             if mode == Connect::Thermal {
-                thermal(g, &shape, pad.at, pad.angle, z)?;
+                thermal(g, &shape, pad.at, pad.angle + pad.spoke_angle(), z)?;
             }
         } else {
             let by = pad.clearance.map_or(clearance, |c| c.max(clearance));
@@ -326,7 +326,8 @@ fn draw_grown(
 }
 
 /// The thermal relief of a pad or via: the gap round it, in the four pieces between the
-/// spokes (which run along the pad's own axes). A custom pad is joined solid.
+/// spokes, which run along the axes turned by `angle` (the pad's turn and its spoke angle,
+/// [`crate::artwork::Pad::spoke_angle`]). A custom pad is joined solid.
 fn thermal(
     g: &mut Gerber,
     shape: &Outline,
@@ -443,6 +444,67 @@ mod tests {
         // The pad is cleared by a rounded rectangle of 1 + 2 * 0.3.
         assert!(t.contains("RoundRect,0.300000"), "{t}");
         assert_eq!(t.matches("G36*").count(), 2);
+    }
+
+    /// Whether the pour's picture is copper at `r` millimetres from the pad at (10, 10), in
+    /// the direction `deg` degrees (counter-clockwise on the board).
+    fn copper_at(a: &Artwork, deg: f64, r: f64) -> bool {
+        let t = poured(a);
+        let view = crate::raster::View {
+            min: (0.0, -20.0),
+            max: (20.0, 0.0),
+        };
+        let img = crate::raster::render_gerber(&t, &view, 40.0).unwrap();
+        // The board's y is down and the Gerber's up: the pad is at (10, -10) there.
+        let (x, y) = (
+            10.0 + r * deg.to_radians().cos(),
+            -10.0 + r * deg.to_radians().sin(),
+        );
+        let (col, row) = (((x - img.x0) * 40.0) as usize, ((0.0 - y) * 40.0) as usize);
+        img.bits[row * img.width + col] != 0
+    }
+
+    fn pad_art(at_turn: f64, shape: &str, extra: &str) -> Artwork {
+        art(&format!(
+            r#"(footprint "L:P" (layer "F.Cu") (at 10 10 {at_turn})
+                (property "Reference" "J1")
+                (pad "1" thru_hole {shape} (at 0 0 {at_turn}) (size 1 1) (drill 0.4) (layers "*.Cu") (net 1 "GND") {extra}))"#
+        ))
+    }
+
+    #[test]
+    fn a_round_pads_spokes_run_at_45_degrees_as_kicad_has_them() {
+        // The spokes are copper 0.75 mm from the centre, in the middle of the gap's ring.
+        let a = pad_art(0.0, "circle", "");
+        for deg in [45.0, 135.0, 225.0, 315.0] {
+            assert!(copper_at(&a, deg, 0.75), "a spoke at {deg}");
+        }
+        for deg in [0.0, 90.0, 180.0, 270.0] {
+            assert!(!copper_at(&a, deg, 0.75), "a gap at {deg}");
+        }
+    }
+
+    #[test]
+    fn any_other_pads_spokes_run_along_its_axes_and_turn_with_it() {
+        let a = pad_art(0.0, "rect", "");
+        for deg in [0.0, 90.0, 180.0, 270.0] {
+            assert!(copper_at(&a, deg, 0.75), "a spoke at {deg}");
+        }
+        assert!(!copper_at(&a, 45.0, 0.9), "a gap at 45");
+        // A part turned by 30 degrees (its pads are at 30 in the file) turns the spokes with it.
+        let a = pad_art(30.0, "rect", "");
+        assert!(copper_at(&a, 30.0, 0.75) && !copper_at(&a, 0.0, 0.75));
+        // So does a round pad's: 45 degrees from the part's axes.
+        let a = pad_art(30.0, "circle", "");
+        assert!(copper_at(&a, 75.0, 0.75) && !copper_at(&a, 30.0, 0.75));
+    }
+
+    #[test]
+    fn a_pads_own_thermal_bridge_angle_decides_its_spokes() {
+        let a = pad_art(0.0, "circle", "(thermal_bridge_angle 90)");
+        assert!(copper_at(&a, 0.0, 0.75) && !copper_at(&a, 45.0, 0.75));
+        let a = pad_art(0.0, "rect", "(thermal_bridge_angle 45)");
+        assert!(copper_at(&a, 45.0, 0.9) && !copper_at(&a, 0.0, 0.75));
     }
 
     #[test]

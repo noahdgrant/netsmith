@@ -126,13 +126,37 @@ pub struct Pad {
     pub drill: Option<Drill>,
     /// Layers the pad is on, expanded (`*.Cu` is every copper layer of the board).
     pub layers: Vec<String>,
+    /// The mask margin that holds for the pad: its own `solder_mask_margin`, else its
+    /// footprint's.
     pub mask_margin: Option<f64>,
+    /// Whether `mask_margin` is the pad's own (not its footprint's), and the footprint's
+    /// margin, which the pad falls back to. The cross-check needs the difference (ADR 0034).
+    pub own_mask_margin: bool,
+    pub footprint_mask_margin: Option<f64>,
     pub paste_margin: Option<f64>,
     pub paste_ratio: Option<f64>,
     pub zone_connect: Option<Connect>,
+    /// `thermal_bridge_angle` of the pad: the turn of its thermal spokes, in degrees, from the
+    /// pad's own axes. `None` when the file says nothing, which KiCad reads as 45 for a circle
+    /// and 90 (along the axes) for any other shape ([`Pad::spoke_angle`]).
+    pub thermal_angle: Option<f64>,
     pub remove_unused_layers: bool,
     /// The pad's own clearance, which a zone keeps if it is larger than its own.
     pub clearance: Option<f64>,
+}
+
+impl Pad {
+    /// The turn of the pad's thermal spokes from its own axes, in degrees, as KiCad has it:
+    /// the pad's `thermal_bridge_angle`, else 45 for a circle (and for a custom pad with a
+    /// circular anchor) and 90 for every other shape, so that the spokes of a round pad run
+    /// diagonally and those of any other pad along its axes (KiCad 9, `parsePAD`).
+    pub fn spoke_angle(&self) -> f64 {
+        self.thermal_angle.unwrap_or(match self.shape {
+            PadShape::Circle => 45.0,
+            PadShape::Custom if !self.anchor_rect => 45.0,
+            _ => 90.0,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1038,9 +1062,12 @@ impl<'a> Reader<'a> {
             drill,
             layers,
             mask_margin: child_num(item, "solder_mask_margin").or(frame.mask_margin),
+            own_mask_margin: child_num(item, "solder_mask_margin").is_some(),
+            footprint_mask_margin: frame.mask_margin,
             paste_margin: child_num(item, "solder_paste_margin").or(frame.paste_margin),
             paste_ratio: child_num(item, "solder_paste_margin_ratio").or(frame.paste_ratio),
             zone_connect: connect,
+            thermal_angle: child_num(item, "thermal_bridge_angle"),
             remove_unused_layers: flag(item, "remove_unused_layers").unwrap_or(false),
             clearance: child_num(item, "clearance").or(frame.clearance),
         };
