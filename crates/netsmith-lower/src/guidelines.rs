@@ -128,7 +128,7 @@ struct Carrier {
     who: String,
     inst: InstId,
     /// The part, module or board that holds it: a rail's owner, or the part itself. What
-    /// holds a current decides whether a module's port covers it (see [`plan_tracks`]).
+    /// holds a current decides whether a module's port is left out (see [`plan_tracks`]).
     holder: InstId,
     /// Whether it is a rail (and not a part passing a current).
     is_rail: bool,
@@ -165,40 +165,58 @@ fn signed_range(model: &Model, member: Option<Member>) -> Option<(f64, f64)> {
 }
 
 /// What flows through a net by Kirchhoff's current law: what the carriers on it take out of
-/// it and what they put into it, each at its largest, every one at the same time.
+/// it and what they put into it, each at its largest, every one at the same time. A term is
+/// a carrier, its largest amount, and whether that is the carrier drawing (a load) and not
+/// supplying.
 #[derive(Default)]
 struct Flow<'a> {
-    taken: Vec<(&'a Carrier, f64)>,
-    given: Vec<(&'a Carrier, f64)>,
+    taken: Vec<(&'a Carrier, f64, bool)>,
+    given: Vec<(&'a Carrier, f64, bool)>,
 }
 
 impl<'a> Flow<'a> {
     /// A carrier's current `lo..hi` leaves the net (when positive) or enters it (when
-    /// negative).
+    /// negative): the carrier's `from` pin is on the net.
     fn leaves(&mut self, c: &'a Carrier, (lo, hi): (f64, f64)) {
         if hi > 0.0 {
-            self.taken.push((c, hi));
+            self.taken.push((c, hi, true));
         }
         if lo < 0.0 {
-            self.given.push((c, -lo));
+            self.given.push((c, -lo, false));
         }
     }
 
+    /// The carrier's `to` pin is on the net: what is positive enters it.
     fn enters(&mut self, c: &'a Carrier, (lo, hi): (f64, f64)) {
-        self.leaves(c, (-hi, -lo));
+        if hi > 0.0 {
+            self.given.push((c, hi, true));
+        }
+        if lo < 0.0 {
+            self.taken.push((c, -lo, false));
+        }
     }
 
     /// The larger of the two sums and the terms of that side, largest first. On a net whose
-    /// every current is modelled the sides are equal (the law); where a stated supply is a
-    /// budget wider than its loads, or a pin is not modelled, the larger is the safer.
+    /// every current is modelled the sides are equal (the law), and the side of the loads is
+    /// the one named; where a stated supply is a budget wider than its loads, or a pin is
+    /// not modelled, the larger is the safer.
     fn worst(&self) -> (f64, Vec<(&'a Carrier, f64)>) {
-        let sum = |v: &[(&Carrier, f64)]| v.iter().map(|t| t.1).sum::<f64>();
-        let side = if sum(&self.given) > sum(&self.taken) {
+        let sum = |v: &[(&Carrier, f64, bool)]| v.iter().map(|t| t.1).sum::<f64>();
+        let loads =
+            |v: &[(&Carrier, f64, bool)]| v.iter().filter(|t| t.2).map(|t| t.1).sum::<f64>();
+        let (t, g) = (sum(&self.taken), sum(&self.given));
+        let side = if (g - t).abs() <= 1e-9 * t.max(g) {
+            if loads(&self.given) > loads(&self.taken) {
+                &self.given
+            } else {
+                &self.taken
+            }
+        } else if g > t {
             &self.given
         } else {
             &self.taken
         };
-        let mut terms = side.clone();
+        let mut terms: Vec<(&Carrier, f64)> = side.iter().map(|t| (t.0, t.1)).collect();
         terms.sort_by(|a, b| b.1.total_cmp(&a.1));
         (sum(side), terms)
     }
@@ -231,8 +249,9 @@ pub struct TrackPlan {
 /// output current for a linear one, the power balance with the efficiency for a switching
 /// one), never its output current.
 ///
-/// A module's port stands for what is inside the module (ADR 0007): where a module has a
-/// rail on the net, nothing inside it is added again. Its tracks are as wide as the rails on
+/// A module's port stands for what is inside the module (ADR 0007), so each current is
+/// counted once: at the port when nothing inside the module is on the net, otherwise inside.
+/// Its tracks are as wide as the rails on
 /// it ask (`.min_track`, the widest bottom, in `features.net_widths`) and never narrower than
 /// the process's least. A net no rail states a width for, whose every current is known, is
 /// given the width IPC-2221 needs (ADR 0036) in [`TrackPlan::widths`]; a net where some
@@ -337,28 +356,30 @@ pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> Tra
             continue;
         }
         let on_net: Vec<&Carrier> = carriers.iter().filter(|c| touching(c, net)).collect();
-        // A module with a rail on the net: that port is what the rest of the board sees of
-        // the module, so the rails and parts inside it are not added again.
-        let ports: Vec<InstId> = on_net
-            .iter()
-            .filter(|c| c.is_rail && model.instance(c.holder).kind == InstKind::Module)
-            .map(|c| c.holder)
-            .collect();
-        let covered = |c: &Carrier| {
-            let mut up = model.instance(c.holder).parent;
+        // A module's port stands for what is inside the module (ADR 0007) and the rails and
+        // parts inside it are the same current seen closer up. Where something inside the
+        // module is on the net, the port is left out and the inside counts; a module with
+        // nothing modelled inside on the net keeps its port, which is all that is known of it.
+        let inside = |module: InstId, d: &Carrier| {
+            let mut up = model.instance(d.holder).parent;
             while let Some(p) = up {
-                if ports.contains(&p) {
-                    return true;
+                if p == module {
+                    return d.holder != module;
                 }
                 up = model.instance(p).parent;
             }
             false
         };
-        let on_net: Vec<&Carrier> = on_net.into_iter().filter(|c| !covered(c)).collect();
+        let covered = |c: &Carrier| {
+            c.is_rail
+                && model.instance(c.holder).kind == InstKind::Module
+                && on_net.iter().any(|d| inside(c.holder, d))
+        };
+        let counted: Vec<&Carrier> = on_net.iter().copied().filter(|c| !covered(c)).collect();
 
         let mut flow = Flow::default();
         let mut unknown: Vec<&str> = Vec::new();
-        for c in &on_net {
+        for c in &counted {
             let at_from = net.pins.contains(&c.from);
             let at_to = c.to.is_some_and(|t| net.pins.contains(&t));
             // Both ends on the net: what leaves comes back, nothing flows through it.
