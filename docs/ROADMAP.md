@@ -267,7 +267,7 @@ snap and flatpak paths are the least certain). Bundling the libraries is ADR 004
 
 - **Resistor power** is checked (ADR 0025): `Resistor` has `.max_power` from the catalog and states `.drop * .current <= .max_power`, at the current the equations give (an equation narrows a field that has a range, when it is the only one on that field; a window nothing ties to the circuit is taken at its upper end). Derating for a hot board is not modelled.
 - **Switching regulators and catalogs of the standard kinds** (ADR 0025, provisional): `FeedbackDivider`, `Buck` and `BuckStage` are built and tested with an invented IC, and eight standard kinds have a small sourced catalog. Open: a second capacitor on each side, dropout and minimum on-time, loop stability, the divider's and the IC's quiescent current in the load, a pin-free supplier rail inside a module (a module must now borrow the IC's switch pin as the supplier, because a part's rail needs a pad), footprints in `std/kicad.toml` for the 4 mm to 8 mm shielded power inductors and the 4-pad crystals, `Diode` and `PMosfet` catalogs, and rows for more values.
-- **Search effort** on a failing design with many unconstrained parts is exponential in their number (README, Known limits); conflict-directed backjumping would stop it re-choosing parts that are not the cause.
+- **Search effort**: the part search backjumps (conflict-directed): a failure goes back to the nearest earlier part it depends on, so parts that are not the cause are not chosen again. A failure whose cause is a chain of parts that really constrain each other is still exponential in the chain, and the search still gives up after 250,000 trials.
 
 ### Agent files in a project: what is left
 

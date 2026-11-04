@@ -18,7 +18,9 @@
 //! range the inputs can produce, not just a typical value. Parts that share a relation are
 //! picked together by a depth-first search over their candidates (parts in path order,
 //! candidates in catalog order): a choice that makes a later part impossible is undone and
-//! the next candidate is tried, up to a fixed number of trials.
+//! the next candidate is tried, up to a fixed number of trials. A failure remembers which
+//! earlier parts it depends on, and the search goes back to the nearest of them rather than
+//! choosing the parts in between again (conflict-directed backjumping).
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 

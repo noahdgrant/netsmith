@@ -220,14 +220,69 @@ fn the_same_design_gives_the_same_answer_every_time() {
     }
 }
 
+// ---- the effort ---------------------------------------------------------------------
+//
+// Before backjumping, the trials of `bench(n, true)` with three candidates were 39, 120,
+// 363, 1092, 3279, 9840 and 29523 for n = 1..7: three times as many for each part added.
+
 #[test]
-fn scratch_trials() {
-    for n in 1..=7 {
-        let s = run(&bench(n, true), &catalogs(3));
-        eprintln!("n = {n}: {} trials", s.trials);
-    }
-    for n in 1..=7 {
-        let s = run(&bench_mid(n.max(2), ".u02.resistance + .z.resistance >= 1Mohm"), &catalogs(3));
-        eprintln!("mid n = {n}: {} trials", s.trials);
-    }
+fn parts_that_are_not_the_cause_are_not_chosen_again() {
+    let trials: Vec<usize> = (1..=7)
+        .map(|n| run(&bench(n, true), &catalogs(3)).trials)
+        .collect();
+    // Each added part costs the same few trials, however many there are.
+    let steps: Vec<usize> = trials.windows(2).map(|w| w[1] - w[0]).collect();
+    assert!(steps.windows(2).all(|w| w[0] == w[1]), "{trials:?}");
+    assert!(trials[6] < 100, "{trials:?}");
+}
+
+#[test]
+fn a_conflict_deep_in_a_long_chain_stays_cheap() {
+    // Twelve unrelated parts were 3^12 = 531,441 combinations, past the limit, and the
+    // search used to give up with a message that blames none of the parts.
+    let s = run(&bench(12, true), &catalogs(3));
+    let msgs = messages(&s);
+    assert_eq!(msgs.len(), 1, "{msgs:#?}");
+    assert!(!msgs[0].contains("gave up"), "{}", msgs[0]);
+    assert!(
+        msgs[0].contains("(a.resistance + z.resistance) must always be at least 1MΩ"),
+        "{}",
+        msgs[0]
+    );
+    assert!(s.trials < 200, "{} trials", s.trials);
+}
+
+#[test]
+fn a_conflict_with_a_middle_part_costs_no_more_than_the_parts_before_it() {
+    // Before: 1092 trials for four parts in between.
+    let s = run(
+        &bench_mid(4, ".u02.resistance + .z.resistance >= 1Mohm"),
+        &catalogs(3),
+    );
+    assert!(s.trials < 60, "{} trials", s.trials);
+}
+
+#[test]
+fn a_part_that_is_the_cause_through_an_equation_is_still_chosen_again() {
+    // `z` is equal to `u01`, so when `z` and `a` add up to too little, the cause is `u01` as
+    // much as `a`, and the search must go back to `u01` and not past it to `a`. Between
+    // them are `u02` and `u03`, which are not the cause.
+    let s = run(
+        &bench_mid(
+            3,
+            ".z.resistance == .u01.resistance\n    .z.resistance + .a.resistance >= 250ohm",
+        ),
+        &catalogs(3),
+    );
+    assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
+    assert_eq!(
+        picked(&s),
+        [
+            "a = 100 1% (rejected 0)",
+            "u01 = 200 1% (rejected 1)",
+            "u02 = 100 1% (rejected 0)",
+            "u03 = 100 1% (rejected 0)",
+            "z = 200 1% (rejected 0)",
+        ]
+    );
 }
