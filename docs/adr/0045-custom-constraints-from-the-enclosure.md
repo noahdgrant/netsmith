@@ -325,6 +325,8 @@ A part with no height that stands under a limit is reported by `Board::heights_u
 
 **Editor (C4, the limits only).** The PCB view draws a keepout that limits height in amber with the text `max 3 mm` in its corner and a title that says the limit and the faces. The window overlays and the drag limit of section 4 are still not built.
 
+**Owner decisions, 2026-11-04 (issue #29).** The owner confirmed four of the provisional choices above, after a worked example (a lid rib that allows 3 mm over the middle of a board): (1) a keepout that states only `.max_height` forbids nothing else; (2) `.layers` names the faces a limit applies to (`top`, `bottom`, `all` by default) and a limit on inner layers only is an error; (3) the check measures the body and the placer measures the courtyard, which is stricter; (4) a height-only keepout is not exported to KiCad as a rule area. These four lose their PROVISIONAL marks. Earlier owner decisions (2026-11-03): the member is `.height`, and an unknown height under a limit is a warning, an error under `constraints = "error"`.
+
 **Open for the maintainer.**
 
 - Whether the catalog `height` column (section 2) should come first.
