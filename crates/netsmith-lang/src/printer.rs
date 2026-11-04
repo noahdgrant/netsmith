@@ -247,6 +247,16 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                 out.push_str("case ");
                 write_block(out, &[], &c.items, depth + 1);
             }
+            Item::Row(r) => {
+                let _ = write!(
+                    out,
+                    "row {} .. {} along {} pitch {}",
+                    r.first.to_source(),
+                    r.last.to_source(),
+                    r.axis.word(),
+                    r.pitch.to_source()
+                );
+            }
             Item::Connect(c) => {
                 out.push_str(&c.first.to_source());
                 for (op, path) in &c.rest {

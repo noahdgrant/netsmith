@@ -81,3 +81,73 @@ fn an_unknown_top_level_word_lists_the_physical_unit() {
     let e = parse("physics for Trellis {}").unwrap_err();
     assert!(e.message.contains("`physical for`"), "{}", e.message);
 }
+
+const ROW: &str = "\
+physical for Trellis {
+    row .pads.tp1 .. .pads.tp12 along x pitch 2.54mm +/- 0.05mm
+    row .t1 .. .t4 along y pitch 3mm
+}
+";
+
+#[test]
+fn a_row_statement_names_two_parts_an_axis_and_a_pitch() {
+    let file = parse(ROW).unwrap();
+    let items = &file.physicals[0].items;
+    let Item::Row(r) = &items[0] else {
+        panic!("a row statement")
+    };
+    assert_eq!(r.first.to_source(), ".pads.tp1");
+    assert_eq!(r.last.to_source(), ".pads.tp12");
+    assert_eq!(r.axis, Axis::X);
+    assert!(matches!(r.pitch, Expr::Tolerance { .. }));
+    let Item::Row(r) = &items[1] else {
+        panic!("a row statement")
+    };
+    assert_eq!(r.axis, Axis::Y);
+    assert!(matches!(r.pitch, Expr::Number(..)));
+}
+
+#[test]
+fn a_row_statement_prints_back_to_source() {
+    let file = parse(ROW).unwrap();
+    let printed = file.to_source();
+    assert!(
+        printed.contains("row .pads.tp1 .. .pads.tp12 along x pitch 2.54mm +/- 0.05mm"),
+        "{printed}"
+    );
+    assert_eq!(parse(&printed).unwrap().to_source(), printed);
+}
+
+#[test]
+fn a_row_statement_needs_each_part_of_it() {
+    let at = |body: &str| parse(&format!("physical for T {{\n    {body}\n}}\n")).unwrap_err();
+    let e = at("row .a1 .a4 along x pitch 2mm");
+    assert!(
+        e.message
+            .contains("`..` between the first and the last part"),
+        "{}",
+        e.message
+    );
+    let e = at("row .a1 .. .a4 pitch 2mm");
+    assert!(
+        e.message.contains("`along x` or `along y`"),
+        "{}",
+        e.message
+    );
+    let e = at("row .a1 .. .a4 along z pitch 2mm");
+    assert!(
+        e.message.contains("`x` or `y` after `along`"),
+        "{}",
+        e.message
+    );
+    let e = at("row .a1 .. .a4 along x");
+    assert!(e.message.contains("`pitch`"), "{}", e.message);
+    let e = at("row .a1 .. .a4 along x pitch");
+    assert!(e.message.contains("a value"), "{}", e.message);
+}
+
+#[test]
+fn row_is_still_an_ordinary_name() {
+    let file = parse("board B {\n    .row: Length\n    .row &= 2mm\n}\n").unwrap();
+    assert_eq!(file.definitions.len(), 1);
+}

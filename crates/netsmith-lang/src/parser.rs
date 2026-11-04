@@ -357,6 +357,7 @@ impl Parser {
                     | Item::Pins(_)
                     | Item::Tie(_)
                     | Item::Case(_)
+                    | Item::Row(_)
                     | Item::Constraint(_)
                     | Item::Connect(_),
                 ) => Err(ParseError::new(
@@ -379,6 +380,9 @@ impl Parser {
                 "tie" if starts_name => return only_decls(self.tie(start)?),
                 "pins" if matches!(self.peek_second(), Tok::LBrace | Tok::Str(_)) => {
                     return only_decls(self.pins(start)?);
+                }
+                "row" if matches!(self.peek_second(), Tok::LeadingDot) => {
+                    return only_decls(self.row(start)?);
                 }
                 "case" if matches!(self.peek_second(), Tok::LBrace) => {
                     self.bump();
@@ -455,6 +459,47 @@ impl Parser {
             }
             _ => Err(unexpected(&t, "`:`, `&=`, `==`, `>=`, `<=`, `~` or `~>`")),
         }
+    }
+
+    /// `row .a1 .. .a12 along x pitch 2.54mm +/- 0.05mm`.
+    fn row(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let first = self.path()?;
+        self.expect(
+            &Tok::DotDot,
+            "`..` between the first and the last part of the row",
+        )?;
+        self.skip_newlines();
+        let last = self.path()?;
+        let t = self.peek().clone();
+        if !matches!(&t.tok, Tok::Ident(w) if w == "along") {
+            return Err(unexpected(&t, "`along x` or `along y` after the last part"));
+        }
+        self.bump();
+        let t = self.peek().clone();
+        let axis = match &t.tok {
+            Tok::Ident(w) if w == "x" => Axis::X,
+            Tok::Ident(w) if w == "y" => Axis::Y,
+            _ => return Err(unexpected(&t, "`x` or `y` after `along`")),
+        };
+        let axis_span = self.bump().span;
+        let t = self.peek().clone();
+        if !matches!(&t.tok, Tok::Ident(w) if w == "pitch") {
+            return Err(unexpected(
+                &t,
+                "`pitch` and the distance between neighbours after the axis",
+            ));
+        }
+        self.bump();
+        let pitch = self.tolerance()?;
+        Ok(Item::Row(Row {
+            first,
+            last,
+            axis,
+            axis_span,
+            pitch,
+            span: self.span_from(start),
+        }))
     }
 
     fn bridge(&mut self, start: usize) -> Res<Item> {
