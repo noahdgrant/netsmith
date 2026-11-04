@@ -768,14 +768,14 @@ fn an_outline_too_small_for_the_parts_is_refused_with_the_overflow() {
         .unwrap_err()
         .to_string();
     assert!(
-        err.contains("the parts need")
-            && err.contains(
-                "(courtyards and 0.4 mm margin, on both faces) and the outline is 5.0 x 40.0 mm: "
-            )
-            && err.contains(" mm over in x"),
+        // Parts wider than the outline in every turn are named with their sizes (the rows'
+        // size, which used to be given, says nothing about the least the parts need).
+        err.contains("the outline is 5.0 x 40.0 mm, which leaves 4.2 x 39.2 mm")
+            && err.contains(" has a courtyard of ")
+            && err.contains(" turned 90 degrees"),
         "{err}"
     );
-    assert!(!err.contains("over in y"), "{err}");
+    assert!(!err.contains("the parts need"), "{err}");
 }
 
 #[test]

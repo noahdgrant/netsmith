@@ -1589,12 +1589,29 @@ mod tests {
                 && !message.contains("over in x"),
             "{message}"
         );
-        // A board narrower than a part is over in x.
+        // A board 3 mm wide is narrower than an 0603 as it lies but not as it is turned: the
+        // placer turns it (it used to refuse, because the rows never turn a part).
         options.fit = Some((3.0, 200.0));
+        let board = placed_with(resistors(4, "0603"), &options).unwrap();
+        assert!(
+            board
+                .parts
+                .iter()
+                .all(|p| p.rotation.rem_euclid(180.0) == 90.0)
+        );
+        assert_eq!(board.check_placement(), vec![]);
+        // A board narrower than a part in every turn names the part and its courtyard in
+        // each turn, and not the rows' size.
+        options.fit = Some((1.0, 200.0));
         let message = placed_with(resistors(4, "0603"), &options)
             .unwrap_err()
             .to_string();
-        assert!(message.contains("mm over in x"), "{message}");
+        assert!(
+            message.contains("R1 (Resistor) has a courtyard of")
+                && message.contains("turned 90 degrees")
+                && !message.contains("the parts need"),
+            "{message}"
+        );
     }
 
     #[test]
