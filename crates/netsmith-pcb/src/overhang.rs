@@ -1,16 +1,14 @@
 //! Overhang: a part that hangs over the board edge on purpose (ADR 0045, "Built: overhang").
 //!
 //! A courtyard outside the outline is an error unless the person said the part may hang over
-//! that edge. They say it in one of two ways, with no syntax of its own:
-//!
-//! - **A requirement** on the part's `.place` whose window for an edge of the body lies
-//!   wholly at or beyond the same edge of the outline: `.plug.place.bottom >= outline.height`
-//!   says the body's bottom edge is at the board's bottom edge or past it. Only the edge
-//!   fields (`left`, `right`, `top`, `bottom`) of the part itself say it: a window on `x` or
-//!   `y`, or one a module states for its parts, does not. [`crate::constraints::plan`] finds
-//!   the edges and keeps them as [`Overhang::Stated`].
-//! - **A lock** in the layout file puts the part somewhere ([`Overhang::Locked`]): every edge
-//!   the locked courtyard passes is then meant.
+//! that edge. They say it with a requirement, with no syntax of its own, on the part's
+//! `.place` whose window for an edge of the body lies wholly at or beyond the same edge of
+//! the outline: `.plug.place.bottom >= outline.height` says the body's bottom edge is at the
+//! board's bottom edge or past it. Only the edge fields (`left`, `right`, `top`, `bottom`)
+//! of the part itself say it: a window on `x` or `y`, or one a module states for its parts,
+//! does not, and neither does a lock in the layout file (owner decision, 2026-11-03: a locked
+//! part must state every edge it is past, like any other part).
+//! [`crate::constraints::plan`] finds the edges and keeps them as [`Overhang::Stated`].
 //!
 //! What the rule changes is only the courtyard against the outline. The part's courtyard is
 //! counted as its [`clip`] to the outline, for the room it takes in the fit test and for
@@ -90,8 +88,6 @@ impl Edges {
 /// What the person stated about a part hanging over the edge.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Overhang {
-    /// The layout file locks the part: it hangs over wherever its courtyard is outside.
-    Locked,
     /// Requirements on the part's `.place` that put an edge of its body at or past the same
     /// edge of the outline.
     Stated {
@@ -106,7 +102,6 @@ impl Overhang {
     /// The edges the part may hang over.
     pub fn edges(&self) -> Edges {
         match self {
-            Overhang::Locked => Edges::ALL,
             Overhang::Stated { edges, .. } => *edges,
         }
     }
@@ -114,7 +109,6 @@ impl Overhang {
     /// How the person said it, for a message.
     pub fn by(&self) -> String {
         match self {
-            Overhang::Locked => "locked in the layout file".to_string(),
             Overhang::Stated { says, .. } => says.clone(),
         }
     }
@@ -223,7 +217,7 @@ mod tests {
     }
 
     #[test]
-    fn a_lock_may_hang_over_every_edge_and_a_requirement_only_the_edges_it_states() {
+    fn a_requirement_allows_only_the_edges_it_states() {
         let mut bottom = Edges::default();
         bottom.set(Edge::Bottom);
         let stated = Overhang::Stated {
@@ -231,6 +225,5 @@ mod tests {
             says: "`plug.place.bottom (a.nsm:3)` allows at least 60 mm".into(),
         };
         assert_eq!(stated.edges().list(), vec![Edge::Bottom]);
-        assert_eq!(Overhang::Locked.edges().list(), Edge::ALL.to_vec());
     }
 }

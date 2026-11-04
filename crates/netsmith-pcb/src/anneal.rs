@@ -35,6 +35,7 @@
 use crate::board::{BoardNet, Placed, ReferenceSide, Side, rect_distance};
 use crate::constraints::{Want, quarter};
 use crate::geometry::{Pt, Rect};
+use crate::overhang::Edges;
 use crate::quality::{DecouplingPair, decoupling_pairs};
 use crate::rules::Rules;
 
@@ -119,6 +120,12 @@ pub(crate) struct Problem<'a> {
     /// For each part, where the design's requirements let it be (ADR 0045); empty or `None`
     /// is anywhere. A part is only ever put inside its want.
     pub wants: &'a [Option<Want>],
+    /// For each part, the edges of `outline` its requirements say it may hang over (ADR 0045,
+    /// section 10); empty is none. Such a part takes only the room its courtyard has inside
+    /// the outline against other courtyards, as `Board::check_placement` counts it.
+    pub overhangs: &'a [Edges],
+    /// The board's outline, which the courtyards of overhanging parts are clipped to.
+    pub outline: Rect,
     /// The areas that limit how tall a part may stand (ADR 0045, "Height limits"): a part
     /// with a stated height over a zone's limit, on a face the zone limits, is kept out of it.
     pub zones: &'a [crate::place::HeightZone],
@@ -250,7 +257,7 @@ fn dist(a: Pt, b: Pt) -> f64 {
     (dx * dx + dy * dy).sqrt()
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 struct Cost {
     soft: f64,
     hard: f64,
@@ -334,6 +341,9 @@ struct Model {
     /// Whether the requirements let the part hang over the board edge (ADR 0045): its walls
     /// are the design's along the axes it holds, and its pads stay inside the outline.
     overhangs: bool,
+    /// The edges the part may hang over: its courtyard counts clipped to the outline against
+    /// other courtyards.
+    may: Edges,
     /// The boxes the part is too tall to stand in, on the face it is on.
     no_go: Vec<Rect>,
 }
@@ -626,6 +636,7 @@ impl<'a> Engine<'a> {
                         .get(i)
                         .and_then(Option::as_ref)
                         .is_some_and(|w| w.overhangs),
+                    may: p.overhangs.get(i).copied().unwrap_or_default(),
                     no_go: match parts[i].height {
                         Some(h) => p
                             .zones
@@ -891,7 +902,7 @@ impl<'a> Engine<'a> {
         let m = &self.models[i];
         if !m.hole {
             return if face == m.side {
-                vec![(self.court(i), false)]
+                vec![(self.room(i), false)]
             } else {
                 Vec::new()
             };
@@ -903,7 +914,7 @@ impl<'a> Engine<'a> {
             (opposite, own)
         };
         if here || !there {
-            return vec![(self.court(i), false)];
+            return vec![(self.room(i), false)];
         }
         let pos = self.pos(i);
         self.shape(i)
@@ -933,6 +944,18 @@ impl<'a> Engine<'a> {
 
     fn court(&self, i: usize) -> Rect {
         self.shape(i).court.translated(self.pos(i))
+    }
+
+    /// The room part `i` takes against other courtyards: its courtyard, clipped to the
+    /// outline if the design says it may hang over an edge (as `Board::check_placement`
+    /// counts it, so that two parts that hang over the same edge may overlap beyond it).
+    fn room(&self, i: usize) -> Rect {
+        let court = self.court(i);
+        if self.models[i].may.any() {
+            crate::overhang::clip(&court, &self.p.outline)
+        } else {
+            court
+        }
     }
 
     fn pad_at(&self, part: usize, pad: usize) -> Pt {
@@ -1241,7 +1264,7 @@ impl<'a> Engine<'a> {
         if a.side != b.side && !a.hole && !b.hole {
             return c;
         }
-        let (ca, cb) = (sa.court.translated(pa), sb.court.translated(pb));
+        let (ca, cb) = (self.room(i), self.room(j));
         let escape = if self.near_ok[i * self.models.len() + j] {
             0.0
         } else {
@@ -2032,6 +2055,8 @@ mod tests {
             pours: false,
             seed: 0,
             wants: &[],
+            overhangs: &[],
+            outline: board.outline,
         };
         let mut e = Engine::new(&mut board.parts, &problem);
         assert_eq!(e.groups.len(), 2, "one module instance for a and one for b");
@@ -2079,11 +2104,68 @@ mod tests {
             pours: false,
             seed: 3,
             wants: &[],
+            overhangs: &[],
+            outline: board.outline,
         };
         let outcome = anneal(&mut board.parts, &problem, 1.0);
         assert!(outcome.feasible);
         assert_eq!(board.parts[0].at, before[0]);
         assert_eq!(board.parts[1].at, before[1]);
         assert_eq!(board.check_placement(), vec![]);
+    }
+
+    #[test]
+    fn two_parts_that_hang_over_the_same_edge_may_overlap_beyond_it() {
+        // ADR 0045, section 10 (i): the placement check counts a part that may hang over an
+        // edge as its courtyard clipped to the outline, so the annealer must too. R1 stands
+        // 0.5 mm inside the bottom edge and R2 wholly below it, 0.2 mm under it; their whole
+        // courtyards overlap, but R2 has no room on the board.
+        let mut board = resistors(&["", ""]);
+        let outline = Rect::new(Pt::new(0.0, 0.0), Pt::new(20.0, 20.0));
+        let fixed = [false; 2];
+        let mut bottom = Edges::default();
+        bottom.set(crate::overhang::Edge::Bottom);
+        let run = |board: &mut Board, overhangs: &[Edges]| {
+            let problem = Problem {
+                nets: &board.nets.clone(),
+                rules: &board.rules.clone(),
+                planes: &[],
+                region: outline,
+                corner_radius: 0.0,
+                fixed: &fixed,
+                keepouts: &[],
+                zones: &[],
+                cutouts: &[],
+                pours: false,
+                seed: 0,
+                wants: &[],
+                overhangs,
+                outline,
+            };
+            let mut e = Engine::new(&mut board.parts, &problem);
+            let court = e.shape(0).court;
+            let pose = |top: f64| Pose {
+                x: (10.0 / UNIT).round() as i64,
+                y: ((top - court.min.y) / UNIT).round() as i64,
+                turn: 0,
+                text: 0,
+            };
+            e.put(0, pose(20.0 - 0.5));
+            e.put(1, pose(20.0 + 0.2));
+            let (a, b) = (e.court(0), e.court(1));
+            assert!(a.overlaps(&b), "the whole courtyards overlap: {a:?} {b:?}");
+            assert!(b.min.y >= 20.0, "R2 is below the edge: {b:?}");
+            e.pair(0, 1)
+        };
+        let strict = run(&mut board, &[]);
+        assert!(strict.hard > 0.0, "unstated, the overlap is hard: {strict:?}");
+        let stated = run(&mut board, &[bottom, bottom]);
+        assert!(
+            stated.hard == 0.0,
+            "stated on both, the overlap beyond the edge is free: {stated:?}"
+        );
+        // One part stating it is enough for it to take only the room it has on the board.
+        let one = run(&mut board, &[Edges::default(), bottom]);
+        assert!(one.hard == 0.0, "{one:?}");
     }
 }

@@ -269,7 +269,7 @@ fn fab_board(
             return Err(problems.iter().map(|p| fail(p.clone())).collect());
         }
         for hang in board.hangs() {
-            say(format!("{}: {hang}", built.label()));
+            say(format!("{}: warning: {hang}", built.label()));
         }
         // A part under a height limit that states no height is not a pass (ADR 0045,
         // "Height limits"): it is named, here and in the notes.
@@ -360,8 +360,9 @@ fn fab_board(
         // Guidelines that the design goes against (ADR 0036) are for the person ordering, so
         // they are in `fab-notes.txt`.
         let mut extras = board.process_extras();
-        // The notes say which part hangs over which edge, how far, and who said it may.
-        extras.extend(board.hangs().into_iter().map(|h| format!("overhang: {h}")));
+        // The notes say which part hangs over which edge, how far, and who said it may; each
+        // is a warning (owner decision, 2026-11-03, ADR 0045 section 10).
+        extras.extend(board.hangs().into_iter().map(|h| format!("warning: {h}")));
         extras.extend(unchecked.iter().map(|u| format!("warning: {u}")));
         extras.extend(
             built
