@@ -66,6 +66,9 @@ fn holes(drill: &str) -> usize {
 
 #[test]
 fn a_panel_of_six_boards_has_six_times_the_holes_parts_and_one_outline() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let dir = out("six");
     let made = make(PANEL, &dir).unwrap_or_else(|e| panic!("{e}"));
     let labels: Vec<&str> = made.iter().map(|m| m.board.as_str()).collect();
@@ -188,6 +191,9 @@ fn changed(from: &str, to: &str) -> String {
 
 #[test]
 fn a_panel_that_the_board_house_would_refuse_says_why_with_the_numbers() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let dir = out("refused");
     // Copper only 0.2 mm from the edge.
     let e = make(
@@ -249,6 +255,9 @@ fn a_panel_that_the_board_house_would_refuse_says_why_with_the_numbers() {
 
 #[test]
 fn the_panel_definition_is_checked_like_the_rest_of_the_language() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let dir = out("language");
     // No board.
     let e = make(&changed("    .cell: LedTile\n", ""), &dir).unwrap_err();
@@ -367,6 +376,9 @@ fn netsmith(cwd: &Path, args: &[&str]) -> std::process::Output {
 
 #[test]
 fn an_order_may_name_a_panel_and_its_quantity_counts_panels() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let root = project("order", "\n[order.run.boards]\nLedPanel = 3\n");
     let made = netsmith(&root, &["fab", "--order", "run"]);
     let said = String::from_utf8_lossy(&made.stderr);
@@ -393,6 +405,9 @@ fn an_order_may_name_a_panel_and_its_quantity_counts_panels() {
 
 #[test]
 fn a_board_and_a_panel_may_both_be_ordered_and_a_plain_fab_makes_both() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let root = project(
         "both",
         "\n[order.mixed.boards]\nLedPanel = 2\nLedTile = 4\n",

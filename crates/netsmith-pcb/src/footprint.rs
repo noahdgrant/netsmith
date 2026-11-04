@@ -284,11 +284,11 @@ impl Footprint {
 
         let mut pads = Vec::new();
         for pad in source.find_all("pad") {
-            pads.push(read_pad(pad).map_err(&invalid)?);
+            pads.push(read_pad(pad).map_err(invalid)?);
         }
         let mut graphics = Vec::new();
         for item in source.args() {
-            if let Some(g) = read_graphic(item).map_err(&invalid)? {
+            if let Some(g) = read_graphic(item).map_err(invalid)? {
                 graphics.push(g);
             }
         }

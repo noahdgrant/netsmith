@@ -101,6 +101,9 @@ fn an_unknown_board_stops_the_order_and_lists_the_boards_that_exist() {
 
 #[test]
 fn an_order_without_kicad_is_made_and_its_boards_pass_the_check() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let root = project("nokicad", ORDERS);
     // KICAD_CLI points nowhere, so there is no KiCad: the files and the design rules check
     // are netsmith's own, and nothing has to be allowed.

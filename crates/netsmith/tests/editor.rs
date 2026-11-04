@@ -592,6 +592,9 @@ fn a_route_can_be_cancelled_and_keeps_what_it_has() {
 
 #[test]
 fn build_writes_a_schematic_for_each_board_of_the_system() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let (root, editor) = project("build");
     let (say, heard) = listener();
     let report = editor.build(&say);
@@ -2108,6 +2111,9 @@ fn the_tree_lists_a_physical_file_and_a_mistake_in_it_is_a_problem_at_its_line()
 
 #[test]
 fn the_pcb_view_draws_the_outline_and_the_keepout_the_physical_file_states() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let (root, _) = pours_project("physical-scene");
     // The example as it is: the physical file states the antenna's place, the layout file none.
     fs::write(

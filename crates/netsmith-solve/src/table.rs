@@ -455,10 +455,10 @@ impl Row {
             }
             FieldKind::Quantity(dim) => {
                 if let Some(rest) = cell.strip_prefix("derate ") {
-                    let d = self.derating(rest, dim, columns).map_err(&bad)?;
+                    let d = self.derating(rest, dim, columns).map_err(bad)?;
                     return Ok(Some(Value::Derated(d)));
                 }
-                let q = quantity(cell).map_err(&bad)?;
+                let q = quantity(cell).map_err(bad)?;
                 if q.dim() != dim {
                     return Err(bad(format!(
                         "`{cell}` is {}, but this column holds {dim}",

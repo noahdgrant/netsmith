@@ -216,6 +216,9 @@ fn offered_assembly_board(choice: &str) -> String {
 
 #[test]
 fn a_module_that_offers_assembly_lets_the_board_move_its_parts_out_of_the_bom() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     // Unset: the module's parts are the board house's, as parts are.
     let dir = out("offered-unset");
     fab(
@@ -426,6 +429,9 @@ fn a_requirement_nothing_can_meet_stops_before_any_file_is_written() {
 
 #[test]
 fn a_board_with_no_process_is_refused_and_told_what_to_add() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let dir = out("no-process");
     let source = LED.replace(
         ".process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }",
@@ -451,6 +457,9 @@ fn a_board_with_no_process_is_refused_and_told_what_to_add() {
 
 #[test]
 fn a_board_that_has_not_chosen_a_thickness_is_refused() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let dir = out("no-thickness");
     let source = LED.replace(".stackup.thickness &= 1.6mm", "");
     let err = fab(
@@ -504,6 +513,9 @@ fn each_board_of_a_system_gets_a_package_of_its_own_and_passes_the_design_rules(
 
 #[test]
 fn a_route_timeout_stops_fab_and_lists_the_connections_left_with_the_reason() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let dir = out("route-timeout");
     let err = fab_with_options(
         "led.nsm",
@@ -535,6 +547,9 @@ static PROGRESS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 #[test]
 fn fab_says_which_stage_it_is_in_so_that_a_long_run_is_not_silent() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let dir = out("progress");
     let _ = fab_with_options(
         "led.nsm",
@@ -707,6 +722,9 @@ fn a_part_the_layout_file_puts_on_the_bottom_is_on_the_back_in_the_package() {
 
 #[test]
 fn without_kicad_the_check_runs_and_the_files_are_the_same_bytes() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     // The same board with and without KiCad: the design rules check passes, and the
     // Gerbers, the drill files, the placement file and the bill of materials are the same
     // bytes, because they are netsmith's own and so is the check (ADR 0037).

@@ -319,6 +319,9 @@ fn imported_physical(dir: &std::path::Path) -> String {
 
 #[test]
 fn a_board_with_the_imported_outline_goes_through_fab_with_the_holes_where_the_case_has_them() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let dir = temp("fab");
     let physical = imported_physical(&dir);
     assert!(

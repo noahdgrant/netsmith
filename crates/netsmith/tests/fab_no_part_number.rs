@@ -87,6 +87,9 @@ fn run(source: &str, dir: &std::path::Path) -> Result<Vec<netsmith::fab::Fabrica
 
 #[test]
 fn every_part_with_no_part_number_is_named_together_with_what_to_write() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let dir = TempDir::unused("fab-no-part-number");
     let err = run(FIRST_AND_SECOND, &dir).expect_err("no LCSC number must stop the package");
     // Both parts are in one message, each with its path, and what the row says.
@@ -114,6 +117,9 @@ fn every_part_with_no_part_number_is_named_together_with_what_to_write() {
 
 #[test]
 fn marking_the_parts_hand_soldered_gets_past_it_and_the_notes_say_so() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let dir = TempDir::unused("fab-no-part-number-hand");
     let source = FIRST_AND_SECOND
         .replace(
@@ -138,6 +144,9 @@ fn marking_the_parts_hand_soldered_gets_past_it_and_the_notes_say_so() {
 
 #[test]
 fn a_part_inside_a_module_is_named_by_path_with_the_ways_the_module_allows() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let dir = TempDir::unused("fab-no-part-number-module");
     let err = run(IN_A_MODULE, &dir).expect_err("no LCSC number must stop the package");
     for want in ["`pair.a`", "`pair.b`", "R1", "R2", "ZZR-1234"] {
@@ -158,6 +167,9 @@ fn a_part_inside_a_module_is_named_by_path_with_the_ways_the_module_allows() {
 
 #[test]
 fn a_part_that_is_not_assembled_by_the_board_house_needs_no_number() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     // The row's own `assembly` column is the third way: the pick carries it.
     let dir = TempDir::unused("fab-no-part-number-row");
     let mut c = Catalogs::jlcpcb();
@@ -182,6 +194,9 @@ fn a_part_that_is_not_assembled_by_the_board_house_needs_no_number() {
 
 #[test]
 fn the_module_way_the_message_names_gets_past_it() {
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let dir = TempDir::unused("fab-no-part-number-offer");
     let source = IN_A_MODULE
         .replace(
