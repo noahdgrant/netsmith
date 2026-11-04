@@ -131,7 +131,7 @@ fn a_pad_outside_its_courtyard_still_keeps_the_copper_to_edge_space() {
 fn a_board_too_small_even_for_the_thin_wall_says_what_the_wall_is() {
     let e = board(12, (6.0, 7.0)).unwrap_err().to_string();
     assert!(
-        e.contains("mm margin, on both faces)") && !e.contains("2.0 mm margin"),
+        e.contains("inside its 0.75 mm margin") && !e.contains("2.0 mm margin"),
         "{e}"
     );
 }
@@ -142,7 +142,11 @@ fn a_board_the_courtyards_fit_but_the_pads_do_not_is_refused_not_placed_with_pad
     // it on each side and keep 0.3 mm from the edge, which needs 4.0 mm.
     // Refused, or placed with the pad named by the placement check: never placed as if fine.
     match board(1, (3.9, 7.0)) {
-        Err(e) => assert!(e.to_string().contains("the parts need"), "{e}"),
+        Err(e) => assert!(
+            e.to_string()
+                .contains("part(s) do not fit the outline of 3.9 x 7.0 mm"),
+            "{e}"
+        ),
         Ok(b) => assert!(
             matches!(
                 b.check_placement()[..],

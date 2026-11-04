@@ -196,7 +196,14 @@ impl Ended {
             let items: Vec<String> = self
                 .outside_parts
                 .iter()
-                .map(|o| format!("{} {:.2}", o.part, o.worst))
+                .map(|o| {
+                    if o.worst > 1e-9 {
+                        format!("{} {:.2}", o.part, o.worst)
+                    } else {
+                        // Nothing past a line: the reference text, or a requirement.
+                        format!("{} (text or a requirement)", o.part)
+                    }
+                })
                 .collect();
             lists.push(format!(
                 "outside the outline or inside its margin, by mm past what is kept clear: {}",
