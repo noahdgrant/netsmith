@@ -69,6 +69,9 @@ pub struct PlaceOptions {
     /// not pin, by reference designator (ADR 0045). The placer keeps each part inside its
     /// want. A part they pin is in `fixed`.
     pub wants: BTreeMap<String, Want>,
+    /// The relations between two parts that the design requires (ADR 0045, section 3). The
+    /// annealer keeps each inside its window; the two parts move together.
+    pub offsets: Vec<crate::constraints::PlanOffset>,
     /// The parts the person said may hang over the board edge, by reference designator
     /// (ADR 0045, "Built: overhang"): a part that stays in `fixed` is counted in the fit test
     /// as its courtyard clipped to the outline, and the others keep their copper inside.
@@ -190,6 +193,12 @@ impl std::fmt::Display for DoesNotFit {
                     e.silk
                 ));
             }
+            if !e.relations.is_empty() {
+                left.push(format!(
+                    "{} relation(s) between parts not held",
+                    e.relations.len()
+                ));
+            }
             if left.is_empty() {
                 left.push("a rule broken that no count names".to_string());
             }
@@ -230,6 +239,9 @@ fn write_offenders(f: &mut std::fmt::Formatter<'_>, e: &Ended) -> std::fmt::Resu
                 .collect();
             write!(f, "\n    and {} more: {}", rest.len(), rest.join(", "))?;
         }
+    }
+    for r in &e.relations {
+        write!(f, "\n  relation not held: {r}")?;
     }
     if !e.outside_parts.is_empty() {
         write!(
@@ -882,6 +894,20 @@ fn refine(
             region = region.union(&extent.expanded(reach + options.wall()));
         }
     }
+    // A relation may ask for more room than the rows leave: the far part must be able to
+    // be as far from the near one as the window says.
+    if options.fit.is_none() {
+        let reach = options
+            .offsets
+            .iter()
+            .flat_map(|o| [o.lo, o.hi])
+            .filter(|v| v.is_finite())
+            .map(f64::abs)
+            .fold(0.0, f64::max);
+        if reach > 0.0 {
+            region = region.expanded(reach);
+        }
+    }
     let problem = Problem {
         nets,
         rules: context.rules,
@@ -894,6 +920,7 @@ fn refine(
         pours: context.pours,
         seed: options.seed,
         wants: &wants,
+        offsets: &options.offsets,
         overhangs: &overhangs,
         outline: region,
         zones: &options.height_zones,
@@ -978,6 +1005,7 @@ pub(crate) fn anneal_within(
         pours: context.pours,
         seed: options.seed,
         wants: &wants,
+        offsets: &options.offsets,
         overhangs: &overhangs,
         outline: region,
         zones: &options.height_zones,
@@ -1101,6 +1129,7 @@ pub fn place_subset(
         pours: !board.pours.is_empty(),
         seed: seed ^ scope_of(parts),
         wants: &[],
+        offsets: &[],
         overhangs: &overhangs,
         outline: board.outline,
         zones: &zones,
