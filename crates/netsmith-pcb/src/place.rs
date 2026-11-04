@@ -238,12 +238,7 @@ impl std::fmt::Display for DoesNotFit {
             let parts: Vec<String> = self.oversize.iter().map(ToString::to_string).collect();
             write!(f, "{}", parts.join("; "))?;
             if let Some(e) = &self.ended {
-                write_ended(
-                    f,
-                    e,
-                    self.wall,
-                    "; placing them in the outline anyway ended with ",
-                )?;
+                write_ended(f, e, self.wall)?;
             }
             return Ok(());
         }
@@ -271,12 +266,7 @@ impl std::fmt::Display for DoesNotFit {
             self.outline.1,
             e.compact()
         )?;
-        write_ended(
-            f,
-            e,
-            self.wall,
-            ". Placing them in the outline anyway ended with ",
-        )
+        write_ended(f, e, self.wall)
     }
 }
 
@@ -343,12 +333,7 @@ impl DoesNotFit {
 }
 
 /// What the annealer ended with, after the sentence that says the parts do not fit.
-fn write_ended(
-    f: &mut std::fmt::Formatter<'_>,
-    e: &Ended,
-    wall: f64,
-    lead: &str,
-) -> std::fmt::Result {
+fn write_ended(f: &mut std::fmt::Formatter<'_>, e: &Ended, wall: f64) -> std::fmt::Result {
     let mut left = Vec::new();
     if e.overlaps > 0 {
         left.push(format!("{} pair(s) of courtyards overlapping", e.overlaps));
@@ -375,7 +360,11 @@ fn write_ended(
     if left.is_empty() {
         left.push("a rule broken that no count names".to_string());
     }
-    write!(f, "{lead}{}", left.join(", "))?;
+    write!(
+        f,
+        "; placing them in the outline anyway ended with {}",
+        left.join(", ")
+    )?;
     write_offenders(f, e)?;
     Ok(())
 }
@@ -1784,11 +1773,27 @@ mod tests {
         let message = placed_with(resistors(40, "0603"), &options)
             .unwrap_err()
             .to_string();
+        // The courtyards of 40 parts are not more than the two faces hold, so it is not a
+        // certain no: the message says which parts are out and by how much, and not what the
+        // rows need.
+        assert!(
+            message.contains(" part(s) do not fit the outline of 15.0 x 10.0 mm: ")
+                && message.contains("outside the outline or inside its margin, by mm past")
+                && !message.contains("the parts need")
+                && !message.contains("mm over in"),
+            "{message}"
+        );
+        // Twice that is more courtyard than both faces hold: a certain no, and the message
+        // gives the aggregate and the areas.
+        let message = placed_with(resistors(100, "0603"), &options)
+            .unwrap_err()
+            .to_string();
         assert!(
             message.contains("the parts need")
                 && message.contains("the outline is 15.0 x 10.0 mm")
                 && message.contains("mm over in y")
-                && !message.contains("over in x"),
+                && message.contains("the courtyards add up to ")
+                && message.contains(" part(s) do not fit the outline of 15.0 x 10.0 mm: "),
             "{message}"
         );
         // A board 3 mm wide is narrower than an 0603 as it lies but not as it is turned: the

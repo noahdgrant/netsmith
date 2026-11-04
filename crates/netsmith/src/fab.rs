@@ -224,7 +224,8 @@ const PLACEMENT_FAILURE: &str = "placement-failure.txt";
 /// named; if it cannot be written, the message says so and carries the list.
 fn placement_failure(e: &netsmith_pcb::DoesNotFit, out: &Path) -> String {
     let file = out.join(PLACEMENT_FAILURE);
-    let written = std::fs::create_dir_all(out).and_then(|()| std::fs::write(&file, e.full_report()));
+    let written =
+        std::fs::create_dir_all(out).and_then(|()| std::fs::write(&file, e.full_report()));
     match written {
         Ok(()) => format!(
             "{e}\n  every part's final place and state ({} parts) is in {}",
