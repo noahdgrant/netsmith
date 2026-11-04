@@ -239,6 +239,54 @@ fn placement_failure(e: &netsmith_pcb::DoesNotFit, out: &Path) -> String {
     }
 }
 
+/// The requirements of the physical file that the arrangement the placer ended on does not
+/// meet, as the message of the first error that `fab` prints for it, with the list also
+/// written to `placement-failure.txt` in `out` with the faults and every part's place.
+fn requirement_failure(
+    report: &netsmith_pcb::RequirementReport,
+    problems: &[String],
+    board: &Board,
+    out: &Path,
+) -> String {
+    let mut text = format!("{report}\n");
+    if !problems.is_empty() {
+        text.push_str("\nThe faults the placement check found where the placer ended:\n");
+        for p in problems {
+            text.push_str(&format!("  {p}\n"));
+        }
+    }
+    text.push_str(
+        "\nEvery part where the placer ended (the origin of each footprint is in mm from the outline's top left corner, y down):\n",
+    );
+    for p in &board.parts {
+        text.push_str(&format!(
+            "{} ({}) {} at ({:.2}, {:.2}) turned {}\n",
+            p.refdes,
+            p.kind,
+            p.side.word(),
+            p.at.x - board.outline.min.x,
+            p.at.y - board.outline.min.y,
+            p.rotation
+        ));
+    }
+    let file = out.join(PLACEMENT_FAILURE);
+    match std::fs::create_dir_all(out).and_then(|()| std::fs::write(&file, text)) {
+        Ok(()) => format!(
+            "{report}\n  every part's final place{} is in {}",
+            if problems.is_empty() {
+                ""
+            } else {
+                " and the faults that follow"
+            },
+            file.display()
+        ),
+        Err(err) => format!(
+            "{report}\n  (the list could not be written to {}: {err})",
+            file.display()
+        ),
+    }
+}
+
 /// One board, made: placed, routed, written and packaged, with the work's results kept for
 /// a panel that repeats it.
 struct BoardRun {
@@ -301,11 +349,12 @@ fn fab_board(
             built.label(),
             built.design.parts.len()
         ));
+        let placement = place_options(&built.design, layout.as_ref().map(|l| &l.0));
         let mut board = Board::from_design_placed(
             &built.design,
             &libraries.mapping,
             &libraries.footprints,
-            &place_options(&built.design, layout.as_ref().map(|l| &l.0)),
+            &placement,
         )
         .map_err(|e| match e {
             netsmith_pcb::BoardError::DoesNotFit(e) => fail(placement_failure(&e, out)),
@@ -319,8 +368,25 @@ fn fab_board(
             .iter()
             .map(ToString::to_string)
             .collect();
+        // When the placer could not meet the requirements of the physical file, the faults
+        // above are its symptoms: say first which lines are not met and which cannot all hold,
+        // and keep the same list in `placement-failure.txt` (ADR 0045, PROVISIONAL).
+        let unmet = board.explain_requirements(&built.design, &placement);
         if !problems.is_empty() {
-            return Err(problems.iter().map(|p| fail(p.clone())).collect());
+            let mut errors = String::new();
+            if let Some(report) = &unmet {
+                errors.push_str(&fail(requirement_failure(report, &problems, &board, out)));
+            }
+            errors.extend(problems.iter().map(|p| fail(p.clone())));
+            return Err(errors);
+        }
+        // Without a fault in the arrangement, requirements that are not met would be found
+        // by the check after routing; say so now, with the same list, unless constraints are
+        // only warnings for this run.
+        if let Some(report) = unmet.filter(|r| !r.unmet.is_empty())
+            && !catalogs.constraints_warn()
+        {
+            return Err(fail(requirement_failure(&report, &[], &board, out)));
         }
         for hang in board.hangs() {
             say(format!("{}: warning: {hang}", built.label()));
