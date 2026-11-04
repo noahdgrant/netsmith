@@ -126,7 +126,13 @@ pub struct Pad {
     pub drill: Option<Drill>,
     /// Layers the pad is on, expanded (`*.Cu` is every copper layer of the board).
     pub layers: Vec<String>,
+    /// The mask margin that holds for the pad: its own `solder_mask_margin`, else its
+    /// footprint's.
     pub mask_margin: Option<f64>,
+    /// Whether `mask_margin` is the pad's own (not its footprint's), and the footprint's
+    /// margin, which the pad falls back to. The cross-check needs the difference (ADR 0034).
+    pub own_mask_margin: bool,
+    pub footprint_mask_margin: Option<f64>,
     pub paste_margin: Option<f64>,
     pub paste_ratio: Option<f64>,
     pub zone_connect: Option<Connect>,
@@ -1056,6 +1062,8 @@ impl<'a> Reader<'a> {
             drill,
             layers,
             mask_margin: child_num(item, "solder_mask_margin").or(frame.mask_margin),
+            own_mask_margin: child_num(item, "solder_mask_margin").is_some(),
+            footprint_mask_margin: frame.mask_margin,
             paste_margin: child_num(item, "solder_paste_margin").or(frame.paste_margin),
             paste_ratio: child_num(item, "solder_paste_margin_ratio").or(frame.paste_ratio),
             zone_connect: connect,

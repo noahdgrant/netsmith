@@ -17,6 +17,10 @@
 //! - **Copper pours** are compared like copper, with their own limit: both fills keep the
 //!   same clearances, but KiCad also removes islands and thin slivers and cuts its spokes
 //!   its own way.
+//! - **Known differences of a KiCad release** are allowed for in the copy of netsmith's files
+//!   that is compared, never in the files written, and each is named in [`Report::notes`]:
+//!   KiCad 9.0.0 ignores a pad's own solder mask margin on the back face (ADR 0034). Any
+//!   other difference still fails.
 //! - **Drill files** are parsed and compared hole by hole.
 //! - **The placement file** is compared row by row with KiCad's position file.
 //! - **The design rules check** is compared finding by finding with KiCad's (rule and place
@@ -131,6 +135,9 @@ pub struct Report {
     pub missing: Vec<String>,
     /// netsmith's design rules check against KiCad's.
     pub drc: crate::drc::kicad::Comparison,
+    /// Known differences of the KiCad release that was used, which the comparison allowed
+    /// for and which are not failures (see [`ignores_pad_mask_margin_on_back`]).
+    pub notes: Vec<String>,
 }
 
 impl Report {
@@ -166,6 +173,9 @@ impl std::fmt::Display for Report {
                 l.tolerant * 100.0,
                 if l.ok { "" } else { "  <- too different" }
             )?;
+        }
+        for n in &self.notes {
+            writeln!(f, "  note: {n}")?;
         }
         for m in &self.missing {
             writeln!(f, "  {m}")?;
@@ -222,6 +232,30 @@ pub fn check(pcb: &Path, kicad: &dyn KicadCli, limits: &Limits) -> Result<Report
         crate::plot::plot(&art, &name, &crate::plot_rules(pcb)).map_err(|e| io("plotting", &e))?;
     let mut ours = plotted.files;
     ours.extend(crate::drill::files(&art, &name));
+    // What a release of KiCad is known to draw differently is allowed for here, in the
+    // copy that is compared and never in the files netsmith writes.
+    let version = kicad.version()?;
+    let mut notes = Vec::new();
+    let mut compared = ours.clone();
+    if ignores_pad_mask_margin_on_back(&version)
+        && let Some((mask, pads)) = back_mask_as_kicad_9_0_0(&art, &name, &crate::plot_rules(pcb))
+            .map_err(|e| io("plotting", &e))?
+    {
+        if let Some(slot) = compared
+            .iter_mut()
+            .find(|o| o.name.ends_with("-B_Mask.gbr"))
+        {
+            *slot = mask;
+        }
+        notes.push(format!(
+                "KiCad {} ignores the solder mask margin that a pad states for itself on the back face \
+                 (fixed in 9.0.1, ADR 0034), so the back mask was compared with a copy that leaves \
+                 it out for {}; netsmith's file keeps the margin on both faces, as KiCad's own manual \
+                 says",
+                version.trim(),
+                pads.join(", ")
+            ));
+    }
     let layers =
         crate::gerber::plot_layers(&board.copper_layers).map_err(|e| io("the layers", &e))?;
     let parts: Vec<&crate::board::BoardPart> = board.parts.iter().collect();
@@ -233,8 +267,9 @@ pub fn check(pcb: &Path, kicad: &dyn KicadCli, limits: &Limits) -> Result<Report
         .flat_map(|z| z.layers.iter().cloned())
         .collect();
     let mut report = compare(
-        kicad_pcb, &layers, &ours, &rows, &parts, &pours, kicad, limits,
+        kicad_pcb, &layers, &compared, &rows, &parts, &pours, kicad, limits,
     )?;
+    report.notes = notes;
     // The design rules, with the project file beside the board as `package` has it.
     let mut theirs = crate::drc::kicad::parse(&kicad.drc_json(kicad_pcb)?)
         .map_err(|e| io("KiCad's check", &e))?;
@@ -256,6 +291,51 @@ pub fn check(pcb: &Path, kicad: &dyn KicadCli, limits: &Limits) -> Result<Report
     .map_err(|e| io("the design rules check", &e))?;
     report.drc = crate::drc::kicad::compare(&ours, &theirs, DRC_TOLERANCE);
     Ok(report)
+}
+
+/// KiCad 9.0.0 reads a pad's `solder_mask_margin` into the front face's setting only
+/// (`PAD::SetLocalSolderMaskMargin` set `SolderMaskMargin()`, which is the front's, and the
+/// back face's stayed unset, so the back mask used the footprint's margin or the board's;
+/// 9.0.1 sets both). A margin a footprint states for all its pads is not affected.
+/// The manual of KiCad 9 says the margin applies to F.Mask and B.Mask alike, and JLCPCB says
+/// a mask opening can be 1:1 with its pad, so the margin a design states is what it makes:
+/// netsmith's file is the right one and KiCad 9.0.0 is the quirk (ADR 0034, issue #13).
+fn ignores_pad_mask_margin_on_back(version: &str) -> bool {
+    let v = version.trim();
+    v == "9.0.0" || v.starts_with("9.0.0-") || v.starts_with("9.0.0 ")
+}
+
+/// The back mask as KiCad 9.0.0 draws it: netsmith's own writer, on a copy of the board in
+/// which no pad's own margin counts on the back face. `None` when no pad is affected (the
+/// two masks are then the same). Also the pads that are affected, with their margins.
+fn back_mask_as_kicad_9_0_0(
+    art: &crate::artwork::Artwork,
+    name: &str,
+    rules: &crate::plot::Rules,
+) -> Result<Option<(Output, Vec<String>)>, crate::gerber::GerberError> {
+    let mut copy = art.clone();
+    let mut pads = Vec::new();
+    for pad in copy
+        .pads
+        .iter_mut()
+        .filter(|p| p.own_mask_margin && p.layers.iter().any(|l| l == "B.Mask"))
+    {
+        let kept = pad.footprint_mask_margin.unwrap_or(art.mask_margin);
+        let own = pad.mask_margin.unwrap_or(art.mask_margin);
+        if (own - kept).abs() > 1e-9 {
+            pads.push(format!("{}.{} ({own} mm)", pad.part, pad.number));
+            pad.mask_margin = pad.footprint_mask_margin;
+        }
+    }
+    if pads.is_empty() {
+        return Ok(None);
+    }
+    let plotted = crate::plot::plot(&copy, name, rules)?;
+    Ok(plotted
+        .files
+        .into_iter()
+        .find(|o| o.name.ends_with("-B_Mask.gbr"))
+        .map(|mask| (mask, pads)))
 }
 
 /// A copy of a panel board in a folder of its own with the text on `Edge.Cuts` left out, for
@@ -323,6 +403,7 @@ fn compare(
         placement: Vec::new(),
         missing: Vec::new(),
         drc: Default::default(),
+        notes: Vec::new(),
     };
     let raster_err = |file: &str| {
         let file = file.to_string();
@@ -631,6 +712,7 @@ mod tests {
             placement: Vec::new(),
             missing: Vec::new(),
             drc: Default::default(),
+            notes: Vec::new(),
         };
         let ours = [
             drl("X1.0Y-2.0\nX3.0Y-4.0\n"),
@@ -678,6 +760,7 @@ mod tests {
             placement: vec![],
             missing: vec![],
             drc: Default::default(),
+            notes: Vec::new(),
         };
         placement(
             &mut report,
@@ -723,6 +806,7 @@ mod tests {
             placement: vec![],
             missing: vec![],
             drc: Default::default(),
+            notes: Vec::new(),
         };
         assert!(
             report
@@ -737,6 +821,76 @@ mod tests {
                     "differ 50.00% of pixels, 25.00% beyond the tolerance  <- too different"
                 ),
             "{text}"
+        );
+    }
+
+    const MARGINS: &str = include_str!("../tests/data/known_differences.kicad_pcb");
+
+    fn back_masks() -> (Image, Image, Vec<String>) {
+        let art = crate::artwork::Artwork::parse(MARGINS).unwrap();
+        let rules = crate::plot::Rules::default();
+        let real = crate::plot::plot(&art, "b", &rules).unwrap().files;
+        let find = |files: &[Output]| {
+            files
+                .iter()
+                .find(|o| o.name.ends_with("-B_Mask.gbr"))
+                .unwrap()
+                .clone()
+        };
+        let edge = find_by(&real, "-Edge_Cuts.gbr");
+        let view = raster::gerber_extent(&String::from_utf8_lossy(&edge.bytes))
+            .unwrap()
+            .grow(1.0);
+        let draw = |o: &Output| {
+            raster::render_gerber(&String::from_utf8_lossy(&o.bytes), &view, 40.0).unwrap()
+        };
+        let (quirk, pads) = back_mask_as_kicad_9_0_0(&art, "b", &rules)
+            .unwrap()
+            .expect("the board has pads with a margin of their own");
+        (draw(&find(&real)), draw(&quirk), pads)
+    }
+
+    fn find_by(files: &[Output], suffix: &str) -> Output {
+        files
+            .iter()
+            .find(|o| o.name.ends_with(suffix))
+            .unwrap()
+            .clone()
+    }
+
+    #[test]
+    fn the_back_mask_of_kicad_9_0_0_leaves_out_only_the_margins_pads_state_for_themselves() {
+        let (real, quirk, pads) = back_masks();
+        // A margin of the pad's own, on a pad of both faces and on a pad of the back; the
+        // pads that take the footprint's margin or the board's are left as they are.
+        assert_eq!(pads, ["J1.3 (0.15 mm)", "R1.1 (0.1 mm)"]);
+        // The two pictures differ by more than the cross-check lets a layer differ, so the
+        // allowance does not pass a back mask that is simply wrong...
+        let limits = Limits::default();
+        let against_real = compare_layer("b-B_Mask.gbr", "exact", &quirk, &real, &limits).unwrap();
+        assert!(!against_real.ok, "{against_real:?}");
+        // ...and the copy agrees with itself, so what is left out is only that margin.
+        let same = compare_layer("b-B_Mask.gbr", "exact", &quirk, &quirk, &limits).unwrap();
+        assert!(same.ok && same.pixels == 0.0, "{same:?}");
+    }
+
+    #[test]
+    fn only_kicad_9_0_0_is_allowed_for() {
+        for v in ["9.0.0", "9.0.0\n", "9.0.0-rc1"] {
+            assert!(ignores_pad_mask_margin_on_back(v), "{v:?}");
+        }
+        for v in ["9.0.1", "9.0.10", "9.1.0", "8.0.9", "10.0.0", "", "9.0.0.1"] {
+            assert!(!ignores_pad_mask_margin_on_back(v), "{v:?}");
+        }
+    }
+
+    #[test]
+    fn a_board_whose_pads_state_no_margin_of_their_own_needs_no_allowance() {
+        let art = crate::artwork::Artwork::parse(crate::board::tests::SAMPLE).unwrap();
+        assert!(
+            back_mask_as_kicad_9_0_0(&art, "b", &crate::plot::Rules::default())
+                .unwrap()
+                .is_none()
         );
     }
 }
