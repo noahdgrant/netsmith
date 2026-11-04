@@ -8,6 +8,8 @@ struct File {
     insunits: Option<i32>,
     blocks: String,
     entities: String,
+    /// The layers the LAYER table declares.
+    declared: Vec<String>,
 }
 
 fn pair(code: i32, value: impl std::fmt::Display) -> String {
@@ -37,6 +39,22 @@ impl File {
             s += &pair(70, u);
         }
         s += &pair(0, "ENDSEC");
+        if !self.declared.is_empty() {
+            s += &pair(0, "SECTION");
+            s += &pair(2, "TABLES");
+            s += &pair(0, "TABLE");
+            s += &pair(2, "LAYER");
+            s += &pair(70, self.declared.len());
+            for name in &self.declared {
+                s += &pair(0, "LAYER");
+                s += &pair(2, name);
+                s += &pair(70, 0);
+                s += &pair(62, 7);
+                s += &pair(6, "CONTINUOUS");
+            }
+            s += &pair(0, "ENDTAB");
+            s += &pair(0, "ENDSEC");
+        }
         s += &pair(0, "SECTION");
         s += &pair(2, "BLOCKS");
         s += &self.blocks;
@@ -589,11 +607,94 @@ fn a_cutout_that_touches_the_edge_is_an_error() {
     // The cutout shares the edge x = 20 with the outline: the lines overlap and the chain
     // gains a branch, or the loops touch; either way it is refused, not guessed.
     assert!(read(&f).is_err());
+    // One that only touches the edge from inside is no opening either.
     let mut g = File::mm();
-    g.rect("EDGE", 0.0, 0.0, 20.0, 10.0)
-        .rect("EDGE", 15.0, 2.0, 25.0, 8.0);
+    g.rect("EDGE", 0.0, 0.0, 20.0, 10.0).polygon(
+        "EDGE",
+        &[(10.0, 5.0), (15.0, 2.0), (20.0, 5.0), (15.0, 8.0)],
+    );
     let e = read(&g).unwrap_err();
     assert!(matches!(e, Error::Crossing { .. }), "{e:?}");
+}
+
+#[test]
+fn a_loop_that_crosses_the_edge_is_an_opening_and_not_an_error() {
+    let mut f = File::mm();
+    f.rect("EDGE", 0.0, 0.0, 20.0, 10.0)
+        .rect("EDGE", 15.0, 2.0, 25.0, 8.0)
+        .rect("EDGE", 3.0, 3.0, 6.0, 6.0);
+    let o = read(&f).unwrap();
+    assert_eq!(o.cutouts.len(), 1, "the loop inside stays a cutout");
+    assert_eq!(o.openings.len(), 1);
+    let (lo, hi) = o.openings[0].shape.bounds();
+    // The board's frame: x from the left edge, y down from the top (the drawing's y = 10).
+    assert!(close(lo.0, 15.0) && close(hi.0, 25.0), "{lo:?} {hi:?}");
+    assert!(close(lo.1, 2.0) && close(hi.1, 8.0), "{lo:?} {hi:?}");
+    assert_eq!(o.openings[0].layers, ["EDGE"]);
+    let (olo, ohi) = o.outer.bounds();
+    assert!(close(ohi.0 - olo.0, 20.0), "the outline is the large loop");
+}
+
+#[test]
+fn an_opening_names_its_own_layer() {
+    let mut f = File::mm();
+    f.rect("EDGE", 0.0, 0.0, 20.0, 10.0)
+        .rect("CASE", 15.0, 2.0, 25.0, 8.0);
+    let o = read_outline(
+        &f.text(),
+        &Options {
+            outline_layers: vec!["EDGE".into(), "CASE".into()],
+            ..Options::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(o.openings.len(), 1);
+    assert_eq!(o.openings[0].layers, ["CASE"]);
+}
+
+#[test]
+fn a_loop_that_crosses_a_cutout_is_still_an_error() {
+    let mut f = File::mm();
+    f.rect("EDGE", 0.0, 0.0, 40.0, 20.0)
+        .rect("EDGE", 5.0, 5.0, 15.0, 15.0)
+        .rect("EDGE", 10.0, 8.0, 25.0, 12.0);
+    let e = read(&f).unwrap_err();
+    assert!(matches!(e, Error::Crossing { .. }), "{e:?}");
+}
+
+#[test]
+fn a_layer_the_file_declares_is_accepted_empty_and_one_it_does_not_is_an_error() {
+    let mut f = File::mm();
+    f.declared = vec!["EDGE".into(), "Holes".into(), "NOTES".into()];
+    f.rect("EDGE", 0.0, 0.0, 20.0, 10.0);
+    let o = read_outline(
+        &f.text(),
+        &Options {
+            holes_layers: vec!["HOLES".into()],
+            ..Options::default()
+        },
+    )
+    .unwrap();
+    assert!(o.holes.is_empty());
+    assert_eq!(o.holes_layers, ["Holes"]);
+    assert_eq!(o.outline_layers, ["EDGE"]);
+
+    let e = read_outline(
+        &f.text(),
+        &Options {
+            holes_layers: vec!["DRILLS".into()],
+            ..Options::default()
+        },
+    )
+    .unwrap_err();
+    assert!(matches!(e, Error::UnknownLayer { .. }), "{e:?}");
+    let message = e.to_string();
+    assert!(
+        message.contains("no layer `DRILLS`")
+            && message.contains("`EDGE` (")
+            && message.contains("`Holes` (declared, nothing on it)"),
+        "{message}"
+    );
 }
 
 #[test]

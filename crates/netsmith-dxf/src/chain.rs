@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::entities::Seg;
+use crate::entities::{Prim, Seg};
 use crate::geom::{ArcGeom, P, dist, flatten_edge, inside, segment_distance};
 use crate::{Error, Gap, Polygon, Vertex};
 
@@ -274,8 +274,53 @@ fn self_contact(r: &[P], limit: f64) -> Option<P> {
     None
 }
 
-/// The one outer loop and the cutouts inside it.
-pub(crate) fn classify(loops: Vec<Polygon>, tol: f64) -> Result<(Polygon, Vec<Polygon>), Error> {
+/// Whether a drawn primitive lies on the loop: its middle point is on the loop's edge to
+/// within a micrometre.
+pub(crate) fn lies_on(prim: &Prim, poly: &Polygon) -> bool {
+    let point = match *prim {
+        Prim::Seg(s) => match ArcGeom::of(s.a, s.b, s.bulge) {
+            Some(arc) => arc.point_at(0.5),
+            None => ((s.a.0 + s.b.0) / 2.0, (s.a.1 + s.b.1) / 2.0),
+        },
+        Prim::Circle { centre, radius } => (centre.0 + radius, centre.1),
+    };
+    let r = ring(poly);
+    (0..r.len()).any(|i| segment_distance(point, point, r[i], r[(i + 1) % r.len()]) < 1e-3)
+}
+
+/// What [`classify`] found: the outline, the loops inside it, and the loops that cross it.
+pub(crate) struct Classified {
+    pub outer: Polygon,
+    pub cutouts: Vec<Polygon>,
+    /// Loops that cross the outline: part inside it and part outside. Each is smaller than the
+    /// outline, and crosses nothing else.
+    pub openings: Vec<Polygon>,
+}
+
+/// Whether a ring has points clearly on both sides of another ring: further than `margin`
+/// from it, one inside and one outside. A ring that only touches the other does not.
+fn straddles(r: &[P], other: &[P], margin: f64) -> bool {
+    let (mut within, mut without) = (false, false);
+    for &p in r {
+        let near = (0..other.len())
+            .map(|i| segment_distance(p, p, other[i], other[(i + 1) % other.len()]))
+            .fold(f64::INFINITY, f64::min);
+        if near <= margin {
+            continue;
+        }
+        if inside(p, other) {
+            within = true;
+        } else {
+            without = true;
+        }
+    }
+    within && without
+}
+
+/// The one outer loop and the cutouts inside it. A loop that crosses the outline (a window
+/// in a wall that is partly outside the board) is neither: it is an opening, returned apart.
+/// Any other crossing or touching is an error.
+pub(crate) fn classify(loops: Vec<Polygon>, tol: f64) -> Result<Classified, Error> {
     if loops.is_empty() {
         return Err(Error::NoOutline);
     }
@@ -300,41 +345,102 @@ pub(crate) fn classify(loops: Vec<Polygon>, tol: f64) -> Result<(Polygon, Vec<Po
             && boxes[i].0.1 <= boxes[j].1.1 + tol
             && boxes[j].0.1 <= boxes[i].1.1 + tol
     };
-    // depth[i]: how many loops it is inside; parent[i]: the innermost of them.
     let k = loops.len();
-    let mut within: Vec<Vec<usize>> = vec![Vec::new(); k];
+    // The pairs that cross or touch: (near, i, j).
+    let mut contacts: Vec<(P, usize, usize)> = Vec::new();
     for i in 0..k {
-        for j in 0..k {
-            if i == j || !overlap(i, j) {
-                continue;
-            }
-            if i < j
+        for j in i + 1..k {
+            if overlap(i, j)
                 && let Some(at) = rings_closer_than(&rings[i], &rings[j], limit)
             {
-                return Err(Error::Crossing {
-                    what: format!(
-                        "two loops cross or touch near ({:.4}, {:.4}) (mm in the drawing, y up): {} and {}",
-                        at.0,
-                        at.1,
-                        corner(&loops[i]),
-                        corner(&loops[j])
-                    ),
-                });
+                contacts.push((at, i, j));
+            }
+        }
+    }
+    let crossing_error = |at: P, i: usize, j: usize| Error::Crossing {
+        what: format!(
+            "two loops cross or touch near ({:.4}, {:.4}) (mm in the drawing, y up): {} and {}",
+            at.0,
+            at.1,
+            corner(&loops[i]),
+            corner(&loops[j])
+        ),
+    };
+    // A pair is an opening and the outline when the smaller loop has points on both sides of
+    // the larger one, and the larger is inside no loop that is not itself an opening. Touching
+    // without crossing, and any other contact, stay errors.
+    let mut opening = vec![false; k];
+    let mut pairs: Vec<(usize, usize)> = Vec::new();
+    for &(at, i, j) in &contacts {
+        let (big, small) = if loops[i].area() >= loops[j].area() {
+            (i, j)
+        } else {
+            (j, i)
+        };
+        if !straddles(&rings[small], &rings[big], tol) || opening[big] {
+            return Err(crossing_error(at, i, j));
+        }
+        opening[small] = true;
+        pairs.push((big, small));
+    }
+    for &(big, small) in &pairs {
+        let (at, i, j) = contacts
+            .iter()
+            .copied()
+            .find(|&(_, i, j)| (i, j) == (big.min(small), big.max(small)))
+            .expect("a pair comes from a contact");
+        // The larger loop must be the outline: inside no loop that is not an opening.
+        let enclosed = (0..k).any(|x| {
+            x != big && !opening[x] && overlap(big, x) && inside(rings[big][0], &rings[x])
+        });
+        // The opening must touch only the outline.
+        let others = contacts
+            .iter()
+            .filter(|&&(_, a, b)| a == small || b == small)
+            .count();
+        if opening[big] || enclosed || others != 1 {
+            return Err(crossing_error(at, i, j));
+        }
+    }
+
+    // depth[i]: how many loops it is inside; parent[i]: the innermost of them.
+    let mut within: Vec<Vec<usize>> = vec![Vec::new(); k];
+    for i in 0..k {
+        if opening[i] {
+            continue;
+        }
+        for j in 0..k {
+            if i == j || opening[j] || !overlap(i, j) {
+                continue;
             }
             if inside(rings[i][0], &rings[j]) {
                 within[i].push(j);
             }
         }
     }
-    let outers: Vec<usize> = (0..k).filter(|&i| within[i].is_empty()).collect();
+    let outers: Vec<usize> = (0..k)
+        .filter(|&i| !opening[i] && within[i].is_empty())
+        .collect();
     if outers.len() > 1 {
         return Err(Error::SeveralOuterLoops {
             loops: outers.iter().map(|&i| corner(&loops[i])).collect(),
         });
     }
     let outer = outers[0];
+    for &(big, _) in &pairs {
+        if big != outer {
+            // Cannot happen after the checks above; kept so that a mistake is an error and not
+            // a wrong board.
+            return Err(Error::Unsupported(
+                "an opening crosses a loop that is not the outline".into(),
+            ));
+        }
+    }
     let mut cutouts = Vec::new();
     for i in 0..k {
+        if opening[i] {
+            continue;
+        }
         match within[i].len() {
             0 => {}
             1 => cutouts.push(loops[i].clone()),
@@ -351,5 +457,13 @@ pub(crate) fn classify(loops: Vec<Polygon>, tol: f64) -> Result<(Polygon, Vec<Po
             }
         }
     }
-    Ok((loops[outer].clone(), cutouts))
+    let openings = (0..k)
+        .filter(|&i| opening[i])
+        .map(|i| loops[i].clone())
+        .collect();
+    Ok(Classified {
+        outer: loops[outer].clone(),
+        cutouts,
+        openings,
+    })
 }

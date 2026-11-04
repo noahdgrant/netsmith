@@ -125,18 +125,37 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
             .find(|(_, d)| (d - h.diameter).abs() <= HOLE_TOLERANCE)
         {
             Some((package, _)) => holes.push((h.centre.0, h.centre.1, package)),
-            None => refused.push(format!(
-                "hole {} at ({}, {}) has a diameter of {} mm, and the mounting hole packages are {}",
-                i + 1,
-                number(h.centre.0),
-                number(h.centre.1),
-                number(h.diameter),
-                HOLES
+            None => {
+                let (nearest, drill) = HOLES
                     .iter()
-                    .map(|(p, d)| format!("{p} ({d} mm)"))
-                    .collect::<Vec<_>>()
-                    .join(" and ")
-            )),
+                    .min_by(|a, b| {
+                        (a.1 - h.diameter)
+                            .abs()
+                            .partial_cmp(&(b.1 - h.diameter).abs())
+                            .expect("finite")
+                    })
+                    .expect("there are packages");
+                refused.push(format!(
+                    "hole {} at ({}, {}) has a diameter of {} mm, and the mounting hole packages are {}; \
+                     the nearest is {nearest} ({drill} mm, {} mm {} than the drawn hole). The language cannot state a hole of \
+                     another diameter yet (issue #89)",
+                    i + 1,
+                    number(h.centre.0),
+                    number(h.centre.1),
+                    number(h.diameter),
+                    HOLES
+                        .iter()
+                        .map(|(p, d)| format!("{p} ({d} mm)"))
+                        .collect::<Vec<_>>()
+                        .join(" and "),
+                    number((drill - h.diameter).abs()),
+                    if *drill > h.diameter {
+                        "larger"
+                    } else {
+                        "smaller"
+                    },
+                ));
+            }
         }
     }
     if !refused.is_empty() {
@@ -146,6 +165,28 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
         ));
     }
     let outer = outer.expect("checked above");
+
+    // A loop that crosses the board edge is not in the language yet (issue #90): it is
+    // reported with its place and left out, and the rest is imported.
+    let mut warnings = outline.warnings.clone();
+    for (i, o) in outline.openings.iter().enumerate() {
+        let (lo, hi) = o.shape.bounds();
+        warnings.push(format!(
+            "opening {} crosses the board edge and was left out: layer {}, {} x {} mm with its top left corner at \
+             ({}, {}) on the board (mm from the outline's top left corner, y down). It could be a notch in \
+             the outline, a keepout or the place of a connector; the options are in issue #90",
+            i + 1,
+            o.layers
+                .iter()
+                .map(|l| format!("`{l}`"))
+                .collect::<Vec<_>>()
+                .join(", "),
+            number(hi.0 - lo.0),
+            number(hi.1 - lo.1),
+            number(lo.0),
+            number(lo.1),
+        ));
+    }
 
     let mut members = String::new();
     let mut names = vec!["outline".to_string()];
@@ -229,7 +270,7 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
         needed,
         members,
         names,
-        warnings: outline.warnings,
+        warnings,
     })
 }
 

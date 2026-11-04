@@ -120,6 +120,9 @@ impl LayerInfo {
             .iter()
             .map(|(k, n)| format!("{n} {k}"))
             .collect();
+        if parts.is_empty() {
+            return format!("`{}` (declared, nothing on it)", self.name);
+        }
         format!("`{}` ({})", self.name, parts.join(", "))
     }
 
@@ -433,6 +436,17 @@ pub struct Hole {
     pub diameter: f64,
 }
 
+/// A closed loop that crosses the board edge: part of it is inside the outline and part is
+/// outside, like a window in a case wall that is partly beyond the board. It is neither the
+/// outline nor a cutout, so it is reported and not placed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Opening {
+    /// The loop, in the board's frame.
+    pub shape: Polygon,
+    /// The outline layers that its edges are drawn on.
+    pub layers: Vec<String>,
+}
+
 /// What a DXF file says of a board.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Outline {
@@ -440,6 +454,8 @@ pub struct Outline {
     pub outer: Polygon,
     /// The loops inside it, by their top left corner (y, then x).
     pub cutouts: Vec<Polygon>,
+    /// The loops that cross the board edge, by position (y, then x).
+    pub openings: Vec<Opening>,
     /// The circles of the holes layers, by position (y, then x).
     pub holes: Vec<Hole>,
     /// The units the drawing was taken to be in.
@@ -497,10 +513,21 @@ pub fn read_outline(text: &str, options: &Options) -> Result<Outline, Error> {
 
     let drawing = entities::expand(&dxf, units.millimetres(), options.curve_tolerance)?;
     let counts = entities::count_by_layer(&drawing);
-    let layers: Vec<LayerInfo> = counts
+    let mut layers: Vec<LayerInfo> = counts
         .into_iter()
         .map(|(name, counts)| LayerInfo { name, counts })
         .collect();
+    // A layer the LAYER table declares has a name even when nothing is drawn on it, so a
+    // person can name it for the case that something is (a holes layer of a case with no
+    // holes). A name that is nowhere in the file stays an error.
+    for name in &dxf.layers {
+        if !layers.iter().any(|l| l.name.eq_ignore_ascii_case(name)) {
+            layers.push(LayerInfo {
+                name: name.clone(),
+                counts: BTreeMap::new(),
+            });
+        }
+    }
 
     // Which layers.
     let find = |asked: &str| -> Result<String, Error> {
@@ -597,7 +624,27 @@ pub fn read_outline(text: &str, options: &Options) -> Result<Outline, Error> {
         }
     }
 
-    let (outer, cutouts) = chain::classify(loops, options.join_tolerance)?;
+    let chain::Classified {
+        outer,
+        cutouts,
+        openings,
+    } = chain::classify(loops, options.join_tolerance)?;
+    let opening_layers: Vec<Vec<String>> = openings
+        .iter()
+        .map(|o| {
+            outline_layers
+                .iter()
+                .filter(|layer| {
+                    drawing
+                        .items
+                        .iter()
+                        .filter(|i| &i.layer == *layer)
+                        .any(|i| i.prims.iter().any(|p| chain::lies_on(p, o)))
+                })
+                .cloned()
+                .collect()
+        })
+        .collect();
 
     // To the board's frame: the outline's left and top edges are the origin, y down.
     let (lo, hi) = outer.bounds();
@@ -632,6 +679,18 @@ pub fn read_outline(text: &str, options: &Options) -> Result<Outline, Error> {
         let (ka, kb) = (a.bounds().0, b.bounds().0);
         (ka.1, ka.0).partial_cmp(&(kb.1, kb.0)).expect("finite")
     });
+    let mut openings: Vec<Opening> = openings
+        .iter()
+        .zip(opening_layers)
+        .map(|(o, layers)| Opening {
+            shape: flip(o),
+            layers,
+        })
+        .collect();
+    openings.sort_by(|a, b| {
+        let (ka, kb) = (a.shape.bounds().0, b.shape.bounds().0);
+        (ka.1, ka.0).partial_cmp(&(kb.1, kb.0)).expect("finite")
+    });
     let mut holes: Vec<Hole> = holes
         .into_iter()
         .map(|h| Hole {
@@ -648,6 +707,7 @@ pub fn read_outline(text: &str, options: &Options) -> Result<Outline, Error> {
     Ok(Outline {
         outer,
         cutouts,
+        openings,
         holes,
         units,
         units_from_file,
