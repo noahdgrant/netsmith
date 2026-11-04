@@ -211,6 +211,14 @@ pub fn offsets(model: &Model) -> Vec<PlaceOffset> {
         if r.op == CmpOp::Narrow {
             continue;
         }
+        // Only a relation that mentions two places is looked at: most relations of a design
+        // are about the circuit.
+        let mut fields = Vec::new();
+        r.lhs.fields(&mut fields);
+        r.rhs.fields(&mut fields);
+        if fields.iter().filter(|&&f| model.is_place_field(f)).count() < 2 {
+            continue;
+        }
         let (Some(l), Some(rr)) = (linear(model, &r.lhs), linear(model, &r.rhs)) else {
             continue;
         };

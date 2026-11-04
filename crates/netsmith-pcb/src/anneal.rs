@@ -948,9 +948,9 @@ impl<'a> Engine<'a> {
             root[ax][rc] = ro;
         }
         let mut order: Vec<(usize, usize, usize)> = Vec::new();
-        for i in 0..n {
+        for (i, leaders) in leader_of.iter().enumerate() {
             for ax in 0..2 {
-                if leader_of[i][ax].is_none() {
+                if leaders[ax].is_none() {
                     continue;
                 }
                 let mut depth = 0;

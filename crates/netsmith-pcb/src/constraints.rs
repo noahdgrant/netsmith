@@ -793,8 +793,8 @@ fn offset_cannot_be_met(
             let miss = o.miss(v);
             (miss > TOLERANCE).then(|| {
                 format!(
-                    "{} is violated: {} is fixed ({}) and {} is fixed ({}); {} of the body of {} minus {} of the body of {} is {} mm along {}, and it allows {} ({} mm over)",
-                    format!("constraint {}", o.label),
+                    "constraint {} is violated: {} is fixed ({}) and {} is fixed ({}); {} of the body of {} minus {} of the body of {} is {} mm along {}, and it allows {} ({} mm over)",
+                    o.label,
                     name(pa),
                     da.4,
                     name(pb),
@@ -856,8 +856,8 @@ fn offset_cannot_be_met(
             }
             (!allowed.is_empty()).then(|| {
                 format!(
-                    "{} cannot be met: {} is fixed ({}) at {} mm along {}, and {} cannot be where it holds: {}",
-                    format!("constraint {}", o.label),
+                    "constraint {} cannot be met: {} is fixed ({}) at {} mm along {}, and {} cannot be where it holds: {}",
+                    o.label,
                     name(fixed_part),
                     d.4,
                     number(along(d.1) - if axis == 0 { ORIGIN.x } else { ORIGIN.y }),

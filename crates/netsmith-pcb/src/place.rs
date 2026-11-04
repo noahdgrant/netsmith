@@ -150,7 +150,7 @@ pub struct DoesNotFit {
     /// What the placer ended with when it tried the outline anyway: the rows of courtyards
     /// are only where it starts, so too little room is only known by trying. `None` where
     /// it did not try.
-    pub ended: Option<Ended>,
+    pub ended: Option<Box<Ended>>,
     /// The space kept between a courtyard and the board edge, in mm.
     pub wall: f64,
 }
@@ -932,7 +932,7 @@ fn refine(
                 wall: options.wall(),
                 needs: rows.needs,
                 outline: fit,
-                ended: Some(outcome.ended),
+                ended: Some(Box::new(outcome.ended)),
             });
         }
         restore(parts, rows_at);
