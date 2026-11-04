@@ -5,6 +5,10 @@
 //! from IPC-2221. A violation is a [`Guideline`] finding. It warns by default; a project
 //! that sets `guidelines = "error"` in `netsmith.toml`, or a run with `--strict`, refuses
 //! to build on one.
+//!
+//! The same module sizes the tracks: a net whose current the solver has worked out and
+//! that no rail gives a `.min_track` is drawn at the width IPC-2221 needs for that current
+//! (ADR 0036), and a net whose current is not known is named in a note instead.
 
 use netsmith_check::{Domain, InstId, InstKind, Member, Model};
 use netsmith_core::{Features, OUNCE_OF_COPPER, Process};
@@ -15,6 +19,28 @@ pub const DEFAULT_TEMPERATURE_RISE: f64 = 10.0;
 
 /// One mil, in mm.
 const MIL: f64 = 0.0254;
+
+// The formula and its constants (ADR 0036, ADR 0036).
+//
+// IPC-2221B, "Generic Standard on Printed Board Design", section 6.2 "Conductor current
+// carrying capacity" (the same fit is in IPC-2221A and, as the chart IPC-2221's Figure 6-4,
+// in IPC-D-275): `I = k * dT^b * A^c`, with
+//   I   the current in amperes,
+//   dT  the temperature rise above ambient in degrees Celsius (= kelvin),
+//   A   the conductor's cross-section in square mils (width times copper thickness),
+//   b = 0.44, c = 0.725,
+//   k = 0.048 for a conductor on an outer layer (in air) and 0.024 on an inner layer.
+// The standard is paywalled and was not read here; the formula, the constants and their
+// meaning were taken from several agreeing published derivations (Altium's IPC-2221
+// calculator page, the `pcb-toolkit` crate's `current.rs`, circuit.rocks), and checked by
+// hand in `tests/guidelines.rs`. It is an empirical fit to old measurements of tracks in
+// air, and the calculators say it holds only inside the ranges of those measurements (which
+// this code did not verify against the standard): outside them the result is extrapolated.
+//
+// Assumed, not from the standard, and PROVISIONAL (ADR 0036): the copper weight is the
+// process's `stackup.copper_weight` (1 oz, 0.035 mm, for JLCPCB's two-layer outer copper),
+// and the rise is the board's `.process.max_temperature_rise` or, when it states none,
+// [`DEFAULT_TEMPERATURE_RISE`]. Tracks are on outer layers, so `K_EXTERNAL`.
 
 /// The IPC-2221 constant `k` for a track on an outer layer, in air.
 const K_EXTERNAL: f64 = 0.048;
@@ -101,8 +127,10 @@ struct Carrier {
     /// What carries it: `rail output`, `part r1`.
     who: String,
     inst: InstId,
-    lo: f64,
-    hi: f64,
+    /// Whether it is a rail (and not a part passing a current).
+    is_rail: bool,
+    /// The magnitude range, or `None` while the solver has not worked the current out.
+    range: Option<(f64, f64)>,
 }
 
 /// The magnitude range of a current field, in amperes.
@@ -127,19 +155,37 @@ fn magnitude(model: &Model, member: Option<Member>) -> Option<(f64, f64)> {
     })
 }
 
+/// What the track check works out for a board (ADR 0036, ADR 0036).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TrackPlan {
+    /// The width in mm that IPC-2221 needs, by net, for each net whose current is known,
+    /// that no rail gave a `.min_track` and that needs more than the process's least track.
+    /// The router draws the net at this width. Sorted by net name.
+    pub widths: Vec<(String, f64)>,
+    /// The nets drawn narrower than IPC-2221 needs: a rail's `.min_track` that is too
+    /// narrow, or a net whose current is not fully known.
+    pub findings: Vec<Guideline>,
+    /// The nets that were not sized from their current because it is not known, by name.
+    pub notes: Vec<String>,
+}
+
 /// The tracks of every net against the current the net carries, by IPC-2221 (ADR 0036).
 ///
 /// A net carries the largest of the currents of the things on it: the rails with a pin on
 /// it, and the parts whose bridge ends on it, which is how the nets inside a chain of
 /// series parts take the chain's current. Its tracks are as wide as the rails on it ask
-/// (`.min_track`, the widest bottom) and never narrower than the process's least. The
-/// router draws on the outer layers only, so the outer-layer constant and the outer copper
-/// are used. A net that is a plane or an outer pour is not checked: its copper is an area
-/// and not a track.
-pub fn track_widths(model: &Model, process: &Process, features: &Features) -> Vec<Guideline> {
+/// (`.min_track`, the widest bottom, in `features.net_widths`) and never narrower than the
+/// process's least. A net no rail states a width for, whose every current is known, is
+/// given the width IPC-2221 needs (ADR 0036) in [`TrackPlan::widths`]; a net where some
+/// current on it is not known is not sized (a guess would be as likely too narrow as too
+/// wide) and is named in [`TrackPlan::notes`]. The router draws on the outer layers only,
+/// so the outer-layer constant and the outer copper are used. A net that is a plane or an
+/// outer pour is not checked: its copper is an area and not a track.
+pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> TrackPlan {
+    let mut plan = TrackPlan::default();
     let copper = process.stackup.copper_weight * OUNCE_OF_COPPER;
     if copper <= 0.0 {
-        return Vec::new();
+        return plan;
     }
     let layer = Layer::External;
     let (rise, rise_is_default) = match process.max_temperature_rise {
@@ -147,7 +193,7 @@ pub fn track_widths(model: &Model, process: &Process, features: &Features) -> Ve
         None => (DEFAULT_TEMPERATURE_RISE, true),
     };
     if rise <= 0.0 {
-        return Vec::new();
+        return plan;
     }
     let planes: Vec<&str> = process
         .stackup
@@ -165,9 +211,6 @@ pub fn track_widths(model: &Model, process: &Process, features: &Features) -> Ve
                 let Some((_, pos)) = model.draw_of(id) else {
                     continue;
                 };
-                let Some((lo, hi)) = magnitude(model, model.member(id, "current")) else {
-                    continue;
-                };
                 let mut pins = vec![pos];
                 if let Some(Member::Inst(neg)) = model.member(id, "neg") {
                     pins.push(neg);
@@ -177,8 +220,8 @@ pub fn track_widths(model: &Model, process: &Process, features: &Features) -> Ve
                     Carrier {
                         who: format!("rail `{}`", model.path_of(id)),
                         inst: id,
-                        lo,
-                        hi,
+                        is_rail: true,
+                        range: magnitude(model, model.member(id, "current")),
                     },
                 ));
             }
@@ -186,16 +229,13 @@ pub fn track_widths(model: &Model, process: &Process, features: &Features) -> Ve
                 let (Some(_), Some((a, b))) = (model.through_of(id), inst.bridge) else {
                     continue;
                 };
-                let Some((lo, hi)) = magnitude(model, model.member(id, "current")) else {
-                    continue;
-                };
                 carriers.push((
                     vec![a, b],
                     Carrier {
                         who: format!("part `{}`", model.path_of(id)),
                         inst: id,
-                        lo,
-                        hi,
+                        is_rail: false,
+                        range: magnitude(model, model.member(id, "current")),
                     },
                 ));
             }
@@ -203,53 +243,111 @@ pub fn track_widths(model: &Model, process: &Process, features: &Features) -> Ve
         }
     }
 
-    let mut found = Vec::new();
-    for net in model.nets() {
+    // The nets a supply reaches: those with a rail's pin, and, through the parts that pass
+    // a current, the nets on the other side of them. Only these are worth a note when their
+    // current is not known; a signal net carries no power to size.
+    let mut supplied: Vec<bool> = model
+        .nets()
+        .iter()
+        .map(|net| {
+            carriers
+                .iter()
+                .any(|(pins, c)| c.is_rail && pins.iter().any(|p| net.pins.contains(p)))
+        })
+        .collect();
+    loop {
+        let mut grew = false;
+        for (pins, _) in carriers.iter().filter(|(_, c)| !c.is_rail) {
+            let touched: Vec<usize> = (0..supplied.len())
+                .filter(|&i| pins.iter().any(|p| model.nets()[i].pins.contains(p)))
+                .collect();
+            if touched.iter().any(|&i| supplied[i]) {
+                for i in touched {
+                    grew |= !supplied[i];
+                    supplied[i] = true;
+                }
+            }
+        }
+        if !grew {
+            break;
+        }
+    }
+
+    for (index, net) in model.nets().iter().enumerate() {
         if net.terminals.len() < 2 || planes.contains(&net.name.as_str()) {
             continue;
         }
+        let on_net: Vec<&Carrier> = carriers
+            .iter()
+            .filter(|(pins, _)| pins.iter().any(|p| net.pins.contains(p)))
+            .map(|(_, c)| c)
+            .collect();
         // The largest current on the net; the first of equals, so the order is the model's.
-        let mut worst: Option<&Carrier> = None;
-        for (pins, c) in &carriers {
-            if pins.iter().any(|p| net.pins.contains(p)) && worst.is_none_or(|w| c.hi > w.hi) {
-                worst = Some(c);
+        let mut worst: Option<(&Carrier, f64, f64)> = None;
+        for c in &on_net {
+            if let Some((lo, hi)) = c.range
+                && worst.is_none_or(|(_, _, h)| hi > h)
+            {
+                worst = Some((c, lo, hi));
             }
         }
-        let Some(worst) = worst else {
-            continue;
-        };
-        if worst.hi <= 0.0 {
-            continue;
-        }
+        let unknown: Vec<&str> = on_net
+            .iter()
+            .filter(|c| c.range.is_none())
+            .map(|c| c.who.as_str())
+            .collect();
         let stated = features
             .net_widths
             .iter()
             .find(|(n, _)| *n == net.name)
             .map(|(_, w)| *w);
-        let width = stated.map_or(process.min_track, |w| w.max(process.min_track));
-        let carries = ipc2221_current(width, copper, rise, layer);
-        let needs = ipc2221_width(worst.hi, copper, rise, layer);
-        if width >= needs {
+        let Some((worst, lo, hi)) = worst else {
+            if !unknown.is_empty() && stated.is_none() && supplied[index] {
+                plan.notes
+                    .push(unknown_note(&net.name, &unknown, process.min_track));
+            }
+            continue;
+        };
+        // A current that is not known may be larger than the ones that are: do not size
+        // the net from the known ones, and say so (the check below still holds the net to
+        // what is known).
+        if !unknown.is_empty() && stated.is_none() && supplied[index] {
+            plan.notes
+                .push(unknown_note(&net.name, &unknown, process.min_track));
+        }
+        if hi <= 0.0 {
             continue;
         }
+        let needs = ipc2221_width(hi, copper, rise, layer);
         // Rounded up to the 0.01 mm that a width is written in, so that asking for what the
         // message says passes.
         let asks = (needs * 100.0 - 1e-9).ceil() / 100.0;
+        if stated.is_none() && unknown.is_empty() && asks > process.min_track {
+            plan.widths.push((net.name.clone(), asks));
+            continue;
+        }
+        let width = stated.map_or(process.min_track, |w| w.max(process.min_track));
+        let carries = ipc2221_current(width, copper, rise, layer);
+        if width >= needs {
+            continue;
+        }
         let source = match stated {
             Some(_) => "a rail's `.min_track`",
-            None => "the process's least, because no rail on it states a `.min_track`",
+            None => {
+                "the process's least, because no rail on it states a `.min_track` and a current on it is not known"
+            }
         };
-        let range = if worst.lo == worst.hi {
-            amps(worst.hi)
+        let range = if lo == hi {
+            amps(hi)
         } else {
-            format!("{} to {}", amps(worst.lo), amps(worst.hi))
+            format!("{} to {}", amps(lo), amps(hi))
         };
-        found.push(Guideline {
+        plan.findings.push(Guideline {
             rule: "IPC-2221",
             message: format!(
                 "net `{}` carries up to {} ({}: {range}) but its tracks are {} mm wide ({source}), in {} oz ({} mm) {} copper; at a temperature rise of {} K{} that width carries {} and IPC-2221 needs {} mm: give a rail on the net `.min_track &= {}mm..1m`, or allow a higher `.process.max_temperature_rise`",
                 net.name,
-                amps(worst.hi),
+                amps(hi),
                 worst.who,
                 mm(width),
                 mm(process.stackup.copper_weight),
@@ -264,5 +362,17 @@ pub fn track_widths(model: &Model, process: &Process, features: &Features) -> Ve
             at: Some(worst.inst),
         });
     }
-    found
+    plan.widths.sort_by(|a, b| a.0.cmp(&b.0));
+    plan
+}
+
+/// The note for a net whose tracks were not sized from its current. The carriers come first
+/// so that the editor, which puts a note at the first path it finds in the text, puts it at
+/// one of them and not at a generated net name.
+fn unknown_note(net: &str, unknown: &[&str], least: f64) -> String {
+    format!(
+        "the current of {} is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `{net}` are not sized from their current and are the process's least, {} mm; state that current, or give a rail on the net a `.min_track`",
+        unknown.join(", "),
+        mm(least),
+    )
 }

@@ -1179,10 +1179,21 @@ fn what_the_solver_left_alone_is_a_note_and_not_counted_as_a_warning() {
         .collect();
     assert!(notes.len() >= 5, "{:?}", a.problems);
     assert!(
-        notes
-            .iter()
-            .all(|p| p.message.contains("not evaluated") || p.message.contains("incomplete")),
+        notes.iter().all(|p| p.message.contains("not evaluated")
+            || p.message.contains("incomplete")
+            || p.message.contains("are not sized from their current")),
         "{notes:?}"
+    );
+    // The bank's resistors have no worked-out current (two unknowns on a net), so the nets
+    // they sit on are named and not sized (ADR 0036), at the first resistor that is unknown.
+    let not_sized = notes
+        .iter()
+        .find(|p| p.message.contains("tracks of net `3V3` are not sized"))
+        .expect("a note about 3V3");
+    assert_eq!(
+        not_sized.at.as_ref().map(|at| at.line),
+        Some(line_of(BANK, ".a: Resistor")),
+        "{not_sized:?}"
     );
     // The status bar's counts leave notes out.
     assert_eq!(a.notes as usize, notes.len());

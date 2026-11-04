@@ -3000,9 +3000,50 @@ The router draws `VIN` and `GND` at 0.8 mm and `3V3` at 0.5 mm, and the `.kicad_
 
 ### Track width against current
 
-A track that carries current heats. A rail's `.min_track` sets the width of its nets, and the solver knows the worst-case current each rail draws (`.current`, see Load current), so netsmith checks that the width can carry it (ADR 0036). It uses the IPC-2221 formula, `I = k * dT^0.44 * A^0.725`, where `I` is the current in amperes, `dT` the temperature rise in kelvin, `A` the track's cross-section in square mils (its width times the copper's thickness), and `k` is 0.048 for a track on an outer layer and 0.024 on an inner layer. netsmith draws tracks on the outer layers only, so it uses 0.048 and the outer copper of the process (`.stackup.copper_weight` ounces, 0.035 mm each).
+A track that carries current heats. The solver knows the worst-case current each rail draws (`.current`, see Load current) and, through the series parts of a chain, the current of the nets between them, so netsmith draws every net at a width that can carry it and checks any width you state yourself (ADR 0036). It uses the IPC-2221 formula, `I = k * dT^0.44 * A^0.725`, where `I` is the current in amperes, `dT` the temperature rise in kelvin, `A` the track's cross-section in square mils (its width times the copper's thickness), and `k` is 0.048 for a track on an outer layer and 0.024 on an inner layer. netsmith draws tracks on the outer layers only, so it uses 0.048 and the outer copper of the process (`.stackup.copper_weight` ounces, 0.035 mm each).
 
-A net carries the largest current of the things on it: the rails that have a pin on it, and the series parts (`~>` chains) whose bridge ends on it, so the nets between the parts of a chain take the chain's current. Its tracks are as wide as the widest `.min_track` of the rails on it, and never narrower than the process's least track. A rail that states no `.min_track` is therefore checked at the process's least track, so a 2 A rail drawn at 0.1 mm is a finding and not silent. The temperature rise is `.process.max_temperature_rise`, in kelvin, an upper bound like `via_in_pad`; it is 10 K when the board states none, and the finding says so. 10 K is a conservative default of netsmith's and is not a number from a fabricator. The planes of a four-layer board and the nets of a pour are areas and not tracks, and are not checked.
+A net carries the largest current of the things on it: the rails that have a pin on it, and the series parts (`~>` chains) whose bridge ends on it, so the nets between the parts of a chain take the chain's current. You do not have to state a width for it. A net no rail gives a `.min_track` is drawn at the width IPC-2221 needs for that current (rounded up to 0.01 mm), when the solver knows every current on the net: a 2 A node between a fuse and a diode is drawn at 0.79 mm with nothing written, and the check has nothing to say. A `.min_track` on a rail is an override: the net is drawn at the widest one, never narrower than the process's least track, and the check warns when IPC-2221 needs more. The temperature rise is `.process.max_temperature_rise`, in kelvin, an upper bound like `via_in_pad`; it is 10 K when the board states none, and the finding says so. 10 K is a conservative default of netsmith's and is not a number from a fabricator. The planes of a four-layer board and the nets of a pour are areas and not tracks, and are not sized or checked.
+
+When a current on the net is not known (the solver leaves the currents of a net with two or more unknown ones unsolved), netsmith does not guess: the net keeps the process's least track and `build` prints a note that names the net and the carriers whose current is missing:
+
+```nsm solve notes
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Unsized {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .supply: Rail {
+        .voltage &= 12V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .load: Rail {
+        .pos.net &= "VOUT"
+        .neg.net &= "GND"
+    }
+    .r: Resistor { .resistance &= 10kohm +/- 1% }
+    .inlet: Header1x2
+    .outlet: Header1x2
+    .supply.pos ~> .r ~> .load.pos
+    .supply.neg ~ .load.neg
+    .inlet.p1 ~ .supply.pos
+    .inlet.p2 ~ .supply.neg
+    .outlet.p1 ~ .load.pos
+    .outlet.p2 ~ .load.neg
+}
+```
+
+```text
+the current of rail `supply`, rail `load` is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `GND` are not sized from their current and are the process's least, 0.1 mm; state that current, or give a rail on the net a `.min_track`
+the current of rail `supply`, part `r` is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `VIN` are not sized from their current and are the process's least, 0.1 mm; state that current, or give a rail on the net a `.min_track`
+the current of rail `load`, part `r` is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `VOUT` are not sized from their current and are the process's least, 0.1 mm; state that current, or give a rail on the net a `.min_track`
+```
+
+The block below states a width that is too narrow for its rail, so it is a finding:
 
 ```nsm solve warns
 import std::mfg::jlcpcb::TwoLayer
