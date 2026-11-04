@@ -1,5 +1,5 @@
 ---
-status: accepted (user review 2026-11-02)
+status: accepted (user review 2026-11-02); amended by the section "Amendment: the router sizes every net" (PROVISIONAL)
 ---
 
 # Track width against current
@@ -34,6 +34,20 @@ IPC-2221 is the formula in every track width calculator and is easy to state and
 - Nets that are planes or pours are not checked; a pour's real width at a bottleneck is not measured.
 - No ambient temperature, no duty cycle: the worst-case current is taken as continuous.
 - Inner tracks are not drawn by the router, so the inner-layer constant is unused.
+
+## Amendment: the router sizes every net (issue #4, PROVISIONAL)
+
+The owner's direction on issue #4 was: there are standards for track width by current, the router should work the current out of the schematic, and a user who has to state a width has found a failure of the router. So no new syntax was added, and the check above stopped being the only use of the formula.
+
+**What changed.** After the currents are solved, lowering gives each net with at least two terminals the width IPC-2221 needs for the largest current on it, taking the top of the range and rounding up to 0.01 mm, whenever (a) no rail on the net states a `.min_track`, (b) every carrier on it has a known current, and (c) the width is more than the process's least. That width is put in `Features::net_widths`, as if a rail had stated it, so the router, the board file's net classes and the check all see it. The nets that matter are the ones no rail touches: the node between a fuse and a diode in a `~>` chain takes the chain's current through the `bridge` of the parts on it (ADR 0014), and gets 0.79 mm for 2 A. Nets with a rail get the same when the rail states no `.min_track`; before, they were drawn at the process's least and warned about.
+
+**An explicit `.min_track` stays an override.** A net where a rail states `.min_track` is drawn at that width, and the check warns if IPC-2221 needs more, exactly as above. The statement is the user's decision and is not raised silently. The warning therefore no longer fires on a net the router sized.
+
+**A current that is not known.** A carrier is a rail that draws or a part that passes a current. If any carrier on the net has no worked-out current (the solver leaves the currents of a net with two or more unknowns unsolved, issue #18), the net is not sized: the other carriers' currents are only a lower bound, and a guess is as likely too narrow as too wide. It keeps its old behaviour (the rail's `.min_track`, else the process's least; the check warns if the known currents already need more), and `build` prints `note: net `N`: its tracks are not sized from its current because the current of ... is not known ...`, naming the net and the carriers. `fab` writes it in `fab-notes.txt` too. A note and not a guideline: it does not change with `--strict`, because there is nothing for the person to correct in a finding the tool cannot make.
+
+**The formula, its source and what was assumed.** `I = k * dT^0.44 * A^0.725`, from IPC-2221B section 6.2 "Conductor current carrying capacity" (the fit also in IPC-2221A; the chart is Figure 6-4). `I` in amperes, `dT` in kelvin above ambient, `A` in square mils (the width times the copper's thickness; 1 mil is 0.0254 mm); `k` = 0.048 for a track on an outer layer, 0.024 on an inner layer. The standard is paywalled and was not read. The formula, the constants and their units were taken from several agreeing derivations (Altium's IPC-2221 calculator page, the `pcb-toolkit` crate's `current.rs`, circuit.rocks and PCBCart; the last writes the area exponent as 0.75, which the others and the standard's curve fit do not). Hand-worked values are in `crates/netsmith-lower/tests/guidelines.rs`. Because the source was not the standard itself, the constants are PROVISIONAL until someone with the standard compares them. Also PROVISIONAL, and assumed and not from the standard: the copper is the process's `stackup.copper_weight` (1 oz, 0.035 mm, for JLCPCB's two-layer outer copper); the rise is `.process.max_temperature_rise` or, when none, 10 K; tracks are on outer layers (k = 0.048), as the router draws nothing inner; no ambient temperature or duty cycle.
+
+**Left open.** The largest single current on a net stands for the net, so a ground shared by several rails is sized for the biggest of them and not their sum (a switching regulator's input current also differs from its output current; neither is derived). A router that necks down a run still draws it narrower where there is no room. Wide nets can make a tight board harder to route; no limit caps the width. The ranges of the IPC fit (small currents, rises, widths) are not checked: outside them the result is an extrapolation.
 
 ## Consequences
 

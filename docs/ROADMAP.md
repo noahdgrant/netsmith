@@ -178,6 +178,12 @@ snap and flatpak paths are the least certain). Bundling the libraries is ADR 004
   (rails and series parts), the process's copper weight and `.process.max_temperature_rise`
   (10 K default); a guideline, so it warns, and `guidelines = "error"` or `--strict` blocks.
   Open: IPC-2152, sums at shared grounds, necked-down runs and vias, tracks on inner layers.
+- The router sizes every net (issue #4, ADR 0036 amendment, provisional): a net no rail gives a
+  `.min_track` is drawn at the width IPC-2221 needs for the current the solver worked out
+  (the fuse-to-diode node of a `~>` chain included); a net with an unknown current is named in
+  a note and keeps the process's least; a stated `.min_track` stays an override. Open: the IPC
+  constants were not checked against the standard itself, and a net with two unknown currents
+  (issue #18) is not sized.
 - Four-layer boards (ADR 0012): `std::mfg::jlcpcb::FourLayer` with JLCPCB's multilayer rows and
   its 1.6 mm `JLC04161H-7628` build-up; the board names the net of each inner layer
   (`.process.inner1.net &= "GND"`); the `.kicad_pcb` gets the stackup and a zone per plane;
@@ -368,8 +374,7 @@ own design rules check; `libs fetch` and `libs vendor` of ADR 0041 for the rest.
 - A pad inside a pour of its net could drop the via beside it (to be taken only with KiCad's
   own unconnected check as the gate); a via of another size for a wide net; thermal relief
   settings other than KiCad's defaults (`.thermal_gap`, `.spoke_width` on a `Pour`).
-- Board features still to do: the IPC-2221 check of a rail's current against its width
-  (needs the formula sourced), clearance per net class, a keepout of a part that turns in KiCad
+- Board features still to do: clearance per net class, a keepout of a part that turns in KiCad
   with the part, an outline that is not a rectangle,
   logos and images, the fab's fiducial and test-point rules (to read and source), a fit that
   reflows the arrangement beyond what `PlaceOptions::fit` does (the derived placer of ADR 0030),

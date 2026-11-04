@@ -475,11 +475,13 @@ fn export(
     system: Option<&str>,
     board: &str,
     lowered: Lowered,
-    notes: Vec<String>,
+    mut notes: Vec<String>,
     model: &Model,
     sources: &Sources,
     libraries: Option<&Libraries>,
 ) -> Result<Built, Vec<Problem>> {
+    // The nets whose tracks were not sized from their current (ADR 0048).
+    notes.extend(lowered.notes.iter().cloned());
     let label = match system {
         Some(system) => format!("{system}/{board}"),
         None => board.to_string(),

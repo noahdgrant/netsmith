@@ -330,6 +330,9 @@ pub struct Lowered {
     /// What the design does against a guideline (ADR 0036): findings that a person decides
     /// about, which the project may make blocking (`guidelines = "error"`).
     pub guidelines: Vec<guidelines::Guideline>,
+    /// Things worth knowing that did not stop the lowering: the nets whose tracks were not
+    /// sized from their current because it is not known (ADR 0036).
+    pub notes: Vec<String>,
     /// Where the design states each requirement on a position (ADR 0045), for a caller that
     /// has the source files to put in `design.features.constraints[..].source`.
     pub constraint_sites: Sites,
@@ -604,10 +607,14 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
     let mut features = features::features_of(model, &net_names, layers, least_text, &mut errors);
     let (constraints, constraint_sites) = features::placements(model, &mut errors);
     features.constraints = constraints;
-    let guideline_findings = match &process {
-        Some(process) => guidelines::track_widths(model, process, &features),
-        None => Vec::new(),
+    // Tracks sized from the current of nets no rail gave a width (ADR 0036).
+    let plan = match &process {
+        Some(process) => guidelines::plan_tracks(model, process, &features),
+        None => guidelines::TrackPlan::default(),
     };
+    features.net_widths.extend(plan.widths);
+    features.net_widths.sort_by(|a, b| a.0.cmp(&b.0));
+    let guideline_findings = plan.findings;
 
     if errors.is_empty() {
         Ok(Lowered {
@@ -621,6 +628,7 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
             sourcing,
             origins,
             guidelines: guideline_findings,
+            notes: plan.notes,
             constraint_sites,
         })
     } else {

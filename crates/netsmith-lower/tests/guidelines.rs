@@ -151,19 +151,21 @@ fn a_wide_enough_rail_passes_and_the_width_the_message_asks_for_passes() {
 }
 
 #[test]
-fn a_rail_with_no_min_track_is_checked_at_the_process_least_and_says_so() {
-    let found = findings(&board(2.0, "", ""));
-    let five = about(&found, "5V");
-    assert_eq!(five.len(), 1, "{found:?}");
-    assert!(
-        five[0].contains("its tracks are 0.1 mm wide (the process's least, because no rail on it states a `.min_track`)")
-            && five[0].contains("that width carries 450 mA and IPC-2221 needs 0.79 mm"),
-        "{}",
-        five[0]
+fn a_rail_with_no_min_track_is_drawn_at_the_width_its_current_needs() {
+    // ADR 0036, amendment: the router works the width out, so the check has nothing to say.
+    let l = lowered_of(&board(2.0, "", ""));
+    assert!(l.guidelines.is_empty(), "{:?}", l.guidelines);
+    assert!(l.notes.is_empty(), "{:?}", l.notes);
+    assert_eq!(
+        l.design.features.net_widths,
+        [("5V".to_string(), 0.79), ("GND".to_string(), 0.79)]
     );
-    // A current a 0.1 mm track carries is no finding: 450 mA at 10 K.
-    assert!(findings(&board(0.4, "", "")).is_empty());
-    assert_eq!(findings(&board(0.5, "", "")).len(), 2);
+    // 0.4 A is what a 0.1 mm track carries (450 mA at 10 K): the process's least, no entry.
+    assert!(lowered_of(&board(0.4, "", "")).design.features.net_widths.is_empty());
+    // 0.5 A needs 0.12 mm (0.1148 rounded up).
+    let half = lowered_of(&board(0.5, "", ""));
+    assert_eq!(width_of(&half, "5V"), Some(0.12));
+    assert!(half.guidelines.is_empty());
 }
 
 #[test]
@@ -261,25 +263,20 @@ board Chain {
     .j.p2 ~ .supply.neg
 }
 ";
-    let found = findings(src);
-    // The net between the resistors is not named by the board, and is on neither rail.
-    let middle: Vec<&Guideline> = found
+    let l = lowered_of(src);
+    // The net between the resistors is not named by the board, and is on neither rail. It
+    // takes the chain's 1 A: 0.3004 mm rounded up to 0.31 mm, where it was 0.1 mm and a finding.
+    let middle: Vec<&(String, f64)> = l
+        .design
+        .features
+        .net_widths
         .iter()
-        .filter(|g| !g.message.starts_with("net `5V`") && !g.message.starts_with("net `GND`"))
+        .filter(|(n, _)| n != "5V" && n != "GND")
         .collect();
-    assert_eq!(middle.len(), 1, "{found:?}");
-    assert!(
-        middle[0]
-            .message
-            .contains("carries up to 1 A (part `r1`: 0 mA to 1 A)")
-            && middle[0]
-                .message
-                .contains("tracks are 0.1 mm wide (the process's least"),
-        "{}",
-        middle[0].message
-    );
-    // The rails' own nets are wide enough for 1 A at 0.35 mm.
-    assert!(about(&found, "5V").is_empty() && about(&found, "GND").is_empty());
+    assert_eq!(middle, [&("net-r1.b".to_string(), 0.31)]);
+    // The rails' own nets state 0.35 mm, which is wide enough for 1 A.
+    assert_eq!(width_of(&l, "5V"), Some(0.35));
+    assert!(l.guidelines.is_empty(), "{:?}", l.guidelines);
 }
 
 #[test]
@@ -314,12 +311,143 @@ board Planes {
     assert!(findings(four).is_empty(), "{:?}", findings(four));
     // With only `GND` a plane, `5V` is a track again.
     let one_plane = four.replace(".inner2.net &= \"5V\"", ".inner2.net &= \"GND\"");
-    let found = findings(&one_plane);
-    assert_eq!(about(&found, "5V").len(), 1, "{found:?}");
-    assert!(about(&found, "GND").is_empty());
+    let l = lowered_of(&one_plane);
+    assert_eq!(width_of(&l, "5V"), Some(0.79));
+    assert_eq!(width_of(&l, "GND"), None, "a plane is an area");
+    assert!(l.guidelines.is_empty(), "{:?}", l.guidelines);
     let without = board(2.0, "", "").replace(
         "    .process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }\n",
         "",
     );
     assert!(findings(&without).is_empty());
+}
+
+// ---- the router sizes every net (issue #4, ADR 0036 amendment) -----------------------
+
+/// A fuse and a diode in series between a 12 V input and a load that draws `load`: the
+/// node between them belongs to no rail.
+fn fuse_diode(load: &str, supply: &str, fuse: &str) -> String {
+    format!(
+        "import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::parts::diode::Diode
+import std::parts::passive::Fuse
+import std::sources::Rail
+board B {{
+    .process: TwoLayer {{
+        .stackup.thickness &= 1.6mm
+    }}
+    .supply: Rail {{
+        .voltage &= 12V
+        .pos.net &= \"VIN\"
+        .neg.net &= \"GND\"
+{supply}    }}
+    .load: Rail {{
+        .pos.net &= \"VOUT\"
+        .neg.net &= \"GND\"
+{load}    }}
+    .fuse: Fuse{fuse}
+    .diode: Diode
+    .inlet: Header1x2
+    .outlet: Header1x2
+    .supply.pos ~> .fuse ~> .diode ~> .load.pos
+    .supply.neg ~ .load.neg
+    .inlet.p1 ~ .supply.pos
+    .inlet.p2 ~ .supply.neg
+    .outlet.p1 ~ .load.pos
+    .outlet.p2 ~ .load.neg
+}}
+"
+    )
+}
+
+fn lowered_of(src: &str) -> netsmith_lower::Lowered {
+    let c = check("t.nsm", src, &Loader::std());
+    assert!(c.is_ok(), "{}", c.render());
+    let s = solve(&c.boards[0], &Catalogs::jlcpcb());
+    assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
+    lower(&c.boards[0], &s).unwrap()
+}
+
+fn width_of(l: &netsmith_lower::Lowered, net: &str) -> Option<f64> {
+    l.design
+        .features
+        .net_widths
+        .iter()
+        .find(|(n, _)| n == net)
+        .map(|(_, w)| *w)
+}
+
+#[test]
+fn the_node_between_a_fuse_and_a_diode_is_drawn_at_the_width_its_current_needs() {
+    let l = lowered_of(&fuse_diode("        .current &= 1A..2A\n", "", ""));
+    let node = l
+        .design
+        .nets
+        .iter()
+        .find(|n| n.name.contains("diode") || n.name.contains("fuse"))
+        .expect("the node has a generated name");
+    // 2 A needs 0.7814 mm in 1 oz at 10 K; rounded up to 0.01 mm.
+    assert_eq!(width_of(&l, &node.name), Some(0.79), "{:?}", l.design.features.net_widths);
+    // The router and the check agree: nothing to warn about, nothing stated.
+    assert!(l.guidelines.is_empty(), "{:?}", l.guidelines);
+    assert!(l.notes.is_empty(), "{:?}", l.notes);
+}
+
+#[test]
+fn the_rails_on_such_a_chain_are_sized_too() {
+    let l = lowered_of(&fuse_diode("        .current &= 1A..2A\n", "", ""));
+    assert_eq!(width_of(&l, "VIN"), Some(0.79));
+    assert_eq!(width_of(&l, "VOUT"), Some(0.79));
+    assert_eq!(width_of(&l, "GND"), Some(0.79));
+}
+
+#[test]
+fn a_small_current_leaves_the_net_at_the_process_least() {
+    let l = lowered_of(&fuse_diode("        .current &= 1mA..20mA\n", "", ""));
+    assert!(l.design.features.net_widths.is_empty(), "{:?}", l.design.features.net_widths);
+    assert!(l.guidelines.is_empty() && l.notes.is_empty());
+}
+
+#[test]
+fn the_width_follows_the_temperature_rise() {
+    // 2 A at 20 K needs 0.5131 mm (hand-worked above): 0.52 rounded up.
+    let src = fuse_diode("        .current &= 1A..2A\n", "", "").replace(
+        ".stackup.thickness &= 1.6mm",
+        ".stackup.thickness &= 1.6mm\n        .max_temperature_rise &= 20K",
+    );
+    let l = lowered_of(&src);
+    assert_eq!(width_of(&l, "VOUT"), Some(0.52));
+}
+
+#[test]
+fn a_stated_min_track_is_an_override_and_is_still_checked() {
+    let src = fuse_diode("        .current &= 1A..2A\n        .min_track &= 0.3mm..1m\n", "", "");
+    let l = lowered_of(&src);
+    assert_eq!(width_of(&l, "VOUT"), Some(0.3));
+    let found = about(&l.guidelines, "VOUT");
+    assert_eq!(found.len(), 1, "{:?}", l.guidelines);
+    assert!(found[0].contains("(a rail's `.min_track`)") && found[0].contains("needs 0.79 mm"));
+    // The node between the parts has no rail: it is sized from the current.
+    let node: Vec<_> = l.design.nets.iter().filter(|n| n.name.starts_with("net-")).collect();
+    assert_eq!(node.len(), 1);
+    assert_eq!(width_of(&l, &node[0].name), Some(0.79));
+}
+
+#[test]
+fn a_net_whose_current_is_not_known_is_not_sized_and_is_named() {
+    // Two rails that draw an unstated current on one net: the solver can work out neither.
+    let src = fuse_diode("", "", "");
+    let l = lowered_of(&src);
+    assert!(l.design.features.net_widths.is_empty(), "{:?}", l.design.features.net_widths);
+    let said = |net: &str, who: &str| {
+        l.notes.iter().any(|n| {
+            n.starts_with(&format!(
+                "net `{net}`: its tracks are not sized from its current because the current of {who} is not known"
+            )) && n.contains("the process's least, 0.1 mm")
+        })
+    };
+    assert!(said("net-diode.anode", "part `fuse`, part `diode`"), "{:?}", l.notes);
+    assert!(said("VOUT", "rail `load`, part `diode`"), "{:?}", l.notes);
+    assert!(l.guidelines.is_empty(), "nothing is known to be too narrow");
 }
