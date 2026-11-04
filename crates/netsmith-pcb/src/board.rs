@@ -818,6 +818,11 @@ pub struct Board {
     /// (ADR 0045, "Built: overhang"). [`Board::check_placement`] does not report the
     /// courtyard of such a part past an edge it may hang over.
     pub overhang: BTreeMap<String, Overhang>,
+    /// The parts the design's requirements put at one point, by reference designator
+    /// (PROVISIONAL, ADR 0045 section 10): a requirement that pins a part decides, so
+    /// [`Board::check_placement`] does not report one for standing in a keepout that forbids
+    /// parts.
+    pub pinned: std::collections::BTreeSet<String>,
 }
 
 impl Board {
@@ -974,6 +979,7 @@ impl Board {
         overhang.extend(plan.overhang);
         placement.overhang = overhang.clone();
         placement.fixed.extend(plan.fixed);
+        let pinned = plan.pinned;
         placement.wants = plan.wants;
         placement.offsets = plan.offsets;
         for part in &mut parts {
@@ -1128,6 +1134,7 @@ impl Board {
             vias: Vec::new(),
             net_widths: design.features.net_widths.clone(),
             overhang,
+            pinned,
         })
     }
 
@@ -1523,7 +1530,7 @@ impl Board {
                 .iter()
                 .filter(|k| k.carrier.as_deref() != Some(a.path.as_str()))
             {
-                if k.parts && rooms[i].overlaps(&k.rect) {
+                if k.parts && !self.pinned.contains(&a.refdes) && rooms[i].overlaps(&k.rect) {
                     problems.push(PlacementProblem::InKeepout {
                         refdes: a.refdes.clone(),
                         keepout: k.name.clone(),

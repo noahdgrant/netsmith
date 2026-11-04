@@ -21,7 +21,7 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
-use crate::anneal::{self, Ended, Problem};
+use crate::anneal::{self, Ended, Outcome, Problem};
 use crate::board::{Board, BoardNet, Placed, ReferenceSide, Side};
 use crate::constraints::Want;
 use crate::geometry::{Pt, Rect};
@@ -166,6 +166,10 @@ pub struct DoesNotFit {
     /// Every part, where the placer ended with it and in what state, in the order of the
     /// design: for the full list [`DoesNotFit::full_report`] writes.
     pub parts: Vec<PartState>,
+    /// How many times the placer tried before it gave up: the first run, then runs from the
+    /// same start with a large part put in a corner first and with seeds derived from the
+    /// given one (B2 and B5, PROVISIONAL). The state above is that of the closest.
+    pub tries: usize,
 }
 
 /// One part's place and state at the end of a placement that did not fit.
@@ -241,7 +245,7 @@ impl std::fmt::Display for DoesNotFit {
             if let Some(e) = &self.ended {
                 write_ended(f, e, self.wall)?;
             }
-            return Ok(());
+            return self.write_tries(f);
         }
         let certain = self.area.0 > self.area.1 + 1e-9;
         let Some(e) = &self.ended else {
@@ -267,11 +271,25 @@ impl std::fmt::Display for DoesNotFit {
             self.outline.1,
             e.compact()
         )?;
-        write_ended(f, e, self.wall)
+        write_ended(f, e, self.wall)?;
+        self.write_tries(f)
     }
 }
 
 impl DoesNotFit {
+    /// How many tries were made, when there was more than one.
+    fn write_tries(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.tries > 1 {
+            write!(
+                f,
+                "\n  the placer made {} tries (the first, then {} more from other seeds derived from the given one, one of them with the largest parts put in corners first); this is the closest",
+                self.tries,
+                self.tries - 1
+            )?;
+        }
+        Ok(())
+    }
+
     /// The sentence of what the rows need, for a refusal that is certain whatever the
     /// placer does.
     fn write_needs(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -385,8 +403,16 @@ fn write_offenders(f: &mut std::fmt::Formatter<'_>, e: &Ended) -> std::fmt::Resu
         for o in e.overlapping.iter().take(DESCRIBED) {
             write!(
                 f,
-                "\n    {} and {}: {:.2} mm2 ({:.2} x {:.2} mm) at ({:.1}, {:.1}), {:.1} mm from the {} edge",
-                o.a, o.b, o.area, o.size.0, o.size.1, o.at.0, o.at.1, o.nearest.1, o.nearest.0
+                "\n    {} and {}: {} mm2 ({:.2} x {:.2} mm) at ({:.1}, {:.1}), {:.1} mm from the {} edge",
+                o.a,
+                o.b,
+                anneal::short(o.area),
+                o.size.0,
+                o.size.1,
+                o.at.0,
+                o.at.1,
+                o.nearest.1,
+                o.nearest.0
             )?;
         }
         if e.overlapping.len() > DESCRIBED {
@@ -850,6 +876,87 @@ fn apply_fixed(parts: &mut [Placed], options: &PlaceOptions) -> Vec<bool> {
         .collect()
 }
 
+/// Whether the height limits leave no room for the part on `face` (PROVISIONAL, ADR 0045
+/// section 11): its height is known, and the zones that rule it out there cover the face so
+/// that no place inside the outline's margin is left where its body (grown by the placer's
+/// margin) is clear of them, in either turn. A part with no stated height is never forbidden
+/// a face: nobody knows whether it needs one. Only a given size is judged (without one the
+/// board grows to hold what is asked of it).
+fn face_forbidden(part: &Placed, face: Side, options: &PlaceOptions) -> bool {
+    let (Some(height), Some(fit)) = (part.height, options.fit) else {
+        return false;
+    };
+    let blocked: Vec<Rect> = options
+        .height_zones
+        .iter()
+        .filter(|z| z.rules_out(height, face))
+        .map(|z| z.rect)
+        .collect();
+    if blocked.is_empty() {
+        return false;
+    }
+    let region = Rect::new(
+        Pt::new(ORIGIN.x + options.wall(), ORIGIN.y + options.wall()),
+        Pt::new(
+            ORIGIN.x + fit.0 - options.wall(),
+            ORIGIN.y + fit.1 - options.wall(),
+        ),
+    );
+    let margin = if part.footprint.body_is_courtyard {
+        0.0
+    } else {
+        anneal::HEIGHT_ZONE_MARGIN
+    };
+    let body = part.body();
+    let (w, h) = (body.width() + 2.0 * margin, body.height() + 2.0 * margin);
+    // A free box, if there is one, can be slid left and up until it rests on the region's
+    // edge or a zone's: so only those corners need trying.
+    let mut lefts = vec![region.min.x];
+    let mut tops = vec![region.min.y];
+    for z in &blocked {
+        lefts.push(z.max.x);
+        tops.push(z.max.y);
+    }
+    for (w, h) in [(w, h), (h, w)] {
+        for &x in &lefts {
+            for &y in &tops {
+                let at = Rect::new(Pt::new(x, y), Pt::new(x + w, y + h));
+                let inside = at.max.x <= region.max.x + 1e-9 && at.max.y <= region.max.y + 1e-9;
+                if inside
+                    && blocked.iter().all(|z| {
+                        at.max.x <= z.min.x + 1e-9
+                            || z.max.x <= at.min.x + 1e-9
+                            || at.max.y <= z.min.y + 1e-9
+                            || z.max.y <= at.min.y + 1e-9
+                    })
+                {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+/// Put a part that nobody placed on the face its height allows, when the height limits rule
+/// out the face it is on and not the other (B1, PROVISIONAL): the face split would otherwise
+/// leave a tall part under a lid that cannot hold it while the other face is free.
+fn keep_tall_parts_off_low_faces(parts: &mut [Placed], fixed: &[bool], options: &PlaceOptions) {
+    for (i, part) in parts.iter_mut().enumerate() {
+        if fixed[i] || options.sides.contains_key(&part.refdes) || is_through(part) {
+            continue;
+        }
+        let other = if part.side == Side::Back {
+            Side::Front
+        } else {
+            Side::Back
+        };
+        if face_forbidden(part, part.side, options) && !face_forbidden(part, other, options) {
+            part.side = other;
+        }
+    }
+}
+
 /// Set every part's position and return the board outline. The sides of `parts` are those
 /// the caller chose; with a size to fit, parts the caller did not place are moved between
 /// the faces if they do not fit it on the faces they have.
@@ -867,26 +974,37 @@ pub(crate) fn arrange_best(
     context: &Context,
 ) -> Result<Rect, DoesNotFit> {
     let fixed = apply_fixed(parts, options);
+    keep_tall_parts_off_low_faces(parts, &fixed, options);
     turn_to_fit(parts, &fixed, options);
     let mut arrangement = arrange_free(parts, &fixed, options);
     let Some(fit) = options.fit else {
-        return refine(parts, nets, options, context, &fixed, &arrangement, true);
+        return refine(
+            parts,
+            nets,
+            options,
+            context,
+            &fixed,
+            &arrangement,
+            true,
+            false,
+        );
     };
     let fits = |a: &Arrangement| a.needs.0 <= fit.0 + 1e-9 && a.needs.1 <= fit.1 + 1e-9;
     if fits(&arrangement) {
-        return refine(parts, nets, options, context, &fixed, &arrangement, true);
+        return refine(
+            parts,
+            nets,
+            options,
+            context,
+            &fixed,
+            &arrangement,
+            true,
+            false,
+        );
     }
     // The rows are too big. The annealer may still place the parts in the size, on the faces
     // they are on, unless their courtyards alone cannot fit the area of a face.
     let start = snapshot(parts);
-    let first = if could_fit(parts, fit, options) {
-        match refine(parts, nets, options, context, &fixed, &arrangement, false) {
-            Ok(outline) => return Ok(outline),
-            Err(e) => Some(e),
-        }
-    } else {
-        None
-    };
     // Share the parts that nobody placed between the faces, the largest first, each to the
     // face with the least area so far. Connectors, parts with holes and parts the layout
     // fixes stay as they are.
@@ -901,10 +1019,28 @@ pub(crate) fn arrange_best(
             && !is_through(p)
     };
     let mut movable: Vec<usize> = (0..parts.len()).filter(|&i| free(i, &parts[i])).collect();
+    // Where nothing can be shared, the first try is the only one there is, and it is tried
+    // again if it ends a hair short.
+    let first = if could_fit(parts, fit, options) {
+        match refine(
+            parts,
+            nets,
+            options,
+            context,
+            &fixed,
+            &arrangement,
+            false,
+            movable.is_empty(),
+        ) {
+            Ok(outline) => return Ok(outline),
+            Err(e) => Some(e),
+        }
+    } else {
+        None
+    };
     if movable.is_empty()
         && let Some(error) = first
     {
-        // Nothing to share: the first try was the only one there is.
         return Err(error);
     }
     restore(parts, start);
@@ -919,9 +1055,17 @@ pub(crate) fn arrange_best(
     }
     movable.sort_by(|&a, &b| area(&parts[b]).total_cmp(&area(&parts[a])));
     for i in movable {
-        let face = usize::from(load[1] < load[0]);
+        let mut face = usize::from(load[1] < load[0]);
+        // A face whose height limit leaves no room for the part is not its to take, when the
+        // other is (B1, PROVISIONAL).
+        let faces = [Side::Front, Side::Back];
+        if face_forbidden(&parts[i], faces[face], options)
+            && !face_forbidden(&parts[i], faces[1 - face], options)
+        {
+            face = 1 - face;
+        }
         load[face] += area(&parts[i]);
-        parts[i].side = if face == 0 { Side::Front } else { Side::Back };
+        parts[i].side = faces[face];
     }
     arrangement = arrange_free(parts, &fixed, options);
     let rows_fit = fits(&arrangement);
@@ -933,6 +1077,7 @@ pub(crate) fn arrange_best(
         &fixed,
         &arrangement,
         rows_fit,
+        true,
     )
 }
 
@@ -1170,6 +1315,166 @@ fn fixed_needs(parts: &[Placed], fixed: &[bool], options: &PlaceOptions) -> Opti
         .reduce(|a, b| (a.0.max(b.0), a.1.max(b.1)))
 }
 
+/// How many more tries a placement that ended a hair short is given. The placer had no retry
+/// of its own before (B5, PROVISIONAL), so this is a small fixed number.
+const RETRIES: u64 = 4;
+/// A run that ended with more offenders than this is not tried again: another seed does not
+/// turn a crowd of overlaps into a placement.
+const RETRY_WORTH: usize = 12;
+/// A part is large when its courtyard is at least this share of what one face holds inside
+/// the margin (B2, PROVISIONAL).
+const LARGE_SHARE: f64 = 0.10;
+
+/// A seed derived from `seed` for the `k`th try, the same on every machine.
+fn derived_seed(seed: u64, k: u64) -> u64 {
+    let mut z = seed.wrapping_add(k.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+/// The parts the annealer has trouble bringing inside, largest first: free parts whose
+/// courtyard is a tenth of a face or more.
+fn large_parts(
+    parts: &[Placed],
+    fixed: &[bool],
+    options: &PlaceOptions,
+    region: Rect,
+) -> Vec<usize> {
+    let face = (region.width() - 2.0 * options.wall()).max(0.0)
+        * (region.height() - 2.0 * options.wall()).max(0.0);
+    let area = |p: &Placed| p.courtyard().width() * p.courtyard().height();
+    let mut large: Vec<usize> = (0..parts.len())
+        .filter(|&i| {
+            !fixed[i]
+                && !options.overhang.contains_key(&parts[i].refdes)
+                && !is_connector(&parts[i].kind)
+                && area(&parts[i]) >= LARGE_SHARE * face
+        })
+        .collect();
+    large.sort_by(|&a, &b| area(&parts[b]).total_cmp(&area(&parts[a])).then(a.cmp(&b)));
+    large.truncate(3);
+    large
+}
+
+/// Put each large part in the corner of `region` where it clashes with nothing that stays
+/// (the parts already fixed, the parts put before it, the keepouts), turned as it is, with
+/// its reference text on the side toward the middle, and mark it fixed for the run. A part
+/// with no clear corner is left to the annealer. Deterministic: the corners are taken in
+/// the order top left, top right, bottom left, bottom right.
+fn put_large_in_corners(
+    parts: &mut [Placed],
+    frozen: &mut [bool],
+    large: &[usize],
+    options: &PlaceOptions,
+    region: Rect,
+) {
+    let wall = options.wall();
+    let inner = Rect::new(
+        Pt::new(region.min.x + wall, region.min.y + wall),
+        Pt::new(region.max.x - wall, region.max.y - wall),
+    );
+    let share = |a: &Rect, b: &Rect| {
+        (a.max.x.min(b.max.x) - a.min.x.max(b.min.x)).max(0.0)
+            * (a.max.y.min(b.max.y) - a.min.y.max(b.min.y)).max(0.0)
+    };
+    for &i in large {
+        parts[i].at = Pt::default();
+        let court = parts[i].courtyard();
+        let up = |v: f64| (v / 0.05 - 1e-9).ceil() * 0.05;
+        let down = |v: f64| (v / 0.05 + 1e-9).floor() * 0.05;
+        // (x, y, side of the reference text) of the origin at each corner.
+        let corners = [
+            (
+                up(inner.min.x - court.min.x),
+                up(inner.min.y - court.min.y),
+                ReferenceSide::Below,
+            ),
+            (
+                down(inner.max.x - court.max.x),
+                up(inner.min.y - court.min.y),
+                ReferenceSide::Below,
+            ),
+            (
+                up(inner.min.x - court.min.x),
+                down(inner.max.y - court.max.y),
+                ReferenceSide::Above,
+            ),
+            (
+                down(inner.max.x - court.max.x),
+                down(inner.max.y - court.max.y),
+                ReferenceSide::Above,
+            ),
+        ];
+        for (x, y, text) in corners {
+            let mut at = Pt::new(tidy(x), tidy(y));
+            if let Some(want) = options.wants.get(&parts[i].refdes) {
+                at = want.clamp(parts[i].rotation, at);
+            }
+            parts[i].at = at;
+            let room = parts[i].courtyard();
+            let clear = inner.contains(&room)
+                && options.keepouts.iter().all(|k| share(&room, k) < 1e-6)
+                && parts.iter().enumerate().all(|(j, q)| {
+                    j == i
+                        || !(frozen[j] || options.fixed.contains_key(&q.refdes))
+                        || (q.side != parts[i].side && !is_through(q) && !is_through(&parts[i]))
+                        || share(&room, &q.courtyard()) < 1e-6
+                });
+            if clear {
+                parts[i].reference_side = text;
+                frozen[i] = true;
+                break;
+            }
+            parts[i].at = Pt::default();
+        }
+    }
+}
+
+/// Try a placement that ended a hair short again, up to [`RETRIES`] times: from the rows,
+/// with the largest parts put in corners first (B2) and a seed derived from the given one
+/// (B5), keeping the run that missed by least. Returns it and the number of runs made,
+/// the first included. The same input gives the same result: nothing here reads a clock or a
+/// random source.
+fn retry(
+    parts: &mut [Placed],
+    problem: &Problem,
+    rows_at: &[(Pt, f64, ReferenceSide)],
+    first: Outcome,
+    options: &PlaceOptions,
+) -> (Outcome, usize) {
+    let mut best_poses = snapshot(parts);
+    let mut best = first;
+    let large = large_parts(parts, problem.fixed, options, problem.region);
+    let mut tries = 1;
+    for k in 1..=RETRIES {
+        restore(parts, rows_at.to_vec());
+        let mut frozen = problem.fixed.to_vec();
+        put_large_in_corners(parts, &mut frozen, &large, options, problem.region);
+        let seed = if k == 1 && !large.is_empty() {
+            problem.seed
+        } else {
+            derived_seed(problem.seed, k)
+        };
+        let attempt = Problem {
+            fixed: &frozen,
+            seed,
+            ..*problem
+        };
+        let outcome = anneal::anneal(parts, &attempt, 1.0);
+        tries += 1;
+        if outcome.feasible {
+            return (outcome, tries);
+        }
+        if outcome.ended.badness() < best.ended.badness() {
+            best = outcome;
+            best_poses = snapshot(parts);
+        }
+    }
+    restore(parts, best_poses);
+    (best, tries)
+}
+
 /// Anneal the parts that are not fixed inside the outline the rows made, and fit the
 /// outline to the result if the board was not given a size. Falls back to the rows if the
 /// annealer cannot place every part clear of the others and the rows fit; if they do not
@@ -1183,6 +1488,7 @@ fn refine(
     fixed: &[bool],
     rows: &Arrangement,
     rows_fit: bool,
+    retries: bool,
 ) -> Result<Rect, DoesNotFit> {
     let rows_at = snapshot(parts);
     let mut region = rows.outline;
@@ -1239,7 +1545,20 @@ fn refine(
         outline: region,
         zones: &options.height_zones,
     };
-    let outcome = anneal::anneal(parts, &problem, 1.0);
+    let mut outcome = anneal::anneal(parts, &problem, 1.0);
+    let mut tries = 1;
+    // A run that ends a hair short is tried again (B2 and B5, PROVISIONAL), only where the
+    // answer would be a refusal and the courtyards could fit.
+    if !outcome.feasible
+        && retries
+        && !rows_fit
+        && options
+            .fit
+            .is_some_and(|fit| could_fit(parts, fit, options))
+        && outcome.ended.names().len() <= RETRY_WORTH
+    {
+        (outcome, tries) = retry(parts, &problem, &rows_at, outcome, options);
+    }
     if !outcome.feasible {
         if let (Some(fit), false) = (options.fit, rows_fit) {
             let room = inside(fit, options);
@@ -1259,6 +1578,7 @@ fn refine(
                 area: (area, 2.0 * room.0 * room.1),
                 parts: part_states(parts, fixed, &outcome.ended),
                 ended: Some(Box::new(outcome.ended)),
+                tries,
             });
         }
         restore(parts, rows_at);
