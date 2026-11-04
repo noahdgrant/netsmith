@@ -60,6 +60,7 @@ pub enum Shape {
     RoundRect,
     Rect,
     Oval,
+    Circle,
 }
 
 /// What a pad is made of.
@@ -208,6 +209,7 @@ impl Drawing {
             Shape::RoundRect => "roundrect",
             Shape::Rect => "rect",
             Shape::Oval => "oval",
+            Shape::Circle => "circle",
         };
         let _ = write!(
             self.body,

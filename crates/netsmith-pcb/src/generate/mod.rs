@@ -8,6 +8,7 @@
 //! Every generated footprint is checked against KiCad's own of the same name by a test
 //! (`tests/generated_vs_kicad.rs`) when KiCad's libraries are installed.
 
+mod bga;
 mod chip;
 mod crystal;
 mod diode;
@@ -17,6 +18,7 @@ mod header;
 pub mod ipc;
 mod outline;
 mod qfn;
+mod qfn_rows;
 mod qfp;
 mod sot;
 mod tab;
@@ -37,6 +39,7 @@ pub fn generate(id: &str) -> Option<Footprint> {
         .or_else(|| qfp::generate(library, name))
         .or_else(|| header::generate(library, name))
         .or_else(|| crystal::generate(library, name))
+        .or_else(|| bga::generate(library, name))
 }
 
 /// Every `Library:Name` that [`generate`] answers, in a fixed order.
@@ -52,6 +55,7 @@ pub fn names() -> &'static [String] {
         all.extend(qfp::names());
         all.extend(header::names());
         all.extend(crystal::names());
+        all.extend(bga::names());
         all.sort();
         all.dedup();
         all
@@ -101,6 +105,8 @@ mod tests {
             // A QFP of a maker's own drawing, which is not the MS-026 pattern.
             "Package_QFP:LQFP-64_10x10mm_P0.5mm",
             "Package_QFP:TQFP-47_7x7mm_P0.5mm",
+            // Wolfspeed's pad numbering (the tab is pin 1), not the Infineon pattern.
+            "Package_TO_SOT_SMD:TO-263-2_TabPin1",
             "Connector_PinHeader_2.54mm:PinHeader_1x2_P2.54mm_Vertical",
             "Connector_PinHeader_2.54mm:PinHeader_1x41_P2.54mm_Vertical",
             "Connector_PinHeader_2.54mm:PinHeader_3x02_P2.54mm_Vertical",
@@ -253,6 +259,17 @@ mod tests {
     }
 
     #[test]
+    fn a_row_whose_name_does_not_say_its_library_is_found_only_in_that_library() {
+        let id = "Package_CSP:LFCSP-16-1EP_3x3mm_P0.5mm_EP1.7x1.7mm";
+        let fp = generate(id).unwrap();
+        assert_eq!(fp.pads.len(), 16 + 1 + 4);
+        assert!(names().iter().any(|n| n == id));
+        assert!(generate("Package_DFN_QFN:LFCSP-16-1EP_3x3mm_P0.5mm_EP1.7x1.7mm").is_none());
+        // A maker's part named by its drawing, in the library its start does not say.
+        assert!(generate("Package_SON:Texas_X2SON-4_1x1mm_P0.65mm").is_none());
+    }
+
+    #[test]
     fn a_dfn_has_pads_on_two_edges_only() {
         let fp = generate("Package_DFN_QFN:DFN-8-1EP_3x2mm_P0.5mm_EP1.7x1.6mm").unwrap();
         let leads: Vec<_> = fp
@@ -314,6 +331,47 @@ mod tests {
     }
 
     #[test]
+    fn a_qfp_with_an_exposed_pad_has_it_numbered_after_the_leads_with_its_paste_in_a_grid() {
+        let fp = generate("Package_QFP:LQFP-48-1EP_7x7mm_P0.5mm_EP3.6x3.6mm").unwrap();
+        // 48 leads, the pad, and nine paste openings of 0.97 mm.
+        assert_eq!(fp.pads.len(), 48 + 1 + 9);
+        let ep = fp.pads_numbered("49").next().unwrap();
+        assert!(near(ep.width, 3.6) && near(ep.height, 3.6));
+        let paste: Vec<_> = fp.pads.iter().filter(|p| p.number.is_empty()).collect();
+        assert!(
+            paste
+                .iter()
+                .all(|p| near(p.width, 0.97) && near(p.height, 0.97))
+        );
+        // The leads are those of the plain package of the same name.
+        let plain = generate("Package_QFP:LQFP-48_7x7mm_P0.5mm").unwrap();
+        assert_eq!(fp.pads[0], plain.pads[0]);
+        assert_eq!(fp.courtyard, plain.courtyard);
+    }
+
+    #[test]
+    fn a_bga_has_circular_pads_on_the_grid_lettered_from_the_top_left_without_i_o_q_s_x_z() {
+        let fp = generate("Package_BGA:BGA-144_13.0x13.0mm_Layout12x12_P1.0mm").unwrap();
+        assert_eq!(fp.pads.len(), 144);
+        let at = |n: &str| fp.pads_numbered(n).next().unwrap().at;
+        assert!(near(at("A1").x, -5.5) && near(at("A1").y, -5.5));
+        // Row letters: A B C D E F G H J K L M; the twelfth row is M.
+        assert!(near(at("M12").x, 5.5) && near(at("M12").y, 5.5));
+        assert!(fp.pads_numbered("I1").next().is_none());
+        assert_eq!(fp.pads[0].shape, PadShape::Circle);
+        assert!(near(fp.pads[0].width, 0.5));
+        assert_eq!(
+            fp.courtyard,
+            Rect::new(Pt::new(-7.5, -7.5), Pt::new(7.5, 7.5))
+        );
+        // After Y the rows continue AA, AB, ...
+        let big = generate("Package_BGA:BGA-1156_35.0x35.0mm_Layout34x34_P1.0mm").unwrap();
+        assert!(big.pads_numbered("AA1").next().is_some());
+        assert!(big.pads_numbered("AN34").next().is_some());
+        assert!(big.pads_numbered("AO1").next().is_none());
+    }
+
+    #[test]
     fn a_dpak_has_its_tab_as_one_pad_with_four_paste_openings_of_the_same_number() {
         let fp = generate("Package_TO_SOT_SMD:TO-252-3_TabPin2").unwrap();
         // Three leads, and the tab: pad 2 is the middle lead and the tab, which is a copper
@@ -351,6 +409,31 @@ mod tests {
         let mut four = four_pin.pad_numbers();
         four.sort();
         assert_eq!(four, ["1", "2", "3", "4", "5"]);
+    }
+
+    #[test]
+    fn a_d2pak_has_the_dpak_structure_on_the_pg_to263_pads() {
+        let fp = generate("Package_TO_SOT_SMD:TO-263-5_TabPin3").unwrap();
+        // Five leads, the third sharing its number with the tab (copper, and four paste
+        // openings of the same number).
+        assert_eq!(fp.pads_numbered("3").count(), 1 + 1 + 4);
+        let tab = fp
+            .pads_numbered("3")
+            .find(|p| p.layers == ["F.Cu", "F.Mask"] && p.width > 5.0)
+            .unwrap();
+        assert!(near(tab.at.x, 1.5) && near(tab.width, 9.4) && near(tab.height, 10.8));
+        let lead = fp.pads_numbered("1").next().unwrap();
+        assert!(near(lead.at.x, -7.65) && near(lead.at.y, -3.4));
+        assert!(near(lead.width, 4.6) && near(lead.height, 1.1));
+        assert_eq!(
+            fp.courtyard,
+            Rect::new(Pt::new(-10.2, -5.65), Pt::new(6.45, 5.65))
+        );
+        // The nine-pin parts' stencil openings are not pads: no number, no copper.
+        let nine = generate("Package_TO_SOT_SMD:TO-263-9_TabPin10").unwrap();
+        let openings: Vec<_> = nine.pads.iter().filter(|p| p.number.is_empty()).collect();
+        assert_eq!(openings.len(), 4);
+        assert!(openings.iter().all(|p| p.layers == ["F.Paste"]));
     }
 
     #[test]

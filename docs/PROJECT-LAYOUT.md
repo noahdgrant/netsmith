@@ -132,7 +132,7 @@ An order may name the panel; its quantity counts panels:
 LedPanel = 3        # three panels: 18 boards if the panel holds six
 ```
 
-`order.txt` says so and `order-bom.csv` multiplies the panel's parts by 3. Only identical boards on a V-cut grid are built (P0): the cell board is defined in the file of its panel, and mixed boards, routed tabs and mouse bites are on the roadmap.
+`order.txt` says so and `order-bom.csv` multiplies the panel's parts by 3. Only identical boards on a V-cut grid are built (P0): the cell board is defined in the file of its panel, and mixed boards, routed tabs and mouse bites are open (issue #62).
 
 ## What is not in a repo
 

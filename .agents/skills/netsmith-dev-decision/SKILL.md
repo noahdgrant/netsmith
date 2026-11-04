@@ -9,7 +9,7 @@ Entry point: `AGENTS.md`. Read `docs/adr/*` and `GLOSSARY.md` before you write e
 
 ## Who decides
 
-The language is the user's. These are language-design choices: syntax, what a construct means, what an error rule refuses, what a std definition exposes, new keywords, anything the README lists under design rules.
+The language is the user's. These are language-design choices: syntax, what a construct means, what an error rule refuses, what a std definition exposes, new keywords, anything `docs/DESIGN-RULES.md` lists.
 
 1. State the question in one sentence.
 2. Give two or three options. For each, show a three-line example and its cost.
@@ -18,7 +18,7 @@ The language is the user's. These are language-design choices: syntax, what a co
 
 Implementation details are yours: data structures, module layout, algorithms, test design, error wording. Decide them and move on.
 
-Check any choice against the rules in `README.md`: one correct way, statement order never matters, libraries state only what is always true, a module is configured through its interface, only a board names nets, a part number needs a source.
+Check any choice against the rules in `docs/DESIGN-RULES.md`: one correct way, statement order never matters, libraries state only what is always true, a module is configured through its interface, only a board names nets, a part number needs a source.
 
 ## When to write an ADR
 
@@ -37,6 +37,6 @@ File `docs/adr/NNNN-short-kebab-title.md`, numbered after the highest one in the
 
 - `GLOSSARY.md`: add each new term with a one-line definition and an `_Avoid_:` line. Use these terms in code, messages and docs.
 - `docs/LANGUAGE.md`: update the construct's section and its tested examples (`netsmith-dev-extend-language`).
-- `README.md`: design rules and Known limits. `docs/ROADMAP.md`: done and open items.
-- Nothing is left as a known bug. If it cannot be fixed now, record it as a limit in the README and the roadmap.
+- `docs/DESIGN-RULES.md`: the design rules.
+- Nothing is left as a known bug. If it cannot be fixed now, open a GitHub issue for it.
 - Notes live in the repository, not in memory.

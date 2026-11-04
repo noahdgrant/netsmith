@@ -191,7 +191,7 @@ x_offset = "12.7mm +/- 0.1mm"
 - **Pros.** No language change. The editor already reads and writes TOML. A tool other than netsmith can generate the file from a CAD export.
 - **Cons.** ADR 0045 gave the reasons, and they still hold: no expressions (`.outline.height / 2`), no link to other members, a second expression language for tolerances, and two TOML files side by side that mean different things (one solution, one requirement). A person who edits the wrong one changes the meaning. Errors lose their line numbers into a language the checker understands. Agents write a second syntax.
 - **Editor.** Easiest to build. Poorest at showing a requirement beside the circuit it constrains.
-- **Agents.** Two syntaxes to know. The weakest fit with "the language's design rules" in `README.md`.
+- **Agents.** Two syntaxes to know. The weakest fit with "the language's design rules" in `docs/DESIGN-RULES.md`.
 
 ### An orthogonal question: the enclosure as a definition
 

@@ -1,9 +1,9 @@
-//! Packages with a large tab: DPAK (TO-252) and SOT-89.
+//! Packages with a large tab: DPAK (TO-252), D2PAK (TO-263) and SOT-89.
 //!
 //! The tab is the heat path and often a pin, and its pad is not a function of the lead
 //! dimensions, so the pads here are the ones the manufacturers' drawings recommend, as
-//! KiCad's library gives them (the same basis as SOT-223, ADR 0043): DPAK from Infineon's
-//! PG-TO252 drawings, SOT-89-3 from Microchip's 3L SOT-89 drawing and SOT-89-5 from Ricoh's.
+//! KiCad's library gives them (the same basis as SOT-223, ADR 0043): DPAK and D2PAK from
+//! Infineon's PG-TO252 and PG-TO263 drawings, SOT-89-3 from Microchip's 3L SOT-89 drawing and SOT-89-5 from Ricoh's.
 //! The numbers are facts about those footprints, recorded in the tables below.
 
 use super::draw::{Draw, Drawing, Kind, PadSpec, Shape};
@@ -16,13 +16,65 @@ const LIBRARY: &str = "Package_TO_SOT_SMD";
 /// The courtyard's distance from the copper and the body, in mm.
 const COURTYARD: f64 = 0.25;
 
-/// A DPAK variant: the leads in a column at the left as (number, y), the number of the
-/// tab, and the height of a lead's pad.
+/// The land pattern shared by the variants of one tab package (DPAK, D2PAK): where the
+/// leads' pads are, the tab's pad and the four paste openings on it, and the body.
+struct TabPackage {
+    description: &'static str,
+    tags: &'static str,
+    /// Centre of the leads' pads, and their length.
+    lead_x: f64,
+    lead_length: f64,
+    /// The tab pad in copper and mask: centre and size.
+    tab: (f64, f64, f64, f64),
+    /// Four openings of the paste on the tab: x of the two columns, y of the two rows, size.
+    paste_x: [f64; 2],
+    paste_y: f64,
+    paste: (f64, f64),
+    /// The body: along the leads, across, and how far the tab's stub is drawn in from the
+    /// body's edges.
+    body: (f64, f64),
+    stub_inset: f64,
+}
+
+/// DPAK (PG-TO252).
+const TO252: TabPackage = TabPackage {
+    description: "TO-252/DPAK SMD package (Infineon PG-TO252)",
+    tags: "TO-252 DPAK TO_SOT_SMD",
+    lead_x: -5.04,
+    lead_length: 2.2,
+    tab: (1.26, 0.0, 6.4, 5.8),
+    paste_x: [-0.415, 2.935],
+    paste_y: 1.525,
+    paste: (3.05, 2.75),
+    body: (6.22, 6.5),
+    stub_inset: 0.55,
+};
+
+/// D2PAK (PG-TO263): the body is 9.25 mm along the leads and 10 mm across.
+const TO263: TabPackage = TabPackage {
+    description: "TO-263/D2PAK/DDPAK SMD package (Infineon PG-TO263)",
+    tags: "TO-263 D2PAK DDPAK TO_SOT_SMD",
+    lead_x: -7.65,
+    lead_length: 4.6,
+    tab: (1.5, 0.0, 9.4, 10.8),
+    paste_x: [-0.925, 3.925],
+    paste_y: 2.775,
+    paste: (4.55, 5.25),
+    body: (9.25, 10.0),
+    stub_inset: 0.0,
+};
+
+/// A variant of a tab package: the leads in a column at the left as (number, y), the
+/// number of the tab, and the height of a lead's pad.
 struct Dpak {
     name: &'static str,
+    package: &'static TabPackage,
     leads: &'static [(&'static str, f64)],
     tab: &'static str,
     lead_height: f64,
+    /// Whether the four paste openings are copper pads of the tab's number (KiCad's DPAK
+    /// and most D2PAKs) or stencil openings that are not pads (its nine-pin D2PAKs).
+    paste_numbered: bool,
 }
 
 const THREE: [(&str, f64); 3] = [("1", -2.28), ("2", 0.0), ("3", 2.28)];
@@ -34,56 +86,100 @@ const FIVE: [(&str, f64); 5] = [
     ("5", 2.28),
 ];
 
-const DPAK: &[Dpak] = &[
-    Dpak {
-        name: "TO-252-2",
-        leads: &[("1", -2.28), ("3", 2.28)],
-        tab: "2",
-        lead_height: 1.2,
-    },
-    Dpak {
-        name: "TO-252-3_TabPin2",
-        leads: &THREE,
-        tab: "2",
-        lead_height: 1.2,
-    },
-    Dpak {
-        name: "TO-252-3_TabPin4",
-        leads: &THREE,
-        tab: "4",
-        lead_height: 1.2,
-    },
-    Dpak {
-        name: "TO-252-4",
-        leads: &[("1", -2.28), ("2", -1.14), ("4", 1.14), ("5", 2.28)],
-        tab: "3",
-        lead_height: 0.8,
-    },
-    Dpak {
-        name: "TO-252-5_TabPin3",
-        leads: &FIVE,
-        tab: "3",
-        lead_height: 0.8,
-    },
-    Dpak {
-        name: "TO-252-5_TabPin6",
-        leads: &FIVE,
-        tab: "6",
-        lead_height: 0.8,
-    },
+const D2_THREE: [(&str, f64); 3] = [("1", -2.54), ("2", 0.0), ("3", 2.54)];
+const D2_FIVE: [(&str, f64); 5] = [("1", -3.4), ("2", -1.7), ("3", 0.0), ("4", 1.7), ("5", 3.4)];
+const D2_SEVEN: [(&str, f64); 7] = [
+    ("1", -3.81),
+    ("2", -2.54),
+    ("3", -1.27),
+    ("4", 0.0),
+    ("5", 1.27),
+    ("6", 2.54),
+    ("7", 3.81),
+];
+const D2_SIX: [(&str, f64); 6] = [
+    ("1", -3.81),
+    ("2", -2.54),
+    ("3", -1.27),
+    ("5", 1.27),
+    ("6", 2.54),
+    ("7", 3.81),
+];
+const D2_NINE: [(&str, f64); 9] = [
+    ("1", -3.88),
+    ("2", -2.91),
+    ("3", -1.94),
+    ("4", -0.97),
+    ("5", 0.0),
+    ("6", 0.97),
+    ("7", 1.94),
+    ("8", 2.91),
+    ("9", 3.88),
 ];
 
-/// Centre of the leads' pads, their length, and where the pads of the tab are (PG-TO252).
-const DPAK_LEAD_X: f64 = -5.04;
-const DPAK_LEAD_LENGTH: f64 = 2.2;
-/// The tab pad in copper and mask: centre and size.
-const DPAK_TAB: (f64, f64, f64, f64) = (1.26, 0.0, 6.4, 5.8);
-/// Four openings of the paste on the tab: x of the two columns, y of the two rows, size.
-const DPAK_PASTE_X: [f64; 2] = [-0.415, 2.935];
-const DPAK_PASTE_Y: f64 = 1.525;
-const DPAK_PASTE: (f64, f64) = (3.05, 2.75);
-/// The body: 6.22 mm along the leads, 6.5 mm across, with the tab's stub 1 mm beyond it.
-const DPAK_BODY: (f64, f64) = (6.22, 6.5);
+const fn to252(
+    name: &'static str,
+    leads: &'static [(&'static str, f64)],
+    tab: &'static str,
+    lead_height: f64,
+) -> Dpak {
+    Dpak {
+        name,
+        package: &TO252,
+        leads,
+        tab,
+        lead_height,
+        paste_numbered: true,
+    }
+}
+
+const fn to263(
+    name: &'static str,
+    leads: &'static [(&'static str, f64)],
+    tab: &'static str,
+    lead_height: f64,
+    paste_numbered: bool,
+) -> Dpak {
+    Dpak {
+        name,
+        package: &TO263,
+        leads,
+        tab,
+        lead_height,
+        paste_numbered,
+    }
+}
+
+const DPAK: &[Dpak] = &[
+    to252("TO-252-2", &[("1", -2.28), ("3", 2.28)], "2", 1.2),
+    to252("TO-252-3_TabPin2", &THREE, "2", 1.2),
+    to252("TO-252-3_TabPin4", &THREE, "4", 1.2),
+    to252(
+        "TO-252-4",
+        &[("1", -2.28), ("2", -1.14), ("4", 1.14), ("5", 2.28)],
+        "3",
+        0.8,
+    ),
+    to252("TO-252-5_TabPin3", &FIVE, "3", 0.8),
+    to252("TO-252-5_TabPin6", &FIVE, "6", 0.8),
+    to263("TO-263-2", &[("1", -2.54), ("3", 2.54)], "2", 1.1, true),
+    to263("TO-263-3_TabPin2", &D2_THREE, "2", 1.1, true),
+    to263("TO-263-3_TabPin4", &D2_THREE, "4", 1.1, true),
+    to263(
+        "TO-263-4",
+        &[("1", -3.4), ("2", -1.7), ("4", 1.7), ("5", 3.4)],
+        "3",
+        1.1,
+        true,
+    ),
+    to263("TO-263-5_TabPin3", &D2_FIVE, "3", 1.1, true),
+    to263("TO-263-5_TabPin6", &D2_FIVE, "6", 1.1, true),
+    to263("TO-263-6", &D2_SIX, "4", 0.8, true),
+    to263("TO-263-7_TabPin4", &D2_SEVEN, "4", 0.8, true),
+    to263("TO-263-7_TabPin8", &D2_SEVEN, "8", 0.8, true),
+    to263("TO-263-9_TabPin10", &D2_NINE, "10", 0.61, false),
+    to263("TO-263-9_TabPin5", &D2_NINE, "5", 0.61, false),
+];
 
 /// A SOT-89 variant.
 struct Sot89 {
@@ -215,19 +311,20 @@ pub fn generate(library: &str, name: &str) -> Option<Footprint> {
 }
 
 fn dpak(d: &Dpak) -> Footprint {
+    let pkg = d.package;
     let mut drawing = Drawing::new(LIBRARY, d.name, Mount::Smd);
     drawing.describe(
-        "TO-252/DPAK SMD package (Infineon PG-TO252), recorded pads, generated by netsmith",
-        "TO-252 DPAK TO_SOT_SMD",
+        &format!("{}, recorded pads, generated by netsmith", pkg.description),
+        pkg.tags,
     );
     for &(number, y) in d.leads {
         drawing.pad(&PadSpec::smd(
             number,
-            Pt::new(DPAK_LEAD_X, y),
-            (DPAK_LEAD_LENGTH, d.lead_height),
+            Pt::new(pkg.lead_x, y),
+            (pkg.lead_length, d.lead_height),
         ));
     }
-    let (tx, ty, tw, th) = DPAK_TAB;
+    let (tx, ty, tw, th) = pkg.tab;
     drawing.pad(&PadSpec::new(
         d.tab,
         Kind::SmdNoPaste,
@@ -235,37 +332,44 @@ fn dpak(d: &Dpak) -> Footprint {
         Pt::new(tx, ty),
         (tw, th),
     ));
-    for x in DPAK_PASTE_X {
-        for y in [-DPAK_PASTE_Y, DPAK_PASTE_Y] {
+    let (paste_number, paste_kind) = if d.paste_numbered {
+        (d.tab, Kind::CopperPaste)
+    } else {
+        ("", Kind::PasteOnly)
+    };
+    for x in pkg.paste_x {
+        for y in [-pkg.paste_y, pkg.paste_y] {
             drawing.pad(&PadSpec::new(
-                d.tab,
-                Kind::CopperPaste,
+                paste_number,
+                paste_kind,
                 Shape::RoundRect,
                 Pt::new(x, y),
-                DPAK_PASTE,
+                pkg.paste,
             ));
         }
     }
 
-    let left = DPAK_LEAD_X - DPAK_LEAD_LENGTH / 2.0;
+    let left = pkg.lead_x - pkg.lead_length / 2.0;
     let right = tx + tw / 2.0;
-    let (hx, hy) = (DPAK_BODY.0 / 2.0, DPAK_BODY.1 / 2.0);
-    let court_y = hy + COURTYARD;
+    let (hx, hy) = (pkg.body.0 / 2.0, pkg.body.1 / 2.0);
+    // The courtyard clears the body and the tab, whichever reaches further across.
+    let court_y = hy.max(th / 2.0) + COURTYARD;
     drawing.courtyard(
         Pt::new(left - COURTYARD, -court_y),
         Pt::new(right + COURTYARD, court_y),
     );
 
     // The body with the corner by pin 1 cut off, the tab's stub on the right.
+    let inset = pkg.stub_inset;
     drawing.polygon(
         Draw::Fab,
         &[
             Pt::new(-hx + 1.0, -hy),
             Pt::new(hx, -hy),
-            Pt::new(hx, -hy + 0.55),
-            Pt::new(hx + 1.0, -hy + 0.55),
-            Pt::new(hx + 1.0, hy - 0.55),
-            Pt::new(hx, hy - 0.55),
+            Pt::new(hx, -hy + inset),
+            Pt::new(hx + 1.0, -hy + inset),
+            Pt::new(hx + 1.0, hy - inset),
+            Pt::new(hx, hy - inset),
             Pt::new(hx, hy),
             Pt::new(-hx, hy),
             Pt::new(-hx, -hy + 1.0),
@@ -273,15 +377,26 @@ fn dpak(d: &Dpak) -> Footprint {
         false,
     );
     drawing.fab_reference(1.0);
+    // The silkscreen along the body stops short of the tab's copper where the body is
+    // not wider than the tab.
     let silk_y = hy + 0.2;
+    let silk_to = if silk_y < th / 2.0 + SILK_TO_COPPER {
+        tx - tw / 2.0 - SILK_TO_COPPER
+    } else {
+        hx
+    };
     drawing.line(
         Draw::Silk,
         Pt::new(-hx - 0.2, -silk_y),
-        Pt::new(hx, -silk_y),
+        Pt::new(silk_to, -silk_y),
     );
-    drawing.line(Draw::Silk, Pt::new(-hx - 0.2, silk_y), Pt::new(hx, silk_y));
+    drawing.line(
+        Draw::Silk,
+        Pt::new(-hx - 0.2, silk_y),
+        Pt::new(silk_to, silk_y),
+    );
     let first = d.leads[0].1 - d.lead_height / 2.0 - SILK_TO_COPPER;
-    marker(&mut drawing, Pt::new(DPAK_LEAD_X, first));
+    marker(&mut drawing, Pt::new(pkg.lead_x, first));
     drawing.finish(-(court_y + 0.7), court_y + 0.7)
 }
 
