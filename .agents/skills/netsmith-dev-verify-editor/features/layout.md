@@ -2,17 +2,17 @@
 
 ## How to get to it
 
-The strip of seven sections under the top bar: Schematic, Power tree, System, BOM, PCB, Build, Source (the keys 1 to 7, plain when the focus is not in a text field, Alt+1 to Alt+7 or Ctrl+1 to Ctrl+7 anywhere). One section fills the window; the status bar is in all of them. The top bar has the board selector and, on the right, apart from the sections, the two actions "Write KiCad files" and "Make fab files".
+The strip of seven sections under the top bar: Source, Schematic, Power tree, System, BOM, PCB, Build (the keys 1 to 7, plain when the focus is not in a text field, Alt+1 to Alt+7 or Ctrl+1 to Ctrl+7 anywhere). One section fills the window; the status bar is in all of them. The top bar has the board selector and, on the right, apart from the sections, the two actions "Write KiCad files" and "Make fab files".
 
 A window 1400 px wide or more can be split in two panes, each with its own strip: "Split right" at the end of the strip, Ctrl+\ (again to close it), a right click on a tab ("Split: open on the right/left", or in two panes "Show in the left/right pane"), or a drag of a tab onto the left or right half of the window (a highlighted zone shows where it lands; Escape cancels). A tab dragged or chosen into the other pane moves there: the same section is never in both panes, the two swap. The divider between the panes is dragged (each pane keeps at least 380 px), moved with the arrow keys when focused, and a double click makes the panes equal. "Close pane" on the second pane returns to one. A click-through to the source (a part, a load line, a problem) opens Source in the other pane of a split, or replaces the section of the only pane; "Back to ..." in the source's file tabs (or Escape, Alt+Left, the browser's Back) puts it back.
 
-The layout (the sections, the divider, the pane in focus) and the board and the sheet of each board are kept in localStorage. In a window narrower than 1400 px a saved split is not shown (one pane, the one in focus) and is restored when the window is wide enough again; the "Split right" tooltip says so.
+The window opens on the Schematic, or on the sections last used (the saved layout; Source being first in the strip does not change that). The layout (the sections, the divider, the pane in focus) and the board and the sheet of each board are kept in localStorage. In a window narrower than 1400 px a saved split is not shown (one pane, the one in focus) and is restored when the window is wide enough again; the "Split right" tooltip says so.
 
 ## Driving it
 
 `scripts/editor-verify drive sections split overview`
 
-- `sections`: each key opens its section, which fills the width at 1366 x 768 and 2000 x 1000 with no scrollbar on the page (look at the screenshots, `sections-*`); a plain digit typed into the tree filter stays text; Alt+1 works there; the section is kept across a reload.
+- `sections`: each key opens its section, which fills the width at 1366 x 768 and 2000 x 1000 with no scrollbar on the page (look at the screenshots, `sections-*`); a plain digit typed into the tree filter stays text; Alt+2 works there; the section is kept across a reload.
 - `split`: the button, the divider (drag, minimum, arrow key, double click), a tab dragged onto a half of the window (screenshots `dragging-a-tab` and `drop-zone`), the menu, Ctrl+\, a reload, closing the pane and the narrow window.
 - A click-through and Back are in `schematic` (Escape) and `power` (a load line opens the source).
 

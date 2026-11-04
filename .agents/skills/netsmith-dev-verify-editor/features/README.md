@@ -24,7 +24,7 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | Orders (list, run, summary, downloads) | `build-panel.md` | `order` | `two_boards` |
 | Problems: errors, warnings, notes | `source-editor.md` | `editor`, `big-problems` | `two_boards`, `big` |
 
-`overview`: `drive overview` opens the page and expects the seven section tabs in a row, a schematic (`.schematic`), the actions in the top bar and the error and warning counts in the status bar, then opens the Source section with key 7. Look at the screenshot for the overall layout.
+`overview`: `drive overview` opens the page and expects the seven section tabs in a row (Source first), a schematic (`.schematic`), the actions in the top bar and the error and warning counts in the status bar, then opens the Source section with key 1. Look at the screenshot for the overall layout.
 
 A section other than the shown one is hidden (`.section.away`, `visibility: hidden`) and the source is always in the page, so a recipe opens a section first: the driver gives it `section('source')` (one of `schematic`, `power`, `system`, `bom`, `pcb`, `build`, `source`), which clicks the tab in the first pane and waits for it. Scope a locator that two sections share (`.graph-host`, `.zoombar`) to its section (`.sec-power .graph-host`).
 

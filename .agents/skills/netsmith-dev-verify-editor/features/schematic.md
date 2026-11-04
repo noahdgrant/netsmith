@@ -2,7 +2,7 @@
 
 ## How to get to it
 
-The section "Schematic" (the first, key 1). The board shown is the one in the selector at the top. A strip of sheets is above the drawing: Previous and Next, a tab for "All sheets" and one for each sheet (a module instance, or the board's own circuit), and "Details", which shows or hides the inspector (the selection, the Modules list, the parts list) on the right; it is open by default only when the view is 1500 px wide or more.
+The section "Schematic" (the second, key 2; Source is the first). The board shown is the one in the selector at the top. A strip of sheets is above the drawing: Previous and Next, a tab for "All sheets" and one for each sheet (a module instance, or the board's own circuit), and "Details", which shows or hides the inspector (the selection, the Modules list, the parts list) on the right; it is open by default only when the view is 1500 px wide or more.
 
 ## Driving it
 
