@@ -5,7 +5,8 @@
   </picture>
 </h1>
 
-Circuits as code, in Rust. A board is a set of parts and the nets that join their pins,
+A language and tools for designing electronics as code: schematics, solvers, checks and PCB fabrication outputs.
+A board is a set of parts and the nets that join their pins,
 written as text. netsmith checks it, picks real parts that work in the worst case, and
 exports files for CAD tools and for a board house. It writes a KiCad 9 schematic, and a placed
 and routed PCB with a Gerber package for JLCPCB, on two layers or on four with ground and

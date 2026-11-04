@@ -38,7 +38,7 @@ on GitHub's light canvas `#f6f8fa`). Text is `#d6d9de` on dark and `#1c1d20` on 
 | `logo-mark-light.svg`, `logo-light.svg` | light backgrounds | `#d4691a` | `#1c1d20` |
 | `logo.svg` | follows the reader's `prefers-color-scheme` (dark when there is none) | `#e8873a`, `#d4691a` in light | `#d6d9de`, `#1c1d20` in light |
 | `logo-mono-black.svg`, `logo-mono-white.svg` | one colour | black, white | the same |
-| `social-preview.png` | dark by design | `#e8873a` | `#d6d9de`, tagline `#9aa1ab` |
+| `social-preview.png` | dark by design | `#e8873a` | `#d6d9de` |
 | favicon (`crates/netsmith-editor/web/src/assets/favicon.svg`) | follows `prefers-color-scheme` (dark when there is none) | `#e8873a`, `#d4691a` in light | none |
 | `favicon-32.png`, `apple-touch-icon.png` (same folder) | dark accent | `#e8873a` | none |
 
@@ -49,7 +49,7 @@ The README shows `logo-dark.svg` and `logo-light.svg` through a `<picture>`.
   a `#151618` background.
 - `social-preview.png` is 1280 x 640, GitHub's size for a repository social preview. It is set by hand
   in the repository's settings (Settings, General, Social preview); the file does nothing until then.
-  It is rendered from `social-preview.html`, where the tagline is the one text to change, by
-  `node docs/assets/render-social.mjs` (Node 20 or newer; `cd scripts/editor-verify-js && npm ci` once
-  for the headless Chromium). The tagline is set in the system's sans-serif font; it is a picture, so no
-  font file is part of the project.
+  It is rendered from `social-preview.html` by `node docs/assets/render-social.mjs` (Node 20 or newer;
+  `cd scripts/editor-verify-js && npm ci` once for the headless Chromium). It has no tagline; to add one,
+  set `TAGLINE` in the script. A tagline would use the muted colour `#9aa1ab` of the page and be set in the system's sans-serif font in a picture, so no
+  font file would be part of the project.
