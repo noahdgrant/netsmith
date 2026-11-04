@@ -313,6 +313,10 @@ _Avoid_: Page
 How the editor's schematic draws a rail: the negative side of a rail (where the current returns) with the ground symbol, bars that shrink away from a wire, and the positive side with the supply symbol, a stem with an arrow head and the net's name beside it. Which nets are which comes from the checked model (a `Rail`'s `pos` and `neg`), never from the names; the ground symbols carry their names only when a board has more than one ground. Each pin on a rail has a wire to its own symbol, and pins next to each other on one rail share a bus and a symbol. The KiCad schematic file does not use them.
 _Avoid_: Net label (a power symbol is drawn instead of one), power port
 
+**Flag**:
+How the editor's schematic shows a net that goes on to another sheet: a pentagon pointing at the end of a wire, like KiCad's hierarchical label, with the net's name in it (none for a net with a generated name). Every other net on a sheet is only wires.
+_Avoid_: Port (a `Rail`'s and a module's ports are pins), off-sheet label
+
 **Power tree**:
 The view of a board's rails as nodes: the voltage of each net a rail draws from, the currents on it, and what the part that supplies it can give, joined by the regulators and stages that make one rail from another and by the joins of a system. The numbers are the solver's, in the worst case.
 _Avoid_: Power diagram, rail map

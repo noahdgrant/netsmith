@@ -228,10 +228,11 @@ impl Workspace {
                         // The symbols come from KiCad's libraries; without them the schematic
                         // draws boxes and says why.
                         let svg = (*libraries).as_ref().map_err(Clone::clone).and_then(|l| {
-                            netsmith_view::render_svg_by_module_with(
+                            netsmith_view::render_svg_by_module_marked(
                                 &built.design,
                                 &module_groups(&built),
                                 &rails_of(&built),
+                                &must_connect(&built),
                                 &l.mapping,
                                 &l.symbols,
                             )
@@ -444,6 +445,71 @@ fn rails_of(built: &Built) -> netsmith_view::Rails {
         rails.ground.remove(&net);
     }
     rails
+}
+
+/// The pins the checker says must be connected (a power or input pin that is not `optional`,
+/// any pin that is `required`) that nothing else is on the net of, with the checker's message,
+/// so the drawing can mark them. A board that has one does not build, so this is what a pin
+/// table of a part under construction shows; it asks the checker's own question and changes
+/// nothing in it.
+fn must_connect(built: &Built) -> netsmith_view::Marks {
+    use netsmith_check::{InstKind, PinKind, Pinout, Requirement};
+    let model = &built.trace.model;
+    let refdes: std::collections::HashMap<&str, &str> = built
+        .design
+        .parts
+        .iter()
+        .map(|p| (p.path.as_str(), p.refdes.as_str()))
+        .collect();
+    let mut marks = netsmith_view::Marks::default();
+    for (id, inst) in model.instances() {
+        if inst.kind != InstKind::Part || model.board_of(id).is_none() {
+            continue;
+        }
+        let Pinout::Table(table) = model.pinout(id) else {
+            continue;
+        };
+        let path = model.path_of(id);
+        let Some(&refdes) = refdes.get(path.as_str()) else {
+            continue;
+        };
+        for row in &table.rows {
+            let must = matches!(
+                (row.kind, row.requirement),
+                (_, Some(Requirement::Required)) | (PinKind::Power | PinKind::Input, None)
+            );
+            let company = model
+                .net_of(row.pin)
+                .is_some_and(|net| net.pins.iter().any(|&p| model.owner_of(p) != Some(id)));
+            if !must || company {
+                continue;
+            }
+            let kind = match row.kind {
+                PinKind::Power => "a power pin",
+                PinKind::Input => "an input",
+                PinKind::Output => "an output",
+                PinKind::Bidirectional => "a bidirectional pin",
+                PinKind::Passive => "a passive pin",
+                PinKind::NoConnect => "a no_connect pin",
+            };
+            let pads = if row.pads.len() == 1 {
+                format!("pad {}", row.pads[0])
+            } else {
+                format!("pads {}", row.pads.join(", "))
+            };
+            let message = format!(
+                "`{}` is {kind} that must be connected ({pads}, `{}`), but nothing else is on its net",
+                model.path_of(row.pin),
+                row.name
+            );
+            for pad in &row.pads {
+                marks
+                    .must
+                    .insert((refdes.to_string(), pad.clone()), message.clone());
+            }
+        }
+    }
+    marks
 }
 
 /// The parts of a board grouped by the module instance of the board each is inside (a part

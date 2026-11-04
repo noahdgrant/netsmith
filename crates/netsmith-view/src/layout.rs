@@ -34,33 +34,15 @@ use crate::geom::{Dir, Orient, Pt, Rect, snap, snap_up};
 use crate::glyph::{CHAR_WIDTH, Flow, Glyph, used_pads};
 
 const GRID: f64 = 1.27;
-/// Distance from a side-facing pin to its first vertical drop.
+/// Distance from a pin to where its wire may first turn.
 const STUB: f64 = 2.54;
-/// Distance between the drops of one part's side pins.
-const PITCH: f64 = 2.54;
-const COLUMN_GAP: f64 = 5.08;
 /// The wire between two parts stacked in one column.
 const CHAIN_WIRE: f64 = 5.08;
-/// Clear space between the outermost part and the first trunk.
-const CHANNEL_MARGIN: f64 = 5.08;
-const TRACK_PITCH: f64 = 5.08;
-const LABEL_STUB: f64 = 2.54;
 pub const TEXT_SIZE: f64 = 1.27;
 const BORDER: f64 = 5.08;
 /// A net name longer than this is cut, with an ellipsis; the drawing keeps the whole name in
 /// the tooltip.
 pub const MAX_LABEL_CHARS: usize = 24;
-/// A wire from a pin to its power symbol, in the direction of the pin.
-const STEM: f64 = 2.54;
-/// Pins of one power net on one side of a part are joined by one bus and share one symbol
-/// when no more than this lies between neighbours.
-const MAX_RUN_GAP: f64 = 5.08;
-/// A net with more pins than this is drawn with names, not wires.
-const MAX_BUS_PINS: usize = 8;
-/// A trunk longer than this is drawn with names instead.
-const MAX_BUS_SPAN: f64 = 250.0;
-/// How many columns apart two pins may be and still be joined by one Z-shaped wire.
-const MAX_Z_COLUMNS: usize = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Anchor {

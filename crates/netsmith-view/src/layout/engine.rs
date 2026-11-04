@@ -69,10 +69,6 @@ fn set_text_side(ctx: &Ctx, part: &mut PlacedPart, side: Dir) {
     part.extent = extent;
 }
 
-fn same_point(a: Pt, b: Pt) -> bool {
-    (a.x - b.x).abs() < 1e-6 && (a.y - b.y).abs() < 1e-6
-}
-
 #[derive(Clone)]
 struct Shape {
     /// Where each part of the unit is, from the first part's origin.
@@ -993,15 +989,16 @@ impl<'a> Scene<'a> {
         let at_of = |q: Node, grid: &Grid| {
             grid.pt((q.0 + dx as i32 * STEM_CELLS, q.1 + dy as i32 * STEM_CELLS))
         };
-        let mut pick: Option<(Node, Option<Text>)> = None;
-        for &q in &cands {
-            if self.grid.owner(q, 1) != grid::NONE && self.grid.owner(q, 1) != id {
-                continue;
+        // Whether a symbol can stand at the end of a stem that starts at `q`: the stem and the
+        // drawing clear of everything, and room for its name.
+        let fits = |scene: &Self, q: Node| -> Option<Option<Text>> {
+            if scene.grid.owner(q, 1) != grid::NONE && scene.grid.owner(q, 1) != id {
+                return None;
             }
-            if !self.grid.run_is_free(q, dir, STEM_CELLS + 2) {
-                continue;
+            if !scene.grid.run_is_free(q, dir, STEM_CELLS + 2) {
+                return None;
             }
-            let at = at_of(q, &self.grid);
+            let at = at_of(q, &scene.grid);
             let glyph = PowerSymbol {
                 net,
                 kind,
@@ -1010,22 +1007,44 @@ impl<'a> Scene<'a> {
                 label: None,
             }
             .glyph_extent();
-            if !self.rect_is_free(glyph) {
-                continue;
+            if !scene.rect_is_free(glyph) {
+                return None;
             }
-            let label = if named {
-                [Side::Right, Side::Left, Side::Beyond]
-                    .into_iter()
-                    .map(|s| label_beside(at, dir, &name, s))
-                    .find(|t| self.rect_is_free(t.extent()))
-            } else {
-                None
-            };
-            if named && label.is_none() {
-                continue;
+            if !named {
+                return Some(None);
             }
-            pick = Some((q, label));
-            break;
+            [Side::Right, Side::Left, Side::Beyond]
+                .into_iter()
+                .map(|s| label_beside(at, dir, &name, s))
+                .find(|t| scene.rect_is_free(t.extent()))
+                .map(Some)
+        };
+        let mut pick: Option<(Node, Option<Text>)> = None;
+        // Off the wires' own nodes first, then a little way sideways along a free run.
+        let mut jog: Option<Node> = None;
+        for &q in &cands {
+            if let Some(label) = fits(self, q) {
+                pick = Some((q, label));
+                break;
+            }
+        }
+        if pick.is_none() {
+            'jog: for &k in &[2, 3, 4, 6, 8, 10, 12, 16] {
+                for &q in cands.iter().take(80) {
+                    for sd in [Dir::Right, Dir::Left] {
+                        if !self.grid.run_is_free(q, sd, k) {
+                            continue;
+                        }
+                        let (sx, sy) = sd.vector();
+                        let r = (q.0 + sx as i32 * k, q.1 + sy as i32 * k);
+                        if let Some(label) = fits(self, r) {
+                            jog = Some(q);
+                            pick = Some((r, label));
+                            break 'jog;
+                        }
+                    }
+                }
+            }
         }
         let (q, label) = pick.unwrap_or_else(|| {
             // Nowhere is clear: past the highest (or lowest) of the wires, by crossing.
@@ -1034,6 +1053,10 @@ impl<'a> Scene<'a> {
             let label = named.then(|| label_beside(at, dir, &name, Side::Right));
             (q, label)
         });
+        if let Some(from) = jog {
+            self.grid.claim_wire(from, q, id);
+            self.push_wire(net, &[from, q]);
+        }
         let end = (q.0 + dx as i32 * STEM_CELLS, q.1 + dy as i32 * STEM_CELLS);
         self.grid.claim_wire(q, end, id);
         self.push_wire(net, &[q, end]);

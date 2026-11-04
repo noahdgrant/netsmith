@@ -150,7 +150,7 @@ fn segments(l: &Layout) -> Vec<(usize, Pt, Pt)> {
         .collect()
 }
 
-fn sheet_of<'a>(l: &'a Layout, p: Pt) -> Option<&'a netsmith_view::Sheet> {
+fn sheet_of(l: &Layout, p: Pt) -> Option<&netsmith_view::Sheet> {
     l.sheets.iter().find(|s| {
         s.frame.min.x <= p.x && p.x <= s.frame.max.x && s.frame.min.y <= p.y && p.y <= s.frame.max.y
     })
