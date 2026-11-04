@@ -483,3 +483,259 @@ fn a_net_whose_current_is_not_known_is_not_sized_and_is_named() {
     assert!(said("VOUT", "rail `load`, part `diode`"), "{:?}", l.notes);
     assert!(l.guidelines.is_empty(), "nothing is known to be too narrow");
 }
+
+// ---- Kirchhoff's current law on every net (issue #4, ADR 0036 amendment 2) ------------
+
+/// Two supplies, 5 V and 3.3 V, that return through one ground, with loads of `a` and `b`.
+fn shared_ground(a: &str, b: &str, extra: &str) -> String {
+    format!(
+        "import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::sources::Rail
+board Shared {{
+    .process: TwoLayer {{
+        .stackup.thickness &= 1.6mm
+    }}
+    .source_a: Rail {{
+        .pos.net &= \"5V\"
+        .neg.net &= \"GND\"
+        .current &= -{a}..0A
+    }}
+    .source_b: Rail {{
+        .pos.net &= \"3V3\"
+        .neg.net &= \"GND\"
+        .current &= -{b}..0A
+    }}
+    .load_a: Rail {{
+        .pos.net &= \"5V\"
+        .neg.net &= \"GND\"
+        .current &= 0A..{a}
+{extra}    }}
+    .load_b: Rail {{
+        .pos.net &= \"3V3\"
+        .neg.net &= \"GND\"
+        .current &= 0A..{b}
+    }}
+    .ha: Header1x2
+    .hb: Header1x2
+    .hc: Header1x2
+    .hd: Header1x2
+    .ha.p1 ~ .source_a.pos
+    .ha.p2 ~ .source_a.neg
+    .hb.p1 ~ .source_b.pos
+    .hb.p2 ~ .source_b.neg
+    .hc.p1 ~ .load_a.pos
+    .hc.p2 ~ .load_a.neg
+    .hd.p1 ~ .load_b.pos
+    .hd.p2 ~ .load_b.neg
+}}
+"
+    )
+}
+
+#[test]
+fn a_ground_shared_by_a_2_a_and_a_1_a_rail_is_sized_for_3_a() {
+    let l = lowered_of(&shared_ground("2A", "1A", ""));
+    // Each supply net carries its own load: 2 A needs 0.7814 mm, 1 A needs 0.3004 mm.
+    assert_eq!(width_of(&l, "5V"), Some(0.79));
+    assert_eq!(width_of(&l, "3V3"), Some(0.31));
+    // The ground carries both returns at once: 3 A, not the larger 2 A.
+    // 3 A: A^0.725 = 3 / 0.13220 = 22.69, A = 74.2 mil^2, /1.378 = 53.8 mil = 1.368 mm.
+    let three = ipc2221_width(3.0, 0.035, 10.0, Layer::External);
+    assert!((three - 1.3670).abs() < 1e-3, "{three}");
+    assert_eq!(width_of(&l, "GND"), Some(1.37));
+    assert!(l.guidelines.is_empty(), "{:?}", l.guidelines);
+    assert!(l.notes.is_empty(), "{:?}", l.notes);
+}
+
+#[test]
+fn a_stated_min_track_on_a_shared_ground_is_checked_against_the_sum() {
+    // 1 mm carries 2.39 A at 10 K: more than the larger load's 2 A, less than the sum's 3 A.
+    // The rail states the width, so it is the user's and it is checked, not raised.
+    let l = lowered_of(&shared_ground(
+        "2A",
+        "1A",
+        "        .min_track &= 1mm..1m\n",
+    ));
+    let ground = about(&l.guidelines, "GND");
+    assert_eq!(ground.len(), 1, "{:?}", l.guidelines);
+    assert!(
+        ground[0].starts_with("net `GND` carries up to 3 A (the sum of the currents on it with every load on at once: rail `load_a` 2 A + rail `load_b` 1 A)")
+            && ground[0].contains("tracks are 1 mm wide (a rail's `.min_track`)")
+            && ground[0].contains("IPC-2221 needs 1.37 mm"),
+        "{}",
+        ground[0]
+    );
+    // The supply nets are not too narrow: 1 mm carries the 2 A of 5V.
+    assert!(about(&l.guidelines, "5V").is_empty());
+    assert_eq!(width_of(&l, "GND"), Some(1.0));
+    assert_eq!(
+        width_of(&l, "3V3"),
+        Some(0.31),
+        "the unstated net is still sized"
+    );
+}
+
+#[test]
+fn loads_on_one_supply_net_add_up() {
+    // Three loads of 0.5 A on one rail: the supply net and the ground carry 1.5 A.
+    let src = "import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::sources::Rail
+board Three {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .source: Rail {
+        .pos.net &= \"5V\"
+        .neg.net &= \"GND\"
+        .current &= -1.5A..0A
+    }
+    .a: Rail {
+        .pos.net &= \"5V\"
+        .neg.net &= \"GND\"
+        .current &= 0A..0.5A
+    }
+    .b: Rail {
+        .pos.net &= \"5V\"
+        .neg.net &= \"GND\"
+        .current &= 0A..0.5A
+    }
+    .c: Rail {
+        .pos.net &= \"5V\"
+        .neg.net &= \"GND\"
+        .current &= 0A..0.5A
+    }
+    .h0: Header1x2
+    .h1: Header1x2
+    .h2: Header1x2
+    .h3: Header1x2
+    .h0.p1 ~ .source.pos
+    .h0.p2 ~ .source.neg
+    .h1.p1 ~ .a.pos
+    .h1.p2 ~ .a.neg
+    .h2.p1 ~ .b.pos
+    .h2.p2 ~ .b.neg
+    .h3.p1 ~ .c.pos
+    .h3.p2 ~ .c.neg
+}
+";
+    let l = lowered_of(src);
+    // 1.5 A: A^0.725 = 1.5 / 0.13220 = 11.347, A = 28.5 mil^2, /1.378 = 20.7 mil = 0.5255 mm.
+    let needs = ipc2221_width(1.5, 0.035, 10.0, Layer::External);
+    assert!((needs - 0.5255).abs() < 1e-3, "{needs}");
+    assert_eq!(width_of(&l, "5V"), Some(0.53));
+    assert_eq!(width_of(&l, "GND"), Some(0.53));
+}
+
+/// The buck converter of the guide, with the IC's efficiency relation unless `no_efficiency`.
+fn converter(no_efficiency: bool) -> String {
+    let relation = ".vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)\n";
+    let ic = format!(
+        "import std::parts::regulator::{{Buck, BuckStage}}
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+part Zbk2 {{
+    .vin: Rail
+    .buck: Buck {{
+        .vref &= 0.8V +/- 1.5%
+        .fsw &= 1.2MHz +/- 15%
+        .min_input_voltage &= 4.5V
+        .max_input_voltage &= 6V
+        .max_output_current &= 2A
+        .efficiency &= 0.85..0.95
+        .min_inductance &= 1.5uH
+        .min_input_capacitance &= 2uF
+        .min_output_capacitance &= 10uF
+    }}
+    .buck.sw.neg ~ .vin.neg
+    {}
+    pins {{
+        .vin.pos power \"VIN\" \"1\"
+        .vin.neg power \"GND\" \"2\"
+        .buck.sw.pos power \"SW\" \"3\"
+        .buck.fb input \"FB\" \"4\"
+        .en input \"EN\" \"5\"
+    }}
+}}
+",
+        if no_efficiency { "" } else { relation }
+    );
+    format!(
+        "{ic}
+board Converter {{
+    .process: TwoLayer {{
+        .stackup.thickness &= 1.6mm
+    }}
+    .input: Rail {{
+        .voltage &= 5V +/- 5%
+        .pos.net &= \"VIN\"
+        .neg.net &= \"GND\"
+    }}
+    .output: Rail {{
+        .pos.net &= \"1V8\"
+        .neg.net &= \"GND\"
+        .current &= 0mA..1A
+    }}
+    .u: Zbk2
+    .stage: BuckStage {{ .vout.voltage &= 1.8V +/- 3% }}
+    .input ~ .stage.vin
+    .input ~ .u.vin
+    .stage.vout ~ .output
+    .stage.buck ~ .u.buck
+    .u.en ~ .input.pos
+}}
+"
+    )
+}
+
+#[test]
+fn a_switching_regulator_draws_its_input_from_the_power_balance_not_the_output_current() {
+    let l = lowered_of(&converter(false));
+    // 1 A at 1.746..1.854 V out, from 4.75 V in at 85 % efficiency: 1.854 / (4.75 * 0.85)
+    // = 0.4592 A in. The input net carries that, and not the 1 A of the output.
+    let into = 1.854 / (4.75 * 0.85);
+    let width_in =
+        (ipc2221_width(into, 0.035, 10.0, Layer::External) * 100.0 - 1e-9).ceil() / 100.0;
+    assert_eq!(width_of(&l, "VIN"), Some(width_in));
+    assert!(width_in < 0.2, "{width_in}");
+    // The output net carries the 1 A: 0.3004 mm.
+    assert_eq!(width_of(&l, "1V8"), Some(0.31));
+    // The ground takes the return of the load and of the input: their sum, and each of the
+    // converter's ports once, not again for what is inside the module.
+    let sum = 1.0 + into;
+    let width_gnd =
+        (ipc2221_width(sum, 0.035, 10.0, Layer::External) * 100.0 - 1e-9).ceil() / 100.0;
+    assert_eq!(
+        width_of(&l, "GND"),
+        Some(width_gnd),
+        "{:?}",
+        l.design.features.net_widths
+    );
+    assert!(l.guidelines.is_empty(), "{:?}", l.guidelines);
+    assert!(l.notes.is_empty(), "{:?}", l.notes);
+}
+
+#[test]
+fn a_regulator_whose_input_current_is_not_modelled_leaves_its_nets_unsized_and_named() {
+    // The IC states no efficiency relation, so nothing says what it draws at its input and the
+    // solver has two unknowns on the input net. Nothing is guessed from the output current.
+    let l = lowered_of(&converter(true));
+    assert_eq!(width_of(&l, "VIN"), None);
+    assert_eq!(width_of(&l, "GND"), None);
+    let named = |net: &str| {
+        l.notes
+            .iter()
+            .find(|n| n.contains(&format!("so the tracks of net `{net}` are not sized")))
+    };
+    let vin = named("VIN").unwrap_or_else(|| panic!("{:?}", l.notes));
+    assert!(
+        vin.contains("rail `u.vin`") && vin.contains("is not known"),
+        "{vin}"
+    );
+    assert!(named("GND").is_some(), "{:?}", l.notes);
+    // The output net does not depend on it.
+    assert_eq!(width_of(&l, "1V8"), Some(0.31));
+    assert!(named("1V8").is_none(), "{:?}", l.notes);
+}

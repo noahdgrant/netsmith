@@ -122,19 +122,34 @@ fn amps(x: f64) -> String {
     format!("{text} {unit}")
 }
 
-/// A current that something carries: its magnitude, as the range it can have.
+/// A current that something carries between two pins of a net.
 struct Carrier {
     /// What carries it: `rail output`, `part r1`.
     who: String,
     inst: InstId,
+    /// The part, module or board that holds it: a rail's owner, or the part itself. What
+    /// holds a current decides whether a module's port is left out (see [`plan_tracks`]).
+    holder: InstId,
     /// Whether it is a rail (and not a part passing a current).
     is_rail: bool,
-    /// The magnitude range, or `None` while the solver has not worked the current out.
+    /// The pin the current leaves its net by when it is positive: a rail's `pos` (it draws
+    /// from the net there), the first end of a part's `bridge`.
+    from: InstId,
+    /// The pin it comes back into its net by: a rail's `neg`, the second end of a bridge.
+    to: Option<InstId>,
+    /// The range of the signed current in amperes, or `None` while the solver has not worked
+    /// the current out.
     range: Option<(f64, f64)>,
 }
 
-/// The magnitude range of a current field, in amperes.
-fn magnitude(model: &Model, member: Option<Member>) -> Option<(f64, f64)> {
+impl Carrier {
+    fn pins(&self) -> impl Iterator<Item = InstId> {
+        std::iter::once(self.from).chain(self.to)
+    }
+}
+
+/// The range of a current field, signed, in amperes.
+fn signed_range(model: &Model, member: Option<Member>) -> Option<(f64, f64)> {
     let Some(Member::Field(f)) = member else {
         return None;
     };
@@ -146,13 +161,65 @@ fn magnitude(model: &Model, member: Option<Member>) -> Option<(f64, f64)> {
         return None;
     }
     // Adding zero turns a negative zero into a zero.
-    Some(if lo >= 0.0 {
-        (lo + 0.0, hi)
-    } else if hi <= 0.0 {
-        (-hi + 0.0, -lo)
-    } else {
-        (0.0, hi.max(-lo))
-    })
+    Some((lo + 0.0, hi + 0.0))
+}
+
+/// What flows through a net by Kirchhoff's current law: what the carriers on it take out of
+/// it and what they put into it, each at its largest, every one at the same time. A term is
+/// a carrier, its largest amount, and whether that is the carrier drawing (a load) and not
+/// supplying.
+#[derive(Default)]
+struct Flow<'a> {
+    taken: Vec<(&'a Carrier, f64, bool)>,
+    given: Vec<(&'a Carrier, f64, bool)>,
+}
+
+impl<'a> Flow<'a> {
+    /// A carrier's current `lo..hi` leaves the net (when positive) or enters it (when
+    /// negative): the carrier's `from` pin is on the net.
+    fn leaves(&mut self, c: &'a Carrier, (lo, hi): (f64, f64)) {
+        if hi > 0.0 {
+            self.taken.push((c, hi, true));
+        }
+        if lo < 0.0 {
+            self.given.push((c, -lo, false));
+        }
+    }
+
+    /// The carrier's `to` pin is on the net: what is positive enters it.
+    fn enters(&mut self, c: &'a Carrier, (lo, hi): (f64, f64)) {
+        if hi > 0.0 {
+            self.given.push((c, hi, true));
+        }
+        if lo < 0.0 {
+            self.taken.push((c, -lo, false));
+        }
+    }
+
+    /// The larger of the two sums and the terms of that side, largest first. On a net whose
+    /// every current is modelled the sides are equal (the law), and the side of the loads is
+    /// the one named; where a stated supply is a budget wider than its loads, or a pin is
+    /// not modelled, the larger is the safer.
+    fn worst(&self) -> (f64, Vec<(&'a Carrier, f64)>) {
+        let sum = |v: &[(&Carrier, f64, bool)]| v.iter().map(|t| t.1).sum::<f64>();
+        let loads =
+            |v: &[(&Carrier, f64, bool)]| v.iter().filter(|t| t.2).map(|t| t.1).sum::<f64>();
+        let (t, g) = (sum(&self.taken), sum(&self.given));
+        let side = if (g - t).abs() <= 1e-9 * t.max(g) {
+            if loads(&self.given) > loads(&self.taken) {
+                &self.given
+            } else {
+                &self.taken
+            }
+        } else if g > t {
+            &self.given
+        } else {
+            &self.taken
+        };
+        let mut terms: Vec<(&Carrier, f64)> = side.iter().map(|t| (t.0, t.1)).collect();
+        terms.sort_by(|a, b| b.1.total_cmp(&a.1));
+        (sum(side), terms)
+    }
 }
 
 /// What the track check works out for a board (ADR 0036, ADR 0036).
@@ -171,11 +238,22 @@ pub struct TrackPlan {
 
 /// The tracks of every net against the current the net carries, by IPC-2221 (ADR 0036).
 ///
-/// A net carries the largest of the currents of the things on it: the rails with a pin on
-/// it, and the parts whose bridge ends on it, which is how the nets inside a chain of
-/// series parts take the chain's current. Its tracks are as wide as the rails on it ask
-/// (`.min_track`, the widest bottom, in `features.net_widths`) and never narrower than the
-/// process's least. A net no rail states a width for, whose every current is known, is
+/// The current a net carries comes from Kirchhoff's current law (ADR 0036, amendment of
+/// 2026-11-04). The things that put a current into a net or take one out of it are the rails
+/// (a load takes its draw out of the net its `pos` is on and puts it back into the net its
+/// `neg` is on; a supply is the reverse) and the parts that pass a current (it leaves the net
+/// of the first end of their `bridge` and enters the net of the second). The net carries the
+/// sum of what is taken out, with every load on at the same time, or the sum of what is put
+/// in, whichever is larger: a ground net shared by a 2 A and a 1 A load carries 3 A. The
+/// currents are the solver's, so a regulator's input is what its model says it draws (the
+/// output current for a linear one, the power balance with the efficiency for a switching
+/// one), never its output current.
+///
+/// A module's port stands for what is inside the module (ADR 0007), so each current is
+/// counted once: at the port when nothing inside the module is on the net, otherwise inside.
+/// Its tracks are as wide as the rails on
+/// it ask (`.min_track`, the widest bottom, in `features.net_widths`) and never narrower than
+/// the process's least. A net no rail states a width for, whose every current is known, is
 /// given the width IPC-2221 needs (ADR 0036) in [`TrackPlan::widths`]; a net where some
 /// current on it is not known is not sized (a guess would be as likely too narrow as too
 /// wide) and is named in [`TrackPlan::notes`]. The router draws on the outer layers only,
@@ -204,40 +282,43 @@ pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> Tra
         .collect();
 
     // What can carry a current: a rail (an interface that draws) and a part that passes one.
-    let mut carriers: Vec<(Vec<InstId>, Carrier)> = Vec::new();
+    let mut carriers: Vec<Carrier> = Vec::new();
     for (id, inst) in model.instances() {
         match inst.kind {
             InstKind::Interface => {
                 let Some((_, pos)) = model.draw_of(id) else {
                     continue;
                 };
-                let mut pins = vec![pos];
-                if let Some(Member::Inst(neg)) = model.member(id, "neg") {
-                    pins.push(neg);
-                }
-                carriers.push((
-                    pins,
-                    Carrier {
-                        who: format!("rail `{}`", model.path_of(id)),
-                        inst: id,
-                        is_rail: true,
-                        range: magnitude(model, model.member(id, "current")),
-                    },
-                ));
+                let Some(holder) = model.owner_of(id) else {
+                    continue;
+                };
+                let neg = match model.member(id, "neg") {
+                    Some(Member::Inst(neg)) => Some(neg),
+                    _ => None,
+                };
+                carriers.push(Carrier {
+                    who: format!("rail `{}`", model.path_of(id)),
+                    inst: id,
+                    holder,
+                    is_rail: true,
+                    from: pos,
+                    to: neg,
+                    range: signed_range(model, model.member(id, "current")),
+                });
             }
             InstKind::Part => {
                 let (Some(_), Some((a, b))) = (model.through_of(id), inst.bridge) else {
                     continue;
                 };
-                carriers.push((
-                    vec![a, b],
-                    Carrier {
-                        who: format!("part `{}`", model.path_of(id)),
-                        inst: id,
-                        is_rail: false,
-                        range: magnitude(model, model.member(id, "current")),
-                    },
-                ));
+                carriers.push(Carrier {
+                    who: format!("part `{}`", model.path_of(id)),
+                    inst: id,
+                    holder: id,
+                    is_rail: false,
+                    from: a,
+                    to: Some(b),
+                    range: signed_range(model, model.member(id, "current")),
+                });
             }
             _ => {}
         }
@@ -246,20 +327,17 @@ pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> Tra
     // The nets a supply reaches: those with a rail's pin, and, through the parts that pass
     // a current, the nets on the other side of them. Only these are worth a note when their
     // current is not known; a signal net carries no power to size.
+    let touching = |c: &Carrier, net: &netsmith_check::Net| c.pins().any(|p| net.pins.contains(&p));
     let mut supplied: Vec<bool> = model
         .nets()
         .iter()
-        .map(|net| {
-            carriers
-                .iter()
-                .any(|(pins, c)| c.is_rail && pins.iter().any(|p| net.pins.contains(p)))
-        })
+        .map(|net| carriers.iter().any(|c| c.is_rail && touching(c, net)))
         .collect();
     loop {
         let mut grew = false;
-        for (pins, _) in carriers.iter().filter(|(_, c)| !c.is_rail) {
+        for c in carriers.iter().filter(|c| !c.is_rail) {
             let touched: Vec<usize> = (0..supplied.len())
-                .filter(|&i| pins.iter().any(|p| model.nets()[i].pins.contains(p)))
+                .filter(|&i| touching(c, &model.nets()[i]))
                 .collect();
             if touched.iter().any(|&i| supplied[i]) {
                 for i in touched {
@@ -277,37 +355,52 @@ pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> Tra
         if net.terminals.len() < 2 || planes.contains(&net.name.as_str()) {
             continue;
         }
-        let on_net: Vec<&Carrier> = carriers
-            .iter()
-            .filter(|(pins, _)| pins.iter().any(|p| net.pins.contains(p)))
-            .map(|(_, c)| c)
-            .collect();
-        // The largest current on the net; the first of equals, so the order is the model's.
-        let mut worst: Option<(&Carrier, f64, f64)> = None;
-        for c in &on_net {
-            if let Some((lo, hi)) = c.range
-                && worst.is_none_or(|(_, _, h)| hi > h)
-            {
-                worst = Some((c, lo, hi));
+        let on_net: Vec<&Carrier> = carriers.iter().filter(|c| touching(c, net)).collect();
+        // A module's port stands for what is inside the module (ADR 0007) and the rails and
+        // parts inside it are the same current seen closer up. Where something inside the
+        // module is on the net, the port is left out and the inside counts; a module with
+        // nothing modelled inside on the net keeps its port, which is all that is known of it.
+        let inside = |module: InstId, d: &Carrier| {
+            let mut up = model.instance(d.holder).parent;
+            while let Some(p) = up {
+                if p == module {
+                    return d.holder != module;
+                }
+                up = model.instance(p).parent;
+            }
+            false
+        };
+        let covered = |c: &Carrier| {
+            c.is_rail
+                && model.instance(c.holder).kind == InstKind::Module
+                && on_net.iter().any(|d| inside(c.holder, d))
+        };
+        let counted: Vec<&Carrier> = on_net.iter().copied().filter(|c| !covered(c)).collect();
+
+        let mut flow = Flow::default();
+        let mut unknown: Vec<&str> = Vec::new();
+        for c in &counted {
+            let at_from = net.pins.contains(&c.from);
+            let at_to = c.to.is_some_and(|t| net.pins.contains(&t));
+            // Both ends on the net: what leaves comes back, nothing flows through it.
+            if at_from && at_to {
+                continue;
+            }
+            let Some(range) = c.range else {
+                unknown.push(c.who.as_str());
+                continue;
+            };
+            if at_from {
+                flow.leaves(c, range);
+            } else {
+                flow.enters(c, range);
             }
         }
-        let unknown: Vec<&str> = on_net
-            .iter()
-            .filter(|c| c.range.is_none())
-            .map(|c| c.who.as_str())
-            .collect();
         let stated = features
             .net_widths
             .iter()
             .find(|(n, _)| *n == net.name)
             .map(|(_, w)| *w);
-        let Some((worst, lo, hi)) = worst else {
-            if !unknown.is_empty() && stated.is_none() && supplied[index] {
-                plan.notes
-                    .push(unknown_note(&net.name, &unknown, process.min_track));
-            }
-            continue;
-        };
         // A current that is not known may be larger than the ones that are: do not size
         // the net from the known ones, and say so (the check below still holds the net to
         // what is known).
@@ -315,10 +408,14 @@ pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> Tra
             plan.notes
                 .push(unknown_note(&net.name, &unknown, process.min_track));
         }
-        if hi <= 0.0 {
+        let (total, terms) = flow.worst();
+        let Some(&(worst, _)) = terms.first() else {
+            continue;
+        };
+        if total <= 0.0 {
             continue;
         }
-        let needs = ipc2221_width(hi, copper, rise, layer);
+        let needs = ipc2221_width(total, copper, rise, layer);
         // Rounded up to the 0.01 mm that a width is written in, so that asking for what the
         // message says passes.
         let asks = (needs * 100.0 - 1e-9).ceil() / 100.0;
@@ -337,18 +434,35 @@ pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> Tra
                 "the process's least, because no rail on it states a `.min_track` and a current on it is not known"
             }
         };
-        let range = if lo == hi {
-            amps(hi)
-        } else {
-            format!("{} to {}", amps(lo), amps(hi))
+        let what = match terms.as_slice() {
+            [(c, hi)] => match c.range {
+                Some((lo, _)) if lo >= 0.0 && lo != *hi => {
+                    format!("{}: {} to {}", c.who, amps(lo), amps(*hi))
+                }
+                _ => format!("{}: {}", c.who, amps(*hi)),
+            },
+            many => {
+                let shown: Vec<String> = many
+                    .iter()
+                    .take(4)
+                    .map(|(c, hi)| format!("{} {}", c.who, amps(*hi)))
+                    .collect();
+                let more = match many.len() - shown.len() {
+                    0 => String::new(),
+                    n => format!(" and {n} more"),
+                };
+                format!(
+                    "the sum of the currents on it with every load on at once: {}{more}",
+                    shown.join(" + ")
+                )
+            }
         };
         plan.findings.push(Guideline {
             rule: "IPC-2221",
             message: format!(
-                "net `{}` carries up to {} ({}: {range}) but its tracks are {} mm wide ({source}), in {} oz ({} mm) {} copper; at a temperature rise of {} K{} that width carries {} and IPC-2221 needs {} mm: give a rail on the net `.min_track &= {}mm..1m`, or allow a higher `.process.max_temperature_rise`",
+                "net `{}` carries up to {} ({what}) but its tracks are {} mm wide ({source}), in {} oz ({} mm) {} copper; at a temperature rise of {} K{} that width carries {} and IPC-2221 needs {} mm: give a rail on the net `.min_track &= {}mm..1m`, or allow a higher `.process.max_temperature_rise`",
                 net.name,
-                amps(hi),
-                worst.who,
+                amps(total),
                 mm(width),
                 mm(process.stackup.copper_weight),
                 mm(copper),
