@@ -310,7 +310,7 @@ One way the editor shows a board built from the source: the schematic, the power
 _Avoid_: Page
 
 **Power tree**:
-The view of a board's rails as nodes: the voltage of each net a rail draws from, the currents on it, and what the part that supplies it can give, joined by the regulators and stages that make one rail from another and by the joins of a system. The numbers are the solver's, in the worst case.
+The view of a board's rails as cards: the voltage of each net a rail draws from, the total of the currents on it, and what the part that supplies it can give, joined left to right, from the sources to the loads, by the regulators and stages that make one rail from another and by the joins of a system. The numbers are the solver's, in the worst case.
 _Avoid_: Power diagram, rail map
 
 **Netlist comparison**:
