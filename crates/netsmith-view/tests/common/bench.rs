@@ -145,6 +145,7 @@ pub fn bench() -> Bench {
         ("C5", "Capacitor", "100n", Some("0402")),
         // io
         ("J7", "Header1x2", "Uart", None),
+        ("J8", "Header1x2", "Power", None),
         ("R4", "Resistor", "1k", Some("0402")),
         ("D1", "Led", "LED", None),
         ("R5", "Resistor", "1k", Some("0402")),
@@ -164,7 +165,7 @@ pub fn bench() -> Bench {
         v.push(("GND", gnd));
         v.push(("ANT", s(&["U2.1", "J3.1"])));
         v.push(("+3V8", s(&["U4.3", "C2.1", "R1.1"])));
-        let mut v33 = s(&["U4.2", "C3.1", "U1.8", "C4.1", "C5.1", "R6.1"]);
+        let mut v33 = s(&["U4.2", "C3.1", "U1.8", "C4.1", "C5.1", "R6.1", "J8.1"]);
         v33.extend((131..137).map(|i| format!("U5.{i}")));
         v.push(("+3V3", v33));
         v.push(("BATT_DIV", s(&["R1.2", "R2.1", "U1.3"])));
@@ -226,7 +227,7 @@ pub fn bench() -> Bench {
         group(
             "io",
             "Indicators",
-            &["J7", "R4", "D1", "R5", "D2", "R6", "R7"],
+            &["J7", "J8", "R4", "D1", "R5", "D2", "R6", "R7"],
         ),
     ];
     let mut rails = Rails::default();

@@ -665,12 +665,67 @@ fn column_order(ctx: &Ctx, units: &[Unit], unit_of: &HashMap<usize, usize>) -> V
             }
             i += 1;
         }
+        let walk = pull_together(ctx, unit_of, walk);
+        let mut walk = walk;
         if signal_runs_backwards(ctx, &walk, units, unit_of) {
             walk.reverse();
         }
         order.extend(walk);
     }
     order
+}
+
+/// The walk with neighbours swapped while that shortens the nets: each net that is not a
+/// power net pulls the units it joins together, a narrow net harder than a wide one. The
+/// first unit stays first. Passes go in index order, so the result is the same each time.
+fn pull_together(ctx: &Ctx, unit_of: &HashMap<usize, usize>, mut walk: Vec<usize>) -> Vec<usize> {
+    let nets: Vec<Vec<usize>> = ctx
+        .design
+        .nets
+        .iter()
+        .enumerate()
+        .filter(|(n, _)| ctx.power[*n].is_none() && !ctx.ground[*n])
+        .map(|(_, net)| {
+            let mut us: Vec<usize> = net
+                .pins
+                .iter()
+                .map(|pin| unit_of[&part_index(ctx, &pin.refdes)])
+                .collect();
+            us.sort_unstable();
+            us.dedup();
+            us
+        })
+        .filter(|us| us.len() >= 2)
+        .collect();
+    let cost = |walk: &[usize]| -> f64 {
+        let place: HashMap<usize, usize> = walk.iter().enumerate().map(|(i, &u)| (u, i)).collect();
+        nets.iter()
+            .map(|us| {
+                let at: Vec<usize> = us.iter().filter_map(|u| place.get(u).copied()).collect();
+                if at.len() < 2 {
+                    return 0.0;
+                }
+                let span = at.iter().max().unwrap() - at.iter().min().unwrap();
+                span as f64 / (at.len() - 1) as f64
+            })
+            .sum()
+    };
+    for _ in 0..walk.len() {
+        let mut changed = false;
+        for i in 1..walk.len().saturating_sub(1) {
+            let before = cost(&walk);
+            walk.swap(i, i + 1);
+            if cost(&walk) < before - 1e-9 {
+                changed = true;
+            } else {
+                walk.swap(i, i + 1);
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    walk
 }
 
 fn part_index(ctx: &Ctx, refdes: &str) -> usize {
@@ -958,39 +1013,18 @@ fn plan_nets(
 // ---------------------------------------------------------------------------------------
 // Placement
 
-/// Turn a part's glyph into a placed part at the origin and work out its texts.
-fn place_part(ctx: &Ctx, p: usize, orient: Orient, nets: &[Option<usize>]) -> PlacedPart {
-    let glyph = ctx.glyphs[p].clone();
-    let part = &ctx.design.parts[p];
+/// The box of the symbol's body and pins once turned.
+fn body_of(glyph: &Glyph, orient: Orient) -> Rect {
     let b = glyph.bounds();
     let mut body = Rect::around(orient.apply((b.min.x, b.min.y)));
     body.include(orient.apply((b.max.x, b.max.y)));
     body.include(orient.apply((b.min.x, b.max.y)));
     body.include(orient.apply((b.max.x, b.min.y)));
+    body
+}
 
-    let pins: Vec<PlacedPin> = glyph
-        .pins
-        .iter()
-        .zip(nets)
-        .map(|(pin, &net)| PlacedPin {
-            id: pin.id.clone(),
-            at: orient.apply(pin.at),
-            escape: orient.dir((-pin.toward_body.0, -pin.toward_body.1)),
-            net,
-        })
-        .collect();
-
-    // Beside a tall part, above or below a wide one, on a side no wire leaves by.
-    let free = |d: Dir| !pins.iter().any(|q| q.escape == d);
-    let candidates = if body.height() > body.width() {
-        [Dir::Right, Dir::Left, Dir::Up, Dir::Down]
-    } else {
-        [Dir::Up, Dir::Down, Dir::Right, Dir::Left]
-    };
-    let side = candidates
-        .into_iter()
-        .find(|&d| free(d))
-        .unwrap_or(Dir::Right);
+/// The reference and the value of a part, written on `side` of its body.
+fn part_texts(part: &netsmith_core::Part, body: Rect, side: Dir) -> (Text, Option<Text>) {
     let (cx, cy) = (
         (body.min.x + body.max.x) / 2.0,
         (body.min.y + body.max.y) / 2.0,
@@ -1030,6 +1064,96 @@ fn place_part(ctx: &Ctx, p: usize, orient: Orient, nets: &[Option<usize>]) -> Pl
         ),
     };
     let value = (!part.value.is_empty()).then_some(value);
+    (reference, value)
+}
+
+/// Moves the reference and the value of `placed` to the first side of its body where they
+/// do not cover a wire or a symbol of its power pins (`art`); a side no pin leaves by comes
+/// first. A part that has no such side keeps its texts.
+fn retext(ctx: &Ctx, placed: &mut PlacedPart, art: &PowerArt) {
+    let part = &ctx.design.parts[placed.part];
+    let body = body_of(&placed.glyph, placed.orient);
+    let hits = |r: &Rect| {
+        let near_wire = art.wires.iter().any(|w| {
+            w.points.windows(2).any(|s| {
+                let mut seg = Rect::around(s[0]);
+                seg.include(s[1]);
+                seg.min = Pt::new(seg.min.x - 0.2, seg.min.y - 0.2);
+                seg.max = Pt::new(seg.max.x + 0.2, seg.max.y + 0.2);
+                r.min.x < seg.max.x
+                    && seg.min.x < r.max.x
+                    && r.min.y < seg.max.y
+                    && seg.min.y < r.max.y
+            })
+        });
+        near_wire
+            || art.symbols.iter().any(|s| {
+                let e = s.extent();
+                r.min.x < e.max.x && e.min.x < r.max.x && r.min.y < e.max.y && e.min.y < r.max.y
+            })
+    };
+    let covers = |reference: &Text, value: &Option<Text>| {
+        hits(&reference.extent()) || value.as_ref().is_some_and(|v| hits(&v.extent()))
+    };
+    if !covers(&placed.reference, &placed.value) {
+        return;
+    }
+    let order = if body.height() > body.width() {
+        [Dir::Right, Dir::Left, Dir::Up, Dir::Down]
+    } else {
+        [Dir::Up, Dir::Down, Dir::Right, Dir::Left]
+    };
+    let free = |d: Dir| !placed.pins.iter().any(|q| q.escape == d);
+    let sides = order
+        .into_iter()
+        .filter(|&d| free(d))
+        .chain(order.into_iter().filter(|&d| !free(d)));
+    for side in sides {
+        let (reference, value) = part_texts(part, body, side);
+        if !covers(&reference, &value) {
+            let mut extent = body;
+            extent.union(reference.extent());
+            if let Some(v) = &value {
+                extent.union(v.extent());
+            }
+            placed.reference = reference;
+            placed.value = value;
+            placed.extent = extent;
+            return;
+        }
+    }
+}
+
+/// Turn a part's glyph into a placed part at the origin and work out its texts.
+fn place_part(ctx: &Ctx, p: usize, orient: Orient, nets: &[Option<usize>]) -> PlacedPart {
+    let glyph = ctx.glyphs[p].clone();
+    let part = &ctx.design.parts[p];
+    let body = body_of(&glyph, orient);
+
+    let pins: Vec<PlacedPin> = glyph
+        .pins
+        .iter()
+        .zip(nets)
+        .map(|(pin, &net)| PlacedPin {
+            id: pin.id.clone(),
+            at: orient.apply(pin.at),
+            escape: orient.dir((-pin.toward_body.0, -pin.toward_body.1)),
+            net,
+        })
+        .collect();
+
+    // Beside a tall part, above or below a wide one, on a side no wire leaves by.
+    let free = |d: Dir| !pins.iter().any(|q| q.escape == d);
+    let candidates = if body.height() > body.width() {
+        [Dir::Right, Dir::Left, Dir::Up, Dir::Down]
+    } else {
+        [Dir::Up, Dir::Down, Dir::Right, Dir::Left]
+    };
+    let side = candidates
+        .into_iter()
+        .find(|&d| free(d))
+        .unwrap_or(Dir::Right);
+    let (reference, value) = part_texts(part, body, side);
 
     let mut extent = body;
     extent.union(reference.extent());
@@ -1109,11 +1233,14 @@ fn place(
         .map(|p| place_part(ctx, p, orient[p], &pin_nets[p]))
         .collect();
     let mut at = vec![Pt::new(0.0, 0.0); n];
-    // What the power pins of each part draw, so a column leaves room for it.
-    let reach: Vec<Option<Rect>> = parts
-        .iter()
-        .map(|p| power_art(ctx, &p.pins).extent())
-        .collect();
+    // What the power pins of each part draw, so a column leaves room for it, and the texts of
+    // the part stay clear of it.
+    let mut reach: Vec<Option<Rect>> = Vec::with_capacity(parts.len());
+    for part in &mut parts {
+        let art = power_art(ctx, &part.pins);
+        retext(ctx, part, &art);
+        reach.push(art.extent());
+    }
 
     let mut cursor = 0.0;
     for &u in order {
@@ -1429,11 +1556,11 @@ fn settle_symbol_names(
     let mut fixed: Vec<Rect> = parts.iter().map(|p| p.extent).collect();
     fixed.extend(labels.iter().map(|l| l.text.extent()));
     fixed.extend(symbols.iter().map(PowerSymbol::glyph_extent));
-    for i in 0..symbols.len() {
-        let Some(label) = symbols[i].label.clone() else {
+    for symbol in symbols.iter_mut() {
+        let Some(label) = symbol.label.clone() else {
             continue;
         };
-        let own = symbols[i].at;
+        let own = symbol.at;
         let hits = |text: &Text, fixed: &[Rect]| {
             let r = text.extent();
             fixed.iter().any(|f| overlaps(&r, f))
@@ -1448,14 +1575,14 @@ fn settle_symbol_names(
                         })
                 })
         };
-        let (at, dir) = (symbols[i].at, symbols[i].dir);
+        let (at, dir) = (symbol.at, symbol.dir);
         let chosen = [Side::Right, Side::Left, Side::Beyond]
             .into_iter()
             .map(|side| label_beside(at, dir, &label.text, side))
             .find(|t| !hits(t, &fixed))
             .unwrap_or(label);
         fixed.push(chosen.extent());
-        symbols[i].label = Some(chosen);
+        symbol.label = Some(chosen);
     }
 }
 

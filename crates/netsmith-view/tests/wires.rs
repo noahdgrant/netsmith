@@ -486,3 +486,41 @@ fn a_design_with_no_rails_told_has_no_symbols() {
     let l = layout_rails(&b.design, &Rails::default(), &b.mapping, &b.lib).unwrap();
     assert!(l.symbols.is_empty());
 }
+
+#[test]
+fn the_reference_and_value_of_a_part_stay_clear_of_the_wires_to_its_symbols() {
+    // The header's pin 1 is on the supply and pin 2 on ground: their wires leave on the side
+    // where the texts of the header would go.
+    let mut d = common::led();
+    let j1 = d.parts.iter_mut().find(|p| p.refdes == "J1").unwrap();
+    j1.kind = "Socket1x2".into();
+    j1.value = "Conn_01x02_Socket".into();
+    let mut rails = Rails::default();
+    rails.ground.insert("GND".into());
+    rails.positive.insert("VCC".into());
+    let lib = netsmith_kicad::SymbolLib::at(netsmith_kicad::testlib::sample_symbols());
+    let l = layout_rails(&d, &rails, &netsmith_kicad::Mapping::standard(), &lib).unwrap();
+    assert!(!l.symbols.is_empty());
+    for p in &l.parts {
+        let texts = std::iter::once(&p.reference).chain(p.value.as_ref());
+        for t in texts {
+            let r = t.extent();
+            for w in &l.wires {
+                for s in w.points.windows(2) {
+                    let mut seg = Rect::around(s[0]);
+                    seg.include(s[1]);
+                    assert!(
+                        !overlap(&r, &seg),
+                        "{} `{}` is over a wire of {}",
+                        d.parts[p.part].refdes,
+                        t.text,
+                        d.nets[w.net].name
+                    );
+                }
+            }
+            for s in &l.symbols {
+                assert!(!overlap(&r, &s.extent()), "`{}` is over a symbol", t.text);
+            }
+        }
+    }
+}

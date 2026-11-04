@@ -795,6 +795,11 @@ fn the_server_serves_the_project_and_tells_the_page_when_a_file_changes() {
         "{}",
         &svg[..200.min(svg.len())]
     );
+    // The rails the checker's model has are drawn with power symbols, whatever their names.
+    assert!(
+        svg.contains("class=\"power supply\"") && svg.contains("class=\"power ground\""),
+        "no power symbols in the drawing of a board with rails"
+    );
 
     // Every read of the socket gives up after 20 seconds, so a push that never comes fails.
     let stream = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
