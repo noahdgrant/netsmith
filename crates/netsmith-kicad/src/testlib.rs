@@ -791,10 +791,10 @@ pub fn split_physical(source: &str) -> (String, Option<String>) {
     let mut case = String::new();
     let mut loose = String::new();
     let flush = |chunk: &mut Vec<&str>,
-                     place: usize,
-                     circuit: &mut String,
-                     case: &mut String,
-                     loose: &mut String| {
+                 place: usize,
+                 circuit: &mut String,
+                 case: &mut String,
+                 loose: &mut String| {
         let text: String = chunk.iter().map(|l| format!("{l}\n")).collect();
         match place {
             0 => circuit.push_str(&text),
@@ -863,10 +863,12 @@ pub fn split_physical(source: &str) -> (String, Option<String>) {
     let text = if physical.is_empty() {
         None
     } else {
-        Some(format!(
-            "import std::pcb::{{Cutout, Keepout, Outline}}\nimport std::parts::mechanical::{{Fiducial, Label, MountingHole}}\n\n{}",
-            physical.trim_end()
-        ) + "\n")
+        Some(
+            format!(
+                "import std::pcb::{{Cutout, Keepout, Outline}}\nimport std::parts::mechanical::{{Fiducial, Label, MountingHole}}\n\n{}",
+                physical.trim_end()
+            ) + "\n",
+        )
     };
     (circuit, text)
 }

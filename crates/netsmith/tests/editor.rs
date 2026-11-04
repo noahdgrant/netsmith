@@ -2081,12 +2081,18 @@ fn the_tree_lists_a_physical_file_and_a_mistake_in_it_is_a_problem_at_its_line()
     // It reads like a source file, and its board builds with it.
     let content = editor.read_file("src/main.physical.nsm").unwrap();
     assert!(content.text.contains("physical for OutlineAndPours"));
-    assert_eq!(editor.analysis().errors, 0, "{:?}", editor.analysis().problems);
+    assert_eq!(
+        editor.analysis().errors,
+        0,
+        "{:?}",
+        editor.analysis().problems
+    );
 
     // An unsaved change to it is checked with the board, and the problem is at its line.
-    let text = content
-        .text
-        .replace("        .corner_radius &= 3mm\n", "        .corner_radius &= 3mm\n        .nope &= 1mm\n");
+    let text = content.text.replace(
+        "        .corner_radius &= 3mm\n",
+        "        .corner_radius &= 3mm\n        .nope &= 1mm\n",
+    );
     let checked = editor.check("src/main.physical.nsm", &text).unwrap();
     assert_eq!(checked.errors, 1, "{:?}", checked.problems);
     let at = checked.problems[0].at.as_ref().unwrap();

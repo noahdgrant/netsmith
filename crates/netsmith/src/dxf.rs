@@ -17,8 +17,8 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
-use netsmith_dxf::{Options, Outline, Polygon, RoundedRect, Units, read_outline};
 use crate::physical::{Edit, Section};
+use netsmith_dxf::{Options, Outline, Polygon, RoundedRect, Units, read_outline};
 
 /// What `dxf import` is asked for.
 #[derive(Debug, Clone, Default, PartialEq)]

@@ -89,15 +89,15 @@ pub fn edit(old: Option<&str>, edit: &Edit) -> Result<String, String> {
             unit_text(edit.board, case_text, body_text)
         ));
     };
-    let parse = |text: &str| {
-        netsmith_lang::parse(text).map_err(|e| e.render("the physical file", text))
-    };
+    let parse =
+        |text: &str| netsmith_lang::parse(text).map_err(|e| e.render("the physical file", text));
     // First the old statements go, then the new ones come, then the imports they need. Each
     // step reads the text the step before made, so a blank line is decided by the lines round it.
     let text = remove_members(old, &parse(old)?, edit);
     let text = add_text(&text, &parse(&text)?, edit, case_text, body_text);
     let text = add_imports(&text, &parse(&text)?, edit);
-    parse(&text).map_err(|e| format!("the edit of the physical file does not parse (a bug): {e}"))?;
+    parse(&text)
+        .map_err(|e| format!("the edit of the physical file does not parse (a bug): {e}"))?;
     Ok(text)
 }
 
@@ -151,11 +151,7 @@ fn indent_at(text: &str, at: usize) -> String {
         .collect()
 }
 
-fn remove_members(
-    old: &str,
-    file: &netsmith_lang::ast::File,
-    edit: &Edit,
-) -> String {
+fn remove_members(old: &str, file: &netsmith_lang::ast::File, edit: &Edit) -> String {
     use netsmith_lang::ast::{Expr, Item};
     let Some(unit) = file.physicals.iter().find(|u| u.board.name == edit.board) else {
         return old.to_string();
@@ -175,7 +171,10 @@ fn remove_members(
         }
         let mut to = line_end(old, end.saturating_sub(1).max(start));
         let blank_before = from == 0 || old[line_start(old, from - 1)..from].trim().is_empty();
-        let blank_after = old[to..].lines().next().is_some_and(|l| l.trim().is_empty());
+        let blank_after = old[to..]
+            .lines()
+            .next()
+            .is_some_and(|l| l.trim().is_empty());
         if blank_before && blank_after {
             to = line_end(old, to);
         }
@@ -247,7 +246,10 @@ fn add_text(
         } else {
             "\n\n"
         };
-        text.push_str(&format!("{sep}{}", unit_text(edit.board, case_text, body_text)));
+        text.push_str(&format!(
+            "{sep}{}",
+            unit_text(edit.board, case_text, body_text)
+        ));
         return text;
     };
     let case = unit.items.iter().find_map(|i| match i {
@@ -295,7 +297,11 @@ fn add_imports(old: &str, file: &netsmith_lang::ast::File, edit: &Edit) -> Strin
     }
     // After the last import, or after the leading `//!` lines.
     let (at, lead, trail) = match file.imports.last() {
-        Some(last) => (line_end(old, last.span.end.saturating_sub(1).max(last.span.start)), "", ""),
+        Some(last) => (
+            line_end(old, last.span.end.saturating_sub(1).max(last.span.start)),
+            "",
+            "",
+        ),
         None => {
             let mut at = 0;
             for line in old.split_inclusive('\n') {
@@ -334,7 +340,12 @@ mod tests {
 
     #[test]
     fn a_new_file_has_its_imports_and_its_unit() {
-        let text = run(None, Section::Case, &[], ".outline: Outline {\n    .width &= 4mm\n}\n");
+        let text = run(
+            None,
+            Section::Case,
+            &[],
+            ".outline: Outline {\n    .width &= 4mm\n}\n",
+        );
         assert_eq!(
             text,
             "//! The physical intent of B.\n\nimport std::pcb::Outline\nimport std::pcb::Keepout\n\nphysical for B {\n    case {\n        .outline: Outline {\n            .width &= 4mm\n        }\n    }\n}\n"
@@ -368,13 +379,23 @@ mod tests {
     #[test]
     fn a_unit_without_a_case_gets_one_and_a_file_without_the_unit_gets_the_unit() {
         let old = "import std::pcb::Outline\n\nphysical for B {\n    .a.place.x &= 1mm\n}\n";
-        let text = run(Some(old), Section::Case, &[], ".outline: Outline { .width &= 4mm }\n");
+        let text = run(
+            Some(old),
+            Section::Case,
+            &[],
+            ".outline: Outline { .width &= 4mm }\n",
+        );
         assert!(
             text.contains("    case {\n        .outline: Outline { .width &= 4mm }\n    }\n}\n"),
             "{text}"
         );
         let other = "physical for A {\n}\n";
-        let text = run(Some(other), Section::Unit, &[], ".k: Keepout { .width &= 1mm }\n");
+        let text = run(
+            Some(other),
+            Section::Unit,
+            &[],
+            ".k: Keepout { .width &= 1mm }\n",
+        );
         assert_eq!(
             text,
             "import std::pcb::Outline\nimport std::pcb::Keepout\n\nphysical for A {\n}\n\nphysical for B {\n    .k: Keepout { .width &= 1mm }\n}\n"

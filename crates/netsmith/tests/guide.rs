@@ -330,8 +330,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
         };
 
         if b.has("fails") {
-            let message = match build_with(name, &b.text, loader, &catalogs, &Libraries::sample())
-            {
+            let message = match build_with(name, &b.text, loader, &catalogs, &Libraries::sample()) {
                 Ok(_) => panic!("{at}: this block should fail and it builds"),
                 Err(message) => message,
             };

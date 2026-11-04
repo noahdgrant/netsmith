@@ -762,8 +762,8 @@ fn an_outline_too_small_for_the_parts_is_refused_with_the_overflow() {
     let path = REGULATOR;
     let libraries = netsmith::Libraries::sample();
     let (text, loader) = split(path, &text);
-    let built = netsmith::build_with(path, &text, &loader, &Catalogs::sample(), &libraries)
-        .unwrap();
+    let built =
+        netsmith::build_with(path, &text, &loader, &Catalogs::sample(), &libraries).unwrap();
     let err = Board::from_design(&built[0].design, &libraries.mapping, &libraries.footprints)
         .unwrap_err()
         .to_string();
@@ -1268,8 +1268,8 @@ fn laid(members: &str, layout_text: &str) -> Board {
     );
     let libraries = netsmith::Libraries::sample();
     let (source, loader) = split(REGULATOR, &source);
-    let built = netsmith::build_with(REGULATOR, &source, &loader, &Catalogs::sample(), &libraries)
-        .unwrap();
+    let built =
+        netsmith::build_with(REGULATOR, &source, &loader, &Catalogs::sample(), &libraries).unwrap();
     let design = &built[0].design;
     let layout = layout(&layout_text.replace('@', &design.name));
     let mut b = Board::from_design_placed(
@@ -1315,8 +1315,8 @@ fn a_layout_entry_still_places_its_part_when_the_designator_letters_change() {
     let source = regulator_source("import std::pcb::{Cutout, Keepout, Outline}\n", FIXED);
     let libraries = netsmith::Libraries::sample();
     let (source, loader) = split(REGULATOR, &source);
-    let built = netsmith::build_with(REGULATOR, &source, &loader, &Catalogs::sample(), &libraries)
-        .unwrap();
+    let built =
+        netsmith::build_with(REGULATOR, &source, &loader, &Catalogs::sample(), &libraries).unwrap();
     let design = &built[0].design;
     let path = design.parts[1].path.clone();
     let text = format!(

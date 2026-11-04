@@ -118,7 +118,10 @@ fn the_import_prints_source_for_the_outline_cutout_and_holes() {
         text.contains("physical for Case {\n    case {\n        .outline: Outline {"),
         "{text}"
     );
-    assert!(text.contains("        .hole4.place.y &= 30.5mm\n    }\n}\n"), "{text}");
+    assert!(
+        text.contains("        .hole4.place.y &= 30.5mm\n    }\n}\n"),
+        "{text}"
+    );
     assert!(
         !text.contains("pcb.toml") && !text.contains("lock = true"),
         "no place is for the layout file: {text}"
@@ -218,7 +221,10 @@ fn write_edits_the_physical_file_keeps_its_comments_and_leaves_the_source_alone(
     );
     let text = fs::read_to_string(&physical).unwrap();
     // What was there is kept, the new members are in the case section, and the file parses.
-    assert!(text.contains("// Kept: the antenna is the radio team's."), "{text}");
+    assert!(
+        text.contains("// Kept: the antenna is the radio team's."),
+        "{text}"
+    );
     assert!(text.contains(".antenna: Keepout {"), "{text}");
     assert!(text.contains(".fiducial1: Fiducial"), "{text}");
     assert!(text.contains("        .hole2.place.x &= 45mm\n"), "{text}");
@@ -226,7 +232,10 @@ fn write_edits_the_physical_file_keeps_its_comments_and_leaves_the_source_alone(
     assert_eq!(text.matches(".hole1: MountingHole").count(), 1, "{text}");
     netsmith_lang::parse(&text).unwrap();
     assert!(diff.contains("+        .hole1.place.x &= 5mm"), "{diff}");
-    assert!(!diff.contains("-    // Kept"), "the comment is not in the diff: {diff}");
+    assert!(
+        !diff.contains("-    // Kept"),
+        "the comment is not in the diff: {diff}"
+    );
     assert!(
         !dir.join("case.pcb.toml").exists(),
         "no place is for the layout file"
@@ -241,7 +250,11 @@ fn write_edits_the_physical_file_keeps_its_comments_and_leaves_the_source_alone(
         &request(),
     )
     .unwrap();
-    assert!(moved.members.contains(".hole1.place.x &= 6mm"), "{}", moved.members);
+    assert!(
+        moved.members.contains(".hole1.place.x &= 6mm"),
+        "{}",
+        moved.members
+    );
     let (_, update) = write_physical(&source, None, &moved).unwrap();
     assert!(
         update.contains("-        .hole1.place.x &= 5mm")
@@ -288,8 +301,12 @@ fn imported_physical(dir: &std::path::Path) -> String {
     let nsm = dir.join("case.nsm");
     fs::write(&nsm, OUTLINE_AND_POURS).unwrap();
     // The slot is another loop than the import's `cutout1`: take it out first.
-    let start = OUTLINE_AND_POURS_PHYSICAL.find("        /// A rounded slot").unwrap();
-    let end = OUTLINE_AND_POURS_PHYSICAL.find("        /// Mounting holes go").unwrap();
+    let start = OUTLINE_AND_POURS_PHYSICAL
+        .find("        /// A rounded slot")
+        .unwrap();
+    let end = OUTLINE_AND_POURS_PHYSICAL
+        .find("        /// Mounting holes go")
+        .unwrap();
     let old = format!(
         "{}{}",
         &OUTLINE_AND_POURS_PHYSICAL[..start],

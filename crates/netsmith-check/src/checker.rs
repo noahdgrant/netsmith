@@ -27,6 +27,9 @@ pub(crate) struct ModuleData {
     pub std: bool,
 }
 
+/// A `physical for` unit and the module (the physical file) that holds it.
+type AttachedUnit = (usize, Rc<Physical>);
+
 /// The physical file being read as part of a board (ADR 0048).
 #[derive(Default)]
 pub(crate) struct PhysState {
@@ -80,7 +83,7 @@ pub(crate) struct Checker<'a> {
     /// The `physical for` units of each board definition `(module, index)`, as the module
     /// that holds the unit and the unit. A board takes its units in when it is made, so
     /// that a `panel` or a `system` that places the board sees them too.
-    attached: HashMap<(usize, usize), Vec<(usize, Rc<Physical>)>>,
+    attached: HashMap<(usize, usize), Vec<AttachedUnit>>,
     /// Set while a board's physical file is being read (ADR 0048).
     pub(crate) phys: Option<PhysState>,
 }
@@ -697,12 +700,10 @@ impl<'a> Checker<'a> {
                     self.model.instances[child.0].declared =
                         Some((self.cur_source(), Span::new(d.name.span.start, last)));
                     self.model.add_member(cur, &name, Member::Inst(child));
-                    if self.phys.is_some() && self.scope.len() == 1 {
-                        self.phys
-                            .as_mut()
-                            .expect("checked just above")
-                            .declared
-                            .insert(child);
+                    if self.scope.len() == 1
+                        && let Some(phys) = &mut self.phys
+                    {
+                        phys.declared.insert(child);
                     }
                 }
             }

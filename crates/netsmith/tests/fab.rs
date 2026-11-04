@@ -666,7 +666,8 @@ fn an_example_whose_keepout_has_no_place_is_stopped_by_the_placement_check() {
     if kicad().is_none() {
         return;
     }
-    let physical = OUTLINE_AND_POURS_PHYSICAL.replace("        .x &= 18mm\n        .y &= 2mm\n", "");
+    let physical =
+        OUTLINE_AND_POURS_PHYSICAL.replace("        .x &= 18mm\n        .y &= 2mm\n", "");
     assert_ne!(physical, OUTLINE_AND_POURS_PHYSICAL);
     let (_dir, made) = fab_with_physical("no-place", &physical, "version = 1\n");
     let err = made.expect_err("the keepout has nowhere to be");

@@ -337,7 +337,9 @@ impl Checker<'_> {
         let mut stack = vec![module];
         while let Some(inst) = stack.pop() {
             for (_, member) in self.model.instance(inst).children.clone() {
-                let Member::Inst(child) = member else { continue };
+                let Member::Inst(child) = member else {
+                    continue;
+                };
                 match self.model.instance(child).kind {
                     InstKind::Part => parts.push(child),
                     InstKind::Module => stack.push(child),

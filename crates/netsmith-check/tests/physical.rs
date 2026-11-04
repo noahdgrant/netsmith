@@ -31,7 +31,10 @@ fn run(circuit: &str, physical: &str) -> Checked {
 }
 
 fn physical(body: &str) -> Checked {
-    run(BOARD, &format!("{PHYS_HEAD}physical for B {{\n{body}\n}}\n"))
+    run(
+        BOARD,
+        &format!("{PHYS_HEAD}physical for B {{\n{body}\n}}\n"),
+    )
 }
 
 fn messages(c: &Checked) -> Vec<String> {
@@ -52,10 +55,7 @@ fn a_physical_file_reaches_a_part_inside_a_module_by_its_path() {
 
 #[test]
 fn the_circuit_source_still_cannot_reach_into_a_module() {
-    let c = run(
-        "board B {\n    .b: Block\n    .b.j.pin_count &= 2\n}\n",
-        "",
-    );
+    let c = run("board B {\n    .b: Block\n    .b.j.pin_count &= 2\n}\n", "");
     assert_eq!(
         messages(&c),
         [
@@ -88,7 +88,9 @@ fn a_physical_file_may_not_change_what_a_part_is() {
     let m = messages(&c);
     assert_eq!(m.len(), 2, "{m:?}");
     assert!(
-        m[0].starts_with("`b.r.resistance` is not physical intent: a physical file states where a part is"),
+        m[0].starts_with(
+            "`b.r.resistance` is not physical intent: a physical file states where a part is"
+        ),
         "{}",
         m[0]
     );
@@ -100,7 +102,11 @@ fn a_relation_that_mentions_the_circuit_is_refused_too() {
     let c = physical("    .b.r.place.x >= .b.r.resistance");
     let m = messages(&c);
     assert_eq!(m.len(), 1, "{m:?}");
-    assert!(m[0].starts_with("`b.r.resistance` is not physical intent"), "{}", m[0]);
+    assert!(
+        m[0].starts_with("`b.r.resistance` is not physical intent"),
+        "{}",
+        m[0]
+    );
 }
 
 #[test]
@@ -132,7 +138,11 @@ fn the_case_section_holds_the_outline_cutouts_holes_fiducials_and_labels() {
     assert!(m.field_at("outline.width").is_some());
     assert!(m.field_at("zone.width").is_some());
     assert!(m.inst_at("hole1").is_some());
-    assert!(m.relations().iter().any(|r| c.sources.get(r.source).name == "t.physical.nsm"));
+    assert!(
+        m.relations()
+            .iter()
+            .any(|r| c.sources.get(r.source).name == "t.physical.nsm")
+    );
 }
 
 #[test]
@@ -140,7 +150,9 @@ fn an_outline_outside_the_case_section_says_where_it_goes() {
     let c = physical("    .outline: Outline { .width &= 44mm }");
     assert_eq!(
         messages(&c),
-        ["an outline belongs in the `case { }` section of `physical for B`: wrap `.outline: Outline` in `case { ... }`"]
+        [
+            "an outline belongs in the `case { }` section of `physical for B`: wrap `.outline: Outline` in `case { ... }`"
+        ]
     );
 }
 
@@ -168,7 +180,12 @@ fn the_old_form_in_a_boards_circuit_source_is_an_error_that_says_where_it_goes()
         m[0],
         "`.outline: Outline` is an outline, which is physical intent, and a board's circuit source does not hold it (ADR 0048); declare it in the `case { }` section of `physical for B` in `t.physical.nsm`"
     );
-    assert!(m[2].contains("a keepout that a board draws") && m[2].contains("(a keepout that a part carries stays in the part)"), "{}", m[2]);
+    assert!(
+        m[2].contains("a keepout that a board draws")
+            && m[2].contains("(a keepout that a part carries stays in the part)"),
+        "{}",
+        m[2]
+    );
     assert_eq!(
         m[6],
         "`j.place.x` is a placement requirement, which is physical intent, and a board's circuit source does not state it (ADR 0048); put it in `physical for B` in `t.physical.nsm`"
@@ -198,7 +215,13 @@ fn a_unit_for_a_module_is_refused_until_the_module_layer_exists() {
     let c = run(BOARD, "physical for Block {}\n");
     let m = messages(&c);
     assert_eq!(m.len(), 1);
-    assert!(m[0].contains("names a module, and a physical file for anything but a board is not built yet"), "{}", m[0]);
+    assert!(
+        m[0].contains(
+            "names a module, and a physical file for anything but a board is not built yet"
+        ),
+        "{}",
+        m[0]
+    );
 }
 
 #[test]
@@ -209,10 +232,7 @@ fn a_file_holds_the_units_of_several_boards_and_each_only_once() {
         "physical for A { .j.place.x &= 1mm }\nphysical for B { .j.place.x &= 2mm }\n",
     );
     assert!(c.is_ok(), "{}", c.render());
-    assert_eq!(
-        c.board("A").unwrap().model.domain_at("j.place.x").is_some(),
-        true
-    );
+    assert!(c.board("A").unwrap().model.domain_at("j.place.x").is_some());
     let c = run(src, "physical for A {}\nphysical for A {}\n");
     assert_eq!(
         messages(&c),
@@ -222,14 +242,12 @@ fn a_file_holds_the_units_of_several_boards_and_each_only_once() {
 
 #[test]
 fn a_physical_unit_in_a_circuit_source_says_to_use_a_file_of_its_own() {
-    let c = check(
-        "led.nsm",
-        "board B {}\nphysical for B {}\n",
-        &Loader::std(),
-    );
+    let c = check("led.nsm", "board B {}\nphysical for B {}\n", &Loader::std());
     assert_eq!(
         messages(&c),
-        ["`physical for B` belongs in a file of its own, `led.physical.nsm`, beside this source; a source file holds the circuit"]
+        [
+            "`physical for B` belongs in a file of its own, `led.physical.nsm`, beside this source; a source file holds the circuit"
+        ]
     );
 }
 
@@ -238,7 +256,9 @@ fn a_physical_file_holds_no_definitions() {
     let c = run(BOARD, "board X {}\nphysical for B {}\n");
     assert_eq!(
         messages(&c),
-        ["a physical file holds `physical for` units and nothing else; `board X` belongs in the circuit source"]
+        [
+            "a physical file holds `physical for` units and nothing else; `board X` belongs in the circuit source"
+        ]
     );
 }
 
@@ -253,7 +273,10 @@ fn a_case_section_outside_a_physical_file_is_refused() {
 fn a_name_in_the_physical_file_that_does_not_exist_is_named() {
     let c = physical("    .b.nope.place.x &= 1mm");
     assert_eq!(messages(&c), ["`Block` has no member `nope`"]);
-    assert_eq!(c.sources.get(c.diagnostics[0].source).name, "t.physical.nsm");
+    assert_eq!(
+        c.sources.get(c.diagnostics[0].source).name,
+        "t.physical.nsm"
+    );
 }
 
 #[test]
