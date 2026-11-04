@@ -108,11 +108,40 @@ fn board(example: &str) -> Board {
         "{}/../../examples/{example}.nsm",
         env!("CARGO_MANIFEST_DIR")
     );
-    board_from(&path, &std::fs::read_to_string(&path).unwrap())
+    let physical = std::fs::read_to_string(path.replace(".nsm", ".physical.nsm")).ok();
+    board_with(
+        &path,
+        &std::fs::read_to_string(&path).unwrap(),
+        physical.as_deref(),
+    )
+}
+
+/// The standard library and, if there is one, the physical file `physical` paired with
+/// `path`.
+fn loader(path: &str, physical: Option<&str>) -> netsmith_check::Loader {
+    let mut loader = netsmith_check::Loader::std();
+    if let Some(physical) = physical {
+        loader.attach_physical(path, "board.physical.nsm", physical);
+    }
+    loader
+}
+
+/// A source that states its physical intent inside the board (see
+/// `netsmith_kicad::testlib::split_physical`) as the circuit source and its physical file.
+fn split(path: &str, text: &str) -> (String, netsmith_check::Loader) {
+    let (circuit, physical) = netsmith_kicad::testlib::split_physical(text);
+    let loader = loader(path, physical.as_deref());
+    (circuit, loader)
 }
 
 /// A board from source text.
 fn board_from(path: &str, text: &str) -> Board {
+    let (circuit, physical) = netsmith_kicad::testlib::split_physical(text);
+    board_with(path, &circuit, physical.as_deref())
+}
+
+/// A board from source text and its physical file.
+fn board_with(path: &str, text: &str, physical: Option<&str>) -> Board {
     let installed = netsmith::Libraries::standard();
     let libraries = if installed.footprints.root().is_dir() {
         installed
@@ -122,7 +151,7 @@ fn board_from(path: &str, text: &str) -> Board {
     let built = netsmith::build_with(
         path,
         text,
-        &netsmith_check::Loader::std(),
+        &loader(path, physical),
         &Catalogs::sample(),
         &libraries,
     )
@@ -732,14 +761,9 @@ fn an_outline_too_small_for_the_parts_is_refused_with_the_overflow() {
     );
     let path = REGULATOR;
     let libraries = netsmith::Libraries::sample();
-    let built = netsmith::build_with(
-        path,
-        &text,
-        &netsmith_check::Loader::std(),
-        &Catalogs::sample(),
-        &libraries,
-    )
-    .unwrap();
+    let (text, loader) = split(path, &text);
+    let built = netsmith::build_with(path, &text, &loader, &Catalogs::sample(), &libraries)
+        .unwrap();
     let err = Board::from_design(&built[0].design, &libraries.mapping, &libraries.footprints)
         .unwrap_err()
         .to_string();
@@ -1243,14 +1267,9 @@ fn laid(members: &str, layout_text: &str) -> Board {
         members,
     );
     let libraries = netsmith::Libraries::sample();
-    let built = netsmith::build_with(
-        REGULATOR,
-        &source,
-        &netsmith_check::Loader::std(),
-        &Catalogs::sample(),
-        &libraries,
-    )
-    .unwrap();
+    let (source, loader) = split(REGULATOR, &source);
+    let built = netsmith::build_with(REGULATOR, &source, &loader, &Catalogs::sample(), &libraries)
+        .unwrap();
     let design = &built[0].design;
     let layout = layout(&layout_text.replace('@', &design.name));
     let mut b = Board::from_design_placed(
@@ -1295,14 +1314,9 @@ fn a_layout_entry_places_its_part_from_the_outlines_corner_and_the_rest_stay() {
 fn a_layout_entry_still_places_its_part_when_the_designator_letters_change() {
     let source = regulator_source("import std::pcb::{Cutout, Keepout, Outline}\n", FIXED);
     let libraries = netsmith::Libraries::sample();
-    let built = netsmith::build_with(
-        REGULATOR,
-        &source,
-        &netsmith_check::Loader::std(),
-        &Catalogs::sample(),
-        &libraries,
-    )
-    .unwrap();
+    let (source, loader) = split(REGULATOR, &source);
+    let built = netsmith::build_with(REGULATOR, &source, &loader, &Catalogs::sample(), &libraries)
+        .unwrap();
     let design = &built[0].design;
     let path = design.parts[1].path.clone();
     let text = format!(
