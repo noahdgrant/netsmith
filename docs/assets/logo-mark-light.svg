@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img">
+  <title>netsmith</title>
+  <path d="M32.4 70.5L93.6 70.5M63 70.5L63 93.5M63 93.5L47.7 114.9M63 93.5L78.3 114.9M47.7 114.9L78.3 114.9" fill="none" stroke="#d4691a" stroke-width="5.7"/>
+  <path d="M73.4 31.6L36.6 5.8" fill="none" stroke="#d4691a" stroke-width="6.7"/>
+  <g fill="#d4691a"><circle cx="32.4" cy="70.5" r="7.6"/><circle cx="63" cy="70.5" r="7.6"/><circle cx="93.6" cy="70.5" r="7.6"/><circle cx="63" cy="93.5" r="7.6"/><circle cx="47.7" cy="114.9" r="7.6"/><circle cx="78.3" cy="114.9" r="7.6"/><rect x="64.8" y="13.4" width="17.2" height="36.3" rx="3.3" transform="rotate(35 73.4 31.6)"/></g>
+</svg>

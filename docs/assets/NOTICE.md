@@ -28,13 +28,28 @@ font file is part of this repository.
 
 ## Colours and files
 
-- Colours: the editor's accent `#e8873a` and text colour `#d6d9de` on the dark background `#151618`
-  (`logo-dark.svg`, `logo-mark.svg`); `#b4530a` and `#1c1d20` for white backgrounds
-  (`logo-light.svg`); `#d4691a` and `#8a8f98` in `logo.svg`, which keeps at least 3:1 contrast on both
-  white and `#151618`; pure black or white in the `logo-mono-*` files.
+There is one accent for each mode, used in every asset of that mode: the editor's orange `#e8873a`
+for a dark background, and `#d4691a` for a light one (the same hue, darker: 3.6:1 on white, 3.4:1
+on GitHub's light canvas `#f6f8fa`). Text is `#d6d9de` on dark and `#1c1d20` on light.
+
+| File | For | Accent | Text ("net") |
+| --- | --- | --- | --- |
+| `logo-mark-dark.svg`, `logo-dark.svg` | dark backgrounds | `#e8873a` | `#d6d9de` |
+| `logo-mark-light.svg`, `logo-light.svg` | light backgrounds | `#d4691a` | `#1c1d20` |
+| `logo.svg` | follows the reader's `prefers-color-scheme` (dark when there is none) | `#e8873a`, `#d4691a` in light | `#d6d9de`, `#1c1d20` in light |
+| `logo-mono-black.svg`, `logo-mono-white.svg` | one colour | black, white | the same |
+| `social-preview.png` | dark by design | `#e8873a` | `#d6d9de`, tagline `#9aa1ab` |
+| favicon (`crates/netsmith-editor/web/src/assets/favicon.svg`) | follows `prefers-color-scheme` (dark when there is none) | `#e8873a`, `#d4691a` in light | none |
+| `favicon-32.png`, `apple-touch-icon.png` (same folder) | dark accent | `#e8873a` | none |
+
+The README shows `logo-dark.svg` and `logo-light.svg` through a `<picture>`.
+
+- The mark has no ambiguous file: `logo-mark-dark.svg` and `logo-mark-light.svg`.
+- The favicon has heavier strokes than the mark so it stays legible at 16 px. The 180 px icon has
+  a `#151618` background.
 - `social-preview.png` is 1280 x 640, GitHub's size for a repository social preview. It is set by hand
   in the repository's settings (Settings, General, Social preview); the file does nothing until then.
-  Its tagline is set in the system's sans-serif font when the image is rendered (a picture, so no
-  font file is part of the project).
-- The editor's favicon and its fallbacks are in `crates/netsmith-editor/web/src/assets/`. They use
-  heavier strokes than `logo-mark.svg` so the mark stays legible at 16 px.
+  It is rendered from `social-preview.html`, where the tagline is the one text to change, by
+  `node docs/assets/render-social.mjs` (Node 20 or newer; `cd scripts/editor-verify-js && npm ci` once
+  for the headless Chromium). The tagline is set in the system's sans-serif font; it is a picture, so no
+  font file is part of the project.

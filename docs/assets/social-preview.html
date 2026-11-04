@@ -1,0 +1,21 @@
+<!doctype html>
+<!-- The source of social-preview.png (1280 x 640, GitHub's size for a repository social preview).
+     The tagline is the one text in the page: change it in <p id="tagline"> and render again with
+     `node docs/assets/render-social.mjs` (see NOTICE.md). -->
+<meta charset="utf-8">
+<title>netsmith social preview</title>
+<style>
+  html, body { margin: 0; }
+  body { width: 1280px; height: 640px; background: #151618; position: relative; overflow: hidden;
+         font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+  .bar { position: absolute; left: 0; right: 0; top: 0; height: 8px; background: #e8873a; }
+  .content { position: absolute; inset: 8px 0 0 0; display: flex; flex-direction: column;
+             align-items: center; justify-content: center; gap: 44px; }
+  img { width: 880px; height: auto; display: block; }
+  #tagline { margin: 0; color: #9aa1ab; font-size: 40px; letter-spacing: .01em; }
+</style>
+<div class="bar"></div>
+<div class="content">
+  <img src="logo-dark.svg" alt="netsmith">
+  <p id="tagline">Circuits as code, in Rust.</p>
+</div>
