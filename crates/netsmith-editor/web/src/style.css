@@ -86,8 +86,11 @@ select { background: var(--panel-2); border: 1px solid var(--line); border-radiu
 .tabbar.sections { flex: 1; min-width: 0; }
 button.tab { background: none; border: none; border-right: 1px solid var(--line); font: inherit; height: 100%; }
 .tabbar.sections .tab { padding: 0 15px; font-weight: 500; touch-action: pan-x; }
-.tabbar.sections .tab.elsewhere { opacity: .5; }
-.tabbar.sections .tab.elsewhere::after { content: '▸'; font-size: 9px; color: var(--faint); }
+.tabbar.sections .tab.elsewhere { display: inline-flex; align-items: center; gap: 7px; }
+.elsewhere-mark { display: inline-flex; color: var(--accent); }
+.pane-strip { position: relative; }
+.pane-notice { position: absolute; z-index: 15; right: 8px; top: calc(100% + 6px); display: flex; align-items: center; gap: 10px; background: var(--panel-2); border: 1px solid var(--accent); border-radius: 8px; padding: 8px 10px 8px 14px; box-shadow: 0 8px 24px rgba(0,0,0,.5); max-width: calc(100% - 16px); }
+.pane-notice::before { content: ''; position: absolute; right: 56px; top: -6px; width: 10px; height: 10px; background: var(--panel-2); border-left: 1px solid var(--accent); border-top: 1px solid var(--accent); transform: rotate(45deg); }
 .pane-btn { display: inline-flex; align-items: center; gap: 6px; background: none; border: none; border-left: 1px solid var(--line); color: var(--muted); padding: 0 12px; cursor: pointer; white-space: nowrap; }
 .pane-btn:hover { color: var(--text); background: #26282c; }
 .pane-btn[aria-disabled="true"] { opacity: .45; cursor: default; }
