@@ -60,7 +60,14 @@ export function Build() {
   async function runBuild() {
     beginJob('build', '');
     try {
-      buildReport.value = await api.build();
+      const report = await api.build();
+      buildReport.value = report;
+      say(
+        report.ok
+          ? `Wrote KiCad files for ${report.written.length} board${report.written.length === 1 ? '' : 's'}`
+          : 'Writing the KiCad files did not finish: see the Build section',
+        !report.ok,
+      );
     } catch (e) {
       say(e instanceof Error ? e.message : String(e), true);
     } finally {
@@ -74,6 +81,10 @@ export function Build() {
     try {
       const report = await api.fab(name, allowed);
       fabReports.value = { ...fabReports.value, [name]: report };
+      say(
+        report.ok ? `Fab files made for ${report.board}` : `Fab stopped for ${report.board}: see the Build section`,
+        !report.ok,
+      );
     } catch (e) {
       say(e instanceof Error ? e.message : String(e), true);
     } finally {

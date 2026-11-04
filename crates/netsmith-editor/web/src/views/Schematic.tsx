@@ -1,15 +1,20 @@
+import { signal } from '@preact/signals';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { api } from '../client';
 import { PanZoom } from '../components/PanZoom';
+import { ALL, canStep, resolvePick, stepPick } from '../sheets';
+import { load, save } from '../storage';
 import {
   analysis,
   board,
   detail,
   goTo,
+  layout,
   lineParts,
   pickPart,
   selected,
+  visible,
 } from '../store';
 
 /** Pixels in the canvas for each millimetre of the drawing. */
@@ -24,6 +29,22 @@ interface Sheet {
   w: number;
   h: number;
 }
+
+/** The sheet each board shows (a module's name, or `*` for all), kept in localStorage. */
+const picks = signal<Record<string, string>>(load('netsmith.sheets.v1', {}));
+/** Whether the side panel is open: null until the person chooses, then open by the window's width. */
+const detailsPref = signal<boolean | null>(load('netsmith.schematic.details', null));
+/** The side panel is open when the view is wide enough to spare it, unless the person chose. */
+const detailsOpen = (viewWidth: number) => detailsPref.value ?? viewWidth >= 1500;
+
+function choose(board: string, pick: string) {
+  picks.value = { ...picks.value, [board]: pick };
+  save('netsmith.sheets.v1', picks.value);
+}
+
+/** A sheet's box with room around it, so its frame and title are not cut. */
+const PAD = 1.5 * SCALE;
+const around = (s: Sheet) => ({ x: s.x - PAD, y: s.y - PAD, w: s.w + 2 * PAD, h: s.h + 2 * PAD });
 
 interface Drawing {
   html: string;
@@ -63,8 +84,17 @@ export function Schematic() {
   const [drawing, setDrawing] = useState<Drawing | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hover, setHover] = useState<{ net?: string; part?: string } | null>(null);
-  const [focus, setFocus] = useState<{ x: number; y: number; w: number; h: number; seq: number } | undefined>();
   const holder = useRef<HTMLDivElement>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const [viewWidth, setViewWidth] = useState(0);
+  useEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const watch = new ResizeObserver(() => setViewWidth(el.clientWidth));
+    watch.observe(el);
+    setViewWidth(el.clientWidth);
+    return () => watch.disconnect();
+  }, [!!drawing]);
 
   useEffect(() => {
     if (!name) {
@@ -123,7 +153,28 @@ export function Schematic() {
     }
   }, [drawing, hover, marked.join(','), netsOfPart]);
 
-  const jump = (sheet: Sheet) => setFocus({ ...sheet, seq: (focus?.seq ?? 0) + 1 });
+  const names = useMemo(() => (drawing?.sheets ?? []).map((s) => s.name), [drawing]);
+  const current = name ? resolvePick(picks.value[name], names) : ALL;
+  const open = (p: string) => name && choose(name, p);
+
+  // The keys step through the sheets while this view is the one the person is in.
+  const stepRef = useRef<(dir: 1 | -1) => void>(() => {});
+  stepRef.current = (dir) => name && open(stepPick(names, current, dir));
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest('input, textarea, select, [contenteditable="true"], .cm-editor')) return;
+      const here = visible.value.find((p) => p.index === layout.value.focus || visible.value.length === 1);
+      if (here?.section !== 'schematic') return;
+      const dir = e.key === 'ArrowLeft' || e.key === '[' ? -1 : e.key === 'ArrowRight' || e.key === ']' ? 1 : 0;
+      if (!dir) return;
+      e.preventDefault();
+      stepRef.current(dir);
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, []);
 
   const pick = (target: EventTarget | null) => {
     if (!(target instanceof Element)) return null;
@@ -139,14 +190,40 @@ export function Schematic() {
   if (!drawing) return <div class="empty">Drawing…</div>;
 
   const stale = analysis.value?.boards.find((b) => b.name === name)?.stale;
+  const sheet = drawing.sheets.find((s) => s.name === current);
+  const box = sheet ? around(sheet) : undefined;
+  // One sheet at a time: what is outside its frame is cut away, so it fills the view.
+  const clip = box
+    ? `inset(${box.y}px ${drawing.width - box.x - box.w}px ${drawing.height - box.y - box.h}px ${box.x}px)`
+    : undefined;
+  const side = detailsOpen(viewWidth);
   return (
-    <div class="schematic-view">
+    <div class="schematic-view" ref={root}>
       {stale && <div class="banner">The source has a mistake. This is the last drawing that built.</div>}
+      <SheetBar
+        sheets={drawing.sheets}
+        pick={current}
+        names={names}
+        open={open}
+        side={side}
+        toggleSide={() => {
+          detailsPref.value = !side;
+          save('netsmith.schematic.details', detailsPref.value);
+        }}
+      />
       <div class={`schematic-body ${stale ? 'stale' : ''}`}>
-      <PanZoom width={drawing.width} height={drawing.height} fitKey={`${name}:${drawing.width}x${drawing.height}`} focus={focus} class="schematic-host">
+      <PanZoom
+        width={drawing.width}
+        height={drawing.height}
+        fitKey={`${name}:${drawing.width}x${drawing.height}:${current}`}
+        fitBox={box}
+        memoKey={`schematic|${name}|${current}`}
+        class="schematic-host"
+      >
         <div
           ref={holder}
           class="hit-target"
+          style={clip ? { clipPath: clip } : undefined}
           dangerouslySetInnerHTML={{ __html: drawing.html }}
           onPointerOver={(e) => setHover(pick(e.target))}
           onPointerLeave={() => setHover(null)}
@@ -154,17 +231,95 @@ export function Schematic() {
             const hit = pick(e.target);
             if (hit?.part) pickPart(hit.part, true);
             else pickPart(null);
-            // A click on a module's box, and not on what is in it, zooms into the module.
-            if (!hit && e.target instanceof Element) {
+            // In the overview, a click on a module's box, and not on what is in it, opens its sheet.
+            if (!hit && current === ALL && e.target instanceof Element) {
               const module = e.target.closest('.module-sheet')?.getAttribute('data-module');
-              const sheet = drawing.sheets.find((s) => s.name === module);
-              if (sheet) jump(sheet);
+              const found = drawing.sheets.find((s) => s.name === module);
+              if (found) open(found.name);
             }
           }}
         />
       </PanZoom>
-      <Inspector hover={hover} sheets={drawing.sheets} jump={jump} />
+      {side && <Inspector hover={hover} sheets={drawing.sheets} pick={current} open={open} />}
       </div>
+    </div>
+  );
+}
+
+/** The sheets as a strip of tabs, with Previous and Next, the overview first. */
+function SheetBar({
+  sheets,
+  pick,
+  names,
+  open,
+  side,
+  toggleSide,
+}: {
+  sheets: Sheet[];
+  pick: string;
+  names: string[];
+  open: (p: string) => void;
+  side: boolean;
+  toggleSide: () => void;
+}) {
+  const can = canStep(names, pick);
+  const place = pick === ALL ? 'All sheets' : `${names.indexOf(pick) + 1} of ${names.length}`;
+  const active = useRef<HTMLButtonElement>(null);
+  useEffect(() => active.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' }), [pick]);
+  return (
+    <div class="sheetbar">
+      <button
+        class="step"
+        disabled={!can.prev}
+        title="Previous sheet (Left arrow or [)"
+        aria-label="Previous sheet"
+        onClick={() => open(stepPick(names, pick, -1))}
+      >
+        ‹
+      </button>
+      <button
+        class="step"
+        disabled={!can.next}
+        title="Next sheet (Right arrow or ])"
+        aria-label="Next sheet"
+        onClick={() => open(stepPick(names, pick, 1))}
+      >
+        ›
+      </button>
+      <div class="sheet-tabs" role="tablist" aria-label="Sheets">
+        <button
+          role="tab"
+          aria-selected={pick === ALL}
+          ref={pick === ALL ? active : undefined}
+          class={`sheet-tab ${pick === ALL ? 'active' : ''}`}
+          title="Every sheet at once; click one to open it"
+          onClick={() => open(ALL)}
+        >
+          All sheets
+        </button>
+        {sheets.map((s) => (
+          <button
+            key={s.name}
+            role="tab"
+            aria-selected={pick === s.name}
+            ref={pick === s.name ? active : undefined}
+            class={`sheet-tab ${pick === s.name ? 'active' : ''}`}
+            title={s.title}
+            onClick={() => open(s.name)}
+          >
+            {s.title}
+          </button>
+        ))}
+      </div>
+      <span class="sheet-place">{place}</span>
+      <button
+        class={`tool small ${side ? 'on' : ''}`}
+        aria-pressed={side}
+        title="Show or hide the panel with the selection, the modules and the parts"
+        onClick={toggleSide}
+      >
+        Details
+      </button>
     </div>
   );
 }
@@ -172,11 +327,13 @@ export function Schematic() {
 function Inspector({
   hover,
   sheets,
-  jump,
+  pick,
+  open,
 }: {
   hover: { net?: string; part?: string } | null;
   sheets: Sheet[];
-  jump: (s: Sheet) => void;
+  pick: string;
+  open: (p: string) => void;
 }) {
   const d = detail.value;
   const ref = hover?.part ?? selected.value;
@@ -244,7 +401,7 @@ function Inspector({
           <ul class="outline">
             {sheets.map((s) => (
               <li key={s.name}>
-                <button class="link" title="Zoom to this module" onClick={() => jump(s)}>
+                <button class={`link ${pick === s.name ? 'sel' : ''}`} title="Open this sheet" onClick={() => open(s.name)}>
                   {s.title}
                 </button>
               </li>

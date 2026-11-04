@@ -15,9 +15,19 @@ import type {
   Project,
 } from './api';
 import { ApiFailure, Events, api } from './client';
+import {
+  type Layout,
+  type Section,
+  openFrom,
+  parseLayout,
+  show,
+  undoOpen,
+  visiblePanes,
+} from './layout';
+import { load, save as keep } from './storage';
 import { covers } from './util';
 
-export type ViewKind = 'schematic' | 'power' | 'system' | 'bom' | 'pcb' | 'build';
+export type ViewKind = Section;
 
 export interface OpenFile {
   path: string;
@@ -43,7 +53,64 @@ export const openFiles = signal<Record<string, OpenFile>>({});
 export const tabs = signal<string[]>([]);
 export const activeFile = signal<string | null>(null);
 
-export const activeView = signal<ViewKind>('schematic');
+const LAYOUT_KEY = 'netsmith.layout.v1';
+
+/** What the window shows: one section, or two side by side. Kept in localStorage. */
+export const layout = signal<Layout>(parseLayout(load<unknown>(LAYOUT_KEY, null)));
+effect(() => keep(LAYOUT_KEY, layout.value));
+export const windowWidth = signal(typeof window === 'undefined' ? 2000 : window.innerWidth);
+/** The panes on screen: a window too narrow for two shows one. */
+export const visible = computed(() => visiblePanes(layout.value, windowWidth.value));
+/** Where a click-through came from, so Back can put it back. */
+export const back = signal<{ pane: number; section: Section } | null>(null);
+let pushed = false;
+
+/** The user picks a section for a pane (a tab, a number key): it replaces what the pane shows,
+ * or swaps with the other pane when that has it. */
+export function showSection(section: Section, pane = layout.peek().focus) {
+  back.value = null;
+  layout.value = show(layout.peek(), section, pane);
+}
+
+/** A section is asked for by something other than a tab (the Build button, a panel in the tree):
+ * left alone when it is on screen, else in the pane that was not clicked. */
+export function revealSection(section: Section) {
+  const r = openFrom(layout.peek(), windowWidth.peek(), section, layout.peek().focus);
+  layout.value = r.layout;
+}
+
+/** A click-through to the source: it opens in the other pane of a split, else replaces what the
+ * one pane shows, and Back returns. */
+export function revealSource() {
+  const r = openFrom(layout.peek(), windowWidth.peek(), 'source', layout.peek().focus);
+  layout.value = r.layout;
+  if (r.back) {
+    back.value = r.back;
+    history.pushState({ netsmithBack: true }, '');
+    pushed = true;
+  }
+}
+
+/** Put the pane that a click-through changed back as it was. */
+export function goBack() {
+  const b = back.peek();
+  if (!b) return;
+  back.value = null;
+  layout.value = undoOpen(layout.peek(), b);
+}
+
+/** Back, by the button or a key: through the browser's history, so its Back button agrees. */
+export function requestBack() {
+  if (pushed) {
+    pushed = false;
+    history.back();
+  } else goBack();
+}
+
+export function setFocusPane(index: number) {
+  if (layout.peek().focus !== index) layout.value = { ...layout.peek(), focus: index };
+}
+
 export const board = signal<string | null>(null);
 /** The panel whose preview the PCB view shows instead of the board (ADR 0040), if any. */
 export const panelShown = signal<string | null>(null);
@@ -58,8 +125,6 @@ export const selected = signal<string | null>(null);
 export const fabReports = signal<Record<string, FabReport>>({});
 /** A run asked for by the top bar, taken by the build view. */
 export const run = signal<{ what: 'build' | 'fab'; nonce: number } | null>(null);
-export const showEditor = signal(true);
-export const showView = signal(true);
 /** A long job the page asked for (`route`, `fab`, `build`): what the server has said of it and
  * when it started. The page stays usable while it runs. */
 export interface Job {
@@ -275,7 +340,6 @@ export async function openFile(path: string): Promise<void> {
   }
   if (!tabs.value.includes(path)) tabs.value = [...tabs.value, path];
   activeFile.value = path;
-  showEditor.value = true;
 }
 
 export function closeFile(path: string) {
@@ -334,6 +398,7 @@ export async function goTo(at: Location) {
     say(e instanceof Error ? e.message : String(e), true);
     return;
   }
+  revealSource();
   reveal.value = { at, nonce: ++nonce };
 }
 
@@ -370,7 +435,7 @@ export function viewBoardOfDefinition(kind: string, name: string) {
     if (p && b) {
       chooseBoard(b.name);
       panelShown.value = p.name;
-      activeView.value = 'pcb';
+      revealSection('pcb');
     }
   }
 }
