@@ -1,5 +1,5 @@
 ---
-status: accepted (owner decisions 2026-11-04) for decisions 1 to 7 and 10 and for the syntax choices recorded under "Syntax decisions"; anchors in module files, how a module file attaches, a physical file for a `system` or a `panel`, and the exact list of what leaves are open
+status: accepted (owner decisions 2026-11-04) for decisions 1 to 7 and 10 and for the syntax choices recorded under "Syntax decisions"; the board level is built (issue #52; see "Built", with its provisional readings); anchors in module files, how a module file attaches, a physical file for a `system` or a `panel`, and the exact list of what leaves are open
 ---
 
 # Physical intent is written in a file of its own, apart from the circuit source
@@ -12,7 +12,7 @@ Amends ADR 0020 (item 7A), ADR 0045 (sections 3 and 8, and its open question 8) 
 
 **Physical intent** is what the product, the case and the layout designer require of a board, as opposed to what the circuit requires: the outline, openings, mounting holes, where a connector, antenna or sensor must be, a fixed spacing or alignment between two parts, the face a module is on, a region with a height limit, a pattern of test pads, keepouts a board draws, local pours. It is requirements, never solutions. The solution (poses, tracks, vias, fills) stays in the layout file (ADR 0032).
 
-**The physical file** is a placeholder name for the file that holds physical intent. It is not a keyword and the name is not chosen. The glossary calls the thing _Physical intent_ for now.
+**The physical file** is the file that holds physical intent. Its name, extension and header are chosen under "Syntax decisions" (`<stem>.physical.nsm`, `physical for Board { ... }`); the glossary's term is _Physical_.
 
 **The circuit source** is the `.nsm` files that hold boards, modules, parts, interfaces and systems, with what the circuit's checks consume.
 
@@ -65,7 +65,7 @@ The owner's test board has no physical line in netsmith source today, so for it 
 
 `netsmith dxf import` prints an `Outline`, `Cutout`s and `MountingHole`s to paste, and with `--write` puts the places of cutouts and holes in the layout file and never writes the source (ADR 0045 section 9). After decision 7 the places are requirements, so `--write` has a physical file to write. That is the first time a netsmith command writes source text, and it needs the span-based edit that ADR 0045 section 4 sketched for the editor (C5), because a comment in the physical file must survive. This ADR does not change the command.
 
-Nothing in the code changes with this ADR. Until the change that builds the physical file lands, what is built is what `docs/LANGUAGE.md` and ADR 0045 describe. That change also removes the old form.
+The change that built the board level (issue #52) also removed the old form and moved this repository's uses (see "Built").
 
 ## Costs, accepted
 
@@ -100,3 +100,17 @@ These are the owner's, because they are language design (`AGENTS.md`). `docs/res
 - **A physical file for a `system` or a `panel`** (ADR 0040). Mounting holes of a panel, mated-connector alignment across boards and a panel's rails are not designed.
 - **The shared `enclosure` definition** (issue #46).
 - **The exact list of what leaves** under decision 10 beyond `.place`, `Outline`, `Cutout` and board-drawn `Keepout`.
+
+## Built (issue #52, board level)
+
+What exists: the parser reads `physical for Board { ... }` units and a nested `case { ... }` section. The loader pairs `<stem>.physical.nsm` with its source by stem (`build`, `fab`, orders, the editor), and the checker puts each unit with the board it names when the board is made, so a `panel` or a `system` that places the board sees it. A path in a physical file may cross a module boundary; the statement may then set or compare only a part's `.place`, a part's `.height` and the fields of what the unit declares itself, and a connection, a `tie`, a `pins` table or any other field is an error that says a physical file states where a part is and not what it is. `.place.side` on a module narrows the face of every part of it, at any depth, and two lines that disagree are an error naming both. A relation between two parts is accepted in the equation form and kept; the placer and the check do not evaluate it yet (ADR 0045 C2). A board's `Outline`, `Cutout`, `MountingHole`, `Fiducial`, `Label`, a `Keepout` it draws and any `.place` in its circuit source are errors that name the unit and the file. `netsmith dxf import --write` edits the physical file at the spans of its syntax tree (`netsmith::physical::edit`), keeping its comments, and puts the places of holes and cutouts there as requirements. The editor lists the physical file, checks it and draws it. The guide has a second kind of block for it.
+
+**Provisional readings** (the simplest reading of what the owner decided, marked for the owner to confirm or change):
+
+- The outline, cutouts, mounting holes, fiducials and labels are refused outside `case { }`, and a `Keepout` may be anywhere in the unit (decision 7 names the outline, openings, holes, fiducials and labels for the case, and "case regions").
+- The rule against the old form applies to a **board's** circuit source. A module's or a part's own source may still state a `.place` or a keepout it carries (decision 2 puts the module layer later, and a keepout a part carries stays in the part).
+- A part's `.height` may be narrowed in a board's circuit source as before, and in its physical file; decision 9 says the physical file "may narrow" it, so the two places are two spellings (ADR 0001) until the owner says which one stays.
+- A statement in a physical file may mention only physical fields on either side of a relation. A relation that compares a `.place` field with a circuit value (`.r1.place.x >= .r1.resistance`) is refused.
+- A `physical for` unit that names a module, a part or a `system` is refused, with the reason; so is a unit in a file that is not a physical file, and a definition in a physical file.
+- A file with several units: one unit for each board, and a repeated unit is an error.
+- The editor writes the keepouts it draws and the moves of a keepout the physical file sizes to the layout file, as before; writing them to the physical file (a requirement, decision 7) is not built. A keepout whose place the physical file states is shown and not moved.
