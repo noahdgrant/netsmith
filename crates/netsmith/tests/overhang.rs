@@ -387,13 +387,13 @@ fn a_locked_plug_past_an_edge_nobody_stated_is_an_undeclared_overhang() {
             && e.contains("outline.height"),
         "{e}"
     );
-    // Stating another edge does not allow this one.
-    let said = "    .plug.place.right >= .outline.width\n";
-    let run = fab("locked-wrong-edge", &source(35, 60, 30, said), layout);
+    // A requirement the lock meets, but whose window reaches inside the board, does not
+    // state the overhang either.
+    let said = "    .plug.place.bottom >= .outline.height - 20mm\n";
+    let run = fab("locked-inside-window", &source(35, 60, 30, said), layout);
     let e = failure(&run);
     assert!(
-        e.contains("its courtyard is 16.00 mm past the bottom edge")
-            && e.contains("only the right edge"),
+        e.contains("its courtyard is 16.00 mm past the bottom edge"),
         "{e}"
     );
 }

@@ -362,7 +362,7 @@ published limits but cannot run it).
   measured by its courtyard, and the finding says so. A window narrower than the placer's 0.05 mm
   grid is one value, its middle.
 - Overhang (ADR 0045, section 10, **provisional**, to be reviewed by the maintainer): a part hangs over the board edge only where its own `.place.left`, `.right`,
-  `.top` or `.bottom` window is at or beyond that edge, or the layout file locks it. The
+  `.top` or `.bottom` window is at or beyond that edge (a lock in the layout file does not say it; a locked part states every edge it is past, like any other). The
   courtyard past that edge is then clipped, its pads must stay inside, a direction not stated
   is an error, and the body (`F.Fab`), the silkscreen and text outside the board are not
   checked (the silk to edge clearance stays a warning). A window on `.x` or `.y`, a module's

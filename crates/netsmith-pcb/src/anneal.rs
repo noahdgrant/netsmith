@@ -2158,7 +2158,10 @@ mod tests {
             e.pair(0, 1)
         };
         let strict = run(&mut board, &[]);
-        assert!(strict.hard > 0.0, "unstated, the overlap is hard: {strict:?}");
+        assert!(
+            strict.hard > 0.0,
+            "unstated, the overlap is hard: {strict:?}"
+        );
         let stated = run(&mut board, &[bottom, bottom]);
         assert!(
             stated.hard == 0.0,
