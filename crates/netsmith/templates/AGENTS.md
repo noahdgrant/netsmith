@@ -1,6 +1,6 @@
 # Working in this project
 
-This is a netsmith project: circuits as code. Boards are written in `.nsm` files under `src/`; `netsmith` checks them, picks real parts that work in the worst case, and writes KiCad files and a package for JLCPCB. `netsmith.toml` lists the files that hold boards.
+This is a netsmith project. Boards are written in `.nsm` files under `src/`; `netsmith` checks them, picks real parts that work in the worst case, and writes KiCad files and a package for JLCPCB. `netsmith.toml` lists the files that hold boards.
 
 ## Commands
 

@@ -1,6 +1,12 @@
-# netsmith
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+    <img alt="netsmith" src="docs/assets/logo-light.svg" width="320">
+  </picture>
+</h1>
 
-Circuits as code, in Rust. A board is a set of parts and the nets that join their pins,
+A language and tools for designing electronics as code: schematics, solvers, checks and PCB fabrication outputs.
+A board is a set of parts and the nets that join their pins,
 written as text. netsmith checks it, picks real parts that work in the worst case, and
 exports files for CAD tools and for a board house. It writes a KiCad 9 schematic, and a placed
 and routed PCB with a Gerber package for JLCPCB, on two layers or on four with ground and
