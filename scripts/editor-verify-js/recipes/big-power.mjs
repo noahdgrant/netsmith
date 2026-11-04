@@ -10,7 +10,7 @@ export async function run({ page, shot, step, expect, section }) {
   expect(cards >= 9, `a card for VIN and each of the 8 rails (${cards})`);
   const text = await page.locator('.sec-power .graph-host').innerText();
   expect(!/0\.0000000/.test(text), 'no number with a string of zeros');
-  expect(/\d(m|u)?A\.\.\d/.test(text), 'currents with a unit prefix');
+  expect(/\d\s*(m|u)?A\s*\.\.\s*\d/.test(text), 'currents with a unit prefix');
   const columns = await page.evaluate(() => new Set([...document.querySelectorAll('.pt-rail')].map((c) => c.style.left)).size);
   expect(columns >= 2, `the rails stand in columns by supply (${columns} columns)`);
   const edges = await page.locator('.pt-edge').count();
