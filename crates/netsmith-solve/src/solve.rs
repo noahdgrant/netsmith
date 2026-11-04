@@ -268,9 +268,16 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
     s.check_windows();
 
     let mut deferred = Vec::new();
+    // A relation between the places of two parts is the placer's and the check's to
+    // evaluate (ADR 0045, section 3), so it is no relation left unevaluated.
+    let between_parts: HashSet<usize> = crate::place::offsets(&s.model)
+        .into_iter()
+        .map(|o| o.relation)
+        .collect();
     for (i, r) in s.model.relations().to_vec().iter().enumerate() {
         match s.verify(r) {
             Verdict::Pass => {}
+            Verdict::Unknown if between_parts.contains(&i) => {}
             Verdict::Unknown => deferred.push(i),
             Verdict::Fail { message, .. } => {
                 let message = s.with_currents(r, message);

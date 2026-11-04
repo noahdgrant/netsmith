@@ -508,6 +508,7 @@ fn export(
     };
     let mut design = lowered.design;
     constraints::name_sources(&mut design, &lowered.constraint_sites, sources);
+    constraints::name_offset_sources(&mut design, &lowered.offset_sites, sources);
     let mut sourcing = lowered.sourcing;
     let (schematic, project) = match libraries {
         None => (String::new(), String::new()),

@@ -7,7 +7,8 @@
 
 use netsmith_check::{Domain, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
-    Cutout, Features, Keepout, Label, Outline, PartHeight, PlaceBound, PlaceField, Placement, Pour,
+    Cutout, Features, Keepout, Label, Offset, OffsetEnd, Outline, PartHeight, PlaceBound,
+    PlaceField, Placement, Pour,
 };
 use netsmith_lang::Span;
 
@@ -582,6 +583,58 @@ pub(crate) fn placements(model: &Model, errors: &mut Vec<String>) -> (Vec<Placem
             side_source: String::new(),
         });
         sites.extend(spots.into_iter().map(|(f, s)| (index, f, s)));
+    }
+    (found, sites)
+}
+
+/// The relations between the places of two parts (ADR 0045, section 3), and where the design
+/// states each: `.b.place.x - .a.place.x == 17.5mm +/- 0.05mm` is an offset of `b` from `a`
+/// along x. Which relations those are is [`netsmith_solve::offsets`]'s; this puts the parts
+/// by path and the window in millimetres. A window no position can meet is an error.
+pub(crate) fn offsets(
+    model: &Model,
+    errors: &mut Vec<String>,
+) -> (Vec<Offset>, Vec<(SourceId, Span)>) {
+    let mut found = Vec::new();
+    let mut sites = Vec::new();
+    for o in netsmith_solve::offsets(model) {
+        let end = |f: netsmith_check::FieldId| {
+            let place = model.field(f).owner;
+            let part = model.instance(place).parent?;
+            Some(OffsetEnd {
+                path: model.path_of(part),
+                field: PlaceField::from_word(&model.field(f).name)?,
+            })
+        };
+        let (Some(a), Some(b)) = (end(o.a), end(o.b)) else {
+            continue;
+        };
+        let to_mm = |v: f64| if v.is_finite() { mm(v) } else { v };
+        let (lo, hi) = (to_mm(o.lo), to_mm(o.hi));
+        let r = &model.relations()[o.relation];
+        if lo > hi + 1e-9 {
+            errors.push(format!(
+                "`{}.place.{}` minus `{}.place.{}` cannot be held: `{} {} {}` leaves it at least {} mm and at most {} mm",
+                b.path,
+                b.field.word(),
+                a.path,
+                a.field.word(),
+                model.show_expr(&r.lhs),
+                r.op.symbol(),
+                model.show_expr(&r.rhs),
+                show(lo),
+                show(hi)
+            ));
+            continue;
+        }
+        found.push(Offset {
+            a,
+            b,
+            lo,
+            hi,
+            source: String::new(),
+        });
+        sites.push((r.source, r.span));
     }
     (found, sites)
 }

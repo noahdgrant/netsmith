@@ -33,7 +33,9 @@
 //! same input gives the same board on any machine.
 
 use crate::board::{BoardNet, Placed, ReferenceSide, Side, rect_distance};
-use crate::constraints::{Want, quarter};
+use crate::constraints::{PlanOffset, Want, axis_of, offset, quarter};
+use netsmith_core::PlaceField;
+
 use crate::geometry::{Pt, Rect};
 use crate::overhang::Edges;
 use crate::quality::{DecouplingPair, decoupling_pairs};
@@ -120,6 +122,10 @@ pub(crate) struct Problem<'a> {
     /// For each part, where the design's requirements let it be (ADR 0045); empty or `None`
     /// is anywhere. A part is only ever put inside its want.
     pub wants: &'a [Option<Want>],
+    /// The relations between two parts that the design requires (ADR 0045, section 3). Each
+    /// is a hard rule: the measure of one part's body minus the other's stays in a window,
+    /// and the two parts are moved together toward it.
+    pub offsets: &'a [PlanOffset],
     /// For each part, the edges of `outline` its requirements say it may hang over (ADR 0045,
     /// section 10); empty is none. Such a part takes only the room its courtyard has inside
     /// the outline against other courtyards, as `Board::check_placement` counts it.
@@ -153,6 +159,9 @@ pub struct Ended {
     pub overlapping: Vec<OverlapAt>,
     /// The parts that are outside, by name, the furthest first.
     pub outside_parts: Vec<OutsideAt>,
+    /// The relations between two parts that do not hold, each as a sentence with the numbers
+    /// (ADR 0045, section 3).
+    pub relations: Vec<String>,
 }
 
 /// Two courtyards that overlap when a run ended.
@@ -192,6 +201,23 @@ fn nearest_edge(region: &Rect, p: Pt) -> (&'static str, f64) {
         ("left", f64::MAX),
         |best, e| if e.1 < best.1 { e } else { best },
     )
+}
+
+/// A length in mm for a message: rounded to a tenth of a micrometre, no trailing zeros.
+fn mm(v: f64) -> String {
+    let r = (v * 1e4).round() / 1e4;
+    format!("{}", if r == 0.0 { 0.0 } else { r })
+}
+
+/// A window as a person says it.
+fn window_text(lo: f64, hi: f64) -> String {
+    match (lo.is_finite(), hi.is_finite()) {
+        (true, true) if (hi - lo).abs() < 1e-9 => format!("{} mm", mm(lo)),
+        (true, true) => format!("{} to {} mm", mm(lo), mm(hi)),
+        (true, false) => format!("at least {} mm", mm(lo)),
+        (false, true) => format!("at most {} mm", mm(hi)),
+        (false, false) => "any value".to_string(),
+    }
 }
 
 /// A small random number generator (SplitMix64), so that nothing depends on a crate whose
@@ -297,6 +323,8 @@ fn variant(turn: u8, text: u8) -> usize {
 /// The boxes of one part in one turn, relative to its origin.
 struct Shape {
     court: Rect,
+    /// The body (what a requirement on the place measures), relative to the origin.
+    body: Rect,
     text: Option<Rect>,
     silk: Vec<Rect>,
     /// Where each pad of the footprint is.
@@ -420,6 +448,36 @@ struct Dec {
 /// The straight lines of a net's ratsnest.
 type Lines = Vec<(Pt, Pt)>;
 
+/// A relation between the places of two parts (ADR 0045, section 3) as the annealer keeps it:
+/// the measure of the field `fb` of `b`'s body minus that of the field `fa` of `a`'s, along
+/// `axis` (0 for x, 1 for y), stays in `lo..=hi`.
+struct Link {
+    a: usize,
+    b: usize,
+    fa: PlaceField,
+    fb: PlaceField,
+    axis: usize,
+    lo: f64,
+    hi: f64,
+    /// `radio.row_b.place.x - radio.row_a.place.x (radio.physical.nsm:12)`.
+    label: String,
+}
+
+impl Link {
+    fn miss(&self, value: f64) -> f64 {
+        (self.lo - value).max(value - self.hi).max(0.0)
+    }
+
+    /// The window is too narrow for the grid to be sure of a position in it.
+    fn needs_alignment(&self) -> bool {
+        self.lo.is_finite() && self.hi.is_finite() && self.hi - self.lo < 2.0 * UNIT
+    }
+}
+
+/// How far a relation may be from its window and still count as met, in mm: the check's own
+/// tolerance (half a micrometre) is far above it.
+const LINK_EPS: f64 = 1e-6;
+
 /// A net as the annealer sees it.
 struct NetModel {
     pads: Vec<(usize, usize)>,
@@ -443,6 +501,19 @@ struct Engine<'a> {
     in_group: Vec<Vec<bool>>,
     neighbours: Vec<Vec<(usize, usize)>>,
     free: Vec<usize>,
+    /// The relations between two parts, and for each part the relations it is in.
+    links: Vec<Link>,
+    links_of: Vec<Vec<usize>>,
+    link_mark: Vec<u32>,
+    /// For each part and axis, the relation through which the part follows another's place
+    /// on that axis, if one does: its origin is on the grid shifted by `sub`, so that a window
+    /// narrower than the grid can be met exactly. A part follows at most one other on an
+    /// axis, and nothing follows itself.
+    leader_of: Vec<[Option<usize>; 2]>,
+    /// The parts that follow, with their axis, leaders before the parts that follow them.
+    order: Vec<(usize, usize)>,
+    /// How far each part's origin is from the grid, kept up to date by [`Engine::realign`].
+    sub: Vec<Pt>,
     /// Marks that a net, a pair or a group was counted in the evaluation being made.
     /// The ratsnest lines of each net that has them, as the parts are now, and the box round
     /// them; kept up to date by [`Engine::refresh`].
@@ -496,6 +567,7 @@ fn shape_of(
     part.rotation = angle;
     part.reference_side = text_side;
     let court = part.courtyard();
+    let body = part.body();
     let text = text_box(part, rules);
     // The strokes of the silkscreen, each as a box (a rectangle as its four sides).
     let silk: Vec<Rect> = part
@@ -561,6 +633,7 @@ fn shape_of(
     }
     Shape {
         court,
+        body,
         text,
         silk,
         pads,
@@ -805,6 +878,107 @@ impl<'a> Engine<'a> {
             .map(|members| (0..n).map(|i| members.contains(&i)).collect())
             .collect();
         let free: Vec<usize> = (0..n).filter(|&i| !p.fixed[i]).collect();
+
+        // The relations between two parts: a relation whose part is not on the board has
+        // nothing to keep.
+        let mut links: Vec<Link> = Vec::new();
+        for o in p.offsets {
+            let (Some(&a), Some(&b)) = (index.get(o.a.as_str()), index.get(o.b.as_str())) else {
+                continue;
+            };
+            let Some(axis) = axis_of(o.fa) else { continue };
+            links.push(Link {
+                a,
+                b,
+                fa: o.fa,
+                fb: o.fb,
+                axis,
+                lo: o.lo,
+                hi: o.hi,
+                label: o.label.clone(),
+            });
+        }
+        let mut links_of: Vec<Vec<usize>> = vec![Vec::new(); n];
+        for (k, l) in links.iter().enumerate() {
+            links_of[l.a].push(k);
+            links_of[l.b].push(k);
+        }
+        // Which part follows which, per axis (a forest: a part has one leader, and the
+        // relations that would close a loop only cost). The parts that stay, and the ones the
+        // requirements pin along the axis, never follow.
+        let pinned = |i: usize, axis: usize| {
+            models[i].want.as_ref().is_some_and(|w| {
+                w.turns.iter().flatten().any(|t| {
+                    if axis == 0 {
+                        t.pin_x.is_some()
+                    } else {
+                        t.pin_y.is_some()
+                    }
+                })
+            })
+        };
+        let mut leader_of: Vec<[Option<usize>; 2]> = vec![[None; 2]; n];
+        let mut root: [Vec<usize>; 2] = [(0..n).collect(), (0..n).collect()];
+        fn find(root: &mut [usize], mut i: usize) -> usize {
+            while root[i] != i {
+                root[i] = root[root[i]];
+                i = root[i];
+            }
+            i
+        }
+        for (k, l) in links.iter().enumerate() {
+            if !l.needs_alignment() {
+                continue;
+            }
+            let ax = l.axis;
+            let (ra, rb) = (find(&mut root[ax], l.a), find(&mut root[ax], l.b));
+            if ra == rb {
+                continue;
+            }
+            let can = |i: usize| !p.fixed[i] && !pinned(i, ax) && leader_of[i][ax].is_none();
+            let child = if can(l.b) {
+                l.b
+            } else if can(l.a) {
+                l.a
+            } else {
+                continue;
+            };
+            leader_of[child][ax] = Some(k);
+            let (rc, ro) = if child == l.b { (rb, ra) } else { (ra, rb) };
+            root[ax][rc] = ro;
+        }
+        let mut order: Vec<(usize, usize, usize)> = Vec::new();
+        for (i, leaders) in leader_of.iter().enumerate() {
+            for ax in 0..2 {
+                if leaders[ax].is_none() {
+                    continue;
+                }
+                let mut depth = 0;
+                let mut at = i;
+                while let Some(k) = leader_of[at][ax] {
+                    depth += 1;
+                    at = if links[k].a == at {
+                        links[k].b
+                    } else {
+                        links[k].a
+                    };
+                }
+                order.push((depth, i, ax));
+            }
+        }
+        order.sort_unstable();
+        let order: Vec<(usize, usize)> = order.into_iter().map(|(_, i, ax)| (i, ax)).collect();
+        // A part that stays is where it is, exactly, though its pose is on the grid.
+        let mut sub = vec![Pt::default(); n];
+        for (i, q) in parts.iter().enumerate() {
+            if p.fixed[i] && !links_of[i].is_empty() {
+                sub[i] = Pt::new(
+                    q.at.x - poses[i].x as f64 * UNIT,
+                    q.at.y - poses[i].y as f64 * UNIT,
+                );
+            }
+        }
+        let link_mark = vec![0; links.len()];
         let (nn, nd, ng) = (nets.len(), decs.len(), groups.len());
         let mut engine = Engine {
             p,
@@ -819,6 +993,12 @@ impl<'a> Engine<'a> {
             in_group,
             neighbours,
             free,
+            links,
+            links_of,
+            link_mark,
+            leader_of,
+            order,
+            sub,
             lines: vec![Vec::new(); nn],
             line_box: vec![None; nn],
             net_mark: vec![0; nn],
@@ -837,13 +1017,29 @@ impl<'a> Engine<'a> {
             let pose = engine.clamp(i, engine.poses[i]);
             engine.put(i, pose);
         }
+        // Parts that stand in a relation begin where it holds, as far as it can be made to.
+        if !engine.links.is_empty() {
+            engine.realign();
+            for i in 0..n {
+                let change = engine.expand(vec![(i, engine.poses[i])]);
+                for (j, pose) in change {
+                    engine.put(j, pose);
+                }
+            }
+        }
         engine.refresh_all();
         engine
     }
 
     /// Move a part to a pose.
     fn put(&mut self, i: usize, pose: Pose) {
+        let turned = self.poses[i].turn != pose.turn;
         self.poses[i] = pose;
+        // A turn changes where the body is, so the parts that follow it (or that it follows)
+        // are moved off the grid by another amount.
+        if turned && !self.links_of[i].is_empty() {
+            self.realign();
+        }
         self.reach_abs[i] = self.shape(i).reach.translated(self.pos(i));
     }
 
@@ -855,13 +1051,168 @@ impl<'a> Engine<'a> {
 
     fn pos(&self, i: usize) -> Pt {
         let pose = self.poses[i];
-        let mut at = Pt::new(pose.x as f64 * UNIT, pose.y as f64 * UNIT);
+        let sub = self.sub[i];
+        let mut at = Pt::new(pose.x as f64 * UNIT + sub.x, pose.y as f64 * UNIT + sub.y);
         // An axis the requirements pin is at its exact value, not at the grid's nearest.
         if let Some(turn) = self.limits(i, pose.turn) {
             at.x = turn.pin_x.unwrap_or(at.x);
             at.y = turn.pin_y.unwrap_or(at.y);
         }
         at
+    }
+
+    /// Where along its axis the measure `field` of part `i`'s body is, on the sheet.
+    fn measure_of(&self, i: usize, field: PlaceField, axis: usize) -> f64 {
+        let at = self.pos(i);
+        (if axis == 0 { at.x } else { at.y }) + offset(field, self.shape(i).body)
+    }
+
+    /// The measure of `b` minus that of `a` for relation `k`.
+    fn link_value(&self, k: usize) -> f64 {
+        let l = &self.links[k];
+        self.measure_of(l.b, l.fb, l.axis) - self.measure_of(l.a, l.fa, l.axis)
+    }
+
+    /// How far relation `k` is from its window, in mm; 0 when it holds.
+    fn link_miss(&self, k: usize) -> f64 {
+        self.links[k].miss(self.link_value(k))
+    }
+
+    /// The cost of a relation that does not hold: a hard rule, as a wall is.
+    fn link_cost(&self, k: usize) -> f64 {
+        let miss = self.link_miss(k);
+        if miss > LINK_EPS {
+            W_HARD * (miss + 0.05)
+        } else {
+            0.0
+        }
+    }
+
+    /// Put every part that follows another on the grid shifted by what makes the relation
+    /// hold exactly at the middle of its window, given where its leader is and how each is
+    /// turned. A part with no leader is on the grid.
+    fn realign(&mut self) {
+        for k in 0..self.order.len() {
+            let (f, ax) = self.order[k];
+            let Some(link) = self.leader_of[f][ax] else {
+                continue;
+            };
+            let l = &self.links[link];
+            let t = (l.lo + l.hi) / 2.0;
+            let (leader, wanted) = if l.b == f {
+                // b = a + t, in the measures: origin_b + off_b = origin_a + off_a + t.
+                let a = l.a;
+                let at = self.measure_of(a, l.fa, ax);
+                (a, at + t - offset(l.fb, self.shape(f).body))
+            } else {
+                let b = l.b;
+                let at = self.measure_of(b, l.fb, ax);
+                (b, at - t - offset(l.fa, self.shape(f).body))
+            };
+            debug_assert_ne!(leader, f);
+            let grid = if ax == 0 {
+                self.poses[f].x
+            } else {
+                self.poses[f].y
+            } as f64
+                * UNIT;
+            let off = wanted - grid;
+            let shift = off - UNIT * (off / UNIT).round();
+            if ax == 0 {
+                self.sub[f].x = shift;
+            } else {
+                self.sub[f].y = shift;
+            }
+            self.reach_abs[f] = self.shape(f).reach.translated(self.pos(f));
+        }
+    }
+
+    /// Part `j` moved along the axis of relation `k` to where the relation holds, as near as
+    /// it is now. `None` if `j` stays or the requirements pin it along that axis.
+    fn repair_pose(&self, k: usize, j: usize) -> Option<Pose> {
+        let l = &self.links[k];
+        let ax = l.axis;
+        let now = self.poses[j];
+        if self.models[j].fixed
+            || self.limits(j, now.turn).is_some_and(|t| {
+                if ax == 0 {
+                    t.pin_x.is_some()
+                } else {
+                    t.pin_y.is_some()
+                }
+            })
+        {
+            return None;
+        }
+        let (lo, hi) = (l.lo, l.hi);
+        if !lo.is_finite() && !hi.is_finite() {
+            return None;
+        }
+        // Inside the window by the half of a grid step, so that rounding to the grid stays in.
+        let margin = ((hi - lo) / 2.0).min(UNIT / 2.0 + 1e-9);
+        let t = self.link_value(k).clamp(lo + margin, hi - margin);
+        let (other, f_other, f_j, sign) = if l.b == j {
+            (l.a, l.fa, l.fb, 1.0)
+        } else {
+            (l.b, l.fb, l.fa, -1.0)
+        };
+        let target = self.measure_of(other, f_other, ax) + sign * t;
+        let origin = target - offset(f_j, self.shape(j).body);
+        let sub = if ax == 0 {
+            self.sub[j].x
+        } else {
+            self.sub[j].y
+        };
+        let g = ((origin - sub) / UNIT).round() as i64;
+        let mut pose = now;
+        if ax == 0 {
+            pose.x = g;
+        } else {
+            pose.y = g;
+        }
+        Some(pose)
+    }
+
+    /// `change` with every part that must move with it to keep the relations it is in: a
+    /// part whose relation to a moved part no longer holds is moved to where it does, and so
+    /// on from it. The parts are left as they were.
+    fn expand(&mut self, change: Vec<(usize, Pose)>) -> Vec<(usize, Pose)> {
+        if self.links.is_empty() || change.iter().all(|&(i, _)| self.links_of[i].is_empty()) {
+            return change;
+        }
+        let mut undo: Vec<(usize, Pose)> =
+            change.iter().map(|&(i, _)| (i, self.poses[i])).collect();
+        let mut result = change.clone();
+        for &(i, pose) in &change {
+            self.put(i, pose);
+        }
+        let mut at = 0;
+        while at < result.len() {
+            let i = result[at].0;
+            at += 1;
+            for n in 0..self.links_of[i].len() {
+                let k = self.links_of[i][n];
+                if self.link_miss(k) <= LINK_EPS {
+                    continue;
+                }
+                let l = &self.links[k];
+                let j = if l.a == i { l.b } else { l.a };
+                if result.iter().any(|&(m, _)| m == j) {
+                    continue;
+                }
+                let Some(pose) = self.repair_pose(k, j) else {
+                    continue;
+                };
+                let pose = self.clamp(j, pose);
+                undo.push((j, self.poses[j]));
+                self.put(j, pose);
+                result.push((j, pose));
+            }
+        }
+        for &(i, pose) in undo.iter().rev() {
+            self.put(i, pose);
+        }
+        result
     }
 
     /// What the requirements allow part `i` in turn `turn`, if it has any.
@@ -1427,6 +1778,15 @@ impl<'a> Engine<'a> {
                 }
             }
         }
+        for &i in set {
+            for n in 0..self.links_of[i].len() {
+                let k = self.links_of[i][n];
+                if self.link_mark[k] != stamp {
+                    self.link_mark[k] = stamp;
+                    c.hard += self.link_cost(k);
+                }
+            }
+        }
         c.soft += W_CROSSING * self.crossings(&touched, stamp) as f64;
         c.soft += self.area_cost();
         c
@@ -1475,6 +1835,21 @@ impl<'a> Engine<'a> {
                 } else if self.pair(i, j).hard > 1e-9 {
                     ended.silk += 1;
                 }
+            }
+        }
+        for (k, l) in self.links.iter().enumerate() {
+            let miss = self.link_miss(k);
+            if miss > LINK_EPS {
+                ended.relations.push(format!(
+                    "{}: {} minus {} is {} mm along {}, and it allows {} ({} mm over)",
+                    l.label,
+                    names[l.b],
+                    names[l.a],
+                    mm(self.link_value(k)),
+                    if l.axis == 0 { "x" } else { "y" },
+                    window_text(l.lo, l.hi),
+                    mm(miss)
+                ));
             }
         }
         ended
@@ -1587,6 +1962,9 @@ impl<'a> Engine<'a> {
     /// The hard cost of one part against the walls, keepouts and every other part.
     fn hard_of(&self, i: usize) -> f64 {
         let mut hard = self.single(i).hard;
+        for &k in &self.links_of[i] {
+            hard += self.link_cost(k);
+        }
         for j in 0..self.models.len() {
             if j != i {
                 hard += self.pair(i, j).hard;
@@ -1623,10 +2001,19 @@ impl<'a> Engine<'a> {
                                 text: start.text,
                             },
                         );
-                        self.put(i, pose);
-                        if self.hard_of(i) <= 1e-9 {
+                        // The parts it is related to go with it.
+                        let change = self.expand(vec![(i, pose)]);
+                        let undo: Vec<(usize, Pose)> =
+                            change.iter().map(|&(j, _)| (j, self.poses[j])).collect();
+                        for &(j, q) in &change {
+                            self.put(j, q);
+                        }
+                        if change.iter().all(|&(j, _)| self.hard_of(j) <= 1e-9) {
                             found = true;
                             break 'rings;
+                        }
+                        for &(j, q) in undo.iter().rev() {
+                            self.put(j, q);
                         }
                     }
                 }
@@ -1703,12 +2090,13 @@ impl<'a> Engine<'a> {
 
     /// A random change: the parts and the poses they would take. Empty if nothing can move.
     /// A part with requirements on its place only goes where they allow.
-    fn propose(&self, rng: &mut Rng, reach: i64) -> Vec<(usize, Pose)> {
+    fn propose(&mut self, rng: &mut Rng, reach: i64) -> Vec<(usize, Pose)> {
         let mut change = self.propose_free(rng, reach);
         for (i, pose) in &mut change {
             *pose = self.clamp(*i, *pose);
         }
-        change
+        // A part in a relation takes the parts it is related to along.
+        self.expand(change)
     }
 
     fn propose_free(&self, rng: &mut Rng, reach: i64) -> Vec<(usize, Pose)> {
@@ -1969,6 +2357,14 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
         }
         let exact = |v: f64| (v * 1e6).round() / 1e6;
         let pinned = e.limits(i, pose.turn);
+        // A part in a relation is where the relation puts it, which may be off the grid.
+        if !e.links_of[i].is_empty() {
+            let at = e.pos(i);
+            part.at = Pt::new(exact(at.x), exact(at.y));
+            part.rotation = (e.models[i].angles[0] + 90.0 * f64::from(pose.turn)).rem_euclid(360.0);
+            part.reference_side = ReferenceSide::ALL[usize::from(pose.text)];
+            continue;
+        }
         part.at = Pt::new(
             pinned
                 .and_then(|t| t.pin_x)
@@ -2055,6 +2451,7 @@ mod tests {
             pours: false,
             seed: 0,
             wants: &[],
+            offsets: &[],
             overhangs: &[],
             outline: board.outline,
         };
@@ -2104,6 +2501,7 @@ mod tests {
             pours: false,
             seed: 3,
             wants: &[],
+            offsets: &[],
             overhangs: &[],
             outline: board.outline,
         };
@@ -2139,6 +2537,7 @@ mod tests {
                 pours: false,
                 seed: 0,
                 wants: &[],
+                offsets: &[],
                 overhangs,
                 outline,
             };

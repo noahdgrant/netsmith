@@ -128,8 +128,10 @@ pub(crate) fn fit(
     let mut rect = outline_rect;
     let mut done = false;
     // (Not with requirements on positions: shifting the arrangement would move the parts
-    // out of their windows, so the parts are laid out and annealed in the size instead.)
-    if w.is_ok() && h.is_ok() && placement.wants.is_empty() {
+    // out of their windows, so the parts are laid out and annealed in the size instead. A
+    // relation between two parts is one too: the arrangement that stands is the rows', which
+    // do not know it.)
+    if w.is_ok() && h.is_ok() && placement.wants.is_empty() && placement.offsets.is_empty() {
         // The arrangement the parts make fits the size: it stands, in the middle of the
         // outline, and moves only where a hole or a keepout is in its way.
         let spare = Pt::new(size.0 - arranged.width(), size.1 - arranged.height());

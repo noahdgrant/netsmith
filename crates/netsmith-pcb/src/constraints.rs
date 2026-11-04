@@ -104,6 +104,47 @@ pub(crate) struct Plan {
     /// The parts whose requirements put an edge of their body at or past an edge of the
     /// outline, which makes the courtyard past it intended.
     pub overhang: BTreeMap<String, Overhang>,
+    /// The relations between two parts, which the annealer keeps and the check measures.
+    pub offsets: Vec<PlanOffset>,
+}
+
+/// A relation between two parts' places for the placer (ADR 0045, section 3): the measure of
+/// the field `fb` of part `b`'s body minus that of the field `fa` of part `a`'s, along one
+/// axis, is in `lo..=hi`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlanOffset {
+    /// The reference designators of the two parts, and their paths in the design.
+    pub a: String,
+    pub b: String,
+    pub a_path: String,
+    pub b_path: String,
+    pub fa: PlaceField,
+    pub fb: PlaceField,
+    pub lo: f64,
+    pub hi: f64,
+    /// `radio.row_b.place.x - radio.row_a.place.x (radio.physical.nsm:12)`.
+    pub label: String,
+}
+
+impl PlanOffset {
+    /// Whether the relation is along x (else along y).
+    pub fn axis(&self) -> usize {
+        axis_of(self.fa).unwrap_or(0)
+    }
+
+    /// How far `value` (`b` minus `a`) is from the window, in mm: 0 when it is in it.
+    pub fn miss(&self, value: f64) -> f64 {
+        (self.lo - value).max(value - self.hi).max(0.0)
+    }
+
+    /// The relation and its window, as a person reads them.
+    pub fn says(&self) -> String {
+        format!(
+            "`{}` allows {}",
+            self.label,
+            range_text(self.lo, self.hi, "mm")
+        )
+    }
 }
 
 /// One requirement on one part, with where it comes from.
@@ -233,7 +274,7 @@ fn measured(field: PlaceField, body: Rect) -> f64 {
     }
 }
 
-fn axis_of(field: PlaceField) -> Option<usize> {
+pub(crate) fn axis_of(field: PlaceField) -> Option<usize> {
     match field {
         PlaceField::X | PlaceField::Left | PlaceField::Right => Some(0),
         PlaceField::Y | PlaceField::Top | PlaceField::Bottom => Some(1),
@@ -242,7 +283,7 @@ fn axis_of(field: PlaceField) -> Option<usize> {
 }
 
 /// Where along `body`'s own box the field is measured, from the origin of the footprint.
-fn offset(field: PlaceField, body: Rect) -> f64 {
+pub(crate) fn offset(field: PlaceField, body: Rect) -> f64 {
     match field {
         PlaceField::X => body.centre().x,
         PlaceField::Y => body.centre().y,
@@ -368,9 +409,6 @@ pub(crate) fn plan(
     clearance: f64,
 ) -> Result<Plan, Vec<String>> {
     let mut plan = Plan::default();
-    if design.features.constraints.is_empty() {
-        return Ok(plan);
-    }
     let mut errors = Vec::new();
     let (width, height) = outline_extent(design);
     // Where each part ends up if the requirements decide it: refdes, pose, who said so.
@@ -595,6 +633,66 @@ pub(crate) fn plan(
         }
     }
 
+    // Relations between two parts (ADR 0045, section 3). The annealer keeps them; two parts
+    // that are both decided, or one decided and one whose requirements leave no way to meet
+    // it, are reported here, with the numbers, and not looped on.
+    for o in &design.features.offsets {
+        let (Some(a), Some(b)) = (
+            parts.iter().find(|p| p.path == o.a.path),
+            parts.iter().find(|p| p.path == o.b.path),
+        ) else {
+            continue;
+        };
+        let id = format!(
+            "{}.place.{} - {}.place.{}",
+            o.b.path,
+            o.b.field.word(),
+            o.a.path,
+            o.a.field.word()
+        );
+        plan.offsets.push(PlanOffset {
+            a: a.refdes.clone(),
+            b: b.refdes.clone(),
+            a_path: o.a.path.clone(),
+            b_path: o.b.path.clone(),
+            fa: o.a.field,
+            fb: o.b.field,
+            lo: o.lo,
+            hi: o.hi,
+            label: if o.source.is_empty() {
+                id
+            } else {
+                format!("{id} ({})", o.source)
+            },
+        });
+    }
+    // A part the layout file locks is decided for a relation whether or not a requirement of
+    // its own says anything about it.
+    let mut known = decided.clone();
+    for part in parts {
+        if let Some(f) = options.fixed.get(&part.refdes)
+            && !known.iter().any(|d| d.0 == part.refdes)
+        {
+            known.push((
+                part.refdes.clone(),
+                ORIGIN + f.at,
+                f.rotation,
+                f.side,
+                format!(
+                    "the layout file locks it at ({}, {})",
+                    number(f.at.x),
+                    number(f.at.y)
+                ),
+                Edges::default(),
+            ));
+        }
+    }
+    for o in &plan.offsets {
+        if let Some(why) = offset_cannot_be_met(o, parts, &known, &plan) {
+            errors.push(why);
+        }
+    }
+
     // Two parts that are decided, on the same face, whose courtyards overlap.
     for (i, a) in decided.iter().enumerate() {
         for b in &decided[i + 1..] {
@@ -650,6 +748,126 @@ pub(crate) fn plan(
         Ok(plan)
     } else {
         Err(errors)
+    }
+}
+
+/// What a field measures, as a person says it.
+fn what(field: PlaceField) -> &'static str {
+    match field {
+        PlaceField::X | PlaceField::Y => "the centre",
+        PlaceField::Left => "the left edge",
+        PlaceField::Right => "the right edge",
+        PlaceField::Top => "the top edge",
+        PlaceField::Bottom => "the bottom edge",
+        PlaceField::Rotation => "the turn",
+    }
+}
+
+/// The decided part `refdes` as [`plan`] left it: where its origin is on the sheet, its turn,
+/// its face, and why it is there.
+type Decided = (String, Pt, f64, Side, String, Edges);
+
+/// Why a relation between two parts cannot be met, when the requirements already decide it:
+/// both parts are fixed (pinned by their requirements or locked in the layout file) and the
+/// relation does not hold between them, or one is fixed and the requirements of the other
+/// leave no turn and no place where it holds. `None` when it can be met, or the search may.
+fn offset_cannot_be_met(
+    o: &PlanOffset,
+    parts: &[Placed],
+    decided: &[Decided],
+    plan: &Plan,
+) -> Option<String> {
+    let find = |refdes: &str| parts.iter().find(|p| p.refdes == refdes);
+    let fixed = |refdes: &str| decided.iter().find(|d| d.0 == refdes);
+    let (pa, pb) = (find(&o.a)?, find(&o.b)?);
+    let axis = o.axis();
+    let name = |p: &Placed| format!("{} (`{}`)", p.refdes, p.path);
+    let value = |d: &Decided, p: &Placed, field: PlaceField| {
+        offset(field, body_at(p, d.2, d.3).translated(d.1))
+    };
+    let along = |at: Pt| if axis == 0 { at.x } else { at.y };
+    match (fixed(&o.a), fixed(&o.b)) {
+        (Some(da), Some(db)) => {
+            let (va, vb) = (value(da, pa, o.fa), value(db, pb, o.fb));
+            let v = vb - va;
+            let miss = o.miss(v);
+            (miss > TOLERANCE).then(|| {
+                format!(
+                    "constraint {} is violated: {} is fixed ({}) and {} is fixed ({}); {} of the body of {} minus {} of the body of {} is {} mm along {}, and it allows {} ({} mm over)",
+                    o.label,
+                    name(pa),
+                    da.4,
+                    name(pb),
+                    db.4,
+                    what(o.fb),
+                    name(pb),
+                    what(o.fa),
+                    name(pa),
+                    number(v),
+                    if axis == 0 { "x" } else { "y" },
+                    range_text(o.lo, o.hi, "mm"),
+                    number(miss)
+                )
+            })
+        }
+        (Some(d), None) | (None, Some(d)) => {
+            // `d` is the fixed end; the other end `p` is searched.
+            let fixed_is_a = fixed(&o.a).is_some();
+            let (fixed_part, free_part) = if fixed_is_a { (pa, pb) } else { (pb, pa) };
+            let (f_fixed, f_free) = if fixed_is_a {
+                (o.fa, o.fb)
+            } else {
+                (o.fb, o.fa)
+            };
+            let want = plan.wants.get(&free_part.refdes)?;
+            let v_fixed = value(d, fixed_part, f_fixed);
+            // The values the free end's measure may take, so that the relation holds.
+            let (lo, hi) = if fixed_is_a {
+                (v_fixed + o.lo, v_fixed + o.hi)
+            } else {
+                (v_fixed - o.hi, v_fixed - o.lo)
+            };
+            let side = plan
+                .sides
+                .get(&free_part.refdes)
+                .copied()
+                .unwrap_or(free_part.side);
+            let mut allowed: Vec<String> = Vec::new();
+            for (q, reach) in want.reach.iter().enumerate() {
+                let Some(r) = reach else { continue };
+                let off = offset(f_free, body_at(free_part, q as f64 * 90.0, side));
+                let range = if axis == 0 { r.x } else { r.y };
+                // Where the measure must be for the relation to hold, against where the
+                // requirements let it be, in the frame of the outline.
+                let (from, to) = (lo, hi);
+                let (reach_lo, reach_hi) = (range.0 + off, range.1 + off);
+                if from <= reach_hi + TOLERANCE && to >= reach_lo - TOLERANCE {
+                    return None;
+                }
+                let origin = if axis == 0 { ORIGIN.x } else { ORIGIN.y };
+                allowed.push(format!(
+                    "turned {} degrees {} of its body must be {} mm along {}, and its requirements allow {}",
+                    number(q as f64 * 90.0),
+                    what(f_free),
+                    range_text(from - origin, to - origin, "").trim_end(),
+                    if axis == 0 { "x" } else { "y" },
+                    range_text(reach_lo - origin, reach_hi - origin, "mm")
+                ));
+            }
+            (!allowed.is_empty()).then(|| {
+                format!(
+                    "constraint {} cannot be met: {} is fixed ({}) at {} mm along {}, and {} cannot be where it holds: {}",
+                    o.label,
+                    name(fixed_part),
+                    d.4,
+                    number(along(d.1) - if axis == 0 { ORIGIN.x } else { ORIGIN.y }),
+                    if axis == 0 { "x" } else { "y" },
+                    name(free_part),
+                    allowed.join("; ")
+                )
+            })
+        }
+        (None, None) => None,
     }
 }
 

@@ -6,7 +6,9 @@ mod common;
 
 use common::*;
 use netsmith_fab::artwork::Artwork;
-use netsmith_fab::drc::constraints::{Constraint, Constraints, Measure, SideRule};
+use netsmith_fab::drc::constraints::{
+    Constraint, Constraints, Measure, Relation, RelationEnd, SideRule,
+};
 use netsmith_fab::drc::{Rule, Severity};
 
 fn want(id: &str, parts: &[&str], measure: Measure, lo: f64, hi: f64) -> Constraint {
@@ -24,6 +26,7 @@ fn set(list: Vec<Constraint>) -> Constraints {
     Constraints {
         list,
         sides: Vec::new(),
+        relations: Vec::new(),
         severity: Severity::Error,
     }
 }
@@ -251,6 +254,7 @@ fn a_face_is_checked_too() {
             part: "J1".into(),
             side: "bottom".into(),
         }],
+        relations: Vec::new(),
         severity: Severity::Error,
     };
     let o = &measure(&c, &board())[0];
@@ -310,4 +314,119 @@ fn a_board_with_no_outline_cannot_be_measured() {
     let o = &measure(&c, &pcb)[0];
     assert!(!o.satisfied);
     assert!(o.message.contains("no outline"), "{}", o.message);
+}
+
+/// Two 6 by 4 mm bodies (`U1` and `U2`, as `with_fab` draws them, body from x -1 to 5 and y
+/// -1 to 3 of its origin) at the two places.
+fn two_bodies(a: (f64, f64), b: (f64, f64)) -> String {
+    let mut p = Pcb::new(2);
+    for (name, at) in [("U1", a), ("U2", b)] {
+        p.raw(&format!(
+            "(footprint \"Test:{name}\" (layer \"F.Cu\") (at {} {} 0)
+                (property \"Reference\" \"{name}\" (at 0 -3 0) (layer \"F.Fab\") (hide yes) (effects (font (size 1 1) (thickness 0.15))))
+                (fp_rect (start -1 -1) (end 5 3) (stroke (width 0.1) (type solid)) (fill no) (layer \"F.Fab\"))
+                (fp_rect (start -3 -3) (end 7 5) (stroke (width 0.05) (type solid)) (fill no) (layer \"F.CrtYd\")))",
+            at.0, at.1
+        ));
+    }
+    p.pcb()
+}
+
+fn between(measure: Measure, lo: f64, hi: f64) -> Constraints {
+    Constraints {
+        list: Vec::new(),
+        sides: Vec::new(),
+        relations: vec![Relation {
+            id: "radio.row_b.place.x - radio.row_a.place.x".into(),
+            source: "radio.physical.nsm:12".into(),
+            a: RelationEnd {
+                part: "U1".into(),
+                path: "radio.row_a".into(),
+                measure,
+            },
+            b: RelationEnd {
+                part: "U2".into(),
+                path: "radio.row_b".into(),
+                measure,
+            },
+            lo,
+            hi,
+        }],
+        severity: Severity::Error,
+    }
+}
+
+#[test]
+fn a_relation_between_two_parts_is_measured_on_their_bodies() {
+    let c = between(Measure::X, 17.45, 17.55);
+    let all = measure(&c, &two_bodies((10.0, 10.0), (27.5, 10.0)));
+    assert_eq!(all.len(), 1);
+    assert!(all[0].satisfied, "{}", all[0].message);
+    assert!((all[0].margin - 0.05).abs() < 1e-9);
+    assert_eq!(
+        all[0].message,
+        "constraint radio.row_b.place.x - radio.row_a.place.x (radio.physical.nsm:12) is satisfied: the centre of the body of U2 (`radio.row_b`, F.Fab) minus the centre of the body of U1 (`radio.row_a`, F.Fab) is 17.5 mm along x, and it allows 17.45 to 17.55 mm"
+    );
+}
+
+#[test]
+fn an_unmet_relation_names_both_parts_the_offset_the_window_and_the_line() {
+    let c = between(Measure::X, 17.45, 17.55);
+    let pcb = two_bodies((10.0, 10.0), (27.0, 10.0));
+    let all = measure(&c, &pcb);
+    assert!(!all[0].satisfied);
+    assert!((all[0].over - 0.45).abs() < 1e-9, "{}", all[0].over);
+    assert_eq!(all[0].measured, Some(17.0));
+    assert_eq!(
+        all[0].message,
+        "constraint radio.row_b.place.x - radio.row_a.place.x (radio.physical.nsm:12) is violated: the centre of the body of U2 (`radio.row_b`, F.Fab) minus the centre of the body of U1 (`radio.row_a`, F.Fab) is 17 mm along x, and it allows 17.45 to 17.55 mm (0.45 mm over)"
+    );
+    let findings = c.findings(&Artwork::parse(&pcb).unwrap());
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].rule, Rule::Constraint);
+    assert_eq!(findings[0].severity, Severity::Error);
+    assert_eq!(findings[0].parts(), ["U2", "U1"]);
+}
+
+#[test]
+fn a_relation_along_y_and_between_edges_is_measured_too() {
+    // The bodies are 4 mm high: bottom of U1 (y 3 of its origin) against top of U2 (-1).
+    let mut c = between(Measure::Y, 0.0, 0.0);
+    c.relations[0].a.measure = Measure::Bottom;
+    c.relations[0].b.measure = Measure::Top;
+    let ok = measure(&c, &two_bodies((10.0, 10.0), (30.0, 14.0)));
+    assert!(ok[0].satisfied, "{}", ok[0].message);
+    let bad = measure(&c, &two_bodies((10.0, 10.0), (30.0, 16.0)));
+    assert!(!bad[0].satisfied);
+    assert!(
+        bad[0]
+            .message
+            .contains("the top edge of the body of U2 (`radio.row_b`, F.Fab) minus the bottom edge of the body of U1")
+            && bad[0].message.contains("is 2 mm along y, and it allows 0 mm (2 mm over)"),
+        "{}",
+        bad[0].message
+    );
+}
+
+#[test]
+fn a_relation_is_a_warning_when_the_project_says_warn() {
+    let mut c = between(Measure::X, 17.45, 17.55);
+    c.severity = Severity::Warning;
+    let findings = c.findings(&Artwork::parse(&two_bodies((10.0, 10.0), (27.0, 10.0))).unwrap());
+    assert_eq!(findings[0].severity, Severity::Warning);
+}
+
+#[test]
+fn a_relation_whose_part_is_not_on_the_board_is_violated() {
+    let c = between(Measure::X, 17.45, 17.55);
+    let all = measure(&c, &board());
+    assert!(!all[0].satisfied);
+    assert!(
+        all[0]
+            .message
+            .ends_with("is violated: U1 and U2 is not on the board")
+            || all[0].message.contains("not on the board"),
+        "{}",
+        all[0].message
+    );
 }

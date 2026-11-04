@@ -236,3 +236,141 @@ fn a_requirement_measured_from_an_outline_that_is_not_fixed_is_refused() {
         e[0]
     );
 }
+
+/// [`lowered`] with a second header `.k` and the module `Pair` as `.pair` on the board.
+fn lowered_two(body: &str) -> Result<Lowered, Vec<String>> {
+    lowered(&format!("    .k: Header1x2\n    .pair: Pair\n{body}"))
+}
+
+fn offsets(l: &Lowered) -> Vec<String> {
+    l.design
+        .features
+        .offsets
+        .iter()
+        .map(|o| {
+            format!(
+                "{}.{} - {}.{} in {}..{}",
+                o.b.path,
+                o.b.field.word(),
+                o.a.path,
+                o.a.field.word(),
+                o.lo,
+                o.hi
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_relation_between_two_parts_is_an_offset_in_millimetres() {
+    let l = lowered_two(
+        "    .k.place.x - .j.place.x == 17.5mm +/- 0.05mm\n    .pair.a.place.y == .j.place.y\n",
+    )
+    .unwrap();
+    assert_eq!(
+        offsets(&l),
+        [
+            "k.x - j.x in 17.45..17.55",
+            // `a == b` is a window of zero, from the part named on the left.
+            "pair.a.y - j.y in 0..0",
+        ]
+    );
+    // Each is stated at its own statement, for the check to name its line.
+    assert_eq!(l.offset_sites.len(), 2);
+}
+
+#[test]
+fn a_bound_between_two_parts_is_a_one_sided_window() {
+    let l = lowered_two(
+        "    .k.place.left >= .j.place.right + 2mm\n    .k.place.top <= .j.place.top + 1mm\n",
+    )
+    .unwrap();
+    assert_eq!(
+        offsets(&l),
+        ["k.left - j.right in 2..inf", "k.top - j.top in -inf..1"]
+    );
+}
+
+#[test]
+fn the_sides_of_a_relation_may_be_swapped_and_the_constants_moved() {
+    let l = lowered_two("    .j.place.x + 17.5mm == .k.place.x\n").unwrap();
+    // The same relation, with the places in the order they came.
+    assert_eq!(offsets(&l), ["j.x - k.x in -17.5..-17.5"]);
+}
+
+#[test]
+fn a_relation_with_an_outline_is_evaluated_for_its_constants() {
+    let l = lowered_two("    .k.place.x - .j.place.x == .outline.width / 2\n").unwrap();
+    assert_eq!(offsets(&l), ["k.x - j.x in 20..20"]);
+}
+
+#[test]
+fn a_relation_that_is_not_two_places_along_one_axis_is_not_an_offset() {
+    // A sum, two axes, a module, a turn and a product are kept as relations, not evaluated.
+    let l = lowered_two(
+        "    .k.place.x + .j.place.x == 30mm\n    .k.place.x - .j.place.y == 3mm\n    .pair.place.left - .j.place.left == 3mm\n    .k.place.rotation == .j.place.rotation\n    .k.place.x - .j.place.x == 2 * .k.place.x\n",
+    );
+    assert!(offsets(&l.unwrap()).is_empty());
+}
+
+#[test]
+fn a_relation_of_one_part_with_itself_is_not_an_offset() {
+    let l = lowered_two("    .j.place.right - .j.place.left == 5mm\n").unwrap();
+    assert!(offsets(&l).is_empty());
+}
+
+#[test]
+fn a_relation_between_parts_is_no_bound_on_either_and_no_note() {
+    let l = lowered_two(
+        "    .j.place.x &= 10mm +/- 1mm\n    .k.place.x >= .j.place.x + 5mm\n    .k.place.x <= .j.place.x + 5.2mm\n",
+    )
+    .unwrap();
+    let j = placement(&l, "j");
+    assert_eq!(bound(&j, PlaceField::X), (9.0, 11.0));
+    // Nothing narrows `k` by a relation to `j`: the relation is the offsets', not a window.
+    assert!(
+        l.design.features.constraints.iter().all(|p| p.path != "k"),
+        "{:?}",
+        l.design.features.constraints
+    );
+    assert_eq!(
+        offsets(&l),
+        ["k.x - j.x in 5..inf", "k.x - j.x in -inf..5.2"]
+    );
+}
+
+#[test]
+fn a_relation_that_can_never_be_held_names_both_places_and_the_numbers() {
+    // The sum of the places has to lie in 2.5 to 1.5 mm: the left side is wider than the right.
+    let e = lowered_two("    .k.place.x - .j.place.x + (0mm..2mm) == 3mm +/- 0.5mm\n").unwrap_err();
+    assert_eq!(e.len(), 1, "{e:?}");
+    assert!(
+        e[0].starts_with("`k.place.x` minus `j.place.x` cannot be held:")
+            && e[0].contains("leaves it at least 2.5 mm and at most 1.5 mm"),
+        "{}",
+        e[0]
+    );
+}
+
+#[test]
+fn two_relations_that_disagree_are_the_placers_to_report() {
+    let l = lowered_two("    .k.place.x >= .j.place.x + 5mm\n    .k.place.x <= .j.place.x + 4mm\n")
+        .unwrap();
+    assert_eq!(offsets(&l).len(), 2);
+}
+
+#[test]
+fn the_solver_lists_no_relation_between_parts_as_not_evaluated() {
+    let src = format!(
+        "{HEAD}board B {{\n    .outline: Outline {{ .width &= 40mm; .height &= 30mm }}\n    .j: Header1x2\n    .k: Header1x2\n    .k.place.x - .j.place.x == 17.5mm +/- 0.05mm\n    .k.place.x * 2 == .j.place.x\n}}\n"
+    );
+    let c = check_split(&src);
+    assert!(c.is_ok(), "{}", c.render());
+    let s = solve(&c.boards[0], &Catalogs::jlcpcb());
+    let shown: Vec<String> = s
+        .deferred
+        .iter()
+        .map(|&i| s.model.show_expr(&s.model.relations()[i].lhs))
+        .collect();
+    assert_eq!(shown.len(), 1, "{shown:?}");
+}
