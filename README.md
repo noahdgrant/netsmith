@@ -568,8 +568,8 @@ published limits but cannot run it).
   (`.process.via_in_pad &= 0mm`) or the pad is narrower than the via. There is no push and
   shove and no fan-out stage: a via goes on any free cell beside a pad as the search finds it.
   A mask opening that a footprint draws keeps vias away, not tracks. The router's result was
-  measured on a 73-part, 207-connection board with an 82-pad module (ROADMAP, Fab for real
-  boards); a denser or larger board may take minutes in a debug build.
+  measured on synthetic boards (ROADMAP, Fab for real boards); a denser or larger board may
+  take minutes in a debug build.
 - The router draws tracks at the process's narrowest track and its vias at the smallest the
   process allows, so the boards are as fine as the factory's published limits (JLCPCB: 0.1 mm
   track and space). For more margin, narrow the process in the board. A rail's `.min_track`

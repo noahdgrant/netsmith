@@ -387,23 +387,17 @@ own design rules check; `libs fetch` and `libs vendor` of ADR 0041 for the rest.
 
 ### Fab for real boards: what was done and what is left
 
-Measured on a 73-part reference board (82-pad module, 0.6 mm pads on a 1.1 mm pitch, 207
-connections, four layers; the board's data is not in this repository, only these numbers), on
-the synthetic boards of `crates/netsmith-pcb/tests/synthetic.rs`, and with KiCad 9's own check
-(planes filled by KiCad's Python):
+Measured on the synthetic boards of `crates/netsmith-pcb/tests/synthetic.rs` and with KiCad 9's
+own check (planes filled by KiCad's Python):
 
 | | Before (the row layout) | Now |
 |---|---|---|
-| Reference board, connections left unrouted | 10 of 207 | 0 of 207 |
-| Reference board, time to route, debug / release | 33 s / not measured | 7 s / 1.0 s (placement 4 s / 1.0 s) |
-| Reference board, KiCad check | not reached (the router failed first) | 0 unconnected, 0 clearance violations; 9 violations that do not come from routing (8 silkscreen overlaps and clipping in the module footprints' own drawings, 1 solder mask web between a track and a mask opening a footprint draws); the 8 silkscreen ones are also on the board unrouted |
-| Reference board squeezed to 100 x 60 mm (17% less area; the placer puts 41 parts on the back) | n/a | routed completely in 3 tries, 53 s debug (84 x 74 mm: 3 tries, 78 s) |
 | Synthetic big board (70 parts, 80-pad IC, 106 nets), routed, debug / release | 15.6 s / 1.7 s, 0 left | 13.7 s / 1.8 s, 0 left |
 | Synthetic big board, KiCad check | not run | 0 violations, 0 unconnected (161 vias, 711 tracks) |
 | Examples' `fab` output | | byte-identical except one line in each `.kicad_pro` (the Default net class gets a priority; see ADR 0031) |
 
 What changed (ADR 0031): a second try of a failed line with the least room that is safe (this is
-what opened the 0.5 mm between pads, and routed the module); vias in pads where the process
+what opened the 0.5 mm between pads); vias in pads where the process
 fills and caps them (`.via_in_pad`, JLCPCB 0.55 mm, noted in `fab-notes.txt`; also for a pad on
 a plane); necked-down tracks; negotiated congestion as the last stage; parts on the back (mirrored
 footprints on `B.Cu`, `PlaceOptions { sides, fit, keepouts }`, sharing by area when a size is
@@ -422,11 +416,10 @@ Left, and not fixed:
   unchanged.
 - **Silkscreen of footprints.** A library footprint with silkscreen text or lines closer than
   the process allows fails the check; the router and placer do not move or remove library
-  drawings (the reference board has 8 such findings in its own module footprints).
-- **Tracks and mask openings.** A footprint's mask opening keeps vias out but not tracks (1
-  finding on the reference board).
+  drawings.
+- **Tracks and mask openings.** A footprint's mask opening keeps vias out but not tracks.
 - **No push and shove, no fan-out stage.** Negotiated rip-up resolved every case tried; a board
-  that is denser still (17% less area than the reference board's own) took 53 s in a debug build.
+  that is denser still routes more slowly in a debug build.
   The derived placer (ADR 0033) counts ratsnest crossings and keeps room round parts with many
   pads, but a board it packs tighter than the router can untangle is not helped.
 - **A via in a pad needs the fabricator's filled and capped vias**: JLCPCB's page gives the
@@ -446,37 +439,31 @@ rules, reference text and silkscreen clear of other parts' pads and silkscreen, 
 lines from crossing. Parts a layout file places stay, `place_subset` places some parts of a
 placed board and leaves the rest (the call regenerating one module needs).
 
-Measured before (the row layout) and after, release build, seed 0 (the reference board
-is a copy of a 73-part, 207-connection board with an 82-pad module; only these numbers are in
-the repository). Ratsnest crossings count pairs of lines of different nets that cross;
-decoupling is the mean pad to power-pin distance of the capacitors the placer pairs.
+Measured before (the row layout) and after, release build, seed 0. Ratsnest crossings count
+pairs of lines of different nets that cross; decoupling is the mean pad to power-pin distance
+of the capacitors the placer pairs.
 
-| | Synthetic big board, before / after | Synthetic with modules and power pins, before / after | Reference board, before / after |
-|---|---|---|---|
-| Parts, nets | 70, 106 | 78, 106 | 73, 207 connections |
-| Board | 42 x 53 / 42 x 42 mm | 43 x 56 / 42 x 48 mm | 68 x 106 / 68 x 112 mm |
-| Wire length (half perimeters of nets) | 1805 / 1441 mm | 1770 / 1381 mm | 1432 / 1240 mm |
-| Ratsnest length | 1367 / 1155 mm | 1298 / 1119 mm | 1062 / 904 mm |
-| Ratsnest crossings | 456 / 178 | 364 / 182 | 83 / 61 |
-| Decoupling caps, mean / max distance | none paired | 31.8 / 42.9 mm to 5.0 / 10.3 mm | 24 caps, 24.4 / 56.7 mm to 2.0 / 3.7 mm |
-| Connections left after routing | 0 / 0 | 0 / 0 | 0 / 0 |
-| Route time, release | 3.4 s / 1.1 s | 2.3 s / 2.0 s | 1.2 s / 1.1 s |
-| Placement time, release | 0.4 s / 1.7 s | 0.4 s / 3.1 s | 1.2 s / 2.4 s |
-| KiCad's check, errors | 0 / 0 | not run / 0 | 9 / 7 (silk and mask in the module footprints) |
+| | Synthetic big board, before / after | Synthetic with modules and power pins, before / after |
+|---|---|---|
+| Parts, nets | 70, 106 | 78, 106 |
+| Board | 42 x 53 / 42 x 42 mm | 43 x 56 / 42 x 48 mm |
+| Wire length (half perimeters of nets) | 1805 / 1441 mm | 1770 / 1381 mm |
+| Ratsnest length | 1367 / 1155 mm | 1298 / 1119 mm |
+| Ratsnest crossings | 456 / 178 | 364 / 182 |
+| Decoupling caps, mean / max distance | none paired | 31.8 / 42.9 mm to 5.0 / 10.3 mm |
+| Connections left after routing | 0 / 0 | 0 / 0 |
+| Route time, release | 3.4 s / 1.1 s | 2.3 s / 2.0 s |
+| Placement time, release | 0.4 s / 1.7 s | 0.4 s / 3.1 s |
+| KiCad's check, errors | 0 / 0 | not run / 0 |
 
 The examples' boards are smaller and pass KiCad's check through `fab` as before: `led` 13 x 11
 mm (was 19 x 11), `linear_regulator` 18 x 11 (29 x 11), `four_layer` 22 x 11 (29 x 11),
 `status_indicator` 20 x 11 (27 x 11), `two_boards` 18 x 11 and 11 x 11, `outline_and_pours` 50 x
 36 as its outline says; their files differ from before in every position.
 
-How much a seed matters: over seeds 0 to 3 the reference board's wire is 1240, 1054, 986 and 1151
-mm (mean 1108, 23 % under before), its crossings 61, 33, 56, 77, its capacitors are 2.1 mm from
-their pins on every seed, and all four route completely in 0.5 to 2.4 s; the big board over six
-seeds averages 1291 mm and 150 crossings and routes in 0.3 to 1.0 s; the one with modules over
-four, 1442 mm, 181 crossings and 4 mm of decoupling. KiCad's check on the reference board's four
-seeds finds 7, 10, 11 and 11 errors (before: 9) and none of them involves a reference text but
-two (one seed): what changes the count is the module footprints' own silkscreen, which turns
-with the part, and one `starved_thermal` (a pad in a pour on one seed). A debug build (the
+How much a seed matters: the big board over six seeds averages 1291 mm and 150 crossings and
+routes in 0.3 to 1.0 s; the one with modules over four, 1442 mm, 181 crossings and 4 mm of
+decoupling. A debug build (the
 `netsmith-pcb` crate is built with `opt-level = 2` in `[profile.dev.package.netsmith-pcb]`)
 places the big board in 2.9 s and routes it in 2.1 s, and the one with modules in 4.9 s and
 5.5 s (the row layout, built without that setting: 3.7 s and 19.3 s, 3.5 s and 19.2 s).
@@ -486,10 +473,8 @@ clipped by the mask when another part's pad is near. The placer now keeps the st
 footprint's silkscreen and the box of its reference text off other parts' pads and mask
 openings by the process's silk to pad space and off other text and silkscreen by 0.2 mm, the
 cost rising through the run to as much as a hard rule; the text goes to whichever side of the
-part is free (`text` in the layout file). On the 73-part reference board that leaves no error
-involving a reference text on three seeds in four, and two on the fourth; the 8 findings that
-were in the module footprints' own drawings are still there (the library's, not the
-placement's). Not done: arcs, circles and filled shapes of a silkscreen are boxes, and a
+part is free (`text` in the layout file). Findings in a library module footprint's own drawings
+stay (the library's, not the placement's). Not done: arcs, circles and filled shapes of a silkscreen are boxes, and a
 footprint's other text (the value, `fp_text` of the module) is not read.
 
 Two things the new placements showed in code that was not changed for them, and that were
