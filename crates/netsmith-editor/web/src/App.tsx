@@ -11,6 +11,7 @@ import {
   Toast,
   TopBar,
   dragging,
+  tabMenu,
 } from './components/Chrome';
 import { Sidebar } from './components/Sidebar';
 import { type Section, SECTIONS, canSplit, clampSplit, closePane, sectionOfKey, splitRight } from './layout';
@@ -78,6 +79,10 @@ function useShortcuts() {
       if ((e.ctrlKey || e.metaKey) && e.key === 's' && !e.defaultPrevented) {
         e.preventDefault();
         if (activeFile.value) void save(activeFile.value);
+        return;
+      }
+      if (e.key === 'Escape' && tabMenu.peek()) {
+        tabMenu.value = null;
         return;
       }
       if (e.defaultPrevented) return;
@@ -193,7 +198,8 @@ export function App() {
   const two = vis.length === 2;
   // Every section that is on screen or kept: it sits in the grid cell of its pane, or, hidden,
   // under the first pane's.
-  const seen = useRef(new Set<Section>());
+  // The source is always in the page, so the editor and the tree are ready when it is shown.
+  const seen = useRef(new Set<Section>(['source']));
   for (const p of vis) seen.current.add(p.section);
   const mounted = SECTIONS.map((s) => s.id).filter(
     (id) => seen.current.has(id) && (KEPT.includes(id) || vis.some((p) => p.section === id)),

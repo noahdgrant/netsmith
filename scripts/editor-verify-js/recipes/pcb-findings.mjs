@@ -29,10 +29,10 @@ export async function run(tools) {
   await shot('findings');
 
   step('click a finding: the canvas zooms to it, marks it and selects its parts');
-  const zoomBefore = await page.locator('.zoombar span').innerText();
+  const zoomBefore = await page.locator('.pcb-host .zoombar span').innerText();
   await page.locator('[data-testid=finding]', { hasText: 'overlap' }).first().click();
   await page.waitForTimeout(300);
-  expect((await page.locator('.zoombar span').innerText()) !== zoomBefore, 'the zoom changed');
+  expect((await page.locator('.pcb-host .zoombar span').innerText()) !== zoomBefore, 'the zoom changed');
   expect((await page.locator('.pcb-overlay .mark.on').count()) === 1, 'one finding is highlighted');
   expect((await page.locator('[data-testid=part-inspector] h3').innerText()).match(/^2 PARTS/i), 'the two parts are selected');
   await shot('finding-clicked');

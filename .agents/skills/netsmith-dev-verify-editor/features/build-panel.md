@@ -2,14 +2,14 @@
 
 ## How to get to it
 
-Right pane, tab "Build", or the "Build" and "Fab" buttons at the top (they open the tab and run).
+The section "Build" (key 6), or the two actions at the top right, "Write KiCad files" and "Make fab files" (they open the section and run; while one runs it says so, with the time, and both are disabled; a toast says how it ended). They are the actions; Build is only the section where their reports are. Their tooltips say what they write and where.
 
 ## Driving it
 
 `scripts/editor-verify drive build` (the fab step takes some tens of seconds)
 
-1. "Build schematic" writes a KiCad schematic for every board of the project to its `out` directory and shows the report (parts, nets) and the paths written.
-2. "Make fab package" runs `fab` for the file of the selected board: chips `package made` and `design rules check: passed`, download links (Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb`), the summary and the text of `fab-notes.txt` ("read before you order").
+1. "Write KiCad files" (the section's "Build schematic") writes a KiCad schematic for every board of the project to its `out` directory and shows the report (parts, nets) and the paths written.
+2. "Make fab files" (the section's "Make fab package") runs `fab` for the file of the selected board: chips `package made` and `design rules check: passed`, download links (Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb`), the summary and the text of `fab-notes.txt` ("read before you order").
 3. If `fab` stops, the chip says `stopped` and the output pane shows exactly what the command line would print (a design rules failure, a missing LCSC number, a routing failure).
 
 While it runs the panel shows the stages `netsmith fab` prints to stderr, with a clock, and the status bar shows them in every tab; the editor stays usable. The report says how long it took.

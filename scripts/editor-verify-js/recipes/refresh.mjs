@@ -2,9 +2,9 @@
 // LCSC endpoint (JLCPCB is not asked). No network is used.
 export const fixture = 'catalog_refresh';
 
-export async function run({ page, shot, step, expect }) {
+export async function run({ page, shot, step, expect, section }) {
   step('open the BOM tab');
-  await page.getByText('BOM', { exact: true }).click();
+  await section('bom');
   await page.waitForSelector('table.grid');
   const resistor = page.locator('table.grid:not(.refresh-rows) tbody tr', { hasText: 'C9999999' });
   expect(await resistor.locator('.checked.stale').count() === 1 && await resistor.locator('.stale-dot').count() === 1, 'the resistor, checked 2026-06-01, is marked stale');

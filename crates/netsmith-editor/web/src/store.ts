@@ -54,6 +54,7 @@ export const tabs = signal<string[]>([]);
 export const activeFile = signal<string | null>(null);
 
 const LAYOUT_KEY = 'netsmith.layout.v1';
+const BOARD_KEY = 'netsmith.board.v1';
 
 /** What the window shows: one section, or two side by side. Kept in localStorage. */
 export const layout = signal<Layout>(parseLayout(load<unknown>(LAYOUT_KEY, null)));
@@ -260,7 +261,11 @@ async function onRebuilt(tree = true) {
   if (!a) return;
   if (tree) project.value = await api.project();
   const names = a.boards.map((b) => b.name);
-  if (!board.value || !names.includes(board.value)) board.value = names[0] ?? null;
+  if (!board.value || !names.includes(board.value)) {
+    // The board the person had last, if it is still there.
+    const kept = load<string | null>(BOARD_KEY, null);
+    board.value = kept && names.includes(kept) ? kept : (names[0] ?? null);
+  }
   live.value = null;
   pcbReports.value = {};
   void loadDetail();
@@ -411,6 +416,7 @@ export function pickPart(refdes: string | null, jump = false) {
 
 export function chooseBoard(name: string) {
   board.value = name;
+  keep(BOARD_KEY, name);
   selected.value = null;
   // Another board is not the panel's.
   const shown = analysis.value?.panels.find((p) => p.name === panelShown.value);
@@ -435,7 +441,9 @@ export function viewBoardOfDefinition(kind: string, name: string) {
     if (p && b) {
       chooseBoard(b.name);
       panelShown.value = p.name;
-      revealSection('pcb');
+      // The click was in the source's tree: with a second pane the panel opens there; with one
+      // pane the source stays (the click also went to the panel's code) and the PCB section shows it.
+      if (visible.peek().length === 2) revealSection('pcb');
     }
   }
 }

@@ -1,5 +1,6 @@
 import { signal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
+import { useEffect, useRef } from 'preact/hooks';
 
 import type { Problem } from '../api';
 import {
@@ -332,6 +333,11 @@ export function SectionStrip({ pane }: { pane: { section: Section; index: number
 /** The right-click menu of a section tab. */
 export function TabMenu() {
   const m = tabMenu.value;
+  const menu = useRef<HTMLDivElement>(null);
+  // The first choice takes the focus, so the keyboard can use the menu.
+  useEffect(() => {
+    menu.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+  }, [m?.section, m?.x, m?.y]);
   if (!m) return null;
   const l = layout.value;
   const wide = canSplit(windowWidth.value);
@@ -357,6 +363,7 @@ export function TabMenu() {
       <div class="menu-shield" onPointerDown={close} onContextMenu={(e) => (e.preventDefault(), close())} />
       <div
         class="menu"
+        ref={menu}
         role="menu"
         style={{ left: Math.min(m.x, window.innerWidth - 230), top: m.y }}
         onKeyDown={(e) => e.key === 'Escape' && close()}

@@ -94,6 +94,8 @@ export async function run(tools) {
   expect((await page.locator('[data-testid=undo]').isEnabled()) && (await page.locator('[data-testid=redo]').isEnabled()), 'undo and redo buttons are live');
 
   step('grid setting: 2.54 mm; a drag ends on it');
+  // A toast of an earlier step can sit over the part (the board fills the whole window now).
+  await page.waitForSelector('.toast', { state: 'detached', timeout: 10000 });
   await page.selectOption('[data-testid=grid]', '2.54');
   c = await partAt(page, CAP);
   await page.mouse.click(c.centre.x, c.centre.y);

@@ -20,12 +20,10 @@ export async function fresh({ page, url, project }, original = path.join(here, '
   await page.waitForSelector('.app');
 }
 
-/** Hide the source pane, so the board has the room, and open the PCB tab. */
+/** Open the PCB section (it fills the window). */
 export async function openPcb(page, board = BOARD) {
   await page.selectOption('.boardpick select', board);
-  const source = page.locator('.pane.source, .source').first();
-  if (await source.isVisible().catch(() => false)) await page.getByRole('button', { name: 'Source' }).click();
-  await page.getByText('PCB', { exact: true }).click();
+  await page.locator('.pane-strip [data-section="pcb"]').first().click();
   await page.waitForSelector('.pcb-host svg[data-ready], .pcb-host svg');
   await page.waitForSelector('.pcb-overlay');
 }

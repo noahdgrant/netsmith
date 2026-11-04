@@ -7,24 +7,27 @@ import path from 'node:path';
 
 export const fixture = 'two_boards';
 
-export async function run({ page, shot, step, expect, project }) {
+export async function run({ page, shot, step, expect, project, section }) {
   const file = path.join(project, 'src/main.nsm');
   const good = fs.readFileSync(file, 'utf8');
   try {
     step('break the file on disk and open the page afresh');
     fs.writeFileSync(file, good.replace('.led: Led {', '.led: Led {\n        .nonsense &= 1V'));
     await page.reload();
-    await page.waitForSelector('.cm-content');
+    await page.waitForSelector('.app');
     await page.waitForFunction(() => document.querySelector('.statusbar .counts .e')?.textContent.includes('1'));
     expect(true, 'the status bar counts the error');
     // The server built the file before it broke, so it still has that drawing, marked stale.
+    await section('schematic');
     expect((await page.locator('.schematic-view .banner').innerText()).includes('mistake'), 'the schematic says the source has a mistake and shows the last good drawing');
+    await section('source');
     await page.locator('.problems-head').click();
     const problem = await page.locator('.problem.error').first().innerText();
     expect(problem.includes('nonsense'), `the compiler's message in the problems list (${problem.replace(/\s+/g, ' ')})`);
     await shot('broken');
     step('fix the file: the views come back without a reload');
     fs.writeFileSync(file, good);
+    await section('schematic');
     await page.waitForSelector('.schematic', { timeout: 10000 });
     expect(true, 'the schematic is drawn again');
   } finally {

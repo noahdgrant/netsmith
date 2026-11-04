@@ -255,6 +255,11 @@ async function drive() {
         console.log(`     screenshot ${file}`);
         return file;
       },
+      /** Open a section (schematic, power, system, bom, pcb, build, source) in the first pane. */
+      async section(id) {
+        await page.locator(`.pane-strip [data-section="${id}"]`).first().click();
+        await page.waitForSelector(`.section.sec-${id}:not(.away)`);
+      },
       step(text) {
         steps.push(text);
         console.log(`  - ${text}`);
@@ -269,9 +274,9 @@ async function drive() {
       await page.goto(state.url);
       await page.waitForSelector('.app', { timeout: 10000 });
       // `.app` is there before the project has loaded (a big one takes a moment): wait for the
-      // tree, and for the board list when the project has a board, so a recipe starts on a page
+      // tree (the source section is in the page, if hidden), and for the board list when the project has a board, so a recipe starts on a page
       // that has something in it. A project that never gets a board (a broken one) just moves on.
-      await page.waitForSelector('.sidebar > *', { timeout: 20000 });
+      await page.waitForSelector('.sidebar > *', { state: 'attached', timeout: 20000 });
       await page.waitForSelector('.boardpick select option', { state: 'attached', timeout: 5000 }).catch(() => {});
       await run(tools);
       if (problems.length) throw new Error(problems.join('\n'));

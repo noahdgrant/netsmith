@@ -2,10 +2,9 @@
 // hover on a net lights it, and routing shows its stages and time while the editor stays usable.
 export const fixture = 'big';
 
-export async function run({ page, shot, step, expect }) {
-  await page.getByRole('button', { name: 'Source' }).click();
+export async function run({ page, shot, step, expect, section }) {
   step('open the PCB tab');
-  await page.getByText('PCB', { exact: true }).click();
+  await section('pcb');
   await page.waitForSelector('.pcb-host svg', { timeout: 60000 });
   expect((await page.locator('.pcb-host svg .l-key').count()) === 0, 'no key under the board');
   const host = await page.locator('.pcb-host').boundingBox();
@@ -45,10 +44,10 @@ export async function run({ page, shot, step, expect }) {
   expect(await page.getByRole('button', { name: 'Cancel' }).isVisible(), 'a cancel button');
   const status = await page.evaluate(async () => (await fetch('/api/analysis')).status);
   expect(status === 200, 'the server answers while the router runs');
-  await page.getByText('Schematic', { exact: true }).click();
+  await section('schematic');
   await page.waitForSelector('.schematic');
   expect(true, 'another tab opens while the router runs');
-  await page.getByText('PCB', { exact: true }).click();
+  await section('pcb');
   await page.waitForSelector('.took', { timeout: 120000 });
   const took = await page.locator('.toolbar .took').innerText();
   expect(/took \d/.test(took), `the time it took (${took})`);

@@ -2,7 +2,7 @@
 
 ## How to get to it
 
-Right pane, tab "Power tree". For a board of a system it shows the whole system: a card for each net a rail draws from, joined left to right by the stages that convert one rail to another and, dashed, by the joins between boards.
+The section "Power tree" (key 2). For a board of a system it shows the whole system: a card for each net a rail draws from, joined left to right by the stages that convert one rail to another and, dashed, by the joins between boards.
 
 ## Driving it
 
@@ -21,4 +21,4 @@ Rails are cards in columns left to right by supply (`VIN` first, then what it fe
 
 - Every number comes from the solved model (`Model`, `Balance`), not from text. A net whose current the solver has not settled says so and has no bar.
 - A card turns red only if the demand's top exceeds the capacity. A board that fails the solver's own check does not build, so you see it only on a stale drawing; the unit tests in `crates/netsmith/src/editor/power.rs` cover it.
-- The graph is fitted to the pane: it is small in a narrow pane. Hide the source with the "Source" button at the top to give it room.
+- The graph is fitted to the section, which has the whole window unless the window is split.

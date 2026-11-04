@@ -2,7 +2,8 @@
 // only parts is closed until asked for; the tree's unit tests cover that.)
 export const fixture = 'big';
 
-export async function run({ page, shot, step, expect }) {
+export async function run({ page, shot, step, expect, section }) {
+  await section('source');
   step('modules are grouped by folder');
   const tree = await page.locator('.sidebar').innerText();
   expect(/power/.test(tree) && /io/.test(tree), 'the folders power and io under src/sheets');

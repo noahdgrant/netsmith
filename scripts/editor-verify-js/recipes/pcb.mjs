@@ -1,10 +1,10 @@
 // The PCB: placed at once, routed on demand, with layers that can be hidden.
 export const fixture = 'two_boards';
 
-export async function run({ page, shot, step, expect }) {
+export async function run({ page, shot, step, expect, section }) {
   await page.selectOption('.boardpick select', 'TwoBoards/led');
   step('open the PCB tab');
-  await page.getByText('PCB', { exact: true }).click();
+  await section('pcb');
   await page.waitForSelector('.pcb-host svg');
   expect((await page.locator('.pcb-host svg g.l-pads').count()) > 0, 'the board drawn with its pads');
   await shot('placed');
