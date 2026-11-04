@@ -199,6 +199,7 @@ impl Parser {
             inner_docs: self.inner_docs(),
             imports: Vec::new(),
             definitions: Vec::new(),
+            physicals: Vec::new(),
         };
         loop {
             self.skip_separators();
@@ -215,6 +216,12 @@ impl Parser {
                 Tok::Ident(k) if DefKind::from_keyword(k).is_some() => {
                     file.definitions.push(self.definition(docs)?)
                 }
+                Tok::Ident(k)
+                    if k == "physical"
+                        && matches!(self.peek_second(), Tok::Ident(w) if w == "for") =>
+                {
+                    file.physicals.push(self.physical(docs)?)
+                }
                 // Docs only get the blame when the next thing really is not a definition.
                 Tok::Eof | Tok::Ident(_) if !docs.is_empty() && is_import_or_end(&t.tok) => {
                     return Err(ParseError::new(
@@ -225,7 +232,7 @@ impl Parser {
                 _ => {
                     return Err(unexpected(
                         &t,
-                        "`import`, `board`, `system`, `panel`, `part`, `interface` or `module`",
+                        "`import`, `board`, `system`, `panel`, `part`, `interface`, `module` or `physical for`",
                     ));
                 }
             }
@@ -287,6 +294,23 @@ impl Parser {
         })
     }
 
+    /// `physical for Board { ... }`.
+    fn physical(&mut self, docs: Docs) -> Res<Physical> {
+        let keyword = self.bump();
+        self.bump(); // `for`
+        let board = self.ident("the name of the board after `physical for`")?;
+        let open = self.expect(&Tok::LBrace, "`{` after the board name")?;
+        let inner_docs = self.inner_docs();
+        let items = self.block(open.span)?;
+        Ok(Physical {
+            docs: docs.lines,
+            inner_docs,
+            board,
+            items,
+            span: self.span_from(keyword.span.start),
+        })
+    }
+
     /// Items up to and including the closing `}`.
     fn block(&mut self, open: Span) -> Res<Vec<Item>> {
         let mut items = Vec::new();
@@ -332,6 +356,7 @@ impl Parser {
                     | Item::Catalog(_)
                     | Item::Pins(_)
                     | Item::Tie(_)
+                    | Item::Case(_)
                     | Item::Constraint(_)
                     | Item::Connect(_),
                 ) => Err(ParseError::new(
@@ -342,7 +367,7 @@ impl Parser {
             }
         };
 
-        // `bridge`, `catalog`, `tie` and `pins` are keywords at the start of a statement.
+        // `bridge`, `catalog`, `tie`, `pins` and `case` are keywords at the start of a statement.
         if let Tok::Ident(word) = self.peek().tok.clone() {
             let starts_name = matches!(
                 self.peek_second(),
@@ -354,6 +379,15 @@ impl Parser {
                 "tie" if starts_name => return only_decls(self.tie(start)?),
                 "pins" if matches!(self.peek_second(), Tok::LBrace | Tok::Str(_)) => {
                     return only_decls(self.pins(start)?);
+                }
+                "case" if matches!(self.peek_second(), Tok::LBrace) => {
+                    self.bump();
+                    let open = self.bump();
+                    let items = self.block(open.span)?;
+                    return only_decls(Item::Case(Case {
+                        items,
+                        span: self.span_from(start),
+                    }));
                 }
                 _ => {}
             }

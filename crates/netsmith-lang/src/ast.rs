@@ -9,6 +9,34 @@ pub struct File {
     pub inner_docs: Vec<String>,
     pub imports: Vec<Import>,
     pub definitions: Vec<Definition>,
+    /// `physical for Board { ... }` units (ADR 0048). Only a physical file
+    /// (`<stem>.physical.nsm`) may hold them; the checker says so for any other file.
+    pub physicals: Vec<Physical>,
+}
+
+/// `physical for Trellis { ... }`: the physical intent of one board (ADR 0048, "Syntax
+/// decisions" 1). Its statements are the language of the board's body; the checker puts
+/// them with the board it names and lets them reach the parts inside its modules, to state
+/// physical intent only.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Physical {
+    /// `///` lines above the unit.
+    pub docs: Vec<String>,
+    /// `//!` lines at the start of the body.
+    pub inner_docs: Vec<String>,
+    /// The board it belongs to (`Trellis`).
+    pub board: Ident,
+    pub items: Vec<Item>,
+    pub span: Span,
+}
+
+/// `case { ... }`: the section of a physical file that holds the outline, openings,
+/// mounting holes, fiducials and labels of the board and what the case fixes (ADR 0048,
+/// "Syntax decisions" 7). It can be lifted out unchanged into a shared definition later.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Case {
+    pub items: Vec<Item>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -92,6 +120,8 @@ pub enum Item {
     Catalog(Catalog),
     Pins(Pins),
     Tie(Tie),
+    /// A `case { ... }` section; only a physical file may hold one.
+    Case(Case),
 }
 
 /// What a pin is electrically. The kinds are a closed set (ADR 0016); a checker reads them,

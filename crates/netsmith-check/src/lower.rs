@@ -10,7 +10,7 @@ use netsmith_lang::ast::{self, BinOp, CmpOp, Expr};
 use netsmith_quantity::{Dimension, Quantity, parse_unit};
 
 use crate::checker::{Checker, Res};
-use crate::model::{Domain, FieldId, FieldKind, RExpr, Relation};
+use crate::model::{Domain, FieldId, FieldKind, InstKind, Member, RExpr, Relation};
 
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum VTy {
@@ -207,7 +207,13 @@ impl Checker<'_> {
         let target = self.resolve_path(p);
         let rhs = self.lower(&c.rhs);
         match (target, rhs) {
-            (Res::Field(f), Some(t)) => self.apply(f, t, CmpOp::Narrow, c.span),
+            (Res::Field(f), Some(t)) => {
+                let mut fields = vec![f];
+                t.e.fields(&mut fields);
+                if self.physical_gate(&fields, c.span) {
+                    self.apply(f, t, CmpOp::Narrow, c.span);
+                }
+            }
             (Res::Inst(i), _) => {
                 let word = self.model.instance(i).kind.word();
                 self.error(
@@ -223,6 +229,12 @@ impl Checker<'_> {
         let l = self.lower(&c.lhs);
         let r = self.lower(&c.rhs);
         let (Some(l), Some(r)) = (l, r) else { return };
+        let mut fields = Vec::new();
+        l.e.fields(&mut fields);
+        r.e.fields(&mut fields);
+        if !self.physical_gate(&fields, c.span) {
+            return;
+        }
 
         let comparable = match (l.ty, r.ty) {
             (VTy::Q(a), VTy::Q(b)) => a == b,
@@ -306,6 +318,68 @@ impl Checker<'_> {
         }
     }
 
+    /// A face stated for a module is a requirement on every part of it, at any depth
+    /// (ADR 0048, "Syntax decisions" 5): a part that needs the other face is stated part by
+    /// part and cannot be under a module that states one. Narrow the parts' own faces.
+    fn face_of_module(&mut self, field: FieldId, face: &str, span: Span) {
+        let place = self.model.field(field).owner;
+        let Some(module) = self.model.instance(place).parent else {
+            return;
+        };
+        if self.model.field(field).name != "side"
+            || !self.model.is_place_field(field)
+            || self.model.instance(module).kind != InstKind::Module
+        {
+            return;
+        }
+        let module_path = self.model.path_of(module);
+        let mut parts = Vec::new();
+        let mut stack = vec![module];
+        while let Some(inst) = stack.pop() {
+            for (_, member) in self.model.instance(inst).children.clone() {
+                let Member::Inst(child) = member else { continue };
+                match self.model.instance(child).kind {
+                    InstKind::Part => parts.push(child),
+                    InstKind::Module => stack.push(child),
+                    _ => {}
+                }
+            }
+        }
+        parts.sort_by_key(|p| p.0);
+        for part in parts {
+            let Some(Member::Inst(part_place)) = self.model.member(part, "place") else {
+                continue;
+            };
+            let Some(Member::Field(side)) = self.model.member(part_place, "side") else {
+                continue;
+            };
+            if let Domain::Text(old) = &self.model.field(side).domain
+                && old != face
+            {
+                let part_path = self.model.path_of(part);
+                let stated = self.model.field(side).narrowed_at.first().copied();
+                let at = stated
+                    .map(|(src, sp)| {
+                        let source = self.sources.get(src);
+                        let (line, _) =
+                            netsmith_lang::ParseError::new(sp, "").line_col(&source.text);
+                        format!(" (stated at {}:{line})", source.name)
+                    })
+                    .unwrap_or_default();
+                let source = self.cur_source();
+                self.report(
+                    source,
+                    span,
+                    format!(
+                        "`{module_path}` is on the {face} face, which is a requirement on every part of it, but `{part_path}.place.side` is already \"{old}\"{at}; a module with a part on the other face cannot state a face, state the faces of its parts one by one"
+                    ),
+                );
+                continue;
+            }
+            self.narrow(side, Domain::Text(face.to_string()), span);
+        }
+    }
+
     fn narrow(&mut self, field: FieldId, new: Domain, span: Span) {
         let source = self.cur_source();
         let path = self.model.path_of_field(field);
@@ -324,6 +398,9 @@ impl Checker<'_> {
                 let f = &mut self.model.fields[field.0];
                 f.domain = domain;
                 f.narrowed_at.push((source, span));
+                if let Domain::Text(face) = &new {
+                    self.face_of_module(field, face, span);
+                }
             }
             None => self.report(
                 source,

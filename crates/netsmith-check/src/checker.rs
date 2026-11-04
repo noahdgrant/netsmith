@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use netsmith_lang::ast::{Decl, DefKind, Definition, Import, Item, Path, TypePath};
+use netsmith_lang::ast::{Decl, DefKind, Definition, Import, Item, Path, Physical, TypePath};
 use netsmith_lang::{Span, parse};
 use netsmith_quantity::Dimension;
 
@@ -23,6 +23,18 @@ pub(crate) struct ModuleData {
     pub source: SourceId,
     pub defs: Vec<Rc<Definition>>,
     pub scope: HashMap<String, Binding>,
+    /// A file of the standard library (its name starts with `std/`).
+    pub std: bool,
+}
+
+/// The physical file being read as part of a board (ADR 0048).
+#[derive(Default)]
+pub(crate) struct PhysState {
+    /// Inside a `case { }` section.
+    pub in_case: bool,
+    /// The members of the board that the physical file declared (an outline, a keepout, a
+    /// mounting hole): it may set any of their fields.
+    pub declared: HashSet<InstId>,
 }
 
 #[derive(Clone, Copy)]
@@ -65,6 +77,12 @@ pub(crate) struct Checker<'a> {
     skipped: HashSet<(usize, usize)>,
     /// Pins that a row of a `pins` table declared, as opposed to a `.name: Pin` member.
     pub(crate) table_pins: HashSet<InstId>,
+    /// The `physical for` units of each board definition `(module, index)`, as the module
+    /// that holds the unit and the unit. A board takes its units in when it is made, so
+    /// that a `panel` or a `system` that places the board sees them too.
+    attached: HashMap<(usize, usize), Vec<(usize, Rc<Physical>)>>,
+    /// Set while a board's physical file is being read (ADR 0048).
+    pub(crate) phys: Option<PhysState>,
 }
 
 fn builtin(name: &str) -> Option<Builtin> {
@@ -105,6 +123,8 @@ impl<'a> Checker<'a> {
             uf: HashMap::new(),
             skipped: HashSet::new(),
             table_pins: HashSet::new(),
+            attached: HashMap::new(),
+            phys: None,
         }
     }
 
@@ -188,10 +208,22 @@ impl<'a> Checker<'a> {
                     inner_docs: Vec::new(),
                     imports: Vec::new(),
                     definitions: Vec::new(),
+                    physicals: Vec::new(),
                 }
             }
         };
         let imports = std::mem::take(&mut file.imports);
+        for unit in &file.physicals {
+            self.report(
+                source,
+                unit.span,
+                format!(
+                    "`physical for {}` belongs in a file of its own, `{}`, beside this source; a source file holds the circuit",
+                    unit.board.name,
+                    physical_file_name(name)
+                ),
+            );
+        }
         let defs: Vec<Rc<Definition>> = file.definitions.into_iter().map(Rc::new).collect();
 
         let id = self.modules.len();
@@ -212,6 +244,7 @@ impl<'a> Checker<'a> {
             source,
             defs,
             scope,
+            std: name.starts_with("std/"),
         });
         // Cached before the imports run so a cycle cannot recurse forever.
         if let Some(key) = key {
@@ -220,7 +253,99 @@ impl<'a> Checker<'a> {
         for import in &imports {
             self.apply_import(id, import);
         }
+        let loader = self.loader;
+        if let Some((physical_name, physical_text)) = loader.physical_of(name) {
+            self.add_physical(id, physical_name, physical_text);
+        }
         id
+    }
+
+    /// Read the physical file paired with module `owner` and attach each of its units to
+    /// the board it names (ADR 0048).
+    fn add_physical(&mut self, owner: usize, name: &str, text: &str) {
+        let source = self.sources.add(name, text);
+        let file = match parse(text) {
+            Ok(file) => file,
+            Err(e) => {
+                self.report(source, e.span, e.message);
+                return;
+            }
+        };
+        for def in &file.definitions {
+            self.report(
+                source,
+                def.name.span,
+                format!(
+                    "a physical file holds `physical for` units and nothing else; `{} {}` belongs in the circuit source",
+                    def.kind.keyword(),
+                    def.name.name
+                ),
+            );
+        }
+        let id = self.modules.len();
+        self.modules.push(ModuleData {
+            source,
+            defs: Vec::new(),
+            scope: HashMap::new(),
+            std: false,
+        });
+        for import in &file.imports {
+            self.apply_import(id, import);
+        }
+        let owner_defs = self.modules[owner].defs.clone();
+        for unit in file.physicals {
+            let unit = Rc::new(unit);
+            let named = owner_defs
+                .iter()
+                .position(|d| d.name.name == unit.board.name);
+            let Some(index) = named else {
+                let boards: Vec<String> = owner_defs
+                    .iter()
+                    .filter(|d| d.kind == DefKind::Board)
+                    .map(|d| format!("`{}`", d.name.name))
+                    .collect();
+                let known = if boards.is_empty() {
+                    "it has no board".to_string()
+                } else {
+                    format!("its boards are {}", boards.join(", "))
+                };
+                self.report(
+                    source,
+                    unit.board.span,
+                    format!(
+                        "`physical for {}` names no board of the source it is paired with; {known}",
+                        unit.board.name
+                    ),
+                );
+                continue;
+            };
+            let kind = owner_defs[index].kind;
+            if kind != DefKind::Board {
+                self.report(
+                    source,
+                    unit.board.span,
+                    format!(
+                        "`physical for {}` names a {}, and a physical file for anything but a board is not built yet (ADR 0048); name a board, and reach the parts of a module by their path",
+                        unit.board.name,
+                        kind.keyword()
+                    ),
+                );
+                continue;
+            }
+            let entry = self.attached.entry((owner, index)).or_default();
+            if entry.iter().any(|(m, _)| *m == id) {
+                self.report(
+                    source,
+                    unit.board.span,
+                    format!(
+                        "`physical for {}` is already given in this file; keep one unit for each board",
+                        unit.board.name
+                    ),
+                );
+                continue;
+            }
+            entry.push((id, unit));
+        }
     }
 
     fn apply_import(&mut self, module: usize, import: &Import) {
@@ -401,18 +526,44 @@ impl<'a> Checker<'a> {
         let saved_module = std::mem::replace(&mut self.cur_module, def_ref.0);
         let saved_def = self.cur_def.replace(def_ref);
         let saved_scope = std::mem::replace(&mut self.scope, vec![id]);
+        // A definition's own text is circuit source, even when a physical file is what
+        // asked for it to be made.
+        let saved_phys = self.phys.take();
         self.declare(&def.items);
         self.process(&def.items);
+        if kind == InstKind::Board {
+            self.merge_physical(def_ref);
+        }
+        self.phys = saved_phys;
         self.cur_module = saved_module;
         self.cur_def = saved_def;
         self.scope = saved_scope;
         id
     }
 
+    /// Read the physical file of the board being made, as part of the board (ADR 0048): its
+    /// declarations become members of the board, and its statements are checked with the
+    /// reach into modules that a physical file has and a circuit source does not.
+    fn merge_physical(&mut self, board: (usize, usize)) {
+        let Some(units) = self.attached.get(&board).cloned() else {
+            return;
+        };
+        let saved_module = self.cur_module;
+        for (module, unit) in units {
+            self.cur_module = module;
+            let saved = self.phys.replace(PhysState::default());
+            self.declare(&unit.items);
+            self.process(&unit.items);
+            self.phys = saved;
+        }
+        self.cur_module = saved_module;
+    }
+
     /// The built-in `.place` of a part or module (ADR 0045): an interface `Place` with the
     /// box of the body in the board's frame (`x` and `y` of its centre, `left`, `right`,
     /// `top` and `bottom` of its edges), the turn in degrees and the face. A module's has
-    /// no `rotation` and no `side`: the placer does not turn a module as a block.
+    /// no `rotation`: the placer does not turn a module as a block. Its `side` is a hard
+    /// requirement on every part of it (ADR 0048, "Syntax decisions" 5).
     fn add_place(&mut self, owner: InstId, span: Span) {
         let source = self.model.instance(owner).source;
         let place = self.model.add_instance(Instance {
@@ -440,7 +591,7 @@ impl<'a> Checker<'a> {
             ("top", FieldKind::Quantity(Dimension::LENGTH), false),
             ("bottom", FieldKind::Quantity(Dimension::LENGTH), false),
             ("rotation", FieldKind::Quantity(Dimension::NONE), true),
-            ("side", FieldKind::Text, true),
+            ("side", FieldKind::Text, false),
         ];
         for (name, kind, part_only) in fields {
             if part_only && module {
@@ -463,7 +614,21 @@ impl<'a> Checker<'a> {
     fn declare(&mut self, items: &[Item]) {
         for item in items {
             if let Item::Pins(table) = item {
-                self.declare_table_pins(table);
+                if self.phys.is_none() {
+                    self.declare_table_pins(table);
+                }
+                continue;
+            }
+            if let Item::Case(case) = item {
+                if let Some(phys) = &mut self.phys {
+                    let outer = std::mem::replace(&mut phys.in_case, true);
+                    self.declare(&case.items);
+                    if let Some(phys) = &mut self.phys {
+                        phys.in_case = outer;
+                    }
+                } else {
+                    self.error(case.span, CASE_OUTSIDE);
+                }
                 continue;
             }
             let Item::Decl(d) = item else { continue };
@@ -489,6 +654,10 @@ impl<'a> Checker<'a> {
             }
 
             let ty = self.resolve_type(&d.ty);
+            if !self.fits_here(&ty, d) {
+                self.model.add_member(cur, &name, Member::Poison);
+                continue;
+            }
             if (self.in_system() || self.in_panel()) && matches!(ty, Ty::Builtin(_)) {
                 let holder = self.model.instance(self.current()).kind.word();
                 self.error(
@@ -528,6 +697,13 @@ impl<'a> Checker<'a> {
                     self.model.instances[child.0].declared =
                         Some((self.cur_source(), Span::new(d.name.span.start, last)));
                     self.model.add_member(cur, &name, Member::Inst(child));
+                    if self.phys.is_some() && self.scope.len() == 1 {
+                        self.phys
+                            .as_mut()
+                            .expect("checked just above")
+                            .declared
+                            .insert(child);
+                    }
                 }
             }
 
@@ -662,11 +838,25 @@ impl<'a> Checker<'a> {
                     }
                 }
                 Item::Constraint(c) => self.constraint(c),
-                Item::Connect(c) => self.connect(c),
-                Item::Bridge(b) => self.bridge(b),
-                Item::Catalog(c) => self.catalog(c),
-                Item::Pins(p) => self.pins(p),
-                Item::Tie(t) => self.tie(t),
+                Item::Case(case) => {
+                    if let Some(phys) = &mut self.phys {
+                        let outer = std::mem::replace(&mut phys.in_case, true);
+                        self.process(&case.items);
+                        if let Some(phys) = &mut self.phys {
+                            phys.in_case = outer;
+                        }
+                    }
+                }
+                Item::Connect(c) if self.phys.is_none() => self.connect(c),
+                Item::Bridge(b) if self.phys.is_none() => self.bridge(b),
+                Item::Catalog(c) if self.phys.is_none() => self.catalog(c),
+                Item::Pins(p) if self.phys.is_none() => self.pins(p),
+                Item::Tie(t) if self.phys.is_none() => self.tie(t),
+                Item::Connect(c) => self.not_physical(c.span, "a connection with `~`"),
+                Item::Bridge(b) => self.not_physical(b.span, "a `bridge`"),
+                Item::Catalog(c) => self.not_physical(c.span, "a `catalog`"),
+                Item::Pins(p) => self.not_physical(p.span, "a `pins` table"),
+                Item::Tie(t) => self.not_physical(t.span, "a `tie`"),
             }
         }
     }
@@ -679,6 +869,11 @@ impl<'a> Checker<'a> {
     /// The parts and modules inside it are its own business, so they can be named only
     /// from the module's own definition.
     fn visible(&mut self, owner: InstId, member: Member, name: &netsmith_lang::ast::Ident) -> bool {
+        // A board's physical file names a part inside a module by its path (ADR 0048). It
+        // may only state physical intent about it: `physical_gate` refuses the rest.
+        if self.phys.is_some() {
+            return true;
+        }
         let inst = self.model.instance(owner);
         let outside =
             matches!(inst.kind, InstKind::Module | InstKind::Board) && inst.def != self.cur_def;
@@ -830,5 +1025,178 @@ impl<'a> Checker<'a> {
             Member::Field(f) => Res::Field(f),
             Member::Poison => Res::Poison,
         }
+    }
+}
+
+const CASE_OUTSIDE: &str = "a `case { }` section belongs in a physical file (`physical for Board { case { ... } }`, ADR 0048)";
+
+/// `led.nsm` has its physical file in `led.physical.nsm`.
+pub(crate) fn physical_file_name(source: &str) -> String {
+    format!(
+        "{}.physical.nsm",
+        source.strip_suffix(".nsm").unwrap_or(source)
+    )
+}
+
+/// The things a board's physical file declares (ADR 0048, "Syntax decisions" 7 and 8): the
+/// outline, cutouts, mounting holes, fiducials and labels belong in its `case` section;
+/// the keepouts a board draws may stand anywhere in the file.
+struct PhysicalType {
+    /// With the article: `an outline`.
+    noun: &'static str,
+    in_case: bool,
+}
+
+impl Checker<'_> {
+    fn physical_type(&self, ty: &Ty) -> Option<PhysicalType> {
+        let Ty::Def(m, i) = ty else { return None };
+        if !self.modules[*m].std {
+            return None;
+        }
+        let def = &self.modules[*m].defs[*i];
+        let (noun, in_case) = match (def.kind, def.name.name.as_str()) {
+            (DefKind::Interface, "Outline") => ("an outline", true),
+            (DefKind::Interface, "Cutout") => ("a cutout", true),
+            (DefKind::Interface, "Keepout") => ("a keepout that a board draws", false),
+            (DefKind::Part, "MountingHole") => ("a mounting hole", true),
+            (DefKind::Part, "Fiducial") => ("a fiducial", true),
+            (DefKind::Part, "Label") => ("a label", true),
+            _ => return None,
+        };
+        Some(PhysicalType { noun, in_case })
+    }
+
+    /// The name of the board whose text is being read, and of the physical file it would
+    /// have, for a message.
+    fn physical_home(&self) -> (String, String) {
+        let board = self
+            .cur_def
+            .map(|(m, i)| self.modules[m].defs[i].name.name.clone())
+            .unwrap_or_default();
+        let source = &self.sources.get(self.cur_source()).name;
+        (board, physical_file_name(source))
+    }
+
+    /// Whether a declaration may stand where it is. A board's circuit source does not hold
+    /// the outline, cutouts, mounting holes, fiducials, labels or keepouts of the board
+    /// (ADR 0048 decision 10: the old form is an error), and a physical file holds nothing
+    /// but those. Reports it when not.
+    fn fits_here(&mut self, ty: &Ty, d: &Decl) -> bool {
+        let physical = self.physical_type(ty);
+        let (board, file) = self.physical_home();
+        let member = d.name.to_source();
+        let type_name = d.ty.segments.last().map_or("", |s| s.name.as_str());
+        if let Some(phys) = &self.phys {
+            if self.scope.len() != 1 {
+                return true;
+            }
+            let in_case = phys.in_case;
+            return match physical {
+                None => {
+                    self.error(
+                        d.ty.segments[0].span,
+                        format!(
+                            "a physical file declares the outline, cutouts, keepouts, mounting holes, fiducials and labels of a board; `{member}: {type_name}` is none of them, and a part or a module belongs in the circuit source"
+                        ),
+                    );
+                    false
+                }
+                Some(kind) if kind.in_case && !in_case => {
+                    self.error(
+                        d.ty.segments[0].span,
+                        format!(
+                            "{} belongs in the `case {{ }}` section of `physical for {board}`: wrap `{member}: {type_name}` in `case {{ ... }}`",
+                            kind.noun
+                        ),
+                    );
+                    false
+                }
+                Some(_) => true,
+            };
+        }
+        if !self.in_board() {
+            return true;
+        }
+        let Some(kind) = physical else { return true };
+        let place = if kind.in_case {
+            format!("the `case {{ }}` section of `physical for {board}` in `{file}`")
+        } else {
+            format!(
+                "`physical for {board}` in `{file}` (a keepout that a part carries stays in the part)"
+            )
+        };
+        self.error(
+            d.ty.segments[0].span,
+            format!(
+                "`{member}: {type_name}` is {}, which is physical intent, and a board's circuit source does not hold it (ADR 0048); declare it in {place}",
+                kind.noun
+            ),
+        );
+        false
+    }
+
+    /// Report a statement that a physical file may not hold.
+    fn not_physical(&mut self, span: Span, what: &str) {
+        self.error(
+            span,
+            format!(
+                "a physical file states where things are, and {what} changes the circuit; put it in the circuit source"
+            ),
+        );
+    }
+
+    /// Whether a statement of a board may mention these fields. A physical file may set and
+    /// compare only physical things: a part's `.place`, a part's `.height`, and what the
+    /// file declared itself. A board's circuit source may mention none of a `.place`
+    /// (ADR 0048 decision 10). Reports it when not.
+    pub(crate) fn physical_gate(&mut self, fields: &[crate::model::FieldId], span: Span) -> bool {
+        if let Some(phys) = &self.phys {
+            for &f in fields {
+                if !self.physical_field(f, phys) {
+                    let path = self.model.path_of_field(f);
+                    self.error(
+                        span,
+                        format!(
+                            "`{path}` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`) and the outline, cutouts, keepouts, holes, fiducials and labels it declares, never what a part is; put this in the circuit source"
+                        ),
+                    );
+                    return false;
+                }
+            }
+            return true;
+        }
+        if !self.in_board() {
+            return true;
+        }
+        if let Some(&f) = fields.iter().find(|&&f| self.model.is_place_field(f)) {
+            let path = self.model.path_of_field(f);
+            let (board, file) = self.physical_home();
+            self.error(
+                span,
+                format!(
+                    "`{path}` is a placement requirement, which is physical intent, and a board's circuit source does not state it (ADR 0048); put it in `physical for {board}` in `{file}`"
+                ),
+            );
+            return false;
+        }
+        true
+    }
+
+    fn physical_field(&self, field: crate::model::FieldId, phys: &PhysState) -> bool {
+        if self.model.is_place_field(field) {
+            return true;
+        }
+        let f = self.model.field(field);
+        if f.name == "height" && self.model.instance(f.owner).kind == InstKind::Part {
+            return true;
+        }
+        let mut cur = Some(f.owner);
+        while let Some(i) = cur {
+            if phys.declared.contains(&i) {
+                return true;
+            }
+            cur = self.model.instance(i).parent;
+        }
+        false
     }
 }

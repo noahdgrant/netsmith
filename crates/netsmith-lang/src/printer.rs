@@ -9,7 +9,8 @@ impl File {
     pub fn to_source(&self) -> String {
         let mut out = String::new();
         write_docs(&mut out, &self.inner_docs, "//!", 0);
-        let has_body = !(self.imports.is_empty() && self.definitions.is_empty());
+        let has_body =
+            !(self.imports.is_empty() && self.definitions.is_empty() && self.physicals.is_empty());
         if !self.inner_docs.is_empty() && has_body {
             out.push('\n');
         }
@@ -24,6 +25,15 @@ impl File {
             write_docs(&mut out, &def.docs, "///", 0);
             let _ = write!(out, "{} {} ", def.kind.keyword(), def.name.to_source());
             write_block(&mut out, &def.inner_docs, &def.items, 0);
+            out.push('\n');
+        }
+        for (i, unit) in self.physicals.iter().enumerate() {
+            if i > 0 || !self.imports.is_empty() || !self.definitions.is_empty() {
+                out.push('\n');
+            }
+            write_docs(&mut out, &unit.docs, "///", 0);
+            let _ = write!(out, "physical for {} ", unit.board.to_source());
+            write_block(&mut out, &unit.inner_docs, &unit.items, 0);
             out.push('\n');
         }
         out
@@ -232,6 +242,10 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     out.push_str(&"    ".repeat(depth + 1));
                     out.push('}');
                 }
+            }
+            Item::Case(c) => {
+                out.push_str("case ");
+                write_block(out, &[], &c.items, depth + 1);
             }
             Item::Connect(c) => {
                 out.push_str(&c.first.to_source());

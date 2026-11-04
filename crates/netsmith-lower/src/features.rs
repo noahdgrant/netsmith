@@ -557,7 +557,9 @@ pub(crate) fn placements(model: &Model, errors: &mut Vec<String>) -> (Vec<Placem
             spots.push((field.word().to_string(), w.sites));
         }
         let mut side = None;
-        if let Some(Member::Field(id)) = model.member(place, "side")
+        // A module's face is stated on each of its parts (ADR 0048): read it there.
+        if !module
+            && let Some(Member::Field(id)) = model.member(place, "side")
             && let Domain::Text(t) = &model.field(id).domain
         {
             if t != "top" && t != "bottom" {
