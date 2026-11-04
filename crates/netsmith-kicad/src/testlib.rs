@@ -790,7 +790,7 @@ pub fn split_physical(source: &str) -> (String, Option<String>) {
     let mut place = 0;
     let mut case = String::new();
     let mut loose = String::new();
-    let mut flush = |chunk: &mut Vec<&str>,
+    let flush = |chunk: &mut Vec<&str>,
                      place: usize,
                      circuit: &mut String,
                      case: &mut String,

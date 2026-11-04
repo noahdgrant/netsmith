@@ -1,12 +1,14 @@
 //! `netsmith dxf import`: the board outline, cutouts and mounting holes of an enclosure's DXF
-//! file as source to paste (ADR 0045, step C0 piece 3).
+//! file as source for the board's physical file (ADR 0045, step C0 piece 3, ADR 0048).
 //!
 //! The reader is `netsmith-dxf`. What this adds is the translation into what the language
 //! has: an `Outline` (a rectangle with equal rounded corners), `Cutout` members (rounded
-//! rectangles, slots and circles) and `MountingHole` parts at the holes' centres. The places
-//! of the cutouts and holes are the layout file's (ADR 0032): `--write` merges them into
-//! `<stem>.pcb.toml` and prints what changed. The source is never written: it is printed, for
-//! a person (or an agent) to paste.
+//! rectangles, slots and circles) and `MountingHole` parts at the holes' centres, with their
+//! places, which are requirements the case fixes. They go in the `case { }` section of the
+//! board's physical file: `--write` edits `<stem>.physical.nsm` at the spans of its syntax
+//! tree, so its comments and the lines it does not name stay, and prints what changed. The
+//! circuit source is never written. Without `--write` the text is printed, for a person (or
+//! an agent) to paste.
 //!
 //! An outline or cutout that is not a rounded rectangle needs a polygon outline, which the
 //! board model does not have (ADR 0045 step C8; `docs/ROADMAP.md`): it is refused with its
@@ -16,8 +18,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use netsmith_dxf::{Options, Outline, Polygon, RoundedRect, Units, read_outline};
-use netsmith_pcb::Layout;
-use netsmith_pcb::layout::{BoardLayout, Face, PartPlace, ShapePlace};
+use crate::physical::{Edit, Section};
 
 /// What `dxf import` is asked for.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -36,17 +37,20 @@ const HOLES: [(&str, f64); 2] = [("M2", 2.2), ("M3", 3.2)];
 /// How far a drawn hole may be from a package's drill and still be it (mm).
 const HOLE_TOLERANCE: f64 = 0.05;
 
-/// The result of an import: the text to paste and the entries for the layout file.
+/// The result of an import: the text to paste into the physical file.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Imported {
     /// What the file says in the way of the frame, the layers and the units.
     pub report: Vec<String>,
-    /// The `import` lines to put at the top of the source file.
+    /// The `import` lines to put at the top of the physical file.
     pub imports: String,
-    /// The members to put inside the board.
+    /// The same, as `(module, name)` pairs.
+    needed: Vec<(&'static str, &'static str)>,
+    /// The statements to put in the `case { }` section: the outline, the cutouts and the
+    /// holes, each with its place.
     pub members: String,
-    /// The places of the cutouts and holes, for the board's table of the layout file.
-    pub layout: BoardLayout,
+    /// The names of the members, which a later import replaces.
+    pub names: Vec<String>,
     pub warnings: Vec<String>,
 }
 
@@ -144,18 +148,13 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
     let outer = outer.expect("checked above");
 
     let mut members = String::new();
-    let mut layout = BoardLayout::default();
+    let mut names = vec!["outline".to_string()];
     members.push_str(&rounded_member(".outline", "Outline", &outer, false));
     for (i, rr) in cutouts.iter().enumerate() {
         let id = format!("cutout{}", i + 1);
         members.push('\n');
-        members.push_str(&rounded_member(&format!(".{id}"), "Cutout", rr, false));
-        layout.cutouts.insert(
-            id,
-            ShapePlace {
-                at: [round4(rr.x), round4(rr.y)],
-            },
-        );
+        members.push_str(&rounded_member(&format!(".{id}"), "Cutout", rr, true));
+        names.push(id);
     }
     if !holes.is_empty() {
         members.push('\n');
@@ -166,17 +165,10 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
             members,
             ".{id}: MountingHole {{ .package &= \"{package}\" }}"
         );
-        layout.parts.insert(
-            id,
-            PartPlace {
-                at: [round4(*x), round4(*y)],
-                rotation: 0.0,
-                side: Face::Top,
-                text: Default::default(),
-                lock: true,
-                source: Some("hand".into()),
-            },
-        );
+        // The hole is where the case drills it: a requirement, stated by the centre of its body.
+        let _ = writeln!(members, ".{id}.place.x &= {}", mm(round4(*x)));
+        let _ = writeln!(members, ".{id}.place.y &= {}", mm(round4(*y)));
+        names.push(id);
     }
 
     let mut imports = String::new();
@@ -185,8 +177,13 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
     } else {
         "import std::pcb::{Cutout, Outline}\n"
     });
+    let mut needed = vec![("std::pcb", "Outline")];
+    if !cutouts.is_empty() {
+        needed.push(("std::pcb", "Cutout"));
+    }
     if !holes.is_empty() {
         imports.push_str("import std::parts::mechanical::MountingHole\n");
+        needed.push(("std::parts::mechanical", "MountingHole"));
     }
 
     let mut report = vec![
@@ -229,20 +226,11 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
     Ok(Imported {
         report,
         imports,
+        needed,
         members,
-        layout,
+        names,
         warnings: outline.warnings,
     })
-}
-
-/// The layout entries as TOML, in the table of `board`.
-pub fn layout_text(board: &str, layout: &BoardLayout) -> String {
-    let mut l = Layout::default();
-    l.boards.insert(board.to_string(), layout.clone());
-    let text = l.to_text();
-    text.strip_prefix("version = 1\n\n")
-        .unwrap_or(&text)
-        .to_string()
 }
 
 /// What `dxf import` prints for a person to paste.
@@ -252,19 +240,25 @@ pub fn render(imported: &Imported, board: Option<&str>, file: &str, written: boo
     for line in &imported.report {
         let _ = writeln!(out, "// {line}");
     }
-    out.push_str("\n// at the top of the board's file:\n");
+    let name = board.unwrap_or("YourBoard");
+    let _ = writeln!(
+        out,
+        "\n// in the physical file beside the board's source, `<stem>.physical.nsm` (or give `--write <file.nsm>` to put it there):"
+    );
     out.push_str(&imported.imports);
-    out.push_str("\n// inside the board:\n");
-    out.push_str(&imported.members);
+    let _ = writeln!(out, "\nphysical for {name} {{\n    case {{");
+    for line in imported.members.lines() {
+        if line.is_empty() {
+            out.push('\n');
+        } else {
+            let _ = writeln!(out, "        {line}");
+        }
+    }
+    out.push_str("    }\n}\n");
     if written {
-        // The diff that follows shows the places.
+        // The diff that follows shows what was written.
         return out;
     }
-    let name = board.unwrap_or("YourBoard");
-    out.push_str(
-        "\n# in the layout file beside the board's source (or give `--write <file.nsm>` to put it there):\n",
-    );
-    out.push_str(&layout_text(name, &imported.layout));
     out
 }
 
@@ -283,10 +277,13 @@ fn boards_of(source: &str) -> Vec<String> {
         .collect()
 }
 
-/// Merge the entries into the layout file beside `source` (creating it) and return what
-/// changed as a diff. `board` may be left out when the source has one board. The source is
-/// read to find the board's name and never written.
-pub fn write_layout(
+/// Put the outline, cutouts and holes into the `case { }` section of the physical file
+/// beside `source` (creating the file, the unit or the section if they are not there), and
+/// return the board's name and what changed as a diff. The members of an earlier import
+/// (`outline`, `cutout1`, `hole1`...) and the lines that state their places are replaced; every
+/// other line and every comment stays. `board` may be left out when the source has one board.
+/// The source is read to find the board's name and never written.
+pub fn write_physical(
     source: &Path,
     board: Option<&str>,
     imported: &Imported,
@@ -312,37 +309,30 @@ pub fn write_layout(
             ));
         }
     };
-    let path = crate::layout::layout_path(source);
+    let path = crate::physical::physical_path(source);
     let shown = path.display().to_string();
     let old = match std::fs::read_to_string(&path) {
         Ok(t) => Some(t),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => return Err(format!("{shown}: {e}")),
     };
-    let mut layout = match &old {
-        Some(t) => Layout::parse(t, &shown).map_err(|e| e.to_string())?,
-        None => Layout::default(),
-    };
-    let entry = layout.boards.entry(board.clone()).or_default();
-    for (k, v) in &imported.layout.parts {
-        entry.parts.insert(k.clone(), v.clone());
-    }
-    for (k, v) in &imported.layout.cutouts {
-        entry.cutouts.insert(k.clone(), v.clone());
-    }
-    let new = layout.to_text();
+    let new = crate::physical::edit(
+        old.as_deref(),
+        &Edit {
+            board: &board,
+            section: Section::Case,
+            remove: &imported.names,
+            text: &imported.members,
+            imports: &imported.needed,
+        },
+    )
+    .map_err(|e| format!("{shown}: {e}"))?;
     let before = old.clone().unwrap_or_default();
     if new == before {
         return Ok((board, format!("{shown}: no change\n")));
     }
-    let mut note = String::new();
-    if before.lines().any(|l| l.trim_start().starts_with('#')) {
-        note.push_str(
-            "note: comments in the layout file are not kept when it is written (the diff shows them)\n",
-        );
-    }
     std::fs::write(&path, &new).map_err(|e| format!("{shown}: {e}"))?;
-    Ok((board, format!("{note}{}", diff(&shown, &before, &new))))
+    Ok((board, diff(&shown, &before, &new)))
 }
 
 /// A line diff of `old` to `new`: lines only in `old` start with `-`, only in `new` with `+`.
