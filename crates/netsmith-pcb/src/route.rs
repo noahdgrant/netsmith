@@ -15,6 +15,10 @@
 //! failing that the one that leaves fewest lines. There is no push-and-shove, so a board
 //! can still end partly routed, and what is left is returned.
 //!
+//! With `RouteOptions::fan_out` (off by default) the pads of fine-pitch parts get a way out
+//! first: a short track to the nearest cell where a via may stand, deepest pads first, made
+//! before any line is routed and never ripped up. See ADR 0031.
+//!
 //! The work is bounded. A line is searched for in a window round its pads first, and in a
 //! larger one only if that finds nothing. Before a search, a cheap flood from both ends finds
 //! out whether the ends are joined at all, so a pad that its neighbours wall in is given up on
@@ -55,6 +59,17 @@ const ROOM_TIGHT: f64 = 0.02 - MARGIN;
 /// How far round the ends of a line, in mm, its first searches are confined to; then the
 /// whole board.
 const WINDOW_MARGINS: [f64; 2] = [4.0, 16.0];
+/// A part gets escapes for its pads only if it has at least this many surface-mount pads: a
+/// package or a module, not a resistor or a transistor.
+const FAN_OUT_PADS: usize = 8;
+/// How far round a pad, in mm, the way out of it is looked for.
+const FAN_OUT_REACH: f64 = 3.0;
+/// What a via counts as, in cells of track, when the ways out of a pad are compared.
+const FAN_OUT_VIA: usize = 15;
+/// The longest way out that stays on the pad's face and is taken without looking for one
+/// that changes layer, in cells (plus [`FAN_OUT_VIA`] a via).
+const FAN_OUT_FACE_MOST: usize = 40;
+
 /// How often progress is reported while routing, at most.
 const REPORT_EVERY: Duration = Duration::from_secs(2);
 
@@ -1036,6 +1051,37 @@ fn initial_obstacles(board: &Board) -> Obstacles {
     Obstacles { list, via_keepouts }
 }
 
+type PadKey<'k> = (&'k str, &'k str, u64, u64);
+
+fn pad_key(pad: &crate::board::PadRef, at: Pt) -> PadKey<'_> {
+    (&pad.refdes, &pad.number, at.x.to_bits(), at.y.to_bits())
+}
+
+/// The space between two boxes, 0 if they touch or overlap.
+fn rect_gap(a: &Rect, b: &Rect) -> f64 {
+    let dx = (a.min.x - b.max.x).max(b.min.x - a.max.x).max(0.0);
+    let dy = (a.min.y - b.max.y).max(b.min.y - a.max.y).max(0.0);
+    dx.hypot(dy)
+}
+
+/// A pad that gets an escape.
+#[derive(Clone, Copy)]
+struct Candidate<'a> {
+    net: usize,
+    part: &'a crate::board::Placed,
+    pad: &'a crate::footprint::Pad,
+}
+
+/// A pad's way out: the copper from the pad to a cell where a via may stand, made before the
+/// lines are routed and never ripped up. Lines from the pad start at `end`.
+struct Escape {
+    /// The pad: its part, number and centre.
+    key: (String, String, u64, u64),
+    tracks: Vec<Track>,
+    vias: Vec<Via>,
+    end: Spot,
+}
+
 /// What one ratsnest line became.
 #[derive(Clone)]
 struct Routed {
@@ -1066,6 +1112,10 @@ struct Router<'a> {
     ends: Vec<(Vec<Spot>, Vec<Spot>)>,
     /// The pads at each end of a line that a via may stand in.
     in_pads: Vec<(Option<InPad>, Option<InPad>)>,
+    /// The way out of each pad of a fine-pitch part, made before the lines are routed.
+    escapes: Vec<Escape>,
+    /// For each line, the escape its two ends start at, if the pad has one.
+    escaped: Vec<(Option<usize>, Option<usize>)>,
     /// Whether lines left over are negotiated for, and what the negotiation has learnt.
     negotiate: bool,
     history: RefCell<[Vec<u8>; 2]>,
@@ -1118,7 +1168,8 @@ impl<'a> Router<'a> {
                 fixed_by_net[n].push(k);
             }
         }
-        Router {
+        let escaped = vec![(None, None); lines.len()];
+        let mut router = Router {
             board,
             fixed,
             fixed_by_net,
@@ -1128,6 +1179,8 @@ impl<'a> Router<'a> {
             nets,
             ends,
             in_pads,
+            escapes: Vec::new(),
+            escaped,
             negotiate: options.negotiate,
             history: RefCell::new([Vec::new(), Vec::new()]),
             deadline: options.time_limit.map(|t| Instant::now() + t),
@@ -1135,7 +1188,285 @@ impl<'a> Router<'a> {
             progress: options.progress,
             cancel: options.cancel,
             last_report: Cell::new(Instant::now()),
+        };
+        if options.fan_out {
+            router.fan_out();
         }
+        router
+    }
+
+    /// The pads that get an escape, in the order they are made: a pad of a part with many
+    /// pads (a package, a module) whose nearest neighbour is nearer than a via and its spaces
+    /// need, so that no via can stand between the two and a pad's way out is easily shut by
+    /// another net's via; too narrow to hold a via itself. The deepest pads of a part, those
+    /// furthest from the edge of its pads, come first, so that they take the gaps between
+    /// the outer pads before the outer pads' own escapes stand there. Nothing here is
+    /// particular to a board: the numbers come from the process's rules.
+    fn escape_candidates(&self) -> Vec<Candidate<'a>> {
+        let board: &'a Board = self.board;
+        let rules = &board.rules;
+        let no_via_between = rules.via_diameter + 2.0 * rules.clearance;
+        let mut wanted: HashMap<PadKey<'_>, usize> = HashMap::new();
+        for (k, l) in self.lines.iter().enumerate() {
+            wanted
+                .entry(pad_key(&l.from, l.from_at))
+                .or_insert(self.nets[k]);
+            if !l.to_plane {
+                wanted
+                    .entry(pad_key(&l.to, l.to_at))
+                    .or_insert(self.nets[k]);
+            }
+        }
+        let mut out = Vec::new();
+        for part in &board.parts {
+            let smd: Vec<&crate::footprint::Pad> = part
+                .footprint
+                .pads
+                .iter()
+                .filter(|p| {
+                    let (f, b) = part.pad_layers(p);
+                    f != b && p.drill.is_none() && p.extent.is_none()
+                })
+                .collect();
+            if smd.len() < FAN_OUT_PADS {
+                continue;
+            }
+            let boxes: Vec<Rect> = smd.iter().map(|p| part.pad_bounds(p)).collect();
+            let mut hull = boxes[0];
+            for b in &boxes {
+                hull = Rect::new(
+                    Pt::new(hull.min.x.min(b.min.x), hull.min.y.min(b.min.y)),
+                    Pt::new(hull.max.x.max(b.max.x), hull.max.y.max(b.max.y)),
+                );
+            }
+            let mut found: Vec<(f64, Candidate<'a>)> = Vec::new();
+            for (k, &pad) in smd.iter().enumerate() {
+                let at = part.pad_centre(pad);
+                let Some(&net) = wanted.get(&(
+                    &part.refdes[..],
+                    &pad.number[..],
+                    at.x.to_bits(),
+                    at.y.to_bits(),
+                )) else {
+                    continue;
+                };
+                let b = boxes[k];
+                if b.width().min(b.height()) >= no_via_between {
+                    continue;
+                }
+                let gap = boxes
+                    .iter()
+                    .enumerate()
+                    .filter(|&(m, _)| m != k)
+                    .map(|(_, o)| rect_gap(&b, o))
+                    .fold(f64::MAX, f64::min);
+                if gap >= no_via_between {
+                    continue;
+                }
+                let depth = (at.x - hull.min.x)
+                    .min(hull.max.x - at.x)
+                    .min(at.y - hull.min.y)
+                    .min(hull.max.y - at.y);
+                found.push((depth, Candidate { net, part, pad }));
+            }
+            // Deepest first; the pad's number and place settle a tie.
+            found.sort_by(|(da, a), (db, b)| {
+                db.total_cmp(da)
+                    .then_with(|| a.pad.number.cmp(&b.pad.number))
+                    .then_with(|| {
+                        let (pa, pb) = (a.part.pad_centre(a.pad), b.part.pad_centre(b.pad));
+                        pa.x.total_cmp(&pb.x).then(pa.y.total_cmp(&pb.y))
+                    })
+            });
+            out.extend(found.into_iter().map(|(_, c)| c));
+        }
+        out
+    }
+
+    /// Make a way out for each pad that `escape_candidates` names, before any line is routed,
+    /// and keep it: the copper of the escape is fixed, so no net can shut the pad in, and
+    /// every line from the pad starts at the escape's end.
+    fn fan_out(&mut self) {
+        let mut escapes: Vec<Escape> = Vec::new();
+        let mut taken: Vec<Obstacle> = Vec::new();
+        for c in self.escape_candidates() {
+            if self.out_of_time() {
+                break;
+            }
+            if let Some((escape, copper)) = self.escape_for(&c, &taken) {
+                taken.extend(copper);
+                escapes.push(escape);
+            }
+        }
+        let index: HashMap<(String, String, u64, u64), usize> = escapes
+            .iter()
+            .enumerate()
+            .map(|(e, x)| (x.key.clone(), e))
+            .collect();
+        let find = |pad: &crate::board::PadRef, at: Pt| {
+            index
+                .get(&(
+                    pad.refdes.clone(),
+                    pad.number.clone(),
+                    at.x.to_bits(),
+                    at.y.to_bits(),
+                ))
+                .copied()
+        };
+        for k in 0..self.lines.len() {
+            let l = &self.lines[k];
+            let from = find(&l.from, l.from_at);
+            let to = if l.to_plane {
+                None
+            } else {
+                find(&l.to, l.to_at)
+            };
+            self.escaped[k] = (from, to);
+            if let Some(e) = from {
+                self.ends[k].0 = vec![escapes[e].end];
+                self.in_pads[k].0 = None;
+            }
+            if let Some(e) = to {
+                self.ends[k].1 = vec![escapes[e].end];
+                self.in_pads[k].1 = None;
+            }
+        }
+        for o in taken {
+            if let Some(n) = o.net {
+                self.fixed_by_net[n].push(self.fixed.list.len());
+            }
+            self.fixed.list.push(o);
+        }
+        // The masks cached so far did not know the escapes.
+        self.bases.borrow_mut().clear();
+        self.escapes = escapes;
+    }
+
+    /// The way out of one pad: a path, on the pad's face if it can be, to the nearest cell
+    /// where a via may stand, given the escapes made so far. What it keeps from other nets
+    /// is the tracks and the vias on the way, and a disc the size of a via at the end, on
+    /// both layers, so that the pad can still change layer there.
+    fn escape_for(&self, c: &Candidate, taken: &[Obstacle]) -> Option<(Escape, Vec<Obstacle>)> {
+        let rules = &self.board.rules;
+        let Candidate { net, part, pad } = *c;
+        let name = &self.board.nets[net].name;
+        let width = self.board.track_width(name);
+        let at = part.pad_centre(pad);
+        let (front, _) = part.pad_layers(pad);
+        let face = if front { FRONT } else { BACK };
+        let (i, j) = self.grid.cell(at);
+        let start = [(i, j, face)];
+        let window = Window::around(&self.grid, &start, FAN_OUT_REACH);
+        let hard: Vec<&Obstacle> = taken.iter().collect();
+        let all: Vec<&Obstacle> = self.fixed.list.iter().chain(taken).collect();
+        let mut fallback: Option<(usize, Routed, Vec<Spot>)> = None;
+        for (room, face_only) in [
+            (ROOM_LOOSE, true),
+            (ROOM_TIGHT, true),
+            (ROOM_LOOSE, false),
+            (ROOM_TIGHT, false),
+        ] {
+            let reach = Reach { room, width };
+            let mut masks = self.masks(window, net, (&hard, &[]), (&[], &[]), reach);
+            if room == ROOM_TIGHT && width > rules.min_track_width + 1e-9 {
+                let narrow = self.masks(
+                    window,
+                    net,
+                    (&hard, &[]),
+                    (&[], &[]),
+                    Reach {
+                        room,
+                        width: rules.min_track_width,
+                    },
+                );
+                masks.wide = Some(std::mem::replace(&mut masks.track, narrow.track));
+            }
+            let other = 1 - face;
+            let kept = face_only
+                .then(|| std::mem::replace(&mut masks.track[other], vec![true; window.cells()]));
+            let found = search(&masks, &start, Goal::Via, Extras::default(), &|| false);
+            if let Some(kept) = kept {
+                masks.track[other] = kept;
+            }
+            let Ok(path) = found else { continue };
+            let (mut tracks, vias) = self.follow(name, width, &path, &masks);
+            let cell = self.grid.centre(path[0].0, path[0].1);
+            if at != cell {
+                tracks.insert(
+                    0,
+                    Track {
+                        net: name.clone(),
+                        layer: layer_of(face),
+                        from: at,
+                        to: cell,
+                        width: if masks.necked(face, path[0].0, path[0].1) {
+                            rules.min_track_width
+                        } else {
+                            width
+                        },
+                    },
+                );
+            }
+            let Some(routed) = self.settled(
+                Routed {
+                    line: 0,
+                    tracks,
+                    vias,
+                },
+                net,
+                &all,
+            ) else {
+                continue;
+            };
+            let score = path.len() + FAN_OUT_VIA * routed.vias.len();
+            if face_only && score <= FAN_OUT_FACE_MOST {
+                fallback = Some((score, routed, path));
+                break;
+            }
+            if fallback.as_ref().is_none_or(|(s, _, _)| score < *s) {
+                fallback = Some((score, routed, path));
+            }
+        }
+        let (_, routed, path) = fallback?;
+        let end = *path.last()?;
+        let mut copper = Vec::new();
+        let clearance = rules.clearance + MARGIN;
+        for t in &routed.tracks {
+            copper.push(Obstacle {
+                net: Some(net),
+                layers: [t.layer == CopperLayer::Front, t.layer == CopperLayer::Back],
+                form: Form::Segment(t.from, t.to, t.width / 2.0),
+                clearance,
+            });
+        }
+        for v in &routed.vias {
+            copper.push(Obstacle {
+                net: Some(net),
+                layers: [true, true],
+                form: Form::Circle(v.at, v.diameter / 2.0),
+                clearance,
+            });
+        }
+        copper.push(Obstacle {
+            net: Some(net),
+            layers: [true, true],
+            form: Form::Circle(self.grid.centre(end.0, end.1), rules.via_diameter / 2.0),
+            clearance,
+        });
+        Some((
+            Escape {
+                key: (
+                    part.refdes.clone(),
+                    pad.number.clone(),
+                    at.x.to_bits(),
+                    at.y.to_bits(),
+                ),
+                tracks: routed.tracks,
+                vias: routed.vias,
+                end,
+            },
+            copper,
+        ))
     }
 
     /// The masks of a window for a net: see [`masks_for`].
@@ -1457,6 +1788,52 @@ impl<'a> Router<'a> {
             })
     }
 
+    /// The tracks and vias along a path of cells, with a via where it changes layer: a run
+    /// through cells that are too tight for `width` is drawn at the narrowest the process makes.
+    fn follow(
+        &self,
+        net: &str,
+        width: f64,
+        path: &[Spot],
+        masks: &Masks,
+    ) -> (Vec<Track>, Vec<Via>) {
+        let rules = &self.board.rules;
+        let width_of = |necked: bool| {
+            if necked { rules.min_track_width } else { width }
+        };
+        let necked = |&(i, j, layer): &Spot| masks.necked(layer, i, j);
+        let mut tracks: Vec<Track> = Vec::new();
+        let mut vias: Vec<Via> = Vec::new();
+        let mut start = 0;
+        for k in 1..=path.len() {
+            if k < path.len() && path[k].2 == path[k - 1].2 {
+                continue;
+            }
+            let layer = path[start].2;
+            let cells: Vec<(usize, usize)> = path[start..k].iter().map(|s| (s.0, s.1)).collect();
+            let neck: Vec<bool> = path[start..k].iter().map(necked).collect();
+            for (a, b, narrow) in runs_with(&self.grid, &cells, &neck) {
+                tracks.push(Track {
+                    net: net.to_string(),
+                    layer: layer_of(layer),
+                    from: a,
+                    to: b,
+                    width: width_of(narrow),
+                });
+            }
+            if k < path.len() {
+                vias.push(Via {
+                    net: net.to_string(),
+                    at: self.grid.centre(path[k].0, path[k].1),
+                    diameter: rules.via_diameter,
+                    drill: rules.via_drill,
+                });
+            }
+            start = k;
+        }
+        (tracks, vias)
+    }
+
     /// The tracks and vias that follow a path. A path to a plane ends in a via, which is the
     /// join to the plane.
     fn realize(
@@ -1478,37 +1855,14 @@ impl<'a> Router<'a> {
         };
         let necked = |&(i, j, layer): &Spot| masks.necked(layer, i, j);
         let l = &self.lines[line];
-        let mut tracks: Vec<Track> = Vec::new();
-        let mut vias: Vec<Via> = Vec::new();
-        let mut start = 0;
-        for k in 1..=path.len() {
-            if k < path.len() && path[k].2 == path[k - 1].2 {
-                continue;
-            }
-            let layer = path[start].2;
-            let cells: Vec<(usize, usize)> = path[start..k].iter().map(|s| (s.0, s.1)).collect();
-            let neck: Vec<bool> = path[start..k].iter().map(necked).collect();
-            for (a, b, narrow) in runs_with(&self.grid, &cells, &neck) {
-                tracks.push(Track {
-                    net: l.net.clone(),
-                    layer: layer_of(layer),
-                    from: a,
-                    to: b,
-                    width: width_of(narrow),
-                });
-            }
-            if k < path.len() {
-                vias.push(Via {
-                    net: l.net.clone(),
-                    at: self.grid.centre(path[k].0, path[k].1),
-                    diameter: rules.via_diameter,
-                    drill: rules.via_drill,
-                });
-            }
-            start = k;
-        }
+        let (mut tracks, mut vias) = self.follow(&l.net, self.width_of(line), path, masks);
         let last = path[path.len() - 1];
-        let mut pads = vec![(l.from_at, path[0])];
+        // An end that starts at a pad's escape is joined to the pad by the escape's copper.
+        let (from_escaped, to_escaped) = self.escaped[line];
+        let mut pads = Vec::new();
+        if from_escaped.is_none() {
+            pads.push((l.from_at, path[0]));
+        }
         if l.to_plane {
             vias.push(Via {
                 net: l.net.clone(),
@@ -1516,7 +1870,7 @@ impl<'a> Router<'a> {
                 diameter: rules.via_diameter,
                 drill: rules.via_drill,
             });
-        } else {
+        } else if to_escaped.is_none() {
             pads.push((l.to_at, last));
         }
         // A path that begins or ends on the far layer of a pad goes through a via in the pad.
@@ -1826,6 +2180,10 @@ pub struct RouteOptions {
     pub progress: Option<fn(&str)>,
     /// Stop as at the time limit when this is set, from another thread.
     pub cancel: Option<&'static AtomicBool>,
+    /// Give each pad of a fine-pitch part a way out before the lines are routed, so that
+    /// other nets cannot shut it in. Off by default: on the invented tight board of ADR 0031
+    /// it routes fewer boards than without (see the ADR's note on issue #3).
+    pub fan_out: bool,
 }
 
 impl Default for RouteOptions {
@@ -1837,6 +2195,7 @@ impl Default for RouteOptions {
             time_limit: None,
             progress: None,
             cancel: None,
+            fan_out: false,
         }
     }
 }
@@ -1860,7 +2219,7 @@ pub fn route(board: &mut Board) -> Ratsnest {
 
 /// [`route`], with a choice of how hard to try.
 pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
-    let (best, stopped, tries) = {
+    let best = {
         let router = Router::new(board, &options);
         let orders = router.orders(options.retry_orders);
         router.report(true, || {
@@ -1888,13 +2247,29 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
             }
         }
         let stopped = router.out_of_time();
-        (best.unwrap_or_default(), stopped, tries)
+        let best = best.unwrap_or_default();
+        let mut used = vec![false; router.escapes.len()];
+        for r in &best.routed {
+            let (a, b) = router.escaped[r.line];
+            for e in [a, b].into_iter().flatten() {
+                used[e] = true;
+            }
+        }
+        (best, stopped, tries, router.escapes, used)
     };
+    let (best, stopped, tries, escapes, used) = best;
     let mut routed = best.routed;
     routed.sort_by_key(|r| r.line);
     for r in routed {
         board.tracks.extend(r.tracks);
         board.vias.extend(r.vias);
+    }
+    // The way out of a pad is drawn if a line that starts there was routed.
+    for (e, escape) in escapes.into_iter().enumerate() {
+        if used[e] {
+            board.tracks.extend(escape.tracks);
+            board.vias.extend(escape.vias);
+        }
     }
     // Pours are stitched to the other layers of their nets in what the routing left free.
     crate::stitch::stitch(board);

@@ -100,9 +100,62 @@ fn a_tight_board_the_router_cannot_finish_leaves_named_lines_and_only_copper_tha
     assert_eq!(errors, Vec::<String>::new());
 }
 
+#[test]
+fn the_fan_out_stage_gives_module_pads_a_way_out_and_keeps_the_rules() {
+    // The first pass alone, so that the run does not depend on the clock.
+    let first_only = RouteOptions {
+        retry_orders: false,
+        rip_up: false,
+        negotiate: false,
+        fan_out: true,
+        ..RouteOptions::default()
+    };
+    let mut board = tight_board(10, AREA_TIGHT);
+    let plain = {
+        let mut b = board.clone();
+        route_with(
+            &mut b,
+            RouteOptions {
+                fan_out: false,
+                ..first_only
+            },
+        );
+        b
+    };
+    route_with(&mut board, first_only);
+    assert_eq!(
+        drc_errors(&board)
+            .into_iter()
+            .filter(|e| !e.to_lowercase().contains("unconnected"))
+            .collect::<Vec<_>>(),
+        Vec::<String>::new()
+    );
+    // The same input gives the same copper.
+    let mut again = tight_board(10, AREA_TIGHT);
+    route_with(&mut again, first_only);
+    assert_eq!(board.tracks, again.tracks);
+    assert_eq!(board.vias, again.vias);
+    // A track starts at the centre of each module pad that has a line routed; the stage
+    // changes the copper, so it is not the plain router's.
+    let u1 = board.part("U1").unwrap();
+    let starts = |b: &netsmith_pcb::Board| {
+        u1.footprint
+            .pads
+            .iter()
+            .filter(|p| {
+                let at = u1.pad_centre(p);
+                b.tracks.iter().any(|t| t.from == at || t.to == at)
+            })
+            .count()
+    };
+    assert!(starts(&board) > 0);
+    assert_ne!(board.tracks, plain.tracks);
+}
+
 /// Prints, for each seed in `NETSMITH_SEEDS` (`0..8` by default; `a..b`), the lines left
 /// unrouted and the time: `NETSMITH_SEEDS=0..20 cargo test --release -p netsmith-pcb --test
-/// tight measured -- --ignored --nocapture`.
+/// tight measured -- --ignored --nocapture`. `NETSMITH_FAN_OUT=1` routes with the
+/// fan-out stage (`RouteOptions::fan_out`).
 #[test]
 #[ignore = "a measurement, not a check"]
 fn measured() {
@@ -130,6 +183,7 @@ fn measured() {
             &mut board,
             RouteOptions {
                 time_limit: Some(Duration::from_secs(300)),
+                fan_out: std::env::var_os("NETSMITH_FAN_OUT").is_some(),
                 ..RouteOptions::default()
             },
         );
@@ -178,8 +232,17 @@ fn picture(board: &netsmith_pcb::Board, left: &netsmith_pcb::Ratsnest) {
             Pt::new(area.max.x.max(b.max.x), area.max.y.max(b.max.y)),
         );
     }
-    let area = area.expanded(2.0);
-    let step = 0.15;
+    let mut area = area.expanded(2.0);
+    let mut step = 0.15;
+    // `NETSMITH_PICTURE_AT=U1.59`: only 3 mm round that pad, at 0.1 mm a character.
+    if let Ok(at) = std::env::var("NETSMITH_PICTURE_AT")
+        && let Some((r, n)) = at.split_once('.')
+        && let Some(part) = board.part(r)
+        && let Some(pad) = part.footprint.pads_numbered(n).next()
+    {
+        area = part.pad_bounds(pad).expanded(3.0);
+        step = 0.1;
+    }
     let (w, h) = (
         (area.width() / step) as usize + 1,
         (area.height() / step) as usize + 1,

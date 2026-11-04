@@ -13,6 +13,7 @@ const FIRST_ONLY: RouteOptions = RouteOptions {
     time_limit: None,
     progress: None,
     cancel: None,
+    fan_out: false,
 };
 const RETRY_ONLY: RouteOptions = RouteOptions {
     retry_orders: true,
@@ -21,6 +22,7 @@ const RETRY_ONLY: RouteOptions = RouteOptions {
     time_limit: None,
     progress: None,
     cancel: None,
+    fan_out: false,
 };
 const RIP_UP_ONLY: RouteOptions = RouteOptions {
     retry_orders: false,
@@ -29,6 +31,7 @@ const RIP_UP_ONLY: RouteOptions = RouteOptions {
     time_limit: None,
     progress: None,
     cancel: None,
+    fan_out: false,
 };
 
 const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
@@ -38,6 +41,7 @@ const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
     time_limit: None,
     progress: None,
     cancel: None,
+    fan_out: false,
 };
 
 fn left(board: &Board, options: RouteOptions) -> usize {
