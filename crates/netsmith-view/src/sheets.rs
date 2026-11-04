@@ -15,8 +15,8 @@ use netsmith_kicad::{Mapping, SymbolLib};
 
 use crate::geom::{Pt, Rect, snap_up};
 use crate::layout::{
-    Anchor, Layout, NetLabel, PlacedPart, TEXT_SIZE, Text, Wire, is_ground_name, layout,
-    layout_with, text_width,
+    Anchor, Layout, NetLabel, PlacedPart, PowerSymbol, Rails, TEXT_SIZE, Text, Wire,
+    is_ground_name, layout_rails, layout_with, text_width,
 };
 
 /// A board with this many parts or fewer is drawn as one sheet.
@@ -71,11 +71,22 @@ pub fn layout_sheets(
     mapping: &Mapping,
     lib: &SymbolLib,
 ) -> Result<Layout, DesignError> {
+    layout_sheets_rails(design, groups, &Rails::default(), mapping, lib)
+}
+
+/// [`layout_sheets`] with the rails known: their pins get power symbols.
+pub fn layout_sheets_rails(
+    design: &Design,
+    groups: &[Group],
+    rails: &Rails,
+    mapping: &Mapping,
+    lib: &SymbolLib,
+) -> Result<Layout, DesignError> {
     design.validate()?;
     let clusters = clusters(design, groups);
     let single = clusters.len() <= 1 && design.parts.len() <= MAX_SHEET_PARTS;
     if design.parts.len() <= SHEET_THRESHOLD || single {
-        return layout(design, mapping, lib);
+        return layout_rails(design, rails, mapping, lib);
     }
     let clusters = cut(design, clusters);
 
@@ -136,7 +147,7 @@ pub fn layout_sheets(
             process: None,
             features: Default::default(),
         };
-        let layout = layout_with(&sub, mapping, lib, &external)?;
+        let layout = layout_with(&sub, mapping, lib, &external, rails, rails.ground.len() > 1)?;
         drawn.push(Drawn {
             layout,
             parts: cluster.parts.clone(),
@@ -155,6 +166,7 @@ pub fn layout_sheets(
             },
             at: Pt::new(0.0, 0.0),
             anchor: Anchor::Start,
+            vertical: false,
         })
         .collect();
     let frames: Vec<Rect> = drawn
@@ -173,6 +185,7 @@ pub fn layout_sheets(
     let offsets = arrange(&frames);
 
     let mut parts: Vec<Option<PlacedPart>> = vec![None; design.parts.len()];
+    let mut symbols = Vec::new();
     let mut wires = Vec::new();
     let mut junctions = Vec::new();
     let mut labels = Vec::new();
@@ -202,6 +215,17 @@ pub fn layout_sheets(
             wires.push(Wire {
                 net: d.nets[w.net],
                 points: w.points.into_iter().map(|p| shift(p, by)).collect(),
+            });
+        }
+        for sym in d.layout.symbols {
+            symbols.push(PowerSymbol {
+                net: d.nets[sym.net],
+                at: shift(sym.at, by),
+                label: sym.label.map(|mut l| {
+                    l.at = shift(l.at, by);
+                    l
+                }),
+                ..sym
             });
         }
         for j in d.layout.junctions {
@@ -237,6 +261,7 @@ pub fn layout_sheets(
             .into_iter()
             .map(|p| p.expect("every part is on a sheet"))
             .collect(),
+        symbols,
         sheets,
         wires,
         junctions,

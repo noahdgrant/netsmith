@@ -222,15 +222,59 @@ fn a_net_between_sheets_is_a_named_stub_on_each() {
         .map(|s| s.name.as_str())
         .collect();
     assert_eq!(on.len(), 7, "{on:?}");
-    // Two pins of VIN on one sheet are both stubs, not a trunk.
-    let stubs = l.labels.iter().filter(|lab| lab.net == vin).count();
-    assert_eq!(stubs, 14);
+    // Two pins of VIN on one sheet are joined by a wire, with one name for the net that goes
+    // on to the other sheets (not a stub and a name at each pin).
+    let names = l.labels.iter().filter(|lab| lab.net == vin).count();
+    assert_eq!(names, 7, "one name on each sheet");
+    for sheet in &l.sheets {
+        let pins: Vec<_> = d.nets[vin]
+            .pins
+            .iter()
+            .filter(|p| sheet.parts.iter().any(|&i| d.parts[i].refdes == p.refdes))
+            .collect();
+        let at: Vec<_> = pins
+            .iter()
+            .map(|p| pin_at(&l, &d, &p.refdes, &p.pin))
+            .collect();
+        // Every pin of VIN here is on a wire of VIN, and the wires join the two.
+        let wires: Vec<&Vec<netsmith_view::geom::Pt>> = l
+            .wires
+            .iter()
+            .filter(|w| w.net == vin && contains(&sheet.frame, &rect_of(&w.points)))
+            .map(|w| &w.points)
+            .collect();
+        for pt in &at {
+            assert!(
+                wires.iter().any(|w| w.iter().any(|q| same(*q, *pt))),
+                "{} has a pin of VIN with no wire",
+                sheet.name
+            );
+        }
+        assert!(wires.len() >= 2);
+    }
     // Ground is drawn on each sheet as a trunk with wires, and a name only where a pin cannot
     // reach it; the pins of ground on a sheet are not all names.
     let gnd = d.nets.iter().position(|n| n.name == "GND").unwrap();
     let names = l.labels.iter().filter(|lab| lab.net == gnd).count();
     let wires = l.wires.iter().filter(|w| w.net == gnd).count();
     assert!(names < 42 && wires > names, "{names} names, {wires} wires");
+}
+
+fn pin_at(l: &Layout, d: &Design, refdes: &str, pad: &str) -> netsmith_view::geom::Pt {
+    let i = d.parts.iter().position(|p| p.refdes == refdes).unwrap();
+    l.parts[i].pins.iter().find(|p| p.id == pad).unwrap().at
+}
+
+fn same(a: netsmith_view::geom::Pt, b: netsmith_view::geom::Pt) -> bool {
+    (a.x - b.x).abs() < 1e-6 && (a.y - b.y).abs() < 1e-6
+}
+
+fn rect_of(points: &[netsmith_view::geom::Pt]) -> Rect {
+    let mut r = Rect::around(points[0]);
+    for &p in points {
+        r.include(p);
+    }
+    r
 }
 
 #[test]

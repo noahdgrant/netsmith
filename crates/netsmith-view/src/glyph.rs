@@ -7,7 +7,8 @@ use netsmith_core::{Design, Part};
 use netsmith_kicad::sexp::Sexp;
 use netsmith_kicad::{Mapping, PartPin, PinKind, PinType, Pinout, Symbol, SymbolLib};
 
-use crate::geom::{Pt, Rect, snap_up};
+use crate::geom::{Dir, Orient, Pt, Rect, snap_up};
+use crate::layout::{Anchor, Text, is_ground_name};
 
 /// KiCad's width for a line drawn with width 0.
 const DEFAULT_WIDTH: f64 = 0.1524;
@@ -19,6 +20,14 @@ const PIN_PITCH: f64 = 2.54;
 const UNIT_GAP: f64 = 5.08;
 /// Characters are drawn about this wide, as a fraction of the text height.
 pub const CHAR_WIDTH: f64 = 0.6;
+/// The height of pin names and numbers in a symbol of the library.
+pub const PIN_TEXT: f64 = 1.0;
+/// The height of pin names and numbers in a box this crate makes for a symbol of many pins.
+const DENSE_TEXT: f64 = 1.27;
+/// A symbol with more pads than this is drawn as a table of labelled groups.
+pub const MANY_PINS: usize = 60;
+/// A box of at least this many pins says how many it has.
+const COUNTED_PINS: usize = 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fill {
@@ -131,6 +140,8 @@ pub struct Glyph {
     pub show_numbers: bool,
     pub show_names: bool,
     pub name_offset: f64,
+    /// The height of the pin names and numbers.
+    pub pin_text: f64,
 }
 
 impl Glyph {
@@ -155,7 +166,7 @@ impl Glyph {
             Ok(s) => s,
             Err(e) => return Glyph::fallback(part, used, pinout, e.to_string()),
         };
-        let glyph = Glyph::from_symbol(&symbol);
+        let glyph = Glyph::drawn(part, &symbol);
         match used
             .iter()
             .find(|id| !glyph.pins.iter().any(|p| &p.id == *id))
@@ -170,8 +181,27 @@ impl Glyph {
         }
     }
 
-    /// Every unit of the symbol, one below the next. The drawing shared by all units
-    /// (unit 0) goes with the first.
+    /// How a symbol is drawn, as one part: the library's own drawing when it has one unit,
+    /// at most [`MANY_PINS`] pads and names that do not run into each other; otherwise one
+    /// box with every pin of every unit, by side (a symbol of up to [`MANY_PINS`] pads) or in
+    /// labelled groups (more).
+    fn drawn(part: &Part, symbol: &Symbol) -> Glyph {
+        if symbol.pins().len() > MANY_PINS {
+            return Glyph::grouped(part, symbol);
+        }
+        if symbol.units() > 1 {
+            return Glyph::merged(part, symbol);
+        }
+        let glyph = Glyph::from_symbol(symbol);
+        if glyph.texts_collide(Orient::IDENTITY) {
+            Glyph::merged(part, symbol)
+        } else {
+            glyph
+        }
+    }
+
+    /// The symbol's own drawing: its first unit, then the others each below the one before.
+    /// The drawing shared by all units (unit 0) goes with the first.
     fn from_symbol(symbol: &Symbol) -> Glyph {
         let def = symbol.definition();
         let mut shapes = Vec::new();
@@ -266,6 +296,7 @@ impl Glyph {
             show_numbers: flag("pin_numbers"),
             show_names: flag("pin_names"),
             name_offset,
+            pin_text: PIN_TEXT,
         }
     }
 
@@ -304,7 +335,7 @@ impl Glyph {
                 }
             }
         }
-        sides.finish(part, why)
+        sides.finish(part, Origin::Missing(why))
     }
 
     /// A `Label` is a line of silkscreen text with no pins and no KiCad symbol: a box that
@@ -335,7 +366,73 @@ impl Glyph {
             show_numbers: false,
             show_names: false,
             name_offset: DEFAULT_NAME_OFFSET,
+            pin_text: PIN_TEXT,
         }
+    }
+
+    /// The number and the name written at `pin`, whose connection point is `at` and whose
+    /// line runs toward `toward` (the way to the body), as they are drawn.
+    pub fn pin_texts(&self, pin: &GlyphPin, at: Pt, toward: Dir) -> (Option<Text>, Option<Text>) {
+        let inner = at.step(toward, pin.length);
+        let number = self.show_numbers.then(|| {
+            let mid = Pt::new((at.x + inner.x) / 2.0, (at.y + inner.y) / 2.0);
+            if toward.is_vertical() {
+                Text::new(&pin.id, Pt::new(mid.x - 0.4, mid.y + 0.35), Anchor::End)
+            } else {
+                Text::new(&pin.id, Pt::new(mid.x, mid.y - 0.4), Anchor::Middle)
+            }
+        });
+        let name = (self.show_names && !pin.name.is_empty()).then(|| {
+            let offset = self.name_offset;
+            match toward {
+                Dir::Right => Text::new(
+                    &pin.name,
+                    Pt::new(inner.x + offset, inner.y + 0.35),
+                    Anchor::Start,
+                ),
+                Dir::Left => Text::new(
+                    &pin.name,
+                    Pt::new(inner.x - offset, inner.y + 0.35),
+                    Anchor::End,
+                ),
+                Dir::Down => Text::new(
+                    &pin.name,
+                    Pt::new(inner.x, inner.y + offset + 1.0),
+                    Anchor::Middle,
+                ),
+                Dir::Up => Text::new(
+                    &pin.name,
+                    Pt::new(inner.x, inner.y - offset - 0.2),
+                    Anchor::Middle,
+                ),
+            }
+        });
+        (number, name)
+    }
+
+    /// Whether, with the part turned by `orient`, two of the texts at its pins would be
+    /// written over each other.
+    pub fn texts_collide(&self, orient: Orient) -> bool {
+        let mut boxes: Vec<Rect> = Vec::new();
+        for pin in self.pins.iter().filter(|p| !p.hidden) {
+            let at = orient.apply(pin.at);
+            let toward = orient.dir(pin.toward_body);
+            let (number, name) = self.pin_texts(pin, at, toward);
+            boxes.extend(
+                number
+                    .into_iter()
+                    .chain(name)
+                    .map(|t| t.extent_at(self.pin_text)),
+            );
+        }
+        boxes.iter().enumerate().any(|(i, a)| {
+            boxes[i + 1..].iter().any(|b| {
+                a.min.x < b.max.x - 0.05
+                    && b.min.x < a.max.x - 0.05
+                    && a.min.y < b.max.y - 0.05
+                    && b.min.y < a.max.y - 0.05
+            })
+        })
     }
 
     pub fn pin(&self, id: &str) -> Option<&GlyphPin> {
@@ -371,6 +468,286 @@ impl Glyph {
             add(p.at);
         }
         r
+    }
+}
+
+/// Where a box made by this crate comes from.
+enum Origin {
+    /// There is no symbol; the string says why.
+    Missing(String),
+    /// A symbol of the library, redrawn as one box.
+    Symbol(String),
+}
+
+/// One pin of a symbol, with the facts that place it in a box.
+struct SymEntry {
+    entry: Entry,
+    /// The way the pin line runs toward the body, in degrees.
+    angle: f64,
+    unit: u32,
+    x: f64,
+    y: f64,
+    kind: PinType,
+}
+
+/// The pins of a symbol, every unit, in the symbol's own order. A hidden pin that repeats a
+/// shown pin's name (stock symbols stack the pads of one supply so) is one more pad of that
+/// pin.
+fn symbol_entries(symbol: &Symbol) -> Vec<SymEntry> {
+    let mut out: Vec<SymEntry> = Vec::new();
+    for p in symbol.pins() {
+        let name = if p.is_unnamed() {
+            String::new()
+        } else {
+            p.name.clone()
+        };
+        if p.hidden
+            && !name.is_empty()
+            && let Some(twin) = out.iter_mut().find(|e| e.entry.name == name)
+        {
+            twin.entry.pads.push(p.number.clone());
+            continue;
+        }
+        out.push(SymEntry {
+            entry: Entry {
+                pads: vec![p.number.clone()],
+                name,
+                flow: Flow::of(p.kind),
+            },
+            angle: p.angle,
+            unit: p.unit,
+            x: p.x,
+            y: p.y,
+            kind: p.kind,
+        });
+    }
+    out
+}
+
+/// What a pin of a big symbol is for, which decides its group.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Class {
+    Power,
+    Ground,
+    NoConnect,
+    Named(String),
+}
+
+fn classify(e: &SymEntry) -> Class {
+    let name = e.entry.name.to_ascii_uppercase();
+    if e.kind == PinType::NoConnect || name == "NC" || name == "DNC" {
+        return Class::NoConnect;
+    }
+    if is_ground_name(&e.entry.name) || name.starts_with("AGND") || name.starts_with("DGND") {
+        return Class::Ground;
+    }
+    let supply = ["VDD", "VCC", "VBUS", "VIN", "VBAT", "VOUT", "AVDD", "DVDD"]
+        .iter()
+        .any(|v| name.starts_with(v));
+    if matches!(e.kind, PinType::PowerIn | PinType::PowerOut) || supply {
+        return Class::Power;
+    }
+    Class::Named(group_key(&e.entry.name))
+}
+
+/// The group a pin name belongs to: `P0.16` is in `P0`, `GPIO12` in `GPIO`, `USB_DP` in
+/// `USB`; `A/B` is taken as `A`.
+fn group_key(name: &str) -> String {
+    let first = name.split('/').next().unwrap_or(name);
+    let key = match first.split_once('.') {
+        Some((head, _)) => head,
+        None => first.split('_').next().unwrap_or(first),
+    };
+    let trimmed = if first.contains('.') {
+        key
+    } else {
+        key.trim_end_matches(|c: char| c.is_ascii_digit())
+    };
+    if trimmed.is_empty() {
+        "Other".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+/// A row of a table of pins: a heading, or a pin.
+enum Row {
+    Heading(String),
+    Pin(Entry),
+}
+
+impl Glyph {
+    /// One box for a symbol of several units (or one whose texts would run together): every
+    /// pin of every unit on the side its symbol puts it, in the symbol's own order (a unit
+    /// after the one before, top to bottom, left to right), and the box as large as the
+    /// names need.
+    fn merged(part: &Part, symbol: &Symbol) -> Glyph {
+        let mut entries = symbol_entries(symbol);
+        entries.sort_by(|a, b| {
+            let (ax, ay) = (a.x, a.y);
+            let key = |e: &SymEntry, x: f64, y: f64| {
+                let vertical = (e.angle.rem_euclid(180.0) - 90.0).abs() < 45.0;
+                (e.unit, if vertical { x } else { -y })
+            };
+            let (ka, kb) = (key(a, ax, ay), key(b, b.x, b.y));
+            ka.0.cmp(&kb.0).then(ka.1.total_cmp(&kb.1))
+        });
+        let mut sides = Sides::default();
+        for e in entries {
+            let a = e.angle.rem_euclid(360.0);
+            let entry = e.entry;
+            // The pin line runs toward the body: 0 degrees is a pin on the left.
+            if !(45.0..315.0).contains(&a) {
+                sides.left.push(entry);
+            } else if a < 135.0 {
+                sides.bottom.push(entry);
+            } else if a < 225.0 {
+                sides.right.push(entry);
+            } else {
+                sides.top.push(entry);
+            }
+        }
+        sides.finish(part, Origin::Symbol(symbol.lib_id().to_string()))
+    }
+
+    /// A symbol of very many pins as one box with two columns of pins in labelled groups:
+    /// the supplies, the grounds, then the others by the start of their names, the pins that
+    /// connect to nothing last. The box says how many pins it has.
+    fn grouped(part: &Part, symbol: &Symbol) -> Glyph {
+        let entries = symbol_entries(symbol);
+        let total = entries.len();
+        let mut power = Vec::new();
+        let mut ground = Vec::new();
+        let mut open = Vec::new();
+        let mut named: Vec<(String, Vec<Entry>)> = Vec::new();
+        for e in entries {
+            match classify(&e) {
+                Class::Power => power.push(e.entry),
+                Class::Ground => ground.push(e.entry),
+                Class::NoConnect => open.push(e.entry),
+                Class::Named(key) => match named.iter_mut().find(|(k, _)| *k == key) {
+                    Some((_, list)) => list.push(e.entry),
+                    None => named.push((key, vec![e.entry])),
+                },
+            }
+        }
+        // A group of one or two pins is not worth a heading.
+        let mut other = Vec::new();
+        let mut groups: Vec<(String, Vec<Entry>)> = Vec::new();
+        for (key, list) in named {
+            if list.len() < 3 {
+                other.extend(list);
+            } else {
+                groups.push((key, list));
+            }
+        }
+        let mut all: Vec<(String, Vec<Entry>)> = Vec::new();
+        all.push(("Power".into(), power));
+        all.push(("Ground".into(), ground));
+        all.extend(groups);
+        all.push(("Other".into(), other));
+        all.push(("Not connected".into(), open));
+        all.retain(|(_, list)| !list.is_empty());
+
+        let mut rows: Vec<Row> = Vec::new();
+        for (key, list) in all {
+            rows.push(Row::Heading(format!("{key} ({})", list.len())));
+            rows.extend(list.into_iter().map(Row::Pin));
+        }
+        // Cut after the row nearest the middle that is the end of a group; inside the group
+        // when it is longer than the half.
+        let half = rows.len().div_ceil(2);
+        let boundaries: Vec<usize> = (1..rows.len())
+            .filter(|&i| matches!(rows[i], Row::Heading(_)))
+            .collect();
+        let cut = boundaries
+            .iter()
+            .copied()
+            .min_by_key(|&i| i.abs_diff(half))
+            .filter(|&i| i <= half * 3 / 2 + 1 && rows.len() - i <= half * 3 / 2 + 1)
+            .unwrap_or(half);
+        let mut right: Vec<Row> = rows.split_off(cut);
+        let left = rows;
+        if matches!(right.first(), Some(Row::Pin(_))) {
+            right.insert(0, Row::Heading("(continued)".into()));
+        }
+
+        let size = DENSE_TEXT;
+        let char_width = size * CHAR_WIDTH;
+        let widest = |rows: &[Row]| {
+            rows.iter()
+                .map(|r| match r {
+                    Row::Heading(h) => h.chars().count(),
+                    Row::Pin(e) => e.name.chars().count(),
+                })
+                .max()
+                .unwrap_or(0) as f64
+                * char_width
+        };
+        let title = format!("{}, {total} pins", part.kind);
+        let title_width = title.chars().count() as f64 * 1.27 * CHAR_WIDTH;
+        let half_width = snap_up(
+            ((widest(&left) + widest(&right) + 2.0 * 2.54 + 2.54).max(title_width + 2.54)) / 2.0,
+            1.27,
+        )
+        .max(7.62);
+        let height_rows = left.len().max(right.len());
+        // A band at the top for the title, then one row for each pin and heading.
+        let half_height = snap_up((height_rows as f64 + 2.0) * PIN_PITCH / 2.0, 1.27);
+        let first_row = half_height - 3.81;
+
+        let mut pins = Vec::new();
+        let mut shapes = vec![
+            Shape::Rect {
+                a: (-half_width, half_height),
+                b: (half_width, -half_height),
+                width: 0.254,
+                fill: Fill::Background,
+            },
+            Shape::Text {
+                at: (0.0, half_height - 1.9),
+                text: title,
+                size: 1.27,
+            },
+        ];
+        for (side, rows) in [(-1.0, &left), (1.0, &right)] {
+            for (i, row) in rows.iter().enumerate() {
+                let y = first_row - i as f64 * PIN_PITCH;
+                match row {
+                    Row::Heading(h) => {
+                        let w = h.chars().count() as f64 * char_width;
+                        shapes.push(Shape::Text {
+                            at: (side * (half_width - 1.0 - w / 2.0), y),
+                            text: h.clone(),
+                            size,
+                        });
+                    }
+                    Row::Pin(e) => {
+                        for (k, pad) in e.pads.iter().enumerate() {
+                            pins.push(GlyphPin {
+                                id: pad.clone(),
+                                name: e.name.clone(),
+                                at: (side * (half_width + PIN_LENGTH), y),
+                                toward_body: (-side, 0.0),
+                                length: PIN_LENGTH,
+                                flow: e.flow,
+                                hidden: k > 0,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        Glyph {
+            symbol: Some(symbol.lib_id().to_string()),
+            missing: None,
+            shapes,
+            pins,
+            show_numbers: true,
+            show_names: true,
+            name_offset: DEFAULT_NAME_OFFSET,
+            pin_text: DENSE_TEXT,
+        }
     }
 }
 
@@ -446,7 +823,7 @@ impl Sides {
         }
     }
 
-    fn finish(mut self, part: &Part, why: String) -> Glyph {
+    fn finish(mut self, part: &Part, origin: Origin) -> Glyph {
         let extra: Vec<Entry> = self.extra.iter().map(|p| Entry::pad(p)).collect();
         let rest = std::mem::take(&mut self.either)
             .into_iter()
@@ -467,7 +844,20 @@ impl Sides {
                 .unwrap_or(0) as f64
         };
         let char_width = 1.27 * CHAR_WIDTH;
-        let label = format!("{} {}", part.kind, part.value);
+        let total = self.left.len()
+            + self.right.len()
+            + self.top.len()
+            + self.bottom.len()
+            + self.either.len()
+            + self.no_connect.len()
+            + self.extra.len();
+        let counted = matches!(origin, Origin::Symbol(_)) && total >= COUNTED_PINS;
+        let title = if counted {
+            format!("{}, {total} pins", part.kind)
+        } else {
+            part.kind.clone()
+        };
+        let label = format!("{} {}", title, part.value);
         let wide = label.chars().count() as f64 * char_width + 2.54;
         let names = (chars(&self.left) + chars(&self.right)) * char_width + 2.54 * 2.0;
         // Pins along the top and bottom are far enough apart for their names to sit side
@@ -531,18 +921,28 @@ impl Sides {
             },
             Shape::Text {
                 at: (0.0, if vertical { 0.0 } else { half_height - 1.9 }),
-                text: part.kind.clone(),
+                text: title,
                 size: 1.27,
             },
         ];
+        let origin_kind_symbol = matches!(origin, Origin::Symbol(_));
+        let (symbol, missing) = match origin {
+            Origin::Missing(why) => (None, Some(why)),
+            Origin::Symbol(id) => (Some(id), None),
+        };
         Glyph {
-            symbol: None,
-            missing: Some(why),
+            symbol,
+            missing,
             shapes,
             pins,
-            show_numbers: false,
+            show_numbers: origin_kind_symbol,
             show_names: true,
             name_offset: DEFAULT_NAME_OFFSET,
+            pin_text: if origin_kind_symbol {
+                DENSE_TEXT
+            } else {
+                PIN_TEXT
+            },
         }
     }
 }
@@ -943,7 +1343,7 @@ mod tests {
     }
 
     #[test]
-    fn the_units_of_a_symbol_are_drawn_one_below_the_other() {
+    fn the_units_of_a_symbol_are_drawn_as_one_part() {
         let (_dir, mapping, lib) = acme("Dual");
         let used: Vec<String> = ["1", "2", "3", "4", "5", "6", "7", "8"]
             .map(String::from)
@@ -951,20 +1351,26 @@ mod tests {
         let g = Glyph::for_part(&part("Gadget", Some("P")), &used, None, &mapping, &lib);
         assert!(g.symbol.is_some(), "{:?}", g.missing);
         assert_eq!(g.pins.len(), 8);
-        // Unit 2's output is below unit 1's, and unit 3's supply pins below that.
-        let y = |pad: &str| g.pin(pad).unwrap().at.1;
-        assert!(y("7") < y("1") - 5.0, "{} {}", y("7"), y("1"));
-        assert!(y("8") < y("7"));
-        // The first unit keeps its place.
-        assert_eq!(g.pin("1").unwrap().at, (6.35, 0.0));
-        // Each unit has its own body.
-        assert_eq!(
-            g.shapes
-                .iter()
-                .filter(|s| matches!(s, Shape::Rect { .. }))
-                .count(),
-            3
-        );
+        // One body for the three units, not one for each.
+        let bodies = g
+            .shapes
+            .iter()
+            .filter(|s| matches!(s, Shape::Rect { .. }))
+            .count();
+        assert_eq!(bodies, 1);
+        // The pins sit on the side the symbol gave them: inputs left, outputs right, the
+        // supply (unit 3) top and bottom, each side in the symbol's own order.
+        let at = |pad: &str| g.pin(pad).unwrap().at;
+        assert!(at("3").0 < 0.0 && at("2").0 < 0.0 && at("5").0 < 0.0 && at("6").0 < 0.0);
+        assert!(at("1").0 > 0.0 && at("7").0 > 0.0);
+        assert!(at("8").1 > at("1").1 && at("4").1 < at("1").1);
+        // Unit 1's inputs are above unit 2's.
+        assert!(at("3").1 > at("2").1 && at("2").1 > at("5").1 && at("5").1 > at("6").1);
+        // No two pins are at one point, and no two names are written over each other.
+        for (i, a) in g.pins.iter().enumerate() {
+            assert!(g.pins[i + 1..].iter().all(|b| a.at != b.at), "{a:?}");
+        }
+        assert!(!g.texts_collide(Orient::IDENTITY));
     }
 
     #[test]

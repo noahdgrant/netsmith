@@ -228,9 +228,10 @@ impl Workspace {
                         // The symbols come from KiCad's libraries; without them the schematic
                         // draws boxes and says why.
                         let svg = (*libraries).as_ref().map_err(Clone::clone).and_then(|l| {
-                            netsmith_view::render_svg_by_module(
+                            netsmith_view::render_svg_by_module_with(
                                 &built.design,
                                 &module_groups(&built),
+                                &rails_of(&built),
                                 &l.mapping,
                                 &l.symbols,
                             )
@@ -418,6 +419,31 @@ impl Workspace {
             notes: built.notes.clone(),
         })
     }
+}
+
+/// The power nets of a board, from the checker's model: a net a rail draws from is a supply,
+/// a net the current returns on is a ground. Which nets are which is the design's to say
+/// (a `Rail`'s `pos` and `neg`), not their names.
+fn rails_of(built: &Built) -> netsmith_view::Rails {
+    let mut rails = netsmith_view::Rails::default();
+    for balance in built.trace.model.balances() {
+        if balance.returns {
+            rails.ground.insert(balance.net.clone());
+        } else {
+            rails.positive.insert(balance.net.clone());
+        }
+    }
+    // A net both a return and a supply (a rail stacked on another) is drawn as a ground only
+    // when it is never a supply.
+    let both: Vec<String> = rails
+        .positive
+        .intersection(&rails.ground)
+        .cloned()
+        .collect();
+    for net in both {
+        rails.ground.remove(&net);
+    }
+    rails
 }
 
 /// The parts of a board grouped by the module instance of the board each is inside (a part
