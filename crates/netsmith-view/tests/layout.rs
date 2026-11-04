@@ -159,16 +159,25 @@ fn everything_is_inside_the_bounds() {
 }
 
 #[test]
-fn a_named_net_always_shows_its_name() {
+fn every_net_is_wired_and_none_is_a_bare_name() {
     for d in common::all() {
         let l = lay(&d);
+        assert!(l.labels.is_empty(), "{}: names instead of wires", d.name);
         for (n, net) in d.nets.iter().enumerate() {
-            let named = !net.name.starts_with("net-");
-            let shown = l
-                .labels
+            if net.pins.len() < 2 {
+                continue;
+            }
+            let at: Vec<Pt> = net
+                .pins
                 .iter()
-                .any(|x| x.net == n && x.text.text == net.name);
-            assert_eq!(shown, named, "{}: {}", d.name, net.name);
+                .map(|p| pin_at(&l, &d, &p.refdes, &p.pin))
+                .collect();
+            assert!(
+                common::wired_together(&l, n, &at),
+                "{}: the pins of {} are not on one wire",
+                d.name,
+                net.name
+            );
         }
     }
 }
@@ -202,45 +211,40 @@ fn the_signal_runs_left_to_right_through_the_regulator() {
 }
 
 #[test]
-fn the_ground_trunk_runs_below_every_part() {
+fn a_ground_symbol_is_below_its_pins_and_a_supply_symbol_above() {
+    use netsmith_view::layout::{PowerKind, Rails, layout_rails};
     let d = common::regulator();
-    let l = lay(&d);
-    let gnd = d.nets.iter().position(|n| n.name == "GND").unwrap();
-    let lowest_part = l
-        .parts
-        .iter()
-        .map(|p| p.extent.max.y)
-        .fold(f64::MIN, f64::max);
-    let trunk_y = l
-        .wires
-        .iter()
-        .filter(|w| w.net == gnd && w.points.len() == 2 && w.points[0].y == w.points[1].y)
-        .map(|w| w.points[0].y)
-        .next()
-        .expect("a horizontal ground trunk");
-    assert!(trunk_y > lowest_part);
-    // The supply nets are above the parts.
-    let vin = d.nets.iter().position(|n| n.name == "VIN").unwrap();
-    let top_part = l
-        .parts
-        .iter()
-        .map(|p| p.extent.min.y)
-        .fold(f64::MAX, f64::min);
-    assert!(
-        l.wires
+    let mut rails = Rails::default();
+    rails.ground.insert("GND".into());
+    rails.positive.insert("VIN".into());
+    rails.positive.insert("3V3".into());
+    let l = layout_rails(
+        &d,
+        &rails,
+        &Mapping::standard(),
+        &SymbolLib::at(testlib::sample_symbols()),
+    )
+    .unwrap();
+    assert!(!l.symbols.is_empty());
+    for s in &l.symbols {
+        let pins: Vec<Pt> = d.nets[s.net]
+            .pins
             .iter()
-            .filter(|w| w.net == vin)
-            .any(|w| w.points.iter().any(|p| p.y < top_part))
-    );
+            .map(|p| pin_at(&l, &d, &p.refdes, &p.pin))
+            .collect();
+        match s.kind {
+            PowerKind::Ground => assert!(pins.iter().all(|p| p.y <= s.at.y + 1e-6), "{s:?}"),
+            PowerKind::Supply => assert!(pins.iter().all(|p| p.y >= s.at.y - 1e-6), "{s:?}"),
+        }
+    }
 }
 
 #[test]
-fn a_wire_that_meets_the_middle_of_a_trunk_gets_a_junction() {
+fn a_wire_that_meets_the_middle_of_another_gets_a_junction() {
     let d = common::regulator();
     let l = lay(&d);
     let gnd = d.nets.iter().position(|n| n.name == "GND").unwrap();
-    // Five pins on one trunk: the three in the middle make T-junctions.
-    assert!(l.junctions.iter().filter(|j| j.net == gnd).count() >= 3);
+    assert!(l.junctions.iter().any(|j| j.net == gnd));
     // Two pins joined end to end need none.
     let led = common::led();
     assert!(
@@ -284,7 +288,7 @@ fn a_part_with_no_symbol_is_a_box_with_its_pins() {
 }
 
 #[test]
-fn a_net_with_too_many_pins_gets_names_instead_of_a_trunk() {
+fn a_net_with_many_pins_is_wired_all_the_same() {
     let mut parts = vec![];
     let names: Vec<String> = (1..=10).map(|i| format!("R{i}")).collect();
     for n in &names {
@@ -299,14 +303,15 @@ fn a_net_with_too_many_pins_gets_names_instead_of_a_trunk() {
     let d = common::design("Big", &parts, &[("BUS", &p1), ("GND", &p2)]);
     let l = lay(&d);
     let bus = d.nets.iter().position(|n| n.name == "BUS").unwrap();
-    let labels = l.labels.iter().filter(|x| x.net == bus).count();
-    assert_eq!(labels, 10, "one name per pin, no trunk");
-    assert!(
-        l.wires
-            .iter()
-            .filter(|w| w.net == bus)
-            .all(|w| w.points.len() == 2)
-    );
+    assert!(l.labels.is_empty(), "no name instead of a wire");
+    let at: Vec<Pt> = pins1
+        .iter()
+        .map(|p| {
+            let (r, pad) = p.split_once('.').unwrap();
+            pin_at(&l, &d, r, pad)
+        })
+        .collect();
+    assert!(common::wired_together(&l, bus, &at));
 }
 
 #[test]

@@ -142,3 +142,66 @@ pub fn balanced(doc: &str) -> Result<(), String> {
         Err(format!("unclosed: {stack:?}"))
     }
 }
+
+fn on_segment(
+    p: netsmith_view::geom::Pt,
+    a: netsmith_view::geom::Pt,
+    b: netsmith_view::geom::Pt,
+) -> bool {
+    let (x0, x1) = (a.x.min(b.x) - 1e-6, a.x.max(b.x) + 1e-6);
+    let (y0, y1) = (a.y.min(b.y) - 1e-6, a.y.max(b.y) + 1e-6);
+    p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1
+}
+
+/// Whether the wires of `net` join all of `points` into one piece (a wire's end on another
+/// wire is a join).
+pub fn wired_together(
+    l: &netsmith_view::Layout,
+    net: usize,
+    points: &[netsmith_view::geom::Pt],
+) -> bool {
+    use netsmith_view::geom::Pt;
+    let segments: Vec<(Pt, Pt)> = l
+        .wires
+        .iter()
+        .filter(|w| w.net == net)
+        .flat_map(|w| {
+            w.points
+                .windows(2)
+                .map(|s| (s[0], s[1]))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let mut group: Vec<usize> = (0..segments.len()).collect();
+    fn find(g: &mut [usize], i: usize) -> usize {
+        if g[i] != i {
+            let r = find(g, g[i]);
+            g[i] = r;
+        }
+        g[i]
+    }
+    for i in 0..segments.len() {
+        for j in 0..i {
+            let (a, b) = (segments[i], segments[j]);
+            if [a.0, a.1].iter().any(|&p| on_segment(p, b.0, b.1))
+                || [b.0, b.1].iter().any(|&p| on_segment(p, a.0, a.1))
+            {
+                let (ri, rj) = (find(&mut group, i), find(&mut group, j));
+                group[ri] = rj;
+            }
+        }
+    }
+    let Some(first) = points
+        .first()
+        .and_then(|p| segments.iter().position(|&(a, b)| on_segment(*p, a, b)))
+    else {
+        return false;
+    };
+    let root = find(&mut group, first);
+    points.iter().all(|p| {
+        segments
+            .iter()
+            .enumerate()
+            .any(|(i, &(a, b))| on_segment(*p, a, b) && find(&mut group, i) == root)
+    })
+}

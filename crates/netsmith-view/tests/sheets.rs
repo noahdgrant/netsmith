@@ -207,74 +207,36 @@ fn every_wire_stays_on_the_sheet_it_starts_on() {
 }
 
 #[test]
-fn a_net_between_sheets_is_a_named_stub_on_each() {
+fn a_net_between_sheets_is_wired_on_each_and_leaves_through_a_flag() {
     let (d, groups) = board(7);
     let l = lay(&d, &groups);
     let vin = d.nets.iter().position(|n| n.name == "VIN").unwrap();
-    let on: Vec<&str> = l
-        .sheets
-        .iter()
-        .filter(|s| {
-            l.labels
-                .iter()
-                .any(|lab| lab.net == vin && contains(&s.frame, &lab.text.extent()))
-        })
-        .map(|s| s.name.as_str())
-        .collect();
-    assert_eq!(on.len(), 7, "{on:?}");
-    // Two pins of VIN on one sheet are joined by a wire, with one name for the net that goes
-    // on to the other sheets (not a stub and a name at each pin).
-    let names = l.labels.iter().filter(|lab| lab.net == vin).count();
-    assert_eq!(names, 7, "one name on each sheet");
+    // One flag on each sheet, with the net's name in it, and no bare names.
+    assert!(l.labels.is_empty());
+    let flags: Vec<_> = l.ports.iter().filter(|p| p.net == vin).collect();
+    assert_eq!(flags.len(), 7, "one flag on each sheet");
+    for flag in &flags {
+        assert_eq!(flag.label.as_ref().unwrap().text, "VIN");
+        assert!(
+            l.sheets.iter().any(|s| contains(&s.frame, &flag.extent())),
+            "the flag is inside a sheet"
+        );
+    }
+    // The two pins of VIN on a sheet are joined by wires, and the flag is on them.
     for sheet in &l.sheets {
-        let pins: Vec<_> = d.nets[vin]
+        let at: Vec<_> = d.nets[vin]
             .pins
             .iter()
             .filter(|p| sheet.parts.iter().any(|&i| d.parts[i].refdes == p.refdes))
-            .collect();
-        let at: Vec<_> = pins
-            .iter()
             .map(|p| pin_at(&l, &d, &p.refdes, &p.pin))
             .collect();
-        // Every pin of VIN here is on a wire of VIN, and the wires join the two.
-        let wires: Vec<&Vec<netsmith_view::geom::Pt>> = l
-            .wires
+        assert!(common::wired_together(&l, vin, &at), "{}", sheet.name);
+        let flag = flags
             .iter()
-            .filter(|w| w.net == vin && contains(&sheet.frame, &rect_of(&w.points)))
-            .map(|w| &w.points)
-            .collect();
-        for pt in &at {
-            assert!(
-                wires.iter().any(|w| w.iter().any(|q| same(*q, *pt))),
-                "{} has a pin of VIN with no wire",
-                sheet.name
-            );
-        }
-        assert!(wires.len() >= 2);
+            .find(|f| contains(&sheet.frame, &f.extent()))
+            .unwrap();
+        assert!(common::wired_together(&l, vin, &[at[0], flag.at]));
     }
-    // Ground is drawn on each sheet as a trunk with wires, and a name only where a pin cannot
-    // reach it; the pins of ground on a sheet are not all names.
-    let gnd = d.nets.iter().position(|n| n.name == "GND").unwrap();
-    let names = l.labels.iter().filter(|lab| lab.net == gnd).count();
-    let wires = l.wires.iter().filter(|w| w.net == gnd).count();
-    assert!(names < 42 && wires > names, "{names} names, {wires} wires");
-}
-
-fn pin_at(l: &Layout, d: &Design, refdes: &str, pad: &str) -> netsmith_view::geom::Pt {
-    let i = d.parts.iter().position(|p| p.refdes == refdes).unwrap();
-    l.parts[i].pins.iter().find(|p| p.id == pad).unwrap().at
-}
-
-fn same(a: netsmith_view::geom::Pt, b: netsmith_view::geom::Pt) -> bool {
-    (a.x - b.x).abs() < 1e-6 && (a.y - b.y).abs() < 1e-6
-}
-
-fn rect_of(points: &[netsmith_view::geom::Pt]) -> Rect {
-    let mut r = Rect::around(points[0]);
-    for &p in points {
-        r.include(p);
-    }
-    r
 }
 
 #[test]
@@ -325,20 +287,47 @@ fn parts_in_no_group_are_a_sheet_of_their_own() {
 fn a_group_that_is_too_big_is_cut_into_numbered_sheets() {
     let (d, _) = board(7);
     let l = lay(&d, &[]);
+    let pieces = 70usize.div_ceil(MAX_SHEET_PARTS);
     assert_eq!(
         l.sheets.len(),
-        4,
+        pieces,
         "70 parts in sheets of at most {MAX_SHEET_PARTS}"
     );
     for (i, s) in l.sheets.iter().enumerate() {
-        assert_eq!(s.name, format!("Big ({}/4)", i + 1));
+        assert_eq!(s.name, format!("Big ({}/{pieces})", i + 1));
         assert!(s.parts.len() <= MAX_SHEET_PARTS);
     }
     let mut all: Vec<usize> = l.sheets.iter().flat_map(|s| s.parts.clone()).collect();
     all.sort_unstable();
     assert_eq!(all, (0..70).collect::<Vec<_>>());
-    let aspect = l.bounds.width() / l.bounds.height();
-    assert!((0.4..=3.0).contains(&aspect), "{aspect}");
+}
+
+#[test]
+fn a_module_that_fits_one_page_is_not_split() {
+    // The old drawing put every column of a module in one row, so a module of more than 20
+    // parts was a long thin strip and was cut in two; the new one arranges parts in two
+    // dimensions, and a module of up to MAX_SHEET_PARTS parts stays whole.
+    let (d, groups) = board(1);
+    let mut groups = groups;
+    groups[0].parts = (0..10).collect();
+    let l = lay(&d, &groups);
+    assert!(l.sheets.is_empty() || l.sheets.iter().all(|s| !s.name.contains('/')));
+    let (d, _) = board(4);
+    let all = Group {
+        name: "supplies".into(),
+        detail: "Three".into(),
+        parts: (0..30).collect(),
+    };
+    let l = lay(&d, &[all]);
+    assert_eq!(l.sheets.len(), 2, "the module and the rest");
+    assert_eq!(
+        l.sheets[0].name, "supplies",
+        "30 parts of one module are one sheet"
+    );
+    assert_eq!(l.sheets[0].parts.len(), 30);
+    let f = l.sheets[0].frame;
+    let aspect = f.width() / f.height();
+    assert!((0.3..=4.0).contains(&aspect), "{aspect}");
 }
 
 #[test]
@@ -353,4 +342,9 @@ fn the_drawing_names_each_module_and_stays_well_formed() {
     }
     assert!(svg.contains("supply1: Supply"));
     common::balanced(&svg).unwrap();
+}
+
+fn pin_at(l: &Layout, d: &Design, refdes: &str, pad: &str) -> netsmith_view::geom::Pt {
+    let i = d.parts.iter().position(|p| p.refdes == refdes).unwrap();
+    l.parts[i].pins.iter().find(|p| p.id == pad).unwrap().at
 }

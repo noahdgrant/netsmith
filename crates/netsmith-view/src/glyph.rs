@@ -87,6 +87,8 @@ pub struct GlyphPin {
     pub length: f64,
     /// Whether the symbol says the pin takes or gives power or a signal.
     pub flow: Flow,
+    /// What the symbol or the datasheet says the pin is: `input`, `power_in`, `no_connect`...
+    pub kind: &'static str,
     /// A hidden pin that repeats the point and name of another: stock symbols stack the
     /// pads of one supply this way. It resolves a pad but is not drawn.
     pub hidden: bool,
@@ -142,6 +144,8 @@ pub struct Glyph {
     pub name_offset: f64,
     /// The height of the pin names and numbers.
     pub pin_text: f64,
+    /// A box this crate made for a symbol of several units or many pins: it stays upright.
+    pub dense: bool,
 }
 
 impl Glyph {
@@ -244,6 +248,7 @@ impl Glyph {
                     },
                     length: p.length,
                     flow: Flow::of(p.kind),
+                    kind: p.kind.name(),
                     hidden: false,
                 })
                 .collect();
@@ -297,6 +302,7 @@ impl Glyph {
             show_names: flag("pin_names"),
             name_offset,
             pin_text: PIN_TEXT,
+            dense: false,
         }
     }
 
@@ -367,6 +373,7 @@ impl Glyph {
             show_names: false,
             name_offset: DEFAULT_NAME_OFFSET,
             pin_text: PIN_TEXT,
+            dense: false,
         }
     }
 
@@ -433,6 +440,37 @@ impl Glyph {
                     && b.min.y < a.max.y - 0.05
             })
         })
+    }
+
+    /// The drawn body (the shapes, without the pins), in symbol coordinates, if it has any.
+    pub fn body(&self) -> Option<Rect> {
+        let mut out: Option<Rect> = None;
+        let add = |r: &mut Option<Rect>, p: P| match r {
+            Some(b) => b.include(Pt::new(p.0, p.1)),
+            None => *r = Some(Rect::around(Pt::new(p.0, p.1))),
+        };
+        for s in &self.shapes {
+            match s {
+                Shape::Rect { a, b, .. } => {
+                    add(&mut out, *a);
+                    add(&mut out, *b);
+                }
+                Shape::Poly { pts, .. } => pts.iter().for_each(|p| add(&mut out, *p)),
+                Shape::Circle { center, radius, .. } => {
+                    add(&mut out, (center.0 - radius, center.1 - radius));
+                    add(&mut out, (center.0 + radius, center.1 + radius));
+                }
+                Shape::Arc {
+                    start, mid, end, ..
+                } => {
+                    add(&mut out, *start);
+                    add(&mut out, *mid);
+                    add(&mut out, *end);
+                }
+                Shape::Text { .. } => {}
+            }
+        }
+        out
     }
 
     pub fn pin(&self, id: &str) -> Option<&GlyphPin> {
@@ -513,6 +551,7 @@ fn symbol_entries(symbol: &Symbol) -> Vec<SymEntry> {
                 pads: vec![p.number.clone()],
                 name,
                 flow: Flow::of(p.kind),
+                kind: p.kind.name(),
             },
             angle: p.angle,
             unit: p.unit,
@@ -615,7 +654,7 @@ impl Glyph {
     /// connect to nothing last. The box says how many pins it has.
     fn grouped(part: &Part, symbol: &Symbol) -> Glyph {
         let entries = symbol_entries(symbol);
-        let total = entries.len();
+        let pin_count = entries.len();
         let mut power = Vec::new();
         let mut ground = Vec::new();
         let mut open = Vec::new();
@@ -641,36 +680,48 @@ impl Glyph {
                 groups.push((key, list));
             }
         }
-        let mut all: Vec<(String, Vec<Entry>)> = Vec::new();
-        all.push(("Power".into(), power));
-        all.push(("Ground".into(), ground));
-        all.extend(groups);
-        all.push(("Other".into(), other));
-        all.push(("Not connected".into(), open));
-        all.retain(|(_, list)| !list.is_empty());
-
-        let mut rows: Vec<Row> = Vec::new();
-        for (key, list) in all {
+        // The left column reads supplies first (at the top), then signals by function, and
+        // ground last (at the bottom); the other signals, and the pins that connect to
+        // nothing, are in the right column.
+        let mut signals: Vec<(String, Vec<Entry>)> = groups;
+        if !other.is_empty() {
+            signals.push(("Other".into(), other));
+        }
+        let rows_of = |list: &Vec<Entry>| list.len() + 1;
+        let total_rows = rows_of(&power)
+            + rows_of(&ground)
+            + rows_of(&open)
+            + signals.iter().map(|(_, l)| rows_of(l)).sum::<usize>();
+        let half = total_rows.div_ceil(2);
+        let mut left: Vec<Row> = Vec::new();
+        let mut right: Vec<Row> = Vec::new();
+        let put = |rows: &mut Vec<Row>, key: &str, list: Vec<Entry>| {
+            if list.is_empty() {
+                return;
+            }
             rows.push(Row::Heading(format!("{key} ({})", list.len())));
             rows.extend(list.into_iter().map(Row::Pin));
+        };
+        let reserved = if ground.is_empty() {
+            0
+        } else {
+            rows_of(&ground)
+        };
+        let mut used = if power.is_empty() { 0 } else { rows_of(&power) } + reserved;
+        put(&mut left, "Power", power);
+        let mut left_full = false;
+        for (key, list) in signals {
+            let need = rows_of(&list);
+            if !left_full && (used + need <= half || used == reserved) {
+                used += need;
+                put(&mut left, &key, list);
+            } else {
+                left_full = true;
+                put(&mut right, &key, list);
+            }
         }
-        // Cut after the row nearest the middle that is the end of a group; inside the group
-        // when it is longer than the half.
-        let half = rows.len().div_ceil(2);
-        let boundaries: Vec<usize> = (1..rows.len())
-            .filter(|&i| matches!(rows[i], Row::Heading(_)))
-            .collect();
-        let cut = boundaries
-            .iter()
-            .copied()
-            .min_by_key(|&i| i.abs_diff(half))
-            .filter(|&i| i <= half * 3 / 2 + 1 && rows.len() - i <= half * 3 / 2 + 1)
-            .unwrap_or(half);
-        let mut right: Vec<Row> = rows.split_off(cut);
-        let left = rows;
-        if matches!(right.first(), Some(Row::Pin(_))) {
-            right.insert(0, Row::Heading("(continued)".into()));
-        }
+        put(&mut left, "Ground", ground);
+        put(&mut right, "Not connected", open);
 
         let size = DENSE_TEXT;
         let char_width = size * CHAR_WIDTH;
@@ -684,7 +735,7 @@ impl Glyph {
                 .unwrap_or(0) as f64
                 * char_width
         };
-        let title = format!("{}, {total} pins", part.kind);
+        let title = format!("{}, {pin_count} pins", part.kind);
         let title_width = title.chars().count() as f64 * 1.27 * CHAR_WIDTH;
         let half_width = snap_up(
             ((widest(&left) + widest(&right) + 2.0 * 2.54 + 2.54).max(title_width + 2.54)) / 2.0,
@@ -731,6 +782,7 @@ impl Glyph {
                                 toward_body: (-side, 0.0),
                                 length: PIN_LENGTH,
                                 flow: e.flow,
+                                kind: e.kind,
                                 hidden: k > 0,
                             });
                         }
@@ -747,6 +799,7 @@ impl Glyph {
             show_names: true,
             name_offset: DEFAULT_NAME_OFFSET,
             pin_text: DENSE_TEXT,
+            dense: true,
         }
     }
 }
@@ -756,6 +809,7 @@ struct Entry {
     pads: Vec<String>,
     name: String,
     flow: Flow,
+    kind: &'static str,
 }
 
 impl Entry {
@@ -765,6 +819,7 @@ impl Entry {
             pads: vec![pad.to_string()],
             name: pad.to_string(),
             flow: Flow::Unspecified,
+            kind: "",
         }
     }
 
@@ -781,6 +836,14 @@ impl Entry {
                 PinKind::Output => Flow::Out,
                 PinKind::Bidirectional => Flow::Bidirectional,
                 PinKind::Passive | PinKind::NoConnect => Flow::Unspecified,
+            },
+            kind: match pin.kind {
+                PinKind::Input => "input",
+                PinKind::Output => "output",
+                PinKind::Bidirectional => "bidirectional",
+                PinKind::Power => "power",
+                PinKind::Passive => "passive",
+                PinKind::NoConnect => "no_connect",
             },
         }
     }
@@ -891,6 +954,7 @@ impl Sides {
                     toward_body,
                     length: PIN_LENGTH,
                     flow: entry.flow,
+                    kind: entry.kind,
                     // The other pads of a pin sit on the first's point.
                     hidden: i > 0,
                 });
@@ -943,6 +1007,7 @@ impl Sides {
             } else {
                 PIN_TEXT
             },
+            dense: false,
         }
     }
 }

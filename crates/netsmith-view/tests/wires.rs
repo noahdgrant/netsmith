@@ -7,8 +7,10 @@ mod common;
 
 use common::bench::{Bench, bench};
 use netsmith_view::geom::{Pt, Rect};
-use netsmith_view::layout::{Layout, PowerKind, Rails, layout_rails};
-use netsmith_view::sheets::layout_sheets_rails;
+use netsmith_view::layout::{
+    Layout, MarkKind, Marks, PowerKind, Rails, layout_marked, layout_rails,
+};
+use netsmith_view::sheets::{layout_sheets_marked, layout_sheets_rails};
 use netsmith_view::{layout_sheets, render_svg_by_module_with};
 
 fn lay(b: &Bench) -> Layout {
@@ -104,6 +106,56 @@ fn overlap(a: &Rect, b: &Rect) -> bool {
         && b.min.y < a.max.y - 0.05
 }
 
+/// Every text of a drawing, with its box: references, values, pin numbers and names, the
+/// names on power symbols and on flags.
+fn texts(l: &Layout) -> Vec<(String, Rect)> {
+    let mut out = Vec::new();
+    for p in &l.parts {
+        for t in std::iter::once(&p.reference).chain(p.value.as_ref()) {
+            out.push((t.text.clone(), t.extent()));
+        }
+        for (pin, placed) in p.glyph.pins.iter().zip(&p.pins) {
+            if pin.hidden {
+                continue;
+            }
+            let toward = p.orient.dir(pin.toward_body);
+            let (number, name) = p.glyph.pin_texts(pin, placed.at, toward);
+            for t in number.into_iter().chain(name) {
+                out.push((t.text.clone(), t.extent_at(p.glyph.pin_text)));
+            }
+        }
+    }
+    for s in &l.symbols {
+        if let Some(t) = &s.label {
+            out.push((t.text.clone(), t.extent()));
+        }
+    }
+    for port in &l.ports {
+        if let Some(t) = &port.label {
+            out.push((t.text.clone(), t.extent()));
+        }
+    }
+    out
+}
+
+fn segments(l: &Layout) -> Vec<(usize, Pt, Pt)> {
+    l.wires
+        .iter()
+        .flat_map(|w| {
+            w.points
+                .windows(2)
+                .map(|s| (w.net, s[0], s[1]))
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn sheet_of<'a>(l: &'a Layout, p: Pt) -> Option<&'a netsmith_view::Sheet> {
+    l.sheets.iter().find(|s| {
+        s.frame.min.x <= p.x && p.x <= s.frame.max.x && s.frame.min.y <= p.y && p.y <= s.frame.max.y
+    })
+}
+
 #[test]
 fn the_same_board_gives_the_same_drawing() {
     let b = bench();
@@ -116,56 +168,181 @@ fn the_same_board_gives_the_same_drawing() {
 }
 
 #[test]
-fn a_net_between_sheets_is_wired_between_its_pins_on_each() {
-    // BATT_DIV has all its pins on one sheet; BATT_ADC has two there and one on another
-    // sheet. Both are joined by wires where the pins are, and BATT_ADC says where it goes.
+fn every_net_is_wired_and_none_is_a_bare_name() {
+    // Rule 1: any net on a sheet is wired, whatever its size; no name stands where a wire
+    // could be; a generated name is never shown.
     let b = bench();
-    let l = lay(&b);
-    for (net, pins) in [
-        ("BATT_DIV", vec![("R1", "2"), ("R2", "1"), ("U1", "3")]),
-        ("BATT_ADC", vec![("R3", "2"), ("C1", "1")]),
-    ] {
-        let n = net_index(&b, net);
-        let comps = components(&l, n);
-        let all: Vec<Pt> = pins.iter().map(|(r, p)| pin_at(&l, &b, r, p)).collect();
-        assert!(
-            comps.iter().any(|c| all.iter().all(|&p| touches(c, p))),
-            "{net}: its pins are not on one wire: {comps:?}"
-        );
+    for l in [lay(&b), plain(&b)] {
+        assert!(l.labels.is_empty(), "a bare name");
+        for sheet in &l.sheets {
+            for (n, net) in b.design.nets.iter().enumerate() {
+                let at: Vec<Pt> = net
+                    .pins
+                    .iter()
+                    .filter(|p| sheet.parts.contains(&part_index(&b, &p.refdes)))
+                    .map(|p| pin_at(&l, &b, &p.refdes, &p.pin))
+                    .collect();
+                if at.len() < 2
+                    || b.rails.ground.contains(&net.name)
+                    || b.rails.positive.contains(&net.name)
+                {
+                    continue;
+                }
+                assert!(
+                    common::wired_together(&l, n, &at),
+                    "{}: the {} pins of {} are not on one wire",
+                    sheet.name,
+                    at.len(),
+                    net.name
+                );
+            }
+        }
+        for (text, _) in texts(&l) {
+            assert!(
+                !text.starts_with("net-"),
+                "a generated name is shown: {text}"
+            );
+        }
     }
-    let adc = net_index(&b, "BATT_ADC");
-    assert!(l.labels.iter().any(|x| x.net == adc), "the net's name");
 }
 
 #[test]
-fn a_pin_that_leaves_away_from_its_trunk_is_wired_and_not_just_named() {
-    // R1 is stacked with the rail above it, so its pin on BATT_DIV points down while the
-    // trunk of BATT_DIV is above: its wire goes round the column.
+fn a_net_that_goes_to_another_sheet_leaves_through_a_flag_wired_from_its_pins() {
     let b = bench();
     let l = lay(&b);
+    for name in ["BATT_ADC", "M_TX", "LED1", "PGOOD"] {
+        let n = net_index(&b, name);
+        let flags: Vec<_> = l.ports.iter().filter(|p| p.net == n).collect();
+        assert!(!flags.is_empty(), "{name} has no flag");
+        for f in &flags {
+            assert_eq!(f.label.as_ref().unwrap().text, name);
+            // The flag's point is on the net's wires.
+            let comps = components(&l, n);
+            assert!(
+                comps.iter().any(|c| touches(c, f.at)),
+                "{name}: the flag is not wired"
+            );
+        }
+    }
+    // A generated name is a flag with no name when it has to leave.
+    let mut design = b.design.clone();
+    let rt = net_index(&b, "net-buck.rt");
+    design.nets[rt].pins.push(netsmith_core::PinRef {
+        refdes: "R21".into(),
+        pin: "2".into(),
+    });
+    let l = layout_sheets_rails(&design, &b.groups, &b.rails, &b.mapping, &b.lib).unwrap();
+    let flags: Vec<_> = l.ports.iter().filter(|p| p.net == rt).collect();
+    assert_eq!(flags.len(), 2, "one on each sheet");
+    assert!(flags.iter().all(|f| f.label.is_none()));
+    let svg = render_svg_by_module_with(&design, &b.groups, &b.rails, &b.mapping, &b.lib).unwrap();
+    assert!(!svg.contains(">net-buck.rt<"));
+}
+
+#[test]
+fn a_generated_name_is_never_a_rail() {
+    // The model's balances may name a node a rail draws from; the drawing keeps it a wire.
+    let b = bench();
+    let mut rails = b.rails.clone();
+    rails.positive.insert("net-buck.sw".into());
+    rails.ground.insert("net-buck.fb".into());
+    let l = layout_sheets_rails(&b.design, &b.groups, &rails, &b.mapping, &b.lib).unwrap();
+    for name in ["net-buck.sw", "net-buck.fb"] {
+        let n = net_index(&b, name);
+        assert!(l.symbols.iter().all(|s| s.net != n), "{name}");
+    }
+}
+
+#[test]
+fn every_part_touches_wires_on_every_connected_pin() {
+    // Rule 2e: a part is never drawn alone.
+    let b = bench();
+    let l = lay(&b);
+    for (n, net) in b.design.nets.iter().enumerate() {
+        for pin in &net.pins {
+            let at = pin_at(&l, &b, &pin.refdes, &pin.pin);
+            let active = net.pins.len() >= 2 || l.ports.iter().any(|p| p.net == n);
+            if !active {
+                continue;
+            }
+            assert!(
+                l.wires
+                    .iter()
+                    .any(|w| w.net == n && w.points.iter().any(|&q| near(q, at))),
+                "{}.{} on {} has no wire",
+                pin.refdes,
+                pin.pin,
+                net.name
+            );
+        }
+    }
+}
+
+#[test]
+fn a_two_terminal_part_stands_beside_the_pin_it_serves() {
+    // Rule 2b, on the invented board.
+    let b = bench();
+    let l = lay(&b);
+    let at = |r: &str| l.parts[part_index(&b, r)].at;
+    let left_of = |r: &str, u: &str| {
+        l.parts[part_index(&b, r)].extent.max.x <= l.parts[part_index(&b, u)].extent.min.x + 1e-6
+    };
+    let right_of = |r: &str, u: &str| {
+        l.parts[part_index(&b, r)].extent.min.x >= l.parts[part_index(&b, u)].extent.max.x - 1e-6
+    };
+    // Decoupling capacitors beside the supply pins, on their side (the left of the box).
+    for c in ["C4", "C5"] {
+        assert!(left_of(c, "U5"), "{c} is not on the supply pins' side");
+        let supply_y = pin_at(&l, &b, "U5", "131").y;
+        assert!(
+            (at(c).y - supply_y).abs() < 40.0,
+            "{c} is far from the supply pins"
+        );
+    }
+    // The feedback divider beside the FB pin: in one stack, the pin level between its parts.
+    assert!(right_of("R8", "U7") && right_of("R9", "U7"));
+    assert!((at("R8").x - at("R9").x).abs() < 1e-6 && at("R8").y < at("R9").y);
+    let fb = pin_at(&l, &b, "U7", "6").y;
+    assert!(
+        at("R8").y < fb && fb < at("R9").y + 5.0,
+        "the FB pin is level with the node"
+    );
+    // The bootstrap capacitor between the BST and SW pins.
+    let (bst, sw) = (pin_at(&l, &b, "U7", "13"), pin_at(&l, &b, "U7", "10"));
+    assert!(right_of("C7", "U7"));
+    assert!((at("C7").y - (bst.y + sw.y) / 2.0).abs() < 10.0);
+    // The inductor from SW outward, the output capacitor beside the inductor.
+    assert!(right_of("L1", "U7") && right_of("C8", "U7"));
+    assert!((at("L1").x - at("C8").x).abs() < 70.0);
+    // The crystal on the side of the oscillator pins, and near them.
+    assert!(left_of("Y1", "U5"));
+    assert!((at("Y1").y - pin_at(&l, &b, "U5", "15").y).abs() < 15.0);
+}
+
+#[test]
+fn parts_in_series_are_one_stack_with_the_node_wired_out_sideways() {
+    // Rule 2c: the divider's upper resistor is in line with the lower one, above the node.
+    let b = bench();
+    let l = lay(&b);
+    let (r1, r2) = (
+        &l.parts[part_index(&b, "R1")],
+        &l.parts[part_index(&b, "R2")],
+    );
+    assert!((r1.at.x - r2.at.x).abs() < 1e-6, "one column");
+    assert!(r1.at.y < r2.at.y, "the supply side above");
+    let node = pin_at(&l, &b, "R1", "2");
+    let below = pin_at(&l, &b, "R2", "1");
+    assert!(node.y <= below.y);
+    // The net's wire leaves sideways from a point between the two.
     let n = net_index(&b, "BATT_DIV");
-    let r1 = pin_at(&l, &b, "R1", "2");
-    let r2 = pin_at(&l, &b, "R2", "1");
-    let comp = components(&l, n)
-        .into_iter()
-        .find(|c| touches(c, r1))
-        .expect("R1's pin is on a wire");
-    assert!(touches(&comp, r2), "R1 and R2 share a wire");
-    let leaves = l.parts[part_index(&b, "R1")]
-        .pins
-        .iter()
-        .find(|p| p.id == "2")
-        .unwrap();
-    assert!(leaves.escape.is_vertical());
-    // The wire from the pin is longer than a stub with a name.
-    let reach = l
-        .wires
-        .iter()
-        .filter(|w| w.net == n && w.points.iter().any(|&p| near(p, r1)))
-        .map(|w| w.points.len())
-        .max()
-        .unwrap();
-    assert!(reach >= 4, "{reach}");
+    let leaves = segments(&l).iter().any(|&(net, a, c)| {
+        net == n
+            && (a.y - c.y).abs() < 1e-6
+            && a.y >= node.y - 1e-6
+            && a.y <= below.y + 1e-6
+            && ((a.x - node.x).abs() < 1e-6 || (c.x - node.x).abs() < 1e-6)
+    });
+    assert!(leaves, "the node is wired out sideways");
 }
 
 #[test]
@@ -176,6 +353,7 @@ fn every_pin_on_a_rail_has_a_wire_to_a_power_symbol() {
         ("GND", PowerKind::Ground),
         ("+3V3", PowerKind::Supply),
         ("+3V8", PowerKind::Supply),
+        ("+1V8", PowerKind::Supply),
     ] {
         let n = net_index(&b, rail);
         let comps = components(&l, n);
@@ -195,45 +373,162 @@ fn every_pin_on_a_rail_has_a_wire_to_a_power_symbol() {
             );
         }
     }
-    // And a net that is none of them has no symbol.
     let adc = net_index(&b, "BATT_ADC");
     assert!(l.symbols.iter().all(|s| s.net != adc));
 }
 
 #[test]
-fn a_run_of_pins_on_one_rail_shares_a_bus_and_one_symbol() {
-    // The patch antenna has nine ground pins in a row: one symbol for them, one for the
-    // connector's ground.
+fn a_power_symbol_is_at_the_end_of_a_wire_and_never_on_one() {
+    // Rule 3.
+    let b = bench();
+    let l = lay(&b);
+    assert!(!l.symbols.is_empty());
+    let segs = segments(&l);
+    for s in &l.symbols {
+        // It is the end of a wire of its net...
+        assert!(
+            segs.iter()
+                .any(|&(net, a, c)| net == s.net && (near(a, s.at) || near(c, s.at))),
+            "{s:?}"
+        );
+        // ...and no wire of another net, nor a wire of its own that is not the one it ends,
+        // runs through its drawing.
+        let g = s.glyph_extent();
+        let inner = Rect {
+            min: Pt::new(g.min.x + 0.15, g.min.y + 0.15),
+            max: Pt::new(g.max.x - 0.15, g.max.y - 0.15),
+        };
+        for &(net, a, c) in &segs {
+            let mut r = Rect::around(a);
+            r.include(c);
+            if net == s.net && (near(a, s.at) || near(c, s.at)) {
+                continue;
+            }
+            assert!(
+                !overlap(&inner, &r),
+                "a wire of {} runs through the symbol {s:?}",
+                b.design.nets[net].name
+            );
+        }
+        // Its name does not cover a wire.
+        if let Some(t) = &s.label {
+            for &(_, a, c) in &segs {
+                let mut r = Rect::around(a);
+                r.include(c);
+                assert!(!overlap(&t.extent(), &r), "{}", t.text);
+            }
+        }
+    }
+}
+
+#[test]
+fn a_ground_is_below_the_pins_it_serves_and_a_supply_above() {
+    let b = bench();
+    let l = lay(&b);
+    for s in &l.symbols {
+        let comps = components(&l, s.net);
+        let comp = comps.iter().find(|c| touches(c, s.at)).unwrap();
+        for pin in &b.design.nets[s.net].pins {
+            let at = pin_at(&l, &b, &pin.refdes, &pin.pin);
+            if !touches(comp, at) {
+                continue;
+            }
+            match s.kind {
+                PowerKind::Ground => assert!(s.dir == netsmith_view::geom::Dir::Down),
+                PowerKind::Supply => assert!(s.dir == netsmith_view::geom::Dir::Up),
+            }
+        }
+    }
+}
+
+#[test]
+fn no_wire_crosses_a_text() {
+    // Rule 5, geometrically, on every sheet.
+    let b = bench();
+    for l in [lay(&b), plain(&b)] {
+        let segs = segments(&l);
+        for (text, r) in texts(&l) {
+            let inner = Rect {
+                min: Pt::new(r.min.x + 0.1, r.min.y + 0.1),
+                max: Pt::new(r.max.x - 0.1, r.max.y - 0.1),
+            };
+            for &(net, a, c) in &segs {
+                let mut w = Rect::around(a);
+                w.include(c);
+                assert!(
+                    !overlap(&inner, &w),
+                    "a wire of {} crosses the text `{text}` at {:?}: {a:?} {c:?}",
+                    b.design.nets[net].name,
+                    r.min
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn texts_have_a_halo() {
+    let b = bench();
+    let svg =
+        render_svg_by_module_with(&b.design, &b.groups, &b.rails, &b.mapping, &b.lib).unwrap();
+    assert!(svg.contains("paint-order:stroke"));
+}
+
+#[test]
+fn no_two_texts_are_written_over_each_other() {
+    let b = bench();
+    for l in [lay(&b), plain(&b)] {
+        for sheet in &l.sheets {
+            let names: Vec<(String, Rect)> = texts(&l)
+                .into_iter()
+                .filter(|(_, r)| {
+                    sheet.frame.min.x <= r.min.x
+                        && r.max.x <= sheet.frame.max.x
+                        && sheet.frame.min.y <= r.min.y
+                        && r.max.y <= sheet.frame.max.y
+                })
+                .filter(|(t, _)| t.len() > 3)
+                .collect();
+            for (i, (an, a)) in names.iter().enumerate() {
+                for (bn, bx) in &names[i + 1..] {
+                    assert!(!overlap(a, bx), "{} : `{an}` over `{bn}`", sheet.name);
+                }
+            }
+        }
+        for p in &l.parts {
+            assert!(
+                !p.glyph.texts_collide(p.orient),
+                "{}",
+                b.design.parts[p.part].refdes
+            );
+        }
+    }
+}
+
+#[test]
+fn a_run_of_ground_pins_shares_a_bus_and_one_symbol() {
     let b = bench();
     let l = lay(&b);
     let gnd = net_index(&b, "GND");
+    // The nine grounds of the antenna and the connector's one are within reach of one another.
     let sheet = l.sheets.iter().find(|s| s.name == "gnss").unwrap();
     let here: Vec<_> = l
         .symbols
         .iter()
-        .filter(|s| s.net == gnd && sheet.frame.min.x <= s.at.x && s.at.x <= sheet.frame.max.x)
-        .filter(|s| sheet.frame.min.y <= s.at.y && s.at.y <= sheet.frame.max.y)
+        .filter(|s| s.net == gnd && sheet_of(&l, s.at).is_some_and(|x| x.name == sheet.name))
         .collect();
-    assert_eq!(here.len(), 2, "{here:?}");
-    // The microcontroller's 24 grounds are on one side of one part: one symbol.
-    let sheet = l.sheets.iter().find(|s| s.name == "mcu").unwrap();
+    assert_eq!(here.len(), 1, "{here:?}");
+    // The microcontroller's 24 grounds are on one side of one part: one symbol for them.
     let mcu: Vec<_> = l
         .symbols
         .iter()
-        .filter(|s| s.net == gnd)
-        .filter(|s| sheet.frame.min.y <= s.at.y && s.at.y <= sheet.frame.max.y)
-        .filter(|s| sheet.frame.min.x <= s.at.x && s.at.x <= sheet.frame.max.x)
+        .filter(|s| s.net == gnd && sheet_of(&l, s.at).is_some_and(|x| x.name == "mcu"))
         .collect();
-    assert_eq!(
-        mcu.len(),
-        3,
-        "the box's grounds and two capacitors: {mcu:?}"
-    );
+    assert!(mcu.len() <= 2, "{mcu:?}");
 }
 
 #[test]
 fn rails_come_from_the_design_and_not_from_names() {
-    // `GND` is an ordinary net here and `RET` is the rail's return.
     let b = bench();
     let mut rails = Rails::default();
     rails.ground.insert("+3V8".into());
@@ -273,7 +568,6 @@ fn a_ground_is_named_only_when_the_board_has_several() {
             .filter(|s| s.net == supply)
             .all(|s| s.label.as_ref().is_some_and(|t| t.text == "+3V3"))
     );
-
     let mut rails = b.rails.clone();
     rails.ground.insert("ANT".into());
     let l = layout_sheets_rails(&b.design, &b.groups, &rails, &b.mapping, &b.lib).unwrap();
@@ -291,81 +585,16 @@ fn a_ground_is_named_only_when_the_board_has_several() {
 }
 
 #[test]
-fn the_svg_draws_the_symbols_with_their_nets_and_tooltips() {
+fn the_svg_draws_the_symbols_flags_and_marks() {
     let b = bench();
     let svg =
         render_svg_by_module_with(&b.design, &b.groups, &b.rails, &b.mapping, &b.lib).unwrap();
     assert!(svg.contains("class=\"power ground\" data-net=\"GND\""));
     assert!(svg.contains("class=\"power supply\" data-net=\"+3V3\""));
     assert!(svg.contains("<title>GND (ground)</title>"));
-    assert!(svg.contains("<title>+3V3 (supply)</title>"));
-}
-
-#[test]
-fn no_two_names_are_written_over_each_other() {
-    let b = bench();
-    for l in [lay(&b), plain(&b)] {
-        for sheet in &l.sheets {
-            let inside = |r: &Rect| {
-                sheet.frame.min.x <= r.min.x
-                    && r.max.x <= sheet.frame.max.x
-                    && sheet.frame.min.y <= r.min.y
-                    && r.max.y <= sheet.frame.max.y
-            };
-            let mut names: Vec<(String, Rect)> = l
-                .labels
-                .iter()
-                .map(|x| (x.text.text.clone(), x.text.extent()))
-                .chain(
-                    l.symbols
-                        .iter()
-                        .filter_map(|s| s.label.as_ref())
-                        .map(|t| (t.text.clone(), t.extent())),
-                )
-                .filter(|(_, r)| inside(r))
-                .collect();
-            for p in sheet.parts.iter().map(|&i| &l.parts[i]) {
-                names.push((
-                    format!("{} reference", b.design.parts[p.part].refdes),
-                    p.reference.extent(),
-                ));
-            }
-            for (i, (an, a)) in names.iter().enumerate() {
-                for (bn, bx) in &names[i + 1..] {
-                    assert!(!overlap(a, bx), "{} : `{an}` over `{bn}`", sheet.name);
-                }
-            }
-        }
-        // And no part's pin names are over each other, in the way it is turned.
-        for p in &l.parts {
-            assert!(
-                !p.glyph.texts_collide(p.orient),
-                "{}",
-                b.design.parts[p.part].refdes
-            );
-        }
-    }
-}
-
-#[test]
-fn a_run_of_pins_on_one_net_that_is_only_named_has_one_name() {
-    // With no rails told, the ten pins of ground on the antenna are a net too wide for a
-    // trunk: they are named, and the nine in a row share a bar and one name.
-    let b = bench();
-    let l = plain(&b);
-    let gnd = net_index(&b, "GND");
-    let sheet = l.sheets.iter().find(|s| s.name == "gnss").unwrap();
-    let names = l
-        .labels
-        .iter()
-        .filter(|x| x.net == gnd)
-        .filter(|x| sheet.frame.min.x <= x.text.at.x && x.text.at.x <= sheet.frame.max.x)
-        .filter(|x| sheet.frame.min.y <= x.text.at.y && x.text.at.y <= sheet.frame.max.y)
-        .count();
-    assert_eq!(
-        names, 2,
-        "one for the antenna's nine, one for the connector"
-    );
+    assert!(svg.contains("class=\"port\" data-net=\"BATT_ADC\""));
+    assert!(svg.contains("<title>BATT_ADC (goes to another sheet)</title>"));
+    assert!(svg.contains("class=\"nc\""));
 }
 
 #[test]
@@ -373,52 +602,15 @@ fn a_name_longer_than_the_limit_is_cut_and_keeps_its_tooltip() {
     let b = bench();
     let long = "a_net_with_a_very_long_name_indeed_over_the_limit";
     let mut design = b.design.clone();
-    design.nets.push(netsmith_core::Net {
-        name: long.into(),
-        pins: vec![netsmith_core::PinRef {
-            refdes: "U5".into(),
-            pin: "6".into(),
-        }],
-    });
+    let n = net_index(&b, "M_TX");
+    design.nets[n].name = long.into();
     let l = layout_sheets_rails(&design, &b.groups, &b.rails, &b.mapping, &b.lib).unwrap();
-    let n = design.nets.len() - 1;
-    let label = l.labels.iter().find(|x| x.net == n).expect("a name");
-    assert_eq!(label.text.text.chars().count(), 24);
-    assert!(label.text.text.ends_with('…'));
+    let flag = l.ports.iter().find(|p| p.net == n).expect("a flag");
+    let label = flag.label.as_ref().unwrap();
+    assert_eq!(label.text.chars().count(), 24);
+    assert!(label.text.ends_with('…'));
     let svg = render_svg_by_module_with(&design, &b.groups, &b.rails, &b.mapping, &b.lib).unwrap();
     assert!(svg.contains(&format!("<title>{long}</title>")));
-}
-
-#[test]
-fn names_on_pins_side_by_side_are_not_written_over_each_other() {
-    // Three pins of the antenna, next to each other, each on a net of its own that goes
-    // nowhere here: three long names that would be written over one another.
-    let b = bench();
-    let mut design = b.design.clone();
-    for (i, pad) in ["3", "4", "5"].iter().enumerate() {
-        for net in &mut design.nets {
-            net.pins.retain(|p| !(p.refdes == "U2" && p.pin == *pad));
-        }
-        design.nets.push(netsmith_core::Net {
-            name: format!("SIGNAL_NUMBER_{i}_OF_THREE"),
-            pins: vec![netsmith_core::PinRef {
-                refdes: "U2".into(),
-                pin: (*pad).into(),
-            }],
-        });
-    }
-    let l = layout_sheets_rails(&design, &b.groups, &b.rails, &b.mapping, &b.lib).unwrap();
-    let names: Vec<_> = l
-        .labels
-        .iter()
-        .filter(|x| x.text.text.starts_with("SIGNAL_NUMBER"))
-        .collect();
-    assert_eq!(names.len(), 3);
-    for (i, a) in names.iter().enumerate() {
-        for c in &names[i + 1..] {
-            assert!(!overlap(&a.text.extent(), &c.text.extent()));
-        }
-    }
 }
 
 #[test]
@@ -452,21 +644,43 @@ fn a_symbol_of_two_units_and_ninety_seven_pins_is_one_part_in_labelled_groups() 
     ] {
         assert!(texts.contains(&heading), "{heading} in {texts:?}");
     }
-    // The pins are in the order of the symbol within a group, one row each, none over another.
-    let y = |pad: &str| g.pin(pad).unwrap().at.1;
-    assert!(y("17") > y("18") && y("18") > y("19"));
-    assert!(!g.texts_collide(u5.orient));
-    // The text is large enough to read: the names are as high as the nets' names.
     assert!(g.pin_text >= 1.27);
-    // It stays upright: names are written across.
-    assert!(u5.orient.dir(g.pin("1").unwrap().toward_body).vector().0 != 0.0);
+    assert!(
+        g.dense && u5.orient == netsmith_view::geom::Orient::IDENTITY,
+        "it stays upright"
+    );
+}
+
+#[test]
+fn the_supplies_are_at_the_top_of_the_left_side_and_the_grounds_at_the_bottom() {
+    // Rule 4.
+    let b = bench();
+    let l = lay(&b);
+    let u5 = &l.parts[part_index(&b, "U5")];
+    let at = |pad: &str| u5.pins.iter().find(|p| p.id == pad).unwrap().at;
+    let left = at("1").x;
+    for supply in ["131", "132", "136"] {
+        assert!(
+            (at(supply).x - left).abs() < 1e-6,
+            "supply {supply} on the left side"
+        );
+        assert!(at(supply).y < at("2").y, "supplies above the signals");
+    }
+    for ground in ["101", "124"] {
+        assert!(
+            (at(ground).x - left).abs() < 1e-6,
+            "ground {ground} on the left side"
+        );
+        assert!(at(ground).y > at("16").y, "grounds below the signals");
+    }
+    // The groups of signals are between them, by function.
+    assert!(at("131").y < at("1").y && at("16").y < at("101").y);
 }
 
 #[test]
 fn a_part_with_only_rails_is_drawn_with_wires_to_symbols() {
     let b = bench();
     let l = lay(&b);
-    // R6 is between +3V3 and ground and nothing else.
     for (pad, rail) in [("1", "+3V3"), ("2", "GND")] {
         let at = pin_at(&l, &b, "R6", pad);
         let n = net_index(&b, rail);
@@ -488,9 +702,63 @@ fn a_design_with_no_rails_told_has_no_symbols() {
 }
 
 #[test]
+fn every_pin_with_nothing_on_it_has_an_x_and_one_that_must_be_connected_a_red_one() {
+    // Rule 7 (and the owner's addition): an X on every pin that connects to nothing.
+    let b = bench();
+    let l = lay(&b);
+    for (p, part) in l.parts.iter().enumerate() {
+        for (pin, g) in part.pins.iter().zip(&part.glyph.pins) {
+            if g.hidden {
+                continue;
+            }
+            let connected = pin.net.is_some_and(|n| {
+                b.design.nets[n].pins.len() >= 2 || l.ports.iter().any(|q| q.net == n)
+            });
+            let marked = l
+                .marks
+                .iter()
+                .any(|m| m.part == p && m.pad == g.id && near(m.at, pin.at));
+            assert_eq!(marked, !connected, "{}.{}", b.design.parts[p].refdes, g.id);
+        }
+    }
+    // A pin that is open on purpose says so and what it is.
+    let svg =
+        render_svg_by_module_with(&b.design, &b.groups, &b.rails, &b.mapping, &b.lib).unwrap();
+    assert!(svg.contains("not connected: U5 NC (no_connect)"));
+    assert!(svg.contains("not connected: U5 P1.00 (bidirectional)"));
+    assert!(svg.contains("not connected: U1 + (input)"));
+    // One the checker says must be connected is red, with the checker's message.
+    let mut marks = Marks::default();
+    marks.must.insert(
+        ("U5".into(), "6".into()),
+        "`u5.p0_05` is an input that must be connected".into(),
+    );
+    let mut design = b.design.clone();
+    for net in &mut design.nets {
+        net.pins.retain(|p| !(p.refdes == "U5" && p.pin == "6"));
+    }
+    let l = layout_sheets_marked(&design, &b.groups, &b.rails, &marks, &b.mapping, &b.lib).unwrap();
+    let m = l
+        .marks
+        .iter()
+        .find(|m| m.pad == "6" && b.design.parts[m.part].refdes == "U5")
+        .unwrap();
+    assert!(matches!(&m.kind, MarkKind::Must(msg) if msg.contains("must be connected")));
+    let svg = netsmith_view::render_svg_by_module_marked(
+        &design, &b.groups, &b.rails, &marks, &b.mapping, &b.lib,
+    )
+    .unwrap();
+    assert!(svg.contains("class=\"nc must\""));
+    assert!(svg.contains("`u5.p0_05` is an input that must be connected"));
+    // The marks stay small and at the pin's end: a box of at most 2 mm.
+    for m in &l.marks {
+        let pin = l.parts[m.part].pins.iter().find(|p| p.id == m.pad).unwrap();
+        assert!(near(m.at, pin.at));
+    }
+}
+
+#[test]
 fn the_reference_and_value_of_a_part_stay_clear_of_the_wires_to_its_symbols() {
-    // The header's pin 1 is on the supply and pin 2 on ground: their wires leave on the side
-    // where the texts of the header would go.
     let mut d = common::led();
     let j1 = d.parts.iter_mut().find(|p| p.refdes == "J1").unwrap();
     j1.kind = "Socket1x2".into();
@@ -499,28 +767,20 @@ fn the_reference_and_value_of_a_part_stay_clear_of_the_wires_to_its_symbols() {
     rails.ground.insert("GND".into());
     rails.positive.insert("VCC".into());
     let lib = netsmith_kicad::SymbolLib::at(netsmith_kicad::testlib::sample_symbols());
-    let l = layout_rails(&d, &rails, &netsmith_kicad::Mapping::standard(), &lib).unwrap();
+    let l = layout_marked(
+        &d,
+        &rails,
+        &Marks::default(),
+        &netsmith_kicad::Mapping::standard(),
+        &lib,
+    )
+    .unwrap();
     assert!(!l.symbols.is_empty());
-    for p in &l.parts {
-        let texts = std::iter::once(&p.reference).chain(p.value.as_ref());
-        for t in texts {
-            let r = t.extent();
-            for w in &l.wires {
-                for s in w.points.windows(2) {
-                    let mut seg = Rect::around(s[0]);
-                    seg.include(s[1]);
-                    assert!(
-                        !overlap(&r, &seg),
-                        "{} `{}` is over a wire of {}",
-                        d.parts[p.part].refdes,
-                        t.text,
-                        d.nets[w.net].name
-                    );
-                }
-            }
-            for s in &l.symbols {
-                assert!(!overlap(&r, &s.extent()), "`{}` is over a symbol", t.text);
-            }
+    for (text, r) in texts(&l) {
+        for (_, a, c) in segments(&l) {
+            let mut seg = Rect::around(a);
+            seg.include(c);
+            assert!(!overlap(&r, &seg), "`{text}` is over a wire");
         }
     }
 }

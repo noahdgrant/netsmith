@@ -109,14 +109,81 @@ fn mcu() -> String {
     )
 }
 
+/// `Buck`: a regulator IC: supplies and enable on the left, bootstrap, switch, feedback and
+/// the good flag on the right, three grounds below.
+fn buck() -> String {
+    let left = [
+        ("power_in", "VIN1", "1", 12.7),
+        ("power_in", "VIN2", "2", 10.16),
+        ("input", "EN", "3", 7.62),
+        ("input", "RT", "4", 5.08),
+    ];
+    let right = [
+        ("passive", "BST", "13", 12.7),
+        ("power_out", "SW", "10", 10.16),
+        ("power_out", "VCC", "1A", 7.62),
+        ("input", "FB", "6", 5.08),
+        ("output", "PGOOD", "5", 2.54),
+    ];
+    let mut pins = String::new();
+    for (kind, name, number, y) in left {
+        pins += &pin(kind, -12.7, y, 0, name, number);
+    }
+    for (kind, name, number, y) in right {
+        pins += &pin(kind, 12.7, y, 180, name, number);
+    }
+    for (i, number) in ["9", "11", "3A"].iter().enumerate() {
+        pins += &pin(
+            "power_in",
+            -2.54 + 2.54 * i as f64,
+            -17.78,
+            90,
+            "GND",
+            number,
+        );
+    }
+    format!(
+        "(symbol \"Buck\" (property \"Reference\" \"U\" (at 0 15 0)) \
+         (symbol \"Buck_0_1\" (rectangle (start -10.16 15.24) (end 10.16 -15.24) \
+         (stroke (width 0.254) (type default)) (fill (type background)))) \
+         (symbol \"Buck_1_1\" {pins}))"
+    )
+}
+
+/// `L` and `Crystal`: two-terminal parts the sample libraries do not have.
+fn two_terminal(name: &str, half_width: f64) -> String {
+    format!(
+        "(symbol \"{name}\" (property \"Reference\" \"X\" (at 2 0 0)) \
+         (symbol \"{name}_0_1\" (rectangle (start -{half_width} 2.54) (end {half_width} -2.54) \
+         (stroke (width 0.254) (type default)) (fill (type none)))) \
+         (symbol \"{name}_1_1\" {} {}))",
+        pin("passive", 0.0, 3.81, 270, "~", "1"),
+        pin("passive", 0.0, -3.81, 90, "~", "2")
+    )
+}
+
 pub fn bench() -> Bench {
     let dir = TempDir::new("view-bench");
     let file = dir.path().join("bench.kicad_sym");
-    std::fs::write(&file, format!("(kicad_symbol_lib {} {})", patch(), mcu())).unwrap();
+    std::fs::write(
+        &file,
+        format!(
+            "(kicad_symbol_lib {} {} {} {} {})",
+            patch(),
+            mcu(),
+            buck(),
+            two_terminal("L", 1.0),
+            two_terminal("Crystal", 1.0)
+        ),
+    )
+    .unwrap();
     let acme = dir.path().join("acme.kicad_sym");
     std::fs::write(&acme, testlib::acme()).unwrap();
     let rows = "[[part]]\nkind = \"Patch\"\npackage = \"P\"\nsymbol = \"bench:Patch\"\nfootprint = \"bench:F\"\n\
                 [[part]]\nkind = \"Mcu\"\npackage = \"P\"\nsymbol = \"bench:Mcu\"\nfootprint = \"bench:F\"\n\
+                [[part]]\nkind = \"Buck\"\npackage = \"P\"\nsymbol = \"bench:Buck\"\nfootprint = \"bench:F\"\n\
+                [[part]]\nkind = \"Inductor\"\npackage = \"IND\"\nsymbol = \"bench:L\"\nfootprint = \"bench:F\"\n\
+                [[part]]\nkind = \"Crystal\"\npackage = \"XTAL\"\nsymbol = \"bench:Crystal\"\nfootprint = \"bench:F\"\n\
                 [[part]]\nkind = \"OpAmp\"\npackage = \"P\"\nsymbol = \"acme:Dual\"\nfootprint = \"bench:F\"\n";
     let mapping = Mapping::standard()
         .merged(Mapping::parse(rows, "kicad.toml", dir.path()).unwrap())
@@ -152,14 +219,50 @@ pub fn bench() -> Bench {
         ("D2", "Led", "LED", None),
         ("R6", "Resistor", "100k", Some("0402")),
         ("R7", "Resistor", "22k", Some("0402")),
+        // buck
+        ("U7", "Buck", "Buck1V8", Some("P")),
+        ("C6", "Capacitor", "10u", Some("0402")),
+        ("C7", "Capacitor", "100n", Some("0402")),
+        ("L1", "Inductor", "4u7", Some("IND")),
+        ("C8", "Capacitor", "22u", Some("0402")),
+        ("R8", "Resistor", "100k", Some("0402")),
+        ("R9", "Resistor", "33k", Some("0402")),
+        ("R10", "Resistor", "10k", Some("0402")),
+        ("R11", "Resistor", "10k", Some("0402")),
+        ("C9", "Capacitor", "1u", Some("0402")),
+        // the crystal of the microcontroller
+        ("Y1", "Crystal", "32k768", Some("XTAL")),
+        // modem
+        ("J10", "Header1x4", "Uart", None),
+        ("J11", "Header1x4", "Control", None),
+        ("R20", "Resistor", "10k", Some("0402")),
+        ("R21", "Resistor", "10k", Some("0402")),
+        ("R22", "Resistor", "100", Some("0402")),
+        ("R23", "Resistor", "10k", Some("0402")),
+        ("R24", "Resistor", "10k", Some("0402")),
+        ("R25", "Resistor", "1k", Some("0402")),
+        ("D3", "Led", "LED", None),
+        ("C20", "Capacitor", "10u", Some("0402")),
+        ("C21", "Capacitor", "100n", Some("0402")),
+        ("C22", "Capacitor", "100n", Some("0402")),
+        ("C23", "Capacitor", "10n", Some("0402")),
+        ("C24", "Capacitor", "10n", Some("0402")),
+        ("R26", "Resistor", "4k7", Some("0402")),
+        ("R27", "Resistor", "4k7", Some("0402")),
+        ("R28", "Resistor", "47k", Some("0402")),
+        ("R29", "Resistor", "47k", Some("0402")),
+        ("C25", "Capacitor", "10n", Some("0402")),
+        ("C26", "Capacitor", "10n", Some("0402")),
     ];
     let nets: Vec<(&str, Vec<String>)> = {
         let mut v: Vec<(&str, Vec<String>)> = Vec::new();
         let s = |l: &[&str]| l.iter().map(|x| x.to_string()).collect::<Vec<_>>();
         let mut gnd = s(&[
             "J3.2", "U4.1", "C2.2", "C3.2", "R2.2", "C1.2", "U1.4", "C4.2", "C5.2", "D1.1", "D2.1",
-            "R6.2", "R7.2", "J7.2", "J8.2",
+            "R6.2", "R7.2", "J7.2", "J8.2", "C6.2", "C8.2", "R9.2", "R10.2", "C9.2", "J11.2",
+            "C20.2", "C21.2", "C22.2", "D3.1", "C23.2", "C24.2", "C25.2", "C26.2",
         ]);
+        gnd.extend(["U7.9", "U7.11", "U7.3A"].map(String::from));
         gnd.extend((2..=10).map(|i| format!("U2.{i}")));
         gnd.extend((101..125).map(|i| format!("U5.{i}")));
         v.push(("GND", gnd));
@@ -167,7 +270,35 @@ pub fn bench() -> Bench {
         v.push(("+3V8", s(&["U4.3", "C2.1", "R1.1"])));
         let mut v33 = s(&["U4.2", "C3.1", "U1.8", "C4.1", "C5.1", "R6.1", "J8.1"]);
         v33.extend((131..137).map(|i| format!("U5.{i}")));
+        v33.extend(
+            [
+                "R11.2", "J11.1", "C20.1", "C21.1", "C22.1", "R20.2", "R23.2", "R26.2", "R27.2",
+                "R28.2", "R29.2",
+            ]
+            .map(String::from),
+        );
         v.push(("+3V3", v33));
+        v.push(("+5V_in", s(&["U7.1", "U7.2", "U7.3", "C6.1"])));
+        v.push(("+1V8", s(&["L1.2", "C8.1", "R8.1"])));
+        v.push(("net-buck.sw", s(&["U7.10", "C7.2", "L1.1"])));
+        v.push(("net-buck.bst", s(&["U7.13", "C7.1"])));
+        v.push(("net-buck.fb", s(&["U7.6", "R8.2", "R9.1"])));
+        v.push(("net-buck.rt", s(&["U7.4", "R10.1"])));
+        v.push(("net-buck.vcc", s(&["U7.1A", "C9.1"])));
+        v.push(("PGOOD", s(&["U7.5", "R11.1", "U5.6"])));
+        v.push(("net-mcu.xl1", s(&["U5.15", "Y1.1"])));
+        v.push(("net-mcu.xl2", s(&["U5.16", "Y1.2"])));
+        v.push(("M_TX", s(&["J10.1", "R20.1", "U5.7"])));
+        v.push(("M_RX", s(&["J10.2", "R21.1", "U5.8"])));
+        v.push(("net-modem.rts", s(&["J10.3", "R22.1"])));
+        v.push(("M_RTS", s(&["R22.2", "J11.4", "U5.9"])));
+        v.push(("M_CTS", s(&["J10.4", "R23.1", "U5.10"])));
+        v.push(("M_STAT", s(&["J11.3", "R25.1", "R24.1"])));
+        v.push(("net-modem.led", s(&["R25.2", "D3.2"])));
+        v.push(("net-modem.a", s(&["R26.1", "C23.1"])));
+        v.push(("net-modem.b", s(&["R27.1", "C24.1"])));
+        v.push(("net-modem.c", s(&["R28.1", "C25.1"])));
+        v.push(("net-modem.d", s(&["R29.1", "C26.1"])));
         v.push(("BATT_DIV", s(&["R1.2", "R2.1", "U1.3"])));
         v.push(("net-adc.amp", s(&["U1.1", "R3.1", "U1.2"])));
         v.push(("BATT_ADC", s(&["R3.2", "C1.1", "U5.2"])));
@@ -223,7 +354,20 @@ pub fn bench() -> Bench {
         group("gnss", "Gnss", &["U2", "J3"]),
         group("ldo", "Ldo3V3", &["U4", "C2", "C3"]),
         group("adc", "AdcMonitor", &["R1", "R2", "R3", "C1", "U1"]),
-        group("mcu", "Mcu", &["U5", "C4", "C5"]),
+        group("mcu", "Mcu", &["U5", "C4", "C5", "Y1"]),
+        group(
+            "buck",
+            "Buck1V8",
+            &["U7", "C6", "C7", "L1", "C8", "R8", "R9", "R10", "R11", "C9"],
+        ),
+        group(
+            "modem",
+            "Modem",
+            &[
+                "J10", "J11", "R20", "R21", "R22", "R23", "R24", "R25", "D3", "C20", "C21", "C22",
+                "C23", "C24", "R26", "R27", "R28", "R29", "C25", "C26",
+            ],
+        ),
         group(
             "io",
             "Indicators",
@@ -234,6 +378,8 @@ pub fn bench() -> Bench {
     rails.ground.insert("GND".into());
     rails.positive.insert("+3V8".into());
     rails.positive.insert("+3V3".into());
+    rails.positive.insert("+5V_in".into());
+    rails.positive.insert("+1V8".into());
     Bench {
         dir,
         design,
