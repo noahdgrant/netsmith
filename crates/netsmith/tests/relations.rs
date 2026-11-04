@@ -189,3 +189,175 @@ fn with_constraints_warn_an_unmet_relation_is_a_warning_in_the_notes() {
         made[0].notes
     );
 }
+
+/// Place `physical` (no routing) and give the board.
+fn placed(physical: &str) -> Result<netsmith_pcb::Board, String> {
+    let loader = Loader::std().with_physical("widget.nsm", "widget.physical.nsm", physical);
+    let libs = Libraries::standard();
+    let built = netsmith::build_with("widget.nsm", BOARD, &loader, &Catalogs::jlcpcb(), &libs)
+        .unwrap_or_else(|e| panic!("{e}"));
+    let design = &built[0].design;
+    netsmith_pcb::Board::from_design_placed(
+        design,
+        &libs.mapping,
+        &libs.footprints,
+        &netsmith_pcb::place_options(design, None),
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// The centre of the body of the part at `path`, on the sheet.
+fn centre(board: &netsmith_pcb::Board, path: &str) -> (f64, f64) {
+    let part = board
+        .parts
+        .iter()
+        .find(|p| p.path == path)
+        .unwrap_or_else(|| panic!("no part {path}"));
+    let c = part.body().centre();
+    (c.x - board.outline.min.x, c.y - board.outline.min.y)
+}
+
+/// The parts of `BOARD` with a case outline of the given size.
+fn physical_with(body: &str) -> String {
+    format!(
+        "import std::pcb::Outline
+
+physical for Widget {{
+    case {{
+        .outline: Outline {{
+            .width &= 60mm
+            .height &= 50mm
+        }}
+    }}
+{body}}}
+"
+    )
+}
+
+#[test]
+fn a_relation_across_modules_with_bodies_off_the_grid_holds_exactly() {
+    if !have_libraries() {
+        return;
+    }
+    // The socket row and the antenna header have bodies whose centres are not a multiple of
+    // the placer's 0.05 mm grid from their origins: the pair is put off the grid to line up.
+    let board = placed(&physical_with(
+        "    .gnss.antenna.place.y == .radio.row_a.place.y\n    .radio.row_b.place.x - .radio.row_a.place.x == 17.5mm +/- 0.05mm\n",
+    ))
+    .unwrap_or_else(|e| panic!("{e}"));
+    let (a, b, h) = (
+        centre(&board, "radio.row_a"),
+        centre(&board, "radio.row_b"),
+        centre(&board, "gnss.antenna"),
+    );
+    assert!(
+        (h.1 - a.1).abs() <= 1e-4,
+        "the antenna's centre is {} mm from the row's along y",
+        h.1 - a.1
+    );
+    assert!(
+        ((b.0 - a.0) - 17.5).abs() <= 0.05 + 1e-4,
+        "the rows are {} mm apart",
+        b.0 - a.0
+    );
+    assert_eq!(board.check_placement(), vec![]);
+}
+
+#[test]
+fn a_chain_of_relations_holds_in_every_link() {
+    if !have_libraries() {
+        return;
+    }
+    let board = placed(&physical_with(
+        "    .radio.row_b.place.x - .radio.row_a.place.x == 20mm +/- 0.01mm\n    .gnss.antenna.place.x - .radio.row_b.place.x == 12mm +/- 0.01mm\n    .gnss.coax.place.y == .gnss.antenna.place.y\n",
+    ))
+    .unwrap_or_else(|e| panic!("{e}"));
+    let c = |p: &str| centre(&board, p);
+    assert!(((c("radio.row_b").0 - c("radio.row_a").0) - 20.0).abs() <= 0.01 + 1e-4);
+    assert!(((c("gnss.antenna").0 - c("radio.row_b").0) - 12.0).abs() <= 0.01 + 1e-4);
+    assert!((c("gnss.coax").1 - c("gnss.antenna").1).abs() <= 1e-4);
+    assert_eq!(board.check_placement(), vec![]);
+}
+
+#[test]
+fn a_part_pinned_by_its_requirements_is_where_the_other_follows_it() {
+    if !have_libraries() {
+        return;
+    }
+    let board = placed(&physical_with(
+        "    .radio.row_a.place.x &= 10mm\n    .radio.row_a.place.y &= 25mm\n    .radio.row_a.place.rotation &= 0\n    .radio.row_b.place.x - .radio.row_a.place.x == 17.5mm +/- 0.05mm\n",
+    ))
+    .unwrap_or_else(|e| panic!("{e}"));
+    let (a, b) = (centre(&board, "radio.row_a"), centre(&board, "radio.row_b"));
+    assert!(
+        (a.0 - 10.0).abs() <= 1e-4 && (a.1 - 25.0).abs() <= 1e-4,
+        "{a:?}"
+    );
+    assert!(((b.0 - a.0) - 17.5).abs() <= 0.05 + 1e-4, "{b:?}");
+}
+
+#[test]
+fn the_same_inputs_give_the_same_board_for_relations_too() {
+    if !have_libraries() {
+        return;
+    }
+    let body = "    .gnss.antenna.place.y == .radio.row_a.place.y\n    .radio.row_b.place.x - .radio.row_a.place.x == 17.5mm +/- 0.05mm\n";
+    let at = |board: &netsmith_pcb::Board| -> Vec<(String, f64, f64, f64)> {
+        board
+            .parts
+            .iter()
+            .map(|p| (p.refdes.clone(), p.at.x, p.at.y, p.rotation))
+            .collect()
+    };
+    let first = at(&placed(&physical_with(body)).unwrap());
+    let second = at(&placed(&physical_with(body)).unwrap());
+    assert_eq!(first, second);
+}
+
+#[test]
+fn two_values_that_break_a_relation_are_an_error_with_the_numbers_before_any_placing() {
+    if !have_libraries() {
+        return;
+    }
+    let loader = Loader::std().with_physical(
+        "widget.nsm",
+        "widget.physical.nsm",
+        &physical_with(
+            "    .radio.row_a.place.x &= 10mm\n    .radio.row_b.place.x &= 26mm\n    .radio.row_b.place.x - .radio.row_a.place.x == 17.5mm +/- 0.05mm\n",
+        ),
+    );
+    let e = netsmith::build_with(
+        "widget.nsm",
+        BOARD,
+        &loader,
+        &Catalogs::jlcpcb(),
+        &Libraries::standard(),
+    )
+    .err()
+    .expect("the rows are 16 mm apart");
+    assert!(
+        e.contains("(radio.row_b.place.x - radio.row_a.place.x) is 16mm")
+            && e.contains("17.45mm..17.55mm")
+            && e.contains("widget.physical.nsm:"),
+        "{e}"
+    );
+}
+
+#[test]
+fn a_part_whose_own_window_cannot_reach_the_relation_is_reported_with_the_numbers() {
+    if !have_libraries() {
+        return;
+    }
+    // Row A is pinned at x = 10; row B must be 17.5 mm from it, and may not pass x = 20.
+    let e = placed(&physical_with(
+        "    .radio.row_a.place.x &= 10mm\n    .radio.row_a.place.y &= 25mm\n    .radio.row_a.place.rotation &= 0\n    .radio.row_b.place.x <= 20mm\n    .radio.row_b.place.rotation &= 0\n    .radio.row_b.place.x - .radio.row_a.place.x == 17.5mm +/- 0.05mm\n",
+    ))
+    .expect_err("row B cannot be at 27.5 mm");
+    assert!(
+        e.contains("cannot be met")
+            && e.contains("J3 (`radio.row_a`) is fixed")
+            && e.contains("J4 (`radio.row_b`) cannot be where it holds")
+            && e.contains("the centre of its body must be 27.45 to 27.55 mm along x, and its requirements allow at most 20 mm"),
+        "{e}"
+    );
+}

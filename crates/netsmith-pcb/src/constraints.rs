@@ -837,17 +837,21 @@ fn offset_cannot_be_met(
                 let Some(r) = reach else { continue };
                 let off = offset(f_free, body_at(free_part, q as f64 * 90.0, side));
                 let range = if axis == 0 { r.x } else { r.y };
-                // Origins that hold the relation, against origins the requirements allow.
-                let (from, to) = (lo - off, hi - off);
-                if from <= range.1 + TOLERANCE && to >= range.0 - TOLERANCE {
+                // Where the measure must be for the relation to hold, against where the
+                // requirements let it be, in the frame of the outline.
+                let (from, to) = (lo, hi);
+                let (reach_lo, reach_hi) = (range.0 + off, range.1 + off);
+                if from <= reach_hi + TOLERANCE && to >= reach_lo - TOLERANCE {
                     return None;
                 }
+                let origin = if axis == 0 { ORIGIN.x } else { ORIGIN.y };
                 allowed.push(format!(
-                    "turned {} degrees its origin must be {} mm along {}, and its requirements allow {}",
+                    "turned {} degrees {} of its body must be {} mm along {}, and its requirements allow {}",
                     number(q as f64 * 90.0),
-                    range_text(from, to, "").trim_end(),
+                    what(f_free),
+                    range_text(from - origin, to - origin, "").trim_end(),
                     if axis == 0 { "x" } else { "y" },
-                    range_text(range.0, range.1, "mm")
+                    range_text(reach_lo - origin, reach_hi - origin, "mm")
                 ));
             }
             (!allowed.is_empty()).then(|| {
