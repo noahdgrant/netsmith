@@ -136,7 +136,10 @@ fn fab_refuses_each_unresolved_generic_part_by_name() {
     .map(|_| ())
     .unwrap_err();
     for refdes in ["C1", "L1", "D1"] {
-        assert!(e.contains(&format!("{refdes}: unresolved")), "{refdes}: {e}");
+        assert!(
+            e.contains(&format!("{refdes}: unresolved")),
+            "{refdes}: {e}"
+        );
     }
     assert!(e.contains("DC-bias curve"), "{e}");
 }
@@ -148,7 +151,11 @@ fn each_alternative_is_checked_again_and_the_message_says_which_pass() {
     // check; the 2.2 uH row saturates at 3.6 A and passes.
     let root = TempDir::new("generic-parts-recheck");
     fs::create_dir_all(root.join("src")).unwrap();
-    fs::write(root.join("netsmith.toml"), "[project]\nname = \"saturates\"\n").unwrap();
+    fs::write(
+        root.join("netsmith.toml"),
+        "[project]\nname = \"saturates\"\n",
+    )
+    .unwrap();
     fs::write(
         root.join("src/main.nsm"),
         r#"import std::parts::passive::Inductor
@@ -183,5 +190,8 @@ board Saturates {
         "{why}"
     );
     // The advice still ends the message.
-    assert!(why.ends_with("checks every relation again with it."), "{why}");
+    assert!(
+        why.ends_with("checks every relation again with it."),
+        "{why}"
+    );
 }

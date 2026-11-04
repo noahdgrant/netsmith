@@ -223,9 +223,7 @@ C900301,ZZ-RED,Red 0603,ZZ-RED,RED,1.8V..2.2V,0603,Basic,https://example.invalid
 C900302,ZZ-GRN,Green 0603,ZZ-GRN,GREEN,2.0V..2.4V,0603,Extended,https://example.invalid/b\n";
 
 fn led_board(extra: &str) -> String {
-    format!(
-        "import std::parts::passive::Led\nboard B {{\n    .led: Led {{\n{extra}    }}\n}}\n"
-    )
+    format!("import std::parts::passive::Led\nboard B {{\n    .led: Led {{\n{extra}    }}\n}}\n")
 }
 
 #[test]
@@ -300,7 +298,10 @@ fn a_generic_led_resolves_to_a_row_of_the_colour_inside_the_stated_range() {
         "{e}"
     );
     // The same colour comes first among the rows offered instead.
-    assert!(e.contains("Nearest in the catalog: Green 0603 (Extended), Red 0603 (Basic)."), "{e}");
+    assert!(
+        e.contains("Nearest in the catalog: Green 0603 (Extended), Red 0603 (Basic)."),
+        "{e}"
+    );
 }
 
 #[test]

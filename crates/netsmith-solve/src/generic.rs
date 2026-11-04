@@ -430,7 +430,12 @@ pub fn candidates(
 ) -> Option<Vec<Candidate>> {
     let known: &[&str] = match catalog {
         "resistor" => &["resistance", "max_power", "package"],
-        "capacitor" => &["capacitance", "effective_capacitance", "max_voltage", "package"],
+        "capacitor" => &[
+            "capacitance",
+            "effective_capacitance",
+            "max_voltage",
+            "package",
+        ],
         "inductor" => &[
             "inductance",
             "saturation_current",
@@ -440,7 +445,10 @@ pub fn candidates(
         "led" => &["color", "forward_voltage", "package"],
         _ => return None,
     };
-    if !columns.iter().all(|(name, _)| known.contains(&name.as_str())) {
+    if !columns
+        .iter()
+        .all(|(name, _)| known.contains(&name.as_str()))
+    {
         return None;
     }
     let value_column = match catalog {
@@ -973,7 +981,11 @@ pub fn nearest(generic: &Generic, rows: &[&Candidate], fits: &[&Candidate]) -> V
                 (Some(v), Some(n)) => {
                     format!("{} ({:+.1}%{library})", c.name, (v - n) / n * 100.0)
                 }
-                _ => format!("{}{}", c.name, c.library.map(|l| format!(" ({l})")).unwrap_or_default()),
+                _ => format!(
+                    "{}{}",
+                    c.name,
+                    c.library.map(|l| format!(" ({l})")).unwrap_or_default()
+                ),
             };
             Alternative {
                 name: c.name.clone(),

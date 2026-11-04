@@ -33,8 +33,8 @@ use netsmith_lang::ast::CmpOp;
 use netsmith_quantity::{Dimension, Quantity};
 
 use crate::catalog::{Candidate, Catalog, Catalogs, Derating, DeratingError, Library, Value};
-use crate::generic::{Need, Sense};
 use crate::eval::{EvalError, Val, eval, fields_in};
+use crate::generic::{Need, Sense};
 
 /// The result of solving one board.
 #[derive(Debug)]
@@ -1886,11 +1886,10 @@ impl Solver<'_> {
                     _ => None,
                 })
                 .collect();
-            let generic = job
-                .catalog
-                .candidates
-                .iter()
-                .any(|c| c.generic.is_some() && matches!(c.column(key), Some(Value::Derated(_))));
+            let generic =
+                job.catalog.candidates.iter().any(|c| {
+                    c.generic.is_some() && matches!(c.column(key), Some(Value::Derated(_)))
+                });
             if (derated.is_empty() && !generic) || !self.asked(*f) {
                 continue;
             }

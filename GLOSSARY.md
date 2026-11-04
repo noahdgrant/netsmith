@@ -245,7 +245,7 @@ A source of price and stock for a part number, behind one trait: given an LCSC o
 _Avoid_: Supplier feed, price list (a file provider reads one)
 
 **Generic part**:
-A passive the solver chooses by value alone: an E-series value with a tolerance, package and power rating, and no supplier or part number. A separate step resolves it to a catalog row (JLCPCB Basic first), or reports it unresolved with the nearest alternatives (ADR 0047, provisional).
+A passive or LED the solver chooses by value alone: a resistor, a ceramic capacitor, an inductor or an LED with no supplier or part number. A rating it cannot know (a capacitor's rated voltage, an inductor's saturation current and DC resistance, an LED's forward voltage) is taken from what the design states or demands. A separate step resolves it to a catalog row (JLCPCB Basic first; a capacitor only to a row with a recorded DC-bias curve), or reports it unresolved with the nearest alternatives and whether the checks pass with each (ADR 0047, provisional).
 _Avoid_: Virtual part, ideal part
 
 **Bias**:
