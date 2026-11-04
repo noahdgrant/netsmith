@@ -171,6 +171,10 @@ pub struct Ended {
     /// The relations between two parts that do not hold, each as a sentence with the numbers
     /// (ADR 0045, section 3).
     pub relations: Vec<String>,
+    /// How many times the placer tried before it gave up: the first run, then runs from the
+    /// same start with a large part put in a corner first and with seeds derived from the
+    /// given one (B2 and B5, PROVISIONAL). The rest of this is the closest run's.
+    pub tries: usize,
 }
 
 impl Ended {

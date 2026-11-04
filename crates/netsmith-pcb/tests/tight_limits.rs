@@ -98,7 +98,7 @@ impl Spec {
 pub struct Lcg(pub u64);
 
 impl Lcg {
-    pub fn next(&mut self) -> u64 {
+    pub fn draw(&mut self) -> u64 {
         self.0 = self
             .0
             .wrapping_mul(6364136223846793005)
@@ -107,29 +107,27 @@ impl Lcg {
     }
 }
 
-/// The nets of a board: every part with two pads is joined to two others, chosen from the
+/// The nets of a board: the second pad of every part is joined to the first pad of another, chosen from the
 /// generator, so that the placer has wires to pull on.
 pub fn nets_for(parts: &[Spec], seed: u64) -> Vec<Net> {
     let smd: Vec<&Spec> = parts.iter().filter(|p| !p.hole).collect();
     let mut rng = Lcg(seed.wrapping_mul(0x9E37_79B9) ^ 0x5151);
     let mut nets = Vec::new();
     for (i, p) in smd.iter().enumerate() {
-        for pad in ["2"] {
-            let q = smd[(i + 1 + rng.next() as usize % (smd.len() - 1)) % smd.len()];
-            nets.push(Net {
-                name: format!("N{}", nets.len()),
-                pins: vec![
-                    PinRef {
-                        refdes: p.refdes.clone(),
-                        pin: pad.into(),
-                    },
-                    PinRef {
-                        refdes: q.refdes.clone(),
-                        pin: "1".into(),
-                    },
-                ],
-            });
-        }
+        let q = smd[(i + 1 + rng.draw() as usize % (smd.len() - 1)) % smd.len()];
+        nets.push(Net {
+            name: format!("N{}", nets.len()),
+            pins: vec![
+                PinRef {
+                    refdes: p.refdes.clone(),
+                    pin: "2".into(),
+                },
+                PinRef {
+                    refdes: q.refdes.clone(),
+                    pin: "1".into(),
+                },
+            ],
+        });
     }
     // A pad is on one net only.
     let mut seen = std::collections::BTreeSet::new();
@@ -357,8 +355,8 @@ fn crowd(seed: u64, count: usize, turn: f64) -> Result<Board, BoardError> {
     }];
     let mut rng = Lcg(seed ^ 0xABCD);
     for i in 1..=count {
-        let w = 4.0 + (rng.next() % 3) as f64; // 4, 5 or 6
-        let h = 3.0 + (rng.next() % 2) as f64; // 3 or 4
+        let w = 4.0 + (rng.draw() % 3) as f64; // 4, 5 or 6
+        let h = 3.0 + (rng.draw() % 2) as f64; // 3 or 4
         parts.push(Spec::new(&format!("R{i}"), w, h));
     }
     board(
@@ -394,8 +392,8 @@ fn packed(seed: u64, count: usize) -> Result<Board, BoardError> {
     let mut rng = Lcg(seed ^ 0x1234);
     let parts: Vec<Spec> = (1..=count)
         .map(|i| {
-            let w = 4.0 + (rng.next() % 3) as f64;
-            let h = 3.0 + (rng.next() % 2) as f64;
+            let w = 4.0 + (rng.draw() % 3) as f64;
+            let h = 3.0 + (rng.draw() % 2) as f64;
             Spec::new(&format!("R{i}"), w, h)
         })
         .collect();

@@ -171,10 +171,6 @@ pub struct DoesNotFit {
     /// by `Board::from_design_placed`, which knows the design; `None` before, and for a
     /// design that states no requirement.
     pub requirements: Option<Box<crate::explain::RequirementReport>>,
-    /// How many times the placer tried before it gave up: the first run, then runs from the
-    /// same start with a large part put in a corner first and with seeds derived from the
-    /// given one (B2 and B5, PROVISIONAL). The state above is that of the closest.
-    pub tries: usize,
 }
 
 /// One part's place and state at the end of a placement that did not fit.
@@ -294,12 +290,12 @@ impl DoesNotFit {
 impl DoesNotFit {
     /// How many tries were made, when there was more than one.
     fn write_tries(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.tries > 1 {
+        let tries = self.ended.as_ref().map_or(0, |e| e.tries);
+        if tries > 1 {
             write!(
                 f,
-                "\n  the placer made {} tries (the first, then {} more from other seeds derived from the given one, one of them with the largest parts put in corners first); this is the closest",
-                self.tries,
-                self.tries - 1
+                "\n  the placer made {tries} tries (the first, then {} more from other seeds derived from the given one, one of them with the largest parts put in corners first); this is the closest",
+                tries - 1
             )?;
         }
         Ok(())
@@ -1000,8 +996,10 @@ pub(crate) fn arrange_best(
             context,
             &fixed,
             &arrangement,
-            true,
-            false,
+            Stage {
+                rows_fit: true,
+                retries: false,
+            },
         );
     };
     let fits = |a: &Arrangement| a.needs.0 <= fit.0 + 1e-9 && a.needs.1 <= fit.1 + 1e-9;
@@ -1013,8 +1011,10 @@ pub(crate) fn arrange_best(
             context,
             &fixed,
             &arrangement,
-            true,
-            false,
+            Stage {
+                rows_fit: true,
+                retries: false,
+            },
         );
     }
     // The rows are too big. The annealer may still place the parts in the size, on the faces
@@ -1044,8 +1044,10 @@ pub(crate) fn arrange_best(
             context,
             &fixed,
             &arrangement,
-            false,
-            movable.is_empty(),
+            Stage {
+                rows_fit: false,
+                retries: movable.is_empty(),
+            },
         ) {
             Ok(outline) => return Ok(outline),
             Err(e) => Some(e),
@@ -1091,8 +1093,10 @@ pub(crate) fn arrange_best(
         context,
         &fixed,
         &arrangement,
-        rows_fit,
-        true,
+        Stage {
+            rows_fit,
+            retries: true,
+        },
     )
 }
 
@@ -1490,6 +1494,15 @@ fn retry(
     (best, tries)
 }
 
+/// What `refine` is told of the try it is.
+#[derive(Clone, Copy)]
+struct Stage {
+    /// Whether the rows fit the size.
+    rows_fit: bool,
+    /// Whether a run that ends short is tried again (B5, PROVISIONAL).
+    retries: bool,
+}
+
 /// Anneal the parts that are not fixed inside the outline the rows made, and fit the
 /// outline to the result if the board was not given a size. Falls back to the rows if the
 /// annealer cannot place every part clear of the others and the rows fit; if they do not
@@ -1502,9 +1515,9 @@ fn refine(
     context: &Context,
     fixed: &[bool],
     rows: &Arrangement,
-    rows_fit: bool,
-    retries: bool,
+    stage: Stage,
 ) -> Result<Rect, DoesNotFit> {
+    let Stage { rows_fit, retries } = stage;
     let rows_at = snapshot(parts);
     let mut region = rows.outline;
     if let Some(size) = options.fit {
@@ -1574,6 +1587,7 @@ fn refine(
     {
         (outcome, tries) = retry(parts, &problem, &rows_at, outcome, options);
     }
+    outcome.ended.tries = tries;
     if !outcome.feasible {
         if let (Some(fit), false) = (options.fit, rows_fit) {
             let room = inside(fit, options);
@@ -1594,7 +1608,6 @@ fn refine(
                 parts: part_states(parts, fixed, &outcome.ended).into_boxed_slice(),
                 requirements: None,
                 ended: Some(Box::new(outcome.ended)),
-                tries,
             });
         }
         restore(parts, rows_at);
@@ -1881,6 +1894,7 @@ mod tests {
             needs: (30.0, 40.0),
             outline: (35.0, 60.0),
             ended: Some(Box::new(Ended {
+                tries,
                 outside: 1,
                 outside_parts: vec![anneal::OutsideAt {
                     part: "U1".into(),
@@ -1894,7 +1908,6 @@ mod tests {
             area: (100.0, 3000.0),
             parts: Box::default(),
             requirements: None,
-            tries,
         }
     }
 
