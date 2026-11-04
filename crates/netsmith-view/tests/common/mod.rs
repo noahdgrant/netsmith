@@ -3,6 +3,8 @@
 
 #![allow(dead_code)]
 
+pub mod bench;
+
 use netsmith_core::{Design, Net, Part, PinRef};
 
 pub fn design(

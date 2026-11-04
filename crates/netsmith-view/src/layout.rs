@@ -779,8 +779,18 @@ fn best_orientation(ctx: &Ctx, p: usize, column_of: &[usize]) -> Orient {
         .collect();
     let mean_y = connected.iter().map(|(pin, _)| pin.at.1).sum::<f64>() / connected.len() as f64;
 
-    let mut best = (f64::NEG_INFINITY, Orient::IDENTITY);
-    for orient in Orient::ALL {
+    // Turns that write two names over each other are out, unless every turn does.
+    let readable: Vec<Orient> = Orient::ALL
+        .into_iter()
+        .filter(|&o| !glyph.texts_collide(o))
+        .collect();
+    let candidates = if readable.is_empty() {
+        Orient::ALL.to_vec()
+    } else {
+        readable
+    };
+    let mut best = (f64::NEG_INFINITY, candidates[0]);
+    for orient in candidates {
         let mut score = 0.0;
         for (pin, n) in &connected {
             let escape = orient.dir((-pin.toward_body.0, -pin.toward_body.1));
@@ -2049,5 +2059,34 @@ fn lies_inside(p: Pt, a: Pt, b: Pt) -> bool {
         (p.y - a.y).abs() < EPS && p.x > a.x.min(b.x) + EPS && p.x < a.x.max(b.x) - EPS
     } else {
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_turned_to_read_upward_covers_a_box_above_its_start() {
+        let t = Text::new("ABCDE", Pt::new(10.0, 20.0), Anchor::Start).turned();
+        let r = t.extent();
+        let width = text_width("ABCDE");
+        assert!((r.max.y - 20.0).abs() < 1e-9 && (r.min.y - (20.0 - width)).abs() < 1e-9);
+        assert!(r.min.x < 10.0 && r.max.x > 10.0 && r.max.x < 10.0 + TEXT_SIZE);
+        // Anchored at its end it reaches below its point.
+        let r = Text::new("ABCDE", Pt::new(10.0, 20.0), Anchor::End)
+            .turned()
+            .extent();
+        assert!((r.min.y - 20.0).abs() < 1e-9 && (r.max.y - (20.0 + width)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_long_name_is_cut_with_an_ellipsis_and_a_short_one_is_not() {
+        assert_eq!(ellipsize("GND"), "GND");
+        let exact = "x".repeat(MAX_LABEL_CHARS);
+        assert_eq!(ellipsize(&exact), exact);
+        let cut = ellipsize(&"y".repeat(MAX_LABEL_CHARS + 5));
+        assert_eq!(cut.chars().count(), MAX_LABEL_CHARS);
+        assert!(cut.ends_with('…'));
     }
 }
