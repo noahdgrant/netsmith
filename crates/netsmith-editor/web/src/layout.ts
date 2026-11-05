@@ -6,13 +6,13 @@ export type Section = 'schematic' | 'power' | 'system' | 'bom' | 'pcb' | 'build'
 
 /** The sections in the order of the tab strip. Their number keys are their places in it. */
 export const SECTIONS: { id: Section; label: string }[] = [
+  { id: 'source', label: 'Source' },
   { id: 'schematic', label: 'Schematic' },
   { id: 'power', label: 'Power tree' },
   { id: 'system', label: 'System' },
   { id: 'bom', label: 'BOM' },
   { id: 'pcb', label: 'PCB' },
   { id: 'build', label: 'Build' },
-  { id: 'source', label: 'Source' },
 ];
 
 const IDS = SECTIONS.map((s) => s.id);
@@ -24,6 +24,10 @@ export interface Layout {
   split: number;
   /** The pane that last had the pointer or the keys. */
   focus: number;
+  /** Whether the person made the split (Split right, Ctrl+\, dragging a tab or the divider). A
+   * split they did not make, one saved before this was kept, is not one a click-through opens
+   * things in: it changes the pane that was clicked, as with one pane. */
+  chosen: boolean;
 }
 
 /** A pane is never narrower than this many pixels. */
@@ -31,7 +35,7 @@ export const MIN_PANE = 380;
 /** Below this window width, a saved split is not shown: one pane at a time. */
 export const WIDE = 1400;
 
-export const defaultLayout: Layout = { panes: ['schematic'], split: 0.5, focus: 0 };
+export const defaultLayout: Layout = { panes: ['schematic'], split: 0.5, focus: 0, chosen: false };
 
 export const isSection = (x: unknown): x is Section => typeof x === 'string' && (IDS as string[]).includes(x);
 
@@ -44,7 +48,7 @@ export function parseLayout(raw: unknown): Layout {
   if (distinct.length === 0) return defaultLayout;
   const split = typeof r.split === 'number' && Number.isFinite(r.split) ? Math.min(Math.max(r.split, 0.1), 0.9) : 0.5;
   const focus = typeof r.focus === 'number' && r.focus >= 1 && distinct.length === 2 ? 1 : 0;
-  return { panes: distinct, split, focus };
+  return { panes: distinct, split, focus, chosen: r.chosen === true && distinct.length === 2 };
 }
 
 /** Whether a window this wide shows two panes. */
@@ -89,11 +93,11 @@ export function show(l: Layout, section: Section, index = l.focus): Layout {
  * other side (a partner replaces it when it was `section` itself). With two, `section` goes into
  * the pane on that side. */
 export function splitWith(l: Layout, section: Section, side: 'left' | 'right'): Layout {
-  if (l.panes.length === 2) return show(l, section, side === 'right' ? 1 : 0);
+  if (l.panes.length === 2) return { ...show(l, section, side === 'right' ? 1 : 0), chosen: true };
   const old = l.panes[0] === section ? companion(section) : l.panes[0];
   return side === 'right'
-    ? { panes: [old, section], split: 0.5, focus: 1 }
-    : { panes: [section, old], split: 0.5, focus: 0 };
+    ? { panes: [old, section], split: 0.5, focus: 1, chosen: true }
+    : { panes: [section, old], split: 0.5, focus: 0, chosen: true };
 }
 
 /** The partner pane for a "Split right" with no section given: the partner of what is shown. */
@@ -106,7 +110,7 @@ export function splitRight(l: Layout): Layout {
 export function closePane(l: Layout, index: number): Layout {
   if (l.panes.length < 2) return l;
   const keep = l.panes[index === 0 ? 1 : 0];
-  return { panes: [keep], split: 0.5, focus: 0 };
+  return { panes: [keep], split: 0.5, focus: 0, chosen: false };
 }
 
 /** Where `section` is on screen, if it is. */
@@ -120,17 +124,20 @@ export interface Opened {
   layout: Layout;
   /** What the pane showed before and where, so Back can put it back; null when nothing changed. */
   back: { pane: number; section: Section } | null;
+  /** Whether it went into the pane the click was not in: a second pane the person may not expect. */
+  other: boolean;
 }
 
 /** Click-through: show `section` (the source, say) for a click made in pane `from`. If it is on
- * screen already, only focus moves. With two panes it opens in the other pane; with one it
- * replaces what is shown. */
+ * screen already, only focus moves. Otherwise it replaces what the pane that was clicked shows,
+ * and Back returns; only in a split the person made does it open in the other pane. */
 export function openFrom(l: Layout, width: number, section: Section, from: number): Opened {
   const shown = whereShown(l, width, section);
-  if (shown !== null) return { layout: { ...l, focus: shown }, back: null };
+  if (shown !== null) return { layout: { ...l, focus: shown }, back: null, other: false };
   const vis = visiblePanes(l, width);
-  const target = vis.length === 2 ? (vis.find((p) => p.index !== from) ?? vis[0]).index : vis[0].index;
-  return { layout: show(l, section, target), back: { pane: target, section: l.panes[target] } };
+  const clicked = (vis.find((p) => p.index === from) ?? vis[0]).index;
+  const target = vis.length === 2 && l.chosen ? (vis.find((p) => p.index !== from) ?? vis[0]).index : clicked;
+  return { layout: show(l, section, target), back: { pane: target, section: l.panes[target] }, other: vis.length === 2 && target !== clicked };
 }
 
 /** Put a section back where Back says. */
@@ -143,7 +150,7 @@ export function undoOpen(l: Layout, back: { pane: number; section: Section }): L
 export type Drop = { side: 'left' | 'right' } | { pane: number };
 
 export function dropTab(l: Layout, section: Section, drop: Drop): Layout {
-  if ('pane' in drop) return show(l, section, drop.pane);
+  if ('pane' in drop) return { ...show(l, section, drop.pane), chosen: true };
   return splitWith(l, section, drop.side);
 }
 

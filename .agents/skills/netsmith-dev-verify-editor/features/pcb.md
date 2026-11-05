@@ -2,7 +2,7 @@
 
 ## How to get to it
 
-The section "PCB" (key 5). The board is placed as soon as the tab opens (the physical file `<stem>.physical.nsm` beside the source, if there is one, is read with the board: ADR 0048; the layout file `<stem>.pcb.toml`, if there is one, is applied: ADR 0032); "Place and route" runs the router and draws the tracks. "Layers" toggles groups of the drawing.
+The section "PCB" (key 6). The board is placed as soon as the tab opens (the physical file `<stem>.physical.nsm` beside the source, if there is one, is read with the board: ADR 0048; the layout file `<stem>.pcb.toml`, if there is one, is applied: ADR 0032); "Place and route" runs the router and draws the tracks. "Layers" toggles groups of the drawing.
 
 ## Driving it
 

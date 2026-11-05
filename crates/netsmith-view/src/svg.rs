@@ -9,15 +9,18 @@ use std::fmt::Write as _;
 use netsmith_core::{Design, DesignError};
 use netsmith_kicad::{Mapping, SymbolLib};
 
-use crate::geom::{Dir, Orient, Pt};
+use crate::geom::Dir;
+use crate::geom::{Orient, Pt};
 use crate::glyph::{Fill, GlyphPin, P, Shape};
-use crate::layout::{Anchor, Layout, PlacedPart, Text, layout};
-use crate::sheets::{Group, TITLE_SIZE, layout_sheets};
+use crate::layout::{
+    Anchor, Layout, MarkKind, Marks, PinMark, PlacedPart, Port, PowerKind, PowerSymbol, Rails,
+    Text, layout, layout_rails,
+};
+use crate::sheets::{Group, TITLE_SIZE, layout_sheets, layout_sheets_marked, layout_sheets_rails};
 
 /// Wires and symbol lines are never drawn thinner than this.
 const MIN_LINE: f64 = 0.2;
 const WIRE_WIDTH: f64 = 0.25;
-const PIN_TEXT: f64 = 1.0;
 const JUNCTION_RADIUS: f64 = 0.45;
 const HIT_WIDTH: f64 = 2.0;
 
@@ -44,12 +47,17 @@ impl From<DesignError> for ViewError {
 }
 
 const STYLE: &str = "\
-.schematic{--sheet:#fbfaf3;--wire:#0a7a3c;--body:#7b2020;--fill:#fff6bd;--pin:#7b2020;--text:#1d4f5e;--net:#075c2b;--hit:#e8590c;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+.schematic{--sheet:#fbfaf3;--wire:#0a7a3c;--body:#7b2020;--fill:#fff6bd;--pin:#7b2020;--text:#1d4f5e;--net:#075c2b;--hit:#e8590c;--muted:#8a8f98;--bad:#d92d20;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
 .schematic .sheet{fill:var(--sheet)}
 .schematic .module-frame{fill:#0a7a3c0a;stroke:#6f9a86;stroke-width:1.2;stroke-dasharray:6 4;vector-effect:non-scaling-stroke}
 .schematic .module-title{fill:#2f5f4a;font-weight:700}
 .schematic .module-sheet:hover .module-frame{fill:#0a7a3c18}
-.schematic text{fill:var(--text);stroke:none}
+.schematic text{fill:var(--text);stroke:var(--sheet);stroke-width:.5;stroke-linejoin:round;paint-order:stroke}
+.schematic .nc line,.schematic .nc circle{fill:none;stroke:var(--muted);stroke-width:.25;stroke-linecap:round}
+.schematic .nc.must line,.schematic .nc.must circle{stroke:var(--bad);stroke-width:.35}
+.schematic .nc .hit{stroke:transparent;stroke-width:2.4;pointer-events:all}
+.schematic .port .flag{fill:none;stroke:var(--wire);stroke-width:.25;stroke-linejoin:round}
+.schematic .port text{stroke:none}
 .schematic .net-label{fill:var(--net);font-weight:600}
 .schematic .ref{font-weight:700}
 .schematic .pin-name,.schematic .pin-number{fill:var(--pin)}
@@ -63,7 +71,7 @@ const STYLE: &str = "\
 .schematic .f-outline{fill:var(--body)}
 .schematic .f-background{fill:var(--fill)}
 .schematic .missing .s{stroke-dasharray:1 .6}
-.schematic.has-on .wire:not(.on),.schematic.has-on .junction:not(.on),.schematic.has-on .net-label:not(.on),.schematic.has-on .part:not(.on):not(.touches){opacity:.22}
+.schematic.has-on .wire:not(.on),.schematic.has-on .power:not(.on),.schematic.has-on .port:not(.on),.schematic.has-on .junction:not(.on),.schematic.has-on .net-label:not(.on),.schematic.has-on .part:not(.on):not(.touches){opacity:.22}
 .schematic .on .line,.schematic .junction.on,.schematic .on .pin-line{stroke:var(--hit);stroke-width:.5}
 .schematic .junction.on{fill:var(--hit)}
 .schematic text.on,.schematic .on text{fill:var(--hit)}
@@ -89,6 +97,42 @@ pub fn render_svg_by_module(
     lib: &SymbolLib,
 ) -> Result<String, ViewError> {
     let l = layout_sheets(design, groups, mapping, lib)?;
+    Ok(draw(design, &l))
+}
+
+/// [`render_svg_by_module`] with the rails known: their pins get power symbols.
+pub fn render_svg_by_module_with(
+    design: &Design,
+    groups: &[Group],
+    rails: &Rails,
+    mapping: &Mapping,
+    lib: &SymbolLib,
+) -> Result<String, ViewError> {
+    let l = layout_sheets_rails(design, groups, rails, mapping, lib)?;
+    Ok(draw(design, &l))
+}
+
+/// [`render_svg_by_module_with`] with the pins that must be connected told.
+pub fn render_svg_by_module_marked(
+    design: &Design,
+    groups: &[Group],
+    rails: &Rails,
+    marks: &Marks,
+    mapping: &Mapping,
+    lib: &SymbolLib,
+) -> Result<String, ViewError> {
+    let l = layout_sheets_marked(design, groups, rails, marks, mapping, lib)?;
+    Ok(draw(design, &l))
+}
+
+/// [`render_svg`] with the rails known.
+pub fn render_svg_with(
+    design: &Design,
+    rails: &Rails,
+    mapping: &Mapping,
+    lib: &SymbolLib,
+) -> Result<String, ViewError> {
+    let l = layout_rails(design, rails, mapping, lib)?;
     Ok(draw(design, &l))
 }
 
@@ -176,19 +220,170 @@ fn draw(design: &Design, l: &Layout) -> String {
     }
     let _ = writeln!(w, "</g>");
 
+    let _ = writeln!(w, "<g class=\"power-symbols\">");
+    for symbol in &l.symbols {
+        draw_power(w, design, symbol);
+    }
+    let _ = writeln!(w, "</g>");
+
+    let _ = writeln!(w, "<g class=\"ports\">");
+    for port in &l.ports {
+        draw_port(w, design, port);
+    }
+    let _ = writeln!(w, "</g>");
+
+    let _ = writeln!(w, "<g class=\"unconnected\">");
+    for mark in &l.marks {
+        draw_mark(w, design, mark);
+    }
+    let _ = writeln!(w, "</g>");
+
     let _ = writeln!(w, "<g class=\"labels\">");
     for label in &l.labels {
-        text_element(
+        let name = &design.nets[label.net].name;
+        text_element_titled(
             w,
             &label.text,
             "net-label",
             1.27,
-            &format!(" data-net=\"{}\"", esc(&design.nets[label.net].name)),
+            &format!(" data-net=\"{}\"", esc(name)),
+            (label.text.text != *name).then_some(name.as_str()),
         );
     }
     let _ = writeln!(w, "</g>");
     let _ = writeln!(w, "</svg>");
     out
+}
+
+/// A flag where a net goes to another sheet, in the shape of KiCad's hierarchical label: it
+/// points at the wire.
+fn draw_port(w: &mut String, design: &Design, port: &Port) {
+    let name = &design.nets[port.net].name;
+    let (dx, dy) = port.dir.vector();
+    let at = |a: f64, b: f64| {
+        format!(
+            "{},{}",
+            n(port.at.x + dx * a - dy * b),
+            n(port.at.y + dy * a + dx * b)
+        )
+    };
+    let l = port.length;
+    let points = [
+        at(0.0, 0.0),
+        at(Port::HALF, -Port::HALF),
+        at(l, -Port::HALF),
+        at(l, Port::HALF),
+        at(Port::HALF, Port::HALF),
+    ]
+    .join(" ");
+    let _ = writeln!(
+        w,
+        "<g class=\"port\" data-net=\"{}\"><title>{} (goes to another sheet)</title><polygon class=\"flag\" points=\"{points}\"/>",
+        esc(name),
+        esc(name)
+    );
+    if let Some(label) = &port.label {
+        let shown = (label.text != *name).then_some(name.as_str());
+        text_element_titled(w, label, "net-label", Port::TEXT, "", shown);
+    }
+    let _ = writeln!(w, "</g>");
+}
+
+/// The X KiCad draws at a pin that connects to nothing; a pin that must be connected has a
+/// red ring as well, and the checker's message.
+fn draw_mark(w: &mut String, design: &Design, m: &PinMark) {
+    let part = &design.parts[m.part];
+    let (class, tip) = match &m.kind {
+        MarkKind::Open => (
+            "nc",
+            format!(
+                "not connected: {} {} ({})",
+                part.refdes, m.pin_name, m.pin_kind
+            ),
+        ),
+        MarkKind::Must(message) => (
+            "nc must",
+            format!("{} {}: {message}", part.refdes, m.pin_name),
+        ),
+    };
+    let (x, y) = (m.at.x, m.at.y);
+    let r = 0.7;
+    let _ = writeln!(
+        w,
+        "<g class=\"{class}\" data-unconnected=\"{}.{}\"><title>{}</title><circle class=\"hit\" cx=\"{}\" cy=\"{}\" r=\"1.2\"/><line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\"/><line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\"/>{}</g>",
+        esc(&part.refdes),
+        esc(&m.pad),
+        esc(&tip),
+        n(x),
+        n(y),
+        n(x - r),
+        n(y - r),
+        n(x + r),
+        n(y + r),
+        n(x - r),
+        n(y + r),
+        n(x + r),
+        n(y - r),
+        if matches!(m.kind, MarkKind::Must(_)) {
+            format!("<circle cx=\"{}\" cy=\"{}\" r=\"1.4\"/>", n(x), n(y))
+        } else {
+            String::new()
+        }
+    );
+}
+
+/// A power symbol in KiCad's manner: a ground is bars that shrink away from the wire, a
+/// supply is a stem with an arrow head; the name is beside it.
+fn draw_power(w: &mut String, design: &Design, s: &PowerSymbol) {
+    let name = &design.nets[s.net].name;
+    let (class, what) = match s.kind {
+        PowerKind::Ground => ("power ground", "ground"),
+        PowerKind::Supply => ("power supply", "supply"),
+    };
+    let _ = writeln!(
+        w,
+        "<g class=\"{class}\" data-net=\"{}\"><title>{} ({what})</title>",
+        esc(name),
+        esc(name)
+    );
+    let (x, y) = (s.at.x, s.at.y);
+    let dy = if s.dir == Dir::Down { 1.0 } else { -1.0 };
+    let line = |w: &mut String, points: &[(f64, f64)]| {
+        let points = points
+            .iter()
+            .map(|(px, py)| format!("{},{}", n(*px), n(*py)))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let _ = writeln!(
+            w,
+            "<polyline class=\"line\" stroke-width=\"{WIRE_WIDTH}\" points=\"{points}\"/>"
+        );
+    };
+    match s.kind {
+        PowerKind::Ground => {
+            for (k, half) in [1.5, 1.0, 0.5].into_iter().enumerate() {
+                let by = y + dy * 0.9 * k as f64;
+                line(w, &[(x - half, by), (x + half, by)]);
+            }
+        }
+        PowerKind::Supply => {
+            let tip = y + dy * 1.8;
+            line(w, &[(x, y), (x, tip)]);
+            line(
+                w,
+                &[
+                    (x - 0.9, tip - dy * 0.9),
+                    (x, tip),
+                    (x + 0.9, tip - dy * 0.9),
+                ],
+            );
+        }
+    }
+    if let Some(label) = &s.label {
+        let shown = (label.text != *name).then_some(name.as_str());
+        text_element_titled(w, label, "net-label", 1.27, "", shown);
+    }
+    let _ = writeln!(w, "</g>");
 }
 
 fn draw_part(w: &mut String, design: &Design, p: &PlacedPart) {
@@ -261,48 +456,13 @@ fn draw_pin(w: &mut String, pin: &GlyphPin, at: Pt, part: &PlacedPart, orient: &
         n(at.x),
         n(at.y)
     );
-    if part.glyph.show_numbers {
-        let mid = Pt::new((at.x + inner.x) / 2.0, (at.y + inner.y) / 2.0);
-        let t = if toward.is_vertical() {
-            Text {
-                text: pin.id.clone(),
-                at: Pt::new(mid.x - 0.4, mid.y + 0.35),
-                anchor: Anchor::End,
-            }
-        } else {
-            Text {
-                text: pin.id.clone(),
-                at: Pt::new(mid.x, mid.y - 0.4),
-                anchor: Anchor::Middle,
-            }
-        };
-        text_element(w, &t, "pin-number", PIN_TEXT, "");
+    let (number, name) = part.glyph.pin_texts(pin, at, toward);
+    let size = part.glyph.pin_text;
+    if let Some(t) = number {
+        text_element(w, &t, "pin-number", size, "");
     }
-    if part.glyph.show_names && !pin.name.is_empty() {
-        let offset = part.glyph.name_offset;
-        let t = match toward {
-            Dir::Right => Text {
-                text: pin.name.clone(),
-                at: Pt::new(inner.x + offset, inner.y + 0.35),
-                anchor: Anchor::Start,
-            },
-            Dir::Left => Text {
-                text: pin.name.clone(),
-                at: Pt::new(inner.x - offset, inner.y + 0.35),
-                anchor: Anchor::End,
-            },
-            Dir::Down => Text {
-                text: pin.name.clone(),
-                at: Pt::new(inner.x, inner.y + offset + 1.0),
-                anchor: Anchor::Middle,
-            },
-            Dir::Up => Text {
-                text: pin.name.clone(),
-                at: Pt::new(inner.x, inner.y - offset - 0.2),
-                anchor: Anchor::Middle,
-            },
-        };
-        text_element(w, &t, "pin-name", PIN_TEXT, "");
+    if let Some(t) = name {
+        text_element(w, &t, "pin-name", size, "");
     }
 }
 
@@ -385,6 +545,7 @@ fn draw_shape(w: &mut String, shape: &Shape, at: &dyn Fn(P) -> Pt) {
                 text: text.clone(),
                 at: Pt::new(p.x, p.y + size * 0.35),
                 anchor: Anchor::Middle,
+                vertical: false,
             };
             text_element(w, &t, "pin-name", *size, "");
         }
@@ -441,6 +602,18 @@ fn arc_path(start: Pt, mid: Pt, end: Pt) -> String {
 }
 
 fn text_element(w: &mut String, t: &Text, class: &str, size: f64, attrs: &str) {
+    text_element_titled(w, t, class, size, attrs, None);
+}
+
+/// Text, with `title` (the whole of a name that was cut) as its tooltip.
+fn text_element_titled(
+    w: &mut String,
+    t: &Text,
+    class: &str,
+    size: f64,
+    attrs: &str,
+    title: Option<&str>,
+) {
     let anchor = match t.anchor {
         Anchor::Start => "start",
         Anchor::Middle => "middle",
@@ -448,10 +621,19 @@ fn text_element(w: &mut String, t: &Text, class: &str, size: f64, attrs: &str) {
     };
     let _ = writeln!(
         w,
-        "<text class=\"{class}\"{attrs} font-size=\"{}\" text-anchor=\"{anchor}\" x=\"{}\" y=\"{}\">{}</text>",
+        "<text class=\"{class}\"{attrs}{} font-size=\"{}\" text-anchor=\"{anchor}\" x=\"{}\" y=\"{}\">{}{}</text>",
+        if t.vertical {
+            format!(" transform=\"rotate(-90 {} {})\"", n(t.at.x), n(t.at.y))
+        } else {
+            String::new()
+        },
         n(size),
         n(t.at.x),
         n(t.at.y),
+        title.map_or(String::new(), |full| format!(
+            "<title>{}</title>",
+            esc(full)
+        )),
         esc(&t.text)
     );
 }

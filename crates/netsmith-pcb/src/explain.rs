@@ -26,12 +26,13 @@ use std::collections::BTreeSet;
 
 use netsmith_core::{Design, PlaceField};
 
-use crate::board::{Placed, Side};
+use crate::board::{Placed, Side, outside_text};
 use crate::constraints::{
     self, Plan, Reach, TOLERANCE, axis_of, body_at, measured, miss, number, offset, quarter,
     range_text, requirements, turns_allowed, what,
 };
 use crate::geometry::{Pt, Rect};
+use crate::overhang::{Edge, Edges};
 use crate::place::{ORIGIN, PlaceOptions};
 use crate::rules::Rules;
 
@@ -94,6 +95,261 @@ impl std::fmt::Display for RequirementReport {
     }
 }
 
+/// How far a courtyard must be past an edge, in mm, to be proved past it: more than the
+/// board check's own least (a micrometre), so that a part flush with an edge is not one.
+const PAST: f64 = 1e-3;
+
+/// A fault that the requirements prove before the placer runs, about one part.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Fault {
+    /// The reference designator and the path of the part it is about.
+    pub refdes: String,
+    pub path: String,
+    /// What is wrong, as a sentence with the numbers.
+    pub text: String,
+}
+
+/// What the requirements of the physical file, the circuit and the layout file prove about
+/// where the parts can go, before the placer runs (ADR 0045 section 14, PROVISIONAL). Only
+/// what is proved is an error; what is only suspicious is a warning. The same proofs as
+/// [`RequirementReport::conflicts`], run on the windows the requirements leave and not on
+/// the places the placer ended with, so no placement is attempted.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Precheck {
+    /// Sets of lines that cannot all hold, each as [`RequirementReport::conflicts`] words it.
+    pub conflicts: Vec<String>,
+    /// Courtyards past an edge nobody stated, and parts bigger than the outline in every
+    /// turn: each about one part.
+    pub faults: Vec<Fault>,
+    /// Suspicious and not proved, each once.
+    pub warnings: Vec<String>,
+}
+
+impl Precheck {
+    /// Whether anything is proved.
+    pub fn is_error(&self) -> bool {
+        !self.conflicts.is_empty() || !self.faults.is_empty()
+    }
+
+    /// The lines that cannot both hold as warnings, for a run where constraints are warnings:
+    /// the faults about a part stay errors.
+    pub fn lines_as_warnings(mut self) -> Self {
+        let lines = std::mem::take(&mut self.conflicts);
+        let mut warned: Vec<String> = lines
+            .into_iter()
+            .map(|c| {
+                format!(
+                    "these lines cannot both hold (a warning, as constraints are warnings for this run): {c}"
+                )
+            })
+            .collect();
+        warned.append(&mut self.warnings);
+        self.warnings = warned;
+        self
+    }
+
+    /// The errors as separate messages: the block of lines that cannot both hold first (in
+    /// the words of the refusal after placing), then each fault.
+    pub fn errors(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        if !self.conflicts.is_empty() {
+            out.push(
+                RequirementReport {
+                    conflicts: self.conflicts.clone(),
+                    unmet: Vec::new(),
+                }
+                .render(""),
+            );
+        }
+        out.extend(self.faults.iter().map(|f| f.text.clone()));
+        out
+    }
+}
+
+/// Prove what can be proved of `parts` (as loaded, not placed) before placing them. `base` is
+/// what the layout file and the caller said, `plan` what the requirements decide, `outline`
+/// the board's box with `finite` false where the design leaves its far sides open and `limit`
+/// true where its size is a range (so `outline` is the most it allows).
+pub(crate) fn before_placing(
+    design: &Design,
+    parts: &[Placed],
+    base: &PlaceOptions,
+    plan: &Plan,
+    rules: &Rules,
+    outline: (Rect, bool, bool),
+) -> Precheck {
+    let (outline, finite, limit) = outline;
+    let mut options = base.clone();
+    options.wall = Some(rules.edge_wall());
+    // The layout file's locks are not proved against: a person drags a part in the editor to
+    // change its lock, and a board that a lock leaves with findings is shown with them (the
+    // placement check reports them). `constraints::plan` has already refused a lock that
+    // breaks a requirement, so the windows of the requirements still hold.
+    options.fixed.clear();
+    let cx = Context {
+        design,
+        parts,
+        options: &options,
+        plan,
+        outline,
+        wall: rules.edge_wall(),
+        finite,
+        limit,
+    };
+    let mut found = Precheck {
+        conflicts: cx.conflicts(),
+        ..Precheck::default()
+    };
+    cx.edges(&mut found);
+    // A window that has no place inside the outline is said once: by the fault when the
+    // courtyard is past an edge for every place (it names the edge and what would allow it),
+    // else by the conflict.
+    let faults = found.faults.clone();
+    found.conflicts.retain(|c| {
+        !faults.iter().any(|f| {
+            c.contains(&format!(
+                "keeps the courtyard of {} (`{}`) inside the outline",
+                f.refdes, f.path
+            ))
+        })
+    });
+    if finite {
+        cx.oversize(&mut found);
+    }
+    found
+}
+
+impl Context<'_> {
+    /// The edges the part may hang over, and how the design says so.
+    fn stated(&self, part: &Placed) -> (Edges, String) {
+        let stated = self
+            .plan
+            .overhang
+            .get(&part.refdes)
+            .or_else(|| self.options.overhang.get(&part.refdes));
+        match stated {
+            Some(s) => (s.edges(), s.by()),
+            None => (Edges::default(), String::new()),
+        }
+    }
+
+    /// Courtyards that the lines put past an edge nobody stated, wherever they put the part
+    /// (a pin, or a window that leaves no place inside). A courtyard they put inside
+    /// the board but within the margin the placer keeps clear is a conflict already
+    /// ([`Context::fits`]).
+    fn edges(&self, found: &mut Precheck) {
+        let o = self.outline;
+        for w in self.windows(false) {
+            if w.quarters.is_empty() {
+                continue;
+            }
+            let (may, by) = self.stated(w.part);
+            // How far past (or, when negative, inside) each edge the courtyard is at best,
+            // and whether the body can reach the edge in some place.
+            let mut past: Vec<(Edge, f64)> = Vec::new();
+            // The edges whose distance is only a least: the lines leave a window along the
+            // edge's axis, or the turns differ.
+            let mut inexact: Vec<Edge> = Vec::new();
+            let mut body_reaches = true;
+            for edge in Edge::ALL.into_iter().filter(|&e| !may.has(e)) {
+                let mut least = f64::INFINITY;
+                let mut most = f64::NEG_INFINITY;
+                let mut point = true;
+                let mut reaches = false;
+                for q in &w.quarters {
+                    // The courtyard's distance beyond the edge for the origin that is least
+                    // past it, and the same for the body.
+                    let (court, body) = match edge {
+                        Edge::Left => (o.min.x - (q.court.min.x + q.x.1), q.body.min.x + q.x.0),
+                        Edge::Right => ((q.court.max.x + q.x.0) - o.max.x, q.body.max.x + q.x.1),
+                        Edge::Top => (o.min.y - (q.court.min.y + q.y.1), q.body.min.y + q.y.0),
+                        Edge::Bottom => ((q.court.max.y + q.y.0) - o.max.y, q.body.max.y + q.y.1),
+                    };
+                    least = least.min(court);
+                    most = most.max(court);
+                    let window = if matches!(edge, Edge::Left | Edge::Right) {
+                        q.x
+                    } else {
+                        q.y
+                    };
+                    point &= window.0 == window.1;
+                    reaches |= match edge {
+                        Edge::Left => body <= o.min.x + TOLERANCE,
+                        Edge::Right => body >= o.max.x - TOLERANCE,
+                        Edge::Top => body <= o.min.y + TOLERANCE,
+                        Edge::Bottom => body >= o.max.y - TOLERANCE,
+                    };
+                }
+                if least > PAST {
+                    past.push((edge, least));
+                    if !point || most - least > 1e-6 {
+                        inexact.push(edge);
+                    }
+                    body_reaches &= reaches;
+                }
+            }
+            if !past.is_empty() {
+                found.faults.push(Fault {
+                    refdes: w.part.refdes.clone(),
+                    path: w.part.path.clone(),
+                    text: format!(
+                        "{}; the lines that place it: {}",
+                        outside_text(
+                            &w.part.refdes,
+                            &w.part.path,
+                            &past,
+                            &may.list(),
+                            &by,
+                            &inexact,
+                            !body_reaches
+                        ),
+                        if w.lines.is_empty() {
+                            "none".to_string()
+                        } else {
+                            w.lines.join("; ")
+                        }
+                    ),
+                });
+            }
+        }
+    }
+
+    /// Parts bigger than the outline in every turn their requirements leave them.
+    fn oversize(&self, found: &mut Precheck) {
+        let mut merged = self.options.clone();
+        merged.overhang.extend(self.plan.overhang.clone());
+        merged.fixed.extend(self.plan.fixed.clone());
+        merged.wants = self.plan.wants.clone();
+        let fit = (self.outline.width(), self.outline.height());
+        for o in crate::place::oversize_before_placing(self.parts, &merged, fit) {
+            let Some(part) = self.parts.iter().find(|p| p.refdes == o.part) else {
+                continue;
+            };
+            // A part already told to be past an edge is not told again that it is too big.
+            if found.faults.iter().any(|f| f.refdes == part.refdes) {
+                continue;
+            }
+            let wall = (self.wall * 100.0).round() / 100.0;
+            let inside = |v: f64| (v - 2.0 * self.wall).max(0.0);
+            found.faults.push(Fault {
+                refdes: part.refdes.clone(),
+                path: part.path.clone(),
+                // The words of the placer's own refusal (`DoesNotFit`), with the range's top
+                // said as such.
+                text: format!(
+                    "the outline is {}{:.1} x {:.1} mm, which leaves {:.1} x {:.1} mm for a courtyard inside its {} mm margin, and a part is bigger in every turn it may take: {o}",
+                    if self.limit { "at most " } else { "" },
+                    fit.0,
+                    fit.1,
+                    inside(fit.0),
+                    inside(fit.1),
+                    wall,
+                ),
+            });
+        }
+    }
+}
+
 /// A line of the physical file as a person reads it: `widget.physical.nsm:16 `.rf.place.right
 /// >= 59mm``. Where the design does not know the file, the requirement's own name.
 fn quote(design: &Design, source: &str, id: &str) -> String {
@@ -146,6 +402,8 @@ pub(crate) fn explain(
             plan: &plan,
             outline,
             wall: rules.edge_wall(),
+            finite: true,
+            limit: false,
         }
         .conflicts(),
         // Requirements the plan itself refuses are reported by it, before placing.
@@ -244,12 +502,14 @@ fn unmet(design: &Design, parts: &[Placed]) -> Vec<String> {
 }
 
 /// A part's courtyard and body in one turn, and where its origin may be.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Quarter {
     /// The turn, in degrees.
     angle: f64,
     court: Rect,
     body: Rect,
+    /// The boxes of its pads, with the origin at 0.
+    pads: Vec<Rect>,
     /// The range of the origin on the sheet, along x and along y; infinite where nothing
     /// bounds it.
     x: (f64, f64),
@@ -278,6 +538,12 @@ struct Context<'a> {
     plan: &'a Plan,
     outline: Rect,
     wall: f64,
+    /// Whether the outline is known on all four sides: its far sides are infinite where the
+    /// design leaves its size open, and nothing is proved against an edge that is not there.
+    finite: bool,
+    /// Whether the outline is only the most the design allows (its size is a range), so that
+    /// the real one may be smaller; what is proved against it holds for every size.
+    limit: bool,
 }
 
 /// The least overlap of two intervals `a` and `b` (each at their origin) when the origins are
@@ -358,6 +624,16 @@ impl<'a> Context<'a> {
                         .courtyard
                         .rotated_for(side == Side::Back, angle),
                     body: body_at(part, angle, side),
+                    pads: {
+                        let mut at_zero = part.clone();
+                        (at_zero.at, at_zero.rotation, at_zero.side) = (Pt::default(), angle, side);
+                        at_zero
+                            .footprint
+                            .pads
+                            .iter()
+                            .map(|p| at_zero.pad_bounds(p))
+                            .collect()
+                    },
                     x,
                     y,
                 }
@@ -463,7 +739,8 @@ impl<'a> Context<'a> {
 
     fn outline_note(&self) -> String {
         format!(
-            "; this holds only inside the outline of {} x {} mm, where the placer keeps every courtyard {} mm from the edge",
+            "; this holds only inside the outline of {}{} x {} mm, where the placer keeps every courtyard {} mm from the edge",
+            if self.limit { "up to " } else { "" },
             number(self.outline.width()),
             number(self.outline.height()),
             number((self.wall * 100.0).round() / 100.0)
@@ -474,6 +751,9 @@ impl<'a> Context<'a> {
         let mut found: Vec<String> = Vec::new();
         let mut seen: BTreeSet<String> = BTreeSet::new();
         for clip in [false, true] {
+            if clip && !self.finite {
+                continue;
+            }
             let wins = self.windows(clip);
             let note = if clip {
                 self.outline_note()
@@ -487,6 +767,7 @@ impl<'a> Context<'a> {
             self.pairs(&wins, &note, &mut seen, &mut found);
             self.areas(&wins, &note, &mut seen, &mut found);
             self.heights(&wins, &note, &mut seen, &mut found);
+            self.protrusions(&wins, &note, &mut seen, &mut found);
             if clip {
                 self.fits(&wins, &mut seen, &mut found);
             }
@@ -615,6 +896,13 @@ impl<'a> Context<'a> {
 
     /// Whether the two windows take room in the same place on a face for every turn.
     fn takes_same_room(a: &Win, b: &Win, qa: &Quarter, qb: &Quarter) -> bool {
+        // A part may stand over the other's pins when how far they protrude is stated
+        // (`crate::protrusion`): that is judged by `protrusions`, not by the courtyards.
+        if crate::protrusion::pins_under(a.part, b.part).is_some()
+            || crate::protrusion::pins_under(b.part, a.part).is_some()
+        {
+            return false;
+        }
         [Side::Front, Side::Back].into_iter().any(|face| {
             let room = |w: &Win, q: &Quarter| {
                 let mut p = w.part.clone();
@@ -801,6 +1089,116 @@ impl<'a> Context<'a> {
                     number(limit),
                     w.part.refdes,
                     number(height)
+                ));
+            }
+        }
+    }
+
+    /// A part with a stated face that lies over the pins of a through-hole part wherever its
+    /// window puts it, and that the pins' protrusion does not excuse wherever it is put: the board
+    /// house assembles it, it states no height, or the protrusions and its height are taller than
+    /// a limit on its face over all of its window (ADR 0045 section 15).
+    fn protrusions(
+        &self,
+        wins: &[Win],
+        note: &str,
+        seen: &mut BTreeSet<String>,
+        found: &mut Vec<String>,
+    ) {
+        for s in wins {
+            let Some(protrusion) = &s.part.protrusion else {
+                continue;
+            };
+            if !s.part.has_hole() || s.lines.is_empty() || s.quarters.is_empty() {
+                continue;
+            }
+            for c in wins {
+                let Some(side_line) = &c.side_line else {
+                    continue;
+                };
+                let key = format!("protrusion:{}:{}", s.part.refdes, c.part.refdes);
+                if seen.contains(&key)
+                    || c.part.refdes == s.part.refdes
+                    || c.part.has_hole()
+                    || c.lines.is_empty()
+                    || c.quarters.is_empty()
+                {
+                    continue;
+                }
+                // The cover's courtyard lies over a pad of the part for every turn and place.
+                let mut least = (f64::INFINITY, f64::INFINITY);
+                let mut all = true;
+                for qs in &s.quarters {
+                    for qc in &c.quarters {
+                        let hit = qs.pads.iter().find_map(|pad| {
+                            always_overlap(&qc.court, (qc.x, qc.y), pad, (qs.x, qs.y))
+                        });
+                        match hit {
+                            Some((dx, dy)) => least = (least.0.min(dx), least.1.min(dy)),
+                            None => all = false,
+                        }
+                    }
+                }
+                if !all {
+                    continue;
+                }
+                // Why the rule refuses it, wherever the cover is.
+                let face = if c.side == Side::Back {
+                    "bottom"
+                } else {
+                    "top"
+                };
+                let why = if !c.part.hand_fitted {
+                    Some(crate::protrusion::Refusal::HouseFitted)
+                } else if c.part.height.is_none() {
+                    Some(crate::protrusion::Refusal::NoHeight)
+                } else {
+                    let stack = protrusion.length + c.part.height.unwrap_or(0.0);
+                    self.design.features.keepouts.iter().find_map(|k| {
+                        let (Some(limit), None, Some(at)) = (k.max_height, &k.part, k.at) else {
+                            return None;
+                        };
+                        if !k.layers.iter().any(|l| l == face) || stack <= limit + HEIGHT_TOLERANCE
+                        {
+                            return None;
+                        }
+                        let min = ORIGIN + Pt::new(at.0, at.1);
+                        let zone = Rect::new(min, Pt::new(min.x + k.size.0, min.y + k.size.1));
+                        c.quarters
+                            .iter()
+                            .all(|q| {
+                                always_overlap(&q.body, (q.x, q.y), &zone, ((0.0, 0.0), (0.0, 0.0)))
+                                    .is_some()
+                            })
+                            .then(|| crate::protrusion::Refusal::TooTall {
+                                stack,
+                                limit,
+                                zone: k.name.clone(),
+                            })
+                    })
+                };
+                let Some(why) = why else { continue };
+                seen.insert(key);
+                let mut lines = s.lines.clone();
+                lines.extend(c.lines.iter().cloned());
+                lines.push(side_line.clone());
+                if !protrusion.source.is_empty() {
+                    lines.push(quote(
+                        self.design,
+                        &protrusion.source,
+                        &format!("{}.pin_protrusion", s.part.path),
+                    ));
+                }
+                found.push(format!(
+                    "{}: they keep the courtyard of {} within {} mm, over a pad of {} (pins protruding {} mm) by at least {} x {} mm wherever it is put, and the protrusion does not excuse that: {}{note}",
+                    dedupe(lines).join("; "),
+                    Self::name(c),
+                    Self::span(c, false),
+                    Self::name(s),
+                    number(protrusion.length),
+                    number(least.0),
+                    number(least.1),
+                    why.because(protrusion.length, &c.part.refdes, &c.part.path, c.side)
                 ));
             }
         }

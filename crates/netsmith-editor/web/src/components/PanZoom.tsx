@@ -24,6 +24,14 @@ export function PanZoom(props: {
   primaryPans?: boolean;
   /** Told the zoom (canvas pixels to screen pixels) whenever it changes. */
   onView?: (k: number) => void;
+  /** Told the whole view whenever it or the box changes: the zoom, where the canvas is, and the
+   * box's size in screen pixels. A minimap draws from it. */
+  onViewport?: (v: { k: number; x: number; y: number; w: number; h: number }) => void;
+  /** A box of the canvas (its pixels) to bring into view when `seq` changes: the view moves no
+   * more than it must, and the zoom stays. */
+  reveal?: { x: number; y: number; w: number; h: number; seq: number };
+  /** A point of the canvas (its pixels) to put in the middle of the box when `seq` changes. */
+  centre?: { x: number; y: number; seq: number };
   /** The part of the canvas that "fit" shows (canvas pixels); the whole canvas when absent. */
   fitBox?: { x: number; y: number; w: number; h: number };
   /** Where the view is remembered for the session: coming back to this key shows the zoom and
@@ -31,6 +39,8 @@ export function PanZoom(props: {
   memoKey?: string;
   /** Whether the keys F and 0 (fit), + and - (zoom) work while the canvas has the focus. */
   keys?: boolean;
+  /** Whether the zoom bar has a button for actual size (one canvas pixel to one screen pixel). */
+  actualSize?: boolean;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>({ k: 1, x: 0, y: 0 });
@@ -40,6 +50,10 @@ export function PanZoom(props: {
   latest.current = view;
   const primary = props.primaryPans !== false;
   useEffect(() => props.onView?.(view.k), [view.k]);
+  useEffect(() => {
+    const el = box.current;
+    if (el) props.onViewport?.({ k: view.k, x: view.x, y: view.y, w: el.clientWidth, h: el.clientHeight });
+  }, [view.k, view.x, view.y, box.current?.clientWidth, box.current?.clientHeight]);
 
   const fb = props.fitBox;
   const fitBoxOf = () => fb ?? { x: 0, y: 0, w: props.width, h: props.height };
@@ -88,6 +102,36 @@ export function PanZoom(props: {
     moved.current = true;
     put({ k, x: el.clientWidth / 2 - (f.x + f.w / 2) * k, y: el.clientHeight / 2 - (f.y + f.h / 2) * k });
   }, [props.focus?.seq]);
+
+  useLayoutEffect(() => {
+    const r = props.reveal;
+    const el = box.current;
+    if (!r || !el) return;
+    const v = latest.current;
+    const margin = 24;
+    const shift = (from: number, size: number, at: number, room: number) => {
+      const lo = from * v.k + at;
+      const hi = (from + size) * v.k + at;
+      if (hi - lo + 2 * margin > room) return room / 2 - ((from + size / 2) * v.k + at);
+      if (lo < margin) return margin - lo;
+      if (hi > room - margin) return room - margin - hi;
+      return 0;
+    };
+    const dx = shift(r.x, r.w, v.x, el.clientWidth);
+    const dy = shift(r.y, r.h, v.y, el.clientHeight);
+    if (dx === 0 && dy === 0) return;
+    moved.current = true;
+    put({ ...v, x: v.x + dx, y: v.y + dy });
+  }, [props.reveal?.seq]);
+
+  useLayoutEffect(() => {
+    const c = props.centre;
+    const el = box.current;
+    if (!c || !el) return;
+    const v = latest.current;
+    moved.current = true;
+    put({ ...v, x: el.clientWidth / 2 - c.x * v.k, y: el.clientHeight / 2 - c.y * v.k });
+  }, [props.centre?.seq]);
 
   useEffect(() => {
     const el = box.current;
@@ -205,6 +249,11 @@ export function PanZoom(props: {
         <button title="Zoom in" onClick={() => zoomCentre(1.25)}>
           +
         </button>
+        {props.actualSize && (
+          <button title="Actual size: one pixel of the drawing to one pixel of the screen" onClick={() => zoomCentre(1 / latest.current.k)}>
+            1:1
+          </button>
+        )}
         <button title="Fit to the window (F)" onClick={refit}>
           Fit
         </button>

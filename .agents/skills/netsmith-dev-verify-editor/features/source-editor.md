@@ -2,7 +2,7 @@
 
 ## How to get to it
 
-The section "Source" (the last, key 7): the project tree on the left, then tabs for open files, the CodeMirror editor, and a Problems panel under it (click its header or the counts in the status bar to open it). The status bar is in every section. After a click-through from another section the file tabs begin with a "Back to ..." button.
+The section "Source" (the first, key 1): the project tree on the left, then tabs for open files, the CodeMirror editor, and a Problems panel under it (click its header or the counts in the status bar to open it). The status bar is in every section. After a click-through from another section the file tabs begin with a "Back to ..." button.
 
 ## Driving it
 
@@ -13,6 +13,10 @@ The section "Source" (the last, key 7): the project tree on the left, then tabs 
 3. Type a comment at the top and press `Ctrl+S`: the dot on the tab goes and the file on disk starts with the comment.
 4. `Ctrl+click` on `Resistor` in a declaration: a tab for `std/parts/passive.nsm` opens at `part Resistor`.
 5. Change the file on disk from outside: the editor shows the new text within a second (it has no unsaved edits). Write a mistake to disk: the squiggle, the count and a "last drawing that built" banner on the schematic (open the Schematic section to see it) appear; fix it on disk and they go.
+
+### File languages: `drive languages` after `launch --fixture catalog_refresh`
+
+The colouring of a file is chosen by its extension (`src/languages.ts`, `languageOfPath`): `.nsm` and `.physical.nsm` get the netsmith language, `.toml` (the manifest) a small TOML colouring (tables, keys, strings, numbers, comments), anything else plain text. Open `netsmith.toml`: several colours, no red wavy underline, no lint mark (the checker has no problem there). A token the `.nsm` colouring cannot read is drawn red and wavy only in an `.nsm` file, and hovering it shows a note: the checker's own message when it has a problem at that place, else "unexpected `]`: the compiler reports no error here; this is the editor's syntax colouring". The recipe types a stray `]` at the end of `main.nsm` and hovers it. Real problems with a location in the manifest still go through the lint diagnostics. The tree lists only `.nsm` files and the manifest, so a catalog's `.csv` cannot be opened in the editor; the language choice for it is covered by `src/languages.test.ts`.
 
 ### Errors, warnings and notes: `drive big-problems` after `launch --fixture big`
 

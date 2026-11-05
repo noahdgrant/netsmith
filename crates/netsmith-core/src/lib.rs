@@ -278,6 +278,22 @@ pub struct PartHeight {
     pub height: f64,
 }
 
+/// How far the pins of a through-hole part protrude out of the board on the face opposite the
+/// part, whether they were cut after soldering or bought short, as the board's physical file
+/// states it (`.pin_protrusion`, ADR 0045 section 15). A part the design states no
+/// protrusion for is not here: its protrusion is unknown, which is not zero, and its pads
+/// stay an obstacle for a part on that face.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PinProtrusion {
+    /// The part's path in the design.
+    pub path: String,
+    /// In mm, from the face the pins come out of to the end of the cut pins.
+    pub length: f64,
+    /// The lines that state it (`widget.physical.nsm:41`), separated by commas. Filled by
+    /// the caller that knows the source files; empty otherwise.
+    pub source: String,
+}
+
 /// A line of silkscreen text: a `Label` part. The part's value is the text.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Label {
@@ -425,6 +441,14 @@ pub struct Features {
     pub keepouts: Vec<Keepout>,
     /// The heights the design states for parts, by path (ADR 0045, "Height limits").
     pub heights: Vec<PartHeight>,
+    /// How far the pins of through-hole parts protrude, as the design states it, by path
+    /// (ADR 0045 section 15).
+    pub protrusions: Vec<PinProtrusion>,
+    /// The paths of the parts the board house does not assemble (`.assembly` is `hand` or
+    /// `none`), so fitted by hand or not at all. Filled by the caller that knows who
+    /// assembles each part; empty otherwise, which counts every part as assembled by the
+    /// board house.
+    pub hand_fitted: Vec<String>,
     pub labels: Vec<Label>,
     /// Requirements on where parts and modules go (ADR 0045), by path.
     pub constraints: Vec<Placement>,

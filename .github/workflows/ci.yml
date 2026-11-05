@@ -1,9 +1,10 @@
 # Checks every pull request and every push to main: formatting, clippy with warnings as errors,
 # and the tests. The same three commands as AGENTS.md ("Build, test, lint").
 #
-# No KiCad is installed on the runner. The tests that need `kicad-cli` or KiCad's stock libraries
-# skip themselves without it (they print "skipped: ..."); the rest build with the small libraries
-# of `netsmith_kicad::testlib`. No Node either: the editor's page is the committed bundle.
+# The `test` job has no KiCad on its runner, so it stays fast. The tests that need `kicad-cli` or
+# KiCad's stock libraries skip themselves there (they print "skipped: ..."); the rest build with
+# the small libraries of `netsmith_kicad::testlib`. The `kicad` job installs KiCad 9 and runs the
+# same suite, so those tests really run. No Node either: the editor's page is the committed bundle.
 name: ci
 
 on:
@@ -64,3 +65,90 @@ jobs:
 
       # --no-fail-fast: one run lists every failing test, not just the first test binary that fails.
       - run: cargo test --workspace --no-fail-fast
+
+  # The whole suite with KiCad 9 installed, so the tests that skip themselves in `test` run.
+  # The runner's own Ubuntu archive carries KiCad 9 (ubuntu-latest is 26.04: 9.0.8). The version
+  # is pinned to the major by the check below: the cross-check's allowance applies only to
+  # exactly 9.0.0 (ADR 0034), so a 9.0.x newer than that is what is wanted. If ubuntu-latest
+  # moves to a release that ships another major, the step fails; add the KiCad team's PPA
+  # (ppa:kicad/kicad-9.0-releases) for that release then.
+  kicad:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # kicad-cli, and the stock symbol and footprint libraries (separate packages, only
+      # recommended by `kicad`). The 3D models (kicad-packages3d, several GB) are not installed,
+      # nothing here reads them.
+      - name: Install KiCad 9
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends kicad kicad-symbols kicad-footprints
+          kicad-cli --version
+          dpkg -l kicad kicad-symbols kicad-footprints | tail -3
+          case "$(kicad-cli --version)" in
+            9.*) ;;
+            *) echo "::error::KiCad 9 is wanted, the runner installed $(kicad-cli --version)"; exit 1 ;;
+          esac
+
+      # What the lookup of netsmith_kicad::install finds on a real Linux install (issue #6): the
+      # packages' own folders, with nothing set.
+      - name: Show the KiCad library lookup
+        run: cargo run --quiet -p netsmith-kicad --example locate
+
+      # The tests were written against the libraries of KiCad 9.0.0 (the stock footprints they
+      # compare with, the fiducial's clearance, the VQFP footprints), and the 9.0.x libraries
+      # since have moved (9.0.7: 360 of 788 generated footprints differ from KiCad's, issue
+      # #103). So netsmith reads the upstream libraries at the tag 9.0.0, through the variables
+      # of the lookup, while kicad-cli is the 9.0.x of the package.
+      - name: Cache the KiCad 9.0.0 libraries
+        id: libs
+        uses: actions/cache@v4
+        with:
+          path: ~/kicad-libs
+          key: kicad-libs-9.0.0-v1
+
+      - name: Fetch the KiCad 9.0.0 libraries
+        if: steps.libs.outputs.cache-hit != 'true'
+        run: |
+          fetch() {
+            name="$1"; sha="$2"
+            mkdir -p ~/kicad-libs/"$name"
+            curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
+              -o "$RUNNER_TEMP/$name.tar.gz" \
+              "https://gitlab.com/kicad/libraries/kicad-$name/-/archive/9.0.0/kicad-$name-9.0.0.tar.gz"
+            echo "$sha  $RUNNER_TEMP/$name.tar.gz" | sha256sum --check
+            tar -xzf "$RUNNER_TEMP/$name.tar.gz" --strip-components=1 -C ~/kicad-libs/"$name"
+          }
+          fetch symbols e90f557a172ca99ab4ec546802511fac4139738f505996f94180541828fa3f4a
+          fetch footprints f9444c53a06ba64fde0c87b20c42de0b9d2efdffe15822b43474fcf03aa7229a
+
+      - name: Point netsmith at the KiCad 9.0.0 libraries
+        run: |
+          echo "NETSMITH_KICAD_SYMBOLS=$HOME/kicad-libs/symbols" >> "$GITHUB_ENV"
+          echo "NETSMITH_KICAD_FOOTPRINTS=$HOME/kicad-libs/footprints" >> "$GITHUB_ENV"
+
+      - name: Show the KiCad library lookup with the variables
+        run: cargo run --quiet -p netsmith-kicad --example locate
+
+      # --nocapture shows the "skipped: ..." lines, so the run can prove that no test skipped
+      # itself for want of KiCad. The output goes to a file and not through a pipe: a process a
+      # test leaves running (one run had a hung child) would hold the pipe open and the step
+      # would never end, although every test had finished.
+      - name: Test with KiCad
+        timeout-minutes: 30
+        run: |
+          status=0
+          cargo test --workspace --no-fail-fast -- --nocapture > test.log 2>&1 || status=$?
+          cat test.log
+          if grep -n "skipped: no KiCad symbol and footprint libraries" test.log; then
+            echo "::error::a test skipped itself although KiCad is installed"
+            status=1
+          fi
+          exit $status

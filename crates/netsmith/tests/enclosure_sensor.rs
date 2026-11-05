@@ -70,6 +70,20 @@ fn the_enclosure_sensor_example_meets_every_requirement_and_passes_the_design_ru
         .unwrap_or_else(|| panic!("{counted}"));
     assert_eq!(met, all, "{notes}");
     assert!(all.parse::<usize>().unwrap() >= 60, "{notes}");
+    // The radio's pins are cut to protrude 0.2 mm and the flat cell lies across them: one
+    // step for a person for each row, naming the cell that is fitted after.
+    for row in ["radio.row_a", "radio.row_b"] {
+        let trim = notes
+            .lines()
+            .find(|l| l.starts_with("trim: ") && l.contains(&format!("({row})")))
+            .unwrap_or_else(|| panic!("a trim line for {row}: {notes}"));
+        assert!(
+            trim.contains("cut the pins to protrude 0.20 mm from the bottom face")
+                && trim.contains("before BT1 (cell) is fitted")
+                && trim.contains("enclosure_sensor.physical.nsm:"),
+            "{trim}"
+        );
+    }
     // The plug's overhang is stated, so it is a warning and not an error.
     assert!(
         notes.contains("J2 hangs over the left edge"),
@@ -87,13 +101,13 @@ fn the_enclosure_sensor_example_meets_every_requirement_and_passes_the_design_ru
         assert!(pcb.contains(&format!("\"TP{n}\"")), "TP{n} is on the board");
     }
     // The back-side module: three resistors and two LEDs are on the back, and its third LED is
-    // the exception on the front.
+    // the exception on the front; the flat cell is on the back too.
     let on_back = pcb
         .split("(footprint \"")
         .skip(1)
         .filter(|f| f.lines().take(3).any(|l| l.contains("(layer \"B.Cu\")")))
         .count();
-    assert_eq!(on_back, 5);
+    assert_eq!(on_back, 6);
 }
 
 #[test]

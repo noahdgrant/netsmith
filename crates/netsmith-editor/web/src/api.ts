@@ -137,7 +137,25 @@ export type EdgeKind = "converts" | "join" | "net";
 
 export type Edge = { from: string, to: string, label: string, kind: EdgeKind, at: Location | null, };
 
-export type PowerTree = { title: string, nodes: Array<PowerNode>, edges: Array<Edge>, };
+export type PowerTree = { title: string, nodes: Array<PowerNode>, edges: Array<Edge>, 
+/**
+ * The converters of the edges, with the efficiency of each that has one.
+ */
+stages: Array<Stage>, };
+
+export type Stage = { 
+/**
+ * The label of the edge the converter makes (`Edge::label`).
+ */
+label: string, 
+/**
+ * Its efficiency, a range of fractions, when it has one and the solver settled it.
+ */
+efficiency: Range | null, 
+/**
+ * It has an efficiency that the solver did not settle: its input current is then not worked out.
+ */
+efficiencyUnsettled: boolean, };
 
 export type Port = { name: string, 
 /**

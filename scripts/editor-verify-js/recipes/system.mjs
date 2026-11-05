@@ -5,7 +5,7 @@ export const fixture = 'two_boards';
 export async function run({ page, shot, step, expect, section }) {
   step('open the System tab');
   await section('system');
-  await page.waitForSelector('.card.sys');
+  await page.waitForSelector('.sy-card');
   const text = await page.locator('.sec-system .graph-host').innerText();
   expect(text.includes('PowerBoard') && text.includes('LedBoard'), 'both boards of the system');
   expect(text.includes('power.output ~ led.input'), 'the join between their ports');

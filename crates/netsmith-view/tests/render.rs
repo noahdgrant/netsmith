@@ -84,10 +84,30 @@ fn symbols_are_drawn_from_the_library() {
 }
 
 #[test]
-fn named_nets_show_their_names_and_unnamed_ones_do_not() {
-    let doc = svg(&common::led());
-    assert!(doc.contains(">VCC</text>") && doc.contains(">GND</text>"));
-    assert!(!doc.contains("class=\"net-label\" data-net=\"net-led.anode\""));
+fn names_are_on_symbols_and_flags_and_a_generated_name_is_never_shown() {
+    use netsmith_view::{Rails, render_svg_with};
+    let d = common::led();
+    let mut rails = Rails::default();
+    rails.ground.insert("GND".into());
+    rails.positive.insert("VCC".into());
+    // A generated name is not a rail, whatever the checker's balances say.
+    rails.positive.insert("net-led.anode".into());
+    let doc = render_svg_with(
+        &d,
+        &rails,
+        &netsmith_kicad::Mapping::standard(),
+        &netsmith_kicad::SymbolLib::at(netsmith_kicad::testlib::sample_symbols()),
+    )
+    .unwrap();
+    assert!(
+        doc.contains(">VCC</text>"),
+        "the supply symbol has its name"
+    );
+    assert!(!doc.contains("net-led.anode</text>"));
+    assert!(!doc.contains("class=\"power supply\" data-net=\"net-led.anode\""));
+    // With no rails told, a net is only wires.
+    let plain = svg(&d);
+    assert!(!plain.contains("class=\"net-label\""));
 }
 
 #[test]

@@ -567,6 +567,14 @@ fn courtyards(out: &mut Out<'_>) {
         if !overlap_area(&a.polygon, &b.polygon) {
             continue;
         }
+        // A part that stands over the other's protruding pins is excused (the caller judged).
+        if m.extras
+            .excused_courtyards
+            .iter()
+            .any(|(x, y)| (x == &a.owner && y == &b.owner) || (x == &b.owner && y == &a.owner))
+        {
+            continue;
+        }
         // Two courtyards of one pair of parts are one finding.
         let key = (a.owner.clone(), b.owner.clone());
         if seen.contains(&key) {

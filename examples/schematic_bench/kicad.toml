@@ -1,0 +1,49 @@
+# What KiCad calls the parts this example defines itself (ADR 0021). The microcontroller and
+# the regulator IC are invented and drawn by the library of this project; the amplifier and
+# the rest are KiCad's stock symbols.
+
+[[library]]
+name = "bench"
+symbols = "bench.kicad_sym"
+
+[[part]]
+kind = "Mcu97"
+package = "QFP"
+default = true
+symbol = "bench:Mcu97"
+footprint = "Package_QFP:LQFP-100_14x14mm_P0.5mm"
+
+[[part]]
+kind = "Buck1V8"
+package = "QFN"
+default = true
+symbol = "bench:Buck1V8"
+footprint = "Package_DFN_QFN:QFN-16-1EP_3x3mm_P0.5mm_EP1.7x1.7mm"
+
+[[part]]
+kind = "DualOpAmp"
+package = "SOIC-8"
+default = true
+symbol = "Amplifier_Operational:LM358"
+footprint = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
+
+[[part]]
+kind = "Ldo8"
+package = "DFN"
+default = true
+symbol = "bench:Ldo8"
+footprint = "Package_DFN_QFN:DFN-8-1EP_3x3mm_P0.65mm_EP1.55x2.4mm"
+
+[[part]]
+kind = "Obd10"
+package = "P"
+default = true
+symbol = "bench:Conn10"
+footprint = "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical"
+
+[[part]]
+kind = "Ten10"
+package = "P"
+default = true
+symbol = "bench:Conn10"
+footprint = "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical"
