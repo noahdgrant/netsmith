@@ -209,6 +209,8 @@ export async function run({ page, shot, step, expect, section, project }) {
   expect(await yes.isEnabled(), 'and on after');
   await page.locator('[role=alertdialog] button', { hasText: 'Cancel' }).click();
   expect(fs.existsSync(disk('src/irrigation.nsm')), 'Cancel kept it');
+  // The focus goes back to the row that was asked about, a frame later.
+  await page.waitForFunction(() => document.activeElement?.dataset?.id === 'f:src/irrigation.nsm');
   await row('f:netsmith.toml').focus();
   await press('Delete');
   expect((await page.locator('[role=alertdialog]').count()) === 0 && fs.existsSync(disk('netsmith.toml')), 'the manifest is not offered for deletion');
