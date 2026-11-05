@@ -210,7 +210,7 @@ function SheetPanel({ rows, current, drawing, goNet, openSheet }: InspectorProps
     return out.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   }, [drawing, current]);
   if (current === ALL) {
-    const parts = rows.reduce((n, r) => n + (r.stats?.parts ?? 0), 0);
+    const parts = d?.parts.length ?? rows.reduce((n, r) => n + (r.stats?.parts ?? 0), 0);
     return (
       <section aria-label="Board summary">
         <h3>Board</h3>

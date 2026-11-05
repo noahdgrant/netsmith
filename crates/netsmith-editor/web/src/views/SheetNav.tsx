@@ -230,7 +230,7 @@ export function SheetBar({
   const can = canStep(names, current);
   const multi = rows.length > 1;
   const row = rows.find((r) => r.sheet.name === current);
-  const place = current === ALL ? 'All modules' : row ? `${row.n} of ${rows.length}` : '';
+  const place = current === ALL ? plural(rows.length, 'module') : row ? `${row.n} of ${rows.length}` : '';
   return (
     <div class="sheetbar" role="toolbar" aria-label="Modules">
       {multi && (
