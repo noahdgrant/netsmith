@@ -9,7 +9,7 @@ use netsmith_kicad::{MapError, Mapping};
 use crate::footprint::{Footprint, FootprintError, FootprintLibrary, Layer, Mount, Pad};
 use crate::geometry::{Pt, Rect};
 use crate::overhang::{self, Edge, Overhang};
-use crate::place::{self, DoesNotFit, PlaceOptions};
+use crate::place::{self, DoesNotFit, ORIGIN, PlaceOptions};
 use crate::rules::Rules;
 use crate::shape::RoundRect;
 
@@ -88,6 +88,39 @@ impl std::fmt::Display for BoardError {
 }
 
 impl std::error::Error for BoardError {}
+
+/// The refusal with the requirements of the physical file that are not met where the placer
+/// ended with the parts, and the lines that cannot all hold (PROVISIONAL, ADR 0045).
+/// `base` is what the layout file and the caller said, before the requirements were turned
+/// into places.
+fn explained(
+    mut error: DoesNotFit,
+    design: &Design,
+    parts: &[Placed],
+    base: &PlaceOptions,
+    rules: &Rules,
+) -> DoesNotFit {
+    // The parts as the refusal lists them: where the placer ended, not where they started.
+    let ended: Vec<Placed> = parts
+        .iter()
+        .map(|p| {
+            let mut q = p.clone();
+            if let Some(state) = error.parts.iter().find(|s| s.part == p.refdes) {
+                q.at = ORIGIN + Pt::new(state.at.0, state.at.1);
+                q.rotation = state.rotation;
+                q.side = state.side;
+            }
+            q
+        })
+        .collect();
+    let outline = Rect::new(
+        ORIGIN,
+        Pt::new(ORIGIN.x + error.outline.0, ORIGIN.y + error.outline.1),
+    );
+    error.requirements =
+        crate::explain::explain(design, &ended, outline, base, rules).map(Box::new);
+    error
+}
 
 impl From<DesignError> for BoardError {
     fn from(e: DesignError) -> Self {
@@ -466,11 +499,23 @@ pub enum PlacementProblem {
     /// process allows (`least`, for copper its clearance and for a hole its hole to hole).
     HoleTooNear {
         refdes: String,
+        /// The number of the pad whose hole it is, and of the pad of `other` it is near.
+        pad: String,
         other: String,
+        other_pad: String,
         to: HoleNeighbour,
         distance: f64,
         least: f64,
     },
+}
+
+/// ` (pad 3)`, or nothing for a pad with no number (a mounting hole's).
+fn pad_text(number: &str) -> String {
+    if number.is_empty() {
+        String::new()
+    } else {
+        format!(" (pad {number})")
+    }
 }
 
 /// How much taller than a limit a part may be before it is reported: half a micrometre, as
@@ -639,7 +684,9 @@ impl std::fmt::Display for PlacementProblem {
             }
             Self::HoleTooNear {
                 refdes,
+                pad,
                 other,
+                other_pad,
                 to,
                 distance,
                 least,
@@ -650,8 +697,10 @@ impl std::fmt::Display for PlacementProblem {
                 };
                 write!(
                     f,
-                    "a hole of {refdes} is {distance:.2} mm from {what} of {other}, under the \
-                     process's {rule} of {least} mm"
+                    "a hole of {refdes}{} is {distance:.2} mm from {what} of {other}{}, under the \
+                     process's {rule} of {least} mm",
+                    pad_text(pad),
+                    pad_text(other_pad)
                 )
             }
         }
@@ -965,6 +1014,7 @@ impl Board {
         // What the design requires of where the parts go (ADR 0045): pinned parts are fixed
         // like locked ones, the others get a want the placer keeps to, and every constrained
         // part keeps the face it was given.
+        let base = placement.clone();
         let mut placement = placement.clone();
         let plan = crate::constraints::plan(design, &parts, &placement, rules.clearance)
             .map_err(BoardError::Constraints)?;
@@ -1053,7 +1103,7 @@ impl Board {
                         pours: !design.features.pours.is_empty(),
                     },
                 )
-                .map_err(BoardError::DoesNotFit)?,
+                .map_err(|e| BoardError::DoesNotFit(explained(e, design, &parts, &base, &rules)))?,
                 0.0,
             ),
             Some(wanted) => (
@@ -1066,7 +1116,7 @@ impl Board {
                     &plane_nets,
                     !design.features.pours.is_empty(),
                 )
-                .map_err(BoardError::DoesNotFit)?,
+                .map_err(|e| BoardError::DoesNotFit(explained(e, design, &parts, &base, &rules)))?,
                 wanted.corner_radius,
             ),
         };
@@ -1351,16 +1401,28 @@ impl Board {
     }
 
     /// The holes of `a` that are nearer a hole or the copper of `b` than the rules allow.
-    fn check_holes(&self, a: &Placed, b: &Placed, problems: &mut Vec<PlacementProblem>) {
+    ///
+    /// `holes` says whether the distance between two holes is measured: it is the same from
+    /// either part, so a pair is checked from one of them only; the distance from a hole to
+    /// the other part's copper is not the same both ways.
+    fn check_holes(
+        &self,
+        a: &Placed,
+        b: &Placed,
+        holes: bool,
+        problems: &mut Vec<PlacementProblem>,
+    ) {
         for pad in &a.footprint.pads {
             let Some((p, q, radius)) = a.hole(pad) else {
                 continue;
             };
-            let mut report = |to, distance: f64, least: f64| {
+            let mut report = |to, other_pad: &str, distance: f64, least: f64| {
                 if distance < least - 1e-9 {
                     problems.push(PlacementProblem::HoleTooNear {
                         refdes: a.refdes.clone(),
+                        pad: pad.number.clone(),
                         other: b.refdes.clone(),
+                        other_pad: other_pad.to_string(),
                         to,
                         distance,
                         least,
@@ -1368,16 +1430,39 @@ impl Board {
                 }
             };
             for other in &b.footprint.pads {
-                if let Some((r, s, other_radius)) = b.hole(other) {
+                if let (true, Some((r, s, other_radius))) = (holes, b.hole(other)) {
                     let apart = segment_distance((p, q), (r, s)) - radius - other_radius;
-                    report(HoleNeighbour::Hole, apart, self.rules.hole_to_hole);
+                    report(
+                        HoleNeighbour::Hole,
+                        &other.number,
+                        apart,
+                        self.rules.hole_to_hole,
+                    );
                 }
                 if b.pad_layers(other) != (false, false) {
                     let apart = segment_to_rect((p, q), &b.pad_bounds(other)) - radius;
-                    report(HoleNeighbour::Copper, apart, self.rules.clearance);
+                    report(
+                        HoleNeighbour::Copper,
+                        &other.number,
+                        apart,
+                        self.rules.clearance,
+                    );
                 }
             }
         }
+    }
+
+    /// The requirements of `design`'s physical file that the parts are not at, and the lines
+    /// that cannot all hold where that is proved (PROVISIONAL, ADR 0045): what to say beside
+    /// the faults [`Board::check_placement`] finds when the placer could not meet them.
+    /// `options` is what the layout file and the caller said ([`place_options`]). `None` when
+    /// the design states no requirement or all are met.
+    pub fn explain_requirements(
+        &self,
+        design: &Design,
+        options: &PlaceOptions,
+    ) -> Option<crate::explain::RequirementReport> {
+        crate::explain::explain(design, &self.parts, self.outline, options, &self.rules)
     }
 
     /// The courtyards that are past an edge of the outline, where the design says the part may
@@ -1612,8 +1697,8 @@ impl Board {
                         b: b.refdes.clone(),
                     });
                 }
-                self.check_holes(a, b, &mut problems);
-                self.check_holes(b, a, &mut problems);
+                self.check_holes(a, b, true, &mut problems);
+                self.check_holes(b, a, false, &mut problems);
             }
         }
         problems
