@@ -182,7 +182,11 @@ export function stepProblem(dir: 1 | -1) {
   const list = steps(listed.value, group.value);
   const c = cursor.value;
   const here = viewScope.value.section === 'source' ? c : null;
-  const row = nextRow(list, activeRow.value, here, dir);
+  // In the source the cursor says where the person is: when it has left the line of the row that
+  // was picked, the step goes from the cursor, as in VS Code.
+  const picked = list.find((r) => r.id === activeRow.value);
+  const moved = !!here && !!picked?.at && (picked.at.file !== here.file || picked.at.line !== here.line);
+  const row = nextRow(list, moved ? null : activeRow.value, here, dir);
   if (!row) {
     notify({ title: 'No problems to go to', kind: 'info' });
     return;

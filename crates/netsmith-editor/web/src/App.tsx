@@ -219,7 +219,7 @@ export function App() {
     (id) => seen.current.has(id) && (KEPT.includes(id) || vis.some((p) => p.section === id)),
   );
   const dragged = dragging.value;
-  const stale = banner.value !== null;
+  const stale = banner.value?.kind === 'stale';
   return (
     <div class={`app ${dragged ? 'dragging' : ''}`}>
       <TopBar />
