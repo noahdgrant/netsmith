@@ -745,7 +745,7 @@ pub(crate) fn plan(
                         number(c.max.y - ORIGIN.y)
                     )
                 };
-                // What the pins under one of them add to it (ADR 0045 section 14).
+                // What the pins under one of them add to it (ADR 0045 section 15).
                 let pins = match crate::board::PlacementProblem::overlap_of(
                     &qa,
                     &qb,

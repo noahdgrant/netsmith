@@ -173,6 +173,7 @@ impl Workspace {
         )
         .map_err(|e| match e {
             pcb::PlaceError::Layout(message) => ApiError::bad_request(message),
+            e @ pcb::PlaceError::Unplaceable(..) => e.read(),
             pcb::PlaceError::Other(e) => e,
         })?;
         files::write_atomic(file, &layout.to_text())
@@ -327,7 +328,15 @@ impl Backend for Workspace {
             }
             (state.version, state.snapshot.board_handle(board)?)
         };
-        let entry = pcb::place(&data, board)?;
+        let entry = match pcb::place_checked(&data, board) {
+            Ok(entry) => entry,
+            // The requirements prove that no placement exists: the findings say so at once,
+            // with no board placed (ADR 0045 section 14).
+            Err(pcb::PlaceError::Unplaceable(_, pre)) => {
+                return Ok(pcb::unplaceable_findings(board, &pre));
+            }
+            Err(e) => return Err(e.read()),
+        };
         let found = entry.findings(board);
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if state.version == version {

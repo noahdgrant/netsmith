@@ -76,7 +76,7 @@ pub struct Options {
     pub extras: Vec<String>,
     /// The manufacturing steps the design states for through-hole pins cut short after
     /// soldering, one line each, for the notes as `trim:` lines beside `hand-solder:`
-    /// (ADR 0045 section 14).
+    /// (ADR 0045 section 15).
     pub trim: Vec<String>,
     /// How the design says each part, by designator, is fitted. It overrides what the
     /// board file's attributes say; a part it does not name is read from them. A designator

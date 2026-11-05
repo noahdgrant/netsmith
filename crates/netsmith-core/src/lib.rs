@@ -280,7 +280,7 @@ pub struct PartHeight {
 
 /// How far the pins of a through-hole part protrude out of the board on the face opposite the
 /// part, whether they were cut after soldering or bought short, as the board's physical file
-/// states it (`.pin_protrusion`, ADR 0045 section 14). A part the design states no
+/// states it (`.pin_protrusion`, ADR 0045 section 15). A part the design states no
 /// protrusion for is not here: its protrusion is unknown, which is not zero, and its pads
 /// stay an obstacle for a part on that face.
 #[derive(Debug, Clone, PartialEq)]
@@ -442,7 +442,7 @@ pub struct Features {
     /// The heights the design states for parts, by path (ADR 0045, "Height limits").
     pub heights: Vec<PartHeight>,
     /// How far the pins of through-hole parts protrude, as the design states it, by path
-    /// (ADR 0045 section 14).
+    /// (ADR 0045 section 15).
     pub protrusions: Vec<PinProtrusion>,
     /// The paths of the parts the board house does not assemble (`.assembly` is `hand` or
     /// `none`), so fitted by hand or not at all. Filled by the caller that knows who

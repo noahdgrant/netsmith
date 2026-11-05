@@ -1,4 +1,4 @@
-//! Trimmed pin protrusions (ADR 0045 section 14, PROVISIONAL; owner decisions of 2026-11-04): a
+//! Trimmed pin protrusions (ADR 0045 section 15, PROVISIONAL; owner decisions of 2026-11-04): a
 //! flat part on the back over the protruding pins of a 1x10 socket row on the front.
 //!
 //! The board is invented: 60 x 40 mm, a socket row (ten plated holes, 2.54 mm apart, its

@@ -1,5 +1,5 @@
 //! Pin protrusion: a flat part over the cut pins of a through-hole part (ADR 0031 amendment,
-//! ADR 0045 section 14; owner decisions of 2026-11-04).
+//! ADR 0045 section 15; owner decisions of 2026-11-04).
 //!
 //! A through-hole part takes room on both faces (`Placed::room_on`). The board's physical
 //! file may state how far its pins protrude out of the far side of the board

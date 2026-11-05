@@ -519,7 +519,7 @@ impl<'a> Checker<'a> {
                 .add_field(id, "height", FieldKind::Quantity(Dimension::LENGTH));
             self.model.add_member(id, "height", Member::Field(field));
             // And one for how far its pins stand out of the board, on the face opposite the
-            // part, once they are cut short (ADR 0045 section 14, PROVISIONAL): the board's
+            // part, once they are cut short (ADR 0045 section 15, PROVISIONAL): the board's
             // physical file states it for an instance, the kind may bound it. A part that
             // does not has no known protrusion, which is not a protrusion of zero.
             let field =

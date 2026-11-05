@@ -54,7 +54,7 @@ pub use board::{
     HeightUnchecked, HoleNeighbour, KeepoutArea, PadRef, Placed, PlacementProblem, Plane,
     ReferenceSide, Side, Track, Trim, Via,
 };
-pub use explain::RequirementReport;
+pub use explain::{Fault, Precheck, RequirementReport};
 pub use export::{kicad_pcb, kicad_pro};
 pub use footprint::{
     Drill, Footprint, FootprintError, FootprintLibrary, Graphic, Layer, Mount, Pad, PadKind,
@@ -64,7 +64,8 @@ pub use geometry::{Pt, Rect};
 pub use layout::{BoardLayout, Layout, LayoutError, apply_layout, place_options};
 pub use overhang::{Edge, Edges, Overhang};
 pub use place::{
-    DoesNotFit, Fixed, HeightZone, Oversize, PartState, PlaceError, PlaceOptions, place_subset,
+    DoesNotFit, Fixed, HeightZone, ORIGIN, Oversize, PartState, PlaceError, PlaceOptions,
+    place_subset,
 };
 pub use quality::{DecouplingDistance, Quality, crossings};
 pub use ratsnest::{Ratline, Ratsnest};

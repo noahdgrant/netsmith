@@ -576,7 +576,7 @@ fn export(
         }
     };
     // The parts the board house does not fit, for the rule that a part over protruding pins is
-    // fitted by hand after the pins are cut (ADR 0045 section 14).
+    // fitted by hand after the pins are cut (ADR 0045 section 15).
     design.features.hand_fitted = design
         .parts
         .iter()

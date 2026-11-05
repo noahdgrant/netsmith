@@ -187,7 +187,7 @@ fn heights(model: &Model, errors: &mut Vec<String>) -> Vec<PartHeight> {
     found
 }
 
-/// How far the pins of the design's parts protrude (`.pin_protrusion`, ADR 0045 section 14),
+/// How far the pins of the design's parts protrude (`.pin_protrusion`, ADR 0045 section 15),
 /// by path, and the statements that state each. A protrusion is one value: a part whose
 /// protrusion is only bounded (its kind says its pins protrude at most so far, and the board
 /// does not say) has an unknown protrusion and is not listed. A negative one is an error.

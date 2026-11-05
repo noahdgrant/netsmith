@@ -1,4 +1,4 @@
-//! Pin protrusion (ADR 0045 section 14; owner decisions of 2026-11-04): a flat part on the
+//! Pin protrusion (ADR 0045 section 15; owner decisions of 2026-11-04): a flat part on the
 //! back over the cut pins of a 1x10 socket row on the front, from the physical file to the
 //! package. The board is invented: 60 x 40 mm, a lid zone that allows 3.6 mm on the back, a
 //! flat part 3.4 mm tall that is fitted by hand, and pins that protrude 0.2 mm.
