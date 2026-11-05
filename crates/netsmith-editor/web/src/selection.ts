@@ -23,9 +23,16 @@ export interface Selection {
 export const selection = signal<Selection | null>(null);
 
 /** A request to bring the selection into view in the views that show it (go to anything, a click
- * on the status chip). `nonce` makes the same selection asked for twice a new request. */
-export const revealRequest = signal<{ sel: Selection; nonce: number } | null>(null);
+ * on the status chip). `nonce` makes the same selection asked for twice a new request. `board` is
+ * the board that was shown when it was made: a view that draws another board drops it. */
+export const revealRequest = signal<{ sel: Selection; nonce: number; board: string | null } | null>(null);
 let nonce = 0;
+
+let boardOf: () => string | null = () => null;
+/** Tell this module how to ask for the board in front (the store knows; it imports this module). */
+export function bindBoard(fn: () => string | null) {
+  boardOf = fn;
+}
 
 export const sameSelection = (a: Selection | null, b: Selection | null): boolean =>
   a === b || (!!a && !!b && a.kind === b.kind && a.key === b.key);
@@ -38,7 +45,7 @@ export function setSelection(sel: Selection | null) {
 /** Pick `sel` and ask the views to bring it into view. */
 export function selectAndReveal(sel: Selection) {
   setSelection(sel);
-  revealRequest.value = { sel, nonce: ++nonce };
+  revealRequest.value = { sel, nonce: ++nonce, board: boardOf() };
 }
 
 export const partSel = (path: string): Selection => ({ kind: 'part', key: path });

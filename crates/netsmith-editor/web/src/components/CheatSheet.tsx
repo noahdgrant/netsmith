@@ -6,7 +6,7 @@ import { useLayoutEffect, useRef } from 'preact/hooks';
 
 import { type Command, allCommands } from '../commands';
 import { LOCAL_KEYS } from '../commandset';
-import { cheatSheet, toggleCheatSheet } from '../quickpick';
+import { cheatGroup, cheatSheet, toggleCheatSheet } from '../quickpick';
 import { Keys } from './QuickPick';
 
 function groups(): { group: string; commands: Command[] }[] {
@@ -15,7 +15,7 @@ function groups(): { group: string; commands: Command[] }[] {
     if (!c.keys) continue;
     by.set(c.group, [...(by.get(c.group) ?? []), c]);
   }
-  const order = ['Go to', 'View', 'Selection', 'Problems', 'File', 'Build', 'Help'];
+  const order = ['Go to', 'View', 'Selection', 'Schematic', 'Problems', 'File', 'Build', 'Help'];
   return [...by.entries()]
     .map(([group, commands]) => ({ group, commands }))
     .sort((a, b) => (order.indexOf(a.group) + 1 || 99) - (order.indexOf(b.group) + 1 || 99));
@@ -52,6 +52,13 @@ export function CheatSheet() {
       if (b instanceof HTMLElement) b.focus();
     };
   }, [open]);
+  // Opened from a view's own `?` button: scroll to its group and mark it for a moment.
+  const aim = cheatGroup.value;
+  useLayoutEffect(() => {
+    if (!open || !aim) return;
+    const section = [...(box.current?.querySelectorAll<HTMLElement>('section[data-group]') ?? [])].find((e) => e.dataset.group === aim);
+    section?.scrollIntoView({ block: 'start' });
+  }, [open, aim]);
   if (!open) return null;
   const close = () => toggleCheatSheet(false);
   return (
@@ -83,7 +90,7 @@ export function CheatSheet() {
         </header>
         <div class="cheat-cols">
           {groups().map(({ group, commands }) => (
-            <section key={group}>
+            <section key={group} data-group={group} class={group === aim ? 'aimed' : ''}>
               <h3>{group}</h3>
               <dl>
                 {commands.map((c) => (
@@ -103,7 +110,7 @@ export function CheatSheet() {
             </section>
           ))}
           {LOCAL_KEYS.map(({ group, keys }) => (
-            <section key={group}>
+            <section key={group} data-group={group} class={group === aim ? 'aimed' : ''}>
               <h3>{group}</h3>
               <dl>
                 {keys.map(([k, what]) => (

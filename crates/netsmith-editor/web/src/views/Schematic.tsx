@@ -8,10 +8,12 @@ import { type Drawing, loadDrawing } from '../schematic/load';
 import {
   netNavOrder,
   netSheets,
+  moduleOfSheet,
   neighbourBox,
   netSummary,
   orderSheets,
   otherSheets,
+  revealStep,
   sheetStats,
   stepRing,
   type Target,
@@ -29,9 +31,11 @@ import {
 } from '../schematic/zoom';
 import { ALL, resolvePick, stepPick } from '../sheets';
 import { load, save } from '../storage';
-import { revealRequest, sameSelection, selection } from '../selection';
-import { analysis, board, detail, layout, problems, revealSection, visible } from '../store';
+import { toggleCheatSheet } from '../quickpick';
+import { modulesOf, revealRequest, sameSelection, selection } from '../selection';
+import { analysis, board, detail, problems, revealSection } from '../store';
 import { Inspector, type PinRef } from './SchematicInspector';
+import { type SchematicActions, netFacts, schematicActions } from './schematic-actions';
 import { SheetNavPanel, SheetBar, rowOf } from './SheetNav';
 import { SheetOverview } from './SheetOverview';
 import {
@@ -39,6 +43,7 @@ import {
   cursorParts,
   goToSource,
   moduleParts,
+  selectModule,
   selectNet,
   selectPart,
   selectedModule,
@@ -96,13 +101,15 @@ const pickAt = (target: EventTarget | null): Hit | null => {
 export function Schematic() {
   const name = board.value;
   const version = analysis.value?.version;
-  const [drawing, setDrawing] = useState<Drawing | null>(null);
+  // The drawing is kept with the board it was made for: for a moment after the board is switched
+  // the page still has the previous board's, which must not be drawn or revealed on.
+  const [loaded, setLoaded] = useState<{ board: string; drawing: Drawing } | null>(null);
+  const drawing = loaded && loaded.board === name ? loaded.drawing : null;
   const [error, setError] = useState<string | null>(null);
   const [hover, setHover] = useState<Hit | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; net: string; targets: Target[] } | null>(null);
   const [aim, setAim] = useState<Aim | null>(null);
   const [navPin, setNavPin] = useState<PinRef | null>(null);
-  const [help, setHelp] = useState(false);
   /** The part that was brought into view, which is ringed for a moment. */
   const [pulse, setPulse] = useState<{ ref: string; seq: number } | null>(null);
   /** Goes up when the drawing was painted again while the overview shows (it copies the drawing). */
@@ -127,7 +134,7 @@ export function Schematic() {
 
   useEffect(() => {
     if (!name) {
-      setDrawing(null);
+      setLoaded(null);
       return;
     }
     let live = true;
@@ -136,10 +143,10 @@ export function Schematic() {
       .then((text) => {
         if (!live) return;
         const d = loadDrawing(text);
-        setDrawing(d);
+        setLoaded(d ? { board: name, drawing: d } : null);
         setError(d ? null : 'The server sent no drawing.');
       })
-      .catch((e: Error) => live && (setDrawing(null), setError(e.message)));
+      .catch((e: Error) => live && (setLoaded(null), setError(e.message)));
     return () => {
       live = false;
     };
@@ -193,6 +200,14 @@ export function Schematic() {
   const current = name ? resolvePick(picks.value[name], names) : ALL;
   const overview = current === ALL && rows.length > 1;
   const open = (p: string) => name && choose(name, p);
+  const modulePaths = useMemo(() => modulesOf(d).map((m) => m.path), [d]);
+  /** A click on a card of the overview: the module the sheet draws is selected (the editor's shared
+   * selection, so every view shows it) and its sheet opens. */
+  const openCard = (sheet: string) => {
+    const module = moduleOfSheet(sheet, modulePaths);
+    if (module) selectModule(module);
+    open(sheet);
+  };
 
   // Which sheet's drawing is in the page: the open one (all of them hide in the overview, which
   // draws them again from their groups).
@@ -319,8 +334,13 @@ export function Schematic() {
   // the sheet that has it, and move the view only as far as it takes to see it.
   const ask = revealRequest.value;
   useEffect(() => {
-    if (!ask || !drawing || !d || handled.current === ask.nonce) return;
+    if (!ask || handled.current === ask.nonce) return;
+    // It waits for the drawing and the detail of the board it was asked on; it is dropped when
+    // the board in front is another one by now.
+    const step = revealStep(ask, name, loaded?.board ?? null, detail.value?.name ?? null);
+    if (step === 'wait') return;
     handled.current = ask.nonce;
+    if (step === 'drop' || !drawing || !d) return;
     // Something else was picked since: that is not asked for any more.
     if (!sameSelection(selection.peek(), ask.sel)) return;
     const { kind, key } = ask.sel;
@@ -346,7 +366,7 @@ export function Schematic() {
       const y0 = Math.min(...boxes.map((b) => b.y));
       aimAt(sheet, { x: x0, y: y0, w: Math.max(...boxes.map((b) => b.x + b.w)) - x0, h: Math.max(...boxes.map((b) => b.y + b.h)) - y0 });
     }
-  }, [ask?.nonce, drawing, d]);
+  }, [ask?.nonce, drawing, d, name]);
 
   // Apply the aim once the sheet it is for is the one shown and the canvas has been placed.
   useLayoutEffect(() => {
@@ -376,44 +396,60 @@ export function Schematic() {
     return () => clearTimeout(t);
   }, [pulse?.seq]);
 
-  // The keys, while this view is the one the person is in.
-  const keys = useRef<(e: KeyboardEvent) => void>(() => {});
-  keys.current = (e) => {
-    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
-    const t = e.target as HTMLElement | null;
-    if (t?.closest('input, textarea, select, [contenteditable="true"], .cm-editor')) return;
-    const here = visible.value.find((p) => p.index === layout.value.focus || visible.value.length === 1);
-    if (here?.section !== 'schematic') return;
-    const onCanvas = !t || t === document.body || t.classList.contains('panzoom') || !!t.closest('.panzoom');
-    if (e.key === '[' || e.key === 'PageUp' || e.key === ']' || e.key === 'PageDown') {
-      if (!name || rows.length < 2) return;
-      e.preventDefault();
-      open(stepPick(names, current, e.key === '[' || e.key === 'PageUp' ? -1 : 1));
-    } else if (e.key === 'Escape') {
-      if (help) setHelp(false);
-      else if (menu) setMenu(null);
-      else if (selNet || selPart || selModule) clearSelection();
-      else return;
-      e.preventDefault();
-    } else if (e.key === 'Tab' && selNet && onCanvas) {
-      e.preventDefault();
-      stepPins(e.shiftKey ? -1 : 1);
-    } else if (e.key === 'Enter' && selPart && onCanvas) {
-      e.preventDefault();
-      goToSource(selPart);
-    } else if (e.code === 'Digit2' && e.shiftKey && (selNet || selPart)) {
-      e.preventDefault();
-      frameSelection();
-    } else if (e.key === '?') {
-      e.preventDefault();
-      setHelp(!help);
-    }
+  // The keys of this view are commands (`commandset.ts`, group Schematic): they act through these.
+  // The handle is made again on each render, so what they do is always about what is shown.
+  const live = useRef<SchematicActions | null>(null);
+  live.current = {
+    overview: () => overview,
+    sheets: () => rows.length,
+    sheet: (dir) => {
+      if (name && rows.length > 1) open(stepPick(names, current, dir));
+    },
+    fit: () => zoom.current?.fit(),
+    fitWidth: () => zoom.current?.fitWidth(),
+    actual: () => zoom.current?.zoomTo(K100),
+    zoomSelection: frameSelection,
+    zoom: (factor) => zoom.current?.zoomTo(zoom.current.view().k * factor),
+    pan: (dx, dy) => zoom.current?.panBy(dx, dy),
+    pin: stepPins,
+    source: () => selPart && goToSource(selPart),
   };
   useEffect(() => {
-    const key = (e: KeyboardEvent) => keys.current(e);
-    window.addEventListener('keydown', key);
-    return () => window.removeEventListener('keydown', key);
+    const now = () => live.current!;
+    const stable: SchematicActions = {
+      overview: () => now().overview(),
+      sheets: () => now().sheets(),
+      sheet: (dir) => now().sheet(dir),
+      fit: () => now().fit(),
+      fitWidth: () => now().fitWidth(),
+      actual: () => now().actual(),
+      zoomSelection: () => now().zoomSelection(),
+      zoom: (f) => now().zoom(f),
+      pan: (dx, dy) => now().pan(dx, dy),
+      pin: (dir) => now().pin(dir),
+      source: () => now().source(),
+    };
+    schematicActions.current = stable;
+    return () => {
+      if (schematicActions.current === stable) schematicActions.current = null;
+    };
   }, []);
+  // What the top bar's chip says of the selected net, which only the drawing knows.
+  useEffect(() => {
+    netFacts.value = selNet && netInfo && drawing ? { net: selNet, text: netSummary(netInfo, drawing.index.partSheet).text, canStep: walk.length > 1 } : null;
+  }, [selNet, netInfo, drawing, walk.length]);
+  useEffect(() => () => void (netFacts.value = null), []);
+  // Esc closes the flag menu first (`data-esc-closes` holds the Clear command back); clearing the
+  // selection is that command's.
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || !menu) return;
+      setMenu(null);
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [menu]);
 
   // A menu of sheets closes on a click anywhere else.
   useEffect(() => {
@@ -465,7 +501,7 @@ export function Schematic() {
           save('netsmith.schematic.details', detailsPref.value);
         }}
         total={total}
-        help={() => setHelp(!help)}
+        help={() => toggleCheatSheet(true, 'Schematic')}
       />
       <div class="schematic-body">
         {nav && (
@@ -485,6 +521,8 @@ export function Schematic() {
             scale100={K100}
             presets
             arrowKeys
+            // The keys are the Schematic group's commands (commandset.ts), not the canvas's own.
+            keys={false}
             label="Schematic sheet"
             range={zoomRange}
             placeView={(w, h) => placeSheet(w, h, page).view}
@@ -517,7 +555,7 @@ export function Schematic() {
             <SheetOverview
               drawing={drawing}
               rows={rows}
-              open={open}
+              open={openCard}
               source={() => holder.current}
               lit={!!selNet || !!selPart}
               stamp={painted}
@@ -528,19 +566,6 @@ export function Schematic() {
               <span>Zoomed in to keep the text readable</span>
               <button onClick={() => zoom.current?.fit()}>Fit</button>
             </div>
-          )}
-          {!overview && (selNet || selPart || selModule) && (
-            <SelectionChip
-              net={netInfo ? netSummary(netInfo, drawing.index.partSheet).text : undefined}
-              netName={selNet}
-              module={selModule}
-              part={selPart}
-              partValue={d?.parts.find((p) => p.refdes === selPart)?.value}
-              onStep={stepPins}
-              canStep={walk.length > 1}
-              onSource={() => selPart && goToSource(selPart)}
-              onFrame={frameSelection}
-            />
           )}
           {menu && (
             <div class="flag-menu no-pan" role="menu" data-esc-closes style={{ left: Math.max(8, menu.x - 20), top: Math.max(8, menu.y + 12) }}>
@@ -567,7 +592,6 @@ export function Schematic() {
               ))}
             </div>
           )}
-          {help && <Shortcuts onClose={() => setHelp(false)} />}
         </div>
         {side && (
           <Inspector
@@ -585,112 +609,6 @@ export function Schematic() {
           />
         )}
       </div>
-    </div>
-  );
-}
-
-/** What is selected, small, on the canvas: where the inspector is closed this is the net navigator. */
-function SelectionChip({
-  net,
-  netName,
-  module,
-  part,
-  partValue,
-  onStep,
-  canStep,
-  onSource,
-  onFrame,
-}: {
-  net?: string;
-  netName: string | null;
-  module: string | null;
-  part: string | null;
-  partValue?: string;
-  onStep: (dir: 1 | -1) => void;
-  canStep: boolean;
-  onSource: () => void;
-  onFrame: () => void;
-}) {
-  return (
-    <div class="sel-chip no-pan" role="status">
-      {netName ? (
-        <>
-          <span class="sc-kind">Net</span>
-          <span class="sc-name mono" title={netName}>
-            {netName}
-          </span>
-          <span class="sc-sub">{net}</span>
-          <button class="sc-btn" disabled={!canStep} title="Previous pin (Shift+Tab)" aria-label="Previous pin" onClick={() => onStep(-1)}>
-            ‹
-          </button>
-          <button class="sc-btn" disabled={!canStep} title="Next pin (Tab)" aria-label="Next pin" onClick={() => onStep(1)}>
-            ›
-          </button>
-        </>
-      ) : module ? (
-        <>
-          <span class="sc-kind">Module</span>
-          <span class="sc-name mono" title={module}>
-            {module}
-          </span>
-        </>
-      ) : (
-        <>
-          <span class="sc-kind">Part</span>
-          <span class="sc-name mono">{part}</span>
-          {partValue && <span class="sc-sub">{partValue}</span>}
-          <button class="sc-btn text" title="Open the source at this part (Enter, or double-click)" onClick={onSource}>
-            Source
-          </button>
-        </>
-      )}
-      {!module && (
-        <button class="sc-btn text" title="Zoom to the selection (Shift+2)" onClick={onFrame}>
-          Zoom to
-        </button>
-      )}
-      <button class="sc-btn" title="Clear the selection (Esc)" aria-label="Clear the selection" onClick={clearSelection}>
-        ×
-      </button>
-    </div>
-  );
-}
-
-const KEYS: [string, string][] = [
-  ['Click', 'Select a part, or a net (wire, label, flag, pin)'],
-  ['Click a flag', 'Follow the net to the sheet that carries it'],
-  ['Double-click / Enter', 'Open the part in the source'],
-  ['Tab / Shift+Tab', 'Walk the pins of the selected net'],
-  ['Esc', 'Clear the selection'],
-  ['[  ]  or  Page Up / Down', 'Previous / next sheet'],
-  ['0 or F', 'Fit the sheet'],
-  ['W', 'Fit the width'],
-  ['Shift+1', '100%: the drawing at its size on paper'],
-  ['Shift+2', 'Zoom to the selection'],
-  ['+  −', 'Zoom'],
-  ['Arrow keys', 'Pan'],
-  ['?', 'This list'],
-];
-
-function Shortcuts({ onClose }: { onClose: () => void }) {
-  return (
-    <div class="shortcuts no-pan" role="dialog" data-esc-closes aria-label="Keyboard shortcuts">
-      <div class="sh-head">
-        <b>Schematic keys</b>
-        <button class="icon-btn" aria-label="Close" onClick={onClose}>
-          ×
-        </button>
-      </div>
-      <dl>
-        {KEYS.map(([k, v]) => (
-          <>
-            <dt>
-              <kbd>{k}</kbd>
-            </dt>
-            <dd>{v}</dd>
-          </>
-        ))}
-      </dl>
     </div>
   );
 }

@@ -9,7 +9,7 @@
 import { computed } from '@preact/signals';
 
 import { scene, select as selectOnPcb } from '../pcbstore';
-import { partByPath, selection, setSelection, under } from '../selection';
+import { moduleSel, partByPath, selection, setSelection, under } from '../selection';
 import { board, detail, lineParts, pickNet, pickPart, revealSection } from '../store';
 
 export { selection };
@@ -33,6 +33,7 @@ export const cursorParts = computed(() => lineParts.value);
 
 export const selectPart = (refdes: string) => pickPart(refdes);
 export const selectNet = (name: string) => pickNet(name);
+export const selectModule = (path: string) => setSelection(moduleSel(path));
 export const clearSelection = () => setSelection(null);
 
 /** Open the source at the part's declaration. */

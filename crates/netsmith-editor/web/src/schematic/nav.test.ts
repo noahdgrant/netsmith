@@ -4,6 +4,7 @@ import type { Location, NetInfo } from '../api';
 import { type RawDrawing, buildIndex } from './drawing';
 import {
   filterSheets,
+  moduleOfSheet,
   neighbourBox,
   netNavOrder,
   netSheets,
@@ -12,6 +13,7 @@ import {
   otherSheets,
   parseTitle,
   pieceOf,
+  revealStep,
   sheetStats,
   stepRing,
 } from './nav';
@@ -215,5 +217,42 @@ describe('neighbourBox', () => {
     const big = pins('U1', 'C1', 'R1', 'R2', 'C9', 'X1', 'X2');
     expect(neighbourBox('U1', [big], partSheet, partBox)).toEqual({ x: 0, y: 0, w: 10, h: 10 });
     expect(neighbourBox('Q9', [big], partSheet, partBox)).toBeUndefined();
+  });
+});
+
+describe('a reveal waits for the drawing of its board', () => {
+  const ask = { board: 'led' };
+  it('shows on the drawing and detail of the board it was asked on', () => {
+    expect(revealStep(ask, 'led', 'led', 'led')).toBe('go');
+  });
+  it('waits while the drawing in the page is the previous board\'s', () => {
+    expect(revealStep(ask, 'led', 'power', 'led')).toBe('wait');
+    expect(revealStep(ask, 'led', null, 'led')).toBe('wait');
+  });
+  it('waits for the board detail', () => {
+    expect(revealStep(ask, 'led', 'led', 'power')).toBe('wait');
+    expect(revealStep(ask, 'led', 'led', null)).toBe('wait');
+  });
+  it('is dropped when the board changed since it was asked', () => {
+    expect(revealStep(ask, 'power', 'power', 'power')).toBe('drop');
+    expect(revealStep(ask, 'power', 'led', 'led')).toBe('drop');
+    expect(revealStep(ask, null, null, null)).toBe('drop');
+  });
+  it('waits when no board is known to either side', () => {
+    expect(revealStep({ board: null }, null, null, null)).toBe('wait');
+  });
+});
+
+describe('the module a sheet of the overview stands for', () => {
+  const modules = ['adc', 'stage1', 'stage1.inner'];
+  it('is the instance of a sheet named for one', () => {
+    expect(moduleOfSheet('adc', modules)).toBe('adc');
+    expect(moduleOfSheet('stage1', modules)).toBe('stage1');
+  });
+  it('is the instance of every piece of a cut sheet', () => {
+    expect(moduleOfSheet('stage1 (2/3)', modules)).toBe('stage1');
+  });
+  it('is none for the sheet of the parts that are in no module', () => {
+    expect(moduleOfSheet('LedBoard', modules)).toBeNull();
   });
 });

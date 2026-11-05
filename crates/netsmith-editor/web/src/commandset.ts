@@ -1,6 +1,7 @@
 // The commands of the editor, registered once: the palette, the cheat sheet, the keyboard and the
 // buttons all run these. A command that only the window knows how to do (a view's own key) is
-// not here; the cheat sheet lists those from `LOCAL_KEYS` below.
+// not here; the cheat sheet lists those from `LOCAL_KEYS` below. (The Schematic's keys are
+// commands, defined here and run through the handle the view hands out.)
 
 import { api } from './client';
 import { type Command, provide, register, runCommand } from './commands';
@@ -29,6 +30,7 @@ import {
   visible,
   windowWidth,
 } from './store';
+import { PAN_STEP, schematicActions } from './views/schematic-actions';
 
 /** The section of the pane that last had the pointer or the keys. */
 export function focusedSection() {
@@ -37,6 +39,147 @@ export function focusedSection() {
 }
 
 const idle = () => job.value === null;
+
+// ---- the Schematic's own keys ----
+// They act on the view's zoom, sheets and pins, which the view hands out while it is mounted
+// (`views/schematic-actions.ts`). They work only while the Schematic is the pane in use. A plain
+// chord already leaves a text field alone (the key handler in `App.tsx`), so none of them needs to
+// say so; the keys that other things on the page also use (Tab, Enter, the arrows) are held to the
+// drawing by `keyFrom`, so a button or a list that has the focus keeps them. The palette and the
+// buttons run a command whatever has the focus.
+
+const schematicHere = () => focusedSection() === 'schematic' && schematicActions.current !== null;
+/** The drawing has the key: it was pressed on the drawing or on nothing (the page). A button or a
+ * list that has the focus keeps Tab, Enter and the arrows. */
+const onDrawing = (t: EventTarget | null) => {
+  const el = t instanceof Element ? t : null;
+  return !el || el === document.body || !!el.closest('.panzoom');
+};
+const sheet = () => schematicHere() && !schematicActions.current!.overview();
+const sheetOrOverview = () => schematicHere();
+const picked = () => selection.value?.kind === 'part' || selection.value?.kind === 'net';
+
+const schematicCommands = (): Command[] => {
+  const act = () => schematicActions.current!;
+  const pan = (id: string, title: string, key: string, dx: number, dy: number): Command => ({
+    id: `schematic.pan.${id}`,
+    title,
+    group: 'Schematic',
+    keys: key,
+    aliases: ['scroll', 'move the view'],
+    keyFrom: onDrawing,
+    when: sheet,
+    run: () => act().pan(dx * PAN_STEP, dy * PAN_STEP),
+  });
+  return [
+    {
+      id: 'schematic.sheet.previous',
+      title: 'Previous sheet',
+      group: 'Schematic',
+      keys: '[',
+      alsoKeys: ['PageUp'],
+      when: () => sheetOrOverview() && act().sheets() > 1,
+      run: () => act().sheet(-1),
+    },
+    {
+      id: 'schematic.sheet.next',
+      title: 'Next sheet',
+      group: 'Schematic',
+      keys: ']',
+      alsoKeys: ['PageDown'],
+      when: () => sheetOrOverview() && act().sheets() > 1,
+      run: () => act().sheet(1),
+    },
+    {
+      id: 'schematic.fit',
+      title: 'Fit the sheet',
+      group: 'Schematic',
+      keys: 'F',
+      alsoKeys: ['0'],
+      aliases: ['zoom to fit', 'reset zoom'],
+      when: sheet,
+      run: () => act().fit(),
+    },
+    {
+      id: 'schematic.fitwidth',
+      title: 'Fit the width of the sheet',
+      group: 'Schematic',
+      keys: 'W',
+      aliases: ['zoom to width'],
+      when: sheet,
+      run: () => act().fitWidth(),
+    },
+    {
+      id: 'schematic.actual',
+      title: 'Zoom to 100%',
+      group: 'Schematic',
+      keys: 'Shift+1',
+      aliases: ['actual size', 'true scale'],
+      when: sheet,
+      run: () => act().actual(),
+    },
+    {
+      id: 'schematic.zoomselection',
+      title: 'Zoom to the selection',
+      group: 'Schematic',
+      keys: 'Shift+2',
+      aliases: ['frame', 'zoom to part', 'zoom to net'],
+      when: () => sheet() && picked(),
+      run: () => act().zoomSelection(),
+    },
+    {
+      id: 'schematic.zoomin',
+      title: 'Zoom in',
+      group: 'Schematic',
+      keys: '+',
+      alsoKeys: ['='],
+      when: sheet,
+      run: () => act().zoom(1.25),
+    },
+    {
+      id: 'schematic.zoomout',
+      title: 'Zoom out',
+      group: 'Schematic',
+      keys: '-',
+      when: sheet,
+      run: () => act().zoom(0.8),
+    },
+    pan('left', 'Pan left', 'ArrowLeft', 1, 0),
+    pan('right', 'Pan right', 'ArrowRight', -1, 0),
+    pan('up', 'Pan up', 'ArrowUp', 0, 1),
+    pan('down', 'Pan down', 'ArrowDown', 0, -1),
+    {
+      id: 'schematic.pin.next',
+      title: 'Next pin of the selected net',
+      group: 'Schematic',
+      keys: 'Tab',
+      aliases: ['walk the net', 'step through the pins'],
+      keyFrom: onDrawing,
+      when: () => sheetOrOverview() && selection.value?.kind === 'net',
+      run: () => act().pin(1),
+    },
+    {
+      id: 'schematic.pin.previous',
+      title: 'Previous pin of the selected net',
+      group: 'Schematic',
+      keys: 'Shift+Tab',
+      aliases: ['walk the net', 'step through the pins'],
+      keyFrom: onDrawing,
+      when: () => sheetOrOverview() && selection.value?.kind === 'net',
+      run: () => act().pin(-1),
+    },
+    {
+      id: 'schematic.source',
+      title: 'Open the selected part in Source',
+      group: 'Schematic',
+      keys: 'Enter',
+      aliases: ['go to source', 'declaration'],
+      keyFrom: onDrawing,
+      when: () => sheet() && selection.value?.kind === 'part',
+      run: () => act().source(),
+    },
+  ];
+};
 
 let done = false;
 
@@ -245,7 +388,7 @@ export function registerAppCommands() {
       run: () => toggleCheatSheet(),
     },
   );
-  register(...list);
+  register(...list, ...schematicCommands());
   // These depend on the window and the project, so they are asked for each time.
   provide(() => {
     const two = layout.value.panes.length === 2 && visible.value.length === 2;
@@ -281,17 +424,6 @@ export const run = runCommand;
 
 /** The keys that belong to one view and are handled there, for the cheat sheet. */
 export const LOCAL_KEYS: { group: string; keys: [string, string][] }[] = [
-  {
-    group: 'Schematic',
-    keys: [
-      ['← → · [ ]', 'previous / next sheet'],
-      ['F or 0', 'fit the sheet'],
-      ['+ · −', 'zoom'],
-      ['Click a part', 'select it everywhere and open its source (Back returns)'],
-      ['Click a wire', 'select the net: its pins are listed and the rest is dimmed'],
-      ['Esc', 'clear the selection'],
-    ],
-  },
   {
     group: 'Power tree and System',
     keys: [

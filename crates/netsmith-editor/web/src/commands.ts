@@ -21,6 +21,10 @@ export interface Command {
   /** Whether the chord works while typing in a field or the source editor. By default one with
    * Ctrl, Alt or Cmd does, and a plain key such as `?` or `1` does not. */
   inFields?: boolean;
+  /** Where the chord works: given the element the key was pressed on. A key that other things also
+   * use (Tab, Enter, the arrows) is held to the drawing it belongs to, so a button or a list that has the
+   * focus keeps it. Only the keyboard asks; the palette and the buttons run the command from anywhere. */
+  keyFrom?: (target: EventTarget | null) => boolean;
   /** Does not claim the key: other handlers of the same key (a view's Esc) still run. */
   passive?: boolean;
 }
@@ -90,7 +94,7 @@ export function parseChord(text: string): Chord {
   const parts = text.split('+');
   // A chord that ends with `+` (the key itself) leaves an empty last piece.
   let key = parts.pop() ?? '';
-  if (key === '' && parts.length > 0 && text.endsWith('++')) key = '+';
+  if (key === '' && (text === '+' || (parts.length > 0 && text.endsWith('++')))) key = '+';
   const mods = new Set(parts.map((p) => p.toLowerCase()));
   const lower = key.toLowerCase();
   const named = NAMED[lower];
@@ -112,6 +116,11 @@ export function chordOfEvent(e: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey
     if (digit) key = digit[1];
     else if (letter) key = letter[1];
   }
+  // Shift+1 is `!` on a US keyboard and something else on another: the physical key is the chord.
+  if (e.shiftKey && !e.altKey && key.length === 1 && !/\d/.test(key) && e.code) {
+    const digit = /^Digit(\d)$/.exec(e.code);
+    if (digit) key = digit[1];
+  }
   const single = key.length === 1;
   const letter = single && key.toLowerCase() !== key.toUpperCase();
   return {
@@ -126,14 +135,16 @@ export function chordOfEvent(e: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey
 export const sameChord = (a: Chord, b: Chord) => a.mod === b.mod && a.alt === b.alt && a.shift === b.shift && a.key === b.key;
 
 /** The commands whose chord this event is, which can be done now. */
-export function commandsForEvent(e: Parameters<typeof chordOfEvent>[0]): Command[] {
+export function commandsForEvent(e: Parameters<typeof chordOfEvent>[0] & { target?: EventTarget | null }): Command[] {
   const chord = chordOfEvent(e);
-  return available().filter((c) => [c.keys, ...(c.alsoKeys ?? [])].some((k) => k && sameChord(parseChord(k), chord)));
+  return available().filter(
+    (c) => [c.keys, ...(c.alsoKeys ?? [])].some((k) => k && sameChord(parseChord(k), chord)) && (!c.keyFrom || c.keyFrom(e.target ?? null)),
+  );
 }
 
 /** The command a key event runs, if any: the first that can be done now and may be run from where
  * the key was pressed (`inField`: a text field or the source editor). */
-export function commandForKey(e: Parameters<typeof chordOfEvent>[0], inField: boolean): Command | null {
+export function commandForKey(e: Parameters<typeof chordOfEvent>[0] & { target?: EventTarget | null }, inField: boolean): Command | null {
   const chord = chordOfEvent(e);
   const modified = chord.mod || chord.alt;
   for (const c of commandsForEvent(e)) {

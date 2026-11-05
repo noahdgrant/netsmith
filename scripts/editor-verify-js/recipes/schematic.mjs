@@ -11,8 +11,9 @@ export async function run({ page, shot, step, expect, section }) {
 
   step('click the resistor: it is selected and the nets dim; a double-click opens the Source at its declaration');
   await page.locator('.schematic .part[data-ref="R1"]').click();
-  await page.waitForSelector('.sel-chip');
-  expect((await page.locator('.sel-chip').innerText()).includes('R1'), 'the selection chip names R1');
+  await page.waitForSelector('.selchip');
+  expect((await page.locator('.selchip').innerText()).includes('R1'), 'the selection chip names R1');
+  expect((await page.locator('.selchip, .sel-chip').count()) === 1, 'there is one chip, the top bar\'s, and none on the drawing');
   await page.locator('.schematic .part[data-ref="R1"]').dblclick();
   await page.waitForSelector('.section.sec-source:not(.away)');
   await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('.r1'));

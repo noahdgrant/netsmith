@@ -28,6 +28,7 @@ import { notify, setSocket, track } from './feedback/state';
 import { load, save as keep } from './storage';
 import {
   type Selection,
+  bindBoard,
   declarationOf,
   exists,
   netSel,
@@ -140,6 +141,7 @@ export function setFocusPane(index: number) {
 }
 
 export const board = signal<string | null>(null);
+bindBoard(() => board.peek());
 /** The panel whose preview the PCB view shows instead of the board (ADR 0040), if any. */
 export const panelShown = signal<string | null>(null);
 export const detail = signal<BoardDetail | null>(null);

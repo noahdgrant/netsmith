@@ -4,7 +4,7 @@
 // zoomed far in is not kept there; a net picked in the schematic is the one the top bar chip and
 // the inspector name; a click on a flag follows the net to the other sheet; Esc clears the
 // selection in the schematic, the chip and the bill of materials.
-import { activeSheet, zoomPercent } from '../schematic-helpers.mjs';
+import { activeSheet, openSheet, zoomPercent } from '../schematic-helpers.mjs';
 
 export const fixture = 'schematic_bench';
 
@@ -145,7 +145,21 @@ export async function run({ page, shot, step, expect, section }) {
   await page.mouse.click(pickNet.x, pickNet.y);
   await page.waitForFunction((n) => document.querySelector('.selchip')?.textContent.includes(n), pickNet.net);
   expect((await chip()).includes(pickNet.net), `the top bar chip names ${pickNet.net}`);
-  expect((await page.locator('.sel-chip').innerText()).includes(pickNet.net), 'and so does the chip on the drawing');
+  // One chip, the top bar's: it says how many pins on how many sheets and steps through the pins.
+  expect((await page.locator('.selchip, .sel-chip').count()) === 1, 'there is exactly one selection chip in the page');
+  expect((await page.locator('.sel-chip').count()) === 0, 'and none on the drawing');
+  expect(/\d+ pins? on \d+ sheets?/.test(await chip()), `the chip says how many pins on how many sheets (${(await chip()).replace(/\n/g, ' ')})`);
+  const pinNow = () => page.evaluate(() => { const p = document.querySelector('svg.schematic .pin.cur'); return p ? `${p.getAttribute('data-ref')}.${p.getAttribute('data-pin')}` : null; });
+  await page.locator('.selchip [aria-label="Next pin"]').click();
+  await page.waitForFunction(() => !!document.querySelector('svg.schematic .pin.cur'));
+  const p1 = await pinNow();
+  await page.locator('.selchip [aria-label="Next pin"]').click();
+  await page.waitForFunction((was) => { const p = document.querySelector('svg.schematic .pin.cur'); return p && `${p.getAttribute('data-ref')}.${p.getAttribute('data-pin')}` !== was; }, p1);
+  const p2 = await pinNow();
+  expect(!!p1 && !!p2 && p1 !== p2, `the chip's next pin button walks the pins (${p1} then ${p2})`);
+  await page.locator('.selchip [aria-label="Previous pin"]').click();
+  await page.waitForFunction((was) => { const p = document.querySelector('svg.schematic .pin.cur'); return p && `${p.getAttribute('data-ref')}.${p.getAttribute('data-pin')}` === was; }, p1);
+  expect((await pinNow()) === p1, 'and the previous pin button goes back');
   if (!(await page.locator('.sinspector').count())) await page.getByRole('button', { name: 'Details' }).click();
   await page.waitForSelector('.sinspector .title');
   expect((await page.locator('.sinspector .title').first().innerText()).trim() === pickNet.net, 'the inspector shows the same net');
@@ -158,6 +172,10 @@ export async function run({ page, shot, step, expect, section }) {
 
   step('a click on a flag follows the net to the other sheet and selects it there');
   await page.keyboard.press('Escape');
+  // The chip's pin buttons walked to a pin on another sheet: come back to the microcontroller's, fitted, so its flags are on screen.
+  await openSheet(page, mcu);
+  await page.keyboard.press('f');
+  await page.waitForTimeout(150);
   const flagNet = await page.evaluate(() => {
     const slot = document.querySelector('svg.schematic > g.sheet-slot:not([style*="none"])');
     const here = slot.getAttribute('data-sheet');
@@ -188,7 +206,7 @@ export async function run({ page, shot, step, expect, section }) {
   await page.waitForFunction(() => !document.querySelector('.selchip'));
   // What the pointer is over lights its nets, which is not the selection: take the pointer off the drawing.
   await page.mouse.move(100, 600);
-  expect((await page.locator('.sel-chip').count()) === 0, 'the chip on the drawing is gone');
+  expect((await page.locator('.selchip, .sel-chip').count()) === 0, 'no selection chip is left, in the top bar or on the drawing');
   // The source's cursor still sits on the line of the last part found (go to anything puts it there, quietly): the part
   // it declares stays marked, dimmer (`linked`), as it always has. What is selected is not marked.
   const lit = await page.evaluate(() => [...document.querySelectorAll('svg.schematic .part.mark:not(.linked)')].map((e) => e.getAttribute('data-ref')));
@@ -207,6 +225,25 @@ export async function run({ page, shot, step, expect, section }) {
   await page.waitForFunction(() => !!document.querySelector('.selchip'));
   expect(await page.evaluate(() => document.querySelectorAll('svg.schematic .part.mark:not(.linked)').length > 0), 'the schematic marks the part picked in the bill of materials');
   await shot('bom-pick');
+
+  step('a click on a card of "All sheets" selects the module and opens its sheet');
+  await page.keyboard.press('Escape');
+  await page.locator('.sheetpick .pick-btn').click();
+  await page.locator('.pick-pop .sl-row.all').click();
+  await page.waitForSelector('.sheet-overview .ov-card');
+  const cards = await page.locator('.sheet-overview .ov-card .ov-name').allInnerTexts();
+  const modules = new Set(detail.parts.map((p) => p.path.split('.')[0]).filter((p) => detail.parts.some((q) => q.path.startsWith(`${p}.`))));
+  const card = cards.find((n) => modules.has(n));
+  expect(!!card, `a card names a module of the board (${cards.join(', ')})`);
+  await page.locator('.sheet-overview .ov-card', { has: page.locator('.ov-name', { hasText: new RegExp(`^${card}$`) }) }).click();
+  await page.waitForFunction((s) => document.querySelector('.sheetpick .crumb-sheet')?.textContent === s, card);
+  expect((await activeSheet(page)) === card, `the sheet ${card} opened`);
+  await page.waitForSelector('.selchip.k-module');
+  expect((await chip()).includes(card), `the chip names the module ${card}`);
+  expect((await page.locator('.selchip').getAttribute('aria-label')).includes('module'), 'the shared selection is a module');
+  expect(await page.evaluate(() => document.querySelectorAll('svg.schematic > g.sheet-slot:not([style*="none"]) .part.mark:not(.linked)').length > 0), 'the module\'s parts are marked in the drawing');
+  await shot('card-selects-module');
+  await page.keyboard.press('Escape');
 
   step('at 1920 x 1080 the same pick fits the view and the ring is round the part');
   await page.keyboard.press('Escape');

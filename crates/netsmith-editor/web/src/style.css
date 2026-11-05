@@ -782,9 +782,11 @@ input:focus-visible { box-shadow: none; }
 .selchip-title { font-weight: 600; white-space: nowrap; flex: 0 0 auto; max-width: 16em; overflow: hidden; text-overflow: ellipsis; }
 .selchip-sub { color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; flex: 0 1 auto; min-width: 0; }
 .selchip-btn { flex: none; height: 100%; padding: 0 9px; background: none; border: none; border-left: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); color: var(--muted); cursor: pointer; }
-.selchip-btn:hover { color: var(--text); background: var(--hover-bg); }
+.selchip-btn:hover:not(:disabled) { color: var(--text); background: var(--hover-bg); }
+.selchip-btn.step { padding: 0 8px; font-size: 14px; line-height: 1; }
+.selchip-btn:disabled { opacity: .4; cursor: default; }
 .inspector h3 .clear { float: right; font-size: 11px; text-transform: none; letter-spacing: 0; padding: 0; }
-@media (max-width: 1400px) { .selchip-sub { display: none; } }
+@media (max-width: 1400px) { .selchip-sub:not(.keep) { display: none; } }
 @media (max-width: 1100px) { .cmdk { flex: none; min-width: 36px; } .cmdk-text, .cmdk .qp-keys { display: none; } }
 
 /* go to anything and the command palette */
@@ -826,6 +828,7 @@ input:focus-visible { box-shadow: none; }
 .cheat h2 { margin: 0; font-size: 15px; }
 .cheat-cols { columns: 3 280px; column-gap: 28px; padding: 6px 18px 18px; overflow-y: auto; }
 .cheat section { break-inside: avoid; margin-top: 12px; }
+.cheat section.aimed h3::after { content: " ◂"; }
 .cheat h3 { margin: 0 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); }
 .cheat dl { margin: 0; }
 .cheat-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px solid #2a2c31; }
@@ -838,7 +841,7 @@ input:focus-visible { box-shadow: none; }
 .icon-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; padding: 0 6px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; color: var(--muted); cursor: pointer; font-size: 13px; line-height: 1; }
 .icon-btn:hover { border-color: var(--accent); color: var(--text); }
 .icon-btn.on { background: var(--active-bg); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
-.sheetbar .step, .tool, .icon-btn, .sl-row, .sc-btn, .ov-card, .pick-btn, .menu-item, .hold-chip button, button.chip, .grp, .link { transition: border-color .12s, background .12s, color .12s; }
+.sheetbar .step, .tool, .icon-btn, .sl-row, .ov-card, .pick-btn, .menu-item, .hold-chip button, button.chip, .grp, .link { transition: border-color .12s, background .12s, color .12s; }
 .sheetbar button:focus-visible, .sheetnav button:focus-visible, .sinspector button:focus-visible, .stage button:focus-visible, .ov-card:focus-visible, .sinspector tr:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .panzoom:focus-visible { outline: 1px solid #e8873a88; outline-offset: -1px; }
 .sheet-place { min-width: 4.6em; text-align: right; }
@@ -899,13 +902,6 @@ input:focus-visible { box-shadow: none; }
 .hold-chip { position: absolute; z-index: 6; top: 10px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 4px 6px 4px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.35); white-space: nowrap; max-width: calc(100% - 24px); }
 .hold-chip button { padding: 1px 12px; border: 1px solid var(--accent); border-radius: 999px; background: none; color: var(--accent); cursor: pointer; font-weight: 600; }
 .hold-chip button:hover { background: var(--accent); color: #1b1208; }
-.sel-chip { position: absolute; z-index: 6; left: 12px; bottom: 12px; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 330px); min-width: 0; padding: 4px 6px 4px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.35); cursor: default; }
-.sc-kind { color: var(--faint); text-transform: uppercase; letter-spacing: .06em; font-size: 10px; }
-.sc-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 3ch; }
-.sc-sub { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.sc-btn { min-width: 22px; height: 22px; padding: 0 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel-2); color: var(--text); cursor: pointer; font-size: 13px; line-height: 1; flex: none; }
-.sc-btn.text { font-size: 12px; padding: 0 8px; }
-.sc-btn:hover:not(:disabled) { border-color: var(--accent); } .sc-btn:disabled { opacity: .4; cursor: default; }
 .zoombar { z-index: 6; gap: 2px; }
 .zoombar .zsep { width: 1px; height: 14px; min-width: 0; background: var(--line); margin: 0 4px; }
 .zoombar button { height: 22px; }
@@ -914,10 +910,6 @@ input:focus-visible { box-shadow: none; }
 .menu-item { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 5px 10px; background: none; border: none; border-radius: 6px; color: var(--text); cursor: pointer; text-align: left; font: inherit; }
 .menu-item:hover, .menu-item:focus-visible { background: var(--active-bg); }
 .mi-name { font-weight: 600; } .mi-pins { color: var(--faint); font-family: var(--mono); font-size: 11px; }
-.shortcuts { position: absolute; z-index: 25; right: 12px; top: 10px; width: 340px; max-width: calc(100% - 24px); padding: 10px 14px 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow-float); cursor: default; }
-.sh-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-.shortcuts dl { display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; margin: 0; }
-.shortcuts dd { margin: 0; color: var(--muted); } .shortcuts dt { white-space: nowrap; }
 kbd { font-family: var(--mono); font-size: 11px; padding: 1px 6px; background: var(--panel); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; }
 .schematic-host svg.schematic .port { cursor: pointer; }
 .schematic-host svg.schematic .port .flag { pointer-events: all; fill: rgba(111, 191, 115, .08); }

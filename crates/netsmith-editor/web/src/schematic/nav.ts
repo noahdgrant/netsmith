@@ -231,3 +231,30 @@ export function neighbourBox(
   }
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
+
+/** What to do with a reveal that was asked for: show it (`go`), keep it until the drawing is the
+ * board's (`wait`), or forget it (`drop`). A request is for the board that was in front when it
+ * was made; it is shown only on a drawing, and with a board detail, of that same board, never on
+ * the previous board's drawing that is still on screen while the new one is on its way. */
+export type RevealStep = 'go' | 'wait' | 'drop';
+export function revealStep(
+  request: { board: string | null },
+  /** The board in front now. */
+  current: string | null,
+  /** The board the drawing in the page was made for (null: none yet). */
+  drawingBoard: string | null,
+  /** The board the detail in the page is for. */
+  detailBoard: string | null,
+): RevealStep {
+  if (request.board !== current) return 'drop';
+  if (current === null || drawingBoard !== current || detailBoard !== current) return 'wait';
+  return 'go';
+}
+
+/** The module instance (`adc`) that a sheet of the overview stands for, when the sheet is one
+ * (the parts that are in no module sit on a sheet named for the board, which is no module). A
+ * sheet cut in pieces (`stage (2/3)`) is its module's. */
+export function moduleOfSheet(sheet: string, modules: string[]): string | null {
+  const base = pieceOf(sheet).base;
+  return modules.includes(base) ? base : null;
+}

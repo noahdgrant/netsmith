@@ -10,6 +10,8 @@ import { load, save } from './storage';
 /** Open when not null. `initial` is what the input starts with, `nonce` makes opening twice a new open. */
 export const picker = signal<{ initial: string; nonce: number } | null>(null);
 export const cheatSheet = signal(false);
+/** The group of the cheat sheet to scroll to when it opens (`Schematic`), or null. */
+export const cheatGroup = signal<string | null>(null);
 
 const RECENT_COMMANDS = 'netsmith.recentCommands.v1';
 const RECENT_PICKS = 'netsmith.recentPicks.v1';
@@ -62,7 +64,9 @@ export function closePicker() {
   picker.value = null;
 }
 
-export function toggleCheatSheet(open = !cheatSheet.peek()) {
+/** Show or hide the cheat sheet; `group` is the part of it to scroll to when it opens. */
+export function toggleCheatSheet(open = !cheatSheet.peek(), group: string | null = null) {
   picker.value = null;
+  cheatGroup.value = open ? group : null;
   cheatSheet.value = open;
 }

@@ -49,6 +49,23 @@ describe('chords', () => {
     expect(sameChord(chordOfEvent(ev('3')), parseChord('3'))).toBe(true);
     expect(sameChord(chordOfEvent(ev('3')), parseChord('Alt+3'))).toBe(false);
   });
+  it('parse the keys that are symbols, a bracket and a plus', () => {
+    expect(parseChord('+').key).toBe('+');
+    expect(parseChord('-').key).toBe('-');
+    expect(parseChord('[').key).toBe('[');
+    expect(parseChord('Shift+Tab')).toEqual({ mod: false, alt: false, shift: true, key: 'Tab' });
+    expect(sameChord(chordOfEvent(ev('+', { shiftKey: true }, 'Equal')), parseChord('+'))).toBe(true);
+    expect(sameChord(chordOfEvent(ev('Tab', { shiftKey: true })), parseChord('Shift+Tab'))).toBe(true);
+    expect(sameChord(chordOfEvent(ev('F')), parseChord('F'))).toBe(true);
+  });
+  it('read Shift+digit by the physical key, whatever character it types', () => {
+    expect(sameChord(chordOfEvent(ev('!', { shiftKey: true }, 'Digit1')), parseChord('Shift+1'))).toBe(true);
+    expect(sameChord(chordOfEvent(ev('@', { shiftKey: true }, 'Digit2')), parseChord('Shift+2'))).toBe(true);
+    // A French keyboard types 1 with Shift: the same chord.
+    expect(sameChord(chordOfEvent(ev('1', { shiftKey: true }, 'Digit1')), parseChord('Shift+1'))).toBe(true);
+    // Not the bare digit that switches the view.
+    expect(sameChord(chordOfEvent(ev('!', { shiftKey: true }, 'Digit1')), parseChord('1'))).toBe(false);
+  });
   it('read Alt+digit by the physical key, where Alt changes the character', () => {
     expect(sameChord(chordOfEvent(ev('¡', { altKey: true }, 'Digit1')), parseChord('Alt+1'))).toBe(true);
   });
@@ -133,6 +150,7 @@ describe('commandForKey', () => {
       { id: 'modded', title: 'Modded', group: 'G', keys: 'Mod+P', run: () => undefined },
       { id: 'plain-in-fields', title: 'Esc', group: 'G', keys: 'Escape', inFields: true, run: () => undefined },
       { id: 'modded-not-in-fields', title: 'Open', group: 'G', keys: 'Mod+Enter', inFields: false, run: () => undefined },
+      { id: 'held', title: 'Held', group: 'G', keys: 'Tab', keyFrom: (t) => (t as { ok?: boolean } | null)?.ok === true, run: () => undefined },
       { id: 'first', title: 'First', group: 'G', keys: 'Alt+X', run: () => undefined },
       { id: 'second', title: 'Second', group: 'G', keys: 'Alt+X', run: () => undefined },
     );
@@ -146,6 +164,14 @@ describe('commandForKey', () => {
     expect(commandForKey(ev('Escape'), true)?.id).toBe('plain-in-fields');
     expect(commandForKey(ev('Enter', { ctrlKey: true }), true)).toBeNull();
     expect(commandForKey(ev('Enter', { ctrlKey: true }), false)?.id).toBe('modded-not-in-fields');
+  });
+  it('holds a key to where its command says it works, for the keyboard only', () => {
+    expect(commandForKey({ ...ev('Tab'), target: { ok: true } as never }, false)?.id).toBe('held');
+    expect(commandForKey({ ...ev('Tab'), target: { ok: false } as never }, false)).toBeNull();
+    expect(commandForKey(ev('Tab'), false)).toBeNull();
+    // The palette and the buttons do not ask where: the command is offered and runs.
+    expect(available().some((c) => c.id === 'held')).toBe(true);
+    expect(runCommand('held')).toBe(true);
   });
   it('takes the first command registered on a chord', () => {
     expect(commandForKey(ev('x', { altKey: true }), false)?.id).toBe('first');

@@ -3,6 +3,8 @@
 
 import type { PcbBox, PcbFinding, PcbScene } from '../api';
 import { checking, findings, pickedFinding, select } from '../pcbstore';
+import { project } from '../store';
+import { kicadLine } from './kicad';
 
 const SOURCE = { placement: 'netsmith', unrouted: 'netsmith', drc: 'netsmith', kicad: 'KiCad' } as const;
 
@@ -25,7 +27,11 @@ export function FindingsList(props: { scene: PcbScene; onFocus: (box: PcbBox) =>
         <button class="tool" disabled={checking.value} onClick={props.onRecheck} title="Ask KiCad's design rules check as well (netsmith's own runs by itself; KiCad is optional)" data-testid="recheck">
           {checking.value ? 'Checking…' : 'Also ask KiCad'}
         </button>
-        {f && <span class="faint">{f.kicad === 'ran' ? 'with KiCad' : f.kicad === 'unavailable' ? 'KiCad unavailable' : 'KiCad not run'}</span>}
+        {f && (
+          <span class="faint" data-testid="kicad-state" data-state={f.kicad}>
+            {kicadLine(f.kicad, project.value?.kicad ?? null)}
+          </span>
+        )}
       </div>
       {f && f.kicad === 'unavailable' && <div class="note-line bad">{f.kicadNote}</div>}
       {f && !f.routed && <div class="note-line faint">Not routed: the connections still to make are not findings yet.</div>}

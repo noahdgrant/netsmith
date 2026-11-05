@@ -94,10 +94,12 @@ export async function recheck(board: string): Promise<void> {
   if (checking.value) return;
   checking.value = true;
   beginJob('drc', board);
-  const mine = ++findingsAsked;
   try {
     const answer = await api.pcbDrc(board);
-    if (mine === findingsAsked) findings.value = answer;
+    // The check's answer has KiCad's findings, so it stands over any plain question asked while it
+    // ran (the server answered that one before it had them): those in flight are dropped.
+    findingsAsked++;
+    findings.value = answer;
   } catch (e) {
     say(e instanceof Error ? e.message : String(e), true);
     void loadFindings(board);
