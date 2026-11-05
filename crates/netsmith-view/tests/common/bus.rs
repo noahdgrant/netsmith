@@ -37,7 +37,14 @@ fn library() -> String {
     cpu += &pin("power_in", -12.7, -2.54, 0, "GND", 7);
     let mut modem = String::new();
     for (i, name) in ["RX", "TX", "CTS", "RTS", "WAKE"].into_iter().enumerate() {
-        modem += &pin("bidirectional", -12.7, 5.08 - 2.54 * i as f64, 0, name, i as u32 + 1);
+        modem += &pin(
+            "bidirectional",
+            -12.7,
+            5.08 - 2.54 * i as f64,
+            0,
+            name,
+            i as u32 + 1,
+        );
     }
     modem += &pin("power_in", 12.7, 2.54, 180, "VCC", 6);
     modem += &pin("power_in", 12.7, -2.54, 180, "GND", 7);
@@ -92,7 +99,12 @@ pub fn board(lines: usize, caps: usize) -> (Design, Vec<Group>) {
     parts.push(("U1".into(), "Cpu", "Cpu", "mcu.u".into()));
     parts.push(("U2".into(), "Modem", "Modem", "modem.u".into()));
     for c in 0..caps {
-        parts.push((format!("C{}", c + 1), "Capacitor", "100n", format!("mcu.c{c}")));
+        parts.push((
+            format!("C{}", c + 1),
+            "Capacitor",
+            "100n",
+            format!("mcu.c{c}"),
+        ));
     }
     for c in 0..caps {
         parts.push((
@@ -109,7 +121,11 @@ pub fn board(lines: usize, caps: usize) -> (Design, Vec<Group>) {
                 r.as_str(),
                 *k,
                 *v,
-                if *k == "Capacitor" { Some("0402") } else { Some("P") },
+                if *k == "Capacitor" {
+                    Some("0402")
+                } else {
+                    Some("P")
+                },
             )
         })
         .collect();

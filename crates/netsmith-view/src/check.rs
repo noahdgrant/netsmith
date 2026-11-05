@@ -818,10 +818,7 @@ fn check_buses(design: &Design, l: &Layout, v: &SheetView, out: &mut Vec<Violati
                     len,
                 }),
                 Rel::Touch(p) => {
-                    let entry = bus
-                        .entries
-                        .iter()
-                        .any(|e| e.net == s.net && same(e.at, p));
+                    let entry = bus.entries.iter().any(|e| e.net == s.net && same(e.at, p));
                     if !entry {
                         bad(
                             out,

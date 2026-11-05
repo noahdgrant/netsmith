@@ -636,8 +636,7 @@ pub(super) fn run(
 
     groups.retain(|g| !g.is_empty());
     Scene::new(
-        ctx, placed, units, marks, groups, satellites, tagged, block_of, anchored, bus_plans,
-        retag,
+        ctx, placed, units, marks, groups, satellites, tagged, block_of, anchored, bus_plans, retag,
     )
     .finish()
 }

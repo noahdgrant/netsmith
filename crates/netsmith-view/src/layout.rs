@@ -33,6 +33,15 @@
 //!    first pin of the net's main part (`J2.3`), as KiCad names such a net, and on a flag not
 //!    at all.
 //! 4. A wire never crosses a text. A pin that connects to nothing has an X.
+//! 5. The members of one interface instance (the design carries them, [`netsmith_core::Design::interfaces`])
+//!    are a **bus** when three or more of them run between the same two main parts, or leave the
+//!    sheet from one part, each with one pin on each part and all on one side of it. The pins stay
+//!    one by one on the part's edge; each member's wire is a short entry that meets one thick
+//!    line, a spine beside the pins and a trunk that runs to the other part's spine or, where the
+//!    members go on to another sheet, ends in **one** flag with the interface's name. The line is
+//!    named once, by the instance, with the list of members and a slash with their count, and it
+//!    joins nothing: each entry joins the net of its name at the other end, as a label does. The
+//!    members have no flag or name of their own. See `engine/bus.rs` and ADR 0049.
 //!
 //! Nothing here knows how a layout is drawn: [`crate::render_svg`] reads the result.
 

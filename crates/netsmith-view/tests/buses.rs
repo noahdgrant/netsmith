@@ -73,7 +73,11 @@ fn the_members_between_two_parts_are_one_bus() {
     }
     // What the modem calls the same lines is written once, at the end.
     let other = bus.other.as_ref().expect("the modem names its lines apart");
-    assert!(other.text.starts_with("uart: {rx, tx, cts, rts}"), "{}", other.text);
+    assert!(
+        other.text.starts_with("uart: {rx, tx, cts, rts}"),
+        "{}",
+        other.text
+    );
     assert_eq!(bus.list.text, "{tx, rx, rts, cts}");
     assert_eq!(bus.count.text, "4");
     // No flag and no label is drawn for a member.
@@ -145,6 +149,48 @@ fn members_that_go_on_to_another_sheet_end_in_one_flag() {
 }
 
 #[test]
+fn every_member_of_a_bundle_flag_has_its_entry_on_the_other_sheet() {
+    let d = draw(4, 8);
+    let nets = |i: usize| -> Vec<usize> {
+        let mut v: Vec<usize> = d.layout.buses[i].members.iter().map(|m| m.net).collect();
+        v.sort_unstable();
+        v
+    };
+    // The two sheets' buses carry the same nets, under the names of their own modules.
+    assert_eq!(nets(0), nets(1));
+    assert_ne!(d.layout.buses[0].list.text, d.layout.buses[1].list.text);
+}
+
+#[test]
+fn a_member_whose_pin_is_on_another_side_of_its_part_stays_out() {
+    // The modem's `cts` line is moved to a pin on its other side: three of four are left.
+    let (dir, mapping, lib) = setup();
+    let (mut design, _) = board(4, 0);
+    let cts = net(&design, "UART_CTS");
+    let u2 = |p: &str| netsmith_core::PinRef {
+        refdes: "U2".into(),
+        pin: p.into(),
+    };
+    design.nets[cts].pins.retain(|p| p.refdes != "U2");
+    design.nets[cts].pins.push(u2("6"));
+    let vcc = net(&design, "VCC");
+    design.nets[vcc]
+        .pins
+        .retain(|p| !(p.refdes == "U2" && p.pin == "6"));
+    let layout = layout_sheets_rails(&design, &[], &rails(), &mapping, &lib).unwrap();
+    assert_eq!(layout.buses.len(), 1);
+    let names: Vec<&str> = layout.buses[0]
+        .members
+        .iter()
+        .map(|m| m.name.as_str())
+        .collect();
+    assert_eq!(names, ["tx", "rx", "rts"]);
+    let found = check(&design, &layout);
+    assert!(found.is_empty(), "{found:?}");
+    drop(dir);
+}
+
+#[test]
 fn an_interface_with_fewer_than_three_members_stays_as_it_was() {
     let with = draw(2, 8);
     assert!(with.layout.buses.is_empty());
@@ -155,7 +201,12 @@ fn an_interface_with_fewer_than_three_members_stays_as_it_was() {
         layout_sheets_rails(&bare, &with.groups, &rails(), &with.mapping, &with.lib).unwrap();
     assert_eq!(with.layout, again);
     // Its members are flags, as before.
-    assert!(with.layout.ports.iter().any(|p| with.design.nets[p.net].name == "UART_TX"));
+    assert!(
+        with.layout
+            .ports
+            .iter()
+            .any(|p| with.design.nets[p.net].name == "UART_TX")
+    );
     // The same on one sheet: wires or names.
     let one = draw(2, 0);
     assert!(one.layout.buses.is_empty());
@@ -200,15 +251,15 @@ fn the_drawing_is_the_same_every_time_and_keyed_by_path() {
     // The order the interfaces are listed in does not change the drawing.
     let mut reversed = a.design.clone();
     reversed.interfaces.reverse();
-    let again =
-        layout_sheets_rails(&reversed, &a.groups, &rails(), &a.mapping, &a.lib).unwrap();
+    let again = layout_sheets_rails(&reversed, &a.groups, &rails(), &a.mapping, &a.lib).unwrap();
     assert_eq!(a.layout, again);
 }
 
 #[test]
 fn the_svg_has_the_classes_of_a_bus() {
     let d = draw(4, 0);
-    let svg = render_svg_by_module_with(&d.design, &d.groups, &rails(), &d.mapping, &d.lib).unwrap();
+    let svg =
+        render_svg_by_module_with(&d.design, &d.groups, &rails(), &d.mapping, &d.lib).unwrap();
     for needle in [
         "class=\"bus\"",
         "class=\"wire bus-entry\"",
@@ -240,7 +291,9 @@ fn an_entry_of_a_net_that_is_not_a_member_is_found() {
     l.buses[0].entries[0].net = net(&d.design, "WAKE");
     let found = bus_found(&d, &l);
     assert!(
-        found.iter().any(|f| f.contains("WAKE") && f.contains("not a member")),
+        found
+            .iter()
+            .any(|f| f.contains("WAKE") && f.contains("not a member")),
         "{found:?}"
     );
 }
@@ -257,7 +310,9 @@ fn a_member_with_no_entry_at_one_end_is_found() {
     l.buses[0].entries.remove(gone);
     let found = bus_found(&d, &l);
     assert!(
-        found.iter().any(|f| f.contains("UART_RTS") && f.contains("0 entries")),
+        found
+            .iter()
+            .any(|f| f.contains("UART_RTS") && f.contains("0 entries")),
         "{found:?}"
     );
 }
@@ -274,7 +329,10 @@ fn two_members_at_one_place_of_the_line_are_found() {
         .unwrap();
     l.buses[0].entries[other].at = first;
     let found = bus_found(&d, &l);
-    assert!(found.iter().any(|f| f.contains("joined at one place")), "{found:?}");
+    assert!(
+        found.iter().any(|f| f.contains("joined at one place")),
+        "{found:?}"
+    );
 }
 
 #[test]
@@ -284,7 +342,10 @@ fn an_entry_off_the_line_is_found() {
     let at = l.buses[0].entries[0].at;
     l.buses[0].entries[0].at = Pt::new(at.x + 400.0, at.y + 400.0);
     let found = bus_found(&d, &l);
-    assert!(found.iter().any(|f| f.contains("not on the thick line")), "{found:?}");
+    assert!(
+        found.iter().any(|f| f.contains("not on the thick line")),
+        "{found:?}"
+    );
 }
 
 #[test]
@@ -300,7 +361,9 @@ fn a_wire_that_touches_the_line_is_found() {
     });
     let found = bus_found(&d, &l);
     assert!(
-        found.iter().any(|f| f.contains("WAKE") && f.contains("touches the thick line")),
+        found
+            .iter()
+            .any(|f| f.contains("WAKE") && f.contains("touches the thick line")),
         "{found:?}"
     );
 }

@@ -171,7 +171,10 @@ pub(super) fn plan(
             let mut parts: Vec<usize> = ends.iter().map(|e| e.0).collect();
             parts.sort_unstable();
             parts.dedup();
-            if !ok || ends.len() != want || parts.len() != want || !parts.iter().all(|&p| is_anchor(p))
+            if !ok
+                || ends.len() != want
+                || parts.len() != want
+                || !parts.iter().all(|&p| is_anchor(p))
             {
                 continue;
             }
@@ -205,9 +208,9 @@ pub(super) fn plan(
     let depth = |c: &Cand| design.interfaces[c.iface].path.split('.').count();
     // An instance in the module of one of the parts names the bus before one of another module.
     let local = |c: &Cand| {
-        c.parts.iter().any(|&p| {
-            common_segments(&design.interfaces[c.iface].path, &design.parts[p].path) > 0
-        })
+        c.parts
+            .iter()
+            .any(|&p| common_segments(&design.interfaces[c.iface].path, &design.parts[p].path) > 0)
     };
     cands.sort_by(|a, b| {
         b.members
@@ -215,7 +218,11 @@ pub(super) fn plan(
             .cmp(&a.members.len())
             .then_with(|| local(b).cmp(&local(a)))
             .then_with(|| depth(a).cmp(&depth(b)))
-            .then_with(|| design.interfaces[a.iface].path.cmp(&design.interfaces[b.iface].path))
+            .then_with(|| {
+                design.interfaces[a.iface]
+                    .path
+                    .cmp(&design.interfaces[b.iface].path)
+            })
     });
 
     let mut taken = vec![false; design.nets.len()];
@@ -270,10 +277,8 @@ pub(super) fn plan(
         for &o in &order {
             let part = c.parts[o];
             let side = pin_of(&members[0], part).2;
-            let mut pins: Vec<(usize, usize)> = members
-                .iter()
-                .map(|e| (pin_of(e, part).1, e.net))
-                .collect();
+            let mut pins: Vec<(usize, usize)> =
+                members.iter().map(|e| (pin_of(e, part).1, e.net)).collect();
             pins.sort_by(|a, b| {
                 along_of(side, placed[part].pins[a.0].at)
                     .total_cmp(&along_of(side, placed[part].pins[b.0].at))
@@ -370,7 +375,11 @@ pub(super) fn rooms(
                         Dir::Down => r.max.y,
                         Dir::Up => r.min.y,
                     };
-                    far = if outward > 0.0 { far.max(edge) } else { far.min(edge) };
+                    far = if outward > 0.0 {
+                        far.max(edge)
+                    } else {
+                        far.min(edge)
+                    };
                 }
             }
             let extra = if plan.goes_on() {
@@ -502,13 +511,12 @@ impl<'a> Scene<'a> {
         let alongs: Vec<i32> = g.pins.iter().map(|p| g.along(p.3)).collect();
         g.span = (*alongs.iter().min()?, *alongs.iter().max()?);
         let sgn = g.sgn();
-        let base = g
-            .pins
-            .iter()
-            .map(|p| g.across(p.3))
-            .fold(if sgn > 0 { i32::MIN } else { i32::MAX }, |m, v| {
+        let base = g.pins.iter().map(|p| g.across(p.3)).fold(
+            if sgn > 0 { i32::MIN } else { i32::MAX },
+            |m, v| {
                 if sgn > 0 { m.max(v) } else { m.min(v) }
-            });
+            },
+        );
         let id = self.bus_id(0);
         let _ = id;
         for kk in SPINE_MIN..=SPINE_MAX {
@@ -526,15 +534,15 @@ impl<'a> Scene<'a> {
 
     /// Whether the spine and the entries of `g` run over nodes with nothing on them.
     fn spine_is_free(&self, g: &EndGeom) -> bool {
-        let step_along = if g.side.is_vertical() { Dir::Right } else { Dir::Down };
+        let step_along = if g.side.is_vertical() {
+            Dir::Right
+        } else {
+            Dir::Down
+        };
         for a in g.span.0..=g.span.1 {
             let n = g.at(a);
             if !self.grid.is_free(n)
-                || (a > g.span.0
-                    && self.grid.step_is_cut(
-                        g.at(a - 1),
-                        step_along,
-                    ))
+                || (a > g.span.0 && self.grid.step_is_cut(g.at(a - 1), step_along))
             {
                 return false;
             }
@@ -599,7 +607,10 @@ impl<'a> Scene<'a> {
 
         let mut lines: Vec<Vec<Pt>> = Vec::new();
         for g in &ends {
-            lines.push(vec![self.grid.pt(g.at(g.span.0)), self.grid.pt(g.at(g.span.1))]);
+            lines.push(vec![
+                self.grid.pt(g.at(g.span.0)),
+                self.grid.pt(g.at(g.span.1)),
+            ]);
         }
         let a0 = ends[0].at(attach[0]);
         let trunk: Vec<Node>;
@@ -663,7 +674,10 @@ impl<'a> Scene<'a> {
                 texts_run.push((self.grid.pt(w[0]), self.grid.pt(w[1])));
             }
         }
-        let trunk_pts: Vec<Pt> = trunk.iter().map(|&n| self.grid.pt(n)).collect();
+        let trunk_pts: Vec<Pt> = grid::corners(&trunk)
+            .iter()
+            .map(|&n| self.grid.pt(n))
+            .collect();
         lines.push(trunk_pts);
 
         let writing = self.place_writing(plan, &texts_run, id)?;
@@ -767,7 +781,8 @@ impl<'a> Scene<'a> {
             }
             // The three ways to set the lines about the thick line, near ones first: name
             // above and members below, both above, both below.
-            let ways: [(f64, f64, f64); 3] = [(-1.0, 2.5, -1.0), (-3.4, -1.0, -3.4), (2.5, 4.9, 2.5)];
+            let ways: [(f64, f64, f64); 3] =
+                [(-1.0, 2.5, -1.0), (-3.4, -1.0, -3.4), (2.5, 4.9, 2.5)];
             // With the other end's name first, and only when it has no room anywhere on the
             // run without it.
             for with_other in [true, false] {
@@ -778,7 +793,10 @@ impl<'a> Scene<'a> {
                     let start = if vertical {
                         snap(middle + shift + (wide - COUNT_ROOM) / 2.0, GRID)
                     } else {
-                        snap(middle + shift - (wide + COUNT_ROOM) / 2.0 + COUNT_ROOM, GRID)
+                        snap(
+                            middle + shift - (wide + COUNT_ROOM) / 2.0 + COUNT_ROOM,
+                            GRID,
+                        )
                     };
                     for &(name_off, list_off, count_off) in &ways {
                         let w = self.writing_at(
@@ -791,8 +809,7 @@ impl<'a> Scene<'a> {
                             (fixed, start),
                             (name_off, list_off, count_off),
                         );
-                        if w
-                            .rects
+                        if w.rects
                             .iter()
                             .all(|r| self.rect_is_free_for(inflate(*r, 0.3), id as usize))
                         {
@@ -829,7 +846,11 @@ impl<'a> Scene<'a> {
         };
         // For a vertical run the block grows upward from `start` (a y), so the tick is below it.
         let (t0, t1, along_end) = if vertical {
-            (start + COUNT_ROOM - 1.4, start + COUNT_ROOM - 1.4, start - 0.0)
+            (
+                start + COUNT_ROOM - 1.4,
+                start + COUNT_ROOM - 1.4,
+                start - 0.0,
+            )
         } else {
             (start - COUNT_ROOM + 1.4, start - COUNT_ROOM + 1.4, start)
         };
@@ -848,16 +869,31 @@ impl<'a> Scene<'a> {
         };
         let name = place(&plan.name, name_off, start);
         let list_t = place(list, list_off, start);
-        let other_off = if list_off > 0.0 { list_off + 2.4 } else { name_off - 2.4 };
+        let other_off = if list_off > 0.0 {
+            list_off + 2.4
+        } else {
+            name_off - 2.4
+        };
         let other_t = other.map(|o| place(o, other_off, start));
         let count_t = if vertical {
             Text::new(
                 count,
-                Pt::new(fixed + count_off * 0.0 + if name_off < 0.0 { -1.4 } else { 1.6 }, tick_at + 0.5),
-                if name_off < 0.0 { Anchor::End } else { Anchor::Start },
+                Pt::new(
+                    fixed + count_off * 0.0 + if name_off < 0.0 { -1.4 } else { 1.6 },
+                    tick_at + 0.5,
+                ),
+                if name_off < 0.0 {
+                    Anchor::End
+                } else {
+                    Anchor::Start
+                },
             )
         } else {
-            Text::new(count, Pt::new(tick_at + 0.8, fixed + count_off), Anchor::Start)
+            Text::new(
+                count,
+                Pt::new(tick_at + 0.8, fixed + count_off),
+                Anchor::Start,
+            )
         };
         let widen = |t: &Text, w: f64| {
             let mut r = t.extent();

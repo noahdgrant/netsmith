@@ -19,7 +19,8 @@ use netsmith_check::{
     Board, Domain, InstId, InstKind, Member, Model, Panel, PinKind, Pinout, System, SystemBoard,
 };
 use netsmith_core::{
-    Design, InnerLayers, InterfaceInstance, InterfaceMember, Net, PanelRules, PanelSpec, Part, PartPin, PinRef, Process, Stackup,
+    Design, InnerLayers, InterfaceInstance, InterfaceMember, Net, PanelRules, PanelSpec, Part,
+    PartPin, PinRef, Process, Stackup,
 };
 use netsmith_solve::{Library, Solution};
 

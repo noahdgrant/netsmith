@@ -1215,7 +1215,11 @@ fn the_design_carries_the_interface_instances_and_the_nets_of_their_members() {
     // The rails are interface instances of their own: the supply's pins are not members of
     // the SPI interfaces.
     assert!(d.interfaces.iter().any(|i| i.type_name == "Rail"));
-    assert!(d.interfaces.iter().all(|i| i.type_name != "Spi" || i.members.len() == 4));
+    assert!(
+        d.interfaces
+            .iter()
+            .all(|i| i.type_name != "Spi" || i.members.len() == 4)
+    );
 }
 
 #[test]

@@ -107,6 +107,7 @@ fn design(case: &Case) -> Design {
         side_source: String::new(),
     };
     Design {
+        interfaces: Vec::new(),
         name: "Protrusion".into(),
         process: Some(process()),
         features: Features {

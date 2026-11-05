@@ -625,3 +625,9 @@ td.des { font-weight: 600; }
 .sy-tip ul { margin: 0; padding-left: 16px; font-family: var(--mono); }
 .sy-card .badge { width: 18px; height: 18px; font-size: 12px; }
 .sy-volts { flex: none; } .sy-amps { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* schematic: interface buses (the thick line, the name, the count) */
+.schematic-host svg.schematic .bus .line { stroke-width: .9; }
+.schematic-host svg.schematic .bus-label, .schematic-host svg.schematic .bus-count { fill: var(--net); font-weight: 600; }
+.schematic-host svg.schematic .bus-label.bus-members { font-weight: 400; }
+.schematic-host svg.schematic .bus-tick { stroke: var(--wire); }

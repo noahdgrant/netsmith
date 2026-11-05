@@ -49,8 +49,8 @@ use std::fmt::Write as _;
 use crate::geom::{Dir, Pt, Rect};
 use crate::layout::{Layout, PlacedPart, PowerKind};
 use crate::sheetview::{
-    EPS, Fault, OVERLAP, Rel, Seg, SheetView, body_strokes, bus_of, bus_segments, overlaps,
-    relate, runs_through, runs_through_body, same, symbol_box, texts, views, wire_faults,
+    EPS, Fault, OVERLAP, Rel, Seg, SheetView, body_strokes, bus_of, bus_segments, overlaps, relate,
+    runs_through, runs_through_body, same, symbol_box, texts, views, wire_faults,
 };
 
 /// The schematic grid, as the layout uses it: the unit of the satellite distance.
@@ -287,7 +287,11 @@ fn measure_sheet(l: &Layout, v: &SheetView) -> SheetMetrics {
         open_pins: v.marks.len(),
         buses: v.buses.len(),
         bus_members: v.buses.iter().map(|&b| l.buses[b].members.len()).sum(),
-        bus_flags: v.buses.iter().filter(|&&b| l.buses[b].flag.is_some()).count(),
+        bus_flags: v
+            .buses
+            .iter()
+            .filter(|&&b| l.buses[b].flag.is_some())
+            .count(),
         ..SheetMetrics::default()
     };
     m.diagonal_segments = v.segments.iter().filter(|s| !s.is_axis_aligned()).count();
@@ -574,7 +578,11 @@ fn overlap_counts(l: &Layout, v: &SheetView, segments: &[Seg], m: &mut SheetMetr
     let mut boxes: Vec<Rect> = v.parts.iter().map(|&i| symbol_box(&l.parts[i])).collect();
     boxes.extend(v.symbols.iter().map(|&i| l.symbols[i].glyph_extent()));
     boxes.extend(v.ports.iter().map(|&i| l.ports[i].extent()));
-    boxes.extend(v.buses.iter().filter_map(|&i| l.buses[i].flag.as_ref().map(|f| f.extent())));
+    boxes.extend(
+        v.buses
+            .iter()
+            .filter_map(|&i| l.buses[i].flag.as_ref().map(|f| f.extent())),
+    );
     m.symbol_overlaps = pairs_overlapping(boxes.iter());
 
     let written = texts(l, v);

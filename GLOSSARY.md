@@ -176,7 +176,7 @@ _Avoid_: Component, device
 
 **Interface**:
 A typed bundle of pins and quantities that is connected as one. A bundle of quantities with no pins, such as a process, is also an interface.
-_Avoid_: Bus, bundle, group
+_Avoid_: Bus (that is the name of how the schematic draws one, see _Bus_), bundle, group
 
 **Module**:
 A reusable sub-circuit that is placed on a board or inside another module. Only its interfaces, pins, and declared values can be used from outside; the parts and modules inside are internal.
@@ -320,6 +320,10 @@ _Avoid_: Power port (a net label is the name of a signal net at the end of a stu
 **Flag**:
 How the editor's schematic shows a net that goes on to another sheet: a pentagon pointing at the end of the short stub of a pin, like KiCad's hierarchical label, with the net's name in it (none for a net with a generated name). A net that goes on has a flag at the end of the stub of each group of its pins on the sheet (a main part and the small parts that serve its pins).
 _Avoid_: Port (a `Rail`'s and a module's ports are pins), off-sheet label
+
+**Bus**:
+How the editor's schematic draws the members of one interface instance (`mcu.uart0`) when three or more of them run between the same two main parts of a sheet, or leave the sheet from one part: each member's pin stays on the part's edge and its wire is a short entry that meets one thick line, which runs to the other part or ends in one flag where the members go on to another sheet. It is named once, by the instance (`uart0`), with the list of members (`{tx, rx, rts, cts}`) and a slash with their count. The line joins nothing: each entry joins, by name, the net of that name at the other end, as a label does. Which nets are one bus comes from the interface instances the design carries (ADR 0049), never from net names. The word is for the drawing; the language's thing is an _Interface_.
+_Avoid_: Bundle, harness, interface (for the drawing), bus wire
 
 **Net label**:
 How the editor's schematic shows a signal net that is not drawn as one wire: the net's name as plain text at the end of a short stub out of each group of its pins (a main part and the small parts that serve its pins, which stay wired to that stub), like KiCad's local label. A net is named, not wired, when it joins more than one such group and its wire would be long (over 48 grid steps), fan out to three groups over 30 steps, or cross more than one other wire; a rail is never named (a power symbol is drawn), nor is the net of a part that serves a pin. A net with a generated name is shown by the first pin of its main part (`J2.3`), as KiCad names such a net. The pieces of a net that carry the same name on a sheet are one net.

@@ -15,8 +15,8 @@ mod sheetview;
 mod svg;
 
 pub use layout::{
-    Bus, BusEntry, BusFlag, BusMember, Layout, MarkKind, Marks, PinMark, Port, PowerKind, PowerSymbol, Rails, layout, layout_marked,
-    layout_rails,
+    Bus, BusEntry, BusFlag, BusMember, Layout, MarkKind, Marks, PinMark, Port, PowerKind,
+    PowerSymbol, Rails, layout, layout_marked, layout_rails,
 };
 pub use sheets::{Group, Sheet, layout_sheets, layout_sheets_marked, layout_sheets_rails};
 pub use svg::{
