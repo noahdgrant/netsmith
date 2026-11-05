@@ -67,8 +67,11 @@ jobs:
       - run: cargo test --workspace --no-fail-fast
 
   # The whole suite with KiCad 9 installed, so the tests that skip themselves in `test` run.
-  # The version is pinned to the major: the KiCad team's PPA for 9.0 releases carries 9.0.x
-  # (the cross-check's allowance applies only to exactly 9.0.0, ADR 0034).
+  # The runner's own Ubuntu archive carries KiCad 9 (ubuntu-latest is 26.04: 9.0.8). The version
+  # is pinned to the major by the check below: the cross-check's allowance applies only to
+  # exactly 9.0.0 (ADR 0034), so a 9.0.x newer than that is what is wanted. If ubuntu-latest
+  # moves to a release that ships another major, the step fails; add the KiCad team's PPA
+  # (ppa:kicad/kicad-9.0-releases) for that release then.
   kicad:
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -80,15 +83,19 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      # `kicad` brings kicad-cli and the stock symbol and footprint libraries; the 3D models
-      # (kicad-packages3d, several GB) are not installed, nothing here reads them.
+      # kicad-cli, and the stock symbol and footprint libraries (separate packages, only
+      # recommended by `kicad`). The 3D models (kicad-packages3d, several GB) are not installed,
+      # nothing here reads them.
       - name: Install KiCad 9
         run: |
-          sudo add-apt-repository --yes ppa:kicad/kicad-9.0-releases
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends kicad
+          sudo apt-get install --yes --no-install-recommends kicad kicad-symbols kicad-footprints
           kicad-cli --version
           apt-cache policy kicad | head -3
+          case "$(kicad-cli --version)" in
+            9.*) ;;
+            *) echo "::error::KiCad 9 is wanted, the runner installed $(kicad-cli --version)"; exit 1 ;;
+          esac
 
       # What the lookup of netsmith_kicad::install finds on a real Linux install (issue #6).
       - name: Show the KiCad library lookup
