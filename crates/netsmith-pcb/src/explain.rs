@@ -217,20 +217,31 @@ impl Context<'_> {
     }
 
     /// Courtyards that the lines put past an edge nobody stated, wherever they put the part
-    /// (a pin, a lock, or a window that leaves no place inside), and, as a warning, those they
-    /// put within the margin the placer keeps clear.
+    /// (a pin, a lock, or a window that leaves no place inside). A courtyard they put inside
+    /// the board but within the margin the placer keeps clear is a conflict already
+    /// ([`Context::fits`]).
     fn edges(&self, found: &mut Precheck) {
         let o = self.outline;
         for w in self.windows(false) {
             if w.quarters.is_empty() {
                 continue;
             }
+            // A window the outline leaves no place in is already said by a conflict (a line,
+            // the part and the outline): once is enough.
+            let said = format!(
+                "keeps the courtyard of {} inside the outline",
+                Self::name(&w)
+            );
+            if found.conflicts.iter().any(|c| c.contains(&said)) {
+                continue;
+            }
             let (may, by) = self.stated(w.part);
             // How far past (or, when negative, inside) each edge the courtyard is at best,
             // and whether the body can reach the edge in some place.
             let mut past: Vec<(Edge, f64)> = Vec::new();
-            let mut margin: Vec<(Edge, f64)> = Vec::new();
             let mut body_reaches = true;
+            // A pin, or a lock: one place, so the numbers are the part's own.
+            let exact = w.quarters.iter().all(|q| q.x.0 == q.x.1 && q.y.0 == q.y.1);
             for edge in Edge::ALL.into_iter().filter(|&e| !may.has(e)) {
                 let mut least = f64::INFINITY;
                 let mut reaches = false;
@@ -254,11 +265,8 @@ impl Context<'_> {
                 if least > PAST {
                     past.push((edge, least));
                     body_reaches &= reaches;
-                } else if least > -self.wall + PAST && least.is_finite() {
-                    margin.push((edge, -least));
                 }
             }
-            let name = Self::name(&w);
             if !past.is_empty() {
                 found.faults.push(Fault {
                     refdes: w.part.refdes.clone(),
@@ -271,7 +279,8 @@ impl Context<'_> {
                             &past,
                             &may.list(),
                             &by,
-                            Some(body_reaches)
+                            !exact,
+                            !body_reaches
                         ),
                         if w.lines.is_empty() {
                             "none".to_string()
@@ -280,17 +289,6 @@ impl Context<'_> {
                         }
                     ),
                 });
-            } else if !margin.is_empty() {
-                let list: Vec<String> = margin
-                    .iter()
-                    .map(|(e, d)| format!("{} mm from the {} edge", number(*d), e.word()))
-                    .collect();
-                found.warnings.push(format!(
-                    "{name}: {} puts its courtyard at most {} wherever it is put, closer than the {} mm the placer keeps clear of an edge, so the placer may refuse it (not proved)",
-                    w.lines.join("; "),
-                    list.join(" and "),
-                    number((self.wall * 100.0).round() / 100.0)
-                ));
             }
         }
     }
@@ -306,6 +304,10 @@ impl Context<'_> {
             let Some(part) = self.parts.iter().find(|p| p.refdes == o.part) else {
                 continue;
             };
+            // A part already told to be past an edge is not told again that it is too big.
+            if found.faults.iter().any(|f| f.refdes == part.refdes) {
+                continue;
+            }
             let wall = (self.wall * 100.0).round() / 100.0;
             let inside = |v: f64| (v - 2.0 * self.wall).max(0.0);
             found.faults.push(Fault {

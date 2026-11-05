@@ -5,6 +5,10 @@
 //! leave, the keepouts, the height limits and the outline. A conflict that cannot be proved
 //! is not claimed. Every board here is invented: a 40 by 30 mm board with resistors, and
 //! headers.
+//!
+//! The lines are proved to conflict before the placer starts (`tests/precheck.rs`). These
+//! tests place with `lines_warn` (constraints are warnings for the run), so that the placer
+//! runs anyway and the report after placing, which says where it ended, is still tested.
 
 use std::fs;
 
@@ -84,7 +88,8 @@ fn place(
     )
     .unwrap_or_else(|e| panic!("{e}"));
     let design = built[0].design.clone();
-    let options = place_options(&design, None);
+    let mut options = place_options(&design, None);
+    options.lines_warn = true;
     let board =
         Board::from_design_placed(&design, &libraries.mapping, &libraries.footprints, &options);
     (design, board)
@@ -358,18 +363,21 @@ fn a_refusal_that_the_parts_do_not_fit_carries_the_lines_that_conflict() {
 
 #[test]
 fn a_part_too_big_for_the_outline_is_the_outlines_fault_and_not_a_line_s() {
-    // The header is bigger than the board in every turn: the refusal says so, and the line
-    // that only asks for a place is not blamed.
+    // The header is bigger than the board in every turn: the refusal says so, before placing,
+    // and the line that only asks for a place is not blamed.
     let (_, board) = place(1, HEADERS, (12, 12), "    .h1.place.y >= 2mm\n");
-    let Err(BoardError::DoesNotFit(error)) = board else {
+    let Err(BoardError::Unplaceable(found)) = board else {
         panic!("a header does not fit 12 x 12 mm");
     };
-    let text = error.to_string();
+    assert_eq!(found.conflicts, Vec::<String>::new());
+    // Both headers of the board are bigger than the outline; neither is a line's fault.
+    assert_eq!(found.faults.len(), 2, "{found:?}");
+    let text = &found.faults[0].text;
     assert!(
-        text.contains("a part is bigger in every turn it may take: J1 (Header1x4)"),
+        text.contains("is bigger than the outline in every turn it may take")
+            && text.contains("J1 (Header1x4) has a courtyard of"),
         "{text}"
     );
-    assert!(!text.contains("these lines cannot both hold"), "{text}");
 }
 
 #[test]
@@ -483,32 +491,26 @@ fn fab(
 }
 
 #[test]
-fn fab_names_the_lines_that_conflict_and_the_ones_not_met_and_writes_them_to_a_file() {
+fn fab_names_the_lines_that_conflict_before_placing_anything() {
     let (dir, made) = fab("relation", 2, "", (40, 30), PITCH_AND_WINDOWS, false);
     let error = made.expect_err("no placement meets the lines");
-    // One error, the lines first: the placer ended on an arrangement that is clean otherwise.
+    // One error, the lines first, and no placer ran: there is no arrangement to describe.
     assert!(
         error.starts_with("error: Widget: no placement meets every requirement of the physical file:\n  these lines cannot both hold: "),
         "{error}"
     );
-    for want in [
-        PITCH,
-        R1_LOW,
-        R2_HIGH,
-        "where the placer ended, 1 requirement(s) are not met:",
-    ] {
+    for want in [PITCH, R1_LOW, R2_HIGH] {
         assert!(error.contains(want), "{want:?} is not in {error}");
     }
-    let file = dir.join("fab").join("placement-failure.txt");
-    let text = fs::read_to_string(&file).unwrap_or_else(|e| panic!("{}: {e}", file.display()));
-    assert!(error.contains(&file.display().to_string()), "{error}");
-    for want in [PITCH, R1_LOW, R2_HIGH, "Every part where the placer ended"] {
-        assert!(text.contains(want), "{want:?} is not in {text}");
-    }
+    assert!(!error.contains("where the placer ended"), "{error}");
+    assert!(
+        !dir.join("fab").join("placement-failure.txt").exists(),
+        "the placer did not run, so there is no list of where it ended"
+    );
 }
 
 #[test]
-fn fab_puts_the_lines_before_the_faults_of_the_arrangement() {
+fn fab_refuses_a_part_pinned_in_a_keepout_before_placing() {
     let extra = "    .r1.place.x &= 20mm
     .r1.place.y &= 10mm
     .blocked: Keepout {
@@ -518,42 +520,34 @@ fn fab_puts_the_lines_before_the_faults_of_the_arrangement() {
         .height &= 10mm
     }
 ";
-    let (dir, made) = fab("keepout", 2, "", (40, 30), extra, false);
+    let (_dir, made) = fab("keepout", 2, "", (40, 30), extra, false);
     let error = made.expect_err("R1 is in the keepout");
-    let lines: Vec<&str> = error.lines().collect();
     assert!(
-        lines[0].starts_with("error: Widget: no placement meets every requirement"),
+        error.starts_with("error: Widget: no placement meets every requirement"),
         "{error}"
     );
-    let faults = lines
-        .iter()
-        .position(|l| l.contains("R1 overlaps the keepout `blocked`"))
-        .unwrap_or_else(|| panic!("{error}"));
-    let conflict = lines
-        .iter()
-        .position(|l| {
-            l.contains("these lines cannot both hold: widget.physical.nsm:10 `.r1.place.x &= 20mm`")
-        })
-        .unwrap_or_else(|| panic!("{error}"));
-    assert!(conflict < faults, "{error}");
-    let text = fs::read_to_string(dir.join("fab").join("placement-failure.txt")).unwrap();
     assert!(
-        text.contains("The faults the placement check found"),
-        "{text}"
+        error
+            .contains("these lines cannot both hold: widget.physical.nsm:10 `.r1.place.x &= 20mm`"),
+        "{error}"
+    );
+    // The fault of an arrangement is not there: nothing was placed.
+    assert!(
+        !error.contains("R1 overlaps the keepout `blocked`"),
+        "{error}"
     );
 }
 
 #[test]
-fn fab_writes_the_lines_of_a_refusal_that_the_parts_do_not_fit() {
+fn fab_names_headers_whose_windows_overlap_before_placing() {
     let (dir, made) = fab("headers", 1, HEADERS, (14, 9), HEADER_LINES, false);
     let error = made.expect_err("the headers cannot both be there");
     assert!(error.contains("these lines cannot both hold: "), "{error}");
-    let text = fs::read_to_string(dir.join("fab").join("placement-failure.txt")).unwrap();
-    assert!(text.contains("these lines cannot both hold: "), "{text}");
     assert!(
-        text.contains("widget.physical.nsm:10 `.h1.place.x &= 7mm +/- 0.1mm`"),
-        "{text}"
+        error.contains("widget.physical.nsm:10 `.h1.place.x &= 7mm +/- 0.1mm`"),
+        "{error}"
     );
+    assert!(!dir.join("fab").join("placement-failure.txt").exists());
 }
 
 #[test]
