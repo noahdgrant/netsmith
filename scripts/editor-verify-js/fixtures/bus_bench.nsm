@@ -1,0 +1,139 @@
+//! An invented board for checking the editor's busses: a processor module and a modem module
+//! joined by a UART, and a second processor with a flash chip on an SPI, among the board's own
+//! parts. The two modules are two sheets, so the UART leaves each as one bundle flag; the SPI
+//! runs between two parts of the board's sheet, as a bus with a trunk. Nothing here is a real board: the
+//! parts only state their pins, so the board solves and the editor draws it, but it cannot be
+//! written to KiCad.
+
+import std::bus::{Spi, Uart}
+import std::parts::passive::Capacitor
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+/// A processor: a supply, a UART, an SPI and a wake line.
+part Cpu {
+    .vdd: Rail
+    .vdd.current &= 1mA..25mA
+    .uart: Uart
+    .spi: Spi
+    pins {
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .uart.tx passive "UART_TX" "3"
+        .uart.rx passive "UART_RX" "4"
+        .uart.rts passive "UART_RTS" "5"
+        .uart.cts passive "UART_CTS" "6"
+        .spi.sclk passive "SPI_SCLK" "7"
+        .spi.mosi passive "SPI_MOSI" "8"
+        .spi.miso passive "SPI_MISO" "9"
+        .spi.cs passive "SPI_CS" "10"
+    }
+}
+
+/// A flash chip on an SPI bus.
+part Flash {
+    .vcc: Rail
+    .vcc.current &= 0mA..15mA
+    .spi: Spi
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+        .spi.sclk passive "SCLK" "3"
+        .spi.mosi passive "SI" "4"
+        .spi.miso passive "SO" "5"
+        .spi.cs passive "CS" "6"
+    }
+}
+
+/// A radio modem on a UART. Its `tx` is the processor's `rx`.
+part Radio {
+    .vcc: Rail
+    .vcc.current &= 0mA..30mA
+    .uart: Uart
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+        .uart.tx passive "TXD" "3"
+        .uart.rx passive "RXD" "4"
+        .uart.rts passive "RTS" "5"
+        .uart.cts passive "CTS" "6"
+    }
+}
+
+/// The processor, with its decoupling and the UART that goes out of the module.
+module Brain {
+    .supply: Rail
+    .uart0: Uart
+    .cpu: Cpu
+    .supply ~ .cpu.vdd
+    .cpu.uart ~ .uart0
+    .c1: Capacitor { .capacitance &= 100nF +/- 20% }
+    .c2: Capacitor { .capacitance &= 100nF +/- 20% }
+    .c3: Capacitor { .capacitance &= 100nF +/- 20% }
+    .c4: Capacitor { .capacitance &= 100nF +/- 20% }
+    .c5: Capacitor { .capacitance &= 100nF +/- 20% }
+    .c6: Capacitor { .capacitance &= 4.7uF +/- 20% }
+    .c7: Capacitor { .capacitance &= 10uF +/- 20% }
+    .supply.pos ~> .c1 ~> .supply.neg
+    .supply.pos ~> .c2 ~> .supply.neg
+    .supply.pos ~> .c3 ~> .supply.neg
+    .supply.pos ~> .c4 ~> .supply.neg
+    .supply.pos ~> .c5 ~> .supply.neg
+    .supply.pos ~> .c6 ~> .supply.neg
+    .supply.pos ~> .c7 ~> .supply.neg
+}
+
+/// The radio, with its decoupling and its serial port.
+module Link {
+    .supply: Rail
+    .serial: Uart
+    .radio: Radio
+    .supply ~ .radio.vcc
+    .radio.uart.tx ~ .serial.rx
+    .radio.uart.rx ~ .serial.tx
+    .radio.uart.rts ~ .serial.cts
+    .radio.uart.cts ~ .serial.rts
+    .c1: Capacitor { .capacitance &= 100nF +/- 20% }
+    .c2: Capacitor { .capacitance &= 100nF +/- 20% }
+    .c3: Capacitor { .capacitance &= 100nF +/- 20% }
+    .c4: Capacitor { .capacitance &= 100nF +/- 20% }
+    .c5: Capacitor { .capacitance &= 4.7uF +/- 20% }
+    .c6: Capacitor { .capacitance &= 10uF +/- 20% }
+    .supply.pos ~> .c1 ~> .supply.neg
+    .supply.pos ~> .c2 ~> .supply.neg
+    .supply.pos ~> .c3 ~> .supply.neg
+    .supply.pos ~> .c4 ~> .supply.neg
+    .supply.pos ~> .c5 ~> .supply.neg
+    .supply.pos ~> .c6 ~> .supply.neg
+}
+
+board BusBench {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .rail: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "V3V3"
+        .neg.net &= "GND"
+    }
+    .brain: Brain
+    .link: Link
+    .rail ~ .brain.supply
+    .rail ~ .link.supply
+    .brain.uart0 ~ .link.serial
+    .brain.uart0.tx.net &= "MODEM_TX"
+    .brain.uart0.rx.net &= "MODEM_RX"
+    .brain.uart0.rts.net &= "MODEM_RTS"
+    .brain.uart0.cts.net &= "MODEM_CTS"
+
+    // The board's own parts: a second processor and a flash chip on an SPI between them.
+    .aux: Cpu
+    .nvm: Flash
+    .rail ~ .aux.vdd
+    .rail ~ .nvm.vcc
+    .aux.spi ~ .nvm.spi
+    .aux.spi.sclk.net &= "FLASH_SCLK"
+    .aux.spi.mosi.net &= "FLASH_MOSI"
+    .aux.spi.miso.net &= "FLASH_MISO"
+    .aux.spi.cs.net &= "FLASH_CS"
+}

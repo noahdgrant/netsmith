@@ -8,11 +8,13 @@ import { ORIGIN_LABEL, type Row, whereText } from './feedback/problems';
 import { type Field, matchFields } from './fuzzy';
 import { type Selection, modulesOf, moduleSel, netSel, partSel } from './selection';
 
-export type ResultKind = 'command' | 'problem' | 'part' | 'net' | 'module' | 'definition' | 'file';
+export type ResultKind = 'command' | 'problem' | 'part' | 'net' | 'bus' | 'module' | 'definition' | 'file';
 
 /** What choosing a result does. */
 export type Target =
   | { type: 'selection'; sel: Selection }
+  /** A bus the schematic draws, by the path of its interface instance. */
+  | { type: 'bus'; path: string }
   | { type: 'definition'; file: string; line: number; name: string; defKind: string }
   | { type: 'file'; path: string }
   | { type: 'command'; id: string }
@@ -40,15 +42,24 @@ export interface Item {
 export interface Index {
   parts: Item[];
   nets: Item[];
+  buses: Item[];
   modules: Item[];
   definitions: Item[];
   files: Item[];
 }
 
+/** A bus of the drawing, as go to anything needs it: the instance, its definition and its members. */
+export interface BusEntry {
+  path: string;
+  type: string;
+  nets: string[];
+  members: { name: string; net: string }[];
+}
+
 const basename = (p: string) => p.split('/').pop() ?? p;
 const dirname = (p: string) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '');
 
-export function buildIndex(detail: BoardDetail | null, project: Project | null): Index {
+export function buildIndex(detail: BoardDetail | null, project: Project | null, drawn: BusEntry[] = []): Index {
   const parts: Item[] = (detail?.parts ?? []).map((p) => {
     // The line under the name is made of the pieces that can be searched, each marked where it falls.
     const pieces = [p.path, p.kind, p.package, p.lcsc].filter((x): x is string => !!x);
@@ -80,6 +91,24 @@ export function buildIndex(detail: BoardDetail | null, project: Project | null):
     fields: [{ name: 'label', text: n.name, weight: 2 }],
     target: { type: 'selection', sel: netSel(n.name) },
   }));
+  // A bus is the interface instance the drawing draws as one line; it is named by the instance's own
+  // name, and found by the instance's path, its definition or one of its members' names.
+  const buses: Item[] = drawn.map((b) => {
+    const name = b.path.slice(b.path.lastIndexOf('.') + 1);
+    return {
+      id: `bus:${b.path}`,
+      kind: 'bus' as const,
+      label: name,
+      sub: b.type,
+      detail: `bus · ${b.nets.length} nets · ${b.path}`,
+      fields: [
+        { name: 'label', text: name, weight: 2.4 },
+        { name: 'sub', text: b.type, weight: 1 },
+        { name: 'path', text: b.path, weight: 0.8, into: 'detail', shift: `bus · ${b.nets.length} nets · `.length },
+      ],
+      target: { type: 'bus' as const, path: b.path },
+    };
+  });
   const modules: Item[] = modulesOf(detail).map((m) => ({
     id: `module:${m.path}`,
     kind: 'module',
@@ -118,7 +147,7 @@ export function buildIndex(detail: BoardDetail | null, project: Project | null):
       });
     }
   }
-  return { parts, nets, modules, definitions, files };
+  return { parts, nets, buses, modules, definitions, files };
 }
 
 export type Mode = 'all' | 'command' | 'problem' | 'symbol' | 'net' | 'line';
@@ -126,7 +155,7 @@ export type Mode = 'all' | 'command' | 'problem' | 'symbol' | 'net' | 'line';
 export const PREFIXES: { prefix: string; mode: Mode; title: string; hint: string }[] = [
   { prefix: '>', mode: 'command', title: 'Commands', hint: 'run a command' },
   { prefix: '@', mode: 'symbol', title: 'Modules and definitions', hint: 'a module of the board or a definition' },
-  { prefix: '#', mode: 'net', title: 'Nets', hint: 'a net of the board' },
+  { prefix: '#', mode: 'net', title: 'Nets and buses', hint: 'a net of the board, or a bus' },
   { prefix: ':', mode: 'line', title: 'Line', hint: 'a line of the open file' },
   { prefix: '!', mode: 'problem', title: 'Problems', hint: 'an error, warning or note of the project' },
 ];
@@ -166,7 +195,7 @@ export interface Group {
 }
 
 /** How many of a kind the mixed list shows. */
-const CAP: Record<string, number> = { part: 12, net: 8, module: 6, definition: 8, file: 8 };
+const CAP: Record<string, number> = { part: 12, net: 8, bus: 4, module: 6, definition: 8, file: 8 };
 const CAP_ALONE = 80;
 /** A match scoring under this share of the best in its group is dropped. */
 const WEAK = 0.3;
@@ -198,6 +227,8 @@ export function search(index: Index, commands: Item[], raw: string, problems: It
     case 'problem':
       return [{ title: '', hits: text ? rank(problems, text, CAP_ALONE) : first(CAP_ALONE, problems) }].filter((g) => g.hits.length);
     case 'net':
+      // The buses of the drawing come first: a net of the board is one of their members, or not.
+      add('Buses', text ? rank(index.buses, text, CAP_ALONE) : first(CAP_ALONE, index.buses));
       add('Nets', text ? rank(index.nets, text, CAP_ALONE) : first(CAP_ALONE, index.nets));
       return groups;
     case 'symbol':
@@ -211,6 +242,7 @@ export function search(index: Index, commands: Item[], raw: string, problems: It
       const list: [string, Item[]][] = [
         ['Parts', index.parts],
         ['Nets', index.nets],
+        ['Buses', index.buses],
         ['Modules', index.modules],
         ['Definitions', index.definitions],
         ['Files', index.files],
@@ -235,6 +267,6 @@ export function parseLine(text: string, lines: number | null): { line: number | 
 /** The items of the recent choices that are still in the index, most recent first. */
 export function recentItems(index: Index, ids: string[]): Item[] {
   const all = new Map<string, Item>();
-  for (const list of [index.parts, index.nets, index.modules, index.definitions, index.files]) for (const i of list) all.set(i.id, i);
+  for (const list of [index.parts, index.nets, index.buses, index.modules, index.definitions, index.files]) for (const i of list) all.set(i.id, i);
   return ids.map((id) => all.get(id)).filter((i): i is Item => !!i);
 }

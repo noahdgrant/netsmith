@@ -4,17 +4,21 @@
 import { chordText, find, runCommand, withKey } from '../commands';
 import { declarationOf, describe, selection, selectAndReveal, setSelection } from '../selection';
 import { detail, layout, showInSource, visible } from '../store';
+import { busChip } from '../schematic/bus';
 import { netFacts } from '../views/schematic-actions';
+import { selectedBus } from '../views/schematic-selection';
 
 export function SelectionChip() {
   const sel = selection.value;
   if (!sel) return null;
   const d = detail.value;
-  const { title, sub: plain } = describe(d, sel);
+  // A bus is picked as its first net (the other views light that net); the chip says the bus.
+  const bus = selectedBus.value;
+  const { title, sub: plain } = bus ? busChip(bus) : describe(d, sel);
   // A net: how many pins on how many sheets, which only the schematic's drawing knows, and
   // buttons to walk the pins while the Schematic is the view in use (the commands Tab and
   // Shift+Tab run).
-  const facts = sel.kind === 'net' && netFacts.value?.net === sel.key ? netFacts.value : null;
+  const facts = !bus && sel.kind === 'net' && netFacts.value?.net === sel.key ? netFacts.value : null;
   const sub = facts ? facts.text : plain;
   const vis = visible.value;
   const here = (vis.find((p) => p.index === layout.value.focus) ?? vis[0])?.section === 'schematic';
@@ -22,9 +26,9 @@ export function SelectionChip() {
   const has = declarationOf(d, sel) !== null;
   const key = find('selection.source')?.keys;
   return (
-    <div class={`selchip k-${sel.kind}`} role="status" aria-label={`Selected ${sub}: ${title}`}>
-      <button class="selchip-main" title={`${sub}. Click to show it again in this view.`} onClick={() => selectAndReveal(sel)}>
-        <span class={`badge k-${sel.kind}`}>{sel.kind === 'part' ? 'P' : sel.kind === 'net' ? 'N' : 'M'}</span>
+    <div class={`selchip k-${bus ? 'bus' : sel.kind}`} role="status" aria-label={bus ? `Selected ${title} ${sub}` : `Selected ${sub}: ${title}`}>
+      <button class="selchip-main" title={`${bus ? `${bus.type} ${bus.path} ${sub}` : sub}. Click to show it again in this view.`} onClick={() => selectAndReveal(sel)}>
+        <span class={`badge k-${bus ? 'bus' : sel.kind}`}>{bus ? 'B' : sel.kind === 'part' ? 'P' : sel.kind === 'net' ? 'N' : 'M'}</span>
         <span class="selchip-title">{title}</span>
         <span class={`selchip-sub ${facts ? 'keep' : ''}`}>{sub}</span>
       </button>

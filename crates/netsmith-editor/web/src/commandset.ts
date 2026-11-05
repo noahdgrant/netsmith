@@ -33,6 +33,7 @@ import {
   windowWidth,
 } from './store';
 import { PAN_STEP, schematicActions } from './views/schematic-actions';
+import { type PickedBus, goToBus } from './views/schematic-selection';
 
 /** The section of the pane that last had the pointer or the keys. */
 export function focusedSection() {
@@ -494,4 +495,11 @@ export function goToSelection(sel: Selection) {
     return;
   }
   showInSource(sel, shows);
+}
+
+/** What go to anything's choice of a bus does: the bus is picked (its first net is the shared
+ * selection) and the Schematic frames its line. Where that is not the view in front, it says so. */
+export function goToBusPick(bus: PickedBus) {
+  goToBus(bus);
+  if (focusedSection() !== 'schematic') say(`Selected bus ${bus.path.slice(bus.path.lastIndexOf('.') + 1)}. The Schematic shows it.`);
 }

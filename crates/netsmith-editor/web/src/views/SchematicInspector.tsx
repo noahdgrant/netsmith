@@ -7,10 +7,12 @@ import type { NetInfo, PartInfo } from '../api';
 import { ALL } from '../sheets';
 import { goTo, detail } from '../store';
 import type { Drawing } from '../schematic/load';
+import { busCount, busMembers, busName, busTargets } from '../schematic/bus';
+import type { Bus } from '../schematic/drawing';
 import { netNavOrder, netSheets, netSummary, parseTitle } from '../schematic/nav';
 import { plural } from '../util';
 import type { SheetRow } from './SheetNav';
-import { clearSelection, goToSource, selectedNet, selectedPart, showOnPcb } from './schematic-selection';
+import { clearSelection, goToSource, selectedBus, selectedNet, selectedPart, showOnPcb } from './schematic-selection';
 
 export interface PinRef {
   ref: string;
@@ -26,16 +28,22 @@ export interface InspectorProps {
   goPart: (ref: string) => void;
   goPin: (ref: string, pin: string) => void;
   goNet: (net: string) => void;
+  /** Pick a bus on the sheet that draws it and bring it into view. */
+  goBus: (bus: Bus) => void;
   /** The pin the net navigator is on. */
   navPin: PinRef | null;
   stepPins: (dir: 1 | -1) => void;
-  hover: { net?: string; part?: string } | null;
+  hover: { net?: string; part?: string; bus?: string } | null;
 }
 
 export function Inspector(p: InspectorProps) {
   const d = detail.value;
   const net = selectedNet.value;
   const sel = selectedPart.value;
+  const pickedBus = selectedBus.value;
+  // The bus drawn (its sheet and box), the picked one or the one the pointer is over.
+  const busOf = (path: string | undefined) => (path ? p.drawing.index.buses.find((b) => b.path === path) : undefined);
+  const bus = pickedBus ? busOf(pickedBus.path) : !net && !sel ? busOf(p.hover?.bus) : undefined;
   const hoverNet = !net && !sel ? p.hover?.net : undefined;
   const hoverPart = !net && !sel ? p.hover?.part : undefined;
   const netInfo = (net ?? hoverNet) ? d?.nets.find((n) => n.name === (net ?? hoverNet)) : undefined;
@@ -43,7 +51,9 @@ export function Inspector(p: InspectorProps) {
   return (
     <aside class="sinspector no-pan" aria-label="Details">
       <div class="insp-top">
-        {netInfo ? (
+        {bus ? (
+          <BusPanel {...p} bus={bus} sticky={!!pickedBus} />
+        ) : netInfo ? (
           <NetPanel {...p} net={netInfo} sticky={!!net} />
         ) : part ? (
           <PartPanel {...p} part={part} sticky={!!sel} />
@@ -199,7 +209,104 @@ function NetPanel({ net, sticky, drawing, rows, order, current, openSheet, goPin
   );
 }
 
-function SheetPanel({ rows, current, drawing, goNet, openSheet }: InspectorProps) {
+/** A bus: its instance, its interface, its members with their nets as links and the pins of each
+ * net by module, and where else its nets go. */
+function BusPanel({ bus, sticky, drawing, rows, order, current, openSheet, goNet, goPin, goBus, navPin }: InspectorProps & { bus: Bus; sticky: boolean }) {
+  const d = detail.value;
+  const nets = d?.nets ?? [];
+  const partSheet = drawing.index.partSheet;
+  const members = useMemo(() => busMembers(bus, nets, partSheet, order), [bus, d, partSheet, order]);
+  const others = useMemo(() => busTargets(bus, nets, partSheet, order, drawing.index.buses), [bus, d, partSheet, order, drawing]);
+  const where = (name: string) => rows.find((r) => r.sheet.name === name)?.name ?? (name || 'board');
+  return (
+    <section aria-label={`Bus ${busName(bus.path)}`} data-testid="bus-panel">
+      <h3>
+        Bus {!sticky && <span class="hint">hover</span>}
+      </h3>
+      <div class="title mono" title={`The interface instance ${bus.path}`}>
+        {busName(bus.path)}
+      </div>
+      <div class="sub">
+        {bus.type || 'Interface'} · {busCount(bus)}
+        {bus.flag ? ' · leaves this module' : ''}
+      </div>
+      <dl>
+        <dt>Instance</dt>
+        <dd class="mono">{bus.path}</dd>
+        <dt>Module</dt>
+        <dd>
+          {bus.sheet !== current && rows.length > 1 ? (
+            <button class="link" onClick={() => openSheet(bus.sheet)}>
+              {where(bus.sheet)}
+            </button>
+          ) : (
+            where(bus.sheet)
+          )}
+        </dd>
+      </dl>
+      {sticky && (
+        <div class="actions">
+          <button class="tool small" title="Clear the selection (Esc)" onClick={clearSelection}>
+            Clear
+          </button>
+        </div>
+      )}
+      <div class="sub-head">Members</div>
+      <div class="bus-members" role="list" aria-label="Members">
+        {members.map((m) => (
+          <div class="bus-member" role="listitem" key={m.name + m.net} data-net={m.net}>
+            <div class="bus-member-head">
+              <span class="mono bus-member-name">{m.name}</span>
+              <button class="link net-link mono" title="Select this net" onClick={() => goNet(m.net)}>
+                {m.net}
+              </button>
+            </div>
+            {m.modules.map((g) => (
+              <div class="net-group" key={g.sheet}>
+                <button class={`grp ${g.sheet === current ? 'here' : ''}`} title={g.sheet === current ? 'This module' : `Open the module ${where(g.sheet)}`} onClick={() => openSheet(g.sheet)}>
+                  <span>{where(g.sheet)}</span>
+                  <span class="count">{g.pins.length}</span>
+                </button>
+                <div class="chips">
+                  {g.pins.map((p) => (
+                    <button
+                      key={`${p.refdes}.${p.pin}`}
+                      class={`chip ${navPin?.ref === p.refdes && navPin.pin === p.pin ? 'cur' : ''}`}
+                      title={`Go to ${p.refdes} pin ${p.pin}`}
+                      onClick={() => goPin(p.refdes, p.pin)}
+                    >
+                      {p.refdes}.{p.pin}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+      {others.length > 0 && (
+        <>
+          <div class="sub-head">Also on</div>
+          <div class="chips">
+            {others.map((t) => (
+              <button
+                key={t.sheet}
+                class="chip"
+                title={t.bus ? `Go to the bus ${busName(t.bus.path)} in ${where(t.sheet)}` : `Open ${where(t.sheet)}`}
+                onClick={() => (t.bus ? goBus(t.bus) : openSheet(t.sheet))}
+              >
+                {where(t.sheet)}
+                {t.bus ? ` · ${busName(t.bus.path)}` : ''}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function SheetPanel({ rows, current, drawing, goNet, goBus, openSheet }: InspectorProps) {
   const d = detail.value;
   const leaving = useMemo(() => {
     const out: string[] = [];
@@ -209,6 +316,7 @@ function SheetPanel({ rows, current, drawing, goNet, openSheet }: InspectorProps
     }
     return out.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   }, [drawing, current]);
+  const leavingBuses = drawing.index.buses.filter((b) => b.flag && b.sheet === current);
   if (current === ALL) {
     const parts = d?.parts.length ?? rows.reduce((n, r) => n + (r.stats?.parts ?? 0), 0);
     return (
@@ -261,10 +369,15 @@ function SheetPanel({ rows, current, drawing, goNet, openSheet }: InspectorProps
           </dd>
         </dl>
       )}
-      {leaving.length > 0 && (
+      {(leaving.length > 0 || leavingBuses.length > 0) && (
         <>
           <div class="sub-head">Leaves this module</div>
           <div class="chips">
+            {leavingBuses.map((b) => (
+              <button key={b.path} class="chip bus-chip" title={`Select the bus ${b.path}`} onClick={() => goBus(b)}>
+                {busName(b.path)} · {busCount(b)}
+              </button>
+            ))}
             {leaving.map((n) => (
               <button key={n} class="chip" title="Select this net" onClick={() => goNet(n)}>
                 {n}

@@ -7,7 +7,8 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { available, byRecent, chordLabels, runCommand } from '../commands';
-import { goToSelection } from '../commandset';
+import { goToBusPick, goToSelection } from '../commandset';
+import { drawnBuses } from '../views/schematic-selection';
 import { allRows, revealRow } from '../feedback/derive';
 import { sortRows } from '../feedback/problems';
 import { pieces } from '../fuzzy';
@@ -54,6 +55,13 @@ function KindIcon({ kind }: { kind: Item['kind'] | 'line' | 'tip' | 'search' }) 
         <Svg>
           <rect x="4" y="4" width="8" height="8" rx="1" />
           <path d="M6 1.8v2.2M10 1.8v2.2M6 12v2.2M10 12v2.2M1.8 6h2.2M1.8 10h2.2M12 6h2.2M12 10h2.2" />
+        </Svg>
+      );
+    case 'bus':
+      return (
+        <Svg>
+          <path d="M2 8h12" stroke-width="2.6" />
+          <path d="M5 8V4.2M8 8V4.2M11 8V4.2M5 8v3.8M8 8v3.8M11 8v3.8" />
         </Svg>
       );
     case 'net':
@@ -166,6 +174,10 @@ function choose(item: Item) {
   }
   usedPick(item.id);
   if (t.type === 'selection') goToSelection(t.sel);
+  else if (t.type === 'bus') {
+    const bus = drawnBuses.peek().buses.find((b) => b.path === t.path);
+    if (bus) goToBusPick(bus);
+  }
   else if (t.type === 'definition') {
     void goTo({ file: t.file, line: t.line, column: 1, endLine: t.line, endColumn: 1 }, t.name);
     viewBoardOfDefinition(t.defKind, t.name);
@@ -184,7 +196,9 @@ function Dialog({ initial }: { initial: string }) {
   const before = useRef<Element | null>(document.activeElement);
   const d = detail.value;
   const p = project.value;
-  const index = useMemo(() => buildIndex(d, p), [d, p]);
+  const drawn = drawnBuses.value;
+  // Only the buses of the board in front: the drawing of the board before it is still there for a moment.
+  const index = useMemo(() => buildIndex(d, p, drawn.board === d?.name ? drawn.buses : []), [d, p, drawn]);
   const { mode, text } = parseQuery(query);
 
   useLayoutEffect(() => {

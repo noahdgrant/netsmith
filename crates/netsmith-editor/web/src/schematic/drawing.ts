@@ -36,12 +36,35 @@ export interface RawNetMark {
   /** Where a flag points at the wire. */
   at: { x: number; y: number };
 }
+/** A member of a bus: its name in the interface (`tx`) and the net it is on. */
+export interface BusMember {
+  name: string;
+  net: string;
+}
+/** A bus as the drawing says it (`g.bus-group`): the interface instance, its definition, its
+ * members in the order of the pins, whether it ends in a flag (the members go on to another sheet)
+ * and the box of its thick line, in canvas pixels. */
+export interface RawBus {
+  path: string;
+  type: string;
+  members: BusMember[];
+  flag: boolean;
+  box: Box;
+}
 /** The drawing as plain numbers, in canvas pixels. */
 export interface RawDrawing {
   sheets: Sheet[];
   parts: RawPart[];
   pins: RawPin[];
   nets: RawNetMark[];
+  buses: RawBus[];
+}
+
+/** A bus and the sheet it is drawn on. */
+export interface Bus extends RawBus {
+  sheet: string;
+  /** The member nets, in the order of the members. */
+  nets: string[];
 }
 
 /** A net's presence on one sheet. */
@@ -62,6 +85,8 @@ export interface DrawingIndex {
   pinPoint: Map<string, { x: number; y: number; sheet: string }>;
   /** For each net, its place on each sheet that draws it. */
   netPlaces: Map<string, Map<string, NetPlace>>;
+  /** The buses drawn, in the drawing's order. */
+  buses: Bus[];
 }
 
 /** The name of the sheet whose box has the point, or the empty name. */
@@ -115,7 +140,12 @@ export function buildIndex(raw: RawDrawing): DrawingIndex {
     grow(p, { x: pin.x, y: pin.y, w: 0, h: 0 });
     p.pins++;
   }
-  return { partSheet, partBox, pinPoint, netPlaces };
+  const buses: Bus[] = raw.buses.map((b) => ({
+    ...b,
+    sheet: sheetAt(raw.sheets, b.box.x + b.box.w / 2, b.box.y + b.box.h / 2),
+    nets: b.members.map((m) => m.net),
+  }));
+  return { partSheet, partBox, pinPoint, netPlaces, buses };
 }
 
 const nums = (text: string | null): number[] => (text ?? '').split(/[\s,]+/).filter(Boolean).map(Number).filter((n) => Number.isFinite(n));
@@ -133,6 +163,33 @@ function boxOfPoints(points: number[]): Box | null {
     y1 = Math.max(y1, points[i + 1]);
   }
   return { x: x0 * SCALE, y: y0 * SCALE, w: (x1 - x0) * SCALE, h: (y1 - y0) * SCALE };
+}
+
+/** The members a bus-group says: `data-members` is JSON, `[["tx","MODEM_TX"],...]`; a drawing that
+ * has only `data-nets` (a space between the nets) names each member by its net. */
+export function busMembers(members: string | null, nets: string | null): BusMember[] {
+  try {
+    const v: unknown = JSON.parse(members ?? '');
+    if (Array.isArray(v)) {
+      const out = v.filter((m): m is [string, string] => Array.isArray(m) && typeof m[0] === 'string' && typeof m[1] === 'string');
+      if (out.length === v.length) return out.map(([name, net]) => ({ name, net }));
+    }
+  } catch {
+    // Not JSON: the older attribute is read.
+  }
+  return (nets ?? '').split(' ').filter(Boolean).map((net) => ({ name: net, net }));
+}
+
+/** The box of a bus's thick line (the runs of its path, `M x y L x y ...`) and of its flag, in
+ * canvas pixels, or null for a bus with neither. */
+export function busBox(paths: string[], flagPoints: string | null): Box | null {
+  let box: Box | null = null;
+  const add = (b: Box | null) => {
+    if (b) box = box ? union(box, b) : b;
+  };
+  for (const d of paths) add(boxOfPoints(nums(d.replace(/[A-Za-z]/g, ' '))));
+  add(flagPoints === null ? null : boxOfPoints(nums(flagPoints)));
+  return box;
 }
 
 const num = (e: Element, name: string) => Number(e.getAttribute(name) ?? 0);
@@ -209,5 +266,21 @@ export function readDrawing(svg: Element, origin: { x: number; y: number }): Raw
   for (const t of svg.querySelectorAll('text.net-label[data-net]')) {
     mark(t.getAttribute('data-net')!, 'label', { x: num(t, 'x') * SCALE, y: num(t, 'y') * SCALE, w: 0, h: 0 });
   }
-  return { sheets, parts, pins, nets };
+  const buses: RawBus[] = [];
+  for (const g of svg.querySelectorAll('.bus-group[data-bus]')) {
+    const flag = g.querySelector('.bus-flag polygon');
+    const box = busBox(
+      [...g.querySelectorAll('.bus path.line')].map((p) => p.getAttribute('d') ?? ''),
+      flag?.getAttribute('points') ?? null,
+    );
+    if (!box) continue;
+    buses.push({
+      path: g.getAttribute('data-bus')!,
+      type: g.getAttribute('data-type') ?? '',
+      members: busMembers(g.getAttribute('data-members'), g.getAttribute('data-nets')),
+      flag: !!flag,
+      box: shift(box),
+    });
+  }
+  return { sheets, parts, pins, nets, buses };
 }

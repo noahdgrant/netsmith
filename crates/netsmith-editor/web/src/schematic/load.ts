@@ -21,7 +21,7 @@ export interface Drawing {
   mm: { x: number; y: number; w: number; h: number };
 }
 
-const CATEGORIES = ['parts', 'wires', 'junctions', 'power-symbols', 'ports', 'unconnected', 'labels'] as const;
+const CATEGORIES = ['parts', 'wires', 'buses', 'junctions', 'power-symbols', 'ports', 'unconnected', 'labels'] as const;
 const NS = 'http://www.w3.org/2000/svg';
 
 const nums = (text: string | null): number[] =>

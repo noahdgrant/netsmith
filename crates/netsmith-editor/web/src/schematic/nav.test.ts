@@ -162,6 +162,7 @@ describe('sheetStats', () => {
       { net: 'A', kind: 'port', box: { x: 60, y: 14, w: 10, h: 2 }, at: { x: 70, y: 15 } },
       { net: 'A', kind: 'wire', box: { x: 100, y: 15, w: 10, h: 0 }, at: { x: 105, y: 15 } },
     ],
+    buses: [],
   };
   const index = buildIndex(raw);
   it('puts each part and each net mark on the sheet whose box has it', () => {

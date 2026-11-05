@@ -274,6 +274,21 @@ fn the_svg_has_the_classes_of_a_bus() {
     assert!(!svg.contains("class=\"port\" data-net=\"UART_TX\""));
 }
 
+#[test]
+fn the_svg_says_a_buss_type_and_members_for_a_page_that_follows_it() {
+    let d = draw(4, 0);
+    let svg =
+        render_svg_by_module_with(&d.design, &d.groups, &rails(), &d.mapping, &d.lib).unwrap();
+    assert!(svg.contains("data-type=\"Uart\""), "{svg}");
+    // The members in the order of the pins, as JSON, with the quotes escaped for the attribute.
+    assert!(
+        svg.contains(
+            "data-members=\"[[&quot;tx&quot;,&quot;UART_TX&quot;],[&quot;rx&quot;,&quot;UART_RX&quot;],[&quot;rts&quot;,&quot;UART_RTS&quot;],[&quot;cts&quot;,&quot;UART_CTS&quot;]]\""
+        ),
+        "{svg}"
+    );
+}
+
 // --- The rule `bus-member` catches what it is for -------------------------------------
 
 fn bus_found(d: &Drawn, l: &Layout) -> Vec<String> {

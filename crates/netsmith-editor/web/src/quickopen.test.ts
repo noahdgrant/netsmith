@@ -176,3 +176,35 @@ describe('recent choices', () => {
     expect(got.map((i) => i.id)).toEqual(['net:GND', 'part:stage2.out_cap']);
   });
 });
+
+describe('buses', () => {
+  const buses = [
+    { path: 'mcu.uart0', type: 'Uart', nets: ['TX', 'RX', 'RTS', 'CTS'], members: [] },
+    { path: 'modem.serial', type: 'Uart', nets: ['TX', 'RX', 'RTS', 'CTS'], members: [] },
+    { path: 'aux.spi', type: 'Spi', nets: ['A', 'B', 'C', 'D'], members: [] },
+  ];
+  const withBuses = buildIndex(detail, project, buses);
+
+  it('are named by the instance and found by it, its path or its type', () => {
+    expect(withBuses.buses.map((i) => i.label)).toEqual(['uart0', 'serial', 'spi']);
+    expect(withBuses.buses[0]).toMatchObject({ kind: 'bus', sub: 'Uart', detail: 'bus · 4 nets · mcu.uart0', target: { type: 'bus', path: 'mcu.uart0' } });
+    const found = (q: string) => search(withBuses, commands, q).flatMap((g) => g.hits.map((h) => h.item.id));
+    expect(found('uart0')).toContain('bus:mcu.uart0');
+    expect(found('modem.serial')).toContain('bus:modem.serial');
+    expect(found('spi')).toContain('bus:aux.spi');
+  });
+
+  it('come before the nets in the # list', () => {
+    const groups = search(withBuses, commands, '#');
+    expect(groups.map((g) => g.title)).toEqual(['Buses', 'Nets']);
+    expect(groups[0].hits).toHaveLength(3);
+    // Typing narrows them as it narrows nets.
+    expect(search(withBuses, commands, '#uart').map((g) => g.title)).toEqual(['Buses']);
+  });
+
+  it('are not in the list of a board without a drawing, and can be chosen again from the recent ones', () => {
+    expect(buildIndex(detail, project).buses).toEqual([]);
+    expect(search(buildIndex(detail, project), commands, '#').map((g) => g.title)).toEqual(['Nets']);
+    expect(recentItems(withBuses, ['bus:aux.spi', 'bus:gone']).map((i) => i.id)).toEqual(['bus:aux.spi']);
+  });
+});

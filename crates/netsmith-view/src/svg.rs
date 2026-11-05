@@ -65,6 +65,9 @@ const STYLE: &str = "\
 .schematic .bus-label{fill:var(--net);font-weight:600}
 .schematic .bus-count{fill:var(--net);font-weight:600}
 .schematic .bus-members{font-weight:400}
+.schematic.has-on .bus-group:not(.on){opacity:.22}
+.schematic .bus-group.on .bus .line{stroke:var(--hit);stroke-width:.9}
+.schematic .bus-group.on .bus-tick,.schematic .bus-group.on .bus-flag .flag{stroke:var(--hit)}
 .schematic .ref{font-weight:700}
 .schematic .pin-name,.schematic .pin-number{fill:var(--pin)}
 .schematic .line{fill:none;stroke:var(--wire);stroke-linecap:round;stroke-linejoin:round}
@@ -279,18 +282,33 @@ fn draw(design: &Design, l: &Layout) -> String {
 
 /// A bus: the thick line, the tick with the count of members, the name and the list of members,
 /// and the flag where the members go on to another sheet. `data-bus` is the interface
-/// instance's path and `data-nets` the members' nets.
+/// instance's path, `data-type` its definition, `data-nets` the members' nets (a space between
+/// them) and `data-members` the members as JSON, `[["tx","MODEM_TX"],...]`, in the order of the
+/// pins: what a page that follows a bus reads (names may contain spaces, so it reads this one).
 fn draw_bus(w: &mut String, design: &Design, bus: &crate::layout::Bus) {
     let nets: Vec<String> = bus
         .members
         .iter()
         .map(|m| design.nets[m.net].name.clone())
         .collect();
+    let members: Vec<String> = bus
+        .members
+        .iter()
+        .map(|m| {
+            format!(
+                "[{},{}]",
+                json_string(&m.name),
+                json_string(&design.nets[m.net].name)
+            )
+        })
+        .collect();
     let _ = writeln!(
         w,
-        "<g class=\"bus-group\" data-bus=\"{}\" data-nets=\"{}\"><title>{} ({}): {} members</title>",
+        "<g class=\"bus-group\" data-bus=\"{}\" data-type=\"{}\" data-nets=\"{}\" data-members=\"{}\"><title>{} ({}): {} members</title>",
         esc(&bus.path),
+        esc(&bus.type_name),
         esc(&nets.join(" ")),
+        esc(&format!("[{}]", members.join(","))),
         esc(&bus.path),
         esc(&bus.type_name),
         bus.members.len()
@@ -773,6 +791,23 @@ fn n(v: f64) -> String {
         }
     }
     if s == "-0" { "0".to_string() } else { s }
+}
+
+/// `s` as a JSON string.
+fn json_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 fn esc(s: &str) -> String {

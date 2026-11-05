@@ -4,6 +4,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import { api as server } from '../client';
 import { PanZoom, type PanZoomApi } from '../components/PanZoom';
 import { NoBoard } from '../components/ViewStatus';
+import { busName, busTargets, litNets } from '../schematic/bus';
+import { type Bus } from '../schematic/drawing';
 import { type Drawing, loadDrawing } from '../schematic/load';
 import {
   netNavOrder,
@@ -16,7 +18,6 @@ import {
   revealStep,
   sheetStats,
   stepRing,
-  type Target,
 } from '../schematic/nav';
 import {
   type Box,
@@ -41,11 +42,14 @@ import { SheetOverview } from './SheetOverview';
 import {
   clearSelection,
   cursorParts,
+  drawnBuses,
   goToSource,
   moduleParts,
+  selectBus,
   selectModule,
   selectNet,
   selectPart,
+  selectedBus,
   selectedModule,
   selectedNet,
   selectedPart,
@@ -85,14 +89,27 @@ interface Aim {
 interface Hit {
   net?: string;
   part?: string;
-  /** The click was on a flag, where a net leaves the sheet. */
+  /** A bus (the path of its interface instance): its line, its writing or its flag. */
+  bus?: string;
+  /** The click was on a flag, where a net, or a bus, leaves the sheet. */
   flag?: boolean;
+}
+
+/** What the small menu under a flag offers: where a net or a bus can be followed to. */
+interface FlagMenu {
+  x: number;
+  y: number;
+  head: string;
+  items: { key: string; name: string; detail: string; go: () => void }[];
 }
 
 const pickAt = (target: EventTarget | null): Hit | null => {
   if (!(target instanceof Element)) return null;
   const net = target.closest('[data-net]');
   if (net) return { net: net.getAttribute('data-net')!, flag: !!target.closest('.port') };
+  // The thick line, its count and writing, or its flag; an entry is a net's wire and picks the net.
+  const bus = target.closest('[data-bus]');
+  if (bus) return { bus: bus.getAttribute('data-bus')!, flag: !!target.closest('.bus-flag') };
   const part = target.closest('.part');
   if (part) return { part: part.getAttribute('data-ref')! };
   return null;
@@ -107,7 +124,7 @@ export function Schematic() {
   const drawing = loaded && loaded.board === name ? loaded.drawing : null;
   const [error, setError] = useState<string | null>(null);
   const [hover, setHover] = useState<Hit | null>(null);
-  const [menu, setMenu] = useState<{ x: number; y: number; net: string; targets: Target[] } | null>(null);
+  const [menu, setMenu] = useState<FlagMenu | null>(null);
   const [aim, setAim] = useState<Aim | null>(null);
   const [navPin, setNavPin] = useState<PinRef | null>(null);
   /** The part that was brought into view, which is ringed for a moment. */
@@ -188,10 +205,17 @@ export function Schematic() {
   const selModule = selectedModule.value;
   const inModule = moduleParts.value;
   const netInfo = selNet ? d?.nets.find((n) => n.name === selNet) : undefined;
-  const carried = useMemo(
-    () => new Set(netInfo && drawing ? netSheets(netInfo.pins, drawing.index.partSheet).keys() : []),
-    [netInfo, drawing],
-  );
+  const pickedBus = selectedBus.value;
+  // The bus as the drawing has it (its sheet and box), when it is the picked one.
+  const selBus = pickedBus && drawing ? drawing.index.buses.find((b) => b.path === pickedBus.path) : undefined;
+  const carried = useMemo(() => {
+    if (!drawing) return new Set<string>();
+    // A bus is carried by every sheet that has a pin of any of its nets.
+    const nets = selBus ? selBus.nets : selNet ? [selNet] : [];
+    const out = new Set<string>();
+    for (const n of nets) for (const s of netSheets(d?.nets.find((x) => x.name === n)?.pins ?? [], drawing.index.partSheet).keys()) out.add(s);
+    return out;
+  }, [selBus, selNet, d, drawing]);
   const rows = useMemo(
     () => ordered.map((s, i) => rowOf(s, i + 1, stats.get(s.name), carried.has(s.name), partsBySheet.get(s.name) ?? [])),
     [ordered, stats, carried, partsBySheet],
@@ -229,10 +253,23 @@ export function Schematic() {
     if (!svg) return;
     svg.querySelectorAll('.on,.touches,.mark,.cur,.linked').forEach((e) => e.classList.remove('on', 'touches', 'mark', 'cur', 'linked'));
     // A module lights its parts and dims the rest; it does not light their nets (ground would light all).
-    const focus: Hit | null = selNet ? { net: selNet } : (hover ?? (selModule || !marked.length ? null : { part: marked[0] }));
+    const focus: Hit | null = selBus
+      ? { bus: selBus.path }
+      : selNet
+        ? { net: selNet }
+        : (hover ?? (selModule || !marked.length ? null : { part: marked[0] }));
     svg.classList.toggle('has-on', !!focus || (!!selModule && marked.length > 0));
     if (focus) {
-      const nets = focus.net != null ? new Set([focus.net]) : (netsOfPart.get(focus.part!) ?? new Set<string>());
+      // A bus lights all its members; a net, or a part's nets, light the line they run through.
+      const nets =
+        focus.bus != null
+          ? litNets(drawing?.index.buses.find((b) => b.path === focus.bus))
+          : focus.net != null
+            ? new Set([focus.net])
+            : (netsOfPart.get(focus.part!) ?? new Set<string>());
+      for (const b of drawing?.index.buses ?? []) {
+        if (b.nets.some((n) => nets.has(n))) svg.querySelector(`.bus-group[data-bus="${CSS.escape(b.path)}"]`)?.classList.add('on');
+      }
       const touching = new Set<Element>();
       for (const net of nets) {
         svg.querySelectorAll(`[data-net="${CSS.escape(net)}"]`).forEach((e) => {
@@ -253,7 +290,7 @@ export function Schematic() {
       svg.querySelector(`.pin[data-ref="${CSS.escape(navPin.ref)}"][data-pin="${CSS.escape(navPin.pin)}"]`)?.classList.add('cur');
     }
     if (overview) setPainted((n) => n + 1);
-  }, [drawing, hover, selNet, selModule, marked.join(','), picked.join(','), netsOfPart, navPin, current, overview]);
+  }, [drawing, hover, selNet, selBus, selModule, marked.join(','), picked.join(','), netsOfPart, navPin, current, overview]);
 
   // The pin the net navigator is on belongs to the net that is selected.
   useEffect(() => setNavPin(null), [selNet]);
@@ -280,6 +317,42 @@ export function Schematic() {
     selectNet(net);
     open(sheet);
     aimAt(sheet, netBox(net, sheet));
+  };
+  /** Pick a bus on the sheet that draws it, and bring its line into view. */
+  const goBus = (bus: Bus) => {
+    selectBus(bus);
+    if (bus.sheet !== '' && bus.sheet !== current) open(bus.sheet);
+    aimAt(bus.sheet || current, bus.box);
+  };
+  /** A bundle flag was clicked: the module that carries the same member nets opens with them lit
+   * (the bus drawn there is picked, else the first net they share); several modules offer the same
+   * small menu as for a net's flag. */
+  const followBusFlag = (bus: Bus, x: number, y: number) => {
+    if (!drawing) return;
+    const targets = busTargets(bus, d?.nets ?? [], drawing.index.partSheet, names, drawing.index.buses);
+    const there = (t: (typeof targets)[number]) => {
+      if (t.bus) goBus(t.bus);
+      else {
+        selectNet(t.nets[0]);
+        open(t.sheet);
+        aimAt(t.sheet, netBox(t.nets[0], t.sheet));
+      }
+    };
+    if (targets.length === 1) there(targets[0]);
+    else if (targets.length > 1) {
+      const r = stage.current?.getBoundingClientRect();
+      setMenu({
+        x: x - (r?.left ?? 0),
+        y: y - (r?.top ?? 0),
+        head: `${busName(bus.path)} also on`,
+        items: targets.map((t) => ({
+          key: t.sheet,
+          name: rows.find((r) => r.sheet.name === t.sheet)?.name ?? t.sheet,
+          detail: `${t.carried} of ${bus.nets.length} nets`,
+          go: () => there(t),
+        })),
+      });
+    }
   };
   /** Show a part: its sheet opens, and the view moves only if it must (`revealPart`), with a ring on the part. */
   const showPart = (ref: string) => {
@@ -316,12 +389,27 @@ export function Schematic() {
     if (targets.length === 1) goNetOn(targets[0].sheet, net);
     else if (targets.length > 1) {
       const r = stage.current?.getBoundingClientRect();
-      setMenu({ x: x - (r?.left ?? 0), y: y - (r?.top ?? 0), net, targets });
+      setMenu({
+        x: x - (r?.left ?? 0),
+        y: y - (r?.top ?? 0),
+        head: `${net} also on`,
+        items: targets.map((t) => ({
+          key: t.sheet,
+          name: rows.find((r) => r.sheet.name === t.sheet)?.name ?? t.sheet,
+          detail: `${t.pins
+            .slice(0, 3)
+            .map((p) => `${p.refdes}.${p.pin}`)
+            .join(', ')}${t.pins.length > 3 ? ` +${t.pins.length - 3}` : ''}`,
+          go: () => goNetOn(t.sheet, net),
+        })),
+      });
     }
   };
   /** Zoom to the selection: a net's box, or a part with the parts it is wired to. */
   const frameSelection = () => {
-    if (selNet) {
+    if (selBus) {
+      aimAt(selBus.sheet || current, selBus.box);
+    } else if (selNet) {
       const b = netBox(selNet, current);
       if (b) aimAt(current, b);
     } else if (selPart && drawing) {
@@ -348,6 +436,13 @@ export function Schematic() {
       const ref = d.parts.find((p) => p.path === key)?.refdes;
       if (ref) showPart(ref);
     } else if (kind === 'net') {
+      // A bus is picked as its first net: the line is what is brought into view.
+      const bus = selectedBus.peek() ? drawing.index.buses.find((b) => b.path === selectedBus.peek()!.path) : undefined;
+      if (bus) {
+        if (bus.sheet !== '' && bus.sheet !== current) open(bus.sheet);
+        aimAt(bus.sheet || current, bus.box, true);
+        return;
+      }
       const places = drawing.index.netPlaces.get(key);
       if (!places) return;
       const sheet = places.has(current) ? current : (names.find((n) => places.has(n)) ?? current);
@@ -436,8 +531,14 @@ export function Schematic() {
   }, []);
   // What the top bar's chip says of the selected net, which only the drawing knows.
   useEffect(() => {
-    netFacts.value = selNet && netInfo && drawing ? { net: selNet, text: netSummary(netInfo, drawing.index.partSheet).text, canStep: walk.length > 1 } : null;
-  }, [selNet, netInfo, drawing, walk.length]);
+    // A bus has no walk of pins: the chip says the bus, and the inspector lists its members' pins.
+    netFacts.value =
+      selNet && netInfo && drawing && !selBus ? { net: selNet, text: netSummary(netInfo, drawing.index.partSheet).text, canStep: walk.length > 1 } : null;
+  }, [selNet, netInfo, drawing, walk.length, selBus]);
+  // Go to anything lists the buses the drawing has.
+  useEffect(() => {
+    drawnBuses.value = { board: loaded?.board ?? '', buses: drawing?.index.buses ?? [] };
+  }, [drawing, loaded?.board]);
   useEffect(() => () => void (netFacts.value = null), []);
   // Esc closes the flag menu first (`data-esc-closes` holds the Clear command back); clearing the
   // selection is that command's.
@@ -538,9 +639,13 @@ export function Schematic() {
               onClick={(e) => {
                 setMenu(null);
                 const hit = pickAt(e.target);
+                const bus = hit?.bus ? drawing.index.buses.find((b) => b.path === hit.bus) : undefined;
                 if (hit?.net) {
                   selectNet(hit.net);
                   if (hit.flag) followFlag(hit.net, e.clientX, e.clientY);
+                } else if (bus) {
+                  selectBus(bus);
+                  if (hit?.flag) followBusFlag(bus, e.clientX, e.clientY);
                 } else if (hit?.part) selectPart(hit.part);
                 else clearSelection();
               }}
@@ -569,25 +674,19 @@ export function Schematic() {
           )}
           {menu && (
             <div class="flag-menu no-pan" role="menu" data-esc-closes style={{ left: Math.max(8, menu.x - 20), top: Math.max(8, menu.y + 12) }}>
-              <div class="menu-head">{menu.net} also on</div>
-              {menu.targets.map((t) => (
+              <div class="menu-head">{menu.head}</div>
+              {menu.items.map((t) => (
                 <button
-                  key={t.sheet}
+                  key={t.key}
                   role="menuitem"
                   class="menu-item"
                   onClick={() => {
                     setMenu(null);
-                    goNetOn(t.sheet, menu.net);
+                    t.go();
                   }}
                 >
-                  <span class="mi-name">{rows.find((r) => r.sheet.name === t.sheet)?.name ?? t.sheet}</span>
-                  <span class="mi-pins">
-                    {t.pins
-                      .slice(0, 3)
-                      .map((p) => `${p.refdes}.${p.pin}`)
-                      .join(', ')}
-                    {t.pins.length > 3 ? ` +${t.pins.length - 3}` : ''}
-                  </span>
+                  <span class="mi-name">{t.name}</span>
+                  <span class="mi-pins">{t.detail}</span>
                 </button>
               ))}
             </div>
@@ -603,6 +702,7 @@ export function Schematic() {
             goPart={goPart}
             goPin={goPin}
             goNet={goNet}
+            goBus={goBus}
             navPin={navPin}
             stepPins={stepPins}
             hover={hover}

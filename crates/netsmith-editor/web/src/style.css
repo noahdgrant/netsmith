@@ -51,7 +51,7 @@ select { padding: 0 8px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; display: inline-block; }
 .badge { width: 16px; height: 16px; border-radius: var(--r-sm); display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-xs); font-weight: 700; color: var(--on-kind); flex: none; background: var(--kind-file); }
 .k-panel { background: var(--kind-panel); } .k-board { background: var(--kind-board); } .k-system { background: var(--kind-system); } .k-module { background: var(--kind-module); }
-.k-part { background: var(--kind-part); } .k-interface { background: var(--kind-interface); } .k-port { background: var(--kind-interface); }
+.k-part { background: var(--kind-part); } .k-interface { background: var(--kind-interface); } .k-port { background: var(--kind-interface); } .k-bus { background: var(--kind-interface); }
 
 /* the window: one pane, or two side by side, each with its own strip of sections */
 .panes-area { flex: 1; min-height: 0; position: relative; display: grid; grid-template-rows: var(--tab) minmax(0, 1fr); }
@@ -793,7 +793,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .qp-row { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 12px 0 14px; margin: 0 4px; border-radius: var(--r-md); cursor: pointer; }
 .qp-row.on { background: var(--active-bg); box-shadow: inset 2px 0 0 var(--accent); }
 .qp-icon { display: inline-flex; flex: none; color: var(--text-faint); }
-.qpk-part { color: var(--kind-part); } .qpk-net { color: var(--kind-net); } .qpk-module { color: var(--kind-module); }
+.qpk-part { color: var(--kind-part); } .qpk-net { color: var(--kind-net); } .qpk-module { color: var(--kind-module); } .qpk-bus { color: var(--kind-interface); }
 .qp-icon.error { color: var(--danger); } .qp-icon.warning { color: var(--warning); } .qp-icon.note { color: var(--info); }
 .qpk-definition { color: var(--kind-definition); } .qpk-file { color: var(--kind-file); } .qpk-command { color: var(--kind-command); } .qpk-tip { width: 0; margin-left: -4px; }
 .qp-main { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; white-space: nowrap; overflow: hidden; }
@@ -927,6 +927,13 @@ button.chip.cur { border-color: var(--accent); background: var(--pick); }
 .grp { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 2px 6px; background: var(--surface-raised); border: 1px solid var(--border); border-radius: 6px; color: var(--text); cursor: pointer; font: inherit; font-weight: 600; }
 .grp:hover { border-color: var(--accent); } .grp.here { box-shadow: inset 2px 0 0 var(--accent); }
 .grp .count { margin-left: 0; }
+/* a bus in the schematic's inspector: each member with its net and the net's pins by module */
+.bus-members { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+.bus-member { display: flex; flex-direction: column; gap: 3px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.bus-member:last-child { border-bottom: none; }
+.bus-member-head { display: flex; align-items: baseline; gap: 8px; }
+.bus-member-name { color: var(--text-muted); min-width: 3.2em; }
+.bus-member .net-group .chips { margin-top: 3px; }
 .parts-head { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
 .sinspector .parts-filter { margin: 4px 0 6px; }
 .sinspector table.parts tr.sel { background: var(--pick); box-shadow: inset 2px 0 0 var(--accent); }
