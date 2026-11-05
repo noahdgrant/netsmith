@@ -72,6 +72,20 @@ pub fn name_offset_sources(design: &mut Design, sites: &[(SourceId, Span)], sour
     }
 }
 
+/// Say where the design states each protrusion (`design.features.protrusions`, in the order of `sites`).
+pub fn name_protrusion_sources(
+    design: &mut Design,
+    sites: &[Vec<(SourceId, Span)>],
+    sources: &Sources,
+) {
+    for (protrusion, spans) in design.features.protrusions.iter_mut().zip(sites) {
+        protrusion.source = lines_of(spans, sources);
+    }
+    for spans in sites {
+        remember_lines(design, spans, sources);
+    }
+}
+
 fn measure(field: PlaceField) -> Measure {
     match field {
         PlaceField::X => Measure::X,

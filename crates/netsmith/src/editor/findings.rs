@@ -124,7 +124,7 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
         .map(|problem| {
             let message = problem.to_string();
             let (rule, subjects, area): (&str, Vec<&str>, Option<Rect>) = match &problem {
-                PlacementProblem::Overlap { a, b } => {
+                PlacementProblem::Overlap { a, b, .. } => {
                     let (ra, rb) = (courtyard(a), courtyard(b));
                     // The area they share, or the two if the board says they touch.
                     let shared = ra.zip(rb).map(|(x, y)| {
@@ -134,6 +134,16 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
                         )
                     });
                     ("overlap", vec![a, b], shared)
+                }
+                PlacementProblem::OverPins { holder, cover, .. } => {
+                    let (rt, rc) = (courtyard(holder), courtyard(cover));
+                    let shared = rt.zip(rc).map(|(x, y)| {
+                        Rect::new(
+                            Pt::new(x.min.x.max(y.min.x), x.min.y.max(y.min.y)),
+                            Pt::new(x.max.x.min(y.max.x), x.max.y.min(y.max.y)),
+                        )
+                    });
+                    ("over_pins", vec![holder, cover], shared)
                 }
                 PlacementProblem::OutsideOutline { refdes, .. } => {
                     ("outside_outline", vec![refdes], courtyard(refdes))
@@ -240,10 +250,7 @@ pub fn unrouted_findings(board: &Board) -> Vec<PcbFinding> {
 /// 0037). Not listed here: the connections left, which are the ratsnest's (`unrouted`), and
 /// courtyards that overlap, which are the placement check's. KiCad is not involved.
 pub fn drc_findings(board: &Board) -> Vec<PcbFinding> {
-    let extras = drc::Extras {
-        mask_web: Some(board.rules.mask_bridge),
-        via_in_pad: Some(board.process.via_in_pad),
-    };
+    let extras = crate::fab::drc_extras(board);
     let report = match drc::check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras) {
         Ok(report) => report,
         // The board file is netsmith's own, so this is a mistake in netsmith; say so.
@@ -292,6 +299,54 @@ fn from_drc(f: &drc::Finding, board: &Board, ids: &mut Ids) -> PcbFinding {
     finding.x = f.at.x;
     finding.y = f.at.y;
     finding
+}
+
+/// What the requirements prove before any placing (ADR 0045 section 14, PROVISIONAL), as
+/// `constraint` findings: the lines that cannot both hold, a courtyard past an edge nobody
+/// stated and a part bigger than the outline are errors, the suspicious are warnings. The board
+/// is not placed, so a finding has no place of its own; it is at the sheet's origin, with the
+/// parts it is about named.
+pub fn precheck_findings(pre: &netsmith_pcb::Precheck) -> Vec<PcbFinding> {
+    let at = Rect::new(netsmith_pcb::ORIGIN, netsmith_pcb::ORIGIN);
+    let mut ids = Ids(Vec::new());
+    let mut found = Vec::new();
+    let mut add = |severity, base: String, message: String, parts: Vec<String>| {
+        let id = ids.id(format!("constraint:precheck:{base}"));
+        found.push(make(
+            id,
+            FindingSource::Placement,
+            severity,
+            "constraint",
+            message,
+            at,
+            parts,
+        ));
+    };
+    for (n, conflict) in pre.conflicts.iter().enumerate() {
+        add(
+            Severity::Error,
+            format!("conflict:{n}"),
+            format!("these lines cannot both hold: {conflict}"),
+            Vec::new(),
+        );
+    }
+    for fault in &pre.faults {
+        add(
+            Severity::Error,
+            format!("part:{}", fault.refdes),
+            fault.text.clone(),
+            vec![fault.refdes.clone()],
+        );
+    }
+    for (n, warning) in pre.warnings.iter().enumerate() {
+        add(
+            Severity::Warning,
+            format!("warning:{n}"),
+            warning.clone(),
+            Vec::new(),
+        );
+    }
+    found
 }
 
 /// The design's requirements on where parts go (ADR 0045), measured on the placed board as

@@ -4,9 +4,10 @@
 //!
 //! Everything the case and the layout designer require of the board is in
 //! `enclosure_sensor.physical.nsm` beside this file (ADR 0048): its comments walk through each
-//! statement. This file is only the circuit. The three parts it defines (`SensorPlug16`,
-//! `Memory`, `ChipAntenna`) are invented and use KiCad's stock symbols and footprints through
-//! the project's `kicad.toml`; the board is not a design to build.
+//! statement. This file is only the circuit. The four parts it defines (`SensorPlug16`,
+//! `Memory`, `ChipAntenna`, `FlatCell`) are invented and use KiCad's stock symbols and
+//! footprints, and a footprint of the project's own, through the project's `kicad.toml`; the
+//! board is not a design to build.
 
 import std::bus::{I2c, I2cPullups}
 import std::parts::connector::{Coax, Socket1x10, UsbCPower}
@@ -72,6 +73,19 @@ part ChipAntenna {
     pins {
         .feed  input   "FEED"  "1"
         .trace passive "TRACE" "2"
+    }
+
+    .package: Package
+}
+
+/// An invented flat cell, 30 x 26 mm, that lies on the back of the board across the radio
+/// carrier's sockets. It is fitted by hand after the sockets' pins are cut.
+part FlatCell {
+    .designator &= "BT"
+
+    pins {
+        .pos passive "POS" "1"
+        .neg passive "NEG" "2"
     }
 
     .package: Package
@@ -245,6 +259,11 @@ board EnclosureSensor {
     // The plug-in radio carrier's sockets.
     .radio: RadioSockets
     .radio.power ~ .supply
+
+    // The flat cell on the back, across the sockets; a person fits it after the pins are cut.
+    .cell: FlatCell { .assembly &= "hand" }
+    .cell.pos ~ .supply.pos
+    .cell.neg ~ .supply.neg
 
     // The antenna and its coax connector.
     .coax: Coax { .assembly &= "hand" }

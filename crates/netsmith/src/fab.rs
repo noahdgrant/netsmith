@@ -20,7 +20,7 @@ use netsmith_fab::{BomEntry, Fit, KicadCli, Options, Package, Side, package};
 use netsmith_kicad::Mapping;
 use netsmith_lower::{Assembly, Sourced};
 use netsmith_pcb::{
-    Board, RouteOptions, apply_layout, kicad_pcb, kicad_pro, place_options, route_with, svg,
+    Board, RouteOptions, Trim, apply_layout, kicad_pcb, kicad_pro, place_options, route_with, svg,
 };
 use netsmith_solve::Catalogs;
 
@@ -216,6 +216,50 @@ pub fn fab_with_options(
     Ok(made)
 }
 
+/// What the requirements prove about a board before any placing (ADR 0045 section 14,
+/// PROVISIONAL): lines that cannot all hold, a courtyard past an edge nobody stated, a part
+/// bigger than the outline. It takes milliseconds and starts no placer.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PrecheckReport {
+    /// The board's label.
+    pub board: String,
+    /// What is proved, each as a message with the numbers and the lines.
+    pub errors: Vec<String>,
+    /// What is only suspicious.
+    pub warnings: Vec<String>,
+}
+
+/// The pre-check of one built board with the layout file's locks, if any. A board the
+/// libraries cannot give footprints for (no KiCad install, a part with no mapping) has nothing
+/// proved here: `build` has never needed them, and `fab` reports that when it places.
+pub fn precheck_board(
+    built: &Built,
+    layout: Option<&netsmith_pcb::Layout>,
+    libraries: &Libraries,
+    constraints_warn: bool,
+) -> PrecheckReport {
+    let mut report = PrecheckReport {
+        board: built.label(),
+        ..PrecheckReport::default()
+    };
+    let mut placement = place_options(&built.design, layout);
+    placement.lines_warn = constraints_warn;
+    match Board::precheck(
+        &built.design,
+        &libraries.mapping,
+        &libraries.footprints,
+        &placement,
+    ) {
+        Ok(found) => {
+            report.errors = found.errors();
+            report.warnings = found.warnings;
+        }
+        Err(e @ netsmith_pcb::BoardError::Constraints(_)) => report.errors = vec![e.to_string()],
+        Err(_) => {}
+    }
+    report
+}
+
 /// The file in the board's fab folder that lists every part's final place and state when
 /// the parts do not fit (PROVISIONAL, ADR 0033).
 const PLACEMENT_FAILURE: &str = "placement-failure.txt";
@@ -344,12 +388,27 @@ fn fab_board(
             return Err(errors);
         }
 
+        // What the requirements prove cannot be placed is said now, before the placer starts
+        // (it can take a minute on a tight board).
+        let precheck = precheck_board(
+            built,
+            layout.as_ref().map(|l| &l.0),
+            libraries,
+            catalogs.constraints_warn(),
+        );
+        for warning in &precheck.warnings {
+            say(format!("{}: warning: {warning}", built.label()));
+        }
+        if !precheck.errors.is_empty() {
+            return Err(precheck.errors.into_iter().map(fail).collect());
+        }
         say(format!(
             "{}: placing {} parts",
             built.label(),
             built.design.parts.len()
         ));
-        let placement = place_options(&built.design, layout.as_ref().map(|l| &l.0));
+        let mut placement = place_options(&built.design, layout.as_ref().map(|l| &l.0));
+        placement.lines_warn = catalogs.constraints_warn();
         let mut board = Board::from_design_placed(
             &built.design,
             &libraries.mapping,
@@ -408,6 +467,18 @@ fn fab_board(
         }
         for u in &unchecked {
             say(format!("{}: warning: {u}", built.label()));
+        }
+        // A trim is a step a person does with a cutter. The statement stays a warning for as
+        // long as it stands (ADR 0045 section 15).
+        for trim in board.trims() {
+            say(format!(
+                "{}: warning: the design states a trim: {}",
+                built.label(),
+                trim.note()
+            ));
+            for u in trim.unchecked() {
+                say(format!("{}: warning: {u}", built.label()));
+            }
         }
         say(format!(
             "{}: placed on a {} by {} mm board",
@@ -472,6 +543,13 @@ fn fab_board(
         extras.extend(board.hangs().into_iter().map(|h| format!("warning: {h}")));
         extras.extend(unchecked.iter().map(|u| format!("warning: {u}")));
         extras.extend(
+            board
+                .trims()
+                .iter()
+                .flat_map(Trim::unchecked)
+                .map(|u| format!("warning: {u}")),
+        );
+        extras.extend(
             built
                 .guideline_warnings()
                 .into_iter()
@@ -479,10 +557,8 @@ fn fab_board(
         );
         let package_options = Options {
             allow_drc_violations: options.allow_drc_violations,
-            drc: netsmith_fab::drc::Extras {
-                mask_web: Some(board.rules.mask_bridge),
-                via_in_pad: Some(board.process.via_in_pad),
-            },
+            drc: drc_extras(&board),
+            trim: board.trims().iter().map(Trim::note).collect(),
             process: Some(board.process_note()),
             extras,
             fit: fit_of(&built.sourcing),
@@ -732,6 +808,16 @@ fn designator_key(designator: &str) -> (String, u32) {
         .unwrap_or(designator.len());
     let (letters, digits) = designator.split_at(split);
     (letters.to_string(), digits.parse().unwrap_or(0))
+}
+
+/// What the design rules check needs that the board file does not say: the process's mask
+/// web and widest filled via, and the courtyards a protruding pin excuses (ADR 0045 section 15).
+pub(crate) fn drc_extras(board: &Board) -> netsmith_fab::drc::Extras {
+    netsmith_fab::drc::Extras {
+        mask_web: Some(board.rules.mask_bridge),
+        via_in_pad: Some(board.process.via_in_pad),
+        excused_courtyards: board.excused_courtyards(),
+    }
 }
 
 #[cfg(test)]

@@ -2,7 +2,7 @@
 // laptop's 1366 x 768 or a large screen's 2000 x 1000, and the layout is kept across a reload.
 export const fixture = 'two_boards';
 
-const KEYS = [['1', 'schematic'], ['2', 'power'], ['3', 'system'], ['4', 'bom'], ['5', 'pcb'], ['6', 'build'], ['7', 'source']];
+const KEYS = [['1', 'source'], ['2', 'schematic'], ['3', 'power'], ['4', 'system'], ['5', 'bom'], ['6', 'pcb'], ['7', 'build']];
 
 export async function run({ page, shot, step, expect }) {
   const active = () => page.evaluate(() => [...document.querySelectorAll('.pane-strip .tab.active')].map((t) => t.dataset.section));
@@ -24,16 +24,16 @@ export async function run({ page, shot, step, expect }) {
   }
 
   step('Alt+number works in a text field, plain numbers do not');
-  await page.keyboard.press('7');
+  await page.keyboard.press('1');
   await page.locator('.tree-filter').click();
   await page.keyboard.press('3');
   expect((await active()).join() === 'source', 'the 3 was typed into the filter');
-  await page.keyboard.press('Alt+1');
+  await page.keyboard.press('Alt+2');
   await page.waitForSelector('.section.sec-schematic:not(.away)');
-  expect(true, 'Alt+1 opens the schematic');
+  expect(true, 'Alt+2 opens the schematic');
 
   step('the section is kept across a reload');
-  await page.keyboard.press('4');
+  await page.keyboard.press('5');
   await page.reload();
   await page.waitForSelector('.section.sec-bom:not(.away)');
   expect((await active()).join() === 'bom', 'the BOM again');

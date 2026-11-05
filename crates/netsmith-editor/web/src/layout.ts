@@ -6,13 +6,13 @@ export type Section = 'schematic' | 'power' | 'system' | 'bom' | 'pcb' | 'build'
 
 /** The sections in the order of the tab strip. Their number keys are their places in it. */
 export const SECTIONS: { id: Section; label: string }[] = [
+  { id: 'source', label: 'Source' },
   { id: 'schematic', label: 'Schematic' },
   { id: 'power', label: 'Power tree' },
   { id: 'system', label: 'System' },
   { id: 'bom', label: 'BOM' },
   { id: 'pcb', label: 'PCB' },
   { id: 'build', label: 'Build' },
-  { id: 'source', label: 'Source' },
 ];
 
 const IDS = SECTIONS.map((s) => s.id);

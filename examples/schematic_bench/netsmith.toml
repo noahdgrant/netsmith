@@ -1,0 +1,6 @@
+[project]
+name = "schematic_bench"
+top_level = ["schematic_bench.nsm"]
+out = "out"
+fab = "fab"
+kicad = 9

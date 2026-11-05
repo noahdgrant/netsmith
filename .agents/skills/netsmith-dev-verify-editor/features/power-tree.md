@@ -2,7 +2,7 @@
 
 ## How to get to it
 
-The section "Power tree" (key 2). For a board of a system it shows the whole system: every rail a part draws from, and the stages between them, joined left to right; the joins between boards are stages of kind "Board link".
+The section "Power tree" (key 3). For a board of a system it shows the whole system: every rail a part draws from, and the stages between them, joined left to right; the joins between boards are stages of kind "Board link".
 
 ## What it draws
 

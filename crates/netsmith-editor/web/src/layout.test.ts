@@ -175,8 +175,9 @@ describe('dropping a tab', () => {
 
 describe('sectionOfKey', () => {
   it('numbers the sections from 1', () => {
-    expect(sectionOfKey('1')).toBe('schematic');
-    expect(sectionOfKey('7')).toBe('source');
+    expect(sectionOfKey('1')).toBe('source');
+    expect(sectionOfKey('2')).toBe('schematic');
+    expect(sectionOfKey('7')).toBe('build');
     expect(sectionOfKey('8')).toBeNull();
     expect(sectionOfKey('a')).toBeNull();
   });

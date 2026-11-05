@@ -373,8 +373,8 @@ fn two_relations_that_cannot_both_hold_are_reported_by_the_check_and_not_looped_
     let started = std::time::Instant::now();
     let (_dir, made) = fab("contradiction", &physical, "", &Catalogs::jlcpcb());
     let e = made.expect_err("no placement holds both");
-    // Since the placer ends on an arrangement that holds neither, `fab` stops before routing
-    // and names the two lines that cannot both hold, and the one that is not met (issue #80).
+    // `fab` stops before placing and names the two lines that cannot both hold (issue #80,
+    // ADR 0045 section 14).
     assert!(
         e.contains("no placement meets every requirement of the physical file")
             && e.contains("these lines cannot both hold: widget.physical.nsm:")
@@ -385,10 +385,9 @@ fn two_relations_that_cannot_both_hold_are_reported_by_the_check_and_not_looped_
             ),
         "{e}"
     );
-    assert!(
-        e.contains("minus the centre of the body of J3 (`radio.row_a`) is "),
-        "{e}"
-    );
+    // The lines are proved to conflict before the placer starts, so there is no arrangement
+    // to measure: nothing is said of where the placer ended.
+    assert!(!e.contains("where the placer ended"), "{e}");
     assert!(
         started.elapsed().as_secs() < 60,
         "it took {:?}",
