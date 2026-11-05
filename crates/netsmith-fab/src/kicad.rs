@@ -421,8 +421,6 @@ impl KicadCli for KicadCliExe {
             "gerbers",
             "--layers",
             &layers.join(","),
-            "--common-layers",
-            "Edge.Cuts",
             "--no-protel-ext",
             "--use-drill-file-origin",
             "-o",

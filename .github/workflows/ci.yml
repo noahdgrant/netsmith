@@ -98,6 +98,11 @@ jobs:
           esac
 
       # What the lookup of netsmith_kicad::install finds on a real Linux install (issue #6).
+      - name: TEMP footprint diagnostics
+        run: |
+          dpkg -l kicad kicad-symbols kicad-footprints | tail -3
+          grep -n "clearance\|margin\|(size\|(pad" /usr/share/kicad/footprints/Fiducial.pretty/Fiducial_1mm_Mask2mm.kicad_mod
+
       - name: Show the KiCad library lookup
         run: cargo run --quiet -p netsmith-kicad --example locate
 
