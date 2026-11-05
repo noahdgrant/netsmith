@@ -136,6 +136,68 @@ part Buck1V8 {
     .package: Package
 }
 
+/// An invented low-dropout regulator of eight pads: two input pads and an enable on the left,
+/// two output pads, a pad that connects to nothing and the feedback on the right, two grounds.
+part Ldo8 {
+    .designator &= "U"
+
+    .vin: Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+
+    pins "DFN" {
+        .vin.pos  power "IN" "8" "7"
+        .en       input "EN" "6"
+        .vout.pos power "Out" "1" "2"
+        .nc       no_connect "NC" "3"
+        .fb       input "FB/ADJ" "4"
+        .vin.neg  power "GND" "5" "9"
+    }
+
+    .package: Package
+}
+
+/// An invented connector of ten pins: pins 4 and 5 are ground, three carry signals, and the
+/// others are left open.
+part Obd10 {
+    .designator &= "J"
+
+    pins "P" {
+        .p1  passive "NC1" "1"
+        .p2  passive "BUS+" "2"
+        .p3  passive "NC3" "3"
+        .p4  passive "CHASGND" "4"
+        .p5  passive "SIGGND" "5"
+        .p6  passive "CANH" "6"
+        .p7  passive "KLINE" "7"
+        .p8  passive "NC8" "8"
+        .p9  passive "NC9" "9"
+        .p10 passive "BUS-" "10"
+    }
+
+    .package: Package
+}
+
+/// The same ten pins of a connector, all of them going on to another sheet.
+part Ten10 {
+    .designator &= "J"
+
+    pins "P" {
+        .p1  passive "NC1" "1"
+        .p2  passive "BUS+" "2"
+        .p3  passive "NC3" "3"
+        .p4  passive "CHASGND" "4"
+        .p5  passive "SIGGND" "5"
+        .p6  passive "CANH" "6"
+        .p7  passive "KLINE" "7"
+        .p8  passive "NC8" "8"
+        .p9  passive "NC9" "9"
+        .p10 passive "BUS-" "10"
+    }
+
+    .package: Package
+}
+
 /// A battery divider into a buffer: the divider's node feeds the amplifier's input, the
 /// amplifier's output is wired back to its inverting input, and a resistor and a capacitor
 /// filter the output before it leaves for the converter.
@@ -168,6 +230,19 @@ module McuModule {
     .rx: Pin
     .rts: Pin
     .cts: Pin
+    .obd_a: Pin
+    .obd_b: Pin
+    .obd_c: Pin
+    .t0: Pin
+    .t1: Pin
+    .t2: Pin
+    .t3: Pin
+    .t4: Pin
+    .t5: Pin
+    .t6: Pin
+    .t7: Pin
+    .t8: Pin
+    .t9: Pin
 
     .mcu: Mcu97 { .package &= "QFP" }
     .crystal: Crystal { .frequency &= 8MHz +/- 30ppm }
@@ -186,6 +261,19 @@ module McuModule {
     .rx ~ .mcu.p0_05
     .rts ~ .mcu.p0_06
     .cts ~ .mcu.p0_07
+    .obd_a ~ .mcu.p1_00
+    .obd_b ~ .mcu.p1_01
+    .obd_c ~ .mcu.p1_02
+    .t0 ~ .mcu.p2_00
+    .t1 ~ .mcu.p2_01
+    .t2 ~ .mcu.p2_02
+    .t3 ~ .mcu.p2_03
+    .t4 ~ .mcu.p2_04
+    .t5 ~ .mcu.p2_05
+    .t6 ~ .mcu.p2_06
+    .t7 ~ .mcu.p2_07
+    .t8 ~ .mcu.p2_08
+    .t9 ~ .mcu.p2_09
 }
 
 /// A buck converter: the input and output capacitors, the inductor from the switching node to
@@ -277,6 +365,67 @@ module ModemModule {
     .supply.pos ~> .rc_e ~> .cf_e ~> .supply.neg
 }
 
+/// A regulator with a capacitor on its input and one on its output.
+module LdoModule {
+    .vin: Rail
+    .vout: Rail
+
+    .u: Ldo8 { .package &= "DFN" }
+    .c_in: Capacitor { .capacitance &= 1uF +/- 20% }
+    .c_out: Capacitor { .capacitance &= 1uF +/- 20% }
+
+    .u.vin ~ .vin
+    .u.vout ~ .vout
+    .vin.neg ~ .vout.neg
+    .u.en ~ .vin.pos
+    .u.fb ~ .vout.pos
+    .vin.pos ~> .c_in ~> .vin.neg
+    .vout.pos ~> .c_out ~> .vout.neg
+}
+
+/// A connector with ground pins, pins left open and three signals.
+module ObdConnector {
+    .ground: Rail
+    .a: Pin
+    .b: Pin
+    .c: Pin
+
+    .j: Obd10 { .package &= "P" }
+
+    .j.p2 ~ .a
+    .j.p6 ~ .b
+    .j.p7 ~ .c
+    .j.p4 ~ .ground.neg
+    .j.p5 ~ .ground.neg
+}
+
+/// A connector whose ten pins all go on to another sheet.
+module TenConnector {
+    .s0: Pin
+    .s1: Pin
+    .s2: Pin
+    .s3: Pin
+    .s4: Pin
+    .s5: Pin
+    .s6: Pin
+    .s7: Pin
+    .s8: Pin
+    .s9: Pin
+
+    .j: Ten10 { .package &= "P" }
+
+    .j.p1 ~ .s0
+    .j.p2 ~ .s1
+    .j.p3 ~ .s2
+    .j.p4 ~ .s3
+    .j.p5 ~ .s4
+    .j.p6 ~ .s5
+    .j.p7 ~ .s6
+    .j.p8 ~ .s7
+    .j.p9 ~ .s8
+    .j.p10 ~ .s9
+}
+
 board SchematicBench {
     .process: TwoLayer {
         .stackup.thickness &= 1.6mm
@@ -334,4 +483,50 @@ board SchematicBench {
     .modem.rx ~ .mcu.rx
     .modem.rts ~ .mcu.rts
     .modem.cts ~ .mcu.cts
+
+    .rail_3v8: Rail {
+        .voltage &= 3.8V +/- 5%
+        .pos.net &= "+3V8"
+        .neg.net &= "GND"
+    }
+    .rail_2v8: Rail {
+        .voltage &= 2.8V +/- 5%
+        .pos.net &= "+2V8"
+        .neg.net &= "GND"
+        .current &= 0mA..100mA
+    }
+    .ldo: LdoModule
+    .ldo.vin ~ .rail_3v8
+    .ldo.vout ~ .rail_2v8
+
+    .obd: ObdConnector
+    .obd.ground ~ .rail_3v3
+    .obd.a.net &= "OBD_A"
+    .obd.b.net &= "OBD_B"
+    .obd.c.net &= "OBD_C"
+    .obd.a ~ .mcu.obd_a
+    .obd.b ~ .mcu.obd_b
+    .obd.c ~ .mcu.obd_c
+
+    .ten: TenConnector
+    .ten.s0 ~ .mcu.t0
+    .ten.s1 ~ .mcu.t1
+    .ten.s2 ~ .mcu.t2
+    .ten.s3 ~ .mcu.t3
+    .ten.s4 ~ .mcu.t4
+    .ten.s5 ~ .mcu.t5
+    .ten.s6 ~ .mcu.t6
+    .ten.s7 ~ .mcu.t7
+    .ten.s8 ~ .mcu.t8
+    .ten.s9 ~ .mcu.t9
+    .ten.s0.net &= "TEN_0"
+    .ten.s1.net &= "TEN_1"
+    .ten.s2.net &= "TEN_2"
+    .ten.s3.net &= "TEN_3"
+    .ten.s4.net &= "TEN_4"
+    .ten.s5.net &= "TEN_5"
+    .ten.s6.net &= "TEN_6"
+    .ten.s7.net &= "TEN_7"
+    .ten.s8.net &= "TEN_8"
+    .ten.s9.net &= "TEN_9"
 }

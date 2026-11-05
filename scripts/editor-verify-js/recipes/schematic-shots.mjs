@@ -3,7 +3,7 @@
 // schematic-shots`. The files are `<label>-<sheet>-<width>.png` in the evidence folder.
 export const fixture = 'schematic_bench';
 
-export const SHEETS = ['adc', 'mcu', 'buck', 'modem'];
+export const SHEETS = ['adc', 'mcu', 'buck', 'modem', 'ldo', 'obd', 'ten'];
 
 export async function run({ page, shot, step, expect }) {
   const label = process.env.SHOT_LABEL ?? 'shot';

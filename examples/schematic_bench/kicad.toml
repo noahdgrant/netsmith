@@ -26,3 +26,24 @@ package = "SOIC-8"
 default = true
 symbol = "Amplifier_Operational:LM358"
 footprint = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
+
+[[part]]
+kind = "Ldo8"
+package = "DFN"
+default = true
+symbol = "bench:Ldo8"
+footprint = "Package_DFN_QFN:DFN-8-1EP_3x3mm_P0.65mm_EP1.55x2.4mm"
+
+[[part]]
+kind = "Obd10"
+package = "P"
+default = true
+symbol = "bench:Conn10"
+footprint = "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical"
+
+[[part]]
+kind = "Ten10"
+package = "P"
+default = true
+symbol = "bench:Conn10"
+footprint = "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical"
