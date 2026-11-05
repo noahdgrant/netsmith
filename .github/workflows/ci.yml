@@ -95,9 +95,9 @@ jobs:
         run: cargo run --quiet -p netsmith-kicad --example locate
 
       # --nocapture shows the "skipped: ..." lines, so the run can prove that no test skipped
-      # itself for want of KiCad. pipefail (the default shell of a run step) keeps the test
-      # result.
+      # itself for want of KiCad. `shell: bash` runs with pipefail, which keeps the test result.
       - name: Test with KiCad
+        shell: bash
         run: |
           cargo test --workspace --no-fail-fast -- --nocapture 2>&1 | tee test.log
           if grep -n "skipped: no KiCad" test.log; then
