@@ -7,23 +7,39 @@
 //!
 //! What a person draws, and what this does:
 //!
-//! 1. The main parts (an IC, a connector) are in the middle, in a row that reads left to
-//!    right along the signal. Each is turned so its pins point toward what it connects to.
+//! 1. The main parts (an IC, a connector) are in rows that read left to right along the
+//!    signal; a sheet with enough parts is set in as many rows as make it a page (about 1.4 to
+//!    1.8 wide for each high), not a strip. Each part is turned so its pins point toward what
+//!    it connects to.
 //! 2. A two-terminal part that serves one pin (a decoupling capacitor, a pull-up, a
-//!    feedback divider, a bootstrap capacitor) goes next to that pin, on the pin's side.
-//!    Parts in series (a divider) stand in one stack, and what is on the node between them
-//!    is wired out sideways. Supplies are at the top of a part, grounds at the bottom.
-//! 3. Every net on a sheet is wired: orthogonal wires on a grid, round parts and texts,
-//!    crossing other wires only at right angles ([`grid`]). A name is used only where a wire
-//!    cannot do: a net that goes on to another sheet leaves through a flag, and a rail is
-//!    drawn with a power symbol at the end of a short wire (never on a wire). A net with a
-//!    generated name is always only wires.
+//!    feedback divider, a bootstrap capacitor) goes next to that pin, on the pin's side, and
+//!    is wired to it, always. Parts in series (a divider) stand in one stack, and what is on
+//!    the node between them is wired out sideways. Supplies are at the top of a part, grounds
+//!    at the bottom.
+//! 3. A net is drawn as wires when it is local and short, and as a **name at each of its
+//!    places** when wires would be long or tangled. A wired net is orthogonal wires on a
+//!    grid, round parts and texts, crossing other wires only at right angles ([`grid`]). A
+//!    named net is a short stub out of a pin with the net's name at its end (a [`NetLabel`],
+//!    plain text in line with the stub) at each group of its pins (a main part and the parts
+//!    that serve its pins), and the pins of a group are wired to that one stub. Which nets
+//!    are named is [`policy`]'s rule, decided from a first drawing of the sheet: a net that
+//!    joins more than one group, and whose wire is longer than 48 grid steps (61 mm), or
+//!    that fans out to three groups over 30 steps, or crosses more than one other wire, is
+//!    named, the worst crossing first. A small sheet, whose wires are short, has none. A net
+//!    that goes on to another sheet is always named, by a flag (the shape of KiCad's
+//!    hierarchical label) at the end of the stub of each group of its pins. A rail is drawn
+//!    with a power symbol at the end of a short wire (never on a wire, never named). The net
+//!    of a part that serves a pin is only wires. A generated name is shown on a label as the
+//!    first pin of the net's main part (`J2.3`), as KiCad names such a net, and on a flag not
+//!    at all.
 //! 4. A wire never crosses a text. A pin that connects to nothing has an X.
 //!
 //! Nothing here knows how a layout is drawn: [`crate::render_svg`] reads the result.
 
 mod engine;
 mod grid;
+mod policy;
+mod prune;
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
 
@@ -147,10 +163,17 @@ pub struct Junction {
     pub at: Pt,
 }
 
+/// The name of a net at the end of a short stub, where a net is drawn as a name and not as a
+/// wire: plain text, in line with the stub that leaves a pin ([`policy`]). Same-name labels
+/// on a sheet are one net, as a flag's are.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NetLabel {
     pub net: usize,
     pub text: Text,
+    /// Where the label meets its wire: the end of the stub.
+    pub at: Pt,
+    /// The way the text runs away from `at`, the way the stub points.
+    pub dir: Dir,
 }
 
 /// The nets of a design that are power nets, by name, as the checker's model has them: the
@@ -226,18 +249,24 @@ pub struct Port {
 }
 
 impl Port {
-    /// Half the height of a flag, and the height of the name in it: flags in a column are one
-    /// pin pitch apart, with a grid step between them.
+    /// Half the height of a flag, and the height of the name in it: flags of neighbouring pins
+    /// are one pin pitch apart, with a grid step less a little between them.
     pub const HALF: f64 = 0.64;
-    pub const TEXT: f64 = 0.9;
+    pub const TEXT: f64 = 1.0;
 
     pub fn extent(&self) -> Rect {
         let tip = self.at;
         let end = tip.step(self.dir, self.length);
-        let mut r = Rect::around(Pt::new(tip.x, tip.y - Self::HALF));
-        r.include(Pt::new(tip.x, tip.y + Self::HALF));
-        r.include(Pt::new(end.x, end.y - Self::HALF));
-        r.include(Pt::new(end.x, end.y + Self::HALF));
+        // Half a flag's height to each side of the line the flag runs along.
+        let (px, py) = if self.dir.is_vertical() {
+            (Self::HALF, 0.0)
+        } else {
+            (0.0, Self::HALF)
+        };
+        let mut r = Rect::around(Pt::new(tip.x - px, tip.y - py));
+        r.include(Pt::new(tip.x + px, tip.y + py));
+        r.include(Pt::new(end.x - px, end.y - py));
+        r.include(Pt::new(end.x + px, end.y + py));
         r
     }
 }
@@ -467,7 +496,20 @@ pub(crate) fn layout_with(
     }
 
     let orient = orientations(&ctx, &units, &column_of);
-    Ok(engine::run(&ctx, &units, &order, &orient, marks))
+    // Draw the sheet, see which nets are better as names, and draw it again with them: a name
+    // takes room, and a net named changes what crosses what. Nets are only ever added, so
+    // this ends; it stops after a few passes in any case.
+    let mut labelled = vec![false; design.nets.len()];
+    let mut drawn = engine::run(&ctx, &units, &order, &orient, marks, &labelled);
+    for _ in 0..policy::PASSES {
+        let next = policy::choose(&ctx, &drawn, &labelled);
+        if next == labelled {
+            break;
+        }
+        labelled = next;
+        drawn = engine::run(&ctx, &units, &order, &orient, marks, &labelled);
+    }
+    Ok(drawn.layout)
 }
 
 // ---------------------------------------------------------------------------------------
@@ -557,6 +599,17 @@ fn other_pad<'a>(ctx: &'a Ctx, part: usize, pad: &str) -> &'a str {
     }
 }
 
+/// Whether the far pins of two parts joined at `a` and `b` are on one rail (a pull-down and a
+/// capacitor on one node, both to ground): they are two parts hung on the node, side by side,
+/// not a stack with a wire round from the top of it to the bottom.
+fn same_rail_beyond(ctx: &Ctx, a: (usize, &str), b: (usize, &str)) -> bool {
+    let far = |(p, pad): (usize, &str)| net_of(ctx, p, other_pad(ctx, p, pad));
+    match (far(a), far(b)) {
+        (Some(x), Some(y)) => x == y && (ctx.power[x].is_some() || ctx.ground[x]),
+        _ => false,
+    }
+}
+
 fn find_units(ctx: &Ctx) -> Vec<Unit> {
     let n = ctx.design.parts.len();
     // link[(part, pad)] = (other part, other pad) for a net of exactly these two pins.
@@ -585,6 +638,7 @@ fn find_units(ctx: &Ctx) -> Vec<Unit> {
         if let [(a, pa), (b, pb)] = stackable[..]
             && a != b
             && !(net.pins.len() > 2 && (in_series_kind(a) || in_series_kind(b)))
+            && !same_rail_beyond(ctx, (a, pa), (b, pb))
         {
             link.insert((a, pa.to_string()), (b, pb.to_string()));
             link.insert((b, pb.to_string()), (a, pa.to_string()));
@@ -633,10 +687,19 @@ fn find_units(ctx: &Ctx) -> Vec<Unit> {
             }
         }
         // Higher nets go on top.
-        let top = net_of(ctx, parts[0], &up_pads[0]).map_or(0, |n| ctx.level[n]);
+        let single = parts.len() == 1;
+        let rank = |n: usize| match ctx.power[n] {
+            // A part on its own (a pull-up, a pull-down) has its supply above and its ground
+            // below, however far each net is from ground; in a stack the levels decide.
+            Some(PowerKind::Supply) if single => usize::MAX / 2,
+            Some(PowerKind::Ground) if single => 0,
+            None if single && ctx.ground[n] => 0,
+            _ => ctx.level[n] + 1,
+        };
+        let top = net_of(ctx, parts[0], &up_pads[0]).map_or(0, rank);
         let last = parts.len() - 1;
         let bottom_pad = other_pad(ctx, parts[last], &up_pads[last]);
-        let bottom = net_of(ctx, parts[last], bottom_pad).map_or(0, |n| ctx.level[n]);
+        let bottom = net_of(ctx, parts[last], bottom_pad).map_or(0, rank);
         if bottom > top {
             parts.reverse();
             up_pads = parts
@@ -897,11 +960,33 @@ fn best_orientation(ctx: &Ctx, p: usize, column_of: &[usize]) -> Orient {
     } else {
         readable
     };
+    // A part with all its pins on one side (a connector), or with one pin (a test point), is
+    // turned so that what is written at its pins reads across.
+    let first = glyph.pins.first().map(|q| q.toward_body);
+    let one_sided = glyph.pins.iter().all(|q| Some(q.toward_body) == first);
+    let simple = one_sided || connected.len() == 1;
     let mut best = (f64::NEG_INFINITY, candidates[0]);
     for orient in candidates {
         let mut score = 0.0;
         for (pin, n) in &connected {
             let escape = orient.dir((-pin.toward_body.0, -pin.toward_body.1));
+            if simple && ctx.external[*n] && ctx.power[*n].is_none() {
+                score += match escape {
+                    Dir::Left if pin.flow.takes() => 10.5,
+                    Dir::Right if pin.flow.gives() => 10.5,
+                    Dir::Left | Dir::Right => 10.0,
+                    _ => 0.0,
+                };
+            }
+            if connected.len() == 1 {
+                // A pin on its own on a rail points at the rail's symbol.
+                score += match (ctx.power[*n], escape) {
+                    (Some(PowerKind::Supply), Dir::Up) | (Some(PowerKind::Ground), Dir::Down) => {
+                        5.0
+                    }
+                    _ => 0.0,
+                };
+            }
             let want_up = sign(ctx.level[*n] as f64 - mean_level);
             let escapes_up = match escape {
                 Dir::Up => 1.0,
@@ -948,7 +1033,13 @@ fn body_of(glyph: &Glyph, orient: Orient) -> Rect {
 }
 
 /// The reference and the value of a part, written on `side` of its body.
-fn part_texts(part: &netsmith_core::Part, body: Rect, side: Dir, gap: f64) -> (Text, Option<Text>) {
+fn part_texts(
+    part: &netsmith_core::Part,
+    body: Rect,
+    side: Dir,
+    gap: f64,
+    pins: &[PlacedPin],
+) -> (Text, Option<Text>) {
     let (cx, cy) = (
         (body.min.x + body.max.x) / 2.0,
         (body.min.y + body.max.y) / 2.0,
@@ -966,29 +1057,62 @@ fn part_texts(part: &netsmith_core::Part, body: Rect, side: Dir, gap: f64) -> (T
                 text(&part.value, Pt::new(x, cy - 0.3 + line), anchor),
             )
         }
-        Dir::Up => (
-            text(
-                &part.refdes,
-                Pt::new(cx, body.min.y - gap - line),
-                Anchor::Middle,
-            ),
-            text(&part.value, Pt::new(cx, body.min.y - gap), Anchor::Middle),
-        ),
-        Dir::Down => (
-            text(
-                &part.refdes,
-                Pt::new(cx, body.max.y + gap + TEXT_SIZE),
-                Anchor::Middle,
-            ),
-            text(
-                &part.value,
-                Pt::new(cx, body.max.y + gap + TEXT_SIZE + line),
-                Anchor::Middle,
-            ),
-        ),
+        Dir::Up => {
+            let (x, anchor) = text_column(part, pins, side, cx);
+            (
+                text(&part.refdes, Pt::new(x, body.min.y - gap - line), anchor),
+                text(&part.value, Pt::new(x, body.min.y - gap), anchor),
+            )
+        }
+        Dir::Down => {
+            let (x, anchor) = text_column(part, pins, side, cx);
+            (
+                text(
+                    &part.refdes,
+                    Pt::new(x, body.max.y + gap + TEXT_SIZE),
+                    anchor,
+                ),
+                text(
+                    &part.value,
+                    Pt::new(x, body.max.y + gap + TEXT_SIZE + line),
+                    anchor,
+                ),
+            )
+        }
     };
     let value = (!part.value.is_empty()).then_some(value);
     (reference, value)
+}
+
+/// Where the reference and the value go along a top or bottom side: centred on the body, or
+/// else the nearest place to the centre where no wire that leaves that side runs through them
+/// (a text is not written over a wire, and a wire does not turn aside for a text).
+fn text_column(
+    part: &netsmith_core::Part,
+    pins: &[PlacedPin],
+    side: Dir,
+    centre: f64,
+) -> (f64, Anchor) {
+    // Clear space between a wire and a text.
+    const CLEAR: f64 = 2.0;
+    // As wide as the layout measures it and as wide as it is drawn, whichever is more.
+    let em = |t: &str| crate::glyph::text_em(t).max(t.chars().count() as f64 * CHAR_WIDTH);
+    let half = em(&part.refdes).max(em(&part.value)) * TEXT_SIZE / 2.0;
+    let wires: Vec<f64> = pins
+        .iter()
+        .filter(|q| q.escape == side)
+        .map(|q| q.at.x)
+        .collect();
+    let free = |c: f64| wires.iter().all(|&x| (x - c).abs() >= half + CLEAR - 1e-9);
+    if free(centre) {
+        return (centre, Anchor::Middle);
+    }
+    wires
+        .iter()
+        .flat_map(|&x| [x + CLEAR + half, x - CLEAR - half])
+        .filter(|&c| free(c))
+        .min_by(|a, b| (a - centre).abs().total_cmp(&(b - centre).abs()))
+        .map_or((centre, Anchor::Middle), |c| (c, Anchor::Middle))
 }
 
 /// How far from the body the texts go on `side`: beyond the wires and the X of the pins that
@@ -997,7 +1121,8 @@ fn text_gap(pins: &[PlacedPin], side: Dir) -> f64 {
     if pins.iter().any(|q| q.escape == side) {
         GRID + STUB + 2.0
     } else {
-        GRID
+        // Past the number of a pin at the edge, which is written above its line.
+        GRID + 0.6
     }
 }
 
@@ -1035,7 +1160,7 @@ fn place_part(ctx: &Ctx, p: usize, orient: Orient, nets: &[Option<usize>]) -> Pl
 
     // Beside a tall part, above or below a wide one, on a side no wire leaves by.
     let side = text_side(&pins, body);
-    let (reference, value) = part_texts(part, body, side, text_gap(&pins, side));
+    let (reference, value) = part_texts(part, body, side, text_gap(&pins, side), &pins);
 
     let mut extent = body;
     extent.union(reference.extent());
@@ -1103,57 +1228,6 @@ fn union_into(into: &mut Option<Rect>, r: Rect) {
     match into {
         Some(o) => o.union(r),
         None => *into = Some(r),
-    }
-}
-
-/// A dot where a wire meets the middle of another of the same net, or where three or more
-/// wires end at one point.
-fn junctions(wires: &[Wire]) -> Vec<Junction> {
-    let key = |p: Pt| ((p.x * 1000.0).round() as i64, (p.y * 1000.0).round() as i64);
-    let mut by_net: HashMap<usize, Vec<(Pt, Pt)>> = HashMap::new();
-    for w in wires {
-        for s in w.points.windows(2) {
-            by_net.entry(w.net).or_default().push((s[0], s[1]));
-        }
-    }
-    let mut nets: Vec<usize> = by_net.keys().copied().collect();
-    nets.sort_unstable();
-
-    let mut out = Vec::new();
-    for net in nets {
-        let segments = &by_net[&net];
-        let mut seen = BTreeSet::new();
-        for &(a, b) in segments {
-            for p in [a, b] {
-                if !seen.insert(key(p)) {
-                    continue;
-                }
-                let (mut ends, mut through) = (0, 0);
-                for &(s, e) in segments {
-                    if key(s) == key(p) || key(e) == key(p) {
-                        ends += 1;
-                    } else if lies_inside(p, s, e) {
-                        through += 1;
-                    }
-                }
-                if ends >= 3 || (through >= 1 && ends + through >= 2) {
-                    out.push(Junction { net, at: p });
-                }
-            }
-        }
-    }
-    out
-}
-
-/// Whether `p` is strictly between the ends of an axis-aligned segment.
-fn lies_inside(p: Pt, a: Pt, b: Pt) -> bool {
-    const EPS: f64 = 1e-6;
-    if (a.x - b.x).abs() < EPS {
-        (p.x - a.x).abs() < EPS && p.y > a.y.min(b.y) + EPS && p.y < a.y.max(b.y) - EPS
-    } else if (a.y - b.y).abs() < EPS {
-        (p.y - a.y).abs() < EPS && p.x > a.x.min(b.x) + EPS && p.x < a.x.max(b.x) - EPS
-    } else {
-        false
     }
 }
 

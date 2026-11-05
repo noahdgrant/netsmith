@@ -43,6 +43,10 @@ pub struct Grid {
     pub y0: f64,
     pub step: f64,
     blocked: Vec<bool>,
+    /// For each axis (horizontal, vertical), whether the step from the node to the next one
+    /// along it crosses a body that lies between the two nodes (a stroke thinner than a
+    /// step falls between nodes, so blocking nodes does not stop a wire through it).
+    cut: [Vec<bool>; 2],
     /// For each axis (horizontal, vertical), the net whose wire runs through or ends at the
     /// node along it.
     own: [Vec<u32>; 2],
@@ -63,6 +67,7 @@ impl Grid {
             y0,
             step,
             blocked: vec![false; n],
+            cut: [vec![false; n], vec![false; n]],
             own: [vec![NONE; n], vec![NONE; n]],
         }
     }
@@ -110,6 +115,60 @@ impl Grid {
         }
     }
 
+    /// Blocks every node that lies in `r`, edges included, and every step between two
+    /// nodes that goes through `r`, which a body thinner than a step needs.
+    pub fn block_body(&mut self, r: Rect) {
+        self.block_rect(r);
+        let eps = 1e-6;
+        let lo = self.node(Pt::new(r.min.x, r.min.y));
+        let hi = self.node(Pt::new(r.max.x, r.max.y));
+        for j in (lo.1 - 2).max(0)..=(hi.1 + 2).min(self.h - 1) {
+            for i in (lo.0 - 2).max(0)..=(hi.0 + 2).min(self.w - 1) {
+                let (a, k) = (self.pt((i, j)), self.idx((i, j)));
+                let (right, down) = (self.pt((i + 1, j)), self.pt((i, j + 1)));
+                // A step crosses the box when it starts and ends outside it and passes
+                // through it between. A step with an end in the box is the business of the
+                // blocked nodes: a pin's own node may stand in the box and its wire leaves.
+                let inside = |p: Pt| {
+                    p.x >= r.min.x - eps
+                        && p.x <= r.max.x + eps
+                        && p.y >= r.min.y - eps
+                        && p.y <= r.max.y + eps
+                };
+                if !inside(a)
+                    && !inside(right)
+                    && a.y >= r.min.y - eps
+                    && a.y <= r.max.y + eps
+                    && a.x < r.min.x
+                    && right.x > r.max.x
+                {
+                    self.cut[0][k] = true;
+                }
+                if !inside(a)
+                    && !inside(down)
+                    && a.x >= r.min.x - eps
+                    && a.x <= r.max.x + eps
+                    && a.y < r.min.y
+                    && down.y > r.max.y
+                {
+                    self.cut[1][k] = true;
+                }
+            }
+        }
+    }
+
+    /// Whether the step from `n` one node along `dir` crosses a body.
+    pub fn step_is_cut(&self, n: Node, dir: Dir) -> bool {
+        let (dx, dy) = vector(dir);
+        // A step is stored at its left or upper node.
+        let from = if dx < 0 || dy < 0 {
+            (n.0 + dx, n.1 + dy)
+        } else {
+            n
+        };
+        self.inside(from) && self.cut[axis(dir)][self.idx(from)]
+    }
+
     pub fn block(&mut self, n: Node) {
         if self.inside(n) {
             let k = self.idx(n);
@@ -144,6 +203,14 @@ impl Grid {
     /// Whether nothing is on the node, on either axis, and it is not blocked.
     pub fn is_free(&self, n: Node) -> bool {
         !self.is_blocked(n) && self.owner(n, 0) == NONE && self.owner(n, 1) == NONE
+    }
+
+    /// Whether nothing but a wire of `net` is on the node, and it is not blocked.
+    pub fn free_for(&self, n: Node, net: u32) -> bool {
+        !self.is_blocked(n)
+            && [0, 1]
+                .into_iter()
+                .all(|ax| matches!(self.owner(n, ax), NONE) || self.owner(n, ax) == net)
     }
 
     /// Whether `net` may have a wire along `axis` through the node.
@@ -197,7 +264,10 @@ impl Grid {
     /// Whether the `len` nodes after `from` along `dir` are free (nothing on them).
     pub fn run_is_free(&self, from: Node, dir: Dir, len: i32) -> bool {
         let (dx, dy) = vector(dir);
-        (1..=len).all(|k| self.is_free((from.0 + dx * k, from.1 + dy * k)))
+        (1..=len).all(|k| {
+            let before = (from.0 + dx * (k - 1), from.1 + dy * (k - 1));
+            self.is_free((from.0 + dx * k, from.1 + dy * k)) && !self.step_is_cut(before, dir)
+        })
     }
 
     /// The cheapest path for `net` from `start` (entered going `heading`) to any node of
@@ -290,7 +360,7 @@ impl Grid {
                 if m.0 < win.0 || m.1 < win.1 || m.0 > win.2 || m.1 > win.3 {
                     continue;
                 }
-                if !self.usable(m, axis(dir), net) {
+                if !self.usable(m, axis(dir), net) || self.step_is_cut(n, dir) {
                     continue;
                 }
                 let mut c = cost + STEP_COST;

@@ -35,7 +35,7 @@ use netsmith_editor::{
 
 use crate::project::Target;
 
-pub use analysis::Snapshot;
+pub use analysis::{Snapshot, module_groups, must_connect, rails_of, schematic_layout};
 
 /// The project behind the editor.
 pub struct Workspace {

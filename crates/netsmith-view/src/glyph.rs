@@ -20,6 +20,26 @@ const PIN_PITCH: f64 = 2.54;
 const UNIT_GAP: f64 = 5.08;
 /// Characters are drawn about this wide, as a fraction of the text height.
 pub const CHAR_WIDTH: f64 = 0.6;
+/// How wide `text` is drawn, in text heights, in the page's sans serif (Arial's letter widths
+/// by class): the width that decides whether two texts beside each other collide. The
+/// layout's flat [`CHAR_WIDTH`] is short for capitals and long for lower case.
+pub fn text_em(text: &str) -> f64 {
+    text.chars()
+        .map(|c| match c {
+            'i' | 'j' | 'l' | '|' | '!' => 0.25,
+            'f' | 't' | 'r' | 'I' => 0.32,
+            'm' | 'w' => 0.78,
+            'M' | 'W' => 0.88,
+            'a'..='z' => 0.54,
+            'A'..='Z' => 0.7,
+            '0'..='9' => 0.56,
+            '.' | ',' | ':' | ';' | '/' | ' ' => 0.28,
+            '-' | '(' | ')' | '~' | '{' | '}' => 0.34,
+            '_' | '+' | '=' | '#' => 0.58,
+            _ => 0.65,
+        })
+        .sum()
+}
 /// The height of pin names and numbers in a symbol of the library.
 pub const PIN_TEXT: f64 = 1.0;
 /// The height of pin names and numbers in a box this crate makes for a symbol of many pins.
@@ -380,18 +400,50 @@ impl Glyph {
     /// The number and the name written at `pin`, whose connection point is `at` and whose
     /// line runs toward `toward` (the way to the body), as they are drawn.
     pub fn pin_texts(&self, pin: &GlyphPin, at: Pt, toward: Dir) -> (Option<Text>, Option<Text>) {
+        self.pin_texts_in(pin, at, toward, true)
+    }
+
+    /// [`pin_texts`](Self::pin_texts) with every text across, none written upward: what an
+    /// orientation is judged by (a part is turned so that no name has to be).
+    fn pin_texts_in(
+        &self,
+        pin: &GlyphPin,
+        at: Pt,
+        toward: Dir,
+        turn: bool,
+    ) -> (Option<Text>, Option<Text>) {
         let inner = at.step(toward, pin.length);
         let number = self.show_numbers.then(|| {
             let mid = Pt::new((at.x + inner.x) / 2.0, (at.y + inner.y) / 2.0);
-            if toward.is_vertical() {
+            if turn && toward.is_vertical() && self.crowded(pin, toward, |p| &p.id) {
+                // Numbers wider than the pins are apart: written upward beside the line.
+                Text::new(&pin.id, Pt::new(mid.x - 0.35, mid.y), Anchor::Middle).turned()
+            } else if toward.is_vertical() {
                 Text::new(&pin.id, Pt::new(mid.x - 0.4, mid.y + 0.35), Anchor::End)
             } else {
-                Text::new(&pin.id, Pt::new(mid.x, mid.y - 0.4), Anchor::Middle)
+                // Clear of the X on an open pin, which reaches half a grid step either way.
+                Text::new(&pin.id, Pt::new(mid.x, mid.y - 0.5), Anchor::Middle)
             }
         });
+        let crowded = turn && self.crowded(pin, toward, |p| &p.name);
         let name = (self.show_names && !pin.name.is_empty()).then(|| {
             let offset = self.name_offset;
+            // Names of pins side by side on a top or bottom edge, nearer than the names are
+            // wide, are written upward inside the body, as KiCad draws them.
+            let shift = self.pin_text * 0.35;
             match toward {
+                Dir::Down if crowded => Text::new(
+                    &pin.name,
+                    Pt::new(inner.x + shift, inner.y + offset),
+                    Anchor::End,
+                )
+                .turned(),
+                Dir::Up if crowded => Text::new(
+                    &pin.name,
+                    Pt::new(inner.x + shift, inner.y - offset),
+                    Anchor::Start,
+                )
+                .turned(),
                 Dir::Right => Text::new(
                     &pin.name,
                     Pt::new(inner.x + offset, inner.y + 0.35),
@@ -417,6 +469,35 @@ impl Glyph {
         (number, name)
     }
 
+    /// Whether the text of `pin` (its name or its number), which will be written along a top
+    /// or bottom edge (`toward` is vertical on the sheet), is nearer than the two texts are
+    /// wide to the text of a pin beside it on the same edge. The distance along an edge does
+    /// not change with the part's turn.
+    fn crowded(&self, pin: &GlyphPin, toward: Dir, text: fn(&GlyphPin) -> &String) -> bool {
+        if !toward.is_vertical() || text(pin).is_empty() {
+            return false;
+        }
+        let width = |p: &GlyphPin| text_em(text(p)) * self.pin_text;
+        // Along the edge, and how far out the edge is, in the symbol's own coordinates.
+        let place = |p: &GlyphPin| {
+            if p.toward_body.0 == 0.0 {
+                (p.at.0, p.at.1 + p.toward_body.1 * p.length)
+            } else {
+                (p.at.1, p.at.0 + p.toward_body.0 * p.length)
+            }
+        };
+        let (along, across) = place(pin);
+        self.pins.iter().any(|q| {
+            let (a, c) = place(q);
+            !q.hidden
+                && !text(q).is_empty()
+                && !std::ptr::eq(q, pin)
+                && q.toward_body == pin.toward_body
+                && (c - across).abs() < 0.01
+                && (a - along).abs() < (width(q) + width(pin)) / 2.0 + 0.3
+        })
+    }
+
     /// Whether, with the part turned by `orient`, two of the texts at its pins would be
     /// written over each other.
     pub fn texts_collide(&self, orient: Orient) -> bool {
@@ -424,7 +505,7 @@ impl Glyph {
         for pin in self.pins.iter().filter(|p| !p.hidden) {
             let at = orient.apply(pin.at);
             let toward = orient.dir(pin.toward_body);
-            let (number, name) = self.pin_texts(pin, at, toward);
+            let (number, name) = self.pin_texts_in(pin, at, toward, false);
             boxes.extend(
                 number
                     .into_iter()
@@ -680,18 +761,16 @@ impl Glyph {
                 groups.push((key, list));
             }
         }
-        // The left column reads supplies first (at the top), then signals by function, and
-        // ground last (at the bottom); the other signals, and the pins that connect to
-        // nothing, are in the right column.
+        // The supplies are in a row of pins on top and the grounds in one at the bottom, as a
+        // person draws a big part; the signals are in two columns, the groups in order, the
+        // first half in the left column and the rest, and the pins that connect to nothing,
+        // in the right.
         let mut signals: Vec<(String, Vec<Entry>)> = groups;
         if !other.is_empty() {
             signals.push(("Other".into(), other));
         }
         let rows_of = |list: &Vec<Entry>| list.len() + 1;
-        let total_rows = rows_of(&power)
-            + rows_of(&ground)
-            + rows_of(&open)
-            + signals.iter().map(|(_, l)| rows_of(l)).sum::<usize>();
+        let total_rows = rows_of(&open) + signals.iter().map(|(_, l)| rows_of(l)).sum::<usize>();
         let half = total_rows.div_ceil(2);
         let mut left: Vec<Row> = Vec::new();
         let mut right: Vec<Row> = Vec::new();
@@ -702,17 +781,11 @@ impl Glyph {
             rows.push(Row::Heading(format!("{key} ({})", list.len())));
             rows.extend(list.into_iter().map(Row::Pin));
         };
-        let reserved = if ground.is_empty() {
-            0
-        } else {
-            rows_of(&ground)
-        };
-        let mut used = if power.is_empty() { 0 } else { rows_of(&power) } + reserved;
-        put(&mut left, "Power", power);
+        let mut used = 0;
         let mut left_full = false;
         for (key, list) in signals {
             let need = rows_of(&list);
-            if !left_full && (used + need <= half || used == reserved) {
+            if !left_full && (used + need <= half || used == 0) {
                 used += need;
                 put(&mut left, &key, list);
             } else {
@@ -720,7 +793,6 @@ impl Glyph {
                 put(&mut right, &key, list);
             }
         }
-        put(&mut left, "Ground", ground);
         put(&mut right, "Not connected", open);
 
         let size = DENSE_TEXT;
@@ -737,15 +809,37 @@ impl Glyph {
         };
         let title = format!("{}, {pin_count} pins", part.kind);
         let title_width = title.chars().count() as f64 * 1.27 * CHAR_WIDTH;
+        // A row of supplies or grounds: the pins as far apart as their names need.
+        let row_pitch = |list: &[Entry]| {
+            let longest = list
+                .iter()
+                .map(|e| e.name.chars().count())
+                .max()
+                .unwrap_or(0);
+            (((longest as f64 * char_width + 0.2) / 1.27 - 1e-6).ceil() * 1.27).max(2.54)
+        };
+        let (top_pitch, bottom_pitch) = (row_pitch(&power), row_pitch(&ground));
+        let row_width = |list: &[Entry], pitch: f64| list.len() as f64 * pitch;
+        let columns = widest(&left) + widest(&right) + 2.0 * 2.54 + 2.54;
         let half_width = snap_up(
-            ((widest(&left) + widest(&right) + 2.0 * 2.54 + 2.54).max(title_width + 2.54)) / 2.0,
+            columns
+                .max(title_width + 2.54)
+                .max(row_width(&power, top_pitch) + 2.54)
+                .max(row_width(&ground, bottom_pitch) + 2.54)
+                / 2.0,
             1.27,
         )
         .max(7.62);
         let height_rows = left.len().max(right.len());
-        // A band at the top for the title, then one row for each pin and heading.
-        let half_height = snap_up((height_rows as f64 + 2.0) * PIN_PITCH / 2.0, 1.27);
-        let first_row = half_height - 3.81;
+        // A band at the top for the title and the supplies' names, a row at the bottom for the
+        // grounds' names, then one row for each pin and heading.
+        let top_rows = usize::from(!power.is_empty());
+        let bottom_rows = usize::from(!ground.is_empty());
+        let half_height = snap_up(
+            ((height_rows + 2 + top_rows + bottom_rows) as f64) * PIN_PITCH / 2.0,
+            1.27,
+        );
+        let first_row = half_height - 3.81 - top_rows as f64 * PIN_PITCH;
 
         let mut pins = Vec::new();
         let mut shapes = vec![
@@ -756,11 +850,32 @@ impl Glyph {
                 fill: Fill::Background,
             },
             Shape::Text {
-                at: (0.0, half_height - 1.9),
+                at: (0.0, half_height - 1.9 - top_rows as f64 * PIN_PITCH),
                 text: title,
                 size: 1.27,
             },
         ];
+        for (rows_of_pins, y, pitch, toward) in [
+            (power, half_height + PIN_LENGTH, top_pitch, -1.0),
+            (ground, -half_height - PIN_LENGTH, bottom_pitch, 1.0),
+        ] {
+            let count = rows_of_pins.len() as f64;
+            for (i, e) in rows_of_pins.into_iter().enumerate() {
+                let x = snap_up((i as f64 - (count - 1.0) / 2.0) * pitch, 1.27);
+                for (k, pad) in e.pads.iter().enumerate() {
+                    pins.push(GlyphPin {
+                        id: pad.clone(),
+                        name: e.name.clone(),
+                        at: (x, y),
+                        toward_body: (0.0, toward),
+                        length: PIN_LENGTH,
+                        flow: e.flow,
+                        kind: e.kind,
+                        hidden: k > 0,
+                    });
+                }
+            }
+        }
         for (side, rows) in [(-1.0, &left), (1.0, &right)] {
             for (i, row) in rows.iter().enumerate() {
                 let y = first_row - i as f64 * PIN_PITCH;

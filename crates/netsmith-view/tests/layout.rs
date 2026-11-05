@@ -159,10 +159,14 @@ fn everything_is_inside_the_bounds() {
 }
 
 #[test]
-fn every_net_is_wired_and_none_is_a_bare_name() {
+fn on_a_small_board_every_net_is_wired_and_none_is_named() {
     for d in common::all() {
         let l = lay(&d);
-        assert!(l.labels.is_empty(), "{}: names instead of wires", d.name);
+        assert!(
+            l.labels.is_empty(),
+            "{}: a small board has short wires, no names",
+            d.name
+        );
         for (n, net) in d.nets.iter().enumerate() {
             if net.pins.len() < 2 {
                 continue;
@@ -303,7 +307,10 @@ fn a_net_with_many_pins_is_wired_all_the_same() {
     let d = common::design("Big", &parts, &[("BUS", &p1), ("GND", &p2)]);
     let l = lay(&d);
     let bus = d.nets.iter().position(|n| n.name == "BUS").unwrap();
-    assert!(l.labels.is_empty(), "no name instead of a wire");
+    assert!(
+        l.labels.is_empty(),
+        "ten parts on one net are wired, not named"
+    );
     let at: Vec<Pt> = pins1
         .iter()
         .map(|p| {

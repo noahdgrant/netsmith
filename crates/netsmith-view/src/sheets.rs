@@ -287,6 +287,8 @@ pub fn layout_sheets_marked(
             labels.push(NetLabel {
                 net: d.nets[l.net],
                 text,
+                at: shift(l.at, by),
+                dir: l.dir,
             });
         }
         sheets.push(Sheet {

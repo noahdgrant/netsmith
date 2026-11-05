@@ -168,12 +168,12 @@ fn the_same_board_gives_the_same_drawing() {
 }
 
 #[test]
-fn every_net_is_wired_and_none_is_a_bare_name() {
-    // Rule 1: any net on a sheet is wired, whatever its size; no name stands where a wire
-    // could be; a generated name is never shown.
+fn every_net_is_wired_or_named_at_each_of_its_places() {
+    // Rule 1 (the label policy): a net on a sheet is wired, or, where wires would be long
+    // or tangled, a name at the end of a stub at each place it is; never both for one pin,
+    // and a generated name is shown as the first pin, `J2.3`.
     let b = bench();
     for l in [lay(&b), plain(&b)] {
-        assert!(l.labels.is_empty(), "a bare name");
         for sheet in &l.sheets {
             for (n, net) in b.design.nets.iter().enumerate() {
                 let at: Vec<Pt> = net
@@ -186,6 +186,36 @@ fn every_net_is_wired_and_none_is_a_bare_name() {
                     || b.rails.ground.contains(&net.name)
                     || b.rails.positive.contains(&net.name)
                 {
+                    continue;
+                }
+                let inside = |p: Pt| {
+                    sheet.frame.min.x <= p.x
+                        && p.x <= sheet.frame.max.x
+                        && sheet.frame.min.y <= p.y
+                        && p.y <= sheet.frame.max.y
+                };
+                let names: Vec<Pt> = l
+                    .labels
+                    .iter()
+                    .map(|t| (t.net, t.at))
+                    .chain(l.ports.iter().map(|f| (f.net, f.at)))
+                    .filter(|&(net, at)| net == n && inside(at))
+                    .map(|(_, at)| at)
+                    .collect();
+                let named = !names.is_empty();
+                if named {
+                    // Each pin is on a wire that ends in a name, or is the pin of a part with
+                    // a name at a stub of its own.
+                    for &pin in &at {
+                        assert!(
+                            names
+                                .iter()
+                                .any(|&t| common::wired_together(&l, n, &[pin, t])),
+                            "{}: a pin of {} has no name on its wire",
+                            sheet.name,
+                            net.name
+                        );
+                    }
                     continue;
                 }
                 assert!(
@@ -290,12 +320,11 @@ fn a_two_terminal_part_stands_beside_the_pin_it_serves() {
     let right_of = |r: &str, u: &str| {
         l.parts[part_index(&b, r)].extent.min.x >= l.parts[part_index(&b, u)].extent.max.x - 1e-6
     };
-    // Decoupling capacitors beside the supply pins, on their side (the left of the box).
+    // Decoupling capacitors beside the supply pins, which are in a row on top of the box.
     for c in ["C4", "C5"] {
-        assert!(left_of(c, "U5"), "{c} is not on the supply pins' side");
-        let supply_y = pin_at(&l, &b, "U5", "131").y;
+        let supply = pin_at(&l, &b, "U5", "131");
         assert!(
-            (at(c).y - supply_y).abs() < 40.0,
+            (at(c).y - supply.y).abs() < 40.0 && (at(c).x - supply.x).abs() < 60.0,
             "{c} is far from the supply pins"
         );
     }
@@ -614,7 +643,7 @@ fn a_name_longer_than_the_limit_is_cut_and_keeps_its_tooltip() {
 }
 
 #[test]
-fn a_symbol_of_two_units_and_ninety_seven_pins_is_one_part_in_labelled_groups() {
+fn a_symbol_of_two_units_and_ninety_seven_pins_is_one_part_with_its_signals_in_labelled_groups() {
     let b = bench();
     let l = lay(&b);
     let u5 = &l.parts[part_index(&b, "U5")];
@@ -635,13 +664,7 @@ fn a_symbol_of_two_units_and_ninety_seven_pins_is_one_part_in_labelled_groups() 
             _ => None,
         })
         .collect();
-    for heading in [
-        "Mcu, 97 pins",
-        "Power (6)",
-        "Ground (24)",
-        "P0 (16)",
-        "Not connected (3)",
-    ] {
+    for heading in ["Mcu, 97 pins", "P0 (16)", "Not connected (3)"] {
         assert!(texts.contains(&heading), "{heading} in {texts:?}");
     }
     assert!(g.pin_text >= 1.27);
@@ -652,29 +675,31 @@ fn a_symbol_of_two_units_and_ninety_seven_pins_is_one_part_in_labelled_groups() 
 }
 
 #[test]
-fn the_supplies_are_at_the_top_of_the_left_side_and_the_grounds_at_the_bottom() {
-    // Rule 4.
+fn the_supplies_are_in_a_row_on_top_and_the_grounds_in_one_at_the_bottom() {
+    // Rule 4: a big part has its supplies on top and its grounds at the bottom, and its
+    // signals on the two sides between them.
     let b = bench();
     let l = lay(&b);
     let u5 = &l.parts[part_index(&b, "U5")];
     let at = |pad: &str| u5.pins.iter().find(|p| p.id == pad).unwrap().at;
-    let left = at("1").x;
+    let (top, bottom) = (at("131").y, at("101").y);
     for supply in ["131", "132", "136"] {
         assert!(
-            (at(supply).x - left).abs() < 1e-6,
-            "supply {supply} on the left side"
+            (at(supply).y - top).abs() < 1e-6,
+            "supply {supply} is not in the row on top"
         );
         assert!(at(supply).y < at("2").y, "supplies above the signals");
     }
     for ground in ["101", "124"] {
         assert!(
-            (at(ground).x - left).abs() < 1e-6,
-            "ground {ground} on the left side"
+            (at(ground).y - bottom).abs() < 1e-6,
+            "ground {ground} is not in the row at the bottom"
         );
         assert!(at(ground).y > at("16").y, "grounds below the signals");
     }
-    // The groups of signals are between them, by function.
-    assert!(at("131").y < at("1").y && at("16").y < at("101").y);
+    // The groups of signals are between them, by function, on the sides.
+    assert!(top < at("1").y && at("16").y < bottom);
+    assert!((at("1").x - at("2").x).abs() < 1e-6 && at("1").x != at("131").x);
 }
 
 #[test]
@@ -894,8 +919,10 @@ fn decoupling_capacitors_stand_in_an_even_row() {
 }
 
 #[test]
-fn flags_are_in_one_column_one_per_net_each_on_its_own_row() {
-    // Owner round 2 (D): the ten pins that all go on, ten flags.
+fn a_flag_is_at_the_end_of_the_stub_of_each_pin_that_goes_on_and_flags_do_not_touch() {
+    // Owner round 2 (D), changed by the label policy: the ten pins that all go on have ten
+    // flags, each at the end of its own pin's stub (a wire of one net, no longer than the
+    // stub and what the parts beside the pin need), none touching another.
     let b = bench();
     let l = lay(&b);
     let sheet = sheet_named(&l, "ten");
@@ -905,19 +932,21 @@ fn flags_are_in_one_column_one_per_net_each_on_its_own_row() {
     nets.sort_unstable();
     nets.dedup();
     assert_eq!(nets.len(), 10);
-    assert!(
-        flags
+    for f in &flags {
+        let pin = b.design.nets[f.net]
+            .pins
             .iter()
-            .all(|f| near(Pt::new(f.at.x, 0.0), Pt::new(flags[0].at.x, 0.0))),
-        "one column"
-    );
-    let mut rows: Vec<f64> = flags.iter().map(|f| f.at.y).collect();
-    rows.sort_by(f64::total_cmp);
-    for pair in rows.windows(2) {
+            .map(|p| pin_at(&l, &b, &p.refdes, &p.pin))
+            .find(|&at| {
+                // The pin the flag's wire starts at: on the flag's row or column.
+                (at.y - f.at.y).abs() < 1e-6 || (at.x - f.at.x).abs() < 1e-6
+            })
+            .expect("a pin in line with its flag");
+        let reach = (pin.x - f.at.x).abs() + (pin.y - f.at.y).abs();
         assert!(
-            pair[1] - pair[0] >= 2.5 - 1e-6,
-            "rows {} apart",
-            pair[1] - pair[0]
+            reach < 30.0,
+            "the flag of {} is {reach} mm from its pin",
+            f.net
         );
     }
     for (i, a) in flags.iter().enumerate() {

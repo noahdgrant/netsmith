@@ -315,11 +315,19 @@ _Avoid_: Page
 
 **Power symbol**:
 How the editor's schematic draws a rail: the negative side of a rail (where the current returns) with the ground symbol, bars that shrink away from a wire, and the positive side with the supply symbol, a stem with an arrow head and the net's name beside it. Which nets are which comes from the checked model (a `Rail`'s `pos` and `neg`), never from the names; the ground symbols carry their names only when a board has more than one ground. Each pin on a rail has a wire to its own symbol, and pins next to each other on one rail share a bus and a symbol. The KiCad schematic file does not use them.
-_Avoid_: Net label (a power symbol is drawn instead of one), power port
+_Avoid_: Power port (a net label is the name of a signal net at the end of a stub, and a power symbol is never one)
 
 **Flag**:
-How the editor's schematic shows a net that goes on to another sheet: a pentagon pointing at the end of a wire, like KiCad's hierarchical label, with the net's name in it (none for a net with a generated name). Every other net on a sheet is only wires.
+How the editor's schematic shows a net that goes on to another sheet: a pentagon pointing at the end of the short stub of a pin, like KiCad's hierarchical label, with the net's name in it (none for a net with a generated name). A net that goes on has a flag at the end of the stub of each group of its pins on the sheet (a main part and the small parts that serve its pins).
 _Avoid_: Port (a `Rail`'s and a module's ports are pins), off-sheet label
+
+**Net label**:
+How the editor's schematic shows a signal net that is not drawn as one wire: the net's name as plain text at the end of a short stub out of each group of its pins (a main part and the small parts that serve its pins, which stay wired to that stub), like KiCad's local label. A net is named, not wired, when it joins more than one such group and its wire would be long (over 48 grid steps), fan out to three groups over 30 steps, or cross more than one other wire; a rail is never named (a power symbol is drawn), nor is the net of a part that serves a pin. A net with a generated name is shown by the first pin of its main part (`J2.3`), as KiCad names such a net. The pieces of a net that carry the same name on a sheet are one net.
+_Avoid_: Bare name, off-page connector (a flag is that), global label
+
+**Stray wire**:
+Wire or dot in the editor's schematic that serves nothing: an end that touches no pin, power symbol, flag, label, X or other wire of its net (a dead end, such as a rail that runs on past its last tap), two wires of one net along one line, a hook (out, across a grid step or less, and back), a wire that is a point, a dot where fewer than three arms of a net meet, three arms and no dot, a wire along a pin's line, or along the outline of a body or a flag within 0.7 mm. The drawing has none: the engine takes them off when it has routed, and `netsmith_view::check` reports any that is left.
+_Avoid_: Dangling wire, spur, stub (a stub is the short wire straight out of a pin)
 
 **Power tree**:
 The view of a board's rails as cards: the voltage of each net a rail draws from, the total of the currents on it, and what the part that supplies it can give, joined left to right, from the sources to the loads, by the regulators and stages that make one rail from another and by the joins of a system. The numbers are the solver's, in the worst case.

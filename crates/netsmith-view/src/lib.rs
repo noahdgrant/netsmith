@@ -1,11 +1,17 @@
 //! A schematic drawing for netsmith designs: a layout that reads left to right and an SVG
 //! drawing of it, which the editor shows. Everything here is a pure,
 //! deterministic function of a [`netsmith_core::Design`] and a symbol library.
+//!
+//! [`metrics`] measures how readable a drawing is and [`check`] tests the rules every drawing
+//! must keep (its nets are the design's nets); neither changes what is drawn.
 
+pub mod check;
 pub mod geom;
 pub mod glyph;
 pub mod layout;
+pub mod metrics;
 pub mod sheets;
+mod sheetview;
 mod svg;
 
 pub use layout::{

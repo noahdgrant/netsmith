@@ -422,10 +422,28 @@ impl Workspace {
     }
 }
 
+/// The layout the schematic view draws for `built`, with the inputs the editor gives it
+/// (its rails, its must-connect pins, its module groups): what `render_svg_by_module_marked`
+/// draws, before it is drawn. For tools that measure the drawing.
+pub fn schematic_layout(
+    built: &Built,
+    libraries: &Libraries,
+) -> Result<netsmith_view::Layout, String> {
+    netsmith_view::layout_sheets_marked(
+        &built.design,
+        &module_groups(built),
+        &rails_of(built),
+        &must_connect(built),
+        &libraries.mapping,
+        &libraries.symbols,
+    )
+    .map_err(|e| e.to_string())
+}
+
 /// The power nets of a board, from the checker's model: a net a rail draws from is a supply,
 /// a net the current returns on is a ground. Which nets are which is the design's to say
 /// (a `Rail`'s `pos` and `neg`), not their names.
-fn rails_of(built: &Built) -> netsmith_view::Rails {
+pub fn rails_of(built: &Built) -> netsmith_view::Rails {
     let mut rails = netsmith_view::Rails::default();
     for balance in built.trace.model.balances() {
         if balance.returns {
@@ -452,7 +470,7 @@ fn rails_of(built: &Built) -> netsmith_view::Rails {
 /// so the drawing can mark them. A board that has one does not build, so this is what a pin
 /// table of a part under construction shows; it asks the checker's own question and changes
 /// nothing in it.
-fn must_connect(built: &Built) -> netsmith_view::Marks {
+pub fn must_connect(built: &Built) -> netsmith_view::Marks {
     use netsmith_check::{InstKind, PinKind, Pinout, Requirement};
     let model = &built.trace.model;
     let refdes: std::collections::HashMap<&str, &str> = built
@@ -514,7 +532,7 @@ fn must_connect(built: &Built) -> netsmith_view::Marks {
 
 /// The parts of a board grouped by the module instance of the board each is inside (a part
 /// declared on the board itself is in none), in the order the design lists the parts.
-fn module_groups(built: &Built) -> Vec<netsmith_view::Group> {
+pub fn module_groups(built: &Built) -> Vec<netsmith_view::Group> {
     let model = &built.trace.model;
     let mut groups: Vec<netsmith_view::Group> = Vec::new();
     for (part, &inst) in built.trace.origins.iter().enumerate() {

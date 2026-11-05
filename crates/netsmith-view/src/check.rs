@@ -1,0 +1,741 @@
+//! The rules a drawing must keep whatever it looks like, checked from the drawing alone:
+//!
+//! 1. **The drawing is the netlist.** Connectivity is rebuilt from the layout without
+//!    trusting which net a wire says it is: pins, wire ends, wires that meet (an end on
+//!    another wire, a crossing with a junction dot), power symbols, flags and labels are
+//!    joined, and the pieces are compared with the design's nets. Two nets in one piece is a
+//!    [`Violation::Short`]; one net's pins in several pieces, with no power symbol, flag or
+//!    label of that net on each piece to join them by name, is a [`Violation::Open`] (so a
+//!    net that is named must be named at every one of its pieces); a pin of no net that a
+//!    wire touches is a [`Violation::ExtraPin`].
+//! 2. **No wire along another net's wire** ([`Violation::WireOverlap`]).
+//! 3. **No wire through a symbol's body** ([`Violation::WireThroughBody`]), and none along a
+//!    pin's line ([`Violation::WireAlongPin`]).
+//!    A wire also keeps off the outline of a body or a flag by 0.7 mm
+//!    ([`Violation::WireHugsSymbol`]).
+//!    No two texts overlap ([`Violation::TextOverlap`]) and no wire runs through one
+//!    ([`Violation::WireOverText`]).
+//! 4. **Nothing drawn that serves nothing**: every end of a wire touches a pin, a power symbol,
+//!    a flag, a label, an X or another wire of its net ([`Violation::DeadEnd`]); no wire lies
+//!    along another of its own net ([`Violation::RedundantWire`]); no wire is a point
+//!    ([`Violation::ZeroLengthWire`]); no wire leaves a point and comes back within a grid step
+//!    of itself ([`Violation::UTurn`]).
+//! 5. **A dot where, and only where, three or more arms of a net meet**
+//!    ([`Violation::MissingJunction`], [`Violation::UnusedJunction`]). A straight wire through
+//!    a point is two arms, an end one, and a pin, power symbol, flag or label there one.
+//!
+//! Each sheet of a board drawn by module is checked on its own: a net that goes to another
+//! sheet is joined there by its flag. [`check`] is a pure function of the design and its
+//! layout. It reports every violation and fixes none.
+
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::fmt;
+
+use netsmith_core::Design;
+
+use crate::geom::Pt;
+use crate::layout::Layout;
+use crate::sheetview::{
+    Fault, OVERLAP, Rel, SheetView, body_strokes, overlaps, relate, runs_through,
+    runs_through_body, same, texts, views, wire_faults,
+};
+
+/// A rule the drawing breaks. Every variant names the sheet and the nets or parts involved.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Violation {
+    /// Two nets (or more) are joined by wires that touch, or by a wire that ends on a pin.
+    Short {
+        sheet: String,
+        nets: Vec<String>,
+        at: Pt,
+    },
+    /// The pins of one net on a sheet are in `pieces` separate pieces of wire, and no power
+    /// symbol or flag of the net joins them by name.
+    Open {
+        sheet: String,
+        net: String,
+        pieces: usize,
+        pins: Vec<String>,
+    },
+    /// A pin that is in no net is touched by a wire, a power symbol or a flag.
+    ExtraPin {
+        sheet: String,
+        pin: String,
+        touches: String,
+    },
+    /// A pin the design puts in a net, not drawn or drawn as the pin of another net.
+    PinNet {
+        sheet: String,
+        pin: String,
+        design: Option<String>,
+        drawn: Option<String>,
+    },
+    /// A piece of wire that touches no pin, power symbol or flag.
+    FloatingWire { sheet: String, net: String, at: Pt },
+    /// A power symbol or a flag that touches no wire and no pin.
+    FloatingFlag { sheet: String, net: String, at: Pt },
+    /// A label (the name of a net at the end of a stub) that touches no wire and no pin.
+    FloatingLabel { sheet: String, net: String, at: Pt },
+    /// Wires of two nets lie along one line over `len` millimetres.
+    WireOverlap {
+        sheet: String,
+        nets: (String, String),
+        at: Pt,
+        len: f64,
+    },
+    /// A wire runs through the body of a part's symbol.
+    WireThroughBody {
+        sheet: String,
+        net: String,
+        part: String,
+        at: Pt,
+    },
+    /// A wire runs along the line of a pin.
+    WireAlongPin {
+        sheet: String,
+        net: String,
+        pin: String,
+        at: Pt,
+    },
+    /// Two texts (or a text and an X on a pin) overlap: pin numbers and names, references,
+    /// values, names of flags and labels.
+    TextOverlap { sheet: String, at: Pt },
+    /// A wire runs through a text.
+    WireOverText { sheet: String, net: String, at: Pt },
+    /// A wire runs along the outline of a part's body, or of a flag, nearer than 0.7 mm
+    /// without being on it: it looks as if it touched.
+    WireHugsSymbol {
+        sheet: String,
+        net: String,
+        symbol: String,
+        at: Pt,
+    },
+    /// An end of a wire touches nothing: no pin, symbol, flag, label, X, or other wire of its
+    /// net.
+    DeadEnd { sheet: String, net: String, at: Pt },
+    /// A wire lies along another wire of its own net over `len` millimetres: a double line.
+    RedundantWire {
+        sheet: String,
+        net: String,
+        at: Pt,
+        len: f64,
+    },
+    /// A wire that is a point, or has two equal points in a row.
+    ZeroLengthWire { sheet: String, net: String, at: Pt },
+    /// A wire goes out, across and back along itself within a grid step, a hook.
+    UTurn { sheet: String, net: String, at: Pt },
+    /// A dot where fewer than three arms of the net meet, or where there is no wire, or a
+    /// second dot at one point.
+    UnusedJunction {
+        sheet: String,
+        net: String,
+        at: Pt,
+        arms: usize,
+    },
+    /// Three or more arms of a net meet and there is no dot.
+    MissingJunction {
+        sheet: String,
+        net: String,
+        at: Pt,
+        arms: usize,
+    },
+}
+
+impl Violation {
+    /// A short name for the kind: `short`, `open`, `extra-pin`, `pin-net`, `floating-wire`,
+    /// `floating-flag`, `floating-label`, `wire-overlap`, `wire-through-body`,
+    /// `wire-along-pin`, `text-overlap`, `wire-over-text`, `wire-hugs-symbol`, `dead-end`, `redundant-wire`, `zero-length-wire`, `u-turn`,
+    /// `unused-junction`, `missing-junction`.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Violation::Short { .. } => "short",
+            Violation::Open { .. } => "open",
+            Violation::ExtraPin { .. } => "extra-pin",
+            Violation::PinNet { .. } => "pin-net",
+            Violation::FloatingWire { .. } => "floating-wire",
+            Violation::FloatingFlag { .. } => "floating-flag",
+            Violation::FloatingLabel { .. } => "floating-label",
+            Violation::WireOverlap { .. } => "wire-overlap",
+            Violation::WireThroughBody { .. } => "wire-through-body",
+            Violation::WireAlongPin { .. } => "wire-along-pin",
+            Violation::TextOverlap { .. } => "text-overlap",
+            Violation::WireOverText { .. } => "wire-over-text",
+            Violation::WireHugsSymbol { .. } => "wire-hugs-symbol",
+            Violation::DeadEnd { .. } => "dead-end",
+            Violation::RedundantWire { .. } => "redundant-wire",
+            Violation::ZeroLengthWire { .. } => "zero-length-wire",
+            Violation::UTurn { .. } => "u-turn",
+            Violation::UnusedJunction { .. } => "unused-junction",
+            Violation::MissingJunction { .. } => "missing-junction",
+        }
+    }
+}
+
+impl fmt::Display for Violation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let at = |p: &Pt| format!("({:.2}, {:.2})", p.x, p.y);
+        let opt = |n: &Option<String>| n.clone().unwrap_or_else(|| "no net".into());
+        match self {
+            Violation::Short { sheet, nets, at: p } => write!(
+                f,
+                "{sheet}: short: nets {} are one piece of wire near {}",
+                nets.join(", "),
+                at(p)
+            ),
+            Violation::Open {
+                sheet,
+                net,
+                pieces,
+                pins,
+            } => write!(
+                f,
+                "{sheet}: open: net {net} is in {pieces} pieces with nothing to join them by name; pins {}",
+                pins.join(", ")
+            ),
+            Violation::ExtraPin {
+                sheet,
+                pin,
+                touches,
+            } => write!(
+                f,
+                "{sheet}: extra pin: {pin} is in no net but touches {touches}"
+            ),
+            Violation::PinNet {
+                sheet,
+                pin,
+                design,
+                drawn,
+            } => write!(
+                f,
+                "{sheet}: pin {pin} is in {} in the design and {} in the drawing",
+                opt(design),
+                opt(drawn)
+            ),
+            Violation::FloatingWire { sheet, net, at: p } => {
+                write!(f, "{sheet}: floating wire of {net} near {}", at(p))
+            }
+            Violation::FloatingFlag { sheet, net, at: p } => write!(
+                f,
+                "{sheet}: a power symbol or flag of {net} touches no wire and no pin near {}",
+                at(p)
+            ),
+            Violation::FloatingLabel { sheet, net, at: p } => write!(
+                f,
+                "{sheet}: the label of {net} touches no wire and no pin near {}",
+                at(p)
+            ),
+            Violation::WireOverlap {
+                sheet,
+                nets,
+                at: p,
+                len,
+            } => write!(
+                f,
+                "{sheet}: wires of {} and {} run along one line for {len:.2} mm from {}",
+                nets.0,
+                nets.1,
+                at(p)
+            ),
+            Violation::WireThroughBody {
+                sheet,
+                net,
+                part,
+                at: p,
+            } => write!(
+                f,
+                "{sheet}: a wire of {net} runs through the body of {part} near {}",
+                at(p)
+            ),
+            Violation::WireAlongPin {
+                sheet,
+                net,
+                pin,
+                at: p,
+            } => write!(
+                f,
+                "{sheet}: a wire of {net} runs along the line of pin {pin} near {}",
+                at(p)
+            ),
+            Violation::TextOverlap { sheet, at: p } => {
+                write!(f, "{sheet}: two texts overlap near {}", at(p))
+            }
+            Violation::WireOverText { sheet, net, at: p } => {
+                write!(
+                    f,
+                    "{sheet}: a wire of {net} runs through a text near {}",
+                    at(p)
+                )
+            }
+            Violation::WireHugsSymbol {
+                sheet,
+                net,
+                symbol,
+                at: p,
+            } => write!(
+                f,
+                "{sheet}: a wire of {net} runs along the outline of {symbol} within 0.7 mm near {}",
+                at(p)
+            ),
+            Violation::DeadEnd { sheet, net, at: p } => write!(
+                f,
+                "{sheet}: dead end: a wire of {net} ends at {} and touches nothing",
+                at(p)
+            ),
+            Violation::RedundantWire {
+                sheet,
+                net,
+                at: p,
+                len,
+            } => write!(
+                f,
+                "{sheet}: redundant wire: two wires of {net} lie along one line for {len:.2} mm from {}",
+                at(p)
+            ),
+            Violation::ZeroLengthWire { sheet, net, at: p } => {
+                write!(f, "{sheet}: zero-length wire of {net} at {}", at(p))
+            }
+            Violation::UTurn { sheet, net, at: p } => write!(
+                f,
+                "{sheet}: u-turn: a wire of {net} goes out and back within a grid step near {}",
+                at(p)
+            ),
+            Violation::UnusedJunction {
+                sheet,
+                net,
+                at: p,
+                arms,
+            } => write!(
+                f,
+                "{sheet}: unused junction: a dot of {net} at {} where {arms} arms meet",
+                at(p)
+            ),
+            Violation::MissingJunction {
+                sheet,
+                net,
+                at: p,
+                arms,
+            } => write!(
+                f,
+                "{sheet}: missing junction: {arms} arms of {net} meet at {} with no dot",
+                at(p)
+            ),
+        }
+    }
+}
+
+/// Every rule `layout` breaks, sheet by sheet, in a fixed order.
+pub fn check(design: &Design, layout: &Layout) -> Vec<Violation> {
+    let mut out = Vec::new();
+    let truth = pin_nets(design);
+    for v in views(layout) {
+        check_sheet(design, layout, &truth, &v, &mut out);
+        check_wires(design, layout, &v, &mut out);
+    }
+    out
+}
+
+/// The net each `(refdes, pad)` is in, in the design.
+fn pin_nets(design: &Design) -> HashMap<(&str, &str), usize> {
+    let mut out = HashMap::new();
+    for (n, net) in design.nets.iter().enumerate() {
+        for p in &net.pins {
+            out.entry((p.refdes.as_str(), p.pin.as_str())).or_insert(n);
+        }
+    }
+    out
+}
+
+struct Union(Vec<usize>);
+
+impl Union {
+    fn new(n: usize) -> Self {
+        Union((0..n).collect())
+    }
+
+    fn find(&mut self, i: usize) -> usize {
+        let mut root = i;
+        while self.0[root] != root {
+            root = self.0[root];
+        }
+        let mut at = i;
+        while self.0[at] != root {
+            let next = self.0[at];
+            self.0[at] = root;
+            at = next;
+        }
+        root
+    }
+
+    fn join(&mut self, a: usize, b: usize) {
+        let (a, b) = (self.find(a), self.find(b));
+        if a != b {
+            self.0[a.max(b)] = a.min(b);
+        }
+    }
+}
+
+/// A pin of the sheet, with the net the design gives it.
+struct SheetPin {
+    label: String,
+    at: Pt,
+    hidden: bool,
+    design: Option<usize>,
+    drawn: Option<usize>,
+}
+
+fn net_name(design: &Design, n: usize) -> String {
+    design.nets[n].name.clone()
+}
+
+fn check_sheet(
+    design: &Design,
+    l: &Layout,
+    truth: &HashMap<(&str, &str), usize>,
+    v: &SheetView,
+    out: &mut Vec<Violation>,
+) {
+    let sheet = v.name.clone();
+
+    // The pins of this sheet.
+    let mut pins: Vec<SheetPin> = Vec::new();
+    for &i in &v.parts {
+        let p = &l.parts[i];
+        let refdes = design.parts[p.part].refdes.as_str();
+        for (g, placed) in p.glyph.pins.iter().zip(&p.pins) {
+            pins.push(SheetPin {
+                label: format!("{refdes}.{}", placed.id),
+                at: placed.at,
+                hidden: g.hidden,
+                design: truth.get(&(refdes, placed.id.as_str())).copied(),
+                drawn: placed.net,
+            });
+        }
+        // A pad the design uses that the part does not draw.
+        for net in &design.nets {
+            for r in net.pins.iter().filter(|r| r.refdes == refdes) {
+                if !p.pins.iter().any(|q| q.id == r.pin) {
+                    out.push(Violation::PinNet {
+                        sheet: sheet.clone(),
+                        pin: format!("{refdes}.{}", r.pin),
+                        design: Some(net.name.clone()),
+                        drawn: None,
+                    });
+                }
+            }
+        }
+    }
+    for pin in &pins {
+        if pin.design != pin.drawn {
+            out.push(Violation::PinNet {
+                sheet: sheet.clone(),
+                pin: pin.label.clone(),
+                design: pin.design.map(|n| net_name(design, n)),
+                drawn: pin.drawn.map(|n| net_name(design, n)),
+            });
+        }
+    }
+
+    // Elements: pins, then segments, then power symbols, then flags, then labels.
+    let (np, ns) = (pins.len(), v.segments.len());
+    let seg_at = np;
+    let sym_at = np + ns;
+    let port_at = sym_at + v.symbols.len();
+    let label_at = port_at + v.ports.len();
+    let mut u = Union::new(label_at + v.labels.len());
+
+    let dots: Vec<Pt> = v.junctions.iter().map(|&i| l.junctions[i].at).collect();
+    for (i, s) in v.segments.iter().enumerate() {
+        for (j, t) in v.segments.iter().enumerate().skip(i + 1) {
+            let joined = match relate(s, t) {
+                Rel::Apart => false,
+                Rel::Touch(_) | Rel::Overlap { .. } => true,
+                Rel::Cross(p) => dots.iter().any(|&d| same(d, p)),
+            };
+            if joined {
+                u.join(seg_at + i, seg_at + j);
+            }
+        }
+    }
+    let touching = |p: Pt| {
+        v.segments
+            .iter()
+            .enumerate()
+            .filter(move |(_, s)| s.holds(p))
+            .map(|(i, _)| seg_at + i)
+    };
+    // What sits at a point joins what else is at it: key points by millimetre thousandths.
+    let key = |p: Pt| ((p.x * 1000.0).round() as i64, (p.y * 1000.0).round() as i64);
+    let mut here: BTreeMap<(i64, i64), usize> = BTreeMap::new();
+    let mut place = |u: &mut Union, p: Pt, id: usize| {
+        for s in touching(p) {
+            u.join(id, s);
+        }
+        match here.get(&key(p)) {
+            Some(&other) => u.join(id, other),
+            None => {
+                here.insert(key(p), id);
+            }
+        }
+    };
+    for (i, pin) in pins.iter().enumerate() {
+        place(&mut u, pin.at, i);
+    }
+    for (k, &i) in v.symbols.iter().enumerate() {
+        place(&mut u, l.symbols[i].at, sym_at + k);
+    }
+    for (k, &i) in v.ports.iter().enumerate() {
+        place(&mut u, l.ports[i].at, port_at + k);
+    }
+    for (k, &i) in v.labels.iter().enumerate() {
+        place(&mut u, l.labels[i].at, label_at + k);
+    }
+
+    // What each piece claims to be.
+    #[derive(Default)]
+    struct Piece {
+        nets: BTreeSet<usize>,
+        pins: usize,
+        named: usize,
+        labels: usize,
+        segments: usize,
+        at: Option<Pt>,
+        net_of_segment: Option<usize>,
+    }
+    let mut pieces: BTreeMap<usize, Piece> = BTreeMap::new();
+    for (i, pin) in pins.iter().enumerate() {
+        let p = pieces.entry(u.find(i)).or_default();
+        p.pins += 1;
+        p.at.get_or_insert(pin.at);
+        if let Some(n) = pin.design {
+            p.nets.insert(n);
+        }
+    }
+    for (i, s) in v.segments.iter().enumerate() {
+        let p = pieces.entry(u.find(seg_at + i)).or_default();
+        p.segments += 1;
+        p.nets.insert(s.net);
+        p.net_of_segment.get_or_insert(s.net);
+        p.at = Some(match p.at {
+            Some(q) if (q.x, q.y) < (s.a.x, s.a.y) => q,
+            _ => s.a,
+        });
+    }
+    for (k, &i) in v.symbols.iter().enumerate() {
+        let p = pieces.entry(u.find(sym_at + k)).or_default();
+        p.named += 1;
+        p.nets.insert(l.symbols[i].net);
+        p.at.get_or_insert(l.symbols[i].at);
+    }
+    for (k, &i) in v.ports.iter().enumerate() {
+        let p = pieces.entry(u.find(port_at + k)).or_default();
+        p.named += 1;
+        p.nets.insert(l.ports[i].net);
+        p.at.get_or_insert(l.ports[i].at);
+    }
+    for (k, &i) in v.labels.iter().enumerate() {
+        let p = pieces.entry(u.find(label_at + k)).or_default();
+        p.labels += 1;
+        p.nets.insert(l.labels[i].net);
+        p.at.get_or_insert(l.labels[i].at);
+    }
+    for p in pieces.values() {
+        let at = p.at.unwrap_or(Pt::new(0.0, 0.0));
+        if p.nets.len() > 1 {
+            out.push(Violation::Short {
+                sheet: sheet.clone(),
+                nets: p.nets.iter().map(|&n| net_name(design, n)).collect(),
+                at,
+            });
+        } else if p.segments > 0 && p.pins == 0 && p.named + p.labels == 0 {
+            out.push(Violation::FloatingWire {
+                sheet: sheet.clone(),
+                net: net_name(design, p.net_of_segment.unwrap_or(0)),
+                at,
+            });
+        } else if p.segments == 0 && p.pins == 0 && p.named + p.labels > 0 {
+            let net = p
+                .nets
+                .iter()
+                .next()
+                .map_or_else(String::new, |&n| net_name(design, n));
+            out.push(if p.named == 0 {
+                Violation::FloatingLabel {
+                    sheet: sheet.clone(),
+                    net,
+                    at,
+                }
+            } else {
+                Violation::FloatingFlag {
+                    sheet: sheet.clone(),
+                    net,
+                    at,
+                }
+            });
+        }
+    }
+    // A pin of no net, touched by anything.
+    for (i, pin) in pins.iter().enumerate() {
+        if pin.design.is_some() || pin.hidden {
+            continue;
+        }
+        let root = u.find(i);
+        let others = pieces
+            .get(&root)
+            .map_or(0, |p| p.segments + p.named + p.labels);
+        if others > 0 {
+            let touches = pieces[&root]
+                .nets
+                .iter()
+                .map(|&n| net_name(design, n))
+                .collect::<Vec<_>>()
+                .join(", ");
+            out.push(Violation::ExtraPin {
+                sheet: sheet.clone(),
+                pin: pin.label.clone(),
+                touches: format!("a wire or symbol of {touches}"),
+            });
+        }
+    }
+
+    // Opens: join the pieces that carry a power symbol, flag or label of the same net, by name.
+    let mut by_name: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for (k, &i) in v.symbols.iter().enumerate() {
+        by_name
+            .entry(l.symbols[i].net)
+            .or_default()
+            .push(sym_at + k);
+    }
+    for (k, &i) in v.ports.iter().enumerate() {
+        by_name.entry(l.ports[i].net).or_default().push(port_at + k);
+    }
+    for (k, &i) in v.labels.iter().enumerate() {
+        by_name
+            .entry(l.labels[i].net)
+            .or_default()
+            .push(label_at + k);
+    }
+    let mut named = Union::new(u.0.len());
+    for (i, root) in (0..u.0.len()).map(|i| (i, u.find(i))) {
+        named.join(i, root);
+    }
+    for ids in by_name.values() {
+        for pair in ids.windows(2) {
+            named.join(pair[0], pair[1]);
+        }
+    }
+    let mut by_net: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for (i, pin) in pins.iter().enumerate() {
+        if let Some(n) = pin.design {
+            by_net.entry(n).or_default().push(i);
+        }
+    }
+    for (net, ids) in by_net {
+        let roots: BTreeSet<usize> = ids.iter().map(|&i| named.find(i)).collect();
+        if roots.len() > 1 {
+            out.push(Violation::Open {
+                sheet: sheet.clone(),
+                net: net_name(design, net),
+                pieces: roots.len(),
+                pins: ids.iter().map(|&i| pins[i].label.clone()).collect(),
+            });
+        }
+    }
+
+    // Wires along each other, and through bodies.
+    for (i, s) in v.segments.iter().enumerate() {
+        for t in &v.segments[i + 1..] {
+            if s.net == t.net {
+                continue;
+            }
+            if let Rel::Overlap { at, len } = relate(s, t) {
+                out.push(Violation::WireOverlap {
+                    sheet: sheet.clone(),
+                    nets: (net_name(design, s.net), net_name(design, t.net)),
+                    at,
+                    len,
+                });
+            }
+        }
+    }
+    for &i in &v.parts {
+        let strokes = body_strokes(&l.parts[i]);
+        for s in v.segments.iter().filter(|s| runs_through_body(s, &strokes)) {
+            out.push(Violation::WireThroughBody {
+                sheet: sheet.clone(),
+                net: net_name(design, s.net),
+                part: design.parts[l.parts[i].part].refdes.clone(),
+                at: s.a,
+            });
+        }
+    }
+}
+
+/// The rules about what the wires of a sheet draw, whatever the nets are.
+fn check_wires(design: &Design, l: &Layout, v: &SheetView, out: &mut Vec<Violation>) {
+    let sheet = &v.name;
+    let written = texts(l, v);
+    for (i, a) in written.iter().enumerate() {
+        for b in &written[i + 1..] {
+            if overlaps(a, b, OVERLAP) {
+                out.push(Violation::TextOverlap {
+                    sheet: sheet.clone(),
+                    at: a.min,
+                });
+            }
+        }
+    }
+    for s in v.segments.iter().filter(|s| s.is_axis_aligned()) {
+        for t in written.iter().filter(|t| runs_through(s, t)) {
+            out.push(Violation::WireOverText {
+                sheet: sheet.clone(),
+                net: net_name(design, s.net),
+                at: t.min,
+            });
+        }
+    }
+    for f in wire_faults(l, v) {
+        let net = net_name(design, f.net);
+        let (sheet, at) = (sheet.clone(), f.at);
+        out.push(match f.fault {
+            Fault::Zero => Violation::ZeroLengthWire { sheet, net, at },
+            Fault::Redundant { len } => Violation::RedundantWire {
+                sheet,
+                net,
+                at,
+                len,
+            },
+            Fault::DeadEnd => Violation::DeadEnd { sheet, net, at },
+            Fault::UTurn => Violation::UTurn { sheet, net, at },
+            Fault::UnusedJunction { arms } => Violation::UnusedJunction {
+                sheet,
+                net,
+                at,
+                arms,
+            },
+            Fault::MissingJunction { arms } => Violation::MissingJunction {
+                sheet,
+                net,
+                at,
+                arms,
+            },
+            Fault::HugsPart { part } => Violation::WireHugsSymbol {
+                sheet,
+                net,
+                symbol: design.parts[part].refdes.clone(),
+                at,
+            },
+            Fault::HugsFlag { net: flag } => Violation::WireHugsSymbol {
+                sheet,
+                net,
+                symbol: format!("the flag of {}", net_name(design, flag)),
+                at,
+            },
+            Fault::AlongPin { part, pad } => Violation::WireAlongPin {
+                sheet,
+                net,
+                pin: format!("{}.{pad}", design.parts[part].refdes),
+                at,
+            },
+        });
+    }
+}

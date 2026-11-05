@@ -3,7 +3,7 @@
 
 mod common;
 
-use netsmith_core::{Design, Net, Part, PinRef};
+use netsmith_core::Design;
 use netsmith_kicad::{Mapping, SymbolLib, testlib};
 use netsmith_view::geom::Rect;
 use netsmith_view::layout::{Layout, layout};
@@ -12,118 +12,6 @@ use netsmith_view::sheets::{Group, MAX_SHEET_PARTS, layout_sheets};
 
 fn lib() -> SymbolLib {
     SymbolLib::at(testlib::sample_symbols())
-}
-
-/// `modules` copies of a ten-part supply: a regulator, four capacitors, four resistors and a
-/// light, on a shared `GND` and `VIN`, each with its own nets besides.
-fn board(modules: usize) -> (Design, Vec<Group>) {
-    let mut parts = Vec::new();
-    let mut nets: Vec<Net> = Vec::new();
-    let mut groups = Vec::new();
-    let pin = |r: &str, p: &str| PinRef {
-        refdes: r.into(),
-        pin: p.into(),
-    };
-    let mut gnd = Vec::new();
-    let mut vin = Vec::new();
-    for m in 1..=modules {
-        let first = parts.len();
-        let name = |k: &str| format!("{k}{m}");
-        for (refdes, kind, value, package) in [
-            (name("U"), "LinearRegulator", "LDO", Some("SOT-223")),
-            (name("C"), "Capacitor", "1u", Some("0402")),
-            (name("CA"), "Capacitor", "4.7u", Some("0402")),
-            (name("CB"), "Capacitor", "100n", Some("0402")),
-            (name("CC"), "Capacitor", "100n", Some("0402")),
-            (name("R"), "Resistor", "1k", Some("0402")),
-            (name("RA"), "Resistor", "10k", Some("0402")),
-            (name("RB"), "Resistor", "10k", Some("0402")),
-            (name("RC"), "Resistor", "2k", Some("0402")),
-            (name("D"), "Led", "LED", None),
-        ] {
-            parts.push(Part {
-                refdes,
-                kind: kind.into(),
-                value: value.into(),
-                package: package.map(str::to_string),
-                path: String::new(),
-                pins: Vec::new(),
-            });
-        }
-        groups.push(Group {
-            name: format!("supply{m}"),
-            detail: "Supply".into(),
-            parts: (first..first + 10).collect(),
-        });
-        gnd.extend([
-            pin(&name("U"), "1"),
-            pin(&name("C"), "2"),
-            pin(&name("CA"), "2"),
-        ]);
-        gnd.extend([
-            pin(&name("CB"), "2"),
-            pin(&name("CC"), "2"),
-            pin(&name("D"), "1"),
-        ]);
-        vin.extend([pin(&name("U"), "3"), pin(&name("C"), "1")]);
-        nets.push(Net {
-            name: format!("out{m}"),
-            pins: vec![
-                pin(&name("U"), "2"),
-                pin(&name("CA"), "1"),
-                pin(&name("R"), "1"),
-                pin(&name("CB"), "1"),
-            ],
-        });
-        nets.push(Net {
-            name: format!("sense{m}"),
-            pins: vec![
-                pin(&name("R"), "2"),
-                pin(&name("RA"), "1"),
-                pin(&name("RB"), "1"),
-                pin(&name("CC"), "1"),
-            ],
-        });
-        nets.push(Net {
-            name: format!("led{m}"),
-            pins: vec![pin(&name("RA"), "2"), pin(&name("RC"), "1")],
-        });
-        nets.push(Net {
-            name: format!("anode{m}"),
-            pins: vec![pin(&name("RC"), "2"), pin(&name("D"), "2")],
-        });
-        nets.push(Net {
-            name: format!("tap{m}"),
-            pins: vec![pin(&name("RB"), "2")],
-        });
-    }
-    // Each supply's output also feeds the next supply's resistor: a net between sheets.
-    for m in 1..modules {
-        nets.iter_mut()
-            .find(|n| n.name == format!("out{m}"))
-            .unwrap()
-            .pins
-            .push(pin(&format!("RB{}", m + 1), "2"));
-        nets.retain(|n| n.name != format!("tap{}", m + 1));
-    }
-    nets.push(Net {
-        name: "GND".into(),
-        pins: gnd,
-    });
-    nets.push(Net {
-        name: "VIN".into(),
-        pins: vin,
-    });
-    (
-        Design {
-            name: "Big".into(),
-            parts,
-            nets,
-            process: None,
-            features: Default::default(),
-        },
-        groups,
-    )
 }
 
 fn lay(d: &Design, groups: &[Group]) -> Layout {
@@ -144,7 +32,7 @@ fn contains(outer: &Rect, inner: &Rect) -> bool {
 
 #[test]
 fn seventy_parts_make_seven_sheets_that_do_not_overlap() {
-    let (d, groups) = board(7);
+    let (d, groups) = common::supplies(7);
     assert_eq!(d.parts.len(), 70);
     let l = lay(&d, &groups);
     assert_eq!(l.sheets.len(), 7);
@@ -170,7 +58,7 @@ fn seventy_parts_make_seven_sheets_that_do_not_overlap() {
 #[test]
 fn the_whole_drawing_is_not_a_strip() {
     for modules in [7, 12] {
-        let (d, groups) = board(modules);
+        let (d, groups) = common::supplies(modules);
         let l = lay(&d, &groups);
         let aspect = l.bounds.width() / l.bounds.height();
         assert!(
@@ -184,13 +72,13 @@ fn the_whole_drawing_is_not_a_strip() {
 
 #[test]
 fn the_same_board_gives_the_same_drawing() {
-    let (d, groups) = board(7);
+    let (d, groups) = common::supplies(7);
     assert_eq!(lay(&d, &groups), lay(&d, &groups));
 }
 
 #[test]
 fn every_wire_stays_on_the_sheet_it_starts_on() {
-    let (d, groups) = board(7);
+    let (d, groups) = common::supplies(7);
     let l = lay(&d, &groups);
     for w in &l.wires {
         let sheet = l
@@ -208,11 +96,11 @@ fn every_wire_stays_on_the_sheet_it_starts_on() {
 
 #[test]
 fn a_net_between_sheets_is_wired_on_each_and_leaves_through_a_flag() {
-    let (d, groups) = board(7);
+    let (d, groups) = common::supplies(7);
     let l = lay(&d, &groups);
     let vin = d.nets.iter().position(|n| n.name == "VIN").unwrap();
-    // One flag on each sheet, with the net's name in it, and no bare names.
-    assert!(l.labels.is_empty());
+    // One flag on each sheet, with the net's name in it, and no label for it.
+    assert!(l.labels.iter().all(|t| t.net != vin));
     let flags: Vec<_> = l.ports.iter().filter(|p| p.net == vin).collect();
     assert_eq!(flags.len(), 7, "one flag on each sheet");
     for flag in &flags {
@@ -241,7 +129,7 @@ fn a_net_between_sheets_is_wired_on_each_and_leaves_through_a_flag() {
 
 #[test]
 fn pins_keep_their_nets_in_the_whole_board_numbering() {
-    let (d, groups) = board(3);
+    let (d, groups) = common::supplies(3);
     let l = lay(&d, &groups);
     for placed in &l.parts {
         let part = &d.parts[placed.part];
@@ -275,7 +163,7 @@ fn a_small_board_is_one_drawing_as_before() {
 
 #[test]
 fn parts_in_no_group_are_a_sheet_of_their_own() {
-    let (d, mut groups) = board(4);
+    let (d, mut groups) = common::supplies(4);
     groups.truncate(3);
     let l = lay(&d, &groups);
     assert_eq!(l.sheets.len(), 4);
@@ -285,7 +173,7 @@ fn parts_in_no_group_are_a_sheet_of_their_own() {
 
 #[test]
 fn a_group_that_is_too_big_is_cut_into_numbered_sheets() {
-    let (d, _) = board(7);
+    let (d, _) = common::supplies(7);
     let l = lay(&d, &[]);
     let pieces = 70usize.div_ceil(MAX_SHEET_PARTS);
     assert_eq!(
@@ -307,12 +195,12 @@ fn a_module_that_fits_one_page_is_not_split() {
     // The old drawing put every column of a module in one row, so a module of more than 20
     // parts was a long thin strip and was cut in two; the new one arranges parts in two
     // dimensions, and a module of up to MAX_SHEET_PARTS parts stays whole.
-    let (d, groups) = board(1);
+    let (d, groups) = common::supplies(1);
     let mut groups = groups;
     groups[0].parts = (0..10).collect();
     let l = lay(&d, &groups);
     assert!(l.sheets.is_empty() || l.sheets.iter().all(|s| !s.name.contains('/')));
-    let (d, _) = board(4);
+    let (d, _) = common::supplies(4);
     let all = Group {
         name: "supplies".into(),
         detail: "Three".into(),
@@ -332,7 +220,7 @@ fn a_module_that_fits_one_page_is_not_split() {
 
 #[test]
 fn the_drawing_names_each_module_and_stays_well_formed() {
-    let (d, groups) = board(7);
+    let (d, groups) = common::supplies(7);
     let svg = render_svg_by_module(&d, &groups, &Mapping::standard(), &lib()).unwrap();
     for m in 1..=7 {
         assert!(

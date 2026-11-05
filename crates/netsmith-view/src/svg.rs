@@ -307,7 +307,7 @@ fn draw_mark(w: &mut String, design: &Design, m: &PinMark) {
         ),
     };
     let (x, y) = (m.at.x, m.at.y);
-    let r = 0.7;
+    let r = crate::sheetview::MARK_HALF;
     let _ = writeln!(
         w,
         "<g class=\"{class}\" data-unconnected=\"{}.{}\"><title>{}</title><circle class=\"hit\" cx=\"{}\" cy=\"{}\" r=\"1.2\"/><line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\"/><line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\"/>{}</g>",
@@ -634,8 +634,29 @@ fn text_element_titled(
             "<title>{}</title>",
             esc(full)
         )),
-        esc(&t.text)
+        overbars(&t.text)
     );
+}
+
+/// `text` escaped, with each `~{...}` (KiCad's overbar, for an active-low name) written as
+/// its letters under a line.
+fn overbars(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("~{") {
+        let Some(len) = rest[start + 2..].find('}') else {
+            break;
+        };
+        out.push_str(&esc(&rest[..start]));
+        let inner = &rest[start + 2..start + 2 + len];
+        out.push_str(&format!(
+            "<tspan text-decoration=\"overline\">{}</tspan>",
+            esc(inner)
+        ));
+        rest = &rest[start + 2 + len + 1..];
+    }
+    out.push_str(&esc(rest));
+    out
 }
 
 /// A number with at most three decimals and no trailing zeros, never `-0`.
