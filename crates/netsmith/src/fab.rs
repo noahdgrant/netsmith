@@ -216,6 +216,50 @@ pub fn fab_with_options(
     Ok(made)
 }
 
+/// What the requirements prove about a board before any placing (ADR 0045 section 14,
+/// PROVISIONAL): lines that cannot all hold, a courtyard past an edge nobody stated, a part
+/// bigger than the outline. It takes milliseconds and starts no placer.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PrecheckReport {
+    /// The board's label.
+    pub board: String,
+    /// What is proved, each as a message with the numbers and the lines.
+    pub errors: Vec<String>,
+    /// What is only suspicious.
+    pub warnings: Vec<String>,
+}
+
+/// The pre-check of one built board with the layout file's locks, if any. A board the
+/// libraries cannot give footprints for (no KiCad install, a part with no mapping) has nothing
+/// proved here: `build` has never needed them, and `fab` reports that when it places.
+pub fn precheck_board(
+    built: &Built,
+    layout: Option<&netsmith_pcb::Layout>,
+    libraries: &Libraries,
+    constraints_warn: bool,
+) -> PrecheckReport {
+    let mut report = PrecheckReport {
+        board: built.label(),
+        ..PrecheckReport::default()
+    };
+    let mut placement = place_options(&built.design, layout);
+    placement.lines_warn = constraints_warn;
+    match Board::precheck(
+        &built.design,
+        &libraries.mapping,
+        &libraries.footprints,
+        &placement,
+    ) {
+        Ok(found) => {
+            report.errors = found.errors();
+            report.warnings = found.warnings;
+        }
+        Err(e @ netsmith_pcb::BoardError::Constraints(_)) => report.errors = vec![e.to_string()],
+        Err(_) => {}
+    }
+    report
+}
+
 /// The file in the board's fab folder that lists every part's final place and state when
 /// the parts do not fit (PROVISIONAL, ADR 0033).
 const PLACEMENT_FAILURE: &str = "placement-failure.txt";
@@ -344,12 +388,27 @@ fn fab_board(
             return Err(errors);
         }
 
+        // What the requirements prove cannot be placed is said now, before the placer starts
+        // (it can take a minute on a tight board).
+        let precheck = precheck_board(
+            built,
+            layout.as_ref().map(|l| &l.0),
+            libraries,
+            catalogs.constraints_warn(),
+        );
+        for warning in &precheck.warnings {
+            say(format!("{}: warning: {warning}", built.label()));
+        }
+        if !precheck.errors.is_empty() {
+            return Err(precheck.errors.into_iter().map(fail).collect());
+        }
         say(format!(
             "{}: placing {} parts",
             built.label(),
             built.design.parts.len()
         ));
-        let placement = place_options(&built.design, layout.as_ref().map(|l| &l.0));
+        let mut placement = place_options(&built.design, layout.as_ref().map(|l| &l.0));
+        placement.lines_warn = catalogs.constraints_warn();
         let mut board = Board::from_design_placed(
             &built.design,
             &libraries.mapping,

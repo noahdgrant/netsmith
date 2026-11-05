@@ -41,6 +41,10 @@ pub enum BoardError {
     /// The design's requirements on where parts go (ADR 0045) cannot all be met: each entry
     /// names what conflicts and the numbers.
     Constraints(Vec<String>),
+    /// The requirements of the physical file, the circuit and the layout file provably cannot
+    /// all hold, or a courtyard is past an edge nobody allowed: found before the placer ran
+    /// (ADR 0045 section 14, PROVISIONAL), so nothing was placed.
+    Unplaceable(Box<crate::explain::Precheck>),
     /// A net names a pad that its part's footprint does not have.
     NoPad {
         net: String,
@@ -72,6 +76,7 @@ impl std::fmt::Display for BoardError {
                 "the requirements on where parts go cannot all be met:\n  - {}",
                 errors.join("\n  - ")
             ),
+            Self::Unplaceable(found) => write!(f, "{}", found.errors().join("\n")),
             Self::NoPad {
                 net,
                 refdes,
@@ -120,6 +125,38 @@ fn explained(
     error.requirements =
         crate::explain::explain(design, &ended, outline, base, rules).map(Box::new);
     error
+}
+
+/// The box of the outline the design states, from the top left corner of the sheet, as the
+/// most it allows (a range's top; infinite where a side is left open), and whether it is
+/// known on both sides, and whether its size is a range (the real outline may be smaller).
+fn outline_box(design: &Design) -> (Rect, bool, bool) {
+    let Some(o) = &design.features.outline else {
+        return (
+            Rect::new(ORIGIN, Pt::new(f64::INFINITY, f64::INFINITY)),
+            false,
+            false,
+        );
+    };
+    let top = |(_, hi): (f64, f64)| if hi.is_finite() { hi } else { f64::INFINITY };
+    let (w, h) = (top(o.width), top(o.height));
+    let limit = o.width.0 < o.width.1 - 1e-9 || o.height.0 < o.height.1 - 1e-9;
+    (
+        Rect::new(ORIGIN, Pt::new(ORIGIN.x + w, ORIGIN.y + h)),
+        w.is_finite() && h.is_finite(),
+        limit,
+    )
+}
+
+/// What [`Board::load`] found: everything [`Board::from_design_placed`] needs before it turns
+/// the requirements into places.
+struct Loaded {
+    process: Process,
+    rules: Rules,
+    /// The options with the design's keepouts, cutouts and height limits added.
+    placement: PlaceOptions,
+    /// The footprints, on the faces the options gave them, not yet placed.
+    parts: Vec<Placed>,
 }
 
 impl From<DesignError> for BoardError {
@@ -580,6 +617,69 @@ pub enum HoleNeighbour {
     Hole,
 }
 
+/// How a courtyard that is past an edge nobody stated is told: the part, each edge and how
+/// far, what the design says about overhang, and what would allow it. With `wherever`, the
+/// distances are the least over every place the part's requirements leave it (the check
+/// before placing). The hint to require the body to reach the edge is left out, and the
+/// reason given in its place, when `wherever` is `Some(false)`: the body stays inside the
+/// outline there, and no statement allows only the courtyard past an edge (ADR 0045
+/// section 10; issue #99 has the options).
+pub(crate) fn outside_text(
+    refdes: &str,
+    path: &str,
+    past: &[(Edge, f64)],
+    stated: &[Edge],
+    by: &str,
+    wherever: Option<bool>,
+) -> String {
+    let mut out = format!("{refdes} is not wholly inside the board outline");
+    let Some(&(edge, _)) = past.first() else {
+        return format!(
+            "{out}: a corner of its courtyard is outside a rounded corner of the outline"
+        );
+    };
+    let list: Vec<String> = past
+        .iter()
+        .map(|(e, by)| {
+            format!(
+                "{}{by:.2} mm past the {} edge",
+                if wherever.is_some() { "at least " } else { "" },
+                e.word()
+            )
+        })
+        .collect();
+    out.push_str(&format!(": its courtyard is {}", list.join(" and ")));
+    if wherever.is_some() {
+        out.push_str(" wherever its requirements put it");
+    }
+    if stated.is_empty() {
+        out.push_str(", and the design does not say it may hang over an edge");
+    } else {
+        let words: Vec<&str> = stated.iter().map(|e| e.word()).collect();
+        out.push_str(&format!(
+            ", and the design says it may hang over only the {} edge ({by})",
+            words.join(" and ")
+        ));
+    }
+    if wherever == Some(false) {
+        out.push_str(&format!(
+            "; its body stays inside the outline there, and no statement allows only the courtyard past the {} edge: an overhang is stated by the body's own edge field reaching the edge (ADR 0045 section 10), which these requirements do not do; move the part, give it a smaller courtyard, or see the options note on issue #99",
+            edge.word()
+        ));
+        return out;
+    }
+    let line = match edge {
+        Edge::Left | Edge::Top => format!("{path}.place.{} <= 0mm", edge.word()),
+        Edge::Right => format!("{path}.place.right >= outline.width"),
+        Edge::Bottom => format!("{path}.place.bottom >= outline.height"),
+    };
+    out.push_str(&format!(
+        "; to allow it past the {} edge, require the body to reach it, for example `.{line}`",
+        edge.word()
+    ));
+    out
+}
+
 impl std::fmt::Display for PlacementProblem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -590,40 +690,7 @@ impl std::fmt::Display for PlacementProblem {
                 past,
                 stated,
                 by,
-            } => {
-                write!(f, "{refdes} is not wholly inside the board outline")?;
-                let Some(&(edge, _)) = past.first() else {
-                    return write!(
-                        f,
-                        ": a corner of its courtyard is outside a rounded corner of the outline"
-                    );
-                };
-                let list: Vec<String> = past
-                    .iter()
-                    .map(|(e, by)| format!("{by:.2} mm past the {} edge", e.word()))
-                    .collect();
-                write!(f, ": its courtyard is {}", list.join(" and "))?;
-                if stated.is_empty() {
-                    write!(f, ", and the design does not say it may hang over an edge")?;
-                } else {
-                    let words: Vec<&str> = stated.iter().map(|e| e.word()).collect();
-                    write!(
-                        f,
-                        ", and the design says it may hang over only the {} edge ({by})",
-                        words.join(" and ")
-                    )?;
-                }
-                let line = match edge {
-                    Edge::Left | Edge::Top => format!("{path}.place.{} <= 0mm", edge.word()),
-                    Edge::Right => format!("{path}.place.right >= outline.width"),
-                    Edge::Bottom => format!("{path}.place.bottom >= outline.height"),
-                };
-                write!(
-                    f,
-                    "; to allow it past the {} edge, require the body to reach it, for example `.{line}`",
-                    edge.word()
-                )
-            }
+            } => write!(f, "{}", outside_text(refdes, path, past, stated, by, None)),
             Self::InKeepout { refdes, keepout } => write!(
                 f,
                 "{refdes} overlaps the keepout `{keepout}`, which forbids parts"
@@ -882,14 +949,15 @@ impl Board {
         Self::from_design_placed(design, mapping, library, &PlaceOptions::default())
     }
 
-    /// [`Board::from_design`], with what is known about where the parts go: the face each
-    /// is on, and the size the board must be.
-    pub fn from_design_placed(
+    /// The part of [`Board::from_design_placed`] before the requirements are turned into
+    /// places: the process and its rules, the options with the keepouts, cutouts and height
+    /// limits of the design added, and the parts as footprints on the faces they were given.
+    fn load(
         design: &Design,
         mapping: &Mapping,
         library: &FootprintLibrary,
         placement: &PlaceOptions,
-    ) -> Result<Board, BoardError> {
+    ) -> Result<Loaded, BoardError> {
         design.validate()?;
         if let Some(refdes) = placement
             .sides
@@ -931,7 +999,7 @@ impl Board {
                 placement.height_zones.push(zone);
             }
         }
-        let placement = &placement;
+        let placement = placement.clone();
 
         let mut loaded: HashMap<String, Footprint> = HashMap::new();
         let mut parts = Vec::with_capacity(design.parts.len());
@@ -1010,6 +1078,61 @@ impl Board {
                     .map(|h| h.height),
             });
         }
+        Ok(Loaded {
+            process,
+            rules,
+            placement,
+            parts,
+        })
+    }
+
+    /// What the requirements of `design` prove about where its parts can go, before any
+    /// placing: the same proofs [`Board::from_design_placed`] makes first (and fails with
+    /// [`BoardError::Unplaceable`]), with the warnings for what is only suspicious. It takes
+    /// milliseconds. `Err` is a design the placer could not start on either.
+    pub fn precheck(
+        design: &Design,
+        mapping: &Mapping,
+        library: &FootprintLibrary,
+        placement: &PlaceOptions,
+    ) -> Result<crate::explain::Precheck, BoardError> {
+        let Loaded {
+            rules,
+            placement,
+            parts,
+            ..
+        } = Self::load(design, mapping, library, placement)?;
+        let plan = crate::constraints::plan(design, &parts, &placement, rules.clearance)
+            .map_err(BoardError::Constraints)?;
+        let found = crate::explain::before_placing(
+            design,
+            &parts,
+            &placement,
+            &plan,
+            &rules,
+            outline_box(design),
+        );
+        Ok(if placement.lines_warn {
+            found.lines_as_warnings()
+        } else {
+            found
+        })
+    }
+
+    /// [`Board::from_design`], with what is known about where the parts go: the face each
+    /// is on, and the size the board must be.
+    pub fn from_design_placed(
+        design: &Design,
+        mapping: &Mapping,
+        library: &FootprintLibrary,
+        placement: &PlaceOptions,
+    ) -> Result<Board, BoardError> {
+        let Loaded {
+            process,
+            rules,
+            placement,
+            mut parts,
+        } = Self::load(design, mapping, library, placement)?;
 
         // What the design requires of where the parts go (ADR 0045): pinned parts are fixed
         // like locked ones, the others get a want the placer keeps to, and every constrained
@@ -1018,6 +1141,25 @@ impl Board {
         let mut placement = placement.clone();
         let plan = crate::constraints::plan(design, &parts, &placement, rules.clearance)
             .map_err(BoardError::Constraints)?;
+        // What the lines prove before any placing, in milliseconds: lines that cannot all
+        // hold, a courtyard past an edge nobody stated, a part bigger than the outline. The
+        // placer is not started for a board that cannot be placed.
+        let pre = crate::explain::before_placing(
+            design,
+            &parts,
+            &base,
+            &plan,
+            &rules,
+            outline_box(design),
+        );
+        let pre = if base.lines_warn {
+            pre.lines_as_warnings()
+        } else {
+            pre
+        };
+        if pre.is_error() {
+            return Err(BoardError::Unplaceable(Box::new(pre)));
+        }
         // A part may hang over an edge only where its own requirements say so; a lock in the
         // layout file does not (owner decision, 2026-11-03, ADR 0045 section 10).
         let mut overhang = placement.overhang.clone();
