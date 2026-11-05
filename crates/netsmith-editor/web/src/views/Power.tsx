@@ -6,7 +6,7 @@ import { api } from '../client';
 import { NoBoard, ViewLoading } from '../components/ViewStatus';
 import { MiniMap } from '../components/MiniMap';
 import { PanZoom } from '../components/PanZoom';
-import { analysis, board, detail, goTo, systemName } from '../store';
+import { analysis, board, detail, goTo, systemName, visible } from '../store';
 import { type Card, cardFor, partByPath, revealRequest, selection, selectionOfCard, setSelection } from '../selection';
 import { DOTS, amps, loadsText, voltRangeText, voltsText } from '../power/format';
 import { type Item, type Placed, type TreeLayout, layoutTree } from '../flow/layout';
@@ -359,10 +359,12 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
     }
   };
 
-  // An issue is selected in the tree and its place is shown in the source, as a click on a load does.
+  // An issue is selected in the tree and its place is shown in the source: in the other pane when
+  // there is one, else the source's cursor is put there quietly, so the tree stays in front (the
+  // click is on the strip of issues, to find the card) and the cursor is there when the person looks.
   const jump = (i: Issue) => {
     select(i.id, true);
-    if (i.at) void goTo(i.at);
+    if (i.at) void goTo(i.at, undefined, visible.peek().length < 2);
   };
 
   return (
