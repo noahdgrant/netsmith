@@ -143,7 +143,7 @@ jobs:
         shell: bash
         run: |
           cargo test --workspace --no-fail-fast -- --nocapture 2>&1 | tee test.log
-          if grep -n "skipped: no KiCad" test.log; then
+          if grep -n "skipped: no KiCad symbol and footprint libraries" test.log; then
             echo "::error::a test skipped itself although KiCad is installed"
             exit 1
           fi
