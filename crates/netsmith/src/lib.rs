@@ -51,8 +51,11 @@ pub struct Built {
     pub project: String,
     /// What was decided, for a person to read.
     pub report: String,
-    /// Things worth knowing that did not stop the build.
+    /// Things worth knowing that did not stop the build: what the solver decided and left
+    /// alone, then the notes of lowering (the last `lowering_notes` of them).
     pub notes: Vec<String>,
+    /// How many of the last `notes` come from lowering and not from the solver.
+    pub lowering_notes: usize,
     /// What the design does against a guideline (ADR 0036): a warning that did not stop
     /// the build. With `guidelines = "error"` or `--strict` the build stops instead and
     /// this is empty.
@@ -101,6 +104,21 @@ pub struct Location {
     pub end_column: usize,
 }
 
+/// The stage of the pipeline that found a mistake (ADR 0019, "A diagnostic is a value").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stage {
+    /// The text does not parse.
+    Syntax,
+    /// The checker: names, types, connections, pin tables; a board file with nothing to build.
+    Check,
+    /// The solver.
+    Solve,
+    /// Lowering to parts and nets, and the checks of the schematic and footprints against it.
+    Lower,
+    /// A guideline that the project makes an error (ADR 0036).
+    Guideline,
+}
+
 /// One mistake that stops a build: the message, where it is if it is in the source, and
 /// the text the command line prints for it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,24 +126,71 @@ pub struct Problem {
     pub message: String,
     pub at: Option<Location>,
     pub rendered: String,
+    /// The stage that found it.
+    pub stage: Stage,
+    /// The board it is about, as [`Built::label`] has it, if it is about one.
+    pub board: Option<String>,
+    /// The instance it is about, from the board, if it is about one.
+    pub path: Option<String>,
 }
 
 impl Problem {
     /// A mistake of a board or system as a whole, with no line of its own.
-    fn general(message: String, rendered: String) -> Self {
+    fn general(stage: Stage, message: String, rendered: String) -> Self {
         Self {
             message,
             at: None,
             rendered,
+            stage,
+            board: None,
+            path: None,
         }
     }
 
-    fn of(d: &netsmith_check::Diagnostic, sources: &Sources) -> Self {
+    fn of(stage: Stage, d: &netsmith_check::Diagnostic, sources: &Sources) -> Self {
         Self {
             message: d.message.clone(),
             at: Some(locate(sources, d.source, d.span)),
             rendered: d.render(sources),
+            stage,
+            board: None,
+            path: None,
         }
+    }
+
+    /// Say which board it is about.
+    fn on_board(mut self, label: &str) -> Self {
+        self.board = Some(label.to_string());
+        self
+    }
+}
+
+/// Whether `span` of `source` is inside the definition that made `inst`.
+fn inside_definition(model: &Model, inst: InstId, source: SourceId, span: Span) -> bool {
+    let inst = model.instance(inst);
+    inst.source == source && inst.span.start <= span.start && span.end <= inst.span.end
+}
+
+/// The board a checker mistake is about, when it is written inside the definition of one
+/// (not in a module or a system, which several boards share), as the summary names it. A board
+/// that a system places is named as the system's member.
+fn board_of_diagnostic(checked: &Checked, d: &netsmith_check::Diagnostic) -> Option<String> {
+    let board = checked
+        .boards
+        .iter()
+        .find(|b| inside_definition(&b.model, b.model.root, d.source, d.span))?;
+    if checked.standalone_boards().any(|b| b.name == board.name) {
+        Some(board.name.clone())
+    } else {
+        let mut placed = checked.systems.iter().flat_map(|s| {
+            s.boards
+                .iter()
+                .filter(|m| m.type_name == board.name)
+                .map(move |m| format!("{}/{}", s.name, m.name))
+        });
+        let first = placed.next()?;
+        // A board a system places twice is two boards: the mistake is in both, in neither.
+        placed.next().is_none().then_some(first)
     }
 }
 
@@ -150,7 +215,18 @@ pub fn problems_of(checked: &Checked) -> Vec<Problem> {
     checked
         .diagnostics
         .iter()
-        .map(|d| Problem::of(d, &checked.sources))
+        .map(|d| {
+            let stage = if checked.syntax.contains(d) {
+                Stage::Syntax
+            } else {
+                Stage::Check
+            };
+            let mut problem = Problem::of(stage, d, &checked.sources);
+            if stage == Stage::Check {
+                problem.board = board_of_diagnostic(checked, d);
+            }
+            problem
+        })
         .collect()
 }
 
@@ -234,6 +310,32 @@ pub fn outcome_with(
     catalogs: &Catalogs,
     libraries: Option<&Libraries>,
 ) -> Result<Outcome, Vec<Problem>> {
+    outcome_observed(name, text, loader, catalogs, libraries, &|_| {})
+}
+
+/// What [`outcome_observed`] is about to do, for a caller that shows how far it has got.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Step<'a> {
+    /// `Solve` or `Lower`.
+    pub stage: Stage,
+    /// The board or system it is about to work on (a board of a system is lowered under the
+    /// system's name).
+    pub board: &'a str,
+    /// How many of the file's boards and systems are finished, and how many there are.
+    pub done: usize,
+    pub total: usize,
+}
+
+/// [`outcome_with`], telling `observe` before it solves and before it lowers each board and
+/// system of the file.
+pub fn outcome_observed(
+    name: &str,
+    text: &str,
+    loader: &Loader,
+    catalogs: &Catalogs,
+    libraries: Option<&Libraries>,
+    observe: &dyn Fn(Step<'_>),
+) -> Result<Outcome, Vec<Problem>> {
     let checked = check(name, text, loader);
     if !checked.is_ok() {
         return Err(problems_of(&checked));
@@ -241,6 +343,7 @@ pub fn outcome_with(
     if checked.boards.is_empty() && checked.systems.is_empty() && checked.panels.is_empty() {
         let message = format!("{name} has no `board` to build");
         return Err(vec![Problem::general(
+            Stage::Check,
             message.clone(),
             format!("{message}\n"),
         )]);
@@ -248,13 +351,26 @@ pub fn outcome_with(
 
     let mut built = Vec::new();
     let mut solved = Vec::new();
-    for board in checked.standalone_boards() {
+    let total = checked.standalone_boards().count() + checked.systems.len();
+    for (done, board) in checked.standalone_boards().enumerate() {
+        let step = |stage| Step {
+            stage,
+            board: &board.name,
+            done,
+            total,
+        };
+        observe(step(Stage::Solve));
         let solution = solve(board, catalogs);
         if !solution.diagnostics.is_empty() {
-            return Err(diagnostic_problems(&solution.diagnostics, &checked.sources));
+            return Err(diagnostic_problems(
+                &solution.diagnostics,
+                &checked.sources,
+                &|_| board.name.clone(),
+            ));
         }
-        let lowered =
-            lower(board, &solution).map_err(|errors| lowering_problems(&board.name, &errors))?;
+        observe(step(Stage::Lower));
+        let lowered = lower(board, &solution)
+            .map_err(|errors| lowering_problems(Some(&board.name), &board.name, &errors))?;
         if catalogs.strict_guidelines() {
             refuse_guidelines(
                 &board.name,
@@ -281,22 +397,47 @@ pub fn outcome_with(
         );
         built.push(one);
     }
-    for system in &checked.systems {
+    let standalone = total - checked.systems.len();
+    for (n, system) in checked.systems.iter().enumerate() {
+        let step = |stage| Step {
+            stage,
+            board: &system.name,
+            done: standalone + n,
+            total,
+        };
         if system.boards.is_empty() {
             let message = format!("system {} has no boards", system.name);
             return Err(vec![Problem::general(
+                Stage::Check,
                 message.clone(),
                 format!("error: {message}\n"),
             )]);
         }
+        observe(step(Stage::Solve));
         let solution = solve_system(system, catalogs);
         if !solution.diagnostics.is_empty() {
-            return Err(diagnostic_problems(&solution.diagnostics, &checked.sources));
+            // A message written inside the definition of a member's board is about that board;
+            // any other is about the system.
+            return Err(diagnostic_problems(
+                &solution.diagnostics,
+                &checked.sources,
+                &|d| {
+                    let member = system
+                        .boards
+                        .iter()
+                        .find(|m| inside_definition(&solution.model, m.inst, d.source, d.span));
+                    match member {
+                        Some(m) => format!("{}/{}", system.name, m.name),
+                        None => system.name.clone(),
+                    }
+                },
+            ));
         }
+        observe(step(Stage::Lower));
         for member in &system.boards {
             let label = format!("{}/{}", system.name, member.name);
             let lowered = lower_system_board(system, member, &solution)
-                .map_err(|errors| lowering_problems(&label, &errors))?;
+                .map_err(|errors| lowering_problems(Some(&label), &label, &errors))?;
             let scoped = solution.model.scoped_to(member.inst);
             if catalogs.strict_guidelines() {
                 refuse_guidelines(&label, &lowered.guidelines, &scoped, &checked.sources)?;
@@ -333,7 +474,7 @@ pub fn outcome_with(
     let mut panels = Vec::new();
     for panel in &checked.panels {
         let spec = lower_panel(panel)
-            .map_err(|errors| lowering_problems(&format!("panel {}", panel.name), &errors))?;
+            .map_err(|errors| lowering_problems(None, &format!("panel {}", panel.name), &errors))?;
         if !built
             .iter()
             .any(|b| b.system.is_none() && b.board == spec.cell)
@@ -354,6 +495,7 @@ pub fn outcome_with(
                 }
             );
             return Err(vec![Problem::general(
+                Stage::Check,
                 message.clone(),
                 format!("error: {message}\n"),
             )]);
@@ -382,38 +524,62 @@ fn refuse_guidelines(
         .iter()
         .map(|g| {
             let message = format!("{label}: {} guideline: {}", g.rule, g.message);
-            match g.at {
+            let mut problem = match g.at {
                 Some(inst) => {
                     let (source, span) = model.instance(inst).at();
-                    Problem::of(
+                    let mut problem = Problem::of(
+                        Stage::Guideline,
                         &netsmith_check::Diagnostic {
                             source,
                             span,
                             message,
                         },
                         sources,
-                    )
+                    );
+                    problem.path = Some(model.path_of(inst)).filter(|p| !p.is_empty());
+                    problem
                 }
-                None => Problem::general(message.clone(), format!("error: {message}\n")),
-            }
+                None => Problem::general(
+                    Stage::Guideline,
+                    message.clone(),
+                    format!("error: {message}\n"),
+                ),
+            };
+            problem.board = Some(label.to_string());
+            problem
         })
         .collect())
 }
 
+/// The solver's mistakes. `board_of` says which board a mistake is about.
 fn diagnostic_problems(
     diagnostics: &[netsmith_check::Diagnostic],
     sources: &Sources,
+    board_of: &dyn Fn(&netsmith_check::Diagnostic) -> String,
 ) -> Vec<Problem> {
     diagnostics
         .iter()
-        .map(|d| Problem::of(d, sources))
+        .map(|d| {
+            let mut problem = Problem::of(Stage::Solve, d, sources);
+            problem.board = Some(board_of(d));
+            problem
+        })
         .collect()
 }
 
-fn lowering_problems(board: &str, errors: &[String]) -> Vec<Problem> {
+/// Mistakes of lowering `subject`: a board (`board` names it), or a panel.
+fn lowering_problems(board: Option<&str>, subject: &str, errors: &[String]) -> Vec<Problem> {
     errors
         .iter()
-        .map(|e| Problem::general(format!("{board}: {e}"), format!("error: {board}: {e}\n")))
+        .map(|e| {
+            let mut problem = Problem::general(
+                Stage::Lower,
+                format!("{subject}: {e}"),
+                format!("error: {subject}: {e}\n"),
+            );
+            problem.board = board.map(str::to_string);
+            problem
+        })
         .collect()
 }
 
@@ -502,6 +668,7 @@ fn export(
 ) -> Result<Built, Vec<Problem>> {
     // The nets whose tracks were not sized from their current (ADR 0048).
     notes.extend(lowered.notes.iter().cloned());
+    let lowering_notes = lowered.notes.len();
     let label = match system {
         Some(system) => format!("{system}/{board}"),
         None => board.to_string(),
@@ -525,10 +692,14 @@ fn export(
                     continue;
                 };
                 let footprint = libraries.footprints.load(&mapped.footprint).map_err(|e| {
-                    vec![Problem::general(
-                        format!("{label}: {}: {e}", s.refdes),
-                        format!("error: {label}: {}: {e}\n", s.refdes),
-                    )]
+                    vec![
+                        Problem::general(
+                            Stage::Lower,
+                            format!("{label}: {}: {e}", s.refdes),
+                            format!("error: {label}: {}: {e}\n", s.refdes),
+                        )
+                        .on_board(&label),
+                    ]
                 })?;
                 if footprint.mount == netsmith_pcb::Mount::ThroughHole && !s.assembly_stated {
                     s.assembly = Assembly::Hand;
@@ -551,7 +722,12 @@ fn export(
                 return Err(disagreements
                     .into_iter()
                     .map(|m| {
-                        Problem::general(format!("{label}: {m}"), format!("error: {label}: {m}\n"))
+                        Problem::general(
+                            Stage::Lower,
+                            format!("{label}: {m}"),
+                            format!("error: {label}: {m}\n"),
+                        )
+                        .on_board(&label)
                     })
                     .collect());
             }
@@ -567,10 +743,14 @@ fn export(
             };
             let schematic = emit_schematic(&drawn, &libraries.mapping, &libraries.symbols)
                 .map_err(|e| {
-                    vec![Problem::general(
-                        format!("{label}: {e}"),
-                        format!("error: {label}: {e}\n"),
-                    )]
+                    vec![
+                        Problem::general(
+                            Stage::Lower,
+                            format!("{label}: {e}"),
+                            format!("error: {label}: {e}\n"),
+                        )
+                        .on_board(&label),
+                    ]
                 })?;
             (schematic, project_file(&design.name))
         }
@@ -601,6 +781,7 @@ fn export(
         rechecks: Vec::new(),
         schematic,
         notes,
+        lowering_notes,
         guidelines: lowered.guidelines,
         trace: Trace {
             model: model.clone(),

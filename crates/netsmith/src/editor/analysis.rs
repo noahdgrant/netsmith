@@ -5,15 +5,15 @@ use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
 
 use netsmith_check::{Loader, check};
 use netsmith_editor::{
-    ApiError,
+    AnalysisEvent, ApiError,
     api::{
         Analysis, BoardDetail, BoardSummary, Location, NetInfo, PanelSummary, PartInfo, PinInfo,
-        Problem, Severity, SystemSummary,
+        Problem, ProblemStage, Severity, SystemSummary,
     },
 };
 
 use super::Workspace;
-use crate::{Built, Libraries, SolvedSystem, locate, outcome_with};
+use crate::{Built, Libraries, SolvedSystem, Stage, locate, outcome_observed};
 
 /// A board that built, with its drawing.
 pub struct BoardData {
@@ -112,6 +112,7 @@ impl Snapshot {
                     rows: p.spec.rows,
                 })
                 .collect(),
+            elapsed_ms: None,
         }
     }
 
@@ -162,6 +163,15 @@ fn problem(severity: Severity, p: &crate::Problem) -> Problem {
             end_line: l.end_line as u32,
             end_column: l.end_column as u32,
         }),
+        stage: Some(match p.stage {
+            Stage::Syntax => ProblemStage::Syntax,
+            Stage::Check => ProblemStage::Check,
+            Stage::Solve => ProblemStage::Solve,
+            Stage::Lower => ProblemStage::Lower,
+            Stage::Guideline => ProblemStage::Guideline,
+        }),
+        board: p.board.clone(),
+        path: p.path.clone(),
     }
 }
 
@@ -171,8 +181,14 @@ fn general(message: String) -> Problem {
         rendered: format!("error: {message}\n"),
         message,
         at: None,
+        stage: Some(ProblemStage::Check),
+        board: None,
+        path: None,
     }
 }
+
+/// The least time between two progress lines about modules.
+const MODULE_PROGRESS_EVERY: std::time::Duration = std::time::Duration::from_millis(100);
 
 impl Workspace {
     /// Build every top-level file, with `unsaved` read in place of the files it names, and
@@ -182,6 +198,7 @@ impl Workspace {
         &self,
         unsaved: &HashMap<PathBuf, String>,
         previous: Option<&Snapshot>,
+        observe: &dyn Fn(AnalysisEvent),
     ) -> Snapshot {
         let mut snapshot = Snapshot::default();
         let loader = match self.target.loader_with(unsaved) {
@@ -201,7 +218,15 @@ impl Workspace {
         let libraries = Arc::new(Libraries::for_project(
             self.target.project.as_ref().map(|p| p.root.as_path()),
         ));
-        for file in &self.target.files {
+        let files = self.target.files.len() as u32;
+        for (index, file) in self.target.files.iter().enumerate() {
+            observe(AnalysisEvent::Progress {
+                stage: "check".to_string(),
+                board: file.name.clone(),
+                done: index as u32,
+                total: files,
+                message: format!("checking {} ({} of {files})", file.name, index + 1),
+            });
             let text = match unsaved.get(&file.path) {
                 Some(text) => Ok(text.clone()),
                 None => fs::read_to_string(&file.path),
@@ -211,8 +236,41 @@ impl Workspace {
                     message: format!("{}: {e}", file.name),
                     at: None,
                     rendered: format!("{}: {e}\n", file.name),
+                    stage: Stage::Check,
+                    board: None,
+                    path: None,
                 }]),
-                Ok(text) => outcome_with(&file.name, &text, &loader, &catalogs, None),
+                Ok(text) => outcome_observed(
+                    &file.name,
+                    &text,
+                    &loader,
+                    &catalogs,
+                    None,
+                    &|step: crate::Step<'_>| {
+                        let verb = if step.stage == Stage::Solve {
+                            "solving"
+                        } else {
+                            "lowering"
+                        };
+                        observe(AnalysisEvent::Progress {
+                            stage: if step.stage == Stage::Solve {
+                                "solve"
+                            } else {
+                                "lower"
+                            }
+                            .to_string(),
+                            board: step.board.to_string(),
+                            done: step.done as u32,
+                            total: step.total as u32,
+                            message: format!(
+                                "{verb} {} ({} of {})",
+                                step.board,
+                                step.done + 1,
+                                step.total
+                            ),
+                        });
+                    },
+                ),
             };
             match outcome {
                 Ok(outcome) => {
@@ -224,7 +282,15 @@ impl Workspace {
                             .map(|b| b.design.name.clone())
                             .collect::<Vec<_>>(),
                     ));
-                    for built in outcome.boards {
+                    let drawn = outcome.boards.len() as u32;
+                    for (n, built) in outcome.boards.into_iter().enumerate() {
+                        observe(AnalysisEvent::Progress {
+                            stage: "draw".to_string(),
+                            board: built.label(),
+                            done: n as u32,
+                            total: drawn,
+                            message: format!("drawing {} ({} of {drawn})", built.label(), n + 1),
+                        });
                         // The symbols come from KiCad's libraries; without them the schematic
                         // draws boxes and says why.
                         let svg = (*libraries).as_ref().map_err(Clone::clone).and_then(|l| {
@@ -238,8 +304,11 @@ impl Workspace {
                             )
                             .map_err(|e| e.to_string())
                         });
-                        for note in &built.notes {
-                            snapshot.problems.push(note_problem(&built, note));
+                        let solver_notes = built.notes.len() - built.lowering_notes;
+                        for (n, note) in built.notes.iter().enumerate() {
+                            snapshot
+                                .problems
+                                .push(note_problem(&built, note, n >= solver_notes));
                         }
                         for guideline in &built.guidelines {
                             snapshot.problems.push(guideline_problem(&built, guideline));
@@ -305,7 +374,7 @@ impl Workspace {
                 }
             }
         }
-        self.check_modules(unsaved, &loader, &mut snapshot);
+        self.check_modules(unsaved, &loader, &mut snapshot, observe);
         // A mistake in a module shows once, however many files import it.
         let mut seen = Vec::new();
         snapshot.problems.retain(|p| {
@@ -322,6 +391,7 @@ impl Workspace {
         unsaved: &HashMap<PathBuf, String>,
         loader: &Loader,
         snapshot: &mut Snapshot,
+        observe: &dyn Fn(AnalysisEvent),
     ) {
         let Some(project) = &self.target.project else {
             return;
@@ -329,14 +399,34 @@ impl Workspace {
         let Ok(modules) = project.modules() else {
             return;
         };
-        for module in modules {
-            if self
-                .target
-                .files
-                .iter()
-                .any(|f| same_file(&f.path, &module.path))
-            {
-                continue;
+        let modules: Vec<_> = modules
+            .into_iter()
+            .filter(|module| {
+                !self
+                    .target
+                    .files
+                    .iter()
+                    .any(|f| same_file(&f.path, &module.path))
+            })
+            .collect();
+        let total = modules.len() as u32;
+        // Modules check in a few milliseconds each: the first is told, and then one in each
+        // `MODULE_PROGRESS_EVERY`, so that fifty of them are not fifty messages at once.
+        let mut told: Option<std::time::Instant> = None;
+        for (index, module) in modules.into_iter().enumerate() {
+            if told.is_none_or(|at| at.elapsed() >= MODULE_PROGRESS_EVERY) {
+                told = Some(std::time::Instant::now());
+                observe(AnalysisEvent::Progress {
+                    stage: "modules".to_string(),
+                    board: module.name(&project.root),
+                    done: index as u32,
+                    total,
+                    message: format!(
+                        "checking module {} ({} of {total})",
+                        module.name(&project.root),
+                        index + 1
+                    ),
+                });
             }
             let text = match unsaved.get(&module.path) {
                 Some(text) => text.clone(),
@@ -572,7 +662,7 @@ pub(super) fn api_location(l: crate::Location) -> Location {
 /// A note of the build, at the instance it is about if it names one. A part not chosen is a
 /// warning, because the design has a hole; a relation not evaluated and a balance that is
 /// incomplete are notes, which say what the solver left alone and are mostly expected.
-fn note_problem(built: &Built, note: &str) -> Problem {
+fn note_problem(built: &Built, note: &str, from_lowering: bool) -> Problem {
     let model = &built.trace.model;
     let at = note_path_at(model, note).map(|inst| {
         let (src, span) = model.instance(inst).at();
@@ -588,6 +678,15 @@ fn note_problem(built: &Built, note: &str) -> Problem {
         message: format!("{}: {note}", built.label()),
         rendered: format!("note: {}: {note}\n", built.label()),
         at,
+        stage: Some(if from_lowering {
+            ProblemStage::Lower
+        } else {
+            ProblemStage::Solve
+        }),
+        board: Some(built.label()),
+        path: note_path_at(model, note)
+            .map(|inst| model.path_of(inst))
+            .filter(|p| !p.is_empty()),
     }
 }
 
@@ -610,6 +709,12 @@ fn guideline_problem(built: &Built, guideline: &netsmith_lower::guidelines::Guid
         rendered: format!("warning: {message}\n"),
         message,
         at,
+        stage: Some(ProblemStage::Guideline),
+        board: Some(built.label()),
+        path: guideline
+            .at
+            .map(|inst| model.path_of(inst))
+            .filter(|p| !p.is_empty()),
     }
 }
 

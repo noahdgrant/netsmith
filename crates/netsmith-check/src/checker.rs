@@ -69,6 +69,8 @@ pub(crate) struct Checker<'a> {
     modules: Vec<ModuleData>,
     cache: HashMap<String, usize>,
     diags: Vec<Diagnostic>,
+    /// The diagnostics of `diags` that are parse errors.
+    syntax: Vec<Diagnostic>,
     seen: HashSet<Diagnostic>,
     // State of the elaboration in progress.
     pub model: Model,
@@ -118,6 +120,7 @@ impl<'a> Checker<'a> {
             modules: Vec::new(),
             cache: HashMap::new(),
             diags: Vec::new(),
+            syntax: Vec::new(),
             seen: HashSet::new(),
             model: Model::new(),
             scope: Vec::new(),
@@ -131,8 +134,21 @@ impl<'a> Checker<'a> {
         }
     }
 
-    pub fn into_diagnostics(self) -> (Vec<Diagnostic>, Sources) {
-        (self.diags, self.sources)
+    pub fn into_diagnostics(self) -> (Vec<Diagnostic>, Vec<Diagnostic>, Sources) {
+        (self.diags, self.syntax, self.sources)
+    }
+
+    /// Report a parse error: a diagnostic like any other, also remembered as one of syntax.
+    fn report_syntax(&mut self, source: SourceId, e: netsmith_lang::ParseError) {
+        let d = Diagnostic {
+            source,
+            span: e.span,
+            message: e.message,
+        };
+        if !self.syntax.contains(&d) {
+            self.syntax.push(d.clone());
+        }
+        self.report(d.source, d.span, d.message);
     }
 
     pub fn module_defs(&self, module: usize) -> Vec<Rc<Definition>> {
@@ -206,7 +222,7 @@ impl<'a> Checker<'a> {
         let mut file = match parse(text) {
             Ok(file) => file,
             Err(e) => {
-                self.report(source, e.span, e.message);
+                self.report_syntax(source, e);
                 netsmith_lang::ast::File {
                     inner_docs: Vec::new(),
                     imports: Vec::new(),
@@ -270,7 +286,7 @@ impl<'a> Checker<'a> {
         let file = match parse(text) {
             Ok(file) => file,
             Err(e) => {
-                self.report(source, e.span, e.message);
+                self.report_syntax(source, e);
                 return;
             }
         };

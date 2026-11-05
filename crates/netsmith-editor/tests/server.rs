@@ -4,15 +4,15 @@ use std::{
     io::{Read, Write},
     net::{Ipv4Addr, TcpListener, TcpStream},
     sync::{
-        Arc,
-        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread,
     time::{Duration, Instant},
 };
 
 use netsmith_editor::{
-    ApiError, Attachment, Backend,
+    AnalysisEvent, ApiError, Attachment, Backend, Observer,
     api::{
         Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, ClientMessage,
         Definition, Download, FabReport, FileContent, OrderBoardInfo, OrderInfo, OrderReport,
@@ -23,6 +23,22 @@ use netsmith_editor::{
 /// Answers each question with something recognisable.
 struct Fake {
     version: AtomicU64,
+    /// The first analysis is running: `analysis` and `check` wait for it, as a real one does.
+    pending: AtomicBool,
+    observer: Mutex<Option<Observer>>,
+}
+
+impl Fake {
+    fn wait_for_the_first_analysis(&self) {
+        while self.pending.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    fn tell(&self, event: AnalysisEvent) {
+        let observer = self.observer.lock().unwrap().clone();
+        (observer.expect("the server has set an observer"))(event);
+    }
 }
 
 fn analysis(version: u64) -> Analysis {
@@ -35,6 +51,7 @@ fn analysis(version: u64) -> Analysis {
         boards: Vec::new(),
         systems: Vec::new(),
         panels: Vec::new(),
+        elapsed_ms: None,
     }
 }
 
@@ -98,9 +115,20 @@ impl Backend for Fake {
         })
     }
     fn analysis(&self) -> Analysis {
-        analysis(self.version.load(Ordering::SeqCst))
+        self.wait_for_the_first_analysis();
+        Analysis {
+            elapsed_ms: Some(77),
+            ..analysis(self.version.load(Ordering::SeqCst))
+        }
+    }
+    fn pending(&self) -> Option<u32> {
+        self.pending.load(Ordering::SeqCst).then_some(123)
+    }
+    fn observe(&self, observer: Observer) {
+        *self.observer.lock().unwrap() = Some(observer);
     }
     fn check(&self, path: &str, text: &str) -> Result<Analysis, ApiError> {
+        self.wait_for_the_first_analysis();
         // The text length stands for what the check found, so the test can see it arrived.
         Ok(analysis(1000 + path.len() as u64 + text.len() as u64))
     }
@@ -256,10 +284,21 @@ struct Server {
 }
 
 fn start() -> Server {
+    start_with(1, false)
+}
+
+/// A server whose first analysis is running (version 0 until `finish_the_first_analysis`).
+fn start_pending() -> Server {
+    start_with(0, true)
+}
+
+fn start_with(version: u64, pending: bool) -> Server {
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
     let port = listener.local_addr().unwrap().port();
     let backend = Arc::new(Fake {
-        version: AtomicU64::new(1),
+        version: AtomicU64::new(version),
+        pending: AtomicBool::new(pending),
+        observer: Mutex::new(None),
     });
     let served = Arc::clone(&backend);
     thread::spawn(move || netsmith_editor::serve(listener, served));
@@ -268,6 +307,12 @@ fn start() -> Server {
 }
 
 impl Server {
+    /// The first analysis ends, with the project at version 1.
+    fn finish_the_first_analysis(&self) {
+        self.backend.version.store(1, Ordering::SeqCst);
+        self.backend.pending.store(false, Ordering::SeqCst);
+    }
+
     fn request(
         &self,
         method: &str,
@@ -544,7 +589,7 @@ fn rebuild_is_pushed_and_check_is_answered() {
     // The backend's version goes up and the page is told.
     s.backend.version.store(2, Ordering::SeqCst);
     match next_message(&mut socket, "the `rebuilt` push for version 2") {
-        ServerMessage::Rebuilt { analysis } => assert_eq!(analysis.version, 2),
+        ServerMessage::Rebuilt { analysis, .. } => assert_eq!(analysis.version, 2),
         other => panic!("expected `rebuilt`, got {other:?}"),
     }
     // The page asks for a check of unsaved text.
@@ -595,6 +640,7 @@ fn a_running_job_pushes_its_progress() {
             task,
             board,
             message,
+            ..
         } = next_message(&mut socket, "the progress of the build")
         {
             assert_eq!(
@@ -634,6 +680,7 @@ fn a_catalog_refresh_changes_files_so_needs_the_guard_header_takes_two_flags_and
             task,
             board,
             message,
+            ..
         } = next_message(&mut socket, "the progress of the refresh")
         {
             assert_eq!(
@@ -693,6 +740,7 @@ fn orders_are_listed_run_with_progress_and_downloaded() {
             task,
             board,
             message,
+            ..
         } = next_message(&mut socket, "the progress of the order")
         {
             assert_eq!(
@@ -721,4 +769,226 @@ fn orders_are_listed_run_with_progress_and_downloaded() {
         r.headers
     );
     assert_eq!(r.body, "order\n");
+}
+
+const PENDING: (&str, &str) = ("X-Netsmith-Pending", "1");
+
+/// The observer is installed before the first connection can arrive, so the test waits for
+/// the server to have set it (it runs on the server's thread).
+fn wait_for_observer(s: &Server) {
+    let deadline = Instant::now() + WAIT;
+    while s.backend.observer.lock().unwrap().is_none() {
+        assert!(
+            Instant::now() < deadline,
+            "the server never set an observer"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn while_the_first_analysis_runs_the_page_and_the_files_are_served_and_a_request_that_asks_is_told_pending()
+ {
+    let s = start_pending();
+    // The page, the tree and a file never wait for the analysis.
+    assert_eq!(s.get("/").status, 200);
+    assert_eq!(s.get("/api/project").status, 200);
+    assert_eq!(s.get("/api/file?path=a.nsm").status, 200);
+    // A route that needs it answers `503` and says how long it has run, to a request that
+    // asks; it did nothing.
+    for (method, target) in [
+        ("GET", "/api/analysis"),
+        ("GET", "/api/board?name=A"),
+        ("GET", "/api/power?board=A"),
+        ("GET", "/api/pcb/findings?board=A"),
+        ("POST", "/api/build"),
+        ("POST", "/api/fab?board=A"),
+        ("POST", "/api/fs/create-file"),
+    ] {
+        let r = s.request(method, target, &[GUARD, PENDING], "", None);
+        assert_eq!(r.status, 503, "{method} {target}: {}", r.body);
+        assert!(
+            r.headers.contains("application/json") && r.headers.contains("retry-after: 1"),
+            "{target}: {}",
+            r.headers
+        );
+        assert_eq!(r.body, r#"{"pending":true,"elapsedMs":123}"#, "{target}");
+    }
+    // Only for a request that asks, and only for `1`.
+    assert_ne!(
+        s.request("GET", "/api/project", &[PENDING], "", None)
+            .status,
+        503
+    );
+    // Over: the same request is answered as ever.
+    s.finish_the_first_analysis();
+    let r = s.request("GET", "/api/analysis", &[PENDING], "", None);
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert!(
+        r.body.contains("\"version\":1") && r.body.contains("\"elapsedMs\":77"),
+        "{}",
+        r.body
+    );
+}
+
+#[test]
+fn a_request_that_does_not_ask_waits_for_the_first_analysis_and_is_then_answered() {
+    let s = start_pending();
+    let port = s.port;
+    let asked = Instant::now();
+    let waiting = thread::spawn(move || {
+        let s = Server {
+            port,
+            backend: Arc::new(Fake {
+                version: AtomicU64::new(0),
+                pending: AtomicBool::new(false),
+                observer: Mutex::new(None),
+            }),
+        };
+        // `X-Netsmith-Pending: 0` is not asking.
+        s.request(
+            "GET",
+            "/api/analysis",
+            &[("X-Netsmith-Pending", "0")],
+            "",
+            None,
+        )
+    });
+    thread::sleep(Duration::from_millis(400));
+    assert!(
+        !waiting.is_finished(),
+        "it answered before the analysis ended"
+    );
+    s.finish_the_first_analysis();
+    let r = waiting.join().unwrap();
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert!(r.body.contains("\"version\":1"), "{}", r.body);
+    assert!(asked.elapsed() >= Duration::from_millis(400));
+}
+
+/// What the page that was there from the start hears, and what a page that connects in the
+/// middle is told at once; then `rebuilt` with the time taken.
+#[test]
+fn the_socket_carries_the_analysis_from_its_start_to_rebuilt() {
+    let s = start_pending();
+    wait_for_observer(&s);
+    let mut early = open_socket(s.port);
+    s.backend.tell(AnalysisEvent::Started {
+        since: 1_700_000_000_000,
+    });
+    s.backend.tell(AnalysisEvent::Progress {
+        stage: "solve".into(),
+        board: "Main".into(),
+        done: 2,
+        total: 5,
+        message: "solving Main (3 of 5)".into(),
+    });
+    assert_eq!(
+        next_message(&mut early, "analysing"),
+        ServerMessage::Analysing {
+            since: 1_700_000_000_000
+        }
+    );
+    match next_message(&mut early, "progress") {
+        ServerMessage::Progress {
+            task,
+            board,
+            message,
+            stage,
+            done,
+            total,
+        } => assert_eq!(
+            (
+                task.as_str(),
+                board.as_str(),
+                message.as_str(),
+                stage.as_deref(),
+                done,
+                total
+            ),
+            (
+                "analyse",
+                "Main",
+                "solving Main (3 of 5)",
+                Some("solve"),
+                Some(2),
+                Some(5)
+            )
+        ),
+        other => panic!("expected progress, got {other:?}"),
+    }
+    // A page that connects now is told the same, without waiting for the next line.
+    let mut late = open_socket(s.port);
+    assert_eq!(
+        next_message(&mut late, "analysing, for a late page"),
+        ServerMessage::Analysing {
+            since: 1_700_000_000_000
+        }
+    );
+    assert!(matches!(
+        next_message(&mut late, "the last progress, for a late page"),
+        ServerMessage::Progress { done: Some(2), .. }
+    ));
+    // The wire form is what the page reads.
+    let wire = serde_json::to_string(&ServerMessage::Analysing { since: 5 }).unwrap();
+    assert_eq!(wire, r#"{"type":"analysing","since":5}"#);
+    s.backend.tell(AnalysisEvent::Finished);
+    s.finish_the_first_analysis();
+    for socket in [&mut early, &mut late] {
+        match next_message(socket, "rebuilt after the first analysis") {
+            ServerMessage::Rebuilt {
+                analysis,
+                elapsed_ms,
+            } => assert_eq!((analysis.version, elapsed_ms), (1, Some(77))),
+            other => panic!("expected `rebuilt`, got {other:?}"),
+        }
+    }
+    // Over, so a page that connects now hears nothing of an analysis.
+    let mut after = open_socket(s.port);
+    s.backend.version.store(2, Ordering::SeqCst);
+    assert!(matches!(
+        next_message(&mut after, "rebuilt, with no `analysing` before it"),
+        ServerMessage::Rebuilt { .. }
+    ));
+}
+
+/// A check of typed text waits for the first analysis; the socket must go on carrying what the
+/// analysis says meanwhile, and answer the check after.
+#[test]
+fn a_check_that_waits_for_the_first_analysis_does_not_stop_the_socket() {
+    let s = start_pending();
+    wait_for_observer(&s);
+    let mut socket = open_socket(s.port);
+    let ask = ClientMessage::Check {
+        id: 3,
+        path: "a.nsm".into(),
+        text: "abc".into(),
+    };
+    socket
+        .send(tungstenite::Message::text(
+            serde_json::to_string(&ask).unwrap(),
+        ))
+        .unwrap();
+    thread::sleep(Duration::from_millis(200));
+    s.backend.tell(AnalysisEvent::Started { since: 9 });
+    assert_eq!(
+        next_message(&mut socket, "analysing while a check waits"),
+        ServerMessage::Analysing { since: 9 }
+    );
+    s.backend.tell(AnalysisEvent::Finished);
+    s.finish_the_first_analysis();
+    let mut seen = Vec::new();
+    loop {
+        match next_message(&mut socket, "the check's answer and `rebuilt`") {
+            ServerMessage::Checked { id, .. } => {
+                assert_eq!(id, 3);
+                seen.push("checked");
+            }
+            ServerMessage::Rebuilt { .. } => seen.push("rebuilt"),
+            other => panic!("unexpected {other:?}"),
+        }
+        if seen.len() == 2 {
+            break;
+        }
+    }
 }

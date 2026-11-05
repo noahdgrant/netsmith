@@ -638,7 +638,9 @@ fn run_editor(file: Option<&str>, port: u16) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let workspace = match Workspace::open(target) {
+    // Not analysed yet: the server listens first and the analysis runs behind it, so a page
+    // that connects during it is told so (ADR 0019).
+    let workspace = match Workspace::open_deferred(target) {
         Ok(w) => w,
         Err(e) => {
             eprintln!("{e}");

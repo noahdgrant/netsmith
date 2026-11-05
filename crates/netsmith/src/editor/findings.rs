@@ -9,7 +9,7 @@ use std::{
 
 use netsmith_editor::{
     Say,
-    api::{FindingSource, KicadState, PcbBox, PcbFinding, Severity},
+    api::{FindingSource, KicadState, Location, PcbBox, PcbFinding, Severity},
 };
 use netsmith_fab::{
     KicadCli, KicadCliExe,
@@ -24,6 +24,25 @@ pub struct KicadResult {
     pub state: KicadState,
     pub note: String,
     pub findings: Vec<PcbFinding>,
+}
+
+/// The first line of a source file that `text` names as `file.nsm:12` (a requirement's
+/// source is written so: `led.physical.nsm:12`, several joined by commas, and a sentence may
+/// quote one in brackets), as a point at the start of that line. The file is as the checker
+/// names it, which is how the page names it.
+pub fn stated_at(text: &str) -> Option<Location> {
+    text.split(|c: char| !(c.is_alphanumeric() || "._/-:".contains(c)))
+        .find_map(|word| {
+            let (file, line) = word.rsplit_once(':')?;
+            let line: u32 = line.parse().ok().filter(|l| *l > 0)?;
+            file.ends_with(".nsm").then(|| Location {
+                file: file.to_string(),
+                line,
+                column: 1,
+                end_line: line,
+                end_column: 1,
+            })
+        })
 }
 
 /// The least a finding's box is, in mm each way, so a zoom to a point is not to nothing.
@@ -60,6 +79,7 @@ fn make(
         y: at.y,
         area: finding_box(area),
         parts,
+        at: None,
     }
 }
 
@@ -200,7 +220,14 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
             let area = area.unwrap_or(board.outline);
             let parts: Vec<String> = subjects.iter().map(ToString::to_string).collect();
             let id = ids.id(format!("placement:{rule}:{}", parts.join("+")));
-            make(
+            // The lines of the physical file that the problem quotes: where the pins' protrusion
+            // is stated, or the requirement that allows an overhang.
+            let at = match &problem {
+                PlacementProblem::OverPins { source, .. } => stated_at(source),
+                PlacementProblem::OutsideOutline { by, .. } => stated_at(by),
+                _ => None,
+            };
+            let mut finding = make(
                 id,
                 FindingSource::Placement,
                 Severity::Error,
@@ -208,7 +235,9 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
                 message,
                 area,
                 parts,
-            )
+            );
+            finding.at = at;
+            finding
         })
         .chain(unchecked)
         .collect()
@@ -312,7 +341,10 @@ pub fn precheck_findings(pre: &netsmith_pcb::Precheck) -> Vec<PcbFinding> {
     let mut found = Vec::new();
     let mut add = |severity, base: String, message: String, parts: Vec<String>| {
         let id = ids.id(format!("constraint:precheck:{base}"));
-        found.push(make(
+        // The precheck's findings are sentences with no structure behind them: the line is
+        // read out of the sentence, which quotes it.
+        let stated = stated_at(&message);
+        let mut finding = make(
             id,
             FindingSource::Placement,
             severity,
@@ -320,7 +352,9 @@ pub fn precheck_findings(pre: &netsmith_pcb::Precheck) -> Vec<PcbFinding> {
             message,
             at,
             parts,
-        ));
+        );
+        finding.at = stated;
+        found.push(finding);
     };
     for (n, conflict) in pre.conflicts.iter().enumerate() {
         add(
@@ -386,6 +420,7 @@ pub fn constraint_findings(board: &Board, constraints: &Constraints) -> Vec<PcbF
             // Named by the requirement, so that it keeps its name as the part is dragged.
             finding.id = ids.id(format!("constraint:{}", outcome.id));
             finding.source = FindingSource::Placement;
+            finding.at = stated_at(&outcome.source);
             finding
         })
         .collect()
@@ -574,6 +609,17 @@ mod tests {
             ("constraint", Severity::Error)
         );
         assert_eq!(f.parts, std::slice::from_ref(&part));
+        // The line that states it is data, not something to read out of the message.
+        assert_eq!(
+            f.at,
+            Some(Location {
+                file: "led.nsm".into(),
+                line: 9,
+                column: 1,
+                end_line: 9,
+                end_column: 1
+            })
+        );
         assert!(
             f.message
                 .contains("constraint supply.place.left (led.nsm:9) is violated")
@@ -622,6 +668,10 @@ mod tests {
             ("constraint", Severity::Error)
         );
         assert_eq!(
+            f.at.as_ref().map(|at| (at.file.as_str(), at.line)),
+            Some(("led.physical.nsm", 12))
+        );
+        assert_eq!(
             f.parts,
             [board.parts[1].refdes.clone(), board.parts[0].refdes.clone()]
         );
@@ -633,6 +683,39 @@ mod tests {
             "{}",
             f.message
         );
+    }
+
+    #[test]
+    fn the_line_a_requirement_is_stated_on_is_found_in_its_source_or_a_sentence_that_quotes_it() {
+        let at = |text: &str| stated_at(text).map(|l| (l.file, l.line));
+        assert_eq!(at("led.nsm:9"), Some(("led.nsm".into(), 9)));
+        // Several lines: the first.
+        assert_eq!(
+            at("src/a.physical.nsm:3, src/b.nsm:40"),
+            Some(("src/a.physical.nsm".into(), 3))
+        );
+        // A sentence that quotes one, in brackets and in backticks.
+        assert_eq!(
+            at(
+                "the design says it may hang over only the bottom edge (`j1.place.right (a.nsm:3)` allows at least 36 mm)"
+            ),
+            Some(("a.nsm".into(), 3))
+        );
+        assert_eq!(
+            at("conflict: src/w.physical.nsm:16 `.rf.place.right >= 59mm`"),
+            Some(("src/w.physical.nsm".into(), 16))
+        );
+        // Not a source line: no file of ours, no line, a line 0.
+        for text in [
+            "",
+            "no line here",
+            "led.kicad_pcb:9",
+            "led.nsm:",
+            "led.nsm:0",
+            "12:30",
+        ] {
+            assert_eq!(at(text), None, "{text:?}");
+        }
     }
 
     #[test]

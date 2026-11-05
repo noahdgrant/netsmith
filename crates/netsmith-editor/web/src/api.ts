@@ -5,6 +5,8 @@ export type Location = { file: string, line: number, column: number, endLine: nu
 
 export type Severity = "error" | "warning" | "note";
 
+export type ProblemStage = "syntax" | "check" | "solve" | "lower" | "guideline";
+
 export type Problem = { severity: Severity, 
 /**
  * Without the file and line.
@@ -13,7 +15,25 @@ message: string,
 /**
  * What the command line prints, with the source line underlined.
  */
-rendered: string, at: Location | null, };
+rendered: string, at: Location | null, 
+/**
+ * The stage that found it. Always set by this server; optional so that a page written
+ * before it was added still type checks.
+ */
+stage?: ProblemStage, 
+/**
+ * The board it is about, as `BoardSummary::name` has it (`Demo/main` for a board of a
+ * system), where the problem belongs to one board: every solver, lowering and guideline
+ * message and note, and a checker error written inside the definition of a board. A
+ * parse error, and a mistake in a module or a system (which boards share), have none.
+ */
+board?: string, 
+/**
+ * The instance it is about, from the board (`status_indicator.led`), where the server
+ * knows one: a note, a not-chosen warning and a guideline finding. The mistakes of the
+ * checker and the solver have none: they are about a statement, which `at` locates.
+ */
+path?: string, };
 
 export type FileRole = "top_level" | "module" | "std" | "manifest" | "physical";
 
@@ -94,7 +114,22 @@ export type PanelView = { name: string, board: string, columns: number, rows: nu
  */
 cellWidth: number, cellHeight: number, width: number, height: number, rail: number, svg: string, findings: Array<PanelFinding>, };
 
-export type Analysis = { version: number, errors: number, warnings: number, notes: number, problems: Array<Problem>, boards: Array<BoardSummary>, systems: Array<SystemSummary>, panels: Array<PanelSummary>, };
+export type Analysis = { version: number, errors: number, warnings: number, notes: number, problems: Array<Problem>, boards: Array<BoardSummary>, systems: Array<SystemSummary>, panels: Array<PanelSummary>, 
+/**
+ * How long the analysis took, in milliseconds: of the files on disk for `/api/analysis`
+ * and `rebuilt`, of the text on the page for `checked`.
+ */
+elapsedMs?: number, };
+
+export type Pending = { 
+/**
+ * Always `true`: what tells this answer from the route's own.
+ */
+pending: boolean, 
+/**
+ * How long the first analysis has been running, in milliseconds.
+ */
+elapsedMs: number, };
 
 export type PartInfo = { refdes: string, kind: string, value: string, package: string | null, 
 /**
@@ -146,7 +181,13 @@ demand: Range | null,
 /**
  * What the part that supplies it can give (`max_current`).
  */
-capacity: Range | null, capacityFrom: string | null, budget: Budget, };
+capacity: Range | null, capacityFrom: string | null, budget: Budget, 
+/**
+ * Where to look when the node has an issue: the declaration of the part or stage that
+ * supplies it (the one `capacity_from` names), else of its first supply, else of its first
+ * load. A `Draw` has its own `at`.
+ */
+at?: Location, };
 
 export type EdgeKind = "converts" | "join" | "net";
 
@@ -170,7 +211,11 @@ efficiency: Range | null,
 /**
  * It has an efficiency that the solver did not settle: its input current is then not worked out.
  */
-efficiencyUnsettled: boolean, };
+efficiencyUnsettled: boolean, 
+/**
+ * The declaration of the converter.
+ */
+at?: Location, };
 
 export type Port = { name: string, 
 /**
@@ -480,7 +525,13 @@ x: number, y: number, area: PcbBox,
 /**
  * The references of the parts it is about.
  */
-parts: Array<string>, };
+parts: Array<string>, 
+/**
+ * The line of a physical file (or of the circuit source) that states the requirement the
+ * finding quotes, where it quotes one; the first of them if it quotes several. A point at
+ * the start of the line (`column` and `endColumn` are 1), `file` as the checker names it.
+ */
+at?: Location, };
 
 export type KicadState = "not_run" | "ran" | "unavailable";
 
@@ -557,4 +608,4 @@ export type Definition = { at: Location, };
 
 export type ClientMessage = { "type": "check", id: number, path: string, text: string, };
 
-export type ServerMessage = { "type": "rebuilt", analysis: Analysis, } | { "type": "checked", id: number, analysis: Analysis, } | { "type": "progress", task: string, board: string, message: string, };
+export type ServerMessage = { "type": "rebuilt", analysis: Analysis, elapsedMs?: number, } | { "type": "analysing", since: number, } | { "type": "checked", id: number, analysis: Analysis, } | { "type": "progress", task: string, board: string, message: string, stage?: string, done?: number, total?: number, };

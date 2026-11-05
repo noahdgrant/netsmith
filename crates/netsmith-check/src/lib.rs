@@ -71,6 +71,8 @@ pub struct Checked {
     pub systems: Vec<System>,
     pub panels: Vec<Panel>,
     pub diagnostics: Vec<Diagnostic>,
+    /// The diagnostics that are parse errors (they are also in `diagnostics`).
+    pub syntax: Vec<Diagnostic>,
     pub sources: Sources,
 }
 
@@ -168,12 +170,13 @@ pub fn check(name: &str, text: &str, loader: &Loader) -> Checked {
             _ => {}
         }
     }
-    let (diagnostics, sources) = checker.into_diagnostics();
+    let (diagnostics, syntax, sources) = checker.into_diagnostics();
     Checked {
         boards,
         systems,
         panels,
         diagnostics,
+        syntax,
         sources,
     }
 }

@@ -56,6 +56,28 @@ pub struct Attachment {
 /// prints them. It may be called from any thread.
 pub type Say = std::sync::Arc<dyn Fn(&str) + Send + Sync>;
 
+/// What an analysis of the files on disk tells the server while it runs (not the analysis of
+/// text on the page, which is a check).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AnalysisEvent {
+    /// It began; `since` is when, in milliseconds since the Unix epoch.
+    Started { since: u64 },
+    /// How far it has got: `stage` is `check`, `solve`, `lower`, `draw` or `modules`, `done`
+    /// of `total` of what that stage works through, and `board` is the board or file it is on.
+    Progress {
+        stage: String,
+        board: String,
+        done: u32,
+        total: u32,
+        message: String,
+    },
+    /// It ended, however it ended (the result is the next `analysis`).
+    Finished,
+}
+
+/// Who hears of an [`AnalysisEvent`]. It may be called from any thread and must not block.
+pub type Observer = std::sync::Arc<dyn Fn(AnalysisEvent) + Send + Sync>;
+
 /// A project as the editor sees it. Each call is a whole request: the server runs them on
 /// threads of their own, so a long one (`fab`) does not hold up a keystroke's check.
 pub trait Backend: Send + Sync + 'static {
@@ -80,6 +102,20 @@ pub trait Backend: Send + Sync + 'static {
     /// The check of the files on disk, made again first if one changed. Its `version` goes
     /// up each time that happens.
     fn analysis(&self) -> Analysis;
+    /// `Some(milliseconds the first analysis has been running)` until it has finished, `None`
+    /// from then on. A backend whose files are read before it is served is never pending.
+    /// While it is `Some`, `analysis` blocks until the first analysis is done, and `version`
+    /// is `0` before that. It must not wait for anything: the server calls it from its
+    /// event loop.
+    fn pending(&self) -> Option<u32> {
+        None
+    }
+    /// Told once, before the server accepts a connection: every analysis of the files on disk
+    /// (the first, and each that a change on disk makes) reports to `observer`. A backend with
+    /// nothing to report ignores it.
+    fn observe(&self, observer: Observer) {
+        let _ = observer;
+    }
     /// The check with `path` as `text`, in memory.
     fn check(&self, path: &str, text: &str) -> Result<Analysis, ApiError>;
     fn board(&self, name: &str) -> Result<BoardDetail, ApiError>;

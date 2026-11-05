@@ -30,6 +30,25 @@ pub enum Severity {
     Note,
 }
 
+/// The stage of the build a problem comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum ProblemStage {
+    /// The text does not parse.
+    Syntax,
+    /// The checker: names, types, connections, pin tables, and a file that cannot be read.
+    Check,
+    /// The solver: a choice it could not make, a relation it could not evaluate, a value that
+    /// contradicts another; also the solver's notes and warnings of a build that went on (a
+    /// part not chosen).
+    Solve,
+    /// Lowering the solved design to parts and nets, with its notes, and the checks that the
+    /// schematic and the footprints agree with it.
+    Lower,
+    /// A guideline (ADR 0036), a warning unless the project makes it an error.
+    Guideline,
+}
+
 /// One message of the compiler or solver, or a note of the build.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -40,6 +59,24 @@ pub struct Problem {
     /// What the command line prints, with the source line underlined.
     pub rendered: String,
     pub at: Option<Location>,
+    /// The stage that found it. Always set by this server; optional so that a page written
+    /// before it was added still type checks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub stage: Option<ProblemStage>,
+    /// The board it is about, as `BoardSummary::name` has it (`Demo/main` for a board of a
+    /// system), where the problem belongs to one board: every solver, lowering and guideline
+    /// message and note, and a checker error written inside the definition of a board. A
+    /// parse error, and a mistake in a module or a system (which boards share), have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub board: Option<String>,
+    /// The instance it is about, from the board (`status_indicator.led`), where the server
+    /// knows one: a note, a not-chosen warning and a guideline finding. The mistakes of the
+    /// checker and the solver have none: they are about a statement, which `at` locates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub path: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -223,6 +260,23 @@ pub struct Analysis {
     pub boards: Vec<BoardSummary>,
     pub systems: Vec<SystemSummary>,
     pub panels: Vec<PanelSummary>,
+    /// How long the analysis took, in milliseconds: of the files on disk for `/api/analysis`
+    /// and `rebuilt`, of the text on the page for `checked`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub elapsed_ms: Option<u32>,
+}
+
+/// The answer of a route that needs the analysis while the first one is still running, to a
+/// request that sent the `X-Netsmith-Pending: 1` header: HTTP 503 with `Retry-After: 1`.
+/// Nothing was done. The socket says when it is over (`rebuilt`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Pending {
+    /// Always `true`: what tells this answer from the route's own.
+    pub pending: bool,
+    /// How long the first analysis has been running, in milliseconds.
+    pub elapsed_ms: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -313,6 +367,12 @@ pub struct PowerNode {
     pub capacity: Option<Range>,
     pub capacity_from: Option<String>,
     pub budget: Budget,
+    /// Where to look when the node has an issue: the declaration of the part or stage that
+    /// supplies it (the one `capacity_from` names), else of its first supply, else of its first
+    /// load. A `Draw` has its own `at`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub at: Option<Location>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -345,6 +405,10 @@ pub struct Stage {
     pub efficiency: Option<Range>,
     /// It has an efficiency that the solver did not settle: its input current is then not worked out.
     pub efficiency_unsettled: bool,
+    /// The declaration of the converter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub at: Option<Location>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -780,6 +844,12 @@ pub struct PcbFinding {
     pub area: PcbBox,
     /// The references of the parts it is about.
     pub parts: Vec<String>,
+    /// The line of a physical file (or of the circuit source) that states the requirement the
+    /// finding quotes, where it quotes one; the first of them if it quotes several. A point at
+    /// the start of the line (`column` and `endColumn` are 1), `file` as the checker names it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub at: Option<Location>,
 }
 
 /// Whether KiCad's check has been run on the board as it is.
@@ -901,16 +971,41 @@ pub enum ClientMessage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMessage {
-    /// A file changed and the project was built again.
-    Rebuilt { analysis: Analysis },
+    /// A file changed and the project was built again. `elapsed_ms` is how long the analysis
+    /// took (the same as `analysis.elapsedMs`).
+    Rebuilt {
+        analysis: Analysis,
+        #[serde(default, rename = "elapsedMs", skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        elapsed_ms: Option<u32>,
+    },
+    /// An analysis of the files on disk has begun (the first one, or one for a change made by
+    /// another program); `rebuilt` ends it. `since` is when, in milliseconds since the Unix
+    /// epoch. A page that connects while one runs is sent this at once.
+    Analysing {
+        #[ts(type = "number")]
+        since: u64,
+    },
     /// The answer to a `Check`.
     Checked { id: u32, analysis: Analysis },
-    /// What a long job is doing now: `task` is `route`, `fab`, `order`, `build` or `catalog`, `message` is the
-    /// line the command line would print (`BoardName: placing 73 parts`).
+    /// What a long job is doing now: `task` is `route`, `fab`, `order`, `build`, `catalog` or
+    /// `analyse`, `message` is the line the command line would print (`BoardName: placing 73
+    /// parts`). An `analyse` message also has `stage` (`check`, `solve`, `lower`, `draw` or
+    /// `modules`), and `done` of `total` of the things that stage works through (files for
+    /// `check`, boards and systems for `solve`, `lower` and `draw`, modules for `modules`).
     Progress {
         task: String,
         board: String,
         message: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        stage: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        done: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        total: Option<u32>,
     },
 }
 
@@ -930,6 +1025,7 @@ pub fn typescript() -> String {
     decls!(
         Location,
         Severity,
+        ProblemStage,
         Problem,
         FileRole,
         Def,
@@ -948,6 +1044,7 @@ pub fn typescript() -> String {
         PanelFinding,
         PanelView,
         Analysis,
+        Pending,
         PartInfo,
         PinInfo,
         NetInfo,
