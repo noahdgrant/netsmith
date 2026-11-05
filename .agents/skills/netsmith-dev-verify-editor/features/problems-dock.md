@@ -20,7 +20,7 @@ The status bar, left to right: the board shown (click to choose another), the co
 
 The dock's head has a chip for each stage that has rows (Syntax, Checker, Solver, Lowering, Guideline, then Power and the PCB's): pressed, its rows show, and the count is of all its rows. The Stage column and the chips read `Problem.stage`, the Module column `path` (else `board`); a power issue and a PCB finding have `at`, and a click shows that line in the source (a PCB finding's quietly: the board stays in front).
 
-The first load: the page and the tree paint at once, the first analysis request sends `X-Netsmith-Pending: 1` and the `503` it gets shows the skeleton with "Analysing the project… N s" (and the stage); the page takes the analysis from the socket's `rebuilt` (asking again after 1, 2, 4, 5 s in case it is lost) with no reload.
+The first load: the page and the tree paint at once, the first analysis request sends `X-Netsmith-Pending: 1` and the `503` it gets shows the skeleton with "Analysing the project… N s" (and the stage); the page takes the analysis from the socket's `rebuilt` with no reload (a safety request every 30 s with the socket open, 1, 2, 4, 5 s without it: each failed request is a line in the browser's console, so a recipe that must be quiet starts after `launch`, which waits for the analysis). `launch` over a project that analyses for half a minute is the way to see it; so is a copy of a big private project run with `netsmith editor` by hand.
 
 A finished build, fab, order or route is a toast with the result and its cause when it failed, and a button to go on (download the Gerbers, open the Build or PCB section when it is not already on screen). A failure stays until it is dismissed.
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { RETRY_FIRST_MS, RETRY_MAX_MS, nextDelay, pendingElapsed } from './early';
+import { RETRY_FIRST_MS, RETRY_MAX_MS, RETRY_SAFETY_MS, nextDelay, pendingElapsed } from './early';
 
 describe('pendingElapsed', () => {
   it("reads the server's pending answer", () => {
@@ -18,7 +18,11 @@ describe('pendingElapsed', () => {
 });
 
 describe('nextDelay', () => {
-  it('starts at a second and doubles up to the cap', () => {
+  it('is a slow safety while the socket is open: it brings the end of the analysis itself', () => {
+    expect(nextDelay(0, true)).toBe(RETRY_SAFETY_MS);
+    expect(nextDelay(RETRY_SAFETY_MS, true)).toBe(RETRY_SAFETY_MS);
+  });
+  it('without a socket starts at a second and doubles up to the cap', () => {
     const waits = [0, 0, 0, 0, 0].reduce<number[]>((all) => [...all, nextDelay(all[all.length - 1] ?? 0)], []);
     expect(waits).toEqual([RETRY_FIRST_MS, 2000, 4000, RETRY_MAX_MS, RETRY_MAX_MS]);
   });

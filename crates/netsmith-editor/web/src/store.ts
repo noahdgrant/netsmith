@@ -335,7 +335,7 @@ async function readAnalysis(): Promise<Analysis | null> {
     } catch (e) {
       if (!(e instanceof AnalysisPending)) throw e;
       booting.value = { at: Date.now(), elapsedMs: e.elapsedMs };
-      delay = nextDelay(delay);
+      delay = nextDelay(delay, connected.peek());
       await untilRebuilt(delay);
       if (rebuilt !== before) return null;
     }
