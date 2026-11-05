@@ -1,9 +1,10 @@
 # Checks every pull request and every push to main: formatting, clippy with warnings as errors,
 # and the tests. The same three commands as AGENTS.md ("Build, test, lint").
 #
-# No KiCad is installed on the runner. The tests that need `kicad-cli` or KiCad's stock libraries
-# skip themselves without it (they print "skipped: ..."); the rest build with the small libraries
-# of `netsmith_kicad::testlib`. No Node either: the editor's page is the committed bundle.
+# The `test` job has no KiCad on its runner, so it stays fast. The tests that need `kicad-cli` or
+# KiCad's stock libraries skip themselves there (they print "skipped: ..."); the rest build with
+# the small libraries of `netsmith_kicad::testlib`. The `kicad` job installs KiCad 9 and runs the
+# same suite, so those tests really run. No Node either: the editor's page is the committed bundle.
 name: ci
 
 on:
@@ -64,3 +65,42 @@ jobs:
 
       # --no-fail-fast: one run lists every failing test, not just the first test binary that fails.
       - run: cargo test --workspace --no-fail-fast
+
+  # The whole suite with KiCad 9 installed, so the tests that skip themselves in `test` run.
+  # The version is pinned to the major: the KiCad team's PPA for 9.0 releases carries 9.0.x
+  # (the cross-check's allowance applies only to exactly 9.0.0, ADR 0034).
+  kicad:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # `kicad` brings kicad-cli and the stock symbol and footprint libraries; the 3D models
+      # (kicad-packages3d, several GB) are not installed, nothing here reads them.
+      - name: Install KiCad 9
+        run: |
+          sudo add-apt-repository --yes ppa:kicad/kicad-9.0-releases
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends kicad
+          kicad-cli --version
+          apt-cache policy kicad | head -3
+
+      # What the lookup of netsmith_kicad::install finds on a real Linux install (issue #6).
+      - name: Show the KiCad library lookup
+        run: cargo run --quiet -p netsmith-kicad --example locate
+
+      # --nocapture shows the "skipped: ..." lines, so the run can prove that no test skipped
+      # itself for want of KiCad. pipefail (the default shell of a run step) keeps the test
+      # result.
+      - name: Test with KiCad
+        run: |
+          cargo test --workspace --no-fail-fast -- --nocapture 2>&1 | tee test.log
+          if grep -n "skipped: no KiCad" test.log; then
+            echo "::error::a test skipped itself although KiCad is installed"
+            exit 1
+          fi
