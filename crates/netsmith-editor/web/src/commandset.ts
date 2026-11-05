@@ -99,6 +99,13 @@ export function registerAppCommands() {
       run: () => openPicker('#'),
     },
     {
+      id: 'goto.problem',
+      title: 'Go to problem…',
+      group: 'Go to',
+      aliases: ['error', 'warning', 'issue'],
+      run: () => openPicker('!'),
+    },
+    {
       id: 'goto.line',
       title: 'Go to line…',
       group: 'Go to',

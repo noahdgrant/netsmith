@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import type { BoardDetail, Project } from './api';
-import { type Item, buildIndex, parseLine, parseQuery, recentItems, search } from './quickopen';
+import { rowOfProblem } from './feedback/problems';
+import { type Item, buildIndex, parseLine, parseQuery, problemItems, recentItems, search } from './quickopen';
 
 const loc = { file: 'src/m.nsm', line: 3, column: 1, endLine: 3, endColumn: 9 };
 const part = (refdes: string, path: string, value: string, kind = 'Capacitor') => ({
@@ -137,6 +138,20 @@ describe('prefix modes', () => {
     expect(search(index, commands, '>')[0].hits).toHaveLength(2);
     expect(search(index, commands, '>kicad')[0].hits[0].item.id).toBe('cmd:build');
     expect(search(index, commands, '>pow')[0].hits[0].item.id).toBe('cmd:view.power');
+  });
+  it('! lists the problems, ranked by what is typed, and their rows come back by id', () => {
+    const rows = [
+      rowOfProblem({ severity: 'error', message: '`nonsense` is not a member of this Led', rendered: '', at: loc }, 0),
+      rowOfProblem({ severity: 'warning', message: 'Led: track-width guideline: the net VCC needs 0.4 mm', rendered: '', at: null }, 1),
+    ];
+    const problems = problemItems(rows);
+    expect(parseQuery('!nons')).toEqual({ mode: 'problem', text: 'nons' });
+    expect(problems.map((i) => i.tone)).toEqual(['error', 'warning']);
+    expect(problems[0].target).toEqual({ type: 'problem', id: rows[0].id });
+    expect(search(index, commands, '!', problems)[0].hits).toHaveLength(2);
+    expect(search(index, commands, '!vcc', problems)[0].hits[0].item.tone).toBe('warning');
+    expect(search(index, commands, '!', [])).toEqual([]);
+    expect(search(index, commands, '!qzxv', problems)).toEqual([]);
   });
   it(': is a line, not a search', () => {
     expect(search(index, commands, ':12')).toEqual([]);

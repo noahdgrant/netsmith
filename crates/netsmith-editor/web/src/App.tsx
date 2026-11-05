@@ -68,7 +68,7 @@ const KEPT: Section[] = ['schematic', 'power', 'system', 'bom', 'build', 'source
 
 /** Commands that still work while go to anything or the cheat sheet is open: they switch the
  * window's mode. Every other key belongs to the window in front. */
-const WHILE_OPEN = new Set(['goto.anything', 'palette.open', 'goto.symbol', 'help.shortcuts']);
+const WHILE_OPEN = new Set(['goto.anything', 'palette.open', 'goto.symbol', 'goto.problem', 'help.shortcuts']);
 
 /** The shortcuts: one table, the command registry (commands.ts, commandset.ts). A key runs its
  * command wherever the focus is, except that a plain key (1-7, ?) leaves fields and the source

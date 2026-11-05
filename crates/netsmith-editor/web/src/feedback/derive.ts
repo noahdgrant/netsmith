@@ -7,7 +7,7 @@ import type { Location } from '../api';
 import { api } from '../client';
 import { modelOf } from '../power/model';
 import { findings, loadFindings, pickedFinding, scene, select, wrote } from '../pcbstore';
-import { type Selection, netSel, partSel, setSelection } from '../selection';
+import { type Selection, netSel, partSel, selectAndReveal, setSelection } from '../selection';
 import {
   activeFile,
   analysis,
@@ -24,7 +24,7 @@ import {
   visible,
 } from '../store';
 import { covers } from '../util';
-import { activeRow, filter, group, notify, setDockOpen } from './state';
+import { activeRow, dock, filter, group, notify, setDockOpen } from './state';
 import {
   type Row,
   type ViewScope,
@@ -94,13 +94,13 @@ export const neverBuilt = computed(() => (analysis.value?.boards.length ?? 0) ==
 type Extras = 'idle' | 'loading' | 'ready';
 export const extras = signal<Extras>('idle');
 
-async function loadExtras(name: string) {
+async function loadExtras(name: string, withPcb: boolean) {
   extras.value = 'loading';
   const key = powerKey.peek();
   const target = systemName.peek() ?? name;
   try {
     await Promise.all([
-      loadFindings(name),
+      withPcb ? loadFindings(name) : undefined,
       api
         .power(target)
         .then((tree) => {
@@ -121,14 +121,17 @@ async function loadExtras(name: string) {
   }
 }
 
-// The PCB and the power tree are asked for a moment after the analysis settles, so the counts of
-// the status bar are the same whether or not the dock is open. They are the server's to compute,
-// and a page that is typing must not wait for them: only a read of the saved files asks again.
+// The PCB and the power tree are asked for a moment after the analysis settles. They are the
+// server's to compute, and a page that is typing must not wait for them: only a read of the saved
+// files asks again. The PCB's findings are asked for once the dock is open or the PCB view has
+// been shown: a board that cannot be placed (a power architecture of `Load` parts) answers with an
+// error, which is the PCB view's to say, not a failure at every start.
 effect(() => {
   const name = board.value;
   void powerKey.value;
+  const withPcb = dock.value.open || scene.value?.board === name;
   if (!name || boardStale.value) return;
-  const timer = setTimeout(() => void loadExtras(name), 500);
+  const timer = setTimeout(() => void loadExtras(name, withPcb), 500);
   return () => clearTimeout(timer);
 });
 
@@ -173,10 +176,15 @@ function selectFor(row: Row) {
   }
 }
 
-/** Set the shared selection; `fromBoard` says the PCB view already shows it (its own group of parts). */
+/** Set the shared selection. `fromBoard`: the PCB view already shows it, with its own group of
+ * parts and its own zoom. Otherwise the views are asked to bring it into view, as go to anything does. */
 function pickShared(sel: Selection, fromBoard = false) {
-  if (fromBoard) wrote.sel = sel;
-  setSelection(sel);
+  if (fromBoard) {
+    wrote.sel = sel;
+    setSelection(sel);
+  } else {
+    selectAndReveal(sel);
+  }
 }
 
 /** A click on a row (or F8 landing on it): the thing is selected, and its place in the source is shown. */

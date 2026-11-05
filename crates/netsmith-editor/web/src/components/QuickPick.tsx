@@ -1,15 +1,19 @@
 // Go to anything (Ctrl+P) and the command palette (Ctrl+Shift+P, Ctrl+K): one input over a list.
 // What is typed picks the rows: nothing special searches parts, nets, modules, definitions and
-// files; `>` runs a command, `@` goes to a module or definition, `#` to a net, `:` to a line.
+// files; `>` runs a command, `@` goes to a module or definition, `#` to a net, `:` to a line,
+// `!` to a problem.
 
 import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { available, byRecent, chordLabels, runCommand } from '../commands';
 import { goToSelection } from '../commandset';
+import { allRows, revealRow } from '../feedback/derive';
+import { sortRows } from '../feedback/problems';
 import { pieces } from '../fuzzy';
-import { type Hit, type Item, PREFIXES, buildIndex, parseLine, parseQuery, recentItems, search } from '../quickopen';
+import { type Hit, type Item, PREFIXES, buildIndex, parseLine, parseQuery, problemItems, recentItems, search } from '../quickopen';
 import { closePicker, picker, recentCommands, recentPicks, rememberQuery, usedCommand, usedPick } from '../quickpick';
+import { SeverityIcon } from './ProblemsDock';
 import { activeFile, detail, goTo, openFile, openFiles, project, revealSection, say, viewBoardOfDefinition } from '../store';
 
 /** A name with the letters the query matched marked. */
@@ -155,6 +159,11 @@ function choose(item: Item) {
     setTimeout(() => runCommand(t.id), 0);
     return;
   }
+  if (t.type === 'problem') {
+    const row = allRows.peek().find((r) => r.id === t.id);
+    if (row) setTimeout(() => revealRow(row), 0);
+    return;
+  }
   usedPick(item.id);
   if (t.type === 'selection') goToSelection(t.sel);
   else if (t.type === 'definition') {
@@ -252,10 +261,10 @@ function Dialog({ initial }: { initial: string }) {
       if (rest.length) out.push({ title: used.length ? 'Other commands' : '', rows: rest });
       return out;
     }
-    const found = search(index, commandItems(), query);
+    const found = search(index, commandItems(), query, mode === 'problem' ? problemItems(sortRows(allRows.value)) : []);
     for (const g of found) out.push({ title: g.title, rows: g.hits.map(wrap) });
     return out;
-  }, [index, query, mode, text, lines, activeFile.value, recentPicks.value, recentCommands.value, available().length]);
+  }, [index, query, mode, text, lines, activeFile.value, recentPicks.value, recentCommands.value, available().length, allRows.value]);
 
   const rows = groups.flatMap((g) => g.rows);
   const at = Math.min(active, Math.max(rows.length - 1, 0));
@@ -300,6 +309,8 @@ function Dialog({ initial }: { initial: string }) {
   const placeholder =
     mode === 'command'
       ? 'Type a command'
+      : mode === 'problem'
+        ? 'Go to a problem'
       : mode === 'symbol'
         ? 'Go to a module or definition'
         : mode === 'net'
@@ -308,14 +319,14 @@ function Dialog({ initial }: { initial: string }) {
             ? 'Go to a line of the open file'
             : 'Go to a part, net, module, definition or file';
   const count = rows.length;
-  const empty = rows.length === 0 && (text !== '' || mode === 'net' || mode === 'symbol' || mode === 'command');
+  const empty = rows.length === 0 && (text !== '' || mode === 'net' || mode === 'symbol' || mode === 'command' || mode === 'problem');
   let n = -1;
   return (
     <div class="qp-backdrop" onMouseDown={(e) => e.target === e.currentTarget && closePicker()}>
       <div class="qp" role="dialog" aria-modal="true" aria-label={title} data-mode={mode}>
         <div class="qp-field">
           <span class="qp-mode" aria-hidden="true">
-            <KindIcon kind={mode === 'command' ? 'command' : mode === 'net' ? 'net' : mode === 'symbol' ? 'module' : mode === 'line' ? 'line' : 'search'} />
+            <KindIcon kind={mode === 'command' ? 'command' : mode === 'problem' ? 'problem' : mode === 'net' ? 'net' : mode === 'symbol' ? 'module' : mode === 'line' ? 'line' : 'search'} />
           </span>
           <input
             ref={input}
@@ -381,7 +392,9 @@ function Dialog({ initial }: { initial: string }) {
                     onMouseMove={() => i !== at && setActive(i)}
                     onClick={r.run}
                   >
-                    <span class={`qp-icon qpk-${r.kind}`}>{r.kind !== 'tip' && <KindIcon kind={r.kind} />}</span>
+                    <span class={`qp-icon qpk-${r.kind} ${item?.tone ?? ''}`}>
+                      {r.kind === 'tip' ? null : item?.tone ? <SeverityIcon severity={item.tone} size={16} /> : <KindIcon kind={r.kind} />}
+                    </span>
                     <span class="qp-main">
                       {item ? (
                         <>
@@ -412,7 +425,7 @@ function Dialog({ initial }: { initial: string }) {
           ))}
           {empty && (
             <div class="qp-empty" role="status">
-              {mode === 'command' ? 'No command matches' : mode === 'net' ? 'No net matches' : mode === 'symbol' ? 'No module or definition matches' : 'No part, net, module, definition or file matches'}
+              {mode === 'command' ? 'No command matches' : mode === 'problem' ? (text ? 'No problem matches' : 'No problems') : mode === 'net' ? 'No net matches' : mode === 'symbol' ? 'No module or definition matches' : 'No part, net, module, definition or file matches'}
               {text && <> “{text}”</>}
               {mode === 'all' && <div class="qp-empty-hint">Try a designator like c25, a value like 100n, or a module path. Type # for nets, @ for definitions.</div>}
             </div>

@@ -3,18 +3,20 @@
 // and definitions, `#` nets, `:` a line), and the ranking. Pure functions of the data the editor
 // already sends (`BoardDetail`, `Project`); no page, no store.
 
-import type { BoardDetail, Project } from './api';
+import type { BoardDetail, Project, Severity } from './api';
+import { ORIGIN_LABEL, type Row, whereText } from './feedback/problems';
 import { type Field, matchFields } from './fuzzy';
 import { type Selection, modulesOf, moduleSel, netSel, partSel } from './selection';
 
-export type ResultKind = 'command' | 'part' | 'net' | 'module' | 'definition' | 'file';
+export type ResultKind = 'command' | 'problem' | 'part' | 'net' | 'module' | 'definition' | 'file';
 
 /** What choosing a result does. */
 export type Target =
   | { type: 'selection'; sel: Selection }
   | { type: 'definition'; file: string; line: number; name: string; defKind: string }
   | { type: 'file'; path: string }
-  | { type: 'command'; id: string };
+  | { type: 'command'; id: string }
+  | { type: 'problem'; id: string };
 
 export interface Item {
   /** Unique, stable: kept to bring recent choices back. */
@@ -30,6 +32,8 @@ export interface Item {
   fields: Field[];
   /** The key chord of a command. */
   keys?: string;
+  /** The severity of a problem, for its icon. */
+  tone?: Severity;
   target: Target;
 }
 
@@ -117,14 +121,31 @@ export function buildIndex(detail: BoardDetail | null, project: Project | null):
   return { parts, nets, modules, definitions, files };
 }
 
-export type Mode = 'all' | 'command' | 'symbol' | 'net' | 'line';
+export type Mode = 'all' | 'command' | 'problem' | 'symbol' | 'net' | 'line';
 
 export const PREFIXES: { prefix: string; mode: Mode; title: string; hint: string }[] = [
   { prefix: '>', mode: 'command', title: 'Commands', hint: 'run a command' },
   { prefix: '@', mode: 'symbol', title: 'Modules and definitions', hint: 'a module of the board or a definition' },
   { prefix: '#', mode: 'net', title: 'Nets', hint: 'a net of the board' },
   { prefix: ':', mode: 'line', title: 'Line', hint: 'a line of the open file' },
+  { prefix: '!', mode: 'problem', title: 'Problems', hint: 'an error, warning or note of the project' },
 ];
+
+/** The rows of the problems dock as items, in the order given (the dock's order). */
+export function problemItems(rows: Row[]): Item[] {
+  return rows.map((r) => ({
+    id: `problem:${r.id}`,
+    kind: 'problem' as const,
+    label: r.message,
+    detail: [ORIGIN_LABEL[r.origin], whereText(r) || r.path || r.board || ''].filter(Boolean).join(' · '),
+    tone: r.severity,
+    fields: [
+      { name: 'label', text: r.message, weight: 2 },
+      { name: 'detail', text: r.full, weight: 0.6 },
+    ],
+    target: { type: 'problem' as const, id: r.id },
+  }));
+}
 
 /** The mode a query is in, and the words after the prefix. */
 export function parseQuery(raw: string): { mode: Mode; text: string } {
@@ -167,13 +188,15 @@ function rank(items: Item[], text: string, cap: number): Hit[] {
 const first = (n: number, items: Item[]) => items.slice(0, n).map((item): Hit => ({ item, score: 0, marks: {} }));
 
 /** The groups for a query, best group first. `commands` are the items for the command mode. */
-export function search(index: Index, commands: Item[], raw: string): Group[] {
+export function search(index: Index, commands: Item[], raw: string, problems: Item[] = []): Group[] {
   const { mode, text } = parseQuery(raw);
   const groups: Group[] = [];
   const add = (title: string, hits: Hit[]) => hits.length > 0 && groups.push({ title, hits });
   switch (mode) {
     case 'command':
       return [{ title: '', hits: text ? rank(commands, text, CAP_ALONE) : first(CAP_ALONE, commands) }].filter((g) => g.hits.length);
+    case 'problem':
+      return [{ title: '', hits: text ? rank(problems, text, CAP_ALONE) : first(CAP_ALONE, problems) }].filter((g) => g.hits.length);
     case 'net':
       add('Nets', text ? rank(index.nets, text, CAP_ALONE) : first(CAP_ALONE, index.nets));
       return groups;
