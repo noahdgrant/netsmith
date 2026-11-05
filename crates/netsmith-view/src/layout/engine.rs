@@ -474,8 +474,11 @@ pub(super) fn run(
         translate_part(&mut placed[p], at[p]);
     }
 
+    // The flags of the whole sheet stand in two columns beyond everything, so none can be
+    // over a part, a text or another flag.
+    let regions: Vec<Vec<usize>> = vec![(0..n).collect()];
     groups.retain(|g| !g.is_empty());
-    Scene::new(ctx, placed, units, marks, groups, satellites).finish()
+    Scene::new(ctx, placed, units, marks, groups, regions, satellites).finish()
 }
 
 /// The name inside a flag whose point is at `tip` and that points `dir`.
@@ -616,11 +619,15 @@ fn build_block(
         let unit = &units[plan.unit];
         let shape = &shapes[plan.unit];
         let mut found: Option<(Pt, Dir, Rect)> = None;
-        'search: for k in 0..14 {
-            let dx = 7.62 + 5.08 * f64::from(k);
-            for &sd in &sides {
-                let base = unit_rect(ctx, placed, unit, shape, Some(sd));
-                for dy in [0.0, 5.08, -5.08, 10.16, -10.16, 15.24, -15.24] {
+        // Level with the pin first, as far out as it takes; only then a row above or below.
+        'search: for dy in [
+            0.0, 5.08, -5.08, 10.16, -10.16, 15.24, -15.24, 20.32, -20.32, 25.4, -25.4, 30.48,
+            -30.48, 38.1, -38.1,
+        ] {
+            for k in 0..20 {
+                let dx = 7.62 + 5.08 * f64::from(k);
+                for &sd in &sides {
+                    let base = unit_rect(ctx, placed, unit, shape, Some(sd));
                     let target = Pt::new(e.x + sd.vector().0 * dx, e.y + dy);
                     let off = Pt::new(
                         snap_grid(target.x - plan.r.x),
@@ -702,6 +709,9 @@ struct Scene<'a> {
     /// The parts that are drawn together: the row of blocks, then each row of loose parts.
     /// A rail is one wire across the group, with one symbol.
     groups: Vec<Vec<usize>>,
+    /// The parts of each block (an anchor and its satellites), then of each row of loose parts:
+    /// where the flags of a part's nets go, beside its own block.
+    regions: Vec<Vec<usize>>,
     /// The parts that stand beside a pin of another part.
     satellites: BTreeSet<usize>,
 }
@@ -713,6 +723,7 @@ impl<'a> Scene<'a> {
         units: &'a [Unit],
         marks: &'a Marks,
         groups: Vec<Vec<usize>>,
+        regions: Vec<Vec<usize>>,
         satellites: BTreeSet<usize>,
     ) -> Self {
         let mut bounds = parts[0..]
@@ -738,6 +749,7 @@ impl<'a> Scene<'a> {
             marks,
             units,
             groups,
+            regions,
             satellites,
         };
         scene.block_parts();
@@ -1287,7 +1299,7 @@ impl<'a> Scene<'a> {
             dir: natural,
             label,
         };
-        self.grid.block_rect(inflate(symbol.extent(), 0.3));
+        self.grid.block_rect(inflate(symbol.extent(), 0.9));
         self.symbols.push(symbol);
     }
 
@@ -1339,7 +1351,7 @@ impl<'a> Scene<'a> {
     /// parts, each on a row of its own, one pin pitch apart, joined to the net's wires.
     fn route_ports(&mut self) {
         let mut group_rect: Vec<Option<Rect>> = Vec::new();
-        for g in &self.groups {
+        for g in &self.regions {
             let mut r: Option<Rect> = None;
             for &p in g {
                 union_into(&mut r, self.parts[p].extent);
@@ -1377,7 +1389,7 @@ impl<'a> Scene<'a> {
                 continue;
             };
             let group = self
-                .groups
+                .regions
                 .iter()
                 .position(|g| g.contains(&pin.part))
                 .unwrap_or(0);
@@ -1437,7 +1449,7 @@ impl<'a> Scene<'a> {
             };
             let base = self.grid.node(Pt::new(edge, 0.0)).0 + sx as i32 * 6;
             let mut column = base;
-            'column: for extra in 0..=20 {
+            'column: for extra in 0..=90 {
                 let x = base + sx as i32 * extra * 2;
                 let all = idxs.iter().all(|&i| {
                     let w = &wants[i];
@@ -1469,7 +1481,7 @@ impl<'a> Scene<'a> {
                 };
                 let id = Self::net_id(w.net);
                 // The flag's body is in the way of its own wire: the wire reaches its point.
-                self.grid.block_rect(inflate(port.extent(), 0.3));
+                self.grid.block_rect(inflate(port.extent(), 0.9));
                 self.grid.unblock(tip_node);
                 let targets: HashSet<Node> = HashSet::from([tip_node]);
                 match self.grid.route(id, w.start, w.heading, &targets) {
@@ -1482,7 +1494,7 @@ impl<'a> Scene<'a> {
                         self.push_wire(w.net, &path);
                     }
                 }
-                self.grid.block_rect(inflate(port.extent(), 0.3));
+                self.grid.block_rect(inflate(port.extent(), 0.9));
                 self.ports.push(port);
             }
         }
