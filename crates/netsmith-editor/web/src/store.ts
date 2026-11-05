@@ -251,19 +251,33 @@ export function say(text: string, bad = false) {
 export async function start() {
   events = new Events(
     (message) => {
-      if (message.type === 'rebuilt') {
-        analysis.value = message.analysis;
-        track({ type: 'rebuilt' });
-        void onRebuilt();
-      } else if (message.type === 'progress') {
-        const j = job.value;
-        if (j && j.task === message.task) {
-          job.value = { ...j, lines: [...j.lines.slice(-39), message.message] };
+      switch (message.type) {
+        case 'rebuilt':
+          analysis.value = message.analysis;
+          track({ type: 'rebuilt' });
+          void onRebuilt();
+          break;
+        case 'progress': {
+          const j = job.value;
+          if (j && j.task === message.task) {
+            job.value = { ...j, lines: [...j.lines.slice(-39), message.message] };
+          }
+          break;
         }
-      } else {
-        const latest = !!events?.isLatest(message.id);
-        track({ type: 'checked', id: message.id, latest });
-        if (latest) live.value = message.analysis;
+        case 'checked': {
+          const latest = !!events?.isLatest(message.id);
+          track({ type: 'checked', id: message.id, latest });
+          if (latest) live.value = message.analysis;
+          break;
+        }
+        case 'analysing':
+          // The server says it began to read the project. The page keeps its own clock from the
+          // request it made (`track`), so this message changes nothing here yet.
+          break;
+        default:
+          // A message type added to `ServerMessage` without a case above fails the build here
+          // (`message` is no longer `never`). A newer server's unknown message is ignored at run time.
+          message satisfies never;
       }
     },
     (open) => {
