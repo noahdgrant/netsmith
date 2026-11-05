@@ -25,6 +25,8 @@ export interface FolderNode {
   files: number;
   /** Every definition in it is a part: a library, not part of the design's structure. */
   library: boolean;
+  /** Its path from the project root: `src/sheets`. The tree is shown below `src/`. */
+  dir: string;
   children: Array<FolderNode | FileNode>;
 }
 
@@ -111,6 +113,8 @@ function compareNodes(a: FolderNode | FileNode, b: FolderNode | FileNode): numbe
 interface Draft {
   folders: Map<string, Draft>;
   files: FileNode[];
+  /** The folder's path from the project root, from a file in it or from the folder list. */
+  dir?: string;
 }
 
 const draft = (): Draft => ({ folders: new Map(), files: [] });
@@ -136,6 +140,7 @@ function finish(role: FileRole, prefix: string, d: Draft): Array<FolderNode | Fi
       segments: [name],
       files: all.length,
       library: all.length > 0 && all.every((f) => f.file.defs.length > 0 && f.file.defs.every((x) => x.kind === 'part')),
+      dir: sub.dir ?? path,
       children,
     };
   });
@@ -162,24 +167,36 @@ function compress(nodes: Array<FolderNode | FileNode>): Array<FolderNode | FileN
 
 /** The tree of a project's files: a section for each role that has files, in a fixed order,
  * folders inside folders, folders before files, each by name. */
-export function buildTree(files: TreeFile[]): SectionNode[] {
+export function buildTree(files: TreeFile[], folders: string[] = []): SectionNode[] {
   const sections: SectionNode[] = [];
   for (const role of SECTION_ORDER) {
     const mine = files.filter((f) => f.role === role);
-    if (!mine.length) continue;
+    // The folders with no file of the tree in them are in the modules' section, where a file would go.
+    const empty = role === 'module' ? folders.filter((d) => !files.some((f) => f.path.startsWith(`${d}/`))) : [];
+    if (!mine.length && !empty.length) continue;
     const base = baseOf(role);
     const root = draft();
+    const into = (parts: string[], dirs: string[]) => {
+      let at = root;
+      parts.forEach((part, i) => {
+        let next = at.folders.get(part);
+        if (!next) at.folders.set(part, (next = draft()));
+        next.dir ??= dirs[i];
+        at = next;
+      });
+      return at;
+    };
     for (const f of mine) {
       const rest = f.path.startsWith(`${base}/`) ? f.path.slice(base.length + 1) : f.path;
       const parts = rest.split('/');
       const name = parts.pop() ?? rest;
-      let at = root;
-      for (const part of parts) {
-        let next = at.folders.get(part);
-        if (!next) at.folders.set(part, (next = draft()));
-        at = next;
-      }
-      at.files.push(fileNode(f, name));
+      const prefix = f.path.startsWith(`${base}/`) ? `${base}/` : '';
+      const dirs = parts.map((_, i) => `${prefix}${parts.slice(0, i + 1).join('/')}`);
+      into(parts, dirs).files.push(fileNode(f, name));
+    }
+    for (const dir of empty) {
+      const parts = dir.startsWith(`${base}/`) ? dir.slice(base.length + 1).split('/') : dir.split('/');
+      into(parts, parts.map((_, i) => `${base}/${parts.slice(0, i + 1).join('/')}`));
     }
     const children = compress(finish(role, '', root));
     sections.push({ type: 'section', id: `s:${role}`, role, label: SECTION_LABEL[role], files: mine.length, children });
@@ -404,6 +421,18 @@ export function readonlyReason(file: TreeFile): string {
 
 /** The tooltip of a folder's count. */
 export function countTitle(folder: FolderNode | SectionNode): string {
+  if (folder.files === 0) return 'An empty folder';
   const files = `${folder.files} ${folder.files === 1 ? 'file' : 'files'}`;
   return folder.type === 'folder' && folder.library ? `${files}, all of them parts: a library` : files;
+}
+
+// ------------------------------------------------------------------ keeping the place
+
+/** Where to scroll a list so that a row can be seen, moving it as little as can be: the new
+ * `scrollTop`, which is the one it has if the row is all in view. `covered` is the height at
+ * the top that something sticky hides (a section's header). */
+export function revealScroll(rowTop: number, rowHeight: number, scrollTop: number, viewHeight: number, covered = 0): number {
+  if (rowTop - covered < scrollTop) return Math.max(0, rowTop - covered);
+  if (rowTop + rowHeight > scrollTop + viewHeight) return rowTop + rowHeight - viewHeight;
+  return scrollTop;
 }
