@@ -12,7 +12,10 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | Source editor and live diagnostics | `source-editor.md` | `editor` | `two_boards` |
 | Schematic view and click-through | `schematic.md` | `schematic`, `big-schematic` | `two_boards`, `big` |
 | Power tree | `power-tree.md` | `power`, `single-board`, `big-power` | `two_boards`, `regulator`, `big` |
+| Power tree of an invented board: layout, collapsed loads, path from the source, keys, hover, issues | `power-tree.md` | `power-tree`, `power-issues` | `power_tree` |
+| Files coloured by extension (TOML, plain text, .nsm), the note on an invalid-token mark | `source-editor.md` | `languages` | `catalog_refresh` |
 | System view | `system-view.md` | `system`, `single-board` | `two_boards`, `regulator` |
+| System view of an invented board: layers, ports tables, grouped wires, labels, selection | `system-view.md` | `system-view` | `system_view` |
 | System view: mates and ground groups | `system-view.md` | `system-mates` | `carrier_and_cards` |
 | Bill of materials | `bom.md` | `bom` | `two_boards` |
 | BOM dates, stale mark, Check parts against LCSC (fake endpoint) | `bom.md` | `refresh` | `catalog_refresh` |

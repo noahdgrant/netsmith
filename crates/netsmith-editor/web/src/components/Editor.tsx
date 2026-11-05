@@ -15,7 +15,7 @@ import {
 import { useEffect, useRef } from 'preact/hooks';
 
 import { api } from '../client';
-import { nsmHighlight, nsmLanguage } from '../nsm';
+import { languageExtensions } from '../languages';
 import { flashLine, nextFlash, revealFlash, revealTarget } from '../reveal';
 import {
   activeFile,
@@ -68,8 +68,7 @@ function extensionsFor(path: string, readonly: boolean): Extension[] {
     highlightSelectionMatches({ minSelectionLength: 3, wholeWords: true }),
     revealFlash,
     lintGutter(),
-    nsmLanguage,
-    nsmHighlight,
+    ...languageExtensions(path, () => shown.peek()?.problems ?? []),
     theme,
     EditorState.readOnly.of(readonly),
     EditorView.editable.of(!readonly),

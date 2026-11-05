@@ -5,23 +5,25 @@ export const fixture = 'big';
 export async function run({ page, shot, step, expect, section }) {
   step('open the Power tree tab');
   await section('power');
-  await page.waitForSelector('.card.power');
-  const cards = await page.locator('.card.power').count();
+  await page.waitForSelector('.pt-rail');
+  const cards = await page.locator('.pt-rail').count();
   expect(cards >= 9, `a card for VIN and each of the 8 rails (${cards})`);
   const text = await page.locator('.sec-power .graph-host').innerText();
   expect(!/0\.0000000/.test(text), 'no number with a string of zeros');
-  expect(/\d(m|u)?A\.\.\d/.test(text), 'currents with a unit prefix');
-  const columns = await page.evaluate(() => new Set([...document.querySelectorAll('.card.power')].map((c) => c.style.left)).size);
+  expect(/\d\s*(m|u)?A\s*\.\.\s*\d/.test(text), 'currents with a unit prefix');
+  const columns = await page.evaluate(() => new Set([...document.querySelectorAll('.pt-rail')].map((c) => c.style.left)).size);
   expect(columns >= 2, `the rails stand in columns by supply (${columns} columns)`);
-  const edges = await page.locator('.edge.converts').count();
-  expect(edges >= 8, `an edge from VIN to each rail (${edges})`);
+  const edges = await page.locator('.pt-edge').count();
+  expect(edges >= 16, `an edge from VIN into each stage and out of it into each rail (${edges})`);
   await shot('power-tree');
 
   step('loads are sorted by current, heaviest first');
-  const who = await page.locator('.card.power', { hasText: 'RAIL8' }).first().locator('.line .who').allInnerTexts();
+  const rail8 = page.locator('.pt-rail', { hasText: 'RAIL8' }).first();
+  await rail8.locator('.pt-summary').click();
+  const who = await rail8.locator('.pt-list .pt-row .pt-who').allInnerTexts();
   expect(
-    JSON.stringify(who.slice(1)) === JSON.stringify(['out8', 'light8.power', 'pulls8.power']),
-    `out8 (up to 60mA), then light8 (15mA), then pulls8 (2mA) (${who.join(', ')})`,
+    JSON.stringify(who) === JSON.stringify(['out8', 'light8.power', 'pulls8.power']),
+    `out8 (up to 60 mA), then light8 (15 mA), then pulls8 (2 mA) (${who.join(', ')})`,
   );
 
   step('an overdrawn supply is red');
@@ -36,8 +38,8 @@ export async function run({ page, shot, step, expect, section }) {
   });
   await page.reload();
   await section('power');
-  await page.waitForSelector('.card.power.bad');
-  expect((await page.locator('.card.power.bad').count()) === 1, 'one red card');
-  expect(await page.locator('.card.power.bad .over-badge').isVisible(), 'a badge that says OVER');
+  await page.waitForSelector('.pt-rail.bad');
+  expect((await page.locator('.pt-rail.bad').count()) === 1, 'one red card');
+  expect(await page.locator('.pt-rail.bad .pt-badge.bad').isVisible(), 'a badge that says "Over limit"');
   await shot('over-limit');
 }

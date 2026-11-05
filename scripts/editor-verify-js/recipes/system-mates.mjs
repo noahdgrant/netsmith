@@ -5,7 +5,7 @@ export const fixture = 'carrier_and_cards';
 export async function run({ page, shot, step, expect, section }) {
   step('open the System tab');
   await section('system');
-  await page.waitForSelector('.card.sys');
+  await page.waitForSelector('.sy-card');
   const graph = await page.locator('.sec-system .graph-host').innerText();
   expect(graph.includes('Carrier') && graph.includes('SensorCard') && graph.includes('SerialCard'), 'the three boards');
   expect(graph.includes('carrier.cards ~ sensor.supply'), 'the join the first mate derives');

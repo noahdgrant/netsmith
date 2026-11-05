@@ -115,6 +115,7 @@ impl Backend for Fake {
             title: board.into(),
             nodes: Vec::new(),
             edges: Vec::new(),
+            stages: Vec::new(),
         })
     }
     fn system(&self, name: &str) -> Result<SystemView, ApiError> {

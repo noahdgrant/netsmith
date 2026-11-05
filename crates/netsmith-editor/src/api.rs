@@ -335,11 +335,25 @@ pub struct Edge {
     pub at: Option<Location>,
 }
 
+/// What the solver settled for the efficiency of a converter.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Stage {
+    /// The label of the edge the converter makes (`Edge::label`).
+    pub label: String,
+    /// Its efficiency, a range of fractions, when it has one and the solver settled it.
+    pub efficiency: Option<Range>,
+    /// It has an efficiency that the solver did not settle: its input current is then not worked out.
+    pub efficiency_unsettled: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct PowerTree {
     pub title: String,
     pub nodes: Vec<PowerNode>,
     pub edges: Vec<Edge>,
+    /// The converters of the edges, with the efficiency of each that has one.
+    pub stages: Vec<Stage>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -945,6 +959,7 @@ pub fn typescript() -> String {
         EdgeKind,
         Edge,
         PowerTree,
+        Stage,
         Port,
         SystemNode,
         MateContact,

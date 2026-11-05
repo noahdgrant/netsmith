@@ -29,6 +29,10 @@ const evidenceDir = path.join(root, 'evidence');
 const FIXTURES = {
   two_boards: 'examples/two_boards.nsm',
   led: 'examples/led.nsm',
+  // An invented power architecture for the Power tree: 8 rails, 3 kinds of regulator, 22 zero-current pins.
+  power_tree: 'scripts/editor-verify-js/fixtures/power_tree.nsm',
+  // An invented board for the System view: 13 modules, a processor with 22 ports, a modem with 10.
+  system_view: 'scripts/editor-verify-js/fixtures/system_view.nsm',
   regulator: 'examples/linear_regulator.nsm',
   four_layer: 'examples/four_layer.nsm',
   outline_and_pours: 'examples/outline_and_pours.nsm',
