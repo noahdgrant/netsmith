@@ -226,13 +226,18 @@ pub struct Port {
 }
 
 impl Port {
+    /// Half the height of a flag, and the height of the name in it: flags in a column are one
+    /// pin pitch apart, with a grid step between them.
+    pub const HALF: f64 = 0.64;
+    pub const TEXT: f64 = 0.9;
+
     pub fn extent(&self) -> Rect {
         let tip = self.at;
         let end = tip.step(self.dir, self.length);
-        let mut r = Rect::around(Pt::new(tip.x, tip.y - 1.1));
-        r.include(Pt::new(tip.x, tip.y + 1.1));
-        r.include(Pt::new(end.x, end.y - 1.1));
-        r.include(Pt::new(end.x, end.y + 1.1));
+        let mut r = Rect::around(Pt::new(tip.x, tip.y - Self::HALF));
+        r.include(Pt::new(tip.x, tip.y + Self::HALF));
+        r.include(Pt::new(end.x, end.y - Self::HALF));
+        r.include(Pt::new(end.x, end.y + Self::HALF));
         r
     }
 }

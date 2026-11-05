@@ -14,7 +14,8 @@ const BLOCK_GAP: f64 = 15.24;
 /// Between the parts that stand alone.
 const FREE_GAP: f64 = 7.62;
 /// Pins of one rail within this many cells of each other share a symbol.
-const POWER_JOIN: i32 = 30;
+/// Room above and below a group of parts for its rails and their symbols.
+const RAIL_ROOM: f64 = 20.32;
 /// Room above a supply pin for its wire and symbol, and below a ground pin.
 const SYMBOL_UP: f64 = 11.43;
 const SYMBOL_DOWN: f64 = 8.89;
@@ -407,6 +408,9 @@ pub(super) fn run(
     let mut text_side: Vec<Option<Dir>> = vec![None; n];
     let mut x = 0.0;
     let mut area: Option<Rect> = None;
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    let mut satellites: BTreeSet<usize> = BTreeSet::new();
+    groups.push(Vec::new());
     for b in &blocks {
         let ext = placed[b.anchor].extent;
         let by = Pt::new(
@@ -416,6 +420,10 @@ pub(super) fn run(
         for &(p, off, side) in &b.members {
             at[p] = Pt::new(by.x + off.x, by.y + off.y);
             text_side[p] = side;
+            groups[0].push(p);
+            if p != b.anchor {
+                satellites.insert(p);
+            }
         }
         union_into(&mut area, b.rect.translated(by));
         x = by.x + b.rect.max.x + BLOCK_GAP;
@@ -437,13 +445,15 @@ pub(super) fn run(
         Some(a) => a.width().max(80.0),
         None => (total * 1.6).sqrt().max(80.0),
     };
-    let top = area.map_or(0.0, |a| a.max.y + 12.7);
+    let top = area.map_or(0.0, |a| a.max.y + 12.7 + 2.0 * RAIL_ROOM);
     let (mut fx, mut fy, mut row) = (0.0, top, 0.0f64);
+    groups.push(Vec::new());
     for (u, r) in &rects {
         if fx > 0.0 && fx + r.width() > target {
             fx = 0.0;
-            fy += row;
+            fy += row + 2.0 * RAIL_ROOM;
             row = 0.0;
+            groups.push(Vec::new());
         }
         let by = Pt::new(snap_up(fx - r.min.x, GRID), snap_up(fy - r.min.y, GRID));
         for (w, &p) in units[*u].parts.iter().enumerate() {
@@ -451,6 +461,7 @@ pub(super) fn run(
                 by.x + shapes[*u].offsets[w].x,
                 by.y + shapes[*u].offsets[w].y,
             );
+            groups.last_mut().expect("a group").push(p);
         }
         fx += r.width();
         row = row.max(r.height());
@@ -462,18 +473,26 @@ pub(super) fn run(
         translate_part(&mut placed[p], at[p]);
     }
 
-    Scene::new(ctx, placed, units, marks).finish()
+    groups.retain(|g| !g.is_empty());
+    Scene::new(ctx, placed, units, marks, groups, satellites).finish()
 }
 
 /// The name inside a flag whose point is at `tip` and that points `dir`.
 fn port_label(name: &str, tip: Pt, dir: Dir) -> Text {
-    let start = tip.step(dir, 1.6);
+    let start = tip.step(dir, 1.1);
     let anchor = if dir == Dir::Left {
         Anchor::End
     } else {
         Anchor::Start
     };
-    Text::new(name, Pt::new(start.x, start.y + 0.45), anchor)
+    Text::new(name, Pt::new(start.x, start.y + 0.3), anchor)
+}
+
+/// How long a flag is for `name`, from its point.
+fn port_length(name: Option<&str>) -> f64 {
+    name.map_or(3.0, |n| {
+        n.chars().count() as f64 * Port::TEXT * CHAR_WIDTH + 2.2
+    })
 }
 
 fn unit_index(units: &[Unit], part: usize) -> usize {
@@ -510,6 +529,67 @@ fn build_block(
             .then(x.unit.cmp(&y.unit))
     });
     sorted.extend(sats.iter().filter(|x| x.anchor != anchor));
+    // The capacitors that decouple a supply pin stand in a row, as far from the part as each
+    // other, the same distance apart, level, hanging from the supply rail above and standing
+    // on the ground rail below.
+    let is_row = |x: &&SatPlan| {
+        x.anchor == anchor
+            && ctx.power[x.net] == Some(PowerKind::Supply)
+            && !a.pins[x.pin].escape.is_vertical()
+    };
+    let mut done_rows: Vec<&SatPlan> = Vec::new();
+    for side in [Dir::Left, Dir::Right] {
+        let row: Vec<&SatPlan> = sorted
+            .iter()
+            .map(|x| **x)
+            .filter(|x| is_row(&x) && a.pins[x.pin].escape == side)
+            .collect();
+        if row.is_empty() {
+            continue;
+        }
+        let first = row
+            .iter()
+            .map(|x| a.pins[x.pin].at)
+            .min_by(|p, q| p.y.total_cmp(&q.y))
+            .expect("a pin");
+        let e0 = first.step(side, STUB);
+        let bases: Vec<Rect> = row
+            .iter()
+            .map(|x| unit_rect(ctx, placed, &units[x.unit], &shapes[x.unit], Some(side)))
+            .collect();
+        let widest = bases.iter().map(Rect::width).fold(0.0, f64::max);
+        let pitch = snap_up(widest + 3.81, GRID).max(7.62);
+        'rows: for k in 0..16 {
+            let dx0 = 10.16 + 5.08 * f64::from(k);
+            let mut places: Vec<(Pt, Rect)> = Vec::new();
+            for (i, (x, base)) in row.iter().zip(&bases).enumerate() {
+                let target = Pt::new(e0.x + side.vector().0 * (dx0 + i as f64 * pitch), e0.y);
+                let off = Pt::new(snap_grid(target.x - x.r.x), snap_grid(target.y - x.r.y));
+                let foot = inflate(base.translated(off), MARGIN);
+                if obstacles.iter().any(|o| overlaps(&foot, o)) {
+                    continue 'rows;
+                }
+                places.push((off, foot));
+            }
+            for (x, (off, foot)) in row.iter().zip(places) {
+                let unit = &units[x.unit];
+                let shape = &shapes[x.unit];
+                tied[x.unit] = true;
+                for (w, &p) in unit.parts.iter().enumerate() {
+                    members.push((
+                        p,
+                        Pt::new(off.x + shape.offsets[w].x, off.y + shape.offsets[w].y),
+                        Some(side),
+                    ));
+                }
+                obstacles.push(foot);
+                rect.union(foot);
+                done_rows.push(x);
+            }
+            break;
+        }
+    }
+    sorted.retain(|x| !done_rows.iter().any(|d| std::ptr::eq(*d, **x)));
     for plan in sorted {
         let (pin_at, pin_escape) = if plan.anchor == anchor {
             (a.pins[plan.pin].at, a.pins[plan.pin].escape)
@@ -618,10 +698,22 @@ struct Scene<'a> {
     local: Vec<usize>,
     marks: &'a Marks,
     units: &'a [Unit],
+    /// The parts that are drawn together: the row of blocks, then each row of loose parts.
+    /// A rail is one wire across the group, with one symbol.
+    groups: Vec<Vec<usize>>,
+    /// The parts that stand beside a pin of another part.
+    satellites: BTreeSet<usize>,
 }
 
 impl<'a> Scene<'a> {
-    fn new(ctx: &'a Ctx<'a>, parts: Vec<PlacedPart>, units: &'a [Unit], marks: &'a Marks) -> Self {
+    fn new(
+        ctx: &'a Ctx<'a>,
+        parts: Vec<PlacedPart>,
+        units: &'a [Unit],
+        marks: &'a Marks,
+        groups: Vec<Vec<usize>>,
+        satellites: BTreeSet<usize>,
+    ) -> Self {
         let mut bounds = parts[0..]
             .first()
             .map_or(Rect::around(Pt::new(0.0, 0.0)), |p| p.extent);
@@ -644,10 +736,36 @@ impl<'a> Scene<'a> {
             local: vec![0; ctx.design.nets.len()],
             marks,
             units,
+            groups,
+            satellites,
         };
         scene.block_parts();
         scene.collect_pins();
+        scene.block_open_pins();
         scene
+    }
+
+    /// An X is at the end of every pin with nothing on it, and nothing else is near it.
+    fn block_open_pins(&mut self) {
+        let mut rects = Vec::new();
+        for (p, part) in self.parts.iter().enumerate() {
+            for (pin, g) in part.pins.iter().zip(&part.glyph.pins) {
+                if g.hidden {
+                    continue;
+                }
+                let open = match pin.net {
+                    None => true,
+                    Some(n) => !self.active(n),
+                };
+                let _ = p;
+                if open {
+                    rects.push(inflate(Rect::around(pin.at), 1.5));
+                }
+            }
+        }
+        for r in rects {
+            self.grid.block_rect(r);
+        }
     }
 
     fn net_id(net: usize) -> u32 {
@@ -690,7 +808,7 @@ impl<'a> Scene<'a> {
                 }
             }
             for t in std::iter::once(&part.reference).chain(part.value.as_ref()) {
-                self.grid.block_rect(inflate(t.extent(), 0.3));
+                self.grid.block_rect(inflate(t.extent(), 0.9));
             }
         }
     }
@@ -943,266 +1061,425 @@ impl<'a> Scene<'a> {
         true
     }
 
-    fn route_power(&mut self) {
-        for net in 0..self.ctx.design.nets.len() {
-            let Some(kind) = self.ctx.power[net] else {
+    /// The nodes of the stub ends of a part's pins on one side, with what is between.
+    fn along(node: Node, escape: Dir) -> i32 {
+        if escape.is_vertical() { node.0 } else { node.1 }
+    }
+
+    /// Each rail is one wire across its group, at the top (a supply) or the bottom (a ground)
+    /// beyond every part, with one symbol; the pins hang from it by straight wires. Pins next
+    /// to each other on one side share a bus first.
+    fn route_rails(&mut self) {
+        for g in 0..self.groups.len() {
+            let mut rect: Option<Rect> = None;
+            for &p in &self.groups[g] {
+                union_into(&mut rect, self.parts[p].extent);
+            }
+            let Some(rect) = rect else {
                 continue;
             };
-            let pins = self.pins_of(net);
-            let mut keys: Vec<(usize, usize)> = pins
-                .into_iter()
-                .filter(|k| self.stubs.contains_key(k))
+            let in_group: BTreeSet<usize> = self.groups[g].iter().copied().collect();
+            let mut nets: Vec<usize> = self
+                .pins
+                .iter()
+                .filter(|p| {
+                    in_group.contains(&p.part)
+                        && self.ctx.power[p.net].is_some()
+                        && self.stubs.contains_key(&(p.part, p.idx))
+                })
+                .map(|p| p.net)
                 .collect();
-            keys.sort_by_key(|k| (self.stubs[k].pin.0, self.stubs[k].pin.1));
-            // Pins near each other share a symbol.
-            let mut clusters: Vec<Vec<(usize, usize)>> = Vec::new();
-            for k in keys {
-                let end = self.stubs[&k].end;
-                let home = clusters.iter().position(|c| {
-                    c.iter()
-                        .any(|q| Self::manhattan(self.stubs[q].end, end) <= POWER_JOIN)
-                });
-                match home {
-                    Some(i) => clusters[i].push(k),
-                    None => clusters.push(vec![k]),
-                }
-            }
-            for cluster in clusters {
-                let tree = self.route_tree(net, &cluster, BTreeSet::new());
-                self.add_symbol(net, kind, &tree);
+            nets.sort_unstable();
+            nets.dedup();
+            let (mut supplies, mut grounds) = (0, 0);
+            for net in nets {
+                let kind = self.ctx.power[net].expect("a rail");
+                let k = if kind == PowerKind::Supply {
+                    supplies += 1;
+                    supplies - 1
+                } else {
+                    grounds += 1;
+                    grounds - 1
+                };
+                self.rail(net, kind, k, rect, &in_group);
             }
         }
     }
 
-    fn add_symbol(&mut self, net: usize, kind: PowerKind, tree: &BTreeSet<Node>) {
+    fn rail(
+        &mut self,
+        net: usize,
+        kind: PowerKind,
+        k: i32,
+        rect: Rect,
+        in_group: &BTreeSet<usize>,
+    ) {
         let id = Self::net_id(net);
+        let natural = if kind == PowerKind::Supply {
+            Dir::Up
+        } else {
+            Dir::Down
+        };
+        let mut keys: Vec<(usize, usize)> = self
+            .pins
+            .iter()
+            .filter(|p| p.net == net && in_group.contains(&p.part))
+            .map(|p| (p.part, p.idx))
+            .filter(|key| self.stubs.contains_key(key))
+            .collect();
+        keys.sort_by_key(|key| {
+            let s = &self.stubs[key];
+            (key.0, s.heading as u8, Self::along(s.end, s.heading))
+        });
+        // Runs: neighbours on one side of one part, with no other pin between them.
+        let mut runs: Vec<Vec<(usize, usize)>> = Vec::new();
+        for key in keys {
+            let s = &self.stubs[&key];
+            let (end, heading) = (s.end, s.heading);
+            let joins = runs.last().is_some_and(|run| {
+                let last = &self.stubs[run.last().expect("a run has a pin")];
+                let (a, b) = (Self::along(last.end, heading), Self::along(end, heading));
+                last.heading == heading
+                    && run[0].0 == key.0
+                    && b - a <= 2
+                    && !self.parts[key.0].pins.iter().any(|q| {
+                        let node = self.grid.node(q.at);
+                        let c = Self::along(node, heading);
+                        q.escape == heading && c > a && c < b
+                    })
+            });
+            if joins {
+                runs.last_mut().expect("a run to join").push(key);
+            } else {
+                runs.push(vec![key]);
+            }
+        }
+        struct Drop {
+            node: Node,
+            heading: Dir,
+            part: usize,
+        }
+        let mut drops: Vec<Drop> = Vec::new();
+        for run in &runs {
+            let ends: Vec<Node> = run.iter().map(|key| self.stubs[key].end).collect();
+            let heading = self.stubs[&run[0]].heading;
+            if ends.len() > 1 {
+                let (first, last) = (ends[0], ends[ends.len() - 1]);
+                self.grid.claim_wire(first, last, id);
+                self.push_wire(net, &[first, last]);
+            }
+            let (node, h) = if heading.is_vertical() {
+                let mean = ends.iter().map(|n| n.0).sum::<i32>() as f64 / ends.len() as f64;
+                let hub = *ends
+                    .iter()
+                    .min_by(|a, b| {
+                        (f64::from(a.0) - mean)
+                            .abs()
+                            .total_cmp(&(f64::from(b.0) - mean).abs())
+                    })
+                    .expect("a pin");
+                (hub, heading)
+            } else if ends.len() > 1 {
+                let pick = if kind == PowerKind::Supply {
+                    ends.iter().min_by_key(|n| n.1)
+                } else {
+                    ends.iter().max_by_key(|n| n.1)
+                };
+                (*pick.expect("a pin"), natural)
+            } else {
+                (ends[0], heading)
+            };
+            drops.push(Drop {
+                node,
+                heading: h,
+                part: run[0].0,
+            });
+        }
+        // The rail's row, and what it spans.
+        let top = self.grid.node(Pt::new(0.0, rect.min.y)).1;
+        let bottom = self.grid.node(Pt::new(0.0, rect.max.y)).1;
+        let row = if kind == PowerKind::Supply {
+            top - (4 + 3 * k)
+        } else {
+            bottom + (4 + 3 * k)
+        };
+        let xs: Vec<i32> = drops.iter().map(|d| d.node.0).collect();
+        let (mut lo, mut hi) = (
+            *xs.iter().min().expect("a drop"),
+            *xs.iter().max().expect("a drop"),
+        );
+        // Where the symbol hangs: in line with the outermost satellite on the rail, the part's
+        // own centre when there is one part, else the left end.
+        let centre = {
+            let c = self
+                .grid
+                .node(Pt::new((rect.min.x + rect.max.x) / 2.0, 0.0))
+                .0;
+            c
+        };
+        let parts_on: BTreeSet<usize> = drops.iter().map(|d| d.part).collect();
+        let sat_xs: Vec<i32> = drops
+            .iter()
+            .filter(|d| self.satellites.contains(&d.part))
+            .map(|d| d.node.0)
+            .collect();
+        let preferred = if let Some(&x) = sat_xs.iter().max_by_key(|&&x| ((x - centre).abs(), -x)) {
+            x
+        } else if parts_on.len() == 1 {
+            (lo + hi) / 2
+        } else {
+            lo
+        };
+        // The symbol's place decides how far the rail goes: if it is outside the drops, the
+        // rail reaches it.
+        let mut order: Vec<i32> = vec![preferred];
+        order.extend(xs.iter().copied());
+        for d in 1..=14 {
+            order.push(lo - d);
+            order.push(hi + d);
+        }
+        order.dedup();
+        let mut chosen: Option<(i32, Option<Text>)> = None;
+        for &x in &order {
+            if let Some(label) = self.symbol_fits(net, kind, (x, row)) {
+                chosen = Some((x, label));
+                break;
+            }
+        }
+        let sym_x = chosen.as_ref().map_or(preferred, |c| c.0);
+        lo = lo.min(sym_x);
+        hi = hi.max(sym_x);
+        self.grid.claim_wire((lo, row), (hi, row), id);
+        if hi > lo {
+            self.push_wire(net, &[(lo, row), (hi, row)]);
+        }
+        let targets: HashSet<Node> = (lo..=hi).map(|x| (x, row)).collect();
+        for d in &drops {
+            match self.grid.route(id, d.node, d.heading, &targets) {
+                Some(path) => {
+                    self.grid.commit(&path, id);
+                    self.push_wire(net, &path);
+                }
+                None => {
+                    let to = (d.node.0, row);
+                    self.push_wire(net, &[d.node, to]);
+                }
+            }
+        }
+        // The symbol, at the end of a stem from the rail.
+        let (dx, dy) = natural.vector();
+        let q = (sym_x, row);
+        let end = (q.0 + dx as i32 * STEM_CELLS, q.1 + dy as i32 * STEM_CELLS);
+        self.grid.claim_wire(q, end, id);
+        self.push_wire(net, &[q, end]);
+        let at = self.grid.pt(end);
+        let name = ellipsize(&self.ctx.design.nets[net].name);
+        let named = kind == PowerKind::Supply || self.ctx.label_grounds;
+        let label = match chosen {
+            Some((_, l)) => l,
+            None => named.then(|| label_beside(at, natural, &name, Side::Right)),
+        };
+        let symbol = PowerSymbol {
+            net,
+            kind,
+            at,
+            dir: natural,
+            label,
+        };
+        self.grid.block_rect(inflate(symbol.extent(), 0.3));
+        self.symbols.push(symbol);
+    }
+
+    /// Whether a symbol can hang at `q` of a rail: the stem and the drawing are clear of
+    /// everything, and its name has room. Gives the name's place.
+    fn symbol_fits(&self, net: usize, kind: PowerKind, q: Node) -> Option<Option<Text>> {
         let dir = if kind == PowerKind::Supply {
             Dir::Up
         } else {
             Dir::Down
         };
-        let mut cands: Vec<Node> = tree.iter().copied().collect();
-        cands.sort_by_key(|n| (if kind == PowerKind::Supply { n.1 } else { -n.1 }, n.0));
-        let name = ellipsize(&self.ctx.design.nets[net].name);
-        let named = kind == PowerKind::Supply || self.ctx.label_grounds;
         let (dx, dy) = dir.vector();
-        let at_of = |q: Node, grid: &Grid| {
-            grid.pt((q.0 + dx as i32 * STEM_CELLS, q.1 + dy as i32 * STEM_CELLS))
-        };
-        // Whether a symbol can stand at the end of a stem that starts at `q`: the stem and the
-        // drawing clear of everything, and room for its name.
-        let fits = |scene: &Self, q: Node| -> Option<Option<Text>> {
-            if scene.grid.owner(q, 1) != grid::NONE && scene.grid.owner(q, 1) != id {
-                return None;
-            }
-            if !scene.grid.run_is_free(q, dir, STEM_CELLS + 2) {
-                return None;
-            }
-            let at = at_of(q, &scene.grid);
-            let glyph = PowerSymbol {
-                net,
-                kind,
-                at,
-                dir,
-                label: None,
-            }
-            .glyph_extent();
-            if !scene.rect_is_free(glyph) {
-                return None;
-            }
-            if !named {
-                return Some(None);
-            }
-            [Side::Right, Side::Left, Side::Beyond]
-                .into_iter()
-                .map(|s| label_beside(at, dir, &name, s))
-                .find(|t| scene.rect_is_free(t.extent()))
-                .map(Some)
-        };
-        let mut pick: Option<(Node, Option<Text>)> = None;
-        // Off the wires' own nodes first, then a little way sideways along a free run.
-        let mut jog: Option<Node> = None;
-        for &q in &cands {
-            if let Some(label) = fits(self, q) {
-                pick = Some((q, label));
-                break;
-            }
-        }
-        if pick.is_none() {
-            'jog: for &k in &[2, 3, 4, 6, 8, 10, 12, 16] {
-                for &q in cands.iter().take(80) {
-                    for sd in [Dir::Right, Dir::Left] {
-                        if !self.grid.run_is_free(q, sd, k) {
-                            continue;
-                        }
-                        let (sx, sy) = sd.vector();
-                        let r = (q.0 + sx as i32 * k, q.1 + sy as i32 * k);
-                        if let Some(label) = fits(self, r) {
-                            jog = Some(q);
-                            pick = Some((r, label));
-                            break 'jog;
-                        }
-                    }
-                }
-            }
-        }
-        let (q, label) = pick.unwrap_or_else(|| {
-            // Nowhere is clear: past the highest (or lowest) of the wires, by crossing.
-            let q = cands[0];
-            let at = at_of(q, &self.grid);
-            let label = named.then(|| label_beside(at, dir, &name, Side::Right));
-            (q, label)
-        });
-        if let Some(from) = jog {
-            self.grid.claim_wire(from, q, id);
-            self.push_wire(net, &[from, q]);
-        }
         let end = (q.0 + dx as i32 * STEM_CELLS, q.1 + dy as i32 * STEM_CELLS);
-        self.grid.claim_wire(q, end, id);
-        self.push_wire(net, &[q, end]);
+        if !self.grid.run_is_free(q, dir, STEM_CELLS + 2) && !self.grid.is_free(q) {
+            // The rail's own row is free before it is claimed; only the stem is tested.
+        }
+        let stem_free = (1..=STEM_CELLS + 2).all(|k| {
+            self.grid
+                .is_free((q.0 + dx as i32 * k, q.1 + dy as i32 * k))
+        });
+        if !stem_free || self.grid.is_blocked(q) {
+            return None;
+        }
         let at = self.grid.pt(end);
-        let symbol = PowerSymbol {
+        let glyph = PowerSymbol {
             net,
             kind,
             at,
             dir,
-            label,
-        };
-        self.grid.block_rect(inflate(symbol.extent(), 0.1));
-        self.symbols.push(symbol);
+            label: None,
+        }
+        .glyph_extent();
+        if !self.rect_is_free(inflate(glyph, 0.3)) {
+            return None;
+        }
+        let named = kind == PowerKind::Supply || self.ctx.label_grounds;
+        if !named {
+            return Some(None);
+        }
+        let name = ellipsize(&self.ctx.design.nets[net].name);
+        [Side::Right, Side::Left, Side::Beyond]
+            .into_iter()
+            .map(|s| label_beside(at, dir, &name, s))
+            .find(|t| self.rect_is_free(inflate(t.extent(), 0.3)))
+            .map(Some)
     }
 
-    /// A flag at the end of a short wire for each net that goes on to another sheet.
+    /// A flag for each net that goes on to another sheet, in a column of its own outside the
+    /// parts, each on a row of its own, one pin pitch apart, joined to the net's wires.
     fn route_ports(&mut self) {
+        let mut group_rect: Vec<Option<Rect>> = Vec::new();
+        for g in &self.groups {
+            let mut r: Option<Rect> = None;
+            for &p in g {
+                union_into(&mut r, self.parts[p].extent);
+            }
+            group_rect.push(r);
+        }
+        struct Want {
+            net: usize,
+            group: usize,
+            side: Dir,
+            row: i32,
+            start: Node,
+            heading: Dir,
+            label: Option<String>,
+            length: f64,
+        }
+        let mut wants: Vec<Want> = Vec::new();
         for net in 0..self.ctx.design.nets.len() {
             if !self.ctx.external[net] || self.ctx.power[net].is_some() || self.local[net] == 0 {
                 continue;
             }
-            let name = self.ctx.design.nets[net].name.clone();
-            let label = is_named(&name).then(|| ellipsize(&name));
-            let length = label.as_ref().map_or(3.0, |l| text_width(l) + 3.6);
-            let tree: BTreeSet<Node> = self.trees.get(&net).cloned().unwrap_or_else(|| {
-                self.pins
-                    .iter()
-                    .filter(|p| p.net == net)
-                    .flat_map(|p| {
-                        self.stubs
-                            .get(&(p.part, p.idx))
-                            .map(|s| [s.pin, s.end])
-                            .into_iter()
-                            .flatten()
-                    })
-                    .collect()
+            // The pin the flag is for: of the part with the most pins, in pin order.
+            let mut pins: Vec<&PinInfo> = self.pins.iter().filter(|p| p.net == net).collect();
+            pins.sort_by_key(|p| {
+                (
+                    std::cmp::Reverse(self.parts[p.part].pins.len()),
+                    p.part,
+                    p.idx,
+                )
             });
-            // Out of the pins' own stubs first (the way they point, if that is sideways), then
-            // out of the ends of the wires. A flag points left or right, so its name reads.
-            let mut cands: Vec<(Node, Dir)> = Vec::new();
-            for p in self.pins.iter().filter(|p| p.net == net) {
-                if let Some(s) = self.stubs.get(&(p.part, p.idx)) {
-                    if s.heading.is_vertical() {
-                        cands.push((s.end, Dir::Right));
-                        cands.push((s.end, Dir::Left));
-                    } else {
-                        cands.push((s.end, s.heading));
-                    }
-                }
-            }
-            for dir in [Dir::Left, Dir::Right] {
-                let pick = match dir {
-                    Dir::Left => tree.iter().min_by_key(|n| (n.0, n.1)),
-                    _ => tree.iter().max_by_key(|n| (n.0, -n.1)),
+            let Some(pin) = pins.first() else {
+                continue;
+            };
+            let Some(stub) = self.stubs.get(&(pin.part, pin.idx)) else {
+                continue;
+            };
+            let group = self
+                .groups
+                .iter()
+                .position(|g| g.contains(&pin.part))
+                .unwrap_or(0);
+            let name = &self.ctx.design.nets[net].name;
+            let label = is_named(name).then(|| ellipsize(name));
+            wants.push(Want {
+                net,
+                group,
+                side: if pin.escape == Dir::Left {
+                    Dir::Left
+                } else {
+                    Dir::Right
+                },
+                row: if pin.escape.is_vertical() {
+                    i32::MAX
+                } else {
+                    stub.end.1
+                },
+                start: stub.end,
+                heading: stub.heading,
+                length: port_length(label.as_deref()),
+                label,
+            });
+        }
+        let mut keys: Vec<(usize, Dir)> = wants.iter().map(|w| (w.group, w.side)).collect();
+        keys.sort_by_key(|(g, d)| (*g, *d as u8));
+        keys.dedup();
+        for (group, side) in keys {
+            let Some(rect) = group_rect[group] else {
+                continue;
+            };
+            let mut idxs: Vec<usize> = (0..wants.len())
+                .filter(|&i| wants[i].group == group && wants[i].side == side)
+                .collect();
+            idxs.sort_by_key(|&i| (wants[i].row, wants[i].net));
+            // Rows are the pins' own rows, two apart at least (one pin pitch); a pin that
+            // leaves up or down gets a row below the group, after the others.
+            let below = self.grid.node(Pt::new(0.0, rect.max.y)).1 + 8;
+            let mut last = i32::MIN / 2;
+            for &i in &idxs {
+                let want = if wants[i].row == i32::MAX {
+                    below.max(last + 2)
+                } else {
+                    wants[i].row
                 };
-                if let Some(&n) = pick {
-                    cands.push((n, dir));
-                }
+                let row = want.max(last + 2);
+                wants[i].row = row;
+                last = row;
             }
-            // Anywhere on the wires, if the ends are crowded.
-            let mut rest: Vec<Node> = tree.iter().copied().collect();
-            rest.sort_by_key(|n| (n.1, n.0));
-            for &n in rest.iter().take(300) {
-                cands.push((n, Dir::Right));
-                cands.push((n, Dir::Left));
-            }
-            let cells = (length / GRID).ceil() as i32 + 1;
-            let mut done = false;
-            'find: for extra in 0..=30 {
-                for &(q, dir) in &cands {
-                    let (dx, dy) = dir.vector();
-                    let tip = (q.0 + dx as i32 * (1 + extra), q.1 + dy as i32 * (1 + extra));
-                    if !self.grid.run_is_free(q, dir, 1 + extra + cells) {
-                        continue;
-                    }
-                    let tip_pt = self.grid.pt(tip);
+            // One column for all of them: as near as every flag fits.
+            let dir = side;
+            let (sx, _) = dir.vector();
+            let edge = if dir == Dir::Left {
+                rect.min.x
+            } else {
+                rect.max.x
+            };
+            let base = self.grid.node(Pt::new(edge, 0.0)).0 + sx as i32 * 6;
+            let mut column = base;
+            'column: for extra in 0..=20 {
+                let x = base + sx as i32 * extra * 2;
+                let all = idxs.iter().all(|&i| {
+                    let w = &wants[i];
+                    let tip = self.grid.pt((x, w.row));
                     let port = Port {
-                        net,
-                        at: tip_pt,
+                        net: w.net,
+                        at: tip,
                         dir,
-                        length,
-                        label: label.as_ref().map(|l| port_label(l, tip_pt, dir)),
+                        length: w.length,
+                        label: None,
                     };
-                    if !self.rect_is_free(port.extent()) {
-                        continue;
-                    }
-                    let id = Self::net_id(net);
-                    self.grid.claim_wire(q, tip, id);
-                    self.push_wire(net, &[q, tip]);
-                    self.grid.block_rect(inflate(port.extent(), 0.1));
-                    self.ports.push(port);
-                    done = true;
-                    break 'find;
+                    self.rect_is_free(inflate(port.extent(), 0.3))
+                });
+                if all {
+                    column = x;
+                    break 'column;
                 }
             }
-            // Or up or down from a wire, a short way, and then the flag.
-            if !done {
-                let mut nodes: Vec<Node> = cands.iter().map(|c| c.0).collect();
-                nodes.dedup();
-                'vertical: for stem in 3..=10 {
-                    for &q in &nodes {
-                        for vdir in [Dir::Up, Dir::Down] {
-                            if !self.grid.run_is_free(q, vdir, stem) {
-                                continue;
-                            }
-                            let (dx, dy) = vdir.vector();
-                            let tip = (q.0 + dx as i32 * stem, q.1 + dy as i32 * stem);
-                            for fdir in [Dir::Right, Dir::Left] {
-                                if !self.grid.run_is_free(tip, fdir, cells) {
-                                    continue;
-                                }
-                                let tip_pt = self.grid.pt(tip);
-                                let port = Port {
-                                    net,
-                                    at: tip_pt,
-                                    dir: fdir,
-                                    length,
-                                    label: label.as_ref().map(|l| port_label(l, tip_pt, fdir)),
-                                };
-                                if !self.rect_is_free(port.extent()) {
-                                    continue;
-                                }
-                                self.grid.claim_wire(q, tip, Self::net_id(net));
-                                self.push_wire(net, &[q, tip]);
-                                self.grid.block_rect(inflate(port.extent(), 0.1));
-                                self.ports.push(port);
-                                done = true;
-                                break 'vertical;
-                            }
-                        }
-                    }
-                }
-            }
-            if !done && let Some(&(q, dir)) = cands.first() {
-                let (dx, dy) = dir.vector();
-                let tip_node = (q.0 + dx as i32, q.1 + dy as i32);
+            for &i in &idxs {
+                let w = &wants[i];
+                let tip_node = (column, w.row);
                 let tip = self.grid.pt(tip_node);
-                self.grid.claim_wire(q, tip_node, Self::net_id(net));
-                self.push_wire(net, &[q, tip_node]);
-                self.ports.push(Port {
-                    net,
+                let port = Port {
+                    net: w.net,
                     at: tip,
                     dir,
-                    length,
-                    label: label.as_ref().map(|l| port_label(l, tip, dir)),
-                });
+                    length: w.length,
+                    label: w.label.as_ref().map(|l| port_label(l, tip, dir)),
+                };
+                let id = Self::net_id(w.net);
+                let targets: HashSet<Node> = HashSet::from([tip_node]);
+                match self.grid.route(id, w.start, w.heading, &targets) {
+                    Some(path) => {
+                        self.grid.commit(&path, id);
+                        self.push_wire(w.net, &path);
+                    }
+                    None => {
+                        let path = vec![w.start, (w.start.0, tip_node.1), tip_node];
+                        self.push_wire(w.net, &path);
+                    }
+                }
+                self.grid.block_rect(inflate(port.extent(), 0.3));
+                self.ports.push(port);
             }
         }
     }
@@ -1244,8 +1521,8 @@ impl<'a> Scene<'a> {
 
     fn finish(mut self) -> Layout {
         self.join_and_stub();
+        self.route_rails();
         self.route_signals();
-        self.route_power();
         self.route_ports();
         let marks = self.pin_marks();
         let junctions = junctions(&self.wires);

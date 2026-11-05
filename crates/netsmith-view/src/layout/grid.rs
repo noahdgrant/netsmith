@@ -14,8 +14,8 @@ pub type Node = (i32, i32);
 pub const NONE: u32 = u32::MAX;
 
 const STEP_COST: u32 = 10;
-const BEND_COST: u32 = 25;
-const CROSS_COST: u32 = 35;
+const BEND_COST: u32 = 60;
+const CROSS_COST: u32 = 45;
 const DIRS: [Dir; 4] = [Dir::Up, Dir::Down, Dir::Left, Dir::Right];
 
 fn vector(d: Dir) -> (i32, i32) {

@@ -270,10 +270,10 @@ fn draw_port(w: &mut String, design: &Design, port: &Port) {
     let l = port.length;
     let points = [
         at(0.0, 0.0),
-        at(1.1, -1.1),
-        at(l, -1.1),
-        at(l, 1.1),
-        at(1.1, 1.1),
+        at(Port::HALF, -Port::HALF),
+        at(l, -Port::HALF),
+        at(l, Port::HALF),
+        at(Port::HALF, Port::HALF),
     ]
     .join(" ");
     let _ = writeln!(
@@ -284,7 +284,7 @@ fn draw_port(w: &mut String, design: &Design, port: &Port) {
     );
     if let Some(label) = &port.label {
         let shown = (label.text != *name).then_some(name.as_str());
-        text_element_titled(w, label, "net-label", 1.27, "", shown);
+        text_element_titled(w, label, "net-label", Port::TEXT, "", shown);
     }
     let _ = writeln!(w, "</g>");
 }
