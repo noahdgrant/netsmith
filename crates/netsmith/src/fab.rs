@@ -3,8 +3,10 @@
 //! For each board it builds the design, places and routes a PCB, writes the board and its
 //! design rules, and packages Gerbers, a drill file, a bill of materials and a placement
 //! file for JLCPCB. It refuses, with the reason, rather than write files that would not
-//! make a working board: an unplaceable or unroutable board, a design rules violation, or an
-//! assembled part with no part number. The Gerbers, drill files, placement file and design
+//! make a working board: an unplaceable board, a design rules violation, or an assembled part
+//! with no part number. A board the router could not finish is written marked INCOMPLETE
+//! (`routing-failure.txt`, a first line of `fab-notes.txt`) so that its routed part can be
+//! looked at, and the run still fails. The Gerbers, drill files, placement file and design
 //! rules check are netsmith's own (ADR 0034, ADR 0037); KiCad is only the optional
 //! cross-check.
 
@@ -495,7 +497,10 @@ fn fab_board(
             },
         );
         let unrouted = routing.left;
-        if !unrouted.is_empty() {
+        // A board with connections left is still written, so that the owner can open the part
+        // that is routed in the PCB view, but it is marked INCOMPLETE and the run ends in an
+        // error (see `write_incomplete`).
+        let incomplete = (!unrouted.is_empty()).then(|| {
             let mut msg = format!("{} connections could not be routed", unrouted.len());
             match (routing.stopped, options.route_timeout) {
                 (true, Some(limit)) => msg.push_str(&format!(
@@ -512,9 +517,25 @@ fn fab_board(
             for line in &unrouted.lines {
                 msg.push_str(&format!("\n  {line}"));
             }
-            return Err(fail(msg));
+            Incomplete {
+                message: msg,
+                report: routing_failure(&built.label(), board.outline.min, &unrouted, routing.tries),
+                lines: unrouted
+                    .lines
+                    .iter()
+                    .map(|line| format!("ERROR: not routed: {line}"))
+                    .collect(),
+            }
+        });
+        if let Some(incomplete) = &incomplete {
+            say(format!(
+                "{}: INCOMPLETE: {} connections are not routed; writing the board and the Gerbers anyway, marked incomplete",
+                built.label(),
+                incomplete.lines.len()
+            ));
+        } else {
+            say(format!("{}: routed, writing files", built.label()));
         }
-        say(format!("{}: routed, writing files", built.label()));
 
         let dir = built.dir(out);
         let pcb_path = dir.join(format!("{name}.kicad_pcb"));
@@ -555,8 +576,26 @@ fn fab_board(
                 .into_iter()
                 .map(|w| format!("warning: {w}")),
         );
+        // The notes lead with what is wrong, so that nobody orders an incomplete board.
+        if let Some(incomplete) = &incomplete {
+            extras.insert(0, format!("ERROR: INCOMPLETE: {}", incomplete.headline()));
+            for (k, line) in incomplete.lines.iter().take(10).enumerate() {
+                extras.insert(1 + k, line.clone());
+            }
+            if incomplete.lines.len() > 10 {
+                extras.insert(
+                    11,
+                    format!(
+                        "ERROR: ... and {} more not routed, all in {ROUTING_FAILURE}",
+                        incomplete.lines.len() - 10
+                    ),
+                );
+            }
+        }
         let package_options = Options {
-            allow_drc_violations: options.allow_drc_violations,
+            // The check finds the unrouted connections as unconnected pads; the package is made
+            // anyway, for the person to look at, and the run still fails.
+            allow_drc_violations: options.allow_drc_violations || incomplete.is_some(),
             drc: drc_extras(&board),
             trim: board.trims().iter().map(Trim::note).collect(),
             process: Some(board.process_note()),
@@ -567,6 +606,13 @@ fn fab_board(
             constraints: crate::constraints::of_design(&built.design, catalogs.constraints_warn()),
             ..Options::default()
         };
+        if let Some(incomplete) = incomplete {
+            return Err(fail(write_incomplete(
+                &incomplete,
+                &dir,
+                package(&pcb_path, &entries, &package_options),
+            )));
+        }
         let pkg =
             package(&pcb_path, &entries, &package_options).map_err(|e| fail(e.to_string()))?;
         let mut files = vec![pcb_path.clone()];
@@ -622,6 +668,107 @@ fn fab_board(
             pcb: pcb_path,
         })
     }
+}
+
+/// What is written for a board the router left connections of.
+const ROUTING_FAILURE: &str = "routing-failure.txt";
+
+/// A board with connections the router could not make: the message of the error `fab` ends
+/// in, the text of [`ROUTING_FAILURE`], and one line of the notes for each connection.
+struct Incomplete {
+    message: String,
+    report: String,
+    lines: Vec<String>,
+}
+
+impl Incomplete {
+    /// The first line of the notes.
+    fn headline(&self) -> String {
+        format!(
+            "{} connection(s) have no copper; this package is NOT ready to order, see {ROUTING_FAILURE}",
+            self.lines.len()
+        )
+    }
+}
+
+/// The text of `routing-failure.txt`: every connection that has no copper, with its net and
+/// its two pads and where they are, and the parts most of them end on.
+fn routing_failure(
+    label: &str,
+    origin: netsmith_pcb::Pt,
+    left: &netsmith_pcb::Ratsnest,
+    tries: usize,
+) -> String {
+    let at = |p: netsmith_pcb::Pt| (p.x - origin.x, p.y - origin.y);
+    let mut text = format!(
+        "INCOMPLETE: {label} is not fully routed. {} connection(s) have no copper after {tries} tries of the router, so this board does not work. The board file and the Gerbers beside this file are only for looking at the part that is routed; do not order them.\n\nEach line: the net, its two pads, and where they are in mm from the outline's top left corner, y down.\n\n",
+        left.len()
+    );
+    let mut ends: BTreeMap<&str, usize> = BTreeMap::new();
+    for line in &left.lines {
+        let (from, to) = (at(line.from_at), at(line.to_at));
+        if line.to_plane {
+            text.push_str(&format!(
+                "net {}: {} to the plane, at ({:.2}, {:.2})\n",
+                line.net, line.from, from.0, from.1
+            ));
+        } else {
+            text.push_str(&format!(
+                "net {}: {} at ({:.2}, {:.2}) to {} at ({:.2}, {:.2})\n",
+                line.net, line.from, from.0, from.1, line.to, to.0, to.1
+            ));
+        }
+        let mut parts = vec![line.from.refdes.as_str()];
+        if !line.to_plane && line.to.refdes != line.from.refdes {
+            parts.push(line.to.refdes.as_str());
+        }
+        for part in parts {
+            *ends.entry(part).or_default() += 1;
+        }
+    }
+    let mut ends: Vec<(&str, usize)> = ends.into_iter().collect();
+    ends.sort_by_key(|&(part, n)| (std::cmp::Reverse(n), part));
+    text.push_str("\nThe parts the unrouted connections end on, most first (a part that most of them end on has pads that are walled in by their neighbours or by the copper of other nets):\n");
+    for (part, n) in ends.iter().take(8) {
+        text.push_str(&format!("  {part}: {n}\n"));
+    }
+    text
+}
+
+/// Write what an incomplete board has: `routing-failure.txt`, and the Gerbers, the bill of
+/// materials, the placement file and the notes if the package could be made (the notes lead
+/// with the error). Returns the message `fab` fails with.
+fn write_incomplete(
+    incomplete: &Incomplete,
+    dir: &Path,
+    package: Result<Package, netsmith_fab::Error>,
+) -> String {
+    let mut message = incomplete.message.clone();
+    let file = dir.join(ROUTING_FAILURE);
+    let wrote = fs::write(&file, &incomplete.report);
+    message.push_str(&format!(
+        "\n  INCOMPLETE: the board file is in {}",
+        dir.display()
+    ));
+    match package.map(|pkg| pkg.write(dir).map(|_| pkg)) {
+        Ok(Ok(pkg)) => message.push_str(&format!(
+            " with the Gerbers ({}) and fab-notes.txt; they are NOT ready to order",
+            pkg.zip_name()
+        )),
+        Ok(Err(e)) => message.push_str(&format!("; the Gerbers could not be written: {e}")),
+        Err(e) => message.push_str(&format!("; the Gerbers were not made: {e}")),
+    }
+    match wrote {
+        Ok(()) => message.push_str(&format!(
+            "\n  every unrouted connection with its net and pads is in {}",
+            file.display()
+        )),
+        Err(e) => message.push_str(&format!(
+            "\n  ({} could not be written: {e})",
+            file.display()
+        )),
+    }
+    message
 }
 
 /// The panel of `spec`, made from the board `run` made: the panel board file, its Gerbers,
@@ -944,5 +1091,88 @@ mod tests {
         )
         .unwrap();
         assert_eq!(entries.len(), 2);
+    }
+    fn line(
+        net: &str,
+        from: (&str, &str, f64, f64),
+        to: (&str, &str, f64, f64),
+    ) -> netsmith_pcb::Ratline {
+        let pad = |(refdes, number, _, _): (&str, &str, f64, f64)| netsmith_pcb::PadRef {
+            refdes: refdes.into(),
+            number: number.into(),
+        };
+        netsmith_pcb::Ratline {
+            net: net.into(),
+            from: pad(from),
+            to: pad(to),
+            from_at: netsmith_pcb::Pt::new(from.2, from.3),
+            to_at: netsmith_pcb::Pt::new(to.2, to.3),
+            to_plane: false,
+        }
+    }
+
+    #[test]
+    fn the_routing_failure_lists_each_connection_with_its_net_pads_and_places() {
+        let left = netsmith_pcb::Ratsnest {
+            lines: vec![
+                line("SIG_A", ("U1", "A3", 15.0, 25.5), ("R1", "1", 12.0, 21.0)),
+                line("SIG_B", ("U1", "C1", 16.1, 25.5), ("J1", "2", 30.0, 5.0)),
+            ],
+        };
+        let text = routing_failure("Demo", netsmith_pcb::Pt::new(10.0, 20.0), &left, 4);
+        assert!(
+            text.starts_with(
+                "INCOMPLETE: Demo is not fully routed. 2 connection(s) have no copper after 4 tries"
+            ),
+            "{text}"
+        );
+        assert!(
+            text.contains("net SIG_A: U1.A3 at (5.00, 5.50) to R1.1 at (2.00, 1.00)\n"),
+            "{text}"
+        );
+        assert!(
+            text.contains("net SIG_B: U1.C1 at (6.10, 5.50) to J1.2 at (20.00, -15.00)\n"),
+            "{text}"
+        );
+        assert!(
+            text.contains("  U1: 2\n") && text.contains("  R1: 1\n"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn an_incomplete_board_writes_its_report_and_the_error_says_where_everything_is() {
+        let dir = netsmith_kicad::testlib::TempDir::new("incomplete");
+        let incomplete = Incomplete {
+            message: "1 connections could not be routed (after 4 tries):\n  net A: U1.1 to R1.1"
+                .into(),
+            report: "INCOMPLETE: Demo\n".into(),
+            lines: vec!["ERROR: not routed: net A: U1.1 to R1.1".into()],
+        };
+        // The package could not be made (for instance a requirement is unmet): the report is
+        // still written and the error says why there are no Gerbers.
+        let message = write_incomplete(
+            &incomplete,
+            &dir,
+            Err(netsmith_fab::Error::Io("no package".into())),
+        );
+        assert!(
+            message.starts_with("1 connections could not be routed"),
+            "{message}"
+        );
+        assert!(
+            message.contains("INCOMPLETE: the board file is in")
+                && message.contains("the Gerbers were not made: no package")
+                && message.contains("routing-failure.txt"),
+            "{message}"
+        );
+        assert_eq!(
+            fs::read_to_string(dir.join("routing-failure.txt")).unwrap(),
+            "INCOMPLETE: Demo\n"
+        );
+        assert_eq!(
+            incomplete.headline(),
+            "1 connection(s) have no copper; this package is NOT ready to order, see routing-failure.txt"
+        );
     }
 }

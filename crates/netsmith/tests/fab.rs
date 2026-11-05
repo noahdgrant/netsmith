@@ -512,35 +512,66 @@ fn each_board_of_a_system_gets_a_package_of_its_own_and_passes_the_design_rules(
 }
 
 #[test]
-fn a_route_timeout_stops_fab_and_lists_the_connections_left_with_the_reason() {
+fn a_route_timeout_stops_fab_but_writes_the_incomplete_board_and_lists_the_connections_left() {
     if netsmith_kicad::testlib::skip_without_kicad_libraries() {
         return;
     }
     let dir = out("route-timeout");
-    let err = fab_with_options(
-        "led.nsm",
-        LED,
-        &netsmith_check::Loader::std(),
-        &dir,
-        &Catalogs::jlcpcb(),
-        &Libraries::standard(),
-        None,
-        &FabOptions {
-            route_timeout: Some(Duration::ZERO),
-            ..FabOptions::default()
-        },
-    )
-    .expect_err("no time to route");
-    assert!(
-        err.contains("3 connections could not be routed")
-            && err.contains("stopped after the route timeout of 0 s")
-            && err.contains("--route-timeout"),
-        "{err}"
-    );
-    for line in ["net GND: D1.1 to J1.2", "net VCC: J1.1 to R1.1"] {
-        assert!(err.contains(line), "{line} is not named in {err}");
+    // `--allow-drc-violations` makes no difference: connections left are an error either way.
+    for allow_drc_violations in [false, true] {
+        let err = fab_with_options(
+            "led.nsm",
+            LED,
+            &netsmith_check::Loader::std(),
+            &dir,
+            &Catalogs::jlcpcb(),
+            &Libraries::standard(),
+            None,
+            &FabOptions {
+                route_timeout: Some(Duration::ZERO),
+                allow_drc_violations,
+                ..FabOptions::default()
+            },
+        )
+        .expect_err("no time to route");
+        assert!(
+            err.contains("3 connections could not be routed")
+                && err.contains("stopped after the route timeout of 0 s")
+                && err.contains("--route-timeout"),
+            "{err}"
+        );
+        for line in ["net GND: D1.1 to J1.2", "net VCC: J1.1 to R1.1"] {
+            assert!(err.contains(line), "{line} is not named in {err}");
+        }
+        assert!(
+            err.contains("INCOMPLETE") && err.contains("routing-failure.txt"),
+            "{err}"
+        );
     }
-    assert!(!dir.exists(), "nothing is written");
+    // The part that is routed can be opened: the board file and the Gerbers are written, and
+    // marked, and every connection left is listed with its net and its two pads.
+    let board = dir.join("LedExample");
+    for file in [
+        "LedExample.kicad_pcb",
+        "LedExample-gerbers.zip",
+        "fab-notes.txt",
+        "routing-failure.txt",
+    ] {
+        assert!(board.join(file).is_file(), "{file} was not written");
+    }
+    let report = fs::read_to_string(board.join("routing-failure.txt")).unwrap();
+    assert!(report.starts_with("INCOMPLETE: "), "{report}");
+    for line in ["net GND: D1.1 at (", "net VCC: J1.1 at (", ") to R1.1 at ("] {
+        assert!(report.contains(line), "{line} is not in {report}");
+    }
+    assert_eq!(report.matches("\nnet ").count(), 3, "{report}");
+    let notes = fs::read_to_string(board.join("fab-notes.txt")).unwrap();
+    assert!(
+        notes.contains("ERROR: INCOMPLETE: 3 connection(s) have no copper")
+            && notes.contains("ERROR: not routed: net GND: D1.1 to J1.2")
+            && notes.contains("NOT clean, packaged anyway"),
+        "{notes}"
+    );
 }
 
 static PROGRESS: Mutex<Vec<String>> = Mutex::new(Vec::new());

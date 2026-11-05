@@ -8,12 +8,14 @@
 //! the clearance round it, stays off every pad, track and via of other nets and off the
 //! board edge. Every size and space comes from the board's [`Rules`].
 //!
-//! Lines are routed shortest first. A line that cannot be routed is then tried again by
-//! ripping up the nets that stand in its way, routing it, and routing those again; and if
-//! lines are still left, the whole board is routed again with the lines in another order
-//! (longest first, then by net, then shortest last). The first complete result is kept, or
-//! failing that the one that leaves fewest lines. There is no push-and-shove, so a board
-//! can still end partly routed, and what is left is returned.
+//! Lines are routed shortest first, except that a line that ends on a pad deep in a
+//! fine-pitch grid of pads, which has the fewest ways out, comes before the others (see
+//! [`pad_depth`]). A line that cannot be routed is then tried again by ripping up the nets
+//! that stand in its way, routing it, and routing those again; and if lines are still left,
+//! the whole board is routed again with the lines in another order (shortest first, longest
+//! first, by net, in reverse net order), at most [`MOST_TRIES`] times in all. The first
+//! complete result is kept, or failing that the one that leaves fewest lines. There is no
+//! push-and-shove, so a board can still end partly routed, and what is left is returned.
 //!
 //! The work is bounded. A line is searched for in a window round its pads first, and in a
 //! larger one only if that finds nothing. Before a search, a cheap flood from both ends finds
@@ -63,6 +65,11 @@ const REPORT_EVERY: Duration = Duration::from_secs(2);
 const NEGOTIATION_ROUNDS: usize = 6;
 const HISTORY_COST: i64 = 40;
 const HISTORY_MOST: u8 = 25;
+
+/// The most times the whole board is routed, each with the lines in another order. Putting
+/// the lines of a fine-pitch grid first is one more order, so the last of the others is
+/// dropped for it: a board is routed at most as many times as before.
+const MOST_TRIES: usize = 4;
 
 /// What a move costs, in tenths of a millimetre of track.
 const STEP: i64 = 10;
@@ -935,6 +942,62 @@ fn in_pad(board: &Board, pad: &crate::board::PadRef, at: Pt, grid: &Grid) -> Opt
     })
 }
 
+/// How deep a pad stands in a fine-pitch grid of pads, in pitches from the outside of the
+/// part's pads: 0 for a pad on the outer ring, and for every pad of a part that is not a
+/// fine-pitch grid (fewer than eight surface-mount pads, or none within the room a via and the
+/// rules' spaces need between pads). Such a pad can leave only through the gaps between its
+/// neighbours, and the deeper it is the fewer ways out it has.
+fn pad_depth(board: &Board, pad: &crate::board::PadRef, at: Pt) -> f64 {
+    let rules = &board.rules;
+    let (part, found) = pad_of(board, pad, at);
+    let (front, back) = part.pad_layers(found);
+    let on_face = |p: &crate::footprint::Pad| {
+        let (f, b) = part.pad_layers(p);
+        (front && f) || (back && b)
+    };
+    let pads: Vec<&crate::footprint::Pad> = part
+        .footprint
+        .pads
+        .iter()
+        .filter(|p| p.drill.is_none() && on_face(p))
+        .collect();
+    if pads.len() < 8 || found.drill.is_some() {
+        return 0.0;
+    }
+    let here = part.pad_bounds(found);
+    let gap = |a: &Rect, b: &Rect| {
+        let dx = (a.min.x - b.max.x).max(b.min.x - a.max.x).max(0.0);
+        let dy = (a.min.y - b.max.y).max(b.min.y - a.max.y).max(0.0);
+        dx.hypot(dy)
+    };
+    let nearest = pads
+        .iter()
+        .filter(|p| part.pad_centre(p) != at)
+        .map(|p| {
+            (
+                gap(&here, &part.pad_bounds(p)),
+                part.pad_centre(p).distance(at),
+            )
+        })
+        .fold((f64::MAX, f64::MAX), |m, g| (m.0.min(g.0), m.1.min(g.1)));
+    if nearest.0 >= rules.via_diameter + 2.0 * rules.clearance {
+        return 0.0;
+    }
+    let mut span = here;
+    for p in &pads {
+        let b = part.pad_bounds(p);
+        span = Rect::new(
+            Pt::new(span.min.x.min(b.min.x), span.min.y.min(b.min.y)),
+            Pt::new(span.max.x.max(b.max.x), span.max.y.max(b.max.y)),
+        );
+    }
+    let inside = (at.x - span.min.x)
+        .min(span.max.x - at.x)
+        .min(at.y - span.min.y)
+        .min(span.max.y - at.y);
+    (inside / nearest.1).round().max(0.0)
+}
+
 fn initial_obstacles(board: &Board) -> Obstacles {
     let rules = &board.rules;
     let net_of: HashMap<(&str, &str), usize> = board
@@ -1066,6 +1129,8 @@ struct Router<'a> {
     ends: Vec<(Vec<Spot>, Vec<Spot>)>,
     /// The pads at each end of a line that a via may stand in.
     in_pads: Vec<(Option<InPad>, Option<InPad>)>,
+    /// How deep in a fine-pitch grid of pads the deeper end of each line is ([`pad_depth`]).
+    depth: Vec<f64>,
     /// Whether lines left over are negotiated for, and what the negotiation has learnt.
     negotiate: bool,
     history: RefCell<[Vec<u8>; 2]>,
@@ -1111,6 +1176,17 @@ impl<'a> Router<'a> {
                 (in_pad(board, &l.from, l.from_at, &grid), to)
             })
             .collect();
+        let depth = lines
+            .iter()
+            .map(|l| {
+                let to = if l.to_plane {
+                    0.0
+                } else {
+                    pad_depth(board, &l.to, l.to_at)
+                };
+                pad_depth(board, &l.from, l.from_at).max(to)
+            })
+            .collect();
         let fixed = initial_obstacles(board);
         let mut fixed_by_net = vec![Vec::new(); board.nets.len()];
         for (k, o) in fixed.list.iter().enumerate() {
@@ -1128,6 +1204,7 @@ impl<'a> Router<'a> {
             nets,
             ends,
             in_pads,
+            depth,
             negotiate: options.negotiate,
             history: RefCell::new([Vec::new(), Vec::new()]),
             deadline: options.time_limit.map(|t| Instant::now() + t),
@@ -1789,7 +1866,15 @@ impl<'a> Router<'a> {
     fn orders(&self, retry: bool) -> Vec<Vec<usize>> {
         let mut shortest: Vec<usize> = (0..self.lines.len()).collect();
         shortest.sort_by(|&a, &b| self.lines[a].length().total_cmp(&self.lines[b].length()));
-        let mut orders = vec![shortest.clone()];
+        // Lines that end deep in a fine-pitch grid of pads first, the deepest first, and the
+        // others shortest first. It differs from `shortest` only on a board that has such a
+        // grid.
+        let mut constrained = shortest.clone();
+        constrained.sort_by(|&a, &b| self.depth[b].total_cmp(&self.depth[a]));
+        let mut orders = vec![constrained];
+        if !orders.contains(&shortest) {
+            orders.push(shortest.clone());
+        }
         if retry {
             let mut longest = shortest.clone();
             longest.reverse();
@@ -1803,6 +1888,7 @@ impl<'a> Router<'a> {
                 }
             }
         }
+        orders.truncate(MOST_TRIES);
         orders
     }
 }
