@@ -92,12 +92,38 @@ fn a_tight_board_the_router_cannot_finish_leaves_named_lines_and_only_copper_tha
         },
     );
     assert!(!routing.left.is_empty());
+    // Every order is one more time through the board: never more than four.
+    assert!(routing.tries <= 4, "{} tries", routing.tries);
     assert!(routing.left.lines.iter().all(|l| !l.net.is_empty()));
     let errors: Vec<String> = drc_errors(&board)
         .into_iter()
         .filter(|e| !e.to_lowercase().contains("unconnected"))
         .collect();
     assert_eq!(errors, Vec::<String>::new());
+}
+
+#[test]
+fn the_lines_that_end_deep_in_the_fine_pitch_module_are_routed_first_so_an_easy_seed_needs_one_try()
+{
+    // Seed 0 completes, but only on its third try when the lines are routed shortest first:
+    // the short lines of the parts round the module take the gaps between its pads before
+    // the lines of its inner pads, which have no other way out, are reached. With those
+    // lines first it completes on the first.
+    let mut board = tight_board(0, AREA_TIGHT);
+    let routing = route_with(
+        &mut board,
+        RouteOptions {
+            time_limit: Some(Duration::from_secs(120)),
+            ..RouteOptions::default()
+        },
+    );
+    assert!(!routing.stopped);
+    assert!(
+        routing.left.is_empty(),
+        "unrouted: {:#?}",
+        routing.left.lines
+    );
+    assert_eq!(routing.tries, 1);
 }
 
 /// Prints, for each seed in `NETSMITH_SEEDS` (`0..8` by default; `a..b`), the lines left
