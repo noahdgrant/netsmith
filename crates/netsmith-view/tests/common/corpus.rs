@@ -106,5 +106,19 @@ pub fn corpus() -> Vec<Case> {
         lib,
         dir: Some(dir),
     });
+    // Two parts joined by a UART, as one drawing, and as two sheets: the buses.
+    for (name, caps) in [("UartBoard", 0), ("UartSheets", 8)] {
+        let (dir, mapping, lib) = super::bus::setup();
+        let (design, groups) = super::bus::board(4, caps);
+        out.push(Case {
+            name: name.into(),
+            design,
+            groups: if caps == 0 { Vec::new() } else { groups },
+            rails: super::bus::rails(),
+            mapping,
+            lib,
+            dir: Some(dir),
+        });
+    }
     out
 }

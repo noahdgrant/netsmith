@@ -9,6 +9,8 @@ use super::grid::{self, Grid, Node};
 use super::prune;
 use super::*;
 
+mod bus;
+
 /// Clear space round a part and what it needs beside it.
 const MARGIN: f64 = 2.54;
 /// Between two blocks of parts in the row.
@@ -274,6 +276,8 @@ pub(super) struct Drawn {
     /// For each net, how many groups of parts (a main part and what serves its pins, or a part
     /// that stands alone) it has pins in, on this sheet.
     pub clusters: Vec<usize>,
+    /// The nets that are drawn as members of a bus: not for the policy to name.
+    pub bus_nets: Vec<bool>,
 }
 
 /// One piece of the sheet that is placed as a whole: a block (a main part with the parts that
@@ -317,9 +321,10 @@ pub(super) fn run(
 ) -> Drawn {
     // The nets that are drawn as a name at the end of a stub: the nets that leave the sheet
     // (a flag) and the nets chosen by the policy.
-    let tagged: Vec<bool> = (0..ctx.design.nets.len())
+    let retag: Vec<bool> = (0..ctx.design.nets.len())
         .map(|net| (ctx.external[net] || labelled[net]) && ctx.power[net].is_none())
         .collect();
+    let mut tagged = retag.clone();
     let n = ctx.design.parts.len();
     let pin_nets: Vec<Vec<Option<usize>>> = (0..n)
         .map(|p| {
@@ -354,6 +359,17 @@ pub(super) fn run(
         .collect();
     let anchor_pos: BTreeMap<usize, usize> =
         anchors.iter().enumerate().map(|(i, &u)| (u, i)).collect();
+
+    // The interfaces drawn as buses: their nets have no flag or name of their own, and their
+    // parts keep room for the entries, the spine and the writing.
+    let is_anchor = |p: usize| role[unit_index(units, p)] == Role::Anchor;
+    let bus_plans = bus::plan(ctx, &placed, &is_anchor);
+    for plan in &bus_plans {
+        for &net in &plan.nets {
+            tagged[net] = false;
+        }
+    }
+    let bus_rooms = bus::rooms(ctx, &placed, &bus_plans, &tagged);
 
     // Which pins of the anchors are on each net.
     let mut anchor_pins: BTreeMap<usize, Vec<(usize, usize)>> = BTreeMap::new();
@@ -507,7 +523,10 @@ pub(super) fn run(
     for &u in &anchors {
         let a = units[u].parts[0];
         let mine: Vec<&SatPlan> = plans.iter().filter(|s| s.root == a).collect();
-        let block = build_block(ctx, &placed, units, &shapes, a, &mine, &mut tied, &tagged);
+        let rooms = bus_rooms.get(&a).map_or(&[][..], Vec::as_slice);
+        let block = build_block(
+            ctx, &placed, units, &shapes, a, &mine, &mut tied, &tagged, rooms,
+        );
         blocks.push(block);
     }
 
@@ -617,7 +636,8 @@ pub(super) fn run(
 
     groups.retain(|g| !g.is_empty());
     Scene::new(
-        ctx, placed, units, marks, groups, satellites, tagged, block_of, anchored,
+        ctx, placed, units, marks, groups, satellites, tagged, block_of, anchored, bus_plans,
+        retag,
     )
     .finish()
 }
@@ -865,6 +885,7 @@ fn build_block(
     sats: &[&SatPlan],
     tied: &mut [bool],
     tagged: &[bool],
+    rooms: &[Rect],
 ) -> Block {
     let a = &placed[anchor];
     let mut obstacles: Vec<Rect> = vec![inflate(a.extent, 0.5)];
@@ -886,6 +907,11 @@ fn build_block(
             obstacles.push(inflate(r, 0.5));
             rect.union(r);
         }
+    }
+    // The entries, spine and writing of the buses at this part.
+    for r in rooms {
+        obstacles.push(inflate(*r, 0.5));
+        rect.union(*r);
     }
     // The satellites of the anchor's own pins first, from the top down; then those that stand
     // beside a satellite, in the order they were found.
@@ -1121,6 +1147,16 @@ struct Scene<'a> {
     /// not at its end, where the name is.
     tag_keys: BTreeSet<(usize, usize)>,
     labels: Vec<NetLabel>,
+    /// The buses planned, until they are drawn.
+    bus_plans: Vec<bus::BusPlan>,
+    /// Whether each net is one of a bus that is planned or drawn: it has no stub of its own
+    /// and no wire to route.
+    bus_skip: Vec<bool>,
+    /// Whether each net is one of a bus that was drawn.
+    bus_done: Vec<bool>,
+    /// What each net's tag was before the buses took their nets' tags away.
+    retag: Vec<bool>,
+    buses: Vec<Bus>,
 }
 
 impl<'a> Scene<'a> {
@@ -1135,6 +1171,8 @@ impl<'a> Scene<'a> {
         tagged: Vec<bool>,
         block_of: Vec<usize>,
         anchored: Vec<bool>,
+        bus_plans: Vec<bus::BusPlan>,
+        retag: Vec<bool>,
     ) -> Self {
         let mut bounds = parts[0..]
             .first()
@@ -1143,7 +1181,8 @@ impl<'a> Scene<'a> {
             bounds.union(p.extent);
         }
         // Room for the rails, their symbols and the names at the pins at the edge.
-        let bounds = inflate(bounds, 40.0);
+        // A bus has its spine, its trunk and its writing out beyond the parts as well.
+        let bounds = inflate(bounds, if bus_plans.is_empty() { 40.0 } else { 70.0 });
         let grid = Grid::new(bounds, GRID);
         let mut scene = Scene {
             ctx,
@@ -1169,6 +1208,19 @@ impl<'a> Scene<'a> {
             tag_boxes: Vec::new(),
             tag_keys: BTreeSet::new(),
             labels: Vec::new(),
+            bus_skip: {
+                let mut skip = vec![false; ctx.design.nets.len()];
+                for plan in &bus_plans {
+                    for &net in &plan.nets {
+                        skip[net] = true;
+                    }
+                }
+                skip
+            },
+            bus_done: vec![false; ctx.design.nets.len()],
+            bus_plans,
+            retag,
+            buses: Vec::new(),
         };
         scene.block_parts();
         scene.collect_pins();
@@ -1376,32 +1428,37 @@ impl<'a> Scene<'a> {
             .map(|p| (p.part, p.idx, p.net, p.node, p.escape))
             .collect();
         for (part, idx, net, node, escape) in pins {
-            if self.joined.contains(&(part, idx)) || !self.active(net) {
+            if self.joined.contains(&(part, idx)) || !self.active(net) || self.bus_skip[net] {
                 continue;
             }
-            let id = Self::net_id(net);
-            self.grid.unblock(node);
-            let (dx, dy) = escape.vector();
-            let step = |k: i32| (node.0 + dx as i32 * k, node.1 + dy as i32 * k);
-            let mut end = node;
-            for k in 1..=STUB_CELLS {
-                if self.grid.is_free(step(k)) && !self.grid.step_is_cut(step(k - 1), escape) {
-                    end = step(k);
-                } else {
-                    break;
-                }
-            }
-            self.grid.claim_wire(node, end, id);
-            self.push_wire(net, &[node, end]);
-            self.stubs.insert(
-                (part, idx),
-                Stub {
-                    pin: node,
-                    end,
-                    heading: escape,
-                },
-            );
+            self.stub_pin(part, idx, net, node, escape);
         }
+    }
+
+    /// The straight stub out of a pin, as far as it goes free, up to [`STUB_CELLS`].
+    fn stub_pin(&mut self, part: usize, idx: usize, net: usize, node: Node, escape: Dir) {
+        let id = Self::net_id(net);
+        self.grid.unblock(node);
+        let (dx, dy) = escape.vector();
+        let step = |k: i32| (node.0 + dx as i32 * k, node.1 + dy as i32 * k);
+        let mut end = node;
+        for k in 1..=STUB_CELLS {
+            if self.grid.is_free(step(k)) && !self.grid.step_is_cut(step(k - 1), escape) {
+                end = step(k);
+            } else {
+                break;
+            }
+        }
+        self.grid.claim_wire(node, end, id);
+        self.push_wire(net, &[node, end]);
+        self.stubs.insert(
+            (part, idx),
+            Stub {
+                pin: node,
+                end,
+                heading: escape,
+            },
+        );
     }
 
     fn manhattan(a: Node, b: Node) -> i32 {
@@ -1495,7 +1552,7 @@ impl<'a> Scene<'a> {
 
     fn route_signals(&mut self) {
         let mut nets: Vec<(i32, usize)> = (0..self.ctx.design.nets.len())
-            .filter(|&n| self.ctx.power[n].is_none() && self.active(n))
+            .filter(|&n| self.ctx.power[n].is_none() && self.active(n) && !self.bus_skip[n])
             .map(|n| {
                 let nodes: Vec<Node> = self
                     .pins
@@ -1863,8 +1920,13 @@ impl<'a> Scene<'a> {
     /// paths, and its stub is lengthened until the name has room. A net whose names cannot be
     /// placed is left as wires.
     fn plan_tags(&mut self) {
+        self.plan_tags_of((0..self.ctx.design.nets.len()).collect());
+    }
+
+    /// [`plan_tags`](Self::plan_tags) for the nets of `nets`.
+    fn plan_tags_of(&mut self, nets: Vec<usize>) {
         let ctx = self.ctx;
-        for net in 0..ctx.design.nets.len() {
+        for net in nets {
             if !self.tagged[net] || self.local[net] == 0 {
                 continue;
             }
@@ -2085,12 +2147,18 @@ impl<'a> Scene<'a> {
         for l in &self.labels {
             out.insert((l.net, self.grid.node(l.at)));
         }
+        for b in &self.buses {
+            for e in &b.entries {
+                out.insert((e.net, self.grid.node(e.at)));
+            }
+        }
         out
     }
 
     fn finish(mut self) -> Drawn {
         self.join_and_stub();
         self.plan_tags();
+        self.plan_buses();
         self.route_rails();
         self.route_signals();
         let marks = self.pin_marks();
@@ -2124,6 +2192,19 @@ impl<'a> Scene<'a> {
         for l in &self.labels {
             bounds.union(l.text.extent());
         }
+        for b in &self.buses {
+            for line in &b.lines {
+                for &pt in line {
+                    bounds.include(pt);
+                }
+            }
+            for t in b.texts() {
+                bounds.union(t.extent());
+            }
+            if let Some(f) = &b.flag {
+                bounds.union(f.extent());
+            }
+        }
         bounds.min = Pt::new(
             snap(bounds.min.x - BORDER, GRID),
             snap(bounds.min.y - BORDER, GRID),
@@ -2142,9 +2223,11 @@ impl<'a> Scene<'a> {
                 wires: self.wires,
                 junctions,
                 labels: self.labels,
+                buses: self.buses,
                 bounds,
             },
             clusters: self.clusters,
+            bus_nets: self.bus_done,
         }
     }
 }

@@ -59,6 +59,12 @@ const STYLE: &str = "\
 .schematic .port .flag{fill:none;stroke:var(--wire);stroke-width:.25;stroke-linejoin:round}
 .schematic .port text{stroke:none}
 .schematic .net-label{fill:var(--net);font-weight:600}
+.schematic .bus .line{stroke-width:.9}
+.schematic .bus-tick{stroke:var(--wire);stroke-width:.3;stroke-linecap:round}
+.schematic .bus-flag .flag{fill:none;stroke:var(--wire);stroke-width:.5;stroke-linejoin:round}
+.schematic .bus-label{fill:var(--net);font-weight:600}
+.schematic .bus-count{fill:var(--net);font-weight:600}
+.schematic .bus-members{font-weight:400}
 .schematic .ref{font-weight:700}
 .schematic .pin-name,.schematic .pin-number{fill:var(--pin)}
 .schematic .line{fill:none;stroke:var(--wire);stroke-linecap:round;stroke-linejoin:round}
@@ -200,11 +206,27 @@ fn draw(design: &Design, l: &Layout) -> String {
             .map(|p| format!("{},{}", n(p.x), n(p.y)))
             .collect::<Vec<_>>()
             .join(" ");
+        let entry = l.buses.iter().any(|b| {
+            b.entries.iter().any(|e| {
+                e.net == wire.net
+                    && wire
+                        .points
+                        .last()
+                        .is_some_and(|p| (p.x - e.at.x).abs() < 1e-6 && (p.y - e.at.y).abs() < 1e-6)
+            })
+        });
+        let class = if entry { "wire bus-entry" } else { "wire" };
         let _ = writeln!(
             w,
-            "<g class=\"wire\" data-net=\"{}\"><polyline class=\"hit\" stroke-width=\"{HIT_WIDTH}\" points=\"{points}\"/><polyline class=\"line\" stroke-width=\"{WIRE_WIDTH}\" points=\"{points}\"/></g>",
+            "<g class=\"{class}\" data-net=\"{}\"><polyline class=\"hit\" stroke-width=\"{HIT_WIDTH}\" points=\"{points}\"/><polyline class=\"line\" stroke-width=\"{WIRE_WIDTH}\" points=\"{points}\"/></g>",
             esc(&design.nets[wire.net].name)
         );
+    }
+    let _ = writeln!(w, "</g>");
+
+    let _ = writeln!(w, "<g class=\"buses\">");
+    for bus in &l.buses {
+        draw_bus(w, design, bus);
     }
     let _ = writeln!(w, "</g>");
 
@@ -253,6 +275,86 @@ fn draw(design: &Design, l: &Layout) -> String {
     let _ = writeln!(w, "</g>");
     let _ = writeln!(w, "</svg>");
     out
+}
+
+/// A bus: the thick line, the tick with the count of members, the name and the list of members,
+/// and the flag where the members go on to another sheet. `data-bus` is the interface
+/// instance's path and `data-nets` the members' nets.
+fn draw_bus(w: &mut String, design: &Design, bus: &crate::layout::Bus) {
+    let nets: Vec<String> = bus
+        .members
+        .iter()
+        .map(|m| design.nets[m.net].name.clone())
+        .collect();
+    let _ = writeln!(
+        w,
+        "<g class=\"bus-group\" data-bus=\"{}\" data-nets=\"{}\"><title>{} ({}): {} members</title>",
+        esc(&bus.path),
+        esc(&nets.join(" ")),
+        esc(&bus.path),
+        esc(&bus.type_name),
+        bus.members.len()
+    );
+    let d: String = bus
+        .lines
+        .iter()
+        .map(|line| {
+            line.iter()
+                .enumerate()
+                .map(|(i, p)| format!("{}{} {}", if i == 0 { "M" } else { "L" }, n(p.x), n(p.y)))
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let _ = writeln!(
+        w,
+        "<g class=\"bus\" data-bus=\"{}\"><path class=\"hit\" stroke-width=\"{HIT_WIDTH}\" d=\"{d}\"/><path class=\"line\" d=\"{d}\"/></g>",
+        esc(&bus.path)
+    );
+    let _ = writeln!(
+        w,
+        "<line class=\"bus-tick\" x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\"/>",
+        n(bus.tick.0.x),
+        n(bus.tick.0.y),
+        n(bus.tick.1.x),
+        n(bus.tick.1.y)
+    );
+    let attrs = format!(" data-bus=\"{}\"", esc(&bus.path));
+    text_element(w, &bus.count, "bus-count", 1.27, &attrs);
+    text_element(w, &bus.label, "bus-label", 1.27, &attrs);
+    text_element(w, &bus.list, "bus-label bus-members", 1.27, &attrs);
+    if let Some(o) = &bus.other {
+        text_element(w, o, "bus-label bus-members", 1.27, &attrs);
+    }
+    if let Some(f) = &bus.flag {
+        let (dx, dy) = f.dir.vector();
+        let at = |a: f64, b: f64| {
+            format!(
+                "{},{}",
+                n(f.at.x + dx * a - dy * b),
+                n(f.at.y + dy * a + dx * b)
+            )
+        };
+        let half = Port::HALF;
+        let points = [
+            at(0.0, 0.0),
+            at(half, -half),
+            at(f.length, -half),
+            at(f.length, half),
+            at(half, half),
+        ]
+        .join(" ");
+        let _ = writeln!(
+            w,
+            "<g class=\"bus-flag\" data-bus=\"{}\"><title>{} (goes to another sheet)</title><polygon class=\"flag\" points=\"{points}\"/>",
+            esc(&bus.path),
+            esc(&bus.path)
+        );
+        text_element(w, &f.label, "bus-label", Port::TEXT, &attrs);
+        let _ = writeln!(w, "</g>");
+    }
+    let _ = writeln!(w, "</g>");
 }
 
 /// A flag where a net goes to another sheet, in the shape of KiCad's hierarchical label: it

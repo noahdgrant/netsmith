@@ -4,6 +4,7 @@
 #![allow(dead_code)]
 
 pub mod bench;
+pub mod bus;
 pub mod corpus;
 pub mod mcu;
 pub mod rowcol;
@@ -20,6 +21,7 @@ pub fn design(
         name: name.into(),
         process: None,
         features: Default::default(),
+        interfaces: Vec::new(),
         parts: parts
             .iter()
             .map(|&(refdes, kind, value, package)| Part {
@@ -210,6 +212,7 @@ pub fn supplies(modules: usize) -> (Design, Vec<netsmith_view::Group>) {
             nets,
             process: None,
             features: Default::default(),
+            interfaces: Vec::new(),
         },
         groups,
     )

@@ -12,9 +12,11 @@
 //! adds the sheets up. All lengths are millimetres on the sheet. Definitions:
 //!
 //! - **bends**: the points where exactly two wires of one net end at right angles to each
-//!   other. A T (a wire ending on the middle of another) is a junction, not a bend.
+//!   other. A T (a wire ending on the middle of another) is a junction, not a bend. The thick
+//!   line of a bus (its spines and its trunk) is one net here: its bends are counted once.
 //! - **crossings**: pairs of wires of different nets that cross square, each in its middle.
-//!   `collinear` counts pairs of different nets that run along one line over some length,
+//!   A bus's thick line crosses as one wire; a member's entry, which ends on it, is not a
+//!   contact. `collinear` counts pairs of different nets that run along one line over some length,
 //!   and `contacts` pairs of different nets that touch with an end (both are shorts).
 //! - **length ratio**: the wire length of the nets that have two pins or more on the sheet,
 //!   over the sum of those nets' half-perimeters (the bounding box of their pins). 1 is a
@@ -47,8 +49,8 @@ use std::fmt::Write as _;
 use crate::geom::{Dir, Pt, Rect};
 use crate::layout::{Layout, PlacedPart, PowerKind};
 use crate::sheetview::{
-    EPS, Fault, OVERLAP, Rel, Seg, SheetView, body_strokes, overlaps, relate, runs_through,
-    runs_through_body, symbol_box, texts, views, wire_faults,
+    EPS, Fault, OVERLAP, Rel, Seg, SheetView, body_strokes, bus_of, bus_segments, overlaps,
+    relate, runs_through, runs_through_body, same, symbol_box, texts, views, wire_faults,
 };
 
 /// The schematic grid, as the layout uses it: the unit of the satellite distance.
@@ -127,6 +129,13 @@ pub struct SheetMetrics {
     pub labels: usize,
     pub junctions: usize,
     pub open_pins: usize,
+
+    /// Interfaces drawn as one thick line, their members (the entries at each end count
+    /// once), and the flags that end a bus where its members go on to another sheet (these are
+    /// not in `flags`).
+    pub buses: usize,
+    pub bus_members: usize,
+    pub bus_flags: usize,
 }
 
 impl SheetMetrics {
@@ -227,6 +236,9 @@ impl SheetMetrics {
         self.labels += o.labels;
         self.junctions += o.junctions;
         self.open_pins += o.open_pins;
+        self.buses += o.buses;
+        self.bus_members += o.bus_members;
+        self.bus_flags += o.bus_flags;
     }
 }
 
@@ -273,6 +285,9 @@ fn measure_sheet(l: &Layout, v: &SheetView) -> SheetMetrics {
         labels: v.labels.len(),
         junctions: v.junctions.len(),
         open_pins: v.marks.len(),
+        buses: v.buses.len(),
+        bus_members: v.buses.iter().map(|&b| l.buses[b].members.len()).sum(),
+        bus_flags: v.buses.iter().filter(|&&b| l.buses[b].flag.is_some()).count(),
         ..SheetMetrics::default()
     };
     m.diagonal_segments = v.segments.iter().filter(|s| !s.is_axis_aligned()).count();
@@ -292,6 +307,12 @@ fn measure_sheet(l: &Layout, v: &SheetView) -> SheetMetrics {
         m.max_bends_in_a_net = m.max_bends_in_a_net.max(bends);
     }
     meetings(&segments, &mut m);
+    let bus_runs = bus_segments(l, v);
+    for runs in group_by_net(&bus_runs).values() {
+        let bends = bends_in(runs);
+        m.bends += bends;
+    }
+    bus_meetings(l, &bus_runs, &segments, &mut m);
     wire_length(l, v, &by_net, &mut m);
     for (_, corners) in &v.wires {
         let (first, last) = (corners[0], corners[corners.len() - 1]);
@@ -392,6 +413,34 @@ fn meetings(segments: &[Seg], m: &mut SheetMetrics) {
                 Rel::Cross(_) => m.crossings += 1,
                 Rel::Touch(_) => m.contacts += 1,
                 Rel::Overlap { .. } => m.collinear += 1,
+            }
+        }
+    }
+}
+
+/// The crossings, touches and collinear runs of the thick lines of buses with the wires and
+/// with each other. A member's entry ends on its bus's line, which is not a contact.
+fn bus_meetings(l: &Layout, runs: &[Seg], segments: &[Seg], m: &mut SheetMetrics) {
+    let count = |rel: Rel, m: &mut SheetMetrics| match rel {
+        Rel::Apart => {}
+        Rel::Cross(_) => m.crossings += 1,
+        Rel::Touch(_) => m.contacts += 1,
+        Rel::Overlap { .. } => m.collinear += 1,
+    };
+    for (i, r) in runs.iter().enumerate() {
+        let bus = bus_of(r.net).map(|b| &l.buses[b]);
+        for s in segments {
+            match relate(r, s) {
+                Rel::Touch(p)
+                    if bus.is_some_and(|b| {
+                        b.entries.iter().any(|e| e.net == s.net && same(e.at, p))
+                    }) => {}
+                rel => count(rel, m),
+            }
+        }
+        for t in &runs[i + 1..] {
+            if t.net != r.net {
+                count(relate(r, t), m);
             }
         }
     }
@@ -525,17 +574,21 @@ fn overlap_counts(l: &Layout, v: &SheetView, segments: &[Seg], m: &mut SheetMetr
     let mut boxes: Vec<Rect> = v.parts.iter().map(|&i| symbol_box(&l.parts[i])).collect();
     boxes.extend(v.symbols.iter().map(|&i| l.symbols[i].glyph_extent()));
     boxes.extend(v.ports.iter().map(|&i| l.ports[i].extent()));
+    boxes.extend(v.buses.iter().filter_map(|&i| l.buses[i].flag.as_ref().map(|f| f.extent())));
     m.symbol_overlaps = pairs_overlapping(boxes.iter());
 
     let written = texts(l, v);
     m.text_overlaps = pairs_overlapping(written.iter());
+    let runs = bus_segments(l, v);
     m.wire_over_text = segments
         .iter()
+        .chain(&runs)
         .map(|s| written.iter().filter(|t| runs_through(s, t)).count())
         .sum();
     let bodies: Vec<_> = v.parts.iter().map(|&i| body_strokes(&l.parts[i])).collect();
     m.wire_through_body = segments
         .iter()
+        .chain(&runs)
         .map(|s| bodies.iter().filter(|b| runs_through_body(s, b)).count())
         .sum();
 }
@@ -563,13 +616,14 @@ impl Metrics {
     /// greatest distance in grid steps; `side` the share of pins on the expected side;
     /// `symOv`, `txtOv`, `wireTxt` and `wireBody` the overlap counts; `w x h` the size in
     /// mm and `asp` width over height; `flag`, `pwr`, `label`, `X` the flags, power symbols,
-    /// labels (names at the end of a stub) and X marks; `stray` the wires and dots that serve
+    /// labels (names at the end of a stub) and X marks; `bus` and `bmem` the buses and their
+    /// members; `stray` the wires and dots that serve
     /// nothing (see above).
     pub fn table(&self) -> String {
         let mut out = String::new();
         let _ = writeln!(
             out,
-            "{:<18} {:>5} {:>5} {:>5} {:>6} {:>5} {:>5} {:>5} {:>5} {:>6} {:>6} {:>7} {:>4} {:>5} {:>5} {:>6} {:>5} {:>5} {:>7} {:>8} {:>8} {:>5} {:>5} {:>5} {:>5} {:>3} {:>5}",
+            "{:<18} {:>5} {:>5} {:>5} {:>6} {:>5} {:>5} {:>5} {:>5} {:>6} {:>6} {:>7} {:>4} {:>5} {:>5} {:>6} {:>5} {:>5} {:>7} {:>8} {:>8} {:>5} {:>5} {:>5} {:>5} {:>3} {:>4} {:>4} {:>5}",
             "sheet",
             "parts",
             "nets",
@@ -596,12 +650,14 @@ impl Metrics {
             "pwr",
             "label",
             "X",
+            "bus",
+            "bmem",
             "stray"
         );
         for s in self.sheets.iter().chain(std::iter::once(&self.total)) {
             let _ = writeln!(
                 out,
-                "{:<18} {:>5} {:>5} {:>5} {:>6} {:>5.2} {:>5} {:>5} {:>5} {:>6.2} {:>6.2} {:>7.2} {:>4} {:>5.1} {:>5.1} {:>6.2} {:>5} {:>5} {:>7} {:>8} {:>8} {:>5.2} {:>5} {:>5} {:>5} {:>3} {:>5}",
+                "{:<18} {:>5} {:>5} {:>5} {:>6} {:>5.2} {:>5} {:>5} {:>5} {:>6.2} {:>6.2} {:>7.2} {:>4} {:>5.1} {:>5.1} {:>6.2} {:>5} {:>5} {:>7} {:>8} {:>8} {:>5.2} {:>5} {:>5} {:>5} {:>3} {:>4} {:>4} {:>5}",
                 clip(&s.name, 18),
                 s.parts,
                 s.wired_nets,
@@ -628,6 +684,8 @@ impl Metrics {
                 s.power_symbols,
                 s.labels,
                 s.open_pins,
+                s.buses,
+                s.bus_members,
                 s.stray(),
             );
         }
@@ -688,6 +746,9 @@ impl Metrics {
             put("labels", n(s.labels));
             put("junctions", n(s.junctions));
             put("open_pins", n(s.open_pins));
+            put("buses", n(s.buses));
+            put("bus_members", n(s.bus_members));
+            put("bus_flags", n(s.bus_flags));
         }
         out
     }

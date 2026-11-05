@@ -1106,3 +1106,133 @@ fn natural_order_compares_segments_in_turn_and_is_total() {
     assert_eq!(order("led", "r1"), Less);
     assert_eq!(order("b1", "a9"), Greater);
 }
+
+// --- Interface instances ----------------------------------------------------------------
+
+/// An SPI master and slave in two modules, joined with `~` on the board, as the language
+/// guide does.
+const SPI_BOARD: &str = "
+import std::bus::Spi
+import std::sources::Rail
+
+part Master {
+    .vdd: Rail
+    .spi: Spi
+    pins {
+        .vdd.pos       power         \"VDD\"    \"1\"
+        .vdd.neg       power         \"VSS\"    \"2\"
+        .spi.sclk      output        \"SCK\"    \"3\"
+        .spi.mosi      output        \"MOSI\"   \"4\"
+        .spi.miso      input         \"MISO\"   \"5\"
+        .spi.cs        output        \"CS\"     \"6\"
+    }
+}
+
+part Slave {
+    .vdd: Rail
+    .spi: Spi
+    pins {
+        .vdd.pos       power         \"VDD\"    \"1\"
+        .vdd.neg       power         \"VSS\"    \"2\"
+        .spi.sclk      input         \"SCK\"    \"3\"
+        .spi.mosi      input         \"SI\"     \"4\"
+        .spi.miso      output        \"SO\"     \"5\"
+        .spi.cs        input         \"CS\"     \"6\"
+    }
+}
+
+module Controller {
+    .vdd: Rail
+    .spi: Spi
+    .u: Master
+    .vdd ~ .u.vdd
+    .spi ~ .u.spi
+}
+
+module Storage {
+    .vdd: Rail
+    .spi: Spi
+    .u: Slave
+    .vdd ~ .u.vdd
+    .spi ~ .u.spi
+}
+
+board SpiBoard {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= \"3V3\"
+        .neg.net &= \"GND\"
+    }
+    .ctl: Controller
+    .flash: Storage
+    .supply ~ .ctl.vdd
+    .supply ~ .flash.vdd
+    .ctl.spi ~ .flash.spi
+}
+";
+
+fn spi_board() -> Design {
+    lowered(SPI_BOARD).unwrap()
+}
+
+#[test]
+fn the_design_carries_the_interface_instances_and_the_nets_of_their_members() {
+    let d = spi_board();
+    let spi: Vec<_> = d
+        .interfaces
+        .iter()
+        .filter(|i| i.type_name == "Spi")
+        .map(|i| i.path.as_str())
+        .collect();
+    // The ports of the modules and the interfaces of their parts: each joins the same nets,
+    // and each is listed, by path.
+    assert_eq!(spi, ["ctl.spi", "ctl.u.spi", "flash.spi", "flash.u.spi"]);
+    let members = |path: &str| -> Vec<(String, String)> {
+        d.interfaces
+            .iter()
+            .find(|i| i.path == path)
+            .unwrap_or_else(|| panic!("no interface {path}"))
+            .members
+            .iter()
+            .map(|m| (m.name.clone(), m.net.clone()))
+            .collect()
+    };
+    // Nobody named the nets, so each is called after its smallest terminal path.
+    let expected: Vec<(String, String)> = ["sclk", "mosi", "miso", "cs"]
+        .iter()
+        .map(|m| (m.to_string(), format!("net-ctl.u.spi.{m}")))
+        .collect();
+    // The two ends of the bus see the same four nets under the same member names.
+    for path in ["ctl.spi", "ctl.u.spi", "flash.spi", "flash.u.spi"] {
+        assert_eq!(members(path), expected, "{path}");
+    }
+    // Each member's net is one of the design's nets.
+    for i in &d.interfaces {
+        for m in &i.members {
+            assert!(d.nets.iter().any(|n| n.name == m.net), "{}", m.net);
+        }
+    }
+    // The rails are interface instances of their own: the supply's pins are not members of
+    // the SPI interfaces.
+    assert!(d.interfaces.iter().any(|i| i.type_name == "Rail"));
+    assert!(d.interfaces.iter().all(|i| i.type_name != "Spi" || i.members.len() == 4));
+}
+
+#[test]
+fn interface_instances_are_listed_in_path_order() {
+    let d = spi_board();
+    let paths: Vec<&str> = d.interfaces.iter().map(|i| i.path.as_str()).collect();
+    let mut sorted = paths.clone();
+    sorted.sort();
+    assert_eq!(paths, sorted);
+}
+
+#[test]
+fn a_board_with_no_interface_has_none_in_its_design() {
+    let d = lowered(LED).unwrap();
+    assert!(
+        d.interfaces.iter().all(|i| i.type_name == "Rail"),
+        "{:?}",
+        d.interfaces
+    );
+}

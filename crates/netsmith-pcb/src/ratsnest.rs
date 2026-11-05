@@ -313,6 +313,7 @@ mod tests {
             name: "T".into(),
             process: Some(crate::rules::test_process()),
             features: Default::default(),
+            interfaces: Vec::new(),
             parts: (1..=4)
                 .map(|i| Part {
                     refdes: format!("R{i}"),
@@ -353,6 +354,7 @@ mod tests {
             name: "T".into(),
             process: Some(crate::rules::test_process()),
             features: Default::default(),
+            interfaces: Vec::new(),
             parts: vec![
                 Part {
                     refdes: "U1".into(),
@@ -589,6 +591,7 @@ mod tests {
             name: "T".into(),
             process: Some(crate::rules::test_process()),
             features: Default::default(),
+            interfaces: Vec::new(),
             parts: vec![Part {
                 refdes: "R1".into(),
                 kind: "Resistor".into(),

@@ -59,7 +59,11 @@ pub(super) fn choose(ctx: &Ctx, drawn: &Drawn, labelled: &[bool]) -> Vec<bool> {
     }
 
     let candidate = |n: usize| {
-        !ctx.external[n] && !ctx.ground[n] && ctx.power[n].is_none() && drawn.clusters[n] >= 2
+        !ctx.external[n]
+            && !ctx.ground[n]
+            && ctx.power[n].is_none()
+            && drawn.clusters[n] >= 2
+            && !drawn.bus_nets[n]
     };
     let candidates: Vec<usize> = (0..nets).filter(|&n| candidate(n) && !out[n]).collect();
 
