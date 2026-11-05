@@ -154,7 +154,7 @@ export async function run({ page, shot, step, expect, section, project }) {
   expect((await row('f:src/drafts/plain.nsm').count()) === 0, 'the old row is gone');
   expect((await page.locator('.tab:has-text("quiet.nsm")').count()) === 1 && (await page.locator('.tab:has-text("plain.nsm")').count()) === 0, 'its tab has the new name');
 
-  step('F2 renames from the keyboard; moving into another folder is a rename with a path');
+  step('F2 renames from the keyboard; a name with a slash is refused');
   await row('f:src/drafts/quiet.nsm').focus();
   await press('F2');
   await page.waitForSelector('.ft-input');

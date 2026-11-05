@@ -26,6 +26,12 @@ A generated project (`scripts/editor-verify-js/fixtures/tree.mjs`) with nested f
 
 It takes screenshots at 1366 x 768 and 2000 x 1000.
 
+### Making, renaming and deleting files: `drive tree-files` after `launch --fixture tree`
+
+The toolbar above the tree has New file and New folder; a right click on a row (or the Menu key, Shift+F10) opens New file here, New folder here, Rename (F2) and Delete (Del); Ctrl+N makes a file in the selected folder (Ctrl+Shift+N a folder). A name is typed in the tree, in place, like in an editor's explorer: Enter makes it, Esc drops it, a mistake is said under the name (`a b`, `a..b`, a slash, a name that is there in any case, a physical file with no source beside it). `power` becomes `power.nsm`. A new source file offers `Empty / Module / Board / Part` (a name with `board` in it starts as a board; the others as a module); `x.physical` gets `physical for <Board> { case { } }` for the board of `x.nsm` beside it. The new file opens in the Source section and is the selected row. Delete asks first (Cancel has the focus); a top-level file and a folder with files in it also need a box ticked; the manifest and the standard library cannot be renamed or deleted (the menu says why).
+
+The server side (`POST /api/fs/create-file`, `create-dir`, `rename`, `delete`, with the `X-Netsmith` header) works only below the project's `src/`, with module names (letters, digits, `_`), never overwrites (409), asks 428 for a delete that was not confirmed, and refuses `..`, absolute paths, `.git`, `target`, `out`, `fab`, hidden names and links that leave `src/` (403). `tree-files` checks the files on the disk after each step, and that the check ran again.
+
 ### A big project: `drive big-tree` after `launch --fixture big`
 
 Modules are grouped by folder below `src/` (`sheets/power`, `sheets/io`). The filter above the tree keeps the files whose path or definitions match, and opens the folders they are in.
@@ -37,4 +43,6 @@ Modules are grouped by folder below `src/` (`sheets/power`, `sheets/io`). The fi
 - A board of a system is named `System/member` in the selector, and the tree's definition name is the board's definition (`LedBoard`); the page maps one to the other.
 - The tree only knows the line of a definition, so the editor looks for the name on that line.
 - The classes are `ft-` ones (`.ft-row`, `.ft-section`, `.ft-folder`, `.ft-file`, `.ft-def`): the page already has a `.section` and a `.row`.
+- The folders with no file in them come from `Project.folders`, which the server lists from the disk.
+- A real browser keeps Ctrl+N for itself (a new window) unless the page is an installed app; the toolbar and the menu do the same. Headless Chromium passes the key to the page, which is how the recipe tests it.
 - The tree's open state is in `localStorage`; each recipe has a fresh browser, so it starts from the defaults.

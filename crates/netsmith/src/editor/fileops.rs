@@ -193,11 +193,7 @@ impl Workspace {
     }
 
     /// A path below `src/` that is to be made: its words, and the folder it goes in.
-    fn place(
-        root: &Path,
-        path: &str,
-        file: bool,
-    ) -> Result<(Vec<String>, PathBuf, Option<(String, bool)>), ApiError> {
+    fn place(root: &Path, path: &str, file: bool) -> Result<Placed, ApiError> {
         let words = segments(path)?;
         if words.len() < 2 || words[0] != SOURCE_DIR {
             return Err(leaves(format!(
@@ -215,7 +211,11 @@ impl Workspace {
             None
         };
         let parent = Self::parent_of(root, &words)?;
-        Ok((words, parent, named))
+        Ok(Placed {
+            words,
+            parent,
+            named,
+        })
     }
 
     /// The check of the files, made again now, so the page's next question sees the change.
@@ -227,7 +227,11 @@ impl Workspace {
     pub(super) fn make_file(&self, path: &str, text: &str) -> Result<Changed, ApiError> {
         let root = self.project_root()?;
         let _one_at_a_time = self.editing.lock().unwrap_or_else(|e| e.into_inner());
-        let (words, parent, named) = Self::place(&root, path, true)?;
+        let Placed {
+            words,
+            parent,
+            named,
+        } = Self::place(&root, path, true)?;
         let name = words.last().expect("a path has a name");
         if text.len() > MAX_TEXT || text.contains('\0') {
             return Err(ApiError::bad_request(
@@ -259,7 +263,7 @@ impl Workspace {
     pub(super) fn make_dir(&self, path: &str) -> Result<Changed, ApiError> {
         let root = self.project_root()?;
         let _one_at_a_time = self.editing.lock().unwrap_or_else(|e| e.into_inner());
-        let (words, parent, _) = Self::place(&root, path, false)?;
+        let Placed { words, parent, .. } = Self::place(&root, path, false)?;
         let name = words.last().expect("a path has a name");
         if taken(&parent, name) {
             return Err(ApiError::conflict(format!(
@@ -487,6 +491,15 @@ impl Workspace {
         out.sort();
         out
     }
+}
+
+/// Where a new file or folder goes.
+struct Placed {
+    words: Vec<String>,
+    /// The folder it goes in, as the disk has it.
+    parent: PathBuf,
+    /// A file's stem and whether it is a physical file's; `None` for a folder.
+    named: Option<(String, bool)>,
 }
 
 enum Thing {
