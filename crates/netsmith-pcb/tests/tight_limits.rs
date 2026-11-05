@@ -166,6 +166,7 @@ pub fn board(
         }
     }
     let design = Design {
+        interfaces: Vec::new(),
         name: "Tight".into(),
         process: Some(process()),
         features: Features {

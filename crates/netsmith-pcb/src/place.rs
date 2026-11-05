@@ -1994,6 +1994,7 @@ mod tests {
             name: "T".into(),
             process: Some(crate::rules::test_process()),
             features: Default::default(),
+            interfaces: Vec::new(),
             parts,
             nets: vec![Net {
                 name: "N".into(),
@@ -2085,6 +2086,7 @@ mod tests {
             name: "T".into(),
             process: Some(crate::rules::test_process()),
             features: Default::default(),
+            interfaces: Vec::new(),
             parts,
             nets: vec![Net {
                 name: "N".into(),
@@ -2526,6 +2528,7 @@ mod tests {
             name: "T".into(),
             process: Some(crate::rules::test_process()),
             features: Default::default(),
+            interfaces: Vec::new(),
             parts,
             nets,
         };

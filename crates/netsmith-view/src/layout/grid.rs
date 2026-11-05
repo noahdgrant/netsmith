@@ -36,6 +36,7 @@ fn dir_index(d: Dir) -> usize {
     DIRS.iter().position(|&x| x == d).expect("a direction")
 }
 
+#[derive(Clone)]
 pub struct Grid {
     pub w: i32,
     pub h: i32,

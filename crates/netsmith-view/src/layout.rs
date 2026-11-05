@@ -33,6 +33,15 @@
 //!    first pin of the net's main part (`J2.3`), as KiCad names such a net, and on a flag not
 //!    at all.
 //! 4. A wire never crosses a text. A pin that connects to nothing has an X.
+//! 5. The members of one interface instance (the design carries them, [`netsmith_core::Design::interfaces`])
+//!    are a **bus** when three or more of them run between the same two main parts, or leave the
+//!    sheet from one part, each with one pin on each part and all on one side of it. The pins stay
+//!    one by one on the part's edge; each member's wire is a short entry that meets one thick
+//!    line, a spine beside the pins and a trunk that runs to the other part's spine or, where the
+//!    members go on to another sheet, ends in **one** flag with the interface's name. The line is
+//!    named once, by the instance, with the list of members and a slash with their count, and it
+//!    joins nothing: each entry joins the net of its name at the other end, as a label does. The
+//!    members have no flag or name of their own. See `engine/bus.rs` and ADR 0049.
 //!
 //! Nothing here knows how a layout is drawn: [`crate::render_svg`] reads the result.
 
@@ -176,6 +185,113 @@ pub struct NetLabel {
     pub dir: Dir,
 }
 
+/// One member of a [`Bus`]: the net it is on and what the interface calls it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BusMember {
+    /// Index into `design.nets`.
+    pub net: usize,
+    /// The member's name in the bus's interface (`tx`).
+    pub name: String,
+}
+
+/// Where the wire of one member meets a bus's thick line: the end of the member's wire.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BusEntry {
+    /// The member's net. A member's entry joins the net of that name at the other end of the
+    /// bus, as a label does; the bus itself joins nothing.
+    pub net: usize,
+    /// Which end of the bus it is at: an index into [`Bus::ends`].
+    pub end: usize,
+    /// Where the wire meets the thick line.
+    pub at: Pt,
+}
+
+/// The flag that ends a bus whose members go on to another sheet: one for the whole bus, with
+/// the interface's name in it, in the shape of a net's flag.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BusFlag {
+    /// Where the thick line ends and the point of the flag is.
+    pub at: Pt,
+    /// The way the flag points away from the line.
+    pub dir: Dir,
+    pub length: f64,
+    pub label: Text,
+}
+
+impl BusFlag {
+    /// The box the flag and its name cover.
+    pub fn extent(&self) -> Rect {
+        let port = Port {
+            net: 0,
+            at: self.at,
+            dir: self.dir,
+            length: self.length,
+            label: None,
+        };
+        let mut r = port.extent();
+        r.union(self.label.extent_at(Port::TEXT));
+        r
+    }
+}
+
+/// The members of one interface instance drawn as one bus: each member's wire is a short
+/// entry that meets a thick line (the spine at an end, the trunk between the ends), which runs
+/// to the other part, or ends in one flag where the members go on to another sheet. The thick
+/// line carries no net; each entry carries its member's net and joins, by name, the net of
+/// that name at the other end. The bus is named once, by the interface instance, with the
+/// list of its members and their count.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Bus {
+    /// The path of the interface instance that names it (`mcu.uart0`): what the bus is
+    /// keyed by.
+    pub path: String,
+    /// The interface's definition (`Uart`).
+    pub type_name: String,
+    /// What the label says: the instance's own name (`uart0`).
+    pub name: String,
+    /// The members, in the order of the pins at the first end.
+    pub members: Vec<BusMember>,
+    /// The thick line, as runs of corners: a spine at each end that meets the part, and the
+    /// trunk between them or out to the flag.
+    pub lines: Vec<Vec<Pt>>,
+    /// The members' entries, `members.len()` at each end.
+    pub entries: Vec<BusEntry>,
+    /// Indices into `design.parts` of the part at each end: two, or one when the bus ends in a
+    /// flag.
+    pub ends: Vec<usize>,
+    /// The flag, where the members go on to another sheet.
+    pub flag: Option<BusFlag>,
+    /// The name of the interface instance, and under it the list of its members.
+    pub label: Text,
+    pub list: Text,
+    /// What the other end calls the interface, when it is not the same (`uart: {rx, tx}`).
+    pub other: Option<Text>,
+    /// The slash across the thick line, and the count of members beside it.
+    pub tick: (Pt, Pt),
+    pub count: Text,
+}
+
+impl Bus {
+    /// Every straight run of the thick line.
+    pub fn runs(&self) -> Vec<(Pt, Pt)> {
+        let mut out = Vec::new();
+        for line in &self.lines {
+            for w in line.windows(2) {
+                out.push((w[0], w[1]));
+            }
+        }
+        out
+    }
+
+    /// The texts of the bus, with the flag's.
+    pub fn texts(&self) -> Vec<&Text> {
+        let mut out: Vec<&Text> = vec![&self.label, &self.list, &self.count];
+        out.extend(self.other.as_ref());
+        out.extend(self.flag.as_ref().map(|f| &f.label));
+        out
+    }
+}
+
 /// The nets of a design that are power nets, by name, as the checker's model has them: the
 /// negative side of a rail (where the current returns) and the positive side. A net that is
 /// in neither is an ordinary net, however it is named.
@@ -313,6 +429,8 @@ pub struct Layout {
     pub wires: Vec<Wire>,
     pub junctions: Vec<Junction>,
     pub labels: Vec<NetLabel>,
+    /// The interfaces drawn as one thick line, by the path of their instance.
+    pub buses: Vec<Bus>,
     pub bounds: Rect,
 }
 

@@ -96,6 +96,7 @@ pub fn hard_boards(count: usize) -> Vec<Board> {
                 name: "Hard".into(),
                 process: Some(process()),
                 features: Default::default(),
+                interfaces: Vec::new(),
                 parts: (1..=8)
                     .map(|i| Part {
                         refdes: format!("R{i}"),
@@ -531,6 +532,7 @@ fn synthetic_board_with(
         name: "Synthetic".into(),
         process: Some(four_layer_process()),
         features: Default::default(),
+        interfaces: Vec::new(),
         parts,
         nets,
     };
@@ -714,6 +716,7 @@ pub fn land_grid_board_sized(
         name: "LandGrid".into(),
         process: Some(four_layer_process_with(narrowings)),
         features: Default::default(),
+        interfaces: Vec::new(),
         parts,
         nets: all,
     };

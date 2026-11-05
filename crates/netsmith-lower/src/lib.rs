@@ -19,7 +19,8 @@ use netsmith_check::{
     Board, Domain, InstId, InstKind, Member, Model, Panel, PinKind, Pinout, System, SystemBoard,
 };
 use netsmith_core::{
-    Design, InnerLayers, Net, PanelRules, PanelSpec, Part, PartPin, PinRef, Process, Stackup,
+    Design, InnerLayers, InterfaceInstance, InterfaceMember, Net, PanelRules, PanelSpec, Part,
+    PartPin, PinRef, Process, Stackup,
 };
 use netsmith_solve::{Library, Solution};
 
@@ -206,6 +207,52 @@ fn pins_of(model: &Model, part: InstId) -> Vec<PartPin> {
             function: model.function_of(row.pin),
         })
         .collect()
+}
+
+/// The interface instances whose members are on the nets of the design, by path: for each
+/// instance of kind interface, the pins directly in it that sit on one of `nets`, in the order
+/// the interface declares them. The checker's model keeps, on each net, the ports of modules
+/// and the pins of interfaces that only pass the connection along, so this is what the
+/// source joined, not a reading of net names.
+fn interfaces_of(model: &Model, nets: &[Net]) -> Vec<InterfaceInstance> {
+    let kept: std::collections::HashSet<&str> = nets.iter().map(|n| n.name.as_str()).collect();
+    let mut net_of: HashMap<InstId, &str> = HashMap::new();
+    for net in model.nets() {
+        if kept.contains(net.name.as_str()) {
+            for &pin in &net.pins {
+                net_of.insert(pin, net.name.as_str());
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for (id, inst) in model.instances() {
+        if inst.kind != InstKind::Interface {
+            continue;
+        }
+        let members: Vec<InterfaceMember> = inst
+            .children
+            .iter()
+            .filter_map(|(name, member)| match member {
+                Member::Inst(pin) if model.instance(*pin).kind == InstKind::Pin => {
+                    net_of.get(pin).map(|net| InterfaceMember {
+                        name: name.clone(),
+                        net: (*net).to_string(),
+                    })
+                }
+                _ => None,
+            })
+            .collect();
+        if members.is_empty() {
+            continue;
+        }
+        out.push(InterfaceInstance {
+            path: model.path_of(id),
+            type_name: inst.type_name.clone(),
+            members,
+        });
+    }
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    out
 }
 
 /// The board's manufacturing process: its `process` member, with each rule read as the least
@@ -656,6 +703,7 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
     }
 
     let net_names: Vec<String> = nets.iter().map(|n| n.name.clone()).collect();
+    let interfaces = interfaces_of(model, &nets);
     let process = process_of(model, &net_names, &mut errors);
     let layers = process.as_ref().map_or(2, |p| p.stackup.layers);
     let least_text = process.as_ref().map_or(0.0, |p| p.min_text_height);
@@ -683,6 +731,7 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
                 nets,
                 process,
                 features,
+                interfaces,
             },
             sourcing,
             origins,

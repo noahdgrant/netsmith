@@ -450,6 +450,7 @@ fn board_of(parts: &[(&str, &str, f64, f64)], nets: Vec<Net>) -> Board {
         name: "Holes".into(),
         process: Some(common::process_with(&[])),
         features: Default::default(),
+        interfaces: Vec::new(),
         parts: parts.iter().map(|(r, k, ..)| part(r, k)).collect(),
         nets,
     };

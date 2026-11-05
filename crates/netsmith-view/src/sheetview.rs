@@ -333,6 +333,37 @@ pub(crate) struct SheetView {
     pub junctions: Vec<usize>,
     pub marks: Vec<usize>,
     pub labels: Vec<usize>,
+    /// Indices into `layout.buses`.
+    pub buses: Vec<usize>,
+}
+
+/// The first number [`bus_net`] gives a bus: above any net of a design.
+const BUS_NET: usize = usize::MAX / 2;
+
+/// The `net` of the segments of the thick line of bus `i`, so that they are told from the
+/// segments of the nets and grouped as one.
+pub(crate) fn bus_net(i: usize) -> usize {
+    BUS_NET + i
+}
+
+/// The bus whose segments carry `net`, if they are a bus's.
+pub(crate) fn bus_of(net: usize) -> Option<usize> {
+    net.checked_sub(BUS_NET).filter(|_| net >= BUS_NET)
+}
+
+/// The straight runs of the thick line of every bus of a sheet, as segments of [`bus_net`].
+pub(crate) fn bus_segments(l: &Layout, v: &SheetView) -> Vec<Seg> {
+    let mut out = Vec::new();
+    for &i in &v.buses {
+        for (a, b) in l.buses[i].runs() {
+            out.push(Seg {
+                net: bus_net(i),
+                a,
+                b,
+            });
+        }
+    }
+    out
 }
 
 /// The sheets of `l`, or one view of everything when it has none. Each item belongs to the
@@ -350,6 +381,7 @@ pub(crate) fn views(l: &Layout) -> Vec<SheetView> {
         junctions: Vec::new(),
         marks: Vec::new(),
         labels: Vec::new(),
+        buses: Vec::new(),
     };
     let mut out: Vec<SheetView> = if l.sheets.is_empty() {
         vec![empty(
@@ -410,6 +442,11 @@ pub(crate) fn views(l: &Layout) -> Vec<SheetView> {
     for (i, t) in l.labels.iter().enumerate() {
         let h = home(&out, t.text.at);
         out[h].labels.push(i);
+    }
+    for (i, b) in l.buses.iter().enumerate() {
+        let at = b.lines.first().and_then(|line| line.first()).copied();
+        let h = home(&out, at.unwrap_or(Pt::new(0.0, 0.0)));
+        out[h].buses.push(i);
     }
     out
 }
@@ -491,6 +528,16 @@ pub(crate) fn texts(l: &Layout, v: &SheetView) -> Vec<Rect> {
     for &i in &v.labels {
         out.push(written(&l.labels[i].text, crate::layout::TEXT_SIZE));
     }
+    for &i in &v.buses {
+        let b = &l.buses[i];
+        for t in [&b.label, &b.list].into_iter().chain(b.other.as_ref()) {
+            out.push(written(t, crate::layout::TEXT_SIZE));
+        }
+        out.push(written(&b.count, crate::layout::TEXT_SIZE));
+        if let Some(f) = &b.flag {
+            out.push(written(&f.label, crate::layout::Port::TEXT));
+        }
+    }
     // An X on a pin is as much in the way of a text as a text is.
     for &i in &v.marks {
         let at = l.marks[i].at;
@@ -554,6 +601,10 @@ pub(crate) fn wire_faults(l: &Layout, v: &SheetView) -> Vec<Found> {
     anchors.extend(v.symbols.iter().map(|&i| l.symbols[i].at));
     anchors.extend(v.ports.iter().map(|&i| l.ports[i].at));
     anchors.extend(v.labels.iter().map(|&i| l.labels[i].at));
+    // Where a member's wire meets the thick line of its bus.
+    for &i in &v.buses {
+        anchors.extend(l.buses[i].entries.iter().map(|e| e.at));
+    }
     anchors.extend(v.marks.iter().map(|&i| l.marks[i].at));
     let anchored = |p: Pt| anchors.iter().any(|&q| same(p, q));
     let key = |p: Pt| ((p.x * 1000.0).round() as i64, (p.y * 1000.0).round() as i64);

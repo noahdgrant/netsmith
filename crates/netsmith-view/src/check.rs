@@ -24,6 +24,12 @@
 //!    ([`Violation::MissingJunction`], [`Violation::UnusedJunction`]). A straight wire through
 //!    a point is two arms, an end one, and a pin, power symbol, flag or label there one.
 //!
+//! 6. **A bus is not a conductor** ([`Violation::BusMember`]). The thick line of a bus joins
+//!    nothing: each member's entry carries its net and joins, by name, the net of that name at
+//!    the other end, as a label does. The members a bus declares must be the nets of its
+//!    entries, once at each end, at places of the line that are not shared; and nothing else
+//!    touches the line, nor lies along it.
+//!
 //! Each sheet of a board drawn by module is checked on its own: a net that goes to another
 //! sheet is joined there by its flag. [`check`] is a pure function of the design and its
 //! layout. It reports every violation and fixes none.
@@ -36,8 +42,8 @@ use netsmith_core::Design;
 use crate::geom::Pt;
 use crate::layout::Layout;
 use crate::sheetview::{
-    Fault, OVERLAP, Rel, SheetView, body_strokes, overlaps, relate, runs_through,
-    runs_through_body, same, texts, views, wire_faults,
+    Fault, OVERLAP, Rel, Seg, SheetView, body_strokes, bus_of, bus_segments, overlaps, relate,
+    runs_through, runs_through_body, same, texts, views, wire_faults,
 };
 
 /// A rule the drawing breaks. Every variant names the sheet and the nets or parts involved.
@@ -139,13 +145,21 @@ pub enum Violation {
         at: Pt,
         arms: usize,
     },
+    /// A bus whose entries are not its members, or that something touches: an entry of a net
+    /// that is not a member, a member with no entry (or two) at an end, two entries at one
+    /// place of the line, an entry away from the line, or a wire that touches the line.
+    BusMember {
+        sheet: String,
+        bus: String,
+        reason: String,
+    },
 }
 
 impl Violation {
     /// A short name for the kind: `short`, `open`, `extra-pin`, `pin-net`, `floating-wire`,
     /// `floating-flag`, `floating-label`, `wire-overlap`, `wire-through-body`,
     /// `wire-along-pin`, `text-overlap`, `wire-over-text`, `wire-hugs-symbol`, `dead-end`, `redundant-wire`, `zero-length-wire`, `u-turn`,
-    /// `unused-junction`, `missing-junction`.
+    /// `unused-junction`, `missing-junction`, `bus-member`.
     pub fn kind(&self) -> &'static str {
         match self {
             Violation::Short { .. } => "short",
@@ -167,6 +181,7 @@ impl Violation {
             Violation::UTurn { .. } => "u-turn",
             Violation::UnusedJunction { .. } => "unused-junction",
             Violation::MissingJunction { .. } => "missing-junction",
+            Violation::BusMember { .. } => "bus-member",
         }
     }
 }
@@ -319,6 +334,9 @@ impl fmt::Display for Violation {
                 "{sheet}: missing junction: {arms} arms of {net} meet at {} with no dot",
                 at(p)
             ),
+            Violation::BusMember { sheet, bus, reason } => {
+                write!(f, "{sheet}: bus-member: bus {bus}: {reason}")
+            }
         }
     }
 }
@@ -441,7 +459,14 @@ fn check_sheet(
     let sym_at = np + ns;
     let port_at = sym_at + v.symbols.len();
     let label_at = port_at + v.ports.len();
-    let mut u = Union::new(label_at + v.labels.len());
+    // The places where a member's wire meets the thick line of its bus.
+    let entries: Vec<(usize, usize)> = v
+        .buses
+        .iter()
+        .flat_map(|&b| (0..l.buses[b].entries.len()).map(move |e| (b, e)))
+        .collect();
+    let entry_at = label_at + v.labels.len();
+    let mut u = Union::new(entry_at + entries.len());
 
     let dots: Vec<Pt> = v.junctions.iter().map(|&i| l.junctions[i].at).collect();
     for (i, s) in v.segments.iter().enumerate() {
@@ -488,6 +513,9 @@ fn check_sheet(
     }
     for (k, &i) in v.labels.iter().enumerate() {
         place(&mut u, l.labels[i].at, label_at + k);
+    }
+    for (k, &(b, e)) in entries.iter().enumerate() {
+        place(&mut u, l.buses[b].entries[e].at, entry_at + k);
     }
 
     // What each piece claims to be.
@@ -537,6 +565,13 @@ fn check_sheet(
         p.labels += 1;
         p.nets.insert(l.labels[i].net);
         p.at.get_or_insert(l.labels[i].at);
+    }
+    for (k, &(b, e)) in entries.iter().enumerate() {
+        let entry = &l.buses[b].entries[e];
+        let p = pieces.entry(u.find(entry_at + k)).or_default();
+        p.labels += 1;
+        p.nets.insert(entry.net);
+        p.at.get_or_insert(entry.at);
     }
     for p in pieces.values() {
         let at = p.at.unwrap_or(Pt::new(0.0, 0.0));
@@ -614,6 +649,12 @@ fn check_sheet(
             .or_default()
             .push(label_at + k);
     }
+    for (k, &(b, e)) in entries.iter().enumerate() {
+        by_name
+            .entry(l.buses[b].entries[e].net)
+            .or_default()
+            .push(entry_at + k);
+    }
     let mut named = Union::new(u.0.len());
     for (i, root) in (0..u.0.len()).map(|i| (i, u.find(i))) {
         named.join(i, root);
@@ -667,7 +708,145 @@ fn check_sheet(
                 at: s.a,
             });
         }
+        for s in bus_segments(l, v)
+            .iter()
+            .filter(|s| runs_through_body(s, &strokes))
+        {
+            out.push(Violation::WireThroughBody {
+                sheet: sheet.clone(),
+                net: format!("bus {}", l.buses[bus_of(s.net).unwrap_or(0)].path),
+                part: design.parts[l.parts[i].part].refdes.clone(),
+                at: s.a,
+            });
+        }
     }
+    check_buses(design, l, v, out);
+}
+
+/// The rules about buses: what is on the thick line, and what touches it.
+fn check_buses(design: &Design, l: &Layout, v: &SheetView, out: &mut Vec<Violation>) {
+    let sheet = &v.name;
+    let key = |p: Pt| ((p.x * 1000.0).round() as i64, (p.y * 1000.0).round() as i64);
+    let bad = |out: &mut Vec<Violation>, bus: &crate::layout::Bus, reason: String| {
+        out.push(Violation::BusMember {
+            sheet: sheet.clone(),
+            bus: bus.path.clone(),
+            reason,
+        });
+    };
+    let runs = bus_segments(l, v);
+    for &i in &v.buses {
+        let bus = &l.buses[i];
+        let members: BTreeSet<usize> = bus.members.iter().map(|m| m.net).collect();
+        let on_line = |p: Pt| {
+            bus.runs()
+                .iter()
+                .any(|&(a, b)| Seg { net: 0, a, b }.holds(p))
+        };
+        for (end, part) in bus.ends.iter().enumerate() {
+            let here: Vec<&crate::layout::BusEntry> =
+                bus.entries.iter().filter(|e| e.end == end).collect();
+            for e in &here {
+                if !members.contains(&e.net) {
+                    bad(
+                        out,
+                        bus,
+                        format!(
+                            "an entry of net {} at {}, which is not a member (members: {})",
+                            net_name(design, e.net),
+                            at_text(e.at),
+                            member_names(design, bus)
+                        ),
+                    );
+                }
+                if !on_line(e.at) {
+                    bad(
+                        out,
+                        bus,
+                        format!(
+                            "the entry of net {} at {} is not on the thick line",
+                            net_name(design, e.net),
+                            at_text(e.at)
+                        ),
+                    );
+                }
+            }
+            for &net in &members {
+                let n = here.iter().filter(|e| e.net == net).count();
+                if n != 1 {
+                    bad(
+                        out,
+                        bus,
+                        format!(
+                            "member {} has {n} entries at its end at {}, not one",
+                            net_name(design, net),
+                            design.parts[*part].refdes
+                        ),
+                    );
+                }
+            }
+            let mut seen: BTreeMap<(i64, i64), usize> = BTreeMap::new();
+            for e in &here {
+                if let Some(&other) = seen.get(&key(e.at))
+                    && other != e.net
+                {
+                    bad(
+                        out,
+                        bus,
+                        format!(
+                            "members {} and {} are joined at one place of the line, {}",
+                            net_name(design, other),
+                            net_name(design, e.net),
+                            at_text(e.at)
+                        ),
+                    );
+                }
+                seen.entry(key(e.at)).or_insert(e.net);
+            }
+        }
+    }
+    // What touches or lies along a thick line.
+    for run in &runs {
+        let Some(b) = bus_of(run.net) else { continue };
+        let bus = &l.buses[b];
+        for s in &v.segments {
+            match relate(run, s) {
+                Rel::Overlap { at, len } => out.push(Violation::WireOverlap {
+                    sheet: sheet.clone(),
+                    nets: (format!("bus {}", bus.path), net_name(design, s.net)),
+                    at,
+                    len,
+                }),
+                Rel::Touch(p) => {
+                    let entry = bus.entries.iter().any(|e| e.net == s.net && same(e.at, p));
+                    if !entry {
+                        bad(
+                            out,
+                            bus,
+                            format!(
+                                "a wire of net {} touches the thick line at {}, away from an entry",
+                                net_name(design, s.net),
+                                at_text(p)
+                            ),
+                        );
+                    }
+                }
+                Rel::Apart | Rel::Cross(_) => {}
+            }
+        }
+    }
+}
+
+fn at_text(p: Pt) -> String {
+    format!("({:.2}, {:.2})", p.x, p.y)
+}
+
+fn member_names(design: &Design, bus: &crate::layout::Bus) -> String {
+    bus.members
+        .iter()
+        .map(|m| net_name(design, m.net))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// The rules about what the wires of a sheet draw, whatever the nets are.
@@ -684,11 +863,20 @@ fn check_wires(design: &Design, l: &Layout, v: &SheetView, out: &mut Vec<Violati
             }
         }
     }
-    for s in v.segments.iter().filter(|s| s.is_axis_aligned()) {
-        for t in written.iter().filter(|t| runs_through(s, t)) {
+    for s in v
+        .segments
+        .iter()
+        .copied()
+        .chain(bus_segments(l, v))
+        .filter(|s| s.is_axis_aligned())
+    {
+        for t in written.iter().filter(|t| runs_through(&s, t)) {
             out.push(Violation::WireOverText {
                 sheet: sheet.clone(),
-                net: net_name(design, s.net),
+                net: match bus_of(s.net) {
+                    Some(b) => format!("bus {}", l.buses[b].path),
+                    None => net_name(design, s.net),
+                },
                 at: t.min,
             });
         }

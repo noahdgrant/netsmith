@@ -15,7 +15,7 @@ use netsmith_kicad::{Mapping, SymbolLib};
 
 use crate::geom::{Pt, Rect, snap_up};
 use crate::layout::{
-    Anchor, Layout, Marks, NetLabel, PinMark, PlacedPart, Port, PowerSymbol, Rails, TEXT_SIZE,
+    Anchor, Bus, Layout, Marks, NetLabel, PinMark, PlacedPart, Port, PowerSymbol, Rails, TEXT_SIZE,
     Text, Wire, is_ground_name, layout_marked, layout_with, text_width,
 };
 
@@ -155,6 +155,24 @@ pub fn layout_sheets_marked(
             });
             net_of_global.push(n);
         }
+        // The interface instances with a member on a net of this sheet, with those members.
+        let here: std::collections::HashSet<&str> = nets.iter().map(|n| n.name.as_str()).collect();
+        let interfaces = design
+            .interfaces
+            .iter()
+            .filter_map(|i| {
+                let members: Vec<_> = i
+                    .members
+                    .iter()
+                    .filter(|m| here.contains(m.net.as_str()))
+                    .cloned()
+                    .collect();
+                (!members.is_empty()).then(|| netsmith_core::InterfaceInstance {
+                    members,
+                    ..i.clone()
+                })
+            })
+            .collect();
         let sub = Design {
             name: cluster.name.clone(),
             parts: cluster
@@ -165,6 +183,7 @@ pub fn layout_sheets_marked(
             nets,
             process: None,
             features: Default::default(),
+            interfaces,
         };
         let layout = layout_with(
             &sub,
@@ -218,6 +237,7 @@ pub fn layout_sheets_marked(
     let mut wires = Vec::new();
     let mut junctions = Vec::new();
     let mut labels = Vec::new();
+    let mut buses = Vec::new();
     let mut sheets = Vec::new();
     let mut bounds: Option<Rect> = None;
     for (((d, cluster), (frame, title)), by) in drawn
@@ -291,6 +311,9 @@ pub fn layout_sheets_marked(
                 dir: l.dir,
             });
         }
+        for b in d.layout.buses {
+            buses.push(move_bus(b, by, &d.nets, &d.parts));
+        }
         sheets.push(Sheet {
             name: cluster.name.clone(),
             detail: cluster.detail.clone(),
@@ -317,6 +340,7 @@ pub fn layout_sheets_marked(
         wires,
         junctions,
         labels,
+        buses,
         bounds: bounds.unwrap_or(Rect::around(Pt::new(0.0, 0.0))),
     })
 }
@@ -327,6 +351,39 @@ struct Drawn {
     parts: Vec<usize>,
     /// Sub-design net index to design net index.
     nets: Vec<usize>,
+}
+
+/// A bus of a sheet's drawing, moved by `by`, with the nets and parts of the design.
+fn move_bus(mut b: Bus, by: Pt, nets: &[usize], parts: &[usize]) -> Bus {
+    let moved = |mut t: Text| {
+        t.at = shift(t.at, by);
+        t
+    };
+    for m in &mut b.members {
+        m.net = nets[m.net];
+    }
+    for e in &mut b.entries {
+        e.net = nets[e.net];
+        e.at = shift(e.at, by);
+    }
+    for line in &mut b.lines {
+        for p in line.iter_mut() {
+            *p = shift(*p, by);
+        }
+    }
+    for e in &mut b.ends {
+        *e = parts[*e];
+    }
+    if let Some(f) = &mut b.flag {
+        f.at = shift(f.at, by);
+        f.label.at = shift(f.label.at, by);
+    }
+    b.label = moved(b.label);
+    b.list = moved(b.list);
+    b.other = b.other.map(moved);
+    b.count = moved(b.count);
+    b.tick = (shift(b.tick.0, by), shift(b.tick.1, by));
+    b
 }
 
 fn shift(p: Pt, by: Pt) -> Pt {

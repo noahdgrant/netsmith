@@ -20,7 +20,9 @@ use std::{env, fs, path::PathBuf, process::ExitCode};
 use netsmith::editor::{module_groups, must_connect, rails_of};
 use netsmith::project::Target;
 use netsmith::{Libraries, outcome_with};
-use netsmith_core::{Design, Net, Part, PartPin, PinKind, PinRef};
+use netsmith_core::{
+    Design, InterfaceInstance, InterfaceMember, Net, Part, PartPin, PinKind, PinRef,
+};
 use netsmith_view::check::check;
 use netsmith_view::metrics::measure;
 use netsmith_view::{Group, Marks, Rails, layout_sheets_marked, render_svg_by_module_marked};
@@ -64,6 +66,10 @@ fn to_json(i: &Inputs) -> Value {
         "nets": i.design.nets.iter().map(|n| json!({
             "name": n.name,
             "pins": n.pins.iter().map(|p| json!([p.refdes, p.pin])).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+        "interfaces": i.design.interfaces.iter().map(|f| json!({
+            "path": f.path, "type": f.type_name,
+            "members": f.members.iter().map(|m| json!([m.name, m.net])).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "positive": i.rails.positive,
         "ground": i.rails.ground,
@@ -126,6 +132,20 @@ fn from_json(v: &Value) -> Inputs {
             nets,
             process: None,
             features: Default::default(),
+            interfaces: list(&v["interfaces"])
+                .iter()
+                .map(|f| InterfaceInstance {
+                    path: s(&f["path"]),
+                    type_name: s(&f["type"]),
+                    members: list(&f["members"])
+                        .iter()
+                        .map(|m| InterfaceMember {
+                            name: s(&m[0]),
+                            net: s(&m[1]),
+                        })
+                        .collect(),
+                })
+                .collect(),
         },
         groups: list(&v["groups"])
             .iter()
