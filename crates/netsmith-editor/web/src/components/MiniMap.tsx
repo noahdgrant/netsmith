@@ -49,7 +49,7 @@ export function MiniMap({
             height={Math.max(2, n.h * s)}
             rx="1.5"
             class={`mm-${n.kind} ${levelOf?.(n.id) ?? ''} ${tint ? `hot-${tint}` : ''}`}
-            data-node={n.id}
+            data-mm={n.id}
           />
         );
       })}

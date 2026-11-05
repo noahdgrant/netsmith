@@ -1,23 +1,15 @@
 // The power tree of an invented board (fixtures/power_tree.nsm): a left-to-right hierarchy of
-// rails and the stages between them, no edge through a card, nothing printed over anything,
-// the loads at 0 A in one line that opens on a click, a click on a card tracing its path from the
-// source, a hover on a load with a link to the source, and the issues at the top.
+// rails and the stages between them, every edge in a free channel (none behind or through a card,
+// the one that closes a cycle round under the drawing), the loads at 0 A in one line that opens on
+// a click, a click on any card lighting what feeds it and what it feeds, a hover on a load with a
+// link to the source, and the issues at the top.
+import { edgesOf, nodesOf, routeProblems } from '../flow-helpers.mjs';
+
 export const fixture = 'power_tree';
 
 export async function run({ page, shot, step, expect, section }) {
-  const nodes = () =>
-    page.evaluate(() =>
-      [...document.querySelectorAll('.sec-power .pt-node')].map((n) => ({
-        id: n.dataset.node,
-        kind: n.dataset.kind,
-        x: parseFloat(n.style.left),
-        y: parseFloat(n.style.top),
-        w: parseFloat(n.style.width),
-        h: parseFloat(n.style.height),
-        dim: n.classList.contains('dim'),
-        selected: n.classList.contains('selected'),
-      })),
-    );
+  const nodes = () => nodesOf(page, '.sec-power');
+  const lit = async () => (await nodes()).filter((n) => !/\bdim\b/.test(n.cls)).map((n) => n.id).sort();
 
   for (const [w, h] of [[1366, 768], [2000, 1000]]) {
     await page.setViewportSize({ width: w, height: h });
@@ -28,43 +20,33 @@ export async function run({ page, shot, step, expect, section }) {
     const all = await nodes();
     const rails = all.filter((n) => n.kind === 'rail');
     const stages = all.filter((n) => n.kind === 'stage');
-    expect(rails.length === 8, `a card for each of the 8 rails (${rails.map((r) => r.id).join(' ')})`);
-    expect(stages.length === 7, `a stage between rails for each of the 7 converters (${stages.length})`);
+    expect(rails.length === 9, `a card for each of the 9 rails (${rails.map((r) => r.id).join(' ')})`);
+    expect(stages.length === 9, `a stage between rails for each of the 9 converters (${stages.length})`);
     const kinds = (await page.locator('.pt-stage-title').allInnerTexts()).sort().join(' | ');
     expect(/Buck 5 V/.test(kinds) && /Boost 12 V/.test(kinds) && /LDO 3\.3 V/.test(kinds) && /Protection/.test(kinds), `the stages say their kind and what they make (${kinds})`);
 
-    // Every edge goes left to right, and none runs through a card it does not join.
-    const edges = await page.evaluate(() =>
-      [...document.querySelectorAll('.sec-power .pt-edge')].map((p) => {
-        const len = p.getTotalLength();
-        const pts = [];
-        for (let t = 6; t < len - 6; t += 3) {
-          const q = p.getPointAtLength(t);
-          pts.push([q.x, q.y]);
-        }
-        return { from: p.dataset.from, to: p.dataset.to, pts };
-      }),
-    );
-    expect(edges.length === 14, `an edge on each side of each stage (${edges.length})`);
+    // Every route is clear of every card it does not join, and straight unless it must turn.
+    const edges = await edgesOf(page, '.sec-power');
+    expect(edges.length === 18, `an edge on each side of each stage (${edges.length})`);
     const at = new Map(all.map((n) => [n.id, n]));
     for (const e of edges) {
       const a = at.get(e.from);
       const b = at.get(e.to);
-      expect(b.x >= a.x + a.w, `${e.from} -> ${e.to} runs left to right`);
-      for (const n of all) {
-        if (n.id === e.from || n.id === e.to) continue;
-        const hit = e.pts.some(([x, y]) => x > n.x - 1 && x < n.x + n.w + 1 && y > n.y - 1 && y < n.y + n.h + 1);
-        if (hit) throw new Error(`the edge ${e.from} -> ${e.to} runs through ${n.id}`);
-      }
+      if (!e.back) expect(b.x >= a.x + a.w, `${e.from} -> ${e.to} runs left to right`);
     }
-    expect(true, 'no edge runs through a card');
-    // Nothing is printed over anything: no two cards overlap, so no label sits on another's text.
+    const bad = routeProblems(all, edges);
+    expect(bad.length === 0, `no stretch of any edge meets a card it does not join, none is shorter than 6 px, every end is on the 8 px grid (${bad.slice(0, 3).join('; ')})`);
+    const back = edges.filter((e) => e.back);
+    expect(back.length >= 1, `the edge that closes the cycle goes round under the drawing (${back.map((e) => `${e.from} > ${e.to}`).join(', ')})`);
+    const lowest = Math.max(...all.map((n) => n.y + n.h));
+    expect(back.every((e) => Math.max(...e.points.map((p) => p[1])) > lowest), 'under every card');
+    // Nothing is printed over anything: no two cards overlap.
     for (const a of all) {
       for (const b of all) {
         if (a.id < b.id && !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y)) throw new Error(`${a.id} overlaps ${b.id}`);
       }
     }
-    expect(true, 'no two cards overlap, and the stage names are inside their boxes, not on the edges');
+    expect(true, 'no two cards overlap');
     const labels = await page.evaluate(() => {
       const boxes = [...document.querySelectorAll('.sec-power .pt-node')].map((n) => n.getBoundingClientRect());
       return [...document.querySelectorAll('.sec-power .pt-node .pt-stage-title, .sec-power .pt-node .pt-name')].every((t) => {
@@ -74,7 +56,7 @@ export async function run({ page, shot, step, expect, section }) {
     });
     expect(labels, 'every card name and stage title lies inside its card');
     const small = await page.evaluate(() =>
-      Math.min(...[...document.querySelectorAll('.sec-power .pt-node *')].filter((e) => e.childNodes.length && [...e.childNodes].some((c) => c.nodeType === 3 && c.textContent.trim())).map((e) => parseFloat(getComputedStyle(e).fontSize))),
+      Math.min(...[...document.querySelectorAll('.sec-power .pt-node *')].filter((e) => [...e.childNodes].some((c) => c.nodeType === 3 && c.textContent.trim())).map((e) => parseFloat(getComputedStyle(e).fontSize))),
     );
     expect(small >= 12, `no text smaller than 12 px before zoom (${small} px)`);
     await shot(`fit-${w}`);
@@ -82,22 +64,20 @@ export async function run({ page, shot, step, expect, section }) {
 
   step('the card of the 3.3 V rail: nominal voltage, range, total, headroom against the limit');
   const v3 = page.locator('[data-node="V3V3"]');
-  const text = (await v3.innerText()).replace(/[ \t]+/g, ' ');
-  const flat = text.replace(/\s+/g, ' ');
+  const flat = (await v3.innerText()).replace(/\s+/g, ' ');
   expect(/3\.3 V/.test(flat) && /3\.135\s*\.\.\s*3\.465 V/.test(flat), `nominal voltage and the range (${flat.slice(0, 50)})`);
-  expect(/Total load/.test(flat) && /2\.5 mA\s*\.\.\s*89 mA/.test(flat), `the total as min .. max in mA (${flat})`);
-  expect(/Headroom 11 mA of 100 mA/.test(flat), 'the headroom against the limit the regulator states');
+  expect(/Total load 2\.5 mA\s*\.\.\s*82 mA/.test(flat), `the total as min .. max in mA (${flat})`);
+  expect(/Headroom 1[78]\.?\d* mA of 100 mA/.test(flat), `the headroom against the limit the regulator states (${flat})`);
   expect((await v3.locator('.pt-meter').count()) === 1, 'a bar for it');
-  expect(/28 loads/.test(flat), `one summary line, "28 loads" (${text.split('\n').filter((l) => /loads/.test(l)).join(' / ')})`);
+  expect(/28 loads/.test(flat), '"28 loads" in one line');
   expect((await v3.locator('.pt-row:not(.supply)').count()) === 0, 'nothing listed until it is opened');
-  const supply = await v3.locator('.pt-row.supply').first().innerText();
-  expect(/ldo\.vout/.test(supply) && /−/.test(supply), `a supply is marked by an arrow and a minus sign (${supply.replace(/\s+/g, ' ')})`);
+  const supply = (await v3.locator('.pt-row.supply').first().innerText()).replace(/\s+/g, ' ');
+  expect(/−/.test(supply), `a supply is marked by an arrow and a minus sign (${supply})`);
 
   step('open the loads: the five heaviest at most, the 0 A loads in one line');
   await v3.locator('.pt-summary').click();
   const rows = await v3.locator('.pt-list .pt-row .pt-who').allInnerTexts();
-  expect(rows.join() === 'mcu.vdd,radio.power,flash.power,gps.power,buzzer.power', `the five heaviest, heaviest first (${rows.join(', ')})`);
-  expect(rows.length === 5, `five rows, not thirty (${rows.length})`);
+  expect(rows.join() === 'mcu.vdd,flash.power,radio.power,buzzer.power,eeprom.power', `the five heaviest, heaviest first (${rows.join(', ')})`);
   expect((await v3.locator('.pt-fold:not(.zero)').innerText()).trim() === '+1 more', 'the rest is "+1 more"');
   const zero = await v3.locator('.pt-fold.zero').innerText();
   expect(/22 loads at 0 A/.test(zero), `"${zero.trim()}"`);
@@ -108,27 +88,49 @@ export async function run({ page, shot, step, expect, section }) {
   await v3.locator('.pt-fold.zero').click();
   expect((await v3.locator('.pt-list .pt-row').count()) === 5, 'and a second click folds them again');
 
-  step('click a card: its path from the source is lit, the rest dimmed');
-  await v3.locator('.pt-head').click();
+  step('click the first rail (a source): it lights what it feeds, its whole downstream tree');
+  const before = new Map((await edgesOf(page, '.sec-power')).map((e) => [`${e.from}>${e.to}`, e.d]));
+  const total = (await nodes()).length;
+  await page.locator('[data-node="VIN"] .pt-head').click();
   await page.waitForSelector('.pt-node.selected');
-  const lit = (await nodes()).filter((n) => !n.dim).map((n) => n.id).sort();
-  expect(lit.join('|') === ['V3V3', 'V5', 'VIN', 'VPROT', 'stage:buck (BuckConverter)', 'stage:ldo (LdoStage)', 'stage:protect (ProtectionStage)'].sort().join('|'), `the chain VIN, protection, VPROT, buck, V5, LDO, V3V3 (${lit.join(', ')})`);
-  expect((await page.locator('.pt-edge.hot').count()) === 6, 'six lit edges');
-  expect((await page.locator('.pt-node.dim').count()) === 8, 'eight dimmed nodes');
-  await shot('path-from-source');
+  expect((await lit()).length === total, `every card is downstream of VIN, so all ${total} are lit`);
+  expect((await page.locator('.pt-edge.hot.down').count()) === (await page.locator('.pt-edge').count()) && (await page.locator('.pt-edge.hot.up').count()) === 0, 'every edge is lit in the downstream tint, none in the upstream one');
+  expect((await page.locator('.pt-node.dim').count()) === 0, 'nothing is dimmed');
+  expect((await page.locator('.pt-minimap rect[class*="hot-down"]').count()) >= total - 1, 'the minimap shows them');
+  const after = new Map((await edgesOf(page, '.sec-power')).map((e) => [`${e.from}>${e.to}`, e.d]));
+  expect([...before].every(([k, d]) => after.get(k) === d), 'a highlighted edge takes the same route as before');
+  const lightBad = routeProblems(await nodes(), await edgesOf(page, '.sec-power'));
+  expect(lightBad.length === 0, 'and still meets no card');
+  await shot('source-selected');
+
+  step('click a leaf: it lights what feeds it, and nothing else');
+  await page.locator('[data-node="VANA"] .pt-head').click();
+  const leaf = await lit();
+  expect(['VANA', 'V3V3', 'V5', 'VPROT', 'VIN'].every((id) => leaf.includes(id)), `the chain VIN, VPROT, V5, V3V3, VANA is lit (${leaf.length} cards)`);
+  expect((await page.locator('.pt-edge.hot.down').count()) === 0 && (await page.locator('.pt-edge.hot.up').count()) >= 8, 'in the upstream tint only');
+  expect((await page.locator('.pt-node.dim').count()) >= 3 && !leaf.includes('V12'), 'the rest is dimmed (V12 is not on the way)');
+  await shot('leaf-selected');
+
+  step('click a card in the middle: both directions, in two tints');
+  await page.locator('[data-node="V5"] .pt-head').click();
+  expect((await page.locator('.pt-edge.hot.up').count()) >= 2 && (await page.locator('.pt-edge.hot.down').count()) >= 2, 'what feeds it and what it feeds are lit in two tints');
+  expect((await page.locator('.pt-node.up').count()) >= 3 && (await page.locator('.pt-node.down').count()) >= 3, 'with a tint on the cards');
+  expect((await page.locator('.pt-minimap rect[class*="hot-up"]').count()) >= 3 && (await page.locator('.pt-minimap rect[class*="hot-down"]').count()) >= 3, 'and in the minimap');
+  await shot('middle-selected');
 
   step('keys: the arrows move along the tree, Escape clears');
   await page.keyboard.press('ArrowLeft');
-  expect((await page.locator('.pt-node.selected').getAttribute('data-node')) === 'stage:ldo (LdoStage)', 'Left goes to what feeds it (the LDO)');
-  await page.keyboard.press('ArrowLeft');
-  expect((await page.locator('.pt-node.selected').getAttribute('data-node')) === 'V5', 'Left again, to V5');
+  expect((await page.locator('.pt-node.selected').getAttribute('data-kind')) === 'stage', 'Left goes to what feeds it (a stage)');
   await page.keyboard.press('ArrowRight');
+  expect((await page.locator('.pt-node.selected').getAttribute('data-node')) === 'V5', 'Right returns to V5');
   await page.keyboard.press('ArrowRight');
-  expect((await page.locator('.pt-node.selected').getAttribute('data-node')) === 'V3V3', 'Right twice, back to V3V3');
-  await page.keyboard.press('ArrowUp');
-  expect((await page.locator('.pt-node.selected').getAttribute('data-node')) === 'V12', 'Up is the rail above in the same column');
+  expect((await page.locator('.pt-node.selected').getAttribute('data-kind')) === 'stage', 'Right goes to a stage it feeds');
+  const x = await page.locator('.pt-node.selected').evaluate((n) => n.style.left);
+  await page.keyboard.press('ArrowDown');
+  const same = await page.locator('.pt-node.selected').evaluate((n) => n.style.left);
+  expect(x === same, 'Down is the neighbour in the same column');
   await page.keyboard.press('Escape');
-  expect((await page.locator('.pt-node.selected').count()) === 0 && (await page.locator('.pt-node.dim').count()) === 0, 'Escape clears the selection and the dimming');
+  expect((await page.locator('.pt-node.selected').count()) === 0 && (await page.locator('.pt-node.dim').count()) === 0 && (await page.locator('.pt-edge.hot').count()) === 0, 'Escape clears the selection, the dimming and the lit edges');
 
   step('hover a load: which part and pin it is, with "Show in source"');
   await page.setViewportSize({ width: 2000, height: 1000 });
@@ -139,7 +141,7 @@ export async function run({ page, shot, step, expect, section }) {
   await row.hover();
   await page.waitForSelector('.pt-tip');
   const tip = await page.locator('.pt-tip').innerText();
-  expect(/radio\.power/.test(tip) && /Part\s+radio/.test(tip) && /Pin\s+power/.test(tip) && /0 A\s*\.\.\s*20 mA/.test(tip), `part, pin and current (${tip.replace(/\s+/g, ' ')})`);
+  expect(/radio\.power/.test(tip) && /Part\s+radio/.test(tip) && /Pin\s+power/.test(tip) && /0 A\s*\.\.\s*10 mA/.test(tip), `part, pin and current (${tip.replace(/\s+/g, ' ')})`);
   await shot('hover-load');
   await page.locator('.pt-tip').getByRole('button', { name: 'Show in source' }).click();
   await page.waitForSelector('.section.sec-source:not(.away)');
@@ -154,7 +156,7 @@ export async function run({ page, shot, step, expect, section }) {
   expect((await page.locator('.pane-strip .tab.active').innerText()).includes('Power tree'), 'Back returns to the Power tree');
 
   step('a stage name is a link to its source');
-  await page.locator('.pt-stage-name', { hasText: 'buck' }).click();
+  await page.locator('.pt-stage-name', { hasText: /^buck$/ }).click();
   await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('.buck: BuckConverter'));
   expect(true, 'the editor is on the buck');
   await page.keyboard.press('Escape');

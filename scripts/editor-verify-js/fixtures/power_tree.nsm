@@ -297,9 +297,9 @@ board Cairn {
 
     // The loads, by rail.
     .mcu: Mcu
-    .radio: Load { .power.current &= 0mA..20mA }
-    .flash: Load { .power.current &= 0mA..15mA }
-    .gps: Load { .power.current &= 0mA..8mA }
+    .radio: Load { .power.current &= 0mA..10mA }
+    .flash: Load { .power.current &= 0mA..10mA }
+    .gps: Load { .power.current &= 0mA..2mA }
     .buzzer: Load { .power.current &= 0mA..5mA }
     .eeprom: Load { .power.current &= 0mA..2mA }
     .ldo.vout ~ .mcu.vdd
@@ -358,4 +358,23 @@ board Cairn {
 
     .surge_monitor: Load { .power.current &= 0mA..2mA }
     .protect.vout ~ .surge_monitor.power
+
+    // A cycle: the 3.3 V rail feeds a boost converter that makes 3.8 V for a modem, and a trickle
+    // path puts what is left of it back on the 3.3 V rail.
+    .mboost: BoostConverter {
+        .vout.voltage &= 3.8V +/- 3%
+        .max_current &= 2A
+        .efficiency &= 0.8..0.9
+        .vout.pos.net &= "V3V8"
+        .vout.neg.net &= "GND"
+    }
+    .trickle: FilterStage {
+        .vout.voltage &= 3.3V +/- 5%
+        .vout.current &= -1mA..0mA
+    }
+    .modem: Load { .power.current &= 0mA..8mA }
+    .ldo.vout ~ .mboost.vin
+    .mboost.vout ~ .trickle.vin
+    .mboost.vout ~ .modem.power
+    .trickle.vout ~ .ldo.vout
 }
