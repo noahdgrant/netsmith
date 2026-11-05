@@ -2,7 +2,7 @@
 // folder, a rename), the menu of a right click, and the question before something is removed.
 // What each decides is in ../fileops.ts; the Sidebar owns the state.
 
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
 import { isPhysicalName, stemOf, suggestTemplate, TEMPLATES, validateName, type Kind, type Template } from '../fileops';
 import { FileTypeIcon, FolderIcon } from './TreeIcons';
@@ -43,7 +43,8 @@ export function NameEntry({
   const input = useRef<HTMLInputElement>(null);
   const box = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  // In the frame the field is drawn, so what is typed next goes into it.
+  useLayoutEffect(() => {
     const el = input.current;
     if (!el) return;
     el.focus();
