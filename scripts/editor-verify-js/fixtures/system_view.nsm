@@ -1,0 +1,349 @@
+//! An invented board for checking the editor's System view: an input connector, a surge guard,
+//! three regulators (a buck, a linear regulator and a boost), a processor with 22 ports, a cell
+//! modem with 10, a flash chip, a motion sensor, an ADC, a GNSS receiver, a debug header and a lamp
+//! driver. Nothing here is a real board: every part only states its pins and what it draws or
+//! supplies, so the board solves and the editor shows it, but it cannot be written to KiCad.
+
+import std::bus::{Spi, Swd, Uart}
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+/// One signal pin: a control line, a status line, an interrupt.
+interface Line {
+    .pin: Pin
+}
+
+/// The supply connector: it supplies the battery rail.
+part InletConnector {
+    .vbatt: Rail
+    pins {
+        .vbatt.pos power "VBATT" "1"
+        .vbatt.neg power "GND" "2"
+    }
+}
+
+/// Passes the current behind it on, and guards against surges and reversed polarity.
+part SurgeGuard {
+    .vin: Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+    .vin.current == -.vout.current
+    pins {
+        .vin.pos power "VIN" "1"
+        .vin.neg power "GND" "2"
+        .vout.pos power "VOUT" "3"
+    }
+}
+
+/// A buck converter: it draws less current than it supplies.
+part Buck5V {
+    .vin: Rail
+    .vout: Rail
+    .max_current: Current
+    .efficiency: Number
+    .vin.neg ~ .vout.neg
+    .vin.voltage >= .vout.voltage
+    .vin.current == -.vout.current * .vout.voltage / (.vin.voltage * .efficiency)
+    -.vout.current <= .max_current
+    pins {
+        .vin.pos power "VIN" "1"
+        .vin.neg power "GND" "2"
+        .vout.pos power "SW" "3"
+    }
+}
+
+/// A linear regulator: it draws what it supplies.
+part Ldo3V3 {
+    .vin: Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+    .vin.current == -.vout.current
+    pins {
+        .vin.pos power "IN" "1"
+        .vin.neg power "GND" "2"
+        .vout.pos power "OUT" "3"
+    }
+}
+
+/// A boost converter: it draws more current than it supplies.
+part Boost12V {
+    .vin: Rail
+    .vout: Rail
+    .max_current: Current
+    .efficiency: Number
+    .vin.neg ~ .vout.neg
+    .vin.voltage <= .vout.voltage
+    .vin.current == -.vout.current * .vout.voltage / (.vin.voltage * .efficiency)
+    -.vout.current <= .max_current
+    pins {
+        .vin.pos power "VIN" "1"
+        .vin.neg power "GND" "2"
+        .vout.pos power "SW" "3"
+    }
+}
+/// A processor: its supply, six buses and fifteen control and sense lines.
+part Processor {
+    .vdd: Rail
+    .vdd.current &= 1mA..25mA
+    .uart0: Uart
+    .uart1: Uart
+    .spi1: Spi
+    .spi2: Spi
+    .spi3: Spi
+    .swd: Swd
+    .modem_key: Line
+    .modem_reset: Line
+    .modem_status: Line
+    .modem_ring: Line
+    .modem_dtr: Line
+    .modem_vref: Line
+    .modem_sim: Line
+    .modem_pcm: Line
+    .imu_int: Line
+    .flash_wp: Line
+    .adc_alert: Line
+    .mic_wake: Line
+    .supercap_adc: Line
+    .batt_adc: Line
+    .user_led: Line
+    pins {
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .uart0.tx passive "UART0_TX" "3"
+        .uart0.rx passive "UART0_RX" "4"
+        .uart0.rts passive "UART0_RTS" "5"
+        .uart0.cts passive "UART0_CTS" "6"
+        .uart1.tx passive "UART1_TX" "7"
+        .uart1.rx passive "UART1_RX" "8"
+        .uart1.rts passive "UART1_RTS" "9"
+        .uart1.cts passive "UART1_CTS" "10"
+        .spi1.sclk passive "SPI1_SCLK" "11"
+        .spi1.mosi passive "SPI1_MOSI" "12"
+        .spi1.miso passive "SPI1_MISO" "13"
+        .spi1.cs passive "SPI1_CS" "14"
+        .spi2.sclk passive "SPI2_SCLK" "15"
+        .spi2.mosi passive "SPI2_MOSI" "16"
+        .spi2.miso passive "SPI2_MISO" "17"
+        .spi2.cs passive "SPI2_CS" "18"
+        .spi3.sclk passive "SPI3_SCLK" "19"
+        .spi3.mosi passive "SPI3_MOSI" "20"
+        .spi3.miso passive "SPI3_MISO" "21"
+        .spi3.cs passive "SPI3_CS" "22"
+        .swd.swdio passive "SWD_SWDIO" "23"
+        .swd.swclk passive "SWD_SWCLK" "24"
+        .swd.swo passive "SWD_SWO" "25"
+        .swd.reset passive "SWD_RESET" "26"
+        .modem_key.pin passive "MODEM_KEY" "27"
+        .modem_reset.pin passive "MODEM_RESET" "28"
+        .modem_status.pin passive "MODEM_STATUS" "29"
+        .modem_ring.pin passive "MODEM_RING" "30"
+        .modem_dtr.pin passive "MODEM_DTR" "31"
+        .modem_vref.pin passive "MODEM_VREF" "32"
+        .modem_sim.pin passive "MODEM_SIM" "33"
+        .modem_pcm.pin passive "MODEM_PCM" "34"
+        .imu_int.pin passive "IMU_INT" "35"
+        .flash_wp.pin passive "FLASH_WP" "36"
+        .adc_alert.pin passive "ADC_ALERT" "37"
+        .mic_wake.pin passive "MIC_WAKE" "38"
+        .supercap_adc.pin passive "SUPERCAP_ADC" "39"
+        .batt_adc.pin passive "BATT_ADC" "40"
+        .user_led.pin passive "USER_LED" "41"
+    }
+}
+
+/// A cell modem: its supply, a UART and eight control lines.
+part CellModem {
+    .vcc: Rail
+    .vcc.current &= 0mA..30mA
+    .uart: Uart
+    .power_key: Line
+    .reset: Line
+    .status: Line
+    .ring: Line
+    .dtr: Line
+    .vref_en: Line
+    .sim_det: Line
+    .pcm: Line
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+        .uart.tx passive "TX" "3"
+        .uart.rx passive "RX" "4"
+        .uart.rts passive "RTS" "5"
+        .uart.cts passive "CTS" "6"
+        .power_key.pin passive "POWER_KEY" "7"
+        .reset.pin passive "RESET" "8"
+        .status.pin passive "STATUS" "9"
+        .ring.pin passive "RING" "10"
+        .dtr.pin passive "DTR" "11"
+        .vref_en.pin passive "VREF_EN" "12"
+        .sim_det.pin passive "SIM_DET" "13"
+        .pcm.pin passive "PCM" "14"
+    }
+}
+
+/// A flash chip on a SPI bus.
+part FlashChip {
+    .vcc: Rail
+    .vcc.current &= 0mA..15mA
+    .spi: Spi
+    .wp: Line
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+        .spi.sclk passive "SPI_SCLK" "3"
+        .spi.mosi passive "SPI_MOSI" "4"
+        .spi.miso passive "SPI_MISO" "5"
+        .spi.cs passive "SPI_CS" "6"
+        .wp.pin passive "WP" "7"
+    }
+}
+
+/// A motion sensor on a SPI bus, with an interrupt.
+part MotionSensor {
+    .vcc: Rail
+    .vcc.current &= 0mA..2mA
+    .spi: Spi
+    .int: Line
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+        .spi.sclk passive "SPI_SCLK" "3"
+        .spi.mosi passive "SPI_MOSI" "4"
+        .spi.miso passive "SPI_MISO" "5"
+        .spi.cs passive "SPI_CS" "6"
+        .int.pin passive "INT" "7"
+    }
+}
+
+/// An analog-to-digital converter on a SPI bus.
+part AdcChip {
+    .vdd: Rail
+    .vdd.current &= 1mA..6mA
+    .spi: Spi
+    .alert: Line
+    pins {
+        .vdd.pos power "VCC" "1"
+        .vdd.neg power "GND" "2"
+        .spi.sclk passive "SPI_SCLK" "3"
+        .spi.mosi passive "SPI_MOSI" "4"
+        .spi.miso passive "SPI_MISO" "5"
+        .spi.cs passive "SPI_CS" "6"
+        .alert.pin passive "ALERT" "7"
+    }
+}
+
+/// A satellite receiver on a UART.
+part GnssReceiver {
+    .vcc: Rail
+    .vcc.current &= 5mA..40mA
+    .uart: Uart
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+        .uart.tx passive "UART_TX" "3"
+        .uart.rx passive "UART_RX" "4"
+        .uart.rts passive "UART_RTS" "5"
+        .uart.cts passive "UART_CTS" "6"
+    }
+}
+
+/// A debug header.
+part DebugHeader {
+    .swd: Swd
+    pins {
+        .swd.swdio passive "SWDIO" "1"
+        .swd.swclk passive "SWCLK" "2"
+        .swd.swo passive "SWO" "3"
+        .swd.reset passive "RESET" "4"
+    }
+}
+
+/// A lamp driver on the 12 V rail.
+part LampDriver {
+    .vcc: Rail
+    .vcc.current &= 0mA..150mA
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+    }
+}
+
+board Ridge {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+
+    .inlet: InletConnector {
+        .vbatt.voltage &= 9V..13.8V
+        .vbatt.pos.net &= "VBATT"
+        .vbatt.neg.net &= "GND"
+    }
+    .guard: SurgeGuard {
+        .vout.voltage &= 8.6V..13.3V
+        .vout.pos.net &= "VSAFE"
+        .vout.neg.net &= "GND"
+    }
+    .buck5: Buck5V {
+        .vout.voltage &= 5V +/- 3%
+        .max_current &= 3A
+        .efficiency &= 0.86..0.94
+        .vout.pos.net &= "V5"
+        .vout.neg.net &= "GND"
+    }
+    .ldo: Ldo3V3 {
+        .vout.voltage &= 3.3V +/- 5%
+        .vout.pos.net &= "V3V3"
+        .vout.neg.net &= "GND"
+    }
+    .boost12: Boost12V {
+        .vout.voltage &= 12V +/- 5%
+        .max_current &= 400mA
+        .efficiency &= 0.82..0.9
+        .vout.pos.net &= "V12"
+        .vout.neg.net &= "GND"
+    }
+
+    .mcu: Processor
+    .modem: CellModem
+    .flash: FlashChip
+    .imu: MotionSensor
+    .adc: AdcChip
+    .gnss: GnssReceiver
+    .debug: DebugHeader
+    .lamp: LampDriver
+
+    // Power: each net has at most four members.
+    .inlet.vbatt ~ .guard.vin
+    .guard.vout ~ .buck5.vin
+    .guard.vout ~ .modem.vcc
+    .guard.vout ~ .adc.vdd
+    .buck5.vout ~ .ldo.vin
+    .buck5.vout ~ .boost12.vin
+    .buck5.vout ~ .gnss.vcc
+    .ldo.vout ~ .mcu.vdd
+    .ldo.vout ~ .flash.vcc
+    .ldo.vout ~ .imu.vcc
+    .boost12.vout ~ .lamp.vcc
+
+    // Signals.
+    .mcu.uart0.tx ~ .modem.uart.rx
+    .mcu.uart0.rx ~ .modem.uart.tx
+    .mcu.uart1.tx ~ .gnss.uart.rx
+    .mcu.uart1.rx ~ .gnss.uart.tx
+    .mcu.spi1 ~ .flash.spi
+    .mcu.spi2 ~ .imu.spi
+    .mcu.spi3 ~ .adc.spi
+    .mcu.swd ~ .debug.swd
+    .mcu.modem_key ~ .modem.power_key
+    .mcu.modem_reset ~ .modem.reset
+    .mcu.modem_status ~ .modem.status
+    .mcu.modem_ring ~ .modem.ring
+    .mcu.modem_dtr ~ .modem.dtr
+    .mcu.modem_vref ~ .modem.vref_en
+    .mcu.modem_sim ~ .modem.sim_det
+    .mcu.modem_pcm ~ .modem.pcm
+    .mcu.imu_int ~ .imu.int
+    .mcu.flash_wp ~ .flash.wp
+    .mcu.adc_alert ~ .adc.alert
+}

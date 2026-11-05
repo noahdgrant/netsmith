@@ -492,3 +492,23 @@ td.des { font-weight: 600; }
 .pt-minimap .mm-rail { fill: #3a3d44; } .pt-minimap .mm-stage { fill: #35506f; }
 .pt-minimap .warn { fill: var(--warn); } .pt-minimap .bad { fill: var(--bad); } .pt-minimap .hot-up { fill: var(--accent); } .pt-minimap .hot-down { fill: #6cb0ff; }
 .pt-minimap .mm-view { fill: rgba(232,135,58,.12); stroke: var(--accent); stroke-width: 1; }
+
+/* the system view: a card for each member, a table of its ports, wires in free channels */
+.sy-card { padding: 8px 12px; cursor: pointer; }
+.sy-head { display: flex; align-items: center; gap: 8px; height: 28px; min-width: 0; }
+.sy-name { background: none; border: none; padding: 0; color: var(--text); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; text-decoration: underline; text-decoration-color: #5b6068; text-underline-offset: 3px; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sy-name:hover { color: var(--accent); text-decoration-color: var(--accent); }
+.sy-type { margin-left: auto; color: var(--faint); min-width: 0; flex: 0 100 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sy-ports { margin-top: 0; }
+.sy-fold { display: flex; align-items: center; gap: 6px; width: 100%; height: 26px; background: none; border: none; border-top: 1px solid var(--line); padding: 0; color: var(--text); font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
+.sy-fold:hover { color: var(--accent); }
+.sy-row { display: grid; grid-template-columns: minmax(64px, 0.42fr) minmax(0, 0.58fr); gap: 10px; height: 20px; align-items: baseline; }
+.sy-pname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sy-pval { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); min-width: 0; }
+.sy-pval.supply { color: #9cc2ee; }
+.sy-edge.signal { stroke: #7d7467; stroke-dasharray: none; }
+.sy-label { font-size: 12px; fill: var(--muted); paint-order: stroke; stroke: #1a1b1e; stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }
+.sy-label.group { fill: #9cc2ee; cursor: pointer; pointer-events: all; }
+.sy-label.group:hover { fill: var(--accent); }
+.sy-label.dim { opacity: .3; }
+.sy-tip ul { margin: 0; padding-left: 16px; font-family: var(--mono); }
