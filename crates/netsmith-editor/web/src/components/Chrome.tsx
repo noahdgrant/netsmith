@@ -44,6 +44,8 @@ import {
   toast,
   analysis,
   goTo,
+  paneNotice,
+  dismissPaneNotice,
 } from '../store';
 import { firstLine, plural, seconds } from '../util';
 import { useElapsed } from './JobProgress';
@@ -59,6 +61,9 @@ const SECTION_HINT: Record<Section, string> = {
   build: 'what Write KiCad files and Make fab files did',
   source: 'the code, with the project\'s files',
 };
+
+/** What the two-pane mark on a tab says: the section is open in the other pane. */
+const OTHER_PANE = 'Open in the other pane: click to move it here';
 
 export const SECTION_LABEL = Object.fromEntries(SECTIONS.map((s) => [s.id, s.label])) as Record<Section, string>;
 
@@ -92,6 +97,15 @@ const SplitIcon = () => (
     <rect x="1.8" y="2.6" width="12.4" height="10.8" rx="1.2" />
     <path d="M8 2.6v10.8" />
   </Icon>
+);
+
+/** Two panes, the one that holds the section filled: it marks a tab whose section is in the other pane. */
+const OtherPaneMark = ({ side }: { side: 'left' | 'right' }) => (
+  <svg class="icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true">
+    <rect x="1.8" y="2.6" width="12.4" height="10.8" rx="1.2" />
+    <path d="M8 2.6v10.8" />
+    {side === 'right' ? <rect x="8" y="2.6" width="6.2" height="10.8" fill="currentColor" stroke="none" /> : <rect x="1.8" y="2.6" width="6.2" height="10.8" fill="currentColor" stroke="none" />}
+  </svg>
 );
 
 const CloseIcon = () => (
@@ -284,7 +298,7 @@ export function SectionStrip({ pane }: { pane: { section: Section; index: number
             class={`tab ${here ? 'active' : ''} ${elsewhere ? 'elsewhere' : ''}`}
             title={
               `${v.label}: ${SECTION_HINT[v.id]}. Key ${i + 1} (or Alt+${i + 1}). ` +
-              (elsewhere ? 'It is in the other pane: click to move it here. ' : '') +
+              (elsewhere ? `${OTHER_PANE} ` : '') +
               'Drag it to the side of the window to split, or right-click for the same.'
             }
             onPointerDown={(e) => startDrag(e, v.id)}
@@ -298,6 +312,11 @@ export function SectionStrip({ pane }: { pane: { section: Section; index: number
             }}
           >
             {v.label}
+            {elsewhere && (
+              <span class="elsewhere-mark" role="img" aria-label={OTHER_PANE} title={OTHER_PANE}>
+                <OtherPaneMark side={pane.index === 0 ? 'right' : 'left'} />
+              </span>
+            )}
           </button>
         );
       })}
@@ -327,6 +346,29 @@ export function SectionStrip({ pane }: { pane: { section: Section; index: number
           <span>Split right</span>
         </button>
       ) : null}
+    </div>
+  );
+}
+
+/** Said once, under the strip of the second pane, when the editor opened something in it. */
+export function PaneNotice({ pane }: { pane: number }) {
+  if (pane !== 1 || visible.value.length !== 2 || !paneNotice.value) return null;
+  return (
+    <div class="pane-notice" role="status">
+      <span>Opened in a second pane. Close pane returns to one.</span>
+      <button
+        class="tool small"
+        onClick={() => {
+          dismissPaneNotice();
+          back.value = null;
+          layout.value = closePane(layout.value, 1);
+        }}
+      >
+        Close pane
+      </button>
+      <button class="tool small" onClick={dismissPaneNotice}>
+        Got it
+      </button>
     </div>
   );
 }

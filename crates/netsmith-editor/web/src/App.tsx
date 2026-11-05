@@ -4,6 +4,7 @@ import { Editor } from './components/Editor';
 import {
   Conflict,
   ProblemsPanel,
+  PaneNotice,
   SectionStrip,
   StatusBar,
   TabMenu,
@@ -130,7 +131,7 @@ function Divider({ area }: { area: preact.RefObject<HTMLDivElement> }) {
   const [active, setActive] = useState(false);
   const set = (share: number) => {
     const w = area.current?.clientWidth ?? 0;
-    layout.value = { ...layout.peek(), split: clampSplit(share, w) };
+    layout.value = { ...layout.peek(), split: clampSplit(share, w), chosen: true };
   };
   return (
     <div
@@ -222,6 +223,7 @@ export function App() {
         {vis.map((p, i) => (
           <div key={`strip${i}`} class="pane-strip" data-pane={p.index} style={{ gridColumn: two ? (i === 0 ? 1 : 3) : 1, gridRow: 1 }}>
             <SectionStrip pane={p} />
+            <PaneNotice pane={p.index} />
           </div>
         ))}
         {mounted.map((id) => {

@@ -64,6 +64,17 @@ export const windowWidth = signal(typeof window === 'undefined' ? 2000 : window.
 export const visible = computed(() => visiblePanes(layout.value, windowWidth.value));
 /** Where a click-through came from, so Back can put it back. */
 export const back = signal<{ pane: number; section: Section } | null>(null);
+/** Whether the notice about a second pane the editor opened a section in is showing. It is shown
+ * once: dismissed, or the pane closed, it does not come back. */
+export const paneNotice = signal(false);
+const NOTICE_KEY = 'netsmith.paneNotice.v1';
+export function dismissPaneNotice() {
+  paneNotice.value = false;
+  keep(NOTICE_KEY, true);
+}
+function noticeIf(other: boolean) {
+  if (other && !load<boolean>(NOTICE_KEY, false)) paneNotice.value = true;
+}
 let pushed = false;
 
 /** The user picks a section for a pane (a tab, a number key): it replaces what the pane shows,
@@ -78,6 +89,7 @@ export function showSection(section: Section, pane = layout.peek().focus) {
 export function revealSection(section: Section) {
   const r = openFrom(layout.peek(), windowWidth.peek(), section, layout.peek().focus);
   layout.value = r.layout;
+  noticeIf(r.other);
 }
 
 /** A click-through to the source: it opens in the other pane of a split, else replaces what the
@@ -85,6 +97,7 @@ export function revealSection(section: Section) {
 export function revealSource() {
   const r = openFrom(layout.peek(), windowWidth.peek(), 'source', layout.peek().focus);
   layout.value = r.layout;
+  noticeIf(r.other);
   if (r.back) {
     back.value = r.back;
     history.pushState({ netsmithBack: true }, '');

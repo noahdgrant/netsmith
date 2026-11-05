@@ -20,22 +20,27 @@ import {
   whereShown,
 } from './layout';
 
-const two = (a: Layout['panes'][0], b: Layout['panes'][0], focus = 0): Layout => ({ panes: [a, b], split: 0.5, focus });
+const two = (a: Layout['panes'][0], b: Layout['panes'][0], focus = 0, chosen = true): Layout => ({ panes: [a, b], split: 0.5, focus, chosen });
 
 describe('parseLayout', () => {
   it('takes a good layout as it is', () => {
-    expect(parseLayout({ panes: ['source', 'schematic'], split: 0.3, focus: 1 })).toEqual({
+    expect(parseLayout({ panes: ['source', 'schematic'], split: 0.3, focus: 1, chosen: true })).toEqual({
       panes: ['source', 'schematic'],
       split: 0.3,
       focus: 1,
+      chosen: true,
     });
+  });
+  it('does not take a split saved before it was recorded as the person\'s own', () => {
+    expect(parseLayout({ panes: ['source', 'schematic'] }).chosen).toBe(false);
+    expect(parseLayout({ panes: ['bom'], chosen: true }).chosen).toBe(false);
   });
   it('drops what it cannot trust', () => {
     expect(parseLayout(null)).toEqual(defaultLayout);
     expect(parseLayout({ panes: ['nonsense'] })).toEqual(defaultLayout);
     expect(parseLayout({ panes: ['bom', 'bom'] }).panes).toEqual(['bom']);
     expect(parseLayout({ panes: ['bom', 'pcb', 'source'] }).panes).toEqual(['bom', 'pcb']);
-    expect(parseLayout({ panes: ['bom'], split: 7, focus: 1 })).toEqual({ panes: ['bom'], split: 0.9, focus: 0 });
+    expect(parseLayout({ panes: ['bom'], split: 7, focus: 1 })).toEqual({ panes: ['bom'], split: 0.9, focus: 0, chosen: false });
   });
 });
 
@@ -105,11 +110,24 @@ describe('click-through', () => {
     expect(r.back).toEqual({ pane: 0, section: 'schematic' });
     expect(undoOpen(r.layout, r.back!).panes).toEqual(['schematic']);
   });
-  it('opens in the other pane of a split', () => {
+  it('opens in the other pane of a split the person made, and says it did', () => {
     const r = openFrom(two('schematic', 'bom'), 2000, 'source', 0);
     expect(r.layout.panes).toEqual(['schematic', 'source']);
     expect(r.back).toEqual({ pane: 1, section: 'bom' });
+    expect(r.other).toBe(true);
     expect(undoOpen(r.layout, r.back!).panes).toEqual(['schematic', 'bom']);
+  });
+  it('replaces the clicked pane of a split the person did not make', () => {
+    const l = two('schematic', 'bom', 0, false);
+    const r = openFrom(l, 2000, 'source', 0);
+    expect(r.layout.panes).toEqual(['source', 'bom']);
+    expect(r.back).toEqual({ pane: 0, section: 'schematic' });
+    expect(r.other).toBe(false);
+    expect(openFrom(l, 2000, 'source', 1).layout.panes).toEqual(['schematic', 'source']);
+  });
+  it('never makes a split of one pane', () => {
+    expect(openFrom(defaultLayout, 2000, 'source', 0).layout.panes).toHaveLength(1);
+    expect(openFrom(defaultLayout, 2000, 'source', 0).other).toBe(false);
   });
   it('only moves the focus when the source is already on screen', () => {
     const r = openFrom(two('source', 'schematic', 1), 2000, 'source', 1);
@@ -122,6 +140,20 @@ describe('click-through', () => {
     expect(r.layout.panes).toEqual(['schematic', 'source']);
     expect(r.layout.focus).toBe(1);
     expect(r.back).toEqual({ pane: 1, section: 'schematic' });
+  });
+});
+
+describe('a split the person made', () => {
+  it('is recorded by Split right, a drop on a side, a drop on a pane and the menu', () => {
+    expect(defaultLayout.chosen).toBe(false);
+    expect(splitRight(defaultLayout).chosen).toBe(true);
+    expect(dropTab(defaultLayout, 'bom', { side: 'right' }).chosen).toBe(true);
+    expect(dropTab(two('schematic', 'bom', 0, false), 'pcb', { pane: 1 }).chosen).toBe(true);
+    expect(splitWith(two('schematic', 'bom', 0, false), 'pcb', 'left').chosen).toBe(true);
+  });
+  it('is forgotten when the pane is closed, and kept when a tab is clicked', () => {
+    expect(closePane(two('schematic', 'bom'), 1).chosen).toBe(false);
+    expect(show(two('schematic', 'bom'), 'pcb', 1).chosen).toBe(true);
   });
 });
 

@@ -15,7 +15,7 @@ import {
 import { useEffect, useRef } from 'preact/hooks';
 
 import { api } from '../client';
-import { nsmHighlight, nsmLanguage } from '../nsm';
+import { languageExtensions } from '../languages';
 import {
   activeFile,
   cursor,
@@ -65,8 +65,7 @@ function extensionsFor(path: string, readonly: boolean): Extension[] {
     indentUnit.of('    '),
     highlightSelectionMatches(),
     lintGutter(),
-    nsmLanguage,
-    nsmHighlight,
+    ...languageExtensions(path, () => shown.peek()?.problems ?? []),
     theme,
     EditorState.readOnly.of(readonly),
     EditorView.editable.of(!readonly),
