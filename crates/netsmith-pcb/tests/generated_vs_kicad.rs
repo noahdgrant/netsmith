@@ -35,6 +35,18 @@ const DIFFERENCES: &[Difference] = &[Difference {
           0.5 mm that its header and its 2.0 mm socket have; the pads are the same",
 }];
 
+/// Names that KiCad's 9.0.0 library has and its later 9.0 releases do not (the VQFP footprints
+/// were dropped in favour of LQFP and TQFP; the library of 9.0.7 and the tag 9.0.9.1 have none).
+/// The generators still make them, and they were checked against 9.0.0's. A name here may be
+/// missing from the installed library; where it is there it is compared like any other. Any
+/// other name without a counterpart fails the test.
+const ABSENT_FROM_LATER_LIBRARIES: &[&str] = &[
+    "Package_QFP:VQFP-80_14x14mm_P0.65mm",
+    "Package_QFP:VQFP-100_14x14mm_P0.5mm",
+    "Package_QFP:VQFP-128_14x14mm_P0.4mm",
+    "Package_QFP:VQFP-176_20x20mm_P0.4mm",
+];
+
 struct Report {
     name: String,
     pads: usize,
@@ -238,6 +250,7 @@ fn every_generated_footprint_agrees_with_kicads_own_to_ten_microns() {
             ));
         }
     }
+    without_counterpart.retain(|name| !ABSENT_FROM_LATER_LIBRARIES.contains(&name.as_str()));
     assert!(
         without_counterpart.is_empty(),
         "no KiCad footprint named {without_counterpart:?}"

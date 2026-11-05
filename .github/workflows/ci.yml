@@ -91,18 +91,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends kicad kicad-symbols kicad-footprints
           kicad-cli --version
-          apt-cache policy kicad | head -3
+          dpkg -l kicad kicad-symbols kicad-footprints | tail -3
           case "$(kicad-cli --version)" in
             9.*) ;;
             *) echo "::error::KiCad 9 is wanted, the runner installed $(kicad-cli --version)"; exit 1 ;;
           esac
 
       # What the lookup of netsmith_kicad::install finds on a real Linux install (issue #6).
-      - name: TEMP footprint diagnostics
-        run: |
-          dpkg -l kicad kicad-symbols kicad-footprints | tail -3
-          grep -n "clearance\|margin\|(size\|(pad" /usr/share/kicad/footprints/Fiducial.pretty/Fiducial_1mm_Mask2mm.kicad_mod
-
       - name: Show the KiCad library lookup
         run: cargo run --quiet -p netsmith-kicad --example locate
 
