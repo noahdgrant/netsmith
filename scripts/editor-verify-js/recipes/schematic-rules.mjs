@@ -22,7 +22,7 @@ function measure(sheetName) {
   };
   const texts = [...svg.querySelectorAll('text')]
     .filter((t) => !t.classList.contains('module-title'))
-    .map((t) => ({ text: t.textContent.replace(/\s+/g, ' ').trim(), cls: t.getAttribute('class'), box: box(t) }))
+    .map((t) => ({ text: t.textContent.replace(/\s+/g, ' ').trim(), cls: t.getAttribute('class'), box: box(t), scr: (({ x, y, width, height }) => ({ x, y, width, height }))(t.getBoundingClientRect()) }))
     .filter((t) => t.text && inside(t.box));
   const segments = [];
   for (const g of svg.querySelectorAll('.wire')) {
@@ -251,18 +251,21 @@ export async function run({ page, shot, step, expect }) {
   const amp = part(A, (p) => p.kind === 'DualOpAmp');
   expect(amp.bodies === 1 && amp.pinCount === 8, `the three-unit amplifier is one box with its ${amp.pinCount} pins`);
   expect(u5.bodies === 1 && u5.pinCount === 97, `the 97-pin, two-unit microcontroller is one box (${u5.pinCount} pins)`);
-  for (const heading of ['Mcu97, 97 pins', 'Power (6)', 'Ground (24)', 'P0 (16)', 'Not connected (3)']) {
+  // The port groups and the unconnected pins have headings; the supply pins stand along the top edge and the ground pins along
+  // the bottom edge (an earlier drawing had "Power (6)" and "Ground (24)" groups in the columns).
+  for (const heading of ['Mcu97, 97 pins', 'P0 (16)', 'Not connected (3)']) {
     expect(u5.texts.includes(heading), `the table has the heading "${heading}"`);
   }
+  const top = pin(M, u5.ref, '131').y, bottom = pin(M, u5.ref, '101').y, side = pin(M, u5.ref, '1').y;
+  expect(top < u5.box.y + 15 && bottom > u5.box.y + u5.box.height - 15 && top < side && side < bottom, `the supply pins are on the top edge (y ${top.toFixed(1)}) and the ground pins on the bottom edge (y ${bottom.toFixed(1)}), the ports between`);
   const names = u5.pinCount > 0 ? M.texts.filter((t) => t.cls && t.cls.includes('pin-name')) : [];
   let overlapping = 0;
   for (let i = 0; i < names.length; i++) for (let j = i + 1; j < names.length; j++) {
-    const [a, b] = [shrink(names[i].box, 0.1), shrink(names[j].box, 0.1)];
+    // On the screen, where a name turned along an edge (the supply and ground pins) has its real box.
+    const [a, b] = [shrink(names[i].scr, 0.5), shrink(names[j].scr, 0.5)];
     if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) overlapping++;
   }
   expect(overlapping === 0, `${names.length} pin names, none over another`);
-  const left = pin(M, u5.ref, '1').x;
-  expect(pin(M, u5.ref, '131').x === left && pin(M, u5.ref, '124').x === left, 'supplies and grounds are on the left side');
   expect(pin(M, u5.ref, '131').y < pin(M, u5.ref, '2').y && pin(M, u5.ref, '2').y < pin(M, u5.ref, '101').y, 'supplies above the signals, grounds below');
   expect(M.marks.length >= 40, `${M.marks.length} unused pins of the microcontroller have an X, aligned at the pin ends`);
   step('owner round 2: a straight ground rail with one symbol, the rail symbol in line with its capacitor');
