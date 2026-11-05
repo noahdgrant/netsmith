@@ -7,7 +7,7 @@
 
 import { computed, effect, signal } from '@preact/signals';
 
-import { select as selectOnPcb } from '../pcbstore';
+import { scene, select as selectOnPcb } from '../pcbstore';
 import { board, detail, lineParts, pickPart, revealSection, selected } from '../store';
 
 /** The net selected in the schematic: it stays lit, with everything else dimmed, until cleared. */
@@ -50,8 +50,21 @@ export function goToSource(refdes: string) {
 export function showOnPcb(refdes: string) {
   const part = detail.peek()?.parts.find((p) => p.refdes === refdes);
   if (!part) return;
-  selectOnPcb([part.path]);
+  const name = board.peek();
   revealSection('pcb');
+  // A board the PCB view has not drawn yet starts with nothing selected: select when its scene is in.
+  if (scene.peek()?.board === name) {
+    selectOnPcb([part.path]);
+    return;
+  }
+  const stop = scene.subscribe((s) => {
+    if (s?.board !== name) return;
+    queueMicrotask(() => {
+      stop();
+      selectOnPcb([part.path]);
+    });
+  });
+  setTimeout(stop, 20000);
 }
 
 // Another board has none of this board's nets.
