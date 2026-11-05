@@ -152,6 +152,7 @@ impl Workspace {
             has_manifest: self.target.project.is_some(),
             kicad: netsmith_fab::KicadCliExe::locate().is_some(),
             files,
+            folders: self.folders(),
         }
     }
 

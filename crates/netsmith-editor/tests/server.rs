@@ -14,7 +14,7 @@ use std::{
 use netsmith_editor::{
     ApiError, Attachment, Backend,
     api::{
-        Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, ClientMessage, Definition,
+        Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, ClientMessage, Definition,
         Download, FabReport, FileContent, OrderBoardInfo, OrderInfo, OrderReport, PanelView,
         PcbReport, PowerTree, Project, Saved, ServerMessage, SystemView,
     },
@@ -48,7 +48,32 @@ impl Backend for Fake {
             has_manifest: false,
             kicad: true,
             files: Vec::new(),
+            folders: Vec::new(),
         }
+    }
+    fn create_file(&self, path: &str, text: &str) -> Result<Changed, ApiError> {
+        match path {
+            "src/taken.nsm" => Err(ApiError::conflict(format!("{path} is already there"))),
+            _ if text.contains('\0') => Err(ApiError::bad_request("a NUL")),
+            _ => Ok(Changed { path: path.into() }),
+        }
+    }
+    fn create_dir(&self, path: &str) -> Result<Changed, ApiError> {
+        if path.contains("..") {
+            return Err(ApiError::forbidden("it leaves the project"));
+        }
+        Ok(Changed { path: path.into() })
+    }
+    fn rename_path(&self, from: &str, to: &str) -> Result<Changed, ApiError> {
+        Ok(Changed {
+            path: format!("{from}->{to}"),
+        })
+    }
+    fn delete_path(&self, path: &str, confirm: bool) -> Result<Changed, ApiError> {
+        if !confirm {
+            return Err(ApiError::new(428, format!("{path} needs a yes")));
+        }
+        Ok(Changed { path: path.into() })
     }
     fn read_file(&self, path: &str) -> Result<FileContent, ApiError> {
         if path == "a.nsm" {
@@ -364,6 +389,37 @@ fn saving_needs_the_stamp_and_reports_a_conflict() {
     let none = s.request("PUT", "/api/file?path=a.nsm", &[GUARD], "x", None);
     assert_eq!(none.status, 400);
     assert!(none.body.contains("X-Stamp"));
+}
+
+#[test]
+fn the_file_operations_are_posts_with_a_json_body_that_need_the_guard_header() {
+    let s = start();
+    let json = ("Content-Type", "application/json");
+    let ask = |path: &str, body: &str, guard: bool| {
+        let headers = if guard { vec![GUARD, json] } else { vec![json] };
+        s.request("POST", path, &headers, body, None)
+    };
+    for (path, body) in [
+        ("/api/fs/create-file", r#"{"path":"src/a.nsm","text":""}"#),
+        ("/api/fs/create-dir", r#"{"path":"src/a"}"#),
+        ("/api/fs/rename", r#"{"from":"src/a.nsm","to":"src/b.nsm"}"#),
+        ("/api/fs/delete", r#"{"path":"src/a.nsm","confirm":true}"#),
+    ] {
+        assert_eq!(ask(path, body, false).status, 403, "{path} without the header");
+        let r = ask(path, body, true);
+        assert_eq!(r.status, 200, "{path}: {}", r.body);
+        assert!(r.body.contains("\"path\":\"src/"), "{path}: {}", r.body);
+        assert_eq!(ask(path, "not json", true).status, 400, "{path} with a bad body");
+        assert_eq!(s.get(path).status, 405, "{path} is not a GET");
+    }
+    // The backend's refusals come through with their status and message.
+    let r = ask("/api/fs/create-file", r#"{"path":"src/taken.nsm","text":""}"#, true);
+    assert_eq!(r.status, 409);
+    assert!(r.body.contains("already there"), "{}", r.body);
+    let r = ask("/api/fs/create-dir", r#"{"path":"src/../x"}"#, true);
+    assert_eq!(r.status, 403);
+    let r = ask("/api/fs/delete", r#"{"path":"src/a","confirm":false}"#, true);
+    assert_eq!(r.status, 428);
 }
 
 #[test]

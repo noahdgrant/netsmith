@@ -35,7 +35,12 @@ hasManifest: boolean,
  * and the fabrication files are netsmith's own. With it the Findings tab can also run
  * KiCad's check as a second opinion.
  */
-kicad: boolean, files: Array<TreeFile>, };
+kicad: boolean, files: Array<TreeFile>, 
+/**
+ * The folders below `src/`, with their path from the project root (`src/sheets`), so the
+ * tree can show one that has no file in it yet.
+ */
+folders: Array<string>, };
 
 export type FileContent = { path: string, text: string, 
 /**
@@ -44,6 +49,16 @@ export type FileContent = { path: string, text: string,
 stamp: string, readonly: boolean, };
 
 export type Saved = { stamp: string, };
+
+export type NewFile = { path: string, text: string, };
+
+export type NewFolder = { path: string, };
+
+export type Rename = { from: string, to: string, };
+
+export type Delete = { path: string, confirm: boolean, };
+
+export type Changed = { path: string, };
 
 export type BoardSummary = { 
 /**

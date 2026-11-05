@@ -6,6 +6,7 @@
 mod analysis;
 mod catalogs;
 mod definition;
+mod fileops;
 mod files;
 mod findings;
 mod orders;
@@ -26,7 +27,7 @@ use std::{
 use netsmith_editor::{
     ApiError, Attachment, Backend, Say,
     api::{
-        Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Definition, FabReport,
+        Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Definition, FabReport,
         FileContent, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited, PcbFindings, PcbReport,
         PcbScene, PowerTree, Project, Saved, SystemView,
     },
@@ -204,6 +205,22 @@ impl Backend for Workspace {
 
     fn write_file(&self, path: &str, text: &str, stamp: &str) -> Result<Saved, ApiError> {
         self.write(path, text, stamp)
+    }
+
+    fn create_file(&self, path: &str, text: &str) -> Result<Changed, ApiError> {
+        self.make_file(path, text)
+    }
+
+    fn create_dir(&self, path: &str) -> Result<Changed, ApiError> {
+        self.make_dir(path)
+    }
+
+    fn rename_path(&self, from: &str, to: &str) -> Result<Changed, ApiError> {
+        self.move_path(from, to)
+    }
+
+    fn delete_path(&self, path: &str, confirm: bool) -> Result<Changed, ApiError> {
+        self.remove_path(path, confirm)
     }
 
     fn analysis(&self) -> Analysis {
