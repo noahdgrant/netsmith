@@ -8,6 +8,7 @@ import {
   chordLabels,
   chordOfEvent,
   chordText,
+  commandForKey,
   clearRegistry,
   commandsForEvent,
   parseChord,
@@ -121,5 +122,32 @@ describe('recently used', () => {
     expect(byRecent(list, ['c', 'a']).map((x) => x.id)).toEqual(['c', 'a', 'b', 'd']);
     expect(byRecent(list, []).map((x) => x.id)).toEqual(['a', 'b', 'c', 'd']);
     expect(byRecent(list, ['gone']).map((x) => x.id)).toEqual(['a', 'b', 'c', 'd']);
+  });
+});
+
+describe('commandForKey', () => {
+  beforeEach(() => {
+    clearRegistry();
+    register(
+      { id: 'plain', title: 'Plain', group: 'G', keys: '?', run: () => undefined },
+      { id: 'modded', title: 'Modded', group: 'G', keys: 'Mod+P', run: () => undefined },
+      { id: 'plain-in-fields', title: 'Esc', group: 'G', keys: 'Escape', inFields: true, run: () => undefined },
+      { id: 'modded-not-in-fields', title: 'Open', group: 'G', keys: 'Mod+Enter', inFields: false, run: () => undefined },
+      { id: 'first', title: 'First', group: 'G', keys: 'Alt+X', run: () => undefined },
+      { id: 'second', title: 'Second', group: 'G', keys: 'Alt+X', run: () => undefined },
+    );
+  });
+  it('lets a modified key work in a field and a plain key not', () => {
+    expect(commandForKey(ev('p', { ctrlKey: true }), true)?.id).toBe('modded');
+    expect(commandForKey(ev('?', { shiftKey: true }), true)).toBeNull();
+    expect(commandForKey(ev('?', { shiftKey: true }), false)?.id).toBe('plain');
+  });
+  it('honours a command that says otherwise', () => {
+    expect(commandForKey(ev('Escape'), true)?.id).toBe('plain-in-fields');
+    expect(commandForKey(ev('Enter', { ctrlKey: true }), true)).toBeNull();
+    expect(commandForKey(ev('Enter', { ctrlKey: true }), false)?.id).toBe('modded-not-in-fields');
+  });
+  it('takes the first command registered on a chord', () => {
+    expect(commandForKey(ev('x', { altKey: true }), false)?.id).toBe('first');
   });
 });

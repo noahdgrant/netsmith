@@ -18,9 +18,11 @@ export interface Command {
   run: () => void | Promise<void>;
   /** Whether it can be done now; absent means always. A command that cannot is not offered. */
   when?: () => boolean;
-  /** A chord that works while typing in a field or the source editor (one with Ctrl, Alt or
-   * Cmd always does; a plain key such as `?` or `1` does not). */
+  /** Whether the chord works while typing in a field or the source editor. By default one with
+   * Ctrl, Alt or Cmd does, and a plain key such as `?` or `1` does not. */
   inFields?: boolean;
+  /** Does not claim the key: other handlers of the same key (a view's Esc) still run. */
+  passive?: boolean;
 }
 
 const commands = new Map<string, Command>();
@@ -127,6 +129,18 @@ export const sameChord = (a: Chord, b: Chord) => a.mod === b.mod && a.alt === b.
 export function commandsForEvent(e: Parameters<typeof chordOfEvent>[0]): Command[] {
   const chord = chordOfEvent(e);
   return available().filter((c) => [c.keys, ...(c.alsoKeys ?? [])].some((k) => k && sameChord(parseChord(k), chord)));
+}
+
+/** The command a key event runs, if any: the first that can be done now and may be run from where
+ * the key was pressed (`inField`: a text field or the source editor). */
+export function commandForKey(e: Parameters<typeof chordOfEvent>[0], inField: boolean): Command | null {
+  const chord = chordOfEvent(e);
+  const modified = chord.mod || chord.alt;
+  for (const c of commandsForEvent(e)) {
+    if (inField && !(c.inFields ?? modified)) continue;
+    return c;
+  }
+  return null;
 }
 
 const isMac = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
