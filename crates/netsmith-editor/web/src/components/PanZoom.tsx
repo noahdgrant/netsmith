@@ -9,6 +9,24 @@ export const viewMemo = new ViewMemo();
 const MIN = 0.05;
 const MAX = 80;
 
+/** What a canvas lets its owner do to the view (see `onApi`). */
+export interface PanZoomApi {
+  /** The view now: zoom, and where the canvas is in the box. */
+  view(): View;
+  /** The box's size in screen pixels. */
+  size(): { w: number; h: number };
+  /** Show the whole of `fitBox`. */
+  fit(): void;
+  /** Make the box as wide as `fitBox`, from its top. */
+  fitWidth(): void;
+  /** Set the zoom (canvas pixels to screen pixels), about the middle of the box. */
+  zoomTo(k: number): void;
+  /** Move the canvas by screen pixels. */
+  panBy(dx: number, dy: number): void;
+  /** Put the view somewhere, as a person's move: it is remembered, and not re-placed on resize. */
+  set(view: View): void;
+}
+
 /** A canvas of `width` by `height` pixels that is dragged to pan and scrolled to zoom. It
  * fits itself to its box when `fitKey` changes. */
 export function PanZoom(props: {
@@ -26,7 +44,7 @@ export function PanZoom(props: {
   onView?: (k: number) => void;
   /** Told the whole view whenever it or the box changes: the zoom, where the canvas is, and the
    * box's size in screen pixels. A minimap draws from it. */
-  onViewport?: (v: { k: number; x: number; y: number; w: number; h: number }) => void;
+  onViewport?: (v: { k: number; x: number; y: number; w: number; h: number; fitK: number }) => void;
   /** A box of the canvas (its pixels) to bring into view when `seq` changes: the view moves no
    * more than it must, and the zoom stays. */
   reveal?: { x: number; y: number; w: number; h: number; seq: number };
@@ -41,6 +59,20 @@ export function PanZoom(props: {
   keys?: boolean;
   /** Whether the zoom bar has a button for actual size (one canvas pixel to one screen pixel). */
   actualSize?: boolean;
+  /** The zoom at which the zoom bar reads 100%: with it the label is true scale (it means the
+   * same on every canvas); without it the label is relative to the zoom that fits. */
+  scale100?: number;
+  /** Whether the zoom bar has Fit width and 100% buttons (and the keys W and Shift+1 do the same). */
+  presets?: boolean;
+  /** The view a canvas opens at, and goes back to when the box is resized before a person has
+   * moved it; the whole of `fitBox` fitted when absent. Fit (the button, F, 0) always fits. */
+  placeView?: (width: number, height: number) => View | null;
+  /** The least and most the zoom can be, given the zoom that fits. */
+  range?: (fitK: number) => { min: number; max: number };
+  /** Whether the arrow keys pan the canvas while it has the focus. */
+  arrowKeys?: boolean;
+  /** Given once, what the owner can do to the view. */
+  onApi?: (api: PanZoomApi) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>({ k: 1, x: 0, y: 0 });
@@ -52,7 +84,7 @@ export function PanZoom(props: {
   useEffect(() => props.onView?.(view.k), [view.k]);
   useEffect(() => {
     const el = box.current;
-    if (el) props.onViewport?.({ k: view.k, x: view.x, y: view.y, w: el.clientWidth, h: el.clientHeight });
+    if (el) props.onViewport?.({ k: view.k, x: view.x, y: view.y, w: el.clientWidth, h: el.clientHeight, fitK: fitK.current });
   }, [view.k, view.x, view.y, box.current?.clientWidth, box.current?.clientHeight]);
 
   const fb = props.fitBox;
@@ -71,14 +103,26 @@ export function PanZoom(props: {
     }
   };
 
-  const fit = useCallback(() => {
-    const el = box.current;
-    const b = fitBoxOf();
-    if (!el || !b.w || !b.h || !el.clientWidth || !el.clientHeight) return;
-    const v = fitView(el.clientWidth, el.clientHeight, b);
-    fitK.current = v.k;
-    put(v, false);
-  }, [props.width, props.height, fb?.x, fb?.y, fb?.w, fb?.h]);
+  const placeRef = useRef(props.placeView);
+  placeRef.current = props.placeView;
+  /** Whether the person asked for the whole box (Fit), which stays when the box is resized. */
+  const fitted = useRef(false);
+
+  /** Put the view where a box opens: the owner's `placeView`, else the whole of `fitBox`. With
+   * `whole`, the whole of `fitBox` whatever the owner says. */
+  const fit = useCallback(
+    (whole = false) => {
+      const el = box.current;
+      const b = fitBoxOf();
+      if (!el || !b.w || !b.h || !el.clientWidth || !el.clientHeight) return;
+      const all = fitView(el.clientWidth, el.clientHeight, b);
+      fitK.current = all.k;
+      fitted.current = whole;
+      const placed = whole ? null : placeRef.current?.(el.clientWidth, el.clientHeight);
+      put(placed ?? all, false);
+    },
+    [props.width, props.height, fb?.x, fb?.y, fb?.w, fb?.h],
+  );
 
   useLayoutEffect(() => {
     const el = box.current;
@@ -137,7 +181,7 @@ export function PanZoom(props: {
     const el = box.current;
     if (!el) return;
     const observer = new ResizeObserver(() => {
-      if (!moved.current) fit();
+      if (!moved.current) fit(fitted.current);
     });
     observer.observe(el);
     const wheel = (e: WheelEvent) => {
@@ -155,7 +199,13 @@ export function PanZoom(props: {
 
   function zoomAt(factor: number, px: number, py: number) {
     const v = latest.current;
-    const k = Math.min(Math.max(v.k * factor, fitK.current * MIN), fitK.current * MAX);
+    setZoom(v.k * factor, px, py);
+  }
+
+  function setZoom(want: number, px: number, py: number) {
+    const v = latest.current;
+    const r = props.range?.(fitK.current) ?? { min: fitK.current * MIN, max: fitK.current * MAX };
+    const k = Math.min(Math.max(want, r.min), r.max);
     const f = k / v.k;
     moved.current = true;
     put({ k, x: px - (px - v.x) * f, y: py - (py - v.y) * f });
@@ -163,8 +213,48 @@ export function PanZoom(props: {
 
   function refit() {
     moved.current = false;
-    fit();
+    fit(true);
   }
+
+  function fitWidth() {
+    const el = box.current;
+    const b = fitBoxOf();
+    if (!el || !b.w) return;
+    const k = (el.clientWidth / b.w) * 0.97;
+    moved.current = true;
+    put({ k, x: (el.clientWidth - b.w * k) / 2 - b.x * k, y: 16 - b.y * k });
+  }
+
+  function atScale(k: number) {
+    const el = box.current;
+    if (el) setZoom(k, el.clientWidth / 2, el.clientHeight / 2);
+  }
+
+  const apiRef = useRef<PanZoomApi>();
+  if (!apiRef.current) {
+    apiRef.current = {
+      view: () => latest.current,
+      size: () => ({ w: box.current?.clientWidth ?? 0, h: box.current?.clientHeight ?? 0 }),
+      fit: () => refit(),
+      fitWidth: () => fitWidth(),
+      zoomTo: (k) => atScale(k),
+      panBy: (dx, dy) => {
+        moved.current = true;
+        put({ ...latest.current, x: latest.current.x + dx, y: latest.current.y + dy });
+      },
+      set: (v) => {
+        moved.current = true;
+        put(v);
+      },
+    };
+  }
+  // The functions above close over this render's props; the API reads the latest.
+  const live = useRef({ refit, fitWidth, atScale });
+  live.current = { refit, fitWidth, atScale };
+  apiRef.current.fit = () => live.current.refit();
+  apiRef.current.fitWidth = () => live.current.fitWidth();
+  apiRef.current.zoomTo = (k) => live.current.atScale(k);
+  useEffect(() => props.onApi?.(apiRef.current!), []);
 
   function zoomCentre(factor: number) {
     const el = box.current!;
@@ -183,12 +273,25 @@ export function PanZoom(props: {
         if (e.key === 'f' || e.key === 'F' || e.key === '0') {
           e.preventDefault();
           refit();
+        } else if (props.presets && (e.key === 'w' || e.key === 'W')) {
+          e.preventDefault();
+          fitWidth();
+        } else if (props.presets && e.shiftKey && e.code === 'Digit1') {
+          e.preventDefault();
+          atScale(props.scale100 ?? 1);
         } else if (e.key === '+' || e.key === '=') {
           e.preventDefault();
           zoomCentre(1.25);
         } else if (e.key === '-' || e.key === '_') {
           e.preventDefault();
           zoomCentre(0.8);
+        } else if (props.arrowKeys && e.key.startsWith('Arrow') && !e.shiftKey) {
+          e.preventDefault();
+          const step = 80;
+          apiRef.current!.panBy(
+            e.key === 'ArrowLeft' ? step : e.key === 'ArrowRight' ? -step : 0,
+            e.key === 'ArrowUp' ? step : e.key === 'ArrowDown' ? -step : 0,
+          );
         }
       }}
       onPointerDown={(e) => {
@@ -241,20 +344,36 @@ export function PanZoom(props: {
       >
         {props.children}
       </div>
-      <div class="zoombar no-pan">
-        <button title="Zoom out" onClick={() => zoomCentre(0.8)}>
+      <div class="zoombar no-pan" role="toolbar" aria-label="Zoom">
+        <button title="Zoom out (-)" aria-label="Zoom out" onClick={() => zoomCentre(0.8)}>
           −
         </button>
-        <span>{Math.round((view.k / (fitK.current || 1)) * 100)}%</span>
-        <button title="Zoom in" onClick={() => zoomCentre(1.25)}>
+        <span
+          title={props.scale100 ? 'Zoom. 100% is the drawing at its size on paper: 1 mm is 3.78 px' : 'Zoom, as a share of the whole fitted'}
+         >
+          {Math.round((view.k / (props.scale100 ?? (fitK.current || 1))) * 100)}%
+        </span>
+        <button title="Zoom in (+)" aria-label="Zoom in" onClick={() => zoomCentre(1.25)}>
           +
         </button>
-        {props.actualSize && (
+        {props.actualSize && !props.presets && (
           <button title="Actual size: one pixel of the drawing to one pixel of the screen" onClick={() => zoomCentre(1 / latest.current.k)}>
             1:1
           </button>
         )}
-        <button title="Fit to the window (F)" onClick={refit}>
+        {props.presets && (
+          <>
+            <span class="zsep" aria-hidden="true" />
+            <button title="Fit width (W)" onClick={fitWidth}>
+              Width
+            </button>
+            <button title="100%: the drawing's size on paper (Shift+1)" onClick={() => atScale(props.scale100 ?? 1)}>
+              100%
+            </button>
+          </>
+        )}
+        <span class="zsep" aria-hidden="true" />
+        <button title="Fit the whole sheet to the window (F or 0)" onClick={refit}>
           Fit
         </button>
       </div>
