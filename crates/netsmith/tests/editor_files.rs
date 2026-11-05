@@ -154,7 +154,7 @@ fn a_link_that_leaves_src_is_not_followed_to_make_move_or_remove_anything() {
     assert_eq!(editor.rename_path("src/power.nsm", "src/link/power.nsm").unwrap_err().status, 403);
     assert_eq!(editor.rename_path("src/link", "src/other").unwrap_err().status, 403);
     assert_eq!(editor.delete_path("src/link", true).unwrap_err().status, 403);
-    assert_eq!(editor.delete_path("src/keep_link.nsm", true).unwrap_err().status, 404);
+    assert_eq!(editor.delete_path("src/keep_link.nsm", true).unwrap_err().status, 403);
     assert!(root.join("outside/keep.nsm").is_file());
     assert_eq!(listing(&root.join("outside")), ["keep.nsm"]);
     assert!(root.join("src/power.nsm").is_file());
@@ -278,7 +278,8 @@ fn the_manifest_and_the_library_are_never_removed_and_a_top_level_file_needs_a_y
 fn a_single_file_has_no_project_to_change() {
     let root = TempDir::new("editor-files-single");
     fs::write(root.join("only.nsm"), MAIN).unwrap();
-    let target = Target::resolve_from(&root, Some("only.nsm")).unwrap();
+    let only = root.join("only.nsm");
+    let target = Target::resolve_from(&root, Some(only.to_str().unwrap())).unwrap();
     let editor = Workspace::open(target).unwrap();
     let e = editor.create_file("src/x.nsm", "").unwrap_err();
     assert_eq!(e.status, 400);

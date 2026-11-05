@@ -255,6 +255,39 @@ async function refresh() {
   }
 }
 
+/** After a file or folder was made, moved or removed: the tree and the check are read again. */
+export async function refreshAfterChange() {
+  const [p, a] = await Promise.all([api.project(), api.analysis()]);
+  project.value = p;
+  analysis.value = a;
+  await onRebuilt(false);
+}
+
+const under = (path: string, from: string, folder: boolean) => path === from || (folder && path.startsWith(`${from}/`));
+
+/** A file or folder was moved: the open files in it keep their text and edits at the new path. */
+export function renameOpen(from: string, to: string, folder: boolean) {
+  const moved = (path: string) => (path === from ? to : `${to}${path.slice(from.length)}`);
+  const files: Record<string, OpenFile> = {};
+  for (const [path, f] of Object.entries(openFiles.value)) {
+    files[under(path, from, folder) ? moved(path) : path] = under(path, from, folder) ? { ...f, path: moved(path) } : f;
+  }
+  openFiles.value = files;
+  tabs.value = tabs.value.map((t) => (under(t, from, folder) ? moved(t) : t));
+  const active = activeFile.value;
+  if (active && under(active, from, folder)) activeFile.value = moved(active);
+}
+
+/** A file or folder was removed: its tabs go, with edits that were not saved. */
+export function dropOpen(path: string, folder: boolean) {
+  const gone = (p: string) => under(p, path, folder);
+  const rest = tabs.value.filter((t) => !gone(t));
+  tabs.value = rest;
+  openFiles.value = Object.fromEntries(Object.entries(openFiles.value).filter(([p]) => !gone(p)));
+  if (activeFile.value && gone(activeFile.value)) activeFile.value = rest[rest.length - 1] ?? null;
+  if (!anyDirty.peek()) live.value = null;
+}
+
 /** The files were built again: the tree, the board and the open files may have changed. */
 async function onRebuilt(tree = true) {
   const a = analysis.value;

@@ -182,3 +182,21 @@ export function HelpIcon() {
     </svg>
   );
 }
+
+export function NewFileIcon() {
+  return (
+    <svg {...base} width={14} height={14}>
+      <path d="M9 1.9H4.4a.8.8 0 0 0-.8.8v10.6a.8.8 0 0 0 .8.8h7.2a.8.8 0 0 0 .8-.8V5.3z" />
+      <path d="M9 1.9v3.4h3.4M8 7.6v3.6M6.2 9.4h3.6" />
+    </svg>
+  );
+}
+
+export function NewFolderIcon() {
+  return (
+    <svg {...base} width={14} height={14}>
+      <path d="M1.9 4.2a1 1 0 0 1 1-1h3l1.4 1.6h5.8a1 1 0 0 1 1 1v6.1a1 1 0 0 1-1 1H2.9a1 1 0 0 1-1-1z" />
+      <path d="M8 7.5v3.2M6.4 9.1h3.2" />
+    </svg>
+  );
+}
