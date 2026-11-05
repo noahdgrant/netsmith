@@ -2,7 +2,7 @@
 
 ## How to get to it
 
-The section "Power tree" (key 2). For a board of a system it shows the whole system: a card for each net a rail draws from, joined left to right by the stages that convert one rail to another and, dashed, by the joins between boards.
+The section "Power tree" (key 3). For a board of a system it shows the whole system: a card for each net a rail draws from, joined left to right by the stages that convert one rail to another and, dashed, by the joins between boards.
 
 ## Driving it
 

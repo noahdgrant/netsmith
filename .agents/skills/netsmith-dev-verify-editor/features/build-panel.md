@@ -2,7 +2,7 @@
 
 ## How to get to it
 
-The section "Build" (key 6), or the two actions at the top right, "Write KiCad files" and "Make fab files" (they open the section and run; while one runs it says so, with the time, and both are disabled; a toast says how it ended). They are the actions; Build is only the section where their reports are. Their tooltips say what they write and where.
+The section "Build" (key 7), or the two actions at the top right, "Write KiCad files" and "Make fab files" (they open the section and run; while one runs it says so, with the time, and both are disabled; a toast says how it ended). They are the actions; Build is only the section where their reports are. Their tooltips say what they write and where.
 
 ## Driving it
 

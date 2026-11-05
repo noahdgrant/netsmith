@@ -2,7 +2,7 @@
 
 ## How to get to it
 
-The section "Source" (the last, key 7): the project tree on the left, then tabs for open files, the CodeMirror editor, and a Problems panel under it (click its header or the counts in the status bar to open it). The status bar is in every section. After a click-through from another section the file tabs begin with a "Back to ..." button.
+The section "Source" (the first, key 1): the project tree on the left, then tabs for open files, the CodeMirror editor, and a Problems panel under it (click its header or the counts in the status bar to open it). The status bar is in every section. After a click-through from another section the file tabs begin with a "Back to ..." button.
 
 ## Driving it
 

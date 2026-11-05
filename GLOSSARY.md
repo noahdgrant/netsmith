@@ -282,7 +282,7 @@ _Avoid_: Symbol table, library table
 A symbol file (`.kicad_sym`) or footprint folder (`.pretty`) of a project's own, listed in its `kicad.toml` as a `[[library]]`, so that its parts map to symbols and footprints KiCad does not ship.
 
 **Unit**:
-One of the drawings of a KiCad symbol that has several, such as the two amplifiers and the supply of a dual op-amp. All units of a part are placed in the schematic, each with the part's reference.
+One of the drawings of a KiCad symbol that has several, such as the two amplifiers and the supply of a dual op-amp. The KiCad schematic places all units of a part, each with the part's reference; the editor's schematic draws a part of several units as one box with every pin, and a symbol of more than 60 pins as one box with its pins in labelled groups.
 
 **Ratsnest**:
 The connections a board still needs, drawn as straight lines between pads, before any track is routed.
@@ -306,12 +306,20 @@ Restricting a field to the values that both its current limit and a new constrai
 A constraint that mentions other fields, so it waits for the solver instead of narrowing a field now. `==` states an equation that must hold in the worst case; `>=` and `<=` state bounds. There is no plain `=` (ADR 0018).
 
 **Editor**:
-`netsmith editor`: a web app served on 127.0.0.1 by the netsmith binary, with seven sections (Schematic, Power tree, System, BOM, PCB, Build, Source), shown one at a time or two side by side; the Source section has the project tree and a source editor that shows the compiler's and solver's messages beside their lines, the others are the views of a board; and two actions in the top bar, Write KiCad files and Make fab files (ADR 0019). The schematic is shown one sheet (a module instance) at a time. A long job runs on the server while the page stays usable. It writes the source files (in its source pane), the physical file (the requirements a person draws, such as a keepout) and the layout file (the solution the PCB view moves). It reads the physical file for the PCB view and lists it in its tree; its drawn keepouts are still written to the layout file (the write path to the physical file is not built yet, issue #52). It replaces the schematic viewer, which is gone.
+`netsmith editor`: a web app served on 127.0.0.1 by the netsmith binary, with seven sections (Source, Schematic, Power tree, System, BOM, PCB, Build; the number keys 1 to 7 pick them in that order), shown one at a time or two side by side; the Source section has the project tree and a source editor that shows the compiler's and solver's messages beside their lines, the others are the views of a board; and two actions in the top bar, Write KiCad files and Make fab files (ADR 0019). The schematic is shown one sheet (a module instance) at a time. A long job runs on the server while the page stays usable. It writes the source files (in its source pane), the physical file (the requirements a person draws, such as a keepout) and the layout file (the solution the PCB view moves). It reads the physical file for the PCB view and lists it in its tree; its drawn keepouts are still written to the layout file (the write path to the physical file is not built yet, issue #52). It replaces the schematic viewer, which is gone.
 _Avoid_: Viewer, IDE, GUI
 
 **View**:
 One way the editor shows a board built from the source: the schematic, the power tree, the system, the bill of materials or the PCB. Each is computed from the checked and solved model, and none is edited: the source is.
 _Avoid_: Page
+
+**Power symbol**:
+How the editor's schematic draws a rail: the negative side of a rail (where the current returns) with the ground symbol, bars that shrink away from a wire, and the positive side with the supply symbol, a stem with an arrow head and the net's name beside it. Which nets are which comes from the checked model (a `Rail`'s `pos` and `neg`), never from the names; the ground symbols carry their names only when a board has more than one ground. Each pin on a rail has a wire to its own symbol, and pins next to each other on one rail share a bus and a symbol. The KiCad schematic file does not use them.
+_Avoid_: Net label (a power symbol is drawn instead of one), power port
+
+**Flag**:
+How the editor's schematic shows a net that goes on to another sheet: a pentagon pointing at the end of a wire, like KiCad's hierarchical label, with the net's name in it (none for a net with a generated name). Every other net on a sheet is only wires.
+_Avoid_: Port (a `Rail`'s and a module's ports are pins), off-sheet label
 
 **Power tree**:
 The view of a board's rails as nodes: the voltage of each net a rail draws from, the currents on it, and what the part that supplies it can give, joined by the regulators and stages that make one rail from another and by the joins of a system. The numbers are the solver's, in the worst case.

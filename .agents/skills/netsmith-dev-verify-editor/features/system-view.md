@@ -2,7 +2,7 @@
 
 ## How to get to it
 
-The section "System" (key 3). A board that is part of a `system` shows the system (boards with their ports, voltages and currents, joined by `~` or by a mate), and below the graph the mated connectors with a box for each contact coloured by role (ground, power, signal, open; click the mate's name to go to its `~`), a line for each pinout that works turned end for end, and one line for each ground group (`carrier.GND + sensor.GND + serial.GND`, ADR 0040). A board on its own shows its members (ports, modules, parts) joined by the nets they share; a ground net is left out.
+The section "System" (key 4). A board that is part of a `system` shows the system (boards with their ports, voltages and currents, joined by `~` or by a mate), and below the graph the mated connectors with a box for each contact coloured by role (ground, power, signal, open; click the mate's name to go to its `~`), a line for each pinout that works turned end for end, and one line for each ground group (`carrier.GND + sensor.GND + serial.GND`, ADR 0040). A board on its own shows its members (ports, modules, parts) joined by the nets they share; a ground net is left out.
 
 ## Driving it
 
