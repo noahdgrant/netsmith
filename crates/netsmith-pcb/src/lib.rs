@@ -38,6 +38,7 @@ pub mod geometry;
 pub mod layout;
 pub mod overhang;
 mod place;
+pub mod protrusion;
 pub mod quality;
 pub mod ratsnest;
 pub mod route;
@@ -51,7 +52,7 @@ pub use anneal::{Ended, OutsideAt, OverlapAt};
 pub use board::{
     Board, BoardCutout, BoardError, BoardKeepout, BoardNet, BoardPour, CopperLayer, Hang,
     HeightUnchecked, HoleNeighbour, KeepoutArea, PadRef, Placed, PlacementProblem, Plane,
-    ReferenceSide, Side, Track, Via,
+    ReferenceSide, Side, Track, Trim, Via,
 };
 pub use explain::{Fault, Precheck, RequirementReport};
 pub use export::{kicad_pcb, kicad_pro};

@@ -1306,6 +1306,11 @@ fn could_fit(parts: &[Placed], fit: (f64, f64), options: &PlaceOptions) -> bool 
             // On a face the footprint draws no courtyard for, the part takes only its pads
             // (`Placed::room_on`; the pads' own area is what is certainly taken).
             for (k, face) in [Side::Front, Side::Back].into_iter().enumerate() {
+                // Pins with a stated protrusion may be stood over: nothing is certainly taken
+                // there (`crate::protrusion`).
+                if crate::protrusion::may_be_covered(p, face) {
+                    continue;
+                }
                 load[k] += p
                     .room_on(face, 0.0, c)
                     .iter()

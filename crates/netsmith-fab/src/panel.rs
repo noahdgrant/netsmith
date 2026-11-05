@@ -1124,6 +1124,7 @@ pub fn build(spec: &Spec, cell: &CellInput, options: &Options) -> Result<PanelPa
         &[],
         options.process.as_deref(),
         &extras,
+        &options.trim,
     );
     Ok(PanelPackage {
         gerber_files: files.into_iter().map(|f| f.name).collect(),

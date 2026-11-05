@@ -734,7 +734,8 @@ pub(crate) fn plan(
                 on_board(court(pa, a.1, a.2, a.3), a.5),
                 on_board(court(pb, b.1, b.2, b.3), b.5),
             );
-            if lies(pa, a.1, a.2, a.3).rooms_overlap(ca, &lies(pb, b.1, b.2, b.3), cb, clearance) {
+            let (qa, qb) = (lies(pa, a.1, a.2, a.3), lies(pb, b.1, b.2, b.3));
+            if qa.rooms_overlap(ca, &qb, cb, clearance, &options.height_zones) {
                 let span = |c: &Rect| {
                     format!(
                         "x {} to {}, y {} to {}",
@@ -744,8 +745,20 @@ pub(crate) fn plan(
                         number(c.max.y - ORIGIN.y)
                     )
                 };
+                // What the pins under one of them add to it (ADR 0045 section 15).
+                let pins = match crate::board::PlacementProblem::overlap_of(
+                    &qa,
+                    &qb,
+                    &options.height_zones,
+                ) {
+                    p @ (crate::board::PlacementProblem::OverPins { .. }
+                    | crate::board::PlacementProblem::Overlap { pins: Some(_), .. }) => {
+                        format!("; {p}")
+                    }
+                    _ => String::new(),
+                };
                 errors.push(format!(
-                    "{} and {} are put on top of each other: {} ({}), {} ({}); the courtyard of {} spans {} mm and that of {} spans {} mm",
+                    "{} and {} are put on top of each other: {} ({}), {} ({}); the courtyard of {} spans {} mm and that of {} spans {} mm{pins}",
                     a.0, b.0, a.0, a.4, b.0, b.4, a.0, span(&ca), b.0, span(&cb)
                 ));
             }

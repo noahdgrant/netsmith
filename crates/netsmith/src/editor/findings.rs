@@ -124,7 +124,7 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
         .map(|problem| {
             let message = problem.to_string();
             let (rule, subjects, area): (&str, Vec<&str>, Option<Rect>) = match &problem {
-                PlacementProblem::Overlap { a, b } => {
+                PlacementProblem::Overlap { a, b, .. } => {
                     let (ra, rb) = (courtyard(a), courtyard(b));
                     // The area they share, or the two if the board says they touch.
                     let shared = ra.zip(rb).map(|(x, y)| {
@@ -134,6 +134,16 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
                         )
                     });
                     ("overlap", vec![a, b], shared)
+                }
+                PlacementProblem::OverPins { holder, cover, .. } => {
+                    let (rt, rc) = (courtyard(holder), courtyard(cover));
+                    let shared = rt.zip(rc).map(|(x, y)| {
+                        Rect::new(
+                            Pt::new(x.min.x.max(y.min.x), x.min.y.max(y.min.y)),
+                            Pt::new(x.max.x.min(y.max.x), x.max.y.min(y.max.y)),
+                        )
+                    });
+                    ("over_pins", vec![holder, cover], shared)
                 }
                 PlacementProblem::OutsideOutline { refdes, .. } => {
                     ("outside_outline", vec![refdes], courtyard(refdes))
@@ -240,10 +250,7 @@ pub fn unrouted_findings(board: &Board) -> Vec<PcbFinding> {
 /// 0037). Not listed here: the connections left, which are the ratsnest's (`unrouted`), and
 /// courtyards that overlap, which are the placement check's. KiCad is not involved.
 pub fn drc_findings(board: &Board) -> Vec<PcbFinding> {
-    let extras = drc::Extras {
-        mask_web: Some(board.rules.mask_bridge),
-        via_in_pad: Some(board.process.via_in_pad),
-    };
+    let extras = crate::fab::drc_extras(board);
     let report = match drc::check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras) {
         Ok(report) => report,
         // The board file is netsmith's own, so this is a mistake in netsmith; say so.

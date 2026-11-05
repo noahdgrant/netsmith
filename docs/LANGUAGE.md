@@ -3048,7 +3048,7 @@ physical for Cased {
 - **`.place.side` on a module** is a requirement on every part of it, at any depth. A module with an exception states the faces of its parts one by one and none for itself; two lines that disagree are an error that names both.
 - The case numbers are the maintainer's file to review: put the source of each (a drawing, a sheet) in a comment above the line, and never invent one.
 
-`examples/enclosure_sensor/` is a complete invented board that states all of this in its physical file, and each statement has a comment that says what it asks for: a rounded outline with a cutout, mounting holes and fiducials, a 40 mm plug that hangs over an edge, an antenna and a coax connector on one line, two socket rows a fixed distance apart, a module on the back with one part on the front, a row of twelve test pads on a pitch, and a height limit. It is a project, because it defines three invented parts and maps them to KiCad's stock footprints in its own `kicad.toml`; `crates/netsmith/tests/enclosure_sensor.rs` runs `fab` on it and checks that every requirement is met.
+`examples/enclosure_sensor/` is a complete invented board that states all of this in its physical file, and each statement has a comment that says what it asks for: a rounded outline with a cutout, mounting holes and fiducials, a 40 mm plug that hangs over an edge, an antenna and a coax connector on one line, two socket rows a fixed distance apart, a module on the back with one part on the front, a row of twelve test pads on a pitch, a height limit, and a flat cell on the back across the sockets whose pins protrude 0.2 mm (_Pin protrusion_). It is a project, because it defines four invented parts and maps them to KiCad's stock footprints and a footprint of its own in its `kicad.toml`; `crates/netsmith/tests/enclosure_sensor.rs` runs `fab` on it and checks that every requirement is met.
 
 The placer keeps to every requirement, `fab` measures them on the board and stops on one not met, and the editor draws the file's outline and keepouts. A requirement that is a single value fixes the part, like a lock in the layout file.
 
@@ -3111,7 +3111,7 @@ physical for Wrong {
 ```
 
 ```text
-error: `b.j.assembly` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`) and the outline, cutouts, keepouts, holes, fiducials and labels it declares, never what a part is; put this in the circuit source
+error: `b.j.assembly` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`), how far its pins protrude (`.pin_protrusion`) and the outline, cutouts, keepouts, holes, fiducials and labels it declares, never what a part is; put this in the circuit source
   --> main.physical.nsm:2:5
   |
 2 |     .b.j.assembly &= "hand"
@@ -3580,6 +3580,192 @@ board Vague {
 
 ```text
 error: Vague: `r.height` is 2mm..5mm, a range, and a position, a size or a height is one value: say it with `&= 2mm`
+```
+
+### Pin protrusion
+
+**Provisional readings (ADR 0045, section 15); the name `.pin_protrusion` and the rule were decided by the owner on 2026-11-04.** On a tight board a flat part sits on one face over the pins of a through-hole part that come through from the other face. The pins are cut after soldering, so what protrudes is lower than the flat part's underside. A part has the built-in member `.pin_protrusion` (a length): how far the pins of a through-hole part protrude out of the far side of the board, whether they were cut or bought short. The board's physical file states it for one part, as it states `.height`, and a path may reach a part inside a module (`.radio.row_a.pin_protrusion &= 0.2mm`). A part that states none has an unknown protrusion, which is not zero: its pads stay an obstacle for a part on that face, as before.
+
+A part on that face may stand over the pins when all of these hold, and `fab` says which does not:
+
+- it is fitted by hand, after the pins are cut (`.assembly` is `"hand"` or `"none"`; a part the board house assembles is on the board before any pin is soldered);
+- it states its `.height`;
+- the protrusion plus its height fits the height limit that a keepout puts on that face where its body is (the pins protrude `t`, the part rests on them, so `t + height` must not be more than `.max_height`). With no limit there, nothing is compared, and `fab` warns of that.
+
+Its own pads still keep the process's clearance from the pads of the through-hole part. Here the socket's pins protrude 0.2 mm, the regulator stands 1.8 mm tall and the lid leaves 2.2 mm, so it places over them:
+
+```nsm solve place
+import std::parts::connector::Header1x2
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+board Stacked {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..50mA
+    }
+    .reg: LinearRegulator
+    .reg.vin ~ .input
+    .reg.vout ~ .output
+    .socket: Header1x2
+    .input.pos ~ .socket.p1
+    .input.neg ~ .socket.p2
+    // The regulator is fitted by hand, after the socket's pins are cut.
+    .reg.assembly &= "hand"
+    // Datasheet: it stands 1.8 mm tall.
+    .reg.height &= 1.8mm
+}
+```
+
+```nsm-physical
+import std::pcb::{Keepout, Outline}
+
+physical for Stacked {
+    case {
+        .outline: Outline {
+            .width &= 24mm
+            .height &= 16mm
+        }
+    }
+    // Case drawing (invented): the lid leaves 2.2 mm under the back of the board.
+    .back_room: Keepout {
+        .x &= 0mm
+        .y &= 0mm
+        .width &= 24mm
+        .height &= 16mm
+        .layers &= "bottom"
+        .max_height &= 2.2mm
+    }
+    // The regulator lies on the back across the socket's two pads, a hair apart in x.
+    .socket.place.side &= "top"
+    .socket.place.rotation &= 0
+    .socket.place.x &= 12mm +/- 0.02mm
+    .socket.place.y &= 8mm +/- 0.02mm
+    .reg.place.side &= "bottom"
+    .reg.place.rotation &= 0
+    .reg.place.x &= 14.75mm +/- 0.02mm
+    .reg.place.y &= 8mm +/- 0.5mm
+    // The socket's pins are cut after soldering to protrude 0.2mm.
+    .socket.pin_protrusion &= 0.2mm
+}
+```
+
+`fab` then writes a step for a person next to `hand-solder:` in `fab-notes.txt` and `order.txt`: `trim: J1 (socket): after soldering, cut the pins to protrude 0.20 mm from the bottom face, before U1 (reg) is fitted (stacked.physical.nsm:26); measure one protruding pin`. The files cannot carry it, so measure one protruding pin before the covering part goes on. Never state a protrusion to make a finding go away: cutting the pins is a hand step, and it is stated only when it is done.
+
+With pins that protrude 0.6 mm the stack is 2.4 mm. The lines pin both parts over each other, so `fab` refuses before it places anything, naming the lines and the protrusion that would fit (a placement that is checked afterwards says `U1 (`reg`) lies over the pins of J1 (`socket`), whose pins protrude 0.60 mm ...`):
+
+```nsm solve place refused
+import std::parts::connector::Header1x2
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+board Stacked {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..50mA
+    }
+    .reg: LinearRegulator
+    .reg.vin ~ .input
+    .reg.vout ~ .output
+    .socket: Header1x2
+    .input.pos ~ .socket.p1
+    .input.neg ~ .socket.p2
+    // The regulator is fitted by hand, after the socket's pins are cut.
+    .reg.assembly &= "hand"
+    // Datasheet: it stands 1.8 mm tall.
+    .reg.height &= 1.8mm
+}
+```
+
+```nsm-physical
+import std::pcb::{Keepout, Outline}
+
+physical for Stacked {
+    case {
+        .outline: Outline {
+            .width &= 24mm
+            .height &= 16mm
+        }
+    }
+    // Case drawing (invented): the lid leaves 2.2 mm under the back of the board.
+    .back_room: Keepout {
+        .x &= 0mm
+        .y &= 0mm
+        .width &= 24mm
+        .height &= 16mm
+        .layers &= "bottom"
+        .max_height &= 2.2mm
+    }
+    // The regulator lies on the back across the socket's two pads, a hair apart in x.
+    .socket.place.side &= "top"
+    .socket.place.rotation &= 0
+    .socket.place.x &= 12mm +/- 0.02mm
+    .socket.place.y &= 8mm +/- 0.02mm
+    .reg.place.side &= "bottom"
+    .reg.place.rotation &= 0
+    .reg.place.x &= 14.75mm +/- 0.02mm
+    .reg.place.y &= 8mm +/- 0.5mm
+    // The socket's pins are cut after soldering to protrude 0.6mm.
+    .socket.pin_protrusion &= 0.6mm
+}
+```
+
+```text
+error: Stacked: no placement meets every requirement of the physical file:
+  these lines cannot both hold: main.physical.nsm:22 `.socket.place.x &= 12mm +/- 0.02mm`; main.physical.nsm:23 `.socket.place.y &= 8mm +/- 0.02mm`; main.physical.nsm:21 `.socket.place.rotation &= 0`; main.physical.nsm:26 `.reg.place.x &= 14.75mm +/- 0.02mm`; main.physical.nsm:27 `.reg.place.y &= 8mm +/- 0.5mm`; main.physical.nsm:25 `.reg.place.rotation &= 0`; main.physical.nsm:24 `.reg.place.side &= "bottom"`; main.physical.nsm:29 `.socket.pin_protrusion &= 0.6mm`: they keep the courtyard of U1 (`reg`) within x 12.83 to 16.67, y 5.8 to 10.2 mm, over a pad of J1 (`socket`) (pins protruding 0.6 mm) by at least 0.02 x 0.775 mm wherever it is put, and the protrusion does not excuse that: U1 stands 1.80 mm tall on pins that protrude 0.60 mm: 2.40 mm from the bottom face, and the keepout `back_room` allows 2.20 mm there (0.20 mm too much); cut the pins to protrude 0.40 mm or less, or use a lower part
+```
+
+The same refusal is made, with its own sentence at the end, when the covering part states no height (`state .reg.height`) or when the board house assembles it (`make U1 hand`). A part over the pads of a through-hole part that states no protrusion is the plain overlap, with a sentence that names the member to state. A part kind may bound the protrusion, and a board that states more breaks that claim, which is refused with the line of the bound:
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+
+part ShortPins {
+    .designator &= "J"
+    pins {
+        .p1 passive "P1" "1"
+    }
+    .pin_protrusion <= 3mm
+    .package: Package
+}
+
+board TooLong {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .j: ShortPins
+    .j.pin_protrusion &= 5mm
+}
+```
+
+```text
+error: j.pin_protrusion must always be at most 3mm, but 5mm is not always below 3mm
+  --> main.nsm:8:5
+  |
+8 |     .pin_protrusion <= 3mm
+  |     ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Labels
