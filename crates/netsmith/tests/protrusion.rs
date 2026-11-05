@@ -9,8 +9,8 @@
 
 use std::fs;
 
-use netsmith::fab::{FabOptions, Fabricated, fab_with_options};
 use netsmith::Libraries;
+use netsmith::fab::{FabOptions, Fabricated, fab_with_options};
 use netsmith_check::Loader;
 use netsmith_kicad::testlib::{TempDir, skip_without_kicad_libraries};
 use netsmith_solve::Catalogs;
@@ -159,8 +159,15 @@ fn a_flat_part_over_pins_that_protrude_0_2_mm_places_and_the_package_says_how_to
         .iter()
         .position(|l| l.starts_with("hand-solder:"))
         .unwrap_or_else(|| panic!("{notes}"));
-    assert!(lines[hand].contains("J1") && lines[hand].contains("U1"), "{notes}");
-    assert_eq!(lines[hand + 1], expected, "the trim line follows it: {notes}");
+    assert!(
+        lines[hand].contains("J1") && lines[hand].contains("U1"),
+        "{notes}"
+    );
+    assert_eq!(
+        lines[hand + 1],
+        expected,
+        "the trim line follows it: {notes}"
+    );
     // Every requirement is met on the file written.
     let on_disk = fs::read_to_string(dir.join("fab/Widget/fab-notes.txt")).unwrap();
     assert_eq!(&on_disk, notes);
@@ -184,10 +191,7 @@ fn a_protrusion_that_leaves_too_little_room_names_the_numbers_and_the_lines() {
     if skip_without_kicad_libraries() {
         return;
     }
-    let text = physical(
-        "    .row.pin_protrusion &= 0.4mm\n",
-        HEIGHT,
-    );
+    let text = physical("    .row.pin_protrusion &= 0.4mm\n", HEIGHT);
     let (_, made, _) = fab("f1", &text);
     let e = made.expect_err("3.4 + 0.4 mm does not fit 3.6 mm");
     let line = line_of(&text, ".row.pin_protrusion &= 0.4mm");
