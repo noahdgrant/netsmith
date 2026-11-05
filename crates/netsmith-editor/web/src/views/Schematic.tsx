@@ -12,10 +12,20 @@ import {
   goTo,
   layout,
   lineParts,
+  pickNet,
   pickPart,
-  selected,
+  selectedRefdes,
   visible,
 } from '../store';
+import {
+  declarationOf,
+  modulesOf,
+  moduleSel,
+  partByPath,
+  revealRequest,
+  selection,
+  setSelection,
+} from '../selection';
 
 /** Pixels in the canvas for each millimetre of the drawing. */
 const SCALE = 6;
@@ -87,6 +97,10 @@ export function Schematic() {
   const holder = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const [viewWidth, setViewWidth] = useState(0);
+  /** A box of the drawing to zoom to, when the selection is asked to be brought into view. */
+  const [focusBox, setFocusBox] = useState<{ x: number; y: number; w: number; h: number; seq: number } | undefined>();
+  const [revealBox, setRevealBox] = useState<{ x: number; y: number; w: number; h: number; seq: number } | undefined>();
+  const handled = useRef(0);
   useEffect(() => {
     const el = root.current;
     if (!el) return;
@@ -127,14 +141,20 @@ export function Schematic() {
     return map;
   }, [detail.value]);
 
-  // Paint what the pointer is over, what is picked, and what the cursor's line declares.
-  const marked = [...new Set([...(selected.value ? [selected.value] : []), ...lineParts.value])];
+  // Paint what the pointer is over, what is picked (a part, a net or a module: the shared
+  // selection), and what the cursor's line declares.
+  const sel = selection.value;
+  const picked = sel?.kind === 'net' ? [] : [...selectedRefdes.value];
+  const marked = [...new Set([...picked, ...lineParts.value])];
+  const pickedNet = sel?.kind === 'net' ? sel.key : null;
+  const wholeModule = sel?.kind === 'module';
   useEffect(() => {
     const svg = holder.current?.querySelector('svg.schematic');
     if (!svg) return;
-    svg.querySelectorAll('.on,.touches,.mark').forEach((e) => e.classList.remove('on', 'touches', 'mark'));
-    const focus = hover ?? (marked.length ? { part: marked[0] } : null);
-    svg.classList.toggle('has-on', !!focus);
+    svg.querySelectorAll('.on,.touches,.mark,.linked').forEach((e) => e.classList.remove('on', 'touches', 'mark', 'linked'));
+    // A module lights its parts and dims the rest; it does not light their nets (ground would light all).
+    const focus = hover ?? (pickedNet ? { net: pickedNet } : wholeModule ? null : marked.length ? { part: marked[0] } : null);
+    svg.classList.toggle('has-on', !!focus || (wholeModule && marked.length > 0));
     if (focus) {
       const nets =
         focus.net != null ? new Set([focus.net]) : (netsOfPart.get(focus.part!) ?? new Set<string>());
@@ -149,13 +169,62 @@ export function Schematic() {
       touching.forEach((p) => p.classList.add('touches'));
     }
     for (const ref of marked) {
-      svg.querySelector(`.part[data-ref="${CSS.escape(ref)}"]`)?.classList.add('on', 'mark');
+      const el = svg.querySelector(`.part[data-ref="${CSS.escape(ref)}"]`);
+      el?.classList.add('on', 'mark');
+      // What only the cursor's line declares is marked less than what is selected.
+      if (el && !picked.includes(ref)) el.classList.add('linked');
     }
-  }, [drawing, hover, marked.join(','), netsOfPart]);
+  }, [drawing, hover, marked.join(','), netsOfPart, pickedNet, wholeModule]);
 
   const names = useMemo(() => (drawing?.sheets ?? []).map((s) => s.name), [drawing]);
   const current = name ? resolvePick(picks.value[name], names) : ALL;
   const open = (p: string) => name && choose(name, p);
+
+  // Bring the selection into view when asked (go to anything, the chip): open the sheet that
+  // has it, then zoom to it.
+  const ask = revealRequest.value;
+  useEffect(() => {
+    if (!ask || !drawing || ask.nonce === handled.current) return;
+    const svg = holder.current?.querySelector('svg.schematic') as SVGSVGElement | null;
+    if (!svg) return;
+    const { kind, key } = ask.sel;
+    let el: Element | null = null;
+    if (kind === 'part') {
+      const ref = partByPath(detail.value, key)?.refdes;
+      el = ref ? svg.querySelector(`.part[data-ref="${CSS.escape(ref)}"]`) : null;
+    } else if (kind === 'module') {
+      el = svg.querySelector(`.module-sheet[data-module="${CSS.escape(key.split('.')[0])}"]`);
+    } else {
+      el = svg.querySelector(`[data-net="${CSS.escape(key)}"]`);
+    }
+    if (!el) {
+      handled.current = ask.nonce;
+      return;
+    }
+    // The element's box in the drawing's pixels, and the sheet whose frame holds its middle.
+    const box = el.getBoundingClientRect();
+    const frame = svg.getBoundingClientRect();
+    if (!frame.width) return;
+    const to = drawing.width / frame.width;
+    const rect = { x: (box.left - frame.left) * to, y: (box.top - frame.top) * to, w: box.width * to, h: box.height * to };
+    const mid = { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+    const sheet = drawing.sheets.find((s) => mid.x >= s.x && mid.x <= s.x + s.w && mid.y >= s.y && mid.y <= s.y + s.h)?.name;
+    if (sheet && current !== ALL && sheet !== current) {
+      open(sheet);
+      return;
+    }
+    handled.current = ask.nonce;
+    // A net is a whole run of wires: it is lit, and the view stays where it is.
+    if (kind === 'net') return;
+    // One sheet is shown whole already: the view moves only if the thing is out of it. The
+    // overview is too small to read: it zooms to the sheet that has the thing.
+    const seq = (focusBox?.seq ?? revealBox?.seq ?? 0) + 1;
+    if (current === ALL) {
+      const at = drawing.sheets.find((s) => s.name === sheet);
+      const r = at ? around(at) : rect;
+      setFocusBox({ x: r.x, y: r.y, w: r.w, h: r.h, seq });
+    } else setRevealBox({ ...rect, seq });
+  }, [ask?.nonce, drawing, current]);
 
   // The keys step through the sheets while this view is the one the person is in.
   const stepRef = useRef<(dir: 1 | -1) => void>(() => {});
@@ -217,6 +286,8 @@ export function Schematic() {
         height={drawing.height}
         fitKey={`${name}:${drawing.width}x${drawing.height}:${current}`}
         fitBox={box}
+        focus={focusBox}
+        reveal={revealBox}
         memoKey={`schematic|${name}|${current}`}
         class="schematic-host"
       >
@@ -230,12 +301,17 @@ export function Schematic() {
           onClick={(e) => {
             const hit = pick(e.target);
             if (hit?.part) pickPart(hit.part, true);
+            else if (hit?.net != null) pickNet(selection.peek()?.kind === 'net' && selection.peek()?.key === hit.net ? null : hit.net);
             else pickPart(null);
-            // In the overview, a click on a module's box, and not on what is in it, opens its sheet.
+            // In the overview, a click on a module's box, and not on what is in it, opens its sheet
+            // and selects the module.
             if (!hit && current === ALL && e.target instanceof Element) {
               const module = e.target.closest('.module-sheet')?.getAttribute('data-module');
               const found = drawing.sheets.find((s) => s.name === module);
-              if (found) open(found.name);
+              if (found) {
+                open(found.name);
+                if (modulesOf(detail.value).some((m) => m.path === found.name)) setSelection(moduleSel(found.name));
+              }
             }
           }}
         />
@@ -336,17 +412,54 @@ function Inspector({
   open: (p: string) => void;
 }) {
   const d = detail.value;
-  const ref = hover?.part ?? selected.value;
+  const sel = selection.value;
+  const picked = selectedRefdes.value;
+  // What the pointer is over comes first; else what is selected, in any view.
+  const ref = hover?.part ?? (!hover?.net && sel?.kind === 'part' ? partByPath(d, sel.key)?.refdes : undefined);
   const part = d?.parts.find((p) => p.refdes === ref);
-  const net = hover?.net ? d?.nets.find((n) => n.name === hover.net) : undefined;
+  const netName = hover?.part ? undefined : (hover?.net ?? (sel?.kind === 'net' ? sel.key : undefined));
+  const net = netName ? d?.nets.find((n) => n.name === netName) : undefined;
+  const module = !hover && sel?.kind === 'module' ? modulesOf(d).find((m) => m.path === sel.key) : undefined;
+  const moduleAt = module && sel ? declarationOf(d, sel) : null;
   return (
     <aside class="inspector no-pan">
-      <h3>Selection</h3>
-      {net ? (
+      <h3>
+        Selection
+        {sel && !hover && (
+          <button class="link clear" title="Clear the selection (Esc)" onClick={() => setSelection(null)}>
+            clear
+          </button>
+        )}
+      </h3>
+      {module ? (
+        <div>
+          <div class="title">{module.path}</div>
+          <div class="sub">
+            module · {module.parts.length} part{module.parts.length === 1 ? '' : 's'}
+          </div>
+          <div class="chips">
+            {module.parts.map((p) => (
+              <button key={p.path} class="chip" title={`${p.value} · ${p.path}`} onClick={() => pickPart(p.refdes, true)}>
+                {p.refdes}
+              </button>
+            ))}
+          </div>
+          {moduleAt && (
+            <button class="link" onClick={() => void goTo(moduleAt)}>
+              {moduleAt.file}:{moduleAt.line}
+            </button>
+          )}
+          {sheets.some((x) => x.name === module.path.split('.')[0]) && pick !== module.path.split('.')[0] && (
+            <button class="link" onClick={() => open(module.path.split('.')[0])}>
+              open sheet
+            </button>
+          )}
+        </div>
+      ) : net ? (
         <div>
           <div class="title">{net.name}</div>
           <div class="sub">
-            {net.pins.length} pins{net.named ? '' : ', unnamed'}
+            net · {net.pins.length} pins{net.named ? '' : ', unnamed'} · no line in the source
           </div>
           <div class="chips">
             {net.pins.map((p) => (
@@ -391,7 +504,9 @@ function Inspector({
           </table>
         </div>
       ) : (
-        <p class="hint">Click a part to go to its source. Move the cursor in the source to see what the line declares.</p>
+        <p class="hint">
+          Click a part to select it everywhere and go to its source; click a wire for the net. Ctrl+P finds anything by name.
+        </p>
       )}
       {sheets.length > 0 && (
         <>
@@ -415,7 +530,7 @@ function Inspector({
           {(d?.parts ?? []).map((p) => (
             <tr
               key={p.refdes}
-              class={selected.value === p.refdes ? 'sel' : ''}
+              class={picked.has(p.refdes) ? 'sel' : ''}
               onClick={() => pickPart(p.refdes, true)}
             >
               <td class="ref">{p.refdes}</td>

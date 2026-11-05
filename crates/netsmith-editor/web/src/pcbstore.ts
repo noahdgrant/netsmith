@@ -7,6 +7,7 @@ import { signal } from '@preact/signals';
 import type { PcbChange, PcbFindings, PcbScene } from './api';
 import { ApiFailure, api } from './client';
 import { type History, NO_HISTORY, type Step, record, redoing, undoing } from './pcb/edits';
+import { type Selection, partSel, sameSelection, selection as shared, setSelection } from './selection';
 import { beginJob, endJob, pcbReports, say } from './store';
 
 export const scene = signal<PcbScene | null>(null);
@@ -184,9 +185,21 @@ export function redo(): Promise<void> {
   });
 }
 
+/** What the board last wrote to the page's selection, so that following the page's selection back
+ * onto the board does not undo it (a box of several parts is no single selection). */
+export const wrote: { sel: Selection | null | undefined } = { sel: undefined };
+
+/** The parts picked on the board by the person. One part is the page's selection; none clears it
+ * unless it is a net; several leave the page with no single thing selected. */
 export function select(paths: string[]) {
   selection.value = paths;
   pickedKeepout.value = null;
+  const now = shared.peek();
+  const next = paths.length === 1 ? partSel(paths[0]) : paths.length === 0 && now?.kind === 'net' ? now : null;
+  if (!sameSelection(now, next)) {
+    wrote.sel = next;
+    setSelection(next);
+  }
 }
 
 export function pickKeepout(name: string | null) {

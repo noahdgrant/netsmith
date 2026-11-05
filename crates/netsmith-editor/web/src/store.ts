@@ -25,7 +25,20 @@ import {
   visiblePanes,
 } from './layout';
 import { load, save as keep } from './storage';
+import {
+  type Selection,
+  declarationOf,
+  exists,
+  netSel,
+  partByRefdes,
+  partSel,
+  refdesOf,
+  selection,
+  setSelection,
+} from './selection';
 import { covers } from './util';
+
+export { selection };
 
 export type ViewKind = Section;
 
@@ -131,10 +144,11 @@ export const panelShown = signal<string | null>(null);
 export const detail = signal<BoardDetail | null>(null);
 
 /** Asks the editor to put the cursor at a place. `nonce` makes the same place twice a new ask. */
-export const reveal = signal<{ at: Location; name?: string; nonce: number } | null>(null);
+export const reveal = signal<{ at: Location; name?: string; nonce: number; quiet?: boolean } | null>(null);
 export const cursor = signal<{ file: string; line: number; column: number } | null>(null);
-/** The part picked in a view. */
-export const selected = signal<string | null>(null);
+/** The designators of the parts the shared selection stands for (a part, the parts on a net, the
+ * parts under a module), for the views that list designators. */
+export const selectedRefdes = computed(() => refdesOf(detail.value, selection.value));
 /** The last `fab` run of each board. */
 export const fabReports = signal<Record<string, FabReport>>({});
 /** A run asked for by the top bar, taken by the build view. */
@@ -442,29 +456,62 @@ export async function reload(path: string) {
 }
 
 /** Open the file at a place and put the cursor there. `name` is the definition whose line it
- * is, when that is all that is known (the tree): the cursor goes to the name on the line. */
-export async function goTo(at: Location, name?: string) {
+ * is, when that is all that is known (the tree): the cursor goes to the name on the line.
+ * With `quiet` the source is not brought to the front: its cursor is moved where it is, so it is
+ * at the place when the person looks at it. */
+export async function goTo(at: Location, name?: string, quiet = false) {
   try {
     await openFile(at.file);
   } catch (e) {
     say(e instanceof Error ? e.message : String(e), true);
     return;
   }
-  revealSource();
-  reveal.value = { at, name, nonce: ++nonce };
+  if (!quiet) revealSource();
+  reveal.value = { at, name, nonce: ++nonce, quiet };
 }
 
+/** A part picked by its designator (a list that only knows the letters): it is selected in every
+ * view, and with `jump` the source opens at its declaration. */
 export function pickPart(refdes: string | null, jump = false) {
-  selected.value = refdes;
-  if (!jump || !refdes) return;
-  const part = detail.value?.parts.find((p) => p.refdes === refdes);
-  if (part?.decl) void goTo(part.decl);
+  if (!refdes) {
+    setSelection(null);
+    return;
+  }
+  const part = partByRefdes(detail.value, refdes);
+  if (!part) return;
+  setSelection(partSel(part.path));
+  if (jump && part.decl) void goTo(part.decl);
 }
+
+/** A net picked (or none): lit in every view. A net has no line in the source. */
+export function pickNet(name: string | null) {
+  setSelection(name ? netSel(name) : null);
+}
+
+/** Open the source at the declaration of a selection; a net has none, and that is said. */
+export function showInSource(sel: Selection, quiet = false) {
+  const at = declarationOf(detail.value, sel);
+  if (at) void goTo(at, undefined, quiet);
+  else if (!quiet) say(sel.kind === 'net' ? 'A net has no line in the source: only the board names it.' : 'No declaration is known for it.');
+}
+
+/** Ask for a run of the build view (`Write KiCad files`, `Make fab files`). */
+export function requestRun(what: 'build' | 'fab') {
+  revealSection('build');
+  run.value = { what, nonce: Date.now() };
+}
+
+// A selection the board no longer has (the source changed) is dropped.
+effect(() => {
+  const d = detail.value;
+  const s = selection.value;
+  if (d && s && d.name === board.value && !exists(d, s)) setSelection(null);
+});
 
 export function chooseBoard(name: string) {
   board.value = name;
   keep(BOARD_KEY, name);
-  selected.value = null;
+  setSelection(null);
   // Another board is not the panel's.
   const shown = analysis.value?.panels.find((p) => p.name === panelShown.value);
   if (shown && analysis.value?.boards.find((x) => x.name === name)?.definition !== shown.board) {

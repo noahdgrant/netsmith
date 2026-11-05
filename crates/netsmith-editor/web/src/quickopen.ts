@@ -56,8 +56,8 @@ export function buildIndex(detail: BoardDetail | null, project: Project | null):
       { name: 'sub', text: p.value, weight: 1.3 },
       { name: 'detail', text: p.path, weight: 1 },
       { name: 'kind', text: p.kind, weight: 0.8 },
-      { name: 'package', text: p.package ?? '', weight: 0.6 },
-      { name: 'lcsc', text: p.lcsc ?? '', weight: 0.8 },
+      { name: 'package', text: p.package ?? '', weight: 0.4 },
+      { name: 'lcsc', text: p.lcsc ?? '', weight: 0.5 },
     ],
     target: { type: 'selection', sel: partSel(p.path) },
   }));
@@ -140,6 +140,8 @@ export interface Group {
 /** How many of a kind the mixed list shows. */
 const CAP: Record<string, number> = { part: 12, net: 8, module: 6, definition: 8, file: 8 };
 const CAP_ALONE = 80;
+/** A match scoring under this share of the best in its group is dropped. */
+const WEAK = 0.3;
 
 function rank(items: Item[], text: string, cap: number): Hit[] {
   const hits: Hit[] = [];
@@ -149,7 +151,10 @@ function rank(items: Item[], text: string, cap: number): Hit[] {
   }
   // The sort is stable: equal scores stay in the order of the list (designators in order).
   hits.sort((a, b) => b.score - a.score);
-  return hits.slice(0, cap);
+  // What scores far below the best match is noise (a part whose LCSC number starts like the
+  // designator typed): left out, but the best match always stays.
+  const floor = hits.length > 0 ? hits[0].score * WEAK : 0;
+  return hits.filter((h, i) => i === 0 || h.score >= floor).slice(0, cap);
 }
 
 const first = (n: number, items: Item[]) => items.slice(0, n).map((item): Hit => ({ item, score: 0, marks: {} }));
