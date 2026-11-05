@@ -238,6 +238,7 @@ pub fn layout_sheets_marked(
     let mut junctions = Vec::new();
     let mut labels = Vec::new();
     let mut buses = Vec::new();
+    let mut spines = Vec::new();
     let mut sheets = Vec::new();
     let mut bounds: Option<Rect> = None;
     for (((d, cluster), (frame, title)), by) in drawn
@@ -314,6 +315,16 @@ pub fn layout_sheets_marked(
         for b in d.layout.buses {
             buses.push(move_bus(b, by, &d.nets, &d.parts));
         }
+        for sp in d.layout.spines {
+            spines.push(crate::layout::SpineMark {
+                ic: d.parts[sp.ic],
+                chains: sp
+                    .chains
+                    .into_iter()
+                    .map(|c| c.into_iter().map(|p| d.parts[p]).collect())
+                    .collect(),
+            });
+        }
         sheets.push(Sheet {
             name: cluster.name.clone(),
             detail: cluster.detail.clone(),
@@ -341,6 +352,7 @@ pub fn layout_sheets_marked(
         junctions,
         labels,
         buses,
+        spines,
         bounds: bounds.unwrap_or(Rect::around(Pt::new(0.0, 0.0))),
     })
 }

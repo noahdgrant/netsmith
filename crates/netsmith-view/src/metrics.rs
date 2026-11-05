@@ -40,6 +40,19 @@
 //! - **satellite wire** (`satellite_wire`): the longest way along the wire of a net, in grid
 //!   steps, from the pin of a satellite to the nearest pin of another part on that net, or
 //!   power symbol, flag or label of it.
+//! - **spine** (`spine_bends`, target 0; `detached_chain`, target 0): the layout finds, from the
+//!   netlist, the pin kinds and the rails, the power path through an IC of a regulator: the
+//!   chains of **series parts** (a fuse, a diode, a ferrite bead, an inductor: two-terminal parts
+//!   on two nets, neither a ground, that are not across two pins of the IC) that lead from its
+//!   input pins back to where the power comes from and from its switching pin out to the output
+//!   (`Layout::spines`; `NETSMITH_SPINE=off` draws without a spine and still finds the chains,
+//!   to compare). `spine_bends` is the number of bends along the wires of the longest chain
+//!   (most parts; the input side's first), from the IC's pin through each part to the end of
+//!   the chain: along each net between two parts, the bends of the shortest way from the pin of
+//!   one to the pin of the next. A chain is **detached** unless it stands on the row of the
+//!   IC (every pin of every part of it on one horizontal line, which is the line of a pin of
+//!   the IC), or a wire of at most [`ATTACH_STEPS`] steps joins one of its parts to a pin of the
+//!   IC. `detached_chain` counts the chains that are.
 //! - **side consistency**: of the pins of parts that are not satellites, the share that are
 //!   on the side a reader expects: an input on the left, an output on the right, a supply
 //!   pin on top, a ground pin at the bottom. Pins the symbol does not say anything about
@@ -151,6 +164,11 @@ pub struct SheetMetrics {
     pub rail_span: f64,
     pub satellite_wire: f64,
 
+    /// Bends along the longest series chain of a spine, and the chains of the sheet that are
+    /// not on the row of their IC nor near it.
+    pub spine_bends: usize,
+    pub detached_chain: usize,
+
     /// Interfaces drawn as one thick line, their members (the entries at each end count
     /// once), and the flags that end a bus where its members go on to another sheet (these are
     /// not in `flags`).
@@ -261,6 +279,8 @@ impl SheetMetrics {
         self.pair_crossings += o.pair_crossings;
         self.rail_span = self.rail_span.max(o.rail_span);
         self.satellite_wire = self.satellite_wire.max(o.satellite_wire);
+        self.spine_bends += o.spine_bends;
+        self.detached_chain += o.detached_chain;
         self.buses += o.buses;
         self.bus_members += o.bus_members;
         self.bus_flags += o.bus_flags;
@@ -352,6 +372,7 @@ fn measure_sheet(l: &Layout, v: &SheetView) -> SheetMetrics {
     }
     satellites(l, v, &mut m);
     pairs_and_rails(l, v, &segments, &bus_runs, &mut m);
+    spines(l, v, &segments, &mut m);
     sides(l, v, &mut m);
     overlap_counts(l, v, &segments, &mut m);
     m.jogs = jogs(v);
@@ -793,6 +814,116 @@ fn pairs_and_rails(
     }
 }
 
+/// A chain whose part is joined to a pin of its IC by a wire of at most this many steps is
+/// attached to it.
+pub const ATTACH_STEPS: f64 = 8.0;
+
+/// The net the two parts have a pin on, and the pin of each on it.
+fn meeting(a: &PlacedPart, b: &PlacedPart) -> Option<(usize, Pt, Pt)> {
+    for pa in &a.pins {
+        for pb in &b.pins {
+            if let (Some(x), Some(y)) = (pa.net, pb.net)
+                && x == y
+            {
+                return Some((x, pa.at, pb.at));
+            }
+        }
+    }
+    None
+}
+
+/// The bends of a path of runs, as `wire_path` gives them.
+fn bends_on(path: &[(Pt, Pt)]) -> usize {
+    let horizontal = |r: &(Pt, Pt)| (r.0.y - r.1.y).abs() < EPS;
+    path.windows(2)
+        .filter(|w| horizontal(&w[0]) != horizontal(&w[1]))
+        .count()
+}
+
+/// `spine_bends` and `detached_chain`: the chains the layout found, read against the drawing.
+fn spines(l: &Layout, v: &SheetView, segments: &[Seg], m: &mut SheetMetrics) {
+    let by_net = group_by_net(segments);
+    for mark in l.spines.iter().filter(|s| v.parts.contains(&s.ic)) {
+        let ic = &l.parts[mark.ic];
+        // The longest chain, the first of those that tie.
+        let mut longest: Option<&Vec<usize>> = None;
+        for c in &mark.chains {
+            if longest.is_none_or(|b| c.len() > b.len()) {
+                longest = Some(c);
+            }
+        }
+        if let Some(chain) = longest {
+            // From the IC's pin to the first part, then from part to part.
+            let mut bends = 0;
+            let first = &l.parts[chain[0]];
+            let ic_net = first
+                .pins
+                .iter()
+                .filter_map(|p| p.net)
+                .find(|n| ic.pins.iter().any(|q| q.net == Some(*n)));
+            if let Some(net) = ic_net
+                && let Some(segs) = by_net.get(&net)
+            {
+                let targets: Vec<Pt> = ic
+                    .pins
+                    .iter()
+                    .filter(|q| q.net == Some(net))
+                    .map(|q| q.at)
+                    .collect();
+                let from = first.pins.iter().find(|p| p.net == Some(net)).map(|p| p.at);
+                if let Some(from) = from
+                    && let Some((_, path)) = wire_path(segs, from, &targets)
+                {
+                    bends += bends_on(&path);
+                }
+            }
+            for w in chain.windows(2) {
+                let Some((net, a, b)) = meeting(&l.parts[w[0]], &l.parts[w[1]]) else {
+                    continue;
+                };
+                if let Some(segs) = by_net.get(&net)
+                    && let Some((_, path)) = wire_path(segs, a, &[b])
+                {
+                    bends += bends_on(&path);
+                }
+            }
+            m.spine_bends += bends;
+        }
+        // Which chains stand on the IC's row or are wired to it.
+        let rows: Vec<f64> = ic.pins.iter().map(|q| q.at.y).collect();
+        for chain in &mark.chains {
+            let ys: Vec<f64> = chain
+                .iter()
+                .flat_map(|&p| l.parts[p].pins.iter().map(|q| q.at.y))
+                .collect();
+            let level = ys.windows(2).all(|w| (w[0] - w[1]).abs() < EPS)
+                && ys
+                    .first()
+                    .is_some_and(|y| rows.iter().any(|r| (r - y).abs() < EPS));
+            let wired = chain.iter().any(|&p| {
+                l.parts[p].pins.iter().any(|pin| {
+                    let Some(net) = pin.net else { return false };
+                    let Some(segs) = by_net.get(&net) else {
+                        return false;
+                    };
+                    let targets: Vec<Pt> = ic
+                        .pins
+                        .iter()
+                        .filter(|q| q.net == Some(net))
+                        .map(|q| q.at)
+                        .collect();
+                    !targets.is_empty()
+                        && wire_path(segs, pin.at, &targets)
+                            .is_some_and(|(d, _)| d / GRID <= ATTACH_STEPS)
+                })
+            });
+            if !level && !wired {
+                m.detached_chain += 1;
+            }
+        }
+    }
+}
+
 fn sides(l: &Layout, v: &SheetView, m: &mut SheetMetrics) {
     let mut kind_of: BTreeMap<usize, PowerKind> = BTreeMap::new();
     for &i in &v.symbols {
@@ -883,12 +1014,13 @@ impl Metrics {
     /// members; `stray` the wires and dots that serve
     /// nothing (see above); `pairX` the crossings of pair satellites' wires, `rail` the
     /// longest rail run and `satW` the longest wire from a satellite to its pin, the last two in
-    /// grid steps.
+    /// grid steps; `spineB` the bends along the longest series chain and `detach` the chains
+    /// that are not on the IC's row.
     pub fn table(&self) -> String {
         let mut out = String::new();
         let _ = writeln!(
             out,
-            "{:<18} {:>5} {:>5} {:>5} {:>6} {:>5} {:>5} {:>5} {:>5} {:>6} {:>6} {:>7} {:>4} {:>5} {:>5} {:>6} {:>5} {:>5} {:>7} {:>8} {:>8} {:>5} {:>5} {:>5} {:>5} {:>3} {:>4} {:>4} {:>5} {:>5} {:>6} {:>6}",
+            "{:<18} {:>5} {:>5} {:>5} {:>6} {:>5} {:>5} {:>5} {:>5} {:>6} {:>6} {:>7} {:>4} {:>5} {:>5} {:>6} {:>5} {:>5} {:>7} {:>8} {:>8} {:>5} {:>5} {:>5} {:>5} {:>3} {:>4} {:>4} {:>5} {:>5} {:>6} {:>6} {:>6} {:>6}",
             "sheet",
             "parts",
             "nets",
@@ -920,12 +1052,14 @@ impl Metrics {
             "stray",
             "pairX",
             "rail",
-            "satW"
+            "satW",
+            "spineB",
+            "detach"
         );
         for s in self.sheets.iter().chain(std::iter::once(&self.total)) {
             let _ = writeln!(
                 out,
-                "{:<18} {:>5} {:>5} {:>5} {:>6} {:>5.2} {:>5} {:>5} {:>5} {:>6.2} {:>6.2} {:>7.2} {:>4} {:>5.1} {:>5.1} {:>6.2} {:>5} {:>5} {:>7} {:>8} {:>8} {:>5.2} {:>5} {:>5} {:>5} {:>3} {:>4} {:>4} {:>5} {:>5} {:>6.1} {:>6.1}",
+                "{:<18} {:>5} {:>5} {:>5} {:>6} {:>5.2} {:>5} {:>5} {:>5} {:>6.2} {:>6.2} {:>7.2} {:>4} {:>5.1} {:>5.1} {:>6.2} {:>5} {:>5} {:>7} {:>8} {:>8} {:>5.2} {:>5} {:>5} {:>5} {:>3} {:>4} {:>4} {:>5} {:>5} {:>6.1} {:>6.1} {:>6} {:>6}",
                 clip(&s.name, 18),
                 s.parts,
                 s.wired_nets,
@@ -958,6 +1092,8 @@ impl Metrics {
                 s.pair_crossings,
                 s.rail_span,
                 s.satellite_wire,
+                s.spine_bends,
+                s.detached_chain,
             );
         }
         out
@@ -1024,6 +1160,8 @@ impl Metrics {
             put("pair_crossings", n(s.pair_crossings));
             put("rail_span", f(s.rail_span));
             put("satellite_wire", f(s.satellite_wire));
+            put("spine_bends", n(s.spine_bends));
+            put("detached_chain", n(s.detached_chain));
         }
         out
     }

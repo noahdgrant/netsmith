@@ -328,13 +328,13 @@ fn a_two_terminal_part_stands_beside_the_pin_it_serves() {
             "{c} is far from the supply pins"
         );
     }
-    // The feedback divider beside the FB pin: in one stack, the pin level between its parts.
+    // The feedback divider hangs from the output node of the spine: in one stack to the right of
+    // the IC, under the inductor's row, its second part under the first.
     assert!(right_of("R8", "U7") && right_of("R9", "U7"));
     assert!((at("R8").x - at("R9").x).abs() < 1e-6 && at("R8").y < at("R9").y);
-    let fb = pin_at(&l, &b, "U7", "6").y;
     assert!(
-        at("R8").y < fb && fb < at("R9").y + 5.0,
-        "the FB pin is level with the node"
+        at("R8").y > pin_at(&l, &b, "L1", "1").y,
+        "the divider is not under the row of the inductor"
     );
     // The bootstrap capacitor between the BST and SW pins.
     let (bst, sw) = (pin_at(&l, &b, "U7", "13"), pin_at(&l, &b, "U7", "10"));

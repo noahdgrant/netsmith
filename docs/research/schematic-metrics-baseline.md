@@ -106,3 +106,16 @@ The wire of pin 13 of `J2` now goes round the connector to its flag (two bends m
 | EnclosureSensor (6 sheets) | 1 (wire through body) | 0 |
 
 The tests of `crates/netsmith-view/tests/invariants.rs` run the same rules on the invented boards, with and without rails told (the supplies of three and seven modules, the bench board, the microcontroller of thirty pins): the capacitor finding is 0 there too.
+
+## After the spine (regulator sheets)
+
+Measured 2026-11-05 with the same commands, `view/regulator-spine` against c26001d, the commit before it. The power path through a regulator is drawn as one row (`GLOSSARY.md`, _Spine_; `crates/netsmith-view/src/layout/spine.rs`), and two metrics are new: `spine_bends` and `detached_chain` (target 0 both; `NETSMITH_SPINE=off` draws without the spine and still measures them). Rules broken, from `--violations`: 0 on every sheet of every board here. Crossings change on one sheet (`buck`) and fall there; every number of every other public board is identical except on the sheets below.
+
+| sheet | crossings | bends | wire mm | rail span | satellite wire | size mm |
+|---|---|---|---|---|---|---|
+| RegulatorExample, FourLayerExample, OutlineAndPours (the same regulator) | 1 -> 1 | 9 -> 8 | 364 -> 279 | 68 -> 48 | 4 -> 9 | 116x58 -> 103x46 |
+| SchematicBench `buck` | 4 -> 1 | 17 -> 11 | 364 -> 319 | 19 -> 20 | 72 -> 54 | 159x81 -> 144x74 |
+| SchematicBench `ldo` | 0 -> 0 | 3 -> 4 | 95 -> 77 | 19 -> 7 | 4 -> 4 | 81x66 -> 74x52 |
+| EnclosureSensor `ldo` | 0 -> 0 | 2 -> 0 | 67 -> 48 | 14 -> 8 | 4 -> 4 | 64x60 -> 56x46 |
+
+The satellite wire of the regulator example grows from 4 to 9 steps: its capacitors hang from the row two steps under it and the wire runs along the row to the pin, where they stood beside the pin each with a symbol of its own. The `ldo` of the bench has one bend more for the same reason (the enable pin joins the input row).

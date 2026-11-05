@@ -11,6 +11,7 @@ use super::*;
 
 mod bus;
 mod pair;
+mod spine;
 
 /// Clear space round a part and what it needs beside it.
 const MARGIN: f64 = 2.54;
@@ -276,6 +277,12 @@ struct Block {
     orients: Vec<(usize, Orient)>,
     /// The pair satellites placed beside two pins, whose wires are drawn first.
     pairs: Vec<pair::PairRoute>,
+    /// The row the block is level on, when it has a spine: its input row, from the anchor's origin.
+    level: Option<f64>,
+    /// The nets of the spine and the way the symbol of each goes.
+    spine_nets: Vec<(usize, i32)>,
+    /// The corridors of its rows, from the anchor's origin.
+    spine_lanes: Vec<Rect>,
 }
 
 /// A sheet drawn, and what the choice of names needs to know of it.
@@ -304,6 +311,8 @@ struct Piece {
     /// The supplies and the grounds the piece's pins are on: a row needs room for each rail.
     supplies: BTreeSet<usize>,
     grounds: BTreeSet<usize>,
+    /// The corridors of the rows of a spine, from the origin.
+    lanes: Vec<Rect>,
 }
 
 /// Room above a row for its supply rails and their symbols, and below it for its grounds':
@@ -362,6 +371,11 @@ pub(super) fn run(
             }
         })
         .collect();
+    // The parts of a spine are placed with their IC: no satellite of a pin.
+    let claimed: Vec<bool> = units
+        .iter()
+        .map(|u| u.parts.iter().any(|&p| ctx.spine_part[p]))
+        .collect();
     let anchors: Vec<usize> = order
         .iter()
         .copied()
@@ -401,7 +415,7 @@ pub(super) fn run(
     let mut pair_of: BTreeMap<usize, pair::PairPlan> = BTreeMap::new();
     let mut pair_nets = vec![false; ctx.design.nets.len()];
     for u in 0..units.len() {
-        if role[u] != Role::Satellite || units[u].parts.len() != 1 {
+        if role[u] != Role::Satellite || units[u].parts.len() != 1 || claimed[u] {
             continue;
         }
         let part = units[u].parts[0];
@@ -422,7 +436,7 @@ pub(super) fn run(
     let mut chained: Vec<SatPlan> = Vec::new();
     let mut supply_use: BTreeMap<usize, usize> = BTreeMap::new();
     for u in 0..units.len() {
-        if role[u] != Role::Satellite {
+        if role[u] != Role::Satellite || claimed[u] {
             continue;
         }
         let ties = ties(&placed, &units[u], &shapes[u]);
@@ -529,7 +543,7 @@ pub(super) fn run(
     // A part between two rails whose supply no anchor pin is on stands beside a satellite that
     // is on it (the output capacitor beside the inductor).
     for u in 0..units.len() {
-        if role[u] != Role::Satellite || plans.iter().any(|c| c.unit == u) {
+        if role[u] != Role::Satellite || claimed[u] || plans.iter().any(|c| c.unit == u) {
             continue;
         }
         let ties = ties(&placed, &units[u], &shapes[u]);
@@ -576,8 +590,9 @@ pub(super) fn run(
         let a = units[u].parts[0];
         let mine: Vec<&SatPlan> = plans.iter().filter(|s| s.root == a).collect();
         let rooms = bus_rooms.get(&a).map_or(&[][..], Vec::as_slice);
+        let spine = ctx.spines.iter().find(|s| s.ic == a);
         let block = build_block(
-            ctx, &placed, units, &shapes, a, &mine, &mut tied, &tagged, rooms,
+            ctx, &placed, units, &shapes, a, &mine, &mut tied, &tagged, rooms, spine,
         );
         blocks.push(block);
     }
@@ -611,16 +626,19 @@ pub(super) fn run(
         (supplies, grounds)
     };
     let mut pieces: Vec<Piece> = Vec::new();
+    let mut spine_nets: Vec<(usize, i32)> = Vec::new();
     for b in blocks {
         let ext = placed[b.anchor].extent;
         let (supplies, grounds) = rails_of(&b.members);
+        spine_nets.extend(b.spine_nets.iter().copied());
         pieces.push(Piece {
             anchor: Some(b.anchor),
             members: b.members,
             rect: b.rect,
-            middle: (ext.min.y + ext.max.y) / 2.0,
+            middle: b.level.unwrap_or((ext.min.y + ext.max.y) / 2.0),
             supplies,
             grounds,
+            lanes: b.spine_lanes,
         });
     }
     let free: Vec<usize> = (0..units.len())
@@ -647,6 +665,7 @@ pub(super) fn run(
             rect,
             supplies,
             grounds,
+            lanes: Vec::new(),
         });
     }
 
@@ -711,6 +730,7 @@ pub(super) fn run(
         retag,
         pair_routes,
         pair_nets,
+        spine_nets,
     )
     .finish()
 }
@@ -788,8 +808,11 @@ fn pack(pieces: &[Piece]) -> Vec<Vec<usize>> {
     };
     let all: Vec<usize> = (0..pieces.len()).collect();
     let one = vec![all.clone()];
-    // A small sheet stays as it is: a few parts are not worth a second row.
-    if shape(&one) <= MAX_ASPECT || width(&all) < MIN_WRAP_WIDTH {
+    // A small sheet stays as it is: a few parts are not worth a second row. So does a sheet of
+    // a spine and a few more pieces: the spine is the row, and a connector that sets the power
+    // going in is at its left end, not above it.
+    let spine = pieces.len() <= 3 && pieces.iter().any(|p| !p.lanes.is_empty());
+    if shape(&one) <= MAX_ASPECT || width(&all) < MIN_WRAP_WIDTH || spine {
         return one;
     }
     let total = width(&all);
@@ -959,6 +982,7 @@ fn build_block(
     tied: &mut [bool],
     tagged: &[bool],
     rooms: &[Rect],
+    spine: Option<&crate::layout::spine::Spine>,
 ) -> Block {
     let a = &placed[anchor];
     // What the anchor covers: its body and pins, and each of its texts (not the one box
@@ -991,14 +1015,25 @@ fn build_block(
         obstacles.push(inflate(*r, 0.5));
         rect.union(*r);
     }
+    // The corridors of the rows of a spine are kept free of the satellites placed before it.
+    let lanes: Vec<Rect> = spine.map_or_else(Vec::new, |s| spine::lanes(ctx, placed, s));
+    obstacles.extend(lanes.iter().copied());
     // The satellites of the anchor's own pins first, from the top down; then those that stand
     // beside a satellite, in the order they were found.
     let mut sorted: Vec<&&SatPlan> = sats.iter().filter(|x| x.anchor == anchor).collect();
+    // Beside a spine the lower pin's satellite goes nearest: the wire of a pin above passes over
+    // it, and nothing is crossed.
+    let bottom_first = spine.is_some();
     sorted.sort_by(|x, y| {
         let (px, py) = (&a.pins[x.pin], &a.pins[y.pin]);
+        let by_y = if bottom_first {
+            py.at.y.total_cmp(&px.at.y)
+        } else {
+            px.at.y.total_cmp(&py.at.y)
+        };
         (px.escape as u8)
             .cmp(&(py.escape as u8))
-            .then(px.at.y.total_cmp(&py.at.y))
+            .then(by_y)
             .then(px.at.x.total_cmp(&py.at.x))
             .then(x.unit.cmp(&y.unit))
     });
@@ -1167,6 +1202,20 @@ fn build_block(
                     if obstacles.iter().any(|o| overlaps(&foot, o)) {
                         continue;
                     }
+                    // The wire from the pin to the part does not cross a row of the spine.
+                    if !lanes.is_empty() {
+                        let join = Pt::new(plan.r.x + off.x, plan.r.y + off.y);
+                        let mut along = Rect::around(Pt::new(e.x.min(join.x), e.y - 0.3));
+                        along.include(Pt::new(e.x.max(join.x), e.y + 0.3));
+                        let mut down = Rect::around(Pt::new(join.x - 0.3, e.y.min(join.y)));
+                        down.include(Pt::new(join.x + 0.3, e.y.max(join.y)));
+                        if lanes
+                            .iter()
+                            .any(|l| overlaps(&along, l) || overlaps(&down, l))
+                        {
+                            continue;
+                        }
+                    }
                     if dy == 0.0 {
                         let mut lane = Rect::around(Pt::new(e.x.min(target.x), e.y - 0.6));
                         lane.include(Pt::new(e.x.max(target.x), e.y + 0.6));
@@ -1198,6 +1247,33 @@ fn build_block(
             foots.push(foot);
         }
     }
+    // The spine: its parts are placed now, the rows starting beyond the satellites of the pins.
+    let mut level: Option<f64> = None;
+    let mut spine_nets: Vec<(usize, i32)> = Vec::new();
+    let mut spine_lanes: Vec<Rect> = Vec::new();
+    if let Some(s) = spine {
+        obstacles.retain(|r| !lanes.contains(r));
+        let pin_nets: Vec<Vec<Option<usize>>> = (0..ctx.design.parts.len())
+            .map(|p| {
+                ctx.glyphs[p]
+                    .pins
+                    .iter()
+                    .map(|pin| net_of(ctx, p, &pin.id))
+                    .collect()
+            })
+            .collect();
+        let plan = spine::place(ctx, placed, &pin_nets, s, &foots);
+        for &(p, off, side) in &plan.members {
+            tied[unit_index(units, p)] = true;
+            members.push((p, off, side));
+        }
+        orients.extend(plan.orients.iter().copied());
+        obstacles.extend(plan.obstacles.iter().map(|r| inflate(*r, 0.0)));
+        rect.union(plan.rect);
+        level = plan.level;
+        spine_nets = plan.nets;
+        spine_lanes = plan.lanes;
+    }
     // The name at a pin with parts beside it: beyond the farthest of them.
     for &i in &served {
         let Some(own) = tag_rect_of(ctx, a, i, tagged) else {
@@ -1226,6 +1302,9 @@ fn build_block(
         rect: inflate(rect, 0.0),
         orients,
         pairs,
+        level,
+        spine_nets,
+        spine_lanes,
     }
 }
 
@@ -1391,6 +1470,8 @@ struct Scene<'a> {
     /// The rail pins of satellites that have a symbol of their own, or share one with the
     /// satellites beside them: the rail of the group does not reach them.
     local_done: BTreeSet<(usize, usize)>,
+    /// The nets of the spines and the way the symbol of each goes (-1 left, 1 right).
+    spine_pref: Vec<(usize, i32)>,
 }
 
 impl<'a> Scene<'a> {
@@ -1409,6 +1490,7 @@ impl<'a> Scene<'a> {
         retag: Vec<bool>,
         pair_routes: Vec<pair::PairRoute>,
         pair_nets: Vec<bool>,
+        spine_pref: Vec<(usize, i32)>,
     ) -> Self {
         let mut bounds = parts[0..]
             .first()
@@ -1464,6 +1546,7 @@ impl<'a> Scene<'a> {
             pair_routes,
             pair_nets,
             local_done: BTreeSet::new(),
+            spine_pref,
         };
         scene.block_parts();
         scene.collect_pins();
@@ -1756,6 +1839,8 @@ impl<'a> Scene<'a> {
                     at = (at.0 + dx, at.1 + dy);
                     tree.insert(at);
                 }
+                // The row of a spine through the net is joined where the wire meets it.
+                tree.extend(self.trees.get(&net).cloned().unwrap_or_default());
                 let mut tree = self.route_tree(net, &[(route.part, sat_pin)], tree);
                 tree.extend(self.trees.remove(&net).unwrap_or_default());
                 self.trees.insert(net, tree);
@@ -1763,9 +1848,15 @@ impl<'a> Scene<'a> {
         }
     }
 
-    fn route_signals(&mut self) {
+    /// The nets of the spines first (`spine`), then every other signal.
+    fn route_signals(&mut self, spine: bool) {
         let mut nets: Vec<(i32, usize)> = (0..self.ctx.design.nets.len())
-            .filter(|&n| self.ctx.power[n].is_none() && self.active(n) && !self.bus_skip[n])
+            .filter(|&n| {
+                (self.ctx.power[n].is_none() || self.ctx.spine_net[n])
+                    && self.ctx.spine_net[n] == spine
+                    && self.active(n)
+                    && !self.bus_skip[n]
+            })
             .map(|n| {
                 let nodes: Vec<Node> = self
                     .pins
@@ -1810,7 +1901,11 @@ impl<'a> Scene<'a> {
                 }
                 continue;
             }
-            let pins = self.pins_of(net);
+            let mut pins = self.pins_of(net);
+            if spine {
+                // The pair satellites' wires are drawn next and join the row.
+                pins.retain(|k| !self.bare.contains(k));
+            }
             let tree = self.trees.remove(&net).unwrap_or_default();
             let tree = self.route_tree(net, &pins, tree);
             self.trees.insert(net, tree);
@@ -1862,6 +1957,7 @@ impl<'a> Scene<'a> {
                 .filter(|p| {
                     in_group.contains(&p.part)
                         && self.ctx.power[p.net].is_some()
+                        && !self.ctx.spine_net[p.net]
                         && self.stubs.contains_key(&(p.part, p.idx))
                         && !self.local_done.contains(&(p.part, p.idx))
                 })
@@ -2097,7 +2193,7 @@ impl<'a> Scene<'a> {
             let Some(kind) = self.ctx.power[p.net] else {
                 continue;
             };
-            if !self.satellites.contains(&p.part) {
+            if !self.satellites.contains(&p.part) || self.ctx.spine_net[p.net] {
                 continue;
             }
             let key = (p.part, p.idx);
@@ -2435,6 +2531,52 @@ impl<'a> Scene<'a> {
             .unwrap_or(0)
     }
 
+    /// A rail on a spine is wired along the line like any net and has one symbol, at the outer
+    /// end of its wire: up from the node that is farthest the way the net's stretch of the line
+    /// goes (the left end of the input side, the right end of the output), as a person draws the
+    /// supply where the power comes in or goes out.
+    fn spine_symbols(&mut self) {
+        for (net, pref) in self.spine_pref.clone() {
+            let Some(kind) = self.ctx.power[net] else {
+                continue;
+            };
+            let Some(tree) = self.trees.get(&net) else {
+                continue;
+            };
+            let mut nodes: Vec<Node> = tree.iter().copied().collect();
+            nodes.sort_by_key(|n| (-pref * n.0, n.1));
+            let first = nodes.first().copied();
+            let found = nodes
+                .into_iter()
+                .take(80)
+                .find_map(|q| self.symbol_fits(net, kind, q).map(|label| (q, label)));
+            if let Some((q, label)) = found {
+                self.place_symbol(net, kind, q, Some(label));
+                continue;
+            }
+            // No room by the wire (a long name above the part): the wire goes on outward until
+            // a symbol has.
+            let Some(q0) = first else {
+                continue;
+            };
+            let id = Self::net_id(net);
+            for k in 1..=40 {
+                let q = (q0.0 + pref * k, q0.1);
+                let before = (q.0 - pref, q.1);
+                let dir = if pref > 0 { Dir::Right } else { Dir::Left };
+                if !self.grid.free_for(q, id) || self.grid.step_is_cut(before, dir) {
+                    break;
+                }
+                if let Some(label) = self.symbol_fits(net, kind, q) {
+                    self.grid.claim_wire(q0, q, id);
+                    self.push_wire(net, &[q0, q]);
+                    self.place_symbol(net, kind, q, Some(label));
+                    break;
+                }
+            }
+        }
+    }
+
     fn pin_marks(&self) -> Vec<PinMark> {
         let mut out = Vec::new();
         for (p, part) in self.parts.iter().enumerate() {
@@ -2501,9 +2643,13 @@ impl<'a> Scene<'a> {
         self.join_and_stub();
         self.plan_tags();
         self.plan_buses();
+        // The rows of the spines first: the wires of the pair satellites join them where they
+        // meet, and nothing else is wired along them.
+        self.route_signals(true);
         self.route_pairs();
         self.route_rails();
-        self.route_signals();
+        self.route_signals(false);
+        self.spine_symbols();
         let marks = self.pin_marks();
         let anchors = self.anchors();
         // Take out what no pin needs, and put a dot where three arms meet.
@@ -2567,6 +2713,7 @@ impl<'a> Scene<'a> {
                 junctions,
                 labels: self.labels,
                 buses: self.buses,
+                spines: Vec::new(),
                 bounds,
             },
             clusters: self.clusters,

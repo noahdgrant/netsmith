@@ -54,12 +54,31 @@
 //!    joins nothing: each entry joins the net of its name at the other end, as a label does. The
 //!    members have no flag or name of their own. See `engine/bus.rs` and ADR 0049.
 //!
+//! 6. The power path through a regulator is a **spine**, one row from left to right, as it is
+//!    on a hand drawing (`spine.rs`, `engine/spine.rs`; found from the netlist, the pin kinds and
+//!    the rails when they are known, never from what a part is called). On the row: the series
+//!    parts (a fuse, a diode, a ferrite bead, the inductor: two pins on two different nets, neither
+//!    a ground, not across two pins of the IC), each turned along it, from where the power comes in
+//!    to the IC's input pins on its left, and from its switching pin on its right out to the output
+//!    node; the sheet's own input protection, whose far end goes on to another sheet, is the first
+//!    stretch of it. The capacitors to ground hang from the node they serve, two steps under the
+//!    row, the smallest nearest the IC, each with a stub and a ground symbol of its own (side by
+//!    side they share one, as above), and the feedback divider hangs from the output node with the
+//!    feedback pin wired to its middle. A rail on the row is a wire along it with one symbol at
+//!    its outer end. The row of each side is the line of the IC's first pin on it, and a row is
+//!    kept free: the satellites of the IC's other pins are placed first beside it, the row's parts
+//!    beyond them, and the wires of a pair satellite (a bootstrap capacitor) join the row where
+//!    they meet it and cross nothing. The sheet of a spine and a few more pieces is not cut into
+//!    rows. `NETSMITH_SPINE=off` draws without it, to compare (the metrics `spine_bends` and
+//!    `detached_chain` still find the chains).
+//!
 //! Nothing here knows how a layout is drawn: [`crate::render_svg`] reads the result.
 
 mod engine;
 mod grid;
 mod policy;
 mod prune;
+mod spine;
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
 
@@ -427,6 +446,19 @@ pub struct Marks {
     pub must: std::collections::BTreeMap<(String, String), String>,
 }
 
+/// The power path through an IC as the layout found it ([`spine`]): the chains of series parts
+/// that lead to it, each from the IC outward. The metrics `spine_bends` and `detached_chain`
+/// read the drawing against it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpineMark {
+    /// Index into `design.parts` of the IC.
+    pub ic: usize,
+    /// Indices into `design.parts`: the input side's chain, the output side's, then the free
+    /// chains (series parts of the sheet that join neither side), the nearest first. A side with
+    /// no series part has no chain here.
+    pub chains: Vec<Vec<usize>>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Layout {
     /// In the same order as `design.parts`.
@@ -442,6 +474,8 @@ pub struct Layout {
     pub labels: Vec<NetLabel>,
     /// The interfaces drawn as one thick line, by the path of their instance.
     pub buses: Vec<Bus>,
+    /// The power paths found through ICs, drawn as a spine or not.
+    pub spines: Vec<SpineMark>,
     pub bounds: Rect,
 }
 
@@ -494,6 +528,12 @@ struct Ctx<'a> {
     power: Vec<Option<PowerKind>>,
     /// Whether ground symbols carry their net's name: when the design has more than one ground.
     label_grounds: bool,
+    /// The power paths through ICs ([`spine`]), found when the rails are known.
+    spines: Vec<spine::Spine>,
+    /// Whether each part belongs to one: it is placed with its IC and stands in no stack.
+    spine_part: Vec<bool>,
+    /// Whether each net is on one: it is wired along the line, a rail on it has one symbol.
+    spine_net: Vec<bool>,
 }
 
 /// Place the parts of `design` and route its nets.
@@ -597,7 +637,7 @@ pub(crate) fn layout_with(
         .map(|p| is_connector(&p.refdes))
         .collect();
     let level = levels(&part_nets, &connector, &ground);
-    let ctx = Ctx {
+    let mut ctx = Ctx {
         design,
         glyphs,
         pin_net,
@@ -608,7 +648,34 @@ pub(crate) fn layout_with(
         external: external.to_vec(),
         power,
         label_grounds,
+        spines: Vec::new(),
+        spine_part: vec![false; design.parts.len()],
+        spine_net: vec![false; design.nets.len()],
     };
+    // `NETSMITH_SPINE=off` draws without the spines (to compare), the paths are still found.
+    let found = spine::find(&ctx);
+    let spine_marks: Vec<SpineMark> = found
+        .iter()
+        .map(|sp| SpineMark {
+            ic: sp.ic,
+            chains: sp
+                .sides()
+                .filter(|side| !side.parts.is_empty())
+                .map(|side| side.parts.clone())
+                .collect(),
+        })
+        .collect();
+    if std::env::var_os("NETSMITH_SPINE").is_none_or(|v| v != "off") {
+        ctx.spines = found;
+    }
+    for sp in &ctx.spines {
+        for p in sp.parts() {
+            ctx.spine_part[p] = true;
+        }
+        for (n, _) in sp.nets() {
+            ctx.spine_net[n] = true;
+        }
+    }
 
     let units = find_units(&ctx);
     let unit_of: HashMap<usize, usize> = units
@@ -638,6 +705,7 @@ pub(crate) fn layout_with(
         labelled = next;
         drawn = engine::run(&ctx, &units, &order, &orient, marks, &labelled);
     }
+    drawn.layout.spines = spine_marks;
     Ok(drawn.layout)
 }
 
@@ -754,7 +822,7 @@ fn find_units(ctx: &Ctx) -> Vec<Unit> {
             .pins
             .iter()
             .map(|pin| (find(&pin.refdes), pin.pin.as_str()))
-            .filter(|&(p, _)| is_stackable(ctx, p))
+            .filter(|&(p, _)| is_stackable(ctx, p) && !ctx.spine_part[p])
             .collect();
         // Parts that hang on a node with something else (an inductor, a fuse) are not in
         // series with each other, but each in series with what the node goes to.
@@ -1043,6 +1111,9 @@ fn orientations(ctx: &Ctx, units: &[Unit], column_of: &[usize]) -> Vec<Orient> {
             orient[p] = if ctx.glyphs[p].dense {
                 // A table of pins stays upright: supplies at the top, grounds at the bottom.
                 Orient::IDENTITY
+            } else if let Some(sp) = ctx.spines.iter().find(|s| s.ic == p) {
+                // The input of a regulator on the left, its switching pin on the right.
+                spine::orientation(ctx, sp)
             } else if unit.up_pads.is_empty() {
                 best_orientation(ctx, p, column_of)
             } else {
