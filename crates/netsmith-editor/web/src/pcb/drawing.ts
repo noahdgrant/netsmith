@@ -25,6 +25,9 @@ export interface Drawing {
   nets: NetItem[];
 }
 
+/** A track at least this wide (mm) is drawn faint (`.wide`). */
+export const WIDE_TRACK = 1;
+
 /** Pixels in the canvas for each millimetre of the board. */
 export const SCALE = 12;
 
@@ -47,6 +50,11 @@ export function prepare(text: string): Drawing | null {
   }
   svg.setAttribute('width', String(w * SCALE));
   svg.setAttribute('height', String(h * SCALE));
+  // A track wider than a millimetre is a power track: it is drawn at its true width, and more
+  // transparent, so the board under it (pads, outlines, other tracks) can still be read.
+  svg.querySelectorAll('.l-front-copper line, .l-back-copper line').forEach((t) => {
+    if (Number(t.getAttribute('stroke-width')) >= WIDE_TRACK) t.classList.add('wide');
+  });
   const nets = new Map<string, NetItem>();
   svg.querySelectorAll('.l-pads g[data-net]').forEach((pad) => {
     const name = pad.getAttribute('data-net')!;

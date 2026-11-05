@@ -232,7 +232,7 @@ body:has(.status-popover) .toasts { right: calc(16px + 340px + 12px); }
 /* a view on its way, and a view with nothing to show */
 .view-loading { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; }
 .skeleton-stage { display: flex; gap: 14px; width: min(760px, 90%); height: min(300px, 50%); }
-.sk { background: linear-gradient(90deg, var(--surface-raised) 25%, color-mix(in srgb, var(--text) 9%, var(--surface-raised)) 50%, var(--surface-raised) 75%); background-size: 200% 100%; animation: shimmer 1.6s linear infinite; border-radius: var(--r-md); }
+.sk { background: linear-gradient(90deg, var(--hover) 25%, var(--hover-strong) 50%, var(--hover) 75%); background-size: 200% 100%; animation: shimmer 1.6s linear infinite; border-radius: var(--r-md); }
 .sk-sheet { flex: 1; } .sk-side { width: 28%; display: flex; flex-direction: column; gap: 10px; background: none; animation: none; padding-top: 6px; }
 .sk-line { height: 12px; } .w40 { width: 40%; } .w60 { width: 60%; } .w75 { width: 75%; } .w80 { width: 80%; } .w90 { width: 90%; }
 @keyframes shimmer { to { background-position: -200% 0; } }
@@ -839,6 +839,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .pcb-host svg [fill="#c8c8c8"] { fill: var(--pcb-via); } .pcb-host svg [stroke="#c8c8c8"] { stroke: var(--pcb-via); }
 .pcb-host svg text[fill="#0d1117"] { fill: var(--pcb-pad-text); }
 .pcb-host svg .l-front-copper line, .pcb-host svg .l-back-copper line { stroke-opacity: var(--pcb-track-opacity); }
+.pcb-host svg .l-front-copper line.wide, .pcb-host svg .l-back-copper line.wide { stroke-opacity: calc(var(--pcb-track-opacity) * .5); }
 
 /* the theme menu in the status bar */
 .theme-list { display: flex; flex-direction: column; gap: 1px; margin: 6px -6px 0; }
