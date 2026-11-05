@@ -362,7 +362,7 @@ fn a_part_bigger_than_the_outline_in_every_turn_is_refused_before_placing() {
     assert_eq!(found.faults.len(), 1, "{found:?}");
     let text = &found.faults[0].text;
     for want in [
-        "J1 (`h1`) is bigger than the outline in every turn it may take: the outline is 12 x 12 mm",
+        "the outline is 12.0 x 12.0 mm, which leaves 11.2 x 11.2 mm for a courtyard inside its 0.4 mm margin, and a part is bigger in every turn it may take: J1 (Header1x4)",
         "J1 (Header1x4) has a courtyard of ",
         "turned 90 degrees",
     ] {

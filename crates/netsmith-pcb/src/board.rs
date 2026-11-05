@@ -618,9 +618,9 @@ pub enum HoleNeighbour {
 }
 
 /// How a courtyard that is past an edge nobody stated is told: the part, each edge and how
-/// far, what the design says about overhang, and what would allow it. With `wherever`, the
-/// distances are the least over every place the part's requirements leave it (the check
-/// before placing). The hint to require the body to reach the edge is left out, and the
+/// far, what the design says about overhang, and what would allow it. The
+/// distances for the edges in `inexact` are the least over every place the part's
+/// requirements leave it (the check before placing). The hint to require the body to reach the edge is left out, and the
 /// reason given in its place, when `body_inside`: the body stays inside the
 /// outline there, and no statement allows only the courtyard past an edge (ADR 0045
 /// section 10; issue #99 has the options).
@@ -630,7 +630,7 @@ pub(crate) fn outside_text(
     past: &[(Edge, f64)],
     stated: &[Edge],
     by: &str,
-    wherever: bool,
+    inexact: &[Edge],
     body_inside: bool,
 ) -> String {
     let mut out = format!("{refdes} is not wholly inside the board outline");
@@ -644,13 +644,13 @@ pub(crate) fn outside_text(
         .map(|(e, by)| {
             format!(
                 "{}{by:.2} mm past the {} edge",
-                if wherever { "at least " } else { "" },
+                if inexact.contains(e) { "at least " } else { "" },
                 e.word()
             )
         })
         .collect();
     out.push_str(&format!(": its courtyard is {}", list.join(" and ")));
-    if wherever {
+    if !inexact.is_empty() {
         out.push_str(" wherever its requirements put it");
     }
     if stated.is_empty() {
@@ -694,7 +694,7 @@ impl std::fmt::Display for PlacementProblem {
             } => write!(
                 f,
                 "{}",
-                outside_text(refdes, path, past, stated, by, false, false)
+                outside_text(refdes, path, past, stated, by, &[], false)
             ),
             Self::InKeepout { refdes, keepout } => write!(
                 f,

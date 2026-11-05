@@ -10,8 +10,6 @@
 //! tests place with `lines_warn` (constraints are warnings for the run), so that the placer
 //! runs anyway and the report after placing, which says where it ended, is still tested.
 
-use std::fs;
-
 use netsmith::fab::{FabOptions, Fabricated, fab_with_options};
 use netsmith::{Libraries, build_with};
 use netsmith_check::Loader;
@@ -374,7 +372,7 @@ fn a_part_too_big_for_the_outline_is_the_outlines_fault_and_not_a_line_s() {
     assert_eq!(found.faults.len(), 2, "{found:?}");
     let text = &found.faults[0].text;
     assert!(
-        text.contains("is bigger than the outline in every turn it may take")
+        text.contains("a part is bigger in every turn it may take: J1 (Header1x4)")
             && text.contains("J1 (Header1x4) has a courtyard of"),
         "{text}"
     );

@@ -181,6 +181,11 @@ pub(crate) fn before_placing(
     let (outline, finite, limit) = outline;
     let mut options = base.clone();
     options.wall = Some(rules.edge_wall());
+    // The layout file's locks are not proved against: a person drags a part in the editor to
+    // change its lock, and a board that a lock leaves with findings is shown with them (the
+    // placement check reports them). `constraints::plan` has already refused a lock that
+    // breaks a requirement, so the windows of the requirements still hold.
+    options.fixed.clear();
     let cx = Context {
         design,
         parts,
@@ -196,6 +201,18 @@ pub(crate) fn before_placing(
         ..Precheck::default()
     };
     cx.edges(&mut found);
+    // A window that has no place inside the outline is said once: by the fault when the
+    // courtyard is past an edge for every place (it names the edge and what would allow it),
+    // else by the conflict.
+    let faults = found.faults.clone();
+    found.conflicts.retain(|c| {
+        !faults.iter().any(|f| {
+            c.contains(&format!(
+                "keeps the courtyard of {} (`{}`) inside the outline",
+                f.refdes, f.path
+            ))
+        })
+    });
     if finite {
         cx.oversize(&mut found);
     }
@@ -217,7 +234,7 @@ impl Context<'_> {
     }
 
     /// Courtyards that the lines put past an edge nobody stated, wherever they put the part
-    /// (a pin, a lock, or a window that leaves no place inside). A courtyard they put inside
+    /// (a pin, or a window that leaves no place inside). A courtyard they put inside
     /// the board but within the margin the placer keeps clear is a conflict already
     /// ([`Context::fits`]).
     fn edges(&self, found: &mut Precheck) {
@@ -226,24 +243,18 @@ impl Context<'_> {
             if w.quarters.is_empty() {
                 continue;
             }
-            // A window the outline leaves no place in is already said by a conflict (a line,
-            // the part and the outline): once is enough.
-            let said = format!(
-                "keeps the courtyard of {} inside the outline",
-                Self::name(&w)
-            );
-            if found.conflicts.iter().any(|c| c.contains(&said)) {
-                continue;
-            }
             let (may, by) = self.stated(w.part);
             // How far past (or, when negative, inside) each edge the courtyard is at best,
             // and whether the body can reach the edge in some place.
             let mut past: Vec<(Edge, f64)> = Vec::new();
+            // The edges whose distance is only a least: the lines leave a window along the
+            // edge's axis, or the turns differ.
+            let mut inexact: Vec<Edge> = Vec::new();
             let mut body_reaches = true;
-            // A pin, or a lock: one place, so the numbers are the part's own.
-            let exact = w.quarters.iter().all(|q| q.x.0 == q.x.1 && q.y.0 == q.y.1);
             for edge in Edge::ALL.into_iter().filter(|&e| !may.has(e)) {
                 let mut least = f64::INFINITY;
+                let mut most = f64::NEG_INFINITY;
+                let mut point = true;
                 let mut reaches = false;
                 for q in &w.quarters {
                     // The courtyard's distance beyond the edge for the origin that is least
@@ -255,6 +266,13 @@ impl Context<'_> {
                         Edge::Bottom => ((q.court.max.y + q.y.0) - o.max.y, q.body.max.y + q.y.1),
                     };
                     least = least.min(court);
+                    most = most.max(court);
+                    let window = if matches!(edge, Edge::Left | Edge::Right) {
+                        q.x
+                    } else {
+                        q.y
+                    };
+                    point &= window.0 == window.1;
                     reaches |= match edge {
                         Edge::Left => body <= o.min.x + TOLERANCE,
                         Edge::Right => body >= o.max.x - TOLERANCE,
@@ -264,6 +282,9 @@ impl Context<'_> {
                 }
                 if least > PAST {
                     past.push((edge, least));
+                    if !point || most - least > 1e-6 {
+                        inexact.push(edge);
+                    }
                     body_reaches &= reaches;
                 }
             }
@@ -279,7 +300,7 @@ impl Context<'_> {
                             &past,
                             &may.list(),
                             &by,
-                            !exact,
+                            &inexact,
                             !body_reaches
                         ),
                         if w.lines.is_empty() {
@@ -313,14 +334,15 @@ impl Context<'_> {
             found.faults.push(Fault {
                 refdes: part.refdes.clone(),
                 path: part.path.clone(),
+                // The words of the placer's own refusal (`DoesNotFit`), with the range's top
+                // said as such.
                 text: format!(
-                    "{} is bigger than the outline in every turn it may take: the outline is {}{} x {} mm, which leaves {} x {} mm for a courtyard inside its {} mm margin, and {o}",
-                    Self::name_of(part),
+                    "the outline is {}{:.1} x {:.1} mm, which leaves {:.1} x {:.1} mm for a courtyard inside its {} mm margin, and a part is bigger in every turn it may take: {o}",
                     if self.limit { "at most " } else { "" },
-                    number(self.outline.width()),
-                    number(self.outline.height()),
-                    number((inside(fit.0) * 10.0).round() / 10.0),
-                    number((inside(fit.1) * 10.0).round() / 10.0),
+                    fit.0,
+                    fit.1,
+                    inside(fit.0),
+                    inside(fit.1),
                     wall,
                 ),
             });
