@@ -16,6 +16,7 @@ use netsmith_lower::Sites;
 pub fn name_sources(design: &mut Design, sites: &Sites, sources: &Sources) {
     for (index, field, spans) in sites {
         let text = lines_of(spans, sources);
+        remember_lines(design, spans, sources);
         let Some(placement) = design.features.constraints.get_mut(*index) else {
             continue;
         };
@@ -25,6 +26,23 @@ pub fn name_sources(design: &mut Design, sites: &Sites, sources: &Sources) {
             && let Some(b) = placement.bounds.iter_mut().find(|b| b.field == f)
         {
             b.source = text;
+        }
+    }
+}
+
+/// Keep the text of each line that states a requirement, by its `file:line`, so that a
+/// message about a requirement that is not met can quote the line.
+fn remember_lines(design: &mut Design, spans: &[(SourceId, Span)], sources: &Sources) {
+    for (source, span) in spans {
+        let s = sources.get(*source);
+        let at = span.start.min(s.text.len());
+        let line = s.text[..at].matches('\n').count() + 1;
+        let text = s.text.lines().nth(line - 1).unwrap_or("").trim();
+        if !text.is_empty() {
+            design
+                .features
+                .line_texts
+                .insert(format!("{}:{line}", s.name), text.to_string());
         }
     }
 }
@@ -48,6 +66,9 @@ fn lines_of(spans: &[(SourceId, Span)], sources: &Sources) -> String {
 pub fn name_offset_sources(design: &mut Design, sites: &[(SourceId, Span)], sources: &Sources) {
     for (offset, site) in design.features.offsets.iter_mut().zip(sites) {
         offset.source = lines_of(std::slice::from_ref(site), sources);
+    }
+    for site in sites {
+        remember_lines(design, std::slice::from_ref(site), sources);
     }
 }
 

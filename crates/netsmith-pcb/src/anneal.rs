@@ -57,7 +57,7 @@ const KEEPOUT_GAP: f64 = 0.25;
 /// keepouts, [`KEEPOUT_GAP`]. The process's copper clearance (0.1 to 0.2 mm) is smaller than
 /// the 0.25 mm the placer already wants beside a keepout, and a height limit is not copper,
 /// so the placer's constant is used and a process with more clearance changes nothing here.
-const HEIGHT_ZONE_MARGIN: f64 = KEEPOUT_GAP;
+pub(crate) const HEIGHT_ZONE_MARGIN: f64 = KEEPOUT_GAP;
 /// A pad is kept this much further than the rule from a cutout, so that the rounding of
 /// positions on the grid never leaves it a hair nearer than the placement check allows.
 const PAD_SLACK: f64 = 1e-6;
@@ -85,6 +85,9 @@ const COOLING: f64 = 0.93;
 const W_WIRE: f64 = 1.0;
 /// A hard violation (overlap, a wall, a keepout), for each mm of it.
 const W_HARD: f64 = 200.0;
+/// What a hard cost may be and the state still counts as clear of every hard rule: 5 nanometres
+/// of a wall, a thousandth of the grid, below the 1e-6 mm the placement check itself ignores.
+const HARD_EPS: f64 = 1e-3;
 /// Courtyards nearer than their gap, for each mm.
 const W_GAP: f64 = 4.0;
 /// Reference text over another part's courtyard, for each mm.
@@ -168,9 +171,22 @@ pub struct Ended {
     /// The relations between two parts that do not hold, each as a sentence with the numbers
     /// (ADR 0045, section 3).
     pub relations: Vec<String>,
+    /// How many times the placer tried before it gave up: the first run, then runs from the
+    /// same start with a large part put in a corner first and with seeds derived from the
+    /// given one (B2 and B5, PROVISIONAL). The rest of this is the closest run's.
+    pub tries: usize,
 }
 
 impl Ended {
+    /// How badly the run missed, for choosing among several: the number of parts and
+    /// relations that break a rule, then the sum of the distances and areas by which they do.
+    pub(crate) fn badness(&self) -> (usize, f64) {
+        let count = self.names().len() + self.relations.len() + self.silk;
+        let amount = self.outside_parts.iter().map(|o| o.worst).sum::<f64>()
+            + self.overlapping.iter().map(|o| o.area).sum::<f64>();
+        (count, amount)
+    }
+
     /// The parts that break a rule when the run ended: those outside first, the furthest
     /// first, then those only in an overlapping pair; each once.
     pub fn names(&self) -> Vec<String> {
@@ -203,8 +219,8 @@ impl Ended {
                 .outside_parts
                 .iter()
                 .map(|o| {
-                    if o.worst > 1e-9 {
-                        format!("{} {:.2}", o.part, o.worst)
+                    if o.worst > 1e-6 {
+                        format!("{} {}", o.part, short(o.worst))
                     } else {
                         // Nothing past a line: the reference text, or a requirement.
                         format!("{} (text or a requirement)", o.part)
@@ -220,7 +236,7 @@ impl Ended {
             let items: Vec<String> = self
                 .overlapping
                 .iter()
-                .map(|o| format!("{}/{} {:.2}", o.a, o.b, o.area))
+                .map(|o| format!("{}/{} {}", o.a, o.b, short(o.area)))
                 .collect();
             lists.push(format!(
                 "courtyards overlapping, by mm2: {}",
@@ -278,6 +294,20 @@ fn nearest_edge(region: &Rect, p: Pt) -> (&'static str, f64) {
 fn mm(v: f64) -> String {
     let r = (v * 1e4).round() / 1e4;
     format!("{}", if r == 0.0 { 0.0 } else { r })
+}
+
+/// A distance in mm as it is shown for a shortfall: two decimals, but more where two would
+/// round a real amount to `0.00` (a part 0.004 mm past a line is past it).
+pub(crate) fn short(v: f64) -> String {
+    if v >= 0.0095 {
+        format!("{v:.2}")
+    } else if v >= 0.00095 {
+        format!("{v:.3}")
+    } else if v >= 0.00005 {
+        format!("{v:.4}")
+    } else {
+        "<0.0001".to_string()
+    }
 }
 
 /// A window as a person says it.
@@ -1892,7 +1922,7 @@ impl<'a> Engine<'a> {
     fn ended(&self, names: &[String]) -> Ended {
         let mut ended = Ended::default();
         for i in 0..self.models.len() {
-            if !self.models[i].fixed && self.single(i).hard > 1e-9 {
+            if !self.models[i].fixed && self.single(i).hard > HARD_EPS {
                 ended.outside += 1;
                 ended.outside_parts.push(self.outside_at(i, &names[i]));
             }
@@ -1927,7 +1957,7 @@ impl<'a> Engine<'a> {
                         at: (centre.x - region.min.x, centre.y - region.min.y),
                         nearest: nearest_edge(region, centre),
                     });
-                } else if self.pair(i, j).hard > 1e-9 {
+                } else if self.pair(i, j).hard > HARD_EPS {
                     ended.silk += 1;
                 }
             }
@@ -1978,12 +2008,12 @@ impl<'a> Engine<'a> {
                 continue;
             }
             if past > 1e-6 {
-                why.push(format!("{past:.2} mm outside the {side} edge"));
+                why.push(format!("{} mm outside the {side} edge", short(past)));
                 worst = worst.max(past + wall);
             } else if past + wall > 1e-6 {
                 why.push(format!(
-                    "{:.2} mm inside the {} mm margin at the {side} edge",
-                    past + wall,
+                    "{} mm inside the {} mm margin at the {side} edge",
+                    short(past + wall),
                     (wall * 100.0).round() / 100.0
                 ));
                 worst = worst.max(past + wall);
@@ -2001,7 +2031,8 @@ impl<'a> Engine<'a> {
             if depth > 1e-6 {
                 let at = k.centre();
                 why.push(format!(
-                    "{depth:.2} mm into a keepout, cutout or height limit at ({:.1}, {:.1})",
+                    "{} mm into a keepout, cutout or height limit at ({:.1}, {:.1})",
+                    short(depth),
                     at.x - r.min.x,
                     at.y - r.min.y
                 ));
@@ -2024,11 +2055,11 @@ impl<'a> Engine<'a> {
             if nearest.0 < wanted - 1e-6 {
                 let (side, _) = nearest_edge(r, nearest.1);
                 why.push(if nearest.0 < 0.0 {
-                    format!("a pad is {:.2} mm outside the {side} edge", -nearest.0)
+                    format!("a pad is {} mm outside the {side} edge", short(-nearest.0))
                 } else {
                     format!(
-                        "a pad is {:.2} mm from the {side} edge and the process asks {wanted:.2} mm",
-                        nearest.0
+                        "a pad is {} mm from the {side} edge and the process asks {wanted:.2} mm",
+                        short(nearest.0)
                     )
                 });
                 worst = worst.max(wanted - nearest.0);
@@ -2080,10 +2111,18 @@ impl<'a> Engine<'a> {
     fn legalise(&mut self) -> bool {
         let reach =
             ((self.p.region.width().max(self.p.region.height())) / (10.0 * UNIT)).ceil() as i64;
+        self.legalise_by(10, reach)
+    }
+
+    /// [`Engine::legalise`] in steps of `step` grid units, as far as `reach` steps. The last
+    /// pass of a run uses one unit (0.05 mm) and 40 steps: a part left a hair past a line or
+    /// over a neighbour moves by the least that clears it, where the coarse pass, which is in
+    /// half millimetres, would have gone further or found nothing (B5, PROVISIONAL).
+    fn legalise_by(&mut self, step: i64, reach: i64) -> bool {
         let mut all = true;
         for k in 0..self.free.len() {
             let i = self.free[k];
-            if self.hard_of(i) <= 1e-9 {
+            if self.hard_of(i) <= HARD_EPS {
                 continue;
             }
             let start = self.poses[i];
@@ -2097,8 +2136,8 @@ impl<'a> Engine<'a> {
                         let pose = self.clamp(
                             i,
                             Pose {
-                                x: start.x + dx * 10,
-                                y: start.y + dy * 10,
+                                x: start.x + dx * step,
+                                y: start.y + dy * step,
                                 turn: start.turn,
                                 text: start.text,
                             },
@@ -2110,7 +2149,7 @@ impl<'a> Engine<'a> {
                         for &(j, q) in &change {
                             self.put(j, q);
                         }
-                        if change.iter().all(|&(j, _)| self.hard_of(j) <= 1e-9) {
+                        if change.iter().all(|&(j, _)| self.hard_of(j) <= HARD_EPS) {
                             found = true;
                             break 'rings;
                         }
@@ -2413,7 +2452,7 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
                     current.soft += after.soft - before.soft;
                     current.hard += after.hard - before.hard;
                     since_sync += 1;
-                    if e.text_last && current.hard <= 1e-9 && current.total() < best_cost {
+                    if e.text_last && current.hard <= HARD_EPS && current.total() < best_cost {
                         best_cost = current.total();
                         best_poses = Some(e.poses.clone());
                     }
@@ -2426,7 +2465,7 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
             if since_sync > 2000 || stage + 1 == stages {
                 current = e.eval(&all);
                 since_sync = 0;
-                if e.text_last && current.hard <= 1e-9 && current.total() < best_cost {
+                if e.text_last && current.hard <= HARD_EPS && current.total() < best_cost {
                     best_cost = current.total();
                     best_poses = Some(e.poses.clone());
                 }
@@ -2443,6 +2482,10 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
         }
         if !feasible {
             feasible = e.legalise();
+        }
+        // What is left is a part a hair over a line or a neighbour: move it by the least.
+        if !feasible {
+            feasible = e.legalise_by(1, 40);
         }
     }
 
@@ -2489,6 +2532,23 @@ mod tests {
     use crate::board::tests::fixtures;
 
     use super::*;
+
+    #[test]
+    fn a_shortfall_that_is_real_is_never_shown_as_zero() {
+        assert_eq!(short(0.8), "0.80");
+        assert_eq!(short(0.05), "0.05");
+        assert_eq!(short(0.004), "0.004");
+        assert_eq!(short(0.0004), "0.0004");
+        // Below what the placement check itself ignores there is nothing to show.
+        assert_eq!(short(2e-6), "<0.0001");
+        for v in [0.0123, 0.0049, 0.00051, 0.00011] {
+            assert!(
+                short(v).parse::<f64>().is_ok_and(|shown| shown > 0.0),
+                "{v} is shown as {}",
+                short(v)
+            );
+        }
+    }
 
     #[test]
     fn the_random_numbers_and_the_exponential_are_the_same_on_every_machine() {
