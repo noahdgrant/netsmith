@@ -463,28 +463,32 @@ fn pegs(seed: u64) -> Result<Board, BoardError> {
 }
 
 #[test]
-fn a_hole_pinned_inside_a_keepout_for_parts_is_refused_the_same_way_for_every_seed() {
+fn a_hole_pinned_inside_a_keepout_for_parts_is_refused_before_placing_for_every_seed() {
     // A requirement that pins a part does not override a keepout that forbids parts (the rule
-    // of `crates/netsmith/tests/conflicts.rs`, ADR 0045 section 13): it is a finding for
-    // every seed, naming both holes and the keepout, and the holes stay at their pins.
-    let outcomes: Vec<String> = (0..4).map(|seed| outcome(&pegs(seed))).collect();
+    // of `crates/netsmith/tests/conflicts.rs`, ADR 0045 section 13), and the lines prove it
+    // before the placer starts (section 14): the refusal is the same for every seed, because
+    // no seed is tried, and it names both holes and the keepout (issue #99).
+    let texts: Vec<String> = (0..8)
+        .map(|seed| match pegs(seed) {
+            Err(BoardError::Unplaceable(found)) => {
+                assert!(found.faults.is_empty(), "{found:?}");
+                found.errors().join("\n")
+            }
+            other => panic!("seed {seed}: the pegs must be refused before placing: {other:?}"),
+        })
+        .collect();
     assert!(
-        outcomes.iter().all(|o| *o == outcomes[0]),
-        "the seeds differ: {outcomes:#?}"
+        texts.iter().all(|t| *t == texts[0]),
+        "the seeds differ: {texts:#?}"
     );
     for want in [
-        "H1 overlaps the keepout `peg_bases`, which forbids parts",
-        "H2 overlaps the keepout `peg_bases`, which forbids parts",
+        "these lines cannot both hold: ",
+        "the courtyard of H1 (",
+        "the courtyard of H2 (",
+        "the keepout `peg_bases`",
+        "which forbids parts",
     ] {
-        assert!(outcomes[0].contains(want), "no `{want}` in {outcomes:#?}");
-    }
-    for seed in 0..4 {
-        let b = pegs(seed).expect("the board is made, with findings");
-        for (name, x, y) in [("H1", 6.0, 8.0), ("H2", 29.0, 8.0)] {
-            let c = b.part(name).unwrap().body().centre();
-            let (dx, dy) = (c.x - b.outline.min.x - x, c.y - b.outline.min.y - y);
-            assert!(dx.abs() < 1e-3 && dy.abs() < 1e-3, "{name}: {dx} {dy}");
-        }
+        assert!(texts[0].contains(want), "no `{want}` in {}", texts[0]);
     }
 }
 

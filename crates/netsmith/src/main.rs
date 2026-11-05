@@ -337,6 +337,33 @@ fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool) -> ExitCode {
                 code = ExitCode::FAILURE;
             }
             Ok(boards) => {
+                // What the requirements prove cannot be placed is said now, with no placing
+                // (ADR 0045 section 14); the layout file's locks count.
+                let names: Vec<String> = boards.iter().map(|b| b.design.name.clone()).collect();
+                let layout =
+                    netsmith::layout::read(&netsmith::layout::layout_path(&source.path), &names)
+                        .ok()
+                        .flatten();
+                let mut unplaceable = false;
+                for b in &boards {
+                    let found = netsmith::fab::precheck_board(
+                        b,
+                        layout.as_ref().map(|l| &l.0),
+                        &libraries,
+                        catalogs.constraints_warn(),
+                    );
+                    for warning in &found.warnings {
+                        eprintln!("warning: {}: {warning}", found.board);
+                    }
+                    for error in &found.errors {
+                        eprintln!("error: {}: {error}", found.board);
+                        unplaceable = true;
+                    }
+                }
+                if unplaceable {
+                    code = ExitCode::FAILURE;
+                    continue;
+                }
                 for b in boards {
                     let dir = match b.write(out) {
                         Ok(dir) => dir,

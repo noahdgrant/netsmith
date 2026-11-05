@@ -3926,7 +3926,7 @@ physical for Plugged {
 ```
 
 ```text
-error: Plugged: J1 is not wholly inside the board outline: its courtyard is 0.50 mm past the left edge, and the design does not say it may hang over an edge; to allow it past the left edge, require the body to reach it, for example `.j.place.left <= 0mm`
+error: Plugged: J1 is not wholly inside the board outline: its courtyard is at least 0.50 mm past the left edge wherever its requirements put it, and the design does not say it may hang over an edge; to allow it past the left edge, require the body to reach it, for example `.j.place.left <= 0mm`; the lines that place it: main.physical.nsm:10 `.j.place.x &= 1.3mm`
 ```
 
 The next states an overhang that is too much: the header's pads end up 0.05 mm from the board edge, nearer than the process allows.

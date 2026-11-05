@@ -294,6 +294,54 @@ fn from_drc(f: &drc::Finding, board: &Board, ids: &mut Ids) -> PcbFinding {
     finding
 }
 
+/// What the requirements prove before any placing (ADR 0045 section 14, PROVISIONAL), as
+/// `constraint` findings: the lines that cannot both hold, a courtyard past an edge nobody
+/// stated and a part bigger than the outline are errors, the suspicious are warnings. The board
+/// is not placed, so a finding has no place of its own; it is at the sheet's origin, with the
+/// parts it is about named.
+pub fn precheck_findings(pre: &netsmith_pcb::Precheck) -> Vec<PcbFinding> {
+    let at = Rect::new(netsmith_pcb::ORIGIN, netsmith_pcb::ORIGIN);
+    let mut ids = Ids(Vec::new());
+    let mut found = Vec::new();
+    let mut add = |severity, base: String, message: String, parts: Vec<String>| {
+        let id = ids.id(format!("constraint:precheck:{base}"));
+        found.push(make(
+            id,
+            FindingSource::Placement,
+            severity,
+            "constraint",
+            message,
+            at,
+            parts,
+        ));
+    };
+    for (n, conflict) in pre.conflicts.iter().enumerate() {
+        add(
+            Severity::Error,
+            format!("conflict:{n}"),
+            format!("these lines cannot both hold: {conflict}"),
+            Vec::new(),
+        );
+    }
+    for fault in &pre.faults {
+        add(
+            Severity::Error,
+            format!("part:{}", fault.refdes),
+            fault.text.clone(),
+            vec![fault.refdes.clone()],
+        );
+    }
+    for (n, warning) in pre.warnings.iter().enumerate() {
+        add(
+            Severity::Warning,
+            format!("warning:{n}"),
+            warning.clone(),
+            Vec::new(),
+        );
+    }
+    found
+}
+
 /// The design's requirements on where parts go (ADR 0045), measured on the placed board as
 /// `fab` measures them on its file: a finding for each one the placement does not meet, with
 /// the numbers. They are listed with the placement's, since they need no copper. A board the
