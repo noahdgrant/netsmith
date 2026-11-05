@@ -121,7 +121,7 @@ function ProblemRow({ row }: { row: Row }) {
       class={`problem ${row.severity} ${on ? 'active' : ''}`}
       role="row"
       tabIndex={0}
-      aria-selected={on}
+      aria-current={on ? 'true' : undefined}
       data-id={row.id}
       data-testid="problem"
       title={`${row.full}${row.at ? `\n${row.at.file}:${row.at.line}:${row.at.column}` : ''}`}
@@ -287,6 +287,7 @@ export function ProblemsDock() {
           </div>
           <div
             class="dock-rows"
+            role="presentation"
             onKeyDown={(e) => {
               if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
               const all = [...(e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('.problem')];

@@ -23,8 +23,8 @@ export async function run({ page, shot, step, expect, project, section }) {
     step('a mistake saved to disk: counts, a row, and the strip above the dimmed drawing');
     fs.writeFileSync(file, good.replace('.led: Led {', '.led: Led {\n        .nonsense &= 1V'));
     await page.waitForSelector('.dock .problem.error', { timeout: 15000 });
-    await page.waitForSelector('.stale-strip');
-    const strip = await page.locator('.stale-strip').innerText();
+    await page.waitForSelector('.section:not(.away) .stale-strip');
+    const strip = await page.locator('.section:not(.away) .stale-strip').innerText();
     expect(strip.includes('Showing last good version') && strip.includes('nonsense'), `the strip names the error (${strip.replace(/\s+/g, ' ')})`);
     const row = await page.locator('.problem.error').first().innerText();
     expect(row.includes('nonsense') && row.includes('Checker') && /main\.nsm:\d+/.test(row), `a row with the message, its stage and file:line (${row.replace(/\s+/g, ' ')})`);
@@ -57,7 +57,7 @@ export async function run({ page, shot, step, expect, project, section }) {
     step('fixed on disk: the strip goes, the dock says nothing is wrong');
     fs.writeFileSync(file, good);
     await section('schematic');
-    await page.waitForSelector('.stale-strip', { state: 'detached', timeout: 15000 });
+    await page.waitForSelector('.section:not(.away) .stale-strip', { state: 'detached', timeout: 15000 });
     await page.keyboard.press('Control+j');
     await page.waitForSelector('.dock-empty');
     expect(true, 'no strip, the empty state');

@@ -19,9 +19,9 @@ export async function run({ page, shot, step, expect, project, section }) {
     expect(true, 'the status bar counts the error');
     // The server built the file before it broke, so it still has that drawing, marked stale.
     await section('schematic');
-    const strip = await page.locator('.stale-strip').innerText();
+    const strip = await page.locator('.section:not(.away) .stale-strip').innerText();
     expect(strip.includes('Showing last good version') && strip.includes('nonsense'), `the schematic says it shows the last good drawing and names the error (${strip.replace(/\s+/g, ' ')})`);
-    await page.locator('.stale-strip button', { hasText: 'Go to error' }).click();
+    await page.locator('.section:not(.away) .stale-strip button', { hasText: 'Go to error' }).click();
     await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('nonsense'));
     expect(true, 'Go to error puts the cursor on the mistake');
     if (!(await page.locator('.dock .problem').count())) await page.keyboard.press('Control+j');

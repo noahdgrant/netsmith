@@ -70,8 +70,8 @@ export async function run({ page, shot, step, expect, project, section }) {
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('.r1: Resistor {}', '.r1: Nothing {}'));
   await page.waitForFunction(() => document.querySelector('.statusbar .counts .e')?.textContent.includes('1'), null, { timeout: 10000 });
   await section('schematic');
-  await page.waitForSelector('.stale-strip');
-  const strip = await page.locator('.stale-strip').innerText();
+  await page.waitForSelector('.section:not(.away) .stale-strip');
+  const strip = await page.locator('.section:not(.away) .stale-strip').innerText();
   expect(strip.includes('Showing last good version') && strip.includes('Nothing'), `a strip on the schematic names the error (${strip.replace(/\s+/g, ' ')})`);
   await shot('mistake-on-disk');
   await section('source');
