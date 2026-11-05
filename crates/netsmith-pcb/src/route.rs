@@ -64,6 +64,13 @@ const NEGOTIATION_ROUNDS: usize = 6;
 const HISTORY_COST: i64 = 40;
 const HISTORY_MOST: u8 = 25;
 
+/// How far, in mm, round the pads of a failed line the routed lines are ripped up when the
+/// region is started again, how many times each failed line gets that, and how many
+/// passes over the failed lines.
+const REGION: f64 = 3.5;
+const REGION_TRIES: usize = 6;
+const REGION_PASSES: usize = 3;
+
 /// What a move costs, in tenths of a millimetre of track.
 const STEP: i64 = 10;
 const TURN: i64 = 25;
@@ -935,6 +942,62 @@ fn in_pad(board: &Board, pad: &crate::board::PadRef, at: Pt, grid: &Grid) -> Opt
     })
 }
 
+/// How deep a pad stands in a fine-pitch grid of pads, in pitches from the outside of the
+/// part's pads: 0 for a pad on the outer ring, and for every pad of a part that is not a
+/// fine-pitch grid (fewer than eight surface-mount pads, or none within the room a via and the
+/// rules' spaces need between pads). Such a pad can leave only through the gaps between its
+/// neighbours, and the deeper it is the fewer ways out it has.
+fn pad_depth(board: &Board, pad: &crate::board::PadRef, at: Pt) -> f64 {
+    let rules = &board.rules;
+    let (part, found) = pad_of(board, pad, at);
+    let (front, back) = part.pad_layers(found);
+    let on_face = |p: &crate::footprint::Pad| {
+        let (f, b) = part.pad_layers(p);
+        (front && f) || (back && b)
+    };
+    let pads: Vec<&crate::footprint::Pad> = part
+        .footprint
+        .pads
+        .iter()
+        .filter(|p| p.drill.is_none() && on_face(p))
+        .collect();
+    if pads.len() < 8 || found.drill.is_some() {
+        return 0.0;
+    }
+    let here = part.pad_bounds(found);
+    let gap = |a: &Rect, b: &Rect| {
+        let dx = (a.min.x - b.max.x).max(b.min.x - a.max.x).max(0.0);
+        let dy = (a.min.y - b.max.y).max(b.min.y - a.max.y).max(0.0);
+        dx.hypot(dy)
+    };
+    let nearest = pads
+        .iter()
+        .filter(|p| part.pad_centre(p) != at)
+        .map(|p| {
+            (
+                gap(&here, &part.pad_bounds(p)),
+                part.pad_centre(p).distance(at),
+            )
+        })
+        .fold((f64::MAX, f64::MAX), |m, g| (m.0.min(g.0), m.1.min(g.1)));
+    if nearest.0 >= rules.via_diameter + 2.0 * rules.clearance {
+        return 0.0;
+    }
+    let mut span = here;
+    for p in &pads {
+        let b = part.pad_bounds(p);
+        span = Rect::new(
+            Pt::new(span.min.x.min(b.min.x), span.min.y.min(b.min.y)),
+            Pt::new(span.max.x.max(b.max.x), span.max.y.max(b.max.y)),
+        );
+    }
+    let inside = (at.x - span.min.x)
+        .min(span.max.x - at.x)
+        .min(at.y - span.min.y)
+        .min(span.max.y - at.y);
+    (inside / nearest.1).round().max(0.0)
+}
+
 fn initial_obstacles(board: &Board) -> Obstacles {
     let rules = &board.rules;
     let net_of: HashMap<(&str, &str), usize> = board
@@ -1066,6 +1129,8 @@ struct Router<'a> {
     ends: Vec<(Vec<Spot>, Vec<Spot>)>,
     /// The pads at each end of a line that a via may stand in.
     in_pads: Vec<(Option<InPad>, Option<InPad>)>,
+    /// How deep in a fine-pitch grid of pads the deeper end of each line is ([`pad_depth`]).
+    depth: Vec<f64>,
     /// Whether lines left over are negotiated for, and what the negotiation has learnt.
     negotiate: bool,
     history: RefCell<[Vec<u8>; 2]>,
@@ -1111,6 +1176,17 @@ impl<'a> Router<'a> {
                 (in_pad(board, &l.from, l.from_at, &grid), to)
             })
             .collect();
+        let depth = lines
+            .iter()
+            .map(|l| {
+                let to = if l.to_plane {
+                    0.0
+                } else {
+                    pad_depth(board, &l.to, l.to_at)
+                };
+                pad_depth(board, &l.from, l.from_at).max(to)
+            })
+            .collect();
         let fixed = initial_obstacles(board);
         let mut fixed_by_net = vec![Vec::new(); board.nets.len()];
         for (k, o) in fixed.list.iter().enumerate() {
@@ -1128,6 +1204,7 @@ impl<'a> Router<'a> {
             nets,
             ends,
             in_pads,
+            depth,
             negotiate: options.negotiate,
             history: RefCell::new([Vec::new(), Vec::new()]),
             deadline: options.time_limit.map(|t| Instant::now() + t),
@@ -1615,12 +1692,18 @@ impl<'a> Router<'a> {
         if self.negotiate && !state.failed.is_empty() {
             self.negotiate(&mut state, ROOM_TIGHT, attempt, attempts);
         }
+        // LAB-BEGIN
+        if std::env::var("LAB_REGION").is_ok_and(|v| v == "1") && !state.failed.is_empty() {
+            self.restart_regions(&mut state, ROOM_TIGHT, attempt, attempts);
+        }
+        // LAB-END
         state
     }
 
     /// Where a line would go if the copper of other nets could be crossed, at a price per
-    /// cell ([`SOFT`]), and the nets whose copper that path comes near: the nets least in the
-    /// line's way, not all that lie between its ends. `None` if even that has no path.
+    /// cell ([`SOFT`]), and the routed lines whose copper that path comes near: the lines least
+    /// in the line's way, not all that lie between its ends, and not the other lines of their
+    /// nets. `None` if even that has no path.
     fn contested(&self, line: usize, state: &State, room: f64) -> Option<(Vec<Spot>, Vec<usize>)> {
         let net = self.nets[line];
         let (_, path) = self.try_line(line, state, &[], room, true)?;
@@ -1637,19 +1720,29 @@ impl<'a> Router<'a> {
                 path.iter()
                     .any(|&(i, j, _)| f.distance(self.grid.centre(i, j)) < reach)
             });
-            let n = self.nets[r.line];
-            if near && !found.contains(&n) {
-                found.push(n);
+            if near && !found.contains(&r.line) {
+                found.push(r.line);
             }
         }
+        // LAB-BEGIN
+        if std::env::var_os("LAB_NETRIP").is_some() {
+            let nets: Vec<usize> = found.iter().map(|&l| self.nets[l]).collect();
+            found = state
+                .routed
+                .iter()
+                .filter(|r| nets.contains(&self.nets[r.line]))
+                .map(|r| r.line)
+                .collect();
+        }
+        // LAB-END
         found.sort_unstable();
         Some((path, found))
     }
 
-    /// The nets whose copper stands in the way of a line.
+    /// The routed lines whose copper stands in the way of a line.
     fn blockers(&self, line: usize, state: &State, room: f64) -> Vec<usize> {
         self.contested(line, state, room)
-            .map_or_else(Vec::new, |(_, nets)| nets)
+            .map_or_else(Vec::new, |(_, lines)| lines)
     }
 
     /// Copy what the negotiation has learnt about the cells of the window into the masks.
@@ -1689,7 +1782,11 @@ impl<'a> Router<'a> {
         let cells = self.grid.nx * self.grid.ny;
         *self.history.borrow_mut() = [vec![0; cells], vec![0; cells]];
         let mut best = state.clone();
-        for round in 1..=NEGOTIATION_ROUNDS {
+        let rounds = std::env::var("LAB_ROUNDS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(NEGOTIATION_ROUNDS);
+        for round in 1..=rounds {
             if state.failed.is_empty() || self.out_of_time() {
                 break;
             }
@@ -1711,7 +1808,7 @@ impl<'a> Router<'a> {
                 let (gone, kept): (Vec<Routed>, Vec<Routed>) = state
                     .routed
                     .drain(..)
-                    .partition(|r| blockers.contains(&self.nets[r.line]));
+                    .partition(|r| blockers.contains(&r.line));
                 state.routed = kept;
                 let mut again: Vec<usize> = gone.iter().map(|r| r.line).collect();
                 again.sort_by(|&a, &b| self.lines[a].length().total_cmp(&self.lines[b].length()));
@@ -1742,13 +1839,160 @@ impl<'a> Router<'a> {
         *self.history.borrow_mut() = [Vec::new(), Vec::new()];
     }
 
+    /// Lines the other methods left are given a fresh start together with their
+    /// surroundings: every routed line whose copper is within [`REGION`] mm of a pad of a
+    /// failed line is ripped up, and the failed lines and these are routed again, the failed
+    /// first, in another order each time. What comes out is kept only if it leaves fewer
+    /// lines unrouted than before.
+    fn restart_regions(&self, state: &mut State, room: f64, attempt: usize, attempts: usize) {
+        let rounds = std::env::var("LAB_REGION_PASSES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(REGION_PASSES);
+        let tries = std::env::var("LAB_REGION_TRIES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(REGION_TRIES);
+        let radius: f64 = std::env::var("LAB_REGION_MM")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(REGION);
+        for pass in 0..rounds {
+            let before = state.failed.len();
+            for line in state.failed.clone() {
+                if !state.failed.contains(&line) {
+                    continue;
+                }
+                for k in 0..tries {
+                    if self.out_of_time() {
+                        return;
+                    }
+                    self.report(false, || {
+                        format!(
+                            "routing, try {attempt} of {attempts}: starting again round {} (pass {} of {rounds}), {} not routed",
+                            self.lines[line], pass + 1, state.failed.len()
+                        )
+                    });
+                    if let Some(better) = self.restart_region(line, state, room, radius, k) {
+                        *state = better;
+                        break;
+                    }
+                }
+            }
+            if state.failed.is_empty() || state.failed.len() >= before {
+                break;
+            }
+        }
+    }
+
+    /// One start again of the region round a failed line; the new state if it is better.
+    fn restart_region(
+        &self,
+        line: usize,
+        state: &State,
+        room: f64,
+        radius: f64,
+        variant: usize,
+    ) -> Option<State> {
+        let l = &self.lines[line];
+        let ends: Vec<Pt> = if l.to_plane {
+            vec![l.from_at]
+        } else {
+            vec![l.from_at, l.to_at]
+        };
+        let near = |p: Pt, q: Pt, half: f64| point_to_line(p, q, q) - half < radius;
+        let _ = near;
+        let touches = |r: &Routed| {
+            r.tracks.iter().any(|t| {
+                ends.iter()
+                    .any(|&p| point_to_line(p, t.from, t.to) - t.width / 2.0 < radius)
+            }) || r
+                .vias
+                .iter()
+                .any(|v| ends.iter().any(|&p| v.at.distance(p) < radius))
+        };
+        let mut trial = state.clone();
+        let (gone, kept): (Vec<Routed>, Vec<Routed>) = trial
+            .routed
+            .drain(..)
+            .partition(|r| self.nets[r.line] != self.nets[line] && touches(r));
+        trial.routed = kept;
+        if gone.is_empty() {
+            return None;
+        }
+        // The failed lines with an end in the region, and the lines ripped up.
+        let in_region = |f: usize| {
+            let fl = &self.lines[f];
+            ends.iter().any(|&p| {
+                p.distance(fl.from_at) < radius || (!fl.to_plane && p.distance(fl.to_at) < radius)
+            })
+        };
+        let mut failed: Vec<usize> = state
+            .failed
+            .iter()
+            .copied()
+            .filter(|&f| f == line || in_region(f))
+            .collect();
+        trial.failed.retain(|f| !failed.contains(f));
+        let mut ripped: Vec<usize> = gone.iter().map(|r| r.line).collect();
+        let by_length =
+            |a: &usize, b: &usize| self.lines[*a].length().total_cmp(&self.lines[*b].length());
+        if variant == 0 {
+            failed.sort_by(|a, b| {
+                self.depth[*b]
+                    .total_cmp(&self.depth[*a])
+                    .then(by_length(a, b))
+            });
+            ripped.sort_by(by_length);
+        } else {
+            let mut x = (line as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+                ^ (variant as u64).wrapping_mul(0xD1B5_4A32_D192_ED03);
+            let mut next = || {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                x
+            };
+            // A random order, but the lines that ended on deep pads earlier on average.
+            let mut key: HashMap<usize, f64> = HashMap::new();
+            for &f in failed.iter().chain(&ripped) {
+                key.insert(
+                    f,
+                    (next() % 10_000) as f64 / 10_000.0 - 0.5 * self.depth[f].min(4.0) / 4.0,
+                );
+            }
+            failed.sort_by(|a, b| key[a].total_cmp(&key[b]));
+            ripped.sort_by(|a, b| key[a].total_cmp(&key[b]));
+        }
+        for l in failed.into_iter().chain(ripped) {
+            if self.out_of_time() {
+                return None;
+            }
+            match self.try_line(l, &trial, &[], room, false) {
+                Some((routed, _)) => trial.routed.push(routed),
+                None => trial.failed.push(l),
+            }
+        }
+        (trial.failed.len() < state.failed.len()).then_some(trial)
+    }
+
     /// Try to get a failed line routed by ripping up the nets in its way, routing it, and
     /// routing what was ripped up again. If that does not work out, nothing changes.
     fn rip_up_for(&self, line: usize, state: &mut State, room: f64) {
         let blockers = self.blockers(line, state, room);
+        // All the lines in the way at once, then the lines of each net on its own.
         let mut attempts: Vec<Vec<usize>> = vec![blockers.clone()];
-        if blockers.len() > 1 {
-            attempts.extend(blockers.iter().map(|&n| vec![n]));
+        let mut nets: Vec<usize> = blockers.iter().map(|&l| self.nets[l]).collect();
+        nets.sort_unstable();
+        nets.dedup();
+        if nets.len() > 1 {
+            attempts.extend(nets.iter().map(|&n| {
+                blockers
+                    .iter()
+                    .copied()
+                    .filter(|&l| self.nets[l] == n)
+                    .collect()
+            }));
         }
         for ripped in attempts.into_iter().filter(|a| !a.is_empty()) {
             if self.out_of_time() {
@@ -1758,7 +2002,7 @@ impl<'a> Router<'a> {
             let (gone, kept): (Vec<Routed>, Vec<Routed>) = trial
                 .routed
                 .drain(..)
-                .partition(|r| ripped.contains(&self.nets[r.line]));
+                .partition(|r| ripped.contains(&r.line));
             trial.routed = kept;
             let mut again: Vec<usize> = gone.iter().map(|r| r.line).collect();
             again.sort_by(|&a, &b| self.lines[a].length().total_cmp(&self.lines[b].length()));
@@ -1785,6 +2029,184 @@ impl<'a> Router<'a> {
         }
     }
 
+    // LAB-BEGIN
+    fn map(&self, line: usize, state: &State, room: f64) {
+        let net = self.nets[line];
+        let (copper, ro_keepouts) = self.copper_of(&state.routed.iter().collect::<Vec<_>>());
+        let routed: Vec<&Obstacle> = copper.iter().collect();
+        let width = self.width_of(line);
+        let reach = Reach { room, width };
+        for (end, at) in [
+            (&self.ends[line].0, self.lines[line].from_at),
+            (&self.ends[line].1, self.lines[line].to_at),
+        ] {
+            if end.is_empty() {
+                continue;
+            }
+            let (ci, cj, _) = end[0];
+            let w = Window::around(&self.grid, &[(ci, cj, 0)], 3.0);
+            let all = self.masks(w, net, (&routed, &ro_keepouts), (&[], &[]), reach);
+            let fixed = self.masks(w, net, (&[], &[]), (&[], &[]), reach);
+            eprintln!(
+                "MAP line {} end ({:.2},{:.2}) window {}x{} cells; per row: front | back | via   (. free, R routed copper of another net, F fixed obstacle, P pad cell, v free for via only)",
+                self.lines[line], at.x, at.y, w.nx, w.ny
+            );
+            for j in w.j0..w.j0 + w.ny {
+                let mut row = String::new();
+                for l in 0..3 {
+                    for i in w.i0..w.i0 + w.nx {
+                        let k = all.at(i, j);
+                        let (a, f) = match l {
+                            0 => (all.track[FRONT][k], fixed.track[FRONT][k]),
+                            1 => (all.track[BACK][k], fixed.track[BACK][k]),
+                            _ => (all.via[k], fixed.via[k]),
+                        };
+                        let c = if end.contains(&(i, j, FRONT)) && l == 0
+                            || end.contains(&(i, j, BACK)) && l == 1
+                        {
+                            'P'
+                        } else if f {
+                            'F'
+                        } else if a {
+                            'R'
+                        } else {
+                            '.'
+                        };
+                        row.push(c);
+                    }
+                    row.push_str(" | ");
+                }
+                eprintln!("MAP {row}");
+            }
+        }
+    }
+    fn deadline_off(&self) {}
+    fn lab(&self, state: &State) {
+        let all: Vec<usize> = (0..self.board.nets.len()).collect();
+        for &line in &state.failed {
+            eprintln!("LAB failed line {}", self.lines[line]);
+            let net = self.nets[line];
+            let pads = [self.lines[line].from_at, self.lines[line].to_at];
+            if std::env::var_os("LAB_MAP").is_some() {
+                self.map(line, state, ROOM_TIGHT);
+                continue;
+            }
+            for room in [ROOM_LOOSE, ROOM_TIGHT] {
+                let free = self.try_line(line, state, &all, room, false).is_some();
+                eprintln!(
+                    "LAB   room {room:.3}: routable with every other net's routed copper removed: {free}"
+                );
+                if free {
+                    // Which single nets near the pads.
+                    let mut near: Vec<usize> = Vec::new();
+                    for r in state.routed.iter().filter(|r| self.nets[r.line] != net) {
+                        let hit = r
+                            .tracks
+                            .iter()
+                            .any(|t| pads.iter().any(|&p| point_to_line(p, t.from, t.to) < 3.0))
+                            || r.vias
+                                .iter()
+                                .any(|v| pads.iter().any(|&p| v.at.distance(p) < 3.0));
+                        if hit && !near.contains(&self.nets[r.line]) {
+                            near.push(self.nets[r.line]);
+                        }
+                    }
+                    let mut single = Vec::new();
+                    for &n in &near {
+                        if self.try_line(line, state, &[n], room, false).is_some() {
+                            single.push(self.board.nets[n].name.clone());
+                        }
+                    }
+                    eprintln!(
+                        "LAB   room {room:.3}: {} nets within 3 mm; removing only one frees the line: {:?}",
+                        near.len(),
+                        single
+                    );
+                    for name in &single {
+                        let n = self
+                            .board
+                            .nets
+                            .iter()
+                            .position(|x| &x.name == name)
+                            .unwrap();
+                        let mut trial = state.clone();
+                        let (gone, kept): (Vec<Routed>, Vec<Routed>) =
+                            trial.routed.drain(..).partition(|r| self.nets[r.line] == n);
+                        trial.routed = kept;
+                        let Some((first, _)) = self.try_line(line, &trial, &[], room, false) else {
+                            continue;
+                        };
+                        trial.routed.push(first);
+                        for g in &gone {
+                            let ok = self.try_line(g.line, &trial, &[], room, false);
+                            match ok {
+                                Some((r, _)) => {
+                                    trial.routed.push(r);
+                                    eprintln!(
+                                        "LAB     ripping {name}: line {} rerouted",
+                                        self.lines[g.line]
+                                    );
+                                }
+                                None => {
+                                    let mut fr = Vec::new();
+                                    let mut nn: Vec<usize> = Vec::new();
+                                    for r in trial.routed.iter() {
+                                        let m = self.nets[r.line];
+                                        if m != self.nets[g.line] && !nn.contains(&m) {
+                                            nn.push(m);
+                                        }
+                                    }
+                                    let ends =
+                                        [self.lines[g.line].from_at, self.lines[g.line].to_at];
+                                    nn.retain(|&m| {
+                                        trial.routed.iter().any(|r| {
+                                            self.nets[r.line] == m
+                                                && (r.tracks.iter().any(|t| {
+                                                    ends.iter().any(|&p| {
+                                                        point_to_line(p, t.from, t.to) < 2.0
+                                                    })
+                                                }) || r.vias.iter().any(|v| {
+                                                    ends.iter().any(|&p| v.at.distance(p) < 2.0)
+                                                }))
+                                        })
+                                    });
+                                    for &m in &nn {
+                                        if self
+                                            .try_line(g.line, &trial, &[m], room, false)
+                                            .is_some()
+                                        {
+                                            fr.push(self.board.nets[m].name.clone());
+                                        }
+                                    }
+                                    eprintln!(
+                                        "LAB     ripping {name}: line {} CANNOT be rerouted; single nets freeing it: {:?}",
+                                        self.lines[g.line], fr
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    // Pairs
+                    let mut pairs = Vec::new();
+                    if single.is_empty() {
+                        for (a, &x) in near.iter().enumerate() {
+                            for &y in &near[a + 1..] {
+                                if self.try_line(line, state, &[x, y], room, false).is_some() {
+                                    pairs.push((
+                                        self.board.nets[x].name.clone(),
+                                        self.board.nets[y].name.clone(),
+                                    ));
+                                }
+                            }
+                        }
+                        eprintln!("LAB   room {room:.3}: pairs that free it: {pairs:?}");
+                    }
+                }
+            }
+        }
+    }
+    // LAB-END
+
     /// The orders to try the lines in.
     fn orders(&self, retry: bool) -> Vec<Vec<usize>> {
         let mut shortest: Vec<usize> = (0..self.lines.len()).collect();
@@ -1797,6 +2219,23 @@ impl<'a> Router<'a> {
             by_net.sort_by_key(|&l| self.nets[l]);
             let mut reversed_nets = by_net.clone();
             reversed_nets.reverse();
+            // LAB-BEGIN
+            let mut deep = shortest.clone();
+            deep.sort_by(|&a, &b| self.depth[b].total_cmp(&self.depth[a]));
+            let mode = std::env::var("LAB_ORDERS").unwrap_or_default();
+            if mode == "deep" {
+                return vec![deep];
+            }
+            if mode == "short" {
+                return orders;
+            }
+            if mode == "deep-first" {
+                orders.insert(0, deep.clone());
+            }
+            if mode == "deep+" {
+                orders.push(deep.clone());
+            }
+            // LAB-END
             for o in [longest, by_net, reversed_nets] {
                 if !orders.contains(&o) {
                     orders.push(o);
@@ -1877,6 +2316,11 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
             tries += 1;
             let state = router.run(order, options.rip_up, tries, orders.len());
             let done = state.failed.is_empty();
+            // LAB-BEGIN
+            if std::env::var_os("LAB_TRIES").is_some() {
+                eprintln!("LAB try {tries}: {} left", state.failed.len());
+            }
+            // LAB-END
             if best
                 .as_ref()
                 .is_none_or(|b| state.failed.len() < b.failed.len())
@@ -1887,7 +2331,23 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
                 break;
             }
         }
+        // LAB-BEGIN
+        if std::env::var("LAB_REGION").is_ok_and(|v| v == "end")
+            && let Some(b) = &mut best
+            && !b.failed.is_empty()
+        {
+            router.restart_regions(b, ROOM_TIGHT, tries, tries);
+        }
+        // LAB-END
         let stopped = router.out_of_time();
+        // LAB-BEGIN
+        if std::env::var_os("NETSMITH_ROUTE_LAB").is_some()
+            && let Some(b) = &best
+        {
+            router.deadline_off();
+            router.lab(b);
+        }
+        // LAB-END
         (best.unwrap_or_default(), stopped, tries)
     };
     let mut routed = best.routed;
