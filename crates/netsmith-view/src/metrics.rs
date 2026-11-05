@@ -27,6 +27,19 @@
 //!   parts the layout stands beside a pin: a capacitor, a resistor, a diode). Its distance
 //!   is, in grid steps, how far the nearest pin of another part on one of its nets is from
 //!   its own pin on that net, measured across.
+//! - **pair satellite**: a satellite whose two pins are on two different nets that no power symbol
+//!   of the sheet is on, with a pin of one same other part on each (a crystal across `XL1` and
+//!   `XL2`). `pair_satellites` counts them. **pair crossings** (`pair_crossings`, target 0)
+//!   are the crossings of the wire of a pair satellite's pins with the wires of other nets
+//!   (and with the thick line of a bus), counted along the wire from each of its pins to the pin
+//!   of the other part on that net: what else is on the net is not counted.
+//! - **rail span** (`rail_span`): the longest straight run of wire, in grid steps, of a net
+//!   that ends in a power symbol of the sheet (runs that lie along one line and meet are
+//!   one). A decoupling capacitor with a symbol of its own has a few steps; a rail across a
+//!   whole sheet, many.
+//! - **satellite wire** (`satellite_wire`): the longest way along the wire of a net, in grid
+//!   steps, from the pin of a satellite to the nearest pin of another part on that net, or
+//!   power symbol, flag or label of it.
 //! - **side consistency**: of the pins of parts that are not satellites, the share that are
 //!   on the side a reader expects: an input on the left, an output on the right, a supply
 //!   pin on top, a ground pin at the bottom. Pins the symbol does not say anything about
@@ -129,6 +142,14 @@ pub struct SheetMetrics {
     pub labels: usize,
     pub junctions: usize,
     pub open_pins: usize,
+
+    /// Pair satellites, the crossings of their nets' wires with other wires, the longest straight
+    /// run of wire of a net that ends in a power symbol, and the longest wire from a satellite's
+    /// pin to what it serves, the last two in grid steps.
+    pub pair_satellites: usize,
+    pub pair_crossings: usize,
+    pub rail_span: f64,
+    pub satellite_wire: f64,
 
     /// Interfaces drawn as one thick line, their members (the entries at each end count
     /// once), and the flags that end a bus where its members go on to another sheet (these are
@@ -236,6 +257,10 @@ impl SheetMetrics {
         self.labels += o.labels;
         self.junctions += o.junctions;
         self.open_pins += o.open_pins;
+        self.pair_satellites += o.pair_satellites;
+        self.pair_crossings += o.pair_crossings;
+        self.rail_span = self.rail_span.max(o.rail_span);
+        self.satellite_wire = self.satellite_wire.max(o.satellite_wire);
         self.buses += o.buses;
         self.bus_members += o.bus_members;
         self.bus_flags += o.bus_flags;
@@ -326,6 +351,7 @@ fn measure_sheet(l: &Layout, v: &SheetView) -> SheetMetrics {
         m.total_detour += detour;
     }
     satellites(l, v, &mut m);
+    pairs_and_rails(l, v, &segments, &bus_runs, &mut m);
     sides(l, v, &mut m);
     overlap_counts(l, v, &segments, &mut m);
     m.jogs = jogs(v);
@@ -538,6 +564,235 @@ fn satellites(l: &Layout, v: &SheetView, m: &mut SheetMetrics) {
     }
 }
 
+/// The pair satellites of a sheet, each as its part and its two nets: satellites whose two pins
+/// are on two different nets that carry no power symbol of the sheet, with a pin of one same
+/// other part on each net.
+fn pair_satellites(l: &Layout, v: &SheetView) -> Vec<(usize, [usize; 2])> {
+    let powered: BTreeSet<usize> = v.symbols.iter().map(|&i| l.symbols[i].net).collect();
+    // The nets each part that is not a satellite has a pin on.
+    let mut main_nets: Vec<BTreeSet<usize>> = Vec::new();
+    for &i in &v.parts {
+        let p = &l.parts[i];
+        let mut nets = BTreeSet::new();
+        if !is_satellite(p) {
+            for (pin, placed) in p.glyph.pins.iter().zip(&p.pins) {
+                if let (false, Some(n)) = (pin.hidden, placed.net) {
+                    nets.insert(n);
+                }
+            }
+        }
+        main_nets.push(nets);
+    }
+    let mut out = Vec::new();
+    for &i in &v.parts {
+        let p = &l.parts[i];
+        if !is_satellite(p) {
+            continue;
+        }
+        let (Some(a), Some(b)) = (p.pins[0].net, p.pins[1].net) else {
+            continue;
+        };
+        if a == b || powered.contains(&a) || powered.contains(&b) {
+            continue;
+        }
+        if main_nets.iter().any(|n| n.contains(&a) && n.contains(&b)) {
+            out.push((i, [a, b]));
+        }
+    }
+    out
+}
+
+/// The shortest way along the wire `segs` from `from` to any of `targets`: its length in
+/// millimetres and the straight runs it is made of.
+fn wire_path(segs: &[Seg], from: Pt, targets: &[Pt]) -> Option<(f64, Vec<(Pt, Pt)>)> {
+    let key = |p: Pt| ((p.x * 1000.0).round() as i64, (p.y * 1000.0).round() as i64);
+    let mut points: BTreeMap<(i64, i64), Pt> = BTreeMap::new();
+    for s in segs {
+        points.insert(key(s.a), s.a);
+        points.insert(key(s.b), s.b);
+    }
+    points.insert(key(from), from);
+    for &t in targets {
+        points.insert(key(t), t);
+    }
+    let all: Vec<(i64, i64)> = points.keys().copied().collect();
+    let index: BTreeMap<(i64, i64), usize> = all.iter().enumerate().map(|(i, &k)| (k, i)).collect();
+    let mut edges: Vec<Vec<(usize, f64)>> = vec![Vec::new(); all.len()];
+    for s in segs {
+        // The points that lie on the segment, in order along it.
+        let mut on: Vec<(f64, usize)> = all
+            .iter()
+            .filter(|k| s.holds(points[k]))
+            .map(|k| (manhattan(s.a, points[k]), index[k]))
+            .collect();
+        on.sort_by(|x, y| x.0.total_cmp(&y.0));
+        for w in on.windows(2) {
+            let d = w[1].0 - w[0].0;
+            edges[w[0].1].push((w[1].1, d));
+            edges[w[1].1].push((w[0].1, d));
+        }
+    }
+    let start = index[&key(from)];
+    let goal: BTreeSet<usize> = targets.iter().map(|&t| index[&key(t)]).collect();
+    let mut dist = vec![f64::INFINITY; all.len()];
+    let mut before = vec![usize::MAX; all.len()];
+    let mut done = vec![false; all.len()];
+    dist[start] = 0.0;
+    loop {
+        let next = (0..all.len())
+            .filter(|&i| !done[i] && dist[i].is_finite())
+            .min_by(|&a, &b| dist[a].total_cmp(&dist[b]));
+        let n = next?;
+        if goal.contains(&n) {
+            let mut runs = Vec::new();
+            let mut at = n;
+            while before[at] != usize::MAX {
+                runs.push((points[&all[before[at]]], points[&all[at]]));
+                at = before[at];
+            }
+            return Some((dist[n], runs));
+        }
+        done[n] = true;
+        for &(m, d) in &edges[n] {
+            if dist[n] + d < dist[m] {
+                dist[m] = dist[n] + d;
+                before[m] = n;
+            }
+        }
+    }
+}
+
+/// Where the wires of a net could end: the pins of the parts that `keep` says to, and the
+/// power symbols, flags and labels of the net on the sheet.
+fn ends_of(l: &Layout, v: &SheetView, net: usize, keep: impl Fn(&PlacedPart) -> bool) -> Vec<Pt> {
+    let mut targets: Vec<Pt> = Vec::new();
+    for &j in &v.parts {
+        let q = &l.parts[j];
+        if !keep(q) {
+            continue;
+        }
+        for (gp, placed) in q.glyph.pins.iter().zip(&q.pins) {
+            if !gp.hidden && placed.net == Some(net) {
+                targets.push(placed.at);
+            }
+        }
+    }
+    targets
+}
+
+/// The pair satellites, the crossings of their nets, the rail spans and the satellites' wires.
+fn pairs_and_rails(
+    l: &Layout,
+    v: &SheetView,
+    segments: &[Seg],
+    runs: &[Seg],
+    m: &mut SheetMetrics,
+) {
+    let pairs = pair_satellites(l, v);
+    m.pair_satellites = pairs.len();
+    let mut by_net: BTreeMap<usize, Vec<Seg>> = BTreeMap::new();
+    for s in segments {
+        by_net.entry(s.net).or_default().push(*s);
+    }
+    // The wire from each pin of a pair satellite to the pin of the other part on its net, and
+    // where it crosses another net's wire (a crossing is counted once).
+    let mut crossings: BTreeSet<(i64, i64)> = BTreeSet::new();
+    for &(i, _) in &pairs {
+        for pin in &l.parts[i].pins {
+            let Some(net) = pin.net else { continue };
+            let Some(segs) = by_net.get(&net) else {
+                continue;
+            };
+            let targets = ends_of(l, v, net, |q| !is_satellite(q));
+            let Some((_, path)) = wire_path(segs, pin.at, &targets) else {
+                continue;
+            };
+            for (a, b) in path {
+                let run = Seg { net, a, b };
+                for t in segments.iter().chain(runs) {
+                    if t.net == net {
+                        continue;
+                    }
+                    if let Rel::Cross(p) = relate(&run, t) {
+                        crossings
+                            .insert(((p.x * 1000.0).round() as i64, (p.y * 1000.0).round() as i64));
+                    }
+                }
+            }
+        }
+    }
+    m.pair_crossings = crossings.len();
+
+    // The longest straight run of a net that ends in a power symbol.
+    let powered: BTreeSet<usize> = v.symbols.iter().map(|&i| l.symbols[i].net).collect();
+    // Per net and line, the intervals along it; those that touch are one run.
+    let mut lines: BTreeMap<(usize, bool, i64), Vec<(f64, f64)>> = BTreeMap::new();
+    for s in segments.iter().filter(|s| powered.contains(&s.net)) {
+        let (fixed, a, b) = if s.horizontal() {
+            (s.a.y, s.a.x.min(s.b.x), s.a.x.max(s.b.x))
+        } else {
+            (s.a.x, s.a.y.min(s.b.y), s.a.y.max(s.b.y))
+        };
+        lines
+            .entry((s.net, s.horizontal(), (fixed * 1000.0).round() as i64))
+            .or_default()
+            .push((a, b));
+    }
+    for spans in lines.values_mut() {
+        spans.sort_by(|x, y| x.0.total_cmp(&y.0));
+        let mut run = spans[0];
+        let mut flush = |r: (f64, f64)| m.rail_span = m.rail_span.max((r.1 - r.0) / GRID);
+        for &(a, b) in &spans[1..] {
+            if a <= run.1 + EPS {
+                run.1 = run.1.max(b);
+            } else {
+                flush(run);
+                run = (a, b);
+            }
+        }
+        flush(run);
+    }
+
+    // The longest wire from a satellite's pin to what it serves.
+    for &i in &v.parts {
+        let p = &l.parts[i];
+        if !is_satellite(p) {
+            continue;
+        }
+        for pin in &p.pins {
+            let Some(net) = pin.net else { continue };
+            let Some(segs) = by_net.get(&net) else {
+                continue;
+            };
+            let mut targets = ends_of(l, v, net, |q| !is_satellite(q));
+            targets.extend(
+                v.symbols
+                    .iter()
+                    .filter(|&&k| l.symbols[k].net == net)
+                    .map(|&k| l.symbols[k].at),
+            );
+            targets.extend(
+                v.ports
+                    .iter()
+                    .filter(|&&k| l.ports[k].net == net)
+                    .map(|&k| l.ports[k].at),
+            );
+            targets.extend(
+                v.labels
+                    .iter()
+                    .filter(|&&k| l.labels[k].net == net)
+                    .map(|&k| l.labels[k].at),
+            );
+            if targets.is_empty() {
+                continue;
+            }
+            if let Some((d, _)) = wire_path(segs, pin.at, &targets) {
+                m.satellite_wire = m.satellite_wire.max(d / GRID);
+            }
+        }
+    }
+}
+
 fn sides(l: &Layout, v: &SheetView, m: &mut SheetMetrics) {
     let mut kind_of: BTreeMap<usize, PowerKind> = BTreeMap::new();
     for &i in &v.symbols {
@@ -626,12 +881,14 @@ impl Metrics {
     /// mm and `asp` width over height; `flag`, `pwr`, `label`, `X` the flags, power symbols,
     /// labels (names at the end of a stub) and X marks; `bus` and `bmem` the buses and their
     /// members; `stray` the wires and dots that serve
-    /// nothing (see above).
+    /// nothing (see above); `pairX` the crossings of pair satellites' wires, `rail` the
+    /// longest rail run and `satW` the longest wire from a satellite to its pin, the last two in
+    /// grid steps.
     pub fn table(&self) -> String {
         let mut out = String::new();
         let _ = writeln!(
             out,
-            "{:<18} {:>5} {:>5} {:>5} {:>6} {:>5} {:>5} {:>5} {:>5} {:>6} {:>6} {:>7} {:>4} {:>5} {:>5} {:>6} {:>5} {:>5} {:>7} {:>8} {:>8} {:>5} {:>5} {:>5} {:>5} {:>3} {:>4} {:>4} {:>5}",
+            "{:<18} {:>5} {:>5} {:>5} {:>6} {:>5} {:>5} {:>5} {:>5} {:>6} {:>6} {:>7} {:>4} {:>5} {:>5} {:>6} {:>5} {:>5} {:>7} {:>8} {:>8} {:>5} {:>5} {:>5} {:>5} {:>3} {:>4} {:>4} {:>5} {:>5} {:>6} {:>6}",
             "sheet",
             "parts",
             "nets",
@@ -660,12 +917,15 @@ impl Metrics {
             "X",
             "bus",
             "bmem",
-            "stray"
+            "stray",
+            "pairX",
+            "rail",
+            "satW"
         );
         for s in self.sheets.iter().chain(std::iter::once(&self.total)) {
             let _ = writeln!(
                 out,
-                "{:<18} {:>5} {:>5} {:>5} {:>6} {:>5.2} {:>5} {:>5} {:>5} {:>6.2} {:>6.2} {:>7.2} {:>4} {:>5.1} {:>5.1} {:>6.2} {:>5} {:>5} {:>7} {:>8} {:>8} {:>5.2} {:>5} {:>5} {:>5} {:>3} {:>4} {:>4} {:>5}",
+                "{:<18} {:>5} {:>5} {:>5} {:>6} {:>5.2} {:>5} {:>5} {:>5} {:>6.2} {:>6.2} {:>7.2} {:>4} {:>5.1} {:>5.1} {:>6.2} {:>5} {:>5} {:>7} {:>8} {:>8} {:>5.2} {:>5} {:>5} {:>5} {:>3} {:>4} {:>4} {:>5} {:>5} {:>6.1} {:>6.1}",
                 clip(&s.name, 18),
                 s.parts,
                 s.wired_nets,
@@ -695,6 +955,9 @@ impl Metrics {
                 s.buses,
                 s.bus_members,
                 s.stray(),
+                s.pair_crossings,
+                s.rail_span,
+                s.satellite_wire,
             );
         }
         out
@@ -757,6 +1020,10 @@ impl Metrics {
             put("buses", n(s.buses));
             put("bus_members", n(s.bus_members));
             put("bus_flags", n(s.bus_flags));
+            put("pair_satellites", n(s.pair_satellites));
+            put("pair_crossings", n(s.pair_crossings));
+            put("rail_span", f(s.rail_span));
+            put("satellite_wire", f(s.satellite_wire));
         }
         out
     }

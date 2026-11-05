@@ -313,8 +313,16 @@ _Avoid_: Viewer, IDE, GUI
 One way the editor shows a board built from the source: the schematic, the power tree, the system, the bill of materials or the PCB. Each is computed from the checked and solved model, and none is edited: the source is.
 _Avoid_: Page
 
+**Satellite**:
+A small part that the editor's schematic draws beside the pin of a main part (an IC, a connector) that it serves: a decoupling capacitor, a pull-up, a bootstrap capacitor, a divider. It is wired to that pin always, and its rail pins have a stub and a power symbol of their own (see _Power symbol_). The main part and its satellites are one block.
+_Avoid_: Passive (a satellite may be a transistor), helper
+
+**Pair satellite**:
+A satellite whose two pins are on two different pins of one main part, such as a crystal across `XL1` and `XL2`, a resonator, or a series element across two pins. The schematic stands it beside both pins, turned so that its two wires are short, have as few bends as can be, and cross nothing, and never writes a name on its nets. The metric `pair_crossings` (target 0) counts the crossings on those wires.
+_Avoid_: Crystal rule, two-pin satellite
+
 **Power symbol**:
-How the editor's schematic draws a rail: the negative side of a rail (where the current returns) with the ground symbol, bars that shrink away from a wire, and the positive side with the supply symbol, a stem with an arrow head and the net's name beside it. Which nets are which comes from the checked model (a `Rail`'s `pos` and `neg`), never from the names; the ground symbols carry their names only when a board has more than one ground. Each pin on a rail has a wire to its own symbol, and pins next to each other on one rail share a bus and a symbol. The KiCad schematic file does not use them.
+How the editor's schematic draws a rail: the negative side of a rail (where the current returns) with the ground symbol, bars that shrink away from a wire, and the positive side with the supply symbol, a stem with an arrow head and the net's name beside it. Which nets are which comes from the checked model (a `Rail`'s `pos` and `neg`), never from the names; the ground symbols carry their names only when a board has more than one ground. Each pin of a main part on a rail has a wire to its own symbol, and pins next to each other on one rail share a bus and a symbol; a satellite's rail pin has a short stub and a symbol of its own (a supply symbol up, a ground symbol down), except that satellites side by side in a row share a short wire and one symbol where nothing is crossed. The KiCad schematic file does not use them.
 _Avoid_: Power port (a net label is the name of a signal net at the end of a stub, and a power symbol is never one)
 
 **Flag**:

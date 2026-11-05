@@ -13,7 +13,7 @@ pub type Node = (i32, i32);
 /// Nobody owns the node on that axis.
 pub const NONE: u32 = u32::MAX;
 
-const STEP_COST: u32 = 10;
+pub const STEP_COST: u32 = 10;
 const BEND_COST: u32 = 60;
 const CROSS_COST: u32 = 45;
 const DIRS: [Dir; 4] = [Dir::Up, Dir::Down, Dir::Left, Dir::Right];
@@ -281,8 +281,33 @@ impl Grid {
         heading: Dir,
         targets: &HashSet<Node>,
     ) -> Option<Vec<Node>> {
+        self.route_costed(net, start, &[heading], targets)
+            .map(|(_, path)| path)
+    }
+
+    /// [`route`](Self::route) for a start that has no way it must leave by (the end of a
+    /// wire that leaves a pin's tip sideways): the first step costs no bend whichever way it
+    /// goes. Gives the cost of the path too, in the router's own units.
+    pub fn route_free(
+        &self,
+        net: u32,
+        start: Node,
+        targets: &HashSet<Node>,
+    ) -> Option<(u32, Vec<Node>)> {
+        self.route_costed(net, start, &DIRS, targets)
+    }
+
+    /// The cost and the nodes of the cheapest path that leaves `start` heading one of
+    /// `headings` (each free of a bend there).
+    pub fn route_costed(
+        &self,
+        net: u32,
+        start: Node,
+        headings: &[Dir],
+        targets: &HashSet<Node>,
+    ) -> Option<(u32, Vec<Node>)> {
         if targets.contains(&start) {
-            return Some(vec![start]);
+            return Some((0, vec![start]));
         }
         let mut lo = start;
         let mut hi = start;
@@ -297,7 +322,7 @@ impl Grid {
                 (hi.0.saturating_add(margin)).min(self.w - 1),
                 (hi.1.saturating_add(margin)).min(self.h - 1),
             );
-            if let Some(p) = self.search(net, start, heading, targets, win) {
+            if let Some(p) = self.search(net, start, headings, targets, win) {
                 return Some(p);
             }
             if win == (0, 0, self.w - 1, self.h - 1) {
@@ -311,10 +336,10 @@ impl Grid {
         &self,
         net: u32,
         start: Node,
-        heading: Dir,
+        headings: &[Dir],
         targets: &HashSet<Node>,
         win: (i32, i32, i32, i32),
-    ) -> Option<Vec<Node>> {
+    ) -> Option<(u32, Vec<Node>)> {
         let (wi, wj) = (win.2 - win.0 + 1, win.3 - win.1 + 1);
         let cells = (wi * wj) as usize;
         let slot = |n: Node, d: usize| -> usize {
@@ -323,9 +348,11 @@ impl Grid {
         let mut dist = vec![u32::MAX; cells * 4];
         let mut from = vec![u32::MAX; cells * 4];
         let mut heap: BinaryHeap<Reverse<(u32, u32, u32)>> = BinaryHeap::new();
-        let d0 = dir_index(heading);
-        dist[slot(start, d0)] = 0;
-        heap.push(Reverse((0, 0, slot(start, d0) as u32)));
+        for &h in headings {
+            let d0 = dir_index(h);
+            dist[slot(start, d0)] = 0;
+            heap.push(Reverse((0, 0, slot(start, d0) as u32)));
+        }
         let mut seq = 0u32;
         let mut found: Option<usize> = None;
         // Where a slot is, from its index.
@@ -383,13 +410,14 @@ impl Grid {
             }
         }
         let mut s = found?;
+        let cost = dist[s];
         let mut path = vec![unslot(s).0];
         while from[s] != u32::MAX {
             s = from[s] as usize;
             path.push(unslot(s).0);
         }
         path.reverse();
-        Some(path)
+        Some((cost, path))
     }
 }
 

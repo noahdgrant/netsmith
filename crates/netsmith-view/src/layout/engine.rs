@@ -10,6 +10,7 @@ use super::prune;
 use super::*;
 
 mod bus;
+mod pair;
 
 /// Clear space round a part and what it needs beside it.
 const MARGIN: f64 = 2.54;
@@ -261,6 +262,9 @@ struct SatPlan {
     r: Pt,
     /// The net the satellite is tied to the anchor's pin by.
     net: usize,
+    /// Set for a satellite across two pins of its anchor (a crystal): it is placed beside
+    /// both, by [`pair`].
+    pair: Option<pair::PairPlan>,
 }
 
 struct Block {
@@ -268,6 +272,10 @@ struct Block {
     /// Each part and where it is from the anchor's origin, with the side its texts go on.
     members: Vec<(usize, Pt, Option<Dir>)>,
     rect: Rect,
+    /// The parts of the block that were turned when they were placed (pair satellites).
+    orients: Vec<(usize, Orient)>,
+    /// The pair satellites placed beside two pins, whose wires are drawn first.
+    pairs: Vec<pair::PairRoute>,
 }
 
 /// A sheet drawn, and what the choice of names needs to know of it.
@@ -278,6 +286,8 @@ pub(super) struct Drawn {
     pub clusters: Vec<usize>,
     /// The nets that are drawn as members of a bus: not for the policy to name.
     pub bus_nets: Vec<bool>,
+    /// The nets of a pair satellite (a crystal across two pins): never named.
+    pub pair_nets: Vec<bool>,
 }
 
 /// One piece of the sheet that is placed as a whole: a block (a main part with the parts that
@@ -360,17 +370,6 @@ pub(super) fn run(
     let anchor_pos: BTreeMap<usize, usize> =
         anchors.iter().enumerate().map(|(i, &u)| (u, i)).collect();
 
-    // The interfaces drawn as buses: their nets have no flag or name of their own, and their
-    // parts keep room for the entries, the spine and the writing.
-    let is_anchor = |p: usize| role[unit_index(units, p)] == Role::Anchor;
-    let bus_plans = bus::plan(ctx, &placed, &is_anchor);
-    for plan in &bus_plans {
-        for &net in &plan.nets {
-            tagged[net] = false;
-        }
-    }
-    let bus_rooms = bus::rooms(ctx, &placed, &bus_plans, &tagged);
-
     // Which pins of the anchors are on each net.
     let mut anchor_pins: BTreeMap<usize, Vec<(usize, usize)>> = BTreeMap::new();
     for &u in &anchors {
@@ -385,6 +384,39 @@ pub(super) fn run(
         }
     }
 
+    // The interfaces drawn as buses: their nets have no flag or name of their own, and their
+    // parts keep room for the entries, the spine and the writing.
+    let is_anchor = |p: usize| role[unit_index(units, p)] == Role::Anchor;
+    let bus_plans = bus::plan(ctx, &placed, &is_anchor);
+    let mut bus_net = vec![false; ctx.design.nets.len()];
+    for plan in &bus_plans {
+        for &net in &plan.nets {
+            tagged[net] = false;
+            bus_net[net] = true;
+        }
+    }
+
+    // The satellites across two pins of one anchor (a crystal): their nets are wires, never
+    // names, and the satellite is placed beside both pins.
+    let mut pair_of: BTreeMap<usize, pair::PairPlan> = BTreeMap::new();
+    let mut pair_nets = vec![false; ctx.design.nets.len()];
+    for u in 0..units.len() {
+        if role[u] != Role::Satellite || units[u].parts.len() != 1 {
+            continue;
+        }
+        let part = units[u].parts[0];
+        if let Some(plan) = pair::detect(ctx, &placed, part, &anchor_pins, &bus_net) {
+            for pin in &ctx.glyphs[part].pins {
+                if let Some(net) = net_of(ctx, part, &pin.id) {
+                    tagged[net] = false;
+                    pair_nets[net] = true;
+                }
+            }
+            pair_of.insert(u, plan);
+        }
+    }
+    let bus_rooms = bus::rooms(ctx, &placed, &bus_plans, &tagged);
+
     // Each satellite is tied to the pin it serves.
     let mut plans: Vec<SatPlan> = Vec::new();
     let mut chained: Vec<SatPlan> = Vec::new();
@@ -395,6 +427,23 @@ pub(super) fn run(
         }
         let ties = ties(&placed, &units[u], &shapes[u]);
         let mut chosen: Option<SatPlan> = None;
+        if let Some(plan) = pair_of.get(&u) {
+            // Across two pins: tied to the first, and placed beside both when it can be.
+            let (_, ia) = plan.links[0];
+            let pin = &placed[plan.anchor].pins[ia];
+            if let Some(t) = ties.iter().find(|t| Some(t.net) == pin.net) {
+                plans.push(SatPlan {
+                    unit: u,
+                    anchor: plan.anchor,
+                    root: plan.anchor,
+                    pin: ia,
+                    r: t.r,
+                    net: t.net,
+                    pair: Some(*plan),
+                });
+                continue;
+            }
+        }
         for t in ties
             .iter()
             .filter(|t| t.net != usize::MAX && ctx.power[t.net].is_none())
@@ -411,6 +460,7 @@ pub(super) fn run(
                     pin: i,
                     r: t.r,
                     net: t.net,
+                    pair: None,
                 });
                 break;
             }
@@ -432,6 +482,7 @@ pub(super) fn run(
                         pin: i,
                         r: t.r,
                         net: t.net,
+                        pair: None,
                     });
                     break;
                 }
@@ -509,6 +560,7 @@ pub(super) fn run(
                         pin: i,
                         r,
                         net,
+                        pair: None,
                     });
                     break 'tie;
                 }
@@ -528,6 +580,16 @@ pub(super) fn run(
             ctx, &placed, units, &shapes, a, &mine, &mut tied, &tagged, rooms,
         );
         blocks.push(block);
+    }
+
+    // The parts that were turned as they were placed (pair satellites), and the wires that
+    // are drawn first.
+    let mut pair_routes: Vec<pair::PairRoute> = Vec::new();
+    for b in &blocks {
+        for &(p, o) in &b.orients {
+            placed[p] = place_part(ctx, p, o, &pin_nets[p]);
+        }
+        pair_routes.extend(b.pairs.iter().copied());
     }
 
     // The pieces: the blocks in the order of the signal, then the parts that stand alone.
@@ -636,7 +698,19 @@ pub(super) fn run(
 
     groups.retain(|g| !g.is_empty());
     Scene::new(
-        ctx, placed, units, marks, groups, satellites, tagged, block_of, anchored, bus_plans, retag,
+        ctx,
+        placed,
+        units,
+        marks,
+        groups,
+        satellites,
+        tagged,
+        block_of,
+        anchored,
+        bus_plans,
+        retag,
+        pair_routes,
+        pair_nets,
     )
     .finish()
 }
@@ -887,7 +961,12 @@ fn build_block(
     rooms: &[Rect],
 ) -> Block {
     let a = &placed[anchor];
-    let mut obstacles: Vec<Rect> = vec![inflate(a.extent, 0.5)];
+    // What the anchor covers: its body and pins, and each of its texts (not the one box
+    // round them all, which would keep a satellite out of the strip beside the texts).
+    let mut obstacles: Vec<Rect> = vec![inflate(body_of(&a.glyph, a.orient), 0.5)];
+    for t in std::iter::once(&a.reference).chain(a.value.as_ref()) {
+        obstacles.push(inflate(t.extent(), 0.5));
+    }
     let mut members: Vec<(usize, Pt, Option<Dir>)> = vec![(anchor, Pt::new(0.0, 0.0), None)];
     let mut rect = a.extent;
     // The names and flags at the anchor's pins keep their room; but at a pin that has parts
@@ -924,6 +1003,39 @@ fn build_block(
             .then(x.unit.cmp(&y.unit))
     });
     sorted.extend(sats.iter().filter(|x| x.anchor != anchor));
+    // The satellites across two of the anchor's pins stand beside both, nearest first.
+    let mut orients: Vec<(usize, Orient)> = Vec::new();
+    let mut pairs: Vec<pair::PairRoute> = Vec::new();
+    let mut paired: BTreeSet<usize> = BTreeSet::new();
+    let mut foots: Vec<Rect> = Vec::new();
+    for plan in sorted
+        .iter()
+        .filter(|x| x.anchor == anchor && x.pair.is_some())
+    {
+        let Some(pp) = plan.pair else { continue };
+        let part = units[plan.unit].parts[0];
+        let Some(at) = pair::place(ctx, placed, &pp, part, &obstacles) else {
+            continue;
+        };
+        tied[plan.unit] = true;
+        paired.insert(plan.unit);
+        members.push((part, at.off, Some(at.side)));
+        orients.push((part, at.orient));
+        pairs.push(pair::PairRoute {
+            part,
+            anchor,
+            links: pp.links,
+            order: at.order,
+        });
+        obstacles.push(at.foot);
+        rect.union(at.foot);
+        foots.push(at.foot);
+        for lane in at.lanes {
+            obstacles.push(lane);
+            rect.union(lane);
+        }
+    }
+    sorted.retain(|x| !paired.contains(&x.unit));
     // The capacitors that decouple a supply pin stand in a row, as far from the part as each
     // other, the same distance apart, level, hanging from the supply rail above and standing
     // on the ground rail below.
@@ -933,8 +1045,7 @@ fn build_block(
             && !a.pins[x.pin].escape.is_vertical()
     };
     let mut done_rows: Vec<&SatPlan> = Vec::new();
-    // The boxes the satellites were placed in.
-    let mut foots: Vec<Rect> = Vec::new();
+    // (`foots`, above, are the boxes the satellites were placed in.)
     for side in [Dir::Left, Dir::Right] {
         let row: Vec<&SatPlan> = sorted
             .iter()
@@ -1014,11 +1125,36 @@ fn build_block(
         let shape = &shapes[plan.unit];
         let mut found: Option<(Pt, Dir, Rect)> = None;
         // Level with the pin first, as far out as it takes; only then a row above or below.
-        'search: for dy in [
+        const DYS: [f64; 15] = [
             0.0, 5.08, -5.08, 10.16, -10.16, 15.24, -15.24, 20.32, -20.32, 25.4, -25.4, 30.48,
             -30.48, 38.1, -38.1,
-        ] {
-            for k in 0..20 {
+        ];
+        let mut order: Vec<(f64, i32)> = Vec::new();
+        if pin.escape.is_vertical() && ctx.power[plan.net].is_some() {
+            // A supply pin on the top or the bottom edge has the body of its part just beside
+            // it, so level with it is clear only far out: a place a little off the line is
+            // tried first, nearest first.
+            let near = |k: i32| 7.62 + 5.08 * f64::from(k) <= policy::LEVEL_MM;
+            order.extend((0..20).filter(|&k| near(k)).map(|k| (0.0, k)));
+            let mut off_level: Vec<(f64, i32)> = Vec::new();
+            for dy in DYS.into_iter().skip(1) {
+                off_level.extend((0..20).map(|k| (dy, k)));
+            }
+            // The cells out and the cells across (a stable sort keeps the order above among
+            // equals).
+            off_level.sort_by(|p, q| {
+                let cost = |&(dy, k): &(f64, i32)| 7.62 + 5.08 * f64::from(k) + dy.abs();
+                cost(p).total_cmp(&cost(q))
+            });
+            order.extend(off_level);
+            order.extend((0..20).filter(|&k| !near(k)).map(|k| (0.0, k)));
+        } else {
+            for dy in DYS {
+                order.extend((0..20).map(|k| (dy, k)));
+            }
+        }
+        'search: for (dy, k) in order {
+            {
                 let dx = 7.62 + 5.08 * f64::from(k);
                 for &sd in &sides {
                     let base = unit_rect(ctx, placed, unit, shape, Some(sd));
@@ -1088,11 +1224,101 @@ fn build_block(
         anchor,
         members,
         rect: inflate(rect, 0.0),
+        orients,
+        pairs,
     }
 }
 
 // ---------------------------------------------------------------------------------------
 // Wires
+
+/// A part, the lines of its pins and all its texts are in the way of wires.
+fn block_part(grid: &mut Grid, part: &PlacedPart) {
+    if let Some(b) = part.glyph.body() {
+        let corners = [
+            part.orient.apply((b.min.x, b.min.y)),
+            part.orient.apply((b.max.x, b.max.y)),
+            part.orient.apply((b.min.x, b.max.y)),
+            part.orient.apply((b.max.x, b.min.y)),
+        ];
+        let mut r = Rect::around(Pt::new(corners[0].x + part.at.x, corners[0].y + part.at.y));
+        for c in &corners {
+            r.include(Pt::new(c.x + part.at.x, c.y + part.at.y));
+        }
+        // Room round the body, so that no wire runs along its outline (a body
+        // thinner than a grid step has the nodes beside it within reach of its
+        // lines). On a side a pin leaves by the room is kept off the columns of the
+        // pins: their wires start there.
+        let by = crate::sheetview::HUG;
+        let leaves = |d: Dir| part.pins.iter().any(|q| q.escape == d);
+        let wide = Rect {
+            min: Pt::new(
+                r.min.x - if leaves(Dir::Left) { 0.0 } else { by },
+                r.min.y - if leaves(Dir::Up) { 0.0 } else { by },
+            ),
+            max: Pt::new(
+                r.max.x + if leaves(Dir::Right) { 0.0 } else { by },
+                r.max.y + if leaves(Dir::Down) { 0.0 } else { by },
+            ),
+        };
+        grid.block_body(wide);
+        for side in [Dir::Up, Dir::Down, Dir::Left, Dir::Right] {
+            let along: Vec<f64> = part
+                .pins
+                .iter()
+                .filter(|q| q.escape == side)
+                .map(|q| if side.is_vertical() { q.at.x } else { q.at.y })
+                .collect();
+            if along.is_empty() {
+                continue;
+            }
+            for strip in side_strips(r, side, &along, by) {
+                grid.block_rect(strip);
+            }
+        }
+        grid.block_body(r);
+    }
+    for (pin, placed) in part.glyph.pins.iter().zip(&part.pins) {
+        if pin.hidden {
+            continue;
+        }
+        let toward = part.orient.dir(pin.toward_body);
+        // The pin's line, but not the point a wire starts at.
+        let from = grid.node(placed.at);
+        let (dx, dy) = toward.vector();
+        for k in 1..=((pin.length / GRID).round() as i32) {
+            grid.block((from.0 + dx as i32 * k, from.1 + dy as i32 * k));
+        }
+        let (number, name) = part.glyph.pin_texts(pin, placed.at, toward);
+        for t in number.into_iter().chain(name) {
+            grid.block_rect(inflate(t.extent_at(part.glyph.pin_text), 0.2));
+        }
+    }
+    for t in std::iter::once(&part.reference).chain(part.value.as_ref()) {
+        grid.block_rect(inflate(t.extent(), 0.9));
+    }
+}
+
+/// The straight stub out of a pin at `node`, as far as it goes free, up to [`STUB_CELLS`]:
+/// claimed for net `id`. Gives its end.
+fn lay_stub(grid: &mut Grid, node: Node, escape: Dir, id: u32) -> Node {
+    grid.unblock(node);
+    let (dx, dy) = escape.vector();
+    let step = |k: i32| (node.0 + dx as i32 * k, node.1 + dy as i32 * k);
+    let mut end = node;
+    for k in 1..=STUB_CELLS {
+        if grid.is_free(step(k)) && !grid.step_is_cut(step(k - 1), escape) {
+            end = step(k);
+        } else {
+            break;
+        }
+    }
+    grid.claim_wire(node, end, id);
+    end
+}
+
+/// A pin of a placed part: the part and the index of the pin.
+type PinKey = (usize, usize);
 
 struct PinInfo {
     part: usize,
@@ -1156,6 +1382,15 @@ struct Scene<'a> {
     /// What each net's tag was before the buses took their nets' tags away.
     retag: Vec<bool>,
     buses: Vec<Bus>,
+    /// The pair satellites placed beside two pins: their wires are drawn first.
+    pair_routes: Vec<pair::PairRoute>,
+    /// The pins of those satellites: a wire leaves the tip in any direction, with no stub.
+    bare: BTreeSet<(usize, usize)>,
+    /// The nets of pair satellites, for the policy that names nets.
+    pair_nets: Vec<bool>,
+    /// The rail pins of satellites that have a symbol of their own, or share one with the
+    /// satellites beside them: the rail of the group does not reach them.
+    local_done: BTreeSet<(usize, usize)>,
 }
 
 impl<'a> Scene<'a> {
@@ -1172,6 +1407,8 @@ impl<'a> Scene<'a> {
         anchored: Vec<bool>,
         bus_plans: Vec<bus::BusPlan>,
         retag: Vec<bool>,
+        pair_routes: Vec<pair::PairRoute>,
+        pair_nets: Vec<bool>,
     ) -> Self {
         let mut bounds = parts[0..]
             .first()
@@ -1220,6 +1457,13 @@ impl<'a> Scene<'a> {
             bus_plans,
             retag,
             buses: Vec::new(),
+            bare: pair_routes
+                .iter()
+                .flat_map(|r| r.links.iter().map(|&(pin, _)| (r.part, pin)))
+                .collect(),
+            pair_routes,
+            pair_nets,
+            local_done: BTreeSet::new(),
         };
         scene.block_parts();
         scene.collect_pins();
@@ -1258,72 +1502,7 @@ impl<'a> Scene<'a> {
     /// Parts, the lines of their pins and all their texts are in the way of wires.
     fn block_parts(&mut self) {
         for part in &self.parts {
-            if let Some(b) = part.glyph.body() {
-                let corners = [
-                    part.orient.apply((b.min.x, b.min.y)),
-                    part.orient.apply((b.max.x, b.max.y)),
-                    part.orient.apply((b.min.x, b.max.y)),
-                    part.orient.apply((b.max.x, b.min.y)),
-                ];
-                let mut r =
-                    Rect::around(Pt::new(corners[0].x + part.at.x, corners[0].y + part.at.y));
-                for c in &corners {
-                    r.include(Pt::new(c.x + part.at.x, c.y + part.at.y));
-                }
-                // Room round the body, so that no wire runs along its outline (a body
-                // thinner than a grid step has the nodes beside it within reach of its
-                // lines). On a side a pin leaves by the room is kept off the columns of the
-                // pins: their wires start there.
-                let by = crate::sheetview::HUG;
-                let leaves = |d: Dir| part.pins.iter().any(|q| q.escape == d);
-                let wide = Rect {
-                    min: Pt::new(
-                        r.min.x - if leaves(Dir::Left) { 0.0 } else { by },
-                        r.min.y - if leaves(Dir::Up) { 0.0 } else { by },
-                    ),
-                    max: Pt::new(
-                        r.max.x + if leaves(Dir::Right) { 0.0 } else { by },
-                        r.max.y + if leaves(Dir::Down) { 0.0 } else { by },
-                    ),
-                };
-                self.grid.block_body(wide);
-                for side in [Dir::Up, Dir::Down, Dir::Left, Dir::Right] {
-                    let along: Vec<f64> = part
-                        .pins
-                        .iter()
-                        .filter(|q| q.escape == side)
-                        .map(|q| if side.is_vertical() { q.at.x } else { q.at.y })
-                        .collect();
-                    if along.is_empty() {
-                        continue;
-                    }
-                    for strip in side_strips(r, side, &along, by) {
-                        self.grid.block_rect(strip);
-                    }
-                }
-                self.grid.block_body(r);
-            }
-            for (pin, placed) in part.glyph.pins.iter().zip(&part.pins) {
-                if pin.hidden {
-                    continue;
-                }
-                let toward = part.orient.dir(pin.toward_body);
-                // The pin's line, but not the point a wire starts at.
-                let from = self.grid.node(placed.at);
-                let (dx, dy) = toward.vector();
-                for k in 1..=((pin.length / GRID).round() as i32) {
-                    self.grid
-                        .block((from.0 + dx as i32 * k, from.1 + dy as i32 * k));
-                }
-                let (number, name) = part.glyph.pin_texts(pin, placed.at, toward);
-                for t in number.into_iter().chain(name) {
-                    self.grid
-                        .block_rect(inflate(t.extent_at(part.glyph.pin_text), 0.2));
-                }
-            }
-            for t in std::iter::once(&part.reference).chain(part.value.as_ref()) {
-                self.grid.block_rect(inflate(t.extent(), 0.9));
-            }
+            block_part(&mut self.grid, part);
         }
     }
 
@@ -1436,20 +1615,17 @@ impl<'a> Scene<'a> {
 
     /// The straight stub out of a pin, as far as it goes free, up to [`STUB_CELLS`].
     fn stub_pin(&mut self, part: usize, idx: usize, net: usize, node: Node, escape: Dir) {
-        let id = Self::net_id(net);
-        self.grid.unblock(node);
-        let (dx, dy) = escape.vector();
-        let step = |k: i32| (node.0 + dx as i32 * k, node.1 + dy as i32 * k);
-        let mut end = node;
-        for k in 1..=STUB_CELLS {
-            if self.grid.is_free(step(k)) && !self.grid.step_is_cut(step(k - 1), escape) {
-                end = step(k);
-            } else {
-                break;
-            }
+        let end = if self.bare.contains(&(part, idx)) {
+            // A pair satellite's pin has no stub: the wire leaves the tip as it likes.
+            self.grid.unblock(node);
+            self.grid.claim_wire(node, node, Self::net_id(net));
+            node
+        } else {
+            lay_stub(&mut self.grid, node, escape, Self::net_id(net))
+        };
+        if end != node {
+            self.push_wire(net, &[node, end]);
         }
-        self.grid.claim_wire(node, end, id);
-        self.push_wire(net, &[node, end]);
         self.stubs.insert(
             (part, idx),
             Stub {
@@ -1522,7 +1698,14 @@ impl<'a> Scene<'a> {
                 end
             };
             let targets: HashSet<Node> = tree.iter().copied().collect();
-            match self.grid.route(id, start, heading, &targets) {
+            let routed = if self.bare.contains(&key) {
+                self.grid
+                    .route_free(id, start, &targets)
+                    .map(|(_, path)| path)
+            } else {
+                self.grid.route(id, start, heading, &targets)
+            };
+            match routed {
                 Some(path) => {
                     self.grid.commit(&path, id);
                     self.push_wire(net, &path);
@@ -1547,6 +1730,37 @@ impl<'a> Scene<'a> {
             .filter(|p| p.net == net && !self.joined.contains(&(p.part, p.idx)))
             .map(|p| (p.part, p.idx))
             .collect()
+    }
+
+    /// The wires of the pair satellites, before anything else is routed: each joins the stub of
+    /// the main part's pin on its net, in the order the placement found. What else is on the
+    /// net is joined to them afterwards.
+    fn route_pairs(&mut self) {
+        for route in self.pair_routes.clone() {
+            for &k in &route.order {
+                let (sat_pin, anchor_pin) = route.links[k];
+                let Some(net) = self.parts[route.part].pins[sat_pin].net else {
+                    continue;
+                };
+                let Some(stub) = self.stubs.get(&(route.anchor, anchor_pin)) else {
+                    continue;
+                };
+                let mut tree: BTreeSet<Node> = BTreeSet::new();
+                let (dx, dy) = (
+                    (stub.end.0 - stub.pin.0).signum(),
+                    (stub.end.1 - stub.pin.1).signum(),
+                );
+                let mut at = stub.pin;
+                tree.insert(at);
+                while at != stub.end {
+                    at = (at.0 + dx, at.1 + dy);
+                    tree.insert(at);
+                }
+                let mut tree = self.route_tree(net, &[(route.part, sat_pin)], tree);
+                tree.extend(self.trees.remove(&net).unwrap_or_default());
+                self.trees.insert(net, tree);
+            }
+        }
     }
 
     fn route_signals(&mut self) {
@@ -1626,6 +1840,7 @@ impl<'a> Scene<'a> {
     /// beyond every part, with one symbol; the pins hang from it by straight wires. Pins next
     /// to each other on one side share a bus first.
     fn route_rails(&mut self) {
+        self.local_rails();
         for g in 0..self.groups.len() {
             let mut rect: Option<Rect> = None;
             for &p in &self.groups[g] {
@@ -1648,6 +1863,7 @@ impl<'a> Scene<'a> {
                     in_group.contains(&p.part)
                         && self.ctx.power[p.net].is_some()
                         && self.stubs.contains_key(&(p.part, p.idx))
+                        && !self.local_done.contains(&(p.part, p.idx))
                 })
                 .map(|p| p.net)
                 .collect();
@@ -1687,7 +1903,7 @@ impl<'a> Scene<'a> {
             .iter()
             .filter(|p| p.net == net && in_group.contains(&p.part))
             .map(|p| (p.part, p.idx))
-            .filter(|key| self.stubs.contains_key(key))
+            .filter(|key| self.stubs.contains_key(key) && !self.local_done.contains(key))
             .collect();
         keys.sort_by_key(|key| {
             let s = &self.stubs[key];
@@ -1774,7 +1990,7 @@ impl<'a> Scene<'a> {
         let outward = if kind == PowerKind::Supply { -1 } else { 1 };
         let mut row = row;
         for _ in 0..40 {
-            if (lo..=hi).all(|x| !self.grid.is_blocked((x, row))) {
+            if (lo..=hi).all(|x| self.grid.free_for((x, row), id)) {
                 break;
             }
             row += outward;
@@ -1830,16 +2046,28 @@ impl<'a> Scene<'a> {
             }
         }
         // The symbol, at the end of a stem from the rail.
+        self.place_symbol(net, kind, (sym_x, row), chosen.map(|c| c.1));
+    }
+
+    /// The symbol of rail `net` at the end of a stem from `q`, a node of the rail's wire.
+    /// `label` is the place its name was found for by [`symbol_fits`](Self::symbol_fits); none
+    /// when no place was found, and the name goes beside it as it is.
+    fn place_symbol(&mut self, net: usize, kind: PowerKind, q: Node, label: Option<Option<Text>>) {
+        let id = Self::net_id(net);
+        let natural = if kind == PowerKind::Supply {
+            Dir::Up
+        } else {
+            Dir::Down
+        };
         let (dx, dy) = natural.vector();
-        let q = (sym_x, row);
         let end = (q.0 + dx as i32 * STEM_CELLS, q.1 + dy as i32 * STEM_CELLS);
         self.grid.claim_wire(q, end, id);
         self.push_wire(net, &[q, end]);
         let at = self.grid.pt(end);
         let name = ellipsize(&self.ctx.design.nets[net].name);
         let named = kind == PowerKind::Supply || self.ctx.label_grounds;
-        let label = match chosen {
-            Some((_, l)) => l,
+        let label = match label {
+            Some(l) => l,
             None => named.then(|| label_beside(at, natural, &name, Side::Right)),
         };
         let symbol = PowerSymbol {
@@ -1851,6 +2079,121 @@ impl<'a> Scene<'a> {
         };
         self.grid.block_rect(inflate(symbol.extent(), 0.9));
         self.symbols.push(symbol);
+    }
+
+    /// A satellite whose pin is on a rail has a stub and a symbol of its own, short and local,
+    /// instead of a drop to the one wire across the group (a decoupling capacitor's supply
+    /// and ground would run the length of the sheet and across other wires): the stub of its
+    /// pin goes on, a few cells at most, to a symbol that points away from the part (a supply
+    /// up, a ground down). Satellites standing side by side in a row, whose pins end on one
+    /// line, share a wire and a symbol when the wire is short and nothing is on its way
+    /// ([`policy::shares_rail`]). A pin that has no room for a symbol, or whose stub does not
+    /// point away from the part, stays with the group's rail, as does every pin of a main
+    /// part.
+    fn local_rails(&mut self) {
+        // The rail pins, by net and by the line their stubs end on.
+        let mut rows: BTreeMap<(usize, i32), Vec<(i32, PinKey)>> = BTreeMap::new();
+        for p in &self.pins {
+            let Some(kind) = self.ctx.power[p.net] else {
+                continue;
+            };
+            if !self.satellites.contains(&p.part) {
+                continue;
+            }
+            let key = (p.part, p.idx);
+            let Some(stub) = self.stubs.get(&key) else {
+                continue;
+            };
+            let natural = if kind == PowerKind::Supply {
+                Dir::Up
+            } else {
+                Dir::Down
+            };
+            if stub.heading != natural {
+                continue;
+            }
+            rows.entry((p.net, stub.end.1))
+                .or_default()
+                .push((stub.end.0, key));
+        }
+        for ((net, row), mut pins) in rows {
+            pins.sort();
+            let kind = self.ctx.power[net].expect("a rail");
+            let id = Self::net_id(net);
+            // Runs of pins whose stubs end near each other on the line.
+            let mut runs: Vec<Vec<(i32, PinKey)>> = Vec::new();
+            for pin in pins {
+                match runs.last_mut() {
+                    Some(run)
+                        if f64::from(pin.0 - run[run.len() - 1].0)
+                            <= policy::RAIL_ROW_GAP_STEPS =>
+                    {
+                        run.push(pin)
+                    }
+                    _ => runs.push(vec![pin]),
+                }
+            }
+            for run in runs {
+                let (first, last) = (run[0].0, run[run.len() - 1].0);
+                let mut shared = false;
+                if run.len() >= 2
+                    && policy::shares_rail(f64::from(last - first))
+                    && (first..=last).all(|x| self.grid.free_for((x, row), id))
+                {
+                    // The symbol hangs from the end of the row, or else from another stub.
+                    let mut order: Vec<i32> = run.iter().map(|p| p.0).collect();
+                    order.reverse();
+                    let found = order.into_iter().find_map(|x| {
+                        self.symbol_fits(net, kind, (x, row))
+                            .map(|label| (x, label))
+                    });
+                    if let Some((x, label)) = found {
+                        self.grid.claim_wire((first, row), (last, row), id);
+                        self.push_wire(net, &[(first, row), (last, row)]);
+                        self.place_symbol(net, kind, (x, row), Some(label));
+                        self.local_done.extend(run.iter().map(|p| p.1));
+                        shared = true;
+                    }
+                }
+                if shared {
+                    continue;
+                }
+                for &(x, key) in &run {
+                    self.local_symbol(net, kind, (x, row), key);
+                }
+            }
+        }
+    }
+
+    /// The symbol of one satellite pin whose stub ends at `end`: at the end of the stub, or a
+    /// few cells beyond it if the symbol or its name has no room there.
+    fn local_symbol(&mut self, net: usize, kind: PowerKind, end: Node, key: (usize, usize)) {
+        let id = Self::net_id(net);
+        let natural = if kind == PowerKind::Supply {
+            Dir::Up
+        } else {
+            Dir::Down
+        };
+        let (dx, dy) = natural.vector();
+        for extra in 0..=policy::LOCAL_STEM_EXTRA {
+            let q = (end.0 + dx as i32 * extra, end.1 + dy as i32 * extra);
+            if extra > 0 {
+                let before = (q.0 - dx as i32, q.1 - dy as i32);
+                if !self.grid.free_for(q, id) || self.grid.step_is_cut(before, natural) {
+                    return;
+                }
+            }
+            let Some(label) = self.symbol_fits(net, kind, q) else {
+                continue;
+            };
+            if extra > 0 {
+                self.grid.claim_wire(end, q, id);
+                self.push_wire(net, &[end, q]);
+            }
+            self.place_symbol(net, kind, q, Some(label));
+            self.local_done.insert(key);
+            return;
+        }
     }
 
     /// Whether a symbol can hang at `q` of a rail: the stem and the drawing are clear of
@@ -2158,6 +2501,7 @@ impl<'a> Scene<'a> {
         self.join_and_stub();
         self.plan_tags();
         self.plan_buses();
+        self.route_pairs();
         self.route_rails();
         self.route_signals();
         let marks = self.pin_marks();
@@ -2227,6 +2571,7 @@ impl<'a> Scene<'a> {
             },
             clusters: self.clusters,
             bus_nets: self.bus_done,
+            pair_nets: self.pair_nets,
         }
     }
 }

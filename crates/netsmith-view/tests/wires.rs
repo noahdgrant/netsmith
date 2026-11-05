@@ -547,13 +547,15 @@ fn a_run_of_ground_pins_shares_a_bus_and_one_symbol() {
         .filter(|s| s.net == gnd && sheet_of(&l, s.at).is_some_and(|x| x.name == sheet.name))
         .collect();
     assert_eq!(here.len(), 1, "{here:?}");
-    // The microcontroller's 24 grounds are on one side of one part: one symbol for them.
+    // The microcontroller's 24 grounds are on one side of one part: one symbol for them. Each
+    // small part on the ground has a symbol of its own below it, and there are no others.
     let mcu: Vec<_> = l
         .symbols
         .iter()
         .filter(|s| s.net == gnd && sheet_of(&l, s.at).is_some_and(|x| x.name == "mcu"))
         .collect();
-    assert!(mcu.len() <= 2, "{mcu:?}");
+    let small = ["C4", "C5"].len();
+    assert!(mcu.len() <= 1 + small, "{mcu:?}");
 }
 
 #[test]
@@ -819,8 +821,11 @@ fn in_frame(s: &netsmith_view::Sheet, p: Pt) -> bool {
 }
 
 #[test]
-fn a_ground_is_one_straight_rail_across_the_bottom_with_one_symbol() {
-    // Owner round 2 (A): the regulator's grounds hang straight down to one rail, one symbol.
+fn a_satellites_ground_has_a_short_stub_and_a_symbol_of_its_own() {
+    // Round 3: a small part's ground does not run across the sheet to one rail; its pin has a
+    // stub of a few cells to a symbol of its own, below it. The regulator's own ground pin has
+    // its stub and symbol as before. (Satellites side by side in a row, whose pins end on one
+    // line, may share a short wire and one symbol.)
     let b = bench();
     let l = lay(&b);
     let ldo = sheet_named(&l, "ldo");
@@ -830,34 +835,37 @@ fn a_ground_is_one_straight_rail_across_the_bottom_with_one_symbol() {
         .iter()
         .filter(|s| s.net == gnd && in_frame(ldo, s.at))
         .collect();
-    assert_eq!(symbols.len(), 1, "one ground symbol: {symbols:?}");
-    // The rail is the longest horizontal wire of ground on the sheet, below every part.
-    let rail = segments(&l)
-        .into_iter()
-        .filter(|&(net, a, c)| {
-            net == gnd && near(Pt::new(0.0, a.y), Pt::new(0.0, c.y)) && in_frame(ldo, a)
-        })
-        .max_by(|x, y| (x.1.x - x.2.x).abs().total_cmp(&(y.1.x - y.2.x).abs()))
-        .expect("a rail");
-    let y = rail.1.y;
-    let lowest = ldo
-        .parts
-        .iter()
-        .map(|&i| l.parts[i].extent.max.y)
-        .fold(f64::MIN, f64::max);
-    assert!(y > lowest, "the rail ({y}) is below every part ({lowest})");
-    // Every ground pin reaches it with a wire of at most two bends, and the symbol hangs
-    // from it, in line with a capacitor.
     for (r, p) in [("U4", "1"), ("C2", "2"), ("C3", "2")] {
-        assert!(pin_at(&l, &b, r, p).y < y);
+        let pin = pin_at(&l, &b, r, p);
+        let below = symbols
+            .iter()
+            .filter(|s| s.at.y > pin.y)
+            .map(|s| ((s.at.x - pin.x).abs() + (s.at.y - pin.y)) / 1.27)
+            .fold(f64::MAX, f64::min);
+        assert!(
+            below <= 40.0,
+            "{r}.{p}: the nearest symbol below is {below} steps away"
+        );
     }
-    let sym = symbols[0];
+    for r in ["C2", "C3"] {
+        let pin = pin_at(&l, &b, r, "2");
+        assert!(
+            symbols.iter().any(|s| (s.at.x - pin.x).abs() < 1e-6
+                && s.at.y > pin.y
+                && s.at.y - pin.y <= 8.0 * 1.27),
+            "{r} has a symbol of its own straight below its ground pin: {symbols:?}"
+        );
+    }
+    // No wire of ground on the sheet is as long as the sheet: the longest run is the
+    // regulator's own, or a row of capacitors.
+    let longest = segments(&l)
+        .into_iter()
+        .filter(|&(net, a, _)| net == gnd && in_frame(ldo, a))
+        .map(|(_, a, c)| ((a.x - c.x).abs() + (a.y - c.y).abs()) / 1.27)
+        .fold(0.0, f64::max);
     assert!(
-        sym.at.y > y
-            && near(
-                Pt::new(sym.at.x, 0.0),
-                Pt::new(pin_at(&l, &b, "C2", "2").x, 0.0)
-            )
+        longest <= 30.0,
+        "the longest ground wire is {longest} steps"
     );
     for w in l
         .wires
@@ -870,24 +878,25 @@ fn a_ground_is_one_straight_rail_across_the_bottom_with_one_symbol() {
 
 #[test]
 fn a_supply_symbol_is_in_line_with_the_capacitor_it_serves() {
-    // Owner round 2 (B): the output rail's symbol is directly above the output capacitor.
+    // The output capacitor's supply symbol is directly above it, on a stub of its own.
     let b = bench();
     let l = lay(&b);
     let ldo = sheet_named(&l, "ldo");
     for (rail, cap) in [("+3V3", "C3"), ("+3V8", "C2")] {
         let n = net_index(&b, rail);
+        let top = pin_at(&l, &b, cap, "1");
         let syms: Vec<_> = l
             .symbols
             .iter()
             .filter(|s| s.net == n && in_frame(ldo, s.at))
             .collect();
-        assert_eq!(syms.len(), 1, "{rail}");
-        let top = pin_at(&l, &b, cap, "1");
         assert!(
-            near(Pt::new(syms[0].at.x, 0.0), Pt::new(top.x, 0.0)),
-            "{rail} over {cap}"
+            syms.iter()
+                .any(|s| near(Pt::new(s.at.x, 0.0), Pt::new(top.x, 0.0))
+                    && s.at.y < top.y
+                    && top.y - s.at.y <= 8.0 * 1.27),
+            "{rail}: a symbol straight over {cap}, a few steps up: {syms:?}"
         );
-        assert!(syms[0].at.y < top.y);
     }
 }
 

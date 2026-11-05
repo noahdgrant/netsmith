@@ -35,6 +35,28 @@ pub(super) const FAN_OUT_STEPS: f64 = 30.0;
 pub(super) const MAX_CROSSINGS: usize = 1;
 /// How many times a sheet is drawn again with more nets named.
 pub(super) const PASSES: usize = 3;
+/// The two pins of a pair satellite (a crystal) are at most this many grid steps apart.
+pub(super) const PAIR_REACH_STEPS: f64 = 16.0;
+/// Satellites whose rail pins end on one line share a rail wire (and a symbol) only where
+/// neighbours are within this many grid steps of each other (a row of input capacitors)...
+pub(super) const RAIL_ROW_GAP_STEPS: f64 = 12.0;
+/// ... and the wire is no longer than this (the wire of a row of four capacitors)...
+pub(super) const RAIL_SPAN_STEPS: f64 = 36.0;
+/// ... and a satellite's own symbol is moved out from its pin by at most this many cells to
+/// find room.
+pub(super) const LOCAL_STEM_EXTRA: i32 = 6;
+
+/// A satellite that serves a pin stands level with it up to this far out, in millimetres, before
+/// a place a row above or below is tried (a row of capacitors beside a pin is level; one
+/// that would have to go farther out is better a little off the pin's line).
+pub(super) const LEVEL_MM: f64 = 43.0;
+
+/// Whether satellites on one rail whose stubs end on one line, `span` grid steps from the
+/// first to the last, share one wire and one symbol: a short wire. (That nothing is on its way
+/// is checked on the grid.) Otherwise each has a symbol of its own.
+pub(super) fn shares_rail(span: f64) -> bool {
+    span <= RAIL_SPAN_STEPS
+}
 
 /// The nets to draw as names after seeing `drawn`, which has `labelled` named already: a
 /// superset of `labelled`.
@@ -64,6 +86,7 @@ pub(super) fn choose(ctx: &Ctx, drawn: &Drawn, labelled: &[bool]) -> Vec<bool> {
             && ctx.power[n].is_none()
             && drawn.clusters[n] >= 2
             && !drawn.bus_nets[n]
+            && !drawn.pair_nets[n]
     };
     let candidates: Vec<usize> = (0..nets).filter(|&n| candidate(n) && !out[n]).collect();
 

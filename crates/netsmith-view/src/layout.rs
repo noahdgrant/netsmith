@@ -15,7 +15,12 @@
 //!    feedback divider, a bootstrap capacitor) goes next to that pin, on the pin's side, and
 //!    is wired to it, always. Parts in series (a divider) stand in one stack, and what is on
 //!    the node between them is wired out sideways. Supplies are at the top of a part, grounds
-//!    at the bottom.
+//!    at the bottom. A two-terminal part across **two** pins of one main part (a crystal across
+//!    `XL1` and `XL2`, a resonator, a series element) is a **pair satellite**: it is placed
+//!    beside both pins, in the orientation and at the place whose two wires are cheapest by
+//!    length, bends and crossings (every candidate is tried, in a fixed order, and routed on a
+//!    scratch copy of the grid), the wires are drawn before any other, they leave the part's
+//!    pins in any direction and cross nothing, and their nets are never named (`engine/pair.rs`).
 //! 3. A net is drawn as wires when it is local and short, and as a **name at each of its
 //!    places** when wires would be long or tangled. A wired net is orthogonal wires on a
 //!    grid, round parts and texts, crossing other wires only at right angles ([`grid`]). A
@@ -31,7 +36,13 @@
 //!    with a power symbol at the end of a short wire (never on a wire, never named). The net
 //!    of a part that serves a pin is only wires. A generated name is shown on a label as the
 //!    first pin of the net's main part (`J2.3`), as KiCad names such a net, and on a flag not
-//!    at all.
+//!    at all. The rails of a main part's own pins are drawn as before (a run of neighbouring
+//!    pins shares a bus and a symbol, and the rail is one wire across the part's group); the
+//!    rail pin of a small part that stands beside a main part has a **stub of its own** of a
+//!    few cells and a symbol at its end (supply up, ground down) instead of a drop to that wire,
+//!    which would run the length of the sheet and across other wires. Small parts side by side
+//!    in a row whose pins end on one line share a short wire and one symbol when nothing is on
+//!    its way ([`policy`]).
 //! 4. A wire never crosses a text. A pin that connects to nothing has an X.
 //! 5. The members of one interface instance (the design carries them, [`netsmith_core::Design::interfaces`])
 //!    are a **bus** when three or more of them run between the same two main parts, or leave the
