@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 
 import type { Bom as BomData, BomLine, CatalogRefresh } from '../api';
 import { api } from '../client';
+import { NoBoard, ViewLoading } from '../components/ViewStatus';
 import { JobProgress } from '../components/JobProgress';
 import { analysis, board, catalogReport, job, pickPart, checkParts } from '../store';
 import { ageLabel, count, dollars } from '../util';
@@ -143,9 +144,9 @@ export function Bom() {
     };
   }, [name, version]);
 
-  if (!name) return <div class="empty">There is no board to show. See the problems.</div>;
+  if (!name) return <NoBoard what="show" />;
   if (error) return <div class="empty bad">{error}</div>;
-  if (!bom) return <div class="empty">Reading…</div>;
+  if (!bom) return <ViewLoading what="Reading the bill of materials" />;
   const parts = bom.lines.reduce((s, l) => s + l.quantity, 0);
   const stale = [...bom.lines, ...bom.hand].filter((l) => l.stale).length;
   const refreshable = bom.catalogs.length > 0;

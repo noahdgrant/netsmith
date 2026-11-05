@@ -3,18 +3,21 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { Editor } from './components/Editor';
 import {
   Conflict,
-  ProblemsPanel,
   PaneNotice,
   SectionStrip,
-  StatusBar,
   TabMenu,
   Tabs,
-  Toast,
   TopBar,
   dragging,
   tabMenu,
 } from './components/Chrome';
+import { ProblemsDock } from './components/ProblemsDock';
 import { Sidebar } from './components/Sidebar';
+import { StatusBar } from './components/StatusBar';
+import { Toasts } from './components/Toasts';
+import { ProgressLine, StaleStrip } from './components/ViewStatus';
+import { banner, stepProblem } from './feedback/derive';
+import { toggleDock } from './feedback/state';
 import { type Section, SECTIONS, canSplit, clampSplit, closePane, sectionOfKey, splitRight } from './layout';
 import {
   activeFile,
@@ -57,7 +60,6 @@ function SectionBody({ section }: { section: Section }) {
             <Tabs />
             <Conflict />
             <Editor />
-            <ProblemsPanel />
           </div>
         </div>
       );
@@ -80,6 +82,17 @@ function useShortcuts() {
       if ((e.ctrlKey || e.metaKey) && e.key === 's' && !e.defaultPrevented) {
         e.preventDefault();
         if (activeFile.value) void save(activeFile.value);
+        return;
+      }
+      // Ctrl+J (Cmd+J) shows or hides the problems; F8 and Shift+F8 go to the next and the previous.
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        toggleDock();
+        return;
+      }
+      if (e.key === 'F8' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        stepProblem(e.shiftKey ? -1 : 1);
         return;
       }
       if (e.key === 'Escape' && tabMenu.peek()) {
@@ -206,6 +219,7 @@ export function App() {
     (id) => seen.current.has(id) && (KEPT.includes(id) || vis.some((p) => p.section === id)),
   );
   const dragged = dragging.value;
+  const stale = banner.value !== null;
   return (
     <div class={`app ${dragged ? 'dragging' : ''}`}>
       <TopBar />
@@ -232,22 +246,25 @@ export function App() {
           return (
             <section
               key={id}
-              class={`section sec-${id} ${shown ? '' : 'away'}`}
+              class={`section sec-${id} ${shown ? '' : 'away'} ${stale && id !== 'source' && id !== 'build' ? 'is-stale' : ''}`}
               data-section={id}
               data-pane={shown ? vis[at].index : undefined}
               aria-hidden={!shown}
               style={{ gridColumn: shown && two ? (at === 0 ? 1 : 3) : 1, gridRow: 2 }}
             >
+              {id !== 'source' && id !== 'build' && <StaleStrip />}
               <SectionBody section={id} />
             </section>
           );
         })}
         {two && <Divider area={area} />}
         <DropZone />
+        <ProgressLine />
       </div>
+      <ProblemsDock />
       <StatusBar />
       <TabMenu />
-      <Toast />
+      <Toasts />
       {dragged && <div class="drag-ghost" style={{ left: dragged.x + 12, top: dragged.y + 12 }}>{SECTIONS.find((s) => s.id === dragged.section)?.label}</div>}
     </div>
   );

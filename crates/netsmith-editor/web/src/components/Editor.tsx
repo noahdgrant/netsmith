@@ -23,6 +23,7 @@ import {
   edit,
   goTo,
   openFiles,
+  project,
   reveal,
   save,
   say,
@@ -138,6 +139,16 @@ function range(state: EditorState, at: { line: number; column: number; endLine: 
   return { from, to };
 }
 
+/** Lines that stand where the code will be while the project is first read. */
+function CodeSkeleton() {
+  const widths = [38, 62, 24, 70, 54, 0, 46, 66, 30, 58, 42];
+  return (
+    <div class="code-skeleton" aria-hidden="true" data-testid="code-skeleton">
+      {widths.map((w, i) => (w ? <div key={i} class="sk sk-line" style={{ width: `${w}%`, marginLeft: `${(i % 3) * 3}%` }} /> : <div key={i} class="sk-gap" />))}
+    </div>
+  );
+}
+
 export function Editor() {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -218,7 +229,7 @@ export function Editor() {
   return (
     <div class="editor-host">
       <div ref={host} class="cm-wrap" style={{ display: file ? 'block' : 'none' }} />
-      {!file && <div class="empty">Open a file from the project tree.</div>}
+      {!file && (project.value ? <div class="empty">Open a file from the project tree.</div> : <CodeSkeleton />)}
     </div>
   );
 }
