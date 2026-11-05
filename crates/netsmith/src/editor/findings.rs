@@ -250,10 +250,7 @@ pub fn unrouted_findings(board: &Board) -> Vec<PcbFinding> {
 /// 0037). Not listed here: the connections left, which are the ratsnest's (`unrouted`), and
 /// courtyards that overlap, which are the placement check's. KiCad is not involved.
 pub fn drc_findings(board: &Board) -> Vec<PcbFinding> {
-    let extras = drc::Extras {
-        mask_web: Some(board.rules.mask_bridge),
-        via_in_pad: Some(board.process.via_in_pad),
-    };
+    let extras = crate::fab::drc_extras(board);
     let report = match drc::check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras) {
         Ok(report) => report,
         // The board file is netsmith's own, so this is a mistake in netsmith; say so.

@@ -20,6 +20,7 @@ use netsmith_fab::{BomEntry, Fit, KicadCli, Options, Package, Side, package};
 use netsmith_kicad::Mapping;
 use netsmith_lower::{Assembly, Sourced};
 use netsmith_pcb::{
+    Trim,
     Board, RouteOptions, apply_layout, kicad_pcb, kicad_pro, place_options, route_with, svg,
 };
 use netsmith_solve::Catalogs;
@@ -409,6 +410,18 @@ fn fab_board(
         for u in &unchecked {
             say(format!("{}: warning: {u}", built.label()));
         }
+        // A trim is a step a person does with a cutter. The statement stays a warning for as
+        // long as it stands (ADR 0045 section 14).
+        for trim in board.trims() {
+            say(format!(
+                "{}: warning: the design states a trim: {}",
+                built.label(),
+                trim.note()
+            ));
+            for u in trim.unchecked() {
+                say(format!("{}: warning: {u}", built.label()));
+            }
+        }
         say(format!(
             "{}: placed on a {} by {} mm board",
             built.label(),
@@ -472,6 +485,13 @@ fn fab_board(
         extras.extend(board.hangs().into_iter().map(|h| format!("warning: {h}")));
         extras.extend(unchecked.iter().map(|u| format!("warning: {u}")));
         extras.extend(
+            board
+                .trims()
+                .iter()
+                .flat_map(Trim::unchecked)
+                .map(|u| format!("warning: {u}")),
+        );
+        extras.extend(
             built
                 .guideline_warnings()
                 .into_iter()
@@ -479,10 +499,8 @@ fn fab_board(
         );
         let package_options = Options {
             allow_drc_violations: options.allow_drc_violations,
-            drc: netsmith_fab::drc::Extras {
-                mask_web: Some(board.rules.mask_bridge),
-                via_in_pad: Some(board.process.via_in_pad),
-            },
+            drc: drc_extras(&board),
+            trim: board.trims().iter().map(Trim::note).collect(),
             process: Some(board.process_note()),
             extras,
             fit: fit_of(&built.sourcing),
@@ -858,5 +876,15 @@ mod tests {
         )
         .unwrap();
         assert_eq!(entries.len(), 2);
+    }
+}
+
+/// What the design rules check needs that the board file does not say: the process's mask
+/// web and widest filled via, and the courtyards a trimmed pin excuses (ADR 0045 section 14).
+pub(crate) fn drc_extras(board: &Board) -> netsmith_fab::drc::Extras {
+    netsmith_fab::drc::Extras {
+        mask_web: Some(board.rules.mask_bridge),
+        via_in_pad: Some(board.process.via_in_pad),
+        excused_courtyards: board.excused_courtyards(),
     }
 }

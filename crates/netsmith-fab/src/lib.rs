@@ -74,6 +74,10 @@ pub struct Options {
     /// Lines the caller adds to the notes, after the process: what the board needs of the
     /// fabricator beyond its standard process.
     pub extras: Vec<String>,
+    /// The manufacturing steps the design states for through-hole pins cut short after
+    /// soldering, one line each, for the notes as `trim:` lines beside `hand-solder:`
+    /// (ADR 0045 section 14).
+    pub trim: Vec<String>,
     /// How the design says each part, by designator, is fitted. It overrides what the
     /// board file's attributes say; a part it does not name is read from them. A designator
     /// that is not a part of the board file (a hole or a fiducial whose footprint is left
@@ -488,6 +492,7 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         &outcomes,
         options.process.as_deref(),
         &extras,
+        &options.trim,
     );
     Ok(Package {
         gerber_files: files.into_iter().map(|f| f.name).collect(),
@@ -560,6 +565,7 @@ fn notes(
     constraints: &[drc::constraints::Outcome],
     process: Option<&str>,
     extras: &[String],
+    trim: &[String],
 ) -> String {
     let mut lines = vec![format!("fab-notes for {name}")];
     if let Some(process) = process {
@@ -576,6 +582,7 @@ fn notes(
     if !plan.hand_solder.is_empty() {
         lines.push(format!("hand-solder: {}", plan.hand_solder.join(", ")));
     }
+    lines.extend(trim.iter().map(|t| format!("trim: {t}")));
     if !plan.not_fitted.is_empty() {
         lines.push(format!(
             "not fitted (no BOM line, no placement): {}",

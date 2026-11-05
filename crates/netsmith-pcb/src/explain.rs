@@ -244,12 +244,14 @@ fn unmet(design: &Design, parts: &[Placed]) -> Vec<String> {
 }
 
 /// A part's courtyard and body in one turn, and where its origin may be.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Quarter {
     /// The turn, in degrees.
     angle: f64,
     court: Rect,
     body: Rect,
+    /// The boxes of its pads, with the origin at 0.
+    pads: Vec<Rect>,
     /// The range of the origin on the sheet, along x and along y; infinite where nothing
     /// bounds it.
     x: (f64, f64),
@@ -358,6 +360,16 @@ impl<'a> Context<'a> {
                         .courtyard
                         .rotated_for(side == Side::Back, angle),
                     body: body_at(part, angle, side),
+                    pads: {
+                        let mut at_zero = part.clone();
+                        (at_zero.at, at_zero.rotation, at_zero.side) = (Pt::default(), angle, side);
+                        at_zero
+                            .footprint
+                            .pads
+                            .iter()
+                            .map(|p| at_zero.pad_bounds(p))
+                            .collect()
+                    },
                     x,
                     y,
                 }
@@ -487,6 +499,7 @@ impl<'a> Context<'a> {
             self.pairs(&wins, &note, &mut seen, &mut found);
             self.areas(&wins, &note, &mut seen, &mut found);
             self.heights(&wins, &note, &mut seen, &mut found);
+            self.tails(&wins, &note, &mut seen, &mut found);
             if clip {
                 self.fits(&wins, &mut seen, &mut found);
             }
@@ -615,6 +628,13 @@ impl<'a> Context<'a> {
 
     /// Whether the two windows take room in the same place on a face for every turn.
     fn takes_same_room(a: &Win, b: &Win, qa: &Quarter, qb: &Quarter) -> bool {
+        // A part may stand over the other's pins when they are stated as cut short
+        // (`crate::tail`): that is judged by `tails`, not by the courtyards.
+        if crate::tail::tail_under(a.part, b.part).is_some()
+            || crate::tail::tail_under(b.part, a.part).is_some()
+        {
+            return false;
+        }
         [Side::Front, Side::Back].into_iter().any(|face| {
             let room = |w: &Win, q: &Quarter| {
                 let mut p = w.part.clone();
@@ -801,6 +821,110 @@ impl<'a> Context<'a> {
                     number(limit),
                     w.part.refdes,
                     number(height)
+                ));
+            }
+        }
+    }
+
+    /// A part with a stated face that lies over the pins of a through-hole part wherever its
+    /// window puts it, and that the pins' trim does not excuse wherever it is put: the board
+    /// house assembles it, it states no height, or the tails and its height are taller than
+    /// a limit on its face over all of its window (ADR 0045 section 14).
+    fn tails(
+        &self,
+        wins: &[Win],
+        note: &str,
+        seen: &mut BTreeSet<String>,
+        found: &mut Vec<String>,
+    ) {
+        for s in wins {
+            let Some(tail) = &s.part.tail else { continue };
+            if !s.part.has_hole() || s.lines.is_empty() || s.quarters.is_empty() {
+                continue;
+            }
+            for c in wins {
+                let Some(side_line) = &c.side_line else {
+                    continue;
+                };
+                let key = format!("tail:{}:{}", s.part.refdes, c.part.refdes);
+                if seen.contains(&key)
+                    || c.part.refdes == s.part.refdes
+                    || c.part.has_hole()
+                    || c.lines.is_empty()
+                    || c.quarters.is_empty()
+                {
+                    continue;
+                }
+                // The cover's courtyard lies over a pad of the part for every turn and place.
+                let mut least = (f64::INFINITY, f64::INFINITY);
+                let mut all = true;
+                for qs in &s.quarters {
+                    for qc in &c.quarters {
+                        let hit = qs.pads.iter().find_map(|pad| {
+                            always_overlap(&qc.court, (qc.x, qc.y), pad, (qs.x, qs.y))
+                        });
+                        match hit {
+                            Some((dx, dy)) => least = (least.0.min(dx), least.1.min(dy)),
+                            None => all = false,
+                        }
+                    }
+                }
+                if !all {
+                    continue;
+                }
+                // Why the rule refuses it, wherever the cover is.
+                let face = if c.side == Side::Back {
+                    "bottom"
+                } else {
+                    "top"
+                };
+                let why = if !c.part.hand_fitted {
+                    Some(crate::tail::Refusal::HouseFitted)
+                } else if c.part.height.is_none() {
+                    Some(crate::tail::Refusal::NoHeight)
+                } else {
+                    let stack = tail.length + c.part.height.unwrap_or(0.0);
+                    self.design.features.keepouts.iter().find_map(|k| {
+                        let (Some(limit), None, Some(at)) = (k.max_height, &k.part, k.at) else {
+                            return None;
+                        };
+                        if !k.layers.iter().any(|l| l == face) || stack <= limit + HEIGHT_TOLERANCE
+                        {
+                            return None;
+                        }
+                        let min = ORIGIN + Pt::new(at.0, at.1);
+                        let zone = Rect::new(min, Pt::new(min.x + k.size.0, min.y + k.size.1));
+                        c.quarters
+                            .iter()
+                            .all(|q| {
+                                always_overlap(&q.body, (q.x, q.y), &zone, ((0.0, 0.0), (0.0, 0.0)))
+                                    .is_some()
+                            })
+                            .then(|| crate::tail::Refusal::TooTall {
+                                stack,
+                                limit,
+                                zone: k.name.clone(),
+                            })
+                    })
+                };
+                let Some(why) = why else { continue };
+                seen.insert(key);
+                let mut lines = s.lines.clone();
+                lines.extend(c.lines.iter().cloned());
+                lines.push(side_line.clone());
+                if !tail.source.is_empty() {
+                    lines.push(quote(self.design, &tail.source, &format!("{}.tail_height", s.part.path)));
+                }
+                found.push(format!(
+                    "{}: they keep the courtyard of {} within {} mm, over a pad of {} (pins trimmed to {} mm) by at least {} x {} mm wherever it is put, and the trim does not excuse that: {}{note}",
+                    dedupe(lines).join("; "),
+                    Self::name(c),
+                    Self::span(c, false),
+                    Self::name(s),
+                    number(tail.length),
+                    number(least.0),
+                    number(least.1),
+                    why.because(tail.length, &c.part.refdes, &c.part.path, c.side)
                 ));
             }
         }

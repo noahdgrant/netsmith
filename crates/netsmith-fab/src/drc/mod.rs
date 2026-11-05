@@ -332,7 +332,7 @@ impl std::fmt::Display for Report {
 
 /// What the check needs to know that the board file and its project do not say. All of it
 /// comes from the manufacturing process the board was made for.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Extras {
     /// The least solder mask between two openings of pads of different nets, if the board's
     /// setup does not say (`solder_mask_min_width`).
@@ -340,6 +340,11 @@ pub struct Extras {
     /// The widest via the process fills and caps, so that it may sit in a pad; a wider one
     /// in a pad is a warning. `None` is not checked.
     pub via_in_pad: Option<f64>,
+    /// Pairs of parts, by designator, whose courtyards may overlap because one stands over
+    /// the other's pins, which the design cuts short after soldering and which the rule of
+    /// `netsmith_pcb::tail` excuses (ADR 0045 section 14). The check does not judge that
+    /// rule; the caller that has the design does, and says which pairs it excused.
+    pub excused_courtyards: Vec<(String, String)>,
 }
 
 #[derive(Debug, PartialEq)]

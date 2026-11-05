@@ -558,6 +558,42 @@ pub enum PlacementProblem {
     },
 }
 
+impl PlacementProblem {
+    /// The finding for two parts whose rooms overlap: the plain overlap, with a hint when
+    /// the pins of a through-hole part come out under the other and are not stated as cut
+    /// short, or, when they are, why the trim does not excuse it (ADR 0045 section 14).
+    pub(crate) fn overlap_of(
+        a: &Placed,
+        b: &Placed,
+        zones: &[crate::place::HeightZone],
+    ) -> PlacementProblem {
+        match crate::tail::relation(a, b, zones) {
+            Some((first, crate::tail::Verdict::Refused(why))) => {
+                let (tail, cover) = if first { (a, b) } else { (b, a) };
+                let stated = tail.tail.clone().unwrap_or(crate::tail::Tail {
+                    length: 0.0,
+                    source: String::new(),
+                });
+                PlacementProblem::OverPins {
+                    tail: tail.refdes.clone(),
+                    tail_path: tail.path.clone(),
+                    length: stated.length,
+                    source: stated.source,
+                    cover: cover.refdes.clone(),
+                    cover_path: cover.path.clone(),
+                    side: cover.side,
+                    why,
+                }
+            }
+            _ => PlacementProblem::Overlap {
+                a: a.refdes.clone(),
+                b: b.refdes.clone(),
+                pins: crate::tail::untrimmed_under(a, b).map(|p| p.path.clone()),
+            },
+        }
+    }
+}
+
 /// ` (pad 3)`, or nothing for a pad with no number (a mounting hole's).
 fn pad_text(number: &str) -> String {
     if number.is_empty() {
@@ -595,6 +631,74 @@ impl std::fmt::Display for HeightUnchecked {
             self.limit,
             self.path
         )
+    }
+}
+
+/// The pins of a through-hole part that the design states are cut short after soldering,
+/// and the parts that lie over them (ADR 0045 section 14, PROVISIONAL).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Trim {
+    pub refdes: String,
+    pub path: String,
+    /// How far the cut pins stand out of the board, in mm.
+    pub length: f64,
+    /// The lines that state it.
+    pub source: String,
+    /// The face the pins stand out of.
+    pub face: Side,
+    /// The parts whose courtyards lie over them: designator and path.
+    pub covers: Vec<(String, String)>,
+    /// Those of `covers` that no height limit covers where they are, so that the stack on the
+    /// tails was compared with none.
+    pub unlimited: Vec<(String, String)>,
+}
+
+impl Trim {
+    /// The line of `fab-notes.txt` and `order.txt` (after `trim: `): a step for a person.
+    pub fn note(&self) -> String {
+        let parts = |list: &[(String, String)]| {
+            list.iter()
+                .map(|(r, p)| format!("{r} ({p})"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let when = if self.covers.is_empty() {
+            "nothing lies over them".to_string()
+        } else {
+            format!(
+                "before {} {} fitted",
+                parts(&self.covers),
+                if self.covers.len() == 1 { "is" } else { "are" }
+            )
+        };
+        format!(
+            "{} ({}): after soldering, cut the pins to {} mm above the {} face, {when}{}; measure one tail",
+            self.refdes,
+            self.path,
+            crate::tail::mm(self.length),
+            self.face.word(),
+            if self.source.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", self.source)
+            }
+        )
+    }
+
+    /// What was not checked: a covering part with no height limit over it.
+    pub fn unchecked(&self) -> Vec<String> {
+        self.unlimited
+            .iter()
+            .map(|(r, p)| {
+                format!(
+                    "no height limit covers {r} (`{p}`) on the {} face where it lies over the trimmed pins of {} (`{}`), so the stack of {} mm of tail and its height was compared with none",
+                    self.face.word(),
+                    self.refdes,
+                    self.path,
+                    crate::tail::mm(self.length)
+                )
+            })
+            .collect()
     }
 }
 
@@ -653,13 +757,13 @@ impl std::fmt::Display for PlacementProblem {
                 why,
             } => write!(
                 f,
-                "{cover} (`{cover_path}`) lies over the pins of {tail} (`{tail_path}`), which {} {} mm, and that is not allowed: {}",
-                if source.is_empty() {
-                    "are trimmed to".to_string()
-                } else {
-                    format!("{source} trims to")
-                },
+                "{cover} (`{cover_path}`) lies over the pins of {tail} (`{tail_path}`), which are trimmed to {} mm{}, and that is not allowed: {}",
                 crate::tail::mm(*length),
+                if source.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ({source})")
+                },
                 why.because(*length, cover, cover_path, *side)
             ),
             Self::OutsideOutline {
@@ -1579,6 +1683,78 @@ impl Board {
         found
     }
 
+    /// The through-hole parts whose pins the design states are cut short after soldering
+    /// (ADR 0045 section 14, PROVISIONAL), each with the parts that lie over them. The
+    /// manufacturing step they stand for is the person's to do.
+    pub fn trims(&self) -> Vec<Trim> {
+        let zones = self.height_zones();
+        let mut found = Vec::new();
+        for t in &self.parts {
+            let Some(tail) = &t.tail else { continue };
+            if !t.has_hole() {
+                continue;
+            }
+            let reach: Vec<Rect> = t
+                .footprint
+                .pads
+                .iter()
+                .map(|p| t.pad_bounds(p).expanded(self.rules.clearance))
+                .collect();
+            let mut covers = Vec::new();
+            let mut unlimited = Vec::new();
+            for c in &self.parts {
+                if crate::tail::tail_under(t, c).is_none() {
+                    continue;
+                }
+                let court = c.courtyard();
+                if !reach.iter().any(|r| r.overlaps(&court)) {
+                    continue;
+                }
+                covers.push((c.refdes.clone(), c.path.clone()));
+                if let (_, crate::tail::Verdict::Excused { limit: None }) = (
+                    (),
+                    crate::tail::judge(tail.length, &crate::tail::cover_of(c), &zones),
+                ) {
+                    unlimited.push((c.refdes.clone(), c.path.clone()));
+                }
+            }
+            found.push(Trim {
+                refdes: t.refdes.clone(),
+                path: t.path.clone(),
+                length: tail.length,
+                source: tail.source.clone(),
+                face: if t.side == Side::Front {
+                    Side::Back
+                } else {
+                    Side::Front
+                },
+                covers,
+                unlimited,
+            });
+        }
+        found
+    }
+
+    /// The pairs of parts, by designator, whose courtyards overlap only because one stands
+    /// over the other's trimmed pins and the rule of [`crate::tail`] excuses it, for the
+    /// design rules check's courtyard rule.
+    pub fn excused_courtyards(&self) -> Vec<(String, String)> {
+        let zones = self.height_zones();
+        let mut pairs = Vec::new();
+        for trim in self.trims() {
+            let Some(t) = self.part(&trim.refdes) else {
+                continue;
+            };
+            for (cover, _) in &trim.covers {
+                let Some(c) = self.part(cover) else { continue };
+                if crate::tail::excused(t, c, &zones).is_some() {
+                    pairs.push((trim.refdes.clone(), cover.clone()));
+                }
+            }
+        }
+        pairs
+    }
+
     /// The parts that stand under a height limit and state no height, so that whether they
     /// fit is not known (ADR 0045, "Height limits", PROVISIONAL). Not a pass: each is named,
     /// with the keepout and its limit. A label has no body and is left out.
@@ -1783,31 +1959,7 @@ impl Board {
                 // Parts on opposite faces may share the board's area, unless one has a hole
                 // through the board that takes room there (`Placed::room_on`).
                 if a.rooms_overlap(rooms[i], b, rooms[j], self.rules.clearance, &zones) {
-                    problems.push(match crate::tail::relation(a, b, &zones) {
-                        Some((first, crate::tail::Verdict::Refused(why))) => {
-                            let (tail, cover) = if first { (a, b) } else { (b, a) };
-                            let stated = tail.tail.clone().unwrap_or(crate::tail::Tail {
-                                length: 0.0,
-                                source: String::new(),
-                            });
-                            PlacementProblem::OverPins {
-                                tail: tail.refdes.clone(),
-                                tail_path: tail.path.clone(),
-                                length: stated.length,
-                                source: stated.source,
-                                cover: cover.refdes.clone(),
-                                cover_path: cover.path.clone(),
-                                side: cover.side,
-                                why,
-                            }
-                        }
-                        _ => PlacementProblem::Overlap {
-                            a: a.refdes.clone(),
-                            b: b.refdes.clone(),
-                            pins: crate::tail::untrimmed_under(a, b)
-                                .map(|p| p.path.clone()),
-                        },
-                    });
+                    problems.push(PlacementProblem::overlap_of(a, b, &zones));
                 }
                 self.check_holes(a, b, true, &mut problems);
                 self.check_holes(b, a, false, &mut problems);

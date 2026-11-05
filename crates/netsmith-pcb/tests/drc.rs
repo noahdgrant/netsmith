@@ -19,6 +19,7 @@ fn ours(board: &Board) -> Report {
     let extras = Extras {
         mask_web: Some(board.rules.mask_bridge),
         via_in_pad: Some(board.process.via_in_pad),
+        excused_courtyards: board.excused_courtyards(),
     };
     drc::check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras)
         .unwrap_or_else(|e| panic!("{}: {e}", board.name))
