@@ -3,12 +3,36 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
     <title>netsmith</title>
     <link rel="icon" type="image/svg+xml" href="/assets/favicon-BmH8amQ6.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32-DUB7xf7f.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon-BvywCvHP.png" />
-    <script type="module" crossorigin src="/assets/index-OFr6WEjc.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-WberCfhb.css">
+    <script id="theme-boot">
+      // The theme, chosen before the first paint so the page does not flash the wrong colours.
+      // The same decision as resolveTheme in src/theme.ts (src/theme.test.ts runs both).
+      (function () {
+        var pref = 'system';
+        try {
+          var v = JSON.parse(window.localStorage.getItem('netsmith.theme'));
+          if (['light', 'dark', 'hc-dark', 'hc-light'].indexOf(v) >= 0) pref = v;
+        } catch (e) {}
+        var theme = pref;
+        if (pref === 'system') {
+          var dark = true, more = false;
+          try {
+            dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            more = window.matchMedia('(prefers-contrast: more)').matches;
+          } catch (e) {}
+          theme = more ? (dark ? 'hc-dark' : 'hc-light') : dark ? 'dark' : 'light';
+        }
+        var root = document.documentElement;
+        root.dataset.theme = theme;
+        root.style.colorScheme = theme === 'dark' || theme === 'hc-dark' ? 'dark' : 'light';
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-BEUmsLm3.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CPdQbwgD.css">
   </head>
   <body>
     <div id="app"></div>
