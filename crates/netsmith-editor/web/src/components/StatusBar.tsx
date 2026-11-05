@@ -30,10 +30,10 @@ import {
   openFiles,
   project,
   save,
-  say,
   visible,
 } from '../store';
-import { THEMES, type ThemePref, chooseTheme, theme, themePref } from '../theme';
+import { THEMES, type ThemePref, theme, themePref } from '../theme';
+import { chooseTheme } from '../themeUi';
 import { plural } from '../util';
 import { useElapsed } from './JobProgress';
 import { SeverityIcon } from './ProblemsDock';
@@ -228,7 +228,7 @@ function ThemeMenu({ close }: { close: () => void }) {
     radios[(at + step + radios.length) % radios.length]?.focus();
   };
   const pick = (id: ThemePref) => {
-    chooseTheme(id, say);
+    chooseTheme(id);
     close();
   };
   return (

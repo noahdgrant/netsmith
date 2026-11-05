@@ -9,7 +9,8 @@ import { dock, filter, setDockOpen, toggleDock } from './feedback/state';
 import { SECTIONS, canSplit, closePane, splitRight } from './layout';
 import { openPicker, toggleCheatSheet } from './quickpick';
 import { type Selection, selectAndReveal, selection, setSelection } from './selection';
-import { THEMES, chooseTheme, isDark, theme } from './theme';
+import { THEMES, isDark, theme } from './theme';
+import { chooseTheme } from './themeUi';
 import {
   activeFile,
   analysis,
@@ -240,14 +241,14 @@ export function registerAppCommands() {
       title: `Theme: ${t.label}`,
       group: 'View',
       aliases: ['colour', 'color', 'appearance', 'dark mode', 'light mode', 'contrast', t.label],
-      run: () => chooseTheme(t.id, say),
+      run: () => chooseTheme(t.id),
     })),
     {
       id: 'theme.toggle',
       title: 'Theme: Toggle light and dark',
       group: 'View',
       aliases: ['colour', 'color', 'appearance', 'dark mode', 'light mode'],
-      run: () => chooseTheme(isDark(theme.peek()) ? 'light' : 'dark', say),
+      run: () => chooseTheme(isDark(theme.peek()) ? 'light' : 'dark'),
     },
     {
       id: 'help.shortcuts',

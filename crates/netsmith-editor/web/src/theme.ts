@@ -134,10 +134,3 @@ export function themeMessage(pref: ThemePref, resolved: Theme, kept: boolean): {
   const now = pref === 'system' ? `System: ${THEMES.find((t) => t.id === resolved)?.label ?? resolved} now` : label;
   return kept ? { text: `Theme: ${now}`, bad: false } : { text: `Theme: ${now}. It is not remembered: this browser does not keep settings.`, bad: true };
 }
-
-/** Choose a theme, and say so. */
-export function chooseTheme(pref: ThemePref, say: (text: string, bad?: boolean) => void) {
-  const kept = setTheme(pref);
-  const m = themeMessage(pref, theme.peek(), kept);
-  say(m.text, m.bad);
-}
