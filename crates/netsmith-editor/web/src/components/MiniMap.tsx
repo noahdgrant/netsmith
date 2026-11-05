@@ -2,6 +2,14 @@ import type { TreeLayout } from '../flow/layout';
 
 const MAP_W = 188;
 
+/** Whether the window shows the whole drawing (a pixel or so of slack). Then there is nothing to
+ * find on an overview, and it would only sit on top of the cards: it is not drawn. */
+export function showsAll(size: { width: number; height: number }, view: { k: number; x: number; y: number; w: number; h: number } | null): boolean {
+  if (!view) return false;
+  const slack = 1.5 / view.k;
+  return -view.x / view.k <= slack && -view.y / view.k <= slack && (view.w - view.x) / view.k >= size.width - slack && (view.h - view.y) / view.k >= size.height - slack;
+}
+
 /** The whole drawing small, with the part the window shows and what is selected (`up` and `down`
  * tints); a click or a drag moves the view. */
 export function MiniMap({
@@ -17,6 +25,7 @@ export function MiniMap({
   levelOf?: (id: string) => string;
   onGo: (x: number, y: number) => void;
 }) {
+  if (showsAll(layout, view)) return null;
   const scale = MAP_W / Math.max(layout.width, 1);
   const h = Math.max(24, Math.min(140, layout.height * scale));
   const s = Math.min(scale, h / Math.max(layout.height, 1));

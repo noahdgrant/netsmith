@@ -21,7 +21,7 @@ export async function run(tools) {
   await drag(page, cap.centre, { x: reg.centre.x + 3, y: reg.centre.y });
   await settled(page, stamp);
   await page.waitForSelector('[data-testid=findings-chip].bad');
-  await page.locator('[data-testid=findings-chip]').click();
+  await page.locator('.side-tabs button', { hasText: 'Findings' }).click();
   await page.waitForSelector('[data-testid=finding]');
   const rows = await page.locator('[data-testid=finding]').allInnerTexts();
   expect(rows.some((r) => r.includes('overlap') && /\d+\.\d\d, \d+\.\d\d/.test(r)), `an overlap finding with its coordinates (${rows[0].replace(/\n/g, ' | ')})`);
@@ -47,7 +47,7 @@ export async function run(tools) {
   step('Re-check runs KiCad on an overlapping board and lists what it found');
   await page.keyboard.press('Control+Shift+z');
   await page.waitForSelector('[data-testid=findings-chip].bad');
-  await page.locator('[data-testid=findings-chip]').click();
+  await page.locator('.side-tabs button', { hasText: 'Findings' }).click();
   await page.locator('[data-testid=recheck]').click();
   await page.waitForFunction(() => !document.querySelector('[data-testid=recheck]')?.textContent?.includes('Checking'), null, { timeout: 90000 });
   const note = await page.locator('.findings-head .faint').innerText();
