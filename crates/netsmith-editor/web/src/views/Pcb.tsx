@@ -2,6 +2,10 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 
 import type { PcbBox } from '../api';
 import { api } from '../client';
+import { NoBoard, ViewLoading } from '../components/ViewStatus';
+import { pcbFocus } from '../feedback/derive';
+import { announce } from '../feedback/announce';
+import { routeResult } from '../feedback/results';
 import { JobProgress } from '../components/JobProgress';
 import { Canvas, type Tip } from '../pcb/Canvas';
 import { FindingsList } from '../pcb/Findings';
@@ -46,6 +50,12 @@ const LAYERS: { id: string; label: string }[] = [
 ];
 
 /** The box with room round it, so a zoom to a small part still shows what is near it. */
+/** Route the board, and say how it went when it is done, wherever the person is by then. */
+async function route(name: string) {
+  const report = await routeBoard(name);
+  if (report) announce(routeResult(report));
+}
+
 function roomAround(b: PcbBox): PcbBox {
   const [w, h] = [Math.max(b.width, 16), Math.max(b.height, 12)];
   return { x: b.x + b.width / 2 - w / 2, y: b.y + b.height / 2 - h / 2, width: w, height: h };
@@ -94,13 +104,20 @@ export function Pcb() {
     const box = unite(sc.parts.filter((p) => paths.has(p.path)).map((p) => p.courtyard));
     if (box) setFocus({ box: roomAround(box), seq: (focus?.seq ?? 0) + 1 });
   }, [ask?.nonce]);
+  // A problem in the dock asks the board to zoom to where it is.
+  const asked = pcbFocus.value;
+  useEffect(() => {
+    if (!asked) return;
+    pcbFocus.value = null;
+    setFocus((was) => ({ box: roomAround(asked.box), seq: (was?.seq ?? 0) + 1 }));
+  }, [asked?.nonce]);
 
   const sc = scene.value && scene.value.board === name ? scene.value : null;
   const found = findings.value && findings.value.board === name ? findings.value : null;
   const drawing = useMemo(() => (sc ? prepare(sc.svg) : null), [sc?.svg]);
   const css = useMemo(() => hidden.map((l) => `.pcb-host .l-${l}{display:none}`).join(''), [hidden]);
 
-  if (!name) return <div class="empty">There is no board to show. See the problems.</div>;
+  if (!name) return <NoBoard what="show" />;
   const fab = fabReports.value[name];
   const report = pcbReports.value[name] ?? null;
   const busy = job.value?.task === 'route';
@@ -127,7 +144,7 @@ export function Pcb() {
             Panel {p.name}
           </button>
         ))}
-        <button class="tool primary" disabled={busy} onClick={() => void routeBoard(name)}>
+        <button class="tool primary" disabled={busy} onClick={() => void route(name)}>
           {busy ? 'Routing…' : report?.routed ? 'Route again' : 'Place and route'}
         </button>
         {busy && (
@@ -249,7 +266,7 @@ export function Pcb() {
       {sceneError.value && !sc ? (
         <div class="empty bad">{sceneError.value}</div>
       ) : !sc || !drawing ? (
-        <div class="empty">Placing…</div>
+        <ViewLoading what="Placing the board" />
       ) : (
         <div class="pcb-main">
           <Canvas

@@ -703,7 +703,14 @@ export function Sidebar() {
           }}
         >
           {items}
-          {!rows.length && !typing && <div class="ft-empty">{filtering ? `Nothing matches “${filter.trim()}”.` : 'No files yet.'}</div>}
+          {!rows.length && !typing && !project.value && (
+            <div class="ft-skeleton" aria-hidden="true" data-testid="tree-skeleton">
+              {[60, 40, 52, 34, 46].map((w, i) => (
+                <div key={i} class="sk sk-line" style={{ width: `${w}%` }} />
+              ))}
+            </div>
+          )}
+          {!rows.length && !typing && project.value && <div class="ft-empty">{filtering ? `Nothing matches “${filter.trim()}”.` : 'No files yet.'}</div>}
         </div>
       </div>
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.id)} onPick={(a) => pick(a, menu.id)} onClose={() => setMenu(null)} />}

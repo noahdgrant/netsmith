@@ -23,7 +23,8 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.waitForFunction(() => document.querySelector('.statusbar .counts .e')?.textContent.includes('1'));
   expect(true, 'the status bar counts one error');
   expect(!fs.readFileSync(file, 'utf8').includes('oops'), 'nothing written to disk by checking');
-  await page.locator('.problems-head').click();
+  await page.keyboard.press('Control+j');
+  await page.waitForSelector('.dock .problem.error');
   const problem = await page.locator('.problem.error').first().innerText();
   expect(problem.includes('Missing'), `the real compiler message in the problems list (${problem.replace(/\s+/g, ' ')})`);
   await shot('mistake');
@@ -69,11 +70,12 @@ export async function run({ page, shot, step, expect, project, section }) {
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('.r1: Resistor {}', '.r1: Nothing {}'));
   await page.waitForFunction(() => document.querySelector('.statusbar .counts .e')?.textContent.includes('1'), null, { timeout: 10000 });
   await section('schematic');
-  await page.waitForSelector('.schematic-view .banner');
-  expect((await page.locator('.schematic-view .banner').innerText()).includes('mistake'), 'a banner on the schematic: the source has a mistake');
+  await page.waitForSelector('.section:not(.away) .stale-strip');
+  const strip = await page.locator('.section:not(.away) .stale-strip').innerText();
+  expect(strip.includes('Showing last good version') && strip.includes('Nothing'), `a strip on the schematic names the error (${strip.replace(/\s+/g, ' ')})`);
   await shot('mistake-on-disk');
   await section('source');
-  if (!(await page.locator('.problem').count())) await page.locator('.problems-head').click();
+  if (!(await page.locator('.dock .problem').count())) await page.locator('.statusbar .counts').click();
   await page.locator('.problem.error').first().click();
   await page.waitForSelector('.cm-lintRange-error');
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('.r1: Nothing {}', '.r1: Resistor {}'));

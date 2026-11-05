@@ -3,22 +3,24 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { Editor } from './components/Editor';
 import {
   Conflict,
-  ProblemsPanel,
   PaneNotice,
   SectionStrip,
-  StatusBar,
   TabMenu,
   Tabs,
-  Toast,
   TopBar,
   dragging,
   tabMenu,
 } from './components/Chrome';
+import { ProblemsDock } from './components/ProblemsDock';
 import { Sidebar } from './components/Sidebar';
 import { CheatSheet } from './components/CheatSheet';
 import { QuickPick } from './components/QuickPick';
+import { StatusBar } from './components/StatusBar';
+import { Toasts } from './components/Toasts';
+import { ProgressLine, StaleStrip } from './components/ViewStatus';
 import { commandForKey } from './commands';
 import { registerAppCommands } from './commandset';
+import { banner } from './feedback/derive';
 import { type Section, SECTIONS, clampSplit } from './layout';
 import { cheatSheet, picker } from './quickpick';
 import { back, goBack, layout, setFocusPane, visible, windowWidth } from './store';
@@ -53,7 +55,6 @@ function SectionBody({ section }: { section: Section }) {
             <Tabs />
             <Conflict />
             <Editor />
-            <ProblemsPanel />
           </div>
         </div>
       );
@@ -182,6 +183,7 @@ export function App() {
     (id) => seen.current.has(id) && (KEPT.includes(id) || vis.some((p) => p.section === id)),
   );
   const dragged = dragging.value;
+  const stale = banner.value?.kind === 'stale';
   return (
     <div class={`app ${dragged ? 'dragging' : ''}`}>
       <TopBar />
@@ -208,24 +210,27 @@ export function App() {
           return (
             <section
               key={id}
-              class={`section sec-${id} ${shown ? '' : 'away'}`}
+              class={`section sec-${id} ${shown ? '' : 'away'} ${stale && id !== 'source' && id !== 'build' ? 'is-stale' : ''}`}
               data-section={id}
               data-pane={shown ? vis[at].index : undefined}
               aria-hidden={!shown}
               style={{ gridColumn: shown && two ? (at === 0 ? 1 : 3) : 1, gridRow: 2 }}
             >
+              {id !== 'source' && id !== 'build' && <StaleStrip />}
               <SectionBody section={id} />
             </section>
           );
         })}
         {two && <Divider area={area} />}
         <DropZone />
+        <ProgressLine />
       </div>
+      <ProblemsDock />
       <StatusBar />
       <TabMenu />
       <QuickPick />
       <CheatSheet />
-      <Toast />
+      <Toasts />
       {dragged && <div class="drag-ghost" style={{ left: dragged.x + 12, top: dragged.y + 12 }}>{SECTIONS.find((s) => s.id === dragged.section)?.label}</div>}
     </div>
   );

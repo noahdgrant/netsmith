@@ -4,6 +4,8 @@
 
 import { api } from './client';
 import { type Command, provide, register, runCommand } from './commands';
+import { stepProblem } from './feedback/derive';
+import { dock, filter, setDockOpen, toggleDock } from './feedback/state';
 import { SECTIONS, canSplit, closePane, splitRight } from './layout';
 import { openPicker, toggleCheatSheet } from './quickpick';
 import { type Selection, selectAndReveal, selection, setSelection } from './selection';
@@ -123,6 +125,54 @@ export function registerAppCommands() {
       passive: true,
       when: () => selection.value !== null,
       run: () => setSelection(null),
+    },
+    {
+      id: 'problems.toggle',
+      title: 'Toggle Problems',
+      group: 'Problems',
+      keys: 'Mod+J',
+      aliases: ['problems panel', 'errors', 'warnings', 'dock'],
+      run: () => toggleDock(),
+    },
+    {
+      id: 'problems.next',
+      title: 'Next problem',
+      group: 'Problems',
+      keys: 'F8',
+      inFields: true,
+      aliases: ['next error', 'next warning'],
+      run: () => stepProblem(1),
+    },
+    {
+      id: 'problems.previous',
+      title: 'Previous problem',
+      group: 'Problems',
+      keys: 'Shift+F8',
+      inFields: true,
+      aliases: ['previous error', 'previous warning'],
+      run: () => stepProblem(-1),
+    },
+    {
+      id: 'problems.thisview',
+      title: 'Show problems of this view only',
+      group: 'Problems',
+      aliases: ['filter problems', 'scope'],
+      when: () => !dock.value.open || !filter.value.thisView,
+      run: () => {
+        filter.value = { ...filter.value, thisView: true };
+        setDockOpen(true);
+      },
+    },
+    {
+      id: 'problems.wholeproject',
+      title: 'Show problems of the whole project',
+      group: 'Problems',
+      aliases: ['filter problems', 'scope', 'this view only'],
+      when: () => filter.value.thisView,
+      run: () => {
+        filter.value = { ...filter.value, thisView: false };
+        setDockOpen(true);
+      },
     },
     {
       id: 'file.save',

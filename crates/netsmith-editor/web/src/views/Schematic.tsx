@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { api } from '../client';
 import { PanZoom } from '../components/PanZoom';
+import { NoBoard, ViewLoading } from '../components/ViewStatus';
 import { ALL, canStep, resolvePick, stepPick } from '../sheets';
 import { load, save } from '../storage';
 import {
@@ -254,11 +255,10 @@ export function Schematic() {
     return null;
   };
 
-  if (!name) return <div class="empty">There is no board to draw. See the problems.</div>;
+  if (!name) return <NoBoard what="draw" />;
   if (error) return <div class="empty bad">{error}</div>;
-  if (!drawing) return <div class="empty">Drawing…</div>;
+  if (!drawing) return <ViewLoading what="Drawing the schematic" />;
 
-  const stale = analysis.value?.boards.find((b) => b.name === name)?.stale;
   const sheet = drawing.sheets.find((s) => s.name === current);
   const box = sheet ? around(sheet) : undefined;
   // One sheet at a time: what is outside its frame is cut away, so it fills the view.
@@ -268,7 +268,6 @@ export function Schematic() {
   const side = detailsOpen(viewWidth);
   return (
     <div class="schematic-view" ref={root}>
-      {stale && <div class="banner">The source has a mistake. This is the last drawing that built.</div>}
       <SheetBar
         sheets={drawing.sheets}
         pick={current}
@@ -280,7 +279,7 @@ export function Schematic() {
           save('netsmith.schematic.details', detailsPref.value);
         }}
       />
-      <div class={`schematic-body ${stale ? 'stale' : ''}`}>
+      <div class="schematic-body">
       <PanZoom
         width={drawing.width}
         height={drawing.height}

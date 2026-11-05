@@ -24,6 +24,7 @@ import {
   undoOpen,
   visiblePanes,
 } from './layout';
+import { notify, setSocket, track } from './feedback/state';
 import { load, save as keep } from './storage';
 import {
   type Selection,
@@ -177,14 +178,17 @@ export function endJob() {
 export const pcbReports = signal<Record<string, PcbReport>>({});
 export const pcbStamp = signal(0);
 
-export async function routeBoard(name: string) {
+/** Place and route a board. The report, or null when the server could not do it (a toast says why). */
+export async function routeBoard(name: string): Promise<PcbReport | null> {
   beginJob('route', name);
   try {
     const report = await api.route(name);
     pcbReports.value = { ...pcbReports.value, [name]: report };
     pcbStamp.value++;
+    return report;
   } catch (e) {
     say(e instanceof Error ? e.message : String(e), true);
+    return null;
   } finally {
     endJob();
   }
@@ -212,11 +216,6 @@ export const pickedOrder = signal<string | null>(null);
 /** What the last schematic build said. */
 export const buildReport = signal<BuildReport | null>(null);
 
-export const problemsOpen = signal(false);
-/** Whether the notes section of the problems panel is open. */
-export const notesOpen = signal(false);
-export const toast = signal<{ text: string; bad: boolean } | null>(null);
-
 export const dirty = (f: OpenFile) => f.text !== f.saved;
 
 export const anyDirty = computed(() => Object.values(openFiles.value).some(dirty));
@@ -241,11 +240,10 @@ export const lineParts = computed<string[]>(() => {
 let events: Events | null = null;
 let nonce = 0;
 
+/** A short word to the person: a toast. A failure stays a little longer. `notify` (in
+ * `feedback/state.ts`) says more, with a cause and buttons. */
 export function say(text: string, bad = false) {
-  toast.value = { text, bad };
-  setTimeout(() => {
-    if (toast.value?.text === text) toast.value = null;
-  }, 4000);
+  notify({ title: text, kind: bad ? 'bad' : 'info' });
 }
 
 export async function start() {
@@ -253,18 +251,22 @@ export async function start() {
     (message) => {
       if (message.type === 'rebuilt') {
         analysis.value = message.analysis;
+        track({ type: 'rebuilt' });
         void onRebuilt();
       } else if (message.type === 'progress') {
         const j = job.value;
         if (j && j.task === message.task) {
           job.value = { ...j, lines: [...j.lines.slice(-39), message.message] };
         }
-      } else if (events?.isLatest(message.id)) {
-        live.value = message.analysis;
+      } else {
+        const latest = !!events?.isLatest(message.id);
+        track({ type: 'checked', id: message.id, latest });
+        if (latest) live.value = message.analysis;
       }
     },
     (open) => {
       connected.value = open;
+      setSocket(open);
       if (open) void refresh();
     },
   );
@@ -386,7 +388,9 @@ function scheduleCheck(path: string) {
   clearTimeout(timer);
   timer = setTimeout(() => {
     const f = openFiles.value[path];
-    if (f && !f.readonly) events?.check(path, f.text);
+    if (!f || f.readonly) return;
+    const id = events?.check(path, f.text);
+    if (id != null) track({ type: 'check-sent', id, now: Date.now() });
   }, 350);
 }
 
@@ -429,7 +433,8 @@ export async function save(path: string) {
     // Edits made while the write was on its way stay edits.
     const now = openFiles.value[path] ?? f;
     setFile({ ...now, saved: f.text, stamp: saved.stamp, conflict: false });
-    say(`Saved ${path}`);
+    notify({ kind: 'ok', title: `Saved ${path}`, ms: 2200 });
+    void awaitRebuild();
   } catch (e) {
     const status = e instanceof ApiFailure ? e.status : 0;
     const now = openFiles.value[path];
@@ -437,6 +442,24 @@ export async function save(path: string) {
     say(e instanceof Error ? e.message : String(e), true);
   } finally {
     saving.delete(path);
+  }
+}
+
+/** After a file was written the server builds the project again: the page is analysing until that
+ * is done. Asking for the analysis waits for the build, so this ends when the answer is here,
+ * even if no file the server watches changed, or the push is lost. */
+async function awaitRebuild() {
+  track({ type: 'saved', now: Date.now() });
+  try {
+    const a = await api.analysis();
+    if (a.version > (analysis.peek()?.version ?? 0)) {
+      analysis.value = a;
+      void onRebuilt();
+    }
+  } catch {
+    // The socket's push, or the next refresh, brings it.
+  } finally {
+    track({ type: 'rebuilt' });
   }
 }
 

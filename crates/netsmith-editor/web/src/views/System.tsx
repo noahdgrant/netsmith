@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import type { PowerTree, SystemView } from '../api';
 import { api } from '../client';
+import { NoBoard, ViewLoading } from '../components/ViewStatus';
 import { MiniMap } from '../components/MiniMap';
 import { PanZoom } from '../components/PanZoom';
 import { type Item, type Placed, type TreeLayout, layoutTree } from '../flow/layout';
@@ -403,8 +404,8 @@ export function System() {
     };
   }, [name, version]);
 
-  if (!name) return <div class="empty">There is no board to show. See the problems.</div>;
+  if (!name) return <NoBoard what="show" />;
   if (error) return <div class="empty bad">{error}</div>;
-  if (!view) return <div class="empty">Reading…</div>;
+  if (!view) return <ViewLoading what="Reading the system" />;
   return <SystemFlow view={view} power={power} fitKey={`${name}:${version}:${view.nodes.length}`} />;
 }
