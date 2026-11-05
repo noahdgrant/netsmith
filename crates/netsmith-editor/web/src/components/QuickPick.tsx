@@ -179,8 +179,13 @@ function Dialog({ initial }: { initial: string }) {
   const { mode, text } = parseQuery(query);
 
   useLayoutEffect(() => {
-    input.current?.focus();
-    input.current?.select();
+    const el = input.current;
+    if (el) {
+      el.focus();
+      // A bare mode (`>`) keeps the caret after it; the last search is selected, so typing replaces it.
+      if (initial.length > 1) el.select();
+      else el.setSelectionRange(initial.length, initial.length);
+    }
     return () => {
       // Back to where the keys were, unless the choice moved them (the editor took the cursor).
       const b = before.current;

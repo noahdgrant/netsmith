@@ -116,6 +116,10 @@ export interface Field {
   name: string;
   text: string;
   weight?: number;
+  /** The shown field this text is a piece of, and where the piece starts in it: the letters
+   * matched in the piece are marked there (the kind of a part is the middle of its detail line). */
+  into?: string;
+  shift?: number;
 }
 
 export interface FieldMatch {
@@ -137,7 +141,7 @@ export function matchFields(query: string, fields: Field[]): FieldMatch | null {
       const r = fuzzyMatch(word, f.text);
       if (!r) continue;
       const s = r.score * (f.weight ?? 1);
-      if (!best || s > best.score) best = { field: f.name, score: s, indices: r.indices };
+      if (!best || s > best.score) best = { field: f.into ?? f.name, score: s, indices: r.indices.map((i) => i + (f.shift ?? 0)) };
     }
     if (!best) return null;
     score += best.score;

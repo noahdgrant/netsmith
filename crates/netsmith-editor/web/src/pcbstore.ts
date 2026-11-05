@@ -194,6 +194,10 @@ export const wrote: { sel: Selection | null | undefined } = { sel: undefined };
 export function select(paths: string[]) {
   selection.value = paths;
   pickedKeepout.value = null;
+  tellPage(paths);
+}
+
+function tellPage(paths: string[]) {
   const now = shared.peek();
   const next = paths.length === 1 ? partSel(paths[0]) : paths.length === 0 && now?.kind === 'net' ? now : null;
   if (!sameSelection(now, next)) {
@@ -204,5 +208,8 @@ export function select(paths: string[]) {
 
 export function pickKeepout(name: string | null) {
   pickedKeepout.value = name;
-  if (name) selection.value = [];
+  if (name) {
+    selection.value = [];
+    tellPage([]);
+  }
 }

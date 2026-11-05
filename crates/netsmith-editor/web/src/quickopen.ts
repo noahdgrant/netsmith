@@ -45,22 +45,29 @@ const basename = (p: string) => p.split('/').pop() ?? p;
 const dirname = (p: string) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '');
 
 export function buildIndex(detail: BoardDetail | null, project: Project | null): Index {
-  const parts: Item[] = (detail?.parts ?? []).map((p) => ({
-    id: `part:${p.path}`,
-    kind: 'part',
-    label: p.refdes,
-    sub: p.value,
-    detail: `${p.path} · ${p.kind}${p.package ? ` · ${p.package}` : ''}`,
-    fields: [
-      { name: 'label', text: p.refdes, weight: 3 },
-      { name: 'sub', text: p.value, weight: 1.3 },
-      { name: 'detail', text: p.path, weight: 1 },
-      { name: 'kind', text: p.kind, weight: 0.8 },
-      { name: 'package', text: p.package ?? '', weight: 0.4 },
-      { name: 'lcsc', text: p.lcsc ?? '', weight: 0.5 },
-    ],
-    target: { type: 'selection', sel: partSel(p.path) },
-  }));
+  const parts: Item[] = (detail?.parts ?? []).map((p) => {
+    // The line under the name is made of the pieces that can be searched, each marked where it falls.
+    const pieces = [p.path, p.kind, p.package, p.lcsc].filter((x): x is string => !!x);
+    const at: number[] = [];
+    pieces.reduce((from, x) => (at.push(from), from + x.length + 3), 0);
+    const shift = (text: string | null) => (text ? at[pieces.indexOf(text)] : 0);
+    return {
+      id: `part:${p.path}`,
+      kind: 'part' as const,
+      label: p.refdes,
+      sub: p.value,
+      detail: pieces.join(' · '),
+      fields: [
+        { name: 'label', text: p.refdes, weight: 3 },
+        { name: 'sub', text: p.value, weight: 1.3 },
+        { name: 'path', text: p.path, weight: 1, into: 'detail', shift: shift(p.path) },
+        { name: 'kind', text: p.kind, weight: 0.8, into: 'detail', shift: shift(p.kind) },
+        { name: 'package', text: p.package ?? '', weight: 0.4, into: 'detail', shift: shift(p.package) },
+        { name: 'lcsc', text: p.lcsc ?? '', weight: 0.5, into: 'detail', shift: shift(p.lcsc) },
+      ],
+      target: { type: 'selection' as const, sel: partSel(p.path) },
+    };
+  });
   const nets: Item[] = (detail?.nets ?? []).map((n) => ({
     id: `net:${n.name}`,
     kind: 'net',

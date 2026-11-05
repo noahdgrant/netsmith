@@ -77,6 +77,21 @@ describe('go to anything', () => {
     expect(byPath[0].title).toBe('Modules');
     expect(byPath.find((g) => g.title === 'Parts')!.hits[0].item.label).toBe('R25');
   });
+  it('marks the letters in the line under the name, wherever the piece sits in it', () => {
+    const r = search(index, commands, 'regulator')[0].hits[0];
+    expect(r.item.detail).toBe('stage1.regulator · LinearRegulator · 0402');
+    // `regulator` fits the path best (positions 7..15) and the kind's end too: the best is marked.
+    expect(r.marks.detail!.every((i) => i < r.item.detail.length)).toBe(true);
+    const k = search(index, commands, 'linear')[0].hits[0];
+    expect(k.item.label).toBe('U1');
+    expect(k.marks.detail![0]).toBe('stage1.regulator · '.length);
+  });
+  it('shows the LCSC number it matched', () => {
+    const withLcsc = buildIndex({ ...detail, parts: [{ ...detail.parts[0], lcsc: 'C25804' }] }, project);
+    const hit = search(withLcsc, commands, 'c25804')[0].hits[0];
+    expect(hit.item.detail.endsWith('C25804')).toBe(true);
+    expect(hit.marks.detail!.length).toBe(6);
+  });
   it('marks where the letters fell', () => {
     const hit = search(index, commands, 'c25')[0].hits[0];
     expect(hit.marks.label).toEqual([0, 1, 2]);

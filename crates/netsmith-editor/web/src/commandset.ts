@@ -226,9 +226,9 @@ export const LOCAL_KEYS: { group: string; keys: [string, string][] }[] = [
   {
     group: 'Schematic',
     keys: [
-      ['← → or [ ]', 'previous / next sheet'],
+      ['← → · [ ]', 'previous / next sheet'],
       ['F or 0', 'fit the sheet'],
-      ['+ −', 'zoom'],
+      ['+ · −', 'zoom'],
       ['Click a part', 'select it everywhere and open its source (Back returns)'],
       ['Click a wire', 'select the net: its pins are listed and the rest is dimmed'],
       ['Esc', 'clear the selection'],

@@ -21,6 +21,24 @@ function groups(): { group: string; commands: Command[] }[] {
     .sort((a, b) => (order.indexOf(a.group) + 1 || 99) - (order.indexOf(b.group) + 1 || 99));
 }
 
+/** `Ctrl+Z · Ctrl+Shift+Z` or `F or 0`: each key in its own cap, the joiners as words. */
+function LocalKeys({ text }: { text: string }) {
+  const parts = text.split(/( · | or )/);
+  return (
+    <span class="qp-keys">
+      {parts.map((p, i) =>
+        i % 2 === 1 ? (
+          <span class="or" key={i}>
+            {p.trim() === 'or' ? 'or' : '·'}
+          </span>
+        ) : (
+          <kbd key={i}>{p}</kbd>
+        ),
+      )}
+    </span>
+  );
+}
+
 export function CheatSheet() {
   const box = useRef<HTMLDivElement>(null);
   const open = cheatSheet.value;
@@ -92,9 +110,7 @@ export function CheatSheet() {
                   <div class="cheat-row" key={k}>
                     <dt>{what}</dt>
                     <dd>
-                      <span class="qp-keys">
-                        <kbd>{k}</kbd>
-                      </span>
+                      <LocalKeys text={k} />
                     </dd>
                   </div>
                 ))}
