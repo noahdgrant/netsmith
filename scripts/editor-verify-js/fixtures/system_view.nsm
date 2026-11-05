@@ -346,4 +346,37 @@ board Ridge {
     .mcu.imu_int ~ .imu.int
     .mcu.flash_wp ~ .flash.wp
     .mcu.adc_alert ~ .adc.alert
+
+    // Names for the signal nets.
+    .mcu.uart0.tx.net &= "MODEM_UART_TX"
+    .mcu.uart0.rx.net &= "MODEM_UART_RX"
+    .mcu.uart1.tx.net &= "GNSS_UART_TX"
+    .mcu.uart1.rx.net &= "GNSS_UART_RX"
+    .mcu.spi1.sclk.net &= "FLASH_SCLK"
+    .mcu.spi1.mosi.net &= "FLASH_MOSI"
+    .mcu.spi1.miso.net &= "FLASH_MISO"
+    .mcu.spi1.cs.net &= "FLASH_CS"
+    .mcu.spi2.sclk.net &= "IMU_SCLK"
+    .mcu.spi2.mosi.net &= "IMU_MOSI"
+    .mcu.spi2.miso.net &= "IMU_MISO"
+    .mcu.spi2.cs.net &= "IMU_CS"
+    .mcu.spi3.sclk.net &= "ADC_SCLK"
+    .mcu.spi3.mosi.net &= "ADC_MOSI"
+    .mcu.spi3.miso.net &= "ADC_MISO"
+    .mcu.spi3.cs.net &= "ADC_CS"
+    .mcu.swd.swdio.net &= "SWD_SWDIO"
+    .mcu.swd.swclk.net &= "SWD_SWCLK"
+    .mcu.swd.swo.net &= "SWD_SWO"
+    .mcu.swd.reset.net &= "SWD_RESET"
+    .mcu.modem_key.pin.net &= "MODEM_KEY"
+    .mcu.modem_reset.pin.net &= "MODEM_RESET"
+    .mcu.modem_status.pin.net &= "MODEM_STATUS"
+    .mcu.modem_ring.pin.net &= "MODEM_RING"
+    .mcu.modem_dtr.pin.net &= "MODEM_DTR"
+    .mcu.modem_vref.pin.net &= "MODEM_VREF"
+    .mcu.modem_sim.pin.net &= "MODEM_SIM"
+    .mcu.modem_pcm.pin.net &= "MODEM_PCM"
+    .mcu.imu_int.pin.net &= "IMU_INT"
+    .mcu.flash_wp.pin.net &= "FLASH_WP"
+    .mcu.adc_alert.pin.net &= "ADC_ALERT"
 }
