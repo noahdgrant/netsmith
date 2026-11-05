@@ -901,6 +901,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .schematic-host svg.schematic .port { cursor: pointer; }
 .schematic-host svg.schematic .port .flag { pointer-events: all; fill: color-mix(in srgb, var(--sch-wire) 8%, transparent); }
 .schematic-host svg.schematic .port:hover .flag { fill: color-mix(in srgb, var(--sch-hit) 22%, transparent); }
+.schematic-host svg.schematic .bus-flag .flag { pointer-events: all; fill: color-mix(in srgb, var(--sch-wire) 8%, transparent); }
+.schematic-host svg.schematic .bus-flag:hover .flag { fill: color-mix(in srgb, var(--sch-hit) 22%, transparent); }
 .schematic-host svg.schematic .net-label, .schematic-host svg.schematic .wire .hit, .schematic-host svg.schematic .pin, .schematic-host svg.schematic .power { cursor: pointer; }
 .schematic-host svg.schematic .pin.cur .pin-end { fill: color-mix(in srgb, var(--sch-mark) 30%, transparent); stroke: var(--sch-mark); stroke-width: .35; }
 .schematic-host svg.schematic .pin.cur .pin-line { stroke: var(--sch-mark); stroke-width: .6; }

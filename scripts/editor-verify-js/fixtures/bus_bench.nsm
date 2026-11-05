@@ -1,11 +1,13 @@
 //! An invented board for checking the editor's busses: a processor module and a modem module
-//! joined by a UART, and a second processor with a flash chip on an SPI, among the board's own
-//! parts. The two modules are two sheets, so the UART leaves each as one bundle flag; the SPI
+//! joined by a UART, a header module that listens on the same UART, and a second processor with
+//! a flash chip on an SPI, among the board's own parts. The modules are sheets, so the UART
+//! leaves each as one bundle flag (the processor's leads to two modules); the SPI
 //! runs between two parts of the board's sheet, as a bus with a trunk. Nothing here is a real board: the
 //! parts only state their pins, so the board solves and the editor draws it, but it cannot be
 //! written to KiCad.
 
 import std::bus::{Spi, Uart}
+import std::parts::connector::Header1x4
 import std::parts::passive::Capacitor
 import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
@@ -107,6 +109,16 @@ module Link {
     .supply.pos ~> .c6 ~> .supply.neg
 }
 
+/// A header that listens on the serial port, for a logic analyser.
+module Probe {
+    .tap: Uart
+    .header: Header1x4 { .package &= "2.54mm" }
+    .tap.tx ~ .header.p1
+    .tap.rx ~ .header.p2
+    .tap.rts ~ .header.p3
+    .tap.cts ~ .header.p4
+}
+
 board BusBench {
     .process: TwoLayer {
         .stackup.thickness &= 1.6mm
@@ -121,6 +133,8 @@ board BusBench {
     .rail ~ .brain.supply
     .rail ~ .link.supply
     .brain.uart0 ~ .link.serial
+    .probe: Probe
+    .brain.uart0 ~ .probe.tap
     .brain.uart0.tx.net &= "MODEM_TX"
     .brain.uart0.rx.net &= "MODEM_RX"
     .brain.uart0.rts.net &= "MODEM_RTS"
