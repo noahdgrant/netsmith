@@ -293,13 +293,18 @@ fn a_part_whose_window_leaves_a_place_inside_the_edges_is_not_refused() {
 fn a_window_that_has_no_place_inside_the_outline_is_refused_once() {
     // The centre may be anywhere from 39.8 mm: the courtyard is then past the right edge.
     let found = precheck(2, "", (40, 30), "    .r1.place.x >= 39.8mm\n");
-    assert_eq!(found.conflicts.len(), 1, "{found:?}");
-    assert!(
-        found.conflicts[0].contains("no place meets them and keeps the courtyard of R1 (`r1`) inside the outline of 40 x 30 mm"),
-        "{found:?}"
-    );
-    // Said once: the part is not named again as a courtyard past an edge.
-    assert!(found.faults.is_empty(), "{found:?}");
+    // Said once, by the message that names the edge and what would allow it.
+    assert_eq!(found.conflicts, Vec::<String>::new(), "{found:?}");
+    assert_eq!(found.faults.len(), 1, "{found:?}");
+    let text = &found.faults[0].text;
+    for want in [
+        "R1 is not wholly inside the board outline: its courtyard is at least ",
+        " mm past the right edge wherever its requirements put it",
+        "for example `.r1.place.right >= outline.width`",
+        "widget.physical.nsm:10 `.r1.place.x >= 39.8mm`",
+    ] {
+        assert!(text.contains(want), "{want:?} is not in {text}");
+    }
 }
 
 // ---- (5) two relations of the same parts with no common value ----
