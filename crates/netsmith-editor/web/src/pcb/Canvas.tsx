@@ -444,7 +444,7 @@ export function Canvas(props: {
                   width={step}
                   height={step}
                 >
-                  <circle cx={step / 2} cy={step / 2} r={Math.min(0.07, step / 8)} fill="#8b949e" />
+                  <circle cx={step / 2} cy={step / 2} r={Math.min(0.07, step / 8)} fill="var(--pcb-grid)" />
                 </pattern>
               </defs>
               <rect x={o.x} y={o.y} width={o.width} height={o.height} fill="url(#pcb-grid)" opacity="0.7" />

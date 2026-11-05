@@ -1,6 +1,7 @@
 // The server's drawing of the board, read for the page: its size, the nets in it, and the
 // handful of changes the canvas makes to it while something is dragged.
 
+import { UNCONNECTED, themed } from './colours';
 import type { Pt } from './geometry';
 
 /** A net of the board as the drawing shows it. */
@@ -24,6 +25,9 @@ export interface Drawing {
   nets: NetItem[];
 }
 
+/** A track at least this wide (mm) is drawn faint (`.wide`). */
+export const WIDE_TRACK = 1;
+
 /** Pixels in the canvas for each millimetre of the board. */
 export const SCALE = 12;
 
@@ -35,14 +39,28 @@ export function prepare(text: string): Drawing | null {
   const box = svg.getAttribute('viewBox')?.split(' ').map(Number);
   if (svg.nodeName !== 'svg' || !box) return null;
   const [left, top, w, h] = box;
+  // The server draws the parts first and the tracks over them, so a wide track hides the pads it
+  // ends on. Copper goes under the parts: pads, outlines and reference text stay readable.
+  const firstPart = svg.querySelector('g[data-path]');
+  if (firstPart?.parentNode) {
+    for (const cls of ['l-back-copper', 'l-front-copper']) {
+      const copper = svg.querySelector(`.${cls}`);
+      if (copper && copper.parentNode === firstPart.parentNode) firstPart.parentNode.insertBefore(copper, firstPart);
+    }
+  }
   svg.setAttribute('width', String(w * SCALE));
   svg.setAttribute('height', String(h * SCALE));
+  // A track wider than a millimetre is a power track: it is drawn at its true width, and more
+  // transparent, so the board under it (pads, outlines, other tracks) can still be read.
+  svg.querySelectorAll('.l-front-copper line, .l-back-copper line').forEach((t) => {
+    if (Number(t.getAttribute('stroke-width')) >= WIDE_TRACK) t.classList.add('wide');
+  });
   const nets = new Map<string, NetItem>();
   svg.querySelectorAll('.l-pads g[data-net]').forEach((pad) => {
     const name = pad.getAttribute('data-net')!;
     const item = nets.get(name) ?? {
       name,
-      colour: pad.querySelector('[fill]')?.getAttribute('fill') ?? '#8b949e',
+      colour: themed(pad.querySelector('[fill]')?.getAttribute('fill') ?? UNCONNECTED),
       pads: 0,
       plane: false,
     };
@@ -53,7 +71,7 @@ export function prepare(text: string): Drawing | null {
     const name = plane.getAttribute('data-net')!;
     const item = nets.get(name);
     if (item) item.plane = true;
-    else nets.set(name, { name, colour: plane.getAttribute('stroke') ?? '#8b949e', pads: 0, plane: true });
+    else nets.set(name, { name, colour: themed(plane.getAttribute('stroke') ?? UNCONNECTED), pads: 0, plane: true });
   });
   return {
     html: svg.outerHTML,

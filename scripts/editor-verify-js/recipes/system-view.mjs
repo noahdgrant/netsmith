@@ -8,6 +8,16 @@ import { edgesOf, nodesOf, routeProblems } from '../flow-helpers.mjs';
 export const fixture = 'system_view';
 
 export async function run({ page, shot, step, expect, section }) {
+  // The overview is drawn only while part of the drawing is out of the window (it would otherwise
+  // sit on the cards): zoom in to see it, then fit again.
+  const zoomIn = async (scope) => {
+    for (let i = 0; i < 2; i++) await page.locator(`${scope} .zoombar button[title^="Zoom in"]`).click();
+    await page.waitForTimeout(250);
+  };
+  const fitAgain = async (scope) => {
+    await page.locator(`${scope} .zoombar button`, { hasText: 'Fit' }).click();
+    await page.waitForTimeout(250);
+  };
   const nodes = () => nodesOf(page, '.sec-system');
   const lit = async () => (await nodes()).filter((n) => !/\bdim\b/.test(n.cls)).map((n) => n.id).sort();
 
@@ -108,7 +118,10 @@ export async function run({ page, shot, step, expect, section }) {
   const down = await lit();
   expect(down.length >= 9 && ['guard', 'buck5', 'ldo', 'mcu', 'boost12', 'lamp'].every((id) => down.includes(id)), `the guard, the three regulators and what they feed are lit (${down.length} of ${total})`);
   expect((await page.locator('.pt-edge.hot.down').count()) >= 8 && (await page.locator('.pt-edge.hot.up').count()) === 0, 'only in the downstream tint');
-  expect((await page.locator('.pt-minimap rect[class*="hot-down"]').count()) >= 9, 'and in the minimap');
+  expect((await page.locator('.sec-system .pt-minimap').count()) === 0, 'no overview while all the cards are in the window: it covered the cards');
+  await zoomIn('.sec-system');
+  expect((await page.locator('.sec-system .pt-minimap rect[class*="hot-down"]').count()) >= 9, 'zoomed in, the lit cards are in the minimap');
+  await fitAgain('.sec-system');
   const after = new Map((await edgesOf(page, '.sec-system')).map((e) => [`${e.from}>${e.to}`, e.d]));
   expect([...before].every(([k, d]) => after.get(k) === d), 'a lit wire takes the route it had');
   await shot('source-selected');

@@ -84,8 +84,8 @@ const flashField = StateField.define<DecorationSet>({
 });
 
 const flashTheme = EditorView.baseTheme({
-  '@keyframes cm-reveal-a': { from: { backgroundColor: 'rgba(232, 135, 58, .38)' }, to: { backgroundColor: 'transparent' } },
-  '@keyframes cm-reveal-b': { from: { backgroundColor: 'rgba(232, 135, 58, .38)' }, to: { backgroundColor: 'transparent' } },
+  '@keyframes cm-reveal-a': { from: { backgroundColor: 'var(--cm-reveal)' }, to: { backgroundColor: 'transparent' } },
+  '@keyframes cm-reveal-b': { from: { backgroundColor: 'var(--cm-reveal)' }, to: { backgroundColor: 'transparent' } },
   '.cm-reveal-a': { animation: 'cm-reveal-a 1.4s ease-out' },
   '.cm-reveal-b': { animation: 'cm-reveal-b 1.4s ease-out' },
   '@media (prefers-reduced-motion: reduce)': { '.cm-reveal-a, .cm-reveal-b': { animation: 'none' } },

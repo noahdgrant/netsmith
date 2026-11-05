@@ -75,7 +75,16 @@ export async function run({ page, shot, step, expect, section }) {
   await page.waitForSelector('.tab.active:has-text("greenhouse.nsm")');
   expect((await row('f:src/greenhouse.nsm').getAttribute('aria-selected')) === 'true', 'the open file is selected');
   const bar = await row('f:src/greenhouse.nsm').evaluate((e) => { const s = getComputedStyle(e, '::before'); return [s.width, s.backgroundColor]; });
-  expect(bar[0] === '3px' && bar[1] === 'rgb(232, 135, 58)', `a 3 px bar in the accent colour (${bar})`);
+  // The accent is a token and the theme sets it: ask the page what it is.
+  const accent = await page.evaluate(() => {
+    const probe = document.createElement('i');
+    probe.style.color = 'var(--accent)';
+    document.body.append(probe);
+    const colour = getComputedStyle(probe).color;
+    probe.remove();
+    return colour;
+  });
+  expect(bar[0] === '3px' && bar[1] === accent, `a 3 px bar in the accent colour (${bar}, accent ${accent})`);
   await row('f:src/irrigation.nsm').click();
   await page.waitForSelector('.tab.active:has-text("irrigation.nsm")');
   expect((await row('f:src/greenhouse.nsm').evaluate((e) => e.classList.contains('opened'))) === true, 'a file that is open but not active is marked');

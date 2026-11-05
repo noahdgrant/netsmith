@@ -34,6 +34,7 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | Problems: errors, warnings, notes | `source-editor.md` | `editor`, `big-problems` | `two_boards`, `big` |
 | Problems dock in every view, F8, the strip over a stale view, status bar, toasts | `problems-dock.md` | `problems-dock`, `broken-start` | `two_boards` |
 | The selection, the command registry and the dock together: Ctrl+J, F8, `!` in go to anything, the chip and the dock row agree | `integration.md` | `integration` | `two_boards` |
+| Themes (light, dark, high contrast, system), type and buttons, the keyboard, 200 % zoom, reduced motion; every view in every theme | `themes.md` | `themes` | `two_boards` |
 
 `overview`: `drive overview` opens the page and expects the seven section tabs in a row (Source first), a schematic (`.schematic`), the actions in the top bar and the error and warning counts in the status bar, then opens the Source section with key 1. Look at the screenshot for the overall layout.
 

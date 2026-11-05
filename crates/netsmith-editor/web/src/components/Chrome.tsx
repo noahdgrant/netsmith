@@ -291,7 +291,21 @@ export function SectionStrip({ pane }: { pane: { section: Section; index: number
   const other = vis.find((p) => p.index !== pane.index)?.section;
   const wide = canSplit(windowWidth.value);
   return (
-    <div class="tabbar sections" role="tablist" aria-label="Sections">
+    <div
+      class="tabbar sections"
+      role="tablist"
+      aria-label="Sections"
+      onKeyDown={(e) => {
+        // Arrow keys move between the tabs and show the section; Home and End go to the first and the last.
+        const at = SECTIONS.findIndex((x) => x.id === pane.section);
+        const to = e.key === 'ArrowRight' ? at + 1 : e.key === 'ArrowLeft' ? at - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? SECTIONS.length - 1 : null;
+        if (to === null || e.ctrlKey || e.altKey || e.metaKey) return;
+        e.preventDefault();
+        const next = SECTIONS[(to + SECTIONS.length) % SECTIONS.length];
+        showSection(next.id, pane.index);
+        queueMicrotask(() => e.currentTarget.querySelector<HTMLElement>(`[data-section="${next.id}"]`)?.focus());
+      }}
+    >
       {SECTIONS.map((v, i) => {
         const here = pane.section === v.id;
         const elsewhere = other === v.id;
@@ -300,6 +314,7 @@ export function SectionStrip({ pane }: { pane: { section: Section; index: number
             key={v.id}
             role="tab"
             aria-selected={here}
+            tabIndex={here ? 0 : -1}
             data-section={v.id}
             class={`tab ${here ? 'active' : ''} ${elsewhere ? 'elsewhere' : ''}`}
             title={

@@ -25,7 +25,7 @@ export async function run(tools) {
   expect(partOf(s0, HEADER).placement === 'hand', 'the header is where the layout file put it');
 
   step('the findings tab lists it with the line, the part, the measured value and the window');
-  await page.locator('[data-testid=findings-chip]').click();
+  await page.locator('.side-tabs button', { hasText: 'Findings' }).click();
   await page.waitForSelector('[data-testid=finding]');
   expect((await page.locator('[data-testid=finding]').count()) === 1, 'one finding');
   const row = (await page.locator('[data-testid=finding]').innerText()).replace(/\n/g, ' | ');

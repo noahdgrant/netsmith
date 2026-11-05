@@ -4,6 +4,7 @@ import type { PcbBox } from '../api';
 import { api } from '../client';
 import { NoBoard, ViewLoading } from '../components/ViewStatus';
 import { pcbFocus } from '../feedback/derive';
+import { filter, setDockOpen } from '../feedback/state';
 import { announce } from '../feedback/announce';
 import { routeResult } from '../feedback/results';
 import { JobProgress } from '../components/JobProgress';
@@ -168,11 +169,12 @@ export function Pcb() {
         {found && (
           <button
             class={`chip ${found.findings.some((f) => f.severity === 'error') ? 'bad' : found.findings.length ? '' : 'ok'}`}
-            title="What is wrong with the board, with where: click for the list"
+            title="What is wrong with this board. Click: the Problems dock opens, showing this view's problems (Ctrl+J). The Findings tab of the side panel lists the same findings."
+            aria-label={`${found.findings.length === 0 ? 'No findings' : `${found.findings.length} finding${found.findings.length === 1 ? '' : 's'}`} on this board. Show them in the Problems dock.`}
             data-testid="findings-chip"
             onClick={() => {
-              setPanelOpen(true);
-              setTab('findings');
+              filter.value = { ...filter.value, thisView: true };
+              setDockOpen(true);
             }}
           >
             {found.findings.length === 0 ? 'no findings' : `${found.findings.length} finding${found.findings.length === 1 ? '' : 's'}`}

@@ -21,7 +21,7 @@ export async function run(tools) {
   await drag(page, cap.centre, { x: reg.centre.x + 3, y: reg.centre.y });
   await settled(page, stamp);
   await page.waitForSelector('[data-testid=findings-chip].bad');
-  await page.locator('[data-testid=findings-chip]').click();
+  await page.locator('.side-tabs button', { hasText: 'Findings' }).click();
   await page.waitForSelector('[data-testid=finding]');
   const rows = await page.locator('[data-testid=finding]').allInnerTexts();
   expect(rows.some((r) => r.includes('overlap') && /\d+\.\d\d, \d+\.\d\d/.test(r)), `an overlap finding with its coordinates (${rows[0].replace(/\n/g, ' | ')})`);
@@ -47,7 +47,7 @@ export async function run(tools) {
   step('Re-check asks KiCad and says what KiCad did, as the server reports it');
   await page.keyboard.press('Control+Shift+z');
   await page.waitForSelector('[data-testid=findings-chip].bad');
-  await page.locator('[data-testid=findings-chip]').click();
+  await page.locator('.side-tabs button', { hasText: 'Findings' }).click();
   // The answer of the check, not the click: the page redraws a moment after it.
   const answered = page.waitForResponse((r) => r.url().includes('/api/pcb/drc') && r.request().method() === 'POST', { timeout: 90000 });
   await page.locator('[data-testid=recheck]').click();

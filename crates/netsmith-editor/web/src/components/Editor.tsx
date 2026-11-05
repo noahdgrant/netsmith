@@ -3,7 +3,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { bracketMatching, indentOnInput, indentUnit } from '@codemirror/language';
 import { type Diagnostic, lintGutter, setDiagnostics } from '@codemirror/lint';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
-import { Annotation, EditorState, type Extension } from '@codemirror/state';
+import { Annotation, Compartment, EditorState, type Extension } from '@codemirror/state';
 import {
   EditorView,
   drawSelection,
@@ -29,30 +29,46 @@ import {
   say,
   shown,
 } from '../store';
+import { type Theme, isDark, theme as colourTheme } from '../theme';
 
 /** Marks a change made by the page, not typed, so it is not an edit. */
 const External = Annotation.define<boolean>();
 
-const theme = EditorView.theme(
-  {
-    '&': { height: '100%', color: 'var(--text)', backgroundColor: 'var(--editor)' },
-    '.cm-content': { fontFamily: 'var(--mono)', fontSize: '13px', caretColor: 'var(--accent)' },
-    '.cm-gutters': { backgroundColor: 'var(--editor)', color: 'var(--faint)', border: 'none' },
-    '.cm-activeLine': { backgroundColor: 'rgba(255,255,255,0.045)' },
-    '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--text)' },
-    '&.cm-focused': { outline: 'none' },
-    '.cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground': {
-      backgroundColor: 'rgba(232,135,58,0.28)',
-    },
-    '.cm-cursor': { borderLeftColor: 'var(--accent)' },
-    '.cm-tooltip': { backgroundColor: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text)' },
-    '.cm-diagnostic-error': { borderLeft: '3px solid var(--bad)' },
-    '.cm-diagnostic-warning': { borderLeft: '3px solid var(--warn)' },
-    '.cm-lintRange-error': { backgroundImage: 'none', textDecoration: 'underline wavy var(--bad)', textUnderlineOffset: '3px' },
-    '.cm-lintRange-warning': { backgroundImage: 'none', textDecoration: 'underline wavy var(--warn)', textUnderlineOffset: '3px' },
+/** The editor's look, from the page's tokens (themes.css): it follows the theme with no work here. */
+const cmTheme = EditorView.theme({
+  '&': { height: '100%', color: 'var(--text)', backgroundColor: 'var(--canvas)' },
+  '.cm-content': { fontFamily: 'var(--mono)', fontSize: 'var(--fs-md)', caretColor: 'var(--accent)' },
+  '.cm-gutters': { backgroundColor: 'var(--canvas)', color: 'var(--text-faint)', border: 'none' },
+  '.cm-activeLine': { backgroundColor: 'var(--cm-active-line)' },
+  '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--text)' },
+  '&.cm-focused': { outline: 'none' },
+  '.cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground': {
+    backgroundColor: 'var(--cm-selection)',
   },
-  { dark: true },
-);
+  '.cm-selectionMatch': { backgroundColor: 'var(--cm-match)' },
+  '.cm-cursor': { borderLeftColor: 'var(--accent)' },
+  '.cm-matchingBracket, &.cm-focused .cm-matchingBracket': { backgroundColor: 'var(--hover-strong)', outline: '1px solid var(--border-strong)' },
+  '.cm-tooltip': { backgroundColor: 'var(--pop)', border: '1px solid var(--pop-border)', borderRadius: 'var(--r-md)', color: 'var(--text)', boxShadow: 'var(--shadow-float)' },
+  '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': { backgroundColor: 'var(--active-bg)', color: 'var(--text)' },
+  '.cm-panels': { backgroundColor: 'var(--surface)', color: 'var(--text)', borderColor: 'var(--border)' },
+  '.cm-panels.cm-panels-bottom': { borderTop: '1px solid var(--border)' },
+  '.cm-panels.cm-panels-top': { borderBottom: '1px solid var(--border)' },
+  '.cm-textfield': { backgroundColor: 'var(--surface-raised)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)' },
+  '.cm-textfield:focus': { outline: 'none', borderColor: 'var(--accent)' },
+  '.cm-button': { backgroundImage: 'none', backgroundColor: 'var(--surface-raised)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)' },
+  '.cm-button:active': { backgroundImage: 'none', backgroundColor: 'var(--pressed)' },
+  '.cm-searchMatch': { backgroundColor: 'var(--cm-match)', outline: '1px solid var(--info)' },
+  '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: 'var(--cm-selection)' },
+  '.cm-diagnostic-error': { borderLeft: '3px solid var(--danger)' },
+  '.cm-diagnostic-warning': { borderLeft: '3px solid var(--warning)' },
+  '.cm-lintRange-error': { backgroundImage: 'none', textDecoration: 'underline wavy var(--danger)', textUnderlineOffset: '3px' },
+  '.cm-lintRange-warning': { backgroundImage: 'none', textDecoration: 'underline wavy var(--warning)', textUnderlineOffset: '3px' },
+});
+
+/** CodeMirror's own defaults differ for a dark and a light page (search panel, completion list, the
+ * cursor when nothing overrides it): it is told which one this is, and again when the theme changes. */
+const darkness = new Compartment();
+const darknessFor = (t: Theme): Extension => EditorView.darkTheme.of(isDark(t));
 
 function extensionsFor(path: string, readonly: boolean): Extension[] {
   return [
@@ -70,7 +86,8 @@ function extensionsFor(path: string, readonly: boolean): Extension[] {
     revealFlash,
     lintGutter(),
     ...languageExtensions(path, () => shown.peek()?.problems ?? []),
-    theme,
+    cmTheme,
+    darkness.of(darknessFor(colourTheme.peek())),
     EditorState.readOnly.of(readonly),
     EditorView.editable.of(!readonly),
     keymap.of([
@@ -178,6 +195,8 @@ export function Editor() {
     if (current.current !== path) {
       const kept = revs.current.get(path) === file.rev ? states.current.get(path) : undefined;
       v.setState(kept ?? EditorState.create({ doc: file.text, extensions: extensionsFor(path, file.readonly) }));
+      // A kept state was made under the theme of its day.
+      v.dispatch({ effects: darkness.reconfigure(darknessFor(colourTheme.peek())) });
       revs.current.set(path, file.rev);
       current.current = path;
       const head = v.state.selection.main.head;
@@ -185,6 +204,12 @@ export function Editor() {
       cursor.value = { file: path, line: line.number, column: head - line.from + 1 };
     }
   }, [path, file === undefined]);
+
+  // The theme changed.
+  const colours = colourTheme.value;
+  useEffect(() => {
+    view.current?.dispatch({ effects: darkness.reconfigure(darknessFor(colours)) });
+  }, [colours]);
 
   // The text was replaced under the editor (read again from disk), which typing never does.
   useEffect(() => {
