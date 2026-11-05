@@ -47,6 +47,10 @@ export async function run({ page, shot, step, expect }) {
   await shot('all-modules');
   await page.locator('.ov-card', { has: page.locator('.ov-name', { hasText: /^pulls2$/ }) }).click();
   expect((await activeSheet(page)) === 'pulls2', 'a click on the card of pulls2 opened its sheet');
+  await page.waitForSelector('.selchip.k-module');
+  expect((await page.locator('.selchip-title').innerText()) === 'pulls2', 'and selected the module pulls2 (the chip names it)');
+  expect((await page.locator('.selchip, .sel-chip').count()) === 1, 'with one chip');
+  await page.keyboard.press('Escape');
 
   step('a rail between modules is a supply symbol with its name in each, not a wire across the page');
   await openSheet(page, 'All sheets');

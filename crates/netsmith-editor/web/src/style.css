@@ -496,7 +496,8 @@ td.des { font-weight: 600; }
 
 /* findings */
 .findings { display: flex; flex-direction: column; min-height: 0; flex: 1; }
-.findings-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
+.findings-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 12px; }
+.findings-head .tool { white-space: nowrap; }
 .findings .rows { overflow: auto; flex: 1; }
 .note-line { padding: 2px 12px 6px; font-size: 12px; }
 .note-line.bad { color: var(--bad); }

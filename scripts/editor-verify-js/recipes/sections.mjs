@@ -33,6 +33,8 @@ export async function run({ page, shot, step, expect }) {
   expect(true, 'Alt+2 opens the schematic');
 
   step('the section is kept across a reload');
+  // The focus is still in the source's filter field (a plain number is a character there): leave it.
+  await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
   await page.keyboard.press('5');
   await page.reload();
   await page.waitForSelector('.section.sec-bom:not(.away)');
