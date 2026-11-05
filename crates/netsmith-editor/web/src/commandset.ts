@@ -130,7 +130,8 @@ export function registerAppCommands() {
       group: 'Selection',
       keys: 'Escape',
       passive: true,
-      when: () => selection.value !== null,
+      // A popup of a view that Esc closes (the schematic's flag menu and key list) goes first.
+      when: () => selection.value !== null && !document.querySelector('[data-esc-closes]'),
       run: () => setSelection(null),
     },
     {

@@ -2,20 +2,24 @@
 
 ## How to get to it
 
-The section "Schematic" (the second, key 2; Source is the first). The board shown is the one in the selector at the top. A strip of sheets is above the drawing: Previous and Next, a tab for "All sheets" and one for each sheet (a module instance, or the board's own circuit), and "Details", which shows or hides the inspector (the selection, the Modules list, the parts list) on the right; it is open by default only when the view is 1500 px wide or more.
+The section "Schematic" (the second, key 2; Source is the first). The board shown is the one in the selector at the top. The toolbar above the drawing has the sheet navigator's toggle, Previous and Next, the sheet picker (`Board > sheet Module`, a drop-down list with a filter), `?` (the keys) and "Details". The **sheet navigator** (`.sheetnav`) is a collapsible outline on the left: "All sheets", then each sheet in the order its module is declared in the source (not alphabetical) with its module, its part count, and badges for the nets that leave it (`⇄ n`) and its problems; a filter box (sheet names, or a designator on the sheet) shows from six sheets up; it is open by default when the view is 900 px wide or more. "Details" shows the inspector (`.sinspector`) on the right: it is open by default only when the view is 1500 px wide or more.
 
 ## Driving it
 
 `scripts/editor-verify drive schematic`
 
 1. Select `TwoBoards/led`. The drawing has `data-board="LedBoard"`.
-2. Click the resistor `R1` in the drawing: the Source section opens at `.r1: Resistor {}` and a button "Back to Schematic" appears in its file tabs. Escape (Alt+Left outside the text, the button, or the browser's Back button) returns to the schematic as it was left.
+2. Click the resistor `R1` in the drawing: it is selected (a chip `PART R1` at the bottom left, the inspector shows it with "Go to source" and "Show on PCB"). Double-click it (or Enter, or "Go to source"): the Source section opens at `.r1: Resistor {}` and a button "Back to Schematic" appears in its file tabs. Escape (Alt+Left outside the text, the button, or the browser's Back button) returns to the schematic as it was left.
 3. Open Source, click a line that declares the LED, go back to the schematic: `D1` is highlighted in the drawing (class `mark`). A line that declares a module (`.stage: LdoStage`) marks every part inside it.
-4. Click `D1` in the parts list: the source opens at its line too; Back, and the inspector shows `Led`.
+4. Click `D1` in the parts list: it is selected (the row is highlighted, the inspector shows `Led`); the list has a filter box.
 
 ### A big board: `drive big-schematic` after `launch --fixture big`
 
-One sheet is shown at a time, large: the tab strip, Previous/Next, the Left and Right arrow keys and `[` and `]` choose it, so does a click on its entry in the inspector's Modules list; what is outside its frame is clipped away. A board with more than one sheet opens on the first (the order of the Modules list); the pick is kept for each board in localStorage. "All sheets" is the overview below; a click on a box's frame there opens that sheet. Each sheet keeps its zoom and place for the session (leaving and coming back, even through the Source section, finds it as it was); `F` (or 0, or the Fit button) fits it again, `+` and `-` zoom (the drawing must have the focus: click it).
+One sheet is shown at a time: the navigator, Previous/Next, `[` and `]` (and Page Up/Down) and the picker choose it; the arrow keys pan. A board with more than one sheet opens on the first in source order; the pick is kept for each board in localStorage. "All sheets" is a grid of cards in source order, each with its title, counts and a drawing of the sheet; a click on a card opens it. Each sheet keeps its zoom and place for the session (leaving and coming back, even through the Source section, finds it as it was).
+
+**Zoom is in true scale**: 100% is the drawing at its size on a 96 dpi screen (1 mm is 3.78 px; the drawing's text, 1.27 mm, is 4.8 px). A sheet opens fitted when its text is then between 7 and 16 px; a sheet that would fit with smaller text opens at 146% (7 px text) at its top left with a chip "Zoomed in to keep the text readable" and a Fit button; a small sheet is not enlarged past 16 px text. Keys while the drawing has the focus (click it): `0` or `F` fit, `W` fit the width, `Shift+1` 100%, `Shift+2` zoom to the selection, `+` and `-` zoom, the arrows pan. `?` lists them.
+
+**Selection and wayfinding**: a click on a part selects it; a click on a wire, a net label, a flag or a pin selects its net, which stays lit with the rest dimmed (hover does not change it) until Esc or a click on empty space. The inspector shows the net's pins grouped by sheet, each a link ("N pins on M sheets"); Tab and Shift+Tab (drawing focused) walk the pins, switching sheet and keeping the pin in view (a ring marks it, `.pin.cur`). A click on a flag follows the net to the sheet that carries it: one other sheet, it goes; several, a small menu lists them (`.flag-menu`). In the navigator and the overview, the sheets that carry the selected net have an orange dot or outline.
 
 A board with more than 16 parts is drawn by module (`crates/netsmith-view/src/sheets.rs`): each module instance is a dashed box titled `instance: Module`, laid out on its own, and the boxes are set out in a grid about 1.6 times wider than tall. The parts that are in no module are a box named for the board. A box with more than 20 parts is cut into `name (1/2)` and `name (2/2)` along the connections. Every net on a sheet is wired, whatever its size, with orthogonal wires on a grid that go round parts and texts and cross each other only at right angles (`crates/netsmith-view/src/layout/grid.rs`). A name is used only where a wire cannot do: a net that goes on to another sheet leaves through a flag shaped like KiCad's hierarchical label, wired from its pins, with the net's name in it; a rail is a power symbol (below). A net with a generated name (`net-<module>.<part>.<pin>`) is always wires, never a name or a rail. A module is one sheet (up to 60 parts, `MAX_SHEET_PARTS` in `sheets.rs`; the old drawing cut a module of more than 20 in two because it put every column in one row).
 
@@ -39,8 +43,10 @@ A part whose symbol has several units is one box with every pin on the side the 
 
 1. The drawing has a `.module-sheet` for each of the 24 instances and one for the rest, in a shape that is not a strip.
 2. `VIN` is a supply symbol with its name in each regulator stage, never a wire across the page.
-3. The "Modules" list in the inspector names each box; a click opens its sheet. The keys step through the sheets. A click on a box's frame in "All sheets", not on a part or wire in it, opens the sheet.
-4. Wheel zooms, a drag pans; a sheet keeps its zoom, F fits it.
+3. The navigator names each sheet, in source order; a click opens its sheet; its filter finds one. The keys `[` and `]` step through the sheets. A click on a card in "All sheets" opens the sheet.
+4. Wheel zooms, a drag pans; a sheet keeps its zoom, F fits it, Shift+1 is 100%.
+
+Only the open sheet's drawing is shown (the page regroups the server's SVG by sheet, `src/schematic/load.ts`; the other sheets' groups are hidden, `.sheet-slot`), so a locator for `.module-sheet` or `.part` also finds hidden ones and the overview's copies: scope it with `.sheet-slot:not([style*="none"])` when it matters.
 
 ## Gotchas
 

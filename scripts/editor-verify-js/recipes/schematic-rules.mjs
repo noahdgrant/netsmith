@@ -4,6 +4,8 @@
 // symbol is only at the end of a wire, no wire crosses a text, a module is one sheet, every pin
 // with nothing on it has an X, a symbol of several units is one box and a symbol of more than
 // sixty pins is a table. Screenshots are taken to be looked at.
+import { openSheet, sheetNames } from '../schematic-helpers.mjs';
+
 export const fixture = 'schematic_bench';
 
 const SHEETS = ['ldo', 'obd', 'ten', 'adc', 'mcu', 'buck', 'modem'];
@@ -112,7 +114,7 @@ export async function run({ page, shot, step, expect }) {
   for (const [w, h] of [[1366, 768], [2000, 1000]]) {
     await page.setViewportSize({ width: w, height: h });
     for (const name of SHEETS) {
-      await page.locator('.sheet-tab', { hasText: new RegExp(`^${name}:`) }).first().click();
+      await openSheet(page, name);
       await page.waitForTimeout(700);
       m[name] = await page.evaluate(measure, name);
       await page.keyboard.press('f');
@@ -122,7 +124,7 @@ export async function run({ page, shot, step, expect }) {
   }
 
   step('rule 6: one sheet for each module, the modem of 22 parts whole');
-  const tabs = await page.locator('.sheet-tab').allInnerTexts();
+  const tabs = await sheetNames(page);
   expect(!tabs.some((t) => /\(\d+\/\d+\)/.test(t)), `no sheet is cut in pieces (${tabs.join(' | ')})`);
   expect(m.modem.parts.length === 22, `the modem has 22 parts on one sheet (${m.modem.parts.length})`);
 
