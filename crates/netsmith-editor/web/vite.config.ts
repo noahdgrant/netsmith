@@ -9,6 +9,7 @@ export default defineConfig({
   // The dev server asks an editor that is already running: NETSMITH_EDITOR names it. The editor
   // answers only to its own host and origin, so the proxy speaks as a page of that editor.
   server: {
+    fs: { allow: ['../..'] },
     proxy: {
       '/api': {
         target: process.env.NETSMITH_EDITOR ?? 'http://127.0.0.1:8787',
@@ -18,5 +19,6 @@ export default defineConfig({
       },
     },
   },
-  test: { include: ['src/**/*.test.ts'] },
+  // The tests read themes.css, style.css and the board drawing's Rust source as text (to hold the page to its tokens).
+  test: { include: ['src/**/*.test.ts'], css: { include: [/\.css(\?raw)?$/] } },
 });

@@ -1,6 +1,7 @@
 // The server's drawing of the board, read for the page: its size, the nets in it, and the
 // handful of changes the canvas makes to it while something is dragged.
 
+import { themed } from './colours';
 import type { Pt } from './geometry';
 
 /** A net of the board as the drawing shows it. */
@@ -42,7 +43,7 @@ export function prepare(text: string): Drawing | null {
     const name = pad.getAttribute('data-net')!;
     const item = nets.get(name) ?? {
       name,
-      colour: pad.querySelector('[fill]')?.getAttribute('fill') ?? '#8b949e',
+      colour: themed(pad.querySelector('[fill]')?.getAttribute('fill') ?? '#8b949e'),
       pads: 0,
       plane: false,
     };
@@ -53,7 +54,7 @@ export function prepare(text: string): Drawing | null {
     const name = plane.getAttribute('data-net')!;
     const item = nets.get(name);
     if (item) item.plane = true;
-    else nets.set(name, { name, colour: plane.getAttribute('stroke') ?? '#8b949e', pads: 0, plane: true });
+    else nets.set(name, { name, colour: themed(plane.getAttribute('stroke') ?? '#8b949e'), pads: 0, plane: true });
   });
   return {
     html: svg.outerHTML,

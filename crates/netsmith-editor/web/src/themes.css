@@ -1,0 +1,608 @@
+/* The editor's colours, as tokens. Nothing else in the page names a colour: style.css and the
+ * components read `var(--token)`, and each theme below gives every token a value.
+ *
+ * `<html data-theme="…">` picks the theme (theme.ts; index.html sets it before the first paint).
+ * `:root` alone is the dark theme, so a page whose script did not run is still readable.
+ * The contrast of the text tokens is held to WCAG AA (7:1 in the high contrast themes) by
+ * theme.test.ts, which reads this file.
+ *
+ * Names: surfaces (`bg`, `surface`, `surface-raised`, `canvas`), lines (`border*`), text (`text`,
+ * `text-muted`, `text-faint`), the brand (`accent*`), what things mean (`danger`, `warning`,
+ * `success`, `info`, each with `-bg`, `-line`, `-text`), floating things (`pop*`, `shadow-*`),
+ * the editor's syntax colours (`syn-*`) and the drawings' (`sch-*` schematic, `pcb-*` and
+ * `net-*` board).
+ */
+
+/* ---- shared scales: the same in every theme ---- */
+:root {
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Consolas, 'DejaVu Sans Mono', monospace;
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* type: five sizes; 13 px is the body */
+  --fs-xs: 11px; --fs-sm: 12px; --fs-md: 13px; --fs-lg: 15px; --fs-xl: 18px;
+  --lh-tight: 1.25; --lh: 1.4; --lh-loose: 1.55;
+  --fw-normal: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
+  --tracking-caps: .06em;
+  /* space: a 4 px step, 8 px is the unit */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+  /* shapes */
+  --r-sm: 4px; --r-md: 6px; --r-lg: 8px; --r-xl: 12px; --r-pill: 999px;
+  /* heights of rows and controls */
+  --h-xs: 20px; --h-sm: 22px; --h-md: 26px; --h-lg: 30px; --row: 26px;
+  --bar: 40px; --tab: 34px; --status: 24px;
+  /* icons */
+  --icon-sm: 12px; --icon-md: 14px; --icon-lg: 16px;
+  /* motion: short, and none when the person asks for none */
+  --dur-fast: 120ms; --dur: 160ms; --dur-slow: 180ms;
+  --ease: cubic-bezier(.2, 0, 0, 1);
+  /* the layers of the page, from the page up */
+  --z-sticky: 3; --z-dock: 4; --z-pane: 10; --z-status: 12; --z-popover: 20; --z-toast: 30; --z-menu: 60; --z-palette: 80; --z-dialog: 200;
+}
+
+/* ---- dark (the default) ---- */
+:root, :root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #151618;
+  --surface: #1c1d20;
+  --surface-raised: #25262a;
+  --canvas: #1a1b1e;
+  --border: #2e3035;
+  --border-subtle: #25272b;
+  --border-strong: #4a4d55;
+
+  --text: #d9dce1;
+  --text-muted: #a5acb6;
+  --text-faint: #8b929d;
+
+  /* The brand orange: `accent` for lines and marks, `accent-fill` behind a primary button,
+   * `accent-text` for words. */
+  --brand: #e8873a;
+  --accent: #e8873a;
+  --accent-fill: #e8873a;
+  --accent-fg: #1b1208;
+  --accent-text: #f0994f;
+
+  --danger: #f2615c;
+  --danger-bg: #3a1c1b;
+  --danger-line: #5a2a28;
+  --danger-text: #f2aaa6;
+  --danger-solid: #f2615c;
+  --on-danger: #2a0a09;
+  --warning: #e5b53b;
+  --warning-bg: #3a2d12;
+  --warning-line: #5a4516;
+  --warning-text: #f3d28a;
+  --warning-solid: #e5b53b;
+  --on-warning: #1b1208;
+  --success: #6fbf73;
+  --success-bg: #17281a;
+  --success-line: #2f5a33;
+  --info: #6aa6e0;
+  --info-bg: #1f2a38;
+  --info-line: #2f4560;
+  --info-text: #b9d4f2;
+
+  --hover: color-mix(in srgb, #fff 6%, transparent);
+  --hover-strong: color-mix(in srgb, #fff 11%, transparent);
+  --pressed: color-mix(in srgb, #fff 15%, transparent);
+  --focus: #f0994f;
+  --focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent);
+
+  --overlay: rgba(6, 7, 9, .58);
+  --pop: #212328;
+  --pop-border: #3b3e45;
+  --shadow-card: 0 4px 14px rgba(0, 0, 0, .3);
+  --shadow-float: 0 8px 28px rgba(0, 0, 0, .55);
+  --shadow-pop: 0 20px 60px rgba(0, 0, 0, .62), 0 2px 10px rgba(0, 0, 0, .4);
+  --kbd-bg: #2d3037;
+  --kbd-border: #454851;
+  --scroll-thumb: #3b3e45;
+  --scroll-thumb-hover: #565a63;
+
+  /* the colour of each kind of thing: a badge, an icon, a mark in go to anything */
+  --kind-part: #c3a6e0;
+  --kind-net: #6fbf73;
+  --kind-module: #7aa7e0;
+  --kind-definition: #e5b53b;
+  --kind-file: #8c97a6;
+  --kind-command: #e8873a;
+  --kind-board: #6fbf73;
+  --kind-system: #e8873a;
+  --kind-panel: #d9d37a;
+  --kind-interface: #e5b53b;
+  --on-kind: #111;
+
+  /* the source editor */
+  --syn-comment: #8693a1;
+  --syn-doc: #86ac80;
+  --syn-string: #a6d189;
+  --syn-number: #ef9f76;
+  --syn-keyword: #e0a458;
+  --syn-type: #8fb8de;
+  --syn-property: #c3a6e0;
+  --syn-namespace: #98a3b2;
+  --syn-variable: #d7dae0;
+  --syn-operator: #e78284;
+  --syn-punct: #98a3b2;
+  --syn-invalid: #ff7b7b;
+  --cm-active-line: color-mix(in srgb, #fff 4.5%, transparent);
+  --cm-selection: color-mix(in srgb, var(--accent) 30%, transparent);
+  --cm-match: color-mix(in srgb, var(--info) 26%, transparent);
+  --cm-reveal: color-mix(in srgb, var(--accent) 38%, transparent);
+
+  /* the schematic: dark sheet. The names are the drawing's own (crates/netsmith-view/src/svg.rs). */
+  --sch-sheet: #17181a;
+  --sch-wire: #6fbf73;
+  --sch-body: #e8a3a3;
+  --sch-fill: #3a3520;
+  --sch-pin: #e8a3a3;
+  --sch-text: #9fcad6;
+  --sch-net: #8be0ad;
+  --sch-hit: #ffa94d;
+  --sch-muted: #7c8590;
+  --sch-bad: #ff6b6b;
+  --sch-mark: #e8873a;
+  --sch-frame: #4d6a5a;
+  --sch-frame-fill: rgba(111, 191, 115, .04);
+  --sch-frame-title: #8fbfa3;
+
+  /* the board */
+  --pcb-bg: #0d1117;
+  --pcb-grid: #8b949e;
+  --pcb-outline: #f2ed7d;
+  --pcb-silk: #f0ead6;
+  --pcb-key: #c9d1d9;
+  --pcb-ratsnest: #ffffff;
+  --pcb-fab: #5f7a99;
+  --pcb-courtyard: #ff26e2;
+  --pcb-keepout: #e8505b;
+  --pcb-height-limit: #e0a030;
+  --pcb-unconnected: #8b949e;
+  --pcb-front: #d63c3c;
+  --pcb-back: #3c78d6;
+  --pcb-via: #c8c8c8;
+  --pcb-pad-text: #0d1117;
+  --pcb-select: #58a6ff;
+  --pcb-lock: #e5b53b;
+  --pcb-lock-fg: #151618;
+  --pcb-hl: #ffffff;
+  --pcb-track-opacity: .8;
+  --net-0: #ff6b6b; --net-1: #4dd4ac; --net-2: #ffd166; --net-3: #6ea8fe; --net-4: #c792ea;
+  --net-5: #ff9f43; --net-6: #7bed9f; --net-7: #f78fb3; --net-8: #74c0fc; --net-9: #d4e157;
+
+  /* graphs: the power tree and the system view */
+  --grid-dot: #2a2c31;
+  --edge: #5b6068;
+  --edge-arrow: #7d838d;
+  --flow-down: #6cb0ff;
+  --volt: #8fb8de;
+  --stage-bg: #18222d;
+  --stage-border: #35506f;
+  --stage-text: #9cc2ee;
+  --meter-track: #2a2c31;
+  --meter-fill: #5b6068;
+  --signal-edge: #7d7467;
+}
+
+/* ---- light ---- */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #e6e5e0;
+  --surface: #f3f2ee;
+  --surface-raised: #ffffff;
+  --canvas: #ffffff;
+  --border: #d6d3cb;
+  --border-subtle: #e6e4de;
+  --border-strong: #b3afa5;
+
+  --text: #1c1f24;
+  --text-muted: #4a515b;
+  --text-faint: #5a626d;
+
+  --brand: #cf6a12;
+  --accent: #d4701a;
+  --accent-fill: #e8873a;
+  --accent-fg: #1b1208;
+  --accent-text: #9a4a05;
+
+  --danger: #c4302b;
+  --danger-bg: #fdecea;
+  --danger-line: #efb3af;
+  --danger-text: #9b1c17;
+  --danger-solid: #c4302b;
+  --on-danger: #ffffff;
+  --warning: #946200;
+  --warning-bg: #fff5d6;
+  --warning-line: #e6cb84;
+  --warning-text: #664400;
+  --warning-solid: #f2b624;
+  --on-warning: #1f1500;
+  --success: #1a7f37;
+  --success-bg: #e5f4e8;
+  --success-line: #a6d4b0;
+  --info: #0b61c4;
+  --info-bg: #e7f0fc;
+  --info-line: #b5cff0;
+  --info-text: #0a4a9e;
+
+  --hover: color-mix(in srgb, #000 5.5%, transparent);
+  --hover-strong: color-mix(in srgb, #000 9.5%, transparent);
+  --pressed: color-mix(in srgb, #000 13%, transparent);
+  --focus: #b85c0c;
+  --focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+
+  --overlay: rgba(30, 28, 24, .34);
+  --pop: #ffffff;
+  --pop-border: #cdc9bf;
+  --shadow-card: 0 1px 2px rgba(40, 36, 28, .08), 0 2px 8px rgba(40, 36, 28, .06);
+  --shadow-float: 0 6px 24px rgba(40, 36, 28, .18), 0 1px 3px rgba(40, 36, 28, .1);
+  --shadow-pop: 0 16px 48px rgba(40, 36, 28, .24), 0 2px 8px rgba(40, 36, 28, .12);
+  --kbd-bg: #f1efe9;
+  --kbd-border: #cdc9bf;
+  --scroll-thumb: #cbc8bf;
+  --scroll-thumb-hover: #aeaaa0;
+
+  --kind-part: #7a4cb0;
+  --kind-net: #1a7f37;
+  --kind-module: #1f62c0;
+  --kind-definition: #8f5f00;
+  --kind-file: #5b6674;
+  --kind-command: #a8540a;
+  --kind-board: #1d7a38;
+  --kind-system: #a8540a;
+  --kind-panel: #7d6f00;
+  --kind-interface: #8f5f00;
+  --on-kind: #ffffff;
+
+  --syn-comment: #66707c;
+  --syn-doc: #3f7a3a;
+  --syn-string: #1a7437;
+  --syn-number: #b8420a;
+  --syn-keyword: #8a5300;
+  --syn-type: #0b5cad;
+  --syn-property: #7a4cb0;
+  --syn-namespace: #566170;
+  --syn-variable: #24292f;
+  --syn-operator: #c4302b;
+  --syn-punct: #566170;
+  --syn-invalid: #c4302b;
+  --cm-active-line: color-mix(in srgb, #000 4%, transparent);
+  --cm-selection: color-mix(in srgb, var(--accent) 28%, transparent);
+  --cm-match: color-mix(in srgb, var(--info) 22%, transparent);
+  --cm-reveal: color-mix(in srgb, var(--accent) 34%, transparent);
+
+  /* the paper look: cream sheet, dark green wires, dark red parts */
+  --sch-sheet: #f6f4e8;
+  --sch-wire: #0a7a3c;
+  --sch-body: #7b2020;
+  --sch-fill: #fff6bd;
+  --sch-pin: #7b2020;
+  --sch-text: #1d4f5e;
+  --sch-net: #075c2b;
+  --sch-hit: #e8590c;
+  --sch-muted: #7a808a;
+  --sch-bad: #d92d20;
+  --sch-mark: #c4570a;
+  --sch-frame: #6f9a86;
+  --sch-frame-fill: rgba(10, 122, 60, .04);
+  --sch-frame-title: #2f5f4a;
+
+  --pcb-bg: #f5f3ec;
+  --pcb-grid: #8b8a82;
+  --pcb-outline: #8a6a00;
+  --pcb-silk: #3b3a35;
+  --pcb-key: #3b3f46;
+  --pcb-ratsnest: #1d2026;
+  --pcb-fab: #4f6a8a;
+  --pcb-courtyard: #c2189f;
+  --pcb-keepout: #cf2f3a;
+  --pcb-height-limit: #b57400;
+  --pcb-unconnected: #6e757e;
+  --pcb-front: #c42b2b;
+  --pcb-back: #2b62c4;
+  --pcb-via: #8d8d86;
+  --pcb-pad-text: #ffffff;
+  --pcb-select: #0b61c4;
+  --pcb-lock: #b57400;
+  --pcb-lock-fg: #ffffff;
+  --pcb-hl: #000000;
+  --pcb-track-opacity: .72;
+  --net-0: #d2373f; --net-1: #0b7f65; --net-2: #a87800; --net-3: #2a67d8; --net-4: #8644c4;
+  --net-5: #c85d0a; --net-6: #2a8a45; --net-7: #c43a74; --net-8: #1479b4; --net-9: #7a8a0a;
+
+  --grid-dot: #dedbd2;
+  --edge: #8f94a0;
+  --edge-arrow: #6c727d;
+  --flow-down: #1f6fd0;
+  --volt: #1d5fa8;
+  --stage-bg: #eaf1fa;
+  --stage-border: #a9c4e4;
+  --stage-text: #194f8f;
+  --meter-track: #e2dfd7;
+  --meter-fill: #8f94a0;
+  --signal-edge: #8a7f6c;
+}
+
+/* ---- high contrast dark ---- */
+:root[data-theme="hc-dark"] {
+  color-scheme: dark;
+  --bg: #000000;
+  --surface: #000000;
+  --surface-raised: #0e0e0e;
+  --canvas: #000000;
+  --border: #9aa4b2;
+  --border-subtle: #5d6673;
+  --border-strong: #ffffff;
+
+  --text: #ffffff;
+  --text-muted: #e4e7eb;
+  --text-faint: #c9cfd7;
+
+  --brand: #e8873a;
+  --accent: #ffa94d;
+  --accent-fill: #ffa94d;
+  --accent-fg: #000000;
+  --accent-text: #ffb766;
+
+  --danger: #ff8a85;
+  --danger-bg: #330a09;
+  --danger-line: #ff8a85;
+  --danger-text: #ffc1be;
+  --danger-solid: #ff8a85;
+  --on-danger: #000000;
+  --warning: #ffd23f;
+  --warning-bg: #2e2200;
+  --warning-line: #ffd23f;
+  --warning-text: #ffe69a;
+  --warning-solid: #ffd23f;
+  --on-warning: #000000;
+  --success: #7ee787;
+  --success-bg: #06240c;
+  --success-line: #7ee787;
+  --info: #79c0ff;
+  --info-bg: #06203a;
+  --info-line: #79c0ff;
+  --info-text: #cde6ff;
+
+  --hover: color-mix(in srgb, #fff 14%, transparent);
+  --hover-strong: color-mix(in srgb, #fff 22%, transparent);
+  --pressed: color-mix(in srgb, #fff 30%, transparent);
+  --focus: #ffffff;
+  --focus-ring: 0 0 0 2px #000, 0 0 0 4px #fff;
+
+  --overlay: rgba(0, 0, 0, .75);
+  --pop: #000000;
+  --pop-border: #ffffff;
+  --shadow-card: none;
+  --shadow-float: none;
+  --shadow-pop: none;
+  --kbd-bg: #000000;
+  --kbd-border: #ffffff;
+  --scroll-thumb: #9aa4b2;
+  --scroll-thumb-hover: #ffffff;
+
+  --kind-part: #e0c8ff;
+  --kind-net: #7ee787;
+  --kind-module: #a5cbff;
+  --kind-definition: #ffd23f;
+  --kind-file: #c9cfd7;
+  --kind-command: #ffa94d;
+  --kind-board: #7ee787;
+  --kind-system: #ffa94d;
+  --kind-panel: #f0ea8a;
+  --kind-interface: #ffd23f;
+  --on-kind: #000000;
+
+  --syn-comment: #b9c3d0;
+  --syn-doc: #a9e8a0;
+  --syn-string: #b6f0a0;
+  --syn-number: #ffb98f;
+  --syn-keyword: #ffc266;
+  --syn-type: #a5cbff;
+  --syn-property: #e0c8ff;
+  --syn-namespace: #d0d6de;
+  --syn-variable: #ffffff;
+  --syn-operator: #ff9c9c;
+  --syn-punct: #d0d6de;
+  --syn-invalid: #ff9c9c;
+  --cm-active-line: color-mix(in srgb, #fff 12%, transparent);
+  --cm-selection: color-mix(in srgb, var(--accent) 45%, transparent);
+  --cm-match: color-mix(in srgb, var(--info) 40%, transparent);
+  --cm-reveal: color-mix(in srgb, var(--accent) 55%, transparent);
+
+  --sch-sheet: #000000;
+  --sch-wire: #53f07c;
+  --sch-body: #ffb8b8;
+  --sch-fill: #2c2600;
+  --sch-pin: #ffb8b8;
+  --sch-text: #8fe3ff;
+  --sch-net: #8dffb7;
+  --sch-hit: #ffb84d;
+  --sch-muted: #b8c0cc;
+  --sch-bad: #ff8a85;
+  --sch-mark: #ffa94d;
+  --sch-frame: #8fbfa3;
+  --sch-frame-fill: rgba(83, 240, 124, .05);
+  --sch-frame-title: #b4e8c8;
+
+  --pcb-bg: #000000;
+  --pcb-grid: #b8c0cc;
+  --pcb-outline: #fff36a;
+  --pcb-silk: #ffffff;
+  --pcb-key: #ffffff;
+  --pcb-ratsnest: #ffffff;
+  --pcb-fab: #8fb0d6;
+  --pcb-courtyard: #ff4ee8;
+  --pcb-keepout: #ff6b76;
+  --pcb-height-limit: #ffb347;
+  --pcb-unconnected: #b8c0cc;
+  --pcb-front: #ff5c5c;
+  --pcb-back: #5c9aff;
+  --pcb-via: #e0e0e0;
+  --pcb-pad-text: #000000;
+  --pcb-select: #79c0ff;
+  --pcb-lock: #ffd23f;
+  --pcb-lock-fg: #000000;
+  --pcb-hl: #ffffff;
+  --pcb-track-opacity: .9;
+  --net-0: #ff8585; --net-1: #5ff0c8; --net-2: #ffe08a; --net-3: #8fbcff; --net-4: #dcb0ff;
+  --net-5: #ffb26b; --net-6: #96ffb4; --net-7: #ffa9c6; --net-8: #91d3ff; --net-9: #e6f26b;
+
+  --grid-dot: #3a3f48;
+  --edge: #b8c0cc;
+  --edge-arrow: #d0d6de;
+  --flow-down: #8fc4ff;
+  --volt: #b3d4f5;
+  --stage-bg: #00101f;
+  --stage-border: #79a8dc;
+  --stage-text: #b3d4f5;
+  --meter-track: #3a3f48;
+  --meter-fill: #b8c0cc;
+  --signal-edge: #d6c7ae;
+}
+
+/* ---- high contrast light ---- */
+:root[data-theme="hc-light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-raised: #f2f2f2;
+  --canvas: #ffffff;
+  --border: #404040;
+  --border-subtle: #767676;
+  --border-strong: #000000;
+
+  --text: #000000;
+  --text-muted: #262626;
+  --text-faint: #3d3d3d;
+
+  --brand: #9a4400;
+  --accent: #9a4400;
+  --accent-fill: #8f3f00;
+  --accent-fg: #ffffff;
+  --accent-text: #7d3500;
+
+  --danger: #9c0d08;
+  --danger-bg: #fff0ef;
+  --danger-line: #a80f0a;
+  --danger-text: #7d0a06;
+  --danger-solid: #9c0d08;
+  --on-danger: #ffffff;
+  --warning: #6b4a00;
+  --warning-bg: #fff6d6;
+  --warning-line: #6b4a00;
+  --warning-text: #4d3500;
+  --warning-solid: #ffd23f;
+  --on-warning: #000000;
+  --success: #0b5d20;
+  --success-bg: #e8f7ec;
+  --success-line: #0b5d20;
+  --info: #084c9e;
+  --info-bg: #e8f1fd;
+  --info-line: #084c9e;
+  --info-text: #063a78;
+
+  --hover: color-mix(in srgb, #000 10%, transparent);
+  --hover-strong: color-mix(in srgb, #000 16%, transparent);
+  --pressed: color-mix(in srgb, #000 22%, transparent);
+  --focus: #000000;
+  --focus-ring: 0 0 0 2px #fff, 0 0 0 4px #000;
+
+  --overlay: rgba(255, 255, 255, .7);
+  --pop: #ffffff;
+  --pop-border: #000000;
+  --shadow-card: none;
+  --shadow-float: none;
+  --shadow-pop: none;
+  --kbd-bg: #ffffff;
+  --kbd-border: #000000;
+  --scroll-thumb: #6b6b6b;
+  --scroll-thumb-hover: #000000;
+
+  --kind-part: #5c2d9a;
+  --kind-net: #0b5d20;
+  --kind-module: #0f4aa3;
+  --kind-definition: #6b4a00;
+  --kind-file: #3d4652;
+  --kind-command: #8a3c00;
+  --kind-board: #0b5d20;
+  --kind-system: #8a3c00;
+  --kind-panel: #5c5200;
+  --kind-interface: #6b4a00;
+  --on-kind: #ffffff;
+
+  --syn-comment: #4d5560;
+  --syn-doc: #1f5a1a;
+  --syn-string: #0b5d20;
+  --syn-number: #9a2f00;
+  --syn-keyword: #6b3d00;
+  --syn-type: #084c9e;
+  --syn-property: #5c2d9a;
+  --syn-namespace: #3d4652;
+  --syn-variable: #000000;
+  --syn-operator: #a80f0a;
+  --syn-punct: #3d4652;
+  --syn-invalid: #a80f0a;
+  --cm-active-line: color-mix(in srgb, #000 8%, transparent);
+  --cm-selection: color-mix(in srgb, var(--accent) 35%, transparent);
+  --cm-match: color-mix(in srgb, var(--info) 28%, transparent);
+  --cm-reveal: color-mix(in srgb, var(--accent) 40%, transparent);
+
+  --sch-sheet: #ffffff;
+  --sch-wire: #006b2b;
+  --sch-body: #7a0000;
+  --sch-fill: #fff9c0;
+  --sch-pin: #7a0000;
+  --sch-text: #00394f;
+  --sch-net: #004d1a;
+  --sch-hit: #b34000;
+  --sch-muted: #4a5058;
+  --sch-bad: #b00000;
+  --sch-mark: #8f3f00;
+  --sch-frame: #3d6a55;
+  --sch-frame-fill: rgba(0, 107, 43, .04);
+  --sch-frame-title: #1d4a37;
+
+  --pcb-bg: #ffffff;
+  --pcb-grid: #6b6b6b;
+  --pcb-outline: #6b4a00;
+  --pcb-silk: #000000;
+  --pcb-key: #000000;
+  --pcb-ratsnest: #000000;
+  --pcb-fab: #3b5a82;
+  --pcb-courtyard: #a8007f;
+  --pcb-keepout: #b00f1a;
+  --pcb-height-limit: #8a5a00;
+  --pcb-unconnected: #4a4f57;
+  --pcb-front: #b01010;
+  --pcb-back: #0f4ab0;
+  --pcb-via: #5a5a5a;
+  --pcb-pad-text: #ffffff;
+  --pcb-select: #084c9e;
+  --pcb-lock: #8a5a00;
+  --pcb-lock-fg: #ffffff;
+  --pcb-hl: #000000;
+  --pcb-track-opacity: .85;
+  --net-0: #b8222b; --net-1: #046650; --net-2: #8a6200; --net-3: #1d4fb8; --net-4: #6b2fa8;
+  --net-5: #a84a00; --net-6: #1d6e36; --net-7: #a82c5c; --net-8: #0a5f94; --net-9: #5f6e00;
+
+  --grid-dot: #c9c9c9;
+  --edge: #4d5560;
+  --edge-arrow: #262b33;
+  --flow-down: #0f4aa3;
+  --volt: #0b4a94;
+  --stage-bg: #eaf2fd;
+  --stage-border: #0f4aa3;
+  --stage-text: #0a3d80;
+  --meter-track: #d4d4d4;
+  --meter-fill: #4d5560;
+  --signal-edge: #5a5040;
+}
+
+/* ---- derived tokens: one definition for every theme ---- */
+:root {
+  /* a row that is picked, and the strong form of it */
+  --pick: color-mix(in srgb, var(--accent) 16%, transparent);
+  --select-bg: color-mix(in srgb, var(--accent) 15%, var(--surface));
+  --active-bg: color-mix(in srgb, var(--accent) 24%, var(--pop));
+  --hover-bg: var(--hover);
+}

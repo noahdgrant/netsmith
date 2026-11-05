@@ -84,13 +84,13 @@ export const tomlLanguage = StreamLanguage.define<TomlState>({
 
 const tomlHighlight = syntaxHighlighting(
   HighlightStyle.define([
-    { tag: t.comment, color: '#6c7a89', fontStyle: 'italic' },
-    { tag: t.heading, color: '#e0a458', fontWeight: '600' },
-    { tag: t.propertyName, color: '#c3a6e0' },
-    { tag: t.string, color: '#a6d189' },
-    { tag: t.number, color: '#ef9f76' },
-    { tag: t.bool, color: '#8fb8de' },
-    { tag: t.punctuation, color: '#8c97a6' },
+    { tag: t.comment, color: 'var(--syn-comment)', fontStyle: 'italic' },
+    { tag: t.heading, color: 'var(--syn-keyword)', fontWeight: '600' },
+    { tag: t.propertyName, color: 'var(--syn-property)' },
+    { tag: t.string, color: 'var(--syn-string)' },
+    { tag: t.number, color: 'var(--syn-number)' },
+    { tag: t.bool, color: 'var(--syn-type)' },
+    { tag: t.punctuation, color: 'var(--syn-punct)' },
   ]),
 );
 
