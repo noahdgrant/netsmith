@@ -751,6 +751,16 @@ fn designator_key(designator: &str) -> (String, u32) {
     (letters.to_string(), digits.parse().unwrap_or(0))
 }
 
+/// What the design rules check needs that the board file does not say: the process's mask
+/// web and widest filled via, and the courtyards a protruding pin excuses (ADR 0045 section 14).
+pub(crate) fn drc_extras(board: &Board) -> netsmith_fab::drc::Extras {
+    netsmith_fab::drc::Extras {
+        mask_web: Some(board.rules.mask_bridge),
+        via_in_pad: Some(board.process.via_in_pad),
+        excused_courtyards: board.excused_courtyards(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -875,15 +885,5 @@ mod tests {
         )
         .unwrap();
         assert_eq!(entries.len(), 2);
-    }
-}
-
-/// What the design rules check needs that the board file does not say: the process's mask
-/// web and widest filled via, and the courtyards a protruding pin excuses (ADR 0045 section 14).
-pub(crate) fn drc_extras(board: &Board) -> netsmith_fab::drc::Extras {
-    netsmith_fab::drc::Extras {
-        mask_web: Some(board.rules.mask_bridge),
-        via_in_pad: Some(board.process.via_in_pad),
-        excused_courtyards: board.excused_courtyards(),
     }
 }
