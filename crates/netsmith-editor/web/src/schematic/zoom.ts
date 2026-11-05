@@ -35,6 +35,8 @@ export const textPx = (k: number) => TEXT_MM * SCALE * k;
 export const kForText = (px: number) => px / (TEXT_MM * SCALE);
 export const MIN_LEGIBLE_K = kForText(MIN_TEXT_PX);
 export const MAX_COMFORT_K = kForText(MAX_TEXT_PX);
+/** The most a view is zoomed to frame a net or a part: text 11 px high, so what is round it stays in view. */
+export const FRAME_MAX_K = kForText(11);
 
 /** A box of the canvas, in canvas pixels. */
 export interface Box {
@@ -99,8 +101,9 @@ export function isHeldForText(fitK: number, k: number): boolean {
   return fitK < MIN_LEGIBLE_K * 0.995 && Math.abs(k / MIN_LEGIBLE_K - 1) < 0.02;
 }
 
-/** The view that puts the middle of `box` in the middle of the window. The zoom is `k`, or the
- * smallest that reads when it is below that, or the one that shows all of the box when `fitBox`. */
+/** The view that puts the middle of `box` in the middle of the window. The zoom stays, unless it is
+ * below `minK`; with `fitBox` it is the one that shows the box with room around it, no smaller
+ * than `minK` and no larger than a small sheet gets by itself. */
 export function centreOnBox(
   width: number,
   height: number,
@@ -110,12 +113,9 @@ export function centreOnBox(
 ): ViewState {
   let k = current.k;
   if (opts.fitBox) k = Math.min(width / (box.w || 1), height / (box.h || 1)) * 0.7;
-  const lo = opts.minK ?? 0;
-  const hi = MAX_COMFORT_K * 1.5;
-  k = Math.min(Math.max(k, lo), Math.max(hi, lo));
-  const cx = box.x + box.w / 2;
-  const cy = box.y + box.h / 2;
-  return { k, x: width / 2 - cx * k, y: height / 2 - cy * k };
+  k = Math.max(k, opts.minK ?? 0);
+  if (opts.fitBox) k = Math.min(k, Math.max(FRAME_MAX_K, opts.minK ?? 0));
+  return { k, x: width / 2 - (box.x + box.w / 2) * k, y: height / 2 - (box.y + box.h / 2) * k };
 }
 
 /** The view that moves no more than it must to bring `box` into the window with `margin` pixels

@@ -104,6 +104,8 @@ function useShortcuts() {
         else if (canSplit(windowWidth.peek())) layout.value = splitRight(l);
         return;
       }
+      // Shift+1 is a view's key (100% in the schematic), not the first section.
+      if (e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) return;
       const section = sectionOfKey(e.key);
       if (!section) return;
       const plain = !e.ctrlKey && !e.metaKey && !e.altKey;

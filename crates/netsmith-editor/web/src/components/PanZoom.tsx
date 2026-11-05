@@ -71,6 +71,8 @@ export function PanZoom(props: {
   range?: (fitK: number) => { min: number; max: number };
   /** Whether the arrow keys pan the canvas while it has the focus. */
   arrowKeys?: boolean;
+  /** What a screen reader calls the canvas. */
+  label?: string;
   /** Given once, what the owner can do to the view. */
   onApi?: (api: PanZoomApi) => void;
 }) {
@@ -267,7 +269,8 @@ export function PanZoom(props: {
     <div
       class={`panzoom ${props.class ?? ''}`}
       ref={box}
-      tabIndex={-1}
+      tabIndex={props.arrowKeys ? 0 : -1}
+      aria-label={props.label}
       onKeyDown={(e) => {
         if (props.keys === false || e.ctrlKey || e.metaKey || e.altKey) return;
         if (e.key === 'f' || e.key === 'F' || e.key === '0') {
