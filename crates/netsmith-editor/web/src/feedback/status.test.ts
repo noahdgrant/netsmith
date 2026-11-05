@@ -2,14 +2,19 @@ import { describe, expect, it } from 'vitest';
 
 import { type Row, rowOfProblem } from './problems';
 import {
+  ANALYSED_SHOWN_MS,
   IDLE,
   type Pending,
+  analysedText,
+  analysedTip,
   analysingText,
   bannerFor,
   causeOf,
   clock,
   connectionState,
   isBusy,
+  progressText,
+  stageLines,
   step,
 } from './status';
 
@@ -131,5 +136,75 @@ describe('causeOf', () => {
     expect(causeOf('\n  design rules check failed\nmore')).toBe('design rules check failed');
     expect(causeOf('')).toBe('');
     expect(causeOf(null)).toBe('');
+  });
+});
+
+describe("the server's analysis", () => {
+  const run = (events: Parameters<typeof step>[1][]): Pending => events.reduce(step, IDLE);
+  const solve = { type: 'progress' as const, now: 1_000, stage: 'solve', board: 'Beta', done: 0, total: 1 };
+
+  it('is busy from `analysing` to `rebuilt`, and its clock is the server\'s', () => {
+    const p = run([{ type: 'analysing', since: 5_000 }]);
+    expect(isBusy(p)).toBe(true);
+    expect(p.since).toBe(5_000);
+    expect(run([{ type: 'analysing', since: 5_000 }, { type: 'rebuilt' }])).toEqual(IDLE);
+  });
+
+  it('keeps the server\'s start over a request the page made earlier', () => {
+    const p = run([{ type: 'saved', now: 9_000 }, { type: 'analysing', since: 8_500 }]);
+    expect(p.since).toBe(8_500);
+    // `rebuilt` ends both.
+    expect(step(p, { type: 'rebuilt' })).toEqual(IDLE);
+  });
+
+  it('shows the stage with its own count and no total over all of them', () => {
+    expect(progressText({ stage: 'solve', board: 'Beta', done: 0, total: 1 })).toBe('Solving Beta, 1 of 1');
+    expect(progressText({ stage: 'lower', board: 'Demo/main', done: 2, total: 7 })).toBe('Lowering Demo/main, 3 of 7');
+    expect(progressText({ stage: 'check', board: 'src/main.nsm', done: 0, total: 2 })).toBe('Checking src/main.nsm, 1 of 2');
+    expect(progressText({ stage: 'modules', board: 'sheets/a', done: 4, total: 14 })).toBe('Checking module sheets/a, 5 of 14');
+    expect(progressText({ stage: 'whatever', board: 'x', done: 0, total: 0 })).toBe('Whatever x');
+    expect(analysingText(12_000, { stage: 'solve', board: 'Beta', done: 0, total: 1 })).toBe('Analysing… 12 s · Solving Beta, 1 of 1');
+    expect(analysingText(100, { stage: 'solve', board: 'Beta', done: 0, total: 1 })).toBeNull();
+  });
+
+  it('remembers each stage it saw, once, with its latest total', () => {
+    const p = run([
+      { type: 'analysing', since: 0 },
+      { ...solve, now: 1_000, stage: 'check', board: 'a.nsm', total: 1 },
+      solve,
+      { ...solve, now: 31_000, stage: 'lower' },
+      { ...solve, now: 32_000, stage: 'lower', done: 1, total: 2 },
+    ]);
+    expect(p.server?.seen.map((s) => [s.stage, s.total, s.at])).toEqual([
+      ['check', 1, 1_000],
+      ['solve', 1, 1_000],
+      ['lower', 2, 31_000],
+    ]);
+    expect(p.server?.progress).toMatchObject({ stage: 'lower', done: 1, total: 2 });
+    // The same start again changes nothing.
+    expect(step(p, { type: 'analysing', since: 0 })).toEqual(p);
+  });
+
+  it('says how long each stage took, to the end of the last', () => {
+    const seen = [
+      { stage: 'check', total: 1, at: 0 },
+      { stage: 'solve', total: 1, at: 2_000 },
+      { stage: 'modules', total: 14, at: 33_000 },
+    ];
+    expect(stageLines(seen, 46_000)).toEqual(['Check (1 file): 2 s', 'Solve (1 board): 31 s', 'Modules (14 modules): 13 s']);
+  });
+
+  it('says `Analysed in 46 s` for a while after one the page saw, and nothing special else', () => {
+    const a = { at: 100_000, took: 46_000, stages: [], seen: true };
+    expect(analysedText(a, 101_000)).toBe('Analysed in 46 s');
+    expect(analysedText(a, 100_000 + ANALYSED_SHOWN_MS + 1)).toBe('Analysed');
+    expect(analysedText({ ...a, took: 400 }, 101_000)).toBe('Analysed');
+    expect(analysedText({ ...a, seen: false }, 101_000)).toBe('Analysed');
+    expect(analysedText(null, 0)).toBe('Analysed');
+    expect(analysedTip({ ...a, stages: ['Solve (1 board): 31 s'] })).toBe('Analysis is up to date. The last one took 46 s.\nSolve (1 board): 31 s');
+  });
+
+  it('forgets a lost socket\'s analysis: the next connection says it again', () => {
+    expect(run([{ type: 'analysing', since: 1 }, { type: 'lost' }])).toEqual(IDLE);
   });
 });

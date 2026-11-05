@@ -359,7 +359,11 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
     }
   };
 
-  const jump = (i: Issue) => select(i.id, true);
+  // An issue is selected in the tree and its place is shown in the source, as a click on a load does.
+  const jump = (i: Issue) => {
+    select(i.id, true);
+    if (i.at) void goTo(i.at);
+  };
 
   return (
     <div class="graph-view power-view">
@@ -374,7 +378,7 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
             <>
               <span class="pt-issues-label">Issues {model.issues.length}</span>
               {model.issues.map((i, n) => (
-                <button key={n} class={`pt-issue ${i.level}`} onClick={() => jump(i)} title="Go to it in the tree">
+                <button key={n} class={`pt-issue ${i.level}`} onClick={() => jump(i)} title={i.at ? `Go to it in the tree and show ${i.at.file}:${i.at.line} in the source` : 'Go to it in the tree'}>
                   <b>{i.where}</b> {i.text}
                 </button>
               ))}

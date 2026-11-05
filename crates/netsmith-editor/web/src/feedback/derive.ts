@@ -105,11 +105,8 @@ async function loadExtras(name: string, withPcb: boolean) {
         .power(target)
         .then((tree) => {
           const model = modelOf(tree);
-          const rows = model.issues.map((issue) => {
-            const node = tree.nodes.find((n) => n.id === issue.id);
-            const at = node?.loads.find((l) => l.at)?.at ?? node?.supplies.find((l) => l.at)?.at ?? null;
-            return rowOfPowerIssue(issue, name, at);
-          });
+          // The issue carries the place the server gave its node (a stage its converter's).
+          const rows = model.issues.map((issue) => rowOfPowerIssue(issue, name, issue.at));
           power.value = { key, rows };
         })
         .catch(() => {
@@ -193,6 +190,9 @@ export function revealRow(row: Row) {
   selectFor(row);
   if (row.pcb) {
     revealSection('pcb');
+    // The line that states what the finding quotes, put under the cursor where the source will
+    // be when the person looks (the board is what they are on).
+    if (row.at) void goTo(row.at, undefined, true);
   } else if (row.at) {
     void goTo(row.at);
   } else if (row.home === 'power') {

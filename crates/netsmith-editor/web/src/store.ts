@@ -14,7 +14,8 @@ import type {
   Problem,
   Project,
 } from './api';
-import { ApiFailure, Events, api } from './client';
+import { AnalysisPending, ApiFailure, Events, api } from './client';
+import { nextDelay } from './feedback/early';
 import {
   type Layout,
   type Section,
@@ -24,7 +25,7 @@ import {
   undoOpen,
   visiblePanes,
 } from './layout';
-import { notify, setSocket, track } from './feedback/state';
+import { booting, noteElapsed, notify, setSocket, track } from './feedback/state';
 import { load, save as keep } from './storage';
 import {
   type Selection,
@@ -254,10 +255,20 @@ export async function start() {
       switch (message.type) {
         case 'rebuilt':
           analysis.value = message.analysis;
-          track({ type: 'rebuilt' });
+          rebuilt++;
+          noteElapsed(message.analysis.elapsedMs);
+          track({ type: 'rebuilt' }, message.elapsedMs ?? message.analysis.elapsedMs);
+          for (const wake of wakers.splice(0)) wake();
           void onRebuilt();
           break;
         case 'progress': {
+          if (message.task === 'analyse') {
+            // The analysis of the files on disk: the stage and its count, not a line of text.
+            if (message.stage !== undefined) {
+              track({ type: 'progress', now: Date.now(), stage: message.stage, board: message.board, done: message.done ?? 0, total: message.total ?? 0 });
+            }
+            break;
+          }
           const j = job.value;
           if (j && j.task === message.task) {
             job.value = { ...j, lines: [...j.lines.slice(-39), message.message] };
@@ -271,8 +282,9 @@ export async function start() {
           break;
         }
         case 'analysing':
-          // The server says it began to read the project. The page keeps its own clock from the
-          // request it made (`track`), so this message changes nothing here yet.
+          // The server began to read the project, for whatever reason (a file changed outside the
+          // editor, or it is the first time): its own start time is the clock.
+          track({ type: 'analysing', since: message.since });
           break;
         default:
           // A message type added to `ServerMessage` without a case above fails the build here
@@ -289,14 +301,86 @@ export async function start() {
   await refresh();
 }
 
-async function refresh() {
-  const [p, a] = await Promise.all([api.project(), api.analysis()]);
+/** How many times the socket has brought an analysis, and who waits for the next one. */
+let rebuilt = 0;
+const wakers: (() => void)[] = [];
+
+/** Wait for the socket's `rebuilt`, or `ms` if it does not come. */
+function untilRebuilt(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, ms);
+    function done() {
+      clearTimeout(timer);
+      const at = wakers.indexOf(done);
+      if (at >= 0) wakers.splice(at, 1);
+      resolve();
+    }
+    wakers.push(done);
+  });
+}
+
+/** The analysis of the files on disk. The first request asks to be told while the server's first
+ * analysis runs (it answers at once; a request that waits would leave the page with nothing for the
+ * 30 s a big project takes): the page shows its skeleton and the time, and takes the analysis from
+ * the socket's `rebuilt`, asking again with growing pauses in case that push is lost. `null` when
+ * the socket delivered it (the page is already up to date). */
+async function readAnalysis(): Promise<Analysis | null> {
+  const before = rebuilt;
+  let delay = 0;
+  for (;;) {
+    try {
+      const a = await api.analysis(true);
+      booting.value = null;
+      return a;
+    } catch (e) {
+      if (!(e instanceof AnalysisPending)) throw e;
+      booting.value = { at: Date.now(), elapsedMs: e.elapsedMs };
+      delay = nextDelay(delay);
+      await untilRebuilt(delay);
+      if (rebuilt !== before) return null;
+    }
+  }
+}
+
+let refreshing: Promise<void> | null = null;
+let refreshAgain = false;
+let readOnce = false;
+
+/** Read the project and the analysis; a second call while one runs makes the first read again when
+ * it ends, so a socket that reconnects during the first read is not lost. */
+function refresh(): Promise<void> {
+  if (refreshing) {
+    // The first read is what a socket that opens meanwhile would start: it needs no second one.
+    if (readOnce) refreshAgain = true;
+    return refreshing;
+  }
+  refreshing = (async () => {
+    try {
+      do {
+        refreshAgain = false;
+        await refreshOnce();
+        readOnce = true;
+      } while (refreshAgain);
+    } finally {
+      refreshing = null;
+    }
+  })();
+  return refreshing;
+}
+
+async function refreshOnce() {
+  // The tree and the source need no analysis: they are on screen while it runs.
+  const p = await api.project();
   project.value = p;
-  analysis.value = a;
-  await onRebuilt(false);
   if (tabs.value.length === 0) {
     const first = p.files.find((f) => f.role === 'top_level');
     if (first) await openFile(first.path);
+  }
+  const a = await readAnalysis();
+  if (a) {
+    analysis.value = a;
+    noteElapsed(a.elapsedMs);
+    await onRebuilt(false);
   }
 }
 

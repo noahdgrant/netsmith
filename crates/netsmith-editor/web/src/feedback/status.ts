@@ -17,36 +17,90 @@ export const ANALYSING_SHOWN_AFTER_MS = 300;
 /** The time is added to the label once the analysis has run this long. */
 export const ANALYSING_CLOCK_AFTER_MS = 1000;
 
-/** What the status bar says while the project is being analysed, or `null` when it says nothing
- * (idle, or not yet long enough to be worth announcing). */
-export function analysingText(elapsedMs: number | null): string | null {
-  if (elapsedMs === null || elapsedMs < ANALYSING_SHOWN_AFTER_MS) return null;
-  return elapsedMs >= ANALYSING_CLOCK_AFTER_MS ? `Analysing… ${clock(elapsedMs)}` : 'Analysing…';
+/** How far the server's analysis has got, as its `progress` messages say: the stage, what it is on,
+ * and the count of what the stage works through. There is no total over all the stages: the server
+ * does not know it before the checker has found the boards. */
+export interface AnalysisProgress {
+  stage: string;
+  board: string;
+  /** The index (from 0) of what the stage is on. */
+  done: number;
+  total: number;
 }
 
-/** What is waiting for the server to analyse: a check of typed text, a saved file. */
+const STAGE_VERB: Record<string, string> = {
+  check: 'Checking',
+  solve: 'Solving',
+  lower: 'Lowering',
+  draw: 'Drawing',
+  modules: 'Checking module',
+};
+
+const STAGE_NOUN: Record<string, [string, string]> = {
+  check: ['file', 'files'],
+  solve: ['board', 'boards'],
+  lower: ['board', 'boards'],
+  draw: ['board', 'boards'],
+  modules: ['module', 'modules'],
+};
+
+const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** `Solving Beta, 1 of 1`: the stage's own count and no more. */
+export function progressText(p: AnalysisProgress): string {
+  const verb = STAGE_VERB[p.stage] ?? capital(p.stage);
+  const count = p.total > 0 ? `, ${Math.min(p.total, p.done + 1)} of ${p.total}` : '';
+  return `${verb} ${p.board}${count}`;
+}
+
+/** What the status bar says while the project is being analysed, or `null` when it says nothing
+ * (idle, or not yet long enough to be worth announcing). The stage the server is in follows the clock. */
+export function analysingText(elapsedMs: number | null, progress: AnalysisProgress | null = null): string | null {
+  if (elapsedMs === null || elapsedMs < ANALYSING_SHOWN_AFTER_MS) return null;
+  const head = elapsedMs >= ANALYSING_CLOCK_AFTER_MS ? `Analysing… ${clock(elapsedMs)}` : 'Analysing…';
+  return progress ? `${head} · ${progressText(progress)}` : head;
+}
+
+/** A stage the page has seen the server work through, for the tooltip after it. */
+export interface StageSeen {
+  stage: string;
+  /** What it works through, as the last message said. */
+  total: number;
+  /** When the first message of the stage arrived, by the page's clock. */
+  at: number;
+}
+
+/** What is waiting for the server to analyse: a check of typed text, a saved file, and an analysis
+ * of the files on disk that the server announced (whoever's change began it). */
 export interface Pending {
   /** The id of the check last sent and not yet answered. */
   check: number | null;
   /** A file was written and the server's rebuild has not arrived. */
   save: boolean;
-  /** When the analysis began, while there is any. */
+  /** The analysis the server announced: `since` is its own start, in ms since the epoch, and
+   * `progress` the last stage message. */
+  server: { since: number; progress: AnalysisProgress | null; seen: StageSeen[] } | null;
+  /** When the analysis began, while there is any: the server's start when it said, else the
+   * page's first request. */
   since: number | null;
 }
 
-export const IDLE: Pending = { check: null, save: false, since: null };
+export const IDLE: Pending = { check: null, save: false, server: null, since: null };
 
 export type PendingEvent =
   | { type: 'check-sent'; id: number; now: number }
   | { type: 'checked'; id: number; latest: boolean }
   | { type: 'saved'; now: number }
+  | { type: 'analysing'; since: number }
+  | ({ type: 'progress'; now: number } & AnalysisProgress)
   | { type: 'rebuilt' }
   | { type: 'lost' };
 
-export const isBusy = (p: Pending) => p.check !== null || p.save;
+export const isBusy = (p: Pending) => p.check !== null || p.save || p.server !== null;
 
-/** What `p` becomes when something happens. The analysis is busy from the first request until
- * the answer to the last one arrives; the clock runs from the first. */
+/** What `p` becomes when something happens. The analysis is busy from the first request (or the
+ * server's announcement) until the answer to the last one arrives; the clock runs from the first,
+ * and from the server's own start where it said when that was. */
 export function step(p: Pending, e: PendingEvent): Pending {
   let next: Pending;
   switch (e.type) {
@@ -60,14 +114,70 @@ export function step(p: Pending, e: PendingEvent): Pending {
     case 'saved':
       next = { ...p, save: true, since: p.since ?? e.now };
       break;
+    case 'analysing':
+      // The same start again (a page that connects mid-way is told it once) keeps what was seen.
+      next = {
+        ...p,
+        server: p.server?.since === e.since ? p.server : { since: e.since, progress: null, seen: [] },
+        since: e.since,
+      };
+      break;
+    case 'progress': {
+      const server = p.server ?? { since: p.since ?? e.now, progress: null, seen: [] };
+      const progress = { stage: e.stage, board: e.board, done: e.done, total: e.total };
+      const known = server.seen.find((x) => x.stage === e.stage);
+      const seen = known
+        ? server.seen.map((x) => (x === known ? { ...x, total: e.total } : x))
+        : [...server.seen, { stage: e.stage, total: e.total, at: e.now }];
+      next = { ...p, server: { ...server, progress, seen }, since: server.since };
+      break;
+    }
     case 'rebuilt':
-      next = { ...p, save: false };
+      next = { ...p, save: false, server: null };
       break;
     case 'lost':
       // A socket that closed will not answer.
       return IDLE;
   }
   return isBusy(next) ? next : IDLE;
+}
+
+/** An analysis that has ended, for the status bar's `Analysed in 46 s` and its tooltip. */
+export interface Analysed {
+  /** When it ended, by the page's clock. */
+  at: number;
+  /** How long it took, in ms: the server's own figure where it sent one. */
+  took: number;
+  /** The stages the page saw it work through, with the time in each. */
+  stages: string[];
+  /** It ended while the page was looking (the calm line is for these, not for an analysis read at load). */
+  seen: boolean;
+}
+
+/** One line for each stage the page saw: `Solve (1 board): 31 s`. The time of a stage is until the
+ * next one's first message (the last, until `endedAt`). */
+export function stageLines(seen: StageSeen[], endedAt: number): string[] {
+  return seen.map((s, i) => {
+    const [one, many] = STAGE_NOUN[s.stage] ?? ['item', 'items'];
+    const until = seen[i + 1]?.at ?? endedAt;
+    return `${capital(s.stage)} (${s.total} ${s.total === 1 ? one : many}): ${clock(Math.max(0, until - s.at))}`;
+  });
+}
+
+/** How long the calm `Analysed in 46 s` stays after an analysis ends. */
+export const ANALYSED_SHOWN_MS = 12_000;
+
+/** `Analysed in 46 s` for a while after one that took a second or more; plain `Analysed` otherwise. */
+export function analysedText(a: Analysed | null, now: number): string {
+  if (!a || !a.seen || a.took < 1000 || now - a.at > ANALYSED_SHOWN_MS) return 'Analysed';
+  return `Analysed in ${clock(a.took)}`;
+}
+
+/** The tooltip of the idle item. */
+export function analysedTip(a: Analysed | null): string {
+  if (!a) return 'Analysis is up to date.';
+  const lines = a.stages.length ? `\n${a.stages.join('\n')}` : '';
+  return `Analysis is up to date. The last one took ${clock(a.took)}.${lines}`;
 }
 
 export type Connection = 'connecting' | 'connected' | 'reconnecting' | 'offline';

@@ -57,6 +57,8 @@ export interface Issue {
   /** `V3V3`. */
   where: string;
   text: string;
+  /** The place in the source to look at, as the server says (`PowerNode.at`, `Stage.at`). */
+  at: Location | null;
 }
 
 export interface RailModel {
@@ -88,6 +90,8 @@ export interface RailModel {
   headroom: number | null;
   /** Whether anything supplies it: a source, or a converter. */
   sourced: boolean;
+  /** Where to look when it has an issue (`PowerNode.at`). */
+  at: Location | null;
 }
 
 export interface PowerModel {
@@ -194,7 +198,7 @@ export function modelOf(tree: PowerTree): PowerModel {
         title: '',
         from: [],
         to: [],
-        at: e.at,
+        at: info?.at ?? e.at,
         efficiency: info?.efficiency ? rangeFractions(info.efficiency) : null,
         efficiencyUnknown: info?.efficiencyUnsettled ?? false,
       };
@@ -263,6 +267,7 @@ function railOf(n: PowerNode, feeding: StageModel[], supplied: boolean): RailMod
     fill,
     headroom: n.demand && n.capacity ? n.capacity.hi - n.demand.hi : null,
     sourced: supplies.length > 0 || supplied,
+    at: n.at ?? null,
   };
 }
 
@@ -270,22 +275,25 @@ function railOf(n: PowerNode, feeding: StageModel[], supplied: boolean): RailMod
 export function issuesOf(rails: RailModel[], stages: StageModel[]): Issue[] {
   const out: Issue[] = [];
   for (const r of rails) {
+    // The server's place for the node; a server older than the field leaves the first draw's.
+    const at = r.at ?? r.supplies.find((l) => l.at)?.at ?? r.loads.find((l) => l.at)?.at ?? null;
     if (r.budget === 'over' && r.demand && r.capacity) {
       out.push({
         id: r.id,
         level: 'bad',
         where: r.net,
         text: `can draw up to ${ampsText(r.demand.hi)}, more than the ${ampsText(r.capacity.hi)} its supply can give`,
+        at,
       });
     }
-    if (!r.sourced) out.push({ id: r.id, level: 'warn', where: r.net, text: 'has no source: nothing supplies it' });
+    if (!r.sourced) out.push({ id: r.id, level: 'warn', where: r.net, text: 'has no source: nothing supplies it', at });
     if (r.budget === 'unknown' || r.unknowns.length > 0) {
       const n = Math.max(1, r.unknowns.length);
-      out.push({ id: r.id, level: 'warn', where: r.net, text: `has ${n === 1 ? 'a load' : `${n} loads`} with a current the solver has not settled` });
+      out.push({ id: r.id, level: 'warn', where: r.net, text: `has ${n === 1 ? 'a load' : `${n} loads`} with a current the solver has not settled`, at });
     }
   }
   for (const s of stages) {
-    if (s.efficiencyUnknown) out.push({ id: s.id, level: 'warn', where: s.name, text: 'has an efficiency the solver has not settled' });
+    if (s.efficiencyUnknown) out.push({ id: s.id, level: 'warn', where: s.name, text: 'has an efficiency the solver has not settled', at: s.at });
   }
   const rank = (l: Level) => (l === 'bad' ? 0 : 1);
   return out.sort((a, b) => rank(a.level) - rank(b.level) || a.where.localeCompare(b.where) || a.text.localeCompare(b.text));

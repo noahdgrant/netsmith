@@ -16,6 +16,7 @@ import {
   rowOfProblem,
   sortRows,
   splitBoard,
+  stagesOf,
   steps,
   summaryText,
   whereText,
@@ -219,5 +220,71 @@ describe('row ids', () => {
   it('are the same for the same problem read again', () => {
     const p = problem('error', 'x', at('a.nsm', 3));
     expect(rowOfProblem(p, 0).id).toBe(rowOfProblem({ ...p }, 0).id);
+  });
+});
+
+describe("the server's stage, board and instance", () => {
+  const served = (p: Partial<Problem> & Pick<Problem, 'severity' | 'message'>): Problem => ({ rendered: '', at: null, ...p });
+
+  it('are read from the fields, not from the message', () => {
+    const r = rowOfProblem(
+      served({ severity: 'note', message: 'Beta: the current of part `mcu.u` is not known', stage: 'lower', board: 'Beta', path: 'mcu.u' }),
+      0,
+    );
+    expect(r).toMatchObject({ origin: 'lower', board: 'Beta', path: 'mcu.u', message: 'the current of part `mcu.u` is not known' });
+  });
+
+  it('maps every stage to its own stage in the dock', () => {
+    const of = (stage: Problem['stage']) => rowOfProblem(served({ severity: 'error', message: 'x', stage }), 0).origin;
+    expect([of('syntax'), of('check'), of('solve'), of('lower'), of('guideline')]).toEqual(['syntax', 'checker', 'solver', 'lower', 'guideline']);
+  });
+
+  it('does not read a board out of a message whose problem the server says has none', () => {
+    // `check` problems in a module that boards share have no board: "Note: ..." is the message's own.
+    const r = rowOfProblem(served({ severity: 'error', message: 'Note: this is how it starts', stage: 'check' }), 0);
+    expect(r).toMatchObject({ board: null, path: null, message: 'Note: this is how it starts' });
+  });
+
+  it('keeps a board with a slash, and does not guess an instance from the words of the message', () => {
+    const r = rowOfProblem(served({ severity: 'warning', message: 'Demo/main: part `a.b` not chosen', stage: 'solve', board: 'Demo/main' }), 0);
+    expect(r).toMatchObject({ board: 'Demo/main', path: null, message: 'part `a.b` not chosen' });
+  });
+
+  it('falls back to the message for a problem with no stage', () => {
+    const r = rowOfProblem({ severity: 'note', message: 'Led: not evaluated: a == b', rendered: '', at: null }, 0);
+    expect(r).toMatchObject({ origin: 'solver', board: 'Led' });
+  });
+
+  it('is told by the stage chips, which leave a stage out', () => {
+    const list = [
+      rowOfProblem(served({ severity: 'error', message: 'e', stage: 'syntax' }), 0),
+      rowOfProblem(served({ severity: 'error', message: 'f', stage: 'check' }), 1),
+      rowOfProblem(served({ severity: 'error', message: 'g', stage: 'check' }), 2),
+    ];
+    const view = { section: 'schematic' as const, file: null, board: null };
+    expect(stagesOf(list)).toEqual([
+      { origin: 'syntax', n: 1 },
+      { origin: 'checker', n: 2 },
+    ]);
+    expect(filterRows(list, { ...DEFAULT_FILTER, off: ['checker'] }, view).map((r) => r.message)).toEqual(['e']);
+    expect(filterRows(list, DEFAULT_FILTER, view)).toHaveLength(3);
+  });
+});
+
+describe("a finding's place", () => {
+  const finding = (extra: Partial<PcbFinding>): PcbFinding =>
+    ({ id: '1', source: 'placement', severity: 'error', rule: 'constraint', message: 'constraint power.place (src/main.physical.nsm:12) is violated', x: 0, y: 0, area: { x: 0, y: 0, width: 1, height: 1 }, parts: [], ...extra }) as PcbFinding;
+
+  it('is the server\'s `at`, and the message is not read when there is one', () => {
+    const r = rowOfFinding(finding({ at: at('src/main.physical.nsm', 14) }), 'Cased');
+    expect(r.at).toEqual(at('src/main.physical.nsm', 14));
+    expect(r.mentions).toBeUndefined();
+    expect(whereText(r)).toBe('src/main.physical.nsm:14');
+  });
+
+  it('is read from the message only for a server that sent none', () => {
+    const r = rowOfFinding(finding({}), 'Cased');
+    expect(r.at).toBeNull();
+    expect(whereText(r)).toBe('src/main.physical.nsm:12');
   });
 });

@@ -8,12 +8,14 @@ import { load, save } from '../storage';
 import { DOCK_DEFAULT, type DockPrefs, clampDock, parseDock } from './dock';
 import { DEFAULT_FILTER, type Filter, type Group } from './problems';
 import {
+  type Analysed,
   type Connection,
   IDLE,
   type Pending,
   type PendingEvent,
   connectionState,
   isBusy,
+  stageLines,
   step,
 } from './status';
 
@@ -54,17 +56,46 @@ export const activeRow = signal<string | null>(null);
 export const pending = signal<Pending>(IDLE);
 export const busy = computed(() => isBusy(pending.value));
 
-/** When the analysis last finished and how long it took, for the status bar's tooltip. */
-export const lastAnalysis = signal<{ at: number; took: number } | null>(null);
+/** The analysis that last ended, for the status bar's `Analysed in 46 s` and its tooltip. */
+export const lastAnalysis = signal<Analysed | null>(null);
 
-export function track(e: PendingEvent) {
+/** The page has asked for the first analysis and the server said it is still running (`503` with
+ * `pending`): when the page was told and how long it had run by then. The views show their skeleton
+ * and the time until `rebuilt` brings the analysis. */
+export const booting = signal<{ at: number; elapsedMs: number } | null>(null);
+
+/** When the analysis that the page waits for began, by the server's clock and else by what it said
+ * of its age: for the clock the skeleton shows. */
+export const analysisSince = computed<number | null>(() => {
+  const s = pending.value.server?.since;
+  if (s !== undefined) return s;
+  const b = booting.value;
+  return b ? b.at - b.elapsedMs : null;
+});
+
+export function track(e: PendingEvent, elapsedMs?: number) {
   const before = pending.peek();
   const after = step(before, e);
   pending.value = after;
+  if (e.type === 'rebuilt') booting.value = null;
   if (isBusy(before) && !isBusy(after) && before.since !== null && e.type !== 'lost') {
     const at = Date.now();
-    lastAnalysis.value = { at, took: at - before.since };
+    lastAnalysis.value = {
+      at,
+      // The server's figure is of the analysis alone: the page's clock also has the request.
+      took: elapsedMs ?? at - before.since,
+      stages: before.server ? stageLines(before.server.seen, at) : [],
+      seen: true,
+    };
+  } else if (e.type === 'rebuilt' && elapsedMs !== undefined && !isBusy(before)) {
+    // The announcement was missed (the socket opened after it): the server's figure still stands.
+    lastAnalysis.value = { at: Date.now(), took: elapsedMs, stages: [], seen: true };
   }
+}
+
+/** What `GET /api/analysis` says of the analysis the page read at load: the tooltip has it. */
+export function noteElapsed(elapsedMs: number | undefined) {
+  if (elapsedMs !== undefined && !lastAnalysis.peek()) lastAnalysis.value = { at: 0, took: elapsedMs, stages: [], seen: false };
 }
 
 /** The time, as the page last looked: a signal that ticks only while something shows a clock. */

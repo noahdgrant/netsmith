@@ -25,6 +25,7 @@ import type {
   PanelView,
   SystemView,
 } from './api';
+import { PENDING_HEADER, pendingElapsed } from './feedback/early';
 
 /** A change needs this header; a page on another origin cannot send it. */
 const GUARD = { 'X-Netsmith': '1' };
@@ -38,6 +39,13 @@ export class ApiFailure extends Error {
   }
 }
 
+/** The server's first analysis is still running (it said so, to a request that asked to be told). */
+export class AnalysisPending extends Error {
+  constructor(public elapsedMs: number) {
+    super('The first analysis is still running');
+  }
+}
+
 async function check(response: Response): Promise<Response> {
   if (!response.ok) throw new ApiFailure(response.status, (await response.text()).trim());
   return response;
@@ -47,6 +55,16 @@ const q = (params: Record<string, string>) => new URLSearchParams(params).toStri
 
 async function getJson<T>(url: string): Promise<T> {
   return (await check(await fetch(url, { cache: 'no-store' }))).json();
+}
+
+/** A read that is told, not made to wait, while the server's first analysis runs. */
+async function getJsonEarly<T>(url: string): Promise<T> {
+  const response = await fetch(url, { cache: 'no-store', headers: { [PENDING_HEADER]: '1' } });
+  if (response.status === 503) {
+    const elapsed = pendingElapsed(503, await response.clone().text());
+    if (elapsed !== null) throw new AnalysisPending(elapsed);
+  }
+  return (await check(response)).json();
 }
 
 async function getText(url: string): Promise<string> {
@@ -64,7 +82,8 @@ async function post<T>(url: string, body?: unknown): Promise<T> {
 
 export const api = {
   project: () => getJson<Project>('/api/project'),
-  analysis: () => getJson<Analysis>('/api/analysis'),
+  /** With `early` the answer is `AnalysisPending` while the server's first analysis runs, not a wait. */
+  analysis: (early = false) => (early ? getJsonEarly<Analysis>('/api/analysis') : getJson<Analysis>('/api/analysis')),
   file: (path: string) => getJson<FileContent>(`/api/file?${q({ path })}`),
   async save(path: string, text: string, stamp: string): Promise<Saved> {
     const response = await fetch(`/api/file?${q({ path })}`, {

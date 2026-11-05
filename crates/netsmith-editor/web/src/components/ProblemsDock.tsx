@@ -7,7 +7,7 @@ import { useEffect, useRef } from 'preact/hooks';
 
 import type { Severity } from '../api';
 import { allRows, counts, extras, listed, revealRow, viewScope } from '../feedback/derive';
-import { type Group, ORIGIN_LABEL, type Row, filterRows, groupRows, whereText } from '../feedback/problems';
+import { type Group, ORIGIN_LABEL, type Origin, type Row, filterRows, groupRows, stagesOf, whereText } from '../feedback/problems';
 import {
   activeRow,
   dock,
@@ -79,6 +79,21 @@ function SeverityToggle({ severity, n, on, set }: { severity: Severity; n: numbe
   );
 }
 
+/** A stage's chip: pressed, its rows show; the count is of all its rows. */
+function StageChip({ origin, n, on, set }: { origin: Origin; n: number; on: boolean; set: (on: boolean) => void }) {
+  return (
+    <button
+      class={`stage-chip stage-${origin} ${on ? 'on' : ''}`}
+      aria-pressed={on}
+      data-stage={origin}
+      title={`${on ? 'Hide' : 'Show'} what the ${ORIGIN_LABEL[origin].toLowerCase()} stage found (${plural(n, 'problem')})`}
+      onClick={() => set(!on)}
+    >
+      {ORIGIN_LABEL[origin]} <span class="n">{n}</span>
+    </button>
+  );
+}
+
 function Resizer({ host }: { host: preact.RefObject<HTMLElement> }) {
   const drag = useRef(false);
   return (
@@ -139,13 +154,13 @@ function ProblemRow({ row }: { row: Row }) {
       <span class="msg" role="cell">
         {row.message}
       </span>
-      <span class="origin" role="cell">
+      <span class={`origin stage-${row.origin}`} role="cell">
         {ORIGIN_LABEL[row.origin]}
       </span>
       <span class="where" role="cell">
         {where}
       </span>
-      <span class="scope" role="cell" title={row.path ?? undefined}>
+      <span class="scope" role="cell" title={[row.board && `Board ${row.board}`, row.path && `Module ${row.path}`].filter(Boolean).join('\n') || undefined}>
         {row.path ?? row.board ?? ''}
       </span>
     </div>
@@ -159,7 +174,7 @@ const GROUPS: { id: Group; label: string }[] = [
 ];
 
 function Empty({ hidden }: { hidden: { notes: number; filtered: 'text' | 'view' | null } }) {
-  const clear = () => (filter.value = { ...filter.value, text: '', thisView: false, errors: true, warnings: true });
+  const clear = () => (filter.value = { ...filter.value, text: '', thisView: false, errors: true, warnings: true, off: [] });
   if (hidden.filtered === 'text') {
     return (
       <div class="dock-empty" data-testid="dock-empty">
@@ -222,7 +237,7 @@ export function ProblemsDock() {
   const filtered: 'text' | 'view' | null =
     allRows.value.length === 0 || total > 0
       ? null
-      : f.text !== '' || !f.errors || !f.warnings
+      : f.text !== '' || !f.errors || !f.warnings || f.off.length > 0
         ? 'text'
         : f.thisView && filterRows(allRows.value, { ...f, thisView: false }, view).length > 0
           ? 'view'
@@ -236,6 +251,17 @@ export function ProblemsDock() {
         <SeverityToggle severity="error" n={c.error} on={f.errors} set={(on) => set({ errors: on })} />
         <SeverityToggle severity="warning" n={c.warning} on={f.warnings} set={(on) => set({ warnings: on })} />
         <SeverityToggle severity="note" n={c.note} on={f.notes} set={(on) => set({ notes: on })} />
+        <div class="stage-chips" role="group" aria-label="Stages">
+          {stagesOf(allRows.value).map((s) => (
+            <StageChip
+              key={s.origin}
+              origin={s.origin}
+              n={s.n}
+              on={!f.off.includes(s.origin)}
+              set={(on) => set({ off: on ? f.off.filter((o) => o !== s.origin) : [...f.off, s.origin] })}
+            />
+          ))}
+        </div>
         <label class="dock-search">
           <input
             type="search"
@@ -281,7 +307,7 @@ export function ProblemsDock() {
           <div class="dock-cols" role="row">
             <span role="columnheader" class="sev" aria-label="Severity" />
             <span role="columnheader">Message</span>
-            <span role="columnheader">Source</span>
+            <span role="columnheader">Stage</span>
             <span role="columnheader">Location</span>
             <span role="columnheader">Module</span>
           </div>

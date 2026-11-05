@@ -4,8 +4,8 @@
 import { useEffect } from 'preact/hooks';
 
 import { banner, firstError, goToFirstError, neverBuilt } from '../feedback/derive';
-import { busy, dock, now, pending, runClock, setDockOpen } from '../feedback/state';
-import { ANALYSING_CLOCK_AFTER_MS } from '../feedback/status';
+import { analysisSince, busy, dock, now, pending, runClock, setDockOpen } from '../feedback/state';
+import { ANALYSING_CLOCK_AFTER_MS, clock, progressText } from '../feedback/status';
 import { job, analysis } from '../store';
 import { plural } from '../util';
 import { SeverityIcon } from './ProblemsDock';
@@ -48,8 +48,20 @@ export function ProgressLine() {
   );
 }
 
+/** The first analysis, as a skeleton and a clock: `Analysing the project… 12 s`, and the stage the
+ * server is in when it says. The page does not wait for it to paint, and takes the board when it ends. */
+function Analysing() {
+  const since = analysisSince.value;
+  useEffect(() => runClock(), []);
+  const progress = pending.value.server?.progress;
+  const elapsed = since === null ? '' : clock(Math.max(0, now.value - since));
+  return (
+    <ViewLoading what="Analysing the project" detail={[elapsed, progress ? progressText(progress) : ''].filter(Boolean).join(' · ')} />
+  );
+}
+
 /** Blocks that stand where a view will be, so a first read looks like a page that is on its way. */
-export function ViewLoading({ what }: { what: string }) {
+export function ViewLoading({ what, detail }: { what: string; detail?: string }) {
   return (
     <div class="view-loading" role="status" aria-live="polite" data-testid="view-loading">
       <div class="skeleton-stage" aria-hidden="true">
@@ -62,14 +74,16 @@ export function ViewLoading({ what }: { what: string }) {
           <div class="sk sk-line w80" />
         </div>
       </div>
-      <div class="view-loading-text">{what}…</div>
+      <div class="view-loading-text">
+        {what}…{detail ? ` ${detail}` : ''}
+      </div>
     </div>
   );
 }
 
 /** What a view says when there is no board: why, with the error that stops it, and where to go. */
 export function NoBoard({ what }: { what: string }) {
-  if (!analysis.value) return <ViewLoading what={`Reading the project`} />;
+  if (!analysis.value) return <Analysing />;
   const e = firstError.value;
   if (!neverBuilt.value || !e) {
     return (

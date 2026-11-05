@@ -1,19 +1,20 @@
 // The rows of the problems dock: what the checker, the solver and the PCB checks found, as one
 // list that can be sorted, filtered and stepped through. Pure: no signals, no DOM.
 //
-// The server tells a problem's severity and place but not which stage found it, so `classify`
-// reads that from the message; the shapes it knows are those of the compiler's own messages. When
-// the server sends the stage, this is the one place to change.
+// The server tells a problem's stage, board and instance (`Problem.stage`, `.board`, `.path`) and
+// the rows read them. `classify`, `splitBoard` and `instancePath` read the same from the message,
+// and are used only for a problem that has no `stage`: a server older than the fields.
 
-import type { Location, PcbFinding, Problem, Severity } from '../api';
+import type { Location, PcbFinding, Problem, ProblemStage, Severity } from '../api';
 import type { Section } from '../layout';
 
-export type Origin = 'syntax' | 'checker' | 'solver' | 'guideline' | 'power' | 'placement' | 'routing' | 'rules' | 'kicad';
+export type Origin = 'syntax' | 'checker' | 'solver' | 'lower' | 'guideline' | 'power' | 'placement' | 'routing' | 'rules' | 'kicad';
 
 export const ORIGIN_LABEL: Record<Origin, string> = {
   syntax: 'Syntax',
   checker: 'Checker',
   solver: 'Solver',
+  lower: 'Lowering',
   guideline: 'Guideline',
   power: 'Power',
   placement: 'Placement',
@@ -79,10 +80,36 @@ export function classify(problem: Pick<Problem, 'severity' | 'message'>): Origin
 
 const first = (text: string) => text.split('\n', 1)[0];
 
+/** The stage the server names, as the dock's origin. */
+export const ORIGIN_OF_STAGE: Record<ProblemStage, Origin> = {
+  syntax: 'syntax',
+  check: 'checker',
+  solve: 'solver',
+  lower: 'lower',
+  guideline: 'guideline',
+};
+
+/** The stage, the board, the instance and the message without the board's label of a problem:
+ * the server's fields when it sent a stage, else what the message says. A server that sends the
+ * stage and no board means the problem has none, so the message is not read for one. */
+export function describeProblem(p: Problem): { origin: Origin; board: string | null; path: string | null; rest: string } {
+  if (p.stage === undefined) {
+    const { board, rest } = splitBoard(p.message);
+    return { origin: classify(p), board, path: instancePath(p.message), rest };
+  }
+  const board = p.board ?? null;
+  const label = board === null ? '' : `${board}: `;
+  return {
+    origin: ORIGIN_OF_STAGE[p.stage] ?? 'checker',
+    board,
+    path: p.path ?? null,
+    rest: label && p.message.startsWith(label) ? p.message.slice(label.length) : p.message,
+  };
+}
+
 export function rowOfProblem(p: Problem, index: number): Row {
-  const { board, rest } = splitBoard(p.message);
+  const { board, rest, origin, path } = describeProblem(p);
   const at = p.at;
-  const origin = classify(p);
   return {
     id: `p|${p.severity}|${at ? `${at.file}:${at.line}:${at.column}` : '-'}|${first(p.message)}|${index}`,
     severity: p.severity,
@@ -91,7 +118,7 @@ export function rowOfProblem(p: Problem, index: number): Row {
     origin,
     at,
     board,
-    path: instancePath(p.message),
+    path,
     home: null,
   };
 }
@@ -104,14 +131,16 @@ export function mentionedPlace(message: string): string | undefined {
 }
 
 export function rowOfFinding(f: PcbFinding, board: string): Row {
+  const at = f.at ?? null;
   return {
-    mentions: mentionedPlace(f.message),
+    // The line the server found; the message is read for it only when the server did not say.
+    mentions: at ? undefined : mentionedPlace(f.message),
     id: `f|${board}|${f.id}`,
     severity: f.severity,
     message: first(f.message),
     full: f.message,
     origin: PCB_ORIGIN[f.source],
-    at: null,
+    at,
     board,
     path: f.parts.length ? f.parts.join(', ') : null,
     home: 'pcb',
@@ -151,9 +180,21 @@ export interface Filter {
   thisView: boolean;
   /** Words that must all be in the message, the file or the path. */
   text: string;
+  /** The stages whose chips are off: their rows are left out. */
+  off: Origin[];
 }
 
-export const DEFAULT_FILTER: Filter = { errors: true, warnings: true, notes: false, thisView: false, text: '' };
+export const DEFAULT_FILTER: Filter = { errors: true, warnings: true, notes: false, thisView: false, text: '', off: [] };
+
+/** The stages in the order their chips come: the compiler's in the order of the pipeline, then what the views find. */
+export const ORIGIN_ORDER: Origin[] = ['syntax', 'checker', 'solver', 'lower', 'guideline', 'power', 'placement', 'routing', 'rules', 'kicad'];
+
+/** The stages that have rows, each with its count, in chip order. */
+export function stagesOf(rows: Row[]): { origin: Origin; n: number }[] {
+  const n = new Map<Origin, number>();
+  for (const r of rows) n.set(r.origin, (n.get(r.origin) ?? 0) + 1);
+  return ORIGIN_ORDER.filter((o) => n.has(o)).map((origin) => ({ origin, n: n.get(origin)! }));
+}
 
 /** The file a row is about, or `''` for one that has none. */
 export const fileOf = (r: Row) => r.at?.file ?? '';
@@ -211,6 +252,7 @@ export function filterRows(rows: Row[], f: Filter, view: ViewScope): Row[] {
   const words = f.text.toLowerCase().split(/\s+/).filter(Boolean);
   return rows.filter((r) => {
     if (r.severity === 'error' ? !f.errors : r.severity === 'warning' ? !f.warnings : !f.notes) return false;
+    if (f.off?.includes(r.origin)) return false;
     if (f.thisView && !inScope(r, view)) return false;
     if (words.length === 0) return true;
     const hay = `${r.message} ${r.at?.file ?? ''} ${r.path ?? ''} ${ORIGIN_LABEL[r.origin]} ${r.board ?? ''}`.toLowerCase();

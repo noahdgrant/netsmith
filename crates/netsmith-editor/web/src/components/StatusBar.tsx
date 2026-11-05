@@ -5,9 +5,10 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 
-import { analysingText, clock, CONNECTION_LABEL, connectionTip } from '../feedback/status';
+import { ANALYSED_SHOWN_MS, analysedText, analysedTip, analysingText, clock, CONNECTION_LABEL, connectionTip } from '../feedback/status';
 import { banner, counts, goToFirstError } from '../feedback/derive';
 import {
+  analysisSince,
   busy,
   connection,
   lastAnalysis,
@@ -146,7 +147,8 @@ function ConnectionDetails({ close }: { close: () => void }) {
           <>
             <dt>Last analysis</dt>
             <dd>
-              took {clock(last.took)}, finished {clock(now.value - last.at)} ago
+              took {clock(last.took)}
+              {last.seen && <>, finished {clock(now.value - last.at)} ago</>}
             </dd>
           </>
         )}
@@ -172,17 +174,22 @@ function JobItem() {
 /** Whether the analysis is running, or the drawing is an old one, or all is current. */
 function AnalysisItem() {
   const b = busy.value;
-  // The clock ticks while there is something to count.
-  useEffect(() => (b ? runClock() : undefined), [b]);
-  const since = pending.value.since;
-  const text = b && since !== null ? analysingText(now.value - since) : null;
-  const ban = banner.value;
   const last = lastAnalysis.value;
+  // The clock ticks while there is something to count, and while `Analysed in 46 s` is on show.
+  const calm = !b && last?.seen === true && Date.now() - last.at <= ANALYSED_SHOWN_MS;
+  useEffect(() => (b || calm ? runClock() : undefined), [b, calm]);
+  const p = pending.value;
+  const text = b && p.since !== null ? analysingText(now.value - p.since, p.server?.progress ?? null) : null;
+  const ban = banner.value;
   if (text) {
     return (
-      <Item class="analysing" title="Checking the project. The views keep showing the last result until it is done." onClick={() => (dock.value = { ...dock.value, open: true })}>
+      <Item
+        class="analysing"
+        title={`Checking the project${p.server ? ' (the server began at its own time, so a change made outside the editor shows here too)' : ''}. The views keep showing the last result until it is done.`}
+        onClick={() => (dock.value = { ...dock.value, open: true })}
+      >
         <Spinner />
-        {text}
+        <span class="analysing-text">{text}</span>
       </Item>
     );
   }
@@ -194,23 +201,20 @@ function AnalysisItem() {
     );
   }
   if (!analysis.value) {
+    const since = analysisSince.value;
     return (
-      <Item class="analysing" title="Reading the project for the first time.">
+      <Item class="analysing" title="Reading the project for the first time. The server analyses it once, and a big project takes a while.">
         <Spinner />
-        Reading the project…
+        {since !== null ? (analysingText(Math.max(0, now.value - since), p.server?.progress ?? null) ?? 'Analysing…') : 'Reading the project…'}
       </Item>
     );
   }
   return (
-    <Item
-      class="idle"
-      title={last ? `Analysis is up to date. The last one took ${clock(last.took)}.` : 'Analysis is up to date.'}
-      onClick={toggleDock}
-    >
+    <Item class="idle" title={analysedTip(last)} onClick={toggleDock}>
       <svg class="icon" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M3.5 8.4l3 3 6-6.6" />
       </svg>
-      Analysed
+      {analysedText(last, now.value)}
     </Item>
   );
 }
