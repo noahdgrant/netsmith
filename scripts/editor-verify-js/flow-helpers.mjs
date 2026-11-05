@@ -29,7 +29,7 @@ export function edgesOf(page, scope) {
 }
 
 /** What is wrong with the routes: a stretch whose box meets a card the edge does not join, a stretch
- * shorter than 6 px, an end that is off the 8 px grid. An empty list is a pass. */
+ * shorter than 6 px, a vertical step smaller than 16 px (a kink), an end that is off the 8 px grid. An empty list is a pass. */
 export function routeProblems(nodes, edges) {
   const bad = [];
   for (const e of edges) {
@@ -39,6 +39,8 @@ export function routeProblems(nodes, edges) {
       const [x2, y2] = pts[i + 1];
       const len = Math.hypot(x2 - x1, y2 - y1);
       if (len < 6) bad.push(`${e.from} > ${e.to}: a stretch of ${len.toFixed(1)} px`);
+      // A step in a wire smaller than two grid steps is a kink, not a turn.
+      if (x1 === x2 && len < 16) bad.push(`${e.from} > ${e.to}: a jog of ${len.toFixed(1)} px`);
       const lo = [Math.min(x1, x2), Math.min(y1, y2)];
       const hi = [Math.max(x1, x2), Math.max(y1, y2)];
       for (const n of nodes) {

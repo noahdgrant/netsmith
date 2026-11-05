@@ -35,7 +35,7 @@ export async function run({ page, shot, step, expect, section }) {
       if (!e.back) expect(b.x >= a.x + a.w, `${e.from} -> ${e.to} runs left to right`);
     }
     const bad = routeProblems(all, edges);
-    expect(bad.length === 0, `no stretch of any edge meets a card it does not join, none is shorter than 6 px, every end is on the 8 px grid (${bad.slice(0, 3).join('; ')})`);
+    expect(bad.length === 0, `no stretch of any edge meets a card it does not join, none is shorter than 6 px, no step is a kink under 16 px, every end is on the 8 px grid (${bad.slice(0, 3).join('; ')})`);
     const back = edges.filter((e) => e.back);
     expect(back.length >= 1, `the edge that closes the cycle goes round under the drawing (${back.map((e) => `${e.from} > ${e.to}`).join(', ')})`);
     const lowest = Math.max(...all.map((n) => n.y + n.h));

@@ -32,7 +32,7 @@ export async function run({ page, shot, step, expect, section }) {
     expect(flow('inlet') < flow('guard') && flow('guard') < flow('buck5') && flow('buck5') < flow('ldo') && flow('ldo') < flow('mcu'), 'power flows left to right: inlet, guard, buck5, ldo, mcu');
     expect(['flash', 'imu', 'adc', 'modem', 'gnss', 'debug'].every((id) => flow(id) < flow('mcu')), 'the processor, which they all connect to, is the rightmost');
     const bad = routeProblems(all, edges);
-    expect(bad.length === 0, `no stretch of any wire meets a card it does not join, none is shorter than 6 px, every end is on the 8 px grid (${bad.slice(0, 3).join('; ')})`);
+    expect(bad.length === 0, `no stretch of any wire meets a card it does not join, none is shorter than 6 px, no step is a kink under 16 px, every end is on the 8 px grid (${bad.slice(0, 3).join('; ')})`);
 
     // Labels: on a clear spot, none over another or over a card.
     const labels = await page.evaluate(() => [...document.querySelectorAll('.sec-system .sy-label')].map((t) => { const r = t.getBoundingClientRect(); return { text: t.textContent, x: r.left, y: r.top, w: r.width, h: r.height }; }));
