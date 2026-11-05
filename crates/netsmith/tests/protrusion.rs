@@ -196,7 +196,9 @@ fn a_protrusion_that_leaves_too_little_room_names_the_numbers_and_the_lines() {
     let e = made.expect_err("3.4 + 0.4 mm does not fit 3.6 mm");
     let line = line_of(&text, ".row.pin_protrusion &= 0.4mm");
     for expected in [
-        "U1 (`cell`) lies over the pins of J1 (`row`)",
+        // Both parts are pinned, so the lines are proved to conflict before the placer starts.
+        "these lines cannot both hold",
+        "over a pad of J1 (`row`) (pins protruding 0.4 mm)",
         "protrude 0.40 mm",
         &format!("widget.physical.nsm:{line}"),
         "3.80 mm",
