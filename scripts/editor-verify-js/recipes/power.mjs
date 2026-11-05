@@ -23,6 +23,8 @@ export async function run({ page, shot, step, expect, section }) {
   await page.waitForSelector('.section.sec-source:not(.away)');
   await page.waitForFunction(() => (document.querySelector('.cm-activeLine')?.textContent ?? '').trim().length > 0);
   expect(true, `the cursor on the declaration of ${who}`);
+  const marks = await page.locator('.cm-selectionMatch').count();
+  expect(marks < 5, `no run of marks in the source after the click-through (${marks})`);
   expect((await page.locator('.pane-strip').count()) === 1, 'in the same pane: no second pane was opened');
   await page.locator('.back-btn').click();
   await page.waitForSelector('.section.sec-power:not(.away)');

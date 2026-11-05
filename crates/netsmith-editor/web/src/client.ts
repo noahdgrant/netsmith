@@ -6,6 +6,7 @@ import type {
   Bom,
   BuildReport,
   CatalogRefresh,
+  Changed,
   ClientMessage,
   Definition,
   FabReport,
@@ -73,6 +74,12 @@ export const api = {
     });
     return (await check(response)).json();
   },
+  /** Make a file, a folder, move one or remove one below the project's src/ (the server refuses
+   * anything else, and a path that is taken). */
+  createFile: (path: string, text: string) => post<Changed>('/api/fs/create-file', { path, text }),
+  createFolder: (path: string) => post<Changed>('/api/fs/create-dir', { path }),
+  renamePath: (from: string, to: string) => post<Changed>('/api/fs/rename', { from, to }),
+  deletePath: (path: string, confirm: boolean) => post<Changed>('/api/fs/delete', { path, confirm }),
   board: (name: string) => getJson<BoardDetail>(`/api/board?${q({ name })}`),
   schematic: (board: string) => getText(`/api/schematic.svg?${q({ board })}`),
   power: (board: string) => getJson<PowerTree>(`/api/power?${q({ board })}`),

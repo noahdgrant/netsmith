@@ -131,7 +131,7 @@ export const panelShown = signal<string | null>(null);
 export const detail = signal<BoardDetail | null>(null);
 
 /** Asks the editor to put the cursor at a place. `nonce` makes the same place twice a new ask. */
-export const reveal = signal<{ at: Location; nonce: number } | null>(null);
+export const reveal = signal<{ at: Location; name?: string; nonce: number } | null>(null);
 export const cursor = signal<{ file: string; line: number; column: number } | null>(null);
 /** The part picked in a view. */
 export const selected = signal<string | null>(null);
@@ -266,6 +266,39 @@ async function refresh() {
     const first = p.files.find((f) => f.role === 'top_level');
     if (first) await openFile(first.path);
   }
+}
+
+/** After a file or folder was made, moved or removed: the tree and the check are read again. */
+export async function refreshAfterChange() {
+  const [p, a] = await Promise.all([api.project(), api.analysis()]);
+  project.value = p;
+  analysis.value = a;
+  await onRebuilt(false);
+}
+
+const under = (path: string, from: string, folder: boolean) => path === from || (folder && path.startsWith(`${from}/`));
+
+/** A file or folder was moved: the open files in it keep their text and edits at the new path. */
+export function renameOpen(from: string, to: string, folder: boolean) {
+  const moved = (path: string) => (path === from ? to : `${to}${path.slice(from.length)}`);
+  const files: Record<string, OpenFile> = {};
+  for (const [path, f] of Object.entries(openFiles.value)) {
+    files[under(path, from, folder) ? moved(path) : path] = under(path, from, folder) ? { ...f, path: moved(path) } : f;
+  }
+  openFiles.value = files;
+  tabs.value = tabs.value.map((t) => (under(t, from, folder) ? moved(t) : t));
+  const active = activeFile.value;
+  if (active && under(active, from, folder)) activeFile.value = moved(active);
+}
+
+/** A file or folder was removed: its tabs go, with edits that were not saved. */
+export function dropOpen(path: string, folder: boolean) {
+  const gone = (p: string) => under(p, path, folder);
+  const rest = tabs.value.filter((t) => !gone(t));
+  tabs.value = rest;
+  openFiles.value = Object.fromEntries(Object.entries(openFiles.value).filter(([p]) => !gone(p)));
+  if (activeFile.value && gone(activeFile.value)) activeFile.value = rest[rest.length - 1] ?? null;
+  if (!anyDirty.peek()) live.value = null;
 }
 
 /** The files were built again: the tree, the board and the open files may have changed. */
@@ -408,8 +441,9 @@ export async function reload(path: string) {
   live.value = null;
 }
 
-/** Open the file at a place and put the cursor there. */
-export async function goTo(at: Location) {
+/** Open the file at a place and put the cursor there. `name` is the definition whose line it
+ * is, when that is all that is known (the tree): the cursor goes to the name on the line. */
+export async function goTo(at: Location, name?: string) {
   try {
     await openFile(at.file);
   } catch (e) {
@@ -417,7 +451,7 @@ export async function goTo(at: Location) {
     return;
   }
   revealSource();
-  reveal.value = { at, nonce: ++nonce };
+  reveal.value = { at, name, nonce: ++nonce };
 }
 
 export function pickPart(refdes: string | null, jump = false) {

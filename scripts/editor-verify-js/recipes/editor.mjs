@@ -14,7 +14,7 @@ export async function run({ page, shot, step, expect, project, section }) {
   expect((await page.locator('.cm-content span').count()) > 20, 'tokens in spans');
 
   step('type a mistake into the LED board: an undeclared type');
-  await page.locator('.row.def', { hasText: 'LedBoard' }).click();
+  await page.locator('.ft-def', { hasText: 'LedBoard' }).click();
   await page.locator('.cm-line', { hasText: '.r1: Resistor {}' }).click();
   await page.keyboard.press('Home');
   await page.keyboard.type('.oops: Missing\n    ');
@@ -51,7 +51,7 @@ export async function run({ page, shot, step, expect, project, section }) {
   await shot('saved');
 
   step('Ctrl+click a type: go to its definition in the library');
-  await page.locator('.row.def', { hasText: 'LedBoard' }).click();
+  await page.locator('.ft-def', { hasText: 'LedBoard' }).click();
   const resistor = page.locator('.cm-line', { hasText: '.r1: Resistor' }).locator('span', { hasText: 'Resistor' }).first();
   await resistor.click({ modifiers: ['Control'] });
   await page.waitForSelector('.tab.active:has-text("passive.nsm")');

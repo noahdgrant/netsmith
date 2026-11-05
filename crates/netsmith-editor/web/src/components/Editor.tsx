@@ -16,6 +16,7 @@ import { useEffect, useRef } from 'preact/hooks';
 
 import { api } from '../client';
 import { languageExtensions } from '../languages';
+import { flashLine, nextFlash, revealFlash, revealTarget } from '../reveal';
 import {
   activeFile,
   cursor,
@@ -63,7 +64,9 @@ function extensionsFor(path: string, readonly: boolean): Extension[] {
     closeBrackets(),
     indentOnInput(),
     indentUnit.of('    '),
-    highlightSelectionMatches(),
+    // A word of three letters or more, whole: a letter or two selected must not mark every other one.
+    highlightSelectionMatches({ minSelectionLength: 3, wholeWords: true }),
+    revealFlash,
     lintGutter(),
     ...languageExtensions(path, () => shown.peek()?.problems ?? []),
     theme,
@@ -204,10 +207,10 @@ export function Editor() {
   useEffect(() => {
     const v = view.current;
     if (!v || !ask || ask.at.file !== path || current.current !== path) return;
-    const { from, to } = range(v.state, ask.at);
+    const target = revealTarget(v.state.doc, ask.at, ask.name);
     v.dispatch({
-      selection: { anchor: from, head: to },
-      effects: EditorView.scrollIntoView(from, { y: 'center' }),
+      selection: { anchor: target.anchor, head: target.head },
+      effects: [EditorView.scrollIntoView(target.anchor, { y: 'center' }), flashLine.of(nextFlash(target.anchor))],
     });
     v.focus();
   }, [ask, path, file === undefined]);

@@ -87,6 +87,9 @@ pub struct Project {
     /// KiCad's check as a second opinion.
     pub kicad: bool,
     pub files: Vec<TreeFile>,
+    /// The folders below `src/`, with their path from the project root (`src/sheets`), so the
+    /// tree can show one that has no file in it yet.
+    pub folders: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -103,6 +106,46 @@ pub struct FileContent {
 #[serde(rename_all = "camelCase")]
 pub struct Saved {
     pub stamp: String,
+}
+
+/// A new file (`POST /api/fs/create-file`): its path from the project root (`src/power.nsm`)
+/// and its text. Refused if the path is taken.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct NewFile {
+    pub path: String,
+    pub text: String,
+}
+
+/// A new folder (`POST /api/fs/create-dir`), by its path from the project root.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct NewFolder {
+    pub path: String,
+}
+
+/// A file or folder moved to another name or folder (`POST /api/fs/rename`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Rename {
+    pub from: String,
+    pub to: String,
+}
+
+/// A file or folder to remove (`POST /api/fs/delete`). `confirm` is what the person said yes
+/// to: a folder with something in it and a top-level file are refused without it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Delete {
+    pub path: String,
+    pub confirm: bool,
+}
+
+/// What a change of the files made: the path that is new, or for a delete the one that is gone.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Changed {
+    pub path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -894,6 +937,11 @@ pub fn typescript() -> String {
         Project,
         FileContent,
         Saved,
+        NewFile,
+        NewFolder,
+        Rename,
+        Delete,
+        Changed,
         BoardSummary,
         SystemSummary,
         PanelSummary,

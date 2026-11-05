@@ -7,6 +7,8 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | First look: the sections, the schematic, status bar | `overview` below | `overview` | `two_boards` |
 | Sections, number keys, one pane or two, the divider, drag-to-split, narrow window | `layout.md` | `sections`, `split` | `two_boards` |
 | Project tree | `project-tree.md` | `tree`, `big-tree` | `two_boards`, `big` |
+| Project tree: nesting, guide lines, icons, keyboard, filter, collapse all, width, click a definition, scroll kept | `project-tree.md` | `tree-nested` | `tree` |
+| Project tree: new file and folder, rename, delete (toolbar, right-click menu, F2, Delete, Ctrl+N) | `project-tree.md` | `tree-files` | `tree` |
 | Source editor and live diagnostics | `source-editor.md` | `editor` | `two_boards` |
 | Schematic view and click-through | `schematic.md` | `schematic`, `big-schematic` | `two_boards`, `big` |
 | Power tree | `power-tree.md` | `power`, `single-board`, `big-power` | `two_boards`, `regulator`, `big` |

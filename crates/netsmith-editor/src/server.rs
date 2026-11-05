@@ -74,6 +74,10 @@ fn router(state: Shared) -> Router {
         .route("/api/project", get(project))
         .route("/api/analysis", get(analysis))
         .route("/api/file", get(read_file).put(write_file))
+        .route("/api/fs/create-file", post(create_file))
+        .route("/api/fs/create-dir", post(create_dir))
+        .route("/api/fs/rename", post(rename_path))
+        .route("/api/fs/delete", post(delete_path))
         .route("/api/board", get(board))
         .route("/api/schematic.svg", get(schematic))
         .route("/api/power", get(power))
@@ -195,6 +199,38 @@ async fn write_file(
         .ok_or_else(|| ApiError::bad_request("a save needs the X-Stamp header"))?
         .to_string();
     json(move || s.backend.write_file(&path, &text, &stamp)).await
+}
+
+async fn create_file(
+    State(s): State<Shared>,
+    bytes: axum::body::Bytes,
+) -> Result<Json<crate::api::Changed>, ApiError> {
+    let new: crate::api::NewFile = body(&bytes)?;
+    json(move || s.backend.create_file(&new.path, &new.text)).await
+}
+
+async fn create_dir(
+    State(s): State<Shared>,
+    bytes: axum::body::Bytes,
+) -> Result<Json<crate::api::Changed>, ApiError> {
+    let new: crate::api::NewFolder = body(&bytes)?;
+    json(move || s.backend.create_dir(&new.path)).await
+}
+
+async fn rename_path(
+    State(s): State<Shared>,
+    bytes: axum::body::Bytes,
+) -> Result<Json<crate::api::Changed>, ApiError> {
+    let rename: crate::api::Rename = body(&bytes)?;
+    json(move || s.backend.rename_path(&rename.from, &rename.to)).await
+}
+
+async fn delete_path(
+    State(s): State<Shared>,
+    bytes: axum::body::Bytes,
+) -> Result<Json<crate::api::Changed>, ApiError> {
+    let delete: crate::api::Delete = body(&bytes)?;
+    json(move || s.backend.delete_path(&delete.path, delete.confirm)).await
 }
 
 async fn board(

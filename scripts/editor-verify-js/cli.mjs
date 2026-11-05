@@ -2,7 +2,7 @@
 // scripts/editor-verify: the lifecycle for checking the netsmith editor in a real browser.
 //
 //   doctor [--no-browser]   what is installed, and whether a browser can be launched
-//   launch [--fixture <name>|schematic_bench|big] [--file <path.nsm>]
+//   launch [--fixture <name>|schematic_bench|big|tree] [--file <path.nsm>]
 //                           start `netsmith editor` on a free port over a scratch project
 //   drive <recipe>|all      run a recipe in headless Chromium, with screenshots
 //   evidence                list the screenshots and logs of the session
@@ -19,6 +19,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { writeBig } from './fixtures/big.mjs';
 import { writeRefresh } from './fixtures/refresh.mjs';
+import { writeTree } from './fixtures/tree.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../..');
@@ -148,15 +149,19 @@ async function launch() {
     process.exit(2);
   }
   const big = flag('fixture') === 'big' && !flag('file');
+  const tree = flag('fixture') === 'tree' && !flag('file');
   // A whole project of the repository's examples (its own symbol library and mapping).
   const projectFixture = !flag('file') && ['schematic_bench'].includes(flag('fixture') ?? '') ? flag('fixture') : null;
-  const fixture = big ? 'fixtures/big.mjs' : (flag('file') ?? path.join(repo, FIXTURES[flag('fixture') ?? 'two_boards'] ?? flag('fixture')));
+  const fixture = big ? 'fixtures/big.mjs' : tree ? 'fixtures/tree.mjs' : (flag('file') ?? path.join(repo, FIXTURES[flag('fixture') ?? 'two_boards'] ?? flag('fixture')));
   if (projectFixture) {
     fs.rmSync(project, { recursive: true, force: true });
     fs.cpSync(path.join(repo, 'examples', projectFixture), project, { recursive: true });
   } else if (big) {
     // A generated 89-part board of 24 module instances, in module files under src/sheets/.
     writeBig(project);
+  } else if (tree) {
+    // An invented greenhouse project with folders, nested folders and a library of parts, for the file tree.
+    writeTree(project);
   } else {
     fs.copyFileSync(fixture, path.join(project, 'src/main.nsm'));
     // The layout file beside the fixture, if it has one (ADR 0032): `x.pcb.toml` is `main.pcb.toml`.
@@ -344,7 +349,7 @@ function cleanup() {
 
 const commands = { doctor, launch, drive, evidence, cleanup };
 if (!commands[command]) {
-  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|schematic_bench|big] [--file f.nsm] | drive <recipe>|all | evidence | cleanup [--keep-evidence]');
+  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | evidence | cleanup [--keep-evidence]');
   process.exit(2);
 }
 await commands[command]();

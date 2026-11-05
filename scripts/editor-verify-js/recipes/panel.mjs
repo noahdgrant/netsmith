@@ -5,9 +5,9 @@ export const fixture = 'led_panel';
 export async function run({ page, shot, step, expect, section }) {
   await section('source');
   step('the tree lists the panel');
-  const row = page.locator('.row.def', { hasText: 'LedPanel' });
+  const row = page.locator('.ft-def', { hasText: 'LedPanel' });
   await row.waitFor();
-  expect((await row.locator('.badge.k-panel').count()) === 1, 'a panel badge');
+  expect((await row.locator('.ft-icon.kind-panel').count()) === 1, 'a panel icon');
   step('click it: the PCB section draws the panel');
   await row.click();
   await section('pcb');

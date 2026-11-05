@@ -2,9 +2,9 @@
 //! compiler behind it and the compiler's crates do not depend on a web server.
 
 use crate::api::{
-    Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Definition, FabReport, FileContent,
-    OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited, PcbFindings, PcbReport, PcbScene,
-    PowerTree, Project, Saved, SystemView,
+    Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Definition, FabReport,
+    FileContent, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited, PcbFindings, PcbReport,
+    PcbScene, PowerTree, Project, Saved, SystemView,
 };
 
 /// A refusal, with the HTTP status that says why.
@@ -65,6 +65,18 @@ pub trait Backend: Send + Sync + 'static {
     fn read_file(&self, path: &str) -> Result<FileContent, ApiError>;
     /// Write `text` to the file if it is still as it was at `stamp`.
     fn write_file(&self, path: &str, text: &str, stamp: &str) -> Result<Saved, ApiError>;
+    /// Make a file that is not there yet, under the project's `src/`. Refused with 409 if the
+    /// path is taken (nothing is overwritten), with 400 for a name that is not a module's, and
+    /// with 403 for a path that leaves the project.
+    fn create_file(&self, path: &str, text: &str) -> Result<Changed, ApiError>;
+    /// Make a folder under `src/`, refused as [`Backend::create_file`] is.
+    fn create_dir(&self, path: &str) -> Result<Changed, ApiError>;
+    /// Move a file or folder of the tree to a name that is free, in the same folder or another.
+    fn rename_path(&self, from: &str, to: &str) -> Result<Changed, ApiError>;
+    /// Remove a file or folder of the tree. Without `confirm` a folder with something in it and
+    /// a top-level file are refused with 428; the manifest and the standard library never are
+    /// removed.
+    fn delete_path(&self, path: &str, confirm: bool) -> Result<Changed, ApiError>;
     /// The check of the files on disk, made again first if one changed. Its `version` goes
     /// up each time that happens.
     fn analysis(&self) -> Analysis;

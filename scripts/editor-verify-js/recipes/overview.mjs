@@ -14,6 +14,6 @@ export async function run({ page, shot, step, expect, section }) {
   step('the Source section: the file tree and the code');
   await page.keyboard.press('1');
   await page.waitForSelector('.cm-content');
-  await page.waitForSelector('.sidebar .row.file');
+  await page.waitForSelector('.sidebar .ft-file');
   await shot('source');
 }
