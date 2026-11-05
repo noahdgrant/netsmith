@@ -100,6 +100,14 @@ export async function run({ page, shot, step, expect }) {
   expect(/also on/i.test(await panel.innerText()), 'and where else the bus goes');
   await shot('picked');
 
+  step('in a window of 1280 x 800 the chip still says the count (the usual chip drops its second line there)');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.waitForTimeout(300);
+  expect(/bus uart0 \(4 nets\)/.test(await chip()), `the chip at 1280 px: ${await chip()}`);
+  await shot('narrow');
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.waitForTimeout(300);
+
   step('the other views have the first member net as their selection: the bill of materials lights the parts on it');
   await page.locator('.pane-strip [data-section="bom"]').first().click();
   await page.waitForSelector('.section.sec-bom:not(.away)');

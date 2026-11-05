@@ -30,7 +30,7 @@ export function SelectionChip() {
       <button class="selchip-main" title={`${bus ? `${bus.type} ${bus.path} ${sub}` : sub}. Click to show it again in this view.`} onClick={() => selectAndReveal(sel)}>
         <span class={`badge k-${bus ? 'bus' : sel.kind}`}>{bus ? 'B' : sel.kind === 'part' ? 'P' : sel.kind === 'net' ? 'N' : 'M'}</span>
         <span class="selchip-title">{title}</span>
-        <span class={`selchip-sub ${facts ? 'keep' : ''}`}>{sub}</span>
+        <span class={`selchip-sub ${facts || bus ? 'keep' : ''}`}>{sub}</span>
       </button>
       {walk && (
         <>
