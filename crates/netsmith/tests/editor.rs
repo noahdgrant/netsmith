@@ -795,6 +795,11 @@ fn the_server_serves_the_project_and_tells_the_page_when_a_file_changes() {
         "{}",
         &svg[..200.min(svg.len())]
     );
+    // The rails the checker's model has are drawn with power symbols, whatever their names.
+    assert!(
+        svg.contains("class=\"power supply\"") && svg.contains("class=\"power ground\""),
+        "no power symbols in the drawing of a board with rails"
+    );
 
     // Every read of the socket gives up after 20 seconds, so a push that never comes fails.
     let stream = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
@@ -2065,6 +2070,68 @@ fn a_panel_is_listed_and_drawn_from_its_boards_placed_size() {
         "{:?}",
         view.findings
     );
+}
+
+/// A project of the LED example, with a physical file that pins `r1` inside a keepout that
+/// forbids parts.
+fn pinned_in_keepout_project(name: &str) -> (TempDir, Workspace) {
+    let (root, _) = project(name);
+    fs::write(
+        root.join("src/main.nsm"),
+        include_str!("../../../examples/led.nsm"),
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/main.physical.nsm"),
+        "import std::pcb::{Keepout, Outline}
+
+physical for LedExample {
+    case {
+        .outline: Outline {
+            .width &= 40mm
+            .height &= 30mm
+        }
+    }
+    .r1.place.x &= 20mm
+    .r1.place.y &= 10mm
+    .blocked: Keepout {
+        .x &= 15mm
+        .y &= 5mm
+        .width &= 10mm
+        .height &= 10mm
+    }
+}
+",
+    )
+    .unwrap();
+    let editor = Workspace::open(Target::resolve_from(&root, None).unwrap())
+        .unwrap_or_else(|e| panic!("{e}"));
+    (root, editor)
+}
+
+#[test]
+fn lines_that_cannot_hold_are_a_constraint_finding_before_any_placing() {
+    // The editor shows the proof of ADR 0045 section 14 while editing: no board is placed,
+    // and the finding names the lines.
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
+    let (_root, editor) = pinned_in_keepout_project("precheck-findings");
+    let found = editor.pcb_findings("LedExample").unwrap();
+    assert_eq!(found.findings.len(), 1, "{found:?}");
+    let f = &found.findings[0];
+    assert_eq!(f.rule, "constraint");
+    assert_eq!(f.severity, Severity::Error);
+    assert_eq!(f.source, FindingSource::Placement);
+    assert!(f.id.starts_with("constraint:precheck:"), "{}", f.id);
+    for want in [
+        "these lines cannot both hold: src/main.physical.nsm:10 `.r1.place.x &= 20mm`",
+        "the keepout `blocked`",
+        "which forbids parts",
+    ] {
+        assert!(f.message.contains(want), "{want:?} is not in {}", f.message);
+    }
+    assert!(!found.routed);
 }
 
 // ---- the physical file (ADR 0048) --------------------------------------------------------

@@ -42,12 +42,14 @@ export async function run({ page, shot, step, expect }) {
   await page.locator('.schematic .module-sheet[data-module="pulls2"] .module-frame').click({ position: { x: 4, y: 4 }, force: true });
   expect((await page.locator('.sheet-tab.active').innerText()).startsWith('pulls2'), 'a click on the box of pulls2 opened its sheet');
 
-  step('a net between modules is a named stub in each, not a wire across the page');
+  step('a rail between modules is a supply symbol with its name in each, not a wire across the page');
   await page.locator('.sheet-tab', { hasText: 'All sheets' }).click();
-  const stubs = await page.locator('.schematic .net-label[data-net="VIN"]').count();
-  expect(stubs >= 8, `the VIN stub in each regulator stage (${stubs})`);
+  const symbols = await page.locator('.schematic .power.supply[data-net="VIN"]').count();
+  expect(symbols >= 8, `the VIN supply symbol in each regulator stage (${symbols})`);
+  const names = await page.locator('.schematic .power.supply[data-net="VIN"] text', { hasText: 'VIN' }).count();
+  expect(names >= 8, 'with its name beside it');
   const wires = await page.locator('.schematic .wire[data-net="VIN"]').count();
-  expect(wires >= 8, 'a short stub wire at each');
+  expect(wires >= 8, 'and a short wire from the pin to each');
 
   step('the Modules list in the details opens a sheet');
   if (!(await page.locator('.outline').count())) await page.getByRole('button', { name: 'Details' }).click();

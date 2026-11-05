@@ -66,6 +66,9 @@ pub struct Entry {
 pub enum PlaceError {
     /// The layout does not fit the board: the file is out of date, or an edit is wrong.
     Layout(String),
+    /// The requirements provably cannot be met, found before the placer ran (ADR 0045
+    /// section 14): the board is not placed, and the page lists the findings.
+    Unplaceable(String, Box<netsmith_pcb::Precheck>),
     Other(ApiError),
 }
 
@@ -75,6 +78,9 @@ impl PlaceError {
     pub fn read(self) -> ApiError {
         match self {
             PlaceError::Layout(message) => ApiError::internal(message),
+            PlaceError::Unplaceable(name, found) => {
+                ApiError::internal(format!("{name}: {}", found.errors().join("\n")))
+            }
             PlaceError::Other(e) => e,
         }
     }
@@ -84,18 +90,23 @@ impl PlaceError {
 /// file beside the source, if there is one, tells the placer which face each part is on and
 /// what to keep clear of, and puts the positions it holds on the board.
 pub fn place(data: &BoardData, name: &str) -> Result<Entry, ApiError> {
+    place_checked(data, name).map_err(PlaceError::read)
+}
+
+/// [`place`], keeping what the pre-check proved apart from other failures.
+pub fn place_checked(data: &BoardData, name: &str) -> Result<Entry, PlaceError> {
     let (layout, stamp) = match &data.layout {
         Some((file, boards)) => {
             // The stamp first: a file that changes meanwhile then makes an edit that
             // was based on this reading refused, not applied over the change.
             let stamp = super::files::stamp_of(file);
             let layout = crate::layout::read(file, boards)
-                .map_err(|e| ApiError::internal(format!("{name}: {e}")))?;
+                .map_err(|e| PlaceError::Other(ApiError::internal(format!("{name}: {e}"))))?;
             (layout, stamp)
         }
         None => (None, "none".to_string()),
     };
-    place_with(data, name, layout, stamp).map_err(PlaceError::read)
+    place_with(data, name, layout, stamp)
 }
 
 /// The board of `name` placed with `layout`, which was in the file at `stamp`.
@@ -107,13 +118,20 @@ pub fn place_with(
 ) -> Result<Entry, PlaceError> {
     let other = |e: ApiError| PlaceError::Other(e);
     let libraries = data.libraries().map_err(other)?;
+    let mut options = place_options(&data.built.design, layout.as_ref().map(|l| &l.0));
+    options.lines_warn = data.constraints_warn;
     let mut board = Board::from_design_placed(
         &data.built.design,
         &libraries.mapping,
         &libraries.footprints,
-        &place_options(&data.built.design, layout.as_ref().map(|l| &l.0)),
+        &options,
     )
-    .map_err(|e| PlaceError::Other(ApiError::internal(format!("{name}: {e}"))))?;
+    .map_err(|e| match e {
+        netsmith_pcb::BoardError::Unplaceable(found) => {
+            PlaceError::Unplaceable(name.to_string(), found)
+        }
+        e => PlaceError::Other(ApiError::internal(format!("{name}: {e}"))),
+    })?;
     if let Some((layout, file)) = &layout {
         apply_layout(&mut board, layout, file)
             .map_err(|e| PlaceError::Layout(format!("{name}: {e}")))?;
@@ -225,6 +243,18 @@ impl Entry {
     /// The copper layers of the board, top first.
     pub fn layers(&self) -> Vec<String> {
         copper_layers(&self.board)
+    }
+}
+
+/// The findings of a board that is not placed because the requirements prove it cannot be
+/// (ADR 0045 section 14): `constraint` findings, and nothing else to list.
+pub fn unplaceable_findings(name: &str, pre: &netsmith_pcb::Precheck) -> PcbFindings {
+    PcbFindings {
+        board: name.to_string(),
+        routed: false,
+        findings: findings::precheck_findings(pre),
+        kicad: KicadState::NotRun,
+        kicad_note: "KiCad's check was not run: the board is not placed".to_string(),
     }
 }
 

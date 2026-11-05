@@ -110,4 +110,31 @@ physical for EnclosureSensor {
     .radio.row_b.height &= 8.5mm
     .wp_switch.height &= 4.3mm
     .usb.height &= 3.2mm
+
+    // 9. The flat cell lies on the back across both socket rows. The case leaves 3.6 mm under
+    //    the back of the board (one limit over the whole back), the cell is 3.4 mm tall, and
+    //    the radio's pins are cut after soldering to protrude 0.2 mm out of the back, so the
+    //    cell rests on them: 0.2 + 3.4 = 3.6 mm. The cell is fitted by hand, after the pins are
+    //    cut (its `.assembly` is in the circuit source); `fab` writes the step as a `trim:`
+    //    line in `fab-notes.txt`. The heights of the other parts on the back are from their
+    //    datasheets (invented).
+    .back_room: Keepout {
+        .x &= 0mm
+        .y &= 0mm
+        .width &= 90mm
+        .height &= 62mm
+        .layers &= "bottom"
+        .max_height &= 3.6mm
+    }
+    .cell.place.side &= "bottom"
+    .cell.place.x - .radio.row_a.place.x == 11.43mm +/- 0.5mm
+    .cell.place.y - .radio.row_a.place.y == 0mm +/- 1mm
+    .cell.height &= 3.4mm
+    .radio.row_a.pin_protrusion &= 0.2mm
+    .radio.row_b.pin_protrusion &= 0.2mm
+    .lights.led_a.height &= 0.8mm
+    .lights.led_b.height &= 0.8mm
+    .lights.r_a.height &= 0.5mm
+    .lights.r_b.height &= 0.5mm
+    .lights.r_c.height &= 0.5mm
 }

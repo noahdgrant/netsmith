@@ -162,7 +162,7 @@ button.tab { background: none; border: none; border-right: 1px solid var(--line)
 .schematic-body { display: flex; flex: 1; min-height: 0; }
 .schematic-body .panzoom { flex: 1 1 0; }
 .schematic-body.stale .panzoom { opacity: .5; }
-.schematic-host svg.schematic { --sheet: #17181a; --wire: #6fbf73; --body: #e8a3a3; --fill: #3a3520; --pin: #e8a3a3; --text: #9fcad6; --net: #8be0ad; --hit: #ffa94d; }
+.schematic-host svg.schematic { --sheet: #17181a; --wire: #6fbf73; --body: #e8a3a3; --fill: #3a3520; --pin: #e8a3a3; --text: #9fcad6; --net: #8be0ad; --hit: #ffa94d; --muted: #7c8590; --bad: #ff6b6b; }
 .schematic-host svg.schematic .sheet { fill: transparent; }
 .schematic-host svg.schematic .part { cursor: pointer; pointer-events: bounding-box; }
 .schematic-host svg.schematic .part.mark .s { stroke: var(--accent); }

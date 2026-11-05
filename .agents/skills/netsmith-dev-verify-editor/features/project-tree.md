@@ -2,7 +2,7 @@
 
 ## How to get to it
 
-The left column of the Source section (key 7), one real tree (`role=tree`). Sections, each with a collapse chevron and a count: Top level, Modules, Physical files, Project (the manifest) and Standard library (closed). Below a section the folders nest inside their parent, 16 px a level, with a thin guide line for each level; a folder that holds only one folder is one row (`legacy / vendor / archive`). Folders come before files, each by name. A file has a chevron when it defines something; its definitions (board, system, panel, module, part, interface, each with its own icon and the kind written after the name) sit below it. The lock on a file says it is read-only (the manifest, the standard library). A pill is a count of files; a dot after a name is unsaved text. The `?` button opens a legend of the icons.
+The left column of the Source section (key 1), one real tree (`role=tree`). Sections, each with a collapse chevron and a count: Top level, Modules, Physical files, Project (the manifest) and Standard library (closed). Below a section the folders nest inside their parent, 16 px a level, with a thin guide line for each level; a folder that holds only one folder is one row (`legacy / vendor / archive`). Folders come before files, each by name. A file has a chevron when it defines something; its definitions (board, system, panel, module, part, interface, each with its own icon and the kind written after the name) sit below it. The lock on a file says it is read-only (the manifest, the standard library). A pill is a count of files; a dot after a name is unsaved text. The `?` button opens a legend of the icons.
 
 ## Driving it
 

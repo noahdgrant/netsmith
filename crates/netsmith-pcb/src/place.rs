@@ -86,6 +86,11 @@ pub struct PlaceOptions {
     /// outline) out of the zone on the faces the zone limits; a part with no stated
     /// height is not kept out (nobody knows whether it fits; the check reports it).
     pub height_zones: Vec<HeightZone>,
+    /// Constraints are warnings for this run (`--constraints warn`, ADR 0045): lines that the
+    /// check before placing proves cannot all hold are listed as warnings and the placer runs
+    /// as ever, instead of stopping the board. A courtyard past an edge nobody stated, or a
+    /// part bigger than the outline, stays an error: it is not a requirement.
+    pub lines_warn: bool,
 }
 
 /// An area that limits the height of the parts standing in it, on one or both faces.
@@ -1256,6 +1261,34 @@ fn oversize(
     found
 }
 
+/// [`oversize`] for the parts as loaded, before any placing (PROVISIONAL, ADR 0045 section 14):
+/// the parts that are too big for an outline of `fit` in every turn their requirements and the
+/// layout file leave them. `options` must already hold the plan of the requirements (the pins,
+/// the wants and the overhangs). The mechanical parts are left out: they go to the corners.
+pub(crate) fn oversize_before_placing(
+    parts: &[Placed],
+    options: &PlaceOptions,
+    fit: (f64, f64),
+) -> Vec<Oversize> {
+    let mut parts: Vec<Placed> = parts
+        .iter()
+        .filter(|p| !crate::fit::is_mechanical(&p.kind))
+        .cloned()
+        .collect();
+    let fixed: Vec<bool> = parts
+        .iter_mut()
+        .map(|p| match options.fixed.get(&p.refdes) {
+            Some(f) => {
+                p.rotation = f.rotation;
+                p.side = f.side;
+                true
+            }
+            None => false,
+        })
+        .collect();
+    oversize(&parts, &fixed, options, fit)
+}
+
 /// Whether the courtyards could fit `fit` on the faces they are on: the area of those on a
 /// face, with a hole on both, must not be more than what is left inside the margin. Parts
 /// that may hang over the edge are not counted, for it is not known how much of them is
@@ -1273,6 +1306,11 @@ fn could_fit(parts: &[Placed], fit: (f64, f64), options: &PlaceOptions) -> bool 
             // On a face the footprint draws no courtyard for, the part takes only its pads
             // (`Placed::room_on`; the pads' own area is what is certainly taken).
             for (k, face) in [Side::Front, Side::Back].into_iter().enumerate() {
+                // Pins with a stated protrusion may be stood over: nothing is certainly taken
+                // there (`crate::protrusion`).
+                if crate::protrusion::may_be_covered(p, face) {
+                    continue;
+                }
                 load[k] += p
                     .room_on(face, 0.0, c)
                     .iter()

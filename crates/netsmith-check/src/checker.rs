@@ -518,6 +518,15 @@ impl<'a> Checker<'a> {
                 .model
                 .add_field(id, "height", FieldKind::Quantity(Dimension::LENGTH));
             self.model.add_member(id, "height", Member::Field(field));
+            // And one for how far its pins stand out of the board, on the face opposite the
+            // part, once they are cut short (ADR 0045 section 15, PROVISIONAL): the board's
+            // physical file states it for an instance, the kind may bound it. A part that
+            // does not has no known protrusion, which is not a protrusion of zero.
+            let field =
+                self.model
+                    .add_field(id, "pin_protrusion", FieldKind::Quantity(Dimension::LENGTH));
+            self.model
+                .add_member(id, "pin_protrusion", Member::Field(field));
         }
         // Every part and module has a `.place` for the requirements on where it goes on the
         // board (ADR 0045): the board narrows its fields like any others.
@@ -1148,7 +1157,7 @@ impl Checker<'_> {
     }
 
     /// Whether a statement of a board may mention these fields. A physical file may set and
-    /// compare only physical things: a part's `.place`, a part's `.height`, and what the
+    /// compare only physical things: a part's `.place`, a part's `.height` and `.pin_protrusion`, and what the
     /// file declared itself. A board's circuit source may mention none of a `.place`
     /// (ADR 0048 decision 10). Reports it when not.
     pub(crate) fn physical_gate(&mut self, fields: &[crate::model::FieldId], span: Span) -> bool {
@@ -1159,7 +1168,7 @@ impl Checker<'_> {
                     self.error(
                         span,
                         format!(
-                            "`{path}` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`) and the outline, cutouts, keepouts, holes, fiducials and labels it declares, never what a part is; put this in the circuit source"
+                            "`{path}` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`), how far its pins protrude (`.pin_protrusion`) and the outline, cutouts, keepouts, holes, fiducials and labels it declares, never what a part is; put this in the circuit source"
                         ),
                     );
                     return false;
@@ -1189,7 +1198,9 @@ impl Checker<'_> {
             return true;
         }
         let f = self.model.field(field);
-        if f.name == "height" && self.model.instance(f.owner).kind == InstKind::Part {
+        if (f.name == "height" || f.name == "pin_protrusion")
+            && self.model.instance(f.owner).kind == InstKind::Part
+        {
             return true;
         }
         let mut cur = Some(f.owner);

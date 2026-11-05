@@ -1,5 +1,10 @@
-# What KiCad calls the three parts this example defines itself (ADR 0021). All three use
-# KiCad's own stock symbols and footprints, so the project has no library of its own.
+# What KiCad calls the four parts this example defines itself (ADR 0021). Three use KiCad's own
+# stock symbols and footprints; the fourth, the invented flat cell, has a footprint of the
+# project's own in `libs/flat.pretty`.
+
+[[library]]
+name = "flat"
+footprints = "libs/flat.pretty"
 
 [[part]]
 kind = "SensorPlug16"
@@ -42,3 +47,14 @@ footprint = "RF_Antenna:Johanson_2450AT43F0100"
 
 [part.pin_names]
 TRACE = "PCB_Trace"
+
+[[part]]
+kind = "FlatCell"
+package = "30x26"
+default = true
+symbol = "Connector_Generic:Conn_01x02"
+footprint = "flat:Cell"
+
+[part.pin_names]
+POS = "Pin_1"
+NEG = "Pin_2"
