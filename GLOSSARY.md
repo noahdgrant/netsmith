@@ -282,7 +282,8 @@ _Avoid_: Symbol table, library table
 A symbol file (`.kicad_sym`) or footprint folder (`.pretty`) of a project's own, listed in its `kicad.toml` as a `[[library]]`, so that its parts map to symbols and footprints KiCad does not ship.
 
 **Unit**:
-One of the drawings of a KiCad symbol that has several, such as the two amplifiers and the supply of a dual op-amp. The KiCad schematic places all units of a part, each with the part's reference; the editor's schematic draws a part of several units as one box with every pin, and a symbol of more than 60 pins as one box with its pins in labelled groups.
+One of the drawings of a KiCad symbol that has several, such as the two amplifiers and the supply of a dual op-amp, or the power unit and the signal unit of a processor module (`U1A`, `U1B`). The KiCad schematic places all units of a part, each with the part's reference; the editor's schematic does the same: each unit that has pins is a box of its own on the sheet, as the library draws it, with the part's reference and the unit's letter, upright, and the decoupling capacitors stand beside the power unit (ADR 0050). A pad is in one unit. The layout's own stack of two-terminal parts in a column is a different thing and is not called a unit in the docs.
+_Avoid_: Sub-part, section, gate (a unit may be a gate, an amplifier or a supply)
 
 **Ratsnest**:
 The connections a board still needs, drawn as straight lines between pads, before any track is routed.

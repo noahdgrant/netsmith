@@ -55,7 +55,8 @@ pub struct Sheet {
     /// The group's name; a cut sheet adds its number: `stage (2/3)`.
     pub name: String,
     pub detail: String,
-    /// Indices into `design.parts`.
+    /// Indices into `layout.parts`: the sheet's parts (the same as in `design.parts`), then the
+    /// boxes of their further units.
     pub parts: Vec<usize>,
     /// The box, title included.
     pub frame: Rect,
@@ -231,6 +232,8 @@ pub fn layout_sheets_marked(
     let offsets = arrange(&frames);
 
     let mut parts: Vec<Option<PlacedPart>> = vec![None; design.parts.len()];
+    // The boxes of the units after the first of a part (`layout::units`), after the parts' own.
+    let mut more: Vec<PlacedPart> = Vec::new();
     let mut symbols = Vec::new();
     let mut ports = Vec::new();
     let mut pin_marks = Vec::new();
@@ -252,14 +255,29 @@ pub fn layout_sheets_marked(
             b.union(frame);
             b
         }));
+        // Where each box of this sheet goes in the whole layout: a part's own at its index, the
+        // boxes of further units after them all.
+        let own = d.parts.len();
+        let boxes: Vec<usize> = (0..d.layout.parts.len())
+            .map(|i| {
+                if i < own {
+                    d.parts[i]
+                } else {
+                    design.parts.len() + more.len() + (i - own)
+                }
+            })
+            .collect();
         for (local, mut placed) in d.layout.parts.into_iter().enumerate() {
-            let global = d.parts[local];
             move_part(&mut placed, by);
-            placed.part = global;
+            placed.part = d.parts[placed.part];
             for pin in &mut placed.pins {
                 pin.net = pin.net.map(|n| d.nets[n]);
             }
-            parts[global] = Some(placed);
+            if local < own {
+                parts[boxes[local]] = Some(placed);
+            } else {
+                more.push(placed);
+            }
         }
         for w in d.layout.wires {
             wires.push(Wire {
@@ -313,22 +331,27 @@ pub fn layout_sheets_marked(
             });
         }
         for b in d.layout.buses {
-            buses.push(move_bus(b, by, &d.nets, &d.parts));
+            buses.push(move_bus(b, by, &d.nets, &boxes));
         }
         for sp in d.layout.spines {
             spines.push(crate::layout::SpineMark {
-                ic: d.parts[sp.ic],
+                ic: boxes[sp.ic],
                 chains: sp
                     .chains
                     .into_iter()
-                    .map(|c| c.into_iter().map(|p| d.parts[p]).collect())
+                    .map(|c| c.into_iter().map(|p| boxes[p]).collect())
                     .collect(),
             });
         }
         sheets.push(Sheet {
             name: cluster.name.clone(),
             detail: cluster.detail.clone(),
-            parts: cluster.parts.clone(),
+            parts: cluster
+                .parts
+                .iter()
+                .copied()
+                .chain(boxes[own..].iter().copied())
+                .collect(),
             frame,
             title: Text {
                 at: Pt::new(
@@ -343,6 +366,7 @@ pub fn layout_sheets_marked(
         parts: parts
             .into_iter()
             .map(|p| p.expect("every part is on a sheet"))
+            .chain(more)
             .collect(),
         symbols,
         ports,
@@ -365,7 +389,8 @@ struct Drawn {
     nets: Vec<usize>,
 }
 
-/// A bus of a sheet's drawing, moved by `by`, with the nets and parts of the design.
+/// A bus of a sheet's drawing, moved by `by`, with the nets of the design and the boxes of
+/// the layout (`parts[i]` is where box `i` of the sheet is).
 fn move_bus(mut b: Bus, by: Pt, nets: &[usize], parts: &[usize]) -> Bus {
     let moved = |mut t: Text| {
         t.at = shift(t.at, by);

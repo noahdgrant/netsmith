@@ -513,15 +513,28 @@ fn draw_part(w: &mut String, design: &Design, p: &PlacedPart) {
     } else {
         "part missing"
     };
+    let unit = p
+        .glyph
+        .unit
+        .map(crate::layout::unit_letter)
+        .unwrap_or_default();
+    let unit_attr = if unit.is_empty() {
+        String::new()
+    } else {
+        format!(" data-unit=\"{unit}\"")
+    };
     let _ = writeln!(
         w,
-        "<g class=\"{class}\" data-ref=\"{}\" data-kind=\"{}\">",
+        "<g class=\"{class}\" data-ref=\"{}\" data-kind=\"{}\"{unit_attr}>",
         esc(&part.refdes),
         esc(&part.kind)
     );
     let mut summary = format!("{} {} {}", part.refdes, part.kind, part.value);
     if let Some(package) = &part.package {
         let _ = write!(summary, " ({package})");
+    }
+    if !unit.is_empty() {
+        let _ = write!(summary, ", unit {unit}");
     }
     if let Some(why) = &p.glyph.missing {
         let _ = write!(summary, "\nNo symbol: {why}");

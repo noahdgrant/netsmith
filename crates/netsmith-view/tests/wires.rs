@@ -33,10 +33,14 @@ fn net_index(b: &Bench, name: &str) -> usize {
     b.design.nets.iter().position(|n| n.name == name).unwrap()
 }
 
+/// Where pad `pad` of the part `refdes` is drawn: a part whose symbol has several units has a
+/// box for each, and the pad is in one of them.
 fn pin_at(l: &Layout, b: &Bench, refdes: &str, pad: &str) -> Pt {
-    l.parts[part_index(b, refdes)]
-        .pins
+    let part = part_index(b, refdes);
+    l.parts
         .iter()
+        .filter(|p| p.part == part)
+        .flat_map(|p| p.pins.iter())
         .find(|p| p.id == pad)
         .unwrap()
         .at
@@ -644,21 +648,66 @@ fn a_name_longer_than_the_limit_is_cut_and_keeps_its_tooltip() {
     assert!(svg.contains(&format!("<title>{long}</title>")));
 }
 
+/// The boxes of the part `refdes`: the glyph's unit number with the placed box.
+fn boxes_of<'a>(
+    l: &'a Layout,
+    b: &Bench,
+    refdes: &str,
+) -> Vec<(usize, &'a netsmith_view::layout::PlacedPart)> {
+    let part = part_index(b, refdes);
+    l.parts
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| p.part == part)
+        .collect()
+}
+
 #[test]
-fn a_symbol_of_two_units_and_ninety_seven_pins_is_one_part_with_its_signals_in_labelled_groups() {
+fn a_symbol_of_two_units_is_drawn_as_a_box_for_each_with_its_own_pins() {
+    // The microcontroller's symbol has two units: 64 signal pins, then 24 grounds, 6 supplies and
+    // 3 pins that connect to nothing. Each is a box of its own, with the unit's letter.
     let b = bench();
     let l = lay(&b);
-    let u5 = &l.parts[part_index(&b, "U5")];
-    let g = &u5.glyph;
-    assert_eq!(g.symbol.as_deref(), Some("bench:Mcu"));
-    let bodies = g
-        .shapes
+    let boxes = boxes_of(&l, &b, "U5");
+    assert_eq!(boxes.len(), 2, "one box for each unit");
+    let units: Vec<Option<u32>> = boxes.iter().map(|(_, p)| p.glyph.unit).collect();
+    assert_eq!(units, [Some(1), Some(2)]);
+    // The first of the part's boxes (the one with most pins) is at the part's own index; the
+    // other follows every part.
+    assert_eq!(boxes[0].0, part_index(&b, "U5"));
+    assert!(boxes[1].0 >= b.design.parts.len());
+    // `U1`, the comparator with three units, has two more boxes.
+    assert_eq!(boxes_of(&l, &b, "U1").len(), 3);
+    assert_eq!(l.parts.len(), b.design.parts.len() + 1 + 2);
+    assert_eq!(boxes[0].1.reference.text, "U5A");
+    assert_eq!(boxes[1].1.reference.text, "U5B");
+    for (_, p) in &boxes {
+        assert_eq!(p.glyph.symbol.as_deref(), Some("bench:Mcu"));
+        let bodies = p
+            .glyph
+            .shapes
+            .iter()
+            .filter(|s| matches!(s, netsmith_view::glyph::Shape::Rect { .. }))
+            .count();
+        assert_eq!(bodies, 1, "one body for each box");
+        assert_eq!(p.orient, netsmith_view::geom::Orient::IDENTITY, "upright");
+    }
+    // 64 + 33 pins, each pad in exactly one box.
+    assert_eq!(boxes[0].1.glyph.pins.len(), 64);
+    assert_eq!(boxes[1].1.glyph.pins.len(), 33);
+    let mut pads: Vec<&str> = boxes
         .iter()
-        .filter(|s| matches!(s, netsmith_view::glyph::Shape::Rect { .. }))
-        .count();
-    assert_eq!(bodies, 1, "one box, not one for each unit");
-    assert_eq!(g.pins.len(), 97);
-    let texts: Vec<&str> = g
+        .flat_map(|(_, p)| p.glyph.pins.iter().map(|g| g.id.as_str()))
+        .collect();
+    let count = pads.len();
+    pads.sort_unstable();
+    pads.dedup();
+    assert_eq!(pads.len(), count, "a pad in two boxes");
+    // The signals are in labelled groups in the first, the supplies and grounds in the second:
+    // no power row in the signal unit.
+    let texts: Vec<&str> = boxes[0]
+        .1
+        .glyph
         .shapes
         .iter()
         .filter_map(|s| match s {
@@ -666,42 +715,78 @@ fn a_symbol_of_two_units_and_ninety_seven_pins_is_one_part_with_its_signals_in_l
             _ => None,
         })
         .collect();
-    for heading in ["Mcu, 97 pins", "P0 (16)", "Not connected (3)"] {
+    for heading in ["Mcu, 64 pins", "P0 (16)"] {
         assert!(texts.contains(&heading), "{heading} in {texts:?}");
     }
-    assert!(g.pin_text >= 1.27);
     assert!(
-        g.dense && u5.orient == netsmith_view::geom::Orient::IDENTITY,
-        "it stays upright"
+        boxes[0].1.glyph.pins.iter().all(|g| g.kind != "power_in"),
+        "the signal unit has no power pin"
     );
+    assert!(
+        boxes[1]
+            .1
+            .glyph
+            .pins
+            .iter()
+            .all(|g| g.kind != "bidirectional"),
+        "the power unit has no signal pin"
+    );
+    // The tooltip of each box says which unit it is, and its part is the part's.
+    let svg =
+        render_svg_by_module_with(&b.design, &b.groups, &b.rails, &b.mapping, &b.lib).unwrap();
+    assert!(svg.contains("data-ref=\"U5\" data-kind=\"Mcu\" data-unit=\"A\""));
+    assert!(svg.contains("data-ref=\"U5\" data-kind=\"Mcu\" data-unit=\"B\""));
+    assert!(svg.contains(", unit B</title>"));
 }
 
 #[test]
-fn the_supplies_are_in_a_row_on_top_and_the_grounds_in_one_at_the_bottom() {
-    // Rule 4: a big part has its supplies on top and its grounds at the bottom, and its
-    // signals on the two sides between them.
+fn the_power_unit_has_its_supplies_in_a_row_on_top_and_its_grounds_in_one_at_the_bottom() {
+    // Rule 4: a big part has its supplies on top and its grounds at the bottom. The power unit of
+    // the microcontroller is a box of its own with only those, and the capacitors that decouple
+    // the supply stand beside it, not beside the signal unit.
     let b = bench();
     let l = lay(&b);
-    let u5 = &l.parts[part_index(&b, "U5")];
-    let at = |pad: &str| u5.pins.iter().find(|p| p.id == pad).unwrap().at;
+    let boxes = boxes_of(&l, &b, "U5");
+    let power = boxes[1].1;
+    let signals = boxes[0].1;
+    let at = |pad: &str| power.pins.iter().find(|p| p.id == pad).unwrap().at;
     let (top, bottom) = (at("131").y, at("101").y);
     for supply in ["131", "132", "136"] {
         assert!(
             (at(supply).y - top).abs() < 1e-6,
             "supply {supply} is not in the row on top"
         );
-        assert!(at(supply).y < at("2").y, "supplies above the signals");
     }
     for ground in ["101", "124"] {
         assert!(
             (at(ground).y - bottom).abs() < 1e-6,
             "ground {ground} is not in the row at the bottom"
         );
-        assert!(at(ground).y > at("16").y, "grounds below the signals");
     }
-    // The groups of signals are between them, by function, on the sides.
-    assert!(top < at("1").y && at("16").y < bottom);
-    assert!((at("1").x - at("2").x).abs() < 1e-6 && at("1").x != at("131").x);
+    assert!(top < bottom);
+    // The signal unit has no power row, and the capacitors are nearer the power unit's supply
+    // pins than the signal unit's pins.
+    assert!(
+        signals.pins.iter().all(|p| p
+            .net
+            .is_none_or(|n| { b.design.nets[n].name != "+3V3" && b.design.nets[n].name != "GND" }))
+    );
+    let near = |c: &str| {
+        let cap = &l.parts[part_index(&b, c)];
+        let to = |q: &netsmith_view::layout::PlacedPart| {
+            (cap.extent.min.x - q.extent.max.x)
+                .max(q.extent.min.x - cap.extent.max.x)
+                .max(0.0)
+                + (cap.extent.min.y - q.extent.max.y)
+                    .max(q.extent.min.y - cap.extent.max.y)
+                    .max(0.0)
+        };
+        to(power) < to(signals)
+    };
+    assert!(
+        near("C4") && near("C5"),
+        "the capacitors stand by the power unit"
+    );
 }
 
 #[test]
@@ -733,7 +818,8 @@ fn every_pin_with_nothing_on_it_has_an_x_and_one_that_must_be_connected_a_red_on
     // Rule 7 (and the owner's addition): an X on every pin that connects to nothing.
     let b = bench();
     let l = lay(&b);
-    for (p, part) in l.parts.iter().enumerate() {
+    for part in &l.parts {
+        let p = part.part;
         for (pin, g) in part.pins.iter().zip(&part.glyph.pins) {
             if g.hidden {
                 continue;
@@ -779,7 +865,13 @@ fn every_pin_with_nothing_on_it_has_an_x_and_one_that_must_be_connected_a_red_on
     assert!(svg.contains("`u5.p0_05` is an input that must be connected"));
     // The marks stay small and at the pin's end: a box of at most 2 mm.
     for m in &l.marks {
-        let pin = l.parts[m.part].pins.iter().find(|p| p.id == m.pad).unwrap();
+        let pin = l
+            .parts
+            .iter()
+            .filter(|p| p.part == m.part)
+            .flat_map(|p| p.pins.iter())
+            .find(|p| p.id == m.pad)
+            .unwrap();
         assert!(near(m.at, pin.at));
     }
 }

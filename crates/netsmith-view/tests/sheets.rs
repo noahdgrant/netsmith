@@ -44,11 +44,12 @@ fn seventy_parts_make_seven_sheets_that_do_not_overlap() {
     for sheet in &l.sheets {
         assert!(contains(&l.bounds, &sheet.frame), "{}", sheet.name);
         for &p in &sheet.parts {
-            assert_eq!(l.parts[p].part, p);
+            // A box after the parts is a further unit of one of them.
+            assert!(l.parts[p].part == p || p >= d.parts.len());
             assert!(
                 contains(&sheet.frame, &l.parts[p].extent),
                 "{} is outside {}",
-                d.parts[p].refdes,
+                d.parts[l.parts[p].part].refdes,
                 sheet.name
             );
         }

@@ -116,7 +116,20 @@ fn every_board_is_measured_sheet_by_sheet_and_the_sheets_add_up() {
             let m = measure(&l);
             let sheets = l.sheets.len().max(1);
             assert_eq!(m.sheets.len(), sheets, "{}", case.name);
-            assert_eq!(m.total.parts, case.design.parts.len(), "{}", case.name);
+            // A part whose symbol has several units is a body for each.
+            assert_eq!(m.total.parts, l.parts.len(), "{}", case.name);
+            assert_eq!(
+                m.total.parts,
+                case.design.parts.len() + l.parts.len() - case.design.parts.len(),
+                "{}",
+                case.name
+            );
+            assert_eq!(
+                m.total.units,
+                l.parts.iter().filter(|p| p.glyph.unit.is_some()).count(),
+                "{}",
+                case.name
+            );
             let sum = |f: fn(&netsmith_view::metrics::SheetMetrics) -> usize| {
                 m.sheets.iter().map(f).sum::<usize>()
             };

@@ -72,6 +72,17 @@
 //!    rows. `NETSMITH_SPINE=off` draws without it, to compare (the metrics `spine_bends` and
 //!    `detached_chain` still find the chains).
 //!
+//! 7. A part whose library symbol has several **units** is drawn as one box for each, as the
+//!    library draws the unit, upright, with the part's reference and the unit's letter (`U5A`
+//!    for the supplies and the twenty-five grounds of a processor module, `U5B` for its signals;
+//!    ADR 0050, `units.rs`). The decision is the library's (the unit of each pin of the symbol),
+//!    never a name or a pin kind. Each box is a main part to the engine: the capacitors that
+//!    decouple the supply stand beside the power unit, its grounds are one column with one wire
+//!    and one symbol, and the signal unit has no power row. `layout.parts[i]` is part `i` of the
+//!    design (a part of several units: its box with most pins) and the boxes of the further units
+//!    follow them; [`PlacedPart::part`] says which part a box draws. The checker still rebuilds
+//!    the nets pin by pin and has one rule more: a pad is drawn in exactly one box.
+//!
 //! Nothing here knows how a layout is drawn: [`crate::render_svg`] reads the result.
 
 mod engine;
@@ -79,6 +90,9 @@ mod grid;
 mod policy;
 mod prune;
 mod spine;
+mod units;
+
+pub(crate) use units::unit_letter;
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
 
@@ -176,7 +190,10 @@ pub struct PlacedPin {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlacedPart {
-    /// Index into `design.parts`.
+    /// Index into `design.parts`: the part this box draws. A part whose symbol has several
+    /// units has a box for each, with the same `part`; the first `design.parts.len()` boxes of
+    /// a layout are the parts' own (a part with units: its unit with most pins) and the other
+    /// units follow them (`units.rs`).
     pub part: usize,
     pub glyph: Glyph,
     /// Where the symbol's origin lands on the sheet.
@@ -583,12 +600,23 @@ pub(crate) fn layout_with(
 ) -> Result<Layout, DesignError> {
     design.validate()?;
     let used = used_pads(design);
-    let glyphs: Vec<Glyph> = design
-        .parts
-        .iter()
-        .zip(&used)
-        .map(|(p, u)| Glyph::for_part(p, u, Pinout::of(p).as_ref(), mapping, lib))
-        .collect();
+    // A part whose symbol has several units is drawn as one box for each: the engine draws a
+    // derived design in which each unit is a part, and the boxes are told back to the design's
+    // parts at the end (`units.rs`).
+    let split = units::split(design, &used, marks, mapping, lib);
+    let (design, marks, glyphs): (&Design, &Marks, Vec<Glyph>) = match &split {
+        Some(s) => (&s.design, &s.marks, s.glyphs.clone()),
+        None => (
+            design,
+            marks,
+            design
+                .parts
+                .iter()
+                .zip(&used)
+                .map(|(p, u)| Glyph::for_part(p, u, Pinout::of(p).as_ref(), mapping, lib))
+                .collect(),
+        ),
+    };
 
     let index: HashMap<&str, usize> = design
         .parts
@@ -706,6 +734,14 @@ pub(crate) fn layout_with(
         drawn = engine::run(&ctx, &units, &order, &orient, marks, &labelled);
     }
     drawn.layout.spines = spine_marks;
+    if let Some(s) = &split {
+        for (placed, &part) in drawn.layout.parts.iter_mut().zip(&s.origin) {
+            placed.part = part;
+        }
+        for m in &mut drawn.layout.marks {
+            m.part = s.origin[m.part];
+        }
+    }
     Ok(drawn.layout)
 }
 
@@ -773,7 +809,7 @@ fn levels(part_nets: &[Vec<usize>], connector: &[bool], ground: &[bool]) -> Vec<
 /// A part with two pins on one axis, facing opposite ways, can stand in a stack.
 fn is_stackable(ctx: &Ctx, p: usize) -> bool {
     let g = &ctx.glyphs[p];
-    if g.symbol.is_none() || g.pins.len() != 2 || ctx.connector[p] {
+    if g.symbol.is_none() || g.pins.len() != 2 || g.unit.is_some() || ctx.connector[p] {
         return false;
     }
     let (a, b) = (&g.pins[0], &g.pins[1]);
@@ -1108,8 +1144,9 @@ fn orientations(ctx: &Ctx, units: &[Unit], column_of: &[usize]) -> Vec<Orient> {
     let mut orient = vec![Orient::IDENTITY; ctx.design.parts.len()];
     for unit in units {
         for (i, &p) in unit.parts.iter().enumerate() {
-            orient[p] = if ctx.glyphs[p].dense {
-                // A table of pins stays upright: supplies at the top, grounds at the bottom.
+            orient[p] = if ctx.glyphs[p].dense || ctx.glyphs[p].unit.is_some() {
+                // A table of pins stays upright: supplies at the top, grounds at the bottom. A
+                // unit of a symbol is drawn as the library draws it.
                 Orient::IDENTITY
             } else if let Some(sp) = ctx.spines.iter().find(|s| s.ic == p) {
                 // The input of a regulator on the left, its switching pin on the right.

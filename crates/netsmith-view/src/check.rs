@@ -76,6 +76,13 @@ pub enum Violation {
         design: Option<String>,
         drawn: Option<String>,
     },
+    /// A pad of a part drawn in more than one of the part's boxes (a part with several units
+    /// draws each pad in exactly one).
+    UnitPin {
+        sheet: String,
+        pin: String,
+        boxes: usize,
+    },
     /// A piece of wire that touches no pin, power symbol or flag.
     FloatingWire { sheet: String, net: String, at: Pt },
     /// A power symbol or a flag that touches no wire and no pin.
@@ -156,7 +163,7 @@ pub enum Violation {
 }
 
 impl Violation {
-    /// A short name for the kind: `short`, `open`, `extra-pin`, `pin-net`, `floating-wire`,
+    /// A short name for the kind: `short`, `open`, `extra-pin`, `pin-net`, `unit-pin`, `floating-wire`,
     /// `floating-flag`, `floating-label`, `wire-overlap`, `wire-through-body`,
     /// `wire-along-pin`, `text-overlap`, `wire-over-text`, `wire-hugs-symbol`, `dead-end`, `redundant-wire`, `zero-length-wire`, `u-turn`,
     /// `unused-junction`, `missing-junction`, `bus-member`.
@@ -166,6 +173,7 @@ impl Violation {
             Violation::Open { .. } => "open",
             Violation::ExtraPin { .. } => "extra-pin",
             Violation::PinNet { .. } => "pin-net",
+            Violation::UnitPin { .. } => "unit-pin",
             Violation::FloatingWire { .. } => "floating-wire",
             Violation::FloatingFlag { .. } => "floating-flag",
             Violation::FloatingLabel { .. } => "floating-label",
@@ -225,6 +233,10 @@ impl fmt::Display for Violation {
                 "{sheet}: pin {pin} is in {} in the design and {} in the drawing",
                 opt(design),
                 opt(drawn)
+            ),
+            Violation::UnitPin { sheet, pin, boxes } => write!(
+                f,
+                "{sheet}: pin {pin} is drawn in {boxes} boxes of its part: each pad is in exactly one unit"
             ),
             Violation::FloatingWire { sheet, net, at: p } => {
                 write!(f, "{sheet}: floating wire of {net} near {}", at(p))
@@ -414,12 +426,16 @@ fn check_sheet(
 ) {
     let sheet = v.name.clone();
 
-    // The pins of this sheet.
+    // The pins of this sheet, and for each part the pads its boxes draw (a part with several
+    // units has a box for each, and each pad is in exactly one).
     let mut pins: Vec<SheetPin> = Vec::new();
+    let mut drawn_pads: BTreeMap<usize, BTreeMap<&str, usize>> = BTreeMap::new();
     for &i in &v.parts {
         let p = &l.parts[i];
         let refdes = design.parts[p.part].refdes.as_str();
+        let pads = drawn_pads.entry(p.part).or_default();
         for (g, placed) in p.glyph.pins.iter().zip(&p.pins) {
+            *pads.entry(placed.id.as_str()).or_default() += 1;
             pins.push(SheetPin {
                 label: format!("{refdes}.{}", placed.id),
                 at: placed.at,
@@ -428,10 +444,22 @@ fn check_sheet(
                 drawn: placed.net,
             });
         }
-        // A pad the design uses that the part does not draw.
+    }
+    for (&part, pads) in &drawn_pads {
+        let refdes = design.parts[part].refdes.as_str();
+        for (pad, &boxes) in pads {
+            if boxes > 1 {
+                out.push(Violation::UnitPin {
+                    sheet: sheet.clone(),
+                    pin: format!("{refdes}.{pad}"),
+                    boxes,
+                });
+            }
+        }
+        // A pad the design uses that no box of the part draws.
         for net in &design.nets {
             for r in net.pins.iter().filter(|r| r.refdes == refdes) {
-                if !p.pins.iter().any(|q| q.id == r.pin) {
+                if !pads.contains_key(r.pin.as_str()) {
                     out.push(Violation::PinNet {
                         sheet: sheet.clone(),
                         pin: format!("{refdes}.{}", r.pin),

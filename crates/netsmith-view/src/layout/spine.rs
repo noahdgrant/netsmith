@@ -348,6 +348,7 @@ fn is_main(ctx: &Ctx, ic: usize) -> bool {
     let g = &ctx.glyphs[ic];
     g.symbol.is_some()
         && !g.dense
+        && g.unit.is_none()
         && !ctx.connector[ic]
         && !is_stackable(ctx, ic)
         && g.pins.iter().filter(|p| !p.hidden).count() >= 3

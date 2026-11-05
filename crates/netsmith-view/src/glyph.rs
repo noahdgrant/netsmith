@@ -166,6 +166,9 @@ pub struct Glyph {
     pub pin_text: f64,
     /// A box this crate made for a symbol of several units or many pins: it stays upright.
     pub dense: bool,
+    /// Set when the glyph is one unit of a symbol that has several, drawn as a box of its own
+    /// (the unit's number, 1 for `A`): it stays as the library draws it.
+    pub unit: Option<u32>,
 }
 
 impl Glyph {
@@ -211,28 +214,136 @@ impl Glyph {
     /// labelled groups (more).
     fn drawn(part: &Part, symbol: &Symbol) -> Glyph {
         if symbol.pins().len() > MANY_PINS {
-            return Glyph::grouped(part, symbol);
+            return Glyph::grouped(part, symbol, None);
         }
         if symbol.units() > 1 {
-            return Glyph::merged(part, symbol);
+            return Glyph::merged(part, symbol, None);
         }
         let glyph = Glyph::from_symbol(symbol);
         if glyph.texts_collide(Orient::IDENTITY) {
-            Glyph::merged(part, symbol)
+            Glyph::merged(part, symbol, None)
         } else {
             glyph
         }
     }
 
+    /// One unit of a symbol as a box of its own: the library's own drawing of the unit with
+    /// the pins in the library's order, or, where its names would run into each other or it
+    /// has more than [`MANY_PINS`] pins, the same boxes as for a whole symbol.
+    fn drawn_unit(part: &Part, symbol: &Symbol, unit: u32, first: u32) -> Glyph {
+        let only = Some((unit, first));
+        if symbol_entries(symbol, only).len() > MANY_PINS {
+            return Glyph::grouped(part, symbol, only);
+        }
+        let glyph = Glyph::from_units(symbol, &[unit], first, true);
+        if glyph.texts_collide(Orient::IDENTITY) {
+            Glyph::merged(part, symbol, only)
+        } else {
+            glyph
+        }
+    }
+
+    /// Moves the drawing so that its pins are on the sheet's grid, when one move does it: a
+    /// unit of a library symbol is drawn where the symbol put it, and the unit that was below
+    /// another was moved by a distance that is not a grid step.
+    fn on_grid(&mut self) {
+        const STEP: f64 = 1.27;
+        let Some(first) = self.pins.first() else {
+            return;
+        };
+        let snapped = |v: f64| (v / STEP).round() * STEP;
+        let (dx, dy) = (
+            snapped(first.at.0) - first.at.0,
+            snapped(first.at.1) - first.at.1,
+        );
+        if dx.abs() < 1e-6 && dy.abs() < 1e-6 {
+            return;
+        }
+        let aligned = self.pins.iter().all(|p| {
+            (snapped(p.at.0 + dx) - (p.at.0 + dx)).abs() < 1e-3
+                && (snapped(p.at.1 + dy) - (p.at.1 + dy)).abs() < 1e-3
+        });
+        if !aligned {
+            return;
+        }
+        self.shapes = std::mem::take(&mut self.shapes)
+            .into_iter()
+            .map(|s| moved(s, dx, dy))
+            .collect();
+        for p in &mut self.pins {
+            p.at = (p.at.0 + dx, p.at.1 + dy);
+        }
+    }
+
+    /// The boxes of a part whose symbol has several units: one for each unit that has a pin,
+    /// in the unit's order, as `(unit number, glyph)`. A pin belongs to one box (a pin of unit
+    /// 0, shared by all, to the first). None when the part is drawn as one box: its symbol has
+    /// one unit with pins, or there is no symbol, or it lacks a pad the design uses.
+    pub fn unit_glyphs(
+        part: &Part,
+        used: &[String],
+        mapping: &Mapping,
+        lib: &SymbolLib,
+    ) -> Option<Vec<(u32, Glyph)>> {
+        if part.kind == "Label" {
+            return None;
+        }
+        let mapped = mapping.map(&part.kind, part.package.as_deref()).ok()?;
+        let symbol = lib.symbol(&mapped.lib_id).ok()?;
+        if symbol.units() < 2 {
+            return None;
+        }
+        let has_pins = |unit: u32| symbol.pins().iter().any(|p| p.unit == unit);
+        let mut units: Vec<u32> = (1..=symbol.units()).filter(|&u| has_pins(u)).collect();
+        // Shared pins (unit 0) go with the first unit that has a pin; with none of its own, the
+        // first unit.
+        let first = units.first().copied().unwrap_or(1);
+        if units.is_empty() && symbol.pins().iter().any(|p| p.unit == 0) {
+            units.push(first);
+        }
+        if units.len() < 2 {
+            return None;
+        }
+        let glyphs: Vec<(u32, Glyph)> = units
+            .iter()
+            .map(|&u| {
+                let mut glyph = Glyph::drawn_unit(part, &symbol, u, first);
+                glyph.on_grid();
+                glyph.unit = Some(u);
+                (u, glyph)
+            })
+            .collect();
+        used.iter()
+            .all(|id| {
+                glyphs
+                    .iter()
+                    .any(|(_, g)| g.pins.iter().any(|p| &p.id == id))
+            })
+            .then_some(glyphs)
+    }
+
     /// The symbol's own drawing: its first unit, then the others each below the one before.
     /// The drawing shared by all units (unit 0) goes with the first.
     fn from_symbol(symbol: &Symbol) -> Glyph {
+        let units: Vec<u32> = (1..=symbol.units()).collect();
+        Glyph::from_units(symbol, &units, 1, false)
+    }
+
+    /// The drawing of `units` of a symbol, each below the one before. The pins of unit 0 (shared
+    /// by all) are drawn with the unit `first`; the drawing of unit 0 is drawn with it too, or
+    /// with every unit when `shared_drawing_everywhere` (a unit that stands alone).
+    fn from_units(
+        symbol: &Symbol,
+        units: &[u32],
+        first: u32,
+        shared_drawing_everywhere: bool,
+    ) -> Glyph {
         let def = symbol.definition();
         let mut shapes = Vec::new();
         let mut pins: Vec<GlyphPin> = Vec::new();
         let mut hidden_in_symbol: Vec<bool> = Vec::new();
         let mut floor: Option<f64> = None;
-        for unit in 1..=symbol.units() {
+        for &unit in units {
             let mut unit_shapes = Vec::new();
             for part in def.find_all("symbol") {
                 let Some((number, style)) =
@@ -240,7 +351,8 @@ impl Glyph {
                 else {
                     continue;
                 };
-                if style > 1 || !(number == unit || (number == 0 && unit == 1)) {
+                let shared = number == 0 && (shared_drawing_everywhere || unit == first);
+                if style > 1 || !(number == unit || shared) {
                     continue;
                 }
                 unit_shapes.extend(
@@ -253,7 +365,7 @@ impl Glyph {
             let unit_pins: Vec<GlyphPin> = symbol
                 .pins()
                 .iter()
-                .filter(|p| p.unit == unit || (p.unit == 0 && unit == 1))
+                .filter(|p| p.unit == unit || (p.unit == 0 && unit == first))
                 .map(|p| GlyphPin {
                     id: p.number.clone(),
                     name: if p.is_unnamed() {
@@ -292,7 +404,7 @@ impl Glyph {
                 symbol
                     .pins()
                     .iter()
-                    .filter(|p| p.unit == unit || (p.unit == 0 && unit == 1))
+                    .filter(|p| p.unit == unit || (p.unit == 0 && unit == first))
                     .map(|p| p.hidden),
             );
             pins.extend(unit_pins.into_iter().map(|mut p| {
@@ -323,6 +435,7 @@ impl Glyph {
             name_offset,
             pin_text: PIN_TEXT,
             dense: false,
+            unit: None,
         }
     }
 
@@ -394,6 +507,7 @@ impl Glyph {
             name_offset: DEFAULT_NAME_OFFSET,
             pin_text: PIN_TEXT,
             dense: false,
+            unit: None,
         }
     }
 
@@ -612,9 +726,14 @@ struct SymEntry {
 /// The pins of a symbol, every unit, in the symbol's own order. A hidden pin that repeats a
 /// shown pin's name (stock symbols stack the pads of one supply so) is one more pad of that
 /// pin.
-fn symbol_entries(symbol: &Symbol) -> Vec<SymEntry> {
+///
+/// With `only` (a unit, and the unit that carries the pins shared by all), the pins of that
+/// unit alone.
+fn symbol_entries(symbol: &Symbol, only: Option<(u32, u32)>) -> Vec<SymEntry> {
     let mut out: Vec<SymEntry> = Vec::new();
-    for p in symbol.pins() {
+    for p in symbol.pins().iter().filter(|p| {
+        only.is_none_or(|(unit, first)| p.unit == unit || (p.unit == 0 && unit == first))
+    }) {
         let name = if p.is_unnamed() {
             String::new()
         } else {
@@ -701,8 +820,8 @@ impl Glyph {
     /// pin of every unit on the side its symbol puts it, in the symbol's own order (a unit
     /// after the one before, top to bottom, left to right), and the box as large as the
     /// names need.
-    fn merged(part: &Part, symbol: &Symbol) -> Glyph {
-        let mut entries = symbol_entries(symbol);
+    fn merged(part: &Part, symbol: &Symbol, only: Option<(u32, u32)>) -> Glyph {
+        let mut entries = symbol_entries(symbol, only);
         entries.sort_by(|a, b| {
             let (ax, ay) = (a.x, a.y);
             let key = |e: &SymEntry, x: f64, y: f64| {
@@ -733,8 +852,8 @@ impl Glyph {
     /// A symbol of very many pins as one box with two columns of pins in labelled groups:
     /// the supplies, the grounds, then the others by the start of their names, the pins that
     /// connect to nothing last. The box says how many pins it has.
-    fn grouped(part: &Part, symbol: &Symbol) -> Glyph {
-        let entries = symbol_entries(symbol);
+    fn grouped(part: &Part, symbol: &Symbol, only: Option<(u32, u32)>) -> Glyph {
+        let entries = symbol_entries(symbol, only);
         let pin_count = entries.len();
         let mut power = Vec::new();
         let mut ground = Vec::new();
@@ -915,6 +1034,7 @@ impl Glyph {
             name_offset: DEFAULT_NAME_OFFSET,
             pin_text: DENSE_TEXT,
             dense: true,
+            unit: None,
         }
     }
 }
@@ -1085,7 +1205,11 @@ impl Sides {
             }
         }
         for (edge, entries) in [(1.0, &self.top), (-1.0, &self.bottom)] {
-            let first = -(entries.len().saturating_sub(1) as f64) * across / 2.0;
+            // On the grid: an even number of pins, a step apart, would be half a step off it.
+            let first = snap_up(
+                -(entries.len().saturating_sub(1) as f64) * across / 2.0,
+                1.27,
+            );
             for (i, entry) in entries.iter().enumerate() {
                 let at = (first + i as f64 * across, edge * (half_height + PIN_LENGTH));
                 add(entry, at, (0.0, -edge));
@@ -1123,6 +1247,7 @@ impl Sides {
                 PIN_TEXT
             },
             dense: false,
+            unit: None,
         }
     }
 }
@@ -1151,7 +1276,12 @@ fn shape_ys(shape: &Shape) -> Vec<f64> {
 
 /// The shape moved down by `-dy` (up by `dy`).
 fn shifted(shape: Shape, dy: f64) -> Shape {
-    let up = |p: P| (p.0, p.1 + dy);
+    moved(shape, 0.0, dy)
+}
+
+/// The shape moved by `(dx, dy)`.
+fn moved(shape: Shape, dx: f64, dy: f64) -> Shape {
+    let up = |p: P| (p.0 + dx, p.1 + dy);
     match shape {
         Shape::Rect { a, b, width, fill } => Shape::Rect {
             a: up(a),

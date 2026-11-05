@@ -37,6 +37,9 @@
 //!   that ends in a power symbol of the sheet (runs that lie along one line and meet are
 //!   one). A decoupling capacitor with a symbol of its own has a few steps; a rail across a
 //!   whole sheet, many.
+//! - **bodies** (`parts`, `units`): a part whose symbol has several units is drawn as a box for
+//!   each (ADR 0050) and each box is a body here, with its own pins, satellites and side
+//!   consistency; `parts` counts the boxes and `units` those that draw a unit of such a part.
 //! - **satellite wire** (`satellite_wire`): the longest way along the wire of a net, in grid
 //!   steps, from the pin of a satellite to the nearest pin of another part on that net, or
 //!   power symbol, flag or label of it.
@@ -92,8 +95,12 @@ pub struct SheetMetrics {
     pub width: f64,
     pub height: f64,
 
-    /// Parts drawn.
+    /// Bodies drawn: each part, and each unit of a part whose symbol has several (a part of
+    /// two units is two here, `units` counts them).
     pub parts: usize,
+    /// Boxes that draw one unit of a part with several units (a processor's power unit and
+    /// its signal unit are two).
+    pub units: usize,
     /// Nets with at least one wire.
     pub wired_nets: usize,
     pub wires: usize,
@@ -237,6 +244,7 @@ impl SheetMetrics {
 
     fn add(&mut self, o: &SheetMetrics) {
         self.parts += o.parts;
+        self.units += o.units;
         self.wired_nets += o.wired_nets;
         self.wires += o.wires;
         self.segments += o.segments;
@@ -324,6 +332,11 @@ fn measure_sheet(l: &Layout, v: &SheetView) -> SheetMetrics {
         width: v.frame.width(),
         height: v.frame.height(),
         parts: v.parts.len(),
+        units: v
+            .parts
+            .iter()
+            .filter(|&&i| l.parts[i].glyph.unit.is_some())
+            .count(),
         wires: v.wires.len(),
         flags: v.ports.len(),
         power_symbols: v.symbols.len(),
@@ -537,7 +550,7 @@ fn wire_length(
 /// along one line.
 fn is_satellite(p: &PlacedPart) -> bool {
     let g = &p.glyph;
-    if g.symbol.is_none() || g.pins.len() != 2 {
+    if g.symbol.is_none() || g.pins.len() != 2 || g.unit.is_some() {
         return false;
     }
     let (a, b) = (&g.pins[0], &g.pins[1]);
@@ -1114,6 +1127,7 @@ impl Metrics {
             put("aspect", f(s.aspect()));
             put("area_per_part", f(s.area_per_part()));
             put("parts", n(s.parts));
+            put("units", n(s.units));
             put("wired_nets", n(s.wired_nets));
             put("wires", n(s.wires));
             put("segments", n(s.segments));
