@@ -546,7 +546,7 @@ fn build_block(
         let row: Vec<&SatPlan> = sorted
             .iter()
             .map(|x| **x)
-            .filter(|x| is_row(&x) && a.pins[x.pin].escape == side)
+            .filter(|x| is_row(x) && a.pins[x.pin].escape == side)
             .collect();
         if row.is_empty() {
             continue;
@@ -1223,13 +1223,10 @@ impl<'a> Scene<'a> {
         );
         // Where the symbol hangs: in line with the outermost satellite on the rail, the part's
         // own centre when there is one part, else the left end.
-        let centre = {
-            let c = self
-                .grid
-                .node(Pt::new((rect.min.x + rect.max.x) / 2.0, 0.0))
-                .0;
-            c
-        };
+        let centre = self
+            .grid
+            .node(Pt::new((rect.min.x + rect.max.x) / 2.0, 0.0))
+            .0;
         let parts_on: BTreeSet<usize> = drops.iter().map(|d| d.part).collect();
         let sat_xs: Vec<i32> = drops
             .iter()
