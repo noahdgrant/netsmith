@@ -11,22 +11,23 @@ export async function run({ page, shot, step, expect }) {
   await page.waitForSelector('.sheetpick .crumb-sheet');
   const listed = await sheetNames(page);
   expect(listed.length >= 26, `All sheets, each of the 24 module instances and the rest are in the picker (${listed.length})`);
-  expect((await activeSheet(page)) === 'light1', 'the first sheet, in source order, is open');
+  expect((await activeSheet(page)) === 'BigBoard', 'the first sheet, in source order (the board\'s own parts come first in the source), is open');
   expect((await page.locator('.sheetnav .sl-row').count()) >= 26 || (await page.locator('.sheetnav').count()) === 0, 'the navigator lists them too');
   const host = await page.locator('.schematic-host').boundingBox();
-  const sheet = await page.locator('.schematic .module-sheet[data-module="light1"] .module-frame').first().boundingBox();
+  const sheet = await page.locator('.schematic .module-sheet[data-module="BigBoard"] .module-frame').first().boundingBox();
   expect(sheet.width > host.width * 0.3 || sheet.height > host.height * 0.3, `the sheet is large in the view (${Math.round(sheet.width)} x ${Math.round(sheet.height)} of ${Math.round(host.width)} x ${Math.round(host.height)} px)`);
   await shot('one-sheet');
 
   step('the keys step through the sheets: ] and [ (the arrows pan)');
   await page.keyboard.press(']');
-  expect((await activeSheet(page)) === 'light2', 'the second sheet');
+  expect((await activeSheet(page)) === 'stage1', 'the second sheet (the source declares stage1, then light1)');
   await page.keyboard.press(']');
+  expect((await activeSheet(page)) === 'light1', 'the third, not the alphabetical next');
   await page.keyboard.press('[');
   await page.keyboard.press('[');
-  expect((await activeSheet(page)) === 'light1', 'back on the first');
+  expect((await activeSheet(page)) === 'BigBoard', 'back on the first');
   await page.getByRole('button', { name: 'Next sheet' }).click();
-  expect((await activeSheet(page)) === 'light2', 'the Next button');
+  expect((await activeSheet(page)) === 'stage1', 'the Next button');
 
   step('the overview shows every sheet; a click on a box opens it');
   await openSheet(page, 'All sheets');
@@ -36,7 +37,7 @@ export async function run({ page, shot, step, expect }) {
   const titles = await page.locator('.ov-card .ov-head').allInnerTexts();
   expect(titles.some((t) => /stage1\s*LdoStage/.test(t.replace(/\n/g, ' '))), 'a card titled with the instance and its module');
   const order = await page.locator('.ov-card .ov-name').allInnerTexts();
-  expect(order[0] === 'light1' && order.indexOf('light2') === 1, `the cards are in the order of the source, not alphabetical (${order.slice(0, 4).join(', ')})`);
+  expect(order[0] === 'BigBoard' && order[1] === 'stage1' && order[2] === 'light1', `the cards are in the order of the source, not alphabetical (${order.slice(0, 4).join(', ')})`);
   const shape = await page.evaluate(() => {
     const svg = document.querySelector('svg.schematic');
     const [, , w, h] = svg.getAttribute('data-bounds').split(' ').map(Number);
