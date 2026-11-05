@@ -278,13 +278,13 @@ pub struct PartHeight {
     pub height: f64,
 }
 
-/// How far the pins of a through-hole part stand out of the board on the face opposite the
-/// part, once they are cut short, as the board's physical file states it (`.tail_height`,
-/// ADR 0045 section 14, PROVISIONAL). A part the design states no tail for is not here: its
-/// tail is unknown, which is not a tail of zero, and its pads stay an obstacle for a part on
-/// that face.
+/// How far the pins of a through-hole part protrude out of the board on the face opposite the
+/// part, whether they were cut after soldering or bought short, as the board's physical file
+/// states it (`.pin_protrusion`, ADR 0045 section 14). A part the design states no
+/// protrusion for is not here: its protrusion is unknown, which is not zero, and its pads
+/// stay an obstacle for a part on that face.
 #[derive(Debug, Clone, PartialEq)]
-pub struct PartTail {
+pub struct PinProtrusion {
     /// The part's path in the design.
     pub path: String,
     /// In mm, from the face the pins come out of to the end of the cut pins.
@@ -441,8 +441,9 @@ pub struct Features {
     pub keepouts: Vec<Keepout>,
     /// The heights the design states for parts, by path (ADR 0045, "Height limits").
     pub heights: Vec<PartHeight>,
-    /// The tails the design states for through-hole parts, by path (ADR 0045 section 14).
-    pub tails: Vec<PartTail>,
+    /// How far the pins of through-hole parts protrude, as the design states it, by path
+    /// (ADR 0045 section 14).
+    pub protrusions: Vec<PinProtrusion>,
     /// The paths of the parts the board house does not assemble (`.assembly` is `hand` or
     /// `none`), so fitted by hand or not at all. Filled by the caller that knows who
     /// assembles each part; empty otherwise, which counts every part as assembled by the

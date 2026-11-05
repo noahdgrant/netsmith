@@ -1,17 +1,17 @@
-//! Trimmed pin tails (ADR 0045 section 14, PROVISIONAL; owner decisions of 2026-11-04): a
-//! flat part on the back over the cut pins of a 1x10 socket row on the front.
+//! Trimmed pin protrusions (ADR 0045 section 14, PROVISIONAL; owner decisions of 2026-11-04): a
+//! flat part on the back over the protruding pins of a 1x10 socket row on the front.
 //!
 //! The board is invented: 60 x 40 mm, a socket row (ten plated holes, 2.54 mm apart, its
 //! courtyard drawn on its own face only), and a flat 3.4 mm part 30 x 26 mm with a pad at
 //! each end, on the back under a lid zone that allows 3.6 mm there. The requirements pin both
 //! over each other. The tests give the failure modes of the note's section 1.8: F1 (too
 //! tall), F2 (no height), F3 (the pins are not stated), F5 (assembled by the board house),
-//! F6 (no height limit there), and the unchanged board without a tail.
+//! F6 (no height limit there), and the unchanged board without a protrusion.
 
 mod common;
 
 use netsmith_core::{
-    Design, Features, Keepout, Outline, Part, PartHeight, PartTail, PlaceBound, PlaceField,
+    Design, Features, Keepout, Outline, Part, PartHeight, PinProtrusion, PlaceBound, PlaceField,
     Placement,
 };
 use netsmith_kicad::testlib::TempDir;
@@ -56,8 +56,8 @@ fn flat() -> String {
 /// What the invented board states; the default is the working case of the note.
 #[derive(Clone)]
 struct Case {
-    /// The tail of the socket row, if the design cuts them.
-    tail: Option<f64>,
+    /// The protrusion of the socket row, if the design states it.
+    protrusion: Option<f64>,
     /// The cell's height.
     height: Option<f64>,
     /// Whether the cell is fitted by hand.
@@ -69,7 +69,7 @@ struct Case {
 impl Default for Case {
     fn default() -> Self {
         Case {
-            tail: Some(0.2),
+            protrusion: Some(0.2),
             height: Some(3.4),
             hand: true,
             zone: Some(3.6),
@@ -107,7 +107,7 @@ fn design(case: &Case) -> Design {
         side_source: String::new(),
     };
     Design {
-        name: "Tails".into(),
+        name: "Protrusion".into(),
         process: Some(process()),
         features: Features {
             outline: Some(Outline {
@@ -139,12 +139,12 @@ fn design(case: &Case) -> Design {
                 })
                 .into_iter()
                 .collect(),
-            tails: case
-                .tail
-                .map(|length| PartTail {
+            protrusions: case
+                .protrusion
+                .map(|length| PinProtrusion {
                     path: "row".into(),
                     length,
-                    source: "tails.physical.nsm:12".into(),
+                    source: "widget.physical.nsm:12".into(),
                 })
                 .into_iter()
                 .collect(),
@@ -165,12 +165,12 @@ fn design(case: &Case) -> Design {
 }
 
 fn board(case: &Case) -> Result<Board, BoardError> {
-    let folder = TempDir::new("tails");
+    let folder = TempDir::new("protrusions");
     std::fs::write(folder.join("Row10.kicad_mod"), socket()).unwrap();
     std::fs::write(folder.join("Flat.kicad_mod"), flat()).unwrap();
     let mapping = "[[part]]\nkind = \"Socket\"\npackage = \"Row10\"\nsymbol = \"t:R\"\nfootprint = \"t:Row10\"\n\
                    [[part]]\nkind = \"FlatCell\"\npackage = \"FlatCell\"\nsymbol = \"t:R\"\nfootprint = \"t:Flat\"\n";
-    let mapping = netsmith_kicad::Mapping::parse(mapping, "tails", std::path::Path::new("."))
+    let mapping = netsmith_kicad::Mapping::parse(mapping, "protrusions", std::path::Path::new("."))
         .unwrap_or_else(|e| panic!("{e}"));
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
     let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
@@ -188,7 +188,7 @@ fn findings(board: &Board) -> Vec<String> {
 }
 
 #[test]
-fn a_flat_part_stands_over_trimmed_pins_when_the_stack_fits_the_zone() {
+fn a_flat_part_stands_over_protruding_pins_when_the_stack_fits_the_zone() {
     let board = board(&Case::default()).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(findings(&board), Vec::<String>::new(), "a clean placement");
     // It really lies over the pins: the cell's courtyard is over the socket's pads.
@@ -197,16 +197,16 @@ fn a_flat_part_stands_over_trimmed_pins_when_the_stack_fits_the_zone() {
         cell.courtyard()
             .overlaps(&row.pad_bounds(&row.footprint.pads[4]))
     );
-    // The note lists the trim, the length, the covering part and the line.
+    // The note lists the cut, the length, the covering part and the line.
     let trims = board.trims();
     assert_eq!(trims.len(), 1);
     let note = trims[0].note();
     for expected in [
         "J1 (row)",
         "0.20 mm",
-        "bottom face",
+        "protrude 0.20 mm from the bottom face",
         "before U1 (cell) is fitted",
-        "tails.physical.nsm:12",
+        "widget.physical.nsm:12",
     ] {
         assert!(note.contains(expected), "missing {expected:?} in {note}");
     }
@@ -219,13 +219,13 @@ fn a_flat_part_stands_over_trimmed_pins_when_the_stack_fits_the_zone() {
 }
 
 #[test]
-fn without_a_tail_the_same_board_is_refused_as_before_and_the_hint_names_the_member() {
+fn without_a_protrusion_the_same_board_is_refused_as_before_and_the_hint_names_the_member() {
     let case = Case {
-        tail: None,
+        protrusion: None,
         ..Case::default()
     };
     // The requirements pin both over each other, so the placer cannot move either: the
-    // overlap of today's rule (F3), with how to state the trim.
+    // overlap of today's rule (F3), with how to state the protrusion.
     let found = match board(&case) {
         Ok(board) => findings(&board),
         Err(e) => vec![e.to_string()],
@@ -237,16 +237,16 @@ fn without_a_tail_the_same_board_is_refused_as_before_and_the_hint_names_the_mem
     );
     if text.contains("the courtyards of J1 and U1 overlap") {
         assert!(
-            text.contains("`.row.tail_height &= 0.2mm`"),
+            text.contains("`.row.pin_protrusion &= 0.2mm`"),
             "the hint names the member: {text}"
         );
     }
 }
 
 #[test]
-fn f1_a_tail_that_leaves_too_little_room_is_named_with_the_numbers() {
+fn f1_a_protrusion_that_leaves_too_little_room_is_named_with_the_numbers() {
     let case = Case {
-        tail: Some(0.4),
+        protrusion: Some(0.4),
         ..Case::default()
     };
     let text = match board(&case) {
@@ -257,13 +257,13 @@ fn f1_a_tail_that_leaves_too_little_room_is_named_with_the_numbers() {
         "U1",
         "`cell`",
         "J1",
-        "tails.physical.nsm:12",
+        "widget.physical.nsm:12",
         "0.40 mm",
         "3.80 mm",
         "back_room",
         "3.60 mm",
         "0.20 mm too much",
-        "trim the pins to 0.20 mm or less",
+        "cut the pins to protrude 0.20 mm or less",
     ] {
         assert!(text.contains(expected), "missing {expected:?} in\n{text}");
     }
@@ -316,7 +316,7 @@ fn f6_with_no_height_limit_there_the_overlap_is_excused_and_the_note_says_nothin
 
 #[test]
 fn the_placer_moves_a_free_cover_off_pins_it_may_not_stand_over() {
-    // Not pinned: the cell may go anywhere on the back, and with the pins' trim refused (the
+    // Not pinned: the cell may go anywhere on the back, and with the trim refused (the
     // board house fits it) it is put clear of the socket's pads instead of over them.
     let mut d = design(&Case {
         hand: false,
@@ -326,12 +326,12 @@ fn the_placer_moves_a_free_cover_off_pins_it_may_not_stand_over() {
         .constraints
         .retain(|c| c.path != "cell" || c.side.is_some());
     d.features.constraints[1].bounds.clear();
-    let folder = TempDir::new("tails-free");
+    let folder = TempDir::new("protrusions-free");
     std::fs::write(folder.join("Row10.kicad_mod"), socket()).unwrap();
     std::fs::write(folder.join("Flat.kicad_mod"), flat()).unwrap();
     let mapping = "[[part]]\nkind = \"Socket\"\npackage = \"Row10\"\nsymbol = \"t:R\"\nfootprint = \"t:Row10\"\n\
                    [[part]]\nkind = \"FlatCell\"\npackage = \"FlatCell\"\nsymbol = \"t:R\"\nfootprint = \"t:Flat\"\n";
-    let mapping = netsmith_kicad::Mapping::parse(mapping, "tails", std::path::Path::new("."))
+    let mapping = netsmith_kicad::Mapping::parse(mapping, "protrusions", std::path::Path::new("."))
         .unwrap_or_else(|e| panic!("{e}"));
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
     let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
@@ -355,7 +355,7 @@ fn the_placer_moves_a_free_cover_off_pins_it_may_not_stand_over() {
     }
 }
 
-/// The conflict the explanation proves for a cover pinned over trimmed pins that the rule
+/// The conflict the explanation proves for a cover pinned over protruding pins that the rule
 /// does not excuse (ADR 0045 section 13).
 fn conflicts_of(case: &Case) -> Vec<String> {
     let board = match board(case) {
@@ -369,20 +369,20 @@ fn conflicts_of(case: &Case) -> Vec<String> {
 }
 
 #[test]
-fn the_conflict_explanation_proves_a_cover_pinned_over_trimmed_pins_that_the_rule_refuses() {
+fn the_conflict_explanation_proves_a_cover_pinned_over_protruding_pins_that_the_rule_refuses() {
     let too_tall = conflicts_of(&Case {
-        tail: Some(0.4),
+        protrusion: Some(0.4),
         ..Case::default()
     });
     assert_eq!(too_tall.len(), 1, "{too_tall:?}");
     for expected in [
         "U1",
         "J1",
-        "pins trimmed to 0.4 mm",
+        "pins protruding 0.4 mm",
         "wherever it is put",
         "3.80 mm",
         "back_room",
-        "tails.physical.nsm:12",
+        "widget.physical.nsm:12",
     ] {
         assert!(
             too_tall[0].contains(expected),
@@ -411,33 +411,36 @@ fn the_conflict_explanation_proves_a_cover_pinned_over_trimmed_pins_that_the_rul
 }
 
 #[test]
-fn a_board_without_a_tail_places_and_checks_exactly_as_before() {
+fn a_board_without_a_protrusion_places_and_checks_exactly_as_before() {
     // The cell and the socket are not stated to overlap here: pin the cell off to one side.
     let mut d = design(&Case {
-        tail: None,
+        protrusion: None,
         ..Case::default()
     });
     d.features.constraints[1].bounds[0] = bound(PlaceField::X, 40.0, 41.0);
-    let folder = TempDir::new("tails-before");
+    let folder = TempDir::new("protrusions-before");
     std::fs::write(folder.join("Row10.kicad_mod"), socket()).unwrap();
     std::fs::write(folder.join("Flat.kicad_mod"), flat()).unwrap();
     let mapping = "[[part]]\nkind = \"Socket\"\npackage = \"Row10\"\nsymbol = \"t:R\"\nfootprint = \"t:Row10\"\n\
                    [[part]]\nkind = \"FlatCell\"\npackage = \"FlatCell\"\nsymbol = \"t:R\"\nfootprint = \"t:Flat\"\n";
-    let mapping = netsmith_kicad::Mapping::parse(mapping, "tails", std::path::Path::new("."))
+    let mapping = netsmith_kicad::Mapping::parse(mapping, "protrusions", std::path::Path::new("."))
         .unwrap_or_else(|e| panic!("{e}"));
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
     let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
         .with_library("t", folder.path());
     let before = Board::from_design_placed(&d, &mapping, &library, &PlaceOptions::default());
     // 41 mm is 11 mm from the row: the cell's courtyard (30 mm wide) still reaches the pads
-    // at 30 mm, so with no tail stated that is the refusal of today.
+    // at 30 mm, so with no protrusion stated that is the refusal of today.
     let text = match before {
         Ok(b) => findings(&b).join("\n"),
         Err(e) => e.to_string(),
     };
-    assert!(text.contains("overlap") || text.contains("on top of each other"), "{text}");
+    assert!(
+        text.contains("overlap") || text.contains("on top of each other"),
+        "{text}"
+    );
     assert!(!text.contains("lies over the pins"), "{text}");
-    assert!(text.contains("tail_height"), "the hint: {text}");
+    assert!(text.contains("pin_protrusion"), "the hint: {text}");
 }
 
 /// The board of `case` made small (34 x 30 mm) and with only the faces stated, so that the
@@ -453,12 +456,12 @@ fn small(case: &Case) -> Result<Board, BoardError> {
     for c in &mut d.features.constraints {
         c.bounds.clear();
     }
-    let folder = TempDir::new("tails-small");
+    let folder = TempDir::new("protrusions-small");
     std::fs::write(folder.join("Row10.kicad_mod"), socket()).unwrap();
     std::fs::write(folder.join("Flat.kicad_mod"), flat()).unwrap();
     let mapping = "[[part]]\nkind = \"Socket\"\npackage = \"Row10\"\nsymbol = \"t:R\"\nfootprint = \"t:Row10\"\n\
                    [[part]]\nkind = \"FlatCell\"\npackage = \"FlatCell\"\nsymbol = \"t:R\"\nfootprint = \"t:Flat\"\n";
-    let mapping = netsmith_kicad::Mapping::parse(mapping, "tails", std::path::Path::new("."))
+    let mapping = netsmith_kicad::Mapping::parse(mapping, "protrusions", std::path::Path::new("."))
         .unwrap_or_else(|e| panic!("{e}"));
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
     let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
@@ -467,18 +470,22 @@ fn small(case: &Case) -> Result<Board, BoardError> {
 }
 
 #[test]
-fn the_placer_puts_the_cover_over_the_trimmed_pins_when_nothing_else_fits() {
+fn the_placer_puts_the_cover_over_the_protruding_pins_when_nothing_else_fits() {
     let with = small(&Case::default()).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(findings(&with), Vec::<String>::new());
-    assert_eq!(with.trims()[0].covers.len(), 1, "the cell lies over the row");
-    // Without the trim the same board does not place: nothing is room for both.
+    assert_eq!(
+        with.trims()[0].covers.len(),
+        1,
+        "the cell lies over the row"
+    );
+    // Without the protrusion stated the same board does not place: nothing is room for both.
     let without = small(&Case {
-        tail: None,
+        protrusion: None,
         ..Case::default()
     });
     let text = match without {
         Ok(b) => findings(&b).join("\n"),
         Err(e) => e.to_string(),
     };
-    assert!(!text.is_empty(), "the board placed without the trim");
+    assert!(!text.is_empty(), "the board placed without the protrusion");
 }

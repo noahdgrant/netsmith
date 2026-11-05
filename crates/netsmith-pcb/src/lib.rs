@@ -38,13 +38,13 @@ pub mod geometry;
 pub mod layout;
 pub mod overhang;
 mod place;
+pub mod protrusion;
 pub mod quality;
 pub mod ratsnest;
 pub mod route;
 pub mod rules;
 pub mod shape;
 mod stitch;
-pub mod tail;
 pub mod svg;
 pub mod validate;
 

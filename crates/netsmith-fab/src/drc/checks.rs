@@ -567,7 +567,7 @@ fn courtyards(out: &mut Out<'_>) {
         if !overlap_area(&a.polygon, &b.polygon) {
             continue;
         }
-        // A part that stands over the other's trimmed pins is excused (the caller judged).
+        // A part that stands over the other's protruding pins is excused (the caller judged).
         if m.extras
             .excused_courtyards
             .iter()

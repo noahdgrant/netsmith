@@ -20,8 +20,7 @@ use netsmith_fab::{BomEntry, Fit, KicadCli, Options, Package, Side, package};
 use netsmith_kicad::Mapping;
 use netsmith_lower::{Assembly, Sourced};
 use netsmith_pcb::{
-    Trim,
-    Board, RouteOptions, apply_layout, kicad_pcb, kicad_pro, place_options, route_with, svg,
+    Board, RouteOptions, Trim, apply_layout, kicad_pcb, kicad_pro, place_options, route_with, svg,
 };
 use netsmith_solve::Catalogs;
 
@@ -880,7 +879,7 @@ mod tests {
 }
 
 /// What the design rules check needs that the board file does not say: the process's mask
-/// web and widest filled via, and the courtyards a trimmed pin excuses (ADR 0045 section 14).
+/// web and widest filled via, and the courtyards a protruding pin excuses (ADR 0045 section 14).
 pub(crate) fn drc_extras(board: &Board) -> netsmith_fab::drc::Extras {
     netsmith_fab::drc::Extras {
         mask_web: Some(board.rules.mask_bridge),

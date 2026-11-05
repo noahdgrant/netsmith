@@ -509,7 +509,7 @@ fn export(
     let mut design = lowered.design;
     constraints::name_sources(&mut design, &lowered.constraint_sites, sources);
     constraints::name_offset_sources(&mut design, &lowered.offset_sites, sources);
-    constraints::name_tail_sources(&mut design, &lowered.tail_sites, sources);
+    constraints::name_protrusion_sources(&mut design, &lowered.protrusion_sites, sources);
     let mut sourcing = lowered.sourcing;
     let (schematic, project) = match libraries {
         None => (String::new(), String::new()),
@@ -575,7 +575,7 @@ fn export(
             (schematic, project_file(&design.name))
         }
     };
-    // The parts the board house does not fit, for the rule that a part over trimmed pins is
+    // The parts the board house does not fit, for the rule that a part over protruding pins is
     // fitted by hand after the pins are cut (ADR 0045 section 14).
     design.features.hand_fitted = design
         .parts

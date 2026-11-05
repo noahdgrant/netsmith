@@ -342,7 +342,7 @@ pub struct Extras {
     pub via_in_pad: Option<f64>,
     /// Pairs of parts, by designator, whose courtyards may overlap because one stands over
     /// the other's pins, which the design cuts short after soldering and which the rule of
-    /// `netsmith_pcb::tail` excuses (ADR 0045 section 14). The check does not judge that
+    /// `netsmith_pcb::protrusion` excuses (ADR 0045 section 14). The check does not judge that
     /// rule; the caller that has the design does, and says which pairs it excused.
     pub excused_courtyards: Vec<(String, String)>,
 }

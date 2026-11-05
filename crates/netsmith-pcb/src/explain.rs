@@ -499,7 +499,7 @@ impl<'a> Context<'a> {
             self.pairs(&wins, &note, &mut seen, &mut found);
             self.areas(&wins, &note, &mut seen, &mut found);
             self.heights(&wins, &note, &mut seen, &mut found);
-            self.tails(&wins, &note, &mut seen, &mut found);
+            self.protrusions(&wins, &note, &mut seen, &mut found);
             if clip {
                 self.fits(&wins, &mut seen, &mut found);
             }
@@ -628,10 +628,10 @@ impl<'a> Context<'a> {
 
     /// Whether the two windows take room in the same place on a face for every turn.
     fn takes_same_room(a: &Win, b: &Win, qa: &Quarter, qb: &Quarter) -> bool {
-        // A part may stand over the other's pins when they are stated as cut short
-        // (`crate::tail`): that is judged by `tails`, not by the courtyards.
-        if crate::tail::tail_under(a.part, b.part).is_some()
-            || crate::tail::tail_under(b.part, a.part).is_some()
+        // A part may stand over the other's pins when how far they protrude is stated
+        // (`crate::protrusion`): that is judged by `protrusions`, not by the courtyards.
+        if crate::protrusion::pins_under(a.part, b.part).is_some()
+            || crate::protrusion::pins_under(b.part, a.part).is_some()
         {
             return false;
         }
@@ -827,10 +827,10 @@ impl<'a> Context<'a> {
     }
 
     /// A part with a stated face that lies over the pins of a through-hole part wherever its
-    /// window puts it, and that the pins' trim does not excuse wherever it is put: the board
-    /// house assembles it, it states no height, or the tails and its height are taller than
+    /// window puts it, and that the pins' protrusion does not excuse wherever it is put: the board
+    /// house assembles it, it states no height, or the protrusions and its height are taller than
     /// a limit on its face over all of its window (ADR 0045 section 14).
-    fn tails(
+    fn protrusions(
         &self,
         wins: &[Win],
         note: &str,
@@ -838,7 +838,9 @@ impl<'a> Context<'a> {
         found: &mut Vec<String>,
     ) {
         for s in wins {
-            let Some(tail) = &s.part.tail else { continue };
+            let Some(protrusion) = &s.part.protrusion else {
+                continue;
+            };
             if !s.part.has_hole() || s.lines.is_empty() || s.quarters.is_empty() {
                 continue;
             }
@@ -846,7 +848,7 @@ impl<'a> Context<'a> {
                 let Some(side_line) = &c.side_line else {
                     continue;
                 };
-                let key = format!("tail:{}:{}", s.part.refdes, c.part.refdes);
+                let key = format!("protrusion:{}:{}", s.part.refdes, c.part.refdes);
                 if seen.contains(&key)
                     || c.part.refdes == s.part.refdes
                     || c.part.has_hole()
@@ -879,11 +881,11 @@ impl<'a> Context<'a> {
                     "top"
                 };
                 let why = if !c.part.hand_fitted {
-                    Some(crate::tail::Refusal::HouseFitted)
+                    Some(crate::protrusion::Refusal::HouseFitted)
                 } else if c.part.height.is_none() {
-                    Some(crate::tail::Refusal::NoHeight)
+                    Some(crate::protrusion::Refusal::NoHeight)
                 } else {
-                    let stack = tail.length + c.part.height.unwrap_or(0.0);
+                    let stack = protrusion.length + c.part.height.unwrap_or(0.0);
                     self.design.features.keepouts.iter().find_map(|k| {
                         let (Some(limit), None, Some(at)) = (k.max_height, &k.part, k.at) else {
                             return None;
@@ -900,7 +902,7 @@ impl<'a> Context<'a> {
                                 always_overlap(&q.body, (q.x, q.y), &zone, ((0.0, 0.0), (0.0, 0.0)))
                                     .is_some()
                             })
-                            .then(|| crate::tail::Refusal::TooTall {
+                            .then(|| crate::protrusion::Refusal::TooTall {
                                 stack,
                                 limit,
                                 zone: k.name.clone(),
@@ -912,19 +914,23 @@ impl<'a> Context<'a> {
                 let mut lines = s.lines.clone();
                 lines.extend(c.lines.iter().cloned());
                 lines.push(side_line.clone());
-                if !tail.source.is_empty() {
-                    lines.push(quote(self.design, &tail.source, &format!("{}.tail_height", s.part.path)));
+                if !protrusion.source.is_empty() {
+                    lines.push(quote(
+                        self.design,
+                        &protrusion.source,
+                        &format!("{}.pin_protrusion", s.part.path),
+                    ));
                 }
                 found.push(format!(
-                    "{}: they keep the courtyard of {} within {} mm, over a pad of {} (pins trimmed to {} mm) by at least {} x {} mm wherever it is put, and the trim does not excuse that: {}{note}",
+                    "{}: they keep the courtyard of {} within {} mm, over a pad of {} (pins protruding {} mm) by at least {} x {} mm wherever it is put, and the protrusion does not excuse that: {}{note}",
                     dedupe(lines).join("; "),
                     Self::name(c),
                     Self::span(c, false),
                     Self::name(s),
-                    number(tail.length),
+                    number(protrusion.length),
                     number(least.0),
                     number(least.1),
-                    why.because(tail.length, &c.part.refdes, &c.part.path, c.side)
+                    why.because(protrusion.length, &c.part.refdes, &c.part.path, c.side)
                 ));
             }
         }

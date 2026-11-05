@@ -7,7 +7,7 @@
 
 use netsmith_check::{Domain, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
-    Cutout, Features, Keepout, Label, Offset, OffsetEnd, Outline, PartHeight, PartTail,
+    Cutout, Features, Keepout, Label, Offset, OffsetEnd, Outline, PartHeight, PinProtrusion,
     PlaceBound, PlaceField, Placement, Pour,
 };
 use netsmith_lang::Span;
@@ -187,14 +187,14 @@ fn heights(model: &Model, errors: &mut Vec<String>) -> Vec<PartHeight> {
     found
 }
 
-/// The tails the design states for its parts (`.tail_height`, ADR 0045 section 14,
-/// PROVISIONAL), by path, and the statements that state each. A tail is one value: a part
-/// whose tail is only bounded (its kind says its pins are at most so long, and the board
-/// does not cut them) has an unknown tail and is not listed. A tail below zero is an error.
-pub(crate) fn tails(
+/// How far the pins of the design's parts protrude (`.pin_protrusion`, ADR 0045 section 14),
+/// by path, and the statements that state each. A protrusion is one value: a part whose
+/// protrusion is only bounded (its kind says its pins protrude at most so far, and the board
+/// does not say) has an unknown protrusion and is not listed. A negative one is an error.
+pub(crate) fn protrusions(
     model: &Model,
     errors: &mut Vec<String>,
-) -> (Vec<PartTail>, Vec<Vec<(SourceId, Span)>>) {
+) -> (Vec<PinProtrusion>, Vec<Vec<(SourceId, Span)>>) {
     let mut parts: Vec<(String, InstId)> = model
         .instances()
         .filter(|(_, i)| i.kind == InstKind::Part)
@@ -203,7 +203,7 @@ pub(crate) fn tails(
     parts.sort();
     let (mut found, mut sites) = (Vec::new(), Vec::new());
     for (path, id) in parts {
-        let Some(Member::Field(field)) = model.member(id, "tail_height") else {
+        let Some(Member::Field(field)) = model.member(id, "pin_protrusion") else {
             continue;
         };
         let w = netsmith_solve::window(model, field);
@@ -213,11 +213,11 @@ pub(crate) fn tails(
         let length = mm(w.lo);
         if length < 0.0 {
             errors.push(format!(
-                "`{path}.tail_height` is {length} mm, and a pin does not stand out less than nothing"
+                "`{path}.pin_protrusion` is {length} mm, and a pin does not protrude less than nothing"
             ));
             continue;
         }
-        found.push(PartTail {
+        found.push(PinProtrusion {
             path,
             length,
             source: String::new(),

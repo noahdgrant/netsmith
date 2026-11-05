@@ -135,15 +135,15 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
                     });
                     ("overlap", vec![a, b], shared)
                 }
-                PlacementProblem::OverPins { tail, cover, .. } => {
-                    let (rt, rc) = (courtyard(tail), courtyard(cover));
+                PlacementProblem::OverPins { holder, cover, .. } => {
+                    let (rt, rc) = (courtyard(holder), courtyard(cover));
                     let shared = rt.zip(rc).map(|(x, y)| {
                         Rect::new(
                             Pt::new(x.min.x.max(y.min.x), x.min.y.max(y.min.y)),
                             Pt::new(x.max.x.min(y.max.x), x.max.y.min(y.max.y)),
                         )
                     });
-                    ("over_pins", vec![tail, cover], shared)
+                    ("over_pins", vec![holder, cover], shared)
                 }
                 PlacementProblem::OutsideOutline { refdes, .. } => {
                     ("outside_outline", vec![refdes], courtyard(refdes))
