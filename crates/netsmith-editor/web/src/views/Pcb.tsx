@@ -8,7 +8,7 @@ import { FindingsList } from '../pcb/Findings';
 import { Panel } from '../pcb/Panel';
 import { PanelPreview } from '../pcb/PanelPreview';
 import { prepare } from '../pcb/drawing';
-import type { Pt } from '../pcb/geometry';
+import { type Pt, unite } from '../pcb/geometry';
 import {
   GRIDS,
   findings,
@@ -19,13 +19,16 @@ import {
   recheck,
   redo,
   scene,
+  selection as pcbSelection,
+  wrote,
   sceneError,
   setGrid,
   tool,
   undo,
   grid,
 } from '../pcbstore';
-import { analysis, board, fabReports, job, panelShown, pcbReports, pcbStamp, routeBoard } from '../store';
+import { analysis, board, detail, fabReports, job, panelShown, pcbReports, pcbStamp, pickNet, routeBoard } from '../store';
+import { partPathsOf, revealRequest, sameSelection, selection } from '../selection';
 import { seconds } from '../util';
 
 const LAYERS: { id: string; label: string }[] = [
@@ -58,7 +61,6 @@ export function Pcb() {
   const [panelOpen, setPanelOpen] = useState(true);
   const [tab, setTab] = useState('parts');
   const [hover, setHover] = useState<string | null>(null);
-  const [picked, setPicked] = useState<string | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
   const [cursor, setCursor] = useState<Pt | null>(null);
   const [focus, setFocus] = useState<{ box: PcbBox; seq: number } | null>(null);
@@ -66,6 +68,32 @@ export function Pcb() {
   useEffect(() => {
     if (name) void loadScene(name);
   }, [name, version, stamp]);
+
+  // The net picked is the page's, in every view. The parts picked on the board (the canvas moves
+  // and edits them) follow the shared selection, and a click on a part there writes it back.
+  const shared = selection.value;
+  const picked = shared?.kind === 'net' ? shared.key : null;
+  const loaded = scene.value;
+  useEffect(() => {
+    // A selection the board itself made is already on the board.
+    if (wrote.sel !== undefined && sameSelection(wrote.sel, shared)) {
+      wrote.sel = undefined;
+      return;
+    }
+    wrote.sel = undefined;
+    const want = partPathsOf(detail.value, shared);
+    const have = pcbSelection.peek();
+    if (want.length !== have.length || want.some((p, i) => p !== have[i])) pcbSelection.value = want;
+  }, [shared, detail.value, loaded?.board]);
+  // Asked to show the selection: zoom to its parts.
+  const ask = revealRequest.value;
+  useEffect(() => {
+    const sc = scene.peek();
+    if (!ask || !sc || sc.board !== name) return;
+    const paths = new Set(partPathsOf(detail.peek(), ask.sel));
+    const box = unite(sc.parts.filter((p) => paths.has(p.path)).map((p) => p.courtyard));
+    if (box) setFocus({ box: roomAround(box), seq: (focus?.seq ?? 0) + 1 });
+  }, [ask?.nonce]);
 
   const sc = scene.value && scene.value.board === name ? scene.value : null;
   const found = findings.value && findings.value.board === name ? findings.value : null;
@@ -76,7 +104,7 @@ export function Pcb() {
   const fab = fabReports.value[name];
   const report = pcbReports.value[name] ?? null;
   const busy = job.value?.task === 'route';
-  const pick = (net: string | null) => setPicked(net === picked ? null : net);
+  const pick = (net: string | null) => pickNet(net === picked ? null : net);
   const h = history.value;
   const activeTool = tool.value;
   const defaults = keepoutDefaults.value;
@@ -254,7 +282,7 @@ export function Pcb() {
               scene={sc}
               drawing={drawing}
               picked={picked}
-              onPickNet={(n) => (n === null ? setPicked(null) : pick(n))}
+              onPickNet={(n) => (n === null ? pickNet(null) : pick(n))}
               onHoverNet={setHover}
               onFocus={(box) => setFocus({ box: roomAround(box), seq: (focus?.seq ?? 0) + 1 })}
               tab={tab}

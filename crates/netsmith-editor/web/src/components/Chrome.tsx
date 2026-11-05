@@ -20,7 +20,6 @@ import {
   back,
   layout,
   requestBack,
-  revealSection,
   showSection,
   visible,
   windowWidth,
@@ -37,7 +36,6 @@ import {
   notesOpen,
   problemsOpen,
   reload,
-  run,
   save,
   shown,
   tabs,
@@ -47,9 +45,12 @@ import {
   paneNotice,
   dismissPaneNotice,
 } from '../store';
+import { chordLabels, chordText, find, runCommand } from '../commands';
+import { openPicker } from '../quickpick';
 import { firstLine, plural, seconds } from '../util';
 import { useElapsed } from './JobProgress';
 import { Logo } from './Logo';
+import { SelectionChip } from './SelectionChip';
 
 /** What `section` is for, in its tab's tooltip. */
 const SECTION_HINT: Record<Section, string> = {
@@ -153,10 +154,6 @@ function Action({
 export function TopBar() {
   const a = analysis.value;
   const boards = a?.boards ?? [];
-  const ask = (what: 'build' | 'fab') => {
-    revealSection('build');
-    run.value = { what, nonce: Date.now() };
-  };
   return (
     <header class="topbar">
       <div class="brand"><Logo /></div>
@@ -174,6 +171,26 @@ export function TopBar() {
           ))}
         </select>
       </label>
+      <SelectionChip />
+      <span class="spacer" />
+      <button
+        class="cmdk"
+        title={`Search parts, nets, modules and files (${chordText(find('goto.anything')?.keys ?? 'Mod+P')}); run a command (${chordText(find('palette.open')?.keys ?? 'Mod+Shift+P')})`}
+        aria-label="Go to anything or run a command"
+        aria-haspopup="dialog"
+        onClick={() => openPicker()}
+      >
+        <svg class="icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+          <circle cx="7" cy="7" r="4.6" />
+          <path d="M10.6 10.6L14 14" />
+        </svg>
+        <span class="cmdk-text">Go to anything</span>
+        <span class="qp-keys">
+          {chordLabels(find('goto.anything')?.keys ?? 'Mod+P').map((k) => (
+            <kbd key={k}>{k}</kbd>
+          ))}
+        </span>
+      </button>
       <span class="spacer" />
       <div class="actions" role="group" aria-label="Actions: they write files">
         <Action
@@ -186,7 +203,7 @@ export function TopBar() {
             "with the library tables, into the project's out folder (out/ unless netsmith.toml says another), " +
             "one folder for each board. The same as `netsmith build`. Takes a few seconds."
           }
-          start={() => ask('build')}
+          start={() => runCommand('build.kicad')}
         />
         <Action
           task="fab"
@@ -199,7 +216,7 @@ export function TopBar() {
             "writes the Gerbers, bom.csv, cpl.csv and fab-notes.txt for JLCPCB into the project's fab folder " +
             "(fab/ unless netsmith.toml says another). The same as `netsmith fab`. A long job: it can take minutes."
           }
-          start={() => ask('fab')}
+          start={() => runCommand('build.fab')}
         />
       </div>
     </header>
@@ -268,7 +285,7 @@ function splitTip() {
   const wide = canSplit(w);
   const saved = layout.value.panes.length === 2;
   return (
-    'Split right: show a second section beside this one (Ctrl+\\). You can also drag a tab to the left or right half of the window.' +
+    `Split right: show a second section beside this one (${chordText(find('pane.toggle')?.keys ?? 'Mod+\\')}). You can also drag a tab to the left or right half of the window.` +
     (wide
       ? ''
       : ` This window is ${w} px wide; a split needs about 1400 px, so one pane is shown${

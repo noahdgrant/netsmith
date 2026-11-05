@@ -242,11 +242,11 @@ export function PanZoom(props: {
         {props.children}
       </div>
       <div class="zoombar no-pan">
-        <button title="Zoom out" onClick={() => zoomCentre(0.8)}>
+        <button title="Zoom out (−)" onClick={() => zoomCentre(0.8)}>
           −
         </button>
         <span>{Math.round((view.k / (fitK.current || 1)) * 100)}%</span>
-        <button title="Zoom in" onClick={() => zoomCentre(1.25)}>
+        <button title="Zoom in (+)" onClick={() => zoomCentre(1.25)}>
           +
         </button>
         {props.actualSize && (

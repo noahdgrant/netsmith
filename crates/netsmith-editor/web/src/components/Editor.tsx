@@ -212,7 +212,8 @@ export function Editor() {
       selection: { anchor: target.anchor, head: target.head },
       effects: [EditorView.scrollIntoView(target.anchor, { y: 'center' }), flashLine.of(nextFlash(target.anchor))],
     });
-    v.focus();
+    // A quiet ask (go to anything from another view) moves the cursor and leaves the keys where they were.
+    if (!ask.quiet) v.focus();
   }, [ask, path, file === undefined]);
 
   return (

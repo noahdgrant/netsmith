@@ -5,7 +5,8 @@ import type { PowerTree } from '../api';
 import { api } from '../client';
 import { MiniMap } from '../components/MiniMap';
 import { PanZoom } from '../components/PanZoom';
-import { analysis, board, goTo, systemName } from '../store';
+import { analysis, board, detail, goTo, systemName } from '../store';
+import { type Card, cardFor, partByPath, revealRequest, selection, selectionOfCard, setSelection } from '../selection';
 import { DOTS, amps, loadsText, voltRangeText, voltsText } from '../power/format';
 import { type Item, type Placed, type TreeLayout, layoutTree } from '../flow/layout';
 import { RAIL_ANCHOR, RAIL_W, type Open, STAGE_W, closed, railHeight, stageHeight } from '../power/metrics';
@@ -276,7 +277,6 @@ function StageCard({ s, p, level, selected, tint, dim, onSelect }: { s: StageMod
 export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: string }) {
   const model: PowerModel = useMemo(() => modelOf(tree), [tree]);
   const [opens, setOpens] = useState<Record<string, Open>>({});
-  const [selected, setSelected] = useState<string | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
   const [reveal, setReveal] = useState<{ x: number; y: number; w: number; h: number; seq: number } | undefined>();
   const [centre, setCentre] = useState<{ x: number; y: number; seq: number } | undefined>();
@@ -303,12 +303,21 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
   );
   const placed = new Map(layout.nodes.map((n) => [n.id, n]));
   const lv = useMemo(() => levels(model.issues), [model]);
+  // The selection is the page's: a rail stands for its net, a converter for the part or module it is.
+  const cards: Card[] = useMemo(
+    () => [
+      ...model.rails.map((r): Card => ({ id: r.id, kind: 'net', key: r.net })),
+      ...model.stages.map((s): Card => ({ id: s.id, kind: partByPath(detail.value, s.name) ? 'part' : 'module', key: s.name })),
+    ],
+    [model, detail.value],
+  );
+  const selected = cardFor(selection.value, cards);
   const path = useMemo(() => (selected ? trace(model.links, selected) : null), [model, selected]);
-
-  // A selection that no longer exists (the tree changed) is dropped.
+  const ask = revealRequest.value;
   useEffect(() => {
-    if (selected && !placed.has(selected)) setSelected(null);
-  }, [layout]);
+    const n = selected ? placed.get(selected) : undefined;
+    if (ask && n) setReveal({ x: n.x, y: n.y, w: n.w, h: n.h, seq: (reveal?.seq ?? 0) + 1 });
+  }, [ask?.nonce]);
 
   const showTip = (t: Tip | null, now?: boolean) => {
     window.clearTimeout(timer.current);
@@ -319,7 +328,7 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
   };
 
   const select = (id: string | null, scroll = false) => {
-    setSelected(id);
+    setSelection(id ? selectionOfCard(cards, id) : null);
     const n = id ? placed.get(id) : undefined;
     if (scroll && n) setReveal({ x: n.x, y: n.y, w: n.w, h: n.h, seq: (reveal?.seq ?? 0) + 1 });
   };
