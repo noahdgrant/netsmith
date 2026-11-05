@@ -43,7 +43,7 @@ import { SelectionChip } from './SelectionChip';
 
 /** What `section` is for, in its tab's tooltip. */
 const SECTION_HINT: Record<Section, string> = {
-  schematic: 'the drawing of the board, one sheet at a time',
+  schematic: 'the drawing of the board, one module at a time',
   power: 'the power tree: sources, converters and loads',
   system: 'the boards of a system and how they are joined',
   bom: 'the bill of materials',

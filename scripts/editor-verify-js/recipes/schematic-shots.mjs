@@ -12,7 +12,7 @@ export async function run({ page, shot, step, expect }) {
   await page.waitForSelector('.schematic');
   for (const [w, h] of [[1366, 768], [2000, 1000]]) {
     await page.setViewportSize({ width: w, height: h });
-    step(`every sheet at ${w} x ${h}`);
+    step(`every module at ${w} x ${h}`);
     for (const name of SHEETS) {
       // A module the old drawing cut in two has two tabs, `modem (1/2)` and `modem (2/2)`.
       const tabs = (await sheetNames(page)).filter((t) => t === name || t.startsWith(`${name} (`));

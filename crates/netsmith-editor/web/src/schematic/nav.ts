@@ -111,11 +111,11 @@ export function otherSheets(net: NetInfo | undefined, here: string, partSheet: M
   return order.filter((s) => s !== here && by.has(s)).map((s) => ({ sheet: s, pins: by.get(s)! }));
 }
 
-/** `N pins on M sheets`. */
+/** `N pins on M modules`. */
 export function netSummary(net: NetInfo, partSheet: Map<string, string>): { pins: number; sheets: number; text: string } {
   const sheets = netSheets(net.pins, partSheet).size;
   const pins = net.pins.length;
-  const text = `${pins} ${pins === 1 ? 'pin' : 'pins'} on ${sheets} ${sheets === 1 ? 'sheet' : 'sheets'}`;
+  const text = `${pins} ${pins === 1 ? 'pin' : 'pins'} on ${sheets} ${sheets === 1 ? 'module' : 'modules'}`;
   return { pins, sheets, text };
 }
 

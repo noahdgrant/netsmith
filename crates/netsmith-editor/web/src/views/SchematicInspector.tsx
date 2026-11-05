@@ -88,13 +88,13 @@ function PartPanel({ part, sticky, current, rows, openSheet, goNet, drawing }: I
       <dl>
         <dt>Value</dt>
         <dd>{part.value}</dd>
-        <dt>Module</dt>
-        <dd class="mono" title="Where the part is from the board">
+        <dt>Path</dt>
+        <dd class="mono" title="Where the part is, from the board">
           {part.path}
         </dd>
         {row && sheet !== current && (
           <>
-            <dt>Sheet</dt>
+            <dt>Module</dt>
             <dd>
               <button class="link" onClick={() => openSheet(row.sheet.name)}>
                 {row.name}
@@ -175,7 +175,7 @@ function NetPanel({ net, sticky, drawing, rows, order, current, openSheet, goPin
             const pins = bySheet.get(s)!;
             return (
               <div class="net-group" key={s}>
-                <button class={`grp ${s === current ? 'here' : ''}`} title={s === current ? 'This sheet' : `Open the sheet ${r?.name ?? s}`} onClick={() => openSheet(s)}>
+                <button class={`grp ${s === current ? 'here' : ''}`} title={s === current ? 'This module' : `Open the module ${r?.name ?? s}`} onClick={() => openSheet(s)}>
                   <span>{r?.name ?? (s || 'board')}</span>
                   <span class="count">{pins.length}</span>
                 </button>
@@ -216,14 +216,14 @@ function SheetPanel({ rows, current, drawing, goNet, openSheet }: InspectorProps
         <h3>Board</h3>
         <div class="title">{d?.name ?? ''}</div>
         <dl>
-          <dt>Sheets</dt>
+          <dt>Modules</dt>
           <dd>{rows.length}</dd>
           <dt>Parts</dt>
           <dd>{parts}</dd>
           <dt>Nets</dt>
           <dd>{d?.nets.length ?? '-'}</dd>
         </dl>
-        <p class="hint">Click a sheet to open it. Click a part or a wire there to select it.</p>
+        <p class="hint">Click a module to open it. Click a part or a wire there to select it.</p>
       </section>
     );
   }
@@ -240,8 +240,8 @@ function SheetPanel({ rows, current, drawing, goNet, openSheet }: InspectorProps
   const t = parseTitle(row.sheet.title);
   const s = row.stats;
   return (
-    <section aria-label="Sheet summary">
-      <h3>Sheet</h3>
+    <section aria-label="Module summary">
+      <h3>Module</h3>
       <div class="title">
         {t.name} {t.detail && <span class="sub">{t.detail}</span>}
       </div>
@@ -263,7 +263,7 @@ function SheetPanel({ rows, current, drawing, goNet, openSheet }: InspectorProps
       )}
       {leaving.length > 0 && (
         <>
-          <div class="sub-head">Leaves this sheet</div>
+          <div class="sub-head">Leaves this module</div>
           <div class="chips">
             {leaving.map((n) => (
               <button key={n} class="chip" title="Select this net" onClick={() => goNet(n)}>
@@ -279,7 +279,7 @@ function SheetPanel({ rows, current, drawing, goNet, openSheet }: InspectorProps
           <>
             {' '}
             <button class="link" onClick={() => openSheet(ALL)}>
-              All sheets
+              All modules
             </button>
           </>
         )}
@@ -316,8 +316,8 @@ function PartsList({ drawing, rows, current, goPart }: InspectorProps) {
           Parts <span class="count">{d ? (q || scoped ? `${parts.length} of ${d.parts.length}` : d.parts.length) : ''}</span>
         </h3>
         {rows.length > 1 && current !== ALL && (
-          <button class={`tool small ${scoped ? 'on' : ''}`} aria-pressed={scoped} title="Show the parts of this sheet, or of the whole board" onClick={() => setAll(scoped)}>
-            This sheet
+          <button class={`tool small ${scoped ? 'on' : ''}`} aria-pressed={scoped} title="Show the parts of this module, or of the whole board" onClick={() => setAll(scoped)}>
+            This module
           </button>
         )}
       </div>

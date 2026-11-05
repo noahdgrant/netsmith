@@ -7,30 +7,30 @@ export const fixture = 'big';
 
 export async function run({ page, shot, step, expect }) {
   await page.waitForSelector('.schematic');
-  step('a board with many sheets opens on one sheet, filling the view');
+  step('a board with many modules opens on one module, filling the view');
   await page.waitForSelector('.sheetpick .crumb-sheet');
   const listed = await sheetNames(page);
-  expect(listed.length >= 26, `All sheets, each of the 24 module instances and the rest are in the picker (${listed.length})`);
-  expect((await activeSheet(page)) === 'BigBoard', 'the first sheet, in source order (the board\'s own parts come first in the source), is open');
+  expect(listed.length >= 26, `All modules, each of the 24 module instances and the rest are in the picker (${listed.length})`);
+  expect((await activeSheet(page)) === 'BigBoard', 'the first module, in source order (the board\'s own parts come first in the source), is open');
   expect((await page.locator('.sheetnav .sl-row').count()) >= 26 || (await page.locator('.sheetnav').count()) === 0, 'the navigator lists them too');
   const host = await page.locator('.schematic-host').boundingBox();
   const sheet = await page.locator('.schematic .module-sheet[data-module="BigBoard"] .module-frame').first().boundingBox();
-  expect(sheet.width > host.width * 0.3 || sheet.height > host.height * 0.3, `the sheet is large in the view (${Math.round(sheet.width)} x ${Math.round(sheet.height)} of ${Math.round(host.width)} x ${Math.round(host.height)} px)`);
+  expect(sheet.width > host.width * 0.3 || sheet.height > host.height * 0.3, `the module is large in the view (${Math.round(sheet.width)} x ${Math.round(sheet.height)} of ${Math.round(host.width)} x ${Math.round(host.height)} px)`);
   await shot('one-sheet');
 
-  step('the keys step through the sheets: ] and [ (the arrows pan)');
+  step('the keys step through the modules: ] and [ (the arrows pan)');
   await page.keyboard.press(']');
-  expect((await activeSheet(page)) === 'stage1', 'the second sheet (the source declares stage1, then light1)');
+  expect((await activeSheet(page)) === 'stage1', 'the second module (the source declares stage1, then light1)');
   await page.keyboard.press(']');
   expect((await activeSheet(page)) === 'light1', 'the third, not the alphabetical next');
   await page.keyboard.press('[');
   await page.keyboard.press('[');
   expect((await activeSheet(page)) === 'BigBoard', 'back on the first');
-  await page.getByRole('button', { name: 'Next sheet' }).click();
+  await page.getByRole('button', { name: 'Next module' }).click();
   expect((await activeSheet(page)) === 'stage1', 'the Next button');
 
-  step('the overview shows every sheet; a click on a box opens it');
-  await openSheet(page, 'All sheets');
+  step('the overview shows every module; a click on a box opens it');
+  await openSheet(page, 'All modules');
   await page.waitForSelector('.ov-card');
   const sheets = await page.locator('.ov-card').count();
   expect(sheets >= 24, `a card for each of the 24 module instances and one for the rest (${sheets})`);
@@ -46,14 +46,14 @@ export async function run({ page, shot, step, expect }) {
   expect(shape > 0.5 && shape < 3, `the drawing is not a strip (${shape.toFixed(2)} wide for 1 high)`);
   await shot('all-modules');
   await page.locator('.ov-card', { has: page.locator('.ov-name', { hasText: /^pulls2$/ }) }).click();
-  expect((await activeSheet(page)) === 'pulls2', 'a click on the card of pulls2 opened its sheet');
+  expect((await activeSheet(page)) === 'pulls2', 'a click on the card of pulls2 opened its module');
   await page.waitForSelector('.selchip.k-module');
   expect((await page.locator('.selchip-title').innerText()) === 'pulls2', 'and selected the module pulls2 (the chip names it)');
   expect((await page.locator('.selchip, .sel-chip').count()) === 1, 'with one chip');
   await page.keyboard.press('Escape');
 
   step('a rail between modules is a supply symbol with its name in each, not a wire across the page');
-  await openSheet(page, 'All sheets');
+  await openSheet(page, 'All modules');
   const symbols = await page.locator('.schematic .power.supply[data-net="VIN"]').count();
   expect(symbols >= 8, `the VIN supply symbol in each regulator stage (${symbols})`);
   const names = await page.locator('.schematic .power.supply[data-net="VIN"] text', { hasText: 'VIN' }).count();
@@ -61,17 +61,17 @@ export async function run({ page, shot, step, expect }) {
   const wires = await page.locator('.schematic .wire[data-net="VIN"]').count();
   expect(wires >= 8, 'and a short wire from the pin to each');
 
-  step('the sheet navigator opens a sheet, and filters');
-  if (!(await page.locator('.sheetnav').count())) await page.getByRole('button', { name: 'Sheet navigator' }).click();
+  step('the module navigator opens a module, and filters');
+  if (!(await page.locator('.sheetnav').count())) await page.getByRole('button', { name: 'Module navigator' }).click();
   const rows = page.locator('.sheetnav .sl-row');
   expect((await rows.count()) >= 24, 'an entry for each module');
   await page.locator('.sheetnav .sl-filter').fill('stage3');
-  expect((await rows.count()) === 1, 'the filter leaves the one sheet');
+  expect((await rows.count()) === 1, 'the filter leaves the one module');
   await rows.first().click();
   expect((await activeSheet(page)) === 'stage3', 'stage3 opened');
   await page.locator('.sheetnav .sl-filter').fill('');
 
-  step('a sheet remembers its zoom; Fit, F and 0 fit it again; the zoom is true scale');
+  step('a module remembers its zoom; Fit, F and 0 fit it again; the zoom is true scale');
   const zoom = () => zoomPercent(page);
   const area = await page.locator('.schematic-host').boundingBox();
   const opened = await zoom();
@@ -80,8 +80,8 @@ export async function run({ page, shot, step, expect }) {
   await page.waitForTimeout(300);
   const zoomed = await zoom();
   expect(zoomed > opened, `zoomed in (${opened}% to ${zoomed}%)`);
-  await page.getByRole('button', { name: 'Next sheet' }).click();
-  await page.getByRole('button', { name: 'Previous sheet' }).click();
+  await page.getByRole('button', { name: 'Next module' }).click();
+  await page.getByRole('button', { name: 'Previous module' }).click();
   expect(Math.abs((await zoom()) - zoomed) <= 1, `stage3 is as it was left (${await zoom()}%)`);
   await page.locator('.schematic-host').click({ position: { x: 5, y: 5 } });
   await page.keyboard.press('f');

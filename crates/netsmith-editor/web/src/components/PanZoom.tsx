@@ -376,7 +376,7 @@ export function PanZoom(props: {
           </>
         )}
         <i class="zsep" aria-hidden="true" />
-        <button title="Fit the whole sheet to the window (F or 0)" onClick={refit}>
+        <button title="Fit the whole drawing to the window (F or 0)" onClick={refit}>
           Fit
         </button>
       </div>

@@ -1,4 +1,4 @@
-// "All sheets": a grid of cards in source order, each with its title, its counts and a drawing of
+// "All modules": a grid of cards in source order, each with its title, its counts and a drawing of
 // the sheet. A drawing is a copy of the sheet's group as it is in the page's SVG (a `<use>` would
 // not take the style rules of the drawing in every browser), taken again when the selection changes
 // so the highlight shows. A click on a card opens the sheet.
@@ -45,7 +45,7 @@ export function SheetOverview({
   stamp: number;
 }) {
   return (
-    <div class="sheet-overview schematic-host no-pan" role="list" aria-label="All sheets">
+    <div class="sheet-overview schematic-host no-pan" role="list" aria-label="All modules">
       {rows.map((r) => {
         const s = r.sheet;
         const pad = 1.5;

@@ -123,10 +123,10 @@ export async function run({ page, shot, step, expect }) {
     }
   }
 
-  step('rule 6: one sheet for each module, the modem of 22 parts whole');
+  step('rule 6: one drawing for each module, the modem of 22 parts whole');
   const tabs = await sheetNames(page);
-  expect(!tabs.some((t) => /\(\d+\/\d+\)/.test(t)), `no sheet is cut in pieces (${tabs.join(' | ')})`);
-  expect(m.modem.parts.length === 22, `the modem has 22 parts on one sheet (${m.modem.parts.length})`);
+  expect(!tabs.some((t) => /\(\d+\/\d+\)/.test(t)), `no module is cut in pieces (${tabs.join(' | ')})`);
+  expect(m.modem.parts.length === 22, `the modem has 22 parts in one drawing (${m.modem.parts.length})`);
 
   for (const name of SHEETS) {
     const s = m[name];
@@ -273,7 +273,7 @@ export async function run({ page, shot, step, expect }) {
   const caps = LD.parts.filter((p) => p.kind === 'Capacitor').sort((p, q) => cx(p) - cx(q));
   expect(caps.length === 2, 'the regulator has two capacitors');
   const grounds = LD.powers.filter((p) => p.kind === 'ground');
-  expect(grounds.length === 1, 'one ground symbol on the regulator sheet');
+  expect(grounds.length === 1, 'one ground symbol on the regulator module');
   const gsegs = LD.segments.filter((q) => /GND/.test(q.net) && q.y0 === q.y1);
   const rail = gsegs.sort((q, r) => Math.abs(r.x1 - r.x0) - Math.abs(q.x1 - q.x0))[0];
   expect(rail && Math.abs(rail.x1 - rail.x0) > 20, `the ground is one rail ${Math.abs(rail.x1 - rail.x0).toFixed(1)} mm long across the bottom`);

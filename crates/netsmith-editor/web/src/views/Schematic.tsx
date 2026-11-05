@@ -523,7 +523,7 @@ export function Schematic() {
             arrowKeys
             // The keys are the Schematic group's commands (commandset.ts), not the canvas's own.
             keys={false}
-            label="Schematic sheet"
+            label="Schematic module"
             range={zoomRange}
             placeView={(w, h) => placeSheet(w, h, page).view}
             onViewport={(v) => setVp((o) => (o && o.k === v.k && o.fitK === v.fitK ? o : { k: v.k, fitK: v.fitK }))}

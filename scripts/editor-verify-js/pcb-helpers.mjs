@@ -33,7 +33,7 @@ export async function scene(page, board = BOARD) {
   return page.evaluate(async (b) => (await fetch(`/api/pcb/scene?board=${encodeURIComponent(b)}`)).json(), board);
 }
 
-/** Where a point of the sheet (mm) is in the browser window. */
+/** Where a point of the board (mm) is in the browser window. */
 export async function screenAt(page, x, y) {
   return page.evaluate(
     ([px, py]) => {

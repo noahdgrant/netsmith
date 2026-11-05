@@ -115,9 +115,9 @@ describe('nets across sheets', () => {
     const only = { name: 'X', named: true, pins: [{ refdes: 'U5', pin: '1' }] };
     expect(otherSheets(only, 'mcu', partSheet, order)).toEqual([]);
   });
-  it('says N pins on M sheets', () => {
-    expect(netSummary(net, partSheet).text).toBe('5 pins on 3 sheets');
-    expect(netSummary({ ...net, pins: [net.pins[0]] }, partSheet).text).toBe('1 pin on 1 sheet');
+  it('says N pins on M modules', () => {
+    expect(netSummary(net, partSheet).text).toBe('5 pins on 3 modules');
+    expect(netSummary({ ...net, pins: [net.pins[0]] }, partSheet).text).toBe('1 pin on 1 module');
   });
   it('walks the pins sheet by sheet in the strip\'s order, then by designator as people count', () => {
     const pins = [

@@ -54,18 +54,18 @@ export async function run({ page, shot, step, expect, section }) {
   // The part to find: a capacitor on the microcontroller's sheet, which is large and opens at its top left.
   const mcu = Object.entries(sheetOf).find(([ref]) => detail.parts.find((p) => p.refdes === ref)?.kind === 'Mcu97')?.[1];
   const caps = detail.parts.filter((p) => p.kind === 'Capacitor' && sheetOf[p.refdes] === mcu);
-  expect(!!mcu && caps.length >= 2, `the bench board has the microcontroller sheet (${mcu}) with capacitors (${caps.map((c) => c.refdes).join(', ')})`);
+  expect(!!mcu && caps.length >= 2, `the bench board has the microcontroller module (${mcu}) with capacitors (${caps.map((c) => c.refdes).join(', ')})`);
   const first = caps[caps.length - 1];
   // Open on another sheet first, so the pick has a sheet to change.
   const names = await page.locator('.sheetnav .sl-name').allInnerTexts();
-  const other = names.find((n) => n !== 'All sheets' && n !== mcu);
+  const other = names.find((n) => n !== 'All modules' && n !== mcu);
   await page.locator('.sheetnav .sl-row', { has: page.locator('.sl-name', { hasText: new RegExp(`^${other}$`) }) }).click();
-  expect((await activeSheet(page)) === other, `the sheet ${other} is open`);
+  expect((await activeSheet(page)) === other, `the module ${other} is open`);
 
-  step('go to anything finds a part on another sheet: its sheet opens, the zoom reads, the part is on screen with a ring');
+  step('go to anything finds a part in another module: that module opens, the zoom reads, the part is on screen with a ring');
   await goToAnything(first.refdes.toLowerCase());
   await page.waitForFunction((s) => document.querySelector('.sheetpick .crumb-sheet')?.textContent === s, mcu);
-  expect((await activeSheet(page)) === mcu, `the sheet ${mcu} is open`);
+  expect((await activeSheet(page)) === mcu, `the module ${mcu} is open`);
   await page.waitForSelector('.schematic-host .pulse-ring', { timeout: 3000 });
   expect(true, 'a ring is on the part');
   await page.waitForTimeout(150);
@@ -92,7 +92,7 @@ export async function run({ page, shot, step, expect, section }) {
   const small = detail.parts.filter((p) => sheetOf[p.refdes] === mcu && p.kind !== 'Mcu97' && p.refdes !== first.refdes);
   let away = null;
   for (const p of small) if (!(await inView(p.refdes))) away = p.refdes;
-  expect(!!away, `a part of the sheet is off screen (${away})`);
+  expect(!!away, `a part of the module is off screen (${away})`);
   const zBefore = await zoomPercent(page);
   await goToAnything(away.toLowerCase());
   await page.waitForSelector('.schematic-host .pulse-ring', { timeout: 3000 });
@@ -105,7 +105,7 @@ export async function run({ page, shot, step, expect, section }) {
   expect(off.dx < 0.1 && off.dy < 0.1, 'in the middle of the view');
   await page.waitForSelector('.schematic-host .pulse-ring', { state: 'detached', timeout: 4000 });
 
-  step('zoomed far in, a pick elsewhere on the sheet does not leave the view that close');
+  step('zoomed far in, a pick elsewhere on the module does not leave the view that close');
   const area = await host();
   await page.mouse.move(area.x + area.width / 2, area.y + area.height / 2);
   for (let i = 0; i < 5; i++) {
@@ -148,7 +148,7 @@ export async function run({ page, shot, step, expect, section }) {
   // One chip, the top bar's: it says how many pins on how many sheets and steps through the pins.
   expect((await page.locator('.selchip, .sel-chip').count()) === 1, 'there is exactly one selection chip in the page');
   expect((await page.locator('.sel-chip').count()) === 0, 'and none on the drawing');
-  expect(/\d+ pins? on \d+ sheets?/.test(await chip()), `the chip says how many pins on how many sheets (${(await chip()).replace(/\n/g, ' ')})`);
+  expect(/\d+ pins? on \d+ modules?/.test(await chip()), `the chip says how many pins on how many modules (${(await chip()).replace(/\n/g, ' ')})`);
   const pinNow = () => page.evaluate(() => { const p = document.querySelector('svg.schematic .pin.cur'); return p ? `${p.getAttribute('data-ref')}.${p.getAttribute('data-pin')}` : null; });
   await page.locator('.selchip [aria-label="Next pin"]').click();
   await page.waitForFunction(() => !!document.querySelector('svg.schematic .pin.cur'));
@@ -170,7 +170,7 @@ export async function run({ page, shot, step, expect, section }) {
   await page.keyboard.press('Control+j');
   await shot('net-picked');
 
-  step('a click on a flag follows the net to the other sheet and selects it there');
+  step('a click on a flag follows the net to the other module and selects it there');
   await page.keyboard.press('Escape');
   // The chip's pin buttons walked to a pin on another sheet: come back to the microcontroller's, fitted, so its flags are on screen.
   await openSheet(page, mcu);
@@ -189,14 +189,14 @@ export async function run({ page, shot, step, expect, section }) {
     }
     return null;
   });
-  expect(!!flagNet, 'a flag whose net is drawn on exactly one other sheet is on screen');
+  expect(!!flagNet, 'a flag whose net is drawn on exactly one other module is on screen');
   const from = await activeSheet(page);
   expect(from === flagNet.here, `on ${from}`);
   await page.locator(`.sheet-slot:not([style*="none"]) .port[data-net="${flagNet.net}"]`).first().click();
   await page.waitForFunction((s) => document.querySelector('.sheetpick .crumb-sheet')?.textContent === s, flagNet.there);
   expect((await activeSheet(page)) === flagNet.there, `the flag of ${flagNet.net} led to ${flagNet.there}`);
   expect((await chip()).includes(flagNet.net), 'the chip names the net');
-  expect(await page.evaluate((n) => document.querySelectorAll(`svg.schematic > g.sheet-slot:not([style*="none"]) [data-net="${n}"].on`).length > 0, flagNet.net), 'the net is lit on the other sheet');
+  expect(await page.evaluate((n) => document.querySelectorAll(`svg.schematic > g.sheet-slot:not([style*="none"]) [data-net="${n}"].on`).length > 0, flagNet.net), 'the net is lit on the other module');
   expect(await page.evaluate((n) => !!document.querySelector(`svg.schematic > g.sheet-slot:not([style*="none"]) .port[data-net="${n}"]`), flagNet.net), 'with its own flag there');
   await shot('flag-followed');
 
@@ -226,7 +226,7 @@ export async function run({ page, shot, step, expect, section }) {
   expect(await page.evaluate(() => document.querySelectorAll('svg.schematic .part.mark:not(.linked)').length > 0), 'the schematic marks the part picked in the bill of materials');
   await shot('bom-pick');
 
-  step('a click on a card of "All sheets" selects the module and opens its sheet');
+  step('a click on a card of "All modules" selects the module and opens it');
   await page.keyboard.press('Escape');
   await page.locator('.sheetpick .pick-btn').click();
   await page.locator('.pick-pop .sl-row.all').click();
@@ -237,7 +237,7 @@ export async function run({ page, shot, step, expect, section }) {
   expect(!!card, `a card names a module of the board (${cards.join(', ')})`);
   await page.locator('.sheet-overview .ov-card', { has: page.locator('.ov-name', { hasText: new RegExp(`^${card}$`) }) }).click();
   await page.waitForFunction((s) => document.querySelector('.sheetpick .crumb-sheet')?.textContent === s, card);
-  expect((await activeSheet(page)) === card, `the sheet ${card} opened`);
+  expect((await activeSheet(page)) === card, `the module ${card} opened`);
   await page.waitForSelector('.selchip.k-module');
   expect((await chip()).includes(card), `the chip names the module ${card}`);
   expect((await page.locator('.selchip').getAttribute('aria-label')).includes('module'), 'the shared selection is a module');

@@ -7,10 +7,10 @@ import { activeSheet, zoomPercent } from '../schematic-helpers.mjs';
 export const fixture = 'schematic_bench';
 
 const TITLES = [
-  ['Previous sheet', '['],
-  ['Next sheet', ']'],
-  ['Fit the sheet', 'F'],
-  ['Fit the width of the sheet', 'W'],
+  ['Previous module', '['],
+  ['Next module', ']'],
+  ['Fit the module', 'F'],
+  ['Fit the width of the module', 'W'],
   ['Zoom to 100%', 'Shift'],
   ['Zoom to the selection', 'Shift'],
   ['Zoom in', '+'],
@@ -51,10 +51,10 @@ export async function run({ page, shot, step, expect, section }) {
     expect(all.some((r) => r.includes(title)), `the palette has "${title}"`);
   }
   expect(!all.some((r) => r.includes('Next pin of the selected net')), 'the pin commands are not offered with no net selected');
-  await page.keyboard.type('fit the sheet');
+  await page.keyboard.type('fit the module');
   await page.waitForTimeout(150);
   const fit = (await page.locator('.qp-row').first().innerText()).replace(/\n/g, ' ');
-  expect(fit.includes('Fit the sheet') && /\bF\b/.test(fit), `with its chord (${fit})`);
+  expect(fit.includes('Fit the module') && /\bF\b/.test(fit), `with its chord (${fit})`);
   await shot('palette-fit');
   await page.keyboard.press('Escape');
 
@@ -89,13 +89,13 @@ export async function run({ page, shot, step, expect, section }) {
   expect((await page.locator('.cheat').count()) === 0, 'Esc closes it');
   expect((await page.locator('.shortcuts').count()) === 0, 'and no list of the view\'s own opens');
 
-  step('the keys work on the drawing: sheets, fit, width, 100%, zoom, pan');
+  step('the keys work on the drawing: modules, fit, width, 100%, zoom, pan');
   await canvas();
   const first = await activeSheet(page);
   await page.keyboard.press(']');
   await page.waitForFunction((s) => document.querySelector('.sheetpick .crumb-sheet')?.textContent !== s, first);
   const second = await activeSheet(page);
-  expect(second !== first, `] opens the next sheet (${first} to ${second})`);
+  expect(second !== first, `] opens the next module (${first} to ${second})`);
   await page.keyboard.press('[');
   await page.waitForFunction((s) => document.querySelector('.sheetpick .crumb-sheet')?.textContent === s, first);
   expect((await activeSheet(page)) === first, '[ goes back');
@@ -190,16 +190,16 @@ export async function run({ page, shot, step, expect, section }) {
   await page.waitForTimeout(100);
   expect((await field.inputValue()) === 'fw+-[]', `the letters went into the field (${await field.inputValue()})`);
   expect((await zoomPercent(page)) === z100, 'the zoom did not change');
-  expect((await activeSheet(page)) === first, 'nor the sheet');
+  expect((await activeSheet(page)) === first, 'nor the module');
   await field.fill('');
 
   step('away from the Schematic the keys are not offered or run');
   await section('bom');
   await page.keyboard.press('Control+Shift+P');
-  await page.keyboard.type('fit the sheet');
+  await page.keyboard.type('fit the module');
   await page.waitForTimeout(150);
   const left = (await page.locator('.qp-row').allInnerTexts()).map((r) => r.replace(/\n/g, ' '));
-  expect(!left.some((r) => r.includes('Fit the sheet')), `the palette has no Fit the sheet in the BOM (${left.join(' | ')})`);
+  expect(!left.some((r) => r.includes('Fit the module')), `the palette has no Fit the module in the BOM (${left.join(' | ')})`);
   await page.keyboard.press('Escape');
   await page.keyboard.press('f');
   await section('schematic');

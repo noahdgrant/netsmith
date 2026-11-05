@@ -76,7 +76,7 @@ const schematicCommands = (): Command[] => {
   return [
     {
       id: 'schematic.sheet.previous',
-      title: 'Previous sheet',
+      title: 'Previous module',
       group: 'Schematic',
       keys: '[',
       alsoKeys: ['PageUp'],
@@ -85,7 +85,7 @@ const schematicCommands = (): Command[] => {
     },
     {
       id: 'schematic.sheet.next',
-      title: 'Next sheet',
+      title: 'Next module',
       group: 'Schematic',
       keys: ']',
       alsoKeys: ['PageDown'],
@@ -94,7 +94,7 @@ const schematicCommands = (): Command[] => {
     },
     {
       id: 'schematic.fit',
-      title: 'Fit the sheet',
+      title: 'Fit the module',
       group: 'Schematic',
       keys: 'F',
       alsoKeys: ['0'],
@@ -104,7 +104,7 @@ const schematicCommands = (): Command[] => {
     },
     {
       id: 'schematic.fitwidth',
-      title: 'Fit the width of the sheet',
+      title: 'Fit the width of the module',
       group: 'Schematic',
       keys: 'W',
       aliases: ['zoom to width'],

@@ -30,13 +30,18 @@ export const rowOf = (sheet: Sheet, n: number, stats: SheetStats | undefined, ca
   parts,
 });
 
+/** `1 net leaves this module`, `3 nets leave this module`. */
+function leaveText(n: number): string {
+  return `${plural(n, 'net')} ${n === 1 ? 'leaves' : 'leave'} this module`;
+}
+
 function Badges({ stats }: { stats: SheetStats | undefined }) {
   if (!stats) return null;
   const bad = stats.errors + stats.warnings;
   return (
     <span class="sl-badges">
       {stats.leaving > 0 && (
-        <span class="sl-badge leave" title={`${plural(stats.leaving, 'net')} leave this sheet`} aria-label={`${plural(stats.leaving, 'net')} leave this sheet`}>
+        <span class="sl-badge leave" title={leaveText(stats.leaving)} aria-label={leaveText(stats.leaving)}>
           ⇄ {stats.leaving}
         </span>
       )}
@@ -106,8 +111,8 @@ export function SheetList({
           ref={box}
           class="sl-filter"
           type="search"
-          placeholder="Filter sheets or designators…"
-          aria-label="Filter sheets"
+          placeholder="Filter modules or designators…"
+          aria-label="Filter modules"
           value={query}
           onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
           onKeyDown={(e) => {
@@ -126,7 +131,7 @@ export function SheetList({
       <div
         class="sl-items"
         role="listbox"
-        aria-label="Sheets"
+        aria-label="Modules"
         ref={list}
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown') (e.preventDefault(), move(1));
@@ -140,14 +145,14 @@ export function SheetList({
             role="option"
             aria-selected={current === ALL}
             class={`sl-row all ${current === ALL ? 'active' : ''}`}
-            title="Every sheet at once; click one to open it"
+            title="Every module at once; click one to open it"
             onClick={() => choose(ALL)}
           >
             <span class="sl-n">▦</span>
             <span class="sl-main">
-              <span class="sl-name">All sheets</span>
+              <span class="sl-name">All modules</span>
               <span class="sl-mod">
-                {plural(rows.length, 'sheet')}, {plural(total.parts, 'part')}
+                {plural(rows.length, 'module')}, {plural(total.parts, 'part')}
               </span>
             </span>
           </button>
@@ -173,7 +178,7 @@ export function SheetList({
             <Badges stats={r.stats} />
           </button>
         ))}
-        {shown.length === 0 && <div class="sl-none">No sheet matches “{query}”.</div>}
+        {shown.length === 0 && <div class="sl-none">No module matches “{query}”.</div>}
       </div>
     </div>
   );
@@ -182,12 +187,12 @@ export function SheetList({
 /** The collapsible outline on the left. */
 export function SheetNavPanel(props: Parameters<typeof SheetList>[0] & { onCollapse: () => void }) {
   return (
-    <nav class="sheetnav no-pan" aria-label="Sheet navigator">
+    <nav class="sheetnav no-pan" aria-label="Module navigator">
       <div class="sn-head">
         <h3>
-          Sheets <span class="count">{props.rows.length}</span>
+          Modules <span class="count">{props.rows.length}</span>
         </h3>
-        <button class="icon-btn" title="Hide the sheet navigator" aria-label="Hide the sheet navigator" onClick={props.onCollapse}>
+        <button class="icon-btn" title="Hide the module navigator" aria-label="Hide the module navigator" onClick={props.onCollapse}>
           ‹
         </button>
       </div>
@@ -225,15 +230,15 @@ export function SheetBar({
   const can = canStep(names, current);
   const multi = rows.length > 1;
   const row = rows.find((r) => r.sheet.name === current);
-  const place = current === ALL ? 'All sheets' : row ? `${row.n} of ${rows.length}` : '';
+  const place = current === ALL ? 'All modules' : row ? `${row.n} of ${rows.length}` : '';
   return (
-    <div class="sheetbar" role="toolbar" aria-label="Sheets">
+    <div class="sheetbar" role="toolbar" aria-label="Modules">
       {multi && (
         <button
           class={`icon-btn ${navOpen ? 'on' : ''}`}
           aria-pressed={navOpen}
-          title="Show or hide the sheet navigator"
-          aria-label="Sheet navigator"
+          title="Show or hide the module navigator"
+          aria-label="Module navigator"
           onClick={toggleNav}
         >
           ☰
@@ -241,10 +246,10 @@ export function SheetBar({
       )}
       {multi && (
         <>
-          <button class="step" disabled={!can.prev} title="Previous sheet ([ or Page Up)" aria-label="Previous sheet" onClick={() => onOpen(stepPick(names, current, -1))}>
+          <button class="step" disabled={!can.prev} title="Previous module ([ or Page Up)" aria-label="Previous module" onClick={() => onOpen(stepPick(names, current, -1))}>
             ‹
           </button>
-          <button class="step" disabled={!can.next} title="Next sheet (] or Page Down)" aria-label="Next sheet" onClick={() => onOpen(stepPick(names, current, 1))}>
+          <button class="step" disabled={!can.next} title="Next module (] or Page Down)" aria-label="Next module" onClick={() => onOpen(stepPick(names, current, 1))}>
             ›
           </button>
           <SheetPicker rows={rows} current={current} onOpen={onOpen} boardName={boardName} total={total} />
@@ -258,7 +263,7 @@ export function SheetBar({
       <button class="icon-btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts" onClick={help}>
         ?
       </button>
-      <button class={`tool small ${side ? 'on' : ''}`} aria-pressed={side} title="Show or hide the panel with the selection, the sheet and the parts" onClick={toggleSide}>
+      <button class={`tool small ${side ? 'on' : ''}`} aria-pressed={side} title="Show or hide the panel with the selection, the module and the parts" onClick={toggleSide}>
         Details
       </button>
     </div>
@@ -302,10 +307,10 @@ function SheetPicker({
         }
       }}
     >
-      <button class="pick-btn" aria-haspopup="listbox" aria-expanded={open} title="Go to a sheet" onClick={() => setOpen(!open)}>
+      <button class="pick-btn" aria-haspopup="listbox" aria-expanded={open} title="Go to a module" onClick={() => setOpen(!open)}>
         <span class="crumb-board">{boardName}</span>
         <span class="crumb-sep">›</span>
-        <span class="crumb-sheet">{current === ALL ? 'All sheets' : (row?.name ?? current)}</span>
+        <span class="crumb-sheet">{current === ALL ? 'All modules' : (row?.name ?? current)}</span>
         {row?.detail && <span class="crumb-mod">{row.detail}</span>}
         <span class="caret">▾</span>
       </button>

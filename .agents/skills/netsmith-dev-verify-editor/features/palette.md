@@ -2,7 +2,7 @@
 
 ## Get to it
 
-Open the page. The top bar has "Go to anything" (Ctrl+P, Cmd+P on a Mac), which also opens by Ctrl+Shift+P and Ctrl+K as the command palette; `?` opens the keyboard cheat sheet (the groups are the commands' groups, the Schematic's keys among them; the keys of the PCB, Source and the trees are listed from `LOCAL_KEYS`). The selection chip (kind, name, "Source", ×; for a net "N pins on M sheets" and ‹ ›) is in the top bar whenever something is selected.
+Open the page. The top bar has "Go to anything" (Ctrl+P, Cmd+P on a Mac), which also opens by Ctrl+Shift+P and Ctrl+K as the command palette; `?` opens the keyboard cheat sheet (the groups are the commands' groups, the Schematic's keys among them; the keys of the PCB, Source and the trees are listed from `LOCAL_KEYS`). The selection chip (kind, name, "Source", ×; for a net "N pins on M modules" and ‹ ›) is in the top bar whenever something is selected.
 
 ## How it is built
 
