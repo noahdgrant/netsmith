@@ -24,7 +24,7 @@ import {
   visible,
 } from '../store';
 import { covers } from '../util';
-import { activeRow, dock, filter, group, notify, setDockOpen } from './state';
+import { activeRow, filter, group, notify, setDockOpen } from './state';
 import {
   type Row,
   type ViewScope,
@@ -121,13 +121,13 @@ async function loadExtras(name: string) {
   }
 }
 
-// The PCB and the power tree are asked for while the dock is open, a moment after the analysis
-// settles: they are the server's to compute, and a page that is typing must not wait for them.
+// The PCB and the power tree are asked for a moment after the analysis settles, so the counts of
+// the status bar are the same whether or not the dock is open. They are the server's to compute,
+// and a page that is typing must not wait for them: only a read of the saved files asks again.
 effect(() => {
-  const open = dock.value.open;
   const name = board.value;
   void powerKey.value;
-  if (!open || !name || boardStale.value) return;
+  if (!name || boardStale.value) return;
   const timer = setTimeout(() => void loadExtras(name), 500);
   return () => clearTimeout(timer);
 });

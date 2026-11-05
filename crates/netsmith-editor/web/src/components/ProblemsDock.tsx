@@ -7,7 +7,7 @@ import { useEffect, useRef } from 'preact/hooks';
 
 import type { Severity } from '../api';
 import { allRows, counts, extras, listed, revealRow, viewScope } from '../feedback/derive';
-import { type Group, ORIGIN_LABEL, type Row, groupRows, whereText } from '../feedback/problems';
+import { type Group, ORIGIN_LABEL, type Row, filterRows, groupRows, whereText } from '../feedback/problems';
 import {
   activeRow,
   dock,
@@ -158,13 +158,14 @@ const GROUPS: { id: Group; label: string }[] = [
   { id: 'severity', label: 'Group by severity' },
 ];
 
-function Empty({ hidden }: { hidden: { notes: number; filtered: boolean } }) {
-  if (hidden.filtered) {
+function Empty({ hidden }: { hidden: { notes: number; filtered: 'text' | 'view' | null } }) {
+  const clear = () => (filter.value = { ...filter.value, text: '', thisView: false, errors: true, warnings: true });
+  if (hidden.filtered === 'text') {
     return (
       <div class="dock-empty" data-testid="dock-empty">
-        <div class="big">No problems match</div>
+        <div class="big">No problems match the filter</div>
         <div class="sub">
-          <button class="link" onClick={() => (filter.value = { ...filter.value, text: '', thisView: false })}>
+          <button class="link" onClick={clear}>
             Clear the filter
           </button>
         </div>
@@ -174,15 +175,24 @@ function Empty({ hidden }: { hidden: { notes: number; filtered: boolean } }) {
   return (
     <div class="dock-empty ok" data-testid="dock-empty">
       <CheckIcon size={22} />
-      <div class="big">No problems</div>
-      {hidden.notes > 0 && (
-        <div class="sub">
-          {plural(hidden.notes, 'note')} hidden.{' '}
-          <button class="link" onClick={() => (filter.value = { ...filter.value, notes: true })}>
-            Show notes
-          </button>
-        </div>
-      )}
+      <div class="big">{hidden.filtered === 'view' ? 'No problems in this view' : 'No problems'}</div>
+      <div class="sub">
+        {hidden.filtered === 'view' && (
+          <>
+            <button class="link" onClick={() => (filter.value = { ...filter.value, thisView: false })}>
+              Show the whole project
+            </button>{' '}
+          </>
+        )}
+        {hidden.notes > 0 && (
+          <>
+            {plural(hidden.notes, 'note')} hidden.{' '}
+            <button class="link" onClick={() => (filter.value = { ...filter.value, notes: true })}>
+              Show notes
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -208,7 +218,15 @@ export function ProblemsDock() {
   let budget = MAX_ROWS;
   const set = (patch: Partial<typeof f>) => (filter.value = { ...f, ...patch });
   const noteCount = allRows.value.filter((r) => r.severity === 'note').length;
-  const filtered = allRows.value.length > 0 && total === 0 && (f.text !== '' || f.thisView || !f.errors || !f.warnings);
+  // Why the list is empty: what the person asked to leave out, or nothing is wrong.
+  const filtered: 'text' | 'view' | null =
+    allRows.value.length === 0 || total > 0
+      ? null
+      : f.text !== '' || !f.errors || !f.warnings
+        ? 'text'
+        : f.thisView && filterRows(allRows.value, { ...f, thisView: false }, view).length > 0
+          ? 'view'
+          : null;
 
   return (
     <section class="dock problems open" ref={host} style={{ height: `${d.height}px` }} aria-label="Problems" data-testid="dock">

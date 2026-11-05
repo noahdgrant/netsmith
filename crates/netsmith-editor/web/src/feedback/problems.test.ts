@@ -18,6 +18,7 @@ import {
   splitBoard,
   steps,
   summaryText,
+  whereText,
 } from './problems';
 
 const at = (file: string, line: number, column = 1): Location => ({ file, line, column, endLine: line, endColumn: column + 1 });
@@ -71,6 +72,18 @@ describe('sortRows', () => {
   });
 });
 
+describe('sortRows and syntax errors', () => {
+  it('puts a syntax error before the checker errors it causes', () => {
+    const list = sortRows(
+      rows([
+        problem('error', 'module `a` has no definition `B`', at('src/main.nsm', 3)),
+        problem('error', 'this `{` is never closed', at('src/sheets/b.nsm', 40)),
+      ]),
+    );
+    expect(list.map((r) => r.origin)).toEqual(['syntax', 'checker']);
+  });
+});
+
 describe('filterRows', () => {
   const view = { section: 'schematic' as const, file: null, board: 'Led' };
   const all = [
@@ -116,6 +129,8 @@ describe('inScope', () => {
     expect(inScope(power, { section: 'schematic', file: null, board: 'Led' })).toBe(false);
     expect(power.severity).toBe('error');
     expect(power.origin).toBe('power');
+    const loose = rowOfPowerIssue({ id: 'n2', level: 'warn', where: 'VIN', text: 'has no source: nothing supplies it' }, 'Led', null);
+    expect(loose.severity).toBe('note');
   });
 });
 
@@ -184,6 +199,19 @@ describe('counts and summary', () => {
     expect(summaryText(c)).toBe('2 errors, 1 warning');
     expect(summaryText({ error: 1, warning: 0, note: 5 })).toBe('1 error');
     expect(summaryText({ error: 0, warning: 0, note: 5 })).toBe('No problems');
+  });
+});
+
+describe('findings of the PCB', () => {
+  const finding = (message: string): PcbFinding =>
+    ({ id: 'c1', source: 'placement', severity: 'error', rule: 'constraint', message, x: 1, y: 2, area: { x: 0, y: 0, width: 3, height: 3 }, parts: ['J2', 'J3'] }) as PcbFinding;
+  it('belong to the PCB view, name their parts, and show where the requirement is written', () => {
+    const r = rowOfFinding(finding('constraint power.place.left (src/main.physical.nsm:12) is violated'), 'Cased');
+    expect(r.home).toBe('pcb');
+    expect(r.origin).toBe('placement');
+    expect(r.path).toBe('J2, J3');
+    expect(whereText(r)).toBe('src/main.physical.nsm:12');
+    expect(whereText(rowOfFinding(finding('two parts overlap'), 'Cased'))).toBe('');
   });
 });
 

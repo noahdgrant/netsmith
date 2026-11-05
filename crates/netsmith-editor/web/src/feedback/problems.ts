@@ -43,6 +43,9 @@ export interface Row {
   pcb?: PcbFinding;
   /** The power issue's net, for the click that opens the power tree. */
   net?: string;
+  /** Where the message says the thing is, when it is not a place the server located (a
+   * requirement in a physical file that a PCB finding names). */
+  mentions?: string;
 }
 
 const SEVERITY_RANK: Record<Severity, number> = { error: 0, warning: 1, note: 2 };
@@ -95,8 +98,14 @@ export function rowOfProblem(p: Problem, index: number): Row {
 
 const PCB_ORIGIN: Record<PcbFinding['source'], Origin> = { placement: 'placement', unrouted: 'routing', drc: 'rules', kicad: 'kicad' };
 
+/** A `file.nsm:12` that a finding's message names: where its requirement is written. */
+export function mentionedPlace(message: string): string | undefined {
+  return /\(([\w./-]+\.\w+:\d+)\)/.exec(message)?.[1];
+}
+
 export function rowOfFinding(f: PcbFinding, board: string): Row {
   return {
+    mentions: mentionedPlace(f.message),
     id: `f|${board}|${f.id}`,
     severity: f.severity,
     message: first(f.message),
@@ -110,7 +119,9 @@ export function rowOfFinding(f: PcbFinding, board: string): Row {
   };
 }
 
-/** An issue the power tree lists (a supply overdrawn, a rail with no source). */
+/** An issue the power tree lists. A supply that is overdrawn is an error; the rest (a rail with no
+ * source, a current the solver did not settle) are notes: the solver already says most of them,
+ * and a rail fed from a connector has "no source" in the model, so they must not count as warnings. */
 export function rowOfPowerIssue(
   issue: { id: string; level: 'bad' | 'warn'; where: string; text: string },
   board: string | null,
@@ -118,7 +129,7 @@ export function rowOfPowerIssue(
 ): Row {
   return {
     id: `w|${board ?? ''}|${issue.id}|${issue.text}`,
-    severity: issue.level === 'bad' ? 'error' : 'warning',
+    severity: issue.level === 'bad' ? 'error' : 'note',
     message: `${issue.where} ${issue.text}`,
     full: `${issue.where} ${issue.text}`,
     origin: 'power',
@@ -147,11 +158,15 @@ export const DEFAULT_FILTER: Filter = { errors: true, warnings: true, notes: fal
 /** The file a row is about, or `''` for one that has none. */
 export const fileOf = (r: Row) => r.at?.file ?? '';
 
-/** Errors first, then warnings, then notes; within a severity by file, line and column, then
- * what the message says. A row without a place goes after those with one. */
+/** Errors first, then warnings, then notes; within a severity syntax errors first, then by file,
+ * line and column, then what the message says. A row without a place goes after those with one. */
 export function compareRows(a: Row, b: Row): number {
   const s = severityRank(a.severity) - severityRank(b.severity);
   if (s) return s;
+  // A mistake in the syntax comes first: the checker's complaints that follow from it are its
+  // consequences (a module that "has no definition" because its file did not parse).
+  const syntax = Number(b.origin === 'syntax') - Number(a.origin === 'syntax');
+  if (syntax) return syntax;
   const ha = a.at ? 0 : 1;
   const hb = b.at ? 0 : 1;
   if (ha !== hb) return ha - hb;
@@ -273,7 +288,7 @@ export function nextRow(list: Row[], pickedId: string | null, cursor: Cursor | n
 
 /** `file:line` as the list prints it; `file` alone when the line is not known. */
 export function whereText(r: Row): string {
-  return r.at ? `${r.at.file}:${r.at.line}` : '';
+  return r.at ? `${r.at.file}:${r.at.line}` : (r.mentions ?? '');
 }
 
 /** The summary the header and the status bar print: `2 errors, 1 warning`; `No problems`. */
