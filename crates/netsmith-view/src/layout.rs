@@ -42,7 +42,13 @@
 //!    few cells and a symbol at its end (supply up, ground down) instead of a drop to that wire,
 //!    which would run the length of the sheet and across other wires. Small parts side by side
 //!    in a row whose pins end on one line share a short wire and one symbol when nothing is on
-//!    its way ([`policy`]).
+//!    its way ([`policy`]). Satellites on one rail that are not in one row (two pull-ups of a bus,
+//!    one a few steps above the other) share one wire and one symbol too, where the stubs end
+//!    within 20 cells of each other and a path of free nodes joins them: the lower one is wired
+//!    up to the row of the other's stub, across, and has no symbol of its own (`engine::bridge`).
+//!    The wire of a main part's rail is beyond the parts that have a pin on it (and what is written
+//!    at their pins), not beyond every part drawn in the same row: the supply of a power unit
+//!    that stands beside a taller signal unit is just above it.
 //! 4. A wire never crosses a text. A pin that connects to nothing has an X.
 //! 5. The members of one interface instance (the design carries them, [`netsmith_core::Design::interfaces`])
 //!    are a **bus** when three or more of them run between the same two main parts, or leave the

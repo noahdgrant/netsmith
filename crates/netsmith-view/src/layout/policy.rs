@@ -46,6 +46,11 @@ pub(super) const RAIL_SPAN_STEPS: f64 = 36.0;
 /// find room.
 pub(super) const LOCAL_STEM_EXTRA: i32 = 6;
 
+/// A satellite whose rail pin is not in a row with another's still shares that one's wire and
+/// symbol when its stub ends within this many cells (across and out) of a wire of the rail that
+/// has a symbol: the two pull-ups of a bus, one a step above the other.
+pub(super) const BRIDGE_CELLS: i32 = 20;
+
 /// A satellite that serves a pin stands level with it up to this far out, in millimetres, before
 /// a place a row above or below is tried (a row of capacitors beside a pin is level; one
 /// that would have to go farther out is better a little off the pin's line).

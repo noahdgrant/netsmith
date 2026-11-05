@@ -1399,6 +1399,10 @@ fn lay_stub(grid: &mut Grid, node: Node, escape: Dir, id: u32) -> Node {
 /// A pin of a placed part: the part and the index of the pin.
 type PinKey = (usize, usize);
 
+/// The rail pins of satellites whose stubs end on one line: the net and the line, and the pins
+/// along it with where each stub ends.
+type RailRow = ((usize, i32), Vec<(i32, PinKey)>);
+
 struct PinInfo {
     part: usize,
     idx: usize,
@@ -2005,6 +2009,21 @@ impl<'a> Scene<'a> {
             let s = &self.stubs[key];
             (key.0, s.heading as u8, Self::along(s.end, s.heading))
         });
+        // The rail's wire is beyond the parts that have a pin on it (and what is written at their
+        // pins), not beyond every part of the group: the supply of a unit that stands apart from
+        // a tall one has its symbol just above it.
+        let rect = {
+            let mut own: Option<Rect> = None;
+            for key in &keys {
+                union_into(&mut own, self.parts[key.0].extent);
+            }
+            for (p, r) in &self.tag_boxes {
+                if keys.iter().any(|k| k.0 == *p) {
+                    union_into(&mut own, *r);
+                }
+            }
+            own.unwrap_or(rect)
+        };
         // Runs: neighbours on one side of one part, with no other pin between them.
         let mut runs: Vec<Vec<(usize, usize)>> = Vec::new();
         for key in keys {
@@ -2212,6 +2231,15 @@ impl<'a> Scene<'a> {
                 .or_default()
                 .push((stub.end.0, key));
         }
+        // The wires that carry a symbol so far, by net: a satellite near one of them is joined to it
+        // instead of having a symbol of its own (see `bridge`). A supply's rows are taken from the
+        // top down and a ground's from the bottom up, so that a symbol is always the farthest out.
+        let mut hubs: Vec<(usize, Vec<Node>)> = Vec::new();
+        let mut rows: Vec<RailRow> = rows.into_iter().collect();
+        rows.sort_by_key(|&((net, row), _)| {
+            let ground = self.ctx.power[net] == Some(PowerKind::Ground);
+            (net, if ground { -row } else { row })
+        });
         for ((net, row), mut pins) in rows {
             pins.sort();
             let kind = self.ctx.power[net].expect("a rail");
@@ -2248,6 +2276,7 @@ impl<'a> Scene<'a> {
                         self.push_wire(net, &[(first, row), (last, row)]);
                         self.place_symbol(net, kind, (x, row), Some(label));
                         self.local_done.extend(run.iter().map(|p| p.1));
+                        hubs.push((net, (first..=last).map(|x| (x, row)).collect()));
                         shared = true;
                     }
                 }
@@ -2255,10 +2284,89 @@ impl<'a> Scene<'a> {
                     continue;
                 }
                 for &(x, key) in &run {
+                    if self.bridge(net, kind, (x, row), key, &hubs) {
+                        continue;
+                    }
                     self.local_symbol(net, kind, (x, row), key);
+                    if self.local_done.contains(&key) {
+                        hubs.push((net, vec![(x, row)]));
+                    }
                 }
             }
         }
+    }
+
+    /// A satellite pin whose stub ends at `end` joins a wire of its rail that carries a symbol
+    /// (`hubs`), where that is near and the way is free: pull-ups side by side, standing a row
+    /// apart, share one wire and one symbol, as a hand drawing has them, and not a symbol
+    /// each. The wire goes out along the stub's way to the row of the hub's wire and across to
+    /// it, through free nodes only (so it crosses nothing, and does not run along anything).
+    /// Whether it was drawn.
+    fn bridge(
+        &mut self,
+        net: usize,
+        kind: PowerKind,
+        end: Node,
+        key: (usize, usize),
+        hubs: &[(usize, Vec<Node>)],
+    ) -> bool {
+        let id = Self::net_id(net);
+        let natural = if kind == PowerKind::Supply {
+            Dir::Up
+        } else {
+            Dir::Down
+        };
+        let (_, dy) = natural.vector();
+        let dy = dy as i32;
+        // The nearest node of a hub of this net that is level with the stub or beyond it.
+        let mut best: Option<(i32, Node)> = None;
+        for (n, nodes) in hubs {
+            if *n != net {
+                continue;
+            }
+            for &t in nodes {
+                let out = (t.1 - end.1) * dy;
+                let cost = (t.0 - end.0).abs() + out;
+                if out >= 0
+                    && cost <= policy::BRIDGE_CELLS
+                    && best.is_none_or(|(c, b)| (cost, t) < (c, b))
+                {
+                    best = Some((cost, t));
+                }
+            }
+        }
+        let Some((_, to)) = best else {
+            return false;
+        };
+        // Out along the stub's way, then across.
+        let mut path: Vec<Node> = vec![end];
+        let mut at = end;
+        while at.1 != to.1 {
+            let next = (at.0, at.1 + dy);
+            if !self.grid.free_for(next, id) || self.grid.step_is_cut(at, natural) {
+                return false;
+            }
+            path.push(next);
+            at = next;
+        }
+        let across = if to.0 > at.0 { Dir::Right } else { Dir::Left };
+        while at.0 != to.0 {
+            let next = (at.0 + across.vector().0 as i32, at.1);
+            if !self.grid.free_for(next, id) || self.grid.step_is_cut(at, across) {
+                return false;
+            }
+            path.push(next);
+            at = next;
+        }
+        if path.len() < 2 {
+            return false;
+        }
+        let corner = (end.0, to.1);
+        self.grid.claim_wire(end, corner, id);
+        self.grid.claim_wire(corner, to, id);
+        self.push_wire(net, &path);
+        self.local_done.insert(key);
+        true
     }
 
     /// The symbol of one satellite pin whose stub ends at `end`: at the end of the stub, or a

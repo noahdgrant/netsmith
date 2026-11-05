@@ -26,7 +26,7 @@ fn pin(kind: &str, x: f64, y: f64, angle: u32, name: &str, number: u32) -> Strin
 /// `Soc`, a module with two units. Unit 1: the supplies `VDDH`, `VDD`, `VDD` and an `NC` on the
 /// left, twenty `GND` pins down the right. Unit 2: thirteen signal pins on the left and thirteen on the
 /// right.
-fn library() -> String {
+fn library(grounds: u32, per_side: u32) -> String {
     let mut power = String::new();
     for (i, name) in ["VDDH", "VDD", "VDD", "NC"].into_iter().enumerate() {
         let kind = if name == "NC" {
@@ -36,7 +36,7 @@ fn library() -> String {
         };
         power += &pin(kind, -12.7, 10.16 - 2.54 * i as f64, 0, name, 1 + i as u32);
     }
-    for i in 0..20u32 {
+    for i in 0..grounds {
         power += &pin(
             "power_in",
             12.7,
@@ -47,7 +47,7 @@ fn library() -> String {
         );
     }
     let mut signals = String::new();
-    for i in 0..13u32 {
+    for i in 0..per_side {
         signals += &pin(
             "bidirectional",
             -12.7,
@@ -69,15 +69,16 @@ fn library() -> String {
         "(kicad_symbol_lib (symbol \"Soc\" (property \"Reference\" \"U\" (at 0 30 0)) \
          (symbol \"Soc_1_1\" (rectangle (start -10.16 30.48) (end 10.16 -22.86) \
          (stroke (width 0.254) (type default)) (fill (type background))) {power}) \
-         (symbol \"Soc_2_1\" (rectangle (start -10.16 13.97) (end 10.16 -21.59) \
-         (stroke (width 0.254) (type default)) (fill (type background))) {signals})))"
+         (symbol \"Soc_2_1\" (rectangle (start -10.16 13.97) (end 10.16 -{}) \
+         (stroke (width 0.254) (type default)) (fill (type background))) {signals})))",
+        11.43 + 2.54 * f64::from(per_side)
     )
 }
 
-fn setup() -> (TempDir, Mapping, SymbolLib) {
+fn setup(grounds: u32, per_side: u32) -> (TempDir, Mapping, SymbolLib) {
     let dir = TempDir::new("view-units");
     let file = dir.path().join("units.kicad_sym");
-    std::fs::write(&file, library()).unwrap();
+    std::fs::write(&file, library(grounds, per_side)).unwrap();
     let rows = "[[part]]\nkind = \"Soc\"\npackage = \"M\"\nsymbol = \"units:Soc\"\nfootprint = \"units:F\"\n";
     let mapping = Mapping::standard()
         .merged(Mapping::parse(rows, "kicad.toml", dir.path()).unwrap())
@@ -132,7 +133,12 @@ impl Drawn {
 }
 
 fn draw(design: Design) -> Drawn {
-    let (dir, mapping, lib) = setup();
+    draw_with(design, 20, 13)
+}
+
+/// The board with a power unit of `grounds` pins and a signal unit of `per_side` on each side.
+fn draw_with(design: Design, grounds: u32, per_side: u32) -> Drawn {
+    let (dir, mapping, lib) = setup(grounds, per_side);
     let layout = layout_rails(&design, &rails(), &mapping, &lib).unwrap();
     Drawn {
         design,
@@ -319,4 +325,103 @@ fn a_symbol_with_one_unit_is_drawn_as_before() {
     let l = layout_rails(&design, &Rails::default(), &mapping, &lib).unwrap();
     assert_eq!(l.parts.len(), design.parts.len());
     assert!(l.parts.iter().all(|p| p.glyph.unit.is_none()));
+}
+
+#[test]
+fn the_supply_of_a_short_power_unit_is_wired_just_above_it_and_not_above_the_tall_signal_unit() {
+    // A power unit of twelve grounds beside a signal unit of fifty-eight pins that reaches well
+    // above it: the supply's wire and symbol are over the power unit's pins, not over the
+    // signals' top edge.
+    let mut gnd: Vec<String> = (11..23).map(|i| format!("U1.{i}")).collect();
+    gnd.push("C1.2".into());
+    let gnd: Vec<&str> = gnd.iter().map(String::as_str).collect();
+    let design = common::design(
+        "ShortPower",
+        &[
+            ("U1", "Soc", "SOC", Some("M")),
+            ("C1", "Capacitor", "10u", Some("0402")),
+            ("J1", "Header1x2", "Conn_01x02", None),
+            ("J2", "Header1x2", "Conn_01x02", None),
+        ],
+        &[
+            ("+3V3", &["U1.1", "U1.2", "U1.3", "C1.1"]),
+            ("GND", &gnd),
+            ("SIG0", &["U1.101", "J1.1"]),
+            ("SIG1", &["U1.201", "J2.1"]),
+        ],
+    );
+    let d = draw_with(design, 12, 29);
+    let u = boxes(&d, "U1");
+    let (signals, power) = (u[0], u[1]);
+    assert!(
+        signals.extent.min.y < power.extent.min.y - 15.0,
+        "the signals reach above the power unit"
+    );
+    let plus = d.design.nets.iter().position(|n| n.name == "+3V3").unwrap();
+    let highest = d
+        .layout
+        .symbols
+        .iter()
+        .filter(|s| s.net == plus)
+        .map(|s| s.at.y)
+        .fold(f64::MAX, f64::min);
+    assert!(
+        highest > signals.extent.min.y,
+        "the symbol at {highest:.1} is above the signal unit's top at {:.1}",
+        signals.extent.min.y
+    );
+    let found = check(&d.design, &d.layout);
+    assert!(found.is_empty(), "{found:?}");
+}
+
+/// A symbol whose second unit has pins a hair off the grid, by different amounts (a library
+/// made by hand): its pins would be dead ends of the wires drawn to the grid.
+fn crooked_library() -> String {
+    let mut first = String::new();
+    first += &pin("bidirectional", -12.7, 2.54, 0, "A", 1);
+    first += &pin("bidirectional", -12.7, 0.0, 0, "B", 2);
+    first += &pin("bidirectional", 12.7, 2.54, 180, "C", 3);
+    let mut second = String::new();
+    second += &pin("power_in", 10.0, -12.7, 90, "GND", 11);
+    second += &pin("power_in", 12.54, -12.7, 90, "GND", 12);
+    second += &pin("power_in", 80.0, -12.7, 90, "GND", 13);
+    second += &pin("power_in", 10.0, 12.7, 270, "VDD", 14);
+    format!(
+        "(kicad_symbol_lib (symbol \"Crooked\" (property \"Reference\" \"U\" (at 0 8 0)) \
+         (symbol \"Crooked_1_1\" (rectangle (start -10.16 5.08) (end 10.16 -5.08) \
+         (stroke (width 0.254) (type default)) (fill (type background))) {first}) \
+         (symbol \"Crooked_2_1\" (rectangle (start 5 10.16) (end 90 -10.16) \
+         (stroke (width 0.254) (type default)) (fill (type background))) {second})))"
+    )
+}
+
+#[test]
+fn a_unit_whose_pins_are_off_the_grid_by_different_amounts_is_drawn_with_its_pins_on_it() {
+    let dir = TempDir::new("view-units-crooked");
+    let file = dir.path().join("crooked.kicad_sym");
+    std::fs::write(&file, crooked_library()).unwrap();
+    let rows = "[[part]]\nkind = \"Crooked\"\npackage = \"M\"\nsymbol = \"crooked:Crooked\"\nfootprint = \"crooked:F\"\n";
+    let mapping = Mapping::standard()
+        .merged(Mapping::parse(rows, "kicad.toml", dir.path()).unwrap())
+        .unwrap();
+    let lib = SymbolLib::at(testlib::sample_symbols()).with_library("crooked", file);
+    let design = common::design(
+        "Crooked",
+        &[("U1", "Crooked", "X", Some("M"))],
+        &[
+            ("GND", &["U1.11", "U1.12", "U1.13"]),
+            ("+3V3", &["U1.14"]),
+            ("S", &["U1.1", "U1.3"]),
+        ],
+    );
+    let l = layout_rails(&design, &rails(), &mapping, &lib).unwrap();
+    assert_eq!(l.parts.len(), 2);
+    let on = |v: f64| ((v / 1.27).round() * 1.27 - v).abs() < 1e-6;
+    for p in &l.parts {
+        for q in &p.pins {
+            assert!(on(q.at.x) && on(q.at.y), "pin {} at {:?}", q.id, q.at);
+        }
+    }
+    let found = check(&design, &l);
+    assert!(found.is_empty(), "{found:?}");
 }

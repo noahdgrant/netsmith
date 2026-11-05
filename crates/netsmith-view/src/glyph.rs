@@ -235,36 +235,37 @@ impl Glyph {
         if symbol_entries(symbol, only).len() > MANY_PINS {
             return Glyph::grouped(part, symbol, only);
         }
-        let glyph = Glyph::from_units(symbol, &[unit], first, true);
-        if glyph.texts_collide(Orient::IDENTITY) {
+        let mut glyph = Glyph::from_units(symbol, &[unit], first, true);
+        // A unit whose pins one move cannot put on the grid is drawn as a box made here.
+        if !glyph.on_grid() || glyph.texts_collide(Orient::IDENTITY) {
             Glyph::merged(part, symbol, only)
         } else {
             glyph
         }
     }
 
-    /// Moves the drawing so that its pins are on the sheet's grid, when one move does it: a
-    /// unit of a library symbol is drawn where the symbol put it, and the unit that was below
-    /// another was moved by a distance that is not a grid step.
-    fn on_grid(&mut self) {
+    /// Moves the drawing so that its pins are on the sheet's grid, when one move does it, and
+    /// says whether they are: a unit of a library symbol is drawn where the symbol put it, and
+    /// the unit that was below another was moved by a distance that is not a grid step.
+    fn on_grid(&mut self) -> bool {
         const STEP: f64 = 1.27;
         let Some(first) = self.pins.first() else {
-            return;
+            return true;
         };
         let snapped = |v: f64| (v / STEP).round() * STEP;
         let (dx, dy) = (
             snapped(first.at.0) - first.at.0,
             snapped(first.at.1) - first.at.1,
         );
-        if dx.abs() < 1e-6 && dy.abs() < 1e-6 {
-            return;
-        }
         let aligned = self.pins.iter().all(|p| {
             (snapped(p.at.0 + dx) - (p.at.0 + dx)).abs() < 1e-3
                 && (snapped(p.at.1 + dy) - (p.at.1 + dy)).abs() < 1e-3
         });
         if !aligned {
-            return;
+            return false;
+        }
+        if dx.abs() < 1e-6 && dy.abs() < 1e-6 {
+            return true;
         }
         self.shapes = std::mem::take(&mut self.shapes)
             .into_iter()
@@ -273,6 +274,7 @@ impl Glyph {
         for p in &mut self.pins {
             p.at = (p.at.0 + dx, p.at.1 + dy);
         }
+        true
     }
 
     /// The boxes of a part whose symbol has several units: one for each unit that has a pin,
@@ -308,7 +310,6 @@ impl Glyph {
             .iter()
             .map(|&u| {
                 let mut glyph = Glyph::drawn_unit(part, &symbol, u, first);
-                glyph.on_grid();
                 glyph.unit = Some(u);
                 (u, glyph)
             })
