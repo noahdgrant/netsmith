@@ -63,10 +63,10 @@ describe('the wires', () => {
     expect(m.modules.find((x) => x.id === 'mcu')!.wires).toBe(3);
     expect(m.modules.find((x) => x.id === 'lone')!.wires).toBe(0);
   });
-  it('knows which end of a join supplies from the sign of the port current', () => {
+  it('knows which end of a join supplies: the board port that others draw from', () => {
     const v: SystemView = {
       name: 'S', kind: 'system',
-      nodes: [node('led', [port('input', '3.3V', '7mA..16mA')], 'board'), node('power', [port('output', '3.3V', '-50mA..0A')], 'board')],
+      nodes: [node('led', [port('input', '3.3V', '-16mA..-7mA')], 'board'), node('power', [port('output', '3.3V', '0A..50mA')], 'board')],
       edges: [{ from: 'led', to: 'power', label: 'led.input ~ power.output', kind: 'join', at: null }],
       mates: [], groundGroups: [],
     };

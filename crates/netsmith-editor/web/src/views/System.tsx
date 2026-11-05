@@ -11,7 +11,7 @@ import { type ModuleModel, type SystemModel, type Wire, modelOf, shorten } from 
 import { analysis, board, goTo, systemName } from '../store';
 
 /** The longest label an edge carries: the rest is in its tooltip. */
-const LABEL_CHARS = 24;
+const LABEL_CHARS = 32;
 
 /** The mated connectors of a system, contact by contact, and the grounds they join (ADR 0040). */
 function Mates({ view }: { view: SystemView }) {
@@ -116,7 +116,10 @@ function ModuleCard({
             m.ports.map((r) => (
               <div class="sy-row" key={r.name} title={r.title}>
                 <span class="sy-pname">{r.name}</span>
-                <span class={`sy-pval ${r.supply ? 'supply' : ''}`}>{r.value}</span>
+                <span class={`sy-pval ${r.supply ? 'supply' : ''}`}>
+                  <span class="sy-volts">{r.volts}</span>
+                  <span class="sy-amps">{r.current}</span>
+                </span>
               </div>
             ))}
         </div>

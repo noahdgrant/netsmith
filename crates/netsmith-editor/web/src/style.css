@@ -502,9 +502,9 @@ td.des { font-weight: 600; }
 .sy-ports { margin-top: 0; }
 .sy-fold { display: flex; align-items: center; gap: 6px; width: 100%; height: 26px; background: none; border: none; border-top: 1px solid var(--line); padding: 0; color: var(--text); font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
 .sy-fold:hover { color: var(--accent); }
-.sy-row { display: grid; grid-template-columns: minmax(64px, 0.42fr) minmax(0, 0.58fr); gap: 10px; height: 20px; align-items: baseline; }
+.sy-row { display: grid; grid-template-columns: minmax(56px, 0.3fr) minmax(0, 0.7fr); gap: 10px; height: 20px; align-items: baseline; }
 .sy-pname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.sy-pval { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); min-width: 0; }
+.sy-pval { display: flex; justify-content: flex-end; gap: 12px; overflow: hidden; white-space: nowrap; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); min-width: 0; }
 .sy-pval.supply { color: #9cc2ee; }
 .sy-edge.signal { stroke: #7d7467; stroke-dasharray: none; }
 .sy-label { font-size: 12px; fill: var(--muted); paint-order: stroke; stroke: #1a1b1e; stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }
@@ -512,3 +512,5 @@ td.des { font-weight: 600; }
 .sy-label.group:hover { fill: var(--accent); }
 .sy-label.dim { opacity: .3; }
 .sy-tip ul { margin: 0; padding-left: 16px; font-family: var(--mono); }
+.sy-card .badge { width: 18px; height: 18px; font-size: 12px; }
+.sy-volts { flex: none; } .sy-amps { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

@@ -13,6 +13,9 @@ export interface PortRow {
   name: string;
   /** `3.3 V  0 A .. 25 mA`: what the port is, short enough for a column. */
   value: string;
+  /** The two halves of `value`: the nominal voltage, and the range of the current. */
+  volts: string;
+  current: string;
   /** The editor's own words for the port, for the tooltip. */
   title: string;
   /** The port supplies (its current is negative). */
@@ -61,11 +64,10 @@ export function parseQuantity(text: string | null): [number, number] | null {
 export function portRow(p: SystemNode['ports'][number]): PortRow {
   const v = parseQuantity(p.voltage);
   const i = parseQuantity(p.current);
-  const parts: string[] = [];
-  if (v) parts.push(voltsText((v[0] + v[1]) / 2));
-  if (i) parts.push(rangeText(i[0], i[1]));
+  const volts = v ? voltsText((v[0] + v[1]) / 2) : '';
+  const current = i ? rangeText(i[0], i[1]) : '';
   const title = [p.name, p.voltage, p.current].filter(Boolean).join('  ');
-  return { name: p.name, value: parts.join('  '), title, supply: !!i && i[1] <= 1e-12 && i[0] < -1e-12 };
+  return { name: p.name, value: [volts, current].filter(Boolean).join('  '), volts, current, title, supply: !!i && i[1] <= 1e-12 && i[0] < -1e-12 };
 }
 
 /** The member a path names (`ldo.vout` is `ldo`). */
@@ -90,9 +92,15 @@ function orient(view: SystemView, power: PowerTree | null): Directed[] {
   const supplied = new Map<string, Set<string>>();
   for (const n of power?.nodes ?? []) supplied.set(n.net, new Set(n.supplies.map((d) => memberOf(d.who))));
   const nodes = new Map(view.nodes.map((n) => [n.id, n]));
+  // A part's rail with a negative current supplies. A board's port is the other way round: its
+  // current is what is behind it, so a port that others draw from (positive) is the one that gives
+  // the power, and one that is supplied from outside (negative) is the one that takes it.
   const supplies = (id: string, port: string): boolean => {
     const p = nodes.get(id)?.ports.find((q) => q.name === port);
-    return !!p && portRow(p).supply;
+    if (!p) return false;
+    if (view.kind !== 'system') return portRow(p).supply;
+    const i = parseQuantity(p.current);
+    return !!i && i[0] >= -1e-12 && i[1] > 1e-12;
   };
   return view.edges
     .filter((e: Edge) => nodes.has(e.from) && nodes.has(e.to) && e.from !== e.to)

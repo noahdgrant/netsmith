@@ -4,7 +4,7 @@
 import type { ModuleModel } from './model';
 import { SHOWN } from './model';
 
-export const CARD_W = 304;
+export const CARD_W = 340;
 const PAD_TOP = 8;
 const PAD_BOTTOM = 8;
 export const HEAD = 28;

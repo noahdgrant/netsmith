@@ -14,7 +14,7 @@ export async function run({ page, shot, step, expect, section }) {
 
   step('the System tab shows the members of the board and the nets they share');
   await section('system');
-  await page.waitForSelector('.card.sys');
+  await page.waitForSelector('.sy-card');
   const members = await page.locator('.sec-system .graph-host').innerText();
   expect(members.includes('stage') && members.includes('power_in'), 'the stage module and the header');
   await shot('members');
