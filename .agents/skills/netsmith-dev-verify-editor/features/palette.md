@@ -8,7 +8,7 @@ Open the page. The top bar has "Go to anything" (Ctrl+P, Cmd+P on a Mac), which 
 
 - `web/src/selection.ts`: the shared selection `{kind: part | net | module, key}`. The key is the instance path of a part or a module and the name of a net, never a designator. Every view reads `selection` and writes it (`setSelection`, `pickPart`, `pickNet`); none keeps its own. The Schematic marks it, the PCB selects the part (and lights the net), the Power tree and System select the card, the BOM lights the rows, and the top bar chip shows it.
 - `web/src/commands.ts` and `commandset.ts`: the command registry (id, title, key chord, `run`, `when`). The palette, the cheat sheet, the top bar buttons and the keyboard all read it. A new command with `keys` shows in the cheat sheet by itself.
-- `web/src/quickopen.ts`, `fuzzy.ts`: the index (parts, nets, modules, definitions, files of the shown board and the project) and the matcher. Prefix modes: `>` commands, `@` modules and definitions, `#` nets, `:` a line of the open file.
+- `web/src/quickopen.ts`, `fuzzy.ts`: the index (parts, nets, modules, definitions, files of the shown board and the project) and the matcher. Prefix modes: `>` commands, `@` modules and definitions, `#` nets, `:` a line of the open file, `!` the problems of the dock.
 
 ## Drive it
 
