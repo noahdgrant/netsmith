@@ -366,7 +366,7 @@ export function PanZoom(props: {
         )}
         {props.presets && (
           <>
-            <span class="zsep" aria-hidden="true" />
+            <i class="zsep" aria-hidden="true" />
             <button title="Fit width (W)" onClick={fitWidth}>
               Width
             </button>
@@ -375,7 +375,7 @@ export function PanZoom(props: {
             </button>
           </>
         )}
-        <span class="zsep" aria-hidden="true" />
+        <i class="zsep" aria-hidden="true" />
         <button title="Fit the whole sheet to the window (F or 0)" onClick={refit}>
           Fit
         </button>

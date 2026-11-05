@@ -224,8 +224,17 @@ export async function run({ page, shot, step, expect }) {
   const y131 = pin(M, u5.ref, '131').y, y15 = pin(M, u5.ref, '15').y;
   const xtal = part(M, (p) => p.kind === 'Crystal');
   expect(xtal.box.x + xtal.box.width <= u5.box.x + 1 && Math.abs(cy(xtal) - y15) < 20, `the crystal is on the side of its oscillator pins, ${Math.abs(cy(xtal) - y15).toFixed(1)} mm from them`);
+  // Decoupling stays near its pin: a capacitor of the supply stands beside the part (to the left or the right of its body,
+  // as the supply rail along the top hands them out), close to the body and level with the supply pins, and is wired to them.
+  // (An earlier layout put all of them on the left; the rail now hangs them on both sides.)
+  const supply = pin(M, u5.ref, '131').net;
   for (const c of M.parts.filter((p) => p.kind === 'Capacitor')) {
-    expect(c.box.x + c.box.width <= u5.box.x + 1 && Math.abs(cy(c) - y131) < 40, `the supply capacitor ${c.ref} is beside the supply pins (${Math.abs(cy(c) - y131).toFixed(1)} mm)`);
+    const left = c.box.x + c.box.width <= u5.box.x + 1;
+    const right = c.box.x >= u5.box.x + u5.box.width - 1;
+    const gap = left ? u5.box.x - (c.box.x + c.box.width) : c.box.x - (u5.box.x + u5.box.width);
+    const dy = Math.abs(cy(c) - y131);
+    expect((left || right) && gap < 25 && dy < 40, `the supply capacitor ${c.ref} is beside the supply pins, on the ${left ? 'left' : 'right'}: ${gap.toFixed(1)} mm from the body, ${dy.toFixed(1)} mm from the pins' level`);
+    expect(M.pins.some((p) => p.ref === c.ref && p.net === supply), `and ${c.ref} is wired to the supply net ${supply}`);
   }
   const ic = part(B, (p) => p.kind === 'Buck1V8');
   const rtop = part(B, (p) => p.title.includes(' 100k ')), rbot = part(B, (p) => p.title.includes(' 33k '));
