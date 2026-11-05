@@ -9,8 +9,12 @@ export async function run({ page, shot, step, expect, section }) {
   await page.waitForSelector('.schematic[data-board="LedBoard"]');
   await shot('led-board');
 
-  step('click the resistor in the drawing: the Source section opens at its declaration');
+  step('click the resistor: it is selected and the nets dim; a double-click opens the Source at its declaration');
   await page.locator('.schematic .part[data-ref="R1"]').click();
+  await page.waitForSelector('.selchip');
+  expect((await page.locator('.selchip').innerText()).includes('R1'), 'the selection chip names R1');
+  expect((await page.locator('.selchip, .sel-chip').count()) === 1, 'there is one chip, the top bar\'s, and none on the drawing');
+  await page.locator('.schematic .part[data-ref="R1"]').dblclick();
   await page.waitForSelector('.section.sec-source:not(.away)');
   await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('.r1'));
   const line = await page.locator('.cm-activeLine').innerText();
@@ -34,12 +38,11 @@ export async function run({ page, shot, step, expect, section }) {
   expect(true, 'D1 marked in the drawing');
   await shot('cursor-marks-d1');
 
-  step('open the details and pick a part in the list: the inspector shows its pins');
+  step('open the details and pick a part in the list: it is selected, the inspector shows it');
   if (!(await page.locator('table.parts').count())) await page.getByRole('button', { name: 'Details' }).click();
   await page.locator('table.parts tr', { has: page.locator('td.ref', { hasText: /^D1$/ }) }).click();
-  // Picking a part from the list goes to its source too; Back returns, with D1 still picked.
-  await page.waitForSelector('.section.sec-source:not(.away)');
+  await page.waitForSelector('.sinspector .title:has-text("D1")');
+  expect((await page.locator('.sinspector .title').innerText()).includes('Led'), 'the inspector shows D1 as a Led');
+  expect((await page.locator('.sinspector table.parts tr.sel').count()) === 1, 'the part list highlights it');
   await page.keyboard.press('Escape');
-  await page.waitForSelector('.inspector dd:has-text("Led")');
-  expect(true, 'the inspector shows D1 as a Led');
 }

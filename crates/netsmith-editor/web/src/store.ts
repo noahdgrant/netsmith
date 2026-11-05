@@ -24,8 +24,23 @@ import {
   undoOpen,
   visiblePanes,
 } from './layout';
+import { notify, setSocket, track } from './feedback/state';
 import { load, save as keep } from './storage';
+import {
+  type Selection,
+  bindBoard,
+  declarationOf,
+  exists,
+  netSel,
+  partByRefdes,
+  partSel,
+  refdesOf,
+  selection,
+  setSelection,
+} from './selection';
 import { covers } from './util';
+
+export { selection };
 
 export type ViewKind = Section;
 
@@ -126,15 +141,17 @@ export function setFocusPane(index: number) {
 }
 
 export const board = signal<string | null>(null);
+bindBoard(() => board.peek());
 /** The panel whose preview the PCB view shows instead of the board (ADR 0040), if any. */
 export const panelShown = signal<string | null>(null);
 export const detail = signal<BoardDetail | null>(null);
 
 /** Asks the editor to put the cursor at a place. `nonce` makes the same place twice a new ask. */
-export const reveal = signal<{ at: Location; name?: string; nonce: number } | null>(null);
+export const reveal = signal<{ at: Location; name?: string; nonce: number; quiet?: boolean } | null>(null);
 export const cursor = signal<{ file: string; line: number; column: number } | null>(null);
-/** The part picked in a view. */
-export const selected = signal<string | null>(null);
+/** The designators of the parts the shared selection stands for (a part, the parts on a net, the
+ * parts under a module), for the views that list designators. */
+export const selectedRefdes = computed(() => refdesOf(detail.value, selection.value));
 /** The last `fab` run of each board. */
 export const fabReports = signal<Record<string, FabReport>>({});
 /** A run asked for by the top bar, taken by the build view. */
@@ -163,14 +180,17 @@ export function endJob() {
 export const pcbReports = signal<Record<string, PcbReport>>({});
 export const pcbStamp = signal(0);
 
-export async function routeBoard(name: string) {
+/** Place and route a board. The report, or null when the server could not do it (a toast says why). */
+export async function routeBoard(name: string): Promise<PcbReport | null> {
   beginJob('route', name);
   try {
     const report = await api.route(name);
     pcbReports.value = { ...pcbReports.value, [name]: report };
     pcbStamp.value++;
+    return report;
   } catch (e) {
     say(e instanceof Error ? e.message : String(e), true);
+    return null;
   } finally {
     endJob();
   }
@@ -198,11 +218,6 @@ export const pickedOrder = signal<string | null>(null);
 /** What the last schematic build said. */
 export const buildReport = signal<BuildReport | null>(null);
 
-export const problemsOpen = signal(false);
-/** Whether the notes section of the problems panel is open. */
-export const notesOpen = signal(false);
-export const toast = signal<{ text: string; bad: boolean } | null>(null);
-
 export const dirty = (f: OpenFile) => f.text !== f.saved;
 
 export const anyDirty = computed(() => Object.values(openFiles.value).some(dirty));
@@ -227,11 +242,10 @@ export const lineParts = computed<string[]>(() => {
 let events: Events | null = null;
 let nonce = 0;
 
+/** A short word to the person: a toast. A failure stays a little longer. `notify` (in
+ * `feedback/state.ts`) says more, with a cause and buttons. */
 export function say(text: string, bad = false) {
-  toast.value = { text, bad };
-  setTimeout(() => {
-    if (toast.value?.text === text) toast.value = null;
-  }, 4000);
+  notify({ title: text, kind: bad ? 'bad' : 'info' });
 }
 
 export async function start() {
@@ -239,18 +253,22 @@ export async function start() {
     (message) => {
       if (message.type === 'rebuilt') {
         analysis.value = message.analysis;
+        track({ type: 'rebuilt' });
         void onRebuilt();
       } else if (message.type === 'progress') {
         const j = job.value;
         if (j && j.task === message.task) {
           job.value = { ...j, lines: [...j.lines.slice(-39), message.message] };
         }
-      } else if (events?.isLatest(message.id)) {
-        live.value = message.analysis;
+      } else {
+        const latest = !!events?.isLatest(message.id);
+        track({ type: 'checked', id: message.id, latest });
+        if (latest) live.value = message.analysis;
       }
     },
     (open) => {
       connected.value = open;
+      setSocket(open);
       if (open) void refresh();
     },
   );
@@ -372,7 +390,9 @@ function scheduleCheck(path: string) {
   clearTimeout(timer);
   timer = setTimeout(() => {
     const f = openFiles.value[path];
-    if (f && !f.readonly) events?.check(path, f.text);
+    if (!f || f.readonly) return;
+    const id = events?.check(path, f.text);
+    if (id != null) track({ type: 'check-sent', id, now: Date.now() });
   }, 350);
 }
 
@@ -415,7 +435,8 @@ export async function save(path: string) {
     // Edits made while the write was on its way stay edits.
     const now = openFiles.value[path] ?? f;
     setFile({ ...now, saved: f.text, stamp: saved.stamp, conflict: false });
-    say(`Saved ${path}`);
+    notify({ kind: 'ok', title: `Saved ${path}`, ms: 2200 });
+    void awaitRebuild();
   } catch (e) {
     const status = e instanceof ApiFailure ? e.status : 0;
     const now = openFiles.value[path];
@@ -423,6 +444,24 @@ export async function save(path: string) {
     say(e instanceof Error ? e.message : String(e), true);
   } finally {
     saving.delete(path);
+  }
+}
+
+/** After a file was written the server builds the project again: the page is analysing until that
+ * is done. Asking for the analysis waits for the build, so this ends when the answer is here,
+ * even if no file the server watches changed, or the push is lost. */
+async function awaitRebuild() {
+  track({ type: 'saved', now: Date.now() });
+  try {
+    const a = await api.analysis();
+    if (a.version > (analysis.peek()?.version ?? 0)) {
+      analysis.value = a;
+      void onRebuilt();
+    }
+  } catch {
+    // The socket's push, or the next refresh, brings it.
+  } finally {
+    track({ type: 'rebuilt' });
   }
 }
 
@@ -442,29 +481,62 @@ export async function reload(path: string) {
 }
 
 /** Open the file at a place and put the cursor there. `name` is the definition whose line it
- * is, when that is all that is known (the tree): the cursor goes to the name on the line. */
-export async function goTo(at: Location, name?: string) {
+ * is, when that is all that is known (the tree): the cursor goes to the name on the line.
+ * With `quiet` the source is not brought to the front: its cursor is moved where it is, so it is
+ * at the place when the person looks at it. */
+export async function goTo(at: Location, name?: string, quiet = false) {
   try {
     await openFile(at.file);
   } catch (e) {
     say(e instanceof Error ? e.message : String(e), true);
     return;
   }
-  revealSource();
-  reveal.value = { at, name, nonce: ++nonce };
+  if (!quiet) revealSource();
+  reveal.value = { at, name, nonce: ++nonce, quiet };
 }
 
+/** A part picked by its designator (a list that only knows the letters): it is selected in every
+ * view, and with `jump` the source opens at its declaration. */
 export function pickPart(refdes: string | null, jump = false) {
-  selected.value = refdes;
-  if (!jump || !refdes) return;
-  const part = detail.value?.parts.find((p) => p.refdes === refdes);
-  if (part?.decl) void goTo(part.decl);
+  if (!refdes) {
+    setSelection(null);
+    return;
+  }
+  const part = partByRefdes(detail.value, refdes);
+  if (!part) return;
+  setSelection(partSel(part.path));
+  if (jump && part.decl) void goTo(part.decl);
 }
+
+/** A net picked (or none): lit in every view. A net has no line in the source. */
+export function pickNet(name: string | null) {
+  setSelection(name ? netSel(name) : null);
+}
+
+/** Open the source at the declaration of a selection; a net has none, and that is said. */
+export function showInSource(sel: Selection, quiet = false) {
+  const at = declarationOf(detail.value, sel);
+  if (at) void goTo(at, undefined, quiet);
+  else if (!quiet) say(sel.kind === 'net' ? 'A net has no line in the source: only the board names it.' : 'No declaration is known for it.');
+}
+
+/** Ask for a run of the build view (`Write KiCad files`, `Make fab files`). */
+export function requestRun(what: 'build' | 'fab') {
+  revealSection('build');
+  run.value = { what, nonce: Date.now() };
+}
+
+// A selection the board no longer has (the source changed) is dropped.
+effect(() => {
+  const d = detail.value;
+  const s = selection.value;
+  if (d && s && d.name === board.value && !exists(d, s)) setSelection(null);
+});
 
 export function chooseBoard(name: string) {
   board.value = name;
   keep(BOARD_KEY, name);
-  selected.value = null;
+  setSelection(null);
   // Another board is not the panel's.
   const shown = analysis.value?.panels.find((p) => p.name === panelShown.value);
   if (shown && analysis.value?.boards.find((x) => x.name === name)?.definition !== shown.board) {

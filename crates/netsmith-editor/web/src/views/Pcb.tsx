@@ -2,13 +2,17 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 
 import type { PcbBox } from '../api';
 import { api } from '../client';
+import { NoBoard, ViewLoading } from '../components/ViewStatus';
+import { pcbFocus } from '../feedback/derive';
+import { announce } from '../feedback/announce';
+import { routeResult } from '../feedback/results';
 import { JobProgress } from '../components/JobProgress';
 import { Canvas, type Tip } from '../pcb/Canvas';
 import { FindingsList } from '../pcb/Findings';
 import { Panel } from '../pcb/Panel';
 import { PanelPreview } from '../pcb/PanelPreview';
 import { prepare } from '../pcb/drawing';
-import type { Pt } from '../pcb/geometry';
+import { type Pt, unite } from '../pcb/geometry';
 import {
   GRIDS,
   findings,
@@ -19,13 +23,16 @@ import {
   recheck,
   redo,
   scene,
+  selection as pcbSelection,
+  wrote,
   sceneError,
   setGrid,
   tool,
   undo,
   grid,
 } from '../pcbstore';
-import { analysis, board, fabReports, job, panelShown, pcbReports, pcbStamp, routeBoard } from '../store';
+import { analysis, board, detail, fabReports, job, panelShown, pcbReports, pcbStamp, pickNet, routeBoard } from '../store';
+import { partPathsOf, revealRequest, sameSelection, selection } from '../selection';
 import { seconds } from '../util';
 
 const LAYERS: { id: string; label: string }[] = [
@@ -43,6 +50,12 @@ const LAYERS: { id: string; label: string }[] = [
 ];
 
 /** The box with room round it, so a zoom to a small part still shows what is near it. */
+/** Route the board, and say how it went when it is done, wherever the person is by then. */
+async function route(name: string) {
+  const report = await routeBoard(name);
+  if (report) announce(routeResult(report));
+}
+
 function roomAround(b: PcbBox): PcbBox {
   const [w, h] = [Math.max(b.width, 16), Math.max(b.height, 12)];
   return { x: b.x + b.width / 2 - w / 2, y: b.y + b.height / 2 - h / 2, width: w, height: h };
@@ -58,7 +71,6 @@ export function Pcb() {
   const [panelOpen, setPanelOpen] = useState(true);
   const [tab, setTab] = useState('parts');
   const [hover, setHover] = useState<string | null>(null);
-  const [picked, setPicked] = useState<string | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
   const [cursor, setCursor] = useState<Pt | null>(null);
   const [focus, setFocus] = useState<{ box: PcbBox; seq: number } | null>(null);
@@ -67,16 +79,49 @@ export function Pcb() {
     if (name) void loadScene(name);
   }, [name, version, stamp]);
 
+  // The net picked is the page's, in every view. The parts picked on the board (the canvas moves
+  // and edits them) follow the shared selection, and a click on a part there writes it back.
+  const shared = selection.value;
+  const picked = shared?.kind === 'net' ? shared.key : null;
+  const loaded = scene.value;
+  useEffect(() => {
+    // A selection the board itself made is already on the board.
+    if (wrote.sel !== undefined && sameSelection(wrote.sel, shared)) {
+      wrote.sel = undefined;
+      return;
+    }
+    wrote.sel = undefined;
+    const want = partPathsOf(detail.value, shared);
+    const have = pcbSelection.peek();
+    if (want.length !== have.length || want.some((p, i) => p !== have[i])) pcbSelection.value = want;
+  }, [shared, detail.value, loaded?.board]);
+  // Asked to show the selection: zoom to its parts.
+  const ask = revealRequest.value;
+  useEffect(() => {
+    const sc = scene.peek();
+    if (!ask || !sc || sc.board !== name) return;
+    const paths = new Set(partPathsOf(detail.peek(), ask.sel));
+    const box = unite(sc.parts.filter((p) => paths.has(p.path)).map((p) => p.courtyard));
+    if (box) setFocus({ box: roomAround(box), seq: (focus?.seq ?? 0) + 1 });
+  }, [ask?.nonce]);
+  // A problem in the dock asks the board to zoom to where it is.
+  const asked = pcbFocus.value;
+  useEffect(() => {
+    if (!asked) return;
+    pcbFocus.value = null;
+    setFocus((was) => ({ box: roomAround(asked.box), seq: (was?.seq ?? 0) + 1 }));
+  }, [asked?.nonce]);
+
   const sc = scene.value && scene.value.board === name ? scene.value : null;
   const found = findings.value && findings.value.board === name ? findings.value : null;
   const drawing = useMemo(() => (sc ? prepare(sc.svg) : null), [sc?.svg]);
   const css = useMemo(() => hidden.map((l) => `.pcb-host .l-${l}{display:none}`).join(''), [hidden]);
 
-  if (!name) return <div class="empty">There is no board to show. See the problems.</div>;
+  if (!name) return <NoBoard what="show" />;
   const fab = fabReports.value[name];
   const report = pcbReports.value[name] ?? null;
   const busy = job.value?.task === 'route';
-  const pick = (net: string | null) => setPicked(net === picked ? null : net);
+  const pick = (net: string | null) => pickNet(net === picked ? null : net);
   const h = history.value;
   const activeTool = tool.value;
   const defaults = keepoutDefaults.value;
@@ -99,7 +144,7 @@ export function Pcb() {
             Panel {p.name}
           </button>
         ))}
-        <button class="tool primary" disabled={busy} onClick={() => void routeBoard(name)}>
+        <button class="tool primary" disabled={busy} onClick={() => void route(name)}>
           {busy ? 'Routing…' : report?.routed ? 'Route again' : 'Place and route'}
         </button>
         {busy && (
@@ -221,7 +266,7 @@ export function Pcb() {
       {sceneError.value && !sc ? (
         <div class="empty bad">{sceneError.value}</div>
       ) : !sc || !drawing ? (
-        <div class="empty">Placing…</div>
+        <ViewLoading what="Placing the board" />
       ) : (
         <div class="pcb-main">
           <Canvas
@@ -254,7 +299,7 @@ export function Pcb() {
               scene={sc}
               drawing={drawing}
               picked={picked}
-              onPickNet={(n) => (n === null ? setPicked(null) : pick(n))}
+              onPickNet={(n) => (n === null ? pickNet(null) : pick(n))}
               onHoverNet={setHover}
               onFocus={(box) => setFocus({ box: roomAround(box), seq: (focus?.seq ?? 0) + 1 })}
               tab={tab}

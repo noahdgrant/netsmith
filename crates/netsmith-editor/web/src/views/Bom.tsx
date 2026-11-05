@@ -2,8 +2,10 @@ import { useEffect, useState } from 'preact/hooks';
 
 import type { Bom as BomData, BomLine, CatalogRefresh } from '../api';
 import { api } from '../client';
+import { NoBoard, ViewLoading } from '../components/ViewStatus';
 import { JobProgress } from '../components/JobProgress';
-import { analysis, board, catalogReport, job, pickPart, checkParts } from '../store';
+import { analysis, board, catalogReport, job, pickPart, checkParts, selectedRefdes } from '../store';
+import { revealRequest } from '../selection';
 import { ageLabel, count, dollars } from '../util';
 
 /** Where the line's price and stock come from, when, and whether that is too long ago; or why nobody knows them. */
@@ -91,10 +93,22 @@ function RefreshResult({ report }: { report: CatalogRefresh }) {
 }
 
 function Rows({ lines, staleAfter }: { lines: BomLine[]; staleAfter: number }) {
+  // The lines with a part of the shared selection (a part, a net's parts, a module's) are lit.
+  const lit = selectedRefdes.value;
+  const ask = revealRequest.value;
+  // A go to anything asks for the selection to be shown: the first lit line scrolls into view.
+  useEffect(() => {
+    if (ask) document.querySelector('.bom tr.sel')?.scrollIntoView({ block: 'center' });
+  }, [ask?.nonce]);
   return (
     <>
       {lines.map((l) => (
-        <tr key={l.designators.join(',')} onClick={() => pickPart(l.designators[0], true)}>
+        <tr
+          key={l.designators.join(',')}
+          class={l.designators.some((d) => lit.has(d)) ? 'sel' : ''}
+          aria-selected={l.designators.some((d) => lit.has(d))}
+          onClick={() => pickPart(l.designators.find((d) => lit.has(d)) ?? l.designators[0], true)}
+        >
           <td class="des">
             {(l.stale || l.unresolved) && (
               <span class="stale-dot" title={freshness(l, staleAfter)}>
@@ -143,9 +157,9 @@ export function Bom() {
     };
   }, [name, version]);
 
-  if (!name) return <div class="empty">There is no board to show. See the problems.</div>;
+  if (!name) return <NoBoard what="show" />;
   if (error) return <div class="empty bad">{error}</div>;
-  if (!bom) return <div class="empty">Reading…</div>;
+  if (!bom) return <ViewLoading what="Reading the bill of materials" />;
   const parts = bom.lines.reduce((s, l) => s + l.quantity, 0);
   const stale = [...bom.lines, ...bom.hand].filter((l) => l.stale).length;
   const refreshable = bom.catalogs.length > 0;

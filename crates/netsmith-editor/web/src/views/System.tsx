@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import type { PowerTree, SystemView } from '../api';
 import { api } from '../client';
+import { NoBoard, ViewLoading } from '../components/ViewStatus';
 import { MiniMap } from '../components/MiniMap';
 import { PanZoom } from '../components/PanZoom';
 import { type Item, type Placed, type TreeLayout, layoutTree } from '../flow/layout';
@@ -9,6 +10,7 @@ import { type Move, linkKey, move, trace } from '../flow/select';
 import { ANCHOR, CARD_W, STEP, cardHeight, labelWidth } from '../system/metrics';
 import { type ModuleModel, type SystemModel, type Wire, modelOf, shorten } from '../system/model';
 import { analysis, board, goTo, systemName } from '../store';
+import { type Card, cardFor, revealRequest, selection, selectionOfCard, setSelection } from '../selection';
 
 /** The longest label an edge carries: the rest is in its tooltip. */
 const LABEL_CHARS = 32;
@@ -131,7 +133,9 @@ function ModuleCard({
 function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTree | null; fitKey: string }) {
   const model: SystemModel = useMemo(() => modelOf(view, power), [view, power]);
   const [opens, setOpens] = useState<Record<string, boolean>>({});
-  const [selected, setSelected] = useState<string | null>(null);
+  /** A card that stands for nothing the page can select (a board of a system, a port): its
+   * own, dropped when the shared selection changes. */
+  const [own, setOwn] = useState<string | null>(null);
   const [tip, setTip] = useState<{ wire: Wire; x: number; y: number } | null>(null);
   const [reveal, setReveal] = useState<{ x: number; y: number; w: number; h: number; seq: number } | undefined>();
   const [centre, setCentre] = useState<{ x: number; y: number; seq: number } | undefined>();
@@ -161,14 +165,31 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
   );
   const placed = new Map(layout.nodes.map((n) => [n.id, n]));
   const wireOf = new Map(model.wires.map((w) => [linkKey(w), w]));
-  const tr = useMemo(() => (selected ? trace(model.links, selected) : null), [model, selected]);
-
+  // The selection is the page's: a module or part of the board is its card; a card that is
+  // neither (a board of a system, a port) is selected here only.
+  const cards: Card[] = useMemo(
+    () =>
+      model.modules.flatMap((m): Card[] =>
+        m.kind === 'module' || m.kind === 'part' ? [{ id: m.id, kind: m.kind, key: m.name }] : [],
+      ),
+    [model],
+  );
+  const shared = selection.value;
+  const selected = cardFor(shared, cards) ?? (shared === null && own && placed.has(own) ? own : null);
   useEffect(() => {
-    if (selected && !placed.has(selected)) setSelected(null);
-  }, [layout]);
+    if (shared) setOwn(null);
+  }, [shared]);
+  const tr = useMemo(() => (selected ? trace(model.links, selected) : null), [model, selected]);
+  const ask = revealRequest.value;
+  useEffect(() => {
+    const n = selected ? placed.get(selected) : undefined;
+    if (ask && n) setReveal({ x: n.x, y: n.y, w: n.w, h: n.h, seq: (reveal?.seq ?? 0) + 1 });
+  }, [ask?.nonce]);
 
   const select = (id: string | null, scroll = false) => {
-    setSelected(id);
+    const sel = id ? selectionOfCard(cards, id) : null;
+    setOwn(id && !sel ? id : null);
+    setSelection(sel);
     const n = id ? placed.get(id) : undefined;
     if (scroll && n) setReveal({ x: n.x, y: n.y, w: n.w, h: n.h, seq: (reveal?.seq ?? 0) + 1 });
   };
@@ -383,8 +404,8 @@ export function System() {
     };
   }, [name, version]);
 
-  if (!name) return <div class="empty">There is no board to show. See the problems.</div>;
+  if (!name) return <NoBoard what="show" />;
   if (error) return <div class="empty bad">{error}</div>;
-  if (!view) return <div class="empty">Reading…</div>;
+  if (!view) return <ViewLoading what="Reading the system" />;
   return <SystemFlow view={view} power={power} fitKey={`${name}:${version}:${view.nodes.length}`} />;
 }

@@ -1,0 +1,305 @@
+// The status bar, by VS Code's rule: the left says where the workspace stands (the board shown,
+// the problems, whether the analysis is current, a job that runs, what is not saved) and the
+// right says where the person is (cursor, language, the connection). Every item is a button.
+
+import type { ComponentChildren } from 'preact';
+import { useEffect, useRef, useState } from 'preact/hooks';
+
+import { analysingText, clock, CONNECTION_LABEL, connectionTip } from '../feedback/status';
+import { banner, counts, goToFirstError } from '../feedback/derive';
+import {
+  busy,
+  connection,
+  lastAnalysis,
+  lostFor,
+  now,
+  pending,
+  toggleDock,
+  runClock,
+  dock,
+} from '../feedback/state';
+import {
+  activeFile,
+  analysis,
+  anyDirty,
+  board,
+  cursor,
+  dirty,
+  goTo,
+  job,
+  openFiles,
+  project,
+  save,
+  visible,
+} from '../store';
+import { plural } from '../util';
+import { useElapsed } from './JobProgress';
+import { SeverityIcon } from './ProblemsDock';
+
+/** What the open file is, as the bar names it. */
+export function languageOf(path: string | null): string {
+  if (!path) return '';
+  if (path.endsWith('.nsm')) return 'netsmith';
+  if (path.endsWith('.toml')) return 'TOML';
+  return 'Plain text';
+}
+
+const Spinner = () => <span class="spinner" aria-hidden="true" />;
+
+function Item({
+  children,
+  title,
+  onClick,
+  class: cls,
+  label,
+  pressed,
+}: {
+  children: ComponentChildren;
+  title: string;
+  onClick?: () => void;
+  class?: string;
+  label?: string;
+  pressed?: boolean;
+}) {
+  return (
+    <button class={`item ${cls ?? ''}`} title={title} aria-label={label} aria-pressed={pressed} onClick={onClick}>
+      {children}
+    </button>
+  );
+}
+
+/** A small box above an item, closed by a click elsewhere or Escape. */
+function Popover({ children, close, label }: { children: ComponentChildren; close: () => void; label: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const away = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node) && !(e.target as Element).closest?.('.status-anchor.open')) close();
+    };
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    window.addEventListener('pointerdown', away, true);
+    window.addEventListener('keydown', key, true);
+    return () => {
+      window.removeEventListener('pointerdown', away, true);
+      window.removeEventListener('keydown', key, true);
+    };
+  }, [close]);
+  return (
+    <div class="status-popover" ref={box} role="dialog" aria-label={label}>
+      {children}
+    </div>
+  );
+}
+
+function GoToLine({ close }: { close: () => void }) {
+  const c = cursor.value;
+  const path = activeFile.value;
+  const [text, setText] = useState('');
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => input.current?.focus(), []);
+  const go = () => {
+    const line = Math.max(1, parseInt(text, 10) || 0);
+    if (!path || !line) return;
+    close();
+    void goTo({ file: path, line, column: 1, endLine: line, endColumn: 1 });
+  };
+  return (
+    <Popover close={close} label="Go to line">
+      <label>
+        Go to line{c ? ` (now ${c.line})` : ''}
+        <input
+          ref={input}
+          type="number"
+          min={1}
+          inputMode="numeric"
+          value={text}
+          onInput={(e) => setText((e.currentTarget as HTMLInputElement).value)}
+          onKeyDown={(e) => e.key === 'Enter' && go()}
+        />
+      </label>
+      <div class="status-popover-hint">Enter goes there; Escape closes.</div>
+    </Popover>
+  );
+}
+
+function ConnectionDetails({ close }: { close: () => void }) {
+  const state = connection.value;
+  const a = analysis.value;
+  const last = lastAnalysis.value;
+  return (
+    <Popover close={close} label="Connection">
+      <div class="status-popover-title">
+        <span class={`dot ${state}`} /> {CONNECTION_LABEL[state]}
+      </div>
+      <p>{connectionTip(state, lostFor.value)}</p>
+      <dl>
+        <dt>Server</dt>
+        <dd class="mono">{location.host}</dd>
+        {a && (
+          <>
+            <dt>Analysis</dt>
+            <dd>version {a.version}</dd>
+          </>
+        )}
+        {last && (
+          <>
+            <dt>Last analysis</dt>
+            <dd>
+              took {clock(last.took)}, finished {clock(now.value - last.at)} ago
+            </dd>
+          </>
+        )}
+      </dl>
+    </Popover>
+  );
+}
+
+/** The job that runs (route, fab, build), with the time it has taken. */
+function JobItem() {
+  const j = job.value;
+  const elapsed = useElapsed(j?.started ?? null);
+  if (!j) return null;
+  const names: Record<string, string> = { route: 'Routing', fab: 'Fab', order: 'Order', build: 'Build', drc: 'Design rules check', catalog: 'Catalog check' };
+  return (
+    <Item class="job-item" title="A long job is running; the editor stays usable. The Build section has its output." onClick={() => document.querySelector<HTMLElement>('.tab[data-section="build"]')?.click()}>
+      <Spinner />
+      {names[j.task] ?? j.task}: {j.lines[j.lines.length - 1] ?? 'starting'} ({clock(elapsed)})
+    </Item>
+  );
+}
+
+/** Whether the analysis is running, or the drawing is an old one, or all is current. */
+function AnalysisItem() {
+  const b = busy.value;
+  // The clock ticks while there is something to count.
+  useEffect(() => (b ? runClock() : undefined), [b]);
+  const since = pending.value.since;
+  const text = b && since !== null ? analysingText(now.value - since) : null;
+  const ban = banner.value;
+  const last = lastAnalysis.value;
+  if (text) {
+    return (
+      <Item class="analysing" title="Checking the project. The views keep showing the last result until it is done." onClick={() => (dock.value = { ...dock.value, open: true })}>
+        <Spinner />
+        {text}
+      </Item>
+    );
+  }
+  if (ban?.kind === 'stale') {
+    return (
+      <Item class="stale" title={`${ban.detail} Click to go to the first error.`} onClick={goToFirstError}>
+        Last good version
+      </Item>
+    );
+  }
+  if (!analysis.value) {
+    return (
+      <Item class="analysing" title="Reading the project for the first time.">
+        <Spinner />
+        Reading the project…
+      </Item>
+    );
+  }
+  return (
+    <Item
+      class="idle"
+      title={last ? `Analysis is up to date. The last one took ${clock(last.took)}.` : 'Analysis is up to date.'}
+      onClick={toggleDock}
+    >
+      <svg class="icon" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3.5 8.4l3 3 6-6.6" />
+      </svg>
+      Analysed
+    </Item>
+  );
+}
+
+function focusBoardPicker() {
+  const select = document.querySelector<HTMLSelectElement>('.boardpick select');
+  if (!select) return;
+  select.focus();
+  try {
+    select.showPicker?.();
+  } catch {
+    // A browser that will not open it from here still has the focus on it.
+  }
+}
+
+export function StatusBar() {
+  const c = counts.value;
+  const path = activeFile.value;
+  const f = path ? openFiles.value[path] : undefined;
+  const cur = cursor.value;
+  const state = connection.value;
+  const [popover, setPopover] = useState<'line' | 'connection' | null>(null);
+  const unsaved = Object.values(openFiles.value).filter(dirty).length;
+  const title = project.value?.title;
+  // The right side is about the text being edited: it says nothing while no source is on screen.
+  const inSource = visible.value.some((p) => p.section === 'source');
+  return (
+    <footer class="statusbar" aria-label="Status">
+      <div class="left">
+        {board.value && (
+          <Item class="board" title={`The board the views show${title ? ` (project ${title})` : ''}. Click to choose another.`} onClick={focusBoardPicker}>
+            <svg class="icon" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true">
+              <rect x="1.8" y="3.2" width="12.4" height="9.6" rx="1.2" />
+              <path d="M5 6.4h3M5 9.4h6" />
+            </svg>
+            {board.value}
+          </Item>
+        )}
+        <Item
+          class={`counts ${c.error > 0 ? 'bad' : ''}`}
+          label={`${plural(c.error, 'error')}, ${plural(c.warning, 'warning')}. Show the problems (Ctrl+J)`}
+          title="Errors and warnings in the project. Click to show the problems (Ctrl+J); F8 goes to the next one."
+          onClick={toggleDock}
+          pressed={dock.value.open}
+        >
+          <span class="e">
+            <SeverityIcon severity="error" size={13} /> {c.error}
+          </span>
+          <span class="w">
+            <SeverityIcon severity="warning" size={13} /> {c.warning}
+          </span>
+        </Item>
+        <AnalysisItem />
+        <JobItem />
+        {anyDirty.value && (
+          <Item
+            class="unsaved"
+            title="Files with changes that are not saved. Click to save the open one (Ctrl+S)."
+            onClick={() => path && f && dirty(f) && void save(path)}
+          >
+            ● {plural(unsaved, 'unsaved file')}
+          </Item>
+        )}
+      </div>
+      <div class="right">
+        {inSource && cur && f && (
+          <span class={`status-anchor ${popover === 'line' ? 'open' : ''}`}>
+            <Item class="cursor" title="Line and column of the cursor. Click to go to a line." onClick={() => setPopover(popover === 'line' ? null : 'line')}>
+              Ln {cur.line}, Col {cur.column}
+            </Item>
+            {popover === 'line' && <GoToLine close={() => setPopover(null)} />}
+          </span>
+        )}
+        {inSource && path && (
+          <Item class="language" title={`${path} is read as ${languageOf(path)}`}>
+            {languageOf(path)}
+          </Item>
+        )}
+        <span class={`status-anchor ${popover === 'connection' ? 'open' : ''}`}>
+          <Item
+            class={`conn ${state}`}
+            label={`Connection: ${CONNECTION_LABEL[state]}`}
+            title={connectionTip(state, lostFor.value)}
+            onClick={() => setPopover(popover === 'connection' ? null : 'connection')}
+          >
+            <span class={`dot ${state}`} aria-hidden="true" />
+            {CONNECTION_LABEL[state]}
+          </Item>
+          {popover === 'connection' && <ConnectionDetails close={() => setPopover(null)} />}
+        </span>
+      </div>
+    </footer>
+  );
+}

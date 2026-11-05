@@ -4,6 +4,8 @@ import type { OrderInfo } from '../api';
 
 import { api } from '../client';
 import { JobProgress } from '../components/JobProgress';
+import { announce } from '../feedback/announce';
+import { buildResult, fabResult, orderResult } from '../feedback/results';
 import {
   analysis,
   beginJob,
@@ -50,6 +52,7 @@ export function Build() {
     try {
       const report = await api.fabOrder(order.name, allowed);
       orderReports.value = { ...orderReports.value, [order.name]: report };
+      announce(orderResult(report));
     } catch (e) {
       say(e instanceof Error ? e.message : String(e), true);
     } finally {
@@ -62,12 +65,7 @@ export function Build() {
     try {
       const report = await api.build();
       buildReport.value = report;
-      say(
-        report.ok
-          ? `Wrote KiCad files for ${report.written.length} board${report.written.length === 1 ? '' : 's'}`
-          : 'Writing the KiCad files did not finish: see the Build section',
-        !report.ok,
-      );
+      announce(buildResult(report));
     } catch (e) {
       say(e instanceof Error ? e.message : String(e), true);
     } finally {
@@ -81,10 +79,7 @@ export function Build() {
     try {
       const report = await api.fab(name, allowed);
       fabReports.value = { ...fabReports.value, [name]: report };
-      say(
-        report.ok ? `Fab files made for ${report.board}` : `Fab stopped for ${report.board}: see the Build section`,
-        !report.ok,
-      );
+      announce(fabResult(report));
     } catch (e) {
       say(e instanceof Error ? e.message : String(e), true);
     } finally {

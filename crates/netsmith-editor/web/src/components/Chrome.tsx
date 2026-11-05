@@ -2,7 +2,6 @@ import { signal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 
-import type { Problem } from '../api';
 import {
   type Drop,
   SECTIONS,
@@ -20,36 +19,27 @@ import {
   back,
   layout,
   requestBack,
-  revealSection,
   showSection,
   visible,
   windowWidth,
-  anyDirty,
   board,
   chooseBoard,
   closeFile,
-  connected,
-  cursor,
   dirty,
   openFiles,
-  problems,
   job,
-  notesOpen,
-  problemsOpen,
   reload,
-  run,
-  save,
-  shown,
   tabs,
-  toast,
   analysis,
-  goTo,
   paneNotice,
   dismissPaneNotice,
 } from '../store';
-import { firstLine, plural, seconds } from '../util';
+import { chordLabels, chordText, find, runCommand } from '../commands';
+import { openPicker } from '../quickpick';
+import { seconds } from '../util';
 import { useElapsed } from './JobProgress';
 import { Logo } from './Logo';
+import { SelectionChip } from './SelectionChip';
 
 /** What `section` is for, in its tab's tooltip. */
 const SECTION_HINT: Record<Section, string> = {
@@ -153,10 +143,6 @@ function Action({
 export function TopBar() {
   const a = analysis.value;
   const boards = a?.boards ?? [];
-  const ask = (what: 'build' | 'fab') => {
-    revealSection('build');
-    run.value = { what, nonce: Date.now() };
-  };
   return (
     <header class="topbar">
       <div class="brand"><Logo /></div>
@@ -174,6 +160,26 @@ export function TopBar() {
           ))}
         </select>
       </label>
+      <SelectionChip />
+      <span class="spacer" />
+      <button
+        class="cmdk"
+        title={`Search parts, nets, modules and files (${chordText(find('goto.anything')?.keys ?? 'Mod+P')}); run a command (${chordText(find('palette.open')?.keys ?? 'Mod+Shift+P')})`}
+        aria-label="Go to anything or run a command"
+        aria-haspopup="dialog"
+        onClick={() => openPicker()}
+      >
+        <svg class="icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+          <circle cx="7" cy="7" r="4.6" />
+          <path d="M10.6 10.6L14 14" />
+        </svg>
+        <span class="cmdk-text">Go to anything</span>
+        <span class="qp-keys">
+          {chordLabels(find('goto.anything')?.keys ?? 'Mod+P').map((k) => (
+            <kbd key={k}>{k}</kbd>
+          ))}
+        </span>
+      </button>
       <span class="spacer" />
       <div class="actions" role="group" aria-label="Actions: they write files">
         <Action
@@ -186,7 +192,7 @@ export function TopBar() {
             "with the library tables, into the project's out folder (out/ unless netsmith.toml says another), " +
             "one folder for each board. The same as `netsmith build`. Takes a few seconds."
           }
-          start={() => ask('build')}
+          start={() => runCommand('build.kicad')}
         />
         <Action
           task="fab"
@@ -199,7 +205,7 @@ export function TopBar() {
             "writes the Gerbers, bom.csv, cpl.csv and fab-notes.txt for JLCPCB into the project's fab folder " +
             "(fab/ unless netsmith.toml says another). The same as `netsmith fab`. A long job: it can take minutes."
           }
-          start={() => ask('fab')}
+          start={() => runCommand('build.fab')}
         />
       </div>
     </header>
@@ -268,7 +274,7 @@ function splitTip() {
   const wide = canSplit(w);
   const saved = layout.value.panes.length === 2;
   return (
-    'Split right: show a second section beside this one (Ctrl+\\). You can also drag a tab to the left or right half of the window.' +
+    `Split right: show a second section beside this one (${chordText(find('pane.toggle')?.keys ?? 'Mod+\\')}). You can also drag a tab to the left or right half of the window.` +
     (wide
       ? ''
       : ` This window is ${w} px wide; a split needs about 1400 px, so one pane is shown${
@@ -481,126 +487,6 @@ export function Conflict() {
       <button onClick={() => void reload(path)}>Reload from disk</button>
     </div>
   );
-}
-
-function ProblemRow({ p }: { p: Problem }) {
-  return (
-    <div class={`problem ${p.severity}`} title={p.rendered} onClick={() => p.at && void goTo(p.at)}>
-      <span class="sev">{p.severity === 'error' ? '●' : p.severity === 'warning' ? '▲' : '·'}</span>
-      <span class="msg">{firstLine(p.message)}</span>
-      {p.at && (
-        <span class="where">
-          {p.at.file}:{p.at.line}:{p.at.column}
-        </span>
-      )}
-    </div>
-  );
-}
-
-/** Errors and warnings are listed; notes (what the solver left alone) are in a section that
- * is closed until asked for. */
-export function ProblemsPanel() {
-  const list = problems.value;
-  const open = problemsOpen.value;
-  const errors = list.filter((p) => p.severity === 'error');
-  const warnings = list.filter((p) => p.severity === 'warning');
-  const notes = list.filter((p) => p.severity === 'note');
-  const real = errors.length + warnings.length;
-  return (
-    <div class={`problems ${open ? 'open' : ''}`}>
-      <div class="problems-head" onClick={() => (problemsOpen.value = !open)}>
-        <span class="twisty">{open ? '▾' : '▸'}</span>
-        Problems
-        <span class="count">{real}</span>
-        {notes.length > 0 && <span class="faint">{plural(notes.length, 'note')}</span>}
-        {anyDirty.value && <span class="hint">checking unsaved text</span>}
-      </div>
-      {open && (
-        <div class="problem-list">
-          {real === 0 && <div class="none">No errors or warnings.</div>}
-          {errors.length > 0 && <div class="section-head">Errors <span class="count">{errors.length}</span></div>}
-          {errors.map((p, i) => (
-            <ProblemRow key={`e${i}`} p={p} />
-          ))}
-          {warnings.length > 0 && <div class="section-head">Warnings <span class="count">{warnings.length}</span></div>}
-          {warnings.map((p, i) => (
-            <ProblemRow key={`w${i}`} p={p} />
-          ))}
-          {notes.length > 0 && (
-            <>
-              <div class="section-head clickable" onClick={() => (notesOpen.value = !notesOpen.value)}>
-                <span class="twisty">{notesOpen.value ? '▾' : '▸'}</span>
-                Notes <span class="count">{notes.length}</span>
-                <span class="faint">what the solver left alone</span>
-              </div>
-              {notesOpen.value &&
-                notes.map((p, i) => (
-                  <ProblemRow key={`n${i}`} p={p} />
-                ))}
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** What the running job is doing, in the status bar, so it shows whatever view is open. */
-function JobItem() {
-  const j = job.value;
-  const elapsed = useElapsed(j?.started ?? null);
-  if (!j) return null;
-  const names: Record<string, string> = { route: 'Routing', fab: 'Fab', order: 'Order', build: 'Build' };
-  return (
-    <span class="item job-item" title="A long job is running; the editor stays usable">
-      <span class="spinner" />
-      {names[j.task] ?? j.task}: {j.lines[j.lines.length - 1] ?? 'starting'} ({seconds(elapsed)})
-    </span>
-  );
-}
-
-export function StatusBar() {
-  const s = shown.value;
-  const c = cursor.value;
-  const path = activeFile.value;
-  const f = path ? openFiles.value[path] : undefined;
-  return (
-    <footer class="statusbar">
-      <span
-        class={`item counts ${s && s.errors > 0 ? 'bad' : ''}`}
-        title="Errors and warnings: click to list them"
-        onClick={() => (problemsOpen.value = !problemsOpen.value)}
-      >
-        <span class="e">⊗ {s?.errors ?? 0}</span>
-        <span class="w">▲ {s?.warnings ?? 0}</span>
-      </span>
-      <JobItem />
-      {anyDirty.value && (
-        <span class="item" title="Ctrl+S saves">
-          ● {plural(Object.values(openFiles.value).filter(dirty).length, 'unsaved file')}
-          {path && f && dirty(f) && (
-            <button class="link" onClick={() => void save(path)}>
-              Save
-            </button>
-          )}
-        </span>
-      )}
-      <span class="spacer" />
-      {c && f && (
-        <span class="item">
-          Ln {c.line}, Col {c.column}
-        </span>
-      )}
-      {board.value && <span class="item">{board.value}</span>}
-      <span class={`item ${connected.value ? 'ok' : 'bad'}`}>{connected.value ? '● live' : '○ offline'}</span>
-    </footer>
-  );
-}
-
-export function Toast() {
-  const t = toast.value;
-  if (!t) return null;
-  return <div class={`toast ${t.bad ? 'bad' : ''}`}>{t.text}</div>;
 }
 
 export function Pane({ children, class: cls }: { children: ComponentChildren; class?: string }) {
