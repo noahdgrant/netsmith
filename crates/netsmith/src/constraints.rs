@@ -72,6 +72,16 @@ pub fn name_offset_sources(design: &mut Design, sites: &[(SourceId, Span)], sour
     }
 }
 
+/// Say where the design states each tail (`design.features.tails`, in the order of `sites`).
+pub fn name_tail_sources(design: &mut Design, sites: &[Vec<(SourceId, Span)>], sources: &Sources) {
+    for (tail, spans) in design.features.tails.iter_mut().zip(sites) {
+        tail.source = lines_of(spans, sources);
+    }
+    for spans in sites {
+        remember_lines(design, spans, sources);
+    }
+}
+
 fn measure(field: PlaceField) -> Measure {
     match field {
         PlaceField::X => Measure::X,

@@ -388,6 +388,8 @@ pub struct Lowered {
     pub constraint_sites: Sites,
     /// Where the design states each of `design.features.offsets`, in the same order.
     pub offset_sites: Vec<(netsmith_check::SourceId, netsmith_lang::Span)>,
+    /// Where the design states each of `design.features.tails`, in the same order.
+    pub tail_sites: Vec<Vec<(netsmith_check::SourceId, netsmith_lang::Span)>>,
 }
 
 /// A panel as the specification `fab` builds it from: the board it repeats, the grid and the
@@ -662,6 +664,8 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
     features.constraints = constraints;
     let (offsets, offset_sites) = features::offsets(model, &mut errors);
     features.offsets = offsets;
+    let (tails, tail_sites) = features::tails(model, &mut errors);
+    features.tails = tails;
     // Tracks sized from the current of nets no rail gave a width (ADR 0036).
     let plan = match &process {
         Some(process) => guidelines::plan_tracks(model, process, &features),
@@ -686,6 +690,7 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
             notes: plan.notes,
             constraint_sites,
             offset_sites,
+            tail_sites,
         })
     } else {
         errors.sort();

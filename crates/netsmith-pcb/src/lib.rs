@@ -44,6 +44,7 @@ pub mod route;
 pub mod rules;
 pub mod shape;
 mod stitch;
+pub mod tail;
 pub mod svg;
 pub mod validate;
 

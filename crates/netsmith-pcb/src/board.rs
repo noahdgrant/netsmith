@@ -200,6 +200,12 @@ pub struct Placed {
     /// How tall the body stands above its face of the board, in mm, as the design states it
     /// (`.height`, ADR 0045 "Height limits"). `None` is unknown, never zero.
     pub height: Option<f64>,
+    /// How far its pins stand out of the opposite face once cut short after soldering
+    /// (`.tail_height`, ADR 0045 section 14). `None` is unknown: the pads are an obstacle.
+    pub tail: Option<crate::tail::Tail>,
+    /// Whether the board house leaves it to be fitted by hand (or not at all), so that it
+    /// can be put over cut pins. False when the design does not say.
+    pub hand_fitted: bool,
 }
 
 impl Placed {
@@ -254,17 +260,41 @@ impl Placed {
     }
 
     /// Whether two parts take room in the same place on either face of the board: `court_a`
-    /// and `court_b` are the courtyards to count ([`Placed::room_on`]).
+    /// and `court_b` are the courtyards to count ([`Placed::room_on`]). A part that stands
+    /// excused over the other's trimmed pins ([`crate::tail`]) takes only its pads there,
+    /// against the pads of the other; `zones` are the height limits that rule judges by.
     pub fn rooms_overlap(
         &self,
         court_a: Rect,
         other: &Placed,
         court_b: Rect,
         clearance: f64,
+        zones: &[crate::place::HeightZone],
     ) -> bool {
+        let excused = crate::tail::excused(self, other, zones);
         [Side::Front, Side::Back].into_iter().any(|face| {
-            let mine = self.room_on(face, clearance, court_a);
-            let theirs = other.room_on(face, clearance, court_b);
+            let (mine, theirs) = match excused {
+                Some(tail_first) => {
+                    let (tail, cover) = if tail_first {
+                        (self, other)
+                    } else {
+                        (other, self)
+                    };
+                    if face == cover.side {
+                        let (t, c) = crate::tail::excused_rooms(tail, cover, clearance);
+                        if tail_first { (t, c) } else { (c, t) }
+                    } else {
+                        (
+                            self.room_on(face, clearance, court_a),
+                            other.room_on(face, clearance, court_b),
+                        )
+                    }
+                }
+                None => (
+                    self.room_on(face, clearance, court_a),
+                    other.room_on(face, clearance, court_b),
+                ),
+            };
             mine.iter().any(|a| theirs.iter().any(|b| a.overlaps(b)))
         })
     }
@@ -447,8 +477,27 @@ pub struct BoardNet {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlacementProblem {
-    /// Two courtyards share area.
-    Overlap { a: String, b: String },
+    /// Two courtyards share area. `pins` is the path of a through-hole part whose pins are
+    /// under the other part and are not stated as cut short, if that is what the overlap is
+    /// (ADR 0045 section 14), so that the message can say how to state it.
+    Overlap {
+        a: String,
+        b: String,
+        pins: Option<String>,
+    },
+    /// A part lies over the pins of a through-hole part that the design states are cut
+    /// short, and the rule that excuses it ([`crate::tail`]) refuses.
+    OverPins {
+        tail: String,
+        tail_path: String,
+        /// The length the pins are cut to, in mm, and the lines that state it.
+        length: f64,
+        source: String,
+        cover: String,
+        cover_path: String,
+        side: Side,
+        why: crate::tail::Refusal,
+    },
     /// A courtyard is not wholly inside the outline, past an edge the design does not say
     /// the part may hang over (`past`: how far it is past each such edge, in mm; empty if the
     /// box is inside and a corner of it is outside a rounded corner of the outline).
@@ -583,7 +632,36 @@ pub enum HoleNeighbour {
 impl std::fmt::Display for PlacementProblem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Overlap { a, b } => write!(f, "the courtyards of {a} and {b} overlap"),
+            Self::Overlap { a, b, pins } => {
+                write!(f, "the courtyards of {a} and {b} overlap")?;
+                match pins {
+                    Some(path) => write!(
+                        f,
+                        "; the pins of the through-hole part `{path}` come out under the other; if they are cut short after soldering, the physical file can say so (`.{path}.tail_height &= 0.2mm`, with the real length; it is a step someone does by hand, so state it only if it is done)"
+                    ),
+                    None => Ok(()),
+                }
+            }
+            Self::OverPins {
+                tail,
+                tail_path,
+                length,
+                source,
+                cover,
+                cover_path,
+                side,
+                why,
+            } => write!(
+                f,
+                "{cover} (`{cover_path}`) lies over the pins of {tail} (`{tail_path}`), which {} {} mm, and that is not allowed: {}",
+                if source.is_empty() {
+                    "are trimmed to".to_string()
+                } else {
+                    format!("{source} trims to")
+                },
+                crate::tail::mm(*length),
+                why.because(*length, cover, cover_path, *side)
+            ),
             Self::OutsideOutline {
                 refdes,
                 path,
@@ -962,6 +1040,8 @@ impl Board {
                         .unwrap_or_default(),
                     reference_side: ReferenceSide::default(),
                     height: None,
+                    tail: None,
+                    hand_fitted: true,
                 });
                 continue;
             }
@@ -1008,6 +1088,16 @@ impl Board {
                     .iter()
                     .find(|h| h.path == part.path)
                     .map(|h| h.height),
+                tail: design
+                    .features
+                    .tails
+                    .iter()
+                    .find(|t| t.path == part.path)
+                    .map(|t| crate::tail::Tail {
+                        length: t.length,
+                        source: t.source.clone(),
+                    }),
+                hand_fitted: design.features.hand_fitted.contains(&part.path),
             });
         }
 
@@ -1556,6 +1646,7 @@ impl Board {
             })
             .collect();
         let cutouts = self.cutout_shapes();
+        let zones = self.height_zones();
         let mut problems = Vec::new();
         for c in self.cutouts.iter().filter(|c| c.at.is_none()) {
             problems.push(PlacementProblem::NoPosition {
@@ -1691,10 +1782,31 @@ impl Board {
             for (j, b) in self.parts.iter().enumerate().skip(i + 1) {
                 // Parts on opposite faces may share the board's area, unless one has a hole
                 // through the board that takes room there (`Placed::room_on`).
-                if a.rooms_overlap(rooms[i], b, rooms[j], self.rules.clearance) {
-                    problems.push(PlacementProblem::Overlap {
-                        a: a.refdes.clone(),
-                        b: b.refdes.clone(),
+                if a.rooms_overlap(rooms[i], b, rooms[j], self.rules.clearance, &zones) {
+                    problems.push(match crate::tail::relation(a, b, &zones) {
+                        Some((first, crate::tail::Verdict::Refused(why))) => {
+                            let (tail, cover) = if first { (a, b) } else { (b, a) };
+                            let stated = tail.tail.clone().unwrap_or(crate::tail::Tail {
+                                length: 0.0,
+                                source: String::new(),
+                            });
+                            PlacementProblem::OverPins {
+                                tail: tail.refdes.clone(),
+                                tail_path: tail.path.clone(),
+                                length: stated.length,
+                                source: stated.source,
+                                cover: cover.refdes.clone(),
+                                cover_path: cover.path.clone(),
+                                side: cover.side,
+                                why,
+                            }
+                        }
+                        _ => PlacementProblem::Overlap {
+                            a: a.refdes.clone(),
+                            b: b.refdes.clone(),
+                            pins: crate::tail::untrimmed_under(a, b)
+                                .map(|p| p.path.clone()),
+                        },
                     });
                 }
                 self.check_holes(a, b, true, &mut problems);
@@ -2004,7 +2116,8 @@ pub(crate) mod tests {
                 .check_placement()
                 .contains(&PlacementProblem::Overlap {
                     a: "D1".into(),
-                    b: "R1".into()
+                    b: "R1".into(),
+                    pins: None,
                 })
         );
         // A header has holes through the board, so a part on the other face under it clashes.
@@ -2013,7 +2126,7 @@ pub(crate) mod tests {
         r1.at = j1;
         r1.side = Side::Back;
         assert!(board.check_placement().iter().any(|p| matches!(
-            p, PlacementProblem::Overlap { a, b } if (a == "J1" && b == "R1") || (a == "R1" && b == "J1")
+            p, PlacementProblem::Overlap { a, b, .. } if (a == "J1" && b == "R1") || (a == "R1" && b == "J1")
         )));
     }
 
@@ -2033,7 +2146,8 @@ pub(crate) mod tests {
         let problems = board.check_placement();
         assert!(problems.contains(&PlacementProblem::Overlap {
             a: "D1".into(),
-            b: "R1".into()
+            b: "R1".into(),
+            pins: None,
         }));
         assert!(problems.iter().any(|p| matches!(
             p,

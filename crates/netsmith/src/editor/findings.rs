@@ -124,7 +124,7 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
         .map(|problem| {
             let message = problem.to_string();
             let (rule, subjects, area): (&str, Vec<&str>, Option<Rect>) = match &problem {
-                PlacementProblem::Overlap { a, b } => {
+                PlacementProblem::Overlap { a, b, .. } => {
                     let (ra, rb) = (courtyard(a), courtyard(b));
                     // The area they share, or the two if the board says they touch.
                     let shared = ra.zip(rb).map(|(x, y)| {
@@ -134,6 +134,16 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
                         )
                     });
                     ("overlap", vec![a, b], shared)
+                }
+                PlacementProblem::OverPins { tail, cover, .. } => {
+                    let (rt, rc) = (courtyard(tail), courtyard(cover));
+                    let shared = rt.zip(rc).map(|(x, y)| {
+                        Rect::new(
+                            Pt::new(x.min.x.max(y.min.x), x.min.y.max(y.min.y)),
+                            Pt::new(x.max.x.min(y.max.x), x.max.y.min(y.max.y)),
+                        )
+                    });
+                    ("over_pins", vec![tail, cover], shared)
                 }
                 PlacementProblem::OutsideOutline { refdes, .. } => {
                     ("outside_outline", vec![refdes], courtyard(refdes))

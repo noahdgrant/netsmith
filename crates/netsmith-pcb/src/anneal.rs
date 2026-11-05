@@ -458,6 +458,11 @@ struct Model {
     angles: [f64; 4],
     side: Side,
     hole: bool,
+    /// How far its pins stand out of the opposite face once cut short, and the facts a part
+    /// that stands over them is judged by (`crate::tail`).
+    tail: Option<f64>,
+    height: Option<f64>,
+    hand_fitted: bool,
     /// Which layers the footprint draws its courtyard on, `(F.CrtYd, B.CrtYd)`.
     court_faces: (bool, bool),
     role: Role,
@@ -791,6 +796,9 @@ impl<'a> Engine<'a> {
                     angles,
                     side: parts[i].side,
                     hole: parts[i].has_hole(),
+                    tail: parts[i].tail.as_ref().map(|t| t.length),
+                    height: parts[i].height,
+                    hand_fitted: parts[i].hand_fitted,
                     court_faces: parts[i].footprint.courtyard_faces,
                     role: if crate::place::is_connector(kind) {
                         Role::Connector
@@ -1380,10 +1388,39 @@ impl<'a> Engine<'a> {
     }
 
     /// The pairs of boxes in which parts `i` and `j` must not overlap, one for each face
-    /// they both take room on, and whether either box is a part's pads.
+    /// they both take room on, and whether either box is a part's pads. Where one stands
+    /// excused over the other's trimmed pins (`crate::tail`), the pair on that face is the
+    /// pads of both.
     fn room_pairs(&self, i: usize, j: usize) -> Vec<(Rect, Rect, bool)> {
         let mut pairs: Vec<(Rect, Rect, bool)> = Vec::new();
+        let excused = self.excused(i, j).or_else(|| self.excused(j, i).map(|_| false));
         for face in [Side::Front, Side::Back] {
+            if let Some(tail_first) = excused {
+                let (t, c) = if tail_first { (i, j) } else { (j, i) };
+                if face == self.models[c].side {
+                    let tails: Vec<Rect> = self
+                        .shape(t)
+                        .rooms
+                        .iter()
+                        .map(|r| r.translated(self.pos(t)))
+                        .collect();
+                    let pads: Vec<Rect> = self
+                        .shape(c)
+                        .pad_boxes
+                        .iter()
+                        .map(|r| r.translated(self.pos(c)))
+                        .collect();
+                    for &x in &tails {
+                        for &y in &pads {
+                            let pair = if tail_first { (x, y, true) } else { (y, x, true) };
+                            if !pairs.contains(&pair) {
+                                pairs.push(pair);
+                            }
+                        }
+                    }
+                    continue;
+                }
+            }
             let (ra, rb) = (self.rooms_on(i, face), self.rooms_on(j, face));
             for &(x, px) in &ra {
                 for &(y, py) in &rb {
@@ -1395,6 +1432,27 @@ impl<'a> Engine<'a> {
             }
         }
         pairs
+    }
+
+    /// Whether part `c` stands excused over the trimmed pins of part `t` where they are now
+    /// (`crate::tail::judge`): `Some(true)` for `t` first. Asked as `excused(t, c)`.
+    fn excused(&self, t: usize, c: usize) -> Option<bool> {
+        let (mt, mc) = (&self.models[t], &self.models[c]);
+        let length = mt.tail?;
+        if !mt.hole || mc.hole || mt.side == mc.side {
+            return None;
+        }
+        let cover = crate::tail::Cover {
+            height: mc.height,
+            hand_fitted: mc.hand_fitted,
+            body: self.zone_box(c),
+            side: mc.side,
+        };
+        matches!(
+            crate::tail::judge(length, &cover, self.p.zones),
+            crate::tail::Verdict::Excused { .. }
+        )
+        .then_some(true)
     }
 
     fn court(&self, i: usize) -> Rect {

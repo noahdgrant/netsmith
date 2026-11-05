@@ -7,8 +7,8 @@
 
 use netsmith_check::{Domain, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
-    Cutout, Features, Keepout, Label, Offset, OffsetEnd, Outline, PartHeight, PlaceBound,
-    PlaceField, Placement, Pour,
+    Cutout, Features, Keepout, Label, Offset, OffsetEnd, Outline, PartHeight, PartTail,
+    PlaceBound, PlaceField, Placement, Pour,
 };
 use netsmith_lang::Span;
 
@@ -185,6 +185,46 @@ fn heights(model: &Model, errors: &mut Vec<String>) -> Vec<PartHeight> {
         found.push(PartHeight { path, height });
     }
     found
+}
+
+/// The tails the design states for its parts (`.tail_height`, ADR 0045 section 14,
+/// PROVISIONAL), by path, and the statements that state each. A tail is one value: a part
+/// whose tail is only bounded (its kind says its pins are at most so long, and the board
+/// does not cut them) has an unknown tail and is not listed. A tail below zero is an error.
+pub(crate) fn tails(
+    model: &Model,
+    errors: &mut Vec<String>,
+) -> (Vec<PartTail>, Vec<Vec<(SourceId, Span)>>) {
+    let mut parts: Vec<(String, InstId)> = model
+        .instances()
+        .filter(|(_, i)| i.kind == InstKind::Part)
+        .map(|(id, _)| (model.path_of(id), id))
+        .collect();
+    parts.sort();
+    let (mut found, mut sites) = (Vec::new(), Vec::new());
+    for (path, id) in parts {
+        let Some(Member::Field(field)) = model.member(id, "tail_height") else {
+            continue;
+        };
+        let w = netsmith_solve::window(model, field);
+        if w.is_open() || !w.lo.is_finite() || !w.hi.is_finite() || (w.hi - w.lo).abs() >= 1e-12 {
+            continue;
+        }
+        let length = mm(w.lo);
+        if length < 0.0 {
+            errors.push(format!(
+                "`{path}.tail_height` is {length} mm, and a pin does not stand out less than nothing"
+            ));
+            continue;
+        }
+        found.push(PartTail {
+            path,
+            length,
+            source: String::new(),
+        });
+        sites.push(w.sites);
+    }
+    (found, sites)
 }
 
 /// The outer pours of the process: the layers whose pour has a net.
