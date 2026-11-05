@@ -97,8 +97,44 @@ jobs:
             *) echo "::error::KiCad 9 is wanted, the runner installed $(kicad-cli --version)"; exit 1 ;;
           esac
 
-      # What the lookup of netsmith_kicad::install finds on a real Linux install (issue #6).
+      # What the lookup of netsmith_kicad::install finds on a real Linux install (issue #6): the
+      # packages' own folders, with nothing set.
       - name: Show the KiCad library lookup
+        run: cargo run --quiet -p netsmith-kicad --example locate
+
+      # The tests were written against the libraries of KiCad 9.0.0 (the stock footprints they
+      # compare with, the fiducial's clearance, the VQFP footprints), and the 9.0.x libraries
+      # since have moved (9.0.7: 360 of 788 generated footprints differ from KiCad's, issue
+      # #103). So netsmith reads the upstream libraries at the tag 9.0.0, through the variables
+      # of the lookup, while kicad-cli is the 9.0.x of the package.
+      - name: Cache the KiCad 9.0.0 libraries
+        id: libs
+        uses: actions/cache@v4
+        with:
+          path: ~/kicad-libs
+          key: kicad-libs-9.0.0-v1
+
+      - name: Fetch the KiCad 9.0.0 libraries
+        if: steps.libs.outputs.cache-hit != 'true'
+        run: |
+          fetch() {
+            name="$1"; sha="$2"
+            mkdir -p ~/kicad-libs/"$name"
+            curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
+              -o "$RUNNER_TEMP/$name.tar.gz" \
+              "https://gitlab.com/kicad/libraries/kicad-$name/-/archive/9.0.0/kicad-$name-9.0.0.tar.gz"
+            echo "$sha  $RUNNER_TEMP/$name.tar.gz" | sha256sum --check
+            tar -xzf "$RUNNER_TEMP/$name.tar.gz" --strip-components=1 -C ~/kicad-libs/"$name"
+          }
+          fetch symbols e90f557a172ca99ab4ec546802511fac4139738f505996f94180541828fa3f4a
+          fetch footprints f9444c53a06ba64fde0c87b20c42de0b9d2efdffe15822b43474fcf03aa7229a
+
+      - name: Point netsmith at the KiCad 9.0.0 libraries
+        run: |
+          echo "NETSMITH_KICAD_SYMBOLS=$HOME/kicad-libs/symbols" >> "$GITHUB_ENV"
+          echo "NETSMITH_KICAD_FOOTPRINTS=$HOME/kicad-libs/footprints" >> "$GITHUB_ENV"
+
+      - name: Show the KiCad library lookup with the variables
         run: cargo run --quiet -p netsmith-kicad --example locate
 
       # --nocapture shows the "skipped: ..." lines, so the run can prove that no test skipped
