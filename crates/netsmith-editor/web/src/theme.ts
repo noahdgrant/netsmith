@@ -127,3 +127,17 @@ export function startTheme() {
     // No media queries: the page keeps what it has.
   }
 }
+
+/** What the person is told after choosing: which theme it came to, and whether it will be remembered. */
+export function themeMessage(pref: ThemePref, resolved: Theme, kept: boolean): { text: string; bad: boolean } {
+  const label = THEMES.find((t) => t.id === pref)?.label ?? pref;
+  const now = pref === 'system' ? `System: ${THEMES.find((t) => t.id === resolved)?.label ?? resolved} now` : label;
+  return kept ? { text: `Theme: ${now}`, bad: false } : { text: `Theme: ${now}. It is not remembered: this browser does not keep settings.`, bad: true };
+}
+
+/** Choose a theme, and say so. */
+export function chooseTheme(pref: ThemePref, say: (text: string, bad?: boolean) => void) {
+  const kept = setTheme(pref);
+  const m = themeMessage(pref, theme.peek(), kept);
+  say(m.text, m.bad);
+}

@@ -35,6 +35,8 @@
   --dur-fast: 120ms; --dur: 160ms; --dur-slow: 180ms;
   --ease: cubic-bezier(.2, 0, 0, 1);
   /* the layers of the page, from the page up */
+  /* the swatches of the theme menu show other themes, so they are the same in every theme */
+  --sw-light: #f3f2ee; --sw-dark: #1c1d20; --sw-hc-light: #ffffff; --sw-hc-dark: #000000;
   --z-sticky: 3; --z-dock: 4; --z-pane: 10; --z-status: 12; --z-popover: 20; --z-toast: 30; --z-menu: 60; --z-palette: 80; --z-dialog: 200;
 }
 

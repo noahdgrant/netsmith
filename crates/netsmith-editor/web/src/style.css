@@ -813,3 +813,14 @@ input:focus-visible { box-shadow: none; }
 .pcb-host svg [fill="#c8c8c8"] { fill: var(--pcb-via); } .pcb-host svg [stroke="#c8c8c8"] { stroke: var(--pcb-via); }
 .pcb-host svg text[fill="#0d1117"] { fill: var(--pcb-pad-text); }
 .pcb-host svg [stroke-opacity="0.85"] { stroke-opacity: var(--pcb-track-opacity); }
+
+/* the theme menu in the status bar */
+.theme-list { display: flex; flex-direction: column; gap: 1px; margin: 6px -6px 0; }
+.theme-option { display: flex; align-items: center; gap: 8px; height: var(--h-md); padding: 0 8px; background: none; border: none; border-radius: var(--r-sm); color: var(--text); text-align: left; cursor: pointer; }
+.theme-option:hover { background: var(--hover); }
+.theme-option[aria-checked="true"] { background: var(--pick); }
+.theme-check { width: 10px; color: var(--accent-text); font-size: 9px; text-align: center; flex: none; }
+.theme-swatch { width: 18px; height: 12px; border-radius: 3px; border: 1px solid var(--border-strong); flex: none; }
+.sw-system { background: linear-gradient(90deg, var(--sw-dark) 50%, var(--sw-light) 50%); }
+.sw-light { background: var(--sw-light); } .sw-dark { background: var(--sw-dark); }
+.sw-hc-light { background: var(--sw-hc-light); border-color: var(--sw-hc-dark); } .sw-hc-dark { background: var(--sw-hc-dark); border-color: var(--sw-hc-light); }

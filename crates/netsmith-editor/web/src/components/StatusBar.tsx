@@ -30,8 +30,10 @@ import {
   openFiles,
   project,
   save,
+  say,
   visible,
 } from '../store';
+import { THEMES, type ThemePref, chooseTheme, theme, themePref } from '../theme';
 import { plural } from '../util';
 import { useElapsed } from './JobProgress';
 import { SeverityIcon } from './ProblemsDock';
@@ -213,6 +215,39 @@ function AnalysisItem() {
   );
 }
 
+/** The theme menu: one radio for each theme, Arrow keys move, Enter or a click chooses. */
+function ThemeMenu({ close }: { close: () => void }) {
+  const list = useRef<HTMLDivElement>(null);
+  useEffect(() => list.current?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus(), []);
+  const move = (e: KeyboardEvent) => {
+    const radios = [...(list.current?.querySelectorAll<HTMLElement>('[role="radio"]') ?? [])];
+    const at = radios.indexOf(document.activeElement as HTMLElement);
+    const step = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    radios[(at + step + radios.length) % radios.length]?.focus();
+  };
+  const pick = (id: ThemePref) => {
+    chooseTheme(id, say);
+    close();
+  };
+  return (
+    <Popover close={close} label="Theme">
+      <div class="status-popover-title">Colour theme</div>
+      <div class="theme-list" role="radiogroup" aria-label="Colour theme" ref={list} onKeyDown={move}>
+        {THEMES.map((t) => (
+          <button key={t.id} class="theme-option" role="radio" aria-checked={themePref.value === t.id} title={t.hint} onClick={() => pick(t.id)}>
+            <span class="theme-check" aria-hidden="true">{themePref.value === t.id ? '●' : ''}</span>
+            <span class={`theme-swatch sw-${t.id}`} aria-hidden="true" />
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div class="status-popover-hint">Also in the command palette, as “Theme”.</div>
+    </Popover>
+  );
+}
+
 function focusBoardPicker() {
   const select = document.querySelector<HTMLSelectElement>('.boardpick select');
   if (!select) return;
@@ -230,7 +265,7 @@ export function StatusBar() {
   const f = path ? openFiles.value[path] : undefined;
   const cur = cursor.value;
   const state = connection.value;
-  const [popover, setPopover] = useState<'line' | 'connection' | null>(null);
+  const [popover, setPopover] = useState<'line' | 'connection' | 'theme' | null>(null);
   const unsaved = Object.values(openFiles.value).filter(dirty).length;
   const title = project.value?.title;
   // The right side is about the text being edited: it says nothing while no source is on screen.
@@ -287,6 +322,21 @@ export function StatusBar() {
             {languageOf(path)}
           </Item>
         )}
+        <span class={`status-anchor ${popover === 'theme' ? 'open' : ''}`}>
+          <Item
+            class="theme-item"
+            label={`Colour theme: ${THEMES.find((t) => t.id === themePref.value)?.label}`}
+            title={`Colour theme: ${THEMES.find((t) => t.id === themePref.value)?.label}${themePref.value === 'system' ? ` (now ${theme.value})` : ''}. Click to change.`}
+            pressed={popover === 'theme'}
+            onClick={() => setPopover(popover === 'theme' ? null : 'theme')}
+          >
+            <svg class="icon" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <circle cx="8" cy="8" r="5.6" />
+              <path d="M8 2.4a5.6 5.6 0 0 1 0 11.2z" fill="currentColor" stroke="none" />
+            </svg>
+          </Item>
+          {popover === 'theme' && <ThemeMenu close={() => setPopover(null)} />}
+        </span>
         <span class={`status-anchor ${popover === 'connection' ? 'open' : ''}`}>
           <Item
             class={`conn ${state}`}

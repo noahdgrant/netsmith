@@ -23,6 +23,9 @@ export const FIXED: Record<string, string> = {
   '#c8c8c8': '--pcb-via',
 };
 
+/** What the drawing paints a pad that is on no net. */
+export const UNCONNECTED = '#8b949e';
+
 /** The token for a colour of the drawing, as a `var()`, or the colour itself if the page does not know it. */
 export function themed(colour: string): string {
   const c = colour.toLowerCase();

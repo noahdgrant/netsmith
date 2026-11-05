@@ -194,3 +194,27 @@ describe.each(Object.keys(THEME_TOKENS) as Theme[])('contrast of %s', (name) => 
     expect(missing).toEqual([]);
   });
 });
+
+// ---- nothing but themes.css names a colour ----
+
+const sources = import.meta.glob(['./**/*.ts', './**/*.tsx', './**/*.css'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+// The server's drawings are written with colours of their own (pcb/colours.ts lists them), and the tests name colours to test them.
+const ALLOWED = [/themes\.css$/, /pcb\/colours\.ts$/, /\.test\.ts$/, /contrast\.ts$/];
+describe('the page has no colours of its own', () => {
+  it('finds the sources', () => expect(Object.keys(sources).length).toBeGreaterThan(40));
+  it('has no hex or rgb colour outside themes.css', () => {
+    const found: string[] = [];
+    for (const [file, text] of Object.entries(sources)) {
+      if (ALLOWED.some((re) => re.test(file))) continue;
+      // An entity such as &#9654; and a CSS id selector are not colours; a hex colour is `#` and 3 to 8 hex digits not followed by more word.
+      // The rules of style.css that map the server's attribute colours to tokens name the server's colours.
+      const ownText = text.split('\n').map((l) => (/\[(fill|stroke)="#/.test(l) ? '' : l)).join('\n');
+      for (const m of ownText.matchAll(/(?<![&\w])#[0-9a-fA-F]{3,8}\b(?!-)/g)) {
+        const line = ownText.slice(0, m.index).split('\n').length;
+        found.push(`${file}:${line} ${m[0]}`);
+      }
+      for (const m of text.matchAll(/\brgba?\(/g)) found.push(`${file}:${text.slice(0, m.index).split('\n').length} rgb(`);
+    }
+    expect(found).toEqual([]);
+  });
+});
