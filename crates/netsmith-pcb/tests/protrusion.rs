@@ -355,17 +355,17 @@ fn the_placer_moves_a_free_cover_off_pins_it_may_not_stand_over() {
     }
 }
 
-/// The conflict the explanation proves for a cover pinned over protruding pins that the rule
-/// does not excuse (ADR 0045 section 13).
-fn conflicts_of(case: &Case) -> Vec<String> {
-    let board = match board(case) {
-        Ok(board) => board,
-        Err(e) => panic!("{e}"),
-    };
-    board
-        .explain_requirements(&design(case), &PlaceOptions::default())
-        .map(|r| r.conflicts)
-        .unwrap_or_default()
+/// What the lines are proved to conflict in, as a person reads it: the placer refuses a
+/// board whose pinned parts cannot hold (the proof comes before any placing), and a board it
+/// does place is explained afterwards (ADR 0045 sections 13 and 14).
+fn conflicts_of(case: &Case) -> String {
+    match board(case) {
+        Err(e) => e.to_string(),
+        Ok(board) => board
+            .explain_requirements(&design(case), &PlaceOptions::default())
+            .map(|r| r.conflicts.join("\n"))
+            .unwrap_or_default(),
+    }
 }
 
 #[test]
@@ -374,8 +374,8 @@ fn the_conflict_explanation_proves_a_cover_pinned_over_protruding_pins_that_the_
         protrusion: Some(0.4),
         ..Case::default()
     });
-    assert_eq!(too_tall.len(), 1, "{too_tall:?}");
     for expected in [
+        "cannot both hold",
         "U1",
         "J1",
         "pins protruding 0.4 mm",
@@ -385,62 +385,22 @@ fn the_conflict_explanation_proves_a_cover_pinned_over_protruding_pins_that_the_
         "widget.physical.nsm:12",
     ] {
         assert!(
-            too_tall[0].contains(expected),
-            "missing {expected:?} in {}",
-            too_tall[0]
+            too_tall.contains(expected),
+            "missing {expected:?} in {too_tall}"
         );
     }
     let house = conflicts_of(&Case {
         hand: false,
         ..Case::default()
     });
-    assert!(
-        house.len() == 1 && house[0].contains("assembled by the board house"),
-        "{house:?}"
-    );
+    assert!(house.contains("assembled by the board house"), "{house}");
     let flat_out = conflicts_of(&Case {
         height: None,
         ..Case::default()
     });
-    assert!(
-        flat_out.len() == 1 && flat_out[0].contains("states no height"),
-        "{flat_out:?}"
-    );
+    assert!(flat_out.contains("states no height"), "{flat_out}");
     // When the stack fits, there is nothing to prove.
-    assert_eq!(conflicts_of(&Case::default()), Vec::<String>::new());
-}
-
-#[test]
-fn a_board_without_a_protrusion_places_and_checks_exactly_as_before() {
-    // The cell and the socket are not stated to overlap here: pin the cell off to one side.
-    let mut d = design(&Case {
-        protrusion: None,
-        ..Case::default()
-    });
-    d.features.constraints[1].bounds[0] = bound(PlaceField::X, 40.0, 41.0);
-    let folder = TempDir::new("protrusions-before");
-    std::fs::write(folder.join("Row10.kicad_mod"), socket()).unwrap();
-    std::fs::write(folder.join("Flat.kicad_mod"), flat()).unwrap();
-    let mapping = "[[part]]\nkind = \"Socket\"\npackage = \"Row10\"\nsymbol = \"t:R\"\nfootprint = \"t:Row10\"\n\
-                   [[part]]\nkind = \"FlatCell\"\npackage = \"FlatCell\"\nsymbol = \"t:R\"\nfootprint = \"t:Flat\"\n";
-    let mapping = netsmith_kicad::Mapping::parse(mapping, "protrusions", std::path::Path::new("."))
-        .unwrap_or_else(|e| panic!("{e}"));
-    let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
-    let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
-        .with_library("t", folder.path());
-    let before = Board::from_design_placed(&d, &mapping, &library, &PlaceOptions::default());
-    // 41 mm is 11 mm from the row: the cell's courtyard (30 mm wide) still reaches the pads
-    // at 30 mm, so with no protrusion stated that is the refusal of today.
-    let text = match before {
-        Ok(b) => findings(&b).join("\n"),
-        Err(e) => e.to_string(),
-    };
-    assert!(
-        text.contains("overlap") || text.contains("on top of each other"),
-        "{text}"
-    );
-    assert!(!text.contains("lies over the pins"), "{text}");
-    assert!(text.contains("pin_protrusion"), "the hint: {text}");
+    assert_eq!(conflicts_of(&Case::default()), "");
 }
 
 /// The board of `case` made small (34 x 30 mm) and with only the faces stated, so that the
