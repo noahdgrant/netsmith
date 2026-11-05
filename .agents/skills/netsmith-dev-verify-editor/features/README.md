@@ -25,6 +25,7 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | PCB findings: list, zoom to, re-check with KiCad | `pcb.md` | `pcb-findings` | `outline_and_pours` |
 | PCB constraint findings: the requirement's numbers, zoom, placer clears it | `pcb.md` | `pcb-constraints` | `constrained` |
 | Panel preview (V-cut grid of one board) | `pcb.md` | `panel` | `led_panel` |
+| One selection in every view, go to anything (Ctrl+P), command palette (Ctrl+Shift+P, Ctrl+K), keyboard cheat sheet (?) | `palette.md` | `palette` | `two_boards` |
 | Build panel (build, fab, downloads) | `build-panel.md` | `build` | `two_boards` |
 | Orders (list, run, summary, downloads) | `build-panel.md` | `order` | `two_boards` |
 | Problems: errors, warnings, notes | `source-editor.md` | `editor`, `big-problems` | `two_boards`, `big` |
