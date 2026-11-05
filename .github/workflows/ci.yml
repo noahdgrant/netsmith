@@ -138,12 +138,17 @@ jobs:
         run: cargo run --quiet -p netsmith-kicad --example locate
 
       # --nocapture shows the "skipped: ..." lines, so the run can prove that no test skipped
-      # itself for want of KiCad. `shell: bash` runs with pipefail, which keeps the test result.
+      # itself for want of KiCad. The output goes to a file and not through a pipe: a process a
+      # test leaves running (one run had a hung child) would hold the pipe open and the step
+      # would never end, although every test had finished.
       - name: Test with KiCad
-        shell: bash
+        timeout-minutes: 30
         run: |
-          cargo test --workspace --no-fail-fast -- --nocapture 2>&1 | tee test.log
+          status=0
+          cargo test --workspace --no-fail-fast -- --nocapture > test.log 2>&1 || status=$?
+          cat test.log
           if grep -n "skipped: no KiCad symbol and footprint libraries" test.log; then
             echo "::error::a test skipped itself although KiCad is installed"
-            exit 1
+            status=1
           fi
+          exit $status
