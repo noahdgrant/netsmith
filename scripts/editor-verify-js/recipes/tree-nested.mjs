@@ -134,6 +134,53 @@ export async function run({ page, shot, step, expect, section }) {
   expect(opened > before && (await row('d:module:parts').getAttribute('aria-expanded')) === 'true', `expand all: ${opened} rows`);
   await page.locator('button[aria-label="Collapse all"]').click();
 
+  step('the scroll stays where it is when a file or folder opens or closes, a file is opened, or the filter is used');
+  await page.locator('button[aria-label="Expand all"]').click();
+  const treeBox = page.locator('.ft-tree');
+  const scrollTop = () => treeBox.evaluate((e) => e.scrollTop);
+  await treeBox.evaluate((e) => { e.scrollTop = 400; });
+  await page.waitForTimeout(150);
+  const at = await scrollTop();
+  expect(at === 400, `the list is scrolled 400 px down (${at})`);
+  // A file with definitions, near the bottom of what is on screen.
+  const visibleFiles = () => treeBox.evaluate((e) => {
+    const box = e.getBoundingClientRect();
+    return [...e.querySelectorAll('.ft-file')].filter((r) => { const b = r.getBoundingClientRect(); return b.top > box.top + 40 && b.bottom < box.bottom && r.querySelector('.ft-twisty:not(.none)'); }).map((r) => r.dataset.id);
+  });
+  const lowFile = (await visibleFiles()).at(-1);
+  expect(!!lowFile, `a file with definitions is in view (${lowFile})`);
+  await row(lowFile).locator('.ft-twisty').click();
+  await page.waitForTimeout(150);
+  expect(Math.abs((await scrollTop()) - at) <= 1, `closing a file near the bottom keeps the scroll (${await scrollTop()})`);
+  await row(lowFile).locator('.ft-twisty').click();
+  await page.waitForTimeout(150);
+  expect(Math.abs((await scrollTop()) - at) <= 1, `and opening it again (${await scrollTop()})`);
+  const folderId = await treeBox.evaluate((e) => { const box = e.getBoundingClientRect(); const r = [...e.querySelectorAll('.ft-folder')].find((x) => { const b = x.getBoundingClientRect(); return b.top > box.top + 40 && b.bottom < box.bottom - 60; }); return r?.dataset.id; });
+  await row(folderId).click();
+  await page.waitForTimeout(150);
+  expect(Math.abs((await scrollTop()) - at) <= 1, `closing a folder (${folderId}) keeps the scroll (${await scrollTop()})`);
+  await row(folderId).click();
+  await page.waitForTimeout(150);
+  expect(Math.abs((await scrollTop()) - at) <= 1, `and opening it (${await scrollTop()})`);
+  // A click on a file below the top: the active file changes, and the list stays.
+  const another = (await visibleFiles()).at(0);
+  await row(another).click();
+  await page.waitForSelector('.ft-row.active');
+  await page.waitForTimeout(150);
+  expect(Math.abs((await scrollTop()) - at) <= 1, `opening another file keeps the scroll (${await scrollTop()})`);
+  // The filter: typing leaves the place, and clearing it goes back to it.
+  await page.fill('.tree-filter', 'adc');
+  await page.fill('.tree-filter', '');
+  await page.waitForTimeout(150);
+  expect(Math.abs((await scrollTop()) - at) <= 1, `a filter typed and cleared (${await scrollTop()})`);
+  // The tree is drawn again, as when the files are read again: the same.
+  await page.locator('.ft-tree').evaluate((e) => e.dispatchEvent(new Event('scroll')));
+  await page.keyboard.press('Control+s');
+  await page.waitForTimeout(300);
+  expect(Math.abs((await scrollTop()) - at) <= 1, `a draw that changes nothing (${await scrollTop()})`);
+  await shot('scrolled-1366x768');
+  await page.locator('button[aria-label="Collapse all"]').click();
+
   step('the filter keeps the tree: the folders above a match stay, open, with the match marked');
   await page.fill('.tree-filter', 'relay_b');
   const ids = await page.locator('.ft-row').evaluateAll((rs) => rs.map((r) => r.dataset.id));

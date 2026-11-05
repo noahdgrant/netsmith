@@ -14,9 +14,9 @@ use std::{
 use netsmith_editor::{
     ApiError, Attachment, Backend,
     api::{
-        Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, ClientMessage, Definition,
-        Download, FabReport, FileContent, OrderBoardInfo, OrderInfo, OrderReport, PanelView,
-        PcbReport, PowerTree, Project, Saved, ServerMessage, SystemView,
+        Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, ClientMessage,
+        Definition, Download, FabReport, FileContent, OrderBoardInfo, OrderInfo, OrderReport,
+        PanelView, PcbReport, PowerTree, Project, Saved, ServerMessage, SystemView,
     },
 };
 
@@ -405,20 +405,36 @@ fn the_file_operations_are_posts_with_a_json_body_that_need_the_guard_header() {
         ("/api/fs/rename", r#"{"from":"src/a.nsm","to":"src/b.nsm"}"#),
         ("/api/fs/delete", r#"{"path":"src/a.nsm","confirm":true}"#),
     ] {
-        assert_eq!(ask(path, body, false).status, 403, "{path} without the header");
+        assert_eq!(
+            ask(path, body, false).status,
+            403,
+            "{path} without the header"
+        );
         let r = ask(path, body, true);
         assert_eq!(r.status, 200, "{path}: {}", r.body);
         assert!(r.body.contains("\"path\":\"src/"), "{path}: {}", r.body);
-        assert_eq!(ask(path, "not json", true).status, 400, "{path} with a bad body");
+        assert_eq!(
+            ask(path, "not json", true).status,
+            400,
+            "{path} with a bad body"
+        );
         assert_eq!(s.get(path).status, 405, "{path} is not a GET");
     }
     // The backend's refusals come through with their status and message.
-    let r = ask("/api/fs/create-file", r#"{"path":"src/taken.nsm","text":""}"#, true);
+    let r = ask(
+        "/api/fs/create-file",
+        r#"{"path":"src/taken.nsm","text":""}"#,
+        true,
+    );
     assert_eq!(r.status, 409);
     assert!(r.body.contains("already there"), "{}", r.body);
     let r = ask("/api/fs/create-dir", r#"{"path":"src/../x"}"#, true);
     assert_eq!(r.status, 403);
-    let r = ask("/api/fs/delete", r#"{"path":"src/a","confirm":false}"#, true);
+    let r = ask(
+        "/api/fs/delete",
+        r#"{"path":"src/a","confirm":false}"#,
+        true,
+    );
     assert_eq!(r.status, 428);
 }
 

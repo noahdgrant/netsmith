@@ -34,7 +34,7 @@ const FILES = {
   'src/greenhouse.nsm': `//! The top level of the invented greenhouse controller.
 
 import std::sources::Rail
-import std::mfg::jlcpcb::TwoLayer
+import std::mfg::jlcpcb::{TwoLayer, VCutPanel}
 
 /// A stand-in interface.
 interface Probe {
@@ -59,6 +59,7 @@ system GrowRack {
 
 /// Ten sensor heads on one panel.
 panel HeadPanel {
+    .fab: VCutPanel { .columns &= 3; .rows &= 2 }
     .head: SensorHead
 }
 `,

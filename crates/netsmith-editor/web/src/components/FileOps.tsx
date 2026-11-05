@@ -130,12 +130,12 @@ export function NameEntry({
           <div class="ft-entry-note">
             {entry.renaming ? `Renames to ${name}` : `Makes ${shown}/${name}`}
             {physical && board ? ` for ${board}` : ''}
-            <span class="ft-entry-keys"> · Enter to make it, Esc to cancel</span>
+            <span class="ft-entry-keys">Enter to {entry.renaming ? 'rename' : 'make it'}, Esc to cancel</span>
           </div>
         ) : (
           <div class="ft-entry-note">
             {entry.kind === 'file' ? 'The ending .nsm is added.' : `In ${shown}.`}
-            <span class="ft-entry-keys"> · Esc to cancel</span>
+            <span class="ft-entry-keys">Esc to cancel</span>
           </div>
         )}
         {offered && (

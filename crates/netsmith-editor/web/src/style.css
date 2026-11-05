@@ -497,10 +497,10 @@ td.des { font-weight: 600; }
 .ft-input::placeholder { color: var(--faint); }
 .ft-entry-help { flex: 0 0 100%; padding: 4px 0 0 40px; font-size: 12px; line-height: 1.35; white-space: normal; }
 .ft-entry-note { color: var(--muted); }
-.ft-entry-keys { color: var(--faint); }
+.ft-entry-keys { display: block; color: var(--faint); }
 .ft-entry-error { color: var(--bad); margin: 0; }
 .ft-choice { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 6px; }
-.ft-choice-label { color: var(--faint); margin-right: 2px; }
+.ft-choice-label { flex: 0 0 100%; color: var(--faint); }
 .ft-chip { padding: 1px 8px; font-size: 12px; line-height: 18px; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
 .ft-chip:hover { color: var(--text); border-color: #4a4d55; }
 .ft-chip.on { color: var(--text); background: color-mix(in srgb, var(--accent) 22%, var(--panel)); border-color: var(--accent); }

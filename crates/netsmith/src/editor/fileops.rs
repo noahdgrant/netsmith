@@ -53,24 +53,36 @@ pub(super) fn segments(path: &str) -> Result<Vec<String>, ApiError> {
     let mut out = Vec::new();
     for word in path.split('/') {
         match word {
-            "" => return Err(ApiError::bad_request(format!("`{path}` has an empty name in it"))),
+            "" => {
+                return Err(ApiError::bad_request(format!(
+                    "`{path}` has an empty name in it"
+                )));
+            }
             "." | ".." => {
-                return Err(leaves(format!("`{path}` leaves the project: `{word}` is not allowed")));
+                return Err(leaves(format!(
+                    "`{path}` leaves the project: `{word}` is not allowed"
+                )));
             }
             w if w.starts_with('.') => {
-                return Err(leaves(format!("`{path}`: a name that starts with `.` is hidden, and the editor does not touch it")));
+                return Err(leaves(format!(
+                    "`{path}`: a name that starts with `.` is hidden, and the editor does not touch it"
+                )));
             }
             w => out.push(w.to_string()),
         }
     }
     if RESERVED_ROOTS.contains(&out[0].as_str()) {
-        return Err(leaves(format!("`{}` is written by netsmith, not edited", out[0])));
+        return Err(leaves(format!(
+            "`{}` is written by netsmith, not edited",
+            out[0]
+        )));
     }
     Ok(out)
 }
 
 /// What a name below `src/` must be, said for the person.
-pub(super) const NAME_RULE: &str = "a name below src/ is a module name: letters, digits and `_`, not starting with a digit";
+pub(super) const NAME_RULE: &str =
+    "a name below src/ is a module name: letters, digits and `_`, not starting with a digit";
 
 fn windows_reserved(stem: &str) -> bool {
     WINDOWS_RESERVED.contains(&stem.to_lowercase().as_str())
@@ -79,10 +91,14 @@ fn windows_reserved(stem: &str) -> bool {
 /// A folder's name.
 pub(super) fn check_folder_name(name: &str) -> Result<(), ApiError> {
     if name.len() > MAX_NAME {
-        return Err(ApiError::bad_request(format!("`{name}` is longer than {MAX_NAME} characters")));
+        return Err(ApiError::bad_request(format!(
+            "`{name}` is longer than {MAX_NAME} characters"
+        )));
     }
     if !is_identifier(name) || windows_reserved(name) {
-        return Err(ApiError::bad_request(format!("`{name}` is not a folder name: {NAME_RULE}")));
+        return Err(ApiError::bad_request(format!(
+            "`{name}` is not a folder name: {NAME_RULE}"
+        )));
     }
     Ok(())
 }
@@ -91,17 +107,23 @@ pub(super) fn check_folder_name(name: &str) -> Result<(), ApiError> {
 /// the stem and whether it is a physical file's.
 pub(super) fn check_file_name(name: &str) -> Result<(String, bool), ApiError> {
     if name.len() > MAX_NAME {
-        return Err(ApiError::bad_request(format!("`{name}` is longer than {MAX_NAME} characters")));
+        return Err(ApiError::bad_request(format!(
+            "`{name}` is longer than {MAX_NAME} characters"
+        )));
     }
     let Some(base) = name.strip_suffix(".nsm") else {
-        return Err(ApiError::bad_request(format!("`{name}` is not a source file: its name ends in `.nsm`")));
+        return Err(ApiError::bad_request(format!(
+            "`{name}` is not a source file: its name ends in `.nsm`"
+        )));
     };
     let (stem, physical) = match base.strip_suffix(".physical") {
         Some(stem) => (stem, true),
         None => (base, false),
     };
     if !is_identifier(stem) || windows_reserved(stem) {
-        return Err(ApiError::bad_request(format!("`{name}` is not a source file's name: {NAME_RULE}")));
+        return Err(ApiError::bad_request(format!(
+            "`{name}` is not a source file's name: {NAME_RULE}"
+        )));
     }
     Ok((stem.to_string(), physical))
 }
@@ -153,12 +175,16 @@ impl Workspace {
         }
         let shown = segments[..segments.len() - 1].join("/");
         let canonical = fs::canonicalize(&dir).map_err(|e| match e.kind() {
-            io::ErrorKind::NotFound => ApiError::not_found(format!("the folder `{shown}` is not there")),
+            io::ErrorKind::NotFound => {
+                ApiError::not_found(format!("the folder `{shown}` is not there"))
+            }
             _ => io_error(&shown, &e),
         })?;
         let src = root.join(SOURCE_DIR);
         if !canonical.starts_with(&src) {
-            return Err(leaves(format!("`{shown}` is not inside the project's {SOURCE_DIR}/ folder")));
+            return Err(leaves(format!(
+                "`{shown}` is not inside the project's {SOURCE_DIR}/ folder"
+            )));
         }
         if !canonical.is_dir() {
             return Err(ApiError::bad_request(format!("`{shown}` is not a folder")));
@@ -174,7 +200,9 @@ impl Workspace {
     ) -> Result<(Vec<String>, PathBuf, Option<(String, bool)>), ApiError> {
         let words = segments(path)?;
         if words.len() < 2 || words[0] != SOURCE_DIR {
-            return Err(leaves(format!("`{path}`: new files and folders go below {SOURCE_DIR}/")));
+            return Err(leaves(format!(
+                "`{path}`: new files and folders go below {SOURCE_DIR}/"
+            )));
         }
         for dir in &words[1..words.len() - 1] {
             check_folder_name(dir)?;
@@ -202,7 +230,9 @@ impl Workspace {
         let (words, parent, named) = Self::place(&root, path, true)?;
         let name = words.last().expect("a path has a name");
         if text.len() > MAX_TEXT || text.contains('\0') {
-            return Err(ApiError::bad_request("the text is too long or has a NUL in it"));
+            return Err(ApiError::bad_request(
+                "the text is too long or has a NUL in it",
+            ));
         }
         let (stem, physical) = named.expect("a file has a name");
         if physical && !parent.join(format!("{stem}.nsm")).is_file() {
@@ -211,7 +241,10 @@ impl Workspace {
             )));
         }
         if taken(&parent, name) {
-            return Err(ApiError::conflict(format!("`{}` is already there", words.join("/"))));
+            return Err(ApiError::conflict(format!(
+                "`{}` is already there",
+                words.join("/")
+            )));
         }
         let mut file = fs::OpenOptions::new()
             .write(true)
@@ -229,7 +262,10 @@ impl Workspace {
         let (words, parent, _) = Self::place(&root, path, false)?;
         let name = words.last().expect("a path has a name");
         if taken(&parent, name) {
-            return Err(ApiError::conflict(format!("`{}` is already there", words.join("/"))));
+            return Err(ApiError::conflict(format!(
+                "`{}` is already there",
+                words.join("/")
+            )));
         }
         fs::create_dir(parent.join(name)).map_err(|e| io_error(&words.join("/"), &e))?;
         Ok(self.changed(words.join("/")))
@@ -241,10 +277,14 @@ impl Workspace {
         if let Ok(entry) = self.entry(path) {
             match entry.role {
                 FileRole::Manifest => {
-                    return Err(leaves(format!("`{MANIFEST}` is the project's manifest: edit it outside the editor")));
+                    return Err(leaves(format!(
+                        "`{MANIFEST}` is the project's manifest: edit it outside the editor"
+                    )));
                 }
                 FileRole::Std => {
-                    return Err(leaves(format!("`{path}` is part of the standard library, which is built into netsmith")));
+                    return Err(leaves(format!(
+                        "`{path}` is part of the standard library, which is built into netsmith"
+                    )));
                 }
                 _ => {}
             }
@@ -262,16 +302,27 @@ impl Workspace {
             let abs = parent.join(&words[words.len() - 1]);
             match fs::symlink_metadata(&abs) {
                 Ok(m) if m.file_type().is_symlink() => {
-                    return Err(leaves(format!("`{path}` is a symbolic link: the editor does not follow it")));
+                    return Err(leaves(format!(
+                        "`{path}` is a symbolic link: the editor does not follow it"
+                    )));
                 }
-                Ok(m) if m.is_dir() => return Ok(Thing::Folder { abs, rel: words.join("/") }),
+                Ok(m) if m.is_dir() => {
+                    return Ok(Thing::Folder {
+                        abs,
+                        rel: words.join("/"),
+                    });
+                }
                 _ => {}
             }
         }
         if words.len() == 1 && words[0] == SOURCE_DIR {
-            return Err(leaves(format!("`{SOURCE_DIR}` is where the modules are: it is not renamed or removed")));
+            return Err(leaves(format!(
+                "`{SOURCE_DIR}` is where the modules are: it is not renamed or removed"
+            )));
         }
-        Err(ApiError::not_found(format!("`{path}` is not a file or folder of the project's tree")))
+        Err(ApiError::not_found(format!(
+            "`{path}` is not a file or folder of the project's tree"
+        )))
     }
 
     /// The top-level files below a folder, by name.
@@ -291,7 +342,9 @@ impl Workspace {
         let thing = self.thing(&root, from)?;
         let words = segments(to)?;
         if words.len() < 2 || words[0] != SOURCE_DIR {
-            return Err(leaves(format!("`{to}`: files and folders are moved only below {SOURCE_DIR}/")));
+            return Err(leaves(format!(
+                "`{to}`: files and folders are moved only below {SOURCE_DIR}/"
+            )));
         }
         for dir in &words[1..words.len() - 1] {
             check_folder_name(dir)?;
@@ -300,7 +353,9 @@ impl Workspace {
         let parent = Self::parent_of(&root, &words)?;
         let shown = words.join("/");
         match thing {
-            Thing::File { top_level: true, .. } => Err(ApiError::bad_request(format!(
+            Thing::File {
+                top_level: true, ..
+            } => Err(ApiError::bad_request(format!(
                 "`{from}` is a top-level file, which netsmith.toml lists by name: change the list there, then rename it"
             ))),
             Thing::File { physical: true, .. } => Err(ApiError::bad_request(format!(
@@ -309,7 +364,9 @@ impl Workspace {
             Thing::File { abs, .. } => {
                 let (stem, physical) = check_file_name(&name)?;
                 if physical {
-                    return Err(ApiError::bad_request(format!("`{name}` is a physical file's name: a module is `{stem}.nsm`")));
+                    return Err(ApiError::bad_request(format!(
+                        "`{name}` is a physical file's name: a module is `{stem}.nsm`"
+                    )));
                 }
                 if taken(&parent, &name) {
                     return Err(ApiError::conflict(format!("`{shown}` is already there")));
@@ -319,7 +376,9 @@ impl Workspace {
                 let side_to = parent.join(format!("{stem}.physical.nsm"));
                 let moves_side = side.is_file();
                 if moves_side && taken(&parent, &format!("{stem}.physical.nsm")) {
-                    return Err(ApiError::conflict(format!("`{stem}.physical.nsm` is already there")));
+                    return Err(ApiError::conflict(format!(
+                        "`{stem}.physical.nsm` is already there"
+                    )));
                 }
                 fs::rename(&abs, parent.join(&name)).map_err(|e| io_error(from, &e))?;
                 if moves_side && let Err(e) = fs::rename(&side, &side_to) {
@@ -331,7 +390,9 @@ impl Workspace {
             Thing::Folder { abs, rel } => {
                 check_folder_name(&name)?;
                 if shown == rel || shown.starts_with(&format!("{rel}/")) {
-                    return Err(ApiError::bad_request(format!("`{from}` cannot be moved into itself")));
+                    return Err(ApiError::bad_request(format!(
+                        "`{from}` cannot be moved into itself"
+                    )));
                 }
                 if let Some(top) = self.top_level_in(&rel).first() {
                     return Err(ApiError::bad_request(format!(
@@ -351,11 +412,17 @@ impl Workspace {
         let root = self.project_root()?;
         let _one_at_a_time = self.editing.lock().unwrap_or_else(|e| e.into_inner());
         match self.thing(&root, path)? {
-            Thing::File { abs, top_level, physical } => {
+            Thing::File {
+                abs,
+                top_level,
+                physical,
+            } => {
                 if top_level && !confirm {
                     return Err(ApiError::new(
                         428,
-                        format!("`{path}` is a top-level file: removing it needs a yes (it is listed in netsmith.toml, which still names it)"),
+                        format!(
+                            "`{path}` is a top-level file: removing it needs a yes (it is listed in netsmith.toml, which still names it)"
+                        ),
                     ));
                 }
                 fs::remove_file(&abs).map_err(|e| io_error(path, &e))?;
@@ -366,7 +433,10 @@ impl Workspace {
                 }
             }
             Thing::Folder { abs, rel } => {
-                let empty = fs::read_dir(&abs).map_err(|e| io_error(path, &e))?.next().is_none();
+                let empty = fs::read_dir(&abs)
+                    .map_err(|e| io_error(path, &e))?
+                    .next()
+                    .is_none();
                 if !empty && !confirm {
                     let top = self.top_level_in(&rel);
                     let more = if top.is_empty() {
@@ -399,7 +469,9 @@ impl Workspace {
             if depth > 16 || out.len() > 2000 {
                 return;
             }
-            let Ok(entries) = fs::read_dir(dir) else { return };
+            let Ok(entries) = fs::read_dir(dir) else {
+                return;
+            };
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
                 if name.starts_with('.') || !entry.file_type().is_ok_and(|t| t.is_dir()) {
@@ -418,8 +490,15 @@ impl Workspace {
 }
 
 enum Thing {
-    File { abs: PathBuf, top_level: bool, physical: bool },
-    Folder { abs: PathBuf, rel: String },
+    File {
+        abs: PathBuf,
+        top_level: bool,
+        physical: bool,
+    },
+    Folder {
+        abs: PathBuf,
+        rel: String,
+    },
 }
 
 #[cfg(test)]
@@ -432,20 +511,52 @@ mod tests {
 
     #[test]
     fn a_path_that_leaves_the_project_or_is_hidden_or_reserved_is_refused() {
-        for path in ["../x.nsm", "src/../x.nsm", "src/./x.nsm", "/etc/passwd", "src\\x.nsm", "C:/x.nsm", ".git/config", "src/.hidden/x.nsm", "target/x.nsm", "out/x.nsm", "fab/x.nsm"] {
+        for path in [
+            "../x.nsm",
+            "src/../x.nsm",
+            "src/./x.nsm",
+            "/etc/passwd",
+            "src\\x.nsm",
+            "C:/x.nsm",
+            ".git/config",
+            "src/.hidden/x.nsm",
+            "target/x.nsm",
+            "out/x.nsm",
+            "fab/x.nsm",
+        ] {
             assert_eq!(refused(path), 403, "{path}");
         }
         for path in ["", "src//x.nsm", "src/x.nsm/", "src/a\0b.nsm"] {
             assert_eq!(refused(path), 400, "{path:?}");
         }
-        assert_eq!(segments("src/sheets/adc.nsm").unwrap(), ["src", "sheets", "adc.nsm"]);
+        assert_eq!(
+            segments("src/sheets/adc.nsm").unwrap(),
+            ["src", "sheets", "adc.nsm"]
+        );
     }
 
     #[test]
     fn a_file_is_a_modules_name_or_a_physical_files() {
-        assert_eq!(check_file_name("power.nsm").unwrap(), ("power".to_string(), false));
-        assert_eq!(check_file_name("power.physical.nsm").unwrap(), ("power".to_string(), true));
-        for bad in ["power", "power.txt", "1power.nsm", "po-wer.nsm", "po wer.nsm", ".nsm", "a.b.nsm", "con.nsm", "NUL.nsm", &format!("{}.nsm", "a".repeat(70))] {
+        assert_eq!(
+            check_file_name("power.nsm").unwrap(),
+            ("power".to_string(), false)
+        );
+        assert_eq!(
+            check_file_name("power.physical.nsm").unwrap(),
+            ("power".to_string(), true)
+        );
+        for bad in [
+            "power",
+            "power.txt",
+            "1power.nsm",
+            "po-wer.nsm",
+            "po wer.nsm",
+            ".nsm",
+            "a.b.nsm",
+            "con.nsm",
+            "NUL.nsm",
+            &format!("{}.nsm", "a".repeat(70)),
+        ] {
             assert_eq!(check_file_name(bad).unwrap_err().status, 400, "{bad}");
         }
     }

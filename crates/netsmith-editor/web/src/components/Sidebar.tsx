@@ -345,6 +345,8 @@ export function Sidebar() {
   // Where the list is scrolled, kept by the page: nothing that changes the rows moves it.
   const scrolled = useRef(0);
   const revealed = useRef<string | null>(null);
+  // Where the list was before a filter was typed, which it goes back to when the filter is cleared.
+  const beforeFilter = useRef(0);
   const key = storageKey(p?.title ?? '');
   // What the project had open last time; it is read again when another project is loaded.
   const [saved, setSaved] = useState<{ key: string; map: Overrides }>(() => ({ key, map: parseOverrides(load(key, {})) }));
@@ -354,6 +356,11 @@ export function Sidebar() {
   const shown = useMemo(() => filterTree(sections, filter), [sections, filter]);
   const rows = useMemo(() => flatten(shown, overrides, filter), [shown, overrides, filter]);
   const filtering = filter.trim() !== '';
+  const setFilterKeeping = (next: string) => {
+    if (filter === '' && next !== '') beforeFilter.current = scrolled.current;
+    else if (filter !== '' && next === '') scrolled.current = beforeFilter.current;
+    setFilter(next);
+  };
 
   const remember = (next: Overrides) => {
     setSaved({ key, map: next });
@@ -420,7 +427,7 @@ export function Sidebar() {
     if (!canEdit) return say(noProject, true);
     const dir = dirIn ?? folderFor(nodeOf(focus));
     setMenu(null);
-    setFilter('');
+    setFilterKeeping('');
     opened(dir);
     setTyping({ kind, dir });
   };
@@ -637,9 +644,9 @@ export function Sidebar() {
           placeholder="Filter files and definitions"
           aria-label="Filter files and definitions"
           value={filter}
-          onInput={(e) => setFilter((e.target as HTMLInputElement).value)}
+          onInput={(e) => setFilterKeeping((e.target as HTMLInputElement).value)}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') setFilter('');
+            if (e.key === 'Escape') setFilterKeeping('');
             else if (e.key === 'ArrowDown' && rows.length) {
               e.preventDefault();
               move(focus ?? rows[0].id);
