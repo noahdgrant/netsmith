@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import type { Draw, Edge, PowerNode, PowerTree, Range } from '../api';
 import { DOTS, amps, ampsText, rangeText, voltRangeText, voltsText } from './format';
-import { type Item, layoutTree } from './layout';
+import { type Item, layoutTree } from '../flow/layout';
 import { TOP, issuesOf, levels, loadOf, modelOf, splitLabel, stageKind } from './model';
-import { move, upstream } from './select';
+import { downstream, move, trace, upstream } from '../flow/select';
 
 const range = (lo: number, hi: number): Range => ({ lo, hi, text: `${lo}..${hi}` });
 const draw = (who: string, lo: number, hi: number | null): Draw => ({
@@ -277,6 +277,20 @@ describe('selecting', () => {
     expect([...p.nodes].sort()).toEqual(['V3', 'V5', 'VIN', 's1', 's2']);
     expect([...p.links].sort()).toEqual(['V5>s2', 'VIN>s1', 's1>V5', 's2>V3']);
     expect([...upstream(links, 'VIN').nodes]).toEqual(['VIN']);
+  });
+  it('lights what a source feeds, what feeds a leaf, and both ways for a card between', () => {
+    const t = trace(links, 'VIN');
+    expect([...t.up.nodes]).toEqual(['VIN']);
+    expect([...t.nodes].sort()).toEqual(['V12', 'V3', 'V5', 'VIN', 's1', 's2', 's3']);
+    expect([...t.down.links].sort()).toEqual(['V5>s2', 'V5>s3', 'VIN>s1', 's1>V5', 's2>V3', 's3>V12']);
+    const leaf = trace(links, 'V3');
+    expect([...leaf.down.nodes]).toEqual(['V3']);
+    expect([...leaf.nodes].sort()).toEqual(['V3', 'V5', 'VIN', 's1', 's2']);
+    const mid = trace(links, 'V5');
+    expect([...mid.up.nodes].sort()).toEqual(['V5', 'VIN', 's1']);
+    expect([...mid.down.nodes].sort()).toEqual(['V12', 'V3', 'V5', 's2', 's3']);
+    expect([...mid.up.links].sort()).toEqual(['VIN>s1', 's1>V5']);
+    expect([...downstream(links, 'V12').nodes]).toEqual(['V12']);
   });
   it('survives a cycle', () => {
     expect(upstream([...links, { from: 'V3', to: 'VIN' }], 'V3').nodes.size).toBe(5);

@@ -3,10 +3,11 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import type { PowerTree } from '../api';
 import { api } from '../client';
+import { MiniMap } from '../components/MiniMap';
 import { PanZoom } from '../components/PanZoom';
 import { analysis, board, goTo, systemName } from '../store';
 import { DOTS, amps, loadsText, voltRangeText, voltsText } from '../power/format';
-import { type Item, type Placed, type TreeLayout, layoutTree } from '../power/layout';
+import { type Item, type Placed, type TreeLayout, layoutTree } from '../flow/layout';
 import { RAIL_ANCHOR, RAIL_W, type Open, STAGE_W, closed, railHeight, stageHeight } from '../power/metrics';
 import {
   type Issue,
@@ -19,7 +20,7 @@ import {
   levels,
   modelOf,
 } from '../power/model';
-import { type Move, linkKey, move, upstream } from '../power/select';
+import { type Move, linkKey, move, trace } from '../flow/select';
 
 /** A minus sign that is as wide as a plus. */
 const minus = (t: string) => t.replace('-', '−');
@@ -109,6 +110,7 @@ function RailCard({
   open,
   setOpen,
   selected,
+  tint,
   dim,
   onSelect,
   onTip,
@@ -119,6 +121,7 @@ function RailCard({
   open: Open;
   setOpen: (o: Open) => void;
   selected: boolean;
+  tint: string;
   dim: boolean;
   onSelect: () => void;
   onTip: (t: Tip | null, now?: boolean) => void;
@@ -134,7 +137,7 @@ function RailCard({
   const issues = !r.sourced ? 'No source' : level === 'bad' ? badgeText('bad') : level === 'warn' ? badgeText('warn') : '';
   return (
     <div
-      class={`pt-node pt-rail ${level ?? ''} ${selected ? 'selected' : ''} ${dim ? 'dim' : ''}`}
+      class={`pt-node pt-rail ${level ?? ''} ${selected ? 'selected' : ''} ${tint} ${dim ? 'dim' : ''}`}
       data-node={r.id}
       data-kind="rail"
       style={{ left: p.x, top: p.y, width: p.w, height: p.h }}
@@ -237,10 +240,10 @@ function RailCard({
   );
 }
 
-function StageCard({ s, p, level, selected, dim, onSelect }: { s: StageModel; p: Placed; level: Level | undefined; selected: boolean; dim: boolean; onSelect: () => void }) {
+function StageCard({ s, p, level, selected, tint, dim, onSelect }: { s: StageModel; p: Placed; level: Level | undefined; selected: boolean; tint: string; dim: boolean; onSelect: () => void }) {
   return (
     <div
-      class={`pt-node pt-stage kind-${s.kind} ${level ?? ''} ${selected ? 'selected' : ''} ${dim ? 'dim' : ''}`}
+      class={`pt-node pt-stage kind-${s.kind} ${level ?? ''} ${selected ? 'selected' : ''} ${tint} ${dim ? 'dim' : ''}`}
       data-node={s.id}
       data-kind="stage"
       style={{ left: p.x, top: p.y, width: p.w, height: p.h }}
@@ -300,7 +303,7 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
   );
   const placed = new Map(layout.nodes.map((n) => [n.id, n]));
   const lv = useMemo(() => levels(model.issues), [model]);
-  const path = useMemo(() => (selected ? upstream(model.links, selected) : null), [model, selected]);
+  const path = useMemo(() => (selected ? trace(model.links, selected) : null), [model, selected]);
 
   // A selection that no longer exists (the tree changed) is dropped.
   useEffect(() => {
@@ -400,26 +403,33 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
               <marker id="pt-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
                 <path d="M0,0 L10,5 L0,10 z" class="pt-arrowhead" />
               </marker>
-              <marker id="pt-arrow-hot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-                <path d="M0,0 L10,5 L0,10 z" class="pt-arrowhead hot" />
+              <marker id="pt-arrow-up" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                <path d="M0,0 L10,5 L0,10 z" class="pt-arrowhead up" />
+              </marker>
+              <marker id="pt-arrow-down" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                <path d="M0,0 L10,5 L0,10 z" class="pt-arrowhead down" />
               </marker>
             </defs>
             {layout.edges.map((e) => {
-              const hot = path?.links.has(linkKey(e)) ?? false;
+              const k = linkKey(e);
+              const tint = path?.up.links.has(k) ? 'up' : path?.down.links.has(k) ? 'down' : '';
               return (
                 <path
-                  key={linkKey(e)}
+                  key={k}
                   data-from={e.from}
                   data-to={e.to}
+                  data-points={JSON.stringify(e.points)}
+                  data-back={e.back ? 'true' : undefined}
                   d={e.d}
-                  class={`pt-edge ${hot ? 'hot' : ''} ${path && !hot ? 'dim' : ''}`}
-                  marker-end={hot ? 'url(#pt-arrow-hot)' : 'url(#pt-arrow)'}
+                  class={`pt-edge ${tint ? `hot ${tint}` : ''} ${path && !tint ? 'dim' : ''}`}
+                  marker-end={tint ? `url(#pt-arrow-${tint})` : 'url(#pt-arrow)'}
                 />
               );
             })}
           </svg>
           {layout.nodes.map((n) => {
             const dim = path !== null && !path.nodes.has(n.id);
+            const tint = path?.up.nodes.has(n.id) ? 'up' : path?.down.nodes.has(n.id) ? 'down' : '';
             const r = rails.get(n.id);
             if (r) {
               return (
@@ -431,6 +441,7 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
                   open={openOf(n.id)}
                   setOpen={(o) => setOpen(n.id, o)}
                   selected={selected === n.id}
+                  tint={tint}
                   dim={dim}
                   onSelect={() => select(selected === n.id ? null : n.id)}
                   onTip={showTip}
@@ -438,10 +449,10 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
               );
             }
             const s = stages.get(n.id)!;
-            return <StageCard key={n.id} s={s} p={n} level={lv.get(n.id)} selected={selected === n.id} dim={dim} onSelect={() => select(selected === n.id ? null : n.id)} />;
+            return <StageCard key={n.id} s={s} p={n} level={lv.get(n.id)} selected={selected === n.id} tint={tint} dim={dim} onSelect={() => select(selected === n.id ? null : n.id)} />;
           })}
         </PanZoom>
-        <MiniMap layout={layout} view={view} selected={path} levels={lv} onGo={(x, y) => setCentre({ x, y, seq: (centre?.seq ?? 0) + 1 })} />
+        <MiniMap layout={layout} view={view} tintOf={(id) => (path?.up.nodes.has(id) ? 'up' : path?.down.nodes.has(id) ? 'down' : '')} levelOf={(id) => lv.get(id) ?? ''} onGo={(x, y) => setCentre({ x, y, seq: (centre?.seq ?? 0) + 1 })} />
       </div>
       {tip && <LoadTip tip={tip} onEnter={() => window.clearTimeout(timer.current)} onLeave={() => showTip(null)} />}
     </div>
@@ -478,67 +489,6 @@ function LoadTip({ tip, onEnter, onLeave }: { tip: Tip; onEnter: () => void; onL
         </button>
       )}
     </div>
-  );
-}
-
-const MAP_W = 188;
-
-/** The whole tree small, with the part the window shows; a click or a drag moves the view. */
-function MiniMap({
-  layout,
-  view,
-  selected,
-  levels: lv,
-  onGo,
-}: {
-  layout: TreeLayout;
-  view: { k: number; x: number; y: number; w: number; h: number } | null;
-  selected: { nodes: Set<string> } | null;
-  levels: Map<string, Level>;
-  onGo: (x: number, y: number) => void;
-}) {
-  const scale = MAP_W / Math.max(layout.width, 1);
-  const h = Math.max(24, Math.min(140, layout.height * scale));
-  const s = Math.min(scale, h / Math.max(layout.height, 1));
-  const go = (e: PointerEvent) => {
-    const r = (e.currentTarget as Element).getBoundingClientRect();
-    onGo((e.clientX - r.left) / s, (e.clientY - r.top) / s);
-  };
-  return (
-    <svg
-      class="pt-minimap"
-      width={Math.round(layout.width * s)}
-      height={Math.round(layout.height * s)}
-      role="img"
-      aria-label="Overview of the whole tree. Click to move the view."
-      onPointerDown={(e) => {
-        e.stopPropagation();
-        (e.currentTarget as Element).setPointerCapture(e.pointerId);
-        go(e);
-      }}
-      onPointerMove={(e) => e.buttons === 1 && go(e)}
-    >
-      {layout.nodes.map((n) => (
-        <rect
-          key={n.id}
-          x={n.x * s}
-          y={n.y * s}
-          width={Math.max(2, n.w * s)}
-          height={Math.max(2, n.h * s)}
-          rx="1.5"
-          class={`mm-${n.kind} ${lv.get(n.id) ?? ''} ${selected?.nodes.has(n.id) ? 'hot' : ''}`}
-        />
-      ))}
-      {view && (
-        <rect
-          class="mm-view"
-          x={(-view.x / view.k) * s}
-          y={(-view.y / view.k) * s}
-          width={(view.w / view.k) * s}
-          height={(view.h / view.k) * s}
-        />
-      )}
-    </svg>
   );
 }
 

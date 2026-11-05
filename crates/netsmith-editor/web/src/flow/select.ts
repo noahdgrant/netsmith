@@ -1,5 +1,5 @@
-// Selecting in the power tree: the path from the sources to a node, and the keys that move along
-// the tree.
+// Selecting in a flow drawing (the power tree, the system view): what feeds a node, what it
+// feeds, and the keys that move along the drawing.
 
 import type { Link, TreeLayout } from './layout';
 
@@ -9,7 +9,7 @@ export interface Path {
   links: Set<string>;
 }
 
-export const linkKey = (l: Link): string => `${l.from}>${l.to}`;
+export const linkKey = (l: { from: string; to: string }): string => `${l.from}>${l.to}`;
 
 /** Every node that feeds `id`, through any number of stages, and the links between them. */
 export function upstream(links: Link[], id: string): Path {
@@ -29,6 +29,29 @@ export function upstream(links: Link[], id: string): Path {
     }
   }
   return { nodes, links: used };
+}
+
+/** Every node `id` feeds, through any number of nodes, and the links between them. */
+export function downstream(links: Link[], id: string): Path {
+  return upstream(links.map((l) => ({ from: l.to, to: l.from })), id);
+}
+
+/** What a selected node lights: what feeds it (`up`) and what it feeds (`down`). A node with
+ * nothing before it lights what it feeds; a node with nothing after it, what feeds it; a node
+ * between lights both, in two tints. */
+export interface Trace {
+  up: Path;
+  down: Path;
+  /** Every node of either, the selected one included. */
+  nodes: Set<string>;
+}
+
+export function trace(links: Link[], id: string): Trace {
+  const up = upstream(links, id);
+  const down = downstream(links, id);
+  // The links of `down` were read backwards: put them the right way round.
+  const flipped = new Set([...down.links].map((k) => k.split('>').reverse().join('>')));
+  return { up, down: { nodes: down.nodes, links: flipped }, nodes: new Set([...up.nodes, ...down.nodes]) };
 }
 
 export type Move = 'up' | 'down' | 'left' | 'right';
