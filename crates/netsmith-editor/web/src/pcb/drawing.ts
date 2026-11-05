@@ -36,6 +36,15 @@ export function prepare(text: string): Drawing | null {
   const box = svg.getAttribute('viewBox')?.split(' ').map(Number);
   if (svg.nodeName !== 'svg' || !box) return null;
   const [left, top, w, h] = box;
+  // The server draws the parts first and the tracks over them, so a wide track hides the pads it
+  // ends on. Copper goes under the parts: pads, outlines and reference text stay readable.
+  const firstPart = svg.querySelector('g[data-path]');
+  if (firstPart?.parentNode) {
+    for (const cls of ['l-back-copper', 'l-front-copper']) {
+      const copper = svg.querySelector(`.${cls}`);
+      if (copper && copper.parentNode === firstPart.parentNode) firstPart.parentNode.insertBefore(copper, firstPart);
+    }
+  }
   svg.setAttribute('width', String(w * SCALE));
   svg.setAttribute('height', String(h * SCALE));
   const nets = new Map<string, NetItem>();

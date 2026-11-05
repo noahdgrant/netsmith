@@ -186,6 +186,12 @@ export function App() {
   const stale = banner.value?.kind === 'stale';
   return (
     <div class={`app ${dragged ? 'dragging' : ''}`}>
+      <button
+        class="skip-link"
+        onClick={() => document.querySelector<HTMLElement>('.section:not(.away)')?.focus()}
+      >
+        Skip to the view
+      </button>
       <TopBar />
       <div
         ref={area}
@@ -214,6 +220,8 @@ export function App() {
               data-section={id}
               data-pane={shown ? vis[at].index : undefined}
               aria-hidden={!shown}
+              aria-label={SECTIONS.find((x) => x.id === id)?.label}
+              tabIndex={shown ? -1 : undefined}
               style={{ gridColumn: shown && two ? (at === 0 ? 1 : 3) : 1, gridRow: 2 }}
             >
               {id !== 'source' && id !== 'build' && <StaleStrip />}

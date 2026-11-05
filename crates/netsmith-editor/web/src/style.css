@@ -838,7 +838,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .pcb-host svg [fill="#3c78d6"] { fill: var(--pcb-back); } .pcb-host svg [stroke="#3c78d6"] { stroke: var(--pcb-back); }
 .pcb-host svg [fill="#c8c8c8"] { fill: var(--pcb-via); } .pcb-host svg [stroke="#c8c8c8"] { stroke: var(--pcb-via); }
 .pcb-host svg text[fill="#0d1117"] { fill: var(--pcb-pad-text); }
-.pcb-host svg [stroke-opacity="0.85"] { stroke-opacity: var(--pcb-track-opacity); }
+.pcb-host svg .l-front-copper line, .pcb-host svg .l-back-copper line { stroke-opacity: var(--pcb-track-opacity); }
 
 /* the theme menu in the status bar */
 .theme-list { display: flex; flex-direction: column; gap: 1px; margin: 6px -6px 0; }
@@ -870,4 +870,46 @@ h1, h2, h3 { font-weight: var(--fw-semibold); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+}
+
+/* ---- things that appear: they come in over 120-180 ms and from where they belong; nothing leaves slowly ---- */
+@keyframes pop-in { from { opacity: 0; transform: translateY(4px) scale(.985); } }
+@keyframes drop-in { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes rise-in { from { opacity: 0; transform: translateY(8px); } }
+@keyframes view-in { from { opacity: 0; } }
+.status-popover, .layer-list { animation: pop-in var(--dur-fast) var(--ease); transform-origin: bottom right; }
+.layer-list, .menu, .ft-menu, .pane-notice { animation: drop-in var(--dur-fast) var(--ease); }
+.dock { animation: rise-in var(--dur) var(--ease); }
+.section:not(.away) > .view-body, .section:not(.away) > .schematic-view, .section:not(.away) > .graph-view, .section:not(.away) > .pcb-view, .section:not(.away) > .bom, .section:not(.away) > .build { animation: view-in var(--dur-fast) var(--ease); }
+.qp { animation: drop-in var(--dur) var(--ease); }
+.ft-dialog { animation: pop-in var(--dur) var(--ease); }
+.toast { animation: toast-in var(--dur) var(--ease); }
+.qp-backdrop { animation-duration: var(--dur-fast); }
+
+/* ---- keyboard ---- */
+.skip-link { position: absolute; left: 8px; top: -48px; z-index: var(--z-dialog); height: var(--h-md); padding: 0 12px; background: var(--accent-fill); color: var(--accent-fg); border: none; border-radius: var(--r-md); font-weight: var(--fw-semibold); cursor: pointer; }
+.skip-link:focus { top: 6px; }
+.section:focus { outline: none; }
+
+/* ---- a narrow window (and a page zoomed to 200 % in a 1280 px one is a 640 px window): the top bar gives up words, not controls ---- */
+.topbar { min-width: 0; overflow: hidden; }
+.topbar > * { flex: none; }
+.topbar .cmdk, .topbar .selchip, .topbar .spacer { flex: 0 1 auto; }
+.topbar .spacer { flex: 1 1 0; min-width: 0; }
+@media (max-width: 1000px) {
+  .tool.action:not(.running) > span { display: none; }
+  .tool.action { padding: 0 8px; }
+  .actions { padding-left: 8px; margin-left: 0; }
+}
+@media (max-width: 760px) {
+  .boardpick { font-size: 0; gap: 0; }
+  .boardpick select { font-size: var(--fs-md); max-width: 150px; }
+  .brand { margin-right: 4px; }
+  .brand .logo { height: 24px; }
+  .selchip { max-width: 140px; }
+  .tabbar.sections .tab { padding: 0 11px; }
+}
+@media (max-width: 760px) {
+  .dock-search input { width: 120px; }
+  .dock-group, .dock-note { display: none; }
 }

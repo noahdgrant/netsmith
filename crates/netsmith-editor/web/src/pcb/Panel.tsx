@@ -62,7 +62,7 @@ function PartList(props: { scene: PcbScene; onFocus: (box: PcbBox) => void }) {
   const parts = sc.parts.filter((p) => !q || `${p.refdes} ${p.value} ${p.kind} ${p.path}`.toLowerCase().includes(q));
   return (
     <>
-      <input class="filter" type="search" placeholder="Filter parts" value={filter} onInput={(e) => setFilter((e.target as HTMLInputElement).value)} />
+      <input class="filter" type="search" placeholder="Filter parts" aria-label="Filter parts" value={filter} onInput={(e) => setFilter((e.target as HTMLInputElement).value)} />
       <div class="rows">
         {parts.map((p) => (
           <div
