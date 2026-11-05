@@ -948,7 +948,7 @@ fn body_of(glyph: &Glyph, orient: Orient) -> Rect {
 }
 
 /// The reference and the value of a part, written on `side` of its body.
-fn part_texts(part: &netsmith_core::Part, body: Rect, side: Dir) -> (Text, Option<Text>) {
+fn part_texts(part: &netsmith_core::Part, body: Rect, side: Dir, gap: f64) -> (Text, Option<Text>) {
     let (cx, cy) = (
         (body.min.x + body.max.x) / 2.0,
         (body.min.y + body.max.y) / 2.0,
@@ -957,9 +957,9 @@ fn part_texts(part: &netsmith_core::Part, body: Rect, side: Dir) -> (Text, Optio
     let (reference, value) = match side {
         Dir::Right | Dir::Left => {
             let (x, anchor) = if side == Dir::Right {
-                (body.max.x + GRID, Anchor::Start)
+                (body.max.x + gap, Anchor::Start)
             } else {
-                (body.min.x - GRID, Anchor::End)
+                (body.min.x - gap, Anchor::End)
             };
             (
                 text(&part.refdes, Pt::new(x, cy - 0.3), anchor),
@@ -969,26 +969,50 @@ fn part_texts(part: &netsmith_core::Part, body: Rect, side: Dir) -> (Text, Optio
         Dir::Up => (
             text(
                 &part.refdes,
-                Pt::new(cx, body.min.y - GRID - line),
+                Pt::new(cx, body.min.y - gap - line),
                 Anchor::Middle,
             ),
-            text(&part.value, Pt::new(cx, body.min.y - GRID), Anchor::Middle),
+            text(&part.value, Pt::new(cx, body.min.y - gap), Anchor::Middle),
         ),
         Dir::Down => (
             text(
                 &part.refdes,
-                Pt::new(cx, body.max.y + GRID + TEXT_SIZE),
+                Pt::new(cx, body.max.y + gap + TEXT_SIZE),
                 Anchor::Middle,
             ),
             text(
                 &part.value,
-                Pt::new(cx, body.max.y + GRID + TEXT_SIZE + line),
+                Pt::new(cx, body.max.y + gap + TEXT_SIZE + line),
                 Anchor::Middle,
             ),
         ),
     };
     let value = (!part.value.is_empty()).then_some(value);
     (reference, value)
+}
+
+/// How far from the body the texts go on `side`: beyond the wires and the X of the pins that
+/// leave that way.
+fn text_gap(pins: &[PlacedPin], side: Dir) -> f64 {
+    if pins.iter().any(|q| q.escape == side) {
+        GRID + STUB + 2.0
+    } else {
+        GRID
+    }
+}
+
+/// The side of a part's body its texts go on: one no pin leaves by, else the one fewest do.
+fn text_side(pins: &[PlacedPin], body: Rect) -> Dir {
+    let candidates = if body.height() > body.width() {
+        [Dir::Right, Dir::Left, Dir::Up, Dir::Down]
+    } else {
+        [Dir::Up, Dir::Down, Dir::Right, Dir::Left]
+    };
+    let count = |d: Dir| pins.iter().filter(|q| q.escape == d).count();
+    candidates
+        .into_iter()
+        .min_by_key(|&d| count(d))
+        .unwrap_or(Dir::Right)
 }
 
 /// Turn a part's glyph into a placed part at the origin and work out its texts.
@@ -1010,17 +1034,8 @@ fn place_part(ctx: &Ctx, p: usize, orient: Orient, nets: &[Option<usize>]) -> Pl
         .collect();
 
     // Beside a tall part, above or below a wide one, on a side no wire leaves by.
-    let free = |d: Dir| !pins.iter().any(|q| q.escape == d);
-    let candidates = if body.height() > body.width() {
-        [Dir::Right, Dir::Left, Dir::Up, Dir::Down]
-    } else {
-        [Dir::Up, Dir::Down, Dir::Right, Dir::Left]
-    };
-    let side = candidates
-        .into_iter()
-        .find(|&d| free(d))
-        .unwrap_or(Dir::Right);
-    let (reference, value) = part_texts(part, body, side);
+    let side = text_side(&pins, body);
+    let (reference, value) = part_texts(part, body, side, text_gap(&pins, side));
 
     let mut extent = body;
     extent.union(reference.extent());

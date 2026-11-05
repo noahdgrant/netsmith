@@ -725,7 +725,7 @@ fn every_pin_with_nothing_on_it_has_an_x_and_one_that_must_be_connected_a_red_on
     let svg =
         render_svg_by_module_with(&b.design, &b.groups, &b.rails, &b.mapping, &b.lib).unwrap();
     assert!(svg.contains("not connected: U5 NC (no_connect)"));
-    assert!(svg.contains("not connected: U5 P1.00 (bidirectional)"));
+    assert!(svg.contains("not connected: U5 P1.12 (bidirectional)"));
     assert!(svg.contains("not connected: U1 + (input)"));
     // One the checker says must be connected is red, with the checker's message.
     let mut marks = Marks::default();
@@ -781,6 +781,227 @@ fn the_reference_and_value_of_a_part_stay_clear_of_the_wires_to_its_symbols() {
             let mut seg = Rect::around(a);
             seg.include(c);
             assert!(!overlap(&r, &seg), "`{text}` is over a wire");
+        }
+    }
+}
+
+fn sheet_named<'a>(l: &'a Layout, name: &str) -> &'a netsmith_view::Sheet {
+    l.sheets.iter().find(|s| s.name == name).unwrap()
+}
+
+fn in_frame(s: &netsmith_view::Sheet, p: Pt) -> bool {
+    s.frame.min.x <= p.x && p.x <= s.frame.max.x && s.frame.min.y <= p.y && p.y <= s.frame.max.y
+}
+
+#[test]
+fn a_ground_is_one_straight_rail_across_the_bottom_with_one_symbol() {
+    // Owner round 2 (A): the regulator's grounds hang straight down to one rail, one symbol.
+    let b = bench();
+    let l = lay(&b);
+    let ldo = sheet_named(&l, "ldo");
+    let gnd = net_index(&b, "GND");
+    let symbols: Vec<_> = l
+        .symbols
+        .iter()
+        .filter(|s| s.net == gnd && in_frame(ldo, s.at))
+        .collect();
+    assert_eq!(symbols.len(), 1, "one ground symbol: {symbols:?}");
+    // The rail is the longest horizontal wire of ground on the sheet, below every part.
+    let rail = segments(&l)
+        .into_iter()
+        .filter(|&(net, a, c)| {
+            net == gnd && near(Pt::new(0.0, a.y), Pt::new(0.0, c.y)) && in_frame(ldo, a)
+        })
+        .max_by(|x, y| (x.1.x - x.2.x).abs().total_cmp(&(y.1.x - y.2.x).abs()))
+        .expect("a rail");
+    let y = rail.1.y;
+    let lowest = ldo
+        .parts
+        .iter()
+        .map(|&i| l.parts[i].extent.max.y)
+        .fold(f64::MIN, f64::max);
+    assert!(y > lowest, "the rail ({y}) is below every part ({lowest})");
+    // Every ground pin reaches it with a wire of at most two bends, and the symbol hangs
+    // from it, in line with a capacitor.
+    for (r, p) in [("U4", "1"), ("C2", "2"), ("C3", "2")] {
+        assert!(pin_at(&l, &b, r, p).y < y);
+    }
+    let sym = symbols[0];
+    assert!(
+        sym.at.y > y
+            && near(
+                Pt::new(sym.at.x, 0.0),
+                Pt::new(pin_at(&l, &b, "C2", "2").x, 0.0)
+            )
+    );
+    for w in l
+        .wires
+        .iter()
+        .filter(|w| w.net == gnd && in_frame(ldo, w.points[0]))
+    {
+        assert!(w.points.len() <= 4, "at most two bends: {:?}", w.points);
+    }
+}
+
+#[test]
+fn a_supply_symbol_is_in_line_with_the_capacitor_it_serves() {
+    // Owner round 2 (B): the output rail's symbol is directly above the output capacitor.
+    let b = bench();
+    let l = lay(&b);
+    let ldo = sheet_named(&l, "ldo");
+    for (rail, cap) in [("+3V3", "C3"), ("+3V8", "C2")] {
+        let n = net_index(&b, rail);
+        let syms: Vec<_> = l
+            .symbols
+            .iter()
+            .filter(|s| s.net == n && in_frame(ldo, s.at))
+            .collect();
+        assert_eq!(syms.len(), 1, "{rail}");
+        let top = pin_at(&l, &b, cap, "1");
+        assert!(
+            near(Pt::new(syms[0].at.x, 0.0), Pt::new(top.x, 0.0)),
+            "{rail} over {cap}"
+        );
+        assert!(syms[0].at.y < top.y);
+    }
+}
+
+#[test]
+fn decoupling_capacitors_stand_in_an_even_row() {
+    // Owner round 2 (E): the same gap between them, level.
+    let b = bench();
+    let l = lay(&b);
+    let xs: Vec<f64> = ["C4", "C5"]
+        .iter()
+        .map(|r| pin_at(&l, &b, r, "1").x)
+        .collect();
+    let ys: Vec<f64> = ["C4", "C5"]
+        .iter()
+        .map(|r| pin_at(&l, &b, r, "1").y)
+        .collect();
+    assert!((ys[0] - ys[1]).abs() < 1e-6, "level");
+    assert!((xs[0] - xs[1]).abs() >= 5.0, "apart");
+    // The modem's three supply capacitors and their gaps.
+    let cx: Vec<f64> = ["C20", "C21", "C22"]
+        .iter()
+        .map(|r| pin_at(&l, &b, r, "1").x)
+        .collect();
+    let mut sorted = cx.clone();
+    sorted.sort_by(f64::total_cmp);
+    let gap1 = sorted[1] - sorted[0];
+    let gap2 = sorted[2] - sorted[1];
+    assert!((gap1 - gap2).abs() < 1e-6, "even gaps {sorted:?}");
+}
+
+#[test]
+fn flags_are_in_one_column_one_per_net_each_on_its_own_row() {
+    // Owner round 2 (D): the ten pins that all go on, ten flags.
+    let b = bench();
+    let l = lay(&b);
+    let sheet = sheet_named(&l, "ten");
+    let flags: Vec<_> = l.ports.iter().filter(|p| in_frame(sheet, p.at)).collect();
+    assert_eq!(flags.len(), 10, "one for each net");
+    let mut nets: Vec<usize> = flags.iter().map(|f| f.net).collect();
+    nets.sort_unstable();
+    nets.dedup();
+    assert_eq!(nets.len(), 10);
+    assert!(
+        flags
+            .iter()
+            .all(|f| near(Pt::new(f.at.x, 0.0), Pt::new(flags[0].at.x, 0.0))),
+        "one column"
+    );
+    let mut rows: Vec<f64> = flags.iter().map(|f| f.at.y).collect();
+    rows.sort_by(f64::total_cmp);
+    for pair in rows.windows(2) {
+        assert!(
+            pair[1] - pair[0] >= 2.5 - 1e-6,
+            "rows {} apart",
+            pair[1] - pair[0]
+        );
+    }
+    for (i, a) in flags.iter().enumerate() {
+        for c in &flags[i + 1..] {
+            assert!(
+                !overlap(&inflate(a.extent(), 0.5), &inflate(c.extent(), 0.5)),
+                "flags touch"
+            );
+        }
+    }
+}
+
+fn inflate(r: Rect, d: f64) -> Rect {
+    Rect {
+        min: Pt::new(r.min.x - d, r.min.y - d),
+        max: Pt::new(r.max.x + d, r.max.y + d),
+    }
+}
+
+/// Everything that must keep a grid step from everything else: power symbols (and their
+/// names), flags, X markers and the texts of parts.
+fn items(l: &Layout) -> Vec<(String, Rect, Option<usize>, Option<usize>)> {
+    let mut out = Vec::new();
+    for s in &l.symbols {
+        out.push((
+            format!("symbol {:?}", s.kind),
+            s.extent(),
+            Some(s.net),
+            None,
+        ));
+    }
+    for f in &l.ports {
+        out.push(("flag".into(), f.extent(), Some(f.net), None));
+    }
+    for m in &l.marks {
+        out.push(("X".into(), inflate(Rect::around(m.at), 0.7), None, None));
+    }
+    for p in &l.parts {
+        for t in std::iter::once(&p.reference).chain(p.value.as_ref()) {
+            out.push((format!("text {}", t.text), t.extent(), None, Some(p.part)));
+        }
+    }
+    out
+}
+
+#[test]
+fn no_two_items_are_closer_than_a_grid_step() {
+    // Owner round 2 (C): symbols, flags, X markers and texts keep a grid step from each other,
+    // and a wire of another net keeps its distance from each of them.
+    let b = bench();
+    for l in [lay(&b), plain(&b)] {
+        let items = items(&l);
+        for (i, (an, a, anet, aown)) in items.iter().enumerate() {
+            for (bn, bx, bnet, bown) in &items[i + 1..] {
+                if aown.is_some() && aown == bown {
+                    continue;
+                }
+                // Two X markers are a pin pitch apart; a symbol and its own name are one item.
+                if an == "X" && bn == "X" {
+                    continue;
+                }
+                let _ = (anet, bnet);
+                assert!(
+                    !overlap(&inflate(*a, 0.6), &inflate(*bx, 0.6)),
+                    "`{an}` at {:?} is closer than a grid step to `{bn}` at {:?}",
+                    a.min,
+                    bx.min
+                );
+            }
+        }
+        for (name, r, net, _) in &items {
+            for (wnet, a, c) in segments(&l) {
+                if Some(wnet) == *net {
+                    continue;
+                }
+                let mut w = Rect::around(a);
+                w.include(c);
+                assert!(
+                    !overlap(&inflate(*r, 0.3), &inflate(w, 0.3)),
+                    "a wire of {} is closer than 0.6 mm to `{name}` at {:?}",
+                    b.design.nets[wnet].name,
+                    r.min
+                );
+            }
         }
     }
 }

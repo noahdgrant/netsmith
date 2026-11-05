@@ -56,7 +56,8 @@ fn translate_part(part: &mut PlacedPart, by: Pt) {
 /// Moves the reference and the value of a part (at the origin) to `side` of its body.
 fn set_text_side(ctx: &Ctx, part: &mut PlacedPart, side: Dir) {
     let body = body_of(&part.glyph, part.orient);
-    let (reference, value) = part_texts(&ctx.design.parts[part.part], body, side);
+    let gap = text_gap(&part.pins, side);
+    let (reference, value) = part_texts(&ctx.design.parts[part.part], body, side, gap);
     let mut extent = body;
     extent.union(reference.extent());
     if let Some(v) = &value {
@@ -1467,6 +1468,9 @@ impl<'a> Scene<'a> {
                     label: w.label.as_ref().map(|l| port_label(l, tip, dir)),
                 };
                 let id = Self::net_id(w.net);
+                // The flag's body is in the way of its own wire: the wire reaches its point.
+                self.grid.block_rect(inflate(port.extent(), 0.3));
+                self.grid.unblock(tip_node);
                 let targets: HashSet<Node> = HashSet::from([tip_node]);
                 match self.grid.route(id, w.start, w.heading, &targets) {
                     Some(path) => {

@@ -150,6 +150,30 @@ fn buck() -> String {
     )
 }
 
+/// `Conn10`: a connector of ten pins on its right side, some named by what they carry.
+fn conn10() -> String {
+    let names = [
+        "NC1", "BUS+", "NC3", "CHASGND", "SIGGND", "CANH", "KLINE", "NC8", "NC9", "BUS-",
+    ];
+    let mut pins = String::new();
+    for (i, name) in names.iter().enumerate() {
+        pins += &pin(
+            "passive",
+            10.16,
+            11.43 - 2.54 * i as f64,
+            180,
+            name,
+            &(i + 1).to_string(),
+        );
+    }
+    format!(
+        "(symbol \"Conn10\" (property \"Reference\" \"J\" (at 0 15 0)) \
+         (symbol \"Conn10_0_1\" (rectangle (start -7.62 13.97) (end 7.62 -13.97) \
+         (stroke (width 0.254) (type default)) (fill (type background)))) \
+         (symbol \"Conn10_1_1\" {pins}))"
+    )
+}
+
 /// `L` and `Crystal`: two-terminal parts the sample libraries do not have.
 fn two_terminal(name: &str, half_width: f64) -> String {
     format!(
@@ -168,10 +192,11 @@ pub fn bench() -> Bench {
     std::fs::write(
         &file,
         format!(
-            "(kicad_symbol_lib {} {} {} {} {})",
+            "(kicad_symbol_lib {} {} {} {} {} {})",
             patch(),
             mcu(),
             buck(),
+            conn10(),
             two_terminal("L", 1.0),
             two_terminal("Crystal", 1.0)
         ),
@@ -184,6 +209,8 @@ pub fn bench() -> Bench {
                 [[part]]\nkind = \"Buck\"\npackage = \"P\"\nsymbol = \"bench:Buck\"\nfootprint = \"bench:F\"\n\
                 [[part]]\nkind = \"Inductor\"\npackage = \"IND\"\nsymbol = \"bench:L\"\nfootprint = \"bench:F\"\n\
                 [[part]]\nkind = \"Crystal\"\npackage = \"XTAL\"\nsymbol = \"bench:Crystal\"\nfootprint = \"bench:F\"\n\
+                [[part]]\nkind = \"Obd10\"\npackage = \"P\"\nsymbol = \"bench:Conn10\"\nfootprint = \"bench:F\"\n\
+                [[part]]\nkind = \"Ten10\"\npackage = \"P\"\nsymbol = \"bench:Conn10\"\nfootprint = \"bench:F\"\n\
                 [[part]]\nkind = \"OpAmp\"\npackage = \"P\"\nsymbol = \"acme:Dual\"\nfootprint = \"bench:F\"\n";
     let mapping = Mapping::standard()
         .merged(Mapping::parse(rows, "kicad.toml", dir.path()).unwrap())
@@ -253,6 +280,10 @@ pub fn bench() -> Bench {
         ("R29", "Resistor", "47k", Some("0402")),
         ("C25", "Capacitor", "10n", Some("0402")),
         ("C26", "Capacitor", "10n", Some("0402")),
+        // a connector with ground pins, pins left open and signals that go on
+        ("J30", "Obd10", "Obd", Some("P")),
+        // a connector whose ten pins all go to another sheet
+        ("J31", "Ten10", "Ten", Some("P")),
     ];
     let nets: Vec<(&str, Vec<String>)> = {
         let mut v: Vec<(&str, Vec<String>)> = Vec::new();
@@ -262,7 +293,7 @@ pub fn bench() -> Bench {
             "R6.2", "R7.2", "J7.2", "J8.2", "C6.2", "C8.2", "R9.2", "R10.2", "C9.2", "J11.2",
             "C20.2", "C21.2", "C22.2", "D3.1", "C23.2", "C24.2", "C25.2", "C26.2",
         ]);
-        gnd.extend(["U7.9", "U7.11", "U7.3A"].map(String::from));
+        gnd.extend(["U7.9", "U7.11", "U7.3A", "J30.4", "J30.5"].map(String::from));
         gnd.extend((2..=10).map(|i| format!("U2.{i}")));
         gnd.extend((101..125).map(|i| format!("U5.{i}")));
         v.push(("GND", gnd));
@@ -299,6 +330,15 @@ pub fn bench() -> Bench {
         v.push(("net-modem.b", s(&["R27.1", "C24.1"])));
         v.push(("net-modem.c", s(&["R28.1", "C25.1"])));
         v.push(("net-modem.d", s(&["R29.1", "C26.1"])));
+        v.push(("OBD_A", s(&["J30.2", "U5.17"])));
+        v.push(("OBD_B", s(&["J30.6", "U5.18"])));
+        v.push(("OBD_C", s(&["J30.7", "U5.19"])));
+        for i in 0..10 {
+            let name: &'static str = Box::leak(format!("TEN_{i}").into_boxed_str());
+            let a = format!("J31.{}", i + 1);
+            let b = format!("U5.{}", 33 + i);
+            v.push((name, vec![a, b]));
+        }
         v.push(("BATT_DIV", s(&["R1.2", "R2.1", "U1.3"])));
         v.push(("net-adc.amp", s(&["U1.1", "R3.1", "U1.2"])));
         v.push(("BATT_ADC", s(&["R3.2", "C1.1", "U5.2"])));
@@ -355,6 +395,8 @@ pub fn bench() -> Bench {
         group("ldo", "Ldo3V3", &["U4", "C2", "C3"]),
         group("adc", "AdcMonitor", &["R1", "R2", "R3", "C1", "U1"]),
         group("mcu", "Mcu", &["U5", "C4", "C5", "Y1"]),
+        group("obd", "Obd", &["J30"]),
+        group("ten", "Ten", &["J31"]),
         group(
             "buck",
             "Buck1V8",
