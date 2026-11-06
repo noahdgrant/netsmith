@@ -67,6 +67,9 @@
 .cmp-scope .bp-icon { position: absolute; left: 10px; pointer-events: none; color: var(--text-faint); }
 .cmp-scope .bp-caret { position: absolute; right: 9px; pointer-events: none; color: var(--text-faint); }
 
+/* the reason git gives when there is no repository: a fact, not a fault */
+.cmp-reason { margin-top: 4px; padding: 5px 10px; border-radius: var(--r-sm); background: var(--surface-3); border: 1px solid var(--border); color: var(--text-muted); font-size: var(--fs-sm); max-width: min(72ch, 92%); overflow-wrap: anywhere; }
+
 /* tabs */
 .cmp-tabs { display: flex; gap: 2px; padding: 0 20px; border-bottom: 1px solid var(--border-subtle); overflow-x: auto; scrollbar-width: none; flex: none; }
 .cmp-tab { position: relative; display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 12px; background: none; border: none; color: var(--text-muted); font-weight: var(--fw-medium); white-space: nowrap; cursor: pointer; border-radius: var(--r-sm) var(--r-sm) 0 0; }

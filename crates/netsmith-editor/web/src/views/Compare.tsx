@@ -340,6 +340,7 @@ function Body({ data }: { data: CompareData }) {
       ) : (
         <>
           <Tabs n={n} />
+          {active !== 'source' && (
           <div class="cmp-bar" role="toolbar" aria-label="Filter and group the rows">
             <label class="field-icon cmp-filter">
               <Icon name="search" size={13} />
@@ -374,6 +375,7 @@ function Body({ data }: { data: CompareData }) {
               />
             )}
           </div>
+          )}
           <div class="cmp-scroll" id="cmp-panel" role="tabpanel" aria-labelledby={`cmp-tab-${active}`}>
             {active === 'source' ? (
               <Source data={data} />
@@ -450,7 +452,7 @@ export function Compare() {
         help="The Compare section reads a ref with git. Put the project under git (git init, then commit it), and it can say what changed in the circuit."
         testid="cmp-no-git"
       >
-        {info.reason && <div class="empty-error mono" data-testid="cmp-reason">{info.reason}</div>}
+        {info.reason && <div class="cmp-reason mono" data-testid="cmp-reason">{info.reason}</div>}
       </EmptyState>
     );
   } else if (s.kind === 'idle') {
