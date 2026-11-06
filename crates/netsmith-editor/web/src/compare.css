@@ -140,6 +140,8 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .cmp-source-total { padding: 10px 14px; border-bottom: 1px solid var(--border-subtle); color: var(--text-muted); font-size: var(--fs-sm); }
 .cmp-source-total .plus { color: var(--success-text); } .cmp-source-total .minus { color: var(--danger-text); }
 .cr-file:hover .cr-main { background: var(--hover); }
+.cr-file.plain, .cr-file.plain .cr-main { cursor: default; }
+.cr-file.plain:hover .cr-main { background: none; }
 .cr-file .cr-main { grid-template-columns: 22px minmax(180px, 36%) minmax(0, 1fr) 96px auto; padding-left: 14px; }
 .cr-file .cr-main > .cr-chips { gap: 6px; }
 

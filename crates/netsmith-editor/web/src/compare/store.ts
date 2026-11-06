@@ -7,7 +7,7 @@ import { computed, effect, signal } from '@preact/signals';
 import type { Compare, GitInfo, Location } from '../api';
 import { ApiFailure, api } from '../client';
 import { load, save } from '../storage';
-import { analysis, board, say } from '../store';
+import { analysis, board, project, say } from '../store';
 import { type Category, type Scope, changeCount, marksOf } from './model';
 import { beginCompareProgress, endCompareProgress } from './progress';
 import { recallRef, refLabel, rememberRef, suggestedRef } from './refs';
@@ -132,13 +132,18 @@ export const startingRef = (): string | null => refName.peek() ?? recallRef(gitI
 
 /** Turn the marks on or off. On, with no ref chosen, the person is asked for one. */
 export function setShowChanges(on: boolean, askRef?: () => void) {
-  if (on && !compare.peek()) {
-    const ref = refName.peek() ?? recallRef(gitInfo.peek());
-    if (ref) void runCompare(ref);
+  showChanges.value = on;
+  if (!on || compare.peek()) return;
+  // The marks need an answer: compare with the ref the project used last, else ask for one (the repository is read first,
+  // since that is where the last ref is looked up).
+  void (async () => {
+    const info = gitInfo.peek() ?? (await loadGit());
+    const ref = refName.peek() ?? recallRef(info);
+    if (ref) await runCompare(ref);
+    else if (!info?.available) say('This project is not in a git repository, so there is nothing to compare with.');
     else if (askRef) askRef();
     else say('Choose a ref to compare with first: the Compare section lists them.');
-  }
-  showChanges.value = on;
+  })();
 }
 
 // The files on disk changed (a save, a rebuild): the comparison is made again, quietly, with the old answer on screen.
@@ -195,5 +200,12 @@ export function closeDiff() {
   diffTarget.value = null;
 }
 
-/** The base side's location of something, as a diff target: the file and the line in it. */
-export const baseLocation = (at: Location | undefined, where: DiffTarget['where'] = 'compare'): DiffTarget | null => (at ? { path: at.file, line: at.line, side: 'base', where } : null);
+/** The files of a project the server gives at a ref (ADR 0051): its own sources, not the standard library's, not a note. */
+export function diffable(path: string): boolean {
+  return /\.(nsm|toml|csv)$/.test(path) && project.peek()?.files.find((f) => f.path === path)?.role !== 'std';
+}
+
+/** The base side's location of something, as a diff target: the file and the line in it. Null where the ref's file is not
+ * one the server gives (a declaration in the standard library). */
+export const baseLocation = (at: Location | undefined, where: DiffTarget['where'] = 'compare'): DiffTarget | null =>
+  at && diffable(at.file) ? { path: at.file, line: at.line, side: 'base', where } : null;

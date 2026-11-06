@@ -64,7 +64,8 @@ export function CompareChip() {
   const ref = refName.value;
   const [open, setOpen] = useState(false);
   const s = state.value;
-  if (!ref) return null;
+  // Nothing yet to say about a ref that is remembered and not asked for.
+  if (!ref || s.kind === 'idle') return null;
   const n = changes.value;
   const text =
     s.kind === 'loading'

@@ -29,7 +29,7 @@ import {
 } from '../compare/model';
 import { compareProgress } from '../compare/progress';
 import { relativeDate } from '../compare/refs';
-import { chooseRef, gitFailure, gitInfo, loadGit, openDiff, pickerOpen, refName, refText, runCompare, scope, scopeChoice, startingRef, state, tab } from '../compare/store';
+import { chooseRef, diffable, gitFailure, gitInfo, loadGit, openDiff, pickerOpen, refName, refText, runCompare, scope, scopeChoice, startingRef, state, tab } from '../compare/store';
 import { analysis } from '../store';
 import { load, save } from '../storage';
 import { plural, seconds } from '../util';
@@ -38,6 +38,8 @@ import { RefPicker } from './compare/RefPicker';
 import { RowView } from './compare/Row';
 
 const GROUP_KEY = 'netsmith.compare.group';
+/** The files of a project the server gives at a ref (ADR 0051). */
+const READABLE = /\.(nsm|toml|csv)$/;
 
 function useSeen() {
   // The repository is asked when the section is first shown, not at start: a project with no git costs nothing.
@@ -96,7 +98,7 @@ function ProblemList({ list }: { list: Problem[] }) {
           <Icon name={p.severity} size={14} class={`bp-${p.severity}`} />
           <span class="bp-msg">{p.message.split('\n')[0]}</span>
           {p.at && (
-            <button type="button" class="link mono" title="Open the file at the ref beside the file on disk" onClick={() => openDiff({ path: p.at!.file, line: p.at!.line, side: 'base', where: 'compare' })}>
+            <button type="button" class="link mono" disabled={!diffable(p.at.file)} title="Open the file at the ref beside the file on disk" onClick={() => openDiff({ path: p.at!.file, line: p.at!.line, side: 'base', where: 'compare' })}>
               {p.at.file}:{p.at.line}
             </button>
           )}
@@ -205,7 +207,7 @@ function BoardScope({ data }: { data: CompareData }) {
   );
 }
 
-function Tabs({ data, n }: { data: CompareData; n: Record<Category, number> }) {
+function Tabs({ n }: { n: Record<Category, number> }) {
   const active = tab.value;
   return (
     <div
@@ -228,7 +230,6 @@ function Tabs({ data, n }: { data: CompareData; n: Record<Category, number> }) {
           <span class="cmp-count" data-testid={`count-${c.id}`}>{n[c.id]}</span>
         </button>
       ))}
-      {data.head.errors > 0 && <span class="spacer" />}
     </div>
   );
 }
@@ -247,31 +248,46 @@ function Source({ data }: { data: CompareData }) {
       <div class="cmp-source-total" data-testid="source-total">
         {plural(s.filesChanged, 'file')}, <span class="plus">+{s.added}</span> <span class="minus">&minus;{s.removed}</span> lines
       </div>
-      {s.files.map((f) => (
-        <button key={f.path} type="button" role="listitem" class={`cr cr-file st-${f.status}`} data-testid="cmp-file" onClick={() => openDiff({ path: f.path, where: 'compare' })}>
-          <span class="cr-main">
-            <span class="cr-kind k-file" aria-hidden="true">
-              <Icon name="file" size={15} />
-            </span>
-            <span class="cr-name">
-              <span class="cr-title mono">{f.path}</span>
-            </span>
-            <span class="cr-chips">
-              <span class="tchip add">+{f.added}</span>
-              <span class="tchip del">&minus;{f.removed}</span>
-            </span>
-            <Pill tone={f.status === 'added' || f.status === 'untracked' ? 'ok' : f.status === 'deleted' ? 'bad' : 'warn'} class="cr-badge">
-              {FILE_STATUS[f.status]}
-            </Pill>
-            <span class="cr-links">
-              <span class="cr-link show">
-                <Icon name="compare" size={13} />
-                Show changes
+      {s.files.map((f) => {
+        // The server gives the project's own sources (.nsm, .toml, .csv) at a ref, and nothing else; git has the numbers of the rest.
+        const readable = READABLE.test(f.path) && f.status !== 'deleted';
+        return (
+          <button
+            key={f.path}
+            type="button"
+            role="listitem"
+            class={`cr cr-file st-${f.status} ${readable ? '' : 'plain'}`}
+            data-testid="cmp-file"
+            aria-disabled={!readable}
+            title={readable ? undefined : 'The comparison of a file reads the project\u2019s sources (.nsm, .toml, .csv); for this one git has the numbers.'}
+            onClick={() => readable && openDiff({ path: f.path, where: 'compare' })}
+          >
+            <span class="cr-main">
+              <span class="cr-kind k-file" aria-hidden="true">
+                <Icon name="file" size={15} />
+              </span>
+              <span class="cr-name">
+                <span class="cr-title mono">{f.path}</span>
+              </span>
+              <span class="cr-chips">
+                <span class="tchip add">+{f.added}</span>
+                <span class="tchip del">&minus;{f.removed}</span>
+              </span>
+              <Pill tone={f.status === 'added' || f.status === 'untracked' ? 'ok' : f.status === 'deleted' ? 'bad' : 'warn'} class="cr-badge">
+                {FILE_STATUS[f.status]}
+              </Pill>
+              <span class="cr-links">
+                {readable && (
+                  <span class="cr-link show">
+                    <Icon name="compare" size={13} />
+                    Show changes
+                  </span>
+                )}
               </span>
             </span>
-          </span>
-        </button>
-      ))}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -323,7 +339,7 @@ function Body({ data }: { data: CompareData }) {
         </>
       ) : (
         <>
-          <Tabs data={data} n={n} />
+          <Tabs n={n} />
           <div class="cmp-bar" role="toolbar" aria-label="Filter and group the rows">
             <label class="field-icon cmp-filter">
               <Icon name="search" size={13} />

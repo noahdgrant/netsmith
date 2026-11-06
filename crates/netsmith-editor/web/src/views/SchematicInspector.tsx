@@ -506,7 +506,7 @@ function RemovedParts({ current, drawing }: InspectorProps) {
             <span class="rm-val" title={`${r.kind} ${r.value} at ${r.path}`}>
               {r.value} <span class="faint">{r.kind}</span>
             </span>
-            {r.at && (
+            {r.at && baseLocation(r.at, 'source') && (
               <button
                 class="link"
                 title={`Where it was declared at ${refText.value}: ${r.at.file}:${r.at.line}`}

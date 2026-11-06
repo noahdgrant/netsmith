@@ -128,10 +128,19 @@ describe('the board a list is about', () => {
 });
 
 describe('the switch', () => {
-  it('turning it on with no ref asks for one, and leaves it off to be turned on by the answer', () => {
+  it('turning it on with no ref asks for one', async () => {
+    server({ '/api/git': () => json(info()) });
     const ask = vi.fn();
     setShowChanges(true, ask);
-    expect(ask).toHaveBeenCalledOnce();
+    expect(showChanges.value).toBe(true);
+    await vi.waitFor(() => expect(ask).toHaveBeenCalledOnce());
+  });
+  it('turning it on in a project with no repository says so and asks for nothing', async () => {
+    server({ '/api/git': () => json(info({ available: false, refs: [], commits: [], reason: 'not a work tree' })) });
+    const ask = vi.fn();
+    setShowChanges(true, ask);
+    await vi.waitFor(() => expect(gitInfo.value?.available).toBe(false));
+    expect(ask).not.toHaveBeenCalled();
   });
   it('turning it on with a ref compares, and off is only off', async () => {
     server({ '/api/git': () => json(info()), '/api/compare': () => json(changed()) });

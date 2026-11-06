@@ -278,7 +278,6 @@ export function Editor() {
   // The marks of the comparison with a git ref: the file at the ref is the base the margin diffs the text against.
   const marking = showChanges.value;
   const cmp = compare.value;
-  const hash = cmp?.base.hash;
   useEffect(() => {
     const v = view.current;
     if (!v || !path || current.current !== path) return;
@@ -288,16 +287,19 @@ export function Editor() {
     }
     let live = true;
     const entry = cmp.source.files.find((f) => f.path === path);
-    void baseText(path).then((text) => {
-      if (!live || current.current !== path) return;
-      // A file the ref did not have is all new; one that is not in the project's comparison at all has no base.
-      const base = text ?? (entry && (entry.status === 'added' || entry.status === 'untracked') ? '' : null);
-      view.current?.dispatch({ effects: setBaseText.of(base) });
-    });
+    const put = (base: string | null) => {
+      if (live && current.current === path) view.current?.dispatch({ effects: setBaseText.of(base) });
+    };
+    // Only a file that differs is asked of the server: one that is not listed is as it was at the ref (so what is on disk is the
+    // base), a new one is all new, and a file the server does not give (a note, a library) has no marks.
+    if (!entry) put(openFiles.peek()[path]?.saved ?? null);
+    else if (entry.status === 'added' || entry.status === 'untracked') put('');
+    else if (entry.status === 'deleted' || !/\.(nsm|toml|csv)$/.test(path)) put(null);
+    else void baseText(path).then(put);
     return () => {
       live = false;
     };
-  }, [marking, hash, path, file === undefined]);
+  }, [marking, cmp, path, file === undefined]);
 
   // A request to put the cursor somewhere.
   const ask = reveal.value;

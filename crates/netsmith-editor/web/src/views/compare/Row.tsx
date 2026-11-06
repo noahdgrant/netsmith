@@ -84,6 +84,8 @@ export function RowView({ row, showBoard }: { row: ChangeRow; showBoard?: boolea
   const toggle = () => setOpen(!open);
   const baseAt = row.base;
   const headAt = row.head;
+  // The ref's file is shown only where the server gives it: a declaration in the standard library has a Head and no Base.
+  const baseTarget = baseLocation(baseAt);
   return (
     <div class={`cr cr-${row.status} ${picked ? 'sel' : ''} ${open ? 'open' : ''}`} data-testid="cmp-row" data-status={row.status} data-kind={row.kind} data-row={row.id} role="listitem">
       <div
@@ -146,13 +148,12 @@ export function RowView({ row, showBoard }: { row: ChangeRow; showBoard?: boolea
             type="button"
             class="cr-link"
             data-testid="link-base"
-            disabled={!baseAt}
-            data-tip={baseAt ? `At the ref: ${where(baseAt)}. Opens the file at the ref beside the file on disk.` : 'Not at the ref'}
-            aria-label={baseAt ? `Base: ${where(baseAt)}` : 'Base: not at the ref'}
+            disabled={!baseTarget}
+            data-tip={baseTarget ? `At the ref: ${where(baseAt!)}. Opens the file at the ref beside the file on disk.` : baseAt ? `At the ref: ${where(baseAt)}, in a file that is not the project's own` : 'Not at the ref'}
+            aria-label={baseTarget ? `Base: ${where(baseAt!)}` : 'Base: not at the ref'}
             onClick={(e) => {
               e.stopPropagation();
-              const t = baseLocation(baseAt);
-              if (t) openDiff(t);
+              if (baseTarget) openDiff(baseTarget);
             }}
           >
             Base
