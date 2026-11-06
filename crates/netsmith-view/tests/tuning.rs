@@ -14,7 +14,7 @@ use netsmith_view::check::check;
 use netsmith_view::geom::Pt;
 use netsmith_view::layout::{Layout, PowerKind};
 use netsmith_view::metrics::measure;
-use netsmith_view::{Rails, Tuning, layout_rails, layout_tuned};
+use netsmith_view::{Rails, Tuning, layout_rails, layout_tuned, layout_tuned_touched};
 
 const STEP: f64 = 1.27;
 
@@ -205,4 +205,97 @@ fn a_sheet_is_never_left_with_more_crossings_or_more_broken_rules_by_the_search(
     // The same input draws the same bytes.
     let (_, again, _dir3) = draw();
     assert_eq!(format!("{searched:?}"), format!("{again:?}"));
+}
+
+fn all_tunings() -> Vec<Tuning> {
+    (0..8)
+        .map(|bits| Tuning {
+            local_main: bits & 1 != 0,
+            bottom_first: bits & 2 != 0,
+            pair_rails: bits & 4 != 0,
+        })
+        .collect()
+}
+
+/// Whether `a` and `b` choose alike in each choice that `on` has.
+fn agree_on(a: Tuning, b: Tuning, on: Tuning) -> bool {
+    (!on.local_main || a.local_main == b.local_main)
+        && (!on.bottom_first || a.bottom_first == b.bottom_first)
+        && (!on.pair_rails || a.pair_rails == b.pair_rails)
+}
+
+/// Draws the board with each of the eight sets of choices and says, for each pair of drawings
+/// that agree on the choices the first one told as mattering, that they are the same bytes.
+/// Returns what each of the eight told.
+fn assert_told_choices_are_all_that_matter(
+    name: &str,
+    design: &Design,
+    rails: &Rails,
+    mapping: &Mapping,
+    lib: &SymbolLib,
+) -> Vec<(Tuning, Tuning)> {
+    let drawn: Vec<(Tuning, String, Tuning)> = all_tunings()
+        .into_iter()
+        .map(|t| {
+            let (layout, told) = layout_tuned_touched(design, rails, mapping, lib, t).unwrap();
+            (t, format!("{layout:?}"), told)
+        })
+        .collect();
+    for (t, a, told) in &drawn {
+        for (u, b, _) in &drawn {
+            if agree_on(*t, *u, *told) {
+                assert!(
+                    a == b,
+                    "{name}: {t:?} and {u:?} agree on every choice that mattered ({told:?}) and draw differently"
+                );
+            }
+        }
+    }
+    drawn.into_iter().map(|(t, _, told)| (t, told)).collect()
+}
+
+#[test]
+fn a_choice_the_drawing_never_came_to_a_place_for_changes_nothing() {
+    // The search draws a sheet again only with choices that mattered somewhere in a drawing
+    // it has; this is what lets it leave the others out, so it must hold on every board.
+    let (_dir, mapping, lib) = setup();
+    let told =
+        assert_told_choices_are_all_that_matter("Monitor", &board(), &rails(), &mapping, &lib);
+    // The monitor has a part across two supplies and a chip with ground pins to spare: the
+    // two choices are told, so the test above is not holding for want of being told.
+    let (_, usual) = told
+        .iter()
+        .find(|(t, _)| *t == Tuning::default())
+        .copied()
+        .unwrap();
+    assert!(usual.pair_rails && usual.local_main, "{usual:?}");
+    // The test boards of up to thirty parts (each is drawn eight times, as one sheet).
+    for case in common::corpus::corpus()
+        .iter()
+        .filter(|c| c.design.parts.len() <= 30)
+    {
+        assert_told_choices_are_all_that_matter(
+            &case.name,
+            &case.design,
+            &case.rails,
+            &case.mapping,
+            &case.lib,
+        );
+    }
+}
+
+#[test]
+fn a_board_with_no_part_across_two_supplies_has_no_place_for_that_choice() {
+    let led = common::led();
+    let (usual, told) = layout_tuned_touched(
+        &led,
+        &Rails::default(),
+        &Mapping::standard(),
+        &SymbolLib::at(testlib::sample_symbols()),
+        Tuning::default(),
+    )
+    .map(|(l, t)| (l.parts.len(), t))
+    .unwrap();
+    assert!(usual > 0);
+    assert!(!told.pair_rails, "{told:?}");
 }

@@ -17,6 +17,7 @@ mod svg;
 pub use layout::{
     Bus, BusEntry, BusFlag, BusMember, Layout, MarkKind, Marks, PinMark, Port, PowerKind,
     PowerSymbol, Rails, Tuning, layout, layout_marked, layout_rails, layout_tuned,
+    layout_tuned_touched,
 };
 pub use sheets::{Group, Sheet, layout_sheets, layout_sheets_marked, layout_sheets_rails};
 pub use svg::{

@@ -13,6 +13,8 @@ mod bus;
 mod pair;
 mod spine;
 
+pub(super) use pair::Cache as PairCache;
+
 /// Clear space round a part and what it needs beside it.
 const MARGIN: f64 = 2.54;
 /// Between two blocks of parts in the row.
@@ -1023,20 +1025,40 @@ fn build_block(
     let mut sorted: Vec<&&SatPlan> = sats.iter().filter(|x| x.anchor == anchor).collect();
     // Beside a spine the lower pin's satellite goes nearest: the wire of a pin above passes over
     // it, and nothing is crossed.
-    let bottom_first = spine.is_some() || ctx.tuning.bottom_first;
-    sorted.sort_by(|x, y| {
-        let (px, py) = (&a.pins[x.pin], &a.pins[y.pin]);
-        let by_y = if bottom_first {
-            py.at.y.total_cmp(&px.at.y)
-        } else {
-            px.at.y.total_cmp(&py.at.y)
-        };
-        (px.escape as u8)
-            .cmp(&(py.escape as u8))
-            .then(by_y)
-            .then(px.at.x.total_cmp(&py.at.x))
-            .then(x.unit.cmp(&y.unit))
-    });
+    let by = |bottom_first: bool| {
+        move |x: &&&SatPlan, y: &&&SatPlan| {
+            let (px, py) = (&a.pins[x.pin], &a.pins[y.pin]);
+            let by_y = if bottom_first {
+                py.at.y.total_cmp(&px.at.y)
+            } else {
+                px.at.y.total_cmp(&py.at.y)
+            };
+            (px.escape as u8)
+                .cmp(&(py.escape as u8))
+                .then(by_y)
+                .then(px.at.x.total_cmp(&py.at.x))
+                .then(x.unit.cmp(&y.unit))
+        }
+    };
+    if spine.is_some() {
+        sorted.sort_by(by(true));
+    } else {
+        // The choice of `Tuning::bottom_first` matters here only when the two orders differ,
+        // which is told to the context (`Ctx::touch`).
+        let mut other = sorted.clone();
+        sorted.sort_by(by(false));
+        other.sort_by(by(true));
+        if sorted
+            .iter()
+            .zip(&other)
+            .any(|(x, y)| !std::ptr::eq(**x, **y))
+        {
+            ctx.touch(Tuning::BOTTOM_FIRST_BIT);
+        }
+        if ctx.tuning.bottom_first {
+            sorted = other;
+        }
+    }
     sorted.extend(sats.iter().filter(|x| x.anchor != anchor));
     // The satellites across two of the anchor's pins stand beside both, nearest first.
     let mut orients: Vec<(usize, Orient)> = Vec::new();
@@ -2243,10 +2265,13 @@ impl<'a> Scene<'a> {
                     .pins
                     .iter()
                     .filter(|q| q.part == p.part && q.net == p.net);
-                if !self.ctx.tuning.local_main
-                    || on_net.count() > Tuning::LOCAL_MAIN_PINS
-                    || stub.heading == natural.opposite()
-                {
+                if on_net.count() > Tuning::LOCAL_MAIN_PINS || stub.heading == natural.opposite() {
+                    continue;
+                }
+                // The pin is one that `Tuning::local_main` gives a symbol: told to the context
+                // (`Ctx::touch`), whether it does or not.
+                self.ctx.touch(Tuning::LOCAL_MAIN_BIT);
+                if !self.ctx.tuning.local_main {
                     continue;
                 }
             }

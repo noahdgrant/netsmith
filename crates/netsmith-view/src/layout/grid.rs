@@ -347,6 +347,14 @@ impl Grid {
         };
         let mut dist = vec![u32::MAX; cells * 4];
         let mut from = vec![u32::MAX; cells * 4];
+        // The targets inside the window as a mask: the test is made for every node taken off
+        // the heap, and a hash of a pair of numbers each time is most of what the search costs.
+        let mut is_target = vec![false; cells];
+        for t in targets {
+            if t.0 >= win.0 && t.0 <= win.2 && t.1 >= win.1 && t.1 <= win.3 {
+                is_target[((t.1 - win.1) * wi + (t.0 - win.0)) as usize] = true;
+            }
+        }
         let mut heap: BinaryHeap<Reverse<(u32, u32, u32)>> = BinaryHeap::new();
         for &h in headings {
             let d0 = dir_index(h);
@@ -367,7 +375,7 @@ impl Grid {
                 continue;
             }
             let (n, d) = unslot(s);
-            if n != start && targets.contains(&n) {
+            if n != start && is_target[s / 4] {
                 found = Some(s);
                 break;
             }

@@ -560,6 +560,22 @@ struct Ctx<'a> {
     /// The choices the engine is run with: the first drawing uses [`Tuning::default`], and a
     /// sheet that has wires crossing is drawn again with the others (see [`layout_with`]).
     tuning: Tuning,
+    /// Which choices of [`Tuning`] the drawing made last has a place where the choice makes a
+    /// difference (see [`Ctx::touch`]).
+    touched: std::cell::Cell<u8>,
+    /// Where the pair satellites were placed, for the drawings of this sheet to share.
+    pair_places: engine::PairCache,
+}
+
+impl Ctx<'_> {
+    /// Says that the drawing being made came to a place where the choice of [`Tuning`] with the
+    /// bit `bit` (`Tuning::*_BIT`) would have drawn something else, whether the choice is on
+    /// or off now. A drawing is made by steps that do not read the choices anywhere else, so
+    /// two drawings that agree on the choices told here are the same drawing, and a sheet
+    /// need not be drawn again for a choice that was never told (see [`layout_with_tuning`]).
+    fn touch(&self, bit: u8) {
+        self.touched.set(self.touched.get() | bit);
+    }
 }
 
 /// Choices of the engine that are not right for every sheet. A sheet is drawn with the
@@ -583,6 +599,19 @@ pub struct Tuning {
 impl Tuning {
     /// The most pins of one rail on a main part that [`Tuning::local_main`] gives a symbol each.
     pub const LOCAL_MAIN_PINS: usize = 3;
+    /// The bit of each choice in [`Ctx::touch`] and [`Tuning::bits`].
+    pub(crate) const LOCAL_MAIN_BIT: u8 = 1;
+    pub(crate) const BOTTOM_FIRST_BIT: u8 = 2;
+    pub(crate) const PAIR_RAILS_BIT: u8 = 4;
+
+    /// The choices as bits.
+    fn bits(self) -> u8 {
+        let bit = |on: bool, bit: u8| if on { bit } else { 0 };
+        bit(self.local_main, Self::LOCAL_MAIN_BIT)
+            | bit(self.bottom_first, Self::BOTTOM_FIRST_BIT)
+            | bit(self.pair_rails, Self::PAIR_RAILS_BIT)
+    }
+
     /// What a sheet that crosses is drawn with besides the default: each choice alone (and
     /// then those that helped, together).
     pub const SINGLE: [Tuning; 3] = [
@@ -665,7 +694,22 @@ pub fn layout_tuned(
     lib: &SymbolLib,
     tuning: Tuning,
 ) -> Result<Layout, DesignError> {
-    layout_with_tuning(
+    layout_tuned_touched(design, rails, mapping, lib, tuning).map(|(layout, _)| layout)
+}
+
+/// [`layout_tuned`], and the choices that made a difference somewhere in the drawing: each of
+/// them was on or off at a place where the other value would have drawn something else. A
+/// drawing with the choices of `tuning` is the same drawing with any other choices that agree
+/// with `tuning` on those (it is how [`layout_rails`] leaves out a drawing it would only
+/// repeat; the tests check it).
+pub fn layout_tuned_touched(
+    design: &Design,
+    rails: &Rails,
+    mapping: &Mapping,
+    lib: &SymbolLib,
+    tuning: Tuning,
+) -> Result<(Layout, Tuning), DesignError> {
+    let (layout, touched) = layout_with_tuning(
         design,
         mapping,
         lib,
@@ -674,7 +718,15 @@ pub fn layout_tuned(
         &Marks::default(),
         rails.ground.len() > 1,
         Some(tuning),
-    )
+    )?;
+    Ok((
+        layout,
+        Tuning {
+            local_main: touched & Tuning::LOCAL_MAIN_BIT != 0,
+            bottom_first: touched & Tuning::BOTTOM_FIRST_BIT != 0,
+            pair_rails: touched & Tuning::PAIR_RAILS_BIT != 0,
+        },
+    ))
 }
 
 /// [`layout`] with `external[n]` set for each net of `design` that continues somewhere else
@@ -698,9 +750,11 @@ pub(crate) fn layout_with(
         label_grounds,
         None,
     )
+    .map(|(layout, _)| layout)
 }
 
-/// [`layout_with`], drawn only with `only` if it is given.
+/// [`layout_with`], drawn only with `only` if it is given; and the choices of [`Tuning`] (as
+/// bits) that made a difference in the first drawing.
 #[allow(clippy::too_many_arguments)]
 fn layout_with_tuning(
     design: &Design,
@@ -711,7 +765,7 @@ fn layout_with_tuning(
     marks: &Marks,
     label_grounds: bool,
     only: Option<Tuning>,
-) -> Result<Layout, DesignError> {
+) -> Result<(Layout, u8), DesignError> {
     design.validate()?;
     let used = used_pads(design);
     // A part whose symbol has several units is drawn as one box for each: the engine draws a
@@ -794,6 +848,8 @@ fn layout_with_tuning(
         spine_part: vec![false; design.parts.len()],
         spine_net: vec![false; design.nets.len()],
         tuning: Tuning::default(),
+        touched: std::cell::Cell::new(0),
+        pair_places: engine::PairCache::default(),
     };
     // `NETSMITH_SPINE=off` draws without the spines (to compare), the paths are still found.
     let found = spine::find(&ctx);
@@ -840,6 +896,7 @@ fn layout_with_tuning(
     // this ends; it stops after a few passes in any case.
     let draw = |ctx: &Ctx| {
         let mut labelled = vec![false; design.nets.len()];
+        ctx.touched.set(0);
         let mut drawn = engine::run(ctx, &units, &order, &orient, marks, &labelled);
         for _ in 0..policy::PASSES {
             let next = policy::choose(ctx, &drawn, &labelled);
@@ -847,6 +904,7 @@ fn layout_with_tuning(
                 break;
             }
             labelled = next;
+            ctx.touched.set(0);
             drawn = engine::run(ctx, &units, &order, &orient, marks, &labelled);
         }
         (drawn, labelled)
@@ -854,8 +912,17 @@ fn layout_with_tuning(
     if let Some(tuning) = only {
         ctx.tuning = tuning;
     }
-    let (mut drawn, labelled) = draw(&ctx);
-    let mut best = Quality::of(&drawn.layout);
+    let (first, labelled) = draw(&ctx);
+    let mut best = Quality::of(&first.layout);
+    let touched_first = ctx.touched.get();
+    // The drawings made so far, the first at index 0, and which of them is kept.
+    let mut runs = vec![Run {
+        tuning: ctx.tuning,
+        touched: ctx.touched.get(),
+        quality: best,
+        drawn: first,
+    }];
+    let mut kept_run = 0;
     if only.is_none() && best.crossings > 0 {
         // A sheet whose wires cross is drawn again, once for each of the choices of `Tuning`
         // alone, with the nets named as in the first drawing, and then once with all the choices
@@ -863,31 +930,53 @@ fn layout_with_tuning(
         // less wire, and breaks no more rules replaces the one drawn so far. The rules broken are
         // counted only for such a drawing (the check is the dearest part), and once for the one
         // it would replace.
+        //
+        // A choice is only drawn when it can make a difference: the engine tells where it came
+        // to a place where a choice matters (`Ctx::touch`), so a drawing that agrees with one
+        // made before on every choice that one touched is that drawing, and it is not drawn
+        // again (a sheet with no part across two supplies has nothing for `pair_rails`).
         let mut best_broken: Option<usize> = None;
         // The choices in the drawing kept so far.
         let mut kept = Tuning::default();
-        let mut attempt = |ctx: &mut Ctx, tuning: Tuning, drawn: &mut engine::Drawn| -> bool {
-            ctx.tuning = tuning;
-            let other = engine::run(ctx, &units, &order, &orient, marks, &labelled);
-            let q = Quality::of(&other.layout);
+        let mut attempt = |ctx: &mut Ctx, tuning: Tuning| -> bool {
+            let run = match runs
+                .iter()
+                .position(|r| (r.tuning.bits() ^ tuning.bits()) & r.touched == 0)
+            {
+                Some(run) => run,
+                None => {
+                    ctx.tuning = tuning;
+                    ctx.touched.set(0);
+                    let other = engine::run(ctx, &units, &order, &orient, marks, &labelled);
+                    runs.push(Run {
+                        tuning,
+                        touched: ctx.touched.get(),
+                        quality: Quality::of(&other.layout),
+                        drawn: other,
+                    });
+                    runs.len() - 1
+                }
+            };
+            let q = runs[run].quality;
             if !q.better_than(&best) {
                 return false;
             }
-            let held = *best_broken
-                .get_or_insert_with(|| crate::check::check(design, &drawn.layout).len());
-            let broken = crate::check::check(design, &other.layout).len();
+            let held = *best_broken.get_or_insert_with(|| {
+                crate::check::check(design, &runs[kept_run].drawn.layout).len()
+            });
+            let broken = crate::check::check(design, &runs[run].drawn.layout).len();
             if broken > held {
                 return false;
             }
             best = q;
             best_broken = Some(broken);
-            *drawn = other;
+            kept_run = run;
             true
         };
         // Each choice alone, then each that did not help added to those that did.
         let mut helped: Vec<Tuning> = Vec::new();
         for single in Tuning::SINGLE {
-            if attempt(&mut ctx, single, &mut drawn) {
+            if attempt(&mut ctx, single) {
                 helped.push(single);
                 kept = Tuning::union(&[kept, single]);
             }
@@ -897,12 +986,13 @@ fn layout_with_tuning(
                 continue;
             }
             let with = Tuning::union(&[kept, single]);
-            if attempt(&mut ctx, with, &mut drawn) {
+            if attempt(&mut ctx, with) {
                 kept = with;
             }
         }
         ctx.tuning = Tuning::default();
     }
+    let mut drawn = runs.swap_remove(kept_run).drawn;
     drawn.layout.spines = spine_marks;
     if let Some(s) = &split {
         for (placed, &part) in drawn.layout.parts.iter_mut().zip(&s.origin) {
@@ -912,10 +1002,20 @@ fn layout_with_tuning(
             m.part = s.origin[m.part];
         }
     }
-    Ok(drawn.layout)
+    Ok((drawn.layout, touched_first))
+}
+
+/// A sheet drawn with some choices of [`Tuning`], and where in it those choices mattered.
+struct Run {
+    tuning: Tuning,
+    /// The bits of the choices that made a difference somewhere in it (`Ctx::touch`).
+    touched: u8,
+    quality: Quality,
+    drawn: engine::Drawn,
 }
 
 /// What a drawing of a sheet is judged by when it is drawn again with another [`Tuning`].
+#[derive(Clone, Copy)]
 struct Quality {
     crossings: usize,
     symbols: usize,
