@@ -70,8 +70,18 @@ pub(super) fn detect(
     if nets[0] == nets[1] {
         return None;
     }
+    // A part between two rails (the shunt of a current monitor, across the two supplies of
+    // its chip) is a pair satellite when the sheet is drawn so: its pins are the rails' stubs.
+    let across_rails = ctx.tuning.pair_rails
+        && nets
+            .iter()
+            .all(|&n| ctx.power[n] == Some(PowerKind::Supply));
     for &n in &nets {
-        if ctx.power[n].is_some() || ctx.ground[n] || ctx.external[n] || skip[n] {
+        if (ctx.power[n].is_some() && !across_rails)
+            || (ctx.ground[n] && ctx.power[n].is_none())
+            || (ctx.external[n] && !across_rails)
+            || skip[n]
+        {
             return None;
         }
     }

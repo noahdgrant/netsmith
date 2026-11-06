@@ -3,7 +3,7 @@
 mod common;
 
 use netsmith_kicad::{Mapping, SymbolLib, testlib};
-use netsmith_view::geom::Pt;
+use netsmith_view::geom::{Dir, Pt};
 use netsmith_view::layout::{Layout, layout};
 
 fn lay(d: &netsmith_core::Design) -> Layout {
@@ -230,15 +230,35 @@ fn a_ground_symbol_is_below_its_pins_and_a_supply_symbol_above() {
     )
     .unwrap();
     assert!(!l.symbols.is_empty());
+    // A net may have several symbols (a pin that has one of its own, a rail's end), each pointing
+    // away from the parts: down for a ground, up for a supply. The outermost of a net's symbols
+    // is beyond all its pins.
     for s in &l.symbols {
-        let pins: Vec<Pt> = d.nets[s.net]
+        let want = match s.kind {
+            PowerKind::Ground => Dir::Down,
+            PowerKind::Supply => Dir::Up,
+        };
+        assert_eq!(s.dir, want, "{s:?}");
+    }
+    for net in 0..d.nets.len() {
+        let symbols: Vec<_> = l.symbols.iter().filter(|s| s.net == net).collect();
+        let Some(first) = symbols.first() else {
+            continue;
+        };
+        let pins: Vec<Pt> = d.nets[net]
             .pins
             .iter()
             .map(|p| pin_at(&l, &d, &p.refdes, &p.pin))
             .collect();
-        match s.kind {
-            PowerKind::Ground => assert!(pins.iter().all(|p| p.y <= s.at.y + 1e-6), "{s:?}"),
-            PowerKind::Supply => assert!(pins.iter().all(|p| p.y >= s.at.y - 1e-6), "{s:?}"),
+        match first.kind {
+            PowerKind::Ground => {
+                let lowest = symbols.iter().map(|s| s.at.y).fold(f64::MIN, f64::max);
+                assert!(pins.iter().all(|p| p.y <= lowest + 1e-6), "{symbols:?}");
+            }
+            PowerKind::Supply => {
+                let highest = symbols.iter().map(|s| s.at.y).fold(f64::MAX, f64::min);
+                assert!(pins.iter().all(|p| p.y >= highest - 1e-6), "{symbols:?}");
+            }
         }
     }
 }

@@ -557,6 +557,69 @@ struct Ctx<'a> {
     spine_part: Vec<bool>,
     /// Whether each net is on one: it is wired along the line, a rail on it has one symbol.
     spine_net: Vec<bool>,
+    /// The choices the engine is run with: the first drawing uses [`Tuning::default`], and a
+    /// sheet that has wires crossing is drawn again with the others (see [`layout_with`]).
+    tuning: Tuning,
+}
+
+/// Choices of the engine that are not right for every sheet. A sheet is drawn with the
+/// default of each; when that leaves wires crossing, it is drawn again with each of
+/// [`Tuning::SINGLE`], and the drawing with the fewest crossings is kept (the first of equals,
+/// so a sheet that does not cross never changes). Nothing here is chosen by a name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Tuning {
+    /// A main part's rail pins (at most [`Tuning::LOCAL_MAIN_PINS`] on one net) have a stub
+    /// and a symbol of their own, short and local, as a satellite's have, instead of a wire to
+    /// the rail of the group: the ground of an IC's pin is a symbol just beyond the pin.
+    pub local_main: bool,
+    /// The satellites of a part's pins are placed from the bottom pin up, not from the top
+    /// down (the lower pin's satellite is nearest, and the wire of a pin above passes over it).
+    pub bottom_first: bool,
+    /// A part across two supplies is a pair satellite, standing beside the two pins of its chip
+    /// that the supplies are on.
+    pub pair_rails: bool,
+}
+
+impl Tuning {
+    /// The most pins of one rail on a main part that [`Tuning::local_main`] gives a symbol each.
+    pub const LOCAL_MAIN_PINS: usize = 3;
+    /// What a sheet that crosses is drawn with besides the default: each choice alone (and
+    /// then those that helped, together).
+    pub const SINGLE: [Tuning; 3] = [
+        Tuning {
+            local_main: true,
+            ..Tuning::DEFAULT
+        },
+        Tuning {
+            bottom_first: true,
+            ..Tuning::DEFAULT
+        },
+        Tuning {
+            pair_rails: true,
+            ..Tuning::DEFAULT
+        },
+    ];
+
+    /// The choices that any of `these` makes.
+    fn union(these: &[Tuning]) -> Tuning {
+        Tuning {
+            local_main: these.iter().any(|t| t.local_main),
+            bottom_first: these.iter().any(|t| t.bottom_first),
+            pair_rails: these.iter().any(|t| t.pair_rails),
+        }
+    }
+
+    const DEFAULT: Tuning = Tuning {
+        local_main: false,
+        bottom_first: false,
+        pair_rails: false,
+    };
+}
+
+impl Default for Tuning {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
 }
 
 /// Place the parts of `design` and route its nets.
@@ -593,6 +656,27 @@ pub fn layout_marked(
     )
 }
 
+/// [`layout_rails`] drawn once with the given [`Tuning`], without drawing again with the others
+/// when wires cross: to see what a choice does (the tests do), not for a tool.
+pub fn layout_tuned(
+    design: &Design,
+    rails: &Rails,
+    mapping: &Mapping,
+    lib: &SymbolLib,
+    tuning: Tuning,
+) -> Result<Layout, DesignError> {
+    layout_with_tuning(
+        design,
+        mapping,
+        lib,
+        &vec![false; design.nets.len()],
+        rails,
+        &Marks::default(),
+        rails.ground.len() > 1,
+        Some(tuning),
+    )
+}
+
 /// [`layout`] with `external[n]` set for each net of `design` that continues somewhere else
 /// (another sheet): it is drawn as a stub and a name at each of its pins here.
 pub(crate) fn layout_with(
@@ -603,6 +687,30 @@ pub(crate) fn layout_with(
     rails: &Rails,
     marks: &Marks,
     label_grounds: bool,
+) -> Result<Layout, DesignError> {
+    layout_with_tuning(
+        design,
+        mapping,
+        lib,
+        external,
+        rails,
+        marks,
+        label_grounds,
+        None,
+    )
+}
+
+/// [`layout_with`], drawn only with `only` if it is given.
+#[allow(clippy::too_many_arguments)]
+fn layout_with_tuning(
+    design: &Design,
+    mapping: &Mapping,
+    lib: &SymbolLib,
+    external: &[bool],
+    rails: &Rails,
+    marks: &Marks,
+    label_grounds: bool,
+    only: Option<Tuning>,
 ) -> Result<Layout, DesignError> {
     design.validate()?;
     let used = used_pads(design);
@@ -685,6 +793,7 @@ pub(crate) fn layout_with(
         spines: Vec::new(),
         spine_part: vec![false; design.parts.len()],
         spine_net: vec![false; design.nets.len()],
+        tuning: Tuning::default(),
     };
     // `NETSMITH_SPINE=off` draws without the spines (to compare), the paths are still found.
     let found = spine::find(&ctx);
@@ -729,15 +838,70 @@ pub(crate) fn layout_with(
     // Draw the sheet, see which nets are better as names, and draw it again with them: a name
     // takes room, and a net named changes what crosses what. Nets are only ever added, so
     // this ends; it stops after a few passes in any case.
-    let mut labelled = vec![false; design.nets.len()];
-    let mut drawn = engine::run(&ctx, &units, &order, &orient, marks, &labelled);
-    for _ in 0..policy::PASSES {
-        let next = policy::choose(&ctx, &drawn, &labelled);
-        if next == labelled {
-            break;
+    let draw = |ctx: &Ctx| {
+        let mut labelled = vec![false; design.nets.len()];
+        let mut drawn = engine::run(ctx, &units, &order, &orient, marks, &labelled);
+        for _ in 0..policy::PASSES {
+            let next = policy::choose(ctx, &drawn, &labelled);
+            if next == labelled {
+                break;
+            }
+            labelled = next;
+            drawn = engine::run(ctx, &units, &order, &orient, marks, &labelled);
         }
-        labelled = next;
-        drawn = engine::run(&ctx, &units, &order, &orient, marks, &labelled);
+        (drawn, labelled)
+    };
+    if let Some(tuning) = only {
+        ctx.tuning = tuning;
+    }
+    let (mut drawn, labelled) = draw(&ctx);
+    let mut best = Quality::of(&drawn.layout);
+    if only.is_none() && best.crossings > 0 {
+        // A sheet whose wires cross is drawn again, once for each of the choices of `Tuning`
+        // alone, with the nets named as in the first drawing, and then once with all the choices
+        // that were better together. A drawing that crosses less, or as much with at least 5 mm
+        // less wire, and breaks no more rules replaces the one drawn so far. The rules broken are
+        // counted only for such a drawing (the check is the dearest part), and once for the one
+        // it would replace.
+        let mut best_broken: Option<usize> = None;
+        // The choices in the drawing kept so far.
+        let mut kept = Tuning::default();
+        let mut attempt = |ctx: &mut Ctx, tuning: Tuning, drawn: &mut engine::Drawn| -> bool {
+            ctx.tuning = tuning;
+            let other = engine::run(ctx, &units, &order, &orient, marks, &labelled);
+            let q = Quality::of(&other.layout);
+            if !q.better_than(&best) {
+                return false;
+            }
+            let held = *best_broken
+                .get_or_insert_with(|| crate::check::check(design, &drawn.layout).len());
+            let broken = crate::check::check(design, &other.layout).len();
+            if broken > held {
+                return false;
+            }
+            best = q;
+            best_broken = Some(broken);
+            *drawn = other;
+            true
+        };
+        // Each choice alone, then each that did not help added to those that did.
+        let mut helped: Vec<Tuning> = Vec::new();
+        for single in Tuning::SINGLE {
+            if attempt(&mut ctx, single, &mut drawn) {
+                helped.push(single);
+                kept = Tuning::union(&[kept, single]);
+            }
+        }
+        for single in Tuning::SINGLE {
+            if helped.contains(&single) || helped.is_empty() {
+                continue;
+            }
+            let with = Tuning::union(&[kept, single]);
+            if attempt(&mut ctx, with, &mut drawn) {
+                kept = with;
+            }
+        }
+        ctx.tuning = Tuning::default();
     }
     drawn.layout.spines = spine_marks;
     if let Some(s) = &split {
@@ -749,6 +913,53 @@ pub(crate) fn layout_with(
         }
     }
     Ok(drawn.layout)
+}
+
+/// What a drawing of a sheet is judged by when it is drawn again with another [`Tuning`].
+struct Quality {
+    crossings: usize,
+    symbols: usize,
+    /// The wire in millimetres.
+    length: f64,
+}
+
+impl Quality {
+    fn of(layout: &Layout) -> Self {
+        use crate::sheetview::{Rel, Seg, relate, simplify};
+        let mut segs: Vec<Seg> = Vec::new();
+        for w in &layout.wires {
+            for pair in simplify(&w.points).windows(2) {
+                segs.push(Seg {
+                    net: w.net,
+                    a: pair[0],
+                    b: pair[1],
+                });
+            }
+        }
+        let length = segs.iter().map(Seg::length).sum();
+        let mut crossings = 0;
+        for (i, s) in segs.iter().enumerate() {
+            for t in &segs[i + 1..] {
+                if s.net != t.net && matches!(relate(s, t), Rel::Cross(_)) {
+                    crossings += 1;
+                }
+            }
+        }
+        Self {
+            crossings,
+            symbols: layout.symbols.len(),
+            length,
+        }
+    }
+
+    /// Fewer crossings, or as many with at least 5 mm less wire, and not many more power
+    /// symbols than the drawing it would replace (a symbol for every pin is not a better
+    /// drawing). That it breaks no more rules is asked separately.
+    fn better_than(&self, other: &Self) -> bool {
+        self.symbols <= other.symbols + 2
+            && (self.crossings < other.crossings
+                || (self.crossings == other.crossings && self.length + 5.0 < other.length))
+    }
 }
 
 // ---------------------------------------------------------------------------------------
