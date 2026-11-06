@@ -35,11 +35,11 @@ A net that the checked model says is the return of a rail (the `neg` side) is dr
 
 ### Proof in a browser
 
-`scripts/editor-verify launch --fixture schematic_bench` (the invented project `examples/schematic_bench`: four modules, `adc`, `mcu`, `buck`, `modem`) then `drive schematic-rules` measures the page's own SVG with the browser's text boxes and asserts each rule above (wires not names, parts beside their pins, a symbol only at the end of a wire, no wire over any text, an X on every open pin, one box for a three-unit symbol, a table for 97 pins, 22 parts on one module). `SHOT_LABEL=after scripts/editor-verify drive schematic-shots` takes each module at 1366 x 768 and 2000 x 1000. Look at the screenshots.
+`scripts/editor-verify launch --fixture schematic_bench` (the invented project `examples/schematic_bench`: four modules, `adc`, `mcu`, `buck`, `modem`) then `drive schematic-rules` measures the page's own SVG with the browser's text boxes and asserts each rule above (wires not names, parts beside their pins, a symbol only at the end of a wire, no wire over any text, an X on every open pin, a box for each unit of the three-unit amplifier and the two-unit processor, the processor's supply capacitors beside its power unit and not its signal unit, a table for the signal unit's 64 pins, a regulator as one row with its capacitors hanging from it, 22 parts on one module). `SHOT_LABEL=after scripts/editor-verify drive schematic-shots` takes each module at 1366 x 768 and 2000 x 1000. Look at the screenshots.
 
 ### A symbol of several units, or of many pins
 
-A part whose symbol has several units is one box with every pin on the side the symbol puts it; a symbol of more than 60 pads is one box with two columns of pins in labelled groups (Power, Ground, then by the start of the pin names, the unconnected last) and says "N pins". Pin names are as big as net names there. The KiCad export keeps the units.
+A part whose symbol has several units is one box for each unit (ADR 0050: `U4A`, `U4B`; selecting the part lights all its boxes), each with the pins the unit has on the sides the symbol puts them; a unit of more than 60 pins is a box with columns of pins in labelled groups (by the start of the pin names, the unconnected last) that says "N pins", and a power unit has its supply pins along the top edge and its grounds along the bottom edge. A decoupling capacitor stands by the unit that owns the supply pins. Pin names are as big as net names there. The KiCad export keeps the units.
 
 1. The drawing has a `.module-sheet` for each of the 24 instances and one for the rest, in a shape that is not a strip.
 2. `VIN` is a supply symbol with its name in each regulator stage, never a wire across the page.

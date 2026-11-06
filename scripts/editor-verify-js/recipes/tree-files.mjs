@@ -195,7 +195,10 @@ export async function run({ page, shot, step, expect, section, project }) {
   await page.waitForSelector('.ft-row[data-id="f:src/drafts/hush.nsm"]', { state: 'detached' });
   expect(!fs.existsSync(disk('src/drafts/hush.nsm')), 'gone from the disk');
   expect((await page.locator('.tab:has-text("hush.nsm")').count()) === 0, 'and its tab is closed');
-  expect((await page.evaluate(() => document.activeElement?.closest('[role=tree]') !== null)) === true, 'the focus stays in the tree');
+  // The page puts the focus on the row above the deleted one once the list is drawn again (a few frames after the row is gone),
+  // so the check waits for that and does not read the focus in the frame the row left.
+  const focused = await page.waitForFunction(() => !!document.activeElement?.closest('[role=tree]'), null, { timeout: 5000 }).then(() => true, () => false);
+  expect(focused, 'the focus stays in the tree');
 
   step('a top-level file needs the box ticked; the manifest cannot be deleted');
   await row('f:src/irrigation.nsm').focus();
