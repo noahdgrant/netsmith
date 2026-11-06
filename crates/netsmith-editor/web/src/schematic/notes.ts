@@ -72,6 +72,48 @@ export interface NoteEl {
   anchors: string[];
 }
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+/** The focus ring of a note, in screen pixels whatever the drawing's zoom: 2 px wide, 2 px clear of the frame. */
+const RING_WIDTH_PX = 2;
+const RING_OFFSET_PX = 2;
+const ringed = new WeakSet<Element>();
+
+/** The ring a note shows while the keyboard has the focus on it: a crisp rectangle round the frame (not the frame's own stroke, which scales
+ * with the drawing and could carry no offset), drawn by the stylesheet only on `:focus-visible`. Its size is set when the focus arrives, from
+ * the zoom the drawing has then. */
+function ensureRing(el: Element) {
+  const frame = el.querySelector<SVGRectElement>(':scope > .note-frame');
+  if (!frame) return;
+  let ring = el.querySelector<SVGRectElement>(':scope > .note-ring');
+  if (!ring) {
+    ring = document.createElementNS(SVG_NS, 'rect') as SVGRectElement;
+    ring.setAttribute('class', 'note-ring');
+    ring.setAttribute('aria-hidden', 'true');
+    el.appendChild(ring);
+  }
+  if (ringed.has(el)) return;
+  ringed.add(el);
+  el.addEventListener('focus', () => placeRing(el as SVGGraphicsElement, frame, ring as SVGRectElement));
+}
+
+/** The ring's rectangle for a frame, in the drawing's units, when one pixel is `scale` of them: the frame grown by half its own stroke, the offset and half the
+ * ring's width, so the 2 px line stands 2 px clear of the frame's outer edge on the screen at any zoom. */
+export function ringRect(frame: { x: number; y: number; width: number; height: number; rx: number; stroke?: number }, scale: number) {
+  const unit = scale > 0 && Number.isFinite(scale) ? scale : 1;
+  // The frame's own stroke reaches half its width beyond its rectangle (in the drawing's units): the gap is measured from the outside of that.
+  const grow = (RING_OFFSET_PX + RING_WIDTH_PX / 2) / unit + Math.max(0, frame.stroke ?? 0) / 2;
+  return { x: frame.x - grow, y: frame.y - grow, width: frame.width + 2 * grow, height: frame.height + 2 * grow, rx: frame.rx + grow };
+}
+
+/** Put the ring round the frame at the zoom the drawing has now (the user units one pixel is). */
+function placeRing(el: SVGGraphicsElement, frame: SVGRectElement, ring: SVGRectElement) {
+  const m = el.ownerSVGElement?.getScreenCTM();
+  const n = (name: string) => Number(frame.getAttribute(name)) || 0;
+  const stroke = parseFloat(getComputedStyle(frame).strokeWidth) || 0;
+  const r = ringRect({ x: n('x'), y: n('y'), width: n('width'), height: n('height'), rx: n('rx'), stroke }, m ? Math.hypot(m.a, m.b) : 1);
+  for (const [name, v] of [['x', r.x], ['y', r.y], ['width', r.width], ['height', r.height], ['rx', r.rx], ['ry', r.rx]] as const) ring.setAttribute(name, String(v));
+}
+
 /** Make the notes of the drawing reachable by keyboard (Tab, in the order the drawing writes them, which is after the parts) and readable by a screen reader,
  * and write on each the designators it is about (`data-anchors`, a space between; the page's own reading, marked `data-anchors-page`, unless the server wrote them). Called whenever the drawing or the board's detail changes; idempotent. */
 export function prepareNotes(root: Element, byPath: ReadonlyMap<string, string>): NoteEl[] {
@@ -91,6 +133,7 @@ export function prepareNotes(root: Element, byPath: ReadonlyMap<string, string>)
     if (parseNoteAt(el.getAttribute('data-at'))) {
       el.setAttribute('tabindex', '0');
       el.setAttribute('role', 'button');
+      ensureRing(el);
     } else el.setAttribute('role', 'note');
     el.setAttribute('aria-label', noteLabel(text));
     out.push({ el, text, anchors });

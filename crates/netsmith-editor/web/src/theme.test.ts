@@ -193,6 +193,11 @@ function pairs(): Pair[] {
   }
   // Marks the page draws without words: the focus ring and the brand line.
   list.push({ fg: '--focus', bg: ['--surface', '--canvas', '--surface-raised', '--surface-3', '--bg'], min: 3, what: 'focus indicator' });
+  // The ring of a focused note of the schematic (round 8 fix) is a 2 px line on the sheet, clear of the note's own card (and on the next note's card where two meet).
+  list.push({ fg: '--focus', bg: ['--sch-sheet', '--sch-note-fill'], min: 3, what: "a schematic note's focus ring, on the sheet and on a note's card" });
+  // The overview ruler's glyphs (an error's disc, a warning's triangle) stand on the strip over the editor's surface.
+  list.push({ fg: '--danger', bg: ['--surface', '--canvas'], min: 3, what: "the overview ruler's error disc (a graphic)" });
+  list.push({ fg: '--warning', bg: ['--surface', '--canvas'], min: 3, what: "the overview ruler's warning triangle (a graphic)" });
   list.push({ fg: '--accent', bg: ['--surface', '--canvas', '--bg'], min: 3, what: 'accent marks (the active tab line, a primary action)' });
   list.push({ fg: '--accent-text', bg: ['--bg'], what: 'accent text on the frame' });
   // The status bar is on the frame: its stale, error and success words are the tones' own text colours, not the icon colours.

@@ -376,9 +376,12 @@ body:has(.status-popover) .toasts { right: calc(1rem + 21.25rem + 0.75rem); }
 .schematic-host svg.schematic .note:hover .note-frame { stroke-width: .4; filter: drop-shadow(0 .3px .6px color-mix(in srgb, var(--sch-note-text) 38%, transparent)); }
 .schematic-host svg.schematic .note.on .note-frame { stroke: var(--sel); stroke-width: .4; }
 .schematic-host svg.schematic.has-on .note:not(.on):hover { opacity: .85; }
-/* A note takes Tab (it is a button for the keyboard: Enter or Space opens its line): the focus ring is the frame's own stroke in the page's focus colour, with a soft halo, and a note that has the focus is never dimmed. */
+/* A note takes Tab (it is a button for the keyboard: Enter or Space opens its line): the focus ring is a crisp 2 px line in the page's focus colour, 2 px clear of
+ * the frame, with no halo (notes.ts puts the rectangle and sizes it at the zoom the drawing has; `non-scaling-stroke` keeps the line 2 px at every zoom), and a note that has
+ * the focus is never dimmed. */
 .schematic-host svg.schematic .note:focus { outline: none; }
-.schematic-host svg.schematic .note:focus-visible .note-frame { stroke: var(--focus); stroke-width: .7; filter: drop-shadow(0 0 .6px var(--focus)); }
+.schematic-host svg.schematic .note .note-ring { display: none; fill: none; stroke: var(--focus); stroke-width: 2px; vector-effect: non-scaling-stroke; pointer-events: none; }
+.schematic-host svg.schematic .note:focus-visible .note-ring { display: inline; }
 .schematic-host svg.schematic.has-on .note:not(.on):focus-visible { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .schematic-host svg.schematic .note .note-frame { transition: none; } }
 .inspector { width: 18.125rem; flex: none; overflow: auto; background: var(--surface); border-left: 1px solid var(--border); padding: 0.25rem 0.875rem 1rem; cursor: default; }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { litNotes, noteAnchors, noteLabel, noteLocation, parseNoteAt } from './notes';
+import { litNotes, noteAnchors, noteLabel, noteLocation, parseNoteAt, ringRect } from './notes';
 
 describe('where a note is written', () => {
   it('is the file and the line after the last colon', () => {
@@ -68,5 +68,34 @@ describe('the words a screen reader says', () => {
     expect(label.endsWith('…')).toBe(true);
     expect(label.length).toBeLessThanOrEqual('Note: '.length + 61);
     expect(noteLabel('a\n  b')).toBe('Note: a b');
+  });
+});
+
+describe("a note's focus ring", () => {
+  const frame = { x: 10, y: 20, width: 60, height: 30, rx: 1 };
+  it('stands 2 px clear of the frame on the screen: grown by 3 px (the offset and half the 2 px line), whatever the zoom', () => {
+    for (const scale of [0.5, 1, 4]) {
+      const r = ringRect(frame, scale);
+      const grow = 3 / scale;
+      expect(r.x).toBeCloseTo(frame.x - grow);
+      expect(r.y).toBeCloseTo(frame.y - grow);
+      expect(r.width).toBeCloseTo(frame.width + 2 * grow);
+      expect(r.height).toBeCloseTo(frame.height + 2 * grow);
+      // The ring's centre line is 3 px from the frame's edge on the screen, so the line's inner edge is 2 px away.
+      expect((frame.x - r.x) * scale).toBeCloseTo(3);
+    }
+  });
+  it("is clear of the frame's own stroke too: half of it (in the drawing's units) is added", () => {
+    const thin = ringRect(frame, 4);
+    const thick = ringRect({ ...frame, stroke: 0.8 }, 4);
+    expect(frame.x - thick.x - (frame.x - thin.x)).toBeCloseTo(0.4);
+    expect(thick.width - thin.width).toBeCloseTo(0.8);
+  });
+  it('rounds its corners a little more than the frame does', () => {
+    expect(ringRect(frame, 2).rx).toBeCloseTo(1 + 1.5);
+  });
+  it('falls back to one unit a pixel when the zoom is not known', () => {
+    expect(ringRect(frame, 0).x).toBeCloseTo(7);
+    expect(ringRect(frame, Number.NaN).x).toBeCloseTo(7);
   });
 });

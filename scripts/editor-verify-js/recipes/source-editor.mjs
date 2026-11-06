@@ -312,9 +312,22 @@ export async function run({ page, shot, step, expect, project, section }) {
     probe.remove();
     const r = document.querySelector('.cm-ruler').getBoundingClientRect();
     const th = document.querySelector('.cm-ruler-thumb');
-    return { bg: getComputedStyle(t).backgroundColor, danger, lane: t.classList.contains('lane-problem'), width: r.width, height: r.height, thumbHidden: th.hidden, thumb: th.getBoundingClientRect().height, scrolls: document.querySelector('.cm-scroller').scrollHeight > document.querySelector('.cm-scroller').clientHeight };
+    return { image: getComputedStyle(t).backgroundImage, radius: getComputedStyle(t).borderRadius, w: t.getBoundingClientRect().width, h: t.getBoundingClientRect().height, danger, lane: t.classList.contains('lane-problem'), width: r.width, height: r.height, thumbHidden: th.hidden, thumb: th.getBoundingClientRect().height, scrolls: document.querySelector('.cm-scroller').scrollHeight > document.querySelector('.cm-scroller').clientHeight };
   });
-  expect(look.bg === look.danger && look.lane, 'in the problem lane, in the page\'s danger token');
+  expect(look.lane && look.image.includes(look.danger) && look.radius.includes('50%'), 'in the problem lane, a disc (an error is round) drawn in the page\'s danger token');
+  expect(look.w >= 7 && look.h >= 7 && Math.abs(look.w - look.h) < 1, `a glyph, the same size wherever it is (${look.w} x ${look.h} px), wider than a change's bar so that colour is not the only difference`);
+  // A warning is a triangle: injected here (the fixture has no warning at this point) only to see that the stylesheet draws it as one.
+  const tri = await page.evaluate(() => {
+    const t = document.createElement('span');
+    t.className = 'cm-ruler-tick lane-problem kind-warning';
+    t.style.setProperty('--y', '200px');
+    document.querySelector('.cm-ruler-ticks').appendChild(t);
+    const cs = getComputedStyle(t);
+    const out = { clip: cs.clipPath, w: t.getBoundingClientRect().width, h: t.getBoundingClientRect().height };
+    t.remove();
+    return out;
+  });
+  expect(/polygon/.test(tri.clip) && tri.w >= 7, `a warning is a triangle, not a bar (${tri.clip.slice(0, 40)}, ${tri.w} px wide)`);
   expect(look.scrolls ? !look.thumbHidden && look.thumb > 8 && look.thumb < look.height : look.thumbHidden, `the thumb is the window's share of the file (${look.thumb.toFixed(0)} of ${look.height.toFixed(0)} px)`);
   await page.keyboard.press('Control+Home');
   await settle(200);
@@ -330,6 +343,16 @@ export async function run({ page, shot, step, expect, project, section }) {
   const sc1 = await page.evaluate(() => document.querySelector('.cm-scroller').scrollTop);
   expect(sc1 > 0 || !look.scrolls, `a press on the strip scrolls there (${sc1}px)`);
   await shot('ruler');
+
+  step('Next change and Previous change without a comparison move nothing and say so in a toast');
+  await page.locator('.cm-content').click();
+  const sel0 = await page.evaluate(() => document.querySelector('.cm-activeLine')?.textContent ?? '');
+  await page.keyboard.press('Alt+F5');
+  await page.waitForSelector('.toast', { timeout: 4000 });
+  expect(/No comparison active/.test(await page.locator('.toast').first().innerText()), 'Alt+F5: "No comparison active"');
+  await page.keyboard.press('Shift+Alt+F5');
+  await settle(300);
+  expect((await page.evaluate(() => document.querySelector('.cm-activeLine')?.textContent ?? '')) === sel0, 'and the cursor stays where it was');
 
   step('the gutter marks the line with the page\'s severity icon, and the lint tooltip is a card');
   await page.waitForSelector('[data-testid="gutter-error"]');

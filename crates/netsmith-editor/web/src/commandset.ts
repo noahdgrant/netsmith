@@ -4,7 +4,7 @@
 // commands, defined here and run through the handle the view hands out.)
 
 import { foldAll, unfoldAll } from '@codemirror/language';
-import { closeHoverTooltips } from '@codemirror/view';
+import { EditorView, closeHoverTooltips } from '@codemirror/view';
 
 import { askForRef, toggleChanges } from './components/ChangesSwitch';
 import { api } from './client';
@@ -17,6 +17,8 @@ import { SECTIONS, canSplit, closePane, splitRight } from './layout';
 import { openPicker, toggleCheatSheet } from './quickpick';
 import { cardAtCursor } from './source/cm-card';
 import { openCard } from './source/cm-card';
+import { changeHunks, stepChange } from './source/changeSteps';
+import { changeLines } from './source/cm-changes';
 import { sourceEditor } from './source/handle';
 import { canBack, canForward } from './source/navhistory';
 import { hoverCards, inlineHints, outlineOpen, resetEditorZoom, wordWrap, zoomEditor } from './source/prefs';
@@ -207,6 +209,32 @@ const schematicCommands = (): Command[] => {
 const sourceHere = () => focusedSection() === 'source';
 const editorOn = () => sourceHere() && sourceEditor.view !== null && activeFile.value !== null;
 
+/** Next change and Previous change: the cursor goes to the start of the next run of lines the comparison marks in the open file, from
+ * the cursor's line (the runs the margin and the ruler show). Without a comparison nothing moves and a toast says so. */
+function stepSourceChange(dir: 1 | -1) {
+  const v = sourceEditor.view;
+  if (!v) return;
+  if (refName.peek() === null) {
+    say('No comparison active');
+    return;
+  }
+  const marks = changeLines(v.state);
+  if (!marks) {
+    say('The changes are not shown: turn on Show changes to step through them');
+    return;
+  }
+  const state = v.state;
+  const to = stepChange(changeHunks(state.doc.lines, marks), state.doc.lineAt(state.selection.main.head).number, dir);
+  if (!to) {
+    say(`No changes in this file since ${refText.peek() || 'the ref'}`);
+    return;
+  }
+  const at = state.doc.line(Math.min(to.line, state.doc.lines)).from;
+  v.focus();
+  v.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: 'center' }), scrollIntoView: false, userEvent: 'select' });
+  if (to.wrapped) say(dir === 1 ? 'Back at the first change' : 'Back at the last change');
+}
+
 const sourceCommands = (): Command[] => [
   {
     id: 'source.card.show',
@@ -293,6 +321,26 @@ const sourceCommands = (): Command[] => [
     aliases: ['font size', 'default text size'],
     when: sourceHere,
     run: () => void resetEditorZoom(),
+  },
+  {
+    id: 'source.change.next',
+    title: 'Next change',
+    group: 'Source',
+    keys: 'Alt+F5',
+    inFields: true,
+    aliases: ['next hunk', 'next difference', 'changed since the ref', 'diff', 'compare'],
+    when: editorOn,
+    run: () => stepSourceChange(1),
+  },
+  {
+    id: 'source.change.prev',
+    title: 'Previous change',
+    group: 'Source',
+    keys: 'Shift+Alt+F5',
+    inFields: true,
+    aliases: ['previous hunk', 'previous difference', 'changed since the ref', 'diff', 'compare'],
+    when: editorOn,
+    run: () => stepSourceChange(-1),
   },
   {
     id: 'source.replace',

@@ -1,8 +1,9 @@
 // The overview ruler: a strip at the editor's right edge that holds the whole file. It has a tick for each problem the checker found
 // in it (the lane on the right) and for each run of lines the comparison with a ref changed (the lane on the left), a faint thumb
 // where the window is, and a press on it scrolls there: on a tick to that line (the cursor goes to it), on the strip to that share
-// of the file. A tick says `line N: message` in the page's own tooltip. The strip is not for a screen reader or the keyboard: the
-// Problems dock, F8 and the status bar say the same, and the strip is a way to see and reach by the pointer.
+// of the file. A tick says `line N: message` in the page's own tooltip. A problem is a glyph (a disc, a triangle) and a change a thin bar, so
+// colour is not the only difference. The strip is not for a screen reader or the keyboard: the Problems dock, F8, Next change (Alt+F5) and the
+// status bar say the same, and the strip is a way to see and reach by the pointer.
 
 import { forEachDiagnostic } from '@codemirror/lint';
 import { type Extension } from '@codemirror/state';
@@ -69,11 +70,18 @@ const ruler = ViewPlugin.fromClass(
           ...marks.map((m) => {
             const top = view.lineBlockAt(view.state.doc.line(m.from).from).top;
             const bottom = view.lineBlockAt(view.state.doc.line(m.to).from).bottom;
-            const at = place(top, bottom, whole, track, 4);
             const tick = document.createElement('span');
             tick.className = `cm-ruler-tick lane-${m.lane} kind-${m.kind}`;
-            tick.style.top = `${at.top.toFixed(1)}px`;
-            tick.style.height = `${at.height.toFixed(1)}px`;
+            if (m.lane === 'problem') {
+              // A glyph of a fixed size, centred on its line: the stylesheet keeps it inside the strip.
+              const at = place(top, bottom, whole, track, 0);
+              tick.style.setProperty('--y', `${(at.top + at.height / 2).toFixed(1)}px`);
+            } else {
+              // A bar as tall as its lines; the lines a deletion left are a thin line at the place they were.
+              const at = place(top, m.kind === 'deleted' ? top : bottom, whole, track, m.kind === 'deleted' ? 2 : 4);
+              tick.style.top = `${at.top.toFixed(1)}px`;
+              tick.style.height = `${at.height.toFixed(1)}px`;
+            }
             tick.setAttribute('data-line', String(m.from));
             tick.setAttribute('data-tip', m.label);
             tick.setAttribute('data-kind', m.kind);

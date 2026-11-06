@@ -9,6 +9,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
+import { expectFrameFits } from '../flow-helpers.mjs';
 import { noteFacts, overlaps } from '../schematic-helpers.mjs';
 
 export const fixture = 'two_boards';
@@ -146,29 +147,38 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   expect(/J2 → J1|J2\s*J1/.test(renum.join(' ')) || /J2/.test(renum.join(' ')), 'with the designators of each side');
   await page.locator('[data-testid="cmp-renumbered"] summary').click();
 
-  step('the list fills the height of the page and scrolls inside, with a foot that counts; the summary and the tabs stay put; a column of help stands in the margin on a wide window');
+  step('the list is as tall as its rows with a foot that counts right under the last one, and scrolls inside only past the height the page has; the summary and the tabs stay put; a column of help stands in the margin on a wide window');
   await page.setViewportSize({ width: 1920, height: 1080 });
   await settle(400);
+  const cmpSel = { frame: '.cmp-scroll', scroller: '.cmp-scroll', foot: '.cmp-foot', section: '.section.sec-compare' };
   const wide = await page.evaluate(() => {
-    const r = (sel) => document.querySelector(sel)?.getBoundingClientRect();
-    const scroller = r('.cmp-scroll');
-    const sec = r('.section.sec-compare');
-    const foot = r('.cmp-foot');
+    const foot = document.querySelector('.cmp-foot');
     const vh = document.querySelector('.section.sec-compare .vh');
-    const card = r('.cmp-scroll');
     return {
-      gap: sec.bottom - scroller.bottom,
-      footAtBottom: !!foot && Math.abs(foot.bottom - scroller.bottom) < 2,
-      footText: document.querySelector('.cmp-foot')?.innerText.replace(/\s+/g, ' '),
+      footText: foot?.innerText.replace(/\s+/g, ' '),
       tilesOutside: !document.querySelector('.cmp-scroll').contains(document.querySelector('.cmp-tiles')) && !document.querySelector('.cmp-scroll').contains(document.querySelector('.cmp-tabs')),
       help: vh ? { left: vh.getBoundingClientRect().left, text: vh.innerText.replace(/\s+/g, ' '), label: vh.getAttribute('aria-label') } : null,
-      cardRight: card.right,
+      cardRight: document.querySelector('.cmp-scroll').getBoundingClientRect().right,
     };
   });
-  expect(wide.gap >= 0 && wide.gap < 40 && wide.footAtBottom && /\d+ rows?/.test(wide.footText ?? ''), `the list reaches the foot of the page and its foot counts (${wide.footText}; ${wide.gap.toFixed(0)} px short)`);
+  const partsFit = await expectFrameFits(page, expect, 'Compare, parts', cmpSel);
+  expect(!partsFit.scrolls && /\d+ rows?/.test(wide.footText ?? ''), `the foot counts the rows (${wide.footText}) and a short list does not scroll`);
   expect(wide.tilesOutside, 'the tiles and the tabs are outside the scrolling list');
   expect(wide.help && wide.help.left >= wide.cardRight + 8 && /Base|Head/.test(wide.help.text) && wide.help.label === 'About this view', `the help column is beside the list (${wide.help?.text.slice(0, 50)}...)`);
   await shot('compare-wide');
+  for (const tab of ['bom', 'nets', 'rails']) {
+    await page.click(`#cmp-tab-${tab}`);
+    await settle(300);
+    if (await page.locator('.cmp-foot').count()) await expectFrameFits(page, expect, `Compare, ${tab}`, cmpSel);
+  }
+  await page.click('#cmp-tab-parts');
+  await settle(300);
+  await page.setViewportSize({ width: 1280, height: 520 });
+  await settle(400);
+  const tight = await expectFrameFits(page, expect, 'Compare, parts at 1280 x 520', cmpSel);
+  expect(tight.scrolls, 'a short window makes the list scroll inside its frame, the foot kept at its end');
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await settle(400);
 
   step('expand a row: the fields that changed, each with its old and new value');
   await r1.locator('.cr-chev').click();
@@ -469,6 +479,48 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   expect(bars.added + bars.changed > 0, `a bar beside lines that are new or changed (${JSON.stringify(bars)})`);
   expect(/\d+ lines? changed in this file/.test(await text('[data-testid="source-changes"]')), `the number of lines changed, in this file, in the status bar (${await text('[data-testid="source-changes"]')})`);
   await shot('source-gutter');
+
+  step('Next change and Previous change (Alt+F5, Shift+Alt+F5) step the runs of changed lines of the open file from the cursor, and the overview ruler draws the changes as thin bars');
+  const gutterLine = () => page.evaluate(() => Number(/Ln (\d+), Col/.exec(document.body.innerText)?.[1] ?? 0));
+  const ticks = await page.evaluate(() => [...document.querySelectorAll('.cm-ruler-tick.lane-change')].map((t) => ({ line: Number(t.getAttribute('data-line')), kind: t.dataset.kind, w: t.getBoundingClientRect().width, h: t.getBoundingClientRect().height })));
+  expect(ticks.length >= 2 && ticks.every((t) => t.w <= 6 && t.h >= 2 && t.w < 8), `the ruler has a bar for each run of changes, thin (${ticks.map((t) => `${t.kind}@${t.line}`).join(', ')})`);
+  const starts = [...new Set(ticks.map((t) => t.line))].sort((a, b) => a - b);
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('Control+Home');
+  await settle(200);
+  await page.keyboard.press('Alt+F5');
+  await settle(300);
+  const first = await gutterLine();
+  expect(first === starts[0], `Alt+F5 goes to the first change (line ${first}, the ruler's first bar is at ${starts[0]})`);
+  await page.keyboard.press('Alt+F5');
+  await settle(300);
+  const second = await gutterLine();
+  expect(second > first && (starts.length < 2 || second === starts[1] || second <= starts[starts.length - 1]), `Alt+F5 again goes on to the next one (line ${second})`);
+  await page.keyboard.press('Shift+Alt+F5');
+  await settle(300);
+  expect((await gutterLine()) === first, 'Shift+Alt+F5 goes back to the one before');
+  let wrapped = first;
+  for (let i = 0; i < starts.length + 2 && !(await page.locator('.toast', { hasText: 'Back at the first change' }).count()); i++) {
+    await page.keyboard.press('Alt+F5');
+    await settle(200);
+    wrapped = await gutterLine();
+  }
+  expect(wrapped === first && (await page.locator('.toast', { hasText: 'Back at the first change' }).count()) > 0, 'past the last change it comes round to the first, and a toast says so');
+  await page.keyboard.press('Control+Shift+P');
+  await page.waitForSelector('.qp-row');
+  await page.keyboard.type('next change');
+  await settle(250);
+  const listed = await page.locator('.qp').innerText();
+  expect(/Next change/.test(listed) && /Alt\s*\+?\s*F5/.test(listed), `the palette lists Next change with its key (${listed.replace(/\s+/g, ' ').slice(0, 120)})`);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.qp', { state: 'detached' });
+  await page.keyboard.press('Control+/');
+  await page.waitForSelector('.cheat');
+  const sheet = await page.locator('.cheat').innerText();
+  expect(/Next change\b/.test(sheet) && /Previous change\b/.test(sheet) && /Alt\s*\+?\s*F5/.test(sheet), 'the cheat sheet lists Next change and Previous change');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.cheat', { state: 'detached' });
+  await shot('source-ruler-changes');
 
   step('turn it off with the palette command: every mark goes');
   await page.keyboard.press('Control+Shift+P');
