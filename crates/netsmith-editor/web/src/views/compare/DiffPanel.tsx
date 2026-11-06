@@ -9,7 +9,8 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { api } from '../../client';
 import { Icon } from '../../components/Icons';
 import { Segmented, Spinner } from '../../components/ui';
-import { type ViewRow, createDiffView, scrollToRow, syncScroll } from '../../compare/cm-diff';
+import { type Collapsed, type ViewRow, createDiffView, openRegion, scrollToRow, syncScroll } from '../../compare/cm-diff';
+import { barText, collapsedRegions, diffControls, hideChoice, hidesUnchanged, openBar, openedBars, regionAt } from '../../compare/collapse';
 import { changeStarts, inlineRows, sideRows, splitLines } from '../../compare/linediff';
 import { baseText, closeDiff, compare, diffTarget, openDiff, type DiffTarget } from '../../compare/store';
 import { goTo, openFiles, revealSection } from '../../store';
@@ -31,7 +32,7 @@ async function headText(path: string): Promise<{ text: string; open: boolean } |
 
 const viewRows = (rows: ReturnType<typeof inlineRows>): ViewRow[] => rows.map((r) => ({ text: r.text, kind: r.kind, a: r.aLine, b: r.bLine, marks: r.marks }));
 
-function Views({ base, head, path, mode, line, side, onCount, jump }: { base: string; head: string; path: string; mode: Mode; line?: number; side?: 'base' | 'head'; onCount: (n: number) => void; jump: { to: number; nonce: number } | null }) {
+function Views({ base, head, path, mode, line, side, hide, onCount, onHidden, jump }: { base: string; head: string; path: string; mode: Mode; line?: number; side?: 'base' | 'head'; hide: boolean; onCount: (n: number) => void; onHidden: (n: number) => void; jump: { to: number; nonce: number } | null }) {
   const left = useRef<HTMLDivElement>(null);
   const right = useRef<HTMLDivElement>(null);
   const views = useRef<EditorView[]>([]);
@@ -41,6 +42,16 @@ function Views({ base, head, path, mode, line, side, onCount, jump }: { base: st
   const sides = useMemo(() => sideRows(a, b), [a, b]);
   const starts = useMemo(() => (mode === 'inline' ? changeStarts(inline) : changeStarts(sides)), [mode, inline, sides]);
   useEffect(() => onCount(starts.length), [starts.length]);
+
+  // The runs of unchanged rows behind a bar, each named by the base line it starts at (the same in both ways of showing the changes).
+  const regions = useMemo<Collapsed[]>(() => {
+    if (!hide) return [];
+    const changed = mode === 'inline' ? inline.map((r) => r.kind !== 'equal') : sides.map((r) => !(r.left && r.right && r.left.kind === 'equal' && r.right.kind === 'equal'));
+    const at = (i: number) => (mode === 'inline' ? inline[i].aLine : sides[i].left?.aLine) ?? i;
+    return collapsedRegions(changed).map((r) => ({ ...r, key: at(r.from) }));
+  }, [hide, mode, inline, sides]);
+  // The bars that are open: kept for the page's session, and a view that opens to a line inside a hidden run opens that run.
+  const opened = useRef<ReadonlySet<number>>(openedBars(path));
 
   // The row of the line that was asked for.
   const focus = useMemo(() => {
@@ -56,12 +67,25 @@ function Views({ base, head, path, mode, line, side, onCount, jump }: { base: st
   useEffect(() => {
     const made: EditorView[] = [];
     let unsync = () => {};
+    const around = focus === undefined ? undefined : regionAt(regions, focus);
+    if (around) openBar(path, around.key);
+    opened.current = openedBars(path);
+    // Opening a bar opens it in every view of the pair (they scroll as one, so they hide the same rows).
+    const onOpen = (key: number) => {
+      openBar(path, key);
+      opened.current = openedBars(path);
+      for (const v of made) v.dispatch({ effects: openRegion.of(key) });
+      onHidden(regions.filter((r) => !opened.current.has(r.key)).reduce((n, r) => n + r.to - r.from, 0));
+      made[0]?.focus();
+    };
+    const shared = { collapsed: regions, opened: opened.current, onOpen };
+    onHidden(regions.filter((r) => !opened.current.has(r.key)).reduce((n, r) => n + r.to - r.from, 0));
     if (mode === 'inline' && left.current) {
-      made.push(createDiffView(left.current, viewRows(inline), path, { columns: 'both', focus, label: `Changes in ${path}` }));
+      made.push(createDiffView(left.current, viewRows(inline), path, { columns: 'both', focus, label: `Changes in ${path}`, ...shared }));
     } else if (left.current && right.current) {
       const fill = (r: ViewRow | null | undefined): ViewRow => r ?? { text: '', kind: 'filler', marks: [] };
-      const l = createDiffView(left.current, sides.map((r) => fill(r.left && { text: r.left.text, kind: r.left.kind, a: r.left.aLine, marks: r.left.marks })), path, { columns: 'a', focus, label: `${path} at the ref` });
-      const r = createDiffView(right.current, sides.map((s) => fill(s.right && { text: s.right.text, kind: s.right.kind, b: s.right.bLine, marks: s.right.marks })), path, { columns: 'b', focus, label: `${path} on disk` });
+      const l = createDiffView(left.current, sides.map((r) => fill(r.left && { text: r.left.text, kind: r.left.kind, a: r.left.aLine, marks: r.left.marks })), path, { columns: 'a', focus, label: `${path} at the ref`, ...shared });
+      const r = createDiffView(right.current, sides.map((s) => fill(s.right && { text: s.right.text, kind: s.right.kind, b: s.right.bLine, marks: s.right.marks })), path, { columns: 'b', focus, label: `${path} on disk`, ...shared });
       made.push(l, r);
       unsync = syncScroll(l, r);
     }
@@ -74,7 +98,7 @@ function Views({ base, head, path, mode, line, side, onCount, jump }: { base: st
       for (const v of made) v.destroy();
       views.current = [];
     };
-  }, [mode, inline, sides, path, focus]);
+  }, [mode, inline, sides, path, focus, regions]);
 
   useEffect(() => {
     if (!jump) return;
@@ -97,6 +121,7 @@ function Body({ target }: { target: DiffTarget }) {
   const [mode, setMode] = useState<Mode>(() => (load<Mode>(MODE_KEY, 'side') === 'inline' ? 'inline' : 'side'));
   const [texts, setTexts] = useState<{ base: string | null; head: { text: string; open: boolean } | null } | 'loading'>('loading');
   const [count, setCount] = useState(0);
+  const [hiddenLines, setHiddenLines] = useState(0);
   const [at, setAt] = useState(0);
   const [jump, setJump] = useState<{ to: number; nonce: number } | null>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -120,6 +145,21 @@ function Body({ target }: { target: DiffTarget }) {
     setJump({ to: n, nonce: (jump?.nonce ?? 0) + 1 });
   };
   const loaded = texts === 'loading' ? null : texts;
+  // Whether the unchanged lines are hidden: the switch when it was used, else a file of more than 60 lines hides them.
+  const lineCount = loaded ? splitLines(loaded.head?.text ?? loaded.base ?? '').length : 0;
+  const hide = hidesUnchanged(hideChoice.value, lineCount);
+  const flip = () => {
+    hideChoice.value = !hide;
+  };
+  // What F7, Shift+F7 and the palette act on while this panel is open.
+  const controls = useRef({ step, flip, hide, count });
+  controls.current = { step, flip, hide, count };
+  useEffect(() => {
+    diffControls.value = { step: (d) => controls.current.step(d), toggleHide: () => controls.current.flip(), hiding: hide, changes: count };
+    return () => {
+      diffControls.value = null;
+    };
+  }, [hide, count]);
   const isNew = !!loaded && loaded.base === null;
   const isGone = !!loaded && loaded.head === null;
   const where = target.where;
@@ -136,7 +176,8 @@ function Body({ target }: { target: DiffTarget }) {
         if (e.key === 'Escape') {
           e.stopPropagation();
           closeDiff();
-        } else if (e.key === 'F7' || (e.altKey && e.key === 'ArrowDown')) {
+        } else if (e.altKey && e.key === 'ArrowDown') {
+          // F7 and Shift+F7 are commands of the registry (commandset.ts), which work from anywhere in the page.
           e.preventDefault();
           step(e.shiftKey ? -1 : 1);
         }
@@ -167,6 +208,17 @@ function Body({ target }: { target: DiffTarget }) {
         </button>
         <button class="icon-btn" data-tip="Next change (F7)" aria-label="Next change" disabled={count === 0 || at >= count - 1} data-testid="diff-next" onClick={() => step(1)}>
           <Icon name="chevron-down" size={15} />
+        </button>
+        <button
+          type="button"
+          class={`tool small diff-hide ${hide ? 'on' : ''}`}
+          aria-pressed={hide}
+          data-testid="diff-hide"
+          data-tip={hide ? `Showing only the changes and 3 lines around them${hiddenLines ? ` (${barText(hiddenLines)} are hidden)` : ''}. Click to show every line.` : 'Hide the lines that did not change, keeping 3 around each change'}
+          onClick={flip}
+        >
+          <Icon name="fold" size={13} />
+          <span>Hide unchanged lines</span>
         </button>
         <Segmented<Mode>
           label="How to show the changes"
@@ -208,7 +260,7 @@ function Body({ target }: { target: DiffTarget }) {
             <Spinner size={14} /> Reading {path} at {ref}
           </div>
         ) : (
-          <Views base={loaded.base ?? ''} head={loaded.head?.text ?? ''} path={path} mode={mode} line={target.line} side={target.side} onCount={setCount} jump={jump} />
+          <Views base={loaded.base ?? ''} head={loaded.head?.text ?? ''} path={path} mode={mode} line={target.line} side={target.side} hide={hide} onCount={setCount} onHidden={setHiddenLines} jump={jump} />
         )}
       </div>
     </div>

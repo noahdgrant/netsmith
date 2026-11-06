@@ -20,6 +20,7 @@ export function InspectorHead({
   actions,
   tone,
   titleTag = 'h3',
+  titleId,
 }: {
   eyebrow: string;
   /** Shown because the pointer is over it, not because it is picked. */
@@ -34,6 +35,8 @@ export function InspectorHead({
   /** A colour for the icon: `part`, `net`, `module`, `bus`, `board`. */
   tone?: string;
   titleTag?: 'h3' | 'div';
+  /** An id for the title, so a dialog can be labelled by it. */
+  titleId?: string;
 }) {
   const Title = titleTag;
   return (
@@ -48,7 +51,7 @@ export function InspectorHead({
             <Icon name={icon} size={15} />
           </span>
         )}
-        <Title class={`title ih-title ${mono ? 'mono' : ''}`}>
+        <Title id={titleId} class={`title ih-title ${mono ? 'mono' : ''}`}>
           <span class="ih-name">{title}</span>
           {kind && <span class="sub ih-kind">{kind}</span>}
         </Title>

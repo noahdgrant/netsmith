@@ -6,8 +6,8 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import type { Hover } from '../hover';
 import { hoverEnter, hoverLeave, partsOfDefinition } from '../hover';
-import { type OutlineRow, activeEntry, ancestorsOf, outlineRows } from '../source/outline';
-import { OUTLINE_H, outlineHeight, outlineOpen } from '../source/prefs';
+import { type FoldChoice, NO_CHOICE, type OutlineRow, activeEntry, allChoice, ancestorsOf, foldKeys, foldedIds, holds, outlineRows, toggled } from '../source/outline';
+import { OUTLINE_H, outlineFolds, outlineHeight, outlineOpen, setFoldChoice } from '../source/prefs';
 import { kindOfType } from '../source/card';
 import { highlight } from '../tree';
 import { activeFile, cursor, detail, goTo, problems, project, viewBoardOfDefinition } from '../store';
@@ -28,7 +28,6 @@ export function Outline() {
   const height = outlineHeight.value;
   const { syms, from } = useFileSymbols(path);
   const [filter, setFilter] = useState('');
-  const [folded, setFolded] = useState<Set<string>>(new Set());
   const list = useRef<HTMLDivElement>(null);
   const drag = useRef<{ y: number; h: number } | null>(null);
   const cur = cursor.value;
@@ -36,6 +35,11 @@ export function Outline() {
   const line = path && cur && cur.file === path ? cur.line : null;
   const active = activeEntry(syms, line);
   const file = proj?.files.find((f) => f.path === path);
+  // What is folded: the definitions that do not hold the cursor, unless the person chose (kept for the file, by the names of the entries).
+  const choice: FoldChoice = (path && outlineFolds.value[path]) || NO_CHOICE;
+  const folded = useMemo(() => foldedIds(syms, line, choice), [syms, line, choice]);
+  const keys = useMemo(() => foldKeys(syms), [syms]);
+  const choose = (c: FoldChoice) => path && setFoldChoice(path, c);
 
   const rows = useMemo(
     () =>
@@ -56,9 +60,13 @@ export function Outline() {
 
   // The entry of the cursor is in view, and its folded parents are open, unless the person is in the list.
   useEffect(() => {
-    if (!active) return;
+    if (!active || filter) return;
+    // A definition the person folded opens when the cursor goes into it.
     const hidden = ancestorsOf(syms, active).filter((id) => folded.has(id));
-    if (hidden.length && !filter) setFolded(new Set([...folded].filter((id) => !hidden.includes(id))));
+    if (hidden.length) {
+      const drop = new Set(hidden.map((id) => keys.get(id)));
+      choose({ open: choice.open, closed: choice.closed.filter((k) => !drop.has(k)) });
+    }
   }, [active]);
   useEffect(() => {
     if (!active || list.current?.contains(document.activeElement)) return;
@@ -71,12 +79,7 @@ export function Outline() {
     void goTo({ file: path, line: s.line, column: s.column, endLine: s.line, endColumn: s.column });
     if (s.kind !== 'decl') viewBoardOfDefinition(s.kind, s.name);
   };
-  const toggle = (row: OutlineRow) => {
-    const next = new Set(folded);
-    if (next.has(row.sym.id)) next.delete(row.sym.id);
-    else next.add(row.sym.id);
-    setFolded(next);
-  };
+  const toggle = (row: OutlineRow) => choose(toggled(choice, keys.get(row.sym.id) ?? row.sym.name, folded.has(row.sym.id)));
   const move = (from: number, to: number) => {
     const el = list.current?.querySelectorAll<HTMLElement>('.ol-row')[Math.max(0, Math.min(rows.length - 1, to))];
     el?.focus();
@@ -157,6 +160,16 @@ export function Outline() {
             />
           </label>
         )}
+        {open && lang && syms.some((x) => x.children.length > 0) && (
+          <div class="ol-tools" role="group" aria-label="Fold the outline">
+            <button type="button" class="icon-btn ol-tool" aria-label="Expand all" data-tip="Expand every definition" data-testid="outline-expand-all" onClick={() => choose(allChoice(syms, false))}>
+              <Icon name="expand-all" size={14} />
+            </button>
+            <button type="button" class="icon-btn ol-tool" aria-label="Collapse all" data-tip="Collapse every definition" data-testid="outline-collapse-all" onClick={() => choose(allChoice(syms, true))}>
+              <Icon name="collapse-all" size={14} />
+            </button>
+          </div>
+        )}
       </div>
       {open && (
         <div class="ol-body" ref={list} role="tree" aria-label={`Outline of ${path ?? 'the file'}`}>
@@ -200,6 +213,11 @@ export function Outline() {
                 <span class="ol-name">{marks ? marks.map((m, k) => (m.hit ? <mark key={k}>{m.text}</mark> : m.text)) : s.name}</span>
                 {s.kind === 'decl' && s.typeName && <span class="ol-type">{s.typeName}</span>}
                 {s.kind !== 'decl' && <span class="ol-type">{s.kind}</span>}
+                {row.open === false && (
+                  <span class="ol-kids" title={`${holds(s)} declared inside, folded`} aria-label={`${holds(s)} declared inside, folded`}>
+                    {holds(s)}
+                  </span>
+                )}
                 {bad > 0 && (
                   <span class={`ft-problems ${row.errors ? 'error' : 'warning'}`} title={`${row.errors} errors, ${row.warnings} warnings`} aria-label={`${row.errors} errors, ${row.warnings} warnings`}>
                     {bad}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { activeEntry, ancestorsOf, outlineRows } from './outline';
+import { NO_CHOICE, activeEntry, ancestorsOf, allChoice, foldKeys, foldedIds, holds, outlineRows, toggled } from './outline';
 import { scanSymbols } from './symbols';
 
 const SOURCE = [
@@ -76,5 +76,54 @@ describe('the entry of the cursor', () => {
   it('lists the ancestors of an entry, to open them', () => {
     expect(ancestorsOf(syms, syms[1].children[0].id)).toEqual([syms[1].id]);
     expect(ancestorsOf(syms, syms[0].id)).toEqual([]);
+  });
+});
+
+describe('which definitions are folded', () => {
+  const syms = scanSymbols(SOURCE);
+  const [ldo, board] = syms;
+  it('is every definition that does not hold the cursor, the one that does stays open', () => {
+    expect([...foldedIds(syms, 7)]).toEqual([ldo.id]);
+    expect([...foldedIds(syms, 2)]).toEqual([board.id]);
+    expect([...foldedIds(syms, null)].sort()).toEqual([ldo.id, board.id].sort());
+    expect([...foldedIds(syms, 5)].sort()).toEqual([ldo.id, board.id].sort());
+  });
+  it('lets the person\'s choice win over where the cursor is', () => {
+    const keys = foldKeys(syms);
+    const openLdo = toggled(NO_CHOICE, keys.get(ldo.id)!, true);
+    expect([...foldedIds(syms, 7, openLdo)]).toEqual([]);
+    const closeBoard = toggled(NO_CHOICE, keys.get(board.id)!, false);
+    expect([...foldedIds(syms, 7, closeBoard)].sort()).toEqual([ldo.id, board.id].sort());
+  });
+  it('is kept by names, so an edit that moves the lines changes nothing', () => {
+    const moved = scanSymbols(`// a\n// b\n${SOURCE}`);
+    expect([...foldKeys(moved).values()]).toEqual([...foldKeys(syms).values()]);
+  });
+  it('folds a declaration only when the person did', () => {
+    const keys = foldKeys(syms);
+    const stage = board.children.find((c) => c.name === 'stage')!;
+    expect(stage.children.length).toBe(0);
+    const deep = scanSymbols(['board B {', '    .a: X {', '        .b: Y {', '            .c &= 1', '        }', '    }', '}'].join('\n'));
+    const a = deep[0].children[0];
+    expect(a.children.length).toBeGreaterThan(0);
+    expect(foldedIds(deep, 1).has(a.id)).toBe(false);
+    const closed = toggled(NO_CHOICE, foldKeys(deep).get(a.id)!, false);
+    expect(foldedIds(deep, 1, closed).has(a.id)).toBe(true);
+    void keys;
+  });
+  it('has a pair of choices that open or fold every entry with children', () => {
+    const all = allChoice(syms, false);
+    expect([...foldedIds(syms, null, all)]).toEqual([]);
+    const none = allChoice(syms, true);
+    expect([...foldedIds(syms, 7, none)].sort()).toEqual([ldo.id, board.id].sort());
+  });
+  it('counts what a definition holds', () => {
+    expect(holds(ldo)).toBe(2);
+    expect(holds(board)).toBe(2);
+  });
+  it('shows a folded definition as a row with its children hidden', () => {
+    const rows = outlineRows(syms, { ...base, folded: foldedIds(syms, 2) });
+    expect(rows.map((r) => r.sym.name)).toEqual(['LdoStage', 'vin', 'input_cap', 'PowerBoard']);
+    expect(rows[3].open).toBe(false);
   });
 });

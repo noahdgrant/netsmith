@@ -4,10 +4,12 @@
 // commands, defined here and run through the handle the view hands out.)
 
 import { foldAll, unfoldAll } from '@codemirror/language';
+import { closeHoverTooltips } from '@codemirror/view';
 
 import { askForRef, toggleChanges } from './components/ChangesSwitch';
 import { api } from './client';
-import { clearCompare, compare, openDiff, refName, refText, runCompare, showChanges } from './compare/store';
+import { clearCompare, compare, diffTarget, openDiff, refName, refText, runCompare, showChanges } from './compare/store';
+import { diffControls } from './compare/collapse';
 import { type Command, provide, register, runCommand } from './commands';
 import { stepProblem } from './feedback/derive';
 import { dock, filter, setDockOpen, toggleDock } from './feedback/state';
@@ -223,7 +225,8 @@ const sourceCommands = (): Command[] => [
         return;
       }
       v.focus();
-      v.dispatch({ effects: openCard.of(v.state.selection.main.head) });
+      // A card the pointer opened is closed first: two cards over one word would stack.
+      v.dispatch({ effects: [closeHoverTooltips, openCard.of(v.state.selection.main.head)] });
     },
   },
   {
@@ -686,6 +689,14 @@ export const LOCAL_KEYS: { group: string; keys: [string, string][] }[] = [
     ],
   },
   {
+    group: 'Comparison of a file',
+    keys: [
+      ['Esc', 'close the comparison and return to the list or the editor'],
+      ['Enter or Space', 'on a bar of unchanged lines: show them'],
+      ['Alt+Down', 'next change, from the keyboard of the text'],
+    ],
+  },
+  {
     group: 'Project tree',
     keys: [
       ['↑ ↓ ← →', 'move, open and close folders'],
@@ -771,6 +782,41 @@ export function registerCompareCommands() {
       },
     },
   );
+  // The open comparison of a file (views/compare/DiffPanel.tsx): the keys work wherever the focus is while it is open, a diff view being a text view too.
+  register(
+    {
+      id: 'compare.diff.next',
+      title: 'Next change in the comparison',
+      group: 'Compare',
+      keys: 'F7',
+      inFields: true,
+      aliases: ['next hunk', 'next difference', 'diff'],
+      when: () => diffTarget.value !== null && (diffControls.value?.changes ?? 0) > 0,
+      run: () => diffControls.peek()?.step(1),
+    },
+    {
+      id: 'compare.diff.prev',
+      title: 'Previous change in the comparison',
+      group: 'Compare',
+      keys: 'Shift+F7',
+      inFields: true,
+      aliases: ['previous hunk', 'previous difference', 'diff'],
+      when: () => diffTarget.value !== null && (diffControls.value?.changes ?? 0) > 0,
+      run: () => diffControls.peek()?.step(-1),
+    },
+  );
+  provide(() => [
+    {
+      id: 'compare.diff.unchanged',
+      title: diffControls.value?.hiding ? 'Show unchanged lines in the comparison' : 'Hide unchanged lines in the comparison',
+      group: 'Compare',
+      keys: 'Mod+Alt+H',
+      inFields: true,
+      aliases: ['collapse unchanged', 'context', 'fold unchanged', 'diff'],
+      when: () => diffTarget.value !== null && diffControls.value !== null,
+      run: () => diffControls.peek()?.toggleHide(),
+    },
+  ]);
   // The switch reads as what turning it does next, as the source's switches do.
   provide(() => [
     {

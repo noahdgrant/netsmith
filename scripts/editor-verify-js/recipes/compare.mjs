@@ -146,6 +146,30 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   expect(/J2 → J1|J2\s*J1/.test(renum.join(' ')) || /J2/.test(renum.join(' ')), 'with the designators of each side');
   await page.locator('[data-testid="cmp-renumbered"] summary').click();
 
+  step('the list fills the height of the page and scrolls inside, with a foot that counts; the summary and the tabs stay put; a column of help stands in the margin on a wide window');
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await settle(400);
+  const wide = await page.evaluate(() => {
+    const r = (sel) => document.querySelector(sel)?.getBoundingClientRect();
+    const scroller = r('.cmp-scroll');
+    const sec = r('.section.sec-compare');
+    const foot = r('.cmp-foot');
+    const vh = document.querySelector('.section.sec-compare .vh');
+    const card = r('.cmp-scroll');
+    return {
+      gap: sec.bottom - scroller.bottom,
+      footAtBottom: !!foot && Math.abs(foot.bottom - scroller.bottom) < 2,
+      footText: document.querySelector('.cmp-foot')?.innerText.replace(/\s+/g, ' '),
+      tilesOutside: !document.querySelector('.cmp-scroll').contains(document.querySelector('.cmp-tiles')) && !document.querySelector('.cmp-scroll').contains(document.querySelector('.cmp-tabs')),
+      help: vh ? { left: vh.getBoundingClientRect().left, text: vh.innerText.replace(/\s+/g, ' '), label: vh.getAttribute('aria-label') } : null,
+      cardRight: card.right,
+    };
+  });
+  expect(wide.gap >= 0 && wide.gap < 40 && wide.footAtBottom && /\d+ rows?/.test(wide.footText ?? ''), `the list reaches the foot of the page and its foot counts (${wide.footText}; ${wide.gap.toFixed(0)} px short)`);
+  expect(wide.tilesOutside, 'the tiles and the tabs are outside the scrolling list');
+  expect(wide.help && wide.help.left >= wide.cardRight + 8 && /Base|Head/.test(wide.help.text) && wide.help.label === 'About this view', `the help column is beside the list (${wide.help?.text.slice(0, 50)}...)`);
+  await shot('compare-wide');
+
   step('expand a row: the fields that changed, each with its old and new value');
   await r1.locator('.cr-chev').click();
   const fields = await r1.locator('.cr-field dt').allInnerTexts();
@@ -250,6 +274,82 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await page.waitForSelector('[data-testid="diff-side"] .cm-editor');
   const sel = await page.evaluate(() => { const c = document.querySelector('.diff-panel .cm-content'); return c?.getAttribute('aria-readonly'); });
   expect(sel === 'true', 'the content is read only');
+
+  step('the unchanged lines are hidden behind slim bars, in both views alike, with 3 lines of context round each change (a file over 60 lines does it by itself)');
+  const col = (n) => page.locator('.diff-col').nth(n);
+  const barsOf = (n) => col(n).locator('.cm-diff-bar');
+  expect((await page.locator('[data-testid="diff-hide"]').getAttribute('aria-pressed')) === 'true', 'the switch "Hide unchanged lines" is on without being asked, for a file of 110 lines');
+  const counts = async (n) => (await barsOf(n).evaluateAll((els) => els.map((e) => Number(e.getAttribute('data-count')))));
+  const c0 = await counts(0);
+  const c1 = await counts(1);
+  expect(c0.length >= 3 && JSON.stringify(c0) === JSON.stringify(c1), `both views hide the same runs (${c0.join(', ')} lines)`);
+  expect((await barsOf(0).first().evaluate((e) => e.tagName === 'BUTTON' && /^Show \d+ unchanged lines/.test(e.getAttribute('aria-label') ?? ''))), 'a bar is a button that says what it shows');
+  expect(/^\d+ unchanged lines$/.test((await barsOf(0).first().innerText()).trim()), `and its words are "N unchanged lines" (${(await barsOf(0).first().innerText()).trim()})`);
+  const shownText = await col(0).locator('.cm-content').innerText();
+  expect(!shownText.includes('import std::sources::Rail') && shownText.includes('150ohm'), 'a far line is not drawn, the changed one is');
+  const hiddenTotal = c0.reduce((a, b) => a + b, 0);
+  const rowsDrawn = await col(0).locator('.cm-line').count();
+  expect(rowsDrawn + hiddenTotal >= 108 && rowsDrawn < 70, `${rowsDrawn} lines drawn and ${hiddenTotal} hidden`);
+  await shot('diff-collapsed');
+
+  step('a click on a bar shows its lines in both views; Enter on another does the same from the keyboard; the choice is kept');
+  await barsOf(0).first().click();
+  await settle();
+  expect(JSON.stringify(await counts(0)) === JSON.stringify(c0.slice(1)) && JSON.stringify(await counts(1)) === JSON.stringify(c0.slice(1)), 'the first run is open in both views');
+  expect((await col(0).locator('.cm-content').innerText()).includes('Two boards in one system'), 'its lines are there');
+  await barsOf(0).first().focus();
+  await page.keyboard.press('Enter');
+  await settle();
+  expect((await counts(0)).length === c0.length - 2 && (await counts(1)).length === c0.length - 2, 'Enter opened the next one');
+  await page.locator('[data-testid="diff-hide"]').click();
+  await settle();
+  expect((await page.locator('.cm-diff-bar').count()) === 0 && (await page.locator('[data-testid="diff-hide"]').getAttribute('aria-pressed')) === 'false', 'the switch off: every line is drawn');
+  await page.locator('[data-testid="diff-hide"]').click();
+  await settle();
+  expect((await counts(0)).length === c0.length - 2, 'on again: the two bars that were opened stay open');
+  await page.click('[data-testid="diff-mode-inline"]');
+  await page.waitForSelector('[data-testid="diff-inline"] .cm-editor');
+  await settle();
+  expect((await page.locator('.diff-inline .cm-diff-bar, [data-testid="diff-inline"] .cm-diff-bar').count()) === c0.length - 2, 'the inline view hides the same runs');
+  await page.click('[data-testid="diff-mode-side"]');
+  await page.waitForSelector('[data-testid="diff-side"] .cm-editor');
+
+  step('F7 and Shift+F7 step the changes from anywhere in the page, Esc closes, and the palette and the cheat sheet list them');
+  const at = async () => Number((await text('[data-testid="diff-count"]')).match(/^(\d+) of/)[1]);
+  await col(0).locator('.cm-content').focus();
+  const before = await at();
+  await page.keyboard.press('F7');
+  await settle();
+  expect((await at()) === before + 1, `F7 goes to the next change (${before} -> ${await at()})`);
+  await page.keyboard.press('Shift+F7');
+  await settle();
+  expect((await at()) === before, 'Shift+F7 goes back');
+  const pressed = () => page.locator('[data-testid="diff-hide"]').getAttribute('aria-pressed');
+  const was = await pressed();
+  await page.keyboard.press('Control+Alt+h');
+  await settle();
+  expect((await pressed()) !== was, 'Ctrl+Alt+H turns the hiding of unchanged lines on or off');
+  await page.keyboard.press('Control+Alt+h');
+  await settle();
+  expect((await pressed()) === was, 'and back');
+  await col(0).locator('.cm-content').focus();
+  await page.keyboard.press('Control+/');
+  await page.waitForSelector('.cheat');
+  const cheat = await page.locator('.cheat').innerText();
+  expect(/(Hide|Show) unchanged lines in the comparison/.test(cheat), 'the cheat sheet lists the switch too');
+  expect(/Next change in the comparison/.test(cheat) && /F7/.test(cheat) && /Previous change in the comparison/.test(cheat) && /Shift\s*\+?\s*F7/.test(cheat), 'the cheat sheet lists F7 and Shift+F7');
+  expect(/Comparison of a file/.test(cheat) && /close the comparison/.test(cheat) && /on a bar of unchanged lines/.test(cheat), 'and Esc, and Enter or Space on a bar');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.cheat', { state: 'detached' });
+  await page.keyboard.press('Control+Shift+P');
+  await page.waitForSelector('.qp-row');
+  await page.keyboard.type('unchanged lines');
+  await settle(300);
+  expect(/(Hide|Show) unchanged lines in the comparison/.test(await page.locator('.qp').innerText()), 'the palette has the switch, worded as what it does next');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.qp', { state: 'detached' });
+  await settle(300);
+  expect(await page.evaluate(() => !!document.activeElement?.closest('.diff-panel')), 'the focus is back in the comparison');
   await page.keyboard.press('Escape');
   await page.waitForSelector('[data-testid="diff-panel"]', { state: 'detached' });
   expect(true, 'Escape closes the diff view');

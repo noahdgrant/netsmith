@@ -82,8 +82,11 @@
 .cmp-tab.active .cmp-count { background: var(--pick); color: var(--sel-text); }
 .cmp-bar { display: flex; align-items: center; gap: 0.5rem; padding: 0.625rem 1.25rem 0.5rem; flex: none; }
 .cmp-filter { flex: 0 1 340px; margin: 0; }
-.cmp-scroll { flex: 0 1 auto; min-height: 0; overflow: auto; margin: 0 1.25rem 1rem; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); box-shadow: var(--elev-1); }
+.cmp-scroll { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: auto; margin: 0 1.25rem 1rem; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); box-shadow: var(--elev-1); }
 .cmp-scroll > .empty { padding-block: 2rem; }
+.cmp-list { display: flex; flex-direction: column; flex: 1 0 auto; }
+.cmp-list > * { flex: none; }
+.cmp-foot { position: sticky; bottom: 0; z-index: var(--z-sticky); display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: auto; height: var(--row-sm); padding: 0 0.875rem; border-top: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--text) 3.5%, var(--surface)); color: var(--text-muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
 
 /* groups and rows */
 .cmp-group-head { position: sticky; top: 0; z-index: var(--z-sticky); display: flex; align-items: center; gap: 0.5rem; height: var(--row-sm); padding: 0 0.875rem; background: color-mix(in srgb, var(--text) 3.5%, var(--surface)); border-bottom: 1px solid var(--border-subtle); font-size: var(--fs-sm); }
@@ -222,6 +225,13 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .cm-dl-del { background-color: color-mix(in srgb, var(--cmp-removed) 12%, transparent); box-shadow: inset 2px 0 0 var(--cmp-removed); }
 .cm-dl-filler { background-image: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--text) 5%, transparent) 5px 6px); }
 .cm-dl-focus { outline: 1px solid var(--sel-line); outline-offset: -1px; }
+/* A run of unchanged lines that is hidden: one slim bar, a button (Tab reaches it, Enter or Space opens it). */
+.cm-diff-bar { display: flex; align-items: center; justify-content: center; gap: 0.5rem; width: 100%; height: 1.5rem; padding: 0; border: 0; border-block: 1px solid var(--border-subtle); background: var(--surface); color: var(--text-muted); font: inherit; font-size: var(--fs-sm); font-family: var(--sans); cursor: pointer; transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.cm-diff-bar:hover { background: color-mix(in srgb, var(--surface) 88%, var(--text)); color: var(--text); }
+.cm-diff-bar:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; color: var(--text); }
+.cm-diff-bar-icon { width: 0.875rem; height: 0.875rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.diff-hide .icon { color: var(--text-faint); }
+.diff-hide.on .icon { color: var(--cmp-changed); }
 .cm-di-add { background-color: color-mix(in srgb, var(--cmp-added) 24%, transparent); border-radius: 2px; }
 .cm-di-del { background-color: color-mix(in srgb, var(--cmp-removed) 24%, transparent); border-radius: 2px; }
 .cm-diff-gutter { min-width: 4ch; }
@@ -242,11 +252,19 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .cm-chg-deleted { inset: -2px auto auto 0; width: 0; height: 0; border-radius: 0; border-left: 7px solid var(--cmp-removed); border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
 .cm-chg-line-added { background: color-mix(in srgb, var(--cmp-added) 8%, transparent); }
 .cm-chg-line-changed { background: color-mix(in srgb, var(--cmp-changed) 8%, transparent); }
-/* the ticks of the overview ruler, in the track at the right edge of the editor */
+/* the overview ruler (source/cm-ruler.ts): a strip at the right edge that holds the whole file, with a lane of ticks for the problems (right) and one for the
+ * changes of the comparison (left), a faint thumb where the window is, and a press scrolls there. It is hidden while nothing is marked. */
 .cm-editor { position: relative; }
-.cm-chg-ruler { position: absolute; top: 0; right: 0; bottom: 0; width: 0.5rem; pointer-events: none; z-index: 5; }
-.cm-chg-tick { position: absolute; left: 1px; right: 1px; border-radius: 1px; }
-.cm-chg-tick-added { background: var(--cmp-added); } .cm-chg-tick-changed { background: var(--cmp-changed); } .cm-chg-tick-deleted { background: var(--cmp-removed); }
+.cm-ruler { position: absolute; top: 0; right: 0; bottom: 0; width: 0.875rem; z-index: 5; cursor: pointer; background: color-mix(in srgb, var(--text) 4.5%, transparent); border-left: 1px solid var(--border-subtle); }
+.cm-ruler[hidden], .cm-ruler-thumb[hidden] { display: none; }
+.cm-ruler-thumb { position: absolute; left: 0; right: 0; background: color-mix(in srgb, var(--text) 13%, transparent); border-block: 1px solid color-mix(in srgb, var(--text) 22%, transparent); pointer-events: none; }
+.cm-ruler-ticks { position: absolute; inset: 0; }
+.cm-ruler-tick { position: absolute; border-radius: 1px; min-height: 0.25rem; }
+.cm-ruler-tick:hover { outline: 1px solid var(--text); outline-offset: 0; z-index: 1; }
+.cm-ruler-tick.lane-change { left: 1px; width: calc(50% - 2px); }
+.cm-ruler-tick.lane-problem { right: 1px; width: calc(50% - 2px); }
+.cm-ruler-tick.kind-added { background: var(--cmp-added); } .cm-ruler-tick.kind-changed { background: var(--cmp-changed); } .cm-ruler-tick.kind-deleted { background: var(--cmp-removed); }
+.cm-ruler-tick.kind-error { background: var(--danger); } .cm-ruler-tick.kind-warning { background: var(--warning); }
 
 /* ==== the marks on the other views (compareDom.ts puts the classes; nothing re-renders) ==== */
 /* A mark and the hover or the pick land on the same elements (compareDom.ts, hoverDom.ts and the schematic's own `.mark` each put
@@ -324,5 +342,5 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
   .diff-cols.side .diff-col + .diff-col { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .cr-chev-icon, .cmp-renum-chev, .diff-panel { transition: none; animation: none; }
+  .cr-chev-icon, .cmp-renum-chev, .diff-panel, .cm-diff-bar { transition: none; animation: none; }
 }
