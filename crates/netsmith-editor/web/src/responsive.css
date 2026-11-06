@@ -6,7 +6,7 @@
 /* a label that gives way to its icon; it stays in the page for a screen reader and the tooltip says what it is */
 .fold-label { white-space: nowrap; }
 
-/* ---- the board's toolbar ---- */
+/* ---- the board's toolbar (its thresholds are rem, so a larger size folds it earlier) ---- */
 .pcb-view { container: pcbbar / inline-size; }
 .pcb-bar { flex-wrap: nowrap; }
 .pcb-bar .tb-group { flex: none; }
@@ -14,19 +14,19 @@
 .pcb-bar .cursor-at:empty { display: none; }
 .pcb-bar .cursor-at { min-width: 0; }
 .pcb-bar .spacer { flex: 1 1 0; min-width: 0; }
-@container pcbbar (max-width: 1180px) {
+@container pcbbar (max-width: 73.75rem) {
   .pcb-bar .seg-label, .pcb-bar .tb-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .pcb-bar .tb-took, .pcb-bar .cursor-at { display: none; }
   .pcb-bar .layers summary { padding: 0 8px; }
 }
-@container pcbbar (max-width: 900px) {
+@container pcbbar (max-width: 56.25rem) {
   .pcb-bar .tb-drc { display: none; }
   .pcb-bar { gap: 6px 10px; }
 }
-@container pcbbar (max-width: 560px) {
+@container pcbbar (max-width: 35rem) {
   .pcb-bar { flex-wrap: wrap; }
 }
-@container pcbbar (max-width: 640px) {
+@container pcbbar (max-width: 40rem) {
   .pcb-bar .tb-group.status .chip:not(.findings-pill) { display: none; }
   .pcb-bar .grid-pick select { width: 4.5rem; }
 }

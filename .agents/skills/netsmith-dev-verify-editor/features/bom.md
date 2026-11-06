@@ -23,4 +23,4 @@ Refresh needs `scripts/editor-verify launch --fixture catalog_refresh` (the LED 
 
 - Price and stock are recorded data, not live. The solver never needs the network. Only "Check parts against LCSC" does, and only for the project's own catalog files.
 - A part with no LCSC number shows `none`; `fab` refuses to package it.
-- The table scrolls sideways in a narrow pane, and the rows scroll under a sticky header.
+- The table scrolls sideways in a narrow window or pane (`.bom-scroll` inside `.bom-frame`): the first column (Designators) stays under a soft edge once it has moved, the right edge fades into the surface while there is more to scroll to (`useScrollEdges`, `components/scrollEdges.ts`), and the rows scroll under a sticky header.
