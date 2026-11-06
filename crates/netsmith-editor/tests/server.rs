@@ -1267,12 +1267,14 @@ fn a_compare_that_is_running_holds_up_no_other_route() {
     let s = start();
     let port = s.port;
     let backend = Arc::clone(&s.backend);
+    // The page's socket is open before the compare is asked for: a line said before a socket
+    // is there is not sent to it, and a request that is quick would say its first line first.
+    let mut socket = open_socket(port);
     let slow = thread::spawn(move || {
         let s = Server { port, backend };
         s.get("/api/compare?ref=slow")
     });
     // It has begun when it has said so.
-    let mut socket = open_socket(port);
     let deadline = Instant::now() + Duration::from_secs(10);
     let began = loop {
         let message = next_message(&mut socket, "the first line of the compare");
