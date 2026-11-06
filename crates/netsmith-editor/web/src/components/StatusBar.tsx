@@ -37,7 +37,7 @@ import { THEMES, type ThemePref, theme, themePref } from '../theme';
 import { chooseTheme } from '../themeUi';
 import { plural } from '../util';
 import { useElapsed } from './JobProgress';
-import { SeverityIcon } from './ProblemsDock';
+import { Icon, SeverityIcon } from './Icons';
 
 /** What the open file is, as the bar names it. */
 export function languageOf(path: string | null): string {
@@ -65,7 +65,7 @@ function Item({
   pressed?: boolean;
 }) {
   return (
-    <button class={`item ${cls ?? ''}`} title={title} aria-label={label} aria-pressed={pressed} onClick={onClick}>
+    <button class={`item ${cls ?? ''}`} data-tip={title} aria-label={label} aria-pressed={pressed} onClick={onClick}>
       {children}
     </button>
   );
@@ -211,9 +211,7 @@ function AnalysisItem() {
   }
   return (
     <Item class="idle" title={analysedTip(last)} onClick={toggleDock}>
-      <svg class="icon" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M3.5 8.4l3 3 6-6.6" />
-      </svg>
+      <Icon name="check" size={13} />
       {analysedText(last, now.value)}
     </Item>
   );
@@ -241,7 +239,7 @@ function ThemeMenu({ close }: { close: () => void }) {
       <div class="theme-list" role="radiogroup" aria-label="Colour theme" ref={list} onKeyDown={move}>
         {THEMES.map((t) => (
           <button key={t.id} class="theme-option" role="radio" aria-checked={themePref.value === t.id} title={t.hint} onClick={() => pick(t.id)}>
-            <span class="theme-check" aria-hidden="true">{themePref.value === t.id ? '●' : ''}</span>
+            <span class="theme-check" aria-hidden="true">{themePref.value === t.id ? <Icon name="check" size={12} /> : null}</span>
             <span class={`theme-swatch sw-${t.id}`} aria-hidden="true" />
             {t.label}
           </button>
@@ -279,10 +277,7 @@ export function StatusBar() {
       <div class="left">
         {board.value && (
           <Item class="board" title={`The board the views show${title ? ` (project ${title})` : ''}. Click to choose another.`} onClick={focusBoardPicker}>
-            <svg class="icon" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true">
-              <rect x="1.8" y="3.2" width="12.4" height="9.6" rx="1.2" />
-              <path d="M5 6.4h3M5 9.4h6" />
-            </svg>
+            <Icon name="board" size={14} />
             {board.value}
           </Item>
         )}
@@ -308,7 +303,8 @@ export function StatusBar() {
             title="Files with changes that are not saved. Click to save the open one (Ctrl+S)."
             onClick={() => path && f && dirty(f) && void save(path)}
           >
-            ● {plural(unsaved, 'unsaved file')}
+            <span class="unsaved-dot" aria-hidden="true" />
+            {plural(unsaved, 'unsaved file')}
           </Item>
         )}
       </div>
@@ -334,10 +330,7 @@ export function StatusBar() {
             pressed={popover === 'theme'}
             onClick={() => setPopover(popover === 'theme' ? null : 'theme')}
           >
-            <svg class="icon" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-              <circle cx="8" cy="8" r="5.6" />
-              <path d="M8 2.4a5.6 5.6 0 0 1 0 11.2z" fill="currentColor" stroke="none" />
-            </svg>
+            <Icon name="theme" size={14} />
           </Item>
           {popover === 'theme' && <ThemeMenu close={() => setPopover(null)} />}
         </span>

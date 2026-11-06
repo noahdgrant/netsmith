@@ -48,6 +48,18 @@ export function prepare(text: string): Drawing | null {
       if (copper && copper.parentNode === firstPart.parentNode) firstPart.parentNode.insertBefore(copper, firstPart);
     }
   }
+  // Keepouts are hatched; the patterns live in the drawing so that every view of it (the board, the panel's preview) has them.
+  const defs = doc.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  defs.innerHTML = [
+    ['pcb-hatch-keepout', 'var(--pcb-keepout)', '.2'],
+    ['pcb-hatch-limit', 'var(--pcb-height-limit)', '.16'],
+  ]
+    .map(
+      ([id, colour, alpha]) =>
+        `<pattern id="${id}" patternUnits="userSpaceOnUse" width="1.1" height="1.1" patternTransform="rotate(45)"><rect width="1.1" height="1.1" style="fill:${colour};fill-opacity:.07"/><line x1="0" y1="0" x2="0" y2="1.1" style="stroke:${colour};stroke-opacity:${alpha};stroke-width:.18"/></pattern>`,
+    )
+    .join('');
+  svg.insertBefore(defs, svg.firstChild);
   svg.setAttribute('width', String(w * SCALE));
   svg.setAttribute('height', String(h * SCALE));
   // A track wider than a millimetre is a power track: it is drawn at its true width, and more

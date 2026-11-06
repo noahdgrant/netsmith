@@ -6,9 +6,11 @@ import { useEffect } from 'preact/hooks';
 import { banner, firstError, goToFirstError, neverBuilt } from '../feedback/derive';
 import { analysisSince, busy, dock, now, pending, runClock, setDockOpen } from '../feedback/state';
 import { ANALYSING_CLOCK_AFTER_MS, clock, progressText } from '../feedback/status';
-import { job, analysis } from '../store';
+import { analysis, job, revealSection } from '../store';
 import { plural } from '../util';
-import { SeverityIcon } from './ProblemsDock';
+import { SeverityIcon } from './Icons';
+import { EmptyState } from './ui';
+import { connection } from '../feedback/state';
 
 /** The strip above a view that shows an earlier version of the source (it has an error) or the
  * saved file while the typed text has one. It names the first error and goes to it. */
@@ -83,21 +85,61 @@ export function ViewLoading({ what, detail }: { what: string; detail?: string })
 
 /** What a view says when there is no board: why, with the error that stops it, and where to go. */
 export function NoBoard({ what }: { what: string }) {
+  // Never reached the server: say so, and that the page will take the project when it is there.
+  if (!analysis.value && connection.value === 'offline') {
+    return (
+      <EmptyState
+        icon="offline"
+        tone="warn"
+        testid="no-board"
+        title="The editor server is not answering"
+        help={
+          <>
+            Start <code>netsmith editor</code> in the project; this page connects by itself and shows the board when it is read.
+          </>
+        }
+      />
+    );
+  }
   if (!analysis.value) return <Analysing />;
   const e = firstError.value;
   if (!neverBuilt.value || !e) {
     return (
-      <div class="empty" data-testid="no-board">
-        <div class="empty-title">There is no board to {what}.</div>
-        <div class="empty-sub">
-          Write a <code>board</code> in a top-level file; it is drawn here as soon as it builds.
-        </div>
-      </div>
+      <EmptyState
+        icon="board"
+        testid="no-board"
+        title={`There is no board to ${what}`}
+        help={
+          <>
+            Write a <code>board</code> in a top-level file; it is drawn here as soon as it builds.
+          </>
+        }
+        actions={
+          <button class="tool" onClick={() => revealSection('source')}>
+            Open the source
+          </button>
+        }
+      />
     );
   }
   return (
-    <div class="empty no-board" data-testid="no-board">
-      <div class="empty-title">Nothing has built yet, so there is no board to {what}.</div>
+    <EmptyState
+      icon="error"
+      tone="bad"
+      testid="no-board"
+      class="no-board"
+      title={`Nothing has built yet, so there is no board to ${what}`}
+      actions={
+        <>
+          <button class="tool primary" onClick={goToFirstError}>
+            Go to error
+          </button>
+          <button class="tool" onClick={() => (dock.value = { ...dock.value, open: true })}>
+            Show problems
+          </button>
+        </>
+      }
+    >
       <div class="empty-error">
         <SeverityIcon severity="error" size={14} />
         <span class="text">{e.message}</span>
@@ -107,14 +149,6 @@ export function NoBoard({ what }: { what: string }) {
           </span>
         )}
       </div>
-      <div class="empty-actions">
-        <button class="tool primary" onClick={goToFirstError}>
-          Go to error
-        </button>
-        <button class="tool" onClick={() => (dock.value = { ...dock.value, open: true })}>
-          Show problems
-        </button>
-      </div>
-    </div>
+    </EmptyState>
   );
 }

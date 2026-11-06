@@ -17,6 +17,7 @@ import { CheatSheet } from './components/CheatSheet';
 import { QuickPick } from './components/QuickPick';
 import { StatusBar } from './components/StatusBar';
 import { Toasts } from './components/Toasts';
+import { TooltipLayer } from './components/Tooltip';
 import { ProgressLine, StaleStrip } from './components/ViewStatus';
 import { commandForKey } from './commands';
 import { registerAppCommands } from './commandset';
@@ -102,12 +103,21 @@ function useShortcuts() {
   }, []);
 }
 
+/** The box the panes share inside the area: the area has the frame's gap as padding, and the
+ * panes' widths are shares of what is left. */
+export function innerBox(el: Element): { left: number; width: number } {
+  const r = el.getBoundingClientRect();
+  const c = getComputedStyle(el);
+  const l = parseFloat(c.paddingLeft) || 0;
+  return { left: r.left + l, width: r.width - l - (parseFloat(c.paddingRight) || 0) };
+}
+
 /** The divider between two panes: dragged, or moved by the arrow keys; a double click makes the
  * panes equal. */
 function Divider({ area }: { area: preact.RefObject<HTMLDivElement> }) {
   const [active, setActive] = useState(false);
   const set = (share: number) => {
-    const w = area.current?.clientWidth ?? 0;
+    const w = area.current ? innerBox(area.current).width : 0;
     layout.value = { ...layout.peek(), split: clampSplit(share, w), chosen: true };
   };
   return (
@@ -128,7 +138,7 @@ function Divider({ area }: { area: preact.RefObject<HTMLDivElement> }) {
       }}
       onPointerMove={(e) => {
         if (!active || !area.current) return;
-        const r = area.current.getBoundingClientRect();
+        const r = innerBox(area.current);
         set((e.clientX - r.left) / r.width);
       }}
       onPointerUp={(e) => {
@@ -239,6 +249,7 @@ export function App() {
       <QuickPick />
       <CheatSheet />
       <Toasts />
+      <TooltipLayer />
       {dragged && <div class="drag-ghost" style={{ left: dragged.x + 12, top: dragged.y + 12 }}>{SECTIONS.find((s) => s.id === dragged.section)?.label}</div>}
     </div>
   );

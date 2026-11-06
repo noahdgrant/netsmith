@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import type { PcbBox, PcbKeepout, PcbPart, PcbScene } from '../api';
 import { PanZoom } from '../components/PanZoom';
+import { hoverEnter, hoverLeave } from '../hover';
 import {
   commit,
   grid,
@@ -228,6 +229,13 @@ export function Canvas(props: {
       props.onTip(describe(e, p));
       const part = hitBox(sc.parts, p);
       setHovered(part?.path ?? null);
+      // What is lit in the other views: the net of a track, a via or a pad under the pointer, else the part whose box it is in.
+      const net = (e.target as Element).closest?.('[data-net]')?.getAttribute('data-net');
+      if (e.pointerType !== 'touch') {
+        if (net) hoverEnter({ kind: 'net', key: net });
+        else if (part) hoverEnter({ kind: 'part', key: part.path });
+        else hoverLeave();
+      }
       return;
     }
     const far = 'screen' in g ? Math.hypot(e.clientX - g.screen.x, e.clientY - g.screen.y) > SLOP : true;
@@ -317,6 +325,7 @@ export function Canvas(props: {
     props.onTip(null);
     props.onCursor(null);
     setHovered(null);
+    hoverLeave();
   }
 
   // The keys. They work wherever the focus is except in a field or the source editor.
@@ -415,6 +424,7 @@ export function Canvas(props: {
       <style>{props.css}</style>
       <div
         class="hit-target pcb-stage"
+        style={{ '--px': 1 / (SCALE * zoom) }}
         onPointerDown={down}
         onPointerMove={move}
         onPointerUp={up}
@@ -444,10 +454,10 @@ export function Canvas(props: {
                   width={step}
                   height={step}
                 >
-                  <circle cx={step / 2} cy={step / 2} r={Math.min(0.07, step / 8)} fill="var(--pcb-grid)" />
+                  <circle cx={step / 2} cy={step / 2} r={Math.min(0.06, step / 8)} fill="var(--pcb-grid)" />
                 </pattern>
               </defs>
-              <rect x={o.x} y={o.y} width={o.width} height={o.height} fill="url(#pcb-grid)" opacity="0.7" />
+              <rect x={o.x} y={o.y} width={o.width} height={o.height} fill="url(#pcb-grid)" class="pcb-grid-dots" />
             </>
           )}
           {preview.keepout &&

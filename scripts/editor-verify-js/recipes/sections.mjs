@@ -17,7 +17,8 @@ export async function run({ page, shot, step, expect }) {
       await page.waitForTimeout(400);
       expect((await active()).join() === id, `key ${key} opens ${id}`);
       const box = await page.locator(`.section.sec-${id}`).boundingBox();
-      expect(box.width >= w - 2, `${id} fills the window width (${Math.round(box.width)} of ${w})`);
+      // The sheet is set into the frame by its gap, 8 px on each side.
+      expect(box.width >= w - 16 - 2, `${id} fills the window width inside the frame (${Math.round(box.width)} of ${w})`);
       expect(!(await overflows()), `${id}: nothing overflows the page`);
       await shot(`${id}-${w}`);
     }

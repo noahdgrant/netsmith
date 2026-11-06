@@ -4,6 +4,10 @@ import { useState } from 'preact/hooks';
 
 import type { PcbBox, PcbKeepout, PcbPart, PcbScene } from '../api';
 import { pickKeepout, pickedKeepout, select, selection } from '../pcbstore';
+import { Defs, InspectorAction, InspectorHead, PinChip } from '../components/Inspector';
+import { Icon } from '../components/Icons';
+import { EmptyState } from '../components/ui';
+import { hoverAttrs } from '../hover';
 import { pickPart } from '../store';
 import {
   changeKeepout,
@@ -62,12 +66,17 @@ function PartList(props: { scene: PcbScene; onFocus: (box: PcbBox) => void }) {
   const parts = sc.parts.filter((p) => !q || `${p.refdes} ${p.value} ${p.kind} ${p.path}`.toLowerCase().includes(q));
   return (
     <>
-      <input class="filter" type="search" placeholder="Filter parts" aria-label="Filter parts" value={filter} onInput={(e) => setFilter((e.target as HTMLInputElement).value)} />
+      <label class="field-icon side-filter">
+        <Icon name="search" size={13} />
+        <input class="filter" type="search" placeholder="Filter parts" aria-label="Filter parts" value={filter} onInput={(e) => setFilter((e.target as HTMLInputElement).value)} />
+      </label>
       <div class="rows">
         {parts.map((p) => (
           <div
             key={p.path}
             class={`row part-row ${selection.value.includes(p.path) ? 'sel' : ''}`}
+            data-hv-ref={p.refdes}
+            {...hoverAttrs({ kind: 'part', key: p.path })}
             onClick={(e) => {
               const on = selection.value.includes(p.path);
               select(e.shiftKey || e.ctrlKey ? (on ? selection.value.filter((x) => x !== p.path) : [...selection.value, p.path]) : [p.path]);
@@ -82,7 +91,7 @@ function PartList(props: { scene: PcbScene; onFocus: (box: PcbBox) => void }) {
             {p.side === 'bottom' && <span class="tag" title="on the bottom face">bottom</span>}
           </div>
         ))}
-        {parts.length === 0 && <div class="none">No part matches.</div>}
+        {parts.length === 0 && <EmptyState compact class="none" icon="search" title="No part matches" help="Try a designator, a value or a path." />}
         {sc.keepouts.length > 0 && <div class="sub">Keepouts</div>}
         {sc.keepouts.map((k) => (
           <div key={k.name} class={`row keepout-row ${pickedKeepout.value === k.name ? 'sel' : ''}`} onClick={() => {
@@ -113,22 +122,32 @@ function NetList(props: {
   const nets = props.drawing.nets.filter((n) => n.name.toLowerCase().includes(filter.trim().toLowerCase()));
   return (
     <>
-      <input class="filter" type="search" placeholder="Filter nets" value={filter} onInput={(e) => setFilter((e.target as HTMLInputElement).value)} />
+      <label class="field-icon side-filter">
+        <Icon name="search" size={13} />
+        <input class="filter" type="search" placeholder="Filter nets" aria-label="Filter nets" value={filter} onInput={(e) => setFilter((e.target as HTMLInputElement).value)} />
+      </label>
       <div class="rows net-rows">
         {nets.map((n) => (
           <div
             key={n.name}
             class={`net-row ${props.picked === n.name ? 'sel' : ''}`}
-            onPointerEnter={() => props.onHover(n.name)}
-            onPointerLeave={() => props.onHover(null)}
+            {...hoverAttrs({ kind: 'net', key: n.name })}
+            onPointerEnter={(e) => {
+              props.onHover(n.name);
+              hoverAttrs({ kind: 'net', key: n.name }).onPointerEnter(e);
+            }}
+            onPointerLeave={(e) => {
+              props.onHover(null);
+              hoverAttrs({ kind: 'net', key: n.name }).onPointerLeave(e);
+            }}
             onClick={() => props.onPick(props.picked === n.name ? null : n.name)}
           >
-            <span class="swatch" style={{ background: n.colour }} />
+            <span class={`swatch ${n.plane ? 'plane' : ''}`} aria-hidden="true" />
             <span class="net-name">{n.name}</span>
             <span class="faint">{n.plane ? 'plane' : n.pads}</span>
           </div>
         ))}
-        {nets.length === 0 && <div class="none">No net matches.</div>}
+        {nets.length === 0 && <EmptyState compact class="none" icon="search" title="No net matches" help="Try the name of a net." />}
       </div>
     </>
   );
@@ -139,54 +158,69 @@ function PartInspector(props: { scene: PcbScene; parts: PcbPart[]; onPickNet: (n
   const one = parts.length === 1 ? parts[0] : null;
   const allLocked = parts.every((p) => p.locked);
   return (
-    <section class="inspector" data-testid="part-inspector">
-      <h3>
-        {one ? one.refdes : `${parts.length} parts`}
-        {one && <span class="faint"> {one.value}</span>}
-      </h3>
+    <section class="inspector insp" data-testid="part-inspector">
+      <InspectorHead
+        eyebrow={one ? 'Part on the board' : 'Selection'}
+        icon="part"
+        tone="part"
+        mono
+        title={one ? one.refdes : `${parts.length} parts`}
+        kind={one ? one.value : undefined}
+        sub={one ? `${one.kind}${one.package ? ` · ${one.package}` : ''}` : undefined}
+        actions={one ? <InspectorAction icon="source" label="Show in the source" onClick={() => pickPart(one.refdes, true)} /> : undefined}
+      />
       {one && (
-        <>
-          <div class="faint">
-            {one.kind}
-            {one.package ? ` ${one.package}` : ''} <button class="link" onClick={() => pickPart(one.refdes, true)}>source</button>
-          </div>
-          <div class="kv">
-            <span>x, y</span>
-            <span>
-              {fmt(one.x - sc.originX)}, {fmt(one.y - sc.originY)} mm
-            </span>
-            <span>turn</span>
-            <span>{fmt(one.rotation)}°</span>
-            <span>face</span>
-            <span>{one.side}</span>
-            <span>placed by</span>
-            <span>{one.locked ? 'locked, ' : ''}{one.placement}</span>
-          </div>
-        </>
+        <Defs
+          rows={[
+            { label: 'Position', value: `${fmt(one.x - sc.originX)}, ${fmt(one.y - sc.originY)} mm` },
+            { label: 'Turn', value: `${fmt(one.rotation)}°` },
+            { label: 'Face', value: one.side },
+            { label: 'Placed by', value: `${one.locked ? 'locked, ' : ''}${one.placement}` },
+          ]}
+        />
       )}
       <div class="actions">
-        <button class="tool" title="Rotate 90° (R, Shift+R the other way)" onClick={() => void rotateSelection(90)}>Rotate</button>
-        <button class="tool" title="Put on the other face (F)" onClick={() => void flipSelection()}>Flip</button>
-        <button class="tool" title="Lock or unlock (L)" onClick={() => void toggleLock()}>{allLocked ? 'Unlock' : 'Lock'}</button>
-        <button class="tool" title="Remove its entry from the layout file; the placer places it (Delete)" onClick={() => void releaseSelection()}>Release</button>
+        <button class="tool small" title="Rotate 90° (R, Shift+R the other way)" onClick={() => void rotateSelection(90)}>
+          <Icon name="rotate" size={13} />
+          Rotate
+        </button>
+        <button class="tool small" title="Put on the other face (F)" onClick={() => void flipSelection()}>
+          <Icon name="flip" size={13} />
+          Flip
+        </button>
+        <button class="tool small" title="Lock or unlock (L)" onClick={() => void toggleLock()}>
+          <Icon name={allLocked ? 'unlock' : 'lock'} size={13} />
+          {allLocked ? 'Unlock' : 'Lock'}
+        </button>
+        <button class="tool small" title="Remove its entry from the layout file; the placer places it (Delete)" onClick={() => void releaseSelection()}>
+          <Icon name="close" size={13} />
+          Release
+        </button>
       </div>
       {one && (
-        <table class="pads">
-          <tbody>
-            {one.pads.map((pad, i) => (
-              <tr key={`${pad.number}-${i}`}>
-                <td class="pad-no">{pad.number}</td>
-                <td>
-                  {pad.net ? (
-                    <button class="link" onClick={() => props.onPickNet(pad.net)}>{pad.net}</button>
-                  ) : (
-                    <span class="faint">no net</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <>
+          <div class="ih-sec">
+            Pads <span class="disc-count">{one.pads.length}</span>
+          </div>
+          <table class="pads">
+            <tbody>
+              {one.pads.map((pad, i) => (
+                <tr key={`${pad.number}-${i}`}>
+                  <td class="pad-no">{pad.number}</td>
+                  <td>
+                    {pad.net ? (
+                      <PinChip title="Light this net on the board" hv={{ kind: 'net', key: pad.net }} onClick={() => props.onPickNet(pad.net)}>
+                        {pad.net}
+                      </PinChip>
+                    ) : (
+                      <span class="faint">no net</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
       )}
     </section>
   );
@@ -206,33 +240,29 @@ function KeepoutInspector(props: { scene: PcbScene; keepout: PcbKeepout }) {
     set({ [field]: !k[field] }, `change what is forbidden by`);
   };
   return (
-    <section class="inspector" data-testid="keepout-inspector">
-      <h3>
-        keepout <span class="mono">{k.name}</span>
-      </h3>
-      <div class="faint">
-        {drawn
-          ? 'Drawn here, kept in the layout file.'
-          : k.origin === 'placed'
-            ? 'Sized by the source; the layout file places it.'
-            : k.origin === 'part'
-              ? 'Carried by a part: it moves with it.'
-              : 'Placed and sized by the source: change it there.'}
-      </div>
-      <div class="kv">
-        <span>size</span>
-        <span>
-          {fmt(k.width)} x {fmt(k.height)} mm
-        </span>
-        {k.area && (
-          <>
-            <span>at</span>
-            <span>
-              {fmt(k.area.x - sc.originX)}, {fmt(k.area.y - sc.originY)} mm
-            </span>
-          </>
-        )}
-      </div>
+    <section class="inspector insp" data-testid="keepout-inspector">
+      <InspectorHead
+        eyebrow="Keepout"
+        icon="keepout"
+        tone="module"
+        mono
+        title={k.name}
+        sub={
+          drawn
+            ? 'Drawn here, kept in the layout file.'
+            : k.origin === 'placed'
+              ? 'Sized by the source; the layout file places it.'
+              : k.origin === 'part'
+                ? 'Carried by a part: it moves with it.'
+                : 'Placed and sized by the source: change it there.'
+        }
+      />
+      <Defs
+        rows={[
+          { label: 'Size', value: `${fmt(k.width)} x ${fmt(k.height)} mm` },
+          ...(k.area ? [{ label: 'Position', value: `${fmt(k.area.x - sc.originX)}, ${fmt(k.area.y - sc.originY)} mm` }] : []),
+        ]}
+      />
       <div class="checks">
         <span class="faint">forbids</span>
         {(['tracks', 'vias', 'copper', 'parts'] as const).map((f) => (

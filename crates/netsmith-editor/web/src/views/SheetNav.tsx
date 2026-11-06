@@ -3,9 +3,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
+import { hoverAttrs } from '../hover';
 import { ALL, canStep, stepPick } from '../sheets';
 import type { Sheet } from '../schematic/drawing';
 import { filterSheets, parseTitle, type SheetStats } from '../schematic/nav';
+import { EmptyState } from '../components/ui';
 import { plural } from '../util';
 
 /** A sheet as the lists show it. */
@@ -164,6 +166,8 @@ export function SheetList({
             aria-selected={current === r.sheet.name}
             class={`sl-row ${current === r.sheet.name ? 'active' : ''} ${r.carries ? 'carries' : ''}`}
             title={`${r.sheet.title}${r.carries ? ' (carries the selected net)' : ''}`}
+            data-hv-ref={r.parts.join(' ')}
+            {...hoverAttrs({ kind: 'module', key: `sheet:${r.sheet.name}`, refs: r.parts })}
             onClick={() => choose(r.sheet.name)}
           >
             <span class="sl-n">{r.n}</span>
@@ -178,7 +182,7 @@ export function SheetList({
             <Badges stats={r.stats} />
           </button>
         ))}
-        {shown.length === 0 && <div class="sl-none">No module matches “{query}”.</div>}
+        {shown.length === 0 && <EmptyState compact class="sl-none" icon="search" title="No module matches" help={`Nothing fits “${query}”.`} />}
       </div>
     </div>
   );

@@ -3,7 +3,6 @@
 // files; `>` runs a command, `@` goes to a module or definition, `#` to a net, `:` to a line,
 // `!` to a problem.
 
-import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { available, byRecent, chordLabels, runCommand } from '../commands';
@@ -14,7 +13,7 @@ import { sortRows } from '../feedback/problems';
 import { pieces } from '../fuzzy';
 import { type Hit, type Item, PREFIXES, buildIndex, parseLine, parseQuery, problemItems, recentItems, search } from '../quickopen';
 import { closePicker, picker, recentCommands, recentPicks, rememberQuery, usedCommand, usedPick } from '../quickpick';
-import { SeverityIcon } from './ProblemsDock';
+import { Icon, type IconName, SeverityIcon } from './Icons';
 import { activeFile, detail, goTo, openFile, openFiles, project, revealSection, say, viewBoardOfDefinition } from '../store';
 
 /** A name with the letters the query matched marked. */
@@ -34,83 +33,88 @@ function Marked({ text, at }: { text: string; at: number[] | undefined }) {
   );
 }
 
-const Svg = ({ children }: { children: ComponentChildren }) => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    {children}
-  </svg>
-);
+/** What a row is, in a word, for the label at its right. */
+const KIND_LABEL: Record<string, string> = {
+  command: 'Command',
+  view: 'View',
+  part: 'Part',
+  net: 'Net',
+  bus: 'Bus',
+  module: 'Module',
+  definition: 'Definition',
+  file: 'File',
+  problem: 'Problem',
+  line: 'Line',
+};
 
-/** One small icon per kind of row, in the colour the badges of the tree use for that kind. */
-function KindIcon({ kind }: { kind: Item['kind'] | 'line' | 'tip' | 'search' }) {
+/** The icon of a command: its own where it has one, else its group's. A view is the section's icon. */
+function commandIcon(id: string): IconName {
+  const exact: Record<string, IconName> = {
+    'schematic.sheet.previous': 'chevron-left',
+    'schematic.sheet.next': 'chevron-right',
+    'schematic.pin.next': 'chevron-right',
+    'schematic.pin.previous': 'chevron-left',
+    'schematic.source': 'source',
+    'schematic.fit': 'expand-all',
+    'schematic.fitwidth': 'expand-all',
+    'schematic.actual': 'search',
+    'schematic.zoomselection': 'search',
+    'schematic.zoomin': 'plus',
+    'schematic.zoomout': 'minus',
+    'nav.back': 'arrow-left',
+    'goto.anything': 'search',
+    'palette.open': 'command',
+    'goto.symbol': 'definition',
+    'goto.net': 'net',
+    'goto.problem': 'warning',
+    'goto.line': 'hash',
+    'selection.source': 'source',
+    'selection.clear': 'close',
+    'file.save': 'download',
+    'file.close': 'close',
+    'build.kicad': 'kicad',
+    'build.fab': 'fab',
+    'pcb.route': 'route',
+    'pcb.cancel': 'close',
+    'theme.toggle': 'theme',
+    'help.shortcuts': 'keyboard',
+    'pane.toggle': 'split',
+  };
+  if (exact[id]) return exact[id];
+  if (id.startsWith('view.')) {
+    const section = id.slice(5);
+    return (['source', 'schematic', 'power', 'system', 'bom', 'pcb', 'build'].includes(section) ? section : 'panel') as IconName;
+  }
+  if (id.startsWith('problems.')) return 'warning';
+  if (id.startsWith('theme.')) return 'theme';
+  if (id.startsWith('schematic.')) return 'schematic';
+  return 'command';
+}
+
+/** The kind a row is shown as: a command that opens a section is a view. */
+function shownKind(kind: string, item?: Item): string {
+  return kind === 'command' && item?.target.type === 'command' && item.target.id.startsWith('view.') ? 'view' : kind;
+}
+
+/** One distinct icon for each kind of row, in the colour the badges of the tree use for that kind. */
+function RowIcon({ kind, item }: { kind: Item['kind'] | 'line' | 'tip' | 'search'; item?: Item }) {
+  if (kind === 'command' && item?.target.type === 'command') return <Icon name={commandIcon(item.target.id)} />;
   switch (kind) {
     case 'search':
-      return (
-        <Svg>
-          <circle cx="7" cy="7" r="4.6" />
-          <path d="M10.6 10.6L14 14" />
-        </Svg>
-      );
     case 'part':
-      return (
-        <Svg>
-          <rect x="4" y="4" width="8" height="8" rx="1" />
-          <path d="M6 1.8v2.2M10 1.8v2.2M6 12v2.2M10 12v2.2M1.8 6h2.2M1.8 10h2.2M12 6h2.2M12 10h2.2" />
-        </Svg>
-      );
     case 'bus':
-      return (
-        <Svg>
-          <path d="M2 8h12" stroke-width="2.6" />
-          <path d="M5 8V4.2M8 8V4.2M11 8V4.2M5 8v3.8M8 8v3.8M11 8v3.8" />
-        </Svg>
-      );
     case 'net':
-      return (
-        <Svg>
-          <circle cx="3.5" cy="4" r="1.4" />
-          <circle cx="12.5" cy="12" r="1.4" />
-          <path d="M5 4h4.5v8h1.8" />
-        </Svg>
-      );
     case 'module':
-      return (
-        <Svg>
-          <rect x="2" y="3" width="12" height="10" rx="1.4" />
-          <path d="M2 6.2h12M5 3v3.2" />
-        </Svg>
-      );
-    case 'definition':
-      return (
-        <Svg>
-          <path d="M5.5 3C4 3 4 4 4 5.2S4 7 2.8 8c1.2 1 1.2 1.6 1.2 2.8S4 13 5.5 13M10.5 3c1.5 0 1.5 1 1.5 2.2S12 7 13.2 8c-1.2 1-1.2 1.6-1.2 2.8S12 13 10.5 13" />
-        </Svg>
-      );
     case 'file':
-      return (
-        <Svg>
-          <path d="M3.5 1.8h5.7L12.5 5v9.2h-9z" />
-          <path d="M9 1.8V5h3.5" />
-        </Svg>
-      );
     case 'command':
-      return (
-        <Svg>
-          <path d="M3 4.5l4 3.5-4 3.5M8.5 12h4.5" />
-        </Svg>
-      );
+    case 'definition':
+      return <Icon name={kind} />;
     case 'line':
-      return (
-        <Svg>
-          <path d="M2.5 4h11M2.5 8h11M2.5 12h6" />
-        </Svg>
-      );
+      return <Icon name="hash" />;
+    case 'problem':
+      return <Icon name="warning" />;
     default:
-      return (
-        <Svg>
-          <circle cx="8" cy="8" r="5.6" />
-          <path d="M8 7.2v3.4M8 5.2v.1" />
-        </Svg>
-      );
+      return <Icon name="note" />;
   }
 }
 
@@ -340,7 +344,7 @@ function Dialog({ initial }: { initial: string }) {
       <div class="qp" role="dialog" aria-modal="true" aria-label={title} data-mode={mode}>
         <div class="qp-field">
           <span class="qp-mode" aria-hidden="true">
-            <KindIcon kind={mode === 'command' ? 'command' : mode === 'problem' ? 'problem' : mode === 'net' ? 'net' : mode === 'symbol' ? 'module' : mode === 'line' ? 'line' : 'search'} />
+            <RowIcon kind={mode === 'command' ? 'command' : mode === 'problem' ? 'problem' : mode === 'net' ? 'net' : mode === 'symbol' ? 'module' : mode === 'line' ? 'line' : 'search'} />
           </span>
           <input
             ref={input}
@@ -389,6 +393,7 @@ function Dialog({ initial }: { initial: string }) {
               {g.title && (
                 <div class="qp-group" role="presentation">
                   {g.title}
+                  {g.rows[0]?.kind !== 'tip' && <span class="qp-group-count">{g.rows.length}</span>}
                 </div>
               )}
               {g.rows.map((r) => {
@@ -402,12 +407,12 @@ function Dialog({ initial }: { initial: string }) {
                     id={`qp-opt-${i}`}
                     role="option"
                     aria-selected={i === at}
-                    class={`qp-row ${i === at ? 'on' : ''}`}
+                    class={`qp-row k-${shownKind(r.kind, item)} ${i === at ? 'on' : ''}`}
                     onMouseMove={() => i !== at && setActive(i)}
                     onClick={r.run}
                   >
-                    <span class={`qp-icon qpk-${r.kind} ${item?.tone ?? ''}`}>
-                      {r.kind === 'tip' ? null : item?.tone ? <SeverityIcon severity={item.tone} size={16} /> : <KindIcon kind={r.kind} />}
+                    <span class={`qp-icon qpk-${shownKind(r.kind, item)} ${item?.tone ?? ''}`}>
+                      {r.kind === 'tip' ? null : item?.tone ? <SeverityIcon severity={item.tone} size={16} /> : <RowIcon kind={r.kind} item={item} />}
                     </span>
                     <span class="qp-main">
                       {item ? (
@@ -432,6 +437,7 @@ function Dialog({ initial }: { initial: string }) {
                       )}
                     </span>
                     {item?.keys && <Keys chord={item.keys} />}
+                    {r.kind !== 'tip' && <span class="qp-type">{item?.kind === 'command' ? (item.detail || KIND_LABEL.command) : KIND_LABEL[shownKind(r.kind, item)]}</span>}
                   </div>
                 );
               })}

@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import type { PowerTree, SystemView } from '../api';
 import { api } from '../client';
+import { Icon, type IconName } from '../components/Icons';
+import { InspectorHead } from '../components/Inspector';
+import { Legend, Pill, Popover, Units } from '../components/ui';
 import { NoBoard, ViewLoading } from '../components/ViewStatus';
 import { MiniMap } from '../components/MiniMap';
 import { PanZoom } from '../components/PanZoom';
@@ -10,47 +13,128 @@ import { type Move, linkKey, move, trace } from '../flow/select';
 import { ANCHOR, CARD_W, STEP, cardHeight, labelWidth } from '../system/metrics';
 import { type ModuleModel, type SystemModel, type Wire, modelOf, shorten } from '../system/model';
 import { analysis, board, goTo, systemName } from '../store';
+import { fitView } from '../sheets';
+import { hoverAttrs } from '../hover';
 import { type Card, cardFor, revealRequest, selection, selectionOfCard, setSelection } from '../selection';
 
 /** The longest label an edge carries: the rest is in its tooltip. */
 const LABEL_CHARS = 32;
 
-/** The mated connectors of a system, contact by contact, and the grounds they join (ADR 0040). */
+/** The roles of a mate's contacts, counted: `6 signal`, `2 ground`. */
+function roleCounts(m: SystemView['mates'][number]): [string, number][] {
+  const n = new Map<string, number>();
+  for (const c of m.contacts) n.set(c.aRole, (n.get(c.aRole) ?? 0) + 1);
+  return ['signal', 'power', 'ground', 'open'].filter((r) => n.has(r)).map((r) => [r, n.get(r)!]);
+}
+
+/** The mated connectors of a system, a row for each with the roles of its contacts counted, the contacts
+ * under it, and the grounds they join (ADR 0040). */
 function Mates({ view }: { view: SystemView }) {
+  // A few mates are shown; a long list starts folded to its head, so it does not take the canvas.
+  const [open, setOpen] = useState(view.mates.length <= 2);
   if (view.mates.length === 0) return null;
   return (
-    <div class="mates">
-      {view.mates.map((m) => (
-        <div class="mate" key={`${m.a}/${m.b}`}>
-          <div class="mate-head link" onClick={() => m.at && void goTo(m.at)}>
-            <b>{m.a}</b> mates <b>{m.b}</b>
-            <span class="hint">
-              {m.contacts.length} contacts{m.ports.length > 0 ? `; joins ${m.ports.join(', ')}` : ''}
-            </span>
-          </div>
-          <div class="contacts">
-            {m.contacts.map((c) => (
-              <span
-                key={c.number}
-                class={`contact role-${c.aRole}`}
-                title={`contact ${c.number}: ${m.a} ${c.aRole}${c.aNet ? ` (${c.aNet})` : ''}, ${m.b} ${c.bRole}${c.bNet ? ` (${c.bNet})` : ''}`}
-              >
-                {c.number} {c.aRole === c.bRole ? c.aRole : `${c.aRole}/${c.bRole}`}
+    <div class={`mates ${open ? 'open' : ''}`} data-toast-clear>
+      <div class="mates-head">
+        <button class="mates-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <Icon name="chevron-right" size={12} class="disc-chev" />
+          <Icon name="link" size={14} />
+          <span class="mates-title">Mated connectors</span>
+          <span class="disc-count">{view.mates.length}</span>
+          {view.groundGroups.length > 0 && (
+            <>
+              <span class="mates-dot" aria-hidden="true" />
+              <span class="mates-title">Ground groups</span>
+              <span class="disc-count">{view.groundGroups.length}</span>
+            </>
+          )}
+        </button>
+        <Legend items={[{ kind: 'role-signal', label: 'Signal' }, { kind: 'role-power', label: 'Power' }, { kind: 'role-ground', label: 'Ground' }]} />
+      </div>
+      {open && (
+        <div class="mates-body">
+          {view.mates.map((m) => (
+            <details class="mate" key={`${m.a}/${m.b}`}>
+              <summary class="mate-row">
+                <Icon name="chevron-right" size={12} class="disc-chev" />
+                <span class="mate-pair">
+                  <button class="chip pin-chip plain mate-end" title={`Show ${m.a} in the source`} onClick={(e) => { e.preventDefault(); if (m.at) void goTo(m.at); }}>
+                    <b>{m.a}</b>
+                  </button>
+                  <Icon name="link" size={12} class="mate-link" />
+                  <button class="chip pin-chip plain mate-end" title={`Show ${m.b} in the source`} onClick={(e) => { e.preventDefault(); if (m.at) void goTo(m.at); }}>
+                    <b>{m.b}</b>
+                  </button>
+                </span>
+                <span class="mate-count">{m.contacts.length} contacts</span>
+                <span class="mate-roles">
+                  {roleCounts(m).map(([r, c]) => (
+                    <span key={r} class={`role-chip role-${r}`}>
+                      <i aria-hidden="true" />
+                      {c} {r}
+                    </span>
+                  ))}
+                </span>
+                {m.ports.length > 0 && (
+                  <span class="mate-joins" title={m.ports.join(', ')}>
+                    joins {m.ports.join(', ')}
+                  </span>
+                )}
+                {m.reversible && (
+                  <Pill tone="warn" icon="warning" title={m.reversible}>
+                    reversible
+                  </Pill>
+                )}
+              </summary>
+              <div class="contacts">
+                {m.contacts.map((c) => (
+                  <span
+                    key={c.number}
+                    class={`contact role-${c.aRole}`}
+                    title={`contact ${c.number}: ${m.a} ${c.aRole}${c.aNet ? ` (${c.aNet})` : ''}, ${m.b} ${c.bRole}${c.bNet ? ` (${c.bNet})` : ''}`}
+                  >
+                    <b>{c.number}</b> {c.aRole === c.bRole ? c.aRole : `${c.aRole}/${c.bRole}`}
+                  </span>
+                ))}
+                {m.reversible && <div class="warn">{m.reversible}</div>}
+              </div>
+            </details>
+          ))}
+          {view.groundGroups.map((g) => (
+            <div class="ground-group" key={g.nets.join('+')}>
+              <span class="role-chip role-ground">
+                <i aria-hidden="true" />
+                Ground
               </span>
-            ))}
-          </div>
-          {m.reversible && <div class="warn">{m.reversible}</div>}
+              <span class="gg-nets">{g.nets.join(' + ')}</span>
+              <span class="hint">{g.contacts.join('; ')} ground contacts</span>
+            </div>
+          ))}
         </div>
-      ))}
-      {view.groundGroups.map((g) => (
-        <div class="ground-group" key={g.nets.join('+')}>
-          <b>Ground</b> {g.nets.join(' + ')}
-          <span class="hint">{g.contacts.join('; ')} ground contacts</span>
-        </div>
-      ))}
+      )}
     </div>
   );
 }
+
+/** The room a graph keeps round its cards (screen pixels), the most it is opened at (a small graph is
+ * fitted with air round it, not blown up) and the least before it is opened at that and left to be panned. */
+export const GRAPH_PAD = 56;
+export const GRAPH_MAX_K = 1.5;
+export const GRAPH_MIN_K = 0.45;
+
+/** The view a graph opens at, and Fit goes to: the whole of it with comfortable padding and centred, at most
+ * 150 %. Opening a graph that would then be too small to read, it is 45 % from its top left instead (Fit still shows it
+ * whole). True size is the 1:1 button. */
+export function placeFitted(size: { width: number; height: number }) {
+  return (w: number, h: number, whole = false) => {
+    const all = fitView(w, h, { x: -GRAPH_PAD, y: -GRAPH_PAD, w: size.width + 2 * GRAPH_PAD, h: size.height + 2 * GRAPH_PAD }, 1);
+    if (!whole && all.k < GRAPH_MIN_K) return { k: GRAPH_MIN_K, x: GRAPH_PAD * GRAPH_MIN_K, y: GRAPH_PAD * GRAPH_MIN_K };
+    const k = Math.min(all.k, GRAPH_MAX_K);
+    return { k, x: (w - size.width * k) / 2, y: (h - size.height * k) / 2 - h * 0.02 };
+  };
+}
+
+const KIND_ICON: Record<string, IconName> = { board: 'board', module: 'module', part: 'part', port: 'net' };
 
 function ModuleCard({
   m,
@@ -78,10 +162,13 @@ function ModuleCard({
       data-node={m.id}
       data-kind="module"
       style={{ left: p.x, top: p.y, width: p.w, height: p.h }}
+      {...hoverAttrs(m.kind === 'module' || m.kind === 'part' ? { kind: m.kind, key: m.name } : null)}
       onClick={onSelect}
     >
       <div class="sy-head">
-        <span class={`badge k-${m.kind}`}>{m.kind[0].toUpperCase()}</span>
+        <span class={`sy-icon k-${m.kind}`} title={m.kind} aria-hidden="true">
+          <Icon name={KIND_ICON[m.kind] ?? 'module'} size={13} />
+        </span>
         <button
           class="sy-name"
           title={m.at ? `${m.name}: show in source` : m.name}
@@ -108,9 +195,7 @@ function ModuleCard({
               }}
               title={open ? 'Hide the ports' : 'List the ports'}
             >
-              <span class="pt-chev" aria-hidden="true">
-                {open ? '▾' : '▸'}
-              </span>
+              <Icon name="chevron-right" size={12} class={`sy-chev ${open ? 'open' : ''}`} />
               {m.ports.length} ports
             </button>
           )}
@@ -119,8 +204,12 @@ function ModuleCard({
               <div class="sy-row" key={r.name} title={r.title}>
                 <span class="sy-pname">{r.name}</span>
                 <span class={`sy-pval ${r.supply ? 'supply' : ''}`}>
-                  <span class="sy-volts">{r.volts}</span>
-                  <span class="sy-amps">{r.current}</span>
+                  <span class="sy-volts">
+                    <Units text={r.volts} />
+                  </span>
+                  <span class="sy-amps">
+                    <Units text={r.current} />
+                  </span>
                 </span>
               </div>
             ))}
@@ -140,6 +229,8 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
   const [reveal, setReveal] = useState<{ x: number; y: number; w: number; h: number; seq: number } | undefined>();
   const [centre, setCentre] = useState<{ x: number; y: number; seq: number } | undefined>();
   const [vp, setVp] = useState<{ k: number; x: number; y: number; w: number; h: number } | null>(null);
+  /** The card the pointer is over: the wires of it show a little more. */
+  const [hover, setHover] = useState<string | null>(null);
   const host = useRef<HTMLDivElement>(null);
   const timer = useRef<number | undefined>(undefined);
   const came = useRef(new Map<string, string>());
@@ -225,14 +316,26 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
   return (
     <div class="graph-view power-view system-view">
       <div class="graph-title pt-bar">
-        <span>
-          {view.kind === 'system' ? 'System' : 'Board'} <b>{view.name}</b>
+        <span class="gt-name">
+          <Icon name="system" size={16} />
+          {view.kind === 'system' ? 'System' : 'Board'}
+          <Pill tone="neutral">{view.name}</Pill>
+          <Popover icon="note" tip="What this shows" class="bom-info" align="left">
+            <h4>{view.kind === 'system' ? 'System' : 'Board'}</h4>
+            <p>
+              {view.kind === 'system'
+                ? 'Boards and the joins between them, from what supplies to what is supplied. Below, the mated connectors and the grounds they join.'
+                : 'Modules, parts and ports, from what supplies to what is supplied, joined by the nets they share.'}
+            </p>
+          </Popover>
         </span>
-        <span class="hint">
-          {view.kind === 'system'
-            ? 'Boards and the joins between them, from what supplies to what is supplied; below, the mated connectors and the grounds they join.'
-            : 'Modules, parts and ports, from what supplies to what is supplied, joined by the nets they share.'}
-        </span>
+        <Legend
+          items={[
+            { kind: 'power', label: 'Supplies', tip: 'A wire from what supplies to what is supplied' },
+            { kind: 'signal', label: 'Signal', tip: 'A wire with no direction known' },
+            ...(tr ? [{ kind: 'up', label: 'Upstream', tip: 'What feeds the selection' }, { kind: 'down', label: 'Downstream', tip: 'What the selection feeds' }] : []),
+          ]}
+        />
         <span class="spacer" />
         {model.modules.some((m) => m.ports.length > 6) && (
           <button
@@ -240,6 +343,7 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
             onClick={() => setOpens(Object.fromEntries(model.modules.map((m) => [m.id, !everyOpen])))}
             title="List the ports of every long table, or fold them all"
           >
+            <Icon name={everyOpen ? 'collapse-all' : 'expand-all'} size={13} />
             {everyOpen ? 'Fold all ports' : 'List all ports'}
           </button>
         )}
@@ -251,6 +355,8 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
         role="application"
         aria-label="System. Arrow keys move along it, Escape clears the selection."
         onKeyDown={onKey}
+        onMouseOver={(e) => setHover((e.target as Element).closest<HTMLElement>('[data-node]')?.dataset.node ?? null)}
+        onMouseLeave={() => setHover(null)}
         onClick={(e) => {
           if (!(e.target as Element).closest('.pt-node, .pt-minimap, .zoombar, .sy-label')) {
             select(null);
@@ -264,6 +370,9 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
           fitKey={fitKey}
           class="graph-host power-host"
           actualSize
+          scale100={1}
+          placeView={placeFitted(layout)}
+          fitPlaces
           reveal={reveal}
           centre={centre}
           onViewport={setVp}
@@ -288,7 +397,7 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
                   data-points={JSON.stringify(e.points)}
                   data-back={e.back ? 'true' : undefined}
                   d={e.d}
-                  class={`pt-edge sy-edge ${w?.kind ?? ''} ${tint ? `hot ${tint}` : ''} ${tr && !tint ? 'dim' : ''}`}
+                  class={`pt-edge sy-edge ${w?.kind ?? ''} ${tint ? `hot ${tint}` : ''} ${tr && !tint ? 'dim' : ''} ${!tr && hover && (e.from === hover || e.to === hover) ? 'peek' : ''}`}
                   marker-end={w?.kind === 'power' ? `url(#sy-arrow${tint ? `-${tint}` : ''})` : undefined}
                 />
               );
@@ -359,9 +468,19 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
           onMouseEnter={() => window.clearTimeout(timer.current)}
           onMouseLeave={() => showTip(null)}
         >
-          <div class="pt-tip-who">
-            {tip.wire.from} {'→'} {tip.wire.to}
-          </div>
+          <InspectorHead
+            eyebrow="Wire"
+            icon="link"
+            tone="net"
+            mono
+            titleTag="div"
+            title={
+              <>
+                {tip.wire.from} {'\u2192'} {tip.wire.to}
+              </>
+            }
+            sub={`${tip.wire.labels.length} ${tip.wire.labels.length === 1 ? 'connection' : 'connections'}`}
+          />
           <ul>
             {tip.wire.labels.map((l) => (
               <li key={l}>{l}</li>

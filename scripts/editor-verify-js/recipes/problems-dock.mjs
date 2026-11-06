@@ -48,6 +48,7 @@ export async function run({ page, shot, step, expect, project, section }) {
     const h = (await page.locator('.dock').boundingBox()).height;
     await page.reload();
     await page.waitForSelector('.dock');
+    await page.waitForTimeout(300); // the dock opens over 160 ms
     expect(Math.abs((await page.locator('.dock').boundingBox()).height - h) < 2, `the same height after a reload (${h})`);
     await page.locator('.statusbar .conn').waitFor();
     await page.keyboard.press('Control+j');

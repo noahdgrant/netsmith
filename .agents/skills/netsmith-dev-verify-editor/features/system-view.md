@@ -4,6 +4,10 @@
 
 The section "System" (key 4). It is drawn like the power tree (`power-tree.md`): the layout engine in `src/flow/layout.ts` is shared, so the same rules hold. A board that is part of a `system` shows the system (boards with their ports, voltages and currents, joined by `~` or by a mate), and below the graph the mated connectors with a box for each contact coloured by role (ground, power, signal, open; click the mate's name to go to its `~`), a line for each pinout that works turned end for end, and one line for each ground group (`carrier.GND + sensor.GND + serial.GND`, ADR 0040). A board on its own shows its members (ports, modules, parts) joined by the nets they share; a ground net is left out.
 
+## How it looks
+
+A drawing opens fitted with 56 px of air round it, centred, at most 150 % and at least 45 % (`placeFitted` in `views/System.tsx`, also used by the power tree; Fit does the same, `1:1` is true size, the zoom bar reads the true scale). The dot grid is the window's, and pans with the drawing. A card is a header (an icon for the kind, the name, the type as a chip) and a table of ports in columns, the units muted (`Units` in `components/ui.tsx`); the picked card has the blue ring. The wires of the card under the pointer are a little heavier (`.pt-edge.peek`). The title bar has an info popover (the old paragraph) and a legend of chips. The mates are under the graph, folded as a whole by a header (open for one or two mates, folded to its head for more; `data-toast-clear`, so a toast stands above it): a row for each mated pair (`details.mate`: the two connectors, `10 contacts`, the roles counted as chips, what it joins, `reversible` when it would also work turned round) with its contacts (`.contact.role-*`) under the row when opened, then the ground groups.
+
 ## Driving it
 
 `scripts/editor-verify drive system`; `drive single-board` for the board form (launch `--fixture regulator`).

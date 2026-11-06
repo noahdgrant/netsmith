@@ -70,21 +70,21 @@ export async function run({ page, shot, step, expect, section }) {
   expect((await page.locator('.ft-def .ft-icon.kind-board').count()) >= 2 && (await page.locator('.ft-def .ft-icon.kind-system').count()) === 1, 'board and system definitions have their own icons');
   expect((await page.locator('.ft-def .badge').count()) === 0, 'no lone-letter badges');
 
-  step('the active file has an accent bar; an open file is marked; unsaved changes show a dot');
+  step('the active file has a bar in the selection colour; an open file is marked; unsaved changes show a dot');
   await row('f:src/greenhouse.nsm').click();
   await page.waitForSelector('.tab.active:has-text("greenhouse.nsm")');
   expect((await row('f:src/greenhouse.nsm').getAttribute('aria-selected')) === 'true', 'the open file is selected');
   const bar = await row('f:src/greenhouse.nsm').evaluate((e) => { const s = getComputedStyle(e, '::before'); return [s.width, s.backgroundColor]; });
-  // The accent is a token and the theme sets it: ask the page what it is.
+  // The selection colour is a token and the theme sets it: ask the page what it is.
   const accent = await page.evaluate(() => {
     const probe = document.createElement('i');
-    probe.style.color = 'var(--accent)';
+    probe.style.color = 'var(--sel-bar)';
     document.body.append(probe);
     const colour = getComputedStyle(probe).color;
     probe.remove();
     return colour;
   });
-  expect(bar[0] === '3px' && bar[1] === accent, `a 3 px bar in the accent colour (${bar}, accent ${accent})`);
+  expect(bar[0] === '2px' && bar[1] === accent, `a 2 px bar in the selection colour (${bar}, selection ${accent})`);
   await row('f:src/irrigation.nsm').click();
   await page.waitForSelector('.tab.active:has-text("irrigation.nsm")');
   expect((await row('f:src/greenhouse.nsm').evaluate((e) => e.classList.contains('opened'))) === true, 'a file that is open but not active is marked');

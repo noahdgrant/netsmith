@@ -2,7 +2,6 @@
 // as a table. Opened with Ctrl+J (or Cmd+J) and by the counts in the status bar; F8 and Shift+F8
 // step through it from anywhere. It remembers its height and whether it is open.
 
-import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 
 import type { Severity } from '../api';
@@ -17,49 +16,18 @@ import {
   setDockHeight,
   setDockOpen,
 } from '../feedback/state';
+import { type Hover, hoverAttrs } from '../hover';
 import { SECTIONS } from '../layout';
+import { partByPath } from '../selection';
+import { detail } from '../store';
 import { plural } from '../util';
+import { CheckIcon, Icon, SeverityIcon } from './Icons';
+import { EmptyState } from './ui';
 
 /** The most rows drawn at once; a project with more says so, and the filter narrows it. */
 const MAX_ROWS = 1000;
 
-const Svg = ({ children, size = 14 }: { children: ComponentChildren; size?: number }) => (
-  <svg class="icon" width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    {children}
-  </svg>
-);
-
-export function SeverityIcon({ severity, size }: { severity: Severity; size?: number }) {
-  if (severity === 'error') {
-    return (
-      <Svg size={size}>
-        <circle cx="8" cy="8" r="6.2" />
-        <path d="M5.6 5.6l4.8 4.8M10.4 5.6l-4.8 4.8" />
-      </Svg>
-    );
-  }
-  if (severity === 'warning') {
-    return (
-      <Svg size={size}>
-        <path d="M8 2.2l6.2 11H1.8z" />
-        <path d="M8 6.6v3.2M8 11.6v.1" />
-      </Svg>
-    );
-  }
-  return (
-    <Svg size={size}>
-      <circle cx="8" cy="8" r="6.2" />
-      <path d="M8 7.2v3.6M8 5v.1" />
-    </Svg>
-  );
-}
-
-export const CheckIcon = ({ size }: { size?: number }) => (
-  <Svg size={size}>
-    <circle cx="8" cy="8" r="6.2" />
-    <path d="M5.2 8.2l2 2 3.6-4" />
-  </Svg>
-);
+export { CheckIcon, SeverityIcon };
 
 const SEVERITY_NAME: Record<Severity, string> = { error: 'Errors', warning: 'Warnings', note: 'Notes' };
 
@@ -69,7 +37,7 @@ function SeverityToggle({ severity, n, on, set }: { severity: Severity; n: numbe
     <button
       class={`sev-toggle ${severity} ${on ? 'on' : ''}`}
       aria-pressed={on}
-      title={`${on ? 'Hide' : 'Show'} ${SEVERITY_NAME[severity].toLowerCase()} (${plural(n, severity)})`}
+      data-tip={`${on ? 'Hide' : 'Show'} ${SEVERITY_NAME[severity].toLowerCase()} (${plural(n, severity)})`}
       onClick={() => set(!on)}
     >
       <SeverityIcon severity={severity} size={13} />
@@ -86,7 +54,7 @@ function StageChip({ origin, n, on, set }: { origin: Origin; n: number; on: bool
       class={`stage-chip stage-${origin} ${on ? 'on' : ''}`}
       aria-pressed={on}
       data-stage={origin}
-      title={`${on ? 'Hide' : 'Show'} what the ${ORIGIN_LABEL[origin].toLowerCase()} stage found (${plural(n, 'problem')})`}
+      data-tip={`${on ? 'Hide' : 'Show'} what the ${ORIGIN_LABEL[origin].toLowerCase()} stage found (${plural(n, 'problem')})`}
       onClick={() => set(!on)}
     >
       {ORIGIN_LABEL[origin]} <span class="n">{n}</span>
@@ -139,6 +107,9 @@ function ProblemRow({ row }: { row: Row }) {
       aria-current={on ? 'true' : undefined}
       data-id={row.id}
       data-testid="problem"
+      {...hoverAttrs((): Hover | null =>
+        row.net ? { kind: 'net', key: row.net } : row.path ? { kind: partByPath(detail.peek(), row.path) ? 'part' : 'module', key: row.path } : null,
+      )}
       title={`${row.full}${row.at ? `\n${row.at.file}:${row.at.line}:${row.at.column}` : ''}`}
       onClick={() => revealRow(row)}
       onKeyDown={(e) => {
@@ -177,38 +148,46 @@ function Empty({ hidden }: { hidden: { notes: number; filtered: 'text' | 'view' 
   const clear = () => (filter.value = { ...filter.value, text: '', thisView: false, errors: true, warnings: true, off: [] });
   if (hidden.filtered === 'text') {
     return (
-      <div class="dock-empty" data-testid="dock-empty">
-        <div class="big">No problems match the filter</div>
-        <div class="sub">
-          <button class="link" onClick={clear}>
+      <EmptyState
+        compact
+        class="dock-empty"
+        testid="dock-empty"
+        icon="filter"
+        title="No problems match the filter"
+        actions={
+          <button class="tool small" onClick={clear}>
             Clear the filter
           </button>
-        </div>
-      </div>
+        }
+      />
     );
   }
   return (
-    <div class="dock-empty ok" data-testid="dock-empty">
-      <CheckIcon size={22} />
-      <div class="big">{hidden.filtered === 'view' ? 'No problems in this view' : 'No problems'}</div>
-      <div class="sub">
-        {hidden.filtered === 'view' && (
+    <EmptyState
+      compact
+      class="dock-empty ok"
+      testid="dock-empty"
+      icon="check-circle"
+      tone="ok"
+      title={hidden.filtered === 'view' ? 'No problems in this view' : 'No problems'}
+      help={hidden.notes > 0 ? `${plural(hidden.notes, 'note')} hidden.` : undefined}
+      actions={
+        hidden.filtered === 'view' || hidden.notes > 0 ? (
           <>
-            <button class="link" onClick={() => (filter.value = { ...filter.value, thisView: false })}>
-              Show the whole project
-            </button>{' '}
+            {hidden.filtered === 'view' && (
+              <button class="tool small" onClick={() => (filter.value = { ...filter.value, thisView: false })}>
+                Show the whole project
+              </button>
+            )}
+            {hidden.notes > 0 && (
+              <button class="tool small" onClick={() => (filter.value = { ...filter.value, notes: true })}>
+                Show notes
+              </button>
+            )}
           </>
-        )}
-        {hidden.notes > 0 && (
-          <>
-            {plural(hidden.notes, 'note')} hidden.{' '}
-            <button class="link" onClick={() => (filter.value = { ...filter.value, notes: true })}>
-              Show notes
-            </button>
-          </>
-        )}
-      </div>
-    </div>
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -247,7 +226,7 @@ export function ProblemsDock() {
     <section class="dock problems open" ref={host} style={{ height: `${d.height}px` }} aria-label="Problems" data-testid="dock">
       <Resizer host={host} />
       <div class="dock-head problems-head">
-        <h2 class="dock-title">Problems</h2>
+        <h2 class="dock-title"><Icon name="panel" size={14} />Problems</h2>
         <SeverityToggle severity="error" n={c.error} on={f.errors} set={(on) => set({ errors: on })} />
         <SeverityToggle severity="warning" n={c.warning} on={f.warnings} set={(on) => set({ warnings: on })} />
         <SeverityToggle severity="note" n={c.note} on={f.notes} set={(on) => set({ notes: on })} />
@@ -294,10 +273,8 @@ export function ProblemsDock() {
             <span class="spinner" /> Checking PCB and power…
           </span>
         )}
-        <button class="icon-btn" aria-label="Close the problems panel (Ctrl+J)" title="Close (Ctrl+J)" onClick={() => setDockOpen(false)}>
-          <Svg>
-            <path d="M4 4l8 8M12 4l-8 8" />
-          </Svg>
+        <button class="icon-btn" aria-label="Close the problems panel (Ctrl+J)" data-tip="Close" data-tip-keys="Ctrl+J" onClick={() => setDockOpen(false)}>
+          <Icon name="close" />
         </button>
       </div>
       {total === 0 ? (

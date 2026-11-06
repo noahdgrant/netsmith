@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import indexHtml from '../index.html?raw';
-import { contrast } from './contrast';
+import { contrast, over, parseHex } from './contrast';
 import css from './themes.css?raw';
 import {
   type Environment,
@@ -129,7 +129,7 @@ export const THEME_TOKENS: Record<Theme, Record<string, string>> = {
 };
 
 type Pair = { fg: string; bg: string[]; min?: number; what: string };
-const SURFACES = ['--bg', '--surface', '--surface-raised', '--canvas'];
+const SURFACES = ['--bg', '--surface', '--surface-raised', '--surface-3', '--canvas'];
 const KINDS = ['part', 'net', 'module', 'definition', 'file', 'command', 'board', 'system', 'panel', 'interface'].map((k) => `--kind-${k}`);
 const SYN = ['comment', 'doc', 'string', 'number', 'keyword', 'type', 'property', 'namespace', 'variable', 'operator', 'punct', 'invalid'].map((k) => `--syn-${k}`);
 const NETS = Array.from({ length: 10 }, (_, i) => `--net-${i}`);
@@ -140,7 +140,9 @@ function pairs(): Pair[] {
   list.push({ fg: '--accent-text', bg: ['--surface', '--surface-raised', '--canvas'], what: 'accent text' });
   list.push({ fg: '--accent-fg', bg: ['--accent-fill'], what: 'label of the primary button' });
   for (const k of ['danger', 'warning', 'success', 'info']) list.push({ fg: `--${k}`, bg: ['--surface', '--surface-raised', '--canvas'], what: `${k} as text or icon` });
-  for (const k of ['danger', 'warning', 'info']) list.push({ fg: `--${k}-text`, bg: [`--${k}-bg`], what: `${k} strip text` });
+  for (const k of ['danger', 'warning', 'info', 'success']) list.push({ fg: `--${k}-text`, bg: [`--${k}-bg`], what: `${k} strip text` });
+  // A status pill, a log line and a sourcing chip: the four tones' words on the layers a card and a log sit on.
+  for (const k of ['danger', 'warning', 'info', 'success']) list.push({ fg: `--${k}-text`, bg: ['--surface', '--surface-raised', '--canvas', '--surface-3'], what: `${k} words on a card, a log and a pill` });
   list.push({ fg: '--on-danger', bg: ['--danger-solid'], what: 'label on a danger fill' });
   list.push({ fg: '--on-warning', bg: ['--warning-solid'], what: 'label on a warning fill' });
   list.push({ fg: '--on-kind', bg: KINDS.filter((k) => /part|module|board|system|panel|interface/.test(k)), what: 'badge letter on a kind fill' });
@@ -148,23 +150,36 @@ function pairs(): Pair[] {
   for (const s of SYN) list.push({ fg: s, bg: ['--canvas'], what: 'syntax colour on the editor' });
   list.push({ fg: '--text', bg: ['--pop'], what: 'text in a menu' });
   list.push({ fg: '--text-faint', bg: ['--pop'], what: 'faint text in a menu' });
-  for (const k of ['--sch-text', '--sch-net', '--sch-body', '--sch-pin']) list.push({ fg: k, bg: ['--sch-sheet'], what: 'schematic text' });
+  list.push({ fg: '--text-muted', bg: ['--pop'], what: 'muted text in a menu' });
+  // What is picked in a data view: the blue's words and its marks.
+  list.push({ fg: '--sel-text', bg: [...SURFACES, '--pop'], what: 'selection text' });
+  list.push({ fg: '--sel', bg: ['--surface', '--canvas', '--surface-raised', '--surface-3'], min: 3, what: 'selection marks (the bar at a picked row)' });
+  for (const k of ['--sch-text', '--sch-net', '--sch-body', '--sch-pin', '--sch-bus']) list.push({ fg: k, bg: ['--sch-sheet'], what: 'schematic text' });
   list.push({ fg: '--sch-wire', bg: ['--sch-sheet'], min: 3, what: 'schematic wire (a graphic)' });
   list.push({ fg: '--sch-muted', bg: ['--sch-sheet'], min: 3, what: 'schematic open pin mark (a graphic)' });
   list.push({ fg: '--sch-bad', bg: ['--sch-sheet'], min: 3, what: 'schematic error mark (a graphic)' });
   list.push({ fg: '--sch-hit', bg: ['--sch-sheet'], min: 3, what: 'schematic highlight (a graphic)' });
   list.push({ fg: '--sch-mark', bg: ['--sch-sheet'], min: 3, what: 'schematic selection mark (a graphic)' });
+  // A segmented control: its words on the track and on the segment that is on.
+  list.push({ fg: '--text-muted', bg: ['--seg-track'], what: 'a segment that is off' });
+  list.push({ fg: '--text', bg: ['--seg-on'], what: 'the segment that is on' });
   list.push({ fg: '--brand', bg: ['--surface'], min: 3, what: 'the logo' });
-  list.push({ fg: '--pcb-key', bg: ['--pcb-bg'], what: 'board key text' });
-  list.push({ fg: '--pcb-silk', bg: ['--pcb-bg'], what: 'board reference text' });
-  for (const n of NETS) list.push({ fg: n, bg: ['--pcb-bg'], min: 3, what: 'net colour on the board (a graphic)' });
-  for (const n of NETS) list.push({ fg: '--pcb-pad-text', bg: [n], min: 3, what: 'pad number on its net colour' });
-  list.push({ fg: '--pcb-outline', bg: ['--pcb-bg'], min: 3, what: 'board outline' });
-  list.push({ fg: '--pcb-select', bg: ['--pcb-bg'], min: 3, what: 'selection on the board' });
-  list.push({ fg: '--pcb-keepout', bg: ['--pcb-bg'], min: 3, what: 'keepout on the board' });
+  // The board (round 3): text 4.5:1 on the canvas and the substrate, every mark that is a graphic 3:1 on both.
+  const BOARD = ['--pcb-bg', '--pcb-board'];
+  list.push({ fg: '--pcb-key', bg: BOARD, what: 'board key text' });
+  list.push({ fg: '--pcb-refdes', bg: BOARD, what: 'board reference text' });
+  list.push({ fg: '--pcb-silk', bg: BOARD, min: 3, what: 'board silkscreen (a graphic)' });
+  for (const n of NETS) list.push({ fg: n, bg: ['--pcb-bg'], min: 3, what: 'net colour on the board (a plane border, a graphic)' });
+  for (const k of ['--pcb-front', '--pcb-back', '--pcb-thru', '--pcb-via', '--pcb-outline', '--pcb-ratsnest', '--pcb-courtyard', '--pcb-fab', '--pcb-keepout', '--pcb-height-limit', '--pcb-select']) {
+    list.push({ fg: k, bg: BOARD, min: 3, what: `${k.slice(6)} on the board (a graphic)` });
+  }
+  for (const k of ['--pcb-front', '--pcb-back', '--pcb-thru']) list.push({ fg: '--pcb-pad-text', bg: [k], what: `a pad's number on ${k.slice(6)} copper` });
+  // The soft light of a shared hover is a mark on every surface the views draw on, and is not a pick's blue.
+  list.push({ fg: '--hover-lit', bg: [...SURFACES, '--pop', '--pcb-bg', '--pcb-board', '--sch-sheet'], min: 3, what: 'the shared hover light (a graphic)' });
   // Marks the page draws without words: the focus ring and the brand line.
-  list.push({ fg: '--focus', bg: ['--surface', '--canvas', '--surface-raised'], min: 3, what: 'focus indicator' });
-  list.push({ fg: '--accent', bg: ['--surface', '--canvas'], min: 3, what: 'accent marks (active tab line, selection edge)' });
+  list.push({ fg: '--focus', bg: ['--surface', '--canvas', '--surface-raised', '--surface-3', '--bg'], min: 3, what: 'focus indicator' });
+  list.push({ fg: '--accent', bg: ['--surface', '--canvas', '--bg'], min: 3, what: 'accent marks (the active tab line, a primary action)' });
+  list.push({ fg: '--accent-text', bg: ['--bg'], what: 'accent text on the frame' });
   return list.filter((p) => p.bg.length);
 }
 
@@ -172,7 +187,12 @@ const MIN: Record<Theme, number> = { dark: 4.5, light: 4.5, 'hc-dark': 7, 'hc-li
 
 describe.each(Object.keys(THEME_TOKENS) as Theme[])('contrast of %s', (name) => {
   const t = THEME_TOKENS[name];
-  const ink = (token: string) => t[token] ?? THEME_TOKENS.dark[token];
+  // A token may name another (`var(--bg)`): follow it.
+  const ink = (token: string): string => {
+    const v = t[token] ?? THEME_TOKENS.dark[token];
+    const m = /^var\((--[a-z0-9-]+)\)$/.exec(v);
+    return m ? ink(m[1]) : v;
+  };
   for (const p of pairs()) {
     for (const bg of p.bg) {
       // A graphic needs 3:1 in every theme; text 4.5 (7 in high contrast).
@@ -184,6 +204,38 @@ describe.each(Object.keys(THEME_TOKENS) as Theme[])('contrast of %s', (name) => 
       });
     }
   }
+  it('a part body that is a tint of its outline keeps the pin text and the outline readable', () => {
+    const fill = ink('--sch-fill');
+    const tint = /^color-mix\(in srgb, var\(--sch-body\) (\d+)%, transparent\)$/.exec(fill);
+    if (!tint) return; // an opaque body: --sch-pin on it is held below
+    const body = parseHex(ink('--sch-body'))!;
+    const sheet = parseHex(ink('--sch-sheet'))!;
+    const filled = over(body, sheet, Number(tint[1]) / 100);
+    const hex = `#${filled.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+    for (const k of ['--sch-pin', '--sch-body', '--sch-text']) expect(contrast(ink(k), hex)!, `${k} on the body ${hex}`).toBeGreaterThanOrEqual(MIN[name]);
+    // the body is a visible step from the sheet, so a part reads as a box and not a frame of lines
+    expect(contrast(hex, ink('--sch-sheet'))!).toBeGreaterThanOrEqual(1.08);
+  });
+  it('the board is a step from the canvas, and each kind of copper is told from the others', () => {
+    expect(contrast(ink('--pcb-board'), ink('--pcb-bg'))!).toBeGreaterThanOrEqual(1.04);
+    const tones = ['--pcb-front', '--pcb-back', '--pcb-thru', '--pcb-via'].map((k) => ink(k));
+    expect(new Set(tones).size).toBe(4);
+    // the front and back copper are a hue apart, not only a step: one is warm, one is cool
+    const [fr, , fb] = parseHex(ink('--pcb-front'))!;
+    const [br, , bb] = parseHex(ink('--pcb-back'))!;
+    expect(fr - fb).toBeGreaterThan(0);
+    expect(bb - br).toBeGreaterThan(0);
+  });
+  it('the hover light is not the colour of a pick or of the brand', () => {
+    for (const k of ['--sel', '--accent', '--sch-hit', '--sch-mark']) expect(ink('--hover-lit').toLowerCase()).not.toBe(ink(k).toLowerCase());
+  });
+  it('the segment that is on is a step from its track', () => {
+    expect(contrast(ink('--seg-on'), ink('--seg-track'))!).toBeGreaterThanOrEqual(1.1);
+  });
+  it('the schematic marks of a pick are told apart: the lit net, the picked part, the bus trunk and the wire', () => {
+    const marks = ['--sch-hit', '--sch-mark', '--sch-bus', '--sch-wire'].map((k) => ink(k));
+    expect(new Set(marks).size).toBe(4);
+  });
   if (name.startsWith('hc')) {
     it('borders can be seen (3:1) on the surfaces', () => {
       for (const bg of ['--surface', '--canvas']) expect(contrast(t['--border'], t[bg])!).toBeGreaterThanOrEqual(3);
