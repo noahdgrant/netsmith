@@ -1270,6 +1270,9 @@ impl<'a> Router<'a> {
 
     /// Whether the time limit has passed, or the caller asked for the router to stop.
     fn out_of_time(&self) -> bool {
+        // A job that was cancelled (`fab`) ends here; the flag below stops the router and
+        // keeps what it routed, which is what the PCB view's "stop" asks for.
+        netsmith_core::job::checkpoint();
         if !self.stopped.get()
             && (self.deadline.is_some_and(|d| Instant::now() >= d)
                 || self.cancel.is_some_and(|c| c.load(Ordering::Relaxed)))

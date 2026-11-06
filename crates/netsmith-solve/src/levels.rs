@@ -35,6 +35,7 @@ pub(crate) fn check(model: &Model) -> (Vec<Diagnostic>, Vec<NotEvaluated>) {
         seen: BTreeSet::new(),
     };
     for index in 0..model.nets().len() {
+        netsmith_core::job::checkpoint();
         run.levels(index);
     }
     run.absolute_maximums();
@@ -307,6 +308,7 @@ impl Run<'_> {
             .map(|(id, _)| id)
             .collect();
         for pin in pins {
+            netsmith_core::job::checkpoint();
             let min = self.value(pin, "abs_min");
             let max = self.value(pin, "abs_max");
             if min.is_none() && max.is_none() {

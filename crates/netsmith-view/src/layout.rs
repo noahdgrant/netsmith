@@ -1010,10 +1010,12 @@ fn draw(
     // takes room, and a net named changes what crosses what. Nets are only ever added, so
     // this ends; it stops after a few passes in any case.
     let draw = |ctx: &Ctx| {
+        netsmith_core::job::checkpoint();
         let mut labelled = vec![false; design.nets.len()];
         ctx.touched.set(0);
         let mut drawn = engine::run(ctx, &units, &order, &orient, marks, &labelled);
         for _ in 0..policy::PASSES {
+            netsmith_core::job::checkpoint();
             let next = policy::choose(ctx, &drawn, &labelled);
             if next == labelled {
                 break;
@@ -1054,6 +1056,7 @@ fn draw(
         // The choices in the drawing kept so far.
         let mut kept = Tuning::default();
         let mut attempt = |ctx: &mut Ctx, tuning: Tuning| -> bool {
+            netsmith_core::job::checkpoint();
             let run = match runs
                 .iter()
                 .position(|r| (r.tuning.bits() ^ tuning.bits()) & r.touched == 0)

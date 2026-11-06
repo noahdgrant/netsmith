@@ -5,5 +5,6 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+netsmith-core = { path = "../netsmith-core" }
 netsmith-lang = { path = "../netsmith-lang" }
 netsmith-quantity = { path = "../netsmith-quantity" }
