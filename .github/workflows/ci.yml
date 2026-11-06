@@ -166,9 +166,6 @@ jobs:
   recipes:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      NETSMITH_VERIFY_DIR: ${{ runner.temp }}/verify
-      NETSMITH_VERIFY_OUT: ${{ runner.temp }}/verify-all
     steps:
       - uses: actions/checkout@v4
 
@@ -214,5 +211,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: recipes-evidence
-          path: ${{ runner.temp }}/verify-all
+          # The sweep's default: $NETSMITH_VERIFY_DIR-all.
+          path: /tmp/netsmith-verify-all
           retention-days: 7
