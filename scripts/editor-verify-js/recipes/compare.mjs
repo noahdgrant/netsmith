@@ -9,6 +9,8 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
+import { noteFacts, overlaps } from '../schematic-helpers.mjs';
+
 export const fixture = 'two_boards';
 export const needs = 'git';
 
@@ -310,6 +312,14 @@ export async function run({ page, shot, step, expect, section, project, resetRep
     return { changed: stroke('svg.schematic .part.cmp-changed'), renumbered: stroke('svg.schematic .part.cmp-renumbered'), tokenChanged: token('--cmp-changed'), tokenRenumbered: token('--cmp-renumbered') };
   });
   expect(colours.changed === colours.tokenChanged && colours.renumbered === colours.tokenRenumbered && colours.changed !== colours.renumbered, `the marks are the comparison's colours: changed ${colours.changed}, renumbered ${colours.renumbered}`);
+  // The notes (ADR 0060) are not compared: the marks leave their colours and classes alone, and no outline of a mark lies on one.
+  const notesNow = await noteFacts(page);
+  const outlines = await page.evaluate(() =>
+    [...document.querySelectorAll('svg.schematic .part-cmp')].filter((r) => r.getClientRects().length && getComputedStyle(r).stroke !== 'none').map((r) => { const b = r.getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height }; }),
+  );
+  expect(notesNow.notes.length >= 1 && outlines.length >= 3, `the board draws ${notesNow.notes.length} notes beside ${outlines.length} outlined parts`);
+  expect(notesNow.notes.every((n) => !/cmp-/.test(n.cls) && n.frameFill === notesNow.tokens.fill && n.textFill === notesNow.tokens.text), 'a note keeps its card and its words: no comparison class, no mark colour');
+  expect(notesNow.notes.every((n) => outlines.every((o) => !overlaps(n.box, o))), 'and no outline of a changed part lies on a note');
   const kept = await page.evaluate(() => ({ svg: document.querySelector('.schematic-host svg').dataset.keep, childList: window.__childList }));
   expect(kept.svg === 'yes' && kept.childList === 0, `no drawing was replaced, no node added or removed (${kept.childList})`);
   expect(/changed/.test(await text('[data-testid="cmp-legend"]')) && /removed/.test(await text('[data-testid="cmp-legend"]')), 'a legend chip in the toolbar');

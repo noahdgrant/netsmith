@@ -169,11 +169,12 @@ export function modulesLit(keys: string[], at: string | null): Set<string> {
   return out;
 }
 
-/** The selector of everything that stands for `lit` in the page: the drawings (`data-ref` of a part, `data-net`) and what lists. */
+/** The selector of everything that stands for `lit` in the page: the drawings (`data-ref` of a part, `data-net`) and what lists. A note of the schematic
+ * carries the `data-ref` of the part it is about and is no part: it is lit with the part by the schematic's own rule, not by this one. */
 export function selectorOf(lit: Lit, modules: Set<string>): string {
   const q = (v: string) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
   const parts: string[] = [];
-  for (const r of lit.drawn) parts.push(`[data-ref=${q(r)}]:not(.pin)`);
+  for (const r of lit.drawn) parts.push(`[data-ref=${q(r)}]:not(.pin):not(.note)`);
   for (const r of lit.refs) parts.push(`[data-hv-ref~=${q(r)}]`);
   for (const p of lit.paths) parts.push(`[data-hv=${q(`part:${p}`)}]`);
   for (const n of lit.nets) parts.push(`[data-net=${q(n)}]:not(.pin)`, `[data-hv=${q(`net:${n}`)}]`);

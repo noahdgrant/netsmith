@@ -310,8 +310,8 @@ describe('the marks on the other views', () => {
   it('assigns each mark a class and a selector: the schematic by designator, the cards by `data-hv`, the board by `data-path`', () => {
     const t = markTargets(m, (path) => ({ 'stage.bulk': 'C1', 'stage.regulator': 'U1' })[path]);
     const has = (selector: string, cls: string) => t.some((x) => x.selector === selector && x.cls === cls);
-    expect(has('[data-ref="C1"]:not(.pin)', 'cmp-added')).toBe(true);
-    expect(has('[data-ref="U1"]:not(.pin)', 'cmp-changed')).toBe(true);
+    expect(has('[data-ref="C1"]:not(.pin):not(.note)', 'cmp-added')).toBe(true);
+    expect(has('[data-ref="U1"]:not(.pin):not(.note)', 'cmp-changed')).toBe(true);
     expect(has('[data-hv="part:stage.bulk"]', 'cmp-added')).toBe(true);
     expect(has('[data-path="stage.bulk"]', 'cmp-added')).toBe(true);
     // a part with no designator on the head (it has no drawing) is still marked where the path says it

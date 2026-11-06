@@ -654,7 +654,7 @@ export function markTargets(m: Marks, designatorOf: DesignatorOf, board?: string
   for (const [path, mark] of m.parts) {
     const cls = `cmp-${mark}`;
     const ref = designatorOf(path);
-    if (ref) out.push({ selector: `[data-ref=${q(ref)}]:not(.pin)`, cls });
+    if (ref) out.push({ selector: `[data-ref=${q(ref)}]:not(.pin):not(.note)`, cls });
     out.push({ selector: `[data-hv=${q(`part:${path}`)}]`, cls }, { selector: `[data-path=${q(path)}]`, cls });
   }
   for (const [path, mark] of m.modules) out.push({ selector: `[data-hv=${q(`module:${path}`)}]`, cls: `cmp-${mark}` });

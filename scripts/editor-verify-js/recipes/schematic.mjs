@@ -141,6 +141,9 @@ export async function run({ page, shot, step, expect, section }) {
   expect((await page.locator('svg.schematic .part.mark').count()) === 0, 'and no part was marked or picked');
 
   step('a part that is picked lights its own note, and its halo is the only halo');
+  await page.locator('.schematic .part[data-ref="D1"]').hover();
+  await page.waitForFunction(() => !!document.querySelector('svg.schematic .part[data-ref="D1"].hover-lit'));
+  expect((await page.locator('svg.schematic g.note.hover-lit').count()) === 0, 'the shared hover lights the part D1 and not its notes (they carry its designator but are no part)');
   await page.locator('.schematic .part[data-ref="D1"]').click();
   await page.waitForSelector('.selchip');
   const withPick = await noteFacts(page);
