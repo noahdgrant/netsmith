@@ -95,6 +95,7 @@ export function prepare(text: string): Drawing | null {
   // drawing's own units) and a tone (`data-plane`, 1 to 4), which `pcbdraw.css` turns into the colour of its layer. The layer is the
   // rectangle's `data-layer`; a server that does not send it leaves the tone to the plane's place among the planes.
   const planes = [...svg.querySelectorAll('.l-planes > rect[data-net]')];
+  const placed: { x: number; y: number }[] = [];
   planes.forEach((plane, i) => {
     const layer = plane.getAttribute('data-layer');
     const tone = String(planeTone(layer, i));
@@ -104,10 +105,14 @@ export function prepare(text: string): Drawing | null {
     label.setAttribute('data-net', plane.getAttribute('data-net')!);
     label.setAttribute('data-plane', tone);
     if (layer) label.setAttribute('data-layer', layer);
-    // On the plane's own top border (the border passes behind the word through its halo), the labels of the planes a few
-    // millimetres apart along it, so two planes' words never lie on one another.
-    label.setAttribute('x', String(Number(plane.getAttribute('x')) + 2 + i * 9));
-    label.setAttribute('y', String(Number(plane.getAttribute('y'))));
+    // Inside the plane's top left corner, a little in from the border (the part labels sit outside the parts, mostly in the
+    // middle of the board; a word on the border itself ran into them). Planes that share a corner are stacked a line apart.
+    const here = Number(plane.getAttribute('x'));
+    const top = Number(plane.getAttribute('y'));
+    const stacked = placed.filter((p) => Math.abs(p.x - here) < 12 && Math.abs(p.y - top) < 1).length;
+    placed.push({ x: here, y: top });
+    label.setAttribute('x', String(here + 0.9));
+    label.setAttribute('y', String(top + 0.9 + stacked * 0.7));
     label.textContent = planeLabel(plane.getAttribute('data-net')!, layer);
     plane.parentNode?.appendChild(label);
   });

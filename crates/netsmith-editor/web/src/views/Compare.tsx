@@ -174,8 +174,15 @@ function Summary({ data }: { data: CompareData }) {
 function TileView({ t }: { t: Tile }) {
   return (
     <button type="button" class={`cmp-tile ${t.tone}`} data-testid={`tile-${t.id}`} onClick={() => (tab.value = t.tab)} aria-label={`${t.label}: ${t.value}${t.sub ? `, ${t.sub}` : ''}. Show the list.`}>
-      <span class="cmp-tile-label">{t.label}</span>
-      <span class="cmp-tile-value">{t.value}</span>
+      <span class="cmp-tile-label">
+        {t.label}
+        {t.tip && (
+          <span class="stat-info" data-tip={t.tip}>
+            <Icon name="note" size={12} />
+          </span>
+        )}
+      </span>
+      <span class={`cmp-tile-value ${t.muted ? 'muted' : ''}`}>{t.value}</span>
       <span class="cmp-tile-chips">
         {t.chips.length === 0 && <span class="cmp-tile-sub">{t.sub ?? 'no change'}</span>}
         {t.chips.map((c) => (

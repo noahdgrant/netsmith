@@ -435,6 +435,9 @@ export interface Tile {
   chips: TileChip[];
   /** The tab a click on the tile opens. */
   tab: Category;
+  /** Not a figure (`unknown`): drawn quiet, with what to say about it in `tip`. */
+  muted?: boolean;
+  tip?: string;
 }
 
 const chips = (a: number, r: number, c: number, changedLabel = 'changed'): TileChip[] => [
@@ -473,6 +476,7 @@ export function tiles(c: Compare, scope: Scope): Tile[] {
   const deltas = boards.map((b) => b.bom?.deltaUsd);
   const delta = deltas.length > 0 && deltas.every((d) => d !== undefined && d !== null) ? sum(deltas as number[]) : undefined;
   const bomChanged = bomA + bomR + bomC > 0;
+  const bomCostUnknown = boards.some((b) => b.bom === undefined) && !bomChanged ? true : bomChanged && delta === undefined;
   const probs = [c.problems, ...boards.map((b) => b.problems)];
   const pNew = sum(probs.map((p) => p.new.length));
   const pRes = sum(probs.map((p) => p.resolved.length));
@@ -488,6 +492,7 @@ export function tiles(c: Compare, scope: Scope): Tile[] {
       tone: delta === undefined || delta === 0 ? 'neutral' : delta > 0 ? 'warn' : 'ok',
       chips: chips(bomA, bomR, bomC),
       tab: 'bom',
+      ...(bomCostUnknown ? { muted: true, tip: 'No prices in the catalogs yet' } : {}),
     },
     { id: 'problems', label: 'Problems', value: pNew === 0 && pRes === 0 ? 'None' : `${pNew} new`, sub: pRes ? `${pRes} resolved` : undefined, tone: pNew > 0 ? 'bad' : pRes > 0 ? 'ok' : 'neutral', chips: [...(pNew ? [{ sign: '+' as const, n: pNew, label: 'new' }] : []), ...(pRes ? [{ sign: '-' as const, n: pRes, label: 'resolved' }] : [])], tab: 'problems' },
   ];

@@ -26,7 +26,7 @@
 .pcb-host svg .l-planes > [data-plane="2"] { --plane: var(--pcb-plane-2); }
 .pcb-host svg .l-planes > [data-plane="3"] { --plane: var(--pcb-plane-3); }
 .pcb-host svg .l-planes > [data-plane="4"] { --plane: var(--pcb-plane-4); }
-.pcb-host svg .l-planes > text.plane-label { fill: var(--pcb-key); font-family: var(--sans); font-size: .5px; font-weight: 600; letter-spacing: .02em; dominant-baseline: central; paint-order: stroke; stroke: var(--pcb-board); stroke-width: .3px; stroke-linejoin: round; opacity: .95; }
+.pcb-host svg .l-planes > text.plane-label { fill: var(--pcb-key); font-family: var(--sans); font-size: clamp(calc(9 * var(--pxl, .04px)), .36px, calc(11 * var(--pxl, .04px))); font-weight: 600; letter-spacing: .02em; dominant-baseline: central; paint-order: stroke; stroke: var(--pcb-board); stroke-width: calc(3 * var(--px, .04)); stroke-linejoin: round; opacity: .9; }
 
 /* pads: copper on the front, teal-blue on the back, a tone and a ring for a hole that goes through */
 .pcb-host svg .l-pads > g[data-pad] > :first-child { fill: var(--pcb-front); stroke: color-mix(in srgb, var(--pcb-board) 70%, transparent); stroke-width: .06px; }
@@ -45,8 +45,9 @@
 .pcb-host svg .l-fab :is(line, rect, circle, path, polygon) { stroke-width: calc(1 * var(--px, .04)); stroke-opacity: .7; }
 .pcb-host svg .l-courtyard :is(line, rect, circle, path, polygon) { fill: none; stroke-width: calc(1.1 * var(--px, .04)); stroke-opacity: .9; stroke-dasharray: calc(5 * var(--px, .04)) calc(3.5 * var(--px, .04)); }
 
-/* references: small, with a halo of the substrate so they read over a pad or a track */
-.pcb-host svg .l-refs text { fill: var(--pcb-refdes); font-family: var(--sans); font-size: .62px; font-weight: 600; letter-spacing: .01em; paint-order: stroke; stroke: var(--pcb-board); stroke-width: .24px; stroke-linejoin: round; }
+/* references: small next to the part (a size of the drawing, held between 10 and 13 screen pixels so they neither shout at a high zoom nor vanish at a low one),
+ * with a halo of the substrate so they read over a pad or a track */
+.pcb-host svg .l-refs text { fill: var(--pcb-refdes); font-family: var(--sans); font-size: clamp(calc(10 * var(--pxl, .04px)), .46px, calc(13 * var(--pxl, .04px))); font-weight: 600; letter-spacing: .01em; paint-order: stroke; stroke: var(--pcb-board); stroke-width: calc(3.5 * var(--px, .04)); stroke-linejoin: round; }
 
 /* tracks are drawn as a group, so the round joins of two tracks do not darken; a power track is fainter */
 .pcb-host svg .l-front-copper, .pcb-host svg .l-back-copper { opacity: var(--pcb-track-opacity); }

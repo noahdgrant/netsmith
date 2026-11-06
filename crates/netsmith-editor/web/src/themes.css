@@ -44,6 +44,8 @@
   --bar: 3.25rem; --tab: 2.5rem; --status: 1.625rem;
   /* the window: a frame of --bg with the work in a sheet of its own, set in by --gap */
   --gap: 0.5rem;
+  /* a list page (Compare, the bill of materials, Build): as wide as this and centred, so a wide window does not stretch its rows */
+  --page-w: 80rem;
   /* icons */
   --icon-sm: 0.75rem; --icon-md: 0.875rem; --icon-lg: 1rem;
   /* motion: short, and none when the person asks for none */

@@ -7,6 +7,7 @@ import { EmptyState } from '../components/ui';
 import { NoBoard } from '../components/ViewStatus';
 import { busName, busTargets, litNets } from '../schematic/bus';
 import { type Bus } from '../schematic/drawing';
+import { addHalos } from '../schematic/halo';
 import { type Drawing, loadDrawing } from '../schematic/load';
 import {
   netNavOrder,
@@ -244,6 +245,8 @@ export function Schematic() {
       const sheet = slot.getAttribute('data-sheet');
       slot.style.display = sheet === '' || sheet === current ? '' : 'none';
     }
+    // The overlay of a part (schematic/halo.ts) needs a part that is laid out: the sheet on show.
+    addHalos(svg);
   }, [drawing, current]);
 
   // Paint what is selected, what the pointer is over, and what the cursor's line declares. With
@@ -253,6 +256,7 @@ export function Schematic() {
   useEffect(() => {
     const svg = holder.current?.querySelector('svg.schematic');
     if (!svg) return;
+    addHalos(svg);
     svg.querySelectorAll('.on,.touches,.mark,.cur,.linked').forEach((e) => e.classList.remove('on', 'touches', 'mark', 'cur', 'linked'));
     // A module lights its parts and dims the rest; it does not light their nets (ground would light all).
     const focus: Hit | null = selBus
@@ -654,6 +658,8 @@ export function Schematic() {
               class="hit-target"
               dangerouslySetInnerHTML={{ __html: drawing.html }}
               onPointerOver={(e) => {
+                // A section that was away when the drawing came has no halos yet.
+                if (holder.current) addHalos(holder.current);
                 const hit = pickAt(e.target);
                 setHover(hit);
                 if (e.pointerType === 'touch') return;

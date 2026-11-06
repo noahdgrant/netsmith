@@ -3,7 +3,7 @@
  * changed, held to 3:1 on every surface by theme.test.ts. A tint is 12 to 16 % of a mark over the layer it sits on. */
 
 /* ==== the section ==== */
-.cmp { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; position: relative; padding-inline: max(0px, calc((100% - 110rem) / 2)); }
+.cmp { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; position: relative; padding-inline: max(0px, calc((100% - var(--page-w)) / 2)); }
 .cmp-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem 1rem; flex-wrap: wrap; padding: 1rem 1.25rem 0.625rem; }
 .cmp-titles { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
 .cmp-titles h1 { margin: 0; font-size: var(--fs-xl); font-weight: var(--fw-semibold); letter-spacing: var(--ls-title); }
@@ -241,30 +241,24 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 /* A mark and the hover or the pick land on the same elements (compareDom.ts, hoverDom.ts and the schematic's own `.mark` each put
  * a class of their own), and the properties they set are the same ones: the outline and the glow. What decides, once, here:
  * the pick owns the outline and the hover adds its light to the glow, so each signal stays when the others are on. */
-/* the schematic: a changed part is outlined, a new one green, a renumbered one neutral and dashed; the nets that changed are lit softly */
-.cmp-on svg.schematic .part.cmp-added .s, .cmp-on svg.schematic .part.cmp-changed .s, .cmp-on svg.schematic .part.cmp-renumbered .s { stroke-width: .34; }
-.cmp-on svg.schematic .part.cmp-added:not(.mark) .s { stroke: var(--cmp-added); }
-.cmp-on svg.schematic .part.cmp-changed:not(.mark) .s { stroke: var(--cmp-changed); }
-.cmp-on svg.schematic .part.cmp-renumbered:not(.mark) .s { stroke: var(--cmp-renumbered); stroke-dasharray: 1.2 .8; }
-.cmp-on svg.schematic .part.cmp-added:not(.mark) text.ref { fill: var(--cmp-added); }
-.cmp-on svg.schematic .part.cmp-changed:not(.mark) text.ref { fill: var(--cmp-changed); }
-.cmp-on svg.schematic .part.cmp-renumbered:not(.mark) text.ref { fill: var(--cmp-renumbered); }
-.cmp-on svg.schematic .part.cmp-added, .cmp-on svg.schematic .part.cmp-changed { filter: drop-shadow(0 0 .25px currentColor); }
-.cmp-on svg.schematic .part.cmp-added { color: var(--cmp-added); } .cmp-on svg.schematic .part.cmp-changed { color: var(--cmp-changed); }
-/* hovered too: the mark's glow and the hover's (views.css: .schematic-host svg [data-ref].hover-lit) one after the other */
-.cmp-on svg.schematic .part.cmp-added.hover-lit, .cmp-on svg.schematic .part.cmp-changed.hover-lit { filter: drop-shadow(0 0 .25px currentColor) drop-shadow(0 0 .45px var(--hover-lit)) drop-shadow(0 0 1.1px color-mix(in srgb, var(--hover-lit) 55%, transparent)); }
+/* the schematic: a changed part is outlined by the rectangle outside its pick halo (schematic/halo.ts), amber, a new one green, a renumbered one neutral and
+ * dashed, with a faint tint; the symbol's strokes stay as drawn. The designator takes the mark's colour too, so colour is not the only signal. */
+.cmp-on svg.schematic .part.cmp-added { --cmp-c: var(--cmp-added); } .cmp-on svg.schematic .part.cmp-changed { --cmp-c: var(--cmp-changed); } .cmp-on svg.schematic .part.cmp-renumbered { --cmp-c: var(--cmp-renumbered); }
+.cmp-on svg.schematic .part:is(.cmp-added, .cmp-changed, .cmp-renumbered) > .part-cmp { stroke: var(--cmp-c); stroke-width: 2px; fill: color-mix(in srgb, var(--cmp-c) 9%, transparent); }
+.cmp-on svg.schematic .part.cmp-renumbered > .part-cmp { stroke-dasharray: 5 4; fill: none; }
+.cmp-on svg.schematic .part.cmp-added text.ref { fill: var(--cmp-added); }
+.cmp-on svg.schematic .part.cmp-changed text.ref { fill: var(--cmp-changed); }
+.cmp-on svg.schematic .part.cmp-renumbered text.ref { fill: var(--cmp-renumbered); }
 .cmp-on svg.schematic .wire.cmp-net-changed .line, .cmp-on svg.schematic .wire.cmp-net-changed polyline:not(.hit) { stroke: color-mix(in srgb, var(--cmp-changed) 48%, var(--sch-wire)); }
 .cmp-on svg.schematic .wire.cmp-net-added .line, .cmp-on svg.schematic .wire.cmp-net-added polyline:not(.hit) { stroke: color-mix(in srgb, var(--cmp-added) 55%, var(--sch-wire)); }
 .cmp-on svg.schematic circle.junction.cmp-net-changed { fill: var(--cmp-changed); } .cmp-on svg.schematic circle.junction.cmp-net-added { fill: var(--cmp-added); }
 .cmp-on svg.schematic text.net-label.cmp-net-changed { fill: var(--cmp-changed); } .cmp-on svg.schematic text.net-label.cmp-net-added { fill: var(--cmp-added); }
-/* the board's drawing: the same marks as a glow on the part, and the hover's on top of it */
-.cmp-on .pcb-host svg g[data-ref].cmp-added { --cmp-c: var(--cmp-added); }
-.cmp-on .pcb-host svg g[data-ref].cmp-changed { --cmp-c: var(--cmp-changed); }
-.cmp-on .pcb-host svg g[data-ref].cmp-renumbered { --cmp-c: var(--cmp-renumbered); }
-.cmp-on .pcb-host svg g[data-ref].cmp-added, .cmp-on .pcb-host svg g[data-ref].cmp-changed { filter: drop-shadow(0 0 .35px var(--cmp-c)) drop-shadow(0 0 .8px var(--cmp-c)); }
-.cmp-on .pcb-host svg g[data-ref].cmp-renumbered { filter: drop-shadow(0 0 .3px var(--cmp-c)); }
-.cmp-on .pcb-host svg g[data-ref]:is(.cmp-added, .cmp-changed).hover-lit { filter: drop-shadow(0 0 .35px var(--cmp-c)) drop-shadow(0 0 .8px var(--cmp-c)) drop-shadow(0 0 .3px var(--hover-lit)) drop-shadow(0 0 .6px color-mix(in srgb, var(--hover-lit) 45%, transparent)); }
-.cmp-on .pcb-host svg g[data-ref].cmp-renumbered.hover-lit { filter: drop-shadow(0 0 .3px var(--cmp-c)) drop-shadow(0 0 .3px var(--hover-lit)) drop-shadow(0 0 .6px color-mix(in srgb, var(--hover-lit) 45%, transparent)); }
+/* the board's drawing: a mark is a crisp 2 px outline outside the pick's, with a faint tint (pcb/Canvas.tsx draws it from the store's marks over the
+ * courtyard; no glow, so a pad, a track and a hover's light stay as they are). The classes on the part's own group (cmp-*) are for the subscribers. */
+.pcb-overlay .cmp-rect { fill: none; stroke: none; pointer-events: none; }
+.pcb-overlay .cmp-rect.cmp-added { --cmp-c: var(--cmp-added); } .pcb-overlay .cmp-rect.cmp-changed { --cmp-c: var(--cmp-changed); } .pcb-overlay .cmp-rect.cmp-renumbered { --cmp-c: var(--cmp-renumbered); }
+.pcb-overlay .cmp-rect:is(.cmp-added, .cmp-changed, .cmp-renumbered) { stroke: var(--cmp-c); stroke-width: calc(2 * var(--px, .04)); fill: color-mix(in srgb, var(--cmp-c) 8%, transparent); }
+.pcb-overlay .cmp-rect.cmp-renumbered { stroke-dasharray: calc(5 * var(--px, .04)) calc(3.5 * var(--px, .04)); fill: none; }
 /* the cards of the power tree and the system view: a mark is a ring and a border; the hover adds a ring outside it, and the pick keeps its own
  * ring with the mark's outside that */
 .cmp-on .pt-node:is(.cmp-added, .cmp-board-added) { --cmp-c: var(--cmp-added); }

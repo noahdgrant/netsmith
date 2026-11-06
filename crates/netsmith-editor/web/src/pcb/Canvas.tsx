@@ -31,6 +31,7 @@ import {
   selectAll,
   toggleLock,
 } from './actions';
+import { fitView } from '../sheets';
 import { type Drawing, SCALE, light, previewMove } from './drawing';
 import { moveParts } from './edits';
 import {
@@ -75,6 +76,8 @@ interface Preview {
 }
 
 const NONE: Pt = { x: 0, y: 0 };
+/** The most a board is zoomed when it opens (3 times 12 px to the millimetre): 300 %. */
+const MAX_OPEN = 3;
 /** A drag shorter than this many screen pixels is a click. */
 const SLOP = 4;
 /** How close to a handle, or to the edge of a keepout, a press counts, in screen pixels. */
@@ -105,6 +108,8 @@ export function Canvas(props: {
   focus: { box: PcbBox; seq: number } | null;
   /** Findings to mark on the board. */
   marks: { id: string; box: PcbBox; level: string; on: boolean }[];
+  /** What the comparison with a ref says of each part (by path), when its marks are on: a crisp outline outside the pick's (`.cmp-rect`). */
+  cmp?: ReadonlyMap<string, 'added' | 'changed' | 'renumbered'> | null;
 }) {
   const { drawing, scene: sc } = props;
   const holder = useRef<HTMLDivElement>(null);
@@ -417,6 +422,16 @@ export function Canvas(props: {
       class={`pcb-host tool-${activeTool}`}
       primaryPans={false}
       keys={false}
+      // 100 % is 12 px to the millimetre. A board opens (and Fit puts it) as large as the window allows, but not past 300 %: a small board
+      // is not blown up until its pads are the size of the screen.
+      scale100={1}
+      scaleTitle="Zoom. 100% is 12 px to the millimetre"
+      placeView={(w, h) => {
+        const all = fitView(w, h, { x: 0, y: 0, w: drawing.width, h: drawing.height });
+        const k = Math.min(all.k, MAX_OPEN);
+        return { k, x: (w - drawing.width * k) / 2, y: (h - drawing.height * k) / 2 };
+      }}
+      fitPlaces
       memoKey={`pcb|${sc.board}`}
       onView={setZoom}
       focus={focus}
@@ -424,7 +439,8 @@ export function Canvas(props: {
       <style>{props.css}</style>
       <div
         class="hit-target pcb-stage"
-        style={{ '--px': 1 / (SCALE * zoom) }}
+        // --px is a millimetre of the drawing per screen pixel (a number, for a width); --pxl is the same with its unit, for a size of text
+        style={{ '--px': 1 / (SCALE * zoom), '--pxl': `${1 / (SCALE * zoom)}px` }}
         onPointerDown={down}
         onPointerMove={move}
         onPointerUp={up}
@@ -487,6 +503,13 @@ export function Canvas(props: {
           {hovered && !picked.includes(hovered) && !gesture.current && (
             <Outline box={sc.parts.find((p) => p.path === hovered)?.courtyard} class="hover" />
           )}
+          {props.cmp &&
+            sc.parts.map((p) => {
+              const m = props.cmp!.get(p.path);
+              if (!m) return null;
+              const b = expand(preview.moving?.includes(p.path) ? moved(p.courtyard, delta) : p.courtyard, 0.35);
+              return <rect key={`cmp:${p.path}`} class={`cmp-rect cmp-${m}`} x={b.x} y={b.y} width={b.width} height={b.height} rx="0.3" data-cmp-ref={p.refdes} />;
+            })}
           {selected.map((p) => (
             <Outline
               key={p.path}

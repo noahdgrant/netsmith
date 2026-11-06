@@ -238,14 +238,19 @@ function Row({ l, cols, lit, staleAfter, mark, marking }: { l: BomLine; cols: Se
   );
 }
 
-function Stat({ label, value, sub, tone, icon }: { label: string; value: string; sub?: string; tone?: Tone; icon?: 'check-circle' | 'warning' }) {
+function Stat({ label, value, sub, tone, icon, muted, info }: { label: string; value: string; sub?: string; tone?: Tone; icon?: 'check-circle' | 'warning'; /** Not a number yet: said small and quiet, not as the figure of the tile. */ muted?: boolean; /** What a person finds out by pointing at the (i) beside the label. */ info?: string }) {
   return (
     <div class={`bstat ${tone ?? ''}`}>
       <div class="bstat-label">
         {icon && <Icon name={icon} size={13} />}
         {label}
+        {info && (
+          <span class="stat-info" data-tip={info} tabIndex={0} role="img" aria-label={info}>
+            <Icon name="note" size={13} />
+          </span>
+        )}
       </div>
-      <div class="bstat-value">{value}</div>
+      <div class={`bstat-value ${muted ? 'muted' : ''}`}>{value}</div>
       {sub && <div class="bstat-sub">{sub}</div>}
     </div>
   );
@@ -388,6 +393,8 @@ export function Bom() {
         <Stat
           label="Cost per board"
           value={bom.totalUsd != null ? dollars(bom.totalUsd) : 'unknown'}
+          muted={bom.totalUsd == null}
+          info={bom.totalUsd == null ? 'No prices in the catalogs yet' : undefined}
           sub={marking && cmp?.bom?.deltaUsd != null ? `${costDelta(cmp.bom.deltaUsd)} since ${refText.value}` : unpriced > 0 ? `leaves out ${plural(unpriced, 'line')} with no known price` : bom.totalUsd != null ? 'without the feeder fee and shipping' : 'no provider has a price'}
         />
         <Stat
