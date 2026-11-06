@@ -11,6 +11,7 @@ import { Legend, Pill } from '../components/ui';
 import { placeFitted } from './System';
 import { MiniMap } from '../components/MiniMap';
 import { PanZoom } from '../components/PanZoom';
+import { settings } from '../settings';
 import { analysis, board, detail, goTo, systemName, visible } from '../store';
 import { hoverAttrs } from '../hover';
 import { type Card, cardFor, partByPath, revealRequest, selection, selectionOfCard, setSelection } from '../selection';
@@ -284,7 +285,10 @@ function StageCard({ s, p, level, selected, tint, dim, onSelect }: { s: StageMod
 }
 
 /** The view of a tree: what the section shows once the editor has answered. */
-export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: string }) {
+export function PowerTreeView({ tree, fitKey: baseKey }: { tree: PowerTree; fitKey: string }) {
+  // The page's Size: a graph opens at that much more zoom (see `placeFitted`), and is placed again when it changes.
+  const scale = settings.value.scale / 100;
+  const fitKey = `${baseKey}:${settings.value.scale}`;
   const model: PowerModel = useMemo(() => modelOf(tree), [tree]);
   const [opens, setOpens] = useState<Record<string, Open>>({});
   const [tip, setTip] = useState<Tip | null>(null);
@@ -432,8 +436,9 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
           fitKey={fitKey}
           class="graph-host power-host"
           actualSize
-          scale100={1}
-          placeView={placeFitted(layout)}
+          scale100={scale}
+          scaleTitle={scale === 1 ? undefined : `Zoom. 100% is the cards at the page's size (${Math.round(scale * 100)} %)`}
+          placeView={placeFitted(layout, scale)}
           fitPlaces
           reveal={reveal}
           centre={centre}

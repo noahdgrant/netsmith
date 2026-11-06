@@ -36,3 +36,7 @@
 - The first-run splash is only visible for as long as `/api/project` takes; a recipe that wants to see it delays the route.
 
 Round 6: a choice that was kept says so in a toast of 1.5 s (a failure to keep it stays as long as a failure does); the System swatch of the theme grid is a diagonal of the light and the dark swatch, so neither half takes the colour of the button it sits on.
+
+## Size reaches the source and the graph cards (round 8)
+
+The source editor's text is the editor's own size times the Size (`--source-fs: calc(13px * var(--ui-scale))`): 13 px at 100 %, 16.25 px at 125 %, and `Ctrl+=` makes it 14 x 1.25 = 17.5. A graph (the power tree, the system view) is laid out in canvas pixels and shown through a zoom, so the Size is that zoom's floor and cap (`placeFitted(layout, scale)` in `views/System.tsx`: 75 % x Size at the least, 150 % x Size at the most) and `scale100` of the zoom bar: cards, text and edges are 0.9, 1 and 1.25 times as large on screen, with the layout unchanged. A graph that fits the window is shown fitted, whatever the Size is (Fit is the whole of it). `drive settings` measures a card and the source text, `drive power-tree` and `drive system-view` measure both graphs at 90 and 125 % (`sizeSteps` in `flow-helpers.mjs`).

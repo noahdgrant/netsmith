@@ -3,7 +3,7 @@
 // table of ports that never wraps and never overflows, long tables folded into "22 ports", the
 // wires between two modules grouped ("10 nets", opening on a click), every wire in a free channel,
 // every label on a clear spot, a click lighting what feeds a module and what it feeds.
-import { edgesOf, nodesOf, routeProblems } from '../flow-helpers.mjs';
+import { edgesOf, nodesOf, routeProblems, sizeSteps } from '../flow-helpers.mjs';
 
 export const fixture = 'system_view';
 
@@ -157,4 +157,5 @@ export async function run({ page, shot, step, expect, section }) {
   expect((await page.locator('[data-node="mcu"] .sy-row').count()) === 22 && (await page.locator('[data-node="modem"] .sy-row').count()) === 10, 'the processor and the modem');
   expect(routeProblems(await nodes(), await edgesOf(page, '.sec-system')).length === 0, 'and the wires still meet no card');
   await shot('all-ports');
+  await sizeSteps({ page, expect, step, section, id: 'system' });
 }
