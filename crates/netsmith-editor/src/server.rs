@@ -291,7 +291,17 @@ fn body<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, ApiError> {
 }
 
 async fn project(State(s): State<Shared>) -> Result<Json<crate::api::Project>, ApiError> {
-    blocking(move || s.backend.project()).await.map(Json)
+    blocking(move || {
+        let mut project = s.backend.project();
+        // What this binary knows of itself; the backend knows the rest.
+        project.bundle_hash = crate::assets::bundle_hash().map(str::to_string);
+        project.git_describe = project
+            .git_describe
+            .or_else(|| crate::assets::git_describe().map(str::to_string));
+        project
+    })
+    .await
+    .map(Json)
 }
 
 async fn analysis(State(s): State<Shared>) -> Result<Json<crate::api::Analysis>, ApiError> {

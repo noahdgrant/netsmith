@@ -60,7 +60,35 @@ kicad: boolean, files: Array<TreeFile>,
  * The folders below `src/`, with their path from the project root (`src/sheets`), so the
  * tree can show one that has no file in it yet.
  */
-folders: Array<string>, };
+folders: Array<string>, 
+/**
+ * The version of the netsmith that serves this page (`0.1.0`, the crate's).
+ */
+version?: string, 
+/**
+ * `git describe --tags --always` of the checkout netsmith was built from, as it was when
+ * the build script last ran (a commit made later with no other change is not seen until
+ * the next build; uncommitted edits are not marked). Absent when netsmith was built
+ * outside a git checkout or without `git`.
+ */
+gitDescribe?: string, 
+/**
+ * The project folder, absolute: where `netsmith.toml` is, or for a single file the folder
+ * it is in.
+ */
+root?: string, 
+/**
+ * Where `kicad-cli` was found (`$KICAD_CLI`, `PATH`, or the Windows KiCad under WSL).
+ * Absent when `kicad` is false.
+ */
+kicadPath?: string, 
+/**
+ * The `SOURCE-HASH` of the page embedded in this binary: a hash of the sources in
+ * `web/` that the page was built from. Absent when the binary has no page. It is the
+ * hash of the page's sources, which is not the hash of `web/` as it is now if the
+ * binary was built from a checkout whose `web-dist` was out of date.
+ */
+bundleHash?: string, };
 
 export type FileContent = { path: string, text: string, 
 /**

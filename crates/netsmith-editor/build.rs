@@ -37,14 +37,23 @@ fn main() {
     let bundle = out_dir.join("dist");
     let mut status = String::new();
     let mut warning = String::new();
+    // The hash of the sources the embedded page was built from (`Project::bundle_hash`).
+    let mut bundle_hash = String::new();
+    git_describe();
     if env::var_os("NETSMITH_SKIP_WEB").is_some() {
         let _ = fs::remove_dir_all(&bundle);
         status = "NETSMITH_SKIP_WEB was set when it was built".into();
     } else {
         let dirs = build_web::search_dirs(env::var_os("PATH"), env::var_os("HOME"));
         match build_web::provide(&web, &committed, &dirs, build_web::LOCK_WAIT, &bundle) {
-            build_web::Provided::Committed | build_web::Provided::Built => {}
+            build_web::Provided::Committed => {
+                bundle_hash = stamp_of(&committed);
+            }
+            build_web::Provided::Built => {
+                bundle_hash = build_web::source_hash(&web);
+            }
             build_web::Provided::OutOfDate(reason) => {
+                bundle_hash = stamp_of(&committed);
                 warning = format!(
                     "the editor's page is the committed one in crates/netsmith-editor/web-dist, which was built from older sources than crates/netsmith-editor/web: {reason}"
                 );
@@ -82,7 +91,46 @@ fn main() {
     }
     table.push_str("];\n");
     table.push_str(&format!("pub static WEB_STATUS: &str = {status:?};\n"));
+    table.push_str(&format!(
+        "pub static BUNDLE_HASH: &str = {bundle_hash:?};\n"
+    ));
     fs::write(out_dir.join("assets.rs"), table).unwrap();
+}
+
+/// The `SOURCE-HASH` a committed bundle carries, or nothing.
+fn stamp_of(committed: &Path) -> String {
+    fs::read_to_string(committed.join(build_web::BUNDLE_STAMP))
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
+}
+
+/// Passes `git describe --tags --always` of the checkout to the crate as
+/// `NETSMITH_GIT_DESCRIBE`, when there is a git and a checkout; otherwise nothing is set. The
+/// script runs again when the checked-out commit changes (`HEAD` and its log), not when files
+/// are edited, so a build with uncommitted changes is not marked.
+fn git_describe() {
+    let run = |args: &[&str]| {
+        std::process::Command::new("git")
+            .args(args)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    };
+    let Some(describe) = run(&["describe", "--tags", "--always"]) else {
+        return;
+    };
+    if let Some(dir) = run(&["rev-parse", "--absolute-git-dir"]) {
+        for file in ["HEAD", "logs/HEAD"] {
+            let path = Path::new(&dir).join(file);
+            if path.exists() {
+                println!("cargo:rerun-if-changed={}", path.display());
+            }
+        }
+    }
+    println!("cargo:rustc-env=NETSMITH_GIT_DESCRIBE={describe}");
 }
 
 fn first_line(text: &str) -> &str {

@@ -130,6 +130,7 @@ impl Workspace {
     }
 
     pub(super) fn tree(&self) -> Project {
+        let kicad = netsmith_fab::KicadCliExe::locate();
         let files = self
             .entries()
             .into_iter()
@@ -150,10 +151,30 @@ impl Workspace {
         Project {
             title: self.target.title.clone(),
             has_manifest: self.target.project.is_some(),
-            kicad: netsmith_fab::KicadCliExe::locate().is_some(),
+            kicad: kicad.is_some(),
             files,
             folders: self.folders(),
+            version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            git_describe: None,
+            root: self.root().map(|r| r.display().to_string()),
+            kicad_path: kicad.map(|k| k.exe().display().to_string()),
+            bundle_hash: None,
         }
+    }
+
+    /// The project folder, absolute: the manifest's, or for a single file the one it is in.
+    fn root(&self) -> Option<PathBuf> {
+        let folder = match (&self.target.project, self.target.files.first()) {
+            (Some(project), _) => project.root.clone(),
+            (None, Some(file)) => file.path.parent()?.to_path_buf(),
+            (None, None) => return None,
+        };
+        let folder = if folder.as_os_str().is_empty() {
+            PathBuf::from(".")
+        } else {
+            folder
+        };
+        std::path::absolute(folder).ok()
     }
 
     fn text_of(&self, entry: &Entry) -> Result<String, ApiError> {

@@ -127,6 +127,34 @@ pub struct Project {
     /// The folders below `src/`, with their path from the project root (`src/sheets`), so the
     /// tree can show one that has no file in it yet.
     pub folders: Vec<String>,
+    /// The version of the netsmith that serves this page (`0.1.0`, the crate's).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub version: Option<String>,
+    /// `git describe --tags --always` of the checkout netsmith was built from, as it was when
+    /// the build script last ran (a commit made later with no other change is not seen until
+    /// the next build; uncommitted edits are not marked). Absent when netsmith was built
+    /// outside a git checkout or without `git`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub git_describe: Option<String>,
+    /// The project folder, absolute: where `netsmith.toml` is, or for a single file the folder
+    /// it is in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub root: Option<String>,
+    /// Where `kicad-cli` was found (`$KICAD_CLI`, `PATH`, or the Windows KiCad under WSL).
+    /// Absent when `kicad` is false.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub kicad_path: Option<String>,
+    /// The `SOURCE-HASH` of the page embedded in this binary: a hash of the sources in
+    /// `web/` that the page was built from. Absent when the binary has no page. It is the
+    /// hash of the page's sources, which is not the hash of `web/` as it is now if the
+    /// binary was built from a checkout whose `web-dist` was out of date.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub bundle_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
