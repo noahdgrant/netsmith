@@ -2,6 +2,7 @@
 //! everything the design says still holds.
 
 mod catalog;
+mod cycles;
 mod eval;
 mod expand;
 mod generic;
@@ -21,5 +22,8 @@ pub use generic::{
 };
 pub use levels::NotEvaluated;
 pub use place::{PlaceOffset, Window, offsets, window};
-pub use solve::{Pick, Solution, Unresolved, solve, solve_system};
+pub use solve::{
+    HeldBy, OpenCircle, Pick, Seeded, Solution, UnconstrainedPick, Unresolved, UnsolvedNet,
+    UnstatedValue, solve, solve_system,
+};
 pub use table::{Record, Supplier, Table, parse_csv};

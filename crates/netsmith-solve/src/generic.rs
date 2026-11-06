@@ -429,18 +429,25 @@ pub fn candidates(
     columns: &[(String, FieldKind)],
 ) -> Option<Vec<Candidate>> {
     let known: &[&str] = match catalog {
-        "resistor" => &["resistance", "max_power", "package"],
+        "resistor" => &[
+            "resistance",
+            "max_power",
+            "package",
+            "temperature_coefficient",
+        ],
         "capacitor" => &[
             "capacitance",
             "effective_capacitance",
             "max_voltage",
             "package",
+            "dielectric",
         ],
         "inductor" => &[
             "inductance",
             "saturation_current",
             "dc_resistance",
             "package",
+            "rms_current",
         ],
         "led" => &["color", "forward_voltage", "package"],
         _ => return None,
@@ -501,6 +508,8 @@ fn resistors(
                         Value::Quantity(centered(ohms, Dimension::RESISTANCE, TOLERANCE_PERCENT)?)
                     }
                     "max_power" => Value::Quantity(Quantity::point(Dimension::POWER, power).ok()?),
+                    // A generic part has no temperature coefficient: that cell is empty.
+                    "temperature_coefficient" => continue,
                     _ => Value::Text(package.to_string()),
                 };
                 values.push((name.clone(), value));
@@ -555,6 +564,9 @@ fn capacitors(
                             curve: Vec::new(),
                         }),
                         "max_voltage" => Value::Open(Sense::AtLeast),
+                        // A generic part has no dielectric: that cell is empty, so a design
+                        // that needs one is given a catalog row.
+                        "dielectric" => continue,
                         _ => Value::Text(package.to_string()),
                     };
                     cells.push((name.clone(), value));
@@ -605,6 +617,8 @@ fn inductors(
                         "inductance" => Value::Quantity(marked),
                         "saturation_current" => Value::Open(Sense::AtLeast),
                         "dc_resistance" => Value::Open(Sense::AtMost),
+                        // A generic part has no heating current: that cell is empty.
+                        "rms_current" => continue,
                         _ => Value::Text(package.to_string()),
                     };
                     cells.push((name.clone(), value));
@@ -685,12 +699,15 @@ fn kinds(catalog: &str) -> Vec<(String, FieldKind)> {
             q("effective_capacitance", Dimension::CAPACITANCE),
             q("max_voltage", Dimension::VOLTAGE),
             text("package"),
+            // Read with the others; a generic part has none and no row is matched on it.
+            text("dielectric"),
         ],
         "inductor" => vec![
             q("inductance", Dimension::INDUCTANCE),
             q("saturation_current", Dimension::CURRENT),
             q("dc_resistance", Dimension::RESISTANCE),
             text("package"),
+            q("rms_current", Dimension::CURRENT),
         ],
         "led" => vec![
             text("color"),
@@ -701,6 +718,8 @@ fn kinds(catalog: &str) -> Vec<(String, FieldKind)> {
             q("resistance", Dimension::RESISTANCE),
             q("max_power", Dimension::POWER),
             text("package"),
+            // Read with the others; a generic part has none and no row is matched on it.
+            q("temperature_coefficient", Dimension::NONE),
         ],
     }
 }

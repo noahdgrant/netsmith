@@ -42,12 +42,14 @@ fn columns(name: &str) -> Vec<(String, FieldKind)> {
             q("resistance", Dimension::RESISTANCE),
             q("max_power", Dimension::POWER),
             t("package"),
+            q("temperature_coefficient", Dimension::NONE),
         ],
         "capacitor" => vec![
             q("capacitance", Dimension::CAPACITANCE),
             q("effective_capacitance", Dimension::CAPACITANCE),
             q("max_voltage", Dimension::VOLTAGE),
             t("package"),
+            t("dielectric"),
         ],
         "led" => vec![
             t("color"),
@@ -90,6 +92,7 @@ fn columns(name: &str) -> Vec<(String, FieldKind)> {
             q("saturation_current", Dimension::CURRENT),
             q("dc_resistance", Dimension::RESISTANCE),
             t("package"),
+            q("rms_current", Dimension::CURRENT),
         ],
         "fuse" => vec![
             q("rated_current", Dimension::CURRENT),
@@ -771,6 +774,40 @@ fn the_inductors_give_the_saturation_current_and_the_largest_resistance() {
     let m = row_of("inductor", "C337905");
     assert_eq!(value(&m, "saturation_current"), quantity(1.25, "A"));
     assert_eq!(value(&m, "inductance"), tolerance(3.3, "uH", 30.0));
+}
+
+/// Every standard capacitor row states the class its listing prints, as a variant of
+/// `Dielectric` (ADR 0055): the class is also in the row's `name`, and the two agree.
+#[test]
+fn every_standard_capacitor_states_the_class_its_listing_prints() {
+    let cat = catalog("capacitor");
+    let mut seen = std::collections::BTreeSet::new();
+    for c in &cat.candidates {
+        let Some(Value::Text(class)) = c.column("dielectric") else {
+            panic!("{} has no dielectric", c.name);
+        };
+        assert!(
+            ["C0G", "X5R", "X7R"].contains(&class.as_str()),
+            "{}",
+            c.name
+        );
+        assert!(
+            c.name.split_whitespace().any(|w| w == class),
+            "{} says {class} in its dielectric but not in its name",
+            c.name
+        );
+        seen.insert(class.clone());
+    }
+    assert_eq!(seen.len(), 3, "{seen:?}");
+}
+
+/// The heating current of an inductor is a column that no standard row fills: no value has a
+/// recorded rise (ADR 0055).
+#[test]
+fn no_standard_inductor_states_a_heating_current() {
+    for c in &catalog("inductor").candidates {
+        assert_eq!(c.column("rms_current"), None, "{}", c.name);
+    }
 }
 
 #[test]

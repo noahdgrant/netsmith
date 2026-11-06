@@ -247,7 +247,8 @@ pub fn offsets(model: &Model) -> Vec<PlaceOffset> {
             CmpOp::EqEq => (kr.0 - kl.0, kr.1 - kl.1),
             CmpOp::Ge => (kr.1 - kl.0, f64::INFINITY),
             CmpOp::Le => (f64::NEG_INFINITY, kr.0 - kl.1),
-            CmpOp::Narrow => continue,
+            // The checker turns `?=` into `&=`, so a relation never has it.
+            CmpOp::Narrow | CmpOp::Default => continue,
         };
         // The terms were `first*f1 + second*f2`, so when the plus is the first the sum is
         // `plus - minus`: the window is for `b - a` with `b` the plus.

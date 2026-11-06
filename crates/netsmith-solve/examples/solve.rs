@@ -49,8 +49,13 @@ fn main() -> ExitCode {
                 (Some(lcsc), Some(library)) => format!(" [{lcsc}, {library}]"),
                 _ => String::new(),
             };
+            let bank = if p.count > 1 {
+                format!("{} x ", p.count)
+            } else {
+                String::new()
+            };
             println!(
-                "    {}: {}{sourcing} from `{}` (after rejecting {})",
+                "    {}: {bank}{}{sourcing} from `{}` (after rejecting {})",
                 solution.model.path_of(p.part),
                 p.candidate,
                 p.catalog,
@@ -59,6 +64,19 @@ fn main() -> ExitCode {
         }
         if solution.picks.is_empty() {
             println!("    (nothing)");
+        }
+        for seed in &solution.seeded {
+            println!(
+                "  started {} at {} (part range {}) from {}",
+                solution.model.path_of_field(seed.field),
+                seed.range,
+                seed.within,
+                seed.from
+                    .iter()
+                    .map(|&f| solution.model.path_of_field(f))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
         }
 
         println!("  not picked");
