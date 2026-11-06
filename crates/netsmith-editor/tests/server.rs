@@ -178,6 +178,13 @@ impl Backend for Fake {
         Err(ApiError::internal(format!("cannot place {board}")))
     }
     fn pcb_scene(&self, board: &str) -> Result<netsmith_editor::api::PcbScene, ApiError> {
+        if board == "Broken" {
+            return Err(ApiError::unprocessable(
+                "Broken: net VDD joins pad 131 of U4, but footprint F has only pads 1, 2",
+                "footprint_lacks_pad",
+                &[("board", "Broken"), ("part", "U4"), ("pad", "131")],
+            ));
+        }
         Err(ApiError::not_found(board))
     }
     fn pcb_findings(&self, board: &str) -> Result<netsmith_editor::api::PcbFindings, ApiError> {
@@ -409,6 +416,52 @@ fn a_refusal_carries_its_status_and_message() {
     let r = s.request("POST", "/api/pcb/route?board=B", &[GUARD], "", None);
     assert_eq!(r.status, 500);
     assert!(r.body.contains("cannot place B"));
+}
+
+#[test]
+fn a_failure_of_the_projects_data_is_422_and_has_a_structured_body_for_a_page_that_asks() {
+    let s = start();
+    // Without `Accept: application/json` the body is the message, as it is for any refusal.
+    let r = s.get("/api/pcb/scene?board=Broken");
+    assert_eq!(r.status, 422, "not a fault of the server");
+    assert!(r.headers.contains("text/plain"), "{}", r.headers);
+    assert!(
+        r.body
+            .starts_with("Broken: net VDD joins pad 131 of U4, but footprint F has only"),
+        "{}",
+        r.body
+    );
+    // With it, the same status and a JSON body: the code, the message and the fields.
+    let r = s.request(
+        "GET",
+        "/api/pcb/scene?board=Broken",
+        &[("Accept", "application/json")],
+        "",
+        None,
+    );
+    assert_eq!(r.status, 422);
+    assert!(r.headers.contains("application/json"), "{}", r.headers);
+    let body: serde_json::Value = serde_json::from_str(&r.body).unwrap();
+    assert_eq!(
+        body,
+        serde_json::json!({
+            "code": "footprint_lacks_pad",
+            "message": "Broken: net VDD joins pad 131 of U4, but footprint F has only pads 1, 2",
+            "board": "Broken",
+            "part": "U4",
+            "pad": "131",
+        })
+    );
+    // A refusal with no detail stays text even for a page that accepts JSON.
+    let r = s.request(
+        "GET",
+        "/api/pcb/scene?board=Nope",
+        &[("Accept", "application/json")],
+        "",
+        None,
+    );
+    assert_eq!(r.status, 404);
+    assert!(r.headers.contains("text/plain"), "{}", r.headers);
 }
 
 #[test]

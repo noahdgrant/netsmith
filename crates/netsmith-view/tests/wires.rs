@@ -628,7 +628,7 @@ fn the_svg_draws_the_symbols_flags_and_marks() {
     assert!(svg.contains("class=\"power supply\" data-net=\"+3V3\""));
     assert!(svg.contains("<title>GND (ground)</title>"));
     assert!(svg.contains("class=\"port\" data-net=\"BATT_ADC\""));
-    assert!(svg.contains("<title>BATT_ADC (goes to another sheet)</title>"));
+    assert!(svg.contains("<title>BATT_ADC (goes to another module)</title>"));
     assert!(svg.contains("class=\"nc\""));
 }
 

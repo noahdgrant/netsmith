@@ -1,10 +1,11 @@
 //! An invented board for checking the editor's busses: a processor module and a modem module
 //! joined by a UART, a header module that listens on the same UART, and a second processor with
-//! a flash chip on an SPI, among the board's own parts. The modules are sheets, so the UART
+//! a flash chip on an SPI, among the board's own parts. Each module is drawn on its own, so the UART
 //! leaves each as one bundle flag (the processor's leads to two modules); the SPI
-//! runs between two parts of the board's sheet, as a bus with a trunk. Nothing here is a real board: the
-//! parts only state their pins, so the board solves and the editor draws it, but it cannot be
-//! written to KiCad.
+//! runs between two parts of the board's own drawing, as a bus with a trunk. Nothing here is a real board: the
+//! parts only state their pins. `bus_bench.kicad.toml` and `bus_bench.libs/` beside this file (the
+//! launcher copies them into the scratch project) give each part an invented symbol and a generated
+//! footprint with a pad for each pin, so the PCB view places the board.
 
 import std::bus::{Spi, Uart}
 import std::parts::connector::Header1x4

@@ -101,8 +101,10 @@ async function doctor() {
   const bin = netsmithBin();
   line(fs.existsSync(bin), 'netsmith binary', fs.existsSync(bin) ? bin : `${bin} is missing: run cargo build -p netsmith (set CARGO_TARGET_DIR or NETSMITH_BIN if it is elsewhere)`);
 
-  const dist = path.join(repo, 'crates/netsmith-editor/web/dist/index.html');
-  line(fs.existsSync(dist), 'web bundle', fs.existsSync(dist) ? dist : 'crates/netsmith-editor/web/dist is missing: cargo build -p netsmith builds it with Node 20+');
+  // The committed bundle the binary embeds when `web/` has not changed (`web/dist` is only a
+  // build directory of a changed `web/`, which needs Node 20+).
+  const dist = path.join(repo, 'crates/netsmith-editor/web-dist/index.html');
+  line(fs.existsSync(dist), 'web bundle', fs.existsSync(dist) ? dist : 'crates/netsmith-editor/web-dist is missing: restore it from git, or `scripts/web-bundle update` with Node 20+');
 
   if (!has('no-browser')) {
     let playwright;
@@ -181,6 +183,13 @@ async function launch() {
       fs.writeFileSync(path.join(project, 'src/main.physical.nsm'), text);
     }
     if (layout !== fixture && fs.existsSync(layout)) fs.copyFileSync(layout, path.join(project, 'src/main.pcb.toml'));
+    // The mapping to KiCad beside the fixture, if it has one (ADR 0021): `x.kicad.toml` is the
+    // project's `kicad.toml`, and `x.libs/` is its `libs/` (the project's own symbol and
+    // footprint libraries), so the PCB view has footprints for the fixture's invented parts.
+    const mapping = fixture.replace(/\.nsm$/, '.kicad.toml');
+    if (mapping !== fixture && fs.existsSync(mapping)) fs.copyFileSync(mapping, path.join(project, 'kicad.toml'));
+    const libs = fixture.replace(/\.nsm$/, '.libs');
+    if (libs !== fixture && fs.existsSync(libs)) fs.cpSync(libs, path.join(project, 'libs'), { recursive: true });
     // A module, so the tree and the imports have something to show.
     fs.writeFileSync(
       path.join(project, 'src/power.nsm'),

@@ -281,7 +281,7 @@ fn draw(design: &Design, l: &Layout) -> String {
 }
 
 /// A bus: the thick line, the tick with the count of members, the name and the list of members,
-/// and the flag where the members go on to another sheet. `data-bus` is the interface
+/// and the flag where the members go on to another module. `data-bus` is the interface
 /// instance's path, `data-type` its definition, `data-nets` the members' nets (a space between
 /// them) and `data-members` the members as JSON, `[["tx","MODEM_TX"],...]`, in the order of the
 /// pins: what a page that follows a bus reads (names may contain spaces, so it reads this one).
@@ -365,7 +365,7 @@ fn draw_bus(w: &mut String, design: &Design, bus: &crate::layout::Bus) {
         .join(" ");
         let _ = writeln!(
             w,
-            "<g class=\"bus-flag\" data-bus=\"{}\"><title>{} (goes to another sheet)</title><polygon class=\"flag\" points=\"{points}\"/>",
+            "<g class=\"bus-flag\" data-bus=\"{}\"><title>{} (goes to another module)</title><polygon class=\"flag\" points=\"{points}\"/>",
             esc(&bus.path),
             esc(&bus.path)
         );
@@ -375,7 +375,7 @@ fn draw_bus(w: &mut String, design: &Design, bus: &crate::layout::Bus) {
     let _ = writeln!(w, "</g>");
 }
 
-/// A flag where a net goes to another sheet, in the shape of KiCad's hierarchical label: it
+/// A flag where a net goes to another module, in the shape of KiCad's hierarchical label: it
 /// points at the wire.
 fn draw_port(w: &mut String, design: &Design, port: &Port) {
     let name = &design.nets[port.net].name;
@@ -398,7 +398,7 @@ fn draw_port(w: &mut String, design: &Design, port: &Port) {
     .join(" ");
     let _ = writeln!(
         w,
-        "<g class=\"port\" data-net=\"{}\"><title>{} (goes to another sheet)</title><polygon class=\"flag\" points=\"{points}\"/>",
+        "<g class=\"port\" data-net=\"{}\"><title>{} (goes to another module)</title><polygon class=\"flag\" points=\"{points}\"/>",
         esc(name),
         esc(name)
     );

@@ -10,5 +10,5 @@ mod backend;
 mod server;
 
 pub use assets::{bundle_is_present, find as find_asset, missing_bundle_message};
-pub use backend::{AnalysisEvent, ApiError, Attachment, Backend, Observer, Say};
+pub use backend::{AnalysisEvent, ApiError, Attachment, Backend, ErrorDetail, Observer, Say};
 pub use server::{PENDING_HEADER, Server, serve};
