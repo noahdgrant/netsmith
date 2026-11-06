@@ -7,7 +7,7 @@ import { changes, clearCompare, compare, refName, refText, runCompare, showChang
 import { plural } from '../util';
 import { find, chordText } from '../commands';
 import { askForRef, toggleChanges } from './ChangesSwitch';
-import { Icon } from './Icons';
+import { Icon, type IconName } from './Icons';
 import { revealSection } from '../store';
 
 function Menu({ close }: { close: () => void }) {
@@ -32,9 +32,13 @@ function Menu({ close }: { close: () => void }) {
   }, [close]);
   const s = state.value;
   const c = compare.value;
-  const row = (label: string, onClick: () => void, opts: { checked?: boolean; keys?: string; id?: string } = {}) => (
+  const row = (label: string, onClick: () => void, opts: { checked?: boolean; keys?: string; id?: string; icon?: IconName } = {}) => (
     <button type="button" class="src-opt" role={opts.checked === undefined ? 'menuitem' : 'menuitemcheckbox'} aria-checked={opts.checked} data-testid={opts.id} onClick={() => (close(), onClick())}>
-      <span class="src-check" aria-hidden="true">{opts.checked ? <Icon name="check" size={12} /> : null}</span>
+      {opts.checked === undefined ? (
+        <span class="src-ic" aria-hidden="true">{opts.icon && <Icon name={opts.icon} size={14} />}</span>
+      ) : (
+        <span class="src-check" aria-hidden="true">{opts.checked ? <Icon name="check" size={12} /> : null}</span>
+      )}
       {label}
       {opts.keys && <kbd>{chordText(opts.keys)}</kbd>}
     </button>
@@ -46,11 +50,11 @@ function Menu({ close }: { close: () => void }) {
       {s.kind === 'ready' && s.data.error && <p class="cmp-chip-sentence">{s.data.error}</p>}
       {s.kind === 'failed' && <p class="cmp-chip-sentence">{s.message}</p>}
       <div class="src-opts" role="menu" aria-label="Comparison">
-        {row('Show the comparison', () => revealSection('compare'), { keys: find('view.compare')?.keys, id: 'chip-show' })}
+        {row('Show the comparison', () => revealSection('compare'), { keys: find('view.compare')?.keys, id: 'chip-show', icon: 'compare' })}
         {row('Show changes in the views', toggleChanges, { checked: showChanges.value, id: 'chip-marks' })}
-        {row('Compare with another ref…', askForRef, { id: 'chip-another' })}
-        {row('Compare again', () => refName.value && void runCompare(refName.value))}
-        {row('Stop comparing', () => (clearCompare(), (showChanges.value = false)), { id: 'chip-stop' })}
+        {row('Compare with another ref…', askForRef, { id: 'chip-another', icon: 'branch' })}
+        {row('Compare again', () => refName.value && void runCompare(refName.value), { icon: 'refresh' })}
+        {row('Stop comparing', () => (clearCompare(), (showChanges.value = false)), { id: 'chip-stop', icon: 'close' })}
       </div>
     </div>
   );

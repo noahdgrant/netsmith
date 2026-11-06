@@ -185,6 +185,7 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .statusbar .cmp-chip.bad { color: var(--warning-text); }
 .statusbar .src-changes .icon { color: var(--cmp-changed); }
 .cmp-chip-menu { min-width: 280px; max-width: 360px; }
+.src-opt .src-ic { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; flex: none; color: var(--text-faint); }
 .cmp-chip-sentence { margin: 2px 0 8px; color: var(--text-muted); font-size: var(--fs-sm); line-height: 1.45; overflow-wrap: anywhere; }
 
 /* ==== the diff view ==== */
@@ -231,14 +232,14 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 
 /* ==== the marks on the other views (compareDom.ts puts the classes; nothing re-renders) ==== */
 /* the schematic: a changed part is outlined, a new one green, a renumbered one neutral and dashed; the nets that changed are lit softly */
-.cmp-on svg.schematic .part.cmp-added .s, .cmp-on svg.schematic .part.cmp-changed .s, .cmp-on svg.schematic .part.cmp-renumbered .s { stroke-width: .42; }
+.cmp-on svg.schematic .part.cmp-added .s, .cmp-on svg.schematic .part.cmp-changed .s, .cmp-on svg.schematic .part.cmp-renumbered .s { stroke-width: .34; }
 .cmp-on svg.schematic .part.cmp-added .s { stroke: var(--cmp-added); }
 .cmp-on svg.schematic .part.cmp-changed .s { stroke: var(--cmp-changed); }
 .cmp-on svg.schematic .part.cmp-renumbered .s { stroke: var(--cmp-renumbered); stroke-dasharray: 1.2 .8; }
 .cmp-on svg.schematic .part.cmp-added text.ref { fill: var(--cmp-added); }
 .cmp-on svg.schematic .part.cmp-changed text.ref { fill: var(--cmp-changed); }
 .cmp-on svg.schematic .part.cmp-renumbered text.ref { fill: var(--cmp-renumbered); }
-.cmp-on svg.schematic .part.cmp-added, .cmp-on svg.schematic .part.cmp-changed { filter: drop-shadow(0 0 .35px currentColor); }
+.cmp-on svg.schematic .part.cmp-added, .cmp-on svg.schematic .part.cmp-changed { filter: drop-shadow(0 0 .25px currentColor); }
 .cmp-on svg.schematic .part.cmp-added { color: var(--cmp-added); } .cmp-on svg.schematic .part.cmp-changed { color: var(--cmp-changed); }
 .cmp-on svg.schematic .wire.cmp-net-changed .line, .cmp-on svg.schematic .wire.cmp-net-changed polyline:not(.hit) { stroke: color-mix(in srgb, var(--cmp-changed) 48%, var(--sch-wire)); }
 .cmp-on svg.schematic .wire.cmp-net-added .line, .cmp-on svg.schematic .wire.cmp-net-added polyline:not(.hit) { stroke: color-mix(in srgb, var(--cmp-added) 55%, var(--sch-wire)); }
