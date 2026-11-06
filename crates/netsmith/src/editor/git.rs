@@ -367,6 +367,67 @@ impl Drop for Scratch {
     }
 }
 
+/// How old a scratch folder is before it is removed where it cannot be told whether the process
+/// that made it still runs (a system with no `/proc`).
+const STALE_AFTER: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+/// Whether the process `pid` is running, if this system can say (Linux: `/proc/<pid>`).
+fn process_runs(proc: &Path, pid: u32) -> Option<bool> {
+    proc.is_dir().then(|| proc.join(pid.to_string()).exists())
+}
+
+/// Removes the scratch folders in `temp` whose process is gone: the folders a killed editor left.
+/// A folder of a process that runs (this one included) is never touched. Where processes cannot
+/// be looked up (`proc` is not a folder), one that is older than a day is removed. Gives how many
+/// folders were removed. Only folders (never links) whose names are exactly ours are looked at.
+pub fn sweep_scratch_in(temp: &Path, proc: &Path) -> usize {
+    let Ok(entries) = std::fs::read_dir(temp) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Some(rest) = name.strip_prefix(SCRATCH_PREFIX) else {
+            continue;
+        };
+        let mut parts = rest.split('-');
+        let (Some(Ok(pid)), Some(count), Some(nanos), None) = (
+            parts.next().map(str::parse::<u32>),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+        ) else {
+            continue;
+        };
+        if count.parse::<u64>().is_err() || nanos.parse::<u64>().is_err() {
+            continue;
+        }
+        let Ok(meta) = std::fs::symlink_metadata(entry.path()) else {
+            continue;
+        };
+        if !meta.is_dir() || pid == std::process::id() {
+            continue;
+        }
+        let gone = match process_runs(proc, pid) {
+            Some(runs) => !runs,
+            None => meta
+                .modified()
+                .ok()
+                .and_then(|m| m.elapsed().ok())
+                .is_some_and(|age| age > STALE_AFTER),
+        };
+        if gone && std::fs::remove_dir_all(entry.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
+/// [`sweep_scratch_in`] for the system's temporary folder. Called when the editor starts.
+pub fn sweep_scratch() -> usize {
+    sweep_scratch_in(&std::env::temp_dir(), Path::new("/proc"))
+}
+
 /// The most a file of a ref may weigh. A bigger one is not read: it is not a source, and a
 /// file that size read into memory by the analysis is how a hostile ref would stop the server.
 pub const MAX_REF_FILE_BYTES: u64 = 8 * 1024 * 1024;
@@ -841,6 +902,67 @@ mod tests {
     }
 
     use netsmith_kicad::testlib::TempDir;
+
+    fn dead_pid() -> u32 {
+        // A process id above any the system hands out: no folder of it can be of a live process.
+        u32::MAX - 1
+    }
+
+    #[test]
+    fn the_sweep_removes_the_scratch_folders_of_dead_processes_and_nothing_else() {
+        let temp = TempDir::new("sweep-temp");
+        let proc = TempDir::new("sweep-proc");
+        // A fake /proc with one live process, 4242.
+        std::fs::create_dir(proc.join("4242")).unwrap();
+        let make = |name: &str| {
+            let dir = temp.join(name);
+            std::fs::create_dir_all(dir.join("src")).unwrap();
+            std::fs::write(dir.join("src/a.nsm"), "x").unwrap();
+            dir
+        };
+        let dead = make(&format!("netsmith-compare-{}-0-123", dead_pid()));
+        let dead_too = make("netsmith-compare-77-3-456789");
+        let live = make("netsmith-compare-4242-0-123");
+        let mine = make(&format!("netsmith-compare-{}-9-1", std::process::id()));
+        // Not ours: a name that does not end as ours do, a plain file, a link, another prefix.
+        let odd = make("netsmith-compare-77-x-1");
+        let longer = make("netsmith-compare-77-1-2-3");
+        let other = make("netsmith-comparison-77-1-2");
+        let file = temp.join("netsmith-compare-78-0-1");
+        std::fs::write(&file, "x").unwrap();
+        let outside = TempDir::new("sweep-outside");
+        std::fs::write(outside.join("keep"), "x").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&*outside, temp.join("netsmith-compare-79-0-1")).unwrap();
+
+        assert_eq!(sweep_scratch_in(&temp, &proc), 2);
+        assert!(!dead.exists() && !dead_too.exists(), "dead processes'");
+        for kept in [&live, &mine, &odd, &longer, &other, &file] {
+            assert!(kept.exists(), "{} was removed", kept.display());
+        }
+        assert!(outside.join("keep").exists(), "a link is not followed");
+        // Again: nothing more to remove.
+        assert_eq!(sweep_scratch_in(&temp, &proc), 0);
+    }
+
+    #[test]
+    fn where_processes_cannot_be_listed_only_a_folder_older_than_a_day_is_removed() {
+        let temp = TempDir::new("sweep-age-temp");
+        let no_proc = temp.join("no-such-proc");
+        let fresh = temp.join("netsmith-compare-77-0-1");
+        std::fs::create_dir(&fresh).unwrap();
+        assert_eq!(sweep_scratch_in(&temp, &no_proc), 0);
+        assert!(fresh.exists(), "a new folder may be a running compare's");
+        let old = temp.join("netsmith-compare-78-0-1");
+        std::fs::create_dir(&old).unwrap();
+        let two_days = SystemTime::now() - std::time::Duration::from_secs(2 * 24 * 60 * 60);
+        std::fs::File::open(&old)
+            .unwrap()
+            .set_modified(two_days)
+            .unwrap();
+        assert_eq!(sweep_scratch_in(&temp, &no_proc), 1);
+        assert!(!old.exists() && fresh.exists());
+    }
 
     #[cfg(unix)]
     #[test]

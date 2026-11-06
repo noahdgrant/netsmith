@@ -45,6 +45,7 @@ use netsmith_editor::{
 use crate::project::Target;
 
 pub use analysis::{Snapshot, module_groups, must_connect, rails_of, schematic_layout};
+pub use git::sweep_scratch;
 
 /// The project behind the editor.
 pub struct Workspace {
