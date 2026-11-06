@@ -60,7 +60,7 @@ export function SelectionChip() {
       {has && (
         <button class="selchip-btn text" data-tip={`Show it in Source${key ? ` (${chordText(key)})` : ''}`} onClick={() => showInSource(sel)}>
           <Icon name="source" size={13} />
-          Source
+          <span class="selchip-label">Source</span>
         </button>
       )}
       <button class="selchip-btn" data-tip="Clear the selection" data-tip-keys="Esc" aria-label="Clear the selection" onClick={() => setSelection(null)}>

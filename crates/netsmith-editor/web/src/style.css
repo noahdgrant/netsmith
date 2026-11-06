@@ -745,7 +745,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .cm-editor.cm-focused { outline: none; }
 
 /* the top bar: the search button and the selection chip */
-.cmdk { display: inline-flex; align-items: center; gap: 10px; width: clamp(240px, 38vw, 560px); height: var(--ctl-lg); padding: 0 8px 0 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); color: var(--text-muted); cursor: pointer; box-shadow: var(--elev-1); }
+.cmdk { display: inline-flex; align-items: center; gap: 10px; width: clamp(200px, 24vw, 560px); height: var(--ctl-lg); padding: 0 8px 0 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); color: var(--text-muted); cursor: pointer; box-shadow: var(--elev-1); }
 .cmdk:hover { border-color: var(--border-strong); background: var(--surface-raised); color: var(--text); }
 .cmdk-text { flex: 1; text-align: left; }
 .cmdk .qp-keys { gap: 4px; }
