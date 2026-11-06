@@ -1,6 +1,6 @@
 import { signal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
-import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
 import {
   type Drop,
@@ -515,8 +515,26 @@ export function TabMenu() {
 /** The source's file tabs. After a click-through from another section, the way back is here. */
 export function Tabs() {
   const b = back.value;
+  const bar = useRef<HTMLDivElement>(null);
+  // Where the strip has more to scroll to, its edge fades; the tab that is active is always in view.
+  const [edge, setEdge] = useState({ l: false, r: false });
+  const measure = () => {
+    const el = bar.current;
+    if (el) setEdge({ l: el.scrollLeft > 2, r: el.scrollLeft + el.clientWidth < el.scrollWidth - 2 });
+  };
+  useEffect(() => {
+    bar.current?.querySelector('.tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    measure();
+  }, [activeFile.value, tabs.value.length]);
+  useEffect(() => {
+    const el = bar.current;
+    if (!el || typeof ResizeObserver !== 'function') return;
+    const o = new ResizeObserver(measure);
+    o.observe(el);
+    return () => o.disconnect();
+  }, []);
   return (
-    <div class="tabbar files">
+    <div class={`tabbar files ${edge.l ? 'fade-l' : ''} ${edge.r ? 'fade-r' : ''}`} ref={bar} onScroll={measure}>
       {b && (
         <button
           class="back-btn"
@@ -535,7 +553,15 @@ export function Tabs() {
             key={path}
             class={`tab ${activeFile.value === path ? 'active' : ''}`}
             title={path}
+            tabIndex={0}
             onClick={() => (activeFile.value = path)}
+            onKeyDown={(e) => {
+              if (e.target !== e.currentTarget) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                activeFile.value = path;
+              }
+            }}
             onAuxClick={() => closeFile(path)}
           >
             <span>{base}</span>
