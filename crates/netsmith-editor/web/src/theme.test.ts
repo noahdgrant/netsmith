@@ -164,13 +164,16 @@ function pairs(): Pair[] {
   list.push({ fg: '--text-muted', bg: ['--seg-track'], what: 'a segment that is off' });
   list.push({ fg: '--text', bg: ['--seg-on'], what: 'the segment that is on' });
   list.push({ fg: '--brand', bg: ['--surface'], min: 3, what: 'the logo' });
-  list.push({ fg: '--pcb-key', bg: ['--pcb-bg'], what: 'board key text' });
-  list.push({ fg: '--pcb-silk', bg: ['--pcb-bg'], what: 'board reference text' });
-  for (const n of NETS) list.push({ fg: n, bg: ['--pcb-bg'], min: 3, what: 'net colour on the board (a graphic)' });
-  for (const n of NETS) list.push({ fg: '--pcb-pad-text', bg: [n], min: 3, what: 'pad number on its net colour' });
-  list.push({ fg: '--pcb-outline', bg: ['--pcb-bg'], min: 3, what: 'board outline' });
-  list.push({ fg: '--pcb-select', bg: ['--pcb-bg'], min: 3, what: 'selection on the board' });
-  list.push({ fg: '--pcb-keepout', bg: ['--pcb-bg'], min: 3, what: 'keepout on the board' });
+  // The board (round 3): text 4.5:1 on the canvas and the substrate, every mark that is a graphic 3:1 on both.
+  const BOARD = ['--pcb-bg', '--pcb-board'];
+  list.push({ fg: '--pcb-key', bg: BOARD, what: 'board key text' });
+  list.push({ fg: '--pcb-refdes', bg: BOARD, what: 'board reference text' });
+  list.push({ fg: '--pcb-silk', bg: BOARD, min: 3, what: 'board silkscreen (a graphic)' });
+  for (const n of NETS) list.push({ fg: n, bg: ['--pcb-bg'], min: 3, what: 'net colour on the board (a plane border, a graphic)' });
+  for (const k of ['--pcb-front', '--pcb-back', '--pcb-thru', '--pcb-via', '--pcb-outline', '--pcb-ratsnest', '--pcb-courtyard', '--pcb-fab', '--pcb-keepout', '--pcb-height-limit', '--pcb-select']) {
+    list.push({ fg: k, bg: BOARD, min: 3, what: `${k.slice(6)} on the board (a graphic)` });
+  }
+  for (const k of ['--pcb-front', '--pcb-back', '--pcb-thru']) list.push({ fg: '--pcb-pad-text', bg: [k], what: `a pad's number on ${k.slice(6)} copper` });
   // Marks the page draws without words: the focus ring and the brand line.
   list.push({ fg: '--focus', bg: ['--surface', '--canvas', '--surface-raised', '--surface-3', '--bg'], min: 3, what: 'focus indicator' });
   list.push({ fg: '--accent', bg: ['--surface', '--canvas', '--bg'], min: 3, what: 'accent marks (the active tab line, a primary action)' });
@@ -210,6 +213,16 @@ describe.each(Object.keys(THEME_TOKENS) as Theme[])('contrast of %s', (name) => 
     for (const k of ['--sch-pin', '--sch-body', '--sch-text']) expect(contrast(ink(k), hex)!, `${k} on the body ${hex}`).toBeGreaterThanOrEqual(MIN[name]);
     // the body is a visible step from the sheet, so a part reads as a box and not a frame of lines
     expect(contrast(hex, ink('--sch-sheet'))!).toBeGreaterThanOrEqual(1.08);
+  });
+  it('the board is a step from the canvas, and each kind of copper is told from the others', () => {
+    expect(contrast(ink('--pcb-board'), ink('--pcb-bg'))!).toBeGreaterThanOrEqual(1.04);
+    const tones = ['--pcb-front', '--pcb-back', '--pcb-thru', '--pcb-via'].map((k) => ink(k));
+    expect(new Set(tones).size).toBe(4);
+    // the front and back copper are a hue apart, not only a step: one is warm, one is cool
+    const [fr, , fb] = parseHex(ink('--pcb-front'))!;
+    const [br, , bb] = parseHex(ink('--pcb-back'))!;
+    expect(fr - fb).toBeGreaterThan(0);
+    expect(bb - br).toBeGreaterThan(0);
   });
   it('the segment that is on is a step from its track', () => {
     expect(contrast(ink('--seg-on'), ink('--seg-track'))!).toBeGreaterThanOrEqual(1.1);

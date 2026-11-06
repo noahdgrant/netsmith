@@ -180,27 +180,32 @@
   --sch-frame-fill: rgba(90, 166, 126, .04);
   --sch-frame-title: #86b69c;
 
-  /* the board */
-  --pcb-bg: #0d1117;
-  --pcb-grid: #8b949e;
-  --pcb-outline: #f2ed7d;
-  --pcb-silk: #f0ead6;
+  /* the board: a calm drawing. The canvas (--pcb-bg) is a step from the substrate (--pcb-board); copper is a muted copper on
+   * the front and a muted teal-blue on the back; a through-hole pad and a via have tones of their own; the ratsnest is thin
+   * and translucent; a pick is the page's blue. */
+  --pcb-bg: #0b0e13;
+  --pcb-board: #121821;
+  --pcb-grid: #6b778a;
+  --pcb-outline: #8396b1;
+  --pcb-silk: #aea99a;
+  --pcb-refdes: #d3cfc1;
   --pcb-key: #c9d1d9;
-  --pcb-ratsnest: #ffffff;
-  --pcb-fab: #5f7a99;
-  --pcb-courtyard: #ff26e2;
-  --pcb-keepout: #e8505b;
-  --pcb-height-limit: #e0a030;
+  --pcb-ratsnest: #9fb9dc;
+  --pcb-fab: #6a7d96;
+  --pcb-courtyard: #6f7d90;
+  --pcb-keepout: #e0707a;
+  --pcb-height-limit: #d9a441;
   --pcb-unconnected: #8b949e;
-  --pcb-front: #d63c3c;
-  --pcb-back: #3c78d6;
-  --pcb-via: #c8c8c8;
-  --pcb-pad-text: #0d1117;
-  --pcb-select: #58a6ff;
+  --pcb-front: #d08d50;
+  --pcb-back: #46a3bc;
+  --pcb-thru: #cdb890;
+  --pcb-via: #a3adbc;
+  --pcb-pad-text: #10141a;
+  --pcb-select: var(--sel);
   --pcb-lock: #e5b53b;
   --pcb-lock-fg: #151618;
   --pcb-hl: #ffffff;
-  --pcb-track-opacity: .8;
+  --pcb-track-opacity: .85;
   --net-0: #ff6b6b; --net-1: #4dd4ac; --net-2: #ffd166; --net-3: #6ea8fe; --net-4: #c792ea;
   --net-5: #ff9f43; --net-6: #7bed9f; --net-7: #f78fb3; --net-8: #74c0fc; --net-9: #d4e157;
 
@@ -333,26 +338,32 @@
   --sch-frame-fill: rgba(10, 122, 60, .04);
   --sch-frame-title: #2f5f4a;
 
-  --pcb-bg: #f5f3ec;
+  /* the board: a calm drawing. The canvas (--pcb-bg) is a step from the substrate (--pcb-board); copper is a muted copper on
+   * the front and a muted teal-blue on the back; a through-hole pad and a via have tones of their own; the ratsnest is thin
+   * and translucent; a pick is the page's blue. */
+  --pcb-bg: #ebe9e2;
+  --pcb-board: #fbfaf6;
   --pcb-grid: #8b8a82;
-  --pcb-outline: #8a6a00;
-  --pcb-silk: #3b3a35;
+  --pcb-outline: #667690;
+  --pcb-silk: #6d685b;
+  --pcb-refdes: #37362f;
   --pcb-key: #3b3f46;
-  --pcb-ratsnest: #1d2026;
-  --pcb-fab: #4f6a8a;
-  --pcb-courtyard: #c2189f;
-  --pcb-keepout: #cf2f3a;
-  --pcb-height-limit: #b57400;
+  --pcb-ratsnest: #4a6a98;
+  --pcb-fab: #71829b;
+  --pcb-courtyard: #737e8d;
+  --pcb-keepout: #c0414d;
+  --pcb-height-limit: #a86f00;
   --pcb-unconnected: #6e757e;
-  --pcb-front: #c42b2b;
-  --pcb-back: #2b62c4;
-  --pcb-via: #8d8d86;
+  --pcb-front: #a95e26;
+  --pcb-back: #1f7f9a;
+  --pcb-thru: #84702f;
+  --pcb-via: #6a7280;
   --pcb-pad-text: #ffffff;
-  --pcb-select: #0b61c4;
+  --pcb-select: var(--sel);
   --pcb-lock: #b57400;
   --pcb-lock-fg: #ffffff;
   --pcb-hl: #000000;
-  --pcb-track-opacity: .72;
+  --pcb-track-opacity: .85;
   --net-0: #d2373f; --net-1: #0b7f65; --net-2: #a87800; --net-3: #2a67d8; --net-4: #8644c4;
   --net-5: #c85d0a; --net-6: #2a8a45; --net-7: #c43a74; --net-8: #1479b4; --net-9: #7a8a0a;
 
@@ -482,26 +493,32 @@
   --sch-frame-fill: rgba(83, 240, 124, .05);
   --sch-frame-title: #b4e8c8;
 
+  /* the board: a calm drawing. The canvas (--pcb-bg) is a step from the substrate (--pcb-board); copper is a muted copper on
+   * the front and a muted teal-blue on the back; a through-hole pad and a via have tones of their own; the ratsnest is thin
+   * and translucent; a pick is the page's blue. */
   --pcb-bg: #000000;
+  --pcb-board: #0a0c10;
   --pcb-grid: #b8c0cc;
-  --pcb-outline: #fff36a;
+  --pcb-outline: #c9d4e3;
   --pcb-silk: #ffffff;
+  --pcb-refdes: #ffffff;
   --pcb-key: #ffffff;
-  --pcb-ratsnest: #ffffff;
-  --pcb-fab: #8fb0d6;
-  --pcb-courtyard: #ff4ee8;
-  --pcb-keepout: #ff6b76;
+  --pcb-ratsnest: #bcd4ff;
+  --pcb-fab: #9fb3cd;
+  --pcb-courtyard: #a7b2c2;
+  --pcb-keepout: #ff7b86;
   --pcb-height-limit: #ffb347;
   --pcb-unconnected: #b8c0cc;
-  --pcb-front: #ff5c5c;
-  --pcb-back: #5c9aff;
-  --pcb-via: #e0e0e0;
+  --pcb-front: #ffa45c;
+  --pcb-back: #5cd0ee;
+  --pcb-thru: #f0dcae;
+  --pcb-via: #d6d6d6;
   --pcb-pad-text: #000000;
-  --pcb-select: #79c0ff;
+  --pcb-select: var(--sel);
   --pcb-lock: #ffd23f;
   --pcb-lock-fg: #000000;
   --pcb-hl: #ffffff;
-  --pcb-track-opacity: .9;
+  --pcb-track-opacity: .95;
   --net-0: #ff8585; --net-1: #5ff0c8; --net-2: #ffe08a; --net-3: #8fbcff; --net-4: #dcb0ff;
   --net-5: #ffb26b; --net-6: #96ffb4; --net-7: #ffa9c6; --net-8: #91d3ff; --net-9: #e6f26b;
 
@@ -631,26 +648,32 @@
   --sch-frame-fill: rgba(0, 107, 43, .04);
   --sch-frame-title: #1d4a37;
 
+  /* the board: a calm drawing. The canvas (--pcb-bg) is a step from the substrate (--pcb-board); copper is a muted copper on
+   * the front and a muted teal-blue on the back; a through-hole pad and a via have tones of their own; the ratsnest is thin
+   * and translucent; a pick is the page's blue. */
   --pcb-bg: #ffffff;
+  --pcb-board: #f2f2f2;
   --pcb-grid: #6b6b6b;
-  --pcb-outline: #6b4a00;
-  --pcb-silk: #000000;
+  --pcb-outline: #3b4656;
+  --pcb-silk: #1a1a1a;
+  --pcb-refdes: #000000;
   --pcb-key: #000000;
-  --pcb-ratsnest: #000000;
+  --pcb-ratsnest: #1f4f94;
   --pcb-fab: #3b5a82;
-  --pcb-courtyard: #a8007f;
-  --pcb-keepout: #b00f1a;
+  --pcb-courtyard: #4a5565;
+  --pcb-keepout: #a80f1d;
   --pcb-height-limit: #8a5a00;
   --pcb-unconnected: #4a4f57;
-  --pcb-front: #b01010;
-  --pcb-back: #0f4ab0;
-  --pcb-via: #5a5a5a;
+  --pcb-front: #8f3f06;
+  --pcb-back: #005f78;
+  --pcb-thru: #5e4a12;
+  --pcb-via: #444444;
   --pcb-pad-text: #ffffff;
-  --pcb-select: #084c9e;
+  --pcb-select: var(--sel);
   --pcb-lock: #8a5a00;
   --pcb-lock-fg: #ffffff;
   --pcb-hl: #000000;
-  --pcb-track-opacity: .85;
+  --pcb-track-opacity: .95;
   --net-0: #b8222b; --net-1: #046650; --net-2: #8a6200; --net-3: #1d4fb8; --net-4: #6b2fa8;
   --net-5: #a84a00; --net-6: #1d6e36; --net-7: #a82c5c; --net-8: #0a5f94; --net-9: #5f6e00;
 

@@ -131,7 +131,7 @@ function NetList(props: {
             onPointerLeave={() => props.onHover(null)}
             onClick={() => props.onPick(props.picked === n.name ? null : n.name)}
           >
-            <span class="swatch" style={{ background: n.colour }} />
+            <span class={`swatch ${n.plane ? 'plane' : ''}`} aria-hidden="true" />
             <span class="net-name">{n.name}</span>
             <span class="faint">{n.plane ? 'plane' : n.pads}</span>
           </div>

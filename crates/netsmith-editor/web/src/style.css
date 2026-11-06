@@ -413,8 +413,6 @@ svg.edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-even
 .net-row.sel { box-shadow: inset 2px 0 0 var(--sel-bar); }
 .net-row .net-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
 .swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
-.pcb-host svg.has-hl [data-net]:not(.hl) { opacity: .16; }
-.pcb-host svg [data-net].hl { filter: drop-shadow(0 0 0.5px var(--pcb-hl)); }
 
 /* project tree folders and filter */
 .pcb-view .banner { max-height: 84px; overflow: auto; flex: none; }
@@ -445,7 +443,6 @@ svg.edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-even
 .pcb-overlay .mark { fill: none; stroke: var(--danger); stroke-width: .12; stroke-dasharray: .4 .25; }
 .pcb-overlay .mark.warning { stroke: var(--warning); }
 .pcb-overlay .mark.on { stroke-width: .3; stroke-dasharray: none; fill: color-mix(in srgb, var(--danger) 14%, transparent); }
-.pcb-host svg .l-ratsnest line.sel-rat { stroke-width: .24; stroke-opacity: 1; }
 .pcb-tip { position: absolute; z-index: 6; pointer-events: none; background: var(--pop); border: 1px solid var(--pop-border); border-radius: var(--r-sm); padding: 6px 10px; font-size: var(--fs-sm); box-shadow: var(--elev-2); max-width: 280px; }
 .pcb-tip b { font-family: var(--mono); color: var(--text); display: block; }
 .pcb-tip div { color: var(--text-muted); }
@@ -953,8 +950,6 @@ span.sk { display: block; }
 .pcb-host svg [fill="#3c78d6"] { fill: var(--pcb-back); } .pcb-host svg [stroke="#3c78d6"] { stroke: var(--pcb-back); }
 .pcb-host svg [fill="#c8c8c8"] { fill: var(--pcb-via); } .pcb-host svg [stroke="#c8c8c8"] { stroke: var(--pcb-via); }
 .pcb-host svg text[fill="#0d1117"] { fill: var(--pcb-pad-text); }
-.pcb-host svg .l-front-copper line, .pcb-host svg .l-back-copper line { stroke-opacity: var(--pcb-track-opacity); }
-.pcb-host svg .l-front-copper line.wide, .pcb-host svg .l-back-copper line.wide { stroke-opacity: calc(var(--pcb-track-opacity) * .5); }
 
 /* the theme menu in the status bar */
 .theme-list { display: flex; flex-direction: column; gap: 1px; margin: 8px -8px 0; }
