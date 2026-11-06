@@ -181,15 +181,24 @@ export async function run({ page, shot, step, expect, section }) {
   const ring = await page.evaluate(() => {
     const n = document.activeElement;
     const frame = n?.querySelector?.('.note-frame');
+    const rg = n?.querySelector?.('.note-ring');
     const probe = document.createElement('i');
     probe.style.color = 'var(--focus)';
     document.body.appendChild(probe);
     const focus = getComputedStyle(probe).color;
     probe.remove();
-    const cs = frame && getComputedStyle(frame);
-    return { note: n?.matches?.('g.note'), stroke: cs?.stroke, focus, width: cs && parseFloat(cs.strokeWidth), filter: cs?.filter };
+    const cs = rg && getComputedStyle(rg);
+    const fcs = frame && getComputedStyle(frame);
+    const unit = n?.ownerSVGElement?.getScreenCTM()?.a ?? 1;
+    const f = frame?.getBoundingClientRect();
+    const r = rg?.getBoundingClientRect();
+    // From the outside of the frame's own stroke to the inside of the ring's 2 px line, in screen pixels.
+    const gap = f && r ? f.left - r.left - (parseFloat(fcs.strokeWidth) * unit) / 2 - 1 : NaN;
+    return { note: n?.matches?.('g.note'), stroke: cs?.stroke, focus, width: cs && parseFloat(cs.strokeWidth), display: cs?.display, vector: cs?.vectorEffect, filter: cs?.filter, frameFilter: fcs?.filter, frameWidth: fcs && parseFloat(fcs.strokeWidth), gap };
   });
-  expect(ring.note && ring.stroke === ring.focus && ring.width >= 0.6 && ring.filter !== 'none', `the frame wears the focus colour, heavier, with a halo (${ring.stroke} ${ring.width} ${ring.filter})`);
+  expect(ring.note && ring.stroke === ring.focus && ring.width === 2 && ring.display !== 'none' && ring.vector === 'non-scaling-stroke', `a crisp ring in the focus colour, 2 px at any zoom (${ring.stroke} ${ring.width}px ${ring.vector})`);
+  expect(ring.filter === 'none' && ring.frameFilter === 'none' && ring.frameWidth <= 0.5, `no halo and the frame itself is not made heavier (${ring.filter}, ${ring.frameFilter}, ${ring.frameWidth})`);
+  expect(Math.abs(ring.gap - 2) < 0.75, `the ring stands 2 px clear of the frame (${ring.gap.toFixed(2)} px)`);
   await shot('note-focus-ring');
   const second = await page.evaluate(() => {
     const all = [...document.querySelectorAll('svg.schematic g.note')];
