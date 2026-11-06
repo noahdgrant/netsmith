@@ -26,7 +26,9 @@ import {
   chooseBoard,
   closeFile,
   dirty,
+  moveTab,
   openFiles,
+  project,
   job,
   reload,
   tabs,
@@ -42,6 +44,9 @@ import { Icon, SeverityIcon } from './Icons';
 import { Popover, Spinner } from './ui';
 import { firstError, goToFirstError, neverBuilt } from '../feedback/derive';
 import { Logo } from './Logo';
+import { dropBefore } from '../source/tabs';
+import { fileIcon } from '../tree';
+import { FileTypeIcon, LockIcon } from './TreeIcons';
 import { SelectionChip } from './SelectionChip';
 
 /** What `section` is for, in its tab's tooltip. */
@@ -512,12 +517,75 @@ export function TabMenu() {
   );
 }
 
-/** The source's file tabs. After a click-through from another section, the way back is here. */
+/** The folder of a path, for a tab whose file name another open tab has too. */
+const dirOf = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '');
+
+/** Every open file as a list under the tabs' "more" button: for the tabs that do not fit. */
+function TabOverflow({ close }: { close: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    box.current?.querySelector<HTMLElement>('[aria-current="true"]')?.focus();
+    const away = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node) && !(e.target as Element).closest?.('.tab-more')) close();
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        close();
+      }
+    };
+    document.addEventListener('pointerdown', away, true);
+    document.addEventListener('keydown', key, true);
+    return () => {
+      document.removeEventListener('pointerdown', away, true);
+      document.removeEventListener('keydown', key, true);
+    };
+  }, []);
+  const move = (e: KeyboardEvent) => {
+    const items = [...(box.current?.querySelectorAll<HTMLElement>('.tab-menu-item') ?? [])];
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    items[(at + step + items.length) % items.length]?.focus();
+  };
+  return (
+    <div class="tab-menu" ref={box} role="menu" aria-label="Open files" onKeyDown={move} data-testid="tab-menu">
+      {tabs.value.map((path) => {
+        const f = openFiles.value[path];
+        return (
+          <button
+            key={path}
+            type="button"
+            role="menuitem"
+            class={`tab-menu-item ${activeFile.value === path ? 'on' : ''}`}
+            aria-current={activeFile.value === path}
+            onClick={() => {
+              activeFile.value = path;
+              close();
+            }}
+          >
+            <FileTypeIcon icon={fileIcon(path.split('/').pop() ?? path)} />
+            <span class="tab-menu-name">{path.split('/').pop()}</span>
+            <span class="tab-menu-dir">{dirOf(path)}</span>
+            {f && dirty(f) && <span class="dot" aria-label="unsaved changes" />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The source's file tabs: an icon, the name, a dot while there are changes that are not saved and a close
+ * button that takes its place under the pointer; a middle click closes, a drag moves, and when there are more
+ * tabs than room a button lists them all. After a click-through from another section, the way back is here. */
 export function Tabs() {
   const b = back.value;
   const bar = useRef<HTMLDivElement>(null);
   // Where the strip has more to scroll to, its edge fades; the tab that is active is always in view.
   const [edge, setEdge] = useState({ l: false, r: false });
+  const [list, setList] = useState(false);
+  const [drag, setDrag] = useState<{ path: string; before: string | null } | null>(null);
   const measure = () => {
     const el = bar.current;
     if (el) setEdge({ l: el.scrollLeft > 2, r: el.scrollLeft + el.clientWidth < el.scrollWidth - 2 });
@@ -533,53 +601,150 @@ export function Tabs() {
     o.observe(el);
     return () => o.disconnect();
   }, []);
+  const names = tabs.value.map((p) => p.split('/').pop() ?? p);
+  const overflowing = edge.l || edge.r;
   return (
-    <div class={`tabbar files ${edge.l ? 'fade-l' : ''} ${edge.r ? 'fade-r' : ''}`} ref={bar} onScroll={measure}>
+    <div class="tabbar files">
       {b && (
         <button
           class="back-btn"
-          data-tip={`Back to ${SECTION_LABEL[b.section]}, as you left it (Esc, or Alt+Left outside the text)`}
+          data-tip={`Back to ${SECTION_LABEL[b.section]}, as you left it (Esc, or Alt+Left)`}
           onClick={requestBack}
         >
           <Icon name="arrow-left" size={14} />
           Back to {SECTION_LABEL[b.section]}
         </button>
       )}
-      {tabs.value.map((path) => {
-        const f = openFiles.value[path];
-        const base = path.split('/').pop() ?? path;
-        return (
-          <div
-            key={path}
-            class={`tab ${activeFile.value === path ? 'active' : ''}`}
-            title={path}
-            tabIndex={0}
-            onClick={() => (activeFile.value = path)}
-            onKeyDown={(e) => {
-              if (e.target !== e.currentTarget) return;
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                activeFile.value = path;
-              }
-            }}
-            onAuxClick={() => closeFile(path)}
-          >
-            <span>{base}</span>
-            {f && dirty(f) ? <span class="dot" /> : null}
-            <span
-              class="close"
-              role="button"
-              aria-label={`Close ${base}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                closeFile(path);
+      <div class={`tab-scroll ${edge.l ? 'fade-l' : ''} ${edge.r ? 'fade-r' : ''}`} ref={bar} onScroll={measure} role="tablist" aria-label="Open files">
+        {tabs.value.map((path, i) => {
+          const f = openFiles.value[path];
+          const base = names[i];
+          const twin = names.filter((n) => n === base).length > 1;
+          const on = activeFile.value === path;
+          return (
+            <div
+              key={path}
+              role="tab"
+              aria-selected={on}
+              class={`tab ${on ? 'active' : ''} ${drag?.path === path ? 'dragging' : ''} ${drag && drag.before === path && drag.path !== path ? 'drop-before' : ''}`}
+              title={path}
+              data-path={path}
+              tabIndex={0}
+              draggable
+              onClick={() => (activeFile.value = path)}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  activeFile.value = path;
+                } else if (e.key === 'Delete' || (e.key === 'w' && (e.ctrlKey || e.metaKey))) {
+                  e.preventDefault();
+                  closeFile(path);
+                } else if ((e.altKey || e.ctrlKey) && e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+                  // Move the tab: the keyboard's way of a drag.
+                  e.preventDefault();
+                  const at = tabs.value.indexOf(path);
+                  const to = at + (e.key === 'ArrowRight' ? 2 : -1);
+                  moveTab(path, tabs.value[to] ?? null);
+                  requestAnimationFrame(() => bar.current?.querySelector<HTMLElement>(`.tab[data-path="${CSS.escape(path)}"]`)?.focus());
+                }
               }}
+              onMouseDown={(e) => {
+                // A middle click is not a scroll.
+                if (e.button === 1) e.preventDefault();
+              }}
+              onAuxClick={(e) => {
+                if (e.button === 1) {
+                  e.preventDefault();
+                  closeFile(path);
+                }
+              }}
+              onDragStart={(e) => {
+                e.dataTransfer?.setData('text/plain', path);
+                if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+                setDrag({ path, before: path });
+              }}
+              onDragOver={(e) => {
+                if (!drag) return;
+                e.preventDefault();
+                const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                const before = dropBefore(tabs.value, path, e.clientX < r.left + r.width / 2);
+                if (before !== drag.before) setDrag({ path: drag.path, before });
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (drag) moveTab(drag.path, drag.before);
+                setDrag(null);
+              }}
+              onDragEnd={() => setDrag(null)}
             >
-              <Icon name="close" size={12} />
-            </span>
-          </div>
-        );
-      })}
+              <FileTypeIcon icon={fileIcon(base)} />
+              <span class="tab-name">{base}</span>
+              {twin && <span class="tab-dir">{dirOf(path)}</span>}
+              {f?.readonly && (
+                <span class="tab-lock" aria-label="read-only" data-tip="Read-only">
+                  <LockIcon />
+                </span>
+              )}
+              <span class="tab-end">
+                {f && dirty(f) ? <span class="dot" aria-label="unsaved changes" /> : null}
+                <span
+                  class="close"
+                  role="button"
+                  aria-label={`Close ${base}`}
+                  data-tip="Close"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeFile(path);
+                  }}
+                >
+                  <Icon name="close" size={12} />
+                </span>
+              </span>
+            </div>
+          );
+        })}
+        {drag && drag.before === null && <span class="tab-drop-end" aria-hidden="true" />}
+        {/* The end of the strip takes a dragged tab to the last place. */}
+        <span
+          class="tab-rest"
+          onDragOver={(e) => {
+            if (drag) {
+              e.preventDefault();
+              if (drag.before !== null) setDrag({ path: drag.path, before: null });
+            }
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (drag) moveTab(drag.path, null);
+            setDrag(null);
+          }}
+        />
+      </div>
+      {overflowing && tabs.value.length > 1 && (
+        <span class="tab-more-anchor">
+          <button type="button" class={`icon-btn tab-more ${list ? 'on' : ''}`} aria-label="Open files" aria-haspopup="menu" aria-expanded={list} data-tip="All open files" data-testid="tab-more" onClick={() => setList(!list)}>
+            <Icon name="chevron-down" size={14} />
+          </button>
+          {list && <TabOverflow close={() => setList(false)} />}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** A library file is shown to read and to follow, and cannot be changed here. */
+export function ReadOnlyBanner() {
+  const path = activeFile.value;
+  const f = path ? openFiles.value[path] : undefined;
+  const file = project.value?.files.find((x) => x.path === path);
+  if (!path || !f?.readonly) return null;
+  const std = file?.role === 'std' || path.startsWith('std/');
+  return (
+    <div class="ro-banner" role="note" data-testid="readonly-banner">
+      <LockIcon />
+      <span class="ro-title">{std ? 'Read-only: the standard library' : 'Read-only'}</span>
+      <span class="ro-help">{std ? 'It ships with netsmith. Read it, follow a type to its definition, copy what you need.' : 'Edit this file outside the editor; the page shows it as it is on disk.'}</span>
     </div>
   );
 }

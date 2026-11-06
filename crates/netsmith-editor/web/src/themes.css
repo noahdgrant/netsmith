@@ -163,6 +163,8 @@
   --cm-selection: color-mix(in srgb, var(--accent) 30%, transparent);
   --cm-match: color-mix(in srgb, var(--info) 26%, transparent);
   --cm-reveal: color-mix(in srgb, var(--accent) 38%, transparent);
+  --cm-hint: #8591a5;
+  --cm-guide: #1b222e;
 
   /* the schematic: a dark sheet. The names are the drawing's own (crates/netsmith-view/src/svg.rs); style.css hands them over.
    * A part is its outline in a dusty rose and a body that is only a tint of that outline over the sheet; wires are a calm sage,
@@ -326,6 +328,8 @@
   --cm-selection: color-mix(in srgb, var(--accent) 28%, transparent);
   --cm-match: color-mix(in srgb, var(--info) 22%, transparent);
   --cm-reveal: color-mix(in srgb, var(--accent) 34%, transparent);
+  --cm-hint: #5f6773;
+  --cm-guide: #ebe9e3;
 
   /* the paper look: cream sheet, dark green wires, dark red parts */
   --sch-sheet: #f6f4e8;
@@ -485,6 +489,8 @@
   --cm-selection: color-mix(in srgb, var(--accent) 45%, transparent);
   --cm-match: color-mix(in srgb, var(--info) 40%, transparent);
   --cm-reveal: color-mix(in srgb, var(--accent) 55%, transparent);
+  --cm-hint: #c9cfd7;
+  --cm-guide: #4a5260;
 
   --sch-sheet: #000000;
   --sch-wire: #53f07c;
@@ -643,6 +649,8 @@
   --cm-selection: color-mix(in srgb, var(--accent) 35%, transparent);
   --cm-match: color-mix(in srgb, var(--info) 28%, transparent);
   --cm-reveal: color-mix(in srgb, var(--accent) 40%, transparent);
+  --cm-hint: #3d3d3d;
+  --cm-guide: #b9b9b9;
 
   --sch-sheet: #ffffff;
   --sch-wire: #006b2b;

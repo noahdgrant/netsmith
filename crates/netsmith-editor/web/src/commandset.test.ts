@@ -55,3 +55,57 @@ describe('the Schematic group of the command registry', () => {
     expect(chordText('Shift+Tab', false)).toBe('Shift+Tab');
   });
 });
+
+// The source's commands (round 4): every action has an id, a group and, where it has one, a chord of its own.
+const SOURCE_KEYS: Record<string, string[]> = {
+  'nav.back': ['Escape'],
+  'nav.history.back': ['Alt+Left'],
+  'nav.history.forward': ['Alt+Right'],
+  'goto.symbol': ['Mod+Shift+O'],
+  'source.card.show': ['Mod+Alt+I'],
+  'source.breadcrumbs.focus': ['Mod+Alt+B'],
+  'source.fold.all': ['Mod+Alt+['],
+  'source.fold.unfold': ['Mod+Alt+]'],
+  'source.zoom.in': ['Mod+=', 'Mod++'],
+  'source.zoom.out': ['Mod+-'],
+  'source.zoom.reset': ['Mod+0'],
+  'source.replace': ['Mod+H'],
+  'source.wrap.toggle': ['Alt+Z'],
+};
+const SOURCE_SWITCHES = ['source.hints.toggle', 'source.cards.toggle', 'source.outline.toggle', 'source.wrap.toggle'];
+
+describe('the Source group of the command registry', () => {
+  beforeAll(() => registerAppCommands());
+
+  it('has each action with its chords', () => {
+    for (const [id, keys] of Object.entries(SOURCE_KEYS)) {
+      const c = find(id);
+      expect(c, id).toBeDefined();
+      expect([c!.keys, ...(c!.alsoKeys ?? [])]).toEqual(keys);
+    }
+  });
+
+  it('works from the editor: a chord with Ctrl or Alt, or one that says so', () => {
+    for (const id of Object.keys(SOURCE_KEYS)) {
+      const c = find(id)!;
+      expect(c.inFields ?? /^(Mod|Alt)/.test(c.keys!), `${id} would be dead inside the editor`).toBe(true);
+    }
+  });
+
+  it('has the switches, named for what they do next, and in the palette', () => {
+    for (const id of SOURCE_SWITCHES) expect(find(id), id).toBeDefined();
+    expect(find('source.hints.toggle')!.title).toMatch(/^Source: (Show|Hide) inline hints$/);
+    expect(find('source.cards.toggle')!.title).toMatch(/^Source: (Show|Hide) hover cards$/);
+    expect(find('source.outline.toggle')!.title).toMatch(/^Source: (Show|Hide) outline$/);
+  });
+
+  it('has go to symbol in the file and in the project, and the old chord goes to the one that suits the focus', () => {
+    expect(find('goto.symbol.file')!.keys).toBeUndefined();
+    expect(find('goto.symbol.project')!.keys).toBeUndefined();
+    expect(find('goto.symbol')!.title).toBe('Go to symbol…');
+  });
+
+  it('shares no chord with another command (Escape is shared on purpose: it goes back, and clears the selection, when each applies)', () => {
+    expect(chordClashes().filter((c) => !c.startsWith('Escape:'))).toEqual([]);
+  });
+});

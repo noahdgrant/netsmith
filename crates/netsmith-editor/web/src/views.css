@@ -606,5 +606,5 @@ tr.hover-lit { outline-offset: -1px; }
 .selchip-main { min-width: 72px; }
 .selchip-title { flex: 0 1 auto; min-width: 0; }
 /* the file tabs: an edge that fades says there is more to scroll to (Chrome.tsx sets fade-l and fade-r) */
-.tabbar.files { --fl: 0px; --fr: 0px; mask-image: linear-gradient(90deg, transparent 0, black var(--fl), black calc(100% - var(--fr)), transparent 100%); }
-.tabbar.files.fade-l { --fl: 28px; } .tabbar.files.fade-r { --fr: 36px; }
+.tab-scroll { --fl: 0px; --fr: 0px; mask-image: linear-gradient(90deg, transparent 0, black var(--fl), black calc(100% - var(--fr)), transparent 100%); }
+.tab-scroll.fade-l { --fl: 28px; } .tab-scroll.fade-r { --fr: 36px; }

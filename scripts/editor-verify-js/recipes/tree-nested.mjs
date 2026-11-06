@@ -129,7 +129,7 @@ export async function run({ page, shot, step, expect, section }) {
   expect((await row('d:module:proposed').getAttribute('aria-expanded')) === 'false', 'Enter closes a folder');
   await press('Enter');
   expect((await row('d:module:proposed').getAttribute('aria-expanded')) === 'true', 'and opens it again');
-  expect((await page.locator('[role=tree]').count()) === 1 && (await page.locator('[role=treeitem]').count()) > 20, 'a tree with tree items');
+  expect((await page.locator('.ft-tree[role=tree]').count()) === 1 && (await page.locator('.ft-tree [role=treeitem]').count()) > 20, 'a tree with tree items (the outline below it is a tree of its own)');
 
   step('collapse all and expand all');
   const count = () => page.locator('.ft-row').count();

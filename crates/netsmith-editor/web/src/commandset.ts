@@ -3,12 +3,20 @@
 // not here; the cheat sheet lists those from `LOCAL_KEYS` below. (The Schematic's keys are
 // commands, defined here and run through the handle the view hands out.)
 
+import { foldAll, unfoldAll } from '@codemirror/language';
+
 import { api } from './client';
 import { type Command, provide, register, runCommand } from './commands';
 import { stepProblem } from './feedback/derive';
 import { dock, filter, setDockOpen, toggleDock } from './feedback/state';
 import { SECTIONS, canSplit, closePane, splitRight } from './layout';
 import { openPicker, toggleCheatSheet } from './quickpick';
+import { cardAtCursor } from './source/cm-card';
+import { openCard } from './source/cm-card';
+import { sourceEditor } from './source/handle';
+import { canBack, canForward } from './source/navhistory';
+import { hoverCards, inlineHints, outlineOpen, resetEditorZoom, wordWrap, zoomEditor } from './source/prefs';
+import { openReplace } from './source/cm-search';
 import { type Selection, selectAndReveal, selection, setSelection } from './selection';
 import { THEMES, isDark, theme } from './theme';
 import { chooseTheme } from './themeUi';
@@ -21,6 +29,9 @@ import {
   closeFile,
   job,
   layout,
+  navBack,
+  navForward,
+  navHistory,
   requestBack,
   requestRun,
   revealSection,
@@ -184,6 +195,160 @@ const schematicCommands = (): Command[] => {
   ];
 };
 
+// ---- the source's commands ----
+// They act on the editor that is on show (`source/handle.ts`), the history and the preferences
+// (`source/prefs.ts`). The switches that a person turns on and off read as the thing to do next
+// ("Show inline hints" while they are hidden); both are one command, found by its id.
+
+const sourceHere = () => focusedSection() === 'source';
+const editorOn = () => sourceHere() && sourceEditor.view !== null && activeFile.value !== null;
+
+const sourceCommands = (): Command[] => [
+  {
+    id: 'source.card.show',
+    title: 'Show the hover card at the cursor',
+    group: 'Source',
+    keys: 'Mod+Alt+I',
+    inFields: true,
+    aliases: ['hover', 'quick info', 'describe', 'peek', 'tooltip'],
+    when: editorOn,
+    run: () => {
+      const v = sourceEditor.view;
+      const path = sourceEditor.path;
+      if (!v || !path) return;
+      if (!cardAtCursor(v.state, path)) {
+        say('Nothing to describe at the cursor: put it on a part, a type or a net name.');
+        return;
+      }
+      v.focus();
+      v.dispatch({ effects: openCard.of(v.state.selection.main.head) });
+    },
+  },
+  {
+    id: 'source.breadcrumbs.focus',
+    title: 'Open the breadcrumb of the cursor',
+    group: 'Source',
+    keys: 'Mod+Alt+B',
+    inFields: true,
+    aliases: ['siblings', 'navigate', 'path'],
+    when: () => sourceHere() && activeFile.value !== null,
+    run: () => window.dispatchEvent(new Event('netsmith:crumbs')),
+  },
+  {
+    id: 'source.fold.all',
+    title: 'Fold all',
+    group: 'Source',
+    keys: 'Mod+Alt+[',
+    inFields: true,
+    aliases: ['collapse', 'fold every block'],
+    when: editorOn,
+    run: () => {
+      if (sourceEditor.view) foldAll(sourceEditor.view);
+    },
+  },
+  {
+    id: 'source.fold.unfold',
+    title: 'Unfold all',
+    group: 'Source',
+    keys: 'Mod+Alt+]',
+    inFields: true,
+    aliases: ['expand', 'unfold every block'],
+    when: editorOn,
+    run: () => {
+      if (sourceEditor.view) unfoldAll(sourceEditor.view);
+    },
+  },
+  {
+    id: 'source.zoom.in',
+    title: 'Zoom in the editor',
+    group: 'Source',
+    keys: 'Mod+=',
+    alsoKeys: ['Mod++'],
+    inFields: true,
+    aliases: ['bigger text', 'font size', 'larger'],
+    when: sourceHere,
+    run: () => void zoomEditor(1),
+  },
+  {
+    id: 'source.zoom.out',
+    title: 'Zoom out the editor',
+    group: 'Source',
+    keys: 'Mod+-',
+    inFields: true,
+    aliases: ['smaller text', 'font size'],
+    when: sourceHere,
+    run: () => void zoomEditor(-1),
+  },
+  {
+    id: 'source.zoom.reset',
+    title: 'Reset the editor zoom',
+    group: 'Source',
+    keys: 'Mod+0',
+    inFields: true,
+    aliases: ['font size', 'default text size'],
+    when: sourceHere,
+    run: () => void resetEditorZoom(),
+  },
+  {
+    id: 'source.replace',
+    title: 'Find and replace',
+    group: 'Source',
+    keys: 'Mod+H',
+    inFields: true,
+    aliases: ['search', 'substitute'],
+    when: editorOn,
+    run: () => {
+      const v = sourceEditor.view;
+      if (!v) return;
+      v.focus();
+      openReplace(v);
+    },
+  },
+];
+
+/** The switches, with the title that says what turning each does now. */
+const sourceSwitches = (): Command[] => [
+  {
+    id: 'source.hints.toggle',
+    title: inlineHints.value ? 'Source: Hide inline hints' : 'Source: Show inline hints',
+    group: 'Source',
+    aliases: ['values', 'lcsc', 'part numbers', 'annotations', 'hints'],
+    run: () => {
+      inlineHints.value = !inlineHints.peek();
+    },
+  },
+  {
+    id: 'source.cards.toggle',
+    title: hoverCards.value ? 'Source: Hide hover cards' : 'Source: Show hover cards',
+    group: 'Source',
+    aliases: ['tooltip', 'hover', 'quick info'],
+    run: () => {
+      hoverCards.value = !hoverCards.peek();
+    },
+  },
+  {
+    id: 'source.outline.toggle',
+    title: outlineOpen.value ? 'Source: Hide outline' : 'Source: Show outline',
+    group: 'Source',
+    aliases: ['symbols', 'structure', 'sidebar'],
+    run: () => {
+      outlineOpen.value = !outlineOpen.peek();
+    },
+  },
+  {
+    id: 'source.wrap.toggle',
+    title: wordWrap.value ? 'Source: Do not wrap long lines' : 'Source: Wrap long lines',
+    group: 'Source',
+    keys: 'Alt+Z',
+    inFields: true,
+    aliases: ['word wrap', 'soft wrap'],
+    when: sourceHere,
+    run: () => {
+      wordWrap.value = !wordWrap.peek();
+    },
+  },
+];
+
 let done = false;
 
 /** Register the editor's commands (once). */
@@ -204,13 +369,38 @@ export function registerAppCommands() {
   list.push(
     {
       id: 'nav.back',
+      title: 'Back to the view you came from',
+      group: 'Go to',
+      keys: 'Escape',
+      inFields: true,
+      // A card, a list or the find panel that is open takes Escape first.
+      when: () => back.value !== null && focusedSection() === 'source' && !document.querySelector('.sp, .cm-tooltip-autocomplete, [data-testid="hover-card"], [data-testid="crumb-menu"], [data-testid="tab-menu"]'),
+      run: () => requestBack(),
+    },
+    {
+      id: 'nav.history.back',
       title: 'Back',
       group: 'Go to',
       keys: 'Alt+Left',
-      alsoKeys: ['Escape'],
       inFields: true,
-      when: () => back.value !== null && focusedSection() === 'source',
-      run: () => requestBack(),
+      aliases: ['previous location', 'go back', 'history'],
+      // The places the cursor was taken to, one step at a time; at the first one, back to the view the
+      // click-through came from.
+      when: () => focusedSection() === 'source' && (canBack(navHistory.value) || back.value !== null),
+      run: () => {
+        if (canBack(navHistory.peek())) void navBack();
+        else requestBack();
+      },
+    },
+    {
+      id: 'nav.history.forward',
+      title: 'Forward',
+      group: 'Go to',
+      keys: 'Alt+Right',
+      inFields: true,
+      aliases: ['next location', 'go forward', 'history'],
+      when: () => focusedSection() === 'source' && canForward(navHistory.value),
+      run: () => void navForward(),
     },
     {
       id: 'goto.anything',
@@ -231,11 +421,28 @@ export function registerAppCommands() {
     },
     {
       id: 'goto.symbol',
-      title: 'Go to module or definition…',
+      title: 'Go to symbol…',
       group: 'Go to',
       keys: 'Mod+Shift+O',
-      aliases: ['symbol', 'outline'],
+      inFields: true,
+      aliases: ['symbol', 'outline', 'module', 'definition'],
+      // In the editor it lists what the open file defines; elsewhere, the project's modules and definitions.
       run: () => openPicker('@'),
+    },
+    {
+      id: 'goto.symbol.file',
+      title: 'Go to symbol in the open file…',
+      group: 'Go to',
+      aliases: ['outline', 'definition in file'],
+      when: () => activeFile.value !== null,
+      run: () => openPicker('@', true),
+    },
+    {
+      id: 'goto.symbol.project',
+      title: 'Go to module or definition in the project…',
+      group: 'Go to',
+      aliases: ['module', 'definition', 'library'],
+      run: () => openPicker('@', false),
     },
     {
       id: 'goto.net',
@@ -405,7 +612,7 @@ export function registerAppCommands() {
       run: () => toggleCheatSheet(),
     },
   );
-  register(...list, ...schematicCommands());
+  register(...list, ...schematicCommands(), ...sourceCommands());
   // These depend on the window and the project, so they are asked for each time.
   provide(() => {
     const two = layout.value.panes.length === 2 && visible.value.length === 2;
@@ -432,7 +639,7 @@ export function registerAppCommands() {
         aliases: ['board'],
         run: () => chooseBoard(b.name),
       }));
-    return [toggle, ...boards];
+    return [toggle, ...boards, ...sourceSwitches()];
   });
 }
 
@@ -466,6 +673,10 @@ export const LOCAL_KEYS: { group: string; keys: [string, string][] }[] = [
     group: 'Source',
     keys: [
       ['F12 or Ctrl+click', 'go to the definition under the cursor'],
+      ['Hover, or Ctrl+Alt+I', 'a card for the part, net, module or type under the pointer or cursor'],
+      ['Alt+Left · Alt+Right', 'back and forward through the places the cursor was taken to'],
+      ['Ctrl+Shift+O', 'go to a symbol in the open file'],
+      ['Ctrl+Alt+[ · Ctrl+Alt+]', 'fold all · unfold all'],
       ['Ctrl+F · Ctrl+G', 'find · find next'],
       ['Ctrl+Z · Ctrl+Shift+Z', 'undo / redo (survives a file switch)'],
       ['Tab · Shift+Tab', 'indent / outdent'],

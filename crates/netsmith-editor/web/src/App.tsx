@@ -4,6 +4,7 @@ import { Editor } from './components/Editor';
 import {
   Conflict,
   PaneNotice,
+  ReadOnlyBanner,
   SectionStrip,
   TabMenu,
   Tabs,
@@ -11,6 +12,7 @@ import {
   dragging,
   tabMenu,
 } from './components/Chrome';
+import { Breadcrumbs } from './components/Breadcrumbs';
 import { ProblemsDock } from './components/ProblemsDock';
 import { Sidebar } from './components/Sidebar';
 import { CheatSheet } from './components/CheatSheet';
@@ -54,7 +56,9 @@ function SectionBody({ section }: { section: Section }) {
           <Sidebar />
           <div class="code">
             <Tabs />
+            <Breadcrumbs />
             <Conflict />
+            <ReadOnlyBanner />
             <Editor />
           </div>
         </div>

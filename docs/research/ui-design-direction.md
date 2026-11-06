@@ -135,3 +135,47 @@ Left, in order of how much I would do it next:
 7. A missing file, a failed analysis of the project and a server that goes away after it answered have no state in a view, only the status bar and a toast.
 8. Focus rings were checked by a script (a ring exists), not by looking at each one at 200 %.
 9. The `Split right` button is dimmed below 1280 px without a word about why (the second pane needs room).
+
+## Round 4: the source knows the electronics
+
+Status: 2026-11-06, round 4 (UI only, no change to the server). The owner's words: the editor must be world-class, and the Source view is where a code-first electronics engineer lives. It was a good CodeMirror editor with a file tree, and nothing in it knew a part from a word. The benchmark's list (`ui-benchmark.md`: VS Code's hovers, breadcrumbs, outline and peek; atopile's value hints; Altium's cross-probing) asked for hover cards, breadcrumbs, an outline, history and live value hints. All of it is built from what `/api/analysis`, `/api/board`, `/api/power`, `/api/bom`, `/api/project`, `/api/definition` and `/api/file` already answer.
+
+### Reading the text, because the server does not say where a definition ends
+
+`Def` is a kind, a name and a line. The breadcrumbs, the outline, the folds, the completion and go to symbol need the extent of each definition and what it declares, and they must work on text that is not saved. `source/symbols.ts` reads the text with the tokenizer that colours it (`nsm.ts`): definitions by their keyword, declarations (`.r1: Resistor { ... }`) by `. name :`, nested by the braces, ignoring braces in strings and comments; the role of a declaration (a part, a module, a port, a field) is the kind of the definition its type names, taken from the project's file list. It is the one place the page parses the language; `Def` gaining an end line and its children would let it go.
+
+### Hover cards
+
+A card shows after 250 ms at rest on the name of a declaration, on a type, or on a string that names a net, and goes when the pointer moves off the token (CodeMirror's `hoverTooltip`); `Ctrl+Alt+I` opens it at the cursor and Escape closes it. `source/card.ts` is two pure steps: `targetAt` reads the token under the pointer, `cardFor` builds the card from the board's detail, the power tree, the bill of materials and, for a definition, the text of its file (signature, the doc comment above it, what it declares, its parts, ports and problems). The card is drawn with the inspector's own parts (`InspectorHead`, `Defs`, `PinChip`) at 12 px radius on `--elev-3`; a pin chip picks its net in the shared selection and lights it through the shared hover while the pointer is on it; the card itself lights the part, net or module in the other views while it is open; and a row says where to see it: Schematic, PCB, BOM. A declaration that the board shown does not hold (the other board's `.r1`) falls back to its type's definition, with a line that says so.
+
+### Breadcrumbs, history, outline
+
+Above the text: Back and Forward (the places the cursor was taken to by go to, a click-through from another view, the outline, a problem; a stack and an index, `source/navhistory.ts`), then the file, the definition and the declaration at the cursor, each a button with a dropdown of its siblings (arrow keys, Enter, Escape), then switches for wrapping, hints and the outline. `Alt+Left` goes back through the history and, at its first place, back to the view the click-through came from; the `Back to <view>` chip stays. The outline is a panel at the foot of the file tree that takes the room the tree leaves: the definitions and their declarations with kind icons, a filter, a badge for the problems in each, the entry of the cursor marked and scrolled into view, a drag handle for its height.
+
+### Hints, completion, find, folds, tabs
+
+- **Inline hints** are decorations at the end of a line, not text: the resolved value, package and LCSC number of a part (`10u · 0402 · C315248`; a module placed twice says `×2`), and the solved voltage of a rail where the source names its net. They are not selected, not copied (a test copies the whole file and compares it with the file), and they move no text. Chosen from the board's detail when the file is as on disk; while it has edits they stay on their lines.
+- **Completion** is the palette's list: a kind icon (part, module, interface, net, keyword, unit, field), the name, a detail. After a dot the members of the definition (and, after `.a.`, of `.a`'s type), after `name:` the types, after a number the units, inside `.net &= "` the board's nets, at the start of a line the keywords.
+- **Find and replace** is a card at the top right of the text with the page's controls: a count (`3 of 12`), previous and next, case, whole word, regular expression, and a second row to replace (`Ctrl+H`).
+- **The gutter** has muted numbers, a soft accent bar at the cursor's line, fold marks that show on hover, and the page's severity icons for problems. **Folds** work on any block that ends a line in `{`, and a folded block says how many lines it hides. **Indent guides** are a background gradient of the line (nothing to select). The lint tooltip is a card: severity, stage, the compiler's message, where, and what to do.
+- **Tabs** have the file's icon, an unsaved dot that gives way to the close button under the pointer, a lock on a library file, the folder when two tabs share a name, a middle click to close, a drag to reorder (`Alt+Shift+Left` and `Right` from the keyboard), and a list of every open file when they do not fit. A library file has a one-line read-only note.
+
+Commands: back, forward, show the hover card, open the breadcrumb, fold all, unfold all, zoom in, out and reset (`Ctrl+=`, `Ctrl+-`, `Ctrl+0`, remembered), find and replace, wrap, and switches for hints, cards and the outline named for what turning them does next; `Ctrl+Shift+O` lists the open file's symbols when the editor has the keys, and the project's modules and definitions otherwise.
+
+New tokens: `--cm-hint` (4.5:1 on the canvas in every theme) and `--cm-guide` (a hairline step from the canvas, held between 1.08 and 3:1, and quieter than the hint).
+
+### What the server would make better
+
+- `Def` with an `endLine` and `children` (the declarations), so the page need not read the text for the outline.
+- A pin's function name (`VIN`, `EN`, `SW`) next to its pad number in `NetInfo.pins`: a part's card lists pad numbers and nets.
+- The doc comment and signature of a definition in `/api/definition`'s answer, so a card need not fetch a library file.
+- The solved value of a part (`.effective_capacitance`, the chosen tolerance) in `PartInfo`: a hint shows what the catalog row is, not what the solver derived.
+- A board for each file (which boards a module file is in), so a declaration in a module shared by two boards has a card for the one the person looks at.
+- `PowerNode.voltage.text` has no space before the unit (`3.135V..3.465V`), where the rest of the page writes `3.135 V`.
+
+### Found while building
+
+- A render of Preact inside another render (CodeMirror builds a tooltip while the page is rendering) turns `hooksAllowed` off in `preact/debug`, and the next hook throws `Hook can only be invoked from render methods`. The card is drawn a microtask after CodeMirror's update, and the gutter and completion icons are SVG elements built from the same drawings (`source/dom.tsx`), not rendered.
+- The file tree reset its scroll to where it was when a press redrew it, before the browser's scroll event had said where it was: a row scrolled into view just before the click moved from under the pointer. The press now records the place. (It showed because the outline made the tree short enough to scroll in a recipe.)
+- Another part of the page already used the class `crumb`; the breadcrumbs have their own prefix (`bc-`).
+

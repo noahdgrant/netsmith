@@ -8,7 +8,7 @@ import { touchRecent } from './commands';
 import { load, save } from './storage';
 
 /** Open when not null. `initial` is what the input starts with, `nonce` makes opening twice a new open. */
-export const picker = signal<{ initial: string; nonce: number } | null>(null);
+export const picker = signal<{ initial: string; nonce: number; fileScope: boolean } | null>(null);
 export const cheatSheet = signal(false);
 /** The group of the cheat sheet to scroll to when it opens (`Schematic`), or null. */
 export const cheatGroup = signal<string | null>(null);
@@ -53,11 +53,15 @@ export function usedPick(id: string) {
 
 let opens = 0;
 
+/** Whether the keys are in the source editor: go to symbol then lists what the open file defines. */
+export const editorHasFocus = (): boolean => typeof document !== 'undefined' && !!document.activeElement?.closest?.('.cm-editor');
+
 /** Open the input. `prefix` is a mode (`>`, `@`, `#`, `:`); without one it starts with the last
- * search of the session. */
-export function openPicker(prefix?: string) {
+ * search of the session. `@` lists the open file's symbols when the editor has the keys (or when
+ * `fileScope` says so), and the project's modules and definitions otherwise. */
+export function openPicker(prefix?: string, fileScope = editorHasFocus()) {
   cheatSheet.value = false;
-  picker.value = { initial: prefix ?? lastQuery, nonce: ++opens };
+  picker.value = { initial: prefix ?? lastQuery, nonce: ++opens, fileScope };
 }
 
 export function closePicker() {

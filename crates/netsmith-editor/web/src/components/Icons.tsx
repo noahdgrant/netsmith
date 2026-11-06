@@ -7,7 +7,7 @@ import type { ComponentChildren } from 'preact';
 
 import type { Severity } from '../api';
 
-const P: Record<string, ComponentChildren> = {
+export const P: Record<string, ComponentChildren> = {
   // the sections
   source: (
     <>
@@ -301,6 +301,24 @@ const P: Record<string, ComponentChildren> = {
     <>
       <path d="M3.2 11.6A3.1 3.1 0 0 1 4.6 5.7a3.8 3.8 0 0 1 6.6-.7M12.6 6.4a2.6 2.6 0 0 1-.4 5.2H6" />
       <path d="M2.2 2.2l11.6 11.6" />
+    </>
+  ),
+  // round 4: the source
+  'arrow-right': <path d="M3 8h10M9 4l4 4-4 4" />,
+  outline: <path d="M2.5 3.5h11M6 8h7.5M9.5 12.5H13.5" />,
+  wrap: (
+    <>
+      <path d="M2 4h12M2 12h4" />
+      <path d="M2 8h9.2a2 2 0 0 1 0 4H9.4M10.6 10.6L9.2 12l1.4 1.4" />
+    </>
+  ),
+  more: <path d="M3.5 8h.01M8 8h.01M12.5 8h.01" stroke-width="2" />,
+  braces: <path d="M6 2.8c-1.4 0-1.8.7-1.8 1.8v1.2c0 .9-.5 1.5-1.5 2.2 1 .7 1.5 1.3 1.5 2.2v1.2c0 1.1.4 1.8 1.8 1.8M10 2.8c1.4 0 1.8.7 1.8 1.8v1.2c0 .9.5 1.5 1.5 2.2-1 .7-1.5 1.3-1.5 2.2v1.2c0 1.1-.4 1.8-1.8 1.8" />,
+  fold: <path d="M4 5.5L8 2.5l4 3M4 10.5l4 3 4-3M2.5 8h11" />,
+  zoom: (
+    <>
+      <circle cx="7" cy="7" r="4.4" />
+      <path d="M10.4 10.4L14 14M5.2 7h3.6M7 5.2v3.6" />
     </>
   ),
   inbox: <path d="M2.2 9.2l1.6-5.4a1 1 0 0 1 1-.7h6.4a1 1 0 0 1 1 .7l1.6 5.4v3a1 1 0 0 1-1 1H3.2a1 1 0 0 1-1-1zM2.4 9.2h3.3l.7 1.6h3.2l.7-1.6h3.3" />,
