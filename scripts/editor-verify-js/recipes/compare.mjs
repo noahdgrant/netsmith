@@ -306,7 +306,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
       return c;
     };
     // The mark is the rectangle outside the symbol (schematic/halo.ts); the symbol's own strokes stay as drawn.
-    const stroke = (sel) => getComputedStyle(document.querySelector(`${sel} > .part-cmp`)).stroke;
+    const stroke = (sel) => getComputedStyle(document.querySelector(sel).previousElementSibling.previousElementSibling).stroke;
     return { changed: stroke('svg.schematic .part.cmp-changed'), renumbered: stroke('svg.schematic .part.cmp-renumbered'), tokenChanged: token('--cmp-changed'), tokenRenumbered: token('--cmp-renumbered') };
   });
   expect(colours.changed === colours.tokenChanged && colours.renumbered === colours.tokenRenumbered && colours.changed !== colours.renumbered, `the marks are the comparison's colours: changed ${colours.changed}, renumbered ${colours.renumbered}`);

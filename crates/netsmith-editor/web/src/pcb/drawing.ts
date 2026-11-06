@@ -114,7 +114,14 @@ export function prepare(text: string): Drawing | null {
     label.setAttribute('x', String(here + 0.9));
     label.setAttribute('y', String(top + 0.9 + stacked * 0.7));
     label.textContent = planeLabel(plane.getAttribute('data-net')!, layer);
-    plane.parentNode?.appendChild(label);
+    // On top of the parts (a word under a pad is cut by it), in a group of its own after the drawing's layers.
+    let holder = svg.querySelector(':scope > g.l-plane-labels');
+    if (!holder) {
+      holder = doc.createElementNS('http://www.w3.org/2000/svg', 'g');
+      holder.setAttribute('class', 'l-plane-labels');
+      (plane.parentNode?.parentNode ?? svg).appendChild(holder);
+    }
+    holder.appendChild(label);
   });
   return {
     html: svg.outerHTML,

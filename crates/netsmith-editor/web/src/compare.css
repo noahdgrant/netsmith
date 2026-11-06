@@ -251,9 +251,9 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
  * the pick owns the outline and the hover adds its light to the glow, so each signal stays when the others are on. */
 /* the schematic: a changed part is outlined by the rectangle outside its pick halo (schematic/halo.ts), amber, a new one green, a renumbered one neutral and
  * dashed, with a faint tint; the symbol's strokes stay as drawn. The designator takes the mark's colour too, so colour is not the only signal. */
-.cmp-on svg.schematic .part.cmp-added { --cmp-c: var(--cmp-added); } .cmp-on svg.schematic .part.cmp-changed { --cmp-c: var(--cmp-changed); } .cmp-on svg.schematic .part.cmp-renumbered { --cmp-c: var(--cmp-renumbered); }
-.cmp-on svg.schematic .part:is(.cmp-added, .cmp-changed, .cmp-renumbered) > .part-cmp { stroke: var(--cmp-c); stroke-width: 2px; fill: color-mix(in srgb, var(--cmp-c) 9%, transparent); }
-.cmp-on svg.schematic .part.cmp-renumbered > .part-cmp { stroke-dasharray: 5 4; fill: none; }
+.cmp-on svg.schematic .part-cmp:has(+ .part-halo + .part.cmp-added) { --cmp-c: var(--cmp-added); } .cmp-on svg.schematic .part-cmp:has(+ .part-halo + .part.cmp-changed) { --cmp-c: var(--cmp-changed); } .cmp-on svg.schematic .part-cmp:has(+ .part-halo + .part.cmp-renumbered) { --cmp-c: var(--cmp-renumbered); }
+.cmp-on svg.schematic .part-cmp:has(+ .part-halo + .part:is(.cmp-added, .cmp-changed, .cmp-renumbered)) { stroke: var(--cmp-c); stroke-width: 2px; fill: color-mix(in srgb, var(--cmp-c) 9%, transparent); }
+.cmp-on svg.schematic .part-cmp:has(+ .part-halo + .part.cmp-renumbered) { stroke-dasharray: 5 4; fill: none; }
 .cmp-on svg.schematic .part.cmp-added text.ref { fill: var(--cmp-added); }
 .cmp-on svg.schematic .part.cmp-changed text.ref { fill: var(--cmp-changed); }
 .cmp-on svg.schematic .part.cmp-renumbered text.ref { fill: var(--cmp-renumbered); }

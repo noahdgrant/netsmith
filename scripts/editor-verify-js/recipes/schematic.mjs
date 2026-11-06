@@ -24,7 +24,7 @@ export async function run({ page, shot, step, expect, section }) {
       const selRgb = getComputedStyle(probe).color;
       probe.remove();
       const body = getComputedStyle(part.querySelector(':scope > .s'));
-      const halo = getComputedStyle(part.querySelector(':scope > .part-halo'));
+      const halo = getComputedStyle(part.previousElementSibling);
       const text = getComputedStyle(part.querySelector('text.ref'));
       return { sel, selRgb, stroke: body.stroke, dash: body.strokeDasharray, width: body.strokeWidth, haloStroke: halo.stroke, haloFill: halo.fill, textFill: text.fill, classes: part.getAttribute('class') };
     });

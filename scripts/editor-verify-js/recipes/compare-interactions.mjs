@@ -138,8 +138,9 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
       const e = document.querySelector(s);
       const shape = e.querySelector(':scope > .s');
       const st = (el) => (el ? getComputedStyle(el) : null);
-      const halo = st(e.querySelector(':scope > .part-halo'));
-      const cmp = st(e.querySelector(':scope > .part-cmp'));
+      // the overlay rectangles are the part's previous siblings (schematic/halo.ts): the halo, then the mark outside it
+      const halo = st(e.previousElementSibling?.classList.contains('part-halo') ? e.previousElementSibling : null);
+      const cmp = st(e.previousElementSibling?.previousElementSibling?.classList.contains('part-cmp') ? e.previousElementSibling.previousElementSibling : null);
       return {
         classes: [...e.classList].sort().join(' '),
         filter: getComputedStyle(e).filter,

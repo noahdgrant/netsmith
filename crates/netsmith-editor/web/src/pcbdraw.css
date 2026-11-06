@@ -26,7 +26,7 @@
 .pcb-host svg .l-planes > [data-plane="2"] { --plane: var(--pcb-plane-2); }
 .pcb-host svg .l-planes > [data-plane="3"] { --plane: var(--pcb-plane-3); }
 .pcb-host svg .l-planes > [data-plane="4"] { --plane: var(--pcb-plane-4); }
-.pcb-host svg .l-planes > text.plane-label { fill: var(--pcb-key); font-family: var(--sans); font-size: clamp(calc(9 * var(--pxl, .04px)), .36px, calc(11 * var(--pxl, .04px))); font-weight: 600; letter-spacing: .02em; dominant-baseline: central; paint-order: stroke; stroke: var(--pcb-board); stroke-width: calc(3 * var(--px, .04)); stroke-linejoin: round; opacity: .9; }
+.pcb-host svg .l-plane-labels > text.plane-label { fill: var(--pcb-key); font-family: var(--sans); font-size: clamp(calc(9 * var(--pxl, .04px)), .36px, calc(11 * var(--pxl, .04px))); font-weight: 600; letter-spacing: .02em; dominant-baseline: central; paint-order: stroke; stroke: var(--pcb-board); stroke-width: calc(3 * var(--px, .04)); stroke-linejoin: round; opacity: .9; }
 
 /* pads: copper on the front, teal-blue on the back, a tone and a ring for a hole that goes through */
 .pcb-host svg .l-pads > g[data-pad] > :first-child { fill: var(--pcb-front); stroke: color-mix(in srgb, var(--pcb-board) 70%, transparent); stroke-width: .06px; }

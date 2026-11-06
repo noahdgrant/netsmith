@@ -3,6 +3,10 @@
 // recoloured by those states (a recoloured or dashed symbol reads as a broken one); the page's CSS paints the
 // rectangle by the class the part has (`mark`, `linked`, `hover-lit`, `cmp-*`).
 //
+// The rectangles are the part's previous siblings, not its children: a part's box (what the recipes measure, what a
+// click in the gap around a symbol hits) is the symbol's, and a rectangle that is a child would grow it. The CSS finds
+// the part by `:has(+ .part)`, which is why the order matters: `.part-cmp`, `.part-halo`, the part.
+//
 // The rectangles are there from the first look at a sheet, empty (no fill, no stroke), so a state is a class and
 // nothing is added or taken away while the pointer moves. They are made once a part has a box (a sheet that is not
 // on show has none), from the boxes of the body's own shapes and pins, not of the labels.
@@ -62,16 +66,17 @@ function rect(cls: string, b: Box, rx: number): SVGRectElement {
   return r;
 }
 
-/** Give every part of `root` that has a box and no halo yet its two rectangles (`part-cmp` outside `part-halo`). */
+/** Give every part of `root` that has a box and no halo yet its two rectangles, in front of it in the document (`part-cmp` outside `part-halo`). */
 export function addHalos(root: Element) {
   for (const part of root.querySelectorAll<SVGGElement>('g.part:not([data-halo])')) {
     // Nothing is laid out for a part of a sheet that is hidden: it is done when the sheet is shown.
     if (part.getClientRects().length === 0) continue;
     const body = bodyBox(part);
     if (!body) continue;
-    const first = part.querySelector(':scope > title')?.nextSibling ?? part.firstChild;
-    part.insertBefore(rect('part-cmp', padBox(body, MARK_PAD, 2 * MARK_PAD), 1.8), first);
-    part.insertBefore(rect('part-halo', padBox(body, HALO_PAD, 2 * HALO_PAD), 1.2), first?.nextSibling ?? null);
+    const parent = part.parentNode;
+    if (!parent) continue;
+    parent.insertBefore(rect('part-cmp', padBox(body, MARK_PAD, 2 * MARK_PAD), 1.8), part);
+    parent.insertBefore(rect('part-halo', padBox(body, HALO_PAD, 2 * HALO_PAD), 1.2), part);
     part.setAttribute('data-halo', '');
   }
 }
