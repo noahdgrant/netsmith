@@ -150,3 +150,17 @@ export function roleOf(sym: Sym, kindOf: (type: string) => string | undefined): 
   if (k === 'interface') return 'port';
   return 'field';
 }
+
+// The breadcrumbs, the outline and the cards all ask for the symbols of the text on show, on every keystroke:
+// the last few texts are scanned once.
+const recent: [string, Sym[]][] = [];
+
+/** `scanSymbols`, remembering the last four texts. The result must not be changed. */
+export function scanCached(text: string): Sym[] {
+  const hit = recent.find(([t]) => t === text);
+  if (hit) return hit[1];
+  const syms = scanSymbols(text);
+  recent.unshift([text, syms]);
+  if (recent.length > 4) recent.pop();
+  return syms;
+}

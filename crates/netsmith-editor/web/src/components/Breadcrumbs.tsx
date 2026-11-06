@@ -8,7 +8,7 @@ import { withKey } from '../commands';
 import { type Crumb, type CrumbOption, crumbOptions, crumbPath } from '../source/crumbs';
 import { canBack, canForward } from '../source/navhistory';
 import { inlineHints, outlineOpen, wordWrap } from '../source/prefs';
-import { scanSymbols } from '../source/symbols';
+import { scanCached } from '../source/symbols';
 import { activeFile, cursor, goTo, navBack, navForward, navHistory, openFile, openFiles, project, say } from '../store';
 import { Icon, type IconName } from './Icons';
 import { KindIcon } from './TreeIcons';
@@ -16,7 +16,7 @@ import { KindIcon } from './TreeIcons';
 /** The file's symbols, scanned again only when its text changes. */
 export function useSymbols(path: string | null) {
   const text = path ? openFiles.value[path]?.text : undefined;
-  return useMemo(() => (text === undefined || !path?.endsWith('.nsm') ? [] : scanSymbols(text)), [text, path]);
+  return useMemo(() => (text === undefined || !path?.endsWith('.nsm') ? [] : scanCached(text)), [text, path]);
 }
 
 function CrumbIcon({ icon }: { icon: string }) {

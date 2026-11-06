@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { containing, docAbove, flatten, roleOf, scanSymbols, siblings } from './symbols';
+import { containing, docAbove, flatten, roleOf, scanCached, scanSymbols, siblings } from './symbols';
 
 const SOURCE = `//! Two boards.
 
@@ -110,5 +110,14 @@ describe('roleOf', () => {
   const syms = scanSymbols('board A {\n    .r: Resistor\n    .s: LdoStage\n    .p: Rail\n    .q: Resistance\n}\n');
   it('says what a declaration stands for by the kind of its type', () => {
     expect(syms[0].children.map((c) => roleOf(c, (t) => kinds[t]))).toEqual(['part', 'module', 'port', 'field']);
+  });
+});
+
+describe('scanCached', () => {
+  it('scans a text once and gives the same symbols to the next to ask', () => {
+    const a = scanCached(SOURCE);
+    expect(scanCached(SOURCE)).toBe(a);
+    expect(a.map((s) => s.name)).toEqual(scanSymbols(SOURCE).map((s) => s.name));
+    expect(scanCached(`${SOURCE}\nboard Z {\n}\n`)).not.toBe(a);
   });
 });

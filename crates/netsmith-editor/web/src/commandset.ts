@@ -373,7 +373,8 @@ export function registerAppCommands() {
       group: 'Go to',
       keys: 'Escape',
       inFields: true,
-      when: () => back.value !== null && focusedSection() === 'source',
+      // A card, a list or the find panel that is open takes Escape first.
+      when: () => back.value !== null && focusedSection() === 'source' && !document.querySelector('.sp, .cm-tooltip-autocomplete, [data-testid="hover-card"], [data-testid="crumb-menu"], [data-testid="tab-menu"]'),
       run: () => requestBack(),
     },
     {
