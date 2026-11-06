@@ -604,8 +604,6 @@ tr.hover-lit { outline-offset: -1px; }
 .bom .empty { height: 100%; }
 .empty.bad { color: var(--text-muted); white-space: normal; }
 .note-line.empty-line { display: flex; align-items: center; gap: 0.5rem; }
-/* a very wide window: the table keeps a width a person can read across (the Build page already does) */
-.bom { padding-inline: max(0px, calc((100% - 110rem) / 2)); }
 /* the picked thing's chip keeps a width a person can read, whatever the search box takes (it was squeezed to a sliver at 1280) */
 .tb-left { overflow: hidden; }
 .tb-left .selchip { min-width: 7.5rem; }
