@@ -78,6 +78,7 @@ fn board_of_kind(
     .unwrap();
     std::fs::write(folder.join("SMALL.kicad_mod"), footprint("SMALL", 4.0, 2.5)).unwrap();
     let part = |refdes: &str, kind: &str, package: &str| Part {
+        provides: Vec::new(),
         refdes: refdes.into(),
         kind: kind.into(),
         value: package.into(),

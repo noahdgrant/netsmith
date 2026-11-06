@@ -24,6 +24,7 @@ fn board(count: usize, size: (f64, f64)) -> Result<Board, netsmith_pcb::BoardErr
     std::fs::write(folder.join("PADSOUT.kicad_mod"), PADS_OUT).unwrap();
     let parts: Vec<Part> = (1..=count)
         .map(|i| Part {
+            provides: Vec::new(),
             refdes: format!("R{i}"),
             kind: "Resistor".into(),
             value: "10k".into(),

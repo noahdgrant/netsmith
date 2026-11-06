@@ -319,13 +319,11 @@ pub(super) fn run(
             // pin it hangs on, with its end that is on the pin's net toward the part.
             let part = units[u].parts[0];
             let series = units[u].parts.len() == 1
-                && (matches!(
-                    ctx.design.parts[part].kind.as_str(),
-                    "Inductor" | "FerriteBead" | "Fuse"
-                ) || placed[part]
-                    .pins
-                    .iter()
-                    .all(|q| q.net.is_none_or(|n| ctx.power[n].is_none())));
+                && (super::is_series_kind(&ctx.design.parts[part])
+                    || placed[part]
+                        .pins
+                        .iter()
+                        .all(|q| q.net.is_none_or(|n| ctx.power[n].is_none())));
             let side = placed[c.anchor].pins[c.pin].escape;
             if series && !side.is_vertical() {
                 let want = side.opposite();

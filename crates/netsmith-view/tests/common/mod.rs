@@ -19,6 +19,7 @@ pub fn design(
         parts: parts
             .iter()
             .map(|&(refdes, kind, value, package)| Part {
+                provides: Vec::new(),
                 refdes: refdes.into(),
                 kind: kind.into(),
                 value: value.into(),

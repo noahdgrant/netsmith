@@ -591,6 +591,7 @@ mod tests {
     /// A 300 ohm resistor feeding an LED, with nets named the way the lowering names them.
     fn led_design() -> Design {
         let part = |refdes: &str, kind: &str, value: &str, package: Option<&str>| Part {
+            provides: Vec::new(),
             refdes: refdes.into(),
             kind: kind.into(),
             value: value.into(),
@@ -765,6 +766,7 @@ mod tests {
     /// regulator's output.
     fn regulator_design() -> Design {
         let part = |refdes: &str, kind: &str, value: &str, package: Option<&str>| Part {
+            provides: Vec::new(),
             refdes: refdes.into(),
             kind: kind.into(),
             value: value.into(),
@@ -968,6 +970,7 @@ mod tests {
 
     fn gadget(refdes: &str, kind: &str) -> Part {
         Part {
+            provides: Vec::new(),
             refdes: refdes.into(),
             kind: kind.into(),
             value: kind.into(),

@@ -11,6 +11,7 @@ use netsmith_core::{
     PlaceBound, PlaceField, Placement, Pour,
 };
 use netsmith_lang::Span;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// A length in mm, rounded to a nanometre of the millimetre so `0.1mm` is `0.1`.
 fn mm(metres: f64) -> f64 {
@@ -625,6 +626,136 @@ pub(crate) fn placements(model: &Model, errors: &mut Vec<String>) -> (Vec<Placem
         sites.extend(spots.into_iter().map(|(f, s)| (index, f, s)));
     }
     (found, sites)
+}
+
+/// The paths of the parts a bank stands for (ADR 0052): `path` itself for the first and
+/// `path#2`, `path#3` for the others. A part that is not a bank is just `path`.
+fn members(path: &str, banks: &BTreeMap<String, usize>) -> Vec<String> {
+    let n = banks.get(path).copied().unwrap_or(1);
+    (1..=n)
+        .map(|k| {
+            if k == 1 {
+                path.to_string()
+            } else {
+                format!("{path}#{k}")
+            }
+        })
+        .collect()
+}
+
+/// Make every requirement the design states on the path of a bank hold for each capacitor of
+/// it (ADR 0052). Lowering makes one part of the design for each, with a path of its own
+/// (`stage.output_cap#2`), and a requirement that named only the first would leave the others
+/// to sit anywhere with nothing said. So a placement (`.place`), a height and a protrusion
+/// become one for each capacitor, and a relation between two places becomes one for each pair
+/// of capacitors of its two ends. The sites that say where each is stated are copied with it.
+/// A note says what was done, once for each statement.
+pub(crate) fn expand_banks(
+    features: &mut Features,
+    place_sites: &mut Sites,
+    offset_sites: &mut Vec<(SourceId, Span)>,
+    protrusion_sites: &mut Vec<Vec<(SourceId, Span)>>,
+    banks: &BTreeMap<String, usize>,
+    notes: &mut Vec<String>,
+) {
+    if banks.is_empty() {
+        return;
+    }
+    let mut said: BTreeSet<String> = BTreeSet::new();
+    let mut say = |notes: &mut Vec<String>, what: String| {
+        if said.insert(what.clone()) {
+            notes.push(what);
+        }
+    };
+
+    let old = std::mem::take(&mut features.constraints);
+    let old_sites = std::mem::take(place_sites);
+    for (i, p) in old.into_iter().enumerate() {
+        let own: Vec<_> = old_sites.iter().filter(|s| s.0 == i).collect();
+        let paths = if p.module {
+            vec![p.path.clone()]
+        } else {
+            members(&p.path, banks)
+        };
+        if paths.len() > 1 {
+            say(
+                notes,
+                format!(
+                    "`{}` is a bank of {} capacitors: what `{}.place` requires holds for each of them (`{}`)",
+                    p.path,
+                    paths.len(),
+                    p.path,
+                    paths.join("`, `")
+                ),
+            );
+        }
+        for path in paths {
+            let index = features.constraints.len();
+            place_sites.extend(own.iter().map(|(_, f, s)| (index, f.clone(), s.clone())));
+            features.constraints.push(Placement { path, ..p.clone() });
+        }
+    }
+
+    let (old, old_sites) = (
+        std::mem::take(&mut features.offsets),
+        std::mem::take(offset_sites),
+    );
+    for (o, site) in old.into_iter().zip(old_sites) {
+        let (a_paths, b_paths) = (members(&o.a.path, banks), members(&o.b.path, banks));
+        if a_paths.len() * b_paths.len() > 1 {
+            say(
+                notes,
+                format!(
+                    "`{}.place.{}` and `{}.place.{}` are related, and {} a bank (ADR 0052): the relation holds for each pair of capacitors ({} pairs)",
+                    o.b.path,
+                    o.b.field.word(),
+                    o.a.path,
+                    o.a.field.word(),
+                    match (a_paths.len() > 1, b_paths.len() > 1) {
+                        (true, true) => "both are",
+                        (true, false) => "`a` is",
+                        _ => "`b` is",
+                    },
+                    a_paths.len() * b_paths.len()
+                ),
+            );
+        }
+        for b in &b_paths {
+            for a in &a_paths {
+                features.offsets.push(Offset {
+                    a: OffsetEnd {
+                        path: a.clone(),
+                        ..o.a.clone()
+                    },
+                    b: OffsetEnd {
+                        path: b.clone(),
+                        ..o.b.clone()
+                    },
+                    ..o.clone()
+                });
+                offset_sites.push(site);
+            }
+        }
+    }
+
+    let old = std::mem::take(&mut features.heights);
+    for h in old {
+        for path in members(&h.path, banks) {
+            features.heights.push(PartHeight { path, ..h.clone() });
+        }
+    }
+    let (old, old_sites) = (
+        std::mem::take(&mut features.protrusions),
+        std::mem::take(protrusion_sites),
+    );
+    for (p, site) in old.into_iter().zip(old_sites) {
+        for path in members(&p.path, banks) {
+            features
+                .protrusions
+                .push(PinProtrusion { path, ..p.clone() });
+            protrusion_sites.push(site.clone());
+        }
+    }
 }
 
 /// The relations between the places of two parts (ADR 0045, section 3), and where the design

@@ -315,6 +315,7 @@ mod tests {
             features: Default::default(),
             parts: (1..=4)
                 .map(|i| Part {
+                    provides: Vec::new(),
                     refdes: format!("R{i}"),
                     kind: "Resistor".into(),
                     value: "1k".into(),
@@ -355,6 +356,7 @@ mod tests {
             features: Default::default(),
             parts: vec![
                 Part {
+                    provides: Vec::new(),
                     refdes: "U1".into(),
                     kind: "LinearRegulator".into(),
                     value: "LDO".into(),
@@ -363,6 +365,7 @@ mod tests {
                     pins: Vec::new(),
                 },
                 Part {
+                    provides: Vec::new(),
                     refdes: "R1".into(),
                     kind: "Resistor".into(),
                     value: "1k".into(),
@@ -590,6 +593,7 @@ mod tests {
             process: Some(crate::rules::test_process()),
             features: Default::default(),
             parts: vec![Part {
+                provides: Vec::new(),
                 refdes: "R1".into(),
                 kind: "Resistor".into(),
                 value: "1k".into(),

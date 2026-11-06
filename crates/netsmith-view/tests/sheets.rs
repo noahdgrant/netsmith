@@ -42,6 +42,7 @@ fn board(modules: usize) -> (Design, Vec<Group>) {
             (name("D"), "Led", "LED", None),
         ] {
             parts.push(Part {
+                provides: Vec::new(),
                 refdes,
                 kind: kind.into(),
                 value: value.into(),

@@ -305,7 +305,7 @@ fn a_part_is_assembled_by_the_fab_unless_the_design_says_otherwise() {
     // The board narrows `.assembly` of any part it owns.
     assert_eq!(
         assembly_of(
-            "    .r.assembly &= \"hand\"\n    .j.assembly &= \"fab\"\n    .d.assembly &= \"none\"\n"
+            "    .r.assembly &= AssemblyMode::Hand\n    .j.assembly &= AssemblyMode::Fab\n    .d.assembly &= AssemblyMode::None\n"
         ),
         [
             ("D1".to_string(), None, true),
@@ -364,7 +364,7 @@ fn the_projects_default_beats_the_built_in_rule_and_loses_to_everything_that_say
     );
     // The design's own `.assembly &=` is the last word.
     assert_eq!(
-        assembly_with_default("hand", "    .r.assembly &= \"fab\"\n"),
+        assembly_with_default("hand", "    .r.assembly &= AssemblyMode::Fab\n"),
         [
             ("D1".to_string(), Hand, true),
             ("H1".to_string(), None, true),
@@ -403,16 +403,6 @@ fn a_catalog_rows_assembly_beats_the_projects_default() {
     assert!(solved.diagnostics.is_empty(), "{:?}", solved.diagnostics);
     let lowered = lower(&checked.boards[0], &solved).unwrap();
     assert_eq!(lowered.sourcing[0].assembly, Assembly::Fab);
-}
-
-#[test]
-fn an_assembly_that_is_not_fab_hand_or_none_is_refused_naming_the_part() {
-    let src = "import std::parts::passive::Resistor\nboard B {\n    .r: Resistor { .resistance &= 330ohm +/- 1%; .assembly &= \"solder\" }\n}\n";
-    let errors = lowered_with_sourcing(src).unwrap_err();
-    assert_eq!(
-        errors,
-        ["`r` has `.assembly` \"solder\", which is not \"fab\", \"hand\" or \"none\""]
-    );
 }
 
 #[test]
@@ -460,7 +450,7 @@ fn a_catalog_row_may_state_who_assembles_its_part_and_the_design_overrides_it() 
     assert_eq!(lower_with(None, ""), (Assembly::Fab, false));
     assert_eq!(lower_with(Some("hand"), ""), (Assembly::Hand, true));
     assert_eq!(
-        lower_with(Some("hand"), ".assembly &= \"fab\""),
+        lower_with(Some("hand"), ".assembly &= AssemblyMode::Fab"),
         (Assembly::Fab, true)
     );
 }
@@ -877,7 +867,7 @@ fn exposed_assembly(body: &str) -> String {
     format!(
         "import std::parts::connector::Header1x2\n\
          /// A header, with the choice of who solders it left to the board.\n\
-         module HeaderBlock {{\n    .assembly_mode: String\n    .j: Header1x2\n    .j.assembly &= .assembly_mode\n}}\n\
+         module HeaderBlock {{\n    .assembly_mode: AssemblyMode\n    .j: Header1x2\n    .j.assembly &= .assembly_mode\n}}\n\
          board B {{\n    .a: HeaderBlock\n    .b: HeaderBlock\n{body}}}\n"
     )
 }
@@ -922,14 +912,14 @@ fn a_module_may_offer_who_assembles_its_part_and_the_board_chooses() {
     // is stronger than the project's default, and each instance has its own.
     assert_eq!(
         exposed_assembly_of(
-            "    .a.assembly_mode &= \"fab\"\n    .b.assembly_mode &= \"none\"\n",
+            "    .a.assembly_mode &= AssemblyMode::Fab\n    .b.assembly_mode &= AssemblyMode::None\n",
             Some("hand")
         ),
         [row("J1", Fab, true), row("J2", Assembly::None, true)]
     );
     // One instance chosen, the other left to the default.
     assert_eq!(
-        exposed_assembly_of("    .b.assembly_mode &= \"hand\"\n", Some("fab")),
+        exposed_assembly_of("    .b.assembly_mode &= AssemblyMode::Hand\n", Some("fab")),
         [row("J1", Fab, true), row("J2", Hand, true)]
     );
 }
@@ -937,16 +927,16 @@ fn a_module_may_offer_who_assembles_its_part_and_the_board_chooses() {
 #[test]
 fn a_module_passes_an_offered_assembly_on_through_another_module() {
     let src = "import std::parts::connector::Header1x2\n\
-        module Inner {\n    .assembly_mode: String\n    .j: Header1x2\n    .j.assembly &= .assembly_mode\n}\n\
-        module Outer {\n    .assembly_mode: String\n    .inner: Inner\n    .inner.assembly_mode &= .assembly_mode\n}\n\
-        board B {\n    .o: Outer\n    .o.assembly_mode &= \"none\"\n}\n";
+        module Inner {\n    .assembly_mode: AssemblyMode\n    .j: Header1x2\n    .j.assembly &= .assembly_mode\n}\n\
+        module Outer {\n    .assembly_mode: AssemblyMode\n    .inner: Inner\n    .inner.assembly_mode &= .assembly_mode\n}\n\
+        board B {\n    .o: Outer\n    .o.assembly_mode &= AssemblyMode::None\n}\n";
     let l = lowered_with_sourcing(src).unwrap();
     assert_eq!(l.sourcing[0].assembly, Assembly::None);
 }
 
 #[test]
 fn a_board_cannot_reach_the_part_inside_a_module_to_set_who_assembles_it() {
-    let src = exposed_assembly("    .a.j.assembly &= \"hand\"\n");
+    let src = exposed_assembly("    .a.j.assembly &= AssemblyMode::Hand\n");
     let c = check("t.nsm", &src, &Loader::std());
     assert!(!c.is_ok());
     let text = c.render();
@@ -959,27 +949,21 @@ fn a_board_cannot_reach_the_part_inside_a_module_to_set_who_assembles_it() {
 }
 
 #[test]
-fn an_offered_assembly_that_is_not_fab_hand_or_none_is_refused_naming_the_part() {
-    let src = exposed_assembly("    .a.assembly_mode &= \"solder\"\n");
-    assert_eq!(
-        lowered_with_sourcing(&src).unwrap_err(),
-        ["`a.j` has `.assembly` \"solder\", which is not \"fab\", \"hand\" or \"none\""]
-    );
-}
-
-#[test]
 fn an_offered_assembly_that_a_part_kind_forbids_is_a_contradiction_at_the_part() {
-    // `Fiducial` states `.assembly &= "none"`, and a text field narrows to one value.
+    // `Fiducial` states `.assembly &= AssemblyMode::None`, and an enum field narrows to one
+    // variant.
     let src = "import std::parts::mechanical::Fiducial\n\
-        module Mark {\n    .assembly_mode: String\n    .f: Fiducial\n    .f.assembly &= .assembly_mode\n}\n\
-        board B {\n    .m: Mark\n    .m.assembly_mode &= \"fab\"\n}\n";
+        module Mark {\n    .assembly_mode: AssemblyMode\n    .f: Fiducial\n    .f.assembly &= .assembly_mode\n}\n\
+        board B {\n    .m: Mark\n    .m.assembly_mode &= AssemblyMode::Fab\n}\n";
     let c = check("t.nsm", src, &Loader::std());
     assert!(c.is_ok(), "{}", c.render());
     let s = solve(&c.boards[0], &Catalogs::jlcpcb());
     let messages: Vec<_> = s.diagnostics.iter().map(|d| d.message.as_str()).collect();
     assert_eq!(
         messages,
-        ["contradiction on `m.f.assembly`: it is already \"none\", which does not overlap \"fab\""]
+        [
+            "contradiction on `m.f.assembly`: it is already AssemblyMode::None, which does not overlap AssemblyMode::Fab"
+        ]
     );
 }
 

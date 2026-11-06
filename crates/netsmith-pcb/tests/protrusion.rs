@@ -88,6 +88,7 @@ fn bound(field: PlaceField, lo: f64, hi: f64) -> PlaceBound {
 
 fn design(case: &Case) -> Design {
     let part = |refdes: &str, kind: &str, package: &str, path: &str| Part {
+        provides: Vec::new(),
         refdes: refdes.into(),
         kind: kind.into(),
         value: kind.into(),

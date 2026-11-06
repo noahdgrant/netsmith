@@ -209,6 +209,7 @@ pub fn board(
         parts: parts
             .iter()
             .map(|p| Part {
+                provides: Vec::new(),
                 refdes: p.refdes.clone(),
                 kind: if p.hole { "MountingHole" } else { "Module" }.into(),
                 value: p.package(),

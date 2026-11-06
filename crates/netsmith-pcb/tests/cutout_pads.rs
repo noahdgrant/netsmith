@@ -25,6 +25,7 @@ fn tight_board(count: usize, size: (f64, f64), cutout: Cutout) -> Board {
     std::fs::write(folder.join("TIGHT.kicad_mod"), TIGHT).unwrap();
     let parts: Vec<Part> = (1..=count)
         .map(|i| Part {
+            provides: Vec::new(),
             refdes: format!("R{i}"),
             kind: "Resistor".into(),
             value: "10k".into(),

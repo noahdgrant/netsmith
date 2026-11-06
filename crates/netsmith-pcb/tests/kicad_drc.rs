@@ -420,6 +420,7 @@ fn tiny() -> (TempDir, Mapping, FootprintLibrary) {
 fn part(refdes: &str, kind: &str) -> Part {
     let resistor = kind == "Resistor";
     Part {
+        provides: Vec::new(),
         refdes: refdes.into(),
         kind: kind.into(),
         value: "1k".into(),
