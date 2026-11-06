@@ -7,8 +7,8 @@ export async function run({ page, shot, step, expect, section }) {
   await page.waitForSelector('.order-pick select');
   const listed = await page.locator('.order-pick select option').allInnerTexts();
   expect(listed.includes('demo'), `the order demo is listed (${listed.join(', ')})`);
-  const boards = await page.locator('.order-boards').innerText();
-  expect(boards.includes('TwoBoards/led') && boards.includes('x 5'), 'its boards and quantities are shown');
+  const rows = await page.locator('.order-boards tbody tr').evaluateAll((trs) => trs.map((tr) => [...tr.children].map((c) => c.textContent.trim())));
+  expect(rows.some(([b, q]) => b === 'TwoBoards/led' && q === '5') && rows.some(([b, q]) => b === 'TwoBoards/power' && q === '2'), `its boards and quantities are shown (${JSON.stringify(rows)})`);
   await page.locator('.order-pick').scrollIntoViewIfNeeded();
   await shot('order-picked');
 

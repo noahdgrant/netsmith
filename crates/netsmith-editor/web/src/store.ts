@@ -216,6 +216,10 @@ export const orderReports = signal<Record<string, OrderReport>>({});
 /** The order picked in the build view. */
 export const pickedOrder = signal<string | null>(null);
 
+/** When each last run finished (`build`, `fab:<board>`, `order:<name>`), for "3 min ago". */
+export const ranAt = signal<Record<string, number>>({});
+export const markRan = (key: string) => (ranAt.value = { ...ranAt.value, [key]: Date.now() });
+
 /** What the last schematic build said. */
 export const buildReport = signal<BuildReport | null>(null);
 

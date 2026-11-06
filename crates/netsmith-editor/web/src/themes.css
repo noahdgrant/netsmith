@@ -64,6 +64,9 @@
   --surface: #131720;
   --surface-raised: #1a1f2a;
   --surface-3: #222836;
+  /* a segmented control: its track, and the segment that is on */
+  --seg-track: var(--bg);
+  --seg-on: var(--surface-3);
   /* lines are hairlines: ink at a low alpha, so they sit on any layer */
   --border: color-mix(in srgb, #c3d0ea 13%, transparent);
   --border-subtle: color-mix(in srgb, #c3d0ea 7%, transparent);
@@ -100,6 +103,7 @@
   --success: #6fbf73;
   --success-bg: #17281a;
   --success-line: #2f5a33;
+  --success-text: #a9dcab;
   --info: #6aa6e0;
   --info-bg: #1f2a38;
   --info-line: #2f4560;
@@ -223,6 +227,9 @@
   --surface: #f7f6f2;
   --surface-raised: #ffffff;
   --surface-3: #eceae4;
+  /* a segmented control: its track, and the segment that is on */
+  --seg-track: var(--surface-3);
+  --seg-on: var(--canvas);
   --border: color-mix(in srgb, #3a3224 13%, transparent);
   --border-subtle: color-mix(in srgb, #3a3224 7%, transparent);
   --border-strong: color-mix(in srgb, #3a3224 26%, transparent);
@@ -255,6 +262,7 @@
   --success: #1a7f37;
   --success-bg: #e5f4e8;
   --success-line: #a6d4b0;
+  --success-text: #0f5a26;
   --info: #0b61c4;
   --info-bg: #e7f0fc;
   --info-line: #b5cff0;
@@ -368,6 +376,9 @@
   --surface: #000000;
   --surface-raised: #0e0e0e;
   --surface-3: #1a1a1a;
+  /* a segmented control: its track, and the segment that is on */
+  --seg-track: var(--canvas);
+  --seg-on: var(--surface-3);
   --canvas: #000000;
   --border: #9aa4b2;
   --border-subtle: #5d6673;
@@ -401,6 +412,7 @@
   --success: #7ee787;
   --success-bg: #06240c;
   --success-line: #7ee787;
+  --success-text: #b9f5c0;
   --info: #79c0ff;
   --info-bg: #06203a;
   --info-line: #79c0ff;
@@ -513,6 +525,9 @@
   --surface: #ffffff;
   --surface-raised: #f2f2f2;
   --surface-3: #e4e4e4;
+  /* a segmented control: its track, and the segment that is on */
+  --seg-track: var(--surface-3);
+  --seg-on: var(--canvas);
   --canvas: #ffffff;
   --border: #404040;
   --border-subtle: #767676;
@@ -546,6 +561,7 @@
   --success: #0b5d20;
   --success-bg: #e8f7ec;
   --success-line: #0b5d20;
+  --success-text: #063d15;
   --info: #084c9e;
   --info-bg: #e8f1fd;
   --info-line: #084c9e;
@@ -672,4 +688,7 @@
   /* skeleton blocks */
   --skeleton: color-mix(in srgb, var(--text) 6%, transparent);
   --skeleton-hi: color-mix(in srgb, var(--text) 11%, transparent);
+  /* a table: every other row a hair darker, and the line under a sticky header */
+  --zebra: color-mix(in srgb, var(--text) 2.4%, transparent);
+  --row-line: color-mix(in srgb, var(--text) 6%, transparent);
 }

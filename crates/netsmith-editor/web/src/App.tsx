@@ -17,6 +17,7 @@ import { CheatSheet } from './components/CheatSheet';
 import { QuickPick } from './components/QuickPick';
 import { StatusBar } from './components/StatusBar';
 import { Toasts } from './components/Toasts';
+import { TooltipLayer } from './components/Tooltip';
 import { ProgressLine, StaleStrip } from './components/ViewStatus';
 import { commandForKey } from './commands';
 import { registerAppCommands } from './commandset';
@@ -248,6 +249,7 @@ export function App() {
       <QuickPick />
       <CheatSheet />
       <Toasts />
+      <TooltipLayer />
       {dragged && <div class="drag-ghost" style={{ left: dragged.x + 12, top: dragged.y + 12 }}>{SECTIONS.find((s) => s.id === dragged.section)?.label}</div>}
     </div>
   );

@@ -140,7 +140,9 @@ function pairs(): Pair[] {
   list.push({ fg: '--accent-text', bg: ['--surface', '--surface-raised', '--canvas'], what: 'accent text' });
   list.push({ fg: '--accent-fg', bg: ['--accent-fill'], what: 'label of the primary button' });
   for (const k of ['danger', 'warning', 'success', 'info']) list.push({ fg: `--${k}`, bg: ['--surface', '--surface-raised', '--canvas'], what: `${k} as text or icon` });
-  for (const k of ['danger', 'warning', 'info']) list.push({ fg: `--${k}-text`, bg: [`--${k}-bg`], what: `${k} strip text` });
+  for (const k of ['danger', 'warning', 'info', 'success']) list.push({ fg: `--${k}-text`, bg: [`--${k}-bg`], what: `${k} strip text` });
+  // A status pill, a log line and a sourcing chip: the four tones' words on the layers a card and a log sit on.
+  for (const k of ['danger', 'warning', 'info', 'success']) list.push({ fg: `--${k}-text`, bg: ['--surface', '--surface-raised', '--canvas', '--surface-3'], what: `${k} words on a card, a log and a pill` });
   list.push({ fg: '--on-danger', bg: ['--danger-solid'], what: 'label on a danger fill' });
   list.push({ fg: '--on-warning', bg: ['--warning-solid'], what: 'label on a warning fill' });
   list.push({ fg: '--on-kind', bg: KINDS.filter((k) => /part|module|board|system|panel|interface/.test(k)), what: 'badge letter on a kind fill' });
@@ -158,6 +160,9 @@ function pairs(): Pair[] {
   list.push({ fg: '--sch-bad', bg: ['--sch-sheet'], min: 3, what: 'schematic error mark (a graphic)' });
   list.push({ fg: '--sch-hit', bg: ['--sch-sheet'], min: 3, what: 'schematic highlight (a graphic)' });
   list.push({ fg: '--sch-mark', bg: ['--sch-sheet'], min: 3, what: 'schematic selection mark (a graphic)' });
+  // A segmented control: its words on the track and on the segment that is on.
+  list.push({ fg: '--text-muted', bg: ['--seg-track'], what: 'a segment that is off' });
+  list.push({ fg: '--text', bg: ['--seg-on'], what: 'the segment that is on' });
   list.push({ fg: '--brand', bg: ['--surface'], min: 3, what: 'the logo' });
   list.push({ fg: '--pcb-key', bg: ['--pcb-bg'], what: 'board key text' });
   list.push({ fg: '--pcb-silk', bg: ['--pcb-bg'], what: 'board reference text' });
@@ -177,7 +182,12 @@ const MIN: Record<Theme, number> = { dark: 4.5, light: 4.5, 'hc-dark': 7, 'hc-li
 
 describe.each(Object.keys(THEME_TOKENS) as Theme[])('contrast of %s', (name) => {
   const t = THEME_TOKENS[name];
-  const ink = (token: string) => t[token] ?? THEME_TOKENS.dark[token];
+  // A token may name another (`var(--bg)`): follow it.
+  const ink = (token: string): string => {
+    const v = t[token] ?? THEME_TOKENS.dark[token];
+    const m = /^var\((--[a-z0-9-]+)\)$/.exec(v);
+    return m ? ink(m[1]) : v;
+  };
   for (const p of pairs()) {
     for (const bg of p.bg) {
       // A graphic needs 3:1 in every theme; text 4.5 (7 in high contrast).
@@ -200,6 +210,9 @@ describe.each(Object.keys(THEME_TOKENS) as Theme[])('contrast of %s', (name) => 
     for (const k of ['--sch-pin', '--sch-body', '--sch-text']) expect(contrast(ink(k), hex)!, `${k} on the body ${hex}`).toBeGreaterThanOrEqual(MIN[name]);
     // the body is a visible step from the sheet, so a part reads as a box and not a frame of lines
     expect(contrast(hex, ink('--sch-sheet'))!).toBeGreaterThanOrEqual(1.08);
+  });
+  it('the segment that is on is a step from its track', () => {
+    expect(contrast(ink('--seg-on'), ink('--seg-track'))!).toBeGreaterThanOrEqual(1.1);
   });
   it('the schematic marks of a pick are told apart: the lit net, the picked part, the bus trunk and the wire', () => {
     const marks = ['--sch-hit', '--sch-mark', '--sch-bus', '--sch-wire'].map((k) => ink(k));
