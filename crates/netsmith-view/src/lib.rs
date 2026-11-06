@@ -12,6 +12,7 @@ pub mod layout;
 pub mod metrics;
 pub mod sheets;
 mod sheetview;
+pub mod stability;
 mod svg;
 
 pub use layout::{

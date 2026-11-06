@@ -28,6 +28,7 @@ fn only_wires(wires: Vec<Wire>) -> Layout {
         buses: Vec::new(),
         spines: Vec::new(),
         notes: Vec::new(),
+        rows: 0,
         bounds: Rect {
             min: Pt::new(0.0, 0.0),
             max: Pt::new(60.0, 30.0),

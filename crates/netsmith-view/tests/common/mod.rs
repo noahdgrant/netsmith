@@ -8,7 +8,6 @@ pub mod bus;
 pub mod corpus;
 pub mod mcu;
 pub mod rowcol;
-pub mod stability;
 
 use netsmith_core::{Design, Net, Part, PinRef};
 

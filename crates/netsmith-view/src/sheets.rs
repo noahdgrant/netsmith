@@ -61,6 +61,8 @@ pub struct Sheet {
     /// The box, title included.
     pub frame: Rect,
     pub title: Text,
+    /// How many rows the sheet's pieces are set in.
+    pub rows: usize,
 }
 
 /// Lays `design` out by `groups`. The parts no group names make a sheet of their own, named
@@ -378,6 +380,7 @@ pub fn layout_sheets_marked(
             });
         }
         sheets.push(Sheet {
+            rows: d.layout.rows,
             name: cluster.name.clone(),
             detail: cluster.detail.clone(),
             parts: cluster
@@ -412,6 +415,7 @@ pub fn layout_sheets_marked(
         buses,
         spines,
         notes,
+        rows: 0,
         bounds: bounds.unwrap_or(Rect::around(Pt::new(0.0, 0.0))),
     })
 }
@@ -440,20 +444,34 @@ fn sheet_of_note(
             return owner[p];
         }
     }
+    // The board's own writing goes on the sheet of its first part by name, not by place in the
+    // list: the drawing does not depend on the order the parts are listed in.
+    let first = |parts: &mut dyn Iterator<Item = usize>| {
+        parts.min_by(|&a, &b| {
+            let key = |p: usize| {
+                let part = &design.parts[p];
+                if part.path.is_empty() {
+                    part.refdes.clone()
+                } else {
+                    part.path.clone()
+                }
+            };
+            crate::layout::natural_cmp(&key(a), &key(b)).then(a.cmp(&b))
+        })
+    };
     let mut at = note.path.as_str();
     while !at.is_empty() {
         let below = format!("{at}.");
-        if let Some(p) = design
-            .parts
-            .iter()
-            .position(|p| p.path.starts_with(&below) || p.path == at)
-        {
+        let in_module =
+            |p: &usize| design.parts[*p].path.starts_with(&below) || design.parts[*p].path == at;
+        if let Some(p) = first(&mut (0..design.parts.len()).filter(in_module)) {
             return owner[p];
         }
         at = at.rfind('.').map_or("", |i| &at[..i]);
     }
-    let own = design.parts.iter().position(|p| !p.path.contains('.'));
-    own.map_or_else(|| owner.first().copied().unwrap_or(0), |p| owner[p])
+    let own = first(&mut (0..design.parts.len()).filter(|&p| !design.parts[p].path.contains('.')));
+    own.or_else(|| first(&mut (0..design.parts.len())))
+        .map_or(0, |p| owner[p])
 }
 
 /// A note of a sheet's drawing, moved by `by`, with the design's note and part indices.
@@ -631,7 +649,8 @@ fn arrange(frames: &[Rect]) -> Vec<Pt> {
         .map(|f| (f.width() + SHEET_GAP) * (f.height() + SHEET_GAP))
         .sum();
     let widest = frames.iter().map(Rect::width).fold(0.0, f64::max);
-    let target = (area * TARGET_ASPECT).sqrt().max(widest);
+    // In coarse steps, so that the sheets keep their rows when one of them grows a little.
+    let target = snap_up((area * TARGET_ASPECT).sqrt(), 50.8).max(widest);
 
     let mut offsets = Vec::with_capacity(frames.len());
     let (mut x, mut y, mut row_height) = (0.0, 0.0, 0.0f64);
