@@ -63,7 +63,6 @@ select { padding: 0 8px; }
 
 /* sidebar */
 .sidebar { width: 260px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-width: 0; }
-.project-name-unused { display: flex; align-items: center; gap: 8px; padding: 0 14px; height: 38px; border-bottom: 1px solid var(--border); margin-bottom: 8px; font-weight: var(--fw-semibold); letter-spacing: var(--ls-title); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
 .cube { width: 12px; height: 12px; border: 2px solid var(--accent); border-radius: var(--r-xs); flex: none; }
 .twisty { display: inline-block; width: 12px; color: var(--text-faint); font-size: var(--fs-xs); text-align: center; flex: none; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; display: inline-block; }

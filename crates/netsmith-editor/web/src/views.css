@@ -451,7 +451,6 @@ button.chip.findings-pill:hover { border-color: var(--border-strong); filter: br
 .lsw { position: relative; width: 14px; height: 14px; border-radius: 4px; background: var(--pcb-bg); border: 1px solid var(--border-strong); flex: none; margin-left: auto; order: 2; }
 .lsw::after { content: ''; position: absolute; inset: 3px; border-radius: 2px; background: var(--c, var(--pcb-key)); }
 .layer-list label.off .lsw { opacity: .4; }
-.layer-list label { }
 .lsw-front-copper { --c: var(--pcb-front); } .lsw-back-copper { --c: var(--pcb-back); } .lsw-vias { --c: var(--pcb-via); }
 .lsw-pads { --c: var(--net-1); } .lsw-planes { --c: color-mix(in srgb, var(--pcb-front) 45%, var(--pcb-bg)); } .lsw-ratsnest { --c: var(--pcb-ratsnest); }
 .lsw-silk { --c: var(--pcb-silk); } .lsw-fab { --c: var(--pcb-fab); } .lsw-courtyard { --c: var(--pcb-courtyard); }
@@ -541,3 +540,5 @@ button.chip.findings-pill, .toolbar button.chip { font-family: var(--sans); lett
 .pt-node.up { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
 .pt-node.down { border-color: color-mix(in srgb, var(--flow-down) 45%, var(--border)); }
 .pt-node.selected.up, .pt-node.selected.down { border-color: var(--sel); }
+.tool.primary .spin, .tool.primary .spinner { border-color: color-mix(in srgb, var(--accent-fg) 28%, transparent); border-top-color: var(--accent-fg); }
+.acard.running .tool.primary:disabled { opacity: .9; }
