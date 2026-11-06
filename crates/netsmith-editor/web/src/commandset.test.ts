@@ -1,7 +1,8 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { allCommands, chordClashes, chordText, find, parseChord, sameChord } from './commands';
 import { registerAppCommands } from './commandset';
+import { back, layout } from './store';
 
 // The Schematic's keys are commands like any other: in the palette, in the cheat sheet, once.
 const KEYS: Record<string, string[]> = {
@@ -107,5 +108,30 @@ describe('the Source group of the command registry', () => {
 
   it('shares no chord with another command (Escape is shared on purpose: it goes back, and clears the selection, when each applies)', () => {
     expect(chordClashes().filter((c) => !c.startsWith('Escape:'))).toEqual([]);
+  });
+});
+
+// Escape belongs to what is open on top of the editor: the window's key runs before the panel's own, so a command that also
+// takes Escape must hold back while one of them is there (a click-through's Back would otherwise run as the panel closes).
+describe('Escape and what is open on top of the source', () => {
+  const open = (present: boolean) => {
+    (globalThis as { document?: unknown }).document = {
+      querySelector: (selector: string) => (present && selector.includes('[data-esc-closes]') ? {} : null),
+    };
+  };
+  afterEach(() => {
+    delete (globalThis as { document?: unknown }).document;
+    back.value = null;
+  });
+  it('goes back to the view the click-through came from when nothing is open', () => {
+    layout.value = { ...layout.value, panes: ['source'], focus: 0 } as typeof layout.value;
+    back.value = { pane: 0, section: 'schematic' };
+    open(false);
+    expect(find('nav.back')!.when!()).toBe(true);
+  });
+  it('does not while the comparison of a file, the ref picker or a menu of the status bar is open (they carry data-esc-closes)', () => {
+    back.value = { pane: 0, section: 'schematic' };
+    open(true);
+    expect(find('nav.back')!.when!()).toBe(false);
   });
 });

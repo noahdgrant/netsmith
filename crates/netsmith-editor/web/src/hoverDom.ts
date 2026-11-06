@@ -2,10 +2,12 @@
 // that stands for the same thing and gives it the class `hover-lit`, and takes the class off what was lit
 // before. No view re-renders: the schematic's and the board's drawings are not touched but for a class, and
 // a list (the bill of materials, an inspector, the tree) keeps its own state. A drawing that is replaced while
-// something is lit (a rebuild) is lit again. Escape and the window losing focus put the light out.
+// something is lit (a rebuild) is lit again, and so is a card whose view was rendered again and set its own `class`
+// (only the difference is written: domMarks.ts). Escape and the window losing focus put the light out.
 
 import { effect } from '@preact/signals';
 
+import { reconcile, want, type WantedMap } from './domMarks';
 import { clearHover, hover, modulesLit, resolveHover, selectorOf } from './hover';
 import { detail } from './store';
 
@@ -13,26 +15,24 @@ export const LIT = 'hover-lit';
 
 /** Install the subscriber; the returned function removes it. */
 export function installHoverDom(root: Document = document): () => void {
-  let lit: Element[] = [];
+  let lit: WantedMap<Element> = new Map();
   let frame = 0;
   let redraws: MutationObserver | null = null;
 
   const apply = () => {
     frame = 0;
-    for (const e of lit) e.classList.remove(LIT);
-    lit = [];
+    const next: WantedMap<Element> = new Map();
     const h = hover.value;
     root.documentElement.classList.toggle('has-hover', !!h);
-    if (!h) return;
-    const stands = resolveHover(detail.value, h);
-    const keys = new Set<string>();
-    root.querySelectorAll('[data-hv^="module:"]').forEach((e) => keys.add(e.getAttribute('data-hv')!.slice(7)));
-    const selector = selectorOf(stands, modulesLit([...keys], stands.at));
-    if (!selector) return;
-    root.querySelectorAll(selector).forEach((e) => {
-      e.classList.add(LIT);
-      lit.push(e);
-    });
+    if (h) {
+      const stands = resolveHover(detail.value, h);
+      const keys = new Set<string>();
+      root.querySelectorAll('[data-hv^="module:"]').forEach((e) => keys.add(e.getAttribute('data-hv')!.slice(7)));
+      const selector = selectorOf(stands, modulesLit([...keys], stands.at));
+      if (selector) root.querySelectorAll(selector).forEach((e) => want(next, e, [LIT]));
+    }
+    reconcile(lit, next);
+    lit = next;
   };
   const schedule = () => {
     if (!frame) frame = requestAnimationFrame(apply);
@@ -45,7 +45,7 @@ export function installHoverDom(root: Document = document): () => void {
     schedule();
     if (hover.value && !redraws && typeof MutationObserver === 'function') {
       redraws = new MutationObserver(schedule);
-      redraws.observe(root.body, { childList: true, subtree: true });
+      redraws.observe(root.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
     } else if (!hover.value && redraws) {
       redraws.disconnect();
       redraws = null;
@@ -63,6 +63,7 @@ export function installHoverDom(root: Document = document): () => void {
     if (frame) cancelAnimationFrame(frame);
     root.removeEventListener('keydown', key, true);
     window.removeEventListener('blur', away);
-    for (const e of lit) e.classList.remove(LIT);
+    reconcile(lit, new Map());
+    lit = new Map();
   };
 }

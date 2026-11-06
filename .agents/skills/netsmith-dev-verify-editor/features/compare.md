@@ -33,6 +33,18 @@ What changed in the circuit since a branch, a tag or a commit: parts, nets, rail
 8. `HEAD`: `No changes in the circuit`, `Only the source differs`, `NOTES.md`. `broken` while the answer is held back: the stage text and the time, no `%`, the chip `comparing…`; then the sentence of the ref that does not analyse with `unknown type`, the chip `cannot compare` and the way out. A name that is no ref says so (the browser logs the server's 404: the recipe lets that one error through with `allowConsole`).
 9. Not a repository: a second `netsmith editor` over a copy of the project without `.git` answers `GET /api/git`; the page is given that answer and shows the state with the reason and no picker.
 
+## Beside the rest (`compare-interactions`)
+
+The marks, the hover and the pick all write to the same elements, and the views draw those elements again; what the page does about it:
+
+- **One element, three signals.** A part of the schematic can be outlined as changed (`cmp-changed`), lit by the shared hover (`hover-lit`) and picked (`mark`). The stylesheet decides once, in `compare.css`: the pick owns the outline (the mark's rules are `:not(.mark)`), the hover adds its light to the glow after the mark's (`filter` is one property, so the combined rule lists both), a card of the power tree or the system keeps the mark's ring, adds the hover's outside it, and a picked card has the pick's ring with the mark's outside that. The same for the board's parts. `--cmp-c` is the mark's colour on the element, so each rule is written once.
+- **A view that is drawn again.** A card whose `class` changes (picked, dimmed) loses the classes the subscribers put on it. Both subscribers (`hoverDom.ts`, `compare/compareDom.ts`) now watch the `class` attribute of the page too and put back what is missing; they change only the difference (`domMarks.ts: reconcile`), so a write that changes nothing is not made and they do not answer themselves, and neither takes the other's classes.
+- **Escape.** The window's key runs before a panel's own. The comparison of a file, the ref picker and every menu of the status bar carry `data-esc-closes`, which holds back `Back` (a click-through's way back) and `Clear the selection`; Escape closes the panel and nothing else.
+- **The status bar** keeps, as the window narrows, the problems, the chip, the unsaved files, the cursor and the connection's dot; the analysis time, the language and the theme (the gear has it) go first, then the chip's `vs main:`, the connection's words, the board's name and the source options (`responsive.css`, a container of the bar, so a larger size folds earlier). The chip's menu opens from the chip's left edge. A job's line ends in an ellipsis.
+- **Size and density.** The section's rows, tabs, chips and the diff view's bar are tokens (`--row-lg`, `--tab`, `--bar`, `--h-xs`), so compact tightens them and 125 % grows them. The diff view's text is the source editor's own size (`--source-fs`), as the Source's: the page's size does not change it.
+- **Boards with planes.** The marks add only `cmp-` classes (and `data-cmp-delta`), and no rule of `compare.css` names `data-layer`, `data-plane` or `.plane-label`; `model.test.ts` holds that. (A net's mark on a plane's rectangle is a class nothing draws.)
+- **Not a repository.** The palette's `Compare with a ref…` opens the section, which says why, and leaves no picker waiting; `Show changes` says so in a toast. The splash is the same as in any project.
+
 ## Gotchas
 
 - The page reads `/api/compare` for every board and picks the scope itself: the default is the board in front, so the tiles of a system's first look are about one board; `All boards` is the whole.

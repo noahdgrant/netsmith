@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import compareCss from '../compare.css?raw';
+
 import { ampsText } from '../power/format';
 import {
   boardMarks,
@@ -304,6 +306,16 @@ describe('the marks on the other views', () => {
     expect(otherBoardTargets(marksOf(led), 'led')).toEqual([]);
     const ledRails = marksOf(board('Sys/led', { rails: { added: [], removed: [], unchanged: 0, changed: [{ net: '3V3', headroomBase: 0.01, headroomHead: 0.02 }] } }));
     expect(otherBoardTargets(ledRails, 'led')).toEqual([{ selector: '.pt-rail[data-hv="net:3V3"][data-cmp-board="led"]', cls: 'cmp-changed cmp-grew', delta: '10 mA → 20 mA' }]);
+  });
+  it('leaves the board\'s planes alone: the marks are `cmp-` classes and never touch a layer (`data-layer`, `data-plane`, `.l-planes`)', () => {
+    const t = [...markTargets(m, (path) => ({ 'stage.bulk': 'C1', 'stage.regulator': 'U1' })[path]), ...markTargets(m, () => undefined, 'power')];
+    expect(t.length).toBeGreaterThan(5);
+    for (const x of t) {
+      expect(x.cls.split(' ').every((k) => k.startsWith('cmp-'))).toBe(true);
+      expect(x.selector).not.toMatch(/data-layer|data-plane|\.l-|plane/);
+    }
+    // a plane is a rectangle with the net's name: it may get the net's mark, and nothing in the stylesheet draws that on the board
+    expect(compareCss).not.toMatch(/data-plane|data-layer|\.plane-label|\.l-planes|\.pcb-host[^{]*\.cmp-net-/);
   });
   it('quotes a name that has a quote in it', () => {
     const odd = marksOf(board('B', { nets: { added: [{ name: 'a"b', named: true, pins: [] }], removed: [], renamed: [], changed: [], unchanged: 0 } }));

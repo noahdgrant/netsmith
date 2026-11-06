@@ -131,6 +131,7 @@ function Body({ target }: { target: DiffTarget }) {
       role="dialog"
       aria-label={`Changes in ${path} since ${ref}`}
       data-testid="diff-panel"
+      data-esc-closes
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           e.stopPropagation();

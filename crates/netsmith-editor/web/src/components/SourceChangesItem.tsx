@@ -22,7 +22,7 @@ export function SourceChangesItem({ path }: { path: string }) {
       }}
     >
       <Icon name="compare" size={13} />
-      {s.hunks === 0 ? 'no changes' : plural(s.hunks, 'change')}
+      <span>{s.hunks === 0 ? 'no changes' : plural(s.hunks, 'change')}</span>
     </button>
   );
 }

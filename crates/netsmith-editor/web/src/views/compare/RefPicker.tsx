@@ -84,7 +84,7 @@ export function RefPicker({ align = 'left' }: { align?: 'left' | 'right' }) {
         <Icon name="chevrons-up-down" size={12} class="ref-caret" />
       </button>
       {open && (
-        <div class={`popover ref-pop ${align}`} role="dialog" aria-label="Choose a ref to compare with" data-testid="ref-popover">
+        <div class={`popover ref-pop ${align}`} role="dialog" aria-label="Choose a ref to compare with" data-testid="ref-popover" data-esc-closes>
           <label class="field-icon ref-search">
             <Icon name="search" size={13} />
             <input

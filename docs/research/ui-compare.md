@@ -10,6 +10,13 @@ Status: 2026-11-06, the page side of ADR 0051. The server is `GET /api/git`, `GE
 - **The line diff is small and in the page.** A file is compared as text only where a person asks for it (`Base`, `Show changes in source`, the margin): Myers over lines with the common ends taken off, words marked inside paired lines (`compare/linediff.ts`, tested against a replay of its own script). The view is read-only CodeMirror with the page's own gutter and tokens; no new dependency.
 - **Words.** The glossary says _ref comparison_ and avoids _diff_: the page says `Compare`, `changes`, `comparison of a file`; `diff` stays in code only (and the progress stage `diff` is shown as `compare`).
 
+## Beside the other views (night 3)
+
+- **A mark, the hover and the pick are three signals on one element.** The schematic's parts, the board's, the cards of the power tree and the system each can have a mark (`cmp-*`), the hover's `hover-lit` and the pick; they are classes from three writers and the properties they set overlap (the outline and `filter`, the border and `box-shadow`). The rule, written once in `compare.css`: the pick owns the outline and the border; the hover adds its light to the glow or a ring outside the mark's; the mark stays visible under both (the glow on a picked part, a ring outside the pick's on a picked card).
+- **Subscribers write the difference.** Views that render again replace the `class` of their elements, so a subscriber that only added on a signal lost its classes on the next render (a picked card lost its mark). Both DOM subscribers now work out what each element should have and write only what differs (`domMarks.ts`), and they watch `class` as well as the nodes that come and go; a write that changes nothing writes nothing, so there is no loop and no taking of the other's class.
+- **Escape belongs to what is on top.** The key is handled at the window before the panel's own handler, so the commands that also take Escape (`Back`, `Clear the selection`) step aside for anything marked `data-esc-closes`.
+- **The status bar has priorities.** Nothing in it was ever dropped as the window narrowed; now the chip and the cursor outlast the analysis time, the language and the theme, and the chip loses `vs main:` before it is cut.
+
 ## Tokens
 
 | Token | Each theme | Held by `theme.test.ts` |

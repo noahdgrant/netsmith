@@ -4,9 +4,13 @@
 // the system's boards) and gives it a class (`cmp-added`, `cmp-changed`, `cmp-renumbered`, `cmp-net-*`),
 // and takes the classes off what lost them. No view re-renders and no drawing is replaced; a drawing that
 // is replaced meanwhile is marked again. A rail's badge is an attribute (`data-cmp-delta`) that CSS draws.
+// A view that is rendered again sets the `class` of its own elements (a card that is picked) and takes the marks
+// off; the subscriber sees that (the page's `class` attributes) and puts them back, writing only the difference
+// (domMarks.ts), so it never answers its own writes and never takes another subscriber's classes (`hover-lit`).
 
 import { effect } from '@preact/signals';
 
+import { reconcile, want, type WantedMap } from '../domMarks';
 import { partByPath } from '../selection';
 import { board, detail } from '../store';
 import { boardMarks, marksOf, markTargets, otherBoardTargets } from './model';
@@ -18,34 +22,27 @@ const q = (v: string) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 
 /** Install the subscriber; the returned function removes it (and every mark). */
 export function installCompareDom(root: Document = document): () => void {
-  let marked: { el: Element; classes: string[]; delta: boolean }[] = [];
+  let marked: WantedMap<Element> = new Map();
   let frame = 0;
   let redraws: MutationObserver | null = null;
 
-  const clear = () => {
-    for (const m of marked) {
-      m.el.classList.remove(...m.classes);
-      if (m.delta) m.el.removeAttribute('data-cmp-delta');
-    }
-    marked = [];
-  };
-  const put = (selector: string, cls: string, delta?: string) => {
-    const classes = cls.split(' ');
-    let found: NodeListOf<Element>;
-    try {
-      found = root.querySelectorAll(selector);
-    } catch {
-      return;
-    }
-    found.forEach((el) => {
-      el.classList.add(...classes);
-      if (delta) el.setAttribute('data-cmp-delta', delta);
-      marked.push({ el, classes, delta: !!delta });
-    });
-  };
   const apply = () => {
     frame = 0;
-    clear();
+    const next: WantedMap<Element> = new Map();
+    const put = (selector: string, cls: string, delta?: string) => {
+      let found: NodeListOf<Element>;
+      try {
+        found = root.querySelectorAll(selector);
+      } catch {
+        return;
+      }
+      found.forEach((el) => want(next, el, cls.split(' '), delta ? ['data-cmp-delta', delta] : undefined));
+    };
+    collect(put);
+    reconcile(marked, next);
+    marked = next;
+  };
+  const collect = (put: (selector: string, cls: string, delta?: string) => void) => {
     const m = marks.value;
     const c = compare.value;
     root.documentElement.classList.toggle(ROOT_CLASS, showChanges.value && !!c);
@@ -74,9 +71,9 @@ export function installCompareDom(root: Document = document): () => void {
     schedule();
     const on = showChanges.value && !!compare.value;
     if (on && !redraws && typeof MutationObserver === 'function') {
-      // Only what is added or removed: our own classes are attribute changes and do not come back here.
+      // What is added or removed, and the `class` of what is drawn again; a write that changes nothing is not made (reconcile).
       redraws = new MutationObserver(schedule);
-      redraws.observe(root.body, { childList: true, subtree: true });
+      redraws.observe(root.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
     } else if (!on && redraws) {
       redraws.disconnect();
       redraws = null;
@@ -86,7 +83,8 @@ export function installCompareDom(root: Document = document): () => void {
     stop();
     redraws?.disconnect();
     if (frame) cancelAnimationFrame(frame);
-    clear();
+    reconcile(marked, new Map());
+    marked = new Map();
     root.documentElement.classList.remove(ROOT_CLASS);
   };
 }

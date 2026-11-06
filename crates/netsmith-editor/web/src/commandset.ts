@@ -375,8 +375,9 @@ export function registerAppCommands() {
       group: 'Go to',
       keys: 'Escape',
       inFields: true,
-      // A card, a list or the find panel that is open takes Escape first.
-      when: () => back.value !== null && focusedSection() === 'source' && !document.querySelector('.sp, .cm-tooltip-autocomplete, [data-testid="hover-card"], [data-testid="crumb-menu"], [data-testid="tab-menu"]'),
+      // A card, a list, the find panel, the comparison of a file or a menu of the status bar that is open takes Escape first
+      // (the ones that are not the editor's say so with `data-esc-closes`: the window's key runs before their own).
+      when: () => back.value !== null && focusedSection() === 'source' && !document.querySelector('.sp, .cm-tooltip-autocomplete, [data-testid="hover-card"], [data-testid="crumb-menu"], [data-testid="tab-menu"], [data-esc-closes]'),
       run: () => requestBack(),
     },
     {

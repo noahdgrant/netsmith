@@ -2,7 +2,7 @@
 // view's toolbar has one; they all read and write the same signal, and the palette and the status
 // chip's menu do too.
 
-import { showChanges, pickerOpen, refText, setShowChanges, state } from '../compare/store';
+import { gitInfo, showChanges, pickerOpen, refText, setShowChanges, state } from '../compare/store';
 import { revealSection } from '../store';
 import { Icon } from './Icons';
 import { Spinner } from './ui';
@@ -10,7 +10,8 @@ import { Spinner } from './ui';
 /** Ask for a ref: the Compare section opens with its picker. */
 export function askForRef() {
   revealSection('compare');
-  pickerOpen.value = true;
+  // A project that is not in a repository has no picker: the section says why, and nothing waits to open one later.
+  if (gitInfo.peek()?.available !== false) pickerOpen.value = true;
 }
 
 export function toggleChanges() {

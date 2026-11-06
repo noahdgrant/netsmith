@@ -44,7 +44,7 @@ function Menu({ close }: { close: () => void }) {
     </button>
   );
   return (
-    <div class="status-popover cmp-chip-menu" ref={box} role="dialog" aria-label="Comparison with a git ref">
+    <div class="status-popover cmp-chip-menu" ref={box} role="dialog" aria-label="Comparison with a git ref" data-esc-closes>
       <div class="status-popover-title">Compared with {refText.value}</div>
       {c && <p class="cmp-chip-sentence">{c.summary}</p>}
       {s.kind === 'ready' && s.data.error && <p class="cmp-chip-sentence">{s.data.error}</p>}
@@ -90,8 +90,11 @@ export function CompareChip() {
         onClick={() => setOpen(!open)}
       >
         {s.kind === 'loading' ? <span class="spinner" aria-hidden="true" /> : <Icon name={bad ? 'warning' : 'compare'} size={13} />}
-        <span>
-          vs <span class="mono">{refText.value}</span>: {text}
+        <span class="cmp-chip-text">
+          <span class="cmp-vs">
+            vs <span class="mono">{refText.value}</span>:{' '}
+          </span>
+          {text}
         </span>
       </button>
       {open && <Menu close={() => setOpen(false)} />}

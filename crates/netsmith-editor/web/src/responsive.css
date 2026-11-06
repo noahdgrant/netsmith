@@ -70,3 +70,31 @@ html { font-size: calc(100% * var(--ui-scale, 1)); }
   .tb-ghosts { display: flex; }
   .tb-ghosts .ghost-extra { display: none; }
 }
+
+/* ---- the status bar: what gives way, in order, as the window narrows (a container, so a larger size folds it earlier) ----
+ * Kept longest: the problems, the comparison's chip, the unsaved files, the cursor and the connection's dot. Given up first, the
+ * words of what the bar says elsewhere (the analysis time), the language and the theme (the gear has it), then the prefix of the
+ * chip (`vs main:`), the connection's words, the board's name and the editor's options. A job's line and a long board name end in
+ * an ellipsis instead of pushing the right side away. */
+.statusbar { container: statusbar / inline-size; }
+.statusbar .item { flex: none; }
+.statusbar .sb-board { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; }
+.statusbar .sb-long, .statusbar .analysing-text { max-width: 22rem; overflow: hidden; text-overflow: ellipsis; }
+.statusbar .left { flex: 0 1 auto; }
+@container statusbar (max-width: 75rem) {
+  .statusbar .idle .sb-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .statusbar .language { display: none; }
+  .statusbar .sb-long, .statusbar .analysing-text { max-width: 14rem; }
+}
+@container statusbar (max-width: 62.5rem) {
+  .statusbar .theme-item { display: none; }
+  .statusbar .cmp-vs { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .statusbar .conn .sb-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .statusbar .sb-board { max-width: 9rem; }
+  .statusbar .sb-long, .statusbar .analysing-text { max-width: 9rem; }
+}
+@container statusbar (max-width: 50rem) {
+  .statusbar .source-opts-item, .statusbar .sb-board { display: none; }
+  .statusbar .board { padding: 0 0.375rem; }
+  .statusbar .cmp-chip-text { max-width: 8rem; overflow: hidden; text-overflow: ellipsis; }
+}

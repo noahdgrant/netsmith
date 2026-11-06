@@ -91,7 +91,7 @@ function Popover({ children, close, label }: { children: ComponentChildren; clos
     };
   }, [close]);
   return (
-    <div class="status-popover" ref={box} role="dialog" aria-label={label}>
+    <div class="status-popover" ref={box} role="dialog" aria-label={label} data-esc-closes>
       {children}
     </div>
   );
@@ -170,7 +170,9 @@ function JobItem() {
   return (
     <Item class="job-item" title="A long job is running; the editor stays usable. The Build section has its output." onClick={() => document.querySelector<HTMLElement>('.tab[data-section="build"]')?.click()}>
       <Spinner />
-      {names[j.task] ?? j.task}: {j.lines[j.lines.length - 1] ?? 'starting'} ({clock(elapsed)})
+      <span class="sb-label sb-long">
+        {names[j.task] ?? j.task}: {j.lines[j.lines.length - 1] ?? 'starting'} ({clock(elapsed)})
+      </span>
     </Item>
   );
 }
@@ -216,7 +218,7 @@ function AnalysisItem() {
   return (
     <Item class="idle" title={analysedTip(last)} onClick={toggleDock}>
       <Icon name="check" size={13} />
-      {analysedText(last, now.value)}
+      <span class="sb-label">{analysedText(last, now.value)}</span>
     </Item>
   );
 }
@@ -315,9 +317,9 @@ export function StatusBar() {
     <footer class="statusbar" aria-label="Status">
       <div class="left">
         {board.value && (
-          <Item class="board" title={`The board the views show${title ? ` (project ${title})` : ''}. Click to choose another.`} onClick={focusBoardPicker}>
+          <Item class="board" label={`Board: ${board.value}. Choose another`} title={`The board the views show${title ? ` (project ${title})` : ''}. Click to choose another.`} onClick={focusBoardPicker}>
             <Icon name="board" size={14} />
-            {board.value}
+            <span class="sb-board">{board.value}</span>
           </Item>
         )}
         <Item
@@ -391,7 +393,7 @@ export function StatusBar() {
             onClick={() => setPopover(popover === 'connection' ? null : 'connection')}
           >
             <span class={`dot ${state}`} aria-hidden="true" />
-            {CONNECTION_LABEL[state]}
+            <span class="sb-label">{CONNECTION_LABEL[state]}</span>
           </Item>
           {popover === 'connection' && <ConnectionDetails close={() => setPopover(null)} />}
         </span>

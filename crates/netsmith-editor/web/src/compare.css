@@ -72,7 +72,7 @@
 
 /* tabs */
 .cmp-tabs { display: flex; gap: 2px; padding: 0 1.25rem; border-bottom: 1px solid var(--border-subtle); overflow-x: auto; scrollbar-width: none; flex: none; }
-.cmp-tab { position: relative; display: inline-flex; align-items: center; gap: 0.4375rem; height: 2.25rem; padding: 0 0.75rem; background: none; border: none; color: var(--text-muted); font-weight: var(--fw-medium); white-space: nowrap; cursor: pointer; border-radius: var(--r-sm) var(--r-sm) 0 0; }
+.cmp-tab { position: relative; display: inline-flex; align-items: center; gap: 0.4375rem; height: calc(var(--tab) - 0.25rem); padding: 0 0.75rem; background: none; border: none; color: var(--text-muted); font-weight: var(--fw-medium); white-space: nowrap; cursor: pointer; border-radius: var(--r-sm) var(--r-sm) 0 0; }
 .cmp-tab:hover { color: var(--text); background: var(--hover); }
 .cmp-tab.active { color: var(--text); }
 .cmp-tab.active::after { content: ''; position: absolute; left: 0.625rem; right: 0.625rem; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
@@ -85,10 +85,10 @@
 .cmp-scroll > .empty { padding-block: 2rem; }
 
 /* groups and rows */
-.cmp-group-head { position: sticky; top: 0; z-index: var(--z-sticky); display: flex; align-items: center; gap: 0.5rem; height: 1.875rem; padding: 0 0.875rem; background: color-mix(in srgb, var(--text) 3.5%, var(--surface)); border-bottom: 1px solid var(--border-subtle); font-size: var(--fs-sm); }
+.cmp-group-head { position: sticky; top: 0; z-index: var(--z-sticky); display: flex; align-items: center; gap: 0.5rem; height: var(--row-sm); padding: 0 0.875rem; background: color-mix(in srgb, var(--text) 3.5%, var(--surface)); border-bottom: 1px solid var(--border-subtle); font-size: var(--fs-sm); }
 .cr { border-bottom: 1px solid var(--row-line); }
 .cr:last-child { border-bottom: none; }
-.cr-main { display: grid; grid-template-columns: 1.25rem 1.375rem minmax(11.25rem, 36%) minmax(0, 1fr) minmax(4rem, 7rem) 6rem auto; align-items: center; gap: 0.5rem; min-height: 2.5rem; padding: 0.25rem 0.75rem 0.25rem 0.5rem; cursor: pointer; outline-offset: -2px; }
+.cr-main { display: grid; grid-template-columns: 1.25rem 1.375rem minmax(11.25rem, 36%) minmax(0, 1fr) minmax(4rem, 7rem) 6rem auto; align-items: center; gap: 0.5rem; min-height: calc(var(--row-lg) + 0.375rem); padding: 0.25rem 0.75rem 0.25rem 0.5rem; cursor: pointer; outline-offset: -2px; }
 button.cr { display: block; width: 100%; padding: 0; background: none; border: none; border-bottom: 1px solid var(--row-line); font: inherit; color: inherit; text-align: left; }
 .cr-main:hover, .cr-main.hover-lit { background: var(--hover); }
 .cr.sel > .cr-main { background: var(--select-bg); box-shadow: inset 2px 0 0 var(--sel-bar); }
@@ -114,7 +114,7 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .cr-des { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--text-muted); font-family: var(--mono); font-size: var(--fs-sm); white-space: nowrap; justify-content: flex-start; }
 .cr-badge { justify-self: start; }
 .cr-links { display: inline-flex; align-items: center; gap: 2px; justify-self: end; }
-.cr-link { height: 1.375rem; padding: 0 0.4375rem; background: none; border: none; border-radius: var(--r-xs); color: var(--accent-text); font-size: var(--fs-sm); font-weight: var(--fw-medium); cursor: pointer; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; display: inline-flex; align-items: center; gap: 0.3125rem; }
+.cr-link { height: calc(var(--h-xs) + 0.125rem); padding: 0 0.4375rem; background: none; border: none; border-radius: var(--r-xs); color: var(--accent-text); font-size: var(--fs-sm); font-weight: var(--fw-medium); cursor: pointer; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; display: inline-flex; align-items: center; gap: 0.3125rem; }
 .cr-link:hover:not(:disabled) { text-decoration-color: currentColor; background: var(--hover); }
 .cr-link:disabled { color: var(--text-faint); cursor: default; opacity: .6; }
 .cr-link.icon { color: var(--text-muted); padding: 0 0.3125rem; } .cr-link.icon:hover { color: var(--text); }
@@ -132,7 +132,7 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .cr-msg { font-size: var(--fs-md); line-height: var(--lh); overflow-wrap: anywhere; max-width: 90ch; }
 
 /* before and after as two chips: the old is struck and tinted red, the new is tinted green */
-.vchip { display: inline-flex; align-items: center; height: 1.375rem; max-width: 26ch; padding: 0 0.4375rem; border-radius: var(--r-xs); font-family: var(--mono); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 1px solid transparent; }
+.vchip { display: inline-flex; align-items: center; height: calc(var(--h-xs) + 0.125rem); max-width: 26ch; padding: 0 0.4375rem; border-radius: var(--r-xs); font-family: var(--mono); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 1px solid transparent; }
 .vold { background: color-mix(in srgb, var(--cmp-removed) 16%, var(--surface)); border-color: color-mix(in srgb, var(--cmp-removed) 34%, transparent); color: var(--text-muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--cmp-removed) 75%, transparent); text-decoration-thickness: 1px; }
 .vnew { background: color-mix(in srgb, var(--cmp-added) 16%, var(--surface)); border-color: color-mix(in srgb, var(--cmp-added) 38%, transparent); }
 .vnew.vt-shrank { background: color-mix(in srgb, var(--cmp-removed) 16%, var(--surface)); border-color: color-mix(in srgb, var(--cmp-removed) 38%, transparent); }
@@ -149,7 +149,7 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .cr-file .cr-main > .cr-chips { gap: 0.375rem; }
 
 .cmp-renum { border-top: 1px solid var(--border); }
-.cmp-renum > summary { display: flex; align-items: center; gap: 0.5rem; height: 2.125rem; padding: 0 0.875rem; cursor: pointer; list-style: none; color: var(--text-muted); font-size: var(--fs-sm); font-weight: var(--fw-medium); }
+.cmp-renum > summary { display: flex; align-items: center; gap: 0.5rem; height: var(--row-lg); padding: 0 0.875rem; cursor: pointer; list-style: none; color: var(--text-muted); font-size: var(--fs-sm); font-weight: var(--fw-medium); }
 .cmp-renum > summary::-webkit-details-marker { display: none; }
 .cmp-renum > summary .faint { font-weight: var(--fw-normal); }
 .cmp-renum[open] > summary .cmp-renum-chev { transform: rotate(90deg); }
@@ -167,7 +167,7 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .ref-dirty.warn { color: var(--warning-text); }
 .ref-list { overflow-y: auto; flex: 1; min-height: 0; margin: 0 -2px; padding: 0 2px; }
 .ref-group-head { padding: 0.5rem 0.5rem 0.25rem; color: var(--text-faint); font-size: var(--fs-xs); font-weight: var(--fw-semibold); }
-.ref-item { display: grid; grid-template-columns: 1.125rem 5.375rem 6rem minmax(0, 1fr) 3.625rem 4.625rem; align-items: center; gap: 0.5rem; width: 100%; height: 2rem; padding: 0 0.5rem; background: none; border: none; border-radius: var(--r-sm); color: var(--text); font: inherit; font-size: var(--fs-md); text-align: left; cursor: pointer; }
+.ref-item { display: grid; grid-template-columns: 1.125rem 5.375rem 6rem minmax(0, 1fr) 3.625rem 4.625rem; align-items: center; gap: 0.5rem; width: 100%; height: calc(var(--row-lg) - 0.125rem); padding: 0 0.5rem; background: none; border: none; border-radius: var(--r-sm); color: var(--text); font: inherit; font-size: var(--fs-md); text-align: left; cursor: pointer; }
 .ref-item.active { background: var(--hover-strong); }
 .ref-item.chosen { box-shadow: inset 2px 0 0 var(--sel-bar); background: var(--pick); }
 .ref-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
@@ -189,13 +189,14 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .statusbar .cmp-chip.marking .icon { color: var(--cmp-changed); }
 .statusbar .cmp-chip.bad { color: var(--warning-text); }
 .statusbar .src-changes .icon { color: var(--cmp-changed); }
-.cmp-chip-menu { min-width: 17.5rem; max-width: 22.5rem; }
+/* the chip is on the left of the bar: its menu opens from the chip's left edge, so a narrow window cannot push it out of the page */
+.cmp-chip-menu { min-width: 17.5rem; max-width: 22.5rem; left: 0; right: auto; transform-origin: bottom left; }
 .src-opt .src-ic { width: 1rem; height: 1rem; display: inline-flex; align-items: center; justify-content: center; flex: none; color: var(--text-faint); }
 .cmp-chip-sentence { margin: 2px 0 0.5rem; color: var(--text-muted); font-size: var(--fs-sm); line-height: 1.45; overflow-wrap: anywhere; }
 
 /* ==== the diff view ==== */
 .diff-panel { position: absolute; inset: 0; z-index: var(--z-pane); display: flex; flex-direction: column; background: var(--canvas); border-radius: inherit; outline: none; animation: view-in 150ms var(--ease); }
-.diff-head { display: flex; align-items: center; gap: 0.5rem; flex: none; flex-wrap: wrap; min-height: 2.875rem; padding: 0.375rem 0.75rem 0.375rem 0.625rem; border-bottom: 1px solid var(--border-subtle); background: var(--surface); }
+.diff-head { display: flex; align-items: center; gap: 0.5rem; flex: none; flex-wrap: wrap; min-height: calc(var(--bar) - 0.375rem); padding: 0.375rem 0.75rem 0.375rem 0.625rem; border-bottom: 1px solid var(--border-subtle); background: var(--surface); }
 .diff-title { display: inline-flex; align-items: center; gap: 0.5rem; min-width: 0; flex-wrap: wrap; font-size: var(--fs-md); }
 .diff-title > .icon { color: var(--text-faint); }
 .diff-versus { display: inline-flex; align-items: center; gap: 0.375rem; color: var(--text-faint); }
@@ -236,29 +237,42 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .cm-chg-deleted { inset: -1px auto auto 0; width: 0; height: 0; border-radius: 0; border-left: 5px solid var(--cmp-removed); border-top: 4px solid transparent; border-bottom: 4px solid transparent; }
 
 /* ==== the marks on the other views (compareDom.ts puts the classes; nothing re-renders) ==== */
+/* A mark and the hover or the pick land on the same elements (compareDom.ts, hoverDom.ts and the schematic's own `.mark` each put
+ * a class of their own), and the properties they set are the same ones: the outline and the glow. What decides, once, here:
+ * the pick owns the outline and the hover adds its light to the glow, so each signal stays when the others are on. */
 /* the schematic: a changed part is outlined, a new one green, a renumbered one neutral and dashed; the nets that changed are lit softly */
 .cmp-on svg.schematic .part.cmp-added .s, .cmp-on svg.schematic .part.cmp-changed .s, .cmp-on svg.schematic .part.cmp-renumbered .s { stroke-width: .34; }
-.cmp-on svg.schematic .part.cmp-added .s { stroke: var(--cmp-added); }
-.cmp-on svg.schematic .part.cmp-changed .s { stroke: var(--cmp-changed); }
-.cmp-on svg.schematic .part.cmp-renumbered .s { stroke: var(--cmp-renumbered); stroke-dasharray: 1.2 .8; }
-.cmp-on svg.schematic .part.cmp-added text.ref { fill: var(--cmp-added); }
-.cmp-on svg.schematic .part.cmp-changed text.ref { fill: var(--cmp-changed); }
-.cmp-on svg.schematic .part.cmp-renumbered text.ref { fill: var(--cmp-renumbered); }
+.cmp-on svg.schematic .part.cmp-added:not(.mark) .s { stroke: var(--cmp-added); }
+.cmp-on svg.schematic .part.cmp-changed:not(.mark) .s { stroke: var(--cmp-changed); }
+.cmp-on svg.schematic .part.cmp-renumbered:not(.mark) .s { stroke: var(--cmp-renumbered); stroke-dasharray: 1.2 .8; }
+.cmp-on svg.schematic .part.cmp-added:not(.mark) text.ref { fill: var(--cmp-added); }
+.cmp-on svg.schematic .part.cmp-changed:not(.mark) text.ref { fill: var(--cmp-changed); }
+.cmp-on svg.schematic .part.cmp-renumbered:not(.mark) text.ref { fill: var(--cmp-renumbered); }
 .cmp-on svg.schematic .part.cmp-added, .cmp-on svg.schematic .part.cmp-changed { filter: drop-shadow(0 0 .25px currentColor); }
 .cmp-on svg.schematic .part.cmp-added { color: var(--cmp-added); } .cmp-on svg.schematic .part.cmp-changed { color: var(--cmp-changed); }
+/* hovered too: the mark's glow and the hover's (views.css: .schematic-host svg [data-ref].hover-lit) one after the other */
+.cmp-on svg.schematic .part.cmp-added.hover-lit, .cmp-on svg.schematic .part.cmp-changed.hover-lit { filter: drop-shadow(0 0 .25px currentColor) drop-shadow(0 0 .45px var(--hover-lit)) drop-shadow(0 0 1.1px color-mix(in srgb, var(--hover-lit) 55%, transparent)); }
 .cmp-on svg.schematic .wire.cmp-net-changed .line, .cmp-on svg.schematic .wire.cmp-net-changed polyline:not(.hit) { stroke: color-mix(in srgb, var(--cmp-changed) 48%, var(--sch-wire)); }
 .cmp-on svg.schematic .wire.cmp-net-added .line, .cmp-on svg.schematic .wire.cmp-net-added polyline:not(.hit) { stroke: color-mix(in srgb, var(--cmp-added) 55%, var(--sch-wire)); }
 .cmp-on svg.schematic circle.junction.cmp-net-changed { fill: var(--cmp-changed); } .cmp-on svg.schematic circle.junction.cmp-net-added { fill: var(--cmp-added); }
 .cmp-on svg.schematic text.net-label.cmp-net-changed { fill: var(--cmp-changed); } .cmp-on svg.schematic text.net-label.cmp-net-added { fill: var(--cmp-added); }
-/* the board's drawing: the same marks as a glow on the part */
-.cmp-on .pcb-host svg g[data-ref].cmp-added { filter: drop-shadow(0 0 .35px var(--cmp-added)) drop-shadow(0 0 .8px var(--cmp-added)); }
-.cmp-on .pcb-host svg g[data-ref].cmp-changed { filter: drop-shadow(0 0 .35px var(--cmp-changed)) drop-shadow(0 0 .8px var(--cmp-changed)); }
-.cmp-on .pcb-host svg g[data-ref].cmp-renumbered { filter: drop-shadow(0 0 .3px var(--cmp-renumbered)); }
-/* the cards of the power tree and the system view */
-.cmp-on .pt-node.cmp-added { border-color: color-mix(in srgb, var(--cmp-added) 75%, var(--border)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cmp-added) 14%, transparent), var(--elev-1); }
-.cmp-on .pt-node.cmp-changed, .cmp-on .pt-node.cmp-board-changed { border-color: color-mix(in srgb, var(--cmp-changed) 75%, var(--border)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cmp-changed) 12%, transparent), var(--elev-1); }
-.cmp-on .pt-node.cmp-board-added { border-color: color-mix(in srgb, var(--cmp-added) 75%, var(--border)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cmp-added) 14%, transparent), var(--elev-1); }
-.cmp-on .pt-node.cmp-renumbered { border-color: color-mix(in srgb, var(--cmp-renumbered) 60%, var(--border)); border-style: dashed; }
+/* the board's drawing: the same marks as a glow on the part, and the hover's on top of it */
+.cmp-on .pcb-host svg g[data-ref].cmp-added { --cmp-c: var(--cmp-added); }
+.cmp-on .pcb-host svg g[data-ref].cmp-changed { --cmp-c: var(--cmp-changed); }
+.cmp-on .pcb-host svg g[data-ref].cmp-renumbered { --cmp-c: var(--cmp-renumbered); }
+.cmp-on .pcb-host svg g[data-ref].cmp-added, .cmp-on .pcb-host svg g[data-ref].cmp-changed { filter: drop-shadow(0 0 .35px var(--cmp-c)) drop-shadow(0 0 .8px var(--cmp-c)); }
+.cmp-on .pcb-host svg g[data-ref].cmp-renumbered { filter: drop-shadow(0 0 .3px var(--cmp-c)); }
+.cmp-on .pcb-host svg g[data-ref]:is(.cmp-added, .cmp-changed).hover-lit { filter: drop-shadow(0 0 .35px var(--cmp-c)) drop-shadow(0 0 .8px var(--cmp-c)) drop-shadow(0 0 .3px var(--hover-lit)) drop-shadow(0 0 .6px color-mix(in srgb, var(--hover-lit) 45%, transparent)); }
+.cmp-on .pcb-host svg g[data-ref].cmp-renumbered.hover-lit { filter: drop-shadow(0 0 .3px var(--cmp-c)) drop-shadow(0 0 .3px var(--hover-lit)) drop-shadow(0 0 .6px color-mix(in srgb, var(--hover-lit) 45%, transparent)); }
+/* the cards of the power tree and the system view: a mark is a ring and a border; the hover adds a ring outside it, and the pick keeps its own
+ * ring with the mark's outside that */
+.cmp-on .pt-node:is(.cmp-added, .cmp-board-added) { --cmp-c: var(--cmp-added); }
+.cmp-on .pt-node:is(.cmp-changed, .cmp-board-changed) { --cmp-c: var(--cmp-changed); }
+.cmp-on .pt-node.cmp-renumbered { --cmp-c: var(--cmp-renumbered); }
+.cmp-on .pt-node:is(.cmp-added, .cmp-changed, .cmp-board-added, .cmp-board-changed):not(.selected) { border-color: color-mix(in srgb, var(--cmp-c) 75%, var(--border)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cmp-c) 14%, transparent), var(--elev-1); }
+.cmp-on .pt-node:is(.cmp-added, .cmp-changed, .cmp-board-added, .cmp-board-changed).hover-lit:not(.selected) { box-shadow: 0 0 0 3px color-mix(in srgb, var(--cmp-c) 14%, transparent), 0 0 0 5px color-mix(in srgb, var(--hover-lit) 16%, transparent), var(--elev-1); }
+.cmp-on .pt-node:is(.cmp-added, .cmp-changed, .cmp-board-added, .cmp-board-changed).selected { box-shadow: 0 0 0 3px color-mix(in srgb, var(--sel) 28%, transparent), 0 0 0 5px color-mix(in srgb, var(--cmp-c) 40%, transparent), var(--elev-1); }
+.cmp-on .pt-node.cmp-renumbered:not(.selected) { border-color: color-mix(in srgb, var(--cmp-c) 60%, var(--border)); border-style: dashed; }
 .cmp-on .pt-node[data-cmp-delta] { overflow: visible; }
 .cmp-on .pt-node[data-cmp-delta]::after { content: attr(data-cmp-delta); position: absolute; right: 10px; top: -10px; z-index: 2; padding: 2px 8px; border-radius: var(--r-pill); background: var(--surface-raised); border: 1px solid var(--border-strong); font-size: var(--fs-xs); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; white-space: nowrap; box-shadow: var(--elev-1); color: var(--text); pointer-events: none; }
 .cmp-on .pt-node[data-cmp-delta].cmp-shrank::after { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger-text); }

@@ -24,3 +24,4 @@ What a view does about it: a list or a card gets `.hover-lit` (a wash and a 1 px
 - The System view's cards are modules and parts of the board; in `two_boards` the cards are its two boards, which stand for no part, so that view is not in the recipe (`carrier_and_cards` has module cards).
 - A section that is not on show keeps its DOM, but a view that draws only when shown (the board) does not: put it in a pane.
 - `hover-lit` is also in the page while a recipe's mouse rests on something: a recipe that counts `.hover-lit` moves the mouse away first.
+- The subscriber puts back what a view that is drawn again took off (a card whose `class` changed), and writes only the difference (`domMarks.ts`), as the comparison's marks do (`compare.md`, _Beside the rest_).

@@ -3,7 +3,7 @@
 // the palette; the help menu opens the shortcuts, the palette and About; "Report a problem" copies a block of facts.
 export const fixture = 'two_boards';
 
-const SECTIONS = ['source', 'schematic', 'power', 'system', 'bom', 'pcb', 'build'];
+const SECTIONS = ['source', 'schematic', 'power', 'system', 'bom', 'pcb', 'build', 'compare'];
 
 export async function run({ page, shot, step, expect, url, section }) {
   const settings = () => page.evaluate(() => JSON.parse(localStorage.getItem('netsmith.settings') ?? 'null'));
