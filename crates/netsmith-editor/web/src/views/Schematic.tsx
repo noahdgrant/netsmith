@@ -8,6 +8,7 @@ import { NoBoard } from '../components/ViewStatus';
 import { busName, busTargets, litNets } from '../schematic/bus';
 import { type Bus } from '../schematic/drawing';
 import { addHalos } from '../schematic/halo';
+import { marksOf } from '../schematic/marks';
 import { type Drawing, loadDrawing } from '../schematic/load';
 import { litNotes, noteLocation, parseNoteAt } from '../schematic/notes';
 import {
@@ -256,8 +257,9 @@ export function Schematic() {
 
   // Paint what is selected, what the pointer is over, and what the cursor's line declares. With
   // a net selected nothing else lights, so the rest stays dimmed while the pointer moves.
-  const picked = selPart ? [selPart] : inModule;
-  const marked = [...new Set([...picked, ...cursorParts.value])];
+  // A module that is picked marks its parts, except on its own sheet when that is the one on screen: every part would wear the halo.
+  const shownModule = overview ? null : moduleOfSheet(current, modulePaths);
+  const { picked, marked } = marksOf({ part: selPart, module: selModule, moduleParts: inModule, shownModule, cursor: cursorParts.value });
   useEffect(() => {
     const svg = holder.current?.querySelector('svg.schematic');
     if (!svg) return;

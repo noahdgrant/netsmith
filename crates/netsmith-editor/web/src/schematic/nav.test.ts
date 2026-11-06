@@ -14,6 +14,7 @@ import {
   parseTitle,
   pieceOf,
   revealStep,
+  rowHover,
   sheetStats,
   stepRing,
 } from './nav';
@@ -255,5 +256,18 @@ describe('the module a sheet of the overview stands for', () => {
   });
   it('is none for the sheet of the parts that are in no module', () => {
     expect(moduleOfSheet('LedBoard', modules)).toBeNull();
+  });
+});
+
+describe('what the row of a sheet in the navigator lights', () => {
+  it('is the sheet’s parts for a sheet that is not open (a card of the overview, a row of the bill of materials)', () => {
+    expect(rowHover('link', 'brain', ['C1', 'U1'])).toEqual({ kind: 'module', key: 'sheet:link', refs: ['C1', 'U1'] });
+    expect(rowHover('link', '*', ['C1'])).toEqual({ kind: 'module', key: 'sheet:link', refs: ['C1'] });
+  });
+  it('is nothing for the open sheet: its parts are all on screen, and the pointer rests on its row right after the click', () => {
+    expect(rowHover('brain', 'brain', ['C1', 'U1'])).toBeNull();
+    expect(rowHover('stage (2/3)', 'stage (2/3)', ['R1'])).toBeNull();
+    // another piece of the same module is another sheet
+    expect(rowHover('stage (1/3)', 'stage (2/3)', ['R2'])).not.toBeNull();
   });
 });

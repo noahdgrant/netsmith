@@ -5,10 +5,10 @@ import { ChangesSwitch } from '../components/ChangesSwitch';
 import { CompareLegend } from '../components/CompareLegend';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
-import { hoverAttrs } from '../hover';
+import { clearHover, hoverAttrs } from '../hover';
 import { ALL, canStep, stepPick } from '../sheets';
 import type { Sheet } from '../schematic/drawing';
-import { filterSheets, parseTitle, type SheetStats } from '../schematic/nav';
+import { filterSheets, parseTitle, rowHover, type SheetStats } from '../schematic/nav';
 import { EmptyState } from '../components/ui';
 import { plural } from '../util';
 
@@ -98,6 +98,8 @@ export function SheetList({
     list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
   }, [current, shown.length]);
   const choose = (pick: string) => {
+    // The row was lit by the pointer or by its focus on the way to the click; the sheet it opens is on screen now.
+    clearHover();
     onOpen(pick);
     onDone?.();
   };
@@ -169,7 +171,7 @@ export function SheetList({
             class={`sl-row ${current === r.sheet.name ? 'active' : ''} ${r.carries ? 'carries' : ''}`}
             title={`${r.sheet.title}${r.carries ? ' (carries the selected net)' : ''}`}
             data-hv-ref={r.parts.join(' ')}
-            {...hoverAttrs({ kind: 'module', key: `sheet:${r.sheet.name}`, refs: r.parts })}
+            {...hoverAttrs(rowHover(r.sheet.name, current, r.parts))}
             onClick={() => choose(r.sheet.name)}
           >
             <span class="sl-n">{r.n}</span>

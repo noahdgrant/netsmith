@@ -2,6 +2,7 @@
 // the order a net's pins are walked in, and what to say about a sheet. Pure functions.
 
 import type { Location, NetInfo, PartInfo, PinInfo, Problem } from '../api';
+import type { Hover } from '../hover';
 import { covers } from '../util';
 import type { DrawingIndex, Sheet } from './drawing';
 import type { Box } from './zoom';
@@ -257,4 +258,11 @@ export function revealStep(
 export function moduleOfSheet(sheet: string, modules: string[]): string | null {
   const base = pieceOf(sheet).base;
   return modules.includes(base) ? base : null;
+}
+
+/** What the pointer over the row of a sheet in the module navigator lights: the sheet's parts, in every view that shows them (a card of the overview,
+ * a row of the bill of materials). Nothing for the row of the sheet that is open: its parts are all on screen, and lighting each of them says
+ * nothing (and the pointer rests on that row right after it was clicked, so the whole drawing would sit in grey boxes until it moved away). */
+export function rowHover(sheet: string, current: string, parts: string[]): Hover | null {
+  return sheet === current ? null : { kind: 'module', key: `sheet:${sheet}`, refs: parts };
 }

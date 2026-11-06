@@ -9,7 +9,9 @@
 //      end names the interface apart), with those nets lit; where two modules carry them a small menu
 //      asks which.
 //   c. go to anything finds a bus (`#uart`): it is picked and framed.
-import { activeSheet, openSheet } from '../schematic-helpers.mjs';
+//   d. a module on screen is not boxed: opening `brain` from the navigator (the pointer stays on its row) or from the overview's card (which selects the
+//      module) leaves every part without a halo; a part picked in it has exactly its own; in the overview a selected module's parts are marked in its card.
+import { activeSheet, openSheet, visibleHalos } from '../schematic-helpers.mjs';
 
 export const fixture = 'bus_bench';
 
@@ -210,4 +212,72 @@ export async function run({ page, shot, step, expect }) {
   await page.waitForFunction(() => !document.querySelector('.selchip'));
   await page.waitForFunction(() => !document.querySelector('svg.schematic .wire.on, svg.schematic .bus-group.on'));
   expect((await litNets()).length === 0, 'Esc clears it, and nothing stays lit');
+
+  // ---- d. the module on screen is not boxed ----
+  const partsOnShow = () => page.evaluate(() => [...document.querySelectorAll('svg.schematic > g.sheet-slot:not([style*="none"]) g.part[data-ref]')].filter((p) => p.getClientRects().length).map((p) => p.getAttribute('data-ref')));
+  const classesOnShow = () => page.evaluate(() => [...document.querySelectorAll('svg.schematic > g.sheet-slot:not([style*="none"]) g.part[data-ref]')].filter((p) => p.getClientRects().length).map((p) => p.getAttribute('class')));
+
+  step('opening a module from the navigator: its parts have no halo while the pointer rests on its row');
+  await openSheet(page, 'link');
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(300);
+  await page.locator('.sheetnav .sl-row', { has: page.locator('.sl-name', { hasText: /^brain$/ }) }).click();
+  await page.waitForFunction(() => document.querySelector('.sheetpick .crumb-sheet')?.textContent === 'brain');
+  await page.waitForTimeout(600);
+  const brainParts = await partsOnShow();
+  expect(brainParts.length === 8, `brain draws its ${brainParts.length} parts`);
+  expect((await visibleHalos(page)).length === 0, 'no part has a halo with a fill or a stroke (the computed style of each), the pointer still on the row');
+  expect((await classesOnShow()).every((c) => c === 'part'), 'and none is marked or lit (the shared hover lights nothing of the sheet that is open)');
+  await shot('brain-from-navigator');
+
+  step('opening it from its card in the overview selects the module, and still no part is boxed');
+  await openSheet(page, 'All modules');
+  await page.waitForSelector('.sheet-overview .ov-card');
+  await page.locator('.sheet-overview .ov-card', { has: page.locator('.ov-name', { hasText: /^brain$/ }) }).click();
+  await page.waitForFunction(() => document.querySelector('.sheetpick .crumb-sheet')?.textContent === 'brain');
+  await page.waitForFunction(() => /module/i.test(document.querySelector('.selchip')?.textContent ?? ''));
+  expect(/brain/.test(await chip()), `the module is the selection: the chip says so (${(await chip()).replace(/\n/g, ' ')})`);
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(600);
+  expect((await visibleHalos(page)).length === 0, 'no part has a halo');
+  expect((await classesOnShow()).every((c) => !/\bmark\b|\bon\b/.test(c)), 'none is marked, and the drawing is not dimmed');
+  expect(!(await page.evaluate(() => document.querySelector('svg.schematic > g.sheet-slot:not([style*="none"])').closest('svg').classList.contains('has-on'))), 'nothing is dimmed (has-on is off)');
+  await shot('brain-from-card');
+
+  step('a part picked inside the module has exactly its own halo');
+  const one = brainParts[brainParts.length - 1];
+  await page.locator(`svg.schematic > g.sheet-slot:not([style*="none"]) g.part[data-ref="${one}"]`).click();
+  await page.waitForFunction((r) => document.querySelector('.selchip')?.textContent.includes(r), one);
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(600);
+  const halos = await visibleHalos(page);
+  expect(halos.length === 1 && halos[0].ref === one, `exactly one halo shows, ${one}'s (${halos.map((h) => h.ref).join(',')})`);
+  await shot('brain-part-picked');
+
+  step('the module selected again, in the overview its card marks its parts and the others none; on another sheet nothing changes');
+  await page.keyboard.press('Escape');
+  await openSheet(page, 'All modules');
+  await page.locator('.sheet-overview .ov-card', { has: page.locator('.ov-name', { hasText: /^brain$/ }) }).click();
+  await page.waitForFunction(() => document.querySelector('.sheetpick .crumb-sheet')?.textContent === 'brain');
+  await openSheet(page, 'All modules');
+  await page.waitForSelector('.sheet-overview .ov-card');
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(600);
+  const cards = await page.evaluate(() =>
+    [...document.querySelectorAll('.sheet-overview .ov-card')].map((card) => {
+      const name = card.querySelector('.ov-name')?.textContent;
+      const marked = [...card.querySelectorAll('g.part.mark')].length;
+      const boxed = [...card.querySelectorAll('.part-halo')].filter((h) => { const c = getComputedStyle(h); return c.stroke !== 'none' && !/\/ 0\)$/.test(c.stroke); }).length;
+      return { name, marked, boxed };
+    }),
+  );
+  const brainCard = cards.find((c) => c.name === 'brain');
+  expect(brainCard.marked === 8 && brainCard.boxed === 8, `the card of brain marks its 8 parts, as before (${JSON.stringify(brainCard)})`);
+  expect(cards.filter((c) => c.name !== 'brain').every((c) => c.marked === 0 && c.boxed === 0), 'and the cards of the other modules none');
+  await shot('overview-module-selected');
+  await openSheet(page, 'link');
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(400);
+  expect((await visibleHalos(page)).length === 0 && (await classesOnShow()).every((c) => c === 'part'), 'link, another sheet, shows no mark of the selection of brain');
+  await page.keyboard.press('Escape');
 }
