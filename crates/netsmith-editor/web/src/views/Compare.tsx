@@ -75,7 +75,7 @@ function Progress({ since, against }: { since: number; against: string }) {
         {STAGE_ORDER.map((s, i) => (
           <li key={s} class={i < at ? 'done' : i === at ? 'now' : ''}>
             <i aria-hidden="true" />
-            {s}
+            {s === 'diff' ? 'compare' : s}
           </li>
         ))}
       </ol>
@@ -289,7 +289,10 @@ function Body({ data }: { data: CompareData }) {
   const renum = filterRows(rows.renumbered, query);
   const groups = groupRows(shown, group);
   const several = sc === 'all' && data.boards.length > 1;
-  const nothing = !data.changed && data.source.filesChanged === 0 && data.problems.new.length === 0;
+  const rowsTotal = n.parts + n.nets + n.rails + n.bom + n.modules + n.problems;
+  // No change to the circuit: say so with a check, and what did differ in the source (comments, formatting, a layout file).
+  const calm = !data.changed && rowsTotal === 0 && n.parts + n.nets + n.rails === 0;
+  const onlySource = calm && data.source.filesChanged > 0;
   return (
     <>
       <div class="cmp-tiles" role="group" aria-label="Summary">
@@ -297,15 +300,27 @@ function Body({ data }: { data: CompareData }) {
           <TileView key={t.id} t={t} />
         ))}
       </div>
-      {nothing && n.parts + n.nets + n.rails + n.bom + n.modules + n.problems === 0 ? (
-        <EmptyState
-          icon="check-circle"
-          tone="ok"
-          title="No changes in the circuit"
-          help={`The circuit on disk is the same as at ${refText.value}${rows.renumbered.length ? ` (${plural(rows.renumbered.length, 'part')} only got another designator)` : ''}.`}
-          testid="cmp-empty"
-          actions={<AnotherRef label="Compare with another ref" />}
-        />
+      {calm ? (
+        <>
+          <EmptyState
+            icon="check-circle"
+            tone="ok"
+            compact={onlySource}
+            title="No changes in the circuit"
+            help={
+              onlySource
+                ? `The parts, nets, rails and bill of materials are the same as at ${refText.value}. Only the source differs: ${plural(data.source.filesChanged, 'file')}, +${data.source.added} \u2212${data.source.removed} lines, which is comments, formatting or something the circuit does not read.`
+                : `The circuit on disk is the same as at ${refText.value}${rows.renumbered.length ? ` (${plural(rows.renumbered.length, 'part')} only got another designator)` : ''}.`
+            }
+            testid="cmp-empty"
+            actions={!onlySource ? <AnotherRef label="Compare with another ref" /> : undefined}
+          />
+          {onlySource && (
+            <div class="cmp-scroll cmp-scroll-source" data-testid="cmp-source-only">
+              <Source data={data} />
+            </div>
+          )}
+        </>
       ) : (
         <>
           <Tabs data={data} n={n} />

@@ -2,7 +2,7 @@
 // laptop's 1366 x 768 or a large screen's 2000 x 1000, and the layout is kept across a reload.
 export const fixture = 'two_boards';
 
-const KEYS = [['1', 'source'], ['2', 'schematic'], ['3', 'power'], ['4', 'system'], ['5', 'bom'], ['6', 'pcb'], ['7', 'build']];
+const KEYS = [['1', 'source'], ['2', 'schematic'], ['3', 'power'], ['4', 'system'], ['5', 'bom'], ['6', 'pcb'], ['7', 'build'], ['8', 'compare']];
 
 export async function run({ page, shot, step, expect }) {
   const active = () => page.evaluate(() => [...document.querySelectorAll('.pane-strip .tab.active')].map((t) => t.dataset.section));

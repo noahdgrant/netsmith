@@ -284,6 +284,7 @@ async function drive() {
     const context = await browser.newContext({ viewport: { width: 1500, height: 900 }, acceptDownloads: true });
     const page = await context.newPage();
     const problems = [];
+    const allowed = [];
     page.on('pageerror', (e) => problems.push(`page error: ${e.message}`));
     page.on('console', (m) => m.type() === 'error' && problems.push(`console error: ${m.text()}`));
     let shots = 0;
@@ -292,6 +293,8 @@ async function drive() {
       page,
       url: state.url,
       project: state.project,
+      /** A console error a step makes on purpose (the browser logs a request that answers 404): named by a pattern, and only that one is let through. */
+      allowConsole: (re) => allowed.push(re),
       /** The project's repository back as `launch --git` made it (a recipe that needs it starts with this). */
       resetRepo: () => resetCompareRepo(state.project),
       binary: netsmithBin(),
@@ -325,7 +328,8 @@ async function drive() {
       await page.waitForSelector('.sidebar > *', { state: 'attached', timeout: 20000 });
       await page.waitForSelector('.boardpick select option', { state: 'attached', timeout: 5000 }).catch(() => {});
       await run(tools);
-      if (problems.length) throw new Error(problems.join('\n'));
+      const unexpected = problems.filter((p) => !allowed.some((re) => re.test(p)));
+      if (unexpected.length) throw new Error(unexpected.join('\n'));
       console.log(`PASS ${name}`);
     } catch (e) {
       failed++;

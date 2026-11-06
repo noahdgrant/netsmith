@@ -95,6 +95,8 @@ const fieldText = (v: string | undefined): string => (v === undefined || v === '
 
 function row(r: Omit<ChangeRow, 'search' | 'fields' | 'pins' | 'module' | 'board'> & Partial<Pick<ChangeRow, 'fields' | 'pins' | 'module' | 'board'>>): ChangeRow {
   const full: ChangeRow = { fields: [], pins: [], module: '', board: '', ...r, search: '' };
+  // The same name can be on two boards (`GND`, `3V3`): a row is the board's too, so a list of every board has unique keys.
+  full.id = `${full.board}|${full.id}`;
   full.search = [full.title, full.baseTitle, full.type, full.before, full.after, full.desBase, full.desHead, full.status, STATUS_LABEL[full.status], ...full.fields.flatMap((f) => [f.field, f.old, f.new]), ...full.pins.map((p) => `${p.designator}.${p.pin} ${p.part}`)]
     .filter(Boolean)
     .join(' ')
