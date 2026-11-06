@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { PowerTree } from '../api';
 import { api } from '../client';
 import { NoBoard, ViewLoading } from '../components/ViewStatus';
+import { Icon } from '../components/Icons';
 import { MiniMap } from '../components/MiniMap';
 import { PanZoom } from '../components/PanZoom';
 import { analysis, board, detail, goTo, systemName, visible } from '../store';
@@ -529,6 +530,6 @@ export function Power() {
   if (!name) return <NoBoard what="show" />;
   if (error) return <div class="empty bad">{error}</div>;
   if (!tree) return <ViewLoading what="Reading the power tree" />;
-  if (tree.nodes.length === 0) return <div class="empty">No rail draws from a net on this board.</div>;
+  if (tree.nodes.length === 0) return <div class="empty"><div class="empty-mark" aria-hidden="true"><Icon name="power" size={22} /></div><div class="empty-title">No power tree to draw</div><div class="empty-sub">No rail on this board draws from a net.</div></div>;
   return <PowerTreeView tree={tree} fitKey={`${name}:${version}:${tree.nodes.length}`} />;
 }

@@ -12,7 +12,7 @@ The window opens on the Schematic, or on the sections last used (the saved layou
 
 `scripts/editor-verify drive sections split overview`
 
-- `sections`: each key opens its section, which fills the width at 1366 x 768 and 2000 x 1000 with no scrollbar on the page (look at the screenshots, `sections-*`); a plain digit typed into the tree filter stays text; Alt+2 works there; the section is kept across a reload.
+- `sections`: each key opens its section, which fills the width inside the frame (the sheet is set in by 8 px on each side) at 1366 x 768 and 2000 x 1000 with no scrollbar on the page (look at the screenshots, `sections-*`); a plain digit typed into the tree filter stays text; Alt+2 works there; the section is kept across a reload.
 - `split`: the button, the divider (drag, minimum, arrow key, double click), a tab dragged onto a half of the window (screenshots `dragging-a-tab` and `drop-zone`), the menu, Ctrl+\, a reload, closing the pane and the narrow window.
 - A click-through and Back are in `schematic` (Escape) and `power` (a load line opens the source).
 - `split` also checks the icon on the tab of the other pane, that a click-through leaves one pane, that a saved split that was not chosen is not opened into, and the one-time notice of a split the person made.

@@ -15,6 +15,7 @@ import {
 import { useEffect, useRef } from 'preact/hooks';
 
 import { api } from '../client';
+import { Icon } from './Icons';
 import { languageExtensions } from '../languages';
 import { flashLine, nextFlash, revealFlash, revealTarget } from '../reveal';
 import {
@@ -255,7 +256,7 @@ export function Editor() {
   return (
     <div class="editor-host">
       <div ref={host} class="cm-wrap" style={{ display: file ? 'block' : 'none' }} />
-      {!file && (project.value ? <div class="empty">Open a file from the project tree.</div> : <CodeSkeleton />)}
+      {!file && (project.value ? <div class="empty"><div class="empty-mark" aria-hidden="true"><Icon name="file" size={22} /></div><div class="empty-title">No file is open</div><div class="empty-sub">Choose one in the project tree, or press Ctrl+P and type a name.</div></div> : <CodeSkeleton />)}
     </div>
   );
 }
