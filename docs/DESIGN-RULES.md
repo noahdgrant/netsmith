@@ -24,3 +24,13 @@ against them first (`GLOSSARY.md` has the vocabulary, `docs/adr/` the decisions 
   has a schematic but no PCB.
 - **A part number needs a source.** No LCSC number goes into a catalog from memory, and no
   derating curve either.
+- **A part states its own requirements.** What a datasheet says a part needs and draws (its
+  supply range, its current, its ratings, what it asks of its neighbours) is stated by the
+  part, with the page cited. A design states only what is specific to it, and never a load or
+  a rating that a part's datasheet already bounds. An assumption on the board is the last
+  resort, when no datasheet bounds the value.
+- **The user chooses the level of abstraction.** A design can name a specific part
+  (`AcmeCoax200`) or a generic that picks a part from the requirements put on it
+  (`CoaxReceptacle`), and can use a std module (`BuckStage`) or build the circuit from parts by
+  hand. The layers are part, then generic that picks a part, then module; each level is
+  complete on its own (ADR 0059, stage 1 implemented).

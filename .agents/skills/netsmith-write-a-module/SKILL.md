@@ -22,13 +22,18 @@ Make a module when a circuit appears twice or has a name of its own: a regulator
 
 ## Rules
 
-- A user cannot reach the parts inside a module, so expose anything a user may need to set, as a rail or a declared value. Relate the declared value to the inner part inside the module.
-- To let the board choose who assembles a module's parts, declare `.assembly_mode: String` and write `.j.assembly &= .assembly_mode` for each part inside (ADR 0042). The board writes `.block.assembly_mode &= "hand"`; left alone, the parts are assembled as if on the board. Do not offer it unless a user may want it.
+- A user cannot reach the parts inside a module, so expose anything a user may need to set, as a rail or a declared value. Relate the declared value to the inner part inside the module. A value a user should state (a balancing resistance with no sensible default) is a plain declared value that the inner part is held to (`.inner.x &= .name`): a board that forgets it gets an `unconstrained pick` or `unstated value` warning, and a bound the module or board writes on it (`.name >= 1kohm`) reaches the part. State what a part decides, or offer a sensible value with `.name ?= value`. A module that wraps another module's value forwards it through its own member (`.inner.x &= .x`) or states it.
+- To let the board choose who assembles a module's parts, declare `.assembly_mode: AssemblyMode` and write `.j.assembly &= .assembly_mode` for each part inside (ADR 0042). The board writes `.block.assembly_mode &= AssemblyMode::Hand`; left alone, the parts are assembled as if on the board. Do not offer it unless a user may want it.
+- To let the board choose a function on a pin the module exports, pass the choice to the part's pin with an equation inside the module: `.mcu.p04.function == .scl.function`. A board's `.function &=` on an exported pin that no such equation reads is an error (it would have no effect).
 - A module states only what is always true. Leave voltages, currents and tolerances for the board to narrow.
 - A module never names a net. The board names a module's nets through its rails and pins.
 - Two instances are independent. Give each its own values from the board.
 - A module with no parts, only quantities and pins, is an `interface`. Use one when several modules need the same bundle of pins.
 - The module's own rail is a port: from inside it supplies what is inside. State loads on the board's consuming rail and let the balance carry them in.
+
+## A part or module that stands for a generic
+
+When several parts or modules can do one job (two connectors, two regulator ICs), declare `generic Name { ... }` with what a board may rely on, and write each as `part X provides Name` or `module X provides Name` (a module for an IC that needs support parts). Do not redeclare the generic's members in a provider: narrow them (`.max_frequency &= 6GHz`). The board imports the providers' files, writes `.rf: Name { <requirements> }` and the solver picks. A generic holds values, pins and interfaces, never parts; its `pins` table has rows of a kind only (`.signal passive required`) and only a part provides it. The standard passives, diodes, `NMosfet` and `LinearRegulator` are generics that stand for themselves: write `part X provides Resistor` to add a part that a use of `Resistor` may pick when no standard row serves (it has its own pin table and catalog and no `.package` line). See "Generics and providers" in the guide.
 
 ## Boards that plug into each other
 

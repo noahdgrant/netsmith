@@ -70,7 +70,7 @@ The width the tracks of a net are drawn at. A rail may state it (`.min_track` on
 _Avoid_: Track class, width rule
 
 **Guideline**:
-Advice that a person decides about, as opposed to a limit of the fabricator. A design that goes against one gets a `warning:` and still builds; `guidelines = "error"` in `netsmith.toml`, or `--strict` for one run, makes it an error. The first is the track width against current (ADR 0036); the datasheet layout rules of ADR 0030 are the next.
+Advice that a person decides about, as opposed to a limit of the fabricator. A design that goes against one gets a `warning:` and still builds; `guidelines = "error"` in `netsmith.toml`, or `--strict` for one run, makes it an error. The first is the track width against current (ADR 0036); the datasheet layout rules of ADR 0030 are the next. An **Open circle** (ADR 0057), an **Unconstrained pick** and an **Unstated value** (ADR 0065) are findings of the same kind.
 _Avoid_: Lint, soft rule
 
 **Temperature rise**:
@@ -150,6 +150,18 @@ _Avoid_: Voltage divider (that is any divider; this one sets a regulator's outpu
 Everything around a buck converter IC except the IC: `std::parts::regulator::BuckStage`, a module of the inductor, two capacitors and a feedback divider. The IC is a part with a `Buck` interface member that carries its datasheet numbers.
 _Avoid_: Buck module, power stage
 
+**Bank**:
+Identical capacitors in parallel that stand in one place of the design, a `Capacitor` with a `.count` (ADR 0052, proposed). The count is one number the board may state (`.count &= 3`, `.stage.output_count &= 3`), a range the solver chooses from (`1..8`, the fewest that holds every check), or unset, which is one. Every other field is the value of one capacitor of the bank. Lowering makes one part for each, on the same nets, and the bill of materials lists the row once with the quantity; the second and later parts have the path of the first with `#2`, `#3`. Only the standard `Capacitor` is a bank (a user part with a member named `count` is one part), and a requirement on a bank's part path in the physical file holds for each of its capacitors. A bank is not a repetition construct: the language has none.
+_Avoid_: Array, capacitor slots (`cap_a`, `cap_b`), parallel group, multiplier, multiplicity
+
+**Dielectric**:
+The class of a ceramic capacitor, `C0G`, `X5R` or `X7R`: the enum `Dielectric` of `std::parts::passive`, the type of a `Capacitor`'s `.dielectric` and of the optional `dielectric` column of the capacitor catalog (ADR 0055, proposed). A design states it with `.dielectric &= Dielectric::X7R`. Read from the class that JLCPCB's record prints for the row; a generic capacitor has none.
+_Avoid_: Temperature code, temperature characteristic, material
+
+**Heating current**:
+The DC current at which an inductor warms by the rise its datasheet states: `Inductor`'s optional `.rms_current`, a catalog column that the standard rows leave empty because the rise differs between makers and no row has a recorded value (ADR 0055, proposed). Distinct from the saturation current, which is where the inductance falls.
+_Avoid_: Rated current (a rating of what?), temperature-rise current, Irms (the symbol, not the term)
+
 **Project**:
 A directory with a `netsmith.toml` at its root, found from any directory below it. Its `src/` files are modules named by their path (`src/power.nsm` is `src::power`), and the commands with no file argument act on the files its manifest lists.
 _Avoid_: Workspace, package, repo
@@ -163,8 +175,16 @@ A project's `netsmith.toml`: its name, the top-level files that hold boards, the
 _Avoid_: Config, settings
 
 **Assembly**:
-Who puts a part on the board: the field `.assembly` of every part, `"fab"` (the board house places it), `"hand"` (soldered by hand) or `"none"` (not fitted at all: a hole, a fiducial). It decides the BOM, the placement file and the notes of `fab` (ADR 0024, provisional). A project may set a default for it in `netsmith.toml` (`assembly = "fab"`, ADR 0028). A board cannot reach the parts of a module, so a module that wants the choice offers a `String` value (`.assembly_mode`) and ties its parts to it with `.j.assembly &= .assembly_mode`; the board's narrowing of that value is the design's own statement for those parts (ADR 0042).
+Who puts a part on the board: the field `.assembly` of every part, of the type `AssemblyMode`: `AssemblyMode::Fab` (the board house places it), `AssemblyMode::Hand` (soldered by hand) or `AssemblyMode::None` (not fitted at all: a hole, a fiducial). It decides the BOM, the placement file and the notes of `fab` (ADR 0024, provisional). A project may set a default for it in `netsmith.toml` (`assembly = "fab"`, ADR 0028; the manifest and the catalog files write the lower-case word). A board cannot reach the parts of a module, so a module that wants the choice offers a value of the type `AssemblyMode` (`.assembly_mode`) and ties its parts to it with `.j.assembly &= .assembly_mode`; the board's narrowing of that value is the design's own statement for those parts (ADR 0042, ADR 0054).
 _Avoid_: Population, fitting, DNP
+
+**Enum**:
+A type whose values are a fixed list of named variants, declared with `enum Name { A, B }` and imported like a definition (ADR 0054, proposed). A variant is written with its enum, `Name::A`; a field of the enum type takes only its variants, with `&=`, `?=` and `==`. `AssemblyMode` is the one enum in scope in every file without an import (`std/prelude.nsm`).
+_Avoid_: Option set, choice list, constant, tag, quoted word (for a value that is one of a fixed list)
+
+**Variant**:
+One value of an enum, written `Enum::Variant` (`AssemblyMode::Hand`). Not a text: `"hand"` is refused where a variant belongs, and the message names the variant it was meant to be.
+_Avoid_: Case, member (a member is a `.name` of a definition), mode
 
 **Designator**:
 The reference of a part on the schematic, the bill of materials and the placement file: letters and a number, `R1`, `C2`, `BZ1`. The letters are the field `.designator` of every part, stated by its kind (`Resistor` is `"R"`, ADR 0046) or narrowed by a part or board that defines a part with none, and `"U"` when nothing says; the number counts the parts with the same letters, in the order of their paths, where a number at the end of a path segment sorts as a number (`.pads.tp2` is `TP2`, and `tp10` follows `tp9`; owner decision 2026-11-04). The layout file is keyed by path, so a designator that changes moves no placement.
@@ -175,12 +195,24 @@ A component with pins and quantities, such as a resistor or a regulator.
 _Avoid_: Component, device
 
 **Interface**:
-A typed bundle of pins and quantities that is connected as one. A bundle of quantities with no pins, such as a process, is also an interface.
+A typed bundle of pins and quantities that is connected as one. A bundle of quantities with no pins, such as a process, is also an interface. A member of an interface type is a port (`.supply: Rail`); what picks a part is a generic, not an interface.
 _Avoid_: Bus, bundle, group
 
 **Module**:
 A reusable sub-circuit that is placed on a board or inside another module. Only its interfaces, pins, and declared values can be used from outside; the parts and modules inside are internal.
 _Avoid_: Circuit, block, sheet, subcircuit
+
+**Generic**:
+A definition, `generic Name { ... }`, of what a board may rely on of any part or module that provides it: pins with their kinds (a `pins` table whose rows have a kind and no name and no pads), values with their types, and the relations, narrowings and defaults that hold for every provider. It has no pads, no package and no catalog, unless it is its own provider: the standard `Resistor`, `Capacitor`, `Led`, `Inductor`, `FerriteBead`, `Crystal`, `Fuse`, `Schottky`, `Zener`, `Tvs`, `NMosfet` and `LinearRegulator` are, so each has a pin table with pads and a catalog, is the first candidate for its own use, and keeps its kind name (ADR 0059 stage 2). A board uses it with a member of its type, `.rf: CoaxReceptacle { .max_frequency >= 1.61GHz }`, and the solver picks a provider (ADR 0059, proposed). Do not confuse it with a **generic part**, which is a pick, not a definition.
+_Avoid_: Abstract part, trait, protocol, role, family, spec
+
+**Provider**:
+A `part` or `module` whose header says `provides Name` (`part AcmeMicroCoax provides CoaxReceptacle`), naming a generic. It has every member and statement of the generic, does not declare them again, and adds its own pin table, numbers, catalog and, for a module, parts. It is a candidate for a use of the generic when its file is imported, directly or through other files, by the board's file. A provider is never a **supply provider**, the source of price and stock; say which one is meant (ADR 0059, proposed). A part may provide a standard generic such as `Resistor`: the generic's own catalog and pads are not read into it, and the design lists the generics it provides (`Part.provides`), so that the schematic and the placer treat it as the kind it provides.
+_Avoid_: Implementation, implementer, subtype, instance (of a generic)
+
+**Use of a generic**:
+A member declared with a generic's type (`.rf: CoaxReceptacle { ... }`). The solver puts one provider in its place, an instance of that part or module at the use's own path (`rf`), and the build says which and why the providers before it were passed over. A use reaches only the members the generic declares, so a board works with every provider; a board that wants exactly one writes the provider as the type (`.rf: AcmeMicroCoax`), and nothing is picked (ADR 0059, proposed).
+_Avoid_: Instantiation, binding
 
 **Rail**:
 The interface for a DC supply: a positive and a negative pin and the voltage between them.
@@ -218,11 +250,16 @@ _Avoid_: Short, jumper
 
 **Function**:
 One of the things a pin can be, listed with `fn` in its pinout row (`fn GPIO UART1_TX`). A connected pin with more than one function needs the board to choose, `.u.pa2.function &= "UART1_TX"`; there is no default, and one function can be chosen on only one pin of a part. A function may carry its own kind after a colon (`fn GPIO:bidirectional UART1_TX:output`, ADR 0046); the net rules judge a pin by the kind of the function chosen, and the pin's kind is the default for any function without one.
+A module's own pin (`.scl: Pin`) passes a choice on to a pin of a part inside with an equation, `.mcu.p04.function == .scl.function`; `.function &=` on a module's pin that no such equation reads is an error, because it has no effect (ADR 0062, stage 0).
 _Avoid_: Alternate function, mux, mode
 
 **Logic level**:
 One of the four voltages of a `Logic` line, as a datasheet gives them and relative to the line's ground (the `neg` of its `.reference` rail): `.vih` the lowest an input reads as high, `.vil` the highest it reads as low, `.voh` the lowest an output drives a high to, `.vol` the highest it drives a low to. After the rails are solved, the solver requires `voh >= vih` and `vol <= vil` for every output and input on a net, and says "not evaluated" when a level has no value or the grounds differ (ADR 0046).
 _Avoid_: Threshold, noise margin
+
+**Level translator**:
+A `LevelTranslator` (`std::parts::logic`, ADR 0063): a single-supply buffer whose input accepts a lower logic level than its supply and whose output swings to its supply. Its input thresholds are `.vt_plus_max` (above it the input is a high for sure) and `.vt_minus_min` (below it a low for sure). A generic with the catalog `level_translator`, which has no standard row.
+_Avoid_: Level shifter, voltage translator
 
 **Absolute maximum**:
 The voltages a pin survives, `.abs_min` and `.abs_max` of the pin, relative to its ground. The solver holds them against the worst-case voltage of the pin's net (ADR 0046).
@@ -244,7 +281,7 @@ The two terminals of a part that a series chain enters and leaves by.
 A run of series connections from one pin through bridge parts to another. A series chain passes one current, the through-current (`.current`) of each of its parts, taken from the first terminal of the part's `bridge` to the second; the first part's is drawn from the net the chain starts on (ADR 0014).
 
 **Catalog**:
-The columns of a list of real parts that a part's fields are matched against when the solver picks one. A catalog may be keyed by a column (`catalog mcu by .mpn`), and then the design names the row. The rows are a CSV file named after the catalog, in the order the solver tries them (ADR 0022); a project adds its own files in `netsmith.toml`.
+The columns of a list of real parts that a part's fields are matched against when the solver picks one. A catalog may be keyed by a column (`catalog mcu by .mpn`), and then the design names the row. The rows are a CSV file named after the catalog, in the order the solver tries them (ADR 0022); a project adds its own files in `netsmith.toml`. A row with an empty cell is never offered, except in a column that a catalog may leave empty (`temperature_coefficient`, `rms_current`, `dielectric`), and then only to a design that says nothing about the field by any route (a narrowing, a relation, a join, a balance).
 
 **Catalog file**:
 A CSV file of the rows of one catalog: a header of the catalog's columns (field paths without the leading dot) and the fixed columns `lcsc`, `mpn`, `library`, `price`, `price_breaks`, `stock`, `source`, `date`, `checked`, `name`, `label`, `notes`. `price`, `stock` and `library` are JLCPCB's numbers, entered by hand, and `date` is the day they were read; the solver does not read them and the bill of materials uses them only when no supply provider has the part (ADR 0047). `checked` is the day a refresh last verified the row against LCSC. A row that names a part must have a `source`. The standard ones are `data/jlcpcb/catalog/*.csv` (ADR 0022).
@@ -257,8 +294,12 @@ A source of price and stock for a part number, behind one trait: given an LCSC o
 _Avoid_: Supplier feed, price list (a file provider reads one)
 
 **Generic part**:
-A passive or LED the solver chooses by value alone: a resistor, a ceramic capacitor, an inductor or an LED with no supplier or part number. A rating it cannot know (a capacitor's rated voltage, an inductor's saturation current and DC resistance, an LED's forward voltage) is taken from what the design states or demands. A separate step resolves it to a catalog row (JLCPCB Basic first; a capacitor only to a row with a recorded DC-bias curve), or reports it unresolved with the nearest alternatives and whether the checks pass with each (ADR 0047, provisional).
+(A pick, not a definition: see **generic**.) A passive or LED the solver chooses by value alone: a resistor, a ceramic capacitor, an inductor or an LED with no supplier or part number. A rating it cannot know (a capacitor's rated voltage, an inductor's saturation current and DC resistance, an LED's forward voltage) is taken from what the design states or demands. A separate step resolves it to a catalog row (JLCPCB Basic first; a capacitor only to a row with a recorded DC-bias curve), or reports it unresolved with the nearest alternatives and whether the checks pass with each (ADR 0047, provisional).
 _Avoid_: Virtual part, ideal part
+
+**Peak voltage**:
+The highest voltage a rail reaches, transients included: the `.peak` of a `Rail`, where `.voltage` is the steady range. A part that clamps a transient (a TVS diode) states it for the rail behind it, joined rails share it, and the parts on the rail are rated for it. A peak below the rail's steady voltage is refused as a mistake (where a stage checks the ratings, as `BuckStage` does).
+_Avoid_: Surge voltage, transient voltage (the transient is the event; the peak is the number)
 
 **Bias**:
 The DC voltage across a part: a capacitor, a diode, a Zener or a TVS diode. A part with a `.bias` and a `bridge` placed between a rail's `pos` and `neg` has the rail's voltage as its `.bias` without being told; a design states `.bias` only for a part that is across no rail.
@@ -297,13 +338,45 @@ netsmith's own check of a board's copper, holes, edge, courtyards, silkscreen, s
 `netsmith fab --cross-check`: the board is plotted with KiCad as well and its Gerbers, drill files and placement are compared with netsmith's own (layers as bitmaps), and KiCad's design rules check is run and its findings compared with netsmith's (by rule and place). KiCad is a witness there, never a source of files or of the gate (ADR 0034, ADR 0037).
 
 **Candidate**:
-One real part in a catalog (one row of its file), with a value for each column. The solver takes the first candidate that satisfies every requirement.
+One real part in a catalog (one row of its file), with a value for each column, or one provider of a generic in scope. The solver takes the first candidate that satisfies every requirement; for a use of a generic the candidates are the providers, in a fixed order, and the rows of the picked provider's catalog are then chosen as always.
 
 **Narrowing**:
-Restricting a field to the values that both its current limit and a new constraint allow. `&=` does it (ADR 0018).
+Restricting a field to the values that both its current limit and a new constraint allow. `&=` does it (ADR 0018). A default (`?=`) is not a narrowing: it takes effect only when nothing narrows the field.
+
+**Default**:
+A value a module or part offers for a field and a board may replace, written `.field ?= value` (ADR 0051, proposed). It applies only when no `&=` statement states that field; a value that reaches the field through a relation or a join does not count as stated. A board's statement drops the default and need not overlap it, and two defaults for one field are an error.
+_Avoid_: Initial value, preset, fallback, soft constraint, weak narrowing
+
+**Unconstrained pick**:
+A part of a catalog with a value column (a resistor's resistance, a capacitor's capacitance, an inductor's inductance) that was picked while nothing limited the value, so the solver took the first row that fits (ADR 0065). A value is limited by a statement (`&=`, an applied default, a range a member carries in), by a bound that reaches it, or by a check or a current budget that the pick decides and that was judged once the board was solved; a bound on a rating and a relation a part's own definition states do not limit it. A guideline finding: a warning by default, an error with `--strict` or `guidelines = "error"`. A range, however wide, is how a board says that any value will do.
+_Avoid_: Unset value, free pick, default pick, loose part
+
+**Unstated value**:
+A value declared in a module or a board (not in a part, an interface or a catalog column) that a check reads and that nothing states or works out, so the check is not evaluated (ADR 0065). Only the root is named: a member that a wrapper forwards to is not one, the wrapper's is. A guideline finding with the same severity as an **Unconstrained pick**.
+_Avoid_: Missing value, unset member, open value
+
+**Transferred bound**:
+A bound on a member that a part's field is held to (`.top.resistance &= .balance`, `.balance >= 20kohm`), read as a bound on the field too, because `&=` puts the field inside the member and a bound on all of the member is a bound on every part of it (ADR 0065). The solver adds it as a relation of its own while it picks and checks the parts, and takes it out of the model it returns. It adds a refusal and never a value.
+_Avoid_: Propagated bound, inherited bound, derived bound (ADR 0057 uses that for a bound on a value worked out from a part)
 
 **Relation**:
 A constraint that mentions other fields, so it waits for the solver instead of narrowing a field now. `==` states an equation that must hold in the worst case; `>=` and `<=` state bounds. There is no plain `=` (ADR 0018).
+
+**Circle of values**:
+Fields that depend on each other through their equations and balances of currents while none has a value, such as the input voltage, the input current and the drop of a regulator fed through a series resistor. The build names the circle in a note and does not evaluate the checks that need it. A range stated on one of its fields starts it, and so does the range a part works in (`.vin.voltage >= 3V`, `<= 65V`) together with a value to start from (ADR 0053, proposed): the solver then grows the supply's range until the equations map it into itself and accepts it only if nothing else inside the part's range satisfies them.
+_Avoid_: Cycle, loop, algebraic loop (a loop is a feedback circuit, not a set of values)
+
+**Open circle**:
+A circle of values that stayed without a value after the solver's own start, with a bound (`>=` or `<=`) that reads it, or a value worked out from it, left unevaluated. The build says so as a guideline finding (rule `open circle`): a `warning:` that names the fields, the checks and a field to start from, and an error under `--strict`. A circle that also reads a value nothing states names that value instead (ADR 0057, proposed). A circle may close through the currents of a net instead of an equation: a net of more than two currents, where the solver does not work a part's current out (ADR 0026), as a divider behind a fuse or a resistor does (issue #18); the finding then names the net and its currents, and a range on the part's current or a voltage in the circle starts it. A current that is exactly zero is not a term of the net.
+_Avoid_: Unstarted loop, stuck cycle
+
+**Constant value**:
+A value that no choice of parts can change: the field, and the fields joined to it, have a value now and nothing works any of them out. The stated voltage of a rail is one. Parts that read only such values and nothing else in common are searched apart (ADR 0057, proposed).
+_Avoid_: Fixed value, frozen value
+
+**Part's range**:
+What a part's own relations on a field bound, written as `>=` and `<=` with values (`.vin.voltage >= 3V`, `<= 65V`): the lowest lower bound and the highest upper bound. The solver starts a circle of values only inside it; a state below it is the part switched off, which its equations do not describe (ADR 0053, proposed).
+_Avoid_: Operating domain, valid range, working window
 
 **Editor**:
 `netsmith editor`: a web app served on 127.0.0.1 by the netsmith binary, with seven sections (Source, Schematic, Power tree, System, BOM, PCB, Build; the number keys 1 to 7 pick them in that order), shown one at a time or two side by side; the Source section has the project tree and a source editor that shows the compiler's and solver's messages beside their lines, the others are the views of a board; and two actions in the top bar, Write KiCad files and Make fab files (ADR 0019). The schematic is shown one sheet (a module instance) at a time. A long job runs on the server while the page stays usable. It writes the source files (in its source pane), the physical file (the requirements a person draws, such as a keepout) and the layout file (the solution the PCB view moves). It reads the physical file for the PCB view and lists it in its tree; its drawn keepouts are still written to the layout file (the write path to the physical file is not built yet, issue #52). It replaces the schematic viewer, which is gone.
