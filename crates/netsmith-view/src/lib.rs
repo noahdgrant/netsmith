@@ -8,6 +8,7 @@
 pub mod check;
 pub mod geom;
 pub mod glyph;
+pub mod hints;
 pub mod layout;
 pub mod metrics;
 pub mod sheets;
@@ -15,6 +16,10 @@ mod sheetview;
 pub mod stability;
 mod svg;
 
+pub use hints::{
+    BoardHints, FindingKind, HintError, HintFinding, LayoutHints, Located, NoteHint, PartHint,
+    Place, ResolvedHints, ResolvedNote, ResolvedPart, SheetHints, Steps, schematic_hints_path,
+};
 pub use layout::{
     Bus, BusEntry, BusFlag, BusMember, Layout, MarkKind, Marks, PinMark, Port, PowerKind,
     PowerSymbol, Rails, Tuning, layout, layout_marked, layout_rails, layout_tuned,
