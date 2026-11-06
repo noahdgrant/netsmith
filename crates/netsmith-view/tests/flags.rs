@@ -1,7 +1,7 @@
-//! Nets that leave a sheet end in a flag, at the end of the stub of the pin, whichever way the
+//! Nets that leave a module end in a flag, at the end of the stub of the pin, whichever way the
 //! pin leaves (a flag of a pin that leaves up or down is written upward), and no flag may run
 //! through a part, along a wire of another net, or over where another flag stands.
-//! Each case is a connector with all its pins on one side whose nets all go to another sheet.
+//! Each case is a connector with all its pins on one side whose nets all go to another module.
 
 mod common;
 
