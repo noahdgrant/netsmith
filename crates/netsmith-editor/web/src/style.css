@@ -326,6 +326,12 @@ body:has(.status-popover) .toasts { right: calc(16px + 340px + 12px); }
 .panzoom.schematic-host { background: var(--sch-sheet); }
 .schematic-host svg.schematic .sheet { fill: transparent; }
 .schematic-host svg.schematic .part { cursor: pointer; pointer-events: bounding-box; }
+/* a lit net: the server doubles the wire's width, which at close zoom is a bar; a little more is enough */
+.schematic-host svg.schematic .on .line, .schematic-host svg.schematic .junction.on, .schematic-host svg.schematic .on .pin-line { stroke-width: .38; }
+.schematic-host svg.schematic .pin.on .pin-line { stroke-width: .38; }
+/* a bus is its own colour, apart from the wires; a lit bus (`.on`) keeps the server's highlight */
+.schematic-host svg.schematic .bus-group:not(.on) .bus .line, .schematic-host svg.schematic .bus-group:not(.on) .bus-tick, .schematic-host svg.schematic .bus-group:not(.on) .bus-flag .flag { stroke: var(--sch-bus); }
+.schematic-host svg.schematic .bus-group:not(.on) .bus-label, .schematic-host svg.schematic .bus-group:not(.on) .bus-count { fill: var(--sch-bus); }
 .schematic-host svg.schematic .part.mark .s { stroke: var(--sch-mark); }
 .schematic-host svg.schematic .part.mark text { fill: var(--sch-mark); }
 .schematic-host svg.schematic .part.mark.linked .s { stroke: color-mix(in srgb, var(--sch-mark) 55%, var(--sch-muted)); stroke-dasharray: 3 2; }
@@ -335,8 +341,8 @@ body:has(.status-popover) .toasts { right: calc(16px + 340px + 12px); }
 .inspector .title { font-size: var(--fs-lg); font-weight: 600; }
 .inspector .sub, .sub { color: var(--text-faint); font-weight: 400; font-size: var(--fs-sm); }
 .schematic-body .stage .panzoom { position: absolute; inset: 0; }
-.pulse-ring { position: absolute; pointer-events: none; border: 2px solid var(--accent); border-radius: var(--r-lg); box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); animation: pulse-ring 1.6s ease-out forwards; z-index: 2; }
-@keyframes pulse-ring { 0% { opacity: 1; transform: scale(.85); box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); } 35% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 14px color-mix(in srgb, var(--accent) 0%, transparent); } 100% { opacity: 0; transform: scale(1.1); } }
+.pulse-ring { position: absolute; pointer-events: none; border: 2px solid var(--sel); border-radius: var(--r-lg); box-shadow: 0 0 0 0 color-mix(in srgb, var(--sel) 60%, transparent); animation: pulse-ring 1.6s ease-out forwards; z-index: 2; }
+@keyframes pulse-ring { 0% { opacity: 1; transform: scale(.85); box-shadow: 0 0 0 0 color-mix(in srgb, var(--sel) 60%, transparent); } 35% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 14px color-mix(in srgb, var(--sel) 0%, transparent); } 100% { opacity: 0; transform: scale(1.1); } }
 @media (prefers-reduced-motion: reduce) { .pulse-ring { animation: pulse-fade 1.6s linear forwards; } @keyframes pulse-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } } }
 .inspector dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 6px 0; }
 .inspector dt { color: var(--text-faint); } .inspector dd { margin: 0; }

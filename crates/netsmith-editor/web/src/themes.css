@@ -157,21 +157,24 @@
   --cm-match: color-mix(in srgb, var(--info) 26%, transparent);
   --cm-reveal: color-mix(in srgb, var(--accent) 38%, transparent);
 
-  /* the schematic: dark sheet. The names are the drawing's own (crates/netsmith-view/src/svg.rs). */
+  /* the schematic: a dark sheet. The names are the drawing's own (crates/netsmith-view/src/svg.rs); style.css hands them over.
+   * A part is its outline in a dusty rose and a body that is only a tint of that outline over the sheet; wires are a calm sage,
+   * a bus trunk a cool teal, a net lit by a pick is amber and a picked part is the page's blue. */
   --sch-sheet: #0d1015;
-  --sch-wire: #6fbf73;
-  --sch-body: #e8a3a3;
-  --sch-fill: #3a3520;
-  --sch-pin: #e8a3a3;
-  --sch-text: #9fcad6;
-  --sch-net: #8be0ad;
-  --sch-hit: #ffa94d;
+  --sch-wire: #5aa67e;
+  --sch-body: #d6a3a0;
+  --sch-fill: color-mix(in srgb, var(--sch-body) 11%, transparent);
+  --sch-pin: #d6a3a0;
+  --sch-text: #a9cbd6;
+  --sch-net: #7fcfa4;
+  --sch-hit: #e9b44c;
   --sch-muted: #7c8590;
-  --sch-bad: #ff6b6b;
-  --sch-mark: #e8873a;
-  --sch-frame: #4d6a5a;
-  --sch-frame-fill: rgba(111, 191, 115, .04);
-  --sch-frame-title: #8fbfa3;
+  --sch-bad: #f2615c;
+  --sch-mark: #7aa8f2;
+  --sch-bus: #56b9cc;
+  --sch-frame: #3f5a4d;
+  --sch-frame-fill: rgba(90, 166, 126, .04);
+  --sch-frame-title: #86b69c;
 
   /* the board */
   --pcb-bg: #0d1117;
@@ -313,10 +316,11 @@
   --sch-pin: #7b2020;
   --sch-text: #1d4f5e;
   --sch-net: #075c2b;
-  --sch-hit: #e8590c;
+  --sch-hit: #c96a00;
   --sch-muted: #7a808a;
   --sch-bad: #d92d20;
-  --sch-mark: #c4570a;
+  --sch-mark: #2c64c8;
+  --sch-bus: #0b6f86;
   --sch-frame: #6f9a86;
   --sch-frame-fill: rgba(10, 122, 60, .04);
   --sch-frame-title: #2f5f4a;
@@ -453,14 +457,15 @@
   --sch-sheet: #000000;
   --sch-wire: #53f07c;
   --sch-body: #ffb8b8;
-  --sch-fill: #2c2600;
+  --sch-fill: color-mix(in srgb, var(--sch-body) 14%, transparent);
   --sch-pin: #ffb8b8;
   --sch-text: #8fe3ff;
   --sch-net: #8dffb7;
   --sch-hit: #ffb84d;
   --sch-muted: #b8c0cc;
   --sch-bad: #ff8a85;
-  --sch-mark: #ffa94d;
+  --sch-mark: #8ec5ff;
+  --sch-bus: #7be0f0;
   --sch-frame: #8fbfa3;
   --sch-frame-fill: rgba(83, 240, 124, .05);
   --sch-frame-title: #b4e8c8;
@@ -604,7 +609,8 @@
   --sch-hit: #b34000;
   --sch-muted: #4a5058;
   --sch-bad: #b00000;
-  --sch-mark: #8f3f00;
+  --sch-mark: #0b4a9e;
+  --sch-bus: #00566b;
   --sch-frame: #3d6a55;
   --sch-frame-fill: rgba(0, 107, 43, .04);
   --sch-frame-title: #1d4a37;

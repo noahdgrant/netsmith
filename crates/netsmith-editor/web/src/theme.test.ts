@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import indexHtml from '../index.html?raw';
-import { contrast } from './contrast';
+import { contrast, over, parseHex } from './contrast';
 import css from './themes.css?raw';
 import {
   type Environment,
@@ -152,7 +152,7 @@ function pairs(): Pair[] {
   // What is picked in a data view: the blue's words and its marks.
   list.push({ fg: '--sel-text', bg: [...SURFACES, '--pop'], what: 'selection text' });
   list.push({ fg: '--sel', bg: ['--surface', '--canvas', '--surface-raised', '--surface-3'], min: 3, what: 'selection marks (the bar at a picked row)' });
-  for (const k of ['--sch-text', '--sch-net', '--sch-body', '--sch-pin']) list.push({ fg: k, bg: ['--sch-sheet'], what: 'schematic text' });
+  for (const k of ['--sch-text', '--sch-net', '--sch-body', '--sch-pin', '--sch-bus']) list.push({ fg: k, bg: ['--sch-sheet'], what: 'schematic text' });
   list.push({ fg: '--sch-wire', bg: ['--sch-sheet'], min: 3, what: 'schematic wire (a graphic)' });
   list.push({ fg: '--sch-muted', bg: ['--sch-sheet'], min: 3, what: 'schematic open pin mark (a graphic)' });
   list.push({ fg: '--sch-bad', bg: ['--sch-sheet'], min: 3, what: 'schematic error mark (a graphic)' });
@@ -189,6 +189,22 @@ describe.each(Object.keys(THEME_TOKENS) as Theme[])('contrast of %s', (name) => 
       });
     }
   }
+  it('a part body that is a tint of its outline keeps the pin text and the outline readable', () => {
+    const fill = ink('--sch-fill');
+    const tint = /^color-mix\(in srgb, var\(--sch-body\) (\d+)%, transparent\)$/.exec(fill);
+    if (!tint) return; // an opaque body: --sch-pin on it is held below
+    const body = parseHex(ink('--sch-body'))!;
+    const sheet = parseHex(ink('--sch-sheet'))!;
+    const filled = over(body, sheet, Number(tint[1]) / 100);
+    const hex = `#${filled.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+    for (const k of ['--sch-pin', '--sch-body', '--sch-text']) expect(contrast(ink(k), hex)!, `${k} on the body ${hex}`).toBeGreaterThanOrEqual(MIN[name]);
+    // the body is a visible step from the sheet, so a part reads as a box and not a frame of lines
+    expect(contrast(hex, ink('--sch-sheet'))!).toBeGreaterThanOrEqual(1.08);
+  });
+  it('the schematic marks of a pick are told apart: the lit net, the picked part, the bus trunk and the wire', () => {
+    const marks = ['--sch-hit', '--sch-mark', '--sch-bus', '--sch-wire'].map((k) => ink(k));
+    expect(new Set(marks).size).toBe(4);
+  });
   if (name.startsWith('hc')) {
     it('borders can be seen (3:1) on the surfaces', () => {
       for (const bg of ['--surface', '--canvas']) expect(contrast(t['--border'], t[bg])!).toBeGreaterThanOrEqual(3);
