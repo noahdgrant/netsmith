@@ -5,10 +5,13 @@
 
 mod analysis;
 mod catalogs;
+mod compare;
 mod definition;
+mod diff;
 mod fileops;
 mod files;
 mod findings;
+mod git;
 mod orders;
 mod panel;
 mod pcb;
@@ -31,9 +34,9 @@ use std::{
 use netsmith_editor::{
     AnalysisEvent, ApiError, Attachment, Backend, Observer, Say,
     api::{
-        Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Definition, FabReport,
-        FileContent, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited, PcbFindings, PcbReport,
-        PcbScene, PowerTree, Project, Saved, SystemView,
+        Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
+        FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited,
+        PcbFindings, PcbReport, PcbScene, PowerTree, Project, Saved, SystemView,
     },
 };
 
@@ -56,6 +59,10 @@ pub struct Workspace {
     ready: AtomicBool,
     /// When the workspace was opened, for how long the first analysis has taken so far.
     opened: Instant,
+    /// What was read of the refs the project was compared with, by commit hash (ADR 0051).
+    compare_cache: Mutex<compare::Cache>,
+    /// Held while a ref is read, so two compares of one ref analyse it once.
+    comparing: Mutex<()>,
 }
 
 /// Tells the observer that an analysis has begun, and that it has ended when this is dropped,
@@ -129,6 +136,8 @@ impl Workspace {
             observer: OnceLock::new(),
             ready: AtomicBool::new(false),
             opened: Instant::now(),
+            compare_cache: Mutex::new(compare::Cache::default()),
+            comparing: Mutex::new(()),
         })
     }
 
@@ -515,6 +524,23 @@ impl Backend for Workspace {
 
     fn order_download(&self, name: &str, file: &str) -> Result<Attachment, ApiError> {
         self.fetch_order(name, file)
+    }
+
+    fn git(&self) -> GitInfo {
+        self.git_info()
+    }
+
+    fn compare(
+        &self,
+        rev: &str,
+        board: Option<&str>,
+        observe: &Observer,
+    ) -> Result<Compare, ApiError> {
+        self.compare_with(rev, board, observe)
+    }
+
+    fn git_file(&self, rev: &str, path: &str) -> Result<FileContent, ApiError> {
+        self.git_file_at(rev, path)
     }
 
     fn definition(
