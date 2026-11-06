@@ -65,7 +65,7 @@ function Item({
   pressed?: boolean;
 }) {
   return (
-    <button class={`item ${cls ?? ''}`} title={title} aria-label={label} aria-pressed={pressed} onClick={onClick}>
+    <button class={`item ${cls ?? ''}`} data-tip={title} aria-label={label} aria-pressed={pressed} onClick={onClick}>
       {children}
     </button>
   );

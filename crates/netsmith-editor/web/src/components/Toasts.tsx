@@ -37,7 +37,7 @@ export function Toasts() {
               </div>
             )}
           </div>
-          <button class="icon-btn" aria-label="Dismiss" title="Dismiss" onClick={() => dismissToast(t.id)}>
+          <button class="icon-btn" aria-label="Dismiss" data-tip="Dismiss" onClick={() => dismissToast(t.id)}>
             <Icon name="close" size={14} />
           </button>
         </div>

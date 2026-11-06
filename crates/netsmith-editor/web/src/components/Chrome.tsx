@@ -38,7 +38,9 @@ import { chordLabels, chordText, find, runCommand } from '../commands';
 import { openPicker } from '../quickpick';
 import { seconds } from '../util';
 import { useElapsed } from './JobProgress';
-import { Icon } from './Icons';
+import { Icon, SeverityIcon } from './Icons';
+import { Popover, Spinner } from './ui';
+import { firstError, goToFirstError, neverBuilt } from '../feedback/derive';
 import { Logo } from './Logo';
 import { SelectionChip } from './SelectionChip';
 
@@ -91,7 +93,7 @@ function Action({
   return (
     <button
       class={`tool action ${primary ? 'primary' : ''} ${mine ? 'running' : ''}`}
-      title={tip}
+      data-tip={tip}
       aria-label={label}
       aria-busy={mine}
       disabled={j !== null}
@@ -103,6 +105,53 @@ function Action({
   );
 }
 
+/** The board picker when there is no board: still loading, never built (with the first error), or none written. */
+function EmptyBoardPick() {
+  const loading = !analysis.value;
+  const e = firstError.value;
+  const never = neverBuilt.value && !!e;
+  return (
+    <Popover
+      class={`boardpick-empty ${never ? 'never' : ''}`}
+      tip={loading ? 'Reading the project' : 'Why there is no board'}
+      label={loading ? 'Reading the project' : 'No board built yet'}
+      icon={loading ? undefined : never ? 'error' : 'board'}
+      badge={loading ? <Spinner size={12} /> : undefined}
+    >
+      {(close) =>
+        loading ? (
+          <p>The first analysis is still running. The boards of the project are listed here when it is done.</p>
+        ) : never ? (
+          <>
+            <h4>The project has an error, so nothing built</h4>
+            <div class="empty-error">
+              <SeverityIcon severity="error" size={14} />
+              <span class="text">{e!.message}</span>
+              {e!.at && <span class="where">{e!.at.file}:{e!.at.line}</span>}
+            </div>
+            <div class="empty-actions">
+              <button
+                class="tool primary"
+                onClick={() => {
+                  close();
+                  goToFirstError();
+                }}
+              >
+                Go to error
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <h4>The project has no board</h4>
+            <p>Write a <code>board</code> in a top-level file; it is listed here as soon as it builds.</p>
+          </>
+        )
+      }
+    </Popover>
+  );
+}
+
 export function TopBar() {
   const a = analysis.value;
   const boards = a?.boards ?? [];
@@ -111,27 +160,31 @@ export function TopBar() {
     <header class="topbar">
       <div class="tb-left">
         <div class="brand"><Logo /></div>
-        <label class="boardpick" title="The board the sections show">
-          <Icon name="board" size={14} class="bp-icon" />
-          <span class="sr-only">Board</span>
-          <select
-            value={board.value ?? ''}
-            onChange={(e) => chooseBoard((e.currentTarget as HTMLSelectElement).value)}
-          >
-            {boards.map((b) => (
-              <option key={b.name} value={b.name}>
-                {b.name}
-                {b.stale ? ' (stale)' : ''}
-              </option>
-            ))}
-          </select>
-          <Icon name="chevrons-up-down" size={12} class="bp-caret" />
-        </label>
+        {boards.length === 0 ? (
+          <EmptyBoardPick />
+        ) : (
+          <label class="boardpick" data-tip="The board the sections show">
+            <Icon name="board" size={14} class="bp-icon" />
+            <span class="sr-only">Board</span>
+            <select
+              value={board.value ?? ''}
+              onChange={(e) => chooseBoard((e.currentTarget as HTMLSelectElement).value)}
+            >
+              {boards.map((b) => (
+                <option key={b.name} value={b.name}>
+                  {b.name}
+                  {b.stale ? ' (stale)' : ''}
+                </option>
+              ))}
+            </select>
+            <Icon name="chevrons-up-down" size={12} class="bp-caret" />
+          </label>
+        )}
         <SelectionChip />
       </div>
       <button
         class="cmdk"
-        title={`Search parts, nets, modules and files (${chordText(goto)}); run a command (${chordText(find('palette.open')?.keys ?? 'Mod+Shift+P')})`}
+        data-tip={`Search parts, nets, modules and files (${chordText(goto)}); run a command (${chordText(find('palette.open')?.keys ?? 'Mod+Shift+P')})`}
         aria-label="Go to anything or run a command"
         aria-haspopup="dialog"
         onClick={() => openPicker()}
@@ -148,7 +201,7 @@ export function TopBar() {
         <div class="tb-ghosts" role="group" aria-label="Appearance and help">
           <button
             class="icon-btn"
-            title={`Switch between the light and the dark theme (${chordText(find('theme.toggle')?.keys ?? '')})`.replace(' ()', '')}
+            data-tip={`Switch between the light and the dark theme (${chordText(find('theme.toggle')?.keys ?? '')})`.replace(' ()', '')}
             aria-label="Toggle the light and dark theme"
             onClick={() => runCommand('theme.toggle')}
           >
@@ -156,7 +209,7 @@ export function TopBar() {
           </button>
           <button
             class="icon-btn"
-            title={`Keyboard shortcuts (${chordText(find('help.shortcuts')?.keys ?? '?')})`}
+            data-tip={`Keyboard shortcuts (${chordText(find('help.shortcuts')?.keys ?? '?')})`}
             aria-label="Keyboard shortcuts"
             aria-haspopup="dialog"
             onClick={() => runCommand('help.shortcuts')}
@@ -354,7 +407,7 @@ export function SectionStrip({ pane }: { pane: { section: Section; index: number
       {two && pane.index === 1 ? (
         <button
           class="pane-btn"
-          title="Close this pane: the other one fills the window"
+          data-tip="Close this pane: the other one fills the window"
           onClick={() => {
             back.value = null;
             layout.value = closePane(layout.value, 1);
@@ -466,7 +519,7 @@ export function Tabs() {
       {b && (
         <button
           class="back-btn"
-          title={`Back to ${SECTION_LABEL[b.section]}, as you left it (Esc, or Alt+Left outside the text)`}
+          data-tip={`Back to ${SECTION_LABEL[b.section]}, as you left it (Esc, or Alt+Left outside the text)`}
           onClick={requestBack}
         >
           <Icon name="arrow-left" size={14} />

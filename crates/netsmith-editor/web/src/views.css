@@ -503,3 +503,21 @@ button.chip.findings-pill, .toolbar button.chip { font-family: var(--sans); lett
 .insp .sub { color: var(--text-faint); font-weight: var(--fw-normal); font-size: var(--fs-sm); }
 .insp .sub-head { margin-top: 10px; color: var(--text-faint); font-size: var(--fs-xs); font-weight: var(--fw-semibold); }
 .ih-kind { font-family: var(--sans); letter-spacing: 0; }
+
+/* ==== the board picker with no board: a button that says why ==== */
+.boardpick-empty .pop-btn { height: var(--ctl-lg); padding: 0 12px 0 10px; color: var(--text-muted); font-weight: var(--fw-medium); background: var(--surface-raised); gap: 8px; }
+.boardpick-empty .pop-btn .icon { color: var(--text-faint); }
+.boardpick-empty .popover { width: 360px; max-width: 80vw; }
+.boardpick-empty .popover .empty-error { margin: 4px 6px 10px; }
+.boardpick-empty .popover .empty-actions { margin: 0 6px 4px; }
+.boardpick-empty.never .pop-btn .icon { color: var(--danger); }
+
+/* ==== the selection chip: the kind in a small tinted square, the name in mono, buttons split by hairlines ==== */
+.selchip { height: var(--ctl-lg); border-radius: var(--r-md); background: var(--select-bg); border-color: var(--sel-line); box-shadow: var(--elev-1); }
+.selchip-main { gap: 8px; padding: 0 10px 0 5px; }
+.selchip-kind { width: 22px; height: 22px; align-items: center; justify-content: center; border-radius: var(--r-sm); background: color-mix(in srgb, var(--sel) 16%, transparent); }
+.selchip-title { font-weight: var(--fw-semibold); letter-spacing: 0; }
+.selchip-sub { color: var(--text-muted); }
+.selchip-btn { border-left-color: color-mix(in srgb, var(--sel) 28%, transparent); width: 30px; padding: 0; }
+.selchip-btn.text { width: auto; padding: 0 10px 0 8px; gap: 6px; font-weight: var(--fw-medium); font-size: var(--fs-sm); }
+.selchip-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--sel) 14%, transparent); }

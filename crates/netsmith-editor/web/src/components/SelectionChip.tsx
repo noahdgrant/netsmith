@@ -28,7 +28,7 @@ export function SelectionChip() {
   const key = find('selection.source')?.keys;
   return (
     <div class={`selchip k-${bus ? 'bus' : sel.kind}`} role="status" aria-label={bus ? `Selected ${title} ${sub}` : `Selected ${sub}: ${title}`}>
-      <button class="selchip-main" title={`${bus ? `${bus.type} ${bus.path} ${sub}` : sub}. Click to show it again in this view.`} onClick={() => selectAndReveal(sel)}>
+      <button class="selchip-main" data-tip={`${bus ? `${bus.type} ${bus.path} ${sub}` : sub}. Click to show it again in this view.`} aria-label={`${title}, ${sub}. Show it again in this view.`} onClick={() => selectAndReveal(sel)}>
         <span class={`selchip-kind k-${bus ? 'bus' : sel.kind}`} aria-hidden="true">
           <Icon name={bus ? 'bus' : sel.kind === 'part' ? 'part' : sel.kind === 'net' ? 'net' : 'module'} size={14} />
         </span>
@@ -40,7 +40,7 @@ export function SelectionChip() {
           <button
             class="selchip-btn step"
             disabled={!facts.canStep}
-            title={withKey('Previous pin of the net', 'schematic.pin.previous')}
+            data-tip={withKey('Previous pin of the net', 'schematic.pin.previous')}
             aria-label="Previous pin"
             onClick={() => runCommand('schematic.pin.previous')}
           >
@@ -49,7 +49,7 @@ export function SelectionChip() {
           <button
             class="selchip-btn step"
             disabled={!facts.canStep}
-            title={withKey('Next pin of the net', 'schematic.pin.next')}
+            data-tip={withKey('Next pin of the net', 'schematic.pin.next')}
             aria-label="Next pin"
             onClick={() => runCommand('schematic.pin.next')}
           >
@@ -58,11 +58,12 @@ export function SelectionChip() {
         </>
       )}
       {has && (
-        <button class="selchip-btn" title={`Show it in Source${key ? ` (${chordText(key)})` : ''}`} onClick={() => showInSource(sel)}>
+        <button class="selchip-btn text" data-tip={`Show it in Source${key ? ` (${chordText(key)})` : ''}`} onClick={() => showInSource(sel)}>
+          <Icon name="source" size={13} />
           Source
         </button>
       )}
-      <button class="selchip-btn" title="Clear the selection (Esc)" aria-label="Clear the selection" onClick={() => setSelection(null)}>
+      <button class="selchip-btn" data-tip="Clear the selection" data-tip-keys="Esc" aria-label="Clear the selection" onClick={() => setSelection(null)}>
         <Icon name="close" size={13} />
       </button>
     </div>

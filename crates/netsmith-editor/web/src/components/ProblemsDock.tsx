@@ -33,7 +33,7 @@ function SeverityToggle({ severity, n, on, set }: { severity: Severity; n: numbe
     <button
       class={`sev-toggle ${severity} ${on ? 'on' : ''}`}
       aria-pressed={on}
-      title={`${on ? 'Hide' : 'Show'} ${SEVERITY_NAME[severity].toLowerCase()} (${plural(n, severity)})`}
+      data-tip={`${on ? 'Hide' : 'Show'} ${SEVERITY_NAME[severity].toLowerCase()} (${plural(n, severity)})`}
       onClick={() => set(!on)}
     >
       <SeverityIcon severity={severity} size={13} />
@@ -50,7 +50,7 @@ function StageChip({ origin, n, on, set }: { origin: Origin; n: number; on: bool
       class={`stage-chip stage-${origin} ${on ? 'on' : ''}`}
       aria-pressed={on}
       data-stage={origin}
-      title={`${on ? 'Hide' : 'Show'} what the ${ORIGIN_LABEL[origin].toLowerCase()} stage found (${plural(n, 'problem')})`}
+      data-tip={`${on ? 'Hide' : 'Show'} what the ${ORIGIN_LABEL[origin].toLowerCase()} stage found (${plural(n, 'problem')})`}
       onClick={() => set(!on)}
     >
       {ORIGIN_LABEL[origin]} <span class="n">{n}</span>
@@ -258,7 +258,7 @@ export function ProblemsDock() {
             <span class="spinner" /> Checking PCB and power…
           </span>
         )}
-        <button class="icon-btn" aria-label="Close the problems panel (Ctrl+J)" title="Close (Ctrl+J)" onClick={() => setDockOpen(false)}>
+        <button class="icon-btn" aria-label="Close the problems panel (Ctrl+J)" data-tip="Close" data-tip-keys="Ctrl+J" onClick={() => setDockOpen(false)}>
           <Icon name="close" />
         </button>
       </div>
