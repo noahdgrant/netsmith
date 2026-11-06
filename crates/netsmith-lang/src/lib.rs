@@ -6,5 +6,5 @@ mod lexer;
 mod parser;
 mod printer;
 
-pub use error::{ParseError, Span};
+pub use error::{ParseError, Span, floor_boundary};
 pub use parser::{parse, parse_expr};

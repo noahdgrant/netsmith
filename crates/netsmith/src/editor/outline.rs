@@ -9,7 +9,7 @@ use netsmith_editor::api::{Def, DefChild};
 use netsmith_lang::{
     Span,
     ast::{Decl, DefKind, Definition, File, Item},
-    parse,
+    floor_boundary, parse,
 };
 
 /// The most declarations a signature names before it says `...`.
@@ -85,7 +85,11 @@ impl<'a> Kinds<'a> {
 
 /// The 1-based line of the byte `offset` of `text`.
 pub fn line_at(text: &str, offset: usize) -> u32 {
-    text[..offset.min(text.len())].matches('\n').count() as u32 + 1
+    text.as_bytes()[..floor_boundary(text, offset)]
+        .iter()
+        .filter(|&&b| b == b'\n')
+        .count() as u32
+        + 1
 }
 
 /// The line the last character of `span` is on (`span.end` is one past it).

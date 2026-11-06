@@ -7,7 +7,7 @@ use super::outline::{self, Kinds};
 use netsmith_lang::{
     Span,
     ast::{Decl, Expr, File, Item, Path},
-    parse,
+    floor_boundary, parse,
 };
 
 /// A parsed source file.
@@ -29,7 +29,7 @@ impl Parsed {
 
     fn at(&self, span: Span) -> Location {
         let position = |offset: usize| {
-            let before = &self.text[..offset.min(self.text.len())];
+            let before = &self.text[..floor_boundary(&self.text, offset)];
             (
                 before.matches('\n').count() as u32 + 1,
                 before.rsplit('\n').next().map_or(0, |l| l.chars().count()) as u32 + 1,
