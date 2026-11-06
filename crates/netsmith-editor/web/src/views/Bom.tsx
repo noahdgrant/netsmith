@@ -235,7 +235,7 @@ export function Bom() {
   const [query, setQuery] = useState('');
   const [problemsOnly, setProblemsOnly] = useState(false);
   const [group, setGroup] = useState<GroupBy>(() => load<GroupBy>(GROUP_KEY, 'none'));
-  const [hidden, setHidden] = useState<ColumnId[]>(() => load<ColumnId[]>(COLUMN_KEY, ['library', 'checked']));
+  const [hidden, setHidden] = useState<ColumnId[]>(() => load<ColumnId[]>(COLUMN_KEY, []));
   const [folded, setFolded] = useState<Record<string, boolean>>({});
   const refreshing = job.value?.task === 'catalog';
   const report = catalogReport.value;

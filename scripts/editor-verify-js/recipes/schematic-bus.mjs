@@ -176,7 +176,7 @@ export async function run({ page, shot, step, expect }) {
   await page.keyboard.press('Control+a');
   await page.keyboard.type('#uart');
   await page.waitForSelector('.qp-row[role=option]');
-  const groups = await page.locator('.qp-group').allInnerTexts();
+  const groups = (await page.locator('.qp-group').allInnerTexts()).map((t) => t.split('\n')[0].trim());
   expect(/^buses$/i.test(groups[0]), `the buses are the first group (${groups.join(', ')})`);
   const rowsText = await page.locator('.qp-row[role=option]').allInnerTexts();
   expect(rowsText.some((t) => /uart0/.test(t)) && rowsText.some((t) => /serial/.test(t)) && rowsText.some((t) => /tap/.test(t)), `all three ends of the UART are listed (${rowsText.map((t) => t.replace(/\s+/g, ' ')).join(' | ')})`);

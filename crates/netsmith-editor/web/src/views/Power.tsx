@@ -5,6 +5,7 @@ import type { PowerTree } from '../api';
 import { api } from '../client';
 import { NoBoard, ViewLoading } from '../components/ViewStatus';
 import { Icon } from '../components/Icons';
+import { Defs, InspectorHead } from '../components/Inspector';
 import { Legend, Pill } from '../components/ui';
 import { placeAtMostActual } from './System';
 import { MiniMap } from '../components/MiniMap';
@@ -503,19 +504,18 @@ function LoadTip({ tip, onEnter, onLeave }: { tip: Tip; onEnter: () => void; onL
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
     >
-      <div class="pt-tip-who">{l.who}</div>
-      <dl>
-        <dt>Part</dt>
-        <dd>{l.part}</dd>
-        {l.pin && (
-          <>
-            <dt>Pin</dt>
-            <dd>{l.pin}</dd>
-          </>
-        )}
-        <dt>{l.hi <= 0 && l.lo < 0 ? 'Supplies' : 'Draws'}</dt>
-        <dd>{l.unknown ? 'a current the solver has not settled' : `${amps(l.lo).num} ${amps(l.lo).unit}${DOTS}${amps(l.hi).num} ${amps(l.hi).unit}`}</dd>
-      </dl>
+      <InspectorHead eyebrow={l.hi <= 0 && l.lo < 0 ? 'Supply' : 'Load'} icon="part" tone="part" mono titleTag="div" title={l.who} />
+      <Defs
+        rows={[
+          { label: 'Part', value: l.part, mono: true },
+          ...(l.pin ? [{ label: 'Pin', value: l.pin, mono: true }] : []),
+          {
+            label: l.hi <= 0 && l.lo < 0 ? 'Supplies' : 'Draws',
+            mono: true,
+            value: l.unknown ? 'a current the solver has not settled' : `${amps(l.lo).num} ${amps(l.lo).unit}${DOTS}${amps(l.hi).num} ${amps(l.hi).unit}`,
+          },
+        ]}
+      />
       {l.at && (
         <button class="link" onClick={() => void goTo(l.at!)}>
           Show in source

@@ -521,3 +521,15 @@ button.chip.findings-pill, .toolbar button.chip { font-family: var(--sans); lett
 .selchip-btn { border-left-color: color-mix(in srgb, var(--sel) 28%, transparent); width: 30px; padding: 0; }
 .selchip-btn.text { width: auto; padding: 0 10px 0 8px; gap: 6px; font-weight: var(--fw-medium); font-size: var(--fs-sm); }
 .selchip-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--sel) 14%, transparent); }
+.outlabel { color: var(--text-faint); font-size: var(--fs-sm); flex: none; }
+.outpath .path { direction: ltr; }
+
+/* the tips of the graph views use the inspector's parts */
+.pt-tip { width: 300px; padding: 12px 14px 10px; }
+.pt-tip .ih { padding-bottom: 8px; margin-bottom: 2px; }
+.pt-tip .ih-title { font-size: var(--fs-md); }
+.pt-tip .ih-sub { padding-left: 34px; }
+.pt-tip .defs-row { grid-template-columns: 58px minmax(0, 1fr); padding: 2px 0; font-size: var(--fs-sm); }
+.pt-tip .link { padding: 0; margin-top: 4px; }
+.sy-tip ul { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-family: var(--mono); font-size: var(--fs-sm); letter-spacing: 0; }
+.sy-tip li { padding: 3px 8px; background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: var(--r-sm); overflow-wrap: anywhere; }

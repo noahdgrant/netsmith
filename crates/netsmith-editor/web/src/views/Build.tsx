@@ -256,6 +256,7 @@ export function Build() {
                 {built.written.map((w) => (
                   <div key={w} class="outpath">
                     <Icon name="folder" size={13} />
+                    <span class="outlabel">wrote</span>
                     <span class="path" title={w}>
                       {tail(w)}
                     </span>
@@ -414,6 +415,7 @@ export function Build() {
                     <div class="outputs">
                       <div class="outpath">
                         <Icon name="folder" size={13} />
+                        <span class="outlabel">wrote</span>
                         <span class="path" title={orderReport.dir}>
                           {tail(orderReport.dir, 4)}
                         </span>

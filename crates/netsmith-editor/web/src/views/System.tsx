@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { PowerTree, SystemView } from '../api';
 import { api } from '../client';
 import { Icon, type IconName } from '../components/Icons';
+import { InspectorHead } from '../components/Inspector';
 import { Legend, Pill, Popover, Units } from '../components/ui';
 import { NoBoard, ViewLoading } from '../components/ViewStatus';
 import { MiniMap } from '../components/MiniMap';
@@ -454,9 +455,19 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
           onMouseEnter={() => window.clearTimeout(timer.current)}
           onMouseLeave={() => showTip(null)}
         >
-          <div class="pt-tip-who">
-            {tip.wire.from} {'→'} {tip.wire.to}
-          </div>
+          <InspectorHead
+            eyebrow="Wire"
+            icon="link"
+            tone="net"
+            mono
+            titleTag="div"
+            title={
+              <>
+                {tip.wire.from} {'\u2192'} {tip.wire.to}
+              </>
+            }
+            sub={`${tip.wire.labels.length} ${tip.wire.labels.length === 1 ? 'connection' : 'connections'}`}
+          />
           <ul>
             {tip.wire.labels.map((l) => (
               <li key={l}>{l}</li>

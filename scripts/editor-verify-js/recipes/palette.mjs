@@ -20,7 +20,9 @@ export async function run({ page, shot, step, expect }) {
   await page.keyboard.type(part.refdes.toLowerCase());
   await page.waitForSelector('.qp-row[role=option]');
   expect((await page.locator('.qp-row').first().innerText()).startsWith(part.refdes), `${part.refdes} is the first result`);
-  expect((await page.locator('.qp-group').first().innerText()).toLowerCase() === 'parts', 'the group is Parts');
+  const groupName = (i) => page.locator('.qp-group').nth(i).evaluate((el) => el.firstChild.textContent.trim().toLowerCase());
+  expect((await groupName(0)) === 'parts', 'the group is Parts');
+  expect((await page.locator('.qp-group .qp-group-count').first().innerText()) === String(await page.evaluate(() => document.querySelector('.qp-group').parentElement.querySelectorAll('.qp-row').length)), 'its head counts its rows');
   expect((await page.locator('.qp-row .qp-hit').count()) > 0, 'the matched letters are marked');
   await shot('goto-part');
   await page.keyboard.press('Enter');
@@ -70,7 +72,7 @@ export async function run({ page, shot, step, expect }) {
   await page.waitForSelector('.section.sec-power:not(.away)');
   await page.keyboard.press('Control+k');
   await page.waitForSelector('.qp');
-  expect((await page.locator('.qp-group').first().innerText()).toLowerCase() === 'recently used', 'the command just used is first');
+  expect((await page.locator('.qp-group').first().evaluate((el) => el.firstChild.textContent.trim().toLowerCase())) === 'recently used', 'the command just used is first');
   await page.keyboard.press('Escape');
   expect((await page.locator('.qp').count()) === 0, 'Esc closes');
 
