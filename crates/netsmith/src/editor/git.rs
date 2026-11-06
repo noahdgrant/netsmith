@@ -24,6 +24,11 @@ const MAX_TAGS: usize = 30;
 const COMMITS: usize = 30;
 /// A file of this size or more is not counted line by line when it is untracked.
 const MAX_UNTRACKED_BYTES: u64 = 4 * 1024 * 1024;
+/// How many untracked files have their lines counted, how many bytes are read for that in all,
+/// and how many are listed.
+const MAX_UNTRACKED_COUNTED: usize = 500;
+const MAX_UNTRACKED_TOTAL: u64 = 32 * 1024 * 1024;
+const MAX_UNTRACKED_LISTED: usize = 5000;
 
 /// Why a git command did not give an answer.
 #[derive(Debug)]
@@ -225,7 +230,12 @@ pub fn info(dir: &Path) -> GitInfo {
     };
     let mut refs: Vec<GitRef> = Vec::new();
     let mut push = |name: String, kind: GitRefKind, c: &GitCommit, current: bool| {
-        if !refs.iter().any(|r| r.name == name) {
+        // The branch that is checked out is the current one whatever kind it is listed as: the
+        // default-branch guess lists `main` before the branch listing does.
+        let current = current || (kind != GitRefKind::Head && branch.as_deref() == Some(&name));
+        if let Some(listed) = refs.iter_mut().find(|r| r.name == name) {
+            listed.current |= current;
+        } else {
             refs.push(GitRef {
                 name,
                 kind,
@@ -307,8 +317,7 @@ pub fn info(dir: &Path) -> GitInfo {
                 .collect()
         };
         for (name, c) in listing("refs/heads", "-committerdate", MAX_BRANCHES) {
-            let current = branch.as_deref() == Some(name.as_str());
-            push(name, GitRefKind::Branch, &c, current);
+            push(name, GitRefKind::Branch, &c, false);
         }
         for (name, c) in listing("refs/tags", "-creatordate", MAX_TAGS) {
             push(name, GitRefKind::Tag, &c, false);
@@ -759,6 +768,39 @@ pub fn show(root: &Path, hash: &str, path: &str) -> Result<Option<String>, Strin
         .map_err(|_| format!("{path} is not text"))
 }
 
+/// The lines of a text file, counted as it is read in chunks (0 for a binary file, a file that
+/// is not a regular file, a link, a file over `MAX_UNTRACKED_BYTES` or more than `budget`
+/// bytes); the bytes read are taken from `budget`.
+fn count_lines(file: &Path, budget: &mut u64) -> usize {
+    let Ok(meta) = std::fs::symlink_metadata(file) else {
+        return 0;
+    };
+    if !meta.is_file() || meta.len() > MAX_UNTRACKED_BYTES || meta.len() > *budget {
+        return 0;
+    }
+    let Ok(mut open) = std::fs::File::open(file) else {
+        return 0;
+    };
+    // Reads no more than the length it had: a file that grows is not read for ever.
+    let mut open = (&mut open).take(meta.len());
+    let (mut lines, mut last, mut buf) = (0usize, b'\n', [0u8; 64 * 1024]);
+    loop {
+        match open.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                *budget = budget.saturating_sub(n as u64);
+                if buf[..n].contains(&0) {
+                    return 0;
+                }
+                lines += buf[..n].iter().filter(|&&b| b == b'\n').count();
+                last = buf[n - 1];
+            }
+            Err(_) => return 0,
+        }
+    }
+    lines + usize::from(last != b'\n')
+}
+
 /// What differs in `dir` between `hash` and the files on disk, as `git diff --stat` counts it
 /// (and untracked files as all added).
 pub fn source_diff(dir: &Path, hash: &str) -> SourceDiff {
@@ -823,21 +865,26 @@ pub fn source_diff(dir: &Path, hash: &str) -> SourceDiff {
         }
         (Err(e), _) | (_, Err(e)) => error = Some(e.message()),
     }
+    // Untracked files that git does not ignore (`out/` and `target/` are, in most projects), as
+    // all added. Their lines are counted by reading each file in chunks, for the first
+    // `MAX_UNTRACKED_COUNTED` files and as long as `MAX_UNTRACKED_TOTAL` bytes are not read in all;
+    // a link is never read. Later files are listed with no lines counted.
     if let Ok(text) = run(dir, &["ls-files", "--others", "--exclude-standard"]) {
-        for path in text.lines() {
-            let file = dir.join(path);
-            let lines = std::fs::metadata(&file)
-                .ok()
-                .filter(|m| m.is_file() && m.len() <= MAX_UNTRACKED_BYTES)
-                .and_then(|_| std::fs::read(&file).ok())
-                .map_or(0, |bytes| {
-                    if bytes.contains(&0) {
-                        0
-                    } else {
-                        bytes.iter().filter(|&&b| b == b'\n').count()
-                            + usize::from(bytes.last().is_some_and(|&b| b != b'\n'))
-                    }
+        let mut budget = MAX_UNTRACKED_TOTAL;
+        for (listed, path) in text.lines().enumerate() {
+            if listed == MAX_UNTRACKED_LISTED {
+                error.get_or_insert_with(|| {
+                    format!(
+                        "only the first {MAX_UNTRACKED_LISTED} files that are not in git are listed"
+                    )
                 });
+                break;
+            }
+            let lines = if listed < MAX_UNTRACKED_COUNTED {
+                count_lines(&dir.join(path), &mut budget)
+            } else {
+                0
+            };
             files.push(SourceFile {
                 path: path.to_string(),
                 status: SourceStatus::Untracked,
@@ -1047,5 +1094,32 @@ mod tests {
         assert!(!left_out("src/outputs/a.nsm", ""));
         // Not at the top of the project: an `out` below `src` is a module folder.
         assert!(!left_out("src/out/a.nsm", ""));
+    }
+
+    #[test]
+    fn untracked_lines_are_counted_in_chunks_and_never_through_a_link() {
+        let dir = TempDir::new("count-lines");
+        let mut budget = 1 << 20;
+        let write = |name: &str, bytes: &[u8]| {
+            std::fs::write(dir.join(name), bytes).unwrap();
+            dir.join(name)
+        };
+        assert_eq!(count_lines(&write("a", b"one\ntwo\nthree"), &mut budget), 3);
+        assert_eq!(count_lines(&write("b", b"one\ntwo\n"), &mut budget), 2);
+        assert_eq!(count_lines(&write("c", b""), &mut budget), 0);
+        assert_eq!(count_lines(&write("d", b"bin\0ary\n"), &mut budget), 0);
+        let long = "line\n".repeat(50_000);
+        assert_eq!(
+            count_lines(&write("e", long.as_bytes()), &mut budget),
+            50_000
+        );
+        // The budget is spent by what was read, and a file over it is not read.
+        let mut tiny = 4;
+        assert_eq!(count_lines(&dir.join("e"), &mut tiny), 0);
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(dir.join("a"), dir.join("link")).unwrap();
+            assert_eq!(count_lines(&dir.join("link"), &mut budget), 0);
+        }
     }
 }

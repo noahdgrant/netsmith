@@ -66,6 +66,8 @@ pub struct Workspace {
     compare_cache: Mutex<compare::Cache>,
     /// Held while a ref is read, so two compares of one ref analyse it once.
     comparing: Mutex<()>,
+    /// The compares waiting for `comparing`, so that a crowd of them is refused.
+    compare_queue: compare::Queue,
 }
 
 /// Tells the observer that an analysis has begun, and that it has ended when this is dropped,
@@ -141,6 +143,7 @@ impl Workspace {
             opened: Instant::now(),
             compare_cache: Mutex::new(compare::Cache::default()),
             comparing: Mutex::new(()),
+            compare_queue: compare::Queue::default(),
         })
     }
 

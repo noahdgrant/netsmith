@@ -231,18 +231,24 @@ fn wslpath(flag: &str, path: &str) -> Result<String, CliError> {
         .args([flag, path])
         .output()
         .map_err(|e| CliError::Io(format!("cannot run wslpath: {e}")))?;
-    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if !out.status.success() || path.is_empty() {
-        return Err(CliError::Failed {
-            command: format!("wslpath {flag} {path:?}"),
-            output: format!(
-                "{}{}",
-                String::from_utf8_lossy(&out.stdout),
-                String::from_utf8_lossy(&out.stderr)
-            ),
-        });
+    let converted = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if !out.status.success() || converted.is_empty() {
+        return Err(wslpath_failed(flag, path, &out.stdout, &out.stderr));
     }
-    Ok(path)
+    Ok(converted)
+}
+
+/// The error of a `wslpath <flag> <asked>` that gave no path: the command as it was run (with
+/// the path that was asked about, not what it printed) and everything it said.
+fn wslpath_failed(flag: &str, asked: &str, stdout: &[u8], stderr: &[u8]) -> CliError {
+    CliError::Failed {
+        command: format!("wslpath {flag} {asked:?}"),
+        output: format!(
+            "{}{}",
+            String::from_utf8_lossy(stdout),
+            String::from_utf8_lossy(stderr)
+        ),
+    }
 }
 
 /// A scratch directory holding a copy of the board, removed when dropped.
@@ -522,5 +528,34 @@ impl KicadCli for KicadCliExe {
         )?;
         std::fs::read_to_string(&file)
             .map_err(|e| CliError::Io(format!("kicad-cli wrote no netlist: {e}")))
+    }
+}
+
+#[cfg(test)]
+mod wslpath_tests {
+    use super::wslpath_failed;
+
+    #[test]
+    fn a_failed_wslpath_names_the_path_it_was_asked_about_and_what_it_said() {
+        // `wslpath` printed nothing on stdout: the message must still say which path.
+        let said = wslpath_failed(
+            "-w",
+            "/tmp/a b/board.kicad_pcb",
+            b"",
+            b"wslpath: no such file\n",
+        )
+        .to_string();
+        assert!(
+            said.contains(r#"wslpath -w "/tmp/a b/board.kicad_pcb""#),
+            "{said}"
+        );
+        assert!(said.contains("wslpath: no such file"), "{said}");
+        assert!(!said.contains(r#"wslpath -w """#), "{said}");
+        // What it printed on stdout is in the output, not in the command.
+        let said = wslpath_failed("-u", "C:\\x", b"partial\n", b"").to_string();
+        assert!(
+            said.contains(r#"wslpath -u "C:\\x""#) && said.contains("partial"),
+            "{said}"
+        );
     }
 }

@@ -988,6 +988,34 @@ fn the_server_answers_git_and_compare_and_tells_the_socket_how_far_it_is() {
     assert!(body.contains("TwoBoards"));
 }
 
+/// A `main` that is the checked out branch is `current`, listed once, as the default branch.
+#[test]
+fn the_branch_that_is_checked_out_is_current_whatever_kind_it_is_listed_as() {
+    need_tools!();
+    let (r, _, w) = committed("current", "");
+    let info = w.git();
+    assert_eq!(info.branch.as_deref(), Some("main"));
+    let main: Vec<_> = info.refs.iter().filter(|r| r.name == "main").collect();
+    assert_eq!(main.len(), 1, "{:?}", info.refs);
+    assert!(main[0].current, "{:?}", main[0]);
+    assert!(
+        info.refs
+            .iter()
+            .filter(|r| r.kind == GitRefKind::Head)
+            .all(|r| !r.current)
+    );
+    // On another branch, `main` is not current and the branch is.
+    git(&r.dir, &["checkout", "-q", "-b", "topic"]);
+    let info = r.workspace().git();
+    let current: Vec<_> = info
+        .refs
+        .iter()
+        .filter(|r| r.current)
+        .map(|r| r.name.as_str())
+        .collect();
+    assert_eq!(current, ["topic"], "{:?}", info.refs);
+}
+
 /// A repository with a hostile branch: `src/main.nsm` is a link to a file outside the
 /// repository, there is a link to a folder, and a file bigger than a ref's files may be.
 #[cfg(unix)]

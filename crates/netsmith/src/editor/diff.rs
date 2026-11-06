@@ -273,13 +273,16 @@ fn parts(b: &BoardDigest, h: &BoardDigest) -> (PartsDiff, HashMap<String, String
     }
     let (named_base, named_head) = (named(b), named(h));
     let mut still_new = Vec::new();
+    // The signature of each part that is gone, made once and kept beside it (the two lists lose
+    // the same entries).
+    let mut gone_sigs: Vec<_> = gone.iter().map(|g| signature(g, &named_base)).collect();
     for p in new {
         let sig = signature(p, &named_head);
         let strong = sig.3.iter().any(|(_, net)| !net.is_empty());
-        let candidates: Vec<usize> = gone
+        let candidates: Vec<usize> = gone_sigs
             .iter()
             .enumerate()
-            .filter(|(_, g)| signature(g, &named_base) == sig)
+            .filter(|(_, g)| **g == sig)
             .map(|(i, _)| i)
             .collect();
         let pick = candidates
@@ -294,7 +297,10 @@ fn parts(b: &BoardDigest, h: &BoardDigest) -> (PartsDiff, HashMap<String, String
             })
             .or_else(|| candidates.first().copied().filter(|_| strong));
         match pick {
-            Some(i) => pairs.push((gone.remove(i), p)),
+            Some(i) => {
+                gone_sigs.remove(i);
+                pairs.push((gone.remove(i), p));
+            }
             None => still_new.push(p),
         }
     }
@@ -723,22 +729,19 @@ fn instances(b: &[InstanceDigest], h: &[InstanceDigest]) -> InstancesDiff {
     out
 }
 
-type BomKey = (
-    String,
-    String,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    bool,
-);
+type BomKey = (String, String, Option<String>, Option<String>, bool);
 
+/// What makes a bill of materials line the same on both sides: what the bill itself groups parts
+/// by (`sourcing.rs`: value, footprint, LCSC number, kind, hand soldering). The manufacturer's
+/// number is not in it: two parts of one group may differ in it, and the line shows the first
+/// one's, so a key with it would make a changed number a line removed and a line added. A line
+/// whose number changed is a changed line.
 fn bom_key(l: &BomLine) -> BomKey {
     (
         l.kind.clone(),
         l.value.clone(),
         l.footprint.clone().or_else(|| l.package.clone()),
         l.lcsc.clone(),
-        l.mpn.clone(),
         l.hand_solder,
     )
 }
@@ -787,7 +790,7 @@ fn bom(b: &Bom, h: &Bom) -> BomDiff {
                     (Some(a), Some(b)) => !close(a, b),
                     (a, b) => a.is_some() != b.is_some(),
                 };
-                if was.quantity == now.quantity && !price {
+                if was.quantity == now.quantity && !price && was.mpn == now.mpn {
                     out.unchanged += 1;
                     continue;
                 }
@@ -1456,6 +1459,33 @@ mod tests {
             ..BoardDigest::nothing().bom.unwrap()
         });
         b
+    }
+
+    #[test]
+    fn a_changed_manufacturers_number_is_a_changed_line_and_not_one_removed_and_one_added() {
+        // The bill groups parts by value, footprint, LCSC number, kind and hand soldering: two
+        // parts of a group may differ in their number, and the line shows the first one's.
+        let with_mpn = |mpn: &str| {
+            let mut l = line("1k", "C1", 2, Some(0.01));
+            l.mpn = Some(mpn.into());
+            l
+        };
+        let base = with_bom(vec![with_mpn("RC0402-A")]);
+        let head = with_bom(vec![with_mpn("RC0402-B")]);
+        let d = diff(&digest(base), &digest(head), None);
+        let bom = only(&d).bom.as_ref().unwrap();
+        assert!(bom.added.is_empty() && bom.removed.is_empty(), "{bom:?}");
+        assert_eq!(bom.changed.len(), 1);
+        assert_eq!(bom.changed[0].mpn.as_deref(), Some("RC0402-B"));
+        assert_eq!(bom.changed[0].quantity_head, 2);
+        assert_eq!(only(&d).status, BoardStatus::Changed);
+        // The same number on both sides is no change.
+        let same = diff(
+            &digest(with_bom(vec![with_mpn("X")])),
+            &digest(with_bom(vec![with_mpn("X")])),
+            None,
+        );
+        assert_eq!(only(&same).status, BoardStatus::Unchanged);
     }
 
     #[test]

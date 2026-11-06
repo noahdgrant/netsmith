@@ -34,6 +34,43 @@ use crate::{
 
 /// How many refs' readings are kept.
 const KEPT: usize = 8;
+/// How many compares may wait for the one that is reading a ref (they read one at a time: a
+/// reading takes seconds to a minute). A compare that finds this many waiting is refused (429).
+const MAX_WAITING: usize = 3;
+
+/// The compares that wait for their turn to read a ref.
+#[derive(Default)]
+pub struct Queue(std::sync::atomic::AtomicUsize);
+
+/// A place in the queue, given up when dropped.
+pub struct Waiting<'a>(&'a Queue);
+
+impl Queue {
+    /// A place among the waiting, or none if `limit` are waiting already.
+    fn join(&self, limit: usize) -> Option<Waiting<'_>> {
+        use std::sync::atomic::Ordering;
+        let mut waiting = self.0.load(Ordering::SeqCst);
+        loop {
+            if waiting >= limit {
+                return None;
+            }
+            match self
+                .0
+                .compare_exchange(waiting, waiting + 1, Ordering::SeqCst, Ordering::SeqCst)
+            {
+                Ok(_) => return Some(Waiting(self)),
+                Err(now) => waiting = now,
+            }
+        }
+    }
+}
+
+impl Drop for Waiting<'_> {
+    fn drop(&mut self) {
+        self.0.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 /// What a ref came to when it was read: the project reduced to its digest, or why it could
 /// not be read.
 pub enum Reading {
@@ -248,7 +285,16 @@ impl Workspace {
         if let Some(reading) = kept(self) {
             return Ok((reading, true));
         }
+        let Some(place_in_line) = self.compare_queue.join(MAX_WAITING) else {
+            return Err(ApiError::new(
+                429,
+                format!(
+                    "{MAX_WAITING} compares are already waiting for the one that is reading a ref: wait for one to finish and compare again"
+                ),
+            ));
+        };
         let _one_at_a_time = self.comparing.lock().unwrap_or_else(|e| e.into_inner());
+        drop(place_in_line);
         if let Some(reading) = kept(self) {
             return Ok((reading, true));
         }
@@ -481,10 +527,18 @@ fn join(prefix: &str, path: &str) -> String {
     }
 }
 
+/// How many times the files are read again if they change under a reading of them.
+const DIGEST_TRIES: u32 = 5;
+
 /// The files of a workspace as they are now, reduced to what a comparison reads. Tried again
 /// if the files change under it.
 pub(super) fn digest_of(ws: &Workspace) -> Result<Digest, ApiError> {
-    for _ in 0..3 {
+    for attempt in 0..DIGEST_TRIES {
+        if attempt > 0 {
+            // The files changed under the last reading (a save, an editor writing layouts):
+            // give it a moment to settle.
+            std::thread::sleep(std::time::Duration::from_millis(50 * u64::from(attempt)));
+        }
         let (version, handles, problems, trees) = {
             let state = ws.fresh();
             let handles = state.snapshot.boards.clone();
@@ -620,5 +674,24 @@ fn board_digest(
         modules,
         interfaces,
         bom,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_crowd_of_compares_is_refused_after_the_limit_and_places_are_given_back() {
+        let queue = Queue::default();
+        let first = queue.join(3).expect("a place");
+        let second = queue.join(3).expect("a place");
+        let third = queue.join(3).expect("a place");
+        assert!(queue.join(3).is_none(), "the fourth waits no more");
+        drop(second);
+        let fourth = queue.join(3).expect("a place was given back");
+        assert!(queue.join(3).is_none());
+        drop((first, third, fourth));
+        assert!(queue.join(3).is_some());
     }
 }
