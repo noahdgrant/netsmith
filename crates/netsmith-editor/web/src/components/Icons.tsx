@@ -320,6 +320,8 @@ export function Icon({ name, size = 16, class: cls }: { name: IconName; size?: n
       class={`icon ${cls ?? ''}`}
       width={size}
       height={size}
+      // an icon grows with the page's size (settings.ts), except inside a drawing's canvas, whose cards have a size of their own
+      style={{ width: `calc(${size}px * var(--icon-k, var(--ui-scale, 1)))`, height: `calc(${size}px * var(--icon-k, var(--ui-scale, 1)))` }}
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"

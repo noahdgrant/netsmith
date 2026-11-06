@@ -39,3 +39,13 @@ export function ageLabel(days: number | null | undefined): string {
   if (days <= 0) return days < 0 ? 'in the future' : 'today';
   return days === 1 ? '1 day ago' : `${days} days ago`;
 }
+
+/** How many px a rem is now, over 16: 1 at the default size, 1.25 at a size of 125 % (settings.ts). A length of the page that script
+ * measures against (a sticky header's height) is written in px as at 100 % and multiplied by this. */
+export function remScale(): number {
+  try {
+    return parseFloat(getComputedStyle(document.documentElement).fontSize) / 16 || 1;
+  } catch {
+    return 1;
+  }
+}

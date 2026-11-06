@@ -51,3 +51,16 @@
  * whole thumbnail when the frame filled it, and only the inside of a narrow frame when it did not (a connector's module), so two
  * kinds of card looked like two kinds of paper. */
 .schematic-host .ov-thumb svg.schematic .module-frame { fill: none; }
+
+/* ---- the root: the settings' size is a share of the browser's own text size, and every length of the page is rem or a token ---- */
+html { font-size: calc(100% * var(--ui-scale, 1)); }
+/* A drawing and the cards of the power tree and the system view have a zoom of their own, and a card's height is computed in script
+ * from these numbers: inside a canvas the scale is the one px scale, whatever size the page has. */
+.panzoom .canvas, .panzoom .pt-minimap {
+  --fs-xs: 11px; --fs-sm: 12px; --fs-md: 13px; --fs-lg: 15px; --fs-xl: 18px; --fs-2xl: 22px;
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+  --h-xs: 20px; --h-sm: 24px; --h-md: 28px; --h-lg: 32px; --row: 28px; --ctl: 28px; --ctl-lg: 32px;
+  --icon-sm: 12px; --icon-md: 14px; --icon-lg: 16px;
+  --icon-k: 1;
+  font-size: 13px;
+}

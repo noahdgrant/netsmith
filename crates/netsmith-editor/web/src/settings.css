@@ -7,9 +7,8 @@
   --ctl: 1.5rem; --ctl-lg: 1.75rem;
   --bar: 2.875rem; --tab: 2.125rem; --status: 1.5rem;
   --gap: .375rem;
-  --row-lg: 1.875rem; --row-sm: 1.5rem; --pad-view: .875rem;
+  --row-lg: 1.875rem; --row-sm: 1.5rem;
 }
-:root { --row-lg: 2.125rem; --row-sm: 1.875rem; --pad-view: 1.25rem; }
 
 /* ---- motion: "Reduce" in the settings does what the system's request does (style.css), whatever the system says ---- */
 :root[data-motion="reduce"] *, :root[data-motion="reduce"] *::before, :root[data-motion="reduce"] *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }

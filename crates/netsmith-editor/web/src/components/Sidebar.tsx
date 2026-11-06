@@ -4,6 +4,7 @@ import { ApiFailure, api } from '../client';
 import { type Hover, hoverEnter, hoverLeave, partsOfDefinition } from '../hover';
 import { allowed, folderFor, removalPrompt, starter, stemOf, type Kind, type Template } from '../fileops';
 import { load, save } from '../storage';
+import { remScale } from '../util';
 import { computed } from '@preact/signals';
 import { Icon } from './Icons';
 import { EmptyState } from './ui';
@@ -443,7 +444,7 @@ export function Sidebar() {
     // Once for each file that becomes the active one, and only if it is not in view.
     revealed.current = path;
     const top = el.getBoundingClientRect().top - tree.getBoundingClientRect().top + tree.scrollTop;
-    const to = revealScroll(top, el.offsetHeight, tree.scrollTop, tree.clientHeight, STICKY);
+    const to = revealScroll(top, el.offsetHeight, tree.scrollTop, tree.clientHeight, STICKY * remScale());
     if (to !== tree.scrollTop) {
       tree.scrollTop = to;
       scrolled.current = tree.scrollTop;
