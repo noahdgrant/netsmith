@@ -8,6 +8,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
 import { type ToastItem, dismissToast, holdToast, releaseToast, toasts } from '../feedback/state';
+import { reducedMotion } from '../settings';
 import { CheckIcon, Icon, SeverityIcon } from './Icons';
 
 /** How long a toast takes to leave (the same as the CSS: `.toast.leaving`). */
@@ -43,7 +44,7 @@ export function Toasts() {
   // What is in the signal is shown; what left it stays a moment, leaving.
   useLayoutEffect(() => {
     const now = new Set(list.map((t) => t.id));
-    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduced = reducedMotion();
     const gone = shown.filter((s) => !s.leaving && !now.has(s.item.id));
     for (const s of gone) {
       const el = stack.current?.querySelector<HTMLElement>(`[data-toast="${s.item.id}"]`);
@@ -71,18 +72,41 @@ export function Toasts() {
   }, [list]);
   useEffect(() => () => drops.current.forEach((t) => clearTimeout(t)), []);
 
-  // Clear the controls under the stack, now and when the window or what is marked changes size.
+  // Clear the controls under the stack, now and whenever what is marked changes: its size, a
+  // section switch (a view comes into the page or goes hidden) or a view that mounts its own bar.
+  // One rule for every view: the stack stands above whatever is marked `data-toast-clear` and shown.
   useEffect(() => {
     const el = stack.current;
     if (!el) return;
-    const measure = () => setRaise(lift(el));
+    let frame = 0;
+    const measure = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => setRaise(lift(el)));
+    };
     measure();
-    const marked = [...document.querySelectorAll<HTMLElement>('[data-toast-clear]')];
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null;
-    marked.forEach((m) => observer?.observe(m));
+    const watch = () => {
+      observer?.disconnect();
+      document.querySelectorAll<HTMLElement>('[data-toast-clear]').forEach((m) => observer?.observe(m));
+    };
+    watch();
+    const area = document.querySelector('.panes-area');
+    const mutations =
+      typeof MutationObserver === 'function' && area
+        ? new MutationObserver((records) => {
+            // A bar that comes (childList) or a section that is shown or hidden (its class): not every class of every node.
+            if (records.some((r) => r.type === 'childList' || (r.target as Element).matches?.('.section'))) {
+              watch();
+              measure();
+            }
+          })
+        : null;
+    mutations?.observe(area!, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
     window.addEventListener('resize', measure);
     return () => {
+      cancelAnimationFrame(frame);
       observer?.disconnect();
+      mutations?.disconnect();
       window.removeEventListener('resize', measure);
     };
   }, [shown.length]);

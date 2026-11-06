@@ -118,6 +118,9 @@ export async function run({ page, shot, step, expect, section }) {
   const down = await lit();
   expect(down.length >= 9 && ['guard', 'buck5', 'ldo', 'mcu', 'boost12', 'lamp'].every((id) => down.includes(id)), `the guard, the three regulators and what they feed are lit (${down.length} of ${total})`);
   expect((await page.locator('.pt-edge.hot.down').count()) >= 8 && (await page.locator('.pt-edge.hot.up').count()) === 0, 'only in the downstream tint');
+  // A graph that would need less than 75 % to fit opens at 75 % (round 5: below it the text is under 8 px), so all the cards are in the window after Fit.
+  await page.locator('.sec-system .zoombar button', { hasText: 'Fit' }).click();
+  await page.waitForTimeout(400);
   expect((await page.locator('.sec-system .pt-minimap').count()) === 0, 'no overview while all the cards are in the window: it covered the cards');
   await zoomIn('.sec-system');
   expect((await page.locator('.sec-system .pt-minimap rect[class*="hot-down"]').count()) >= 9, 'zoomed in, the lit cards are in the minimap');

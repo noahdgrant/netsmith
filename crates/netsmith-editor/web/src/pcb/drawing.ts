@@ -85,6 +85,22 @@ export function prepare(text: string): Drawing | null {
     if (item) item.plane = true;
     else nets.set(name, { name, colour: themed(plane.getAttribute('stroke') ?? UNCONNECTED), pads: 0, plane: true });
   });
+  // A plane is a dashed rectangle with no word on it: it is given the name of its net (a label on its border, in the drawing's own units)
+  // and its place among the planes, which `pcbdraw.css` turns into the tone of its layer.
+  const planes = [...svg.querySelectorAll('.l-planes > rect[data-net]')];
+  planes.forEach((plane, i) => {
+    plane.setAttribute('data-plane', String(i + 1));
+    const label = doc.createElementNS('http://www.w3.org/2000/svg', 'text');
+    label.setAttribute('class', 'plane-label');
+    label.setAttribute('data-net', plane.getAttribute('data-net')!);
+    label.setAttribute('data-plane', String(i + 1));
+    // On the plane's own top border (the border passes behind the word through its halo), the labels of the planes a few
+    // millimetres apart along it, so two planes' words never lie on one another.
+    label.setAttribute('x', String(Number(plane.getAttribute('x')) + 2 + i * 9));
+    label.setAttribute('y', String(Number(plane.getAttribute('y'))));
+    label.textContent = plane.getAttribute('data-net')!;
+    plane.parentNode?.appendChild(label);
+  });
   return {
     html: svg.outerHTML,
     width: w * SCALE,

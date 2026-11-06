@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import type { PowerTree, SystemView } from '../api';
 import { api } from '../client';
@@ -117,13 +117,15 @@ function Mates({ view }: { view: SystemView }) {
 }
 
 /** The room a graph keeps round its cards (screen pixels), the most it is opened at (a small graph is
- * fitted with air round it, not blown up) and the least before it is opened at that and left to be panned. */
+ * fitted with air round it, not blown up) and the least before it is opened at that and left to be panned: below 75 % the
+ * smallest text (11 px) is under 8 px, so a graph that does not fit at 75 % opens at 75 % from its top left, with the minimap
+ * and Fit to find the rest. */
 export const GRAPH_PAD = 56;
 export const GRAPH_MAX_K = 1.5;
-export const GRAPH_MIN_K = 0.45;
+export const GRAPH_MIN_K = 0.75;
 
 /** The view a graph opens at, and Fit goes to: the whole of it with comfortable padding and centred, at most
- * 150 %. Opening a graph that would then be too small to read, it is 45 % from its top left instead (Fit still shows it
+ * 150 %. Opening a graph that would then be too small to read, it is 75 % from its top left instead (Fit still shows it
  * whole). True size is the 1:1 button. */
 export function placeFitted(size: { width: number; height: number }) {
   return (w: number, h: number, whole = false) => {
@@ -132,6 +134,63 @@ export function placeFitted(size: { width: number; height: number }) {
     const k = Math.min(all.k, GRAPH_MAX_K);
     return { k, x: (w - size.width * k) / 2, y: (h - size.height * k) / 2 - h * 0.02 };
   };
+}
+
+/** A wire's label: the words on a pill (the surface of a card, a hairline round it) that stands 3 px above the wire. The pill is
+ * as wide as the words are in the page's own font, measured once they are drawn (the estimate stands in until then). */
+function EdgeLabel({
+  x,
+  y,
+  guess,
+  text,
+  title,
+  k,
+  group,
+  dim,
+  onClick,
+  onEnter,
+  onLeave,
+}: {
+  x: number;
+  y: number;
+  guess: number;
+  text: string;
+  title: string;
+  k: string;
+  group: boolean;
+  dim: boolean;
+  onClick: (r: DOMRect) => void;
+  onEnter: (r: DOMRect) => void;
+  onLeave: () => void;
+}) {
+  const words = useRef<SVGTextElement>(null);
+  const [w, setW] = useState(Math.max(0, guess - 8));
+  useLayoutEffect(() => {
+    const t = words.current?.getComputedTextLength?.();
+    if (t && Math.abs(t - w) > 0.5) setW(t);
+  }, [text]);
+  return (
+    <g class={`sy-label-wrap ${dim ? 'dim' : ''}`}>
+      <rect class="sy-pill" x={x - 1} y={y - 18} width={w + 14} height={18} rx={9} />
+      <text
+        ref={words}
+        x={x + 6}
+        y={y - 5}
+        data-label={k}
+        class={`sy-label ${group ? 'group' : ''}`}
+        onClick={(ev) => {
+          if (!group) return;
+          ev.stopPropagation();
+          onClick((ev.currentTarget as SVGTextElement).getBoundingClientRect());
+        }}
+        onMouseEnter={(ev) => group && onEnter((ev.currentTarget as SVGTextElement).getBoundingClientRect())}
+        onMouseLeave={() => group && onLeave()}
+      >
+        <title>{title}</title>
+        {text}
+      </text>
+    </g>
+  );
 }
 
 const KIND_ICON: Record<string, IconName> = { board: 'board', module: 'module', part: 'part', port: 'net' };
@@ -408,30 +467,22 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
               if (!e.label || !w) return null;
               const tint = tr?.up.links.has(k) || tr?.down.links.has(k);
               const group = w.labels.length > 1;
+              // The words stand on a pill of the page's surface, a few pixels above the wire: a label never touches its line.
               return (
-                <text
+                <EdgeLabel
                   key={`l${k}`}
                   x={e.label.x}
                   y={e.label.y}
-                  data-label={k}
-                  class={`sy-label ${group ? 'group' : ''} ${tr && !tint ? 'dim' : ''}`}
-                  onClick={(ev) => {
-                    if (!group) return;
-                    ev.stopPropagation();
-                    const r = (ev.currentTarget as SVGTextElement).getBoundingClientRect();
-                    showTip({ wire: w, x: r.left, y: r.bottom }, true);
-                  }}
-                  onMouseEnter={(ev) => {
-                    if (!group) return;
-                    const r = (ev.currentTarget as SVGTextElement).getBoundingClientRect();
-                    showTip({ wire: w, x: r.left, y: r.bottom });
-                  }}
-                  onMouseLeave={() => group && showTip(null)}
-                >
-                  <title>{w.labels.join('\n')}</title>
-                  {e.label.text}
-                  {group ? ' ▾' : ''}
-                </text>
+                  guess={e.label.w}
+                  text={`${e.label.text}${group ? ' ▾' : ''}`}
+                  title={w.labels.join('\n')}
+                  k={k}
+                  group={group}
+                  dim={!!tr && !tint}
+                  onClick={(r) => showTip({ wire: w, x: r.left, y: r.bottom }, true)}
+                  onEnter={(r) => showTip({ wire: w, x: r.left, y: r.bottom })}
+                  onLeave={() => showTip(null)}
+                />
               );
             })}
           </svg>

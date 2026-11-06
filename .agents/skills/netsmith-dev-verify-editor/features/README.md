@@ -39,6 +39,8 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | Shared hover: a BOM row, a chip, a card, a drawn part or net lights the same thing in the other views; Escape, leave, focus, touch | `hover.md` | `hover` | `two_boards` |
 | Motion: the glide, the fade, the pop, the dock, the toast in and out, a row's ease; reduced motion | `motion.md` | `motion` | `two_boards` |
 | Themes (light, dark, high contrast, system), type and buttons, the keyboard, 200 % zoom, reduced motion; every view in every theme | `themes.md` | `themes` | `two_boards` |
+| Settings (density, size, motion), the help menu, About, the diagnostics copy, the tab title, the favicon, the splash | `settings.md` | `settings` | `two_boards` |
+| A project with no board: the empty state and the button that opens `src/main.nsm` | `settings.md` | `empty-project` | `empty` |
 
 `overview`: `drive overview` opens the page and expects the seven section tabs in a row (Source first), a schematic (`.schematic`), the actions in the top bar and the error and warning counts in the status bar, then opens the Source section with key 1. Look at the screenshot for the overall layout.
 

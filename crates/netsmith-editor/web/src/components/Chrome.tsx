@@ -35,6 +35,8 @@ import {
   analysis,
   paneNotice,
   dismissPaneNotice,
+  openFile,
+  revealSection,
 } from '../store';
 import { chordLabels, chordText, find, runCommand } from '../commands';
 import { openPicker } from '../quickpick';
@@ -47,7 +49,9 @@ import { Logo } from './Logo';
 import { dropBefore } from '../source/tabs';
 import { fileIcon } from '../tree';
 import { FileTypeIcon, LockIcon } from './TreeIcons';
+import { emptyProject, entryFileOf } from '../entry';
 import { SelectionChip } from './SelectionChip';
+import { HelpMenu, SettingsMenu } from './TopMenus';
 
 /** What `section` is for, in its tab's tooltip. */
 const SECTION_HINT: Record<Section, string> = {
@@ -114,19 +118,39 @@ function Action({
 function EmptyBoardPick() {
   const loading = !analysis.value;
   const e = firstError.value;
-  const never = neverBuilt.value && !!e;
+  // A project that has not begun (its file has no board) is a place to start, not an error to be read.
+  const begun = !loading ? emptyProject(analysis.value!.problems) : null;
+  const never = neverBuilt.value && !!e && !begun;
+  const entry = begun?.file ?? entryFileOf(project.value?.files ?? []);
   return (
     <Popover
       fixed
       class={`boardpick-empty ${never ? 'never' : ''}`}
-      tip={loading ? 'Reading the project' : 'Why there is no board'}
-      label={loading ? 'Reading the project' : 'No board built yet'}
+      tip={loading ? 'Reading the project' : begun ? 'Where to write the first board' : 'Why there is no board'}
+      label={loading ? 'Reading the project' : begun ? 'No boards yet' : 'No board built yet'}
       icon={loading ? undefined : never ? 'error' : 'board'}
       badge={loading ? <Spinner size={12} /> : undefined}
     >
       {(close) =>
         loading ? (
           <p>The first analysis is still running. The boards of the project are listed here when it is done.</p>
+        ) : begun ? (
+          <>
+            <h4>No boards yet</h4>
+            <p>Write a <code>board</code> in <code>{entry ?? 'src/main.nsm'}</code>; it is listed here as soon as it builds.</p>
+            <div class="empty-actions">
+              <button
+                class="tool primary"
+                onClick={() => {
+                  close();
+                  revealSection('source');
+                  if (entry) void openFile(entry);
+                }}
+              >
+                {entry ? `Open ${entry}` : 'Open the source'}
+              </button>
+            </div>
+          </>
         ) : never ? (
           <>
             <h4>The project has an error, so nothing built</h4>
@@ -206,7 +230,7 @@ export function TopBar() {
       <div class="tb-right">
         <div class="tb-ghosts" role="group" aria-label="Appearance and help">
           <button
-            class="icon-btn"
+            class="icon-btn ghost-extra"
             data-tip={`Switch between the light and the dark theme (${chordText(find('theme.toggle')?.keys ?? '')})`.replace(' ()', '')}
             aria-label="Toggle the light and dark theme"
             onClick={() => runCommand('theme.toggle')}
@@ -214,7 +238,7 @@ export function TopBar() {
             <Icon name="theme" />
           </button>
           <button
-            class="icon-btn"
+            class="icon-btn ghost-extra"
             data-tip={`Keyboard shortcuts (${chordText(find('help.shortcuts')?.keys ?? '?')})`}
             aria-label="Keyboard shortcuts"
             aria-haspopup="dialog"
@@ -222,6 +246,8 @@ export function TopBar() {
           >
             <Icon name="keyboard" />
           </button>
+          <SettingsMenu />
+          <HelpMenu />
         </div>
         <div class="actions" role="group" aria-label="Actions: they write files">
           <Action

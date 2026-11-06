@@ -1,0 +1,5 @@
+/* ==== round 5: the first moment (components/Splash.tsx; index.html holds the same markup before any script runs) ==== */
+.splash { position: fixed; inset: 0; z-index: var(--z-dialog); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.25rem; background: var(--bg); color: var(--text-muted); font: var(--fs-md)/var(--lh) var(--sans); transition: opacity var(--dur) var(--ease); }
+.splash.leaving { opacity: 0; pointer-events: none; }
+.splash-mark { display: block; width: 3.5rem; height: 3.5rem; }
+.splash-text { min-height: 1.4em; font-variant-numeric: tabular-nums; }

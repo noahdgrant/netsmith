@@ -321,6 +321,12 @@ export const P: Record<string, ComponentChildren> = {
       <path d="M10.4 10.4L14 14M5.2 7h3.6M7 5.2v3.6" />
     </>
   ),
+  settings: (
+    <>
+      <path d="M6.83 3.14 L6.97 1.48 L9.03 1.48 L9.17 3.14 L10.61 3.74 L11.88 2.66 L13.34 4.12 L12.26 5.39 L12.86 6.83 L14.52 6.97 L14.52 9.03 L12.86 9.17 L12.26 10.61 L13.34 11.88 L11.88 13.34 L10.61 12.26 L9.17 12.86 L9.03 14.52 L6.97 14.52 L6.83 12.86 L5.39 12.26 L4.12 13.34 L2.66 11.88 L3.74 10.61 L3.14 9.17 L1.48 9.03 L1.48 6.97 L3.14 6.83 L3.74 5.39 L2.66 4.12 L4.12 2.66 L5.39 3.74z" />
+      <circle cx="8" cy="8" r="2" />
+    </>
+  ),
   inbox: <path d="M2.2 9.2l1.6-5.4a1 1 0 0 1 1-.7h6.4a1 1 0 0 1 1 .7l1.6 5.4v3a1 1 0 0 1-1 1H3.2a1 1 0 0 1-1-1zM2.4 9.2h3.3l.7 1.6h3.2l.7-1.6h3.3" />,
 };
 
@@ -332,6 +338,8 @@ export function Icon({ name, size = 16, class: cls }: { name: IconName; size?: n
       class={`icon ${cls ?? ''}`}
       width={size}
       height={size}
+      // an icon grows with the page's size (settings.ts), except inside a drawing's canvas, whose cards have a size of their own
+      style={{ width: `calc(${size}px * var(--icon-k, var(--ui-scale, 1)))`, height: `calc(${size}px * var(--icon-k, var(--ui-scale, 1)))` }}
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"

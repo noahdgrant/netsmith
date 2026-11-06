@@ -24,7 +24,7 @@
   /* Inter (a variable font, self-hosted: src/assets/fonts, OFL.txt beside it) first; the system's own face while it loads and for any glyph it lacks */
   --sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   /* type: a 13 px body on a 1.15 ratio; titles are 15 and 18; a size below 11 is never used */
-  --fs-xs: 11px; --fs-sm: 12px; --fs-md: 13px; --fs-lg: 15px; --fs-xl: 18px; --fs-2xl: 22px;
+  --fs-xs: 0.6875rem; --fs-sm: 0.75rem; --fs-md: 0.8125rem; --fs-lg: 0.9375rem; --fs-xl: 1.125rem; --fs-2xl: 1.375rem;
   --lh-tight: 1.25; --lh: 1.4; --lh-loose: 1.55;
   --fw-normal: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
   /* Inter wants a little less space as it grows; a small label wants a little more */
@@ -33,17 +33,19 @@
   /* Inter's alternates: the l with a tail (so l1 and I1 differ, which matters in designators), open digits */
   --font-features: 'cv05', 'ss01', 'calt';
   /* space: a 4 px step, 8 px is the unit */
-  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+  --sp-1: 0.25rem; --sp-2: 0.5rem; --sp-3: 0.75rem; --sp-4: 1rem; --sp-5: 1.5rem; --sp-6: 2rem;
   /* shapes: 4 for what is inside a control (a key cap), 6 for a control and a row, 8 for a card and an input group, 12 for a panel, a menu and a dialog */
   --r-xs: 4px; --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-xl: 16px; --r-pill: 999px;
   /* heights of rows and controls: 28 is a control, 32 the large one */
-  --h-xs: 20px; --h-sm: 24px; --h-md: 28px; --h-lg: 32px; --row: 28px;
-  --ctl: 28px; --ctl-lg: 32px;
-  --bar: 52px; --tab: 40px; --status: 26px;
+  --h-xs: 1.25rem; --h-sm: 1.5rem; --h-md: 1.75rem; --h-lg: 2rem; --row: 1.75rem;
+  --ctl: 1.75rem; --ctl-lg: 2rem;
+  /* a table's row (the BOM's lines) and a lighter one (a group's head, a section's head in the tree) */
+  --row-lg: 2.125rem; --row-sm: 1.875rem;
+  --bar: 3.25rem; --tab: 2.5rem; --status: 1.625rem;
   /* the window: a frame of --bg with the work in a sheet of its own, set in by --gap */
-  --gap: 8px;
+  --gap: 0.5rem;
   /* icons */
-  --icon-sm: 12px; --icon-md: 14px; --icon-lg: 16px;
+  --icon-sm: 0.75rem; --icon-md: 0.875rem; --icon-lg: 1rem;
   /* motion: short, and none when the person asks for none */
   --dur-fast: 120ms; --dur: 160ms; --dur-slow: 180ms;
   --ease: cubic-bezier(.2, 0, 0, 1);
@@ -204,6 +206,13 @@
   --pcb-front: #d08d50;
   --pcb-back: #46a3bc;
   --pcb-thru: #cdb890;
+  /* a hole that goes through: --pcb-thru is its ring (3:1), --pcb-thru-fill the body inside it, a step lighter than the ring on the light board */
+  --pcb-thru-fill: #8a7a58;
+  /* an inner plane, by its place among the planes: a tone for its fill and border (3:1) */
+  --pcb-plane-1: #9a8cf0;
+  --pcb-plane-2: #5fc98f;
+  --pcb-plane-3: #e0b050;
+  --pcb-plane-4: #e07aa8;
   --pcb-via: #a3adbc;
   --pcb-pad-text: #10141a;
   --pcb-select: var(--sel);
@@ -367,6 +376,13 @@
   --pcb-front: #a95e26;
   --pcb-back: #1f7f9a;
   --pcb-thru: #84702f;
+  /* a hole that goes through: --pcb-thru is its ring (3:1), --pcb-thru-fill the body inside it, a step lighter than the ring on the light board */
+  --pcb-thru-fill: #d6c48a;
+  /* an inner plane, by its place among the planes: a tone for its fill and border (3:1) */
+  --pcb-plane-1: #6552c9;
+  --pcb-plane-2: #23805a;
+  --pcb-plane-3: #9a6a10;
+  --pcb-plane-4: #b03f78;
   --pcb-via: #6a7280;
   --pcb-pad-text: #ffffff;
   --pcb-select: var(--sel);
@@ -527,6 +543,13 @@
   --pcb-front: #ffa45c;
   --pcb-back: #5cd0ee;
   --pcb-thru: #f0dcae;
+  /* a hole that goes through: --pcb-thru is its ring (3:1), --pcb-thru-fill the body inside it, a step lighter than the ring on the light board */
+  --pcb-thru-fill: var(--pcb-thru);
+  /* an inner plane, by its place among the planes: a tone for its fill and border (3:1) */
+  --pcb-plane-1: #b5a9ff;
+  --pcb-plane-2: #7ee8b0;
+  --pcb-plane-3: #ffd070;
+  --pcb-plane-4: #ff9cc4;
   --pcb-via: #d6d6d6;
   --pcb-pad-text: #000000;
   --pcb-select: var(--sel);
@@ -687,6 +710,13 @@
   --pcb-front: #8f3f06;
   --pcb-back: #005f78;
   --pcb-thru: #5e4a12;
+  /* a hole that goes through: --pcb-thru is its ring (3:1), --pcb-thru-fill the body inside it, a step lighter than the ring on the light board */
+  --pcb-thru-fill: var(--pcb-thru);
+  /* an inner plane, by its place among the planes: a tone for its fill and border (3:1) */
+  --pcb-plane-1: #3d2fa8;
+  --pcb-plane-2: #0d6a3f;
+  --pcb-plane-3: #7a5000;
+  --pcb-plane-4: #9c1f5e;
   --pcb-via: #444444;
   --pcb-pad-text: #ffffff;
   --pcb-select: var(--sel);
