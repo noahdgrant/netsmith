@@ -142,6 +142,8 @@ pub fn layout_sheets_marked(
 
     let mut drawn: Vec<Drawn> = Vec::new();
     for (c, cluster) in clusters.iter().enumerate() {
+        netsmith_core::job::checkpoint();
+        netsmith_core::job::report("sheets drawn", c as u64, Some(clusters.len() as u64));
         // This sheet's view of the design: its parts, and of each net the pins that are here.
         let in_sheet: HashMap<usize, usize> = cluster
             .parts

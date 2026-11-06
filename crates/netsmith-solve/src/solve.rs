@@ -28,6 +28,7 @@ use netsmith_check::{
     Balance, Board, Diagnostic, Domain, Draw, FieldId, FieldKind, InstId, InstKind, Model, RExpr,
     Relation, SourceId, System,
 };
+use netsmith_core::job;
 use netsmith_lang::Span;
 use netsmith_lang::ast::CmpOp;
 use netsmith_quantity::{Dimension, Quantity};
@@ -131,6 +132,9 @@ fn article(word: &str) -> &'static str {
     }
 }
 
+/// How often the scan of the fields that finds which parts share a relation says how far it is.
+const FIELDS_REPORT_EVERY: usize = 512;
+
 /// What a search has learned so far.
 #[derive(Default)]
 struct Search {
@@ -144,6 +148,9 @@ struct Search {
     chosen: Vec<String>,
     picks: Vec<Pick>,
     closest: Option<Closest>,
+    /// The most parts that were chosen at once: it only grows, and is what progress reports
+    /// (a search that backs up has not un-chosen what it got through).
+    deepest: usize,
 }
 
 /// The choice that came nearest to working, kept for the error message: the one that got
@@ -256,7 +263,10 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         stated: stated_currents(model),
         sole_equation: sole_equations(model),
         trials: 0,
+        chosen_before: 0,
+        to_choose: 0,
     };
+    job::checkpoint();
     s.relax_pinned();
     for c in s.propagate() {
         s.report(c.source, c.span, c.message);
@@ -275,6 +285,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         .map(|o| o.relation)
         .collect();
     for (i, r) in s.model.relations().to_vec().iter().enumerate() {
+        job::checkpoint();
         match s.verify(r) {
             Verdict::Pass => {}
             Verdict::Unknown if between_parts.contains(&i) => {}
@@ -347,6 +358,10 @@ struct Solver<'a> {
     sole_equation: Vec<bool>,
     /// Candidates tried so far, over every group.
     trials: usize,
+    /// How many parts the groups before this one have chosen, and how many there are to
+    /// choose in all: what the progress of picking is counted in (see `job::report`).
+    chosen_before: usize,
+    to_choose: usize,
 }
 
 /// The currents in a balance that the design gave a range (`.x.current &= a..b`) and that
@@ -454,6 +469,7 @@ impl Solver<'_> {
         let relations = self.model.relations().to_vec();
         let balances = self.model.balances().to_vec();
         for _ in 0..64 {
+            job::checkpoint();
             let mut changed = false;
 
             for &(a, b) in &equalities {
@@ -494,6 +510,7 @@ impl Solver<'_> {
             }
 
             for (index, r) in relations.iter().enumerate() {
+                job::checkpoint();
                 if !matches!(r.op, CmpOp::EqEq | CmpOp::Narrow) {
                     continue;
                 }
@@ -573,6 +590,7 @@ impl Solver<'_> {
             // others allow, so the joins wait until nothing else changes.
             for joins in [false, true] {
                 for b in &balances {
+                    job::checkpoint();
                     let is_join = self.model.instance(b.scope).kind == InstKind::System;
                     if is_join != joins || b.returns {
                         continue;
@@ -780,6 +798,7 @@ impl Solver<'_> {
         let mut balances = self.model.balances().to_vec();
         balances.sort_by_key(|b| b.returns);
         for b in balances {
+            job::checkpoint();
             if b.returns && !self.diagnostics.is_empty() {
                 continue;
             }
@@ -1042,6 +1061,7 @@ impl Solver<'_> {
             .map(|(id, _)| id)
             .collect();
         for field in fields {
+            job::checkpoint();
             let w = crate::place::window(&self.model, field);
             if !w.is_empty() {
                 continue;
@@ -1246,7 +1266,10 @@ impl Solver<'_> {
         parts.sort_by(|a, b| a.0.cmp(&b.0));
 
         let mut jobs: Vec<Job> = Vec::new();
-        for (path, part) in parts {
+        let to_prepare = parts.len() as u64;
+        for (n, (path, part)) in parts.into_iter().enumerate() {
+            job::checkpoint();
+            job::report("parts prepared", n as u64, Some(to_prepare));
             let catalog = self
                 .model
                 .instance(part)
@@ -1309,9 +1332,18 @@ impl Solver<'_> {
             }
         }
 
+        self.to_choose = jobs.len();
+        self.chosen_before = 0;
+        job::report("parts chosen", 0, Some(self.to_choose as u64));
         let coupling = self.coupling(&jobs);
         for group in self.group_jobs(&jobs) {
             self.solve_group(&jobs, &group, &coupling);
+            self.chosen_before += group.len();
+            job::report(
+                "parts chosen",
+                self.chosen_before as u64,
+                Some(self.to_choose as u64),
+            );
         }
     }
 
@@ -1405,6 +1437,10 @@ impl Solver<'_> {
             .collect();
         let mut inside: Vec<HashSet<usize>> = vec![HashSet::new(); jobs.len()];
         for (id, field) in self.model.fields() {
+            job::checkpoint();
+            if id.0 % FIELDS_REPORT_EVERY == 0 {
+                job::report("fields scanned", id.0 as u64, Some(n_fields as u64));
+            }
             for (j, job) in jobs.iter().enumerate() {
                 if self.model.is_inside(field.owner, job.part) {
                     inside[j].insert(class[id.0]);
@@ -1434,6 +1470,10 @@ impl Solver<'_> {
         let mut inside: Vec<std::collections::HashSet<usize>> =
             vec![Default::default(); jobs.len()];
         for (id, field) in self.model.fields() {
+            job::checkpoint();
+            if id.0 % FIELDS_REPORT_EVERY == 0 {
+                job::report("fields scanned", id.0 as u64, Some(n_fields as u64));
+            }
             for (j, job) in jobs.iter().enumerate() {
                 if self.model.is_inside(field.owner, job.part) {
                     inside[j].insert(class(id, &mut fparent));
@@ -1621,6 +1661,14 @@ impl Solver<'_> {
         search: &mut Search,
         coupling: &Coupling,
     ) -> Outcome {
+        if depth > search.deepest {
+            search.deepest = depth;
+            job::report(
+                "parts chosen",
+                (self.chosen_before + depth) as u64,
+                Some(self.to_choose as u64),
+            );
+        }
         if depth == group.len() {
             return Outcome::Solved;
         }
@@ -1656,6 +1704,9 @@ impl Solver<'_> {
                 search.gave_up = true;
                 return Outcome::GaveUp;
             }
+            // A trial is a copy of the model and a propagation: milliseconds, so one
+            // checkpoint for each is the grain a cancel is heard at.
+            job::checkpoint();
             search.trials += 1;
             let snapshot = self.model.clone();
             match self.try_candidate(job.part, &job.columns, c) {

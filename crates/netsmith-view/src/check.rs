@@ -400,7 +400,9 @@ pub fn check(design: &Design, layout: &Layout) -> Vec<Violation> {
     let mut out = Vec::new();
     let truth = pin_nets(design);
     for v in views(layout) {
+        netsmith_core::job::checkpoint();
         check_sheet(design, layout, &truth, &v, &mut out);
+        netsmith_core::job::checkpoint();
         check_wires(design, layout, &v, &mut out);
         check_notes(design, layout, &v, &mut out);
     }

@@ -12,8 +12,12 @@ import {
   causeOf,
   clock,
   connectionState,
+  CANCELLED_TEXT,
+  CANCELLING_TEXT,
+  cancelledTip,
   isBusy,
   progressText,
+  unitText,
   stageLines,
   step,
 } from './status';
@@ -206,5 +210,76 @@ describe("the server's analysis", () => {
 
   it('forgets a lost socket\'s analysis: the next connection says it again', () => {
     expect(run([{ type: 'analysing', since: 1 }, { type: 'lost' }])).toEqual(IDLE);
+  });
+});
+
+describe('what the solver has counted', () => {
+  const solving = { stage: 'solve', board: 'Beta', done: 0, total: 1 };
+
+  it('says the stage\'s own count until the stage counts anything', () => {
+    expect(unitText(solving)).toBeNull();
+    expect(progressText(solving)).toBe('Solving Beta, 1 of 1');
+  });
+
+  it('says how far the stage is inside the board: done of total, the unit, and no board count for one board', () => {
+    const p = { ...solving, unit: 'parts chosen', unitDone: 41, unitTotal: 118 };
+    expect(unitText(p)).toBe('41 of 118 parts chosen');
+    expect(progressText(p)).toBe('Solving Beta: 41 of 118 parts chosen');
+  });
+
+  it('keeps the board\'s own count in brackets when there are several, and never makes up a total', () => {
+    const p = { stage: 'solve', board: 'Beta', done: 1, total: 3, unit: 'parts chosen', unitDone: 7, unitTotal: 20 };
+    expect(progressText(p)).toBe('Solving Beta (2 of 3): 7 of 20 parts chosen');
+    const open = { stage: 'lower', board: 'Beta', done: 0, total: 1, unit: 'alternative parts re-solved', unitDone: 2 };
+    expect(unitText(open)).toBe('2 alternative parts re-solved');
+    expect(progressText(open)).toBe('Lowering Beta: 2 alternative parts re-solved');
+  });
+
+  it('keeps the count the server last said, and drops it when the stage changes to one that counts nothing', () => {
+    let p: Pending = IDLE;
+    p = step(p, { type: 'analysing', since: 1000 });
+    p = step(p, { type: 'progress', now: 1100, ...solving, unit: 'parts chosen', unitDone: 3, unitTotal: 9 });
+    expect(p.server?.progress).toMatchObject({ unit: 'parts chosen', unitDone: 3, unitTotal: 9 });
+    p = step(p, { type: 'progress', now: 1200, stage: 'draw', board: 'Beta', done: 0, total: 1 });
+    expect(p.server?.progress?.unit).toBeUndefined();
+    expect(progressText(p.server!.progress!)).toBe('Drawing Beta, 1 of 1');
+  });
+});
+
+describe('a cancelled analysis', () => {
+  const run = (events: Parameters<typeof step>[1][]): Pending => events.reduce(step, IDLE);
+
+  it('is busy until the server says it has ended, and says it is cancelling meanwhile', () => {
+    const p = run([{ type: 'analysing', since: 1000 }, { type: 'cancelling' }]);
+    expect(isBusy(p)).toBe(true);
+    expect(p.cancelling).toBe(true);
+    expect(CANCELLING_TEXT).toBe('Cancelling…');
+  });
+
+  it('ends with `cancelled` and no `rebuilt`: the page is idle and keeps its reading', () => {
+    expect(run([{ type: 'analysing', since: 1000 }, { type: 'cancelling' }, { type: 'cancelled' }])).toEqual(IDLE);
+    // A page that was not busy has nothing to cancel.
+    expect(run([{ type: 'cancelling' }])).toEqual(IDLE);
+  });
+
+  it('does not stop a save or a check that waits for its own answer', () => {
+    const p = run([
+      { type: 'saved', now: 10 },
+      { type: 'analysing', since: 20 },
+      { type: 'cancelled' },
+    ]);
+    expect(p.server).toBeNull();
+    expect(p.save).toBe(false);
+    expect(isBusy(p)).toBe(false);
+    const waiting = run([{ type: 'check-sent', id: 4, now: 30 }, { type: 'analysing', since: 40 }, { type: 'cancelled' }]);
+    expect(waiting.check).toBe(4);
+    expect(isBusy(waiting)).toBe(true);
+  });
+
+  it('says what stays on screen and what to do', () => {
+    expect(CANCELLED_TEXT).toBe('Analysis cancelled');
+    expect(cancelledTip(true)).toMatch(/nothing is shown yet/);
+    expect(cancelledTip(false)).toMatch(/reading before it/);
+    expect(cancelledTip(false)).toMatch(/Click to run it again/);
   });
 });

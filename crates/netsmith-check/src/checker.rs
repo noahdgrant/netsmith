@@ -507,6 +507,8 @@ impl<'a> Checker<'a> {
         name: &str,
         parent: Option<InstId>,
     ) -> InstId {
+        // One for each instance made: a board of a thousand parts is a thousand of these.
+        netsmith_core::job::checkpoint();
         let kind = match def.kind {
             DefKind::Board => InstKind::Board,
             DefKind::System => InstKind::System,

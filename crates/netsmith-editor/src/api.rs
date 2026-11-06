@@ -349,6 +349,22 @@ pub struct Analysis {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub elapsed_ms: Option<u32>,
+    /// The last analysis of the files on disk was cancelled (ADR 0062): this is the reading
+    /// before it (or, for the first, an empty one with a note), which does not show the files as
+    /// they are. It stays so until a file changes or `POST /api/analysis/run`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cancelled: Option<bool>,
+}
+
+/// What a route that cancels a job answers (`POST /api/analysis/cancel`, `/api/compare/cancel`,
+/// `/api/build/cancel`, `/api/fab/cancel`, `/api/order/cancel`): whether a job was running to be
+/// cancelled. The job ends at its next checkpoint, a fraction of a second later, and the page
+/// hears `cancelled` over the socket when it has.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelAnswer {
+    pub cancelled: bool,
 }
 
 /// The answer of a route that needs the analysis while the first one is still running, to a
@@ -1190,6 +1206,10 @@ pub enum ServerMessage {
     /// `compare` message has `board` set to the ref asked for and the same `stage`, `done` and
     /// `total` (of the ref's analysis), with two stages more: `extract` (reading the ref out of
     /// git) and `diff` (comparing the two readings).
+    ///
+    /// A `solve` message also says how far the solver has got inside the board when it counts
+    /// something: `unit` (`parts chosen`), `unitDone` and, when it is known, `unitTotal`
+    /// (ADR 0062). The count only grows within a board; no total is ever guessed.
     Progress {
         task: String,
         board: String,
@@ -1203,6 +1223,24 @@ pub enum ServerMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         total: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        unit: Option<String>,
+        #[serde(default, rename = "unitDone", skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        unit_done: Option<u32>,
+        #[serde(default, rename = "unitTotal", skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        unit_total: Option<u32>,
+    },
+    /// A job was cancelled (ADR 0062) and has ended; nothing it made was kept. `task` is
+    /// `analyse` (the last reading stays, and `analysis.cancelled` says so until a file changes
+    /// or the page asks to run it again), `compare` (`board` is the ref asked for), `build`,
+    /// `fab` (`board`) or `order` (`board` is the order's name).
+    Cancelled {
+        task: String,
+        board: String,
+        message: String,
     },
 }
 
@@ -1330,6 +1368,7 @@ pub fn typescript() -> String {
         ProblemsDiff,
         CompareBoard,
         Compare,
+        CancelAnswer,
         ClientMessage,
         ServerMessage,
     );

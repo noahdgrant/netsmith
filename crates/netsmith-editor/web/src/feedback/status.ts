@@ -26,6 +26,11 @@ export interface AnalysisProgress {
   /** The index (from 0) of what the stage is on. */
   done: number;
   total: number;
+  /** What the stage has counted inside the board (`parts chosen`), when it counts anything: `unitDone` of
+   * `unitTotal`, or only `unitDone` when the server does not know the total. Never a guess. */
+  unit?: string;
+  unitDone?: number;
+  unitTotal?: number;
 }
 
 const STAGE_VERB: Record<string, string> = {
@@ -46,9 +51,22 @@ const STAGE_NOUN: Record<string, [string, string]> = {
 
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** `Solving Beta, 1 of 1`: the stage's own count and no more. */
+/** What the stage has counted inside the board: `41 of 118 parts chosen`, `2 alternative parts re-solved`. Nothing
+ * when the server counted nothing. */
+export function unitText(p: AnalysisProgress): string | null {
+  if (p.unit === undefined || p.unitDone === undefined) return null;
+  return p.unitTotal !== undefined ? `${p.unitDone} of ${p.unitTotal} ${p.unit}` : `${p.unitDone} ${p.unit}`;
+}
+
+/** `Solving Beta, 1 of 1`: the stage's own count; and, once the stage counts what it is doing,
+ * `Solving Beta: 41 of 118 parts chosen` (with the board's own count in brackets when there are several). */
 export function progressText(p: AnalysisProgress): string {
   const verb = STAGE_VERB[p.stage] ?? capital(p.stage);
+  const inside = unitText(p);
+  if (inside) {
+    const board = p.total > 1 ? ` (${Math.min(p.total, p.done + 1)} of ${p.total})` : '';
+    return `${verb} ${p.board}${board}: ${inside}`;
+  }
   const count = p.total > 0 ? `, ${Math.min(p.total, p.done + 1)} of ${p.total}` : '';
   return `${verb} ${p.board}${count}`;
 }
@@ -73,6 +91,8 @@ export interface StageSeen {
 /** What is waiting for the server to analyse: a check of typed text, a saved file, and an analysis
  * of the files on disk that the server announced (whoever's change began it). */
 export interface Pending {
+  /** Cancel was asked of the analysis that is running and the server has not said it ended yet. */
+  cancelling?: boolean;
   /** The id of the check last sent and not yet answered. */
   check: number | null;
   /** A file was written and the server's rebuild has not arrived. */
@@ -93,6 +113,8 @@ export type PendingEvent =
   | { type: 'saved'; now: number }
   | { type: 'analysing'; since: number }
   | ({ type: 'progress'; now: number } & AnalysisProgress)
+  | { type: 'cancelling' }
+  | { type: 'cancelled' }
   | { type: 'rebuilt' }
   | { type: 'lost' };
 
@@ -124,7 +146,12 @@ export function step(p: Pending, e: PendingEvent): Pending {
       break;
     case 'progress': {
       const server = p.server ?? { since: p.since ?? e.now, progress: null, seen: [] };
-      const progress = { stage: e.stage, board: e.board, done: e.done, total: e.total };
+      const progress: AnalysisProgress = { stage: e.stage, board: e.board, done: e.done, total: e.total };
+      if (e.unit !== undefined) {
+        progress.unit = e.unit;
+        progress.unitDone = e.unitDone;
+        progress.unitTotal = e.unitTotal;
+      }
       const known = server.seen.find((x) => x.stage === e.stage);
       const seen = known
         ? server.seen.map((x) => (x === known ? { ...x, total: e.total } : x))
@@ -132,8 +159,15 @@ export function step(p: Pending, e: PendingEvent): Pending {
       next = { ...p, server: { ...server, progress, seen }, since: server.since };
       break;
     }
+    case 'cancelling':
+      next = p.server ? { ...p, cancelling: true } : p;
+      break;
+    case 'cancelled':
+      // The analysis ended with nothing published: the reading is the one before (no `rebuilt` follows).
+      next = { ...p, save: false, server: null, cancelling: false };
+      break;
     case 'rebuilt':
-      next = { ...p, save: false, server: null };
+      next = { ...p, save: false, server: null, cancelling: false };
       break;
     case 'lost':
       // A socket that closed will not answer.
@@ -162,6 +196,19 @@ export function stageLines(seen: StageSeen[], endedAt: number): string[] {
     const until = seen[i + 1]?.at ?? endedAt;
     return `${capital(s.stage)} (${s.total} ${s.total === 1 ? one : many}): ${clock(Math.max(0, until - s.at))}`;
   });
+}
+
+/** What the status bar says while the server is asked to stop: the analysis ends at its next checkpoint, a fraction of a second on. */
+export const CANCELLING_TEXT = 'Cancelling…';
+
+/** What the bar says once an analysis was cancelled, until a file changes or it is run again. */
+export const CANCELLED_TEXT = 'Analysis cancelled';
+
+/** The tooltip of that item: what stays on screen and what to do. */
+export function cancelledTip(first: boolean): string {
+  return first
+    ? 'The first analysis was cancelled, so nothing is shown yet. Click to run it again, or change a file.'
+    : 'The last analysis was cancelled. The views show the reading before it, not the files as they are now. Click to run it again, or change a file.';
 }
 
 /** How long the calm `Analysed in 46 s` stays after an analysis ends. */

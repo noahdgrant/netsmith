@@ -546,6 +546,7 @@ dependencies = [
 name = "netsmith-check"
 version = "0.0.1"
 dependencies = [
+ "netsmith-core",
  "netsmith-lang",
  "netsmith-quantity",
 ]
@@ -563,6 +564,7 @@ name = "netsmith-editor"
 version = "0.0.1"
 dependencies = [
  "axum",
+ "netsmith-core",
  "netsmith-kicad",
  "serde",
  "serde_json",
@@ -638,6 +640,7 @@ name = "netsmith-solve"
 version = "0.0.1"
 dependencies = [
  "netsmith-check",
+ "netsmith-core",
  "netsmith-lang",
  "netsmith-quantity",
 ]

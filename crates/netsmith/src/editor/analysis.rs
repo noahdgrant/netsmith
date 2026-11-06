@@ -1,11 +1,19 @@
 //! Building the project's files and keeping what came of it: the boards that built, the
 //! systems, and every problem.
 
-use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashMap,
+    fs,
+    path::PathBuf,
+    rc::Rc,
+    sync::Arc,
+};
 
 use netsmith_check::{InstKind, Loader, check};
+use netsmith_core::job;
 use netsmith_editor::{
-    AnalysisEvent, ApiError,
+    AnalysisEvent, ApiError, Observer, Work,
     api::{
         Analysis, BoardDetail, BoardSummary, Location, ModuleUse, NetInfo, PanelSummary, PartInfo,
         PinInfo, Problem, ProblemStage, Severity, SystemSummary,
@@ -114,6 +122,7 @@ impl Snapshot {
                 .collect(),
             module_uses: self.module_uses(),
             elapsed_ms: None,
+            cancelled: None,
         }
     }
 
@@ -231,9 +240,15 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
 /// a project for as long as its owner works on it: a bug in the analysis (an `expect` in the
 /// layout, say) must end that one analysis with a problem the page shows, not leave the server
 /// waiting for a result that never comes.
+///
+/// A cancellation (ADR 0062) is not a panic: it unwinds on, to whoever started the job.
 pub(super) fn contained<T>(work: impl FnOnce() -> T) -> Result<T, String> {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(work))
-        .map_err(|payload| panic_message(&*payload))
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)).map_err(|payload| {
+        if job::is_cancellation(&*payload) {
+            std::panic::resume_unwind(payload)
+        }
+        panic_message(&*payload)
+    })
 }
 
 /// The problem a panic is shown as: an error with no place, saying what panicked and that it
@@ -254,6 +269,25 @@ fn internal_problem(what: &str, message: &str, board: Option<String>) -> Problem
 }
 
 impl Snapshot {
+    /// What the project is when its first analysis was cancelled: no boards, and a note that
+    /// says why and what to do (ADR 0062). The server is ready with it, as it is with any
+    /// reading, and an analysis of the files replaces it.
+    pub fn cancelled_first() -> Snapshot {
+        let message = "The first analysis was cancelled: nothing is shown until the project is analysed. Run it again, or change a file.".to_string();
+        Snapshot {
+            problems: vec![Problem {
+                severity: Severity::Note,
+                rendered: format!("note: {message}\n"),
+                message,
+                at: None,
+                stage: Some(ProblemStage::Check),
+                board: None,
+                path: None,
+            }],
+            ..Snapshot::default()
+        }
+    }
+
     /// What the project is after an analysis that panicked: the last good reading (its boards
     /// marked stale, as for a file that does not build), or nothing on the first, and the
     /// internal error first among the problems.
@@ -287,6 +321,66 @@ impl Snapshot {
 
 /// The least time between two progress lines about modules.
 const MODULE_PROGRESS_EVERY: std::time::Duration = std::time::Duration::from_millis(100);
+/// The least time between two progress lines about what the solver has counted.
+const WORK_PROGRESS_EVERY: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// The solve or lowering step being worked on, which the solver's counts are told with.
+struct Where {
+    stage: &'static str,
+    board: String,
+    done: u32,
+    total: u32,
+}
+
+/// What [`job::report`] is told while a file is built: the lines of progress that carry the
+/// count, at most one in each [`WORK_PROGRESS_EVERY`] (the first and the last of a step always).
+fn work_sink(live: Option<Observer>, step: &Rc<RefCell<Option<Where>>>) -> Rc<dyn Fn(&job::Work)> {
+    let step = Rc::clone(step);
+    let told: Cell<Option<std::time::Instant>> = Cell::new(None);
+    Rc::new(move |w: &job::Work| {
+        let Some(live) = &live else { return };
+        let step = step.borrow();
+        let Some(step) = &*step else { return };
+        let finished = w.total.is_some_and(|t| w.done >= t);
+        let first = w.done == 0;
+        if !first
+            && !finished
+            && told
+                .get()
+                .is_some_and(|at| at.elapsed() < WORK_PROGRESS_EVERY)
+        {
+            return;
+        }
+        told.set(Some(std::time::Instant::now()));
+        let work = Work {
+            unit: w.unit.to_string(),
+            done: w.done.min(u64::from(u32::MAX)) as u32,
+            total: w.total.map(|t| t.min(u64::from(u32::MAX)) as u32),
+        };
+        let verb = match step.stage {
+            "solve" => "solving",
+            "draw" => "drawing",
+            _ => "lowering",
+        };
+        let counted = match work.total {
+            Some(total) => format!("{} of {total} {}", work.done, work.unit),
+            None => format!("{} {}", work.done, work.unit),
+        };
+        live(AnalysisEvent::Progress {
+            stage: step.stage.to_string(),
+            board: step.board.clone(),
+            done: step.done,
+            total: step.total,
+            message: format!(
+                "{verb} {} ({} of {}): {counted}",
+                step.board,
+                step.done + 1,
+                step.total
+            ),
+            work: Some(work),
+        });
+    })
+}
 
 impl Workspace {
     /// Build every top-level file, with `unsaved` read in place of the files it names, and
@@ -297,6 +391,7 @@ impl Workspace {
         unsaved: &HashMap<PathBuf, String>,
         previous: Option<&Snapshot>,
         observe: &dyn Fn(AnalysisEvent),
+        live: Option<Observer>,
     ) -> Snapshot {
         let mut snapshot = Snapshot::default();
         let loader = match self.target.loader_with(unsaved) {
@@ -324,7 +419,11 @@ impl Workspace {
                 done: index as u32,
                 total: files,
                 message: format!("checking {} ({} of {files})", file.name, index + 1),
+                work: None,
             });
+            // What the solver and the drawing count as they go is told with the step they are in.
+            let current: Rc<RefCell<Option<Where>>> = Rc::default();
+            let sink = work_sink(live.clone(), &current);
             let text = match unsaved.get(&file.path) {
                 Some(text) => Ok(text.clone()),
                 None => fs::read_to_string(&file.path),
@@ -338,37 +437,46 @@ impl Workspace {
                     board: None,
                     path: None,
                 }]),
-                Ok(text) => outcome_observed(
-                    &file.name,
-                    &text,
-                    &loader,
-                    &catalogs,
-                    None,
-                    &|step: crate::Step<'_>| {
-                        let verb = if step.stage == Stage::Solve {
-                            "solving"
-                        } else {
-                            "lowering"
-                        };
-                        observe(AnalysisEvent::Progress {
-                            stage: if step.stage == Stage::Solve {
+                Ok(text) => job::reporting(Rc::clone(&sink), || {
+                    outcome_observed(
+                        &file.name,
+                        &text,
+                        &loader,
+                        &catalogs,
+                        None,
+                        &|step: crate::Step<'_>| {
+                            let stage = if step.stage == Stage::Solve {
                                 "solve"
                             } else {
                                 "lower"
-                            }
-                            .to_string(),
-                            board: step.board.to_string(),
-                            done: step.done as u32,
-                            total: step.total as u32,
-                            message: format!(
-                                "{verb} {} ({} of {})",
-                                step.board,
-                                step.done + 1,
-                                step.total
-                            ),
-                        });
-                    },
-                ),
+                            };
+                            let verb = if step.stage == Stage::Solve {
+                                "solving"
+                            } else {
+                                "lowering"
+                            };
+                            *current.borrow_mut() = Some(Where {
+                                stage,
+                                board: step.board.to_string(),
+                                done: step.done as u32,
+                                total: step.total as u32,
+                            });
+                            observe(AnalysisEvent::Progress {
+                                stage: stage.to_string(),
+                                board: step.board.to_string(),
+                                done: step.done as u32,
+                                total: step.total as u32,
+                                message: format!(
+                                    "{verb} {} ({} of {})",
+                                    step.board,
+                                    step.done + 1,
+                                    step.total
+                                ),
+                                work: None,
+                            });
+                        },
+                    )
+                }),
             };
             match outcome {
                 Ok(outcome) => {
@@ -392,19 +500,28 @@ impl Workspace {
                                 done: n as u32,
                                 total: drawn,
                                 message: format!("drawing {label} ({} of {drawn})", n + 1),
+                                work: None,
+                            });
+                            *current.borrow_mut() = Some(Where {
+                                stage: "draw",
+                                board: label.clone(),
+                                done: n as u32,
+                                total: drawn,
                             });
                             // The symbols come from KiCad's libraries; without them the
                             // schematic draws boxes and says why.
-                            (*libraries).as_ref().map_err(Clone::clone).and_then(|l| {
-                                netsmith_view::render_svg_by_module_marked(
-                                    &built.design,
-                                    &module_groups(&built),
-                                    &rails_of(&built),
-                                    &must_connect(&built),
-                                    &l.mapping,
-                                    &l.symbols,
-                                )
-                                .map_err(|e| e.to_string())
+                            job::reporting(Rc::clone(&sink), || {
+                                (*libraries).as_ref().map_err(Clone::clone).and_then(|l| {
+                                    netsmith_view::render_svg_by_module_marked(
+                                        &built.design,
+                                        &module_groups(&built),
+                                        &rails_of(&built),
+                                        &must_connect(&built),
+                                        &l.mapping,
+                                        &l.symbols,
+                                    )
+                                    .map_err(|e| e.to_string())
+                                })
                             })
                         });
                         let svg = drawing.unwrap_or_else(|message| {
@@ -542,6 +659,7 @@ impl Workspace {
                         module.name(&project.root),
                         index + 1
                     ),
+                    work: None,
                 });
             }
             let text = match unsaved.get(&module.path) {
