@@ -328,9 +328,15 @@ pub fn info(dir: &Path) -> GitInfo {
     }
 }
 
-/// A folder made for one comparison and removed when it is dropped.
+/// A folder made for one comparison and removed when it is dropped. A server that is killed
+/// (`kill -9`, the power) leaves its folder behind, and so may Ctrl-C (the operating system
+/// ends the process without running destructors): [`sweep_scratch`] removes such folders when
+/// the next editor starts.
 #[derive(Debug)]
 pub struct Scratch(PathBuf);
+
+/// What the names of the scratch folders start with; the process's id follows.
+const SCRATCH_PREFIX: &str = "netsmith-compare-";
 
 impl Scratch {
     pub fn new() -> std::io::Result<Scratch> {
@@ -339,7 +345,7 @@ impl Scratch {
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.subsec_nanos());
         let dir = std::env::temp_dir().join(format!(
-            "netsmith-compare-{}-{}-{nanos}",
+            "{SCRATCH_PREFIX}{}-{}-{nanos}",
             std::process::id(),
             COUNT.fetch_add(1, Ordering::SeqCst)
         ));
@@ -361,10 +367,219 @@ impl Drop for Scratch {
     }
 }
 
-/// Write the files of `pathspec` (everything, if there is none) as they are at `hash` into
-/// `into`, below their paths in the work tree: `git archive | tar -x`. Nothing in the work
-/// tree or the index is touched.
-pub fn extract(root: &Path, hash: &str, pathspec: &[String], into: &Path) -> Result<(), String> {
+/// The most a file of a ref may weigh. A bigger one is not read: it is not a source, and a
+/// file that size read into memory by the analysis is how a hostile ref would stop the server.
+pub const MAX_REF_FILE_BYTES: u64 = 8 * 1024 * 1024;
+/// The most the files of a ref may weigh together, before they are written anywhere.
+const MAX_REF_TREE_BYTES: u64 = 256 * 1024 * 1024;
+/// The folders of a project that are made by the tools or by other programs, never sources:
+/// left out when a ref is read (at the top of the project, and `node_modules` at any depth).
+const NOT_SOURCES: [&str; 3] = ["out", "target", "node_modules"];
+
+/// What was not taken from a ref, and why, so that a file that is missing says so.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Skipped {
+    /// Symbolic links (a ref's links are never followed: they may point anywhere on this
+    /// machine).
+    pub links: Vec<String>,
+    /// Files that are not regular files (a device, a socket, a pipe).
+    pub special: Vec<String>,
+    /// Files above [`MAX_REF_FILE_BYTES`], with their sizes.
+    pub too_big: Vec<(String, u64)>,
+}
+
+impl Skipped {
+    /// A sentence for the answer of a ref that could not be read, or none if nothing was left out.
+    pub fn describe(&self) -> Option<String> {
+        let names = |list: &[String]| {
+            let shown: Vec<_> = list.iter().take(5).map(|n| format!("`{n}`")).collect();
+            let more = list.len().saturating_sub(5);
+            if more > 0 {
+                format!("{} and {more} more", shown.join(", "))
+            } else {
+                shown.join(", ")
+            }
+        };
+        let mut parts = Vec::new();
+        if !self.links.is_empty() {
+            parts.push(format!(
+                "left out as symbolic links, which are never followed: {}",
+                names(&self.links)
+            ));
+        }
+        if !self.special.is_empty() {
+            parts.push(format!(
+                "left out as not regular files: {}",
+                names(&self.special)
+            ));
+        }
+        if !self.too_big.is_empty() {
+            let list: Vec<String> = self
+                .too_big
+                .iter()
+                .map(|(n, size)| format!("{n} ({} MB)", size.div_ceil(1024 * 1024)))
+                .collect();
+            parts.push(format!(
+                "left out for being over {} MB: {}",
+                MAX_REF_FILE_BYTES / (1024 * 1024),
+                names(&list)
+            ));
+        }
+        (!parts.is_empty()).then(|| format!("in the ref, files were {}", parts.join("; ")))
+    }
+}
+
+/// Why a ref could not be written out.
+#[derive(Debug)]
+pub enum ExtractError {
+    /// The ref is not something to read (too big): said in the answer.
+    Refused(String),
+    /// git, tar or the disk failed.
+    Broken(String),
+}
+
+/// Removes from `dir` every symbolic link, every file that is not a regular file and every file
+/// above [`MAX_REF_FILE_BYTES`], below it at any depth, and says what it removed. It looks at
+/// each entry without following links, so a link to a folder is removed and not entered.
+pub fn sanitize(dir: &Path) -> Result<Skipped, String> {
+    let mut skipped = Skipped::default();
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(folder) = pending.pop() {
+        let entries =
+            std::fs::read_dir(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("{}: {e}", folder.display()))?;
+            let path = entry.path();
+            let shown = path
+                .strip_prefix(dir)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .into_owned();
+            let meta =
+                std::fs::symlink_metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            let kind = meta.file_type();
+            let remove = |path: &Path| {
+                std::fs::remove_file(path)
+                    .map_err(|e| format!("a file of the ref could not be removed: {e}"))
+            };
+            if kind.is_symlink() {
+                remove(&path)?;
+                skipped.links.push(shown);
+            } else if kind.is_dir() {
+                pending.push(path);
+            } else if !kind.is_file() {
+                remove(&path)?;
+                skipped.special.push(shown);
+            } else if meta.len() > MAX_REF_FILE_BYTES {
+                remove(&path)?;
+                skipped.too_big.push((shown, meta.len()));
+            }
+        }
+    }
+    skipped.links.sort();
+    skipped.special.sort();
+    skipped.too_big.sort();
+    Ok(skipped)
+}
+
+/// The pathspec `git archive` takes for the files of a project: its folder (`prefix`, empty for
+/// the top of the work tree) without the folders [`NOT_SOURCES`].
+fn archive_pathspec(prefix: &str) -> Vec<String> {
+    let mut spec = vec![if prefix.is_empty() { "." } else { prefix }.to_string()];
+    for folder in NOT_SOURCES {
+        let at = if prefix.is_empty() {
+            folder.to_string()
+        } else {
+            format!("{prefix}/{folder}")
+        };
+        spec.push(format!(":(exclude,literal){at}"));
+    }
+    spec.push(":(exclude,glob)**/node_modules/**".to_string());
+    spec
+}
+
+/// Whether a path of the work tree is in a folder that [`archive_pathspec`] leaves out.
+fn left_out(path: &str, prefix: &str) -> bool {
+    let inside = if prefix.is_empty() {
+        path
+    } else {
+        path.strip_prefix(prefix)
+            .and_then(|p| p.strip_prefix('/'))
+            .unwrap_or(path)
+    };
+    let mut parts = inside.split('/');
+    let first = parts.next().unwrap_or("");
+    (first == "out" || first == "target" || first == "node_modules")
+        || inside.split('/').any(|p| p == "node_modules")
+}
+
+/// The total size of the files `git archive` would write for `spec`, from the tree's own sizes.
+fn tree_size(root: &Path, hash: &str, prefix: &str) -> Result<u64, String> {
+    let mut args = vec!["ls-tree", "-r", "-l", "-z", hash];
+    if !prefix.is_empty() {
+        args.extend(["--", prefix]);
+    }
+    let text = run(root, &args).map_err(|e| e.message())?;
+    let mut total = 0u64;
+    for record in text.split('\0').filter(|r| !r.is_empty()) {
+        let Some((meta, path)) = record.split_once('\t') else {
+            continue;
+        };
+        if left_out(path, prefix) {
+            continue;
+        }
+        let size = meta
+            .split_whitespace()
+            .nth(3)
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+        // A file over the cap is not written to stay, but it is written before it is removed.
+        total = total.saturating_add(size);
+    }
+    Ok(total)
+}
+
+/// Write the files of the project folder `prefix` (everything, if it is empty, except the
+/// folders [`NOT_SOURCES`]) as they are at `hash` into `into`, below their paths in the work
+/// tree: `git archive | tar -x`. Nothing in the work tree or the index is touched. Afterwards
+/// every symbolic link, every file that is not a regular file and every file above
+/// [`MAX_REF_FILE_BYTES`] is removed from `into` ([`sanitize`]), so that what reads the folder
+/// can never be led outside it or into a file that does not end. A ref whose files add up to
+/// more than 256 MB is refused before anything is written.
+pub fn extract_project(
+    root: &Path,
+    hash: &str,
+    prefix: &str,
+    into: &Path,
+) -> Result<Skipped, ExtractError> {
+    let size = tree_size(root, hash, prefix).map_err(ExtractError::Broken)?;
+    if size > MAX_REF_TREE_BYTES {
+        return Err(ExtractError::Refused(format!(
+            "the project's files at this ref weigh {} MB, over the {} MB that are read from a ref",
+            size.div_ceil(1024 * 1024),
+            MAX_REF_TREE_BYTES / (1024 * 1024)
+        )));
+    }
+    extract(root, hash, &archive_pathspec(prefix), into)
+}
+
+/// [`extract_project`] for the named files only (a single source and the files beside it).
+pub fn extract_files(
+    root: &Path,
+    hash: &str,
+    files: &[String],
+    into: &Path,
+) -> Result<Skipped, ExtractError> {
+    extract(root, hash, files, into)
+}
+
+fn extract(
+    root: &Path,
+    hash: &str,
+    pathspec: &[String],
+    into: &Path,
+) -> Result<Skipped, ExtractError> {
+    let broken = ExtractError::Broken;
     let mut archive = command(root);
     archive.args(["archive", "--format=tar", hash]);
     if !pathspec.is_empty() {
@@ -376,14 +591,21 @@ pub fn extract(root: &Path, hash: &str, pathspec: &[String], into: &Path) -> Res
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => Fault::Missing.message(),
-            _ => format!("git could not be started: {e}"),
+        .map_err(|e| {
+            broken(match e.kind() {
+                std::io::ErrorKind::NotFound => Fault::Missing.message(),
+                _ => format!("git could not be started: {e}"),
+            })
         })?;
     let tar = Command::new("tar")
         .args(["-x", "--no-same-owner", "--no-same-permissions", "-C"])
         .arg(into)
-        .stdin(archive.stdout.take().ok_or("git archive has no output")?)
+        .stdin(
+            archive
+                .stdout
+                .take()
+                .ok_or_else(|| broken("git archive has no output".to_string()))?,
+        )
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn();
@@ -392,37 +614,45 @@ pub fn extract(root: &Path, hash: &str, pathspec: &[String], into: &Path) -> Res
         Err(e) => {
             let _ = archive.kill();
             let _ = archive.wait();
-            return Err(match e.kind() {
+            return Err(broken(match e.kind() {
                 std::io::ErrorKind::NotFound => {
                     "`tar` is not installed, or is not on the PATH".to_string()
                 }
                 _ => format!("tar could not be started: {e}"),
-            });
+            }));
         }
     };
+    // git's stderr is read as it comes: a git that says a lot while tar is still reading would
+    // otherwise wait for a pipe that nobody empties.
+    let said = archive.stderr.take().map(|mut err| {
+        std::thread::spawn(move || {
+            let mut said = String::new();
+            let _ = err.by_ref().take(1 << 20).read_to_string(&mut said);
+            // Whatever is left is read and dropped, so that git is never blocked on it.
+            let _ = std::io::copy(&mut err, &mut std::io::sink());
+            said
+        })
+    });
     let tar = tar
         .wait_with_output()
-        .map_err(|e| format!("tar failed: {e}"))?;
-    let mut said = String::new();
-    if let Some(mut err) = archive.stderr.take() {
-        let _ = err.read_to_string(&mut said);
-    }
+        .map_err(|e| broken(format!("tar failed: {e}")))?;
+    let said = said.and_then(|t| t.join().ok()).unwrap_or_default();
     let status = archive
         .wait()
-        .map_err(|e| format!("git archive failed: {e}"))?;
+        .map_err(|e| broken(format!("git archive failed: {e}")))?;
     if !status.success() {
-        return Err(format!(
+        return Err(broken(format!(
             "git archive of {hash} failed: {}",
             said.trim().lines().next().unwrap_or("no message")
-        ));
+        )));
     }
     if !tar.status.success() {
-        return Err(format!(
+        return Err(broken(format!(
             "tar failed: {}",
             String::from_utf8_lossy(&tar.stderr).trim()
-        ));
+        )));
     }
-    Ok(())
+    sanitize(into).map_err(broken)
 }
 
 /// The names (full paths in the work tree) of the files of `dir` at `hash` whose names start
@@ -608,5 +838,92 @@ mod tests {
         for rev in ["", "-p", "--output=x", "a\nb"] {
             assert_eq!(resolve(nowhere, rev).unwrap_err().status, 400, "{rev:?}");
         }
+    }
+
+    use netsmith_kicad::testlib::TempDir;
+
+    #[cfg(unix)]
+    #[test]
+    fn the_links_and_the_big_files_of_an_extracted_ref_are_removed_and_named() {
+        let outside = TempDir::new("sanitize-outside");
+        std::fs::write(outside.join("secret"), "the outside").unwrap();
+        let dir = TempDir::new("sanitize-dir");
+        std::fs::create_dir_all(dir.join("src/deep")).unwrap();
+        std::fs::write(dir.join("src/main.nsm"), "board B {}").unwrap();
+        std::os::unix::fs::symlink(outside.join("secret"), dir.join("src/led.nsm")).unwrap();
+        std::os::unix::fs::symlink(&*outside, dir.join("src/deep/folder")).unwrap();
+        std::os::unix::fs::symlink("/nonexistent/target", dir.join("dangling")).unwrap();
+        let big = std::fs::File::create(dir.join("big.csv")).unwrap();
+        big.set_len(MAX_REF_FILE_BYTES + 1).unwrap();
+        let skipped = sanitize(&dir).unwrap();
+        assert_eq!(
+            skipped.links,
+            ["dangling", "src/deep/folder", "src/led.nsm"]
+        );
+        assert_eq!(
+            skipped.too_big,
+            [("big.csv".to_string(), MAX_REF_FILE_BYTES + 1)]
+        );
+        assert!(skipped.special.is_empty());
+        assert!(dir.join("src/main.nsm").is_file());
+        for gone in ["src/led.nsm", "src/deep/folder", "dangling", "big.csv"] {
+            assert!(
+                std::fs::symlink_metadata(dir.join(gone)).is_err(),
+                "{gone} is still there"
+            );
+        }
+        // Where the links pointed is untouched.
+        assert_eq!(
+            std::fs::read_to_string(outside.join("secret")).unwrap(),
+            "the outside"
+        );
+        let said = skipped.describe().unwrap();
+        assert!(
+            said.contains("symbolic links, which are never followed: `dangling`")
+                && said.contains("`big.csv (9 MB)`")
+                && said.contains("over 8 MB"),
+            "{said}"
+        );
+        assert_eq!(Skipped::default().describe(), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_pipe_in_an_extracted_ref_is_removed_without_being_opened() {
+        let dir = TempDir::new("sanitize-fifo");
+        let made = Command::new("mkfifo").arg(dir.join("pipe")).status();
+        if !made.is_ok_and(|s| s.success()) {
+            eprintln!("skipped: mkfifo is not available");
+            return;
+        }
+        let skipped = sanitize(&dir).unwrap();
+        assert_eq!(skipped.special, ["pipe"]);
+        assert!(std::fs::symlink_metadata(dir.join("pipe")).is_err());
+    }
+
+    #[test]
+    fn a_project_at_the_top_leaves_out_what_the_tools_write_and_a_subfolder_its_own() {
+        assert_eq!(
+            archive_pathspec(""),
+            [
+                ".",
+                ":(exclude,literal)out",
+                ":(exclude,literal)target",
+                ":(exclude,literal)node_modules",
+                ":(exclude,glob)**/node_modules/**"
+            ]
+        );
+        assert_eq!(archive_pathspec("boards/led")[0], "boards/led");
+        assert_eq!(
+            archive_pathspec("boards/led")[1],
+            ":(exclude,literal)boards/led/out"
+        );
+        assert!(left_out("out/led.kicad_pcb", ""));
+        assert!(left_out("web/node_modules/x/index.js", ""));
+        assert!(left_out("boards/led/target/x", "boards/led"));
+        assert!(!left_out("src/out.nsm", ""));
+        assert!(!left_out("src/outputs/a.nsm", ""));
+        // Not at the top of the project: an `out` below `src` is a module folder.
+        assert!(!left_out("src/out/a.nsm", ""));
     }
 }

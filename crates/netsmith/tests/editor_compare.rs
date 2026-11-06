@@ -987,3 +987,106 @@ fn the_server_answers_git_and_compare_and_tells_the_socket_how_far_it_is() {
     assert_eq!(status, 200, "{body}");
     assert!(body.contains("TwoBoards"));
 }
+
+/// A repository with a hostile branch: `src/main.nsm` is a link to a file outside the
+/// repository, there is a link to a folder, and a file bigger than a ref's files may be.
+#[cfg(unix)]
+fn hostile(label: &str) -> (Repo, TempDir, Workspace) {
+    use std::os::unix::fs::symlink;
+    let (r, _, w) = committed(label, "");
+    let outside = TempDir::new(&format!("compare-{label}-outside"));
+    fs::write(outside.join("secret.nsm"), "OUTSIDE-SECRET-12345\n").unwrap();
+    fs::create_dir_all(outside.join("folder")).unwrap();
+    fs::write(outside.join("folder/inner.nsm"), "OUTSIDE-INNER-67890\n").unwrap();
+    git(&r.dir, &["checkout", "-q", "-b", "hostile"]);
+    fs::remove_file(r.project.join("src/main.nsm")).unwrap();
+    symlink(outside.join("secret.nsm"), r.project.join("src/main.nsm")).unwrap();
+    symlink(&*outside.join("folder"), r.project.join("src/linked")).unwrap();
+    r.commit("hostile");
+    git(&r.dir, &["checkout", "-q", "main"]);
+    (r, outside, w)
+}
+
+#[cfg(unix)]
+#[test]
+fn a_link_in_a_ref_is_never_followed_and_the_answer_says_it_was_left_out() {
+    need_tools!();
+    let (_r, outside, w) = hostile("links");
+    let c = compare(&w, "hostile").unwrap();
+    let wire = serde_json::to_string(&c).unwrap();
+    for secret in ["OUTSIDE-SECRET-12345", "OUTSIDE-INNER-67890"] {
+        assert!(!wire.contains(secret), "{secret} is in the answer: {wire}");
+    }
+    // The top-level file is a link, so it is not there: the ref cannot be read, and why is said.
+    let error = c.error.expect("the ref cannot be read");
+    assert!(
+        error.contains("symbolic links, which are never followed")
+            && error.contains("`src/main.nsm`"),
+        "{error}"
+    );
+    // What the links pointed at is untouched.
+    assert_eq!(
+        fs::read_to_string(outside.join("secret.nsm")).unwrap(),
+        "OUTSIDE-SECRET-12345\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_file_of_a_ref_over_the_cap_is_not_read_and_the_answer_says_so() {
+    need_tools!();
+    let (r, _, w) = committed("big", "");
+    git(&r.dir, &["checkout", "-q", "-b", "big"]);
+    // A source of 9 MB: a valid file with a long comment after it.
+    let mut text = fs::read_to_string(r.project.join("src/main.nsm")).unwrap();
+    text.push_str("\n//");
+    text.push_str(&"x".repeat(9 * 1024 * 1024));
+    text.push('\n');
+    fs::write(r.project.join("src/main.nsm"), text).unwrap();
+    r.commit("big");
+    git(&r.dir, &["checkout", "-q", "main"]);
+    let c = compare(&w, "big").unwrap();
+    let error = c.error.expect("the ref cannot be read");
+    assert!(
+        error.contains("over 8 MB") && error.contains("src/main.nsm"),
+        "{error}"
+    );
+}
+
+#[test]
+fn what_the_tools_write_is_not_read_out_of_a_ref_nor_counted_among_the_new_files() {
+    need_tools!();
+    let (r, _, _) = committed("ignored", "");
+    // `out/` and `node_modules/` are committed at the ref (somebody added them by mistake).
+    fs::create_dir_all(r.project.join("out")).unwrap();
+    fs::write(r.project.join("out/huge.txt"), "x\n".repeat(1000)).unwrap();
+    fs::create_dir_all(r.project.join("web/node_modules/pkg")).unwrap();
+    fs::write(r.project.join("web/node_modules/pkg/index.js"), "x").unwrap();
+    git(&r.dir, &["add", "-f", "out", "web"]);
+    r.commit("with outputs");
+    let w = r.workspace();
+    let c = compare(&w, "HEAD").unwrap();
+    assert_eq!(c.error, None);
+    // Untracked and ignored: not in the source summary, whatever its size.
+    fs::write(r.project.join(".gitignore"), "ignored/\n").unwrap();
+    fs::create_dir_all(r.project.join("ignored")).unwrap();
+    fs::write(r.project.join("ignored/big.txt"), "line\n".repeat(200_000)).unwrap();
+    fs::write(r.project.join("src/new.nsm"), "//! New.\n").unwrap();
+    let c = compare(&r.workspace(), "HEAD").unwrap();
+    let paths: Vec<&str> = c.source.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, [".gitignore", "src/new.nsm"]);
+    let new = c
+        .source
+        .files
+        .iter()
+        .find(|f| f.path == "src/new.nsm")
+        .unwrap();
+    assert_eq!(new.added, 1);
+    let ignore = c
+        .source
+        .files
+        .iter()
+        .find(|f| f.path == ".gitignore")
+        .unwrap();
+    assert_eq!(ignore.added, 1);
+}

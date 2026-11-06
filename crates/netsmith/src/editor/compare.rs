@@ -34,7 +34,6 @@ use crate::{
 
 /// How many refs' readings are kept.
 const KEPT: usize = 8;
-
 /// What a ref came to when it was read: the project reduced to its digest, or why it could
 /// not be read.
 pub enum Reading {
@@ -262,7 +261,8 @@ impl Workspace {
         );
         let scratch = Scratch::new()
             .map_err(|e| ApiError::internal(format!("no scratch folder for the compare: {e}")))?;
-        let reading = match self.extract_target(place, base, &scratch) {
+        let mut skipped = git::Skipped::default();
+        let reading = match self.extract_target(place, base, &scratch, &mut skipped) {
             Err(Failure::Unreadable(error)) => Reading::Failed {
                 error,
                 problems: Vec::new(),
@@ -316,6 +316,14 @@ impl Workspace {
             }
         };
         drop(scratch);
+        // A file that was left out is the reason a project may not read: say so.
+        let reading = match (reading, skipped.describe()) {
+            (Reading::Failed { error, problems }, Some(note)) => Reading::Failed {
+                error: format!("{error} ({note})"),
+                problems,
+            },
+            (reading, _) => reading,
+        };
         let reading = Arc::new(reading);
         self.compare_cache
             .lock()
@@ -330,6 +338,7 @@ impl Workspace {
         place: &Place,
         base: &GitCommit,
         scratch: &Scratch,
+        skipped: &mut git::Skipped,
     ) -> Result<Target, Failure> {
         let hash = &base.hash;
         let tree = scratch.path().join(&place.prefix);
@@ -342,12 +351,8 @@ impl Workspace {
                         place.prefix, base.short
                     )));
                 }
-                let spec: Vec<String> = if place.prefix.is_empty() {
-                    Vec::new()
-                } else {
-                    vec![place.prefix.clone()]
-                };
-                git::extract(&place.root, hash, &spec, scratch.path()).map_err(Failure::Broken)?;
+                *skipped = git::extract_project(&place.root, hash, &place.prefix, scratch.path())
+                    .map_err(Failure::from)?;
                 if !tree.join(MANIFEST).is_file() {
                     return Err(Failure::Unreadable(format!(
                         "the project has no {MANIFEST} at {}: it did not exist there yet",
@@ -429,7 +434,8 @@ impl Workspace {
                         path: tree.join(&name),
                     });
                 }
-                git::extract(&place.root, hash, &spec, scratch.path()).map_err(Failure::Broken)?;
+                *skipped = git::extract_files(&place.root, hash, &spec, scratch.path())
+                    .map_err(Failure::from)?;
                 Ok(Target {
                     project: None,
                     files,
@@ -448,6 +454,15 @@ enum Failure {
     Unreadable(String),
     /// Something on this machine failed (git, tar, the disk): a `500`.
     Broken(String),
+}
+
+impl From<git::ExtractError> for Failure {
+    fn from(e: git::ExtractError) -> Failure {
+        match e {
+            git::ExtractError::Refused(message) => Failure::Unreadable(message),
+            git::ExtractError::Broken(message) => Failure::Broken(message),
+        }
+    }
 }
 
 fn empty_problems() -> netsmith_editor::api::ProblemsDiff {
