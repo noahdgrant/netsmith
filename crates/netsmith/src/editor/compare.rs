@@ -318,7 +318,11 @@ impl Workspace {
                 let workspace = match Workspace::open_deferred(target) {
                     Ok(w) => w,
                     Err(e) => {
-                        let error = format!("the project at {} cannot be read: {e}", base.short);
+                        let tree = scratch.path().join(&place.prefix);
+                        let error = git::project_relative(
+                            &format!("the project at {} cannot be read: {e}", base.short),
+                            &[tree.as_path(), scratch.path()],
+                        );
                         let reading = Arc::new(Reading::Failed {
                             error,
                             problems: Vec::new(),
@@ -359,6 +363,25 @@ impl Workspace {
                         }
                     }
                 }
+            }
+        };
+        // What a person reads names the project's own paths, not the server's scratch folder.
+        let reading = {
+            let tree = scratch.path().join(&place.prefix);
+            let folders = [tree.as_path(), scratch.path()];
+            match reading {
+                Reading::Failed { error, problems } => Reading::Failed {
+                    error: git::project_relative(&error, &folders),
+                    problems: problems
+                        .into_iter()
+                        .map(|mut p| {
+                            p.message = git::project_relative(&p.message, &folders);
+                            p.rendered = git::project_relative(&p.rendered, &folders);
+                            p
+                        })
+                        .collect(),
+                },
+                other => other,
             }
         };
         drop(scratch);

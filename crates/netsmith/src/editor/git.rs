@@ -446,6 +446,43 @@ const MAX_REF_TREE_BYTES: u64 = 256 * 1024 * 1024;
 /// left out when a ref is read (at the top of the project, and `node_modules` at any depth).
 const NOT_SOURCES: [&str; 3] = ["out", "target", "node_modules"];
 
+/// Folders of tools and editors (`.claude`, `.agents`, `.git`, ...): never sources of a project. A link in one of them (the
+/// `.claude/skills` link `netsmith init` writes) is removed like any other, but is not what the analysis would miss, so the answer
+/// does not name it.
+const TOOL_FOLDERS: [&str; 7] = [
+    ".claude", ".agents", ".git", ".github", ".vscode", ".idea", ".cursor",
+];
+
+/// Whether a path of a project (with `/`, relative to its folder or the scratch folder) is one the analysis may have wanted: it is
+/// not inside a folder of a tool.
+fn matters(path: &str) -> bool {
+    !path.split('/').any(|part| TOOL_FOLDERS.contains(&part))
+}
+
+/// `text` with the paths of the server's scratch folder (and of the project's folder inside it) taken out of it, so that what a person
+/// reads names `src/main.nsm` and not `/tmp/netsmith-compare-1234-0-5678/src/main.nsm`. `folders` are tried in the order given, so the
+/// deepest goes first; each is also tried as the folder's canonical path, the form an error from the disk may use.
+pub fn project_relative(text: &str, folders: &[&Path]) -> String {
+    let mut out = text.to_string();
+    for folder in folders {
+        let mut forms = vec![folder.to_string_lossy().into_owned()];
+        if let Ok(real) = std::fs::canonicalize(folder) {
+            let real = real.to_string_lossy().into_owned();
+            if !forms.contains(&real) {
+                forms.push(real);
+            }
+        }
+        for form in forms {
+            let form = form.trim_end_matches('/');
+            if form.is_empty() {
+                continue;
+            }
+            out = out.replace(&format!("{form}/"), "").replace(form, ".");
+        }
+    }
+    out
+}
+
 /// What was not taken from a ref, and why, so that a file that is missing says so.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Skipped {
@@ -459,8 +496,29 @@ pub struct Skipped {
 }
 
 impl Skipped {
-    /// A sentence for the answer of a ref that could not be read, or none if nothing was left out.
+    /// A sentence for the answer of a ref that could not be read, or none if nothing that matters was left out: a link or a file in a
+    /// folder of a tool (`.claude`, `.agents`, `.git`) is removed all the same, and not named (it is not what the analysis misses).
+    /// The names are the project's own paths, never the server's scratch folder.
     pub fn describe(&self) -> Option<String> {
+        let matter = Skipped {
+            links: self.links.iter().filter(|n| matters(n)).cloned().collect(),
+            special: self
+                .special
+                .iter()
+                .filter(|n| matters(n))
+                .cloned()
+                .collect(),
+            too_big: self
+                .too_big
+                .iter()
+                .filter(|(n, _)| matters(n))
+                .cloned()
+                .collect(),
+        };
+        matter.describe_all()
+    }
+
+    fn describe_all(&self) -> Option<String> {
         let names = |list: &[String]| {
             let shown: Vec<_> = list.iter().take(5).map(|n| format!("`{n}`")).collect();
             let more = list.len().saturating_sub(5);
@@ -1054,6 +1112,66 @@ mod tests {
             "{said}"
         );
         assert_eq!(Skipped::default().describe(), None);
+    }
+
+    #[test]
+    fn the_note_names_what_the_analysis_would_miss_and_not_the_links_of_the_tools() {
+        let skipped = Skipped {
+            links: vec![
+                ".claude/skills".to_string(),
+                ".agents/skills/x/SKILL.md".to_string(),
+                "src/main.nsm".to_string(),
+                "sub/.git/hooks".to_string(),
+            ],
+            special: vec![".claude/pipe".to_string()],
+            too_big: vec![(".agents/big.bin".to_string(), MAX_REF_FILE_BYTES + 1)],
+        };
+        let said = skipped.describe().unwrap();
+        assert!(said.contains("`src/main.nsm`"), "{said}");
+        for tool in [".claude", ".agents", ".git", "pipe", "big.bin"] {
+            assert!(!said.contains(tool), "{tool} is in the note: {said}");
+        }
+        // Everything is still removed and recorded (the safety is not the note's business).
+        assert_eq!(skipped.links.len(), 4);
+        // Only tool folders: nothing to say.
+        let tools = Skipped {
+            links: vec![".claude/skills".to_string(), ".git/config".to_string()],
+            ..Skipped::default()
+        };
+        assert_eq!(tools.describe(), None);
+        // A name that only looks like a tool's folder is a source's.
+        let like = Skipped {
+            links: vec![
+                "src/.claude-notes/a.nsm".to_string(),
+                "claude/skills".to_string(),
+            ],
+            ..Skipped::default()
+        };
+        let said = like.describe().unwrap();
+        assert!(
+            said.contains("`claude/skills`") && said.contains("`src/.claude-notes/a.nsm`"),
+            "{said}"
+        );
+    }
+
+    #[test]
+    fn a_message_names_the_projects_paths_and_never_the_scratch_folder() {
+        let scratch = TempDir::new("project-relative");
+        std::fs::create_dir_all(scratch.join("proj/src")).unwrap();
+        let tree = scratch.join("proj");
+        let message = format!(
+            "cannot read {}/src/main.nsm: no such file (in {})",
+            tree.display(),
+            scratch.display()
+        );
+        let shown = project_relative(&message, &[tree.as_path(), scratch.as_ref()]);
+        assert_eq!(shown, "cannot read src/main.nsm: no such file (in .)");
+        assert!(!shown.contains("project-relative"), "{shown}");
+        // Nothing of the folders in it: the text is unchanged.
+        assert_eq!(
+            project_relative("the project has no netsmith.toml", &[tree.as_path()]),
+            "the project has no netsmith.toml"
+        );
     }
 
     #[cfg(unix)]
