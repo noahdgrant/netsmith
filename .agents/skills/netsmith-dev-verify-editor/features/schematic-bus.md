@@ -17,7 +17,7 @@ Open the Schematic (key 2) on a board whose modules share an interface, such as 
 
 1. The `brain` module: `uart0` is one line with the count 4, the writing `uart0` and `{tx, rx, rts, cts}`, one flag and no flag for a single member.
 2. The pointer on the line lights the four nets and the line, and the inspector shows the bus ("hover"); nothing is selected.
-3. A click picks it: the chip is the bus kind and says `bus uart0 (4 nets)`, all members lit, the rest dimmed, the inspector lists the members `tx=MODEM_TX ...` with pins grouped under `brain`, `link` and `probe`. The BOM lights the parts on the first net.
+3. A click picks it: the chip is the bus kind and says `bus uart0 (4 nets)`, all members lit, the rest dimmed, the inspector lists the members `tx=MODEM_TX ...` with pins grouped under `brain`, `link` and `probe`. The BOM lights the parts on the first net. At 1920, 1600 and 1280 px the chip does not shorten `bus uart0 (4 nets)` while the bar has room (Go to anything gives its width up first; the recipe measures it).
 4. A net link in the inspector picks that net alone (the bus panel goes for the net's).
 5. The flag of `uart0`: a menu `uart0 also on` with `link` and `probe` (4 of 4 nets each). `link` opens with `bus serial (4 nets)` picked and the same four nets lit; its own flag offers `brain` and `probe`.
 6. The SPI between the board's two chips: a trunk, no flag, no "also on".
