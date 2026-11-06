@@ -1,9 +1,12 @@
 //! What the pin tables of a part say about one of its pins, in the package it is in
 //! (ADR 0016). The faults built on these are in [`crate::faults`].
 
+use crate::diag::SourceId;
 use crate::model::{
-    Domain, InstId, InstKind, Member, Model, Net, PinKind, PinRow, PinTable, Pinout, RExpr,
+    Domain, InstId, InstKind, Member, Model, Net, Peripheral, PeripheralFunction, PinKind, PinRow,
+    PinTable, Pinout, RExpr,
 };
+use netsmith_lang::Span;
 use netsmith_lang::ast::CmpOp;
 
 impl Model {
@@ -169,7 +172,53 @@ impl Model {
             Pinout::Table(table) => table.row(pin),
             _ => self.pin_facts(pin),
         };
-        row.map(|r| r.kind_with(self.function_of(pin).as_deref()))
+        row.map(|r| self.kind_with(part, r, self.function_of(pin).as_deref()))
+    }
+
+    /// The kind of a pin for the rules of a net, given the function the board chose for it:
+    /// the function's own kind if it has one, else the pin's (ADR 0046). A function that a
+    /// peripheral of the part lists takes its kind from the peripheral (ADR 0062).
+    pub fn kind_with(&self, part: InstId, row: &PinRow, chosen: Option<&str>) -> PinKind {
+        self.function_kind(part, row, chosen).unwrap_or(row.kind)
+    }
+
+    /// The function's own kind, when the board chose a function that has one: from the
+    /// peripheral that lists it, or else from the row.
+    pub fn function_kind(
+        &self,
+        part: InstId,
+        row: &PinRow,
+        chosen: Option<&str>,
+    ) -> Option<PinKind> {
+        let name = chosen?;
+        self.peripheral_of(part, name)
+            .and_then(|(_, f)| f.kind)
+            .or_else(|| row.function_kind(Some(name)))
+    }
+
+    /// The peripheral of a part that lists a function, and the function as it lists it.
+    pub fn peripheral_of(
+        &self,
+        part: InstId,
+        function: &str,
+    ) -> Option<(&Peripheral, &PeripheralFunction)> {
+        self.instance(part).rules.peripherals.iter().find_map(|p| {
+            p.functions
+                .iter()
+                .find(|f| f.name == function)
+                .map(|f| (p, f))
+        })
+    }
+
+    /// The statement that chose a pin's function: on the pin, or on the pin of a module that
+    /// forwards to it.
+    pub fn function_stated_at(&self, pin: InstId) -> Option<(SourceId, Span)> {
+        self.function_chain(pin)
+            .into_iter()
+            .find_map(|p| match self.member(p, "function") {
+                Some(Member::Field(f)) => self.field(f).narrowed_at.last().copied(),
+                _ => None,
+            })
     }
 
     /// The function the board chose for a pin: the pin's own, or else the one that a

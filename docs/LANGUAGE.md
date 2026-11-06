@@ -1913,6 +1913,148 @@ error: net `net-a.pa2` has only inputs (`a.pa2` (`Mcu8` function `UART1_RX`, an 
 
 The same pins with `GPIO` chosen on either side are a bidirectional pin on the net, and are accepted. A kind that is not one of the six is a parse error: ``unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive and no_connect``.
 
+### Peripherals that share hardware
+
+A microcontroller's serial unit runs as a UART, an SPI master or an I2C master, one at a time. The pin table cannot say so: each pin lists the functions it can be, and nothing relates two pins' functions. Two statements in the part carry it (ADR 0062).
+
+`peripheral NAME { FUNCTION[:kind] ... }` names the functions that belong together, a UART's `TX` and `RX`. The functions are separated by spaces or line ends, each with an optional kind as in a pin row. A peripheral is **in use** when the board chooses one of its functions on a pin, and two of its lines are still one use. A function takes its kind from the peripheral that lists it, so the pin rows write the function without a kind.
+
+`shared NAME { PERIPHERAL ... }` says that at most one of its members is in use at a time. The name is the datasheet's name for the hardware, and it is what a message prints.
+
+The pin table stays what it was: one row for each pin, with the functions the pin can be. Every function of a peripheral must be listed by at least one row, because a function that no pin offers can never be chosen. The part below is invented; its four pins list every function.
+
+```nsm module=src::zmcu
+/// Zmcu, an invented microcontroller: two serial units, each of which runs as a UART or an
+/// I2C master, one at a time.
+part Zmcu {
+    peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }
+    peripheral TWIM0 { TWIM0_SCL:bidirectional TWIM0_SDA:bidirectional }
+    peripheral UARTE1 { UARTE1_TX:output UARTE1_RX:input }
+    peripheral TWIM1 { TWIM1_SCL:bidirectional TWIM1_SDA:bidirectional }
+
+    shared SERIAL0 { UARTE0 TWIM0 }
+    shared SERIAL1 { UARTE1 TWIM1 }
+
+    pins {
+        .p00 bidirectional "P0.00" "1" fn GPIO UARTE0_TX UARTE0_RX TWIM0_SCL TWIM0_SDA UARTE1_TX UARTE1_RX TWIM1_SCL TWIM1_SDA
+        .p01 bidirectional "P0.01" "2" fn GPIO UARTE0_TX UARTE0_RX TWIM0_SCL TWIM0_SDA UARTE1_TX UARTE1_RX TWIM1_SCL TWIM1_SDA
+        .p02 bidirectional "P0.02" "3" fn GPIO UARTE0_TX UARTE0_RX TWIM0_SCL TWIM0_SDA UARTE1_TX UARTE1_RX TWIM1_SCL TWIM1_SDA
+        .p03 bidirectional "P0.03" "4" fn GPIO UARTE0_TX UARTE0_RX TWIM0_SCL TWIM0_SDA UARTE1_TX UARTE1_RX TWIM1_SCL TWIM1_SDA
+    }
+}
+```
+
+A console on one unit and a sensor on the other, each with a function chosen on each pin as before:
+
+```nsm
+import src::zmcu::Zmcu
+import std::parts::connector::Header1x4
+
+board Sensors {
+    .u: Zmcu
+    .j: Header1x4
+    .u.p00 ~ .j.p1
+    .u.p01 ~ .j.p2
+    .u.p02 ~ .j.p3
+    .u.p03 ~ .j.p4
+    .u.p00.function &= "UARTE0_TX"
+    .u.p01.function &= "UARTE0_RX"
+    .u.p02.function &= "TWIM1_SCL"
+    .u.p03.function &= "TWIM1_SDA"
+}
+```
+
+A third interface on a unit that is in use is refused. The message names the part, the shared resource, both uses with their functions and lines, and whether another unit is free; the error points at the second use, in path order. Here the sensor went on the unit the console uses:
+
+```nsm fails
+import src::zmcu::Zmcu
+import std::parts::connector::Header1x4
+
+board Crowded {
+    .u: Zmcu
+    .j: Header1x4
+    .u.p00 ~ .j.p1
+    .u.p01 ~ .j.p2
+    .u.p02 ~ .j.p3
+    .u.p03 ~ .j.p4
+    .u.p00.function &= "UARTE0_TX"
+    .u.p01.function &= "UARTE0_RX"
+    .u.p02.function &= "TWIM0_SCL"
+    .u.p03.function &= "TWIM0_SDA"
+}
+```
+
+```text
+error: `u` (`Zmcu`) uses UARTE0 and TWIM0, which share `SERIAL0` and run one at a time: UARTE0 on `u.p00` as UARTE0_TX (main.nsm:11) and on `u.p01` as UARTE0_RX (main.nsm:12), TWIM0 on `u.p02` as TWIM0_SCL (main.nsm:13) and on `u.p03` as TWIM0_SDA (main.nsm:14); the other shared resources of `Zmcu`: `SERIAL1` has nothing in use
+   --> main.nsm:13:5
+   |
+13 |     .u.p02.function &= "TWIM0_SCL"
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A function counts as soon as it is chosen, also on a pin that nothing is connected to: the statement is deliberate. A function that no peripheral lists (`GPIO`) is never a use of one. The rule needs no package and no catalog row; it is judged for every `Zmcu` the board has, with its full path (`hub.mcu` for a part in a module), before the solver runs.
+
+A part's author is told about a statement that is wrong, at that statement. A member that is not a peripheral of the part names the nearest peripheral:
+
+```nsm fails
+part Zmcu {
+    peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }
+    peripheral TWIM0 { TWIM0_SCL:bidirectional TWIM0_SDA:bidirectional }
+    shared SERIAL0 { UARTE0 TWIM9 }
+    pins {
+        .p00 bidirectional "P0.00" "1" fn UARTE0_TX UARTE0_RX TWIM0_SCL TWIM0_SDA
+    }
+}
+```
+
+```text
+error: `TWIM9` in `shared SERIAL0` is not a peripheral of `Zmcu`; did you mean `TWIM0`? the peripherals are UARTE0 and TWIM0
+  --> main.nsm:4:29
+  |
+4 |     shared SERIAL0 { UARTE0 TWIM9 }
+  |                             ^^^^^
+```
+
+A function that no row lists is on no pin:
+
+```nsm fails
+part Zmcu {
+    peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }
+    pins {
+        .p00 bidirectional "P0.00" "1" fn UARTE0_TX
+    }
+}
+```
+
+```text
+error: `peripheral UARTE0` lists `UARTE0_RX`, but no row of any `pins` table of `Zmcu` lists it, so no pin can be it; list it as `fn UARTE0_RX` on the pins that carry it
+  --> main.nsm:2:42
+  |
+2 |     peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }
+  |                                          ^^^^^^^^^
+```
+
+A row that writes a kind for a function of a peripheral is refused, because the peripheral gives it its kind:
+
+```nsm fails
+part Zmcu {
+    peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }
+    pins {
+        .p00 bidirectional "P0.00" "1" fn UARTE0_TX:output UARTE0_RX
+    }
+}
+```
+
+```text
+error: `.p00` lists `UARTE0_TX:output`, a function of `peripheral UARTE0`, which gives it its kind; write `UARTE0_TX` without a kind
+  --> main.nsm:4:9
+  |
+4 |         .p00 bidirectional "P0.00" "1" fn UARTE0_TX:output UARTE0_RX
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A function belongs to one peripheral, and a peripheral and a function do not share a name. Statement order does not matter: a `shared` may come before the peripherals it names and the rows that list their functions. A `peripheral` or a `shared` can only be in a part: a generic states what every provider has, and a peripheral is a fact of one part's datasheet, so a part that provides the generic states its own.
+
 ### Outputs
 
 Two outputs on one net would fight, so the checker refuses them. An output and a bidirectional pin may share a net.

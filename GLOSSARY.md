@@ -253,6 +253,14 @@ One of the things a pin can be, listed with `fn` in its pinout row (`fn GPIO UAR
 A module's own pin (`.scl: Pin`) passes a choice on to a pin of a part inside with an equation, `.mcu.p04.function == .scl.function`; `.function &=` on a module's pin that no such equation reads is an error, because it has no effect (ADR 0062, stage 0).
 _Avoid_: Alternate function, mux, mode
 
+**Peripheral**:
+`peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }` in a part: the functions of one part that belong together (a UART's `TX` and `RX`), each with an optional kind as in a pin row. It is **in use** when the board chooses one of its functions on a pin; two of its lines are still one use. A function belongs to one peripheral, and a peripheral and a function have different names (ADR 0062).
+_Avoid_: Group, block, role, mode, mux, unit (a unit is the hardware a `shared` resource names, not a peripheral)
+
+**Shared resource**:
+`shared SERIAL0 { UARTE0 SPIM0 TWIM0 }` in a part: the hardware that its members use at most one of at a time. Using two members is an error that names the part, the resource, both uses and their lines; it is judged for each instance of the part, before the solve, from the functions the board chose (ADR 0062).
+_Avoid_: Conflict set, exclusive set, group, resource (alone)
+
 **Logic level**:
 One of the four voltages of a `Logic` line, as a datasheet gives them and relative to the line's ground (the `neg` of its `.reference` rail): `.vih` the lowest an input reads as high, `.vil` the highest it reads as low, `.voh` the lowest an output drives a high to, `.vol` the highest it drives a low to. After the rails are solved, the solver requires `voh >= vih` and `vol <= vil` for every output and input on a net, and says "not evaluated" when a level has no value or the grounds differ (ADR 0046).
 _Avoid_: Threshold, noise margin

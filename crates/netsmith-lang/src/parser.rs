@@ -439,6 +439,8 @@ impl Parser {
                     | Item::Catalog(_)
                     | Item::Pins(_)
                     | Item::Tie(_)
+                    | Item::Peripheral(_)
+                    | Item::Shared(_)
                     | Item::Case(_)
                     | Item::Row(_)
                     | Item::Constraint(_)
@@ -451,7 +453,8 @@ impl Parser {
             }
         };
 
-        // `bridge`, `catalog`, `tie`, `pins` and `case` are keywords at the start of a statement.
+        // `bridge`, `catalog`, `tie`, `pins`, `peripheral`, `shared` and `case` are keywords at the
+        // start of a statement.
         if let Tok::Ident(word) = self.peek().tok.clone() {
             let starts_name = matches!(
                 self.peek_second(),
@@ -461,6 +464,12 @@ impl Parser {
                 "bridge" if starts_name => return only_decls(self.bridge(start)?),
                 "catalog" if starts_name => return only_decls(self.catalog(start)?),
                 "tie" if starts_name => return only_decls(self.tie(start)?),
+                "peripheral" if matches!(self.peek_second(), Tok::Ident(_)) => {
+                    return only_decls(self.peripheral(start)?);
+                }
+                "shared" if matches!(self.peek_second(), Tok::Ident(_)) => {
+                    return only_decls(self.shared(start)?);
+                }
                 "pins" if matches!(self.peek_second(), Tok::LBrace | Tok::Str(_)) => {
                     return only_decls(self.pins(start)?);
                 }
@@ -616,6 +625,101 @@ impl Parser {
         Ok(Item::Tie(Tie {
             a,
             b,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// `peripheral NAME { FUNCTION[:kind] ... }`.
+    fn peripheral(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let name = self.ident("the name of the peripheral")?;
+        let open = self.expect(&Tok::LBrace, "`{` after the name of the peripheral")?;
+        let mut functions: Vec<PinFunction> = Vec::new();
+        loop {
+            self.skip_separators();
+            let t = self.peek().clone();
+            match &t.tok {
+                Tok::RBrace => {
+                    self.bump();
+                    break;
+                }
+                Tok::Eof => return Err(ParseError::new(open.span, "this `{` is never closed")),
+                Tok::DocOuter(_) | Tok::DocInner(_) => {
+                    return Err(ParseError::new(
+                        t.span,
+                        "a peripheral takes `//` notes, not doc comments",
+                    ));
+                }
+                Tok::Ident(_) => {
+                    let function = self.ident("a function name")?;
+                    let kind = self.function_kind(&function)?;
+                    functions.push(PinFunction {
+                        name: function,
+                        kind,
+                    });
+                }
+                Tok::Str(_) | Tok::Number(_) | Tok::QuotedIdent(_) => {
+                    return Err(ParseError::new(
+                        t.span,
+                        "a function is a plain name such as UARTE0_TX, without quotes",
+                    ));
+                }
+                _ => return Err(unexpected(&t, "a function name or `}`")),
+            }
+        }
+        if functions.is_empty() {
+            return Err(ParseError::new(
+                name.span,
+                format!(
+                    "`peripheral {}` has no functions; list at least one in the braces, such as `{}_TX:output`",
+                    name.name, name.name
+                ),
+            ));
+        }
+        Ok(Item::Peripheral(Peripheral {
+            name,
+            functions,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// `shared NAME { MEMBER ... }`.
+    fn shared(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let name = self.ident("the name of the shared resource")?;
+        let open = self.expect(&Tok::LBrace, "`{` after the name of the shared resource")?;
+        let mut members: Vec<Ident> = Vec::new();
+        loop {
+            self.skip_separators();
+            let t = self.peek().clone();
+            match &t.tok {
+                Tok::RBrace => {
+                    self.bump();
+                    break;
+                }
+                Tok::Eof => return Err(ParseError::new(open.span, "this `{` is never closed")),
+                Tok::DocOuter(_) | Tok::DocInner(_) => {
+                    return Err(ParseError::new(
+                        t.span,
+                        "a shared resource takes `//` notes, not doc comments",
+                    ));
+                }
+                Tok::Ident(_) => members.push(self.ident("a member")?),
+                _ => return Err(unexpected(&t, "the name of a peripheral or `}`")),
+            }
+        }
+        if members.is_empty() {
+            return Err(ParseError::new(
+                name.span,
+                format!(
+                    "`shared {}` has no members; list the peripherals that share it in braces",
+                    name.name
+                ),
+            ));
+        }
+        Ok(Item::Shared(Shared {
+            name,
+            members,
             span: self.span_from(start),
         }))
     }

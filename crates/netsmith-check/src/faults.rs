@@ -113,6 +113,9 @@ impl<'a> Run<'a> {
             if self.pass == Pass::Solved {
                 self.pads(part);
             }
+            if self.pass == Pass::Board {
+                self.shared(part);
+            }
         }
         self.nets(&parts);
         if self.pass == Pass::Board {
@@ -193,6 +196,14 @@ impl<'a> Run<'a> {
                 model.path_below(*one, module)
             ),
             _ => format!("`.<part>.<pin>.function == .{own}.function`"),
+        }
+    }
+
+    /// What a part's `shared` resources allow (ADR 0062). It needs no package, so it is judged
+    /// in the board pass for every part, deferred or not.
+    fn shared(&mut self, part: InstId) {
+        for (at, message) in crate::shared::overuse(self.model, part) {
+            self.report(at, message);
         }
     }
 
@@ -564,9 +575,10 @@ impl<'a> Run<'a> {
     /// none.
     fn kind_in(&self, part: InstId, pin: InstId) -> Option<PinKind> {
         match self.model.pinout(part) {
-            Pinout::Table(table) => table
-                .row(pin)
-                .map(|r| r.kind_with(self.model.function_of(pin).as_deref())),
+            Pinout::Table(table) => table.row(pin).map(|r| {
+                self.model
+                    .kind_with(part, r, self.model.function_of(pin).as_deref())
+            }),
             _ => None,
         }
     }
@@ -587,7 +599,7 @@ impl<'a> Run<'a> {
             Pinout::Table(table) => table.row(pin),
             _ => model.pin_facts(pin),
         }?;
-        let kind = row.function_kind(Some(&chosen))?;
+        let kind = model.function_kind(part, row, Some(&chosen))?;
         Some((chosen, kind))
     }
 

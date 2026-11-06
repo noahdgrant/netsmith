@@ -1,0 +1,177 @@
+//! `peripheral` and `shared` (ADR 0062): what the parser reads, how the printer writes it
+//! back, and what it says about a statement that is wrong. Every part here is invented.
+
+use netsmith_lang::ast::*;
+use netsmith_lang::parse;
+
+const ZMCU: &str = "\
+part Zmcu {
+    peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }
+    peripheral SPIM0 {
+        SPIM0_SCK:output
+        SPIM0_MOSI:output
+        SPIM0_MISO:input
+    }
+    shared SERIAL0 { UARTE0 SPIM0 }
+}
+";
+
+fn err(src: &str) -> (String, usize, usize) {
+    let e = parse(src).unwrap_err();
+    let (line, col) = e.line_col(src);
+    (e.message, line, col)
+}
+
+fn in_part(statement: &str) -> String {
+    format!("part P {{\n    {statement}\n}}\n")
+}
+
+#[test]
+fn a_peripheral_lists_functions_with_their_kinds() {
+    let file = parse(ZMCU).unwrap();
+    let items = &file.definitions[0].items;
+    let Item::Peripheral(uart) = &items[0] else {
+        panic!("{items:?}")
+    };
+    assert_eq!(uart.name.name, "UARTE0");
+    let listed: Vec<(&str, Option<PinKind>)> = uart
+        .functions
+        .iter()
+        .map(|f| (f.name.name.as_str(), f.kind.map(|(k, _)| k)))
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            ("UARTE0_TX", Some(PinKind::Output)),
+            ("UARTE0_RX", Some(PinKind::Input))
+        ]
+    );
+    // Functions may be on several lines, with or without a kind.
+    let Item::Peripheral(spi) = &items[1] else {
+        panic!("{items:?}")
+    };
+    assert_eq!(spi.functions.len(), 3);
+    let file = parse(&in_part("peripheral Plain { A B:passive C }")).unwrap();
+    let Item::Peripheral(p) = &file.definitions[0].items[0] else {
+        panic!()
+    };
+    let kinds: Vec<Option<PinKind>> = p.functions.iter().map(|f| f.kind.map(|(k, _)| k)).collect();
+    assert_eq!(kinds, [None, Some(PinKind::Passive), None]);
+}
+
+#[test]
+fn a_shared_resource_lists_its_members() {
+    let file = parse(ZMCU).unwrap();
+    let Item::Shared(s) = &file.definitions[0].items[2] else {
+        panic!()
+    };
+    assert_eq!(s.name.name, "SERIAL0");
+    let members: Vec<&str> = s.members.iter().map(|m| m.name.as_str()).collect();
+    assert_eq!(members, ["UARTE0", "SPIM0"]);
+}
+
+#[test]
+fn both_print_and_parse_back_to_the_same_tree() {
+    let file = parse(ZMCU).unwrap();
+    let printed = file.to_source();
+    assert!(
+        printed.contains("    peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }\n"),
+        "{printed}"
+    );
+    assert!(
+        printed.contains(
+            "    peripheral SPIM0 { SPIM0_SCK:output SPIM0_MOSI:output SPIM0_MISO:input }\n"
+        ),
+        "{printed}"
+    );
+    assert!(
+        printed.contains("    shared SERIAL0 { UARTE0 SPIM0 }\n"),
+        "{printed}"
+    );
+    assert_eq!(parse(&printed).unwrap().to_source(), printed);
+}
+
+#[test]
+fn statements_end_at_a_newline_or_a_semicolon() {
+    let file = parse(&in_part(
+        "peripheral A { A_TX }; peripheral B { B_TX }; shared S { A B }",
+    ))
+    .unwrap();
+    assert_eq!(file.definitions[0].items.len(), 3);
+    let file = parse(&in_part("peripheral A { A_TX; A_RX }")).unwrap();
+    let Item::Peripheral(p) = &file.definitions[0].items[0] else {
+        panic!()
+    };
+    assert_eq!(p.functions.len(), 2);
+}
+
+#[test]
+fn the_words_are_still_names_where_a_name_is_meant() {
+    // Keywords only at the start of a statement, and only with a name after them.
+    let file = parse(
+        "board B {\n    .peripheral: Rail\n    .shared: Rail\n    peripheral.pos ~ shared.neg\n}\n",
+    )
+    .unwrap();
+    assert!(matches!(&file.definitions[0].items[2], Item::Connect(_)));
+}
+
+#[test]
+fn a_doc_comment_does_not_attach_to_either() {
+    for stmt in ["peripheral A { A_TX }", "shared S { A }"] {
+        let (msg, ..) = err(&format!("part P {{\n    /// note\n    {stmt}\n}}\n"));
+        assert_eq!(
+            msg, "doc comments can only be attached to declarations",
+            "{stmt}"
+        );
+    }
+}
+
+#[test]
+fn a_peripheral_needs_functions_and_a_shared_resource_members() {
+    let (msg, line, col) = err(&in_part("peripheral UARTE0 { }"));
+    assert_eq!(
+        msg,
+        "`peripheral UARTE0` has no functions; list at least one in the braces, such as `UARTE0_TX:output`"
+    );
+    assert_eq!((line, col), (2, 16));
+    let (msg, ..) = err(&in_part("shared SERIAL0 { }"));
+    assert_eq!(
+        msg,
+        "`shared SERIAL0` has no members; list the peripherals that share it in braces"
+    );
+}
+
+#[test]
+fn braces_are_needed_and_must_close() {
+    let (msg, ..) = err(&in_part("peripheral UARTE0 UARTE0_TX"));
+    assert!(
+        msg.starts_with("expected `{` after the name of the peripheral"),
+        "{msg}"
+    );
+    let (msg, ..) = err(&in_part("shared SERIAL0 UARTE0"));
+    assert!(
+        msg.starts_with("expected `{` after the name of the shared resource"),
+        "{msg}"
+    );
+    let (msg, line, _) = err("part P {\n    peripheral A { A_TX\n");
+    assert_eq!(msg, "this `{` is never closed");
+    assert_eq!(line, 2);
+}
+
+#[test]
+fn a_function_is_a_plain_name_with_its_kind_against_it() {
+    let (msg, ..) = err(&in_part("peripheral A { \"A_TX\" }"));
+    assert_eq!(
+        msg,
+        "a function is a plain name such as UARTE0_TX, without quotes"
+    );
+    let (msg, ..) = err(&in_part("peripheral A { A_TX:tristate }"));
+    assert!(msg.starts_with("unknown pin kind `tristate`"), "{msg}");
+    let (msg, ..) = err(&in_part("peripheral A { A_TX :output }"));
+    assert!(
+        msg.starts_with("write the kind of function `A_TX` against its name"),
+        "{msg}"
+    );
+    let (msg, ..) = err(&in_part("peripheral A { A_TX /// a note\n }"));
+    assert_eq!(msg, "a peripheral takes `//` notes, not doc comments");
+}

@@ -220,6 +220,8 @@ fn visit<'a>(
                 path(&row.pin, inside);
             }
         }
+        // They name peripherals and functions, which are words and not paths.
+        Item::Peripheral(_) | Item::Shared(_) => {}
         Item::Case(case) => {
             for inner in &case.items {
                 visit(inner, inside, out);
