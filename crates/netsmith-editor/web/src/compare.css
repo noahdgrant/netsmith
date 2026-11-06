@@ -89,7 +89,7 @@
 .cmp-group-head { position: sticky; top: 0; z-index: var(--z-sticky); display: flex; align-items: center; gap: 0.5rem; height: var(--row-sm); padding: 0 0.875rem; background: color-mix(in srgb, var(--text) 3.5%, var(--surface)); border-bottom: 1px solid var(--border-subtle); font-size: var(--fs-sm); }
 .cr { border-bottom: 1px solid var(--row-line); }
 .cr:last-child { border-bottom: none; }
-.cr-main { display: grid; grid-template-columns: 1.25rem 1.375rem minmax(11.25rem, 36%) minmax(0, 1fr) minmax(4rem, 7rem) 6rem auto; align-items: center; gap: 0.5rem; min-height: calc(var(--row-lg) + 0.375rem); padding: 0.25rem 0.75rem 0.25rem 0.5rem; cursor: pointer; outline-offset: -2px; }
+.cr-main { display: grid; grid-template-columns: 1.25rem 1.375rem minmax(11.25rem, 42%) minmax(0, 1fr) minmax(4rem, 7rem) 6rem auto; align-items: center; gap: 0.5rem; min-height: calc(var(--row-lg) + 0.375rem); padding: 0.25rem 0.75rem 0.25rem 0.5rem; cursor: pointer; outline-offset: -2px; }
 button.cr { display: block; width: 100%; padding: 0; background: none; border: none; border-bottom: 1px solid var(--row-line); font: inherit; color: inherit; text-align: left; }
 .cr-main:hover, .cr-main.hover-lit { background: var(--hover); }
 .cr.sel > .cr-main { background: var(--select-bg); box-shadow: inset 2px 0 0 var(--sel-bar); }
@@ -102,7 +102,9 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .cr-kind.s-added { color: var(--cmp-added); } .cr-kind.s-removed { color: var(--cmp-removed); } .cr-kind.s-changed, .cr-kind.s-moved, .cr-kind.s-renamed { color: var(--cmp-changed); } .cr-kind.s-renumbered { color: var(--cmp-renumbered); }
 .cr-kind.s-new { color: var(--cmp-removed); } .cr-kind.s-resolved { color: var(--cmp-added); }
 .cr-kind.k-problem.s-new, .cr-kind.k-problem.s-resolved { color: inherit; }
-.cr-name { display: flex; align-items: baseline; gap: 0.25rem 0.625rem; min-width: 0; flex-wrap: wrap; }
+.cr-name { display: flex; align-items: baseline; gap: 0.25rem 0.625rem; min-width: 0; flex-wrap: nowrap; }
+/* the name, what it is and the board it is on stay on one line (a long package or path is cut with an ellipsis, the whole in the tooltip of the row) */
+.cr-name > .cr-title { flex: 0 1 auto; min-width: 0; } .cr-name > :is(.cr-type, .cr-board, .cr-was) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cr-title { font-weight: var(--fw-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .cr-title.plain { font-weight: var(--fw-normal); white-space: normal; overflow-wrap: anywhere; font-family: var(--sans); }
 .cr-title.gone { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--cmp-removed) 70%, transparent); color: var(--text-muted); }
@@ -146,7 +148,7 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .cr-file:hover .cr-main { background: var(--hover); }
 .cr-file.plain, .cr-file.plain .cr-main { cursor: default; }
 .cr-file.plain:hover .cr-main { background: none; }
-.cr-file .cr-main { grid-template-columns: 1.375rem minmax(11.25rem, 36%) minmax(0, 1fr) 6rem auto; padding-left: 0.875rem; }
+.cr-file .cr-main { grid-template-columns: 1.375rem minmax(11.25rem, 42%) minmax(0, 1fr) 6rem auto; padding-left: 0.875rem; }
 .cr-file .cr-main > .cr-chips { gap: 0.375rem; }
 
 .cmp-renum { border-top: 1px solid var(--border); }
