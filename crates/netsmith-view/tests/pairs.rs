@@ -301,6 +301,7 @@ fn rail_span_is_the_longest_run_of_a_net_that_ends_in_a_power_symbol() {
         buses: Vec::new(),
         spines: Vec::new(),
         notes: Vec::new(),
+        rows: 0,
         bounds: Rect {
             min: Pt::new(-5.0, -5.0),
             max: Pt::new(60.0, 30.0),

@@ -48,8 +48,7 @@
 //!   chains of **series parts** (a fuse, a diode, a ferrite bead, an inductor: two-terminal parts
 //!   on two nets, neither a ground, that are not across two pins of the IC) that lead from its
 //!   input pins back to where the power comes from and from its switching pin out to the output
-//!   (`Layout::spines`; `NETSMITH_SPINE=off` draws without a spine and still finds the chains,
-//!   to compare). `spine_bends` is the number of bends along the wires of the longest chain
+//!   (`Layout::spines`). `spine_bends` is the number of bends along the wires of the longest chain
 //!   (most parts; the input side's first), from the IC's pin through each part to the end of
 //!   the chain: along each net between two parts, the bends of the shortest way from the pin of
 //!   one to the pin of the next. A chain is **detached** unless it stands on the row of the

@@ -33,6 +33,10 @@ const MAX_ASPECT: f64 = 1.8;
 const MIN_WRAP_WIDTH: f64 = 160.0;
 /// The shape the rows aim for.
 const TARGET_ASPECT: f64 = 1.4;
+/// The width of a row is a multiple of this (a coarse step, so that a small edit leaves it).
+const ROW_QUANTUM: f64 = 50.8;
+/// A piece counts as a multiple of this wide when pieces are cut into rows.
+const SLOT_X: f64 = 12.7;
 /// The width of a letter in a flag, in its height: bold capitals are wider than the
 /// [`CHAR_WIDTH`] the texts are measured with.
 const FLAG_CHAR_WIDTH: f64 = 0.72;
@@ -681,20 +685,66 @@ pub(super) fn run(
     let mut anchored = vec![false; n];
     let mut y = 0.0;
     let mut previous: Option<(f64, &[usize])> = None;
+    // The piece of the sheet's reference part (`origin`): the main part with most pins, then the
+    // largest symbol, then the first by name.
+    let ref_piece = {
+        let key = |a: usize| {
+            let r = placed[a].glyph.bounds();
+            (
+                placed[a].pins.len(),
+                ((r.max.x - r.min.x) * (r.max.y - r.min.y) * 100.0).round() as i64,
+            )
+        };
+        (0..pieces.len())
+            .filter(|&i| pieces[i].anchor.is_some())
+            .max_by(|&i, &j| {
+                let (a, b) = (
+                    pieces[i].anchor.expect("an anchor"),
+                    pieces[j].anchor.expect("an anchor"),
+                );
+                let name = |p: usize| canon::part_name(&ctx.design.parts[p]);
+                key(a)
+                    .cmp(&key(b))
+                    .then_with(|| canon::natural_cmp(name(b), name(a)))
+            })
+    };
     for row in &rows {
         let (above, below) = row_height(&pieces, row);
         if let Some((bottom, before)) = previous {
             y = bottom + row_gap(&pieces, before, row) + above;
         }
         previous = Some((y + below, row));
-        let mut x = 0.0;
+        // The row is laid out outward from one piece: the one with the sheet's reference part if
+        // it is in this row, else the first. Its main part is at x = 0 (not its left edge: what
+        // it grows to the left of its part does not move the part), the pieces after it follow to
+        // the right and those before it to the left, so that a block that grows moves only the
+        // pieces beyond it, and what is on the far side of the reference part stays.
+        let lead = |i: usize| {
+            pieces[i].anchor.map_or(0.0, |a| {
+                snap_grid(placed[a].extent.min.x - pieces[i].rect.min.x)
+            })
+        };
+        let start = ref_piece
+            .and_then(|r| row.iter().position(|&i| i == r))
+            .unwrap_or(0);
+        let mut by_x = vec![0.0; row.len()];
+        let mut x = -lead(row[start]);
+        for k in start..row.len() {
+            let piece = &pieces[row[k]];
+            by_x[k] = snap_up(x - piece.rect.min.x, GRID);
+            x = by_x[k] + piece.rect.max.x + BLOCK_GAP;
+        }
+        let mut edge = by_x[start] + pieces[row[start]].rect.min.x;
+        for k in (0..start).rev() {
+            let piece = &pieces[row[k]];
+            let right = edge - BLOCK_GAP - piece.rect.max.x;
+            by_x[k] = (right / GRID + 1e-9).floor() * GRID;
+            edge = by_x[k] + piece.rect.min.x;
+        }
         let mut group = Vec::new();
-        for &i in row {
+        for (k, &i) in row.iter().enumerate() {
             let piece = &pieces[i];
-            let by = Pt::new(
-                snap_up(x - piece.rect.min.x, GRID),
-                snap_grid(y - piece.middle),
-            );
+            let by = Pt::new(by_x[k], snap_grid(y - piece.middle));
             let first = piece.members[0].0;
             for &(p, off, side) in &piece.members {
                 at[p] = Pt::new(by.x + off.x, by.y + off.y);
@@ -706,7 +756,6 @@ pub(super) fn run(
                     satellites.insert(p);
                 }
             }
-            x = by.x + piece.rect.max.x + BLOCK_GAP;
         }
         groups.push(group);
     }
@@ -718,7 +767,8 @@ pub(super) fn run(
     }
 
     groups.retain(|g| !g.is_empty());
-    Scene::new(
+    let row_count = rows.len();
+    let mut drawn = Scene::new(
         ctx,
         placed,
         units,
@@ -734,7 +784,9 @@ pub(super) fn run(
         pair_nets,
         spine_nets,
     )
-    .finish()
+    .finish();
+    drawn.layout.rows = row_count;
+    drawn
 }
 
 /// How far a row reaches above and below the line its pieces are level on.
@@ -748,6 +800,13 @@ fn row_height(pieces: &[Piece], row: &[usize]) -> (f64, f64) {
         .map(|&i| pieces[i].rect.max.y - pieces[i].middle)
         .fold(0.0, f64::max);
     (above, below)
+}
+
+/// How wide a piece counts when pieces are cut into rows: its width up to the next multiple of
+/// [`SLOT_X`], so that a little growth (a longer value, one more capacitor beside a pin) does
+/// not move the end of a row onto the next piece. (The pieces stand as close as before.)
+fn slot_width(piece: &Piece) -> f64 {
+    snap_up(piece.rect.width(), SLOT_X)
 }
 
 /// The space between a row and the one under it: the grounds' rails of the first and the
@@ -776,7 +835,7 @@ fn pack(pieces: &[Piece]) -> Vec<Vec<usize>> {
         return Vec::new();
     }
     let width = |row: &[usize]| -> f64 {
-        row.iter().map(|&i| pieces[i].rect.width()).sum::<f64>()
+        row.iter().map(|&i| slot_width(&pieces[i])).sum::<f64>()
             + BLOCK_GAP * (row.len() - 1) as f64
     };
     let rails = |row: &[usize], ground: bool| -> usize {
@@ -817,29 +876,43 @@ fn pack(pieces: &[Piece]) -> Vec<Vec<usize>> {
     if shape(&one) <= MAX_ASPECT || width(&all) < MIN_WRAP_WIDTH || spine {
         return one;
     }
-    let total = width(&all);
-    let mut best = ((shape(&one) / TARGET_ASPECT).ln().abs(), one);
-    for count in 2..=pieces.len().min(12) {
-        for slack in [0.9, 1.0, 1.1, 1.25, 1.4] {
-            let target = total / count as f64 * slack;
-            let mut rows: Vec<Vec<usize>> = vec![Vec::new()];
-            for &i in &all {
-                let row = rows.last().expect("a row");
-                let mut with = row.clone();
-                with.push(i);
-                if !row.is_empty() && width(&with) > target {
-                    rows.push(vec![i]);
-                } else {
-                    rows.last_mut().expect("a row").push(i);
-                }
-            }
-            let miss = (shape(&rows) / TARGET_ASPECT).ln().abs();
-            if miss < best.0 - 1e-9 {
-                best = (miss, rows);
+    // The pieces are filled into rows in order, a row ending where the next piece would pass a
+    // width: a piece's row depends on the pieces before it and on that width, which is the
+    // width of a sheet of the page's shape for the area the pieces cover, in coarse steps, so
+    // that one more small part does not re-flow the sheet.
+    let area: f64 = pieces
+        .iter()
+        .map(|p| (slot_width(p) + BLOCK_GAP) * (p.rect.height() + ROW_MARGIN))
+        .sum();
+    let widest = pieces.iter().map(slot_width).fold(0.0, f64::max);
+    let centre = snap_up((area * TARGET_ASPECT).sqrt(), ROW_QUANTUM);
+    let fill = |wanted: f64| -> Vec<Vec<usize>> {
+        let mut rows: Vec<Vec<usize>> = vec![Vec::new()];
+        for &i in &all {
+            let row = rows.last().expect("a row");
+            let mut with = row.clone();
+            with.push(i);
+            if !row.is_empty() && width(&with) > wanted {
+                rows.push(vec![i]);
+            } else {
+                rows.last_mut().expect("a row").push(i);
             }
         }
+        rows
+    };
+    // A few widths a step apart round that one, the one that makes the sheet nearest the page's
+    // shape (the least width of equals): the same few for a small edit, and rows that differ
+    // only where the pieces are cut.
+    let mut best: Option<(f64, Vec<Vec<usize>>)> = None;
+    for k in -2..=2 {
+        let wanted = (centre + f64::from(k) * ROW_QUANTUM / 2.0).max(widest);
+        let rows = fill(wanted);
+        let miss = (shape(&rows) / TARGET_ASPECT).ln().abs();
+        if best.as_ref().is_none_or(|(m, _)| miss < *m - 1e-9) {
+            best = Some((miss, rows));
+        }
     }
-    best.1
+    best.expect("a candidate").1
 }
 
 /// The name inside a flag whose point is at `tip` and that points `dir`: across for a flag
@@ -2871,6 +2944,7 @@ impl<'a> Scene<'a> {
                 buses: self.buses,
                 spines: Vec::new(),
                 notes: Vec::new(),
+                rows: 0,
                 bounds,
             },
             clusters: self.clusters,

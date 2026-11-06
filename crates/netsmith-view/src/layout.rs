@@ -75,8 +75,7 @@
 //!    kept free: the satellites of the IC's other pins are placed first beside it, the row's parts
 //!    beyond them, and the wires of a pair satellite (a bootstrap capacitor) join the row where
 //!    they meet it and cross nothing. The sheet of a spine and a few more pieces is not cut into
-//!    rows. `NETSMITH_SPINE=off` draws without it, to compare (the metrics `spine_bends` and
-//!    `detached_chain` still find the chains).
+//!    rows.
 //!
 //! 7. A part whose library symbol has several **units** is drawn as one box for each, as the
 //!    library draws the unit, upright, with the part's reference and the unit's letter (`U5A`
@@ -99,16 +98,50 @@
 //!    or in a margin column when there is no room (all of them in one column when a sheet has more
 //!    than eight): no wire is moved for a note and a sheet with none is drawn as it was.
 //!
+//! 9. **A small edit moves little.** A person who edits a board reads the same sheet again and
+//!    has a map of it in their head, so the drawing is made to stay put (`stability.rs` measures
+//!    it, and the numbers are in `docs/research/schematic-metrics-baseline.md`). It is still a
+//!    pure function of the design, with no memory of an earlier drawing. What keeps it steady:
+//!    - **The order of the lists is nothing.** The design is drawn with its parts sorted by path
+//!      (else reference) and its nets by their first pin ([`canon`]), and the layout is put back
+//!      in the design's order: every tie in the engine is by path and pad, none by where a part
+//!      happens to be in a list, and a design listed the other way round is drawn the same. A
+//!      net's name decides nothing (a rename moves nothing).
+//!    - **The coordinates start at the reference part** ([`origin`]), the sheet's largest part,
+//!      not at the corner of the drawing: what grows above or to the left of it leaves it, and
+//!      with it every part and wire that did not change, where they were.
+//!    - **A row is laid out outward from the reference part**, its main part at x = 0 (not the left
+//!      edge of its block): what a block grows to the left of its part moves nothing, and a block
+//!      that grows moves only the pieces beyond it. The pieces are cut into rows by their width in
+//!      steps of 12.7 mm, to a row width that depends on their area in steps of 50.8 mm, among a few
+//!      widths round it (`engine::pack`), so that one more part does not re-flow the sheet.
+//!    - **A small part that serves a pin does not vote** on how a main part is turned or which way
+//!      the signal runs (`Ctx::leaf`): a capacitor across two rails, a pull-up to a rail.
+//!    - The board's own writing goes on the sheet of its first part by name, and a connector that
+//!      joins nothing but the rails stands first.
+//!
+//!    What cannot be steady: a part that needs room makes it, and what is beside it shifts (the
+//!    capacitors of a row beside a pin, the pieces after a wider block); a pull-up changes the hops
+//!    from ground of its net, which can turn the part it is on; a regulator that loses its output
+//!    capacitor is no longer found as a spine.
+//!
+//!    None of this can be switched off: a drawing depends on the design alone, never on an
+//!    environment variable. What each part of it did is measured in
+//!    `docs/research/schematic-metrics-baseline.md`.
+//!
 //! Nothing here knows how a layout is drawn: [`crate::render_svg`] reads the result.
 
+mod canon;
 mod engine;
 mod grid;
 pub(crate) mod notes;
+mod origin;
 mod policy;
 mod prune;
 mod spine;
 mod units;
 
+pub(crate) use canon::natural_cmp;
 pub use notes::{
     HEADING_TEXT, LINE, MAX_CHARS, MONO_EM, MONO_TEXT, NOTE_TEXT, PAD, RADIUS, line_width, truncate,
 };
@@ -542,6 +575,9 @@ pub struct Layout {
     /// The notes of the design drawn as boxes of text (`Design::notes`), none for a design that
     /// has none.
     pub notes: Vec<PlacedNote>,
+    /// How many rows the drawing's pieces are set in (a drawing with no sheets; 0 when it has
+    /// sheets, each of which says its own).
+    pub rows: usize,
     pub bounds: Rect,
 }
 
@@ -587,6 +623,10 @@ struct Ctx<'a> {
     part_nets: Vec<Vec<usize>>,
     ground: Vec<bool>,
     level: Vec<usize>,
+    /// Small parts that serve one pin of a main part from a rail or ground (a decoupling
+    /// capacitor, a pull-up): they do not vote on how a part is turned, so that adding one does
+    /// not turn the part it is beside.
+    leaf: Vec<bool>,
     connector: Vec<bool>,
     /// Nets that leave this drawing: their pins get a stub and the net's name, never a trunk.
     external: Vec<bool>,
@@ -797,7 +837,9 @@ pub(crate) fn layout_with(
 }
 
 /// [`layout_with`], drawn only with `only` if it is given; and the choices of [`Tuning`] (as
-/// bits) that made a difference in the first drawing.
+/// bits) that made a difference in the first drawing. The design is drawn in canonical order
+/// ([`canon`]) and the result has the design's own, and the drawing is anchored on its
+/// reference part ([`origin`]).
 #[allow(clippy::too_many_arguments)]
 fn layout_with_tuning(
     design: &Design,
@@ -810,6 +852,34 @@ fn layout_with_tuning(
     only: Option<Tuning>,
 ) -> Result<(Layout, u8), DesignError> {
     design.validate()?;
+    let canon = canon::Canon::of(design);
+    let external = canon.nets_of(external);
+    let (mut layout, touched) = draw(
+        &canon.design,
+        mapping,
+        lib,
+        &external,
+        rails,
+        marks,
+        label_grounds,
+        only,
+    )?;
+    canon.restore(&mut layout);
+    origin::anchor(design, &mut layout);
+    Ok((layout, touched))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw(
+    design: &Design,
+    mapping: &Mapping,
+    lib: &SymbolLib,
+    external: &[bool],
+    rails: &Rails,
+    marks: &Marks,
+    label_grounds: bool,
+    only: Option<Tuning>,
+) -> Result<(Layout, u8), DesignError> {
     let notes_of = design;
     let used = used_pads(design);
     // A part whose symbol has several units is drawn as one box for each: the engine draws a
@@ -884,6 +954,7 @@ fn layout_with_tuning(
         part_nets,
         ground,
         level,
+        leaf: Vec::new(),
         connector,
         external: external.to_vec(),
         power,
@@ -895,7 +966,9 @@ fn layout_with_tuning(
         touched: std::cell::Cell::new(0),
         pair_places: engine::PairCache::default(),
     };
-    // `NETSMITH_SPINE=off` draws without the spines (to compare), the paths are still found.
+    ctx.leaf = (0..design.parts.len())
+        .map(|p| is_leaf_shunt(&ctx, p))
+        .collect();
     let found = spine::find(&ctx);
     let spine_marks: Vec<SpineMark> = found
         .iter()
@@ -908,9 +981,7 @@ fn layout_with_tuning(
                 .collect(),
         })
         .collect();
-    if std::env::var_os("NETSMITH_SPINE").is_none_or(|v| v != "off") {
-        ctx.spines = found;
-    }
+    ctx.spines = found;
     for sp in &ctx.spines {
         for p in sp.parts() {
             ctx.spine_part[p] = true;
@@ -1336,7 +1407,13 @@ fn column_order(ctx: &Ctx, units: &[Unit], unit_of: &HashMap<usize, usize>) -> V
 
     let mut order = Vec::new();
     let mut seen = vec![false; units.len()];
-    for first in 0..units.len() {
+    // A connector that joins nothing but the rails (the way the power comes in) stands first,
+    // whatever it is called; the rest by their place in the (canonical) order.
+    let mut starts: Vec<usize> = (0..units.len()).collect();
+    starts.sort_by_key(|&u| {
+        !(adjacent[u].is_empty() && units[u].parts.iter().any(|&p| ctx.connector[p]))
+    });
+    for first in starts {
         if seen[first] {
             continue;
         }
@@ -1466,7 +1543,8 @@ fn signal_runs_backwards(
             }
             for other in &ctx.design.nets[n].pins {
                 let q = part_index(ctx, &other.refdes);
-                if q != part {
+                // Small parts that serve a pin do not vote on where the signal goes.
+                if q != part && !ctx.leaf[q] {
                     seen.extend(position(unit_of[&q]));
                 }
             }
@@ -1533,6 +1611,30 @@ fn facing_up(glyph: &Glyph, pad: &str) -> Orient {
         .into_iter()
         .find(|o| o.dir(away) == Dir::Up)
         .expect("some orientation points any axis-aligned pin up")
+}
+
+/// Whether `p` is a small two-terminal part that serves a pin: across two rails (a decoupling
+/// capacitor), or from a rail to a net that has a pin of a main part (a pull-up).
+fn is_leaf_shunt(ctx: &Ctx, p: usize) -> bool {
+    if !is_stackable(ctx, p) || ctx.spine_part[p] {
+        return false;
+    }
+    let rail = |n: usize| ctx.power[n].is_some() || ctx.ground[n];
+    let nets = &ctx.part_nets[p];
+    if nets.len() != 2 {
+        return false;
+    }
+    match nets.iter().filter(|&&n| rail(n)).count() {
+        2 => true,
+        1 => {
+            let other = *nets.iter().find(|&&n| !rail(n)).expect("a signal net");
+            ctx.design.nets[other]
+                .pins
+                .iter()
+                .any(|pin| !is_stackable(ctx, part_index(ctx, &pin.refdes)))
+        }
+        _ => false,
+    }
 }
 
 /// Score each orientation by how well it points high-net pins up, low-net pins down, and
@@ -1604,6 +1706,10 @@ fn best_orientation(ctx: &Ctx, p: usize, column_of: &[usize]) -> Orient {
                 .iter()
                 .filter(|_| !ctx.ground[*n])
                 .map(|q| part_index(ctx, &q.refdes))
+                // A small part with a pin on a rail or ground (a decoupling capacitor, a
+                // pull-up) serves the pin and says nothing of where the signal goes: adding one
+                // must not turn the part it is beside.
+                .filter(|&q| !ctx.leaf[q])
                 .filter(|&q| column_of[q] != column_of[p])
                 .map(|q| column_of[q] as f64)
                 .collect();
