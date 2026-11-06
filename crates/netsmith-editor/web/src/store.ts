@@ -40,6 +40,8 @@ import {
   setSelection,
 } from './selection';
 import { covers } from './util';
+import { EMPTY, type History, forget, leaving, stepBack, stepForward, visit } from './source/navhistory';
+import { reorder } from './source/tabs';
 
 export { selection };
 
@@ -150,6 +152,8 @@ export const detail = signal<BoardDetail | null>(null);
 /** Asks the editor to put the cursor at a place. `nonce` makes the same place twice a new ask. */
 export const reveal = signal<{ at: Location; name?: string; nonce: number; quiet?: boolean } | null>(null);
 export const cursor = signal<{ file: string; line: number; column: number } | null>(null);
+/** The places the source's cursor was taken to, for Back and Forward (Alt+Left, Alt+Right). */
+export const navHistory = signal<History>(EMPTY);
 /** The designators of the parts the shared selection stands for (a part, the parts on a net, the
  * parts under a module), for the views that list designators. */
 export const selectedRefdes = computed(() => refdesOf(detail.value, selection.value));
@@ -416,6 +420,7 @@ export function dropOpen(path: string, folder: boolean) {
   const gone = (p: string) => under(p, path, folder);
   const rest = tabs.value.filter((t) => !gone(t));
   tabs.value = rest;
+  navHistory.value = forget(navHistory.value, gone);
   openFiles.value = Object.fromEntries(Object.entries(openFiles.value).filter(([p]) => !gone(p)));
   if (activeFile.value && gone(activeFile.value)) activeFile.value = rest[rest.length - 1] ?? null;
   if (!anyDirty.peek()) live.value = null;
@@ -586,15 +591,44 @@ export async function reload(path: string) {
  * is, when that is all that is known (the tree): the cursor goes to the name on the line.
  * With `quiet` the source is not brought to the front: its cursor is moved where it is, so it is
  * at the place when the person looks at it. */
-export async function goTo(at: Location, name?: string, quiet = false) {
+export async function goTo(at: Location, name?: string, quiet = false, record = !quiet) {
   try {
     await openFile(at.file);
   } catch (e) {
     say(e instanceof Error ? e.message : String(e), true);
     return;
   }
+  if (record) {
+    // Where the cursor was, and where it goes: Back returns to the first.
+    const c = cursor.peek();
+    navHistory.value = visit(leaving(navHistory.peek(), c && openFiles.peek()[c.file] ? { file: c.file, line: c.line, column: c.column } : null), { file: at.file, line: at.line, column: at.column });
+  }
   if (!quiet) revealSource();
   reveal.value = { at, name, nonce: ++nonce, quiet };
+}
+
+const placeAt = (p: { file: string; line: number; column: number }): Location => ({ file: p.file, line: p.line, column: p.column, endLine: p.line, endColumn: p.column });
+
+/** Back through the places the cursor was taken to. False when there is nowhere to go. */
+export async function navBack(): Promise<boolean> {
+  const step = stepBack(navHistory.peek());
+  if (!step) return false;
+  navHistory.value = step.history;
+  await goTo(placeAt(step.place), undefined, false, false);
+  return true;
+}
+
+export async function navForward(): Promise<boolean> {
+  const step = stepForward(navHistory.peek());
+  if (!step) return false;
+  navHistory.value = step.history;
+  await goTo(placeAt(step.place), undefined, false, false);
+  return true;
+}
+
+/** A tab dragged to a new place: before `before`, or to the end. */
+export function moveTab(path: string, before: string | null) {
+  tabs.value = reorder(tabs.value, path, before);
 }
 
 /** A part picked by its designator (a list that only knows the letters): it is selected in every

@@ -38,6 +38,8 @@ import { chooseTheme } from '../themeUi';
 import { plural } from '../util';
 import { useElapsed } from './JobProgress';
 import { Icon, SeverityIcon } from './Icons';
+import { FONT, fontSize, hoverCards, inlineHints, outlineOpen, resetEditorZoom, wordWrap, zoomEditor } from '../source/prefs';
+import { chordText, find } from '../commands';
 
 /** What the open file is, as the bar names it. */
 export function languageOf(path: string | null): string {
@@ -250,6 +252,41 @@ function ThemeMenu({ close }: { close: () => void }) {
   );
 }
 
+/** What the source shows and how: hints, cards, wrapping, the outline and the size of the text. */
+function SourceOptions({ close }: { close: () => void }) {
+  const row = (label: string, on: boolean, flip: () => void, command: string, id: string) => (
+    <button type="button" class="src-opt" role="menuitemcheckbox" aria-checked={on} data-testid={id} onClick={flip}>
+      <span class="src-check" aria-hidden="true">{on ? <Icon name="check" size={12} /> : null}</span>
+      {label}
+      {find(command)?.keys && <kbd>{chordText(find(command)!.keys!)}</kbd>}
+    </button>
+  );
+  return (
+    <Popover close={close} label="Source options">
+      <div class="status-popover-title">Source</div>
+      <div class="src-opts" role="menu" aria-label="Source options">
+        {row('Inline hints', inlineHints.value, () => (inlineHints.value = !inlineHints.value), 'source.hints.toggle', 'opt-hints')}
+        {row('Hover cards', hoverCards.value, () => (hoverCards.value = !hoverCards.value), 'source.cards.toggle', 'opt-cards')}
+        {row('Word wrap', wordWrap.value, () => (wordWrap.value = !wordWrap.value), 'source.wrap.toggle', 'opt-wrap')}
+        {row('Outline', outlineOpen.value, () => (outlineOpen.value = !outlineOpen.value), 'source.outline.toggle', 'opt-outline')}
+        <div class="src-size" role="group" aria-label="Text size">
+          Text size
+          <button type="button" class="icon-btn" aria-label="Smaller text" data-tip="Smaller text" disabled={fontSize.value <= FONT.min} onClick={() => zoomEditor(-1)}>
+            <Icon name="minus" size={13} />
+          </button>
+          <output aria-live="polite" data-testid="font-size">{fontSize.value} px</output>
+          <button type="button" class="icon-btn" aria-label="Larger text" data-tip="Larger text" disabled={fontSize.value >= FONT.max} onClick={() => zoomEditor(1)}>
+            <Icon name="plus" size={13} />
+          </button>
+          <button type="button" class="tool small src-reset" disabled={fontSize.value === FONT.initial} onClick={resetEditorZoom}>
+            Reset
+          </button>
+        </div>
+      </div>
+    </Popover>
+  );
+}
+
 function focusBoardPicker() {
   const select = document.querySelector<HTMLSelectElement>('.boardpick select');
   if (!select) return;
@@ -267,7 +304,7 @@ export function StatusBar() {
   const f = path ? openFiles.value[path] : undefined;
   const cur = cursor.value;
   const state = connection.value;
-  const [popover, setPopover] = useState<'line' | 'connection' | 'theme' | null>(null);
+  const [popover, setPopover] = useState<'line' | 'connection' | 'theme' | 'source' | null>(null);
   const unsaved = Object.values(openFiles.value).filter(dirty).length;
   const title = project.value?.title;
   // The right side is about the text being edited: it says nothing while no source is on screen.
@@ -315,6 +352,14 @@ export function StatusBar() {
               Ln {cur.line}, Col {cur.column}
             </Item>
             {popover === 'line' && <GoToLine close={() => setPopover(null)} />}
+          </span>
+        )}
+        {inSource && path && (
+          <span class={`status-anchor ${popover === 'source' ? 'open' : ''}`}>
+            <Item class="source-opts-item" label="Source options" title="Inline hints, hover cards, word wrap, the outline and the size of the text. Click to change." pressed={popover === 'source'} onClick={() => setPopover(popover === 'source' ? null : 'source')}>
+              <Icon name="sliders" size={14} />
+            </Item>
+            {popover === 'source' && <SourceOptions close={() => setPopover(null)} />}
           </span>
         )}
         {inSource && path && (

@@ -7,6 +7,7 @@ import type { BoardDetail, Project, Severity } from './api';
 import { ORIGIN_LABEL, type Row, whereText } from './feedback/problems';
 import { type Field, matchFields } from './fuzzy';
 import { type Selection, modulesOf, moduleSel, netSel, partSel } from './selection';
+import { type Sym, flatten, roleOf } from './source/symbols';
 
 export type ResultKind = 'command' | 'problem' | 'part' | 'net' | 'bus' | 'module' | 'definition' | 'file';
 
@@ -16,6 +17,8 @@ export type Target =
   /** A bus the schematic draws, by the path of its interface instance. */
   | { type: 'bus'; path: string }
   | { type: 'definition'; file: string; line: number; name: string; defKind: string }
+  /** A symbol of the open file (a definition or a declaration), with the column of its name. */
+  | { type: 'symbol'; file: string; line: number; column: number; name: string; defKind?: string }
   | { type: 'file'; path: string }
   | { type: 'command'; id: string }
   | { type: 'problem'; id: string };
@@ -150,6 +153,27 @@ export function buildIndex(detail: BoardDetail | null, project: Project | null, 
   return { parts, nets, buses, modules, definitions, files };
 }
 
+/** The symbols of one file as items: what `@` lists while the editor has the keys. */
+export function fileSymbolItems(path: string, syms: Sym[], kindOf: (type: string) => string | undefined): Item[] {
+  return flatten(syms).map((s): Item => {
+    const role = roleOf(s, kindOf);
+    const kind: ResultKind = s.kind !== 'decl' ? 'definition' : role === 'part' ? 'part' : role === 'module' ? 'module' : role === 'port' ? 'bus' : 'definition';
+    const what = s.kind !== 'decl' ? s.kind : role === 'port' ? 'port' : role === 'field' ? 'field' : role;
+    return {
+      id: `sym:${path}:${s.id}`,
+      kind,
+      label: s.kind === 'decl' ? `.${s.name}` : s.name,
+      sub: s.typeName,
+      detail: `${what} · line ${s.line}`,
+      fields: [
+        { name: 'label', text: s.kind === 'decl' ? `.${s.name}` : s.name, weight: 2 },
+        { name: 'sub', text: s.typeName ?? '', weight: 1 },
+      ],
+      target: { type: 'symbol', file: path, line: s.line, column: s.column, name: s.name, defKind: s.kind === 'decl' ? undefined : s.kind },
+    };
+  });
+}
+
 export type Mode = 'all' | 'command' | 'problem' | 'symbol' | 'net' | 'line';
 
 export const PREFIXES: { prefix: string; mode: Mode; title: string; hint: string }[] = [
@@ -217,7 +241,7 @@ function rank(items: Item[], text: string, cap: number): Hit[] {
 const first = (n: number, items: Item[]) => items.slice(0, n).map((item): Hit => ({ item, score: 0, marks: {} }));
 
 /** The groups for a query, best group first. `commands` are the items for the command mode. */
-export function search(index: Index, commands: Item[], raw: string, problems: Item[] = []): Group[] {
+export function search(index: Index, commands: Item[], raw: string, problems: Item[] = [], fileSymbols: Item[] | null = null): Group[] {
   const { mode, text } = parseQuery(raw);
   const groups: Group[] = [];
   const add = (title: string, hits: Hit[]) => hits.length > 0 && groups.push({ title, hits });
@@ -232,6 +256,10 @@ export function search(index: Index, commands: Item[], raw: string, problems: It
       add('Nets', text ? rank(index.nets, text, CAP_ALONE) : first(CAP_ALONE, index.nets));
       return groups;
     case 'symbol':
+      if (fileSymbols) {
+        add('In this file', text ? rank(fileSymbols, text, CAP_ALONE) : first(CAP_ALONE, fileSymbols));
+        return groups;
+      }
       add('Modules', text ? rank(index.modules, text, CAP_ALONE) : first(CAP_ALONE, index.modules));
       add('Definitions', text ? rank(index.definitions, text, CAP_ALONE) : first(CAP_ALONE, index.definitions));
       return groups;

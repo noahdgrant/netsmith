@@ -11,7 +11,9 @@ import { drawnBuses } from '../views/schematic-selection';
 import { allRows, revealRow } from '../feedback/derive';
 import { sortRows } from '../feedback/problems';
 import { pieces } from '../fuzzy';
-import { type Hit, type Item, PREFIXES, buildIndex, parseLine, parseQuery, problemItems, recentItems, search } from '../quickopen';
+import { type Hit, type Item, PREFIXES, buildIndex, fileSymbolItems, parseLine, parseQuery, problemItems, recentItems, search } from '../quickopen';
+import { kindOfType } from '../source/card';
+import { scanSymbols } from '../source/symbols';
 import { closePicker, picker, recentCommands, recentPicks, rememberQuery, usedCommand, usedPick } from '../quickpick';
 import { Icon, type IconName, SeverityIcon } from './Icons';
 import { activeFile, detail, goTo, openFile, openFiles, project, revealSection, say, viewBoardOfDefinition } from '../store';
@@ -62,6 +64,22 @@ function commandIcon(id: string): IconName {
     'schematic.zoomin': 'plus',
     'schematic.zoomout': 'minus',
     'nav.back': 'arrow-left',
+    'nav.history.back': 'arrow-left',
+    'nav.history.forward': 'arrow-right',
+    'goto.symbol.file': 'definition',
+    'goto.symbol.project': 'module',
+    'source.card.show': 'note',
+    'source.breadcrumbs.focus': 'chevron-right',
+    'source.fold.all': 'fold',
+    'source.fold.unfold': 'expand-all',
+    'source.zoom.in': 'zoom',
+    'source.zoom.out': 'zoom',
+    'source.zoom.reset': 'zoom',
+    'source.replace': 'search',
+    'source.hints.toggle': 'eye',
+    'source.cards.toggle': 'note',
+    'source.outline.toggle': 'outline',
+    'source.wrap.toggle': 'wrap',
     'goto.anything': 'search',
     'palette.open': 'command',
     'goto.symbol': 'definition',
@@ -86,6 +104,7 @@ function commandIcon(id: string): IconName {
     return (['source', 'schematic', 'power', 'system', 'bom', 'pcb', 'build'].includes(section) ? section : 'panel') as IconName;
   }
   if (id.startsWith('problems.')) return 'warning';
+  if (id.startsWith('source.')) return 'source';
   if (id.startsWith('theme.')) return 'theme';
   if (id.startsWith('schematic.')) return 'schematic';
   return 'command';
@@ -182,7 +201,10 @@ function choose(item: Item) {
     const bus = drawnBuses.peek().buses.find((b) => b.path === t.path);
     if (bus) goToBusPick(bus);
   }
-  else if (t.type === 'definition') {
+  else if (t.type === 'symbol') {
+    void goTo({ file: t.file, line: t.line, column: t.column, endLine: t.line, endColumn: t.column });
+    if (t.defKind) viewBoardOfDefinition(t.defKind, t.name);
+  } else if (t.type === 'definition') {
     void goTo({ file: t.file, line: t.line, column: 1, endLine: t.line, endColumn: 1 }, t.name);
     viewBoardOfDefinition(t.defKind, t.name);
   } else {
@@ -192,7 +214,7 @@ function choose(item: Item) {
   }
 }
 
-function Dialog({ initial }: { initial: string }) {
+function Dialog({ initial, fileScope }: { initial: string; fileScope: boolean }) {
   const [query, setQuery] = useState(initial);
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -224,6 +246,12 @@ function Dialog({ initial }: { initial: string }) {
 
   const file = activeFile.value ? openFiles.value[activeFile.value] : undefined;
   const lines = file ? file.text.split('\n').length : null;
+  // With the editor holding the keys, `@` lists what the open file defines.
+  const scoped = fileScope && !!file && !!activeFile.value;
+  const fileItems = useMemo(() => {
+    const path = activeFile.value;
+    return scoped && path && file ? fileSymbolItems(path, scanSymbols(file.text), (t) => kindOfType(p, t, path)) : null;
+  }, [scoped, file?.text, activeFile.value, p]);
 
   const groups: RowGroup[] = useMemo(() => {
     const out: RowGroup[] = [];
@@ -279,10 +307,10 @@ function Dialog({ initial }: { initial: string }) {
       if (rest.length) out.push({ title: used.length ? 'Other commands' : '', rows: rest });
       return out;
     }
-    const found = search(index, commandItems(), query, mode === 'problem' ? problemItems(sortRows(allRows.value)) : []);
+    const found = search(index, commandItems(), query, mode === 'problem' ? problemItems(sortRows(allRows.value)) : [], fileItems);
     for (const g of found) out.push({ title: g.title, rows: g.hits.map(wrap) });
     return out;
-  }, [index, query, mode, text, lines, activeFile.value, recentPicks.value, recentCommands.value, available().length, allRows.value]);
+  }, [index, query, mode, text, lines, fileItems, activeFile.value, recentPicks.value, recentCommands.value, available().length, allRows.value]);
 
   const rows = groups.flatMap((g) => g.rows);
   const at = Math.min(active, Math.max(rows.length - 1, 0));
@@ -330,7 +358,9 @@ function Dialog({ initial }: { initial: string }) {
       : mode === 'problem'
         ? 'Go to a problem'
       : mode === 'symbol'
-        ? 'Go to a module or definition'
+        ? fileItems
+          ? 'Go to a symbol in this file'
+          : 'Go to a module or definition'
         : mode === 'net'
           ? 'Go to a net'
           : mode === 'line'
@@ -445,7 +475,7 @@ function Dialog({ initial }: { initial: string }) {
           ))}
           {empty && (
             <div class="qp-empty" role="status">
-              {mode === 'command' ? 'No command matches' : mode === 'problem' ? (text ? 'No problem matches' : 'No problems') : mode === 'net' ? 'No net matches' : mode === 'symbol' ? 'No module or definition matches' : 'No part, net, module, definition or file matches'}
+              {mode === 'command' ? 'No command matches' : mode === 'problem' ? (text ? 'No problem matches' : 'No problems') : mode === 'net' ? 'No net matches' : mode === 'symbol' ? (fileItems ? 'No symbol in this file matches' : 'No module or definition matches') : 'No part, net, module, definition or file matches'}
               {text && <> “{text}”</>}
               {mode === 'all' && <div class="qp-empty-hint">Try a designator like c25, a value like 100n, or a module path. Type # for nets, @ for definitions.</div>}
             </div>
@@ -476,5 +506,5 @@ function Dialog({ initial }: { initial: string }) {
 export function QuickPick() {
   const p = picker.value;
   if (!p) return null;
-  return <Dialog key={p.nonce} initial={p.initial} />;
+  return <Dialog key={p.nonce} initial={p.initial} fileScope={p.fileScope} />;
 }

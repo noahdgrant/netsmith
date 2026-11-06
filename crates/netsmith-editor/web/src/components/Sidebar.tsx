@@ -6,6 +6,7 @@ import { allowed, folderFor, removalPrompt, starter, stemOf, type Kind, type Tem
 import { load, save } from '../storage';
 import { computed } from '@preact/signals';
 import { Icon } from './Icons';
+import { Outline } from './Outline';
 import { EmptyState } from './ui';
 import {
   activeFile,
@@ -789,6 +790,7 @@ export function Sidebar() {
           }}
         />
       )}
+      <Outline />
       <Resizer width={width} set={setWidth} />
     </aside>
   );
