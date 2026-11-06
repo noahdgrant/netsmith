@@ -14,9 +14,10 @@ use netsmith_core::{Design, DesignError, Net, Note, PinRef};
 use netsmith_kicad::{Mapping, SymbolLib};
 
 use crate::geom::{Pt, Rect, snap_up};
+use crate::hints::{HintFinding, ResolvedHints};
 use crate::layout::{
     Anchor, Bus, Layout, Marks, NetLabel, PinMark, PlacedNote, PlacedPart, Port, PowerSymbol,
-    Rails, TEXT_SIZE, Text, Wire, is_ground_name, layout_marked, layout_with, text_width,
+    Rails, TEXT_SIZE, Text, Wire, is_ground_name, layout_with_hints, text_width,
 };
 
 /// A board with this many parts or fewer is drawn as one sheet.
@@ -104,11 +105,75 @@ pub fn layout_sheets_marked(
     mapping: &Mapping,
     lib: &SymbolLib,
 ) -> Result<Layout, DesignError> {
+    layout_sheets_hinted(
+        design,
+        groups,
+        rails,
+        marks,
+        &ResolvedHints::default(),
+        mapping,
+        lib,
+    )
+}
+
+/// [`layout_sheets_marked`] with the hints of a schematic layout file (ADR 0061,
+/// [`crate::LayoutHints::resolve`]): each part's block moved, turned or pinned and each note
+/// moved as the file says. With no entry (`ResolvedHints::default()`) the drawing is byte for
+/// byte the one [`layout_sheets_marked`] makes; an entry the drawing cannot honour is left out
+/// (see [`layout_sheets_hinted_findings`] for what it says about it).
+pub fn layout_sheets_hinted(
+    design: &Design,
+    groups: &[Group],
+    rails: &Rails,
+    marks: &Marks,
+    hints: &ResolvedHints,
+    mapping: &Mapping,
+    lib: &SymbolLib,
+) -> Result<Layout, DesignError> {
+    layout_sheets_hinted_findings(design, groups, rails, marks, hints, mapping, lib)
+        .map(|(layout, _)| layout)
+}
+
+/// [`layout_sheets_hinted`], and a finding ([`HintFinding::unusable`]) for each entry the
+/// drawing could not honour: a block that would lie on another part or stand too far from the
+/// drawing, a note that would lie on something, an entry the drawing with it would break a rule
+/// with. The entry is ignored, and the findings are in the order of the file (line, then text).
+pub fn layout_sheets_hinted_findings(
+    design: &Design,
+    groups: &[Group],
+    rails: &Rails,
+    marks: &Marks,
+    hints: &ResolvedHints,
+    mapping: &Mapping,
+    lib: &SymbolLib,
+) -> Result<(Layout, Vec<HintFinding>), DesignError> {
     design.validate()?;
     let clusters = clusters(design, groups);
     let single = clusters.len() <= 1 && design.parts.len() <= MAX_SHEET_PARTS;
+    let mut found: Vec<HintFinding> = Vec::new();
     if design.parts.len() <= SHEET_THRESHOLD || single {
-        return layout_marked(design, rails, marks, mapping, lib);
+        // One drawing for the board; a `pin` is still from the reference part of the sheet the
+        // part is on, as it is when the board is drawn split.
+        let mut sheet_of = vec![0; design.parts.len()];
+        for (c, cluster) in clusters.iter().enumerate() {
+            for &p in &cluster.parts {
+                sheet_of[p] = c;
+            }
+        }
+        let (layout, findings) = layout_with_hints(
+            design,
+            mapping,
+            lib,
+            &vec![false; design.nets.len()],
+            rails,
+            marks,
+            rails.ground.len() > 1,
+            hints,
+            Some(&sheet_of),
+        )?;
+        found.extend(findings);
+        found.sort_by(|a, b| (a.line, &a.message).cmp(&(b.line, &b.message)));
+        return Ok((layout, found));
     }
     let clusters = cut(design, clusters);
 
@@ -219,7 +284,19 @@ pub fn layout_sheets_marked(
             interfaces,
             notes,
         };
-        let layout = layout_with(
+        // The file's entries for this sheet, by the sheet's own indices.
+        let mut local = ResolvedHints::default();
+        for (p, entry) in &hints.parts {
+            if let Some(&at) = in_sheet.get(p) {
+                local.parts.insert(at, entry.clone());
+            }
+        }
+        for (at, &ni) in note_ids.iter().enumerate() {
+            if let Some(entry) = hints.notes.get(&ni) {
+                local.notes.insert(at, entry.clone());
+            }
+        }
+        let (layout, findings) = layout_with_hints(
             &sub,
             mapping,
             lib,
@@ -227,7 +304,10 @@ pub fn layout_sheets_marked(
             rails,
             marks,
             rails.ground.len() > 1,
+            &local,
+            None,
         )?;
+        found.extend(findings);
         drawn.push(Drawn {
             layout,
             parts: cluster.parts.clone(),
@@ -401,25 +481,29 @@ pub fn layout_sheets_marked(
             },
         });
     }
-    Ok(Layout {
-        parts: parts
-            .into_iter()
-            .map(|p| p.expect("every part is on a sheet"))
-            .chain(more)
-            .collect(),
-        symbols,
-        ports,
-        marks: pin_marks,
-        sheets,
-        wires,
-        junctions,
-        labels,
-        buses,
-        spines,
-        notes,
-        rows: 0,
-        bounds: bounds.unwrap_or(Rect::around(Pt::new(0.0, 0.0))),
-    })
+    found.sort_by(|a, b| (a.line, &a.message).cmp(&(b.line, &b.message)));
+    Ok((
+        Layout {
+            parts: parts
+                .into_iter()
+                .map(|p| p.expect("every part is on a sheet"))
+                .chain(more)
+                .collect(),
+            symbols,
+            ports,
+            marks: pin_marks,
+            sheets,
+            wires,
+            junctions,
+            labels,
+            buses,
+            spines,
+            notes,
+            rows: 0,
+            bounds: bounds.unwrap_or(Rect::around(Pt::new(0.0, 0.0))),
+        },
+        found,
+    ))
 }
 
 struct Drawn {

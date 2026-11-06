@@ -25,8 +25,11 @@ pub use layout::{
     PowerSymbol, Rails, Tuning, layout, layout_marked, layout_rails, layout_tuned,
     layout_tuned_touched,
 };
-pub use sheets::{Group, Sheet, layout_sheets, layout_sheets_marked, layout_sheets_rails};
+pub use sheets::{
+    Group, Sheet, layout_sheets, layout_sheets_hinted, layout_sheets_hinted_findings,
+    layout_sheets_marked, layout_sheets_rails,
+};
 pub use svg::{
-    ViewError, render_svg, render_svg_by_module, render_svg_by_module_marked,
+    ViewError, render_layout, render_svg, render_svg_by_module, render_svg_by_module_marked,
     render_svg_by_module_with, render_svg_with,
 };

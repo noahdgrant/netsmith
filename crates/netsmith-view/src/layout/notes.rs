@@ -31,9 +31,11 @@ use std::collections::HashMap;
 
 use netsmith_core::{Design, Note, NoteKind};
 
+use super::hinting;
 use super::{Anchor, BORDER, GRID, Layout, PlacedNote, Text};
 use crate::geom::{Dir, Pt, Rect, snap, snap_up};
 use crate::glyph::text_em;
+use crate::hints::HintFinding;
 use crate::sheetview::{bus_segments, overlaps, symbol_box, texts, views};
 
 /// The height of a doc comment's letters, as net names are.
@@ -427,9 +429,20 @@ fn around(c: Pt, w: f64, h: f64) -> Vec<(f64, Rect)> {
 
 /// Draws the notes of `design` on `layout`, the sheet it has drawn: see the module's doc. A
 /// design with no notes leaves the layout as it is.
-pub(super) fn place(design: &Design, layout: &mut Layout) {
+///
+/// `hints` move notes from where they were put (ADR 0061): each note, in the order of the
+/// design, is carried by its offset to the place that is free of everything else (the parts,
+/// texts, wires, symbols and the other notes, with the clearance a note keeps), as the notes
+/// are placed; one that would lie on something, or stand more than [`hinting::REACH`] outside
+/// the drawing, stays where it was put and is a finding. The rest of the notes are placed
+/// first, as if there were no file, so a moved note moves nothing else.
+pub(super) fn place(
+    design: &Design,
+    layout: &mut Layout,
+    hints: &std::collections::BTreeMap<usize, hinting::NoteEntry>,
+) -> Vec<HintFinding> {
     if design.notes.is_empty() {
-        return;
+        return Vec::new();
     }
     let bodies: Vec<Body> = design.notes.iter().map(body).collect();
     let by_path: HashMap<&str, usize> = design
@@ -457,6 +470,7 @@ pub(super) fn place(design: &Design, layout: &mut Layout) {
 
     let mut placed: Vec<PlacedNote> = Vec::new();
     let mut taken = obstacles(layout);
+    let drawing = taken.clone();
     let region = Rect {
         min: Pt::new(layout.bounds.min.x + GRID, layout.bounds.min.y + GRID),
         max: Pt::new(layout.bounds.max.x - GRID, layout.bounds.max.y - GRID),
@@ -633,8 +647,56 @@ pub(super) fn place(design: &Design, layout: &mut Layout) {
     }
 
     placed.sort_by_key(|p| p.note);
+    let mut findings = Vec::new();
+    for (&i, hint) in hints {
+        let Some(at) = placed.iter().position(|p| p.note == i) else {
+            continue;
+        };
+        let (dx, dy) = hint.by.mm();
+        if dx == 0.0 && dy == 0.0 {
+            continue;
+        }
+        let by = Pt::new(dx, dy);
+        let frame = placed[at].frame.translated(by);
+        let reach = inflate(bounds, hinting::REACH);
+        let outside = frame.min.x < reach.min.x
+            || frame.min.y < reach.min.y
+            || frame.max.x > reach.max.x
+            || frame.max.y > reach.max.y;
+        let lies_on = drawing.iter().any(|t| overlaps(&frame, t, 0.0))
+            || placed
+                .iter()
+                .enumerate()
+                .any(|(j, o)| j != at && overlaps(&frame, &inflate(o.frame, CLEAR), 0.0));
+        if outside {
+            findings.push(hinting::note_finding(
+                hint,
+                &format!(
+                    "the note would stand more than {:.0} mm outside the drawing",
+                    hinting::REACH
+                ),
+            ));
+        } else if lies_on {
+            findings.push(hinting::note_finding(
+                hint,
+                "the note would lie on a part, a wire, a text or another note at the place the file gives it",
+            ));
+        } else {
+            shift_note(&mut placed[at], by);
+            bounds.union(inflate(frame, BORDER));
+        }
+    }
     layout.bounds = bounds;
     layout.notes = placed;
+    findings
+}
+
+/// Moves a placed note, its frame and its text, by `by`.
+fn shift_note(note: &mut PlacedNote, by: Pt) {
+    note.frame = note.frame.translated(by);
+    for t in note.heading.iter_mut().chain(note.lines.iter_mut()) {
+        t.at = Pt::new(t.at.x + by.x, t.at.y + by.y);
+    }
 }
 
 /// A copy of the body of note `i` (a body is moved into the note it makes).

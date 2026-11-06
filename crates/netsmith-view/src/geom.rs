@@ -139,6 +139,38 @@ impl Orient {
         Orient::new(0, 1, -1, 0),
     ];
 
+    /// The orientation of a symbol flipped left to right when `mirror` (before the turn) and
+    /// then turned `quarter_turns` quarter turns counterclockwise on the page, from the symbol
+    /// as the library draws it ([`Orient::IDENTITY`]). This is how a layout file spells an
+    /// orientation (ADR 0061): `turned(false, 0)` is the library's drawing.
+    pub fn turned(mirror: bool, quarter_turns: u8) -> Orient {
+        let base = if mirror {
+            Orient::ALL[1]
+        } else {
+            Orient::IDENTITY
+        };
+        let mut o = base;
+        for _ in 0..quarter_turns % 4 {
+            // A quarter turn counterclockwise on the page (y down) takes the sheet vector
+            // (x, y) to (y, -x).
+            o = Orient::new(o.c, o.d, -o.a, -o.b);
+        }
+        o
+    }
+
+    /// The inverse of [`Orient::turned`]: whether the symbol is mirrored, and how many quarter
+    /// turns counterclockwise it is turned after.
+    pub fn mirror_and_turns(self) -> (bool, u8) {
+        for mirror in [false, true] {
+            for turns in 0..4 {
+                if Orient::turned(mirror, turns) == self {
+                    return (mirror, turns);
+                }
+            }
+        }
+        unreachable!("every orientation is a mirror and a number of quarter turns")
+    }
+
     /// A symbol-space point (y up) on the sheet, relative to the symbol's origin.
     pub fn apply(self, p: (f64, f64)) -> Pt {
         let (x, y) = p;
@@ -198,6 +230,26 @@ mod tests {
         let m = Orient::ALL[1];
         assert_eq!(m.dir((1.0, 0.0)), Dir::Left);
         assert_eq!(m.dir((0.0, 1.0)), Dir::Up);
+    }
+
+    #[test]
+    fn a_mirror_and_quarter_turns_name_each_of_the_eight_orientations() {
+        assert_eq!(Orient::turned(false, 0), Orient::IDENTITY);
+        assert_eq!(Orient::turned(true, 0), Orient::ALL[1]);
+        assert_eq!(Orient::turned(false, 1), Orient::ALL[4]);
+        assert_eq!(Orient::turned(false, 2), Orient::ALL[2]);
+        let mut seen = Vec::new();
+        for mirror in [false, true] {
+            for turns in 0..4 {
+                let o = Orient::turned(mirror, turns);
+                assert!(Orient::ALL.contains(&o));
+                assert!(!seen.contains(&o));
+                seen.push(o);
+                assert_eq!(o.mirror_and_turns(), (mirror, turns));
+            }
+        }
+        // Four quarter turns are none.
+        assert_eq!(Orient::turned(false, 5), Orient::turned(false, 1));
     }
 
     #[test]

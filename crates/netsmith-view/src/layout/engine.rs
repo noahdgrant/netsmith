@@ -301,6 +301,11 @@ pub(super) struct Drawn {
     pub bus_nets: Vec<bool>,
     /// The nets of a pair satellite (a crystal across two pins): never named.
     pub pair_nets: Vec<bool>,
+    /// How far the layout file moved each box from where the engine put it; empty when it
+    /// moved none.
+    pub shifts: Vec<Pt>,
+    /// What the engine could not honour of the file's moves.
+    pub findings: Vec<crate::hints::HintFinding>,
 }
 
 /// One piece of the sheet that is placed as a whole: a block (a main part with the parts that
@@ -523,7 +528,7 @@ pub(super) fn run(
                     .iter()
                     .all(|q| q.net.is_none_or(|n| ctx.power[n].is_none())));
             let side = placed[c.anchor].pins[c.pin].escape;
-            if series && !side.is_vertical() {
+            if series && !side.is_vertical() && !ctx.hints.turned(part) {
                 let want = side.opposite();
                 let found = Orient::ALL.into_iter().find(|&o| {
                     let g = &ctx.glyphs[part];
@@ -612,6 +617,10 @@ pub(super) fn run(
     let mut pair_routes: Vec<pair::PairRoute> = Vec::new();
     for b in &blocks {
         for &(p, o) in &b.orients {
+            // A turn the file asks for stands.
+            if ctx.hints.turned(p) {
+                continue;
+            }
             placed[p] = place_part(ctx, p, o, &pin_nets[p]);
         }
         pair_routes.extend(b.pairs.iter().copied());
@@ -769,6 +778,40 @@ pub(super) fn run(
         if let Some(side) = text_side[p] {
             set_text_side(ctx, &mut placed[p], side);
         }
+    }
+    // The layout file's moves: every block is in its place and nothing is routed yet, so the
+    // wires go round the result and are never moved after (ADR 0061).
+    let mut shifts: Vec<Pt> = Vec::new();
+    let mut hint_findings = Vec::new();
+    if !ctx.hints.moves.is_empty() {
+        let names: Vec<String> = (0..n)
+            .map(|p| canon::part_name(&ctx.design.parts[p]).to_string())
+            .collect();
+        let rects: Vec<Rect> = placed.iter().map(|p| p.extent).collect();
+        // The block a move carries: a main part's block (the satellites that serve it), or the
+        // unit of parts the part stands in (a satellite, or parts that stand alone).
+        let carried = |p: usize| -> (Vec<usize>, bool) {
+            match pieces.iter().find(|piece| piece.anchor == Some(p)) {
+                Some(piece) => (piece.members.iter().map(|m| m.0).collect(), true),
+                None => (units[unit_index(units, p)].parts.clone(), false),
+            }
+        };
+        let (by, found) = hinting::resolve(
+            &ctx.hints,
+            &hinting::Frame {
+                at: &at,
+                rect: &rects,
+                names: &names,
+                carried: &carried,
+            },
+        );
+        for p in 0..n {
+            at[p] = Pt::new(at[p].x + by[p].x, at[p].y + by[p].y);
+        }
+        shifts = by;
+        hint_findings = found;
+    }
+    for p in 0..n {
         translate_part(&mut placed[p], at[p]);
     }
 
@@ -792,6 +835,8 @@ pub(super) fn run(
     )
     .finish();
     drawn.layout.rows = row_count;
+    drawn.shifts = shifts;
+    drawn.findings = hint_findings;
     drawn
 }
 
@@ -2957,6 +3002,8 @@ impl<'a> Scene<'a> {
             clusters: self.clusters,
             bus_nets: self.bus_done,
             pair_nets: self.pair_nets,
+            shifts: Vec::new(),
+            findings: Vec::new(),
         }
     }
 }

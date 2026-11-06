@@ -425,3 +425,118 @@ fn a_unit_whose_pins_are_off_the_grid_by_different_amounts_is_drawn_with_its_pin
     let found = check(&design, &l);
     assert!(found.is_empty(), "{found:?}");
 }
+
+// --- The layout file (ADR 0061) -------------------------------------------------------------
+
+/// A file entry for `U1`, put in directly.
+fn u1_hints(design: &Design, hint: netsmith_view::PartHint) -> netsmith_view::ResolvedHints {
+    let mut h = netsmith_view::ResolvedHints::default();
+    h.parts.insert(
+        0,
+        netsmith_view::ResolvedPart {
+            sheet: design.name.clone(),
+            path: design.parts[0].path.clone(),
+            hint,
+            line: 3,
+            entry: "[UnitBoard.parts.\"u1\"]".into(),
+        },
+    );
+    h
+}
+
+#[test]
+fn a_hint_on_a_part_with_units_moves_the_primary_box_and_the_other_units_follow() {
+    use netsmith_view::{PartHint, Place, Steps, layout_sheets_hinted_findings};
+    let (_dir, mapping, lib) = setup(20, 13);
+    let mut design = board();
+    for p in &mut design.parts {
+        p.path = p.refdes.to_lowercase();
+    }
+    let draw = |hints: &netsmith_view::ResolvedHints| {
+        layout_sheets_hinted_findings(
+            &design,
+            &[],
+            &rails(),
+            &netsmith_view::Marks::default(),
+            hints,
+            &mapping,
+            &lib,
+        )
+        .unwrap()
+    };
+    let (plain, _) = draw(&netsmith_view::ResolvedHints::default());
+    assert_eq!(
+        plain.parts.len(),
+        design.parts.len() + 1,
+        "two boxes for U1"
+    );
+
+    // A move: both boxes are carried by the same steps, so they keep the arrangement the
+    // drawing gave them.
+    let by = |x: i32, y: i32| {
+        u1_hints(
+            &design,
+            PartHint {
+                place: Some(Place::Offset(Steps::new(x, y))),
+                ..PartHint::default()
+            },
+        )
+    };
+    let (moved, found) = draw(&by(0, 50));
+    assert!(found.is_empty(), "{found:?}");
+    for k in [0, plain.parts.len() - 1] {
+        assert_eq!(plain.parts[k].part, 0);
+        let (a, b) = (plain.parts[k].at, moved.parts[k].at);
+        assert!(
+            (b.x - a.x).abs() < 1e-6 && (b.y - a.y - 50.0 * 1.27).abs() < 1e-6,
+            "box {k} of U1: {a:?} to {b:?}"
+        );
+    }
+    assert!(check(&design, &moved).is_empty());
+
+    // A turn is the primary box's alone: the other unit stays upright.
+    let (turned, found) = draw(&u1_hints(
+        &design,
+        PartHint {
+            rotate: Some(90),
+            ..PartHint::default()
+        },
+    ));
+    assert!(found.is_empty(), "{found:?}");
+    assert_eq!(turned.parts[0].orient, Orient::turned(false, 1));
+    assert_eq!(
+        turned.parts[plain.parts.len() - 1].orient,
+        Orient::IDENTITY,
+        "the other unit is drawn as the library draws it"
+    );
+    assert!(check(&design, &turned).is_empty());
+
+    // A pin puts the primary box at the place and carries the other unit by the same steps.
+    let pin = u1_hints(
+        &design,
+        PartHint {
+            place: Some(Place::Pinned(Steps::new(0, 90))),
+            ..PartHint::default()
+        },
+    );
+    let (pinned, found) = draw(&pin);
+    assert!(found.is_empty(), "{found:?}");
+    let reference = plain
+        .parts
+        .iter()
+        .position(|p| p.at.x.abs() < 1e-9 && p.at.y.abs() < 1e-9)
+        .expect("a part at the origin");
+    let _ = reference;
+    let delta = |k: usize| {
+        (
+            pinned.parts[k].at.x - plain.parts[k].at.x,
+            pinned.parts[k].at.y - plain.parts[k].at.y,
+        )
+    };
+    let (d0, d1) = (delta(0), delta(plain.parts.len() - 1));
+    assert!(
+        (d0.0 - d1.0).abs() < 1e-6 && (d0.1 - d1.1).abs() < 1e-6,
+        "{d0:?} {d1:?}"
+    );
+    assert!(check(&design, &pinned).is_empty());
+}

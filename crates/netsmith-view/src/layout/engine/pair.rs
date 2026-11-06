@@ -244,7 +244,12 @@ fn search(
     // Every orientation that draws the part differently, with its texts on each side.
     let mut turned: Vec<Vec<PlacedPart>> = Vec::new();
     let mut seen: Vec<Vec<(i64, i64, u8)>> = Vec::new();
+    // A turn the layout file asks for is the only one tried.
+    let fixed = ctx.hints.turned(part).then(|| placed[part].orient);
     for o in Orient::ALL {
+        if fixed.is_some_and(|f| f != o) {
+            continue;
+        }
         let base = place_part(ctx, part, o, &pin_nets);
         let key: Vec<(i64, i64, u8)> = base
             .pins
