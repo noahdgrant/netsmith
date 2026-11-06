@@ -120,5 +120,85 @@ pub fn corpus() -> Vec<Case> {
             dir: Some(dir),
         });
     }
+    // The same boards with notes (doc comments and a relation): every rule holds with them too.
+    let mut led = super::led();
+    led.name = "LedNotes".into();
+    note_paths(&mut led, None);
+    led.notes = notes(&["j1", "r1", "d1"], "");
+    out.push(sample(led, rails(&["GND"], &["VCC"])));
+    let (mut design, groups) = super::supplies(3);
+    note_paths(&mut design, Some(&groups));
+    design.notes = notes(&["supply1.u1", "supply2.r2", "supply3.d3"], "supply2");
+    out.push(Case {
+        name: "SuppliesNotes".into(),
+        design,
+        groups,
+        rails: rails(&["GND"], &["VIN"]),
+        mapping: Mapping::standard(),
+        lib: SymbolLib::at(testlib::sample_symbols()),
+        dir: None,
+    });
+    out
+}
+
+/// Paths for the parts of a test design: the lower-case reference, under the name of the group
+/// that holds it when there are groups.
+fn note_paths(design: &mut Design, groups: Option<&[Group]>) {
+    for p in &mut design.parts {
+        p.path = p.refdes.to_lowercase();
+    }
+    for g in groups.unwrap_or_default() {
+        for &p in &g.parts {
+            design.parts[p].path = format!("{}.{}", g.name, design.parts[p].path);
+        }
+    }
+}
+
+/// A doc comment on each of `parts`, a relation across the first two, the board's doc comment
+/// and, when `module` is not empty, that module's.
+fn notes(parts: &[&str], module: &str) -> Vec<netsmith_core::Note> {
+    use netsmith_core::{Note, NoteAt, NoteKind};
+    let at = |line| {
+        Some(NoteAt {
+            file: "board.nsm".into(),
+            line,
+        })
+    };
+    let mut out = vec![Note {
+        path: String::new(),
+        kind: NoteKind::Doc,
+        text: "The test board: every note of it is drawn without lying on anything.".into(),
+        at: at(1),
+        anchors: Vec::new(),
+        result: None,
+    }];
+    if !module.is_empty() {
+        out.push(Note {
+            path: module.into(),
+            kind: NoteKind::Doc,
+            text: "A supply with a regulator, a divider and a light.".into(),
+            at: at(5),
+            anchors: Vec::new(),
+            result: None,
+        });
+    }
+    for (i, p) in parts.iter().enumerate() {
+        out.push(Note {
+            path: (*p).into(),
+            kind: NoteKind::Doc,
+            text: format!("The part `{p}` is the one this note is about; it says why it is there in a sentence or two of text that wraps."),
+            at: at(10 + i),
+            anchors: vec![(*p).into()],
+            result: None,
+        });
+    }
+    out.push(Note {
+        path: String::new(),
+        kind: NoteKind::Relation,
+        text: format!(".{}.value == .{}.value / 10", parts[0], parts[1]),
+        at: at(30),
+        anchors: parts[..2].iter().map(|p| p.to_string()).collect(),
+        result: Some("x = 330Ω..340Ω".into()),
+    });
     out
 }
