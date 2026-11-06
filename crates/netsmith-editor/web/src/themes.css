@@ -202,6 +202,13 @@
   --pcb-front: #d08d50;
   --pcb-back: #46a3bc;
   --pcb-thru: #cdb890;
+  /* a hole that goes through: --pcb-thru is its ring (3:1), --pcb-thru-fill the body inside it, a step lighter than the ring on the light board */
+  --pcb-thru-fill: #8a7a58;
+  /* an inner plane, by its place among the planes: a tone for its fill and border (3:1) */
+  --pcb-plane-1: #9a8cf0;
+  --pcb-plane-2: #5fc98f;
+  --pcb-plane-3: #e0b050;
+  --pcb-plane-4: #e07aa8;
   --pcb-via: #a3adbc;
   --pcb-pad-text: #10141a;
   --pcb-select: var(--sel);
@@ -363,6 +370,13 @@
   --pcb-front: #a95e26;
   --pcb-back: #1f7f9a;
   --pcb-thru: #84702f;
+  /* a hole that goes through: --pcb-thru is its ring (3:1), --pcb-thru-fill the body inside it, a step lighter than the ring on the light board */
+  --pcb-thru-fill: #d6c48a;
+  /* an inner plane, by its place among the planes: a tone for its fill and border (3:1) */
+  --pcb-plane-1: #6552c9;
+  --pcb-plane-2: #23805a;
+  --pcb-plane-3: #9a6a10;
+  --pcb-plane-4: #b03f78;
   --pcb-via: #6a7280;
   --pcb-pad-text: #ffffff;
   --pcb-select: var(--sel);
@@ -521,6 +535,13 @@
   --pcb-front: #ffa45c;
   --pcb-back: #5cd0ee;
   --pcb-thru: #f0dcae;
+  /* a hole that goes through: --pcb-thru is its ring (3:1), --pcb-thru-fill the body inside it, a step lighter than the ring on the light board */
+  --pcb-thru-fill: var(--pcb-thru);
+  /* an inner plane, by its place among the planes: a tone for its fill and border (3:1) */
+  --pcb-plane-1: #b5a9ff;
+  --pcb-plane-2: #7ee8b0;
+  --pcb-plane-3: #ffd070;
+  --pcb-plane-4: #ff9cc4;
   --pcb-via: #d6d6d6;
   --pcb-pad-text: #000000;
   --pcb-select: var(--sel);
@@ -679,6 +700,13 @@
   --pcb-front: #8f3f06;
   --pcb-back: #005f78;
   --pcb-thru: #5e4a12;
+  /* a hole that goes through: --pcb-thru is its ring (3:1), --pcb-thru-fill the body inside it, a step lighter than the ring on the light board */
+  --pcb-thru-fill: var(--pcb-thru);
+  /* an inner plane, by its place among the planes: a tone for its fill and border (3:1) */
+  --pcb-plane-1: #3d2fa8;
+  --pcb-plane-2: #0d6a3f;
+  --pcb-plane-3: #7a5000;
+  --pcb-plane-4: #9c1f5e;
   --pcb-via: #444444;
   --pcb-pad-text: #ffffff;
   --pcb-select: var(--sel);

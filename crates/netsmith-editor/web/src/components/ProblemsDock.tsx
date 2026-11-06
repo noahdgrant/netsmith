@@ -223,7 +223,7 @@ export function ProblemsDock() {
           : null;
 
   return (
-    <section class="dock problems open" ref={host} style={{ height: `${d.height}px` }} aria-label="Problems" data-testid="dock">
+    <section class="dock problems open" ref={host} style={{ height: `${d.height}px` }} aria-label="Problems" data-testid="dock" data-toast-clear>
       <Resizer host={host} />
       <div class="dock-head problems-head">
         <h2 class="dock-title"><Icon name="panel" size={14} />Problems</h2>

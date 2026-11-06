@@ -206,7 +206,7 @@ export function Build() {
           </p>
         </div>
         <div class="bv-meta">
-          <Pill tone="neutral">{plural(boards.length, 'board')}</Pill>
+          <Pill tone="neutral" title="The boards the source defines">{plural(boards.length, 'board')} in the project</Pill>
           {errors > 0 ? (
             <Pill icon="error" tone="bad">
               Fix the {plural(errors, 'error')} first
@@ -225,7 +225,7 @@ export function Build() {
           title="Schematic"
           blurb="Writes a KiCad schematic and project file for every board."
           command="netsmith build"
-          scope={<Pill tone="neutral">{plural(boards.length, 'board')}</Pill>}
+          scope={<Pill tone="neutral" title="Every board of the project">all {plural(boards.length, 'board')}</Pill>}
           running={busy === 'build'}
         >
           <div class="acard-actions">
@@ -318,7 +318,7 @@ export function Build() {
           title="Order"
           blurb="Makes the fab package of every board in an order of netsmith.toml, with one combined bill of materials."
           command={order ? `netsmith fab --order ${order.name}` : 'netsmith fab --order'}
-          scope={order ? <Pill tone="neutral">{plural(totalBoards, 'board')}</Pill> : undefined}
+          scope={order ? <Pill tone="neutral" title="The quantities of the order added up: the boards the fab house makes">{plural(totalBoards, 'board')} in this order</Pill> : undefined}
           running={busy === 'order'}
           wide
         >
@@ -385,7 +385,7 @@ export function Build() {
                   </tbody>
                   <tfoot>
                     <tr>
-                      <td>{plural(order.boards.length, 'design')}</td>
+                      <td>Total, {plural(order.boards.length, 'design')}</td>
                       <td class="num">{totalBoards}</td>
                     </tr>
                   </tfoot>

@@ -5,6 +5,7 @@ import './themes.css';
 import './style.css';
 import './views.css';
 import './pcbdraw.css';
+import './responsive.css';
 import { installHoverDom } from './hoverDom';
 import { start } from './store';
 import { startTheme } from './theme';

@@ -728,10 +728,12 @@ svg.edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-even
 .sy-pval { display: flex; justify-content: flex-end; gap: 12px; overflow: hidden; white-space: nowrap; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--text-muted); min-width: 0; }
 .sy-pval.supply { color: var(--stage-text); }
 .sy-edge.signal { stroke: var(--signal-edge); stroke-dasharray: none; }
-.sy-label { font-size: var(--fs-sm); fill: var(--text-muted); paint-order: stroke; stroke: var(--canvas); stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }
+.sy-label { font-size: var(--fs-sm); fill: var(--text-muted); pointer-events: none; }
+/* the label's pill: the surface of a card, a hairline round it; the wire passes under it, never through the words */
+.sy-pill { fill: var(--surface); stroke: var(--border); stroke-width: 1px; pointer-events: none; }
+.sy-label-wrap.dim { opacity: .3; }
 .sy-label.group { fill: var(--stage-text); cursor: pointer; pointer-events: all; }
 .sy-label.group:hover { fill: var(--accent-text); }
-.sy-label.dim { opacity: .3; }
 .sy-tip ul { margin: 0; padding-left: 16px; font-family: var(--mono); }
 .sy-card .badge { width: 18px; height: 18px; font-size: var(--fs-sm); }
 .sy-volts { flex: none; } .sy-amps { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

@@ -173,7 +173,10 @@ function pairs(): Pair[] {
   for (const k of ['--pcb-front', '--pcb-back', '--pcb-thru', '--pcb-via', '--pcb-outline', '--pcb-ratsnest', '--pcb-courtyard', '--pcb-fab', '--pcb-keepout', '--pcb-height-limit', '--pcb-select']) {
     list.push({ fg: k, bg: BOARD, min: 3, what: `${k.slice(6)} on the board (a graphic)` });
   }
-  for (const k of ['--pcb-front', '--pcb-back', '--pcb-thru']) list.push({ fg: '--pcb-pad-text', bg: [k], what: `a pad's number on ${k.slice(6)} copper` });
+  // The number of a pad with a hole is not drawn over the hole, so only the surface pads carry one.
+  for (const k of ['--pcb-front', '--pcb-back']) list.push({ fg: '--pcb-pad-text', bg: [k], what: `a pad's number on ${k.slice(6)} copper` });
+  // An inner plane (round 5): its border and fill tone is a graphic 3:1 on the canvas and the substrate, like every other mark.
+  for (const k of ['--pcb-plane-1', '--pcb-plane-2', '--pcb-plane-3', '--pcb-plane-4']) list.push({ fg: k, bg: BOARD, min: 3, what: `${k.slice(6)}, an inner layer's tone (a graphic)` });
   // The soft light of a shared hover is a mark on every surface the views draw on, and is not a pick's blue.
   list.push({ fg: '--hover-lit', bg: [...SURFACES, '--pop', '--pcb-bg', '--pcb-board', '--sch-sheet'], min: 3, what: 'the shared hover light (a graphic)' });
   // Marks the page draws without words: the focus ring and the brand line.
@@ -225,6 +228,21 @@ describe.each(Object.keys(THEME_TOKENS) as Theme[])('contrast of %s', (name) => 
     const [br, , bb] = parseHex(ink('--pcb-back'))!;
     expect(fr - fb).toBeGreaterThan(0);
     expect(bb - br).toBeGreaterThan(0);
+  });
+  it('a through-hole pad is a ring (3:1) around a lighter body that is still a step from the substrate, with a hole that reads', () => {
+    // The ring is what makes the pad a mark; the body inside it may be lighter, which is what makes the light board's through pads
+    // calmer than a solid bronze disc (round 5). In the high contrast themes ring and body are one tone.
+    const ring = ink('--pcb-thru');
+    const fill = ink('--pcb-thru-fill');
+    expect(contrast(ring, ink('--pcb-board'))!).toBeGreaterThanOrEqual(3);
+    expect(contrast(fill, ink('--pcb-board'))!).toBeGreaterThanOrEqual(name.startsWith('hc') ? 3 : 1.3);
+    expect(contrast(fill, ink('--pcb-bg'))!).toBeGreaterThanOrEqual(name.startsWith('hc') ? 3 : 1.3);
+    if (!name.startsWith('hc')) expect(contrast(ring, fill)!).toBeGreaterThanOrEqual(1.5);
+  });
+  it('the four planes are four tones, none the colour of the front or back copper', () => {
+    const planes = [1, 2, 3, 4].map((i) => ink(`--pcb-plane-${i}`).toLowerCase());
+    expect(new Set(planes).size).toBe(4);
+    for (const k of ['--pcb-front', '--pcb-back']) expect(planes).not.toContain(ink(k).toLowerCase());
   });
   it('the hover light is not the colour of a pick or of the brand', () => {
     for (const k of ['--sel', '--accent', '--sch-hit', '--sch-mark']) expect(ink('--hover-lit').toLowerCase()).not.toBe(ink(k).toLowerCase());

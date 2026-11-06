@@ -1,0 +1,53 @@
+/* ==== round 5: what a narrow window or a narrow pane does ==== */
+/* The rule everywhere: a control keeps its place and gives up its words first (the name stays for a screen reader), then
+ * what the page shows elsewhere (the status chips), and only last does a bar wrap. Containers are asked, not the window,
+ * so a pane of a split follows the same rules as a small window. */
+
+/* a label that gives way to its icon; it stays in the page for a screen reader and the tooltip says what it is */
+.fold-label { white-space: nowrap; }
+
+/* ---- the board's toolbar ---- */
+.pcb-view { container: pcbbar / inline-size; }
+.pcb-bar { flex-wrap: nowrap; }
+.pcb-bar .tb-group { flex: none; }
+.pcb-bar .tb-group.status { flex: 0 1 auto; overflow: hidden; }
+.pcb-bar .cursor-at:empty { display: none; }
+.pcb-bar .cursor-at { min-width: 0; }
+.pcb-bar .spacer { flex: 1 1 0; min-width: 0; }
+@container pcbbar (max-width: 1180px) {
+  .pcb-bar .seg-label, .pcb-bar .tb-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .pcb-bar .tb-took, .pcb-bar .cursor-at { display: none; }
+  .pcb-bar .layers summary { padding: 0 8px; }
+}
+@container pcbbar (max-width: 900px) {
+  .pcb-bar .tb-drc { display: none; }
+  .pcb-bar { gap: 6px 10px; }
+}
+@container pcbbar (max-width: 560px) {
+  .pcb-bar { flex-wrap: wrap; }
+}
+@container pcbbar (max-width: 640px) {
+  .pcb-bar .tb-group.status .chip:not(.findings-pill) { display: none; }
+  .pcb-bar .grid-pick select { width: 4.5rem; }
+}
+
+/* ---- the BOM: a table wider than the window scrolls sideways, keeps its first column and says there is more ---- */
+.bom-table { width: 100%; min-width: 46rem; }
+.bom-table th.th-des, .bom-table td.des { position: sticky; left: 0; }
+.bom-table th.th-des { z-index: 3; }
+.bom-table td.des { z-index: 1; background: var(--surface); }
+.bom-table tbody tr.dr:nth-child(even) td.des { background: linear-gradient(var(--zebra), var(--zebra)), var(--surface); }
+.bom-table tbody tr.dr:nth-child(n):hover td.des { background: linear-gradient(var(--hover), var(--hover)), var(--surface); }
+.bom-table tbody tr.dr.hover-lit > td.des { background: linear-gradient(var(--hover-lit-bg), var(--hover-lit-bg)), var(--surface); }
+.bom-table tbody tr.dr.sel:nth-child(n) td.des { background: var(--select-bg); }
+/* the first column is lifted off what slides under it once the table has moved */
+.bom-frame.scrolled .bom-table th.th-des, .bom-frame.scrolled .bom-table td.des { box-shadow: 1px 0 0 var(--border), 8px 0 10px -6px color-mix(in srgb, var(--text) 22%, transparent); }
+/* and the edge that has more fades into the surface (the file tabs do the same) */
+.bom-frame::after { content: ''; position: absolute; top: 0; right: 12px; bottom: 12px; width: 44px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); opacity: 0; transition: opacity var(--dur) var(--ease); z-index: 4; }
+.bom-frame.more::after { opacity: 1; }
+
+/* ---- the overview's thumbnails: one paper and one ink for every module ---- */
+/* A thumbnail is the sheet's paper with the module's dashed frame on it. The frame's own wash (a few per cent of green) covered a
+ * whole thumbnail when the frame filled it, and only the inside of a narrow frame when it did not (a connector's module), so two
+ * kinds of card looked like two kinds of paper. */
+.schematic-host .ov-thumb svg.schematic .module-frame { fill: none; }

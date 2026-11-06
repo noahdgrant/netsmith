@@ -18,14 +18,20 @@
 .pcb-host svg [data-keepout][stroke="#e0a030"] { fill: url(#pcb-hatch-limit); }
 .pcb-host svg [data-height-limit] { font-family: var(--sans); font-size: .7px; font-weight: 600; paint-order: stroke; stroke: var(--pcb-board); stroke-width: .22px; stroke-linejoin: round; }
 
-/* planes: a faint dashed border in the net's tone */
-.pcb-host svg .l-planes > rect { stroke-width: calc(1.25 * var(--px, .04)); stroke-dasharray: calc(7 * var(--px, .04)) calc(5 * var(--px, .04)); stroke-opacity: .5; }
+/* planes: the copper of an inner layer is a translucent fill in the layer's tone with a dashed border, and the net's name in a corner.
+ * The server draws one rectangle per plane in the order of the board's planes (data-plane, set by pcb/drawing.ts), so the tone is the
+ * plane's place, `--pcb-plane-1` to `--pcb-plane-4`; each is a layer's colour, never the net's. */
+.pcb-host svg .l-planes > rect { --plane: var(--pcb-plane-1); fill: var(--plane); fill-opacity: .12; stroke: var(--plane); stroke-width: calc(1.25 * var(--px, .04)); stroke-dasharray: calc(7 * var(--px, .04)) calc(5 * var(--px, .04)); stroke-opacity: .85; }
+.pcb-host svg .l-planes > [data-plane="2"] { --plane: var(--pcb-plane-2); }
+.pcb-host svg .l-planes > [data-plane="3"] { --plane: var(--pcb-plane-3); }
+.pcb-host svg .l-planes > [data-plane="4"], .pcb-host svg .l-planes > [data-plane="5"], .pcb-host svg .l-planes > [data-plane="6"] { --plane: var(--pcb-plane-4); }
+.pcb-host svg .l-planes > text.plane-label { fill: var(--pcb-key); font-family: var(--sans); font-size: .62px; font-weight: 600; letter-spacing: .01em; paint-order: stroke; stroke: var(--pcb-board); stroke-width: .24px; stroke-linejoin: round; opacity: .9; }
 
 /* pads: copper on the front, teal-blue on the back, a tone and a ring for a hole that goes through */
 .pcb-host svg .l-pads > g[data-pad] > :first-child { fill: var(--pcb-front); stroke: color-mix(in srgb, var(--pcb-board) 70%, transparent); stroke-width: .06px; }
 .pcb-host svg g[data-path][transform*="scale(-1 1)"] .l-pads > g[data-pad] > :first-child { fill: var(--pcb-back); }
-.pcb-host svg .l-pads > g[data-pad]:has(> [fill="#0d1117"]) > :first-child { fill: var(--pcb-thru); stroke: color-mix(in srgb, var(--pcb-thru) 38%, transparent); stroke-width: .15px; }
-.pcb-host svg .l-pads > g[data-pad] > [fill="#0d1117"] { fill: var(--pcb-bg); stroke: color-mix(in srgb, var(--pcb-thru) 45%, transparent); stroke-width: .05px; }
+.pcb-host svg .l-pads > g[data-pad]:has(> [fill="#0d1117"]) > :first-child { fill: var(--pcb-thru-fill); stroke: var(--pcb-thru); stroke-width: calc(1.5 * var(--px, .04)); }
+.pcb-host svg .l-pads > g[data-pad] > [fill="#0d1117"] { fill: var(--pcb-bg); stroke: color-mix(in srgb, var(--pcb-thru) 60%, transparent); stroke-width: calc(1 * var(--px, .04)); }
 .pcb-host svg .l-pads > g[data-pad]:not([data-net]) { opacity: .7; }
 .pcb-host svg .l-pads > text { fill: var(--pcb-pad-text); font-family: var(--sans); font-weight: 600; opacity: .85; }
 /* a pad with a hole has its number over the hole, where it cannot be read: the board's panel lists the pads */

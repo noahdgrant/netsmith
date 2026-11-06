@@ -169,8 +169,8 @@ export function Pcb() {
                 : 'placed'}
             </span>
           )}
-          {report?.routed && <span class="took">took {seconds(report.elapsedMs)}</span>}
-          <span class={`chip ${fab ? (fab.drc === 'passed' ? 'ok' : fab.drc === 'failed' ? 'bad' : '') : ''}`} title="From the last Fab run in the Build tab">
+          {report?.routed && <span class="took tb-took">took {seconds(report.elapsedMs)}</span>}
+          <span class={`chip tb-drc ${fab ? (fab.drc === 'passed' ? 'ok' : fab.drc === 'failed' ? 'bad' : '') : ''}`} title="From the last Fab run in the Build tab">
             DRC: {fab ? (fab.drc === 'passed' ? 'passed' : fab.drc === 'failed' ? 'FAILED' : 'not run') : 'run Fab to check'}
           </span>
           {found && (
@@ -250,7 +250,7 @@ export function Pcb() {
           <details class="layers no-pan">
             <summary>
               <Icon name="layers" size={14} />
-              Layers
+              <span class="tb-label">Layers</span>
               {hidden.length > 0 && <span class="pl pl-neutral">{LAYERS.length - hidden.length}/{LAYERS.length}</span>}
             </summary>
             <div class="layer-list">

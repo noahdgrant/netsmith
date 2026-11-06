@@ -15,6 +15,7 @@ import {
   sourcing,
 } from '../bomview';
 import { Icon } from '../components/Icons';
+import { useScrollEdges } from '../components/scrollEdges';
 import { JobProgress } from '../components/JobProgress';
 import { EmptyState, Pill, Popover, Segmented, Spinner, type Tone } from '../components/ui';
 import { NoBoard, ViewLoading } from '../components/ViewStatus';
@@ -244,6 +245,8 @@ export function Bom() {
   const [group, setGroup] = useState<GroupBy>(() => load<GroupBy>(GROUP_KEY, 'none'));
   const [hidden, setHidden] = useState<ColumnId[]>(() => load<ColumnId[]>(COLUMN_KEY, []));
   const [folded, setFolded] = useState<Record<string, boolean>>({});
+  // The table scrolls sideways in a narrow window: the edge that has more fades, and the first column stays.
+  const { ref: scroller, edges, onScroll } = useScrollEdges<HTMLDivElement>(bom);
   const refreshing = job.value?.task === 'catalog';
   const report = catalogReport.value;
   const lit = selectedRefdes.value;
@@ -413,7 +416,8 @@ export function Bom() {
       </div>
       <JobProgress task="catalog" />
       {report && <RefreshResult report={report} />}
-      <div class="bom-scroll">
+      <div class={`bom-frame ${edges.l ? 'scrolled' : ''} ${edges.r ? 'more' : ''}`}>
+      <div class="bom-scroll" ref={scroller} onScroll={onScroll}>
         {empty ? (
           <EmptyState icon="bom" title="No parts on this board yet" help="Parts you add to the board's source show up here, with their LCSC numbers once the catalogs know them." actions={<button class="tool" onClick={() => revealSection('source')}>Open the source</button>} />
         ) : nothingShown ? (
@@ -484,6 +488,7 @@ export function Bom() {
             )}
           </table>
         )}
+      </div>
       </div>
     </div>
   );

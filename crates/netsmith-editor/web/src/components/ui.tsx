@@ -196,7 +196,7 @@ export function Segmented<T extends string>({
           onClick={() => onChange(o.value)}
         >
           {o.icon && <Icon name={o.icon} size={14} />}
-          {o.label}
+          {o.label && <span class="seg-label">{o.label}</span>}
         </button>
       ))}
     </div>
