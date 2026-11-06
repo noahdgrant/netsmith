@@ -9,10 +9,13 @@ use std::{
 use netsmith_check::Loader;
 use netsmith_editor::{
     ApiError,
-    api::{Def, FileContent, FileRole, Project, Saved, TreeFile},
+    api::{FileContent, FileRole, Project, Saved, TreeFile},
 };
 
-use super::Workspace;
+use super::{
+    Workspace,
+    outline::{self, Kinds},
+};
 use crate::project::MANIFEST;
 
 /// Modification time and length of each file, `None` for one that cannot be read.
@@ -131,6 +134,11 @@ impl Workspace {
 
     pub(super) fn tree(&self) -> Project {
         let kicad = netsmith_fab::KicadCliExe::locate();
+        // What a declaration's type is, for the outline: the modules of the project and the
+        // standard library, read again as `build` reads them. Without them (a module that
+        // cannot be read) only the definitions of a file itself resolve.
+        let loader = self.target.loader().ok();
+        let kinds = loader.as_ref().map_or_else(Kinds::alone, Kinds::new);
         let files = self
             .entries()
             .into_iter()
@@ -138,7 +146,7 @@ impl Workspace {
                 let text = self.text_of(&e).ok();
                 let defs = match (&e.role, &text) {
                     (FileRole::Manifest, _) | (_, None) => Vec::new(),
-                    (_, Some(text)) => definitions(text),
+                    (_, Some(text)) => outline::definitions(text, &kinds),
                 };
                 TreeFile {
                     path: e.path,
@@ -236,20 +244,4 @@ fn same(a: &Path, b: &Path) -> bool {
         (Ok(a), Ok(b)) => a == b,
         _ => a == b,
     }
-}
-
-/// The definitions of a source text, with the line each starts on. A text that does not
-/// parse has none shown.
-fn definitions(text: &str) -> Vec<Def> {
-    let Ok(file) = netsmith_lang::parse(text) else {
-        return Vec::new();
-    };
-    file.definitions
-        .iter()
-        .map(|d| Def {
-            kind: d.kind.keyword().to_string(),
-            name: d.name.name.clone(),
-            line: text[..d.span.start.min(text.len())].matches('\n').count() as u32 + 1,
-        })
-        .collect()
 }

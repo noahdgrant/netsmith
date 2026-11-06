@@ -37,7 +37,17 @@ path?: string, };
 
 export type FileRole = "top_level" | "module" | "std" | "manifest" | "physical";
 
-export type Def = { kind: string, name: string, line: number, };
+export type Def = { kind: string, name: string, line: number, 
+/**
+ * The line its closing brace is on (the last line of the definition), so the source
+ * outline and the breadcrumbs know which definition a line is in without reading text.
+ */
+endLine?: number, 
+/**
+ * The declarations written directly in its body (`.vin: Rail`), in source order, not the
+ * ones inside a declaration's own block. Left out when there are none.
+ */
+children?: Array<DefChild>, };
 
 export type TreeFile = { 
 /**

@@ -97,10 +97,40 @@ pub enum FileRole {
 
 /// A definition in a file: `board`, `system`, `panel`, `part`, `interface` or `module`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
 pub struct Def {
     pub kind: String,
     pub name: String,
     pub line: u32,
+    /// The line its closing brace is on (the last line of the definition), so the source
+    /// outline and the breadcrumbs know which definition a line is in without reading text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub end_line: Option<u32>,
+    /// The declarations written directly in its body (`.vin: Rail`), in source order, not the
+    /// ones inside a declaration's own block. Left out when there are none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub children: Option<Vec<DefChild>>,
+}
+
+/// A declaration in the body of a definition: `.regulator: LinearRegulator`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct DefChild {
+    /// As written, without the leading dot (`stage.regulator` for a path).
+    pub name: String,
+    /// What the type is: `board`, `system`, `panel`, `part`, `interface` or `module`. Left
+    /// out when the type names no definition that the file or its imports reach.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub kind: Option<String>,
+    /// The line the declaration starts on.
+    pub line: u32,
+    /// The line it ends on; the same as `line` for a declaration with no block.
+    pub end_line: u32,
+    /// The type as written, last segment only: `LinearRegulator` for `std::parts::LinearRegulator`.
+    pub type_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]

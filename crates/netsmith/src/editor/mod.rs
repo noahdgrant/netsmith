@@ -10,6 +10,7 @@ mod fileops;
 mod files;
 mod findings;
 mod orders;
+mod outline;
 mod panel;
 mod pcb;
 mod power;
