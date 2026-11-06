@@ -162,10 +162,10 @@ export function Outline() {
         )}
         {open && lang && syms.some((x) => x.children.length > 0) && (
           <div class="ol-tools" role="group" aria-label="Fold the outline">
-            <button type="button" class="icon-btn ol-tool" aria-label="Expand all" data-tip="Expand every definition" data-testid="outline-expand-all" onClick={() => choose(allChoice(syms, false))}>
+            <button type="button" class="icon-btn ol-tool" aria-label="Expand the outline" data-tip="Expand every definition of the outline" data-testid="outline-expand-all" onClick={() => choose(allChoice(syms, false))}>
               <Icon name="expand-all" size={14} />
             </button>
-            <button type="button" class="icon-btn ol-tool" aria-label="Collapse all" data-tip="Collapse every definition" data-testid="outline-collapse-all" onClick={() => choose(allChoice(syms, true))}>
+            <button type="button" class="icon-btn ol-tool" aria-label="Collapse the outline" data-tip="Collapse every definition of the outline" data-testid="outline-collapse-all" onClick={() => choose(allChoice(syms, true))}>
               <Icon name="collapse-all" size={14} />
             </button>
           </div>
