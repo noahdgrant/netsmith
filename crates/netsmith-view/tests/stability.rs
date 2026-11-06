@@ -167,8 +167,9 @@ fn a_part_added_on_no_net_moves_almost_nothing() {
 fn a_part_added_or_taken_out_moves_a_minority_of_a_sheet() {
     // (b), (c), (d) on the sheets of ten parts: a part beside a pin makes room, so the parts
     // beside it may shift, and the numbers say how many do (means over the corpus sheets; the
-    // baseline before the engine was made steady was 0.40, 0.80 and 0.65, and a pull-up moves
-    // the hops from ground of the net it is on, which turns the part: floor lowered to match).
+    // numbers before the engine was made steady are in docs/research/schematic-metrics-baseline.md,
+    // and a pull-up moves the hops from ground of the net it is on, which turns the part: floor
+    // lowered to match).
     let rows = measured(BOARDS);
     for (kind, floor_mean, floor_segments) in [
         (Kind::AddDecouplingCap, 0.85, 0.85),

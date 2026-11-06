@@ -687,9 +687,7 @@ pub(super) fn run(
     let mut previous: Option<(f64, &[usize])> = None;
     // The piece of the sheet's reference part (`origin`): the main part with most pins, then the
     // largest symbol, then the first by name.
-    let ref_piece = if stable_off("outward") {
-        None
-    } else {
+    let ref_piece = {
         let key = |a: usize| {
             let r = placed[a].glyph.bounds();
             (
@@ -730,11 +728,7 @@ pub(super) fn run(
             .and_then(|r| row.iter().position(|&i| i == r))
             .unwrap_or(0);
         let mut by_x = vec![0.0; row.len()];
-        let mut x = if stable_off("lead") {
-            0.0
-        } else {
-            -lead(row[start])
-        };
+        let mut x = -lead(row[start]);
         for k in start..row.len() {
             let piece = &pieces[row[k]];
             by_x[k] = snap_up(x - piece.rect.min.x, GRID);
@@ -812,11 +806,7 @@ fn row_height(pieces: &[Piece], row: &[usize]) -> (f64, f64) {
 /// [`SLOT_X`], so that a little growth (a longer value, one more capacitor beside a pin) does
 /// not move the end of a row onto the next piece. (The pieces stand as close as before.)
 fn slot_width(piece: &Piece) -> f64 {
-    if stable_off("slots") {
-        piece.rect.width()
-    } else {
-        snap_up(piece.rect.width(), SLOT_X)
-    }
+    snap_up(piece.rect.width(), SLOT_X)
 }
 
 /// The space between a row and the one under it: the grounds' rails of the first and the
@@ -886,9 +876,6 @@ fn pack(pieces: &[Piece]) -> Vec<Vec<usize>> {
     if shape(&one) <= MAX_ASPECT || width(&all) < MIN_WRAP_WIDTH || spine {
         return one;
     }
-    if stable_off("rows") {
-        return pack_nearest(pieces, &all, one, &width, &shape);
-    }
     // The pieces are filled into rows in order, a row ending where the next piece would pass a
     // width: a piece's row depends on the pieces before it and on that width, which is the
     // width of a sheet of the page's shape for the area the pieces cover, in coarse steps, so
@@ -926,39 +913,6 @@ fn pack(pieces: &[Piece]) -> Vec<Vec<usize>> {
         }
     }
     best.expect("a candidate").1
-}
-
-/// The rows that bring the sheet nearest [`TARGET_ASPECT`], over many ways of cutting them.
-fn pack_nearest(
-    pieces: &[Piece],
-    all: &[usize],
-    one: Vec<Vec<usize>>,
-    width: &dyn Fn(&[usize]) -> f64,
-    shape: &dyn Fn(&[Vec<usize>]) -> f64,
-) -> Vec<Vec<usize>> {
-    let total = width(all);
-    let mut best = ((shape(&one) / TARGET_ASPECT).ln().abs(), one);
-    for count in 2..=pieces.len().min(12) {
-        for slack in [0.9, 1.0, 1.1, 1.25, 1.4] {
-            let target = total / count as f64 * slack;
-            let mut rows: Vec<Vec<usize>> = vec![Vec::new()];
-            for &i in all {
-                let row = rows.last().expect("a row");
-                let mut with = row.clone();
-                with.push(i);
-                if !row.is_empty() && width(&with) > target {
-                    rows.push(vec![i]);
-                } else {
-                    rows.last_mut().expect("a row").push(i);
-                }
-            }
-            let miss = (shape(&rows) / TARGET_ASPECT).ln().abs();
-            if miss < best.0 - 1e-9 {
-                best = (miss, rows);
-            }
-        }
-    }
-    best.1
 }
 
 /// The name inside a flag whose point is at `tip` and that points `dir`: across for a flag

@@ -75,8 +75,7 @@
 //!    kept free: the satellites of the IC's other pins are placed first beside it, the row's parts
 //!    beyond them, and the wires of a pair satellite (a bootstrap capacitor) join the row where
 //!    they meet it and cross nothing. The sheet of a spine and a few more pieces is not cut into
-//!    rows. `NETSMITH_SPINE=off` draws without it, to compare (the metrics `spine_bends` and
-//!    `detached_chain` still find the chains).
+//!    rows.
 //!
 //! 7. A part whose library symbol has several **units** is drawn as one box for each, as the
 //!    library draws the unit, upright, with the part's reference and the unit's letter (`U5A`
@@ -124,9 +123,11 @@
 //!    What cannot be steady: a part that needs room makes it, and what is beside it shifts (the
 //!    capacitors of a row beside a pin, the pieces after a wider block); a pull-up changes the hops
 //!    from ground of its net, which can turn the part it is on; a regulator that loses its output
-//!    capacitor is no longer found as a spine. `NETSMITH_STABLE_OFF` is a comma-separated list
-//!    of `canon`, `origin`, `rows`, `slots`, `lead`, `outward`, `shunts`, to draw without each of
-//!    these and measure what it does.
+//!    capacitor is no longer found as a spine.
+//!
+//!    None of this can be switched off: a drawing depends on the design alone, never on an
+//!    environment variable. What each part of it did is measured in
+//!    `docs/research/schematic-metrics-baseline.md`.
 //!
 //! Nothing here knows how a layout is drawn: [`crate::render_svg`] reads the result.
 
@@ -835,12 +836,6 @@ pub(crate) fn layout_with(
     .map(|(layout, _)| layout)
 }
 
-/// Whether a part of what keeps a drawing stable is switched off, for measuring what it
-/// does: `NETSMITH_STABLE_OFF` is a comma-separated list of `canon`, `origin`, `rows`, `slots`, `lead`, `outward`, `shunts`.
-pub(crate) fn stable_off(what: &str) -> bool {
-    std::env::var("NETSMITH_STABLE_OFF").is_ok_and(|v| v.split(',').any(|w| w.trim() == what))
-}
-
 /// [`layout_with`], drawn only with `only` if it is given; and the choices of [`Tuning`] (as
 /// bits) that made a difference in the first drawing. The design is drawn in canonical order
 /// ([`canon`]) and the result has the design's own, and the drawing is anchored on its
@@ -857,36 +852,20 @@ fn layout_with_tuning(
     only: Option<Tuning>,
 ) -> Result<(Layout, u8), DesignError> {
     design.validate()?;
-    let (mut layout, touched) = if stable_off("canon") {
-        draw(
-            design,
-            mapping,
-            lib,
-            external,
-            rails,
-            marks,
-            label_grounds,
-            only,
-        )?
-    } else {
-        let canon = canon::Canon::of(design);
-        let external = canon.nets_of(external);
-        let (mut layout, touched) = draw(
-            &canon.design,
-            mapping,
-            lib,
-            &external,
-            rails,
-            marks,
-            label_grounds,
-            only,
-        )?;
-        canon.restore(&mut layout);
-        (layout, touched)
-    };
-    if !stable_off("origin") {
-        origin::anchor(design, &mut layout);
-    }
+    let canon = canon::Canon::of(design);
+    let external = canon.nets_of(external);
+    let (mut layout, touched) = draw(
+        &canon.design,
+        mapping,
+        lib,
+        &external,
+        rails,
+        marks,
+        label_grounds,
+        only,
+    )?;
+    canon.restore(&mut layout);
+    origin::anchor(design, &mut layout);
     Ok((layout, touched))
 }
 
@@ -987,14 +966,9 @@ fn draw(
         touched: std::cell::Cell::new(0),
         pair_places: engine::PairCache::default(),
     };
-    ctx.leaf = if stable_off("shunts") {
-        vec![false; design.parts.len()]
-    } else {
-        (0..design.parts.len())
-            .map(|p| is_leaf_shunt(&ctx, p))
-            .collect()
-    };
-    // `NETSMITH_SPINE=off` draws without the spines (to compare), the paths are still found.
+    ctx.leaf = (0..design.parts.len())
+        .map(|p| is_leaf_shunt(&ctx, p))
+        .collect();
     let found = spine::find(&ctx);
     let spine_marks: Vec<SpineMark> = found
         .iter()
@@ -1007,9 +981,7 @@ fn draw(
                 .collect(),
         })
         .collect();
-    if std::env::var_os("NETSMITH_SPINE").is_none_or(|v| v != "off") {
-        ctx.spines = found;
-    }
+    ctx.spines = found;
     for sp in &ctx.spines {
         for p in sp.parts() {
             ctx.spine_part[p] = true;
@@ -1572,7 +1544,7 @@ fn signal_runs_backwards(
             for other in &ctx.design.nets[n].pins {
                 let q = part_index(ctx, &other.refdes);
                 // Small parts that serve a pin do not vote on where the signal goes.
-                if q != part && (stable_off("shunts") || !ctx.leaf[q]) {
+                if q != part && !ctx.leaf[q] {
                     seen.extend(position(unit_of[&q]));
                 }
             }
