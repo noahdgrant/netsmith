@@ -104,7 +104,10 @@ function Rows({ lines, staleAfter }: { lines: BomLine[]; staleAfter: number }) {
             {l.designators.join(', ')}
           </td>
           <td class="num">{l.quantity}</td>
-          <td title={l.kind}>{l.value}</td>
+          <td title={l.via ? `${l.kind}, picked as a ${l.via}` : l.kind}>
+            {l.value}
+            {l.via && <div class="checked">as {l.via}</div>}
+          </td>
           <td title={l.footprint ?? ''}>{l.package ?? l.footprint ?? '-'}</td>
           <td class="mono">{l.lcsc ?? (l.unresolved ? 'unresolved' : l.handSolder ? 'by hand' : 'none')}</td>
           <td>{l.library ? <span class={`pill ${l.library.toLowerCase()}`}>{l.library}</span> : ''}</td>

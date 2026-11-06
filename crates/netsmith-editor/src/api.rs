@@ -472,6 +472,9 @@ pub struct BomLine {
     pub unresolved: Option<String>,
     /// Soldered by hand: the board house does not place it.
     pub hand_solder: bool,
+    /// The generic this part was picked to provide (`CoaxReceptacle`, ADR 0059): `kind` is
+    /// the provider's name. `None` for a part written by its own type.
+    pub via: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

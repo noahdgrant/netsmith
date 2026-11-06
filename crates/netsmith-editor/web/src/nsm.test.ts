@@ -51,6 +51,49 @@ describe('tokenize', () => {
     expect(kinds('.pos.net &= "VIN"').at(-1)).toEqual(['"VIN"', 'string']);
   });
 
+  it('reads a default and an enum with its variants', () => {
+    expect(kinds('.current ?= 10mA..20mA')).toEqual([
+      ['.', 'punct'],
+      ['current', 'member'],
+      ['?=', 'operator'],
+      ['10mA', 'number'],
+      ['..', 'operator'],
+      ['20mA', 'number'],
+    ]);
+    expect(kinds('enum Drive {')[0]).toEqual(['enum', 'keyword']);
+    expect(kinds('.assembly &= AssemblyMode::Hand').slice(-3)).toEqual([
+      ['AssemblyMode', 'type'],
+      ['::', 'punct'],
+      ['Hand', 'type'],
+    ]);
+  });
+
+  it('reads a generic and the generics a part provides (ADR 0059)', () => {
+    expect(kinds('generic CoaxReceptacle {').slice(0, 2)).toEqual([
+      ['generic', 'keyword'],
+      ['CoaxReceptacle', 'type'],
+    ]);
+    expect(kinds('part AcmeMicroCoax provides CoaxReceptacle, RfConnector {').map((k) => k[1])).toEqual([
+      'keyword',
+      'type',
+      'keyword',
+      'type',
+      'punct',
+      'type',
+      'punct',
+    ]);
+    // Both are ordinary names as a member.
+    expect(kinds('.generic: Number')[1]).toEqual(['generic', 'member']);
+    expect(kinds('.provides &= 1')[1]).toEqual(['provides', 'member']);
+  });
+
+  it('reads required as the marker of a pin row, and as a plain name where a member is called that', () => {
+    expect(kinds('.p1 passive "TP" "1" required').at(-1)).toEqual(['required', 'keyword']);
+    expect(kinds('.p1 power "VCC" "1" optional').at(-1)).toEqual(['optional', 'keyword']);
+    // A member may be called that.
+    expect(kinds('.required &= 1')[1]).toEqual(['required', 'member']);
+  });
+
   it('marks an unclosed string and a block comment as errors, as the compiler does', () => {
     expect(kinds('"open').at(-1)?.[1]).toBe('error');
     expect(kinds('/* no */')[0]).toEqual(['/*', 'error']);
