@@ -36,7 +36,7 @@ board Widget {
         .stackup.thickness &= 1.6mm
     }
     .row: Socket1x10
-    .cell: FlatCell { .assembly &= \"hand\" }
+    .cell: FlatCell { .assembly &= AssemblyMode::Hand }
     .row.p1 ~ .cell.a
 }
 ";

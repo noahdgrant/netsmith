@@ -130,7 +130,7 @@ pub fn message(board: &str, parts: &[Unnumbered]) -> String {
     for u in parts {
         match &u.module {
             None => out.push_str(&format!(
-                "  {}: in the body of `board {board}` write `.{}.assembly &= \"hand\"` (or \"none\" if nobody fits it)\n",
+                "  {}: in the body of `board {board}` write `.{}.assembly &= AssemblyMode::Hand` (or `AssemblyMode::None` if nobody fits it)\n",
                 u.refdes, u.path
             )),
             Some(m) => {
@@ -139,12 +139,12 @@ pub fn message(board: &str, parts: &[Unnumbered]) -> String {
                     u.refdes, u.path, m.member
                 ));
                 out.push_str(&format!(
-                    "In the definition of `{}` ({}) write `.{}.assembly &= \"hand\"`",
+                    "In the definition of `{}` ({}) write `.{}.assembly &= AssemblyMode::Hand`",
                     m.definition, m.defined, m.inner
                 ));
                 if m.direct {
                     out.push_str(&format!(
-                        "; or, so that each board decides, declare `.assembly_mode: String` there, write `.{}.assembly &= .assembly_mode` and, in the body of `board {board}`, `.{}.assembly_mode &= \"hand\"`",
+                        "; or, so that each board decides, declare `.assembly_mode: AssemblyMode` there, write `.{}.assembly &= .assembly_mode` and, in the body of `board {board}`, `.{}.assembly_mode &= AssemblyMode::Hand`",
                         m.inner, m.member
                     ));
                 }

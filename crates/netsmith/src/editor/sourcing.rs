@@ -46,8 +46,16 @@ pub fn bom(
                     .unwrap_or(&m.footprint)
                     .to_string()
             });
+        // The generic a picked provider stands for (ADR 0059), for a part that is a use itself.
+        let via = built
+            .providers
+            .iter()
+            .find(|p| p.path == part.path)
+            .map(|p| p.generic.clone())
+            .filter(|generic| *generic != source.kind);
         let existing = lines.iter_mut().find(|l| {
-            l.value == source.value
+            l.via == via
+                && l.value == source.value
                 && l.footprint == footprint
                 && l.lcsc == source.lcsc
                 && l.kind == source.kind
@@ -82,6 +90,7 @@ pub fn bom(
                         .find(|u| u.refdes == part.refdes)
                         .map(|u| u.message.clone()),
                     hand_solder: source.assembly == Assembly::Hand,
+                    via,
                 });
             }
         }

@@ -135,7 +135,7 @@ board Widget {{
         .neg.net &= \"GND\"
     }}
     .plug: WidePlug {{
-        .assembly &= \"hand\"
+        .assembly &= AssemblyMode::Hand
     }}
     .rail.pos ~ .plug.p1
     .rail.pos ~ .plug.p2
@@ -537,7 +537,7 @@ fn a_crowded_board_places_and_reports_how_long_it_took() {
     // the annealer places them anyway. The timing is for the report, not an assertion.
     for n in [30usize, 100, 200] {
         let plain = source(35, 60, n, "")
-            .replace("    .plug: WidePlug {\n        .assembly &= \"hand\"\n    }\n", "")
+            .replace("    .plug: WidePlug {\n        .assembly &= AssemblyMode::Hand\n    }\n", "")
             .replace("    .rail.pos ~ .plug.p1\n    .rail.pos ~ .plug.p2\n    .rail.neg ~ .plug.p3\n    .rail.neg ~ .plug.p4\n", "");
         let (board, seconds) = placed(&plain, None);
         let board = board.unwrap_or_else(|e| panic!("{n} parts: {e}"));
@@ -560,7 +560,7 @@ fn a_crowded_board_places_and_reports_how_long_it_took() {
 #[test]
 fn too_many_parts_for_the_outline_are_refused_with_what_the_placer_ended_with() {
     let plain = source(12, 12, 100, "")
-        .replace("    .plug: WidePlug {\n        .assembly &= \"hand\"\n    }\n", "")
+        .replace("    .plug: WidePlug {\n        .assembly &= AssemblyMode::Hand\n    }\n", "")
         .replace("    .rail.pos ~ .plug.p1\n    .rail.pos ~ .plug.p2\n    .rail.neg ~ .plug.p3\n    .rail.neg ~ .plug.p4\n", "");
     let (board, seconds) = placed(&plain, None);
     let e = board.expect_err("100 parts do not fit 12 x 12 mm");
