@@ -49,6 +49,29 @@ endLine?: number,
  */
 children?: Array<DefChild>, };
 
+export type DefChild = { 
+/**
+ * As written, without the leading dot (`stage.regulator` for a path).
+ */
+name: string, 
+/**
+ * What the type is: `board`, `system`, `panel`, `part`, `interface` or `module`. Left
+ * out when the type names no definition that the file or its imports reach.
+ */
+kind?: string, 
+/**
+ * The line the declaration starts on.
+ */
+line: number, 
+/**
+ * The line it ends on; the same as `line` for a declaration with no block.
+ */
+endLine: number, 
+/**
+ * The type as written, last segment only: `LinearRegulator` for `std::parts::LinearRegulator`.
+ */
+typeName: string, };
+
 export type TreeFile = { 
 /**
  * The name in the tree, which is also what diagnostics call the file.
@@ -152,6 +175,22 @@ export type PanelView = { name: string, board: string, columns: number, rows: nu
  */
 cellWidth: number, cellHeight: number, width: number, height: number, rail: number, svg: string, findings: Array<PanelFinding>, };
 
+export type ModuleUse = { 
+/**
+ * The module's name: `LdoStage`.
+ */
+name: string, 
+/**
+ * The file it is defined in, as the tree names it, and the line of its definition
+ * (`Def::line`).
+ */
+file: string, line: number, 
+/**
+ * The boards that have an instance of it, as `BoardSummary::name` has them
+ * (`Demo/main` for a board of a system), in the order of `Analysis::boards`.
+ */
+usedBy: Array<string>, };
+
 export type Analysis = { version: number, errors: number, warnings: number, notes: number, problems: Array<Problem>, boards: Array<BoardSummary>, systems: Array<SystemSummary>, panels: Array<PanelSummary>, 
 /**
  * For each module definition that some board uses, directly or inside another module,
@@ -194,6 +233,73 @@ scopes: Array<Location>,
  * there is nothing to say (a part with no catalog row and no derived value).
  */
 solved?: Solved, };
+
+export type Solved = { 
+/**
+ * A capacitor's capacitance in use: the marked value after the DC bias across it and
+ * after its tolerance (`1.72uF..2.916uF` for a 10 uF part at 5 V). Present where the
+ * bias derating applies, that is when the part has a curve and a bias.
+ */
+effectiveCapacitance?: Range, 
+/**
+ * The DC voltage across the part that the derating used (taken from the rail the part
+ * sits across, ADR 0013). Present with `effective_capacitance`.
+ */
+bias?: Range, 
+/**
+ * The tolerance of the resistance, capacitance or inductance the solver chose, when the
+ * source did not state the value's range.
+ */
+tolerance?: Tolerance, 
+/**
+ * The ratings of the row that was picked (`max_voltage`, `max_current`, `max_power`,
+ * `rated_current`, `saturation_current`, ...), the voltages, currents and powers the
+ * part is built for, in the order its definition lists them.
+ */
+ratings?: Array<Rating>, 
+/**
+ * The catalog row that stands for the part.
+ */
+row?: SolvedRow, };
+
+export type Tolerance = { 
+/**
+ * `20` for `+/- 20%`, rounded to three decimals.
+ */
+percent: number, 
+/**
+ * `+/- 20%`.
+ */
+text: string, };
+
+export type Rating = { 
+/**
+ * The field of the part: `max_voltage`.
+ */
+name: string, range: Range, };
+
+export type SolvedRow = { 
+/**
+ * The catalog table the part's definition draws from (`resistor`, `ldo`), if it names one.
+ */
+catalog?: string, 
+/**
+ * The manufacturer's part number.
+ */
+mpn?: string, 
+/**
+ * The LCSC number.
+ */
+lcsc?: string, 
+/**
+ * `Basic`, `Extended` or `Preferred`.
+ */
+library?: string, 
+/**
+ * The solver chose only a value and a package (ADR 0047) and no row stands for the part
+ * yet; `mpn`, `lcsc` and `library` are then absent.
+ */
+generic: boolean, };
 
 export type PinInfo = { refdes: string, 
 /**
