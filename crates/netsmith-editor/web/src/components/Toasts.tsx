@@ -8,6 +8,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
 import { type ToastItem, dismissToast, holdToast, releaseToast, toasts } from '../feedback/state';
+import { reducedMotion } from '../settings';
 import { CheckIcon, Icon, SeverityIcon } from './Icons';
 
 /** How long a toast takes to leave (the same as the CSS: `.toast.leaving`). */
@@ -43,7 +44,7 @@ export function Toasts() {
   // What is in the signal is shown; what left it stays a moment, leaving.
   useLayoutEffect(() => {
     const now = new Set(list.map((t) => t.id));
-    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduced = reducedMotion();
     const gone = shown.filter((s) => !s.leaving && !now.has(s.item.id));
     for (const s of gone) {
       const el = stack.current?.querySelector<HTMLElement>(`[data-toast="${s.item.id}"]`);

@@ -4,6 +4,7 @@
 
 import { computed, effect, signal } from '@preact/signals';
 
+import { noteError } from '../diagnostics';
 import { load, save } from '../storage';
 import { DOCK_DEFAULT, type DockPrefs, clampDock, parseDock } from './dock';
 import { DEFAULT_FILTER, type Filter, type Group } from './problems';
@@ -201,6 +202,7 @@ export interface Notice {
  * not pile them up. */
 export function notify(n: Notice): number {
   const kind = n.kind ?? 'info';
+  if (kind === 'bad') noteError(`${n.title}${n.detail ? `: ${n.detail}` : ''}`);
   const same = toasts.peek().find((t) => t.title === n.title && t.kind === kind && t.detail === n.detail);
   const id = same?.id ?? nextToast++;
   const item: ToastItem = {

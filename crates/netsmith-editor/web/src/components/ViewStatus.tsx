@@ -6,9 +6,10 @@ import { useEffect } from 'preact/hooks';
 import { banner, firstError, goToFirstError, neverBuilt } from '../feedback/derive';
 import { analysisSince, busy, dock, now, pending, runClock, setDockOpen } from '../feedback/state';
 import { ANALYSING_CLOCK_AFTER_MS, clock, progressText } from '../feedback/status';
-import { analysis, job, revealSection } from '../store';
+import { entryFileOf } from '../entry';
+import { analysis, job, openFile, project, revealSection } from '../store';
 import { plural } from '../util';
-import { SeverityIcon } from './Icons';
+import { Icon, SeverityIcon } from './Icons';
 import { EmptyState } from './ui';
 import { connection } from '../feedback/state';
 
@@ -104,19 +105,26 @@ export function NoBoard({ what }: { what: string }) {
   if (!analysis.value) return <Analysing />;
   const e = firstError.value;
   if (!neverBuilt.value || !e) {
+    // A project that has no board yet: say where to write the first one, and open that file.
+    const entry = entryFileOf(project.value?.files ?? []);
+    const open = () => {
+      revealSection('source');
+      if (entry) void openFile(entry);
+    };
     return (
       <EmptyState
         icon="board"
         testid="no-board"
-        title={`There is no board to ${what}`}
+        title="No boards yet"
         help={
           <>
-            Write a <code>board</code> in a top-level file; it is drawn here as soon as it builds.
+            Write a <code>board</code> in <code>{entry ?? 'src/main.nsm'}</code>; it is drawn here as soon as it builds.
           </>
         }
         actions={
-          <button class="tool" onClick={() => revealSection('source')}>
-            Open the source
+          <button class="tool primary" onClick={open} data-testid="open-entry">
+            <Icon name="file" size={14} />
+            {entry ? `Open ${entry}` : 'Open the source'}
           </button>
         }
       />

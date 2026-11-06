@@ -43,6 +43,7 @@ import { Popover, Spinner } from './ui';
 import { firstError, goToFirstError, neverBuilt } from '../feedback/derive';
 import { Logo } from './Logo';
 import { SelectionChip } from './SelectionChip';
+import { HelpMenu, SettingsMenu } from './TopMenus';
 
 /** What `section` is for, in its tab's tooltip. */
 const SECTION_HINT: Record<Section, string> = {
@@ -217,6 +218,8 @@ export function TopBar() {
           >
             <Icon name="keyboard" />
           </button>
+          <SettingsMenu />
+          <HelpMenu />
         </div>
         <div class="actions" role="group" aria-label="Actions: they write files">
           <Action

@@ -13,14 +13,17 @@ import {
 } from './components/Chrome';
 import { ProblemsDock } from './components/ProblemsDock';
 import { Sidebar } from './components/Sidebar';
+import { About } from './components/About';
 import { CheatSheet } from './components/CheatSheet';
 import { QuickPick } from './components/QuickPick';
+import { Splash } from './components/Splash';
 import { StatusBar } from './components/StatusBar';
 import { Toasts } from './components/Toasts';
 import { TooltipLayer } from './components/Tooltip';
 import { ProgressLine, StaleStrip } from './components/ViewStatus';
 import { commandForKey } from './commands';
 import { registerAppCommands } from './commandset';
+import { registerSettingsCommands } from './settingsCommands';
 import { banner } from './feedback/derive';
 import { type Section, SECTIONS, clampSplit } from './layout';
 import { cheatSheet, picker } from './quickpick';
@@ -33,6 +36,7 @@ import { Schematic } from './views/Schematic';
 import { System } from './views/System';
 
 registerAppCommands();
+registerSettingsCommands();
 
 function SectionBody({ section }: { section: Section }) {
   switch (section) {
@@ -248,6 +252,8 @@ export function App() {
       <TabMenu />
       <QuickPick />
       <CheatSheet />
+      <About />
+      <Splash />
       <Toasts />
       <TooltipLayer />
       {dragged && <div class="drag-ghost" style={{ left: dragged.x + 12, top: dragged.y + 12 }}>{SECTIONS.find((s) => s.id === dragged.section)?.label}</div>}

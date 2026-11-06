@@ -31,9 +31,37 @@
         root.style.colorScheme = theme === 'dark' || theme === 'hc-dark' ? 'dark' : 'light';
       })();
     </script>
+    <script id="settings-boot">
+      // The density, the size and the motion, applied before the first paint (the same decision as rootState in src/settings.ts;
+      // src/settings.test.ts runs both).
+      (function () {
+        var d = 'comfortable', k = 100, m = 'system';
+        try {
+          var v = JSON.parse(window.localStorage.getItem('netsmith.settings'));
+          if (v && typeof v === 'object') {
+            if (v.density === 'compact') d = 'compact';
+            if ([90, 100, 110, 125].indexOf(v.scale) >= 0) k = v.scale;
+            if (v.motion === 'reduce') m = 'reduce';
+          }
+        } catch (e) {}
+        var root = document.documentElement;
+        root.dataset.density = d;
+        root.dataset.motion = m;
+        root.style.setProperty('--ui-scale', String(k / 100));
+      })();
+    </script>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <!-- The first moment, before any script has run: src/components/Splash.tsx draws the same. -->
+      <div class="splash" role="status" aria-live="polite">
+        <svg class="splash-mark" viewBox="0 0 128 128" width="56" height="56" aria-hidden="true" focusable="false">
+          <path d="M33.7 70.5L92.3 70.5M63 70.5L63 92.4M63 92.4L48.4 112.9M63 92.4L77.6 112.9M48.4 112.9L77.6 112.9M74.5 30.2L40.8 6.6" fill="none" stroke="var(--brand)" stroke-width="8.2" stroke-linecap="round" />
+          <g fill="var(--brand)"><circle cx="33.7" cy="70.5" r="9.6" /><circle cx="63" cy="70.5" r="9.6" /><circle cx="92.3" cy="70.5" r="9.6" /><circle cx="63" cy="92.4" r="9.6" /><circle cx="48.4" cy="112.9" r="9.6" /><circle cx="77.6" cy="112.9" r="9.6" /><rect x="62.7" y="10.1" width="23.8" height="40.2" rx="3.2" transform="rotate(35 74.5 30.2)" /></g>
+        </svg>
+        <div class="splash-text">Reading the project…</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
