@@ -75,18 +75,68 @@ The rebuild of the netlist from the drawing (no short, no open, no extra pin) pa
 
 ## Stability under a small edit
 
-Reported by `crates/netsmith-view/tests/stability.rs` (run with `-- --nocapture`); nothing is asserted. "Wire kept" is the share of the old drawing's wire, in grid steps, that lies on the new drawing's wire of the same net. "Moved" counts parts, other than the one edited, whose origin moved.
+Measured by `netsmith_view::stability` (`cargo run -p netsmith --example schematic_metrics -- <project> --stability`, or `cargo test -p netsmith-view --test stability -- --nocapture` on the test boards). It applies eight small edits to every sheet, draws before and after, and compares the sheet: (a) rename a signal net, (h) rename a supply rail, (b) add a decoupling capacitor beside a supply pin of the sheet's largest part, (c) add a pull-up on a signal pin of it, (d) delete a small part, (e) change a value (to one of the same length), (f) add a part to another module, (g) add a part on no net. A new part is inserted in the list after the part it is beside, not at the end, as an edit of the source would.
 
-| board | edit | wire kept | parts moved | greatest move |
+*Anchor frame*: both drawings are translated so that the same reference part (the largest part present in both) is at the origin, so a drawing that grew on its low side is not "moved" by that. *Raw frame*: the coordinates the layout has. Columns of the summary: the mean and the least, over the sheets of 8 or more parts whose row count did not change, of the share of parts present in both that did not move (to 0.01 mm) and of the wire segments of the old drawing that are, point for point, in the new one. Reproduce the baseline with `NETSMITH_STABLE_OFF=canon,origin,rows,slots,lead,outward,shunts` (the engine as it was).
+
+Before (the engine as on `main` at 1eac15f) and after, on the test boards of `crates/netsmith-view/tests/common/corpus.rs` (LedExample, RegulatorExample, Supplies3, UartSheets, Mcu30; five sheets of ten parts or fewer, 8+ parts: the three supplies, the two UartSheets sheets):
+
+| edit | anchor parts before | after | anchor segments before | after | rows changed before / after |
+|---|---|---|---|---|---|
+| (a) rename a net | 100% | 100% | 100% | 100% | 0 / 0 |
+| (b) add a decoupling capacitor | 26% (least 11%) | 92% (least 60%) | 74% (53%) | 91% (70%) | 1 / 0 |
+| (c) add a pull-up | 94% (90%) | 80% (50%) | 91% (88%) | 77% (54%) | 0 / 0 |
+| (d) delete a part | 65% (62%) | 65% (62%) | 79% (71%) | 79% (73%) | 1 / 0 |
+| (e) change a value | 100% | 100% | 100% | 100% | 0 / 0 |
+| (f) add a part to another module | 100% | 100% | 100% | 100% | 0 / 0 |
+| (g) add a part on no net | 100% | 100% | 99% | 99% | 1 / 0 |
+| (h) rename a supply rail | 100% | 100% | 100% | 100% | 0 / 0 |
+
+In the raw frame (the coordinates of the board, where the sheets are set in a grid) (f) moves a sheet whenever an earlier sheet of the grid grows (before 40%, after 60% of parts unmoved): the page shows one sheet at a time, in its own frame, where nothing differs.
+
+`examples/schematic_bench` (sheets `buck` and `modem`, 10 and 22 parts) and `examples/enclosure_sensor`, anchor frame, parts unmoved / segments kept (mean over the sheets that are measured, rows unchanged):
+
+| edit | bench before | bench after | enclosure_sensor before | after |
 |---|---|---|---|---|
-| bench | rename `+3V3` to `VDD33` | 86% | 10 of 54 | 1.3 mm |
-| bench | add a 100n capacitor on `+3V3` and `GND` in the microcontroller's module | 88% | 5 of 54 | 12.7 mm |
-| bench | delete `R9` | 97% | 0 of 53 | 0 |
-| three supplies | rename `out2` to `vout2` | 100% | 0 of 30 | 0 |
-| three supplies | add a capacitor on `out2` and `GND` in the second module | 97% | 0 of 30 | 0 |
-| three supplies | delete `RC2` | 72% | 13 of 29 (1 turned) | 36.8 mm |
+| (a) rename a net | 100% / 100% | 100% / 100% | - | - |
+| (b) add a decoupling capacitor | 84% / 84% (2 sheets) | 90% / 95% (1 sheet; the other changed its rows) | 72% / 74% | 72% / 74% |
+| (c) add a pull-up | 30% / 42% | 30% / 42% | - | - |
+| (d) delete a part | 50% / 50% | 50% / 50% | 68% / 35% | 40% / 25% (one more sheet counted) |
+| (e) change a value | 100% / 100% | 100% / 100% | 100% / 100% | 100% / 100% |
+| (f) add a part to another module | 100% / 100% | 100% / 100% | 100% / 100% | 100% / 100% |
+| (g) add a part on no net | 100% / 100% | 100% / 100% (1 sheet changed its rows) | 87% / 88% | 88% / 88% |
+| (h) rename a supply rail | 100% / 100% | 100% / 100% | 100% / 100% | 100% / 100% |
 
-A rename of a net should move nothing; on the bench board it moves ten parts by up to 1.3 mm; the cause was not looked for. Deleting one resistor of a supply moves 13 of the 29 other parts.
+The single-sheet examples (`led.nsm` ... `outline_and_pours.nsm`, `carrier_and_cards.nsm`): (a), (e), (f), (g), (h) are 100% before and after except `OutlineAndPours` (g) (50% before, 100% after) and `Carrier` (g) (25% before, 100% after); a capacitor beside a pin (b) leaves 80% of the five parts of the regulator examples unmoved before and after; on the card boards it is 50% before and after for the two cards, and for `Carrier` 75% before and 25% after (the sheet is cut into two rows now, and the capacitor moves the cut).
+
+### What was found
+
+| suspect | verdict | evidence |
+|---|---|---|
+| the sheet's coordinates start at the corner of the drawing | **confirmed**, fixed (`layout/origin.rs`) | a part added above or left of the first piece moved every coordinate: raw 0% unmoved on sheets where the anchor frame had 40% |
+| ties by index (`sort_by_key(|i| *i)`, `BTreeMap<usize,..>`, the order of the walk) | **confirmed**, fixed (`layout/canon.rs`) | the drawing of a design listed the other way round differed (a board's own notes went to the sheet of part 0); now identical (`a_drawing_does_not_depend_on_the_order_of_parts_and_nets`) |
+| a net's name as a tie | **rejected as a cause, avoided**: nets are ordered by their first pin, because ordering them by name made a rename move parts (a rail rename kept 94% of the segments, 75% on one sheet, while that was tried) | |
+| the row count (nearest 1.4:1 over many cuts, depending on the total) flips and re-flows the sheet | **confirmed**, reduced (`engine::pack`) | adding one part on no net re-flowed a sheet of 25 parts into other rows (25% unmoved); the cut now depends on a width in coarse steps and on the pieces' widths in steps of 12.7 mm: (g) 100% on the corpus |
+| the first piece of a row starts at the left edge, so what a block grows to its left moves its main part | **confirmed**, fixed (the row is laid out outward from the reference part) | a pull-up left of `J1` moved the other 24 parts |
+| a small part that serves a pin turns the main part beside it (it votes in the orientation and in the direction of the signal) | **confirmed**, fixed (`Ctx::leaf`) | the IC of the three supply sheets mirrored when a capacitor was added: 0% unmoved, 99 to 147 mm; now 92% (least 60%) |
+| global quantities (thresholds relative to the sheet) | **rejected**: the thresholds of the wired-or-named rule are absolute (48 grid steps, 30 for a fan-out) | `policy.rs` |
+| the router (net order, ties) | **rejected** as a cause on these edits; it follows the order of nets, which is canonical now | the wires of a net that did not change are the same wherever its pins did not move |
+| `Tuning` flips on a tiny edit | **not seen**: a sheet that does not cross is drawn once; one that crosses picks among a few drawings by crossings and wire length | |
+
+Left as they are, and why: a part that needs room makes it (the capacitors of a row beside a pin stand at one pitch, so one more shifts the ones after it; a block that grows moves the pieces beyond it in its row); a pull-up between a signal and a rail changes the hops from ground of the signal's net, which turns the part it is on (the least of (c) on the corpus: 50%, and 0% on one sheet of a real board); a regulator that loses its output capacitor is no longer found as a spine (`spine_of` requires a capacitor on the output node), so deleting that capacitor draws the sheet without a row; the sheets of a board are set in a grid by their sizes, so the raw frame of a sheet moves when an earlier sheet grows.
+
+### Drawing quality, before and after (every public board)
+
+`--plain` before and after, per sheet; every rule of `check` is 0 on every sheet before and after. Crossings, bends and wire length are the same on every sheet of the public boards except:
+
+| sheet | crossings | bends | wire mm | aspect |
+|---|---|---|---|---|
+| `carrier_and_cards.nsm` Carrier | 29 -> 29 | 13 -> 16 | 525 -> 425 | 1.60 -> 0.88 |
+| `enclosure_sensor` radio | = | = | 157 -> 155 | 1.18 -> 1.21 |
+| `enclosure_sensor` EnclosureSensor | = | = | = | 1.40 -> 1.69 |
+| `outline_and_pours.nsm` OutlineAndPours | = | = | = | 1.34 -> 1.74 |
+
+(The aspect of the single-sheet examples moves by 0.02 to 0.03 where the box grew by a grid step.) Carrier has three bends more and a hundred millimetres less wire in a taller sheet; OutlineAndPours and EnclosureSensor are wider, inside the 1.4 to 1.8 the rows aim for.
 
 ## After stage 2 (the three drawing defects fixed)
 
