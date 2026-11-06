@@ -25,3 +25,5 @@ What a view does about it: a list or a card gets `.hover-lit` (a wash and a 1 px
 - A section that is not on show keeps its DOM, but a view that draws only when shown (the board) does not: put it in a pane.
 - `hover-lit` is also in the page while a recipe's mouse rests on something: a recipe that counts `.hover-lit` moves the mouse away first.
 - The subscriber puts back what a view that is drawn again took off (a card whose `class` changed), and writes only the difference (`domMarks.ts`), as the comparison's marks do (`compare.md`, _Beside the rest_).
+
+Round 6: **Escape closes any open card**, the one the pointer opened too, whether the editor has the focus or not (`source/cm-card.tsx`: a listener on the document, before the page's own; the card carries `data-esc-closes`, so `Back` and `Clear the selection` step aside for it). In the schematic a hovered part wears a halo (`schematic.md`), not a glow.

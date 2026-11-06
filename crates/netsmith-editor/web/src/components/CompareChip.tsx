@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState } from 'preact/hooks';
 
+import { sourceLines } from '../compare/model';
 import { changes, clearCompare, compare, refName, refText, runCompare, showChanges, state } from '../compare/store';
 import { plural } from '../util';
 import { find, chordText } from '../commands';
@@ -75,15 +76,17 @@ export function CompareChip() {
         : s.kind === 'ready'
           ? n === 0
             ? 'no changes'
-            : plural(n, 'change')
+            : plural(n, 'circuit change')
           : '';
+  const c = compare.value;
+  const tip = `Compared with ${refText.value}.${c ? ` ${plural(n, 'circuit change')} (parts, nets, rails, modules); the source differs in ${plural(c.source.filesChanged, 'file')}, ${plural(sourceLines(c), 'line')}.` : ''} Click for the comparison and for marking the views.`;
   const bad = s.kind === 'failed' || (s.kind === 'ready' && !!s.data.error);
   return (
     <span class={`status-anchor cmp-chip-anchor ${open ? 'open' : ''}`}>
       <button
         class={`item cmp-chip ${bad ? 'bad' : ''} ${showChanges.value ? 'marking' : ''}`}
         data-testid="compare-chip"
-        data-tip={`Compared with ${refText.value}. Click for the comparison and for marking the views.`}
+        data-tip={tip}
         aria-label={`Compared with ${refText.value}: ${text}`}
         aria-haspopup="dialog"
         aria-expanded={open}

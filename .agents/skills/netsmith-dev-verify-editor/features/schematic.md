@@ -57,3 +57,7 @@ Only the open module's drawing is shown (the page regroups the server's SVG by m
 - Esc closes the schematic's flag menu before it clears the selection (`data-esc-closes` on it tells the `selection.clear` command to wait).
 - There is one selection chip, the top bar's (`.selchip`); the drawing has none. The "zoomed in to keep the text readable" chip (`.hold-chip`) and the ring (`.pulse-ring`) are not selection chips.
 - Moving symbols is not built (ADR 0019 designs the sidecar file).
+
+## The state of a part is an overlay (round 6)
+
+A picked, hovered, linked or marked part never has its own strokes or labels recoloured, dashed or made heavier (a recoloured symbol reads as a broken one). `schematic/halo.ts` gives each part two rectangles behind it, empty until a class asks: `.part-halo` (a soft rounded rectangle around the body and its pins; the pick's `--sel`, the cursor's line in the source fainter, the hover `--hover-lit`) and `.part-cmp` outside it (the comparison's mark, so a part can wear both). They are made once the part is laid out (the sheet on show), so a state is a class and no node is added while the pointer moves; they are 1.5 to 2 px on the screen at any zoom (`vector-effect: non-scaling-stroke`). The nets a pick lights keep their wire colour, a little heavier, on a soft underlay in `--sel` (not the server's `--hit` amber), and the name of a lit power symbol is not dimmed. `scripts/editor-verify drive schematic` and `compare-interactions` read the halo, the mark and the symbol's stroke in each state.

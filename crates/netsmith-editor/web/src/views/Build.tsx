@@ -347,18 +347,22 @@ export function Build() {
               <div class="order-pick">
                 <label class="select-field">
                   <span class="faint">Order</span>
-                  <select
-                    aria-label="Order"
-                    value={pickedOrder.value ?? ''}
-                    disabled={busy !== null}
-                    onChange={(e) => (pickedOrder.value = (e.currentTarget as HTMLSelectElement).value)}
-                  >
-                    {orders.map((o) => (
-                      <option key={o.name} value={o.name}>
-                        {o.name}
-                      </option>
-                    ))}
-                  </select>
+                  <span class="boardpick order-select">
+                    <Icon name="layers" size={14} class="bp-icon" />
+                    <select
+                      aria-label="Order"
+                      value={pickedOrder.value ?? ''}
+                      disabled={busy !== null}
+                      onChange={(e) => (pickedOrder.value = (e.currentTarget as HTMLSelectElement).value)}
+                    >
+                      {orders.map((o) => (
+                        <option key={o.name} value={o.name}>
+                          {o.name}
+                        </option>
+                      ))}
+                    </select>
+                    <Icon name="chevrons-up-down" size={12} class="bp-caret" />
+                  </span>
                 </label>
                 <button class="tool primary" disabled={busy !== null || !order || errors > 0} onClick={() => void runOrder()}>
                   {busy === 'order' ? <Spinner size={13} /> : <Icon name="layers" size={14} />}

@@ -125,35 +125,33 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   expect((await page.locator('.statusbar [data-testid="compare-chip"]').count()) === 1, 'the chip is back in the bar');
 
   // ------------------------------------------------------------------ (b) marks, hover and selection on the same elements
-  step('schematic: a part that is marked as changed and hovered keeps both: the hover\'s light and the mark\'s colour');
+  step('schematic: a part that is marked as changed and hovered keeps both: the hover\'s halo and the mark\'s rectangle, and its own strokes are never recoloured');
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.selectOption('.boardpick select', 'TwoBoards/led');
   await section('schematic');
   await page.waitForSelector('svg.schematic .part.cmp-changed');
   const changed = await page.evaluate(() => document.querySelector('svg.schematic .part.cmp-changed').getAttribute('data-ref'));
   const part = page.locator(`svg.schematic .part.cmp-changed[data-ref="${changed}"]`);
+  // What a part wears: its class, the symbol's own stroke, the overlay rectangles (the mark outside the pick's and the hover's).
   const look = (sel) =>
     page.evaluate((s) => {
       const e = document.querySelector(s);
-      const c = getComputedStyle(e);
-      const shape = e.querySelector('.s');
-      return { classes: [...e.classList].sort().join(' '), filter: c.filter, stroke: shape ? getComputedStyle(shape).stroke : '', dash: shape ? getComputedStyle(shape).strokeDasharray : '' };
+      const shape = e.querySelector(':scope > .s');
+      const st = (el) => (el ? getComputedStyle(el) : null);
+      // the overlay rectangles are the part's previous siblings (schematic/halo.ts): the halo, then the mark outside it
+      const halo = st(e.previousElementSibling?.classList.contains('part-halo') ? e.previousElementSibling : null);
+      const cmp = st(e.previousElementSibling?.previousElementSibling?.classList.contains('part-cmp') ? e.previousElementSibling.previousElementSibling : null);
+      return {
+        classes: [...e.classList].sort().join(' '),
+        filter: getComputedStyle(e).filter,
+        stroke: shape ? getComputedStyle(shape).stroke : '',
+        dash: shape ? getComputedStyle(shape).strokeDasharray : '',
+        width: shape ? getComputedStyle(shape).strokeWidth : '',
+        haloStroke: halo?.stroke, haloFill: halo?.fill,
+        cmpStroke: cmp?.stroke, cmpFill: cmp?.fill,
+      };
     }, sel);
   const css = `svg.schematic .part.cmp-changed[data-ref="${changed}"]`;
-  const plain = await look(css);
-  await page.mouse.move(5, 5);
-  await part.hover();
-  await settle(400);
-  const hovered = await look(css);
-  expect(/hover-lit/.test(hovered.classes) && /cmp-changed/.test(hovered.classes), `hovering keeps the mark's class (${hovered.classes})`);
-  expect(hovered.filter !== plain.filter, `hover changes the glow of a marked part (${plain.filter} -> ${hovered.filter})`);
-  expect(hovered.stroke === plain.stroke, 'the outline stays the mark\'s colour while hovered');
-  await shot('schematic-hover-marked');
-  step('schematic: a part that is marked and picked shows it is picked, and still shows it changed');
-  await part.click();
-  await page.mouse.move(5, 5);
-  await settle(400);
-  const picked = await look(css);
   const token = (name) =>
     page.evaluate((n) => {
       const e = document.createElement('i');
@@ -163,9 +161,26 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
       e.remove();
       return c;
     }, name);
+  const plain = await look(css);
+  expect(plain.cmpStroke === (await token('--cmp-changed')), `a changed part's mark is the rectangle outside the symbol, in the mark's colour (${plain.cmpStroke})`);
+  await page.mouse.move(5, 5);
+  await part.hover();
+  await settle(400);
+  const hovered = await look(css);
+  expect(/hover-lit/.test(hovered.classes) && /cmp-changed/.test(hovered.classes), `hovering keeps the mark's class (${hovered.classes})`);
+  expect(hovered.haloFill !== plain.haloFill, `the hover lights the halo (${plain.haloFill} -> ${hovered.haloFill})`);
+  expect(hovered.cmpStroke === plain.cmpStroke, 'the mark stays the mark\'s colour while hovered');
+  expect(hovered.stroke === plain.stroke && hovered.width === plain.width && hovered.dash === plain.dash, `the symbol's own strokes are not touched by the hover (${plain.stroke} ${plain.width} ${plain.dash})`);
+  await shot('schematic-hover-marked');
+  step('schematic: a part that is marked and picked shows it is picked, and still shows it changed; its strokes stay as drawn');
+  await part.click();
+  await page.mouse.move(5, 5);
+  await settle(400);
+  const picked = await look(css);
   expect(/\bmark\b/.test(picked.classes) && /cmp-changed/.test(picked.classes), `picked and marked (${picked.classes})`);
-  expect(picked.stroke === (await token('--sch-mark')), `the pick wins the outline (${picked.stroke})`);
-  expect(/drop-shadow/.test(picked.filter), `the change is still shown by the glow (${picked.filter})`);
+  expect(picked.haloStroke === (await token('--sel')), `the pick is the halo in the selection's colour (${picked.haloStroke})`);
+  expect(picked.cmpStroke === (await token('--cmp-changed')), `and the change is still shown by the rectangle outside it (${picked.cmpStroke})`);
+  expect(picked.stroke === plain.stroke && picked.width === plain.width && picked.dash === plain.dash, `the symbol's strokes are the same picked as not (${picked.stroke} ${picked.dash})`);
   await shot('schematic-picked-marked');
   await page.keyboard.press('Escape');
 
@@ -211,7 +226,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   await shot('power-picked-marked');
   await page.keyboard.press('Escape');
 
-  step('the board: a marked part has a glow, hovered it has the hover\'s too');
+  step('the board: a marked part has a crisp outline, hovered it has the hover\'s light too');
   await section('pcb');
   await page.waitForSelector('.pcb-host svg g[data-ref]');
   await settle(500);
@@ -221,13 +236,18 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   });
   expect(pcbRef !== null, `a part of the board is marked (${pcbRef})`);
   const pcbSel = `.pcb-host svg g[data-ref="${pcbRef}"]`;
+  const outline = () => page.evaluate((r) => { const e = document.querySelector(`.pcb-overlay rect.cmp-rect[data-cmp-ref="${r}"]`); const c = e && getComputedStyle(e); return c ? { stroke: c.stroke, width: c.strokeWidth, fill: c.fill } : null; }, pcbRef);
+  const mark = await outline();
+  expect(mark !== null && mark.stroke !== 'none' && !/^0(px)?$/.test(mark.width), `the marked part has an outline drawn over it (${JSON.stringify(mark)})`);
   const glow = () => page.evaluate((s) => getComputedStyle(document.querySelector(s)).filter, pcbSel);
   const glowPlain = await glow();
+  expect(glowPlain === 'none', `the mark is no glow (${glowPlain})`);
   await page.locator(pcbSel).first().hover({ force: true });
   await settle(400);
   const lit = await page.evaluate((s) => document.querySelector(s).classList.contains('hover-lit'), pcbSel);
   const glowHover = await glow();
-  expect(lit && glowHover !== glowPlain, `hover adds to the mark's glow (${glowPlain} -> ${glowHover})`);
+  expect(lit && glowHover !== glowPlain, `hover adds its light to the part (${glowPlain} -> ${glowHover})`);
+  expect(JSON.stringify(await outline()) === JSON.stringify(mark), 'and the outline stays');
   await page.mouse.move(5, 5);
 
   // ------------------------------------------------------------------ the marks are classes only

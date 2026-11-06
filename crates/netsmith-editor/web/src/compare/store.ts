@@ -43,14 +43,14 @@ export const compare = computed<Compare | null>(() => {
   return s.kind === 'ready' && !s.data.error ? s.data : null;
 });
 
-/** The scope the section shows: what was chosen if the comparison has it, else the board in front, else all. */
+/** The scope the section shows: what was chosen if the comparison has it, else all the boards (the one board of a project that
+ * has one). The board in front does not matter: the tiles, the counts of the tabs and the rows are the whole comparison until a
+ * board is chosen in the section, so they agree with the sentence and the status bar's chip. */
 export const scope = computed<Scope>(() => {
   const c = compare.value;
   const chosen = scopeChoice.value;
   if (!c) return 'all';
   if (chosen && (chosen === 'all' || c.boards.some((b) => b.name === chosen))) return chosen;
-  const here = board.value;
-  if (here && c.boards.some((b) => b.name === here)) return here;
   return c.boards.length === 1 ? c.boards[0].name : 'all';
 });
 

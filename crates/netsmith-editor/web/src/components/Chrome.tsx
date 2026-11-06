@@ -376,6 +376,14 @@ export function SectionStrip({ pane }: { pane: { section: Section; index: number
     if (!el.classList.contains('placed')) requestAnimationFrame(() => el.classList.add('placed'));
   };
   useLayoutEffect(place, [pane.section, two, other]);
+  // The section changed (a key 1 to 8, the palette, a click-through) while the focus was on a tab: the focus goes with the choice.
+  // A ring left on the tab that is no longer the active one points at what is not on show.
+  useEffect(() => {
+    const el = strip.current;
+    const at = document.activeElement;
+    if (!el || !at || !el.contains(at) || !(at as HTMLElement).matches('.tab:not(.active)')) return;
+    el.querySelector<HTMLElement>('.tab.active')?.focus();
+  }, [pane.section]);
   useEffect(() => {
     const el = strip.current;
     if (!el || typeof ResizeObserver === 'undefined') return;

@@ -60,3 +60,9 @@ The fixture is `scripts/editor-verify-js/fixtures/constrained.nsm` with its phys
 - The drawing the page gets is `svg::render_view` (no key); `fab` still writes `svg::render` with the key.
 - Routing is per board and is forgotten when the files are built again.
 - A board that cannot be placed because of the project's own files (a part with no footprint mapping, a footprint that lacks a pad the symbol uses, a size that does not fit) is a `422` from `/api/pcb/scene`. The page's reads send `Accept: application/json`, so the body is `{code, message, ...}` (`footprint_lacks_pad`, `no_kicad_mapping`, ...; `ApiFailure.code` in `client.ts`), and the message is what the "The board could not be placed" state shows under its title; a fault of the server is a `500` with plain text. `carrier_and_cards` has invented parts with no KiCad symbol: its boards show that state, not a drawing.
+
+## Round 6
+
+- A board opens fitted to the window and no larger than **300 %** (100 % is 12 px to the millimetre; `placeView` in `pcb/Canvas.tsx`; Fit does the same), on a canvas of faint dots that moves and scales with it.
+- A **reference** is small beside the pads: its size is the drawing's (0.46 mm) held between 10 and 13 screen pixels (`--pxl`, the size of a screen pixel in the drawing's units with its unit); a **plane label** is smaller still, inside the top left corner of its plane, above the parts (a group of its own, `.l-plane-labels`), with a halo, and the labels of planes that share a corner are stacked a line apart.
+- The toolbar has the **Changes vs** switch; the marks are a 2 px outline with a faint tint over the part's courtyard, outside the pick's outline (no glow).

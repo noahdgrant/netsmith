@@ -10,6 +10,7 @@ import {
   bomMarks,
   bomRows,
   changeCount,
+  circuitChanges,
   costDelta,
   counts,
   filterRows,
@@ -27,6 +28,7 @@ import {
   removedOn,
   renumberedRows,
   rowsOf,
+  scopeSummary,
   sheetOfRemoved,
   stageIndex,
   stageText,
@@ -171,6 +173,29 @@ describe('the rows of a scope', () => {
     expect(changeCount(c)).toBe(1 + 3 + 3 + 3 + 2);
     expect(changeCount(null)).toBe(0);
     expect(changeCount({ ...c, error: 'does not analyse' })).toBe(0);
+  });
+  it('one count of the circuit changes: the tiles’ total, the tab counts and the chip agree for all the boards, and each board adds up', () => {
+    const all = tiles(c, 'all');
+    const tileTotal = (cs: ReturnType<typeof tiles>) => ['parts', 'nets', 'rails'].reduce((n, id) => n + Number(cs.find((x) => x.id === id)!.value), 0);
+    const n = counts(c, 'all');
+    // the tiles count parts, nets and rails; modules and ports (a tab of their own) are the rest
+    expect(circuitChanges(c, 'all')).toBe(tileTotal(all) + n.modules);
+    expect(circuitChanges(c, 'all')).toBe(changeCount(c));
+    expect(circuitChanges(c, 'TwoBoards/led') + circuitChanges(c, 'TwoBoards/power')).toBe(circuitChanges(c, 'all'));
+    expect(n.parts).toBe(counts(c, 'TwoBoards/led').parts + counts(c, 'TwoBoards/power').parts);
+    expect(n.nets).toBe(counts(c, 'TwoBoards/led').nets + counts(c, 'TwoBoards/power').nets);
+    expect(n.rails).toBe(counts(c, 'TwoBoards/led').rails + counts(c, 'TwoBoards/power').rails);
+    expect(Number(all.find((x) => x.id === 'parts')!.value)).toBe(n.parts);
+    expect(circuitChanges(null)).toBe(0);
+    expect(circuitChanges({ ...c, error: 'x' })).toBe(0);
+    expect(circuitChanges(c, 'Gone/board')).toBe(0);
+  });
+  it('the sentence is the server’s for all the boards and the board’s own for one', () => {
+    expect(scopeSummary(c, 'all')).toBe(c.summary);
+    expect(scopeSummary(c, 'TwoBoards/led')).toBe(led.summary);
+    expect(scopeSummary(c, 'TwoBoards/power')).toBe(power.summary);
+    expect(scopeSummary({ ...c, boards: [board('B', { summary: '  ' })] }, 'B')).toBe('No circuit changes');
+    expect(scopeSummary(c, 'Gone/board')).toBe(c.summary);
   });
   it('knows when only the source differs', () => {
     const same = { ...c, changed: false, boards: [board('B')] };

@@ -366,11 +366,26 @@ export function counts(c: Compare, scope: Scope): Record<Category, number> {
   return { parts: r.parts.length, nets: r.nets.length, rails: r.rails.length, bom: r.bom.length, modules: r.modules.length, problems: r.problems.length, source: c.source.files.length };
 }
 
-/** What the status chip counts: the changes to the circuit (parts, nets, rails, modules and ports), not its bill of materials, problems or sources. */
-export function changeCount(c: Compare | null): number {
+/** The circuit changes of the boards in scope: parts, nets, rails, modules and ports, not the bill of materials, the problems or
+ * the source's lines. This one number is the tiles' total in the section, and the chip's in the status bar when the scope is all. */
+export function circuitChanges(c: Compare | null, scope: Scope = 'all'): number {
   if (!c || c.error) return 0;
-  return c.boards.reduce((n, b) => n + boardChanges(b), 0);
+  return boardsIn(c, scope).reduce((n, b) => n + boardChanges(b), 0);
 }
+
+/** What the status chip counts: the circuit changes of every board. */
+export const changeCount = (c: Compare | null): number => circuitChanges(c, 'all');
+
+/** The sentence under the title for the scope shown: the server's own for all the boards, else the board's own, so the
+ * words and the tiles are about the same boards. */
+export function scopeSummary(c: Compare, scope: Scope): string {
+  if (scope === 'all') return c.summary;
+  const b = c.boards.find((x) => x.name === scope);
+  return b ? b.summary.trim() || 'No circuit changes' : c.summary;
+}
+
+/** The lines of the source that differ across the whole comparison, for the chip's tooltip. */
+export const sourceLines = (c: Compare): number => c.source.added + c.source.removed;
 
 // ---- grouping and filtering ----
 
@@ -420,6 +435,9 @@ export interface Tile {
   chips: TileChip[];
   /** The tab a click on the tile opens. */
   tab: Category;
+  /** Not a figure (`unknown`): drawn quiet, with what to say about it in `tip`. */
+  muted?: boolean;
+  tip?: string;
 }
 
 const chips = (a: number, r: number, c: number, changedLabel = 'changed'): TileChip[] => [
@@ -458,6 +476,7 @@ export function tiles(c: Compare, scope: Scope): Tile[] {
   const deltas = boards.map((b) => b.bom?.deltaUsd);
   const delta = deltas.length > 0 && deltas.every((d) => d !== undefined && d !== null) ? sum(deltas as number[]) : undefined;
   const bomChanged = bomA + bomR + bomC > 0;
+  const bomCostUnknown = boards.some((b) => b.bom === undefined) && !bomChanged ? true : bomChanged && delta === undefined;
   const probs = [c.problems, ...boards.map((b) => b.problems)];
   const pNew = sum(probs.map((p) => p.new.length));
   const pRes = sum(probs.map((p) => p.resolved.length));
@@ -473,6 +492,7 @@ export function tiles(c: Compare, scope: Scope): Tile[] {
       tone: delta === undefined || delta === 0 ? 'neutral' : delta > 0 ? 'warn' : 'ok',
       chips: chips(bomA, bomR, bomC),
       tab: 'bom',
+      ...(bomCostUnknown ? { muted: true, tip: 'No prices in the catalogs yet' } : {}),
     },
     { id: 'problems', label: 'Problems', value: pNew === 0 && pRes === 0 ? 'None' : `${pNew} new`, sub: pRes ? `${pRes} resolved` : undefined, tone: pNew > 0 ? 'bad' : pRes > 0 ? 'ok' : 'neutral', chips: [...(pNew ? [{ sign: '+' as const, n: pNew, label: 'new' }] : []), ...(pRes ? [{ sign: '-' as const, n: pRes, label: 'resolved' }] : [])], tab: 'problems' },
   ];

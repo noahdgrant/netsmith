@@ -17,11 +17,13 @@ import {
   type GroupBy,
   type Tile,
   boardStatusText,
+  circuitChanges,
   counts,
   filterRows,
   groupRows,
   onlySourceChanged,
   rowsOf,
+  scopeSummary,
   stageIndex,
   stageText,
   STAGE_ORDER,
@@ -140,24 +142,29 @@ function BrokenRef({ data }: { data: CompareData }) {
 
 function Summary({ data }: { data: CompareData }) {
   const now = Date.now();
+  const sc = scope.value;
+  const total = circuitChanges(data, sc);
+  const several = data.boards.length > 1;
+  const took = `${data.cached ? 'The ref was read before; only the comparison ran' : 'The ref was read and analysed'} (${seconds(data.elapsedMs)}).`;
   return (
     <div class="cmp-summary">
-      <p class="cmp-sentence" data-testid="cmp-summary">{data.summary}</p>
+      <p class="cmp-sentence" data-testid="cmp-summary" data-scope={sc}>{scopeSummary(data, sc)}</p>
       <div class="cmp-meta">
         <span class="mono" title={data.base.subject}>
           {data.base.short}
         </span>
         <span class="cmp-sub">{data.base.subject}</span>
-        <span class="faint">{relativeDate(data.base.date, now)}</span>
+        <span class="faint cmp-when" data-tip={`${new Date(data.base.date).toLocaleString()}. ${took}`}>{relativeDate(data.base.date, now)}</span>
         {data.head.dirty && (
           <span class="cmp-dirty" data-tip="The files on disk are compared as they are, uncommitted changes included">
             <Icon name="warning" size={12} />
             working tree has uncommitted changes (compared as is)
           </span>
         )}
-        <span class="faint cmp-took" title={data.cached ? 'The ref was read before; only the comparison ran' : 'The ref was read and analysed'}>
-          {data.cached ? 'cached, ' : ''}
-          {seconds(data.elapsedMs)}
+        <span class="spacer" />
+        <span class="cmp-total" data-testid="cmp-total" data-tip="Parts, nets, rails, modules and interfaces that changed. The bill of materials, the problems and the source's lines are counted in their own tabs.">
+          <b>{total}</b> circuit {total === 1 ? 'change' : 'changes'}
+          <span class="faint">{sc === 'all' ? (several ? `in ${plural(data.boards.length, 'board')}` : '') : `in ${sc}`}</span>
         </span>
       </div>
     </div>
@@ -167,8 +174,15 @@ function Summary({ data }: { data: CompareData }) {
 function TileView({ t }: { t: Tile }) {
   return (
     <button type="button" class={`cmp-tile ${t.tone}`} data-testid={`tile-${t.id}`} onClick={() => (tab.value = t.tab)} aria-label={`${t.label}: ${t.value}${t.sub ? `, ${t.sub}` : ''}. Show the list.`}>
-      <span class="cmp-tile-label">{t.label}</span>
-      <span class="cmp-tile-value">{t.value}</span>
+      <span class="cmp-tile-label">
+        {t.label}
+        {t.tip && (
+          <span class="stat-info" data-tip={t.tip}>
+            <Icon name="note" size={12} />
+          </span>
+        )}
+      </span>
+      <span class={`cmp-tile-value ${t.muted ? 'muted' : ''}`}>{t.value}</span>
       <span class="cmp-tile-chips">
         {t.chips.length === 0 && <span class="cmp-tile-sub">{t.sub ?? 'no change'}</span>}
         {t.chips.map((c) => (
@@ -303,7 +317,8 @@ function Body({ data }: { data: CompareData }) {
   const list: ChangeRow[] = active === 'source' ? [] : (rows[active as Exclude<Category, 'source'>] as ChangeRow[]);
   const shown = filterRows(list, query);
   const renum = filterRows(rows.renumbered, query);
-  const groups = groupRows(shown, group);
+  // The bill of materials is always grouped by what happened to the line (Added, Removed, Changed): the server's order mixes the boards' lines.
+  const groups = groupRows(shown, active === 'bom' ? 'change' : group);
   const several = sc === 'all' && data.boards.length > 1;
   const rowsTotal = n.parts + n.nets + n.rails + n.bom + n.modules + n.problems;
   // No change to the circuit: say so with a check, and what did differ in the source (comments, formatting, a layout file).

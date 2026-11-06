@@ -140,15 +140,18 @@ export interface GutterMarks {
   changed: number[];
   /** Head lines that follow lines that are gone (0 when they were the first ones). */
   deletedAfter: number[];
-  /** Hunks that are not equal: what the status bar counts. */
+  /** Hunks that are not equal. */
   hunks: number;
+  /** The lines that differ: a hunk counts the larger of its old and its new lines (a line edited is one line, not two). */
+  lines: number;
 }
 
 export function gutterMarks(base: string[], head: string[]): GutterMarks {
-  const marks: GutterMarks = { added: [], changed: [], deletedAfter: [], hunks: 0 };
+  const marks: GutterMarks = { added: [], changed: [], deletedAfter: [], hunks: 0, lines: 0 };
   for (const h of diffLines(base, head)) {
     if (h.kind === 'equal') continue;
     marks.hunks++;
+    marks.lines += Math.max(h.aTo - h.aFrom, h.bTo - h.bFrom);
     if (h.kind === 'delete') {
       marks.deletedAfter.push(h.bFrom);
       continue;

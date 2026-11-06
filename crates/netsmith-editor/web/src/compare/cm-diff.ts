@@ -106,6 +106,29 @@ function decorationsOf(rows: ViewRow[], doc: string, focus?: number) {
 export function scrollToRow(view: EditorView, index: number, margin = 80) {
   const line = view.state.doc.line(Math.min(Math.max(index + 1, 1), view.state.doc.lines));
   view.dispatch({ effects: EditorView.scrollIntoView(line.from, { y: 'start', yMargin: margin }) });
+  // The scroll lands between two lines; a line cut in half under the header reads as a fault. Once it has landed, move to the line
+  // below the cut (a line is never cut when the view's top is on a line's top).
+  // (The scroll is made when CodeMirror next measures, which can be a few frames on: it is looked at twice, and a second look changes nothing.)
+  const settle = () => snapToLine(view);
+  for (const ms of [60, 220]) setTimeout(settle, ms);
+}
+
+/** Put the top of the view on the top of a line: the line cut by the edge is scrolled out, never left half shown. It looks at the
+ * lines as laid out (CodeMirror's own estimate of a line it has not drawn yet can be off by a few pixels). */
+export function snapToLine(view: EditorView) {
+  const sc = view.scrollDOM;
+  const edge = sc.getBoundingClientRect().top;
+  for (const l of view.contentDOM.querySelectorAll('.cm-line')) {
+    const r = l.getBoundingClientRect();
+    if (r.bottom <= edge + 0.5) continue;
+    if (r.top >= edge - 0.5) break;
+    // Scroll the cut line out (down) when that is the shorter way and there is room, else bring all of it in (up).
+    const down = r.bottom - edge;
+    const up = edge - r.top;
+    const room = sc.scrollHeight - sc.clientHeight - sc.scrollTop;
+    sc.scrollTop += down <= up && down <= room + 0.5 ? down : -up;
+    break;
+  }
 }
 
 /** Two views that scroll as one: moving either moves the other, in both directions. */

@@ -328,16 +328,35 @@ body:has(.status-popover) .toasts { right: calc(1rem + 21.25rem + 0.75rem); }
 .panzoom.schematic-host { background: var(--sch-sheet); }
 .schematic-host svg.schematic .sheet { fill: transparent; }
 .schematic-host svg.schematic .part { cursor: pointer; pointer-events: bounding-box; }
-/* a lit net: the server doubles the wire's width, which at close zoom is a bar; a little more is enough */
-.schematic-host svg.schematic .on .line, .schematic-host svg.schematic .junction.on, .schematic-host svg.schematic .on .pin-line { stroke-width: .38; }
-.schematic-host svg.schematic .pin.on .pin-line { stroke-width: .38; }
-/* a bus is its own colour, apart from the wires; a lit bus (`.on`) keeps the server's highlight */
+/* A lit net (a part, a net or a bus is picked or hovered): the wire keeps its own colour, a little heavier, on a soft underlay
+ * in the selection's blue. The server recolours it to `--hit` (an amber that, at three times the zoom, shouts); here that stays only
+ * as the dimming of what is not lit (has-on). */
+.schematic-host svg.schematic .on .line, .schematic-host svg.schematic .junction.on, .schematic-host svg.schematic .on .pin-line { stroke: var(--wire); stroke-width: .34; }
+.schematic-host svg.schematic .on .pin-line, .schematic-host svg.schematic .pin.on .pin-line { stroke: var(--pin); stroke-width: .3; }
+.schematic-host svg.schematic .junction.on { fill: var(--wire); }
+.schematic-host svg.schematic :is(.wire, .power).on .line, .schematic-host svg.schematic .port.on .flag { filter: drop-shadow(0 0 .3px color-mix(in srgb, var(--sel) 80%, transparent)) drop-shadow(0 0 .9px color-mix(in srgb, var(--sel) 38%, transparent)); }
+.schematic-host svg.schematic .junction.on { filter: drop-shadow(0 0 .5px color-mix(in srgb, var(--sel) 70%, transparent)); }
+.schematic-host svg.schematic .on text, .schematic-host svg.schematic text.on { fill: var(--text); }
+/* the name beside a lit power symbol is inside its group, which the server's dimming (the label has to be lit itself) does not see */
+.schematic-host svg.schematic.has-on .on .net-label { opacity: 1; }
+.schematic-host svg.schematic .on text.net-label, .schematic-host svg.schematic text.net-label.on { fill: var(--net); }
+.schematic-host svg.schematic .on text.pin-name, .schematic-host svg.schematic .on text.pin-number { fill: var(--pin); }
+.schematic-host svg.schematic .part.on .s { stroke: var(--body); }
+/* a bus is its own colour, apart from the wires; a lit bus (`.on`) is the same colour on the same underlay */
 .schematic-host svg.schematic .bus-group:not(.on) .bus .line, .schematic-host svg.schematic .bus-group:not(.on) .bus-tick, .schematic-host svg.schematic .bus-group:not(.on) .bus-flag .flag { stroke: var(--sch-bus); }
 .schematic-host svg.schematic .bus-group:not(.on) .bus-label, .schematic-host svg.schematic .bus-group:not(.on) .bus-count { fill: var(--sch-bus); }
-.schematic-host svg.schematic .part.mark .s { stroke: var(--sch-mark); }
-.schematic-host svg.schematic .part.mark text { fill: var(--sch-mark); }
-.schematic-host svg.schematic .part.mark.linked .s { stroke: color-mix(in srgb, var(--sch-mark) 55%, var(--sch-muted)); stroke-dasharray: 3 2; }
-.schematic-host svg.schematic .part.mark.linked text { fill: color-mix(in srgb, var(--sch-mark) 70%, var(--sch-text)); }
+.schematic-host svg.schematic .bus-group.on .bus .line, .schematic-host svg.schematic .bus-group.on .bus-tick, .schematic-host svg.schematic .bus-group.on .bus-flag .flag { stroke: var(--sch-bus); }
+.schematic-host svg.schematic .bus-group.on { filter: drop-shadow(0 0 .35px color-mix(in srgb, var(--sel) 80%, transparent)) drop-shadow(0 0 1px color-mix(in srgb, var(--sel) 38%, transparent)); }
+/* The state of a part is an overlay (schematic/halo.ts): a soft rounded rectangle around the body, behind it (the part's previous sibling, found by `:has(+ .part)`), and the symbol's own
+ * strokes stay as drawn. Pick: the selection's blue; the line the cursor is on in the source: the same, fainter; the pointer (or
+ * another view's hover): `--hover-lit`. The comparison's mark is the outer rectangle (`.part-cmp`, compare.css), so a part can wear
+ * a mark and a pick at once. 2 px on the screen at any zoom. */
+.schematic-host svg.schematic :is(.part-halo, .part-cmp) { fill: none; stroke: none; pointer-events: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; transition: fill var(--dur-fast) var(--ease), stroke var(--dur-fast) var(--ease); }
+.schematic-host svg.schematic .part-halo:has(+ .part.hover-lit) { fill: var(--hover-lit-bg); stroke: color-mix(in srgb, var(--hover-lit) 45%, transparent); stroke-width: 1.5px; }
+.schematic-host svg.schematic .part-halo:has(+ .part.mark) { fill: color-mix(in srgb, var(--sel) 12%, transparent); stroke: var(--sel); stroke-width: 2px; }
+.schematic-host svg.schematic .part-halo:has(+ .part.mark.linked) { fill: color-mix(in srgb, var(--sel) 6%, transparent); stroke: color-mix(in srgb, var(--sel) 50%, transparent); stroke-width: 1.5px; }
+.schematic-host svg.schematic .part-halo:has(+ .part.mark.hover-lit) { fill: color-mix(in srgb, var(--sel) 17%, transparent); }
+@media (prefers-reduced-motion: reduce) { .schematic-host svg.schematic :is(.part-halo, .part-cmp) { transition: none; } }
 .inspector { width: 18.125rem; flex: none; overflow: auto; background: var(--surface); border-left: 1px solid var(--border); padding: 0.25rem 0.875rem 1rem; cursor: default; }
 .inspector .sub, .sub { color: var(--text-faint); font-weight: 400; font-size: var(--fs-sm); }
 .schematic-body .stage .panzoom { position: absolute; inset: 0; }
@@ -389,7 +408,9 @@ svg.edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-even
 .layers { position: relative; }
 .layers summary { cursor: pointer; display: inline-flex; align-items: center; height: var(--ctl); padding: 0 0.75rem; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface-raised); box-shadow: var(--elev-1); list-style: none; font-weight: var(--fw-medium); }
 .layer-list { position: absolute; right: 0; top: 2.125rem; z-index: 5; background: var(--pop); border: 1px solid var(--pop-border); border-radius: var(--r-lg); padding: 0.625rem 0.875rem; display: flex; flex-direction: column; gap: 0.25rem; min-width: 10rem; box-shadow: var(--elev-2); }
-.pcb-host { background: var(--pcb-bg); }
+.pcb-host { background-color: var(--pcb-bg); }
+/* the canvas around a small board is a field of faint dots that moves and scales with it (as the power tree's), so the board sits on something */
+.pcb-host { background-image: radial-gradient(var(--grid-dot) 1px, transparent 1.4px); background-size: calc(24px * var(--pz-k, 1)) calc(24px * var(--pz-k, 1)); background-position: var(--pz-x, 0) var(--pz-y, 0); }
 
 /* build: see views.css */
 .path { font-family: var(--mono); color: var(--text-muted); font-size: var(--fs-sm); }
@@ -819,7 +840,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .sheetbar .icon-btn.on { background: var(--pick); border-color: var(--sel-line); color: var(--text); box-shadow: none; }
 .sheetbar .step, .tool, .icon-btn, .sl-row, .ov-card, .pick-btn, .menu-item, .hold-chip button, button.chip, .grp, .link { transition: border-color .12s, background .12s, color .12s; }
 .sheetbar button:focus-visible, .sheetnav button:focus-visible, .sinspector button:focus-visible, .stage button:focus-visible, .ov-card:focus-visible, .sinspector tr:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-.panzoom:focus-visible { outline: 1px solid color-mix(in srgb, var(--accent) 53%, transparent); outline-offset: -1px; }
+.panzoom:focus-visible { outline: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 53%, transparent); }
 .sheet-place { min-width: 4.6em; text-align: right; }
 .crumb { color: var(--text-muted); padding: 0 0.375rem; }
 .sheetpick { position: relative; min-width: 0; flex: 0 1 auto; }
@@ -871,8 +892,17 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .ov-mod { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .ov-thumb { display: block; width: 100%; min-height: 6.875rem; max-height: 14.375rem; background: var(--sch-sheet); border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden; }
 .ov-thumb svg { display: block; width: 100%; height: 100%; }
-.ov-foot { color: var(--text-faint); font-size: 0.75rem; }
+.ov-foot { margin-top: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.875rem; padding-top: 0.375rem; border-top: 1px solid var(--border-subtle); color: var(--text-faint); font-size: 0.75rem; }
+.ov-count + .ov-count::before { content: none; }
 .ov-foot .leave { color: var(--info); } .ov-foot .bad { color: var(--danger); } .ov-foot .carry { color: var(--accent); }
+/* few modules fill the canvas: two columns (three for a handful) of large cards, the thumbnail as wide as its card and as tall as its sheet is */
+.sheet-overview.ov-few { grid-template-columns: repeat(auto-fit, minmax(max(16.875rem, calc(50% - 0.75rem)), 1fr)); padding: 1.25rem; gap: 1rem; }
+.sheet-overview.ov-some { grid-template-columns: repeat(auto-fit, minmax(max(16.875rem, calc(33.333% - 0.75rem)), 1fr)); padding: 1rem; }
+.ov-few .ov-card, .ov-some .ov-card { padding: 0.75rem 0.875rem 0.625rem; gap: 0.5rem; }
+.ov-few .ov-name, .ov-some .ov-name { font-size: 1rem; }
+.ov-few .ov-thumb { min-height: 10rem; max-height: min(26rem, calc((100vh - 26.5rem) / 2)); }
+.ov-some .ov-thumb { max-height: 20rem; }
+.ov-few .ov-item.wide, .ov-few .ov-item.wider { grid-column: 1 / -1; }
 
 /* on the canvas */
 .hold-chip { position: absolute; z-index: 6; top: 0.75rem; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 0.625rem; padding: 0.25rem 0.25rem 0.25rem 0.875rem; background: var(--pop); border: 1px solid var(--pop-border); border-radius: var(--r-pill); color: var(--text-muted); font-size: var(--fs-sm); box-shadow: var(--elev-2); white-space: nowrap; max-width: calc(100% - 1.5rem); }
@@ -962,8 +992,9 @@ span.sk { display: block; }
 .theme-option:hover { background: var(--hover); }
 .theme-option[aria-checked="true"] { background: var(--hover); }
 .theme-check { display: inline-flex; width: 0.75rem; color: var(--text); flex: none; }
-.theme-swatch { width: 1.125rem; height: 0.75rem; border-radius: var(--r-sm); border: 1px solid var(--border-strong); flex: none; }
-.sw-system { background: linear-gradient(90deg, var(--sw-dark) 50%, var(--sw-light) 50%); }
+.theme-swatch { width: 1.125rem; height: 0.75rem; border-radius: var(--r-sm); border: 1px solid var(--border-strong); flex: none; box-sizing: border-box; box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 16%, transparent); }
+/* the system's choice is both: a diagonal, so neither half is the colour of the button it sits on */
+.sw-system { background: linear-gradient(115deg, var(--sw-light) 50%, var(--sw-dark) 50%); }
 .sw-light { background: var(--sw-light); } .sw-dark { background: var(--sw-dark); }
 .sw-hc-light { background: var(--sw-hc-light); border-color: var(--sw-hc-dark); } .sw-hc-dark { background: var(--sw-hc-dark); border-color: var(--sw-hc-light); }
 

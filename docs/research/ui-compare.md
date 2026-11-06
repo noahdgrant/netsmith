@@ -31,3 +31,13 @@ Outlines are not the only signal: a changed part also has its designator in the 
 - `board` on every problem in `ProblemsDiff` (it is there for most; a problem of a module that two boards share has none), and the module path on a net's change, so a list can be grouped by module without reading pins.
 - A way to compare two refs (the head is the files on disk), for a review of a pull request against its base.
 - The problems of a ref that does not analyse are errors only; its warnings and notes would say what was already wrong.
+
+## Round 6: one count, overlays, a whole line
+
+Status: 2026-11-06, the last polish round. The owner's words for the round: the editor "must be world-class and must not feel flat or old".
+
+- **One model of the counts.** The section showed four numbers for one comparison: the server's sentence about all the boards, tiles and rows about the board in front (after a reload `Parts 3, Nets 0`), `10 changes` in the chip and `7 changes` in the source's item. Now the scope is all the boards until one is chosen in the section, and everything is about that scope: the sentence (the board's own `summary` when one is chosen), the tiles, the tab counts, the rows, and `N circuit changes` under the sentence (`circuitChanges`: parts, nets, rails, modules and interfaces; tested to add up board by board). The chip says `N circuit changes` (the whole project's) with the source's lines in its tooltip; the source's status item says `N lines changed in this file`: lines, not hunks, and this file, not the project.
+- **A state is an overlay, not a recolouring.** The picked R1 of the schematic was drawn as a dashed bracket at 333 %, with loud amber nets: the pick's `--sch-mark` stroke, the cursor's `linked` dashes and the server's `--hit` recolour all changed the symbol itself. A part now has two empty rectangles behind it (`schematic/halo.ts`): the halo (pick, link, hover) and, outside it, the comparison's mark; its strokes and labels stay as drawn. Lit nets keep their wire colour on a soft underlay in `--sel`. The board's marks are a crisp 2 px outline and a faint tint, no glow (`pcb/Canvas.tsx` draws them from the store).
+- **Lists keep to a width.** `--page-w` (80 rem) for Compare, the BOM and Build; an `unknown` cost is a quiet tile with a reason in a tooltip, not a large bold word.
+- **Source marks are easy to see.** A bar of 5 px, a tint across the line, a tick in an overview ruler at the right edge; the count in the status bar is lines.
+- **Not done, and why.** The empty lower half of a list page stays empty (no invented content); the board's plane labels still can be covered by a part label at a very low zoom (a collision pass was not cheap); the overview ruler is not clickable.

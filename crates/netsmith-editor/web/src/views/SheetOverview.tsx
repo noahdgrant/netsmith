@@ -13,6 +13,9 @@ import type { SheetRow } from './SheetNav';
 /** A card is two columns wide when its sheet is more than this much wider than it is tall. */
 const WIDE = 2.4;
 
+/** How roomy the cards are for `n` modules: `few` (up to 4) fills the window, `some` (up to 9) is in between, `many` is the dense grid. */
+export const overviewSize = (n: number): 'few' | 'some' | 'many' => (n <= 4 ? 'few' : n <= 9 ? 'some' : 'many');
+
 /** A thumbnail: the group of a sheet, copied from the page's drawing. */
 function Thumb({ source, group, view, lit, stamp }: { source: () => Element | null; group: string | undefined; view: string; lit: boolean; stamp: number }) {
   const svg = useRef<SVGSVGElement>(null);
@@ -44,8 +47,10 @@ export function SheetOverview({
   /** Goes up when the page's drawing was painted again. */
   stamp: number;
 }) {
+  // A few modules are given the room: two columns of large cards (three for a handful), where many stay as dense as they were.
+  const size = overviewSize(rows.length);
   return (
-    <div class="sheet-overview schematic-host no-pan" role="list" aria-label="All modules">
+    <div class={`sheet-overview schematic-host no-pan ov-${size}`} role="list" aria-label="All modules">
       {rows.map((r) => {
         const s = r.sheet;
         const pad = 1.5;
@@ -69,10 +74,10 @@ export function SheetOverview({
               </span>
               {stats && (
                 <span class="ov-foot">
-                  {plural(stats.parts, 'part')}
-                  {stats.leaving > 0 && <span class="leave"> · ⇄ {plural(stats.leaving, 'net')} leave</span>}
-                  {stats.errors + stats.warnings > 0 && <span class="bad"> · {plural(stats.errors + stats.warnings, 'problem')}</span>}
-                  {r.carries && <span class="carry"> · carries the net</span>}
+                  <span class="ov-count">{plural(stats.parts, 'part')}</span>
+                  {stats.leaving > 0 && <span class="ov-count leave">{plural(stats.leaving, 'net')} leave</span>}
+                  {stats.errors + stats.warnings > 0 && <span class="ov-count bad">{plural(stats.errors + stats.warnings, 'problem')}</span>}
+                  {r.carries && <span class="ov-count carry">carries the net</span>}
                 </span>
               )}
             </button>

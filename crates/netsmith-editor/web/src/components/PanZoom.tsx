@@ -62,6 +62,8 @@ export function PanZoom(props: {
   /** The zoom at which the zoom bar reads 100%: with it the label is true scale (it means the
    * same on every canvas); without it the label is relative to the zoom that fits. */
   scale100?: number;
+  /** What the zoom label's tooltip says 100 % is, when it is not the drawing's size on paper. */
+  scaleTitle?: string;
   /** Whether the zoom bar has Fit width and 100% buttons (and the keys W and Shift+1 do the same). */
   presets?: boolean;
   /** The view a canvas opens at, and goes back to when the box is resized before a person has
@@ -357,7 +359,7 @@ export function PanZoom(props: {
           −
         </button>
         <span
-          title={props.scale100 ? 'Zoom. 100% is the drawing at its size on paper: 1 mm is 3.78 px' : 'Zoom, as a share of the whole fitted'}
+          title={props.scale100 ? (props.scaleTitle ?? 'Zoom. 100% is the drawing at its size on paper: 1 mm is 3.78 px') : 'Zoom, as a share of the whole fitted'}
          >
           {Math.round((view.k / (props.scale100 ?? (fitK.current || 1))) * 100)}%
         </span>
@@ -375,7 +377,7 @@ export function PanZoom(props: {
             <button title="Fit width (W)" onClick={fitWidth}>
               Width
             </button>
-            <button title="100%: the drawing's size on paper (Shift+1)" onClick={() => atScale(props.scale100 ?? 1)}>
+            <button title={props.scaleTitle ? '100%: 12 px to the millimetre (Shift+1)' : "100%: the drawing's size on paper (Shift+1)"} onClick={() => atScale(props.scale100 ?? 1)}>
               100%
             </button>
           </>

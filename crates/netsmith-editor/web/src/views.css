@@ -169,6 +169,8 @@ button.chip.pin-chip.cur, button.chip.cur { border-color: var(--sel-line); backg
 .order-pick { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem; }
 .select-field { display: flex; flex-direction: column; gap: 0.25rem; font-size: var(--fs-sm); }
 .select-field select { min-width: 13.75rem; height: var(--ctl-lg); }
+/* the order's picker is the top bar's board picker (`.boardpick`): the same box, the icon, the chevrons */
+.select-field .order-select select { max-width: none; }
 .order-boards { width: 100%; border-collapse: collapse; background: var(--canvas); border: 1px solid var(--border-subtle); border-radius: var(--r-md); overflow: hidden; border-spacing: 0; }
 .order-boards th { height: var(--ctl); padding: 0 0.75rem; text-align: left; color: var(--text-faint); font-size: var(--fs-sm); font-weight: var(--fw-medium); border-bottom: 1px solid var(--border-subtle); }
 .order-boards td { height: var(--ctl-lg); padding: 0 0.75rem; border-bottom: 1px solid var(--row-line); }
@@ -223,7 +225,7 @@ button.chip.pin-chip.cur, button.chip.cur { border-color: var(--sel-line); backg
 .lastrun > span > .took:first-child::before { content: none; }
 
 /* ==== the bill of materials ==== */
-.bom { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.bom { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding-inline: max(0px, calc((100% - var(--page-w)) / 2)); }
 .bom-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; padding: 1rem 1.25rem 0.75rem; }
 .bom-titles { display: flex; align-items: center; gap: 0.625rem; min-width: 0; }
 .bom-titles h1 { margin: 0; font-size: var(--fs-xl); font-weight: var(--fw-semibold); letter-spacing: var(--ls-title); }
@@ -246,6 +248,9 @@ button.chip.pin-chip.cur, button.chip.cur { border-color: var(--sel-line); backg
 .bstat { padding: 0.625rem 0.875rem 0.6875rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--elev-1); min-width: 0; }
 .bstat-label { display: flex; align-items: center; gap: 0.375rem; color: var(--text-faint); font-size: var(--fs-sm); }
 .bstat-value { margin-top: 2px; font-size: var(--fs-2xl); font-weight: var(--fw-semibold); letter-spacing: var(--ls-title); font-variant-numeric: tabular-nums; line-height: 1.25; }
+.bstat-value.muted, .cmp-tile-value.muted { font-size: var(--fs-lg); font-weight: var(--fw-medium); letter-spacing: 0; color: var(--text-faint); line-height: 1.6; }
+.stat-info { display: inline-flex; color: var(--text-faint); cursor: help; margin-left: 0.125rem; }
+.stat-info:hover { color: var(--text-muted); }
 .bstat-sub { color: var(--text-muted); font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bstat.ok .bstat-label { color: var(--success-text); } .bstat.warn .bstat-label { color: var(--warning-text); }
 .bom-bar { display: flex; align-items: center; gap: 0.5rem; padding: 0 1.25rem 0.625rem; flex-wrap: wrap; }
@@ -572,7 +577,8 @@ tr.hover-lit { outline-offset: -1px; }
 .pcb-host svg [data-net].hover-lit { filter: drop-shadow(0 0 .25px var(--hover-lit)) drop-shadow(0 0 .5px color-mix(in srgb, var(--hover-lit) 40%, transparent)); }
 .pcb-host svg .l-ratsnest line.hover-lit { stroke: var(--hover-lit); stroke-opacity: 1; }
 .pcb-host svg .l-front-copper line.hover-lit, .pcb-host svg .l-back-copper line.hover-lit { filter: brightness(1.25) drop-shadow(0 0 .5px var(--hover-lit)); }
-.schematic-host svg [data-ref].hover-lit:not(.pin), .schematic-host svg [data-net].hover-lit:not(.pin) { filter: drop-shadow(0 0 .45px var(--hover-lit)) drop-shadow(0 0 1.1px color-mix(in srgb, var(--hover-lit) 55%, transparent)); }
+/* a part of the schematic wears the halo (style.css), not a glow; a net keeps the soft glow */
+.schematic-host svg [data-net].hover-lit:not(.pin) { filter: drop-shadow(0 0 .45px var(--hover-lit)) drop-shadow(0 0 1.1px color-mix(in srgb, var(--hover-lit) 55%, transparent)); }
 /* a skeleton in a section that is not on show does not shimmer */
 .section.away .sk, .section.away [class*="sk-"] { animation: none; }
 
@@ -598,8 +604,6 @@ tr.hover-lit { outline-offset: -1px; }
 .bom .empty { height: 100%; }
 .empty.bad { color: var(--text-muted); white-space: normal; }
 .note-line.empty-line { display: flex; align-items: center; gap: 0.5rem; }
-/* a very wide window: the table keeps a width a person can read across (the Build page already does) */
-.bom { padding-inline: max(0px, calc((100% - 110rem) / 2)); }
 /* the picked thing's chip keeps a width a person can read, whatever the search box takes (it was squeezed to a sliver at 1280) */
 .tb-left { overflow: hidden; }
 .tb-left .selchip { min-width: 7.5rem; }

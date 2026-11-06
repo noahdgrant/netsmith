@@ -4,7 +4,7 @@
 // the cursor moves. The card itself is `components/HoverCard.tsx`.
 
 import { type EditorState, type Extension, StateEffect, StateField } from '@codemirror/state';
-import { type Tooltip, closeHoverTooltips, hoverTooltip, keymap, showTooltip } from '@codemirror/view';
+import { type Tooltip, ViewPlugin, closeHoverTooltips, hasHoverTooltips, hoverTooltip, keymap, showTooltip } from '@codemirror/view';
 import { render } from 'preact';
 
 import { HoverCard, contextFor } from '../components/HoverCard';
@@ -49,6 +49,8 @@ function make(found: Found, path: string, above = true): Tooltip {
     create(view) {
       const dom = document.createElement('div');
       dom.className = 'hc-root cm-card-tip';
+      // The window's own Escape (Back, Clear the selection) steps aside for a card that is open; the card is closed by `escapes` below.
+      dom.setAttribute('data-esc-closes', '');
       const close = () => view.dispatch({ effects: [closeHoverTooltips, openCard.of(null)] });
       let gone = false;
       // CodeMirror makes the tooltip while it updates, which can be while a component of the page renders:
@@ -105,9 +107,22 @@ export function cardExtension(path: string): Extension {
     },
     provide: (f) => showTooltip.from(f),
   });
+  // Escape closes a card whichever way it was opened. The editor's keymap only hears the key while the editor has the focus, and a card
+  // opened by the pointer is open while the focus is anywhere: the plugin listens on the document, before the page's own handlers.
+  const escapes = ViewPlugin.define((view) => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (!hasHoverTooltips(view.state) && !view.state.field(keyboard, false)) return;
+      view.dispatch({ effects: [closeHoverTooltips, openCard.of(null)] });
+      e.stopPropagation();
+    };
+    document.addEventListener('keydown', key, true);
+    return { destroy: () => document.removeEventListener('keydown', key, true) };
+  });
   return [
     pointer,
     keyboard,
+    escapes,
     keymap.of([
       {
         key: 'Escape',

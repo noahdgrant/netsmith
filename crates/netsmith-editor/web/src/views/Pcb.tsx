@@ -8,6 +8,8 @@ import { filter, setDockOpen } from '../feedback/state';
 import { announce } from '../feedback/announce';
 import { routeResult } from '../feedback/results';
 import { JobProgress } from '../components/JobProgress';
+import { ChangesSwitch } from '../components/ChangesSwitch';
+import { marks as cmpMarks } from '../compare/store';
 import { Icon } from '../components/Icons';
 import { EmptyState, Segmented, Spinner } from '../components/ui';
 import { Canvas, type Tip } from '../pcb/Canvas';
@@ -247,6 +249,7 @@ export function Pcb() {
               ))}
             </select>
           </label>
+          <ChangesSwitch />
           <details class="layers no-pan">
             <summary>
               <Icon name="layers" size={14} />
@@ -326,6 +329,7 @@ export function Pcb() {
             onTip={setTip}
             onCursor={setCursor}
             focus={focus}
+            cmp={cmpMarks.value?.parts ?? null}
             marks={(found?.findings ?? []).map((f) => ({
               id: f.id,
               box: f.area,
