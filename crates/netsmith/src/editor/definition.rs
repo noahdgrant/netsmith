@@ -2,6 +2,8 @@
 
 use netsmith_check::Loader;
 use netsmith_editor::api::Location;
+
+use super::outline::{self, Kinds};
 use netsmith_lang::{
     Span,
     ast::{Decl, Expr, File, Item, Path},
@@ -45,10 +47,40 @@ impl Parsed {
     }
 }
 
+/// Where a name is defined, and what a hover card can say of it without reading the file.
+pub struct Found {
+    pub at: Location,
+    /// `module LdoStage { .vin: Rail .vout: Rail ... }`, or `.vin: Rail` for a member.
+    pub signature: Option<String>,
+    /// The `///` lines above it (the `//!` lines of a module's file for an imported
+    /// module), joined with newlines.
+    pub doc: Option<String>,
+}
+
+impl Found {
+    fn definition(module: &Parsed, index: usize, kinds: &Kinds) -> Found {
+        let def = &module.file.definitions[index];
+        Found {
+            at: module.at(def.name.span),
+            signature: Some(outline::definition_signature(def, &module.file, kinds)),
+            doc: outline::doc_text(&def.docs),
+        }
+    }
+
+    fn member(module: &Parsed, decl: &Decl) -> Found {
+        Found {
+            at: module.at(decl.name.segments[0].span),
+            signature: Some(outline::declaration_signature(decl)),
+            doc: outline::doc_text(&decl.docs),
+        }
+    }
+}
+
 /// Where the name at character `offset` (UTF-16 units, as the page counts) of `text`,
 /// which is the file `path`, is defined: an imported module or name, a type, or a member
 /// of the definition it is written in or of the type of the member before it.
-pub fn find(loader: &Loader, path: &str, text: &str, offset: usize) -> Option<Location> {
+pub fn find(loader: &Loader, path: &str, text: &str, offset: usize) -> Option<Found> {
+    let kinds = Kinds::new(loader);
     let here = Parsed::of(path, text)?;
     let byte = byte_of(text, offset)?;
 
@@ -83,14 +115,18 @@ pub fn find(loader: &Loader, path: &str, text: &str, offset: usize) -> Option<Lo
             }),
         )?;
         if clicked < module_len {
-            return Some(module.at(Span::new(0, 0)));
+            return Some(Found {
+                at: module.at(Span::new(0, 0)),
+                signature: None,
+                doc: outline::doc_text(&module.file.inner_docs),
+            });
         }
-        let def = module
+        let index = module
             .file
             .definitions
             .iter()
-            .find(|d| d.name.name == all[clicked].name)?;
-        return Some(module.at(def.name.span));
+            .position(|d| d.name.name == all[clicked].name)?;
+        return Some(Found::definition(&module, index, &kinds));
     }
 
     let (index, def) = here
@@ -110,7 +146,7 @@ pub fn find(loader: &Loader, path: &str, text: &str, offset: usize) -> Option<Lo
             Thing::Type(decl) => {
                 if let Some(seg) = decl.ty.segments.iter().find(|s| contains(s.span, byte)) {
                     let (module, i) = resolve_type(loader, &here, &seg.name)?;
-                    return Some(module.at(module.file.definitions[i].name.span));
+                    return Some(Found::definition(&module, i, &kinds));
                 }
             }
             Thing::Path(p) if contains(p.span, byte) => {
@@ -134,7 +170,7 @@ pub fn find(loader: &Loader, path: &str, text: &str, offset: usize) -> Option<Lo
                                 .is_some_and(|s| s.name == segment.name)
                         })?;
                     if n == clicked {
-                        return Some(current.at(decl.name.segments[0].span));
+                        return Some(Found::member(&current, decl));
                     }
                     let ty = decl.ty.segments.last()?.name.clone();
                     let (next, i) = resolve_type(loader, &current, &ty)?;

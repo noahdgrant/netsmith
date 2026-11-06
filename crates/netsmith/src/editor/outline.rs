@@ -8,9 +8,12 @@ use netsmith_check::Loader;
 use netsmith_editor::api::{Def, DefChild};
 use netsmith_lang::{
     Span,
-    ast::{Decl, DefKind, File, Item},
+    ast::{Decl, DefKind, Definition, File, Item},
     parse,
 };
+
+/// The most declarations a signature names before it says `...`.
+const SIGNATURE_MEMBERS: usize = 6;
 
 /// What kind of definition a type name means, from a file: one the file defines, or one it
 /// imports from a module of the project or of the standard library. A module is parsed the
@@ -143,4 +146,78 @@ fn type_name(decl: &Decl) -> String {
         .last()
         .map(|s| s.name.clone())
         .unwrap_or_default()
+}
+
+/// `.vin: Rail`, as a declaration reads without its block.
+pub fn declaration_signature(decl: &Decl) -> String {
+    format!(
+        "{}{}: {}",
+        if decl.name.leading_dot { "." } else { "" },
+        decl.name
+            .segments
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect::<Vec<_>>()
+            .join("."),
+        decl.ty
+            .segments
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect::<Vec<_>>()
+            .join("::"),
+    )
+}
+
+/// A one-line signature of a definition: its keyword and name and the declarations that
+/// make its interface, `module LdoStage { .vin: Rail .vout: Rail ... }`. The declarations
+/// are those whose type is an interface (the ports of a module, a board's rails and
+/// process), or, where there are none or the type is not found, the declarations in
+/// source order; at most six, then `...` if the body has anything more. The same
+/// definition always gives the same line.
+pub fn definition_signature(def: &Definition, file: &File, kinds: &Kinds) -> String {
+    let decls: Vec<&Decl> = def
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            Item::Decl(d) => Some(d),
+            _ => None,
+        })
+        .collect();
+    let ports: Vec<&Decl> = decls
+        .iter()
+        .copied()
+        .filter(|d| kinds.kind(file, &type_name(d)) == Some(DefKind::Interface))
+        .collect();
+    // An interface or a part is its own declarations; so is any definition with no port.
+    let shown = if ports.is_empty() || matches!(def.kind, DefKind::Interface | DefKind::Part) {
+        decls
+    } else {
+        ports
+    };
+    let mut out = format!("{} {}", def.kind.keyword(), def.name.name);
+    if shown.is_empty() && def.items.is_empty() {
+        out.push_str(" {}");
+        return out;
+    }
+    out.push_str(" {");
+    for d in shown.iter().take(SIGNATURE_MEMBERS) {
+        out.push(' ');
+        out.push_str(&declaration_signature(d));
+    }
+    let more = def.items.len() > shown.len().min(SIGNATURE_MEMBERS);
+    if more {
+        out.push_str(" ...");
+    }
+    out.push_str(" }");
+    out
+}
+
+/// The `///` lines above a definition or declaration, joined with newlines.
+pub fn doc_text(lines: &[String]) -> Option<String> {
+    let text = lines
+        .iter()
+        .map(|l| l.trim())
+        .collect::<Vec<_>>()
+        .join("\n");
+    (!text.trim().is_empty()).then_some(text)
 }

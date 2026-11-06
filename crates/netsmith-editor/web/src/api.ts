@@ -642,7 +642,22 @@ downloads: Array<Download>,
  */
 elapsedMs: number, };
 
-export type Definition = { at: Location, };
+export type Definition = { at: Location, 
+/**
+ * A one-line signature of what is defined, in a stable short form: the keyword, the
+ * name and the declarations that make its interface, at most six, then `...` if the
+ * body has more (`module LdoStage { .vin: Rail .vout: Rail ... }`; the ports of a
+ * module or board are the declarations whose type is an interface, and an interface or
+ * part lists its own). For a member it is the declaration, `.vin: Rail`. Absent when
+ * the name is an imported module (see `doc`).
+ */
+signature?: string, 
+/**
+ * The `///` lines directly above the definition or declaration, one line of the answer
+ * for each, the leading space of a line trimmed; for an imported module, the `//!` lines
+ * at the top of its file. Absent when there are none. A hover card needs no library file.
+ */
+doc?: string, };
 
 export type ClientMessage = { "type": "check", id: number, path: string, text: string, };
 

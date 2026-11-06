@@ -273,6 +273,8 @@ impl Backend for Fake {
     }
     fn definition(&self, _: &str, _: &str, offset: usize) -> Result<Option<Definition>, ApiError> {
         Ok((offset == 0).then(|| Definition {
+            signature: None,
+            doc: None,
             at: netsmith_editor::api::Location {
                 file: "a.nsm".into(),
                 line: 1,

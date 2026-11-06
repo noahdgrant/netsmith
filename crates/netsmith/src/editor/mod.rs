@@ -526,6 +526,12 @@ impl Backend for Workspace {
     ) -> Result<Option<Definition>, ApiError> {
         let entry = self.entry(path)?;
         let loader = self.target.loader().map_err(ApiError::internal)?;
-        Ok(definition::find(&loader, &entry.path, text, offset).map(|at| Definition { at }))
+        Ok(
+            definition::find(&loader, &entry.path, text, offset).map(|found| Definition {
+                at: found.at,
+                signature: found.signature,
+                doc: found.doc,
+            }),
+        )
     }
 }

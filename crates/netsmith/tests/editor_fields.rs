@@ -198,3 +198,107 @@ fn a_definition_with_no_declaration_has_no_children_key_and_the_new_keys_are_cam
             .all(|d| d.end_line.is_some_and(|e| e >= d.line))
     );
 }
+
+#[test]
+fn a_definition_answer_carries_a_signature_and_the_doc_comment() {
+    let (_root, editor) = project("hover");
+    let find = |needle: &str, nth: usize, plus: usize| {
+        let offset = TWO_BOARDS.match_indices(needle).nth(nth).unwrap().0 + plus;
+        editor
+            .definition("src/main.nsm", TWO_BOARDS, offset)
+            .unwrap()
+            .unwrap_or_else(|| panic!("nothing at {needle}"))
+    };
+    // A type of this file: the ports are the declarations of an interface type, then `...`
+    // for the parts inside; the doc is the `///` line above the module.
+    let ldo = find("LdoStage", 1, 1);
+    assert_eq!(
+        ldo.signature.as_deref(),
+        Some("module LdoStage { .vin: Rail .vout: Rail ... }")
+    );
+    assert_eq!(
+        ldo.doc.as_deref(),
+        Some("A linear regulator with a capacitor on its input and on its output.")
+    );
+    // A board: its rails and its process are the declarations of interfaces.
+    let board = find("PowerBoard", 1, 1);
+    assert_eq!(
+        board.signature.as_deref(),
+        Some("board PowerBoard { .process: TwoLayer .input: Rail .output: Rail ... }")
+    );
+    assert_eq!(
+        board.doc.as_deref(),
+        Some("Turns the 5 V it is given into 3.3 V for the other board.")
+    );
+    // A definition of the library, from its import: an interface lists its own members, six
+    // at most; the whole doc comment is there, one line to a line, and the file is not needed.
+    let rail = find("Rail", 0, 1);
+    let signature = rail.signature.unwrap();
+    assert_eq!(
+        signature,
+        "interface Rail { .pos: Pin .neg: Pin .voltage: Voltage .current: Current .min_track: Length }"
+    );
+    // A part's other statements (its pin tables, catalog) are the `...`.
+    let capacitor = find("Capacitor", 1, 1).signature.unwrap();
+    assert!(
+        capacitor.starts_with("part Capacitor { .capacitance: Capacitance")
+            && capacitor.ends_with(" ... }"),
+        "{capacitor}"
+    );
+    let doc = rail.doc.unwrap();
+    assert!(doc.lines().count() > 3 && !doc.starts_with(' '), "{doc}");
+    assert!(doc.contains("nothing on the board drives"), "{doc}");
+    // A member is its declaration, with its own doc comment if it has one.
+    let vout = find(".stage.vout", 0, 8);
+    assert_eq!(vout.signature.as_deref(), Some(".vout: Rail"));
+    assert_eq!(vout.doc, None);
+    let input = find(".stage.vout", 0, 2);
+    assert_eq!(input.signature.as_deref(), Some(".stage: LdoStage"));
+    // An imported module has no signature; its file's `//!` lines are its doc, if it has any.
+    let module = find("passive", 0, 1);
+    assert_eq!(module.signature, None);
+    assert_eq!(
+        module.doc.as_deref().map(|d| d.lines().next()),
+        Some(Some("Two-terminal parts."))
+    );
+}
+
+#[test]
+fn the_signature_and_doc_are_left_out_of_the_json_when_there_is_nothing_to_say() {
+    let location = netsmith_editor::api::Location {
+        file: "a.nsm".into(),
+        line: 1,
+        column: 1,
+        end_line: 1,
+        end_column: 2,
+    };
+    let bare = netsmith_editor::api::Definition {
+        at: location,
+        signature: None,
+        doc: None,
+    };
+    let json = serde_json::to_value(&bare).unwrap();
+    assert!(
+        json.get("signature").is_none() && json.get("doc").is_none(),
+        "{json}"
+    );
+}
+
+#[test]
+fn a_signature_names_six_declarations_at_most_and_an_empty_body_is_braces() {
+    let (_root, editor) = project("hover-six");
+    let text = "interface Wide {\n    .a: Pin\n    .b: Pin\n    .c: Pin\n    .d: Pin\n    .e: Pin\n    .f: Pin\n    .g: Pin\n}\n\nmodule Empty {}\n\nboard B {\n    .w: Wide\n    .e: Empty\n}\n";
+    let hover = |needle: &str| {
+        let offset = text.rfind(needle).unwrap() + 1;
+        editor
+            .definition("src/main.nsm", text, offset)
+            .unwrap()
+            .unwrap()
+    };
+    assert_eq!(
+        hover("Wide").signature.as_deref(),
+        Some("interface Wide { .a: Pin .b: Pin .c: Pin .d: Pin .e: Pin .f: Pin ... }")
+    );
+    assert_eq!(hover("Empty").signature.as_deref(), Some("module Empty {}"));
+    assert_eq!(hover("Empty").doc, None);
+}
