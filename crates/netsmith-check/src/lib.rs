@@ -12,6 +12,7 @@ mod mate;
 mod model;
 mod pinout;
 mod pins;
+mod providers;
 mod row;
 
 pub use checker::physical_file_name;
@@ -19,13 +20,21 @@ pub use diag::{Diagnostic, Source, SourceId, Sources};
 pub use faults::{pin_faults, pin_faults_solved};
 pub use loader::Loader;
 pub use model::{
-    Balance, Catalog, Chain, Contact, ContactSide, Domain, Draw, Field, FieldId, FieldKind,
-    GroundGroup, GroundNet, InstId, InstKind, Instance, Mate, Member, Model, Net, PinKind, PinRow,
-    PinTable, Pinout, RExpr, Relation, Requirement, Role, Tie,
+    Balance, Catalog, Chain, Contact, ContactSide, Domain, Draw, EnumId, EnumInfo, Field, FieldId,
+    FieldKind, GenericUse, GroundGroup, GroundNet, InstId, InstKind, Instance, Mate, Member, Model,
+    Net, PinKind, PinRow, PinTable, Pinout, Provider, RExpr, Relation, Requirement, Role, Tie,
 };
+
+use std::collections::BTreeMap;
 
 use checker::Checker;
 use netsmith_lang::ast::DefKind;
+
+/// Which provider stands for each use of a generic (ADR 0059): the name of a board or system
+/// and, under it, the path of a use (`rf`, `main.reg`) with the id of the provider
+/// (`src::rf::AcmeMicroCoax`, a [`Provider::id`]). A use that is not named takes the first
+/// provider. A `BTreeMap`, so that nothing depends on a hash order.
+pub type Assignment = BTreeMap<String, BTreeMap<String, String>>;
 
 /// One elaborated `board`.
 #[derive(Debug, Clone)]
@@ -111,13 +120,48 @@ impl Checked {
 /// [`Board`]s, and parts, interfaces and modules are checked on their own so mistakes
 /// in an unused definition still show up.
 pub fn check(name: &str, text: &str, loader: &Loader) -> Checked {
+    check_with(name, text, loader, &Assignment::new())
+}
+
+/// [`check`], with the providers of the generics' uses chosen by `assignment` (ADR 0059).
+/// Where it names none, the first provider in scope is used.
+pub fn check_with(name: &str, text: &str, loader: &Loader, assignment: &Assignment) -> Checked {
+    check_inner(name, text, loader, assignment, None)
+}
+
+/// [`check_with`] for one definition of the file only: what a trial of a provider needs,
+/// which has no use for the others.
+pub fn check_one(
+    name: &str,
+    text: &str,
+    loader: &Loader,
+    assignment: &Assignment,
+    only: &str,
+) -> Checked {
+    check_inner(name, text, loader, assignment, Some(only))
+}
+
+fn check_inner(
+    name: &str,
+    text: &str,
+    loader: &Loader,
+    assignment: &Assignment,
+    only: Option<&str>,
+) -> Checked {
     let mut checker = Checker::new(loader);
     let root = checker.add_root(name, text);
     let mut boards = Vec::new();
     let mut systems = Vec::new();
     let mut panels = Vec::new();
     for (index, def) in checker.module_defs(root).iter().enumerate() {
-        let model = checker.elaborate(root, index);
+        // An enum is a type, not a thing to build: it has nothing to elaborate.
+        if def.kind == DefKind::Enum {
+            continue;
+        }
+        if only.is_some_and(|only| def.name.name != only) {
+            continue;
+        }
+        let model = checker.elaborate(root, index, assignment.get(&def.name.name));
         if matches!(def.kind, DefKind::Board | DefKind::System) {
             checker.extend(pin_faults(&model));
         }

@@ -118,7 +118,15 @@ fn parts_know_their_bridge_and_catalog() {
     let catalog = r1.catalog.as_ref().expect("a resistor has a catalog");
     assert_eq!(catalog.name, "resistor");
     let fields: Vec<_> = catalog.fields.iter().map(|&f| m.path_of_field(f)).collect();
-    assert_eq!(fields, ["r1.resistance", "r1.max_power", "r1.package"]);
+    assert_eq!(
+        fields,
+        [
+            "r1.resistance",
+            "r1.max_power",
+            "r1.package",
+            "r1.temperature_coefficient"
+        ]
+    );
     assert_eq!(m.instance(m.inst_at("r1.a").unwrap()).kind, InstKind::Pin);
     // The pad is in the pin table, not a field of the pin (ADR 0016).
     assert!(m.domain_at("r1.a.pad").is_none());
@@ -197,9 +205,9 @@ fn connected_interfaces_tie_their_values_together() {
         .iter()
         .map(|&(a, b)| (m.path_of_field(a), m.path_of_field(b)))
         .collect();
-    // Four joins of rails, each tying a voltage and a track width, and the one current a
-    // series chain passes.
-    assert_eq!(pairs.len(), 9, "{pairs:?}");
+    // Four joins of rails, each tying a voltage, a peak voltage and a track width, and the
+    // one current a series chain passes.
+    assert_eq!(pairs.len(), 13, "{pairs:?}");
     assert!(pairs.contains(&(
         "power_3v3.voltage".to_string(),
         "status_indicator.power.voltage".to_string()
@@ -372,8 +380,8 @@ fn rails_connected_through_the_stage_share_their_voltage() {
         .iter()
         .map(|&(a, b)| (m.path_of_field(a), m.path_of_field(b)))
         .collect();
-    // Four joins of rails, each tying a voltage and a track width.
-    assert_eq!(pairs.len(), 8, "{pairs:?}");
+    // Four joins of rails, each tying a voltage, a peak voltage and a track width.
+    assert_eq!(pairs.len(), 12, "{pairs:?}");
     assert!(pairs.contains(&("input.voltage".to_string(), "stage.vin.voltage".to_string())));
     assert!(pairs.contains(&(
         "stage.regulator.vout.voltage".to_string(),

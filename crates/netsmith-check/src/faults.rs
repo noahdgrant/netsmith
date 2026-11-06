@@ -115,6 +115,85 @@ impl<'a> Run<'a> {
             }
         }
         self.nets(&parts);
+        if self.pass == Pass::Board {
+            self.stray_functions();
+        }
+    }
+
+    /// A function stated on a pin that no part reads has no effect (ADR 0062, stage 0): a
+    /// module's own pin whose choice nothing passes on, or a pin of a part that its table does
+    /// not describe. It is an error, because a statement that is accepted and does nothing
+    /// sends the reader to the wrong place.
+    fn stray_functions(&mut self) {
+        let model = self.model;
+        let mut pins: Vec<(String, InstId)> = model
+            .instances()
+            .filter(|(id, i)| i.kind == InstKind::Pin && model.board_of(*id).is_some())
+            .map(|(id, _)| (model.path_of(id), id))
+            .collect();
+        pins.sort();
+        for (path, pin) in pins {
+            let Some(crate::model::Member::Field(field)) = model.member(pin, "function") else {
+                continue;
+            };
+            let Some(&at) = model.field(field).narrowed_at.last() else {
+                continue;
+            };
+            if model.function_is_read(pin) {
+                continue;
+            }
+            let Some(owner) = model.owner_of(pin) else {
+                continue;
+            };
+            let inst = model.instance(owner);
+            let name = format!("`{path}`");
+            let message = if inst.kind == InstKind::Part {
+                format!(
+                    "`{path}.function` is stated, but {name} has no row in the pin table of `{}`, so it has no effect; the function of a pin is chosen on a pin of the table",
+                    inst.type_name
+                )
+            } else {
+                let ty = &inst.type_name;
+                let own = model.path_below(pin, owner);
+                let hint = self.forwarding_hint(owner, pin, &own);
+                format!(
+                    "`{path}.function` is stated, but {name} is a pin of {} `{ty}` and nothing passes it to a pin of a part, so it has no effect; inside `{ty}`, write {hint}",
+                    inst.kind.word()
+                )
+            };
+            self.report(at, message);
+        }
+    }
+
+    /// The equation a module writes to pass the function of its own pin to a pin of a part:
+    /// with the part's pin named when exactly one pin with functions is on the same net inside
+    /// the module, else with its place left to fill.
+    fn forwarding_hint(&self, module: InstId, pin: InstId, own: &str) -> String {
+        let model = self.model;
+        let candidates: Vec<InstId> = model
+            .net_of(pin)
+            .map(|n| {
+                n.pins
+                    .iter()
+                    .copied()
+                    .filter(|&p| {
+                        p != pin
+                            && model.owner_of(p).is_some_and(|o| {
+                                model.is_inside(o, module)
+                                    && o != module
+                                    && model.pin_facts(p).is_some_and(|r| !r.functions.is_empty())
+                            })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        match candidates.as_slice() {
+            [one] => format!(
+                "`.{}.function == .{own}.function`",
+                model.path_below(*one, module)
+            ),
+            _ => format!("`.<part>.<pin>.function == .{own}.function`"),
+        }
     }
 
     /// The pin tables say how a part is in the package it is in, if any does.
@@ -246,10 +325,25 @@ impl<'a> Run<'a> {
             }
             Some(_) => {}
             None if functions.len() > 1 && model.is_connected(pin) => {
-                let scope = model.instance(part).parent.unwrap_or(model.root);
+                // A pin that a module forwards is chosen where the board can write it: on the
+                // module's own pin, by the path the board knows.
+                let chain = model.function_chain(pin);
+                let outer = *chain.last().expect("a pin");
+                let (at, scope, pin) = match model.owner_of(outer).filter(|_| outer != pin) {
+                    Some(module) => (
+                        model.instance(module).at(),
+                        model.instance(module).parent.unwrap_or(model.root),
+                        outer,
+                    ),
+                    None => (
+                        model.instance(part).at(),
+                        model.instance(part).parent.unwrap_or(model.root),
+                        pin,
+                    ),
+                };
                 let relative = model.path_below(pin, scope);
                 self.report(
-                    model.instance(part).at(),
+                    at,
                     format!(
                         "`{name}` has several functions ({}) and is connected: choose one with `.{relative}.function &= \"{}\"`",
                         functions.join(", "),
@@ -261,22 +355,22 @@ impl<'a> Run<'a> {
         }
     }
 
-    /// Where the board chose a function: the statement, or else the part.
+    /// Where the board chose a function: the statement, on the pin or on the pin of a module
+    /// that forwards to it, or else the part.
     fn function_site(
         &self,
         pin: InstId,
         part: InstId,
     ) -> (crate::diag::SourceId, netsmith_lang::Span) {
         let model = self.model;
-        match model.member(pin, "function") {
-            Some(crate::model::Member::Field(f)) => model
-                .field(f)
-                .narrowed_at
-                .last()
-                .copied()
-                .unwrap_or_else(|| model.instance(part).at()),
-            _ => model.instance(part).at(),
-        }
+        model
+            .function_chain(pin)
+            .into_iter()
+            .find_map(|p| match model.member(p, "function") {
+                Some(crate::model::Member::Field(f)) => model.field(f).narrowed_at.last().copied(),
+                _ => None,
+            })
+            .unwrap_or_else(|| model.instance(part).at())
     }
 
     fn functions_used_twice(&mut self, part: InstId, table: &PinTable) {

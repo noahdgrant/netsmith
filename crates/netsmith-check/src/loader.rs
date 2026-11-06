@@ -19,6 +19,13 @@ impl Loader {
     /// A loader holding the standard library.
     pub fn std() -> Self {
         let mut loader = Self::empty();
+        // The prelude is in scope in every file with no import; it is listed here so that
+        // tools that show the standard library show it too.
+        loader.insert(
+            "std::prelude",
+            "std/prelude.nsm",
+            include_str!("../../../std/prelude.nsm"),
+        );
         loader.insert(
             "std::parts::passive",
             "std/parts/passive.nsm",

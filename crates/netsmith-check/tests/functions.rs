@@ -84,3 +84,211 @@ fn the_function_decides_only_for_the_function_chosen() {
         run("    .a.p1 ~ .b.p1\n    .a.p1.function &= \"UART_TX\"\n    .b.p1.function &= \"GPIO\"");
     assert!(c.is_ok(), "{}", c.render());
 }
+
+// ---- A module passes a function choice on (ADR 0062, stage 0) ----
+
+/// An invented part with two pins that can each be a GPIO, a bus clock or a transmitter.
+const ZMCU: &str = r#"
+part Zmcu {
+    pins {
+        .p04 bidirectional "P04" "1" fn GPIO:bidirectional BUS_SCL:bidirectional UART_TX:output
+        .p05 bidirectional "P05" "2" fn GPIO:bidirectional BUS_SDA:bidirectional UART_TX:output
+    }
+}
+
+/// A module that exports a pin and passes the board's choice on to the part.
+module Hub {
+    .scl: Pin
+    .mcu: Zmcu
+    .scl ~ .mcu.p04
+    .mcu.p04.function == .scl.function
+}
+
+/// The same, without the equation: the choice of `.scl` goes nowhere.
+module Bare {
+    .scl: Pin
+    .mcu: Zmcu
+    .scl ~ .mcu.p04
+}
+
+/// A pin joined to two pins of the part, with no equation.
+module Fork {
+    .scl: Pin
+    .mcu: Zmcu
+    .scl ~ .mcu.p04
+    .scl ~ .mcu.p05
+}
+
+/// A module in a module: it forwards `.scl` to the pin of the `Hub` inside it.
+module Outer {
+    .scl: Pin
+    .hub: Hub
+    .scl ~ .hub.scl
+    .hub.scl.function == .scl.function
+}
+
+/// The same, with no equation at this level.
+module Loose {
+    .scl: Pin
+    .hub: Hub
+    .scl ~ .hub.scl
+}
+"#;
+
+fn zmcu(body: &str) -> Checked {
+    check(
+        "test.nsm",
+        &format!("{ZMCU}\nboard B {{\n{body}\n}}\n"),
+        &Loader::std(),
+    )
+}
+
+/// The text of the source that a diagnostic points at.
+fn pointed_at(c: &Checked, i: usize) -> String {
+    let d = &c.diagnostics[i];
+    let text = &c.sources.get(d.source).text;
+    text[d.span.start..d.span.end].to_string()
+}
+
+#[test]
+fn a_function_a_module_forwards_is_read_by_the_part_and_its_net_rules() {
+    let c = zmcu("    .hub: Hub\n    .hub.scl.function &= \"BUS_SCL\"");
+    assert!(c.is_ok(), "{}", c.render());
+    let model = &c.board("B").unwrap().model;
+    let pin = model.inst_at("hub.mcu.p04").unwrap();
+    assert_eq!(model.function_of(pin).as_deref(), Some("BUS_SCL"));
+
+    // The kind of the forwarded function counts on the net: two transmitters on one net.
+    let c = zmcu(
+        "    .a: Hub\n    .b: Hub\n    .a.scl ~ .b.scl\n    .a.scl.function &= \"UART_TX\"\n    .b.scl.function &= \"UART_TX\"",
+    );
+    let m = messages(&c);
+    assert!(
+        m.iter().any(|m| m.contains("has two outputs")
+            && m.contains("`a.mcu.p04` (`Zmcu` function `UART_TX`, an output)")
+            && m.contains("`b.mcu.p04` (`Zmcu` function `UART_TX`, an output)")),
+        "{m:#?}"
+    );
+}
+
+#[test]
+fn a_function_stated_on_a_module_pin_that_nothing_reads_is_an_error_at_the_boards_line() {
+    let c = zmcu("    .bare: Bare\n    .bare.scl.function &= \"BUS_SCL\"");
+    let m = messages(&c);
+    // The part's own pin still has several functions to choose from, as it did, and the
+    // statement of the board says why its choice does not reach the part.
+    assert_eq!(
+        m,
+        [
+            "`bare.mcu.p04` has several functions (GPIO, BUS_SCL, UART_TX) and is connected: choose one with `.mcu.p04.function &= \"GPIO\"`",
+            "`bare.scl.function` is stated, but `bare.scl` is a pin of module `Bare` and nothing passes it to a pin of a part, so it has no effect; inside `Bare`, write `.mcu.p04.function == .scl.function`",
+        ],
+        "{}",
+        c.render()
+    );
+    assert_eq!(pointed_at(&c, 1), ".bare.scl.function &= \"BUS_SCL\"");
+
+    // More than one pin of the part on the net: the hint leaves the place to fill.
+    let c = zmcu("    .fork: Fork\n    .fork.scl.function &= \"BUS_SCL\"");
+    let m = messages(&c);
+    assert!(
+        m.iter()
+            .any(|m| m.ends_with("inside `Fork`, write `.<part>.<pin>.function == .scl.function`")),
+        "{m:#?}"
+    );
+}
+
+#[test]
+fn a_function_forwarded_through_two_modules_reaches_the_part() {
+    let c = zmcu("    .outer: Outer\n    .outer.scl.function &= \"BUS_SCL\"");
+    assert!(c.is_ok(), "{}", c.render());
+    let model = &c.board("B").unwrap().model;
+    let pin = model.inst_at("outer.hub.mcu.p04").unwrap();
+    assert_eq!(model.function_of(pin).as_deref(), Some("BUS_SCL"));
+
+    // A break in the chain is found at the outer pin the board wrote, and names the part's pin
+    // two modules down.
+    let c = zmcu("    .loose: Loose\n    .loose.scl.function &= \"BUS_SCL\"");
+    let m = messages(&c);
+    assert!(
+        m.iter().any(|m| m.starts_with(
+            "`loose.scl.function` is stated, but `loose.scl` is a pin of module `Loose` and nothing passes it to a pin of a part"
+        ) && m.ends_with("write `.hub.mcu.p04.function == .scl.function`")),
+        "{m:#?}"
+    );
+}
+
+#[test]
+fn a_wrong_forwarded_function_points_at_the_boards_line() {
+    let c = zmcu("    .hub: Hub\n    .hub.scl.function &= \"NOPE\"");
+    assert_eq!(
+        messages(&c),
+        ["`hub.mcu.p04` cannot be `NOPE`; its functions are GPIO, BUS_SCL, UART_TX"],
+        "{}",
+        c.render()
+    );
+    assert_eq!(pointed_at(&c, 0), ".hub.scl.function &= \"NOPE\"");
+}
+
+#[test]
+fn the_hint_for_a_forwarded_pin_names_the_modules_pin_the_board_can_write() {
+    // Connected inside the module and not chosen: the part's pin has three functions.
+    let c = zmcu("    .hub: Hub");
+    assert_eq!(
+        messages(&c),
+        [
+            "`hub.mcu.p04` has several functions (GPIO, BUS_SCL, UART_TX) and is connected: choose one with `.hub.scl.function &= \"GPIO\"`"
+        ],
+        "{}",
+        c.render()
+    );
+    assert_eq!(pointed_at(&c, 0), ".hub: Hub");
+    // Two modules deep, it is the outer pin.
+    let c = zmcu("    .outer: Outer");
+    assert_eq!(
+        messages(&c),
+        [
+            "`outer.hub.mcu.p04` has several functions (GPIO, BUS_SCL, UART_TX) and is connected: choose one with `.outer.scl.function &= \"GPIO\"`"
+        ],
+        "{}",
+        c.render()
+    );
+    // Not forwarded, the hint is the part's own pin, as the module's author writes it, as before.
+    let c = zmcu("    .bare: Bare");
+    assert_eq!(
+        messages(&c),
+        [
+            "`bare.mcu.p04` has several functions (GPIO, BUS_SCL, UART_TX) and is connected: choose one with `.mcu.p04.function &= \"GPIO\"`"
+        ],
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn a_function_stated_on_an_alias_that_the_table_has_no_row_for_is_an_error_too() {
+    let src = r#"
+part Dual {
+    .q: Pin
+    .q ~ .p1
+    pins {
+        .p1 bidirectional "P1" "1" fn GPIO UART_TX
+    }
+}
+
+board B {
+    .d: Dual
+    .d.q.function &= "GPIO"
+}
+"#;
+    let c = check("test.nsm", src, &Loader::std());
+    assert_eq!(
+        messages(&c),
+        [
+            "`d.q.function` is stated, but `d.q` has no row in the pin table of `Dual`, so it has no effect; the function of a pin is chosen on a pin of the table"
+        ],
+        "{}",
+        c.render()
+    );
+    assert_eq!(pointed_at(&c, 0), ".d.q.function &= \"GPIO\"");
+}
