@@ -194,6 +194,11 @@
   --sch-frame: #3f5a4d;
   --sch-frame-fill: rgba(90, 166, 126, .04);
   --sch-frame-title: #86b69c;
+  /* a schematic note (a doc comment or a relation): a paper card on the sheet; the words 4.5:1 (7:1 in high contrast) on the card, the frame 3:1 on the sheet */
+  --sch-note-fill: #1b1913;
+  --sch-note-stroke: #8a7b4a;
+  --sch-note-text: #ebe3c8;
+  --sch-note-heading: #e3bd62;
 
   /* the board: a calm drawing. The canvas (--pcb-bg) is a step from the substrate (--pcb-board); copper is a muted copper on
    * the front and a muted teal-blue on the back; a through-hole pad and a via have tones of their own; the ratsnest is thin
@@ -370,6 +375,11 @@
   --sch-frame: #6f9a86;
   --sch-frame-fill: rgba(10, 122, 60, .04);
   --sch-frame-title: #2f5f4a;
+  /* a schematic note (a doc comment or a relation): a paper card on the sheet; the words 4.5:1 (7:1 in high contrast) on the card, the frame 3:1 on the sheet */
+  --sch-note-fill: #fffdf2;
+  --sch-note-stroke: #8f7a2c;
+  --sch-note-text: #3a3315;
+  --sch-note-heading: #6b5710;
 
   /* the board: a calm drawing. The canvas (--pcb-bg) is a step from the substrate (--pcb-board); copper is a muted copper on
    * the front and a muted teal-blue on the back; a through-hole pad and a via have tones of their own; the ratsnest is thin
@@ -543,6 +553,11 @@
   --sch-frame: #8fbfa3;
   --sch-frame-fill: rgba(83, 240, 124, .05);
   --sch-frame-title: #b4e8c8;
+  /* a schematic note (a doc comment or a relation): a paper card on the sheet; the words 4.5:1 (7:1 in high contrast) on the card, the frame 3:1 on the sheet */
+  --sch-note-fill: #14110a;
+  --sch-note-stroke: #d9bf6a;
+  --sch-note-text: #fff6cf;
+  --sch-note-heading: #ffd86b;
 
   /* the board: a calm drawing. The canvas (--pcb-bg) is a step from the substrate (--pcb-board); copper is a muted copper on
    * the front and a muted teal-blue on the back; a through-hole pad and a via have tones of their own; the ratsnest is thin
@@ -716,6 +731,11 @@
   --sch-frame: #3d6a55;
   --sch-frame-fill: rgba(0, 107, 43, .04);
   --sch-frame-title: #1d4a37;
+  /* a schematic note (a doc comment or a relation): a paper card on the sheet; the words 4.5:1 (7:1 in high contrast) on the card, the frame 3:1 on the sheet */
+  --sch-note-fill: #fffbe0;
+  --sch-note-stroke: #6e5800;
+  --sch-note-text: #2a2400;
+  --sch-note-heading: #5a4600;
 
   /* the board: a calm drawing. The canvas (--pcb-bg) is a step from the substrate (--pcb-board); copper is a muted copper on
    * the front and a muted teal-blue on the back; a through-hole pad and a via have tones of their own; the ratsnest is thin

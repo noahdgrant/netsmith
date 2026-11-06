@@ -21,7 +21,7 @@ export interface Drawing {
   mm: { x: number; y: number; w: number; h: number };
 }
 
-const CATEGORIES = ['parts', 'wires', 'buses', 'junctions', 'power-symbols', 'ports', 'unconnected', 'labels'] as const;
+const CATEGORIES = ['parts', 'wires', 'buses', 'junctions', 'power-symbols', 'ports', 'unconnected', 'notes', 'labels'] as const;
 const NS = 'http://www.w3.org/2000/svg';
 
 const nums = (text: string | null): number[] =>
@@ -47,6 +47,9 @@ function pointOf(e: Element): [number, number] | null {
     }
     return null;
   };
+  // A note: the middle of its frame (a note with no part of its own, the module's, has no `data-ref`).
+  const frame = e.querySelector('rect.note-frame');
+  if (frame) return [Number(frame.getAttribute('x')) + Number(frame.getAttribute('width')) / 2, Number(frame.getAttribute('y')) + Number(frame.getAttribute('height')) / 2];
   return (
     own(e) ??
     own(e.querySelector('polyline')) ??

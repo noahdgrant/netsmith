@@ -165,6 +165,9 @@ function pairs(): Pair[] {
   list.push({ fg: '--sch-bad', bg: ['--sch-sheet'], min: 3, what: 'schematic error mark (a graphic)' });
   list.push({ fg: '--sch-hit', bg: ['--sch-sheet'], min: 3, what: 'schematic highlight (a graphic)' });
   list.push({ fg: '--sch-mark', bg: ['--sch-sheet'], min: 3, what: 'schematic selection mark (a graphic)' });
+  // A schematic note (doc comments and relations): its words and heading on the card, its frame on the sheet.
+  for (const k of ['--sch-note-text', '--sch-note-heading']) list.push({ fg: k, bg: ['--sch-note-fill'], what: 'the words of a schematic note on its card' });
+  list.push({ fg: '--sch-note-stroke', bg: ['--sch-sheet'], min: 3, what: 'the frame of a schematic note (a graphic)' });
   // A segmented control: its words on the track and on the segment that is on.
   list.push({ fg: '--text-muted', bg: ['--seg-track'], what: 'a segment that is off' });
   list.push({ fg: '--text', bg: ['--seg-on'], what: 'the segment that is on' });
@@ -279,6 +282,10 @@ describe.each(Object.keys(THEME_TOKENS) as Theme[])('contrast of %s', (name) => 
   });
   it('the segment that is on is a step from its track', () => {
     expect(contrast(ink('--seg-on'), ink('--seg-track'))!).toBeGreaterThanOrEqual(1.1);
+  });
+  it('a schematic note is a card: its fill is not the sheet, and its frame is not the colour of a wire or a part', () => {
+    expect(ink('--sch-note-fill').toLowerCase()).not.toBe(ink('--sch-sheet').toLowerCase());
+    for (const k of ['--sch-wire', '--sch-body', '--sch-bus', '--sch-frame']) expect(ink('--sch-note-stroke').toLowerCase(), k).not.toBe(ink(k).toLowerCase());
   });
   it('the schematic marks of a pick are told apart: the lit net, the picked part, the bus trunk and the wire', () => {
     const marks = ['--sch-hit', '--sch-mark', '--sch-bus', '--sch-wire'].map((k) => ink(k));
@@ -396,6 +403,31 @@ describe('the rows and views that are dimmed or picked', () => {
 const sources = import.meta.glob(['./**/*.ts', './**/*.tsx', './**/*.css'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 // The server's drawings are written with colours of their own (pcb/colours.ts lists them), and the tests name colours to test them.
 const ALLOWED = [/themes\.css$/, /pcb\/colours\.ts$/, /\.test\.ts$/, /contrast\.ts$/];
+describe('the schematic notes are painted by the page', () => {
+  const rule = (selector: string): string => {
+    const at = styleCss.indexOf(selector);
+    expect(at, selector).toBeGreaterThanOrEqual(0);
+    return styleCss.slice(at, styleCss.indexOf('}', at));
+  };
+  it('maps the server\u2019s default tokens and each class to the theme\u2019s tokens', () => {
+    const host = rule('.schematic-host svg.schematic {');
+    for (const [own, theme] of [['--note-fill', '--sch-note-fill'], ['--note-stroke', '--sch-note-stroke'], ['--note-text', '--sch-note-text'], ['--note-stroke-text', '--sch-note-heading']]) {
+      expect(host, own).toContain(`${own}: var(${theme})`);
+    }
+    expect(rule('.schematic-host svg.schematic .note .note-frame')).toContain('var(--sch-note-fill)');
+    expect(rule('.schematic-host svg.schematic .note .note-frame')).toContain('var(--sch-note-stroke)');
+    expect(rule('.schematic-host svg.schematic .note .note-text')).toContain('var(--sch-note-text)');
+    expect(rule('.schematic-host svg.schematic .note .note-heading')).toContain('var(--sch-note-heading)');
+  });
+  it('outranks the drawing\u2019s own embedded style and the rule that colours the text of a lit thing', () => {
+    // `.schematic .note text` is (0,2,1) in the drawing and `.schematic-host svg.schematic .on text` is (0,3,2) in the page:
+    // the note's rules have four classes, so a note that is lit keeps its own words.
+    for (const selector of ['.note .note-frame', '.note .note-text', '.note .note-heading']) {
+      expect(styleCss, selector).toContain(`.schematic-host svg.schematic ${selector}`);
+    }
+  });
+});
+
 describe('the page has no colours of its own', () => {
   it('finds the sources', () => expect(Object.keys(sources).length).toBeGreaterThan(40));
   it('has no hex or rgb colour outside themes.css', () => {

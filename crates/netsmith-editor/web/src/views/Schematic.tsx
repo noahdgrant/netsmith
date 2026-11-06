@@ -9,6 +9,7 @@ import { busName, busTargets, litNets } from '../schematic/bus';
 import { type Bus } from '../schematic/drawing';
 import { addHalos } from '../schematic/halo';
 import { type Drawing, loadDrawing } from '../schematic/load';
+import { litNotes, noteLocation, parseNoteAt } from '../schematic/notes';
 import {
   netNavOrder,
   netSheets,
@@ -37,7 +38,7 @@ import { load, save } from '../storage';
 import { toggleCheatSheet } from '../quickpick';
 import { hoverEnter, hoverLeave, hoverOfRefs } from '../hover';
 import { modulesOf, revealRequest, sameSelection, selection } from '../selection';
-import { analysis, board, detail, problems, revealSection } from '../store';
+import { analysis, board, detail, goTo, problems, revealSection } from '../store';
 import { Inspector, type PinRef } from './SchematicInspector';
 import { type SchematicActions, netFacts, schematicActions } from './schematic-actions';
 import { SheetNavPanel, SheetBar, rowOf } from './SheetNav';
@@ -96,6 +97,8 @@ interface Hit {
   bus?: string;
   /** The click was on a flag, where a net, or a bus, leaves the sheet. */
   flag?: boolean;
+  /** A note (a doc comment or a relation): where it is written, `file:line`. A note is no part and no net, so nothing is picked or lit for it. */
+  note?: string;
 }
 
 /** What the small menu under a flag offers: where a net or a bus can be followed to. */
@@ -113,6 +116,8 @@ const pickAt = (target: EventTarget | null): Hit | null => {
   // The thick line, its count and writing, or its flag; an entry is a net's wire and picks the net.
   const bus = target.closest('[data-bus]');
   if (bus) return { bus: bus.getAttribute('data-bus')!, flag: !!target.closest('.bus-flag') };
+  const note = target.closest('.note');
+  if (note) return { note: note.getAttribute('data-at') ?? '' };
   const part = target.closest('.part');
   if (part) return { part: part.getAttribute('data-ref')! };
   return null;
@@ -292,6 +297,10 @@ export function Schematic() {
       // What only the cursor's line declares is marked less than what is selected.
       if (el && !picked.includes(ref)) el.classList.add('linked');
     }
+    // The note of a part that is lit is lit with it (the rest dim with the drawing).
+    const noteEls = [...svg.querySelectorAll('g.note')];
+    const litRefs = new Set([...marked, ...(hover?.part ? [hover.part] : [])]);
+    for (const i of litNotes(noteEls.map((n) => ({ ref: n.getAttribute('data-ref') })), litRefs)) noteEls[i].classList.add('on');
     if (navPin && selNet) {
       svg.querySelector(`.pin[data-ref="${CSS.escape(navPin.ref)}"][data-pin="${CSS.escape(navPin.pin)}"]`)?.classList.add('cur');
     }
@@ -661,7 +670,9 @@ export function Schematic() {
                 // A section that was away when the drawing came has no halos yet.
                 if (holder.current) addHalos(holder.current);
                 const hit = pickAt(e.target);
-                setHover(hit);
+                // A note lifts by its own CSS and lights nothing else.
+                setHover(hit?.note != null ? null : hit);
+                if (hit?.note != null) return hoverLeave();
                 if (e.pointerType === 'touch') return;
                 // The same thing is lit in every other view (hover.ts): a part, a net, a bus's members.
                 const bus = hit?.bus ? drawing.index.buses.find((b) => b.path === hit.bus) : undefined;
@@ -676,6 +687,12 @@ export function Schematic() {
               onClick={(e) => {
                 setMenu(null);
                 const hit = pickAt(e.target);
+                if (hit?.note != null) {
+                  // Not a part: nothing is selected. The source opens at the line the note is written at, as a row of the problems dock does.
+                  const at = parseNoteAt(hit.note);
+                  if (at) void goTo(noteLocation(at));
+                  return;
+                }
                 const bus = hit?.bus ? drawing.index.buses.find((b) => b.path === hit.bus) : undefined;
                 if (hit?.net) {
                   selectNet(hit.net);
