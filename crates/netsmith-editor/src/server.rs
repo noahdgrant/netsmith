@@ -100,9 +100,19 @@ pub struct Server {
 
 /// Serve `backend` on `listener` until the process ends. Blocks.
 pub fn serve(listener: TcpListener, backend: Arc<dyn Backend>) -> io::Result<Server> {
+    serve_with_backlog(listener, backend, EVENT_BACKLOG)
+}
+
+/// [`serve`] with a socket that may fall `backlog` messages behind before it misses one
+/// (`serve` allows 256). For the tests of what a socket that lost messages is told.
+pub fn serve_with_backlog(
+    listener: TcpListener,
+    backend: Arc<dyn Backend>,
+    backlog: usize,
+) -> io::Result<Server> {
     let port = listener.local_addr()?.port();
     listener.set_nonblocking(true)?;
-    let (events, _) = broadcast::channel(EVENT_BACKLOG);
+    let (events, _) = broadcast::channel(backlog.max(1));
     let running: Live = Arc::default();
     // Told before the first analysis can start, so that its first line is not missed.
     backend.observe(observer(&events, &running));
@@ -712,6 +722,17 @@ fn observer(events: &broadcast::Sender<String>, running: &Live) -> Observer {
                 }
                 send(&events, &message);
             }
+            AnalysisEvent::Failed { message } => send(
+                &events,
+                &ServerMessage::Progress {
+                    task: "analyse".to_string(),
+                    board: String::new(),
+                    message: format!("the analysis stopped on an internal error: {message}"),
+                    stage: None,
+                    done: None,
+                    total: None,
+                },
+            ),
             AnalysisEvent::Finished => *live = None,
         }
     })
@@ -724,17 +745,64 @@ async fn events(State(s): State<Shared>, upgrade: WebSocketUpgrade) -> Response 
     let pushes = s.events.subscribe();
     // An analysis that is running now: the page that connects in the middle of it is told
     // so, and how far it has got, as the page that was there from the start was.
-    let running: Vec<String> = {
-        let live = s.running.lock().unwrap_or_else(|e| e.into_inner());
-        live.iter()
-            .flat_map(|run| {
-                std::iter::once(ServerMessage::Analysing { since: run.since })
-                    .chain(run.last.clone())
-            })
-            .filter_map(|m| serde_json::to_string(&m).ok())
-            .collect()
-    };
+    let running = running_messages(&s.running);
     upgrade.on_upgrade(move |socket| conversation(s, socket, pushes, running))
+}
+
+/// What a page that lost messages needs to hear to be as one that lost none: the analysis that
+/// is running, as a page that connects in the middle of it is told, or else a `rebuilt` of the
+/// current files.
+async fn current_state(state: &Shared) -> Vec<String> {
+    let running = running_messages(&state.running);
+    if !running.is_empty() {
+        return running;
+    }
+    let backend = Arc::clone(&state.backend);
+    let Ok(analysis) = tokio::task::spawn_blocking(move || backend.analysis()).await else {
+        return Vec::new();
+    };
+    serde_json::to_string(&ServerMessage::Rebuilt {
+        elapsed_ms: analysis.elapsed_ms,
+        analysis,
+    })
+    .into_iter()
+    .collect()
+}
+
+/// The analysis that is running now, as `analysing` and the last `progress`, as text.
+fn running_messages(running: &Live) -> Vec<String> {
+    let live = running.lock().unwrap_or_else(|e| e.into_inner());
+    live.iter()
+        .flat_map(|run| {
+            std::iter::once(ServerMessage::Analysing { since: run.since }).chain(run.last.clone())
+        })
+        .filter_map(|m| serde_json::to_string(&m).ok())
+        .collect()
+}
+
+/// What a check that could not be made answers with: no boards and one error.
+fn failed_check(message: &str) -> crate::api::Analysis {
+    use crate::api::{Analysis, Problem, ProblemStage, Severity};
+    Analysis {
+        version: 0,
+        errors: 1,
+        warnings: 0,
+        notes: 0,
+        problems: vec![Problem {
+            severity: Severity::Error,
+            message: message.to_string(),
+            rendered: format!("error: {message}\n"),
+            at: None,
+            stage: Some(ProblemStage::Check),
+            board: None,
+            path: None,
+        }],
+        boards: Vec::new(),
+        systems: Vec::new(),
+        panels: Vec::new(),
+        module_uses: None,
+        elapsed_ms: None,
+    }
 }
 
 /// Ends the task that answers a socket's checks when the socket is gone.
@@ -767,9 +835,14 @@ async fn conversation(
         while let Some((id, path, text)) = queue.recv().await {
             let backend = Arc::clone(&backend);
             let checked = tokio::task::spawn_blocking(move || backend.check(&path, &text)).await;
-            if let Ok(Ok(analysis)) = checked
-                && let Ok(reply) = serde_json::to_string(&ServerMessage::Checked { id, analysis })
-            {
+            // Every check is answered: a refusal or a panic is a `checked` whose one problem
+            // says so, so that the page does not wait for its id for ever.
+            let analysis = match checked {
+                Ok(Ok(analysis)) => analysis,
+                Ok(Err(e)) => failed_check(&e.message),
+                Err(e) => failed_check(&format!("the check stopped on an internal error: {e}")),
+            };
+            if let Ok(reply) = serde_json::to_string(&ServerMessage::Checked { id, analysis }) {
                 let _ = answers.send(reply);
             }
         }
@@ -782,8 +855,15 @@ async fn conversation(
                         return;
                     }
                 }
-                // A page that fell behind fetches the analysis again when the next arrives.
-                Err(broadcast::error::RecvError::Lagged(_)) => {}
+                // A page that fell behind lost messages, and a lost `rebuilt` would not come
+                // again: it is told where things are now.
+                Err(broadcast::error::RecvError::Lagged(_)) => {
+                    for text in current_state(&state).await {
+                        if socket.send(Message::Text(text.into())).await.is_err() {
+                            return;
+                        }
+                    }
+                }
                 Err(broadcast::error::RecvError::Closed) => return,
             },
             Some(reply) = replies.recv() => {

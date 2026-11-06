@@ -186,16 +186,30 @@ impl Workspace {
         if state.version > 0 && state.stamp.as_ref() == Some(&stamp) && all_read {
             return state;
         }
-        state.stamp = Some(stamp);
-        state.version += 1;
         state.pcb.clear();
         let started = Instant::now();
+        // An analysis that panics is a result like another: the last good reading and a
+        // problem that says so. The stamp and the version change only here, after the
+        // result, so that nothing is left half done and the files are not analysed again
+        // (and panicked on again) until one changes.
         let snapshot = {
             let _announcing = Announcing::start(self);
-            self.analyze(&HashMap::new(), Some(&state.snapshot), &|event| {
-                self.announce(event);
-            })
+            let observe = |event| self.announce(event);
+            match analysis::contained(|| {
+                self.analyze(&HashMap::new(), Some(&state.snapshot), &observe)
+            }) {
+                Ok(snapshot) => snapshot,
+                Err(message) => {
+                    eprintln!("netsmith editor: the analysis of the project panicked: {message}");
+                    self.announce(AnalysisEvent::Failed {
+                        message: message.clone(),
+                    });
+                    Snapshot::after_panic(&message, Some(&state.snapshot))
+                }
+            }
         };
+        state.stamp = Some(stamp);
+        state.version += 1;
         state.snapshot = snapshot;
         state.elapsed_ms = Some(millis(started));
         self.ready.store(true, Ordering::Release);
@@ -324,7 +338,11 @@ impl Backend for Workspace {
         let unsaved = HashMap::from([(fs, text.to_string())]);
         // A check of typed text is not an analysis of the files on disk: nobody is told of it.
         let started = Instant::now();
-        let snapshot = self.analyze(&unsaved, None, &|_| {});
+        let snapshot = analysis::contained(|| self.analyze(&unsaved, None, &|_| {}))
+            .unwrap_or_else(|message| {
+                eprintln!("netsmith editor: the check of {path} panicked: {message}");
+                Snapshot::after_panic(&message, None)
+            });
         Ok(Analysis {
             elapsed_ms: Some(millis(started)),
             ..snapshot.summary(version)

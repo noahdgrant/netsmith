@@ -117,6 +117,10 @@ pub enum AnalysisEvent {
         total: u32,
         message: String,
     },
+    /// It ended in a panic. Sent before [`AnalysisEvent::Finished`]; the next `analysis` is the
+    /// last good reading with an error problem that names the panic, and its version is new, so
+    /// the page hears `rebuilt` and leaves "analysing".
+    Failed { message: String },
     /// It ended, however it ended (the result is the next `analysis`).
     Finished,
 }

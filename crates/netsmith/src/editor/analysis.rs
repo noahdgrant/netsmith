@@ -218,6 +218,73 @@ fn general(message: String) -> Problem {
     }
 }
 
+/// The message of a panic, as the panic hook would print it.
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(|s| (*s).to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "a panic with no message".to_string())
+}
+
+/// Runs `work` and gives its result, or the message of the panic it ended in. The editor serves
+/// a project for as long as its owner works on it: a bug in the analysis (an `expect` in the
+/// layout, say) must end that one analysis with a problem the page shows, not leave the server
+/// waiting for a result that never comes.
+pub(super) fn contained<T>(work: impl FnOnce() -> T) -> Result<T, String> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(work))
+        .map_err(|payload| panic_message(&*payload))
+}
+
+/// The problem a panic is shown as: an error with no place, saying what panicked and that it
+/// is a bug to report. Its stage is `check` (the page's types have no stage for it).
+fn internal_problem(what: &str, message: &str, board: Option<String>) -> Problem {
+    let message = format!(
+        "internal error: {what} panicked ({message}). This is a bug in netsmith, not in the project: please report it with the file that causes it"
+    );
+    Problem {
+        severity: Severity::Error,
+        rendered: format!("error: {message}\n"),
+        message,
+        at: None,
+        stage: Some(ProblemStage::Check),
+        board,
+        path: None,
+    }
+}
+
+impl Snapshot {
+    /// What the project is after an analysis that panicked: the last good reading (its boards
+    /// marked stale, as for a file that does not build), or nothing on the first, and the
+    /// internal error first among the problems.
+    pub fn after_panic(message: &str, previous: Option<&Snapshot>) -> Snapshot {
+        let mut snapshot = Snapshot::default();
+        if let Some(previous) = previous {
+            snapshot.boards = previous
+                .boards
+                .iter()
+                .map(|(b, _)| (Arc::clone(b), true))
+                .collect();
+            snapshot.systems = previous
+                .systems
+                .iter()
+                .map(|(s, _)| (Arc::clone(s), true))
+                .collect();
+            snapshot.panels = previous
+                .panels
+                .iter()
+                .map(|(p, _)| (Arc::clone(p), true))
+                .collect();
+            snapshot.problems = previous.problems.clone();
+        }
+        snapshot.problems.insert(
+            0,
+            internal_problem("the analysis of the project", message, None),
+        );
+        snapshot
+    }
+}
+
 /// The least time between two progress lines about modules.
 const MODULE_PROGRESS_EVERY: std::time::Duration = std::time::Duration::from_millis(100);
 
@@ -315,25 +382,43 @@ impl Workspace {
                     ));
                     let drawn = outcome.boards.len() as u32;
                     for (n, built) in outcome.boards.into_iter().enumerate() {
-                        observe(AnalysisEvent::Progress {
-                            stage: "draw".to_string(),
-                            board: built.label(),
-                            done: n as u32,
-                            total: drawn,
-                            message: format!("drawing {} ({} of {drawn})", built.label(), n + 1),
+                        let label = built.label();
+                        // One board's drawing that panics is that board's problem: the rest
+                        // are drawn.
+                        let drawing = contained(|| {
+                            observe(AnalysisEvent::Progress {
+                                stage: "draw".to_string(),
+                                board: label.clone(),
+                                done: n as u32,
+                                total: drawn,
+                                message: format!("drawing {label} ({} of {drawn})", n + 1),
+                            });
+                            // The symbols come from KiCad's libraries; without them the
+                            // schematic draws boxes and says why.
+                            (*libraries).as_ref().map_err(Clone::clone).and_then(|l| {
+                                netsmith_view::render_svg_by_module_marked(
+                                    &built.design,
+                                    &module_groups(&built),
+                                    &rails_of(&built),
+                                    &must_connect(&built),
+                                    &l.mapping,
+                                    &l.symbols,
+                                )
+                                .map_err(|e| e.to_string())
+                            })
                         });
-                        // The symbols come from KiCad's libraries; without them the schematic
-                        // draws boxes and says why.
-                        let svg = (*libraries).as_ref().map_err(Clone::clone).and_then(|l| {
-                            netsmith_view::render_svg_by_module_marked(
-                                &built.design,
-                                &module_groups(&built),
-                                &rails_of(&built),
-                                &must_connect(&built),
-                                &l.mapping,
-                                &l.symbols,
-                            )
-                            .map_err(|e| e.to_string())
+                        let svg = drawing.unwrap_or_else(|message| {
+                            eprintln!(
+                                "netsmith editor: drawing the schematic of {label} panicked: {message}"
+                            );
+                            let problem = internal_problem(
+                                &format!("drawing the schematic of {label}"),
+                                &message,
+                                Some(label.clone()),
+                            );
+                            let shown = problem.message.clone();
+                            snapshot.problems.push(problem);
+                            Err(shown)
                         });
                         let solver_notes = built.notes.len() - built.lowering_notes;
                         for (n, note) in built.notes.iter().enumerate() {

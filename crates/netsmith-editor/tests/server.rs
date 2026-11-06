@@ -148,6 +148,11 @@ impl Backend for Fake {
     }
     fn check(&self, path: &str, text: &str) -> Result<Analysis, ApiError> {
         self.wait_for_the_first_analysis();
+        match path {
+            "refused.nsm" => return Err(ApiError::internal("the check could not start: boom")),
+            "panics.nsm" => panic!("a bug in the check"),
+            _ => {}
+        }
         // The text length stands for what the check found, so the test can see it arrived.
         Ok(analysis(1000 + path.len() as u64 + text.len() as u64))
     }
@@ -396,6 +401,12 @@ fn start_pending() -> Server {
 }
 
 fn start_with(version: u64, pending: bool) -> Server {
+    start_with_backlog(version, pending, None)
+}
+
+/// A server whose socket may fall `backlog` messages behind before it loses one (`None`: as
+/// many as the real one).
+fn start_with_backlog(version: u64, pending: bool, backlog: Option<usize>) -> Server {
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
     let port = listener.local_addr().unwrap().port();
     let backend = Arc::new(Fake {
@@ -405,7 +416,10 @@ fn start_with(version: u64, pending: bool) -> Server {
         release_compare: AtomicBool::new(false),
     });
     let served = Arc::clone(&backend);
-    thread::spawn(move || netsmith_editor::serve(listener, served));
+    thread::spawn(move || match backlog {
+        Some(backlog) => netsmith_editor::serve_with_backlog(listener, served, backlog),
+        None => netsmith_editor::serve(listener, served),
+    });
     // The listener is bound, so connections wait in its queue until the server runs.
     Server { port, backend }
 }
@@ -1301,4 +1315,131 @@ fn while_the_first_analysis_runs_git_is_answered_and_a_compare_that_asks_is_told
     );
     assert_eq!(reply.status, 503, "{}", reply.body);
     assert!(reply.body.contains("\"pending\":true"), "{}", reply.body);
+}
+
+/// Sends a check for `path` and waits for the answer to it.
+fn ask_check(socket: &mut Socket, id: u32, path: &str) -> Analysis {
+    let ask = ClientMessage::Check {
+        id,
+        path: path.into(),
+        text: "abc".into(),
+    };
+    socket
+        .send(tungstenite::Message::text(
+            serde_json::to_string(&ask).unwrap(),
+        ))
+        .unwrap();
+    loop {
+        if let ServerMessage::Checked { id: got, analysis } =
+            next_message(socket, &format!("the `checked` answer to check {id}"))
+        {
+            assert_eq!(got, id);
+            return analysis;
+        }
+    }
+}
+
+/// A check the backend refuses or panics in was not answered, so the page waited for its id for
+/// ever. Every check is answered, with one error that says what happened.
+#[test]
+fn a_check_that_fails_is_answered_with_its_id_and_an_error() {
+    let s = start();
+    let mut socket = open_socket(s.port);
+    let refused = ask_check(&mut socket, 11, "refused.nsm");
+    assert_eq!(refused.errors, 1, "{refused:?}");
+    assert!(
+        refused.problems[0].message.contains("boom"),
+        "{:?}",
+        refused.problems
+    );
+    let panicked = ask_check(&mut socket, 12, "panics.nsm");
+    assert_eq!(panicked.errors, 1, "{panicked:?}");
+    assert!(
+        panicked.problems[0].message.contains("internal error"),
+        "{:?}",
+        panicked.problems
+    );
+    // The socket still works.
+    assert_eq!(ask_check(&mut socket, 13, "a.nsm").version, 1000 + 5 + 3);
+}
+
+/// An analysis that ends in a panic: the page is told, and then `rebuilt` takes it out of
+/// "analysing" (the version is new: the last good reading and a problem).
+#[test]
+fn a_failed_analysis_is_told_and_ends_with_rebuilt() {
+    let s = start();
+    wait_for_observer(&s);
+    let mut socket = open_socket(s.port);
+    s.backend.tell(AnalysisEvent::Started { since: 5 });
+    s.backend.tell(AnalysisEvent::Failed {
+        message: "index out of bounds".into(),
+    });
+    s.backend.tell(AnalysisEvent::Finished);
+    s.backend.version.store(2, Ordering::SeqCst);
+    assert_eq!(
+        next_message(&mut socket, "analysing"),
+        ServerMessage::Analysing { since: 5 }
+    );
+    match next_message(&mut socket, "the failure") {
+        ServerMessage::Progress { task, message, .. } => {
+            assert_eq!(task, "analyse");
+            assert!(message.contains("index out of bounds"), "{message}");
+        }
+        other => panic!("expected progress, got {other:?}"),
+    }
+    assert!(matches!(
+        next_message(&mut socket, "rebuilt after the failure"),
+        ServerMessage::Rebuilt { .. }
+    ));
+    // A page that connects now is not told of an analysis that is over.
+    let mut late = open_socket(s.port);
+    s.backend.version.store(3, Ordering::SeqCst);
+    assert!(matches!(
+        next_message(&mut late, "rebuilt, with no `analysing` before it"),
+        ServerMessage::Rebuilt { .. }
+    ));
+}
+
+/// A socket that is not read falls behind and loses messages, among them a `rebuilt` that does
+/// not come again. It is told where things are now.
+#[test]
+fn a_socket_that_lost_messages_is_told_the_current_state() {
+    let s = start_with_backlog(1, false, Some(1));
+    wait_for_observer(&s);
+    let mut socket = open_socket(s.port);
+    // The page does not read: lines of a megabyte fill the connection until the server's end
+    // waits, and the one message the channel keeps is replaced by each one after it.
+    s.backend.tell(AnalysisEvent::Started { since: 5 });
+    for n in 0..40u32 {
+        s.backend.tell(AnalysisEvent::Progress {
+            stage: "draw".into(),
+            board: "Main".into(),
+            done: n,
+            total: 40,
+            message: "x".repeat(1 << 20),
+        });
+    }
+    s.backend.tell(AnalysisEvent::Finished);
+    // The files change; the watcher says so (`rebuilt`, version 2) while the socket waits...
+    s.backend.version.store(2, Ordering::SeqCst);
+    thread::sleep(Duration::from_millis(1800));
+    // ... and a message after it takes its place in the channel.
+    s.backend.tell(AnalysisEvent::Progress {
+        stage: "draw".into(),
+        board: "Main".into(),
+        done: 0,
+        total: 1,
+        message: "after".into(),
+    });
+    let deadline = Instant::now() + WAIT;
+    loop {
+        if let ServerMessage::Rebuilt { analysis, .. } = next_message(
+            &mut socket,
+            "a `rebuilt` of version 2 after the lost messages",
+        ) {
+            assert_eq!(analysis.version, 2);
+            break;
+        }
+        assert!(Instant::now() < deadline, "no `rebuilt` of version 2");
+    }
 }
