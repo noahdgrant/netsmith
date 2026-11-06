@@ -26,6 +26,8 @@ pub enum Tok {
     Tilde,
     TildeArrow,
     AmpEq,
+    /// `?=`, a default a board may replace.
+    QuestionEq,
     Eq,
     EqEq,
     GtEq,
@@ -328,10 +330,11 @@ impl Lexer<'_> {
             });
         }
         // Longer spellings first.
-        let table: [(&str, Tok); 21] = [
+        let table: [(&str, Tok); 22] = [
             ("::", Tok::ColonColon),
             ("~>", Tok::TildeArrow),
             ("&=", Tok::AmpEq),
+            ("?=", Tok::QuestionEq),
             ("==", Tok::EqEq),
             (">=", Tok::GtEq),
             ("<=", Tok::LtEq),
@@ -499,6 +502,22 @@ mod tests {
             let at = src.find("/*").unwrap();
             assert_eq!((e.span.start, e.span.end), (at, at + 2), "{src}");
         }
+    }
+
+    #[test]
+    fn question_equals_is_one_token_and_a_lone_question_mark_is_not() {
+        let toks: Vec<_> = lex(".f ?= 5V")
+            .unwrap()
+            .into_iter()
+            .map(|t| t.tok)
+            .collect();
+        assert!(toks.contains(&Tok::QuestionEq), "{toks:?}");
+        assert!(
+            lex(".f ? 5V")
+                .unwrap_err()
+                .message
+                .contains("unexpected character `?`")
+        );
     }
 
     #[test]

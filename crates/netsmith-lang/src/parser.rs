@@ -15,6 +15,7 @@ pub fn parse(src: &str) -> Result<File, ParseError> {
         pos: 0,
         depth: 0,
         last_end: 0,
+        in_generic: false,
     }
     .file()
 }
@@ -27,6 +28,7 @@ pub fn parse_expr(src: &str) -> Result<Expr, ParseError> {
         pos: 0,
         depth: 0,
         last_end: 0,
+        in_generic: false,
     };
     let e = parser.expr()?;
     if parser.at(&Tok::Eof) {
@@ -42,6 +44,8 @@ struct Parser {
     /// Open parentheses; newlines are not significant while this is above zero.
     depth: usize,
     last_end: usize,
+    /// Reading the body of a `generic`, whose pin rows may have no name and no pads (ADR 0059).
+    in_generic: bool,
 }
 
 type Res<T> = Result<T, ParseError>;
@@ -232,7 +236,7 @@ impl Parser {
                 _ => {
                     return Err(unexpected(
                         &t,
-                        "`import`, `board`, `system`, `panel`, `part`, `interface`, `module` or `physical for`",
+                        "`import`, `board`, `system`, `panel`, `part`, `interface`, `module`, `enum`, `generic` or `physical for`",
                     ));
                 }
             }
@@ -281,17 +285,96 @@ impl Parser {
         };
         let kind = DefKind::from_keyword(word).expect("caller checked the keyword");
         let name = self.ident(&format!("a name for the {word}"))?;
-        let open = self.expect(&Tok::LBrace, &format!("`{{` after the {word} name"))?;
+        let mut provides = Vec::new();
+        if matches!(&self.peek().tok, Tok::Ident(w) if w == "provides") {
+            let at = self.bump();
+            if !matches!(kind, DefKind::Part | DefKind::Module) {
+                return Err(ParseError::new(
+                    at.span,
+                    format!(
+                        "only a part or a module provides a generic; a {word} does not (`part X provides G`, `module X provides G`)"
+                    ),
+                ));
+            }
+            loop {
+                provides.push(self.ident("the name of a generic after `provides`")?);
+                if !self.eat(&Tok::Comma) {
+                    break;
+                }
+                self.skip_newlines();
+            }
+        }
+        let expected = if provides.is_empty() {
+            format!("`{{` after the {word} name")
+        } else {
+            format!("`{{` or `,` after the generics the {word} provides")
+        };
+        let open = self.expect(&Tok::LBrace, &expected)?;
         let inner_docs = self.inner_docs();
-        let items = self.block(open.span)?;
+        let (items, variants) = if kind == DefKind::Enum {
+            (Vec::new(), self.variants(open.span)?)
+        } else {
+            let outer = std::mem::replace(&mut self.in_generic, kind == DefKind::Generic);
+            let items = self.block(open.span);
+            self.in_generic = outer;
+            (items?, Vec::new())
+        };
         Ok(Definition {
             docs: docs.lines,
             inner_docs,
             kind,
             name,
+            provides,
             items,
+            variants,
             span: self.span_from(keyword.span.start),
         })
+    }
+
+    /// The variants of an `enum`, up to and including the closing `}`: names separated by
+    /// commas or line ends, each with its `///` lines.
+    fn variants(&mut self, open: Span) -> Res<Vec<Variant>> {
+        let mut variants: Vec<Variant> = Vec::new();
+        loop {
+            while matches!(self.peek().tok, Tok::Newline | Tok::Semi | Tok::Comma) {
+                self.pos += 1;
+            }
+            let docs = self.outer_docs();
+            match self.peek().tok {
+                Tok::RBrace | Tok::Eof if !docs.is_empty() => {
+                    return Err(ParseError::new(
+                        docs.first.expect("docs is not empty"),
+                        "this doc comment is not followed by a variant",
+                    ));
+                }
+                Tok::RBrace => {
+                    self.bump();
+                    return Ok(variants);
+                }
+                Tok::Eof => return Err(ParseError::new(open, "this `{` is never closed")),
+                _ => {}
+            }
+            let name = self.ident("the name of a variant")?;
+            if variants.iter().any(|v| v.name.name == name.name) {
+                return Err(ParseError::new(
+                    name.span,
+                    format!("the variant `{}` is written twice", name.name),
+                ));
+            }
+            variants.push(Variant {
+                docs: docs.lines,
+                name,
+            });
+            match self.peek().tok {
+                Tok::Comma | Tok::Newline | Tok::Semi | Tok::RBrace => {}
+                _ => {
+                    return Err(unexpected(
+                        self.peek(),
+                        "`,`, a new line or `}` after a variant",
+                    ));
+                }
+            }
+        }
     }
 
     /// `physical for Board { ... }`.
@@ -421,9 +504,10 @@ impl Parser {
                 t.span,
                 "there is no `=`: use `&=` to narrow a value, or `==` for an equation that must hold",
             )),
-            Tok::AmpEq | Tok::EqEq | Tok::GtEq | Tok::LtEq => {
+            Tok::AmpEq | Tok::QuestionEq | Tok::EqEq | Tok::GtEq | Tok::LtEq => {
                 let op = match t.tok {
                     Tok::AmpEq => CmpOp::Narrow,
+                    Tok::QuestionEq => CmpOp::Default,
                     Tok::EqEq => CmpOp::EqEq,
                     Tok::GtEq => CmpOp::Ge,
                     _ => CmpOp::Le,
@@ -457,7 +541,10 @@ impl Parser {
                     span: self.span_from(start),
                 }))
             }
-            _ => Err(unexpected(&t, "`:`, `&=`, `==`, `>=`, `<=`, `~` or `~>`")),
+            _ => Err(unexpected(
+                &t,
+                "`:`, `&=`, `?=`, `==`, `>=`, `<=`, `~` or `~>`",
+            )),
         }
     }
 
@@ -612,6 +699,33 @@ impl Parser {
         self.bump();
 
         let t = self.peek().clone();
+        // A generic's row may stop here: the kind is all a provider's row must agree on.
+        let contract = self.in_generic
+            && match &t.tok {
+                Tok::Newline | Tok::Semi | Tok::RBrace | Tok::Eof => true,
+                Tok::Ident(w) => w == "optional" || w == "required",
+                _ => false,
+            };
+        if contract {
+            let requirement = match &t.tok {
+                Tok::Ident(w) if w == "optional" => Some((Requirement::Optional, t.span)),
+                Tok::Ident(w) if w == "required" => Some((Requirement::Required, t.span)),
+                _ => None,
+            };
+            if requirement.is_some() {
+                self.bump();
+            }
+            return Ok(PinRow {
+                pin,
+                kind,
+                name: String::new(),
+                name_span: t.span,
+                pads: Vec::new(),
+                functions: Vec::new(),
+                requirement,
+                span: self.span_from(start),
+            });
+        }
         let (name, name_span) = match &t.tok {
             Tok::Str(name) => (name.clone(), t.span),
             _ => {
@@ -885,6 +999,20 @@ impl Parser {
                 self.bump();
                 Ok(Expr::Str(s, t.span))
             }
+            // `Enum::Variant`, with a module path before it if the enum is qualified.
+            Tok::Ident(_) if matches!(self.peek_second(), Tok::ColonColon) => {
+                let start = t.span.start;
+                let mut segments = vec![self.ident("a type name")?];
+                while self.eat(&Tok::ColonColon) {
+                    segments.push(self.ident("a name after `::`")?);
+                }
+                let variant = segments.pop().expect("a path has a segment");
+                Ok(Expr::Variant {
+                    ty: TypePath { segments },
+                    variant,
+                    span: self.span_from(start),
+                })
+            }
             Tok::LeadingDot | Tok::Ident(_) | Tok::QuotedIdent(_) => Ok(Expr::Path(self.path()?)),
             Tok::LParen => {
                 self.bump();
@@ -953,6 +1081,7 @@ fn describe(tok: &Tok) -> String {
         Tok::Tilde => symbol("~"),
         Tok::TildeArrow => symbol("~>"),
         Tok::AmpEq => symbol("&="),
+        Tok::QuestionEq => symbol("?="),
         Tok::Eq => symbol("="),
         Tok::EqEq => symbol("=="),
         Tok::GtEq => symbol(">="),

@@ -232,6 +232,33 @@ fn comparison_operators() {
 }
 
 #[test]
+fn a_default_is_its_own_operator_and_prints_back_as_written() {
+    let src = "module M {\n    .fsw: Frequency\n    .name: String\n    .fsw ?= 1.2MHz +/- 5%\n    .name ?= \"x\"\n    .a ?= .b * 2\n    .c ?= 1V..2V\n}\n";
+    let file = parse(src).unwrap();
+    let ops: Vec<_> = file.definitions[0]
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            Item::Constraint(c) => Some(c.op),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ops, [CmpOp::Default; 4]);
+    assert_eq!(file.to_source(), src);
+    // `?=` and `&=` are different statements: neither prints as the other.
+    assert!(!file.to_source().contains("&="));
+}
+
+#[test]
+fn a_default_needs_a_value_and_the_statement_error_lists_the_operator() {
+    let err = parse("board T {\n    .a ?=\n}\n").unwrap_err();
+    assert!(err.message.contains("expected"), "{}", err.message);
+    // The message for a statement that is not one lists `?=` among the operators.
+    let err = parse("board T {\n    .a 5\n}\n").unwrap_err();
+    assert!(err.message.contains("`?=`"), "{}", err.message);
+}
+
+#[test]
 fn nested_decls_and_qualified_types() {
     let src = "board T {\n    .a: std::Thing {\n        .b: Inner {\n            .c &= 1V\n        }\n    }\n}\n";
     assert_eq!(parse(src).unwrap().to_source(), src);
@@ -319,4 +346,18 @@ fn there_is_no_plain_equals() {
         );
         assert_eq!((line, col), (2, 8), "{src}");
     }
+}
+
+#[test]
+fn a_word_after_the_type_of_a_declaration_is_a_parse_error_and_required_is_a_plain_name() {
+    // `required` after a type was a marker (ADR 0060) and is gone (ADR 0065): the parser reads
+    // it as it reads any other word there, and says nothing special about it.
+    let (msg, line, _) = err("module Lamp {\n    .balance: Resistance required\n}\n");
+    let (other, _, _) = err("module Lamp {\n    .balance: Resistance banana\n}\n");
+    assert_eq!(line, 2);
+    assert_eq!(msg, "expected end of line or `;`, found `required`");
+    assert_eq!(msg.replace("required", "banana"), other);
+    // Elsewhere it is an ordinary name, and a `pins` row keeps its own `required`.
+    let src = "module Lamp {\n    .required: Voltage\n    .required &= 1\n}\n";
+    assert_eq!(parse(src).unwrap().to_source(), src);
 }
