@@ -66,7 +66,9 @@ export function PanZoom(props: {
   presets?: boolean;
   /** The view a canvas opens at, and goes back to when the box is resized before a person has
    * moved it; the whole of `fitBox` fitted when absent. Fit (the button, F, 0) always fits. */
-  placeView?: (width: number, height: number) => View | null;
+  placeView?: (width: number, height: number, whole?: boolean) => View | null;
+  /** Whether Fit (the button, F, 0) puts the view where `placeView` does, so a small drawing is not blown up to the window. */
+  fitPlaces?: boolean;
   /** The least and most the zoom can be, given the zoom that fits. */
   range?: (fitK: number) => { min: number; max: number };
   /** Whether the arrow keys pan the canvas while it has the focus. */
@@ -107,6 +109,8 @@ export function PanZoom(props: {
 
   const placeRef = useRef(props.placeView);
   placeRef.current = props.placeView;
+  const fitPlacesRef = useRef(props.fitPlaces);
+  fitPlacesRef.current = props.fitPlaces;
   /** Whether the person asked for the whole box (Fit), which stays when the box is resized. */
   const fitted = useRef(false);
 
@@ -120,7 +124,7 @@ export function PanZoom(props: {
       const all = fitView(el.clientWidth, el.clientHeight, b);
       fitK.current = all.k;
       fitted.current = whole;
-      const placed = whole ? null : placeRef.current?.(el.clientWidth, el.clientHeight);
+      const placed = whole && !fitPlacesRef.current ? null : placeRef.current?.(el.clientWidth, el.clientHeight, whole);
       put(placed ?? all, false);
     },
     [props.width, props.height, fb?.x, fb?.y, fb?.w, fb?.h],
@@ -269,6 +273,7 @@ export function PanZoom(props: {
     <div
       class={`panzoom ${props.class ?? ''}`}
       ref={box}
+      style={{ '--pz-x': `${view.x}px`, '--pz-y': `${view.y}px`, '--pz-k': view.k }}
       tabIndex={props.arrowKeys ? 0 : -1}
       aria-label={props.label}
       onKeyDown={(e) => {
@@ -347,7 +352,7 @@ export function PanZoom(props: {
       >
         {props.children}
       </div>
-      <div class="zoombar no-pan" role="toolbar" aria-label="Zoom">
+      <div class="zoombar no-pan" role="toolbar" aria-label="Zoom" data-toast-clear>
         <button title="Zoom out (-)" aria-label="Zoom out" onClick={() => zoomCentre(0.8)}>
           −
         </button>

@@ -542,3 +542,17 @@ button.chip.findings-pill, .toolbar button.chip { font-family: var(--sans); lett
 .pt-node.selected.up, .pt-node.selected.down { border-color: var(--sel); }
 .tool.primary .spin, .tool.primary .spinner { border-color: color-mix(in srgb, var(--accent-fg) 28%, transparent); border-top-color: var(--accent-fg); }
 .acard.running .tool.primary:disabled { opacity: .9; }
+
+/* ==== round 3 ==== */
+/* The path from a pick is the selection's blue, the rest stays neutral: orange is for the primary action and the active indicator */
+.pt-edge.up, .pt-edge.down { stroke: var(--sel); }
+.pt-edge.down { stroke-dasharray: 8 5; }
+.pt-arrowhead.up, .pt-arrowhead.down { fill: var(--sel); }
+.lg-line.up, .lg-line.down { stroke: var(--sel); }
+.lg-line.down { stroke-dasharray: 5 3; }
+.pt-minimap .hot-up, .pt-minimap .hot-down { fill: var(--sel); }
+.pt-minimap .hot-down { fill-opacity: .7; }
+.pt-node.up { border-color: color-mix(in srgb, var(--sel) 38%, var(--border)); }
+.pt-node.down { border-color: color-mix(in srgb, var(--sel) 30%, var(--border)); }
+.edge.join path { stroke: var(--text-faint); }
+.edge.converts path { stroke: var(--edge-arrow); }

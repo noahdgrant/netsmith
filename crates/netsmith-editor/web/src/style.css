@@ -237,7 +237,7 @@ button.tab { background: none; border: none; font: inherit; }
 .status-popover input:focus { outline: none; border-color: var(--sel-line); background: var(--canvas); }
 
 /* toasts */
-.toasts { position: fixed; right: 16px; bottom: calc(var(--status) + 14px); display: flex; flex-direction: column; gap: 8px; z-index: var(--z-toast); pointer-events: none; width: min(420px, calc(100vw - 32px)); transition: right var(--dur) var(--ease); }
+.toasts { position: fixed; right: 16px; bottom: calc(var(--status) + 14px); display: flex; flex-direction: column; gap: 8px; z-index: var(--z-toast); pointer-events: none; width: min(420px, calc(100vw - 32px)); transition: right var(--dur) var(--ease), bottom var(--dur) var(--ease); }
 /* A popover of the status bar has priority: while one is open the toasts stand to its left, never on it. */
 body:has(.status-popover) .toasts { right: calc(16px + 340px + 12px); }
 @media (max-width: 860px) { body:has(.status-popover) .toasts { right: 16px; bottom: calc(var(--status) + 12px + 220px); } }
@@ -252,6 +252,9 @@ body:has(.status-popover) .toasts { right: calc(16px + 340px + 12px); }
 .toast.bad .toast-detail { color: var(--danger-text); font-family: var(--mono); letter-spacing: 0; }
 .toast-actions { display: flex; gap: 8px; margin-top: 10px; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+/* it goes out as it came in, and folds its height away so the others do not jump (Toasts.tsx measures max-height first) */
+.toast { max-height: 400px; transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), max-height var(--dur) var(--ease), margin var(--dur) var(--ease), padding var(--dur) var(--ease); }
+.toast.leaving { max-height: 0 !important; opacity: 0; transform: translateY(8px) scale(.98); margin-bottom: -8px; padding-top: 0; padding-bottom: 0; overflow: hidden; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .toast, .dot.reconnecting, .dot.connecting { animation: none; } }
 
 /* a view that does not show the current source */
@@ -357,7 +360,7 @@ td.ref { font-weight: 600; width: 3em; } td.num { text-align: right; font-varian
 /* graphs */
 .graph-view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .graph-title { padding: 12px 14px; min-height: 44px; border-bottom: 1px solid var(--border); background: var(--surface); flex: none; }
-.graph-host .canvas { background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px); background-size: 20px 20px; }
+.graph-host { background-image: radial-gradient(var(--grid-dot) 1px, transparent 1.4px); background-size: calc(24px * var(--pz-k, 1)) calc(24px * var(--pz-k, 1)); background-position: var(--pz-x, 0) var(--pz-y, 0); }
 svg.edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 .edge path { fill: none; stroke: var(--edge); stroke-width: 2; }
 .edge.join path { stroke-dasharray: 6 5; stroke: var(--accent); }

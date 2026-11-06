@@ -7,7 +7,7 @@ import { NoBoard, ViewLoading } from '../components/ViewStatus';
 import { Icon } from '../components/Icons';
 import { Defs, InspectorHead } from '../components/Inspector';
 import { Legend, Pill } from '../components/ui';
-import { placeAtMostActual } from './System';
+import { placeFitted } from './System';
 import { MiniMap } from '../components/MiniMap';
 import { PanZoom } from '../components/PanZoom';
 import { analysis, board, detail, goTo, systemName, visible } from '../store';
@@ -427,7 +427,8 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
           class="graph-host power-host"
           actualSize
           scale100={1}
-          placeView={placeAtMostActual(layout)}
+          placeView={placeFitted(layout)}
+          fitPlaces
           reveal={reveal}
           centre={centre}
           onViewport={setView}

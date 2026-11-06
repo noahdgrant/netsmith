@@ -29,10 +29,11 @@ function roleCounts(m: SystemView['mates'][number]): [string, number][] {
 /** The mated connectors of a system, a row for each with the roles of its contacts counted, the contacts
  * under it, and the grounds they join (ADR 0040). */
 function Mates({ view }: { view: SystemView }) {
-  const [open, setOpen] = useState(true);
+  // A few mates are shown; a long list starts folded to its head, so it does not take the canvas.
+  const [open, setOpen] = useState(view.mates.length <= 2);
   if (view.mates.length === 0) return null;
   return (
-    <div class={`mates ${open ? 'open' : ''}`}>
+    <div class={`mates ${open ? 'open' : ''}`} data-toast-clear>
       <div class="mates-head">
         <button class="mates-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
           <Icon name="chevron-right" size={12} class="disc-chev" />
@@ -114,12 +115,21 @@ function Mates({ view }: { view: SystemView }) {
   );
 }
 
-/** A drawing opens at its true size, or smaller when it does not fit: never blown up to fill the window. */
-export function placeAtMostActual(size: { width: number; height: number }) {
-  return (w: number, h: number) => {
-    const all = fitView(w, h, { x: 0, y: 0, w: size.width, h: size.height });
-    const k = Math.min(all.k, 1);
-    return { k, x: (w - size.width * k) / 2, y: Math.max(16, (h - size.height * k) / 2 - 12) };
+/** The room a graph keeps round its cards (screen pixels), the most it is opened at (a small graph is
+ * fitted with air round it, not blown up) and the least before it is opened at that and left to be panned. */
+export const GRAPH_PAD = 56;
+export const GRAPH_MAX_K = 1.5;
+export const GRAPH_MIN_K = 0.45;
+
+/** The view a graph opens at, and Fit goes to: the whole of it with comfortable padding and centred, at most
+ * 150 %. Opening a graph that would then be too small to read, it is 45 % from its top left instead (Fit still shows it
+ * whole). True size is the 1:1 button. */
+export function placeFitted(size: { width: number; height: number }) {
+  return (w: number, h: number, whole = false) => {
+    const all = fitView(w, h, { x: -GRAPH_PAD, y: -GRAPH_PAD, w: size.width + 2 * GRAPH_PAD, h: size.height + 2 * GRAPH_PAD }, 1);
+    if (!whole && all.k < GRAPH_MIN_K) return { k: GRAPH_MIN_K, x: GRAPH_PAD * GRAPH_MIN_K, y: GRAPH_PAD * GRAPH_MIN_K };
+    const k = Math.min(all.k, GRAPH_MAX_K);
+    return { k, x: (w - size.width * k) / 2, y: (h - size.height * k) / 2 - h * 0.02 };
   };
 }
 
@@ -359,7 +369,8 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
           class="graph-host power-host"
           actualSize
           scale100={1}
-          placeView={placeAtMostActual(layout)}
+          placeView={placeFitted(layout)}
+          fitPlaces
           reveal={reveal}
           centre={centre}
           onViewport={setVp}
