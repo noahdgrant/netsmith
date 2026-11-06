@@ -3,7 +3,7 @@
 ## Get to it
 
 - **Settings**: the gear in the top bar (`Ctrl+,`, or `Settings` in the palette). A panel with the theme (the five of `themes.md`), **Density** (Comfortable, Compact), **Size** (90, 100, 110, 125 %) and **Motion** (System, Reduce), and a button back to the defaults. Each choice is also a command: `Density: Compact`, `Size: 125 %`, `Motion: Reduce`, `Settings: back to the defaults`.
-- **Help**: the question mark: Keyboard shortcuts, Command palette, Go to anything, `Report a problem: copy the diagnostics`, About netsmith. Below 1000 px the theme and shortcuts buttons give way (the panel and the menu hold both); the gear and the question mark stay.
+- **Help**: the question mark: Keyboard shortcuts, Command palette, Go to anything, `Report a problem: copy the diagnostics`, About netsmith. As the window narrows the top bar gives up, in this order, the words of `Write KiCad files`, the theme and shortcuts buttons (the panel and the menu hold both; the gear and the question mark stay), the chip's pin steppers, the words of `Make fab files` and last the Go to anything box, which becomes its icon (see *The top bar* below).
 - Kept in `localStorage` under `netsmith.settings` as one JSON object `{ density, scale, motion }`; `index.html`'s `#settings-boot` applies it before the first paint (`<html data-density data-motion style="--ui-scale">`), and `src/settings.test.ts` runs that script against `parseSettings` and `rootState` for every value and for junk. Storage that is missing or throws gives the defaults, and the toast says the choice is not remembered.
 
 ## How it is built
@@ -16,14 +16,20 @@
 - **Report a problem** copies `netsmith editor: diagnostics` with the page, the server, the analysis, the first problems and the last eight errors the page showed (`noteError`: a failure toast, `window.onerror`, an unhandled rejection). It has no path of the project and no file text.
 - The tab title is `netsmith - <board>` (the project's title when no board, `netsmith` alone before the project), with a `●` in front while a file has unsaved changes (`title.ts`).
 - The favicon is `src/assets/favicon.svg`: a bolder net-anvil whose orange follows the tab strip (`prefers-color-scheme` inside the SVG), with the PNGs of `index.html` as fallbacks. The bundle serves it by its path.
-- The splash (`components/Splash.tsx`, `splash.css`) is the mark and `Reading the project…` (then the analysis's own words and clock) over the whole window until `/api/project` has answered; `index.html` holds the same markup inside `#app` so it shows before any script has run. It does not stay when the server never answers.
+- The splash (`components/Splash.tsx`, `splash.css`) is the mark and `Reading the project…` (then the analysis's own words and clock; `Analysing the project…` when the server is still at an earlier save, which the `settings` recipe accepts) over the whole window until `/api/project` has answered; `index.html` holds the same markup inside `#app` so it shows before any script has run. It does not stay when the server never answers.
 
 ## Drive
 
 `scripts/editor-verify drive settings` (`two_boards`): the defaults, the panel and Escape, Compact (sizes smaller, kept, a toast), every view in compact and at 125 % (no overflow, no clipped card), 125 % and 90 % (root 20 and 14.4 px), applied before the first paint (`readystatechange`), Reduce (no animation over 1 ms), the palette commands, `Ctrl+,`, the help menu with the arrow keys, About, the diagnostics copy (clipboard), the title and its dot, the favicon, the splash (the project request delayed) and blocked storage.
+`drive topbar-layout` (`two_boards`): the top bar, the section tabs and the status bar, measured. For every combination of 10 widths (760, 880 ... 1920 px; every 20 px, 760 to 1720, and 2200 and 2560 with something picked), sizes 90, 100 and 125 % and both densities, with nothing picked, a part (the one with the longest value) and a net (in the Schematic, where the chip has its pin steppers), it takes the box of every control of the three bars and asserts that no two meet, that none is cut by the window or by a box that clips it, that the page does not scroll sideways, and that the selection chip shortens its name only when the bar has no room (Go to anything gives its width up first). It failed on the tree of round 6 (1556 problems: the Go to anything box on the theme, shortcuts, gear and help buttons at 125 % up to 1366 px, the chip's buttons cut, the last section tab cut at 125 % and 880 px); a new bar rule is held by it.
 `drive empty-project` (`launch --fixture empty`): a project with no board says `No boards yet` and names `src/main.nsm`; the button opens it.
 
+## The top bar
+
+`style.css` makes it a row: the left part (brand, board, chip) grows and gives way last, Go to anything shrinks first (`flex-shrink` 100, its own `container: cmdk`, so it drops its keys below 14 rem, never narrower than 10.5 rem until it is its icon), the buttons on the right never shrink (`min-width: max-content`). What cannot shrink away folds in a fixed order by the window's width in rem (`.app` is `container: app`, in `responsive.css`): 68 rem the words of `Write KiCad files`, 62 rem the theme and shortcuts buttons, 58 rem the chip's pin steppers, 52 rem the words of `Make fab files`, 46 rem Go to anything becomes its icon; the section tabs lose their words at 50 rem. Rem, not px, so a larger size folds earlier. When you add a control to the bar, add its width to the thresholds' reasoning (the comment in `responsive.css`) and run `topbar-layout`.
+
 ## Gotchas
+
 
 - Anything new that is a size of a control or a row should be a token (`--ctl`, `--row`, ...), and a length in rem, or compact and 125 % will not reach it. Run `css-rem.mjs` on a stylesheet you touched.
 - A test that measures pixels reads them after the settings are set, and a rem is `getComputedStyle(documentElement).fontSize / 16` px (`remScale()` in `util.ts`).

@@ -27,7 +27,7 @@ export function SelectionChip() {
   const has = declarationOf(d, sel) !== null;
   const key = find('selection.source')?.keys;
   return (
-    <div class={`selchip k-${bus ? 'bus' : sel.kind}`} role="status" aria-label={bus ? `Selected ${title} ${sub}` : `Selected ${sub}: ${title}`}>
+    <div class={`selchip k-${bus ? 'bus' : sel.kind}${has ? ' has-src' : ''}${walk ? ' has-steps' : ''}`} role="status" aria-label={bus ? `Selected ${title} ${sub}` : `Selected ${sub}: ${title}`}>
       <button class="selchip-main" data-tip={`${bus ? `${bus.type} ${bus.path} ${sub}` : sub}. Click to show it again in this view.`} aria-label={`${title}, ${sub}. Show it again in this view.`} onClick={() => selectAndReveal(sel)}>
         <span class={`selchip-kind k-${bus ? 'bus' : sel.kind}`} aria-hidden="true">
           <Icon name={bus ? 'bus' : sel.kind === 'part' ? 'part' : sel.kind === 'net' ? 'net' : 'module'} size={14} />

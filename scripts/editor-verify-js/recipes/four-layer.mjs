@@ -19,6 +19,40 @@ export async function run({ page, shot, step, expect, section }) {
   expect(sizes.every((l) => l.h >= 8 && l.h <= 12.5 && l.inLayer && /stroke/.test(l.halo)), `small (8 to 12 screen pixels), with a halo, in a layer of their own (${sizes.map((l) => l.h.toFixed(1)).join(', ')})`);
   const overlap = sizes.some((a, i) => sizes.some((b, j) => j > i && a.box.left < b.box.right && b.box.left < a.box.right && a.box.top < b.box.bottom && b.box.top < a.box.bottom));
   expect(!overlap, 'two plane labels never overlap');
+  step('a plane label never lies on a part: it moves to a free corner of its plane at the zoom shown (round 7), and is hidden when there is none');
+  // The glyphs' own box: the text's length and the type size on the screen (the browser's box of an SVG text this small is three times too tall)
+  const onParts = () =>
+    page.evaluate(() => {
+      const box = (t) => {
+        const m = t.getScreenCTM();
+        const w = t.getComputedTextLength() * m.a;
+        const h = parseFloat(getComputedStyle(t).fontSize) * m.a;
+        const x = m.a * Number(t.getAttribute('x')) + m.e;
+        const y = m.d * Number(t.getAttribute('y')) + m.f;
+        const anchor = t.getAttribute('text-anchor');
+        const left = anchor === 'end' ? x - w : anchor === 'middle' ? x - w / 2 : x;
+        return { left, top: y - h / 2, right: left + w, bottom: y + h / 2 };
+      };
+      const parts = [...document.querySelectorAll('.pcb-host svg g[data-path]')].map((g) => g.getBoundingClientRect()).filter((r) => r.width > 0).concat([...document.querySelectorAll('.pcb-host svg .l-refs text')].map(box));
+      return [...document.querySelectorAll('.pcb-host svg text.plane-label')]
+        .filter((t) => getComputedStyle(t).visibility !== 'hidden')
+        .filter((t) => {
+          const a = box(t);
+          return parts.some((b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom);
+        })
+        .map((t) => `${t.textContent} at ${t.getAttribute('x')},${t.getAttribute('y')}`);
+    });
+  const state = () => page.evaluate(() => [...document.querySelectorAll('.pcb-host svg text.plane-label')].map((t) => `${t.textContent}: ${t.classList.contains('plane-label-off') ? 'hidden' : `${t.getAttribute('text-anchor')} ${t.getAttribute('x')},${t.getAttribute('y')}`}`).join(' | '));
+  expect((await onParts()).length === 0, `no visible plane label lies on a part (${await state()}) ${(await onParts()).join('; ')}`);
+  await shot('plane-labels-fit');
+  for (const label of ['+', '+', '\u2212', '\u2212', '\u2212']) {
+    await page.locator('.sec-pcb .zoombar button', { hasText: new RegExp(`^${label === '+' ? '\\+' : label}$`) }).first().click();
+    await page.waitForTimeout(250);
+    const bad = await onParts();
+    expect(bad.length === 0, `still none after zoom ${label} (${await page.locator('.sec-pcb .zoombar span').first().innerText()}): ${bad.join('; ') || (await state())}`);
+  }
+  await page.locator('.sec-pcb .zoombar button', { hasText: /^Fit$/ }).first().click();
+  await page.waitForTimeout(250);
   step('route it');
   await page.getByRole('button', { name: /Place and route/ }).click();
   await page.waitForSelector('.chip:has-text("routed")');

@@ -1030,6 +1030,9 @@ fn hostile(label: &str) -> (Repo, TempDir, Workspace) {
     fs::remove_file(r.project.join("src/main.nsm")).unwrap();
     symlink(outside.join("secret.nsm"), r.project.join("src/main.nsm")).unwrap();
     symlink(&*outside.join("folder"), r.project.join("src/linked")).unwrap();
+    // The link `netsmith init` writes for the agents' skills: removed like the others, but nothing the analysis would miss.
+    fs::create_dir_all(r.project.join(".claude")).unwrap();
+    symlink(outside.join("folder"), r.project.join(".claude/skills")).unwrap();
     r.commit("hostile");
     git(&r.dir, &["checkout", "-q", "main"]);
     (r, outside, w)
@@ -1056,6 +1059,29 @@ fn a_link_in_a_ref_is_never_followed_and_the_answer_says_it_was_left_out() {
     assert_eq!(
         fs::read_to_string(outside.join("secret.nsm")).unwrap(),
         "OUTSIDE-SECRET-12345\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn the_note_of_a_ref_that_cannot_be_read_names_the_links_that_matter_and_no_scratch_folder() {
+    need_tools!();
+    let (_r, _outside, w) = hostile("wording");
+    let c = compare(&w, "hostile").unwrap();
+    let error = c.error.expect("the ref cannot be read");
+    assert!(
+        error.contains("`src/main.nsm`") && error.contains("`src/linked`"),
+        "{error}"
+    );
+    assert!(
+        !error.contains(".claude") && !error.contains("skills"),
+        "a tool's link is in the note: {error}"
+    );
+    // Project-relative paths only: nothing of this machine's scratch folder or its temporary folder.
+    let temp = std::env::temp_dir();
+    assert!(
+        !error.contains("netsmith-compare-") && !error.contains(&*temp.to_string_lossy()),
+        "the scratch folder is named: {error}"
     );
 }
 

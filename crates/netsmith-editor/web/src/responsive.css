@@ -65,10 +65,29 @@ html { font-size: calc(100% * var(--ui-scale, 1)); }
   font-size: 13px;
 }
 
-/* ---- the top bar: below 1000 px the theme and the shortcuts buttons go (the settings and the help menu hold both), the settings and the help stay ---- */
-@media (max-width: 1000px) {
-  .tb-ghosts { display: flex; }
+/* ---- the top bar: what gives way, in order, as the window narrows (the window's width in rem, so a larger size folds it earlier) ----
+ * Go to anything shrinks first by itself (its own container: it drops its keys below 14 rem), then the chip and the board's name shrink
+ * (an ellipsis). What is asked here is what the row cannot lose by shrinking, in this order: the words of the secondary action (Write
+ * KiCad files), the theme and shortcuts buttons (the gear and the help menu hold both), the chip's pin steppers, the words of the primary
+ * action, and last go to anything itself, which becomes its icon. The icon buttons never shrink. Each threshold is the width at which the
+ * widest the row can be (a chip with its steppers, every label) no longer fits beside the smallest go to anything (10.5 rem) plus
+ * a margin; `topbar-layout` measures every combination of width from 760 px, size 90 to 125 % and density. */
+@container app (max-width: 68rem) {
+  .tool.action:not(.primary):not(.running) > span { display: none; }
+  .tool.action:not(.primary):not(.running) { padding: 0 0.625rem; }
+}
+@container app (max-width: 62rem) {
   .tb-ghosts .ghost-extra { display: none; }
+}
+@container app (max-width: 58rem) {
+  .selchip-btn.step { display: none; }
+}
+@container app (max-width: 52rem) {
+  .tool.action.primary:not(.running) > span { display: none; }
+  .tool.action.primary:not(.running) { padding: 0 0.625rem; }
+}
+@container app (max-width: 46rem) {
+  .cmdk { flex: none; width: var(--ctl-lg); min-width: 0; padding: 0; justify-content: center; }
 }
 
 /* ---- the status bar: what gives way, in order, as the window narrows (a container, so a larger size folds it earlier) ----

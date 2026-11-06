@@ -30,6 +30,21 @@ export async function run({ page, shot, step, expect, project, section }) {
     expect(row.includes('nonsense') && row.includes('Checker') && /main\.nsm:\d+/.test(row), `a row with the message, its stage and file:line (${row.replace(/\s+/g, ' ')})`);
     expect((await page.locator('.statusbar .counts').innerText()).includes('1'), 'the status bar counts it');
     expect((await page.locator('.statusbar').innerText()).includes('Last good version'), 'the status bar says the drawing is the last good one');
+    // Round 7: the stale drawing is drained of colour (luminance kept), not made translucent: opacity lowered every word on it under 4.5:1
+    const dimmed = await page.evaluate(() => [...document.querySelectorAll('.section.is-stale:not(.away) > :not(.stale-strip)')].map((e) => ({ opacity: getComputedStyle(e).opacity, filter: getComputedStyle(e).filter })));
+    expect(dimmed.length > 0 && dimmed.every((d) => d.opacity === '1' && /saturate/.test(d.filter)), `the stale view is desaturated and fully opaque (${JSON.stringify(dimmed[0])})`);
+    // and the status bar's words are the warning tone made for the frame, at 4.5:1 or more
+    const stale = await page.evaluate(() => {
+      const el = document.querySelector('.statusbar .stale');
+      const parse = (c) => c.match(/[\d.]+/g).map(Number);
+      const lin = (v) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+      const lum = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+      const fg = parse(getComputedStyle(el).color);
+      const bg = parse(getComputedStyle(document.querySelector('.statusbar')).backgroundColor);
+      const [hi, lo] = [lum(fg), lum(bg)].sort((a, b) => b - a);
+      return (hi + 0.05) / (lo + 0.05);
+    });
+    expect(stale >= 4.5, `"Last good version" is ${stale.toFixed(2)}:1 on the status bar`);
     await shot('stale');
 
     step('F8 from the schematic goes to the mistake in the source');
