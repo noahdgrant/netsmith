@@ -40,11 +40,23 @@ function make(found: Found, path: string, above = true): Tooltip {
       const dom = document.createElement('div');
       dom.className = 'hc-root cm-card-tip';
       const close = () => view.dispatch({ effects: [closeHoverTooltips, openCard.of(null)] });
-      render(<HoverCard target={found.target} path={path} close={close} />, dom);
+      let gone = false;
+      // CodeMirror makes the tooltip while it updates, which can be while a component of the page renders:
+      // a render inside that one breaks Preact's hooks, so the card is drawn a moment later. The tooltip is
+      // measured again when it has its content, and whenever the content changes size (the rail arrives).
+      queueMicrotask(() => {
+        if (gone) return;
+        render(<HoverCard target={found.target} path={path} close={close} />, dom);
+        view.requestMeasure();
+      });
+      const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => view.requestMeasure()) : null;
+      resize?.observe(dom);
       return {
         dom,
         destroy() {
-          render(null, dom);
+          gone = true;
+          resize?.disconnect();
+          queueMicrotask(() => render(null, dom));
         },
       };
     },

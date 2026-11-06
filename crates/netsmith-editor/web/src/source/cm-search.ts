@@ -6,6 +6,8 @@
 import {
   SearchQuery,
   closeSearchPanel,
+  openSearchPanel,
+  searchPanelOpen,
   findNext,
   findPrevious,
   getSearchQuery,
@@ -83,7 +85,7 @@ class FindPanel implements Panel {
       return b;
     };
 
-    this.dom = el('div', 'cm-search sp');
+    this.dom = el('div', 'sp');
     this.dom.setAttribute('role', 'search');
     this.dom.setAttribute('aria-label', 'Find and replace');
     this.dom.setAttribute('data-testid', 'find-panel');
@@ -212,6 +214,18 @@ class FindPanel implements Panel {
 
 export const searchExtension: Extension = search({ top: true, createPanel: (view) => new FindPanel(view) });
 
+/** Open the panel with the replace row showing (Ctrl+H), or show the row of a panel that is open. */
+export function openReplace(view: EditorView) {
+  if (searchPanelOpen(view.state)) {
+    const twisty = view.dom.querySelector<HTMLElement>('.sp .sp-twisty:not(.open)');
+    twisty?.click();
+    view.dom.querySelector<HTMLInputElement>('.sp-replace input')?.focus();
+    return;
+  }
+  requestReplace();
+  openSearchPanel(view);
+}
+
 /** The search keys of CodeMirror, without its go to line box (the page's `:` does that), and Ctrl+H. */
 export const searchKeys: KeyBinding[] = [
   ...searchKeymap.filter((k) => k.key !== 'Alt-g'),
@@ -219,14 +233,8 @@ export const searchKeys: KeyBinding[] = [
     key: 'Mod-h',
     preventDefault: true,
     run: (view) => {
-      requestReplace();
-      const open = document.querySelector('.cm-search.sp');
-      if (open) {
-        // Already open: show the replace row.
-        (open.querySelector('.sp-twisty:not(.open)') as HTMLElement | null)?.click();
-        return true;
-      }
-      return searchKeymap.find((k) => k.key === 'Mod-f')?.run?.(view) ?? false;
+      openReplace(view);
+      return true;
     },
   },
 ];

@@ -25,11 +25,9 @@ export const cmTheme = EditorView.theme({
   '.cm-gutters': { backgroundColor: 'var(--canvas)', color: 'var(--text-faint)', border: 'none', paddingLeft: '2px' },
   '.cm-lineNumbers .cm-gutterElement': { padding: '0 6px 0 6px', minWidth: '3.2ch', fontSize: '0.88em', fontVariantNumeric: 'tabular-nums', letterSpacing: '0' },
   '.cm-activeLine': { backgroundColor: 'var(--cm-active-line)' },
-  '.cm-activeLineGutter': {
-    backgroundColor: 'var(--cm-active-line)',
-    color: 'var(--text)',
-    boxShadow: 'inset 2px 0 0 color-mix(in srgb, var(--accent) 80%, transparent)',
-  },
+  '.cm-activeLineGutter': { backgroundColor: 'var(--cm-active-line)', color: 'var(--text)' },
+  // The soft bar is at the left edge, on the first gutter only.
+  '.cm-sev-gutter .cm-activeLineGutter': { boxShadow: 'inset 2px 0 0 color-mix(in srgb, var(--accent) 80%, transparent)' },
   '.cm-foldGutter': { width: '16px' },
   '.cm-foldGutter .cm-gutterElement': { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0', cursor: 'pointer' },
   '.cm-fold-mark': { display: 'inline-flex', color: 'var(--text-faint)', opacity: '0', transition: 'opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease)', transform: 'rotate(90deg)' },
@@ -135,12 +133,13 @@ export const cmTheme = EditorView.theme({
   '.cm-diagnostic': { padding: '0', margin: '0', border: 'none' },
   '.cm-diagnostic + .cm-diagnostic': { borderTop: '1px solid var(--border)' },
   '.cm-diagnosticText': { display: 'block' },
+  '.cm-diagnosticSource': { display: 'none' },
 
   // The find and replace panel: a card over the top right of the text, the page's controls.
   '.cm-panels': { backgroundColor: 'transparent', color: 'var(--text)', border: 'none' },
   '.cm-panels.cm-panels-top': { position: 'absolute', top: '10px', right: '22px', left: 'auto', width: 'min(480px, calc(100% - 44px))', zIndex: '5', borderBottom: 'none', pointerEvents: 'none' },
   '.cm-panels.cm-panels-bottom': { borderTop: '1px solid var(--border)', backgroundColor: 'var(--surface)' },
-  '.cm-search.sp': { ...card, padding: '6px', pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '4px', fontFamily: 'var(--sans)', fontSize: 'var(--fs-md)', boxShadow: 'var(--elev-2)' },
+  '.sp': { ...card, padding: '6px', pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '4px', fontFamily: 'var(--sans)', fontSize: 'var(--fs-md)', boxShadow: 'var(--elev-2)' },
   '.sp-row': { display: 'flex', alignItems: 'center', gap: '4px' },
   '.sp-field': {
     flex: '1 1 auto',

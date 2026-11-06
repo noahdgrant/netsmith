@@ -103,7 +103,7 @@ export function Outline() {
 
   const lang = path?.endsWith('.nsm');
   return (
-    <section class={`outline ${open ? 'open' : ''}`} aria-label="Outline" style={open ? { height: `${height}px` } : undefined} data-testid="outline">
+    <section class={`outline ${open ? 'open' : ''}`} aria-label="Outline" style={open ? { minHeight: `${height}px` } : undefined} data-testid="outline">
       {open && (
         <div
           class="ol-resizer"

@@ -25,6 +25,13 @@ class Mark extends GutterMarker {
   }
 }
 
+/** What sets the width of the gutter before any line has a mark. */
+class Spacer extends GutterMarker {
+  toDOM() {
+    return iconDom('error', 14, 'cm-sev');
+  }
+}
+
 /** The mark of a line: its worst problem. */
 export function worst(list: Pick<Diagnostic, 'severity' | 'message'>[]): { severity: 'error' | 'warning'; message: string } | null {
   const e = list.find((d) => d.severity === 'error');
@@ -44,5 +51,5 @@ export const severityGutter: Extension = gutter({
     return w ? new Mark(w.severity, w.message) : null;
   },
   lineMarkerChange: (u) => u.transactions.some((tr) => tr.effects.some((e) => e.is(setDiagnosticsEffect))),
-  initialSpacer: () => new Mark('error', ''),
+  initialSpacer: () => new Spacer(),
 });

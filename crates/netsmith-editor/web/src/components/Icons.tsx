@@ -7,7 +7,7 @@ import type { ComponentChildren } from 'preact';
 
 import type { Severity } from '../api';
 
-const P: Record<string, ComponentChildren> = {
+export const P: Record<string, ComponentChildren> = {
   // the sections
   source: (
     <>
@@ -305,12 +305,7 @@ const P: Record<string, ComponentChildren> = {
   ),
   // round 4: the source
   'arrow-right': <path d="M3 8h10M9 4l4 4-4 4" />,
-  outline: (
-    <>
-      <path d="M2.5 3.5h6M5 8h6.5M5 12.5h6.5" />
-      <path d="M3.4 5v7.5M3.4 8H5" />
-    </>
-  ),
+  outline: <path d="M2.5 3.5h11M6 8h7.5M9.5 12.5H13.5" />,
   wrap: (
     <>
       <path d="M2 4h12M2 12h4" />

@@ -39,7 +39,8 @@ function CrumbMenu({ options, anchor, onPick, onClose }: { options: CrumbOption[
     box.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
   }, [at]);
   useEffect(() => {
-    box.current?.focus();
+    // The keys are in the list from the start: arrows, Enter and Escape act on it.
+    box.current?.focus({ preventScroll: true });
     const away = (e: PointerEvent) => {
       if (!box.current?.contains(e.target as Node) && !anchor.contains(e.target as Node)) onClose();
     };
@@ -63,12 +64,12 @@ function CrumbMenu({ options, anchor, onPick, onClose }: { options: CrumbOption[
   return (
     <div
       ref={box}
-      class="crumb-menu"
+      class="bc-menu"
       role="listbox"
       tabIndex={-1}
       aria-label="Siblings"
       aria-activedescendant={`crumb-opt-${at}`}
-      style={place ? { left: place.left, top: place.top } : { visibility: 'hidden' }}
+      style={place ? { left: place.left, top: place.top } : { opacity: 0 }}
       onKeyDown={key}
       data-testid="crumb-menu"
     >
@@ -78,16 +79,16 @@ function CrumbMenu({ options, anchor, onPick, onClose }: { options: CrumbOption[
           id={`crumb-opt-${i}`}
           role="option"
           aria-selected={i === at}
-          class={`crumb-opt ${i === at ? 'at' : ''} ${o.current ? 'current' : ''}`}
+          class={`bc-opt ${i === at ? 'at' : ''} ${o.current ? 'current' : ''}`}
           onPointerEnter={() => setAt(i)}
           onClick={() => onPick(o)}
         >
-          <span class="crumb-opt-icon">
+          <span class="bc-opt-icon">
             <CrumbIcon icon={o.icon} />
           </span>
-          <span class="crumb-opt-label">{o.label}</span>
-          {o.detail && <span class="crumb-opt-detail">{o.detail}</span>}
-          {o.current && <Icon name="check" size={13} class="crumb-opt-check" />}
+          <span class="bc-opt-label">{o.label}</span>
+          {o.detail && <span class="bc-opt-detail">{o.detail}</span>}
+          {o.current && <Icon name="check" size={13} class="bc-opt-check" />}
         </div>
       ))}
     </div>
@@ -96,7 +97,7 @@ function CrumbMenu({ options, anchor, onPick, onClose }: { options: CrumbOption[
 
 function Toggle({ icon, label, on, onClick, id, keys: command }: { icon: IconName; label: string; on: boolean; onClick: () => void; id: string; keys?: string }) {
   return (
-    <button type="button" class={`icon-btn crumb-tool ${on ? 'on' : ''}`} aria-pressed={on} aria-label={label} data-tip={command ? withKey(label, command) : label} data-testid={id} onClick={onClick}>
+    <button type="button" class={`icon-btn bc-tool ${on ? 'on' : ''}`} aria-pressed={on} aria-label={label} data-tip={command ? withKey(label, command) : label} data-testid={id} onClick={onClick}>
       <Icon name={icon} size={15} />
     </button>
   );
@@ -118,7 +119,7 @@ export function Breadcrumbs() {
   // Ctrl+Shift+. (a command) opens the last crumb's dropdown.
   useEffect(() => {
     const open = () => {
-      const buttons = bar.current?.querySelectorAll<HTMLElement>('.crumb');
+      const buttons = bar.current?.querySelectorAll<HTMLElement>('.bc-crumb');
       if (!buttons?.length) return;
       setMenu({ index: buttons.length - 1 });
     };
@@ -126,7 +127,7 @@ export function Breadcrumbs() {
     return () => window.removeEventListener('netsmith:crumbs', open);
   }, []);
 
-  if (!path) return <div class="crumbs" aria-hidden="true" />;
+  if (!path) return <div class="bc" aria-hidden="true" />;
 
   const pick = (o: CrumbOption) => {
     setMenu(null);
@@ -136,26 +137,26 @@ export function Breadcrumbs() {
     }
     void goTo({ file: o.file, line: o.line, column: o.column ?? 1, endLine: o.line, endColumn: o.column ?? 1 });
   };
-  const anchor = menu ? (bar.current?.querySelectorAll<HTMLElement>('.crumb')[menu.index] ?? null) : null;
+  const anchor = menu ? (bar.current?.querySelectorAll<HTMLElement>('.bc-crumb')[menu.index] ?? null) : null;
   const options = menu ? crumbOptions(crumbs[menu.index], syms, files) : [];
 
   return (
-    <div class="crumbs" role="navigation" aria-label="Breadcrumbs" ref={bar} data-testid="breadcrumbs">
-      <div class="crumb-nav" role="group" aria-label="History">
-        <button type="button" class="icon-btn crumb-tool" disabled={!canBack(history)} aria-label="Back" data-tip={withKey('Back', 'nav.history.back')} data-testid="history-back" onClick={() => void navBack()}>
+    <div class="bc" role="navigation" aria-label="Breadcrumbs" ref={bar} data-testid="breadcrumbs">
+      <div class="bc-nav" role="group" aria-label="History">
+        <button type="button" class="icon-btn bc-tool" disabled={!canBack(history)} aria-label="Back" data-tip={withKey('Back', 'nav.history.back')} data-testid="history-back" onClick={() => void navBack()}>
           <Icon name="arrow-left" size={15} />
         </button>
-        <button type="button" class="icon-btn crumb-tool" disabled={!canForward(history)} aria-label="Forward" data-tip={withKey('Forward', 'nav.history.forward')} data-testid="history-forward" onClick={() => void navForward()}>
+        <button type="button" class="icon-btn bc-tool" disabled={!canForward(history)} aria-label="Forward" data-tip={withKey('Forward', 'nav.history.forward')} data-testid="history-forward" onClick={() => void navForward()}>
           <Icon name="arrow-right" size={15} />
         </button>
       </div>
-      <ol class="crumb-list">
+      <ol class="bc-list">
         {crumbs.map((c, i) => (
-          <li key={`${i}:${c.label}`} class="crumb-item">
-            {i > 0 && <Icon name="chevron-right" size={12} class="crumb-sep" />}
+          <li key={`${i}:${c.label}`} class="bc-item">
+            {i > 0 && <Icon name="chevron-right" size={12} class="bc-sep" />}
             <button
               type="button"
-              class={`crumb ${i === crumbs.length - 1 ? 'last' : ''} ${menu?.index === i ? 'open' : ''}`}
+              class={`bc-crumb ${i === crumbs.length - 1 ? 'last' : ''} ${menu?.index === i ? 'open' : ''}`}
               aria-haspopup="listbox"
               aria-expanded={menu?.index === i}
               title={c.kind === 'file' ? c.file : c.detail ? `${c.label}: ${c.detail}` : c.label}
@@ -166,19 +167,19 @@ export function Breadcrumbs() {
                   e.preventDefault();
                   setMenu({ index: i });
                 } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-                  const all = [...(bar.current?.querySelectorAll<HTMLElement>('.crumb') ?? [])];
+                  const all = [...(bar.current?.querySelectorAll<HTMLElement>('.bc-crumb') ?? [])];
                   all[i + (e.key === 'ArrowRight' ? 1 : -1)]?.focus();
                 }
               }}
             >
               <CrumbIcon icon={c.icon} />
-              <span class="crumb-label">{c.label}</span>
-              {c.detail && <span class="crumb-detail">{c.detail}</span>}
+              <span class="bc-label">{c.label}</span>
+              {c.detail && <span class="bc-detail">{c.detail}</span>}
             </button>
           </li>
         ))}
       </ol>
-      <div class="crumb-tools" role="group" aria-label="Source view">
+      <div class="bc-tools" role="group" aria-label="Source view">
         <Toggle id="toggle-wrap" icon="wrap" label="Word wrap" keys="source.wrap.toggle" on={wordWrap.value} onClick={() => (wordWrap.value = !wordWrap.value)} />
         <Toggle id="toggle-hints" icon="eye" label="Inline hints" keys="source.hints.toggle" on={inlineHints.value} onClick={() => (inlineHints.value = !inlineHints.value)} />
         <Toggle id="toggle-outline" icon="outline" label="Outline" keys="source.outline.toggle" on={outlineOpen.value} onClick={() => (outlineOpen.value = !outlineOpen.value)} />

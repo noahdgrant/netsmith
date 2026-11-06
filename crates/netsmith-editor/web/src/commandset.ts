@@ -16,7 +16,7 @@ import { openCard } from './source/cm-card';
 import { sourceEditor } from './source/handle';
 import { canBack, canForward } from './source/navhistory';
 import { hoverCards, inlineHints, outlineOpen, resetEditorZoom, wordWrap, zoomEditor } from './source/prefs';
-import { requestReplace } from './source/cm-search';
+import { openReplace } from './source/cm-search';
 import { type Selection, selectAndReveal, selection, setSelection } from './selection';
 import { THEMES, isDark, theme } from './theme';
 import { chooseTheme } from './themeUi';
@@ -298,12 +298,10 @@ const sourceCommands = (): Command[] => [
     aliases: ['search', 'substitute'],
     when: editorOn,
     run: () => {
-      requestReplace();
       const v = sourceEditor.view;
       if (!v) return;
       v.focus();
-      // The editor's own key opens the panel (and shows the replace row when asked).
-      v.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'h', ctrlKey: true, bubbles: true, cancelable: true }));
+      openReplace(v);
     },
   },
 ];
