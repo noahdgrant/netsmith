@@ -10,7 +10,7 @@ import { type Bus } from '../schematic/drawing';
 import { addHalos } from '../schematic/halo';
 import { marksOf } from '../schematic/marks';
 import { type Drawing, loadDrawing } from '../schematic/load';
-import { litNotes, noteLocation, parseNoteAt } from '../schematic/notes';
+import { litNotes, noteLocation, parseNoteAt, prepareNotes } from '../schematic/notes';
 import {
   netNavOrder,
   netSheets,
@@ -242,6 +242,9 @@ export function Schematic() {
     open(sheet);
   };
 
+  /** A part's path from the board to its designator: what a relation note's words name. */
+  const partRefs = useMemo(() => new Map((d?.parts ?? []).map((p) => [p.path, p.refdes] as const)), [d]);
+
   // Which sheet's drawing is in the page: the open one (all of them hide in the overview, which
   // draws them again from their groups).
   useLayoutEffect(() => {
@@ -253,7 +256,9 @@ export function Schematic() {
     }
     // The overlay of a part (schematic/halo.ts) needs a part that is laid out: the sheet on show.
     addHalos(svg);
-  }, [drawing, current]);
+    // The notes take Tab and name their parts (the server writes only the first).
+    prepareNotes(svg, partRefs);
+  }, [drawing, current, partRefs]);
 
   // Paint what is selected, what the pointer is over, and what the cursor's line declares. With
   // a net selected nothing else lights, so the rest stays dimmed while the pointer moves.
@@ -302,7 +307,8 @@ export function Schematic() {
     // The note of a part that is lit is lit with it (the rest dim with the drawing).
     const noteEls = [...svg.querySelectorAll('g.note')];
     const litRefs = new Set([...marked, ...(hover?.part ? [hover.part] : [])]);
-    for (const i of litNotes(noteEls.map((n) => ({ ref: n.getAttribute('data-ref') })), litRefs)) noteEls[i].classList.add('on');
+    // A relation about several parts is lit when any of them is (`data-anchors`: every part the note names, `data-ref` is only the first).
+    for (const i of litNotes(noteEls.map((n) => ({ anchors: (n.getAttribute('data-anchors') ?? n.getAttribute('data-ref') ?? '').split(' ').filter(Boolean) })), litRefs)) noteEls[i].classList.add('on');
     if (navPin && selNet) {
       svg.querySelector(`.pin[data-ref="${CSS.escape(navPin.ref)}"][data-pin="${CSS.escape(navPin.pin)}"]`)?.classList.add('cur');
     }
@@ -685,6 +691,24 @@ export function Schematic() {
               onPointerLeave={() => {
                 setHover(null);
                 hoverLeave();
+              }}
+              onKeyDown={(e) => {
+                // A note is a button for the keyboard: Enter or Space opens the source at its line, as a click does.
+                const note = e.target instanceof Element ? e.target.closest('g.note') : null;
+                if (!note || e.target !== note || (e.key !== 'Enter' && e.key !== ' ')) return;
+                e.preventDefault();
+                const at = parseNoteAt(note.getAttribute('data-at'));
+                if (at) void goTo(noteLocation(at));
+              }}
+              onFocusIn={(e) => {
+                // The parts a note is about light in every view while it has the focus, as they do under the pointer.
+                const note = e.target instanceof Element ? e.target.closest('g.note') : null;
+                const refs = (note?.getAttribute('data-anchors') ?? '').split(' ').filter(Boolean);
+                const shared = refs.length ? hoverOfRefs(detail.peek(), refs) : null;
+                if (shared) hoverEnter(shared);
+              }}
+              onFocusOut={(e) => {
+                if (e.target instanceof Element && e.target.closest('g.note')) hoverLeave();
               }}
               onClick={(e) => {
                 setMenu(null);
