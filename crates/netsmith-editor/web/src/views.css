@@ -537,3 +537,7 @@ button.chip.findings-pill, .toolbar button.chip { font-family: var(--sans); lett
 .qp-icon.qpk-tip { width: 0; margin-left: -6px; background: none; }
 .qp-row.k-tip { height: 32px; }
 .popover.fixed { position: fixed; z-index: var(--z-menu); }
+/* the path from a pick: the card's edge says which side it is on without shouting over the blue pick */
+.pt-node.up { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.pt-node.down { border-color: color-mix(in srgb, var(--flow-down) 45%, var(--border)); }
+.pt-node.selected.up, .pt-node.selected.down { border-color: var(--sel); }
