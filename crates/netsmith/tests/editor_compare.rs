@@ -1,4 +1,4 @@
-//! Comparing the project with a git ref (ADR 0051): throwaway repositories with a small
+//! Comparing the project with a git ref (ADR 0059): throwaway repositories with a small
 //! project, committed, changed and compared. Skipped when `git` or `tar` is not on the PATH.
 //!
 //! The tests take a lock, so one compare runs at a time: each reads a ref with a scratch

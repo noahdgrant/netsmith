@@ -1,4 +1,4 @@
-//! The semantic difference between two readings of a project (ADR 0051): what the circuit,
+//! The semantic difference between two readings of a project (ADR 0059): what the circuit,
 //! its rails, its bill of materials and its problems did between a ref and the files on disk.
 //! Pure: it takes what [`super::compare`] read out of two analyses and reads nothing else.
 //!

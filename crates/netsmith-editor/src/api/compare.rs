@@ -1,5 +1,5 @@
 //! The types of `GET /api/git`, `GET /api/compare` and `GET /api/git/file`: what the project
-//! can be compared with, and what changed in the circuit since (ADR 0051).
+//! can be compared with, and what changed in the circuit since (ADR 0059).
 //!
 //! Every list is sorted and keyed by a path in the design, so the page can mark a drawing
 //! with it. A field that says nothing is left out of the JSON, not `null`.

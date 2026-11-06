@@ -1,4 +1,4 @@
-// A comparison to test with: the shape the server answers (ADR 0051) for the small project of the recipe, written out.
+// A comparison to test with: the shape the server answers (ADR 0059) for the small project of the recipe, written out.
 
 import type { Compare, CompareBoard, GitInfo, InstancesDiff, Location } from '../api';
 

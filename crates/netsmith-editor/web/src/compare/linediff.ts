@@ -1,4 +1,4 @@
-// A line diff, written for the comparison of a file at a git ref with the file on disk (ADR 0051):
+// A line diff, written for the comparison of a file at a git ref with the file on disk (ADR 0059):
 // Myers' O(ND) shortest edit script over lines, with the common start and end taken off first so a
 // file that changed in two places costs about the size of the changes. Pure: no page, no
 // CodeMirror. The diff view, the gutter marks of the source and the status bar's count all read it.

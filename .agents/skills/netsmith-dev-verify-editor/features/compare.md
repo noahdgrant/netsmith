@@ -1,6 +1,6 @@
 # Compare with a git ref
 
-What changed in the circuit since a branch, a tag or a commit: parts, nets, rails, the bill of materials and problems, with before and after, not lines of text (ADR 0051, the glossary's _Ref comparison_). The page is built on `GET /api/git`, `GET /api/compare?ref=` and `GET /api/git/file?ref=&path=`; progress is the socket's `progress` messages with `task: "compare"`.
+What changed in the circuit since a branch, a tag or a commit: parts, nets, rails, the bill of materials and problems, with before and after, not lines of text (ADR 0059, the glossary's _Ref comparison_). The page is built on `GET /api/git`, `GET /api/compare?ref=` and `GET /api/git/file?ref=&path=`; progress is the socket's `progress` messages with `task: "compare"`.
 
 ## How to get to it
 

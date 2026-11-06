@@ -1,4 +1,4 @@
-/* The comparison with a git ref (ADR 0051): the Compare section, the ref picker, the diff view, the marks on the other views.
+/* The comparison with a git ref (ADR 0059): the Compare section, the ref picker, the diff view, the marks on the other views.
  * Colours are tokens only; `--cmp-added`, `--cmp-changed`, `--cmp-removed` and `--cmp-renumbered` are the four marks of what
  * changed, held to 3:1 on every surface by theme.test.ts. A tint is 12 to 16 % of a mark over the layer it sits on. */
 

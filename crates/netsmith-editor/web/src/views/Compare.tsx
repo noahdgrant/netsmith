@@ -1,4 +1,4 @@
-// The Compare section (ADR 0051): what changed in the circuit since a git ref, as parts, nets,
+// The Compare section (ADR 0059): what changed in the circuit since a git ref, as parts, nets,
 // rails, bill of materials and problems, not as lines. A header with the ref picker, the server's
 // one-line summary, tiles, the board in scope, tabs, and a list of rows with before and after.
 
@@ -40,7 +40,7 @@ import { RefPicker } from './compare/RefPicker';
 import { RowView } from './compare/Row';
 
 const GROUP_KEY = 'netsmith.compare.group';
-/** The files of a project the server gives at a ref (ADR 0051). */
+/** The files of a project the server gives at a ref (ADR 0059). */
 const READABLE = /\.(nsm|toml|csv)$/;
 
 function useSeen() {

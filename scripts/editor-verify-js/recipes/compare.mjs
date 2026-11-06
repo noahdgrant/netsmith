@@ -1,4 +1,4 @@
-// Compare the design with a git ref (ADR 0051): the section, the ref picker, the summary, the tabs, the
+// Compare the design with a git ref (ADR 0059): the section, the ref picker, the summary, the tabs, the
 // click-through and the Base and Head links, the read-only diff view, the switch that marks the schematic,
 // the bill of materials, the power tree and the source, a ref that does not analyse, a progress state and a
 // project that is not in a repository. It needs `launch --git`: the project is a throwaway repository whose

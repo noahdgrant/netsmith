@@ -62,7 +62,7 @@ pub struct Workspace {
     ready: AtomicBool,
     /// When the workspace was opened, for how long the first analysis has taken so far.
     opened: Instant,
-    /// What was read of the refs the project was compared with, by commit hash (ADR 0051).
+    /// What was read of the refs the project was compared with, by commit hash (ADR 0059).
     compare_cache: Mutex<compare::Cache>,
     /// Held while a ref is read, so two compares of one ref analyse it once.
     comparing: Mutex<()>,

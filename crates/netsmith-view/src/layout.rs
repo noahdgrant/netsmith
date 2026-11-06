@@ -89,7 +89,7 @@
 //!    follow them; [`PlacedPart::part`] says which part a box draws. The checker still rebuilds
 //!    the nets pin by pin and has one rule more: a pad is drawn in exactly one box.
 //!
-//! 8. The source's own writing is drawn as **notes** ([`PlacedNote`], `notes.rs`, ADR 0052): the doc
+//! 8. The source's own writing is drawn as **notes** ([`PlacedNote`], `notes.rs`, ADR 0060): the doc
 //!    comments of the board, a module, a part or an interface and the `==` relations, which the
 //!    design carries ([`netsmith_core::Design::notes`]). A note is a framed box of wrapped text
 //!    (a doc comment in the page's sans serif, a relation in monospace under a `Relation` heading)

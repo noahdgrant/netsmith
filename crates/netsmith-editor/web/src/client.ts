@@ -144,7 +144,7 @@ export const api = {
   definition: (path: string, text: string, offset: number) =>
     post<Definition | null>('/api/definition', { path, text, offset }),
   downloadUrl: (board: string, file: string) => `/api/download?${q({ board, file })}`,
-  /** The git state of the project: refs, recent commits, whether the work tree has changes (ADR 0051). Needs no analysis. */
+  /** The git state of the project: refs, recent commits, whether the work tree has changes (ADR 0059). Needs no analysis. */
   git: () => getJson<GitInfo>('/api/git'),
   /** What changed in the circuit between `ref` and the files on disk. A ref that does not analyse is a 200 with `error`. */
   compare: (ref: string, board?: string) => getJson<Compare>(`/api/compare?${q(board ? { ref, board } : { ref })}`),

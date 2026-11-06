@@ -235,7 +235,7 @@ pub trait Backend: Send + Sync + 'static {
         text: &str,
         offset: usize,
     ) -> Result<Option<Definition>, ApiError>;
-    /// Whether the project is in a git work tree and what it can be compared with (ADR 0051).
+    /// Whether the project is in a git work tree and what it can be compared with (ADR 0059).
     /// A backend with no git says so.
     fn git(&self) -> GitInfo {
         GitInfo {

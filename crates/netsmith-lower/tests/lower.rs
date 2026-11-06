@@ -1243,7 +1243,7 @@ fn a_board_with_no_interface_has_none_in_its_design() {
     );
 }
 
-// ---- notes (ADR 0052) ------------------------------------------------------------------
+// ---- notes (ADR 0060) ------------------------------------------------------------------
 
 const NOTED: &str = r#"
 import std::parts::connector::Header1x2

@@ -1,4 +1,4 @@
-//! What the editor asks git (ADR 0051), through the `git` command line: no library, no
+//! What the editor asks git (ADR 0059), through the `git` command line: no library, no
 //! writes. Each command is told not to take the index's lock (`GIT_OPTIONAL_LOCKS=0`), so a
 //! `git status` here never touches the repository, and a ref is read out with `git archive`
 //! into a scratch folder, never checked out.

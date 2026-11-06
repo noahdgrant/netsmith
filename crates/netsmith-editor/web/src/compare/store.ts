@@ -200,7 +200,7 @@ export function closeDiff() {
   diffTarget.value = null;
 }
 
-/** The files of a project the server gives at a ref (ADR 0051): its own sources, not the standard library's, not a note. */
+/** The files of a project the server gives at a ref (ADR 0059): its own sources, not the standard library's, not a note. */
 export function diffable(path: string): boolean {
   return /\.(nsm|toml|csv)$/.test(path) && project.peek()?.files.find((f) => f.path === path)?.role !== 'std';
 }

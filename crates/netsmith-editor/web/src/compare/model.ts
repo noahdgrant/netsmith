@@ -1,4 +1,4 @@
-// What the Compare section shows, worked out from the server's `Compare` (ADR 0051): the tiles, the
+// What the Compare section shows, worked out from the server's `Compare` (ADR 0059): the tiles, the
 // rows of each tab, grouping and filtering, and the marks the other views carry. All of it is pure,
 // so it is tested without a page. The words are the glossary's: a comparison of the circuit, never a diff.
 
@@ -250,7 +250,7 @@ export function headroomTrend(base: number | undefined, head: number | undefined
 
 // ---- bill of materials ----
 
-/** How `GET /api/bom` groups a line: what the server's bill of materials identifies it by (ADR 0051). */
+/** How `GET /api/bom` groups a line: what the server's bill of materials identifies it by (ADR 0059). */
 export function bomKey(l: { kind: string; value: string; footprint?: string | null; lcsc?: string | null; mpn?: string | null; handSolder?: boolean | null }): string {
   return [l.kind, l.value, l.footprint ?? '', l.lcsc ?? '', l.mpn ?? '', l.handSolder ? 'hand' : ''].join('|');
 }

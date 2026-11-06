@@ -1,5 +1,5 @@
 //! Notes: the doc comments and `==` relations of the source, drawn as framed text boxes on the
-//! sheet (ADR 0052, `layout/notes.rs`). A note joins nothing, lies on nothing, wraps its text
+//! sheet (ADR 0060, `layout/notes.rs`). A note joins nothing, lies on nothing, wraps its text
 //! inside its frame, stands near the part it is about, and a sheet without notes is drawn as it
 //! was.
 

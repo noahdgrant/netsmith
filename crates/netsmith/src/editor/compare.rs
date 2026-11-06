@@ -1,4 +1,4 @@
-//! Comparing the project with a git ref (ADR 0051): the ref's files are read out of git into a
+//! Comparing the project with a git ref (ADR 0059): the ref's files are read out of git into a
 //! scratch folder, analysed by a `Workspace` of their own with the code the live project is,
 //! reduced to a [`Digest`], and compared with the digest of the files on disk. What was read
 //! of a ref is kept by commit hash.
