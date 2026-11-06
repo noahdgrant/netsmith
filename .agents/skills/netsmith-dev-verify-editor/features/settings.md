@@ -26,7 +26,7 @@
 
 ## The top bar
 
-`style.css` makes it a row: the left part (brand, board, chip) grows and gives way last, Go to anything shrinks first (`flex-shrink` 100, its own `container: cmdk`, so it drops its keys below 14 rem and its words below 8.5 rem), the buttons on the right never shrink (`min-width: max-content`). What cannot shrink away folds in a fixed order by the window's width in rem (`.app` is `container: app`, in `responsive.css`): 66 rem the words of `Write KiCad files`, 60 rem the theme and shortcuts buttons, 56 rem the chip's pin steppers, 50 rem the words of `Make fab files`, 44 rem Go to anything becomes its icon; the section tabs lose their words at 50 rem. Rem, not px, so a larger size folds earlier. When you add a control to the bar, add its width to the thresholds' reasoning (the comment in `responsive.css`) and run `topbar-layout`.
+`style.css` makes it a row: the left part (brand, board, chip) grows and gives way last, Go to anything shrinks first (`flex-shrink` 100, its own `container: cmdk`, so it drops its keys below 14 rem, never narrower than 10.5 rem until it is its icon), the buttons on the right never shrink (`min-width: max-content`). What cannot shrink away folds in a fixed order by the window's width in rem (`.app` is `container: app`, in `responsive.css`): 68 rem the words of `Write KiCad files`, 62 rem the theme and shortcuts buttons, 58 rem the chip's pin steppers, 52 rem the words of `Make fab files`, 46 rem Go to anything becomes its icon; the section tabs lose their words at 50 rem. Rem, not px, so a larger size folds earlier. When you add a control to the bar, add its width to the thresholds' reasoning (the comment in `responsive.css`) and run `topbar-layout`.
 
 ## Gotchas
 

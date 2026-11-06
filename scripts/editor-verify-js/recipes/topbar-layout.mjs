@@ -41,6 +41,12 @@ function audit([vw, vh]) {
     }
     return c;
   };
+  // the words are shortened (an ellipsis) when the text is wider than its box, by a tenth of a pixel too
+  const shortened = (e) => {
+    const r = document.createRange();
+    r.selectNodeContents(e);
+    return r.getBoundingClientRect().width > e.getBoundingClientRect().width + 0.25;
+  };
   const problems = [];
   const boxes = {};
   for (const [bar, sel] of Object.entries(bars)) {
@@ -71,8 +77,8 @@ function audit([vw, vh]) {
     const left = chip.closest('.tb-left').getBoundingClientRect();
     const room = left.right - chip.getBoundingClientRect().right;
     const cmdk = document.querySelector('.topbar .cmdk');
-    const spare = cmdk.getBoundingClientRect().width - (parseFloat(getComputedStyle(cmdk).minWidth) || 0);
-    const cut = [...chip.querySelectorAll('.selchip-title, .selchip-sub')].filter(shown).filter((e) => e.scrollWidth > e.clientWidth + 1).map(label);
+    const spare = getComputedStyle(cmdk).flexShrink === '0' ? 0 : cmdk.getBoundingClientRect().width - (parseFloat(getComputedStyle(cmdk).minWidth) || 0); // as an icon (a narrow bar) it has nothing more to give
+    const cut = [...chip.querySelectorAll('.selchip-title, .selchip-sub')].filter(shown).filter(shortened).map(label);
     chipNote = `room ${room.toFixed(0)} px, go to anything ${spare.toFixed(0)} px over its least, cut: ${cut.join(', ') || 'nothing'}`;
     if (cut.length && (room > 12 || spare > 2)) problems.push(`the chip shortens ${cut.join(', ')} while the bar has room (${chipNote})`);
   }

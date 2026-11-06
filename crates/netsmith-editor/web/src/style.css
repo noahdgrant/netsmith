@@ -16,13 +16,15 @@ code { font-family: var(--mono); font-size: var(--fs-sm); background: var(--surf
 .app { display: flex; flex-direction: column; height: 100%; background: var(--bg); container: app / inline-size; }
 
 /* top bar: the brand and the board on the left, go to anything in the middle, the actions on the right.
- * A row, not a grid, and what may shrink says so: the buttons on the right never shrink (min-width: max-content), go to anything gives up
- * width first (down to its icon), then the left part: the chip, then the board's name (an ellipsis). When even that is not enough the
+ * A row, not a grid, and what may shrink says so: the buttons on the right never shrink (min-width: max-content); go to anything is as wide
+ * as the bar leaves it, from 10.5 rem to its preferred width (it grows from its least, so the left part is never squeezed while there is
+ * room: a title cut by a tenth of a pixel is still an ellipsis); only when it is at its least does the left part shrink, the chip first, then
+ * the board's name (an ellipsis). When even that is not enough the
  * actions give up their words in a fixed order (the "fit" rules at the end of this file, asked of the window's width in rem), so
  * nothing in the bar can sit on another at any width, size or density (`topbar-layout` holds it). */
 .topbar { display: flex; align-items: center; column-gap: 0.75rem; padding: 0 var(--gap) 0 1rem; height: var(--bar); flex: none; background: var(--bg); position: relative; }
 .tb-left, .tb-right { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
-.tb-left { flex: 1.15 0.01 auto; min-width: 0; overflow: hidden; }
+.tb-left { flex: 1.15 1 auto; min-width: 0; overflow: hidden; }
 .tb-right { flex: 1 0 auto; min-width: max-content; justify-content: flex-end; }
 .tb-left > *, .tb-right > * { flex: none; }
 .tb-left > .boardpick { flex: 0 1 auto; min-width: 5.5rem; }
@@ -775,13 +777,13 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 
 /* the top bar: the search button and the selection chip */
 /* go to anything is its own container: it is as wide as the bar leaves it (flex), and asks that width, not the window's, which of its parts it has room for */
-.cmdk { container: cmdk / inline-size; display: inline-flex; align-items: center; gap: 0.625rem; flex: 0 100 clamp(12.5rem, 24vw, 35rem); min-width: 8.75rem; height: var(--ctl-lg); padding: 0 0.5rem 0 0.75rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); color: var(--text-muted); cursor: pointer; box-shadow: var(--elev-1); overflow: hidden; }
+.cmdk { container: cmdk / inline-size; display: inline-flex; align-items: center; gap: 0.625rem; flex: 1 1 10.5rem; max-width: clamp(12.5rem, 24vw, 35rem); min-width: 10.5rem; height: var(--ctl-lg); padding: 0 0.5rem 0 0.75rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); color: var(--text-muted); cursor: pointer; box-shadow: var(--elev-1); overflow: hidden; }
 .cmdk:hover { border-color: var(--border-strong); background: var(--surface-raised); color: var(--text); }
 .cmdk-text { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cmdk > .icon { flex: none; }
 .cmdk .qp-keys { gap: 0.25rem; }
 @container cmdk (max-width: 14rem) { .cmdk .qp-keys { display: none; } }
-@container cmdk (max-width: 8.5rem) { .cmdk-text { display: none; } }
+@container cmdk (max-width: 7.5rem) { .cmdk-text { display: none; } }
 .selchip { display: inline-flex; align-items: center; height: var(--ctl); min-width: 0; max-width: min(50vw, 36rem); background: var(--select-bg); border: 1px solid var(--sel-line); border-radius: var(--r-sm); overflow: hidden; }
 .selchip-main { display: inline-flex; align-items: center; gap: 0.4375rem; flex: 0 1 auto; min-width: 0; height: 100%; padding: 0 0.5625rem; background: none; border: none; cursor: pointer; overflow: hidden; }
 .selchip-title { font-weight: 600; white-space: nowrap; flex: 0 0 auto; max-width: 16em; overflow: hidden; text-overflow: ellipsis; }
@@ -1061,7 +1063,6 @@ h1, h2, h3 { font-weight: var(--fw-semibold); }
   .brand { margin-right: 0; }
   .brand .logo { height: 1.375rem; }
   .boardpick select { max-width: 9.375rem; }
-  .selchip { max-width: 8.75rem; }
   .dock-search input { width: 7.5rem; }
   .dock-group, .dock-note { display: none; }
 }

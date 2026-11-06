@@ -616,7 +616,7 @@ tr.hover-lit { outline-offset: -1px; }
 .selchip-sub { flex: 0 100 auto; }
 @container app (max-width: 87.5rem) { .selchip-btn.text { width: 1.875rem; padding: 0; } .selchip-btn.text .selchip-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } }
 @container app (max-width: 87.5rem) { .selchip-sub:not(.keep) { display: none; } }
-@container app (max-width: 56rem) { .selchip.has-steps { --steps: 0; } }
+@container app (max-width: 58rem) { .selchip.has-steps { --steps: 0; } }
 /* the file tabs: an edge that fades says there is more to scroll to (Chrome.tsx sets fade-l and fade-r) */
 .tab-scroll { --fl: 0px; --fr: 0px; mask-image: linear-gradient(90deg, transparent 0, black var(--fl), black calc(100% - var(--fr)), transparent 100%); }
 .tab-scroll.fade-l { --fl: 28px; } .tab-scroll.fade-r { --fr: 36px; }

@@ -91,8 +91,8 @@ export async function run({ page, shot, step, expect }) {
       const chip = document.querySelector('.selchip');
       const room = chip.closest('.tb-left').getBoundingClientRect().right - chip.getBoundingClientRect().right;
       const cmdk = document.querySelector('.topbar .cmdk');
-      const spare = cmdk.getBoundingClientRect().width - (parseFloat(getComputedStyle(cmdk).minWidth) || 0);
-      const cut = [...chip.querySelectorAll('.selchip-title, .selchip-sub')].filter((e) => e.getClientRects().length && e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent);
+      const spare = getComputedStyle(cmdk).flexShrink === '0' ? 0 : cmdk.getBoundingClientRect().width - (parseFloat(getComputedStyle(cmdk).minWidth) || 0); // as an icon (a narrow bar) it has nothing more to give
+      const cut = [...chip.querySelectorAll('.selchip-title, .selchip-sub')].filter((e) => e.getClientRects().length && (() => { const r = document.createRange(); r.selectNodeContents(e); return r.getBoundingClientRect().width > e.getBoundingClientRect().width + 0.25; })()).map((e) => e.textContent);
       return { room, spare, cut, text: chip.innerText.replace(/\s+/g, ' ') };
     });
     expect(!(fit.cut.length && (fit.room > 12 || fit.spare > 2)), `at ${w} px the bus chip shortens its words only when the bar has no room (${fit.text}; ${Math.round(fit.room)} px beside it, go to anything ${Math.round(fit.spare)} px over its least, cut: ${fit.cut.join(' | ') || 'nothing'})`);
