@@ -1,6 +1,8 @@
 // Finding your way among the sheets: the outline on the left, the compact picker in the toolbar,
 // and the toolbar itself.
 
+import { ChangesSwitch } from '../components/ChangesSwitch';
+import { CompareLegend } from '../components/CompareLegend';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { hoverAttrs } from '../hover';
@@ -264,6 +266,8 @@ export function SheetBar({
       )}
       {!multi && <span class="crumb">{boardName}</span>}
       <span class="spacer" />
+      <CompareLegend />
+      <ChangesSwitch />
       <button class="icon-btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts" onClick={help}>
         ?
       </button>

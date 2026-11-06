@@ -19,7 +19,9 @@ import { EmptyState } from './ui';
 import { languageExtensions } from '../languages';
 import { flashLine, nextFlash, revealFlash, revealTarget } from '../reveal';
 import { ensurePower, power } from '../source/boarddata';
+import { baseText, compare, showChanges } from '../compare/store';
 import { cardExtension } from '../source/cm-card';
+import { changesExtension, setBaseText } from '../source/cm-changes';
 import { completeExtension } from '../source/cm-complete';
 import { foldExtension } from '../source/cm-fold';
 import { guidesExtension } from '../source/cm-guides';
@@ -63,6 +65,7 @@ function extensionsFor(path: string, readonly: boolean): Extension[] {
   return [
     severityGutter,
     lineNumbers(),
+    changesExtension(path),
     foldExtension,
     highlightActiveLineGutter(),
     highlightActiveLine(),
@@ -271,6 +274,30 @@ export function Editor() {
     const lines = v.state.doc.toString().split('\n');
     v.dispatch({ effects: setHints.of(hintsFor(path, lines, board, rails)) });
   }, [wantHints, board, rails, path, file === undefined, file?.rev]);
+
+  // The marks of the comparison with a git ref: the file at the ref is the base the margin diffs the text against.
+  const marking = showChanges.value;
+  const cmp = compare.value;
+  const hash = cmp?.base.hash;
+  useEffect(() => {
+    const v = view.current;
+    if (!v || !path || current.current !== path) return;
+    if (!marking || !cmp) {
+      v.dispatch({ effects: setBaseText.of(null) });
+      return;
+    }
+    let live = true;
+    const entry = cmp.source.files.find((f) => f.path === path);
+    void baseText(path).then((text) => {
+      if (!live || current.current !== path) return;
+      // A file the ref did not have is all new; one that is not in the project's comparison at all has no base.
+      const base = text ?? (entry && (entry.status === 'added' || entry.status === 'untracked') ? '' : null);
+      view.current?.dispatch({ effects: setBaseText.of(base) });
+    });
+    return () => {
+      live = false;
+    };
+  }, [marking, hash, path, file === undefined]);
 
   // A request to put the cursor somewhere.
   const ask = reveal.value;

@@ -2,7 +2,7 @@
 // where the divider is. The page keeps it in the store and in localStorage.
 
 /** The sections of the app. Exactly one fills a pane; a window has one pane or two. */
-export type Section = 'schematic' | 'power' | 'system' | 'bom' | 'pcb' | 'build' | 'source';
+export type Section = 'schematic' | 'power' | 'system' | 'bom' | 'pcb' | 'build' | 'compare' | 'source';
 
 /** The sections in the order of the tab strip. Their number keys are their places in it. */
 export const SECTIONS: { id: Section; label: string }[] = [
@@ -13,6 +13,7 @@ export const SECTIONS: { id: Section; label: string }[] = [
   { id: 'bom', label: 'BOM' },
   { id: 'pcb', label: 'PCB' },
   { id: 'build', label: 'Build' },
+  { id: 'compare', label: 'Compare' },
 ];
 
 const IDS = SECTIONS.map((s) => s.id);

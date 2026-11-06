@@ -2,8 +2,9 @@
 // scripts/editor-verify: the lifecycle for checking the netsmith editor in a real browser.
 //
 //   doctor [--no-browser]   what is installed, and whether a browser can be launched
-//   launch [--fixture <name>|schematic_bench|big|tree] [--file <path.nsm>]
-//                           start `netsmith editor` on a free port over a scratch project
+//   launch [--fixture <name>|schematic_bench|big|tree] [--file <path.nsm>] [--git]
+//                           start `netsmith editor` on a free port over a scratch project; --git makes the
+//                           (two_boards) project a git repository with a branch that changes it (fixtures/gitrepo.mjs)
 //   drive <recipe>|all      run a recipe in headless Chromium, with screenshots
 //   evidence                list the screenshots and logs of the session
 //   cleanup [--keep-evidence]
@@ -18,6 +19,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { writeBig } from './fixtures/big.mjs';
+import { gitHere, makeCompareRepo, resetCompareRepo } from './fixtures/gitrepo.mjs';
 import { writeRefresh } from './fixtures/refresh.mjs';
 import { writeTree } from './fixtures/tree.mjs';
 
@@ -206,6 +208,17 @@ async function launch() {
       );
     }
   }
+  if (has('git')) {
+    if ((flag('fixture') ?? 'two_boards') !== 'two_boards' || flag('file')) {
+      console.error('--git is for the two_boards fixture: its text is what the repository changes');
+      process.exit(2);
+    }
+    if (!gitHere()) {
+      console.error('--git needs git on the PATH');
+      process.exit(2);
+    }
+    makeCompareRepo(project);
+  }
   const port = await freePort();
   const log = fs.openSync(path.join(root, 'server.log'), 'a');
   // The refresh fixture asks a stand-in for LCSC's endpoint, never the real one, and keeps its
@@ -233,7 +246,7 @@ async function launch() {
     }
     await new Promise((r) => setTimeout(r, 100));
   }
-  fs.writeFileSync(statePath, JSON.stringify({ pid: child.pid, endpointsPid, port, url, project, fixture, fixtureName: flag('file') ? 'file' : (flag('fixture') ?? 'two_boards') }, null, 2));
+  fs.writeFileSync(statePath, JSON.stringify({ pid: child.pid, endpointsPid, port, url, project, fixture, fixtureName: flag('file') ? 'file' : (flag('fixture') ?? 'two_boards'), git: has('git') }, null, 2));
   console.log(`launched ${url} (pid ${child.pid}) over ${project}\nlog: ${path.join(root, 'server.log')}`);
 }
 
@@ -257,9 +270,14 @@ async function drive() {
       console.error(`there is no recipe ${name}`);
       process.exit(2);
     }
-    const { run, fixture } = await import(pathToFileURL(file).href);
+    const { run, fixture, needs } = await import(pathToFileURL(file).href);
     if (fixture && fixture !== state.fixtureName) {
       console.log(`${wanted.length === 0 || wanted.includes('all') ? 'skip' : 'FAIL'} ${name}: it needs \`launch --fixture ${fixture}\` (this session has ${state.fixtureName})`);
+      if (!(wanted.length === 0 || wanted.includes('all'))) failed++;
+      continue;
+    }
+    if (needs === 'git' && !state.git) {
+      console.log(`${wanted.length === 0 || wanted.includes('all') ? 'skip' : 'FAIL'} ${name}: it needs \`launch --git\` (a git repository over the two_boards project)`);
       if (!(wanted.length === 0 || wanted.includes('all'))) failed++;
       continue;
     }
@@ -274,6 +292,9 @@ async function drive() {
       page,
       url: state.url,
       project: state.project,
+      /** The project's repository back as `launch --git` made it (a recipe that needs it starts with this). */
+      resetRepo: () => resetCompareRepo(state.project),
+      binary: netsmithBin(),
       async shot(label) {
         const file = path.join(evidenceDir, `${name}-${String(++shots).padStart(2, '0')}-${label}.png`);
         await page.screenshot({ path: file });
@@ -360,7 +381,7 @@ function cleanup() {
 
 const commands = { doctor, launch, drive, evidence, cleanup };
 if (!commands[command]) {
-  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | evidence | cleanup [--keep-evidence]');
+  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | evidence | cleanup [--keep-evidence]  (launch also takes --git)');
   process.exit(2);
 }
 await commands[command]();

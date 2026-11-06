@@ -1,3 +1,4 @@
+import { ChangesSwitch } from '../components/ChangesSwitch';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import type { PowerTree, SystemView } from '../api';
@@ -160,6 +161,7 @@ function ModuleCard({
     <div
       class={`pt-node sy-card kind-${m.kind} ${selected ? 'selected' : ''} ${tint} ${dim ? 'dim' : ''}`}
       data-node={m.id}
+      data-cmp-board={m.kind === 'board' ? m.name : undefined}
       data-kind="module"
       style={{ left: p.x, top: p.y, width: p.w, height: p.h }}
       {...hoverAttrs(m.kind === 'module' || m.kind === 'part' ? { kind: m.kind, key: m.name } : null)}
@@ -337,6 +339,7 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
           ]}
         />
         <span class="spacer" />
+        <ChangesSwitch />
         {model.modules.some((m) => m.ports.length > 6) && (
           <button
             class="tool small"

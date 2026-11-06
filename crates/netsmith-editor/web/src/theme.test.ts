@@ -178,6 +178,10 @@ function pairs(): Pair[] {
   for (const k of ['--pcb-front', '--pcb-back', '--pcb-thru']) list.push({ fg: '--pcb-pad-text', bg: [k], what: `a pad's number on ${k.slice(6)} copper` });
   // The soft light of a shared hover is a mark on every surface the views draw on, and is not a pick's blue.
   list.push({ fg: '--hover-lit', bg: [...SURFACES, '--pop', '--pcb-bg', '--pcb-board', '--sch-sheet'], min: 3, what: 'the shared hover light (a graphic)' });
+  // What changed since a git ref: the outline of a changed part, a bar in the margin, a badge: marks on every surface a view draws on.
+  for (const k of ['--cmp-added', '--cmp-changed', '--cmp-removed', '--cmp-renumbered']) {
+    list.push({ fg: k, bg: [...SURFACES, '--sch-sheet', '--pcb-bg', '--pcb-board'], min: 3, what: `${k} mark of the comparison (a graphic)` });
+  }
   // Marks the page draws without words: the focus ring and the brand line.
   list.push({ fg: '--focus', bg: ['--surface', '--canvas', '--surface-raised', '--surface-3', '--bg'], min: 3, what: 'focus indicator' });
   list.push({ fg: '--accent', bg: ['--surface', '--canvas', '--bg'], min: 3, what: 'accent marks (the active tab line, a primary action)' });
@@ -236,6 +240,19 @@ describe.each(Object.keys(THEME_TOKENS) as Theme[])('contrast of %s', (name) => 
     expect(g).toBeGreaterThanOrEqual(1.08);
     expect(g).toBeLessThanOrEqual(3);
     expect(contrast(ink('--cm-hint'), ink('--canvas'))!).toBeGreaterThan(g);
+  });
+  it('the four marks of the comparison are told apart, and the words in a value chip stay readable on their tint', () => {
+    const marks = ['--cmp-added', '--cmp-changed', '--cmp-removed', '--cmp-renumbered'];
+    expect(new Set(marks.map((k) => ink(k).toLowerCase())).size).toBe(4);
+    // views.css tints a chip with 16 % of its mark over the layer it sits on, and puts the page's ink on it
+    for (const k of marks) {
+      for (const layer of ['--surface', '--surface-raised', '--canvas', '--surface-3']) {
+        const tint = over(parseHex(ink(k))!, parseHex(ink(layer))!, 0.16);
+        const hex = `#${tint.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+        expect(contrast(ink('--text'), hex)!, `--text on ${k} 16% over ${layer}`).toBeGreaterThanOrEqual(MIN[name]);
+        expect(contrast(ink('--text-muted'), hex)!, `--text-muted on ${k} 16% over ${layer}`).toBeGreaterThanOrEqual(MIN[name] === 7 ? 7 : 4.5);
+      }
+    }
   });
   it('the segment that is on is a step from its track', () => {
     expect(contrast(ink('--seg-on'), ink('--seg-track'))!).toBeGreaterThanOrEqual(1.1);

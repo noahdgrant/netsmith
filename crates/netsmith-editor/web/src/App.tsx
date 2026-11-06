@@ -16,25 +16,29 @@ import { Breadcrumbs } from './components/Breadcrumbs';
 import { ProblemsDock } from './components/ProblemsDock';
 import { Sidebar } from './components/Sidebar';
 import { CheatSheet } from './components/CheatSheet';
+import { FileTabMenu } from './components/FileTabMenu';
 import { QuickPick } from './components/QuickPick';
 import { StatusBar } from './components/StatusBar';
 import { Toasts } from './components/Toasts';
 import { TooltipLayer } from './components/Tooltip';
 import { ProgressLine, StaleStrip } from './components/ViewStatus';
 import { commandForKey } from './commands';
-import { registerAppCommands } from './commandset';
+import { registerAppCommands, registerCompareCommands } from './commandset';
 import { banner } from './feedback/derive';
 import { type Section, SECTIONS, clampSplit } from './layout';
 import { cheatSheet, picker } from './quickpick';
 import { back, goBack, layout, setFocusPane, visible, windowWidth } from './store';
 import { Bom } from './views/Bom';
 import { Build } from './views/Build';
+import { Compare } from './views/Compare';
+import { DiffPanel } from './views/compare/DiffPanel';
 import { Pcb } from './views/Pcb';
 import { Power } from './views/Power';
 import { Schematic } from './views/Schematic';
 import { System } from './views/System';
 
 registerAppCommands();
+registerCompareCommands();
 
 function SectionBody({ section }: { section: Section }) {
   switch (section) {
@@ -50,6 +54,8 @@ function SectionBody({ section }: { section: Section }) {
       return <Pcb />;
     case 'build':
       return <Build />;
+    case 'compare':
+      return <Compare />;
     case 'source':
       return (
         <div class="source-section">
@@ -60,6 +66,7 @@ function SectionBody({ section }: { section: Section }) {
             <Conflict />
             <ReadOnlyBanner />
             <Editor />
+            <DiffPanel where="source" />
           </div>
         </div>
       );
@@ -69,7 +76,7 @@ function SectionBody({ section }: { section: Section }) {
 /** Sections that keep what they are showing (the editor's text and cursor, a zoom, a scroll)
  * while another section is on screen, by staying in the page, hidden. The PCB view's keys
  * work on the whole window, so it leaves the page instead and finds its zoom again. */
-const KEPT: Section[] = ['schematic', 'power', 'system', 'bom', 'build', 'source'];
+const KEPT: Section[] = ['schematic', 'power', 'system', 'bom', 'build', 'compare', 'source'];
 
 /** Commands that still work while go to anything or the cheat sheet is open: they switch the
  * window's mode. Every other key belongs to the window in front. */
@@ -230,7 +237,7 @@ export function App() {
           return (
             <section
               key={id}
-              class={`section sec-${id} ${shown ? '' : 'away'} ${stale && id !== 'source' && id !== 'build' ? 'is-stale' : ''}`}
+              class={`section sec-${id} ${shown ? '' : 'away'} ${stale && id !== 'source' && id !== 'build' && id !== 'compare' ? 'is-stale' : ''}`}
               data-section={id}
               data-pane={shown ? vis[at].index : undefined}
               aria-hidden={!shown}
@@ -238,7 +245,7 @@ export function App() {
               tabIndex={shown ? -1 : undefined}
               style={{ gridColumn: shown && two ? (at === 0 ? 1 : 3) : 1, gridRow: 2 }}
             >
-              {id !== 'source' && id !== 'build' && <StaleStrip />}
+              {id !== 'source' && id !== 'build' && id !== 'compare' && <StaleStrip />}
               <SectionBody section={id} />
             </section>
           );
@@ -250,6 +257,7 @@ export function App() {
       <ProblemsDock />
       <StatusBar />
       <TabMenu />
+      <FileTabMenu />
       <QuickPick />
       <CheatSheet />
       <Toasts />

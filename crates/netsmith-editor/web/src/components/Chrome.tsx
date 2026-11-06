@@ -1,3 +1,4 @@
+import { fileTabMenu } from './FileTabMenu';
 import { signal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
@@ -57,6 +58,7 @@ const SECTION_HINT: Record<Section, string> = {
   bom: 'the bill of materials',
   pcb: 'the board layout',
   build: 'what Write KiCad files and Make fab files did',
+  compare: 'what changed in the circuit since a git ref',
   source: 'the code, with the project\'s files',
 };
 
@@ -632,6 +634,10 @@ export function Tabs() {
               tabIndex={0}
               draggable
               onClick={() => (activeFile.value = path)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                fileTabMenu.value = { path, x: e.clientX, y: e.clientY };
+              }}
               onKeyDown={(e) => {
                 if (e.target !== e.currentTarget) return;
                 if (e.key === 'Enter' || e.key === ' ') {
