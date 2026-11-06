@@ -3,12 +3,12 @@
 
 use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
 
-use netsmith_check::{Loader, check};
+use netsmith_check::{InstKind, Loader, check};
 use netsmith_editor::{
     AnalysisEvent, ApiError,
     api::{
-        Analysis, BoardDetail, BoardSummary, Location, NetInfo, PanelSummary, PartInfo, PinInfo,
-        Problem, ProblemStage, Severity, SystemSummary,
+        Analysis, BoardDetail, BoardSummary, Location, ModuleUse, NetInfo, PanelSummary, PartInfo,
+        PinInfo, Problem, ProblemStage, Severity, SystemSummary,
     },
 };
 
@@ -112,8 +112,39 @@ impl Snapshot {
                     rows: p.spec.rows,
                 })
                 .collect(),
+            module_uses: self.module_uses(),
             elapsed_ms: None,
         }
+    }
+
+    /// The module definitions the boards use and the boards that use each, by file and line.
+    fn module_uses(&self) -> Option<Vec<ModuleUse>> {
+        let mut uses: Vec<ModuleUse> = Vec::new();
+        for (board, _) in &self.boards {
+            let trace = &board.built.trace;
+            let label = board.built.label();
+            for (_, inst) in trace.model.instances() {
+                if inst.kind != InstKind::Module {
+                    continue;
+                }
+                let at = api_location(locate(&trace.sources, inst.source, inst.span));
+                let found = uses
+                    .iter_mut()
+                    .find(|u| u.file == at.file && u.line == at.line && u.name == inst.type_name);
+                match found {
+                    Some(u) if !u.used_by.contains(&label) => u.used_by.push(label.clone()),
+                    Some(_) => {}
+                    None => uses.push(ModuleUse {
+                        name: inst.type_name.clone(),
+                        file: at.file,
+                        line: at.line,
+                        used_by: vec![label.clone()],
+                    }),
+                }
+            }
+        }
+        uses.sort_by(|a, b| (&a.file, a.line).cmp(&(&b.file, b.line)));
+        (!uses.is_empty()).then_some(uses)
     }
 
     pub fn panel(&self, name: &str) -> Result<Arc<PanelData>, ApiError> {

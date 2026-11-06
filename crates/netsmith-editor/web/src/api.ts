@@ -154,6 +154,13 @@ cellWidth: number, cellHeight: number, width: number, height: number, rail: numb
 
 export type Analysis = { version: number, errors: number, warnings: number, notes: number, problems: Array<Problem>, boards: Array<BoardSummary>, systems: Array<SystemSummary>, panels: Array<PanelSummary>, 
 /**
+ * For each module definition that some board uses, directly or inside another module,
+ * the boards that use it, so a declaration in a shared module can show its card for
+ * each board. Sorted by file and line; left out when no board uses a module. It is here
+ * and not on `Def` because `GET /api/project` is answered before the first analysis.
+ */
+moduleUses?: Array<ModuleUse>, 
+/**
  * How long the analysis took, in milliseconds: of the files on disk for `/api/analysis`
  * and `rebuilt`, of the text on the page for `checked`.
  */

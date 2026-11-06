@@ -305,6 +305,21 @@ pub struct PanelView {
     pub findings: Vec<PanelFinding>,
 }
 
+/// A module definition and the boards that use it (`Analysis::module_uses`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ModuleUse {
+    /// The module's name: `LdoStage`.
+    pub name: String,
+    /// The file it is defined in, as the tree names it, and the line of its definition
+    /// (`Def::line`).
+    pub file: String,
+    pub line: u32,
+    /// The boards that have an instance of it, as `BoardSummary::name` has them
+    /// (`Demo/main` for a board of a system), in the order of `Analysis::boards`.
+    pub used_by: Vec<String>,
+}
+
 /// What a check found: the version of the files it read, and every problem.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -318,6 +333,13 @@ pub struct Analysis {
     pub boards: Vec<BoardSummary>,
     pub systems: Vec<SystemSummary>,
     pub panels: Vec<PanelSummary>,
+    /// For each module definition that some board uses, directly or inside another module,
+    /// the boards that use it, so a declaration in a shared module can show its card for
+    /// each board. Sorted by file and line; left out when no board uses a module. It is here
+    /// and not on `Def` because `GET /api/project` is answered before the first analysis.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub module_uses: Option<Vec<ModuleUse>>,
     /// How long the analysis took, in milliseconds: of the files on disk for `/api/analysis`
     /// and `rebuilt`, of the text on the page for `checked`.
     #[serde(default, skip_serializing_if = "Option::is_none")]

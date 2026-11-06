@@ -51,6 +51,7 @@ fn analysis(version: u64) -> Analysis {
         boards: Vec::new(),
         systems: Vec::new(),
         panels: Vec::new(),
+        module_uses: None,
         elapsed_ms: None,
     }
 }

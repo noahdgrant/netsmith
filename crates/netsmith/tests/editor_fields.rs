@@ -567,3 +567,66 @@ fn a_part_with_nothing_solved_leaves_the_key_out_of_the_json() {
         r#"{"lcsc":"C1","generic":true}"#
     );
 }
+
+#[test]
+fn a_module_says_which_boards_use_it() {
+    // `LdoStage` in a module file of its own, used by two boards, one of which is a member of a
+    // system (a board a system places is built as its member only), and by nothing else.
+    let start = TWO_BOARDS.find("/// A linear regulator").unwrap();
+    let end = TWO_BOARDS.find("/// Turns the 5 V").unwrap();
+    let ldo = format!(
+        "import std::parts::passive::Capacitor\nimport std::parts::regulator::LinearRegulator\nimport std::sources::Rail\n\n{}",
+        &TWO_BOARDS[start..end]
+    );
+    let power_start = end;
+    let power_end = TWO_BOARDS.find("/// A status LED").unwrap();
+    let power = &TWO_BOARDS[power_start..power_end];
+    let main = format!(
+        "import src::ldo::LdoStage\nimport std::parts::connector::Header1x2\nimport std::sources::Rail\nimport std::mfg::jlcpcb::TwoLayer\n\n{power}\n{}\nsystem Pair {{\n    .a: PowerBoard\n}}\n",
+        power.replace("PowerBoard", "OtherBoard")
+    );
+    let (_root, editor) = project_of("uses", &[("src/main.nsm", &main), ("src/ldo.nsm", &ldo)]);
+    let analysis = editor.analysis();
+    assert_eq!(analysis.errors, 0, "{:?}", analysis.problems);
+    let uses = analysis.module_uses.expect("a module is used");
+    assert_eq!(uses.len(), 1, "{uses:?}");
+    let ldo_use = &uses[0];
+    assert_eq!(
+        (ldo_use.name.as_str(), ldo_use.file.as_str()),
+        ("LdoStage", "src/ldo.nsm")
+    );
+    assert_eq!(ldo_use.line, line_of(&ldo, "module LdoStage"));
+    // In the order of `boards`: a board of a system is named as the system's member.
+    let boards: Vec<&str> = analysis.boards.iter().map(|b| b.name.as_str()).collect();
+    assert_eq!(boards, ["OtherBoard", "Pair/a"]);
+    assert_eq!(ldo_use.used_by, boards);
+    // It is the definition the tree lists, by file and line.
+    let tree = editor.project();
+    let file = tree.files.iter().find(|f| f.path == "src/ldo.nsm").unwrap();
+    let def = file.defs.iter().find(|d| d.name == "LdoStage").unwrap();
+    assert_eq!(def.line, ldo_use.line);
+}
+
+#[test]
+fn a_project_with_no_module_in_use_leaves_module_uses_out() {
+    let (_root, editor) = project_of(
+        "empty",
+        &[(
+            "src/main.nsm",
+            "import std::sources::Rail\n\nboard Empty {\n    .r: Rail\n}\n",
+        )],
+    );
+    let analysis = editor.analysis();
+    assert_eq!(analysis.module_uses, None);
+    assert!(
+        serde_json::to_value(&analysis)
+            .unwrap()
+            .get("moduleUses")
+            .is_none()
+    );
+    // And a project that uses one says it in camel case.
+    let (_root, editor) = project("uses-json");
+    let json = serde_json::to_value(editor.analysis()).unwrap();
+    assert_eq!(json["moduleUses"][0]["name"], "LdoStage");
+    assert_eq!(json["moduleUses"][0]["usedBy"][0], "TwoBoards/power");
+}
