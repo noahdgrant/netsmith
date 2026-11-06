@@ -14,7 +14,7 @@
 /// above `.gate_threshold` in the worst case or the channel is not on. `.gate_threshold` is a
 /// range, the datasheet's minimum and maximum; `.on_resistance` is the datasheet's, at the
 /// drive its table names.
-part NMosfet {
+generic NMosfet {
     .designator &= "Q"
 
     pins {
@@ -48,8 +48,9 @@ part NMosfet {
 
 /// A P-channel enhancement MOSFET. Current flows from source to drain. Voltages and currents
 /// are magnitudes (see `NMosfet`), so `.gate_source_voltage` is positive for a gate that is
-/// driven below its source.
-part PMosfet {
+/// driven below its source. A generic like `NMosfet` (ADR 0059): it is its own first
+/// provider, with the catalog `p_mosfet`, and a project's part may provide it.
+generic PMosfet {
     .designator &= "Q"
 
     pins {
@@ -78,4 +79,5 @@ part PMosfet {
     bridge .source ~> .drain
 
     .package: Package
+    catalog p_mosfet { .max_drain_source_voltage, .max_drain_current, .max_gate_source_voltage, .gate_threshold, .on_resistance, .package }
 }
