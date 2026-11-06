@@ -14,8 +14,11 @@ import {
   moduleOfPath,
   sourcing,
 } from '../bomview';
+import { ChangesSwitch } from '../components/ChangesSwitch';
 import { Icon } from '../components/Icons';
 import { useScrollEdges } from '../components/scrollEdges';
+import { type BomMark, bomKey, bomMarks, costDelta, signed } from '../compare/model';
+import { boardCompare, refText, showChanges } from '../compare/store';
 import { JobProgress } from '../components/JobProgress';
 import { EmptyState, Pill, Popover, Segmented, Spinner, type Tone } from '../components/ui';
 import { NoBoard, ViewLoading } from '../components/ViewStatus';
@@ -172,12 +175,26 @@ function Designators({ line, lit, staleAfter }: { line: BomLine; lit: Set<string
   );
 }
 
-function Row({ l, cols, lit, staleAfter }: { l: BomLine; cols: Set<ColumnId>; lit: Set<string>; staleAfter: number }) {
+/** The change of a line since the ref: `+1` where it grew, `-1` where it shrank, and the price. */
+function DeltaCell({ mark }: { mark: BomMark | undefined }) {
+  if (!mark) return <td class="delta" />;
+  const dq = mark.status === 'added' ? mark.quantityHead : mark.quantityHead - (mark.quantityBase ?? mark.quantityHead);
+  return (
+    <td class="delta" data-testid="bom-delta" title={mark.status === 'added' ? 'New since the ref' : `Quantity ${mark.quantityBase} at the ref, ${mark.quantityHead} now`}>
+      {dq !== 0 && <span class={`dq ${dq > 0 ? 'up' : 'down'}`}>{signed(dq)}</span>}
+      {dq === 0 && <span class="dq">same qty</span>}
+      {mark.deltaUsd !== undefined && Math.abs(mark.deltaUsd) >= 5e-7 && <span class="dp">{costDelta(mark.deltaUsd)}</span>}
+    </td>
+  );
+}
+
+function Row({ l, cols, lit, staleAfter, mark, marking }: { l: BomLine; cols: Set<ColumnId>; lit: Set<string>; staleAfter: number; mark?: BomMark; marking?: boolean }) {
   const on = l.designators.some((d) => lit.has(d));
   const st = sourcing(l);
   return (
     <tr
-      class={`dr ${on ? 'sel' : ''}`}
+      class={`dr ${on ? 'sel' : ''} ${mark ? `cmp-row-${mark.status}` : ''}`}
+      data-cmp={mark?.status}
       aria-selected={on}
       data-sourcing={st}
       data-hv-ref={l.designators.join(' ')}
@@ -191,6 +208,7 @@ function Row({ l, cols, lit, staleAfter }: { l: BomLine; cols: Set<ColumnId>; li
       <td class="des">
         <Designators line={l} lit={lit} staleAfter={staleAfter} />
       </td>
+      {marking && <DeltaCell mark={mark} />}
       {cols.has('qty') && <td class="num">{l.quantity}</td>}
       {cols.has('value') && <td title={l.kind}>{l.value}</td>}
       {cols.has('package') && <td title={l.footprint ?? ''}>{l.package ?? l.footprint ?? '-'}</td>}
@@ -271,6 +289,11 @@ export function Bom() {
     if (ask) document.querySelector('.bom tr.sel')?.scrollIntoView({ block: 'center' });
   }, [ask?.nonce]);
 
+  // The comparison with a git ref, when its marks are on: lines new or changed, and the lines that are gone.
+  const cmp = boardCompare.value;
+  const marking = showChanges.value && !!cmp;
+  const bomDelta = useMemo(() => (marking ? bomMarks(cmp?.bom) : null), [marking, cmp]);
+  const markOf = (l: BomLine): BomMark | undefined => bomDelta?.byKey.get(bomKey(l));
   const cols = useMemo(() => new Set(COLUMNS.map((c) => c.id).filter((id) => !hidden.includes(id))), [hidden]);
   const q = query.trim().toLowerCase();
   const matches = (l: BomLine) =>
@@ -282,6 +305,13 @@ export function Bom() {
         .includes(q));
   const lines = useMemo(() => (bom ? bom.lines.filter(matches) : []), [bom, q, problemsOnly]);
   const hand = useMemo(() => (bom ? bom.hand.filter(matches) : []), [bom, q, problemsOnly]);
+  const gone = useMemo(
+    () =>
+      (bomDelta?.removed ?? []).filter(
+        (l) => !q || [l.designators.join(' '), l.value, l.kind, l.package ?? '', l.footprint ?? '', l.lcsc ?? '', l.mpn ?? ''].join(' ').toLowerCase().includes(q),
+      ),
+    [bomDelta, q],
+  );
   const groups = useMemo(() => groupLines(lines, group, (des) => moduleByRef.get(des) ?? ''), [lines, group, moduleByRef]);
 
   if (!name) return <NoBoard what="show" />;
@@ -297,7 +327,7 @@ export function Bom() {
   const unpriced = bom.lines.filter((l) => l.lcsc && l.unitUsd == null).length;
   const refreshable = bom.catalogs.length > 0;
   const shownCols = COLUMNS.filter((c) => cols.has(c.id));
-  const span = 1 + shownCols.length;
+  const span = 1 + shownCols.length + (marking ? 1 : 0);
   const toggleColumn = (id: ColumnId) => {
     const next = hidden.includes(id) ? hidden.filter((h) => h !== id) : [...hidden, id];
     setHidden(next);
@@ -358,7 +388,7 @@ export function Bom() {
         <Stat
           label="Cost per board"
           value={bom.totalUsd != null ? dollars(bom.totalUsd) : 'unknown'}
-          sub={unpriced > 0 ? `leaves out ${plural(unpriced, 'line')} with no known price` : bom.totalUsd != null ? 'without the feeder fee and shipping' : 'no provider has a price'}
+          sub={marking && cmp?.bom?.deltaUsd != null ? `${costDelta(cmp.bom.deltaUsd)} since ${refText.value}` : unpriced > 0 ? `leaves out ${plural(unpriced, 'line')} with no known price` : bom.totalUsd != null ? 'without the feeder fee and shipping' : 'no provider has a price'}
         />
         <Stat
           label="Problems"
@@ -390,6 +420,7 @@ export function Bom() {
           Problems
           {problems > 0 && <span class="pl pl-neutral">{problems}</span>}
         </button>
+        <ChangesSwitch />
         <span class="spacer" />
         <Segmented<GroupBy>
           label="Group the lines"
@@ -442,6 +473,7 @@ export function Bom() {
             <thead>
               <tr>
                 <th class="th-des">Designators</th>
+                {marking && <th class="delta" title={`Quantity and price since ${refText.value}`}>Change</th>}
                 {shownCols.map((c) => (
                   <th key={c.id} class={c.num ? 'num' : ''}>
                     {c.label}
@@ -466,7 +498,7 @@ export function Bom() {
                       </td>
                     </tr>
                   )}
-                  {!closed && g.lines.map((l) => <Row key={`${g.key}/${l.designators.join(',')}`} l={l} cols={cols} lit={lit} staleAfter={bom.staleAfterDays} />)}
+                  {!closed && g.lines.map((l) => <Row key={`${g.key}/${l.designators.join(',')}`} l={l} cols={cols} lit={lit} staleAfter={bom.staleAfterDays} mark={markOf(l)} marking={marking} />)}
                 </tbody>
               );
             })}
@@ -482,7 +514,46 @@ export function Bom() {
                   </td>
                 </tr>
                 {hand.map((l) => (
-                  <Row key={`hand/${l.designators.join(',')}`} l={l} cols={cols} lit={lit} staleAfter={bom.staleAfterDays} />
+                  <Row key={`hand/${l.designators.join(',')}`} l={l} cols={cols} lit={lit} staleAfter={bom.staleAfterDays} mark={markOf(l)} marking={marking} />
+                ))}
+              </tbody>
+            )}
+            {gone.length > 0 && (
+              <tbody class="grouped removed" data-testid="bom-removed">
+                <tr class="grp-row static removed">
+                  <td colSpan={span}>
+                    <span class="grp-label">
+                      <Icon name="minus" size={13} />
+                      <b>Removed since {refText.value}</b>
+                      <span class="faint">not on the board any more</span>
+                    </span>
+                  </td>
+                </tr>
+                {gone.map((l) => (
+                  <tr key={`gone/${bomKey(l)}`} class="dr cmp-row-removed" data-cmp="removed" data-testid="bom-removed-row">
+                    <td class="des">
+                      <div class="des-cell">
+                        {l.designators.map((d) => (
+                          <span key={d} class="dchip" title={`${d} at the ref`}>
+                            {d}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td class="delta">
+                      <span class="dq down">{signed(-l.quantity)}</span>
+                      {l.unitUsd != null && <span class="dp">{costDelta(-l.unitUsd * l.quantity)}</span>}
+                    </td>
+                    {cols.has('qty') && <td class="num">{l.quantity}</td>}
+                    {cols.has('value') && <td title={l.kind}>{l.value}</td>}
+                    {cols.has('package') && <td title={l.footprint ?? ''}>{l.package ?? l.footprint ?? '-'}</td>}
+                    {cols.has('lcsc') && <td class="mono lcsc">{l.lcsc ?? (l.handSolder ? 'by hand' : 'none')}</td>}
+                    {cols.has('library') && <td />}
+                    {cols.has('status') && <td />}
+                    {cols.has('each') && <td class="num">{l.unitUsd != null ? dollars(l.unitUsd) : ''}</td>}
+                    {cols.has('stock') && <td />}
+                    {cols.has('checked') && <td />}
+                  </tr>
                 ))}
               </tbody>
             )}

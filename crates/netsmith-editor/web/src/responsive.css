@@ -17,11 +17,11 @@
 @container pcbbar (max-width: 73.75rem) {
   .pcb-bar .seg-label, .pcb-bar .tb-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .pcb-bar .tb-took, .pcb-bar .cursor-at { display: none; }
-  .pcb-bar .layers summary { padding: 0 8px; }
+  .pcb-bar .layers summary { padding: 0 0.5rem; }
 }
 @container pcbbar (max-width: 56.25rem) {
   .pcb-bar .tb-drc { display: none; }
-  .pcb-bar { gap: 6px 10px; }
+  .pcb-bar { gap: 0.375rem 0.625rem; }
 }
 @container pcbbar (max-width: 35rem) {
   .pcb-bar { flex-wrap: wrap; }
@@ -43,7 +43,7 @@
 /* the first column is lifted off what slides under it once the table has moved */
 .bom-frame.scrolled .bom-table th.th-des, .bom-frame.scrolled .bom-table td.des { box-shadow: 1px 0 0 var(--border), 8px 0 10px -6px color-mix(in srgb, var(--text) 22%, transparent); }
 /* and the edge that has more fades into the surface (the file tabs do the same) */
-.bom-frame::after { content: ''; position: absolute; top: 0; right: 12px; bottom: 12px; width: 44px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); opacity: 0; transition: opacity var(--dur) var(--ease); z-index: 4; }
+.bom-frame::after { content: ''; position: absolute; top: 0; right: 0.75rem; bottom: 0.75rem; width: 2.75rem; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); opacity: 0; transition: opacity var(--dur) var(--ease); z-index: 4; }
 .bom-frame.more::after { opacity: 1; }
 
 /* ---- the overview's thumbnails: one paper and one ink for every module ---- */

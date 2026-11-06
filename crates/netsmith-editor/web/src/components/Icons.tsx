@@ -44,6 +44,28 @@ export const P: Record<string, ComponentChildren> = {
       <path d="M2.5 4.8L8 7.8l5.5-3M8 7.8v6.4" />
     </>
   ),
+  compare: (
+    <>
+      <circle cx="4.25" cy="4" r="1.75" />
+      <circle cx="11.75" cy="12" r="1.75" />
+      <path d="M4.25 5.75V9a2 2 0 0 0 2 2h1.1M11.75 10.25V7a2 2 0 0 0-2-2h-1.1" />
+      <path d="M6.9 9.4L8.6 11l-1.7 1.6M9.1 3.4L7.4 5l1.7 1.6" />
+    </>
+  ),
+  branch: (
+    <>
+      <circle cx="4.5" cy="3.75" r="1.6" />
+      <circle cx="4.5" cy="12.25" r="1.6" />
+      <circle cx="11.5" cy="5.75" r="1.6" />
+      <path d="M4.5 5.35v5.3M11.5 7.35c0 2.2-2 2.6-4.2 2.9-1.4.2-2.8.5-2.8 1" />
+    </>
+  ),
+  commit: (
+    <>
+      <circle cx="8" cy="8" r="2.6" />
+      <path d="M1.5 8h3.9M10.6 8h3.9" />
+    </>
+  ),
   // actions
   search: (
     <>

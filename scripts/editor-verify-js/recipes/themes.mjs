@@ -258,7 +258,7 @@ export async function run({ page, shot, step, expect, url, section }) {
   expect(sel === 'schematic', 'ArrowRight on the Source tab shows the Schematic');
   await page.keyboard.press('End');
   await page.waitForTimeout(250);
-  expect((await page.locator('.tab[role=tab][aria-selected=true][data-section]').getAttribute('data-section')) === 'build', 'End goes to the last section');
+  expect((await page.locator('.tab[role=tab][aria-selected=true][data-section]').getAttribute('data-section')) === 'compare', 'End goes to the last section');
   await page.keyboard.press('Home');
   await page.waitForTimeout(250);
   expect((await page.locator('.tab[role=tab][aria-selected=true][data-section]').getAttribute('data-section')) === 'source', 'Home goes to the first');

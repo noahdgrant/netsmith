@@ -5,7 +5,9 @@
 
 import { foldAll, unfoldAll } from '@codemirror/language';
 
+import { askForRef, toggleChanges } from './components/ChangesSwitch';
 import { api } from './client';
+import { clearCompare, compare, openDiff, refName, refText, runCompare, showChanges } from './compare/store';
 import { type Command, provide, register, runCommand } from './commands';
 import { stepProblem } from './feedback/derive';
 import { dock, filter, setDockOpen, toggleDock } from './feedback/state';
@@ -713,4 +715,69 @@ export function goToSelection(sel: Selection) {
 export function goToBusPick(bus: PickedBus) {
   goToBus(bus);
   if (focusedSection() !== 'schematic') say(`Selected bus ${bus.path.slice(bus.path.lastIndexOf('.') + 1)}. The Schematic shows it.`);
+}
+
+// ---- the comparison with a git ref (a block of its own, registered by `registerCompareCommands`) ----
+
+let compareDone = false;
+
+/** Register the commands of the Compare section (once): choose a ref, turn the marks on the views on and off,
+ * compare again, stop, and show the changes of the open file in the source. */
+export function registerCompareCommands() {
+  if (compareDone) return;
+  compareDone = true;
+  register(
+    {
+      id: 'compare.open',
+      title: 'Compare with a ref…',
+      group: 'Compare',
+      aliases: ['git', 'branch', 'tag', 'commit', 'what changed', 'since', 'diff', 'base'],
+      run: () => askForRef(),
+    },
+    {
+      id: 'compare.refresh',
+      title: 'Compare again',
+      group: 'Compare',
+      aliases: ['refresh the comparison'],
+      when: () => refName.value !== null,
+      run: () => {
+        const ref = refName.peek();
+        if (ref) void runCompare(ref);
+      },
+    },
+    {
+      id: 'compare.stop',
+      title: 'Stop comparing with a ref',
+      group: 'Compare',
+      aliases: ['clear the comparison', 'forget the ref'],
+      when: () => refName.value !== null,
+      run: () => {
+        clearCompare();
+        showChanges.value = false;
+      },
+    },
+    {
+      id: 'compare.diff.file',
+      title: 'Show changes in source',
+      group: 'Compare',
+      aliases: ['diff', 'what changed in this file', 'base side', 'file at the ref'],
+      when: () => compare.value !== null && activeFile.value !== null,
+      run: () => {
+        const path = activeFile.peek();
+        if (!path) return;
+        openDiff({ path, where: 'source' });
+        revealSection('source');
+      },
+    },
+  );
+  // The switch reads as what turning it does next, as the source's switches do.
+  provide(() => [
+    {
+      id: 'compare.marks.toggle',
+      title: showChanges.value ? `Hide changes${refText.value ? ` vs ${refText.value}` : ''}` : `Show changes${refText.value ? ` vs ${refText.value}` : ' vs a git ref'}`,
+      group: 'Compare',
+      aliases: ['marks', 'highlight changes', 'what changed', 'diff', 'outline changed parts'],
+      run: () => toggleChanges(),
+    },
+  ]);
 }

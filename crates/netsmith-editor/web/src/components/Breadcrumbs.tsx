@@ -5,6 +5,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { withKey } from '../commands';
+import { refText, showChanges } from '../compare/store';
+import { toggleChanges } from './ChangesSwitch';
 import { type Crumb, type CrumbOption, crumbOptions, crumbPath } from '../source/crumbs';
 import { canBack, canForward } from '../source/navhistory';
 import { inlineHints, outlineOpen, wordWrap } from '../source/prefs';
@@ -190,6 +192,7 @@ export function Breadcrumbs() {
         <Toggle id="toggle-wrap" icon="wrap" label="Word wrap" keys="source.wrap.toggle" on={wordWrap.value} onClick={() => (wordWrap.value = !wordWrap.value)} />
         <Toggle id="toggle-hints" icon="eye" label="Inline hints" keys="source.hints.toggle" on={inlineHints.value} onClick={() => (inlineHints.value = !inlineHints.value)} />
         <Toggle id="toggle-outline" icon="outline" label="Outline" keys="source.outline.toggle" on={outlineOpen.value} onClick={() => (outlineOpen.value = !outlineOpen.value)} />
+        <Toggle id="toggle-changes" icon="compare" label={showChanges.value ? `Hide changes${refText.value ? ` vs ${refText.value}` : ''}` : `Show changes${refText.value ? ` vs ${refText.value}` : ' vs a git ref'}`} keys="compare.marks.toggle" on={showChanges.value} onClick={toggleChanges} />
       </div>
       {menu && anchor && options.length > 0 && <CrumbMenu options={options} anchor={anchor} onPick={pick} onClose={() => setMenu(null)} />}
     </div>

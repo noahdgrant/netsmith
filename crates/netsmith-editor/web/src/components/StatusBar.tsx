@@ -40,6 +40,8 @@ import { useElapsed } from './JobProgress';
 import { Icon, SeverityIcon } from './Icons';
 import { FONT, fontSize, hoverCards, inlineHints, outlineOpen, resetEditorZoom, wordWrap, zoomEditor } from '../source/prefs';
 import { chordText, find } from '../commands';
+import { CompareChip } from './CompareChip';
+import { SourceChangesItem } from './SourceChangesItem';
 
 /** What the open file is, as the bar names it. */
 export function languageOf(path: string | null): string {
@@ -334,6 +336,7 @@ export function StatusBar() {
         </Item>
         <AnalysisItem />
         <JobItem />
+        <CompareChip />
         {anyDirty.value && (
           <Item
             class="unsaved"
@@ -362,6 +365,7 @@ export function StatusBar() {
             {popover === 'source' && <SourceOptions close={() => setPopover(null)} />}
           </span>
         )}
+        {inSource && path && <SourceChangesItem path={path} />}
         {inSource && path && (
           <Item class="language" title={`${path} is read as ${languageOf(path)}`}>
             {languageOf(path)}

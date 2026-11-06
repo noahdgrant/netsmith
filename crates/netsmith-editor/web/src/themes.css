@@ -167,6 +167,12 @@
   --cm-reveal: color-mix(in srgb, var(--accent) 38%, transparent);
   --cm-hint: #8591a5;
   --cm-guide: #1b222e;
+  /* what changed since a git ref (the Compare section and the marks on the views): added, changed, removed, and only renumbered.
+   * Marks and outlines, held to 3:1 on every surface a view draws on (theme.test.ts). */
+  --cmp-added: #52c878;
+  --cmp-changed: #e6ae3c;
+  --cmp-removed: #f0716b;
+  --cmp-renumbered: #9aa7bd;
 
   /* the schematic: a dark sheet. The names are the drawing's own (crates/netsmith-view/src/svg.rs); style.css hands them over.
    * A part is its outline in a dusty rose and a body that is only a tint of that outline over the sheet; wires are a calm sage,
@@ -339,6 +345,12 @@
   --cm-reveal: color-mix(in srgb, var(--accent) 34%, transparent);
   --cm-hint: #5f6773;
   --cm-guide: #ebe9e3;
+  /* what changed since a git ref (the Compare section and the marks on the views): added, changed, removed, and only renumbered.
+   * Marks and outlines, held to 3:1 on every surface a view draws on (theme.test.ts). */
+  --cmp-added: #1d8a3d;
+  --cmp-changed: #a8620a;
+  --cmp-removed: #c4342c;
+  --cmp-renumbered: #5a6880;
 
   /* the paper look: cream sheet, dark green wires, dark red parts */
   --sch-sheet: #f6f4e8;
@@ -507,6 +519,12 @@
   --cm-reveal: color-mix(in srgb, var(--accent) 55%, transparent);
   --cm-hint: #c9cfd7;
   --cm-guide: #4a5260;
+  /* what changed since a git ref (the Compare section and the marks on the views): added, changed, removed, and only renumbered.
+   * Marks and outlines, held to 3:1 on every surface a view draws on (theme.test.ts). */
+  --cmp-added: #5ef08c;
+  --cmp-changed: #ffcc4d;
+  --cmp-removed: #ff8a84;
+  --cmp-renumbered: #b9c4d6;
 
   --sch-sheet: #000000;
   --sch-wire: #53f07c;
@@ -674,6 +692,12 @@
   --cm-reveal: color-mix(in srgb, var(--accent) 40%, transparent);
   --cm-hint: #3d3d3d;
   --cm-guide: #b9b9b9;
+  /* what changed since a git ref (the Compare section and the marks on the views): added, changed, removed, and only renumbered.
+   * Marks and outlines, held to 3:1 on every surface a view draws on (theme.test.ts). */
+  --cmp-added: #006b24;
+  --cmp-changed: #7a4300;
+  --cmp-removed: #a5160f;
+  --cmp-renumbered: #3a4558;
 
   --sch-sheet: #ffffff;
   --sch-wire: #006b2b;

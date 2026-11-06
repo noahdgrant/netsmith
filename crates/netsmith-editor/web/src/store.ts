@@ -25,6 +25,7 @@ import {
   undoOpen,
   visiblePanes,
 } from './layout';
+import { noteCompareProgress } from './compare/progress';
 import { booting, noteElapsed, notify, setSocket, track } from './feedback/state';
 import { load, save as keep } from './storage';
 import {
@@ -270,6 +271,11 @@ export async function start() {
           void onRebuilt();
           break;
         case 'progress': {
+          if (message.task === 'compare') {
+            // A comparison with a git ref: its stage, for the Compare section.
+            noteCompareProgress(message);
+            break;
+          }
           if (message.task === 'analyse') {
             // The analysis of the files on disk: the stage and its count, not a line of text.
             if (message.stage !== undefined) {

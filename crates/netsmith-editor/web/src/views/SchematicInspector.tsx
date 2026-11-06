@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { NetInfo, PartInfo } from '../api';
 import { ALL } from '../sheets';
 import { hoverOfRefs } from '../hover';
-import { detail, goTo } from '../store';
+import { detail, goTo, revealSection } from '../store';
 import type { Drawing } from '../schematic/load';
 import { busCount, busMembers, busName, busTargets } from '../schematic/bus';
 import type { Bus } from '../schematic/drawing';
@@ -15,6 +15,8 @@ import { plural } from '../util';
 import { Defs, InspectorAction, InspectorHead, InspectorSection, PinChip } from '../components/Inspector';
 import { Icon } from '../components/Icons';
 import type { SheetRow } from './SheetNav';
+import { removedOn } from '../compare/model';
+import { baseLocation, marks, openDiff, refText } from '../compare/store';
 import { clearSelection, goToSource, selectedBus, selectedNet, selectedPart, showOnPcb } from './schematic-selection';
 
 export interface PinRef {
@@ -65,6 +67,7 @@ export function Inspector(p: InspectorProps) {
         )}
       </div>
       <PartsList {...p} />
+      <RemovedParts {...p} />
       {d && d.notes.length > 0 && (
         <InspectorSection title="Notes" count={d.notes.length} open={false}>
           <ul class="notes">
@@ -482,6 +485,45 @@ function PartsList({ drawing, rows, current, goPart }: InspectorProps) {
           )}
         </tbody>
       </table>
+    </InspectorSection>
+  );
+}
+
+/** Parts the comparison with a git ref says are gone from this module: the head has nothing to draw, so they are listed, with the
+ * value they had and where they were declared at the ref. */
+function RemovedParts({ current, drawing }: InspectorProps) {
+  const m = marks.value;
+  const d = detail.value;
+  if (!m || m.removedParts.length === 0) return null;
+  const list = removedOn(m.removedParts, d?.parts ?? [], drawing.index.partSheet, current, ALL);
+  if (list.length === 0) return null;
+  return (
+    <InspectorSection title={current === ALL ? 'Removed from this board' : 'Removed from this module'} count={list.length}>
+      <ul class="removed-list" data-testid="removed-parts" aria-label={`Parts at ${refText.value} that are gone`}>
+        {list.map((r) => (
+          <li class="removed-row" key={r.path}>
+            <span class="rm-des">{r.designator}</span>
+            <span class="rm-val" title={`${r.kind} ${r.value} at ${r.path}`}>
+              {r.value} <span class="faint">{r.kind}</span>
+            </span>
+            {r.at && baseLocation(r.at, 'source') && (
+              <button
+                class="link"
+                title={`Where it was declared at ${refText.value}: ${r.at.file}:${r.at.line}`}
+                onClick={() => {
+                  const t = baseLocation(r.at, 'source');
+                  if (t) {
+                    openDiff(t);
+                    revealSection('source');
+                  }
+                }}
+              >
+                Base
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
     </InspectorSection>
   );
 }

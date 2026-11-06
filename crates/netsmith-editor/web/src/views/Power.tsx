@@ -1,3 +1,4 @@
+import { ChangesSwitch } from '../components/ChangesSwitch';
 import type { ComponentChildren } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
@@ -147,6 +148,7 @@ function RailCard({
       class={`pt-node pt-rail ${level ?? ''} ${selected ? 'selected' : ''} ${tint} ${dim ? 'dim' : ''}`}
       data-node={r.id}
       data-kind="rail"
+      data-cmp-board={r.board}
       style={{ left: p.x, top: p.y, width: p.w, height: p.h }}
       {...hoverAttrs({ kind: 'net', key: r.net })}
       onClick={onSelect}
@@ -405,6 +407,7 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
           )}
         </div>
         <span class="spacer" />
+        <ChangesSwitch />
         <button class="tool small" onClick={() => setAll(!everyOpen)} title="List the loads of every rail, or hide them all">
           {everyOpen ? 'Hide all loads' : 'List all loads'}
         </button>

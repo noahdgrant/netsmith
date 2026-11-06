@@ -178,7 +178,8 @@ describe('sectionOfKey', () => {
     expect(sectionOfKey('1')).toBe('source');
     expect(sectionOfKey('2')).toBe('schematic');
     expect(sectionOfKey('7')).toBe('build');
-    expect(sectionOfKey('8')).toBeNull();
+    expect(sectionOfKey('8')).toBe('compare');
+    expect(sectionOfKey('9')).toBeNull();
     expect(sectionOfKey('a')).toBeNull();
   });
 });

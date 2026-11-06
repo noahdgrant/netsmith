@@ -6,9 +6,11 @@ import './style.css';
 import './views.css';
 import './pcbdraw.css';
 import './source.css';
+import './compare.css';
 import './responsive.css';
 import './settings.css';
 import './splash.css';
+import { installCompareDom } from './compare/compareDom';
 import { installHoverDom } from './hoverDom';
 import { start } from './store';
 import { noteError } from './diagnostics';
@@ -23,5 +25,6 @@ window.addEventListener('error', (e) => noteError(`${e.message}${e.filename ? ` 
 window.addEventListener('unhandledrejection', (e) => noteError(`Unhandled: ${(e.reason as Error | undefined)?.message ?? String(e.reason)}`));
 installHoverDom();
 installTitle();
+installCompareDom();
 render(<App />, document.getElementById('app')!);
 void start();

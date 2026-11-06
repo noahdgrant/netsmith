@@ -80,6 +80,6 @@
 .pcb-overlay .mark.warning.on { fill: color-mix(in srgb, var(--warning) 16%, transparent); }
 
 /* the net list's mark: a net has no colour on the board, so its mark is neutral (a plane is dashed) */
-.net-row .swatch { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--text-faint); background: transparent; }
+.net-row .swatch { width: 0.5rem; height: 0.5rem; border-radius: 50%; border: 1.5px solid var(--text-faint); background: transparent; }
 .net-row .swatch.plane { border-style: dashed; border-radius: 2px; }
 .net-row.sel .swatch { border-color: var(--sel); }

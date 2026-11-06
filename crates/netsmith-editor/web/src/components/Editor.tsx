@@ -19,7 +19,9 @@ import { EmptyState } from './ui';
 import { languageExtensions } from '../languages';
 import { flashLine, nextFlash, revealFlash, revealTarget } from '../reveal';
 import { ensurePower, power } from '../source/boarddata';
+import { baseText, compare, showChanges } from '../compare/store';
 import { cardExtension } from '../source/cm-card';
+import { changesExtension, setBaseText } from '../source/cm-changes';
 import { completeExtension } from '../source/cm-complete';
 import { foldExtension } from '../source/cm-fold';
 import { guidesExtension } from '../source/cm-guides';
@@ -63,6 +65,7 @@ function extensionsFor(path: string, readonly: boolean): Extension[] {
   return [
     severityGutter,
     lineNumbers(),
+    changesExtension(path),
     foldExtension,
     highlightActiveLineGutter(),
     highlightActiveLine(),
@@ -271,6 +274,32 @@ export function Editor() {
     const lines = v.state.doc.toString().split('\n');
     v.dispatch({ effects: setHints.of(hintsFor(path, lines, board, rails)) });
   }, [wantHints, board, rails, path, file === undefined, file?.rev]);
+
+  // The marks of the comparison with a git ref: the file at the ref is the base the margin diffs the text against.
+  const marking = showChanges.value;
+  const cmp = compare.value;
+  useEffect(() => {
+    const v = view.current;
+    if (!v || !path || current.current !== path) return;
+    if (!marking || !cmp) {
+      v.dispatch({ effects: setBaseText.of(null) });
+      return;
+    }
+    let live = true;
+    const entry = cmp.source.files.find((f) => f.path === path);
+    const put = (base: string | null) => {
+      if (live && current.current === path) view.current?.dispatch({ effects: setBaseText.of(base) });
+    };
+    // Only a file that differs is asked of the server: one that is not listed is as it was at the ref (so what is on disk is the
+    // base), a new one is all new, and a file the server does not give (a note, a library) has no marks.
+    if (!entry) put(openFiles.peek()[path]?.saved ?? null);
+    else if (entry.status === 'added' || entry.status === 'untracked') put('');
+    else if (entry.status === 'deleted' || !/\.(nsm|toml|csv)$/.test(path)) put(null);
+    else void baseText(path).then(put);
+    return () => {
+      live = false;
+    };
+  }, [marking, cmp, path, file === undefined]);
 
   // A request to put the cursor somewhere.
   const ask = reveal.value;
