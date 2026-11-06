@@ -35,7 +35,7 @@ impl BoardData {
     pub fn libraries(&self) -> Result<&Libraries, ApiError> {
         (*self.libraries)
             .as_ref()
-            .map_err(|e| ApiError::internal(e.clone()))
+            .map_err(|e| ApiError::unprocessable(e.clone(), "libraries_unusable", &[]))
     }
 }
 

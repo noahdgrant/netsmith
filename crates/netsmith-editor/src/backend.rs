@@ -2,9 +2,9 @@
 //! compiler behind it and the compiler's crates do not depend on a web server.
 
 use crate::api::{
-    Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Definition, FabReport,
-    FileContent, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited, PcbFindings, PcbReport,
-    PcbScene, PowerTree, Project, Saved, SystemView,
+    Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
+    FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited,
+    PcbFindings, PcbReport, PcbScene, PowerTree, Project, Saved, SystemView,
 };
 
 /// A refusal, with the HTTP status that says why.
@@ -12,6 +12,21 @@ use crate::api::{
 pub struct ApiError {
     pub status: u16,
     pub message: String,
+    /// What the failure is, for a page that asks for it (`Accept: application/json`); the
+    /// plain-text body is `message` either way.
+    pub detail: Option<ErrorDetail>,
+}
+
+/// The structured form of a failure of the project's own data (a part with no footprint, a
+/// pad the footprint lacks, ...), as opposed to a fault of the server. The server answers a
+/// request that accepts JSON with
+/// `{"code": "...", "message": "...", "<field>": "...", ...}`: `code` is one of a fixed list
+/// of snake_case words, `message` is the text of the plain-text body, and the other keys are
+/// the strings of `fields` (which ones depends on the code).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ErrorDetail {
+    pub code: String,
+    pub fields: Vec<(String, String)>,
 }
 
 impl ApiError {
@@ -19,7 +34,38 @@ impl ApiError {
         Self {
             status,
             message: message.into(),
+            detail: None,
         }
+    }
+
+    /// The project's own data cannot be used for what was asked (`422`): the request is
+    /// right and the server is working, the files are what is wrong. `code` and `fields` are
+    /// an [`ErrorDetail`].
+    pub fn unprocessable(message: impl Into<String>, code: &str, fields: &[(&str, &str)]) -> Self {
+        Self {
+            status: 422,
+            message: message.into(),
+            detail: Some(ErrorDetail {
+                code: code.to_string(),
+                fields: fields
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+            }),
+        }
+    }
+
+    /// The JSON body of a failure that has a [`detail`](Self::detail).
+    pub fn json(&self) -> Option<String> {
+        let detail = self.detail.as_ref()?;
+        let mut body = serde_json::Map::new();
+        body.insert("code".into(), detail.code.clone().into());
+        body.insert("message".into(), self.message.clone().into());
+        for (key, value) in &detail.fields {
+            body.entry(key.clone())
+                .or_insert_with(|| value.clone().into());
+        }
+        serde_json::to_string(&body).ok()
     }
 
     pub fn bad_request(message: impl Into<String>) -> Self {
@@ -185,4 +231,40 @@ pub trait Backend: Send + Sync + 'static {
         text: &str,
         offset: usize,
     ) -> Result<Option<Definition>, ApiError>;
+    /// Whether the project is in a git work tree and what it can be compared with (ADR 0051).
+    /// A backend with no git says so.
+    fn git(&self) -> GitInfo {
+        GitInfo {
+            available: false,
+            reason: Some("this backend has no git".to_string()),
+            root: None,
+            project_dir: None,
+            branch: None,
+            head: None,
+            dirty: false,
+            project_dirty: false,
+            refs: Vec::new(),
+            commits: Vec::new(),
+        }
+    }
+    /// What changed in the circuit between `rev` and the files on disk, for one board or all.
+    /// It may take as long as an analysis; `observe` is told how far it has got (the events of
+    /// an analysis, and the stages `extract` and `diff`), from any thread. Refused with 404 for
+    /// a ref that does not exist and with 422 (`git_unavailable`) for a project that is not in
+    /// a git work tree.
+    fn compare(
+        &self,
+        rev: &str,
+        board: Option<&str>,
+        observe: &Observer,
+    ) -> Result<Compare, ApiError> {
+        let _ = (rev, board, observe);
+        Err(ApiError::not_found("this backend cannot compare"))
+    }
+    /// The text of a file of the project as it is at `rev`, read from git (`readonly`, the
+    /// stamp is the commit's hash).
+    fn git_file(&self, rev: &str, path: &str) -> Result<FileContent, ApiError> {
+        let _ = (rev, path);
+        Err(ApiError::not_found("this backend cannot read from git"))
+    }
 }

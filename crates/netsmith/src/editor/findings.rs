@@ -516,7 +516,7 @@ pub fn run_kicad(board: &Board, routed: bool, say: &Say) -> KicadResult {
     };
     let Some(cli) = KicadCliExe::locate() else {
         return unavailable(
-            "kicad-cli was not found (set KICAD_CLI, or install KiCad 9): only netsmith's own checks ran"
+            "KiCad not found: set KICAD_CLI or install KiCad (only netsmith's own checks ran)"
                 .to_string(),
         );
     };

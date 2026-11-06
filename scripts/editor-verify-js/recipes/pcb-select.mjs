@@ -1,6 +1,6 @@
 // The PCB canvas: select a part by click and from the list, see its pads and nets, the
 // ratsnest lines to it, hover tooltips, the grid, zoom.
-import { BOARD, PART, drag, fresh, labelOf, openPcb, partAt, partOf, screenAt } from '../pcb-helpers.mjs';
+import { BOARD, PART, drag, emptySpot, fresh, labelOf, openPcb, partAt, partOf, screenAt } from '../pcb-helpers.mjs';
 
 export const fixture = 'outline_and_pours';
 
@@ -35,7 +35,9 @@ export async function run(tools) {
   await shot('tooltip');
 
   step('click empty board: the selection goes; pick a part from the list');
-  const empty = await screenAt(page, c2.scene.outline.x + c2.scene.outline.width / 2, c2.scene.outline.y + c2.scene.outline.height - 6);
+  const spot = emptySpot(c2.scene);
+  expect(spot.room >= 2, `the empty spot is ${spot.room.toFixed(1)} mm from every part, keepout and cutout`);
+  const empty = await screenAt(page, spot.x, spot.y);
   await page.mouse.click(empty.x, empty.y);
   expect((await page.locator('[data-testid=part-inspector]').count()) === 0, 'nothing selected');
   const header = labelOf(partOf(c2.scene, PART.powerIn));

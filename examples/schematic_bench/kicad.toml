@@ -1,17 +1,19 @@
 # What KiCad calls the parts this example defines itself (ADR 0021). The microcontroller and
-# the regulator IC are invented and drawn by the library of this project; the amplifier and
-# the rest are KiCad's stock symbols.
+# the regulator IC are invented and drawn by the library of this project (the microcontroller
+# has a footprint of its own in `bench.pretty`, with a pad for every pin of both of its units,
+# which no stock footprint has); the amplifier and the rest are KiCad's stock symbols.
 
 [[library]]
 name = "bench"
 symbols = "bench.kicad_sym"
+footprints = "bench.pretty"
 
 [[part]]
 kind = "Mcu97"
 package = "QFP"
 default = true
 symbol = "bench:Mcu97"
-footprint = "Package_QFP:LQFP-100_14x14mm_P0.5mm"
+footprint = "bench:Mcu97"
 
 [[part]]
 kind = "Buck1V8"

@@ -60,20 +60,30 @@ export async function run(tools) {
     return { state: findings.kicad, note: findings.kicadNote, found: project.kicad, kicad: findings.findings.filter((f) => f.source === 'kicad').length };
   }, BOARD);
   console.log(`    server: kicad state ${server.state}, kicad-cli found ${server.found}, ${server.kicad} KiCad finding(s)`);
-  await page.waitForFunction((state) => document.querySelector('[data-testid=kicad-state]')?.getAttribute('data-state') === state, server.state, { timeout: 10000 });
-  const shown = await page.locator('[data-testid=kicad-state]').innerText();
   // Every wording the page has, by the state the server reports (`pcb/kicad.ts`): a check that ran,
-  // one that failed, or one not asked; and when kicad-cli is not found, the line that says how to fix it.
-  const NOT_FOUND = 'KiCad not found: set KICAD_CLI or install KiCad';
-  const WORDS = { ran: ['with KiCad'], unavailable: ['KiCad unavailable', NOT_FOUND], not_run: ['KiCad not run', NOT_FOUND] };
+  // one that failed, or one not asked. Where kicad-cli is not found the list says so once, as its own
+  // state (`.kicad-missing`: title and the fix), and has no line beside the button and no red note.
+  const WORDS = { ran: 'with KiCad', unavailable: 'KiCad unavailable', not_run: 'KiCad not run' };
   expect(!!WORDS[server.state], `the server's state is one the page knows (${server.state})`);
-  expect(WORDS[server.state].includes(shown), `the page's line matches the server's state ${server.state} (${shown})`);
-  if (!server.found && server.state !== 'ran') expect(shown === NOT_FOUND, `with no kicad-cli the line says how to fix it (${shown})`);
+  if (server.found) {
+    await page.waitForFunction((state) => document.querySelector('[data-testid=kicad-state]')?.getAttribute('data-state') === state, server.state, { timeout: 10000 });
+    const shown = await page.locator('[data-testid=kicad-state]').innerText();
+    expect(shown === WORDS[server.state], `the page's line matches the server's state ${server.state} (${shown})`);
+    expect((await page.locator('.kicad-missing').count()) === 0, 'no "not found" state when kicad-cli is there');
+  } else {
+    await page.waitForSelector('.kicad-missing');
+    expect((await page.locator('[data-testid=kicad-state]').count()) === 0, 'no line beside the button when kicad-cli is not found: the state says it');
+    expect((await page.locator('.note-line.bad').count()) === 0, 'no red note repeating it');
+    const said = await page.locator('[data-testid=findings]').innerText();
+    const times = said.split('KiCad not found').length - 1;
+    expect(times === 1, `"KiCad not found" is said once in the findings list (${times})`);
+    expect(/KICAD_CLI/.test(await page.locator('.kicad-missing').innerText()), 'it says how to fix it');
+  }
   if (server.state === 'ran') {
     const kicad = await page.locator('[data-testid=finding] .tag', { hasText: 'KiCad' }).count();
     expect(kicad > 0 && kicad === server.kicad, `KiCad's findings are listed (${kicad})`);
     expect((await page.locator('[data-testid=finding]', { hasText: 'courtyards_overlap' }).count()) === 1, 'KiCad names the courtyard overlap');
-  } else {
+  } else if (server.found) {
     expect((await page.locator('.note-line.bad').innerText()).length > 0, 'the note says why KiCad did not run');
   }
   const s = await scene(page);

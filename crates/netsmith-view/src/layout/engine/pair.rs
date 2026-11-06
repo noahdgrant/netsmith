@@ -34,6 +34,7 @@ pub(super) struct PairRoute {
     pub order: [usize; 2],
 }
 
+#[derive(Clone)]
 pub(super) struct Placement {
     /// Where the satellite's origin is, from the main part's.
     pub off: Pt,
@@ -70,11 +71,39 @@ pub(super) fn detect(
     if nets[0] == nets[1] {
         return None;
     }
+    // A part between two rails (the shunt of a current monitor, across the two supplies of
+    // its chip) is a pair satellite when the sheet is drawn so: its pins are the rails' stubs.
+    // This is the one case in which the choice matters, and it is told to the context when
+    // there is a place for the part (`Ctx::touch`).
+    if nets
+        .iter()
+        .all(|&n| ctx.power[n] == Some(PowerKind::Supply))
+    {
+        if nets.iter().any(|&n| skip[n]) {
+            return None;
+        }
+        let found = beside_pins(placed, part, anchor_pins, &nets);
+        if found.is_some() {
+            ctx.touch(Tuning::PAIR_RAILS_BIT);
+        }
+        return if ctx.tuning.pair_rails { found } else { None };
+    }
     for &n in &nets {
         if ctx.power[n].is_some() || ctx.ground[n] || ctx.external[n] || skip[n] {
             return None;
         }
     }
+    beside_pins(placed, part, anchor_pins, &nets)
+}
+
+/// The pins of one anchor, on one side of it and near each other, that `part`'s two nets are
+/// on (the rest of [`detect`]).
+fn beside_pins(
+    placed: &[PlacedPart],
+    part: usize,
+    anchor_pins: &BTreeMap<usize, Vec<(usize, usize)>>,
+    nets: &[usize],
+) -> Option<PairPlan> {
     let mut best: Option<((i64, usize, usize, usize), PairPlan)> = None;
     for &(pa, ia) in anchor_pins.get(&nets[0])? {
         for &(pb, ib) in anchor_pins.get(&nets[1])? {
@@ -135,10 +164,63 @@ fn nodes_of(from: Node, to: Node) -> Vec<Node> {
     out
 }
 
+/// The places found so far on a sheet, by everything [`place`] reads. A sheet is drawn several
+/// times (the names the policy chooses, the choices of [`Tuning`]) and the satellite of a pair
+/// is usually beside the same pins with the same obstacles in each, while placing it is the
+/// dearest step of a drawing (every place near the pins is tried, a few hundred of them
+/// routed).
+#[derive(Default)]
+pub(in crate::layout) struct Cache {
+    found: std::cell::RefCell<std::collections::HashMap<Vec<u64>, Option<Placement>>>,
+}
+
+/// Everything [`place`] reads, as numbers: two calls with the same key have the same answer.
+/// (The sheet's own data, the glyphs and the nets, are the same for every call of one
+/// [`Ctx`], which owns the cache.)
+fn key(placed: &[PlacedPart], plan: &PairPlan, part: usize, obstacles: &[Rect]) -> Vec<u64> {
+    let a = &placed[plan.anchor];
+    let mut key: Vec<u64> = Vec::with_capacity(8 + a.pins.len() * 5 + obstacles.len() * 4);
+    key.extend([part, plan.anchor].map(|n| n as u64));
+    for (_, pin) in plan.links {
+        key.push(pin as u64);
+    }
+    for (pin, g) in a.pins.iter().zip(&a.glyph.pins) {
+        key.push(pin.at.x.to_bits());
+        key.push(pin.at.y.to_bits());
+        key.push(pin.escape as u64);
+        key.push(pin.net.map_or(u64::MAX, |n| n as u64));
+        key.push(u64::from(g.hidden));
+    }
+    key.push(obstacles.len() as u64);
+    for r in obstacles {
+        key.extend([r.min.x, r.min.y, r.max.x, r.max.y].map(f64::to_bits));
+    }
+    key
+}
+
 /// The cheapest place and turn for the pair satellite `part` of `plan` beside the main part
 /// `anchor`, which stands at the origin of `placed`, with `obstacles` (boxes the satellite and
 /// its texts must keep clear of) already there. `None` when no place has two wires that reach.
 pub(super) fn place(
+    ctx: &Ctx,
+    placed: &[PlacedPart],
+    plan: &PairPlan,
+    part: usize,
+    obstacles: &[Rect],
+) -> Option<Placement> {
+    let key = key(placed, plan, part, obstacles);
+    if let Some(known) = ctx.pair_places.found.borrow().get(&key) {
+        return known.clone();
+    }
+    let found = search(ctx, placed, plan, part, obstacles);
+    ctx.pair_places
+        .found
+        .borrow_mut()
+        .insert(key, found.clone());
+    found
+}
+
+fn search(
     ctx: &Ctx,
     placed: &[PlacedPart],
     plan: &PairPlan,

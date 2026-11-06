@@ -1,0 +1,34 @@
+# What KiCad calls the three invented parts of bus_bench (ADR 0021), so that the PCB view has
+# footprints to place. The symbols are the project's own (`libs/bus.kicad_sym`, drawn by the
+# fixture, not a real chip's); the footprints are generated ones (ADR 0043) with as many pads
+# as the part has pins.
+#
+# Keep every pin of an interface on ONE side of its part's symbol (the signal pins of Radio and
+# Flash are all on the left): the schematic draws a bus only for three or more members on the same
+# side of both parts (ADR 0049, rule 2), so a symbol with two outputs right and two inputs left
+# draws no bus and the schematic-bus recipe fails.
+
+[[library]]
+name = "bus"
+symbols = "libs/bus.kicad_sym"
+
+[[part]]
+kind = "Cpu"
+package = "MSOP-10"
+default = true
+symbol = "bus:Cpu"
+footprint = "Package_SO:MSOP-10_3x3mm_P0.5mm"
+
+[[part]]
+kind = "Flash"
+package = "SOT-23-6"
+default = true
+symbol = "bus:Flash"
+footprint = "Package_TO_SOT_SMD:SOT-23-6"
+
+[[part]]
+kind = "Radio"
+package = "SOT-23-6"
+default = true
+symbol = "bus:Radio"
+footprint = "Package_TO_SOT_SMD:SOT-23-6"

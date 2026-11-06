@@ -54,7 +54,7 @@ const audit = () => {
   for (let t; (t = walker.nextNode()); ) {
     const text = t.textContent.trim();
     const e = t.parentElement;
-    if (!text || !e || e.closest('svg, .away, script, style, [disabled], [aria-disabled=true], .cm-wrap, details:not([open]) > :not(summary)') || !vis(e)) continue;
+    if (!text || !e || e.closest('svg, .away, script, style, [disabled], [aria-disabled=true], .cm-wrap, .toast.leaving, details:not([open]) > :not(summary)') || !vis(e)) continue;
     const key = e.className + text.slice(0, 12);
     if (seen.has(key)) continue;
     seen.add(key);
@@ -74,6 +74,8 @@ const audit = () => {
   return { overflow: document.documentElement.scrollWidth > innerWidth, low };
 };
 
+// A toast on its way out (`.toast.leaving`: fading to nothing over 160 ms, then dropped) is not text a person reads, and its
+// opacity makes any ratio 1:1: the audit leaves it out, as it leaves out what is hidden. A toast that stays is audited.
 export async function run({ page, shot, step, expect, url, section }) {
   const attr = () => page.evaluate(() => document.documentElement.dataset.theme);
   const stored = () => page.evaluate(() => localStorage.getItem('netsmith.theme'));

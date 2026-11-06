@@ -77,10 +77,12 @@ impl PlaceError {
     /// mistake, not the request's.
     pub fn read(self) -> ApiError {
         match self {
-            PlaceError::Layout(message) => ApiError::internal(message),
-            PlaceError::Unplaceable(name, found) => {
-                ApiError::internal(format!("{name}: {}", found.errors().join("\n")))
-            }
+            PlaceError::Layout(message) => ApiError::unprocessable(message, "layout_mismatch", &[]),
+            PlaceError::Unplaceable(name, found) => ApiError::unprocessable(
+                format!("{name}: {}", found.errors().join("\n")),
+                "unplaceable",
+                &[("board", &name)],
+            ),
             PlaceError::Other(e) => e,
         }
     }
@@ -100,13 +102,65 @@ pub fn place_checked(data: &BoardData, name: &str) -> Result<Entry, PlaceError> 
             // The stamp first: a file that changes meanwhile then makes an edit that
             // was based on this reading refused, not applied over the change.
             let stamp = super::files::stamp_of(file);
-            let layout = crate::layout::read(file, boards)
-                .map_err(|e| PlaceError::Other(ApiError::internal(format!("{name}: {e}"))))?;
+            let layout = crate::layout::read(file, boards).map_err(|e| {
+                PlaceError::Other(ApiError::unprocessable(
+                    format!("{name}: {e}"),
+                    "layout_unreadable",
+                    &[("board", name)],
+                ))
+            })?;
             (layout, stamp)
         }
         None => (None, "none".to_string()),
     };
     place_with(data, name, layout, stamp)
+}
+
+/// A board that cannot be made from what the project says (a part with no footprint, a pad
+/// that the footprint does not have, a size the parts do not fit): the project's mistake, so
+/// `422` with a `code` for the page (`ApiError::unprocessable`) and not a fault of the
+/// server. The fields name what is wrong: `board`, and where there is one `part` (a
+/// designator), `pad`, `net` and `footprint`.
+pub fn board_error(name: &str, error: &netsmith_pcb::BoardError) -> ApiError {
+    use netsmith_pcb::BoardError as E;
+    let message = format!("{name}: {error}");
+    let board = ("board", name);
+    match error {
+        E::NoPad {
+            net,
+            refdes,
+            pad,
+            footprint,
+            ..
+        } => ApiError::unprocessable(
+            message,
+            "footprint_lacks_pad",
+            &[
+                board,
+                ("part", refdes),
+                ("pad", pad),
+                ("net", net),
+                ("footprint", footprint),
+            ],
+        ),
+        E::Map { refdes, .. } => {
+            ApiError::unprocessable(message, "no_kicad_mapping", &[board, ("part", refdes)])
+        }
+        E::Footprint { refdes, .. } => {
+            ApiError::unprocessable(message, "footprint_unreadable", &[board, ("part", refdes)])
+        }
+        E::NoPart { refdes } => {
+            ApiError::unprocessable(message, "no_such_part", &[board, ("part", refdes)])
+        }
+        E::NoProcess { .. } | E::Process(_) => {
+            ApiError::unprocessable(message, "process_unusable", &[board])
+        }
+        E::DoesNotFit(_) => ApiError::unprocessable(message, "does_not_fit", &[board]),
+        E::Constraints(_) | E::Unplaceable(_) => {
+            ApiError::unprocessable(message, "requirements_unmet", &[board])
+        }
+        E::Design(_) => ApiError::unprocessable(message, "invalid_design", &[board]),
+    }
 }
 
 /// The board of `name` placed with `layout`, which was in the file at `stamp`.
@@ -130,7 +184,7 @@ pub fn place_with(
         netsmith_pcb::BoardError::Unplaceable(found) => {
             PlaceError::Unplaceable(name.to_string(), found)
         }
-        e => PlaceError::Other(ApiError::internal(format!("{name}: {e}"))),
+        e => PlaceError::Other(board_error(name, &e)),
     })?;
     if let Some((layout, file)) = &layout {
         apply_layout(&mut board, layout, file)
