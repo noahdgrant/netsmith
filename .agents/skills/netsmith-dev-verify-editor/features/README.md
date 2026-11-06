@@ -33,6 +33,7 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | One selection in every view, go to anything (Ctrl+P), command palette (Ctrl+Shift+P, Ctrl+K), keyboard cheat sheet (?) | `palette.md` | `palette` | `two_boards` |
 | Tables that fill the page and a help column in the margin: BOM, Compare, Build at 1920 px; folded and kept; absent without the margin | `bom.md` | `view-help` (and `compare`) | `two_boards` |
 | The keyboard and screen reader audit: landmarks, names, Tab order, layers closed topmost first, the focus given back | `layout.md` | `a11y` | `two_boards` |
+| Cancelling the analysis (status bar, Run again), a comparison (card, Escape), a build and a fab (card) | `cancel.md` | `cancel`, `cancel-jobs` | `big`, `two_boards` (`launch --git`) |
 | Build panel (build, fab, downloads) | `build-panel.md` | `build` | `two_boards` |
 | Orders (list, run, summary, downloads) | `build-panel.md` | `order` | `two_boards` |
 | Problems: errors, warnings, notes | `source-editor.md` | `editor`, `big-problems` | `two_boards`, `big` |

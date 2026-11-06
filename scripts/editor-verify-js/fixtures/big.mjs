@@ -76,7 +76,8 @@ module PullBank {
 }
 `;
 
-function main() {
+/** The board's source, with `stages` regulated rails (the recipes of cancellation write a bigger one, which takes the solver longer). */
+export function bigSource(stages = STAGES) {
   const lines = [
     '//! A synthetic big board: eight regulated rails with an indicator and a pull-up bank each.',
     '',
@@ -100,8 +101,8 @@ function main() {
     '    .input.pos ~ .power_in.p1',
     '    .input.neg ~ .power_in.p2',
   ];
-  for (let i = 1; i <= STAGES; i++) {
-    const loads = [5, 10, 15, 20, 30, 40, 50, 60][i - 1];
+  for (let i = 1; i <= stages; i++) {
+    const loads = [5, 10, 15, 20, 30, 40, 50, 60][(i - 1) % 8];
     lines.push(
       '',
       `    .stage${i}: LdoStage { .vout.voltage &= 3.3V +/- 5% }`,
@@ -123,12 +124,12 @@ function main() {
 }
 
 /** Writes the board and its module files into a project made by `netsmith init`. */
-export function writeBig(project) {
+export function writeBig(project, stages = STAGES) {
   for (const [file, text] of [
     ['src/sheets/power/ldo_stage.nsm', LDO],
     ['src/sheets/power/indicator.nsm', INDICATOR],
     ['src/sheets/io/pull_bank.nsm', PULLS],
-    ['src/main.nsm', main()],
+    ['src/main.nsm', bigSource(stages)],
   ]) {
     fs.mkdirSync(path.dirname(path.join(project, file)), { recursive: true });
     fs.writeFileSync(path.join(project, file), text);

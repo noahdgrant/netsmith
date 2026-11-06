@@ -1,7 +1,27 @@
 import { useEffect, useState } from 'preact/hooks';
 
-import { job } from '../store';
+import { api } from '../client';
+import { job, say } from '../store';
 import { seconds } from '../util';
+
+/** The jobs the Cancel button stops: the schematic build, a fab and an order. (The router has its own Stop on the PCB view,
+ * which keeps what it routed.) */
+const CANCEL: Record<string, () => Promise<{ cancelled: boolean }>> = {
+  build: () => api.cancelBuild(),
+  fab: () => api.cancelFab(),
+  order: () => api.cancelOrder(),
+};
+
+/** Ask the server to stop the running job of `task`: it ends at its next checkpoint and its request is answered `cancelled`. */
+export async function cancelJob(task: string): Promise<void> {
+  const cancel = CANCEL[task];
+  if (!cancel) return;
+  try {
+    await cancel();
+  } catch (e) {
+    say(e instanceof Error ? e.message : String(e), true);
+  }
+}
 
 /** Time since `since`, ticking while it is shown. */
 export function useElapsed(since: number | null): number {
@@ -27,6 +47,11 @@ export function JobProgress({ task }: { task: string }) {
         <span class="spinner" />
         <span class="job-line">{last ?? 'starting'}</span>
         <span class="job-time">{seconds(elapsed)}</span>
+        {task in CANCEL && (
+          <button class="tool small" data-testid={`cancel-${task}`} data-tip="Stop this. Nothing of what it is making is kept" onClick={() => void cancelJob(task)}>
+            Cancel
+          </button>
+        )}
       </div>
       {j.lines.length > 1 && (
         <ul class="job-lines">

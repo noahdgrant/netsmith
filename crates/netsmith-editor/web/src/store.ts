@@ -26,7 +26,7 @@ import {
   visiblePanes,
 } from './layout';
 import { noteCompareProgress } from './compare/progress';
-import { booting, noteElapsed, notify, setSocket, track } from './feedback/state';
+import { booting, noteElapsed, notify, pending, setSocket, track } from './feedback/state';
 import { load, save as keep } from './storage';
 import {
   type Selection,
@@ -279,7 +279,17 @@ export async function start() {
           if (message.task === 'analyse') {
             // The analysis of the files on disk: the stage and its count, not a line of text.
             if (message.stage !== undefined) {
-              track({ type: 'progress', now: Date.now(), stage: message.stage, board: message.board, done: message.done ?? 0, total: message.total ?? 0 });
+              track({
+                type: 'progress',
+                now: Date.now(),
+                stage: message.stage,
+                board: message.board,
+                done: message.done ?? 0,
+                total: message.total ?? 0,
+                unit: message.unit,
+                unitDone: message.unitDone,
+                unitTotal: message.unitTotal,
+              });
             }
             break;
           }
@@ -299,6 +309,11 @@ export async function start() {
           // The server began to read the project, for whatever reason (a file changed outside the
           // editor, or it is the first time): its own start time is the clock.
           track({ type: 'analysing', since: message.since });
+          // A new analysis begins: the reading is no longer the one a cancelled analysis left.
+          if (analysis.peek()?.cancelled) analysis.value = { ...analysis.peek()!, cancelled: undefined };
+          break;
+        case 'cancelled':
+          noteCancelled(message);
           break;
         default:
           // A message type added to `ServerMessage` without a case above fails the build here
@@ -313,6 +328,38 @@ export async function start() {
     },
   );
   await refresh();
+}
+
+/** A job was cancelled (the server says so when it has ended). An analysis that was cancelled published nothing, so no `rebuilt` follows
+ * (unless it was the first): the page keeps the reading it has and says the analysis was cancelled. A comparison, build, fab or order is
+ * told by its own request's answer. */
+function noteCancelled(message: { task: string }) {
+  if (message.task !== 'analyse') return;
+  track({ type: 'cancelled' });
+  const a = analysis.peek();
+  if (a) analysis.value = { ...a, cancelled: true };
+}
+
+/** Ask the server to stop the analysis that is running. The status bar says `Cancelling…` until the server says it ended. */
+export async function cancelAnalysis(): Promise<void> {
+  track({ type: 'cancelling' });
+  try {
+    const answer = await api.cancelAnalysis();
+    // Nothing was running (it ended just now): the bar must not wait for a message that will not come.
+    if (!answer.cancelled && pending.peek().cancelling) track({ type: 'cancelled' });
+  } catch (e) {
+    say(e instanceof Error ? e.message : String(e), true);
+  }
+}
+
+/** "Run again": analyse the files now, after a cancelled analysis. The socket carries the progress and `rebuilt`. */
+export async function runAnalysisAgain(): Promise<void> {
+  try {
+    const a = await api.runAnalysis();
+    analysis.value = a;
+  } catch (e) {
+    say(e instanceof Error ? e.message : String(e), true);
+  }
 }
 
 /** How many times the socket has brought an analysis, and who waits for the next one. */

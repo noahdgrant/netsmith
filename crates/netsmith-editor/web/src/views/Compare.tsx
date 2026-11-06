@@ -8,6 +8,7 @@ import type { Compare as CompareData, Problem } from '../api';
 import { Icon } from '../components/Icons';
 import { ViewHelp } from '../components/ViewHelp';
 import { useElapsed } from '../components/JobProgress';
+import { inModal } from '../components/layers';
 import { EmptyState, Pill, Segmented, Spinner } from '../components/ui';
 import { ChangesSwitch } from '../components/ChangesSwitch';
 import {
@@ -32,7 +33,7 @@ import {
 } from '../compare/model';
 import { compareProgress } from '../compare/progress';
 import { relativeDate } from '../compare/refs';
-import { chooseRef, diffable, gitFailure, gitInfo, loadGit, openDiff, pickerOpen, refName, refText, runCompare, scope, scopeChoice, startingRef, state, tab } from '../compare/store';
+import { cancelCompare, chooseRef, diffable, gitFailure, gitInfo, loadGit, openDiff, pickerOpen, refName, refText, runCompare, scope, scopeChoice, startingRef, state, tab } from '../compare/store';
 import { analysis } from '../store';
 import { load, save } from '../storage';
 import { plural, seconds } from '../util';
@@ -63,6 +64,17 @@ function Progress({ since, against }: { since: number; against: string }) {
   const elapsed = useElapsed(since);
   const waiting = !analysis.value;
   const at = stageIndex(p?.stage);
+  // Escape stops the comparison, unless a layer over the page (the palette, a dialog) has the key.
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented && !inModal(e) && !(e.target as Element | null)?.closest?.('[data-esc-closes]')) {
+        e.preventDefault();
+        void cancelCompare();
+      }
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, []);
   return (
     <div class="cmp-progress" role="status" aria-live="polite" data-testid="cmp-progress">
       <div class="cmp-progress-head">
@@ -75,6 +87,9 @@ function Progress({ since, against }: { since: number; against: string }) {
           </div>
         </div>
         <span class="cmp-progress-time" data-testid="cmp-elapsed">{seconds(elapsed)}</span>
+        <button class="tool small" data-testid="cmp-cancel" data-tip="Stop comparing (Escape). Nothing of it is kept" onClick={() => void cancelCompare()}>
+          Cancel
+        </button>
       </div>
       <ol class="cmp-stages" aria-label="Stages">
         {STAGE_ORDER.map((s, i) => (
@@ -500,6 +515,24 @@ export function Compare() {
     );
   } else if (s.kind === 'loading') {
     body = <Progress since={s.since} against={s.ref} />;
+  } else if (s.kind === 'cancelled') {
+    body = (
+      <EmptyState
+        icon="compare"
+        title="Comparison cancelled"
+        help={`The comparison with ${s.ref} was stopped. Nothing of it was kept.`}
+        testid="cmp-cancelled"
+        actions={
+          <>
+            <button class="tool primary" onClick={() => void runCompare(s.ref)}>
+              <Icon name="refresh" size={14} />
+              Compare again
+            </button>
+            <AnotherRef />
+          </>
+        }
+      />
+    );
   } else if (s.kind === 'failed') {
     body = (
       <div class="cmp-card bad" role="alert" data-testid="cmp-failed">
