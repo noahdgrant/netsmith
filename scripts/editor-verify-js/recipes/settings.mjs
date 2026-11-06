@@ -206,7 +206,7 @@ export async function run({ page, shot, step, expect, url, section }) {
   });
   expect(icon && /svg/.test(icon.type) && icon.text.includes('prefers-color-scheme: dark'), 'an SVG icon with a prefers-color-scheme rule');
 
-  step('the splash: the mark and `Reading the project…` until the project arrives, then it is gone');
+  step('the splash: the mark and `Reading the project…` (or `Analysing the project…`) until the project arrives, then it is gone');
   const p2 = await page.context().newPage();
   await p2.route('**/api/project', async (r) => {
     await new Promise((x) => setTimeout(x, 1200));
@@ -214,7 +214,8 @@ export async function run({ page, shot, step, expect, url, section }) {
   });
   const nav = p2.goto(url);
   await p2.waitForSelector('.splash');
-  expect(((await p2.locator('.splash').innerText()) || '').includes('Reading the project'), 'it says Reading the project');
+  // `Reading the project…` until the analysis has a clock, `Analysing the project…` when the server is still re-analysing what an earlier step saved (round 7: the text raced those saves)
+  expect(/(Reading|Analysing) the project/.test((await p2.locator('.splash').innerText()) || ''), 'it says Reading the project (or Analysing the project while the server is still at an earlier save)');
   await nav;
   await p2.waitForSelector('.splash', { state: 'detached', timeout: 8000 });
   expect(true, 'it is gone once the project is there');

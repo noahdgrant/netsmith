@@ -16,7 +16,7 @@
 - **Report a problem** copies `netsmith editor: diagnostics` with the page, the server, the analysis, the first problems and the last eight errors the page showed (`noteError`: a failure toast, `window.onerror`, an unhandled rejection). It has no path of the project and no file text.
 - The tab title is `netsmith - <board>` (the project's title when no board, `netsmith` alone before the project), with a `●` in front while a file has unsaved changes (`title.ts`).
 - The favicon is `src/assets/favicon.svg`: a bolder net-anvil whose orange follows the tab strip (`prefers-color-scheme` inside the SVG), with the PNGs of `index.html` as fallbacks. The bundle serves it by its path.
-- The splash (`components/Splash.tsx`, `splash.css`) is the mark and `Reading the project…` (then the analysis's own words and clock) over the whole window until `/api/project` has answered; `index.html` holds the same markup inside `#app` so it shows before any script has run. It does not stay when the server never answers.
+- The splash (`components/Splash.tsx`, `splash.css`) is the mark and `Reading the project…` (then the analysis's own words and clock; `Analysing the project…` when the server is still at an earlier save, which the `settings` recipe accepts) over the whole window until `/api/project` has answered; `index.html` holds the same markup inside `#app` so it shows before any script has run. It does not stay when the server never answers.
 
 ## Drive
 
