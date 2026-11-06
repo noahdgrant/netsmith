@@ -28,6 +28,8 @@
 .pcb-host svg .l-pads > g[data-pad] > [fill="#0d1117"] { fill: var(--pcb-bg); stroke: color-mix(in srgb, var(--pcb-thru) 45%, transparent); stroke-width: .05px; }
 .pcb-host svg .l-pads > g[data-pad]:not([data-net]) { opacity: .7; }
 .pcb-host svg .l-pads > text { fill: var(--pcb-pad-text); font-family: var(--sans); font-weight: 600; opacity: .85; }
+/* a pad with a hole has its number over the hole, where it cannot be read: the board's panel lists the pads */
+.pcb-host svg .l-pads > g[data-pad]:has(> [fill="#0d1117"]) + text { display: none; }
 
 /* silkscreen, fab and courtyard: thin and soft; a pin 1 triangle is smaller */
 .pcb-host svg .l-silk :is(line, rect, circle, path, polygon) { stroke-width: calc(1.6 * var(--px, .04)); stroke-opacity: .85; }

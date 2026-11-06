@@ -72,3 +72,66 @@ What read old, view by view:
 New tokens: `--success-text`, `--seg-track`, `--seg-on`, `--sch-bus`, `--zebra`, `--row-line`; `--sch-fill` may be a `color-mix` of `--sch-body`. `theme.test.ts` holds the four tones' words to AA on every layer a pill, a card and a log sit on, the segmented control's two states, the bus colour as text, the pin text and outline on the tinted body, and that a lit net, a picked part, a bus and a wire are four colours.
 
 What round 2 leaves: no detail panel for a picked card of the system or power views (the card is the detail; the tips use the same parts), the table of the PCB's nets and parts still lists rows the old way, and the rows of the tree are not draggable (nothing drags them).
+
+## Round 3: the drawings, the graphs, one hover, and the whole product at 1 px
+
+Status: 2026-11-06, round 3. The orchestrator's review of rounds 1 and 2: the shell, Build, BOM, Source and the tree look contemporary; what is still off is the board's drawing (saturated yellow, green and red pads, magenta courtyards, a thick yellow outline, white ratsnest, giant references), small graphs lost in a large canvas, no hover that crosses views, a few things that did not move, and empty states that each had a style of their own.
+
+### The board's drawing
+
+The server writes its colours and widths into attributes (`crates/netsmith-pcb/src/svg.rs`, not touched). A CSS rule beats a presentation attribute, so `src/pcbdraw.css` restyles every mark without a change to the server, and `style.css` still maps each of the server's colours to a token (a test reads both).
+
+- **Substrate.** The outline's fill is `--pcb-board`, a step from the canvas `--pcb-bg` (1.07 to 1.16:1), and its line is a thin neutral blue-grey (`--pcb-outline`), not yellow. A cutout and a drill show the canvas.
+- **Copper is a layer, not a net.** Front pads and tracks a muted copper (`--pcb-front`), a part on the back (its group's transform mirrors it, so a CSS selector finds it) and its tracks a muted teal-blue (`--pcb-back`); a through-hole pad has a tone of its own (`--pcb-thru`) and a soft ring, a via a cool grey ring (`--pcb-via`) around a hole that shows the canvas; a pad on no net is fainter. The nets lose their colours on the board (a plane's dashed border keeps its net's tone, at half strength), so the net list's swatch is a neutral ring and a dashed square for a plane.
+- **Tracks** are drawn as a group at 85 % (`--pcb-track-opacity`), not as lines at 85 %: two round caps that overlap no longer show a darker dot. A power track is fainter still.
+- **Hairlines that stay hairlines.** Outline, courtyard, fab, silkscreen, ratsnest, plane borders, keepouts and every overlay mark have widths in screen pixels (`calc(1.5 * var(--px))`; `Canvas` sets `--px` from the zoom, because `vector-effect: non-scaling-stroke` ignores the CSS transform that pans and zooms). At 50 px per millimetre a 0.1 mm line is no longer a 5 px bar.
+- **Silkscreen** thin and at 85 %, a pin 1 triangle at 55 % of its size, **courtyards** a faint dashed neutral (no magenta), **references** at 0.62 mm in the page's face, 600 weight, with a halo of the substrate; the number of a pad with a hole is not drawn over the hole.
+- **Keepouts** are hatched in a muted red (a height limit in amber), through two patterns that `pcb/drawing.ts` puts in the drawing's `defs`. **Findings** are a solid 2 px ring with a soft glow and a wash.
+- **Picks and hover** are the page's blue with a short glow (`--sel`); the rest of a lit net steps back to 20 %. The **grid** is a few dots at 32 %.
+
+New tokens (four values each): `--pcb-board`, `--pcb-thru`, `--pcb-refdes`, `--hover-lit`, `--hover-lit-bg`; the values of `--pcb-bg`, `--pcb-outline`, `--pcb-silk`, `--pcb-front`, `--pcb-back`, `--pcb-via`, `--pcb-ratsnest`, `--pcb-fab`, `--pcb-courtyard`, `--pcb-keepout`, `--pcb-height-limit` and `--pcb-select` (now the page's `--sel`) changed. `theme.test.ts` holds copper, via, outline, ratsnest, courtyard, fab, keepout and the pick to 3:1 on the canvas and the substrate in every theme, silkscreen to 3:1, the references and key to 4.5:1 (7:1 in the high contrast themes), a pad's number on each copper to 4.5:1, the substrate a visible step from the canvas, the four copper tones all different and the front warm and the back cool.
+
+### System and power
+
+- **Framing.** A graph opens fitted with 56 px of air, centred, at most 150 % and at least 45 % (below which it opens at 45 % from its top left), and Fit does the same; `1:1` is true size. `PanZoom` gained `fitPlaces` and a `whole` argument to `placeView`. The dot grid belongs to the window (`--pz-x`, `--pz-y`, `--pz-k` on the host), so it fills it and pans with the drawing.
+- **Calm tone.** The path from a pick is the selection's blue (solid upstream, dashed downstream, in the cards' edges, the arrowheads, the legend and the minimap); the rest stays neutral. A board link is a neutral dashed line. Orange is only the primary action and the active indicator again.
+- **Mates** fold to their head when there are more than two; they, like the zoom bar, are marked `data-toast-clear`.
+
+### One hover for every view
+
+`src/hover.ts` is a store like the selection (kind `part`, `net`, `module` or `bus`, a key, and optionally the designators or nets that stand for it) with a 70 ms rest before it lights and a 90 ms grace before it goes out, so moving along a list moves the light instead of blinking it. `src/hoverDom.ts` is the one subscriber: it finds everything that stands for the same thing (`[data-ref]`, `[data-net]`, `[data-hv]`, `[data-hv-ref]`) and toggles `.hover-lit` on it, in one `requestAnimationFrame`; no view re-renders and no drawing is replaced (a recipe checks that no node is added or removed). A drawing that is replaced while something is lit is lit again. Pointer and focus both say it, a touch never does, Escape and the window losing focus clear it. The light is `--hover-lit`, a neutral that is not the blue of a pick, with a wash (`--hover-lit-bg`) on rows and chips, a ring on cards and a short glow on a drawing. Sources: BOM rows, chips of both inspectors, the board's part and net lists, power and system cards, the module navigator, a definition of the tree (the parts it declares), a problem that names a part, module or net, a part or net of the schematic, a part, track, via or pad of the board.
+
+### Motion
+
+Checked with real evidence (the notes are in `features/motion.md`): the line under the active tab moves from tab to tab, a view's opacity rises 0 to 1 over 150 ms with no frame at full opacity first, a popover scales in over 120 ms, the dock's height runs 2 to 240 px in 160 ms, a toast comes in over 160 ms, and with `prefers-reduced-motion` all of them are instant. Found and fixed: the toast had no exit (it now fades and folds its height away over 160 ms, so its neighbours do not jump); an even row of the BOM did not respond to the pointer at all (a zebra selector was more specific than the hover and the pick); skeletons shimmered in sections that were not on show.
+
+### Empty, first-run and error states
+
+One component, `EmptyState` (`components/ui.tsx`): a mark that says what kind of moment it is (neutral, ok, warn, bad), a title, one line of help, one clear action, calm words (what is so, what to do, no apology). It stands for: no board built (with the error that stops it), no board, offline (the server never answered), no parts, no line matches, no problems (and none in this view, or none under the filter), nothing found by the checks, KiCad not found, the board that could not be placed or drawn, no file open, no file or module or part or net matches. `compact` is the size for a panel, a list and the dock. The old `.empty-state`, `.dock-empty .big` and a plain `.none` line are gone. What is not covered: a file that is missing on disk says so in a toast only.
+
+### The 1 px audit
+
+Every section at 1280 x 800, 1920 x 1080 and 2560 x 1440, in light and dark (high contrast for the board and the themes recipe), the top bar at 1000 px, the file tabs with 14 open, a toast over the palette; a script checked every control for a focus indicator, every ellipsis for a tooltip, popovers and menus against the window's edge, icon and label centre lines and overflow.
+
+Found and fixed:
+
+1. **The chip of the picked thing was a sliver at 1280** (the search box took 38 % of the window, the Source button took the rest): the search is 24 % now, the Source button folds to its icon below 1400 px (its name stays for a screen reader), the title has a minimum and ends in an ellipsis.
+2. **The active file tab was not scrolled into view** (14 open: it was off to the right), and the strip had no cue that it scrolls and its tabs could not be reached by keyboard: it scrolls the active tab in, fades the edge that has more, tabs take Tab, Enter and Space.
+3. A hovered or picked **even row of the BOM** did not change colour.
+4. **Toasts** covered the zoom bar of every drawing and the mates of the system view; they stand above whatever is marked `data-toast-clear` and on show. A toast that left could stay in the page, invisible, when another left in the same moment (found by `pcb-edit` waiting for `.toast` to go).
+5. The **BOM's table** was 2500 px wide at 2560; it keeps 1760 px, centred.
+6. A **pad number over a drill hole** (unreadable dark on dark) is not drawn.
+7. The **dot grid** of the graphs stopped where the drawing did.
+8. **Skeletons** shimmered off screen.
+
+Left, in order of how much I would do it next:
+
+1. At 1000 px the BOM's table clips its right columns (`Each`, `Stock`, `Checked`) inside its scroll box with no cue; hide them below a width, or fade the edge as the file tabs do.
+2. At 1000 px a wide power tree opens at about 60 %, with 7 px text: it wants a vertical layout, or a first view of one stage and its neighbours.
+3. The dock opens by animating its height, which reflows the view above it every frame (smooth, not free); a transform on a panel that is already its final size would not.
+4. Hover lights a few hundred elements through `filter: drop-shadow`; on a board of a thousand parts that has not been measured here.
+5. KiCad not found is said twice in the findings list (the old line a recipe reads, and the new state).
+6. The through-hole bronze of the light theme is the heaviest mark of that drawing; a lighter tone fails 3:1 against the substrate.
+7. A missing file, a failed analysis of the project and a server that goes away after it answered have no state in a view, only the status bar and a toast.
+8. Focus rings were checked by a script (a ring exists), not by looking at each one at 200 %.
+9. The `Split right` button is dimmed below 1280 px without a word about why (the second pane needs room).

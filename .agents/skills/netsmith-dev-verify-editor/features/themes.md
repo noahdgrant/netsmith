@@ -48,8 +48,11 @@ Lowest ratio over the surfaces each pair sits on (from `themes.css`, by the same
 | schematic bus (text and graphic) | 8.35 | 5.24 | 13.76 | 8.26 |
 | schematic pin and outline on the part body (the body is a tint of the outline; lowest) | 7.37 | 8.22 | 10.34 | 10.70 |
 | segmented control: words off and on (lowest) | 9.03 | 6.88 | 16.93 | 11.90 |
-| board reference text and key | 12.26 | 9.53 | 21.00 | 21.00 |
-| net colours on the board (lowest of 10, graphic, 3:1) | 6.82 | 3.46 | 8.95 | 5.49 |
+| board reference text and key (on the canvas and the substrate) | 11.43 | 8.71 | 19.57 | 18.76 |
+| net colours (a plane's border; lowest of 10, graphic, 3:1) | 6.82 | 3.46 | 8.95 | 5.49 |
+| copper, via, outline, ratsnest on the board (graphic, 3:1) | 5.91 | 3.79 | 9.99 | 6.45 |
+| courtyard, fab, keepout, silkscreen on the board (graphic, 3:1) | 4.23 | 3.22 | 7.86 | 5.29 |
+| a pad's number on copper (lowest) | 6.35 | 4.60 | 10.72 | 7.22 |
 | focus indicator (graphic, 3:1) | 6.58 | 3.71 | 17.40 | 16.52 |
 | accent marks: the active tab line (graphic, 3:1) | 6.80 | 3.19 | 11.03 | 6.56 |
 | border on surfaces (hairline: ink at 13 %; solid and 3:1 in high contrast) | alpha | alpha | 8.33 | 10.37 |

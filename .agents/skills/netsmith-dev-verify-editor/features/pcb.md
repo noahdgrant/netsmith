@@ -8,7 +8,7 @@ The section "PCB" (key 6). The board is placed as soon as the tab opens (the phy
 
 `scripts/editor-verify drive pcb`; `drive four-layer` after `launch --fixture four_layer`.
 
-1. The tab shows the outline, the footprints with pads coloured by net, and the key. Needs KiCad's footprint libraries (`NETSMITH_KICAD_FOOTPRINTS` or an install netsmith finds, ADR 0021); without them the view says why.
+1. The tab shows the outline, the footprints with pads in the copper's colour (a muted copper on the front, teal-blue for a part on the back, a tone and a ring for a hole that goes through), and no key (the side panel lists the nets). The drawing's marks are thin and soft (`src/pcbdraw.css`; hairlines are a count of screen pixels, so they stay hairlines at any zoom), a keepout is hatched, a pick glows in the selection's blue. Needs KiCad's footprint libraries (`NETSMITH_KICAD_FOOTPRINTS` or an install netsmith finds, ADR 0021); without them the view says why.
 2. Click "Place and route": a chip says `routed: N tracks, M vias` and the button becomes "Route again". An unrouted connection or a placement problem is listed in red.
 3. Layers: untick "Silkscreen": the silk groups (`.l-silk`) are hidden.
 4. A four-layer board draws each plane as a dashed border in its net's colour and lists it in the key.
