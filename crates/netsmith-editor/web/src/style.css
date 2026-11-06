@@ -278,8 +278,8 @@ body:has(.status-popover) .toasts { right: calc(16px + 340px + 12px); }
 .view-loading { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; }
 .skeleton-stage { display: flex; gap: 14px; width: min(760px, 90%); height: min(300px, 50%); }
 .sk { background: linear-gradient(90deg, var(--skeleton) 25%, var(--skeleton-hi) 50%, var(--skeleton) 75%); background-size: 200% 100%; animation: shimmer 1.8s linear infinite; border-radius: var(--r-md); }
-.sk-sheet { flex: 1; } .sk-side { width: 28%; display: flex; flex-direction: column; gap: 10px; background: none; animation: none; padding-top: 6px; }
-.sk-line { height: 12px; border-radius: var(--r-xs); } .w40 { width: 40%; } .w60 { width: 60%; } .w75 { width: 75%; } .w80 { width: 80%; } .w90 { width: 90%; }
+.sk-sheet { flex: 1; border-radius: var(--r-lg); } .sk-side { width: 28%; display: flex; flex-direction: column; gap: 12px; background: none; animation: none; padding-top: 4px; }
+.sk-line { height: 10px; border-radius: var(--r-xs); } .w40 { width: 40%; } .w60 { width: 60%; } .w75 { width: 75%; } .w80 { width: 80%; } .w90 { width: 90%; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
 .view-loading-text { color: var(--text-faint); }
@@ -994,7 +994,7 @@ button.chip.cur { border-color: var(--sel-line); background: var(--pick); }
 .empty-state h2 { margin: 0; font-size: var(--fs-lg); letter-spacing: var(--ls-title); color: var(--text); }
 .empty-state p { margin: 0 0 8px; }
 .es-icon { width: 44px; height: 44px; margin-bottom: 4px; border-radius: var(--r-lg); background: var(--surface-3); display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
-.sk { display: block; }
+span.sk { display: block; }
 .skeleton .sk-btn { width: 28px; height: 26px; } .skeleton .sk-btn.wide { width: 64px; } .skeleton .sk-pick { width: 220px; height: 26px; }
 .sk-nav { padding: 12px 8px; gap: 8px; } .sk-row { height: 30px; }
 .sk-canvas { flex: 1; position: relative; }
