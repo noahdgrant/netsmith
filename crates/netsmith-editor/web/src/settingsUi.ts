@@ -9,7 +9,8 @@ let last: number | null = null;
 function say(label: string, value: string, kept: boolean) {
   const m = settingMessage(label, value, kept);
   if (last !== null) dismissToast(last);
-  last = notify({ title: m.text, kind: m.bad ? 'bad' : 'info', ms: 2200 });
+  // A choice that was kept needs a word only to show that it took (1.5 s); one that could not be kept stays as long as a failure does.
+  last = notify({ title: m.text, kind: m.bad ? 'bad' : 'info', ms: m.bad ? undefined : 1500 });
 }
 
 export function chooseDensity(density: Density) {

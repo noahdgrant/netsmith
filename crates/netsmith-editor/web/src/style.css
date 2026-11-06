@@ -992,8 +992,9 @@ span.sk { display: block; }
 .theme-option:hover { background: var(--hover); }
 .theme-option[aria-checked="true"] { background: var(--hover); }
 .theme-check { display: inline-flex; width: 0.75rem; color: var(--text); flex: none; }
-.theme-swatch { width: 1.125rem; height: 0.75rem; border-radius: var(--r-sm); border: 1px solid var(--border-strong); flex: none; }
-.sw-system { background: linear-gradient(90deg, var(--sw-dark) 50%, var(--sw-light) 50%); }
+.theme-swatch { width: 1.125rem; height: 0.75rem; border-radius: var(--r-sm); border: 1px solid var(--border-strong); flex: none; box-sizing: border-box; box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 16%, transparent); }
+/* the system's choice is both: a diagonal, so neither half is the colour of the button it sits on */
+.sw-system { background: linear-gradient(115deg, var(--sw-light) 50%, var(--sw-dark) 50%); }
 .sw-light { background: var(--sw-light); } .sw-dark { background: var(--sw-dark); }
 .sw-hc-light { background: var(--sw-hc-light); border-color: var(--sw-hc-dark); } .sw-hc-dark { background: var(--sw-hc-dark); border-color: var(--sw-hc-light); }
 

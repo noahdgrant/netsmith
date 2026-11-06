@@ -169,6 +169,8 @@ button.chip.pin-chip.cur, button.chip.cur { border-color: var(--sel-line); backg
 .order-pick { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem; }
 .select-field { display: flex; flex-direction: column; gap: 0.25rem; font-size: var(--fs-sm); }
 .select-field select { min-width: 13.75rem; height: var(--ctl-lg); }
+/* the order's picker is the top bar's board picker (`.boardpick`): the same box, the icon, the chevrons */
+.select-field .order-select select { max-width: none; }
 .order-boards { width: 100%; border-collapse: collapse; background: var(--canvas); border: 1px solid var(--border-subtle); border-radius: var(--r-md); overflow: hidden; border-spacing: 0; }
 .order-boards th { height: var(--ctl); padding: 0 0.75rem; text-align: left; color: var(--text-faint); font-size: var(--fs-sm); font-weight: var(--fw-medium); border-bottom: 1px solid var(--border-subtle); }
 .order-boards td { height: var(--ctl-lg); padding: 0 0.75rem; border-bottom: 1px solid var(--row-line); }

@@ -3,8 +3,8 @@
 // ref against the text in the editor (so it follows typing). It also says how many changes there are,
 // for the status bar. The base text is put in with an effect when it arrives; null turns the marks off.
 
-import { type Extension, StateEffect, StateField } from '@codemirror/state';
-import { EditorView, GutterMarker, gutter } from '@codemirror/view';
+import { type Extension, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
+import { Decoration, EditorView, GutterMarker, ViewPlugin, type ViewUpdate, gutter } from '@codemirror/view';
 import { signal } from '@preact/signals';
 
 import { type GutterMarks, gutterMarks, splitLines } from '../compare/linediff';
@@ -66,12 +66,84 @@ class Bar extends GutterMarker {
 
 const bars = { added: new Bar('added'), changed: new Bar('changed'), deleted: new Bar('deleted') };
 
+/** The lines that differ get a faint tint of their colour across the line, so a change is seen without reading the margin. */
+const lineTints = EditorView.decorations.compute([field], (state) => {
+  const m = state.field(field).marks;
+  const b = new RangeSetBuilder<Decoration>();
+  if (!m) return b.finish();
+  const numbers = [...new Set([...m.added, ...m.changed])].filter((n) => n >= 1 && n <= state.doc.lines).sort((x, y) => x - y);
+  for (const n of numbers) b.add(state.doc.line(n).from, state.doc.line(n).from, Decoration.line({ class: m.added.has(n) ? 'cm-chg-line cm-chg-line-added' : 'cm-chg-line cm-chg-line-changed' }));
+  return b.finish();
+});
+
+/** An overview ruler: a tick in the track at the right edge for each run of changed lines, where the file's whole length is the
+ * track's, so the changes of a long file can be seen (and found) without scrolling through it. The ticks are drawn again when the
+ * marks, the text or the size change. They are not read by a screen reader (the status bar says how many lines changed). */
+const ruler = ViewPlugin.fromClass(
+  class {
+    dom: HTMLDivElement;
+    constructor(readonly view: EditorView) {
+      this.dom = document.createElement('div');
+      this.dom.className = 'cm-chg-ruler';
+      this.dom.setAttribute('aria-hidden', 'true');
+      this.dom.setAttribute('data-testid', 'chg-ruler');
+      view.dom.appendChild(this.dom);
+      this.draw();
+    }
+    update(u: ViewUpdate) {
+      if (u.docChanged || u.geometryChanged || u.startState.field(field) !== u.state.field(field)) this.draw();
+    }
+    draw() {
+      const view = this.view;
+      const m = view.state.field(field).marks;
+      this.dom.replaceChildren();
+      if (!m) return;
+      const track = view.scrollDOM.clientHeight;
+      const whole = Math.max(view.contentHeight, track);
+      if (track <= 0) return;
+      const kinds: [number, 'added' | 'changed' | 'deleted'][] = [
+        ...[...m.added].map((n) => [n, 'added'] as [number, 'added']),
+        ...[...m.changed].map((n) => [n, 'changed'] as [number, 'changed']),
+        ...[...m.deleted].map((n) => [n, 'deleted'] as [number, 'deleted']),
+      ];
+      kinds.sort((x, y) => x[0] - y[0]);
+      const lines = view.state.doc.lines;
+      let run: { from: number; to: number; kind: string } | null = null;
+      const flush = () => {
+        if (!run) return;
+        const top = view.lineBlockAt(view.state.doc.line(run.from).from).top;
+        const bottom = view.lineBlockAt(view.state.doc.line(run.to).from).bottom;
+        const tick = document.createElement('span');
+        tick.className = `cm-chg-tick cm-chg-tick-${run.kind}`;
+        tick.style.top = `${((top * track) / whole).toFixed(1)}px`;
+        tick.style.height = `${Math.max(3, ((bottom - top) * track) / whole).toFixed(1)}px`;
+        this.dom.appendChild(tick);
+        run = null;
+      };
+      for (const [n, kind] of kinds) {
+        if (n < 1 || n > lines) continue;
+        if (run && run.kind === kind && n <= run.to + 1) run.to = n;
+        else {
+          flush();
+          run = { from: n, to: n, kind };
+        }
+      }
+      flush();
+    }
+    destroy() {
+      this.dom.remove();
+    }
+  },
+);
+
 /** The changes of the file the editor shows, as the status bar counts them. */
 export const sourceChanges = signal<{ file: string; hunks: number; lines: number } | null>(null);
 
 export function changesExtension(path: string): Extension {
   return [
     field,
+    lineTints,
+    ruler,
     gutter({
       class: 'cm-chg-gutter',
       lineMarker(view, line) {
