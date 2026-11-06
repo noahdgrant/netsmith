@@ -79,16 +79,16 @@ describe('gutterMarks', () => {
     const base = ['a', 'b', 'c', 'd', 'e'];
     const head = ['a', 'B', 'c', 'x', 'y', 'e'];
     // b became B (changed); d became x and y (one changed, one new)
-    expect(gutterMarks(base, head)).toEqual({ added: [5], changed: [2, 4], deletedAfter: [], hunks: 2 });
-    expect(gutterMarks(['a', 'b', 'c'], ['a', 'c'])).toEqual({ added: [], changed: [], deletedAfter: [1], hunks: 1 });
-    expect(gutterMarks(['a', 'b'], ['b'])).toEqual({ added: [], changed: [], deletedAfter: [0], hunks: 1 });
+    expect(gutterMarks(base, head)).toEqual({ added: [5], changed: [2, 4], deletedAfter: [], hunks: 2, lines: 3 });
+    expect(gutterMarks(['a', 'b', 'c'], ['a', 'c'])).toEqual({ added: [], changed: [], deletedAfter: [1], hunks: 1, lines: 1 });
+    expect(gutterMarks(['a', 'b'], ['b'])).toEqual({ added: [], changed: [], deletedAfter: [0], hunks: 1, lines: 1 });
   });
   it('has nothing for a file that is the same, and everything for a new one', () => {
-    expect(gutterMarks(['a'], ['a'])).toEqual({ added: [], changed: [], deletedAfter: [], hunks: 0 });
-    expect(gutterMarks([], ['a', 'b'])).toEqual({ added: [1, 2], changed: [], deletedAfter: [], hunks: 1 });
+    expect(gutterMarks(['a'], ['a'])).toEqual({ added: [], changed: [], deletedAfter: [], hunks: 0, lines: 0 });
+    expect(gutterMarks([], ['a', 'b'])).toEqual({ added: [1, 2], changed: [], deletedAfter: [], hunks: 1, lines: 2 });
   });
   it('says where fewer lines replace more', () => {
-    expect(gutterMarks(['a', 'b', 'c', 'd'], ['a', 'X', 'd'])).toEqual({ added: [], changed: [2], deletedAfter: [2], hunks: 1 });
+    expect(gutterMarks(['a', 'b', 'c', 'd'], ['a', 'X', 'd'])).toEqual({ added: [], changed: [2], deletedAfter: [2], hunks: 1, lines: 2 });
   });
 });
 

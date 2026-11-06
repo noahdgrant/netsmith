@@ -17,6 +17,7 @@ interface Marked {
   changed: Set<number>;
   deleted: Set<number>;
   hunks: number;
+  lines: number;
 }
 
 interface Held {
@@ -27,7 +28,7 @@ interface Held {
 function marked(base: string[], head: string[], lines: number): Marked {
   const m: GutterMarks = gutterMarks(base, head);
   // Lines that are gone sit above the line that follows them (below the last line, if none does).
-  return { added: new Set(m.added), changed: new Set(m.changed), deleted: new Set(m.deletedAfter.map((after) => Math.min(after + 1, lines))), hunks: m.hunks };
+  return { added: new Set(m.added), changed: new Set(m.changed), deleted: new Set(m.deletedAfter.map((after) => Math.min(after + 1, lines))), hunks: m.hunks, lines: m.lines };
 }
 
 const field = StateField.define<Held>({
@@ -66,7 +67,7 @@ class Bar extends GutterMarker {
 const bars = { added: new Bar('added'), changed: new Bar('changed'), deleted: new Bar('deleted') };
 
 /** The changes of the file the editor shows, as the status bar counts them. */
-export const sourceChanges = signal<{ file: string; hunks: number } | null>(null);
+export const sourceChanges = signal<{ file: string; hunks: number; lines: number } | null>(null);
 
 export function changesExtension(path: string): Extension {
   return [
@@ -87,9 +88,9 @@ export function changesExtension(path: string): Extension {
     EditorView.updateListener.of((u) => {
       if (u.startState.field(field) === u.state.field(field)) return;
       const m = u.state.field(field).marks;
-      const next = m ? { file: path, hunks: m.hunks } : null;
+      const next = m ? { file: path, hunks: m.hunks, lines: m.lines } : null;
       const now = sourceChanges.peek();
-      if (now?.file === next?.file && now?.hunks === next?.hunks) return;
+      if (now?.file === next?.file && now?.hunks === next?.hunks && now?.lines === next?.lines) return;
       // Another file's count is not this file's: only the file on show writes.
       if (next || now?.file === path) sourceChanges.value = next;
     }),

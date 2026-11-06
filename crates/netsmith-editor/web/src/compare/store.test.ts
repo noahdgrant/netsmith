@@ -108,13 +108,20 @@ describe('the board a list is about', () => {
     server({ '/api/compare': () => json(changed()) });
     await runCompare('main');
   });
-  it('is the board in front when the comparison has it, else the one board, else all of them', () => {
+  it('is all the boards, whichever board is in front, until one is chosen in the section', () => {
     board.value = 'TwoBoards/led';
-    expect(scope.value).toBe('TwoBoards/led');
+    expect(scope.value).toBe('all');
     board.value = 'Other/board';
     expect(scope.value).toBe('all');
     board.value = null;
     expect(scope.value).toBe('all');
+  });
+  it('is the board of a project that has only one', async () => {
+    const one = changed();
+    one.boards = [one.boards[0]];
+    server({ '/api/compare': () => json(one) });
+    await runCompare('main');
+    expect(scope.value).toBe(one.boards[0].name);
   });
   it('is what was chosen, when the comparison has it', () => {
     board.value = 'TwoBoards/led';
@@ -123,7 +130,7 @@ describe('the board a list is about', () => {
     scopeChoice.value = 'all';
     expect(scope.value).toBe('all');
     scopeChoice.value = 'Gone/board';
-    expect(scope.value).toBe('TwoBoards/led');
+    expect(scope.value).toBe('all');
   });
 });
 

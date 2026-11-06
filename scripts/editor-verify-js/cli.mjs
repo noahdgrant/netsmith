@@ -266,6 +266,8 @@ async function drive() {
   const names = wanted.length === 0 || wanted.includes('all')
     ? fs.readdirSync(path.join(here, 'recipes')).filter((f) => f.endsWith('.mjs')).map((f) => f.replace('.mjs', '')).sort()
     : wanted;
+  // $NETSMITH_PAGE_URL drives the page of a Vite dev server (whose proxy asks the running editor, NETSMITH_EDITOR) instead of the page the binary embeds.
+  const pageUrl = process.env.NETSMITH_PAGE_URL ?? state.url;
   const browser = await chromium.launch();
   let failed = 0;
   for (const name of names) {
@@ -295,7 +297,7 @@ async function drive() {
     const steps = [];
     const tools = {
       page,
-      url: state.url,
+      url: pageUrl,
       project: state.project,
       /** A console error a step makes on purpose (the browser logs a request that answers 404): named by a pattern, and only that one is let through. */
       allowConsole: (re) => allowed.push(re),
@@ -324,7 +326,7 @@ async function drive() {
     };
     console.log(`recipe ${name}`);
     try {
-      await page.goto(state.url);
+      await page.goto(pageUrl);
       await page.waitForSelector('.app', { timeout: 10000 });
       // `.app` is there before the project has loaded (a big one takes a moment): wait for the
       // tree (the source section is in the page, if hidden), and for the board list when the project has a board, so a recipe starts on a page

@@ -1,4 +1,4 @@
-// `3 changes` in the status bar while the source shows the marks of the comparison: how many places
+// `7 lines changed in this file` in the status bar while the source shows the marks of the comparison: how many places
 // the file in the editor differs from the file at the ref. A click opens the comparison of the file.
 
 import { compare, openDiff, refText, showChanges } from '../compare/store';
@@ -14,15 +14,15 @@ export function SourceChangesItem({ path }: { path: string }) {
     <button
       class="item src-changes"
       data-testid="source-changes"
-      data-tip={`${plural(s.hunks, 'place')} where this file differs from ${refText.value}. Click to show the changes.`}
-      aria-label={`${plural(s.hunks, 'change')} in this file since ${refText.value}. Show them.`}
+      data-tip={`${plural(s.lines, 'line')} of this file differ from ${refText.value}, in ${plural(s.hunks, 'place')}. Click to show the changes.`}
+      aria-label={`${s.lines === 0 ? 'No lines' : plural(s.lines, 'line')} changed in this file since ${refText.value}. Show them.`}
       onClick={() => {
         openDiff({ path, where: 'source' });
         revealSection('source');
       }}
     >
       <Icon name="compare" size={13} />
-      <span>{s.hunks === 0 ? 'no changes' : plural(s.hunks, 'change')}</span>
+      <span>{s.lines === 0 ? 'no lines changed in this file' : `${plural(s.lines, 'line')} changed in this file`}</span>
     </button>
   );
 }
