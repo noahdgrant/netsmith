@@ -88,6 +88,17 @@ const STYLE: &str = "\
 .schematic .pin.on .pin-line{stroke:var(--hit);stroke-width:.5}
 ";
 
+/// What a note is drawn with by default; the page maps the tokens (`--note-fill`, `--note-stroke`,
+/// `--note-text`, `--note-stroke-text`) to its own. Written only into a drawing that has notes,
+/// so a drawing without any is the same bytes as before notes existed.
+const NOTE_STYLE: &str = "\
+.schematic .note-frame{fill:var(--note-fill,#fff9db);stroke:var(--note-stroke,#d4b95e);stroke-width:.25}\n\
+.schematic .note text{fill:var(--note-text,#4a4120);stroke:none;font-weight:400}\n\
+.schematic .note .note-heading{fill:var(--note-stroke-text,#8a6d1b);font-weight:700;letter-spacing:.02em}\n\
+.schematic .note-relation .note-text{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace}\n\
+.schematic.has-on .note:not(.on){opacity:.22}\n\
+.schematic .note.on .note-frame{stroke:var(--hit);stroke-width:.5}\n";
+
 /// Draw `design` as one SVG document.
 pub fn render_svg(
     design: &Design,
@@ -162,7 +173,8 @@ fn draw(design: &Design, l: &Layout) -> String {
         esc(&design.name)
     );
     let _ = writeln!(w, "<title>{}</title>", esc(&design.name));
-    let _ = writeln!(w, "<style>\n{STYLE}</style>");
+    let notes_style = if l.notes.is_empty() { "" } else { NOTE_STYLE };
+    let _ = writeln!(w, "<style>\n{STYLE}{notes_style}</style>");
     let _ = writeln!(
         w,
         "<rect class=\"sheet\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>",
@@ -263,6 +275,14 @@ fn draw(design: &Design, l: &Layout) -> String {
     }
     let _ = writeln!(w, "</g>");
 
+    if !l.notes.is_empty() {
+        let _ = writeln!(w, "<g class=\"notes\">");
+        for note in &l.notes {
+            draw_note(w, design, note);
+        }
+        let _ = writeln!(w, "</g>");
+    }
+
     let _ = writeln!(w, "<g class=\"labels\">");
     for label in &l.labels {
         let name = &design.nets[label.net].name;
@@ -278,6 +298,76 @@ fn draw(design: &Design, l: &Layout) -> String {
     let _ = writeln!(w, "</g>");
     let _ = writeln!(w, "</svg>");
     out
+}
+
+/// A note: a rounded frame and its text as one `<text>` with a `<tspan>` for each line, so it
+/// can be selected. `data-note` is the path of what it belongs to (`""` for the board),
+/// `data-n` the note's index in the design's notes, `data-ref` the reference of the part it is
+/// about when it is about one, `data-at` the `file:line` it is written at; the tooltip has the
+/// whole text when the drawn text is cut.
+fn draw_note(w: &mut String, design: &Design, note: &crate::layout::PlacedNote) {
+    use netsmith_core::NoteKind;
+    let kind = match note.kind {
+        NoteKind::Doc => "note-doc",
+        NoteKind::Relation => "note-relation",
+    };
+    let source = &design.notes[note.note];
+    let mut attrs = format!(
+        " data-note=\"{}\" data-n=\"{}\"",
+        esc(&note.path),
+        note.note
+    );
+    if let Some(a) = note.anchor {
+        let _ = write!(attrs, " data-ref=\"{}\"", esc(&design.parts[a].refdes));
+    }
+    if let Some(at) = &source.at {
+        let _ = write!(attrs, " data-at=\"{}:{}\"", esc(&at.file), at.line);
+    }
+    let _ = writeln!(w, "<g class=\"note {kind}\"{attrs}>");
+    if let Some(full) = &note.full {
+        let _ = writeln!(w, "<title>{}</title>", esc(full));
+    }
+    let f = note.frame;
+    let _ = writeln!(
+        w,
+        "<rect class=\"note-frame\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" ry=\"{}\"/>",
+        n(f.min.x),
+        n(f.min.y),
+        n(f.width()),
+        n(f.height()),
+        n(crate::layout::RADIUS),
+        n(crate::layout::RADIUS)
+    );
+    if let Some(h) = &note.heading {
+        let _ = writeln!(
+            w,
+            "<text class=\"note-heading\" font-size=\"{}\" x=\"{}\" y=\"{}\">{}</text>",
+            n(crate::layout::HEADING_TEXT),
+            n(h.at.x),
+            n(h.at.y),
+            esc(&h.text)
+        );
+    }
+    if let Some(first) = note.lines.first() {
+        let _ = write!(
+            w,
+            "<text class=\"note-text\" font-size=\"{}\" x=\"{}\" y=\"{}\" xml:space=\"preserve\">",
+            n(note.size),
+            n(first.at.x),
+            n(first.at.y)
+        );
+        for line in &note.lines {
+            let _ = write!(
+                w,
+                "<tspan x=\"{}\" y=\"{}\">{}</tspan>",
+                n(line.at.x),
+                n(line.at.y),
+                esc(&line.text)
+            );
+        }
+        let _ = writeln!(w, "</text>");
+    }
+    let _ = writeln!(w, "</g>");
 }
 
 /// A bus: the thick line, the tick with the count of members, the name and the list of members,

@@ -22,6 +22,7 @@ pub fn design(
         process: None,
         features: Default::default(),
         interfaces: Vec::new(),
+        notes: Vec::new(),
         parts: parts
             .iter()
             .map(|&(refdes, kind, value, package)| Part {
@@ -213,6 +214,7 @@ pub fn supplies(modules: usize) -> (Design, Vec<netsmith_view::Group>) {
             process: None,
             features: Default::default(),
             interfaces: Vec::new(),
+            notes: Vec::new(),
         },
         groups,
     )

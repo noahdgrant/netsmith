@@ -19,8 +19,8 @@ use netsmith_check::{
     Board, Domain, InstId, InstKind, Member, Model, Panel, PinKind, Pinout, System, SystemBoard,
 };
 use netsmith_core::{
-    Design, InnerLayers, InterfaceInstance, InterfaceMember, Net, PanelRules, PanelSpec, Part,
-    PartPin, PinRef, Process, Stackup,
+    Design, InnerLayers, InterfaceInstance, InterfaceMember, Net, Note, NoteAt, NoteKind,
+    PanelRules, PanelSpec, Part, PartPin, PinRef, Process, Stackup,
 };
 use netsmith_solve::{Library, Solution};
 
@@ -253,6 +253,200 @@ fn interfaces_of(model: &Model, nets: &[Net]) -> Vec<InterfaceInstance> {
     }
     out.sort_by(|a, b| a.path.cmp(&b.path));
     out
+}
+
+/// The most parts an interface's doc comment may be anchored on: a rail that most of a sheet
+/// hangs on is a note of the sheet, not of a few parts.
+const MAX_DOC_ANCHORS: usize = 3;
+
+/// The doc comment lines as one text: the lines of a paragraph joined with a space, a blank
+/// line between paragraphs as a line break.
+fn doc_text(lines: &[String]) -> String {
+    let mut paragraphs: Vec<String> = Vec::new();
+    let mut open = false;
+    for line in lines {
+        let line = line.trim();
+        if line.is_empty() {
+            open = false;
+        } else if open {
+            let p = paragraphs.last_mut().expect("an open paragraph");
+            p.push(' ');
+            p.push_str(line);
+        } else {
+            paragraphs.push(line.to_string());
+            open = true;
+        }
+    }
+    paragraphs.join("\n")
+}
+
+/// The part (of `drawn`) that `inst` is, or that it is a terminal or an interface of.
+fn drawn_part_of(model: &Model, inst: InstId, drawn: &HashMap<InstId, String>) -> Option<InstId> {
+    let mut cur = Some(inst);
+    while let Some(c) = cur {
+        if model.instance(c).kind == InstKind::Part {
+            return drawn.contains_key(&c).then_some(c);
+        }
+        cur = model.instance(c).parent;
+    }
+    None
+}
+
+/// The notes a drawing may show: the doc comments of the board, of each module, of each part
+/// declaration and of each interface declaration, and every `==` relation the source states, in
+/// the order the model has them (the source's). Only what the source already says: ordinary
+/// `//` comments are gone before the model, the standard library's own docs are not kept
+/// (`Instance::doc_at`), and a relation of a physical file states where parts go, not what the
+/// circuit is. `drawn` has the parts of the design, with their references.
+fn notes_of(model: &Model, drawn: &HashMap<InstId, String>) -> Vec<Note> {
+    let paths: Vec<String> = {
+        let mut v: Vec<String> = drawn.keys().map(|&p| model.path_of(p)).collect();
+        v.sort();
+        v
+    };
+    let net_parts = |pin: InstId| -> Vec<InstId> {
+        model
+            .net_of(pin)
+            .map(|net| {
+                net.terminals
+                    .iter()
+                    .map(|&t| owning_part(model, t))
+                    .filter(|p| drawn.contains_key(p))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let mut notes = Vec::new();
+    for (id, inst) in model.instances() {
+        let Some((file, line)) = &inst.doc_at else {
+            continue;
+        };
+        let path = model.path_of(id);
+        let mut anchors: Vec<String> = Vec::new();
+        let text = match inst.kind {
+            InstKind::Board if id == model.root => doc_text(&inst.def_docs),
+            InstKind::Module => {
+                // A module that has no part in this design has no sheet.
+                let below = format!("{path}.");
+                if !paths.iter().any(|p| p.starts_with(&below)) {
+                    continue;
+                }
+                let mut lines = inst.def_docs.clone();
+                if !inst.docs.is_empty() {
+                    lines.push(String::new());
+                    lines.extend(inst.docs.iter().cloned());
+                }
+                doc_text(&lines)
+            }
+            InstKind::Part if drawn.contains_key(&id) => {
+                anchors.push(path.clone());
+                doc_text(&inst.docs)
+            }
+            InstKind::Interface => {
+                // Inside a part it is the part's own definition, not the design.
+                let mut cur = inst.parent;
+                let mut in_part = false;
+                while let Some(c) = cur {
+                    if model.instance(c).kind == InstKind::Part {
+                        in_part = true;
+                        break;
+                    }
+                    cur = model.instance(c).parent;
+                }
+                if in_part {
+                    continue;
+                }
+                let mut parts: Vec<InstId> = Vec::new();
+                for (_, member) in &inst.children {
+                    if let Member::Inst(pin) = member
+                        && model.instance(*pin).kind == InstKind::Pin
+                    {
+                        parts.extend(net_parts(*pin));
+                    }
+                }
+                let mut named: Vec<String> = parts.iter().map(|&p| model.path_of(p)).collect();
+                named.sort_by(|a, b| natural_path_order(a, b));
+                named.dedup();
+                // An interface nothing drawn is on (a process, a plain port) is not in the
+                // schematic: its comment stays in the source.
+                if named.is_empty() {
+                    continue;
+                }
+                if named.len() <= MAX_DOC_ANCHORS {
+                    anchors = named;
+                }
+                doc_text(&inst.docs)
+            }
+            _ => continue,
+        };
+        if text.is_empty() {
+            continue;
+        }
+        notes.push(Note {
+            path,
+            kind: NoteKind::Doc,
+            text,
+            at: Some(NoteAt {
+                file: file.clone(),
+                line: *line,
+            }),
+            anchors,
+            result: None,
+        });
+    }
+    for relation in model.relations() {
+        let Some(written) = &relation.written else {
+            continue;
+        };
+        if relation.op != netsmith_lang::ast::CmpOp::EqEq {
+            continue;
+        }
+        let mut fields = Vec::new();
+        relation.lhs.fields(&mut fields);
+        relation.rhs.fields(&mut fields);
+        if fields.iter().any(|&f| model.is_place_field(f)) {
+            continue;
+        }
+        let mut anchors: Vec<String> = Vec::new();
+        for f in &fields {
+            if let Some(part) = drawn_part_of(model, model.field(*f).owner, drawn) {
+                let path = model.path_of(part);
+                if !anchors.contains(&path) {
+                    anchors.push(path);
+                }
+            }
+        }
+        let scope = model.path_of(written.scope);
+        // What the solver settled on, in the worst case: the value or the range the field on
+        // the left holds after solving, when it holds one.
+        let result = match &relation.lhs {
+            netsmith_check::RExpr::Field(f) => match &model.field(*f).domain {
+                Domain::Quantity(q) => {
+                    let path = model.path_of_field(*f);
+                    let shown = if scope.is_empty() {
+                        path.as_str()
+                    } else {
+                        path.strip_prefix(&format!("{scope}.")).unwrap_or(&path)
+                    };
+                    Some(format!("{shown} = {q}"))
+                }
+                _ => None,
+            },
+            _ => None,
+        };
+        notes.push(Note {
+            path: scope,
+            kind: NoteKind::Relation,
+            text: written.text.clone(),
+            at: Some(NoteAt {
+                file: written.file.clone(),
+                line: written.line,
+            }),
+            anchors,
+            result,
+        });
+    }
+    notes
 }
 
 /// The board's manufacturing process: its `process` member, with each rule read as the least
@@ -704,6 +898,7 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
 
     let net_names: Vec<String> = nets.iter().map(|n| n.name.clone()).collect();
     let interfaces = interfaces_of(model, &nets);
+    let notes = notes_of(model, &refdes_of);
     let process = process_of(model, &net_names, &mut errors);
     let layers = process.as_ref().map_or(2, |p| p.stackup.layers);
     let least_text = process.as_ref().map_or(0.0, |p| p.min_text_height);
@@ -732,6 +927,7 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
                 process,
                 features,
                 interfaces,
+                notes,
             },
             sourcing,
             origins,

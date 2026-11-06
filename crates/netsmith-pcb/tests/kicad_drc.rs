@@ -435,6 +435,7 @@ fn board_of(parts: &[(&str, &str, f64, f64)], nets: Vec<Net>) -> Board {
         process: Some(common::process_with(&[])),
         features: Default::default(),
         interfaces: Vec::new(),
+        notes: Vec::new(),
         parts: parts.iter().map(|(r, k, ..)| part(r, k)).collect(),
         nets,
     };

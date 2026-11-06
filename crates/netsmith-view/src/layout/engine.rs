@@ -2870,6 +2870,7 @@ impl<'a> Scene<'a> {
                 labels: self.labels,
                 buses: self.buses,
                 spines: Vec::new(),
+                notes: Vec::new(),
                 bounds,
             },
             clusters: self.clusters,

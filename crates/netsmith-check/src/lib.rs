@@ -21,7 +21,7 @@ pub use loader::Loader;
 pub use model::{
     Balance, Catalog, Chain, Contact, ContactSide, Domain, Draw, Field, FieldId, FieldKind,
     GroundGroup, GroundNet, InstId, InstKind, Instance, Mate, Member, Model, Net, PinKind, PinRow,
-    PinTable, Pinout, RExpr, Relation, Requirement, Role, Tie,
+    PinTable, Pinout, RExpr, Relation, Requirement, Role, Tie, Written,
 };
 
 use checker::Checker;

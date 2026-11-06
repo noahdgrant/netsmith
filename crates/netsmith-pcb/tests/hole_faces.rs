@@ -65,6 +65,7 @@ fn board(
     };
     let design = Design {
         interfaces: Vec::new(),
+        notes: Vec::new(),
         name: "Faces".into(),
         process: Some(process()),
         features: Features {

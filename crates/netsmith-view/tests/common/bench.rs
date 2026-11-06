@@ -355,6 +355,7 @@ pub fn bench() -> Bench {
         process: None,
         features: Default::default(),
         interfaces: Vec::new(),
+        notes: Vec::new(),
         parts: parts
             .iter()
             .map(|&(refdes, kind, value, package)| Part {

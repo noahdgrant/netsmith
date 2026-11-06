@@ -21,7 +21,8 @@ use netsmith::editor::{module_groups, must_connect, rails_of};
 use netsmith::project::Target;
 use netsmith::{Libraries, outcome_with};
 use netsmith_core::{
-    Design, InterfaceInstance, InterfaceMember, Net, Part, PartPin, PinKind, PinRef,
+    Design, InterfaceInstance, InterfaceMember, Net, Note, NoteAt, NoteKind, Part, PartPin,
+    PinKind, PinRef,
 };
 use netsmith_view::check::check;
 use netsmith_view::metrics::measure;
@@ -70,6 +71,14 @@ fn to_json(i: &Inputs) -> Value {
         "interfaces": i.design.interfaces.iter().map(|f| json!({
             "path": f.path, "type": f.type_name,
             "members": f.members.iter().map(|m| json!([m.name, m.net])).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+        "notes": i.design.notes.iter().map(|n| json!({
+            "path": n.path,
+            "kind": match n.kind { NoteKind::Doc => "doc", NoteKind::Relation => "relation" },
+            "text": n.text,
+            "at": n.at.as_ref().map(|a| json!([a.file, a.line])),
+            "anchors": n.anchors,
+            "result": n.result,
         })).collect::<Vec<_>>(),
         "positive": i.rails.positive,
         "ground": i.rails.ground,
@@ -144,6 +153,25 @@ fn from_json(v: &Value) -> Inputs {
                             net: s(&m[1]),
                         })
                         .collect(),
+                })
+                .collect(),
+            // An inputs file saved before notes existed has none.
+            notes: list(&v["notes"])
+                .iter()
+                .map(|n| Note {
+                    path: s(&n["path"]),
+                    kind: if n["kind"] == "relation" {
+                        NoteKind::Relation
+                    } else {
+                        NoteKind::Doc
+                    },
+                    text: s(&n["text"]),
+                    at: n["at"].as_array().map(|a| NoteAt {
+                        file: s(&a[0]),
+                        line: a[1].as_u64().unwrap_or(0) as usize,
+                    }),
+                    anchors: strs(&n["anchors"]),
+                    result: n["result"].as_str().map(String::from),
                 })
                 .collect(),
         },

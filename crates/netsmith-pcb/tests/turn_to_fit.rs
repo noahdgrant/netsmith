@@ -109,6 +109,7 @@ fn board_of_kind(
     }
     let design = Design {
         interfaces: Vec::new(),
+        notes: Vec::new(),
         name: "Turn".into(),
         process: Some(process()),
         features: Features {
