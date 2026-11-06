@@ -12,6 +12,21 @@ use crate::api::{
 pub struct ApiError {
     pub status: u16,
     pub message: String,
+    /// What the failure is, for a page that asks for it (`Accept: application/json`); the
+    /// plain-text body is `message` either way.
+    pub detail: Option<ErrorDetail>,
+}
+
+/// The structured form of a failure of the project's own data (a part with no footprint, a
+/// pad the footprint lacks, ...), as opposed to a fault of the server. The server answers a
+/// request that accepts JSON with
+/// `{"code": "...", "message": "...", "<field>": "...", ...}`: `code` is one of a fixed list
+/// of snake_case words, `message` is the text of the plain-text body, and the other keys are
+/// the strings of `fields` (which ones depends on the code).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ErrorDetail {
+    pub code: String,
+    pub fields: Vec<(String, String)>,
 }
 
 impl ApiError {
@@ -19,7 +34,38 @@ impl ApiError {
         Self {
             status,
             message: message.into(),
+            detail: None,
         }
+    }
+
+    /// The project's own data cannot be used for what was asked (`422`): the request is
+    /// right and the server is working, the files are what is wrong. `code` and `fields` are
+    /// an [`ErrorDetail`].
+    pub fn unprocessable(message: impl Into<String>, code: &str, fields: &[(&str, &str)]) -> Self {
+        Self {
+            status: 422,
+            message: message.into(),
+            detail: Some(ErrorDetail {
+                code: code.to_string(),
+                fields: fields
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+            }),
+        }
+    }
+
+    /// The JSON body of a failure that has a [`detail`](Self::detail).
+    pub fn json(&self) -> Option<String> {
+        let detail = self.detail.as_ref()?;
+        let mut body = serde_json::Map::new();
+        body.insert("code".into(), detail.code.clone().into());
+        body.insert("message".into(), self.message.clone().into());
+        for (key, value) in &detail.fields {
+            body.entry(key.clone())
+                .or_insert_with(|| value.clone().into());
+        }
+        serde_json::to_string(&body).ok()
     }
 
     pub fn bad_request(message: impl Into<String>) -> Self {

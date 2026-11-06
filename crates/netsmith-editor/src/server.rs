@@ -192,7 +192,9 @@ async fn guard(State(state): State<Shared>, request: Request, next: Next) -> Res
 
 /// Answers a route that needs the analysis with `503` and `{pending, elapsedMs}` while the
 /// first analysis runs, to a request that asked for that (`PENDING_HEADER`). Any other
-/// request goes on and waits inside the backend until the analysis is done.
+/// request goes on and waits inside the backend until the analysis is done. A failure of
+/// the project's data (`ApiError::unprocessable`) is answered with its JSON form instead of
+/// text to a request that has `application/json` in its `Accept` header.
 async fn gate(State(state): State<Shared>, request: Request, next: Next) -> Response {
     let asks = request
         .headers()
@@ -217,8 +219,28 @@ async fn gate(State(state): State<Shared>, request: Request, next: Next) -> Resp
         )
             .into_response();
     }
-    next.run(request).await
+    let wants_json = request
+        .headers()
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.contains("application/json"));
+    let response = next.run(request).await;
+    // A failure of the project's data has a structured form for a page that asks for it.
+    if wants_json && let Some(body) = response.extensions().get::<StructuredError>() {
+        return (
+            response.status(),
+            [(header::CONTENT_TYPE, "application/json")],
+            body.0.clone(),
+        )
+            .into_response();
+    }
+    response
 }
+
+/// The JSON body of a failure that has one, riding on the response until [`gate`] knows
+/// whether the page accepts it.
+#[derive(Clone)]
+struct StructuredError(String);
 
 fn refuse(message: &str) -> Response {
     ApiError::forbidden(message).into_response()
@@ -227,12 +249,16 @@ fn refuse(message: &str) -> Response {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let status = StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-        (
+        let mut response = (
             status,
             [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
             format!("{}\n", self.message),
         )
-            .into_response()
+            .into_response();
+        if let Some(json) = self.json() {
+            response.extensions_mut().insert(StructuredError(json));
+        }
+        response
     }
 }
 

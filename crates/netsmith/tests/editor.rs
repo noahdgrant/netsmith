@@ -1231,6 +1231,119 @@ fn footprints_here() -> bool {
     here
 }
 
+/// A copy of one of the repository's example projects, opened.
+fn example_project(name: &str, label: &str) -> (TempDir, Workspace) {
+    fn copy(from: &Path, to: &Path) {
+        fs::create_dir_all(to).unwrap();
+        for entry in fs::read_dir(from).unwrap().flatten() {
+            let (src, dst) = (entry.path(), to.join(entry.file_name()));
+            if src.is_dir() {
+                copy(&src, &dst);
+            } else {
+                fs::copy(&src, &dst).unwrap();
+            }
+        }
+    }
+    let root = TempDir::new(label);
+    copy(
+        &Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples")
+            .join(name),
+        &root,
+    );
+    let editor = Workspace::open(Target::resolve_from(&root, None).unwrap())
+        .unwrap_or_else(|e| panic!("{e}"));
+    (root, editor)
+}
+
+#[test]
+fn the_schematic_bench_has_a_footprint_with_a_pad_for_every_pin_so_its_pcb_view_works() {
+    if !footprints_here() {
+        return;
+    }
+    let (_root, editor) = example_project("schematic_bench", "editor-bench");
+    let scene = editor
+        .pcb_scene("SchematicBench")
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    assert!(
+        scene.parts.iter().any(|p| p.pads.len() == 97),
+        "the microcontroller has its 97 pads"
+    );
+}
+
+#[test]
+fn a_part_whose_footprint_lacks_a_pad_is_a_422_that_names_the_part_the_pad_and_the_net() {
+    if !footprints_here() {
+        return;
+    }
+    // The example's footprint is the stock QFP-100 again, which has no pad 131.
+    let (root, editor) = example_project("schematic_bench", "editor-bench-pads");
+    let mapping = fs::read_to_string(root.join("kicad.toml")).unwrap();
+    fs::write(
+        root.join("kicad.toml"),
+        mapping.replace("bench:Mcu97", "Package_QFP:LQFP-100_14x14mm_P0.5mm"),
+    )
+    .unwrap();
+    let editor = {
+        drop(editor);
+        Workspace::open(Target::resolve_from(&root, None).unwrap()).unwrap()
+    };
+    let e = editor.pcb_scene("SchematicBench").unwrap_err();
+    assert_eq!(
+        e.status, 422,
+        "the project's mistake, not the server's: {e:?}"
+    );
+    assert!(
+        e.message
+            .starts_with("SchematicBench: net +3V3 joins pad 131 of U4, but footprint"),
+        "{}",
+        e.message
+    );
+    let detail = e.detail.expect("a structured form");
+    assert_eq!(detail.code, "footprint_lacks_pad");
+    let field = |k: &str| {
+        detail
+            .fields
+            .iter()
+            .find(|(key, _)| key == k)
+            .map(|(_, v)| v.as_str())
+    };
+    assert_eq!(field("board"), Some("SchematicBench"));
+    assert_eq!(field("part"), Some("U4"));
+    assert_eq!(field("pad"), Some("131"));
+    assert_eq!(field("net"), Some("+3V3"));
+    assert_eq!(
+        field("footprint"),
+        Some("Package_QFP:LQFP-100_14x14mm_P0.5mm")
+    );
+}
+
+#[test]
+fn a_part_with_no_kicad_mapping_is_a_422_with_its_designator_too() {
+    // `bus_bench` without its `kicad.toml`: the parts have no symbol or footprint.
+    let root = TempDir::new("editor-nomapping");
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("netsmith.toml"),
+        "[project]\nname = \"demo\"\ntop_level = [\"src/main.nsm\"]\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/main.nsm"),
+        include_str!("../../../scripts/editor-verify-js/fixtures/bus_bench.nsm"),
+    )
+    .unwrap();
+    let editor = Workspace::open(Target::resolve_from(&root, None).unwrap()).unwrap();
+    let e = editor.pcb_scene("BusBench").unwrap_err();
+    assert_eq!(e.status, 422, "{e:?}");
+    let detail = e.detail.expect("a structured form");
+    assert_eq!(detail.code, "no_kicad_mapping");
+    assert!(
+        detail.fields.iter().any(|(k, v)| k == "part" && v == "U1"),
+        "{detail:?}"
+    );
+}
+
 fn layout_file(root: &Path) -> PathBuf {
     root.join("src/main.pcb.toml")
 }

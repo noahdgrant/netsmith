@@ -181,6 +181,13 @@ async function launch() {
       fs.writeFileSync(path.join(project, 'src/main.physical.nsm'), text);
     }
     if (layout !== fixture && fs.existsSync(layout)) fs.copyFileSync(layout, path.join(project, 'src/main.pcb.toml'));
+    // The mapping to KiCad beside the fixture, if it has one (ADR 0021): `x.kicad.toml` is the
+    // project's `kicad.toml`, and `x.libs/` is its `libs/` (the project's own symbol and
+    // footprint libraries), so the PCB view has footprints for the fixture's invented parts.
+    const mapping = fixture.replace(/\.nsm$/, '.kicad.toml');
+    if (mapping !== fixture && fs.existsSync(mapping)) fs.copyFileSync(mapping, path.join(project, 'kicad.toml'));
+    const libs = fixture.replace(/\.nsm$/, '.libs');
+    if (libs !== fixture && fs.existsSync(libs)) fs.cpSync(libs, path.join(project, 'libs'), { recursive: true });
     // A module, so the tree and the imports have something to show.
     fs.writeFileSync(
       path.join(project, 'src/power.nsm'),

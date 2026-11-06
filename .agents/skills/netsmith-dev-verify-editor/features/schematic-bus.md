@@ -29,5 +29,5 @@ Look at `brain`, `picked`, `flag-menu`, `followed`, `palette` and `found`.
 
 - Headings of the inspector and the menu are upper-cased by CSS: match their text without regard to case.
 - Hover lights the nets under the pointer; the pointer is where the palette's row was when the window closes, so move it off the drawing before asserting that nothing is lit.
-- The PCB view of `bus_bench` is an error (its parts have no footprint): a recipe that opens it fails on the console error. The bill of materials shows the selection too.
+- `bus_bench` has a mapping of its own (`fixtures/bus_bench.kicad.toml` and `bus_bench.libs/`, copied by `launch`), so its PCB view places the parts. A fixture's `x.kicad.toml` is the scratch project's `kicad.toml` and `x.libs/` its `libs/`. The bill of materials shows the selection too.
 - The bus's line is a path with a wide invisible `.hit` twin: aim the pointer at a point on the path (`getPointAtLength`), not at the middle of its box.

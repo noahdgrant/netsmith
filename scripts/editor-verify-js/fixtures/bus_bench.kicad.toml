@@ -1,0 +1,29 @@
+# What KiCad calls the three invented parts of bus_bench (ADR 0021), so that the PCB view has
+# footprints to place. The symbols are the project's own (`libs/bus.kicad_sym`, drawn by the
+# fixture, not a real chip's); the footprints are generated ones (ADR 0043) with as many pads
+# as the part has pins.
+
+[[library]]
+name = "bus"
+symbols = "libs/bus.kicad_sym"
+
+[[part]]
+kind = "Cpu"
+package = "MSOP-10"
+default = true
+symbol = "bus:Cpu"
+footprint = "Package_SO:MSOP-10_3x3mm_P0.5mm"
+
+[[part]]
+kind = "Flash"
+package = "SOT-23-6"
+default = true
+symbol = "bus:Flash"
+footprint = "Package_TO_SOT_SMD:SOT-23-6"
+
+[[part]]
+kind = "Radio"
+package = "SOT-23-6"
+default = true
+symbol = "bus:Radio"
+footprint = "Package_TO_SOT_SMD:SOT-23-6"
