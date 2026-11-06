@@ -58,7 +58,7 @@ function TopMenu({ id, icon, label, tip, keys, children }: { id: MenuId; icon: I
         class={`icon-btn ${open ? 'on' : ''}`}
         data-tip={open ? undefined : `${tip}${keys ? ` (${chordText(keys)})` : ''}`}
         aria-label={label}
-        aria-haspopup="dialog"
+        aria-haspopup={id === 'help' ? 'menu' : 'dialog'}
         aria-expanded={open}
         data-testid={`menu-${id}`}
         onClick={() => toggleMenu(id)}
