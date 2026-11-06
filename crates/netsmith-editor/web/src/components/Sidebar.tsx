@@ -749,6 +749,11 @@ export function Sidebar() {
           onScroll={(e) => {
             scrolled.current = (e.currentTarget as HTMLElement).scrollTop;
           }}
+          // A scroll that has happened and not yet been reported (a row scrolled into view just before the press) is
+          // the list's place: the redraw that the press causes must not put the list back where it was.
+          onPointerDownCapture={(e) => {
+            scrolled.current = (e.currentTarget as HTMLElement).scrollTop;
+          }}
           onContextMenu={(e) => {
             // Beside the rows: the menu of the project's src folder.
             e.preventDefault();
