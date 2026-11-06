@@ -16,6 +16,7 @@ mod pcb;
 mod power;
 mod progress;
 mod release;
+mod solved;
 mod sourcing;
 mod system;
 

@@ -337,7 +337,7 @@ pub struct Pending {
     pub elapsed_ms: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct PartInfo {
     pub refdes: String,
@@ -352,6 +352,87 @@ pub struct PartInfo {
     pub decl: Option<Location>,
     /// The declarations of what contains it, innermost first (`.stage: LdoStage`).
     pub scopes: Vec<Location>,
+    /// What the solver worked out for the part and the source did not state. Absent when
+    /// there is nothing to say (a part with no catalog row and no derived value).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub solved: Option<Solved>,
+}
+
+/// What the solver derived for a part, as numbers and as text (ADR 0009, ADR 0013): the
+/// worst case over every range the part can take. Each member is left out when it does not
+/// apply or the source stated it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Solved {
+    /// A capacitor's capacitance in use: the marked value after the DC bias across it and
+    /// after its tolerance (`1.72uF..2.916uF` for a 10 uF part at 5 V). Present where the
+    /// bias derating applies, that is when the part has a curve and a bias.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub effective_capacitance: Option<Range>,
+    /// The DC voltage across the part that the derating used (taken from the rail the part
+    /// sits across, ADR 0013). Present with `effective_capacitance`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub bias: Option<Range>,
+    /// The tolerance of the resistance, capacitance or inductance the solver chose, when the
+    /// source did not state the value's range.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub tolerance: Option<Tolerance>,
+    /// The ratings of the row that was picked (`max_voltage`, `max_current`, `max_power`,
+    /// `rated_current`, `saturation_current`, ...), the voltages, currents and powers the
+    /// part is built for, in the order its definition lists them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub ratings: Option<Vec<Rating>>,
+    /// The catalog row that stands for the part.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub row: Option<SolvedRow>,
+}
+
+/// A tolerance as a part's range gives it: half the range over its middle.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct Tolerance {
+    /// `20` for `+/- 20%`, rounded to three decimals.
+    pub percent: f64,
+    /// `+/- 20%`.
+    pub text: String,
+}
+
+/// One rating of a part.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct Rating {
+    /// The field of the part: `max_voltage`.
+    pub name: String,
+    pub range: Range,
+}
+
+/// The catalog row a part was made from, or the generic part that stands for it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SolvedRow {
+    /// The catalog table the part's definition draws from (`resistor`, `ldo`), if it names one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub catalog: Option<String>,
+    /// The manufacturer's part number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub mpn: Option<String>,
+    /// The LCSC number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub lcsc: Option<String>,
+    /// `Basic`, `Extended` or `Preferred`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub library: Option<String>,
+    /// The solver chose only a value and a package (ADR 0047) and no row stands for the part
+    /// yet; `mpn`, `lcsc` and `library` are then absent.
+    pub generic: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -378,7 +459,7 @@ pub struct NetInfo {
     pub pins: Vec<PinInfo>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct BoardDetail {
     pub name: String,
     pub file: String,

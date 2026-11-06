@@ -452,3 +452,118 @@ fn a_pin_with_no_name_or_function_leaves_them_out_of_the_json() {
         r#"{"refdes":"R1","pin":"1"}"#
     );
 }
+
+#[test]
+fn a_part_says_what_the_solver_worked_out_for_it() {
+    let (_root, editor) = project("solved");
+    let power = editor.board("TwoBoards/power").unwrap();
+    let part = |board: &netsmith_editor::api::BoardDetail, refdes: &str| {
+        board
+            .parts
+            .iter()
+            .find(|p| p.refdes == refdes)
+            .unwrap()
+            .clone()
+    };
+
+    // A capacitor's capacitance in use after the DC bias across it, which the rail gave.
+    let c1 = part(&power, "C1").solved.expect("C1 was solved");
+    let effective = c1.effective_capacitance.expect("derated");
+    assert_eq!(effective.text, "1.72uF..2.916uF");
+    assert!((effective.lo - 1.72e-6).abs() < 1e-8 && (effective.hi - 2.916e-6).abs() < 1e-8);
+    // The 5 V rail with its 5 % tolerance is the bias.
+    assert_eq!(c1.bias.expect("the bias").text, "4.75V..5.25V");
+    // The tolerance of the part the solver chose: 8 uF..12 uF round 10 uF.
+    let tolerance = c1.tolerance.expect("a tolerance");
+    assert_eq!(
+        (tolerance.percent, tolerance.text.as_str()),
+        (20.0, "+/- 20%")
+    );
+    let ratings: Vec<(&str, &str)> = c1
+        .ratings
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|r| (r.name.as_str(), r.range.text.as_str()))
+        .collect();
+    assert_eq!(ratings, [("max_voltage", "10V")]);
+    let row = c1.row.expect("a catalog row");
+    assert_eq!(row.catalog.as_deref(), Some("capacitor"));
+    assert_eq!(row.lcsc.as_deref(), Some("C315248"));
+    assert_eq!(row.mpn.as_deref(), Some("CL05A106MP5NUNC"));
+    assert_eq!(row.library.as_deref(), Some("Extended"));
+    assert!(!row.generic);
+    // The row's number is also the part's own `lcsc`.
+    assert_eq!(part(&power, "C1").lcsc, row.lcsc);
+
+    // A regulator is not derated; it has ratings and a row.
+    let u1 = part(&power, "U1").solved.unwrap();
+    assert!(u1.effective_capacitance.is_none() && u1.bias.is_none() && u1.tolerance.is_none());
+    let ratings: Vec<(&str, &str)> = u1
+        .ratings
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|r| (r.name.as_str(), r.range.text.as_str()))
+        .collect();
+    assert_eq!(ratings, [("max_current", "100mA"), ("max_power", "250mW")]);
+    assert_eq!(u1.row.unwrap().mpn.as_deref(), Some("XC6206P332MR-G"));
+
+    // A resistor has a tolerance and a power rating, no derating.
+    let led = editor.board("TwoBoards/led").unwrap();
+    let r1 = part(&led, "R1").solved.unwrap();
+    assert_eq!(r1.tolerance.unwrap().text, "+/- 1%");
+    assert_eq!(r1.ratings.unwrap()[0].range.text, "62.5mW");
+    assert!(r1.effective_capacitance.is_none());
+
+    // A connector has no derived value, only its row.
+    let j1 = part(&led, "J1").solved.unwrap();
+    assert!(j1.tolerance.is_none() && j1.ratings.is_none() && j1.effective_capacitance.is_none());
+    assert_eq!(j1.row.unwrap().lcsc.as_deref(), Some("C42431841"));
+}
+
+#[test]
+fn what_the_source_states_is_not_reported_as_solved() {
+    // A capacitor whose range the board states keeps no solved tolerance; the solver
+    // still derives what it worked out.
+    let text = TWO_BOARDS.replace(
+        ".input_cap:  Capacitor { .effective_capacitance >= 1uF }",
+        ".input_cap:  Capacitor { .effective_capacitance >= 1uF; .capacitance &= 10uF +/- 20% }",
+    );
+    assert_ne!(text, TWO_BOARDS);
+    let (_root, editor) = project_of("stated", &[("src/main.nsm", &text)]);
+    assert_eq!(
+        editor.analysis().errors,
+        0,
+        "{:?}",
+        editor.analysis().problems
+    );
+    let power = editor.board("TwoBoards/power").unwrap();
+    let c1 = power.parts.iter().find(|p| p.refdes == "C1").unwrap();
+    let solved = c1.solved.as_ref().unwrap();
+    assert!(solved.tolerance.is_none(), "{solved:?}");
+    assert!(solved.effective_capacitance.is_some());
+}
+
+#[test]
+fn a_part_with_nothing_solved_leaves_the_key_out_of_the_json() {
+    let bare = netsmith_editor::api::Solved {
+        effective_capacitance: None,
+        bias: None,
+        tolerance: None,
+        ratings: None,
+        row: None,
+    };
+    assert_eq!(serde_json::to_string(&bare).unwrap(), "{}");
+    let row = netsmith_editor::api::SolvedRow {
+        catalog: None,
+        mpn: None,
+        lcsc: Some("C1".into()),
+        library: None,
+        generic: true,
+    };
+    assert_eq!(
+        serde_json::to_string(&row).unwrap(),
+        r#"{"lcsc":"C1","generic":true}"#
+    );
+}

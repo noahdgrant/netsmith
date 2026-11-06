@@ -181,7 +181,12 @@ decl: Location | null,
 /**
  * The declarations of what contains it, innermost first (`.stage: LdoStage`).
  */
-scopes: Array<Location>, };
+scopes: Array<Location>, 
+/**
+ * What the solver worked out for the part and the source did not state. Absent when
+ * there is nothing to say (a part with no catalog row and no derived value).
+ */
+solved?: Solved, };
 
 export type PinInfo = { refdes: string, 
 /**

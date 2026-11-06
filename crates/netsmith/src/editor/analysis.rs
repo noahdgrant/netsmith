@@ -482,6 +482,7 @@ impl Workspace {
                         .declared
                         .map(|_| api_location(at(inst))),
                     scopes,
+                    solved: super::solved::of(model, inst, source),
                 }
             })
             .collect();
