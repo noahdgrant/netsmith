@@ -63,7 +63,7 @@ select { padding: 0 8px; }
 
 /* sidebar */
 .sidebar { width: 260px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-width: 0; }
-.project-name { display: flex; align-items: center; gap: 8px; padding: 0 14px; height: 38px; border-bottom: 1px solid var(--border); margin-bottom: 8px; font-weight: var(--fw-semibold); letter-spacing: var(--ls-title); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
+.project-name-unused { display: flex; align-items: center; gap: 8px; padding: 0 14px; height: 38px; border-bottom: 1px solid var(--border); margin-bottom: 8px; font-weight: var(--fw-semibold); letter-spacing: var(--ls-title); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
 .cube { width: 12px; height: 12px; border: 2px solid var(--accent); border-radius: var(--r-xs); flex: none; }
 .twisty { display: inline-block; width: 12px; color: var(--text-faint); font-size: var(--fs-xs); text-align: center; flex: none; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; display: inline-block; }
@@ -337,15 +337,11 @@ body:has(.status-popover) .toasts { right: calc(16px + 340px + 12px); }
 .schematic-host svg.schematic .part.mark.linked .s { stroke: color-mix(in srgb, var(--sch-mark) 55%, var(--sch-muted)); stroke-dasharray: 3 2; }
 .schematic-host svg.schematic .part.mark.linked text { fill: color-mix(in srgb, var(--sch-mark) 70%, var(--sch-text)); }
 .inspector { width: 290px; flex: none; overflow: auto; background: var(--surface); border-left: 1px solid var(--border); padding: 4px 14px 16px; cursor: default; }
-.inspector h3 { margin: 14px 0 6px; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-faint); font-weight: 600; }
-.inspector .title { font-size: var(--fs-lg); font-weight: 600; }
 .inspector .sub, .sub { color: var(--text-faint); font-weight: 400; font-size: var(--fs-sm); }
 .schematic-body .stage .panzoom { position: absolute; inset: 0; }
 .pulse-ring { position: absolute; pointer-events: none; border: 2px solid var(--sel); border-radius: var(--r-lg); box-shadow: 0 0 0 0 color-mix(in srgb, var(--sel) 60%, transparent); animation: pulse-ring 1.6s ease-out forwards; z-index: 2; }
 @keyframes pulse-ring { 0% { opacity: 1; transform: scale(.85); box-shadow: 0 0 0 0 color-mix(in srgb, var(--sel) 60%, transparent); } 35% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 14px color-mix(in srgb, var(--sel) 0%, transparent); } 100% { opacity: 0; transform: scale(1.1); } }
 @media (prefers-reduced-motion: reduce) { .pulse-ring { animation: pulse-fade 1.6s linear forwards; } @keyframes pulse-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } } }
-.inspector dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 6px 0; }
-.inspector dt { color: var(--text-faint); } .inspector dd { margin: 0; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; margin-bottom: 4px; }
 .chips + h3, .chips + .link + h3, .inspector .chips ~ h3 { margin-top: 20px; }
 .chip { display: inline-flex; align-items: center; height: var(--h-sm); padding: 0 9px; border: 1px solid var(--border); border-radius: var(--r-pill); background: var(--surface-raised); font-size: var(--fs-sm); color: var(--text-muted); margin-right: 6px; }
@@ -472,15 +468,6 @@ svg.edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-even
 .side .sub { padding: 8px 12px 2px; color: var(--text-faint); font-size: var(--fs-xs); font-weight: var(--fw-semibold); }
 /* the board's inspector (in the side panel), apart from the schematic's aside above: both are `.inspector` */
 .side .inspector { padding: 8px 12px 10px; border-bottom: 1px solid var(--border); flex: none; max-height: 52%; overflow: auto; }
-.side .inspector h3 { margin: 0 0 2px; font-size: var(--fs-lg); }
-.side .inspector .kv { display: grid; grid-template-columns: auto 1fr; gap: 1px 12px; margin: 6px 0; font-size: var(--fs-sm); }
-.side .inspector .kv span:nth-child(odd) { color: var(--text-faint); }
-.side .inspector .actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
-.side .inspector .actions .tool { height: var(--h-sm); padding: 0 9px; font-size: var(--fs-sm); }
-.side .inspector .checks { display: flex; flex-wrap: wrap; gap: 3px 10px; align-items: center; margin: 4px 0; font-size: var(--fs-sm); }
-.side .inspector .pads { border-collapse: collapse; font-size: var(--fs-sm); margin-top: 4px; }
-.side .inspector .pads td { padding: 0 8px 0 0; }
-.side .inspector .pads .pad-no { color: var(--text-muted); font-family: var(--mono); }
 .toolbar .tool, .toolbar .chip, .toolbar label, .toolbar summary { white-space: nowrap; }
 .pcb-host .l-ratsnest, .pcb-host .l-refs, .pcb-host .l-planes { pointer-events: none; }
 
@@ -773,7 +760,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .selchip-kind.k-part { color: var(--kind-part); } .selchip-kind.k-net { color: var(--kind-net); } .selchip-kind.k-module { color: var(--kind-module); } .selchip-kind.k-bus { color: var(--kind-interface); }
 .selchip-btn.step { padding: 0 6px; }
 .selchip-btn:disabled { opacity: .4; cursor: default; }
-.inspector h3 .clear { float: right; font-size: var(--fs-xs); text-transform: none; letter-spacing: 0; padding: 0; }
 @media (max-width: 1400px) { .selchip-sub:not(.keep) { display: none; } }
 @media (max-width: 1100px) { .cmdk { flex: none; min-width: 36px; } .cmdk-text, .cmdk .qp-keys { display: none; } }
 
@@ -851,7 +837,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 
 .sheetnav { width: 232px; flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-right: 1px solid var(--border); cursor: default; }
 .sn-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 8px 4px 12px; }
-.sn-head h3, .sinspector h3 { margin: 0; font-size: 11px; font-weight: var(--fw-semibold); color: var(--text-faint); font-weight: 600; }
+.sn-head h3 { margin: 0; font-size: 11px; font-weight: var(--fw-semibold); color: var(--text-faint); font-weight: 600; }
 .sheetlist { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 .sl-filter, .parts-filter { margin: 4px 8px 6px; height: var(--ctl); padding: 0 10px; background: var(--surface-3); border: 1px solid transparent; border-radius: var(--r-sm); color: var(--text); font: inherit; min-width: 0; }
 .sl-filter:focus, .parts-filter:focus { outline: none; border-color: var(--sel-line); background: var(--canvas); }
@@ -910,21 +896,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 
 /* the inspector */
 .sinspector { width: 300px; flex: none; display: flex; flex-direction: column; overflow: auto; background: var(--surface); border-left: 1px solid var(--border); padding: 4px 14px 16px; cursor: default; }
-.sinspector h3 { margin: 14px 0 6px; display: flex; align-items: baseline; gap: 6px; }
-.sinspector .hint { margin-left: 0; font-style: italic; text-transform: none; letter-spacing: 0; font-size: 11px; }
-.sinspector .title { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
-.sinspector dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 8px 0; }
-.sinspector dt { color: var(--text-faint); } .sinspector dd { margin: 0; overflow-wrap: anywhere; min-width: 0; }
-.sinspector dd.bad { color: var(--danger); } .sinspector dd.warn { color: var(--warning); }
-.sinspector .actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
-.sinspector .link.decl { padding: 0; font-family: var(--mono); font-size: 11px; word-break: break-all; text-align: left; }
-.sinspector .link.net-link { padding: 0; text-decoration: none; font-family: var(--mono); font-size: 12px; text-align: left; overflow-wrap: anywhere; }
-.sinspector .link.net-link:hover { text-decoration: underline; }
-.sinspector table.pins { margin-top: 8px; display: block; max-height: 300px; overflow: auto; }
-.sinspector table.pins tbody { display: table; width: 100%; }
-.sinspector .sub-head { margin-top: 10px; color: var(--text-faint); font-size: 11px; font-weight: var(--fw-semibold); }
-.sinspector .chips { margin-top: 4px; }
-.sinspector .chip { margin-right: 0; padding: 0 8px; }
 button.chip.cur { border-color: var(--sel-line); background: var(--pick); }
 .net-groups { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .grp { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 2px 6px; background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--r-sm); color: var(--text); cursor: pointer; font: inherit; font-weight: 600; }

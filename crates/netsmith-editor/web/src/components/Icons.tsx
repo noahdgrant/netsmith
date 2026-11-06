@@ -267,6 +267,13 @@ const P: Record<string, ComponentChildren> = {
       <path d="M5.5 7.2V5.4a2.5 2.5 0 0 1 5 0v1.8" />
     </>
   ),
+  rotate: <path d="M13.2 8a5.2 5.2 0 1 1-1.7-3.8M13.4 2.6v3.2h-3.2" />,
+  unlock: (
+    <>
+      <rect x="3.5" y="7.2" width="9" height="6.3" rx="1.6" />
+      <path d="M5.5 7.2V5.4a2.5 2.5 0 0 1 4.8-1" />
+    </>
+  ),
   route: (
     <>
       <circle cx="3.6" cy="12.4" r="1.3" />
@@ -281,6 +288,14 @@ const P: Record<string, ComponentChildren> = {
     </>
   ),
   list: <path d="M2.5 4h11M2.5 8h11M2.5 12h11" />,
+  undo: <path d="M6.4 3.6L3.5 6.5l2.9 2.9M3.8 6.5h5.6a3.1 3.1 0 0 1 0 6.2H6.5" />,
+  redo: <path d="M9.6 3.6l2.9 2.9-2.9 2.9M12.2 6.5H6.6a3.1 3.1 0 0 0 0 6.2h2.9" />,
+  sidepanel: (
+    <>
+      <rect x="1.75" y="2.5" width="12.5" height="11" rx="1.6" />
+      <path d="M10 2.5v11" />
+    </>
+  ),
   tag: <path d="M2.2 8.4V3.2h5.2l6.4 6.4-5.2 5.2zM5.3 5.4h.01" />,
 };
 

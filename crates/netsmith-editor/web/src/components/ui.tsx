@@ -166,7 +166,7 @@ export function Segmented<T extends string>({
   label,
 }: {
   value: T;
-  options: { value: T; label?: string; icon?: IconName; tip?: string }[];
+  options: { value: T; label?: string; icon?: IconName; tip?: string; keys?: string; testid?: string }[];
   onChange: (v: T) => void;
   label: string;
 }) {
@@ -180,6 +180,8 @@ export function Segmented<T extends string>({
           aria-checked={value === o.value}
           class={`seg-btn ${value === o.value ? 'on' : ''}`}
           data-tip={o.tip}
+          data-tip-keys={o.keys}
+          data-testid={o.testid}
           aria-label={o.label ? undefined : (o.tip ?? o.value)}
           onClick={() => onChange(o.value)}
         >

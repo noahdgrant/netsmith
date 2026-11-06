@@ -3,6 +3,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import { ApiFailure, api } from '../client';
 import { allowed, folderFor, removalPrompt, starter, stemOf, type Kind, type Template } from '../fileops';
 import { load, save } from '../storage';
+import { computed } from '@preact/signals';
+import { Icon } from './Icons';
 import {
   activeFile,
   dirty,
@@ -10,6 +12,7 @@ import {
   goTo,
   openFile,
   openFiles,
+  problems,
   project,
   refreshAfterChange,
   renameOpen,
@@ -42,15 +45,10 @@ import {
 } from '../tree';
 import {
   Chevron,
-  CollapseIcon,
-  ExpandIcon,
   FileTypeIcon,
   FolderIcon,
-  HelpIcon,
   KindIcon,
   LockIcon,
-  NewFileIcon,
-  NewFolderIcon,
 } from './TreeIcons';
 import { ConfirmRemove, ContextMenu, NameEntry, type Entry, type MenuItem } from './FileOps';
 
@@ -87,6 +85,18 @@ function Marked({ text, filter }: { text: string; filter: string }) {
     </>
   );
 }
+
+/** The errors and warnings of each file, for the badge in its row. */
+const fileProblems = computed(() => {
+  const by = new Map<string, { error: number; warning: number }>();
+  for (const p of problems.value) {
+    if (!p.at || p.severity === 'note') continue;
+    const e = by.get(p.at.file) ?? { error: 0, warning: 0 };
+    e[p.severity]++;
+    by.set(p.at.file, e);
+  }
+  return by;
+});
 
 function Pill({ n, title }: { n: number; title: string }) {
   return (
@@ -150,11 +160,27 @@ function TreeRow({
       title = node.file.path;
       icon = <FileTypeIcon icon={fileIcon(node.name)} />;
       label = <Marked text={node.name} filter={filter} />;
-      meta = node.file.readonly ? (
-        <span class="ft-lock" title={readonlyReason(node.file)} aria-label={readonlyReason(node.file)}>
-          <LockIcon />
-        </span>
-      ) : null;
+      {
+        const bad = fileProblems.value.get(node.file.path);
+        meta = (
+          <>
+            {bad && (
+              <span
+                class={`ft-problems ${bad.error ? 'error' : 'warning'}`}
+                title={`${bad.error ? `${bad.error} error${bad.error === 1 ? '' : 's'}` : ''}${bad.error && bad.warning ? ', ' : ''}${bad.warning ? `${bad.warning} warning${bad.warning === 1 ? '' : 's'}` : ''} in this file`}
+                aria-label={`${bad.error} errors, ${bad.warning} warnings`}
+              >
+                {bad.error + bad.warning}
+              </span>
+            )}
+            {node.file.readonly && (
+              <span class="ft-lock" title={readonlyReason(node.file)} aria-label={readonlyReason(node.file)}>
+                <LockIcon />
+              </span>
+            )}
+          </>
+        );
+      }
       activate = () => activateNode(node);
       break;
     case 'def': {
@@ -633,57 +659,56 @@ export function Sidebar() {
 
   return (
     <aside class="sidebar" style={{ width: `${width}px` }}>
-      <div class="project-name" title={p.title}>
-        <span class="cube" />
-        {p.title}
-      </div>
-      <div class="ft-tools">
-        <input
-          class="tree-filter"
-          type="search"
-          placeholder="Filter files and definitions"
-          aria-label="Filter files and definitions"
-          value={filter}
-          onInput={(e) => setFilterKeeping((e.target as HTMLInputElement).value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') setFilterKeeping('');
-            else if (e.key === 'ArrowDown' && rows.length) {
-              e.preventDefault();
-              move(focus ?? rows[0].id);
-            }
-          }}
-        />
-        <div class="ft-actions">
-          <button type="button" class="ft-btn" title={canEdit ? 'Make a file in the selected folder (Ctrl+N)' : noProject} aria-label="New file" disabled={!canEdit} onClick={() => startNew('file')}>
-            <NewFileIcon />
-            New file
+      <div class="sb-head">
+        <span class="sb-title" title={p.title}>
+          Files
+          <span class="sb-project">{p.title}</span>
+        </span>
+        <span class="sb-actions" role="toolbar" aria-label="Files">
+          <button type="button" class="icon-btn" data-tip={canEdit ? 'New file' : noProject} data-tip-keys={canEdit ? 'Ctrl+N' : undefined} aria-label="New file" disabled={!canEdit} onClick={() => startNew('file')}>
+            <Icon name="file-plus" size={15} />
           </button>
-          <button type="button" class="ft-btn" title={canEdit ? 'Make a folder in the selected folder' : noProject} aria-label="New folder" disabled={!canEdit} onClick={() => startNew('folder')}>
-            <NewFolderIcon />
-            New folder
+          <button type="button" class="icon-btn" data-tip={canEdit ? 'New folder' : noProject} aria-label="New folder" disabled={!canEdit} onClick={() => startNew('folder')}>
+            <Icon name="folder-plus" size={15} />
           </button>
-        </div>
-        <div class="ft-actions">
-          <button type="button" class="ft-btn" title="Open every folder" aria-label="Expand all" onClick={() => remember(setAll(sections, true, overrides))}>
-            <ExpandIcon />
-            Expand all
+          <span class="sb-sep" aria-hidden="true" />
+          <button type="button" class="icon-btn" data-tip="Expand all folders" aria-label="Expand all" onClick={() => remember(setAll(sections, true, overrides))}>
+            <Icon name="expand-all" size={15} />
           </button>
-          <button type="button" class="ft-btn" title="Close every folder" aria-label="Collapse all" onClick={() => remember(setAll(sections, false, overrides))}>
-            <CollapseIcon />
-            Collapse all
+          <button type="button" class="icon-btn" data-tip="Collapse all folders" aria-label="Collapse all" onClick={() => remember(setAll(sections, false, overrides))}>
+            <Icon name="collapse-all" size={15} />
           </button>
-          <span class="ft-spacer" />
           <button
             type="button"
-            class={`ft-btn icon ${legend ? 'on' : ''}`}
-            title="What the icons mean"
+            class={`icon-btn ${legend ? 'on' : ''}`}
+            data-tip="What the icons mean"
             aria-label="What the icons mean"
             aria-expanded={legend}
             onClick={() => setLegend(!legend)}
           >
-            <HelpIcon />
+            <Icon name="help" size={15} />
           </button>
-        </div>
+        </span>
+      </div>
+      <div class="ft-tools">
+        <label class="field-icon">
+          <Icon name="search" size={13} />
+          <input
+            class="tree-filter"
+            type="search"
+            placeholder="Filter files and definitions"
+            aria-label="Filter files and definitions"
+            value={filter}
+            onInput={(e) => setFilterKeeping((e.target as HTMLInputElement).value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setFilterKeeping('');
+              else if (e.key === 'ArrowDown' && rows.length) {
+                e.preventDefault();
+                move(focus ?? rows[0].id);
+              }
+            }}
+          />
+        </label>
       </div>
       <div class="ft-wrap">
         {legend && <Legend onClose={() => setLegend(false)} />}
