@@ -124,3 +124,49 @@ export async function sizeSteps({ page, expect, step, section, id }) {
   await page.reload();
   await page.waitForSelector('.app');
 }
+
+/** The geometry of a table's frame (the BOM's, Compare's list) against its content: the rule is that a table frame is as tall as its content (header, rows,
+ * the counting foot right under the last row) up to the height the pane has, and only then scrolls inside, so there is never an empty frame below the foot.
+ * `frame` is the bordered box, `scroller` the element that scrolls, `foot` the counting foot, `last` a function of the foot that finds the last thing above it. */
+export function frameFit(page, { frame, scroller, foot, section }) {
+  return page.evaluate(
+    ({ frame, scroller, foot, section }) => {
+      const f = document.querySelector(frame).getBoundingClientRect();
+      const sc = document.querySelector(scroller);
+      const ft = document.querySelector(foot);
+      const fr = ft.getBoundingClientRect();
+      const sec = document.querySelector(section).getBoundingClientRect();
+      // What is above the foot: the last row of a table, or the element before the foot.
+      const table = sc.querySelector('table');
+      const above = table ? table.getBoundingClientRect() : ft.previousElementSibling.getBoundingClientRect();
+      const row = sc.querySelector('tbody tr:last-child, .cr:last-child, details.cmp-renum')?.getBoundingClientRect();
+      return {
+        scrolls: sc.scrollHeight > sc.clientHeight + 1,
+        footToContent: fr.top - above.bottom,
+        footToFrame: f.bottom - fr.bottom,
+        frameToSection: sec.bottom - f.bottom,
+        frameHeight: f.height,
+        rowHeight: row ? row.height : 40,
+        footHeight: fr.height,
+        footText: ft.innerText.replace(/\s+/g, ' ').trim(),
+        footInside: fr.top >= f.top && fr.bottom <= f.bottom + 1,
+      };
+    },
+    { frame, scroller, foot, section },
+  );
+}
+
+/** Assert the rule above for one table, whichever side of it the content falls: short, the frame ends where its rows do (the foot directly under the last
+ * row, the frame's bottom the foot's bottom: no empty area below the foot); tall, the frame stays inside the page and the foot stays in the frame. */
+export async function expectFrameFits(page, expect, what, sel) {
+  const g = await frameFit(page, sel);
+  const note = `${what}: ${g.scrolls ? 'scrolls inside' : 'sized to its content'}; foot ${g.footToContent.toFixed(0)} px under the content, ${g.footToFrame.toFixed(0)} px from the frame's end, ${g.frameToSection.toFixed(0)} px above the page's end`;
+  if (!g.scrolls) {
+    expect(g.footToContent >= -1 && g.footToContent <= 2 && Math.abs(g.footToFrame) <= 2, `${note}: the frame ends within a row of its content and never shows empty space below the foot`);
+    expect(g.footToContent < g.rowHeight && g.footToFrame < g.rowHeight, `${note}: less than a row of slack`);
+  } else {
+    expect(g.footToFrame >= -1 && g.footToFrame <= 2 && g.footInside, `${note}: the foot is the end of the frame`);
+    expect(g.frameToSection >= -1, `${note}: the frame stays inside the page`);
+  }
+  return g;
+}

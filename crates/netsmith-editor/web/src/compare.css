@@ -82,7 +82,7 @@
 .cmp-tab.active .cmp-count { background: var(--pick); color: var(--sel-text); }
 .cmp-bar { display: flex; align-items: center; gap: 0.5rem; padding: 0.625rem 1.25rem 0.5rem; flex: none; }
 .cmp-filter { flex: 0 1 340px; margin: 0; }
-.cmp-scroll { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: auto; margin: 0 1.25rem 1rem; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); box-shadow: var(--elev-1); }
+.cmp-scroll { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; overflow: auto; margin: 0 1.25rem 1rem; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); box-shadow: var(--elev-1); }
 .cmp-scroll > .empty { padding-block: 2rem; }
 .cmp-list { display: flex; flex-direction: column; flex: 1 0 auto; }
 .cmp-list > * { flex: none; }

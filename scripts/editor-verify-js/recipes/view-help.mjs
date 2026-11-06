@@ -1,6 +1,9 @@
-// The pages that are a column in the middle of a wide window (the bill of materials, Build, and Compare in compare.mjs): their tables fill the height and
-// scroll inside it with a pinned header and foot, the summary above stays put, and on a window with room a column of help ("What does this view show?")
-// stands in the margin on the right: folded with one click, remembered, and not in the page at all where there is no margin (a narrow window, a split).
+// The pages that are a column in the middle of a wide window (the bill of materials, Build, and Compare in compare.mjs): a table's frame is as tall as its
+// content (the header, the rows, a counting foot right under the last row) and only past the height the pane has does it scroll inside, with a sticky header and
+// the foot kept; the summary above stays put. On a window with room a column of help ("What does this view show?") stands in the margin on the right:
+// folded with one click, remembered, and not in the page at all where there is no margin (a narrow window, a split).
+import { expectFrameFits } from '../flow-helpers.mjs';
+
 export const fixture = 'two_boards';
 
 export async function run({ page, shot, step, expect, section }) {
@@ -9,29 +12,32 @@ export async function run({ page, shot, step, expect, section }) {
   await page.selectOption('.boardpick select', 'TwoBoards/led');
   const settle = (ms = 300) => page.waitForTimeout(ms);
 
-  step('the bill of materials: its table fills the height of the page and scrolls inside, with a sticky header, a foot that counts, and the summary pinned above');
+  step('the bill of materials: its frame is as tall as its rows, with the foot right under the last row; shortened, the table scrolls inside with a sticky header and the foot kept, and the summary tiles stay outside');
   await section('bom');
   await page.waitForSelector('table.bom-table');
   await settle(500);
-  const geo = await page.evaluate(() => {
-    const r = (sel) => document.querySelector(sel)?.getBoundingClientRect();
-    const sec = r('.section.sec-bom');
-    const frame = r('.bom-frame');
-    const stats = document.querySelector('.bom-stats');
-    const th = document.querySelector('.bom-table thead th');
-    const foot = r('.bom-foot');
-    return {
-      gap: sec.bottom - frame.bottom,
-      footAtBottom: Math.abs(foot.bottom - frame.bottom) < 2,
-      sticky: getComputedStyle(th).position,
-      statsInScroller: document.querySelector('.bom-scroll').contains(stats),
-      scrollOverflow: getComputedStyle(document.querySelector('.bom-scroll')).overflowY,
-      footText: document.querySelector('.bom-foot')?.innerText.replace(/\s+/g, ' '),
-    };
-  });
-  expect(geo.gap < 40 && geo.gap >= 0, `the table's frame reaches the foot of the page (${geo.gap.toFixed(0)} px short)`);
-  expect(geo.footAtBottom && /\d+ lines?/.test(geo.footText ?? '') && /\d+ parts?/.test(geo.footText ?? ''), `a foot at the bottom of the frame counts what is shown (${geo.footText})`);
-  expect(geo.sticky === 'sticky' && !geo.statsInScroller && geo.scrollOverflow === 'auto', 'the header is sticky, the table scrolls inside its own frame, and the summary tiles are outside it');
+  const bomSel = { frame: '.bom-frame', scroller: '.bom-scroll', foot: '.bom-foot', section: '.section.sec-bom' };
+  const geo = await expectFrameFits(page, expect, 'the bill of materials at 1920 x 1080', bomSel);
+  expect(!geo.scrolls && /\d+ lines?/.test(geo.footText) && /\d+ parts?/.test(geo.footText), `a foot counts what is shown (${geo.footText}), and four rows do not scroll`);
+  const flags = await page.evaluate(() => ({
+    sticky: getComputedStyle(document.querySelector('.bom-table thead th')).position,
+    statsInScroller: document.querySelector('.bom-scroll').contains(document.querySelector('.bom-stats')),
+    scrollOverflow: getComputedStyle(document.querySelector('.bom-scroll')).overflowY,
+  }));
+  expect(flags.sticky === 'sticky' && !flags.statsInScroller && flags.scrollOverflow === 'auto', 'the header is sticky, the table scrolls inside its own frame, and the summary tiles are outside it');
+  for (const mode of ['By value', 'By module']) {
+    await page.locator('.seg button', { hasText: mode }).first().click();
+    await settle(300);
+    await expectFrameFits(page, expect, `the bill of materials, ${mode.toLowerCase()}`, bomSel);
+  }
+  await page.locator('.seg button', { hasText: 'Flat' }).first().click();
+  await settle(300);
+  await page.setViewportSize({ width: 1920, height: 400 });
+  await settle(400);
+  const cut = await expectFrameFits(page, expect, 'the bill of materials at 1920 x 400', bomSel);
+  expect(cut.scrolls, 'a short window makes the rows scroll inside the frame (the frame does not grow past the page)');
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await settle(400);
   await page.locator('.bom-filter input').fill('C2');
   await settle(250);
   expect(/of \d+/.test(await page.locator('.bom-foot').innerText()), `filtered, the foot says of how many (${(await page.locator('.bom-foot').innerText()).replace(/\s+/g, ' ')})`);
