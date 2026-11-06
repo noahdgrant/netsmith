@@ -7,6 +7,5 @@ license.workspace = true
 [dependencies]
 zip = { version = "6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 serde_json = "1.0.154"
-
-[dev-dependencies]
+# Where `kicad-cli` is (`install::Search`), the one place that knows the search order.
 netsmith-kicad = { path = "../netsmith-kicad" }

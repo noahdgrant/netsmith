@@ -39,7 +39,7 @@ For a change to the editor or to a view it shows, also run the browser check in 
 
 ## KiCad
 
-`netsmith fab` and the scripts find `kicad-cli` in this order: `$KICAD_CLI`, `kicad-cli` on `PATH`, then Windows KiCad 9 at `/mnt/c/Program Files/KiCad/9.0/bin/kicad-cli.exe` under WSL. Tests that need KiCad skip themselves when it is absent. Say so in your report when they skipped.
+`netsmith fab`, the editor and the tests find `kicad-cli` in this order: `$KICAD_CLI`, `kicad-cli` on `PATH`, then under WSL the newest Windows KiCad in `/mnt/c/Program Files/KiCad/<version>/bin/kicad-cli.exe` (ADR 0021). The shell scripts (`scripts/check-kicad.sh`) still default to the 9.0 path. Tests that need KiCad skip themselves when it is absent. Say so in your report when they skipped.
 
 `build` and `fab` find KiCad's `symbols` and `footprints` folders with `netsmith_kicad::install` (ADR 0021): `NETSMITH_KICAD_SYMBOLS` and `NETSMITH_KICAD_FOOTPRINTS`, then beside `kicad-cli`, then the usual install places. A test of the lookup builds a fake install tree with `install::Search::under(<temp dir>)`; do not rely on this machine's KiCad.
 

@@ -1,56 +1,41 @@
 //! KiCad's own electrical rules check on the schematics netsmith writes. These run
-//! `kicad-cli.exe` from WSL and are skipped where it is not installed (set `KICAD_CLI` to
-//! its path to use another); the first one also needs KiCad's symbol libraries.
+//! `kicad-cli` (found as `KicadCliExe::locate` does: `$KICAD_CLI`, `PATH`, Windows KiCad
+//! under WSL) and are skipped where it is not installed; the first one also needs KiCad's
+//! symbol libraries.
 
-use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use netsmith::{Libraries, build_with};
 use netsmith_check::Loader;
+use netsmith_fab::KicadCliExe;
 use netsmith_kicad::testlib::TempDir;
 use netsmith_solve::Catalogs;
 
 mod common;
 
-const KICAD_CLI: &str = "/mnt/c/Program Files/KiCad/9.0/bin/kicad-cli.exe";
-
-fn run(program: &str, args: &[&str]) -> Option<String> {
-    // Windows programs go through the gate that takes turns and starts again when WSL fails
-    // to start them (`netsmith_fab::exclusive`).
-    let ran = netsmith_fab::exclusive::run(|| {
-        let mut command = Command::new(program);
-        command.args(args);
-        command
-    })
-    .ok()?;
-    ran.success().then(|| {
-        String::from_utf8_lossy(&ran.output.stdout)
-            .trim()
-            .to_string()
-    })
-}
-
 /// The violations ERC finds in a schematic, as `type: description`, or `None` if KiCad is
 /// not here.
 fn erc(name: &str, schematic: &str) -> Option<Vec<String>> {
-    let cli = std::env::var("KICAD_CLI").unwrap_or_else(|_| KICAD_CLI.to_string());
-    if !Path::new(&cli).is_file() {
-        eprintln!("skipped: no kicad-cli at {cli}");
+    let Some(cli) = KicadCliExe::locate() else {
+        eprintln!("skipped: no kicad-cli (set KICAD_CLI, or install KiCad)");
         return None;
-    }
-    // kicad-cli.exe is happier with a Windows-local folder than a \\wsl$ path.
-    let temp = run("cmd.exe", &["/c", "echo %TEMP%"])?;
-    let temp = PathBuf::from(run("wslpath", &[temp.trim_end_matches('\r')])?);
+    };
+    // Windows kicad-cli.exe is happier with a Windows-local folder than a \\wsl$ path; any
+    // other kicad-cli takes a plain temporary folder.
+    let base = cli.scratch_base().unwrap_or_else(|e| panic!("{e}"));
     static RUNS: AtomicUsize = AtomicUsize::new(0);
     let serial = RUNS.fetch_add(1, Ordering::SeqCst);
-    let dir = TempDir::new_in(&temp, &format!("erc-test-{serial}"));
+    let dir = TempDir::new_in(&base, &format!("erc-test-{serial}"));
     std::fs::write(dir.join(format!("{name}.kicad_sch")), schematic).ok()?;
-    let win = run("wslpath", &["-w", dir.to_str()?])?;
-    let report = format!("{win}\\erc.json");
-    let sch = format!("{win}\\{name}.kicad_sch");
+    let report = cli
+        .arg(&dir.join("erc.json"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    let sch = cli
+        .arg(&dir.join(format!("{name}.kicad_sch")))
+        .unwrap_or_else(|e| panic!("{e}"));
     let ran = netsmith_fab::exclusive::run(|| {
-        let mut command = Command::new(&cli);
+        let mut command = Command::new(cli.exe());
         command.args([
             "sch",
             "erc",

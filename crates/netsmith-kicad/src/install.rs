@@ -6,7 +6,8 @@
 //!
 //! 1. the environment variable, [`SYMBOLS_VARIABLE`] or [`FOOTPRINTS_VARIABLE`], used as it
 //!    is even if the folder is missing (the error then names it);
-//! 2. the folder beside a `kicad-cli` (`$KICAD_CLI`, else `kicad-cli` on `PATH`): the
+//! 2. the folder beside a `kicad-cli` (`$KICAD_CLI`, else `kicad-cli` on `PATH`, else under
+//!    WSL the newest Windows KiCad, see [`Search::kicad_cli`]): the
 //!    install's `share/kicad` next to its `bin`, or `SharedSupport` next to `MacOS` in a
 //!    macOS app bundle;
 //! 3. the usual install places of each system, KiCad 9 before 8 (netsmith is tested with
@@ -165,6 +166,31 @@ pub struct Search {
     home: Option<PathBuf>,
     /// `%ProgramFiles%`.
     program_files: Option<PathBuf>,
+    /// Whether this process runs under WSL, where the Windows side's KiCad is a program too.
+    wsl: bool,
+}
+
+/// Where Windows KiCad's `<version>/bin/kicad-cli.exe` are, seen from WSL: the program
+/// folders of 64-bit and 32-bit Windows programs.
+pub const WSL_PROGRAM_FOLDERS: [&str; 2] = [
+    "/mnt/c/Program Files/KiCad",
+    "/mnt/c/Program Files (x86)/KiCad",
+];
+
+/// Whether this process runs under WSL: `WSL_DISTRO_NAME` is set, or `/proc/version` says
+/// Microsoft.
+fn running_under_wsl() -> bool {
+    std::env::var_os("WSL_DISTRO_NAME").is_some()
+        || std::fs::read_to_string("/proc/version")
+            .is_ok_and(|v| v.to_ascii_lowercase().contains("microsoft"))
+}
+
+/// A KiCad version folder's name (`9.0`, `10.0`) as numbers to sort by, or `None` for a
+/// folder that is not one.
+fn version_key(name: &str) -> Option<Vec<u32>> {
+    name.split('.')
+        .map(|part| part.parse::<u32>().ok())
+        .collect()
 }
 
 impl Search {
@@ -189,6 +215,7 @@ impl Search {
             program_files: var("ProgramFiles")
                 .map(PathBuf::from)
                 .or_else(|| cfg!(windows).then(|| PathBuf::from(r"C:\Program Files"))),
+            wsl: running_under_wsl(),
         }
     }
 
@@ -201,7 +228,14 @@ impl Search {
             path: Vec::new(),
             home: None,
             program_files: None,
+            wsl: false,
         }
+    }
+
+    /// Says that the process runs under WSL (a test does; the real machine is asked).
+    pub fn with_wsl(mut self, wsl: bool) -> Self {
+        self.wsl = wsl;
+        self
     }
 
     pub fn with_var(mut self, name: &str, value: impl Into<OsString>) -> Self {
@@ -229,16 +263,38 @@ impl Search {
         self.root.join(absolute.trim_start_matches('/'))
     }
 
-    /// `kicad-cli`: `$KICAD_CLI` if it is set (and nothing else then), else the first
-    /// `kicad-cli` (or `kicad-cli.exe`) on `PATH`. `None` if it is not there.
+    /// `kicad-cli`, in this order: `$KICAD_CLI` if it is set (and nothing else then); the
+    /// first `kicad-cli` (or `kicad-cli.exe`) on `PATH`; and, only when the process runs
+    /// under WSL, the newest Windows KiCad: `kicad-cli.exe` in
+    /// `/mnt/c/Program Files/KiCad/<version>/bin`, then in `/mnt/c/Program Files (x86)/KiCad`
+    /// (the highest version number first, `10.0` before `9.0`). `None` if it is not there.
     pub fn kicad_cli(&self) -> Option<PathBuf> {
         if let Some(path) = self.vars.get(CLI_VARIABLE) {
             return Some(PathBuf::from(path)).filter(|p| p.is_file());
         }
-        self.path
+        let on_path = self
+            .path
             .iter()
             .flat_map(|d| [d.join("kicad-cli"), d.join("kicad-cli.exe")])
-            .find(|p| p.is_file())
+            .find(|p| p.is_file());
+        on_path.or_else(|| self.wsl.then(|| self.windows_kicad_cli()).flatten())
+    }
+
+    /// The newest `kicad-cli.exe` of the Windows side, seen from WSL.
+    fn windows_kicad_cli(&self) -> Option<PathBuf> {
+        WSL_PROGRAM_FOLDERS.iter().find_map(|folder| {
+            let mut versions: Vec<(Vec<u32>, PathBuf)> = std::fs::read_dir(self.fixed(folder))
+                .ok()?
+                .flatten()
+                .filter_map(|e| {
+                    let key = version_key(&e.file_name().to_string_lossy())?;
+                    let exe = e.path().join("bin/kicad-cli.exe");
+                    exe.is_file().then_some((key, exe))
+                })
+                .collect();
+            versions.sort_by(|a, b| b.0.cmp(&a.0));
+            versions.into_iter().next().map(|(_, exe)| exe)
+        })
     }
 
     /// The install places that are not found through a program, for every system in turn:
@@ -700,5 +756,80 @@ mod tests {
         assert!(text.contains("tools/share/kicad/footprints"), "{text}");
         assert!(text.contains("(beside "), "{text}");
         assert!(text.contains("tools/SharedSupport/footprints"), "{text}");
+    }
+
+    fn windows_kicad(t: &Path, folder: &str, version: &str) -> PathBuf {
+        let exe = t.join(folder).join(version).join("bin/kicad-cli.exe");
+        program(&exe);
+        exe
+    }
+
+    #[test]
+    fn under_wsl_the_newest_windows_kicad_is_the_kicad_cli() {
+        let t = tree();
+        windows_kicad(t.path(), "mnt/c/Program Files/KiCad", "8.0");
+        let nine = windows_kicad(t.path(), "mnt/c/Program Files/KiCad", "9.0");
+        let ten = windows_kicad(t.path(), "mnt/c/Program Files/KiCad", "10.0");
+        let search = Search::under(t.path()).with_wsl(true);
+        // 10.0 is newer than 9.0 although "10.0" sorts before "9.0" as text.
+        assert_eq!(search.kicad_cli(), Some(ten));
+        std::fs::remove_dir_all(t.path().join("mnt/c/Program Files/KiCad/10.0")).unwrap();
+        assert_eq!(search.kicad_cli(), Some(nine));
+    }
+
+    #[test]
+    fn under_wsl_program_files_x86_is_looked_at_after_program_files() {
+        let t = tree();
+        let x86 = windows_kicad(t.path(), "mnt/c/Program Files (x86)/KiCad", "9.0");
+        let search = Search::under(t.path()).with_wsl(true);
+        assert_eq!(search.kicad_cli(), Some(x86));
+        let pf = windows_kicad(t.path(), "mnt/c/Program Files/KiCad", "8.0");
+        assert_eq!(search.kicad_cli(), Some(pf), "the 64-bit folder wins");
+    }
+
+    #[test]
+    fn a_version_folder_without_the_program_does_not_count() {
+        let t = tree();
+        fs::create_dir_all(t.path().join("mnt/c/Program Files/KiCad/10.0/bin")).unwrap();
+        fs::create_dir_all(t.path().join("mnt/c/Program Files/KiCad/backup")).unwrap();
+        let eight = windows_kicad(t.path(), "mnt/c/Program Files/KiCad", "8.0");
+        let search = Search::under(t.path()).with_wsl(true);
+        assert_eq!(search.kicad_cli(), Some(eight));
+    }
+
+    #[test]
+    fn outside_wsl_the_windows_folders_are_not_looked_at() {
+        let t = tree();
+        windows_kicad(t.path(), "mnt/c/Program Files/KiCad", "9.0");
+        assert_eq!(Search::under(t.path()).kicad_cli(), None);
+    }
+
+    #[test]
+    fn the_variable_and_the_path_win_over_the_windows_side() {
+        let t = tree();
+        windows_kicad(t.path(), "mnt/c/Program Files/KiCad", "9.0");
+        let mine = t.path().join("opt/bin/kicad-cli");
+        program(&mine);
+        let search = Search::under(t.path())
+            .with_wsl(true)
+            .with_path(vec![t.path().join("opt/bin")]);
+        assert_eq!(search.kicad_cli(), Some(mine.clone()), "PATH first");
+        let search = search.with_var(CLI_VARIABLE, t.path().join("nowhere/kicad-cli"));
+        // A `$KICAD_CLI` that is not a file is the answer: nothing else is tried.
+        assert_eq!(search.kicad_cli(), None);
+        let search = search.with_var(CLI_VARIABLE, &mine);
+        assert_eq!(search.kicad_cli(), Some(mine));
+    }
+
+    #[test]
+    fn the_windows_kicad_leads_to_the_libraries_beside_it() {
+        let t = tree();
+        let exe = windows_kicad(t.path(), "mnt/c/Program Files/KiCad", "9.0");
+        install(&exe.parent().unwrap().parent().unwrap().join("share/kicad"));
+        let found = Search::under(t.path())
+            .with_wsl(true)
+            .find(Kind::Symbols)
+            .unwrap();
+        assert_eq!(found.source, Source::BesideCli(exe));
     }
 }
