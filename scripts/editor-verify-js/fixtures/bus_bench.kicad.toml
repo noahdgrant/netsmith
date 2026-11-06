@@ -2,6 +2,11 @@
 # footprints to place. The symbols are the project's own (`libs/bus.kicad_sym`, drawn by the
 # fixture, not a real chip's); the footprints are generated ones (ADR 0043) with as many pads
 # as the part has pins.
+#
+# Keep every pin of an interface on ONE side of its part's symbol (the signal pins of Radio and
+# Flash are all on the left): the schematic draws a bus only for three or more members on the same
+# side of both parts (ADR 0049, rule 2), so a symbol with two outputs right and two inputs left
+# draws no bus and the schematic-bus recipe fails.
 
 [[library]]
 name = "bus"
