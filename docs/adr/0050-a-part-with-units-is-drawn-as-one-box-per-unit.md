@@ -1,5 +1,5 @@
 ---
-status: proposed (a drawing convention of the schematic view only; the rule that picks the boxes, and which box leads, are for the owner to review)
+status: accepted (owner review, 2026-11-06; as proposed: a drawing convention of the schematic view only; the rule that picks the boxes, and which box leads, are for the owner to review)
 ---
 
 # A part whose symbol has several units is drawn as one box for each unit

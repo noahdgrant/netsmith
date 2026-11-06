@@ -1,5 +1,5 @@
 ---
-status: proposed (the drawing is the owner's decision of 2026-11-05, option B; the data carried into `Design` and the thresholds below are for the owner to review)
+status: accepted (owner review, 2026-11-06; as proposed: the drawing is the owner's decision of 2026-11-05, option B; the data carried into `Design` and the thresholds below are for the owner to review)
 ---
 
 # An interface is drawn as one bus in the schematic

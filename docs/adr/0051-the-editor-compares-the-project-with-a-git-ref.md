@@ -1,5 +1,5 @@
 ---
-status: proposed (the endpoints' contract and the identity rules are written down for the page that is built on them; the owner reviews the rules for what is the same part, net and rail on both sides)
+status: accepted (owner review, 2026-11-06; as proposed: the endpoints' contract and the identity rules are written down for the page that is built on them; the owner reviews the rules for what is the same part, net and rail on both sides)
 ---
 
 # The editor compares the project with a git ref and tells what changed in the circuit
