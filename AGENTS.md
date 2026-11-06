@@ -4,7 +4,7 @@ A language and tools for designing electronics as code. `README.md` says what it
 
 ## Build, test, lint
 
-- Test with `cargo test --workspace`, lint with `cargo clippy --workspace --all-targets`, and check formatting with `cargo fmt --all --check`. Each passes with no warnings. CI runs fmt, clippy and the tests on every pull request.
+- Test with `cargo test --workspace`, lint with `cargo clippy --workspace --all-targets`, and check formatting with `cargo fmt --all --check`. Each passes with no warnings. CI runs fmt, clippy and the tests on every pull request, and the editor's browser recipes (`scripts/editor-verify-all`) in a `recipes` job.
 - The commands are in `netsmith --help`; `cargo run -p netsmith -- build examples/led.nsm --out out` builds a sample board.
 - The editor's page is committed as a built bundle in `crates/netsmith-editor/web-dist`. Only a change to its sources in `crates/netsmith-editor/web` needs Node 20 or newer: run `scripts/web-bundle update` and commit the bundle.
 

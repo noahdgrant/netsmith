@@ -6,6 +6,8 @@
 //                           start `netsmith editor` on a free port over a scratch project; --git makes the
 //                           (two_boards) project a git repository with a branch that changes it (fixtures/gitrepo.mjs)
 //   drive <recipe>|all      run a recipe in headless Chromium, with screenshots
+//   groups                  the recipes by the session they need, from each recipe's `fixture` and `needs`: one line,
+//                           `<fixture> <git|-> <recipe>...`, per session (scripts/editor-verify-all runs them)
 //   evidence                list the screenshots and logs of the session
 //   cleanup [--keep-evidence]
 //                           stop the server and remove the scratch project
@@ -352,6 +354,23 @@ async function drive() {
   process.exit(failed ? 1 : 0);
 }
 
+// ------------------------------------------------------------------ groups
+/** One line per session a recipe needs: `<fixture> <git|-> <recipe>...`, from the recipes' own `fixture` and `needs`. */
+async function groups() {
+  const by = new Map();
+  const names = fs.readdirSync(path.join(here, 'recipes')).filter((f) => f.endsWith('.mjs')).map((f) => f.replace('.mjs', '')).sort();
+  for (const name of names) {
+    const { fixture, needs } = await import(pathToFileURL(path.join(here, 'recipes', `${name}.mjs`)).href);
+    if (!fixture) {
+      console.error(`recipe ${name} exports no \`fixture\``);
+      process.exit(2);
+    }
+    const key = `${fixture} ${needs === 'git' ? 'git' : '-'}`;
+    by.set(key, [...(by.get(key) ?? []), name]);
+  }
+  for (const [key, recipes] of by) console.log(`${key} ${recipes.join(' ')}`);
+}
+
 // ------------------------------------------------------------------ evidence, cleanup
 function evidence() {
   if (!fs.existsSync(evidenceDir)) {
@@ -389,9 +408,9 @@ function cleanup() {
   }
 }
 
-const commands = { doctor, launch, drive, evidence, cleanup };
+const commands = { doctor, launch, drive, groups, evidence, cleanup };
 if (!commands[command]) {
-  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|empty|shared_module|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | evidence | cleanup [--keep-evidence]  (launch also takes --git)');
+  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|empty|shared_module|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | groups | evidence | cleanup [--keep-evidence]  (launch also takes --git)');
   process.exit(2);
 }
 await commands[command]();

@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# The whole sweep of the editor's browser recipes: for each session the recipes need (their
+# `fixture` and `needs`, listed by `editor-verify groups`), clean up, launch it, drive its
+# recipes and clean up again. One recipe failing does not stop the others. Prints each recipe's
+# result and a summary; exit status 1 if any recipe failed. CI runs it (.github/workflows/ci.yml);
+# see .agents/skills/netsmith-dev-verify-editor/SKILL.md. Needs the built binary and `doctor` passing.
+#
+#   scripts/editor-verify-all [recipe...]     only these recipes (their sessions are launched as needed)
+#
+# `launch` wipes the evidence of the session before, so each session's screenshots and server log
+# are copied to $NETSMITH_VERIFY_OUT (default: $NETSMITH_VERIFY_DIR-all, i.e. /tmp/netsmith-verify-all)
+# under the session's name, before the cleanup.
+set -u
+here="$(cd "$(dirname "$0")" && pwd)"
+verify="$here/editor-verify"
+root="${NETSMITH_VERIFY_DIR:-/tmp/netsmith-verify}"
+out="${NETSMITH_VERIFY_OUT:-$root-all}"
+only=" $* "
+
+rm -rf "$out"
+mkdir -p "$out"
+sessions="$("$verify" groups)" || { echo "editor-verify groups failed" >&2; exit 2; }
+
+passed=()
+failed=()
+while read -r fixture git recipes; do
+    # With names on the command line, a session runs only the recipes asked for.
+    if [ -n "$*" ]; then
+        wanted=""
+        for r in $recipes; do case "$only" in *" $r "*) wanted="$wanted $r" ;; esac; done
+        recipes="${wanted# }"
+        [ -n "$recipes" ] || continue
+    fi
+    name="$fixture"
+    flags=(--fixture "$fixture")
+    if [ "$git" = git ]; then name="$fixture-git"; flags+=(--git); fi
+    echo "::group::session $name: $recipes"
+    mkdir -p "$out/$name"
+    "$verify" cleanup >/dev/null 2>&1
+    if "$verify" launch "${flags[@]}" >"$out/$name/launch.log" 2>&1; then
+        # shellcheck disable=SC2086 # the recipe names are words
+        "$verify" drive $recipes 2>&1 | tee "$out/$name/drive.log"
+    else
+        cat "$out/$name/launch.log"
+        echo "FAIL: launch ${flags[*]} did not start"
+    fi
+    # Screenshots (the failures are named `<recipe>-NN-failure.png`) and the server log.
+    cp -r "$root/evidence/." "$out/$name/" 2>/dev/null
+    cp "$root/server.log" "$out/$name/" 2>/dev/null
+    "$verify" cleanup >/dev/null 2>&1
+    echo "::endgroup::"
+    # A recipe without a PASS line did not finish (the launch failed, or the driver died).
+    for r in $recipes; do
+        if command grep -q "^PASS $r\$" "$out/$name/drive.log" 2>/dev/null; then passed+=("$r"); else failed+=("$r ($name)"); fi
+    done
+done <<<"$sessions"
+
+echo
+for p in "${passed[@]}"; do echo "PASS $p"; done
+echo "recipes: ${#passed[@]} passed, ${#failed[@]} failed"
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    {
+        echo "### Editor recipes: ${#passed[@]} passed, ${#failed[@]} failed"
+        for f in "${failed[@]}"; do echo "- FAIL $f"; done
+    } >>"$GITHUB_STEP_SUMMARY"
+fi
+for f in "${failed[@]}"; do echo "FAIL $f"; done
+[ "${#failed[@]}" -eq 0 ]
