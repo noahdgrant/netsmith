@@ -6,7 +6,7 @@ import { useEffect } from 'preact/hooks';
 import { banner, firstError, goToFirstError, neverBuilt } from '../feedback/derive';
 import { analysisSince, busy, dock, now, pending, runClock, setDockOpen } from '../feedback/state';
 import { ANALYSING_CLOCK_AFTER_MS, clock, progressText } from '../feedback/status';
-import { entryFileOf } from '../entry';
+import { emptyProject, entryFileOf } from '../entry';
 import { analysis, job, openFile, project, revealSection } from '../store';
 import { plural } from '../util';
 import { Icon, SeverityIcon } from './Icons';
@@ -104,9 +104,11 @@ export function NoBoard({ what }: { what: string }) {
   }
   if (!analysis.value) return <Analysing />;
   const e = firstError.value;
-  if (!neverBuilt.value || !e) {
-    // A project that has no board yet: say where to write the first one, and open that file.
-    const entry = entryFileOf(project.value?.files ?? []);
+  // A project that has no board yet is an error to the checker (a listed file must hold a board) and a place to start to the person.
+  const begun = emptyProject(analysis.value.problems);
+  if (!neverBuilt.value || !e || begun) {
+    // Say where to write the first board, and open that file.
+    const entry = begun?.file ?? entryFileOf(project.value?.files ?? []);
     const open = () => {
       revealSection('source');
       if (entry) void openFile(entry);

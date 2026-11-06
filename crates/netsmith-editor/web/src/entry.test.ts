@@ -11,3 +11,18 @@ describe('entryFileOf', () => {
   });
   it('is none for a project with no source file', () => expect(entryFileOf(f('netsmith.toml', 'std/a.nsm'))).toBeNull());
 });
+
+import { emptyProject } from './entry';
+
+describe('emptyProject', () => {
+  const err = (message: string) => ({ severity: 'error', message });
+  it('is the file the checker names when the only error is that it has no board', () => {
+    expect(emptyProject([err('src/main.nsm has no `board` to build')])).toEqual({ file: 'src/main.nsm' });
+    expect(emptyProject([err('src/main.nsm has no `board` to build'), { severity: 'note', message: 'x' }])).toEqual({ file: 'src/main.nsm' });
+  });
+  it('is not one when there is another error, or none', () => {
+    expect(emptyProject([err('src/main.nsm has no `board` to build'), err('unknown name `x`')])).toBeNull();
+    expect(emptyProject([])).toBeNull();
+    expect(emptyProject([{ severity: 'warning', message: 'a has no `board`' }])).toBeNull();
+  });
+});

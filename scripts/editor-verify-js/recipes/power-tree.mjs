@@ -106,6 +106,11 @@ export async function run({ page, shot, step, expect, section }) {
   expect((await lit()).length === total, `every card is downstream of VIN, so all ${total} are lit`);
   expect((await page.locator('.pt-edge.hot.down').count()) === (await page.locator('.pt-edge').count()) && (await page.locator('.pt-edge.hot.up').count()) === 0, 'every edge is lit in the downstream tint, none in the upstream one');
   expect((await page.locator('.pt-node.dim').count()) === 0, 'nothing is dimmed');
+  // A tree that would need less than 75 % to fit opens at 75 % (round 5: below it the text is under 8 px), so the whole of it is in the window after Fit.
+  const opened = await page.evaluate(() => Number(document.querySelector('.sec-power .zoombar span')?.textContent?.replace('%', '')));
+  expect(opened >= 75, `the tree opens at 75 % or more (${opened} %)`);
+  await page.locator('.sec-power .zoombar button', { hasText: 'Fit' }).click();
+  await page.waitForTimeout(400);
   expect((await page.locator('.sec-power .pt-minimap').count()) === 0, 'no overview while the whole tree is in the window: it would only cover cards');
   await zoomIn('.sec-power');
   expect((await page.locator('.sec-power .pt-minimap rect[class*="hot-down"]').count()) >= total - 1, 'zoomed in, the minimap shows them');

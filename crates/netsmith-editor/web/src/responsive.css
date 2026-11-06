@@ -64,3 +64,9 @@ html { font-size: calc(100% * var(--ui-scale, 1)); }
   --icon-k: 1;
   font-size: 13px;
 }
+
+/* ---- the top bar: below 1000 px the theme and the shortcuts buttons go (the settings and the help menu hold both), the settings and the help stay ---- */
+@media (max-width: 1000px) {
+  .tb-ghosts { display: flex; }
+  .tb-ghosts .ghost-extra { display: none; }
+}
