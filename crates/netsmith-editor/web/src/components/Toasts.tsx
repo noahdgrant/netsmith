@@ -37,6 +37,7 @@ export function Toasts() {
   const list = toasts.value;
   const [shown, setShown] = useState<Shown[]>(() => list.map((item) => ({ item, leaving: false })));
   const stack = useRef<HTMLDivElement>(null);
+  const drops = useRef(new Map<number, ReturnType<typeof setTimeout>>());
   const [raise, setRaise] = useState(0);
 
   // What is in the signal is shown; what left it stays a moment, leaving.
@@ -55,12 +56,20 @@ export function Toasts() {
       const have = new Set(kept.map((s) => s.item.id));
       return [...kept, ...list.filter((t) => !have.has(t.id)).map((item) => ({ item, leaving: false }))];
     });
-    if (gone.length) {
-      const ids = new Set(gone.map((s) => s.item.id));
-      const t = setTimeout(() => setShown((prev) => prev.filter((s) => !(s.leaving && ids.has(s.item.id)))), reduced ? 0 : LEAVE_MS + 20);
-      return () => clearTimeout(t);
+    // Each one that left is dropped by its own timer: a later change of the list must not cancel it.
+    for (const s of gone) {
+      const id = s.item.id;
+      clearTimeout(drops.current.get(id));
+      drops.current.set(
+        id,
+        setTimeout(() => {
+          drops.current.delete(id);
+          setShown((prev) => prev.filter((x) => !(x.leaving && x.item.id === id)));
+        }, reduced ? 0 : LEAVE_MS + 20),
+      );
     }
   }, [list]);
+  useEffect(() => () => drops.current.forEach((t) => clearTimeout(t)), []);
 
   // Clear the controls under the stack, now and when the window or what is marked changes size.
   useEffect(() => {
