@@ -34,6 +34,7 @@ import {
 import { fitView } from '../sheets';
 import { type Drawing, SCALE, light, previewMove } from './drawing';
 import { moveParts } from './edits';
+import { fitPlaneLabels } from './planeLabels';
 import {
   type Handle,
   type Pt,
@@ -134,6 +135,12 @@ export function Canvas(props: {
     else for (const p of selected) for (const pad of p.pads) if (pad.net) nets.add(pad.net);
     light(svg, nets, new Set(selected.map((p) => p.refdes)));
   }, [drawing, props.litNet, selected]);
+
+  // A plane's label goes to the corner of its plane where no part lies, at the zoom the board is shown at (planeLabels.ts).
+  useEffect(() => {
+    const svg = svgEl();
+    if (svg) fitPlaneLabels(svg);
+  }, [drawing, zoom]);
 
   // The canvas in pixels to the sheet: one pointer position in mm, and how many pixels an mm is.
   function toBoard(e: { clientX: number; clientY: number }): { p: Pt; scale: number } | null {

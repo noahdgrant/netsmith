@@ -3,6 +3,7 @@
 
 import { UNCONNECTED, themed } from './colours';
 import type { Pt } from './geometry';
+import { INSET, LINE } from './planeLabels';
 import { planeLabel, planeTone } from './planes';
 
 /** A net of the board as the drawing shows it. */
@@ -111,8 +112,11 @@ export function prepare(text: string): Drawing | null {
     const top = Number(plane.getAttribute('y'));
     const stacked = placed.filter((p) => Math.abs(p.x - here) < 12 && Math.abs(p.y - top) < 1).length;
     placed.push({ x: here, y: top });
-    label.setAttribute('x', String(here + 0.9));
-    label.setAttribute('y', String(top + 0.9 + stacked * 0.7));
+    label.setAttribute('x', String(here + INSET));
+    label.setAttribute('y', String(top + INSET + stacked * LINE));
+    // where the label may go instead when a part lies in this corner (planeLabels.ts tries the four, at the zoom the board is shown at)
+    label.setAttribute('data-box', ['x', 'y', 'width', 'height'].map((a) => Number(plane.getAttribute(a))).join(' '));
+    label.setAttribute('data-stack', String(stacked));
     label.textContent = planeLabel(plane.getAttribute('data-net')!, layer);
     // On top of the parts (a word under a pad is cut by it), in a group of its own after the drawing's layers.
     let holder = svg.querySelector(':scope > g.l-plane-labels');
