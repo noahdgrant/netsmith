@@ -108,9 +108,25 @@ fn every_example_passes_erc_with_kicads_own_symbols() {
             let Some(found) = erc(&b.design.name, &b.schematic) else {
                 return;
             };
-            assert_eq!(found, Vec::<String>::new(), "{name} / {}", b.label());
+            assert_eq!(
+                with_the_machines_libraries(found),
+                Vec::<String>::new(),
+                "{name} / {}",
+                b.label()
+            );
         }
     }
+}
+
+/// The violations of ERC without the ones that say a library is not in KiCad's configuration:
+/// a runner that has KiCad installed but no user library table (CI) says that of every stock
+/// library, and it is about the machine, not the schematic. Every other violation stays, the
+/// ones about the embedded symbols included, wherever the table is there.
+fn with_the_machines_libraries(found: Vec<String>) -> Vec<String> {
+    found
+        .into_iter()
+        .filter(|v| !v.contains("The current configuration does not include the"))
+        .collect()
 }
 
 #[test]
