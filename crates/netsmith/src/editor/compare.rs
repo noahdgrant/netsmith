@@ -335,33 +335,29 @@ impl Workspace {
                     }
                 };
                 workspace.observe(observe.clone());
-                match digest_of(&workspace) {
-                    Err(e) => return Err(e),
-                    Ok(digest) => {
-                        let errors: Vec<Problem> = digest
-                            .problems
-                            .iter()
-                            .filter(|p| p.severity == Severity::Error)
-                            .cloned()
-                            .collect();
-                        match errors.first() {
-                            None => Reading::Digest(digest),
-                            Some(first) => Reading::Failed {
-                                error: format!(
-                                    "the project does not analyse at {}: {} error{}, the first: {}{}",
-                                    base.short,
-                                    errors.len(),
-                                    if errors.len() == 1 { "" } else { "s" },
-                                    first.message,
-                                    first.at.as_ref().map_or(String::new(), |l| format!(
-                                        " ({}:{})",
-                                        l.file, l.line
-                                    ))
-                                ),
-                                problems: errors,
-                            },
-                        }
-                    }
+                let digest = digest_of(&workspace)?;
+                let errors: Vec<Problem> = digest
+                    .problems
+                    .iter()
+                    .filter(|p| p.severity == Severity::Error)
+                    .cloned()
+                    .collect();
+                match errors.first() {
+                    None => Reading::Digest(digest),
+                    Some(first) => Reading::Failed {
+                        error: format!(
+                            "the project does not analyse at {}: {} error{}, the first: {}{}",
+                            base.short,
+                            errors.len(),
+                            if errors.len() == 1 { "" } else { "s" },
+                            first.message,
+                            first
+                                .at
+                                .as_ref()
+                                .map_or(String::new(), |l| format!(" ({}:{})", l.file, l.line))
+                        ),
+                        problems: errors,
+                    },
                 }
             }
         };
