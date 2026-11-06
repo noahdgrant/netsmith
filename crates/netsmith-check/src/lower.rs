@@ -225,6 +225,36 @@ impl Checker<'_> {
         }
     }
 
+    /// The statement at `span` as the source has it, for a drawing to show, if it is one the
+    /// design states: not a statement of a physical file (where parts go on the board, not
+    /// what the circuit is), not one inside a part (the part's own model, which its
+    /// definition states), and not one of the standard library.
+    fn written(&self, span: Span) -> Option<crate::model::Written> {
+        let source = self.cur_source();
+        if self.phys.is_some()
+            || self.is_library(source)
+            || !matches!(
+                self.model.instance(self.current()).kind,
+                InstKind::Board | InstKind::Module
+            )
+        {
+            return None;
+        }
+        let text = self.sources.get(source).text.as_str();
+        let end = netsmith_lang::floor_boundary(text, span.end);
+        let start = netsmith_lang::floor_boundary(text, span.start).min(end);
+        let (file, line) = self.line_in(source, span);
+        Some(crate::model::Written {
+            scope: self.current(),
+            text: text[start..end]
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" "),
+            file,
+            line,
+        })
+    }
+
     fn relation_statement(&mut self, c: &ast::Constraint) {
         let l = self.lower(&c.lhs);
         let r = self.lower(&c.rhs);
@@ -253,12 +283,14 @@ impl Checker<'_> {
             return;
         }
         let source = self.cur_source();
+        let written = self.written(c.span);
         self.model.relations.push(Relation {
             lhs: l.e,
             op: c.op,
             rhs: r.e,
             source,
             span: c.span,
+            written,
         });
     }
 
@@ -313,6 +345,7 @@ impl Checker<'_> {
                     rhs: other,
                     source,
                     span,
+                    written: None,
                 });
             }
         }

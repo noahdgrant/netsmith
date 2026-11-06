@@ -68,7 +68,15 @@ pub struct Instance {
     /// The member declaration that made it (`.r1: Resistor`), where the user wrote it.
     /// `span` is the definition it was made from, which may be in the standard library.
     pub declared: Option<(SourceId, Span)>,
+    /// The `///` lines above the member declaration that made it (`.r1: Resistor`); for the
+    /// board itself, those above its definition.
     pub docs: Vec<String>,
+    /// The `///` lines above the definition it was made from, then the `//!` lines at the
+    /// start of its body (a module's own description), in the order written.
+    pub def_docs: Vec<String>,
+    /// Where the docs are written: the file as it was loaded and the 1-based line of the
+    /// declaration (or of the definition when only that has docs).
+    pub doc_at: Option<(String, usize)>,
     pub(crate) def: Option<(usize, usize)>,
 }
 
@@ -241,6 +249,21 @@ pub struct Relation {
     pub rhs: RExpr,
     pub source: SourceId,
     pub span: Span,
+    /// For a relation the author wrote (a `==`, `>=` or `<=` statement): its text as written
+    /// and where. Relations the checker makes from other statements have none.
+    pub written: Option<Written>,
+}
+
+/// A relation statement as the source has it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Written {
+    /// The module or board instance whose body states it: what its `.x` paths are relative to.
+    pub scope: InstId,
+    /// The statement's text with its white space collapsed to single spaces.
+    pub text: String,
+    /// The file as it was loaded, and the 1-based line the statement starts on.
+    pub file: String,
+    pub line: usize,
 }
 
 /// A run of `~>` through bridge parts, from one pin to another.

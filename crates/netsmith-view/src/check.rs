@@ -30,6 +30,12 @@
 //!    entries, once at each end, at places of the line that are not shared; and nothing else
 //!    touches the line, nor lies along it.
 //!
+//! 7. **A note is no conductor and lies on nothing** ([`Violation::NoteOverlap`],
+//!    [`Violation::NoteTextOverflow`]). A note (a framed box with the text of a doc comment or a
+//!    relation, `layout/notes.rs`) joins no net: it is left out of the netlist above. Its frame
+//!    overlaps no symbol, text, wire, thick line of a bus, power symbol, flag, dot, X or other
+//!    note, and every line of its text, measured as it is drawn, stays inside its frame.
+//!
 //! Each sheet of a board drawn by module is checked on its own: a net that goes to another
 //! sheet is joined there by its flag. [`check`] is a pure function of the design and its
 //! layout. It reports every violation and fixes none.
@@ -43,7 +49,7 @@ use crate::geom::Pt;
 use crate::layout::Layout;
 use crate::sheetview::{
     Fault, OVERLAP, Rel, Seg, SheetView, body_strokes, bus_of, bus_segments, overlaps, relate,
-    runs_through, runs_through_body, same, texts, views, wire_faults,
+    runs_through, runs_through_body, same, symbol_box, texts, views, wire_faults,
 };
 
 /// A rule the drawing breaks. Every variant names the sheet and the nets or parts involved.
@@ -160,13 +166,28 @@ pub enum Violation {
         bus: String,
         reason: String,
     },
+    /// The frame of a note lies on something else of the sheet: a symbol, a text, a wire, a
+    /// bus's thick line, a power symbol, a flag, a dot, an X or another note.
+    NoteOverlap {
+        sheet: String,
+        note: String,
+        with: String,
+        at: Pt,
+    },
+    /// A line of a note's text reaches out of its frame.
+    NoteTextOverflow {
+        sheet: String,
+        note: String,
+        line: usize,
+        reason: String,
+    },
 }
 
 impl Violation {
     /// A short name for the kind: `short`, `open`, `extra-pin`, `pin-net`, `unit-pin`, `floating-wire`,
     /// `floating-flag`, `floating-label`, `wire-overlap`, `wire-through-body`,
     /// `wire-along-pin`, `text-overlap`, `wire-over-text`, `wire-hugs-symbol`, `dead-end`, `redundant-wire`, `zero-length-wire`, `u-turn`,
-    /// `unused-junction`, `missing-junction`, `bus-member`.
+    /// `unused-junction`, `missing-junction`, `bus-member`, `note-overlap`, `note-text-overflow`.
     pub fn kind(&self) -> &'static str {
         match self {
             Violation::Short { .. } => "short",
@@ -190,6 +211,8 @@ impl Violation {
             Violation::UnusedJunction { .. } => "unused-junction",
             Violation::MissingJunction { .. } => "missing-junction",
             Violation::BusMember { .. } => "bus-member",
+            Violation::NoteOverlap { .. } => "note-overlap",
+            Violation::NoteTextOverflow { .. } => "note-text-overflow",
         }
     }
 }
@@ -349,6 +372,25 @@ impl fmt::Display for Violation {
             Violation::BusMember { sheet, bus, reason } => {
                 write!(f, "{sheet}: bus-member: bus {bus}: {reason}")
             }
+            Violation::NoteOverlap {
+                sheet,
+                note,
+                with,
+                at: p,
+            } => write!(
+                f,
+                "{sheet}: note-overlap: the note of {note} lies on {with} near {}",
+                at(p)
+            ),
+            Violation::NoteTextOverflow {
+                sheet,
+                note,
+                line,
+                reason,
+            } => write!(
+                f,
+                "{sheet}: note-text-overflow: line {line} of the note of {note} {reason}"
+            ),
         }
     }
 }
@@ -360,8 +402,169 @@ pub fn check(design: &Design, layout: &Layout) -> Vec<Violation> {
     for v in views(layout) {
         check_sheet(design, layout, &truth, &v, &mut out);
         check_wires(design, layout, &v, &mut out);
+        check_notes(design, layout, &v, &mut out);
     }
     out
+}
+
+/// What a note's frame lies on.
+pub(crate) enum On {
+    Part(String),
+    Text,
+    Wire(usize),
+    Thick(usize),
+    Symbol,
+    Flag,
+    Dot,
+    BusFlag,
+    Note(usize),
+}
+
+/// Every place a note of sheet `v` lies on something else of it: `(note, what, where)`, with
+/// the note an index into `layout.notes`. Each pair of notes is told once, by the first.
+pub(crate) fn note_overlaps_of(l: &Layout, v: &SheetView, out: &mut Vec<(usize, On, Pt)>) {
+    let written = texts(l, v);
+    let runs: Vec<Seg> = v
+        .segments
+        .iter()
+        .copied()
+        .chain(bus_segments(l, v))
+        .filter(|s| s.is_axis_aligned())
+        .collect();
+    for &i in &v.notes {
+        let frame = l.notes[i].frame;
+        let mut on = |what: On, at: Pt| out.push((i, what, at));
+        for &p in &v.parts {
+            let b = symbol_box(&l.parts[p]);
+            if overlaps(&frame, &b, OVERLAP) {
+                on(On::Part(l.parts[p].reference.text.clone()), b.min);
+            }
+        }
+        for t in written.iter().filter(|t| overlaps(&frame, t, OVERLAP)) {
+            on(On::Text, t.min);
+        }
+        for s in &runs {
+            if runs_through(s, &frame) {
+                on(
+                    match bus_of(s.net) {
+                        Some(b) => On::Thick(b),
+                        None => On::Wire(s.net),
+                    },
+                    s.a,
+                );
+            }
+        }
+        for &k in &v.symbols {
+            let b = l.symbols[k].glyph_extent();
+            if overlaps(&frame, &b, OVERLAP) {
+                on(On::Symbol, b.min);
+            }
+        }
+        for &k in &v.ports {
+            let b = l.ports[k].extent();
+            if overlaps(&frame, &b, OVERLAP) {
+                on(On::Flag, b.min);
+            }
+        }
+        for &k in &v.junctions {
+            let at = l.junctions[k].at;
+            if at.x > frame.min.x && at.x < frame.max.x && at.y > frame.min.y && at.y < frame.max.y
+            {
+                on(On::Dot, at);
+            }
+        }
+        for &k in &v.buses {
+            if let Some(f) = &l.buses[k].flag {
+                let b = f.extent();
+                if overlaps(&frame, &b, OVERLAP) {
+                    on(On::BusFlag, b.min);
+                }
+            }
+        }
+        for &j in &v.notes {
+            if j > i && overlaps(&frame, &l.notes[j].frame, OVERLAP) {
+                on(On::Note(j), l.notes[j].frame.min);
+            }
+        }
+    }
+}
+
+/// The rules about notes: none lies on anything else of its sheet, and its text stays in its
+/// frame. A note joins nothing, so nothing of the netlist reads it.
+fn check_notes(design: &Design, l: &Layout, v: &SheetView, out: &mut Vec<Violation>) {
+    use crate::layout::notes::text_box;
+    let sheet = &v.name;
+    let name_of = |i: usize| {
+        let n = &l.notes[i];
+        let path = if n.path.is_empty() {
+            "the board".to_string()
+        } else {
+            n.path.clone()
+        };
+        format!("{path} (note {})", n.note)
+    };
+    let mut found = Vec::new();
+    note_overlaps_of(l, v, &mut found);
+    for (i, what, at) in found {
+        let with = match what {
+            On::Part(r) => format!("part {r}"),
+            On::Text => "a text".to_string(),
+            On::Wire(net) => format!("a wire of net {}", net_name(design, net)),
+            On::Thick(b) => format!("the thick line of bus {}", l.buses[b].path),
+            On::Symbol => "a power symbol".to_string(),
+            On::Flag => "a flag".to_string(),
+            On::Dot => "a dot".to_string(),
+            On::BusFlag => "the flag of a bus".to_string(),
+            On::Note(j) => format!("the note of {}", name_of(j)),
+        };
+        out.push(Violation::NoteOverlap {
+            sheet: sheet.clone(),
+            note: name_of(i),
+            with,
+            at,
+        });
+    }
+    for &i in &v.notes {
+        let n = &l.notes[i];
+        let frame = n.frame;
+        // The text stays in the frame: measured as it is drawn.
+        let inside = |r: crate::geom::Rect| {
+            let slack = 0.3;
+            if r.min.x < frame.min.x + slack {
+                Some("starts left of its frame".to_string())
+            } else if r.max.x > frame.max.x - slack {
+                Some(format!(
+                    "is {:.2} mm wide and the frame holds {:.2} mm",
+                    r.width(),
+                    frame.width() - 2.0 * slack
+                ))
+            } else if r.min.y < frame.min.y + slack || r.max.y > frame.max.y - slack {
+                Some("is above or below its frame".to_string())
+            } else {
+                None
+            }
+        };
+        if let Some(h) = &n.heading
+            && let Some(why) = inside(text_box(h, crate::layout::HEADING_TEXT, false))
+        {
+            out.push(Violation::NoteTextOverflow {
+                sheet: sheet.clone(),
+                note: name_of(i),
+                line: 0,
+                reason: why,
+            });
+        }
+        for (k, line) in n.lines.iter().enumerate() {
+            if let Some(why) = inside(text_box(line, n.size, n.mono)) {
+                out.push(Violation::NoteTextOverflow {
+                    sheet: sheet.clone(),
+                    note: name_of(i),
+                    line: k + 1,
+                    reason: why,
+                });
+            }
+        }
+    }
 }
 
 /// The net each `(refdes, pad)` is in, in the design.

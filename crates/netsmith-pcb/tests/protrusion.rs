@@ -108,6 +108,7 @@ fn design(case: &Case) -> Design {
     };
     Design {
         interfaces: Vec::new(),
+        notes: Vec::new(),
         name: "Protrusion".into(),
         process: Some(process()),
         features: Features {

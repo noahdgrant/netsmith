@@ -921,6 +921,7 @@ impl Checker<'_> {
                         rhs: current,
                         source: decl.source,
                         span: decl.span,
+                        written: None,
                     });
                 }
             }

@@ -89,20 +89,34 @@
 //!    follow them; [`PlacedPart::part`] says which part a box draws. The checker still rebuilds
 //!    the nets pin by pin and has one rule more: a pad is drawn in exactly one box.
 //!
+//! 8. The source's own writing is drawn as **notes** ([`PlacedNote`], `notes.rs`, ADR 0052): the doc
+//!    comments of the board, a module, a part or an interface and the `==` relations, which the
+//!    design carries ([`netsmith_core::Design::notes`]). A note is a framed box of wrapped text
+//!    (a doc comment in the page's sans serif, a relation in monospace under a `Relation` heading)
+//!    that joins nothing and has no leader line. It is placed last, after the sheet is drawn and
+//!    every wire routed, in free room beside the part it is about (on a side no pin leaves by first),
+//!    near the middle of the parts of a relation, in a strip at the top left for the sheet's own,
+//!    or in a margin column when there is no room (all of them in one column when a sheet has more
+//!    than eight): no wire is moved for a note and a sheet with none is drawn as it was.
+//!
 //! Nothing here knows how a layout is drawn: [`crate::render_svg`] reads the result.
 
 mod engine;
 mod grid;
+pub(crate) mod notes;
 mod policy;
 mod prune;
 mod spine;
 mod units;
 
+pub use notes::{
+    HEADING_TEXT, LINE, MAX_CHARS, MONO_EM, MONO_TEXT, NOTE_TEXT, PAD, RADIUS, line_width, truncate,
+};
 pub(crate) use units::unit_letter;
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
 
-use netsmith_core::{Design, DesignError};
+use netsmith_core::{Design, DesignError, NoteKind};
 use netsmith_kicad::{Mapping, Pinout, SymbolLib};
 
 use crate::geom::{Dir, Orient, Pt, Rect, snap, snap_up};
@@ -345,6 +359,32 @@ impl Bus {
     }
 }
 
+/// A note of the design placed on a sheet ([`netsmith_core::Note`], `layout/notes.rs`): a framed
+/// box with wrapped text. It joins nothing and is no conductor.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlacedNote {
+    /// Index into `design.notes`.
+    pub note: usize,
+    pub kind: NoteKind,
+    /// The path of the thing the note belongs to (`Note::path`).
+    pub path: String,
+    /// Index into `design.parts` of the first part the note is about that is on this sheet;
+    /// none for a note of the sheet.
+    pub anchor: Option<usize>,
+    /// The frame, a rounded rectangle.
+    pub frame: Rect,
+    /// The small heading of a relation note (`Relation`).
+    pub heading: Option<Text>,
+    /// The text, a line each, written from the left of the frame ([`Anchor::Start`]).
+    pub lines: Vec<Text>,
+    /// How high the letters of the lines are.
+    pub size: f64,
+    /// Whether the lines are in a monospace face (a relation), else in the page's sans serif.
+    pub mono: bool,
+    /// The whole text, when the lines are cut at [`MAX_CHARS`] letters.
+    pub full: Option<String>,
+}
+
 /// The nets of a design that are power nets, by name, as the checker's model has them: the
 /// negative side of a rail (where the current returns) and the positive side. A net that is
 /// in neither is an ordinary net, however it is named.
@@ -499,6 +539,9 @@ pub struct Layout {
     pub buses: Vec<Bus>,
     /// The power paths found through ICs, drawn as a spine or not.
     pub spines: Vec<SpineMark>,
+    /// The notes of the design drawn as boxes of text (`Design::notes`), none for a design that
+    /// has none.
+    pub notes: Vec<PlacedNote>,
     pub bounds: Rect,
 }
 
@@ -767,6 +810,7 @@ fn layout_with_tuning(
     only: Option<Tuning>,
 ) -> Result<(Layout, u8), DesignError> {
     design.validate()?;
+    let notes_of = design;
     let used = used_pads(design);
     // A part whose symbol has several units is drawn as one box for each: the engine draws a
     // derived design in which each unit is a part, and the boxes are told back to the design's
@@ -1002,6 +1046,9 @@ fn layout_with_tuning(
             m.part = s.origin[m.part];
         }
     }
+    // The notes go last, in the free room of the drawing that is made: no wire is moved for
+    // one, and a sheet with none is as it was.
+    notes::place(notes_of, &mut drawn.layout);
     Ok((drawn.layout, touched_first))
 }
 

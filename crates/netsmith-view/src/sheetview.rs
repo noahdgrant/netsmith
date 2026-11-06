@@ -335,6 +335,8 @@ pub(crate) struct SheetView {
     pub labels: Vec<usize>,
     /// Indices into `layout.buses`.
     pub buses: Vec<usize>,
+    /// Indices into `layout.notes`.
+    pub notes: Vec<usize>,
 }
 
 /// The first number [`bus_net`] gives a bus: above any net of a design.
@@ -382,6 +384,7 @@ pub(crate) fn views(l: &Layout) -> Vec<SheetView> {
         marks: Vec::new(),
         labels: Vec::new(),
         buses: Vec::new(),
+        notes: Vec::new(),
     };
     let mut out: Vec<SheetView> = if l.sheets.is_empty() {
         vec![empty(
@@ -447,6 +450,14 @@ pub(crate) fn views(l: &Layout) -> Vec<SheetView> {
         let at = b.lines.first().and_then(|line| line.first()).copied();
         let h = home(&out, at.unwrap_or(Pt::new(0.0, 0.0)));
         out[h].buses.push(i);
+    }
+    for (i, n) in l.notes.iter().enumerate() {
+        let c = Pt::new(
+            (n.frame.min.x + n.frame.max.x) / 2.0,
+            (n.frame.min.y + n.frame.max.y) / 2.0,
+        );
+        let h = home(&out, c);
+        out[h].notes.push(i);
     }
     out
 }

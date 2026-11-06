@@ -182,6 +182,13 @@ pub struct SheetMetrics {
     pub buses: usize,
     pub bus_members: usize,
     pub bus_flags: usize,
+
+    /// Notes drawn (framed boxes of the source's doc comments and relations), the area their
+    /// frames take in square millimetres, and the pairs of a note and anything else that
+    /// overlap (target 0, the rule `note-overlap` of [`crate::check`] counted).
+    pub notes: usize,
+    pub note_area: f64,
+    pub note_overlaps: usize,
 }
 
 impl SheetMetrics {
@@ -292,6 +299,9 @@ impl SheetMetrics {
         self.buses += o.buses;
         self.bus_members += o.bus_members;
         self.bus_flags += o.bus_flags;
+        self.notes += o.notes;
+        self.note_area += o.note_area;
+        self.note_overlaps += o.note_overlaps;
     }
 }
 
@@ -350,6 +360,12 @@ fn measure_sheet(l: &Layout, v: &SheetView) -> SheetMetrics {
             .iter()
             .filter(|&&b| l.buses[b].flag.is_some())
             .count(),
+        notes: v.notes.len(),
+        note_area: v
+            .notes
+            .iter()
+            .map(|&n| l.notes[n].frame.width() * l.notes[n].frame.height())
+            .sum(),
         ..SheetMetrics::default()
     };
     m.diagonal_segments = v.segments.iter().filter(|s| !s.is_axis_aligned()).count();
@@ -983,6 +999,7 @@ fn overlap_counts(l: &Layout, v: &SheetView, segments: &[Seg], m: &mut SheetMetr
             .filter_map(|&i| l.buses[i].flag.as_ref().map(|f| f.extent())),
     );
     m.symbol_overlaps = pairs_overlapping(boxes.iter());
+    m.note_overlaps = note_overlaps(l, v);
 
     let written = texts(l, v);
     m.text_overlaps = pairs_overlapping(written.iter());
@@ -998,6 +1015,17 @@ fn overlap_counts(l: &Layout, v: &SheetView, segments: &[Seg], m: &mut SheetMetr
         .chain(&runs)
         .map(|s| bodies.iter().filter(|b| runs_through_body(s, b)).count())
         .sum();
+}
+
+/// The pairs of a note and something else of its sheet that overlap: what the rule `note-overlap`
+/// of [`crate::check`] reports.
+fn note_overlaps(l: &Layout, v: &SheetView) -> usize {
+    if v.notes.is_empty() {
+        return 0;
+    }
+    let mut out = Vec::new();
+    crate::check::note_overlaps_of(l, v, &mut out);
+    out.len()
 }
 
 fn pairs_overlapping<'a>(boxes: impl Iterator<Item = &'a Rect>) -> usize {
@@ -1069,8 +1097,15 @@ impl Metrics {
             "spineB",
             "detach"
         );
+        // The notes' columns come after the others and only when a sheet has a note, so the
+        // table of a board without notes is as it was.
+        let with_notes = self.total.notes > 0;
+        if with_notes {
+            out.pop();
+            let _ = writeln!(out, " {:>5} {:>8} {:>6}", "notes", "noteArea", "noteOv");
+        }
         for s in self.sheets.iter().chain(std::iter::once(&self.total)) {
-            let _ = writeln!(
+            let _ = write!(
                 out,
                 "{:<18} {:>5} {:>5} {:>5} {:>6} {:>5.2} {:>5} {:>5} {:>5} {:>6.2} {:>6.2} {:>7.2} {:>4} {:>5.1} {:>5.1} {:>6.2} {:>5} {:>5} {:>7} {:>8} {:>8} {:>5.2} {:>5} {:>5} {:>5} {:>3} {:>4} {:>4} {:>5} {:>5} {:>6.1} {:>6.1} {:>6} {:>6}",
                 clip(&s.name, 18),
@@ -1108,6 +1143,14 @@ impl Metrics {
                 s.spine_bends,
                 s.detached_chain,
             );
+            if with_notes {
+                let _ = write!(
+                    out,
+                    " {:>5} {:>8.0} {:>6}",
+                    s.notes, s.note_area, s.note_overlaps
+                );
+            }
+            out.push('\n');
         }
         out
     }
@@ -1176,6 +1219,11 @@ impl Metrics {
             put("satellite_wire", f(s.satellite_wire));
             put("spine_bends", n(s.spine_bends));
             put("detached_chain", n(s.detached_chain));
+            if self.total.notes > 0 {
+                put("notes", n(s.notes));
+                put("note_area", f(s.note_area));
+                put("note_overlaps", n(s.note_overlaps));
+            }
         }
         out
     }

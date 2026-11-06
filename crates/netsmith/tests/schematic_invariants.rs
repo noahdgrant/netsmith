@@ -18,6 +18,20 @@ fn examples() -> PathBuf {
 
 /// Every board of every example (a single file or a project), as `(name, violations)`.
 fn violations(kinds: &[&str]) -> Option<Vec<String>> {
+    let mut out = Vec::new();
+    drawings(|built, layout| {
+        for v in check(&built.design, layout) {
+            if kinds.contains(&v.kind()) {
+                out.push(format!("{}: {v}", built.design.name));
+            }
+        }
+    })?;
+    Some(out)
+}
+
+/// Draws every board of every example as the editor does and hands each drawing to `f`; none
+/// where KiCad's symbols are not installed.
+fn drawings(mut f: impl FnMut(&netsmith::Built, &netsmith_view::Layout)) -> Option<()> {
     let libraries = Libraries::standard();
     if !libraries.symbols.root().is_dir() {
         eprintln!(
@@ -47,7 +61,6 @@ fn violations(kinds: &[&str]) -> Option<Vec<String>> {
     for project in ["schematic_bench", "enclosure_sensor"] {
         targets.push(Target::resolve_from(&examples().join(project), None));
     }
-    let mut out = Vec::new();
     for target in targets {
         let target = target.unwrap_or_else(|e| panic!("{e}"));
         let (loader, catalogs) = (target.loader().unwrap(), target.catalogs().unwrap());
@@ -59,15 +72,11 @@ fn violations(kinds: &[&str]) -> Option<Vec<String>> {
                 .unwrap_or_else(|p| panic!("{}: {}", source.name, p[0].rendered));
             for built in &outcome.boards {
                 let layout = schematic_layout(built, &libraries).unwrap();
-                for v in check(&built.design, &layout) {
-                    if kinds.contains(&v.kind()) {
-                        out.push(format!("{}: {v}", built.design.name));
-                    }
-                }
+                f(built, &layout);
             }
         }
     }
-    Some(out)
+    Some(())
 }
 
 #[test]
@@ -134,4 +143,59 @@ fn no_example_has_two_texts_over_each_other_or_a_wire_over_a_text() {
         return;
     };
     assert!(found.is_empty(), "{}", found.join("\n"));
+}
+
+// Notes (ADR 0052): the doc comments and `==` relations of the examples are drawn as boxes of
+// text, on the editor's own path (the checker's model, lowering, `schematic_layout`). A note lies
+// on no symbol, text, wire, flag or other note, and its text stays in its frame.
+#[test]
+fn no_example_has_a_note_on_anything_or_text_out_of_its_frame() {
+    let Some(found) = violations(&["note-overlap", "note-text-overflow"]) else {
+        return;
+    };
+    assert!(found.is_empty(), "{}", found.join("\n"));
+}
+
+#[test]
+fn the_examples_draw_the_doc_comments_and_relations_they_state() {
+    let mut seen: Vec<(String, usize, usize, usize)> = Vec::new();
+    let Some(()) = drawings(|built, layout| {
+        use netsmith_core::NoteKind;
+        // What the design carries is what is drawn, once each.
+        assert_eq!(
+            built.design.notes.len(),
+            layout.notes.len(),
+            "{}",
+            built.design.name
+        );
+        let docs = layout
+            .notes
+            .iter()
+            .filter(|n| n.kind == NoteKind::Doc)
+            .count();
+        let relations = layout.notes.len() - docs;
+        seen.push((
+            built.design.name.clone(),
+            layout.notes.len(),
+            docs,
+            relations,
+        ));
+        // Nothing from the standard library: a note says where it is written.
+        for n in &built.design.notes {
+            let at = n.at.as_ref().expect("a note says where it is written");
+            assert!(!at.file.starts_with("std/"), "{}: {n:?}", built.design.name);
+        }
+    }) else {
+        return;
+    };
+    let find = |name: &str| {
+        seen.iter()
+            .find(|s| s.0 == name)
+            .unwrap_or_else(|| panic!("{name}: {seen:?}"))
+    };
+    // `led.nsm` has a doc comment on its header and one relation; `LedExample` has nothing else.
+    let led = find("LedExample");
+    assert_eq!((led.2, led.3), (1, 1), "{seen:?}");
+    // A module's doc comment is the sheet's note, a doc comment on a rail is a note too.
+    assert!(find("SchematicBench").2 >= 7, "{seen:?}");
 }
