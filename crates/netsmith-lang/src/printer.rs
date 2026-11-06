@@ -254,9 +254,13 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
             Item::Peripheral(p) => {
                 let functions: Vec<String> =
                     p.functions.iter().map(PinFunction::to_source).collect();
+                let on = match &p.on {
+                    Some(class) => format!(" on {}", class.to_source()),
+                    None => String::new(),
+                };
                 let _ = write!(
                     out,
-                    "peripheral {} {{ {} }}",
+                    "peripheral {}{on} {{ {} }}",
                     p.name.to_source(),
                     functions.join(" ")
                 );

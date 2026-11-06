@@ -629,11 +629,24 @@ impl Parser {
         }))
     }
 
-    /// `peripheral NAME { FUNCTION[:kind] ... }`.
+    /// `peripheral NAME [on CLASS] { FUNCTION[:kind] ... }`.
     fn peripheral(&mut self, start: usize) -> Res<Item> {
         self.bump();
         let name = self.ident("the name of the peripheral")?;
-        let open = self.expect(&Tok::LBrace, "`{` after the name of the peripheral")?;
+        let on = if matches!(&self.peek().tok, Tok::Ident(w) if w == "on") {
+            self.bump();
+            Some(self.ident("a function after `on`, such as `on APP_GPIO`")?)
+        } else {
+            None
+        };
+        let open = self.expect(
+            &Tok::LBrace,
+            if on.is_some() {
+                "`{` after the function that the peripheral is on"
+            } else {
+                "`{` or `on` after the name of the peripheral"
+            },
+        )?;
         let mut functions: Vec<PinFunction> = Vec::new();
         loop {
             self.skip_separators();
@@ -678,6 +691,7 @@ impl Parser {
         }
         Ok(Item::Peripheral(Peripheral {
             name,
+            on,
             functions,
             span: self.span_from(start),
         }))

@@ -184,7 +184,9 @@ impl<'a> Run<'a> {
                             && model.owner_of(p).is_some_and(|o| {
                                 model.is_inside(o, module)
                                     && o != module
-                                    && model.pin_facts(p).is_some_and(|r| !r.functions.is_empty())
+                                    && model
+                                        .pin_facts(p)
+                                        .is_some_and(|r| model.offered_count(o, r) > 0)
                             })
                     })
                     .collect()
@@ -321,21 +323,26 @@ impl<'a> Run<'a> {
         let name = model.path_of(pin);
         let chosen = model.function_of(pin);
         let functions: Vec<String> = row.function_names();
+        let classed = model.class_peripherals(part, row);
         match chosen {
-            Some(f) if !functions.contains(&f) => {
+            Some(f) if !model.offers(part, row, &f) => {
                 let at = self.function_site(pin, part);
-                let message = if functions.is_empty() {
-                    format!("`{name}` cannot be `{f}`; it has no functions to choose from")
+                let message = if model.instance(part).rules.peripherals.is_empty() {
+                    if functions.is_empty() {
+                        format!("`{name}` cannot be `{f}`; it has no functions to choose from")
+                    } else {
+                        format!(
+                            "`{name}` cannot be `{f}`; its functions are {}",
+                            functions.join(", ")
+                        )
+                    }
                 } else {
-                    format!(
-                        "`{name}` cannot be `{f}`; its functions are {}",
-                        functions.join(", ")
-                    )
+                    self.not_offered(part, pin, row, &f)
                 };
                 self.report(at, message);
             }
             Some(_) => {}
-            None if functions.len() > 1 && model.is_connected(pin) => {
+            None if model.offered_count(part, row) > 1 && model.is_connected(pin) => {
                 // A pin that a module forwards is chosen where the board can write it: on the
                 // module's own pin, by the path the board knows.
                 let chain = model.function_chain(pin);
@@ -353,17 +360,96 @@ impl<'a> Run<'a> {
                     ),
                 };
                 let relative = model.path_below(pin, scope);
+                let shown = if classed.is_empty() {
+                    functions.join(", ")
+                } else {
+                    format!(
+                        "{} and the lines of the peripherals on those pins",
+                        functions.join(", ")
+                    )
+                };
                 self.report(
                     at,
                     format!(
-                        "`{name}` has several functions ({}) and is connected: choose one with `.{relative}.function &= \"{}\"`",
-                        functions.join(", "),
+                        "`{name}` has several functions ({shown}) and is connected: choose one with `.{relative}.function &= \"{}\"`",
                         functions[0]
                     ),
                 );
             }
             None => {}
         }
+    }
+
+    /// The message for a function that a pin does not offer, in a part that has peripherals:
+    /// where the function is offered when a peripheral lists it, the nearest function when no
+    /// pin does, and what this pin offers. A pin whose peripherals are on a class has too many
+    /// functions to list, so it names the peripherals.
+    fn not_offered(&self, part: InstId, pin: InstId, row: &PinRow, function: &str) -> String {
+        let model = self.model;
+        let name = model.path_of(pin);
+        let functions = row.function_names();
+        let classed = model.class_peripherals(part, row);
+        let mut message = format!("`{name}` cannot be `{function}`");
+        if let Some((peripheral, _)) = model.peripheral_of(part, function) {
+            let mut pins: Vec<String> = model
+                .instance(part)
+                .tables
+                .iter()
+                .flat_map(|t| t.rows.iter())
+                .filter(|r| r.functions.iter().any(|f| f.name == function))
+                .map(|r| format!("`{}`", model.path_of(r.pin)))
+                .collect();
+            pins.sort();
+            pins.dedup();
+            let on = pins.join(", ");
+            message.push_str(&match (&peripheral.class, pins.is_empty()) {
+                (Some(class), true) => {
+                    format!("; that function is offered on every pin that lists `{class}`")
+                }
+                (Some(class), false) => format!(
+                    "; that function is offered on every pin that lists `{class}` and on {on}"
+                ),
+                (None, _) => format!("; that function is offered only on {on}"),
+            });
+            message.push_str("; ");
+        } else {
+            let mut known: Vec<String> = model
+                .instance(part)
+                .tables
+                .iter()
+                .flat_map(|t| t.rows.iter())
+                .flat_map(|r| r.functions.iter().map(|f| f.name.clone()))
+                .chain(
+                    model
+                        .instance(part)
+                        .rules
+                        .peripherals
+                        .iter()
+                        .flat_map(|p| p.functions.iter().map(|f| f.name.clone())),
+                )
+                .collect();
+            known.sort();
+            known.dedup();
+            match crate::lower::closest(function, &known) {
+                Some(near) => message.push_str(&format!("; did you mean `{near}`? ")),
+                None => message.push_str("; "),
+            }
+        }
+        if classed.is_empty() {
+            if functions.is_empty() {
+                message.push_str("it has no functions to choose from");
+            } else {
+                message.push_str(&format!("its functions are {}", functions.join(", ")));
+            }
+        } else {
+            let lines: Vec<String> = classed.iter().map(|p| p.name.clone()).collect();
+            message.push_str(&format!(
+                "`{name}` offers {} and the lines of the peripherals on those pins: {}",
+                functions.join(", "),
+                lines.join(", ")
+            ));
+        }
+        message
     }
 
     /// Where the board chose a function: the statement, on the pin or on the pin of a module

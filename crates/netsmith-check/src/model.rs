@@ -236,11 +236,15 @@ pub struct PartRules {
     pub shares: Vec<SharedRes>,
 }
 
-/// `peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }`: functions that belong together.
-/// It is in use when the board chooses one of them on a pin.
+/// `peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }`: functions that belong
+/// together. It is in use when the board chooses one of them on a pin. With `on`, every pin
+/// whose row lists the class offers them (ADR 0062).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Peripheral {
     pub name: String,
+    /// The function after `on`.
+    pub class: Option<String>,
+    pub class_span: Span,
     pub functions: Vec<PeripheralFunction>,
     pub source: SourceId,
     /// The whole statement.

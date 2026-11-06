@@ -196,6 +196,46 @@ impl Model {
             .or_else(|| row.function_kind(Some(name)))
     }
 
+    /// The peripherals that are `on` a function the row lists: every pin with such a row offers
+    /// their functions as well (ADR 0062). Computed from the part's peripherals when it is
+    /// asked, because a `peripheral` may be stated after the table.
+    pub fn class_peripherals(&self, part: InstId, row: &PinRow) -> Vec<&Peripheral> {
+        let mut found: Vec<&Peripheral> = Vec::new();
+        for p in &self.instance(part).rules.peripherals {
+            let on_row = p
+                .class
+                .as_ref()
+                .is_some_and(|c| row.functions.iter().any(|f| f.name == *c));
+            if on_row && !found.iter().any(|q| q.name == p.name) {
+                found.push(p);
+            }
+        }
+        found
+    }
+
+    /// Whether a pin with this row can be the function: the row lists it, or a peripheral on a
+    /// function the row lists does.
+    pub fn offers(&self, part: InstId, row: &PinRow, function: &str) -> bool {
+        row.functions.iter().any(|f| f.name == function)
+            || self
+                .class_peripherals(part, row)
+                .iter()
+                .any(|p| p.functions.iter().any(|f| f.name == function))
+    }
+
+    /// How many functions a pin with this row can be.
+    pub fn offered_count(&self, part: InstId, row: &PinRow) -> usize {
+        let mut names: Vec<&str> = row.functions.iter().map(|f| f.name.as_str()).collect();
+        for p in self.class_peripherals(part, row) {
+            for f in &p.functions {
+                if !names.contains(&f.name.as_str()) {
+                    names.push(&f.name);
+                }
+            }
+        }
+        names.len()
+    }
+
     /// The peripheral of a part that lists a function, and the function as it lists it.
     pub fn peripheral_of(
         &self,

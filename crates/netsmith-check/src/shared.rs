@@ -68,6 +68,8 @@ impl Checker<'_> {
             .peripherals
             .push(Peripheral {
                 name: p.name.name.clone(),
+                class: p.on.as_ref().map(|c| c.name.clone()),
+                class_span: p.on.as_ref().map_or(p.name.span, |c| c.span),
                 functions,
                 source,
                 span: p.span,
@@ -111,10 +113,14 @@ impl Checker<'_> {
 
         // The functions the rows list, with a pin that lists each.
         let mut row_functions: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let mut row_order: Vec<String> = Vec::new();
         for table in &tables {
             for row in &table.rows {
                 for f in &row.functions {
                     let pin = format!("`.{}`", self.model.path_below(row.pin, part));
+                    if !row_order.contains(&f.name) {
+                        row_order.push(f.name.clone());
+                    }
                     let pins = row_functions.entry(f.name.clone()).or_default();
                     if !pins.contains(&pin) {
                         pins.push(pin);
@@ -167,9 +173,26 @@ impl Checker<'_> {
                     ),
                 ));
             }
-            let mut listed: BTreeSet<&str> = BTreeSet::new();
+            if let Some(class) = &p.class
+                && !row_functions.contains_key(class)
+            {
+                let have = if row_order.is_empty() {
+                    "no row lists any function".to_string()
+                } else {
+                    format!("the functions that rows list are {}", listed(&row_order))
+                };
+                found.push((
+                    p.source,
+                    p.class_span,
+                    format!(
+                        "`peripheral {} on {class}`: no row of any `pins` table of `{ty}` lists the function `{class}`, so {} is offered on no pin; {have}",
+                        p.name, p.name
+                    ),
+                ));
+            }
+            let mut listed_here: BTreeSet<&str> = BTreeSet::new();
             for f in &p.functions {
-                if !listed.insert(&f.name) {
+                if !listed_here.insert(&f.name) {
                     found.push((
                         p.source,
                         f.span,
@@ -194,7 +217,7 @@ impl Checker<'_> {
                     }
                     _ => {}
                 }
-                if !row_functions.contains_key(&f.name) {
+                if p.class.is_none() && !row_functions.contains_key(&f.name) {
                     found.push((
                         p.source,
                         f.span,
@@ -203,6 +226,34 @@ impl Checker<'_> {
                             p.name, f.name, f.name
                         ),
                     ));
+                }
+            }
+        }
+
+        // A row that lists a function that its peripheral already offers on every pin of a class
+        // that the row lists.
+        for table in &tables {
+            for row in &table.rows {
+                for f in &row.functions {
+                    let Some(p) = owner
+                        .get(f.name.as_str())
+                        .and_then(|first| rules.peripherals.iter().find(|p| p.name == *first))
+                    else {
+                        continue;
+                    };
+                    if let Some(class) = &p.class
+                        && row.functions.iter().any(|g| g.name == *class)
+                    {
+                        let pin = format!(".{}", self.model.path_below(row.pin, part));
+                        found.push((
+                            table.source,
+                            row.span,
+                            format!(
+                                "`{pin}` lists `{}`, which `peripheral {}` already offers on every pin that lists `{class}`, as `{pin}` does; remove it from the row",
+                                f.name, p.name
+                            ),
+                        ));
+                    }
                 }
             }
         }

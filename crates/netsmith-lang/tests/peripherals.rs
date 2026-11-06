@@ -145,7 +145,7 @@ fn a_peripheral_needs_functions_and_a_shared_resource_members() {
 fn braces_are_needed_and_must_close() {
     let (msg, ..) = err(&in_part("peripheral UARTE0 UARTE0_TX"));
     assert!(
-        msg.starts_with("expected `{` after the name of the peripheral"),
+        msg.starts_with("expected `{` or `on` after the name of the peripheral"),
         "{msg}"
     );
     let (msg, ..) = err(&in_part("shared SERIAL0 UARTE0"));
@@ -174,4 +174,59 @@ fn a_function_is_a_plain_name_with_its_kind_against_it() {
     );
     let (msg, ..) = err(&in_part("peripheral A { A_TX /// a note\n }"));
     assert_eq!(msg, "a peripheral takes `//` notes, not doc comments");
+}
+
+// ---- `on CLASS` (stage 2) ----
+
+#[test]
+fn a_peripheral_may_go_on_a_class() {
+    let file = parse(&in_part(
+        "peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }",
+    ))
+    .unwrap();
+    let Item::Peripheral(p) = &file.definitions[0].items[0] else {
+        panic!()
+    };
+    assert_eq!(p.on.as_ref().map(|c| c.name.as_str()), Some("APP_GPIO"));
+    assert_eq!(p.functions.len(), 2);
+    // Without `on`, none.
+    let file = parse(&in_part("peripheral HSSPI { HSSPI_SCK:output }")).unwrap();
+    let Item::Peripheral(p) = &file.definitions[0].items[0] else {
+        panic!()
+    };
+    assert!(p.on.is_none());
+}
+
+#[test]
+fn on_prints_back_and_is_a_plain_name_elsewhere() {
+    let file = parse(&in_part(
+        "peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }",
+    ))
+    .unwrap();
+    let printed = file.to_source();
+    assert!(
+        printed
+            .contains("    peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }\n"),
+        "{printed}"
+    );
+    assert_eq!(parse(&printed).unwrap().to_source(), printed);
+    // A peripheral or a function may be called `on`, and a class too.
+    parse(&in_part("peripheral on { on_tx }")).unwrap();
+    parse(&in_part("peripheral A on on { A_TX }")).unwrap();
+}
+
+#[test]
+fn on_needs_a_function_and_braces() {
+    let (msg, ..) = err(&in_part("peripheral UARTE0 on { UARTE0_TX }"));
+    assert!(
+        msg.starts_with("expected a function after `on`, such as `on APP_GPIO`"),
+        "{msg}"
+    );
+    let (msg, ..) = err(&in_part("peripheral UARTE0 on APP_GPIO UARTE0_TX"));
+    assert!(
+        msg.starts_with("expected `{` after the function that the peripheral is on"),
+        "{msg}"
+    );
+    let (msg, ..) = err(&in_part("peripheral UARTE0 on \"APP_GPIO\" { UARTE0_TX }"));
+    assert!(msg.starts_with("expected a function after `on`"), "{msg}");
 }

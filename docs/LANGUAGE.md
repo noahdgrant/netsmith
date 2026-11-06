@@ -2055,6 +2055,137 @@ error: `.p00` lists `UARTE0_TX:output`, a function of `peripheral UARTE0`, which
 
 A function belongs to one peripheral, and a peripheral and a function do not share a name. Statement order does not matter: a `shared` may come before the peripherals it names and the rows that list their functions. A `peripheral` or a `shared` can only be in a part: a generic states what every provider has, and a peripheral is a fact of one part's datasheet, so a part that provides the generic states its own.
 
+### A peripheral on any pin
+
+On many microcontrollers any pin of a core can carry any line of a peripheral. Listing every such function on every row would make the table as long as the pins times the peripherals, so a peripheral says where it goes instead: `peripheral NAME on CLASS { ... }` offers its functions on every pin whose row lists the function `CLASS`. A class is an ordinary function: the rows list it (`fn APP_GPIO`), and it is also what a board chooses for a pin that is a plain GPIO of that core.
+
+A core that owns a pin is carried the same way. Every pin lists the cores that may own it, a peripheral of a core is `on` that core's class, and a pin that the silicon gives to one core lists one class. A peripheral with no `on` is offered only on the pins whose rows list its functions by name: a dedicated pin. Its functions each need a row that lists them; a function of a peripheral that is `on` a class does not.
+
+```nsm module=src::zmcu2
+/// Zmcu2, an invented microcontroller: an application core and a network core, a UART and
+/// an I2C master that share one serial unit, a UART of the network core, and a fast SPI on
+/// dedicated pins.
+part Zmcu2 {
+    peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }
+    peripheral TWIM0 on APP_GPIO { TWIM0_SCL:bidirectional TWIM0_SDA:bidirectional }
+    peripheral NETUART on NET_GPIO { NETUART_TX:output NETUART_RX:input }
+    peripheral HSSPI { HSSPI_SCK:output HSSPI_MOSI:output }
+
+    shared SERIAL0 { UARTE0 TWIM0 }
+
+    pins {
+        .p00 bidirectional "P0.00" "1" fn APP_GPIO NET_GPIO
+        .p01 bidirectional "P0.01" "2" fn APP_GPIO NET_GPIO
+        .p02 bidirectional "P0.02" "3" fn APP_GPIO
+        .p03 bidirectional "P0.03" "4" fn NET_GPIO
+        .p04 bidirectional "P0.04" "5" fn APP_GPIO NET_GPIO HSSPI_SCK
+        .p05 bidirectional "P0.05" "6" fn APP_GPIO NET_GPIO HSSPI_MOSI
+    }
+}
+```
+
+One row for each pin, and no row grows with the peripherals. The application core's console on `.p02`, the network core's on `.p03` and a fast SPI on its dedicated pins:
+
+```nsm
+import src::zmcu2::Zmcu2
+import std::parts::connector::Header1x8
+
+board Cores {
+    .u: Zmcu2
+    .j: Header1x8
+    .u.p00 ~ .j.p1
+    .u.p02 ~ .j.p2
+    .u.p03 ~ .j.p3
+    .u.p04 ~ .j.p4
+    .u.p05 ~ .j.p5
+    .u.p00.function &= "UARTE0_TX"
+    .u.p02.function &= "UARTE0_RX"
+    .u.p03.function &= "NETUART_TX"
+    .u.p04.function &= "HSSPI_SCK"
+    .u.p05.function &= "HSSPI_MOSI"
+}
+```
+
+A function on a pin that does not offer it says where it is offered, and what the pin offers. A peripheral on a class has too many functions to list on every pin, so the message names the peripherals. A dedicated function on the wrong pin, and a network-core line on a pin that the network core does not own:
+
+```nsm fails
+import src::zmcu2::Zmcu2
+import std::parts::connector::Header1x8
+
+board WrongPin {
+    .u: Zmcu2
+    .j: Header1x8
+    .u.p01 ~ .j.p1
+    .u.p01.function &= "HSSPI_SCK"
+}
+```
+
+```text
+error: `u.p01` cannot be `HSSPI_SCK`; that function is offered only on `u.p04`; `u.p01` offers APP_GPIO, NET_GPIO and the lines of the peripherals on those pins: UARTE0, TWIM0, NETUART
+  --> main.nsm:8:5
+  |
+8 |     .u.p01.function &= "HSSPI_SCK"
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+```nsm fails
+import src::zmcu2::Zmcu2
+import std::parts::connector::Header1x8
+
+board WrongCore {
+    .u: Zmcu2
+    .j: Header1x8
+    .u.p02 ~ .j.p1
+    .u.p02.function &= "NETUART_TX"
+}
+```
+
+```text
+error: `u.p02` cannot be `NETUART_TX`; that function is offered on every pin that lists `NET_GPIO`; `u.p02` offers APP_GPIO and the lines of the peripherals on those pins: UARTE0, TWIM0
+  --> main.nsm:8:5
+  |
+8 |     .u.p02.function &= "NETUART_TX"
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A name that no pin offers is a slip, and the message names the nearest function (`did you mean`). A connected pin that lists only a class still has several functions, because its peripherals' lines are functions of it, and needs one chosen. Shared resources count the functions a class offers: a board that puts `UARTE0` and `TWIM0` on pins of this part gets the message of the previous section, though no row lists either.
+
+A part's author is refused a class that no row lists, and a row that lists what its class already offers:
+
+```nsm fails
+part Zmcu2 {
+    peripheral UARTE0 on GPIO { UARTE0_TX:output UARTE0_RX:input }
+    pins {
+        .p00 bidirectional "P0.00" "1" fn APP_GPIO NET_GPIO
+    }
+}
+```
+
+```text
+error: `peripheral UARTE0 on GPIO`: no row of any `pins` table of `Zmcu2` lists the function `GPIO`, so UARTE0 is offered on no pin; the functions that rows list are APP_GPIO and NET_GPIO
+  --> main.nsm:2:26
+  |
+2 |     peripheral UARTE0 on GPIO { UARTE0_TX:output UARTE0_RX:input }
+  |                          ^^^^
+```
+
+```nsm fails
+part Zmcu2 {
+    peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }
+    pins {
+        .p00 bidirectional "P0.00" "1" fn APP_GPIO UARTE0_TX
+    }
+}
+```
+
+```text
+error: `.p00` lists `UARTE0_TX`, which `peripheral UARTE0` already offers on every pin that lists `APP_GPIO`, as `.p00` does; remove it from the row
+  --> main.nsm:4:9
+  |
+4 |         .p00 bidirectional "P0.00" "1" fn APP_GPIO UARTE0_TX
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
 ### Outputs
 
 Two outputs on one net would fight, so the checker refuses them. An output and a bidirectional pin may share a net.

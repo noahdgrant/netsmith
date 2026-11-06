@@ -305,12 +305,15 @@ pub struct Tie {
     pub span: Span,
 }
 
-/// `peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }`: the functions of a part that belong
-/// together and are in use together (ADR 0062). A function takes its kind from the peripheral,
-/// as it would from a pin row (ADR 0046).
+/// `peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }`: the functions of a part
+/// that belong together and are in use together (ADR 0062). A function takes its kind from the
+/// peripheral, as it would from a pin row (ADR 0046). With `on CLASS`, every pin whose row lists
+/// the function `CLASS` offers the peripheral's functions as well.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Peripheral {
     pub name: Ident,
+    /// The class after `on`: a function that rows list.
+    pub on: Option<Ident>,
     pub functions: Vec<PinFunction>,
     pub span: Span,
 }
