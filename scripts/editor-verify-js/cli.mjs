@@ -294,7 +294,7 @@ async function drive() {
     const problems = [];
     const allowed = [];
     page.on('pageerror', (e) => problems.push(`page error: ${e.message}`));
-    page.on('console', (m) => m.type() === 'error' && problems.push(`console error: ${m.text()}`));
+    page.on('console', (m) => m.type() === 'error' && problems.push(`console error: ${m.text()}${m.location().url ? ` (${m.location().url})` : ''}`));
     let shots = 0;
     const steps = [];
     const tools = {
