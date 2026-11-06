@@ -15,6 +15,7 @@ import { aboutOpen, toggleAbout } from '../menus';
 import { analysis, project } from '../store';
 import { Icon } from './Icons';
 import { Logo } from './Logo';
+import { giveFocusBack } from './layers';
 
 function Fact({ label, children, muted }: { label: string; children: preact.ComponentChildren; muted?: boolean }) {
   return (
@@ -34,8 +35,7 @@ export function About() {
     before.current = document.activeElement;
     box.current?.focus();
     return () => {
-      const b = before.current;
-      if (b instanceof HTMLElement) b.focus();
+      giveFocusBack(before.current, '[data-testid="menu-help"]');
     };
   }, [open]);
   useEffect(() => {

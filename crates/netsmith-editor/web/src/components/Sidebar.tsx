@@ -602,7 +602,7 @@ export function Sidebar() {
     setMenu({ x: e.clientX, y: e.clientY, id });
   };
 
-  if (!p) return <aside class="sidebar" />;
+  if (!p) return <aside class="sidebar" aria-label="Files and outline" />;
 
   const onKeyDown = (e: KeyboardEvent) => {
     const mod = e.ctrlKey || e.metaKey;
@@ -687,7 +687,7 @@ export function Sidebar() {
       : null;
 
   return (
-    <aside class="sidebar" style={{ width: `${width}px` }}>
+    <aside class="sidebar" aria-label="Files and outline" style={{ width: `${width}px` }}>
       <div class="sb-head">
         <span class="sb-title" title={p.title}>
           Files

@@ -53,6 +53,7 @@ import { FileTypeIcon, LockIcon } from './TreeIcons';
 import { emptyProject, entryFileOf } from '../entry';
 import { SelectionChip } from './SelectionChip';
 import { HelpMenu, SettingsMenu } from './TopMenus';
+import { inModal } from './layers';
 
 /** What `section` is for, in its tab's tooltip. */
 const SECTION_HINT: Record<Section, string> = {
@@ -565,7 +566,7 @@ function TabOverflow({ close }: { close: () => void }) {
       if (!box.current?.contains(e.target as Node) && !(e.target as Element).closest?.('.tab-more')) close();
     };
     const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !inModal(e)) {
         e.stopPropagation();
         close();
       }

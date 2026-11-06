@@ -10,6 +10,7 @@ import { find, chordText } from '../commands';
 import { askForRef, toggleChanges } from './ChangesSwitch';
 import { Icon, type IconName } from './Icons';
 import { revealSection } from '../store';
+import { inModal } from './layers';
 
 function Menu({ close }: { close: () => void }) {
   const box = useRef<HTMLDivElement>(null);
@@ -19,7 +20,7 @@ function Menu({ close }: { close: () => void }) {
       if (!box.current?.contains(e.target as Node) && !(e.target as Element).closest?.('.cmp-chip-anchor')) close();
     };
     const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !inModal(e)) {
         e.stopPropagation();
         close();
       }

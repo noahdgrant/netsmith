@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { spaceUnits } from '../util';
 import { Icon, type IconName } from './Icons';
+import { inModal } from './layers';
 
 export type Tone = 'neutral' | 'ok' | 'warn' | 'bad' | 'info' | 'sel';
 
@@ -127,7 +128,7 @@ export function Popover({
       if (root.current && !root.current.contains(e.target as Node)) setOpen(false);
     };
     const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !inModal(e)) {
         e.stopPropagation();
         setOpen(false);
       }

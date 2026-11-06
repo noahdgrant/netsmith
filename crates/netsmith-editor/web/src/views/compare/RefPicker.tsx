@@ -8,6 +8,7 @@ import { Icon, type IconName } from '../../components/Icons';
 import { chooseRef, gitInfo, pickerOpen, refText } from '../../compare/store';
 import { type RefItem, dirtyText, refGroups, relativeDate } from '../../compare/refs';
 import { refName } from '../../compare/store';
+import { inModal } from '../../components/layers';
 
 const KIND_ICON: Record<RefItem['kind'], IconName> = { head: 'commit', upstream: 'branch', default: 'branch', branch: 'branch', tag: 'tag', commit: 'commit' };
 const KIND_WORD: Record<RefItem['kind'], string> = { head: 'HEAD', upstream: 'upstream', default: 'default branch', branch: 'branch', tag: 'tag', commit: 'commit' };
@@ -37,7 +38,7 @@ export function RefPicker({ align = 'left' }: { align?: 'left' | 'right' }) {
       if (root.current && !root.current.contains(e.target as Node)) pickerOpen.value = false;
     };
     const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !inModal(e)) {
         e.stopPropagation();
         pickerOpen.value = false;
         root.current?.querySelector<HTMLElement>('.ref-btn')?.focus();

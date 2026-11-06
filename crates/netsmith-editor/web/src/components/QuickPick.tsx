@@ -17,6 +17,7 @@ import { scanSymbols } from '../source/symbols';
 import { closePicker, picker, recentCommands, recentPicks, rememberQuery, usedCommand, usedPick } from '../quickpick';
 import { Icon, type IconName, SeverityIcon } from './Icons';
 import { activeFile, detail, goTo, openFile, openFiles, project, revealSection, say, viewBoardOfDefinition } from '../store';
+import { giveFocusBack } from './layers';
 
 /** A name with the letters the query matched marked. */
 function Marked({ text, at }: { text: string; at: number[] | undefined }) {
@@ -239,7 +240,7 @@ function Dialog({ initial, fileScope }: { initial: string; fileScope: boolean })
       // Back to where the keys were, unless the choice moved them (the editor took the cursor).
       const b = before.current;
       setTimeout(() => {
-        if ((document.activeElement === document.body || !document.activeElement) && b instanceof HTMLElement) b.focus();
+        if (document.activeElement === document.body || !document.activeElement) giveFocusBack(b, '.section:not(.away)');
       }, 20);
     };
   }, []);
