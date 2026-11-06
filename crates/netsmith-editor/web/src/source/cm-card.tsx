@@ -19,6 +19,8 @@ interface Found {
   from: number;
   to: number;
   target: Target;
+  /** The document position of the token that names the definition the card is about (the type), where the server is asked for its signature. */
+  typeAt?: number;
 }
 
 /** The thing under a position of the document, when there is a card for it. */
@@ -28,7 +30,15 @@ export function findAt(state: EditorState, path: string, pos: number): Found | n
   const hit: Hit | null = targetAt(symbolsOf(state.doc), line.text, line.number, pos - line.from, nets);
   if (!hit) return null;
   if (!cardFor(contextFor(path), hit.target)) return null;
-  return { from: line.from + hit.from, to: line.from + hit.to, target: hit.target };
+  return { from: line.from + hit.from, to: line.from + hit.to, target: hit.target, typeAt: typeAtOf(hit, line.text, line.from) };
+}
+
+/** Where the type of a declaration, or the type hovered, stands in the document. */
+function typeAtOf(hit: Hit, text: string, lineFrom: number): number | undefined {
+  if (hit.target.type === 'type') return lineFrom + hit.from;
+  if (hit.target.type !== 'decl' || !hit.target.sym.typeName) return undefined;
+  const at = text.indexOf(hit.target.sym.typeName, hit.to);
+  return at < 0 ? undefined : lineFrom + at;
 }
 
 function make(found: Found, path: string, above = true): Tooltip {
@@ -46,7 +56,7 @@ function make(found: Found, path: string, above = true): Tooltip {
       // measured again when it has its content, and whenever the content changes size (the rail arrives).
       queueMicrotask(() => {
         if (gone) return;
-        render(<HoverCard target={found.target} path={path} close={close} />, dom);
+        render(<HoverCard target={found.target} path={path} close={close} typeAt={found.typeAt} />, dom);
         view.requestMeasure();
       });
       const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => view.requestMeasure()) : null;

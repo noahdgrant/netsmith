@@ -1,11 +1,12 @@
 // The data a hover card and the inline hints ask for beyond the board's detail: the power tree (a
-// net's rail), the bill of materials (a part's catalog line) and the text of a library file (a
-// definition's signature and doc comment). Each is fetched once for the version of the analysis it
+// net's rail), the bill of materials (a part's catalog line), the server's answer for a definition (its
+// signature and doc comment), another board's detail (a module several boards use) and, for a server
+// that does not answer with a signature, the text of a library file. Each is fetched once for the version of the analysis it
 // belongs to, on the first card that wants it, and shared as a signal.
 
 import { computed, signal } from '@preact/signals';
 
-import type { BomLine, PowerTree } from '../api';
+import type { BoardDetail, BomLine, Definition, PowerTree } from '../api';
 import { api } from '../client';
 import { analysis, board, openFiles } from '../store';
 
@@ -48,6 +49,48 @@ export function ensureBom(): void {
 
 /** The line of the bill of materials a designator is in. */
 export const bomLineOf = (lines: BomLine[] | null, refdes: string): BomLine | undefined => lines?.find((l) => l.designators.includes(refdes));
+
+// What `/api/definition` answers for a name (its signature and its doc comment), asked for the text on the page, so a card for a
+// definition needs no library file. `null` is an answer of "nothing" (or a failure); a key that is not there was not asked yet.
+const defBox = signal<Record<string, Definition | null>>({});
+
+const defKey = (path: string, offset: number, text: string) => `${analysis.peek()?.version ?? 0}|${path}|${offset}|${text.length}`;
+
+/** The server's answer for the name at `offset` of `path`'s text: `undefined` while it is not in. */
+export function servedDefinition(path: string, offset: number, text: string): Definition | null | undefined {
+  return defBox.value[defKey(path, offset, text)];
+}
+
+/** Ask for the definition at `offset`, once for each version of the analysis and text. A failure is quiet (the card says what it has). */
+export function ensureDefinition(path: string, offset: number, text: string): void {
+  const k = defKey(path, offset, text);
+  if (k in defBox.peek() || flying.has(`d|${k}`)) return;
+  flying.add(`d|${k}`);
+  api
+    .definition(path, text, offset)
+    .then((d) => (defBox.value = { ...defBox.value, [k]: d }))
+    .catch(() => (defBox.value = { ...defBox.value, [k]: null }))
+    .finally(() => flying.delete(`d|${k}`));
+}
+
+// The detail of a board other than the one shown, for a declaration of a module that several boards use: its card for each board.
+const boardBox = signal<Record<string, BoardDetail | null>>({});
+
+/** The detail of another board, when it was fetched for this analysis. */
+export function detailOfBoard(name: string): BoardDetail | null | undefined {
+  return boardBox.value[`${analysis.value?.version ?? 0}|${name}`];
+}
+
+export function ensureBoardDetail(name: string): void {
+  const k = `${analysis.peek()?.version ?? 0}|${name}`;
+  if (k in boardBox.peek() || flying.has(`board|${k}`)) return;
+  flying.add(`board|${k}`);
+  api
+    .board(name)
+    .then((d) => (boardBox.value = { ...boardBox.value, [k]: d }))
+    .catch(() => (boardBox.value = { ...boardBox.value, [k]: null }))
+    .finally(() => flying.delete(`board|${k}`));
+}
 
 /** The text of a file: the open one's (with edits), else what was fetched for a card. */
 export function textOfFile(path: string): string | null {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { BoardDetail, PartInfo, PowerTree, Problem, Project } from '../api';
-import { type CardContext, cardFor, definitionCard, netCard, partCard, pinsOf, targetAt } from './card';
+import type { BoardDetail, ModuleUse, PartInfo, PowerTree, Problem, Project, Solved } from '../api';
+import { type CardContext, boardsUsing, cardFor, definitionCard, netCard, offersBoards, partCard, pinsOf, rangeText, solvedRows, targetAt } from './card';
 import { scanSymbols } from './symbols';
 
 const loc = (file: string, line: number) => ({ file, line, column: 5, endLine: line, endColumn: 30 });
@@ -216,5 +216,117 @@ describe('cardFor', () => {
   });
   it('is the net card for a net target', () => {
     expect(cardFor(ctx(), { type: 'net', name: 'VIN' })).toMatchObject({ type: 'net', name: 'VIN' });
+  });
+});
+
+describe('a pin of a net names itself the way the datasheet does', () => {
+  const named: BoardDetail = {
+    ...detail,
+    nets: [{ name: '3V3', named: true, pins: [{ refdes: 'C2', pin: '1' }, { refdes: 'U1', pin: '2', name: 'VOUT' }, { refdes: 'U2', pin: '7', name: 'PB6', function: 'UART1_TX' }] }],
+  };
+  it('carries the pin name and the chosen function on the net card, and leaves them off a pin without', () => {
+    const c = netCard(ctx({ detail: named }), '3V3')!;
+    expect(c.pins).toEqual([
+      { refdes: 'C2', pin: '1' },
+      { refdes: 'U1', pin: '2', name: 'VOUT' },
+      { refdes: 'U2', pin: '7', name: 'PB6', function: 'UART1_TX' },
+    ]);
+  });
+  it('carries them on the pins of a part card too', () => {
+    expect(pinsOf(named, 'U2')).toEqual([{ pin: '7', net: '3V3', named: true, name: 'PB6', function: 'UART1_TX' }]);
+  });
+});
+
+describe('the solved block of a part', () => {
+  const solved: Solved = {
+    effectiveCapacitance: { lo: 1.72e-6, hi: 2.916e-6, text: '1.72uF..2.916uF' },
+    bias: { lo: 5, hi: 5, text: '5V' },
+    tolerance: { percent: 20, text: '+/- 20%' },
+    ratings: [{ name: 'max_voltage', range: { lo: 0, hi: 16, text: '0V..16V' } }],
+    row: { catalog: 'capacitor', mpn: 'CL05A106MQ5NUNC', lcsc: 'C315248', library: 'Basic', generic: false },
+  };
+  it('is on the part card when the server sent it, and null when it did not', () => {
+    const c = partCard(ctx(), { ...detail.parts[1], solved });
+    expect(c.solved).toBe(solved);
+    expect(partCard(ctx(), detail.parts[1]).solved).toBeNull();
+  });
+  it('reads as the effective capacitance at its bias, the tolerance, the ratings and the catalog row, with thin spaces', () => {
+    expect(solvedRows(solved)).toEqual([
+      { label: 'In use', value: '1.72\u2009uF\u2009..\u20092.916\u2009uF at 5\u2009V', mono: true },
+      { label: 'Tolerance', value: '+/- 20\u2009%' },
+      { label: 'Rated', value: 'max voltage 0\u2009V\u2009..\u200916\u2009V' },
+      { label: 'Row', value: 'capacitor · CL05A106MQ5NUNC · C315248 · Basic', mono: true },
+    ]);
+  });
+  it('says a generic part has no catalog row yet', () => {
+    const rows = solvedRows({ row: { catalog: 'resistor', generic: true } });
+    expect(rows).toEqual([{ label: 'Row', value: 'generic resistor: a value and a package, no catalog row yet', mono: false }]);
+  });
+  it('has no rows for a part the solver had nothing to say about', () => {
+    expect(solvedRows(null)).toEqual([]);
+    expect(solvedRows(undefined)).toEqual([]);
+    expect(solvedRows({})).toEqual([]);
+  });
+  it('shows a range with a space before the unit', () => {
+    expect(rangeText({ lo: 3.135, hi: 3.465, text: '3.135V..3.465V' })).toBe('3.135\u2009V\u2009..\u20093.465\u2009V');
+  });
+});
+
+describe('a definition card from the server', () => {
+  const served = (extra: object = {}) => ({ at: { file: 'std/parts/passive.nsm', line: 13, column: 6, endLine: 13, endColumn: 14 }, signature: 'part Resistor { .resistance: Resistance .max_power: Power ... }', doc: "A resistor.\nIt is never an unrated part.", ...extra });
+  const withEnds: Project = {
+    ...project,
+    files: [
+      project.files[0],
+      { ...project.files[1], defs: [{ kind: 'part', name: 'Resistor', line: 13, endLine: 18, children: [{ name: 'resistance', typeName: 'Resistance', line: 15, endLine: 15 }, { name: 'dissipation', kind: 'interface', typeName: 'Heat', line: 16, endLine: 16 }] }, project.files[1].defs[1]] },
+    ],
+  };
+  it('takes the signature and the doc from /api/definition, and needs no library file', () => {
+    const c = definitionCard(ctx({ project: withEnds, served: served(), textOf: () => null }), 'Resistor')!;
+    expect(c).toMatchObject({ signature: 'part Resistor { .resistance: Resistance .max_power: Power ... }', source: 'server', partial: false });
+    expect(c.doc).toEqual(['A resistor.', 'It is never an unrated part.']);
+  });
+  it('takes the members and the roles from the file list (Def.children), and the problems from the end line', () => {
+    const problems: Problem[] = [{ severity: 'error', message: 'm', rendered: '', at: loc('std/parts/passive.nsm', 17) }];
+    const c = definitionCard(ctx({ project: withEnds, served: served(), problems, textOf: () => null }), 'Resistor')!;
+    expect(c.members.map((m) => [m.name, m.typeName, m.role])).toEqual([['resistance', 'Resistance', 'field'], ['dissipation', 'Heat', 'port']]);
+    expect(c.errors).toBe(1);
+  });
+  it('ignores an answer that is about another place than the file list gives', () => {
+    const c = definitionCard(ctx({ project: withEnds, served: served({ at: { file: 'std/parts/passive.nsm', line: 50, column: 1, endLine: 50, endColumn: 2 } }), textOf: () => null }), 'Resistor')!;
+    expect(c.signature).toBe('part Resistor');
+    expect(c.source).toBe('none');
+  });
+  it('ignores an answer of an older server (a place alone) and reads the text, as it did', () => {
+    const c = definitionCard(ctx({ served: { at: served().at } }), 'Resistor')!;
+    expect(c).toMatchObject({ signature: 'part Resistor', source: 'text' });
+    expect(c.doc[0]).toContain('A resistor.');
+  });
+  it('is not partial when the file list has the ends, before the answer arrives, but says there is nothing yet', () => {
+    const c = definitionCard(ctx({ project: withEnds, textOf: () => null }), 'Resistor')!;
+    expect(c).toMatchObject({ partial: false, source: 'none', doc: [] });
+  });
+});
+
+describe('the boards that use a module', () => {
+  const uses: ModuleUse[] = [
+    { name: 'LdoStage', file: 'src/main.nsm', line: 20, usedBy: ['TwoBoards/power', 'TwoBoards/spare'] },
+    { name: 'Filter', file: 'src/filter.nsm', line: 3, usedBy: ['TwoBoards/power'] },
+  ];
+  it('are found by the file and the line of the definition the declaration is in', () => {
+    expect(boardsUsing(uses, 'src/main.nsm', 20)).toEqual(['TwoBoards/power', 'TwoBoards/spare']);
+    expect(boardsUsing(uses, 'src/main.nsm', 45)).toEqual([]);
+    expect(boardsUsing(uses, 'src/filter.nsm', 20)).toEqual([]);
+  });
+  it('are none for a declaration outside a definition, and for a server that does not say', () => {
+    expect(boardsUsing(uses, 'src/main.nsm', null)).toEqual([]);
+    expect(boardsUsing(undefined, 'src/main.nsm', 20)).toEqual([]);
+    expect(boardsUsing(null, 'src/main.nsm', 20)).toEqual([]);
+  });
+  it('are offered when several boards share the module, or the board shown is not one of them', () => {
+    expect(offersBoards(['a', 'b'], 'a')).toBe(true);
+    expect(offersBoards(['b'], 'a')).toBe(true);
+    expect(offersBoards(['a'], 'a')).toBe(false);
+    expect(offersBoards([], 'a')).toBe(false);
   });
 });

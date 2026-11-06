@@ -159,7 +159,14 @@ export async function run({ page, shot, step, expect, url, section }) {
   await page.waitForSelector('[data-testid="about"]');
   const about = await page.locator('[data-testid="about"]').innerText();
   expect(/Project\s*\n?\s*\S+/.test(about) && about.includes('Boards') && /KiCad/.test(about), 'it names the project, the boards and KiCad');
-  expect(about.includes('Not reported by the server'), 'it says the version is not reported');
+  const facts = await page.evaluate(async () => (await fetch('/api/project')).json());
+  expect(!about.includes('Not reported by the server') && about.includes(facts.version), `it shows the version the server reports (${facts.version})`);
+  expect(about.includes(facts.root), `it shows the project's folder (${facts.root})`);
+  expect(!facts.kicad || about.includes(facts.kicadPath), `it shows where KiCad was found (${facts.kicadPath})`);
+  expect(!facts.bundleHash || about.includes(facts.bundleHash), `it shows the hash of the page the binary embeds (${facts.bundleHash})`);
+  await page.waitForSelector('[data-testid="about-bundle"]');
+  const match = await page.locator('[data-testid="about-bundle"]').getAttribute('data-match');
+  expect(match === 'match', `the page on screen is the one the binary serves (${match})`);
   await shot('about');
   await page.keyboard.press('Escape');
   await page.waitForSelector('[data-testid="about"]', { state: 'detached' });
@@ -170,7 +177,8 @@ export async function run({ page, shot, step, expect, url, section }) {
   await page.click('[data-testid="help-report"]');
   await page.waitForSelector('.toast', { hasText: 'Diagnostics copied' });
   const text = await page.evaluate(() => navigator.clipboard.readText());
-  for (const w of ['netsmith editor: diagnostics', 'Bundle:', 'Browser:', 'Problems:', 'Last errors the page showed', 'netsmith version: not reported']) expect(text.includes(w), `the block says "${w}"`);
+  for (const w of ['netsmith editor: diagnostics', 'Bundle:', 'Browser:', 'Problems:', 'Last errors the page showed', `netsmith version: ${facts.version}`, `Folder: ${facts.root}`, `Embedded page (source hash): ${facts.bundleHash}`, 'Page on screen vs the binary: match']) expect(text.includes(w), `the block says "${w}"`);
+  expect(!text.includes('Not reported by the server'), 'and does not say that anything is not reported');
 
   step('the tab title is `netsmith - <board>`, a dot in front while a file is unsaved');
   const board = await page.evaluate(() => document.querySelector('.boardpick select').value);

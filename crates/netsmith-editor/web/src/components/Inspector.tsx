@@ -109,9 +109,9 @@ export function InspectorSection({ title, count, open, right, children }: { titl
 }
 
 /** A pin or a net as a chip that can be hovered and clicked. */
-export function PinChip({ children, title, current, onClick, mono = true, tone, class: cls, hv }: { children: ComponentChildren; title?: string; current?: boolean; onClick?: () => void; mono?: boolean; tone?: string; class?: string; hv?: Hover | (() => Hover | null) }) {
+export function PinChip({ children, title, current, pressed, onClick, mono = true, tone, class: cls, hv }: { children: ComponentChildren; title?: string; current?: boolean; /** Set for a chip that is a switch: it says whether it is on. */ pressed?: boolean; onClick?: () => void; mono?: boolean; tone?: string; class?: string; hv?: Hover | (() => Hover | null) }) {
   return (
-    <button type="button" class={`chip pin-chip ${current ? 'cur' : ''} ${mono ? '' : 'plain'} ${tone ?? ''} ${cls ?? ''}`} title={title} onClick={onClick} {...(hv ? hoverAttrs(hv) : {})}>
+    <button type="button" class={`chip pin-chip ${current ? 'cur' : ''} ${mono ? '' : 'plain'} ${tone ?? ''} ${cls ?? ''}`} title={title} onClick={onClick} {...(pressed !== undefined ? { 'aria-pressed': pressed } : {})} {...(hv ? hoverAttrs(hv) : {})}>
       {children}
     </button>
   );

@@ -19,12 +19,13 @@
 .pcb-host svg [data-height-limit] { font-family: var(--sans); font-size: .7px; font-weight: 600; paint-order: stroke; stroke: var(--pcb-board); stroke-width: .22px; stroke-linejoin: round; }
 
 /* planes: the copper of an inner layer is a translucent fill in the layer's tone with a dashed border, and the net's name in a corner.
- * The server draws one rectangle per plane in the order of the board's planes (data-plane, set by pcb/drawing.ts), so the tone is the
- * plane's place, `--pcb-plane-1` to `--pcb-plane-4`; each is a layer's colour, never the net's. */
+ * The server draws one rectangle per plane and names its copper layer (data-layer: In1.Cu); pcb/drawing.ts turns the layer into data-plane
+ * (1 to 4, or the plane's place among the planes for a server that sends no layer), so the tone is the layer's, `--pcb-plane-1` to
+ * `--pcb-plane-4`; each is a layer's colour, never the net's. */
 .pcb-host svg .l-planes > rect { --plane: var(--pcb-plane-1); fill: var(--plane); fill-opacity: .1; stroke: var(--plane); stroke-width: calc(1.25 * var(--px, .04)); stroke-dasharray: calc(7 * var(--px, .04)) calc(5 * var(--px, .04)); stroke-opacity: .85; }
 .pcb-host svg .l-planes > [data-plane="2"] { --plane: var(--pcb-plane-2); }
 .pcb-host svg .l-planes > [data-plane="3"] { --plane: var(--pcb-plane-3); }
-.pcb-host svg .l-planes > [data-plane="4"], .pcb-host svg .l-planes > [data-plane="5"], .pcb-host svg .l-planes > [data-plane="6"] { --plane: var(--pcb-plane-4); }
+.pcb-host svg .l-planes > [data-plane="4"] { --plane: var(--pcb-plane-4); }
 .pcb-host svg .l-planes > text.plane-label { fill: var(--pcb-key); font-family: var(--sans); font-size: .5px; font-weight: 600; letter-spacing: .02em; dominant-baseline: central; paint-order: stroke; stroke: var(--pcb-board); stroke-width: .3px; stroke-linejoin: round; opacity: .95; }
 
 /* pads: copper on the front, teal-blue on the back, a tone and a ring for a hole that goes through */

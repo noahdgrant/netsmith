@@ -4,6 +4,7 @@
 // nothing is computed. Pure.
 
 import type { BoardDetail, PartInfo, PowerTree } from '../api';
+import { spaceUnits } from '../util';
 
 export interface Hint {
   /** 1-based line the hint ends. */
@@ -53,9 +54,9 @@ export function netHints(lines: readonly string[], power: PowerTree | null): Hin
     const m = NET_LINE.exec(text);
     if (!m) return;
     const node = power.nodes.find((n) => n.net === m[1]);
-    const v = node?.voltage?.text;
+    const v = node?.voltage?.text ? spaceUnits(node.voltage.text) : undefined;
     if (!node || !v) return;
-    const demand = node.demand?.text;
+    const demand = node.demand?.text ? spaceUnits(node.demand.text) : undefined;
     out.push({ line: i + 1, text: v, title: `${m[1]}: ${v}${demand ? `, draws ${demand}` : ''}` });
   });
   return out;

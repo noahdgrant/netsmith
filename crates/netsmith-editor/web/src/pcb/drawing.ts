@@ -3,6 +3,7 @@
 
 import { UNCONNECTED, themed } from './colours';
 import type { Pt } from './geometry';
+import { planeLabel, planeTone } from './planes';
 
 /** A net of the board as the drawing shows it. */
 export interface NetItem {
@@ -10,6 +11,8 @@ export interface NetItem {
   colour: string;
   pads: number;
   plane: boolean;
+  /** The copper layer of its plane (`In1.Cu`), when the drawing names it. */
+  layer?: string;
 }
 
 export interface Drawing {
@@ -81,24 +84,31 @@ export function prepare(text: string): Drawing | null {
   });
   svg.querySelectorAll('.l-planes > [data-net]').forEach((plane) => {
     const name = plane.getAttribute('data-net')!;
+    const layer = plane.getAttribute('data-layer') || undefined;
     const item = nets.get(name);
-    if (item) item.plane = true;
-    else nets.set(name, { name, colour: themed(plane.getAttribute('stroke') ?? UNCONNECTED), pads: 0, plane: true });
+    if (item) {
+      item.plane = true;
+      item.layer = layer;
+    } else nets.set(name, { name, colour: themed(plane.getAttribute('stroke') ?? UNCONNECTED), pads: 0, plane: true, layer });
   });
-  // A plane is a dashed rectangle with no word on it: it is given the name of its net (a label on its border, in the drawing's own units)
-  // and its place among the planes, which `pcbdraw.css` turns into the tone of its layer.
+  // A plane is a dashed rectangle with no word on it: it is given the name of its net and of its layer (a label on its border, in the
+  // drawing's own units) and a tone (`data-plane`, 1 to 4), which `pcbdraw.css` turns into the colour of its layer. The layer is the
+  // rectangle's `data-layer`; a server that does not send it leaves the tone to the plane's place among the planes.
   const planes = [...svg.querySelectorAll('.l-planes > rect[data-net]')];
   planes.forEach((plane, i) => {
-    plane.setAttribute('data-plane', String(i + 1));
+    const layer = plane.getAttribute('data-layer');
+    const tone = String(planeTone(layer, i));
+    plane.setAttribute('data-plane', tone);
     const label = doc.createElementNS('http://www.w3.org/2000/svg', 'text');
     label.setAttribute('class', 'plane-label');
     label.setAttribute('data-net', plane.getAttribute('data-net')!);
-    label.setAttribute('data-plane', String(i + 1));
+    label.setAttribute('data-plane', tone);
+    if (layer) label.setAttribute('data-layer', layer);
     // On the plane's own top border (the border passes behind the word through its halo), the labels of the planes a few
     // millimetres apart along it, so two planes' words never lie on one another.
     label.setAttribute('x', String(Number(plane.getAttribute('x')) + 2 + i * 9));
     label.setAttribute('y', String(Number(plane.getAttribute('y'))));
-    label.textContent = plane.getAttribute('data-net')!;
+    label.textContent = planeLabel(plane.getAttribute('data-net')!, layer);
     plane.parentNode?.appendChild(label);
   });
   return {

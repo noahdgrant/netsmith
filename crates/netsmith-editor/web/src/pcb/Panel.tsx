@@ -144,7 +144,7 @@ function NetList(props: {
           >
             <span class={`swatch ${n.plane ? 'plane' : ''}`} aria-hidden="true" />
             <span class="net-name">{n.name}</span>
-            <span class="faint">{n.plane ? 'plane' : n.pads}</span>
+            <span class="faint">{n.plane ? (n.layer ? `plane ${n.layer}` : 'plane') : n.pads}</span>
           </div>
         ))}
         {nets.length === 0 && <EmptyState compact class="none" icon="search" title="No net matches" help="Try the name of a net." />}

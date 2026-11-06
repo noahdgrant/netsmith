@@ -1,11 +1,13 @@
-// "About netsmith": what this editor is and what it knows about itself. It shows what the server reports (the project, the boards,
-// whether KiCad was found, the state of the analysis) and what the page itself is (the bundle, the browser). The server does not send
-// the version of netsmith, the project's folder or where KiCad is: the dialog says so in those lines (`NOT_REPORTED`), and the
+// "About netsmith": what this editor is and what it knows about itself. It shows what the server reports (the version of netsmith and
+// the commit it was built from, the project and its folder, the boards, where KiCad was found, the hash of the page it embeds, the
+// state of the analysis) and what the page itself is (the bundle, the browser), with a line that says whether the page on screen is
+// the one the binary serves. A server that predates those fields is told in the lines it leaves empty (`notReported`), and the
 // button copies the same facts, with the last errors, for an issue.
 
-import { useLayoutEffect, useRef } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 
-import { NOT_REPORTED, bundleOf } from '../diagnostics';
+import { bundleCheck, checkBundle } from '../bundleCheck';
+import { MATCH_WORDS, bundleOf, notReported } from '../diagnostics';
 import { copyDiagnostics } from '../diagnosticsState';
 import { busy, connection } from '../feedback/state';
 import { CONNECTION_LABEL } from '../feedback/status';
@@ -36,11 +38,16 @@ export function About() {
       if (b instanceof HTMLElement) b.focus();
     };
   }, [open]);
+  useEffect(() => {
+    if (open) void checkBundle();
+  }, [open]);
   if (!open) return null;
   const p = project.value;
   const a = analysis.value;
   const script = document.querySelector<HTMLScriptElement>('script[type="module"][src]');
   const bundle = bundleOf(script?.src);
+  const check = bundleCheck.value;
+  const missing = notReported(p);
   const close = () => toggleAbout(false);
   return (
     <div class="qp-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
@@ -72,15 +79,35 @@ export function About() {
           <p>A language and tools for designing electronics as code.</p>
         </header>
         <dl class="about-facts">
-          <Fact label="Version" muted>
-            Not reported by the server
+          <Fact label="Version" muted={!p?.version}>
+            {p?.version ? (
+              <span data-testid="about-version">
+                {p.version}
+                {p.gitDescribe && <span class="muted mono"> ({p.gitDescribe})</span>}
+              </span>
+            ) : (
+              'Not reported by the server'
+            )}
           </Fact>
           <Fact label="Project">{p ? p.title : 'Not read yet'}</Fact>
+          {p?.root && (
+            <Fact label="Folder">
+              <span class="mono about-path" data-testid="about-root" title={p.root}>
+                {p.root}
+              </span>
+            </Fact>
+          )}
           <Fact label="Boards">{a ? a.boards.length : 'unknown'}</Fact>
           <Fact label="Files">{p ? p.files.length : 'unknown'}</Fact>
           <Fact label="KiCad">
             {p ? (p.kicad ? 'Found' : 'Not found') : 'unknown'}
-            <span class="muted">{p?.kicad ? ' (where: not reported)' : p ? ': nothing needs it, the Findings tab can use it for a second opinion' : ''}</span>
+            {p?.kicad && p.kicadPath && (
+              <span class="muted mono about-path" data-testid="about-kicad" title={p.kicadPath}>
+                {' '}
+                {p.kicadPath}
+              </span>
+            )}
+            <span class="muted">{p?.kicad ? (p.kicadPath ? '' : ' (where: not reported)') : p ? ': nothing needs it, the Findings tab can use it for a second opinion' : ''}</span>
           </Fact>
           <Fact label="Analysis">
             {busy.value ? 'Analysing' : a ? 'Analysed' : 'Not read yet'}
@@ -92,14 +119,30 @@ export function About() {
           </Fact>
           <Fact label="Connection">{CONNECTION_LABEL[connection.value]}</Fact>
           <Fact label="Editor at">{window.location.host}</Fact>
-          <Fact label="Page">{bundle}</Fact>
+          <Fact label="Page">
+            <span class="mono">{bundle}</span>
+          </Fact>
+          {p?.bundleHash && (
+            <Fact label="Embedded page">
+              <span class="mono" data-testid="about-hash">
+                {p.bundleHash}
+              </span>
+              <span class="muted"> (hash of its sources)</span>
+            </Fact>
+          )}
         </dl>
-        <p class="about-note">
-          <Icon name="note" size={13} />
-          <span>
-            The server does not report {NOT_REPORTED.join(', ')}; the copied diagnostics say so as well.
-          </span>
-        </p>
+        {check && (
+          <p class={`about-note about-bundle ${check}`} data-testid="about-bundle" data-match={check}>
+            <Icon name={check === 'match' ? 'check' : check === 'differs' ? 'warning' : 'note'} size={13} />
+            <span>{MATCH_WORDS[check]}</span>
+          </p>
+        )}
+        {missing.length > 0 && (
+          <p class="about-note">
+            <Icon name="note" size={13} />
+            <span>The server does not report {missing.join(', ')}; the copied diagnostics say so as well.</span>
+          </p>
+        )}
         <footer class="about-foot">
           <button class="tool primary" onClick={() => void copyDiagnostics()} data-testid="about-copy">
             <Icon name="copy" size={14} />

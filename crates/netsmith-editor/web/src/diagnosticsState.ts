@@ -1,6 +1,7 @@
 // What the page knows right now, gathered into `diagnostics.ts`'s input, and the one action that copies it.
 
 import { buildDiagnostics, bundleOf, recentErrors } from './diagnostics';
+import { bundleCheck } from './bundleCheck';
 import { allRows } from './feedback/derive';
 import { busy, connection, notify } from './feedback/state';
 import { CONNECTION_LABEL } from './feedback/status';
@@ -26,7 +27,8 @@ export function gatherDiagnostics(): string {
     viewport: { width: window.innerWidth, height: window.innerHeight, ratio: window.devicePixelRatio || 1 },
     language: navigator.language,
     host: window.location.host,
-    project: p ? { title: p.title, hasManifest: p.hasManifest, kicad: p.kicad, files: p.files.length } : null,
+    project: p ? { title: p.title, hasManifest: p.hasManifest, kicad: p.kicad, files: p.files.length, version: p.version, gitDescribe: p.gitDescribe, root: p.root, kicadPath: p.kicadPath, bundleHash: p.bundleHash } : null,
+    bundleMatches: bundleCheck.peek(),
     analysis: a ? { version: a.version, errors: a.errors, warnings: a.warnings, notes: a.notes, elapsedMs: a.elapsedMs, boards: a.boards.map((b) => ({ name: b.name, stale: b.stale, parts: b.parts, nets: b.nets })) } : null,
     state: { connection: CONNECTION_LABEL[connection.peek()], analysis: busy.peek() ? 'Analysing' : a ? 'Analysed' : 'Not read yet' },
     board: board.peek(),

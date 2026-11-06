@@ -61,4 +61,8 @@
 .about-facts dd.muted, .about-facts .muted { color: var(--text-muted); }
 .about-note { display: flex; gap: .5rem; margin: 0; padding: .75rem 1.5rem 0; color: var(--text-muted); font-size: var(--fs-sm); line-height: var(--lh); }
 .about-note .icon { flex: none; margin-top: 2px; color: var(--text-faint); }
+.about-path { overflow-wrap: anywhere; font-size: var(--fs-sm); }
+.about-bundle.match .icon { color: var(--success, var(--text-muted)); }
+.about-bundle.differs { color: var(--text); }
+.about-bundle.differs .icon { color: var(--warning); }
 .about-foot { display: flex; justify-content: flex-end; gap: .5rem; padding: 1rem 1.5rem 1.25rem; }

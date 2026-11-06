@@ -7,6 +7,13 @@ export async function run({ page, shot, step, expect, section }) {
   await section('pcb');
   await page.waitForSelector('.pcb-host svg');
   expect((await page.locator('.pcb-host svg [stroke-dasharray]').count()) >= 2, 'a dashed border for each plane');
+  step('a plane is coloured by its real layer and named with it (the drawing\'s data-layer)');
+  const planes = await page.evaluate(() => [...document.querySelectorAll('.pcb-host svg .l-planes > rect[data-net]')].map((r) => ({ net: r.getAttribute('data-net'), layer: r.getAttribute('data-layer'), tone: r.getAttribute('data-plane'), stroke: getComputedStyle(r).stroke })));
+  expect(planes.length >= 2 && planes.every((p) => /^In\d+\.Cu$/.test(p.layer ?? '')), `each plane rectangle names its layer (${planes.map((p) => `${p.net} ${p.layer}`).join(', ')})`);
+  expect(planes.every((p) => p.tone === String(Math.min(4, Number(/\d+/.exec(p.layer)[0])))), `and its tone is its layer's (${planes.map((p) => `${p.layer}:${p.tone}`).join(', ')})`);
+  expect(new Set(planes.map((p) => p.stroke)).size === planes.length, 'two planes on two layers have two colours');
+  const labels = await page.locator('.pcb-host svg text.plane-label').allInnerTexts();
+  expect(planes.every((p) => labels.some((l) => l === `${p.net} · ${p.layer}`)), `a label with the net and the layer (${labels.join(' | ')})`);
   step('route it');
   await page.getByRole('button', { name: /Place and route/ }).click();
   await page.waitForSelector('.chip:has-text("routed")');

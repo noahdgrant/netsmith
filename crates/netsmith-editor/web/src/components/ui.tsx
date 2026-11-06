@@ -4,6 +4,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 
+import { spaceUnits } from '../util';
 import { Icon, type IconName } from './Icons';
 
 export type Tone = 'neutral' | 'ok' | 'warn' | 'bad' | 'info' | 'sel';
@@ -256,7 +257,9 @@ export function ago(then: number, now: number): string {
 }
 
 /** A quantity with its unit muted: `-50 mA .. 0 A` is the numbers in the page's ink and the units and dots fainter. */
-export function Units({ text }: { text: string }) {
+export function Units({ text: raw }: { text: string }) {
+  // `Range.text` has no space before the unit (the language's own writing); the page shows a thin space.
+  const text = spaceUnits(raw);
   const out: ComponentChildren[] = [];
   let last = 0;
   let n = 0;

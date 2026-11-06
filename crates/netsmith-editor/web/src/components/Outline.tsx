@@ -11,7 +11,7 @@ import { OUTLINE_H, outlineHeight, outlineOpen } from '../source/prefs';
 import { kindOfType } from '../source/card';
 import { highlight } from '../tree';
 import { activeFile, cursor, detail, goTo, problems, project, viewBoardOfDefinition } from '../store';
-import { useSymbols } from './Breadcrumbs';
+import { useFileSymbols } from './Breadcrumbs';
 import { Icon } from './Icons';
 import { KindIcon } from './TreeIcons';
 import { EmptyState } from './ui';
@@ -26,7 +26,7 @@ export function Outline() {
   const path = activeFile.value;
   const open = outlineOpen.value;
   const height = outlineHeight.value;
-  const syms = useSymbols(path);
+  const { syms, from } = useFileSymbols(path);
   const [filter, setFilter] = useState('');
   const [folded, setFolded] = useState<Set<string>>(new Set());
   const list = useRef<HTMLDivElement>(null);
@@ -103,7 +103,7 @@ export function Outline() {
 
   const lang = path?.endsWith('.nsm');
   return (
-    <section class={`outline ${open ? 'open' : ''}`} aria-label="Outline" style={open ? { minHeight: `${height}px` } : undefined} data-testid="outline">
+    <section class={`outline ${open ? 'open' : ''}`} aria-label="Outline" data-source={from} style={open ? { minHeight: `${height}px` } : undefined} data-testid="outline">
       {open && (
         <div
           class="ol-resizer"

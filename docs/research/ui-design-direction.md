@@ -225,3 +225,15 @@ Found and fixed: the board's toolbar wrapped at 1000 (above); the BOM's right co
 5. The dock's default height (240 px) is 40 % of a 600 px window; a window that short should start it lower.
 6. The favicon was checked as a file and by the browser's own tab-strip colours, not on a real tab strip in a dark browser theme.
 7. `scripts/editor-verify-js/css-rem.mjs` is a tool run by hand; a test that fails on a new px length above 2 in `style.css` and `views.css` would hold the page to rem without it. Not written: the existing 200-odd px values that stay (the drawings', the shadows') would need an allow-list the owner should look at.
+
+## Night 2: round 4 and round 5 together, and the server's new fields in the page
+
+Status: 2026-11-06. `integration/night2` is the night-1 integration plus `ui/modern-r4` (the Source editor), `ui/modern-r5` (the finishing pass), `server/compare` and `server/ui-fields`. The two UI rounds touched the same top bar, icons and entry file and merged by keeping both; `css-rem.mjs` was run again on the merged stylesheets (`style.css`, `views.css` and `themes.css` came out unchanged, `source.css`, a round 4 file, had 53 lengths converted so the settings' size reaches the breadcrumbs, the outline and the cards).
+
+What the page now takes from the server, each with a fallback for a server that does not send it:
+
+- **About and the diagnostics**: version, the commit it was built from, the project's folder, where KiCad was found and the hash of the embedded page; a line says whether the page on screen is the one the binary serves now (the file name of the script against the `index.html` the server answers with). The copied block holds the folder.
+- **Planes**: a plane's tone is its layer's (`data-layer`), and its label says `GND · In1.Cu`; without the attribute, the place among the planes.
+- **The outline and the breadcrumbs** read `Def.endLine` and `Def.children`; they use them when each name stands on the line the server gave and each definition ends on a closing brace, and otherwise (older server, text that changed since the file was read) the page's own reader (`source/symbols.ts`). The server's children are the declarations written directly in a body, so a declaration nested inside another declaration's block is not in the outline of a server's answer; the page's reader nests them.
+- **Hover cards**: a definition's signature and doc comment come from `/api/definition`, its members from `Def.children` (no library file is read); the pins of a net and of a part show the datasheet's name and the chosen function; a part has a `Solved` block; a declaration in a module that several boards use, or that the board shown does not hold, offers the boards that use it (`Analysis.moduleUses`, joined by the module's file and line) and shows its card for the one picked (without the shown board's BOM line and rail, which belong to the board shown).
+- **Ranges**: `Range.text` is the language's writing, `3.135V..3.465V`; every place the page shows one (the card's rail, the inline hint, the solved block) puts a thin space before the unit and round the dots (`spaceUnits`).

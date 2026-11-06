@@ -60,8 +60,9 @@ const power = (nodes: Partial<PowerTree['nodes'][number]>[]): PowerTree => ({
 describe('netHints', () => {
   const lines = ['board B {', '    .pos.net &= "3V3"', '    .neg.net &= "GND"', '}'];
   it('shows the solved voltage of a rail where the source names its net', () => {
-    const p = power([{ net: '3V3', voltage: range('3.135 V .. 3.465 V'), demand: range('0 A .. 50 mA') }, { net: 'GND', voltage: null }]);
-    expect(netHints(lines, p)).toEqual([{ line: 2, text: '3.135 V .. 3.465 V', title: '3V3: 3.135 V .. 3.465 V, draws 0 A .. 50 mA' }]);
+    // the server's text has no space before the unit; the hint shows a thin one
+    const p = power([{ net: '3V3', voltage: range('3.135V..3.465V'), demand: range('0A..50mA') }, { net: 'GND', voltage: null }]);
+    expect(netHints(lines, p)).toEqual([{ line: 2, text: '3.135\u2009V\u2009..\u20093.465\u2009V', title: '3V3: 3.135\u2009V\u2009..\u20093.465\u2009V, draws 0\u2009A\u2009..\u200950\u2009mA' }]);
   });
   it('is empty before the power tree is read', () => {
     expect(netHints(lines, null)).toEqual([]);

@@ -49,3 +49,15 @@ export function remScale(): number {
     return 1;
   }
 }
+
+/** A thin space, the one the page puts between a number and its unit. */
+export const THIN = ' ';
+
+/** A quantity's text as the page shows it. The server writes a range the way the language does, with no space before the unit and
+ * none round the dots (`3.135V..3.465V`, `1.72uF..2.916uF`; `Range.text`); the page writes `3.135 V .. 3.465 V` with thin spaces.
+ * Text that has its spaces already comes out the same. */
+export function spaceUnits(text: string): string {
+  return text
+    .replace(/(\d)\s*(?!e[-+]?\d)(?=[A-Za-zµΩ%])/g, `$1${THIN}`)
+    .replace(/\s*\.\.\s*/g, `${THIN}..${THIN}`);
+}

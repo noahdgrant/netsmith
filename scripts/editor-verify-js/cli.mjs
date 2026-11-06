@@ -2,7 +2,7 @@
 // scripts/editor-verify: the lifecycle for checking the netsmith editor in a real browser.
 //
 //   doctor [--no-browser]   what is installed, and whether a browser can be launched
-//   launch [--fixture <name>|schematic_bench|big|tree] [--file <path.nsm>]
+//   launch [--fixture <name>|schematic_bench|big|tree|shared_module] [--file <path.nsm>]
 //                           start `netsmith editor` on a free port over a scratch project
 //   drive <recipe>|all      run a recipe in headless Chromium, with screenshots
 //   evidence                list the screenshots and logs of the session
@@ -35,6 +35,8 @@ const FIXTURES = {
   system_view: 'scripts/editor-verify-js/fixtures/system_view.nsm',
   // An invented board for the busses: a processor module and a modem module joined by a UART, an SPI inside one.
   bus_bench: 'scripts/editor-verify-js/fixtures/bus_bench.nsm',
+  // One module used by two boards: a declaration inside it has a card for each board (the server's `moduleUses`).
+  shared_module: 'scripts/editor-verify-js/fixtures/shared_module.nsm',
   regulator: 'examples/linear_regulator.nsm',
   four_layer: 'examples/four_layer.nsm',
   outline_and_pours: 'examples/outline_and_pours.nsm',
@@ -362,7 +364,7 @@ function cleanup() {
 
 const commands = { doctor, launch, drive, evidence, cleanup };
 if (!commands[command]) {
-  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | evidence | cleanup [--keep-evidence]');
+  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|shared_module|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | evidence | cleanup [--keep-evidence]');
   process.exit(2);
 }
 await commands[command]();

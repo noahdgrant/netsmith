@@ -121,6 +121,13 @@
 .hc-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; }
 .hc button.chip.pin-chip b { color: var(--text-faint); font-weight: var(--fw-medium); margin-right: 0.3125rem; }
 .hc button.chip.pin-chip .faint { color: var(--text-muted); }
+.hc-pname { margin-left: 0.3125rem; color: var(--text-muted); }
+.hc-pfn { margin-left: 0.3125rem; padding-left: 0.3125rem; border-left: 1px solid var(--border); color: var(--text-faint); }
+.hc-boards { margin: 0 0 0.125rem; }
+.hc-board.cur { border-color: var(--sel-line); background: var(--pick); }
+.hc-shown { margin-left: 0.25rem; font-size: var(--fs-xs); }
+.hc-solved .hc-label { margin-top: 0.625rem; margin-bottom: 0; }
+.hc-solved .defs { margin-top: 0.125rem; }
 .hc-more { align-self: center; color: var(--text-faint); font-size: var(--fs-xs); padding: 0 0.25rem; }
 .hc-note { margin: 0.5rem 0 0; color: var(--text-muted); font-size: var(--fs-sm); line-height: 1.5; }
 .hc-doc { margin: 0.5rem 0 0; color: var(--text-muted); font-size: var(--fs-sm); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }

@@ -3,14 +3,14 @@
 // as chips that pick and light the same thing in the other views, and where to see it. Built from the
 // shared inspector parts (`Inspector.tsx`); the data is assembled by `source/card.ts`.
 
-import { useEffect } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 
 import { hoverEnter, hoverLeave } from '../hover';
-import type { BomLine } from '../api';
+import type { BomLine, Solved } from '../api';
 import { partSel, selectAndReveal, setSelection, netSel } from '../selection';
-import { type Card, type CardContext, type DefinitionCard, type ModuleCard, type NetCard, type PartCard, type Target, cardFor } from '../source/card';
-import { bomLineOf, bomLines, ensureBom, ensurePower, ensureText, power, textOfFile } from '../source/boarddata';
-import { analysis, board, detail, goTo, project, revealSection, shown, viewBoardOfDefinition } from '../store';
+import { type Card, type CardContext, type DefinitionCard, type ModuleCard, type NetCard, type PartCard, type Target, boardsUsing, cardFor, offersBoards, solvedRows, usesOf } from '../source/card';
+import { bomLineOf, bomLines, detailOfBoard, ensureBoardDetail, ensureBom, ensureDefinition, ensurePower, ensureText, power, servedDefinition, textOfFile } from '../source/boarddata';
+import { analysis, board, chooseBoard, detail, goTo, openFiles, project, revealSection, shown, viewBoardOfDefinition } from '../store';
 import { dollars, plural } from '../util';
 import { Defs, InspectorHead, PinChip } from './Inspector';
 import { Icon, type IconName } from './Icons';
@@ -19,7 +19,7 @@ import { Pill, Units } from './ui';
 const SECTION_ICON: Record<string, IconName> = { schematic: 'schematic', pcb: 'pcb', bom: 'bom', power: 'power' };
 
 /** The card's context from the page: the board, the problems, the project, and what was fetched for cards. */
-export function contextFor(path: string): CardContext {
+export function contextFor(path: string, over: Partial<CardContext> = {}): CardContext {
   return {
     path,
     detail: detail.value,
@@ -28,6 +28,7 @@ export function contextFor(path: string): CardContext {
     problems: shown.value?.problems ?? analysis.value?.problems ?? [],
     power: power.value,
     textOf: textOfFile,
+    ...over,
   };
 }
 
@@ -64,8 +65,50 @@ function catalogRows(card: PartCard, line: BomLine | undefined) {
   return rows;
 }
 
-function PartBody({ card, done }: { card: PartCard; done: () => void }) {
-  const line = bomLineOf(bomLines.value, card.refdes);
+/** What the solver worked out for a part: what a capacitor is worth in use, its tolerance, what it is rated for and the catalog row. */
+function SolvedBlock({ solved }: { solved: Solved }) {
+  const rows = solvedRows(solved);
+  if (!rows.length) return null;
+  return (
+    <div class="hc-solved" role="group" aria-label="What the solver worked out" data-testid="hc-solved">
+      <div class="hc-label">Solved</div>
+      <Defs rows={rows} />
+    </div>
+  );
+}
+
+/** The boards that use the module a declaration is in, one chip each: the card is for the one that is pressed. */
+function BoardSwitch({ boards, active, shown: shownBoard, onPick }: { boards: string[]; active: string | null; shown: string | null; onPick: (board: string) => void }) {
+  return (
+    <div class="hc-boards" role="group" aria-label="Boards that use this module" data-testid="hc-boards">
+      <div class="hc-label">{boards.length > 1 ? `Used by ${boards.length} boards` : 'Used by'}</div>
+      <div class="hc-chips">
+        {boards.map((b) => (
+          <PinChip key={b} current={b === active} pressed={b === active} title={b === shownBoard ? `${b}, the board the views show` : `Show this card for ${b}`} onClick={() => onPick(b)} class="hc-board">
+            {b}
+            {b === shownBoard && <span class="faint hc-shown"> shown</span>}
+          </PinChip>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Where to see a card that is about another board than the one the views show: switch the views to it. */
+function OtherBoardRow({ name, done }: { name: string; done: () => void }) {
+  return (
+    <div class="hc-foot" role="group" aria-label="Another board">
+      <span class="hc-foot-label">This is {name}</span>
+      <button type="button" class="tool small hc-show" data-testid="hc-open-board" onClick={() => (chooseBoard(name), done())}>
+        <Icon name="board" size={13} />
+        Show it in the views
+      </button>
+    </div>
+  );
+}
+
+function PartBody({ card, done, other }: { card: PartCard; done: () => void; other: string | null }) {
+  const line = other ? undefined : bomLineOf(bomLines.value, card.refdes);
   const here = detail.value;
   const pick = (net: string) => setSelection(netSel(net));
   return (
@@ -86,14 +129,17 @@ function PartBody({ card, done }: { card: PartCard; done: () => void }) {
         titleTag="div"
       />
       <Defs rows={catalogRows(card, line)} />
+      {card.solved && <SolvedBlock solved={card.solved} />}
       {card.pins.length > 0 && (
         <div class="hc-pins" role="group" aria-label="Pins and their nets">
           <div class="hc-label">Pins</div>
           <div class="hc-chips">
             {card.pins.map((p) => (
-              <PinChip key={p.pin} title={`Pin ${p.pin} is on ${p.net}. Click to pick the net.`} hv={{ kind: 'net', key: p.net }} onClick={() => pick(p.net)} class="hc-pin">
+              <PinChip key={p.pin} title={`Pin ${p.pin}${p.name ? ` (${p.name})` : ''}${p.function ? `, as ${p.function}` : ''} is on ${p.net}. Click to pick the net.`} hv={{ kind: 'net', key: p.net }} onClick={() => pick(p.net)} class="hc-pin">
                 <b>{p.pin}</b>
+                {p.name && <span class="hc-pname">{p.name}</span>}
                 <span class={p.named ? '' : 'faint'}>{p.net}</span>
+                {p.function && <span class="hc-pfn">{p.function}</span>}
               </PinChip>
             ))}
           </div>
@@ -112,7 +158,8 @@ function PartBody({ card, done }: { card: PartCard; done: () => void }) {
           </div>
         </div>
       )}
-      {here && <ShowRow sel={card.sel} sections={['schematic', 'pcb', 'bom']} done={done} />}
+      {here && !other && <ShowRow sel={card.sel} sections={['schematic', 'pcb', 'bom']} done={done} />}
+      {other && <OtherBoardRow name={other} done={done} />}
     </>
   );
 }
@@ -150,9 +197,16 @@ function NetBody({ card, done }: { card: NetCard; done: () => void }) {
           {card.pins.slice(0, 14).map((p) => {
             const part = d?.parts.find((x) => x.refdes === p.refdes);
             return (
-              <PinChip key={`${p.refdes}.${p.pin}`} title={part ? `${p.refdes} ${part.value}, pin ${p.pin}. Click to pick the part.` : p.refdes} hv={part ? { kind: 'part', key: part.path } : undefined} onClick={() => part && setSelection(partSel(part.path))}>
+              <PinChip
+                key={`${p.refdes}.${p.pin}`}
+                title={part ? `${p.refdes} ${part.value}, pin ${p.pin}${p.name ? ` (${p.name})` : ''}${p.function ? `, as ${p.function}` : ''}. Click to pick the part.` : p.refdes}
+                hv={part ? { kind: 'part', key: part.path } : undefined}
+                onClick={() => part && setSelection(partSel(part.path))}
+              >
                 <b>{p.refdes}</b>
                 <span>.{p.pin}</span>
+                {p.name && <span class="hc-pname">{p.name}</span>}
+                {p.function && <span class="hc-pfn">{p.function}</span>}
               </PinChip>
             );
           })}
@@ -164,7 +218,7 @@ function NetBody({ card, done }: { card: NetCard; done: () => void }) {
   );
 }
 
-function ModuleBody({ card, done }: { card: ModuleCard; done: () => void }) {
+function ModuleBody({ card, done, other }: { card: ModuleCard; done: () => void; other: string | null }) {
   return (
     <>
       <InspectorHead
@@ -189,7 +243,7 @@ function ModuleBody({ card, done }: { card: ModuleCard; done: () => void }) {
           {card.parts.length > 12 && <span class="hc-more">+{card.parts.length - 12}</span>}
         </div>
       </div>
-      <ShowRow sel={card.sel} sections={['schematic', 'pcb', 'bom']} done={done} />
+      {other ? <OtherBoardRow name={other} done={done} /> : <ShowRow sel={card.sel} sections={['schematic', 'pcb', 'bom']} done={done} />}
     </>
   );
 }
@@ -266,16 +320,33 @@ function litKey(card: Card): { kind: 'part' | 'net' | 'module'; key: string } | 
   }
 }
 
-export function HoverCard({ target, path, close }: { target: Target; path: string; close: () => void }) {
-  const ctx = contextFor(path);
+export function HoverCard({ target, path, close, typeAt }: { target: Target; path: string; close: () => void; typeAt?: number }) {
+  // A declaration of a module that several boards use has a card for each board: the board shown, or the one picked here.
+  const [pick, setPick] = useState<string | null>(null);
+  const shownBoard = board.value;
+  const owner = target.type === 'decl' ? target.owner : null;
+  const boards = boardsUsing(usesOf(analysis.value), path, owner ? owner.line : null);
+  const offer = offersBoards(boards, shownBoard);
+  const elsewhere = pick && pick !== shownBoard ? detailOfBoard(pick) : undefined;
+  const active = elsewhere ? pick : shownBoard;
+  const other = elsewhere ? pick : null;
+  // The signature and the doc comment of a definition are the server's (`/api/definition` for the name on the page's text).
+  const text = openFiles.value[path]?.text;
+  const served = typeAt !== undefined && text !== undefined ? servedDefinition(path, typeAt, text) : undefined;
+  const ctx = contextFor(path, { served: served ?? null, ...(elsewhere ? { detail: elsewhere, board: pick, power: null } : {}) });
   const card = cardFor(ctx, target);
   useEffect(() => {
-    // The data a card may want, asked for once: the rail of a net, the catalog line of a part, the text of a library file.
+    // The data a card may want, asked for once: the rail of a net, the catalog line of a part, the answer for a definition (the text of a
+    // file only when the server had nothing to say).
     if (card?.type === 'net') ensurePower();
     if (card?.type === 'part') ensureBom();
-    if (card?.type === 'definition' && card.partial) ensureText(card.file);
-  }, [card?.type, card?.type === 'definition' ? card.partial : false]);
-  const lit = card ? litKey(card) : null;
+    if (card?.type === 'definition' && typeAt !== undefined && text !== undefined) ensureDefinition(path, typeAt, text);
+    if (card?.type === 'definition' && card.source === 'none' && (card.partial || served === null)) ensureText(card.file);
+  }, [card?.type, card?.type === 'definition' ? card.source : '', card?.type === 'definition' ? card.partial : false, served === null]);
+  useEffect(() => {
+    if (pick && pick !== shownBoard) ensureBoardDetail(pick);
+  }, [pick]);
+  const lit = card && !other ? litKey(card) : null;
   useEffect(() => {
     if (!lit) return;
     hoverEnter(lit);
@@ -284,10 +355,11 @@ export function HoverCard({ target, path, close }: { target: Target; path: strin
   if (!card) return null;
   const kind = card.type === 'definition' ? 'definition' : card.type;
   return (
-    <div class={`hc hc-${kind}`} role="dialog" aria-label={`${card.type === 'part' ? card.refdes : card.type === 'net' ? `Net ${card.name}` : card.type === 'module' ? card.path : card.name}`} data-testid="hover-card" data-kind={kind}>
-      {card.type === 'part' && <PartBody card={card} done={close} />}
+    <div class={`hc hc-${kind}`} role="dialog" aria-label={`${card.type === 'part' ? card.refdes : card.type === 'net' ? `Net ${card.name}` : card.type === 'module' ? card.path : card.name}`} data-testid="hover-card" data-kind={kind} data-board={active ?? ''}>
+      {offer && <BoardSwitch boards={boards} active={active} shown={shownBoard} onPick={(b) => setPick(b === shownBoard ? null : b)} />}
+      {card.type === 'part' && <PartBody card={card} done={close} other={other} />}
       {card.type === 'net' && <NetBody card={card} done={close} />}
-      {card.type === 'module' && <ModuleBody card={card} done={close} />}
+      {card.type === 'module' && <ModuleBody card={card} done={close} other={other} />}
       {card.type === 'definition' && <DefinitionBody card={card} done={close} />}
     </div>
   );

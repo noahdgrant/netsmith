@@ -8,15 +8,22 @@ import { withKey } from '../commands';
 import { type Crumb, type CrumbOption, crumbOptions, crumbPath } from '../source/crumbs';
 import { canBack, canForward } from '../source/navhistory';
 import { inlineHints, outlineOpen, wordWrap } from '../source/prefs';
+import { fileSymbols } from '../source/serverSyms';
 import { scanCached } from '../source/symbols';
 import { activeFile, cursor, goTo, navBack, navForward, navHistory, openFile, openFiles, project, say } from '../store';
 import { Icon, type IconName } from './Icons';
 import { KindIcon } from './TreeIcons';
 
-/** The file's symbols, scanned again only when its text changes. */
-export function useSymbols(path: string | null) {
+/** The file's symbols and where they came from: the server's (`Def.endLine` and `Def.children`, when the saved file is what the page
+ * shows), else the page's reading of the text, scanned again only when the text changes. */
+export function useFileSymbols(path: string | null) {
   const text = path ? openFiles.value[path]?.text : undefined;
-  return useMemo(() => (text === undefined || !path?.endsWith('.nsm') ? [] : scanCached(text)), [text, path]);
+  const defs = path ? project.value?.files.find((f) => f.path === path)?.defs : undefined;
+  return useMemo(() => (text === undefined || !path?.endsWith('.nsm') ? { syms: [], from: 'text' as const } : fileSymbols(defs, text, scanCached)), [text, path, defs]);
+}
+
+export function useSymbols(path: string | null) {
+  return useFileSymbols(path).syms;
 }
 
 function CrumbIcon({ icon }: { icon: string }) {
