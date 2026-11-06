@@ -490,7 +490,10 @@ pub struct BoardDetail {
     pub notes: Vec<String>,
 }
 
-/// A quantity's range as it reads, for example `3.135 V .. 3.465 V`.
+/// A quantity's range as the language writes it, for example `3.135V..3.465V`: the unit follows
+/// the number with no space, as in source and in the compiler's messages (`netsmith-quantity`'s
+/// `Display`, which the language guide's examples depend on), so a page that wants a space
+/// formats `lo` and `hi` itself.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct Range {
     pub lo: f64,
@@ -595,7 +598,7 @@ pub struct PowerTree {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct Port {
     pub name: String,
-    /// `3.135 V .. 3.465 V`, if the port is a rail.
+    /// `3.135V..3.465V` (see `Range::text`), if the port is a rail.
     pub voltage: Option<String>,
     pub current: Option<String>,
 }

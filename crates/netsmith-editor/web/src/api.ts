@@ -283,7 +283,7 @@ at?: Location, };
 
 export type Port = { name: string, 
 /**
- * `3.135 V .. 3.465 V`, if the port is a rail.
+ * `3.135V..3.465V` (see `Range::text`), if the port is a rail.
  */
 voltage: string | null, current: string | null, };
 
