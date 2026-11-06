@@ -206,11 +206,6 @@ export function Build() {
           </p>
         </div>
         <div class="bv-meta">
-          {name && (
-            <Pill icon="board" tone="neutral">
-              {name}
-            </Pill>
-          )}
           <Pill tone="neutral">{plural(boards.length, 'board')}</Pill>
           {errors > 0 ? (
             <Pill icon="error" tone="bad">

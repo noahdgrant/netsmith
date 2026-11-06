@@ -105,6 +105,7 @@ export function Popover({
   children,
   class: cls,
   badge,
+  fixed,
 }: {
   label?: string;
   icon?: IconName;
@@ -113,8 +114,11 @@ export function Popover({
   children: ComponentChildren | ((close: () => void) => ComponentChildren);
   class?: string;
   badge?: ComponentChildren;
+  /** Placed in the window, not under the button: for a button inside a box that clips (the top bar). */
+  fixed?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [at, setAt] = useState<{ top: number; left?: number; right?: number } | null>(null);
   const root = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -143,14 +147,20 @@ export function Popover({
         aria-expanded={open}
         data-tip={open ? undefined : tip}
         aria-label={label ? undefined : tip}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (fixed && root.current && !open) {
+            const r = root.current.getBoundingClientRect();
+            setAt(align === 'right' ? { top: r.bottom + 6, right: window.innerWidth - r.right } : { top: r.bottom + 6, left: r.left });
+          }
+          setOpen(!open);
+        }}
       >
         {icon && <Icon name={icon} size={14} />}
         {label}
         {badge}
       </button>
       {open && (
-        <div class={`popover ${align}`} role="dialog" aria-label={tip}>
+        <div class={`popover ${align} ${fixed ? 'fixed' : ''}`} role="dialog" aria-label={tip} style={fixed && at ? at : undefined}>
           {typeof children === 'function' ? children(() => setOpen(false)) : children}
         </div>
       )}

@@ -16,6 +16,8 @@ The section "PCB" (key 6). The board is placed as soon as the tab opens (the phy
 
 ### A big board: `drive big-pcb` after `launch --fixture big`
 
+The toolbar is in groups: the primary action and the status pills (the findings pill is `[data-testid=findings-chip]`), the tool choice as a segmented control (Select, Keepout) with undo and redo as icon buttons, then the cursor, the grid, `Layers` (a panel that is also the legend: each layer has a swatch of the board's own colour; `Show all`) and the side panel's toggle. The part's panel is the shared inspector (an eyebrow, the title with the value, a definition list, Rotate, Flip, Lock, Release, and the pads with their nets as chips).
+
 The drawing has no key: the board fills the canvas, and the nets are in the Nets tab of the panel at the side ("Panel" in the toolbar shows or hides it), each with its colour and pad count. The filter narrows the list; hovering a net lights it on the board and dims the rest, a click picks it (a click on a track or via picks its net too; a click on a pad selects its part, which lights its nets). "Place and route" shows the job under the toolbar and in the status bar: the stage (`BigBoard: placed 89 parts on a 70 by 76 mm board`, `routing, try 1 of 3: 12 of 40 connections done`), a clock, and a Cancel button that stops the router and keeps what it routed (the chip then says `stopped`). The editor, and the other tabs, stay usable while it runs; when it ends the toolbar says how long it took. A route started here is kept when another tab is opened meanwhile.
 
 ## The canvas: select, move, rotate, flip, lock, undo (ADR 0030 E0 and E1)

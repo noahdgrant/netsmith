@@ -329,7 +329,7 @@ function SheetPanel({ rows, current, drawing, goNet, goBus, openSheet }: Inspect
         <InspectorHead eyebrow="Board" icon="board" tone="board" title={d?.name ?? ''} titleTag="div" />
         <Defs
           rows={[
-            { label: 'Modules', value: rows.length },
+            ...(rows.length > 0 ? [{ label: 'Modules', value: rows.length }] : []),
             { label: 'Parts', value: parts },
             { label: 'Nets', value: d?.nets.length ?? '-' },
           ]}

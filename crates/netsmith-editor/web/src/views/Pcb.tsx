@@ -273,7 +273,7 @@ export function Pcb() {
               ))}
             </div>
           </details>
-          <button class={`icon-btn ${panelOpen ? 'on' : ''}`} data-tip="Show or hide the side panel" aria-label="Side panel" aria-pressed={panelOpen} onClick={() => setPanelOpen(!panelOpen)}>
+          <button class={`icon-btn ${panelOpen ? 'on' : ''}`} data-tip="Show or hide the side panel" aria-label="Panel" aria-pressed={panelOpen} onClick={() => setPanelOpen(!panelOpen)}>
             <Icon name="sidepanel" size={15} />
           </button>
         </div>

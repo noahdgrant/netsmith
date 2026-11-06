@@ -16,6 +16,7 @@ Five choices, kept per browser (`localStorage`, key `netsmith.theme`, a JSON str
 - Type is Inter (variable, Latin and Greek, `web/src/assets/fonts/` with `OFL.txt`; the binary serves it from the bundle like the icons) first and the system face second. `body` sets `font-feature-settings: 'cv05', 'ss01', 'calt'` (an `l` with a tail, open digits) and `text-rendering: geometricPrecision` (without it Chromium at 1x on Linux rounds the width of a space and "Power tree" reads "Powertree"; buttons and inputs inherit it explicitly). Labels are sentence case, never capitals.
 - Icons are one set drawn in `components/Icons.tsx` (16 px grid, 1.5 px stroke, round caps, `currentColor`): `<Icon name="…" />`. The file tree has its own (`TreeIcons.tsx`), in the same style.
 - Motion (`style.css`, the last blocks): a hover or press eases over 120 ms (every control is in one `:is(...)` list), the active section's line glides (its place and width are measured by `SectionStrip` and given to the strip as `--ind-x` and `--ind-w`), a view fades in with a 4 px rise over 150 ms, a popover scales in from its corner, the dock opens by height over 160 ms. `prefers-reduced-motion` sets every animation and transition to nothing.
+- Round 2 added `--success-text` (a success pill's words), `--seg-track` and `--seg-on` (a segmented control), `--sch-bus` (the bus trunk of the schematic), `--zebra` and `--row-line` (a table). `--sch-fill` of the dark themes is a `color-mix` of the part's outline over the sheet; `--sch-mark` (a picked part) is blue in every theme and `--sch-hit` (a lit net) amber. One tooltip serves every element with `data-tip` (`components/Tooltip.tsx`: a pause, then a box in the popover's style; `data-tip-keys="Ctrl+K"` adds key caps); an element that a recipe finds by its `title` keeps it.
 - Nothing else names a colour: `src/theme.test.ts` fails on a hex or `rgb(` outside `themes.css` (the one exception is `pcb/colours.ts` and the rules in `style.css` that map the server's board colours, below). A shadow with an alpha is a token (`--elev-*`, `--edge-hi`, `--elev-accent`).
 - The schematic is the server's SVG with its own variable names (`--sheet`, `--wire`, ... in `crates/netsmith-view/src/svg.rs`); `style.css` sets them from `--sch-*` on `svg.schematic`. Light is the "paper" look (cream sheet, green wires, dark red parts); dark is the dark sheet.
 - The board's SVG (`crates/netsmith-pcb/src/svg.rs`) writes its colours into attributes. `style.css` has one rule per colour (`.pcb-host svg [fill="#d63c3c"] { fill: var(--pcb-front) }`), `pcb/colours.ts` lists them, and `pcb/colours.test.ts` reads `svg.rs` to fail when the server adds one the page does not map. `pcb/drawing.ts` draws copper under the parts, and a track 1 mm or wider as `.wide` (fainter): at its true width, so pads and text stay readable.
@@ -43,6 +44,10 @@ Lowest ratio over the surfaces each pair sits on (from `themes.css`, by the same
 | syntax colours on the editor (lowest of 12) | 6.03 | 5.03 | 10.49 | 7.54 |
 | schematic text, net names, parts, pins on the sheet (lowest) | 9.25 | 7.39 | 12.80 | 10.11 |
 | schematic wire (graphic, 3:1) | 8.51 | 4.93 | 14.12 | 6.69 |
+| success words on a card, a log, a pill (lowest) | 9.48 | 6.95 | 13.34 | 9.80 |
+| schematic bus (text and graphic) | 8.35 | 5.24 | 13.76 | 8.26 |
+| schematic pin and outline on the part body (the body is a tint of the outline; lowest) | 7.37 | 8.22 | 10.34 | 10.70 |
+| segmented control: words off and on (lowest) | 9.03 | 6.88 | 16.93 | 11.90 |
 | board reference text and key | 12.26 | 9.53 | 21.00 | 21.00 |
 | net colours on the board (lowest of 10, graphic, 3:1) | 6.82 | 3.46 | 8.95 | 5.49 |
 | focus indicator (graphic, 3:1) | 6.58 | 3.71 | 17.40 | 16.52 |

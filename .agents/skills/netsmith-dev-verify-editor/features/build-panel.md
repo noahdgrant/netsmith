@@ -1,5 +1,9 @@
 # Build panel
 
+## How it looks
+
+A header (the board, what the page makes, `The source has no errors` or `Fix the N errors first`) and a card for each thing it makes (`.acard[data-task=build|fab|order]`, two columns at 1100 px and wider, one below; the order card has the full row): an icon, the title and one line, the command line that does the same as a chip with a copy button (`[data-testid=cli-chip]`: `netsmith build`, `netsmith fab src/main.nsm`, `netsmith fab --order demo`), the button, and a last-run line (`.lastrun`: the pill `built` / `package made` / `order made` / `stopped`, `took 0.7 s`, `just now`, kept fresh by a timer; the time of a run is the page's, from `ranAt` in the store, so it says `Not run in this session` after a reload). A run adds the files it wrote (`wrote out/TwoBoards/led`, with a copy button; downloads as chips with a download icon, `.downloads a`) and the output as a panel (`.log`: a number and a severity colour for each line, folded or open, copyable, `LogPanel.tsx`; `fab-notes.txt` is its own panel with the note `read before you order`). While a card runs it has a line sweeping along its top, a spinner in the button, and the stage and the clock in `.job`. The order card has the order picker, a table of its boards and quantities (`.order-boards`, a `Quantity` column and a total) and, before a run, a note on where its files go. KiCad's folder cannot be opened from the page (the server has no call for it): the path is copyable.
+
 ## How to get to it
 
 The section "Build" (key 7), or the two actions at the top right, "Write KiCad files" and "Make fab files" (they open the section and run; while one runs it says so, with the time, and both are disabled; a toast says how it ended). They are the actions; Build is only the section where their reports are. Their tooltips say what they write and where.
@@ -8,8 +12,8 @@ The section "Build" (key 7), or the two actions at the top right, "Write KiCad f
 
 `scripts/editor-verify drive build` (the fab step takes some tens of seconds)
 
-1. "Write KiCad files" (the section's "Build schematic") writes a KiCad schematic for every board of the project to its `out` directory and shows the report (parts, nets) and the paths written.
-2. "Make fab files" (the section's "Make fab package") runs `fab` for the file of the selected board: chips `package made` and `design rules check: passed`, download links (Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb`), the summary and the text of `fab-notes.txt` ("read before you order").
+1. "Write KiCad files" (the card's "Build schematic") writes a KiCad schematic for every board of the project to its `out` directory and shows the report (parts, nets) and the paths written.
+2. "Make fab files" (the card's "Make fab package") runs `fab` for the file of the selected board: chips `package made` and `design rules check: passed`, download links (Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb`), the summary and the text of `fab-notes.txt` ("read before you order").
 3. If `fab` stops, the chip says `stopped` and the output pane shows exactly what the command line would print (a design rules failure, a missing LCSC number, a routing failure).
 
 While it runs the panel shows the stages `netsmith fab` prints to stderr, with a clock, and the status bar shows them in every tab; the editor stays usable. The report says how long it took.

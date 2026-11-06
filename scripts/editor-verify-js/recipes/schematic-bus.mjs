@@ -74,7 +74,7 @@ export async function run({ page, shot, step, expect }) {
   expect(JSON.stringify(await litNets()) === JSON.stringify(MEMBERS), `the four members are lit (${(await litNets()).join(', ')})`);
   expect(await busLit('brain.uart0'), 'and the thick line');
   expect((await page.locator('.selchip').count()) === 0, 'nothing is selected by hovering');
-  expect(/bus/i.test(await page.locator('.sinspector h3').first().innerText()), 'the inspector shows the bus under the pointer');
+  expect(/bus/i.test(await page.locator('.sinspector .ih-eyebrow').first().innerText()), 'the inspector shows the bus under the pointer');
   await page.mouse.move(5, 5);
 
   step('a click on the line picks the bus: the chip, the inspector and the lit members agree');
@@ -92,7 +92,7 @@ export async function run({ page, shot, step, expect }) {
   expect(/uart0/.test(panelText) && /Uart/.test(panelText) && /4 nets/.test(panelText), `the inspector names the instance, the interface and the count (${panelText.slice(0, 90)})`);
   expect(/brain\.uart0/.test(panelText), 'and the instance path');
   const rows = await panel.locator('.bus-member').evaluateAll((els) =>
-    els.map((e) => ({ name: e.querySelector('.bus-member-name').textContent, net: e.querySelector('.net-link').textContent, groups: [...e.querySelectorAll('.net-group .grp span:first-child')].map((g) => g.textContent) })),
+    els.map((e) => ({ name: e.querySelector('.bus-member-name').textContent, net: e.querySelector('.net-link').textContent, groups: [...e.querySelectorAll('.net-group .grp > span:not(.count)')].map((g) => g.textContent) })),
   );
   expect(rows.map((r) => `${r.name}=${r.net}`).join(' ') === 'tx=MODEM_TX rx=MODEM_RX rts=MODEM_RTS cts=MODEM_CTS', `the members with their nets, in the order of the pins (${rows.map((r) => `${r.name}=${r.net}`).join(' ')})`);
   expect(rows.every((r) => r.groups.includes('brain') && r.groups.includes('link') && r.groups.includes('probe')), `each net's pins are listed by module: brain, link and probe (${rows[0].groups.join(', ')})`);

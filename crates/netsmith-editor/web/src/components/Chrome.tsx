@@ -112,6 +112,7 @@ function EmptyBoardPick() {
   const never = neverBuilt.value && !!e;
   return (
     <Popover
+      fixed
       class={`boardpick-empty ${never ? 'never' : ''}`}
       tip={loading ? 'Reading the project' : 'Why there is no board'}
       label={loading ? 'Reading the project' : 'No board built yet'}

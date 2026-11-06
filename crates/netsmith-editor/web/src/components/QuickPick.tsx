@@ -393,7 +393,7 @@ function Dialog({ initial }: { initial: string }) {
               {g.title && (
                 <div class="qp-group" role="presentation">
                   {g.title}
-                  <span class="qp-group-count">{g.rows.length}</span>
+                  {g.rows[0]?.kind !== 'tip' && <span class="qp-group-count">{g.rows.length}</span>}
                 </div>
               )}
               {g.rows.map((r) => {
