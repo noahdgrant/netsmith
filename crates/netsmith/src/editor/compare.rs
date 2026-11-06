@@ -10,6 +10,7 @@ use std::{
     time::Instant,
 };
 
+use netsmith_core::job::{self, Cancel};
 use netsmith_editor::{
     AnalysisEvent, ApiError, Backend, Observer,
     api::{
@@ -112,6 +113,7 @@ fn tell(observe: &Observer, stage: &str, done: u32, total: u32, message: String)
         done,
         total,
         message,
+        work: None,
     });
 }
 
@@ -170,12 +172,15 @@ impl Workspace {
         rev: &str,
         board: Option<&str>,
         observe: &Observer,
+        cancel: &Cancel,
     ) -> Result<Compare, ApiError> {
         let started = Instant::now();
         let dir = self.git_dir();
         let place = git::place(&dir).map_err(git::unavailable)?;
         let base = git::resolve(&dir, rev)?;
-        let (reading, cached) = self.read_ref(&place, &base, observe)?;
+        let (reading, cached) = self.read_ref(&place, &base, observe, cancel)?;
+        // Between the reading of the ref and the reading of the files on disk.
+        job::checkpoint();
         let head_commit = git::resolve(&dir, "HEAD").ok();
         let dirty = git::project_dirty(&dir);
         tell(
@@ -275,6 +280,7 @@ impl Workspace {
         place: &Place,
         base: &GitCommit,
         observe: &Observer,
+        cancel: &Cancel,
     ) -> Result<(Arc<Reading>, bool), ApiError> {
         let kept = |this: &Workspace| {
             this.compare_cache
@@ -295,6 +301,8 @@ impl Workspace {
         };
         let _one_at_a_time = self.comparing.lock().unwrap_or_else(|e| e.into_inner());
         drop(place_in_line);
+        // A compare cancelled while it waited for its turn ends now, before it reads anything.
+        job::checkpoint();
         if let Some(reading) = kept(self) {
             return Ok((reading, true));
         }
@@ -315,7 +323,7 @@ impl Workspace {
             },
             Err(Failure::Broken(message)) => return Err(ApiError::internal(message)),
             Ok(target) => {
-                let workspace = match Workspace::open_deferred(target) {
+                let workspace = match Workspace::open_for_job(target, cancel) {
                     Ok(w) => w,
                     Err(e) => {
                         let tree = scratch.path().join(&place.prefix);
@@ -335,7 +343,10 @@ impl Workspace {
                     }
                 };
                 workspace.observe(observe.clone());
+                // A cancelled analysis has no boards: the reading is not made, and nothing of
+                // it is kept (the scratch folder goes with `scratch`, unwinding or not).
                 let digest = digest_of(&workspace)?;
+                job::checkpoint();
                 let errors: Vec<Problem> = digest
                     .problems
                     .iter()
@@ -560,6 +571,18 @@ pub(super) fn digest_of(ws: &Workspace) -> Result<Digest, ApiError> {
         }
         let (version, handles, problems, trees) = {
             let state = ws.fresh();
+            // The analysis of a workspace that a job reads for itself ends when the job is
+            // cancelled, with no boards: that is no reading to digest.
+            if ws.inherited.as_ref().is_some_and(Cancel::is_cancelled) {
+                return Err(ApiError::cancelled("the compare was cancelled"));
+            }
+            // The live project's analysis was cancelled: its reading is not of the files on disk,
+            // so it is not the head of a comparison (ADR 0062).
+            if ws.inherited.is_none() && state.cancelled.is_some() {
+                return Err(ApiError::conflict(
+                    "the analysis of the files on disk was cancelled, so there is no reading of them to compare: run the analysis again, then compare",
+                ));
+            }
             let handles = state.snapshot.boards.clone();
             let trees: Vec<Option<PowerTree>> = handles
                 .iter()

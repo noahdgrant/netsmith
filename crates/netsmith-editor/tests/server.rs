@@ -12,7 +12,7 @@ use std::{
 };
 
 use netsmith_editor::{
-    AnalysisEvent, ApiError, Attachment, Backend, Observer,
+    AnalysisEvent, ApiError, Attachment, Backend, Cancel, Observer, Work,
     api::{
         Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, ClientMessage, Compare,
         CompareHead, Definition, Download, FabReport, FileContent, GitCommit, GitInfo,
@@ -29,13 +29,54 @@ struct Fake {
     observer: Mutex<Option<Observer>>,
     /// A compare of the ref `slow` runs until this is set.
     release_compare: AtomicBool,
+    /// What the jobs that run until they are cancelled (`hang`) saw, as `<job> cancelled`.
+    cancelled_jobs: Mutex<Vec<String>>,
+    /// How many of those are running.
+    hanging: AtomicU64,
+    /// `build` runs until it is cancelled.
+    hang_build: AtomicBool,
+    /// The analysis is running, and `cancel_analysis` says so (and counts).
+    analysing: AtomicBool,
+    cancels_of_analysis: AtomicU64,
+    reruns: AtomicU64,
 }
 
 impl Fake {
+    fn new(version: u64, pending: bool) -> Fake {
+        Fake {
+            version: AtomicU64::new(version),
+            pending: AtomicBool::new(pending),
+            observer: Mutex::new(None),
+            release_compare: AtomicBool::new(false),
+            cancelled_jobs: Mutex::new(Vec::new()),
+            hanging: AtomicU64::new(0),
+            analysing: AtomicBool::new(false),
+            cancels_of_analysis: AtomicU64::new(0),
+            reruns: AtomicU64::new(0),
+            hang_build: AtomicBool::new(false),
+        }
+    }
+
     fn wait_for_the_first_analysis(&self) {
         while self.pending.load(Ordering::SeqCst) {
             thread::sleep(Duration::from_millis(10));
         }
+    }
+
+    /// Runs until `cancel` is set (a job that checks it, as the real ones do), then says so.
+    fn hang(&self, what: &str, cancel: &Cancel) -> ApiError {
+        self.hanging.fetch_add(1, Ordering::SeqCst);
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !cancel.is_cancelled() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(5));
+        }
+        let was = cancel.is_cancelled();
+        self.hanging.fetch_sub(1, Ordering::SeqCst);
+        self.cancelled_jobs.lock().unwrap().push(format!(
+            "{what} {}",
+            if was { "cancelled" } else { "timed out" }
+        ));
+        ApiError::cancelled(format!("{what} was cancelled"))
     }
 
     fn tell(&self, event: AnalysisEvent) {
@@ -66,6 +107,7 @@ fn analysis(version: u64) -> Analysis {
         panels: Vec::new(),
         module_uses: None,
         elapsed_ms: None,
+        cancelled: None,
     }
 }
 
@@ -142,6 +184,14 @@ impl Backend for Fake {
     }
     fn pending(&self) -> Option<u32> {
         self.pending.load(Ordering::SeqCst).then_some(123)
+    }
+    fn cancel_analysis(&self) -> bool {
+        self.cancels_of_analysis.fetch_add(1, Ordering::SeqCst);
+        self.analysing.load(Ordering::SeqCst)
+    }
+    fn run_analysis(&self) -> Analysis {
+        self.reruns.fetch_add(1, Ordering::SeqCst);
+        self.analysis()
     }
     fn observe(&self, observer: Observer) {
         *self.observer.lock().unwrap() = Some(observer);
@@ -227,21 +277,28 @@ impl Backend for Fake {
     ) -> Result<netsmith_editor::api::PcbEdited, ApiError> {
         Err(ApiError::conflict(format!("cannot edit {}", edit.board)))
     }
-    fn build(&self, say: &netsmith_editor::Say) -> BuildReport {
+    fn build(&self, say: &netsmith_editor::Say, cancel: &Cancel) -> Result<BuildReport, ApiError> {
         say("writing the schematics");
-        BuildReport {
+        if self.hang_build.load(Ordering::SeqCst) {
+            return Err(self.hang("build", cancel));
+        }
+        Ok(BuildReport {
             ok: true,
             written: vec!["out".into()],
             output: String::new(),
             elapsed_ms: 0,
-        }
+        })
     }
     fn fab(
         &self,
         board: &str,
         _allow_drc_violations: bool,
         _say: &netsmith_editor::Say,
+        cancel: &Cancel,
     ) -> Result<FabReport, ApiError> {
+        if board == "hang" {
+            return Err(self.hang("fab", cancel));
+        }
         Err(ApiError::not_found(board))
     }
     fn download(&self, _board: &str, file: &str) -> Result<Attachment, ApiError> {
@@ -265,7 +322,11 @@ impl Backend for Fake {
         name: &str,
         _allow_drc_violations: bool,
         say: &netsmith_editor::Say,
+        cancel: &Cancel,
     ) -> Result<OrderReport, ApiError> {
+        if name == "hang" {
+            return Err(self.hang("order", cancel));
+        }
         if name != "devkit" {
             return Err(ApiError::not_found(format!("no order `{name}`")));
         }
@@ -309,9 +370,13 @@ impl Backend for Fake {
         rev: &str,
         board: Option<&str>,
         observe: &Observer,
+        cancel: &Cancel,
     ) -> Result<Compare, ApiError> {
         if rev == "nope" {
             return Err(ApiError::not_found(format!("there is no commit `{rev}`")));
+        }
+        if rev == "hang" {
+            return Err(self.hang("compare", cancel));
         }
         observe(AnalysisEvent::Progress {
             stage: "extract".into(),
@@ -319,6 +384,7 @@ impl Backend for Fake {
             done: 0,
             total: 1,
             message: format!("reading {rev} out of git"),
+            work: None,
         });
         if rev == "slow" {
             while !self.release_compare.load(Ordering::SeqCst) {
@@ -409,12 +475,7 @@ fn start_with(version: u64, pending: bool) -> Server {
 fn start_with_backlog(version: u64, pending: bool, backlog: Option<usize>) -> Server {
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
     let port = listener.local_addr().unwrap().port();
-    let backend = Arc::new(Fake {
-        version: AtomicU64::new(version),
-        pending: AtomicBool::new(pending),
-        observer: Mutex::new(None),
-        release_compare: AtomicBool::new(false),
-    });
+    let backend = Arc::new(Fake::new(version, pending));
     let served = Arc::clone(&backend);
     thread::spawn(move || match backlog {
         Some(backlog) => netsmith_editor::serve_with_backlog(listener, served, backlog),
@@ -1030,12 +1091,7 @@ fn a_request_that_does_not_ask_waits_for_the_first_analysis_and_is_then_answered
     let waiting = thread::spawn(move || {
         let s = Server {
             port,
-            backend: Arc::new(Fake {
-                version: AtomicU64::new(0),
-                pending: AtomicBool::new(false),
-                observer: Mutex::new(None),
-                release_compare: AtomicBool::new(false),
-            }),
+            backend: Arc::new(Fake::new(0, false)),
         };
         // `X-Netsmith-Pending: 0` is not asking.
         s.request(
@@ -1074,6 +1130,7 @@ fn the_socket_carries_the_analysis_from_its_start_to_rebuilt() {
         done: 2,
         total: 5,
         message: "solving Main (3 of 5)".into(),
+        work: None,
     });
     assert_eq!(
         next_message(&mut early, "analysing"),
@@ -1089,6 +1146,7 @@ fn the_socket_carries_the_analysis_from_its_start_to_rebuilt() {
             stage,
             done,
             total,
+            ..
         } => assert_eq!(
             (
                 task.as_str(),
@@ -1247,6 +1305,7 @@ fn a_compare_reports_its_progress_over_the_socket_as_the_task_compare() {
             stage,
             done,
             total,
+            ..
         } = next_message(&mut socket, "the progress of the compare")
         {
             assert_eq!(
@@ -1419,6 +1478,7 @@ fn a_socket_that_lost_messages_is_told_the_current_state() {
             done: n,
             total: 40,
             message: "x".repeat(1 << 20),
+            work: None,
         });
     }
     s.backend.tell(AnalysisEvent::Finished);
@@ -1432,6 +1492,7 @@ fn a_socket_that_lost_messages_is_told_the_current_state() {
         done: 0,
         total: 1,
         message: "after".into(),
+        work: None,
     });
     let deadline = Instant::now() + WAIT;
     loop {
@@ -1444,4 +1505,346 @@ fn a_socket_that_lost_messages_is_told_the_current_state() {
         }
         assert!(Instant::now() < deadline, "no `rebuilt` of version 2");
     }
+}
+
+// ---- cancellation (ADR 0062) ----------------------------------------------------------------
+
+/// Waits until `condition` holds, or fails saying what was awaited.
+fn wait_until(awaiting: &str, condition: impl Fn() -> bool) {
+    let deadline = Instant::now() + WAIT;
+    while !condition() {
+        assert!(Instant::now() < deadline, "never happened: {awaiting}");
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// A request in a thread of its own, answered when the job ends.
+fn in_background(
+    s: &Server,
+    method: &'static str,
+    target: &'static str,
+) -> thread::JoinHandle<Reply> {
+    let port = s.port;
+    thread::spawn(move || {
+        Server {
+            port,
+            backend: Arc::new(Fake::new(1, false)),
+        }
+        .request(method, target, &[GUARD], "", None)
+    })
+}
+
+fn cancelled_jobs(s: &Server) -> Vec<String> {
+    s.backend.cancelled_jobs.lock().unwrap().clone()
+}
+
+/// The next `cancelled` message, skipping the others.
+fn next_cancelled(socket: &mut Socket) -> (String, String, String) {
+    loop {
+        if let ServerMessage::Cancelled {
+            task,
+            board,
+            message,
+        } = next_message(socket, "a `cancelled` message")
+        {
+            return (task, board, message);
+        }
+    }
+}
+
+#[test]
+fn the_cancel_routes_are_posts_with_the_guard_header_that_answer_whether_a_job_ran() {
+    let s = start();
+    for route in [
+        "/api/analysis/cancel",
+        "/api/compare/cancel",
+        "/api/build/cancel",
+        "/api/fab/cancel",
+        "/api/order/cancel",
+    ] {
+        assert_eq!(
+            s.request("POST", route, &[], "", None).status,
+            403,
+            "{route}"
+        );
+        assert_eq!(s.get(route).status, 405, "{route} is not a GET");
+        let r = s.request("POST", route, &[GUARD], "", None);
+        assert_eq!(r.status, 200, "{route}");
+        assert_eq!(
+            r.body.trim(),
+            r#"{"cancelled":false}"#,
+            "{route}: nothing is running to cancel"
+        );
+    }
+    // The analysis is the backend's: the route says what the backend says.
+    s.backend.analysing.store(true, Ordering::SeqCst);
+    let r = s.request("POST", "/api/analysis/cancel", &[GUARD], "", None);
+    assert_eq!(r.body.trim(), r#"{"cancelled":true}"#);
+    // "Run again" asks the backend to analyse, and answers with the reading.
+    assert_eq!(
+        s.request("POST", "/api/analysis/run", &[], "", None).status,
+        403
+    );
+    let r = s.request("POST", "/api/analysis/run", &[GUARD], "", None);
+    assert_eq!(r.status, 200);
+    assert_eq!(s.backend.reruns.load(Ordering::SeqCst), 1);
+    let again: Analysis = serde_json::from_str(&r.body).unwrap();
+    assert_eq!(again.version, 1);
+}
+
+#[test]
+fn a_compare_is_cancelled_by_its_route_and_by_a_disconnect() {
+    let s = start();
+    let mut socket = open_socket(s.port);
+
+    // By its route: the request is answered 499, the page is told, the job saw its token.
+    let compare = in_background(&s, "GET", "/api/compare?ref=hang");
+    wait_until("the compare is running", || {
+        s.backend.hanging.load(Ordering::SeqCst) == 1
+    });
+    let r = s.request("POST", "/api/compare/cancel", &[GUARD], "", None);
+    assert_eq!(r.body.trim(), r#"{"cancelled":true}"#);
+    let answered = compare.join().unwrap();
+    assert_eq!(answered.status, 499, "{}", answered.body);
+    assert_eq!(
+        next_cancelled(&mut socket),
+        (
+            "compare".to_string(),
+            "hang".to_string(),
+            "compare was cancelled".to_string()
+        )
+    );
+    assert_eq!(cancelled_jobs(&s), ["compare cancelled"]);
+    assert_eq!(
+        s.request("POST", "/api/compare/cancel", &[GUARD], "", None)
+            .body
+            .trim(),
+        r#"{"cancelled":false}"#,
+        "it is over"
+    );
+
+    // By a disconnect: the page closes the connection (a page that reloads, a tab that
+    // closes) and the job, which nobody will read, is cancelled.
+    let mut client = TcpStream::connect((Ipv4Addr::LOCALHOST, s.port)).unwrap();
+    write!(
+        client,
+        "GET /api/compare?ref=hang HTTP/1.1\r\nHost: 127.0.0.1:{}\r\n\r\n",
+        s.port
+    )
+    .unwrap();
+    wait_until("the second compare is running", || {
+        s.backend.hanging.load(Ordering::SeqCst) == 1
+    });
+    drop(client);
+    wait_until("the compare of the page that left was cancelled", || {
+        cancelled_jobs(&s).len() == 2
+    });
+    assert_eq!(
+        cancelled_jobs(&s),
+        ["compare cancelled", "compare cancelled"]
+    );
+}
+
+#[test]
+fn a_build_a_fab_and_an_order_are_cancelled_by_their_routes_and_outlive_a_disconnect() {
+    let s = start();
+    let mut socket = open_socket(s.port);
+    s.backend.hang_build.store(true, Ordering::SeqCst);
+    for (kind, start_request, cancel_route, board) in [
+        ("build", ("POST", "/api/build"), "/api/build/cancel", ""),
+        (
+            "fab",
+            ("POST", "/api/fab?board=hang"),
+            "/api/fab/cancel",
+            "hang",
+        ),
+        (
+            "order",
+            ("POST", "/api/order?name=hang"),
+            "/api/order/cancel",
+            "hang",
+        ),
+    ] {
+        let running = in_background(&s, start_request.0, start_request.1);
+        wait_until(&format!("the {kind} is running"), || {
+            s.backend.hanging.load(Ordering::SeqCst) == 1
+        });
+        let r = s.request("POST", cancel_route, &[GUARD], "", None);
+        assert_eq!(r.body.trim(), r#"{"cancelled":true}"#, "{kind}");
+        let answered = running.join().unwrap();
+        assert_eq!(answered.status, 499, "{kind}: {}", answered.body);
+        let (task, told_board, _) = next_cancelled(&mut socket);
+        assert_eq!((task.as_str(), told_board.as_str()), (kind, board));
+        // The structured form, for a page that asks for it.
+        let again = in_background(&s, start_request.0, start_request.1);
+        wait_until(&format!("the {kind} is running again"), || {
+            s.backend.hanging.load(Ordering::SeqCst) == 1
+        });
+        s.request("POST", cancel_route, &[GUARD], "", None);
+        again.join().unwrap();
+        next_cancelled(&mut socket);
+    }
+    assert_eq!(cancelled_jobs(&s).len(), 6);
+    assert!(cancelled_jobs(&s).iter().all(|c| c.ends_with(" cancelled")));
+
+    // A page that goes away does not take a `fab` with it: it has files to write.
+    let mut client = TcpStream::connect((Ipv4Addr::LOCALHOST, s.port)).unwrap();
+    write!(
+        client,
+        "POST /api/fab?board=hang HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nX-Netsmith: 1\r\nContent-Length: 0\r\n\r\n",
+        s.port
+    )
+    .unwrap();
+    wait_until("the fab is running", || {
+        s.backend.hanging.load(Ordering::SeqCst) == 1
+    });
+    drop(client);
+    thread::sleep(Duration::from_millis(600));
+    assert_eq!(
+        s.backend.hanging.load(Ordering::SeqCst),
+        1,
+        "the fab goes on without its page"
+    );
+    let r = s.request("POST", "/api/fab/cancel", &[GUARD], "", None);
+    assert_eq!(r.body.trim(), r#"{"cancelled":true}"#);
+    wait_until("the fab ends", || {
+        s.backend.hanging.load(Ordering::SeqCst) == 0
+    });
+}
+
+#[test]
+fn a_cancelled_job_answers_with_the_structured_body_a_page_that_asks_for_json_reads() {
+    let s = start();
+    let running = in_background(&s, "GET", "/api/compare?ref=hang");
+    wait_until("the compare is running", || {
+        s.backend.hanging.load(Ordering::SeqCst) == 1
+    });
+    s.request("POST", "/api/compare/cancel", &[GUARD], "", None);
+    let _ = running.join().unwrap();
+    // The same request, asked for as JSON.
+    let port = s.port;
+    let asking = thread::spawn(move || {
+        Server {
+            port,
+            backend: Arc::new(Fake::new(1, false)),
+        }
+        .request(
+            "GET",
+            "/api/compare?ref=hang",
+            &[("Accept", "application/json")],
+            "",
+            None,
+        )
+    });
+    wait_until("the compare is running again", || {
+        s.backend.hanging.load(Ordering::SeqCst) == 1
+    });
+    s.request("POST", "/api/compare/cancel", &[GUARD], "", None);
+    let r = asking.join().unwrap();
+    assert_eq!(r.status, 499);
+    let body: serde_json::Value = serde_json::from_str(&r.body).unwrap();
+    assert_eq!(body["code"], "cancelled", "{body}");
+    assert_eq!(body["message"], "compare was cancelled");
+}
+
+#[test]
+fn what_the_solver_has_counted_and_a_cancelled_analysis_reach_the_page() {
+    let s = start_pending();
+    wait_for_observer(&s);
+    let mut socket = open_socket(s.port);
+    s.backend.tell(AnalysisEvent::Started { since: 7 });
+    s.backend.tell(AnalysisEvent::Progress {
+        stage: "solve".into(),
+        board: "Main".into(),
+        done: 0,
+        total: 1,
+        message: "solving Main (1 of 1): 41 of 118 parts chosen".into(),
+        work: Some(Work {
+            unit: "parts chosen".into(),
+            done: 41,
+            total: Some(118),
+        }),
+    });
+    s.backend.tell(AnalysisEvent::Progress {
+        stage: "lower".into(),
+        board: "Main".into(),
+        done: 0,
+        total: 1,
+        message: "lowering Main (1 of 1): 2 alternative parts re-solved".into(),
+        work: Some(Work {
+            unit: "alternative parts re-solved".into(),
+            done: 2,
+            total: None,
+        }),
+    });
+    s.backend.tell(AnalysisEvent::Cancelled);
+    s.backend.tell(AnalysisEvent::Finished);
+    assert_eq!(
+        next_message(&mut socket, "analysing"),
+        ServerMessage::Analysing { since: 7 }
+    );
+    // The count rides on the progress message, as optional fields beside the board's own.
+    let counted = |m: ServerMessage| match m {
+        ServerMessage::Progress {
+            task,
+            stage,
+            done,
+            total,
+            unit,
+            unit_done,
+            unit_total,
+            ..
+        } => (task, stage, done, total, unit, unit_done, unit_total),
+        other => panic!("not a progress message: {other:?}"),
+    };
+    assert_eq!(
+        counted(next_message(&mut socket, "the solver's count")),
+        (
+            "analyse".to_string(),
+            Some("solve".to_string()),
+            Some(0),
+            Some(1),
+            Some("parts chosen".to_string()),
+            Some(41),
+            Some(118)
+        )
+    );
+    // No total is invented for what has none.
+    assert_eq!(
+        counted(next_message(&mut socket, "the count of alternatives")),
+        (
+            "analyse".to_string(),
+            Some("lower".to_string()),
+            Some(0),
+            Some(1),
+            Some("alternative parts re-solved".to_string()),
+            Some(2),
+            None
+        )
+    );
+    assert_eq!(
+        next_cancelled(&mut socket),
+        (
+            "analyse".to_string(),
+            String::new(),
+            "the analysis was cancelled".to_string()
+        )
+    );
+    // On the wire the fields are camelCase and left out when there is nothing to say.
+    let plain = serde_json::to_value(ServerMessage::Progress {
+        task: "fab".into(),
+        board: "B".into(),
+        message: "placing".into(),
+        stage: None,
+        done: None,
+        total: None,
+        unit: None,
+        unit_done: None,
+        unit_total: None,
+    })
+    .unwrap();
+    assert_eq!(
+        plain,
+        serde_json::json!({"type": "progress", "task": "fab", "board": "B", "message": "placing"})
+    );
 }

@@ -566,7 +566,7 @@ fn the_editor_answers_while_a_board_is_being_routed_and_while_fab_runs() {
     };
     let report = editor.route("TwoBoards/led", &say).unwrap();
     assert!(report.routed);
-    let build = editor.build(&say);
+    let build = editor.build(&say, &netsmith_editor::Cancel::new()).unwrap();
     assert!(build.ok, "{}", build.output);
     let answered = answered.lock().unwrap();
     assert!(answered.len() >= 4, "{answered:?}");
@@ -597,7 +597,7 @@ fn build_writes_a_schematic_for_each_board_of_the_system() {
     }
     let (root, editor) = project("build");
     let (say, heard) = listener();
-    let report = editor.build(&say);
+    let report = editor.build(&say, &netsmith_editor::Cancel::new()).unwrap();
     assert!(
         heard
             .lock()
@@ -622,7 +622,14 @@ fn fab_makes_the_package_and_offers_its_files() {
     }
     let (root, editor) = project("fab");
     let (say, heard) = listener();
-    let report = editor.fab("TwoBoards/led", false, &say).unwrap();
+    let report = editor
+        .fab(
+            "TwoBoards/led",
+            false,
+            &say,
+            &netsmith_editor::Cancel::new(),
+        )
+        .unwrap();
     // The stages `netsmith fab` prints are told to the page.
     assert!(
         heard.lock().unwrap().iter().any(|m| m.contains("placing")),
@@ -682,7 +689,10 @@ fn the_orders_of_the_manifest_are_listed_with_their_boards_and_quantities() {
 
     let (say, _) = listener();
     assert_eq!(
-        editor.fab_order("nope", false, &say).unwrap_err().status,
+        editor
+            .fab_order("nope", false, &say, &netsmith_editor::Cancel::new())
+            .unwrap_err()
+            .status,
         404
     );
     assert_eq!(
@@ -698,7 +708,9 @@ fn the_orders_of_the_manifest_are_listed_with_their_boards_and_quantities() {
 fn an_order_with_an_unknown_board_stops_with_the_line_and_the_boards_that_exist() {
     let (root, editor) = project_with_order("orders-bad", "[order.d.boards]\nTwoBoard = 1\n");
     let (say, _) = listener();
-    let report = editor.fab_order("d", false, &say).unwrap();
+    let report = editor
+        .fab_order("d", false, &say, &netsmith_editor::Cancel::new())
+        .unwrap();
     assert!(!report.ok);
     assert!(
         report
@@ -722,7 +734,9 @@ fn an_order_is_made_and_its_summary_and_bom_are_offered() {
     let (root, editor) =
         project_with_order("orders-make", "[order.d.boards]\n\"TwoBoards/led\" = 5\n");
     let (say, heard) = listener();
-    let report = editor.fab_order("d", false, &say).unwrap();
+    let report = editor
+        .fab_order("d", false, &say, &netsmith_editor::Cancel::new())
+        .unwrap();
     assert!(report.ok, "{}", report.output);
     assert!(
         heard.lock().unwrap().iter().any(|m| m.contains("placing")),

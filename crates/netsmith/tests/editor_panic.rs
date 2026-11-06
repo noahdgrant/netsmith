@@ -39,6 +39,7 @@ impl Probe {
                 AnalysisEvent::Started { .. } => "started".to_string(),
                 AnalysisEvent::Progress { stage, .. } => format!("progress:{stage}"),
                 AnalysisEvent::Failed { .. } => "failed".to_string(),
+                AnalysisEvent::Cancelled => "cancelled".to_string(),
                 AnalysisEvent::Finished => "finished".to_string(),
             };
             if let AnalysisEvent::Progress { stage, board, .. } = &event {

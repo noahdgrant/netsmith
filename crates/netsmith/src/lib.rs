@@ -393,7 +393,7 @@ pub fn outcome_observed(
             &solution,
             &one.design.parts,
             catalogs,
-            &|pinned: &Catalogs| solve(board, pinned),
+            &|pinned: &Catalogs| quietly(|| solve(board, pinned)),
         );
         built.push(one);
     }
@@ -456,7 +456,7 @@ pub fn outcome_observed(
                 &solution,
                 &one.design.parts,
                 catalogs,
-                &|pinned: &Catalogs| solve_system(system, pinned),
+                &|pinned: &Catalogs| quietly(|| solve_system(system, pinned)),
             );
             built.push(one);
         }
@@ -507,6 +507,13 @@ pub fn outcome_observed(
         systems: solved,
         panels,
     })
+}
+
+/// Runs a solve that is a check of an alternative part, not the board's own: it counts nothing
+/// of what it chooses, so that the count of the board's solve is not told again from zero
+/// (`recheck_alternatives` says how many alternatives it has solved).
+fn quietly<T>(work: impl FnOnce() -> T) -> T {
+    netsmith_core::job::reporting(std::rc::Rc::new(|_| {}), work)
 }
 
 /// With guidelines made errors (ADR 0036), a finding stops the build: one problem for each,

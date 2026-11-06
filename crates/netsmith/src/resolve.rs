@@ -65,6 +65,7 @@ pub fn recheck_alternatives(
             }
             solves += 1;
             let solved = again(&catalogs.with_pin(&path, &alt.name));
+            netsmith_core::job::report("alternative parts re-solved", solves as u64, None);
             let outcome = match solved.diagnostics.first() {
                 None => Ok(()),
                 Some(d) => {
