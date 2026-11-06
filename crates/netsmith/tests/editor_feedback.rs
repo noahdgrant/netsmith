@@ -374,8 +374,13 @@ fn a_workspace_opened_deferred_is_pending_until_its_first_analysis_which_reports
         events
             .iter()
             .filter_map(|e| match e {
+                // The step's own lines; what the solver counts inside a step is `work` (ADR 0062).
                 AnalysisEvent::Progress {
-                    stage, done, total, ..
+                    stage,
+                    done,
+                    total,
+                    work: None,
+                    ..
                 } if stage == wanted => Some((*done, *total)),
                 _ => None,
             })
@@ -386,6 +391,19 @@ fn a_workspace_opened_deferred_is_pending_until_its_first_analysis_which_reports
     assert_eq!(counts("lower"), [(0, 1)]);
     assert_eq!(counts("draw"), [(0, 2), (1, 2)]);
     assert_eq!(counts("modules"), [(0, 1)]);
+    // Inside the solve step the solver says what it counts, on lines of the same step.
+    let counted: Vec<&str> = events
+        .iter()
+        .filter_map(|e| match e {
+            AnalysisEvent::Progress {
+                stage,
+                work: Some(w),
+                ..
+            } if stage == "solve" => Some(w.unit.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(counted.contains(&"parts chosen"), "{counted:?}");
     let message = events
         .iter()
         .find_map(|e| match e {
