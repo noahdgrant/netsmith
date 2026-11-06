@@ -103,6 +103,24 @@ export async function run({ page, shot, step, expect, project, section }) {
   await settle(1500);
   await goDef('LedBoard');
 
+  step('Escape closes a card the pointer opened, with the focus in the editor or out of it, and the selection stays');
+  await hoverToken('.r1: Resistor', 'r1');
+  await page.waitForSelector('[data-testid="hover-card"]', { timeout: 4000 });
+  expect((await page.locator('[data-testid="hover-card"]').count()) === 1, 'the pointer opened a card');
+  await page.keyboard.press('Escape');
+  await settle(250);
+  expect((await page.locator('[data-testid="hover-card"]').count()) === 0, 'Escape closes a card opened by the pointer');
+  await away();
+  await lineOf('.r1: Resistor').locator('span', { hasText: 'r1' }).first().click();
+  await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+  await page.mouse.move(1500, 960);
+  await hoverToken('.r1: Resistor', 'r1');
+  await page.waitForSelector('[data-testid="hover-card"]', { timeout: 4000 });
+  await page.keyboard.press('Escape');
+  await settle(250);
+  expect((await page.locator('[data-testid="hover-card"]').count()) === 0, 'and when the focus is not in the editor');
+  await away();
+
   step('the keyboard: Ctrl+Alt+I opens the card at the cursor and Escape closes it');
   await lineOf('.r1: Resistor').click();
   await page.keyboard.press('Home');

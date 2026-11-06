@@ -91,7 +91,8 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await pick('main');
   const sentence = await summary();
   expect(/1 part added, 1 removed, 2 values changed/.test(sentence) && /headroom shrank from 70 mA to 50 mA/.test(sentence), `the summary sentence (${sentence})`);
-  await page.selectOption('[data-testid="cmp-board"]', 'all');
+  // One model of the counts: the section starts on all the boards, so the sentence, the tiles, the tabs, the chip and the total say one thing.
+  expect((await page.locator('[data-testid="cmp-board"]').inputValue()) === 'all', 'the section starts on All boards, not the board in front');
   await settle();
   const tiles = await page.locator('[data-testid^="tile-"]').evaluateAll((els) => els.map((e) => [e.getAttribute('data-testid'), e.innerText.replace(/\s+/g, ' ')]));
   expect(tiles.length === 5, 'five tiles');
@@ -102,7 +103,23 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   expect(/Problems None/.test(tile('problems')), `problems tile (${tile('problems')})`);
   expect(/uncommitted changes \(compared as is\)/.test(await text('.cmp-meta')), 'the work tree has changes: said under the sentence');
   const chip = await text('[data-testid="compare-chip"]');
-  expect(/vs\s+main/.test(chip) && /\d+ changes/.test(chip), `the status bar chip (${chip.replace(/\s+/g, ' ')})`);
+  expect(/vs\s+main/.test(chip) && /\d+ circuit changes/.test(chip), `the status bar chip says circuit changes (${chip.replace(/\s+/g, ' ')})`);
+  const chipN = Number(chip.match(/(\d+) circuit changes?/)[1]);
+  const totalN = Number((await text('[data-testid="cmp-total"]')).match(/\d+/)[0]);
+  const tileSum = ['parts', 'nets', 'rails'].reduce((n, id) => n + Number(tile(id).match(/ (\d+) /)?.[1] ?? NaN), 0);
+  const tabSum = (await Promise.all(['parts', 'nets', 'rails', 'modules'].map(async (id) => Number(await text(`[data-testid="count-${id}"]`))))).reduce((a, b) => a + b, 0);
+  expect(chipN === totalN && totalN === tileSum && tileSum === tabSum, `one number everywhere: the chip ${chipN}, the section's total ${totalN}, the tiles ${tileSum}, the tabs ${tabSum}`);
+  expect(/line/.test((await page.locator('[data-testid="compare-chip"]').getAttribute('data-tip')) ?? ''), 'the chip\'s tooltip has the source lines');
+  const boardSentence = async (name) => {
+    await page.selectOption('[data-testid="cmp-board"]', name);
+    await settle(250);
+    return { sentence: await text('[data-testid="cmp-summary"]'), total: Number((await text('[data-testid="cmp-total"]')).match(/\d+/)[0]), parts: Number((await text('[data-testid="tile-parts"]')).replace(/\s+/g, ' ').match(/ (\d+) /)?.[1] ?? NaN) };
+  };
+  const ledOnly = await boardSentence('TwoBoards/led');
+  expect(ledOnly.sentence !== sentence && ledOnly.total < chipN && ledOnly.total >= 1, `one board selected: its own sentence (${ledOnly.sentence}) and its own total (${ledOnly.total} of ${chipN})`);
+  const powerOnly = await boardSentence('TwoBoards/power');
+  expect(ledOnly.total + powerOnly.total === chipN && ledOnly.parts + powerOnly.parts === 4, `the boards add up to the whole (${ledOnly.total} + ${powerOnly.total} = ${chipN}; parts ${ledOnly.parts} + ${powerOnly.parts})`);
+  expect((await boardSentence('all')).sentence === sentence, 'All boards says the server\'s sentence again');
   const options = await page.locator('[data-testid="cmp-board"] option').allInnerTexts();
   expect(options.length === 3 && /All boards/.test(options[0]) && /TwoBoards\/led \(\d+ changes?\)/.test(options[1]), `the board selector (${options.join(' | ')})`);
   await shot('summary-and-parts');
@@ -288,10 +305,11 @@ export async function run({ page, shot, step, expect, section, project, resetRep
       e.remove();
       return c;
     };
-    const stroke = (sel) => getComputedStyle(document.querySelector(`${sel} .s`)).stroke;
+    // The mark is the rectangle outside the symbol (schematic/halo.ts); the symbol's own strokes stay as drawn.
+    const stroke = (sel) => getComputedStyle(document.querySelector(`${sel} > .part-cmp`)).stroke;
     return { changed: stroke('svg.schematic .part.cmp-changed'), renumbered: stroke('svg.schematic .part.cmp-renumbered'), tokenChanged: token('--cmp-changed'), tokenRenumbered: token('--cmp-renumbered') };
   });
-  expect(colours.changed === colours.tokenChanged && colours.renumbered === colours.tokenRenumbered && colours.changed !== colours.renumbered, `the outlines are the comparison's colours: changed ${colours.changed}, renumbered ${colours.renumbered}`);
+  expect(colours.changed === colours.tokenChanged && colours.renumbered === colours.tokenRenumbered && colours.changed !== colours.renumbered, `the marks are the comparison's colours: changed ${colours.changed}, renumbered ${colours.renumbered}`);
   const kept = await page.evaluate(() => ({ svg: document.querySelector('.schematic-host svg').dataset.keep, childList: window.__childList }));
   expect(kept.svg === 'yes' && kept.childList === 0, `no drawing was replaced, no node added or removed (${kept.childList})`);
   expect(/changed/.test(await text('[data-testid="cmp-legend"]')) && /removed/.test(await text('[data-testid="cmp-legend"]')), 'a legend chip in the toolbar');
@@ -339,7 +357,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await page.waitForFunction(() => [...document.querySelectorAll('[data-testid^="chg-"]')].some((e) => e.offsetHeight > 0), null, { timeout: 15000 });
   const bars = { added: await shown('added'), changed: await shown('changed'), deleted: await shown('deleted') };
   expect(bars.added + bars.changed > 0, `a bar beside lines that are new or changed (${JSON.stringify(bars)})`);
-  expect(/\d+ changes?/.test(await text('[data-testid="source-changes"]')), `the number of changes in the status bar (${await text('[data-testid="source-changes"]')})`);
+  expect(/\d+ lines? changed in this file/.test(await text('[data-testid="source-changes"]')), `the number of lines changed, in this file, in the status bar (${await text('[data-testid="source-changes"]')})`);
   await shot('source-gutter');
 
   step('turn it off with the palette command: every mark goes');

@@ -14,6 +14,26 @@ export async function run({ page, shot, step, expect, section }) {
   await page.waitForSelector('.selchip');
   expect((await page.locator('.selchip').innerText()).includes('R1'), 'the selection chip names R1');
   expect((await page.locator('.selchip, .sel-chip').count()) === 1, 'there is one chip, the top bar\'s, and none on the drawing');
+  const wear = (state) =>
+    page.evaluate(() => {
+      const part = document.querySelector('.schematic .part[data-ref="R1"]');
+      const sel = getComputedStyle(document.documentElement).getPropertyValue('--sel').trim();
+      const probe = document.createElement('i');
+      probe.style.color = 'var(--sel)';
+      document.body.appendChild(probe);
+      const selRgb = getComputedStyle(probe).color;
+      probe.remove();
+      const body = getComputedStyle(part.querySelector(':scope > .s'));
+      const halo = getComputedStyle(part.querySelector(':scope > .part-halo'));
+      const text = getComputedStyle(part.querySelector('text.ref'));
+      return { sel, selRgb, stroke: body.stroke, dash: body.strokeDasharray, width: body.strokeWidth, haloStroke: halo.stroke, haloFill: halo.fill, textFill: text.fill, classes: part.getAttribute('class') };
+    });
+  const picked = await wear();
+  expect(picked.haloStroke === picked.selRgb, `a picked part has a halo in the selection's blue, behind it (${picked.haloStroke})`);
+  expect(picked.dash === 'none' && picked.stroke !== picked.selRgb && picked.textFill !== picked.selRgb, `and its own strokes and labels are as drawn: not recoloured, not dashed (${picked.stroke}, ${picked.dash})`);
+  const litNet = await page.evaluate(() => { const e = document.querySelector('.schematic .wire.on .line'); const c = e && getComputedStyle(e); return c ? { stroke: c.stroke, hit: getComputedStyle(document.querySelector('.schematic-host svg.schematic')).getPropertyValue('--hit').trim() } : null; });
+  expect(litNet !== null, 'the nets of the picked part are lit');
+  await shot('picked-halo');
   await page.locator('.schematic .part[data-ref="R1"]').dblclick();
   await page.waitForSelector('.section.sec-source:not(.away)');
   await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('.r1'));

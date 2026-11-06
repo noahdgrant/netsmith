@@ -28,3 +28,5 @@
 - Anything new that is a size of a control or a row should be a token (`--ctl`, `--row`, ...), and a length in rem, or compact and 125 % will not reach it. Run `css-rem.mjs` on a stylesheet you touched.
 - A test that measures pixels reads them after the settings are set, and a rem is `getComputedStyle(documentElement).fontSize / 16` px (`remScale()` in `util.ts`).
 - The first-run splash is only visible for as long as `/api/project` takes; a recipe that wants to see it delays the route.
+
+Round 6: a choice that was kept says so in a toast of 1.5 s (a failure to keep it stays as long as a failure does); the System swatch of the theme grid is a diagonal of the light and the dark swatch, so neither half takes the colour of the button it sits on.

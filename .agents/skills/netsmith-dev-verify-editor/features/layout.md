@@ -21,6 +21,7 @@ The window opens on the Schematic, or on the sections last used (the saved layou
 
 - The page keeps the sections it has shown in the DOM, hidden (`.section.away`, `visibility: hidden`, so layout, scroll and zoom survive), except the PCB: its keys (arrows, R, F, Delete, Ctrl+Z) work on the whole window, so it leaves the page when it is not shown and finds its zoom again (`memoKey`). The source is always there. A Playwright locator that matches something in two sections is a strict-mode error: scope it (`.sec-power .graph-host`).
 - A drag of a tab starts after 8 px of movement and uses pointer events, not HTML drag and drop, so `page.mouse.down/move/up` drives it. A click on a tab right after a drag is swallowed.
+- When a section changes (a key 1 to 8, the palette, a click-through) while the focus is on a tab of the strip, the focus goes to the tab that is now on show: no focus ring is left on a tab that is not (`SectionStrip` in `components/Chrome.tsx`; `drive sections` presses 8 from the focused Schematic tab).
 - A tab's right-click menu has the first enabled entry focused, so the keyboard (Shift+F10 on a focused tab) reaches the same choices as a drag.
 - A toast (bottom right, a few seconds; a failure stays until dismissed) can sit over a canvas and take a click: wait for `.toast` to go before a drag near the bottom right.
 - The problems dock (`problems-dock.md`) is under the panes, so it takes height from every section when it is open; a recipe that measures a canvas opens or closes it first, or leaves it closed (the default).

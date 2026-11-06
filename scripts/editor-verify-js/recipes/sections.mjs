@@ -24,6 +24,20 @@ export async function run({ page, shot, step, expect }) {
     }
   }
 
+  step('a section key moves the focus with the choice when it was on a tab, and leaves no ring on a tab that is not on show');
+  await page.keyboard.press('2');
+  await page.waitForSelector('.section.sec-schematic:not(.away)');
+  await page.locator('.pane-strip .tab[data-section="schematic"]').focus();
+  await page.keyboard.press('8');
+  await page.waitForSelector('.section.sec-compare:not(.away)');
+  await page.waitForTimeout(250);
+  const where = await page.evaluate(() => ({ section: document.activeElement?.getAttribute('data-section'), active: document.activeElement?.classList.contains('active'), ring: [...document.querySelectorAll('.pane-strip .tab:focus-visible')].map((t) => t.dataset.section) }));
+  expect(where.section === 'compare' && where.active === true, `the focus is on the Compare tab, the one on show (${JSON.stringify(where)})`);
+  expect(where.ring.every((s) => s === 'compare'), 'no other tab has a focus ring');
+  await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+  await page.keyboard.press('2');
+  await page.waitForSelector('.section.sec-schematic:not(.away)');
+
   step('Alt+number works in a text field, plain numbers do not');
   await page.keyboard.press('1');
   await page.locator('.tree-filter').click();

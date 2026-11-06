@@ -51,6 +51,8 @@ export async function run({ page, shot, step, expect, url, section }) {
   expect((await attr('density')) === 'compact', 'html[data-density] is compact');
   expect((await settings())?.density === 'compact', 'kept in localStorage');
   expect((await page.locator('.toast', { hasText: 'Density: Compact' }).count()) === 1, 'a toast says Density: Compact');
+  await page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 2600 });
+  expect(true, 'and it is gone within 2 seconds, not left standing');
   expect((await px('.topbar')) < comfortableBar && (await px('.tb-ghosts .icon-btn')) < comfortableCtl, `the bar and a control are smaller (${comfortableBar} to ${await px('.topbar')}, ${comfortableCtl} to ${await px('.tb-ghosts .icon-btn')})`);
   await page.keyboard.press('Escape');
 

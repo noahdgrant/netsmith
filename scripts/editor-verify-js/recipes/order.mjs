@@ -5,6 +5,8 @@ export async function run({ page, shot, step, expect, section }) {
   step('open the Build tab');
   await section('build');
   await page.waitForSelector('.order-pick select');
+  expect((await page.locator('.order-pick .boardpick select').count()) === 1, 'the order is picked in the top bar\'s picker box, not a bare browser select');
+  expect((await page.locator('.order-pick .boardpick select').evaluate((e) => getComputedStyle(e).appearance)) === 'none', 'drawn by the page, with its own chevrons');
   const listed = await page.locator('.order-pick select option').allInnerTexts();
   expect(listed.includes('demo'), `the order demo is listed (${listed.join(', ')})`);
   const rows = await page.locator('.order-boards tbody tr').evaluateAll((trs) => trs.map((tr) => [...tr.children].map((c) => c.textContent.trim())));
