@@ -1,6 +1,8 @@
 // Screenshots of each sheet of the invented bench board at 1366 x 768 and 2000 x 1000, for the
 // pull request's before and after pictures: `SHOT_LABEL=after scripts/editor-verify drive
 // schematic-shots`. The files are `<label>-<sheet>-<width>.png` in the evidence folder.
+import { openSheet, sheetNames } from '../schematic-helpers.mjs';
+
 export const fixture = 'schematic_bench';
 
 export const SHEETS = ['adc', 'mcu', 'buck', 'modem', 'ldo', 'obd', 'ten'];
@@ -10,12 +12,12 @@ export async function run({ page, shot, step, expect }) {
   await page.waitForSelector('.schematic');
   for (const [w, h] of [[1366, 768], [2000, 1000]]) {
     await page.setViewportSize({ width: w, height: h });
-    step(`every sheet at ${w} x ${h}`);
+    step(`every module at ${w} x ${h}`);
     for (const name of SHEETS) {
       // A module the old drawing cut in two has two tabs, `modem (1/2)` and `modem (2/2)`.
-      const tabs = (await page.locator('.sheet-tab').allInnerTexts()).filter((t) => t.startsWith(`${name}:`) || t.startsWith(`${name} (`));
+      const tabs = (await sheetNames(page)).filter((t) => t === name || t.startsWith(`${name} (`));
       for (const [i, tab] of tabs.entries()) {
-        await page.locator('.sheet-tab', { hasText: tab }).first().click();
+        await openSheet(page, tab);
         await page.waitForTimeout(900);
         // The panel with the parts list is off, so the drawing has the width.
         const details = page.getByRole('button', { name: 'Details' });

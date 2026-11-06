@@ -1,0 +1,68 @@
+/* ==== round 5: the settings (src/settings.ts) and the help menu ==== */
+
+/* ---- density: the scale of controls, rows, bars and gaps. Comfortable is the shared scale of themes.css; compact steps each one down by a
+ * size's worth, so a view that reads these tokens (every control, row and bar does) tightens by itself. ---- */
+:root[data-density="compact"] {
+  --h-xs: 1.125rem; --h-sm: 1.25rem; --h-md: 1.5rem; --h-lg: 1.75rem; --row: 1.5rem;
+  --ctl: 1.5rem; --ctl-lg: 1.75rem;
+  --bar: 2.875rem; --tab: 2.125rem; --status: 1.5rem;
+  --gap: .375rem;
+  --row-lg: 1.875rem; --row-sm: 1.5rem;
+}
+
+/* ---- motion: "Reduce" in the settings does what the system's request does (style.css), whatever the system says ---- */
+:root[data-motion="reduce"] *, :root[data-motion="reduce"] *::before, :root[data-motion="reduce"] *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+:root[data-motion="reduce"] .progress-line::before { animation: none; width: 100%; opacity: .5; }
+:root[data-motion="reduce"] .sk, :root[data-motion="reduce"] .toast, :root[data-motion="reduce"] .dot.reconnecting, :root[data-motion="reduce"] .dot.connecting, :root[data-motion="reduce"] .qp-backdrop { animation: none; }
+
+/* ---- the panel under the gear and the question mark ---- */
+.top-pop { position: fixed; z-index: var(--z-menu); width: 21.5rem; max-width: calc(100vw - 1rem); max-height: calc(100vh - 4rem); overflow: auto; padding: .375rem; background: var(--pop); border: 1px solid var(--pop-border); border-radius: var(--r-lg); box-shadow: var(--elev-2); color: var(--text); animation: pop-in var(--dur-fast) var(--ease); transform-origin: top right; }
+.top-pop-help { width: 19rem; }
+.top-pop-head { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; padding: .5rem .625rem .375rem; }
+.top-pop-head h2 { margin: 0; font-size: var(--fs-lg); font-weight: var(--fw-semibold); letter-spacing: var(--ls-title); }
+.top-pop-head .faint, .top-pop-foot .faint { color: var(--text-faint); font-size: var(--fs-xs); }
+.set-block, .set-row { padding: .5rem .625rem; }
+.set-row { display: flex; flex-direction: column; align-items: stretch; gap: .5rem; }
+.set-label { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; min-width: 0; font-weight: var(--fw-medium); }
+.set-block > .set-label { margin-bottom: .375rem; }
+.set-hint { color: var(--text-faint); font-size: var(--fs-xs); font-weight: var(--fw-normal); }
+.set-row .seg { display: flex; }
+.set-row .seg-btn { flex: 1; justify-content: center; }
+.set-row { border-top: 1px solid var(--border-subtle); }
+.theme-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .25rem; }
+.theme-grid .theme-option:first-child { grid-column: span 2; }
+.theme-grid .theme-option { height: var(--ctl-lg); padding: 0 .5rem; background: var(--surface-3); border: 1px solid transparent; border-radius: var(--r-sm); }
+.theme-grid .theme-option:hover { border-color: var(--border-strong); }
+.theme-grid .theme-option[aria-checked="true"] { background: var(--pick); border-color: var(--sel-line); color: var(--sel-text); }
+.theme-grid .theme-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.theme-grid .theme-tick { flex: none; }
+.top-pop-foot { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .625rem .625rem .375rem; border-top: 1px solid var(--border-subtle); }
+.top-pop-foot .faint { flex: 1; min-width: 0; }
+
+/* the help menu: rows with an icon, a name and the keys */
+.menu-body { display: flex; flex-direction: column; gap: 1px; }
+.menu-row { display: flex; align-items: center; gap: .625rem; height: var(--ctl-lg); padding: 0 .625rem; background: none; border: none; border-radius: var(--r-sm); color: var(--text); text-align: left; cursor: pointer; }
+.menu-row:hover, .menu-row:focus-visible { background: var(--hover-strong); }
+.menu-row .icon { color: var(--text-faint); flex: none; }
+.menu-row:hover .icon, .menu-row:focus-visible .icon { color: var(--text); }
+.menu-row-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-sep { height: 1px; margin: .25rem .375rem; background: var(--border-subtle); }
+.top-pop .qp-keys { display: inline-flex; gap: .25rem; }
+
+/* ---- About netsmith ---- */
+.about { width: min(30rem, calc(100vw - 2rem)); max-height: 86vh; overflow: auto; display: flex; flex-direction: column; background: var(--pop); border: 1px solid var(--pop-border); border-radius: var(--r-lg); box-shadow: var(--elev-3); animation: pop-in var(--dur) var(--ease); }
+.about:focus { outline: none; }
+.about-head { display: flex; flex-direction: column; align-items: flex-start; gap: .625rem; padding: 1.5rem 1.5rem 1rem; }
+.about-head .logo { height: 2.25rem; width: auto; }
+.about-head p { margin: 0; color: var(--text-muted); }
+.about-facts { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: .375rem 1rem; margin: 0; padding: .75rem 1.5rem; border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); }
+.about-facts dt { color: var(--text-faint); }
+.about-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.about-facts dd.muted, .about-facts .muted { color: var(--text-muted); }
+.about-note { display: flex; gap: .5rem; margin: 0; padding: .75rem 1.5rem 0; color: var(--text-muted); font-size: var(--fs-sm); line-height: var(--lh); }
+.about-note .icon { flex: none; margin-top: 2px; color: var(--text-faint); }
+.about-path { overflow-wrap: anywhere; font-size: var(--fs-sm); }
+.about-bundle.match .icon { color: var(--success, var(--text-muted)); }
+.about-bundle.differs { color: var(--text); }
+.about-bundle.differs .icon { color: var(--warning); }
+.about-foot { display: flex; justify-content: flex-end; gap: .5rem; padding: 1rem 1.5rem 1.25rem; }

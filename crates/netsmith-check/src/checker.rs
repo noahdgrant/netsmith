@@ -69,6 +69,8 @@ pub(crate) struct Checker<'a> {
     modules: Vec<ModuleData>,
     cache: HashMap<String, usize>,
     diags: Vec<Diagnostic>,
+    /// The diagnostics of `diags` that are parse errors.
+    syntax: Vec<Diagnostic>,
     seen: HashSet<Diagnostic>,
     // State of the elaboration in progress.
     pub model: Model,
@@ -118,6 +120,7 @@ impl<'a> Checker<'a> {
             modules: Vec::new(),
             cache: HashMap::new(),
             diags: Vec::new(),
+            syntax: Vec::new(),
             seen: HashSet::new(),
             model: Model::new(),
             scope: Vec::new(),
@@ -131,8 +134,21 @@ impl<'a> Checker<'a> {
         }
     }
 
-    pub fn into_diagnostics(self) -> (Vec<Diagnostic>, Sources) {
-        (self.diags, self.sources)
+    pub fn into_diagnostics(self) -> (Vec<Diagnostic>, Vec<Diagnostic>, Sources) {
+        (self.diags, self.syntax, self.sources)
+    }
+
+    /// Report a parse error: a diagnostic like any other, also remembered as one of syntax.
+    fn report_syntax(&mut self, source: SourceId, e: netsmith_lang::ParseError) {
+        let d = Diagnostic {
+            source,
+            span: e.span,
+            message: e.message,
+        };
+        if !self.syntax.contains(&d) {
+            self.syntax.push(d.clone());
+        }
+        self.report(d.source, d.span, d.message);
     }
 
     pub fn module_defs(&self, module: usize) -> Vec<Rc<Definition>> {
@@ -177,6 +193,19 @@ impl<'a> Checker<'a> {
             .is_some_and(|(m, i)| self.modules[m].defs[i].kind == kind)
     }
 
+    /// Whether `source` is a file of the standard library, which ships with netsmith: its
+    /// doc comments describe the library, not the design.
+    pub(crate) fn is_library(&self, source: SourceId) -> bool {
+        self.sources.get(source).name.starts_with("std/")
+    }
+
+    /// The file and the 1-based line of the start of `span` in `source`.
+    pub(crate) fn line_in(&self, source: SourceId, span: Span) -> (String, usize) {
+        let src = self.sources.get(source);
+        let (line, _) = netsmith_lang::ParseError::new(span, "").line_col(&src.text);
+        (src.name.clone(), line)
+    }
+
     pub fn cur_source(&self) -> SourceId {
         self.modules[self.cur_module].source
     }
@@ -206,7 +235,7 @@ impl<'a> Checker<'a> {
         let mut file = match parse(text) {
             Ok(file) => file,
             Err(e) => {
-                self.report(source, e.span, e.message);
+                self.report_syntax(source, e);
                 netsmith_lang::ast::File {
                     inner_docs: Vec::new(),
                     imports: Vec::new(),
@@ -270,7 +299,7 @@ impl<'a> Checker<'a> {
         let file = match parse(text) {
             Ok(file) => file,
             Err(e) => {
-                self.report(source, e.span, e.message);
+                self.report_syntax(source, e);
                 return;
             }
         };
@@ -500,6 +529,14 @@ impl<'a> Checker<'a> {
             span: def.span,
             declared: None,
             docs: def.docs.clone(),
+            def_docs: if self.is_library(self.modules[def_ref.0].source) {
+                Vec::new()
+            } else {
+                def.docs.iter().chain(&def.inner_docs).cloned().collect()
+            },
+            doc_at: (!self.is_library(self.modules[def_ref.0].source)
+                && (!def.docs.is_empty() || !def.inner_docs.is_empty()))
+            .then(|| self.line_in(self.modules[def_ref.0].source, def.span)),
             def: Some(def_ref),
         });
         // Every part has a field for who assembles it (ADR 0024): the board narrows it, the
@@ -592,6 +629,8 @@ impl<'a> Checker<'a> {
             span,
             declared: None,
             docs: Vec::new(),
+            def_docs: Vec::new(),
+            doc_at: None,
             def: None,
         });
         let module = self.model.instance(owner).kind == InstKind::Module;
@@ -705,6 +744,10 @@ impl<'a> Checker<'a> {
                     let def = self.modules[m].defs[i].clone();
                     let child = self.instantiate(&def, (m, i), &name, Some(cur));
                     self.model.instances[child.0].docs = d.docs.clone();
+                    if !d.docs.is_empty() && !self.is_library(self.cur_source()) {
+                        let at = self.line_in(self.cur_source(), d.span);
+                        self.model.instances[child.0].doc_at = Some(at);
+                    }
                     let last = d.ty.segments.last().map_or(d.name.span.end, |s| s.span.end);
                     self.model.instances[child.0].declared =
                         Some((self.cur_source(), Span::new(d.name.span.start, last)));
@@ -811,6 +854,8 @@ impl<'a> Checker<'a> {
             span,
             declared: None,
             docs,
+            def_docs: Vec::new(),
+            doc_at: None,
             def: None,
         });
         for field in ["function", "net"] {

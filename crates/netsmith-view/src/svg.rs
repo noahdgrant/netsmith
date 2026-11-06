@@ -59,6 +59,15 @@ const STYLE: &str = "\
 .schematic .port .flag{fill:none;stroke:var(--wire);stroke-width:.25;stroke-linejoin:round}
 .schematic .port text{stroke:none}
 .schematic .net-label{fill:var(--net);font-weight:600}
+.schematic .bus .line{stroke-width:.9}
+.schematic .bus-tick{stroke:var(--wire);stroke-width:.3;stroke-linecap:round}
+.schematic .bus-flag .flag{fill:none;stroke:var(--wire);stroke-width:.5;stroke-linejoin:round}
+.schematic .bus-label{fill:var(--net);font-weight:600}
+.schematic .bus-count{fill:var(--net);font-weight:600}
+.schematic .bus-members{font-weight:400}
+.schematic.has-on .bus-group:not(.on){opacity:.22}
+.schematic .bus-group.on .bus .line{stroke:var(--hit);stroke-width:.9}
+.schematic .bus-group.on .bus-tick,.schematic .bus-group.on .bus-flag .flag{stroke:var(--hit)}
 .schematic .ref{font-weight:700}
 .schematic .pin-name,.schematic .pin-number{fill:var(--pin)}
 .schematic .line{fill:none;stroke:var(--wire);stroke-linecap:round;stroke-linejoin:round}
@@ -78,6 +87,17 @@ const STYLE: &str = "\
 .schematic .part.on .s{stroke:var(--hit)}
 .schematic .pin.on .pin-line{stroke:var(--hit);stroke-width:.5}
 ";
+
+/// What a note is drawn with by default; the page maps the tokens (`--note-fill`, `--note-stroke`,
+/// `--note-text`, `--note-stroke-text`) to its own. Written only into a drawing that has notes,
+/// so a drawing without any is the same bytes as before notes existed.
+const NOTE_STYLE: &str = "\
+.schematic .note-frame{fill:var(--note-fill,#fff9db);stroke:var(--note-stroke,#d4b95e);stroke-width:.25}\n\
+.schematic .note text{fill:var(--note-text,#4a4120);stroke:none;font-weight:400}\n\
+.schematic .note .note-heading{fill:var(--note-stroke-text,#8a6d1b);font-weight:700;letter-spacing:.02em}\n\
+.schematic .note-relation .note-text{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace}\n\
+.schematic.has-on .note:not(.on){opacity:.22}\n\
+.schematic .note.on .note-frame{stroke:var(--hit);stroke-width:.5}\n";
 
 /// Draw `design` as one SVG document.
 pub fn render_svg(
@@ -153,7 +173,8 @@ fn draw(design: &Design, l: &Layout) -> String {
         esc(&design.name)
     );
     let _ = writeln!(w, "<title>{}</title>", esc(&design.name));
-    let _ = writeln!(w, "<style>\n{STYLE}</style>");
+    let notes_style = if l.notes.is_empty() { "" } else { NOTE_STYLE };
+    let _ = writeln!(w, "<style>\n{STYLE}{notes_style}</style>");
     let _ = writeln!(
         w,
         "<rect class=\"sheet\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>",
@@ -200,11 +221,27 @@ fn draw(design: &Design, l: &Layout) -> String {
             .map(|p| format!("{},{}", n(p.x), n(p.y)))
             .collect::<Vec<_>>()
             .join(" ");
+        let entry = l.buses.iter().any(|b| {
+            b.entries.iter().any(|e| {
+                e.net == wire.net
+                    && wire
+                        .points
+                        .last()
+                        .is_some_and(|p| (p.x - e.at.x).abs() < 1e-6 && (p.y - e.at.y).abs() < 1e-6)
+            })
+        });
+        let class = if entry { "wire bus-entry" } else { "wire" };
         let _ = writeln!(
             w,
-            "<g class=\"wire\" data-net=\"{}\"><polyline class=\"hit\" stroke-width=\"{HIT_WIDTH}\" points=\"{points}\"/><polyline class=\"line\" stroke-width=\"{WIRE_WIDTH}\" points=\"{points}\"/></g>",
+            "<g class=\"{class}\" data-net=\"{}\"><polyline class=\"hit\" stroke-width=\"{HIT_WIDTH}\" points=\"{points}\"/><polyline class=\"line\" stroke-width=\"{WIRE_WIDTH}\" points=\"{points}\"/></g>",
             esc(&design.nets[wire.net].name)
         );
+    }
+    let _ = writeln!(w, "</g>");
+
+    let _ = writeln!(w, "<g class=\"buses\">");
+    for bus in &l.buses {
+        draw_bus(w, design, bus);
     }
     let _ = writeln!(w, "</g>");
 
@@ -238,6 +275,14 @@ fn draw(design: &Design, l: &Layout) -> String {
     }
     let _ = writeln!(w, "</g>");
 
+    if !l.notes.is_empty() {
+        let _ = writeln!(w, "<g class=\"notes\">");
+        for note in &l.notes {
+            draw_note(w, design, note);
+        }
+        let _ = writeln!(w, "</g>");
+    }
+
     let _ = writeln!(w, "<g class=\"labels\">");
     for label in &l.labels {
         let name = &design.nets[label.net].name;
@@ -255,7 +300,172 @@ fn draw(design: &Design, l: &Layout) -> String {
     out
 }
 
-/// A flag where a net goes to another sheet, in the shape of KiCad's hierarchical label: it
+/// A note: a rounded frame and its text as one `<text>` with a `<tspan>` for each line, so it
+/// can be selected. `data-note` is the path of what it belongs to (`""` for the board),
+/// `data-n` the note's index in the design's notes, `data-ref` the reference of the part it is
+/// about when it is about one, `data-at` the `file:line` it is written at; the tooltip has the
+/// whole text when the drawn text is cut.
+fn draw_note(w: &mut String, design: &Design, note: &crate::layout::PlacedNote) {
+    use netsmith_core::NoteKind;
+    let kind = match note.kind {
+        NoteKind::Doc => "note-doc",
+        NoteKind::Relation => "note-relation",
+    };
+    let source = &design.notes[note.note];
+    let mut attrs = format!(
+        " data-note=\"{}\" data-n=\"{}\"",
+        esc(&note.path),
+        note.note
+    );
+    if let Some(a) = note.anchor {
+        let _ = write!(attrs, " data-ref=\"{}\"", esc(&design.parts[a].refdes));
+    }
+    if let Some(at) = &source.at {
+        let _ = write!(attrs, " data-at=\"{}:{}\"", esc(&at.file), at.line);
+    }
+    let _ = writeln!(w, "<g class=\"note {kind}\"{attrs}>");
+    if let Some(full) = &note.full {
+        let _ = writeln!(w, "<title>{}</title>", esc(full));
+    }
+    let f = note.frame;
+    let _ = writeln!(
+        w,
+        "<rect class=\"note-frame\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" ry=\"{}\"/>",
+        n(f.min.x),
+        n(f.min.y),
+        n(f.width()),
+        n(f.height()),
+        n(crate::layout::RADIUS),
+        n(crate::layout::RADIUS)
+    );
+    if let Some(h) = &note.heading {
+        let _ = writeln!(
+            w,
+            "<text class=\"note-heading\" font-size=\"{}\" x=\"{}\" y=\"{}\">{}</text>",
+            n(crate::layout::HEADING_TEXT),
+            n(h.at.x),
+            n(h.at.y),
+            esc(&h.text)
+        );
+    }
+    if let Some(first) = note.lines.first() {
+        let _ = write!(
+            w,
+            "<text class=\"note-text\" font-size=\"{}\" x=\"{}\" y=\"{}\" xml:space=\"preserve\">",
+            n(note.size),
+            n(first.at.x),
+            n(first.at.y)
+        );
+        for line in &note.lines {
+            let _ = write!(
+                w,
+                "<tspan x=\"{}\" y=\"{}\">{}</tspan>",
+                n(line.at.x),
+                n(line.at.y),
+                esc(&line.text)
+            );
+        }
+        let _ = writeln!(w, "</text>");
+    }
+    let _ = writeln!(w, "</g>");
+}
+
+/// A bus: the thick line, the tick with the count of members, the name and the list of members,
+/// and the flag where the members go on to another module. `data-bus` is the interface
+/// instance's path, `data-type` its definition, `data-nets` the members' nets (a space between
+/// them) and `data-members` the members as JSON, `[["tx","MODEM_TX"],...]`, in the order of the
+/// pins: what a page that follows a bus reads (names may contain spaces, so it reads this one).
+fn draw_bus(w: &mut String, design: &Design, bus: &crate::layout::Bus) {
+    let nets: Vec<String> = bus
+        .members
+        .iter()
+        .map(|m| design.nets[m.net].name.clone())
+        .collect();
+    let members: Vec<String> = bus
+        .members
+        .iter()
+        .map(|m| {
+            format!(
+                "[{},{}]",
+                json_string(&m.name),
+                json_string(&design.nets[m.net].name)
+            )
+        })
+        .collect();
+    let _ = writeln!(
+        w,
+        "<g class=\"bus-group\" data-bus=\"{}\" data-type=\"{}\" data-nets=\"{}\" data-members=\"{}\"><title>{} ({}): {} members</title>",
+        esc(&bus.path),
+        esc(&bus.type_name),
+        esc(&nets.join(" ")),
+        esc(&format!("[{}]", members.join(","))),
+        esc(&bus.path),
+        esc(&bus.type_name),
+        bus.members.len()
+    );
+    let d: String = bus
+        .lines
+        .iter()
+        .map(|line| {
+            line.iter()
+                .enumerate()
+                .map(|(i, p)| format!("{}{} {}", if i == 0 { "M" } else { "L" }, n(p.x), n(p.y)))
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let _ = writeln!(
+        w,
+        "<g class=\"bus\" data-bus=\"{}\"><path class=\"hit\" stroke-width=\"{HIT_WIDTH}\" d=\"{d}\"/><path class=\"line\" d=\"{d}\"/></g>",
+        esc(&bus.path)
+    );
+    let _ = writeln!(
+        w,
+        "<line class=\"bus-tick\" x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\"/>",
+        n(bus.tick.0.x),
+        n(bus.tick.0.y),
+        n(bus.tick.1.x),
+        n(bus.tick.1.y)
+    );
+    let attrs = format!(" data-bus=\"{}\"", esc(&bus.path));
+    text_element(w, &bus.count, "bus-count", 1.27, &attrs);
+    text_element(w, &bus.label, "bus-label", 1.27, &attrs);
+    text_element(w, &bus.list, "bus-label bus-members", 1.27, &attrs);
+    if let Some(o) = &bus.other {
+        text_element(w, o, "bus-label bus-members", 1.27, &attrs);
+    }
+    if let Some(f) = &bus.flag {
+        let (dx, dy) = f.dir.vector();
+        let at = |a: f64, b: f64| {
+            format!(
+                "{},{}",
+                n(f.at.x + dx * a - dy * b),
+                n(f.at.y + dy * a + dx * b)
+            )
+        };
+        let half = Port::HALF;
+        let points = [
+            at(0.0, 0.0),
+            at(half, -half),
+            at(f.length, -half),
+            at(f.length, half),
+            at(half, half),
+        ]
+        .join(" ");
+        let _ = writeln!(
+            w,
+            "<g class=\"bus-flag\" data-bus=\"{}\"><title>{} (goes to another module)</title><polygon class=\"flag\" points=\"{points}\"/>",
+            esc(&bus.path),
+            esc(&bus.path)
+        );
+        text_element(w, &f.label, "bus-label", Port::TEXT, &attrs);
+        let _ = writeln!(w, "</g>");
+    }
+    let _ = writeln!(w, "</g>");
+}
+
+/// A flag where a net goes to another module, in the shape of KiCad's hierarchical label: it
 /// points at the wire.
 fn draw_port(w: &mut String, design: &Design, port: &Port) {
     let name = &design.nets[port.net].name;
@@ -278,7 +488,7 @@ fn draw_port(w: &mut String, design: &Design, port: &Port) {
     .join(" ");
     let _ = writeln!(
         w,
-        "<g class=\"port\" data-net=\"{}\"><title>{} (goes to another sheet)</title><polygon class=\"flag\" points=\"{points}\"/>",
+        "<g class=\"port\" data-net=\"{}\"><title>{} (goes to another module)</title><polygon class=\"flag\" points=\"{points}\"/>",
         esc(name),
         esc(name)
     );
@@ -307,7 +517,7 @@ fn draw_mark(w: &mut String, design: &Design, m: &PinMark) {
         ),
     };
     let (x, y) = (m.at.x, m.at.y);
-    let r = 0.7;
+    let r = crate::sheetview::MARK_HALF;
     let _ = writeln!(
         w,
         "<g class=\"{class}\" data-unconnected=\"{}.{}\"><title>{}</title><circle class=\"hit\" cx=\"{}\" cy=\"{}\" r=\"1.2\"/><line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\"/><line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\"/>{}</g>",
@@ -393,15 +603,28 @@ fn draw_part(w: &mut String, design: &Design, p: &PlacedPart) {
     } else {
         "part missing"
     };
+    let unit = p
+        .glyph
+        .unit
+        .map(crate::layout::unit_letter)
+        .unwrap_or_default();
+    let unit_attr = if unit.is_empty() {
+        String::new()
+    } else {
+        format!(" data-unit=\"{unit}\"")
+    };
     let _ = writeln!(
         w,
-        "<g class=\"{class}\" data-ref=\"{}\" data-kind=\"{}\">",
+        "<g class=\"{class}\" data-ref=\"{}\" data-kind=\"{}\"{unit_attr}>",
         esc(&part.refdes),
         esc(&part.kind)
     );
     let mut summary = format!("{} {} {}", part.refdes, part.kind, part.value);
     if let Some(package) = &part.package {
         let _ = write!(summary, " ({package})");
+    }
+    if !unit.is_empty() {
+        let _ = write!(summary, ", unit {unit}");
     }
     if let Some(why) = &p.glyph.missing {
         let _ = write!(summary, "\nNo symbol: {why}");
@@ -634,8 +857,29 @@ fn text_element_titled(
             "<title>{}</title>",
             esc(full)
         )),
-        esc(&t.text)
+        overbars(&t.text)
     );
+}
+
+/// `text` escaped, with each `~{...}` (KiCad's overbar, for an active-low name) written as
+/// its letters under a line.
+fn overbars(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("~{") {
+        let Some(len) = rest[start + 2..].find('}') else {
+            break;
+        };
+        out.push_str(&esc(&rest[..start]));
+        let inner = &rest[start + 2..start + 2 + len];
+        out.push_str(&format!(
+            "<tspan text-decoration=\"overline\">{}</tspan>",
+            esc(inner)
+        ));
+        rest = &rest[start + 2 + len + 1..];
+    }
+    out.push_str(&esc(rest));
+    out
 }
 
 /// A number with at most three decimals and no trailing zeros, never `-0`.
@@ -650,6 +894,23 @@ fn n(v: f64) -> String {
         }
     }
     if s == "-0" { "0".to_string() } else { s }
+}
+
+/// `s` as a JSON string.
+fn json_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 fn esc(s: &str) -> String {

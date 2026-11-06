@@ -8,9 +8,11 @@ import type {
   CatalogRefresh,
   Changed,
   ClientMessage,
+  Compare,
   Definition,
   FabReport,
   FileContent,
+  GitInfo,
   OrderInfo,
   OrderReport,
   PcbEdit,
@@ -25,6 +27,7 @@ import type {
   PanelView,
   SystemView,
 } from './api';
+import { PENDING_HEADER, pendingElapsed } from './feedback/early';
 
 /** A change needs this header; a page on another origin cannot send it. */
 const GUARD = { 'X-Netsmith': '1' };
@@ -33,20 +36,53 @@ export class ApiFailure extends Error {
   constructor(
     public status: number,
     message: string,
+    /** The snake_case code of a failure of the project's own data (a `422` with a JSON body), else null. */
+    public code: string | null = null,
   ) {
     super(message);
   }
 }
 
+/** The server's first analysis is still running (it said so, to a request that asked to be told). */
+export class AnalysisPending extends Error {
+  constructor(public elapsedMs: number) {
+    super('The first analysis is still running');
+  }
+}
+
 async function check(response: Response): Promise<Response> {
-  if (!response.ok) throw new ApiFailure(response.status, (await response.text()).trim());
+  if (!response.ok) {
+    const text = (await response.text()).trim();
+    // A failure of the project's own data comes as {code, message, ...} to a read that accepts JSON.
+    if (response.headers.get('content-type')?.includes('application/json')) {
+      try {
+        const body = JSON.parse(text) as { code?: unknown; message?: unknown };
+        if (typeof body.message === 'string') {
+          throw new ApiFailure(response.status, body.message.trim(), typeof body.code === 'string' ? body.code : null);
+        }
+      } catch (e) {
+        if (e instanceof ApiFailure) throw e;
+      }
+    }
+    throw new ApiFailure(response.status, text);
+  }
   return response;
 }
 
 const q = (params: Record<string, string>) => new URLSearchParams(params).toString();
 
 async function getJson<T>(url: string): Promise<T> {
-  return (await check(await fetch(url, { cache: 'no-store' }))).json();
+  return (await check(await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' } }))).json();
+}
+
+/** A read that is told, not made to wait, while the server's first analysis runs. */
+async function getJsonEarly<T>(url: string): Promise<T> {
+  const response = await fetch(url, { cache: 'no-store', headers: { [PENDING_HEADER]: '1' } });
+  if (response.status === 503) {
+    const elapsed = pendingElapsed(503, await response.clone().text());
+    if (elapsed !== null) throw new AnalysisPending(elapsed);
+  }
+  return (await check(response)).json();
 }
 
 async function getText(url: string): Promise<string> {
@@ -64,7 +100,8 @@ async function post<T>(url: string, body?: unknown): Promise<T> {
 
 export const api = {
   project: () => getJson<Project>('/api/project'),
-  analysis: () => getJson<Analysis>('/api/analysis'),
+  /** With `early` the answer is `AnalysisPending` while the server's first analysis runs, not a wait. */
+  analysis: (early = false) => (early ? getJsonEarly<Analysis>('/api/analysis') : getJson<Analysis>('/api/analysis')),
   file: (path: string) => getJson<FileContent>(`/api/file?${q({ path })}`),
   async save(path: string, text: string, stamp: string): Promise<Saved> {
     const response = await fetch(`/api/file?${q({ path })}`, {
@@ -107,6 +144,12 @@ export const api = {
   definition: (path: string, text: string, offset: number) =>
     post<Definition | null>('/api/definition', { path, text, offset }),
   downloadUrl: (board: string, file: string) => `/api/download?${q({ board, file })}`,
+  /** The git state of the project: refs, recent commits, whether the work tree has changes (ADR 0059). Needs no analysis. */
+  git: () => getJson<GitInfo>('/api/git'),
+  /** What changed in the circuit between `ref` and the files on disk. A ref that does not analyse is a 200 with `error`. */
+  compare: (ref: string, board?: string) => getJson<Compare>(`/api/compare?${q(board ? { ref, board } : { ref })}`),
+  /** A file of the project as it was at `ref`, read-only. */
+  gitFile: (ref: string, path: string) => getJson<FileContent>(`/api/git/file?${q({ ref, path })}`),
 };
 
 type Listener = (message: ServerMessage) => void;

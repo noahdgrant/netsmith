@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img">
+  <title>netsmith</title>
+  <style>
+    /* The brand's orange, a step deeper on a light tab strip and a step lighter on a dark one. */
+    .m { fill: #c8650f; stroke: #c8650f; }
+    @media (prefers-color-scheme: dark) { .m { fill: #f0994f; stroke: #f0994f; } }
+  </style>
+  <path class="m" d="M33.7 70.5L92.3 70.5M63 70.5L63 92.4M63 92.4L48.4 112.9M63 92.4L77.6 112.9M48.4 112.9L77.6 112.9M74.5 30.2L40.8 6.6" fill="none" stroke-width="11" stroke-linecap="round"/>
+  <g class="m" stroke="none"><circle cx="33.7" cy="70.5" r="11.5"/><circle cx="63" cy="70.5" r="11.5"/><circle cx="92.3" cy="70.5" r="11.5"/><circle cx="63" cy="92.4" r="11.5"/><circle cx="48.4" cy="112.9" r="11.5"/><circle cx="77.6" cy="112.9" r="11.5"/><rect x="61.7" y="8.1" width="25.8" height="42.2" rx="4" transform="rotate(35 74.5 30.2)"/></g>
+</svg>

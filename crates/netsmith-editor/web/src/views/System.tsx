@@ -1,7 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { ChangesSwitch } from '../components/ChangesSwitch';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import type { PowerTree, SystemView } from '../api';
 import { api } from '../client';
+import { Icon, type IconName } from '../components/Icons';
+import { InspectorHead } from '../components/Inspector';
+import { Legend, Pill, Popover, Units } from '../components/ui';
+import { NoBoard, ViewLoading } from '../components/ViewStatus';
 import { MiniMap } from '../components/MiniMap';
 import { PanZoom } from '../components/PanZoom';
 import { type Item, type Placed, type TreeLayout, layoutTree } from '../flow/layout';
@@ -9,46 +14,187 @@ import { type Move, linkKey, move, trace } from '../flow/select';
 import { ANCHOR, CARD_W, STEP, cardHeight, labelWidth } from '../system/metrics';
 import { type ModuleModel, type SystemModel, type Wire, modelOf, shorten } from '../system/model';
 import { analysis, board, goTo, systemName } from '../store';
+import { fitView } from '../sheets';
+import { hoverAttrs } from '../hover';
+import { type Card, cardFor, revealRequest, selection, selectionOfCard, setSelection } from '../selection';
 
 /** The longest label an edge carries: the rest is in its tooltip. */
 const LABEL_CHARS = 32;
 
-/** The mated connectors of a system, contact by contact, and the grounds they join (ADR 0040). */
+/** The roles of a mate's contacts, counted: `6 signal`, `2 ground`. */
+function roleCounts(m: SystemView['mates'][number]): [string, number][] {
+  const n = new Map<string, number>();
+  for (const c of m.contacts) n.set(c.aRole, (n.get(c.aRole) ?? 0) + 1);
+  return ['signal', 'power', 'ground', 'open'].filter((r) => n.has(r)).map((r) => [r, n.get(r)!]);
+}
+
+/** The mated connectors of a system, a row for each with the roles of its contacts counted, the contacts
+ * under it, and the grounds they join (ADR 0040). */
 function Mates({ view }: { view: SystemView }) {
+  // A few mates are shown; a long list starts folded to its head, so it does not take the canvas.
+  const [open, setOpen] = useState(view.mates.length <= 2);
   if (view.mates.length === 0) return null;
   return (
-    <div class="mates">
-      {view.mates.map((m) => (
-        <div class="mate" key={`${m.a}/${m.b}`}>
-          <div class="mate-head link" onClick={() => m.at && void goTo(m.at)}>
-            <b>{m.a}</b> mates <b>{m.b}</b>
-            <span class="hint">
-              {m.contacts.length} contacts{m.ports.length > 0 ? `; joins ${m.ports.join(', ')}` : ''}
-            </span>
-          </div>
-          <div class="contacts">
-            {m.contacts.map((c) => (
-              <span
-                key={c.number}
-                class={`contact role-${c.aRole}`}
-                title={`contact ${c.number}: ${m.a} ${c.aRole}${c.aNet ? ` (${c.aNet})` : ''}, ${m.b} ${c.bRole}${c.bNet ? ` (${c.bNet})` : ''}`}
-              >
-                {c.number} {c.aRole === c.bRole ? c.aRole : `${c.aRole}/${c.bRole}`}
+    <div class={`mates ${open ? 'open' : ''}`} data-toast-clear>
+      <div class="mates-head">
+        <button class="mates-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <Icon name="chevron-right" size={12} class="disc-chev" />
+          <Icon name="link" size={14} />
+          <span class="mates-title">Mated connectors</span>
+          <span class="disc-count">{view.mates.length}</span>
+          {view.groundGroups.length > 0 && (
+            <>
+              <span class="mates-dot" aria-hidden="true" />
+              <span class="mates-title">Ground groups</span>
+              <span class="disc-count">{view.groundGroups.length}</span>
+            </>
+          )}
+        </button>
+        <Legend items={[{ kind: 'role-signal', label: 'Signal' }, { kind: 'role-power', label: 'Power' }, { kind: 'role-ground', label: 'Ground' }]} />
+      </div>
+      {open && (
+        <div class="mates-body">
+          {view.mates.map((m) => (
+            <details class="mate" key={`${m.a}/${m.b}`}>
+              <summary class="mate-row">
+                <Icon name="chevron-right" size={12} class="disc-chev" />
+                <span class="mate-pair">
+                  <button class="chip pin-chip plain mate-end" title={`Show ${m.a} in the source`} onClick={(e) => { e.preventDefault(); if (m.at) void goTo(m.at); }}>
+                    <b>{m.a}</b>
+                  </button>
+                  <Icon name="link" size={12} class="mate-link" />
+                  <button class="chip pin-chip plain mate-end" title={`Show ${m.b} in the source`} onClick={(e) => { e.preventDefault(); if (m.at) void goTo(m.at); }}>
+                    <b>{m.b}</b>
+                  </button>
+                </span>
+                <span class="mate-count">{m.contacts.length} contacts</span>
+                <span class="mate-roles">
+                  {roleCounts(m).map(([r, c]) => (
+                    <span key={r} class={`role-chip role-${r}`}>
+                      <i aria-hidden="true" />
+                      {c} {r}
+                    </span>
+                  ))}
+                </span>
+                {m.ports.length > 0 && (
+                  <span class="mate-joins" title={m.ports.join(', ')}>
+                    joins {m.ports.join(', ')}
+                  </span>
+                )}
+                {m.reversible && (
+                  <Pill tone="warn" icon="warning" title={m.reversible}>
+                    reversible
+                  </Pill>
+                )}
+              </summary>
+              <div class="contacts">
+                {m.contacts.map((c) => (
+                  <span
+                    key={c.number}
+                    class={`contact role-${c.aRole}`}
+                    title={`contact ${c.number}: ${m.a} ${c.aRole}${c.aNet ? ` (${c.aNet})` : ''}, ${m.b} ${c.bRole}${c.bNet ? ` (${c.bNet})` : ''}`}
+                  >
+                    <b>{c.number}</b> {c.aRole === c.bRole ? c.aRole : `${c.aRole}/${c.bRole}`}
+                  </span>
+                ))}
+                {m.reversible && <div class="warn">{m.reversible}</div>}
+              </div>
+            </details>
+          ))}
+          {view.groundGroups.map((g) => (
+            <div class="ground-group" key={g.nets.join('+')}>
+              <span class="role-chip role-ground">
+                <i aria-hidden="true" />
+                Ground
               </span>
-            ))}
-          </div>
-          {m.reversible && <div class="warn">{m.reversible}</div>}
+              <span class="gg-nets">{g.nets.join(' + ')}</span>
+              <span class="hint">{g.contacts.join('; ')} ground contacts</span>
+            </div>
+          ))}
         </div>
-      ))}
-      {view.groundGroups.map((g) => (
-        <div class="ground-group" key={g.nets.join('+')}>
-          <b>Ground</b> {g.nets.join(' + ')}
-          <span class="hint">{g.contacts.join('; ')} ground contacts</span>
-        </div>
-      ))}
+      )}
     </div>
   );
 }
+
+/** The room a graph keeps round its cards (screen pixels), the most it is opened at (a small graph is
+ * fitted with air round it, not blown up) and the least before it is opened at that and left to be panned: below 75 % the
+ * smallest text (11 px) is under 8 px, so a graph that does not fit at 75 % opens at 75 % from its top left, with the minimap
+ * and Fit to find the rest. */
+export const GRAPH_PAD = 56;
+export const GRAPH_MAX_K = 1.5;
+export const GRAPH_MIN_K = 0.75;
+
+/** The view a graph opens at, and Fit goes to: the whole of it with comfortable padding and centred, at most
+ * 150 %. Opening a graph that would then be too small to read, it is 75 % from its top left instead (Fit still shows it
+ * whole). True size is the 1:1 button. */
+export function placeFitted(size: { width: number; height: number }) {
+  return (w: number, h: number, whole = false) => {
+    const all = fitView(w, h, { x: -GRAPH_PAD, y: -GRAPH_PAD, w: size.width + 2 * GRAPH_PAD, h: size.height + 2 * GRAPH_PAD }, 1);
+    if (!whole && all.k < GRAPH_MIN_K) return { k: GRAPH_MIN_K, x: GRAPH_PAD * GRAPH_MIN_K, y: GRAPH_PAD * GRAPH_MIN_K };
+    const k = Math.min(all.k, GRAPH_MAX_K);
+    return { k, x: (w - size.width * k) / 2, y: (h - size.height * k) / 2 - h * 0.02 };
+  };
+}
+
+/** A wire's label: the words on a pill (the surface of a card, a hairline round it) that stands 3 px above the wire. The pill is
+ * as wide as the words are in the page's own font, measured once they are drawn (the estimate stands in until then). */
+function EdgeLabel({
+  x,
+  y,
+  guess,
+  text,
+  title,
+  k,
+  group,
+  dim,
+  onClick,
+  onEnter,
+  onLeave,
+}: {
+  x: number;
+  y: number;
+  guess: number;
+  text: string;
+  title: string;
+  k: string;
+  group: boolean;
+  dim: boolean;
+  onClick: (r: DOMRect) => void;
+  onEnter: (r: DOMRect) => void;
+  onLeave: () => void;
+}) {
+  const words = useRef<SVGTextElement>(null);
+  const [w, setW] = useState(Math.max(0, guess - 8));
+  useLayoutEffect(() => {
+    const t = words.current?.getComputedTextLength?.();
+    if (t && Math.abs(t - w) > 0.5) setW(t);
+  }, [text]);
+  return (
+    <g class={`sy-label-wrap ${dim ? 'dim' : ''}`}>
+      <rect class="sy-pill" x={x - 1} y={y - 18} width={w + 14} height={18} rx={9} />
+      <text
+        ref={words}
+        x={x + 6}
+        y={y - 5}
+        data-label={k}
+        class={`sy-label ${group ? 'group' : ''}`}
+        onClick={(ev) => {
+          if (!group) return;
+          ev.stopPropagation();
+          onClick((ev.currentTarget as SVGTextElement).getBoundingClientRect());
+        }}
+        onMouseEnter={(ev) => group && onEnter((ev.currentTarget as SVGTextElement).getBoundingClientRect())}
+        onMouseLeave={() => group && onLeave()}
+      >
+        <title>{title}</title>
+        {text}
+      </text>
+    </g>
+  );
+}
+
+const KIND_ICON: Record<string, IconName> = { board: 'board', module: 'module', part: 'part', port: 'net' };
 
 function ModuleCard({
   m,
@@ -74,12 +220,16 @@ function ModuleCard({
     <div
       class={`pt-node sy-card kind-${m.kind} ${selected ? 'selected' : ''} ${tint} ${dim ? 'dim' : ''}`}
       data-node={m.id}
+      data-cmp-board={m.kind === 'board' ? m.name : undefined}
       data-kind="module"
       style={{ left: p.x, top: p.y, width: p.w, height: p.h }}
+      {...hoverAttrs(m.kind === 'module' || m.kind === 'part' ? { kind: m.kind, key: m.name } : null)}
       onClick={onSelect}
     >
       <div class="sy-head">
-        <span class={`badge k-${m.kind}`}>{m.kind[0].toUpperCase()}</span>
+        <span class={`sy-icon k-${m.kind}`} title={m.kind} aria-hidden="true">
+          <Icon name={KIND_ICON[m.kind] ?? 'module'} size={13} />
+        </span>
         <button
           class="sy-name"
           title={m.at ? `${m.name}: show in source` : m.name}
@@ -106,9 +256,7 @@ function ModuleCard({
               }}
               title={open ? 'Hide the ports' : 'List the ports'}
             >
-              <span class="pt-chev" aria-hidden="true">
-                {open ? '▾' : '▸'}
-              </span>
+              <Icon name="chevron-right" size={12} class={`sy-chev ${open ? 'open' : ''}`} />
               {m.ports.length} ports
             </button>
           )}
@@ -117,8 +265,12 @@ function ModuleCard({
               <div class="sy-row" key={r.name} title={r.title}>
                 <span class="sy-pname">{r.name}</span>
                 <span class={`sy-pval ${r.supply ? 'supply' : ''}`}>
-                  <span class="sy-volts">{r.volts}</span>
-                  <span class="sy-amps">{r.current}</span>
+                  <span class="sy-volts">
+                    <Units text={r.volts} />
+                  </span>
+                  <span class="sy-amps">
+                    <Units text={r.current} />
+                  </span>
                 </span>
               </div>
             ))}
@@ -131,11 +283,15 @@ function ModuleCard({
 function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTree | null; fitKey: string }) {
   const model: SystemModel = useMemo(() => modelOf(view, power), [view, power]);
   const [opens, setOpens] = useState<Record<string, boolean>>({});
-  const [selected, setSelected] = useState<string | null>(null);
+  /** A card that stands for nothing the page can select (a board of a system, a port): its
+   * own, dropped when the shared selection changes. */
+  const [own, setOwn] = useState<string | null>(null);
   const [tip, setTip] = useState<{ wire: Wire; x: number; y: number } | null>(null);
   const [reveal, setReveal] = useState<{ x: number; y: number; w: number; h: number; seq: number } | undefined>();
   const [centre, setCentre] = useState<{ x: number; y: number; seq: number } | undefined>();
   const [vp, setVp] = useState<{ k: number; x: number; y: number; w: number; h: number } | null>(null);
+  /** The card the pointer is over: the wires of it show a little more. */
+  const [hover, setHover] = useState<string | null>(null);
   const host = useRef<HTMLDivElement>(null);
   const timer = useRef<number | undefined>(undefined);
   const came = useRef(new Map<string, string>());
@@ -161,14 +317,31 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
   );
   const placed = new Map(layout.nodes.map((n) => [n.id, n]));
   const wireOf = new Map(model.wires.map((w) => [linkKey(w), w]));
-  const tr = useMemo(() => (selected ? trace(model.links, selected) : null), [model, selected]);
-
+  // The selection is the page's: a module or part of the board is its card; a card that is
+  // neither (a board of a system, a port) is selected here only.
+  const cards: Card[] = useMemo(
+    () =>
+      model.modules.flatMap((m): Card[] =>
+        m.kind === 'module' || m.kind === 'part' ? [{ id: m.id, kind: m.kind, key: m.name }] : [],
+      ),
+    [model],
+  );
+  const shared = selection.value;
+  const selected = cardFor(shared, cards) ?? (shared === null && own && placed.has(own) ? own : null);
   useEffect(() => {
-    if (selected && !placed.has(selected)) setSelected(null);
-  }, [layout]);
+    if (shared) setOwn(null);
+  }, [shared]);
+  const tr = useMemo(() => (selected ? trace(model.links, selected) : null), [model, selected]);
+  const ask = revealRequest.value;
+  useEffect(() => {
+    const n = selected ? placed.get(selected) : undefined;
+    if (ask && n) setReveal({ x: n.x, y: n.y, w: n.w, h: n.h, seq: (reveal?.seq ?? 0) + 1 });
+  }, [ask?.nonce]);
 
   const select = (id: string | null, scroll = false) => {
-    setSelected(id);
+    const sel = id ? selectionOfCard(cards, id) : null;
+    setOwn(id && !sel ? id : null);
+    setSelection(sel);
     const n = id ? placed.get(id) : undefined;
     if (scroll && n) setReveal({ x: n.x, y: n.y, w: n.w, h: n.h, seq: (reveal?.seq ?? 0) + 1 });
   };
@@ -204,21 +377,35 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
   return (
     <div class="graph-view power-view system-view">
       <div class="graph-title pt-bar">
-        <span>
-          {view.kind === 'system' ? 'System' : 'Board'} <b>{view.name}</b>
+        <span class="gt-name">
+          <Icon name="system" size={16} />
+          {view.kind === 'system' ? 'System' : 'Board'}
+          <Pill tone="neutral">{view.name}</Pill>
+          <Popover icon="note" tip="What this shows" class="bom-info" align="left">
+            <h4>{view.kind === 'system' ? 'System' : 'Board'}</h4>
+            <p>
+              {view.kind === 'system'
+                ? 'Boards and the joins between them, from what supplies to what is supplied. Below, the mated connectors and the grounds they join.'
+                : 'Modules, parts and ports, from what supplies to what is supplied, joined by the nets they share.'}
+            </p>
+          </Popover>
         </span>
-        <span class="hint">
-          {view.kind === 'system'
-            ? 'Boards and the joins between them, from what supplies to what is supplied; below, the mated connectors and the grounds they join.'
-            : 'Modules, parts and ports, from what supplies to what is supplied, joined by the nets they share.'}
-        </span>
+        <Legend
+          items={[
+            { kind: 'power', label: 'Supplies', tip: 'A wire from what supplies to what is supplied' },
+            { kind: 'signal', label: 'Signal', tip: 'A wire with no direction known' },
+            ...(tr ? [{ kind: 'up', label: 'Upstream', tip: 'What feeds the selection' }, { kind: 'down', label: 'Downstream', tip: 'What the selection feeds' }] : []),
+          ]}
+        />
         <span class="spacer" />
+        <ChangesSwitch />
         {model.modules.some((m) => m.ports.length > 6) && (
           <button
             class="tool small"
             onClick={() => setOpens(Object.fromEntries(model.modules.map((m) => [m.id, !everyOpen])))}
             title="List the ports of every long table, or fold them all"
           >
+            <Icon name={everyOpen ? 'collapse-all' : 'expand-all'} size={13} />
             {everyOpen ? 'Fold all ports' : 'List all ports'}
           </button>
         )}
@@ -230,6 +417,8 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
         role="application"
         aria-label="System. Arrow keys move along it, Escape clears the selection."
         onKeyDown={onKey}
+        onMouseOver={(e) => setHover((e.target as Element).closest<HTMLElement>('[data-node]')?.dataset.node ?? null)}
+        onMouseLeave={() => setHover(null)}
         onClick={(e) => {
           if (!(e.target as Element).closest('.pt-node, .pt-minimap, .zoombar, .sy-label')) {
             select(null);
@@ -243,6 +432,9 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
           fitKey={fitKey}
           class="graph-host power-host"
           actualSize
+          scale100={1}
+          placeView={placeFitted(layout)}
+          fitPlaces
           reveal={reveal}
           centre={centre}
           onViewport={setVp}
@@ -267,7 +459,7 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
                   data-points={JSON.stringify(e.points)}
                   data-back={e.back ? 'true' : undefined}
                   d={e.d}
-                  class={`pt-edge sy-edge ${w?.kind ?? ''} ${tint ? `hot ${tint}` : ''} ${tr && !tint ? 'dim' : ''}`}
+                  class={`pt-edge sy-edge ${w?.kind ?? ''} ${tint ? `hot ${tint}` : ''} ${tr && !tint ? 'dim' : ''} ${!tr && hover && (e.from === hover || e.to === hover) ? 'peek' : ''}`}
                   marker-end={w?.kind === 'power' ? `url(#sy-arrow${tint ? `-${tint}` : ''})` : undefined}
                 />
               );
@@ -278,30 +470,22 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
               if (!e.label || !w) return null;
               const tint = tr?.up.links.has(k) || tr?.down.links.has(k);
               const group = w.labels.length > 1;
+              // The words stand on a pill of the page's surface, a few pixels above the wire: a label never touches its line.
               return (
-                <text
+                <EdgeLabel
                   key={`l${k}`}
                   x={e.label.x}
                   y={e.label.y}
-                  data-label={k}
-                  class={`sy-label ${group ? 'group' : ''} ${tr && !tint ? 'dim' : ''}`}
-                  onClick={(ev) => {
-                    if (!group) return;
-                    ev.stopPropagation();
-                    const r = (ev.currentTarget as SVGTextElement).getBoundingClientRect();
-                    showTip({ wire: w, x: r.left, y: r.bottom }, true);
-                  }}
-                  onMouseEnter={(ev) => {
-                    if (!group) return;
-                    const r = (ev.currentTarget as SVGTextElement).getBoundingClientRect();
-                    showTip({ wire: w, x: r.left, y: r.bottom });
-                  }}
-                  onMouseLeave={() => group && showTip(null)}
-                >
-                  <title>{w.labels.join('\n')}</title>
-                  {e.label.text}
-                  {group ? ' ▾' : ''}
-                </text>
+                  guess={e.label.w}
+                  text={`${e.label.text}${group ? ' ▾' : ''}`}
+                  title={w.labels.join('\n')}
+                  k={k}
+                  group={group}
+                  dim={!!tr && !tint}
+                  onClick={(r) => showTip({ wire: w, x: r.left, y: r.bottom }, true)}
+                  onEnter={(r) => showTip({ wire: w, x: r.left, y: r.bottom })}
+                  onLeave={() => showTip(null)}
+                />
               );
             })}
           </svg>
@@ -338,9 +522,19 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
           onMouseEnter={() => window.clearTimeout(timer.current)}
           onMouseLeave={() => showTip(null)}
         >
-          <div class="pt-tip-who">
-            {tip.wire.from} {'→'} {tip.wire.to}
-          </div>
+          <InspectorHead
+            eyebrow="Wire"
+            icon="link"
+            tone="net"
+            mono
+            titleTag="div"
+            title={
+              <>
+                {tip.wire.from} {'\u2192'} {tip.wire.to}
+              </>
+            }
+            sub={`${tip.wire.labels.length} ${tip.wire.labels.length === 1 ? 'connection' : 'connections'}`}
+          />
           <ul>
             {tip.wire.labels.map((l) => (
               <li key={l}>{l}</li>
@@ -383,8 +577,8 @@ export function System() {
     };
   }, [name, version]);
 
-  if (!name) return <div class="empty">There is no board to show. See the problems.</div>;
+  if (!name) return <NoBoard what="show" />;
   if (error) return <div class="empty bad">{error}</div>;
-  if (!view) return <div class="empty">Reading…</div>;
+  if (!view) return <ViewLoading what="Reading the system" />;
   return <SystemFlow view={view} power={power} fitKey={`${name}:${version}:${view.nodes.length}`} />;
 }

@@ -7,7 +7,7 @@ export const fixture = 'catalog_refresh';
 export async function run({ page, shot, step, expect, section, project }) {
   await page.setViewportSize({ width: 2000, height: 1000 });
   await section('source');
-  await page.waitForSelector('.sidebar .row.file');
+  await page.waitForSelector('.sidebar .ft-row.ft-file');
   const wavy = () =>
     page.evaluate(() => {
       const bad = [];
@@ -19,7 +19,7 @@ export async function run({ page, shot, step, expect, section, project }) {
     });
 
   step('open netsmith.toml: coloured as TOML, no squiggles');
-  await page.locator('.row.file', { hasText: 'netsmith.toml' }).click();
+  await page.locator('.ft-row.ft-file', { hasText: 'netsmith.toml' }).click();
   await page.waitForSelector('.tab.active:has-text("netsmith.toml")');
   await page.waitForFunction(() => document.querySelector('.cm-content')?.innerText.includes('['));
   await page.waitForTimeout(500);
@@ -30,7 +30,7 @@ export async function run({ page, shot, step, expect, section, project }) {
   await shot('manifest-toml');
 
   step('an .nsm file: a token the editor marks as invalid has a note that says what it is');
-  await page.locator('.row.file', { hasText: 'main.nsm' }).first().click();
+  await page.locator('.ft-row.ft-file', { hasText: 'main.nsm' }).first().click();
   await page.waitForSelector('.tab.active:has-text("main.nsm")');
   await page.locator('.cm-content').click();
   await page.keyboard.press('Control+End');

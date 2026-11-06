@@ -5,6 +5,8 @@ export type Location = { file: string, line: number, column: number, endLine: nu
 
 export type Severity = "error" | "warning" | "note";
 
+export type ProblemStage = "syntax" | "check" | "solve" | "lower" | "guideline";
+
 export type Problem = { severity: Severity, 
 /**
  * Without the file and line.
@@ -13,11 +15,62 @@ message: string,
 /**
  * What the command line prints, with the source line underlined.
  */
-rendered: string, at: Location | null, };
+rendered: string, at: Location | null, 
+/**
+ * The stage that found it. Always set by this server; optional so that a page written
+ * before it was added still type checks.
+ */
+stage?: ProblemStage, 
+/**
+ * The board it is about, as `BoardSummary::name` has it (`Demo/main` for a board of a
+ * system), where the problem belongs to one board: every solver, lowering and guideline
+ * message and note, and a checker error written inside the definition of a board. A
+ * parse error, and a mistake in a module or a system (which boards share), have none.
+ */
+board?: string, 
+/**
+ * The instance it is about, from the board (`status_indicator.led`), where the server
+ * knows one: a note, a not-chosen warning and a guideline finding. The mistakes of the
+ * checker and the solver have none: they are about a statement, which `at` locates.
+ */
+path?: string, };
 
 export type FileRole = "top_level" | "module" | "std" | "manifest" | "physical";
 
-export type Def = { kind: string, name: string, line: number, };
+export type Def = { kind: string, name: string, line: number, 
+/**
+ * The line its closing brace is on (the last line of the definition), so the source
+ * outline and the breadcrumbs know which definition a line is in without reading text.
+ */
+endLine?: number, 
+/**
+ * The declarations written directly in its body (`.vin: Rail`), in source order, not the
+ * ones inside a declaration's own block. Left out when there are none.
+ */
+children?: Array<DefChild>, };
+
+export type DefChild = { 
+/**
+ * As written, without the leading dot (`stage.regulator` for a path).
+ */
+name: string, 
+/**
+ * What the type is: `board`, `system`, `panel`, `part`, `interface` or `module`. Left
+ * out when the type names no definition that the file or its imports reach.
+ */
+kind?: string, 
+/**
+ * The line the declaration starts on.
+ */
+line: number, 
+/**
+ * The line it ends on; the same as `line` for a declaration with no block.
+ */
+endLine: number, 
+/**
+ * The type as written, last segment only: `LinearRegulator` for `std::parts::LinearRegulator`.
+ */
+typeName: string, };
 
 export type TreeFile = { 
 /**
@@ -40,7 +93,35 @@ kicad: boolean, files: Array<TreeFile>,
  * The folders below `src/`, with their path from the project root (`src/sheets`), so the
  * tree can show one that has no file in it yet.
  */
-folders: Array<string>, };
+folders: Array<string>, 
+/**
+ * The version of the netsmith that serves this page (`0.1.0`, the crate's).
+ */
+version?: string, 
+/**
+ * `git describe --tags --always` of the checkout netsmith was built from, as it was when
+ * the build script last ran (a commit made later with no other change is not seen until
+ * the next build; uncommitted edits are not marked). Absent when netsmith was built
+ * outside a git checkout or without `git`.
+ */
+gitDescribe?: string, 
+/**
+ * The project folder, absolute: where `netsmith.toml` is, or for a single file the folder
+ * it is in.
+ */
+root?: string, 
+/**
+ * Where `kicad-cli` was found (`$KICAD_CLI`, `PATH`, or the Windows KiCad under WSL).
+ * Absent when `kicad` is false.
+ */
+kicadPath?: string, 
+/**
+ * The `SOURCE-HASH` of the page embedded in this binary: a hash of the sources in
+ * `web/` that the page was built from. Absent when the binary has no page. It is the
+ * hash of the page's sources, which is not the hash of `web/` as it is now if the
+ * binary was built from a checkout whose `web-dist` was out of date.
+ */
+bundleHash?: string, };
 
 export type FileContent = { path: string, text: string, 
 /**
@@ -94,7 +175,45 @@ export type PanelView = { name: string, board: string, columns: number, rows: nu
  */
 cellWidth: number, cellHeight: number, width: number, height: number, rail: number, svg: string, findings: Array<PanelFinding>, };
 
-export type Analysis = { version: number, errors: number, warnings: number, notes: number, problems: Array<Problem>, boards: Array<BoardSummary>, systems: Array<SystemSummary>, panels: Array<PanelSummary>, };
+export type ModuleUse = { 
+/**
+ * The module's name: `LdoStage`.
+ */
+name: string, 
+/**
+ * The file it is defined in, as the tree names it, and the line of its definition
+ * (`Def::line`).
+ */
+file: string, line: number, 
+/**
+ * The boards that have an instance of it, as `BoardSummary::name` has them
+ * (`Demo/main` for a board of a system), in the order of `Analysis::boards`.
+ */
+usedBy: Array<string>, };
+
+export type Analysis = { version: number, errors: number, warnings: number, notes: number, problems: Array<Problem>, boards: Array<BoardSummary>, systems: Array<SystemSummary>, panels: Array<PanelSummary>, 
+/**
+ * For each module definition that some board uses, directly or inside another module,
+ * the boards that use it, so a declaration in a shared module can show its card for
+ * each board. Sorted by file and line; left out when no board uses a module. It is here
+ * and not on `Def` because `GET /api/project` is answered before the first analysis.
+ */
+moduleUses?: Array<ModuleUse>, 
+/**
+ * How long the analysis took, in milliseconds: of the files on disk for `/api/analysis`
+ * and `rebuilt`, of the text on the page for `checked`.
+ */
+elapsedMs?: number, };
+
+export type Pending = { 
+/**
+ * Always `true`: what tells this answer from the route's own.
+ */
+pending: boolean, 
+/**
+ * How long the first analysis has been running, in milliseconds.
+ */
+elapsedMs: number, };
 
 export type PartInfo = { refdes: string, kind: string, value: string, package: string | null, 
 /**
@@ -108,9 +227,95 @@ decl: Location | null,
 /**
  * The declarations of what contains it, innermost first (`.stage: LdoStage`).
  */
-scopes: Array<Location>, };
+scopes: Array<Location>, 
+/**
+ * What the solver worked out for the part and the source did not state. Absent when
+ * there is nothing to say (a part with no catalog row and no derived value).
+ */
+solved?: Solved, };
 
-export type PinInfo = { refdes: string, pin: string, };
+export type Solved = { 
+/**
+ * A capacitor's capacitance in use: the marked value after the DC bias across it and
+ * after its tolerance (`1.72uF..2.916uF` for a 10 uF part at 5 V). Present where the
+ * bias derating applies, that is when the part has a curve and a bias.
+ */
+effectiveCapacitance?: Range, 
+/**
+ * The DC voltage across the part that the derating used (taken from the rail the part
+ * sits across, ADR 0013). Present with `effective_capacitance`.
+ */
+bias?: Range, 
+/**
+ * The tolerance of the resistance, capacitance or inductance the solver chose, when the
+ * source did not state the value's range.
+ */
+tolerance?: Tolerance, 
+/**
+ * The ratings of the row that was picked (`max_voltage`, `max_current`, `max_power`,
+ * `rated_current`, `saturation_current`, ...), the voltages, currents and powers the
+ * part is built for, in the order its definition lists them.
+ */
+ratings?: Array<Rating>, 
+/**
+ * The catalog row that stands for the part.
+ */
+row?: SolvedRow, };
+
+export type Tolerance = { 
+/**
+ * `20` for `+/- 20%`, rounded to three decimals.
+ */
+percent: number, 
+/**
+ * `+/- 20%`.
+ */
+text: string, };
+
+export type Rating = { 
+/**
+ * The field of the part: `max_voltage`.
+ */
+name: string, range: Range, };
+
+export type SolvedRow = { 
+/**
+ * The catalog table the part's definition draws from (`resistor`, `ldo`), if it names one.
+ */
+catalog?: string, 
+/**
+ * The manufacturer's part number.
+ */
+mpn?: string, 
+/**
+ * The LCSC number.
+ */
+lcsc?: string, 
+/**
+ * `Basic`, `Extended` or `Preferred`.
+ */
+library?: string, 
+/**
+ * The solver chose only a value and a package (ADR 0047) and no row stands for the part
+ * yet; `mpn`, `lcsc` and `library` are then absent.
+ */
+generic: boolean, };
+
+export type PinInfo = { refdes: string, 
+/**
+ * The pad number as the symbol names it (`"1"`, `"A5"`).
+ */
+pin: string, 
+/**
+ * The name the part's datasheet prints for the pin (`VIN`, `EN`, `SW`), where the part
+ * has a pin table that lists the pad. Absent for a part with no pin table.
+ */
+name?: string, 
+/**
+ * The function the board chose for the pin (`UART1_TX`), when the pin can be several
+ * things and the board picked one. Absent otherwise.
+ */
+function?: string, };
 
 export type NetInfo = { name: string, named: boolean, pins: Array<PinInfo>, };
 
@@ -146,7 +351,13 @@ demand: Range | null,
 /**
  * What the part that supplies it can give (`max_current`).
  */
-capacity: Range | null, capacityFrom: string | null, budget: Budget, };
+capacity: Range | null, capacityFrom: string | null, budget: Budget, 
+/**
+ * Where to look when the node has an issue: the declaration of the part or stage that
+ * supplies it (the one `capacity_from` names), else of its first supply, else of its first
+ * load. A `Draw` has its own `at`.
+ */
+at?: Location, };
 
 export type EdgeKind = "converts" | "join" | "net";
 
@@ -170,11 +381,15 @@ efficiency: Range | null,
 /**
  * It has an efficiency that the solver did not settle: its input current is then not worked out.
  */
-efficiencyUnsettled: boolean, };
+efficiencyUnsettled: boolean, 
+/**
+ * The declaration of the converter.
+ */
+at?: Location, };
 
 export type Port = { name: string, 
 /**
- * `3.135 V .. 3.465 V`, if the port is a rail.
+ * `3.135V..3.465V` (see `Range::text`), if the port is a rail.
  */
 voltage: string | null, current: string | null, };
 
@@ -480,7 +695,13 @@ x: number, y: number, area: PcbBox,
 /**
  * The references of the parts it is about.
  */
-parts: Array<string>, };
+parts: Array<string>, 
+/**
+ * The line of a physical file (or of the circuit source) that states the requirement the
+ * finding quotes, where it quotes one; the first of them if it quotes several. A point at
+ * the start of the line (`column` and `endColumn` are 1), `file` as the checker names it.
+ */
+at?: Location, };
 
 export type KicadState = "not_run" | "ran" | "unavailable";
 
@@ -553,8 +774,347 @@ downloads: Array<Download>,
  */
 elapsedMs: number, };
 
-export type Definition = { at: Location, };
+export type Definition = { at: Location, 
+/**
+ * A one-line signature of what is defined, in a stable short form: the keyword, the
+ * name and the declarations that make its interface, at most six, then `...` if the
+ * body has more (`module LdoStage { .vin: Rail .vout: Rail ... }`; the ports of a
+ * module or board are the declarations whose type is an interface, and an interface or
+ * part lists its own). For a member it is the declaration, `.vin: Rail`. Absent when
+ * the name is an imported module (see `doc`).
+ */
+signature?: string, 
+/**
+ * The `///` lines directly above the definition or declaration, one line of the answer
+ * for each, the leading space of a line trimmed; for an imported module, the `//!` lines
+ * at the top of its file. Absent when there are none. A hover card needs no library file.
+ */
+doc?: string, };
+
+export type GitCommit = { 
+/**
+ * The full hash: what a compare is cached by.
+ */
+hash: string, short: string, subject: string, author: string, 
+/**
+ * The author date, ISO 8601 with its offset (`2026-11-04T09:30:00+01:00`).
+ */
+date: string, };
+
+export type GitRefKind = "head" | "upstream" | "default" | "branch" | "tag";
+
+export type GitRef = { 
+/**
+ * What to pass as `ref`: `HEAD`, `origin/main`, `feature`, `v1.2`.
+ */
+name: string, kind: GitRefKind, 
+/**
+ * The commit it points at (a tag's own commit, not the tag object).
+ */
+hash: string, short: string, subject: string, date: string, 
+/**
+ * The branch that is checked out.
+ */
+current: boolean, };
+
+export type GitInfo = { available: boolean, reason?: string, 
+/**
+ * The top of the work tree, an absolute path.
+ */
+root?: string, 
+/**
+ * Where the project is in the work tree, with `/`: empty if it is the top, else
+ * `hardware/board`.
+ */
+projectDir?: string, 
+/**
+ * The checked-out branch; absent when HEAD is detached.
+ */
+branch?: string, head?: GitCommit, 
+/**
+ * Anything in the work tree differs from HEAD, untracked files included.
+ */
+dirty: boolean, 
+/**
+ * The same for the project's folder: what a compare against HEAD sees.
+ */
+projectDirty: boolean, 
+/**
+ * `HEAD`, the upstream, the default branch, the local branches (50 at most) and the
+ * tags (30 at most), in that order; a name that comes twice is listed once.
+ */
+refs: Array<GitRef>, 
+/**
+ * The last 30 commits reachable from HEAD, newest first.
+ */
+commits: Array<GitCommit>, };
+
+export type CompareHead = { 
+/**
+ * HEAD, if the project is in a work tree that has one.
+ */
+commit?: GitCommit, 
+/**
+ * The project's folder has changes that are not committed: the files on disk are what is
+ * compared, so they are in the diff.
+ */
+dirty: boolean, 
+/**
+ * How many errors the files on disk have now. While there are some, a board that does
+ * not build is shown as of its last good reading (`CompareBoard.stale`).
+ */
+errors: number, };
+
+export type SourceStatus = "modified" | "added" | "deleted" | "untracked";
+
+export type SourceFile = { 
+/**
+ * Relative to the project's folder, with `/`.
+ */
+path: string, status: SourceStatus, added: number, removed: number, };
+
+export type SourceDiff = { filesChanged: number, added: number, removed: number, files: Array<SourceFile>, 
+/**
+ * Why the numbers are missing, if git could not give them.
+ */
+error?: string, };
+
+export type BoardStatus = "added" | "removed" | "changed" | "unchanged";
+
+export type ComparePart = { path: string, designator: string, kind: string, value: string, package?: string, lcsc?: string, mpn?: string, 
+/**
+ * `fab`, `hand` or `none` (ADR 0024).
+ */
+assembly: string, 
+/**
+ * The declaration: on the head side for an added part, on the base side for a removed one.
+ */
+at?: Location, };
+
+export type CompareField = { field: string, old?: string, new?: string, };
+
+export type ComparePartChange = { 
+/**
+ * Its path on the head side.
+ */
+path: string, 
+/**
+ * Its path at the ref, when the part moved (a module was renamed or the part now sits in
+ * another): then `fields` has a `path` entry too.
+ */
+basePath?: string, designatorBase: string, designatorHead: string, 
+/**
+ * In a fixed order: `path`, `kind`, `value`, `package`, `lcsc`, `mpn`, `assembly`,
+ * `designator`. Never empty; a part in `renumbered` has only `designator`.
+ */
+fields: Array<CompareField>, 
+/**
+ * Its declaration on the head side.
+ */
+at?: Location, 
+/**
+ * Its declaration at the ref.
+ */
+baseAt?: Location, };
+
+export type PartsDiff = { added: Array<ComparePart>, removed: Array<ComparePart>, 
+/**
+ * Something other than the designator differs (a moved part is here).
+ */
+changed: Array<ComparePartChange>, 
+/**
+ * Only the designator differs: adding a part renumbers the ones after it, so this is
+ * long and mostly noise.
+ */
+renumbered: Array<ComparePartChange>, unchanged: number, };
+
+export type ComparePin = { 
+/**
+ * The part's path on the side the pin is listed from.
+ */
+part: string, designator: string, pin: string, 
+/**
+ * The part's declaration on that side.
+ */
+at?: Location, };
+
+export type CompareNet = { name: string, 
+/**
+ * The design names it (`3V3`), as against `net-r1.1`, which netsmith names after the
+ * smallest pin it joins.
+ */
+named: boolean, pins: Array<ComparePin>, 
+/**
+ * The first pin's part, where the net can be pointed at in the source.
+ */
+at?: Location, };
+
+export type CompareNetChange = { 
+/**
+ * The name on the head side.
+ */
+name: string, 
+/**
+ * The name at the ref.
+ */
+baseName: string, 
+/**
+ * The names differ, and at least one is a name the design gave. (A change between two
+ * generated names follows from the pins and is listed as `changed`.)
+ */
+renamed: boolean, 
+/**
+ * Pins on the head side that the net did not have at the ref, with the head side's
+ * designators.
+ */
+joined: Array<ComparePin>, 
+/**
+ * Pins the net had at the ref and has no more, with the ref's designators.
+ */
+left: Array<ComparePin>, 
+/**
+ * The first joined pin's part, else the first that left (on its own side).
+ */
+at?: Location, };
+
+export type NetsDiff = { added: Array<CompareNet>, removed: Array<CompareNet>, 
+/**
+ * Same pins (or most of them) under another name.
+ */
+renamed: Array<CompareNetChange>, 
+/**
+ * Same name, other pins.
+ */
+changed: Array<CompareNetChange>, unchanged: number, };
+
+export type CompareRail = { net: string, voltage?: Range, demand?: Range, capacity?: Range, budget: Budget, at?: Location, };
+
+export type RangeChange = { base?: Range, head?: Range, };
+
+export type BudgetChange = { base: Budget, head: Budget, };
+
+export type CompareRailChange = { 
+/**
+ * The net's name on the head side.
+ */
+net: string, 
+/**
+ * Its name at the ref, when the net was renamed.
+ */
+baseNet?: string, voltage?: RangeChange, demand?: RangeChange, capacity?: RangeChange, budget?: BudgetChange, 
+/**
+ * Amperes the supply can give above the largest demand (`capacity.hi - demand.hi`),
+ * when both are known on that side. Shrinking is the thing to look at.
+ */
+headroomBase?: number, headroomHead?: number, at?: Location, baseAt?: Location, };
+
+export type RailsDiff = { added: Array<CompareRail>, removed: Array<CompareRail>, changed: Array<CompareRailChange>, unchanged: number, };
+
+export type CompareInstance = { path: string, 
+/**
+ * The definition it was made from: `LdoStage`, `Rail`.
+ */
+typeName: string, at?: Location, };
+
+export type CompareInstanceChange = { path: string, baseType: string, headType: string, at?: Location, };
+
+export type InstancesDiff = { added: Array<CompareInstance>, removed: Array<CompareInstance>, changed: Array<CompareInstanceChange>, };
+
+export type CompareBomLine = { kind: string, value: string, package?: string, footprint?: string, lcsc?: string, mpn?: string, handSolder: boolean, quantity: number, designators: Array<string>, unitUsd?: number, };
+
+export type CompareBomChange = { kind: string, value: string, package?: string, footprint?: string, lcsc?: string, mpn?: string, handSolder: boolean, quantityBase: number, quantityHead: number, designatorsBase: Array<string>, designatorsHead: Array<string>, unitUsdBase?: number, unitUsdHead?: number, };
+
+export type BomDiff = { added: Array<CompareBomLine>, removed: Array<CompareBomLine>, changed: Array<CompareBomChange>, unchanged: number, 
+/**
+ * The total of the priced lines for one board, as `GET /api/bom` has it, on each side.
+ * Prices are those of each side's own catalogs and the supply file as they are now.
+ */
+totalUsdBase?: number, totalUsdHead?: number, 
+/**
+ * `total_usd_head - total_usd_base`, when both are known.
+ */
+deltaUsd?: number, };
+
+export type ProblemsDiff = { 
+/**
+ * On the head side only, with the head side's `at`.
+ */
+new: Array<Problem>, 
+/**
+ * At the ref only, with the ref's `at`.
+ */
+resolved: Array<Problem>, unchanged: number, };
+
+export type CompareBoard = { 
+/**
+ * As `BoardSummary.name` has it: what `?board=` and the other endpoints take.
+ */
+name: string, status: BoardStatus, 
+/**
+ * The source file of the board on each side, absent on the side that has no such board.
+ */
+baseFile?: string, headFile?: string, 
+/**
+ * The head side is the last good reading of a file that does not build now.
+ */
+stale: boolean, summary: string, parts: PartsDiff, nets: NetsDiff, rails: RailsDiff, 
+/**
+ * Module instances by path.
+ */
+modules: InstancesDiff, 
+/**
+ * Interface instances that are ports of the board or of a module, by path.
+ */
+interfaces: InstancesDiff, 
+/**
+ * Absent when the bill of materials cannot be made on one side (`bom_error` says why).
+ */
+bom?: BomDiff, bomError?: string, problems: ProblemsDiff, };
+
+export type Compare = { 
+/**
+ * The ref as asked.
+ */
+ref: string, 
+/**
+ * What it resolved to.
+ */
+base: GitCommit, head: CompareHead, 
+/**
+ * Set when the project at the ref cannot be compared: it has no `netsmith.toml` there, or
+ * it does not build.
+ */
+error?: string, 
+/**
+ * The errors of the analysis at the ref, when `error` is set because of them.
+ */
+baseProblems: Array<Problem>, 
+/**
+ * The analysis of the ref was kept from an earlier compare (by commit hash).
+ */
+cached: boolean, 
+/**
+ * The whole request, in milliseconds.
+ */
+elapsedMs: number, 
+/**
+ * One line: `3 parts added, 1 removed, 2 values changed, 1 rail's headroom shrank from
+ * 80 mA to 20 mA`; `No circuit changes` when there are none.
+ */
+summary: string, 
+/**
+ * Whether anything in the circuit differs (a renumbering alone is not).
+ */
+changed: boolean, source: SourceDiff, 
+/**
+ * By name; every board of either side, or the one asked for.
+ */
+boards: Array<CompareBoard>, 
+/**
+ * The problems that name no board (a mistake in a module, a file that did not read).
+ */
+problems: ProblemsDiff, };
 
 export type ClientMessage = { "type": "check", id: number, path: string, text: string, };
 
-export type ServerMessage = { "type": "rebuilt", analysis: Analysis, } | { "type": "checked", id: number, analysis: Analysis, } | { "type": "progress", task: string, board: string, message: string, };
+export type ServerMessage = { "type": "rebuilt", analysis: Analysis, elapsedMs?: number, } | { "type": "analysing", since: number, } | { "type": "checked", id: number, analysis: Analysis, } | { "type": "progress", task: string, board: string, message: string, stage?: string, done?: number, total?: number, };

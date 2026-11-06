@@ -499,8 +499,9 @@ fn draw(board: &Board, with_key: bool) -> String {
         let r = o.expanded(-inset);
         let _ = writeln!(
             out,
-            r#"<rect data-net="{}" x="{}" y="{}" width="{}" height="{}" fill="none" stroke="{}" stroke-width="0.15" stroke-dasharray="1 0.6" stroke-opacity="0.8"/>"#,
+            r#"<rect data-net="{}" data-layer="{}" x="{}" y="{}" width="{}" height="{}" fill="none" stroke="{}" stroke-width="0.15" stroke-dasharray="1 0.6" stroke-opacity="0.8"/>"#,
             escape(&plane.net),
+            escape(&plane.layer),
             n(r.min.x),
             n(r.min.y),
             n(r.width()),
@@ -699,6 +700,16 @@ mod tests {
             "stroke=\"{}\" stroke-width=\"0.15\" stroke-dasharray=\"1 0.6\"",
             PALETTE[1]
         )));
+        // Each plane's rectangle names its net and its copper layer, so a page can colour it
+        // by layer without reading the key.
+        assert!(
+            svg.contains(r#"<rect data-net="GND" data-layer="In1.Cu" "#),
+            "{svg}"
+        );
+        assert!(
+            svg.contains(r#"<rect data-net="3V3" data-layer="In2.Cu" "#),
+            "{svg}"
+        );
         // A line to a plane has nothing to draw, so only the other net has a ratsnest line.
         assert_eq!(svg.matches("stroke=\"#ffffff\"").count(), 1);
         assert_eq!(render(&led()).matches("stroke-dasharray").count(), 0);

@@ -8,6 +8,16 @@ import { edgesOf, nodesOf, routeProblems } from '../flow-helpers.mjs';
 export const fixture = 'power_tree';
 
 export async function run({ page, shot, step, expect, section }) {
+  // The overview is drawn only while part of the drawing is out of the window (it would otherwise
+  // sit on the cards): zoom in to see it, then fit again.
+  const zoomIn = async (scope) => {
+    for (let i = 0; i < 2; i++) await page.locator(`${scope} .zoombar button[title^="Zoom in"]`).click();
+    await page.waitForTimeout(250);
+  };
+  const fitAgain = async (scope) => {
+    await page.locator(`${scope} .zoombar button`, { hasText: 'Fit' }).click();
+    await page.waitForTimeout(250);
+  };
   const nodes = () => nodesOf(page, '.sec-power');
   const lit = async () => (await nodes()).filter((n) => !/\bdim\b/.test(n.cls)).map((n) => n.id).sort();
 
@@ -96,7 +106,15 @@ export async function run({ page, shot, step, expect, section }) {
   expect((await lit()).length === total, `every card is downstream of VIN, so all ${total} are lit`);
   expect((await page.locator('.pt-edge.hot.down').count()) === (await page.locator('.pt-edge').count()) && (await page.locator('.pt-edge.hot.up').count()) === 0, 'every edge is lit in the downstream tint, none in the upstream one');
   expect((await page.locator('.pt-node.dim').count()) === 0, 'nothing is dimmed');
-  expect((await page.locator('.pt-minimap rect[class*="hot-down"]').count()) >= total - 1, 'the minimap shows them');
+  // A tree that would need less than 75 % to fit opens at 75 % (round 5: below it the text is under 8 px), so the whole of it is in the window after Fit.
+  const opened = await page.evaluate(() => Number(document.querySelector('.sec-power .zoombar span')?.textContent?.replace('%', '')));
+  expect(opened >= 75, `the tree opens at 75 % or more (${opened} %)`);
+  await page.locator('.sec-power .zoombar button', { hasText: 'Fit' }).click();
+  await page.waitForTimeout(400);
+  expect((await page.locator('.sec-power .pt-minimap').count()) === 0, 'no overview while the whole tree is in the window: it would only cover cards');
+  await zoomIn('.sec-power');
+  expect((await page.locator('.sec-power .pt-minimap rect[class*="hot-down"]').count()) >= total - 1, 'zoomed in, the minimap shows them');
+  await fitAgain('.sec-power');
   const after = new Map((await edgesOf(page, '.sec-power')).map((e) => [`${e.from}>${e.to}`, e.d]));
   expect([...before].every(([k, d]) => after.get(k) === d), 'a highlighted edge takes the same route as before');
   const lightBad = routeProblems(await nodes(), await edgesOf(page, '.sec-power'));
@@ -115,7 +133,9 @@ export async function run({ page, shot, step, expect, section }) {
   await page.locator('[data-node="V5"] .pt-head').click();
   expect((await page.locator('.pt-edge.hot.up').count()) >= 2 && (await page.locator('.pt-edge.hot.down').count()) >= 2, 'what feeds it and what it feeds are lit in two tints');
   expect((await page.locator('.pt-node.up').count()) >= 3 && (await page.locator('.pt-node.down').count()) >= 3, 'with a tint on the cards');
-  expect((await page.locator('.pt-minimap rect[class*="hot-up"]').count()) >= 3 && (await page.locator('.pt-minimap rect[class*="hot-down"]').count()) >= 3, 'and in the minimap');
+  await zoomIn('.sec-power');
+  expect((await page.locator('.sec-power .pt-minimap rect[class*="hot-up"]').count()) >= 3 && (await page.locator('.sec-power .pt-minimap rect[class*="hot-down"]').count()) >= 3, 'and in the minimap');
+  await fitAgain('.sec-power');
   await shot('middle-selected');
 
   step('keys: the arrows move along the tree, Escape clears');

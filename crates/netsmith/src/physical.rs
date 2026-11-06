@@ -9,6 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use netsmith_check::{Loader, physical_file_name};
+use netsmith_lang::floor_boundary;
 
 /// The physical file of a source file: `led.nsm` has `led.physical.nsm`.
 pub fn physical_path(source: &Path) -> PathBuf {
@@ -136,10 +137,13 @@ fn unit_text(board: &str, case_text: &str, body: &str) -> String {
 }
 
 fn line_start(text: &str, at: usize) -> usize {
-    text[..at].rfind('\n').map_or(0, |i| i + 1)
+    text[..floor_boundary(text, at)]
+        .rfind('\n')
+        .map_or(0, |i| i + 1)
 }
 
 fn line_end(text: &str, at: usize) -> usize {
+    let at = floor_boundary(text, at);
     text[at..].find('\n').map_or(text.len(), |i| at + i + 1)
 }
 

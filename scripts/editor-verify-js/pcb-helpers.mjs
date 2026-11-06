@@ -33,7 +33,25 @@ export async function scene(page, board = BOARD) {
   return page.evaluate(async (b) => (await fetch(`/api/pcb/scene?board=${encodeURIComponent(b)}`)).json(), board);
 }
 
-/** Where a point of the sheet (mm) is in the browser window. */
+/** A point of the board with nothing under it: the point of the outline (3 mm in from the edge)
+ * that is farthest from every courtyard, keepout and cutout of the scene. A recipe that must click
+ * "empty board" asks the scene for it, because where the parts are is the placer's and the layout
+ * file's to choose, not a fixed spot of the outline. */
+export function emptySpot(s) {
+  const boxes = [...s.parts.map((p) => p.courtyard), ...s.keepouts.map((k) => k.area), ...s.cutouts.map((c) => c.area)];
+  const gap = (x, y, b) => Math.hypot(Math.max(b.x - x, 0, x - (b.x + b.width)), Math.max(b.y - y, 0, y - (b.y + b.height)));
+  const o = s.outline;
+  let best = null;
+  for (let x = o.x + 3; x <= o.x + o.width - 3; x += 0.5) {
+    for (let y = o.y + 3; y <= o.y + o.height - 3; y += 0.5) {
+      const room = Math.min(...boxes.map((b) => gap(x, y, b)));
+      if (!best || room > best.room) best = { x, y, room };
+    }
+  }
+  return best;
+}
+
+/** Where a point of the board (mm) is in the browser window. */
 export async function screenAt(page, x, y) {
   return page.evaluate(
     ([px, py]) => {

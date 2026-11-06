@@ -7,27 +7,116 @@
 //!
 //! What a person draws, and what this does:
 //!
-//! 1. The main parts (an IC, a connector) are in the middle, in a row that reads left to
-//!    right along the signal. Each is turned so its pins point toward what it connects to.
+//! 1. The main parts (an IC, a connector) are in rows that read left to right along the
+//!    signal; a sheet with enough parts is set in as many rows as make it a page (about 1.4 to
+//!    1.8 wide for each high), not a strip. Each part is turned so its pins point toward what
+//!    it connects to.
 //! 2. A two-terminal part that serves one pin (a decoupling capacitor, a pull-up, a
-//!    feedback divider, a bootstrap capacitor) goes next to that pin, on the pin's side.
-//!    Parts in series (a divider) stand in one stack, and what is on the node between them
-//!    is wired out sideways. Supplies are at the top of a part, grounds at the bottom.
-//! 3. Every net on a sheet is wired: orthogonal wires on a grid, round parts and texts,
-//!    crossing other wires only at right angles ([`grid`]). A name is used only where a wire
-//!    cannot do: a net that goes on to another sheet leaves through a flag, and a rail is
-//!    drawn with a power symbol at the end of a short wire (never on a wire). A net with a
-//!    generated name is always only wires.
+//!    feedback divider, a bootstrap capacitor) goes next to that pin, on the pin's side, and
+//!    is wired to it, always. Parts in series (a divider) stand in one stack, and what is on
+//!    the node between them is wired out sideways. Supplies are at the top of a part, grounds
+//!    at the bottom. A two-terminal part across **two** pins of one main part (a crystal across
+//!    `XL1` and `XL2`, a resonator, a series element) is a **pair satellite**: it is placed
+//!    beside both pins, in the orientation and at the place whose two wires are cheapest by
+//!    length, bends and crossings (every candidate is tried, in a fixed order, and routed on a
+//!    scratch copy of the grid), the wires are drawn before any other, they leave the part's
+//!    pins in any direction and cross nothing, and their nets are never named (`engine/pair.rs`).
+//! 3. A net is drawn as wires when it is local and short, and as a **name at each of its
+//!    places** when wires would be long or tangled. A wired net is orthogonal wires on a
+//!    grid, round parts and texts, crossing other wires only at right angles ([`grid`]). A
+//!    named net is a short stub out of a pin with the net's name at its end (a [`NetLabel`],
+//!    plain text in line with the stub) at each group of its pins (a main part and the parts
+//!    that serve its pins), and the pins of a group are wired to that one stub. Which nets
+//!    are named is [`policy`]'s rule, decided from a first drawing of the sheet: a net that
+//!    joins more than one group, and whose wire is longer than 48 grid steps (61 mm), or
+//!    that fans out to three groups over 30 steps, or crosses more than one other wire, is
+//!    named, the worst crossing first. A small sheet, whose wires are short, has none. A net
+//!    that goes on to another sheet is always named, by a flag (the shape of KiCad's
+//!    hierarchical label) at the end of the stub of each group of its pins. A rail is drawn
+//!    with a power symbol at the end of a short wire (never on a wire, never named). The net
+//!    of a part that serves a pin is only wires. A generated name is shown on a label as the
+//!    first pin of the net's main part (`J2.3`), as KiCad names such a net, and on a flag not
+//!    at all. The rails of a main part's own pins are drawn as before (a run of neighbouring
+//!    pins shares a bus and a symbol, and the rail is one wire across the part's group); the
+//!    rail pin of a small part that stands beside a main part has a **stub of its own** of a
+//!    few cells and a symbol at its end (supply up, ground down) instead of a drop to that wire,
+//!    which would run the length of the sheet and across other wires. Small parts side by side
+//!    in a row whose pins end on one line share a short wire and one symbol when nothing is on
+//!    its way ([`policy`]). Satellites on one rail that are not in one row (two pull-ups of a bus,
+//!    one a few steps above the other) share one wire and one symbol too, where the stubs end
+//!    within 20 cells of each other and a path of free nodes joins them: the lower one is wired
+//!    up to the row of the other's stub, across, and has no symbol of its own (`engine::bridge`).
+//!    The wire of a main part's rail is beyond the parts that have a pin on it (and what is written
+//!    at their pins), not beyond every part drawn in the same row: the supply of a power unit
+//!    that stands beside a taller signal unit is just above it.
 //! 4. A wire never crosses a text. A pin that connects to nothing has an X.
+//! 5. The members of one interface instance (the design carries them, [`netsmith_core::Design::interfaces`])
+//!    are a **bus** when three or more of them run between the same two main parts, or leave the
+//!    sheet from one part, each with one pin on each part and all on one side of it. The pins stay
+//!    one by one on the part's edge; each member's wire is a short entry that meets one thick
+//!    line, a spine beside the pins and a trunk that runs to the other part's spine or, where the
+//!    members go on to another sheet, ends in **one** flag with the interface's name. The line is
+//!    named once, by the instance, with the list of members and a slash with their count, and it
+//!    joins nothing: each entry joins the net of its name at the other end, as a label does. The
+//!    members have no flag or name of their own. See `engine/bus.rs` and ADR 0049.
+//!
+//! 6. The power path through a regulator is a **spine**, one row from left to right, as it is
+//!    on a hand drawing (`spine.rs`, `engine/spine.rs`; found from the netlist, the pin kinds and
+//!    the rails when they are known, never from what a part is called). On the row: the series
+//!    parts (a fuse, a diode, a ferrite bead, the inductor: two pins on two different nets, neither
+//!    a ground, not across two pins of the IC), each turned along it, from where the power comes in
+//!    to the IC's input pins on its left, and from its switching pin on its right out to the output
+//!    node; the sheet's own input protection, whose far end goes on to another sheet, is the first
+//!    stretch of it. The capacitors to ground hang from the node they serve, two steps under the
+//!    row, the smallest nearest the IC, each with a stub and a ground symbol of its own (side by
+//!    side they share one, as above), and the feedback divider hangs from the output node with the
+//!    feedback pin wired to its middle. A rail on the row is a wire along it with one symbol at
+//!    its outer end. The row of each side is the line of the IC's first pin on it, and a row is
+//!    kept free: the satellites of the IC's other pins are placed first beside it, the row's parts
+//!    beyond them, and the wires of a pair satellite (a bootstrap capacitor) join the row where
+//!    they meet it and cross nothing. The sheet of a spine and a few more pieces is not cut into
+//!    rows. `NETSMITH_SPINE=off` draws without it, to compare (the metrics `spine_bends` and
+//!    `detached_chain` still find the chains).
+//!
+//! 7. A part whose library symbol has several **units** is drawn as one box for each, as the
+//!    library draws the unit, upright, with the part's reference and the unit's letter (`U5A`
+//!    for the supplies and the twenty-five grounds of a processor module, `U5B` for its signals;
+//!    ADR 0050, `units.rs`). The decision is the library's (the unit of each pin of the symbol),
+//!    never a name or a pin kind. Each box is a main part to the engine: the capacitors that
+//!    decouple the supply stand beside the power unit, its grounds are one column with one wire
+//!    and one symbol, and the signal unit has no power row. `layout.parts[i]` is part `i` of the
+//!    design (a part of several units: its box with most pins) and the boxes of the further units
+//!    follow them; [`PlacedPart::part`] says which part a box draws. The checker still rebuilds
+//!    the nets pin by pin and has one rule more: a pad is drawn in exactly one box.
+//!
+//! 8. The source's own writing is drawn as **notes** ([`PlacedNote`], `notes.rs`, ADR 0060): the doc
+//!    comments of the board, a module, a part or an interface and the `==` relations, which the
+//!    design carries ([`netsmith_core::Design::notes`]). A note is a framed box of wrapped text
+//!    (a doc comment in the page's sans serif, a relation in monospace under a `Relation` heading)
+//!    that joins nothing and has no leader line. It is placed last, after the sheet is drawn and
+//!    every wire routed, in free room beside the part it is about (on a side no pin leaves by first),
+//!    near the middle of the parts of a relation, in a strip at the top left for the sheet's own,
+//!    or in a margin column when there is no room (all of them in one column when a sheet has more
+//!    than eight): no wire is moved for a note and a sheet with none is drawn as it was.
 //!
 //! Nothing here knows how a layout is drawn: [`crate::render_svg`] reads the result.
 
 mod engine;
 mod grid;
+pub(crate) mod notes;
+mod policy;
+mod prune;
+mod spine;
+mod units;
+
+pub use notes::{
+    HEADING_TEXT, LINE, MAX_CHARS, MONO_EM, MONO_TEXT, NOTE_TEXT, PAD, RADIUS, line_width, truncate,
+};
+pub(crate) use units::unit_letter;
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
 
-use netsmith_core::{Design, DesignError};
+use netsmith_core::{Design, DesignError, NoteKind};
 use netsmith_kicad::{Mapping, Pinout, SymbolLib};
 
 use crate::geom::{Dir, Orient, Pt, Rect, snap, snap_up};
@@ -121,7 +210,10 @@ pub struct PlacedPin {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlacedPart {
-    /// Index into `design.parts`.
+    /// Index into `design.parts`: the part this box draws. A part whose symbol has several
+    /// units has a box for each, with the same `part`; the first `design.parts.len()` boxes of
+    /// a layout are the parts' own (a part with units: its unit with most pins) and the other
+    /// units follow them (`units.rs`).
     pub part: usize,
     pub glyph: Glyph,
     /// Where the symbol's origin lands on the sheet.
@@ -147,10 +239,150 @@ pub struct Junction {
     pub at: Pt,
 }
 
+/// The name of a net at the end of a short stub, where a net is drawn as a name and not as a
+/// wire: plain text, in line with the stub that leaves a pin ([`policy`]). Same-name labels
+/// on a sheet are one net, as a flag's are.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NetLabel {
     pub net: usize,
     pub text: Text,
+    /// Where the label meets its wire: the end of the stub.
+    pub at: Pt,
+    /// The way the text runs away from `at`, the way the stub points.
+    pub dir: Dir,
+}
+
+/// One member of a [`Bus`]: the net it is on and what the interface calls it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BusMember {
+    /// Index into `design.nets`.
+    pub net: usize,
+    /// The member's name in the bus's interface (`tx`).
+    pub name: String,
+}
+
+/// Where the wire of one member meets a bus's thick line: the end of the member's wire.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BusEntry {
+    /// The member's net. A member's entry joins the net of that name at the other end of the
+    /// bus, as a label does; the bus itself joins nothing.
+    pub net: usize,
+    /// Which end of the bus it is at: an index into [`Bus::ends`].
+    pub end: usize,
+    /// Where the wire meets the thick line.
+    pub at: Pt,
+}
+
+/// The flag that ends a bus whose members go on to another sheet: one for the whole bus, with
+/// the interface's name in it, in the shape of a net's flag.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BusFlag {
+    /// Where the thick line ends and the point of the flag is.
+    pub at: Pt,
+    /// The way the flag points away from the line.
+    pub dir: Dir,
+    pub length: f64,
+    pub label: Text,
+}
+
+impl BusFlag {
+    /// The box the flag and its name cover.
+    pub fn extent(&self) -> Rect {
+        let port = Port {
+            net: 0,
+            at: self.at,
+            dir: self.dir,
+            length: self.length,
+            label: None,
+        };
+        let mut r = port.extent();
+        r.union(self.label.extent_at(Port::TEXT));
+        r
+    }
+}
+
+/// The members of one interface instance drawn as one bus: each member's wire is a short
+/// entry that meets a thick line (the spine at an end, the trunk between the ends), which runs
+/// to the other part, or ends in one flag where the members go on to another sheet. The thick
+/// line carries no net; each entry carries its member's net and joins, by name, the net of
+/// that name at the other end. The bus is named once, by the interface instance, with the
+/// list of its members and their count.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Bus {
+    /// The path of the interface instance that names it (`mcu.uart0`): what the bus is
+    /// keyed by.
+    pub path: String,
+    /// The interface's definition (`Uart`).
+    pub type_name: String,
+    /// What the label says: the instance's own name (`uart0`).
+    pub name: String,
+    /// The members, in the order of the pins at the first end.
+    pub members: Vec<BusMember>,
+    /// The thick line, as runs of corners: a spine at each end that meets the part, and the
+    /// trunk between them or out to the flag.
+    pub lines: Vec<Vec<Pt>>,
+    /// The members' entries, `members.len()` at each end.
+    pub entries: Vec<BusEntry>,
+    /// Indices into `design.parts` of the part at each end: two, or one when the bus ends in a
+    /// flag.
+    pub ends: Vec<usize>,
+    /// The flag, where the members go on to another sheet.
+    pub flag: Option<BusFlag>,
+    /// The name of the interface instance, and under it the list of its members.
+    pub label: Text,
+    pub list: Text,
+    /// What the other end calls the interface, when it is not the same (`uart: {rx, tx}`).
+    pub other: Option<Text>,
+    /// The slash across the thick line, and the count of members beside it.
+    pub tick: (Pt, Pt),
+    pub count: Text,
+}
+
+impl Bus {
+    /// Every straight run of the thick line.
+    pub fn runs(&self) -> Vec<(Pt, Pt)> {
+        let mut out = Vec::new();
+        for line in &self.lines {
+            for w in line.windows(2) {
+                out.push((w[0], w[1]));
+            }
+        }
+        out
+    }
+
+    /// The texts of the bus, with the flag's.
+    pub fn texts(&self) -> Vec<&Text> {
+        let mut out: Vec<&Text> = vec![&self.label, &self.list, &self.count];
+        out.extend(self.other.as_ref());
+        out.extend(self.flag.as_ref().map(|f| &f.label));
+        out
+    }
+}
+
+/// A note of the design placed on a sheet ([`netsmith_core::Note`], `layout/notes.rs`): a framed
+/// box with wrapped text. It joins nothing and is no conductor.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlacedNote {
+    /// Index into `design.notes`.
+    pub note: usize,
+    pub kind: NoteKind,
+    /// The path of the thing the note belongs to (`Note::path`).
+    pub path: String,
+    /// Index into `design.parts` of the first part the note is about that is on this sheet;
+    /// none for a note of the sheet.
+    pub anchor: Option<usize>,
+    /// The frame, a rounded rectangle.
+    pub frame: Rect,
+    /// The small heading of a relation note (`Relation`).
+    pub heading: Option<Text>,
+    /// The text, a line each, written from the left of the frame ([`Anchor::Start`]).
+    pub lines: Vec<Text>,
+    /// How high the letters of the lines are.
+    pub size: f64,
+    /// Whether the lines are in a monospace face (a relation), else in the page's sans serif.
+    pub mono: bool,
+    /// The whole text, when the lines are cut at [`MAX_CHARS`] letters.
+    pub full: Option<String>,
 }
 
 /// The nets of a design that are power nets, by name, as the checker's model has them: the
@@ -226,18 +458,24 @@ pub struct Port {
 }
 
 impl Port {
-    /// Half the height of a flag, and the height of the name in it: flags in a column are one
-    /// pin pitch apart, with a grid step between them.
+    /// Half the height of a flag, and the height of the name in it: flags of neighbouring pins
+    /// are one pin pitch apart, with a grid step less a little between them.
     pub const HALF: f64 = 0.64;
-    pub const TEXT: f64 = 0.9;
+    pub const TEXT: f64 = 1.0;
 
     pub fn extent(&self) -> Rect {
         let tip = self.at;
         let end = tip.step(self.dir, self.length);
-        let mut r = Rect::around(Pt::new(tip.x, tip.y - Self::HALF));
-        r.include(Pt::new(tip.x, tip.y + Self::HALF));
-        r.include(Pt::new(end.x, end.y - Self::HALF));
-        r.include(Pt::new(end.x, end.y + Self::HALF));
+        // Half a flag's height to each side of the line the flag runs along.
+        let (px, py) = if self.dir.is_vertical() {
+            (Self::HALF, 0.0)
+        } else {
+            (0.0, Self::HALF)
+        };
+        let mut r = Rect::around(Pt::new(tip.x - px, tip.y - py));
+        r.include(Pt::new(tip.x + px, tip.y + py));
+        r.include(Pt::new(end.x - px, end.y - py));
+        r.include(Pt::new(end.x + px, end.y + py));
         r
     }
 }
@@ -271,6 +509,19 @@ pub struct Marks {
     pub must: std::collections::BTreeMap<(String, String), String>,
 }
 
+/// The power path through an IC as the layout found it ([`spine`]): the chains of series parts
+/// that lead to it, each from the IC outward. The metrics `spine_bends` and `detached_chain`
+/// read the drawing against it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpineMark {
+    /// Index into `design.parts` of the IC.
+    pub ic: usize,
+    /// Indices into `design.parts`: the input side's chain, the output side's, then the free
+    /// chains (series parts of the sheet that join neither side), the nearest first. A side with
+    /// no series part has no chain here.
+    pub chains: Vec<Vec<usize>>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Layout {
     /// In the same order as `design.parts`.
@@ -284,6 +535,13 @@ pub struct Layout {
     pub wires: Vec<Wire>,
     pub junctions: Vec<Junction>,
     pub labels: Vec<NetLabel>,
+    /// The interfaces drawn as one thick line, by the path of their instance.
+    pub buses: Vec<Bus>,
+    /// The power paths found through ICs, drawn as a spine or not.
+    pub spines: Vec<SpineMark>,
+    /// The notes of the design drawn as boxes of text (`Design::notes`), none for a design that
+    /// has none.
+    pub notes: Vec<PlacedNote>,
     pub bounds: Rect,
 }
 
@@ -336,6 +594,104 @@ struct Ctx<'a> {
     power: Vec<Option<PowerKind>>,
     /// Whether ground symbols carry their net's name: when the design has more than one ground.
     label_grounds: bool,
+    /// The power paths through ICs ([`spine`]), found when the rails are known.
+    spines: Vec<spine::Spine>,
+    /// Whether each part belongs to one: it is placed with its IC and stands in no stack.
+    spine_part: Vec<bool>,
+    /// Whether each net is on one: it is wired along the line, a rail on it has one symbol.
+    spine_net: Vec<bool>,
+    /// The choices the engine is run with: the first drawing uses [`Tuning::default`], and a
+    /// sheet that has wires crossing is drawn again with the others (see [`layout_with`]).
+    tuning: Tuning,
+    /// Which choices of [`Tuning`] the drawing made last has a place where the choice makes a
+    /// difference (see [`Ctx::touch`]).
+    touched: std::cell::Cell<u8>,
+    /// Where the pair satellites were placed, for the drawings of this sheet to share.
+    pair_places: engine::PairCache,
+}
+
+impl Ctx<'_> {
+    /// Says that the drawing being made came to a place where the choice of [`Tuning`] with the
+    /// bit `bit` (`Tuning::*_BIT`) would have drawn something else, whether the choice is on
+    /// or off now. A drawing is made by steps that do not read the choices anywhere else, so
+    /// two drawings that agree on the choices told here are the same drawing, and a sheet
+    /// need not be drawn again for a choice that was never told (see [`layout_with_tuning`]).
+    fn touch(&self, bit: u8) {
+        self.touched.set(self.touched.get() | bit);
+    }
+}
+
+/// Choices of the engine that are not right for every sheet. A sheet is drawn with the
+/// default of each; when that leaves wires crossing, it is drawn again with each of
+/// [`Tuning::SINGLE`], and the drawing with the fewest crossings is kept (the first of equals,
+/// so a sheet that does not cross never changes). Nothing here is chosen by a name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Tuning {
+    /// A main part's rail pins (at most [`Tuning::LOCAL_MAIN_PINS`] on one net) have a stub
+    /// and a symbol of their own, short and local, as a satellite's have, instead of a wire to
+    /// the rail of the group: the ground of an IC's pin is a symbol just beyond the pin.
+    pub local_main: bool,
+    /// The satellites of a part's pins are placed from the bottom pin up, not from the top
+    /// down (the lower pin's satellite is nearest, and the wire of a pin above passes over it).
+    pub bottom_first: bool,
+    /// A part across two supplies is a pair satellite, standing beside the two pins of its chip
+    /// that the supplies are on.
+    pub pair_rails: bool,
+}
+
+impl Tuning {
+    /// The most pins of one rail on a main part that [`Tuning::local_main`] gives a symbol each.
+    pub const LOCAL_MAIN_PINS: usize = 3;
+    /// The bit of each choice in [`Ctx::touch`] and [`Tuning::bits`].
+    pub(crate) const LOCAL_MAIN_BIT: u8 = 1;
+    pub(crate) const BOTTOM_FIRST_BIT: u8 = 2;
+    pub(crate) const PAIR_RAILS_BIT: u8 = 4;
+
+    /// The choices as bits.
+    fn bits(self) -> u8 {
+        let bit = |on: bool, bit: u8| if on { bit } else { 0 };
+        bit(self.local_main, Self::LOCAL_MAIN_BIT)
+            | bit(self.bottom_first, Self::BOTTOM_FIRST_BIT)
+            | bit(self.pair_rails, Self::PAIR_RAILS_BIT)
+    }
+
+    /// What a sheet that crosses is drawn with besides the default: each choice alone (and
+    /// then those that helped, together).
+    pub const SINGLE: [Tuning; 3] = [
+        Tuning {
+            local_main: true,
+            ..Tuning::DEFAULT
+        },
+        Tuning {
+            bottom_first: true,
+            ..Tuning::DEFAULT
+        },
+        Tuning {
+            pair_rails: true,
+            ..Tuning::DEFAULT
+        },
+    ];
+
+    /// The choices that any of `these` makes.
+    fn union(these: &[Tuning]) -> Tuning {
+        Tuning {
+            local_main: these.iter().any(|t| t.local_main),
+            bottom_first: these.iter().any(|t| t.bottom_first),
+            pair_rails: these.iter().any(|t| t.pair_rails),
+        }
+    }
+
+    const DEFAULT: Tuning = Tuning {
+        local_main: false,
+        bottom_first: false,
+        pair_rails: false,
+    };
+}
+
+impl Default for Tuning {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
 }
 
 /// Place the parts of `design` and route its nets.
@@ -372,6 +728,50 @@ pub fn layout_marked(
     )
 }
 
+/// [`layout_rails`] drawn once with the given [`Tuning`], without drawing again with the others
+/// when wires cross: to see what a choice does (the tests do), not for a tool.
+pub fn layout_tuned(
+    design: &Design,
+    rails: &Rails,
+    mapping: &Mapping,
+    lib: &SymbolLib,
+    tuning: Tuning,
+) -> Result<Layout, DesignError> {
+    layout_tuned_touched(design, rails, mapping, lib, tuning).map(|(layout, _)| layout)
+}
+
+/// [`layout_tuned`], and the choices that made a difference somewhere in the drawing: each of
+/// them was on or off at a place where the other value would have drawn something else. A
+/// drawing with the choices of `tuning` is the same drawing with any other choices that agree
+/// with `tuning` on those (it is how [`layout_rails`] leaves out a drawing it would only
+/// repeat; the tests check it).
+pub fn layout_tuned_touched(
+    design: &Design,
+    rails: &Rails,
+    mapping: &Mapping,
+    lib: &SymbolLib,
+    tuning: Tuning,
+) -> Result<(Layout, Tuning), DesignError> {
+    let (layout, touched) = layout_with_tuning(
+        design,
+        mapping,
+        lib,
+        &vec![false; design.nets.len()],
+        rails,
+        &Marks::default(),
+        rails.ground.len() > 1,
+        Some(tuning),
+    )?;
+    Ok((
+        layout,
+        Tuning {
+            local_main: touched & Tuning::LOCAL_MAIN_BIT != 0,
+            bottom_first: touched & Tuning::BOTTOM_FIRST_BIT != 0,
+            pair_rails: touched & Tuning::PAIR_RAILS_BIT != 0,
+        },
+    ))
+}
+
 /// [`layout`] with `external[n]` set for each net of `design` that continues somewhere else
 /// (another sheet): it is drawn as a stub and a name at each of its pins here.
 pub(crate) fn layout_with(
@@ -383,14 +783,52 @@ pub(crate) fn layout_with(
     marks: &Marks,
     label_grounds: bool,
 ) -> Result<Layout, DesignError> {
+    layout_with_tuning(
+        design,
+        mapping,
+        lib,
+        external,
+        rails,
+        marks,
+        label_grounds,
+        None,
+    )
+    .map(|(layout, _)| layout)
+}
+
+/// [`layout_with`], drawn only with `only` if it is given; and the choices of [`Tuning`] (as
+/// bits) that made a difference in the first drawing.
+#[allow(clippy::too_many_arguments)]
+fn layout_with_tuning(
+    design: &Design,
+    mapping: &Mapping,
+    lib: &SymbolLib,
+    external: &[bool],
+    rails: &Rails,
+    marks: &Marks,
+    label_grounds: bool,
+    only: Option<Tuning>,
+) -> Result<(Layout, u8), DesignError> {
     design.validate()?;
+    let notes_of = design;
     let used = used_pads(design);
-    let glyphs: Vec<Glyph> = design
-        .parts
-        .iter()
-        .zip(&used)
-        .map(|(p, u)| Glyph::for_part(p, u, Pinout::of(p).as_ref(), mapping, lib))
-        .collect();
+    // A part whose symbol has several units is drawn as one box for each: the engine draws a
+    // derived design in which each unit is a part, and the boxes are told back to the design's
+    // parts at the end (`units.rs`).
+    let split = units::split(design, &used, marks, mapping, lib);
+    let (design, marks, glyphs): (&Design, &Marks, Vec<Glyph>) = match &split {
+        Some(s) => (&s.design, &s.marks, s.glyphs.clone()),
+        None => (
+            design,
+            marks,
+            design
+                .parts
+                .iter()
+                .zip(&used)
+                .map(|(p, u)| Glyph::for_part(p, u, Pinout::of(p).as_ref(), mapping, lib))
+                .collect(),
+        ),
+    };
 
     let index: HashMap<&str, usize> = design
         .parts
@@ -439,7 +877,7 @@ pub(crate) fn layout_with(
         .map(|p| is_connector(&p.refdes))
         .collect();
     let level = levels(&part_nets, &connector, &ground);
-    let ctx = Ctx {
+    let mut ctx = Ctx {
         design,
         glyphs,
         pin_net,
@@ -450,7 +888,37 @@ pub(crate) fn layout_with(
         external: external.to_vec(),
         power,
         label_grounds,
+        spines: Vec::new(),
+        spine_part: vec![false; design.parts.len()],
+        spine_net: vec![false; design.nets.len()],
+        tuning: Tuning::default(),
+        touched: std::cell::Cell::new(0),
+        pair_places: engine::PairCache::default(),
     };
+    // `NETSMITH_SPINE=off` draws without the spines (to compare), the paths are still found.
+    let found = spine::find(&ctx);
+    let spine_marks: Vec<SpineMark> = found
+        .iter()
+        .map(|sp| SpineMark {
+            ic: sp.ic,
+            chains: sp
+                .sides()
+                .filter(|side| !side.parts.is_empty())
+                .map(|side| side.parts.clone())
+                .collect(),
+        })
+        .collect();
+    if std::env::var_os("NETSMITH_SPINE").is_none_or(|v| v != "off") {
+        ctx.spines = found;
+    }
+    for sp in &ctx.spines {
+        for p in sp.parts() {
+            ctx.spine_part[p] = true;
+        }
+        for (n, _) in sp.nets() {
+            ctx.spine_net[n] = true;
+        }
+    }
 
     let units = find_units(&ctx);
     let unit_of: HashMap<usize, usize> = units
@@ -467,7 +935,178 @@ pub(crate) fn layout_with(
     }
 
     let orient = orientations(&ctx, &units, &column_of);
-    Ok(engine::run(&ctx, &units, &order, &orient, marks))
+    // Draw the sheet, see which nets are better as names, and draw it again with them: a name
+    // takes room, and a net named changes what crosses what. Nets are only ever added, so
+    // this ends; it stops after a few passes in any case.
+    let draw = |ctx: &Ctx| {
+        let mut labelled = vec![false; design.nets.len()];
+        ctx.touched.set(0);
+        let mut drawn = engine::run(ctx, &units, &order, &orient, marks, &labelled);
+        for _ in 0..policy::PASSES {
+            let next = policy::choose(ctx, &drawn, &labelled);
+            if next == labelled {
+                break;
+            }
+            labelled = next;
+            ctx.touched.set(0);
+            drawn = engine::run(ctx, &units, &order, &orient, marks, &labelled);
+        }
+        (drawn, labelled)
+    };
+    if let Some(tuning) = only {
+        ctx.tuning = tuning;
+    }
+    let (first, labelled) = draw(&ctx);
+    let mut best = Quality::of(&first.layout);
+    let touched_first = ctx.touched.get();
+    // The drawings made so far, the first at index 0, and which of them is kept.
+    let mut runs = vec![Run {
+        tuning: ctx.tuning,
+        touched: ctx.touched.get(),
+        quality: best,
+        drawn: first,
+    }];
+    let mut kept_run = 0;
+    if only.is_none() && best.crossings > 0 {
+        // A sheet whose wires cross is drawn again, once for each of the choices of `Tuning`
+        // alone, with the nets named as in the first drawing, and then once with all the choices
+        // that were better together. A drawing that crosses less, or as much with at least 5 mm
+        // less wire, and breaks no more rules replaces the one drawn so far. The rules broken are
+        // counted only for such a drawing (the check is the dearest part), and once for the one
+        // it would replace.
+        //
+        // A choice is only drawn when it can make a difference: the engine tells where it came
+        // to a place where a choice matters (`Ctx::touch`), so a drawing that agrees with one
+        // made before on every choice that one touched is that drawing, and it is not drawn
+        // again (a sheet with no part across two supplies has nothing for `pair_rails`).
+        let mut best_broken: Option<usize> = None;
+        // The choices in the drawing kept so far.
+        let mut kept = Tuning::default();
+        let mut attempt = |ctx: &mut Ctx, tuning: Tuning| -> bool {
+            let run = match runs
+                .iter()
+                .position(|r| (r.tuning.bits() ^ tuning.bits()) & r.touched == 0)
+            {
+                Some(run) => run,
+                None => {
+                    ctx.tuning = tuning;
+                    ctx.touched.set(0);
+                    let other = engine::run(ctx, &units, &order, &orient, marks, &labelled);
+                    runs.push(Run {
+                        tuning,
+                        touched: ctx.touched.get(),
+                        quality: Quality::of(&other.layout),
+                        drawn: other,
+                    });
+                    runs.len() - 1
+                }
+            };
+            let q = runs[run].quality;
+            if !q.better_than(&best) {
+                return false;
+            }
+            let held = *best_broken.get_or_insert_with(|| {
+                crate::check::check(design, &runs[kept_run].drawn.layout).len()
+            });
+            let broken = crate::check::check(design, &runs[run].drawn.layout).len();
+            if broken > held {
+                return false;
+            }
+            best = q;
+            best_broken = Some(broken);
+            kept_run = run;
+            true
+        };
+        // Each choice alone, then each that did not help added to those that did.
+        let mut helped: Vec<Tuning> = Vec::new();
+        for single in Tuning::SINGLE {
+            if attempt(&mut ctx, single) {
+                helped.push(single);
+                kept = Tuning::union(&[kept, single]);
+            }
+        }
+        for single in Tuning::SINGLE {
+            if helped.contains(&single) || helped.is_empty() {
+                continue;
+            }
+            let with = Tuning::union(&[kept, single]);
+            if attempt(&mut ctx, with) {
+                kept = with;
+            }
+        }
+        ctx.tuning = Tuning::default();
+    }
+    let mut drawn = runs.swap_remove(kept_run).drawn;
+    drawn.layout.spines = spine_marks;
+    if let Some(s) = &split {
+        for (placed, &part) in drawn.layout.parts.iter_mut().zip(&s.origin) {
+            placed.part = part;
+        }
+        for m in &mut drawn.layout.marks {
+            m.part = s.origin[m.part];
+        }
+    }
+    // The notes go last, in the free room of the drawing that is made: no wire is moved for
+    // one, and a sheet with none is as it was.
+    notes::place(notes_of, &mut drawn.layout);
+    Ok((drawn.layout, touched_first))
+}
+
+/// A sheet drawn with some choices of [`Tuning`], and where in it those choices mattered.
+struct Run {
+    tuning: Tuning,
+    /// The bits of the choices that made a difference somewhere in it (`Ctx::touch`).
+    touched: u8,
+    quality: Quality,
+    drawn: engine::Drawn,
+}
+
+/// What a drawing of a sheet is judged by when it is drawn again with another [`Tuning`].
+#[derive(Clone, Copy)]
+struct Quality {
+    crossings: usize,
+    symbols: usize,
+    /// The wire in millimetres.
+    length: f64,
+}
+
+impl Quality {
+    fn of(layout: &Layout) -> Self {
+        use crate::sheetview::{Rel, Seg, relate, simplify};
+        let mut segs: Vec<Seg> = Vec::new();
+        for w in &layout.wires {
+            for pair in simplify(&w.points).windows(2) {
+                segs.push(Seg {
+                    net: w.net,
+                    a: pair[0],
+                    b: pair[1],
+                });
+            }
+        }
+        let length = segs.iter().map(Seg::length).sum();
+        let mut crossings = 0;
+        for (i, s) in segs.iter().enumerate() {
+            for t in &segs[i + 1..] {
+                if s.net != t.net && matches!(relate(s, t), Rel::Cross(_)) {
+                    crossings += 1;
+                }
+            }
+        }
+        Self {
+            crossings,
+            symbols: layout.symbols.len(),
+            length,
+        }
+    }
+
+    /// Fewer crossings, or as many with at least 5 mm less wire, and not many more power
+    /// symbols than the drawing it would replace (a symbol for every pin is not a better
+    /// drawing). That it breaks no more rules is asked separately.
+    fn better_than(&self, other: &Self) -> bool {
+        self.symbols <= other.symbols + 2
+            && (self.crossings < other.crossings
+                || (self.crossings == other.crossings && self.length + 5.0 < other.length))
+    }
 }
 
 // ---------------------------------------------------------------------------------------
@@ -534,7 +1173,7 @@ fn levels(part_nets: &[Vec<usize>], connector: &[bool], ground: &[bool]) -> Vec<
 /// A part with two pins on one axis, facing opposite ways, can stand in a stack.
 fn is_stackable(ctx: &Ctx, p: usize) -> bool {
     let g = &ctx.glyphs[p];
-    if g.symbol.is_none() || g.pins.len() != 2 || ctx.connector[p] {
+    if g.symbol.is_none() || g.pins.len() != 2 || g.unit.is_some() || ctx.connector[p] {
         return false;
     }
     let (a, b) = (&g.pins[0], &g.pins[1]);
@@ -557,6 +1196,17 @@ fn other_pad<'a>(ctx: &'a Ctx, part: usize, pad: &str) -> &'a str {
     }
 }
 
+/// Whether the far pins of two parts joined at `a` and `b` are on one rail (a pull-down and a
+/// capacitor on one node, both to ground): they are two parts hung on the node, side by side,
+/// not a stack with a wire round from the top of it to the bottom.
+fn same_rail_beyond(ctx: &Ctx, a: (usize, &str), b: (usize, &str)) -> bool {
+    let far = |(p, pad): (usize, &str)| net_of(ctx, p, other_pad(ctx, p, pad));
+    match (far(a), far(b)) {
+        (Some(x), Some(y)) => x == y && (ctx.power[x].is_some() || ctx.ground[x]),
+        _ => false,
+    }
+}
+
 fn find_units(ctx: &Ctx) -> Vec<Unit> {
     let n = ctx.design.parts.len();
     // link[(part, pad)] = (other part, other pad) for a net of exactly these two pins.
@@ -572,7 +1222,7 @@ fn find_units(ctx: &Ctx) -> Vec<Unit> {
             .pins
             .iter()
             .map(|pin| (find(&pin.refdes), pin.pin.as_str()))
-            .filter(|&(p, _)| is_stackable(ctx, p))
+            .filter(|&(p, _)| is_stackable(ctx, p) && !ctx.spine_part[p])
             .collect();
         // Parts that hang on a node with something else (an inductor, a fuse) are not in
         // series with each other, but each in series with what the node goes to.
@@ -585,6 +1235,7 @@ fn find_units(ctx: &Ctx) -> Vec<Unit> {
         if let [(a, pa), (b, pb)] = stackable[..]
             && a != b
             && !(net.pins.len() > 2 && (in_series_kind(a) || in_series_kind(b)))
+            && !same_rail_beyond(ctx, (a, pa), (b, pb))
         {
             link.insert((a, pa.to_string()), (b, pb.to_string()));
             link.insert((b, pb.to_string()), (a, pa.to_string()));
@@ -633,10 +1284,19 @@ fn find_units(ctx: &Ctx) -> Vec<Unit> {
             }
         }
         // Higher nets go on top.
-        let top = net_of(ctx, parts[0], &up_pads[0]).map_or(0, |n| ctx.level[n]);
+        let single = parts.len() == 1;
+        let rank = |n: usize| match ctx.power[n] {
+            // A part on its own (a pull-up, a pull-down) has its supply above and its ground
+            // below, however far each net is from ground; in a stack the levels decide.
+            Some(PowerKind::Supply) if single => usize::MAX / 2,
+            Some(PowerKind::Ground) if single => 0,
+            None if single && ctx.ground[n] => 0,
+            _ => ctx.level[n] + 1,
+        };
+        let top = net_of(ctx, parts[0], &up_pads[0]).map_or(0, rank);
         let last = parts.len() - 1;
         let bottom_pad = other_pad(ctx, parts[last], &up_pads[last]);
-        let bottom = net_of(ctx, parts[last], bottom_pad).map_or(0, |n| ctx.level[n]);
+        let bottom = net_of(ctx, parts[last], bottom_pad).map_or(0, rank);
         if bottom > top {
             parts.reverse();
             up_pads = parts
@@ -848,9 +1508,13 @@ fn orientations(ctx: &Ctx, units: &[Unit], column_of: &[usize]) -> Vec<Orient> {
     let mut orient = vec![Orient::IDENTITY; ctx.design.parts.len()];
     for unit in units {
         for (i, &p) in unit.parts.iter().enumerate() {
-            orient[p] = if ctx.glyphs[p].dense {
-                // A table of pins stays upright: supplies at the top, grounds at the bottom.
+            orient[p] = if ctx.glyphs[p].dense || ctx.glyphs[p].unit.is_some() {
+                // A table of pins stays upright: supplies at the top, grounds at the bottom. A
+                // unit of a symbol is drawn as the library draws it.
                 Orient::IDENTITY
+            } else if let Some(sp) = ctx.spines.iter().find(|s| s.ic == p) {
+                // The input of a regulator on the left, its switching pin on the right.
+                spine::orientation(ctx, sp)
             } else if unit.up_pads.is_empty() {
                 best_orientation(ctx, p, column_of)
             } else {
@@ -897,11 +1561,33 @@ fn best_orientation(ctx: &Ctx, p: usize, column_of: &[usize]) -> Orient {
     } else {
         readable
     };
+    // A part with all its pins on one side (a connector), or with one pin (a test point), is
+    // turned so that what is written at its pins reads across.
+    let first = glyph.pins.first().map(|q| q.toward_body);
+    let one_sided = glyph.pins.iter().all(|q| Some(q.toward_body) == first);
+    let simple = one_sided || connected.len() == 1;
     let mut best = (f64::NEG_INFINITY, candidates[0]);
     for orient in candidates {
         let mut score = 0.0;
         for (pin, n) in &connected {
             let escape = orient.dir((-pin.toward_body.0, -pin.toward_body.1));
+            if simple && ctx.external[*n] && ctx.power[*n].is_none() {
+                score += match escape {
+                    Dir::Left if pin.flow.takes() => 10.5,
+                    Dir::Right if pin.flow.gives() => 10.5,
+                    Dir::Left | Dir::Right => 10.0,
+                    _ => 0.0,
+                };
+            }
+            if connected.len() == 1 {
+                // A pin on its own on a rail points at the rail's symbol.
+                score += match (ctx.power[*n], escape) {
+                    (Some(PowerKind::Supply), Dir::Up) | (Some(PowerKind::Ground), Dir::Down) => {
+                        5.0
+                    }
+                    _ => 0.0,
+                };
+            }
             let want_up = sign(ctx.level[*n] as f64 - mean_level);
             let escapes_up = match escape {
                 Dir::Up => 1.0,
@@ -948,7 +1634,13 @@ fn body_of(glyph: &Glyph, orient: Orient) -> Rect {
 }
 
 /// The reference and the value of a part, written on `side` of its body.
-fn part_texts(part: &netsmith_core::Part, body: Rect, side: Dir, gap: f64) -> (Text, Option<Text>) {
+fn part_texts(
+    part: &netsmith_core::Part,
+    body: Rect,
+    side: Dir,
+    gap: f64,
+    pins: &[PlacedPin],
+) -> (Text, Option<Text>) {
     let (cx, cy) = (
         (body.min.x + body.max.x) / 2.0,
         (body.min.y + body.max.y) / 2.0,
@@ -966,29 +1658,62 @@ fn part_texts(part: &netsmith_core::Part, body: Rect, side: Dir, gap: f64) -> (T
                 text(&part.value, Pt::new(x, cy - 0.3 + line), anchor),
             )
         }
-        Dir::Up => (
-            text(
-                &part.refdes,
-                Pt::new(cx, body.min.y - gap - line),
-                Anchor::Middle,
-            ),
-            text(&part.value, Pt::new(cx, body.min.y - gap), Anchor::Middle),
-        ),
-        Dir::Down => (
-            text(
-                &part.refdes,
-                Pt::new(cx, body.max.y + gap + TEXT_SIZE),
-                Anchor::Middle,
-            ),
-            text(
-                &part.value,
-                Pt::new(cx, body.max.y + gap + TEXT_SIZE + line),
-                Anchor::Middle,
-            ),
-        ),
+        Dir::Up => {
+            let (x, anchor) = text_column(part, pins, side, cx);
+            (
+                text(&part.refdes, Pt::new(x, body.min.y - gap - line), anchor),
+                text(&part.value, Pt::new(x, body.min.y - gap), anchor),
+            )
+        }
+        Dir::Down => {
+            let (x, anchor) = text_column(part, pins, side, cx);
+            (
+                text(
+                    &part.refdes,
+                    Pt::new(x, body.max.y + gap + TEXT_SIZE),
+                    anchor,
+                ),
+                text(
+                    &part.value,
+                    Pt::new(x, body.max.y + gap + TEXT_SIZE + line),
+                    anchor,
+                ),
+            )
+        }
     };
     let value = (!part.value.is_empty()).then_some(value);
     (reference, value)
+}
+
+/// Where the reference and the value go along a top or bottom side: centred on the body, or
+/// else the nearest place to the centre where no wire that leaves that side runs through them
+/// (a text is not written over a wire, and a wire does not turn aside for a text).
+fn text_column(
+    part: &netsmith_core::Part,
+    pins: &[PlacedPin],
+    side: Dir,
+    centre: f64,
+) -> (f64, Anchor) {
+    // Clear space between a wire and a text.
+    const CLEAR: f64 = 2.0;
+    // As wide as the layout measures it and as wide as it is drawn, whichever is more.
+    let em = |t: &str| crate::glyph::text_em(t).max(t.chars().count() as f64 * CHAR_WIDTH);
+    let half = em(&part.refdes).max(em(&part.value)) * TEXT_SIZE / 2.0;
+    let wires: Vec<f64> = pins
+        .iter()
+        .filter(|q| q.escape == side)
+        .map(|q| q.at.x)
+        .collect();
+    let free = |c: f64| wires.iter().all(|&x| (x - c).abs() >= half + CLEAR - 1e-9);
+    if free(centre) {
+        return (centre, Anchor::Middle);
+    }
+    wires
+        .iter()
+        .flat_map(|&x| [x + CLEAR + half, x - CLEAR - half])
+        .filter(|&c| free(c))
+        .min_by(|a, b| (a - centre).abs().total_cmp(&(b - centre).abs()))
+        .map_or((centre, Anchor::Middle), |c| (c, Anchor::Middle))
 }
 
 /// How far from the body the texts go on `side`: beyond the wires and the X of the pins that
@@ -997,7 +1722,8 @@ fn text_gap(pins: &[PlacedPin], side: Dir) -> f64 {
     if pins.iter().any(|q| q.escape == side) {
         GRID + STUB + 2.0
     } else {
-        GRID
+        // Past the number of a pin at the edge, which is written above its line.
+        GRID + 0.6
     }
 }
 
@@ -1035,7 +1761,7 @@ fn place_part(ctx: &Ctx, p: usize, orient: Orient, nets: &[Option<usize>]) -> Pl
 
     // Beside a tall part, above or below a wide one, on a side no wire leaves by.
     let side = text_side(&pins, body);
-    let (reference, value) = part_texts(part, body, side, text_gap(&pins, side));
+    let (reference, value) = part_texts(part, body, side, text_gap(&pins, side), &pins);
 
     let mut extent = body;
     extent.union(reference.extent());
@@ -1103,57 +1829,6 @@ fn union_into(into: &mut Option<Rect>, r: Rect) {
     match into {
         Some(o) => o.union(r),
         None => *into = Some(r),
-    }
-}
-
-/// A dot where a wire meets the middle of another of the same net, or where three or more
-/// wires end at one point.
-fn junctions(wires: &[Wire]) -> Vec<Junction> {
-    let key = |p: Pt| ((p.x * 1000.0).round() as i64, (p.y * 1000.0).round() as i64);
-    let mut by_net: HashMap<usize, Vec<(Pt, Pt)>> = HashMap::new();
-    for w in wires {
-        for s in w.points.windows(2) {
-            by_net.entry(w.net).or_default().push((s[0], s[1]));
-        }
-    }
-    let mut nets: Vec<usize> = by_net.keys().copied().collect();
-    nets.sort_unstable();
-
-    let mut out = Vec::new();
-    for net in nets {
-        let segments = &by_net[&net];
-        let mut seen = BTreeSet::new();
-        for &(a, b) in segments {
-            for p in [a, b] {
-                if !seen.insert(key(p)) {
-                    continue;
-                }
-                let (mut ends, mut through) = (0, 0);
-                for &(s, e) in segments {
-                    if key(s) == key(p) || key(e) == key(p) {
-                        ends += 1;
-                    } else if lies_inside(p, s, e) {
-                        through += 1;
-                    }
-                }
-                if ends >= 3 || (through >= 1 && ends + through >= 2) {
-                    out.push(Junction { net, at: p });
-                }
-            }
-        }
-    }
-    out
-}
-
-/// Whether `p` is strictly between the ends of an axis-aligned segment.
-fn lies_inside(p: Pt, a: Pt, b: Pt) -> bool {
-    const EPS: f64 = 1e-6;
-    if (a.x - b.x).abs() < EPS {
-        (p.x - a.x).abs() < EPS && p.y > a.y.min(b.y) + EPS && p.y < a.y.max(b.y) - EPS
-    } else if (a.y - b.y).abs() < EPS {
-        (p.y - a.y).abs() < EPS && p.x > a.x.min(b.x) + EPS && p.x < a.x.max(b.x) - EPS
-    } else {
-        false
     }
 }
 

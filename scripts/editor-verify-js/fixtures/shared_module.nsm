@@ -1,0 +1,101 @@
+//! An invented project for the editor's recipes: one module, LdoStage, that two boards use (PowerBoard and SpareBoard), so a
+//! declaration inside it has a card for each board; its capacitors have a bias derating for the card's solved block.
+
+import std::parts::connector::{Header1x2, Socket1x2}
+import std::parts::passive::{Capacitor, Resistor, Led}
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+/// A linear regulator with a capacitor on its input and on its output.
+module LdoStage {
+    .vin:  Rail
+    .vout: Rail
+
+    .regulator:  LinearRegulator
+    // What each capacitor must still have in use, after the voltage across it and its tolerance
+    // have taken their share.
+    .input_cap:  Capacitor { .effective_capacitance >= 1uF }
+    .output_cap: Capacitor { .effective_capacitance >= 4.7uF }
+
+    .vin ~ .regulator.vin
+    .regulator.vout ~ .vout
+
+    // A capacitor must be rated for at least one and a half times the rail it sits on.
+    .input_cap.max_voltage  >= .vin.voltage * 1.5
+    .output_cap.max_voltage >= .vout.voltage * 1.5
+
+    .vin.pos  ~> .input_cap  ~> .vin.neg
+    .vout.pos ~> .output_cap ~> .vout.neg
+}
+
+/// Turns the 5 V it is given into 3.3 V for the other board.
+board PowerBoard {
+    /// Made by JLCPCB's two-layer process, on a board 1.6 mm thick.
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+
+    /// The input rail is supplied from outside the system.
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+
+    .stage: LdoStage {
+        .vout.voltage &= 3.3V +/- 5%
+    }
+
+    /// What the rest of the system draws from the output: up to 50 mA, the most this
+    /// board is built to give.
+    .output: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..50mA
+    }
+
+    .input ~ .stage.vin
+    .stage.vout ~ .output
+
+    .power_in: Header1x2
+    .power_out: Header1x2
+    .input.pos ~ .power_in.p1
+    .input.neg ~ .power_in.p2
+    .output.pos ~ .power_out.p1
+    .output.neg ~ .power_out.p2
+}
+
+/// A second board with the same stage, for a different supply.
+board SpareBoard {
+    /// Made by JLCPCB's two-layer process, on a board 1.6 mm thick.
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+
+    .stage: LdoStage {
+        .vout.voltage &= 3.3V +/- 5%
+    }
+
+    .output: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..50mA
+    }
+
+    .input ~ .stage.vin
+    .stage.vout ~ .output
+
+    .power_in: Header1x2
+    .power_out: Header1x2
+    .input.pos ~ .power_in.p1
+    .input.neg ~ .power_in.p2
+    .output.pos ~ .power_out.p1
+    .output.neg ~ .power_out.p2
+}

@@ -1,0 +1,87 @@
+/* The board's drawing, round 3. The server writes its colours and sizes into attributes (crates/netsmith-pcb/src/svg.rs);
+ * style.css maps each colour to a token, and this file is what makes the drawing calm: a CSS rule beats a presentation
+ * attribute, so each kind of mark gets its own tone and weight here without a change to the server.
+ *
+ *   substrate    the outline's fill is a step from the canvas; the outline is a thin neutral line
+ *   copper       front pads and tracks a muted copper, back ones a muted teal-blue (a part on the back is the footprint
+ *                mirrored, so its group's transform says so); a through-hole pad has a tone and a soft ring of its own
+ *   marks        silkscreen thin and soft, courtyards a faint dashed neutral, references small with a halo
+ *   air          the ratsnest is thin and translucent; a track is drawn as a group so its joins do not darken
+ *   picks        the page's blue, with a soft glow
+ */
+.pcb-host svg .l-outline > rect[fill="none"] { fill: var(--pcb-board); stroke: var(--pcb-outline); stroke-width: calc(1.75 * var(--px, .04)); stroke-linejoin: round; }
+.pcb-host svg .l-outline > rect[data-cutout] { fill: var(--pcb-bg); stroke: var(--pcb-outline); stroke-width: calc(1.5 * var(--px, .04)); }
+/* a hairline stays one when the board is zoomed: its width is a count of screen pixels times --px (Canvas sets it from the zoom); a track and a pad scale, they are copper */
+
+/* keepouts: hatched in a muted tone (the patterns are put into the drawing by pcb/drawing.ts) */
+.pcb-host svg [data-keepout] { fill: url(#pcb-hatch-keepout); fill-opacity: 1; stroke-width: calc(1.25 * var(--px, .04)); stroke-dasharray: calc(6 * var(--px, .04)) calc(4 * var(--px, .04)); stroke-opacity: .75; }
+.pcb-host svg [data-keepout][stroke="#e0a030"] { fill: url(#pcb-hatch-limit); }
+.pcb-host svg [data-height-limit] { font-family: var(--sans); font-size: .7px; font-weight: 600; paint-order: stroke; stroke: var(--pcb-board); stroke-width: .22px; stroke-linejoin: round; }
+
+/* planes: the copper of an inner layer is a translucent fill in the layer's tone with a dashed border, and the net's name in a corner.
+ * The server draws one rectangle per plane and names its copper layer (data-layer: In1.Cu); pcb/drawing.ts turns the layer into data-plane
+ * (1 to 4, or the plane's place among the planes for a server that sends no layer), so the tone is the layer's, `--pcb-plane-1` to
+ * `--pcb-plane-4`; each is a layer's colour, never the net's. */
+.pcb-host svg .l-planes > rect { --plane: var(--pcb-plane-1); fill: var(--plane); fill-opacity: .1; stroke: var(--plane); stroke-width: calc(1.25 * var(--px, .04)); stroke-dasharray: calc(7 * var(--px, .04)) calc(5 * var(--px, .04)); stroke-opacity: .85; }
+.pcb-host svg .l-planes > [data-plane="2"] { --plane: var(--pcb-plane-2); }
+.pcb-host svg .l-planes > [data-plane="3"] { --plane: var(--pcb-plane-3); }
+.pcb-host svg .l-planes > [data-plane="4"] { --plane: var(--pcb-plane-4); }
+.pcb-host svg .l-plane-labels > text.plane-label.plane-label-off { visibility: hidden; }
+.pcb-host svg .l-plane-labels > text.plane-label { fill: var(--pcb-key); font-family: var(--sans); font-size: clamp(calc(9 * var(--pxl, .04px)), .36px, calc(11 * var(--pxl, .04px))); font-weight: 600; letter-spacing: .02em; dominant-baseline: central; paint-order: stroke; stroke: var(--pcb-board); stroke-width: calc(3 * var(--px, .04)); stroke-linejoin: round; opacity: .9; }
+
+/* pads: copper on the front, teal-blue on the back, a tone and a ring for a hole that goes through */
+.pcb-host svg .l-pads > g[data-pad] > :first-child { fill: var(--pcb-front); stroke: color-mix(in srgb, var(--pcb-board) 70%, transparent); stroke-width: .06px; }
+.pcb-host svg g[data-path][transform*="scale(-1 1)"] .l-pads > g[data-pad] > :first-child { fill: var(--pcb-back); }
+.pcb-host svg .l-pads > g[data-pad]:has(> [fill="#0d1117"]) > :first-child { fill: var(--pcb-thru-fill); stroke: var(--pcb-thru); stroke-width: calc(1.5 * var(--px, .04)); }
+.pcb-host svg .l-pads > g[data-pad] > [fill="#0d1117"] { fill: var(--pcb-bg); stroke: color-mix(in srgb, var(--pcb-thru) 60%, transparent); stroke-width: calc(1 * var(--px, .04)); }
+.pcb-host svg .l-pads > g[data-pad]:not([data-net]) { opacity: .7; }
+.pcb-host svg .l-pads > text { fill: var(--pcb-pad-text); font-family: var(--sans); font-weight: 600; opacity: .85; }
+/* a pad with a hole has its number over the hole, where it cannot be read: the board's panel lists the pads */
+.pcb-host svg .l-pads > g[data-pad]:has(> [fill="#0d1117"]) + text { display: none; }
+
+/* silkscreen, fab and courtyard: thin and soft; a pin 1 triangle is smaller */
+.pcb-host svg .l-silk :is(line, rect, circle, path, polygon) { stroke-width: calc(1.6 * var(--px, .04)); stroke-opacity: .85; }
+.pcb-host svg .l-silk :is(polygon, rect, circle)[fill]:not([fill="none"]) { fill-opacity: .8; }
+.pcb-host svg .l-silk polygon[fill]:not([fill="none"]) { transform: scale(.55); transform-box: fill-box; transform-origin: center; }
+.pcb-host svg .l-fab :is(line, rect, circle, path, polygon) { stroke-width: calc(1 * var(--px, .04)); stroke-opacity: .7; }
+.pcb-host svg .l-courtyard :is(line, rect, circle, path, polygon) { fill: none; stroke-width: calc(1.1 * var(--px, .04)); stroke-opacity: .9; stroke-dasharray: calc(5 * var(--px, .04)) calc(3.5 * var(--px, .04)); }
+
+/* references: small next to the part (a size of the drawing, held between 10 and 13 screen pixels so they neither shout at a high zoom nor vanish at a low one),
+ * with a halo of the substrate so they read over a pad or a track */
+.pcb-host svg .l-refs text { fill: var(--pcb-refdes); font-family: var(--sans); font-size: clamp(calc(10 * var(--pxl, .04px)), .46px, calc(13 * var(--pxl, .04px))); font-weight: 600; letter-spacing: .01em; paint-order: stroke; stroke: var(--pcb-board); stroke-width: calc(3.5 * var(--px, .04)); stroke-linejoin: round; }
+
+/* tracks are drawn as a group, so the round joins of two tracks do not darken; a power track is fainter */
+.pcb-host svg .l-front-copper, .pcb-host svg .l-back-copper { opacity: var(--pcb-track-opacity); }
+.pcb-host svg .l-front-copper line, .pcb-host svg .l-back-copper line { stroke-opacity: 1; stroke-linecap: round; }
+.pcb-host svg .l-front-copper line.wide, .pcb-host svg .l-back-copper line.wide { stroke-opacity: .6; }
+
+/* vias: a ring of their own tone around a hole that shows the canvas */
+.pcb-host svg .l-vias > g > circle:first-child { fill: var(--pcb-via); stroke: color-mix(in srgb, var(--pcb-via) 40%, transparent); stroke-width: .12px; }
+.pcb-host svg .l-vias > g > circle:last-child { fill: var(--pcb-bg); }
+
+/* the ratsnest: thin, translucent, and brighter only where a part is picked */
+.pcb-host svg .l-ratsnest line { stroke: var(--pcb-ratsnest); stroke-width: calc(1 * var(--px, .04)); stroke-opacity: .6; stroke-linecap: round; }
+.pcb-host svg .l-ratsnest line.sel-rat { stroke-width: calc(1.75 * var(--px, .04)); stroke-opacity: .95; }
+
+/* a net that is picked: the rest steps back, the net glows a little in the selection's blue */
+.pcb-host svg.has-hl [data-net]:not(.hl) { opacity: .2; }
+.pcb-host svg [data-net].hl { filter: drop-shadow(0 0 .22px var(--sel)); }
+.pcb-host svg .l-ratsnest line.hl { stroke: var(--sel); stroke-opacity: 1; stroke-width: calc(1.75 * var(--px, .04)); }
+
+/* the grid: a few faint dots */
+.pcb-grid-dots { opacity: .32; }
+
+/* the overlay: what is picked, hovered, locked, found and kept out */
+.pcb-overlay .outline-picked { fill: color-mix(in srgb, var(--sel) 11%, transparent); stroke: var(--sel); stroke-width: calc(1.75 * var(--px, .04)); filter: drop-shadow(0 0 .5px color-mix(in srgb, var(--sel) 70%, transparent)); }
+.pcb-overlay .outline-hover { stroke: var(--sel); stroke-opacity: .6; stroke-width: calc(1.25 * var(--px, .04)); stroke-dasharray: calc(5 * var(--px, .04)) calc(3 * var(--px, .04)); }
+.pcb-overlay .box-select { fill: color-mix(in srgb, var(--sel) 9%, transparent); stroke: var(--sel); stroke-width: calc(1 * var(--px, .04)); stroke-dasharray: calc(5 * var(--px, .04)) calc(3 * var(--px, .04)); }
+.pcb-overlay .k-draw, .pcb-overlay .k-preview { fill: color-mix(in srgb, var(--pcb-keepout) 14%, transparent); stroke-width: calc(1.25 * var(--px, .04)); stroke-dasharray: calc(6 * var(--px, .04)) calc(4 * var(--px, .04)); }
+.pcb-overlay .mark { stroke-width: calc(2 * var(--px, .04)); stroke-dasharray: none; fill: color-mix(in srgb, var(--danger) 8%, transparent); filter: drop-shadow(0 0 .35px var(--danger)); }
+.pcb-overlay .mark.warning { fill: color-mix(in srgb, var(--warning) 8%, transparent); filter: drop-shadow(0 0 .35px var(--warning)); }
+.pcb-overlay .mark.on { stroke-width: calc(3 * var(--px, .04)); fill: color-mix(in srgb, var(--danger) 16%, transparent); }
+.pcb-overlay .mark.warning.on { fill: color-mix(in srgb, var(--warning) 16%, transparent); }
+
+/* the net list's mark: a net has no colour on the board, so its mark is neutral (a plane is dashed) */
+.net-row .swatch { width: 0.5rem; height: 0.5rem; border-radius: 50%; border: 1.5px solid var(--text-faint); background: transparent; }
+.net-row .swatch.plane { border-style: dashed; border-radius: 2px; }
+.net-row.sel .swatch { border-color: var(--sel); }

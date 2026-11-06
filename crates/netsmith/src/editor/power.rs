@@ -130,6 +130,7 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
                 capacity: None,
                 capacity_from: None,
                 budget: Budget::Unknown,
+                at: None,
             };
             for draw in &balance.draws {
                 let field = model.field(draw.field);
@@ -218,13 +219,16 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
                 maybe_capacity(model, *scope, id, &mut capacity, &to);
                 let (src, span) = inst.at();
                 stages.retain(|s| s.label != label);
-                stages.push(stage_of(model, id, &label));
+                let at = api_location(locate(sources, src, span));
+                let mut stage = stage_of(model, id, &label);
+                stage.at = Some(at.clone());
+                stages.push(stage);
                 edges.push(Edge {
                     from,
                     to,
                     label,
                     kind: EdgeKind::Converts,
-                    at: Some(api_location(locate(sources, src, span))),
+                    at: Some(at),
                 });
             }
         }
@@ -235,8 +239,12 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
         edges,
         stages,
     };
-    for (node, limit, from, _) in capacity {
+    for (node, limit, from, holder) in capacity {
         if let Some(n) = tree.nodes.iter_mut().find(|n| n.id == node) {
+            if n.at.is_none() {
+                let (src, span) = model.instance(holder).at();
+                n.at = Some(api_location(locate(sources, src, span)));
+            }
             let total = n.capacity.as_ref().map_or(0.0, |c| c.hi) + limit;
             n.capacity = Quantity::interval(Dimension::CURRENT, 0.0, total)
                 .ok()
@@ -245,6 +253,17 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
                 Some(old) => format!("{old}, {from}"),
                 None => from,
             });
+        }
+    }
+    // Where to look when there is no supply that says what it can give: at what feeds the
+    // net, else at what draws from it.
+    for node in &mut tree.nodes {
+        if node.at.is_none() {
+            node.at = node
+                .supplies
+                .iter()
+                .chain(&node.loads)
+                .find_map(|d| d.at.clone());
         }
     }
     classify(&mut tree);
@@ -273,6 +292,7 @@ fn stage_of(model: &Model, inst: InstId, label: &str) -> Stage {
         label: label.to_string(),
         efficiency_unsettled: holder.is_some() && settled.is_none(),
         efficiency: settled,
+        at: None,
     }
 }
 
@@ -365,6 +385,7 @@ mod tests {
             capacity,
             capacity_from: None,
             budget: Budget::Unknown,
+            at: None,
         }
     }
 

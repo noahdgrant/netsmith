@@ -32,7 +32,7 @@ fn doctor_reports_what_is_installed_without_a_browser() {
         .output()
         .expect("the script runs");
     let said = String::from_utf8_lossy(&out.stdout);
-    let web = Path::new(env!("CARGO_MANIFEST_DIR")).join("../netsmith-editor/web/dist/index.html");
+    let web = Path::new(env!("CARGO_MANIFEST_DIR")).join("../netsmith-editor/web-dist/index.html");
     for line in ["ok   node: v", "ok   netsmith binary: "] {
         assert!(said.contains(line), "{line}: {said}");
     }
@@ -40,7 +40,7 @@ fn doctor_reports_what_is_installed_without_a_browser() {
         !said.contains("chromium") && !said.contains("playwright"),
         "{said}"
     );
-    // The page is built when Node was there at build time; doctor says so either way.
+    // The page is the committed bundle (`web-dist`), so a checkout has it; doctor says so either way.
     assert_eq!(said.contains("ok   web bundle"), web.is_file(), "{said}");
     assert_eq!(out.status.success(), web.is_file(), "{said}");
 }

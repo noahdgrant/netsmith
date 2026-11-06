@@ -161,8 +161,37 @@ describe('issues', () => {
     const found = issuesOf(rails, [stage]);
     expect(found.some((i) => i.id === 'stage:x' && i.level === 'warn' && i.text.includes('efficiency'))).toBe(true);
   });
+  it("carries the server's place for the node, and the first draw's when the server sent none", () => {
+    const here = { file: 'src/main.nsm', line: 12, column: 1, endLine: 12, endColumn: 9 };
+    const there = { file: 'src/power.nsm', line: 3, column: 1, endLine: 3, endColumn: 9 };
+    const withAt = modelOf({
+      title: '',
+      nodes: [node('ORPHAN', [{ ...draw('b.p', 0, 0.01), at: there }], { demand: range(0, 0.01), at: here })],
+      edges: [],
+      stages: [],
+    });
+    expect(withAt.issues[0].at).toEqual(here);
+    const without = modelOf({
+      title: '',
+      nodes: [node('ORPHAN', [{ ...draw('b.p', 0, 0.01), at: there }], { demand: range(0, 0.01) })],
+      edges: [],
+      stages: [],
+    });
+    expect(without.issues[0].at).toEqual(there);
+  });
+  it("a converter's issue is at its declaration, from the stage the server lists", () => {
+    const at = { file: 'src/main.nsm', line: 30, column: 1, endLine: 30, endColumn: 5 };
+    const model = modelOf({
+      title: '',
+      nodes: [node('IN', [], { supplies: [draw('s', -1, -0.1)] }), node('OUT', [draw('l.p', 0, 0.1)], { supplies: [draw('x', -1, -0.1)] })],
+      edges: [edge('IN', 'OUT', 'buck (BuckConverter)')],
+      stages: [{ label: 'buck (BuckConverter)', efficiency: range(0.8, 0.9), efficiencyUnsettled: true, at }],
+    });
+    const found = model.issues.find((i) => i.id.startsWith('stage:'));
+    expect(found?.at).toEqual(at);
+  });
   it('gives each node its worst level', () => {
-    const l = levels([...m.issues, { id: 'OVER', level: 'warn', where: 'OVER', text: 'x' }]);
+    const l = levels([...m.issues, { id: 'OVER', level: 'warn', where: 'OVER', text: 'x', at: null }]);
     expect(l.get('OVER')).toBe('bad');
     expect(l.get('ORPHAN')).toBe('warn');
     expect(l.has('FINE')).toBe(false);

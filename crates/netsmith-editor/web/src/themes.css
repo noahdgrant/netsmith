@@ -1,0 +1,828 @@
+/* The editor's colours, as tokens. Nothing else in the page names a colour: style.css and the
+ * components read `var(--token)`, and each theme below gives every token a value.
+ *
+ * `<html data-theme="…">` picks the theme (theme.ts; index.html sets it before the first paint).
+ * `:root` alone is the dark theme, so a page whose script did not run is still readable.
+ * The contrast of the text tokens is held to WCAG AA (7:1 in the high contrast themes) by
+ * theme.test.ts, which reads this file.
+ *
+ * Names: surfaces (`bg`, `surface`, `surface-raised`, `canvas`), lines (`border*`), text (`text`,
+ * `text-muted`, `text-faint`), the brand (`accent*`), what things mean (`danger`, `warning`,
+ * `success`, `info`, each with `-bg`, `-line`, `-text`), floating things (`pop*`, `shadow-*`),
+ * the editor's syntax colours (`syn-*`) and the drawings' (`sch-*` schematic, `pcb-*` and
+ * `net-*` board).
+ */
+
+/* Inter, a variable font, self-hosted (src/assets/fonts, with its OFL.txt): Latin and Greek (the Ω and µ of values).
+ * The page shows the system face until it arrives, so nothing waits on it. */
+@font-face { font-family: 'Inter Variable'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('./assets/fonts/inter-latin-wght-normal.woff2') format('woff2-variations'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Inter Variable'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('./assets/fonts/inter-greek-wght-normal.woff2') format('woff2-variations'); unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF; }
+
+/* ---- shared scales: the same in every theme ---- */
+:root {
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Consolas, 'DejaVu Sans Mono', monospace;
+  /* Inter (a variable font, self-hosted: src/assets/fonts, OFL.txt beside it) first; the system's own face while it loads and for any glyph it lacks */
+  --sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* type: a 13 px body on a 1.15 ratio; titles are 15 and 18; a size below 11 is never used */
+  --fs-xs: 0.6875rem; --fs-sm: 0.75rem; --fs-md: 0.8125rem; --fs-lg: 0.9375rem; --fs-xl: 1.125rem; --fs-2xl: 1.375rem;
+  --lh-tight: 1.25; --lh: 1.4; --lh-loose: 1.55;
+  --fw-normal: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
+  /* Inter wants a little less space as it grows; a small label wants a little more */
+  --ls-body: -0.006em; --ls-title: -0.014em; --ls-label: 0.01em;
+  --tracking-caps: .06em;
+  /* Inter's alternates: the l with a tail (so l1 and I1 differ, which matters in designators), open digits */
+  --font-features: 'cv05', 'ss01', 'calt';
+  /* space: a 4 px step, 8 px is the unit */
+  --sp-1: 0.25rem; --sp-2: 0.5rem; --sp-3: 0.75rem; --sp-4: 1rem; --sp-5: 1.5rem; --sp-6: 2rem;
+  /* shapes: 4 for what is inside a control (a key cap), 6 for a control and a row, 8 for a card and an input group, 12 for a panel, a menu and a dialog */
+  --r-xs: 4px; --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-xl: 16px; --r-pill: 999px;
+  /* heights of rows and controls: 28 is a control, 32 the large one */
+  --h-xs: 1.25rem; --h-sm: 1.5rem; --h-md: 1.75rem; --h-lg: 2rem; --row: 1.75rem;
+  --ctl: 1.75rem; --ctl-lg: 2rem;
+  /* a table's row (the BOM's lines) and a lighter one (a group's head, a section's head in the tree) */
+  --row-lg: 2.125rem; --row-sm: 1.875rem;
+  --bar: 3.25rem; --tab: 2.5rem; --status: 1.625rem;
+  /* the window: a frame of --bg with the work in a sheet of its own, set in by --gap */
+  --gap: 0.5rem;
+  /* a list page (Compare, the bill of materials, Build): as wide as this and centred, so a wide window does not stretch its rows */
+  --page-w: 80rem;
+  /* icons */
+  --icon-sm: 0.75rem; --icon-md: 0.875rem; --icon-lg: 1rem;
+  /* motion: short, and none when the person asks for none */
+  --dur-fast: 120ms; --dur: 160ms; --dur-slow: 180ms;
+  --ease: cubic-bezier(.2, 0, 0, 1);
+  /* the swatches of the theme menu show other themes, so they are the same in every theme */
+  --sw-light: #f3f2ee; --sw-dark: #1c1d20; --sw-hc-light: #ffffff; --sw-hc-dark: #000000;
+  /* the layers of the page, from the page up */
+  --z-sticky: 3; --z-dock: 4; --z-pane: 10; --z-status: 12; --z-popover: 20; --z-toast: 30; --z-menu: 60; --z-palette: 80; --z-dialog: 200;
+}
+
+/* ---- dark (the default) ---- */
+:root, :root[data-theme="dark"] {
+  color-scheme: dark;
+  /* A tinted, cool neutral, deepest at the frame and lighter at each layer: the frame (--bg),
+   * the work (--canvas), a panel on it (--surface, "surface 1"), a raised card or a menu
+   * (--surface-raised, "surface 2"), a hovered row or a field (--surface-3). */
+  --bg: #090b0f;
+  --canvas: #0e1117;
+  --surface: #131720;
+  --surface-raised: #1a1f2a;
+  --surface-3: #222836;
+  /* a segmented control: its track, and the segment that is on */
+  --seg-track: var(--bg);
+  --seg-on: var(--surface-3);
+  /* lines are hairlines: ink at a low alpha, so they sit on any layer */
+  --border: color-mix(in srgb, #c3d0ea 13%, transparent);
+  --border-subtle: color-mix(in srgb, #c3d0ea 7%, transparent);
+  --border-strong: color-mix(in srgb, #c3d0ea 26%, transparent);
+
+  --text: #dfe3ea;
+  --text-muted: #a8b0bf;
+  --text-faint: #8a93a4;
+
+  /* what is picked in a data view (a row, a part, a card): a calm blue, not the brand's orange */
+  --sel: #7aa4ec;
+  /* the soft light of what the pointer is over, shared by every view (hover.ts): a neutral, never the colour of a pick */
+  --hover-lit: #e4ebf7;
+  --hover-lit-bg: color-mix(in srgb, var(--hover-lit) 9%, transparent);
+  --sel-text: #a9c5f4;
+
+  /* The brand orange: `accent` for lines and marks, `accent-fill` behind a primary button,
+   * `accent-text` for words. */
+  --brand: #e8873a;
+  --accent: #e8873a;
+  --accent-fill: #e8873a;
+  --accent-fg: #1b1208;
+  --accent-text: #f0994f;
+
+  --danger: #f2615c;
+  --danger-bg: #3a1c1b;
+  --danger-line: #5a2a28;
+  --danger-text: #f2aaa6;
+  --danger-solid: #f2615c;
+  --on-danger: #2a0a09;
+  --warning: #e5b53b;
+  --warning-bg: #3a2d12;
+  --warning-line: #5a4516;
+  --warning-text: #f3d28a;
+  --warning-solid: #e5b53b;
+  --on-warning: #1b1208;
+  --success: #6fbf73;
+  --success-bg: #17281a;
+  --success-line: #2f5a33;
+  --success-text: #a9dcab;
+  --info: #6aa6e0;
+  --info-bg: #1f2a38;
+  --info-line: #2f4560;
+  --info-text: #b9d4f2;
+
+  --hover: color-mix(in srgb, #c3d0ea 6%, transparent);
+  --hover-strong: color-mix(in srgb, #c3d0ea 11%, transparent);
+  --pressed: color-mix(in srgb, #c3d0ea 15%, transparent);
+  --focus: #f0994f;
+  --focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent);
+
+  --overlay: rgba(4, 6, 10, .6);
+  --pop: #181d28;
+  --pop-border: color-mix(in srgb, #c3d0ea 17%, transparent);
+  /* elevation: three levels. A light edge on the top of the layer, then the shadow it throws.
+   * 1 a card or a toolbar chip, 2 a menu and a toast, 3 the palette and a dialog. */
+  --elev-1: inset 0 1px 0 rgba(195, 208, 234, .045), 0 1px 2px rgba(0, 0, 0, .45);
+  --elev-2: inset 0 1px 0 rgba(195, 208, 234, .06), 0 8px 20px rgba(0, 0, 0, .45), 0 1px 3px rgba(0, 0, 0, .5);
+  --elev-3: inset 0 1px 0 rgba(195, 208, 234, .07), 0 24px 64px rgba(0, 0, 0, .62), 0 6px 16px rgba(0, 0, 0, .45);
+  --edge-hi: rgba(195, 208, 234, .06);
+  --elev-accent: inset 0 1px 0 rgba(255, 255, 255, .28), 0 1px 2px rgba(0, 0, 0, .5), 0 0 0 1px rgba(0, 0, 0, .25);
+  --kbd-bg: #232938;
+  --kbd-border: color-mix(in srgb, #c3d0ea 20%, transparent);
+  --scroll-thumb: color-mix(in srgb, #c3d0ea 18%, transparent);
+  --scroll-thumb-hover: color-mix(in srgb, #c3d0ea 34%, transparent);
+
+  /* the colour of each kind of thing: a badge, an icon, a mark in go to anything */
+  --kind-part: #c3a6e0;
+  --kind-net: #6fbf73;
+  --kind-module: #7aa7e0;
+  --kind-definition: #e5b53b;
+  --kind-file: #8c97a6;
+  --kind-command: #e8873a;
+  --kind-board: #6fbf73;
+  --kind-system: #e8873a;
+  --kind-panel: #d9d37a;
+  --kind-interface: #e5b53b;
+  --on-kind: #111;
+
+  /* the source editor */
+  --syn-comment: #8693a1;
+  --syn-doc: #86ac80;
+  --syn-string: #a6d189;
+  --syn-number: #ef9f76;
+  --syn-keyword: #e0a458;
+  --syn-type: #8fb8de;
+  --syn-property: #c3a6e0;
+  --syn-namespace: #98a3b2;
+  --syn-variable: #d7dae0;
+  --syn-operator: #e78284;
+  --syn-punct: #98a3b2;
+  --syn-invalid: #ff7b7b;
+  --cm-active-line: color-mix(in srgb, #fff 4.5%, transparent);
+  --cm-selection: color-mix(in srgb, var(--accent) 30%, transparent);
+  --cm-match: color-mix(in srgb, var(--info) 26%, transparent);
+  --cm-reveal: color-mix(in srgb, var(--accent) 38%, transparent);
+  --cm-hint: #8591a5;
+  --cm-guide: #1b222e;
+  /* what changed since a git ref (the Compare section and the marks on the views): added, changed, removed, and only renumbered.
+   * Marks and outlines, held to 3:1 on every surface a view draws on (theme.test.ts). */
+  --cmp-added: #52c878;
+  --cmp-changed: #e6ae3c;
+  --cmp-removed: #f0716b;
+  --cmp-renumbered: #9aa7bd;
+
+  /* the schematic: a dark sheet. The names are the drawing's own (crates/netsmith-view/src/svg.rs); style.css hands them over.
+   * A part is its outline in a dusty rose and a body that is only a tint of that outline over the sheet; wires are a calm sage,
+   * a bus trunk a cool teal, a net lit by a pick is amber and a picked part is the page's blue. */
+  --sch-sheet: #0d1015;
+  --sch-wire: #5aa67e;
+  --sch-body: #d6a3a0;
+  --sch-fill: color-mix(in srgb, var(--sch-body) 11%, transparent);
+  --sch-pin: #d6a3a0;
+  --sch-text: #a9cbd6;
+  --sch-net: #7fcfa4;
+  --sch-hit: #e9b44c;
+  --sch-muted: #7c8590;
+  --sch-bad: #f2615c;
+  --sch-mark: #7aa8f2;
+  --sch-bus: #56b9cc;
+  --sch-frame: #3f5a4d;
+  --sch-frame-fill: rgba(90, 166, 126, .04);
+  --sch-frame-title: #86b69c;
+  /* a schematic note (a doc comment or a relation): a paper card on the sheet; the words 4.5:1 (7:1 in high contrast) on the card, the frame 3:1 on the sheet */
+  --sch-note-fill: #1b1913;
+  --sch-note-stroke: #8a7b4a;
+  --sch-note-text: #ebe3c8;
+  --sch-note-heading: #e3bd62;
+
+  /* the board: a calm drawing. The canvas (--pcb-bg) is a step from the substrate (--pcb-board); copper is a muted copper on
+   * the front and a muted teal-blue on the back; a through-hole pad and a via have tones of their own; the ratsnest is thin
+   * and translucent; a pick is the page's blue. */
+  --pcb-bg: #0b0e13;
+  --pcb-board: #121821;
+  --pcb-grid: #6b778a;
+  --pcb-outline: #8396b1;
+  --pcb-silk: #aea99a;
+  --pcb-refdes: #d3cfc1;
+  --pcb-key: #c9d1d9;
+  --pcb-ratsnest: #9fb9dc;
+  --pcb-fab: #6a7d96;
+  --pcb-courtyard: #6f7d90;
+  --pcb-keepout: #e0707a;
+  --pcb-height-limit: #d9a441;
+  --pcb-unconnected: #8b949e;
+  --pcb-front: #d08d50;
+  --pcb-back: #46a3bc;
+  --pcb-thru: #cdb890;
+  /* a hole that goes through: --pcb-thru is its ring (3:1), --pcb-thru-fill the body inside it, a step lighter than the ring on the light board */
+  --pcb-thru-fill: #8a7a58;
+  /* an inner plane, by its place among the planes: a tone for its fill and border (3:1) */
+  --pcb-plane-1: #9a8cf0;
+  --pcb-plane-2: #5fc98f;
+  --pcb-plane-3: #e0b050;
+  --pcb-plane-4: #e07aa8;
+  --pcb-via: #a3adbc;
+  --pcb-pad-text: #10141a;
+  --pcb-select: var(--sel);
+  --pcb-lock: #e5b53b;
+  --pcb-lock-fg: #151618;
+  --pcb-hl: #ffffff;
+  --pcb-track-opacity: .85;
+  --net-0: #ff6b6b; --net-1: #4dd4ac; --net-2: #ffd166; --net-3: #6ea8fe; --net-4: #c792ea;
+  --net-5: #ff9f43; --net-6: #7bed9f; --net-7: #f78fb3; --net-8: #74c0fc; --net-9: #d4e157;
+
+  /* graphs: the power tree and the system view */
+  --grid-dot: #1d2330;
+  --edge: #566176;
+  --edge-arrow: #7b869c;
+  --flow-down: #6cb0ff;
+  --volt: #8fb8de;
+  --stage-bg: #131f2e;
+  --stage-border: #35506f;
+  --stage-text: #9cc2ee;
+  --meter-track: #232a38;
+  --meter-fill: #566176;
+  --signal-edge: #7d7467;
+}
+
+/* ---- light ---- */
+:root[data-theme="light"] {
+  color-scheme: light;
+  /* warm paper: the frame is the darkest layer, the work is white, a panel is a step toward the frame */
+  --bg: #e9e7e1;
+  --canvas: #ffffff;
+  --surface: #f7f6f2;
+  --surface-raised: #ffffff;
+  --surface-3: #eceae4;
+  /* a segmented control: its track, and the segment that is on */
+  --seg-track: var(--surface-3);
+  --seg-on: var(--canvas);
+  --border: color-mix(in srgb, #3a3224 13%, transparent);
+  --border-subtle: color-mix(in srgb, #3a3224 7%, transparent);
+  --border-strong: color-mix(in srgb, #3a3224 26%, transparent);
+
+  --text: #1c1f24;
+  --text-muted: #484f59;
+  --text-faint: #58606b;
+
+  --sel: #2c64c8;
+  /* the soft light of what the pointer is over, shared by every view (hover.ts): a neutral, never the colour of a pick */
+  --hover-lit: #1b2538;
+  --hover-lit-bg: color-mix(in srgb, var(--hover-lit) 9%, transparent);
+  --sel-text: #1c4ea6;
+
+  --brand: #cf6a12;
+  --accent: #c8650f;
+  --accent-fill: #e8873a;
+  --accent-fg: #1b1208;
+  --accent-text: #9a4a05;
+
+  --danger: #c4302b;
+  --danger-bg: #fdecea;
+  --danger-line: #efb3af;
+  --danger-text: #9b1c17;
+  --danger-solid: #c4302b;
+  --on-danger: #ffffff;
+  --warning: #946200;
+  --warning-bg: #fff5d6;
+  --warning-line: #e6cb84;
+  --warning-text: #664400;
+  --warning-solid: #f2b624;
+  --on-warning: #1f1500;
+  --success: #1a7f37;
+  --success-bg: #e5f4e8;
+  --success-line: #a6d4b0;
+  --success-text: #0f5a26;
+  --info: #0b61c4;
+  --info-bg: #e7f0fc;
+  --info-line: #b5cff0;
+  --info-text: #0a4a9e;
+
+  --hover: color-mix(in srgb, #3a3224 6%, transparent);
+  --hover-strong: color-mix(in srgb, #3a3224 10%, transparent);
+  --pressed: color-mix(in srgb, #3a3224 14%, transparent);
+  --focus: #b85c0c;
+  --focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+
+  --overlay: rgba(36, 30, 20, .32);
+  --pop: #ffffff;
+  --pop-border: color-mix(in srgb, #3a3224 17%, transparent);
+  --elev-1: 0 1px 2px rgba(48, 38, 20, .08), 0 0 0 .5px rgba(48, 38, 20, .04);
+  --elev-2: 0 8px 22px rgba(48, 38, 20, .13), 0 1px 3px rgba(48, 38, 20, .1);
+  --elev-3: 0 24px 60px rgba(48, 38, 20, .24), 0 6px 14px rgba(48, 38, 20, .12);
+  --edge-hi: rgba(255, 255, 255, .85);
+  --elev-accent: inset 0 1px 0 rgba(255, 255, 255, .35), 0 1px 2px rgba(120, 60, 0, .35), 0 0 0 1px rgba(150, 70, 0, .28);
+  --kbd-bg: #f3f1ec;
+  --kbd-border: color-mix(in srgb, #3a3224 22%, transparent);
+  --scroll-thumb: color-mix(in srgb, #3a3224 20%, transparent);
+  --scroll-thumb-hover: color-mix(in srgb, #3a3224 38%, transparent);
+
+  --kind-part: #7a4cb0;
+  --kind-net: #1a7f37;
+  --kind-module: #1f62c0;
+  --kind-definition: #8f5f00;
+  --kind-file: #5b6674;
+  --kind-command: #a8540a;
+  --kind-board: #1d7a38;
+  --kind-system: #a8540a;
+  --kind-panel: #7d6f00;
+  --kind-interface: #8f5f00;
+  --on-kind: #ffffff;
+
+  --syn-comment: #66707c;
+  --syn-doc: #3f7a3a;
+  --syn-string: #1a7437;
+  --syn-number: #b8420a;
+  --syn-keyword: #8a5300;
+  --syn-type: #0b5cad;
+  --syn-property: #7a4cb0;
+  --syn-namespace: #566170;
+  --syn-variable: #24292f;
+  --syn-operator: #c4302b;
+  --syn-punct: #566170;
+  --syn-invalid: #c4302b;
+  --cm-active-line: color-mix(in srgb, #000 4%, transparent);
+  --cm-selection: color-mix(in srgb, var(--accent) 28%, transparent);
+  --cm-match: color-mix(in srgb, var(--info) 22%, transparent);
+  --cm-reveal: color-mix(in srgb, var(--accent) 34%, transparent);
+  --cm-hint: #5f6773;
+  --cm-guide: #ebe9e3;
+  /* what changed since a git ref (the Compare section and the marks on the views): added, changed, removed, and only renumbered.
+   * Marks and outlines, held to 3:1 on every surface a view draws on (theme.test.ts). */
+  --cmp-added: #1d8a3d;
+  --cmp-changed: #a8620a;
+  --cmp-removed: #c4342c;
+  --cmp-renumbered: #5a6880;
+
+  /* the paper look: cream sheet, dark green wires, dark red parts */
+  --sch-sheet: #f6f4e8;
+  --sch-wire: #0a7a3c;
+  --sch-body: #7b2020;
+  --sch-fill: #fff6bd;
+  --sch-pin: #7b2020;
+  --sch-text: #1d4f5e;
+  --sch-net: #075c2b;
+  --sch-hit: #c96a00;
+  --sch-muted: #7a808a;
+  --sch-bad: #d92d20;
+  --sch-mark: #2c64c8;
+  --sch-bus: #0b6f86;
+  --sch-frame: #6f9a86;
+  --sch-frame-fill: rgba(10, 122, 60, .04);
+  --sch-frame-title: #2f5f4a;
+  /* a schematic note (a doc comment or a relation): a paper card on the sheet; the words 4.5:1 (7:1 in high contrast) on the card, the frame 3:1 on the sheet */
+  --sch-note-fill: #fffdf2;
+  --sch-note-stroke: #8f7a2c;
+  --sch-note-text: #3a3315;
+  --sch-note-heading: #6b5710;
+
+  /* the board: a calm drawing. The canvas (--pcb-bg) is a step from the substrate (--pcb-board); copper is a muted copper on
+   * the front and a muted teal-blue on the back; a through-hole pad and a via have tones of their own; the ratsnest is thin
+   * and translucent; a pick is the page's blue. */
+  --pcb-bg: #ebe9e2;
+  --pcb-board: #fbfaf6;
+  --pcb-grid: #8b8a82;
+  --pcb-outline: #667690;
+  --pcb-silk: #6d685b;
+  --pcb-refdes: #37362f;
+  --pcb-key: #3b3f46;
+  --pcb-ratsnest: #4a6a98;
+  --pcb-fab: #71829b;
+  --pcb-courtyard: #737e8d;
+  --pcb-keepout: #c0414d;
+  --pcb-height-limit: #a86f00;
+  --pcb-unconnected: #6e757e;
+  --pcb-front: #a95e26;
+  --pcb-back: #1f7f9a;
+  --pcb-thru: #84702f;
+  /* a hole that goes through: --pcb-thru is its ring (3:1), --pcb-thru-fill the body inside it, a step lighter than the ring on the light board */
+  --pcb-thru-fill: #d6c48a;
+  /* an inner plane, by its place among the planes: a tone for its fill and border (3:1) */
+  --pcb-plane-1: #6552c9;
+  --pcb-plane-2: #23805a;
+  --pcb-plane-3: #9a6a10;
+  --pcb-plane-4: #b03f78;
+  --pcb-via: #6a7280;
+  --pcb-pad-text: #ffffff;
+  --pcb-select: var(--sel);
+  --pcb-lock: #b57400;
+  --pcb-lock-fg: #ffffff;
+  --pcb-hl: #000000;
+  --pcb-track-opacity: .85;
+  --net-0: #d2373f; --net-1: #0b7f65; --net-2: #a87800; --net-3: #2a67d8; --net-4: #8644c4;
+  --net-5: #c85d0a; --net-6: #2a8a45; --net-7: #c43a74; --net-8: #1479b4; --net-9: #7a8a0a;
+
+  --grid-dot: #dedbd2;
+  --edge: #8f94a0;
+  --edge-arrow: #6c727d;
+  --flow-down: #1a63bd;
+  --volt: #1d5fa8;
+  --stage-bg: #eaf1fa;
+  --stage-border: #a9c4e4;
+  --stage-text: #194f8f;
+  --meter-track: #e2dfd7;
+  --meter-fill: #8f94a0;
+  --signal-edge: #8a7f6c;
+}
+
+/* ---- high contrast dark ---- */
+:root[data-theme="hc-dark"] {
+  color-scheme: dark;
+  --bg: #000000;
+  --surface: #000000;
+  --surface-raised: #0e0e0e;
+  --surface-3: #1a1a1a;
+  /* a segmented control: its track, and the segment that is on */
+  --seg-track: var(--canvas);
+  --seg-on: var(--surface-3);
+  --canvas: #000000;
+  --border: #9aa4b2;
+  --border-subtle: #5d6673;
+  --border-strong: #ffffff;
+
+  --text: #ffffff;
+  --text-muted: #e4e7eb;
+  --text-faint: #c9cfd7;
+
+  --sel: #79c0ff;
+  /* the soft light of what the pointer is over, shared by every view (hover.ts): a neutral, never the colour of a pick */
+  --hover-lit: #ffffff;
+  --hover-lit-bg: color-mix(in srgb, var(--hover-lit) 9%, transparent);
+  --sel-text: #cde6ff;
+
+  --brand: #e8873a;
+  --accent: #ffa94d;
+  --accent-fill: #ffa94d;
+  --accent-fg: #000000;
+  --accent-text: #ffb766;
+
+  --danger: #ff8a85;
+  --danger-bg: #330a09;
+  --danger-line: #ff8a85;
+  --danger-text: #ffc1be;
+  --danger-solid: #ff8a85;
+  --on-danger: #000000;
+  --warning: #ffd23f;
+  --warning-bg: #2e2200;
+  --warning-line: #ffd23f;
+  --warning-text: #ffe69a;
+  --warning-solid: #ffd23f;
+  --on-warning: #000000;
+  --success: #7ee787;
+  --success-bg: #06240c;
+  --success-line: #7ee787;
+  --success-text: #b9f5c0;
+  --info: #79c0ff;
+  --info-bg: #06203a;
+  --info-line: #79c0ff;
+  --info-text: #cde6ff;
+
+  --hover: color-mix(in srgb, #fff 14%, transparent);
+  --hover-strong: color-mix(in srgb, #fff 22%, transparent);
+  --pressed: color-mix(in srgb, #fff 30%, transparent);
+  --focus: #ffffff;
+  --focus-ring: 0 0 0 2px #000, 0 0 0 4px #fff;
+
+  --overlay: rgba(0, 0, 0, .75);
+  --pop: #000000;
+  --pop-border: #ffffff;
+  --elev-1: none;
+  --elev-2: none;
+  --elev-3: none;
+  --edge-hi: transparent;
+  --elev-accent: none;
+  --kbd-bg: #000000;
+  --kbd-border: #ffffff;
+  --scroll-thumb: #9aa4b2;
+  --scroll-thumb-hover: #ffffff;
+
+  --kind-part: #e0c8ff;
+  --kind-net: #7ee787;
+  --kind-module: #a5cbff;
+  --kind-definition: #ffd23f;
+  --kind-file: #c9cfd7;
+  --kind-command: #ffa94d;
+  --kind-board: #7ee787;
+  --kind-system: #ffa94d;
+  --kind-panel: #f0ea8a;
+  --kind-interface: #ffd23f;
+  --on-kind: #000000;
+
+  --syn-comment: #b9c3d0;
+  --syn-doc: #a9e8a0;
+  --syn-string: #b6f0a0;
+  --syn-number: #ffb98f;
+  --syn-keyword: #ffc266;
+  --syn-type: #a5cbff;
+  --syn-property: #e0c8ff;
+  --syn-namespace: #d0d6de;
+  --syn-variable: #ffffff;
+  --syn-operator: #ff9c9c;
+  --syn-punct: #d0d6de;
+  --syn-invalid: #ff9c9c;
+  --cm-active-line: color-mix(in srgb, #fff 12%, transparent);
+  --cm-selection: color-mix(in srgb, var(--accent) 45%, transparent);
+  --cm-match: color-mix(in srgb, var(--info) 40%, transparent);
+  --cm-reveal: color-mix(in srgb, var(--accent) 55%, transparent);
+  --cm-hint: #c9cfd7;
+  --cm-guide: #4a5260;
+  /* what changed since a git ref (the Compare section and the marks on the views): added, changed, removed, and only renumbered.
+   * Marks and outlines, held to 3:1 on every surface a view draws on (theme.test.ts). */
+  --cmp-added: #5ef08c;
+  --cmp-changed: #ffcc4d;
+  --cmp-removed: #ff8a84;
+  --cmp-renumbered: #b9c4d6;
+
+  --sch-sheet: #000000;
+  --sch-wire: #53f07c;
+  --sch-body: #ffb8b8;
+  --sch-fill: color-mix(in srgb, var(--sch-body) 14%, transparent);
+  --sch-pin: #ffb8b8;
+  --sch-text: #8fe3ff;
+  --sch-net: #8dffb7;
+  --sch-hit: #ffb84d;
+  --sch-muted: #b8c0cc;
+  --sch-bad: #ff8a85;
+  --sch-mark: #8ec5ff;
+  --sch-bus: #7be0f0;
+  --sch-frame: #8fbfa3;
+  --sch-frame-fill: rgba(83, 240, 124, .05);
+  --sch-frame-title: #b4e8c8;
+  /* a schematic note (a doc comment or a relation): a paper card on the sheet; the words 4.5:1 (7:1 in high contrast) on the card, the frame 3:1 on the sheet */
+  --sch-note-fill: #14110a;
+  --sch-note-stroke: #d9bf6a;
+  --sch-note-text: #fff6cf;
+  --sch-note-heading: #ffd86b;
+
+  /* the board: a calm drawing. The canvas (--pcb-bg) is a step from the substrate (--pcb-board); copper is a muted copper on
+   * the front and a muted teal-blue on the back; a through-hole pad and a via have tones of their own; the ratsnest is thin
+   * and translucent; a pick is the page's blue. */
+  --pcb-bg: #000000;
+  --pcb-board: #0a0c10;
+  --pcb-grid: #b8c0cc;
+  --pcb-outline: #c9d4e3;
+  --pcb-silk: #ffffff;
+  --pcb-refdes: #ffffff;
+  --pcb-key: #ffffff;
+  --pcb-ratsnest: #bcd4ff;
+  --pcb-fab: #9fb3cd;
+  --pcb-courtyard: #a7b2c2;
+  --pcb-keepout: #ff7b86;
+  --pcb-height-limit: #ffb347;
+  --pcb-unconnected: #b8c0cc;
+  --pcb-front: #ffa45c;
+  --pcb-back: #5cd0ee;
+  --pcb-thru: #f0dcae;
+  /* a hole that goes through: --pcb-thru is its ring (3:1), --pcb-thru-fill the body inside it, a step lighter than the ring on the light board */
+  --pcb-thru-fill: var(--pcb-thru);
+  /* an inner plane, by its place among the planes: a tone for its fill and border (3:1) */
+  --pcb-plane-1: #b5a9ff;
+  --pcb-plane-2: #7ee8b0;
+  --pcb-plane-3: #ffd070;
+  --pcb-plane-4: #ff9cc4;
+  --pcb-via: #d6d6d6;
+  --pcb-pad-text: #000000;
+  --pcb-select: var(--sel);
+  --pcb-lock: #ffd23f;
+  --pcb-lock-fg: #000000;
+  --pcb-hl: #ffffff;
+  --pcb-track-opacity: .95;
+  --net-0: #ff8585; --net-1: #5ff0c8; --net-2: #ffe08a; --net-3: #8fbcff; --net-4: #dcb0ff;
+  --net-5: #ffb26b; --net-6: #96ffb4; --net-7: #ffa9c6; --net-8: #91d3ff; --net-9: #e6f26b;
+
+  --grid-dot: #3a3f48;
+  --edge: #b8c0cc;
+  --edge-arrow: #d0d6de;
+  --flow-down: #8fc4ff;
+  --volt: #b3d4f5;
+  --stage-bg: #00101f;
+  --stage-border: #79a8dc;
+  --stage-text: #b3d4f5;
+  --meter-track: #3a3f48;
+  --meter-fill: #b8c0cc;
+  --signal-edge: #d6c7ae;
+}
+
+/* ---- high contrast light ---- */
+:root[data-theme="hc-light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-raised: #f2f2f2;
+  --surface-3: #e4e4e4;
+  /* a segmented control: its track, and the segment that is on */
+  --seg-track: var(--surface-3);
+  --seg-on: var(--canvas);
+  --canvas: #ffffff;
+  --border: #404040;
+  --border-subtle: #767676;
+  --border-strong: #000000;
+
+  --text: #000000;
+  --text-muted: #262626;
+  --text-faint: #3d3d3d;
+
+  --sel: #084c9e;
+  /* the soft light of what the pointer is over, shared by every view (hover.ts): a neutral, never the colour of a pick */
+  --hover-lit: #000000;
+  --hover-lit-bg: color-mix(in srgb, var(--hover-lit) 9%, transparent);
+  --sel-text: #063a78;
+
+  --brand: #9a4400;
+  --accent: #9a4400;
+  --accent-fill: #8f3f00;
+  --accent-fg: #ffffff;
+  --accent-text: #7d3500;
+
+  --danger: #9c0d08;
+  --danger-bg: #fff0ef;
+  --danger-line: #a80f0a;
+  --danger-text: #7d0a06;
+  --danger-solid: #9c0d08;
+  --on-danger: #ffffff;
+  --warning: #6b4a00;
+  --warning-bg: #fff6d6;
+  --warning-line: #6b4a00;
+  --warning-text: #4d3500;
+  --warning-solid: #ffd23f;
+  --on-warning: #000000;
+  --success: #0b5d20;
+  --success-bg: #e8f7ec;
+  --success-line: #0b5d20;
+  --success-text: #063d15;
+  --info: #084c9e;
+  --info-bg: #e8f1fd;
+  --info-line: #084c9e;
+  --info-text: #063a78;
+
+  --hover: color-mix(in srgb, #000 10%, transparent);
+  --hover-strong: color-mix(in srgb, #000 16%, transparent);
+  --pressed: color-mix(in srgb, #000 22%, transparent);
+  --focus: #000000;
+  --focus-ring: 0 0 0 2px #fff, 0 0 0 4px #000;
+
+  --overlay: rgba(255, 255, 255, .7);
+  --pop: #ffffff;
+  --pop-border: #000000;
+  --elev-1: none;
+  --elev-2: none;
+  --elev-3: none;
+  --edge-hi: transparent;
+  --elev-accent: none;
+  --kbd-bg: #ffffff;
+  --kbd-border: #000000;
+  --scroll-thumb: #6b6b6b;
+  --scroll-thumb-hover: #000000;
+
+  --kind-part: #5c2d9a;
+  --kind-net: #0b5d20;
+  --kind-module: #0f4aa3;
+  --kind-definition: #6b4a00;
+  --kind-file: #3d4652;
+  --kind-command: #8a3c00;
+  --kind-board: #0b5d20;
+  --kind-system: #8a3c00;
+  --kind-panel: #5c5200;
+  --kind-interface: #6b4a00;
+  --on-kind: #ffffff;
+
+  --syn-comment: #4d5560;
+  --syn-doc: #1f5a1a;
+  --syn-string: #0b5d20;
+  --syn-number: #9a2f00;
+  --syn-keyword: #6b3d00;
+  --syn-type: #084c9e;
+  --syn-property: #5c2d9a;
+  --syn-namespace: #3d4652;
+  --syn-variable: #000000;
+  --syn-operator: #a80f0a;
+  --syn-punct: #3d4652;
+  --syn-invalid: #a80f0a;
+  --cm-active-line: color-mix(in srgb, #000 8%, transparent);
+  --cm-selection: color-mix(in srgb, var(--accent) 35%, transparent);
+  --cm-match: color-mix(in srgb, var(--info) 28%, transparent);
+  --cm-reveal: color-mix(in srgb, var(--accent) 40%, transparent);
+  --cm-hint: #3d3d3d;
+  --cm-guide: #b9b9b9;
+  /* what changed since a git ref (the Compare section and the marks on the views): added, changed, removed, and only renumbered.
+   * Marks and outlines, held to 3:1 on every surface a view draws on (theme.test.ts). */
+  --cmp-added: #006b24;
+  --cmp-changed: #7a4300;
+  --cmp-removed: #a5160f;
+  --cmp-renumbered: #3a4558;
+
+  --sch-sheet: #ffffff;
+  --sch-wire: #006b2b;
+  --sch-body: #7a0000;
+  --sch-fill: #fff9c0;
+  --sch-pin: #7a0000;
+  --sch-text: #00394f;
+  --sch-net: #004d1a;
+  --sch-hit: #b34000;
+  --sch-muted: #4a5058;
+  --sch-bad: #b00000;
+  --sch-mark: #0b4a9e;
+  --sch-bus: #00566b;
+  --sch-frame: #3d6a55;
+  --sch-frame-fill: rgba(0, 107, 43, .04);
+  --sch-frame-title: #1d4a37;
+  /* a schematic note (a doc comment or a relation): a paper card on the sheet; the words 4.5:1 (7:1 in high contrast) on the card, the frame 3:1 on the sheet */
+  --sch-note-fill: #fffbe0;
+  --sch-note-stroke: #6e5800;
+  --sch-note-text: #2a2400;
+  --sch-note-heading: #5a4600;
+
+  /* the board: a calm drawing. The canvas (--pcb-bg) is a step from the substrate (--pcb-board); copper is a muted copper on
+   * the front and a muted teal-blue on the back; a through-hole pad and a via have tones of their own; the ratsnest is thin
+   * and translucent; a pick is the page's blue. */
+  --pcb-bg: #ffffff;
+  --pcb-board: #f2f2f2;
+  --pcb-grid: #6b6b6b;
+  --pcb-outline: #3b4656;
+  --pcb-silk: #1a1a1a;
+  --pcb-refdes: #000000;
+  --pcb-key: #000000;
+  --pcb-ratsnest: #1f4f94;
+  --pcb-fab: #3b5a82;
+  --pcb-courtyard: #4a5565;
+  --pcb-keepout: #a80f1d;
+  --pcb-height-limit: #8a5a00;
+  --pcb-unconnected: #4a4f57;
+  --pcb-front: #8f3f06;
+  --pcb-back: #005f78;
+  --pcb-thru: #5e4a12;
+  /* a hole that goes through: --pcb-thru is its ring (3:1), --pcb-thru-fill the body inside it, a step lighter than the ring on the light board */
+  --pcb-thru-fill: var(--pcb-thru);
+  /* an inner plane, by its place among the planes: a tone for its fill and border (3:1) */
+  --pcb-plane-1: #3d2fa8;
+  --pcb-plane-2: #0d6a3f;
+  --pcb-plane-3: #7a5000;
+  --pcb-plane-4: #9c1f5e;
+  --pcb-via: #444444;
+  --pcb-pad-text: #ffffff;
+  --pcb-select: var(--sel);
+  --pcb-lock: #8a5a00;
+  --pcb-lock-fg: #ffffff;
+  --pcb-hl: #000000;
+  --pcb-track-opacity: .95;
+  --net-0: #b8222b; --net-1: #046650; --net-2: #8a6200; --net-3: #1d4fb8; --net-4: #6b2fa8;
+  --net-5: #a84a00; --net-6: #1d6e36; --net-7: #a82c5c; --net-8: #0a5f94; --net-9: #5f6e00;
+
+  --grid-dot: #c9c9c9;
+  --edge: #4d5560;
+  --edge-arrow: #262b33;
+  --flow-down: #0f4aa3;
+  --volt: #0b4a94;
+  --stage-bg: #eaf2fd;
+  --stage-border: #0f4aa3;
+  --stage-text: #0a3d80;
+  --meter-track: #d4d4d4;
+  --meter-fill: #4d5560;
+  --signal-edge: #5a5040;
+}
+
+/* ---- derived tokens: one definition for every theme ---- */
+:root {
+  /* the names of the layers: 1 is a panel, 2 is raised, 3 is a field or a hovered row */
+  --surface-1: var(--surface);
+  --surface-2: var(--surface-raised);
+  --shadow-card: var(--elev-1);
+  --shadow-float: var(--elev-2);
+  --shadow-pop: var(--elev-3);
+  /* a row that is picked (a calm blue), and the strong form of it; the bar at its edge */
+  --pick: color-mix(in srgb, var(--sel) 14%, transparent);
+  --select-bg: color-mix(in srgb, var(--sel) 13%, var(--surface));
+  --active-bg: color-mix(in srgb, var(--sel) 20%, var(--pop));
+  --sel-bar: var(--sel);
+  --sel-line: color-mix(in srgb, var(--sel) 45%, transparent);
+  --hover-bg: var(--hover);
+  /* the brand's orange, soft: a tint behind the active indicator and the primary button's halo */
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 50%, transparent);
+  /* skeleton blocks */
+  --skeleton: color-mix(in srgb, var(--text) 6%, transparent);
+  --skeleton-hi: color-mix(in srgb, var(--text) 11%, transparent);
+  /* a table: every other row a hair darker, and the line under a sticky header */
+  --zebra: color-mix(in srgb, var(--text) 2.4%, transparent);
+  --row-line: color-mix(in srgb, var(--text) 6%, transparent);
+  /* the syntax colours on a tinted line of the diff view (compare.css maps --syn-* to these inside .diff-panel): each is pushed halfway to
+   * the page's ink, which keeps its hue and gives the 4.5:1 that a changed word's tint (a quarter of a mark's colour) would take from the
+   * plain colour; `theme.test.ts` measures every one on every tint in every theme */
+  --diff-syn-comment: color-mix(in srgb, var(--text) 50%, var(--syn-comment));
+  --diff-syn-doc: color-mix(in srgb, var(--text) 50%, var(--syn-doc));
+  --diff-syn-string: color-mix(in srgb, var(--text) 50%, var(--syn-string));
+  --diff-syn-number: color-mix(in srgb, var(--text) 50%, var(--syn-number));
+  --diff-syn-keyword: color-mix(in srgb, var(--text) 50%, var(--syn-keyword));
+  --diff-syn-type: color-mix(in srgb, var(--text) 50%, var(--syn-type));
+  --diff-syn-property: color-mix(in srgb, var(--text) 50%, var(--syn-property));
+  --diff-syn-namespace: color-mix(in srgb, var(--text) 50%, var(--syn-namespace));
+  --diff-syn-variable: color-mix(in srgb, var(--text) 50%, var(--syn-variable));
+  --diff-syn-operator: color-mix(in srgb, var(--text) 50%, var(--syn-operator));
+  --diff-syn-punct: color-mix(in srgb, var(--text) 50%, var(--syn-punct));
+  --diff-syn-invalid: color-mix(in srgb, var(--text) 50%, var(--syn-invalid));
+}

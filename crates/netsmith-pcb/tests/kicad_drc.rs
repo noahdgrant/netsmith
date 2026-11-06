@@ -1,12 +1,14 @@
 //! KiCad's own design rule check on the files netsmith writes, using the rules in the
-//! `.kicad_pro` written beside them. These run `kicad-cli.exe` from WSL, and are skipped
-//! where it is not installed (set `KICAD_CLI` to its path to use another).
+//! `.kicad_pro` written beside them. These run `kicad-cli` (found as
+//! `netsmith_fab::KicadCliExe::locate` does: `$KICAD_CLI`, `PATH`, Windows KiCad under WSL),
+//! and are skipped where it is not installed.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use netsmith_core::{Design, Net, Part, PinRef};
+use netsmith_fab::KicadCliExe;
 use netsmith_kicad::Mapping;
 use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::{
@@ -16,24 +18,6 @@ use netsmith_pcb::{
 use netsmith_solve::Catalogs;
 
 mod common;
-
-const KICAD_CLI: &str = "/mnt/c/Program Files/KiCad/9.0/bin/kicad-cli.exe";
-
-fn run(program: &str, args: &[&str]) -> Option<String> {
-    // Windows programs go through the gate that takes turns and starts again when WSL fails
-    // to start them (`netsmith_fab::exclusive`).
-    let ran = netsmith_fab::exclusive::run(|| {
-        let mut command = Command::new(program);
-        command.args(args);
-        command
-    })
-    .ok()?;
-    ran.success().then(|| {
-        String::from_utf8_lossy(&ran.output.stdout)
-            .trim()
-            .to_string()
-    })
-}
 
 /// What a DRC run found: the type of each violation, and how many connections are missing.
 struct Report {
@@ -51,7 +35,7 @@ impl Report {
 /// netsmith's own on the same files, and require the two to agree on everything they both
 /// check (ADR 0037). `None` if KiCad is not here.
 fn drc(name: &str, pcb: &str, pro: &str) -> Option<Report> {
-    use netsmith_fab::{KicadCli, KicadCliExe, drc::kicad};
+    use netsmith_fab::{KicadCli, drc::kicad};
     let cli = KicadCliExe::locate()?;
     // Tests run side by side, so each run gets a folder of its own.
     static RUNS: AtomicUsize = AtomicUsize::new(0);
@@ -450,6 +434,8 @@ fn board_of(parts: &[(&str, &str, f64, f64)], nets: Vec<Net>) -> Board {
         name: "Holes".into(),
         process: Some(common::process_with(&[])),
         features: Default::default(),
+        interfaces: Vec::new(),
+        notes: Vec::new(),
         parts: parts.iter().map(|(r, k, ..)| part(r, k)).collect(),
         nets,
     };
@@ -1191,15 +1177,30 @@ fn a_keepout_a_part_carries_moves_with_it() {
 /// Whether KiCad's own fill of the top pour on `net` covers each point, or `None` if KiCad's
 /// Python is not here.
 fn pour_covers(name: &str, b: &Board, net: &str, points: &[Pt]) -> Option<Vec<bool>> {
-    let cli = std::env::var("KICAD_CLI").unwrap_or_else(|_| KICAD_CLI.to_string());
-    let python = Path::new(&cli).with_file_name("python.exe");
-    if !python.is_file() {
-        eprintln!("skipped: no KiCad Python at {}", python.display());
+    let Some(cli) = KicadCliExe::locate() else {
+        eprintln!("skipped: no kicad-cli (set KICAD_CLI, or install KiCad)");
+        return None;
+    };
+    // Windows KiCad has its Python beside kicad-cli.exe; elsewhere it is the system's, which
+    // must have KiCad's `pcbnew` module.
+    let python = cli.python();
+    if cli.windows() {
+        if !python.is_file() {
+            eprintln!("skipped: no KiCad Python at {}", python.display());
+            return None;
+        }
+    } else if !netsmith_fab::exclusive::run(|| {
+        let mut command = Command::new(&python);
+        command.args(["-c", "import pcbnew"]);
+        command
+    })
+    .is_ok_and(|ran| ran.success())
+    {
+        eprintln!("skipped: {} has no pcbnew module", python.display());
         return None;
     }
-    let temp = run("cmd.exe", &["/c", "echo %TEMP%"])?;
-    let temp = PathBuf::from(run("wslpath", &[temp.trim_end_matches('\r')])?);
-    let dir = TempDir::new_in(&temp, &format!("pcb-pour-{name}"));
+    let base = cli.scratch_base().unwrap_or_else(|e| panic!("{e}"));
+    let dir = TempDir::new_in(&base, &format!("pcb-pour-{name}"));
     std::fs::write(dir.join("b.kicad_pcb"), kicad_pcb(b)).ok()?;
     std::fs::write(dir.join("b.kicad_pro"), kicad_pro(b)).ok()?;
     let spots: Vec<String> = points
@@ -1217,12 +1218,11 @@ fn pour_covers(name: &str, b: &Board, net: &str, points: &[Pt]) -> Option<Vec<bo
         spots.join(", ")
     );
     std::fs::write(dir.join("hit.py"), script).ok()?;
-    let win = run("wslpath", &["-w", dir.to_str()?])?;
+    let script = cli.arg(&dir.join("hit.py")).ok()?;
+    let board = cli.arg(&dir.join("b.kicad_pcb")).ok()?;
     let ran = netsmith_fab::exclusive::run(|| {
         let mut command = Command::new(&python);
-        command
-            .arg(format!("{win}\\hit.py"))
-            .arg(format!("{win}\\b.kicad_pcb"));
+        command.arg(&script).arg(&board);
         command
     })
     .ok()?;

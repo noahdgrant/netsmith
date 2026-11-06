@@ -60,7 +60,10 @@ The imports and doc comments are left out here; the complete file is `examples/l
 generate itself, so install KiCad 9 (8 also works). netsmith finds the `symbols` and
 `footprints` folders by itself; set `NETSMITH_KICAD_SYMBOLS` and `NETSMITH_KICAD_FOOTPRINTS`
 to name them. If it finds none, it stops and lists every place it looked (ADR 0021). Only
-Windows KiCad 9 under WSL has been tried on a real install (#6).
+Windows KiCad 9 under WSL has been tried on a real install (#6). The program
+`kicad-cli` is `$KICAD_CLI`, else on `PATH`, else (under WSL only) the newest Windows KiCad in
+`/mnt/c/Program Files/KiCad/<version>/bin`; without any, the editor says
+"KiCad not found: set KICAD_CLI or install KiCad".
 
 ## Use it
 

@@ -609,6 +609,7 @@ impl Checker<'_> {
                 rhs: RExpr::Field(*voltage),
                 source,
                 span,
+                written: None,
             });
         }
     }

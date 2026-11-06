@@ -10,13 +10,13 @@
 
 use std::collections::{BTreeSet, HashMap};
 
-use netsmith_core::{Design, DesignError, Net, PinRef};
+use netsmith_core::{Design, DesignError, Net, Note, PinRef};
 use netsmith_kicad::{Mapping, SymbolLib};
 
 use crate::geom::{Pt, Rect, snap_up};
 use crate::layout::{
-    Anchor, Layout, Marks, NetLabel, PinMark, PlacedPart, Port, PowerSymbol, Rails, TEXT_SIZE,
-    Text, Wire, is_ground_name, layout_marked, layout_with, text_width,
+    Anchor, Bus, Layout, Marks, NetLabel, PinMark, PlacedNote, PlacedPart, Port, PowerSymbol,
+    Rails, TEXT_SIZE, Text, Wire, is_ground_name, layout_marked, layout_with, text_width,
 };
 
 /// A board with this many parts or fewer is drawn as one sheet.
@@ -55,7 +55,8 @@ pub struct Sheet {
     /// The group's name; a cut sheet adds its number: `stage (2/3)`.
     pub name: String,
     pub detail: String,
-    /// Indices into `design.parts`.
+    /// Indices into `layout.parts`: the sheet's parts (the same as in `design.parts`), then the
+    /// boxes of their further units.
     pub parts: Vec<usize>,
     /// The box, title included.
     pub frame: Rect,
@@ -122,8 +123,23 @@ pub fn layout_sheets_marked(
         .map(|(i, p)| (p.refdes.as_str(), i))
         .collect();
 
+    // The sheet each note is on: the one of the first part it is about, else the one of the
+    // module (or board) it belongs to.
+    let part_by_path: HashMap<&str, usize> = design
+        .parts
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| !p.path.is_empty())
+        .map(|(i, p)| (p.path.as_str(), i))
+        .collect();
+    let note_sheet: Vec<usize> = design
+        .notes
+        .iter()
+        .map(|n| sheet_of_note(design, n, &part_by_path, &owner))
+        .collect();
+
     let mut drawn: Vec<Drawn> = Vec::new();
-    for cluster in &clusters {
+    for (c, cluster) in clusters.iter().enumerate() {
         // This sheet's view of the design: its parts, and of each net the pins that are here.
         let in_sheet: HashMap<usize, usize> = cluster
             .parts
@@ -155,6 +171,37 @@ pub fn layout_sheets_marked(
             });
             net_of_global.push(n);
         }
+        // The interface instances with a member on a net of this sheet, with those members.
+        let here: std::collections::HashSet<&str> = nets.iter().map(|n| n.name.as_str()).collect();
+        let interfaces = design
+            .interfaces
+            .iter()
+            .filter_map(|i| {
+                let members: Vec<_> = i
+                    .members
+                    .iter()
+                    .filter(|m| here.contains(m.net.as_str()))
+                    .cloned()
+                    .collect();
+                (!members.is_empty()).then(|| netsmith_core::InterfaceInstance {
+                    members,
+                    ..i.clone()
+                })
+            })
+            .collect();
+        // This sheet's notes, each about the parts of it that are on this sheet.
+        let mut note_ids: Vec<usize> = Vec::new();
+        let mut notes: Vec<Note> = Vec::new();
+        for (ni, note) in design.notes.iter().enumerate() {
+            if note_sheet[ni] != c {
+                continue;
+            }
+            let mut note = note.clone();
+            note.anchors
+                .retain(|a| part_by_path.get(a.as_str()).is_some_and(|&p| owner[p] == c));
+            note_ids.push(ni);
+            notes.push(note);
+        }
         let sub = Design {
             name: cluster.name.clone(),
             parts: cluster
@@ -165,6 +212,8 @@ pub fn layout_sheets_marked(
             nets,
             process: None,
             features: Default::default(),
+            interfaces,
+            notes,
         };
         let layout = layout_with(
             &sub,
@@ -179,6 +228,7 @@ pub fn layout_sheets_marked(
             layout,
             parts: cluster.parts.clone(),
             nets: net_of_global,
+            notes: note_ids,
         });
     }
 
@@ -212,12 +262,17 @@ pub fn layout_sheets_marked(
     let offsets = arrange(&frames);
 
     let mut parts: Vec<Option<PlacedPart>> = vec![None; design.parts.len()];
+    // The boxes of the units after the first of a part (`layout::units`), after the parts' own.
+    let mut more: Vec<PlacedPart> = Vec::new();
     let mut symbols = Vec::new();
     let mut ports = Vec::new();
     let mut pin_marks = Vec::new();
     let mut wires = Vec::new();
     let mut junctions = Vec::new();
     let mut labels = Vec::new();
+    let mut buses = Vec::new();
+    let mut spines = Vec::new();
+    let mut notes: Vec<PlacedNote> = Vec::new();
     let mut sheets = Vec::new();
     let mut bounds: Option<Rect> = None;
     for (((d, cluster), (frame, title)), by) in drawn
@@ -231,14 +286,29 @@ pub fn layout_sheets_marked(
             b.union(frame);
             b
         }));
+        // Where each box of this sheet goes in the whole layout: a part's own at its index, the
+        // boxes of further units after them all.
+        let own = d.parts.len();
+        let boxes: Vec<usize> = (0..d.layout.parts.len())
+            .map(|i| {
+                if i < own {
+                    d.parts[i]
+                } else {
+                    design.parts.len() + more.len() + (i - own)
+                }
+            })
+            .collect();
         for (local, mut placed) in d.layout.parts.into_iter().enumerate() {
-            let global = d.parts[local];
             move_part(&mut placed, by);
-            placed.part = global;
+            placed.part = d.parts[placed.part];
             for pin in &mut placed.pins {
                 pin.net = pin.net.map(|n| d.nets[n]);
             }
-            parts[global] = Some(placed);
+            if local < own {
+                parts[boxes[local]] = Some(placed);
+            } else {
+                more.push(placed);
+            }
         }
         for w in d.layout.wires {
             wires.push(Wire {
@@ -287,12 +357,35 @@ pub fn layout_sheets_marked(
             labels.push(NetLabel {
                 net: d.nets[l.net],
                 text,
+                at: shift(l.at, by),
+                dir: l.dir,
+            });
+        }
+        for b in d.layout.buses {
+            buses.push(move_bus(b, by, &d.nets, &boxes));
+        }
+        for n in d.layout.notes {
+            notes.push(move_note(n, by, &d.parts, &d.notes));
+        }
+        for sp in d.layout.spines {
+            spines.push(crate::layout::SpineMark {
+                ic: boxes[sp.ic],
+                chains: sp
+                    .chains
+                    .into_iter()
+                    .map(|c| c.into_iter().map(|p| boxes[p]).collect())
+                    .collect(),
             });
         }
         sheets.push(Sheet {
             name: cluster.name.clone(),
             detail: cluster.detail.clone(),
-            parts: cluster.parts.clone(),
+            parts: cluster
+                .parts
+                .iter()
+                .copied()
+                .chain(boxes[own..].iter().copied())
+                .collect(),
             frame,
             title: Text {
                 at: Pt::new(
@@ -307,6 +400,7 @@ pub fn layout_sheets_marked(
         parts: parts
             .into_iter()
             .map(|p| p.expect("every part is on a sheet"))
+            .chain(more)
             .collect(),
         symbols,
         ports,
@@ -315,6 +409,9 @@ pub fn layout_sheets_marked(
         wires,
         junctions,
         labels,
+        buses,
+        spines,
+        notes,
         bounds: bounds.unwrap_or(Rect::around(Pt::new(0.0, 0.0))),
     })
 }
@@ -325,6 +422,86 @@ struct Drawn {
     parts: Vec<usize>,
     /// Sub-design net index to design net index.
     nets: Vec<usize>,
+    /// Sub-design note index to design note index.
+    notes: Vec<usize>,
+}
+
+/// The sheet of the clusters that `note` is on: the one of the first part it is about; else
+/// the one that holds the parts of the module the note's path is in (the longest module path
+/// that has a part), or of the board's own parts.
+fn sheet_of_note(
+    design: &Design,
+    note: &Note,
+    part_by_path: &HashMap<&str, usize>,
+    owner: &[usize],
+) -> usize {
+    for a in &note.anchors {
+        if let Some(&p) = part_by_path.get(a.as_str()) {
+            return owner[p];
+        }
+    }
+    let mut at = note.path.as_str();
+    while !at.is_empty() {
+        let below = format!("{at}.");
+        if let Some(p) = design
+            .parts
+            .iter()
+            .position(|p| p.path.starts_with(&below) || p.path == at)
+        {
+            return owner[p];
+        }
+        at = at.rfind('.').map_or("", |i| &at[..i]);
+    }
+    let own = design.parts.iter().position(|p| !p.path.contains('.'));
+    own.map_or_else(|| owner.first().copied().unwrap_or(0), |p| owner[p])
+}
+
+/// A note of a sheet's drawing, moved by `by`, with the design's note and part indices.
+fn move_note(mut n: PlacedNote, by: Pt, parts: &[usize], notes: &[usize]) -> PlacedNote {
+    n.note = notes[n.note];
+    n.anchor = n.anchor.map(|a| parts[a]);
+    n.frame = n.frame.translated(by);
+    if let Some(h) = &mut n.heading {
+        h.at = shift(h.at, by);
+    }
+    for l in &mut n.lines {
+        l.at = shift(l.at, by);
+    }
+    n
+}
+
+/// A bus of a sheet's drawing, moved by `by`, with the nets of the design and the boxes of
+/// the layout (`parts[i]` is where box `i` of the sheet is).
+fn move_bus(mut b: Bus, by: Pt, nets: &[usize], parts: &[usize]) -> Bus {
+    let moved = |mut t: Text| {
+        t.at = shift(t.at, by);
+        t
+    };
+    for m in &mut b.members {
+        m.net = nets[m.net];
+    }
+    for e in &mut b.entries {
+        e.net = nets[e.net];
+        e.at = shift(e.at, by);
+    }
+    for line in &mut b.lines {
+        for p in line.iter_mut() {
+            *p = shift(*p, by);
+        }
+    }
+    for e in &mut b.ends {
+        *e = parts[*e];
+    }
+    if let Some(f) = &mut b.flag {
+        f.at = shift(f.at, by);
+        f.label.at = shift(f.label.at, by);
+    }
+    b.label = moved(b.label);
+    b.list = moved(b.list);
+    b.other = b.other.map(moved);
+    b.count = moved(b.count);
+    b.tick = (shift(b.tick.0, by), shift(b.tick.1, by));
+    b
 }
 
 fn shift(p: Pt, by: Pt) -> Pt {

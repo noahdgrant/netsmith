@@ -2,6 +2,16 @@
 
 include!(concat!(env!("OUT_DIR"), "/assets.rs"));
 
+/// The `SOURCE-HASH` of the embedded page, or `None` when the binary has no page.
+pub fn bundle_hash() -> Option<&'static str> {
+    (!BUNDLE_HASH.is_empty()).then_some(BUNDLE_HASH)
+}
+
+/// `git describe --tags --always` at build time, if netsmith was built in a git checkout.
+pub fn git_describe() -> Option<&'static str> {
+    option_env!("NETSMITH_GIT_DESCRIBE").filter(|s| !s.is_empty())
+}
+
 /// The embedded file at `path` (`index.html`, `assets/index-ab12.js`) and its content type.
 pub fn find(path: &str) -> Option<(&'static str, &'static [u8])> {
     FILES

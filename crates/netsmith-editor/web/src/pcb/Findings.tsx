@@ -2,7 +2,10 @@
 // marks it on the board.
 
 import type { PcbBox, PcbFinding, PcbScene } from '../api';
+import { EmptyState } from '../components/ui';
 import { checking, findings, pickedFinding, select } from '../pcbstore';
+import { project } from '../store';
+import { KICAD_NOT_FOUND, kicadLine } from './kicad';
 
 const SOURCE = { placement: 'netsmith', unrouted: 'netsmith', drc: 'netsmith', kicad: 'KiCad' } as const;
 
@@ -25,9 +28,28 @@ export function FindingsList(props: { scene: PcbScene; onFocus: (box: PcbBox) =>
         <button class="tool" disabled={checking.value} onClick={props.onRecheck} title="Ask KiCad's design rules check as well (netsmith's own runs by itself; KiCad is optional)" data-testid="recheck">
           {checking.value ? 'Checking…' : 'Also ask KiCad'}
         </button>
-        {f && <span class="faint">{f.kicad === 'ran' ? 'with KiCad' : f.kicad === 'unavailable' ? 'KiCad unavailable' : 'KiCad not run'}</span>}
+        {f && project.value?.kicad !== false && (
+          <span class="faint" data-testid="kicad-state" data-state={f.kicad}>
+            {kicadLine(f.kicad)}
+          </span>
+        )}
       </div>
-      {f && f.kicad === 'unavailable' && <div class="note-line bad">{f.kicadNote}</div>}
+      {project.value?.kicad === false && (
+        <EmptyState
+          compact
+          class="kicad-missing"
+          icon="kicad"
+          tone="warn"
+          title={KICAD_NOT_FOUND}
+          help={
+            <>
+              Set <code>KICAD_CLI</code> or install KiCad to ask its design rules check as well. netsmith's own checks run without it.
+            </>
+          }
+        />
+      )}
+      {/* Where kicad-cli is not found its state above is the one message; the server's note says the same. */}
+      {f && f.kicad === 'unavailable' && project.value?.kicad !== false && <div class="note-line bad">{f.kicadNote}</div>}
       {f && !f.routed && <div class="note-line faint">Not routed: the connections still to make are not findings yet.</div>}
       <div class="rows">
         {(f?.findings ?? []).map((item) => (
@@ -48,8 +70,10 @@ export function FindingsList(props: { scene: PcbScene; onFocus: (box: PcbBox) =>
             <div class="finding-msg" title={item.message}>{item.message}</div>
           </div>
         ))}
-        {f && f.findings.length === 0 && <div class="none">Nothing found{f.kicad === 'ran' ? ' by netsmith or KiCad' : ''}.</div>}
-        {!f && <div class="none">Checking…</div>}
+        {f && f.findings.length === 0 && (
+          <EmptyState compact class="none" icon="check-circle" tone="ok" title={`Nothing found${f.kicad === 'ran' ? ' by netsmith or KiCad' : ''}`} help={f.routed ? 'The board passes the checks that ran.' : 'The checks that run before routing found nothing.'} />
+        )}
+        {!f && <EmptyState compact class="none" icon="note" title="Checking…" />}
       </div>
     </div>
   );

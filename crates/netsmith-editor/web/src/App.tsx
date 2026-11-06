@@ -3,37 +3,46 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { Editor } from './components/Editor';
 import {
   Conflict,
-  ProblemsPanel,
   PaneNotice,
+  ReadOnlyBanner,
   SectionStrip,
-  StatusBar,
   TabMenu,
   Tabs,
-  Toast,
   TopBar,
   dragging,
   tabMenu,
 } from './components/Chrome';
+import { Breadcrumbs } from './components/Breadcrumbs';
+import { ProblemsDock } from './components/ProblemsDock';
 import { Sidebar } from './components/Sidebar';
-import { type Section, SECTIONS, canSplit, clampSplit, closePane, sectionOfKey, splitRight } from './layout';
-import {
-  activeFile,
-  back,
-  goBack,
-  layout,
-  requestBack,
-  save,
-  setFocusPane,
-  showSection,
-  visible,
-  windowWidth,
-} from './store';
+import { About } from './components/About';
+import { CheatSheet } from './components/CheatSheet';
+import { FileTabMenu } from './components/FileTabMenu';
+import { QuickPick } from './components/QuickPick';
+import { Splash } from './components/Splash';
+import { StatusBar } from './components/StatusBar';
+import { Toasts } from './components/Toasts';
+import { TooltipLayer } from './components/Tooltip';
+import { ProgressLine, StaleStrip } from './components/ViewStatus';
+import { commandForKey } from './commands';
+import { registerAppCommands, registerCompareCommands } from './commandset';
+import { registerSettingsCommands } from './settingsCommands';
+import { banner } from './feedback/derive';
+import { type Section, SECTIONS, clampSplit } from './layout';
+import { cheatSheet, picker } from './quickpick';
+import { back, goBack, layout, setFocusPane, visible, windowWidth } from './store';
 import { Bom } from './views/Bom';
 import { Build } from './views/Build';
+import { Compare } from './views/Compare';
+import { DiffPanel } from './views/compare/DiffPanel';
 import { Pcb } from './views/Pcb';
 import { Power } from './views/Power';
 import { Schematic } from './views/Schematic';
 import { System } from './views/System';
+
+registerAppCommands();
+registerSettingsCommands();
+registerCompareCommands();
 
 function SectionBody({ section }: { section: Section }) {
   switch (section) {
@@ -49,15 +58,19 @@ function SectionBody({ section }: { section: Section }) {
       return <Pcb />;
     case 'build':
       return <Build />;
+    case 'compare':
+      return <Compare />;
     case 'source':
       return (
         <div class="source-section">
           <Sidebar />
           <div class="code">
             <Tabs />
+            <Breadcrumbs />
             <Conflict />
+            <ReadOnlyBanner />
             <Editor />
-            <ProblemsPanel />
+            <DiffPanel where="source" />
           </div>
         </div>
       );
@@ -67,49 +80,29 @@ function SectionBody({ section }: { section: Section }) {
 /** Sections that keep what they are showing (the editor's text and cursor, a zoom, a scroll)
  * while another section is on screen, by staying in the page, hidden. The PCB view's keys
  * work on the whole window, so it leaves the page instead and finds its zoom again. */
-const KEPT: Section[] = ['schematic', 'power', 'system', 'bom', 'build', 'source'];
+const KEPT: Section[] = ['schematic', 'power', 'system', 'bom', 'build', 'compare', 'source'];
 
-/** The shortcuts, wherever the focus is except in a field or the source editor (where Alt and
- * Ctrl still work). */
+/** Commands that still work while go to anything or the cheat sheet is open: they switch the
+ * window's mode. Every other key belongs to the window in front. */
+const WHILE_OPEN = new Set(['goto.anything', 'palette.open', 'goto.symbol', 'goto.problem', 'help.shortcuts']);
+
+/** The shortcuts: one table, the command registry (commands.ts, commandset.ts). A key runs its
+ * command wherever the focus is, except that a plain key (1-7, ?) leaves fields and the source
+ * editor alone. */
 function useShortcuts() {
   useEffect(() => {
     const typing = (t: EventTarget | null) =>
       !!(t as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"], .cm-editor');
     const key = (e: KeyboardEvent) => {
-      // Ctrl+S saves the file on show, wherever the focus is.
-      if ((e.ctrlKey || e.metaKey) && e.key === 's' && !e.defaultPrevented) {
-        e.preventDefault();
-        if (activeFile.value) void save(activeFile.value);
-        return;
-      }
       if (e.key === 'Escape' && tabMenu.peek()) {
         tabMenu.value = null;
         return;
       }
-      if (e.defaultPrevented) return;
-      const focused = visible.peek().find((p) => p.index === layout.peek().focus) ?? visible.peek()[0];
-      // Back from a click-through, from the source.
-      if (back.peek() && focused?.section === 'source') {
-        if (e.key === 'Escape' || (e.altKey && e.key === 'ArrowLeft')) {
-          e.preventDefault();
-          requestBack();
-          return;
-        }
-      }
-      // Ctrl+\ splits the window, or closes the second pane.
-      if ((e.ctrlKey || e.metaKey) && e.key === '\\') {
-        e.preventDefault();
-        const l = layout.peek();
-        if (l.panes.length === 2 && visible.peek().length === 2) layout.value = closePane(l, 1);
-        else if (canSplit(windowWidth.peek())) layout.value = splitRight(l);
-        return;
-      }
-      const section = sectionOfKey(e.key);
-      if (!section) return;
-      const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
-      if (plain ? typing(e.target) : e.shiftKey) return;
-      e.preventDefault();
-      showSection(section);
+      const open = picker.peek() !== null || cheatSheet.peek();
+      const cmd = commandForKey(e, typing(e.target));
+      if (!cmd || (open && !WHILE_OPEN.has(cmd.id))) return;
+      if (!cmd.passive) e.preventDefault();
+      void Promise.resolve(cmd.run()).catch(() => undefined);
     };
     window.addEventListener('keydown', key, true);
     const resize = () => (windowWidth.value = window.innerWidth);
@@ -125,12 +118,21 @@ function useShortcuts() {
   }, []);
 }
 
+/** The box the panes share inside the area: the area has the frame's gap as padding, and the
+ * panes' widths are shares of what is left. */
+export function innerBox(el: Element): { left: number; width: number } {
+  const r = el.getBoundingClientRect();
+  const c = getComputedStyle(el);
+  const l = parseFloat(c.paddingLeft) || 0;
+  return { left: r.left + l, width: r.width - l - (parseFloat(c.paddingRight) || 0) };
+}
+
 /** The divider between two panes: dragged, or moved by the arrow keys; a double click makes the
  * panes equal. */
 function Divider({ area }: { area: preact.RefObject<HTMLDivElement> }) {
   const [active, setActive] = useState(false);
   const set = (share: number) => {
-    const w = area.current?.clientWidth ?? 0;
+    const w = area.current ? innerBox(area.current).width : 0;
     layout.value = { ...layout.peek(), split: clampSplit(share, w), chosen: true };
   };
   return (
@@ -151,7 +153,7 @@ function Divider({ area }: { area: preact.RefObject<HTMLDivElement> }) {
       }}
       onPointerMove={(e) => {
         if (!active || !area.current) return;
-        const r = area.current.getBoundingClientRect();
+        const r = innerBox(area.current);
         set((e.clientX - r.left) / r.width);
       }}
       onPointerUp={(e) => {
@@ -206,8 +208,15 @@ export function App() {
     (id) => seen.current.has(id) && (KEPT.includes(id) || vis.some((p) => p.section === id)),
   );
   const dragged = dragging.value;
+  const stale = banner.value?.kind === 'stale';
   return (
     <div class={`app ${dragged ? 'dragging' : ''}`}>
+      <button
+        class="skip-link"
+        onClick={() => document.querySelector<HTMLElement>('.section:not(.away)')?.focus()}
+      >
+        Skip to the view
+      </button>
       <TopBar />
       <div
         ref={area}
@@ -232,22 +241,33 @@ export function App() {
           return (
             <section
               key={id}
-              class={`section sec-${id} ${shown ? '' : 'away'}`}
+              class={`section sec-${id} ${shown ? '' : 'away'} ${stale && id !== 'source' && id !== 'build' && id !== 'compare' ? 'is-stale' : ''}`}
               data-section={id}
               data-pane={shown ? vis[at].index : undefined}
               aria-hidden={!shown}
+              aria-label={SECTIONS.find((x) => x.id === id)?.label}
+              tabIndex={shown ? -1 : undefined}
               style={{ gridColumn: shown && two ? (at === 0 ? 1 : 3) : 1, gridRow: 2 }}
             >
+              {id !== 'source' && id !== 'build' && id !== 'compare' && <StaleStrip />}
               <SectionBody section={id} />
             </section>
           );
         })}
         {two && <Divider area={area} />}
         <DropZone />
+        <ProgressLine />
       </div>
+      <ProblemsDock />
       <StatusBar />
       <TabMenu />
-      <Toast />
+      <FileTabMenu />
+      <QuickPick />
+      <CheatSheet />
+      <About />
+      <Splash />
+      <Toasts />
+      <TooltipLayer />
       {dragged && <div class="drag-ghost" style={{ left: dragged.x + 12, top: dragged.y + 12 }}>{SECTIONS.find((s) => s.id === dragged.section)?.label}</div>}
     </div>
   );

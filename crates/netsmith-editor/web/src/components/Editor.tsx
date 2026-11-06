@@ -1,9 +1,9 @@
 import { closeBrackets } from '@codemirror/autocomplete';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { bracketMatching, indentOnInput, indentUnit } from '@codemirror/language';
-import { type Diagnostic, lintGutter, setDiagnostics } from '@codemirror/lint';
-import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
-import { Annotation, EditorState, type Extension } from '@codemirror/state';
+import { bracketMatching, foldKeymap, indentOnInput, indentUnit } from '@codemirror/language';
+import { type Diagnostic, setDiagnostics } from '@codemirror/lint';
+import { highlightSelectionMatches } from '@codemirror/search';
+import { Annotation, Compartment, EditorState, type Extension } from '@codemirror/state';
 import {
   EditorView,
   drawSelection,
@@ -15,47 +15,58 @@ import {
 import { useEffect, useRef } from 'preact/hooks';
 
 import { api } from '../client';
+import { EmptyState } from './ui';
 import { languageExtensions } from '../languages';
 import { flashLine, nextFlash, revealFlash, revealTarget } from '../reveal';
+import { ensurePower, power } from '../source/boarddata';
+import { baseText, compare, showChanges } from '../compare/store';
+import { cardExtension } from '../source/cm-card';
+import { changesExtension, setBaseText } from '../source/cm-changes';
+import { completeExtension } from '../source/cm-complete';
+import { foldExtension } from '../source/cm-fold';
+import { guidesExtension } from '../source/cm-guides';
+import { hintsExtension, setHints } from '../source/cm-hints';
+import { diagnosticOf } from '../source/cm-lint';
+import { searchExtension, searchKeys } from '../source/cm-search';
+import { severityGutter } from '../source/cm-sev';
+import { cmTheme, lintCardTheme } from '../source/cm-theme';
+import { sourceEditor } from '../source/handle';
+import { inlineHints as hintsFor } from '../source/hints';
+import { fontSize, inlineHints, wordWrap } from '../source/prefs';
 import {
   activeFile,
   cursor,
+  detail,
+  dirty,
   edit,
   goTo,
   openFiles,
+  project,
   reveal,
   save,
   say,
   shown,
 } from '../store';
+import { type Theme, isDark, theme as colourTheme } from '../theme';
 
 /** Marks a change made by the page, not typed, so it is not an edit. */
 const External = Annotation.define<boolean>();
 
-const theme = EditorView.theme(
-  {
-    '&': { height: '100%', color: 'var(--text)', backgroundColor: 'var(--editor)' },
-    '.cm-content': { fontFamily: 'var(--mono)', fontSize: '13px', caretColor: 'var(--accent)' },
-    '.cm-gutters': { backgroundColor: 'var(--editor)', color: 'var(--faint)', border: 'none' },
-    '.cm-activeLine': { backgroundColor: 'rgba(255,255,255,0.045)' },
-    '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--text)' },
-    '&.cm-focused': { outline: 'none' },
-    '.cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground': {
-      backgroundColor: 'rgba(232,135,58,0.28)',
-    },
-    '.cm-cursor': { borderLeftColor: 'var(--accent)' },
-    '.cm-tooltip': { backgroundColor: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text)' },
-    '.cm-diagnostic-error': { borderLeft: '3px solid var(--bad)' },
-    '.cm-diagnostic-warning': { borderLeft: '3px solid var(--warn)' },
-    '.cm-lintRange-error': { backgroundImage: 'none', textDecoration: 'underline wavy var(--bad)', textUnderlineOffset: '3px' },
-    '.cm-lintRange-warning': { backgroundImage: 'none', textDecoration: 'underline wavy var(--warn)', textUnderlineOffset: '3px' },
-  },
-  { dark: true },
-);
+/** CodeMirror's own defaults differ for a dark and a light page (search panel, completion list, the
+ * cursor when nothing overrides it): it is told which one this is, and again when the theme changes. */
+const darkness = new Compartment();
+const darknessFor = (t: Theme): Extension => EditorView.darkTheme.of(isDark(t));
+
+/** Long lines wrap or run on, as chosen; set again for a state that was kept while the choice changed. */
+const wrapping = new Compartment();
+const wrapFor = (on: boolean): Extension => (on ? EditorView.lineWrapping : []);
 
 function extensionsFor(path: string, readonly: boolean): Extension[] {
   return [
+    severityGutter,
     lineNumbers(),
+    changesExtension(path),
+    foldExtension,
     highlightActiveLineGutter(),
     highlightActiveLine(),
     drawSelection(),
@@ -67,9 +78,16 @@ function extensionsFor(path: string, readonly: boolean): Extension[] {
     // A word of three letters or more, whole: a letter or two selected must not mark every other one.
     highlightSelectionMatches({ minSelectionLength: 3, wholeWords: true }),
     revealFlash,
-    lintGutter(),
+    hintsExtension,
+    guidesExtension,
+    searchExtension,
     ...languageExtensions(path, () => shown.peek()?.problems ?? []),
-    theme,
+    cardExtension(path),
+    completeExtension(path),
+    cmTheme,
+    lintCardTheme,
+    darkness.of(darknessFor(colourTheme.peek())),
+    wrapping.of(wrapFor(wordWrap.peek())),
     EditorState.readOnly.of(readonly),
     EditorView.editable.of(!readonly),
     keymap.of([
@@ -89,7 +107,8 @@ function extensionsFor(path: string, readonly: boolean): Extension[] {
         },
       },
       indentWithTab,
-      ...searchKeymap,
+      ...searchKeys,
+      ...foldKeymap,
       ...historyKeymap,
       ...defaultKeymap,
     ]),
@@ -138,6 +157,16 @@ function range(state: EditorState, at: { line: number; column: number; endLine: 
   return { from, to };
 }
 
+/** Lines that stand where the code will be while the project is first read. */
+function CodeSkeleton() {
+  const widths = [38, 62, 24, 70, 54, 0, 46, 66, 30, 58, 42];
+  return (
+    <div class="code-skeleton" aria-hidden="true" data-testid="code-skeleton">
+      {widths.map((w, i) => (w ? <div key={i} class="sk sk-line" style={{ width: `${w}%`, marginLeft: `${(i % 3) * 3}%` }} /> : <div key={i} class="sk-gap" />))}
+    </div>
+  );
+}
+
 export function Editor() {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -151,7 +180,12 @@ export function Editor() {
 
   useEffect(() => {
     view.current = new EditorView({ parent: host.current!, state: EditorState.create({ doc: '' }) });
-    return () => view.current?.destroy();
+    sourceEditor.view = view.current;
+    return () => {
+      sourceEditor.view = null;
+      sourceEditor.path = null;
+      view.current?.destroy();
+    };
   }, []);
 
   // Switching file keeps each file's own undo history and cursor.
@@ -161,19 +195,39 @@ export function Editor() {
     if (current.current && current.current !== path) states.current.set(current.current, v.state);
     if (!path || !file) {
       current.current = null;
+      sourceEditor.path = null;
       v.setState(EditorState.create({ doc: '' }));
       return;
     }
     if (current.current !== path) {
       const kept = revs.current.get(path) === file.rev ? states.current.get(path) : undefined;
       v.setState(kept ?? EditorState.create({ doc: file.text, extensions: extensionsFor(path, file.readonly) }));
+      // A kept state was made under the theme and the wrapping of its day.
+      v.dispatch({ effects: [darkness.reconfigure(darknessFor(colourTheme.peek())), wrapping.reconfigure(wrapFor(wordWrap.peek()))] });
       revs.current.set(path, file.rev);
       current.current = path;
+      sourceEditor.path = path;
       const head = v.state.selection.main.head;
       const line = v.state.doc.lineAt(head);
       cursor.value = { file: path, line: line.number, column: head - line.from + 1 };
     }
   }, [path, file === undefined]);
+
+  // The theme changed.
+  const colours = colourTheme.value;
+  useEffect(() => {
+    view.current?.dispatch({ effects: darkness.reconfigure(darknessFor(colours)) });
+  }, [colours]);
+
+  // Wrapping and the size of the text changed.
+  const wrap = wordWrap.value;
+  useEffect(() => {
+    view.current?.dispatch({ effects: wrapping.reconfigure(wrapFor(wrap)) });
+  }, [wrap]);
+  const size = fontSize.value;
+  useEffect(() => {
+    view.current?.requestMeasure();
+  }, [size]);
 
   // The text was replaced under the editor (read again from disk), which typing never does.
   useEffect(() => {
@@ -187,7 +241,7 @@ export function Editor() {
     });
   }, [file?.rev]);
 
-  // The problems of this file, as squiggles.
+  // The problems of this file, as squiggles, marks in the gutter and cards.
   const problems = shown.value?.problems;
   useEffect(() => {
     const v = view.current;
@@ -197,10 +251,55 @@ export function Editor() {
       .filter((p) => p.at && p.at.file === path && p.severity !== 'note')
       .map((p) => {
         const { from, to } = range(v.state, p.at!);
-        return { from, to, severity: p.severity === 'error' ? ('error' as const) : ('warning' as const), message: p.message };
+        return diagnosticOf(p, from, to);
       });
     v.dispatch(setDiagnostics(v.state, diagnostics));
   }, [problems, path, file === undefined, file?.rev]);
+
+  // The hints at the end of a line: chosen from the board when the file is as it is on disk (the board's
+  // lines are the disk's); while it has edits the hints stay on their lines, moved with the text.
+  const wantHints = inlineHints.value;
+  const board = detail.value;
+  const rails = power.value;
+  useEffect(() => {
+    const v = view.current;
+    if (!v || !path || current.current !== path) return;
+    if (!wantHints) {
+      v.dispatch({ effects: setHints.of([]) });
+      return;
+    }
+    ensurePower();
+    const f = openFiles.peek()[path];
+    if (f && dirty(f)) return;
+    const lines = v.state.doc.toString().split('\n');
+    v.dispatch({ effects: setHints.of(hintsFor(path, lines, board, rails)) });
+  }, [wantHints, board, rails, path, file === undefined, file?.rev]);
+
+  // The marks of the comparison with a git ref: the file at the ref is the base the margin diffs the text against.
+  const marking = showChanges.value;
+  const cmp = compare.value;
+  useEffect(() => {
+    const v = view.current;
+    if (!v || !path || current.current !== path) return;
+    if (!marking || !cmp) {
+      v.dispatch({ effects: setBaseText.of(null) });
+      return;
+    }
+    let live = true;
+    const entry = cmp.source.files.find((f) => f.path === path);
+    const put = (base: string | null) => {
+      if (live && current.current === path) view.current?.dispatch({ effects: setBaseText.of(base) });
+    };
+    // Only a file that differs is asked of the server: one that is not listed is as it was at the ref (so what is on disk is the
+    // base), a new one is all new, and a file the server does not give (a note, a library) has no marks.
+    if (!entry) put(openFiles.peek()[path]?.saved ?? null);
+    else if (entry.status === 'added' || entry.status === 'untracked') put('');
+    else if (entry.status === 'deleted' || !/\.(nsm|toml|csv)$/.test(path)) put(null);
+    else void baseText(path).then(put);
+    return () => {
+      live = false;
+    };
+  }, [marking, cmp, path, file === undefined]);
 
   // A request to put the cursor somewhere.
   const ask = reveal.value;
@@ -212,13 +311,14 @@ export function Editor() {
       selection: { anchor: target.anchor, head: target.head },
       effects: [EditorView.scrollIntoView(target.anchor, { y: 'center' }), flashLine.of(nextFlash(target.anchor))],
     });
-    v.focus();
+    // A quiet ask (go to anything from another view) moves the cursor and leaves the keys where they were.
+    if (!ask.quiet) v.focus();
   }, [ask, path, file === undefined]);
 
   return (
     <div class="editor-host">
       <div ref={host} class="cm-wrap" style={{ display: file ? 'block' : 'none' }} />
-      {!file && <div class="empty">Open a file from the project tree.</div>}
+      {!file && (project.value ? <EmptyState icon="file" title="No file is open" help="Choose one in the project tree, or press Ctrl+P and type a name." /> : <CodeSkeleton />)}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 //! An invented board that shows what the editor's schematic does with the shapes a real board
-//! has, on four sheets: a battery divider with a buffer (`adc`), a microcontroller with two
+//! has, in four modules: a battery divider with a buffer (`adc`), a microcontroller with two
 //! units in KiCad's symbol and ninety-seven pins, a crystal and decoupling (`mcu`), a buck
 //! converter with a feedback divider, a bootstrap capacitor, an inductor and capacitors
 //! (`buck`), and a module with two connectors and more than twenty parts (`modem`). Nothing in
@@ -178,7 +178,7 @@ part Obd10 {
     .package: Package
 }
 
-/// The same ten pins of a connector, all of them going on to another sheet.
+/// The same ten pins of a connector, all of them going on to another module.
 part Ten10 {
     .designator &= "J"
 
@@ -313,7 +313,7 @@ module BuckStage1V8 {
 
 /// A radio modem's side of the board: a four-pin serial connector and a four-pin control
 /// connector, pull-ups and pull-downs on the lines, a status light, an RC on each of five lines
-/// and three capacitors on the supply. Twenty-two parts, one sheet (the old drawing cut a module of more than twenty in two).
+/// and three capacitors on the supply. Twenty-two parts, one drawing (the old drawing cut a module of more than twenty in two).
 module ModemModule {
     .supply: Rail
     .tx: Pin
@@ -399,7 +399,7 @@ module ObdConnector {
     .j.p5 ~ .ground.neg
 }
 
-/// A connector whose ten pins all go on to another sheet.
+/// A connector whose ten pins all go on to another module.
 module TenConnector {
     .s0: Pin
     .s1: Pin

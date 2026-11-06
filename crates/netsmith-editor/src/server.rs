@@ -1,7 +1,13 @@
 //! The HTTP server: routes, the guard against other web pages, and the socket that tells
 //! the page when the files changed.
 
-use std::{collections::HashMap, io, net::TcpListener, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    io,
+    net::TcpListener,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use axum::{
     Json, Router,
@@ -16,12 +22,12 @@ use axum::{
     routing::{get, post},
 };
 use serde::{Serialize, de::DeserializeOwned};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 use crate::{
-    api::{ClientMessage, Definition, ServerMessage},
+    api::{ClientMessage, Definition, Pending, ServerMessage},
     assets,
-    backend::{ApiError, Backend},
+    backend::{AnalysisEvent, ApiError, Backend, Observer},
 };
 
 /// How often the watcher asks the backend whether a file changed.
@@ -31,10 +37,57 @@ const MAX_BODY: usize = 4 * 1024 * 1024;
 /// The header a request that changes something must carry. A page on another origin cannot
 /// send a custom header without a preflight, which this server never answers.
 pub const GUARD_HEADER: &str = "x-netsmith";
+/// A request that has this header with the value `1` is told at once that the first analysis
+/// is still running (`503` and a [`Pending`] body) by every route that needs the analysis.
+/// Without it the request waits until the analysis is done and is then answered as ever, so
+/// a page that does not know about pending keeps working.
+pub const PENDING_HEADER: &str = "x-netsmith-pending";
+/// Messages a socket may fall behind by before it misses one. A big project's analysis sends
+/// a few dozen `progress` lines, and `rebuilt` must not be among those that are lost.
+const EVENT_BACKLOG: usize = 256;
+
+/// The routes that wait for the analysis: all those that read the snapshot of the project, or
+/// change files and then read it again. `/api/project`, the files, `/api/definition`, the
+/// socket, `/api/pcb/cancel` and the page itself never wait for it.
+const NEEDS_ANALYSIS: &[&str] = &[
+    "/api/analysis",
+    "/api/fs/create-file",
+    "/api/fs/create-dir",
+    "/api/fs/rename",
+    "/api/fs/delete",
+    "/api/board",
+    "/api/schematic.svg",
+    "/api/power",
+    "/api/system",
+    "/api/panel",
+    "/api/bom",
+    "/api/compare",
+    "/api/catalog/refresh",
+    "/api/pcb/route",
+    "/api/pcb/scene",
+    "/api/pcb/edit",
+    "/api/pcb/findings",
+    "/api/pcb/drc",
+    "/api/build",
+    "/api/fab",
+    "/api/download",
+    "/api/orders",
+    "/api/order",
+    "/api/order/download",
+];
+
+/// The analysis that is running, for a page that connects while it does.
+struct Running {
+    since: u64,
+    last: Option<ServerMessage>,
+}
+
+type Live = Arc<Mutex<Option<Running>>>;
 
 struct AppState {
     backend: Arc<dyn Backend>,
     events: broadcast::Sender<String>,
+    running: Live,
     hosts: Vec<String>,
 }
 
@@ -47,15 +100,35 @@ pub struct Server {
 
 /// Serve `backend` on `listener` until the process ends. Blocks.
 pub fn serve(listener: TcpListener, backend: Arc<dyn Backend>) -> io::Result<Server> {
+    serve_with_backlog(listener, backend, EVENT_BACKLOG)
+}
+
+/// [`serve`] with a socket that may fall `backlog` messages behind before it misses one
+/// (`serve` allows 256). For the tests of what a socket that lost messages is told.
+pub fn serve_with_backlog(
+    listener: TcpListener,
+    backend: Arc<dyn Backend>,
+    backlog: usize,
+) -> io::Result<Server> {
     let port = listener.local_addr()?.port();
     listener.set_nonblocking(true)?;
-    let (events, _) = broadcast::channel(16);
+    let (events, _) = broadcast::channel(backlog.max(1));
+    let running: Live = Arc::default();
+    // Told before the first analysis can start, so that its first line is not missed.
+    backend.observe(observer(&events, &running));
     // What the files are now, taken before the first connection is accepted: a change
     // after this is a change the sockets must hear of, however late the watcher first runs.
-    let baseline = backend.analysis().version;
+    // A backend that has not analysed yet is at version 0: the watcher announces the first
+    // analysis as a change, so a page that connected early hears `rebuilt`.
+    let baseline = if backend.pending().is_some() {
+        0
+    } else {
+        backend.analysis().version
+    };
     let state = Arc::new(AppState {
         backend,
         events,
+        running,
         hosts: vec![format!("127.0.0.1:{port}"), format!("localhost:{port}")],
     });
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -84,6 +157,9 @@ fn router(state: Shared) -> Router {
         .route("/api/system", get(system))
         .route("/api/panel", get(panel))
         .route("/api/bom", get(bom))
+        .route("/api/git", get(git))
+        .route("/api/git/file", get(git_file))
+        .route("/api/compare", get(compare))
         .route("/api/catalog/refresh", post(refresh_catalogs))
         .route("/api/pcb/route", post(route_pcb))
         .route("/api/pcb/cancel", post(cancel_route))
@@ -101,6 +177,7 @@ fn router(state: Shared) -> Router {
         .route("/api/events", get(events))
         .fallback(get(asset))
         .layer(axum::extract::DefaultBodyLimit::max(MAX_BODY))
+        .layer(middleware::from_fn_with_state(Arc::clone(&state), gate))
         .layer(middleware::from_fn_with_state(Arc::clone(&state), guard))
         .with_state(state)
 }
@@ -127,6 +204,58 @@ async fn guard(State(state): State<Shared>, request: Request, next: Next) -> Res
     next.run(request).await
 }
 
+/// Answers a route that needs the analysis with `503` and `{pending, elapsedMs}` while the
+/// first analysis runs, to a request that asked for that (`PENDING_HEADER`). Any other
+/// request goes on and waits inside the backend until the analysis is done. A failure of
+/// the project's data (`ApiError::unprocessable`) is answered with its JSON form instead of
+/// text to a request that has `application/json` in its `Accept` header.
+async fn gate(State(state): State<Shared>, request: Request, next: Next) -> Response {
+    let asks = request
+        .headers()
+        .get(PENDING_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v == "1");
+    if asks
+        && NEEDS_ANALYSIS.contains(&request.uri().path())
+        && let Some(elapsed_ms) = state.backend.pending()
+    {
+        let body = Pending {
+            pending: true,
+            elapsed_ms,
+        };
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            [
+                (header::CONTENT_TYPE, "application/json"),
+                (header::RETRY_AFTER, "1"),
+            ],
+            serde_json::to_string(&body).unwrap_or_default(),
+        )
+            .into_response();
+    }
+    let wants_json = request
+        .headers()
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.contains("application/json"));
+    let response = next.run(request).await;
+    // A failure of the project's data has a structured form for a page that asks for it.
+    if wants_json && let Some(body) = response.extensions().get::<StructuredError>() {
+        return (
+            response.status(),
+            [(header::CONTENT_TYPE, "application/json")],
+            body.0.clone(),
+        )
+            .into_response();
+    }
+    response
+}
+
+/// The JSON body of a failure that has one, riding on the response until [`gate`] knows
+/// whether the page accepts it.
+#[derive(Clone)]
+struct StructuredError(String);
+
 fn refuse(message: &str) -> Response {
     ApiError::forbidden(message).into_response()
 }
@@ -134,12 +263,16 @@ fn refuse(message: &str) -> Response {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let status = StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-        (
+        let mut response = (
             status,
             [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
             format!("{}\n", self.message),
         )
-            .into_response()
+            .into_response();
+        if let Some(json) = self.json() {
+            response.extensions_mut().insert(StructuredError(json));
+        }
+        response
     }
 }
 
@@ -172,7 +305,17 @@ fn body<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, ApiError> {
 }
 
 async fn project(State(s): State<Shared>) -> Result<Json<crate::api::Project>, ApiError> {
-    blocking(move || s.backend.project()).await.map(Json)
+    blocking(move || {
+        let mut project = s.backend.project();
+        // What this binary knows of itself; the backend knows the rest.
+        project.bundle_hash = crate::assets::bundle_hash().map(str::to_string);
+        project.git_describe = project
+            .git_describe
+            .or_else(|| crate::assets::git_describe().map(str::to_string));
+        project
+    })
+    .await
+    .map(Json)
 }
 
 async fn analysis(State(s): State<Shared>) -> Result<Json<crate::api::Analysis>, ApiError> {
@@ -311,8 +454,67 @@ fn progress(s: &Shared, task: &str, board: &str) -> crate::backend::Say {
                 task: task.clone(),
                 board: board.clone(),
                 message: message.to_string(),
+                stage: None,
+                done: None,
+                total: None,
             },
         );
+    })
+}
+
+/// Whether the project is in git and what it can be compared with.
+async fn git(State(s): State<Shared>) -> Result<Json<crate::api::GitInfo>, ApiError> {
+    blocking(move || s.backend.git()).await.map(Json)
+}
+
+/// A file of the project as it is at a ref.
+async fn git_file(
+    State(s): State<Shared>,
+    Query(q): Query1,
+) -> Result<Json<crate::api::FileContent>, ApiError> {
+    let (rev, path) = (param(&q, "ref")?, param(&q, "path")?);
+    json(move || s.backend.git_file(&rev, &path)).await
+}
+
+/// `?ref=<rev>` and, for one board, `&board=<name>`. The request is answered when the
+/// comparison is done; while it runs the socket carries `progress` messages with the task
+/// `compare` and the ref as their board.
+async fn compare(
+    State(s): State<Shared>,
+    Query(q): Query1,
+) -> Result<Json<crate::api::Compare>, ApiError> {
+    let rev = param(&q, "ref")?;
+    let board = q.get("board").cloned().filter(|b| !b.is_empty());
+    let observe = job_observer(&s, "compare", &rev);
+    json(move || s.backend.compare(&rev, board.as_deref(), &observe)).await
+}
+
+/// The events of an analysis that a job runs for itself, as `progress` messages of `task`
+/// about `key`. Only the progress is passed on: the page that asked knows when it ends.
+fn job_observer(s: &Shared, task: &str, key: &str) -> Observer {
+    let events = s.events.clone();
+    let (task, key) = (task.to_string(), key.to_string());
+    Arc::new(move |event| {
+        if let AnalysisEvent::Progress {
+            stage,
+            done,
+            total,
+            message,
+            ..
+        } = event
+        {
+            send(
+                &events,
+                &ServerMessage::Progress {
+                    task: task.clone(),
+                    board: key.clone(),
+                    message,
+                    stage: Some(stage),
+                    done: Some(done),
+                    total: Some(total),
+                },
+            );
+        }
     })
 }
 
@@ -470,6 +672,7 @@ async fn watch(state: Shared, baseline: u64) {
                 send(
                     &state.events,
                     &ServerMessage::Rebuilt {
+                        elapsed_ms: analysis.elapsed_ms,
                         analysis: analysis.clone(),
                     },
                 );
@@ -487,20 +690,163 @@ fn send(events: &broadcast::Sender<String>, message: &ServerMessage) {
     }
 }
 
+/// What an analysis tells the server, as the page hears it, and remembered for the page
+/// that connects while it runs. The state is updated before the message is sent, so a socket
+/// that subscribes either sees the state or gets the message (or both).
+fn observer(events: &broadcast::Sender<String>, running: &Live) -> Observer {
+    let (events, running) = (events.clone(), Arc::clone(running));
+    Arc::new(move |event| {
+        let mut live = running.lock().unwrap_or_else(|e| e.into_inner());
+        match event {
+            AnalysisEvent::Started { since } => {
+                *live = Some(Running { since, last: None });
+                send(&events, &ServerMessage::Analysing { since });
+            }
+            AnalysisEvent::Progress {
+                stage,
+                board,
+                done,
+                total,
+                message,
+            } => {
+                let message = ServerMessage::Progress {
+                    task: "analyse".to_string(),
+                    board,
+                    message,
+                    stage: Some(stage),
+                    done: Some(done),
+                    total: Some(total),
+                };
+                if let Some(run) = live.as_mut() {
+                    run.last = Some(message.clone());
+                }
+                send(&events, &message);
+            }
+            AnalysisEvent::Failed { message } => send(
+                &events,
+                &ServerMessage::Progress {
+                    task: "analyse".to_string(),
+                    board: String::new(),
+                    message: format!("the analysis stopped on an internal error: {message}"),
+                    stage: None,
+                    done: None,
+                    total: None,
+                },
+            ),
+            AnalysisEvent::Finished => *live = None,
+        }
+    })
+}
+
 async fn events(State(s): State<Shared>, upgrade: WebSocketUpgrade) -> Response {
     // Subscribe before the handshake is answered, not when the upgraded task first runs:
     // a page that has its answer may see a file change at once, and a push sent before
     // the subscription would reach no one.
     let pushes = s.events.subscribe();
-    upgrade.on_upgrade(move |socket| conversation(s, socket, pushes))
+    // An analysis that is running now: the page that connects in the middle of it is told
+    // so, and how far it has got, as the page that was there from the start was.
+    let running = running_messages(&s.running);
+    upgrade.on_upgrade(move |socket| conversation(s, socket, pushes, running))
 }
 
-/// One page's socket: what the server pushes, and the checks the page asks for.
+/// What a page that lost messages needs to hear to be as one that lost none: the analysis that
+/// is running, as a page that connects in the middle of it is told, or else a `rebuilt` of the
+/// current files.
+async fn current_state(state: &Shared) -> Vec<String> {
+    let running = running_messages(&state.running);
+    if !running.is_empty() {
+        return running;
+    }
+    let backend = Arc::clone(&state.backend);
+    let Ok(analysis) = tokio::task::spawn_blocking(move || backend.analysis()).await else {
+        return Vec::new();
+    };
+    serde_json::to_string(&ServerMessage::Rebuilt {
+        elapsed_ms: analysis.elapsed_ms,
+        analysis,
+    })
+    .into_iter()
+    .collect()
+}
+
+/// The analysis that is running now, as `analysing` and the last `progress`, as text.
+fn running_messages(running: &Live) -> Vec<String> {
+    let live = running.lock().unwrap_or_else(|e| e.into_inner());
+    live.iter()
+        .flat_map(|run| {
+            std::iter::once(ServerMessage::Analysing { since: run.since }).chain(run.last.clone())
+        })
+        .filter_map(|m| serde_json::to_string(&m).ok())
+        .collect()
+}
+
+/// What a check that could not be made answers with: no boards and one error.
+fn failed_check(message: &str) -> crate::api::Analysis {
+    use crate::api::{Analysis, Problem, ProblemStage, Severity};
+    Analysis {
+        version: 0,
+        errors: 1,
+        warnings: 0,
+        notes: 0,
+        problems: vec![Problem {
+            severity: Severity::Error,
+            message: message.to_string(),
+            rendered: format!("error: {message}\n"),
+            at: None,
+            stage: Some(ProblemStage::Check),
+            board: None,
+            path: None,
+        }],
+        boards: Vec::new(),
+        systems: Vec::new(),
+        panels: Vec::new(),
+        module_uses: None,
+        elapsed_ms: None,
+    }
+}
+
+/// Ends the task that answers a socket's checks when the socket is gone.
+struct EndsWithSocket(tokio::task::JoinHandle<()>);
+
+impl Drop for EndsWithSocket {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// One page's socket: what the server pushes, and the checks the page asks for. A check
+/// waits for the analysis of the files on disk (if one is running), so it runs on a task of
+/// its own, one after the other: the socket goes on carrying `progress` meanwhile.
 async fn conversation(
     state: Shared,
     mut socket: WebSocket,
     mut events: broadcast::Receiver<String>,
+    running: Vec<String>,
 ) {
+    for text in running {
+        if socket.send(Message::Text(text.into())).await.is_err() {
+            return;
+        }
+    }
+    let (asks, mut queue) = mpsc::unbounded_channel::<(u32, String, String)>();
+    let (answers, mut replies) = mpsc::unbounded_channel::<String>();
+    let backend = Arc::clone(&state.backend);
+    let _worker = EndsWithSocket(tokio::spawn(async move {
+        while let Some((id, path, text)) = queue.recv().await {
+            let backend = Arc::clone(&backend);
+            let checked = tokio::task::spawn_blocking(move || backend.check(&path, &text)).await;
+            // Every check is answered: a refusal or a panic is a `checked` whose one problem
+            // says so, so that the page does not wait for its id for ever.
+            let analysis = match checked {
+                Ok(Ok(analysis)) => analysis,
+                Ok(Err(e)) => failed_check(&e.message),
+                Err(e) => failed_check(&format!("the check stopped on an internal error: {e}")),
+            };
+            if let Ok(reply) = serde_json::to_string(&ServerMessage::Checked { id, analysis }) {
+                let _ = answers.send(reply);
+            }
+        }
+    }));
     loop {
         tokio::select! {
             pushed = events.recv() => match pushed {
@@ -509,27 +855,29 @@ async fn conversation(
                         return;
                     }
                 }
-                // A page that fell behind fetches the analysis again when the next arrives.
-                Err(broadcast::error::RecvError::Lagged(_)) => {}
+                // A page that fell behind lost messages, and a lost `rebuilt` would not come
+                // again: it is told where things are now.
+                Err(broadcast::error::RecvError::Lagged(_)) => {
+                    for text in current_state(&state).await {
+                        if socket.send(Message::Text(text.into())).await.is_err() {
+                            return;
+                        }
+                    }
+                }
                 Err(broadcast::error::RecvError::Closed) => return,
             },
+            Some(reply) = replies.recv() => {
+                if socket.send(Message::Text(reply.into())).await.is_err() {
+                    return;
+                }
+            }
             received = socket.recv() => {
                 let Some(Ok(message)) = received else { return };
                 let Message::Text(text) = message else { continue };
-                let Ok(ClientMessage::Check { id, path, text }) =
+                if let Ok(ClientMessage::Check { id, path, text }) =
                     serde_json::from_str::<ClientMessage>(&text)
-                else {
-                    continue;
-                };
-                let backend = Arc::clone(&state.backend);
-                let checked = tokio::task::spawn_blocking(move || backend.check(&path, &text)).await;
-                if let Ok(Ok(analysis)) = checked {
-                    let reply = ServerMessage::Checked { id, analysis };
-                    if let Ok(text) = serde_json::to_string(&reply)
-                        && socket.send(Message::Text(text.into())).await.is_err()
-                    {
-                        return;
-                    }
+                {
+                    let _ = asks.send((id, path, text));
                 }
             }
         }

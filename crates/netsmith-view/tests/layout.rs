@@ -3,7 +3,7 @@
 mod common;
 
 use netsmith_kicad::{Mapping, SymbolLib, testlib};
-use netsmith_view::geom::Pt;
+use netsmith_view::geom::{Dir, Pt};
 use netsmith_view::layout::{Layout, layout};
 
 fn lay(d: &netsmith_core::Design) -> Layout {
@@ -159,10 +159,14 @@ fn everything_is_inside_the_bounds() {
 }
 
 #[test]
-fn every_net_is_wired_and_none_is_a_bare_name() {
+fn on_a_small_board_every_net_is_wired_and_none_is_named() {
     for d in common::all() {
         let l = lay(&d);
-        assert!(l.labels.is_empty(), "{}: names instead of wires", d.name);
+        assert!(
+            l.labels.is_empty(),
+            "{}: a small board has short wires, no names",
+            d.name
+        );
         for (n, net) in d.nets.iter().enumerate() {
             if net.pins.len() < 2 {
                 continue;
@@ -226,15 +230,35 @@ fn a_ground_symbol_is_below_its_pins_and_a_supply_symbol_above() {
     )
     .unwrap();
     assert!(!l.symbols.is_empty());
+    // A net may have several symbols (a pin that has one of its own, a rail's end), each pointing
+    // away from the parts: down for a ground, up for a supply. The outermost of a net's symbols
+    // is beyond all its pins.
     for s in &l.symbols {
-        let pins: Vec<Pt> = d.nets[s.net]
+        let want = match s.kind {
+            PowerKind::Ground => Dir::Down,
+            PowerKind::Supply => Dir::Up,
+        };
+        assert_eq!(s.dir, want, "{s:?}");
+    }
+    for net in 0..d.nets.len() {
+        let symbols: Vec<_> = l.symbols.iter().filter(|s| s.net == net).collect();
+        let Some(first) = symbols.first() else {
+            continue;
+        };
+        let pins: Vec<Pt> = d.nets[net]
             .pins
             .iter()
             .map(|p| pin_at(&l, &d, &p.refdes, &p.pin))
             .collect();
-        match s.kind {
-            PowerKind::Ground => assert!(pins.iter().all(|p| p.y <= s.at.y + 1e-6), "{s:?}"),
-            PowerKind::Supply => assert!(pins.iter().all(|p| p.y >= s.at.y - 1e-6), "{s:?}"),
+        match first.kind {
+            PowerKind::Ground => {
+                let lowest = symbols.iter().map(|s| s.at.y).fold(f64::MIN, f64::max);
+                assert!(pins.iter().all(|p| p.y <= lowest + 1e-6), "{symbols:?}");
+            }
+            PowerKind::Supply => {
+                let highest = symbols.iter().map(|s| s.at.y).fold(f64::MAX, f64::min);
+                assert!(pins.iter().all(|p| p.y >= highest - 1e-6), "{symbols:?}");
+            }
         }
     }
 }
@@ -303,7 +327,10 @@ fn a_net_with_many_pins_is_wired_all_the_same() {
     let d = common::design("Big", &parts, &[("BUS", &p1), ("GND", &p2)]);
     let l = lay(&d);
     let bus = d.nets.iter().position(|n| n.name == "BUS").unwrap();
-    assert!(l.labels.is_empty(), "no name instead of a wire");
+    assert!(
+        l.labels.is_empty(),
+        "ten parts on one net are wired, not named"
+    );
     let at: Vec<Pt> = pins1
         .iter()
         .map(|p| {

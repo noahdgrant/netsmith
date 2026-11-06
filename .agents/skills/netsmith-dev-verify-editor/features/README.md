@@ -10,7 +10,9 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | Project tree: nesting, guide lines, icons, keyboard, filter, collapse all, width, click a definition, scroll kept | `project-tree.md` | `tree-nested` | `tree` |
 | Project tree: new file and folder, rename, delete (toolbar, right-click menu, F2, Delete, Ctrl+N) | `project-tree.md` | `tree-files` | `tree` |
 | Source editor and live diagnostics | `source-editor.md` | `editor` | `two_boards` |
+| Source: hover cards, breadcrumbs, history, outline, inline hints, tabs, folds, find, completion | `source-editor.md` | `source-editor` | `two_boards` |
 | Schematic view and click-through | `schematic.md` | `schematic`, `big-schematic` | `two_boards`, `big` |
+| Schematic and the shared selection: go to anything lands on the module at a legible zoom with a ring, a net picked in the drawing, a flag followed, Esc clears everywhere | `schematic-integration.md` | `schematic-integration` | `schematic_bench` |
 | Power tree | `power-tree.md` | `power`, `single-board`, `big-power` | `two_boards`, `regulator`, `big` |
 | Power tree of an invented board: layout, collapsed loads, path from the source, keys, hover, issues | `power-tree.md` | `power-tree`, `power-issues` | `power_tree` |
 | Files coloured by extension (TOML, plain text, .nsm), the note on an invalid-token mark | `source-editor.md` | `languages` | `catalog_refresh` |
@@ -25,11 +27,25 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | PCB findings: list, zoom to, re-check with KiCad | `pcb.md` | `pcb-findings` | `outline_and_pours` |
 | PCB constraint findings: the requirement's numbers, zoom, placer clears it | `pcb.md` | `pcb-constraints` | `constrained` |
 | Panel preview (V-cut grid of one board) | `pcb.md` | `panel` | `led_panel` |
+| The Schematic's keys as commands: palette, cheat sheet group, the `?` button, keys work, not in a text field, not away from the view | `schematic.md` | `schematic-keys` | `schematic_bench` |
+| Busses: an interface drawn as one line, picked with its members lit, the chip, the inspector's members and pins, a bundle flag followed to the module that carries the nets, `#` in go to anything | `schematic-bus.md` | `schematic-bus` | `bus_bench` |
+| Reveal after a board switch waits for the new board's drawing; dropped when the board changes | `schematic-integration.md` | `schematic-board-switch` | `two_boards` |
+| One selection in every view, go to anything (Ctrl+P), command palette (Ctrl+Shift+P, Ctrl+K), keyboard cheat sheet (?) | `palette.md` | `palette` | `two_boards` |
 | Build panel (build, fab, downloads) | `build-panel.md` | `build` | `two_boards` |
 | Orders (list, run, summary, downloads) | `build-panel.md` | `order` | `two_boards` |
 | Problems: errors, warnings, notes | `source-editor.md` | `editor`, `big-problems` | `two_boards`, `big` |
+| Problems dock in every view, F8, the strip over a stale view, status bar, toasts | `problems-dock.md` | `problems-dock`, `broken-start` | `two_boards` |
+| The selection, the command registry and the dock together: Ctrl+J, F8, `!` in go to anything, the chip and the dock row agree | `integration.md` | `integration` | `two_boards` |
+| Shared hover: a BOM row, a chip, a card, a drawn part or net lights the same thing in the other views; Escape, leave, focus, touch | `hover.md` | `hover` | `two_boards` |
+| Motion: the glide, the fade, the pop, the dock, the toast in and out, a row's ease; reduced motion | `motion.md` | `motion` | `two_boards` |
+| Themes (light, dark, high contrast, system), type and buttons, the keyboard, 200 % zoom, reduced motion; every view in every theme | `themes.md` | `themes` | `two_boards` |
+| Settings (density, size, motion), the help menu, About, the diagnostics copy, the tab title, the favicon, the splash | `settings.md` | `settings` | `two_boards` |
+| The top bar, the section tabs and the status bar never overlap or leave the window: widths 760 to 2560, sizes 90 to 125 %, both densities, with nothing picked, a part and a net; the selection chip keeps its words while the bar has room | `settings.md` | `topbar-layout` | `two_boards` |
+| A project with no board: the empty state and the button that opens `src/main.nsm`; and, as it is no repository, the Compare section's reason, the palette command with no picker, the splash | `settings.md`, `compare.md` | `empty-project` | `empty` |
+| The comparison beside the rest: the status bar's chip and what gives way at 1920/1280/1000/800 px, About and the settings over the chip, a mark with the hover and the pick on one element (schematic, board, power tree), the diff view and the source's Escape, hover card and outline, 125 % and compact on Compare, the key 8 in the palette and the cheat sheet | `compare.md` | `compare-interactions` | `two_boards` (with `--git`) |
+| Compare with a git ref: the ref picker, summary, tiles, tabs, click-through, Base and Head, the read-only comparison of a file, marks on the Schematic, BOM, Power tree, System and Source, a ref that does not analyse, progress, not a repository (needs `launch --git`) | `compare.md` | `compare` | `two_boards` (with `--git`) |
 
-`overview`: `drive overview` opens the page and expects the seven section tabs in a row (Source first), a schematic (`.schematic`), the actions in the top bar and the error and warning counts in the status bar, then opens the Source section with key 1. Look at the screenshot for the overall layout.
+`overview`: `drive overview` opens the page and expects the eight section tabs in a row (Source first, Compare last), a schematic (`.schematic`), the actions in the top bar and the error and warning counts in the status bar, then opens the Source section with key 1. Look at the screenshot for the overall layout.
 
 A section other than the shown one is hidden (`.section.away`, `visibility: hidden`) and the source is always in the page, so a recipe opens a section first: the driver gives it `section('source')` (one of `schematic`, `power`, `system`, `bom`, `pcb`, `build`, `source`), which clicks the tab in the first pane and waits for it. Scope a locator that two sections share (`.graph-host`, `.zoombar`) to its section (`.sec-power .graph-host`).
 
@@ -37,4 +53,8 @@ The `big` fixture (`launch --fixture big`) is generated by `scripts/editor-verif
 
 When you add a feature, add a page here and a recipe, in the same change.
 
-`schematic-rules` and `schematic-shots`: `launch --fixture schematic_bench` first; the first asserts the drawing rules of the schematic on the four sheets of `examples/schematic_bench` (see `schematic.md`), the second takes the sheets' pictures at two window sizes.
+`compare`: `launch --git` first (a throwaway git repository over the `two_boards` project; see `compare.md`); `drive all` skips it in a session launched without.
+
+`schematic-bus`: `launch --fixture bus_bench` first (an invented board: a UART between three modules and an SPI inside one; see `schematic-bus.md`).
+
+`schematic-rules`, `schematic-shots` and `schematic-integration`: `launch --fixture schematic_bench` first; the first asserts the drawing rules of the schematic on the four modules of `examples/schematic_bench` (see `schematic.md`), the second takes the modules' pictures at two window sizes, the third drives the schematic with the shared selection (`schematic-integration.md`).

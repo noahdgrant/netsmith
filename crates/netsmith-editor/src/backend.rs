@@ -2,9 +2,9 @@
 //! compiler behind it and the compiler's crates do not depend on a web server.
 
 use crate::api::{
-    Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Definition, FabReport,
-    FileContent, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited, PcbFindings, PcbReport,
-    PcbScene, PowerTree, Project, Saved, SystemView,
+    Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
+    FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited,
+    PcbFindings, PcbReport, PcbScene, PowerTree, Project, Saved, SystemView,
 };
 
 /// A refusal, with the HTTP status that says why.
@@ -12,6 +12,21 @@ use crate::api::{
 pub struct ApiError {
     pub status: u16,
     pub message: String,
+    /// What the failure is, for a page that asks for it (`Accept: application/json`); the
+    /// plain-text body is `message` either way.
+    pub detail: Option<ErrorDetail>,
+}
+
+/// The structured form of a failure of the project's own data (a part with no footprint, a
+/// pad the footprint lacks, ...), as opposed to a fault of the server. The server answers a
+/// request that accepts JSON with
+/// `{"code": "...", "message": "...", "<field>": "...", ...}`: `code` is one of a fixed list
+/// of snake_case words, `message` is the text of the plain-text body, and the other keys are
+/// the strings of `fields` (which ones depends on the code).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ErrorDetail {
+    pub code: String,
+    pub fields: Vec<(String, String)>,
 }
 
 impl ApiError {
@@ -19,7 +34,38 @@ impl ApiError {
         Self {
             status,
             message: message.into(),
+            detail: None,
         }
+    }
+
+    /// The project's own data cannot be used for what was asked (`422`): the request is
+    /// right and the server is working, the files are what is wrong. `code` and `fields` are
+    /// an [`ErrorDetail`].
+    pub fn unprocessable(message: impl Into<String>, code: &str, fields: &[(&str, &str)]) -> Self {
+        Self {
+            status: 422,
+            message: message.into(),
+            detail: Some(ErrorDetail {
+                code: code.to_string(),
+                fields: fields
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+            }),
+        }
+    }
+
+    /// The JSON body of a failure that has a [`detail`](Self::detail).
+    pub fn json(&self) -> Option<String> {
+        let detail = self.detail.as_ref()?;
+        let mut body = serde_json::Map::new();
+        body.insert("code".into(), detail.code.clone().into());
+        body.insert("message".into(), self.message.clone().into());
+        for (key, value) in &detail.fields {
+            body.entry(key.clone())
+                .or_insert_with(|| value.clone().into());
+        }
+        serde_json::to_string(&body).ok()
     }
 
     pub fn bad_request(message: impl Into<String>) -> Self {
@@ -56,6 +102,32 @@ pub struct Attachment {
 /// prints them. It may be called from any thread.
 pub type Say = std::sync::Arc<dyn Fn(&str) + Send + Sync>;
 
+/// What an analysis of the files on disk tells the server while it runs (not the analysis of
+/// text on the page, which is a check).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AnalysisEvent {
+    /// It began; `since` is when, in milliseconds since the Unix epoch.
+    Started { since: u64 },
+    /// How far it has got: `stage` is `check`, `solve`, `lower`, `draw` or `modules`, `done`
+    /// of `total` of what that stage works through, and `board` is the board or file it is on.
+    Progress {
+        stage: String,
+        board: String,
+        done: u32,
+        total: u32,
+        message: String,
+    },
+    /// It ended in a panic. Sent before [`AnalysisEvent::Finished`]; the next `analysis` is the
+    /// last good reading with an error problem that names the panic, and its version is new, so
+    /// the page hears `rebuilt` and leaves "analysing".
+    Failed { message: String },
+    /// It ended, however it ended (the result is the next `analysis`).
+    Finished,
+}
+
+/// Who hears of an [`AnalysisEvent`]. It may be called from any thread and must not block.
+pub type Observer = std::sync::Arc<dyn Fn(AnalysisEvent) + Send + Sync>;
+
 /// A project as the editor sees it. Each call is a whole request: the server runs them on
 /// threads of their own, so a long one (`fab`) does not hold up a keystroke's check.
 pub trait Backend: Send + Sync + 'static {
@@ -80,6 +152,20 @@ pub trait Backend: Send + Sync + 'static {
     /// The check of the files on disk, made again first if one changed. Its `version` goes
     /// up each time that happens.
     fn analysis(&self) -> Analysis;
+    /// `Some(milliseconds the first analysis has been running)` until it has finished, `None`
+    /// from then on. A backend whose files are read before it is served is never pending.
+    /// While it is `Some`, `analysis` blocks until the first analysis is done, and `version`
+    /// is `0` before that. It must not wait for anything: the server calls it from its
+    /// event loop.
+    fn pending(&self) -> Option<u32> {
+        None
+    }
+    /// Told once, before the server accepts a connection: every analysis of the files on disk
+    /// (the first, and each that a change on disk makes) reports to `observer`. A backend with
+    /// nothing to report ignores it.
+    fn observe(&self, observer: Observer) {
+        let _ = observer;
+    }
     /// The check with `path` as `text`, in memory.
     fn check(&self, path: &str, text: &str) -> Result<Analysis, ApiError>;
     fn board(&self, name: &str) -> Result<BoardDetail, ApiError>;
@@ -149,4 +235,40 @@ pub trait Backend: Send + Sync + 'static {
         text: &str,
         offset: usize,
     ) -> Result<Option<Definition>, ApiError>;
+    /// Whether the project is in a git work tree and what it can be compared with (ADR 0059).
+    /// A backend with no git says so.
+    fn git(&self) -> GitInfo {
+        GitInfo {
+            available: false,
+            reason: Some("this backend has no git".to_string()),
+            root: None,
+            project_dir: None,
+            branch: None,
+            head: None,
+            dirty: false,
+            project_dirty: false,
+            refs: Vec::new(),
+            commits: Vec::new(),
+        }
+    }
+    /// What changed in the circuit between `rev` and the files on disk, for one board or all.
+    /// It may take as long as an analysis; `observe` is told how far it has got (the events of
+    /// an analysis, and the stages `extract` and `diff`), from any thread. Refused with 404 for
+    /// a ref that does not exist and with 422 (`git_unavailable`) for a project that is not in
+    /// a git work tree.
+    fn compare(
+        &self,
+        rev: &str,
+        board: Option<&str>,
+        observe: &Observer,
+    ) -> Result<Compare, ApiError> {
+        let _ = (rev, board, observe);
+        Err(ApiError::not_found("this backend cannot compare"))
+    }
+    /// The text of a file of the project as it is at `rev`, read from git (`readonly`, the
+    /// stamp is the commit's hash).
+    fn git_file(&self, rev: &str, path: &str) -> Result<FileContent, ApiError> {
+        let _ = (rev, path);
+        Err(ApiError::not_found("this backend cannot read from git"))
+    }
 }

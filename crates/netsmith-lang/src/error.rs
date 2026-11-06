@@ -7,6 +7,17 @@ pub struct Span {
     pub end: usize,
 }
 
+/// The largest character boundary of `text` that is at most `at` (and at most its length). A span's
+/// end can fall inside a multi-byte character (a name ends in a letter that takes two bytes, and
+/// callers look at the last byte of it), and slicing `text` there panics.
+pub fn floor_boundary(text: &str, at: usize) -> usize {
+    let mut at = at.min(text.len());
+    while !text.is_char_boundary(at) {
+        at -= 1;
+    }
+    at
+}
+
 impl Span {
     pub fn new(start: usize, end: usize) -> Self {
         Self { start, end }
@@ -29,7 +40,7 @@ impl ParseError {
 
     /// 1-based line and column of the start of the error.
     pub fn line_col(&self, src: &str) -> (usize, usize) {
-        let before = &src[..self.span.start.min(src.len())];
+        let before = &src[..floor_boundary(src, self.span.start)];
         let line = before.matches('\n').count() + 1;
         let col = before.rsplit('\n').next().map_or(0, |l| l.chars().count()) + 1;
         (line, col)

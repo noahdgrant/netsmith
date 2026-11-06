@@ -638,13 +638,21 @@ fn run_editor(file: Option<&str>, port: u16) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let workspace = match Workspace::open(target) {
+    // Not analysed yet: the server listens first and the analysis runs behind it, so a page
+    // that connects during it is told so (ADR 0019).
+    let workspace = match Workspace::open_deferred(target) {
         Ok(w) => w,
         Err(e) => {
             eprintln!("{e}");
             return ExitCode::from(2);
         }
     };
+    // A comparison's scratch folder is removed when it ends; one that a killed editor (or a
+    // Ctrl-C that the system ended at once) left behind is removed now.
+    let swept = netsmith::editor::sweep_scratch();
+    if swept > 0 {
+        eprintln!("removed {swept} leftover scratch folder(s) of earlier comparisons");
+    }
     println!(
         "editing {} at http://127.0.0.1:{port}/ (Ctrl-C to stop)",
         workspace.title()

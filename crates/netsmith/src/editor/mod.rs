@@ -5,37 +5,47 @@
 
 mod analysis;
 mod catalogs;
+mod compare;
 mod definition;
+mod diff;
 mod fileops;
 mod files;
 mod findings;
+mod git;
 mod orders;
+mod outline;
 mod panel;
 mod pcb;
 mod power;
 mod progress;
 mod release;
+mod solved;
 mod sourcing;
 mod system;
 
 use std::{
     collections::HashMap,
     path::PathBuf,
-    sync::{Mutex, MutexGuard},
+    sync::{
+        Mutex, MutexGuard, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use netsmith_editor::{
-    ApiError, Attachment, Backend, Say,
+    AnalysisEvent, ApiError, Attachment, Backend, Observer, Say,
     api::{
-        Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Definition, FabReport,
-        FileContent, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited, PcbFindings, PcbReport,
-        PcbScene, PowerTree, Project, Saved, SystemView,
+        Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
+        FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited,
+        PcbFindings, PcbReport, PcbScene, PowerTree, Project, Saved, SystemView,
     },
 };
 
 use crate::project::Target;
 
-pub use analysis::Snapshot;
+pub use analysis::{Snapshot, module_groups, must_connect, rails_of, schematic_layout};
+pub use git::sweep_scratch;
 
 /// The project behind the editor.
 pub struct Workspace {
@@ -45,6 +55,43 @@ pub struct Workspace {
     editing: Mutex<()>,
     /// How "Check parts against LCSC" asks the endpoints (ADR 0039); the tests point it at a fake.
     network: crate::refresh::Network,
+    /// Who hears of each analysis of the files on disk, once the server has said.
+    observer: OnceLock<Observer>,
+    /// Whether the first analysis has finished. Read without the state's lock, which an
+    /// analysis holds for as long as it runs.
+    ready: AtomicBool,
+    /// When the workspace was opened, for how long the first analysis has taken so far.
+    opened: Instant,
+    /// What was read of the refs the project was compared with, by commit hash (ADR 0059).
+    compare_cache: Mutex<compare::Cache>,
+    /// Held while a ref is read, so two compares of one ref analyse it once.
+    comparing: Mutex<()>,
+    /// The compares waiting for `comparing`, so that a crowd of them is refused.
+    compare_queue: compare::Queue,
+}
+
+/// Tells the observer that an analysis has begun, and that it has ended when this is dropped,
+/// however the analysis ends.
+struct Announcing<'a>(&'a Workspace);
+
+impl<'a> Announcing<'a> {
+    fn start(workspace: &'a Workspace) -> Self {
+        let since = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis() as u64);
+        workspace.announce(AnalysisEvent::Started { since });
+        Announcing(workspace)
+    }
+}
+
+impl Drop for Announcing<'_> {
+    fn drop(&mut self) {
+        self.0.announce(AnalysisEvent::Finished);
+    }
+}
+
+fn millis(since: Instant) -> u32 {
+    since.elapsed().as_millis().min(u128::from(u32::MAX)) as u32
 }
 
 #[derive(Default)]
@@ -57,6 +104,9 @@ struct State {
     /// Goes up by one each time the files are read again.
     version: u64,
     snapshot: Snapshot,
+    /// How long the last analysis of the files took; none if the version went up with no
+    /// analysis (a layout file changed).
+    elapsed_ms: Option<u32>,
     /// Boards placed, and routed if asked, keyed by the board's name; cleared when the
     /// files are read again.
     pcb: HashMap<String, pcb::Entry>,
@@ -70,17 +120,37 @@ impl Workspace {
     /// Read and build the target's files once. Fails only if a file cannot be read at all;
     /// mistakes in their text are kept for the page to show.
     pub fn open(target: Target) -> Result<Workspace, String> {
+        let workspace = Workspace::open_deferred(target)?;
+        drop(workspace.fresh());
+        Ok(workspace)
+    }
+
+    /// [`Workspace::open`] without the first analysis: it is made by the first call that needs
+    /// it (or by the server's watcher, as soon as the server runs), and
+    /// [`Backend::pending`] says so until it is done. For a project whose analysis takes
+    /// seconds, so that the server can listen first.
+    pub fn open_deferred(target: Target) -> Result<Workspace, String> {
         for file in &target.files {
             std::fs::metadata(&file.path).map_err(|e| format!("{}: {e}", file.name))?;
         }
-        let workspace = Workspace {
+        Ok(Workspace {
             target,
             state: Mutex::new(State::default()),
             editing: Mutex::new(()),
             network: crate::refresh::Network::default(),
-        };
-        drop(workspace.fresh());
-        Ok(workspace)
+            observer: OnceLock::new(),
+            ready: AtomicBool::new(false),
+            opened: Instant::now(),
+            compare_cache: Mutex::new(compare::Cache::default()),
+            comparing: Mutex::new(()),
+            compare_queue: compare::Queue::default(),
+        })
+    }
+
+    fn announce(&self, event: AnalysisEvent) {
+        if let Some(observer) = self.observer.get() {
+            observer(event);
+        }
     }
 
     /// Where "Check parts against LCSC" asks, how long it waits and where it keeps answers.
@@ -112,6 +182,7 @@ impl Workspace {
         if state.version > 0 && state.layouts != layouts {
             state.version += 1;
             state.pcb.clear();
+            state.elapsed_ms = None;
         }
         state.layouts = layouts;
         let stamp = files::stamps(&self.target.watched());
@@ -119,11 +190,33 @@ impl Workspace {
         if state.version > 0 && state.stamp.as_ref() == Some(&stamp) && all_read {
             return state;
         }
+        state.pcb.clear();
+        let started = Instant::now();
+        // An analysis that panics is a result like another: the last good reading and a
+        // problem that says so. The stamp and the version change only here, after the
+        // result, so that nothing is left half done and the files are not analysed again
+        // (and panicked on again) until one changes.
+        let snapshot = {
+            let _announcing = Announcing::start(self);
+            let observe = |event| self.announce(event);
+            match analysis::contained(|| {
+                self.analyze(&HashMap::new(), Some(&state.snapshot), &observe)
+            }) {
+                Ok(snapshot) => snapshot,
+                Err(message) => {
+                    eprintln!("netsmith editor: the analysis of the project panicked: {message}");
+                    self.announce(AnalysisEvent::Failed {
+                        message: message.clone(),
+                    });
+                    Snapshot::after_panic(&message, Some(&state.snapshot))
+                }
+            }
+        };
         state.stamp = Some(stamp);
         state.version += 1;
-        state.pcb.clear();
-        let snapshot = self.analyze(&HashMap::new(), Some(&state.snapshot));
         state.snapshot = snapshot;
+        state.elapsed_ms = Some(millis(started));
+        self.ready.store(true, Ordering::Release);
         state
     }
 }
@@ -226,7 +319,18 @@ impl Backend for Workspace {
 
     fn analysis(&self) -> Analysis {
         let state = self.fresh();
-        state.snapshot.summary(state.version)
+        Analysis {
+            elapsed_ms: state.elapsed_ms,
+            ..state.snapshot.summary(state.version)
+        }
+    }
+
+    fn pending(&self) -> Option<u32> {
+        (!self.ready.load(Ordering::Acquire)).then(|| millis(self.opened))
+    }
+
+    fn observe(&self, observer: Observer) {
+        let _ = self.observer.set(observer);
     }
 
     fn check(&self, path: &str, text: &str) -> Result<Analysis, ApiError> {
@@ -236,7 +340,17 @@ impl Backend for Workspace {
         };
         let version = self.fresh().version;
         let unsaved = HashMap::from([(fs, text.to_string())]);
-        Ok(self.analyze(&unsaved, None).summary(version))
+        // A check of typed text is not an analysis of the files on disk: nobody is told of it.
+        let started = Instant::now();
+        let snapshot = analysis::contained(|| self.analyze(&unsaved, None, &|_| {}))
+            .unwrap_or_else(|message| {
+                eprintln!("netsmith editor: the check of {path} panicked: {message}");
+                Snapshot::after_panic(&message, None)
+            });
+        Ok(Analysis {
+            elapsed_ms: Some(millis(started)),
+            ..snapshot.summary(version)
+        })
     }
 
     fn board(&self, name: &str) -> Result<BoardDetail, ApiError> {
@@ -436,6 +550,23 @@ impl Backend for Workspace {
         self.fetch_order(name, file)
     }
 
+    fn git(&self) -> GitInfo {
+        self.git_info()
+    }
+
+    fn compare(
+        &self,
+        rev: &str,
+        board: Option<&str>,
+        observe: &Observer,
+    ) -> Result<Compare, ApiError> {
+        self.compare_with(rev, board, observe)
+    }
+
+    fn git_file(&self, rev: &str, path: &str) -> Result<FileContent, ApiError> {
+        self.git_file_at(rev, path)
+    }
+
     fn definition(
         &self,
         path: &str,
@@ -444,6 +575,12 @@ impl Backend for Workspace {
     ) -> Result<Option<Definition>, ApiError> {
         let entry = self.entry(path)?;
         let loader = self.target.loader().map_err(ApiError::internal)?;
-        Ok(definition::find(&loader, &entry.path, text, offset).map(|at| Definition { at }))
+        Ok(
+            definition::find(&loader, &entry.path, text, offset).map(|found| Definition {
+                at: found.at,
+                signature: found.signature,
+                doc: found.doc,
+            }),
+        )
     }
 }

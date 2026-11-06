@@ -1,8 +1,8 @@
+import { fileTabMenu } from './FileTabMenu';
 import { signal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
-import type { Problem } from '../api';
 import {
   type Drop,
   SECTIONS,
@@ -20,45 +20,49 @@ import {
   back,
   layout,
   requestBack,
-  revealSection,
   showSection,
   visible,
   windowWidth,
-  anyDirty,
   board,
   chooseBoard,
   closeFile,
-  connected,
-  cursor,
   dirty,
+  moveTab,
   openFiles,
-  problems,
+  project,
   job,
-  notesOpen,
-  problemsOpen,
   reload,
-  run,
-  save,
-  shown,
   tabs,
-  toast,
   analysis,
-  goTo,
   paneNotice,
   dismissPaneNotice,
+  openFile,
+  revealSection,
 } from '../store';
-import { firstLine, plural, seconds } from '../util';
+import { chordLabels, chordText, find, runCommand } from '../commands';
+import { openPicker } from '../quickpick';
+import { seconds } from '../util';
 import { useElapsed } from './JobProgress';
+import { Icon, SeverityIcon } from './Icons';
+import { Popover, Spinner } from './ui';
+import { firstError, goToFirstError, neverBuilt } from '../feedback/derive';
 import { Logo } from './Logo';
+import { dropBefore } from '../source/tabs';
+import { fileIcon } from '../tree';
+import { FileTypeIcon, LockIcon } from './TreeIcons';
+import { emptyProject, entryFileOf } from '../entry';
+import { SelectionChip } from './SelectionChip';
+import { HelpMenu, SettingsMenu } from './TopMenus';
 
 /** What `section` is for, in its tab's tooltip. */
 const SECTION_HINT: Record<Section, string> = {
-  schematic: 'the drawing of the board, one sheet at a time',
+  schematic: 'the drawing of the board, one module at a time',
   power: 'the power tree: sources, converters and loads',
   system: 'the boards of a system and how they are joined',
   bom: 'the bill of materials',
   pcb: 'the board layout',
   build: 'what Write KiCad files and Make fab files did',
+  compare: 'what changed in the circuit since a git ref',
   source: 'the code, with the project\'s files',
 };
 
@@ -67,38 +71,6 @@ const OTHER_PANE = 'Open in the other pane: click to move it here';
 
 export const SECTION_LABEL = Object.fromEntries(SECTIONS.map((s) => [s.id, s.label])) as Record<Section, string>;
 
-function Icon({ children }: { children: ComponentChildren }) {
-  return (
-    <svg class="icon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      {children}
-    </svg>
-  );
-}
-
-const KiCadIcon = () => (
-  <Icon>
-    <path d="M3 1.8h6.2L13 5.6v8.6H3z" />
-    <path d="M9 1.8v4h4" />
-    <path d="M5.5 10.2h5M8 8v4.4M6.3 11l1.7 1.6 1.7-1.6" />
-  </Icon>
-);
-
-const FabIcon = () => (
-  <Icon>
-    <rect x="1.8" y="3.2" width="12.4" height="9.6" rx="1.2" />
-    <circle cx="5" cy="6.4" r="0.9" />
-    <circle cx="11" cy="9.6" r="0.9" />
-    <path d="M5.9 6.4h2.6v3.2h1.6" />
-  </Icon>
-);
-
-const SplitIcon = () => (
-  <Icon>
-    <rect x="1.8" y="2.6" width="12.4" height="10.8" rx="1.2" />
-    <path d="M8 2.6v10.8" />
-  </Icon>
-);
-
 /** Two panes, the one that holds the section filled: it marks a tab whose section is in the other pane. */
 const OtherPaneMark = ({ side }: { side: 'left' | 'right' }) => (
   <svg class="icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true">
@@ -106,12 +78,6 @@ const OtherPaneMark = ({ side }: { side: 'left' | 'right' }) => (
     <path d="M8 2.6v10.8" />
     {side === 'right' ? <rect x="8" y="2.6" width="6.2" height="10.8" fill="currentColor" stroke="none" /> : <rect x="1.8" y="2.6" width="6.2" height="10.8" fill="currentColor" stroke="none" />}
   </svg>
-);
-
-const CloseIcon = () => (
-  <Icon>
-    <path d="M4 4l8 8M12 4l-8 8" />
-  </Icon>
 );
 
 /** The two actions: they write files, and say so while they run. They are not the sections. */
@@ -138,7 +104,7 @@ function Action({
   return (
     <button
       class={`tool action ${primary ? 'primary' : ''} ${mine ? 'running' : ''}`}
-      title={tip}
+      data-tip={tip}
       aria-label={label}
       aria-busy={mine}
       disabled={j !== null}
@@ -150,57 +116,168 @@ function Action({
   );
 }
 
+/** The board picker when there is no board: still loading, never built (with the first error), or none written. */
+function EmptyBoardPick() {
+  const loading = !analysis.value;
+  const e = firstError.value;
+  // A project that has not begun (its file has no board) is a place to start, not an error to be read.
+  const begun = !loading ? emptyProject(analysis.value!.problems) : null;
+  const never = neverBuilt.value && !!e && !begun;
+  const entry = begun?.file ?? entryFileOf(project.value?.files ?? []);
+  return (
+    <Popover
+      fixed
+      class={`boardpick-empty ${never ? 'never' : ''}`}
+      tip={loading ? 'Reading the project' : begun ? 'Where to write the first board' : 'Why there is no board'}
+      label={loading ? 'Reading the project' : begun ? 'No boards yet' : 'No board built yet'}
+      icon={loading ? undefined : never ? 'error' : 'board'}
+      badge={loading ? <Spinner size={12} /> : undefined}
+    >
+      {(close) =>
+        loading ? (
+          <p>The first analysis is still running. The boards of the project are listed here when it is done.</p>
+        ) : begun ? (
+          <>
+            <h4>No boards yet</h4>
+            <p>Write a <code>board</code> in <code>{entry ?? 'src/main.nsm'}</code>; it is listed here as soon as it builds.</p>
+            <div class="empty-actions">
+              <button
+                class="tool primary"
+                onClick={() => {
+                  close();
+                  revealSection('source');
+                  if (entry) void openFile(entry);
+                }}
+              >
+                {entry ? `Open ${entry}` : 'Open the source'}
+              </button>
+            </div>
+          </>
+        ) : never ? (
+          <>
+            <h4>The project has an error, so nothing built</h4>
+            <div class="empty-error">
+              <SeverityIcon severity="error" size={14} />
+              <span class="text">{e!.message}</span>
+              {e!.at && <span class="where">{e!.at.file}:{e!.at.line}</span>}
+            </div>
+            <div class="empty-actions">
+              <button
+                class="tool primary"
+                onClick={() => {
+                  close();
+                  goToFirstError();
+                }}
+              >
+                Go to error
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <h4>The project has no board</h4>
+            <p>Write a <code>board</code> in a top-level file; it is listed here as soon as it builds.</p>
+          </>
+        )
+      }
+    </Popover>
+  );
+}
+
 export function TopBar() {
   const a = analysis.value;
   const boards = a?.boards ?? [];
-  const ask = (what: 'build' | 'fab') => {
-    revealSection('build');
-    run.value = { what, nonce: Date.now() };
-  };
+  const goto = find('goto.anything')?.keys ?? 'Mod+P';
   return (
     <header class="topbar">
-      <div class="brand"><Logo /></div>
-      <label class="boardpick" title="The board the sections show">
-        Board
-        <select
-          value={board.value ?? ''}
-          onChange={(e) => chooseBoard((e.currentTarget as HTMLSelectElement).value)}
-        >
-          {boards.map((b) => (
-            <option key={b.name} value={b.name}>
-              {b.name}
-              {b.stale ? ' (stale)' : ''}
-            </option>
+      <div class="tb-left">
+        <div class="brand"><Logo /></div>
+        {boards.length === 0 ? (
+          <EmptyBoardPick />
+        ) : (
+          <label class="boardpick" data-tip="The board the sections show">
+            <Icon name="board" size={14} class="bp-icon" />
+            <span class="sr-only">Board</span>
+            <select
+              value={board.value ?? ''}
+              onChange={(e) => chooseBoard((e.currentTarget as HTMLSelectElement).value)}
+            >
+              {boards.map((b) => (
+                <option key={b.name} value={b.name}>
+                  {b.name}
+                  {b.stale ? ' (stale)' : ''}
+                </option>
+              ))}
+            </select>
+            <Icon name="chevrons-up-down" size={12} class="bp-caret" />
+          </label>
+        )}
+        <SelectionChip />
+      </div>
+      <button
+        class="cmdk"
+        data-tip={`Search parts, nets, modules and files (${chordText(goto)}); run a command (${chordText(find('palette.open')?.keys ?? 'Mod+Shift+P')})`}
+        aria-label="Go to anything or run a command"
+        aria-haspopup="dialog"
+        onClick={() => openPicker()}
+      >
+        <Icon name="search" size={15} />
+        <span class="cmdk-text">Go to anything</span>
+        <span class="qp-keys">
+          {chordLabels(goto).map((k) => (
+            <kbd key={k}>{k}</kbd>
           ))}
-        </select>
-      </label>
-      <span class="spacer" />
-      <div class="actions" role="group" aria-label="Actions: they write files">
-        <Action
-          task="build"
-          label="Write KiCad files"
-          running="Writing KiCad files…"
-          icon={<KiCadIcon />}
-          tip={
-            "Writes a KiCad schematic (.kicad_sch) and project file (.kicad_pro) for every board of the project, " +
-            "with the library tables, into the project's out folder (out/ unless netsmith.toml says another), " +
-            "one folder for each board. The same as `netsmith build`. Takes a few seconds."
-          }
-          start={() => ask('build')}
-        />
-        <Action
-          task="fab"
-          label="Make fab files"
-          running="Making fab files…"
-          icon={<FabIcon />}
-          primary
-          tip={
-            "Places and routes the board chosen here, runs netsmith's design rules check and, when it passes, " +
-            "writes the Gerbers, bom.csv, cpl.csv and fab-notes.txt for JLCPCB into the project's fab folder " +
-            "(fab/ unless netsmith.toml says another). The same as `netsmith fab`. A long job: it can take minutes."
-          }
-          start={() => ask('fab')}
-        />
+        </span>
+      </button>
+      <div class="tb-right">
+        <div class="tb-ghosts" role="group" aria-label="Appearance and help">
+          <button
+            class="icon-btn ghost-extra"
+            data-tip={`Switch between the light and the dark theme (${chordText(find('theme.toggle')?.keys ?? '')})`.replace(' ()', '')}
+            aria-label="Toggle the light and dark theme"
+            onClick={() => runCommand('theme.toggle')}
+          >
+            <Icon name="theme" />
+          </button>
+          <button
+            class="icon-btn ghost-extra"
+            data-tip={`Keyboard shortcuts (${chordText(find('help.shortcuts')?.keys ?? '?')})`}
+            aria-label="Keyboard shortcuts"
+            aria-haspopup="dialog"
+            onClick={() => runCommand('help.shortcuts')}
+          >
+            <Icon name="keyboard" />
+          </button>
+          <SettingsMenu />
+          <HelpMenu />
+        </div>
+        <div class="actions" role="group" aria-label="Actions: they write files">
+          <Action
+            task="build"
+            label="Write KiCad files"
+            running="Writing KiCad files…"
+            icon={<Icon name="kicad" />}
+            tip={
+              "Writes a KiCad schematic (.kicad_sch) and project file (.kicad_pro) for every board of the project, " +
+              "with the library tables, into the project's out folder (out/ unless netsmith.toml says another), " +
+              "one folder for each board. The same as `netsmith build`. Takes a few seconds."
+            }
+            start={() => runCommand('build.kicad')}
+          />
+          <Action
+            task="fab"
+            label="Make fab files"
+            running="Making fab files…"
+            icon={<Icon name="fab" />}
+            primary
+            tip={
+              "Places and routes the board chosen here, runs netsmith's design rules check and, when it passes, " +
+              "writes the Gerbers, bom.csv, cpl.csv and fab-notes.txt for JLCPCB into the project's fab folder " +
+              "(fab/ unless netsmith.toml says another). The same as `netsmith fab`. A long job: it can take minutes."
+            }
+            start={() => runCommand('build.fab')}
+          />
+        </div>
       </div>
     </header>
   );
@@ -218,7 +295,10 @@ function dropFor(x: number, y: number): Drop | null {
   if (!area) return null;
   const r = area.getBoundingClientRect();
   if (y < r.top || y > r.bottom || x < r.left || x > r.right) return null;
-  return dropAt(layout.peek(), windowWidth.peek(), x, r.left, r.width);
+  // The area is set in by the frame's gap; the panes share what is inside it.
+  const c = getComputedStyle(area);
+  const pad = parseFloat(c.paddingLeft) || 0;
+  return dropAt(layout.peek(), windowWidth.peek(), x, r.left + pad, r.width - pad - (parseFloat(c.paddingRight) || 0));
 }
 
 function startDrag(e: PointerEvent, section: Section) {
@@ -268,7 +348,7 @@ function splitTip() {
   const wide = canSplit(w);
   const saved = layout.value.panes.length === 2;
   return (
-    'Split right: show a second section beside this one (Ctrl+\\). You can also drag a tab to the left or right half of the window.' +
+    `Split right: show a second section beside this one (${chordText(find('pane.toggle')?.keys ?? 'Mod+\\')}). You can also drag a tab to the left or right half of the window.` +
     (wide
       ? ''
       : ` This window is ${w} px wide; a split needs about 1400 px, so one pane is shown${
@@ -284,8 +364,50 @@ export function SectionStrip({ pane }: { pane: { section: Section; index: number
   const two = vis.length === 2;
   const other = vis.find((p) => p.index !== pane.index)?.section;
   const wide = canSplit(windowWidth.value);
+  // The active tab's line glides: its place and width are measured and given to the strip as
+  // variables, and the line's transition does the rest (it is off until the first measure).
+  const strip = useRef<HTMLDivElement>(null);
+  const place = () => {
+    const el = strip.current;
+    const t = el?.querySelector<HTMLElement>('.tab.active');
+    if (!el || !t) return;
+    el.style.setProperty('--ind-x', `${t.offsetLeft}px`);
+    el.style.setProperty('--ind-w', `${t.offsetWidth}px`);
+    if (!el.classList.contains('placed')) requestAnimationFrame(() => el.classList.add('placed'));
+  };
+  useLayoutEffect(place, [pane.section, two, other]);
+  // The section changed (a key 1 to 8, the palette, a click-through) while the focus was on a tab: the focus goes with the choice.
+  // A ring left on the tab that is no longer the active one points at what is not on show.
+  useEffect(() => {
+    const el = strip.current;
+    const at = document.activeElement;
+    if (!el || !at || !el.contains(at) || !(at as HTMLElement).matches('.tab:not(.active)')) return;
+    el.querySelector<HTMLElement>('.tab.active')?.focus();
+  }, [pane.section]);
+  useEffect(() => {
+    const el = strip.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(place);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
-    <div class="tabbar sections" role="tablist" aria-label="Sections">
+    <div
+      class="tabbar sections"
+      ref={strip}
+      role="tablist"
+      aria-label="Sections"
+      onKeyDown={(e) => {
+        // Arrow keys move between the tabs and show the section; Home and End go to the first and the last.
+        const at = SECTIONS.findIndex((x) => x.id === pane.section);
+        const to = e.key === 'ArrowRight' ? at + 1 : e.key === 'ArrowLeft' ? at - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? SECTIONS.length - 1 : null;
+        if (to === null || e.ctrlKey || e.altKey || e.metaKey) return;
+        e.preventDefault();
+        const next = SECTIONS[(to + SECTIONS.length) % SECTIONS.length];
+        showSection(next.id, pane.index);
+        queueMicrotask(() => e.currentTarget.querySelector<HTMLElement>(`[data-section="${next.id}"]`)?.focus());
+      }}
+    >
       {SECTIONS.map((v, i) => {
         const here = pane.section === v.id;
         const elsewhere = other === v.id;
@@ -294,6 +416,7 @@ export function SectionStrip({ pane }: { pane: { section: Section; index: number
             key={v.id}
             role="tab"
             aria-selected={here}
+            tabIndex={here ? 0 : -1}
             data-section={v.id}
             class={`tab ${here ? 'active' : ''} ${elsewhere ? 'elsewhere' : ''}`}
             title={
@@ -311,7 +434,8 @@ export function SectionStrip({ pane }: { pane: { section: Section; index: number
               tabMenu.value = { section: v.id, x: e.clientX, y: e.clientY };
             }}
           >
-            {v.label}
+            <Icon name={v.id} size={15} class="tab-icon" />
+            <span class="tab-label">{v.label}</span>
             {elsewhere && (
               <span class="elsewhere-mark" role="img" aria-label={OTHER_PANE} title={OTHER_PANE}>
                 <OtherPaneMark side={pane.index === 0 ? 'right' : 'left'} />
@@ -320,17 +444,18 @@ export function SectionStrip({ pane }: { pane: { section: Section; index: number
           </button>
         );
       })}
+      <span class="tab-ind" aria-hidden="true" />
       <span class="spacer" />
       {two && pane.index === 1 ? (
         <button
           class="pane-btn"
-          title="Close this pane: the other one fills the window"
+          data-tip="Close this pane: the other one fills the window"
           onClick={() => {
             back.value = null;
             layout.value = closePane(layout.value, 1);
           }}
         >
-          <CloseIcon />
+          <Icon name="close" size={14} />
           <span>Close pane</span>
         </button>
       ) : !two ? (
@@ -342,7 +467,7 @@ export function SectionStrip({ pane }: { pane: { section: Section; index: number
             if (wide) layout.value = splitRight(layout.value);
           }}
         >
-          <SplitIcon />
+          <Icon name="split" size={14} />
           <span>Split right</span>
         </button>
       ) : null}
@@ -428,45 +553,238 @@ export function TabMenu() {
   );
 }
 
-/** The source's file tabs. After a click-through from another section, the way back is here. */
+/** The folder of a path, for a tab whose file name another open tab has too. */
+const dirOf = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '');
+
+/** Every open file as a list under the tabs' "more" button: for the tabs that do not fit. */
+function TabOverflow({ close }: { close: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    box.current?.querySelector<HTMLElement>('[aria-current="true"]')?.focus();
+    const away = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node) && !(e.target as Element).closest?.('.tab-more')) close();
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        close();
+      }
+    };
+    document.addEventListener('pointerdown', away, true);
+    document.addEventListener('keydown', key, true);
+    return () => {
+      document.removeEventListener('pointerdown', away, true);
+      document.removeEventListener('keydown', key, true);
+    };
+  }, []);
+  const move = (e: KeyboardEvent) => {
+    const items = [...(box.current?.querySelectorAll<HTMLElement>('.tab-menu-item') ?? [])];
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    items[(at + step + items.length) % items.length]?.focus();
+  };
+  return (
+    <div class="tab-menu" ref={box} role="menu" aria-label="Open files" onKeyDown={move} data-testid="tab-menu">
+      {tabs.value.map((path) => {
+        const f = openFiles.value[path];
+        return (
+          <button
+            key={path}
+            type="button"
+            role="menuitem"
+            class={`tab-menu-item ${activeFile.value === path ? 'on' : ''}`}
+            aria-current={activeFile.value === path}
+            onClick={() => {
+              activeFile.value = path;
+              close();
+            }}
+          >
+            <FileTypeIcon icon={fileIcon(path.split('/').pop() ?? path)} />
+            <span class="tab-menu-name">{path.split('/').pop()}</span>
+            <span class="tab-menu-dir">{dirOf(path)}</span>
+            {f && dirty(f) && <span class="dot" aria-label="unsaved changes" />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The source's file tabs: an icon, the name, a dot while there are changes that are not saved and a close
+ * button that takes its place under the pointer; a middle click closes, a drag moves, and when there are more
+ * tabs than room a button lists them all. After a click-through from another section, the way back is here. */
 export function Tabs() {
   const b = back.value;
+  const bar = useRef<HTMLDivElement>(null);
+  // Where the strip has more to scroll to, its edge fades; the tab that is active is always in view.
+  const [edge, setEdge] = useState({ l: false, r: false });
+  const [list, setList] = useState(false);
+  const [drag, setDrag] = useState<{ path: string; before: string | null } | null>(null);
+  const measure = () => {
+    const el = bar.current;
+    if (el) setEdge({ l: el.scrollLeft > 2, r: el.scrollLeft + el.clientWidth < el.scrollWidth - 2 });
+  };
+  useEffect(() => {
+    bar.current?.querySelector('.tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    measure();
+  }, [activeFile.value, tabs.value.length]);
+  useEffect(() => {
+    const el = bar.current;
+    if (!el || typeof ResizeObserver !== 'function') return;
+    const o = new ResizeObserver(measure);
+    o.observe(el);
+    return () => o.disconnect();
+  }, []);
+  const names = tabs.value.map((p) => p.split('/').pop() ?? p);
+  const overflowing = edge.l || edge.r;
   return (
     <div class="tabbar files">
       {b && (
         <button
           class="back-btn"
-          title={`Back to ${SECTION_LABEL[b.section]}, as you left it (Esc, or Alt+Left outside the text)`}
+          data-tip={`Back to ${SECTION_LABEL[b.section]}, as you left it (Esc, or Alt+Left)`}
           onClick={requestBack}
         >
-          ← Back to {SECTION_LABEL[b.section]}
+          <Icon name="arrow-left" size={14} />
+          Back to {SECTION_LABEL[b.section]}
         </button>
       )}
-      {tabs.value.map((path) => {
-        const f = openFiles.value[path];
-        const base = path.split('/').pop() ?? path;
-        return (
-          <div
-            key={path}
-            class={`tab ${activeFile.value === path ? 'active' : ''}`}
-            title={path}
-            onClick={() => (activeFile.value = path)}
-            onAuxClick={() => closeFile(path)}
-          >
-            <span>{base}</span>
-            {f && dirty(f) ? <span class="dot" /> : null}
-            <span
-              class="close"
-              onClick={(e) => {
-                e.stopPropagation();
-                closeFile(path);
+      <div class={`tab-scroll ${edge.l ? 'fade-l' : ''} ${edge.r ? 'fade-r' : ''}`} ref={bar} onScroll={measure} role="tablist" aria-label="Open files">
+        {tabs.value.map((path, i) => {
+          const f = openFiles.value[path];
+          const base = names[i];
+          const twin = names.filter((n) => n === base).length > 1;
+          const on = activeFile.value === path;
+          return (
+            <div
+              key={path}
+              role="tab"
+              aria-selected={on}
+              class={`tab ${on ? 'active' : ''} ${drag?.path === path ? 'dragging' : ''} ${drag && drag.before === path && drag.path !== path ? 'drop-before' : ''}`}
+              title={path}
+              data-path={path}
+              tabIndex={0}
+              draggable
+              onClick={() => (activeFile.value = path)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                fileTabMenu.value = { path, x: e.clientX, y: e.clientY };
               }}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  activeFile.value = path;
+                } else if (e.key === 'Delete' || (e.key === 'w' && (e.ctrlKey || e.metaKey))) {
+                  e.preventDefault();
+                  closeFile(path);
+                } else if ((e.altKey || e.ctrlKey) && e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+                  // Move the tab: the keyboard's way of a drag.
+                  e.preventDefault();
+                  const at = tabs.value.indexOf(path);
+                  const to = at + (e.key === 'ArrowRight' ? 2 : -1);
+                  moveTab(path, tabs.value[to] ?? null);
+                  requestAnimationFrame(() => bar.current?.querySelector<HTMLElement>(`.tab[data-path="${CSS.escape(path)}"]`)?.focus());
+                }
+              }}
+              onMouseDown={(e) => {
+                // A middle click is not a scroll.
+                if (e.button === 1) e.preventDefault();
+              }}
+              onAuxClick={(e) => {
+                if (e.button === 1) {
+                  e.preventDefault();
+                  closeFile(path);
+                }
+              }}
+              onDragStart={(e) => {
+                e.dataTransfer?.setData('text/plain', path);
+                if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+                setDrag({ path, before: path });
+              }}
+              onDragOver={(e) => {
+                if (!drag) return;
+                e.preventDefault();
+                const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                const before = dropBefore(tabs.value, path, e.clientX < r.left + r.width / 2);
+                if (before !== drag.before) setDrag({ path: drag.path, before });
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (drag) moveTab(drag.path, drag.before);
+                setDrag(null);
+              }}
+              onDragEnd={() => setDrag(null)}
             >
-              ×
-            </span>
-          </div>
-        );
-      })}
+              <FileTypeIcon icon={fileIcon(base)} />
+              <span class="tab-name">{base}</span>
+              {twin && <span class="tab-dir">{dirOf(path)}</span>}
+              {f?.readonly && (
+                <span class="tab-lock" aria-label="read-only" data-tip="Read-only">
+                  <LockIcon />
+                </span>
+              )}
+              <span class="tab-end">
+                {f && dirty(f) ? <span class="dot" aria-label="unsaved changes" /> : null}
+                <span
+                  class="close"
+                  role="button"
+                  aria-label={`Close ${base}`}
+                  data-tip="Close"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeFile(path);
+                  }}
+                >
+                  <Icon name="close" size={12} />
+                </span>
+              </span>
+            </div>
+          );
+        })}
+        {drag && drag.before === null && <span class="tab-drop-end" aria-hidden="true" />}
+        {/* The end of the strip takes a dragged tab to the last place. */}
+        <span
+          class="tab-rest"
+          onDragOver={(e) => {
+            if (drag) {
+              e.preventDefault();
+              if (drag.before !== null) setDrag({ path: drag.path, before: null });
+            }
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (drag) moveTab(drag.path, null);
+            setDrag(null);
+          }}
+        />
+      </div>
+      {overflowing && tabs.value.length > 1 && (
+        <span class="tab-more-anchor">
+          <button type="button" class={`icon-btn tab-more ${list ? 'on' : ''}`} aria-label="Open files" aria-haspopup="menu" aria-expanded={list} data-tip="All open files" data-testid="tab-more" onClick={() => setList(!list)}>
+            <Icon name="chevron-down" size={14} />
+          </button>
+          {list && <TabOverflow close={() => setList(false)} />}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** A library file is shown to read and to follow, and cannot be changed here. */
+export function ReadOnlyBanner() {
+  const path = activeFile.value;
+  const f = path ? openFiles.value[path] : undefined;
+  const file = project.value?.files.find((x) => x.path === path);
+  if (!path || !f?.readonly) return null;
+  const std = file?.role === 'std' || path.startsWith('std/');
+  return (
+    <div class="ro-banner" role="note" data-testid="readonly-banner">
+      <LockIcon />
+      <span class="ro-title">{std ? 'Read-only: the standard library' : 'Read-only'}</span>
+      <span class="ro-help">{std ? 'It ships with netsmith. Read it, follow a type to its definition, copy what you need.' : 'Edit this file outside the editor; the page shows it as it is on disk.'}</span>
     </div>
   );
 }
@@ -481,126 +799,6 @@ export function Conflict() {
       <button onClick={() => void reload(path)}>Reload from disk</button>
     </div>
   );
-}
-
-function ProblemRow({ p }: { p: Problem }) {
-  return (
-    <div class={`problem ${p.severity}`} title={p.rendered} onClick={() => p.at && void goTo(p.at)}>
-      <span class="sev">{p.severity === 'error' ? '●' : p.severity === 'warning' ? '▲' : '·'}</span>
-      <span class="msg">{firstLine(p.message)}</span>
-      {p.at && (
-        <span class="where">
-          {p.at.file}:{p.at.line}:{p.at.column}
-        </span>
-      )}
-    </div>
-  );
-}
-
-/** Errors and warnings are listed; notes (what the solver left alone) are in a section that
- * is closed until asked for. */
-export function ProblemsPanel() {
-  const list = problems.value;
-  const open = problemsOpen.value;
-  const errors = list.filter((p) => p.severity === 'error');
-  const warnings = list.filter((p) => p.severity === 'warning');
-  const notes = list.filter((p) => p.severity === 'note');
-  const real = errors.length + warnings.length;
-  return (
-    <div class={`problems ${open ? 'open' : ''}`}>
-      <div class="problems-head" onClick={() => (problemsOpen.value = !open)}>
-        <span class="twisty">{open ? '▾' : '▸'}</span>
-        Problems
-        <span class="count">{real}</span>
-        {notes.length > 0 && <span class="faint">{plural(notes.length, 'note')}</span>}
-        {anyDirty.value && <span class="hint">checking unsaved text</span>}
-      </div>
-      {open && (
-        <div class="problem-list">
-          {real === 0 && <div class="none">No errors or warnings.</div>}
-          {errors.length > 0 && <div class="section-head">Errors <span class="count">{errors.length}</span></div>}
-          {errors.map((p, i) => (
-            <ProblemRow key={`e${i}`} p={p} />
-          ))}
-          {warnings.length > 0 && <div class="section-head">Warnings <span class="count">{warnings.length}</span></div>}
-          {warnings.map((p, i) => (
-            <ProblemRow key={`w${i}`} p={p} />
-          ))}
-          {notes.length > 0 && (
-            <>
-              <div class="section-head clickable" onClick={() => (notesOpen.value = !notesOpen.value)}>
-                <span class="twisty">{notesOpen.value ? '▾' : '▸'}</span>
-                Notes <span class="count">{notes.length}</span>
-                <span class="faint">what the solver left alone</span>
-              </div>
-              {notesOpen.value &&
-                notes.map((p, i) => (
-                  <ProblemRow key={`n${i}`} p={p} />
-                ))}
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** What the running job is doing, in the status bar, so it shows whatever view is open. */
-function JobItem() {
-  const j = job.value;
-  const elapsed = useElapsed(j?.started ?? null);
-  if (!j) return null;
-  const names: Record<string, string> = { route: 'Routing', fab: 'Fab', order: 'Order', build: 'Build' };
-  return (
-    <span class="item job-item" title="A long job is running; the editor stays usable">
-      <span class="spinner" />
-      {names[j.task] ?? j.task}: {j.lines[j.lines.length - 1] ?? 'starting'} ({seconds(elapsed)})
-    </span>
-  );
-}
-
-export function StatusBar() {
-  const s = shown.value;
-  const c = cursor.value;
-  const path = activeFile.value;
-  const f = path ? openFiles.value[path] : undefined;
-  return (
-    <footer class="statusbar">
-      <span
-        class={`item counts ${s && s.errors > 0 ? 'bad' : ''}`}
-        title="Errors and warnings: click to list them"
-        onClick={() => (problemsOpen.value = !problemsOpen.value)}
-      >
-        <span class="e">⊗ {s?.errors ?? 0}</span>
-        <span class="w">▲ {s?.warnings ?? 0}</span>
-      </span>
-      <JobItem />
-      {anyDirty.value && (
-        <span class="item" title="Ctrl+S saves">
-          ● {plural(Object.values(openFiles.value).filter(dirty).length, 'unsaved file')}
-          {path && f && dirty(f) && (
-            <button class="link" onClick={() => void save(path)}>
-              Save
-            </button>
-          )}
-        </span>
-      )}
-      <span class="spacer" />
-      {c && f && (
-        <span class="item">
-          Ln {c.line}, Col {c.column}
-        </span>
-      )}
-      {board.value && <span class="item">{board.value}</span>}
-      <span class={`item ${connected.value ? 'ok' : 'bad'}`}>{connected.value ? '● live' : '○ offline'}</span>
-    </footer>
-  );
-}
-
-export function Toast() {
-  const t = toast.value;
-  if (!t) return null;
-  return <div class={`toast ${t.bad ? 'bad' : ''}`}>{t.text}</div>;
 }
 
 export function Pane({ children, class: cls }: { children: ComponentChildren; class?: string }) {

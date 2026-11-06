@@ -4,6 +4,11 @@
 #![allow(dead_code)]
 
 pub mod bench;
+pub mod bus;
+pub mod corpus;
+pub mod mcu;
+pub mod rowcol;
+pub mod stability;
 
 use netsmith_core::{Design, Net, Part, PinRef};
 
@@ -16,6 +21,8 @@ pub fn design(
         name: name.into(),
         process: None,
         features: Default::default(),
+        interfaces: Vec::new(),
+        notes: Vec::new(),
         parts: parts
             .iter()
             .map(|&(refdes, kind, value, package)| Part {
@@ -96,6 +103,120 @@ pub fn regulator() -> Design {
             ("GND", &["C1.2", "C2.2", "J1.2", "J2.2", "U1.1"]),
             ("VIN", &["C1.1", "J1.1", "U1.3"]),
         ],
+    )
+}
+
+/// `modules` copies of a ten-part supply: a regulator, four capacitors, four resistors and a
+/// light, on a shared `GND` and `VIN`, each with its own nets besides.
+pub fn supplies(modules: usize) -> (Design, Vec<netsmith_view::Group>) {
+    let mut parts = Vec::new();
+    let mut nets: Vec<Net> = Vec::new();
+    let mut groups = Vec::new();
+    let pin = |r: &str, p: &str| PinRef {
+        refdes: r.into(),
+        pin: p.into(),
+    };
+    let mut gnd = Vec::new();
+    let mut vin = Vec::new();
+    for m in 1..=modules {
+        let first = parts.len();
+        let name = |k: &str| format!("{k}{m}");
+        for (refdes, kind, value, package) in [
+            (name("U"), "LinearRegulator", "LDO", Some("SOT-223")),
+            (name("C"), "Capacitor", "1u", Some("0402")),
+            (name("CA"), "Capacitor", "4.7u", Some("0402")),
+            (name("CB"), "Capacitor", "100n", Some("0402")),
+            (name("CC"), "Capacitor", "100n", Some("0402")),
+            (name("R"), "Resistor", "1k", Some("0402")),
+            (name("RA"), "Resistor", "10k", Some("0402")),
+            (name("RB"), "Resistor", "10k", Some("0402")),
+            (name("RC"), "Resistor", "2k", Some("0402")),
+            (name("D"), "Led", "LED", None),
+        ] {
+            parts.push(Part {
+                refdes,
+                kind: kind.into(),
+                value: value.into(),
+                package: package.map(str::to_string),
+                path: String::new(),
+                pins: Vec::new(),
+            });
+        }
+        groups.push(netsmith_view::Group {
+            name: format!("supply{m}"),
+            detail: "Supply".into(),
+            parts: (first..first + 10).collect(),
+        });
+        gnd.extend([
+            pin(&name("U"), "1"),
+            pin(&name("C"), "2"),
+            pin(&name("CA"), "2"),
+        ]);
+        gnd.extend([
+            pin(&name("CB"), "2"),
+            pin(&name("CC"), "2"),
+            pin(&name("D"), "1"),
+        ]);
+        vin.extend([pin(&name("U"), "3"), pin(&name("C"), "1")]);
+        nets.push(Net {
+            name: format!("out{m}"),
+            pins: vec![
+                pin(&name("U"), "2"),
+                pin(&name("CA"), "1"),
+                pin(&name("R"), "1"),
+                pin(&name("CB"), "1"),
+            ],
+        });
+        nets.push(Net {
+            name: format!("sense{m}"),
+            pins: vec![
+                pin(&name("R"), "2"),
+                pin(&name("RA"), "1"),
+                pin(&name("RB"), "1"),
+                pin(&name("CC"), "1"),
+            ],
+        });
+        nets.push(Net {
+            name: format!("led{m}"),
+            pins: vec![pin(&name("RA"), "2"), pin(&name("RC"), "1")],
+        });
+        nets.push(Net {
+            name: format!("anode{m}"),
+            pins: vec![pin(&name("RC"), "2"), pin(&name("D"), "2")],
+        });
+        nets.push(Net {
+            name: format!("tap{m}"),
+            pins: vec![pin(&name("RB"), "2")],
+        });
+    }
+    // Each supply's output also feeds the next supply's resistor: a net between sheets.
+    for m in 1..modules {
+        nets.iter_mut()
+            .find(|n| n.name == format!("out{m}"))
+            .unwrap()
+            .pins
+            .push(pin(&format!("RB{}", m + 1), "2"));
+        nets.retain(|n| n.name != format!("tap{}", m + 1));
+    }
+    nets.push(Net {
+        name: "GND".into(),
+        pins: gnd,
+    });
+    nets.push(Net {
+        name: "VIN".into(),
+        pins: vin,
+    });
+    (
+        Design {
+            name: "Big".into(),
+            parts,
+            nets,
+            process: None,
+            features: Default::default(),
+            interfaces: Vec::new(),
+            notes: Vec::new(),
+        },
+        groups,
     )
 }
 

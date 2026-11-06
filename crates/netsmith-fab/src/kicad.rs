@@ -1,9 +1,9 @@
 //! Running `kicad-cli`. Everything the rest of the crate needs from KiCad goes through the
 //! [`KicadCli`] trait, so it can be tested with a stand-in and without KiCad installed.
 //!
-//! The real implementation also runs Windows KiCad from WSL (`kicad-cli.exe`): it copies
-//! the board to a Windows temp directory, converts paths with `wslpath`, and reads the
-//! results back, as `scripts/check-kicad.sh` does.
+//! The real implementation also runs Windows KiCad from WSL (`kicad-cli.exe`, found by
+//! [`KicadCliExe::locate`]): it copies the board to a Windows temp directory, converts paths
+//! with `wslpath`, and reads the results back, as `scripts/check-kicad.sh` does.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -68,8 +68,6 @@ pub trait KicadCli {
     fn netlist(&self, sch: &Path) -> Result<String, CliError>;
 }
 
-const WSL_DEFAULT: &str = "/mnt/c/Program Files/KiCad/9.0/bin/kicad-cli.exe";
-
 pub struct KicadCliExe {
     exe: PathBuf,
 }
@@ -79,25 +77,26 @@ impl KicadCliExe {
         Self { exe: exe.into() }
     }
 
-    /// Finds `kicad-cli`: `$KICAD_CLI` (and nothing else if it is set), then `kicad-cli` on `PATH`, then Windows KiCad 9
-    /// under WSL. `None` if there is none.
+    /// Finds `kicad-cli` as [`netsmith_kicad::install::Search::kicad_cli`] does: `$KICAD_CLI`
+    /// (and nothing else if it is set), then `kicad-cli` on `PATH`, then, under WSL, the
+    /// newest Windows KiCad (`/mnt/c/Program Files/KiCad/<version>/bin/kicad-cli.exe`).
+    /// `None` if there is none.
     pub fn locate() -> Option<Self> {
-        if let Some(p) = std::env::var_os("KICAD_CLI") {
-            return Some(PathBuf::from(p))
-                .filter(|p| p.is_file())
-                .map(Self::new);
-        }
-        std::env::var_os("PATH")
-            .into_iter()
-            .flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
-            .map(|d| d.join("kicad-cli"))
-            .chain([PathBuf::from(WSL_DEFAULT)])
-            .find(|p| p.is_file())
+        netsmith_kicad::install::Search::machine()
+            .kicad_cli()
             .map(Self::new)
     }
 
-    /// Windows programs see Windows paths.
-    fn windows(&self) -> bool {
+    /// The program.
+    pub fn exe(&self) -> &Path {
+        &self.exe
+    }
+
+    /// Whether this is a Windows program (`kicad-cli.exe`), which sees Windows paths and is
+    /// run from WSL: the files it reads and writes go in a folder on the Windows side
+    /// ([`KicadCliExe::scratch_base`]) and its arguments are Windows paths
+    /// ([`KicadCliExe::arg`]).
+    pub fn windows(&self) -> bool {
         self.exe.extension().is_some_and(|e| e == "exe")
     }
 
@@ -129,12 +128,7 @@ impl KicadCliExe {
     /// A scratch directory (on the Windows side for Windows KiCad) for the file `name`.
     fn scratch(&self, name: &str) -> Result<Stage<'_>, CliError> {
         let io = |what: &str, e: std::io::Error| CliError::Io(format!("{what}: {e}"));
-        let base = if self.windows() {
-            Self::windows_temp()?
-        } else {
-            std::env::temp_dir()
-        };
-        let dir = base.join(exclusive::scratch_name());
+        let dir = self.scratch_base()?.join(exclusive::scratch_name());
         std::fs::create_dir_all(&dir)
             .map_err(|e| io(&format!("cannot create {}", dir.display()), e))?;
         Ok(Stage {
@@ -171,9 +165,28 @@ impl KicadCliExe {
         Ok(stage)
     }
 
+    /// The folder to make scratch folders in: the Windows temp folder for Windows KiCad,
+    /// else the system's.
+    pub fn scratch_base(&self) -> Result<PathBuf, CliError> {
+        if self.windows() {
+            Self::windows_temp()
+        } else {
+            Ok(std::env::temp_dir())
+        }
+    }
+
+    /// `path` as this program wants it in an argument: a Windows path for Windows KiCad.
+    pub fn arg(&self, path: &Path) -> Result<String, CliError> {
+        if self.windows() {
+            wslpath("-w", &path.to_string_lossy())
+        } else {
+            Ok(path.to_string_lossy().into_owned())
+        }
+    }
+
     /// The program that runs KiCad's Python: next to `kicad-cli.exe` on Windows, otherwise
     /// the system's, whose `pcbnew` module is KiCad's.
-    fn python(&self) -> PathBuf {
+    pub fn python(&self) -> PathBuf {
         if self.windows() {
             self.exe.with_file_name("python.exe")
         } else {
@@ -218,18 +231,24 @@ fn wslpath(flag: &str, path: &str) -> Result<String, CliError> {
         .args([flag, path])
         .output()
         .map_err(|e| CliError::Io(format!("cannot run wslpath: {e}")))?;
-    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if !out.status.success() || path.is_empty() {
-        return Err(CliError::Failed {
-            command: format!("wslpath {flag} {path:?}"),
-            output: format!(
-                "{}{}",
-                String::from_utf8_lossy(&out.stdout),
-                String::from_utf8_lossy(&out.stderr)
-            ),
-        });
+    let converted = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if !out.status.success() || converted.is_empty() {
+        return Err(wslpath_failed(flag, path, &out.stdout, &out.stderr));
     }
-    Ok(path)
+    Ok(converted)
+}
+
+/// The error of a `wslpath <flag> <asked>` that gave no path: the command as it was run (with
+/// the path that was asked about, not what it printed) and everything it said.
+fn wslpath_failed(flag: &str, asked: &str, stdout: &[u8], stderr: &[u8]) -> CliError {
+    CliError::Failed {
+        command: format!("wslpath {flag} {asked:?}"),
+        output: format!(
+            "{}{}",
+            String::from_utf8_lossy(stdout),
+            String::from_utf8_lossy(stderr)
+        ),
+    }
 }
 
 /// A scratch directory holding a copy of the board, removed when dropped.
@@ -249,11 +268,7 @@ impl Drop for Stage<'_> {
 impl Stage<'_> {
     /// How `kicad-cli` should be told about a path inside the stage.
     fn arg(&self, path: &Path) -> Result<String, CliError> {
-        if self.cli.windows() {
-            wslpath("-w", &path.to_string_lossy())
-        } else {
-            Ok(path.to_string_lossy().into_owned())
-        }
+        self.cli.arg(path)
     }
 
     /// Runs `kicad-cli pcb <args> <board>`.
@@ -513,5 +528,34 @@ impl KicadCli for KicadCliExe {
         )?;
         std::fs::read_to_string(&file)
             .map_err(|e| CliError::Io(format!("kicad-cli wrote no netlist: {e}")))
+    }
+}
+
+#[cfg(test)]
+mod wslpath_tests {
+    use super::wslpath_failed;
+
+    #[test]
+    fn a_failed_wslpath_names_the_path_it_was_asked_about_and_what_it_said() {
+        // `wslpath` printed nothing on stdout: the message must still say which path.
+        let said = wslpath_failed(
+            "-w",
+            "/tmp/a b/board.kicad_pcb",
+            b"",
+            b"wslpath: no such file\n",
+        )
+        .to_string();
+        assert!(
+            said.contains(r#"wslpath -w "/tmp/a b/board.kicad_pcb""#),
+            "{said}"
+        );
+        assert!(said.contains("wslpath: no such file"), "{said}");
+        assert!(!said.contains(r#"wslpath -w """#), "{said}");
+        // What it printed on stdout is in the output, not in the command.
+        let said = wslpath_failed("-u", "C:\\x", b"partial\n", b"").to_string();
+        assert!(
+            said.contains(r#"wslpath -u "C:\\x""#) && said.contains("partial"),
+            "{said}"
+        );
     }
 }

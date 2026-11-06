@@ -248,6 +248,12 @@ fn the_editor_shows_the_finding_as_a_warning_at_the_rail_and_an_error_if_the_pro
     assert_eq!(found.len(), 2, "{:?}", analysis.problems);
     assert!(found.iter().all(|p| p.severity == Severity::Warning));
     assert_eq!(analysis.warnings, 2);
+    // The page is told the stage, and the board and the rail the message is about.
+    for p in &found {
+        assert_eq!(p.stage, Some(netsmith_editor::api::ProblemStage::Guideline));
+        assert_eq!(p.board.as_deref(), Some("Heater"), "{p:?}");
+        assert!(p.path.is_some(), "{p:?}");
+    }
     let at = found[0].at.as_ref().expect("it points into the source");
     assert_eq!(at.file, "src/main.nsm");
     let text = fs::read_to_string(root.join("src/main.nsm")).unwrap();
@@ -269,7 +275,9 @@ fn the_editor_shows_the_finding_as_a_warning_at_the_rail_and_an_error_if_the_pro
         analysis
             .problems
             .iter()
-            .all(|p| p.severity == Severity::Error && p.message.contains("IPC-2221 guideline"))
+            .all(|p| p.severity == Severity::Error
+                && p.message.contains("IPC-2221 guideline")
+                && p.stage == Some(netsmith_editor::api::ProblemStage::Guideline))
     );
 }
 

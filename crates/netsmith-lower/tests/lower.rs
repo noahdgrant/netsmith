@@ -98,10 +98,12 @@ board LedExample {
     .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
 }
 ";
-    assert_eq!(
-        format!("{:?}", lowered(LED).unwrap()),
-        format!("{:?}", lowered(reordered).unwrap())
-    );
+    // The notes say where in the source they are, and the reordered file has no doc comment:
+    // they are compared on their own, in `doc_comments_and_relations_become_notes_in_source_order`.
+    let (mut a, mut b) = (lowered(LED).unwrap(), lowered(reordered).unwrap());
+    a.notes.clear();
+    b.notes.clear();
+    assert_eq!(format!("{a:?}"), format!("{b:?}"));
 }
 
 #[test]
@@ -1106,3 +1108,271 @@ fn natural_order_compares_segments_in_turn_and_is_total() {
     assert_eq!(order("led", "r1"), Less);
     assert_eq!(order("b1", "a9"), Greater);
 }
+
+// --- Interface instances ----------------------------------------------------------------
+
+/// An SPI master and slave in two modules, joined with `~` on the board, as the language
+/// guide does.
+const SPI_BOARD: &str = "
+import std::bus::Spi
+import std::sources::Rail
+
+part Master {
+    .vdd: Rail
+    .spi: Spi
+    pins {
+        .vdd.pos       power         \"VDD\"    \"1\"
+        .vdd.neg       power         \"VSS\"    \"2\"
+        .spi.sclk      output        \"SCK\"    \"3\"
+        .spi.mosi      output        \"MOSI\"   \"4\"
+        .spi.miso      input         \"MISO\"   \"5\"
+        .spi.cs        output        \"CS\"     \"6\"
+    }
+}
+
+part Slave {
+    .vdd: Rail
+    .spi: Spi
+    pins {
+        .vdd.pos       power         \"VDD\"    \"1\"
+        .vdd.neg       power         \"VSS\"    \"2\"
+        .spi.sclk      input         \"SCK\"    \"3\"
+        .spi.mosi      input         \"SI\"     \"4\"
+        .spi.miso      output        \"SO\"     \"5\"
+        .spi.cs        input         \"CS\"     \"6\"
+    }
+}
+
+module Controller {
+    .vdd: Rail
+    .spi: Spi
+    .u: Master
+    .vdd ~ .u.vdd
+    .spi ~ .u.spi
+}
+
+module Storage {
+    .vdd: Rail
+    .spi: Spi
+    .u: Slave
+    .vdd ~ .u.vdd
+    .spi ~ .u.spi
+}
+
+board SpiBoard {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= \"3V3\"
+        .neg.net &= \"GND\"
+    }
+    .ctl: Controller
+    .flash: Storage
+    .supply ~ .ctl.vdd
+    .supply ~ .flash.vdd
+    .ctl.spi ~ .flash.spi
+}
+";
+
+fn spi_board() -> Design {
+    lowered(SPI_BOARD).unwrap()
+}
+
+#[test]
+fn the_design_carries_the_interface_instances_and_the_nets_of_their_members() {
+    let d = spi_board();
+    let spi: Vec<_> = d
+        .interfaces
+        .iter()
+        .filter(|i| i.type_name == "Spi")
+        .map(|i| i.path.as_str())
+        .collect();
+    // The ports of the modules and the interfaces of their parts: each joins the same nets,
+    // and each is listed, by path.
+    assert_eq!(spi, ["ctl.spi", "ctl.u.spi", "flash.spi", "flash.u.spi"]);
+    let members = |path: &str| -> Vec<(String, String)> {
+        d.interfaces
+            .iter()
+            .find(|i| i.path == path)
+            .unwrap_or_else(|| panic!("no interface {path}"))
+            .members
+            .iter()
+            .map(|m| (m.name.clone(), m.net.clone()))
+            .collect()
+    };
+    // Nobody named the nets, so each is called after its smallest terminal path.
+    let expected: Vec<(String, String)> = ["sclk", "mosi", "miso", "cs"]
+        .iter()
+        .map(|m| (m.to_string(), format!("net-ctl.u.spi.{m}")))
+        .collect();
+    // The two ends of the bus see the same four nets under the same member names.
+    for path in ["ctl.spi", "ctl.u.spi", "flash.spi", "flash.u.spi"] {
+        assert_eq!(members(path), expected, "{path}");
+    }
+    // Each member's net is one of the design's nets.
+    for i in &d.interfaces {
+        for m in &i.members {
+            assert!(d.nets.iter().any(|n| n.name == m.net), "{}", m.net);
+        }
+    }
+    // The rails are interface instances of their own: the supply's pins are not members of
+    // the SPI interfaces.
+    assert!(d.interfaces.iter().any(|i| i.type_name == "Rail"));
+    assert!(
+        d.interfaces
+            .iter()
+            .all(|i| i.type_name != "Spi" || i.members.len() == 4)
+    );
+}
+
+#[test]
+fn interface_instances_are_listed_in_path_order() {
+    let d = spi_board();
+    let paths: Vec<&str> = d.interfaces.iter().map(|i| i.path.as_str()).collect();
+    let mut sorted = paths.clone();
+    sorted.sort();
+    assert_eq!(paths, sorted);
+}
+
+#[test]
+fn a_board_with_no_interface_has_none_in_its_design() {
+    let d = lowered(LED).unwrap();
+    assert!(
+        d.interfaces.iter().all(|i| i.type_name == "Rail"),
+        "{:?}",
+        d.interfaces
+    );
+}
+
+// ---- notes (ADR 0060) ------------------------------------------------------------------
+
+const NOTED: &str = r#"
+import std::parts::connector::Header1x2
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+/// A small module: an LED and its resistor.
+module Light {
+    //! It takes its current from the rail it is on.
+    .r: Resistor {}
+    /// The light itself.
+    .d: Led {
+        .current &= 5mA..15mA
+    }
+    .supply: Rail
+    // This one is an ordinary comment and is never a note.
+    .d.current == (.supply.voltage - .d.forward_voltage) / .r.resistance
+    .supply.pos ~> .r ~> .d ~> .supply.neg
+}
+
+/// The board of the test.
+///
+/// Two paragraphs.
+board Noted {
+    /// Made by JLCPCB's two-layer process.
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    /// Where the supply comes in.
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    /// The supply comes in through this header.
+    .power_in: Header1x2
+    .supply.pos ~ .power_in.p1
+    .supply.neg ~ .power_in.p2
+    /// Used as a status light.
+    .light: Light
+    .light.supply ~ .supply
+}
+"#;
+
+#[test]
+fn doc_comments_and_relations_become_notes_in_source_order() {
+    use netsmith_core::NoteKind;
+    let d = lowered(NOTED).unwrap();
+    let docs: Vec<(&str, &str, &[String])> = d
+        .notes
+        .iter()
+        .filter(|n| n.kind == NoteKind::Doc)
+        .map(|n| (n.path.as_str(), n.text.as_str(), n.anchors.as_slice()))
+        .collect();
+    // The board's doc (two paragraphs, a line break between), a part's, the module's (its own
+    // `///` and `//!`, then the line above its declaration) and the rail's, anchored on the
+    // parts that are on its nets (the light, the resistor and the header: three).
+    let find = |path: &str| {
+        docs.iter()
+            .find(|d| d.0 == path)
+            .unwrap_or_else(|| panic!("{path}: {docs:?}"))
+    };
+    assert_eq!(find("").1, "The board of the test.\nTwo paragraphs.");
+    assert!(find("").2.is_empty(), "the board's note is the sheet's");
+    assert_eq!(
+        find("power_in").1,
+        "The supply comes in through this header."
+    );
+    assert_eq!(find("power_in").2, ["power_in"]);
+    assert_eq!(
+        find("light").1,
+        "A small module: an LED and its resistor. It takes its current from the rail it is on.\nUsed as a status light."
+    );
+    assert!(find("light").2.is_empty());
+    assert_eq!(find("light.d").1, "The light itself.");
+    assert_eq!(find("light.d").2, ["light.d"]);
+    assert_eq!(find("supply").1, "Where the supply comes in.");
+    assert_eq!(find("supply").2, ["light.d", "light.r", "power_in"]);
+    // Not an ordinary comment, not the process (nothing drawn is on it), not the library's.
+    assert!(docs.iter().all(|d| !d.1.contains("ordinary comment")));
+    assert!(docs.iter().all(|d| d.0 != "process"));
+    assert!(
+        d.notes
+            .iter()
+            .all(|n| n.at.as_ref().is_some_and(|a| !a.file.starts_with("std/")))
+    );
+    // The relation of the module, as written, about the parts it names; none of the part
+    // models' own relations (`.drop == .current * .resistance` of a resistor).
+    let relations: Vec<_> = d
+        .notes
+        .iter()
+        .filter(|n| n.kind == NoteKind::Relation)
+        .collect();
+    assert_eq!(relations.len(), 1, "{relations:?}");
+    assert_eq!(relations[0].path, "light");
+    assert_eq!(
+        relations[0].text,
+        ".d.current == (.supply.voltage - .d.forward_voltage) / .r.resistance"
+    );
+    assert_eq!(relations[0].anchors, ["light.d", "light.r"]);
+    let at = relations[0].at.as_ref().unwrap();
+    assert_eq!((at.file.as_str(), at.line), ("t.nsm", 17));
+    let result = relations[0].result.as_deref().unwrap();
+    assert!(result.starts_with("d.current = "), "{result}");
+    // Docs come before relations, and both keep the source's order.
+    let kinds: Vec<_> = d.notes.iter().map(|n| n.kind).collect();
+    assert!(kinds.windows(2).all(|w| w[0] <= w[1]), "{kinds:?}");
+}
+
+#[test]
+fn a_board_with_no_doc_comment_and_no_relation_has_no_note() {
+    let d = lowered(REGULATOR_NO_DOCS).unwrap();
+    assert!(d.notes.is_empty(), "{:?}", d.notes);
+}
+
+const REGULATOR_NO_DOCS: &str = r#"
+import std::parts::connector::Header1x2
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Plain {
+    // Only an ordinary comment here.
+    .supply: Rail {
+        .voltage &= 5V
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .r1: Resistor { .resistance &= 1kohm +/- 1% }
+    .supply.pos ~> .r1 ~> .supply.neg
+}
+"#;

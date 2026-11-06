@@ -13,7 +13,7 @@ pub type Node = (i32, i32);
 /// Nobody owns the node on that axis.
 pub const NONE: u32 = u32::MAX;
 
-const STEP_COST: u32 = 10;
+pub const STEP_COST: u32 = 10;
 const BEND_COST: u32 = 60;
 const CROSS_COST: u32 = 45;
 const DIRS: [Dir; 4] = [Dir::Up, Dir::Down, Dir::Left, Dir::Right];
@@ -36,6 +36,7 @@ fn dir_index(d: Dir) -> usize {
     DIRS.iter().position(|&x| x == d).expect("a direction")
 }
 
+#[derive(Clone)]
 pub struct Grid {
     pub w: i32,
     pub h: i32,
@@ -43,6 +44,10 @@ pub struct Grid {
     pub y0: f64,
     pub step: f64,
     blocked: Vec<bool>,
+    /// For each axis (horizontal, vertical), whether the step from the node to the next one
+    /// along it crosses a body that lies between the two nodes (a stroke thinner than a
+    /// step falls between nodes, so blocking nodes does not stop a wire through it).
+    cut: [Vec<bool>; 2],
     /// For each axis (horizontal, vertical), the net whose wire runs through or ends at the
     /// node along it.
     own: [Vec<u32>; 2],
@@ -63,6 +68,7 @@ impl Grid {
             y0,
             step,
             blocked: vec![false; n],
+            cut: [vec![false; n], vec![false; n]],
             own: [vec![NONE; n], vec![NONE; n]],
         }
     }
@@ -110,6 +116,60 @@ impl Grid {
         }
     }
 
+    /// Blocks every node that lies in `r`, edges included, and every step between two
+    /// nodes that goes through `r`, which a body thinner than a step needs.
+    pub fn block_body(&mut self, r: Rect) {
+        self.block_rect(r);
+        let eps = 1e-6;
+        let lo = self.node(Pt::new(r.min.x, r.min.y));
+        let hi = self.node(Pt::new(r.max.x, r.max.y));
+        for j in (lo.1 - 2).max(0)..=(hi.1 + 2).min(self.h - 1) {
+            for i in (lo.0 - 2).max(0)..=(hi.0 + 2).min(self.w - 1) {
+                let (a, k) = (self.pt((i, j)), self.idx((i, j)));
+                let (right, down) = (self.pt((i + 1, j)), self.pt((i, j + 1)));
+                // A step crosses the box when it starts and ends outside it and passes
+                // through it between. A step with an end in the box is the business of the
+                // blocked nodes: a pin's own node may stand in the box and its wire leaves.
+                let inside = |p: Pt| {
+                    p.x >= r.min.x - eps
+                        && p.x <= r.max.x + eps
+                        && p.y >= r.min.y - eps
+                        && p.y <= r.max.y + eps
+                };
+                if !inside(a)
+                    && !inside(right)
+                    && a.y >= r.min.y - eps
+                    && a.y <= r.max.y + eps
+                    && a.x < r.min.x
+                    && right.x > r.max.x
+                {
+                    self.cut[0][k] = true;
+                }
+                if !inside(a)
+                    && !inside(down)
+                    && a.x >= r.min.x - eps
+                    && a.x <= r.max.x + eps
+                    && a.y < r.min.y
+                    && down.y > r.max.y
+                {
+                    self.cut[1][k] = true;
+                }
+            }
+        }
+    }
+
+    /// Whether the step from `n` one node along `dir` crosses a body.
+    pub fn step_is_cut(&self, n: Node, dir: Dir) -> bool {
+        let (dx, dy) = vector(dir);
+        // A step is stored at its left or upper node.
+        let from = if dx < 0 || dy < 0 {
+            (n.0 + dx, n.1 + dy)
+        } else {
+            n
+        };
+        self.inside(from) && self.cut[axis(dir)][self.idx(from)]
+    }
+
     pub fn block(&mut self, n: Node) {
         if self.inside(n) {
             let k = self.idx(n);
@@ -144,6 +204,14 @@ impl Grid {
     /// Whether nothing is on the node, on either axis, and it is not blocked.
     pub fn is_free(&self, n: Node) -> bool {
         !self.is_blocked(n) && self.owner(n, 0) == NONE && self.owner(n, 1) == NONE
+    }
+
+    /// Whether nothing but a wire of `net` is on the node, and it is not blocked.
+    pub fn free_for(&self, n: Node, net: u32) -> bool {
+        !self.is_blocked(n)
+            && [0, 1]
+                .into_iter()
+                .all(|ax| matches!(self.owner(n, ax), NONE) || self.owner(n, ax) == net)
     }
 
     /// Whether `net` may have a wire along `axis` through the node.
@@ -197,7 +265,10 @@ impl Grid {
     /// Whether the `len` nodes after `from` along `dir` are free (nothing on them).
     pub fn run_is_free(&self, from: Node, dir: Dir, len: i32) -> bool {
         let (dx, dy) = vector(dir);
-        (1..=len).all(|k| self.is_free((from.0 + dx * k, from.1 + dy * k)))
+        (1..=len).all(|k| {
+            let before = (from.0 + dx * (k - 1), from.1 + dy * (k - 1));
+            self.is_free((from.0 + dx * k, from.1 + dy * k)) && !self.step_is_cut(before, dir)
+        })
     }
 
     /// The cheapest path for `net` from `start` (entered going `heading`) to any node of
@@ -210,8 +281,33 @@ impl Grid {
         heading: Dir,
         targets: &HashSet<Node>,
     ) -> Option<Vec<Node>> {
+        self.route_costed(net, start, &[heading], targets)
+            .map(|(_, path)| path)
+    }
+
+    /// [`route`](Self::route) for a start that has no way it must leave by (the end of a
+    /// wire that leaves a pin's tip sideways): the first step costs no bend whichever way it
+    /// goes. Gives the cost of the path too, in the router's own units.
+    pub fn route_free(
+        &self,
+        net: u32,
+        start: Node,
+        targets: &HashSet<Node>,
+    ) -> Option<(u32, Vec<Node>)> {
+        self.route_costed(net, start, &DIRS, targets)
+    }
+
+    /// The cost and the nodes of the cheapest path that leaves `start` heading one of
+    /// `headings` (each free of a bend there).
+    pub fn route_costed(
+        &self,
+        net: u32,
+        start: Node,
+        headings: &[Dir],
+        targets: &HashSet<Node>,
+    ) -> Option<(u32, Vec<Node>)> {
         if targets.contains(&start) {
-            return Some(vec![start]);
+            return Some((0, vec![start]));
         }
         let mut lo = start;
         let mut hi = start;
@@ -226,7 +322,7 @@ impl Grid {
                 (hi.0.saturating_add(margin)).min(self.w - 1),
                 (hi.1.saturating_add(margin)).min(self.h - 1),
             );
-            if let Some(p) = self.search(net, start, heading, targets, win) {
+            if let Some(p) = self.search(net, start, headings, targets, win) {
                 return Some(p);
             }
             if win == (0, 0, self.w - 1, self.h - 1) {
@@ -240,10 +336,10 @@ impl Grid {
         &self,
         net: u32,
         start: Node,
-        heading: Dir,
+        headings: &[Dir],
         targets: &HashSet<Node>,
         win: (i32, i32, i32, i32),
-    ) -> Option<Vec<Node>> {
+    ) -> Option<(u32, Vec<Node>)> {
         let (wi, wj) = (win.2 - win.0 + 1, win.3 - win.1 + 1);
         let cells = (wi * wj) as usize;
         let slot = |n: Node, d: usize| -> usize {
@@ -251,10 +347,20 @@ impl Grid {
         };
         let mut dist = vec![u32::MAX; cells * 4];
         let mut from = vec![u32::MAX; cells * 4];
+        // The targets inside the window as a mask: the test is made for every node taken off
+        // the heap, and a hash of a pair of numbers each time is most of what the search costs.
+        let mut is_target = vec![false; cells];
+        for t in targets {
+            if t.0 >= win.0 && t.0 <= win.2 && t.1 >= win.1 && t.1 <= win.3 {
+                is_target[((t.1 - win.1) * wi + (t.0 - win.0)) as usize] = true;
+            }
+        }
         let mut heap: BinaryHeap<Reverse<(u32, u32, u32)>> = BinaryHeap::new();
-        let d0 = dir_index(heading);
-        dist[slot(start, d0)] = 0;
-        heap.push(Reverse((0, 0, slot(start, d0) as u32)));
+        for &h in headings {
+            let d0 = dir_index(h);
+            dist[slot(start, d0)] = 0;
+            heap.push(Reverse((0, 0, slot(start, d0) as u32)));
+        }
         let mut seq = 0u32;
         let mut found: Option<usize> = None;
         // Where a slot is, from its index.
@@ -269,7 +375,7 @@ impl Grid {
                 continue;
             }
             let (n, d) = unslot(s);
-            if n != start && targets.contains(&n) {
+            if n != start && is_target[s / 4] {
                 found = Some(s);
                 break;
             }
@@ -290,7 +396,7 @@ impl Grid {
                 if m.0 < win.0 || m.1 < win.1 || m.0 > win.2 || m.1 > win.3 {
                     continue;
                 }
-                if !self.usable(m, axis(dir), net) {
+                if !self.usable(m, axis(dir), net) || self.step_is_cut(n, dir) {
                     continue;
                 }
                 let mut c = cost + STEP_COST;
@@ -312,13 +418,14 @@ impl Grid {
             }
         }
         let mut s = found?;
+        let cost = dist[s];
         let mut path = vec![unslot(s).0];
         while from[s] != u32::MAX {
             s = from[s] as usize;
             path.push(unslot(s).0);
         }
         path.reverse();
-        Some(path)
+        Some((cost, path))
     }
 }
 

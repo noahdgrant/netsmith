@@ -84,13 +84,13 @@ export const tomlLanguage = StreamLanguage.define<TomlState>({
 
 const tomlHighlight = syntaxHighlighting(
   HighlightStyle.define([
-    { tag: t.comment, color: '#6c7a89', fontStyle: 'italic' },
-    { tag: t.heading, color: '#e0a458', fontWeight: '600' },
-    { tag: t.propertyName, color: '#c3a6e0' },
-    { tag: t.string, color: '#a6d189' },
-    { tag: t.number, color: '#ef9f76' },
-    { tag: t.bool, color: '#8fb8de' },
-    { tag: t.punctuation, color: '#8c97a6' },
+    { tag: t.comment, color: 'var(--syn-comment)', fontStyle: 'italic' },
+    { tag: t.heading, color: 'var(--syn-keyword)', fontWeight: '600' },
+    { tag: t.propertyName, color: 'var(--syn-property)' },
+    { tag: t.string, color: 'var(--syn-string)' },
+    { tag: t.number, color: 'var(--syn-number)' },
+    { tag: t.bool, color: 'var(--syn-type)' },
+    { tag: t.punctuation, color: 'var(--syn-punct)' },
   ]),
 );
 
@@ -134,14 +134,20 @@ function invalidTooltip(path: string, problems: () => Problem[]): Extension {
   });
 }
 
-/** The extensions that colour the file at `path`. `problems` gives the checker's current ones. */
-export function languageExtensions(path: string, problems: () => Problem[]): Extension[] {
+/** The colouring of the file at `path` and nothing else: a view that only shows text (the comparison with a ref) wants no
+ * tooltips on the marks. */
+export function colouring(path: string): Extension[] {
   switch (languageOfPath(path)) {
     case 'nsm':
-      return [nsmLanguage, nsmHighlight, invalidTooltip(path, problems)];
+      return [nsmLanguage, nsmHighlight];
     case 'toml':
       return [tomlLanguage, tomlHighlight];
     default:
       return [];
   }
+}
+
+/** The extensions that colour the file at `path`. `problems` gives the checker's current ones. */
+export function languageExtensions(path: string, problems: () => Problem[]): Extension[] {
+  return languageOfPath(path) === 'nsm' ? [...colouring(path), invalidTooltip(path, problems)] : colouring(path);
 }

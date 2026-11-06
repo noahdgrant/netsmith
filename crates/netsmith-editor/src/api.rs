@@ -7,6 +7,10 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+mod compare;
+
+pub use compare::*;
+
 /// A place in a file, from its first character to its last.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -30,6 +34,25 @@ pub enum Severity {
     Note,
 }
 
+/// The stage of the build a problem comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum ProblemStage {
+    /// The text does not parse.
+    Syntax,
+    /// The checker: names, types, connections, pin tables, and a file that cannot be read.
+    Check,
+    /// The solver: a choice it could not make, a relation it could not evaluate, a value that
+    /// contradicts another; also the solver's notes and warnings of a build that went on (a
+    /// part not chosen).
+    Solve,
+    /// Lowering the solved design to parts and nets, with its notes, and the checks that the
+    /// schematic and the footprints agree with it.
+    Lower,
+    /// A guideline (ADR 0036), a warning unless the project makes it an error.
+    Guideline,
+}
+
 /// One message of the compiler or solver, or a note of the build.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -40,6 +63,24 @@ pub struct Problem {
     /// What the command line prints, with the source line underlined.
     pub rendered: String,
     pub at: Option<Location>,
+    /// The stage that found it. Always set by this server; optional so that a page written
+    /// before it was added still type checks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub stage: Option<ProblemStage>,
+    /// The board it is about, as `BoardSummary::name` has it (`Demo/main` for a board of a
+    /// system), where the problem belongs to one board: every solver, lowering and guideline
+    /// message and note, and a checker error written inside the definition of a board. A
+    /// parse error, and a mistake in a module or a system (which boards share), have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub board: Option<String>,
+    /// The instance it is about, from the board (`status_indicator.led`), where the server
+    /// knows one: a note, a not-chosen warning and a guideline finding. The mistakes of the
+    /// checker and the solver have none: they are about a statement, which `at` locates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub path: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -60,10 +101,40 @@ pub enum FileRole {
 
 /// A definition in a file: `board`, `system`, `panel`, `part`, `interface` or `module`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
 pub struct Def {
     pub kind: String,
     pub name: String,
     pub line: u32,
+    /// The line its closing brace is on (the last line of the definition), so the source
+    /// outline and the breadcrumbs know which definition a line is in without reading text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub end_line: Option<u32>,
+    /// The declarations written directly in its body (`.vin: Rail`), in source order, not the
+    /// ones inside a declaration's own block. Left out when there are none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub children: Option<Vec<DefChild>>,
+}
+
+/// A declaration in the body of a definition: `.regulator: LinearRegulator`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct DefChild {
+    /// As written, without the leading dot (`stage.regulator` for a path).
+    pub name: String,
+    /// What the type is: `board`, `system`, `panel`, `part`, `interface` or `module`. Left
+    /// out when the type names no definition that the file or its imports reach.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub kind: Option<String>,
+    /// The line the declaration starts on.
+    pub line: u32,
+    /// The line it ends on; the same as `line` for a declaration with no block.
+    pub end_line: u32,
+    /// The type as written, last segment only: `LinearRegulator` for `std::parts::LinearRegulator`.
+    pub type_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -90,6 +161,34 @@ pub struct Project {
     /// The folders below `src/`, with their path from the project root (`src/sheets`), so the
     /// tree can show one that has no file in it yet.
     pub folders: Vec<String>,
+    /// The version of the netsmith that serves this page (`0.1.0`, the crate's).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub version: Option<String>,
+    /// `git describe --tags --always` of the checkout netsmith was built from, as it was when
+    /// the build script last ran (a commit made later with no other change is not seen until
+    /// the next build; uncommitted edits are not marked). Absent when netsmith was built
+    /// outside a git checkout or without `git`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub git_describe: Option<String>,
+    /// The project folder, absolute: where `netsmith.toml` is, or for a single file the folder
+    /// it is in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub root: Option<String>,
+    /// Where `kicad-cli` was found (`$KICAD_CLI`, `PATH`, or the Windows KiCad under WSL).
+    /// Absent when `kicad` is false.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub kicad_path: Option<String>,
+    /// The `SOURCE-HASH` of the page embedded in this binary: a hash of the sources in
+    /// `web/` that the page was built from. Absent when the binary has no page. It is the
+    /// hash of the page's sources, which is not the hash of `web/` as it is now if the
+    /// binary was built from a checkout whose `web-dist` was out of date.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub bundle_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -210,6 +309,21 @@ pub struct PanelView {
     pub findings: Vec<PanelFinding>,
 }
 
+/// A module definition and the boards that use it (`Analysis::module_uses`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ModuleUse {
+    /// The module's name: `LdoStage`.
+    pub name: String,
+    /// The file it is defined in, as the tree names it, and the line of its definition
+    /// (`Def::line`).
+    pub file: String,
+    pub line: u32,
+    /// The boards that have an instance of it, as `BoardSummary::name` has them
+    /// (`Demo/main` for a board of a system), in the order of `Analysis::boards`.
+    pub used_by: Vec<String>,
+}
+
 /// What a check found: the version of the files it read, and every problem.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -223,9 +337,33 @@ pub struct Analysis {
     pub boards: Vec<BoardSummary>,
     pub systems: Vec<SystemSummary>,
     pub panels: Vec<PanelSummary>,
+    /// For each module definition that some board uses, directly or inside another module,
+    /// the boards that use it, so a declaration in a shared module can show its card for
+    /// each board. Sorted by file and line; left out when no board uses a module. It is here
+    /// and not on `Def` because `GET /api/project` is answered before the first analysis.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub module_uses: Option<Vec<ModuleUse>>,
+    /// How long the analysis took, in milliseconds: of the files on disk for `/api/analysis`
+    /// and `rebuilt`, of the text on the page for `checked`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub elapsed_ms: Option<u32>,
 }
 
+/// The answer of a route that needs the analysis while the first one is still running, to a
+/// request that sent the `X-Netsmith-Pending: 1` header: HTTP 503 with `Retry-After: 1`.
+/// Nothing was done. The socket says when it is over (`rebuilt`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Pending {
+    /// Always `true`: what tells this answer from the route's own.
+    pub pending: bool,
+    /// How long the first analysis has been running, in milliseconds.
+    pub elapsed_ms: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct PartInfo {
     pub refdes: String,
@@ -240,12 +378,104 @@ pub struct PartInfo {
     pub decl: Option<Location>,
     /// The declarations of what contains it, innermost first (`.stage: LdoStage`).
     pub scopes: Vec<Location>,
+    /// What the solver worked out for the part and the source did not state. Absent when
+    /// there is nothing to say (a part with no catalog row and no derived value).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub solved: Option<Solved>,
+}
+
+/// What the solver derived for a part, as numbers and as text (ADR 0009, ADR 0013): the
+/// worst case over every range the part can take. Each member is left out when it does not
+/// apply or the source stated it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Solved {
+    /// A capacitor's capacitance in use: the marked value after the DC bias across it and
+    /// after its tolerance (`1.72uF..2.916uF` for a 10 uF part at 5 V). Present where the
+    /// bias derating applies, that is when the part has a curve and a bias.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub effective_capacitance: Option<Range>,
+    /// The DC voltage across the part that the derating used (taken from the rail the part
+    /// sits across, ADR 0013). Present with `effective_capacitance`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub bias: Option<Range>,
+    /// The tolerance of the resistance, capacitance or inductance the solver chose, when the
+    /// source did not state the value's range.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub tolerance: Option<Tolerance>,
+    /// The ratings of the row that was picked (`max_voltage`, `max_current`, `max_power`,
+    /// `rated_current`, `saturation_current`, ...), the voltages, currents and powers the
+    /// part is built for, in the order its definition lists them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub ratings: Option<Vec<Rating>>,
+    /// The catalog row that stands for the part.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub row: Option<SolvedRow>,
+}
+
+/// A tolerance as a part's range gives it: half the range over its middle.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct Tolerance {
+    /// `20` for `+/- 20%`, rounded to three decimals.
+    pub percent: f64,
+    /// `+/- 20%`.
+    pub text: String,
+}
+
+/// One rating of a part.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct Rating {
+    /// The field of the part: `max_voltage`.
+    pub name: String,
+    pub range: Range,
+}
+
+/// The catalog row a part was made from, or the generic part that stands for it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SolvedRow {
+    /// The catalog table the part's definition draws from (`resistor`, `ldo`), if it names one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub catalog: Option<String>,
+    /// The manufacturer's part number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub mpn: Option<String>,
+    /// The LCSC number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub lcsc: Option<String>,
+    /// `Basic`, `Extended` or `Preferred`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub library: Option<String>,
+    /// The solver chose only a value and a package (ADR 0047) and no row stands for the part
+    /// yet; `mpn`, `lcsc` and `library` are then absent.
+    pub generic: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct PinInfo {
     pub refdes: String,
+    /// The pad number as the symbol names it (`"1"`, `"A5"`).
     pub pin: String,
+    /// The name the part's datasheet prints for the pin (`VIN`, `EN`, `SW`), where the part
+    /// has a pin table that lists the pad. Absent for a part with no pin table.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub name: Option<String>,
+    /// The function the board chose for the pin (`UART1_TX`), when the pin can be several
+    /// things and the board picked one. Absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub function: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -255,7 +485,7 @@ pub struct NetInfo {
     pub pins: Vec<PinInfo>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct BoardDetail {
     pub name: String,
     pub file: String,
@@ -264,7 +494,10 @@ pub struct BoardDetail {
     pub notes: Vec<String>,
 }
 
-/// A quantity's range as it reads, for example `3.135 V .. 3.465 V`.
+/// A quantity's range as the language writes it, for example `3.135V..3.465V`: the unit follows
+/// the number with no space, as in source and in the compiler's messages (`netsmith-quantity`'s
+/// `Display`, which the language guide's examples depend on), so a page that wants a space
+/// formats `lo` and `hi` itself.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct Range {
     pub lo: f64,
@@ -313,6 +546,12 @@ pub struct PowerNode {
     pub capacity: Option<Range>,
     pub capacity_from: Option<String>,
     pub budget: Budget,
+    /// Where to look when the node has an issue: the declaration of the part or stage that
+    /// supplies it (the one `capacity_from` names), else of its first supply, else of its first
+    /// load. A `Draw` has its own `at`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub at: Option<Location>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -345,6 +584,10 @@ pub struct Stage {
     pub efficiency: Option<Range>,
     /// It has an efficiency that the solver did not settle: its input current is then not worked out.
     pub efficiency_unsettled: bool,
+    /// The declaration of the converter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub at: Option<Location>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -359,7 +602,7 @@ pub struct PowerTree {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct Port {
     pub name: String,
-    /// `3.135 V .. 3.465 V`, if the port is a rail.
+    /// `3.135V..3.465V` (see `Range::text`), if the port is a rail.
     pub voltage: Option<String>,
     pub current: Option<String>,
 }
@@ -780,6 +1023,12 @@ pub struct PcbFinding {
     pub area: PcbBox,
     /// The references of the parts it is about.
     pub parts: Vec<String>,
+    /// The line of a physical file (or of the circuit source) that states the requirement the
+    /// finding quotes, where it quotes one; the first of them if it quotes several. A point at
+    /// the start of the line (`column` and `endColumn` are 1), `file` as the checker names it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub at: Option<Location>,
 }
 
 /// Whether KiCad's check has been run on the board as it is.
@@ -887,6 +1136,21 @@ pub struct OrderReport {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct Definition {
     pub at: Location,
+    /// A one-line signature of what is defined, in a stable short form: the keyword, the
+    /// name and the declarations that make its interface, at most six, then `...` if the
+    /// body has more (`module LdoStage { .vin: Rail .vout: Rail ... }`; the ports of a
+    /// module or board are the declarations whose type is an interface, and an interface or
+    /// part lists its own). For a member it is the declaration, `.vin: Rail`. Absent when
+    /// the name is an imported module (see `doc`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub signature: Option<String>,
+    /// The `///` lines directly above the definition or declaration, one line of the answer
+    /// for each, the leading space of a line trimmed; for an imported module, the `//!` lines
+    /// at the top of its file. Absent when there are none. A hover card needs no library file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub doc: Option<String>,
 }
 
 /// What the page tells the server over the socket.
@@ -901,16 +1165,44 @@ pub enum ClientMessage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMessage {
-    /// A file changed and the project was built again.
-    Rebuilt { analysis: Analysis },
+    /// A file changed and the project was built again. `elapsed_ms` is how long the analysis
+    /// took (the same as `analysis.elapsedMs`).
+    Rebuilt {
+        analysis: Analysis,
+        #[serde(default, rename = "elapsedMs", skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        elapsed_ms: Option<u32>,
+    },
+    /// An analysis of the files on disk has begun (the first one, or one for a change made by
+    /// another program); `rebuilt` ends it. `since` is when, in milliseconds since the Unix
+    /// epoch. A page that connects while one runs is sent this at once.
+    Analysing {
+        #[ts(type = "number")]
+        since: u64,
+    },
     /// The answer to a `Check`.
     Checked { id: u32, analysis: Analysis },
-    /// What a long job is doing now: `task` is `route`, `fab`, `order`, `build` or `catalog`, `message` is the
-    /// line the command line would print (`BoardName: placing 73 parts`).
+    /// What a long job is doing now: `task` is `route`, `fab`, `order`, `build`, `catalog`,
+    /// `analyse` or `compare`, `message` is the line the command line would print (`BoardName: placing 73
+    /// parts`). An `analyse` message also has `stage` (`check`, `solve`, `lower`, `draw` or
+    /// `modules`), and `done` of `total` of the things that stage works through (files for
+    /// `check`, boards and systems for `solve`, `lower` and `draw`, modules for `modules`). A
+    /// `compare` message has `board` set to the ref asked for and the same `stage`, `done` and
+    /// `total` (of the ref's analysis), with two stages more: `extract` (reading the ref out of
+    /// git) and `diff` (comparing the two readings).
     Progress {
         task: String,
         board: String,
         message: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        stage: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        done: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        total: Option<u32>,
     },
 }
 
@@ -930,9 +1222,11 @@ pub fn typescript() -> String {
     decls!(
         Location,
         Severity,
+        ProblemStage,
         Problem,
         FileRole,
         Def,
+        DefChild,
         TreeFile,
         Project,
         FileContent,
@@ -947,8 +1241,14 @@ pub fn typescript() -> String {
         PanelSummary,
         PanelFinding,
         PanelView,
+        ModuleUse,
         Analysis,
+        Pending,
         PartInfo,
+        Solved,
+        Tolerance,
+        Rating,
+        SolvedRow,
         PinInfo,
         NetInfo,
         BoardDetail,
@@ -999,6 +1299,37 @@ pub fn typescript() -> String {
         OrderInfo,
         OrderReport,
         Definition,
+        GitCommit,
+        GitRefKind,
+        GitRef,
+        GitInfo,
+        CompareHead,
+        SourceStatus,
+        SourceFile,
+        SourceDiff,
+        BoardStatus,
+        ComparePart,
+        CompareField,
+        ComparePartChange,
+        PartsDiff,
+        ComparePin,
+        CompareNet,
+        CompareNetChange,
+        NetsDiff,
+        CompareRail,
+        RangeChange,
+        BudgetChange,
+        CompareRailChange,
+        RailsDiff,
+        CompareInstance,
+        CompareInstanceChange,
+        InstancesDiff,
+        CompareBomLine,
+        CompareBomChange,
+        BomDiff,
+        ProblemsDiff,
+        CompareBoard,
+        Compare,
         ClientMessage,
         ServerMessage,
     );

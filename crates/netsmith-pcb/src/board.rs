@@ -2209,6 +2209,8 @@ pub(crate) mod tests {
             name: "LedExample".into(),
             process: Some(crate::rules::test_process()),
             features: Default::default(),
+            interfaces: Vec::new(),
+            notes: Vec::new(),
             parts: vec![
                 part("D1", "Led", "LED", None),
                 part("J1", "Header1x2", "Conn_01x02", None),

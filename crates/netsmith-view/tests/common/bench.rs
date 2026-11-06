@@ -282,7 +282,7 @@ pub fn bench() -> Bench {
         ("C26", "Capacitor", "10n", Some("0402")),
         // a connector with ground pins, pins left open and signals that go on
         ("J30", "Obd10", "Obd", Some("P")),
-        // a connector whose ten pins all go to another sheet
+        // a connector whose ten pins all go to another module
         ("J31", "Ten10", "Ten", Some("P")),
     ];
     let nets: Vec<(&str, Vec<String>)> = {
@@ -354,6 +354,8 @@ pub fn bench() -> Bench {
         name: "Bench".into(),
         process: None,
         features: Default::default(),
+        interfaces: Vec::new(),
+        notes: Vec::new(),
         parts: parts
             .iter()
             .map(|&(refdes, kind, value, package)| Part {

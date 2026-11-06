@@ -6,7 +6,7 @@ export async function run({ page, shot, step, expect, section }) {
   step('open the editor');
   await page.waitForSelector('.schematic');
   const tabs = await page.locator('.pane-strip .tab').allInnerTexts();
-  expect(tabs.join(',') === 'Source,Schematic,Power tree,System,BOM,PCB,Build', `the sections in a row (${tabs.join(', ')})`);
+  expect(tabs.join(',') === 'Source,Schematic,Power tree,System,BOM,PCB,Build,Compare', `the sections in a row (${tabs.join(', ')})`);
   expect((await page.locator('.statusbar .counts').innerText()).includes('0'), 'a status bar with the error and warning counts');
   expect((await page.locator('.topbar').innerText()).includes('Write KiCad files'), 'the actions are in the top bar, apart from the sections');
   await shot('first-look');

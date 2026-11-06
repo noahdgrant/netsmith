@@ -1,11 +1,19 @@
+import { ChangesSwitch } from '../components/ChangesSwitch';
 import type { ComponentChildren } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import type { PowerTree } from '../api';
 import { api } from '../client';
+import { NoBoard, ViewLoading } from '../components/ViewStatus';
+import { Icon } from '../components/Icons';
+import { Defs, InspectorHead } from '../components/Inspector';
+import { Legend, Pill } from '../components/ui';
+import { placeFitted } from './System';
 import { MiniMap } from '../components/MiniMap';
 import { PanZoom } from '../components/PanZoom';
-import { analysis, board, goTo, systemName } from '../store';
+import { analysis, board, detail, goTo, systemName, visible } from '../store';
+import { hoverAttrs } from '../hover';
+import { type Card, cardFor, partByPath, revealRequest, selection, selectionOfCard, setSelection } from '../selection';
 import { DOTS, amps, loadsText, voltRangeText, voltsText } from '../power/format';
 import { type Item, type Placed, type TreeLayout, layoutTree } from '../flow/layout';
 import { RAIL_ANCHOR, RAIL_W, type Open, STAGE_W, closed, railHeight, stageHeight } from '../power/metrics';
@@ -140,7 +148,9 @@ function RailCard({
       class={`pt-node pt-rail ${level ?? ''} ${selected ? 'selected' : ''} ${tint} ${dim ? 'dim' : ''}`}
       data-node={r.id}
       data-kind="rail"
+      data-cmp-board={r.board}
       style={{ left: p.x, top: p.y, width: p.w, height: p.h }}
+      {...hoverAttrs({ kind: 'net', key: r.net })}
       onClick={onSelect}
     >
       <div class="pt-head">
@@ -247,6 +257,7 @@ function StageCard({ s, p, level, selected, tint, dim, onSelect }: { s: StageMod
       data-node={s.id}
       data-kind="stage"
       style={{ left: p.x, top: p.y, width: p.w, height: p.h }}
+      {...hoverAttrs({ kind: partByPath(detail.peek(), s.name) ? 'part' : 'module', key: s.name })}
       onClick={onSelect}
     >
       <div class="pt-stage-head">
@@ -276,11 +287,12 @@ function StageCard({ s, p, level, selected, tint, dim, onSelect }: { s: StageMod
 export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: string }) {
   const model: PowerModel = useMemo(() => modelOf(tree), [tree]);
   const [opens, setOpens] = useState<Record<string, Open>>({});
-  const [selected, setSelected] = useState<string | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
   const [reveal, setReveal] = useState<{ x: number; y: number; w: number; h: number; seq: number } | undefined>();
   const [centre, setCentre] = useState<{ x: number; y: number; seq: number } | undefined>();
   const [view, setView] = useState<{ k: number; x: number; y: number; w: number; h: number } | null>(null);
+  /** The card the pointer is over: the wires of it show a little more. */
+  const [hover, setHover] = useState<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
   /** Where an arrow key came from, so the opposite key goes back the same way. */
   const came = useRef(new Map<string, string>());
@@ -303,12 +315,21 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
   );
   const placed = new Map(layout.nodes.map((n) => [n.id, n]));
   const lv = useMemo(() => levels(model.issues), [model]);
+  // The selection is the page's: a rail stands for its net, a converter for the part or module it is.
+  const cards: Card[] = useMemo(
+    () => [
+      ...model.rails.map((r): Card => ({ id: r.id, kind: 'net', key: r.net })),
+      ...model.stages.map((s): Card => ({ id: s.id, kind: partByPath(detail.value, s.name) ? 'part' : 'module', key: s.name })),
+    ],
+    [model, detail.value],
+  );
+  const selected = cardFor(selection.value, cards);
   const path = useMemo(() => (selected ? trace(model.links, selected) : null), [model, selected]);
-
-  // A selection that no longer exists (the tree changed) is dropped.
+  const ask = revealRequest.value;
   useEffect(() => {
-    if (selected && !placed.has(selected)) setSelected(null);
-  }, [layout]);
+    const n = selected ? placed.get(selected) : undefined;
+    if (ask && n) setReveal({ x: n.x, y: n.y, w: n.w, h: n.h, seq: (reveal?.seq ?? 0) + 1 });
+  }, [ask?.nonce]);
 
   const showTip = (t: Tip | null, now?: boolean) => {
     window.clearTimeout(timer.current);
@@ -319,7 +340,7 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
   };
 
   const select = (id: string | null, scroll = false) => {
-    setSelected(id);
+    setSelection(id ? selectionOfCard(cards, id) : null);
     const n = id ? placed.get(id) : undefined;
     if (scroll && n) setReveal({ x: n.x, y: n.y, w: n.w, h: n.h, seq: (reveal?.seq ?? 0) + 1 });
   };
@@ -349,14 +370,28 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
     }
   };
 
-  const jump = (i: Issue) => select(i.id, true);
+  // An issue is selected in the tree and its place is shown in the source: in the other pane when
+  // there is one, else the source's cursor is put there quietly, so the tree stays in front (the
+  // click is on the strip of issues, to find the card) and the cursor is there when the person looks.
+  const jump = (i: Issue) => {
+    select(i.id, true);
+    if (i.at) void goTo(i.at, undefined, visible.peek().length < 2);
+  };
 
   return (
     <div class="graph-view power-view">
       <div class="graph-title pt-bar">
-        <span>
-          Power tree of <b>{tree.title}</b>
+        <span class="gt-name">
+          <Icon name="power" size={16} />
+          Power tree
+          <Pill tone="neutral">{tree.title}</Pill>
         </span>
+        <Legend
+          items={[
+            { kind: 'power', label: 'Supplies', tip: 'A rail feeding a stage, or a stage feeding a rail' },
+            ...(path ? [{ kind: 'up', label: 'Upstream', tip: 'What feeds the selection' }, { kind: 'down', label: 'Downstream', tip: 'What the selection feeds' }] : []),
+          ]}
+        />
         <div class="pt-issues" role="group" aria-label="Issues">
           {model.issues.length === 0 ? (
             <span class="pt-fine">No issues: every rail has a source and a known current.</span>
@@ -364,7 +399,7 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
             <>
               <span class="pt-issues-label">Issues {model.issues.length}</span>
               {model.issues.map((i, n) => (
-                <button key={n} class={`pt-issue ${i.level}`} onClick={() => jump(i)} title="Go to it in the tree">
+                <button key={n} class={`pt-issue ${i.level}`} onClick={() => jump(i)} title={i.at ? `Go to it in the tree and show ${i.at.file}:${i.at.line} in the source` : 'Go to it in the tree'}>
                   <b>{i.where}</b> {i.text}
                 </button>
               ))}
@@ -372,6 +407,7 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
           )}
         </div>
         <span class="spacer" />
+        <ChangesSwitch />
         <button class="tool small" onClick={() => setAll(!everyOpen)} title="List the loads of every rail, or hide them all">
           {everyOpen ? 'Hide all loads' : 'List all loads'}
         </button>
@@ -383,6 +419,8 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
         role="application"
         aria-label="Power tree. Arrow keys move along it, Escape clears the selection, Enter lists the loads of a rail."
         onKeyDown={onKey}
+        onMouseOver={(e) => setHover((e.target as Element).closest<HTMLElement>('[data-node]')?.dataset.node ?? null)}
+        onMouseLeave={() => setHover(null)}
         onClick={(e) => {
           // A click on the empty canvas clears the selection.
           if (!(e.target as Element).closest('.pt-node, .pt-minimap, .zoombar')) select(null);
@@ -394,6 +432,9 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
           fitKey={fitKey}
           class="graph-host power-host"
           actualSize
+          scale100={1}
+          placeView={placeFitted(layout)}
+          fitPlaces
           reveal={reveal}
           centre={centre}
           onViewport={setView}
@@ -421,7 +462,7 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
                   data-points={JSON.stringify(e.points)}
                   data-back={e.back ? 'true' : undefined}
                   d={e.d}
-                  class={`pt-edge ${tint ? `hot ${tint}` : ''} ${path && !tint ? 'dim' : ''}`}
+                  class={`pt-edge ${tint ? `hot ${tint}` : ''} ${path && !tint ? 'dim' : ''} ${!path && hover && (e.from === hover || e.to === hover) ? 'peek' : ''}`}
                   marker-end={tint ? `url(#pt-arrow-${tint})` : 'url(#pt-arrow)'}
                 />
               );
@@ -470,19 +511,18 @@ function LoadTip({ tip, onEnter, onLeave }: { tip: Tip; onEnter: () => void; onL
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
     >
-      <div class="pt-tip-who">{l.who}</div>
-      <dl>
-        <dt>Part</dt>
-        <dd>{l.part}</dd>
-        {l.pin && (
-          <>
-            <dt>Pin</dt>
-            <dd>{l.pin}</dd>
-          </>
-        )}
-        <dt>{l.hi <= 0 && l.lo < 0 ? 'Supplies' : 'Draws'}</dt>
-        <dd>{l.unknown ? 'a current the solver has not settled' : `${amps(l.lo).num} ${amps(l.lo).unit}${DOTS}${amps(l.hi).num} ${amps(l.hi).unit}`}</dd>
-      </dl>
+      <InspectorHead eyebrow={l.hi <= 0 && l.lo < 0 ? 'Supply' : 'Load'} icon="part" tone="part" mono titleTag="div" title={l.who} />
+      <Defs
+        rows={[
+          { label: 'Part', value: l.part, mono: true },
+          ...(l.pin ? [{ label: 'Pin', value: l.pin, mono: true }] : []),
+          {
+            label: l.hi <= 0 && l.lo < 0 ? 'Supplies' : 'Draws',
+            mono: true,
+            value: l.unknown ? 'a current the solver has not settled' : `${amps(l.lo).num} ${amps(l.lo).unit}${DOTS}${amps(l.hi).num} ${amps(l.hi).unit}`,
+          },
+        ]}
+      />
       {l.at && (
         <button class="link" onClick={() => void goTo(l.at!)}>
           Show in source
@@ -510,9 +550,9 @@ export function Power() {
     };
   }, [name, version]);
 
-  if (!name) return <div class="empty">There is no board to show. See the problems.</div>;
+  if (!name) return <NoBoard what="show" />;
   if (error) return <div class="empty bad">{error}</div>;
-  if (!tree) return <div class="empty">Reading the solved model…</div>;
-  if (tree.nodes.length === 0) return <div class="empty">No rail draws from a net on this board.</div>;
+  if (!tree) return <ViewLoading what="Reading the power tree" />;
+  if (tree.nodes.length === 0) return <div class="empty"><div class="empty-mark" aria-hidden="true"><Icon name="power" size={22} /></div><div class="empty-title">No power tree to draw</div><div class="empty-sub">No rail on this board draws from a net.</div></div>;
   return <PowerTreeView tree={tree} fitKey={`${name}:${version}:${tree.nodes.length}`} />;
 }

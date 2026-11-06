@@ -39,7 +39,7 @@ For a change to the editor or to a view it shows, also run the browser check in 
 
 ## KiCad
 
-`netsmith fab` and the scripts find `kicad-cli` in this order: `$KICAD_CLI`, `kicad-cli` on `PATH`, then Windows KiCad 9 at `/mnt/c/Program Files/KiCad/9.0/bin/kicad-cli.exe` under WSL. Tests that need KiCad skip themselves when it is absent. Say so in your report when they skipped.
+`netsmith fab`, the editor and the tests find `kicad-cli` in this order: `$KICAD_CLI`, `kicad-cli` on `PATH`, then under WSL the newest Windows KiCad in `/mnt/c/Program Files/KiCad/<version>/bin/kicad-cli.exe` (ADR 0021). The shell scripts (`scripts/check-kicad.sh`) still default to the 9.0 path. Tests that need KiCad skip themselves when it is absent. Say so in your report when they skipped.
 
 `build` and `fab` find KiCad's `symbols` and `footprints` folders with `netsmith_kicad::install` (ADR 0021): `NETSMITH_KICAD_SYMBOLS` and `NETSMITH_KICAD_FOOTPRINTS`, then beside `kicad-cli`, then the usual install places. A test of the lookup builds a fake install tree with `install::Search::under(<temp dir>)`; do not rely on this machine's KiCad.
 
@@ -63,6 +63,8 @@ Every start of a Windows program under WSL (`kicad-cli.exe`, KiCad's `python.exe
 New code and tests that start a Windows program use `netsmith_fab::exclusive::run`, not `Command` directly.
 
 After changing that code, or when a KiCad test fails only in a full run, run `scripts/stress-kicad.sh [runs] [processes] [test names]` (default: 50 runs of the three cross-check tests of `crates/netsmith/tests/fab.rs`, 3 processes at once, 4 test threads each). It must report 0 failed; a failure prints the log with the full message. It takes about 25 minutes.
+
+To see how good the schematic view's drawing is, `cargo run -p netsmith --example schematic_metrics -- <file.nsm | project folder> [--plain] [--violations]` prints one line per sheet (bends, crossings, wire length, satellite distances, overlaps, shape) and the rules the drawing breaks (a short, an open, a wire through a symbol, a wire end that touches nothing, a double line, a hook, a missing or an unused dot, a wire hugging a symbol, two texts over each other); the numbers and their definitions are in `crates/netsmith-view/src/metrics.rs`, the baseline in `docs/research/schematic-metrics-baseline.md`. A big project takes most of a minute to analyse and the drawing a second: `--save-inputs <file>` writes what the drawing is made from, `--inputs <file>` draws from that file alone, and `--svg <file>` writes the picture (`<file>-<board>.svg` for each board of a file of several), so a change to the layout can be judged by looking at once: cut it into tiles of about 120 x 72 mm and look at every one, as the machine rules do not find all that a person sees (`NETSMITH_DUMP_SVG=<folder> cargo test -p netsmith-view --test invariants dump_the_corpus_when_asked` writes the pictures of the test boards) (copy a private project to `/tmp`; never put its files or its inputs file in the repository).
 
 A clean DRC means the board meets the process's published limits. It does not mean JLCPCB's own check accepts it.
 

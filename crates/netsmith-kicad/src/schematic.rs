@@ -606,6 +606,8 @@ mod tests {
             name: "led".into(),
             process: None,
             features: Default::default(),
+            interfaces: Vec::new(),
+            notes: Vec::new(),
             parts: vec![
                 part("R1", "Resistor", "300", Some("0402")),
                 part("D1", "Led", "LED", None),
@@ -780,6 +782,8 @@ mod tests {
             name: "regulator".into(),
             process: None,
             features: Default::default(),
+            interfaces: Vec::new(),
+            notes: Vec::new(),
             parts: vec![
                 part("J1", "Header1x2", "Conn_01x02", None),
                 part("C1", "Capacitor", "1u", Some("0402")),
@@ -982,6 +986,8 @@ mod tests {
             name: "gadgets".into(),
             process: None,
             features: Default::default(),
+            interfaces: Vec::new(),
+            notes: Vec::new(),
             parts,
             nets: nets
                 .iter()

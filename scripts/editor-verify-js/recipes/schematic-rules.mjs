@@ -2,8 +2,10 @@
 // (`examples/schematic_bench`: four sheets). For each sheet the page's own SVG is measured with
 // the browser's own text boxes: wires are not names, a part is beside the pin it serves, a power
 // symbol is only at the end of a wire, no wire crosses a text, a module is one sheet, every pin
-// with nothing on it has an X, a symbol of several units is one box and a symbol of more than
+// with nothing on it has an X, a symbol of several units is a box for each unit and a symbol of more than
 // sixty pins is a table. Screenshots are taken to be looked at.
+import { openSheet, sheetNames } from '../schematic-helpers.mjs';
+
 export const fixture = 'schematic_bench';
 
 const SHEETS = ['ldo', 'obd', 'ten', 'adc', 'mcu', 'buck', 'modem'];
@@ -20,7 +22,7 @@ function measure(sheetName) {
   };
   const texts = [...svg.querySelectorAll('text')]
     .filter((t) => !t.classList.contains('module-title'))
-    .map((t) => ({ text: t.textContent.replace(/\s+/g, ' ').trim(), cls: t.getAttribute('class'), box: box(t) }))
+    .map((t) => ({ text: t.textContent.replace(/\s+/g, ' ').trim(), cls: t.getAttribute('class'), box: box(t), scr: (({ x, y, width, height }) => ({ x, y, width, height }))(t.getBoundingClientRect()) }))
     .filter((t) => t.text && inside(t.box));
   const segments = [];
   for (const g of svg.querySelectorAll('.wire')) {
@@ -41,6 +43,7 @@ function measure(sheetName) {
       ref: g.getAttribute('data-ref'), kind: g.getAttribute('data-kind'), title: g.querySelector('title').textContent,
       box: b, bodies: body.length, texts: [...g.querySelectorAll('text')].map((t) => t.textContent.trim()),
       pinCount: g.querySelectorAll('.pin').length,
+      pads: [...g.querySelectorAll('.pin')].map((q) => q.getAttribute('data-pin')),
     };
   }).filter((p) => inside(p.box) || (p.box.x >= fx && p.box.x <= fx + fw && p.box.y >= fy && p.box.y <= fy + fh));
   const powers = [...svg.querySelectorAll('.power')].map((g) => {
@@ -112,7 +115,7 @@ export async function run({ page, shot, step, expect }) {
   for (const [w, h] of [[1366, 768], [2000, 1000]]) {
     await page.setViewportSize({ width: w, height: h });
     for (const name of SHEETS) {
-      await page.locator('.sheet-tab', { hasText: new RegExp(`^${name}:`) }).first().click();
+      await openSheet(page, name);
       await page.waitForTimeout(700);
       m[name] = await page.evaluate(measure, name);
       await page.keyboard.press('f');
@@ -121,10 +124,10 @@ export async function run({ page, shot, step, expect }) {
     }
   }
 
-  step('rule 6: one sheet for each module, the modem of 22 parts whole');
-  const tabs = await page.locator('.sheet-tab').allInnerTexts();
-  expect(!tabs.some((t) => /\(\d+\/\d+\)/.test(t)), `no sheet is cut in pieces (${tabs.join(' | ')})`);
-  expect(m.modem.parts.length === 22, `the modem has 22 parts on one sheet (${m.modem.parts.length})`);
+  step('rule 6: one drawing for each module, the modem of 22 parts whole');
+  const tabs = await sheetNames(page);
+  expect(!tabs.some((t) => /\(\d+\/\d+\)/.test(t)), `no module is cut in pieces (${tabs.join(' | ')})`);
+  expect(m.modem.parts.length === 22, `the modem has 22 parts in one drawing (${m.modem.parts.length})`);
 
   for (const name of SHEETS) {
     const s = m[name];
@@ -217,18 +220,37 @@ export async function run({ page, shot, step, expect }) {
   const filt = part(A, (p) => p.title.includes(' 100n ')), rfil = part(A, (p) => p.title.includes(' 10k '));
   expect(near(cx(filt), cx(rfil), 0.6) && cy(rfil) < cy(filt), 'the filter: the resistor above its capacitor, in one stack');
 
-  const u5 = part(M, (p) => p.kind === 'Mcu97');
+  // The microcontroller's symbol has two units (ADR 0050): one box for each, found by the pad it draws. The signal unit
+  // (pads 1 to 64, the crystal's pins among them) and the power unit (supply pins 131 to 136, grounds 101 to 130, NC 141 to 143).
+  const unitOf = (pad) => M.parts.find((p) => p.kind === 'Mcu97' && p.pads.includes(pad));
+  const uSig = unitOf('15'), uPow = unitOf('131');
+  expect(uSig && uPow && uSig !== uPow, 'the microcontroller is two boxes: the unit with the signals and the unit with the supply');
   const pin = (s, ref, pad) => s.pins.find((p) => p.ref === ref && p.pad === pad);
-  const y131 = pin(M, u5.ref, '131').y, y15 = pin(M, u5.ref, '15').y;
+  const y15 = pin(M, uSig.ref, '15').y;
   const xtal = part(M, (p) => p.kind === 'Crystal');
-  expect(xtal.box.x + xtal.box.width <= u5.box.x + 1 && Math.abs(cy(xtal) - y15) < 20, `the crystal is on the side of its oscillator pins, ${Math.abs(cy(xtal) - y15).toFixed(1)} mm from them`);
-  for (const c of M.parts.filter((p) => p.kind === 'Capacitor')) {
-    expect(c.box.x + c.box.width <= u5.box.x + 1 && Math.abs(cy(c) - y131) < 40, `the supply capacitor ${c.ref} is beside the supply pins (${Math.abs(cy(c) - y131).toFixed(1)} mm)`);
+  expect(xtal.box.x + xtal.box.width <= uSig.box.x + 1 && Math.abs(cy(xtal) - y15) < 20, `the crystal is on the side of its oscillator pins (on the signal unit), ${Math.abs(cy(xtal) - y15).toFixed(1)} mm from them`);
+  // Decoupling stays near its pin: a capacitor of the supply stands by the unit that owns the supply pins (the power unit), nearer
+  // to it than to the signal unit and close to its box, and is wired to the supply net. (With one box for the processor the
+  // capacitors stood beside its body; now they hang on the supply rail just above the power unit, which is a box of its own.)
+  const supply = pin(M, uPow.ref, '131').net;
+  const mcuCaps = M.parts.filter((p) => p.kind === 'Capacitor');
+  expect(mcuCaps.length >= 2, `the module has its supply capacitors (${mcuCaps.length})`);
+  for (const c of mcuCaps) {
+    const toPower = gap2(c.box, uPow.box), toSignal = gap2(c.box, uSig.box);
+    expect(toPower < 25 && toPower < toSignal, `the supply capacitor ${c.ref} stands by the power unit: ${toPower.toFixed(1)} mm from its box, ${toSignal.toFixed(1)} mm from the signal unit's`);
+    expect(M.pins.some((p) => p.ref === c.ref && p.net === supply), `and ${c.ref} is wired to the supply net ${supply}`);
   }
   const ic = part(B, (p) => p.kind === 'Buck1V8');
   const rtop = part(B, (p) => p.title.includes(' 100k ')), rbot = part(B, (p) => p.title.includes(' 33k '));
   const fb = pin(B, ic.ref, '6');
-  expect(near(cx(rtop), cx(rbot), 0.6) && cy(rtop) < fb.y && fb.y < cy(rbot) + 8, 'the feedback divider: one stack with the FB pin level with its node');
+  // The regulator's power path is one row, the spine (SW, the inductor, the output); the divider hangs from the output node as one
+  // stack under that row, and its middle is wired to the FB pin by a wire (the FB pin is not level with the node).
+  const spineRow = pin(B, ic.ref, '10').y;
+  expect(near(cx(rtop), cx(rbot), 0.6) && spineRow < cy(rtop) && cy(rtop) < cy(rbot), 'the feedback divider: one stack hanging from the output node, under the spine row');
+  const middle = pin(B, rtop.ref, '2');
+  const wired = components(B.segments);
+  const here = pieceOf(wired, fb.net, fb.x, fb.y);
+  expect(here >= 0 && here === pieceOf(wired, fb.net, middle.x, middle.y), `the middle of the divider is wired to the FB pin (${fb.net})`);
   const bst = pin(B, ic.ref, '13'), sw = pin(B, ic.ref, '10');
   const boot = part(B, (p) => p.title.includes(' 100n '));
   expect(Math.abs(cy(boot) - (bst.y + sw.y) / 2) < 12 && (boot.box.x > ic.box.x + ic.box.width - 1 || boot.box.x + boot.box.width < ic.box.x + 1), 'the bootstrap capacitor is between the BST and SW pins, outside the IC');
@@ -236,36 +258,45 @@ export async function run({ page, shot, step, expect }) {
   const outcap = part(B, (p) => p.title.includes(' 22u '));
   expect(Math.abs(cy(ind) - sw.y) < 40 && Math.abs(cx(outcap) - cx(ind)) < 60, 'the inductor from SW outward and the output capacitor next to it');
 
-  step('multi-unit symbol: one box; more than 60 pins: a table in groups');
-  const amp = part(A, (p) => p.kind === 'DualOpAmp');
-  expect(amp.bodies === 1 && amp.pinCount === 8, `the three-unit amplifier is one box with its ${amp.pinCount} pins`);
-  expect(u5.bodies === 1 && u5.pinCount === 97, `the 97-pin, two-unit microcontroller is one box (${u5.pinCount} pins)`);
-  for (const heading of ['Mcu97, 97 pins', 'Power (6)', 'Ground (24)', 'P0 (16)', 'Not connected (3)']) {
-    expect(u5.texts.includes(heading), `the table has the heading "${heading}"`);
+  step('multi-unit symbol: a box for each unit; more than 60 pins: a table in groups');
+  // A symbol of several units is a box for each unit (ADR 0050): the two amplifiers and the power unit (V+, V-) of the dual op amp.
+  const ampBoxes = A.parts.filter((p) => p.kind === 'DualOpAmp');
+  expect(ampBoxes.length === 3 && ampBoxes.reduce((n, p) => n + p.pinCount, 0) === 8, `the three-unit amplifier is three boxes, one for each unit, with its 8 pins (${ampBoxes.map((p) => p.pinCount).join(' + ')})`);
+  expect(['A', 'B', 'C'].every((u) => ampBoxes.some((p) => p.texts.includes(`${ampBoxes[0].ref}${u}`))), 'and each box says its unit (A, B, C)');
+  const mcuBoxes = M.parts.filter((p) => p.kind === 'Mcu97');
+  expect(mcuBoxes.length === 2 && mcuBoxes.every((p) => p.bodies === 1) && mcuBoxes.reduce((n, p) => n + p.pinCount, 0) === 97, `the 97-pin, two-unit microcontroller is two boxes, one for each unit, with all its pins (${mcuBoxes.map((p) => p.pinCount).join(' + ')})`);
+  expect(uSig.texts.includes(`${uSig.ref}A`) && uPow.texts.includes(`${uPow.ref}B`), `the boxes say which unit they are (${uSig.texts.filter((t) => t.startsWith(uSig.ref))}, ${uPow.texts.filter((t) => t.startsWith(uPow.ref))})`);
+  // The 64 signal pins are a table in groups (more than sixty pins); the power unit is the box with the supply along the top edge
+  // and the grounds along the bottom edge (an earlier drawing had "Power (6)" and "Ground (24)" groups in the columns).
+  for (const heading of ['Mcu97, 64 pins', 'P0 (16)', 'P3 (16)']) {
+    expect(uSig.texts.includes(heading), `the signal unit has the heading "${heading}"`);
   }
-  const names = u5.pinCount > 0 ? M.texts.filter((t) => t.cls && t.cls.includes('pin-name')) : [];
+  expect(!uSig.pads.some((d) => +d >= 101), 'the signal unit has no supply, ground or NC pin: it has no power row');
+  const top = pin(M, uPow.ref, '131').y, bottom = pin(M, uPow.ref, '101').y;
+  expect(top < uPow.box.y + 15 && bottom > uPow.box.y + uPow.box.height - 15 && top < bottom, `the supply pins are on the power unit's top edge (y ${top.toFixed(1)}) and the ground pins on its bottom edge (y ${bottom.toFixed(1)})`);
+  const names = M.texts.filter((t) => t.cls && t.cls.includes('pin-name'));
   let overlapping = 0;
   for (let i = 0; i < names.length; i++) for (let j = i + 1; j < names.length; j++) {
-    const [a, b] = [shrink(names[i].box, 0.1), shrink(names[j].box, 0.1)];
+    // On the screen, where a name turned along an edge (the supply and ground pins) has its real box.
+    const [a, b] = [shrink(names[i].scr, 0.5), shrink(names[j].scr, 0.5)];
     if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) overlapping++;
   }
   expect(overlapping === 0, `${names.length} pin names, none over another`);
-  const left = pin(M, u5.ref, '1').x;
-  expect(pin(M, u5.ref, '131').x === left && pin(M, u5.ref, '124').x === left, 'supplies and grounds are on the left side');
-  expect(pin(M, u5.ref, '131').y < pin(M, u5.ref, '2').y && pin(M, u5.ref, '2').y < pin(M, u5.ref, '101').y, 'supplies above the signals, grounds below');
   expect(M.marks.length >= 40, `${M.marks.length} unused pins of the microcontroller have an X, aligned at the pin ends`);
-  step('owner round 2: a straight ground rail with one symbol, the rail symbol in line with its capacitor');
+  step('owner round 2: the regulator is one row, the capacitors hang from it, each with its own ground symbol and its supply symbol above');
   const LD = m.ldo;
   const caps = LD.parts.filter((p) => p.kind === 'Capacitor').sort((p, q) => cx(p) - cx(q));
   expect(caps.length === 2, 'the regulator has two capacitors');
+  // A regulator's power path is one row (the spine, crates/netsmith-view/tests/spine.rs): a capacitor of the input or the output hangs from the row
+  // under its supply symbol and has a ground symbol of its own straight below it; the IC's own ground pins share one more.
   const grounds = LD.powers.filter((p) => p.kind === 'ground');
-  expect(grounds.length === 1, 'one ground symbol on the regulator sheet');
-  const gsegs = LD.segments.filter((q) => /GND/.test(q.net) && q.y0 === q.y1);
-  const rail = gsegs.sort((q, r) => Math.abs(r.x1 - r.x0) - Math.abs(q.x1 - q.x0))[0];
-  expect(rail && Math.abs(rail.x1 - rail.x0) > 20, `the ground is one rail ${Math.abs(rail.x1 - rail.x0).toFixed(1)} mm long across the bottom`);
-  expect(LD.parts.every((p) => p.box.y + p.box.height < rail.y0), 'the rail is below every part');
-  expect(grounds[0].anchor[1] >= rail.y0 - 0.01, 'the symbol hangs from the rail');
-  for (const p of LD.pins.filter((q) => q.net === 'GND')) expect(p.y < rail.y0, `ground pin ${p.ref}.${p.pad} is above the rail`);
+  expect(grounds.length === caps.length + 1, `a ground symbol for each capacitor and one for the IC's grounds (${grounds.length})`);
+  for (const cap of caps) {
+    const bottom = pin(LD, cap.ref, '2');
+    expect(grounds.some((g) => Math.abs(g.anchor[0] - bottom.x) < 0.1 && g.anchor[1] > bottom.y), `${cap.ref} has a ground symbol of its own straight below it`);
+  }
+  const icGrounds = LD.pins.filter((q) => q.net === 'GND' && !caps.some((c) => c.ref === q.ref));
+  expect(icGrounds.length >= 2 && grounds.filter((g) => icGrounds.some((q) => Math.abs(g.anchor[0] - q.x) < 8 && g.anchor[1] > q.y)).length >= 1, `the IC's ${icGrounds.length} ground pins reach one symbol under it`);
   const bends = (net) => LD.segments.filter((q) => q.net === net).length;
   expect(bends('GND') <= 14, `the ground wires are few (${bends('GND')} segments)`);
   for (const [net, cap] of [['+3V8', caps[0]], ['+3V3', caps[1]], ['+2V8', caps[1]]]) {

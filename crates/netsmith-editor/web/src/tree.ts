@@ -73,7 +73,7 @@ export const KINDS: Array<{ kind: string; label: string; help: string }> = [
   { kind: 'system', label: 'System', help: 'boards that are joined to each other' },
   { kind: 'panel', label: 'Panel', help: 'one board repeated on a panel for the factory' },
   { kind: 'module', label: 'Module', help: 'a reusable sub-circuit placed on a board or in a module' },
-  { kind: 'part', label: 'Part', help: 'a real component, with its pins and package' },
+  { kind: 'part', label: 'Part', help: 'a real part, with its pins and package' },
   { kind: 'interface', label: 'Interface', help: 'a typed bundle of pins and quantities that is connected as one' },
 ];
 

@@ -2,8 +2,9 @@
 // scripts/editor-verify: the lifecycle for checking the netsmith editor in a real browser.
 //
 //   doctor [--no-browser]   what is installed, and whether a browser can be launched
-//   launch [--fixture <name>|schematic_bench|big|tree] [--file <path.nsm>]
-//                           start `netsmith editor` on a free port over a scratch project
+//   launch [--fixture <name>|schematic_bench|big|tree|shared_module] [--file <path.nsm>] [--git]
+//                           start `netsmith editor` on a free port over a scratch project; --git makes the
+//                           (two_boards) project a git repository with a branch that changes it (fixtures/gitrepo.mjs)
 //   drive <recipe>|all      run a recipe in headless Chromium, with screenshots
 //   evidence                list the screenshots and logs of the session
 //   cleanup [--keep-evidence]
@@ -18,6 +19,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { writeBig } from './fixtures/big.mjs';
+import { gitHere, makeCompareRepo, resetCompareRepo } from './fixtures/gitrepo.mjs';
 import { writeRefresh } from './fixtures/refresh.mjs';
 import { writeTree } from './fixtures/tree.mjs';
 
@@ -33,6 +35,10 @@ const FIXTURES = {
   power_tree: 'scripts/editor-verify-js/fixtures/power_tree.nsm',
   // An invented board for the System view: 13 modules, a processor with 22 ports, a modem with 10.
   system_view: 'scripts/editor-verify-js/fixtures/system_view.nsm',
+  // An invented board for the busses: a processor module and a modem module joined by a UART, an SPI inside one.
+  bus_bench: 'scripts/editor-verify-js/fixtures/bus_bench.nsm',
+  // One module used by two boards: a declaration inside it has a card for each board (the server's `moduleUses`).
+  shared_module: 'scripts/editor-verify-js/fixtures/shared_module.nsm',
   regulator: 'examples/linear_regulator.nsm',
   four_layer: 'examples/four_layer.nsm',
   outline_and_pours: 'examples/outline_and_pours.nsm',
@@ -40,6 +46,8 @@ const FIXTURES = {
   led_panel: 'examples/led_panel.nsm',
   // A header with a requirement on where it goes and a layout file that breaks it (ADR 0045).
   constrained: 'scripts/editor-verify-js/fixtures/constrained.nsm',
+  // A project with no board: the views say where to write the first one.
+  empty: 'scripts/editor-verify-js/fixtures/empty.nsm',
   // The LED example with a project catalog and a fake LCSC endpoint (ADR 0039).
   catalog_refresh: 'examples/led.nsm',
 };
@@ -99,8 +107,10 @@ async function doctor() {
   const bin = netsmithBin();
   line(fs.existsSync(bin), 'netsmith binary', fs.existsSync(bin) ? bin : `${bin} is missing: run cargo build -p netsmith (set CARGO_TARGET_DIR or NETSMITH_BIN if it is elsewhere)`);
 
-  const dist = path.join(repo, 'crates/netsmith-editor/web/dist/index.html');
-  line(fs.existsSync(dist), 'web bundle', fs.existsSync(dist) ? dist : 'crates/netsmith-editor/web/dist is missing: cargo build -p netsmith builds it with Node 20+');
+  // The committed bundle the binary embeds when `web/` has not changed (`web/dist` is only a
+  // build directory of a changed `web/`, which needs Node 20+).
+  const dist = path.join(repo, 'crates/netsmith-editor/web-dist/index.html');
+  line(fs.existsSync(dist), 'web bundle', fs.existsSync(dist) ? dist : 'crates/netsmith-editor/web-dist is missing: restore it from git, or `scripts/web-bundle update` with Node 20+');
 
   if (!has('no-browser')) {
     let playwright;
@@ -179,6 +189,13 @@ async function launch() {
       fs.writeFileSync(path.join(project, 'src/main.physical.nsm'), text);
     }
     if (layout !== fixture && fs.existsSync(layout)) fs.copyFileSync(layout, path.join(project, 'src/main.pcb.toml'));
+    // The mapping to KiCad beside the fixture, if it has one (ADR 0021): `x.kicad.toml` is the
+    // project's `kicad.toml`, and `x.libs/` is its `libs/` (the project's own symbol and
+    // footprint libraries), so the PCB view has footprints for the fixture's invented parts.
+    const mapping = fixture.replace(/\.nsm$/, '.kicad.toml');
+    if (mapping !== fixture && fs.existsSync(mapping)) fs.copyFileSync(mapping, path.join(project, 'kicad.toml'));
+    const libs = fixture.replace(/\.nsm$/, '.libs');
+    if (libs !== fixture && fs.existsSync(libs)) fs.cpSync(libs, path.join(project, 'libs'), { recursive: true });
     // A module, so the tree and the imports have something to show.
     fs.writeFileSync(
       path.join(project, 'src/power.nsm'),
@@ -194,6 +211,17 @@ async function launch() {
         '\n[order.demo.boards]\n"TwoBoards/led" = 5\n"TwoBoards/power" = 2\n',
       );
     }
+  }
+  if (has('git')) {
+    if ((flag('fixture') ?? 'two_boards') !== 'two_boards' || flag('file')) {
+      console.error('--git is for the two_boards fixture: its text is what the repository changes');
+      process.exit(2);
+    }
+    if (!gitHere()) {
+      console.error('--git needs git on the PATH');
+      process.exit(2);
+    }
+    makeCompareRepo(project);
   }
   const port = await freePort();
   const log = fs.openSync(path.join(root, 'server.log'), 'a');
@@ -222,7 +250,7 @@ async function launch() {
     }
     await new Promise((r) => setTimeout(r, 100));
   }
-  fs.writeFileSync(statePath, JSON.stringify({ pid: child.pid, endpointsPid, port, url, project, fixture, fixtureName: flag('file') ? 'file' : (flag('fixture') ?? 'two_boards') }, null, 2));
+  fs.writeFileSync(statePath, JSON.stringify({ pid: child.pid, endpointsPid, port, url, project, fixture, fixtureName: flag('file') ? 'file' : (flag('fixture') ?? 'two_boards'), git: has('git') }, null, 2));
   console.log(`launched ${url} (pid ${child.pid}) over ${project}\nlog: ${path.join(root, 'server.log')}`);
 }
 
@@ -238,6 +266,8 @@ async function drive() {
   const names = wanted.length === 0 || wanted.includes('all')
     ? fs.readdirSync(path.join(here, 'recipes')).filter((f) => f.endsWith('.mjs')).map((f) => f.replace('.mjs', '')).sort()
     : wanted;
+  // $NETSMITH_PAGE_URL drives the page of a Vite dev server (whose proxy asks the running editor, NETSMITH_EDITOR) instead of the page the binary embeds.
+  const pageUrl = process.env.NETSMITH_PAGE_URL ?? state.url;
   const browser = await chromium.launch();
   let failed = 0;
   for (const name of names) {
@@ -246,23 +276,34 @@ async function drive() {
       console.error(`there is no recipe ${name}`);
       process.exit(2);
     }
-    const { run, fixture } = await import(pathToFileURL(file).href);
+    const { run, fixture, needs } = await import(pathToFileURL(file).href);
     if (fixture && fixture !== state.fixtureName) {
       console.log(`${wanted.length === 0 || wanted.includes('all') ? 'skip' : 'FAIL'} ${name}: it needs \`launch --fixture ${fixture}\` (this session has ${state.fixtureName})`);
+      if (!(wanted.length === 0 || wanted.includes('all'))) failed++;
+      continue;
+    }
+    if (needs === 'git' && !state.git) {
+      console.log(`${wanted.length === 0 || wanted.includes('all') ? 'skip' : 'FAIL'} ${name}: it needs \`launch --git\` (a git repository over the two_boards project)`);
       if (!(wanted.length === 0 || wanted.includes('all'))) failed++;
       continue;
     }
     const context = await browser.newContext({ viewport: { width: 1500, height: 900 }, acceptDownloads: true });
     const page = await context.newPage();
     const problems = [];
+    const allowed = [];
     page.on('pageerror', (e) => problems.push(`page error: ${e.message}`));
     page.on('console', (m) => m.type() === 'error' && problems.push(`console error: ${m.text()}`));
     let shots = 0;
     const steps = [];
     const tools = {
       page,
-      url: state.url,
+      url: pageUrl,
       project: state.project,
+      /** A console error a step makes on purpose (the browser logs a request that answers 404): named by a pattern, and only that one is let through. */
+      allowConsole: (re) => allowed.push(re),
+      /** The project's repository back as `launch --git` made it (a recipe that needs it starts with this). */
+      resetRepo: () => resetCompareRepo(state.project),
+      binary: netsmithBin(),
       async shot(label) {
         const file = path.join(evidenceDir, `${name}-${String(++shots).padStart(2, '0')}-${label}.png`);
         await page.screenshot({ path: file });
@@ -285,7 +326,7 @@ async function drive() {
     };
     console.log(`recipe ${name}`);
     try {
-      await page.goto(state.url);
+      await page.goto(pageUrl);
       await page.waitForSelector('.app', { timeout: 10000 });
       // `.app` is there before the project has loaded (a big one takes a moment): wait for the
       // tree (the source section is in the page, if hidden), and for the board list when the project has a board, so a recipe starts on a page
@@ -293,7 +334,8 @@ async function drive() {
       await page.waitForSelector('.sidebar > *', { state: 'attached', timeout: 20000 });
       await page.waitForSelector('.boardpick select option', { state: 'attached', timeout: 5000 }).catch(() => {});
       await run(tools);
-      if (problems.length) throw new Error(problems.join('\n'));
+      const unexpected = problems.filter((p) => !allowed.some((re) => re.test(p)));
+      if (unexpected.length) throw new Error(unexpected.join('\n'));
       console.log(`PASS ${name}`);
     } catch (e) {
       failed++;
@@ -349,7 +391,7 @@ function cleanup() {
 
 const commands = { doctor, launch, drive, evidence, cleanup };
 if (!commands[command]) {
-  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | evidence | cleanup [--keep-evidence]');
+  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|empty|shared_module|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | evidence | cleanup [--keep-evidence]  (launch also takes --git)');
   process.exit(2);
 }
 await commands[command]();

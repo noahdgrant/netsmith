@@ -108,6 +108,8 @@ fn board_of_kind(
         net.pins[0] = pin(&format!("R{}", i + 1), "2");
     }
     let design = Design {
+        interfaces: Vec::new(),
+        notes: Vec::new(),
         name: "Turn".into(),
         process: Some(process()),
         features: Features {

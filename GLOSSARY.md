@@ -176,7 +176,7 @@ _Avoid_: Component, device
 
 **Interface**:
 A typed bundle of pins and quantities that is connected as one. A bundle of quantities with no pins, such as a process, is also an interface.
-_Avoid_: Bus, bundle, group
+_Avoid_: Bus (that is the name of how the schematic draws one, see _Bus_), bundle, group
 
 **Module**:
 A reusable sub-circuit that is placed on a board or inside another module. Only its interfaces, pins, and declared values can be used from outside; the parts and modules inside are internal.
@@ -282,7 +282,8 @@ _Avoid_: Symbol table, library table
 A symbol file (`.kicad_sym`) or footprint folder (`.pretty`) of a project's own, listed in its `kicad.toml` as a `[[library]]`, so that its parts map to symbols and footprints KiCad does not ship.
 
 **Unit**:
-One of the drawings of a KiCad symbol that has several, such as the two amplifiers and the supply of a dual op-amp. The KiCad schematic places all units of a part, each with the part's reference; the editor's schematic draws a part of several units as one box with every pin, and a symbol of more than 60 pins as one box with its pins in labelled groups.
+One of the drawings of a KiCad symbol that has several, such as the two amplifiers and the supply of a dual op-amp, or the power unit and the signal unit of a processor module (`U1A`, `U1B`). The KiCad schematic places all units of a part, each with the part's reference; the editor's schematic does the same: each unit that has pins is a box of its own in the drawing, as the library draws it, with the part's reference and the unit's letter, upright, and the decoupling capacitors stand beside the power unit (ADR 0050). A pad is in one unit. The layout's own stack of two-terminal parts in a column is a different thing and is not called a unit in the docs.
+_Avoid_: Sub-part, section, gate (a unit may be a gate, an amplifier or a supply)
 
 **Ratsnest**:
 The connections a board still needs, drawn as straight lines between pads, before any track is routed.
@@ -306,20 +307,52 @@ Restricting a field to the values that both its current limit and a new constrai
 A constraint that mentions other fields, so it waits for the solver instead of narrowing a field now. `==` states an equation that must hold in the worst case; `>=` and `<=` state bounds. There is no plain `=` (ADR 0018).
 
 **Editor**:
-`netsmith editor`: a web app served on 127.0.0.1 by the netsmith binary, with seven sections (Source, Schematic, Power tree, System, BOM, PCB, Build; the number keys 1 to 7 pick them in that order), shown one at a time or two side by side; the Source section has the project tree and a source editor that shows the compiler's and solver's messages beside their lines, the others are the views of a board; and two actions in the top bar, Write KiCad files and Make fab files (ADR 0019). The schematic is shown one sheet (a module instance) at a time. A long job runs on the server while the page stays usable. It writes the source files (in its source pane), the physical file (the requirements a person draws, such as a keepout) and the layout file (the solution the PCB view moves). It reads the physical file for the PCB view and lists it in its tree; its drawn keepouts are still written to the layout file (the write path to the physical file is not built yet, issue #52). It replaces the schematic viewer, which is gone.
+`netsmith editor`: a web app served on 127.0.0.1 by the netsmith binary, with seven sections (Source, Schematic, Power tree, System, BOM, PCB, Build; the number keys 1 to 7 pick them in that order), shown one at a time or two side by side; the Source section has the project tree and a source editor that shows the compiler's and solver's messages beside their lines, the others are the views of a board; and two actions in the top bar, Write KiCad files and Make fab files (ADR 0019). The schematic is shown one module (instance) at a time. A long job runs on the server while the page stays usable. It writes the source files (in its source pane), the physical file (the requirements a person draws, such as a keepout) and the layout file (the solution the PCB view moves). It reads the physical file for the PCB view and lists it in its tree; its drawn keepouts are still written to the layout file (the write path to the physical file is not built yet, issue #52). It replaces the schematic viewer, which is gone.
 _Avoid_: Viewer, IDE, GUI
 
 **View**:
 One way the editor shows a board built from the source: the schematic, the power tree, the system, the bill of materials or the PCB. Each is computed from the checked and solved model, and none is edited: the source is.
 _Avoid_: Page
 
+**Satellite**:
+A small part that the editor's schematic draws beside the pin of a main part (an IC, a connector) that it serves: a decoupling capacitor, a pull-up, a bootstrap capacitor, a divider. It is wired to that pin always, and its rail pins have a stub and a power symbol of their own (see _Power symbol_). The main part and its satellites are one block.
+_Avoid_: Passive (a satellite may be a transistor), helper
+
+**Pair satellite**:
+A satellite whose two pins are on two different pins of one main part, such as a crystal across `XL1` and `XL2`, a resonator, or a series element across two pins. The schematic stands it beside both pins, turned so that its two wires are short, have as few bends as can be, and cross nothing, and never writes a name on its nets. The metric `pair_crossings` (target 0) counts the crossings on those wires.
+_Avoid_: Crystal rule, two-pin satellite
+
+**Spine**:
+How the editor's schematic draws the power path through a regulator: one row from left to right, found from the netlist, the pin kinds and the rails, never from what a part is called, and only where the rails are known. From the left: the chains of series parts of the module whose far end goes on to another module (a fuse and a diode, with a TVS diode on the node they end in), the input chain (a ferrite bead, from where the power comes in to the IC's input pins), the IC with its input on the left and its switching pin on the right, the output chain (the inductor) and the output node. A **series part** is a two-terminal part whose two pins are on two different nets, neither a ground, that is not across two pins of the IC (that is a _Pair satellite_); each stands on the row, turned along it, and a chain goes on through a net only while one more series part is there and no main part has a pin on it. The capacitors to ground hang from the node they serve, the smallest nearest the IC, each with a stub and a ground symbol of its own (side by side they share one wire and one symbol, see _Power symbol_); the feedback divider hangs from the output node with the feedback pin wired to its middle; a rail on the row is wired along it and has one symbol, at its outer end. The pair satellites of the IC (a bootstrap capacitor) stand beside its two pins and the row never crosses them. The metrics `spine_bends` (the bends along the longest series chain) and `detached_chain` (chains that are neither on the IC's row nor wired to it) have target 0.
+_Avoid_: Power path (that is the current; the spine is its drawing), backbone, main line
+
 **Power symbol**:
-How the editor's schematic draws a rail: the negative side of a rail (where the current returns) with the ground symbol, bars that shrink away from a wire, and the positive side with the supply symbol, a stem with an arrow head and the net's name beside it. Which nets are which comes from the checked model (a `Rail`'s `pos` and `neg`), never from the names; the ground symbols carry their names only when a board has more than one ground. Each pin on a rail has a wire to its own symbol, and pins next to each other on one rail share a bus and a symbol. The KiCad schematic file does not use them.
-_Avoid_: Net label (a power symbol is drawn instead of one), power port
+How the editor's schematic draws a rail: the negative side of a rail (where the current returns) with the ground symbol, bars that shrink away from a wire, and the positive side with the supply symbol, a stem with an arrow head and the net's name beside it. Which nets are which comes from the checked model (a `Rail`'s `pos` and `neg`), never from the names; the ground symbols carry their names only when a board has more than one ground. Each pin of a main part on a rail has a wire to its own symbol, and pins next to each other on one rail share a bus and a symbol; a satellite's rail pin has a short stub and a symbol of its own (a supply symbol up, a ground symbol down), except that satellites side by side in a row, and satellites on the same rail within 20 grid steps of each other (two pull-ups of a bus, one above the other), share a short wire and one symbol where nothing is crossed. The KiCad schematic file does not use them.
+_Avoid_: Power port (a net label is the name of a signal net at the end of a stub, and a power symbol is never one)
 
 **Flag**:
-How the editor's schematic shows a net that goes on to another sheet: a pentagon pointing at the end of a wire, like KiCad's hierarchical label, with the net's name in it (none for a net with a generated name). Every other net on a sheet is only wires.
-_Avoid_: Port (a `Rail`'s and a module's ports are pins), off-sheet label
+How the editor's schematic shows a net that goes on to another module: a pentagon pointing at the end of the short stub of a pin, like KiCad's hierarchical label, with the net's name in it (none for a net with a generated name). A net that goes on has a flag at the end of the stub of each group of its pins in the module (a main part and the small parts that serve its pins).
+_Avoid_: Port (a `Rail`'s and a module's ports are pins), off-sheet label, sheet
+
+**Bus**:
+How the editor's schematic draws the members of one interface instance (`mcu.uart0`) when three or more of them run between the same two main parts of a module, or leave the module from one part: each member's pin stays on the part's edge and its wire is a short entry that meets one thick line, which runs to the other part or ends in one flag where the members go on to another module. It is named once, by the instance (`uart0`), with the list of members (`{tx, rx, rts, cts}`) and a slash with their count. The line joins nothing: each entry joins, by name, the net of that name at the other end, as a label does. Which nets are one bus comes from the interface instances the design carries (ADR 0049), never from net names. The word is for the drawing; the language's thing is an _Interface_.
+_Avoid_: Bundle, harness, interface (for the drawing), bus wire
+
+**Schematic note**:
+How the editor's schematic shows the source's own writing: the doc comments (`///`, `//!`) on a board, a module, a part or an interface, and every `==` relation of a board or a module, each as a framed box of wrapped text with no wire or leader line to anything. A doc comment is in the page's sans serif; a relation is in a monospace face under a small heading (`Relation`), with what the solver settled on for the field it gives a value to. The box of a part's note stands beside the part in free room, a board's or a module's stands at the top left of its sheet under the title, and a note with no room near its part goes to the margin. Which text is a note comes from the checker's model (`Design::notes`, ADR 0060), never from a `//` comment, which is not drawn. It joins nothing: `netsmith_view::check` leaves it out of the netlist and reports a note that lies on anything else (`note-overlap`) or whose text escapes its frame (`note-text-overflow`). The code type is `Note`; the word for the drawing is the schematic note, because a build's _note_ (a message that names what the solver left alone) is another thing.
+_Avoid_: Annotation, comment (that is the source's `//`), callout, text box, label (that is the silkscreen part, and a _Net label_ is a net's name), title block
+
+**Net label**:
+How the editor's schematic shows a signal net that is not drawn as one wire: the net's name as plain text at the end of a short stub out of each group of its pins (a main part and the small parts that serve its pins, which stay wired to that stub), like KiCad's local label. A net is named, not wired, when it joins more than one such group and its wire would be long (over 48 grid steps), fan out to three groups over 30 steps, or cross more than one other wire; a rail is never named (a power symbol is drawn), nor is the net of a part that serves a pin. A net with a generated name is shown by the first pin of its main part (`J2.3`), as KiCad names such a net. The pieces of a net that carry the same name in a module are one net.
+_Avoid_: Bare name, off-page connector (a flag is that), global label
+
+**Stray wire**:
+Wire or dot in the editor's schematic that serves nothing: an end that touches no pin, power symbol, flag, label, X or other wire of its net (a dead end, such as a rail that runs on past its last tap), two wires of one net along one line, a hook (out, across a grid step or less, and back), a wire that is a point, a dot where fewer than three arms of a net meet, three arms and no dot, a wire along a pin's line, or along the outline of a body or a flag within 0.7 mm. The drawing has none: the engine takes them off when it has routed, and `netsmith_view::check` reports any that is left.
+_Avoid_: Dangling wire, spur, stub (a stub is the short wire straight out of a pin)
+
+**Ref comparison**:
+What the editor says changed in the circuit between a git ref (the base) and the files on disk (the head): the parts, nets, rails, ports, bill of materials and problems that differ, each with its source line on both sides (ADR 0059). A part is the same on both sides by its path in the board, a net by its name or its pins, a rail by its net; a part that only has another designator is renumbered, not changed. It reads the ref with `git archive` and never touches the work tree. Not the _Netlist comparison_ (two designs that share no names) and not a text diff.
+_Avoid_: Diff (a diff compares lines), git diff, branch diff
 
 **Power tree**:
 The view of a board's rails as cards: the voltage of each net a rail draws from, the total of the currents on it, and what the part that supplies it can give, joined left to right, from the sources to the loads, by the regulators and stages that make one rail from another and by the joins of a system. The numbers are the solver's, in the worst case.

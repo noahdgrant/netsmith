@@ -37,12 +37,13 @@ export async function run({ page, shot, step, expect, section }) {
 
   step('the divider: drag, a minimum width, keys, double click');
   const d = await page.locator('.divider').boundingBox();
+  const before = await share();
   await page.mouse.move(d.x + 3, 500);
   await page.mouse.down();
   await page.mouse.move(d.x - 300, 500, { steps: 6 });
   await page.mouse.up();
   const dragged = await share();
-  expect(Math.abs(dragged - 697) < 8, `the left pane follows the drag (${Math.round(dragged)} px)`);
+  expect(Math.abs(dragged - (before - 300)) < 8, `the left pane follows the drag (${Math.round(dragged)} px, from ${Math.round(before)})`);
   await page.mouse.move(d.x - 300 + 3, 500);
   await page.mouse.down();
   await page.mouse.move(5, 500, { steps: 6 });
@@ -52,7 +53,7 @@ export async function run({ page, shot, step, expect, section }) {
   await page.keyboard.press('ArrowRight');
   expect((await share()) > 400, 'an arrow key moves the divider');
   await page.dblclick('.divider');
-  expect(Math.abs((await share()) - 997) < 4, 'a double click makes the panes equal');
+  expect(Math.abs((await share()) - before) < 4, 'a double click makes the panes equal (as they were when the split opened)');
 
   step('drag the Source tab onto the left half: the panes swap');
   const src = await page.locator('.pane-strip').nth(1).locator('.tab', { hasText: 'Source' }).boundingBox();

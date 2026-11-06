@@ -9,6 +9,8 @@ mod assets;
 mod backend;
 mod server;
 
-pub use assets::{bundle_is_present, find as find_asset, missing_bundle_message};
-pub use backend::{ApiError, Attachment, Backend, Say};
-pub use server::{Server, serve};
+pub use assets::{
+    bundle_hash, bundle_is_present, find as find_asset, git_describe, missing_bundle_message,
+};
+pub use backend::{AnalysisEvent, ApiError, Attachment, Backend, ErrorDetail, Observer, Say};
+pub use server::{PENDING_HEADER, Server, serve, serve_with_backlog};
