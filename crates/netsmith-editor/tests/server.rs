@@ -64,6 +64,7 @@ fn analysis(version: u64) -> Analysis {
         boards: Vec::new(),
         systems: Vec::new(),
         panels: Vec::new(),
+        module_uses: None,
         elapsed_ms: None,
     }
 }
@@ -79,6 +80,11 @@ impl Backend for Fake {
             kicad: true,
             files: Vec::new(),
             folders: Vec::new(),
+            version: None,
+            git_describe: None,
+            root: None,
+            kicad_path: None,
+            bundle_hash: None,
         }
     }
     fn create_file(&self, path: &str, text: &str) -> Result<Changed, ApiError> {
@@ -356,6 +362,8 @@ impl Backend for Fake {
     }
     fn definition(&self, _: &str, _: &str, offset: usize) -> Result<Option<Definition>, ApiError> {
         Ok((offset == 0).then(|| Definition {
+            signature: None,
+            doc: None,
             at: netsmith_editor::api::Location {
                 file: "a.nsm".into(),
                 line: 1,
@@ -447,6 +455,33 @@ impl Server {
 }
 
 const GUARD: (&str, &str) = ("X-Netsmith", "1");
+
+#[test]
+fn the_project_carries_the_hash_of_the_embedded_page_and_the_checkout_it_was_built_from() {
+    let s = start();
+    let json: serde_json::Value = serde_json::from_str(&s.get("/api/project").body).unwrap();
+    // What the binary knows of itself is added by the server, to any backend's answer.
+    match netsmith_editor::bundle_hash() {
+        Some(hash) => assert_eq!(json["bundleHash"], hash),
+        None => assert!(json.get("bundleHash").is_none(), "{json}"),
+    }
+    match netsmith_editor::git_describe() {
+        Some(describe) => assert_eq!(json["gitDescribe"], describe),
+        None => assert!(json.get("gitDescribe").is_none(), "{json}"),
+    }
+    // With a page built in, the hash is the committed bundle's SOURCE-HASH or the hash of
+    // the sources it was built from: 16 hex digits.
+    if let Some(hash) = netsmith_editor::bundle_hash() {
+        assert!(
+            hash.len() == 16 && hash.chars().all(|c| c.is_ascii_hexdigit()),
+            "{hash}"
+        );
+    }
+    // The fake backend knows no version, root or KiCad: they are left out.
+    for key in ["version", "root", "kicadPath"] {
+        assert!(json.get(key).is_none(), "{key}: {json}");
+    }
+}
 
 #[test]
 fn json_endpoints_answer_with_json() {

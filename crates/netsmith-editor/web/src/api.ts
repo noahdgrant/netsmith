@@ -37,7 +37,17 @@ path?: string, };
 
 export type FileRole = "top_level" | "module" | "std" | "manifest" | "physical";
 
-export type Def = { kind: string, name: string, line: number, };
+export type Def = { kind: string, name: string, line: number, 
+/**
+ * The line its closing brace is on (the last line of the definition), so the source
+ * outline and the breadcrumbs know which definition a line is in without reading text.
+ */
+endLine?: number, 
+/**
+ * The declarations written directly in its body (`.vin: Rail`), in source order, not the
+ * ones inside a declaration's own block. Left out when there are none.
+ */
+children?: Array<DefChild>, };
 
 export type TreeFile = { 
 /**
@@ -60,7 +70,35 @@ kicad: boolean, files: Array<TreeFile>,
  * The folders below `src/`, with their path from the project root (`src/sheets`), so the
  * tree can show one that has no file in it yet.
  */
-folders: Array<string>, };
+folders: Array<string>, 
+/**
+ * The version of the netsmith that serves this page (`0.1.0`, the crate's).
+ */
+version?: string, 
+/**
+ * `git describe --tags --always` of the checkout netsmith was built from, as it was when
+ * the build script last ran (a commit made later with no other change is not seen until
+ * the next build; uncommitted edits are not marked). Absent when netsmith was built
+ * outside a git checkout or without `git`.
+ */
+gitDescribe?: string, 
+/**
+ * The project folder, absolute: where `netsmith.toml` is, or for a single file the folder
+ * it is in.
+ */
+root?: string, 
+/**
+ * Where `kicad-cli` was found (`$KICAD_CLI`, `PATH`, or the Windows KiCad under WSL).
+ * Absent when `kicad` is false.
+ */
+kicadPath?: string, 
+/**
+ * The `SOURCE-HASH` of the page embedded in this binary: a hash of the sources in
+ * `web/` that the page was built from. Absent when the binary has no page. It is the
+ * hash of the page's sources, which is not the hash of `web/` as it is now if the
+ * binary was built from a checkout whose `web-dist` was out of date.
+ */
+bundleHash?: string, };
 
 export type FileContent = { path: string, text: string, 
 /**
@@ -116,6 +154,13 @@ cellWidth: number, cellHeight: number, width: number, height: number, rail: numb
 
 export type Analysis = { version: number, errors: number, warnings: number, notes: number, problems: Array<Problem>, boards: Array<BoardSummary>, systems: Array<SystemSummary>, panels: Array<PanelSummary>, 
 /**
+ * For each module definition that some board uses, directly or inside another module,
+ * the boards that use it, so a declaration in a shared module can show its card for
+ * each board. Sorted by file and line; left out when no board uses a module. It is here
+ * and not on `Def` because `GET /api/project` is answered before the first analysis.
+ */
+moduleUses?: Array<ModuleUse>, 
+/**
  * How long the analysis took, in milliseconds: of the files on disk for `/api/analysis`
  * and `rebuilt`, of the text on the page for `checked`.
  */
@@ -143,9 +188,28 @@ decl: Location | null,
 /**
  * The declarations of what contains it, innermost first (`.stage: LdoStage`).
  */
-scopes: Array<Location>, };
+scopes: Array<Location>, 
+/**
+ * What the solver worked out for the part and the source did not state. Absent when
+ * there is nothing to say (a part with no catalog row and no derived value).
+ */
+solved?: Solved, };
 
-export type PinInfo = { refdes: string, pin: string, };
+export type PinInfo = { refdes: string, 
+/**
+ * The pad number as the symbol names it (`"1"`, `"A5"`).
+ */
+pin: string, 
+/**
+ * The name the part's datasheet prints for the pin (`VIN`, `EN`, `SW`), where the part
+ * has a pin table that lists the pad. Absent for a part with no pin table.
+ */
+name?: string, 
+/**
+ * The function the board chose for the pin (`UART1_TX`), when the pin can be several
+ * things and the board picked one. Absent otherwise.
+ */
+function?: string, };
 
 export type NetInfo = { name: string, named: boolean, pins: Array<PinInfo>, };
 
@@ -219,7 +283,7 @@ at?: Location, };
 
 export type Port = { name: string, 
 /**
- * `3.135 V .. 3.465 V`, if the port is a rail.
+ * `3.135V..3.465V` (see `Range::text`), if the port is a rail.
  */
 voltage: string | null, current: string | null, };
 
@@ -604,7 +668,22 @@ downloads: Array<Download>,
  */
 elapsedMs: number, };
 
-export type Definition = { at: Location, };
+export type Definition = { at: Location, 
+/**
+ * A one-line signature of what is defined, in a stable short form: the keyword, the
+ * name and the declarations that make its interface, at most six, then `...` if the
+ * body has more (`module LdoStage { .vin: Rail .vout: Rail ... }`; the ports of a
+ * module or board are the declarations whose type is an interface, and an interface or
+ * part lists its own). For a member it is the declaration, `.vin: Rail`. Absent when
+ * the name is an imported module (see `doc`).
+ */
+signature?: string, 
+/**
+ * The `///` lines directly above the definition or declaration, one line of the answer
+ * for each, the leading space of a line trimmed; for an imported module, the `//!` lines
+ * at the top of its file. Absent when there are none. A hover card needs no library file.
+ */
+doc?: string, };
 
 export type GitCommit = { 
 /**
