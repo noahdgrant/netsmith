@@ -346,6 +346,10 @@ _Avoid_: Bare name, off-page connector (a flag is that), global label
 Wire or dot in the editor's schematic that serves nothing: an end that touches no pin, power symbol, flag, label, X or other wire of its net (a dead end, such as a rail that runs on past its last tap), two wires of one net along one line, a hook (out, across a grid step or less, and back), a wire that is a point, a dot where fewer than three arms of a net meet, three arms and no dot, a wire along a pin's line, or along the outline of a body or a flag within 0.7 mm. The drawing has none: the engine takes them off when it has routed, and `netsmith_view::check` reports any that is left.
 _Avoid_: Dangling wire, spur, stub (a stub is the short wire straight out of a pin)
 
+**Ref comparison**:
+What the editor says changed in the circuit between a git ref (the base) and the files on disk (the head): the parts, nets, rails, ports, bill of materials and problems that differ, each with its source line on both sides (ADR 0051). A part is the same on both sides by its path in the board, a net by its name or its pins, a rail by its net; a part that only has another designator is renumbered, not changed. It reads the ref with `git archive` and never touches the work tree. Not the _Netlist comparison_ (two designs that share no names) and not a text diff.
+_Avoid_: Diff (a diff compares lines), git diff, branch diff
+
 **Power tree**:
 The view of a board's rails as cards: the voltage of each net a rail draws from, the total of the currents on it, and what the part that supplies it can give, joined left to right, from the sources to the loads, by the regulators and stages that make one rail from another and by the joins of a system. The numbers are the solver's, in the worst case.
 _Avoid_: Power diagram, rail map

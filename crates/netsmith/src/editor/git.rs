@@ -314,11 +314,6 @@ pub fn info(dir: &Path) -> GitInfo {
             push(name, GitRefKind::Tag, &c, false);
         }
     }
-    let project_pathspec: Vec<&str> = if place.prefix.is_empty() {
-        Vec::new()
-    } else {
-        vec![place.prefix.as_str()]
-    };
     GitInfo {
         available: true,
         reason: None,
@@ -327,7 +322,7 @@ pub fn info(dir: &Path) -> GitInfo {
         branch,
         head,
         dirty: dirty(dir, &[]),
-        project_dirty: dirty(dir, &project_pathspec),
+        project_dirty: project_dirty(dir),
         refs,
         commits,
     }
@@ -567,5 +562,51 @@ pub fn source_diff(dir: &Path, hash: &str) -> SourceDiff {
         removed: files.iter().map(|f| f.removed).sum(),
         files,
         error,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_scratch_folder_is_private_and_is_gone_when_it_is_dropped() {
+        let (path, other) = {
+            let scratch = Scratch::new().unwrap();
+            let other = Scratch::new().unwrap();
+            std::fs::write(scratch.path().join("a"), "x").unwrap();
+            assert!(scratch.path().is_dir());
+            assert_ne!(scratch.path(), other.path());
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mode = std::fs::metadata(scratch.path())
+                    .unwrap()
+                    .permissions()
+                    .mode();
+                assert_eq!(mode & 0o077, 0, "only its owner can read it");
+            }
+            (scratch.path().to_path_buf(), other.path().to_path_buf())
+        };
+        assert!(!path.exists() && !other.exists());
+    }
+
+    #[test]
+    fn a_commit_is_read_from_its_record() {
+        let c = commit_of(
+            "abc123\u{1f}abc\u{1f}A subject\u{1f}An Author\u{1f}2026-11-05T10:00:00+01:00",
+        )
+        .unwrap();
+        assert_eq!((c.short.as_str(), c.subject.as_str()), ("abc", "A subject"));
+        assert_eq!(c.date, "2026-11-05T10:00:00+01:00");
+        assert!(commit_of("only\u{1f}two").is_none());
+    }
+
+    #[test]
+    fn something_that_is_not_a_revision_is_refused_before_git_is_asked() {
+        let nowhere = Path::new("/nonexistent-for-the-test");
+        for rev in ["", "-p", "--output=x", "a\nb"] {
+            assert_eq!(resolve(nowhere, rev).unwrap_err().status, 400, "{rev:?}");
+        }
     }
 }

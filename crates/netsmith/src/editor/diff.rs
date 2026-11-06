@@ -604,7 +604,8 @@ fn same_range(a: &Option<Range>, b: &Option<Range>) -> bool {
 /// What the supply can give above the largest the loads can draw.
 fn headroom(node: &PowerNode) -> Option<f64> {
     match (&node.capacity, &node.demand) {
-        (Some(c), Some(d)) => Some(c.hi - d.hi),
+        // To the nanoampere: the subtraction's residue is not headroom.
+        (Some(c), Some(d)) => Some(((c.hi - d.hi) * 1e9).round() / 1e9),
         _ => None,
     }
 }

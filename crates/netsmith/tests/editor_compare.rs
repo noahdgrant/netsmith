@@ -542,6 +542,10 @@ fn a_project_in_a_subfolder_of_the_repository_is_compared_by_its_own_files() {
     let info = w.git();
     assert!(info.available, "{:?}", info.reason);
     assert_eq!(info.project_dir.as_deref(), Some("hardware/board"));
+    assert!(
+        info.dirty && info.project_dirty,
+        "a change inside the project"
+    );
     let c = compare(&w, "HEAD").unwrap();
     assert_eq!(c.summary, "1 net renamed");
     assert_eq!(
@@ -553,10 +557,25 @@ fn a_project_in_a_subfolder_of_the_repository_is_compared_by_its_own_files() {
         ["src/main.nsm"],
         "paths are the project's"
     );
-    // Against a commit that moved the project, the project is not there.
-    let moved = r.dir.join("hw");
-    fs::rename(r.dir.join("hardware"), &moved).unwrap();
-    let _ = moved;
+    // A change outside the project makes the tree dirty and not the project.
+    r.commit("rename, and a README");
+    fs::write(r.dir.join("README"), "changed\n").unwrap();
+    let info = w.git();
+    assert!(info.dirty && !info.project_dirty, "{info:?}");
+    assert!(!compare(&w, "HEAD").unwrap().head.dirty);
+    // Against a commit before the project was in that folder, it is not there.
+    fs::rename(r.dir.join("hardware"), r.dir.join("hw")).unwrap();
+    r.commit("move the project");
+    let w = Workspace::open(Target::resolve_from(&r.dir.join("hw/board"), None).unwrap()).unwrap();
+    let c = compare(&w, "HEAD~1").unwrap();
+    assert!(
+        c.error
+            .as_deref()
+            .unwrap()
+            .contains("folder `hw/board` does not exist at"),
+        "{:?}",
+        c.error
+    );
 }
 
 #[test]
