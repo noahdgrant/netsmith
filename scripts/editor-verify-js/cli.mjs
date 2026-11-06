@@ -101,8 +101,10 @@ async function doctor() {
   const bin = netsmithBin();
   line(fs.existsSync(bin), 'netsmith binary', fs.existsSync(bin) ? bin : `${bin} is missing: run cargo build -p netsmith (set CARGO_TARGET_DIR or NETSMITH_BIN if it is elsewhere)`);
 
-  const dist = path.join(repo, 'crates/netsmith-editor/web/dist/index.html');
-  line(fs.existsSync(dist), 'web bundle', fs.existsSync(dist) ? dist : 'crates/netsmith-editor/web/dist is missing: cargo build -p netsmith builds it with Node 20+');
+  // The committed bundle the binary embeds when `web/` has not changed (`web/dist` is only a
+  // build directory of a changed `web/`, which needs Node 20+).
+  const dist = path.join(repo, 'crates/netsmith-editor/web-dist/index.html');
+  line(fs.existsSync(dist), 'web bundle', fs.existsSync(dist) ? dist : 'crates/netsmith-editor/web-dist is missing: restore it from git, or `scripts/web-bundle update` with Node 20+');
 
   if (!has('no-browser')) {
     let playwright;
