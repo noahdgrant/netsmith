@@ -499,6 +499,8 @@ button.chip.findings-pill, .toolbar button.chip { font-family: var(--sans); lett
 .qp-row { gap: 0.75rem; height: 2.25rem; }
 .qp-row.on { background: var(--pick); box-shadow: inset 2px 0 0 var(--sel-bar); }
 .qp-row.on .qp-label { font-weight: var(--fw-medium); }
+/* the picked row is tinted blue, and the faint words (4.5:1 on a plain surface) drop under it: the muted ones are the least on it */
+.qp-row.on .qp-detail, .qp-row.on .qp-type { color: var(--text-muted); }
 .qp-icon { width: 1.5rem; height: 1.5rem; align-items: center; justify-content: center; border-radius: var(--r-sm); background: var(--surface-3); }
 .qp-row.on .qp-icon { background: color-mix(in srgb, var(--sel) 18%, var(--surface-3)); }
 .qpk-view { color: var(--kind-module); } .qpk-problem { color: var(--warning); } .qpk-line { color: var(--kind-file); }

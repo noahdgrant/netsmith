@@ -790,4 +790,19 @@
   /* a table: every other row a hair darker, and the line under a sticky header */
   --zebra: color-mix(in srgb, var(--text) 2.4%, transparent);
   --row-line: color-mix(in srgb, var(--text) 6%, transparent);
+  /* the syntax colours on a tinted line of the diff view (compare.css maps --syn-* to these inside .diff-panel): each is pushed halfway to
+   * the page's ink, which keeps its hue and gives the 4.5:1 that a changed word's tint (a quarter of a mark's colour) would take from the
+   * plain colour; `theme.test.ts` measures every one on every tint in every theme */
+  --diff-syn-comment: color-mix(in srgb, var(--text) 50%, var(--syn-comment));
+  --diff-syn-doc: color-mix(in srgb, var(--text) 50%, var(--syn-doc));
+  --diff-syn-string: color-mix(in srgb, var(--text) 50%, var(--syn-string));
+  --diff-syn-number: color-mix(in srgb, var(--text) 50%, var(--syn-number));
+  --diff-syn-keyword: color-mix(in srgb, var(--text) 50%, var(--syn-keyword));
+  --diff-syn-type: color-mix(in srgb, var(--text) 50%, var(--syn-type));
+  --diff-syn-property: color-mix(in srgb, var(--text) 50%, var(--syn-property));
+  --diff-syn-namespace: color-mix(in srgb, var(--text) 50%, var(--syn-namespace));
+  --diff-syn-variable: color-mix(in srgb, var(--text) 50%, var(--syn-variable));
+  --diff-syn-operator: color-mix(in srgb, var(--text) 50%, var(--syn-operator));
+  --diff-syn-punct: color-mix(in srgb, var(--text) 50%, var(--syn-punct));
+  --diff-syn-invalid: color-mix(in srgb, var(--text) 50%, var(--syn-invalid));
 }

@@ -198,7 +198,8 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .cmp-chip-sentence { margin: 2px 0 0.5rem; color: var(--text-muted); font-size: var(--fs-sm); line-height: 1.45; overflow-wrap: anywhere; }
 
 /* ==== the diff view ==== */
-.diff-panel { position: absolute; inset: 0; z-index: var(--z-pane); display: flex; flex-direction: column; background: var(--canvas); border-radius: inherit; outline: none; animation: view-in 150ms var(--ease); }
+.diff-panel { position: absolute; inset: 0; z-index: var(--z-pane); display: flex; flex-direction: column; background: var(--canvas); border-radius: inherit; outline: none; animation: view-in 150ms var(--ease);
+  --syn-comment: var(--diff-syn-comment); --syn-doc: var(--diff-syn-doc); --syn-string: var(--diff-syn-string); --syn-number: var(--diff-syn-number); --syn-keyword: var(--diff-syn-keyword); --syn-type: var(--diff-syn-type); --syn-property: var(--diff-syn-property); --syn-namespace: var(--diff-syn-namespace); --syn-variable: var(--diff-syn-variable); --syn-operator: var(--diff-syn-operator); --syn-punct: var(--diff-syn-punct); --syn-invalid: var(--diff-syn-invalid); }
 .diff-head { display: flex; align-items: center; gap: 0.5rem; flex: none; flex-wrap: wrap; min-height: calc(var(--bar) - 0.375rem); padding: 0.375rem 0.75rem 0.375rem 0.625rem; border-bottom: 1px solid var(--border-subtle); background: var(--surface); }
 .diff-title { display: inline-flex; align-items: center; gap: 0.5rem; min-width: 0; flex-wrap: wrap; font-size: var(--fs-md); }
 .diff-title > .icon { color: var(--text-faint); }
@@ -221,8 +222,8 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .cm-dl-del { background-color: color-mix(in srgb, var(--cmp-removed) 12%, transparent); box-shadow: inset 2px 0 0 var(--cmp-removed); }
 .cm-dl-filler { background-image: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--text) 5%, transparent) 5px 6px); }
 .cm-dl-focus { outline: 1px solid var(--sel-line); outline-offset: -1px; }
-.cm-di-add { background-color: color-mix(in srgb, var(--cmp-added) 30%, transparent); border-radius: 2px; }
-.cm-di-del { background-color: color-mix(in srgb, var(--cmp-removed) 30%, transparent); border-radius: 2px; }
+.cm-di-add { background-color: color-mix(in srgb, var(--cmp-added) 24%, transparent); border-radius: 2px; }
+.cm-di-del { background-color: color-mix(in srgb, var(--cmp-removed) 24%, transparent); border-radius: 2px; }
 .cm-diff-gutter { min-width: 4ch; }
 .cm-diff-gutter .cm-gutterElement { padding: 0 0.25rem 0 0.375rem; }
 .cm-dn { display: flex; gap: 0.5rem; justify-content: flex-end; font-size: .88em; font-variant-numeric: tabular-nums; color: var(--text-faint); }

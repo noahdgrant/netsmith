@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import indexHtml from '../index.html?raw';
-import { contrast, over, parseHex } from './contrast';
+import compareCss from './compare.css?raw';
+import { contrast, flatten, over, paint, parseHex } from './contrast';
+import styleCss from './style.css?raw';
 import css from './themes.css?raw';
+import viewsCss from './views.css?raw';
 import {
   type Environment,
   THEMES,
@@ -189,6 +192,8 @@ function pairs(): Pair[] {
   list.push({ fg: '--focus', bg: ['--surface', '--canvas', '--surface-raised', '--surface-3', '--bg'], min: 3, what: 'focus indicator' });
   list.push({ fg: '--accent', bg: ['--surface', '--canvas', '--bg'], min: 3, what: 'accent marks (the active tab line, a primary action)' });
   list.push({ fg: '--accent-text', bg: ['--bg'], what: 'accent text on the frame' });
+  // The status bar is on the frame: its stale, error and success words are the tones' own text colours, not the icon colours.
+  for (const k of ['danger', 'warning', 'info', 'success']) list.push({ fg: `--${k}-text`, bg: ['--bg'], what: `${k} words on the frame (the status bar)` });
   return list.filter((p) => p.bg.length);
 }
 
@@ -287,6 +292,102 @@ describe.each(Object.keys(THEME_TOKENS) as Theme[])('contrast of %s', (name) => 
   it('every theme gives every token the dark theme has', () => {
     const missing = Object.keys(THEME_TOKENS.dark).filter((k) => !(k in t));
     expect(missing).toEqual([]);
+  });
+});
+
+// ---- round 7: text on a tint (the diff view's changed lines, the row that is picked), and the stale views ----
+
+// What the derived tokens at the end of themes.css (one definition for every theme) say.
+const SHARED = (() => {
+  const at = css.indexOf('/* ---- derived tokens');
+  expect(at).toBeGreaterThan(0);
+  const out: Record<string, string> = {};
+  for (const m of css.slice(at).matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)) out[m[1]] = m[2].trim();
+  return out;
+})();
+const percentOf = (source: string, selector: string, mark: string): number => {
+  const m = new RegExp(`${selector.replace(/[.]/g, '\\.')}\\s*\\{[^}]*color-mix\\(in srgb, var\\(${mark}\\) ([\\d.]+)%`).exec(source);
+  expect(m, `${selector} tints with ${mark}`).not.toBeNull();
+  return Number(m![1]) / 100;
+};
+
+describe.each(Object.keys(THEME_TOKENS) as Theme[])('text on a tint in %s', (name) => {
+  const t = THEME_TOKENS[name];
+  const lookup = (k: string) => t[k] ?? SHARED[k] ?? THEME_TOKENS.dark[k];
+  const rgbOf = (token: string) => parseHex(flatten(paint(`var(${token})`, lookup)!, [0, 0, 0]))!;
+  const flat = (token: string, under: string) => flatten(paint(`var(${token})`, lookup)!, parseHex(under)!);
+  const AA = 4.5;
+
+  it('the diff view maps every syntax colour to the stronger one it has on a tinted line', () => {
+    const rule = /\.diff-panel\s*\{([^}]*)\}/.exec(compareCss)?.[1] ?? '';
+    for (const s of ['comment', 'doc', 'string', 'number', 'keyword', 'type', 'property', 'namespace', 'variable', 'operator', 'punct', 'invalid']) {
+      expect(rule, `.diff-panel maps --syn-${s}`).toContain(`--syn-${s}: var(--diff-syn-${s});`);
+      expect(SHARED[`--diff-syn-${s}`], `--diff-syn-${s} is defined once for every theme`).toMatch(/^color-mix\(in srgb, var\(--text\) [\d.]+%, var\(--syn-/);
+    }
+  });
+  for (const [side, mark] of [['add', '--cmp-added'], ['del', '--cmp-removed']] as const) {
+    it(`every syntax colour of the diff view is at least ${AA}:1 on a ${side === 'add' ? 'new' : 'old'} line and on its changed words`, () => {
+      const canvas = flatten(paint('var(--canvas)', lookup)!, [0, 0, 0]);
+      const linePct = percentOf(compareCss, `.cm-dl-${side}`, mark);
+      const wordPct = percentOf(compareCss, `.cm-di-${side}`, mark);
+      const line = flatten({ rgb: rgbOf(mark), a: linePct }, parseHex(canvas)!);
+      const word = flatten({ rgb: rgbOf(mark), a: wordPct }, parseHex(line)!);
+      for (const s of ['comment', 'doc', 'string', 'number', 'keyword', 'type', 'property', 'namespace', 'variable', 'operator', 'punct', 'invalid']) {
+        const ink = flat(`--diff-syn-${s}`, canvas);
+        expect(contrast(ink, line)!, `--syn-${s} (${ink}) on a ${side} line ${line}`).toBeGreaterThanOrEqual(AA);
+        expect(contrast(ink, word)!, `--syn-${s} (${ink}) on a ${side} word ${word}`).toBeGreaterThanOrEqual(AA);
+        // the diff's words, and the plain text, keep the strength they had on the page
+        expect(contrast(flat(`--diff-syn-${s}`, canvas), canvas)!).toBeGreaterThanOrEqual(contrast(flat(`--syn-${s}`, canvas), canvas)!);
+      }
+      expect(contrast(rgbHex(rgbOf('--text')), word)!, '--text on a changed word').toBeGreaterThanOrEqual(AA);
+    });
+  }
+  it('the source with the marks on keeps every syntax colour at least 4.5:1 on a changed or added line', () => {
+    const canvas = flat('--canvas', '#000000');
+    for (const [cls, mark] of [['added', '--cmp-added'], ['changed', '--cmp-changed']] as const) {
+      const pct = percentOf(compareCss, `.cm-chg-line-${cls}`, mark);
+      const line = flatten({ rgb: rgbOf(mark), a: pct }, parseHex(canvas)!);
+      for (const s of ['comment', 'doc', 'string', 'number', 'keyword', 'type', 'property', 'namespace', 'variable', 'operator', 'punct', 'invalid']) {
+        expect(contrast(flat(`--syn-${s}`, canvas), line)!, `--syn-${s} on a ${cls} line ${line}`).toBeGreaterThanOrEqual(AA);
+      }
+    }
+  });
+  it('the row that is picked (go to anything, the ref picker, the palette) keeps its secondary words at least 4.5:1', () => {
+    for (const under of ['--pop', '--surface', '--surface-raised', '--canvas']) {
+      const base = flat(under, '#000000');
+      for (const row of ['--pick', '--active-bg', '--select-bg', '--hover-strong']) {
+        const bg = flat(row, base);
+        expect(contrast(flat('--text-muted', base), bg)!, `--text-muted on ${row} over ${under} (${bg})`).toBeGreaterThanOrEqual(AA);
+        expect(contrast(flat('--text', base), bg)!, `--text on ${row} over ${under}`).toBeGreaterThanOrEqual(AA);
+      }
+    }
+  });
+  it('the status bar says "Last good version" in the tone made for words on the frame', () => {
+    expect(contrast(flat('--warning-text', flat('--bg', '#000000')), flat('--bg', '#000000'))!).toBeGreaterThanOrEqual(AA);
+  });
+});
+
+/** `#rrggbb` of a colour in channels. */
+function rgbHex(c: [number, number, number]): string {
+  return `#${c.map((n) => n.toString(16).padStart(2, '0')).join('')}`;
+}
+
+describe('the rows and views that are dimmed or picked', () => {
+  const rule = (source: string, selector: string): string => {
+    const at = source.indexOf(`${selector} {`);
+    expect(at, selector).toBeGreaterThanOrEqual(0);
+    return source.slice(at, source.indexOf('}', at));
+  };
+  it('a view that shows the last good version is desaturated, never made translucent (opacity lowers the contrast of every word on it)', () => {
+    const r = rule(styleCss, '.section.is-stale > :not(.stale-strip)');
+    expect(r).toMatch(/saturate\(/);
+    expect(r).not.toMatch(/opacity\s*:/);
+  });
+  it('the status bar words for a stale analysis are the warning words, not the warning icon colour', () => {
+    expect(rule(styleCss, '.statusbar .stale')).toContain('color: var(--warning-text)');
+  });
+  it('on the row that is picked the detail and the kind are the muted words, not the faint ones', () => {
+    for (const k of ['.qp-detail', '.qp-type']) expect(viewsCss).toMatch(new RegExp(`\\.qp-row\\.on ${k.replace('.', '\\.')}[^{]*\\{[^}]*color: var\\(--text-muted\\)`));
   });
 });
 
