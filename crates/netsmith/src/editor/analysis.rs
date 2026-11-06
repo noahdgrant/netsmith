@@ -485,6 +485,12 @@ impl Workspace {
                 }
             })
             .collect();
+        let by_refdes: HashMap<&str, &netsmith_core::Part> = built
+            .design
+            .parts
+            .iter()
+            .map(|part| (part.refdes.as_str(), part))
+            .collect();
         let nets = built
             .design
             .nets
@@ -495,9 +501,19 @@ impl Workspace {
                 pins: n
                     .pins
                     .iter()
-                    .map(|p| PinInfo {
-                        refdes: p.refdes.clone(),
-                        pin: p.pin.clone(),
+                    .map(|p| {
+                        // The part's pin table knows the datasheet's name for the pad.
+                        let known = by_refdes.get(p.refdes.as_str()).and_then(|part| {
+                            part.pins.iter().find(|pin| pin.pads.contains(&p.pin))
+                        });
+                        PinInfo {
+                            refdes: p.refdes.clone(),
+                            pin: p.pin.clone(),
+                            name: known
+                                .map(|k| k.datasheet.clone())
+                                .filter(|name| !name.is_empty()),
+                            function: known.and_then(|k| k.function.clone()),
+                        }
                     })
                     .collect(),
             })

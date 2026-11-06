@@ -357,7 +357,18 @@ pub struct PartInfo {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct PinInfo {
     pub refdes: String,
+    /// The pad number as the symbol names it (`"1"`, `"A5"`).
     pub pin: String,
+    /// The name the part's datasheet prints for the pin (`VIN`, `EN`, `SW`), where the part
+    /// has a pin table that lists the pad. Absent for a part with no pin table.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub name: Option<String>,
+    /// The function the board chose for the pin (`UART1_TX`), when the pin can be several
+    /// things and the board picked one. Absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub function: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]

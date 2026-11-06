@@ -302,3 +302,153 @@ fn a_signature_names_six_declarations_at_most_and_an_empty_body_is_braces() {
     assert_eq!(hover("Empty").signature.as_deref(), Some("module Empty {}"));
     assert_eq!(hover("Empty").doc, None);
 }
+
+const MCU_MODULE: &str = r#"import std::sources::Rail
+
+/// A part with a pin that has several functions. Illustrative; not a real part.
+part Mcu {
+    .vdd: Rail
+    pins {
+        .vdd.pos power         "VDD" "1"
+        .vdd.neg power         "VSS" "2"
+        .pa2     bidirectional "PA2" "3" fn GPIO UART1_TX
+        .pa3     bidirectional "PA3" "4" fn GPIO UART1_RX
+    }
+}
+"#;
+
+const MCU_BOARD: &str = r#"import src::mcu::Mcu
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Uart {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: Mcu
+    .load: Resistor
+    .supply ~ .u.vdd
+    .u.pa2 ~ .load.a
+    .u.pa2.function &= "UART1_TX"
+    .u.pa3 ~ .load.b
+    .u.pa3.function &= "GPIO"
+}
+"#;
+
+/// A project of the files named, the first being the top-level one.
+fn project_of(name: &str, files: &[(&str, &str)]) -> (TempDir, Workspace) {
+    let root = TempDir::new(&format!("editor-fields-{name}"));
+    fs::create_dir_all(root.join("src")).unwrap();
+    let top: Vec<String> = files
+        .iter()
+        .take(1)
+        .map(|(f, _)| format!("\"{f}\""))
+        .collect();
+    fs::write(
+        root.join("netsmith.toml"),
+        format!(
+            "[project]\nname = \"demo\"\ntop_level = [{}]\n",
+            top.join(", ")
+        ),
+    )
+    .unwrap();
+    for (file, text) in files {
+        fs::write(root.join(file), text).unwrap();
+    }
+    let editor = Workspace::open(Target::resolve_from(&root, None).unwrap())
+        .unwrap_or_else(|e| panic!("{e}"));
+    (root, editor)
+}
+
+#[test]
+fn a_net_names_the_datasheet_pin_of_each_pad_and_the_function_the_board_chose() {
+    let (_root, editor) = project("pins");
+    let board = editor.board("TwoBoards/power").unwrap();
+    let pins = |net: &str| {
+        board
+            .nets
+            .iter()
+            .find(|n| n.name == net)
+            .unwrap()
+            .pins
+            .iter()
+            .map(|p| {
+                format!(
+                    "{}.{}={}",
+                    p.refdes,
+                    p.pin,
+                    p.name.as_deref().unwrap_or("-")
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    // Pad 2 of the regulator is its output, pad 3 its input, pad 1 its ground.
+    assert!(
+        pins("3V3").contains(&"U1.2=OUT".to_string()),
+        "{:?}",
+        pins("3V3")
+    );
+    assert!(pins("VIN").contains(&"U1.3=IN".to_string()));
+    assert!(pins("GND").contains(&"U1.1=GND".to_string()));
+    // A pin with no function chosen has no `function`.
+    assert!(
+        board
+            .nets
+            .iter()
+            .flat_map(|n| &n.pins)
+            .all(|p| p.function.is_none())
+    );
+
+    // A part with several functions per pin: the board's choice is named beside the pad.
+    let (_root, editor) = project_of(
+        "functions",
+        &[("src/main.nsm", MCU_BOARD), ("src/mcu.nsm", MCU_MODULE)],
+    );
+    let analysis = editor.analysis();
+    assert_eq!(analysis.errors, 0, "{:?}", analysis.problems);
+    let board = editor.board("Uart").unwrap();
+    let pin = |refdes: &str, pad: &str| {
+        board
+            .nets
+            .iter()
+            .flat_map(|n| &n.pins)
+            .find(|p| p.refdes == refdes && p.pin == pad)
+            .unwrap_or_else(|| panic!("{refdes}.{pad}"))
+            .clone()
+    };
+    let u = board
+        .parts
+        .iter()
+        .find(|p| p.kind == "Mcu")
+        .unwrap()
+        .refdes
+        .clone();
+    let tx = pin(&u, "3");
+    assert_eq!(
+        (tx.name.as_deref(), tx.function.as_deref()),
+        (Some("PA2"), Some("UART1_TX"))
+    );
+    let gpio = pin(&u, "4");
+    assert_eq!(
+        (gpio.name.as_deref(), gpio.function.as_deref()),
+        (Some("PA3"), Some("GPIO"))
+    );
+    let vdd = pin(&u, "1");
+    assert_eq!((vdd.name.as_deref(), vdd.function), (Some("VDD"), None));
+}
+
+#[test]
+fn a_pin_with_no_name_or_function_leaves_them_out_of_the_json() {
+    let bare = netsmith_editor::api::PinInfo {
+        refdes: "R1".into(),
+        pin: "1".into(),
+        name: None,
+        function: None,
+    };
+    assert_eq!(
+        serde_json::to_string(&bare).unwrap(),
+        r#"{"refdes":"R1","pin":"1"}"#
+    );
+}

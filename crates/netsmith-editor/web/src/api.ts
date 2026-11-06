@@ -183,7 +183,21 @@ decl: Location | null,
  */
 scopes: Array<Location>, };
 
-export type PinInfo = { refdes: string, pin: string, };
+export type PinInfo = { refdes: string, 
+/**
+ * The pad number as the symbol names it (`"1"`, `"A5"`).
+ */
+pin: string, 
+/**
+ * The name the part's datasheet prints for the pin (`VIN`, `EN`, `SW`), where the part
+ * has a pin table that lists the pad. Absent for a part with no pin table.
+ */
+name?: string, 
+/**
+ * The function the board chose for the pin (`UART1_TX`), when the pin can be several
+ * things and the board picked one. Absent otherwise.
+ */
+function?: string, };
 
 export type NetInfo = { name: string, named: boolean, pins: Array<PinInfo>, };
 
