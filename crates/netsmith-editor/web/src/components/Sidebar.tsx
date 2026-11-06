@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { ApiFailure, api } from '../client';
+import { type Hover, hoverEnter, hoverLeave, partsOfDefinition } from '../hover';
 import { allowed, folderFor, removalPrompt, starter, stemOf, type Kind, type Template } from '../fileops';
 import { load, save } from '../storage';
 import { computed } from '@preact/signals';
@@ -8,6 +9,7 @@ import { Icon } from './Icons';
 import {
   activeFile,
   dirty,
+  detail,
   dropOpen,
   goTo,
   openFile,
@@ -194,6 +196,14 @@ function TreeRow({
     }
   }
 
+  // A definition lights the parts it declares (in the schematic and on the board) while the pointer or focus is on it.
+  const defHover = (): Hover | null => {
+    if (node.type !== 'def') return null;
+    const defs = [...node.file.defs].sort((a, b) => a.line - b.line);
+    const next = defs.find((d) => d.line > node.def.line)?.line ?? null;
+    const refs = partsOfDefinition(detail.peek(), node.file.path, node.def.line, next);
+    return refs.length ? { kind: 'module', key: `def:${node.file.path}:${node.name}`, refs } : null;
+  };
   const isOpenFile = node.type === 'file' && !!state;
   const cls = ['ft-row', `ft-${node.type}`, active ? 'active' : '', isOpenFile && !active ? 'opened' : ''].filter(Boolean).join(' ');
   return (
@@ -208,7 +218,23 @@ function TreeRow({
       class={cls}
       style={`--pad:${pad}px`}
       title={title}
-      onFocus={() => onFocus(row.id)}
+      onFocus={() => {
+        onFocus(row.id);
+        const h = defHover();
+        if (h) hoverEnter(h);
+      }}
+      onBlur={() => {
+        const h = defHover();
+        if (h) hoverLeave(h);
+      }}
+      onPointerEnter={(e) => {
+        const h = e.pointerType !== 'touch' && defHover();
+        if (h) hoverEnter(h);
+      }}
+      onPointerLeave={(e) => {
+        const h = e.pointerType !== 'touch' && defHover();
+        if (h) hoverLeave(h);
+      }}
       onContextMenu={(e) => onMenu(e, row.id)}
       onClick={() => {
         onFocus(row.id);

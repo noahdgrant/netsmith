@@ -78,6 +78,9 @@
 
   /* what is picked in a data view (a row, a part, a card): a calm blue, not the brand's orange */
   --sel: #7aa4ec;
+  /* the soft light of what the pointer is over, shared by every view (hover.ts): a neutral, never the colour of a pick */
+  --hover-lit: #e4ebf7;
+  --hover-lit-bg: color-mix(in srgb, var(--hover-lit) 9%, transparent);
   --sel-text: #a9c5f4;
 
   /* The brand orange: `accent` for lines and marks, `accent-fill` behind a primary button,
@@ -244,6 +247,9 @@
   --text-faint: #58606b;
 
   --sel: #2c64c8;
+  /* the soft light of what the pointer is over, shared by every view (hover.ts): a neutral, never the colour of a pick */
+  --hover-lit: #1b2538;
+  --hover-lit-bg: color-mix(in srgb, var(--hover-lit) 9%, transparent);
   --sel-text: #1c4ea6;
 
   --brand: #cf6a12;
@@ -400,6 +406,9 @@
   --text-faint: #c9cfd7;
 
   --sel: #79c0ff;
+  /* the soft light of what the pointer is over, shared by every view (hover.ts): a neutral, never the colour of a pick */
+  --hover-lit: #ffffff;
+  --hover-lit-bg: color-mix(in srgb, var(--hover-lit) 9%, transparent);
   --sel-text: #cde6ff;
 
   --brand: #e8873a;
@@ -555,6 +564,9 @@
   --text-faint: #3d3d3d;
 
   --sel: #084c9e;
+  /* the soft light of what the pointer is over, shared by every view (hover.ts): a neutral, never the colour of a pick */
+  --hover-lit: #000000;
+  --hover-lit-bg: color-mix(in srgb, var(--hover-lit) 9%, transparent);
   --sel-text: #063a78;
 
   --brand: #9a4400;

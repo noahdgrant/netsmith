@@ -5,7 +5,8 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import type { NetInfo, PartInfo } from '../api';
 import { ALL } from '../sheets';
-import { goTo, detail } from '../store';
+import { hoverOfRefs } from '../hover';
+import { detail, goTo } from '../store';
 import type { Drawing } from '../schematic/load';
 import { busCount, busMembers, busName, busTargets } from '../schematic/bus';
 import type { Bus } from '../schematic/drawing';
@@ -138,7 +139,7 @@ function PartPanel({ part, sticky, current, rows, openSheet, goNet, drawing }: I
           {pins.map((p) => (
             <div class="pinrow" role="listitem" key={p.pin}>
               <span class="pin-no">{p.pin}</span>
-              <PinChip class="net-link" title="Select this net" onClick={() => goNet(p.net)}>
+              <PinChip class="net-link" title="Select this net" hv={{ kind: 'net', key: p.net }} onClick={() => goNet(p.net)}>
                 {p.net}
               </PinChip>
             </div>
@@ -199,6 +200,7 @@ function NetPanel({ net, sticky, drawing, rows, order, current, openSheet, goPin
                       key={`${p.refdes}.${p.pin}`}
                       current={navPin?.ref === p.refdes && navPin.pin === p.pin}
                       title={`Go to ${p.refdes} pin ${p.pin}`}
+                      hv={() => hoverOfRefs(detail.peek(), [p.refdes])}
                       onClick={() => goPin(p.refdes, p.pin)}
                     >
                       {p.refdes}.{p.pin}
@@ -261,7 +263,7 @@ function BusPanel({ bus, sticky, drawing, rows, order, current, openSheet, goNet
             <div class="bus-member" role="listitem" key={m.name + m.net} data-net={m.net}>
               <div class="bus-member-head">
                 <span class="mono bus-member-name">{m.name}</span>
-                <PinChip class="net-link" title="Select this net" onClick={() => goNet(m.net)}>
+                <PinChip class="net-link" title="Select this net" hv={{ kind: 'net', key: m.net }} onClick={() => goNet(m.net)}>
                   {m.net}
                 </PinChip>
               </div>
@@ -278,6 +280,7 @@ function BusPanel({ bus, sticky, drawing, rows, order, current, openSheet, goNet
                         key={`${p.refdes}.${p.pin}`}
                         current={navPin?.ref === p.refdes && navPin.pin === p.pin}
                         title={`Go to ${p.refdes} pin ${p.pin}`}
+                        hv={() => hoverOfRefs(detail.peek(), [p.refdes])}
                         onClick={() => goPin(p.refdes, p.pin)}
                       >
                         {p.refdes}.{p.pin}
@@ -374,12 +377,12 @@ function SheetPanel({ rows, current, drawing, goNet, goBus, openSheet }: Inspect
         <InspectorSection title="Leaves this module" count={leaving.length + leavingBuses.length}>
           <div class="chips">
             {leavingBuses.map((b) => (
-              <PinChip key={b.path} tone="bus-chip" title={`Select the bus ${b.path}`} onClick={() => goBus(b)}>
+              <PinChip key={b.path} tone="bus-chip" title={`Select the bus ${b.path}`} hv={{ kind: 'bus', key: b.path, nets: b.nets }} onClick={() => goBus(b)}>
                 {busName(b.path)} · {busCount(b)}
               </PinChip>
             ))}
             {leaving.map((n) => (
-              <PinChip key={n} title="Select this net" onClick={() => goNet(n)}>
+              <PinChip key={n} title="Select this net" hv={{ kind: 'net', key: n }} onClick={() => goNet(n)}>
                 {n}
               </PinChip>
             ))}

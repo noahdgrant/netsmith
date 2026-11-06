@@ -6,6 +6,7 @@ import type { PcbBox, PcbKeepout, PcbPart, PcbScene } from '../api';
 import { pickKeepout, pickedKeepout, select, selection } from '../pcbstore';
 import { Defs, InspectorAction, InspectorHead, PinChip } from '../components/Inspector';
 import { Icon } from '../components/Icons';
+import { hoverAttrs } from '../hover';
 import { pickPart } from '../store';
 import {
   changeKeepout,
@@ -73,6 +74,8 @@ function PartList(props: { scene: PcbScene; onFocus: (box: PcbBox) => void }) {
           <div
             key={p.path}
             class={`row part-row ${selection.value.includes(p.path) ? 'sel' : ''}`}
+            data-hv-ref={p.refdes}
+            {...hoverAttrs({ kind: 'part', key: p.path })}
             onClick={(e) => {
               const on = selection.value.includes(p.path);
               select(e.shiftKey || e.ctrlKey ? (on ? selection.value.filter((x) => x !== p.path) : [...selection.value, p.path]) : [p.path]);
@@ -127,8 +130,15 @@ function NetList(props: {
           <div
             key={n.name}
             class={`net-row ${props.picked === n.name ? 'sel' : ''}`}
-            onPointerEnter={() => props.onHover(n.name)}
-            onPointerLeave={() => props.onHover(null)}
+            {...hoverAttrs({ kind: 'net', key: n.name })}
+            onPointerEnter={(e) => {
+              props.onHover(n.name);
+              hoverAttrs({ kind: 'net', key: n.name }).onPointerEnter(e);
+            }}
+            onPointerLeave={(e) => {
+              props.onHover(null);
+              hoverAttrs({ kind: 'net', key: n.name }).onPointerLeave(e);
+            }}
             onClick={() => props.onPick(props.picked === n.name ? null : n.name)}
           >
             <span class={`swatch ${n.plane ? 'plane' : ''}`} aria-hidden="true" />
@@ -198,7 +208,7 @@ function PartInspector(props: { scene: PcbScene; parts: PcbPart[]; onPickNet: (n
                   <td class="pad-no">{pad.number}</td>
                   <td>
                     {pad.net ? (
-                      <PinChip title="Light this net on the board" onClick={() => props.onPickNet(pad.net)}>
+                      <PinChip title="Light this net on the board" hv={{ kind: 'net', key: pad.net }} onClick={() => props.onPickNet(pad.net)}>
                         {pad.net}
                       </PinChip>
                     ) : (

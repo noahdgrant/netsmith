@@ -4,6 +4,7 @@
 
 import type { ComponentChildren } from 'preact';
 
+import { type Hover, hoverAttrs } from '../hover';
 import { Icon, type IconName } from './Icons';
 import { Disclosure } from './ui';
 
@@ -108,9 +109,9 @@ export function InspectorSection({ title, count, open, right, children }: { titl
 }
 
 /** A pin or a net as a chip that can be hovered and clicked. */
-export function PinChip({ children, title, current, onClick, mono = true, tone, class: cls }: { children: ComponentChildren; title?: string; current?: boolean; onClick?: () => void; mono?: boolean; tone?: string; class?: string }) {
+export function PinChip({ children, title, current, onClick, mono = true, tone, class: cls, hv }: { children: ComponentChildren; title?: string; current?: boolean; onClick?: () => void; mono?: boolean; tone?: string; class?: string; hv?: Hover | (() => Hover | null) }) {
   return (
-    <button type="button" class={`chip pin-chip ${current ? 'cur' : ''} ${mono ? '' : 'plain'} ${tone ?? ''} ${cls ?? ''}`} title={title} onClick={onClick}>
+    <button type="button" class={`chip pin-chip ${current ? 'cur' : ''} ${mono ? '' : 'plain'} ${tone ?? ''} ${cls ?? ''}`} title={title} onClick={onClick} {...(hv ? hoverAttrs(hv) : {})}>
       {children}
     </button>
   );

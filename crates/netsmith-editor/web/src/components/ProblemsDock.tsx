@@ -16,7 +16,10 @@ import {
   setDockHeight,
   setDockOpen,
 } from '../feedback/state';
+import { type Hover, hoverAttrs } from '../hover';
 import { SECTIONS } from '../layout';
+import { partByPath } from '../selection';
+import { detail } from '../store';
 import { plural } from '../util';
 import { CheckIcon, Icon, SeverityIcon } from './Icons';
 
@@ -103,6 +106,9 @@ function ProblemRow({ row }: { row: Row }) {
       aria-current={on ? 'true' : undefined}
       data-id={row.id}
       data-testid="problem"
+      {...hoverAttrs((): Hover | null =>
+        row.net ? { kind: 'net', key: row.net } : row.path ? { kind: partByPath(detail.peek(), row.path) ? 'part' : 'module', key: row.path } : null,
+      )}
       title={`${row.full}${row.at ? `\n${row.at.file}:${row.at.line}:${row.at.column}` : ''}`}
       onClick={() => revealRow(row)}
       onKeyDown={(e) => {

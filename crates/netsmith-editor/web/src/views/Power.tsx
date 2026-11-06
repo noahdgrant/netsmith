@@ -11,6 +11,7 @@ import { placeFitted } from './System';
 import { MiniMap } from '../components/MiniMap';
 import { PanZoom } from '../components/PanZoom';
 import { analysis, board, detail, goTo, systemName, visible } from '../store';
+import { hoverAttrs } from '../hover';
 import { type Card, cardFor, partByPath, revealRequest, selection, selectionOfCard, setSelection } from '../selection';
 import { DOTS, amps, loadsText, voltRangeText, voltsText } from '../power/format';
 import { type Item, type Placed, type TreeLayout, layoutTree } from '../flow/layout';
@@ -147,6 +148,7 @@ function RailCard({
       data-node={r.id}
       data-kind="rail"
       style={{ left: p.x, top: p.y, width: p.w, height: p.h }}
+      {...hoverAttrs({ kind: 'net', key: r.net })}
       onClick={onSelect}
     >
       <div class="pt-head">
@@ -253,6 +255,7 @@ function StageCard({ s, p, level, selected, tint, dim, onSelect }: { s: StageMod
       data-node={s.id}
       data-kind="stage"
       style={{ left: p.x, top: p.y, width: p.w, height: p.h }}
+      {...hoverAttrs({ kind: partByPath(detail.peek(), s.name) ? 'part' : 'module', key: s.name })}
       onClick={onSelect}
     >
       <div class="pt-stage-head">

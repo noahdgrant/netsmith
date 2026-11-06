@@ -19,6 +19,7 @@ import { JobProgress } from '../components/JobProgress';
 import { Pill, Popover, Segmented, Spinner, type Tone } from '../components/ui';
 import { NoBoard, ViewLoading } from '../components/ViewStatus';
 import { analysis, board, catalogReport, checkParts, detail, job, pickPart, selectedRefdes } from '../store';
+import { type Hover, hoverAttrs, hoverOfRefs } from '../hover';
 import { revealRequest } from '../selection';
 import { load, save } from '../storage';
 import { ageLabel, count, dollars, plural } from '../util';
@@ -178,7 +179,13 @@ function Row({ l, cols, lit, staleAfter }: { l: BomLine; cols: Set<ColumnId>; li
       class={`dr ${on ? 'sel' : ''}`}
       aria-selected={on}
       data-sourcing={st}
+      data-hv-ref={l.designators.join(' ')}
+      tabIndex={0}
+      {...hoverAttrs((): Hover | null => hoverOfRefs(detail.peek(), l.designators))}
       onClick={() => pickPart(l.designators.find((d) => lit.has(d)) ?? l.designators[0], true)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && e.target === e.currentTarget) pickPart(l.designators.find((d) => lit.has(d)) ?? l.designators[0], true);
+      }}
     >
       <td class="des">
         <Designators line={l} lit={lit} staleAfter={staleAfter} />

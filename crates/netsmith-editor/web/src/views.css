@@ -556,3 +556,19 @@ button.chip.findings-pill, .toolbar button.chip { font-family: var(--sans); lett
 .pt-node.down { border-color: color-mix(in srgb, var(--sel) 30%, var(--border)); }
 .edge.join path { stroke: var(--text-faint); }
 .edge.converts path { stroke: var(--edge-arrow); }
+
+/* ==== the shared hover (hover.ts, hoverDom.ts): a soft light on what the pointer is over, wherever it is shown ==== */
+/* a row, a chip, an entry of a list */
+:is([data-hv], [data-hv-ref]).hover-lit { background-color: var(--hover-lit-bg); outline: 1px solid color-mix(in srgb, var(--hover-lit) 34%, transparent); outline-offset: -1px; }
+tr.hover-lit > td { background-color: var(--hover-lit-bg); }
+tr.hover-lit { outline-offset: -1px; }
+.chip.hover-lit { background-color: var(--hover-lit-bg); }
+/* a card of the power tree or the system view */
+.pt-node.hover-lit:not(.selected) { border-color: color-mix(in srgb, var(--hover-lit) 55%, var(--border)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--hover-lit) 14%, transparent), var(--elev-1); outline: none; background-color: var(--surface); }
+.pt-node.hover-lit.selected { outline: none; }
+/* the board and the schematic: a glow, in the drawing's own units (a millimetre) */
+.pcb-host svg g[data-ref].hover-lit { filter: drop-shadow(0 0 .3px var(--hover-lit)) drop-shadow(0 0 .6px color-mix(in srgb, var(--hover-lit) 45%, transparent)); }
+.pcb-host svg [data-net].hover-lit { filter: drop-shadow(0 0 .25px var(--hover-lit)) drop-shadow(0 0 .5px color-mix(in srgb, var(--hover-lit) 40%, transparent)); }
+.pcb-host svg .l-ratsnest line.hover-lit { stroke: var(--hover-lit); stroke-opacity: 1; }
+.pcb-host svg .l-front-copper line.hover-lit, .pcb-host svg .l-back-copper line.hover-lit { filter: brightness(1.25) drop-shadow(0 0 .5px var(--hover-lit)); }
+.schematic-host svg [data-ref].hover-lit:not(.pin), .schematic-host svg [data-net].hover-lit:not(.pin) { filter: drop-shadow(0 0 .45px var(--hover-lit)) drop-shadow(0 0 1.1px color-mix(in srgb, var(--hover-lit) 55%, transparent)); }

@@ -34,6 +34,7 @@ import {
 import { ALL, resolvePick, stepPick } from '../sheets';
 import { load, save } from '../storage';
 import { toggleCheatSheet } from '../quickpick';
+import { hoverEnter, hoverLeave, hoverOfRefs } from '../hover';
 import { modulesOf, revealRequest, sameSelection, selection } from '../selection';
 import { analysis, board, detail, problems, revealSection } from '../store';
 import { Inspector, type PinRef } from './SchematicInspector';
@@ -635,8 +636,20 @@ export function Schematic() {
               ref={holder}
               class="hit-target"
               dangerouslySetInnerHTML={{ __html: drawing.html }}
-              onPointerOver={(e) => setHover(pickAt(e.target))}
-              onPointerLeave={() => setHover(null)}
+              onPointerOver={(e) => {
+                const hit = pickAt(e.target);
+                setHover(hit);
+                if (e.pointerType === 'touch') return;
+                // The same thing is lit in every other view (hover.ts): a part, a net, a bus's members.
+                const bus = hit?.bus ? drawing.index.buses.find((b) => b.path === hit.bus) : undefined;
+                const shared = hit?.net ? { kind: 'net' as const, key: hit.net } : bus ? { kind: 'bus' as const, key: bus.path, nets: bus.nets } : hit?.part ? hoverOfRefs(detail.peek(), [hit.part]) : null;
+                if (shared) hoverEnter(shared);
+                else hoverLeave();
+              }}
+              onPointerLeave={() => {
+                setHover(null);
+                hoverLeave();
+              }}
               onClick={(e) => {
                 setMenu(null);
                 const hit = pickAt(e.target);

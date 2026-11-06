@@ -14,6 +14,7 @@ import { ANCHOR, CARD_W, STEP, cardHeight, labelWidth } from '../system/metrics'
 import { type ModuleModel, type SystemModel, type Wire, modelOf, shorten } from '../system/model';
 import { analysis, board, goTo, systemName } from '../store';
 import { fitView } from '../sheets';
+import { hoverAttrs } from '../hover';
 import { type Card, cardFor, revealRequest, selection, selectionOfCard, setSelection } from '../selection';
 
 /** The longest label an edge carries: the rest is in its tooltip. */
@@ -161,6 +162,7 @@ function ModuleCard({
       data-node={m.id}
       data-kind="module"
       style={{ left: p.x, top: p.y, width: p.w, height: p.h }}
+      {...hoverAttrs(m.kind === 'module' || m.kind === 'part' ? { kind: m.kind, key: m.name } : null)}
       onClick={onSelect}
     >
       <div class="sy-head">

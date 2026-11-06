@@ -54,7 +54,7 @@
 
 /* a net that is picked: the rest steps back, the net glows a little in the selection's blue */
 .pcb-host svg.has-hl [data-net]:not(.hl) { opacity: .2; }
-.pcb-host svg [data-net].hl { filter: drop-shadow(0 0 .3px var(--sel)) drop-shadow(0 0 .8px color-mix(in srgb, var(--sel) 55%, transparent)); }
+.pcb-host svg [data-net].hl { filter: drop-shadow(0 0 .22px var(--sel)); }
 .pcb-host svg .l-ratsnest line.hl { stroke: var(--sel); stroke-opacity: 1; stroke-width: calc(1.75 * var(--px, .04)); }
 
 /* the grid: a few faint dots */
