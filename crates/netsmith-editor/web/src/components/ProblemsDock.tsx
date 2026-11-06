@@ -2,7 +2,6 @@
 // as a table. Opened with Ctrl+J (or Cmd+J) and by the counts in the status bar; F8 and Shift+F8
 // step through it from anywhere. It remembers its height and whether it is open.
 
-import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 
 import type { Severity } from '../api';
@@ -19,47 +18,12 @@ import {
 } from '../feedback/state';
 import { SECTIONS } from '../layout';
 import { plural } from '../util';
+import { CheckIcon, Icon, SeverityIcon } from './Icons';
 
 /** The most rows drawn at once; a project with more says so, and the filter narrows it. */
 const MAX_ROWS = 1000;
 
-const Svg = ({ children, size = 14 }: { children: ComponentChildren; size?: number }) => (
-  <svg class="icon" width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    {children}
-  </svg>
-);
-
-export function SeverityIcon({ severity, size }: { severity: Severity; size?: number }) {
-  if (severity === 'error') {
-    return (
-      <Svg size={size}>
-        <circle cx="8" cy="8" r="6.2" />
-        <path d="M5.6 5.6l4.8 4.8M10.4 5.6l-4.8 4.8" />
-      </Svg>
-    );
-  }
-  if (severity === 'warning') {
-    return (
-      <Svg size={size}>
-        <path d="M8 2.2l6.2 11H1.8z" />
-        <path d="M8 6.6v3.2M8 11.6v.1" />
-      </Svg>
-    );
-  }
-  return (
-    <Svg size={size}>
-      <circle cx="8" cy="8" r="6.2" />
-      <path d="M8 7.2v3.6M8 5v.1" />
-    </Svg>
-  );
-}
-
-export const CheckIcon = ({ size }: { size?: number }) => (
-  <Svg size={size}>
-    <circle cx="8" cy="8" r="6.2" />
-    <path d="M5.2 8.2l2 2 3.6-4" />
-  </Svg>
-);
+export { CheckIcon, SeverityIcon };
 
 const SEVERITY_NAME: Record<Severity, string> = { error: 'Errors', warning: 'Warnings', note: 'Notes' };
 
@@ -189,7 +153,7 @@ function Empty({ hidden }: { hidden: { notes: number; filtered: 'text' | 'view' 
   }
   return (
     <div class="dock-empty ok" data-testid="dock-empty">
-      <CheckIcon size={22} />
+      <CheckIcon size={24} />
       <div class="big">{hidden.filtered === 'view' ? 'No problems in this view' : 'No problems'}</div>
       <div class="sub">
         {hidden.filtered === 'view' && (
@@ -247,7 +211,7 @@ export function ProblemsDock() {
     <section class="dock problems open" ref={host} style={{ height: `${d.height}px` }} aria-label="Problems" data-testid="dock">
       <Resizer host={host} />
       <div class="dock-head problems-head">
-        <h2 class="dock-title">Problems</h2>
+        <h2 class="dock-title"><Icon name="panel" size={14} />Problems</h2>
         <SeverityToggle severity="error" n={c.error} on={f.errors} set={(on) => set({ errors: on })} />
         <SeverityToggle severity="warning" n={c.warning} on={f.warnings} set={(on) => set({ warnings: on })} />
         <SeverityToggle severity="note" n={c.note} on={f.notes} set={(on) => set({ notes: on })} />
@@ -295,9 +259,7 @@ export function ProblemsDock() {
           </span>
         )}
         <button class="icon-btn" aria-label="Close the problems panel (Ctrl+J)" title="Close (Ctrl+J)" onClick={() => setDockOpen(false)}>
-          <Svg>
-            <path d="M4 4l8 8M12 4l-8 8" />
-          </Svg>
+          <Icon name="close" />
         </button>
       </div>
       {total === 0 ? (

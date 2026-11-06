@@ -13,47 +13,69 @@
  * `net-*` board).
  */
 
+/* Inter, a variable font, self-hosted (src/assets/fonts, with its OFL.txt): Latin and Greek (the Ω and µ of values).
+ * The page shows the system face until it arrives, so nothing waits on it. */
+@font-face { font-family: 'Inter Variable'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('./assets/fonts/inter-latin-wght-normal.woff2') format('woff2-variations'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Inter Variable'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('./assets/fonts/inter-greek-wght-normal.woff2') format('woff2-variations'); unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF; }
+
 /* ---- shared scales: the same in every theme ---- */
 :root {
   --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Consolas, 'DejaVu Sans Mono', monospace;
-  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  /* type: five sizes; 13 px is the body */
-  --fs-xs: 11px; --fs-sm: 12px; --fs-md: 13px; --fs-lg: 15px; --fs-xl: 18px;
+  /* Inter (a variable font, self-hosted: src/assets/fonts, OFL.txt beside it) first; the system's own face while it loads and for any glyph it lacks */
+  --sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* type: a 13 px body on a 1.15 ratio; titles are 15 and 18; a size below 11 is never used */
+  --fs-xs: 11px; --fs-sm: 12px; --fs-md: 13px; --fs-lg: 15px; --fs-xl: 18px; --fs-2xl: 22px;
   --lh-tight: 1.25; --lh: 1.4; --lh-loose: 1.55;
   --fw-normal: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
+  /* Inter wants a little less space as it grows; a small label wants a little more */
+  --ls-body: -0.006em; --ls-title: -0.014em; --ls-label: 0.01em;
   --tracking-caps: .06em;
+  /* Inter's alternates: the l with a tail (so l1 and I1 differ, which matters in designators), open digits */
+  --font-features: 'cv05', 'ss01', 'calt';
   /* space: a 4 px step, 8 px is the unit */
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
-  /* shapes */
-  --r-sm: 4px; --r-md: 6px; --r-lg: 8px; --r-xl: 12px; --r-pill: 999px;
-  /* heights of rows and controls */
-  --h-xs: 20px; --h-sm: 22px; --h-md: 26px; --h-lg: 30px; --row: 26px;
-  --bar: 40px; --tab: 34px; --status: 24px;
+  /* shapes: 4 for what is inside a control (a key cap), 6 for a control and a row, 8 for a card and an input group, 12 for a panel, a menu and a dialog */
+  --r-xs: 4px; --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-xl: 16px; --r-pill: 999px;
+  /* heights of rows and controls: 28 is a control, 32 the large one */
+  --h-xs: 20px; --h-sm: 24px; --h-md: 28px; --h-lg: 32px; --row: 28px;
+  --ctl: 28px; --ctl-lg: 32px;
+  --bar: 52px; --tab: 40px; --status: 26px;
+  /* the window: a frame of --bg with the work in a sheet of its own, set in by --gap */
+  --gap: 8px;
   /* icons */
   --icon-sm: 12px; --icon-md: 14px; --icon-lg: 16px;
   /* motion: short, and none when the person asks for none */
   --dur-fast: 120ms; --dur: 160ms; --dur-slow: 180ms;
   --ease: cubic-bezier(.2, 0, 0, 1);
-  /* the layers of the page, from the page up */
   /* the swatches of the theme menu show other themes, so they are the same in every theme */
   --sw-light: #f3f2ee; --sw-dark: #1c1d20; --sw-hc-light: #ffffff; --sw-hc-dark: #000000;
+  /* the layers of the page, from the page up */
   --z-sticky: 3; --z-dock: 4; --z-pane: 10; --z-status: 12; --z-popover: 20; --z-toast: 30; --z-menu: 60; --z-palette: 80; --z-dialog: 200;
 }
 
 /* ---- dark (the default) ---- */
 :root, :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #151618;
-  --surface: #1c1d20;
-  --surface-raised: #25262a;
-  --canvas: #1a1b1e;
-  --border: #2e3035;
-  --border-subtle: #25272b;
-  --border-strong: #4a4d55;
+  /* A tinted, cool neutral, deepest at the frame and lighter at each layer: the frame (--bg),
+   * the work (--canvas), a panel on it (--surface, "surface 1"), a raised card or a menu
+   * (--surface-raised, "surface 2"), a hovered row or a field (--surface-3). */
+  --bg: #090b0f;
+  --canvas: #0e1117;
+  --surface: #131720;
+  --surface-raised: #1a1f2a;
+  --surface-3: #222836;
+  /* lines are hairlines: ink at a low alpha, so they sit on any layer */
+  --border: color-mix(in srgb, #c3d0ea 13%, transparent);
+  --border-subtle: color-mix(in srgb, #c3d0ea 7%, transparent);
+  --border-strong: color-mix(in srgb, #c3d0ea 26%, transparent);
 
-  --text: #d9dce1;
-  --text-muted: #a5acb6;
-  --text-faint: #8b929d;
+  --text: #dfe3ea;
+  --text-muted: #a8b0bf;
+  --text-faint: #8a93a4;
+
+  /* what is picked in a data view (a row, a part, a card): a calm blue, not the brand's orange */
+  --sel: #7aa4ec;
+  --sel-text: #a9c5f4;
 
   /* The brand orange: `accent` for lines and marks, `accent-fill` behind a primary button,
    * `accent-text` for words. */
@@ -83,22 +105,26 @@
   --info-line: #2f4560;
   --info-text: #b9d4f2;
 
-  --hover: color-mix(in srgb, #fff 6%, transparent);
-  --hover-strong: color-mix(in srgb, #fff 11%, transparent);
-  --pressed: color-mix(in srgb, #fff 15%, transparent);
+  --hover: color-mix(in srgb, #c3d0ea 6%, transparent);
+  --hover-strong: color-mix(in srgb, #c3d0ea 11%, transparent);
+  --pressed: color-mix(in srgb, #c3d0ea 15%, transparent);
   --focus: #f0994f;
   --focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent);
 
-  --overlay: rgba(6, 7, 9, .58);
-  --pop: #212328;
-  --pop-border: #3b3e45;
-  --shadow-card: 0 4px 14px rgba(0, 0, 0, .3);
-  --shadow-float: 0 8px 28px rgba(0, 0, 0, .55);
-  --shadow-pop: 0 20px 60px rgba(0, 0, 0, .62), 0 2px 10px rgba(0, 0, 0, .4);
-  --kbd-bg: #2d3037;
-  --kbd-border: #454851;
-  --scroll-thumb: #3b3e45;
-  --scroll-thumb-hover: #565a63;
+  --overlay: rgba(4, 6, 10, .6);
+  --pop: #181d28;
+  --pop-border: color-mix(in srgb, #c3d0ea 17%, transparent);
+  /* elevation: three levels. A light edge on the top of the layer, then the shadow it throws.
+   * 1 a card or a toolbar chip, 2 a menu and a toast, 3 the palette and a dialog. */
+  --elev-1: inset 0 1px 0 rgba(195, 208, 234, .045), 0 1px 2px rgba(0, 0, 0, .45);
+  --elev-2: inset 0 1px 0 rgba(195, 208, 234, .06), 0 8px 20px rgba(0, 0, 0, .45), 0 1px 3px rgba(0, 0, 0, .5);
+  --elev-3: inset 0 1px 0 rgba(195, 208, 234, .07), 0 24px 64px rgba(0, 0, 0, .62), 0 6px 16px rgba(0, 0, 0, .45);
+  --edge-hi: rgba(195, 208, 234, .06);
+  --elev-accent: inset 0 1px 0 rgba(255, 255, 255, .28), 0 1px 2px rgba(0, 0, 0, .5), 0 0 0 1px rgba(0, 0, 0, .25);
+  --kbd-bg: #232938;
+  --kbd-border: color-mix(in srgb, #c3d0ea 20%, transparent);
+  --scroll-thumb: color-mix(in srgb, #c3d0ea 18%, transparent);
+  --scroll-thumb-hover: color-mix(in srgb, #c3d0ea 34%, transparent);
 
   /* the colour of each kind of thing: a badge, an icon, a mark in go to anything */
   --kind-part: #c3a6e0;
@@ -132,7 +158,7 @@
   --cm-reveal: color-mix(in srgb, var(--accent) 38%, transparent);
 
   /* the schematic: dark sheet. The names are the drawing's own (crates/netsmith-view/src/svg.rs). */
-  --sch-sheet: #17181a;
+  --sch-sheet: #0d1015;
   --sch-wire: #6fbf73;
   --sch-body: #e8a3a3;
   --sch-fill: #3a3520;
@@ -172,36 +198,41 @@
   --net-5: #ff9f43; --net-6: #7bed9f; --net-7: #f78fb3; --net-8: #74c0fc; --net-9: #d4e157;
 
   /* graphs: the power tree and the system view */
-  --grid-dot: #2a2c31;
-  --edge: #5b6068;
-  --edge-arrow: #7d838d;
+  --grid-dot: #1d2330;
+  --edge: #566176;
+  --edge-arrow: #7b869c;
   --flow-down: #6cb0ff;
   --volt: #8fb8de;
-  --stage-bg: #18222d;
+  --stage-bg: #131f2e;
   --stage-border: #35506f;
   --stage-text: #9cc2ee;
-  --meter-track: #2a2c31;
-  --meter-fill: #5b6068;
+  --meter-track: #232a38;
+  --meter-fill: #566176;
   --signal-edge: #7d7467;
 }
 
 /* ---- light ---- */
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #e6e5e0;
-  --surface: #f3f2ee;
-  --surface-raised: #ffffff;
+  /* warm paper: the frame is the darkest layer, the work is white, a panel is a step toward the frame */
+  --bg: #e9e7e1;
   --canvas: #ffffff;
-  --border: #d6d3cb;
-  --border-subtle: #e6e4de;
-  --border-strong: #b3afa5;
+  --surface: #f7f6f2;
+  --surface-raised: #ffffff;
+  --surface-3: #eceae4;
+  --border: color-mix(in srgb, #3a3224 13%, transparent);
+  --border-subtle: color-mix(in srgb, #3a3224 7%, transparent);
+  --border-strong: color-mix(in srgb, #3a3224 26%, transparent);
 
   --text: #1c1f24;
-  --text-muted: #4a515b;
-  --text-faint: #5a626d;
+  --text-muted: #484f59;
+  --text-faint: #58606b;
+
+  --sel: #2c64c8;
+  --sel-text: #1c4ea6;
 
   --brand: #cf6a12;
-  --accent: #d4701a;
+  --accent: #c8650f;
   --accent-fill: #e8873a;
   --accent-fg: #1b1208;
   --accent-text: #9a4a05;
@@ -226,22 +257,24 @@
   --info-line: #b5cff0;
   --info-text: #0a4a9e;
 
-  --hover: color-mix(in srgb, #000 5.5%, transparent);
-  --hover-strong: color-mix(in srgb, #000 9.5%, transparent);
-  --pressed: color-mix(in srgb, #000 13%, transparent);
+  --hover: color-mix(in srgb, #3a3224 6%, transparent);
+  --hover-strong: color-mix(in srgb, #3a3224 10%, transparent);
+  --pressed: color-mix(in srgb, #3a3224 14%, transparent);
   --focus: #b85c0c;
   --focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
 
-  --overlay: rgba(30, 28, 24, .34);
+  --overlay: rgba(36, 30, 20, .32);
   --pop: #ffffff;
-  --pop-border: #cdc9bf;
-  --shadow-card: 0 1px 2px rgba(40, 36, 28, .08), 0 2px 8px rgba(40, 36, 28, .06);
-  --shadow-float: 0 6px 24px rgba(40, 36, 28, .18), 0 1px 3px rgba(40, 36, 28, .1);
-  --shadow-pop: 0 16px 48px rgba(40, 36, 28, .24), 0 2px 8px rgba(40, 36, 28, .12);
-  --kbd-bg: #f1efe9;
-  --kbd-border: #cdc9bf;
-  --scroll-thumb: #cbc8bf;
-  --scroll-thumb-hover: #aeaaa0;
+  --pop-border: color-mix(in srgb, #3a3224 17%, transparent);
+  --elev-1: 0 1px 2px rgba(48, 38, 20, .08), 0 0 0 .5px rgba(48, 38, 20, .04);
+  --elev-2: 0 8px 22px rgba(48, 38, 20, .13), 0 1px 3px rgba(48, 38, 20, .1);
+  --elev-3: 0 24px 60px rgba(48, 38, 20, .24), 0 6px 14px rgba(48, 38, 20, .12);
+  --edge-hi: rgba(255, 255, 255, .85);
+  --elev-accent: inset 0 1px 0 rgba(255, 255, 255, .35), 0 1px 2px rgba(120, 60, 0, .35), 0 0 0 1px rgba(150, 70, 0, .28);
+  --kbd-bg: #f3f1ec;
+  --kbd-border: color-mix(in srgb, #3a3224 22%, transparent);
+  --scroll-thumb: color-mix(in srgb, #3a3224 20%, transparent);
+  --scroll-thumb-hover: color-mix(in srgb, #3a3224 38%, transparent);
 
   --kind-part: #7a4cb0;
   --kind-net: #1a7f37;
@@ -330,6 +363,7 @@
   --bg: #000000;
   --surface: #000000;
   --surface-raised: #0e0e0e;
+  --surface-3: #1a1a1a;
   --canvas: #000000;
   --border: #9aa4b2;
   --border-subtle: #5d6673;
@@ -338,6 +372,9 @@
   --text: #ffffff;
   --text-muted: #e4e7eb;
   --text-faint: #c9cfd7;
+
+  --sel: #79c0ff;
+  --sel-text: #cde6ff;
 
   --brand: #e8873a;
   --accent: #ffa94d;
@@ -374,9 +411,11 @@
   --overlay: rgba(0, 0, 0, .75);
   --pop: #000000;
   --pop-border: #ffffff;
-  --shadow-card: none;
-  --shadow-float: none;
-  --shadow-pop: none;
+  --elev-1: none;
+  --elev-2: none;
+  --elev-3: none;
+  --edge-hi: transparent;
+  --elev-accent: none;
   --kbd-bg: #000000;
   --kbd-border: #ffffff;
   --scroll-thumb: #9aa4b2;
@@ -468,6 +507,7 @@
   --bg: #ffffff;
   --surface: #ffffff;
   --surface-raised: #f2f2f2;
+  --surface-3: #e4e4e4;
   --canvas: #ffffff;
   --border: #404040;
   --border-subtle: #767676;
@@ -476,6 +516,9 @@
   --text: #000000;
   --text-muted: #262626;
   --text-faint: #3d3d3d;
+
+  --sel: #084c9e;
+  --sel-text: #063a78;
 
   --brand: #9a4400;
   --accent: #9a4400;
@@ -512,9 +555,11 @@
   --overlay: rgba(255, 255, 255, .7);
   --pop: #ffffff;
   --pop-border: #000000;
-  --shadow-card: none;
-  --shadow-float: none;
-  --shadow-pop: none;
+  --elev-1: none;
+  --elev-2: none;
+  --elev-3: none;
+  --edge-hi: transparent;
+  --elev-accent: none;
   --kbd-bg: #ffffff;
   --kbd-border: #000000;
   --scroll-thumb: #6b6b6b;
@@ -602,9 +647,23 @@
 
 /* ---- derived tokens: one definition for every theme ---- */
 :root {
-  /* a row that is picked, and the strong form of it */
-  --pick: color-mix(in srgb, var(--accent) 16%, transparent);
-  --select-bg: color-mix(in srgb, var(--accent) 15%, var(--surface));
-  --active-bg: color-mix(in srgb, var(--accent) 24%, var(--pop));
+  /* the names of the layers: 1 is a panel, 2 is raised, 3 is a field or a hovered row */
+  --surface-1: var(--surface);
+  --surface-2: var(--surface-raised);
+  --shadow-card: var(--elev-1);
+  --shadow-float: var(--elev-2);
+  --shadow-pop: var(--elev-3);
+  /* a row that is picked (a calm blue), and the strong form of it; the bar at its edge */
+  --pick: color-mix(in srgb, var(--sel) 14%, transparent);
+  --select-bg: color-mix(in srgb, var(--sel) 13%, var(--surface));
+  --active-bg: color-mix(in srgb, var(--sel) 20%, var(--pop));
+  --sel-bar: var(--sel);
+  --sel-line: color-mix(in srgb, var(--sel) 45%, transparent);
   --hover-bg: var(--hover);
+  /* the brand's orange, soft: a tint behind the active indicator and the primary button's halo */
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 50%, transparent);
+  /* skeleton blocks */
+  --skeleton: color-mix(in srgb, var(--text) 6%, transparent);
+  --skeleton-hi: color-mix(in srgb, var(--text) 11%, transparent);
 }

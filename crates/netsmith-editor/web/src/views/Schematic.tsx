@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 
 import { api as server } from '../client';
 import { PanZoom, type PanZoomApi } from '../components/PanZoom';
+import { Icon } from '../components/Icons';
 import { NoBoard } from '../components/ViewStatus';
 import { busName, busTargets, litNets } from '../schematic/bus';
 import { type Bus } from '../schematic/drawing';
@@ -729,7 +730,7 @@ function EmptyState({ title, text, action }: { title: string; text: string; acti
   return (
     <div class="empty-state" role="status">
       <div class="es-icon" aria-hidden="true">
-        ⌁
+        <Icon name="schematic" size={22} />
       </div>
       <h2>{title}</h2>
       <p>{text}</p>

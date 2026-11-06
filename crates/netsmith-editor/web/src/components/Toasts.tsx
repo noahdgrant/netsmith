@@ -2,7 +2,7 @@
 // there. A toast of success goes by itself; a failure stays until it is read.
 
 import { dismissToast, holdToast, releaseToast, toasts } from '../feedback/state';
-import { CheckIcon, SeverityIcon } from './ProblemsDock';
+import { CheckIcon, Icon, SeverityIcon } from './Icons';
 
 export function Toasts() {
   const list = toasts.value;
@@ -38,9 +38,7 @@ export function Toasts() {
             )}
           </div>
           <button class="icon-btn" aria-label="Dismiss" title="Dismiss" onClick={() => dismissToast(t.id)}>
-            <svg class="icon" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
-              <path d="M4 4l8 8M12 4l-8 8" />
-            </svg>
+            <Icon name="close" size={14} />
           </button>
         </div>
       ))}

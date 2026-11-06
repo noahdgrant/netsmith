@@ -8,7 +8,7 @@ import { analysisSince, busy, dock, now, pending, runClock, setDockOpen } from '
 import { ANALYSING_CLOCK_AFTER_MS, clock, progressText } from '../feedback/status';
 import { job, analysis } from '../store';
 import { plural } from '../util';
-import { SeverityIcon } from './ProblemsDock';
+import { Icon, SeverityIcon } from './Icons';
 
 /** The strip above a view that shows an earlier version of the source (it has an error) or the
  * saved file while the typed text has one. It names the first error and goes to it. */
@@ -88,6 +88,7 @@ export function NoBoard({ what }: { what: string }) {
   if (!neverBuilt.value || !e) {
     return (
       <div class="empty" data-testid="no-board">
+        <div class="empty-mark" aria-hidden="true"><Icon name="board" size={22} /></div>
         <div class="empty-title">There is no board to {what}.</div>
         <div class="empty-sub">
           Write a <code>board</code> in a top-level file; it is drawn here as soon as it builds.
@@ -97,6 +98,7 @@ export function NoBoard({ what }: { what: string }) {
   }
   return (
     <div class="empty no-board" data-testid="no-board">
+      <div class="empty-mark bad" aria-hidden="true"><Icon name="error" size={22} /></div>
       <div class="empty-title">Nothing has built yet, so there is no board to {what}.</div>
       <div class="empty-error">
         <SeverityIcon severity="error" size={14} />

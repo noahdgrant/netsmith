@@ -129,7 +129,7 @@ export const THEME_TOKENS: Record<Theme, Record<string, string>> = {
 };
 
 type Pair = { fg: string; bg: string[]; min?: number; what: string };
-const SURFACES = ['--bg', '--surface', '--surface-raised', '--canvas'];
+const SURFACES = ['--bg', '--surface', '--surface-raised', '--surface-3', '--canvas'];
 const KINDS = ['part', 'net', 'module', 'definition', 'file', 'command', 'board', 'system', 'panel', 'interface'].map((k) => `--kind-${k}`);
 const SYN = ['comment', 'doc', 'string', 'number', 'keyword', 'type', 'property', 'namespace', 'variable', 'operator', 'punct', 'invalid'].map((k) => `--syn-${k}`);
 const NETS = Array.from({ length: 10 }, (_, i) => `--net-${i}`);
@@ -148,6 +148,10 @@ function pairs(): Pair[] {
   for (const s of SYN) list.push({ fg: s, bg: ['--canvas'], what: 'syntax colour on the editor' });
   list.push({ fg: '--text', bg: ['--pop'], what: 'text in a menu' });
   list.push({ fg: '--text-faint', bg: ['--pop'], what: 'faint text in a menu' });
+  list.push({ fg: '--text-muted', bg: ['--pop'], what: 'muted text in a menu' });
+  // What is picked in a data view: the blue's words and its marks.
+  list.push({ fg: '--sel-text', bg: [...SURFACES, '--pop'], what: 'selection text' });
+  list.push({ fg: '--sel', bg: ['--surface', '--canvas', '--surface-raised', '--surface-3'], min: 3, what: 'selection marks (the bar at a picked row)' });
   for (const k of ['--sch-text', '--sch-net', '--sch-body', '--sch-pin']) list.push({ fg: k, bg: ['--sch-sheet'], what: 'schematic text' });
   list.push({ fg: '--sch-wire', bg: ['--sch-sheet'], min: 3, what: 'schematic wire (a graphic)' });
   list.push({ fg: '--sch-muted', bg: ['--sch-sheet'], min: 3, what: 'schematic open pin mark (a graphic)' });
@@ -163,8 +167,9 @@ function pairs(): Pair[] {
   list.push({ fg: '--pcb-select', bg: ['--pcb-bg'], min: 3, what: 'selection on the board' });
   list.push({ fg: '--pcb-keepout', bg: ['--pcb-bg'], min: 3, what: 'keepout on the board' });
   // Marks the page draws without words: the focus ring and the brand line.
-  list.push({ fg: '--focus', bg: ['--surface', '--canvas', '--surface-raised'], min: 3, what: 'focus indicator' });
-  list.push({ fg: '--accent', bg: ['--surface', '--canvas'], min: 3, what: 'accent marks (active tab line, selection edge)' });
+  list.push({ fg: '--focus', bg: ['--surface', '--canvas', '--surface-raised', '--surface-3', '--bg'], min: 3, what: 'focus indicator' });
+  list.push({ fg: '--accent', bg: ['--surface', '--canvas', '--bg'], min: 3, what: 'accent marks (the active tab line, a primary action)' });
+  list.push({ fg: '--accent-text', bg: ['--bg'], what: 'accent text on the frame' });
   return list.filter((p) => p.bg.length);
 }
 

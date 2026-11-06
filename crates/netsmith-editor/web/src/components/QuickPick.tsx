@@ -14,7 +14,7 @@ import { sortRows } from '../feedback/problems';
 import { pieces } from '../fuzzy';
 import { type Hit, type Item, PREFIXES, buildIndex, parseLine, parseQuery, problemItems, recentItems, search } from '../quickopen';
 import { closePicker, picker, recentCommands, recentPicks, rememberQuery, usedCommand, usedPick } from '../quickpick';
-import { SeverityIcon } from './ProblemsDock';
+import { Icon, SeverityIcon } from './Icons';
 import { activeFile, detail, goTo, openFile, openFiles, project, revealSection, say, viewBoardOfDefinition } from '../store';
 
 /** A name with the letters the query matched marked. */
@@ -35,7 +35,7 @@ function Marked({ text, at }: { text: string; at: number[] | undefined }) {
 }
 
 const Svg = ({ children }: { children: ComponentChildren }) => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <svg class="icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     {children}
   </svg>
 );
@@ -44,58 +44,17 @@ const Svg = ({ children }: { children: ComponentChildren }) => (
 function KindIcon({ kind }: { kind: Item['kind'] | 'line' | 'tip' | 'search' }) {
   switch (kind) {
     case 'search':
-      return (
-        <Svg>
-          <circle cx="7" cy="7" r="4.6" />
-          <path d="M10.6 10.6L14 14" />
-        </Svg>
-      );
     case 'part':
-      return (
-        <Svg>
-          <rect x="4" y="4" width="8" height="8" rx="1" />
-          <path d="M6 1.8v2.2M10 1.8v2.2M6 12v2.2M10 12v2.2M1.8 6h2.2M1.8 10h2.2M12 6h2.2M12 10h2.2" />
-        </Svg>
-      );
     case 'bus':
-      return (
-        <Svg>
-          <path d="M2 8h12" stroke-width="2.6" />
-          <path d="M5 8V4.2M8 8V4.2M11 8V4.2M5 8v3.8M8 8v3.8M11 8v3.8" />
-        </Svg>
-      );
     case 'net':
-      return (
-        <Svg>
-          <circle cx="3.5" cy="4" r="1.4" />
-          <circle cx="12.5" cy="12" r="1.4" />
-          <path d="M5 4h4.5v8h1.8" />
-        </Svg>
-      );
     case 'module':
-      return (
-        <Svg>
-          <rect x="2" y="3" width="12" height="10" rx="1.4" />
-          <path d="M2 6.2h12M5 3v3.2" />
-        </Svg>
-      );
+    case 'file':
+    case 'command':
+      return <Icon name={kind} />;
     case 'definition':
       return (
         <Svg>
           <path d="M5.5 3C4 3 4 4 4 5.2S4 7 2.8 8c1.2 1 1.2 1.6 1.2 2.8S4 13 5.5 13M10.5 3c1.5 0 1.5 1 1.5 2.2S12 7 13.2 8c-1.2 1-1.2 1.6-1.2 2.8S12 13 10.5 13" />
-        </Svg>
-      );
-    case 'file':
-      return (
-        <Svg>
-          <path d="M3.5 1.8h5.7L12.5 5v9.2h-9z" />
-          <path d="M9 1.8V5h3.5" />
-        </Svg>
-      );
-    case 'command':
-      return (
-        <Svg>
-          <path d="M3 4.5l4 3.5-4 3.5M8.5 12h4.5" />
         </Svg>
       );
     case 'line':
@@ -105,12 +64,7 @@ function KindIcon({ kind }: { kind: Item['kind'] | 'line' | 'tip' | 'search' }) 
         </Svg>
       );
     default:
-      return (
-        <Svg>
-          <circle cx="8" cy="8" r="5.6" />
-          <path d="M8 7.2v3.4M8 5.2v.1" />
-        </Svg>
-      );
+      return <Icon name="note" />;
   }
 }
 

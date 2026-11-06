@@ -5,6 +5,7 @@ import { chordText, find, runCommand, withKey } from '../commands';
 import { declarationOf, describe, selection, selectAndReveal, setSelection } from '../selection';
 import { detail, layout, showInSource, visible } from '../store';
 import { busChip } from '../schematic/bus';
+import { Icon } from './Icons';
 import { netFacts } from '../views/schematic-actions';
 import { selectedBus } from '../views/schematic-selection';
 
@@ -28,7 +29,9 @@ export function SelectionChip() {
   return (
     <div class={`selchip k-${bus ? 'bus' : sel.kind}`} role="status" aria-label={bus ? `Selected ${title} ${sub}` : `Selected ${sub}: ${title}`}>
       <button class="selchip-main" title={`${bus ? `${bus.type} ${bus.path} ${sub}` : sub}. Click to show it again in this view.`} onClick={() => selectAndReveal(sel)}>
-        <span class={`badge k-${bus ? 'bus' : sel.kind}`}>{bus ? 'B' : sel.kind === 'part' ? 'P' : sel.kind === 'net' ? 'N' : 'M'}</span>
+        <span class={`selchip-kind k-${bus ? 'bus' : sel.kind}`} aria-hidden="true">
+          <Icon name={bus ? 'bus' : sel.kind === 'part' ? 'part' : sel.kind === 'net' ? 'net' : 'module'} size={14} />
+        </span>
         <span class="selchip-title">{title}</span>
         <span class={`selchip-sub ${facts || bus ? 'keep' : ''}`}>{sub}</span>
       </button>
@@ -41,7 +44,7 @@ export function SelectionChip() {
             aria-label="Previous pin"
             onClick={() => runCommand('schematic.pin.previous')}
           >
-            ‹
+            <Icon name="chevron-left" size={14} />
           </button>
           <button
             class="selchip-btn step"
@@ -50,7 +53,7 @@ export function SelectionChip() {
             aria-label="Next pin"
             onClick={() => runCommand('schematic.pin.next')}
           >
-            ›
+            <Icon name="chevron-right" size={14} />
           </button>
         </>
       )}
@@ -60,7 +63,7 @@ export function SelectionChip() {
         </button>
       )}
       <button class="selchip-btn" title="Clear the selection (Esc)" aria-label="Clear the selection" onClick={() => setSelection(null)}>
-        ×
+        <Icon name="close" size={13} />
       </button>
     </div>
   );

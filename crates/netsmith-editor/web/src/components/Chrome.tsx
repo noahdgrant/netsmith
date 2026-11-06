@@ -1,6 +1,6 @@
 import { signal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 
 import {
   type Drop,
@@ -38,6 +38,7 @@ import { chordLabels, chordText, find, runCommand } from '../commands';
 import { openPicker } from '../quickpick';
 import { seconds } from '../util';
 import { useElapsed } from './JobProgress';
+import { Icon } from './Icons';
 import { Logo } from './Logo';
 import { SelectionChip } from './SelectionChip';
 
@@ -57,38 +58,6 @@ const OTHER_PANE = 'Open in the other pane: click to move it here';
 
 export const SECTION_LABEL = Object.fromEntries(SECTIONS.map((s) => [s.id, s.label])) as Record<Section, string>;
 
-function Icon({ children }: { children: ComponentChildren }) {
-  return (
-    <svg class="icon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      {children}
-    </svg>
-  );
-}
-
-const KiCadIcon = () => (
-  <Icon>
-    <path d="M3 1.8h6.2L13 5.6v8.6H3z" />
-    <path d="M9 1.8v4h4" />
-    <path d="M5.5 10.2h5M8 8v4.4M6.3 11l1.7 1.6 1.7-1.6" />
-  </Icon>
-);
-
-const FabIcon = () => (
-  <Icon>
-    <rect x="1.8" y="3.2" width="12.4" height="9.6" rx="1.2" />
-    <circle cx="5" cy="6.4" r="0.9" />
-    <circle cx="11" cy="9.6" r="0.9" />
-    <path d="M5.9 6.4h2.6v3.2h1.6" />
-  </Icon>
-);
-
-const SplitIcon = () => (
-  <Icon>
-    <rect x="1.8" y="2.6" width="12.4" height="10.8" rx="1.2" />
-    <path d="M8 2.6v10.8" />
-  </Icon>
-);
-
 /** Two panes, the one that holds the section filled: it marks a tab whose section is in the other pane. */
 const OtherPaneMark = ({ side }: { side: 'left' | 'right' }) => (
   <svg class="icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true">
@@ -96,12 +65,6 @@ const OtherPaneMark = ({ side }: { side: 'left' | 'right' }) => (
     <path d="M8 2.6v10.8" />
     {side === 'right' ? <rect x="8" y="2.6" width="6.2" height="10.8" fill="currentColor" stroke="none" /> : <rect x="1.8" y="2.6" width="6.2" height="10.8" fill="currentColor" stroke="none" />}
   </svg>
-);
-
-const CloseIcon = () => (
-  <Icon>
-    <path d="M4 4l8 8M12 4l-8 8" />
-  </Icon>
 );
 
 /** The two actions: they write files, and say so while they run. They are not the sections. */
@@ -143,70 +106,91 @@ function Action({
 export function TopBar() {
   const a = analysis.value;
   const boards = a?.boards ?? [];
+  const goto = find('goto.anything')?.keys ?? 'Mod+P';
   return (
     <header class="topbar">
-      <div class="brand"><Logo /></div>
-      <label class="boardpick" title="The board the sections show">
-        Board
-        <select
-          value={board.value ?? ''}
-          onChange={(e) => chooseBoard((e.currentTarget as HTMLSelectElement).value)}
-        >
-          {boards.map((b) => (
-            <option key={b.name} value={b.name}>
-              {b.name}
-              {b.stale ? ' (stale)' : ''}
-            </option>
-          ))}
-        </select>
-      </label>
-      <SelectionChip />
-      <span class="spacer" />
+      <div class="tb-left">
+        <div class="brand"><Logo /></div>
+        <label class="boardpick" title="The board the sections show">
+          <Icon name="board" size={14} class="bp-icon" />
+          <span class="sr-only">Board</span>
+          <select
+            value={board.value ?? ''}
+            onChange={(e) => chooseBoard((e.currentTarget as HTMLSelectElement).value)}
+          >
+            {boards.map((b) => (
+              <option key={b.name} value={b.name}>
+                {b.name}
+                {b.stale ? ' (stale)' : ''}
+              </option>
+            ))}
+          </select>
+          <Icon name="chevrons-up-down" size={12} class="bp-caret" />
+        </label>
+        <SelectionChip />
+      </div>
       <button
         class="cmdk"
-        title={`Search parts, nets, modules and files (${chordText(find('goto.anything')?.keys ?? 'Mod+P')}); run a command (${chordText(find('palette.open')?.keys ?? 'Mod+Shift+P')})`}
+        title={`Search parts, nets, modules and files (${chordText(goto)}); run a command (${chordText(find('palette.open')?.keys ?? 'Mod+Shift+P')})`}
         aria-label="Go to anything or run a command"
         aria-haspopup="dialog"
         onClick={() => openPicker()}
       >
-        <svg class="icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
-          <circle cx="7" cy="7" r="4.6" />
-          <path d="M10.6 10.6L14 14" />
-        </svg>
+        <Icon name="search" size={15} />
         <span class="cmdk-text">Go to anything</span>
         <span class="qp-keys">
-          {chordLabels(find('goto.anything')?.keys ?? 'Mod+P').map((k) => (
+          {chordLabels(goto).map((k) => (
             <kbd key={k}>{k}</kbd>
           ))}
         </span>
       </button>
-      <span class="spacer" />
-      <div class="actions" role="group" aria-label="Actions: they write files">
-        <Action
-          task="build"
-          label="Write KiCad files"
-          running="Writing KiCad files…"
-          icon={<KiCadIcon />}
-          tip={
-            "Writes a KiCad schematic (.kicad_sch) and project file (.kicad_pro) for every board of the project, " +
-            "with the library tables, into the project's out folder (out/ unless netsmith.toml says another), " +
-            "one folder for each board. The same as `netsmith build`. Takes a few seconds."
-          }
-          start={() => runCommand('build.kicad')}
-        />
-        <Action
-          task="fab"
-          label="Make fab files"
-          running="Making fab files…"
-          icon={<FabIcon />}
-          primary
-          tip={
-            "Places and routes the board chosen here, runs netsmith's design rules check and, when it passes, " +
-            "writes the Gerbers, bom.csv, cpl.csv and fab-notes.txt for JLCPCB into the project's fab folder " +
-            "(fab/ unless netsmith.toml says another). The same as `netsmith fab`. A long job: it can take minutes."
-          }
-          start={() => runCommand('build.fab')}
-        />
+      <div class="tb-right">
+        <div class="tb-ghosts" role="group" aria-label="Appearance and help">
+          <button
+            class="icon-btn"
+            title={`Switch between the light and the dark theme (${chordText(find('theme.toggle')?.keys ?? '')})`.replace(' ()', '')}
+            aria-label="Toggle the light and dark theme"
+            onClick={() => runCommand('theme.toggle')}
+          >
+            <Icon name="theme" />
+          </button>
+          <button
+            class="icon-btn"
+            title={`Keyboard shortcuts (${chordText(find('help.shortcuts')?.keys ?? '?')})`}
+            aria-label="Keyboard shortcuts"
+            aria-haspopup="dialog"
+            onClick={() => runCommand('help.shortcuts')}
+          >
+            <Icon name="keyboard" />
+          </button>
+        </div>
+        <div class="actions" role="group" aria-label="Actions: they write files">
+          <Action
+            task="build"
+            label="Write KiCad files"
+            running="Writing KiCad files…"
+            icon={<Icon name="kicad" />}
+            tip={
+              "Writes a KiCad schematic (.kicad_sch) and project file (.kicad_pro) for every board of the project, " +
+              "with the library tables, into the project's out folder (out/ unless netsmith.toml says another), " +
+              "one folder for each board. The same as `netsmith build`. Takes a few seconds."
+            }
+            start={() => runCommand('build.kicad')}
+          />
+          <Action
+            task="fab"
+            label="Make fab files"
+            running="Making fab files…"
+            icon={<Icon name="fab" />}
+            primary
+            tip={
+              "Places and routes the board chosen here, runs netsmith's design rules check and, when it passes, " +
+              "writes the Gerbers, bom.csv, cpl.csv and fab-notes.txt for JLCPCB into the project's fab folder " +
+              "(fab/ unless netsmith.toml says another). The same as `netsmith fab`. A long job: it can take minutes."
+            }
+            start={() => runCommand('build.fab')}
+          />
+        </div>
       </div>
     </header>
   );
@@ -224,7 +208,10 @@ function dropFor(x: number, y: number): Drop | null {
   if (!area) return null;
   const r = area.getBoundingClientRect();
   if (y < r.top || y > r.bottom || x < r.left || x > r.right) return null;
-  return dropAt(layout.peek(), windowWidth.peek(), x, r.left, r.width);
+  // The area is set in by the frame's gap; the panes share what is inside it.
+  const c = getComputedStyle(area);
+  const pad = parseFloat(c.paddingLeft) || 0;
+  return dropAt(layout.peek(), windowWidth.peek(), x, r.left + pad, r.width - pad - (parseFloat(c.paddingRight) || 0));
 }
 
 function startDrag(e: PointerEvent, section: Section) {
@@ -290,9 +277,29 @@ export function SectionStrip({ pane }: { pane: { section: Section; index: number
   const two = vis.length === 2;
   const other = vis.find((p) => p.index !== pane.index)?.section;
   const wide = canSplit(windowWidth.value);
+  // The active tab's line glides: its place and width are measured and given to the strip as
+  // variables, and the line's transition does the rest (it is off until the first measure).
+  const strip = useRef<HTMLDivElement>(null);
+  const place = () => {
+    const el = strip.current;
+    const t = el?.querySelector<HTMLElement>('.tab.active');
+    if (!el || !t) return;
+    el.style.setProperty('--ind-x', `${t.offsetLeft}px`);
+    el.style.setProperty('--ind-w', `${t.offsetWidth}px`);
+    if (!el.classList.contains('placed')) requestAnimationFrame(() => el.classList.add('placed'));
+  };
+  useLayoutEffect(place, [pane.section, two, other]);
+  useEffect(() => {
+    const el = strip.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(place);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
     <div
       class="tabbar sections"
+      ref={strip}
       role="tablist"
       aria-label="Sections"
       onKeyDown={(e) => {
@@ -332,7 +339,8 @@ export function SectionStrip({ pane }: { pane: { section: Section; index: number
               tabMenu.value = { section: v.id, x: e.clientX, y: e.clientY };
             }}
           >
-            {v.label}
+            <Icon name={v.id} size={15} class="tab-icon" />
+            <span class="tab-label">{v.label}</span>
             {elsewhere && (
               <span class="elsewhere-mark" role="img" aria-label={OTHER_PANE} title={OTHER_PANE}>
                 <OtherPaneMark side={pane.index === 0 ? 'right' : 'left'} />
@@ -341,6 +349,7 @@ export function SectionStrip({ pane }: { pane: { section: Section; index: number
           </button>
         );
       })}
+      <span class="tab-ind" aria-hidden="true" />
       <span class="spacer" />
       {two && pane.index === 1 ? (
         <button
@@ -351,7 +360,7 @@ export function SectionStrip({ pane }: { pane: { section: Section; index: number
             layout.value = closePane(layout.value, 1);
           }}
         >
-          <CloseIcon />
+          <Icon name="close" size={14} />
           <span>Close pane</span>
         </button>
       ) : !two ? (
@@ -363,7 +372,7 @@ export function SectionStrip({ pane }: { pane: { section: Section; index: number
             if (wide) layout.value = splitRight(layout.value);
           }}
         >
-          <SplitIcon />
+          <Icon name="split" size={14} />
           <span>Split right</span>
         </button>
       ) : null}
@@ -460,7 +469,8 @@ export function Tabs() {
           title={`Back to ${SECTION_LABEL[b.section]}, as you left it (Esc, or Alt+Left outside the text)`}
           onClick={requestBack}
         >
-          ← Back to {SECTION_LABEL[b.section]}
+          <Icon name="arrow-left" size={14} />
+          Back to {SECTION_LABEL[b.section]}
         </button>
       )}
       {tabs.value.map((path) => {
@@ -478,12 +488,14 @@ export function Tabs() {
             {f && dirty(f) ? <span class="dot" /> : null}
             <span
               class="close"
+              role="button"
+              aria-label={`Close ${base}`}
               onClick={(e) => {
                 e.stopPropagation();
                 closeFile(path);
               }}
             >
-              ×
+              <Icon name="close" size={12} />
             </span>
           </div>
         );
