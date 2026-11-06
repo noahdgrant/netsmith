@@ -24,3 +24,7 @@ Refresh needs `scripts/editor-verify launch --fixture catalog_refresh` (the LED 
 - Price and stock are recorded data, not live. The solver never needs the network. Only "Check parts against LCSC" does, and only for the project's own catalog files.
 - A part with no LCSC number shows `none`; `fab` refuses to package it.
 - The table scrolls sideways in a narrow window or pane (`.bom-scroll` inside `.bom-frame`): the first column (Designators) stays under a soft edge once it has moved, the right edge fades into the surface while there is more to scroll to (`useScrollEdges`, `components/scrollEdges.ts`), and the rows scroll under a sticky header.
+
+## Tables that fill the page, and the help column (round 8)
+
+The BOM's frame (`.bom-frame`), Compare's list (`.cmp-scroll`) fill the height of the page and scroll inside, the header is sticky, a foot (`.bom-foot`, `.cmp-foot`) at the bottom of the frame counts what is shown (and of how many when a filter is on), and the tiles and tabs above stay put (they are outside the scrolling box). On a pane with room (`ViewHelp`: the pane is at least the page's width plus 2 x 18.5 rem, so 1872 px at 100 % and a pane of a split never) a column `What does this view show?` stands in the right margin, a landmark `About this view`, folded with one click (kept per view in `netsmith.viewhelp.v1`); on a pane without the room it is not in the page. Compare, BOM and Build have one. `drive view-help` (and the steps of `compare`).

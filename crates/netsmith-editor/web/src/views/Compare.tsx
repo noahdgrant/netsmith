@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import type { Compare as CompareData, Problem } from '../api';
 import { Icon } from '../components/Icons';
+import { ViewHelp } from '../components/ViewHelp';
 import { useElapsed } from '../components/JobProgress';
 import { EmptyState, Pill, Segmented, Spinner } from '../components/ui';
 import { ChangesSwitch } from '../components/ChangesSwitch';
@@ -426,6 +427,13 @@ function Body({ data }: { data: CompareData }) {
                   </details>
                 )}
                 {active === 'problems' && n.problems === 0 && null}
+                <div class="cmp-foot" data-testid="cmp-foot">
+                  <span>
+                    {plural(shown.length, 'row')}
+                    {shown.length !== list.length ? ` of ${list.length}` : ''}
+                  </span>
+                  {renum.length > 0 && <span class="faint">{renum.length} renumbered</span>}
+                </div>
               </div>
             )}
           </div>
@@ -552,6 +560,15 @@ export function Compare() {
       </header>
       <div class="cmp-main">{body}</div>
       <DiffPanel where="compare" />
+      <ViewHelp id="compare">
+        <p>What changed in the circuit on disk against the same project at a git ref: its parts, nets, rails, modules and bill of materials, not the lines of text.</p>
+        <p>
+          <b>+</b> is added, <b>−</b> removed, <b>~</b> changed. A renumbered part only got another designator: the circuit is the same.
+        </p>
+        <p>
+          <b>Base</b> opens the file at the ref beside the file on disk; <b>Head</b> opens the source where the thing is declared. <b>Show changes in the other views</b> marks the same things in the schematic, the board, the bill of materials and the source.
+        </p>
+      </ViewHelp>
     </div>
   );
 }

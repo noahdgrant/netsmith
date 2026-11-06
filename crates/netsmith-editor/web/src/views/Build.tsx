@@ -5,6 +5,7 @@ import type { OrderInfo } from '../api';
 
 import { api } from '../client';
 import { Icon, type IconName } from '../components/Icons';
+import { ViewHelp } from '../components/ViewHelp';
 import { JobProgress } from '../components/JobProgress';
 import { LogPanel } from '../components/LogPanel';
 import { CliChip, CopyButton, Pill, Spinner, ago, useNow } from '../components/ui';
@@ -441,6 +442,15 @@ export function Build() {
           )}
         </ActionCard>
       </div>
+      <ViewHelp id="build">
+        <p>Writes the files a board needs from the <b>saved</b> source: a KiCad schematic and project file, the fab package, and an order of several boards.</p>
+        <p>
+          <b>Build schematic</b> and <b>Make fab package</b> run the command shown above their button; the result stays here until the page is closed. An unsaved edit is not built.
+        </p>
+        <p>
+          <b>Order</b> makes the fab package of every board an order of netsmith.toml lists, with one combined bill of materials.
+        </p>
+      </ViewHelp>
     </div>
   );
 }
