@@ -22,6 +22,7 @@ import { partByPath } from '../selection';
 import { detail } from '../store';
 import { plural } from '../util';
 import { CheckIcon, Icon, SeverityIcon } from './Icons';
+import { EmptyState } from './ui';
 
 /** The most rows drawn at once; a project with more says so, and the filter narrows it. */
 const MAX_ROWS = 1000;
@@ -147,38 +148,46 @@ function Empty({ hidden }: { hidden: { notes: number; filtered: 'text' | 'view' 
   const clear = () => (filter.value = { ...filter.value, text: '', thisView: false, errors: true, warnings: true, off: [] });
   if (hidden.filtered === 'text') {
     return (
-      <div class="dock-empty" data-testid="dock-empty">
-        <div class="big">No problems match the filter</div>
-        <div class="sub">
-          <button class="link" onClick={clear}>
+      <EmptyState
+        compact
+        class="dock-empty"
+        testid="dock-empty"
+        icon="filter"
+        title="No problems match the filter"
+        actions={
+          <button class="tool small" onClick={clear}>
             Clear the filter
           </button>
-        </div>
-      </div>
+        }
+      />
     );
   }
   return (
-    <div class="dock-empty ok" data-testid="dock-empty">
-      <CheckIcon size={24} />
-      <div class="big">{hidden.filtered === 'view' ? 'No problems in this view' : 'No problems'}</div>
-      <div class="sub">
-        {hidden.filtered === 'view' && (
+    <EmptyState
+      compact
+      class="dock-empty ok"
+      testid="dock-empty"
+      icon="check-circle"
+      tone="ok"
+      title={hidden.filtered === 'view' ? 'No problems in this view' : 'No problems'}
+      help={hidden.notes > 0 ? `${plural(hidden.notes, 'note')} hidden.` : undefined}
+      actions={
+        hidden.filtered === 'view' || hidden.notes > 0 ? (
           <>
-            <button class="link" onClick={() => (filter.value = { ...filter.value, thisView: false })}>
-              Show the whole project
-            </button>{' '}
+            {hidden.filtered === 'view' && (
+              <button class="tool small" onClick={() => (filter.value = { ...filter.value, thisView: false })}>
+                Show the whole project
+              </button>
+            )}
+            {hidden.notes > 0 && (
+              <button class="tool small" onClick={() => (filter.value = { ...filter.value, notes: true })}>
+                Show notes
+              </button>
+            )}
           </>
-        )}
-        {hidden.notes > 0 && (
-          <>
-            {plural(hidden.notes, 'note')} hidden.{' '}
-            <button class="link" onClick={() => (filter.value = { ...filter.value, notes: true })}>
-              Show notes
-            </button>
-          </>
-        )}
-      </div>
-    </div>
+        ) : undefined
+      }
+    />
   );
 }
 

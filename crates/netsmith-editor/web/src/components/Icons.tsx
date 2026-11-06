@@ -297,6 +297,13 @@ const P: Record<string, ComponentChildren> = {
     </>
   ),
   tag: <path d="M2.2 8.4V3.2h5.2l6.4 6.4-5.2 5.2zM5.3 5.4h.01" />,
+  offline: (
+    <>
+      <path d="M3.2 11.6A3.1 3.1 0 0 1 4.6 5.7a3.8 3.8 0 0 1 6.6-.7M12.6 6.4a2.6 2.6 0 0 1-.4 5.2H6" />
+      <path d="M2.2 2.2l11.6 11.6" />
+    </>
+  ),
+  inbox: <path d="M2.2 9.2l1.6-5.4a1 1 0 0 1 1-.7h6.4a1 1 0 0 1 1 .7l1.6 5.4v3a1 1 0 0 1-1 1H3.2a1 1 0 0 1-1-1zM2.4 9.2h3.3l.7 1.6h3.2l.7-1.6h3.3" />,
 };
 
 export type IconName = keyof typeof P;

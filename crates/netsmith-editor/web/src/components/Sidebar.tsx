@@ -6,6 +6,7 @@ import { allowed, folderFor, removalPrompt, starter, stemOf, type Kind, type Tem
 import { load, save } from '../storage';
 import { computed } from '@preact/signals';
 import { Icon } from './Icons';
+import { EmptyState } from './ui';
 import {
   activeFile,
   dirty,
@@ -761,7 +762,15 @@ export function Sidebar() {
               ))}
             </div>
           )}
-          {!rows.length && !typing && project.value && <div class="ft-empty">{filtering ? `Nothing matches “${filter.trim()}”.` : 'No files yet.'}</div>}
+          {!rows.length && !typing && project.value && (
+            <EmptyState
+              compact
+              class="ft-empty"
+              icon={filtering ? 'search' : 'folder'}
+              title={filtering ? 'No file or definition matches' : 'No files yet'}
+              help={filtering ? `Nothing in the project fits “${filter.trim()}”.` : 'Add a source file to the project; the tree lists it and what it defines.'}
+            />
+          )}
         </div>
       </div>
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.id)} onPick={(a) => pick(a, menu.id)} onClose={() => setMenu(null)} />}

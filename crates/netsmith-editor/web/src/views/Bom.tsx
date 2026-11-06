@@ -16,9 +16,9 @@ import {
 } from '../bomview';
 import { Icon } from '../components/Icons';
 import { JobProgress } from '../components/JobProgress';
-import { Pill, Popover, Segmented, Spinner, type Tone } from '../components/ui';
+import { EmptyState, Pill, Popover, Segmented, Spinner, type Tone } from '../components/ui';
 import { NoBoard, ViewLoading } from '../components/ViewStatus';
-import { analysis, board, catalogReport, checkParts, detail, job, pickPart, selectedRefdes } from '../store';
+import { analysis, board, catalogReport, checkParts, detail, job, pickPart, revealSection, selectedRefdes } from '../store';
 import { type Hover, hoverAttrs, hoverOfRefs } from '../hover';
 import { revealRequest } from '../selection';
 import { load, save } from '../storage';
@@ -415,30 +415,24 @@ export function Bom() {
       {report && <RefreshResult report={report} />}
       <div class="bom-scroll">
         {empty ? (
-          <div class="empty-state">
-            <div class="es-icon">
-              <Icon name="bom" size={22} />
-            </div>
-            <h2>No parts on this board yet</h2>
-            <p>Parts you add to the board's source show up here, with their LCSC numbers once the catalogs know them.</p>
-          </div>
+          <EmptyState icon="bom" title="No parts on this board yet" help="Parts you add to the board's source show up here, with their LCSC numbers once the catalogs know them." actions={<button class="tool" onClick={() => revealSection('source')}>Open the source</button>} />
         ) : nothingShown ? (
-          <div class="empty-state">
-            <div class="es-icon">
-              <Icon name="search" size={22} />
-            </div>
-            <h2>No line matches</h2>
-            <p>Nothing in the bill of materials fits {q ? `“${query.trim()}”` : 'the filter'}.</p>
-            <button
-              class="tool"
-              onClick={() => {
-                setQuery('');
-                setProblemsOnly(false);
-              }}
-            >
-              Clear the filter
-            </button>
-          </div>
+          <EmptyState
+            icon="search"
+            title="No line matches"
+            help={`Nothing in the bill of materials fits ${q ? `“${query.trim()}”` : 'the filter'}.`}
+            actions={
+              <button
+                class="tool"
+                onClick={() => {
+                  setQuery('');
+                  setProblemsOnly(false);
+                }}
+              >
+                Clear the filter
+              </button>
+            }
+          />
         ) : (
           <table class="grid bom-table">
             <thead>

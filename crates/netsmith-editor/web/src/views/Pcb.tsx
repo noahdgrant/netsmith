@@ -3,13 +3,13 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { PcbBox } from '../api';
 import { api } from '../client';
 import { NoBoard, ViewLoading } from '../components/ViewStatus';
-import { pcbFocus } from '../feedback/derive';
+import { goToFirstError, pcbFocus } from '../feedback/derive';
 import { filter, setDockOpen } from '../feedback/state';
 import { announce } from '../feedback/announce';
 import { routeResult } from '../feedback/results';
 import { JobProgress } from '../components/JobProgress';
 import { Icon } from '../components/Icons';
-import { Segmented, Spinner } from '../components/ui';
+import { EmptyState, Segmented, Spinner } from '../components/ui';
 import { Canvas, type Tip } from '../pcb/Canvas';
 import { FindingsList } from '../pcb/Findings';
 import { Panel } from '../pcb/Panel';
@@ -292,7 +292,26 @@ export function Pcb() {
         </div>
       )}
       {sceneError.value && !sc ? (
-        <div class="empty bad">{sceneError.value}</div>
+        <EmptyState
+          icon="error"
+          tone="bad"
+          title="The board could not be placed"
+          help="Nothing was drawn. The problems list says why, and the source is where to fix it."
+          actions={
+            <>
+              <button class="tool primary" onClick={goToFirstError}>
+                Go to error
+              </button>
+              <button class="tool" onClick={() => setDockOpen(true)}>
+                Show problems
+              </button>
+            </>
+          }
+        >
+          <div class="empty-error">
+            <span class="text">{sceneError.value}</span>
+          </div>
+        </EmptyState>
       ) : !sc || !drawing ? (
         <ViewLoading what="Placing the board" />
       ) : (

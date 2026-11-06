@@ -574,3 +574,26 @@ tr.hover-lit { outline-offset: -1px; }
 .schematic-host svg [data-ref].hover-lit:not(.pin), .schematic-host svg [data-net].hover-lit:not(.pin) { filter: drop-shadow(0 0 .45px var(--hover-lit)) drop-shadow(0 0 1.1px color-mix(in srgb, var(--hover-lit) 55%, transparent)); }
 /* a skeleton in a section that is not on show does not shimmer */
 .section.away .sk, .section.away [class*="sk-"] { animation: none; }
+
+/* ==== empty, first-run and error states: one pattern (EmptyState in components/ui.tsx) ==== */
+.empty { flex: 1; align-self: stretch; justify-content: center; max-width: none; gap: 6px; color: var(--text-muted); }
+.empty-mark { flex: none; box-shadow: inset 0 0 0 1px var(--border-subtle); }
+.empty-mark.ok { background: var(--success-bg); color: var(--success); box-shadow: inset 0 0 0 1px var(--success-line); }
+.empty-mark.warn { background: var(--warning-bg); color: var(--warning); box-shadow: inset 0 0 0 1px var(--warning-line); }
+.empty-mark.bad { background: var(--danger-bg); color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger-line); }
+.empty-title { font-size: var(--fs-lg); line-height: var(--lh-tight); }
+.empty-sub { line-height: var(--lh); color: var(--text-muted); text-wrap: balance; }
+.empty-sub code { font-family: var(--mono); font-size: .92em; padding: 1px 5px; background: var(--surface-3); border-radius: var(--r-xs); }
+.empty-actions { margin-top: 8px; flex-wrap: wrap; justify-content: center; }
+.empty-error { margin-top: 2px; width: max-content; max-width: min(72ch, 92%); }
+.bom-scroll .empty { min-height: 300px; }
+.empty.compact { flex: none; align-self: auto; padding: 16px 14px; gap: 4px; }
+.empty.compact .empty-mark { width: 32px; height: 32px; margin-bottom: 4px; border-radius: var(--r-md); }
+.empty.compact .empty-title { font-size: var(--fs-md); margin-bottom: 0; }
+.empty.compact .empty-sub { font-size: var(--fs-sm); max-width: 40ch; }
+.empty.compact .empty-actions { margin-top: 6px; }
+.dock-empty.empty { flex: 1; justify-content: center; }
+.ft-empty.empty { padding: 20px 12px; }
+.bom .empty { height: 100%; }
+.empty.bad { color: var(--text-muted); white-space: normal; }
+.note-line.empty-line { display: flex; align-items: center; gap: 8px; }

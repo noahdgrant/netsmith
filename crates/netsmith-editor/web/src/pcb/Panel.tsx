@@ -6,6 +6,7 @@ import type { PcbBox, PcbKeepout, PcbPart, PcbScene } from '../api';
 import { pickKeepout, pickedKeepout, select, selection } from '../pcbstore';
 import { Defs, InspectorAction, InspectorHead, PinChip } from '../components/Inspector';
 import { Icon } from '../components/Icons';
+import { EmptyState } from '../components/ui';
 import { hoverAttrs } from '../hover';
 import { pickPart } from '../store';
 import {
@@ -90,7 +91,7 @@ function PartList(props: { scene: PcbScene; onFocus: (box: PcbBox) => void }) {
             {p.side === 'bottom' && <span class="tag" title="on the bottom face">bottom</span>}
           </div>
         ))}
-        {parts.length === 0 && <div class="none">No part matches.</div>}
+        {parts.length === 0 && <EmptyState compact class="none" icon="search" title="No part matches" help="Try a designator, a value or a path." />}
         {sc.keepouts.length > 0 && <div class="sub">Keepouts</div>}
         {sc.keepouts.map((k) => (
           <div key={k.name} class={`row keepout-row ${pickedKeepout.value === k.name ? 'sel' : ''}`} onClick={() => {
@@ -146,7 +147,7 @@ function NetList(props: {
             <span class="faint">{n.plane ? 'plane' : n.pads}</span>
           </div>
         ))}
-        {nets.length === 0 && <div class="none">No net matches.</div>}
+        {nets.length === 0 && <EmptyState compact class="none" icon="search" title="No net matches" help="Try the name of a net." />}
       </div>
     </>
   );

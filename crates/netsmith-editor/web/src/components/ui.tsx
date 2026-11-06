@@ -286,3 +286,42 @@ export function Legend({ items }: { items: { kind: string; label: string; tip?: 
     </span>
   );
 }
+
+/** The one pattern of a view with nothing to show (nothing built, nothing found, nothing matches, no server, no KiCad): a mark
+ * that says what kind of moment it is (neutral, ok, warn, bad), a title, one line of help, and the one thing to do. `compact`
+ * is the size for a panel, a list or the dock; the default fills a view. The tone of the words is calm: what is so, and what
+ * to do next, never an apology. */
+export function EmptyState({
+  icon,
+  tone = 'neutral',
+  title,
+  help,
+  children,
+  actions,
+  compact,
+  class: cls,
+  testid,
+}: {
+  icon: IconName;
+  tone?: 'neutral' | 'ok' | 'warn' | 'bad';
+  title: ComponentChildren;
+  help?: ComponentChildren;
+  /** Between the help and the actions: the error that stops it. */
+  children?: ComponentChildren;
+  actions?: ComponentChildren;
+  compact?: boolean;
+  class?: string;
+  testid?: string;
+}) {
+  return (
+    <div class={`empty ${compact ? 'compact' : ''} ${cls ?? ''}`} role="status" data-testid={testid}>
+      <div class={`empty-mark ${tone}`} aria-hidden="true">
+        <Icon name={icon} size={compact ? 16 : 22} />
+      </div>
+      <div class="empty-title">{title}</div>
+      {help && <div class="empty-sub">{help}</div>}
+      {children}
+      {actions && <div class="empty-actions">{actions}</div>}
+    </div>
+  );
+}

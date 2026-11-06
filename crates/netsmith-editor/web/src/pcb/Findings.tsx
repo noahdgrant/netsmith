@@ -2,6 +2,7 @@
 // marks it on the board.
 
 import type { PcbBox, PcbFinding, PcbScene } from '../api';
+import { EmptyState } from '../components/ui';
 import { checking, findings, pickedFinding, select } from '../pcbstore';
 import { project } from '../store';
 import { kicadLine } from './kicad';
@@ -33,6 +34,20 @@ export function FindingsList(props: { scene: PcbScene; onFocus: (box: PcbBox) =>
           </span>
         )}
       </div>
+      {project.value?.kicad === false && (
+        <EmptyState
+          compact
+          class="kicad-missing"
+          icon="kicad"
+          tone="warn"
+          title="KiCad not found"
+          help={
+            <>
+              Set <code>KICAD_CLI</code> or install KiCad to ask its design rules check as well. netsmith's own checks run without it.
+            </>
+          }
+        />
+      )}
       {f && f.kicad === 'unavailable' && <div class="note-line bad">{f.kicadNote}</div>}
       {f && !f.routed && <div class="note-line faint">Not routed: the connections still to make are not findings yet.</div>}
       <div class="rows">
@@ -54,8 +69,10 @@ export function FindingsList(props: { scene: PcbScene; onFocus: (box: PcbBox) =>
             <div class="finding-msg" title={item.message}>{item.message}</div>
           </div>
         ))}
-        {f && f.findings.length === 0 && <div class="none">Nothing found{f.kicad === 'ran' ? ' by netsmith or KiCad' : ''}.</div>}
-        {!f && <div class="none">Checking…</div>}
+        {f && f.findings.length === 0 && (
+          <EmptyState compact class="none" icon="check-circle" tone="ok" title={`Nothing found${f.kicad === 'ran' ? ' by netsmith or KiCad' : ''}`} help={f.routed ? 'The board passes the checks that ran.' : 'The checks that run before routing found nothing.'} />
+        )}
+        {!f && <EmptyState compact class="none" icon="note" title="Checking…" />}
       </div>
     </div>
   );

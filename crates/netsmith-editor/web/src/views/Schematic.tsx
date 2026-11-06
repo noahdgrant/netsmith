@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 
 import { api as server } from '../client';
 import { PanZoom, type PanZoomApi } from '../components/PanZoom';
-import { Icon } from '../components/Icons';
+import { EmptyState } from '../components/ui';
 import { NoBoard } from '../components/ViewStatus';
 import { busName, busTargets, litNets } from '../schematic/bus';
 import { type Bus } from '../schematic/drawing';
@@ -567,14 +567,31 @@ export function Schematic() {
   if (!name) return <NoBoard what="draw" />;
   if (d && d.parts.length === 0) {
     return (
-      <EmptyState
+      <SchematicEmpty
         title={`${d.name} has no parts yet`}
         text="Declare a part in the source and it is drawn here, with its wires and nets."
         action="Open the source"
       />
     );
   }
-  if (error) return <div class="empty bad">{error}</div>;
+  if (error)
+    return (
+      <EmptyState
+        icon="error"
+        tone="bad"
+        title="The schematic could not be drawn"
+        help="The server answered with an error. Fix the source, or try again."
+        actions={
+          <button class="tool" onClick={() => revealSection('source')}>
+            Open the source
+          </button>
+        }
+      >
+        <div class="empty-error">
+          <span class="text">{error}</span>
+        </div>
+      </EmptyState>
+    );
   if (!drawing) return <Skeleton />;
 
   const sheet = drawing.sheets.find((s) => s.name === current);
@@ -739,18 +756,18 @@ function PulseRing({ box }: { box: Box }) {
   );
 }
 
-function EmptyState({ title, text, action }: { title: string; text: string; action: string }) {
+function SchematicEmpty({ title, text, action }: { title: string; text: string; action: string }) {
   return (
-    <div class="empty-state" role="status">
-      <div class="es-icon" aria-hidden="true">
-        <Icon name="schematic" size={22} />
-      </div>
-      <h2>{title}</h2>
-      <p>{text}</p>
-      <button class="tool" onClick={() => revealSection('source')}>
-        {action}
-      </button>
-    </div>
+    <EmptyState
+      icon="schematic"
+      title={title}
+      help={text}
+      actions={
+        <button class="tool" onClick={() => revealSection('source')}>
+          {action}
+        </button>
+      }
+    />
   );
 }
 
