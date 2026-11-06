@@ -3,7 +3,7 @@
 // the one that closes a cycle round under the drawing), the loads at 0 A in one line that opens on
 // a click, a click on any card lighting what feeds it and what it feeds, a hover on a load with a
 // link to the source, and the issues at the top.
-import { edgesOf, nodesOf, routeProblems } from '../flow-helpers.mjs';
+import { edgesOf, nodesOf, routeProblems, sizeSteps } from '../flow-helpers.mjs';
 
 export const fixture = 'power_tree';
 
@@ -181,4 +181,5 @@ export async function run({ page, shot, step, expect, section }) {
   expect(true, 'the editor is on the buck');
   await page.keyboard.press('Escape');
   await page.waitForSelector('.section.sec-power:not(.away)');
+  await sizeSteps({ page, expect, step, section, id: 'power' });
 }

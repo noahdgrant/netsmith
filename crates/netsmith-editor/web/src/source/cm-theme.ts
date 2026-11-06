@@ -30,9 +30,9 @@ export const cmTheme = EditorView.theme({
   '.cm-sev-gutter .cm-activeLineGutter': { boxShadow: 'inset 2px 0 0 color-mix(in srgb, var(--accent) 80%, transparent)' },
   '.cm-foldGutter': { width: '16px' },
   '.cm-foldGutter .cm-gutterElement': { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0', cursor: 'pointer' },
-  '.cm-fold-mark': { display: 'inline-flex', color: 'var(--text-faint)', opacity: '0', transition: 'opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease)', transform: 'rotate(90deg)' },
+  '.cm-fold-mark': { display: 'inline-flex', color: 'var(--text-faint)', opacity: '0.4', transition: 'opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease)', transform: 'rotate(90deg)' },
   '.cm-fold-mark.folded': { opacity: '1', transform: 'none', color: 'var(--accent-text)' },
-  '.cm-gutters:hover .cm-fold-mark, .cm-fold-mark:focus-visible': { opacity: '1' },
+  '.cm-gutters:hover .cm-fold-mark, .cm-fold-mark:focus-visible, .cm-foldGutter .cm-gutterElement:hover .cm-fold-mark': { opacity: '1' },
   '.cm-fold-mark:hover': { color: 'var(--text)' },
   '.cm-foldPlaceholder': {
     backgroundColor: 'var(--hover-strong)',

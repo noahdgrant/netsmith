@@ -25,3 +25,7 @@ The window opens on the Schematic, or on the sections last used (the saved layou
 - A tab's right-click menu has the first enabled entry focused, so the keyboard (Shift+F10 on a focused tab) reaches the same choices as a drag.
 - A toast (bottom right, a few seconds; a failure stays until dismissed) can sit over a canvas and take a click: wait for `.toast` to go before a drag near the bottom right.
 - The problems dock (`problems-dock.md`) is under the panes, so it takes height from every section when it is open; a recipe that measures a canvas opens or closes it first, or leaves it closed (the default).
+
+## The audit (round 8)
+
+`drive a11y`: landmarks (`role="main"` `Workspace`, `Files and outline`, `Sections`, each section by name, `Status`), a name for every control of every section, the order of Tab from the top (the skip link, the top bar, the tabs, the view), the palette over the settings panel closed before the panel (`components/layers.ts`: a panel under a modal layer leaves Escape to it), the focus given back to the control that opened a layer (to the Help button when the layer was opened from its menu), and a top bar menu that closes when Tab leaves it. What is left is in `docs/research/ui-design-direction.md`, Round 8.

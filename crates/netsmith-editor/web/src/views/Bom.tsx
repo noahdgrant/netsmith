@@ -17,6 +17,7 @@ import {
 import { ChangesSwitch } from '../components/ChangesSwitch';
 import { Icon } from '../components/Icons';
 import { useScrollEdges } from '../components/scrollEdges';
+import { ViewHelp } from '../components/ViewHelp';
 import { type BomMark, bomKey, bomMarks, costDelta, signed } from '../compare/model';
 import { boardCompare, refText, showChanges } from '../compare/store';
 import { JobProgress } from '../components/JobProgress';
@@ -567,7 +568,26 @@ export function Bom() {
           </table>
         )}
       </div>
+      {!empty && !nothingShown && (
+        <div class="bom-foot" data-testid="bom-foot">
+          <span>
+            {plural(lines.length + hand.length, 'line')}
+            {lines.length + hand.length !== bom.lines.length + bom.hand.length ? ` of ${bom.lines.length + bom.hand.length}` : ''}
+          </span>
+          <span class="faint">{plural(parts + handParts, 'part')}</span>
+        </div>
+      )}
       </div>
+      <ViewHelp id="bom">
+        <p>One row for each value and package the board needs, with the designators it covers and the catalog line chosen for it.</p>
+        <p>
+          <b>Library</b> is the part's JLCPCB library: the solver takes Basic before Preferred before Extended. <b>Soldered by hand</b> lists the parts the board house does not place.
+        </p>
+        <p>
+          <b>Each</b> and <b>Stock</b> are the catalog's own figures, entered by hand. <b>Checked</b> is the day Check parts last found the row's manufacturer number and package equal to LCSC's record.
+        </p>
+        <p>Click a row to pick its parts in every other view.</p>
+      </ViewHelp>
     </div>
   );
 }

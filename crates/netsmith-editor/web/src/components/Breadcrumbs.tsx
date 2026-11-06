@@ -4,7 +4,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 
-import { withKey } from '../commands';
+import { runCommand, withKey } from '../commands';
 import { refText, showChanges } from '../compare/store';
 import { toggleChanges } from './ChangesSwitch';
 import { type Crumb, type CrumbOption, crumbOptions, crumbPath } from '../source/crumbs';
@@ -112,6 +112,15 @@ function Toggle({ icon, label, on, onClick, id, keys: command }: { icon: IconNam
   );
 }
 
+/** A button of the bar that does something and keeps no state: a command of the registry. */
+function Action({ icon, label, command, id }: { icon: IconName; label: string; command: string; id: string }) {
+  return (
+    <button type="button" class="icon-btn bc-tool" aria-label={label} data-tip={withKey(label, command)} data-testid={id} onClick={() => runCommand(command)}>
+      <Icon name={icon} size={15} />
+    </button>
+  );
+}
+
 export function Breadcrumbs() {
   const path = activeFile.value;
   const cur = cursor.value;
@@ -189,6 +198,9 @@ export function Breadcrumbs() {
         ))}
       </ol>
       <div class="bc-tools" role="group" aria-label="Source view">
+        <Action id="fold-all" icon="collapse-all" label="Fold all" command="source.fold.all" />
+        <Action id="unfold-all" icon="expand-all" label="Unfold all" command="source.fold.unfold" />
+        <span class="bc-divider" aria-hidden="true" />
         <Toggle id="toggle-wrap" icon="wrap" label="Word wrap" keys="source.wrap.toggle" on={wordWrap.value} onClick={() => (wordWrap.value = !wordWrap.value)} />
         <Toggle id="toggle-hints" icon="eye" label="Inline hints" keys="source.hints.toggle" on={inlineHints.value} onClick={() => (inlineHints.value = !inlineHints.value)} />
         <Toggle id="toggle-outline" icon="outline" label="Outline" keys="source.outline.toggle" on={outlineOpen.value} onClick={() => (outlineOpen.value = !outlineOpen.value)} />

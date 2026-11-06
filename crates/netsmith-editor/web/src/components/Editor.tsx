@@ -22,6 +22,7 @@ import { ensurePower, power } from '../source/boarddata';
 import { baseText, compare, showChanges } from '../compare/store';
 import { cardExtension } from '../source/cm-card';
 import { changesExtension, setBaseText } from '../source/cm-changes';
+import { rulerExtension } from '../source/cm-ruler';
 import { completeExtension } from '../source/cm-complete';
 import { foldExtension } from '../source/cm-fold';
 import { guidesExtension } from '../source/cm-guides';
@@ -66,6 +67,7 @@ function extensionsFor(path: string, readonly: boolean): Extension[] {
     severityGutter,
     lineNumbers(),
     changesExtension(path),
+    rulerExtension,
     foldExtension,
     highlightActiveLineGutter(),
     highlightActiveLine(),

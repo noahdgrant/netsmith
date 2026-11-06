@@ -76,11 +76,21 @@ export async function run({ page, shot, step, expect, url, section }) {
   const clips = (id) =>
     page.evaluate((s) => [...document.querySelectorAll(`.sec-${s} .pt-node`)].map((n) => `${n.dataset.node}:${n.scrollHeight - n.clientHeight}x${n.scrollWidth - n.clientWidth}`).join(' '), id);
   const at100 = {};
+  const wide = {};
+  const cardWidth = (id) => page.evaluate((s) => document.querySelector(`.sec-${s} .pt-node`)?.getBoundingClientRect().width ?? 0, id);
+  const cardFont = (id) => page.evaluate((s) => parseFloat(getComputedStyle(document.querySelector(`.sec-${s} .pt-node`)).fontSize) * (document.querySelector(`.sec-${s} .pt-node`).getBoundingClientRect().width / document.querySelector(`.sec-${s} .pt-node`).offsetWidth), id);
+  // A window too small for the whole graph: it opens at the least zoom it is allowed (75 %, times the Size), which is what the Size changes. (A graph that fits
+  // the window is shown fitted, whatever the Size is: Fit is the whole of it.)
+  await page.setViewportSize({ width: 1000, height: 600 });
   for (const id of ['power', 'system']) {
     await section(id);
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(700);
     at100[id] = await clips(id);
+    wide[id] = { width: await cardWidth(id), font: await cardFont(id) };
   }
+  await section('source');
+  await page.waitForSelector('.cm-content');
+  const source100 = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize));
   await openPanel();
   await page.click('[data-testid="scale-125"]');
   await page.waitForTimeout(250);
@@ -102,6 +112,36 @@ export async function run({ page, shot, step, expect, url, section }) {
     const now = await clips(id);
     expect(now === at100[id], `${id}: the cards clip no more than at 100 % (${now})`);
   }
+  step('at 125 % the cards of the power tree and the system view, with their text, are 125 % of what they were: the size is the zoom a graph opens at');
+  for (const id of ['power', 'system']) {
+    await section(id);
+    await page.waitForTimeout(700);
+    const w = await cardWidth(id);
+    const f = await cardFont(id);
+    // The power tree of this project does not fit a 1000 x 600 window and opens at the floor; the system view does, and is fitted (the power-tree and system-view recipes
+    // measure both at 90 and 125 % on graphs that do not fit).
+    if (id === 'power') {
+      expect(Math.abs(w / wide[id].width - 1.25) < 0.03, `${id}: a card is ${w.toFixed(0)} px wide, was ${wide[id].width.toFixed(0)} (x${(w / wide[id].width).toFixed(2)})`);
+      expect(Math.abs(f / wide[id].font - 1.25) < 0.03, `${id}: and its text is ${f.toFixed(1)} px on screen, was ${wide[id].font.toFixed(1)}`);
+    } else {
+      expect(w >= wide[id].width * 0.98, `${id}: a card is ${w.toFixed(0)} px wide, was ${wide[id].width.toFixed(0)} (a graph that fits is fitted, not smaller)`);
+    }
+    expect(!(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)), `${id}: no overflow`);
+  }
+  await page.setViewportSize({ width: 1500, height: 900 });
+  step('at 125 % the source text is 125 % of the editor\'s own size, and Ctrl+= adds a step to that size, not to the result');
+  await section('source');
+  await page.waitForSelector('.cm-content');
+  const source125 = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize));
+  expect(Math.abs(source125 / source100 - 1.25) < 0.01 && source100 === 13, `the text is ${source125} px, was ${source100}`);
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('Control+=');
+  await page.waitForTimeout(200);
+  const zoomed = await page.evaluate(() => ({ px: parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize), own: document.querySelector('[data-testid="font-size"]')?.textContent ?? '' }));
+  expect(Math.abs(zoomed.px - 14 * 1.25) < 0.01, `Ctrl+= makes the editor's own size 14 px and the text ${zoomed.px} px (14 x 1.25)`);
+  await page.keyboard.press('Control+0');
+  await page.waitForTimeout(150);
+  expect((await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize))) === source125, 'Ctrl+0 goes back');
   await openPanel();
   await page.click('[data-testid="scale-90"]');
   await page.waitForTimeout(250);

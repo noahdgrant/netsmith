@@ -8,6 +8,7 @@ import { type Command, allCommands } from '../commands';
 import { LOCAL_KEYS } from '../commandset';
 import { cheatGroup, cheatSheet, toggleCheatSheet } from '../quickpick';
 import { Keys } from './QuickPick';
+import { giveFocusBack } from './layers';
 
 function groups(): { group: string; commands: Command[] }[] {
   const by = new Map<string, Command[]>();
@@ -48,8 +49,7 @@ export function CheatSheet() {
     before.current = document.activeElement;
     box.current?.focus();
     return () => {
-      const b = before.current;
-      if (b instanceof HTMLElement) b.focus();
+      giveFocusBack(before.current, '[data-testid="menu-help"]');
     };
   }, [open]);
   // Opened from a view's own `?` button: scroll to its group and mark it for a moment.

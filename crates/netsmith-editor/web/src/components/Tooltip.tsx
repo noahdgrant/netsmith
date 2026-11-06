@@ -3,7 +3,7 @@
 // on keyboard focus; it hides at once on a press, a scroll or Escape. Elements that recipes
 // find by their `title` keep it: the browser's tip is the fallback there, never both on one element.
 
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
 interface Tip {
   text: string;
@@ -84,8 +84,9 @@ export function TooltipLayer() {
     };
   }, []);
 
-  // Keep the tip inside the window: it is centred on its element, then pushed back in.
-  useEffect(() => {
+  // Keep the tip inside the window: it is centred on its element, then pushed back in. It is measured at the window's left edge (its width is
+  // then its own, not what is left of the window to the right of its element) and moved before it is painted.
+  useLayoutEffect(() => {
     const el = box.current;
     if (!tip || !el) return;
     const w = el.offsetWidth;
@@ -99,7 +100,7 @@ export function TooltipLayer() {
       ref={box}
       class={`tip on ${tip.above ? 'above' : 'below'}`}
       role="tooltip"
-      style={{ top: tip.y, left: tip.x, transform: tip.above ? 'translateY(-100%)' : undefined }}
+      style={{ top: tip.y, left: 0, transform: tip.above ? 'translateY(-100%)' : undefined }}
     >
       <span class="tip-text">{tip.text}</span>
       {tip.keys.length > 0 && (

@@ -9,6 +9,7 @@ import { Legend, Pill, Popover, Units } from '../components/ui';
 import { NoBoard, ViewLoading } from '../components/ViewStatus';
 import { MiniMap } from '../components/MiniMap';
 import { PanZoom } from '../components/PanZoom';
+import { settings } from '../settings';
 import { type Item, type Placed, type TreeLayout, layoutTree } from '../flow/layout';
 import { type Move, linkKey, move, trace } from '../flow/select';
 import { ANCHOR, CARD_W, STEP, cardHeight, labelWidth } from '../system/metrics';
@@ -128,11 +129,15 @@ export const GRAPH_MIN_K = 0.75;
 /** The view a graph opens at, and Fit goes to: the whole of it with comfortable padding and centred, at most
  * 150 %. Opening a graph that would then be too small to read, it is 75 % from its top left instead (Fit still shows it
  * whole). True size is the 1:1 button. */
-export function placeFitted(size: { width: number; height: number }) {
+export function placeFitted(size: { width: number; height: number }, scale = 1) {
+  // The Size setting (90 to 125 %) is the zoom a graph opens at: its cards are drawn at their own pixel sizes and a zoom makes all of them, text and edges
+  // with them, as much larger as the rest of the page is, so nothing is laid out again and nothing can overlap.
+  const pad = GRAPH_PAD;
+  const minK = GRAPH_MIN_K * scale;
   return (w: number, h: number, whole = false) => {
-    const all = fitView(w, h, { x: -GRAPH_PAD, y: -GRAPH_PAD, w: size.width + 2 * GRAPH_PAD, h: size.height + 2 * GRAPH_PAD }, 1);
-    if (!whole && all.k < GRAPH_MIN_K) return { k: GRAPH_MIN_K, x: GRAPH_PAD * GRAPH_MIN_K, y: GRAPH_PAD * GRAPH_MIN_K };
-    const k = Math.min(all.k, GRAPH_MAX_K);
+    const all = fitView(w, h, { x: -pad, y: -pad, w: size.width + 2 * pad, h: size.height + 2 * pad }, 1);
+    if (!whole && all.k < minK) return { k: minK, x: pad * minK, y: pad * minK };
+    const k = Math.min(all.k, GRAPH_MAX_K * scale);
     return { k, x: (w - size.width * k) / 2, y: (h - size.height * k) / 2 - h * 0.02 };
   };
 }
@@ -280,7 +285,10 @@ function ModuleCard({
   );
 }
 
-function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTree | null; fitKey: string }) {
+function SystemFlow({ view, power, fitKey: baseKey }: { view: SystemView; power: PowerTree | null; fitKey: string }) {
+  // The page's Size: a graph opens at that much more zoom (see `placeFitted`), and is placed again when it changes.
+  const scale = settings.value.scale / 100;
+  const fitKey = `${baseKey}:${settings.value.scale}`;
   const model: SystemModel = useMemo(() => modelOf(view, power), [view, power]);
   const [opens, setOpens] = useState<Record<string, boolean>>({});
   /** A card that stands for nothing the page can select (a board of a system, a port): its
@@ -432,8 +440,9 @@ function SystemFlow({ view, power, fitKey }: { view: SystemView; power: PowerTre
           fitKey={fitKey}
           class="graph-host power-host"
           actualSize
-          scale100={1}
-          placeView={placeFitted(layout)}
+          scale100={scale}
+          scaleTitle={scale === 1 ? undefined : `Zoom. 100% is the cards at the page's size (${Math.round(scale * 100)} %)`}
+          placeView={placeFitted(layout, scale)}
           fitPlaces
           reveal={reveal}
           centre={centre}

@@ -135,3 +135,18 @@ describe('Escape and what is open on top of the source', () => {
     expect(find('nav.back')!.when!()).toBe(false);
   });
 });
+
+describe('Next change and Previous change', () => {
+  beforeAll(() => registerAppCommands());
+
+  it('are in the registry (so in the palette and the cheat sheet), in the Source group, on keys no other command has', () => {
+    const next = find('source.change.next');
+    const prev = find('source.change.prev');
+    expect(next?.title).toBe('Next change');
+    expect(prev?.title).toBe('Previous change');
+    expect(next?.group).toBe('Source');
+    expect(sameChord(parseChord(next!.keys!), { mod: false, alt: true, shift: false, key: 'F5' })).toBe(true);
+    expect(sameChord(parseChord(prev!.keys!), { mod: false, alt: true, shift: true, key: 'F5' })).toBe(true);
+    for (const c of [next!, prev!]) expect(allCommands().filter((o) => o.id !== c.id && o.keys && sameChord(parseChord(o.keys), parseChord(c.keys!)))).toEqual([]);
+  });
+});

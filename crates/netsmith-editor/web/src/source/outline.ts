@@ -85,3 +85,80 @@ export function ancestorsOf(syms: Sym[], id: string): string[] {
   };
   return find(syms, []) ?? [];
 }
+
+// ---- which definitions are folded ----
+// By default the outline shows what the cursor is in and the names of the rest: a definition that does not hold the cursor's line
+// is folded, with a count of what it declares. The person's own choices (a twisty, Expand all, Collapse all) are kept for the
+// file by the names of the entries (a line number changes with every edit), and win over the default.
+
+/** What the person chose in one file: the keys of the entries they opened and of those they folded. */
+export interface FoldChoice {
+  open: string[];
+  closed: string[];
+}
+
+export const NO_CHOICE: FoldChoice = { open: [], closed: [] };
+
+/** An entry's key in a file: the kind and name of a definition, then the names of the declarations inside it. */
+export function foldKeys(syms: Sym[]): Map<string, string> {
+  const keys = new Map<string, string>();
+  const walk = (list: Sym[], parent: string) => {
+    for (const s of list) {
+      const key = parent ? `${parent}/${s.name}` : `${s.kind}:${s.name}`;
+      keys.set(s.id, key);
+      walk(s.children, key);
+    }
+  };
+  walk(syms, '');
+  return keys;
+}
+
+/** The ids of the entries that are folded: the person's choices, and for the rest the definitions (top level) that do not hold `line`. */
+export function foldedIds(syms: Sym[], line: number | null, choice: FoldChoice = NO_CHOICE): Set<string> {
+  const keys = foldKeys(syms);
+  const open = new Set(choice.open);
+  const closed = new Set(choice.closed);
+  const folded = new Set<string>();
+  for (const s of syms) {
+    if (s.children.length === 0) continue;
+    const holds = line != null && line >= s.line && line <= s.endLine;
+    const key = keys.get(s.id)!;
+    if (closed.has(key) || (!open.has(key) && !holds)) folded.add(s.id);
+  }
+  // A declaration the person folded stays folded (nothing folds a declaration by itself).
+  const walk = (list: Sym[]) => {
+    for (const s of list) {
+      if (s.children.length > 0 && closed.has(keys.get(s.id)!)) folded.add(s.id);
+      walk(s.children);
+    }
+  };
+  walk(syms.flatMap((s) => s.children));
+  return folded;
+}
+
+/** The choice after the twisty of an entry was pressed: it was `folded`, so it opens (and the other way). */
+export function toggled(choice: FoldChoice, key: string, wasFolded: boolean): FoldChoice {
+  const open = choice.open.filter((k) => k !== key);
+  const closed = choice.closed.filter((k) => k !== key);
+  (wasFolded ? open : closed).push(key);
+  return { open, closed };
+}
+
+/** Every entry that has children opened, or every one folded: the pair of buttons at the head of the outline. */
+export function allChoice(syms: Sym[], fold: boolean): FoldChoice {
+  const keys = foldKeys(syms);
+  const withKids: string[] = [];
+  const walk = (list: Sym[]) => {
+    for (const s of list) {
+      if (s.children.length > 0) withKids.push(keys.get(s.id)!);
+      walk(s.children);
+    }
+  };
+  walk(syms);
+  return fold ? { open: [], closed: withKids } : { open: withKids, closed: [] };
+}
+
+/** How many declarations an entry holds, all levels: the count on a folded row. */
+export function holds(s: Sym): number {
+  return s.children.reduce((n, c) => n + 1 + holds(c), 0);
+}

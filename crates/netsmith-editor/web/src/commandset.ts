@@ -4,10 +4,12 @@
 // commands, defined here and run through the handle the view hands out.)
 
 import { foldAll, unfoldAll } from '@codemirror/language';
+import { EditorView, closeHoverTooltips } from '@codemirror/view';
 
 import { askForRef, toggleChanges } from './components/ChangesSwitch';
 import { api } from './client';
-import { clearCompare, compare, openDiff, refName, refText, runCompare, showChanges } from './compare/store';
+import { clearCompare, compare, diffTarget, openDiff, refName, refText, runCompare, showChanges } from './compare/store';
+import { diffControls } from './compare/collapse';
 import { type Command, provide, register, runCommand } from './commands';
 import { stepProblem } from './feedback/derive';
 import { dock, filter, setDockOpen, toggleDock } from './feedback/state';
@@ -15,6 +17,8 @@ import { SECTIONS, canSplit, closePane, splitRight } from './layout';
 import { openPicker, toggleCheatSheet } from './quickpick';
 import { cardAtCursor } from './source/cm-card';
 import { openCard } from './source/cm-card';
+import { changeHunks, stepChange } from './source/changeSteps';
+import { changeLines } from './source/cm-changes';
 import { sourceEditor } from './source/handle';
 import { canBack, canForward } from './source/navhistory';
 import { hoverCards, inlineHints, outlineOpen, resetEditorZoom, wordWrap, zoomEditor } from './source/prefs';
@@ -205,6 +209,32 @@ const schematicCommands = (): Command[] => {
 const sourceHere = () => focusedSection() === 'source';
 const editorOn = () => sourceHere() && sourceEditor.view !== null && activeFile.value !== null;
 
+/** Next change and Previous change: the cursor goes to the start of the next run of lines the comparison marks in the open file, from
+ * the cursor's line (the runs the margin and the ruler show). Without a comparison nothing moves and a toast says so. */
+function stepSourceChange(dir: 1 | -1) {
+  const v = sourceEditor.view;
+  if (!v) return;
+  if (refName.peek() === null) {
+    say('No comparison active');
+    return;
+  }
+  const marks = changeLines(v.state);
+  if (!marks) {
+    say('The changes are not shown: turn on Show changes to step through them');
+    return;
+  }
+  const state = v.state;
+  const to = stepChange(changeHunks(state.doc.lines, marks), state.doc.lineAt(state.selection.main.head).number, dir);
+  if (!to) {
+    say(`No changes in this file since ${refText.peek() || 'the ref'}`);
+    return;
+  }
+  const at = state.doc.line(Math.min(to.line, state.doc.lines)).from;
+  v.focus();
+  v.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: 'center' }), scrollIntoView: false, userEvent: 'select' });
+  if (to.wrapped) say(dir === 1 ? 'Back at the first change' : 'Back at the last change');
+}
+
 const sourceCommands = (): Command[] => [
   {
     id: 'source.card.show',
@@ -223,7 +253,8 @@ const sourceCommands = (): Command[] => [
         return;
       }
       v.focus();
-      v.dispatch({ effects: openCard.of(v.state.selection.main.head) });
+      // A card the pointer opened is closed first: two cards over one word would stack.
+      v.dispatch({ effects: [closeHoverTooltips, openCard.of(v.state.selection.main.head)] });
     },
   },
   {
@@ -290,6 +321,26 @@ const sourceCommands = (): Command[] => [
     aliases: ['font size', 'default text size'],
     when: sourceHere,
     run: () => void resetEditorZoom(),
+  },
+  {
+    id: 'source.change.next',
+    title: 'Next change',
+    group: 'Source',
+    keys: 'Alt+F5',
+    inFields: true,
+    aliases: ['next hunk', 'next difference', 'changed since the ref', 'diff', 'compare'],
+    when: editorOn,
+    run: () => stepSourceChange(1),
+  },
+  {
+    id: 'source.change.prev',
+    title: 'Previous change',
+    group: 'Source',
+    keys: 'Shift+Alt+F5',
+    inFields: true,
+    aliases: ['previous hunk', 'previous difference', 'changed since the ref', 'diff', 'compare'],
+    when: editorOn,
+    run: () => stepSourceChange(-1),
   },
   {
     id: 'source.replace',
@@ -686,6 +737,14 @@ export const LOCAL_KEYS: { group: string; keys: [string, string][] }[] = [
     ],
   },
   {
+    group: 'Comparison of a file',
+    keys: [
+      ['Esc', 'close the comparison and return to the list or the editor'],
+      ['Enter or Space', 'on a bar of unchanged lines: show them'],
+      ['Alt+Down', 'next change, from the keyboard of the text'],
+    ],
+  },
+  {
     group: 'Project tree',
     keys: [
       ['↑ ↓ ← →', 'move, open and close folders'],
@@ -771,6 +830,41 @@ export function registerCompareCommands() {
       },
     },
   );
+  // The open comparison of a file (views/compare/DiffPanel.tsx): the keys work wherever the focus is while it is open, a diff view being a text view too.
+  register(
+    {
+      id: 'compare.diff.next',
+      title: 'Next change in the comparison',
+      group: 'Compare',
+      keys: 'F7',
+      inFields: true,
+      aliases: ['next hunk', 'next difference', 'diff'],
+      when: () => diffTarget.value !== null && (diffControls.value?.changes ?? 0) > 0,
+      run: () => diffControls.peek()?.step(1),
+    },
+    {
+      id: 'compare.diff.prev',
+      title: 'Previous change in the comparison',
+      group: 'Compare',
+      keys: 'Shift+F7',
+      inFields: true,
+      aliases: ['previous hunk', 'previous difference', 'diff'],
+      when: () => diffTarget.value !== null && (diffControls.value?.changes ?? 0) > 0,
+      run: () => diffControls.peek()?.step(-1),
+    },
+  );
+  provide(() => [
+    {
+      id: 'compare.diff.unchanged',
+      title: diffControls.value?.hiding ? 'Show unchanged lines in the comparison' : 'Hide unchanged lines in the comparison',
+      group: 'Compare',
+      keys: 'Mod+Alt+H',
+      inFields: true,
+      aliases: ['collapse unchanged', 'context', 'fold unchanged', 'diff'],
+      when: () => diffTarget.value !== null && diffControls.value !== null,
+      run: () => diffControls.peek()?.toggleHide(),
+    },
+  ]);
   // The switch reads as what turning it does next, as the source's switches do.
   provide(() => [
     {

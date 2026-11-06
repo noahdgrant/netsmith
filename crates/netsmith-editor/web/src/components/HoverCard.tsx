@@ -114,6 +114,7 @@ function PartBody({ card, done, other }: { card: PartCard; done: () => void; oth
   return (
     <>
       <InspectorHead
+        titleId="hc-title"
         eyebrow={card.module ? `Part in ${card.module}` : 'Part'}
         icon="part"
         tone="part"
@@ -170,6 +171,7 @@ function NetBody({ card, done }: { card: NetCard; done: () => void }) {
   return (
     <>
       <InspectorHead
+        titleId="hc-title"
         eyebrow="Net"
         icon="net"
         tone="net"
@@ -222,6 +224,7 @@ function ModuleBody({ card, done, other }: { card: ModuleCard; done: () => void;
   return (
     <>
       <InspectorHead
+        titleId="hc-title"
         eyebrow="Module instance"
         icon="module"
         tone="module"
@@ -260,6 +263,7 @@ function DefinitionBody({ card, done }: { card: DefinitionCard; done: () => void
   return (
     <>
       <InspectorHead
+        titleId="hc-title"
         eyebrow={card.library ? 'Library definition' : 'Definition'}
         icon={DEF_ICON[card.defKind] ?? 'definition'}
         tone={card.defKind === 'interface' ? 'bus' : card.defKind}
@@ -355,7 +359,7 @@ export function HoverCard({ target, path, close, typeAt }: { target: Target; pat
   if (!card) return null;
   const kind = card.type === 'definition' ? 'definition' : card.type;
   return (
-    <div class={`hc hc-${kind}`} role="dialog" aria-label={`${card.type === 'part' ? card.refdes : card.type === 'net' ? `Net ${card.name}` : card.type === 'module' ? card.path : card.name}`} data-testid="hover-card" data-kind={kind} data-board={active ?? ''}>
+    <div class={`hc hc-${kind}`} role="dialog" aria-labelledby="hc-title" data-testid="hover-card" data-kind={kind} data-board={active ?? ''}>
       {offer && <BoardSwitch boards={boards} active={active} shown={shownBoard} onPick={(b) => setPick(b === shownBoard ? null : b)} />}
       {card.type === 'part' && <PartBody card={card} done={close} other={other} />}
       {card.type === 'net' && <NetBody card={card} done={close} />}

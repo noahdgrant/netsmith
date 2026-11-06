@@ -221,6 +221,8 @@ export function App() {
       <div
         ref={area}
         class="panes-area"
+        role="main"
+        aria-label="Workspace"
         style={{
           gridTemplateColumns: two ? `minmax(0, ${l.split}fr) 6px minmax(0, ${1 - l.split}fr)` : 'minmax(0, 1fr)',
         }}

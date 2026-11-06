@@ -132,6 +132,77 @@ export async function run({ page, shot, step, expect, project, section }) {
   await settle(250);
   expect((await page.locator('[data-testid="hover-card"]').count()) === 0, 'Escape closes it');
 
+  step('a card is a dialog labelled by its title; Tab moves the focus into it, its chips and buttons take Tab and Shift+Tab, Enter activates a chip, Escape closes it and the focus returns to the text');
+  const inCard = () => page.evaluate(() => !!document.activeElement?.closest('[data-testid="hover-card"]'));
+  await lineOf('.r1: Resistor').click();
+  await page.keyboard.press('Home');
+  for (let i = 0; i < 2; i++) await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Control+Alt+i');
+  await page.waitForSelector('[data-testid="hover-card"]', { timeout: 3000 });
+  const dialog = await page.evaluate(() => {
+    const d = document.querySelector('[data-testid="hover-card"]');
+    const t = document.getElementById(d.getAttribute('aria-labelledby') ?? '');
+    return { role: d.getAttribute('role'), title: t?.innerText ?? '' };
+  });
+  expect(dialog.role === 'dialog' && dialog.title.includes(r1.refdes), `role dialog, labelled by its title (${dialog.title.replace(/\s+/g, ' ')})`);
+  expect((await page.locator('.cm-card-tip').count()) === 1, 'one card, not a card on top of another');
+  await page.keyboard.press('Tab');
+  expect(await inCard(), 'Tab from the text moves the focus into the card');
+  const stops = [];
+  for (let i = 0; i < 12 && (await inCard()); i++) {
+    stops.push(await page.evaluate(() => `${document.activeElement.tagName.toLowerCase()}.${String(document.activeElement.className).split(' ').filter(Boolean).slice(0, 2).join('.')}`));
+    await page.keyboard.press('Tab');
+  }
+  expect(stops.length >= 3 && stops.every((x) => x.startsWith('button')), `the card's chips and buttons take Tab (${stops.length}: ${stops.slice(0, 4).join(', ')})`);
+  await page.keyboard.press('Shift+Tab');
+  expect(await inCard(), 'Shift+Tab comes back to the last one');
+  for (let i = 0; i < stops.length; i++) await page.keyboard.press('Shift+Tab');
+  expect(!(await inCard()) && (await page.evaluate(() => !!document.activeElement?.closest('.cm-editor'))), 'Shift+Tab from the first one goes back to the text');
+  await page.keyboard.press('Tab');
+  const chipName = await page.evaluate(() => (document.activeElement.classList.contains('hc-pin') ? document.activeElement.innerText.replace(/\s+/g, ' ') : ''));
+  await shot('card-focus');
+  if (chipName) {
+    await page.keyboard.press('Enter');
+    await settle(300);
+    expect((await page.locator('.selchip').count()) === 1, `Enter on a pin chip picks its net (${chipName})`);
+    await page.keyboard.press('Escape');
+    await settle(200);
+  } else {
+    await page.keyboard.press('Escape');
+    await settle(250);
+  }
+  expect((await page.locator('[data-testid="hover-card"]').count()) === 0, 'Escape closes the card');
+  expect(await page.evaluate(() => !!document.activeElement?.closest('.cm-content')), 'and the focus is in the text again');
+
+  step('a card the pointer opened stays while the focus is in it, whatever the pointer does');
+  await away();
+  await hoverToken('.r1: Resistor', 'r1');
+  await page.waitForSelector('[data-testid="hover-card"]', { timeout: 4000 });
+  await lineOf('.r1: Resistor').click();
+  await hoverToken('.r1: Resistor', 'r1');
+  await page.waitForSelector('[data-testid="hover-card"]', { timeout: 4000 });
+  await page.keyboard.press('Tab');
+  expect(await inCard(), 'Tab goes into a card the pointer opened');
+  await page.mouse.move(1500, 960);
+  await settle(1000);
+  expect((await page.locator('[data-testid="hover-card"]').count()) === 1, 'and the card is still there with the pointer far away');
+  await page.keyboard.press('Escape');
+  await settle(250);
+  expect((await page.locator('[data-testid="hover-card"]').count()) === 0 && (await page.evaluate(() => !!document.activeElement?.closest('.cm-content'))), 'Escape closes it, and the focus returns to the text');
+  await away();
+
+  step('the shortcut over a card the pointer opened does not stack a second card');
+  await lineOf('.r1: Resistor').click();
+  await page.keyboard.press('Home');
+  for (let i = 0; i < 2; i++) await page.keyboard.press('ArrowRight');
+  await hoverToken('.r1: Resistor', 'r1');
+  await page.waitForSelector('[data-testid="hover-card"]', { timeout: 4000 });
+  await page.keyboard.press('Control+Alt+i');
+  await settle(400);
+  expect((await page.locator('[data-testid="hover-card"]').count()) === 1, 'one card');
+  await page.keyboard.press('Escape');
+  await away();
+
   step('the palette turns hover cards off and on');
   await palette('hide hover cards');
   await hoverToken('.r1: Resistor', 'r1');
@@ -176,6 +247,43 @@ export async function run({ page, shot, step, expect, project, section }) {
   expect(['module', 'board', 'system'].every((k) => kinds.includes(k)), `a row for each kind of definition (${kinds.join(', ')})`);
   await shot('outline');
 
+  step('the outline folds the definitions that do not hold the cursor, each with a count; the one with the cursor stays open; Expand all and Collapse all');
+  const defRows = () => page.locator('.ol-row.def').evaluateAll((els) => els.map((e) => ({ name: e.dataset.name, open: e.getAttribute('aria-expanded'), kids: e.querySelector('.ol-kids')?.textContent ?? null })));
+  const rowsNow = await defRows();
+  const holder = rowsNow.find((r) => r.open === 'true');
+  expect(rowsNow.length >= 3 && holder?.name === 'PowerBoard' && rowsNow.filter((r) => r.open === 'true').length === 1, `only the definition with the cursor is open (${rowsNow.map((r) => `${r.name}:${r.open}`).join(', ')})`);
+  expect(rowsNow.filter((r) => r.open === 'false').every((r) => /^\d+$/.test(r.kids ?? '') && Number(r.kids) > 0), `each folded one says how many it holds (${rowsNow.filter((r) => r.open === 'false').map((r) => `${r.name}:${r.kids}`).join(', ')})`);
+  const total = await page.locator('.ol-row').count();
+  await page.locator('[data-testid="outline-expand-all"]').click();
+  await settle(200);
+  expect((await page.locator('.ol-row').count()) > total && (await page.locator('.ol-kids').count()) === 0, 'Expand all opens every definition');
+  await page.locator('[data-testid="outline-collapse-all"]').click();
+  await settle(200);
+  expect((await page.locator('.ol-row').count()) === (await page.locator('.ol-row.def').count()) && (await page.locator('.ol-row.def[aria-expanded="false"]').count()) === rowsNow.length, 'Collapse all folds every one, the current too');
+  await page.locator('.ol-row.def[data-name="LdoStage"] .ol-twisty').click();
+  await settle(200);
+  expect((await page.locator('.ol-row.def[data-name="LdoStage"]').getAttribute('aria-expanded')) === 'true', 'a twisty opens one');
+  const kept = await page.evaluate(() => JSON.parse(localStorage.getItem('netsmith.source.outlineFolds.v1') ?? '{}'));
+  const mine = kept['src/main.nsm'];
+  expect(mine && mine.open.includes('module:LdoStage') && mine.closed.includes('board:PowerBoard'), `the choice is kept for the file by names (${JSON.stringify(mine)})`);
+  await page.locator('[data-testid="outline-expand-all"]').click();
+  await settle(150);
+
+  step('the gutter shows a faint chevron on every foldable line, full on the gutter; Fold all and Unfold all are in the bar above the text');
+  await page.mouse.move(1500, 960);
+  await settle(300);
+  const chevrons = await page.evaluate(() => [...document.querySelectorAll('.cm-fold-mark:not(.folded)')].map((e) => Number(getComputedStyle(e).opacity)));
+  expect(chevrons.length >= 3 && chevrons.every((o) => o >= 0.3 && o < 1), `a chevron on each foldable line at rest, not hidden and not loud (${chevrons.length} at ${chevrons[0]})`);
+  await page.locator('.cm-gutters').hover();
+  await settle(250);
+  expect((await page.evaluate(() => Math.max(...[...document.querySelectorAll('.cm-fold-mark:not(.folded)')].map((e) => Number(getComputedStyle(e).opacity))))) === 1, 'full on the gutter');
+  await page.locator('[data-testid="fold-all"]').click();
+  await page.waitForSelector('.cm-foldPlaceholder');
+  expect(true, 'Fold all in the bar folds the blocks');
+  await page.locator('[data-testid="unfold-all"]').click();
+  await settle(200);
+  expect((await page.locator('.cm-foldPlaceholder').count()) === 0, 'Unfold all opens them');
+
   step('the outline filters, and shows a problem where it is');
   await page.locator('.ol-filter input').fill('cap');
   await settle(250);
@@ -189,6 +297,62 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.waitForSelector('.cm-lintRange-error', { timeout: 10000 });
   await page.waitForSelector('.ol-row[data-name="oops"] .ft-problems', { timeout: 5000 });
   expect(true, 'the entry of the mistake has a badge');
+
+  step('the overview ruler: a tick for the problem in its lane, in the danger colour, that says "line N: message"; a faint thumb for the window; a press scrolls there');
+  await page.waitForSelector('.cm-ruler:not([hidden]) .cm-ruler-tick.kind-error', { timeout: 8000 });
+  const tick = page.locator('.cm-ruler-tick.kind-error').first();
+  const tip = (await tick.getAttribute('data-tip')) ?? '';
+  expect(/^line \d+: .+/.test(tip), `the tick says where and what (${tip})`);
+  const look = await page.evaluate(() => {
+    const t = document.querySelector('.cm-ruler-tick.kind-error');
+    const probe = document.createElement('i');
+    probe.style.color = 'var(--danger)';
+    document.body.appendChild(probe);
+    const danger = getComputedStyle(probe).color;
+    probe.remove();
+    const r = document.querySelector('.cm-ruler').getBoundingClientRect();
+    const th = document.querySelector('.cm-ruler-thumb');
+    return { image: getComputedStyle(t).backgroundImage, radius: getComputedStyle(t).borderRadius, w: t.getBoundingClientRect().width, h: t.getBoundingClientRect().height, danger, lane: t.classList.contains('lane-problem'), width: r.width, height: r.height, thumbHidden: th.hidden, thumb: th.getBoundingClientRect().height, scrolls: document.querySelector('.cm-scroller').scrollHeight > document.querySelector('.cm-scroller').clientHeight };
+  });
+  expect(look.lane && look.image.includes(look.danger) && look.radius.includes('50%'), 'in the problem lane, a disc (an error is round) drawn in the page\'s danger token');
+  expect(look.w >= 7 && look.h >= 7 && Math.abs(look.w - look.h) < 1, `a glyph, the same size wherever it is (${look.w} x ${look.h} px), wider than a change's bar so that colour is not the only difference`);
+  // A warning is a triangle: injected here (the fixture has no warning at this point) only to see that the stylesheet draws it as one.
+  const tri = await page.evaluate(() => {
+    const t = document.createElement('span');
+    t.className = 'cm-ruler-tick lane-problem kind-warning';
+    t.style.setProperty('--y', '200px');
+    document.querySelector('.cm-ruler-ticks').appendChild(t);
+    const cs = getComputedStyle(t);
+    const out = { clip: cs.clipPath, w: t.getBoundingClientRect().width, h: t.getBoundingClientRect().height };
+    t.remove();
+    return out;
+  });
+  expect(/polygon/.test(tri.clip) && tri.w >= 7, `a warning is a triangle, not a bar (${tri.clip.slice(0, 40)}, ${tri.w} px wide)`);
+  expect(look.scrolls ? !look.thumbHidden && look.thumb > 8 && look.thumb < look.height : look.thumbHidden, `the thumb is the window's share of the file (${look.thumb.toFixed(0)} of ${look.height.toFixed(0)} px)`);
+  await page.keyboard.press('Control+Home');
+  await settle(200);
+  await tick.click();
+  await settle(300);
+  expect((await activeLine()).includes('.oops'), `a press on the tick puts the cursor on its line (${(await activeLine()).trim()})`);
+  const sc0 = await page.evaluate(() => document.querySelector('.cm-scroller').scrollTop);
+  await page.keyboard.press('Control+Home');
+  await settle(200);
+  const box = await page.locator('.cm-ruler').boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height - 6);
+  await settle(300);
+  const sc1 = await page.evaluate(() => document.querySelector('.cm-scroller').scrollTop);
+  expect(sc1 > 0 || !look.scrolls, `a press on the strip scrolls there (${sc1}px)`);
+  await shot('ruler');
+
+  step('Next change and Previous change without a comparison move nothing and say so in a toast');
+  await page.locator('.cm-content').click();
+  const sel0 = await page.evaluate(() => document.querySelector('.cm-activeLine')?.textContent ?? '');
+  await page.keyboard.press('Alt+F5');
+  await page.waitForSelector('.toast', { timeout: 4000 });
+  expect(/No comparison active/.test(await page.locator('.toast').first().innerText()), 'Alt+F5: "No comparison active"');
+  await page.keyboard.press('Shift+Alt+F5');
+  await settle(300);
+  expect((await page.evaluate(() => document.querySelector('.cm-activeLine')?.textContent ?? '')) === sel0, 'and the cursor stays where it was');
 
   step('the gutter marks the line with the page\'s severity icon, and the lint tooltip is a card');
   await page.waitForSelector('[data-testid="gutter-error"]');

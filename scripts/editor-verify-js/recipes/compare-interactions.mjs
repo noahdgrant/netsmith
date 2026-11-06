@@ -375,7 +375,8 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   await openBase();
   const d125 = await diffLook();
   expect(d125.head > dCompact.head * 1.25, `the diff view's bar follows the density and the size (${dCompact.head} compact, ${d125.head} at 125 %)`);
-  expect(d125.font === dCompact.font && d125.font === d125.own, `its text is the source editor's own size, as the Source's (${d125.font} = ${d125.own}: the page's size does not change it)`);
+  // The page's Size multiplies the editor's own size (Ctrl+= and Ctrl+-): 13 px at 100 %, 16.25 px at 125 %, in the Source and in the diff alike.
+  expect(Math.abs(parseFloat(d125.font) - parseFloat(dCompact.font) * 1.25) < 0.05, `its text follows the page's size times the editor's own (${dCompact.font} at 100 % -> ${d125.font} at 125 %)`);
   await shot('diff-125');
   await page.keyboard.press('Escape');
   await page.evaluate(() => localStorage.setItem('netsmith.settings', JSON.stringify({ density: 'comfortable', scale: 100, motion: 'system' })));

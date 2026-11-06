@@ -156,4 +156,91 @@ export async function run({ page, shot, step, expect, section }) {
   expect(withPick.notes.every((n) => after.every((p) => !overlaps(n.box, p))), 'and still no note lies on a part');
   await shot('part-and-notes');
   await page.keyboard.press('Escape');
+
+  // ---- notes by keyboard ----
+  step('every note takes Tab, is a button with a label (Note: the first words), and says every part it is about');
+  const kb = await page.evaluate(() =>
+    [...document.querySelectorAll('svg.schematic g.note')].map((n) => ({ tab: n.getAttribute('tabindex'), role: n.getAttribute('role'), label: n.getAttribute('aria-label'), anchors: (n.getAttribute('data-anchors') ?? '').split(' ').filter(Boolean), rel: n.classList.contains('note-relation'), at: n.getAttribute('data-at') })),
+  );
+  expect(kb.length >= 3 && kb.every((n) => n.tab === '0' && n.role === 'button' && /^Note: .+/.test(n.label ?? '') && n.label.length <= 'Note: '.length + 61), `${kb.length} notes: tabindex 0, role button, aria-label "Note: ..." of at most 60 characters of the text`);
+  const relation = kb.find((n) => n.rel);
+  expect(relation && relation.anchors.length >= 2 && relation.anchors[0] === 'D1' && relation.anchors.includes('R1'), `the relation note names its parts, not only the first (${relation?.anchors.join(', ')})`);
+  const order = await page.evaluate(() => {
+    const all = [...document.querySelectorAll('svg.schematic g.note')];
+    const focusable = [...document.querySelectorAll('svg.schematic [tabindex="0"], .schematic-host [tabindex="0"]')];
+    return { firstNote: focusable.indexOf(all[0]), lastPart: Math.max(-1, ...[...document.querySelectorAll('svg.schematic g.part[tabindex="0"]')].map((p) => focusable.indexOf(p))) };
+  });
+  expect(order.firstNote > order.lastPart, 'the notes come after the parts in the Tab order');
+
+  step('Tab from the canvas reaches the first note, a ring shows, and the next Tab goes to the next note');
+  await page.locator('.schematic g.note').first().focus();
+  expect(await page.evaluate(() => document.activeElement?.matches?.('g.note') ?? false), 'a note has the focus');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  await page.waitForTimeout(350);
+  const ring = await page.evaluate(() => {
+    const n = document.activeElement;
+    const frame = n?.querySelector?.('.note-frame');
+    const rg = n?.querySelector?.('.note-ring');
+    const probe = document.createElement('i');
+    probe.style.color = 'var(--focus)';
+    document.body.appendChild(probe);
+    const focus = getComputedStyle(probe).color;
+    probe.remove();
+    const cs = rg && getComputedStyle(rg);
+    const fcs = frame && getComputedStyle(frame);
+    const unit = n?.ownerSVGElement?.getScreenCTM()?.a ?? 1;
+    const f = frame?.getBoundingClientRect();
+    const r = rg?.getBoundingClientRect();
+    // From the outside of the frame's own stroke to the inside of the ring's 2 px line, in screen pixels.
+    const gap = f && r ? f.left - r.left - (parseFloat(fcs.strokeWidth) * unit) / 2 - 1 : NaN;
+    return { note: n?.matches?.('g.note'), stroke: cs?.stroke, focus, width: cs && parseFloat(cs.strokeWidth), display: cs?.display, vector: cs?.vectorEffect, filter: cs?.filter, frameFilter: fcs?.filter, frameWidth: fcs && parseFloat(fcs.strokeWidth), gap };
+  });
+  expect(ring.note && ring.stroke === ring.focus && ring.width === 2 && ring.display !== 'none' && ring.vector === 'non-scaling-stroke', `a crisp ring in the focus colour, 2 px at any zoom (${ring.stroke} ${ring.width}px ${ring.vector})`);
+  expect(ring.filter === 'none' && ring.frameFilter === 'none' && ring.frameWidth <= 0.5, `no halo and the frame itself is not made heavier (${ring.filter}, ${ring.frameFilter}, ${ring.frameWidth})`);
+  expect(Math.abs(ring.gap - 2) < 0.75, `the ring stands 2 px clear of the frame (${ring.gap.toFixed(2)} px)`);
+  await shot('note-focus-ring');
+  const second = await page.evaluate(() => {
+    const all = [...document.querySelectorAll('svg.schematic g.note')];
+    return all.indexOf(document.activeElement);
+  });
+  await page.keyboard.press('Tab');
+  const third = await page.evaluate(() => [...document.querySelectorAll('svg.schematic g.note')].indexOf(document.activeElement));
+  expect(third === second + 1 || third === -1, `Tab goes to the next note (${second} then ${third})`);
+  await page.locator('.schematic g.note').first().focus();
+  step('focus on a note lights the parts it is about in every view (the shared hover), and leaving puts the light out');
+  const relEl = page.locator('.schematic g.note.note-relation').first();
+  await relEl.focus();
+  await page.waitForTimeout(300);
+  const lit = await page.evaluate(() => [...document.querySelectorAll('svg.schematic g.part.hover-lit')].map((p) => p.getAttribute('data-ref')));
+  expect(lit.length >= 2, `the relation's parts are lit (${lit.join(', ')})`);
+  await page.locator('.schematic .stage, .schematic-host').first().click({ position: { x: 5, y: 5 } }).catch(() => {});
+  await page.keyboard.press('Escape');
+
+  step('Enter and Space on a note open the Source at its line, as a click does; Back returns');
+  const doc = kb.find((n) => !n.rel) ?? kb[0];
+  await page.locator(`.schematic g.note[data-at="${doc.at}"]`).focus();
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.section.sec-source:not(.away)');
+  const wanted = file.split('\n')[Number(doc.at.split(':').pop()) - 1].trim();
+  await page.waitForFunction((t) => document.querySelector('.cm-activeLine')?.textContent.trim() === t, wanted, { timeout: 5000 }).catch(() => {});
+  expect((await page.locator('.cm-activeLine').innerText()).trim() === wanted, `Enter put the cursor on line ${doc.at}`);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.section.sec-schematic:not(.away)');
+  await page.locator(`.schematic g.note[data-at="${doc.at}"]`).focus();
+  await page.keyboard.press(' ');
+  await page.waitForSelector('.section.sec-source:not(.away)');
+  expect(true, 'Space opens the source too');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.section.sec-schematic:not(.away)');
+
+  step('a relation about several parts is lit when any of them is: picking R1 (not its first part) lights it, and the unrelated notes dim');
+  await page.locator('.schematic .part[data-ref="R1"]').click();
+  await page.waitForSelector('.selchip');
+  const rl = await page.evaluate(() => [...document.querySelectorAll('svg.schematic g.note')].map((n) => ({ rel: n.classList.contains('note-relation'), on: n.classList.contains('on'), anchors: n.getAttribute('data-anchors'), opacity: getComputedStyle(n).opacity })));
+  const relation2 = rl.find((n) => n.rel);
+  expect(relation2.on && relation2.anchors.split(' ').includes('R1') && relation2.anchors.split(' ')[0] !== 'R1', `the relation note is lit by R1, which is not its first part (${relation2.anchors})`);
+  expect(rl.filter((n) => !n.on).every((n) => parseFloat(n.opacity) < 1), 'the notes of other parts dim');
+  await shot('relation-lit-by-r1');
+  await page.keyboard.press('Escape');
 }

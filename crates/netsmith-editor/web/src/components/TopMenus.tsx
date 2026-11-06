@@ -14,6 +14,7 @@ import { THEMES, themePref } from '../theme';
 import { chooseTheme } from '../themeUi';
 import { Icon, type IconName } from './Icons';
 import { Segmented } from './ui';
+import { inModal } from './layers';
 
 function TopMenu({ id, icon, label, tip, keys, children }: { id: MenuId; icon: IconName; label: string; tip: string; keys?: string; children: ComponentChildren }) {
   const button = useRef<HTMLButtonElement>(null);
@@ -35,19 +36,26 @@ function TopMenu({ id, icon, label, tip, keys, children }: { id: MenuId; icon: I
       toggleMenu(id, false);
     };
     const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !inModal(e)) {
         e.preventDefault();
         e.stopPropagation();
         toggleMenu(id, false);
         button.current?.focus();
       }
     };
+    // Tab out of the panel (past its last control) closes it, as a click outside does: a panel left open behind the focus is a trap of sight.
+    const left = (e: FocusEvent) => {
+      const t = e.target as Node;
+      if (t instanceof Element && !t.closest('[aria-modal="true"]') && !panel.current?.contains(t) && !button.current?.contains(t)) toggleMenu(id, false);
+    };
     document.addEventListener('pointerdown', away, true);
     document.addEventListener('keydown', key, true);
+    document.addEventListener('focusin', left);
     window.addEventListener('resize', place);
     return () => {
       document.removeEventListener('pointerdown', away, true);
       document.removeEventListener('keydown', key, true);
+      document.removeEventListener('focusin', left);
       window.removeEventListener('resize', place);
     };
   }, [open]);
@@ -143,12 +151,12 @@ export function SettingsMenu() {
           options={DENSITIES.map((d) => ({ value: d.id, label: d.label, tip: d.hint, testid: `density-${d.id}` }))}
         />
       </Row>
-      <Row title="Size" hint="Text and controls, in steps">
+      <Row title="Size" hint="Text, controls, the source and the graph cards">
         <Segmented
           label="Size"
           value={String(s.scale) as `${number}`}
           onChange={(v) => chooseScale(Number(v) as (typeof SCALES)[number])}
-          options={SCALES.map((k) => ({ value: String(k) as `${number}`, label: `${k}%`, tip: `${k} % of the browser's text size`, testid: `scale-${k}` }))}
+          options={SCALES.map((k) => ({ value: String(k) as `${number}`, label: `${k}%`, tip: `${k} % of the browser's text size, also for the source text (times its own Ctrl+= and Ctrl+- size) and the power tree and system cards`, testid: `scale-${k}` }))}
         />
       </Row>
       <Row title="Motion" hint="Slides, fades and glides">

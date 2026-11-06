@@ -5,6 +5,7 @@
 import { effect, signal } from '@preact/signals';
 
 import { load, save } from '../storage';
+import type { FoldChoice } from './outline';
 
 function kept<T>(key: string, fallback: T, valid: (v: unknown) => v is T = (v): v is T => typeof v === typeof fallback) {
   const stored = load<unknown>(key, fallback);
@@ -27,12 +28,24 @@ export const outlineOpen = kept('netsmith.source.outline.v1', true);
 export const OUTLINE_H = { min: 120, max: 520, initial: 260 };
 export const outlineHeight = kept('netsmith.source.outlineHeight.v1', OUTLINE_H.initial, (v): v is number => typeof v === 'number' && v >= OUTLINE_H.min && v <= OUTLINE_H.max);
 
+/** What the person opened and folded in the outline of each file (by the names of the entries), the last forty files. */
+export const outlineFolds = kept<Record<string, FoldChoice>>('netsmith.source.outlineFolds.v1', {}, (v): v is Record<string, FoldChoice> => !!v && typeof v === 'object' && !Array.isArray(v));
+export function setFoldChoice(path: string, choice: FoldChoice) {
+  const next: Record<string, FoldChoice> = { ...outlineFolds.peek() };
+  // Most recent last: the oldest go when there are more than forty.
+  delete next[path];
+  next[path] = choice;
+  for (const k of Object.keys(next).slice(0, Math.max(0, Object.keys(next).length - 40))) delete next[k];
+  outlineFolds.value = next;
+}
+
 export const zoomEditor = (by: number) => (fontSize.value = clampFont(fontSize.value + by));
 export const resetEditorZoom = () => (fontSize.value = FONT.initial);
 
-// The text size reaches the editor and the outline through one custom property on the page.
+// The text size reaches the editor and the outline through one custom property on the page: the editor's own size (Ctrl+= and Ctrl+-)
+// times the page's Size setting (`--ui-scale`, 0.9 to 1.25), so 14 px at 125 % is 17.5 px, and the two are independent.
 if (typeof document !== 'undefined') {
   effect(() => {
-    document.documentElement.style.setProperty('--source-fs', `${fontSize.value}px`);
+    document.documentElement.style.setProperty('--source-fs', `calc(${fontSize.value}px * var(--ui-scale, 1))`);
   });
 }

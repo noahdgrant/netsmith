@@ -38,10 +38,12 @@ import { chooseTheme } from '../themeUi';
 import { plural } from '../util';
 import { useElapsed } from './JobProgress';
 import { Icon, SeverityIcon } from './Icons';
+import { settings } from '../settings';
 import { FONT, fontSize, hoverCards, inlineHints, outlineOpen, resetEditorZoom, wordWrap, zoomEditor } from '../source/prefs';
 import { chordText, find } from '../commands';
 import { CompareChip } from './CompareChip';
 import { SourceChangesItem } from './SourceChangesItem';
+import { inModal } from './layers';
 
 /** What the open file is, as the bar names it. */
 export function languageOf(path: string | null): string {
@@ -82,7 +84,7 @@ function Popover({ children, close, label }: { children: ComponentChildren; clos
     const away = (e: PointerEvent) => {
       if (!box.current?.contains(e.target as Node) && !(e.target as Element).closest?.('.status-anchor.open')) close();
     };
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && !inModal(e) && close();
     window.addEventListener('pointerdown', away, true);
     window.addEventListener('keydown', key, true);
     return () => {
@@ -278,7 +280,7 @@ function SourceOptions({ close }: { close: () => void }) {
           <button type="button" class="icon-btn" aria-label="Smaller text" data-tip="Smaller text" disabled={fontSize.value <= FONT.min} onClick={() => zoomEditor(-1)}>
             <Icon name="minus" size={13} />
           </button>
-          <output aria-live="polite" data-testid="font-size">{fontSize.value} px</output>
+          <output aria-live="polite" data-testid="font-size" title={`The editor's own size. The page's Size setting (${settings.value.scale} %) multiplies it: ${Math.round(fontSize.value * settings.value.scale) / 100} px on screen.`}>{fontSize.value} px</output>
           <button type="button" class="icon-btn" aria-label="Larger text" data-tip="Larger text" disabled={fontSize.value >= FONT.max} onClick={() => zoomEditor(1)}>
             <Icon name="plus" size={13} />
           </button>

@@ -3,11 +3,12 @@
 // text of the rows, so selecting and copying work; the colours of added and removed lines, the marks
 // inside a line and the two columns of line numbers are decorations and a gutter.
 
-import { EditorState, RangeSetBuilder } from '@codemirror/state';
-import { Decoration, EditorView, GutterMarker, gutter } from '@codemirror/view';
+import { EditorState, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
+import { BlockType, Decoration, type DecorationSet, EditorView, GutterMarker, WidgetType, gutter } from '@codemirror/view';
 
 import { colouring } from '../languages';
 import { cmTheme } from '../source/cm-theme';
+import { barText, type Region } from './collapse';
 import type { Span } from './linediff';
 
 export interface ViewRow {
@@ -53,11 +54,96 @@ class Nums extends GutterMarker {
 
 const SIGN = { equal: '', add: '+', del: '−', filler: '' } as const;
 
+/** A hidden run of unchanged rows: the rows, and the number the bar is named by (the base line the run starts at: the same in both ways of showing the changes). */
+export interface Collapsed extends Region {
+  key: number;
+}
+
 export interface DiffViewOptions {
   columns: 'both' | 'a' | 'b';
   /** The index of a row to bring into view and outline. */
   focus?: number;
   label: string;
+  /** The runs of unchanged rows to hide behind a bar, and the keys of those already opened. */
+  collapsed?: Collapsed[];
+  opened?: ReadonlySet<number>;
+  /** A bar was asked to open (a click, Enter or Space on it): the caller opens it in its other views too. */
+  onOpen?: (key: number) => void;
+}
+
+/** Open the hidden run with this key. */
+export const openRegion = StateEffect.define<number>();
+
+/** A slim bar in the place of a run of unchanged lines: a button, so Tab reaches it and Enter or Space opens it. */
+class Bar extends WidgetType {
+  constructor(
+    readonly count: number,
+    readonly key: number,
+    readonly first: string,
+    readonly onOpen: ((key: number) => void) | undefined,
+  ) {
+    super();
+  }
+  eq(o: Bar) {
+    return o.count === this.count && o.key === this.key && o.first === this.first;
+  }
+  toDOM() {
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'cm-diff-bar';
+    el.setAttribute('data-testid', 'diff-bar');
+    el.setAttribute('data-count', String(this.count));
+    el.setAttribute('aria-label', `Show ${barText(this.count)}, ${this.first}`);
+    el.title = `Show ${barText(this.count)} (${this.first})`;
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.setAttribute('viewBox', '0 0 16 16');
+    icon.setAttribute('class', 'icon cm-diff-bar-icon');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.innerHTML = '<path d="M4.5 6L8 2.8 11.5 6M4.5 10L8 13.2 11.5 10"/>';
+    const label = document.createElement('span');
+    label.textContent = barText(this.count);
+    el.append(icon, label);
+    el.addEventListener('click', () => this.onOpen?.(this.key));
+    return el;
+  }
+  // The button takes its own clicks and keys.
+  ignoreEvent() {
+    return true;
+  }
+}
+
+/** The decorations of a view: the colours of the lines, the marks in them, and a bar over each run that is hidden and not opened. */
+function build(rows: ViewRow[], collapsed: Collapsed[], opened: ReadonlySet<number>, focus: number | undefined, onOpen: ((key: number) => void) | undefined): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  const starts: number[] = [];
+  let pos = 0;
+  for (const r of rows) {
+    starts.push(pos);
+    pos += r.text.length + 1;
+  }
+  const hidden = collapsed.filter((c) => !opened.has(c.key));
+  let next = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const h = hidden[next];
+    if (h && i === h.from) {
+      const from = starts[h.from];
+      const to = starts[h.to - 1] + rows[h.to - 1].text.length;
+      const num = (r: ViewRow) => r.a ?? r.b ?? '';
+      const where = `lines ${num(rows[h.from])} to ${num(rows[h.to - 1])}`;
+      builder.add(from, to, Decoration.replace({ block: true, widget: new Bar(h.to - h.from, h.key, where, onOpen) }));
+      i = h.to - 1;
+      next++;
+      continue;
+    }
+    const r = rows[i];
+    builder.add(starts[i], starts[i], Decoration.line({ class: `cm-dl cm-dl-${r.kind}${i === focus ? ' cm-dl-focus' : ''}` }));
+    for (const [from, to] of r.marks) {
+      const f = Math.min(from, r.text.length);
+      const t = Math.min(to, r.text.length);
+      if (t > f) builder.add(starts[i] + f, starts[i] + t, Decoration.mark({ class: r.kind === 'add' ? 'cm-di cm-di-add' : 'cm-di cm-di-del' }));
+    }
+  }
+  return builder.finish();
 }
 
 /** Build the view in `parent`. The caller destroys it. */
@@ -65,6 +151,19 @@ export function createDiffView(parent: HTMLElement, rows: ViewRow[], path: strin
   const doc = rows.map((r) => r.text).join('\n');
   const markers = rows.map((r) => new Nums(r.a, r.b, o.columns, SIGN[r.kind]));
   const widest = new Nums(99999, 99999, o.columns, '+');
+  const collapsed = o.collapsed ?? [];
+  const field = StateField.define<{ opened: ReadonlySet<number>; deco: DecorationSet }>({
+    create: () => {
+      const opened = o.opened ?? new Set<number>();
+      return { opened, deco: build(rows, collapsed, opened, o.focus, o.onOpen) };
+    },
+    update(value, tr) {
+      let opened = value.opened;
+      for (const e of tr.effects) if (e.is(openRegion) && !opened.has(e.value)) opened = new Set([...opened, e.value]);
+      return opened === value.opened ? value : { opened, deco: build(rows, collapsed, opened, o.focus, o.onOpen) };
+    },
+    provide: (f) => EditorView.decorations.from(f, (v) => v.deco),
+  });
   const state = EditorState.create({
     doc,
     extensions: [
@@ -74,32 +173,16 @@ export function createDiffView(parent: HTMLElement, rows: ViewRow[], path: strin
       ...colouring(path),
       gutter({
         class: 'cm-diff-gutter',
-        lineMarker: (view, line) => markers[view.state.doc.lineAt(line.from).number - 1] ?? null,
+        // The rows a bar hides have no numbers: the bar is one block, whose line is the first of the run.
+        lineMarker: (view, line) => (line.type !== BlockType.Text ? null : (markers[view.state.doc.lineAt(line.from).number - 1] ?? null)),
         initialSpacer: () => widest,
       }),
-      EditorView.decorations.of(decorationsOf(rows, doc, o.focus)),
+      field,
     ],
   });
   const view = new EditorView({ state, parent });
   view.dom.setAttribute('data-testid', 'diff-view');
   return view;
-}
-
-function decorationsOf(rows: ViewRow[], doc: string, focus?: number) {
-  const builder = new RangeSetBuilder<Decoration>();
-  let pos = 0;
-  rows.forEach((r, i) => {
-    const cls = `cm-dl cm-dl-${r.kind}${i === focus ? ' cm-dl-focus' : ''}`;
-    builder.add(pos, pos, Decoration.line({ class: cls }));
-    for (const [from, to] of r.marks) {
-      const f = Math.min(from, r.text.length);
-      const t = Math.min(to, r.text.length);
-      if (t > f) builder.add(pos + f, pos + t, Decoration.mark({ class: r.kind === 'add' ? 'cm-di cm-di-add' : 'cm-di cm-di-del' }));
-    }
-    pos += r.text.length + 1;
-  });
-  void doc;
-  return builder.finish();
 }
 
 /** Bring row `index` to the top third of the view. */

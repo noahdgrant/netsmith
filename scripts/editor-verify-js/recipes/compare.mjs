@@ -9,6 +9,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
+import { expectFrameFits } from '../flow-helpers.mjs';
 import { noteFacts, overlaps } from '../schematic-helpers.mjs';
 
 export const fixture = 'two_boards';
@@ -146,6 +147,39 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   expect(/J2 → J1|J2\s*J1/.test(renum.join(' ')) || /J2/.test(renum.join(' ')), 'with the designators of each side');
   await page.locator('[data-testid="cmp-renumbered"] summary').click();
 
+  step('the list is as tall as its rows with a foot that counts right under the last one, and scrolls inside only past the height the page has; the summary and the tabs stay put; a column of help stands in the margin on a wide window');
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await settle(400);
+  const cmpSel = { frame: '.cmp-scroll', scroller: '.cmp-scroll', foot: '.cmp-foot', section: '.section.sec-compare' };
+  const wide = await page.evaluate(() => {
+    const foot = document.querySelector('.cmp-foot');
+    const vh = document.querySelector('.section.sec-compare .vh');
+    return {
+      footText: foot?.innerText.replace(/\s+/g, ' '),
+      tilesOutside: !document.querySelector('.cmp-scroll').contains(document.querySelector('.cmp-tiles')) && !document.querySelector('.cmp-scroll').contains(document.querySelector('.cmp-tabs')),
+      help: vh ? { left: vh.getBoundingClientRect().left, text: vh.innerText.replace(/\s+/g, ' '), label: vh.getAttribute('aria-label') } : null,
+      cardRight: document.querySelector('.cmp-scroll').getBoundingClientRect().right,
+    };
+  });
+  const partsFit = await expectFrameFits(page, expect, 'Compare, parts', cmpSel);
+  expect(!partsFit.scrolls && /\d+ rows?/.test(wide.footText ?? ''), `the foot counts the rows (${wide.footText}) and a short list does not scroll`);
+  expect(wide.tilesOutside, 'the tiles and the tabs are outside the scrolling list');
+  expect(wide.help && wide.help.left >= wide.cardRight + 8 && /Base|Head/.test(wide.help.text) && wide.help.label === 'About this view', `the help column is beside the list (${wide.help?.text.slice(0, 50)}...)`);
+  await shot('compare-wide');
+  for (const tab of ['bom', 'nets', 'rails']) {
+    await page.click(`#cmp-tab-${tab}`);
+    await settle(300);
+    if (await page.locator('.cmp-foot').count()) await expectFrameFits(page, expect, `Compare, ${tab}`, cmpSel);
+  }
+  await page.click('#cmp-tab-parts');
+  await settle(300);
+  await page.setViewportSize({ width: 1280, height: 520 });
+  await settle(400);
+  const tight = await expectFrameFits(page, expect, 'Compare, parts at 1280 x 520', cmpSel);
+  expect(tight.scrolls, 'a short window makes the list scroll inside its frame, the foot kept at its end');
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await settle(400);
+
   step('expand a row: the fields that changed, each with its old and new value');
   await r1.locator('.cr-chev').click();
   const fields = await r1.locator('.cr-field dt').allInnerTexts();
@@ -250,6 +284,82 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await page.waitForSelector('[data-testid="diff-side"] .cm-editor');
   const sel = await page.evaluate(() => { const c = document.querySelector('.diff-panel .cm-content'); return c?.getAttribute('aria-readonly'); });
   expect(sel === 'true', 'the content is read only');
+
+  step('the unchanged lines are hidden behind slim bars, in both views alike, with 3 lines of context round each change (a file over 60 lines does it by itself)');
+  const col = (n) => page.locator('.diff-col').nth(n);
+  const barsOf = (n) => col(n).locator('.cm-diff-bar');
+  expect((await page.locator('[data-testid="diff-hide"]').getAttribute('aria-pressed')) === 'true', 'the switch "Hide unchanged lines" is on without being asked, for a file of 110 lines');
+  const counts = async (n) => (await barsOf(n).evaluateAll((els) => els.map((e) => Number(e.getAttribute('data-count')))));
+  const c0 = await counts(0);
+  const c1 = await counts(1);
+  expect(c0.length >= 3 && JSON.stringify(c0) === JSON.stringify(c1), `both views hide the same runs (${c0.join(', ')} lines)`);
+  expect((await barsOf(0).first().evaluate((e) => e.tagName === 'BUTTON' && /^Show \d+ unchanged lines/.test(e.getAttribute('aria-label') ?? ''))), 'a bar is a button that says what it shows');
+  expect(/^\d+ unchanged lines$/.test((await barsOf(0).first().innerText()).trim()), `and its words are "N unchanged lines" (${(await barsOf(0).first().innerText()).trim()})`);
+  const shownText = await col(0).locator('.cm-content').innerText();
+  expect(!shownText.includes('import std::sources::Rail') && shownText.includes('150ohm'), 'a far line is not drawn, the changed one is');
+  const hiddenTotal = c0.reduce((a, b) => a + b, 0);
+  const rowsDrawn = await col(0).locator('.cm-line').count();
+  expect(rowsDrawn + hiddenTotal >= 108 && rowsDrawn < 70, `${rowsDrawn} lines drawn and ${hiddenTotal} hidden`);
+  await shot('diff-collapsed');
+
+  step('a click on a bar shows its lines in both views; Enter on another does the same from the keyboard; the choice is kept');
+  await barsOf(0).first().click();
+  await settle();
+  expect(JSON.stringify(await counts(0)) === JSON.stringify(c0.slice(1)) && JSON.stringify(await counts(1)) === JSON.stringify(c0.slice(1)), 'the first run is open in both views');
+  expect((await col(0).locator('.cm-content').innerText()).includes('Two boards in one system'), 'its lines are there');
+  await barsOf(0).first().focus();
+  await page.keyboard.press('Enter');
+  await settle();
+  expect((await counts(0)).length === c0.length - 2 && (await counts(1)).length === c0.length - 2, 'Enter opened the next one');
+  await page.locator('[data-testid="diff-hide"]').click();
+  await settle();
+  expect((await page.locator('.cm-diff-bar').count()) === 0 && (await page.locator('[data-testid="diff-hide"]').getAttribute('aria-pressed')) === 'false', 'the switch off: every line is drawn');
+  await page.locator('[data-testid="diff-hide"]').click();
+  await settle();
+  expect((await counts(0)).length === c0.length - 2, 'on again: the two bars that were opened stay open');
+  await page.click('[data-testid="diff-mode-inline"]');
+  await page.waitForSelector('[data-testid="diff-inline"] .cm-editor');
+  await settle();
+  expect((await page.locator('.diff-inline .cm-diff-bar, [data-testid="diff-inline"] .cm-diff-bar').count()) === c0.length - 2, 'the inline view hides the same runs');
+  await page.click('[data-testid="diff-mode-side"]');
+  await page.waitForSelector('[data-testid="diff-side"] .cm-editor');
+
+  step('F7 and Shift+F7 step the changes from anywhere in the page, Esc closes, and the palette and the cheat sheet list them');
+  const at = async () => Number((await text('[data-testid="diff-count"]')).match(/^(\d+) of/)[1]);
+  await col(0).locator('.cm-content').focus();
+  const before = await at();
+  await page.keyboard.press('F7');
+  await settle();
+  expect((await at()) === before + 1, `F7 goes to the next change (${before} -> ${await at()})`);
+  await page.keyboard.press('Shift+F7');
+  await settle();
+  expect((await at()) === before, 'Shift+F7 goes back');
+  const pressed = () => page.locator('[data-testid="diff-hide"]').getAttribute('aria-pressed');
+  const was = await pressed();
+  await page.keyboard.press('Control+Alt+h');
+  await settle();
+  expect((await pressed()) !== was, 'Ctrl+Alt+H turns the hiding of unchanged lines on or off');
+  await page.keyboard.press('Control+Alt+h');
+  await settle();
+  expect((await pressed()) === was, 'and back');
+  await col(0).locator('.cm-content').focus();
+  await page.keyboard.press('Control+/');
+  await page.waitForSelector('.cheat');
+  const cheat = await page.locator('.cheat').innerText();
+  expect(/(Hide|Show) unchanged lines in the comparison/.test(cheat), 'the cheat sheet lists the switch too');
+  expect(/Next change in the comparison/.test(cheat) && /F7/.test(cheat) && /Previous change in the comparison/.test(cheat) && /Shift\s*\+?\s*F7/.test(cheat), 'the cheat sheet lists F7 and Shift+F7');
+  expect(/Comparison of a file/.test(cheat) && /close the comparison/.test(cheat) && /on a bar of unchanged lines/.test(cheat), 'and Esc, and Enter or Space on a bar');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.cheat', { state: 'detached' });
+  await page.keyboard.press('Control+Shift+P');
+  await page.waitForSelector('.qp-row');
+  await page.keyboard.type('unchanged lines');
+  await settle(300);
+  expect(/(Hide|Show) unchanged lines in the comparison/.test(await page.locator('.qp').innerText()), 'the palette has the switch, worded as what it does next');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.qp', { state: 'detached' });
+  await settle(300);
+  expect(await page.evaluate(() => !!document.activeElement?.closest('.diff-panel')), 'the focus is back in the comparison');
   await page.keyboard.press('Escape');
   await page.waitForSelector('[data-testid="diff-panel"]', { state: 'detached' });
   expect(true, 'Escape closes the diff view');
@@ -369,6 +479,48 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   expect(bars.added + bars.changed > 0, `a bar beside lines that are new or changed (${JSON.stringify(bars)})`);
   expect(/\d+ lines? changed in this file/.test(await text('[data-testid="source-changes"]')), `the number of lines changed, in this file, in the status bar (${await text('[data-testid="source-changes"]')})`);
   await shot('source-gutter');
+
+  step('Next change and Previous change (Alt+F5, Shift+Alt+F5) step the runs of changed lines of the open file from the cursor, and the overview ruler draws the changes as thin bars');
+  const gutterLine = () => page.evaluate(() => Number(/Ln (\d+), Col/.exec(document.body.innerText)?.[1] ?? 0));
+  const ticks = await page.evaluate(() => [...document.querySelectorAll('.cm-ruler-tick.lane-change')].map((t) => ({ line: Number(t.getAttribute('data-line')), kind: t.dataset.kind, w: t.getBoundingClientRect().width, h: t.getBoundingClientRect().height })));
+  expect(ticks.length >= 2 && ticks.every((t) => t.w <= 6 && t.h >= 2 && t.w < 8), `the ruler has a bar for each run of changes, thin (${ticks.map((t) => `${t.kind}@${t.line}`).join(', ')})`);
+  const starts = [...new Set(ticks.map((t) => t.line))].sort((a, b) => a - b);
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('Control+Home');
+  await settle(200);
+  await page.keyboard.press('Alt+F5');
+  await settle(300);
+  const first = await gutterLine();
+  expect(first === starts[0], `Alt+F5 goes to the first change (line ${first}, the ruler's first bar is at ${starts[0]})`);
+  await page.keyboard.press('Alt+F5');
+  await settle(300);
+  const second = await gutterLine();
+  expect(second > first && (starts.length < 2 || second === starts[1] || second <= starts[starts.length - 1]), `Alt+F5 again goes on to the next one (line ${second})`);
+  await page.keyboard.press('Shift+Alt+F5');
+  await settle(300);
+  expect((await gutterLine()) === first, 'Shift+Alt+F5 goes back to the one before');
+  let wrapped = first;
+  for (let i = 0; i < starts.length + 2 && !(await page.locator('.toast', { hasText: 'Back at the first change' }).count()); i++) {
+    await page.keyboard.press('Alt+F5');
+    await settle(200);
+    wrapped = await gutterLine();
+  }
+  expect(wrapped === first && (await page.locator('.toast', { hasText: 'Back at the first change' }).count()) > 0, 'past the last change it comes round to the first, and a toast says so');
+  await page.keyboard.press('Control+Shift+P');
+  await page.waitForSelector('.qp-row');
+  await page.keyboard.type('next change');
+  await settle(250);
+  const listed = await page.locator('.qp').innerText();
+  expect(/Next change/.test(listed) && /Alt\s*\+?\s*F5/.test(listed), `the palette lists Next change with its key (${listed.replace(/\s+/g, ' ').slice(0, 120)})`);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.qp', { state: 'detached' });
+  await page.keyboard.press('Control+/');
+  await page.waitForSelector('.cheat');
+  const sheet = await page.locator('.cheat').innerText();
+  expect(/Next change\b/.test(sheet) && /Previous change\b/.test(sheet) && /Alt\s*\+?\s*F5/.test(sheet), 'the cheat sheet lists Next change and Previous change');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.cheat', { state: 'detached' });
+  await shot('source-ruler-changes');
 
   step('turn it off with the palette command: every mark goes');
   await page.keyboard.press('Control+Shift+P');
