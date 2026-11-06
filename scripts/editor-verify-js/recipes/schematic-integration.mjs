@@ -4,7 +4,7 @@
 // zoomed far in is not kept there; a net picked in the schematic is the one the top bar chip and
 // the inspector name; a click on a flag follows the net to the other sheet; Esc clears the
 // selection in the schematic, the chip and the bill of materials.
-import { activeSheet, openSheet, zoomPercent } from '../schematic-helpers.mjs';
+import { activeSheet, openSheet, visibleHalos, zoomPercent } from '../schematic-helpers.mjs';
 
 export const fixture = 'schematic_bench';
 
@@ -241,8 +241,26 @@ export async function run({ page, shot, step, expect, section }) {
   await page.waitForSelector('.selchip.k-module');
   expect((await chip()).includes(card), `the chip names the module ${card}`);
   expect((await page.locator('.selchip').getAttribute('aria-label')).includes('module'), 'the shared selection is a module');
-  expect(await page.evaluate(() => document.querySelectorAll('svg.schematic > g.sheet-slot:not([style*="none"]) .part.mark:not(.linked)').length > 0), 'the module\'s parts are marked in the drawing');
+  // The selected module is the sheet on screen: every part would wear the halo, which says nothing. The chip says it; the drawing is not boxed.
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(500);
+  // (The source's cursor still sits on the line of the last part found: that part is `linked`, dimmer, as ever.)
+  expect(await page.evaluate(() => document.querySelectorAll('svg.schematic > g.sheet-slot:not([style*="none"]) .part.mark:not(.linked)').length === 0), 'the module\'s own sheet does not mark its parts as selected');
+  const linkedNow = await page.evaluate(() => [...document.querySelectorAll('svg.schematic > g.sheet-slot:not([style*="none"]) .part.mark.linked')].map((e) => e.getAttribute('data-ref')));
+  const boxed = (await visibleHalos(page)).map((h) => h.ref);
+  expect(boxed.every((r) => linkedNow.includes(r)), `no part is boxed in a halo but the cursor's (${boxed.join(' ') || 'none'}; cursor ${linkedNow.join(' ') || 'none'})`);
   await shot('card-selects-module');
+  // Where the module is not the sheet shown, its parts are marked: in its card of the overview.
+  await page.locator('.sheetpick .pick-btn').click();
+  await page.locator('.pick-pop .sl-row.all').click();
+  await page.waitForSelector('.sheet-overview .ov-card');
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(500);
+  const marked = await page.evaluate((c) => {
+    const el = [...document.querySelectorAll('.sheet-overview .ov-card')].find((e) => e.querySelector('.ov-name')?.textContent === c);
+    return { own: el.querySelectorAll('g.part.mark').length, others: [...document.querySelectorAll('.sheet-overview .ov-card')].filter((e) => e !== el).reduce((n, e) => n + e.querySelectorAll('g.part.mark').length, 0) };
+  }, card);
+  expect(marked.own > 0 && marked.others === 0, `in the overview the card of ${card} marks its ${marked.own} parts and no other card marks any`);
   await page.keyboard.press('Escape');
 
   step('at 1920 x 1080 the same pick fits the view and the ring is round the part');
