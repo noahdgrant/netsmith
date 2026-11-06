@@ -429,7 +429,7 @@ struct Drawn {
 /// The sheet of the clusters that `note` is on: the one of the first part it is about; else
 /// the one that holds the parts of the module the note's path is in (the longest module path
 /// that has a part), or of the board's own parts.
-fn sheet_of_note(
+pub(crate) fn sheet_of_note(
     design: &Design,
     note: &Note,
     part_by_path: &HashMap<&str, usize>,
@@ -522,7 +522,7 @@ fn move_part(part: &mut PlacedPart, by: Pt) {
 
 /// The groups that have parts, then the parts in no group (a part named twice stays in the
 /// first group that names it).
-fn clusters(design: &Design, groups: &[Group]) -> Vec<Group> {
+pub(crate) fn clusters(design: &Design, groups: &[Group]) -> Vec<Group> {
     let mut taken = vec![false; design.parts.len()];
     let mut out = Vec::new();
     for g in groups {

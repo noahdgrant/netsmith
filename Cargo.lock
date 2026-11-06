@@ -648,6 +648,7 @@ version = "0.0.1"
 dependencies = [
  "netsmith-core",
  "netsmith-kicad",
+ "toml",
 ]
 
 [[package]]

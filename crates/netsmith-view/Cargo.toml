@@ -7,3 +7,4 @@ license.workspace = true
 [dependencies]
 netsmith-core = { path = "../netsmith-core" }
 netsmith-kicad = { path = "../netsmith-kicad" }
+toml = "1.1.8"
