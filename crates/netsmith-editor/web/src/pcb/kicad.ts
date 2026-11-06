@@ -4,22 +4,16 @@
 
 import type { KicadState } from '../api';
 
-/** KiCad's command-line tool is not on the machine (nor named by `$KICAD_CLI`). */
-export const KICAD_NOT_FOUND = 'KiCad not found: set KICAD_CLI or install KiCad';
+/** KiCad's command-line tool is not on the machine (nor named by `$KICAD_CLI`): the findings
+ * list says it once, in its own empty state (title `KiCad not found`, the fix as its help), and
+ * has no line beside "Also ask KiCad" then. This is the message of that state, for the tests. */
+export const KICAD_NOT_FOUND = 'KiCad not found';
 
-/** The line next to "Also ask KiCad". `found` is whether the server found `kicad-cli` (the
- * project's `kicad` flag), or null while that is not known. A check that ran says so; where the
- * tool is not found that is the line, whether or not it was asked for; a tool that is there but
- * not asked yet is "not run", and one that is there but failed is "unavailable" (the note says why). */
-export function kicadLine(state: KicadState, found: boolean | null): string {
+/** The line next to "Also ask KiCad", for a tool that was found (where it is not found the
+ * empty state says so and there is no line, so the list never says it twice). A check that ran
+ * says so; a tool that is there but not asked yet is "not run", and one that is there but failed
+ * is "unavailable" (the note says why). */
+export function kicadLine(state: KicadState): string {
   if (state === 'ran') return 'with KiCad';
-  if (found === false) return KICAD_NOT_FOUND;
   return state === 'unavailable' ? 'KiCad unavailable' : 'KiCad not run';
-}
-
-/** Every line `kicadLine` can give for a state: what a test of the page may accept for the state
- * the server reports (the `found` flag is not known to every caller). */
-export function kicadLinesFor(state: KicadState): string[] {
-  const lines = new Set([true, false, null].map((found) => kicadLine(state, found)));
-  return [...lines];
 }

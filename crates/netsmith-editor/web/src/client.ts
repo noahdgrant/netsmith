@@ -34,6 +34,8 @@ export class ApiFailure extends Error {
   constructor(
     public status: number,
     message: string,
+    /** The snake_case code of a failure of the project's own data (a `422` with a JSON body), else null. */
+    public code: string | null = null,
   ) {
     super(message);
   }
@@ -47,14 +49,28 @@ export class AnalysisPending extends Error {
 }
 
 async function check(response: Response): Promise<Response> {
-  if (!response.ok) throw new ApiFailure(response.status, (await response.text()).trim());
+  if (!response.ok) {
+    const text = (await response.text()).trim();
+    // A failure of the project's own data comes as {code, message, ...} to a read that accepts JSON.
+    if (response.headers.get('content-type')?.includes('application/json')) {
+      try {
+        const body = JSON.parse(text) as { code?: unknown; message?: unknown };
+        if (typeof body.message === 'string') {
+          throw new ApiFailure(response.status, body.message.trim(), typeof body.code === 'string' ? body.code : null);
+        }
+      } catch (e) {
+        if (e instanceof ApiFailure) throw e;
+      }
+    }
+    throw new ApiFailure(response.status, text);
+  }
   return response;
 }
 
 const q = (params: Record<string, string>) => new URLSearchParams(params).toString();
 
 async function getJson<T>(url: string): Promise<T> {
-  return (await check(await fetch(url, { cache: 'no-store' }))).json();
+  return (await check(await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' } }))).json();
 }
 
 /** A read that is told, not made to wait, while the server's first analysis runs. */
