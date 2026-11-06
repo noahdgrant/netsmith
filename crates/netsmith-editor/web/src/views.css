@@ -600,7 +600,8 @@ tr.hover-lit { outline-offset: -1px; }
 /* a very wide window: the table keeps a width a person can read across (the Build page already does) */
 .bom { padding-inline: max(0px, calc((100% - 1760px) / 2)); }
 /* the picked thing's chip keeps a width a person can read, whatever the search box takes (it was squeezed to a sliver at 1280) */
-.tb-left .selchip { min-width: 150px; }
+.tb-left { overflow: hidden; }
+.tb-left .selchip { min-width: 120px; }
 @media (max-width: 1400px) { .selchip-btn.text { width: 30px; padding: 0; } .selchip-btn.text .selchip-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } }
 .selchip-main { min-width: 72px; }
 .selchip-title { flex: 0 1 auto; min-width: 0; }
