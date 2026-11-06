@@ -242,3 +242,35 @@ export function ago(then: number, now: number): string {
   const h = Math.round(m / 60);
   return h < 24 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
 }
+
+/** A quantity with its unit muted: `-50 mA .. 0 A` is the numbers in the page's ink and the units and dots fainter. */
+export function Units({ text }: { text: string }) {
+  const out: ComponentChildren[] = [];
+  let last = 0;
+  let n = 0;
+  for (const m of text.matchAll(/(-?\d+(?:\.\d+)?(?:e[-+]?\d+)?)(\s*[pnu\u00b5mkM]?[AV\u03a9W]\b)?/g)) {
+    const at = m.index ?? 0;
+    if (at > last) out.push(<span key={n++} class="u-sep">{text.slice(last, at)}</span>);
+    out.push(<span key={n++} class="u-n">{m[1]}</span>);
+    if (m[2]) out.push(<span key={n++} class="u-u">{m[2]}</span>);
+    last = at + m[0].length;
+  }
+  if (last < text.length) out.push(<span key={n++} class="u-sep">{text.slice(last)}</span>);
+  return <>{out}</>;
+}
+
+/** What a line in a drawing means: a small sample of it and a word. */
+export function Legend({ items }: { items: { kind: string; label: string; tip?: string }[] }) {
+  return (
+    <span class="legend" role="list" aria-label="Legend">
+      {items.map((i) => (
+        <span class="lg" role="listitem" key={i.kind} data-tip={i.tip}>
+          <svg width="20" height="8" viewBox="0 0 20 8" aria-hidden="true">
+            <line class={`lg-line ${i.kind}`} x1="1" y1="4" x2="19" y2="4" />
+          </svg>
+          {i.label}
+        </span>
+      ))}
+    </span>
+  );
+}

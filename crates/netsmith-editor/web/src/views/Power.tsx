@@ -5,6 +5,8 @@ import type { PowerTree } from '../api';
 import { api } from '../client';
 import { NoBoard, ViewLoading } from '../components/ViewStatus';
 import { Icon } from '../components/Icons';
+import { Legend, Pill } from '../components/ui';
+import { placeAtMostActual } from './System';
 import { MiniMap } from '../components/MiniMap';
 import { PanZoom } from '../components/PanZoom';
 import { analysis, board, detail, goTo, systemName, visible } from '../store';
@@ -283,6 +285,8 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
   const [reveal, setReveal] = useState<{ x: number; y: number; w: number; h: number; seq: number } | undefined>();
   const [centre, setCentre] = useState<{ x: number; y: number; seq: number } | undefined>();
   const [view, setView] = useState<{ k: number; x: number; y: number; w: number; h: number } | null>(null);
+  /** The card the pointer is over: the wires of it show a little more. */
+  const [hover, setHover] = useState<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
   /** Where an arrow key came from, so the opposite key goes back the same way. */
   const came = useRef(new Map<string, string>());
@@ -371,9 +375,17 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
   return (
     <div class="graph-view power-view">
       <div class="graph-title pt-bar">
-        <span>
-          Power tree of <b>{tree.title}</b>
+        <span class="gt-name">
+          <Icon name="power" size={16} />
+          Power tree
+          <Pill tone="neutral">{tree.title}</Pill>
         </span>
+        <Legend
+          items={[
+            { kind: 'power', label: 'Supplies', tip: 'A rail feeding a stage, or a stage feeding a rail' },
+            ...(path ? [{ kind: 'up', label: 'Upstream', tip: 'What feeds the selection' }, { kind: 'down', label: 'Downstream', tip: 'What the selection feeds' }] : []),
+          ]}
+        />
         <div class="pt-issues" role="group" aria-label="Issues">
           {model.issues.length === 0 ? (
             <span class="pt-fine">No issues: every rail has a source and a known current.</span>
@@ -400,6 +412,8 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
         role="application"
         aria-label="Power tree. Arrow keys move along it, Escape clears the selection, Enter lists the loads of a rail."
         onKeyDown={onKey}
+        onMouseOver={(e) => setHover((e.target as Element).closest<HTMLElement>('[data-node]')?.dataset.node ?? null)}
+        onMouseLeave={() => setHover(null)}
         onClick={(e) => {
           // A click on the empty canvas clears the selection.
           if (!(e.target as Element).closest('.pt-node, .pt-minimap, .zoombar')) select(null);
@@ -411,6 +425,8 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
           fitKey={fitKey}
           class="graph-host power-host"
           actualSize
+          scale100={1}
+          placeView={placeAtMostActual(layout)}
           reveal={reveal}
           centre={centre}
           onViewport={setView}
@@ -438,7 +454,7 @@ export function PowerTreeView({ tree, fitKey }: { tree: PowerTree; fitKey: strin
                   data-points={JSON.stringify(e.points)}
                   data-back={e.back ? 'true' : undefined}
                   d={e.d}
-                  class={`pt-edge ${tint ? `hot ${tint}` : ''} ${path && !tint ? 'dim' : ''}`}
+                  class={`pt-edge ${tint ? `hot ${tint}` : ''} ${path && !tint ? 'dim' : ''} ${!path && hover && (e.from === hover || e.to === hover) ? 'peek' : ''}`}
                   marker-end={tint ? `url(#pt-arrow-${tint})` : 'url(#pt-arrow)'}
                 />
               );

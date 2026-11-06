@@ -383,35 +383,7 @@ svg.edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-even
 .line .who { color: var(--text); overflow-wrap: anywhere; min-width: 0; }
 .line .amount { font-family: var(--mono); color: var(--text-muted); white-space: nowrap; }
 
-/* bom */
-.bom { overflow: auto; flex: 1; }
-.bom .graph-title { position: sticky; top: 0; }
-table.grid { width: 100%; border-collapse: collapse; }
-table.grid th { white-space: nowrap; text-align: left; color: var(--text-faint); font-size: var(--fs-xs); font-weight: var(--fw-semibold); padding: 6px 10px; border-bottom: 1px solid var(--border); }
-table.grid th.sub { color: var(--text-muted); padding-top: 18px; }
-table.grid td { padding: 5px 8px; font-size: var(--fs-sm); border-bottom: 1px solid var(--border-subtle); }
-table.grid tbody tr { cursor: pointer; } table.grid tbody tr:hover { background: var(--hover); }
-table.grid tbody tr.sel { background: var(--select-bg); box-shadow: inset 2px 0 0 var(--sel-bar); }
-td.des { font-weight: 600; }
-.bom table.grid th, .bom table.grid td { padding-left: 6px; padding-right: 6px; }
-.bom table.grid td.num { padding-left: 2px; }
-.pill { padding: 0 8px; border-radius: var(--r-pill); font-size: var(--fs-xs); border: 1px solid var(--border); }
-.pill.basic { color: var(--success); border-color: var(--success-line); } .pill.preferred { color: color-mix(in srgb, var(--success) 70%, var(--warning)); border-color: color-mix(in srgb, currentColor 40%, transparent); } .pill.extended { color: var(--warning); border-color: var(--warning-line); }
-.checked { color: var(--text-faint); font-size: var(--fs-xs); white-space: nowrap; }
-.checked.stale { color: var(--warning); font-weight: 600; }
-.stale-dot { color: var(--warning); margin-right: 5px; }
-.chip.stale-chip { color: var(--warning); border-color: var(--warning-line); }
-.refresh-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 12px; color: var(--text-muted); }
-.refresh-bar button { white-space: nowrap; }
-.refresh-bar label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
-.refresh-result { margin: 4px 12px 10px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
-.refresh-notice { margin-top: 8px; font-size: var(--fs-sm); }
-.refresh-result.bad { color: var(--danger); border-color: var(--danger-line); white-space: pre-wrap; }
-.refresh-result table.grid tbody tr { cursor: default; }
-.pill.status-updated, .pill.status-confirmed { color: var(--success); border-color: var(--success-line); }
-.pill.status-conflict, .pill.status-missing { color: var(--danger); border-color: var(--danger-line); }
-.pill.status-skipped { color: var(--warning); border-color: var(--warning-line); }
-.note:not(.problem) { color: var(--text-faint); padding: 10px 14px; max-width: 80ch; }
+/* bom: see views.css */
 
 /* pcb */
 .pcb-view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
@@ -532,17 +504,7 @@ td.des { font-weight: 600; }
 .dot.error { background: var(--danger); } .dot.warning { background: var(--warning); }
 .allow { display: block; margin: 6px 0; }
 
-/* The mated connectors of a system and the grounds they join (ADR 0040). */
-.mates { flex: none; max-height: 38%; overflow: auto; border-top: 1px solid var(--border); background: var(--surface); padding: 8px 14px; font-size: var(--fs-sm); }
-.mate { padding: 4px 0 8px; }
-.mate-head.link { cursor: pointer; } .mate-head.link:hover { color: var(--accent-text); }
-.contacts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.contact { font-family: var(--mono); padding: 1px 6px; border-radius: var(--r-sm); border: 1px solid var(--border); color: var(--text-muted); }
-.contact.role-ground { border-color: var(--edge); color: var(--text-muted); }
-.contact.role-power { border-color: var(--accent); color: var(--accent-text); }
-.contact.role-signal { border-color: var(--info); color: var(--info); }
-.mates .warn { color: var(--warning); margin-top: 4px; }
-.ground-group { padding: 2px 0; }
+/* the mates strip: see views.css */
 /* panel preview (ADR 0040) */
 .panel-preview { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: auto; }
 .panel-drawing { padding: 12px; }
