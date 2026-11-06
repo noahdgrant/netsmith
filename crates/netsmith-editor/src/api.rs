@@ -7,6 +7,10 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+mod compare;
+
+pub use compare::*;
+
 /// A place in a file, from its first character to its last.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -988,11 +992,14 @@ pub enum ServerMessage {
     },
     /// The answer to a `Check`.
     Checked { id: u32, analysis: Analysis },
-    /// What a long job is doing now: `task` is `route`, `fab`, `order`, `build`, `catalog` or
-    /// `analyse`, `message` is the line the command line would print (`BoardName: placing 73
+    /// What a long job is doing now: `task` is `route`, `fab`, `order`, `build`, `catalog`,
+    /// `analyse` or `compare`, `message` is the line the command line would print (`BoardName: placing 73
     /// parts`). An `analyse` message also has `stage` (`check`, `solve`, `lower`, `draw` or
     /// `modules`), and `done` of `total` of the things that stage works through (files for
-    /// `check`, boards and systems for `solve`, `lower` and `draw`, modules for `modules`).
+    /// `check`, boards and systems for `solve`, `lower` and `draw`, modules for `modules`). A
+    /// `compare` message has `board` set to the ref asked for and the same `stage`, `done` and
+    /// `total` (of the ref's analysis), with two stages more: `extract` (reading the ref out of
+    /// git) and `diff` (comparing the two readings).
     Progress {
         task: String,
         board: String,
@@ -1096,6 +1103,37 @@ pub fn typescript() -> String {
         OrderInfo,
         OrderReport,
         Definition,
+        GitCommit,
+        GitRefKind,
+        GitRef,
+        GitInfo,
+        CompareHead,
+        SourceStatus,
+        SourceFile,
+        SourceDiff,
+        BoardStatus,
+        ComparePart,
+        CompareField,
+        ComparePartChange,
+        PartsDiff,
+        ComparePin,
+        CompareNet,
+        CompareNetChange,
+        NetsDiff,
+        CompareRail,
+        RangeChange,
+        BudgetChange,
+        CompareRailChange,
+        RailsDiff,
+        CompareInstance,
+        CompareInstanceChange,
+        InstancesDiff,
+        CompareBomLine,
+        CompareBomChange,
+        BomDiff,
+        ProblemsDiff,
+        CompareBoard,
+        Compare,
         ClientMessage,
         ServerMessage,
     );

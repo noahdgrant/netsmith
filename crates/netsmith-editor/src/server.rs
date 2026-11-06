@@ -61,6 +61,7 @@ const NEEDS_ANALYSIS: &[&str] = &[
     "/api/system",
     "/api/panel",
     "/api/bom",
+    "/api/compare",
     "/api/catalog/refresh",
     "/api/pcb/route",
     "/api/pcb/scene",
@@ -146,6 +147,9 @@ fn router(state: Shared) -> Router {
         .route("/api/system", get(system))
         .route("/api/panel", get(panel))
         .route("/api/bom", get(bom))
+        .route("/api/git", get(git))
+        .route("/api/git/file", get(git_file))
+        .route("/api/compare", get(compare))
         .route("/api/catalog/refresh", post(refresh_catalogs))
         .route("/api/pcb/route", post(route_pcb))
         .route("/api/pcb/cancel", post(cancel_route))
@@ -435,6 +439,62 @@ fn progress(s: &Shared, task: &str, board: &str) -> crate::backend::Say {
                 total: None,
             },
         );
+    })
+}
+
+/// Whether the project is in git and what it can be compared with.
+async fn git(State(s): State<Shared>) -> Result<Json<crate::api::GitInfo>, ApiError> {
+    blocking(move || s.backend.git()).await.map(Json)
+}
+
+/// A file of the project as it is at a ref.
+async fn git_file(
+    State(s): State<Shared>,
+    Query(q): Query1,
+) -> Result<Json<crate::api::FileContent>, ApiError> {
+    let (rev, path) = (param(&q, "ref")?, param(&q, "path")?);
+    json(move || s.backend.git_file(&rev, &path)).await
+}
+
+/// `?ref=<rev>` and, for one board, `&board=<name>`. The request is answered when the
+/// comparison is done; while it runs the socket carries `progress` messages with the task
+/// `compare` and the ref as their board.
+async fn compare(
+    State(s): State<Shared>,
+    Query(q): Query1,
+) -> Result<Json<crate::api::Compare>, ApiError> {
+    let rev = param(&q, "ref")?;
+    let board = q.get("board").cloned().filter(|b| !b.is_empty());
+    let observe = job_observer(&s, "compare", &rev);
+    json(move || s.backend.compare(&rev, board.as_deref(), &observe)).await
+}
+
+/// The events of an analysis that a job runs for itself, as `progress` messages of `task`
+/// about `key`. Only the progress is passed on: the page that asked knows when it ends.
+fn job_observer(s: &Shared, task: &str, key: &str) -> Observer {
+    let events = s.events.clone();
+    let (task, key) = (task.to_string(), key.to_string());
+    Arc::new(move |event| {
+        if let AnalysisEvent::Progress {
+            stage,
+            done,
+            total,
+            message,
+            ..
+        } = event
+        {
+            send(
+                &events,
+                &ServerMessage::Progress {
+                    task: task.clone(),
+                    board: key.clone(),
+                    message,
+                    stage: Some(stage),
+                    done: Some(done),
+                    total: Some(total),
+                },
+            );
+        }
     })
 }
 

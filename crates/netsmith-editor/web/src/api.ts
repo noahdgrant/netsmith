@@ -606,6 +606,330 @@ elapsedMs: number, };
 
 export type Definition = { at: Location, };
 
+export type GitCommit = { 
+/**
+ * The full hash: what a compare is cached by.
+ */
+hash: string, short: string, subject: string, author: string, 
+/**
+ * The author date, ISO 8601 with its offset (`2026-11-04T09:30:00+01:00`).
+ */
+date: string, };
+
+export type GitRefKind = "head" | "upstream" | "default" | "branch" | "tag";
+
+export type GitRef = { 
+/**
+ * What to pass as `ref`: `HEAD`, `origin/main`, `feature`, `v1.2`.
+ */
+name: string, kind: GitRefKind, 
+/**
+ * The commit it points at (a tag's own commit, not the tag object).
+ */
+hash: string, short: string, subject: string, date: string, 
+/**
+ * The branch that is checked out.
+ */
+current: boolean, };
+
+export type GitInfo = { available: boolean, reason?: string, 
+/**
+ * The top of the work tree, an absolute path.
+ */
+root?: string, 
+/**
+ * Where the project is in the work tree, with `/`: empty if it is the top, else
+ * `hardware/board`.
+ */
+projectDir?: string, 
+/**
+ * The checked-out branch; absent when HEAD is detached.
+ */
+branch?: string, head?: GitCommit, 
+/**
+ * Anything in the work tree differs from HEAD, untracked files included.
+ */
+dirty: boolean, 
+/**
+ * The same for the project's folder: what a compare against HEAD sees.
+ */
+projectDirty: boolean, 
+/**
+ * `HEAD`, the upstream, the default branch, the local branches (50 at most) and the
+ * tags (30 at most), in that order; a name that comes twice is listed once.
+ */
+refs: Array<GitRef>, 
+/**
+ * The last 30 commits reachable from HEAD, newest first.
+ */
+commits: Array<GitCommit>, };
+
+export type CompareHead = { 
+/**
+ * HEAD, if the project is in a work tree that has one.
+ */
+commit?: GitCommit, 
+/**
+ * The project's folder has changes that are not committed: the files on disk are what is
+ * compared, so they are in the diff.
+ */
+dirty: boolean, 
+/**
+ * How many errors the files on disk have now. While there are some, a board that does
+ * not build is shown as of its last good reading (`CompareBoard.stale`).
+ */
+errors: number, };
+
+export type SourceStatus = "modified" | "added" | "deleted" | "untracked";
+
+export type SourceFile = { 
+/**
+ * Relative to the project's folder, with `/`.
+ */
+path: string, status: SourceStatus, added: number, removed: number, };
+
+export type SourceDiff = { filesChanged: number, added: number, removed: number, files: Array<SourceFile>, 
+/**
+ * Why the numbers are missing, if git could not give them.
+ */
+error?: string, };
+
+export type BoardStatus = "added" | "removed" | "changed" | "unchanged";
+
+export type ComparePart = { path: string, designator: string, kind: string, value: string, package?: string, lcsc?: string, mpn?: string, 
+/**
+ * `fab`, `hand` or `none` (ADR 0024).
+ */
+assembly: string, 
+/**
+ * The declaration: on the head side for an added part, on the base side for a removed one.
+ */
+at?: Location, };
+
+export type CompareField = { field: string, old?: string, new?: string, };
+
+export type ComparePartChange = { 
+/**
+ * Its path on the head side.
+ */
+path: string, 
+/**
+ * Its path at the ref, when the part moved (a module was renamed or the part now sits in
+ * another): then `fields` has a `path` entry too.
+ */
+basePath?: string, designatorBase: string, designatorHead: string, 
+/**
+ * In a fixed order: `path`, `kind`, `value`, `package`, `lcsc`, `mpn`, `assembly`,
+ * `designator`. Never empty; a part in `renumbered` has only `designator`.
+ */
+fields: Array<CompareField>, 
+/**
+ * Its declaration on the head side.
+ */
+at?: Location, 
+/**
+ * Its declaration at the ref.
+ */
+baseAt?: Location, };
+
+export type PartsDiff = { added: Array<ComparePart>, removed: Array<ComparePart>, 
+/**
+ * Something other than the designator differs (a moved part is here).
+ */
+changed: Array<ComparePartChange>, 
+/**
+ * Only the designator differs: adding a part renumbers the ones after it, so this is
+ * long and mostly noise.
+ */
+renumbered: Array<ComparePartChange>, unchanged: number, };
+
+export type ComparePin = { 
+/**
+ * The part's path on the side the pin is listed from.
+ */
+part: string, designator: string, pin: string, 
+/**
+ * The part's declaration on that side.
+ */
+at?: Location, };
+
+export type CompareNet = { name: string, 
+/**
+ * The design names it (`3V3`), as against `net-r1.1`, which netsmith names after the
+ * smallest pin it joins.
+ */
+named: boolean, pins: Array<ComparePin>, 
+/**
+ * The first pin's part, where the net can be pointed at in the source.
+ */
+at?: Location, };
+
+export type CompareNetChange = { 
+/**
+ * The name on the head side.
+ */
+name: string, 
+/**
+ * The name at the ref.
+ */
+baseName: string, 
+/**
+ * The names differ, and at least one is a name the design gave. (A change between two
+ * generated names follows from the pins and is listed as `changed`.)
+ */
+renamed: boolean, 
+/**
+ * Pins on the head side that the net did not have at the ref, with the head side's
+ * designators.
+ */
+joined: Array<ComparePin>, 
+/**
+ * Pins the net had at the ref and has no more, with the ref's designators.
+ */
+left: Array<ComparePin>, 
+/**
+ * The first joined pin's part, else the first that left (on its own side).
+ */
+at?: Location, };
+
+export type NetsDiff = { added: Array<CompareNet>, removed: Array<CompareNet>, 
+/**
+ * Same pins (or most of them) under another name.
+ */
+renamed: Array<CompareNetChange>, 
+/**
+ * Same name, other pins.
+ */
+changed: Array<CompareNetChange>, unchanged: number, };
+
+export type CompareRail = { net: string, voltage?: Range, demand?: Range, capacity?: Range, budget: Budget, at?: Location, };
+
+export type RangeChange = { base?: Range, head?: Range, };
+
+export type BudgetChange = { base: Budget, head: Budget, };
+
+export type CompareRailChange = { 
+/**
+ * The net's name on the head side.
+ */
+net: string, 
+/**
+ * Its name at the ref, when the net was renamed.
+ */
+baseNet?: string, voltage?: RangeChange, demand?: RangeChange, capacity?: RangeChange, budget?: BudgetChange, 
+/**
+ * Amperes the supply can give above the largest demand (`capacity.hi - demand.hi`),
+ * when both are known on that side. Shrinking is the thing to look at.
+ */
+headroomBase?: number, headroomHead?: number, at?: Location, baseAt?: Location, };
+
+export type RailsDiff = { added: Array<CompareRail>, removed: Array<CompareRail>, changed: Array<CompareRailChange>, unchanged: number, };
+
+export type CompareInstance = { path: string, 
+/**
+ * The definition it was made from: `LdoStage`, `Rail`.
+ */
+typeName: string, at?: Location, };
+
+export type CompareInstanceChange = { path: string, baseType: string, headType: string, at?: Location, };
+
+export type InstancesDiff = { added: Array<CompareInstance>, removed: Array<CompareInstance>, changed: Array<CompareInstanceChange>, };
+
+export type CompareBomLine = { kind: string, value: string, package?: string, footprint?: string, lcsc?: string, mpn?: string, handSolder: boolean, quantity: number, designators: Array<string>, unitUsd?: number, };
+
+export type CompareBomChange = { kind: string, value: string, package?: string, footprint?: string, lcsc?: string, mpn?: string, handSolder: boolean, quantityBase: number, quantityHead: number, designatorsBase: Array<string>, designatorsHead: Array<string>, unitUsdBase?: number, unitUsdHead?: number, };
+
+export type BomDiff = { added: Array<CompareBomLine>, removed: Array<CompareBomLine>, changed: Array<CompareBomChange>, unchanged: number, 
+/**
+ * The total of the priced lines for one board, as `GET /api/bom` has it, on each side.
+ * Prices are those of each side's own catalogs and the supply file as they are now.
+ */
+totalUsdBase?: number, totalUsdHead?: number, 
+/**
+ * `total_usd_head - total_usd_base`, when both are known.
+ */
+deltaUsd?: number, };
+
+export type ProblemsDiff = { 
+/**
+ * On the head side only, with the head side's `at`.
+ */
+new: Array<Problem>, 
+/**
+ * At the ref only, with the ref's `at`.
+ */
+resolved: Array<Problem>, unchanged: number, };
+
+export type CompareBoard = { 
+/**
+ * As `BoardSummary.name` has it: what `?board=` and the other endpoints take.
+ */
+name: string, status: BoardStatus, 
+/**
+ * The source file of the board on each side, absent on the side that has no such board.
+ */
+baseFile?: string, headFile?: string, 
+/**
+ * The head side is the last good reading of a file that does not build now.
+ */
+stale: boolean, summary: string, parts: PartsDiff, nets: NetsDiff, rails: RailsDiff, 
+/**
+ * Module instances by path.
+ */
+modules: InstancesDiff, 
+/**
+ * Interface instances that are ports of the board or of a module, by path.
+ */
+interfaces: InstancesDiff, 
+/**
+ * Absent when the bill of materials cannot be made on one side (`bom_error` says why).
+ */
+bom?: BomDiff, bomError?: string, problems: ProblemsDiff, };
+
+export type Compare = { 
+/**
+ * The ref as asked.
+ */
+ref: string, 
+/**
+ * What it resolved to.
+ */
+base: GitCommit, head: CompareHead, 
+/**
+ * Set when the project at the ref cannot be compared: it has no `netsmith.toml` there, or
+ * it does not build.
+ */
+error?: string, 
+/**
+ * The errors of the analysis at the ref, when `error` is set because of them.
+ */
+baseProblems: Array<Problem>, 
+/**
+ * The analysis of the ref was kept from an earlier compare (by commit hash).
+ */
+cached: boolean, 
+/**
+ * The whole request, in milliseconds.
+ */
+elapsedMs: number, 
+/**
+ * One line: `3 parts added, 1 removed, 2 values changed, 1 rail's headroom shrank from
+ * 80 mA to 20 mA`; `No circuit changes` when there are none.
+ */
+summary: string, 
+/**
+ * Whether anything in the circuit differs (a renumbering alone is not).
+ */
+changed: boolean, source: SourceDiff, 
+/**
+ * By name; every board of either side, or the one asked for.
+ */
+boards: Array<CompareBoard>, 
+/**
+ * The problems that name no board (a mistake in a module, a file that did not read).
+ */
+problems: ProblemsDiff, };
+
 export type ClientMessage = { "type": "check", id: number, path: string, text: string, };
 
 export type ServerMessage = { "type": "rebuilt", analysis: Analysis, elapsedMs?: number, } | { "type": "analysing", since: number, } | { "type": "checked", id: number, analysis: Analysis, } | { "type": "progress", task: string, board: string, message: string, stage?: string, done?: number, total?: number, };

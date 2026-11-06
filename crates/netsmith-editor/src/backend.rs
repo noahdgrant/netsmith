@@ -2,9 +2,9 @@
 //! compiler behind it and the compiler's crates do not depend on a web server.
 
 use crate::api::{
-    Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Definition, FabReport,
-    FileContent, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited, PcbFindings, PcbReport,
-    PcbScene, PowerTree, Project, Saved, SystemView,
+    Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
+    FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited,
+    PcbFindings, PcbReport, PcbScene, PowerTree, Project, Saved, SystemView,
 };
 
 /// A refusal, with the HTTP status that says why.
@@ -231,4 +231,40 @@ pub trait Backend: Send + Sync + 'static {
         text: &str,
         offset: usize,
     ) -> Result<Option<Definition>, ApiError>;
+    /// Whether the project is in a git work tree and what it can be compared with (ADR 0051).
+    /// A backend with no git says so.
+    fn git(&self) -> GitInfo {
+        GitInfo {
+            available: false,
+            reason: Some("this backend has no git".to_string()),
+            root: None,
+            project_dir: None,
+            branch: None,
+            head: None,
+            dirty: false,
+            project_dirty: false,
+            refs: Vec::new(),
+            commits: Vec::new(),
+        }
+    }
+    /// What changed in the circuit between `rev` and the files on disk, for one board or all.
+    /// It may take as long as an analysis; `observe` is told how far it has got (the events of
+    /// an analysis, and the stages `extract` and `diff`), from any thread. Refused with 404 for
+    /// a ref that does not exist and with 422 (`git_unavailable`) for a project that is not in
+    /// a git work tree.
+    fn compare(
+        &self,
+        rev: &str,
+        board: Option<&str>,
+        observe: &Observer,
+    ) -> Result<Compare, ApiError> {
+        let _ = (rev, board, observe);
+        Err(ApiError::not_found("this backend cannot compare"))
+    }
+    /// The text of a file of the project as it is at `rev`, read from git (`readonly`, the
+    /// stamp is the commit's hash).
+    fn git_file(&self, rev: &str, path: &str) -> Result<FileContent, ApiError> {
+        let _ = (rev, path);
+        Err(ApiError::not_found("this backend cannot read from git"))
+    }
 }
