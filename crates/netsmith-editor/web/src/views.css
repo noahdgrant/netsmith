@@ -604,12 +604,17 @@ tr.hover-lit { outline-offset: -1px; }
 .bom .empty { height: 100%; }
 .empty.bad { color: var(--text-muted); white-space: normal; }
 .note-line.empty-line { display: flex; align-items: center; gap: 0.5rem; }
-/* the picked thing's chip keeps a width a person can read, whatever the search box takes (it was squeezed to a sliver at 1280) */
-.tb-left { overflow: hidden; }
-.tb-left .selchip { min-width: 7.5rem; }
-@media (max-width: 1400px) { .selchip-btn.text { width: 1.875rem; padding: 0; } .selchip-btn.text .selchip-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } }
-.selchip-main { min-width: 4.5rem; }
-.selchip-title { flex: 0 1 auto; min-width: 0; }
+/* the picked thing's chip keeps a width a person can read, whatever the search box takes (it was squeezed to a sliver at 1280): its
+ * least width is its icon, a few letters of the name and every button it has (the chip's classes say how many: has-src, has-steps), and
+ * the name never gives way before the second line of it (the kind and the facts, which give way first, down to nothing) */
+.tb-left .selchip { --src: 0; --steps: 0; min-width: calc(3rem + 1.875rem * (1 + var(--src) + var(--steps))); }
+.selchip.has-src { --src: 1; } .selchip.has-steps { --steps: 2; }
+.selchip-main { min-width: 2.75rem; }
+.selchip-title { flex: 0 1 auto; min-width: 3ch; }
+.selchip-sub { flex: 0 100 auto; }
+@container app (max-width: 87.5rem) { .selchip-btn.text { width: 1.875rem; padding: 0; } .selchip-btn.text .selchip-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } }
+@container app (max-width: 87.5rem) { .selchip-sub:not(.keep) { display: none; } }
+@container app (max-width: 56rem) { .selchip.has-steps { --steps: 0; } }
 /* the file tabs: an edge that fades says there is more to scroll to (Chrome.tsx sets fade-l and fade-r) */
 .tab-scroll { --fl: 0px; --fr: 0px; mask-image: linear-gradient(90deg, transparent 0, black var(--fl), black calc(100% - var(--fr)), transparent 100%); }
 .tab-scroll.fade-l { --fl: 28px; } .tab-scroll.fade-r { --fr: 36px; }

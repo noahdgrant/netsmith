@@ -83,6 +83,22 @@ export async function run({ page, shot, step, expect }) {
   const c1 = await chip();
   expect(/bus uart0/.test(c1) && /\(4 nets\)/.test(c1), `the chip says bus uart0 (4 nets) (${c1})`);
   expect((await page.locator('.selchip.k-bus').count()) === 1, 'it is the bus kind of chip');
+  // Round 7: the chip kept `bus uar… (4 ne…` at 1280 px with room to spare beside it; it is as wide as its words, and shortens them only when the bar has no room (go to anything gives up its width first).
+  for (const [w, h] of [[1920, 1080], [1600, 900], [1280, 800]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.waitForTimeout(150);
+    const fit = await page.evaluate(() => {
+      const chip = document.querySelector('.selchip');
+      const room = chip.closest('.tb-left').getBoundingClientRect().right - chip.getBoundingClientRect().right;
+      const cmdk = document.querySelector('.topbar .cmdk');
+      const spare = cmdk.getBoundingClientRect().width - (parseFloat(getComputedStyle(cmdk).minWidth) || 0);
+      const cut = [...chip.querySelectorAll('.selchip-title, .selchip-sub')].filter((e) => e.getClientRects().length && e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent);
+      return { room, spare, cut, text: chip.innerText.replace(/\s+/g, ' ') };
+    });
+    expect(!(fit.cut.length && (fit.room > 12 || fit.spare > 2)), `at ${w} px the bus chip shortens its words only when the bar has no room (${fit.text}; ${Math.round(fit.room)} px beside it, go to anything ${Math.round(fit.spare)} px over its least, cut: ${fit.cut.join(' | ') || 'nothing'})`);
+  }
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.waitForTimeout(150);
   expect(JSON.stringify(await litNets()) === JSON.stringify(MEMBERS), 'all four members are lit');
   expect(await busLit('brain.uart0'), 'and the line');
   expect(await page.evaluate(() => document.querySelector('svg.schematic').classList.contains('has-on')), 'the rest of the drawing is dimmed');
