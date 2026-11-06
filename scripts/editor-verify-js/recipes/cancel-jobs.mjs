@@ -55,7 +55,9 @@ async function makeBigRef(project) {
   }
 }
 
-export async function run({ page, shot, step, expect, section, project, resetRepo }) {
+export async function run({ page, shot, step, expect, section, project, resetRepo, allowConsole }) {
+  // A cancelled job answers 499, which the browser logs as a failed request.
+  allowConsole(/status of 499/);
   resetRepo();
   await makeBigRef(project);
   await page.reload();
@@ -133,7 +135,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await page.unroute('**/api/build');
   await page.unroute('**/api/build/cancel');
 
-  step('a fab is cancelled from its card: a calm note, no failure, no package, and a new fab is whole');
+  step('a fab is cancelled from its card: a calm note, no failure, no package');
   await page.locator('.acard[data-task="fab"] button.tool', { hasText: 'Make fab package' }).click();
   await page.waitForSelector('[data-testid="cancel-fab"]');
   await page.waitForFunction(() => /placing|placed|routing|routed|reading/.test(document.querySelector('.acard[data-task="fab"] .job-line')?.textContent ?? ''), null, { timeout: 120000 });

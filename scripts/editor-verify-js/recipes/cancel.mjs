@@ -34,7 +34,9 @@ export async function run({ page, shot, step, expect, section, project }) {
 
   step('a file changes and the analysis of it is long: the bar says how far the solver has got, and offers Cancel');
   await startLong();
-  await page.waitForFunction(() => /\d+ of \d+ parts chosen/.test(document.querySelector('.statusbar .analysing-text')?.textContent ?? ''), null, { timeout: 60000 });
+  // Before the search the solver counts the parts it prepares and the fields it scans; then the parts it has chosen.
+  await page.waitForFunction(() => /\d+ of \d+ (parts prepared|fields scanned|parts chosen)/.test(document.querySelector('.statusbar .analysing-text')?.textContent ?? ''), null, { timeout: 60000 });
+  await page.waitForFunction(() => /[1-9]\d* of \d+ parts chosen/.test(document.querySelector('.statusbar .analysing-text')?.textContent ?? ''), null, { timeout: 90000 });
   const first = await analysingText();
   const count = (t) => Number(/(\d+) of (\d+) parts chosen/.exec(t)?.[1]);
   const total = Number(/of (\d+) parts chosen/.exec(first)?.[1]);
@@ -42,7 +44,7 @@ export async function run({ page, shot, step, expect, section, project }) {
   expect(!/%/.test(first), 'never a percentage');
   await page.waitForTimeout(1500);
   const second = await analysingText();
-  expect(count(second) >= count(first) && Number(/of (\d+) parts/.exec(second)?.[1]) === total, `the count only grows and the total is the same (${first} -> ${second})`);
+  expect(count(second) > count(first) && Number(/of (\d+) parts/.exec(second)?.[1]) === total, `the count grows and the total is the same (${first} -> ${second})`);
   expect((await page.locator(`${bar} .cancel-analysis`).innerText()).includes('Cancel'), 'the bar has a Cancel button');
   await shot('solving');
 

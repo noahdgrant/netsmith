@@ -132,6 +132,9 @@ fn article(word: &str) -> &'static str {
     }
 }
 
+/// How often the scan of the fields that finds which parts share a relation says how far it is.
+const FIELDS_REPORT_EVERY: usize = 512;
+
 /// What a search has learned so far.
 #[derive(Default)]
 struct Search {
@@ -1263,8 +1266,10 @@ impl Solver<'_> {
         parts.sort_by(|a, b| a.0.cmp(&b.0));
 
         let mut jobs: Vec<Job> = Vec::new();
-        for (path, part) in parts {
+        let to_prepare = parts.len() as u64;
+        for (n, (path, part)) in parts.into_iter().enumerate() {
             job::checkpoint();
+            job::report("parts prepared", n as u64, Some(to_prepare));
             let catalog = self
                 .model
                 .instance(part)
@@ -1433,6 +1438,9 @@ impl Solver<'_> {
         let mut inside: Vec<HashSet<usize>> = vec![HashSet::new(); jobs.len()];
         for (id, field) in self.model.fields() {
             job::checkpoint();
+            if id.0 % FIELDS_REPORT_EVERY == 0 {
+                job::report("fields scanned", id.0 as u64, Some(n_fields as u64));
+            }
             for (j, job) in jobs.iter().enumerate() {
                 if self.model.is_inside(field.owner, job.part) {
                     inside[j].insert(class[id.0]);
@@ -1463,6 +1471,9 @@ impl Solver<'_> {
             vec![Default::default(); jobs.len()];
         for (id, field) in self.model.fields() {
             job::checkpoint();
+            if id.0 % FIELDS_REPORT_EVERY == 0 {
+                job::report("fields scanned", id.0 as u64, Some(n_fields as u64));
+            }
             for (j, job) in jobs.iter().enumerate() {
                 if self.model.is_inside(field.owner, job.part) {
                     inside[j].insert(class(id, &mut fparent));

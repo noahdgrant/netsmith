@@ -83,25 +83,40 @@ fn the_parts_chosen_are_counted_as_the_solve_goes_and_the_total_is_known() {
     };
     let solved = job::reporting(sink, || solve(&c.boards[0], &Catalogs::jlcpcb()));
     assert!(solved.diagnostics.is_empty(), "{:?}", solved.diagnostics);
-    let heard = heard.borrow();
-    assert!(heard.len() > 3, "{heard:?}");
-    let total = heard[0]
-        .total
-        .expect("the number of parts to choose is known");
-    assert!(
-        total >= 10,
-        "a board of three rails has parts to choose: {heard:?}"
-    );
-    for w in heard.iter() {
-        assert_eq!(w.unit, "parts chosen");
-        assert_eq!(w.total, Some(total), "{w:?}");
+    let all = heard.borrow();
+    // Each unit is counted on its own: the parts prepared from their catalogs, the fields scanned
+    // for the parts that share relations, then the parts chosen. Each grows, and has its total.
+    for unit in ["parts prepared", "parts chosen"] {
+        let heard: Vec<&Work> = all.iter().filter(|w| w.unit == unit).collect();
+        assert!(heard.len() > 3, "{unit}: {all:?}");
+        let total = heard[0].total.expect("the number of parts is known");
+        assert!(total >= 10, "a board of three rails has parts: {heard:?}");
+        assert!(
+            heard.iter().all(|w| w.total == Some(total)),
+            "{unit}: {heard:?}"
+        );
+        assert_eq!(heard[0].done, 0, "{unit} starts at nothing");
+        assert!(
+            heard.windows(2).all(|p| p[0].done <= p[1].done),
+            "{unit} never goes back: {heard:?}"
+        );
     }
-    assert_eq!(heard[0].done, 0, "it starts at nothing");
-    assert!(
-        heard.windows(2).all(|p| p[0].done <= p[1].done),
-        "the count never goes back: {heard:?}"
+    let chosen: Vec<&Work> = all.iter().filter(|w| w.unit == "parts chosen").collect();
+    assert_eq!(
+        chosen.last().unwrap().done,
+        chosen[0].total.unwrap(),
+        "and ends at the total"
     );
-    assert_eq!(heard.last().unwrap().done, total, "and ends at the total");
+    for w in all.iter() {
+        assert!(
+            ["parts prepared", "fields scanned", "parts chosen"].contains(&w.unit),
+            "{w:?}"
+        );
+        assert!(
+            w.total.is_some(),
+            "nothing is reported without a total here: {w:?}"
+        );
+    }
 }
 
 fn picks_of(s: &Solution) -> String {

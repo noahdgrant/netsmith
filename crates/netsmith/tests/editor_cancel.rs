@@ -38,6 +38,8 @@ struct Probe {
     events: Mutex<Vec<String>>,
     /// The counts of work the solver reported: `unit done/total`.
     work: Mutex<Vec<String>>,
+    /// The solver has chosen at least three parts: the search is under way.
+    searching: AtomicBool,
 }
 
 impl Probe {
@@ -54,6 +56,9 @@ impl Probe {
             probe.events.lock().unwrap().push(name);
             if let AnalysisEvent::Progress { stage, work, .. } = &event {
                 if let Some(w) = work {
+                    if w.unit == "parts chosen" && w.done >= 3 {
+                        probe.searching.store(true, Ordering::SeqCst);
+                    }
                     probe.work.lock().unwrap().push(format!(
                         "{} {}/{}",
                         w.unit,
@@ -276,10 +281,14 @@ fn a_cancel_during_a_long_solve_is_heard_within_a_fraction_of_a_second() {
     // Asked from a thread of its own a little after the solve begins, as a person would.
     let asked = Arc::new(Mutex::new(None));
     let timer = {
-        let (editor, asked) = (Arc::clone(&editor), Arc::clone(&asked));
+        let (editor, asked, probe) = (Arc::clone(&editor), Arc::clone(&asked), Arc::clone(&probe));
         std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(800));
+            // Once the search has begun and a moment into it, asked as a person would.
             let deadline = Instant::now() + Duration::from_secs(60);
+            while !probe.searching.load(Ordering::SeqCst) && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            std::thread::sleep(Duration::from_millis(400));
             while Instant::now() < deadline {
                 *asked.lock().unwrap() = Some(Instant::now());
                 if editor.cancel_analysis() {
@@ -301,7 +310,7 @@ fn a_cancel_during_a_long_solve_is_heard_within_a_fraction_of_a_second() {
         "the solve ended before it was asked to"
     );
     assert!(
-        latency < Duration::from_millis(1500),
+        latency < Duration::from_millis(750),
         "stopped {latency:?} after it was asked (a whole analysis takes many seconds)"
     );
 }

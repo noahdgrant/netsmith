@@ -186,10 +186,10 @@ mod tests {
         let mut passes = 0;
         let result = catch(|| {
             scope(&token, || {
-                for i in 0.. {
+                loop {
                     checkpoint();
                     passes += 1;
-                    if i == 3 {
+                    if passes == 4 {
                         token.cancel();
                     }
                 }
@@ -209,16 +209,7 @@ mod tests {
     #[test]
     fn a_token_that_is_not_cancelled_changes_nothing() {
         let token = Cancel::new();
-        let result = catch(|| {
-            scope(&token, || {
-                (0..1000)
-                    .map(|i| {
-                        checkpoint();
-                        i
-                    })
-                    .sum::<u32>()
-            })
-        });
+        let result = catch(|| scope(&token, || (0..1000).inspect(|_| checkpoint()).sum::<u32>()));
         assert_eq!(result, Ok(499_500));
     }
 
@@ -248,7 +239,7 @@ mod tests {
         }));
         let token = Cancel::new();
         token.cancel();
-        let result = catch(|| scope(&token, || checkpoint()));
+        let result = catch(|| scope(&token, checkpoint));
         std::panic::set_hook(previous);
         assert_eq!(result, Err(Cancelled));
         assert!(!hook_ran.load(Ordering::SeqCst));
