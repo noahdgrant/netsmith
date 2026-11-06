@@ -251,17 +251,17 @@ export async function run({ page, shot, step, expect, url, section }) {
   const tabIndex = order.findIndex((n) => n.startsWith('button[') && n.includes('tab'));
   expect(tabIndex > order.findIndex((n) => n.startsWith('select')), 'the board picker comes before the section tabs');
   await section('source');
-  await page.locator('.tab[role=tab][aria-selected=true]').focus();
+  await page.locator('.tab[role=tab][aria-selected=true][data-section]').focus();
   await page.keyboard.press('ArrowRight');
   await page.waitForTimeout(250);
-  const sel = await page.locator('.tab[role=tab][aria-selected=true]').getAttribute('data-section');
+  const sel = await page.locator('.tab[role=tab][aria-selected=true][data-section]').getAttribute('data-section');
   expect(sel === 'schematic', 'ArrowRight on the Source tab shows the Schematic');
   await page.keyboard.press('End');
   await page.waitForTimeout(250);
-  expect((await page.locator('.tab[role=tab][aria-selected=true]').getAttribute('data-section')) === 'build', 'End goes to the last section');
+  expect((await page.locator('.tab[role=tab][aria-selected=true][data-section]').getAttribute('data-section')) === 'build', 'End goes to the last section');
   await page.keyboard.press('Home');
   await page.waitForTimeout(250);
-  expect((await page.locator('.tab[role=tab][aria-selected=true]').getAttribute('data-section')) === 'source', 'Home goes to the first');
+  expect((await page.locator('.tab[role=tab][aria-selected=true][data-section]').getAttribute('data-section')) === 'source', 'Home goes to the first');
   await shot('focus-tabs');
 
   step('reduced motion: transitions and animations take no time');

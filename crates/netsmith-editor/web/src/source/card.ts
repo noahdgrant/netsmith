@@ -354,7 +354,8 @@ export function solvedRows(solved: Solved | null | undefined): SolvedLine[] {
   if (!solved) return [];
   const rows: SolvedLine[] = [];
   if (solved.effectiveCapacitance) {
-    rows.push({ label: 'In use', value: `${rangeText(solved.effectiveCapacitance)}${solved.bias ? ` at ${rangeText(solved.bias)}` : ''}`, mono: true });
+    rows.push({ label: 'In use', value: rangeText(solved.effectiveCapacitance), mono: true });
+    if (solved.bias) rows.push({ label: 'Bias', value: rangeText(solved.bias), mono: true });
   }
   if (solved.tolerance) rows.push({ label: 'Tolerance', value: spaceUnits(solved.tolerance.text) });
   if (solved.ratings?.length) rows.push({ label: 'Rated', value: solved.ratings.map((r) => `${r.name.replace(/_/g, ' ')} ${rangeText(r.range)}`).join(', ') });

@@ -252,7 +252,8 @@ describe('the solved block of a part', () => {
   });
   it('reads as the effective capacitance at its bias, the tolerance, the ratings and the catalog row, with thin spaces', () => {
     expect(solvedRows(solved)).toEqual([
-      { label: 'In use', value: '1.72\u2009uF\u2009..\u20092.916\u2009uF at 5\u2009V', mono: true },
+      { label: 'In use', value: '1.72\u2009uF\u2009..\u20092.916\u2009uF', mono: true },
+      { label: 'Bias', value: '5\u2009V', mono: true },
       { label: 'Tolerance', value: '+/- 20\u2009%' },
       { label: 'Rated', value: 'max voltage 0\u2009V\u2009..\u200916\u2009V' },
       { label: 'Row', value: 'capacitor · CL05A106MQ5NUNC · C315248 · Basic', mono: true },

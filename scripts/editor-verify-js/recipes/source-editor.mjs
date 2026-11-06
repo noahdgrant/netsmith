@@ -76,7 +76,7 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.waitForSelector('[data-testid="hover-card"][data-kind="net"]', { timeout: 4000 });
   await page.waitForFunction(() => document.querySelector('[data-testid="hover-card"]')?.innerText.includes('Voltage'), null, { timeout: 5000 });
   card = await page.locator('[data-testid="hover-card"]').innerText();
-  expect(card.includes('3V3') && card.includes(`${net.pins.length} pins`) && /Voltage\s+[\d.]+V/.test(card), `the net, its pin count and its voltage (${card.replace(/\s+/g, ' ').slice(0, 120)})`);
+  expect(card.includes('3V3') && card.includes(`${net.pins.length} pins`) && /Voltage\s+[\d.]+\s*V/.test(card), `the net, its pin count and its voltage (${card.replace(/\s+/g, ' ').slice(0, 120)})`);
   await shot('hover-net');
   await away();
 

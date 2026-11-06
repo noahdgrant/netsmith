@@ -12,7 +12,7 @@ export async function run({ page, shot, step, expect, section }) {
   expect(planes.length >= 2 && planes.every((p) => /^In\d+\.Cu$/.test(p.layer ?? '')), `each plane rectangle names its layer (${planes.map((p) => `${p.net} ${p.layer}`).join(', ')})`);
   expect(planes.every((p) => p.tone === String(Math.min(4, Number(/\d+/.exec(p.layer)[0])))), `and its tone is its layer's (${planes.map((p) => `${p.layer}:${p.tone}`).join(', ')})`);
   expect(new Set(planes.map((p) => p.stroke)).size === planes.length, 'two planes on two layers have two colours');
-  const labels = await page.locator('.pcb-host svg text.plane-label').allInnerTexts();
+  const labels = await page.locator('.pcb-host svg text.plane-label').evaluateAll((els) => els.map((e) => e.textContent));
   expect(planes.every((p) => labels.some((l) => l === `${p.net} · ${p.layer}`)), `a label with the net and the layer (${labels.join(' | ')})`);
   step('route it');
   await page.getByRole('button', { name: /Place and route/ }).click();
