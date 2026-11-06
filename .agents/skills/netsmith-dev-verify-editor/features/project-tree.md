@@ -18,7 +18,7 @@ A generated project (`scripts/editor-verify-js/fixtures/tree.mjs`) with nested f
 
 - the sections, the levels of the rows (`aria-level`), no flat `a/b` row, guide lines on a nested file, folders before files;
 - icons: folder, `.nsm`, `.physical.nsm`, `.toml`; the chevrons; rows 26 px tall with 13 px text; the count pills and their tooltips; the lock and its tooltip; the kind tooltip of a definition;
-- the active file's 3 px accent bar, the mark on an open file, the dot and its tooltip after typing;
+- the active file's 2 px bar in the selection colour (blue), the mark on an open file, the dot and its tooltip after typing;
 - the keyboard: Up, Down, Home, End, Left, Right, Enter;
 - Collapse all and Expand all; the filter keeping the folders above a match, open, with the match marked;
 - what is open, kept per project across a reload (`localStorage`, `netsmith.tree.open:<project>`); the column dragged to 380 px and kept (`netsmith.sidebar.width`), a double click back to 260 px;
