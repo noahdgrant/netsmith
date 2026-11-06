@@ -148,6 +148,8 @@ function pairs(): Pair[] {
   list.push({ fg: '--on-kind', bg: KINDS.filter((k) => /part|module|board|system|panel|interface/.test(k)), what: 'badge letter on a kind fill' });
   for (const k of KINDS) list.push({ fg: k, bg: ['--surface', '--canvas'], what: 'kind icon or word on a surface' });
   for (const s of SYN) list.push({ fg: s, bg: ['--canvas'], what: 'syntax colour on the editor' });
+  // The source (round 4): the hint at the end of a line is text; the indent guide is a hairline, not text.
+  list.push({ fg: '--cm-hint', bg: ['--canvas'], what: 'the inline hint at the end of a line of the source' });
   list.push({ fg: '--text', bg: ['--pop'], what: 'text in a menu' });
   list.push({ fg: '--text-faint', bg: ['--pop'], what: 'faint text in a menu' });
   list.push({ fg: '--text-muted', bg: ['--pop'], what: 'muted text in a menu' });
@@ -228,6 +230,12 @@ describe.each(Object.keys(THEME_TOKENS) as Theme[])('contrast of %s', (name) => 
   });
   it('the hover light is not the colour of a pick or of the brand', () => {
     for (const k of ['--sel', '--accent', '--sch-hit', '--sch-mark']) expect(ink('--hover-lit').toLowerCase()).not.toBe(ink(k).toLowerCase());
+  });
+  it('the indent guide is a step from the canvas and quieter than the hint, so a guide is seen and never read', () => {
+    const g = contrast(ink('--cm-guide'), ink('--canvas'))!;
+    expect(g).toBeGreaterThanOrEqual(1.08);
+    expect(g).toBeLessThanOrEqual(3);
+    expect(contrast(ink('--cm-hint'), ink('--canvas'))!).toBeGreaterThan(g);
   });
   it('the segment that is on is a step from its track', () => {
     expect(contrast(ink('--seg-on'), ink('--seg-track'))!).toBeGreaterThanOrEqual(1.1);

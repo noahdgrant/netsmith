@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { BoardDetail, Project } from './api';
 import { rowOfProblem } from './feedback/problems';
-import { type Item, buildIndex, parseLine, parseQuery, problemItems, recentItems, search } from './quickopen';
+import { type Index, type Item, buildIndex, fileSymbolItems, parseLine, parseQuery, problemItems, recentItems, search } from './quickopen';
+import { scanSymbols } from './source/symbols';
 
 const loc = { file: 'src/m.nsm', line: 3, column: 1, endLine: 3, endColumn: 9 };
 const part = (refdes: string, path: string, value: string, kind = 'Capacitor') => ({
@@ -206,5 +207,30 @@ describe('buses', () => {
     expect(buildIndex(detail, project).buses).toEqual([]);
     expect(search(buildIndex(detail, project), commands, '#').map((g) => g.title)).toEqual(['Nets']);
     expect(recentItems(withBuses, ['bus:aux.spi', 'bus:gone']).map((i) => i.id)).toEqual(['bus:aux.spi']);
+  });
+});
+
+describe('go to symbol in the open file', () => {
+  const syms = scanSymbols(['module LdoStage {', '    .vin: Rail', '    .reg: LinearRegulator', '}', 'board B {', '    .stage: LdoStage', '}'].join('\n'));
+  const kinds: Record<string, string> = { Rail: 'interface', LinearRegulator: 'part', LdoStage: 'module' };
+  const items = fileSymbolItems('src/main.nsm', syms, (t) => kinds[t]);
+  it('lists the definitions and declarations of the file, each with its line and the column of its name', () => {
+    expect(items.map((i) => [i.label, i.kind, i.detail])).toEqual([
+      ['LdoStage', 'definition', 'module · line 1'],
+      ['.vin', 'bus', 'port · line 2'],
+      ['.reg', 'part', 'part · line 3'],
+      ['B', 'definition', 'board · line 5'],
+      ['.stage', 'module', 'module · line 6'],
+    ]);
+    expect(items[2].target).toMatchObject({ type: 'symbol', file: 'src/main.nsm', line: 3, column: 6, name: 'reg' });
+    expect(items[0].target).toMatchObject({ defKind: 'module' });
+    expect(items[1].target).toMatchObject({ defKind: undefined });
+  });
+  it('is what @ shows when given, and the project\'s modules and definitions when not', () => {
+    const empty: Index = { parts: [], nets: [], buses: [], modules: [], definitions: [], files: [] };
+    const scoped = search(empty, [], '@reg', [], items);
+    expect(scoped.map((g) => g.title)).toEqual(['In this file']);
+    expect(scoped[0].hits[0].item.label).toBe('.reg');
+    expect(search(empty, [], '@reg', [], null)).toEqual([]);
   });
 });
