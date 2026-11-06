@@ -649,8 +649,7 @@ fn arrange(frames: &[Rect]) -> Vec<Pt> {
         .map(|f| (f.width() + SHEET_GAP) * (f.height() + SHEET_GAP))
         .sum();
     let widest = frames.iter().map(Rect::width).fold(0.0, f64::max);
-    // In coarse steps, so that the sheets keep their rows when one of them grows a little.
-    let target = snap_up((area * TARGET_ASPECT).sqrt(), 50.8).max(widest);
+    let target = (area * TARGET_ASPECT).sqrt().max(widest);
 
     let mut offsets = Vec::with_capacity(frames.len());
     let (mut x, mut y, mut row_height) = (0.0, 0.0, 0.0f64);

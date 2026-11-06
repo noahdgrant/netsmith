@@ -92,7 +92,7 @@ Before (the engine as on `main` at 1eac15f) and after, on the test boards of `cr
 | (g) add a part on no net | 100% | 100% | 99% | 99% | 1 / 0 |
 | (h) rename a supply rail | 100% | 100% | 100% | 100% | 0 / 0 |
 
-In the raw frame (the coordinates of the board, where the sheets are set in a grid) (f) moves a sheet whenever an earlier sheet of the grid grows (before 40%, after 60% of parts unmoved): the page shows one sheet at a time, in its own frame, where nothing differs.
+In the raw frame (the coordinates of the board, where the sheets are set in a grid) (f) moves a sheet whenever an earlier sheet of the grid grows or the grid is cut into other rows (before 40%, after 80% of parts unmoved on the corpus; 50% on `schematic_bench` and `enclosure_sensor`, before and after): the page shows one sheet at a time, in its own frame, where nothing differs.
 
 `examples/schematic_bench` (sheets `buck` and `modem`, 10 and 22 parts) and `examples/enclosure_sensor`, anchor frame, parts unmoved / segments kept (mean over the sheets that are measured, rows unchanged):
 
