@@ -5,6 +5,13 @@
 # KiCad's stock libraries skip themselves there (they print "skipped: ..."); the rest build with
 # the small libraries of `netsmith_kicad::testlib`. The `kicad` job installs KiCad 9 and runs the
 # same suite, so those tests really run. No Node either: the editor's page is the committed bundle.
+#
+# The `recipes` job drives the editor in headless Chromium (Playwright, Node 22): it builds the
+# `netsmith` binary and runs `scripts/editor-verify-all`, every recipe of
+# scripts/editor-verify-js/recipes against the fixture it declares. It installs KiCad 9 the way
+# the `kicad` job does: the build and order recipes write KiCad files, and the PCB recipes of the
+# `outline_and_pours` fixture draw its stock footprints. It is not a required check yet; the
+# screenshots and the server log of a failing sweep are the `recipes-evidence` artifact of the run.
 name: ci
 
 on:
@@ -152,3 +159,93 @@ jobs:
             status=1
           fi
           exit $status
+
+  # The editor's browser recipes (.agents/skills/netsmith-dev-verify-editor/SKILL.md). The page is
+  # the committed bundle, so the binary is a plain debug build and Node is only for the driver.
+  # The sweep runs every recipe, session by session, and lists each one that failed.
+  recipes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - run: cargo build -p netsmith
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci --no-audit --no-fund
+        working-directory: scripts/editor-verify-js
+
+      # The browser is cached; its system libraries and fonts are not, so they are installed
+      # either way.
+      - name: Cache Playwright's Chromium
+        id: browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('scripts/editor-verify-js/package-lock.json') }}
+
+      - name: Install Chromium
+        working-directory: scripts/editor-verify-js
+        run: |
+          if [ "${{ steps.browsers.outputs.cache-hit }}" = true ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
+
+      - name: Install KiCad 9
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends kicad kicad-symbols kicad-footprints
+          kicad-cli --version
+
+      # The same KiCad 9.0.0 libraries as the `kicad` job (same cache key), so the footprints are
+      # the ones the editor's checks were written against.
+      - name: Cache the KiCad 9.0.0 libraries
+        id: libs
+        uses: actions/cache@v4
+        with:
+          path: ~/kicad-libs
+          key: kicad-libs-9.0.0-v1
+
+      - name: Fetch the KiCad 9.0.0 libraries
+        if: steps.libs.outputs.cache-hit != 'true'
+        run: |
+          fetch() {
+            name="$1"; sha="$2"
+            mkdir -p ~/kicad-libs/"$name"
+            curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
+              -o "$RUNNER_TEMP/$name.tar.gz" \
+              "https://gitlab.com/kicad/libraries/kicad-$name/-/archive/9.0.0/kicad-$name-9.0.0.tar.gz"
+            echo "$sha  $RUNNER_TEMP/$name.tar.gz" | sha256sum --check
+            tar -xzf "$RUNNER_TEMP/$name.tar.gz" --strip-components=1 -C ~/kicad-libs/"$name"
+          }
+          fetch symbols e90f557a172ca99ab4ec546802511fac4139738f505996f94180541828fa3f4a
+          fetch footprints f9444c53a06ba64fde0c87b20c42de0b9d2efdffe15822b43474fcf03aa7229a
+
+      - name: Point netsmith at the KiCad 9.0.0 libraries
+        run: |
+          echo "NETSMITH_KICAD_SYMBOLS=$HOME/kicad-libs/symbols" >> "$GITHUB_ENV"
+          echo "NETSMITH_KICAD_FOOTPRINTS=$HOME/kicad-libs/footprints" >> "$GITHUB_ENV"
+
+      - run: scripts/editor-verify doctor
+
+      - name: Drive the recipes
+        run: scripts/editor-verify-all
+
+      - name: Keep the evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recipes-evidence
+          # The sweep's default: $NETSMITH_VERIFY_DIR-all.
+          path: /tmp/netsmith-verify-all
+          retention-days: 7
