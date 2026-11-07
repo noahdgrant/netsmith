@@ -195,8 +195,8 @@ A component with pins and quantities, such as a resistor or a regulator.
 _Avoid_: Component, device
 
 **Interface**:
-A typed bundle of pins and quantities that is connected as one. A bundle of quantities with no pins, such as a process, is also an interface. A member of an interface type is a port (`.supply: Rail`); what picks a part is a generic, not an interface.
-_Avoid_: Bus, bundle, group
+A typed bundle of pins and quantities that is connected as one. A bundle of quantities with no pins, such as a process, is also an interface. A member of an interface type is a port (`.supply: Rail`); what picks a part is a generic, not an interface. An interface of a bus (`Spi`) also has a `lines` table.
+_Avoid_: Bus (for an interface in general: a **Bus** is the interfaces of one definition that share a net), bundle, group
 
 **Module**:
 A reusable sub-circuit that is placed on a board or inside another module. Only its interfaces, pins, and declared values can be used from outside; the parts and modules inside are internal.
@@ -204,7 +204,7 @@ _Avoid_: Circuit, block, sheet, subcircuit
 
 **Generic**:
 A definition, `generic Name { ... }`, of what a board may rely on of any part or module that provides it: pins with their kinds (a `pins` table whose rows have a kind and no name and no pads), values with their types, and the relations, narrowings and defaults that hold for every provider. It has no pads, no package and no catalog, unless it is its own provider: the standard `Resistor`, `Capacitor`, `Led`, `Inductor`, `FerriteBead`, `Crystal`, `Fuse`, `Schottky`, `Zener`, `Tvs`, `NMosfet` and `LinearRegulator` are, so each has a pin table with pads and a catalog, is the first candidate for its own use, and keeps its kind name (ADR 0059 stage 2). A board uses it with a member of its type, `.rf: CoaxReceptacle { .max_frequency >= 1.61GHz }`, and the solver picks a provider (ADR 0059, proposed). Do not confuse it with a **generic part**, which is a pick, not a definition.
-_Avoid_: Abstract part, trait, protocol, role, family, spec
+_Avoid_: Abstract part, trait, protocol, role (a **Role** is a part's end of a bus, not a name for a generic), family, spec
 
 **Provider**:
 A `part` or `module` whose header says `provides Name` (`part AcmeMicroCoax provides CoaxReceptacle`), naming a generic. It has every member and statement of the generic, does not declare them again, and adds its own pin table, numbers, catalog and, for a module, parts. It is a candidate for a use of the generic when its file is imported, directly or through other files, by the board's file. A provider is never a **supply provider**, the source of price and stock; say which one is meant (ADR 0059, proposed). A part may provide a standard generic such as `Resistor`: the generic's own catalog and pads are not read into it, and the design lists the generics it provides (`Part.provides`), so that the schematic and the placer treat it as the kind it provides.
@@ -236,6 +236,18 @@ _Avoid_: Number, pin number
 **Pin kind**:
 What a pin is electrically, from a closed set: `power`, `input`, `output`, `bidirectional`, `passive`, `no_connect` and `tri_state` (ADR 0016, ADR 0064). The kind decides what the checker asks of the board: a `power` or `input` pin must be connected, a `no_connect` pin must not be, and two `output` pins may not share a net. A `tri_state` pin is an output that drives only while its part is selected: any number of them may share a net, and one `output` among them is refused. `optional` and `required` move a pin from its kind's default.
 _Avoid_: Pin type, direction
+
+**Role**:
+A part's end of a bus: a variant of the bus's enum (`SpiRole::Slave`), stated with `&=` on the interface by the part or by the board (`.spi.role &= SpiRole::Slave`). The checker compares the part's pin table with the lines the role has, and counts the role against its `limit`. A part that states none is judged by the kinds of its table alone (ADR 0064). `~` between two interfaces does not equate it.
+_Avoid_: Mode, direction, master/slave (they are the variants of `SpiRole`, not the name of the construct)
+
+**Line**:
+A pin of a bus interface as a role's `lines` table gives it: its kind, and the words `single` (one interface of the role on a net), `crosses` (joined to the other end's other line, a `Uart`'s `tx` to `rx`), `optional` and `required` (whether it must be connected), and `limit N` on the role (ADR 0064).
+_Avoid_: Signal (what a net carries), channel
+
+**Bus**:
+The interfaces of one definition that share a net: the processor's `spi` and a flash's `spi` are one bus because `sclk` is on one net. The limit of a role is counted for a bus (ADR 0064).
+_Avoid_: Interface (the type), network
 
 **Pinout**:
 The pin table of a part in one package: for each pin its kind, the name the datasheet prints, its pads, and its functions. Written as a `pins "PACKAGE" { ... }` block in the part, or an unnamed `pins { ... }` for a part whose pads do not depend on the package. A pin that a package lacks does not exist in that package. It names no CAD tool (ADR 0002, ADR 0016).

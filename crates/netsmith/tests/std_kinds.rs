@@ -645,19 +645,25 @@ fn buses_joined_as_the_roles_say_check_clean() {
 }
 
 #[test]
-fn a_uart_joined_straight_has_two_outputs_on_a_net_and_two_inputs_with_no_driver() {
-    let m = messages(&bus_board(&format!(" .m.uart ~ .s.uart\n{SPI}{I2C}")));
+fn a_uart_joined_with_a_tilde_crosses_and_one_joined_pin_by_pin_straight_is_refused() {
+    // Since ADR 0064 `~` between two `Uart` interfaces joins `tx` to `rx`, so the board that
+    // had two outputs on a net is a board that builds.
+    clean(&bus_board(&format!(" .m.uart ~ .s.uart\n{SPI}{I2C}")));
+    // Joined pin by pin with the same names, the lines meet themselves: one message for each
+    // net, and the rules of a net (two outputs, only inputs) say nothing more.
+    let m = messages(&bus_board(&format!(
+        " .m.uart.tx ~ .s.uart.tx\n .m.uart.rx ~ .s.uart.rx\n{SPI}{I2C}"
+    )));
     assert_eq!(m.len(), 2, "{m:#?}");
     assert!(
-        m[0].starts_with(
-            "net `net-m.uart.rx` has only inputs (`m.uart.rx`, `s.uart.rx`): nothing drives it"
-        ),
+        m[0].starts_with("net `net-m.uart.rx` joins `rx` to `rx` (`m.uart.rx`, `s.uart.rx`)"),
         "{}",
         m[0]
     );
-    assert_eq!(
-        m[1],
-        "net `net-m.uart.tx` has two outputs: `m.uart.tx`, `s.uart.tx`"
+    assert!(
+        m[1].starts_with("net `net-m.uart.tx` joins `tx` to `tx` (`m.uart.tx`, `s.uart.tx`)"),
+        "{}",
+        m[1]
     );
 }
 

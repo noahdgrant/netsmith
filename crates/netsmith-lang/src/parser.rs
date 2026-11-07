@@ -441,6 +441,7 @@ impl Parser {
                     | Item::Tie(_)
                     | Item::Peripheral(_)
                     | Item::Shared(_)
+                    | Item::Lines(_)
                     | Item::Case(_)
                     | Item::Row(_)
                     | Item::Constraint(_)
@@ -453,7 +454,7 @@ impl Parser {
             }
         };
 
-        // `bridge`, `catalog`, `tie`, `pins`, `peripheral`, `shared` and `case` are keywords at the
+        // `bridge`, `catalog`, `tie`, `pins`, `lines`, `peripheral`, `shared` and `case` are keywords at the
         // start of a statement.
         if let Tok::Ident(word) = self.peek().tok.clone() {
             let starts_name = matches!(
@@ -469,6 +470,9 @@ impl Parser {
                 }
                 "shared" if matches!(self.peek_second(), Tok::Ident(_)) => {
                     return only_decls(self.shared(start)?);
+                }
+                "lines" if matches!(self.peek_second(), Tok::LBrace | Tok::Ident(_)) => {
+                    return only_decls(self.lines(start)?);
                 }
                 "pins" if matches!(self.peek_second(), Tok::LBrace | Tok::Str(_)) => {
                     return only_decls(self.pins(start)?);
@@ -697,48 +701,49 @@ impl Parser {
         }))
     }
 
-    /// `shared NAME [limit N] { MEMBER ... }`.
-    fn shared(&mut self, start: usize) -> Res<Item> {
+    /// `limit N` after the name of a `shared` resource or the role of a `lines` table, if there
+    /// is one: a whole number of at least 1 with no unit.
+    fn limit_clause(&mut self) -> Res<Option<(u32, Span)>> {
+        if !matches!(&self.peek().tok, Tok::Ident(w) if w == "limit") {
+            return Ok(None);
+        }
         self.bump();
-        let name = self.ident("the name of the shared resource")?;
-        let limit = if matches!(&self.peek().tok, Tok::Ident(w) if w == "limit") {
-            self.bump();
-            let t = self.peek().clone();
-            match &t.tok {
-                Tok::Number(n) if n.unit.is_none() => {
-                    let whole =
-                        n.value.fract() == 0.0 && n.value >= 1.0 && n.value <= f64::from(u32::MAX);
-                    if !whole {
-                        return Err(ParseError::new(
-                            t.span,
-                            format!(
-                                "a limit is a whole number of at least 1, such as `limit 2`; `{}` is not",
-                                n.text
-                            ),
-                        ));
-                    }
-                    self.bump();
-                    Some((n.value as u32, t.span))
-                }
-                Tok::Number(n) => {
+        let t = self.peek().clone();
+        match &t.tok {
+            Tok::Number(n) if n.unit.is_none() => {
+                let whole =
+                    n.value.fract() == 0.0 && n.value >= 1.0 && n.value <= f64::from(u32::MAX);
+                if !whole {
                     return Err(ParseError::new(
                         t.span,
                         format!(
-                            "a limit is a count, a whole number with no unit, such as `limit 2`; `{}` has one",
+                            "a limit is a whole number of at least 1, such as `limit 2`; `{}` is not",
                             n.text
                         ),
                     ));
                 }
-                _ => {
-                    return Err(unexpected(
-                        &t,
-                        "a whole number after `limit`, such as `limit 2`",
-                    ));
-                }
+                self.bump();
+                Ok(Some((n.value as u32, t.span)))
             }
-        } else {
-            None
-        };
+            Tok::Number(n) => Err(ParseError::new(
+                t.span,
+                format!(
+                    "a limit is a count, a whole number with no unit, such as `limit 2`; `{}` has one",
+                    n.text
+                ),
+            )),
+            _ => Err(unexpected(
+                &t,
+                "a whole number after `limit`, such as `limit 2`",
+            )),
+        }
+    }
+
+    /// `shared NAME [limit N] { MEMBER ... }`.
+    fn shared(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let name = self.ident("the name of the shared resource")?;
+        let limit = self.limit_clause()?;
         let open = self.expect(
             &Tok::LBrace,
             if limit.is_some() {
@@ -788,6 +793,160 @@ impl Parser {
             members,
             span: self.span_from(start),
         }))
+    }
+
+    /// `lines [ENUM::Variant] [limit N] { .line kind [single] [crosses .other] [optional | required] ... }`.
+    fn lines(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let role = match self.peek().tok.clone() {
+            Tok::Ident(_) if matches!(self.peek_second(), Tok::ColonColon) => {
+                let role_start = self.peek().span.start;
+                let mut segments = vec![self.ident("an enum name")?];
+                while self.eat(&Tok::ColonColon) {
+                    segments.push(self.ident("a name after `::`")?);
+                }
+                let variant = segments.pop().expect("a path has a segment");
+                Some(Expr::Variant {
+                    ty: TypePath { segments },
+                    variant,
+                    span: self.span_from(role_start),
+                })
+            }
+            _ => None,
+        };
+        let limit = self.limit_clause()?;
+        let open = self.expect(
+            &Tok::LBrace,
+            match (&role, &limit) {
+                (_, Some(_)) => "`{` after the limit",
+                (Some(_), None) => "`{` or `limit` after the role of the lines",
+                (None, None) => "`{`, a role such as `SpiRole::Master` or `limit` after `lines`",
+            },
+        )?;
+        let mut rows = Vec::new();
+        loop {
+            self.skip_separators();
+            let t = self.peek().clone();
+            match t.tok {
+                Tok::DocOuter(_) | Tok::DocInner(_) => {
+                    return Err(ParseError::new(
+                        t.span,
+                        "a `lines` table takes `//` notes, not doc comments",
+                    ));
+                }
+                Tok::RBrace => {
+                    self.bump();
+                    break;
+                }
+                Tok::Eof => return Err(ParseError::new(open.span, "this `{` is never closed")),
+                _ => {
+                    rows.push(self.line_row()?);
+                    self.end_statement(true)?;
+                }
+            }
+        }
+        if rows.is_empty() {
+            return Err(ParseError::new(
+                self.span_from(start),
+                "`lines` has no rows; list the lines of the role, such as `.tx output`",
+            ));
+        }
+        Ok(Item::Lines(Lines {
+            role,
+            limit,
+            rows,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// `.line kind [single] [crosses .other] [optional | required]`, the words in any order.
+    fn line_row(&mut self) -> Res<LineRow> {
+        let start = self.peek().span.start;
+        if !self.at(&Tok::LeadingDot) {
+            let t = self.peek().clone();
+            return Err(unexpected(
+                &t,
+                "a line such as `.sclk` at the start of a row",
+            ));
+        }
+        let pin = self.path()?;
+        let pin_text = pin.to_source();
+        let t = self.peek().clone();
+        let kind = match &t.tok {
+            Tok::Ident(word) => PinKind::from_word(word).ok_or_else(|| {
+                ParseError::new(
+                    t.span,
+                    format!("unknown pin kind `{word}`; the kinds are {}", kind_list()),
+                )
+            })?,
+            _ => {
+                return Err(unexpected(
+                    &t,
+                    &format!("a pin kind ({}) after `{pin_text}`", kind_list()),
+                ));
+            }
+        };
+        self.bump();
+        let mut requirement = None;
+        let mut single = None;
+        let mut crosses = None;
+        loop {
+            let t = self.peek().clone();
+            let Tok::Ident(word) = &t.tok else { break };
+            match word.as_str() {
+                "optional" | "required" => {
+                    if requirement.is_some() {
+                        return Err(ParseError::new(
+                            t.span,
+                            format!("`{pin_text}` already says whether it must be connected"),
+                        ));
+                    }
+                    let r = if word == "optional" {
+                        Requirement::Optional
+                    } else {
+                        Requirement::Required
+                    };
+                    requirement = Some((r, t.span));
+                    self.bump();
+                }
+                "single" => {
+                    if single.is_some() {
+                        return Err(ParseError::new(
+                            t.span,
+                            format!("`{pin_text}` says `single` twice"),
+                        ));
+                    }
+                    single = Some(t.span);
+                    self.bump();
+                }
+                "crosses" => {
+                    if crosses.is_some() {
+                        return Err(ParseError::new(
+                            t.span,
+                            format!("`{pin_text}` says `crosses` twice"),
+                        ));
+                    }
+                    self.bump();
+                    if !self.at(&Tok::LeadingDot) {
+                        let next = self.peek().clone();
+                        return Err(unexpected(
+                            &next,
+                            "the line it crosses to, such as `crosses .rx`",
+                        ));
+                    }
+                    crosses = Some(self.path()?);
+                }
+                _ => break,
+            }
+        }
+        Ok(LineRow {
+            pin,
+            kind,
+            requirement,
+            single,
+            crosses,
+            span: self.span_from(start),
+        })
     }
 
     /// `pins "PACKAGE" { rows }` or `pins { rows }`.

@@ -285,6 +285,79 @@ pub struct SharedMember {
     pub span: Span,
 }
 
+/// The `lines` of a bus interface (ADR 0064): for each role of the bus, the kind of each of its
+/// lines and a few properties of a line. It belongs to the interface's definition, so that a
+/// peripheral that names the interface (`as Spi SpiRole::Master`) reads the same rows.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BusDef {
+    /// The interface's name: `Spi`.
+    pub name: String,
+    /// The enum of the interface's `.role`: `SpiRole`. None for a bus with one role.
+    pub role_enum: Option<String>,
+    /// One table for each role, or the one table of a bus with a single role.
+    pub tables: Vec<RoleLines>,
+}
+
+/// One `lines` table: the lines a role has.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RoleLines {
+    /// The variant the table is for (`Master`), or None for a bus with one role.
+    pub role: Option<String>,
+    /// `limit N`: at most N interfaces of this role on one bus.
+    pub limit: Option<u32>,
+    pub rows: Vec<LineRow>,
+    pub source: SourceId,
+    pub span: Span,
+}
+
+/// One line of a role: its name is the member of the interface (`sclk`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LineRow {
+    pub name: String,
+    pub kind: PinKind,
+    pub requirement: Option<Requirement>,
+    /// A net carries this line of at most one interface of the role.
+    pub single: bool,
+    /// The line of the other end that this one is joined to, instead of its own name.
+    pub crosses: Option<String>,
+    pub span: Span,
+}
+
+impl BusDef {
+    /// The table for a role: the variant's table, or the one table of a bus with no roles.
+    pub fn table(&self, role: Option<&str>) -> Option<&RoleLines> {
+        self.tables.iter().find(|t| t.role.as_deref() == role)
+    }
+
+    /// The line that `line` crosses to, or that crosses to it: `tx` and `rx`.
+    pub fn partner(&self, line: &str) -> Option<&str> {
+        self.tables
+            .iter()
+            .flat_map(|t| t.rows.iter())
+            .find_map(|r| match (&r.crosses, r.name == line) {
+                (Some(other), true) => Some(other.as_str()),
+                (Some(other), false) if other == line => Some(r.name.as_str()),
+                _ => None,
+            })
+    }
+
+    /// Every pair of lines that cross, each once, in the order the tables write them.
+    pub fn crossings(&self) -> Vec<(&str, &str)> {
+        let mut pairs: Vec<(&str, &str)> = Vec::new();
+        for r in self.tables.iter().flat_map(|t| t.rows.iter()) {
+            if let Some(other) = &r.crosses
+                && !pairs.iter().any(|(a, b)| {
+                    (*a, *b) == (r.name.as_str(), other.as_str())
+                        || (*b, *a) == (r.name.as_str(), other.as_str())
+                })
+            {
+                pairs.push((r.name.as_str(), other.as_str()));
+            }
+        }
+        pairs
+    }
+}
+
 /// Which pin table applies to a part, and why not if none does.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pinout<'a> {
@@ -571,6 +644,9 @@ pub struct Model {
     pub(crate) enums: Vec<EnumInfo>,
     /// The members declared with the type of a generic, in the order they were made.
     pub uses: Vec<GenericUse>,
+    /// The `lines` of the bus interfaces in use, by the module and index of their definition
+    /// (ADR 0064).
+    pub(crate) bus_defs: std::collections::BTreeMap<(usize, usize), BusDef>,
     pub(crate) sources: SourceTexts,
 }
 
@@ -593,6 +669,7 @@ impl Model {
             part_joins: Vec::new(),
             enums: Vec::new(),
             uses: Vec::new(),
+            bus_defs: std::collections::BTreeMap::new(),
             sources: SourceTexts::default(),
         }
     }

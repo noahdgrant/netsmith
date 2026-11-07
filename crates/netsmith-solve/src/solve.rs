@@ -414,7 +414,11 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
     for d in netsmith_check::pin_faults_solved(model, &s.model) {
         s.report(d.source, d.span, d.message);
     }
-    let (level_faults, not_evaluated) = crate::levels::check(&s.model);
+    let (level_faults, mut not_evaluated) = crate::levels::check(&s.model);
+    // A bus on which one part states its role and another does not (ADR 0064).
+    for (at, message) in netsmith_check::unstated_roles(&s.model) {
+        not_evaluated.push(crate::levels::NotEvaluated { at, message });
+    }
     for d in level_faults {
         s.report(d.source, d.span, d.message);
     }

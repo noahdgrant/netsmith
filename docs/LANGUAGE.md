@@ -7130,11 +7130,11 @@ error: no `level_translator` candidate satisfies `u`: the closest of the 1 that 
 
 ### Buses
 
-An interface that joins devices says nothing about who drives which line. The pin kinds in the part's table say it (`output`, `input`, `bidirectional`), and the rules of the previous sections do the rest: two outputs on one net are refused, and so are an `input` with nothing on its net and a net of nothing but inputs. The buses are `std::bus::Uart`, `Spi`, `I2c`, `Swd` and `Usb2`. The names are the device's own.
+A bus interface names its lines, and its definition in `std::bus` says more: for each role of the bus, which way each line goes (the lines and roles are below). A part states the kind of each pin in its table (`output`, `input`, `bidirectional`, `tri_state`), and the rules of the previous sections judge the nets: two outputs on one net are refused, and so are an `input` with nothing on its net and a net of nothing but inputs. The buses are `std::bus::Uart`, `Spi`, `I2c`, `Swd` and `Usb2`. The names are the device's own.
 
-- A UART's `tx` and `rx` cross: the board joins one device's `tx` to the other's `rx` and back, one pin at a time. `~` between two `Uart` interfaces would join `tx` to `tx`.
+- A UART's `tx` and `rx` cross, and the language crosses them: `~` between two `Uart` interfaces joins one end's `tx` to the other's `rx` and its `rts` to the other's `cts`. A board that joins pin by pin writes the crossing (`.a.uart.tx ~ .b.uart.rx`), and a `tx` joined to a `tx` is refused. A device without flow control gives no pin to `rts` and `cts`, and the join leaves them out.
 - An SPI bus does not cross. The master's `mosi` is an output and the slave's is an input, and the two join with `~`.
-- An I2C bus needs a pull-up on each line, and the checker refuses a line without one. `std::bus::I2cPullups` is the pair, with the resistance as a value as a value (`.pullups.resistance &= 4.7kohm +/- 5%`) and a supply rail. The module states the current it draws from that rail (each pull-up carries nothing while its line is released and at most the supply voltage over its resistance while it is held low, the two together on `supply.current`), so a board states no load for it; a current the board does state on `supply` is a budget the sum must fit in (ADR 0038).
+- An I2C bus needs a pull-up on each line, and the checker refuses a line without one. `std::bus::I2cPullups` is the pair, with the resistance as a value (`.pullups.resistance &= 4.7kohm +/- 5%`) and a supply rail. The module states the current it draws from that rail (each pull-up carries nothing while its line is released and at most the supply voltage over its resistance while it is held low, the two together on `supply.current`), so a board states no load for it; a current the board does state on `supply` is a budget the sum must fit in (ADR 0038).
 - A debug port `Swd` meets a programming connector pin by pin: the connector's pins are passive.
 - `Usb2` joins a host and a device with `~`: D+ to D+. `vbus` is a `Rail`.
 
@@ -7252,9 +7252,8 @@ board Buses {
     .supply ~ .a.vdd
     .supply ~ .b.vdd
 
-    // The UART crosses.
-    .a.uart.tx ~ .b.uart.rx
-    .a.uart.rx ~ .b.uart.tx
+    // The UART crosses: `~` joins `tx` to `rx` and `rx` to `tx`.
+    .a.uart ~ .b.uart
     // SPI joins as it is named.
     .master.spi ~ .flash.spi
     // I2C, with a pull-up on each line.
@@ -7280,9 +7279,9 @@ board Buses {
 }
 ```
 
-A UART joined with `~` has two outputs on a net:
+A UART joined with `~` crosses, and builds:
 
-```nsm fails
+```nsm evaluate
 import src::devices::Uart32
 import std::sources::Rail
 
@@ -7300,13 +7299,34 @@ board Straight {
 }
 ```
 
+Joined pin by pin with the same names, a `tx` meets a `tx` and an `rx` an `rx`, and each net is refused once, with the way to write it:
+
+```nsm fails
+import src::devices::Uart32
+import std::sources::Rail
+
+board SameLine {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .a: Uart32
+    .b: Uart32
+    .supply ~ .a.vdd
+    .supply ~ .b.vdd
+    .a.uart.tx ~ .b.uart.tx
+    .a.uart.rx ~ .b.uart.rx
+}
+```
+
 ```text
-error: net `net-a.uart.rx` has only inputs (`a.uart.rx`, `b.uart.rx`): nothing drives it, so it floats; join an output, a bidirectional pin or a rail to it, or a pull resistor
+error: net `net-a.uart.rx` joins `rx` to `rx` (`a.uart.rx`, `b.uart.rx`): `rx` crosses `tx` in a `Uart`, so it is joined to the other end's `tx`; write `.a.uart.rx ~ .b.uart.tx`, or join the two interfaces with `.a.uart ~ .b.uart`, which crosses `tx` to `rx` and `rts` to `cts`
    --> main.nsm:10:5
    |
 10 |     .a: Uart32
    |     ^^^^^^^^^^
-error: net `net-a.uart.tx` has two outputs: `a.uart.tx`, `b.uart.tx`
+error: net `net-a.uart.tx` joins `tx` to `tx` (`a.uart.tx`, `b.uart.tx`): `tx` crosses `rx` in a `Uart`, so it is joined to the other end's `rx`; write `.a.uart.tx ~ .b.uart.rx`, or join the two interfaces with `.a.uart ~ .b.uart`, which crosses `tx` to `rx` and `rts` to `cts`
    --> main.nsm:10:5
    |
 10 |     .a: Uart32
@@ -7384,7 +7404,7 @@ error: net `net-a.spi.sclk` has two outputs: `a.spi.sclk`, `b.spi.sclk`
    |     ^^^^^^^^^^^^^
 ```
 
-A net whose part pins are all `input` has nothing that drives it, and is refused with the net and the pins (above: the two `rx` of the straight UART; an enable pin wired to another enable pin). An `output`, a `bidirectional` pin, a `power` pin, a `passive` pin (a pull resistor, a connector), a rail the board declares, or a port of the board itself each count as a driver, and so does a pin of a part that has no pin table, which the checker knows nothing about (ADR 0044).
+A net whose part pins are all `input` has nothing that drives it, and is refused with the net and the pins (an enable pin wired to another enable pin). An `output`, a `bidirectional` pin, a `power` pin, a `passive` pin (a pull resistor, a connector), a rail the board declares, or a port of the board itself each count as a driver, and so does a pin of a part that has no pin table, which the checker knows nothing about (ADR 0044).
 
 An `I2c` bus (`std::bus::I2c`, by that name) is open-drain, so each of its two lines needs a pull-up: a resistor, or a chain of resistors, from the line to the `pos` of a rail. One resistor on a line is enough for that line, and `I2cPullups` is one on each. A line tied to the rail itself, or pulled down to `neg`, is not a pull-up. Two cases are not judged, because the pull-up may be where this board cannot see it: a bus that is a port of the board, and a line that reaches a connector (a part of several passive pins and no `bridge`). A bus with no pull-up:
 
@@ -7418,6 +7438,352 @@ error: net `net-a.i2c.sda` carries the sda line of an I2C bus (`a.i2c.sda`, `b.i
 10 |     .a: Sensor
    |     ^^^^^^^^^^
 ```
+
+### Roles and lines of a bus
+
+A bus interface can say more than the names of its lines. `lines` is a statement of an interface, and it says, for each role of the bus, the kind of each line and a few properties of a line (ADR 0064). `std::bus` declares them for the five buses, so the protocol is written once, in a file that a reader can open:
+
+```nsm-fragment
+enum SpiRole { Master, Slave }
+
+interface Spi {
+    .role: SpiRole
+    .sclk: Pin
+    .mosi: Pin
+    .miso: Pin
+    .cs: Pin
+
+    lines SpiRole::Master limit 1 {
+        .sclk output
+        .mosi output
+        .miso input optional
+        .cs   output optional
+    }
+    lines SpiRole::Slave {
+        .sclk input
+        .mosi input
+        .miso output required
+        .cs   input single
+    }
+}
+```
+
+A row is `.line kind` and optional words. `optional` and `required` decide whether the line must be connected, as on a pin row: a part's own word wins, then the role's, then the kind's (an output is optional, an input is required). `limit N` after the role allows N interfaces of that role on one bus. `crosses .other` says the line joins the other end's `.other`, not its own name (a `Uart`'s `.tx output crosses .rx`; the pair is written on one of the two lines). `single` says a net carries this line of one interface of the role: the select of one slave. A bus with one role (`Uart`) writes `lines limit 2 { ... }` with no role. `lines` is a statement of an interface and nothing else.
+
+A part states the role it plays with an ordinary statement, `.spi.role &= SpiRole::Slave`, and its pin table is what its datasheet says. A processor whose unit can be either leaves the role out, and the board states it (`.cpu.spi.role &= SpiRole::Master`), as a board chooses a function. `~` between two interfaces does not equate the roles, as it does not equate a current or a logic level: a master joins a slave. The rules read the nets and need no order of statements. A **bus** is the interfaces of one definition that share a net, and a rule about a net says nothing that the rules about a net of ADR 0044 would repeat.
+
+- **One line on one net.** All the bus pins on a net are one line, or two that cross. A `mosi` on a `miso`, a `tx` on a `tx` and a net of two interfaces are refused, whether or not any part states a role.
+- **The limit.** The interfaces of one role on one bus are counted against `limit`: one master, one host, one probe, two ends of a UART.
+- **`single`.** A net carries the select of one slave.
+- **The table against the role.** A part that states a role has a row for each line the role has, with the kind the role gives it. The same kind agrees, and so do `bidirectional` (a pin that drives and receives contradicts nothing, and the guideline below asks for the honest kind), `passive`, `no_connect`, and a `tri_state` output for an `output`. For a line that the role makes `bidirectional` (I2C), any signal kind agrees.
+- **A line the role requires** is connected, for an interface that has any line connected: the board that never uses a bus a part declares is left alone.
+- **A part that states no role** is not judged by the table or the limit, and a bus on which one part states its role and another does not gets a note, `not evaluated: the role of `x.spi` is not stated, so the limit and the table of `x` are not judged`. The first three rules above are judged for its pins all the same.
+
+Three invented parts: a processor that is an SPI master, a flash that is a slave and writes `tri_state` for its data out (the page is in the comment), and an IMU.
+
+```nsm module=src::zparts
+import std::bus::{Spi, SpiRole, Uart}
+import std::sources::Rail
+
+/// Zcpu, an invented processor: one SPI master, a second select on a plain pin, and a UART.
+part Zcpu {
+    .designator &= "U"
+    .vdd: Rail
+    .spi: Spi
+    .uart: Uart
+    .spi.role &= SpiRole::Master
+
+    pins {
+        .vdd.pos  power         "VDD"  "1"
+        .vdd.neg  power         "VSS"  "2"
+        .spi.sclk output        "SCK"  "3"
+        .spi.mosi output        "MOSI" "4"
+        .spi.miso input         "MISO" "5"
+        .spi.cs   output        "CS0"  "6"
+        .sel1     bidirectional "IO7"  "7"
+        .uart.tx  output        "TXD"  "8"
+        .uart.rx  input         "RXD"  "9" optional
+    }
+}
+
+/// Zflash, an invented serial flash on 3.3 V.
+part Zflash {
+    .designator &= "U"
+    .vdd: Rail
+    .spi: Spi
+    .spi.role &= SpiRole::Slave
+
+    pins {
+        .vdd.pos  power     "VCC" "8"
+        .vdd.neg  power     "GND" "4"
+        .spi.sclk input     "CLK" "6"
+        .spi.mosi input     "DI"  "5"
+        // Page 8, pin description: DO is "high impedance when /CS is high".
+        .spi.miso tri_state "DO"  "2"
+        .spi.cs   input     "/CS" "1"
+    }
+}
+
+/// Zimu, an invented IMU.
+part Zimu {
+    .designator &= "U"
+    .vdd: Rail
+    .spi: Spi
+    .spi.role &= SpiRole::Slave
+
+    pins {
+        .vdd.pos  power     "VDD" "8"
+        .vdd.neg  power     "GND" "6"
+        .spi.sclk input     "SCL" "1"
+        .spi.mosi input     "SDI" "2"
+        // Table 14: SDO is "high impedance while CS is high".
+        .spi.miso tri_state "SDO" "3"
+        .spi.cs   input     "CS"  "4"
+    }
+}
+```
+
+A board that joins them as the bus wants. The flash joins as a whole interface; the IMU shares `sclk`, `mosi` and `miso` and has the select of its own on a pin of the processor:
+
+```nsm evaluate
+import src::zparts::{Zcpu, Zflash, Zimu}
+import std::sources::Rail
+
+board Sensors {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .cpu: Zcpu
+    .flash: Zflash
+    .imu: Zimu
+    .supply ~ .cpu.vdd
+    .supply ~ .flash.vdd
+    .supply ~ .imu.vdd
+
+    .cpu.spi ~ .flash.spi
+    .cpu.spi.sclk ~ .imu.spi.sclk
+    .cpu.spi.mosi ~ .imu.spi.mosi
+    .cpu.spi.miso ~ .imu.spi.miso
+    .cpu.sel1 ~ .imu.spi.cs
+}
+```
+
+`mosi` joined to `miso`, which each slave's `tri_state` and `bidirectional` pins let through the net rules, is found from the line each pin is of:
+
+```nsm fails
+import src::zparts::{Zcpu, Zflash, Zimu}
+import std::sources::Rail
+
+board Swapped {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .cpu: Zcpu
+    .flash: Zflash
+    .imu: Zimu
+    .supply ~ .cpu.vdd
+    .supply ~ .flash.vdd
+    .supply ~ .imu.vdd
+
+    .cpu.spi ~ .flash.spi
+    .cpu.spi.sclk ~ .imu.spi.sclk
+    .cpu.spi.mosi ~ .imu.spi.miso
+    .cpu.spi.miso ~ .imu.spi.mosi
+    .cpu.sel1 ~ .imu.spi.cs
+}
+```
+
+```text
+error: net `net-cpu.spi.miso` joins two different lines of a `Spi`: `miso` (`cpu.spi.miso`, `flash.spi.miso`) and `mosi` (`imu.spi.mosi`); a `Spi` joins `miso` to `miso` and `mosi` to `mosi`, and `imu.spi.mosi` is on the net of `miso`
+   --> main.nsm:10:5
+   |
+10 |     .cpu: Zcpu
+   |     ^^^^^^^^^^
+error: net `net-cpu.spi.mosi` joins two different lines of a `Spi`: `miso` (`imu.spi.miso`) and `mosi` (`cpu.spi.mosi`, `flash.spi.mosi`); a `Spi` joins `miso` to `miso` and `mosi` to `mosi`, and `imu.spi.miso` is on the net of `mosi`
+   --> main.nsm:10:5
+   |
+10 |     .cpu: Zcpu
+   |     ^^^^^^^^^^
+```
+
+Two masters on one bus are one message for the pair of interfaces, and the rules of a net say nothing more about the nets it names:
+
+```nsm fails
+import src::zparts::{Zcpu, Zflash}
+import std::sources::Rail
+
+board TwoMasters {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .cpu: Zcpu
+    .host: Zcpu
+    .flash: Zflash
+    .supply ~ .cpu.vdd
+    .supply ~ .host.vdd
+    .supply ~ .flash.vdd
+    .cpu.spi ~ .flash.spi
+    .host.spi ~ .flash.spi
+}
+```
+
+```text
+error: `cpu.spi` and `host.spi` are both `SpiRole::Master` on one `Spi` bus, and `Spi` allows 1 `Master` on a bus: they are on one bus through `net-cpu.spi.cs` (`cpu.spi.cs`, `flash.spi.cs` and `host.spi.cs`); the slave on it is `flash.spi`; give `host.spi` a bus of its own
+   --> main.nsm:11:5
+   |
+11 |     .host: Zcpu
+   |     ^^^^^^^^^^^
+```
+
+Each slave has a select of its own. The select of the IMU joined to the flash's, which is on the net of the master's `cs`:
+
+```nsm fails
+import src::zparts::{Zcpu, Zflash, Zimu}
+import std::sources::Rail
+
+board SharedSelect {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .cpu: Zcpu
+    .flash: Zflash
+    .imu: Zimu
+    .supply ~ .cpu.vdd
+    .supply ~ .flash.vdd
+    .supply ~ .imu.vdd
+
+    .cpu.spi ~ .flash.spi
+    .cpu.spi.sclk ~ .imu.spi.sclk
+    .cpu.spi.mosi ~ .imu.spi.mosi
+    .cpu.spi.miso ~ .imu.spi.miso
+    .imu.spi.cs ~ .flash.spi.cs
+}
+```
+
+```text
+error: net `net-cpu.spi.cs` carries the `cs` of two slaves, `flash.spi.cs` and `imu.spi.cs`: `Spi` gives each slave a `cs` of its own (`cs` is `single` for `SpiRole::Slave`); join `.imu.spi.cs` to a pin of its own
+   --> main.nsm:11:5
+   |
+11 |     .flash: Zflash
+   |     ^^^^^^^^^^^^^^
+```
+
+A row that contradicts the role names the datasheet's pin, so that the author reads the page:
+
+```nsm fails
+import std::bus::{Spi, SpiRole}
+import std::sources::Rail
+
+/// Zimu, an invented IMU, with a mistake in its table.
+part Zimu {
+    .vdd: Rail
+    .spi: Spi
+    .spi.role &= SpiRole::Slave
+
+    pins {
+        .vdd.pos  power     "VDD" "8"
+        .vdd.neg  power     "GND" "6"
+        .spi.sclk input     "SCL" "1" optional
+        .spi.mosi output    "SDI" "2"
+        .spi.miso tri_state "SDO" "3"
+        .spi.cs   input     "CS"  "4" optional
+    }
+}
+
+board Wrong {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .imu: Zimu
+    .supply ~ .imu.vdd
+}
+```
+
+```text
+error: `imu.spi.mosi` is an output in the table of `Zimu`, but `SpiRole::Slave` makes `mosi` an input of `Spi`; either the datasheet's `SDI` pin is not an output, or the role is the other one
+   --> main.nsm:26:5
+   |
+26 |     .imu: Zimu
+   |     ^^^^^^^^^^
+```
+
+A slave's data out left open is refused once the bus is used, and says that the role requires it (an interface with no line connected is left alone):
+
+```nsm fails
+import src::zparts::{Zcpu, Zflash}
+import std::sources::Rail
+
+board OpenMiso {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .cpu: Zcpu
+    .flash: Zflash
+    .supply ~ .cpu.vdd
+    .supply ~ .flash.vdd
+    .cpu.spi.sclk ~ .flash.spi.sclk
+    .cpu.spi.mosi ~ .flash.spi.mosi
+    .cpu.spi.cs ~ .flash.spi.cs
+}
+```
+
+```text
+error: `flash.spi.miso` is a tri_state output that must be connected (pad 2, `DO`): `SpiRole::Slave` of `Spi` requires it, and nothing else is on its net
+   --> main.nsm:11:5
+   |
+11 |     .flash: Zflash
+   |     ^^^^^^^^^^^^^^
+```
+
+A part whose table is older than the roles may write every pin `bidirectional`. It is accepted, and a guideline (ADR 0030, `guidelines = "warn"`, an error under `--strict`) asks for the honest kind:
+
+```text
+warning: Sensors: bus role guideline: `imu.spi.miso` is `bidirectional` in the table of `Zimu`, and `SpiRole::Slave` makes `miso` a `tri_state` output: write `tri_state`, as the datasheet says, unless the datasheet says the pin also receives
+```
+
+A module that forwards a bus is a way through: its pins are not terminals, and the part inside has the role. The module says the role of its port in the same way a function is forwarded, with an equation:
+
+```nsm
+import src::zparts::{Zcpu, Zflash}
+import std::bus::Spi
+import std::sources::Rail
+
+module FlashCard {
+    .supply: Rail
+    .bus: Spi
+    .chip: Zflash
+    .supply ~ .chip.vdd
+    .bus ~ .chip.spi
+    .bus.role == .chip.spi.role
+}
+
+board WithCard {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .cpu: Zcpu
+    .card: FlashCard
+    .supply ~ .cpu.vdd
+    .supply ~ .card.supply
+    .cpu.spi ~ .card.bus
+}
+```
+
+A module that draws a `Uart` port from the other end's side (its `tx` is the line the other end sends on) joins its port to a part's `.uart` with `~`: that join now crosses, and the board's join crosses again, so the two crossings undo each other and the net rules find two outputs. A module that forwards a `Uart` writes its port as a part would (its `tx` is the line the module sends on), joins the part's pins to it one by one with the same names, and lets the board's `~` cross.
 
 ### The clock of a bus
 
@@ -7554,7 +7920,7 @@ board Forgetful {
 ```
 
 ```text
-Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:98), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
+Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:196), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
 ```
 
 A module that wraps a `PullUp` states the resistance itself or forwards it through a member of its own (`.pull.resistance &= .resistance`, with the wrapped member on the left: the solver works a value out from the right side towards the left). A board that forgets a forwarded member is told about the wrapper's member, which is the one it can state.
@@ -7617,11 +7983,11 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::sources::Rail` | A DC rail: pins `pos` and `neg`, a `.voltage`, a `.current` (the draw), a `.peak` (the highest voltage, transients included) and a `.min_track` (the narrowest track of its nets). |
 | `std::parts::regulator::Buck` | What a buck converter IC says about itself: the switching node `sw` (a rail the IC supplies), the feedback pin `fb`, `vref`, `fsw`, the input range, `max_output_current`, `efficiency`, `min_inductance`, the optional `min_inductor_saturation` and `max_inductor_dcr`, and the capacitance asked for on each side. A concrete IC is a part with a `.buck: Buck` member (ADR 0025). |
 | `std::logic::Logic` | A digital line `.line`, the `.reference` rail that defines its levels, and the levels `.vih`, `.vil`, `.voh` and `.vol` a part may state (ADR 0046). |
-| `std::bus::Uart` | Pins `tx`, `rx`, `rts`, `cts`, named by the device. The board crosses `tx` and `rx`. |
-| `std::bus::Spi` | Pins `sclk`, `mosi`, `miso`, `cs`. |
-| `std::bus::I2c` | Pins `sda` and `scl`. |
-| `std::bus::Swd` | Pins `swdio`, `swclk`, `swo`, `reset`. |
-| `std::bus::Usb2` | Pins `dp` and `dm` and a rail `vbus`. |
+| `std::bus::Uart` | Pins `tx`, `rx`, `rts`, `cts`, named by the device, and `.baud`. `~` between two joins `tx` to `rx` and `rts` to `cts`; two ends make a bus (`lines limit 2`). |
+| `std::bus::Spi` | Pins `sclk`, `mosi`, `miso`, `cs`, a `.role` (`SpiRole`) and a `.frequency`. One master on a bus, a `single` select for each slave, a slave's `miso` is required. |
+| `std::bus::I2c` | Pins `sda` and `scl`, a `.role` (`I2cRole`) and a `.frequency`. A pull-up on each line. |
+| `std::bus::Swd` | Pins `swdio`, `swclk`, `swo`, `reset`, a `.role` (`SwdRole`) and a `.frequency`. One probe on a port. |
+| `std::bus::Usb2` | Pins `dp` and `dm`, a rail `vbus` and a `.role` (`UsbRole`). One host and one device on a bus. |
 | `std::parts::connector::Mating` | What a connector says about how it meets another (ADR 0040), the member `.mating` of a header or socket: `.kind` (`"pin_header"`), `.gender` (`"header"` or `"socket"`), `.pitch`, `.rows`, `.positions`, `.pin_current` (the rated current of one contact, from the `header` catalog; unset is unrated) and `.keyed` (`"none"`, or `"shrouded"` or `"polarised"`; unset is the same as `"none"`). A system mates two with `~`. |
 | `std::mfg::stackup::Stackup` | Layers, thickness, copper weight and, for inner layers, the prepreg and core. |
 | `std::mfg::stackup::Plane` | An inner layer that is one sheet of copper on a net. The board names the net. |
@@ -7643,6 +8009,10 @@ Parts are numbered by their letters in the order of their paths (a number at the
 
 | Definition | What it is |
 |---|---|
+| `std::bus::SpiRole` | The role of a part on an SPI bus: `Master` or `Slave`. The type of `Spi`'s `.role`. |
+| `std::bus::I2cRole` | The role of a part on an I2C bus: `Controller` or `Target`. |
+| `std::bus::SwdRole` | The role of a part on a debug port: `Probe` or `Target`. |
+| `std::bus::UsbRole` | The role of a part on a USB port: `Host` or `Device`. |
 | `std::parts::passive::Dielectric` | The class of a ceramic capacitor, `C0G`, `X5R` or `X7R`: the type of `Capacitor`'s `.dielectric` and of the `dielectric` column of the capacitor catalog (ADR 0055). Import it with the part. |
 | `std::prelude::AssemblyMode` | Who puts a part on the board: `Fab`, `Hand` or `None`. The type of the built-in `.assembly` of every part and of the `.assembly_mode` a module offers. In scope in every file without an import (ADR 0054). |
 

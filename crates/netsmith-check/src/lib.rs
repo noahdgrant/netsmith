@@ -2,10 +2,12 @@
 //! quantities, checks dimensions, and builds a model for the solver.
 
 mod buses;
+mod busnets;
 mod checker;
 mod connect;
 mod diag;
 mod faults;
+mod lines;
 mod loader;
 mod lower;
 mod mate;
@@ -16,6 +18,7 @@ mod providers;
 mod row;
 mod shared;
 
+pub use busnets::{bidirectional_rows, unstated_roles};
 pub use checker::physical_file_name;
 pub use diag::{Diagnostic, Source, SourceId, Sources};
 pub use faults::{pin_faults, pin_faults_solved};

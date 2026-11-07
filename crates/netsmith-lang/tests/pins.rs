@@ -328,7 +328,9 @@ fn the_kind_of_a_function_must_be_a_kind_and_touch_its_name() {
 
 #[test]
 fn tri_state_is_a_kind_of_a_row_and_of_a_function() {
-    let src = row(".do tri_state \"DO\" \"2\"\n        .io bidirectional \"IO\" \"3\" fn GPIO MISO:tri_state");
+    let src = row(
+        ".do tri_state \"DO\" \"2\"\n        .io bidirectional \"IO\" \"3\" fn GPIO MISO:tri_state",
+    );
     let file = parse(&src).unwrap();
     let Item::Pins(table) = &file.definitions[0].items[0] else {
         panic!()
@@ -350,6 +352,14 @@ fn the_seven_kinds_are_the_words_of_the_unknown_kind_message() {
     let words: Vec<&str> = PinKind::ALL.iter().map(|k| k.word()).collect();
     assert_eq!(
         words,
-        ["power", "input", "output", "bidirectional", "passive", "no_connect", "tri_state"]
+        [
+            "power",
+            "input",
+            "output",
+            "bidirectional",
+            "passive",
+            "no_connect",
+            "tri_state"
+        ]
     );
 }

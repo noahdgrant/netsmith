@@ -146,6 +146,8 @@ pub enum Item {
     Peripheral(Peripheral),
     /// `shared SERIAL0 { UARTE0 SPIM0 }`; only a part may hold one (ADR 0062).
     Shared(Shared),
+    /// `lines SpiRole::Slave { .sclk input ... }`; only an interface may hold one (ADR 0064).
+    Lines(Lines),
     /// A `case { ... }` section; only a physical file may hold one.
     Case(Case),
     /// A `row .a1 .. .a12 along x pitch 2.54mm` statement; only a physical file may hold one.
@@ -332,6 +334,35 @@ pub struct Shared {
     /// `limit N`: how many members may be in use at once.
     pub limit: Option<(u32, Span)>,
     pub members: Vec<SharedMember>,
+    pub span: Span,
+}
+
+/// `lines SpiRole::Master limit 1 { .sclk output  .miso input optional }`: for each role of a bus
+/// interface, the kind of each line and a few properties of a line (ADR 0064). The role is a
+/// variant of an enum; an interface with one role states none (`lines limit 2 { ... }`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Lines {
+    /// The variant after `lines`: `SpiRole::Master`.
+    pub role: Option<Expr>,
+    /// `limit N`: how many interfaces of this role may be on one bus.
+    pub limit: Option<(u32, Span)>,
+    pub rows: Vec<LineRow>,
+    pub span: Span,
+}
+
+/// One row of a `lines` table: `.tx output crosses .rx`, `.miso output required`,
+/// `.cs input single`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LineRow {
+    /// The pin of the interface that the row is about (`.sclk`).
+    pub pin: Path,
+    pub kind: PinKind,
+    /// `optional` or `required`, as on a pin row.
+    pub requirement: Option<(Requirement, Span)>,
+    /// `single`: a net carries this line of at most one interface of the role.
+    pub single: Option<Span>,
+    /// `crosses .rx`: the line is joined to this one of the other end, not to its own name.
+    pub crosses: Option<Path>,
     pub span: Span,
 }
 

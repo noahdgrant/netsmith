@@ -62,7 +62,8 @@ fn two_tri_state_pins_share_a_net() {
 
 #[test]
 fn an_output_among_tri_state_pins_is_refused_and_says_what_to_read() {
-    let c = run("    .a: Zrom\n    .b: Zgyro\n    .s: Zsink\n    .a.do ~ .b.do\n    .a.do ~ .s.din");
+    let c =
+        run("    .a: Zrom\n    .b: Zgyro\n    .s: Zsink\n    .a.do ~ .b.do\n    .a.do ~ .s.din");
     assert_eq!(
         messages(&c),
         [

@@ -104,6 +104,22 @@ impl PinRow {
     }
 }
 
+impl LineRow {
+    pub fn to_source(&self) -> String {
+        let mut out = format!("{} {}", self.pin.to_source(), self.kind.word());
+        if self.single.is_some() {
+            out.push_str(" single");
+        }
+        if let Some(other) = &self.crosses {
+            let _ = write!(out, " crosses {}", other.to_source());
+        }
+        if let Some((requirement, _)) = self.requirement {
+            let _ = write!(out, " {}", requirement.word());
+        }
+        out
+    }
+}
+
 impl Expr {
     pub fn to_source(&self) -> String {
         match self {
@@ -284,6 +300,23 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     s.name.to_source(),
                     members.join(" ")
                 );
+            }
+            Item::Lines(l) => {
+                out.push_str("lines");
+                if let Some(role) = &l.role {
+                    let _ = write!(out, " {}", role.to_source());
+                }
+                if let Some((n, _)) = l.limit {
+                    let _ = write!(out, " limit {n}");
+                }
+                out.push_str(" {\n");
+                for row in &l.rows {
+                    out.push_str(&"    ".repeat(depth + 2));
+                    out.push_str(&row.to_source());
+                    out.push('\n');
+                }
+                out.push_str(&"    ".repeat(depth + 1));
+                out.push('}');
             }
             Item::Pins(p) => {
                 out.push_str("pins ");

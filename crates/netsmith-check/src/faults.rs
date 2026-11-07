@@ -10,16 +10,18 @@
 use std::collections::{BTreeMap, HashSet};
 
 use crate::diag::Diagnostic;
-use crate::model::{InstId, InstKind, Model, Net, PinKind, PinRow, PinTable, Pinout, Requirement};
+use crate::model::{InstId, InstKind, Model, Net, PinKind, PinRow, PinTable, Pinout};
 use crate::pins::article;
 
 /// The faults that the board alone settles: every part whose package is known, and every
 /// net whose parts all are.
 pub fn pin_faults(model: &Model) -> Vec<Diagnostic> {
     let deferred = unknown_package(model);
-    let mut run = Run::new(model, &deferred, Pass::Board);
+    let bus = crate::busnets::check(model);
+    let mut run = Run::new(model, &deferred, Pass::Board, bus.nets);
     run.go();
     run.out.extend(crate::buses::i2c_pullups(model));
+    run.out.extend(bus.out);
     run.out
 }
 
@@ -28,7 +30,8 @@ pub fn pin_faults(model: &Model) -> Vec<Diagnostic> {
 /// solver chose).
 pub fn pin_faults_solved(before: &Model, solved: &Model) -> Vec<Diagnostic> {
     let deferred = unknown_package(before);
-    let mut run = Run::new(solved, &deferred, Pass::Solved);
+    let bus = crate::busnets::check(solved);
+    let mut run = Run::new(solved, &deferred, Pass::Solved, bus.nets);
     run.go();
     run.out
 }
@@ -56,6 +59,8 @@ struct Run<'a> {
     model: &'a Model,
     deferred: &'a HashSet<InstId>,
     pass: Pass,
+    /// The nets a bus rule has reported (ADR 0064): the rules of a net skip them.
+    bus_nets: std::collections::HashSet<String>,
     out: Vec<Diagnostic>,
 }
 
@@ -73,11 +78,17 @@ fn list(items: &[String]) -> String {
 }
 
 impl<'a> Run<'a> {
-    fn new(model: &'a Model, deferred: &'a HashSet<InstId>, pass: Pass) -> Self {
+    fn new(
+        model: &'a Model,
+        deferred: &'a HashSet<InstId>,
+        pass: Pass,
+        bus_nets: std::collections::HashSet<String>,
+    ) -> Self {
         Self {
             model,
             deferred,
             pass,
+            bus_nets,
             out: Vec::new(),
         }
     }
@@ -290,17 +301,16 @@ impl<'a> Run<'a> {
                 }
             }
 
-            let must = matches!(
-                (row.kind, row.requirement),
-                (_, Some(Requirement::Required)) | (PinKind::Power | PinKind::Input, None)
-            );
+            let (must, by_role) = model.must_be_connected_by(pin, row);
             if must && !self.has_company(part, pin) {
+                let because = by_role.unwrap_or_default();
                 self.report(
                     inst.at(),
                     format!(
-                        "`{name}` is {} that must be connected ({pads}, `{}`), but nothing else is on its net",
+                        "`{name}` is {} that must be connected ({pads}, `{}`){}{because} nothing else is on its net",
                         article(row.kind),
-                        row.name
+                        row.name,
+                        if because.is_empty() { ", but" } else { ": " },
                     ),
                 );
             }
@@ -557,6 +567,10 @@ impl<'a> Run<'a> {
             if any_mine != (self.pass == Pass::Solved) {
                 continue;
             }
+            // A net that a bus rule has reported is said once (ADR 0064).
+            if self.bus_nets.contains(&net.name) {
+                continue;
+            }
             self.outputs(net, &mine);
             self.floating_inputs(net);
         }
@@ -599,10 +613,13 @@ impl<'a> Run<'a> {
         }
         if plain.len() == distinct.len() {
             let names: Vec<String> = distinct.iter().map(|&(p, _)| self.describe(p)).collect();
-            self.report(
-                at,
-                format!("net `{}` has two outputs: {}", net.name, list_plain(&names)),
-            );
+            let mut message = format!("net `{}` has two outputs: {}", net.name, list_plain(&names));
+            if model.net_has_stated_role(net) {
+                message.push_str(
+                    "; a line that several parts share needs every driver to be `tri_state`",
+                );
+            }
+            self.report(at, message);
             return;
         }
         // An `output` among `tri_state` pins: the output drives while the others are selected.
