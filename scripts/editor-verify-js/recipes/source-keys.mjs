@@ -29,6 +29,13 @@ export async function run({ page, step, expect, section }) {
   await page.keyboard.press('Escape');
   await page.waitForSelector('[role="dialog"][aria-label="Keyboard shortcuts"]', { state: 'detached' });
   await page.locator('.cm-content').click();
+  // F1 opens them from inside the editor, where Ctrl+/ used to.
+  await page.keyboard.press('F1');
+  await page.waitForSelector('[role="dialog"][aria-label="Keyboard shortcuts"]');
+  expect(true, 'F1 opens the shortcuts from the editor');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('[role="dialog"][aria-label="Keyboard shortcuts"]', { state: 'detached' });
+  await page.locator('.cm-content').click();
   for (let i = 0; i < 4; i++) await page.keyboard.press('Control+z');
   await page.waitForFunction(() => document.querySelector('.cm-line').innerText !== 'probe_line');
 

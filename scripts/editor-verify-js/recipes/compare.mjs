@@ -349,7 +349,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await settle();
   expect((await pressed()) === was, 'and back');
   await col(0).locator('.cm-content').focus();
-  await page.keyboard.press('Control+/');
+  await page.keyboard.press('F1');
   await page.waitForSelector('.cheat');
   const cheat = await page.locator('.cheat').innerText();
   expect(/(Hide|Show) unchanged lines in the comparison/.test(cheat), 'the cheat sheet lists the switch too');
@@ -520,7 +520,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   expect(/Next change/.test(listed) && /Alt\s*\+?\s*F5/.test(listed), `the palette lists Next change with its key (${listed.replace(/\s+/g, ' ').slice(0, 120)})`);
   await page.keyboard.press('Escape');
   await page.waitForSelector('.qp', { state: 'detached' });
-  await page.keyboard.press('Control+/');
+  await page.keyboard.press('F1');
   await page.waitForSelector('.cheat');
   const sheet = await page.locator('.cheat').innerText();
   expect(/Next change\b/.test(sheet) && /Previous change\b/.test(sheet) && /Alt\s*\+?\s*F5/.test(sheet), 'the cheat sheet lists Next change and Previous change');

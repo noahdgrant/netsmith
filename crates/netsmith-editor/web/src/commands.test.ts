@@ -151,6 +151,7 @@ describe('commandForKey', () => {
       { id: 'plain-in-fields', title: 'Esc', group: 'G', keys: 'Escape', inFields: true, run: () => undefined },
       { id: 'modded-not-in-fields', title: 'Open', group: 'G', keys: 'Mod+Enter', inFields: false, run: () => undefined },
       { id: 'held', title: 'Held', group: 'G', keys: 'Tab', keyFrom: (t) => (t as { ok?: boolean } | null)?.ok === true, run: () => undefined },
+      { id: 'function-key', title: 'Help', group: 'G', keys: 'F1', run: () => undefined },
       { id: 'first', title: 'First', group: 'G', keys: 'Alt+X', run: () => undefined },
       { id: 'second', title: 'Second', group: 'G', keys: 'Alt+X', run: () => undefined },
     );
@@ -159,6 +160,9 @@ describe('commandForKey', () => {
     expect(commandForKey(ev('p', { ctrlKey: true }), true)?.id).toBe('modded');
     expect(commandForKey(ev('?', { shiftKey: true }), true)).toBeNull();
     expect(commandForKey(ev('?', { shiftKey: true }), false)?.id).toBe('plain');
+  });
+  it('lets a function key work in a field, since it types nothing', () => {
+    expect(commandForKey(ev('F1'), true)?.id).toBe('function-key');
   });
   it('honours a command that says otherwise', () => {
     expect(commandForKey(ev('Escape'), true)?.id).toBe('plain-in-fields');

@@ -759,6 +759,8 @@ export function registerAppCommands() {
       title: 'Keyboard shortcuts',
       group: 'Help',
       keys: '?',
+      // `?` types a ? in a text field and in the editor; F1 opens the list from there too.
+      alsoKeys: ['F1'],
       aliases: ['cheat sheet', 'keys', 'help'],
       run: () => toggleCheatSheet(),
     },

@@ -65,4 +65,4 @@ What a screenshot should show: the card at 12 px radius over the code, never cut
 
 ### Keys and settings of the source: `drive source-keys` (fixture `two_boards`)
 
-1. **Comment** (`Ctrl+/`, command `source.comment.toggle`): the lines the selection covers get a `// ` at the shallowest indent, and lose it when every one is commented. A doc comment (`///`, `//!`) counts as code: it gets `// ` in front and loses only that. `?` still opens the shortcuts from outside the editor (inside it, it types a `?`).
+1. **Comment** (`Ctrl+/`, command `source.comment.toggle`): the lines the selection covers get a `// ` at the shallowest indent, and lose it when every one is commented. A doc comment (`///`, `//!`) counts as code: it gets `// ` in front and loses only that. `?` opens the shortcuts from outside the editor (inside it, it types a `?`); `F1` opens them from anywhere, the editor included. A function key works in a field, since it types nothing.
