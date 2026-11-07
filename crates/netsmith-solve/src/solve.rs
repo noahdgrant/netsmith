@@ -347,6 +347,9 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         derived: HashSet::new(),
         stated: stated_currents(model),
         sole_equation: sole_equations(model),
+        several_equations: several_equations(model),
+        equations_of: equations_of(model),
+        fed: HashSet::new(),
         trials: 0,
         seeded: Vec::new(),
         original_relations: model.relations().len(),
@@ -570,6 +573,14 @@ struct Solver<'a> {
     /// (through the field or any field joined to it). Only such an equation narrows a field
     /// that has a range; see `propagate`.
     sole_equation: Vec<bool>,
+    /// The fields that more than one equation states (the left side of an equation that is not
+    /// a sole one): each equation says what the value is, none says what it may be.
+    several_equations: HashSet<FieldId>,
+    /// The equations (by their place in the model's list) that have each field alone on the left.
+    equations_of: HashMap<FieldId, Vec<usize>>,
+    /// The fields that a pick can change: worked out, however indirectly, from the columns of a
+    /// part still to be chosen. Empty until the parts are picked.
+    fed: HashSet<FieldId>,
     /// Candidates tried so far, over every group.
     trials: usize,
     /// The circles of values that were started from the supply's range (ADR 0053).
@@ -602,6 +613,31 @@ fn stated_currents(model: &Model) -> HashMap<FieldId, Quantity> {
         .filter(|f| !equated.contains(f))
         .filter_map(|f| match &model.field(f).domain {
             Domain::Quantity(q) => Some((f, *q)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn equations_of(model: &Model) -> HashMap<FieldId, Vec<usize>> {
+    let mut out: HashMap<FieldId, Vec<usize>> = HashMap::new();
+    for (i, r) in model.relations().iter().enumerate() {
+        if let (CmpOp::EqEq, RExpr::Field(f)) = (&r.op, &r.lhs) {
+            out.entry(*f).or_default().push(i);
+        }
+    }
+    out
+}
+
+/// The fields on the left of more than one `==` (counting a field and the fields joined to it as
+/// one).
+fn several_equations(model: &Model) -> HashSet<FieldId> {
+    let sole = sole_equations(model);
+    model
+        .relations()
+        .iter()
+        .zip(sole)
+        .filter_map(|(r, sole)| match (&r.op, &r.lhs) {
+            (CmpOp::EqEq, RExpr::Field(f)) if !sole => Some(*f),
             _ => None,
         })
         .collect()
@@ -802,6 +838,26 @@ impl Solver<'_> {
                         }
                     }
                     (CmpOp::EqEq, Domain::Quantity(d)) if self.sole_equation[index] => {
+                        if let Domain::Quantity(v) = &value
+                            && v != d
+                            && d.encloses(v).unwrap_or(false)
+                        {
+                            self.model.set_domain(*f, value);
+                            changed = true;
+                        }
+                    }
+                    // A value that several equations state and no statement bounds (the
+                    // frequency of an oscillator that the board's window and the circuit both
+                    // give): the first equation that could be worked out gave it a range, and
+                    // that range is stale once a pick narrows what the equation reads. The
+                    // value is what each equation says, so it follows an equation whose range
+                    // lies inside it. Without this the equation that came later (the window)
+                    // was judged against the range of the earlier one and passed whatever the
+                    // pick was (ADR 0065, "A value that two equations state").
+                    (CmpOp::EqEq, Domain::Quantity(d))
+                        if self.several_equations.contains(f)
+                            && self.model.field(*f).narrowed_at.is_empty() =>
+                    {
                         if let Domain::Quantity(v) = &value
                             && v != d
                             && d.encloses(v).unwrap_or(false)
@@ -1406,6 +1462,77 @@ impl Solver<'_> {
                 };
                 if let RExpr::Field(f) = &r.lhs {
                     let name = self.model.path_of_field(*f);
+                    // A value that several equations state and no statement bounds has no
+                    // allowance of its own: it is what the equations say, and a pick sets it.
+                    // An equation whose right side no pick changes (a window the board stated,
+                    // reached through a join or a link such as `.osc.fsw == .fsw`) is an
+                    // allowance, and what the other equations work out must lie inside it. With
+                    // no allowance among them, equations that a pick changes only have to share
+                    // a value: both are what the circuit works out, and neither is a promise.
+                    if let (Domain::Quantity(dx), Val::Q(v)) = (&self.model.field(*f).domain, &rhs)
+                        && self.several_equations.contains(f)
+                        && self.fed.contains(f)
+                        && self.model.field(*f).narrowed_at.is_empty()
+                        && !self.derived.contains(f)
+                    {
+                        let changes = |e: &RExpr| {
+                            let mut read = Vec::new();
+                            fields_in(e, &mut read);
+                            read.iter().any(|g| self.fed.contains(g))
+                        };
+                        // What the equations that no pick changes allow, together.
+                        let mut allowance: Option<Quantity> = None;
+                        for &i in self.equations_of.get(f).into_iter().flatten() {
+                            let other = &self.model.relations()[i];
+                            if changes(&other.rhs) {
+                                continue;
+                            }
+                            if let Ok(Val::Q(q)) = eval(&self.model, &other.rhs) {
+                                allowance = match allowance {
+                                    None => Some(q),
+                                    Some(a) => match a.intersect(&q) {
+                                        Ok(Some(both)) => Some(both),
+                                        _ => Some(a),
+                                    },
+                                };
+                            }
+                        }
+                        return if !changes(&r.rhs) {
+                            if v.encloses(dx).unwrap_or(false) {
+                                Verdict::Pass
+                            } else {
+                                fail(
+                                    format!(
+                                        "`{name}` must stay within {v}, which {} says, but it works out to {dx}",
+                                        show(&r.rhs)
+                                    ),
+                                    overshoot(v, dx),
+                                )
+                            }
+                        } else if let Some(a) = allowance {
+                            if a.encloses(v).unwrap_or(false) {
+                                Verdict::Pass
+                            } else {
+                                fail(
+                                    format!(
+                                        "`{name}` must stay within {a}, but {} works out to {v}",
+                                        show(&r.rhs)
+                                    ),
+                                    overshoot(&a, v),
+                                )
+                            }
+                        } else if dx.intersect(v).ok().flatten().is_some() {
+                            Verdict::Pass
+                        } else {
+                            fail(
+                                format!(
+                                    "`{name}` is {dx} but {} works out to {v}; they can never be equal",
+                                    show(&r.rhs)
+                                ),
+                                overshoot(dx, v),
+                            )
+                        };
+                    }
                     return match (&self.model.field(*f).domain, rhs) {
                         (Domain::Unset, _) => Verdict::Unknown,
                         (Domain::Quantity(d), Val::Q(v)) => {
@@ -1611,6 +1738,7 @@ impl Solver<'_> {
             }
         }
 
+        self.fed = self.fed_by(&jobs);
         self.surveys = self.survey_picks(&jobs);
         let coupling = self.coupling(&jobs);
         // A group waits while a value it needs is still to come from another group's picks
@@ -1663,6 +1791,29 @@ impl Solver<'_> {
             listed.extend(picks);
         }
         self.picks.extend(listed);
+    }
+
+    /// The fields that a pick can change: every field worked out, however indirectly, from the
+    /// columns (and the count) of a part that is to be chosen.
+    fn fed_by(&self, jobs: &[Job]) -> HashSet<FieldId> {
+        let links = self.links();
+        let mut fed: HashSet<FieldId> = HashSet::new();
+        let mut todo: Vec<FieldId> = Vec::new();
+        for job in jobs {
+            for f in job.columns.iter().map(|(f, _)| *f).chain(job.count) {
+                if fed.insert(f) {
+                    todo.push(f);
+                }
+            }
+        }
+        while let Some(f) = todo.pop() {
+            for &g in links.worked_out(f) {
+                if fed.insert(g) {
+                    todo.push(g);
+                }
+            }
+        }
+        fed
     }
 
     /// The group to search next: the first, in path order, that is not waiting for another

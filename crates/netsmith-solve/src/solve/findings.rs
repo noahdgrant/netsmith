@@ -73,7 +73,7 @@ pub(super) struct Survey {
 }
 
 /// How fields are linked, built once for a solve.
-struct Links {
+pub(super) struct Links {
     /// Fields that hold one value: `~` joins, and a field held to another bare field by `&=` or
     /// `==`. With the relation that links them, if it is one.
     family: HashMap<FieldId, Vec<(FieldId, Option<usize>)>>,
@@ -82,8 +82,15 @@ struct Links {
     worked_out: HashMap<FieldId, Vec<FieldId>>,
 }
 
+impl Links {
+    /// The fields worked out from `field`, however directly.
+    pub(super) fn worked_out(&self, field: FieldId) -> &[FieldId] {
+        self.worked_out.get(&field).map_or(&[], Vec::as_slice)
+    }
+}
+
 impl Solver<'_> {
-    fn links(&self) -> Links {
+    pub(super) fn links(&self) -> Links {
         let mut family: HashMap<FieldId, Vec<(FieldId, Option<usize>)>> = HashMap::new();
         let mut worked_out: HashMap<FieldId, Vec<FieldId>> = HashMap::new();
         for &(a, b) in self.model.equalities() {

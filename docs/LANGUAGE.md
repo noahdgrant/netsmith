@@ -2163,6 +2163,53 @@ error: no `resistor` candidate satisfies `fixed.r`: the closest of the 219 that 
    |     ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
+A value that two equations state is held to a window that the board stated, whatever range the part's own member has (ADR 0065). The frequency of an oscillator is worked out from its timing resistor, and the board states the window it wants; the module links the two with `.osc.fsw == .fsw`. Both lines are equations on `.osc.fsw`, and neither is its allowance: a stated range on `.fsw`, which no pick changes, is, and what the circuit works out must lie inside it. A range that the oscillator's own member `.rt_resistance` has makes the frequency a range before any resistor is picked, and the window is then compared with the pick as it is without that line: a resistor outside the window is refused where it is picked, and a stated resistor outside it fails the build with the numbers. Two values that the picks change and that nothing bounds only have to share a value.
+
+```nsm fails
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+module Oscillator {
+    .rt_resistance: Resistance
+    .rt_resistance &= 10kohm..230kohm
+    .fsw_nominal: Frequency
+    .fsw_nominal == 46.5MHz * 1kohm / (.rt_resistance + 5.2kohm)
+    .fsw_tolerance: Number
+    .fsw_tolerance &= 0.925..1.075
+    .fsw: Frequency
+    .fsw == .fsw_nominal * .fsw_tolerance
+}
+
+module Timer {
+    .fsw: Frequency
+    .supply: Rail
+    .osc: Oscillator
+    .timing: Resistor { .resistance &= 15kohm +/- 1% }
+    .supply.pos ~> .timing ~> .supply.neg
+    .osc.rt_resistance == .timing.resistance
+    .osc.fsw == .fsw
+}
+
+board Probe {
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .timer: Timer
+    .timer.supply ~ .supply
+    .timer.fsw &= 0.9MHz..1.1MHz
+}
+```
+
+```text
+error: `timer.osc.fsw` must stay within 900kHz..1.1MHz, but (timer.osc.fsw_nominal * timer.osc.fsw_tolerance) works out to 2.113MHz..2.494MHz
+   --> main.nsm:12:5
+   |
+12 |     .fsw == .fsw_nominal * .fsw_tolerance
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
 A part is picked after the parts whose picks decide what it needs. A capacitor behind a diode that the solver picks has the bias of the rail it sits on, which is the supply's voltage less the diode's forward voltage, and that is known only once the diode is chosen. The solver therefore chooses the diode first, and the board below builds with its parts named in either order. A part that needs a value that no pick can set is not delayed: it fails as it would alone, with a message that says which field to state. Ties go by path, and the same inputs give the same board.
 
 ```nsm evaluate
