@@ -182,3 +182,24 @@ fn a_stated_resistor_that_meets_the_window_passes() {
         assert!(messages(&s).is_empty(), "{range:?}: {:?}", messages(&s));
     }
 }
+
+#[test]
+fn two_equations_that_no_pick_changes_keep_the_old_rule() {
+    // No part is picked and nothing here is fed by a pick: `.x` is what its first equation says
+    // (`1V..3V`) and the second equation's `1.5V..2V` lies inside it, so the board builds, as it
+    // did before section 9. The equation that comes later is not made to narrow the value that
+    // the earlier one gave (ADR 0065, section 9.1, "Not done").
+    let src = r#"board P1 {
+    .a: Voltage
+    .b: Voltage
+    .x: Voltage
+    .a &= 1V..3V
+    .b &= 1.5V..2V
+    .x == .a
+    .x == .b
+}
+"#;
+    let s = run(src);
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert!(s.picks.is_empty());
+}

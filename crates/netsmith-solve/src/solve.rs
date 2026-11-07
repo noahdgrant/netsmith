@@ -372,6 +372,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         several_equations: several_equations(model),
         equations_of: equations_of(model),
         fed: HashSet::new(),
+        fed_at_start: HashSet::new(),
         trials: 0,
         seeded: Vec::new(),
         original_relations: model.relations().len(),
@@ -379,6 +380,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         surveys: Vec::new(),
     };
     s.relax_pinned();
+    s.fed_at_start = s.fed_at_start();
     for c in s.propagate() {
         s.report(c.source, c.span, c.message);
     }
@@ -621,6 +623,10 @@ struct Solver<'a> {
     /// The fields that a pick can change: worked out, however indirectly, from the columns of a
     /// part still to be chosen. Empty until the parts are picked.
     fed: HashSet<FieldId>,
+    /// The same, worked out before the parts are looked at, from the columns of every part that
+    /// has a catalog: `fed` is empty while the first propagation runs, and the rule for several
+    /// equations that `propagate` applies only to fields a pick can change must hold then too.
+    fed_at_start: HashSet<FieldId>,
     /// Candidates tried so far, over every group.
     trials: usize,
     /// The circles of values that were started from the supply's range (ADR 0053).
@@ -911,9 +917,12 @@ impl Solver<'_> {
                     // value is what each equation says, so it follows an equation whose range
                     // lies inside it. Without this the equation that came later (the window)
                     // was judged against the range of the earlier one and passed whatever the
-                    // pick was (ADR 0065, "A value that two equations state").
+                    // pick was (ADR 0065, "A value that two equations state"). Only for a value
+                    // that a pick can change (`fed`), as in `verify`: two equations that no pick
+                    // changes keep the old rule (ADR 0065, section 9.1, "Not done").
                     (CmpOp::EqEq, Domain::Quantity(d))
                         if self.several_equations.contains(f)
+                            && (self.fed.contains(f) || self.fed_at_start.contains(f))
                             && self.model.field(*f).narrowed_at.is_empty() =>
                     {
                         if let Domain::Quantity(v) = &value
@@ -1969,7 +1978,12 @@ impl Solver<'_> {
                         .map(|i| (steps[i].position, steps[i].group.clone())),
                 )
                 .collect();
+        // What the first failure left, which a failed retry puts back whole: `restore` cuts the
+        // lists of diagnostics and unresolved parts at the length of a mark, and the retry may
+        // add its own after that.
         let left_as_failed = self.mark();
+        let first_diagnostics = self.diagnostics.clone();
+        let first_unresolved = self.unresolved.clone();
         self.restore(&steps[first].mark.clone());
         let mut new_steps: Vec<Step> = Vec::new();
         let mut ok = true;
@@ -2001,6 +2015,8 @@ impl Solver<'_> {
             steps.extend(new_steps);
         } else {
             self.restore(&left_as_failed);
+            self.diagnostics = first_diagnostics;
+            self.unresolved = first_unresolved;
             steps.push(failed);
         }
     }
@@ -2008,14 +2024,37 @@ impl Solver<'_> {
     /// The fields that a pick can change: every field worked out, however indirectly, from the
     /// columns (and the count) of a part that is to be chosen.
     fn fed_by(&self, jobs: &[Job]) -> HashSet<FieldId> {
+        self.fed_from(
+            jobs.iter()
+                .flat_map(|job| job.columns.iter().map(|(f, _)| *f).chain(job.count)),
+        )
+    }
+
+    /// `fed_by`, before the catalogs are read: the columns (and the count) of every part that
+    /// has a catalog, whether or not it will be found.
+    fn fed_at_start(&self) -> HashSet<FieldId> {
+        let roots: Vec<FieldId> = self
+            .model
+            .instances()
+            .filter(|(_, i)| i.kind == InstKind::Part)
+            .flat_map(|(id, i)| {
+                i.catalog
+                    .iter()
+                    .flat_map(|c| c.fields.iter().copied())
+                    .chain(self.model.bank_count(id))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        self.fed_from(roots.into_iter())
+    }
+
+    fn fed_from(&self, roots: impl Iterator<Item = FieldId>) -> HashSet<FieldId> {
         let links = self.links();
         let mut fed: HashSet<FieldId> = HashSet::new();
         let mut todo: Vec<FieldId> = Vec::new();
-        for job in jobs {
-            for f in job.columns.iter().map(|(f, _)| *f).chain(job.count) {
-                if fed.insert(f) {
-                    todo.push(f);
-                }
+        for f in roots {
+            if fed.insert(f) {
+                todo.push(f);
             }
         }
         while let Some(f) = todo.pop() {
