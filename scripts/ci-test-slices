@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Proves, for the `test` job of .github/workflows/ci.yml, that its slices (cargo nextest
+# `--partition slice:K/N`, K = 1..N) between them run every test that `cargo test --workspace`
+# runs, each in exactly one slice. It lists the tests of the built workspace, so it needs no
+# build of its own beyond what the job did.
+#   scripts/ci-test-slices N
+set -euo pipefail
+slices="${1:?usage: scripts/ci-test-slices N}"
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+# One line per test nextest would run (not the ignored ones), "binary test", sorted.
+tests() {
+    cargo nextest list --workspace --message-format json "$@" |
+        jq -r '."rust-suites" | to_entries[] | .key as $binary | .value.testcases | to_entries[]
+               | select(.value."filter-match".status == "matches") | "\($binary) \(.key)"' |
+        sort
+}
+
+tests > "$work/all"
+total="$(wc -l < "$work/all")"
+sum=0
+for k in $(seq 1 "$slices"); do
+    tests --partition "slice:$k/$slices" > "$work/slice-$k"
+    n="$(wc -l < "$work/slice-$k")"
+    echo "slice $k/$slices: $n tests"
+    [ "$n" -gt 0 ] || { echo "::error::slice $k is empty"; exit 1; }
+    sum=$((sum + n))
+done
+echo "all: $total tests, the slices add up to $sum"
+
+cat "$work"/slice-* | sort > "$work/union"
+if [ "$(uniq -d < "$work/union" | wc -l)" -ne 0 ]; then
+    echo "::error::tests that are in more than one slice:"; uniq -d < "$work/union"; exit 1
+fi
+if ! cmp -s "$work/union" "$work/all"; then
+    echo "::error::the slices do not add up to the whole run:"; diff "$work/union" "$work/all" || true; exit 1
+fi
+
+# The same count from libtest itself: what `cargo test --workspace` would run, less the ignored.
+# (Doc tests are run apart, by `cargo test --doc`.)
+listed="$(cargo test --workspace --lib --bins --tests -- --list 2> /dev/null | grep -c ': test$' || true)"
+ignored="$(cargo test --workspace --lib --bins --tests -- --list --ignored 2> /dev/null | grep -c ': test$' || true)"
+echo "cargo test --list: $listed tests, $ignored ignored"
+if [ $((listed - ignored)) -ne "$total" ]; then
+    echo "::error::nextest lists $total tests, cargo test lists $((listed - ignored))"; exit 1
+fi
+echo "ok: $total tests, each in exactly one of $slices slices, the count of cargo test"
