@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import type { PcbBox } from '../api';
 import { api } from '../client';
@@ -89,13 +89,19 @@ export function Pcb() {
   const shared = selection.value;
   const picked = shared?.kind === 'net' ? shared.key : null;
   const loaded = scene.value;
+  const followed = useRef<typeof shared | undefined>(undefined);
   useEffect(() => {
+    const changed = followed.current !== shared;
+    followed.current = shared;
     // A selection the board itself made is already on the board.
     if (wrote.sel !== undefined && sameSelection(wrote.sel, shared)) {
       wrote.sel = undefined;
       return;
     }
     wrote.sel = undefined;
+    // Several parts picked on the board leave the page with no selection: a detail read again (the layout
+    // file the move wrote was rebuilt) is no reason to drop them. Only a change of the page's selection is.
+    if (!changed && shared === null) return;
     const want = partPathsOf(detail.value, shared);
     const have = pcbSelection.peek();
     if (want.length !== have.length || want.some((p, i) => p !== have[i])) pcbSelection.value = want;

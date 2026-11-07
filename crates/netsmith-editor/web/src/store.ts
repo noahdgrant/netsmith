@@ -468,6 +468,18 @@ export function renameOpen(from: string, to: string, folder: boolean) {
   if (active && under(active, from, folder)) activeFile.value = moved(active);
 }
 
+/** Paths whose removal is under way: the server may have deleted them before the page has closed their tabs. */
+const removing = new Set<string>();
+
+/** Mark a file or folder as being removed (until `done`), so a rebuild meanwhile does not read its files back (a 404). */
+export function removingPath(path: string, folder: boolean) {
+  const key = folder ? `${path}/` : path;
+  removing.add(key);
+  return () => void removing.delete(key);
+}
+
+const beingRemoved = (path: string) => [...removing].some((k) => (k.endsWith('/') ? path.startsWith(k) : path === k));
+
 /** A file or folder was removed: its tabs go, with edits that were not saved. */
 export function dropOpen(path: string, folder: boolean) {
   const gone = (p: string) => under(p, path, folder);
@@ -494,11 +506,14 @@ async function onRebuilt(tree = true) {
   pcbReports.value = {};
   void loadDetail();
   // A file that changed on disk and has no edits here is read again.
-  for (const f of Object.values(openFiles.value)) {
-    if (f.readonly) continue;
+  for (const listed of Object.values(openFiles.value)) {
+    // The loop awaits each request, so a file can be closed (and deleted) meanwhile: asking for it is a 404.
+    if (listed.readonly || !openFiles.value[listed.path] || beingRemoved(listed.path)) continue;
     try {
-      const fresh = await api.file(f.path);
-      if (fresh.stamp === f.stamp) continue;
+      const fresh = await api.file(listed.path);
+      // What is open now, not what was open when the loop began (an edit typed during the request stays).
+      const f = openFiles.value[listed.path];
+      if (!f || fresh.stamp === f.stamp) continue;
       if (dirty(f)) {
         setFile({ ...f, conflict: true });
       } else {

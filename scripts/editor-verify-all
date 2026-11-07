@@ -17,15 +17,6 @@ root="${NETSMITH_VERIFY_DIR:-/tmp/netsmith-verify}"
 out="${NETSMITH_VERIFY_OUT:-$root-all}"
 only=" $* "
 
-# Recipes run a second time, in a fresh session, when they fail the first. One recipe is here:
-# tree-files fails now and then on a CI runner (about one run in two) with a 404 for a file the
-# recipe has just deleted along with its folder: the page's rebuild handler (`onRebuilt` in
-# store.ts) reads the files that were open when it started, one after the other, so a file closed
-# meanwhile is still asked for. The page ignores the answer; the browser logs the 404, which fails
-# the recipe (issue #118, with the one-line fix in the page). Fix that and delete this list.
-# Nothing else is retried.
-retry_once=" tree-files "
-
 rm -rf "$out"
 mkdir -p "$out"
 sessions="$("$verify" groups)" || { echo "editor-verify groups failed" >&2; exit 2; }
@@ -53,17 +44,6 @@ while read -r fixture git recipes; do
         cat "$out/$name/launch.log"
         echo "FAIL: launch ${flags[*]} did not start"
     fi
-    for r in $recipes; do
-        case "$retry_once" in *" $r "*) ;; *) continue ;; esac
-        command grep -q "^PASS $r\$" "$out/$name/drive.log" 2>/dev/null && continue
-        echo "retrying $r once in a fresh session"
-        mkdir -p "$out/$name/first-attempt-$r"
-        cp -r "$root/evidence/." "$out/$name/first-attempt-$r/" 2>/dev/null
-        "$verify" cleanup >/dev/null 2>&1
-        if "$verify" launch "${flags[@]}" >>"$out/$name/launch.log" 2>&1; then
-            "$verify" drive "$r" 2>&1 | tee -a "$out/$name/drive.log"
-        fi
-    done
     # Screenshots (the failures are named `<recipe>-NN-failure.png`) and the server log.
     cp -r "$root/evidence/." "$out/$name/" 2>/dev/null
     cp "$root/server.log" "$out/$name/" 2>/dev/null

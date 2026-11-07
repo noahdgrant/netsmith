@@ -20,6 +20,7 @@ import {
   problems,
   project,
   refreshAfterChange,
+  removingPath,
   renameOpen,
   say,
   viewBoardOfDefinition,
@@ -523,6 +524,8 @@ export function Sidebar() {
 
   const finishNew = async (t: Typing, name: string, template: Template | null): Promise<string | null> => {
     const target = `${t.dir}/${name}`;
+    // A rename takes the old path off the disk before the page moves its tab: a rebuild between must not read it.
+    const done = 'rename' in t ? removingPath(`${t.dir}/${t.rename}`, t.kind === 'folder') : () => {};
     try {
       if ('rename' in t) {
         await api.renamePath(`${t.dir}/${t.rename}`, target);
@@ -536,6 +539,8 @@ export function Sidebar() {
       }
     } catch (e) {
       return said(e);
+    } finally {
+      done();
     }
     setTyping(null);
     try {
@@ -558,13 +563,16 @@ export function Sidebar() {
     const folder = node.type === 'folder';
     const target = folder ? node.dir : node.file.path;
     setRemoving({ ...removing, busy: true, error: null });
+    const done = removingPath(target, folder);
     try {
       await api.deletePath(target, true);
     } catch (e) {
+      done();
       setRemoving({ ...removing, busy: false, error: said(e) });
       return;
     }
     dropOpen(target, folder);
+    done();
     setRemoving(null);
     const near = rows[Math.max(0, rows.findIndex((r) => r.id === removing.id) - 1)]?.id;
     try {
