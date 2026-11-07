@@ -2499,6 +2499,9 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
             // Moves shrink with the temperature, from half the board down to a few units.
             let reach = ((region_reach as f64 * t / start) as i64).clamp(8, region_reach);
             for _ in 0..per_stage {
+                // A move is some microseconds, so this is no cost; a cancelled job (`fab`)
+                // ends here, in the middle of the placing.
+                netsmith_core::job::checkpoint();
                 let change = e.propose(&mut rng, reach);
                 if change.is_empty() {
                     continue;

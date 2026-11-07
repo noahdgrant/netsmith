@@ -107,6 +107,7 @@ impl<'a> Run<'a> {
             .collect();
         parts.sort();
         for &(_, part) in &parts {
+            netsmith_core::job::checkpoint();
             if self.mine(part) {
                 self.part(part);
             }
@@ -350,6 +351,7 @@ impl<'a> Run<'a> {
     fn nets(&mut self, parts: &[(String, InstId)]) {
         let model = self.model;
         for net in model.nets() {
+            netsmith_core::job::checkpoint();
             let mut mine: Vec<InstId> = Vec::new();
             let mut any_mine = false;
             for &t in &net.terminals {

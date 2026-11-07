@@ -33,6 +33,7 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
+use netsmith_core::job::{self, Cancel};
 use netsmith_editor::{
     AnalysisEvent, ApiError, Attachment, Backend, Observer, Say,
     api::{
@@ -68,6 +69,42 @@ pub struct Workspace {
     comparing: Mutex<()>,
     /// The compares waiting for `comparing`, so that a crowd of them is refused.
     compare_queue: compare::Queue,
+    /// The token of the analysis of the files that is running now, if one is: what
+    /// [`Backend::cancel_analysis`] sets. Outside `state`, whose lock the analysis holds.
+    analysis_cancel: Mutex<Option<Cancel>>,
+    /// The token of the job this workspace is made for, if it is one a job reads for itself (the
+    /// scratch copy of a ref that a compare analyses): its analysis is stopped by that job's
+    /// token, not by [`Backend::cancel_analysis`], and a cancelled one is told to no page.
+    inherited: Option<Cancel>,
+}
+
+/// Files the token of the analysis that is running where [`Backend::cancel_analysis`] finds it,
+/// and takes it away when dropped. A workspace that a job reads for itself is not filed: the job
+/// cancels it.
+struct Running<'a>(Option<&'a Workspace>);
+
+impl<'a> Running<'a> {
+    fn new(workspace: &'a Workspace, token: &Cancel) -> Self {
+        if workspace.inherited.is_some() {
+            return Running(None);
+        }
+        *workspace
+            .analysis_cancel
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(token.clone());
+        Running(Some(workspace))
+    }
+}
+
+impl Drop for Running<'_> {
+    fn drop(&mut self) {
+        if let Some(workspace) = self.0 {
+            *workspace
+                .analysis_cancel
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = None;
+        }
+    }
 }
 
 /// Tells the observer that an analysis has begun, and that it has ended when this is dropped,
@@ -90,6 +127,14 @@ impl Drop for Announcing<'_> {
     }
 }
 
+/// Runs `work` as a job that `cancel` stops: its checkpoints end it, and the answer is
+/// [`ApiError::cancelled`]. What the job had made is dropped by the unwind; a panic of any
+/// other kind goes on as it would have.
+fn cancellable<T>(cancel: &Cancel, what: &str, work: impl FnOnce() -> T) -> Result<T, ApiError> {
+    job::catch(|| job::scope(cancel, work))
+        .map_err(|_| ApiError::cancelled(format!("{what} was cancelled")))
+}
+
 fn millis(since: Instant) -> u32 {
     since.elapsed().as_millis().min(u128::from(u32::MAX)) as u32
 }
@@ -103,6 +148,10 @@ struct State {
     layouts: Vec<Option<(std::time::SystemTime, u64)>>,
     /// Goes up by one each time the files are read again.
     version: u64,
+    /// The stamp of the files an analysis was cancelled on (ADR 0062). While the files are as
+    /// they were then they are not analysed again, as the watcher would at once; a change to
+    /// one, or [`Backend::run_analysis`], clears it. The reading stays the one before.
+    cancelled: Option<Vec<Option<(std::time::SystemTime, u64)>>>,
     snapshot: Snapshot,
     /// How long the last analysis of the files took; none if the version went up with no
     /// analysis (a layout file changed).
@@ -144,7 +193,17 @@ impl Workspace {
             compare_cache: Mutex::new(compare::Cache::default()),
             comparing: Mutex::new(()),
             compare_queue: compare::Queue::default(),
+            analysis_cancel: Mutex::new(None),
+            inherited: None,
         })
+    }
+
+    /// [`Workspace::open_deferred`] for a workspace that a job reads for itself: the job's token
+    /// stops its analysis.
+    pub(super) fn open_for_job(target: Target, cancel: &Cancel) -> Result<Workspace, String> {
+        let mut workspace = Workspace::open_deferred(target)?;
+        workspace.inherited = Some(cancel.clone());
+        Ok(workspace)
     }
 
     fn announce(&self, event: AnalysisEvent) {
@@ -190,28 +249,62 @@ impl Workspace {
         if state.version > 0 && state.stamp.as_ref() == Some(&stamp) && all_read {
             return state;
         }
-        state.pcb.clear();
+        // An analysis of these very files was cancelled: they are not analysed again until one
+        // changes or the page asks (`run_analysis`).
+        if all_read && state.cancelled.as_ref() == Some(&stamp) {
+            return state;
+        }
         let started = Instant::now();
         // An analysis that panics is a result like another: the last good reading and a
         // problem that says so. The stamp and the version change only here, after the
         // result, so that nothing is left half done and the files are not analysed again
         // (and panicked on again) until one changes.
-        let snapshot = {
+        //
+        // One that is cancelled is no result: nothing of the state changes but the stamp it
+        // was cancelled on (so that the watcher does not start it again), and, for the first
+        // analysis, which has no reading to keep, an empty one that says why.
+        let token = self.inherited.clone().unwrap_or_default();
+        let ran = {
             let _announcing = Announcing::start(self);
+            let _running = Running::new(self, &token);
             let observe = |event| self.announce(event);
-            match analysis::contained(|| {
-                self.analyze(&HashMap::new(), Some(&state.snapshot), &observe)
-            }) {
-                Ok(snapshot) => snapshot,
-                Err(message) => {
+            // The solver's counts go to the observer too, which `observe` borrows.
+            let live = self.observer.get().cloned();
+            let ran = job::catch(|| {
+                analysis::contained(|| {
+                    job::scope(&token, || {
+                        self.analyze(&HashMap::new(), Some(&state.snapshot), &observe, live)
+                    })
+                })
+            });
+            match &ran {
+                Ok(Err(message)) => {
                     eprintln!("netsmith editor: the analysis of the project panicked: {message}");
                     self.announce(AnalysisEvent::Failed {
                         message: message.clone(),
                     });
-                    Snapshot::after_panic(&message, Some(&state.snapshot))
                 }
+                Err(_) if self.inherited.is_none() => self.announce(AnalysisEvent::Cancelled),
+                _ => {}
+            }
+            ran
+        };
+        let snapshot = match ran {
+            Ok(Ok(snapshot)) => snapshot,
+            Ok(Err(message)) => Snapshot::after_panic(&message, Some(&state.snapshot)),
+            Err(job::Cancelled) => {
+                state.cancelled = Some(stamp);
+                if state.version == 0 {
+                    state.snapshot = Snapshot::cancelled_first();
+                    state.version = 1;
+                    state.elapsed_ms = Some(millis(started));
+                    self.ready.store(true, Ordering::Release);
+                }
+                return state;
             }
         };
+        state.pcb.clear();
+        state.cancelled = None;
         state.stamp = Some(stamp);
         state.version += 1;
         state.snapshot = snapshot;
@@ -321,8 +414,31 @@ impl Backend for Workspace {
         let state = self.fresh();
         Analysis {
             elapsed_ms: state.elapsed_ms,
+            cancelled: state.cancelled.is_some().then_some(true),
             ..state.snapshot.summary(state.version)
         }
+    }
+
+    fn cancel_analysis(&self) -> bool {
+        let running = self
+            .analysis_cancel
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        match &*running {
+            Some(token) => {
+                token.cancel();
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn run_analysis(&self) -> Analysis {
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .cancelled = None;
+        self.analysis()
     }
 
     fn pending(&self) -> Option<u32> {
@@ -342,7 +458,7 @@ impl Backend for Workspace {
         let unsaved = HashMap::from([(fs, text.to_string())]);
         // A check of typed text is not an analysis of the files on disk: nobody is told of it.
         let started = Instant::now();
-        let snapshot = analysis::contained(|| self.analyze(&unsaved, None, &|_| {}))
+        let snapshot = analysis::contained(|| self.analyze(&unsaved, None, &|_| {}, None))
             .unwrap_or_else(|message| {
                 eprintln!("netsmith editor: the check of {path} panicked: {message}");
                 Snapshot::after_panic(&message, None)
@@ -516,8 +632,8 @@ impl Backend for Workspace {
         self.edit_layout(edit)
     }
 
-    fn build(&self, say: &Say) -> BuildReport {
-        self.write_schematics(say)
+    fn build(&self, say: &Say, cancel: &Cancel) -> Result<BuildReport, ApiError> {
+        cancellable(cancel, "the build", || self.write_schematics(say))
     }
 
     fn fab(
@@ -525,8 +641,11 @@ impl Backend for Workspace {
         board: &str,
         allow_drc_violations: bool,
         say: &Say,
+        cancel: &Cancel,
     ) -> Result<FabReport, ApiError> {
-        self.make_fab(board, allow_drc_violations, say)
+        cancellable(cancel, "fab", || {
+            self.make_fab(board, allow_drc_violations, say)
+        })?
     }
 
     fn download(&self, board: &str, file: &str) -> Result<Attachment, ApiError> {
@@ -542,8 +661,11 @@ impl Backend for Workspace {
         name: &str,
         allow_drc_violations: bool,
         say: &Say,
+        cancel: &Cancel,
     ) -> Result<OrderReport, ApiError> {
-        self.make_order(name, allow_drc_violations, say)
+        cancellable(cancel, "the order", || {
+            self.make_order(name, allow_drc_violations, say)
+        })?
     }
 
     fn order_download(&self, name: &str, file: &str) -> Result<Attachment, ApiError> {
@@ -559,8 +681,11 @@ impl Backend for Workspace {
         rev: &str,
         board: Option<&str>,
         observe: &Observer,
+        cancel: &Cancel,
     ) -> Result<Compare, ApiError> {
-        self.compare_with(rev, board, observe)
+        cancellable(cancel, "the compare", || {
+            self.compare_with(rev, board, observe, cancel)
+        })?
     }
 
     fn git_file(&self, rev: &str, path: &str) -> Result<FileContent, ApiError> {

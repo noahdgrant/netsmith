@@ -5,7 +5,18 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 
-import { ANALYSED_SHOWN_MS, analysedText, analysedTip, analysingText, clock, CONNECTION_LABEL, connectionTip } from '../feedback/status';
+import {
+  ANALYSED_SHOWN_MS,
+  CANCELLED_TEXT,
+  CANCELLING_TEXT,
+  analysedText,
+  analysedTip,
+  analysingText,
+  cancelledTip,
+  clock,
+  CONNECTION_LABEL,
+  connectionTip,
+} from '../feedback/status';
 import { banner, counts, goToFirstError } from '../feedback/derive';
 import {
   analysisSince,
@@ -26,10 +37,12 @@ import {
   board,
   cursor,
   dirty,
+  cancelAnalysis,
   goTo,
   job,
   openFiles,
   project,
+  runAnalysisAgain,
   save,
   visible,
 } from '../store';
@@ -191,13 +204,34 @@ function AnalysisItem() {
   const ban = banner.value;
   if (text) {
     return (
-      <Item
-        class="analysing"
-        title={`Checking the project${p.server ? ' (the server began at its own time, so a change made outside the editor shows here too)' : ''}. The views keep showing the last result until it is done.`}
-        onClick={() => (dock.value = { ...dock.value, open: true })}
-      >
-        <Spinner />
-        <span class="analysing-text">{text}</span>
+      <>
+        <Item
+          class="analysing"
+          title={`Checking the project${p.server ? ' (the server began at its own time, so a change made outside the editor shows here too)' : ''}. The views keep showing the last result until it is done.`}
+          onClick={() => (dock.value = { ...dock.value, open: true })}
+        >
+          <Spinner />
+          <span class="analysing-text">{p.cancelling ? CANCELLING_TEXT : text}</span>
+        </Item>
+        {p.server && !p.cancelling && (
+          <Item
+            class="cancel-analysis"
+            label="Cancel the analysis"
+            title="Stop the analysis. Nothing it has made is kept: the views go on showing the last result, and the next change to a file starts it again."
+            onClick={() => void cancelAnalysis()}
+          >
+            <Icon name="close" size={12} />
+            <span class="sb-label">Cancel</span>
+          </Item>
+        )}
+      </>
+    );
+  }
+  if (analysis.value?.cancelled) {
+    return (
+      <Item class="cancelled" label={`${CANCELLED_TEXT}. Run again`} title={cancelledTip(!!analysis.value.boards && analysis.value.boards.length === 0)} onClick={() => void runAnalysisAgain()}>
+        <Icon name="refresh" size={13} />
+        <span class="sb-label">{CANCELLED_TEXT} · Run again</span>
       </Item>
     );
   }
@@ -211,10 +245,22 @@ function AnalysisItem() {
   if (!analysis.value) {
     const since = analysisSince.value;
     return (
-      <Item class="analysing" title="Reading the project for the first time. The server analyses it once, and a big project takes a while.">
-        <Spinner />
-        {since !== null ? (analysingText(Math.max(0, now.value - since), p.server?.progress ?? null) ?? 'Analysing…') : 'Reading the project…'}
-      </Item>
+      <>
+        <Item class="analysing" title="Reading the project for the first time. The server analyses it once, and a big project takes a while.">
+          <Spinner />
+          {p.cancelling
+            ? CANCELLING_TEXT
+            : since !== null
+              ? (analysingText(Math.max(0, now.value - since), p.server?.progress ?? null) ?? 'Analysing…')
+              : 'Reading the project…'}
+        </Item>
+        {p.server && !p.cancelling && (
+          <Item class="cancel-analysis" label="Cancel the first analysis" title="Stop the first analysis. Nothing is shown until it is run again or a file changes." onClick={() => void cancelAnalysis()}>
+            <Icon name="close" size={12} />
+            <span class="sb-label">Cancel</span>
+          </Item>
+        )}
+      </>
     );
   }
   return (

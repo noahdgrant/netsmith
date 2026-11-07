@@ -3,6 +3,7 @@
 import type {
   Analysis,
   BoardDetail,
+  CancelAnswer,
   Bom,
   BuildReport,
   CatalogRefresh,
@@ -31,6 +32,12 @@ import { PENDING_HEADER, pendingElapsed } from './feedback/early';
 
 /** A change needs this header; a page on another origin cannot send it. */
 const GUARD = { 'X-Netsmith': '1' };
+
+/** The status a cancelled job answers with: it was stopped on request, and nothing it made was kept. */
+export const CANCELLED = 499;
+
+/** Whether `e` is the answer of a job that was cancelled (a person's choice, not a failure). */
+export const wasCancelled = (e: unknown): boolean => e instanceof ApiFailure && e.status === CANCELLED;
 
 export class ApiFailure extends Error {
   constructor(
@@ -102,6 +109,15 @@ export const api = {
   project: () => getJson<Project>('/api/project'),
   /** With `early` the answer is `AnalysisPending` while the server's first analysis runs, not a wait. */
   analysis: (early = false) => (early ? getJsonEarly<Analysis>('/api/analysis') : getJson<Analysis>('/api/analysis')),
+  /** Stop the analysis of the files that is running (it ends within a fraction of a second; the socket says `cancelled`). */
+  cancelAnalysis: () => post<CancelAnswer>('/api/analysis/cancel'),
+  /** Analyse the files again now, after a cancelled analysis ("Run again"). */
+  runAnalysis: () => post<Analysis>('/api/analysis/run'),
+  /** Stop the running comparison, schematic build, fab or order. */
+  cancelCompare: () => post<CancelAnswer>('/api/compare/cancel'),
+  cancelBuild: () => post<CancelAnswer>('/api/build/cancel'),
+  cancelFab: () => post<CancelAnswer>('/api/fab/cancel'),
+  cancelOrder: () => post<CancelAnswer>('/api/order/cancel'),
   file: (path: string) => getJson<FileContent>(`/api/file?${q({ path })}`),
   async save(path: string, text: string, stamp: string): Promise<Saved> {
     const response = await fetch(`/api/file?${q({ path })}`, {

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'preact/hooks';
 
 import type { OrderInfo } from '../api';
 
-import { api } from '../client';
+import { api, wasCancelled } from '../client';
 import { Icon, type IconName } from '../components/Icons';
 import { ViewHelp } from '../components/ViewHelp';
 import { JobProgress } from '../components/JobProgress';
@@ -130,6 +130,12 @@ export function Build() {
   const order = orders.find((o) => o.name === pickedOrder.value);
   const orderReport = order ? orderReports.value[order.name] : undefined;
 
+  /** A job the person cancelled is not a failure: one calm word, and nothing of it was kept. */
+  function cancelledOrFailed(e: unknown, what: string) {
+    if (wasCancelled(e)) say(`${what} was cancelled. Nothing of it was kept.`);
+    else say(e instanceof Error ? e.message : String(e), true);
+  }
+
   async function runOrder() {
     if (!order) return;
     beginJob('order', order.name);
@@ -139,7 +145,7 @@ export function Build() {
       markRan(`order:${order.name}`);
       announce(orderResult(report));
     } catch (e) {
-      say(e instanceof Error ? e.message : String(e), true);
+      cancelledOrFailed(e, 'The order');
     } finally {
       endJob();
     }
@@ -153,7 +159,7 @@ export function Build() {
       markRan('build');
       announce(buildResult(report));
     } catch (e) {
-      say(e instanceof Error ? e.message : String(e), true);
+      cancelledOrFailed(e, 'The build');
     } finally {
       endJob();
     }
@@ -168,7 +174,7 @@ export function Build() {
       markRan(`fab:${name}`);
       announce(fabResult(report));
     } catch (e) {
-      say(e instanceof Error ? e.message : String(e), true);
+      cancelledOrFailed(e, 'Fab');
     } finally {
       endJob();
     }

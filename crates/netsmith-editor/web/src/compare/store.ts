@@ -5,7 +5,7 @@
 import { computed, effect, signal } from '@preact/signals';
 
 import type { Compare, GitInfo, Location } from '../api';
-import { ApiFailure, api } from '../client';
+import { ApiFailure, api, wasCancelled } from '../client';
 import { load, save } from '../storage';
 import { analysis, board, project, say } from '../store';
 import { type Category, type Scope, changeCount, marksOf } from './model';
@@ -23,7 +23,9 @@ export type CompareState =
   | { kind: 'idle' }
   | { kind: 'loading'; ref: string; since: number }
   | { kind: 'ready'; ref: string; data: Compare; /** A newer comparison is on its way. */ refreshing: boolean }
-  | { kind: 'failed'; ref: string; message: string; notARef: boolean };
+  | { kind: 'failed'; ref: string; message: string; notARef: boolean }
+  /** The person stopped the comparison (Cancel, or Escape in its card): nothing of it was kept. */
+  | { kind: 'cancelled'; ref: string };
 
 export const state = signal<CompareState>({ kind: 'idle' });
 
@@ -105,10 +107,23 @@ export async function runCompare(ref: string, quiet = false): Promise<void> {
     if (!data.error) rememberRef(gitInfo.peek(), ref);
   } catch (e) {
     if (mine !== seq) return;
+    if (wasCancelled(e)) {
+      state.value = { kind: 'cancelled', ref };
+      return;
+    }
     const failure = e instanceof ApiFailure ? e : null;
     state.value = { kind: 'failed', ref, message: e instanceof Error ? e.message : String(e), notARef: failure?.status === 404 || failure?.status === 400 };
   } finally {
     if (mine === seq) endCompareProgress();
+  }
+}
+
+/** Stop the comparison that is running. The request is answered `cancelled` a moment later, which puts the section in its own state. */
+export async function cancelCompare(): Promise<void> {
+  try {
+    await api.cancelCompare();
+  } catch (e) {
+    say(e instanceof Error ? e.message : String(e), true);
   }
 }
 

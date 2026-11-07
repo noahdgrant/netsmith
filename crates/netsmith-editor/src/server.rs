@@ -25,10 +25,11 @@ use serde::{Serialize, de::DeserializeOwned};
 use tokio::sync::{broadcast, mpsc};
 
 use crate::{
-    api::{ClientMessage, Definition, Pending, ServerMessage},
+    api::{CancelAnswer, ClientMessage, Definition, Pending, ServerMessage},
     assets,
     backend::{AnalysisEvent, ApiError, Backend, Observer},
 };
+use netsmith_core::job::Cancel;
 
 /// How often the watcher asks the backend whether a file changed.
 const WATCH_INTERVAL: Duration = Duration::from_millis(500);
@@ -89,6 +90,87 @@ struct AppState {
     events: broadcast::Sender<String>,
     running: Live,
     hosts: Vec<String>,
+    jobs: Arc<Jobs>,
+}
+
+/// The jobs that run for a request and can be cancelled (ADR 0062): each has the token the
+/// backend watches, filed under the kind of job, so that `POST /api/<kind>/cancel` reaches it
+/// and a request that goes away takes its job with it.
+#[derive(Default)]
+struct Jobs {
+    next: std::sync::atomic::AtomicU64,
+    running: Mutex<Vec<(&'static str, u64, Cancel)>>,
+}
+
+/// A job's place in [`Jobs`], given up when it is dropped. It goes into the thread that runs the
+/// job, so it is held until the job ends, whether or not the request that asked for it is still
+/// there to hear the answer.
+struct Registered {
+    jobs: Arc<Jobs>,
+    id: u64,
+}
+
+impl Jobs {
+    /// Starts a job of `kind`: its place in the registry, to be held by the job, and its token.
+    fn start(self: &Arc<Self>, kind: &'static str) -> (Registered, Cancel) {
+        let id = self.next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let token = Cancel::new();
+        self.running
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push((kind, id, token.clone()));
+        (
+            Registered {
+                jobs: Arc::clone(self),
+                id,
+            },
+            token,
+        )
+    }
+
+    /// Cancels every job of `kind` that is running. True if there was one.
+    fn cancel(&self, kind: &str) -> bool {
+        let running = self.running.lock().unwrap_or_else(|e| e.into_inner());
+        let mut any = false;
+        for (k, _, token) in running.iter() {
+            if *k == kind {
+                token.cancel();
+                any = true;
+            }
+        }
+        any
+    }
+}
+
+impl Drop for Registered {
+    fn drop(&mut self) {
+        self.jobs
+            .running
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|(_, id, _)| *id != self.id);
+    }
+}
+
+/// Cancels a job if it is dropped before [`CancelIfDropped::answered`]: held by the handler of a
+/// request, it is dropped with the handler's future when the client disconnects. Only the jobs
+/// that have nothing worth finishing for a page that left (a compare) hold one; a `fab` has files
+/// to write and goes on.
+struct CancelIfDropped(Option<Cancel>);
+
+impl CancelIfDropped {
+    /// The request got its answer: the job is over, however it ended.
+    fn answered(mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for CancelIfDropped {
+    fn drop(&mut self) {
+        if let Some(token) = &self.0 {
+            token.cancel();
+        }
+    }
 }
 
 type Shared = Arc<AppState>;
@@ -130,6 +212,7 @@ pub fn serve_with_backlog(
         events,
         running,
         hosts: vec![format!("127.0.0.1:{port}"), format!("localhost:{port}")],
+        jobs: Arc::default(),
     });
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -146,6 +229,8 @@ fn router(state: Shared) -> Router {
     Router::new()
         .route("/api/project", get(project))
         .route("/api/analysis", get(analysis))
+        .route("/api/analysis/cancel", post(cancel_analysis))
+        .route("/api/analysis/run", post(run_analysis))
         .route("/api/file", get(read_file).put(write_file))
         .route("/api/fs/create-file", post(create_file))
         .route("/api/fs/create-dir", post(create_dir))
@@ -160,6 +245,7 @@ fn router(state: Shared) -> Router {
         .route("/api/git", get(git))
         .route("/api/git/file", get(git_file))
         .route("/api/compare", get(compare))
+        .route("/api/compare/cancel", post(cancel_compare))
         .route("/api/catalog/refresh", post(refresh_catalogs))
         .route("/api/pcb/route", post(route_pcb))
         .route("/api/pcb/cancel", post(cancel_route))
@@ -168,10 +254,13 @@ fn router(state: Shared) -> Router {
         .route("/api/pcb/findings", get(pcb_findings))
         .route("/api/pcb/drc", post(pcb_drc))
         .route("/api/build", post(build))
+        .route("/api/build/cancel", post(cancel_build))
         .route("/api/fab", post(fab))
+        .route("/api/fab/cancel", post(cancel_fab))
         .route("/api/download", get(download))
         .route("/api/orders", get(orders))
         .route("/api/order", post(fab_order))
+        .route("/api/order/cancel", post(cancel_order))
         .route("/api/order/download", get(order_download))
         .route("/api/definition", post(definition))
         .route("/api/events", get(events))
@@ -322,6 +411,59 @@ async fn analysis(State(s): State<Shared>) -> Result<Json<crate::api::Analysis>,
     blocking(move || s.backend.analysis()).await.map(Json)
 }
 
+/// Stops the analysis of the files that is running, if one is (ADR 0062). It does not wait for
+/// it to end: the socket says `cancelled` when it has.
+async fn cancel_analysis(State(s): State<Shared>) -> Json<CancelAnswer> {
+    Json(CancelAnswer {
+        cancelled: s.backend.cancel_analysis(),
+    })
+}
+
+/// Analyses the files again now, as the page's "Run again" after a cancelled analysis. The
+/// answer is the reading; the socket carries the progress and `rebuilt` as for any analysis.
+async fn run_analysis(State(s): State<Shared>) -> Result<Json<crate::api::Analysis>, ApiError> {
+    blocking(move || s.backend.run_analysis()).await.map(Json)
+}
+
+/// Cancels the running jobs of `kind`.
+fn cancelling(s: &Shared, kind: &'static str) -> Json<CancelAnswer> {
+    Json(CancelAnswer {
+        cancelled: s.jobs.cancel(kind),
+    })
+}
+
+async fn cancel_compare(State(s): State<Shared>) -> Json<CancelAnswer> {
+    cancelling(&s, "compare")
+}
+
+async fn cancel_build(State(s): State<Shared>) -> Json<CancelAnswer> {
+    cancelling(&s, "build")
+}
+
+async fn cancel_fab(State(s): State<Shared>) -> Json<CancelAnswer> {
+    cancelling(&s, "fab")
+}
+
+async fn cancel_order(State(s): State<Shared>) -> Json<CancelAnswer> {
+    cancelling(&s, "order")
+}
+
+/// Tells every page that a job of `task` about `board` was cancelled, if `result` says it was.
+fn told_if_cancelled<T>(s: &Shared, task: &str, board: &str, result: &Result<T, ApiError>) {
+    if let Err(e) = result
+        && e.is_cancelled()
+    {
+        send(
+            &s.events,
+            &ServerMessage::Cancelled {
+                task: task.to_string(),
+                board: board.to_string(),
+                message: e.message.clone(),
+            },
+        );
+    }
+}
+
 async fn read_file(State(s): State<Shared>, Query(q): Query1) -> Result<Response, ApiError> {
     let path = param(&q, "path")?;
     json(move || s.backend.read_file(&path))
@@ -457,6 +599,9 @@ fn progress(s: &Shared, task: &str, board: &str) -> crate::backend::Say {
                 stage: None,
                 done: None,
                 total: None,
+                unit: None,
+                unit_done: None,
+                unit_total: None,
             },
         );
     })
@@ -486,7 +631,20 @@ async fn compare(
     let rev = param(&q, "ref")?;
     let board = q.get("board").cloned().filter(|b| !b.is_empty());
     let observe = job_observer(&s, "compare", &rev);
-    json(move || s.backend.compare(&rev, board.as_deref(), &observe)).await
+    // A page that goes away (the connection drops, and with it this future) takes the compare
+    // with it: nobody is left to read the answer, and it would hold the next compare up.
+    let (registered, token) = s.jobs.start("compare");
+    let disconnect = CancelIfDropped(Some(token.clone()));
+    let shared = Arc::clone(&s);
+    let asked = rev.clone();
+    let result = blocking(move || {
+        let _registered = registered;
+        s.backend.compare(&rev, board.as_deref(), &observe, &token)
+    })
+    .await?;
+    disconnect.answered();
+    told_if_cancelled(&shared, "compare", &asked, &result);
+    result.map(Json)
 }
 
 /// The events of an analysis that a job runs for itself, as `progress` messages of `task`
@@ -500,6 +658,7 @@ fn job_observer(s: &Shared, task: &str, key: &str) -> Observer {
             done,
             total,
             message,
+            work,
             ..
         } = event
         {
@@ -512,6 +671,9 @@ fn job_observer(s: &Shared, task: &str, key: &str) -> Observer {
                     stage: Some(stage),
                     done: Some(done),
                     total: Some(total),
+                    unit: work.as_ref().map(|w| w.unit.clone()),
+                    unit_done: work.as_ref().map(|w| w.done),
+                    unit_total: work.as_ref().and_then(|w| w.total),
                 },
             );
         }
@@ -564,7 +726,15 @@ async fn pcb_edit(
 
 async fn build(State(s): State<Shared>) -> Result<Json<crate::api::BuildReport>, ApiError> {
     let say = progress(&s, "build", "");
-    blocking(move || s.backend.build(&say)).await.map(Json)
+    let (registered, token) = s.jobs.start("build");
+    let events = Arc::clone(&s);
+    let result = blocking(move || {
+        let _registered = registered;
+        s.backend.build(&say, &token)
+    })
+    .await?;
+    told_if_cancelled(&events, "build", "", &result);
+    result.map(Json)
 }
 
 async fn fab(
@@ -574,7 +744,16 @@ async fn fab(
     let board = param(&q, "board")?;
     let say = progress(&s, "fab", &board);
     let allow = q.get("allow").is_some_and(|a| a == "1");
-    json(move || s.backend.fab(&board, allow, &say)).await
+    let (registered, token) = s.jobs.start("fab");
+    let shared = Arc::clone(&s);
+    let asked = board.clone();
+    let result = blocking(move || {
+        let _registered = registered;
+        s.backend.fab(&board, allow, &say, &token)
+    })
+    .await?;
+    told_if_cancelled(&shared, "fab", &asked, &result);
+    result.map(Json)
 }
 
 async fn orders(State(s): State<Shared>) -> Result<Json<Vec<crate::api::OrderInfo>>, ApiError> {
@@ -588,7 +767,16 @@ async fn fab_order(
     let name = param(&q, "name")?;
     let say = progress(&s, "order", &name);
     let allow = q.get("allow").is_some_and(|a| a == "1");
-    json(move || s.backend.fab_order(&name, allow, &say)).await
+    let (registered, token) = s.jobs.start("order");
+    let shared = Arc::clone(&s);
+    let asked = name.clone();
+    let result = blocking(move || {
+        let _registered = registered;
+        s.backend.fab_order(&name, allow, &say, &token)
+    })
+    .await?;
+    told_if_cancelled(&shared, "order", &asked, &result);
+    result.map(Json)
 }
 
 async fn order_download(State(s): State<Shared>, Query(q): Query1) -> Result<Response, ApiError> {
@@ -708,6 +896,7 @@ fn observer(events: &broadcast::Sender<String>, running: &Live) -> Observer {
                 done,
                 total,
                 message,
+                work,
             } => {
                 let message = ServerMessage::Progress {
                     task: "analyse".to_string(),
@@ -716,6 +905,9 @@ fn observer(events: &broadcast::Sender<String>, running: &Live) -> Observer {
                     stage: Some(stage),
                     done: Some(done),
                     total: Some(total),
+                    unit: work.as_ref().map(|w| w.unit.clone()),
+                    unit_done: work.as_ref().map(|w| w.done),
+                    unit_total: work.as_ref().and_then(|w| w.total),
                 };
                 if let Some(run) = live.as_mut() {
                     run.last = Some(message.clone());
@@ -731,6 +923,17 @@ fn observer(events: &broadcast::Sender<String>, running: &Live) -> Observer {
                     stage: None,
                     done: None,
                     total: None,
+                    unit: None,
+                    unit_done: None,
+                    unit_total: None,
+                },
+            ),
+            AnalysisEvent::Cancelled => send(
+                &events,
+                &ServerMessage::Cancelled {
+                    task: "analyse".to_string(),
+                    board: String::new(),
+                    message: "the analysis was cancelled".to_string(),
                 },
             ),
             AnalysisEvent::Finished => *live = None,
@@ -802,6 +1005,7 @@ fn failed_check(message: &str) -> crate::api::Analysis {
         panels: Vec::new(),
         module_uses: None,
         elapsed_ms: None,
+        cancelled: None,
     }
 }
 

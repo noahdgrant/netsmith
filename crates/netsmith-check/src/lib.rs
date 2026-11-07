@@ -119,6 +119,7 @@ pub fn check(name: &str, text: &str, loader: &Loader) -> Checked {
     let mut systems = Vec::new();
     let mut panels = Vec::new();
     for (index, def) in checker.module_defs(root).iter().enumerate() {
+        netsmith_core::job::checkpoint();
         let model = checker.elaborate(root, index);
         if matches!(def.kind, DefKind::Board | DefKind::System) {
             checker.extend(pin_faults(&model));

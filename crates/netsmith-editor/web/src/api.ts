@@ -203,7 +203,13 @@ moduleUses?: Array<ModuleUse>,
  * How long the analysis took, in milliseconds: of the files on disk for `/api/analysis`
  * and `rebuilt`, of the text on the page for `checked`.
  */
-elapsedMs?: number, };
+elapsedMs?: number, 
+/**
+ * The last analysis of the files on disk was cancelled (ADR 0062): this is the reading
+ * before it (or, for the first, an empty one with a note), which does not show the files as
+ * they are. It stays so until a file changes or `POST /api/analysis/run`.
+ */
+cancelled?: boolean, };
 
 export type Pending = { 
 /**
@@ -1115,6 +1121,8 @@ boards: Array<CompareBoard>,
  */
 problems: ProblemsDiff, };
 
+export type CancelAnswer = { cancelled: boolean, };
+
 export type ClientMessage = { "type": "check", id: number, path: string, text: string, };
 
-export type ServerMessage = { "type": "rebuilt", analysis: Analysis, elapsedMs?: number, } | { "type": "analysing", since: number, } | { "type": "checked", id: number, analysis: Analysis, } | { "type": "progress", task: string, board: string, message: string, stage?: string, done?: number, total?: number, };
+export type ServerMessage = { "type": "rebuilt", analysis: Analysis, elapsedMs?: number, } | { "type": "analysing", since: number, } | { "type": "checked", id: number, analysis: Analysis, } | { "type": "progress", task: string, board: string, message: string, stage?: string, done?: number, total?: number, unit?: string, unitDone?: number, unitTotal?: number, } | { "type": "cancelled", task: string, board: string, message: string, };

@@ -131,7 +131,7 @@ fn compare_with(
     observe: &Observer,
 ) -> Result<Compare, ApiError> {
     let _one = lock();
-    let result = w.compare(rev, board, observe);
+    let result = w.compare(rev, board, observe, &netsmith_editor::Cancel::new());
     assert_eq!(
         scratch_folders(),
         Vec::<String>::new(),
@@ -777,14 +777,26 @@ fn one_board_can_be_asked_for_and_an_unknown_one_is_404() {
     let (r, _, w) = committed("one", "");
     r.edit("src/main.nsm", "\"3V3\"", "\"VOUT\"");
     let _one = lock();
-    let c = w.compare("HEAD", Some("TwoBoards/led"), &silent()).unwrap();
+    let c = w
+        .compare(
+            "HEAD",
+            Some("TwoBoards/led"),
+            &silent(),
+            &netsmith_editor::Cancel::new(),
+        )
+        .unwrap();
     assert_eq!(c.boards.len(), 1);
     assert_eq!(c.boards[0].name, "TwoBoards/led");
     assert_eq!(c.summary, "No circuit changes");
     assert_eq!(
-        w.compare("HEAD", Some("Nope"), &silent())
-            .unwrap_err()
-            .status,
+        w.compare(
+            "HEAD",
+            Some("Nope"),
+            &silent(),
+            &netsmith_editor::Cancel::new()
+        )
+        .unwrap_err()
+        .status,
         404
     );
 }
@@ -1143,4 +1155,109 @@ fn what_the_tools_write_is_not_read_out_of_a_ref_nor_counted_among_the_new_files
         .find(|f| f.path == ".gitignore")
         .unwrap();
     assert_eq!(ignore.added, 1);
+}
+
+#[test]
+fn a_compare_that_is_cancelled_leaves_no_scratch_folder_no_reading_and_the_live_project_as_it_was()
+{
+    if !tools_here() {
+        return;
+    }
+    let repo = Repo::new("cancelled", "");
+    let first = repo.commit("first");
+    repo.edit("src/main.nsm", "\"3V3\"", "\"VOUT\"");
+    let w = repo.workspace();
+    let before = w.analysis();
+    assert_eq!(before.cancelled, None);
+
+    // Cancelled from inside, when the analysis of the ref begins to solve: the token is the
+    // compare's own, and the live project's analysis does not hear of it.
+    let _one = lock();
+    let token = netsmith_editor::Cancel::new();
+    let observe: Observer = {
+        let token = token.clone();
+        Arc::new(move |event| {
+            if let AnalysisEvent::Progress { stage, .. } = &event
+                && stage == "solve"
+            {
+                token.cancel();
+            }
+        })
+    };
+    let result = w.compare(&first, None, &observe, &token);
+    let error = result.expect_err("cancelled");
+    assert!(error.is_cancelled(), "{error:?}");
+    assert_eq!(error.status, 499);
+    assert_eq!(
+        scratch_folders(),
+        Vec::<String>::new(),
+        "the scratch folder went with the compare"
+    );
+    // The live project: the same reading, not cancelled, nothing began again.
+    let after = w.analysis();
+    assert_eq!(after, before);
+
+    // Nothing was kept of the ref: it is read again from the start, and is then kept.
+    let again = w
+        .compare(&first, None, &silent(), &netsmith_editor::Cancel::new())
+        .unwrap();
+    assert!(!again.cached, "the cancelled reading was not kept");
+    assert!(again.changed);
+    let third = w
+        .compare(&first, None, &silent(), &netsmith_editor::Cancel::new())
+        .unwrap();
+    assert!(third.cached);
+
+    // A token cancelled before it starts ends it before anything is read.
+    let early = netsmith_editor::Cancel::new();
+    early.cancel();
+    let error = w
+        .compare("HEAD", None, &silent(), &early)
+        .expect_err("cancelled");
+    assert!(error.is_cancelled());
+    assert_eq!(scratch_folders(), Vec::<String>::new());
+}
+
+#[test]
+fn a_compare_is_refused_while_the_analysis_of_the_files_on_disk_is_cancelled_and_works_after_it_runs_again()
+ {
+    if !tools_here() {
+        return;
+    }
+    let repo = Repo::new("cancelled-head", "");
+    repo.commit("first");
+    let w = Arc::new(
+        Workspace::open_deferred(Target::resolve_from(&repo.project, None).unwrap())
+            .unwrap_or_else(|e| panic!("{e}")),
+    );
+    // The first analysis is cancelled, once, when it begins to solve.
+    let asked = std::sync::atomic::AtomicBool::new(false);
+    let weak = Arc::downgrade(&w);
+    w.observe(Arc::new(move |event| {
+        if let AnalysisEvent::Progress { stage, .. } = &event
+            && stage == "solve"
+            && !asked.swap(true, std::sync::atomic::Ordering::SeqCst)
+            && let Some(w) = weak.upgrade()
+        {
+            assert!(w.cancel_analysis());
+        }
+    }));
+    assert_eq!(w.analysis().cancelled, Some(true));
+    let _one = lock();
+    let refused = w
+        .compare("HEAD", None, &silent(), &netsmith_editor::Cancel::new())
+        .expect_err("there is no reading of the files to compare");
+    assert_eq!(refused.status, 409, "{refused:?}");
+    assert!(
+        refused.message.contains("run the analysis again"),
+        "{}",
+        refused.message
+    );
+    assert_eq!(scratch_folders(), Vec::<String>::new());
+    // Run again: the analysis is whole, and the compare is too.
+    assert_eq!(w.run_analysis().cancelled, None);
+    let c = w
+        .compare("HEAD", None, &silent(), &netsmith_editor::Cancel::new())
+        .unwrap();
+    assert_eq!(c.error, None);
 }

@@ -22,6 +22,7 @@ status: accepted
 | `GET /` and its files | the page, from the binary |
 | `GET /api/project` | the title and the tree: top-level files, modules under `src/`, the manifest and the standard library (read-only), each with the definitions in it and their lines |
 | `GET /api/analysis` | `{version, errors, warnings, problems, boards, systems}` of the files on disk |
+| `POST /api/analysis/cancel`, `POST /api/analysis/run` | stop the analysis that is running (`{cancelled: bool}`); it publishes nothing and the last reading stays, with `analysis.cancelled` set until a file changes or `run` analyses again (ADR 0062) |
 | `GET /api/file?path=` | `{text, stamp, readonly}` |
 | `PUT /api/file?path=` with the text and the `X-Stamp` it was read at | writes the file atomically (a temporary file beside it, then a rename); `409` if the file changed on disk since the stamp, so a save never overwrites another program's edit |
 | `GET /api/board?name=` | the parts and nets of a board, with where each part is declared |
@@ -32,6 +33,7 @@ status: accepted
 | `GET /api/git` | whether the project is in a git work tree (`available`, else a `reason`), its branch, HEAD, whether the work tree and the project's folder are dirty, the refs to compare with (HEAD, the upstream, the default branch, branches, tags) and the last 30 commits; needs no analysis (ADR 0059) |
 | `GET /api/compare?ref=&board=` | what changed in the circuit between a git ref and the files on disk: parts, nets, rails, ports, bill of materials and problems, with the source line of each on both sides, `git diff --stat` numbers and a one-line summary; the ref is read with `git archive` and analysed by a workspace of its own, and kept by commit hash (ADR 0059) |
 | `GET /api/git/file?ref=&path=` | a source file of the project as it is at a ref, read only |
+| `POST /api/compare/cancel`, `POST /api/build/cancel`, `POST /api/fab/cancel`, `POST /api/order/cancel` | stop the running job of that kind (`{cancelled: bool}`); the job's own request answers `499`, and nothing it was making is kept (ADR 0062) |
 | `POST /api/pcb/route?board=`, `POST /api/pcb/cancel`, `GET /api/pcb/scene?board=` | place and route on demand (the answer says whether it stopped and how long it took); cancel stops the router and keeps what it routed; the scene has the drawing (a group for each layer, `data-net` on pads, tracks and vias, `data-ref` and `data-path` on parts, no key: the page lists the nets) and the parts, pads, keepouts and cutouts as data (ADR 0030) |
 | `POST /api/pcb/edit` with `{board, stamp, changes}` | writes changes to the layout file beside the board's source (atomic); `409` if the file or an entry is not as the page saw it, `400` if the board does not take the result; the answer is the scene |
 | `GET /api/pcb/findings?board=`, `POST /api/pcb/drc?board=` | what is wrong with the board, each finding with a point and a box; the second also runs KiCad's design rules check and keeps its result until the layout changes |
@@ -39,7 +41,7 @@ status: accepted
 | `POST /api/fab?board=` | run `fab` for the file of the board; the answer has its summary, `fab-notes.txt`, the design rules result and its output as the command line prints it |
 | `GET /api/download?board=&file=` | a file `fab` wrote: `gerbers`, `bom`, `cpl`, `notes` or `pcb` |
 | `POST /api/definition` with `{path, text, offset}` | where the name under the cursor is defined |
-| WebSocket `/api/events` | the server sends `rebuilt` with the new analysis when a file changes, `analysing` when an analysis begins, and `progress` with `{task, board, message}` while a route, `fab`, build, analysis or compare runs (the lines the command line prints to stderr; an analysis adds `stage`, `done` and `total`); the page sends `check` with `{id, path, text}` and gets `checked` with the same `id` |
+| WebSocket `/api/events` | the server sends `rebuilt` with the new analysis when a file changes, `analysing` when an analysis begins, and `progress` with `{task, board, message}` while a route, `fab`, build, analysis or compare runs (the lines the command line prints to stderr; an analysis adds `stage`, `done` and `total`, and the solver `unit`, `unitDone` and `unitTotal`: the parts it has chosen of those to choose), and `cancelled` with `{task, board, message}` when a job was cancelled (ADR 0062); the page sends `check` with `{id, path, text}` and gets `checked` with the same `id` |
 
 A path is a name in the tree (`src/main.nsm`, `std/sources.nsm`): the server accepts only those, so a request cannot read or write another file, and `..` means nothing. The editor does not create, rename or delete files.
 

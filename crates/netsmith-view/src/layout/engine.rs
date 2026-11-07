@@ -421,6 +421,7 @@ pub(super) fn run(
     let mut pair_of: BTreeMap<usize, pair::PairPlan> = BTreeMap::new();
     let mut pair_nets = vec![false; ctx.design.nets.len()];
     for u in 0..units.len() {
+        netsmith_core::job::checkpoint();
         if role[u] != Role::Satellite || units[u].parts.len() != 1 || claimed[u] {
             continue;
         }
@@ -442,6 +443,7 @@ pub(super) fn run(
     let mut chained: Vec<SatPlan> = Vec::new();
     let mut supply_use: BTreeMap<usize, usize> = BTreeMap::new();
     for u in 0..units.len() {
+        netsmith_core::job::checkpoint();
         if role[u] != Role::Satellite || claimed[u] {
             continue;
         }
@@ -549,6 +551,7 @@ pub(super) fn run(
     // A part between two rails whose supply no anchor pin is on stands beside a satellite that
     // is on it (the output capacitor beside the inductor).
     for u in 0..units.len() {
+        netsmith_core::job::checkpoint();
         if role[u] != Role::Satellite || claimed[u] || plans.iter().any(|c| c.unit == u) {
             continue;
         }
@@ -593,6 +596,7 @@ pub(super) fn run(
     let mut blocks: Vec<Block> = Vec::new();
     let mut tied = vec![false; units.len()];
     for &u in &anchors {
+        netsmith_core::job::checkpoint();
         let a = units[u].parts[0];
         let mine: Vec<&SatPlan> = plans.iter().filter(|s| s.root == a).collect();
         let rooms = bus_rooms.get(&a).map_or(&[][..], Vec::as_slice);
@@ -634,6 +638,7 @@ pub(super) fn run(
     let mut pieces: Vec<Piece> = Vec::new();
     let mut spine_nets: Vec<(usize, i32)> = Vec::new();
     for b in blocks {
+        netsmith_core::job::checkpoint();
         let ext = placed[b.anchor].extent;
         let (supplies, grounds) = rails_of(&b.members);
         spine_nets.extend(b.spine_nets.iter().copied());
@@ -651,6 +656,7 @@ pub(super) fn run(
         .filter(|&u| role[u] == Role::Free || (role[u] == Role::Satellite && !tied[u]))
         .collect();
     for &u in &free {
+        netsmith_core::job::checkpoint();
         let mut rect = inflate(
             unit_rect(ctx, &placed, &units[u], &shapes[u], None),
             FREE_GAP / 2.0,
@@ -1230,6 +1236,7 @@ fn build_block(
     }
     sorted.retain(|x| !done_rows.iter().any(|d| std::ptr::eq(*d, **x)));
     for plan in sorted {
+        netsmith_core::job::checkpoint();
         let (pin_at, pin_escape) = if plan.anchor == anchor {
             (a.pins[plan.pin].at, a.pins[plan.pin].escape)
         } else {

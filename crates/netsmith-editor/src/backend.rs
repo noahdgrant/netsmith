@@ -1,6 +1,8 @@
 //! What the server needs from a project, in one trait, so the server is tested without a
 //! compiler behind it and the compiler's crates do not depend on a web server.
 
+use netsmith_core::job::Cancel;
+
 use crate::api::{
     Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
     FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited,
@@ -88,7 +90,29 @@ impl ApiError {
     pub fn internal(message: impl Into<String>) -> Self {
         Self::new(500, message)
     }
+
+    /// The job was stopped on request (or because the request that asked for it went away):
+    /// `499`, with the structured form `{"code": "cancelled", "message": ...}`. Nothing the job
+    /// was making was kept.
+    pub fn cancelled(message: impl Into<String>) -> Self {
+        Self {
+            status: 499,
+            message: message.into(),
+            detail: Some(ErrorDetail {
+                code: CANCELLED.to_string(),
+                fields: Vec::new(),
+            }),
+        }
+    }
+
+    /// Whether this is [`ApiError::cancelled`].
+    pub fn is_cancelled(&self) -> bool {
+        self.status == 499
+    }
 }
+
+/// The `code` of the structured body of a cancelled job.
+pub const CANCELLED: &str = "cancelled";
 
 /// A file to download.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,6 +125,16 @@ pub struct Attachment {
 /// How a long job tells the page what it is doing: one line at a time, as the command line
 /// prints them. It may be called from any thread.
 pub type Say = std::sync::Arc<dyn Fn(&str) + Send + Sync>;
+
+/// How far a long call has got through a unit of work it counts as it goes (ADR 0062): `done`
+/// of `total` `unit`s, or only `done` when the total is not known. Never an estimate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Work {
+    /// What is counted, in the plural (`parts chosen`).
+    pub unit: String,
+    pub done: u32,
+    pub total: Option<u32>,
+}
 
 /// What an analysis of the files on disk tells the server while it runs (not the analysis of
 /// text on the page, which is a check).
@@ -116,7 +150,13 @@ pub enum AnalysisEvent {
         done: u32,
         total: u32,
         message: String,
+        /// What the stage has counted so far inside the board, if it counts anything (the
+        /// parts the solver has chosen).
+        work: Option<Work>,
     },
+    /// It was cancelled: nothing it made was kept, and the last reading stays. Sent before
+    /// [`AnalysisEvent::Finished`].
+    Cancelled,
     /// It ended in a panic. Sent before [`AnalysisEvent::Finished`]; the next `analysis` is the
     /// last good reading with an error problem that names the panic, and its version is new, so
     /// the page hears `rebuilt` and leaves "analysing".
@@ -152,6 +192,17 @@ pub trait Backend: Send + Sync + 'static {
     /// The check of the files on disk, made again first if one changed. Its `version` goes
     /// up each time that happens.
     fn analysis(&self) -> Analysis;
+    /// Stop the analysis of the files on disk that is running, if one is: it ends at its next
+    /// checkpoint, publishes nothing, and the last good reading stays (ADR 0062). True if one was
+    /// running. The next change to a file, or [`Backend::run_analysis`], analyses again.
+    fn cancel_analysis(&self) -> bool {
+        false
+    }
+    /// Analyse the files on disk now if the last analysis of them was cancelled (or none is
+    /// running and a file changed): the page's "Run again". Answers with the reading.
+    fn run_analysis(&self) -> Analysis {
+        self.analysis()
+    }
     /// `Some(milliseconds the first analysis has been running)` until it has finished, `None`
     /// from then on. A backend whose files are read before it is served is never pending.
     /// While it is `Some`, `analysis` blocks until the first analysis is done, and `version`
@@ -207,14 +258,18 @@ pub trait Backend: Send + Sync + 'static {
     /// is not as the change says it was, and with 400 if an entry is wrong; then nothing is
     /// written.
     fn pcb_edit(&self, edit: &PcbEdit) -> Result<PcbEdited, ApiError>;
-    /// Write the KiCad schematics.
-    fn build(&self, say: &Say) -> BuildReport;
+    /// Write the KiCad schematics. `cancel` stops it at its next checkpoint (`ApiError::cancelled`);
+    /// the schematics of a file written before are kept, none of the board it was on.
+    fn build(&self, say: &Say, cancel: &Cancel) -> Result<BuildReport, ApiError>;
     /// `allow_drc_violations`: go on although the design rules check fails or cannot run.
+    /// `cancel` stops it at its next checkpoint (`ApiError::cancelled`); the packages of the
+    /// boards it finished are kept, nothing of the board it was on.
     fn fab(
         &self,
         board: &str,
         allow_drc_violations: bool,
         say: &Say,
+        cancel: &Cancel,
     ) -> Result<FabReport, ApiError>;
     fn download(&self, board: &str, file: &str) -> Result<Attachment, ApiError>;
     /// The orders of the manifest (ADR 0035).
@@ -225,6 +280,7 @@ pub trait Backend: Send + Sync + 'static {
         name: &str,
         allow_drc_violations: bool,
         say: &Say,
+        cancel: &Cancel,
     ) -> Result<OrderReport, ApiError>;
     /// `summary` or `bom` of an order that was run.
     fn order_download(&self, name: &str, file: &str) -> Result<Attachment, ApiError>;
@@ -255,14 +311,16 @@ pub trait Backend: Send + Sync + 'static {
     /// It may take as long as an analysis; `observe` is told how far it has got (the events of
     /// an analysis, and the stages `extract` and `diff`), from any thread. Refused with 404 for
     /// a ref that does not exist and with 422 (`git_unavailable`) for a project that is not in
-    /// a git work tree.
+    /// a git work tree. `cancel` stops it at its next checkpoint (`ApiError::cancelled`); what it
+    /// had read of the ref is dropped, and the live project's analysis is not touched.
     fn compare(
         &self,
         rev: &str,
         board: Option<&str>,
         observe: &Observer,
+        cancel: &Cancel,
     ) -> Result<Compare, ApiError> {
-        let _ = (rev, board, observe);
+        let _ = (rev, board, observe, cancel);
         Err(ApiError::not_found("this backend cannot compare"))
     }
     /// The text of a file of the project as it is at `rev`, read from git (`readonly`, the

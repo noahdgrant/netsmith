@@ -787,6 +787,7 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
     let mut sourcing = Vec::new();
     let mut origins = Vec::new();
     for (_, id) in &ids {
+        netsmith_core::job::checkpoint();
         let inst = model.instance(*id);
         let letters = designator_of(model, *id, &mut errors);
         let n = counters.entry(letters.clone()).or_insert(0);
@@ -837,6 +838,7 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
     // Pins with no pad, gathered per part so each part is reported once.
     let mut padless: BTreeMap<InstId, Vec<String>> = BTreeMap::new();
     for net in model.nets() {
+        netsmith_core::job::checkpoint();
         let mut pins: Vec<PinRef> = Vec::new();
         for &terminal in &net.terminals {
             let part = owning_part(model, terminal);

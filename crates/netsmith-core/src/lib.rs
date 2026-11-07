@@ -3,6 +3,8 @@
 //! This is the seam between a future language front-end and the exporters.
 //! It deliberately knows nothing about KiCad.
 
+pub mod job;
+
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

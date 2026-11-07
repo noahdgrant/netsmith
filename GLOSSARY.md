@@ -362,6 +362,10 @@ _Avoid_: Dangling wire, spur, stub (a stub is the short wire straight out of a p
 What the editor says changed in the circuit between a git ref (the base) and the files on disk (the head): the parts, nets, rails, ports, bill of materials and problems that differ, each with its source line on both sides (ADR 0059). A part is the same on both sides by its path in the board, a net by its name or its pins, a rail by its net; a part that only has another designator is renumbered, not changed. It reads the ref with `git archive` and never touches the work tree. Not the _Netlist comparison_ (two designs that share no names) and not a text diff.
 _Avoid_: Diff (a diff compares lines), git diff, branch diff
 
+**Checkpoint**:
+A place in a long call (the checker's instances, a trial of the solver's search, a part or a net of lowering, a sheet or a pass of the schematic's layout, a move of the placer) that asks whether the job it belongs to was cancelled, and ends the call if so. A job is cancelled with a token (`netsmith_core::job::Cancel`) that the one who started it installs for its thread; a cancelled call unwinds to him with nothing of what it made kept, and the analysis that was cancelled leaves the last reading as it was (ADR 0062). It is the _Cancel_ button's reach: a call is stopped at its next checkpoint, not at once.
+_Avoid_: Interrupt, abort, kill (a job is never killed; it is asked, and ends where it can)
+
 **Power tree**:
 The view of a board's rails as cards: the voltage of each net a rail draws from, the total of the currents on it, and what the part that supplies it can give, joined left to right, from the sources to the loads, by the regulators and stages that make one rail from another and by the joins of a system. The numbers are the solver's, in the worst case.
 _Avoid_: Power diagram, rail map

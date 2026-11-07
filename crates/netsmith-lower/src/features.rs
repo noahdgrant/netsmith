@@ -173,6 +173,7 @@ fn heights(model: &Model, errors: &mut Vec<String>) -> Vec<PartHeight> {
     parts.sort();
     let mut found = Vec::new();
     for (path, id) in parts {
+        netsmith_core::job::checkpoint();
         let Some(height) = exact(model, id, "height", errors) else {
             continue;
         };
@@ -203,6 +204,7 @@ pub(crate) fn protrusions(
     parts.sort();
     let (mut found, mut sites) = (Vec::new(), Vec::new());
     for (path, id) in parts {
+        netsmith_core::job::checkpoint();
         let Some(Member::Field(field)) = model.member(id, "pin_protrusion") else {
             continue;
         };
@@ -380,6 +382,7 @@ fn labels(model: &Model, least_text: f64, errors: &mut Vec<String>) -> Vec<Label
     parts.sort();
     let mut found = Vec::new();
     for (path, id) in parts {
+        netsmith_core::job::checkpoint();
         let text = match domain(model, id, "text") {
             Some(Domain::Text(t)) if !t.is_empty() => t,
             _ => {
