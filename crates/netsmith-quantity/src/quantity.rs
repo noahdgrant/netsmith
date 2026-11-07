@@ -1,9 +1,15 @@
 //! A dimensioned interval `[lo, hi]` in SI base units.
 //!
-//! Every arithmetic result is rounded outward by one unit in the last place, so a
-//! computed range always contains the true one. That makes a requirement check
-//! conservative: it can reject a design that exactly touches a limit, never accept
-//! one that misses it. Values built from literals are not widened.
+//! Every arithmetic result is rounded outward, and only where the operation rounded: an
+//! end that the operation computes exactly (a sum of two doubles that fits, a product with
+//! zero, a quotient with no remainder) stays where it is, and an end that was rounded moves
+//! one unit in the last place towards the true value's side, so a computed range always
+//! contains the true one. The rounding of one operation is found exactly (TwoSum for a
+//! sum, a fused multiply-add for a product and a quotient), not guessed. That makes a
+//! requirement check conservative: it can reject a design that touches a limit only by a
+//! rounding error, never accept one that misses it, and a range that ends exactly at a
+//! limit (`16V - 0A * 100mΩ` against `..16V`) is not pushed past it by a widening that was
+//! not needed (ADR 0056). Values built from literals are not widened.
 
 use crate::dimension::Dimension;
 use crate::error::QuantityError;
@@ -34,7 +40,12 @@ impl Quantity {
         if lo > hi {
             return Err(QuantityError::EmptyRange);
         }
-        Ok(Self { dim, lo, hi })
+        // `+ 0.0` turns a negative zero into a zero, so a range never prints as `-0V`.
+        Ok(Self {
+            dim,
+            lo: lo + 0.0,
+            hi: hi + 0.0,
+        })
     }
 
     pub fn point(dim: Dimension, value: f64) -> Res<Self> {
@@ -128,23 +139,31 @@ impl Quantity {
 
     pub fn add(&self, other: &Self) -> Res<Self> {
         same_dim("add", self, other)?;
-        Self::widened(self.dim, self.lo + other.lo, self.hi + other.hi)
+        Self::interval(
+            self.dim,
+            add_ends(self.lo, other.lo).0,
+            add_ends(self.hi, other.hi).1,
+        )
     }
 
     pub fn sub(&self, other: &Self) -> Res<Self> {
         same_dim("subtract", self, other)?;
-        Self::widened(self.dim, self.lo - other.hi, self.hi - other.lo)
+        Self::interval(
+            self.dim,
+            add_ends(self.lo, -other.hi).0,
+            add_ends(self.hi, -other.lo).1,
+        )
     }
 
     pub fn mul(&self, other: &Self) -> Res<Self> {
         let products = [
-            self.lo * other.lo,
-            self.lo * other.hi,
-            self.hi * other.lo,
-            self.hi * other.hi,
+            mul_ends(self.lo, other.lo),
+            mul_ends(self.lo, other.hi),
+            mul_ends(self.hi, other.lo),
+            mul_ends(self.hi, other.hi),
         ];
         let (lo, hi) = extremes(&products);
-        Self::widened(self.dim * other.dim, lo, hi)
+        Self::interval(self.dim * other.dim, lo, hi)
     }
 
     pub fn div(&self, other: &Self) -> Res<Self> {
@@ -152,13 +171,13 @@ impl Quantity {
             return Err(QuantityError::DivisorContainsZero);
         }
         let quotients = [
-            self.lo / other.lo,
-            self.lo / other.hi,
-            self.hi / other.lo,
-            self.hi / other.hi,
+            div_ends(self.lo, other.lo),
+            div_ends(self.lo, other.hi),
+            div_ends(self.hi, other.lo),
+            div_ends(self.hi, other.hi),
         ];
         let (lo, hi) = extremes(&quotients);
-        Self::widened(self.dim / other.dim, lo, hi)
+        Self::interval(self.dim / other.dim, lo, hi)
     }
 
     /// The values both ranges allow, or `None` if they do not overlap.
@@ -177,10 +196,6 @@ impl Quantity {
         same_dim("compare", self, other)?;
         Ok(self.lo <= other.lo && other.hi <= self.hi)
     }
-
-    fn widened(dim: Dimension, lo: f64, hi: f64) -> Res<Self> {
-        Self::interval(dim, down(lo), up(hi))
-    }
 }
 
 fn same_dim(op: &'static str, a: &Quantity, b: &Quantity) -> Res<()> {
@@ -195,10 +210,72 @@ fn same_dim(op: &'static str, a: &Quantity, b: &Quantity) -> Res<()> {
     }
 }
 
-fn extremes(values: &[f64; 4]) -> (f64, f64) {
-    let lo = values.iter().copied().fold(f64::INFINITY, f64::min);
-    let hi = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+/// The lowest lower end and the highest upper end of four `(lower, upper)` pairs.
+fn extremes(values: &[(f64, f64); 4]) -> (f64, f64) {
+    let lo = values.iter().map(|v| v.0).fold(f64::INFINITY, f64::min);
+    let hi = values.iter().map(|v| v.1).fold(f64::NEG_INFINITY, f64::max);
     (lo, hi)
+}
+
+/// An operand (or a result) outside this range of magnitudes is widened by a full unit and
+/// not examined, because the error of a product or a quotient could be lost to underflow
+/// there and its sign could not be read. Zero is always examined.
+const SAFE_LOW: f64 = 1e-100;
+const SAFE_HIGH: f64 = 1e100;
+
+fn plain(x: f64) -> bool {
+    let a = x.abs();
+    a == 0.0 || (SAFE_LOW..=SAFE_HIGH).contains(&a)
+}
+
+/// Where the real result lies, given the rounded one and the sign of the rounding error
+/// (`true result - rounded`): the rounded result is the end that the error does not
+/// push past, and the other end moves one unit.
+fn directed(rounded: f64, error_sign: f64) -> (f64, f64) {
+    if error_sign < 0.0 {
+        (down(rounded), rounded)
+    } else if error_sign > 0.0 {
+        (rounded, up(rounded))
+    } else {
+        (rounded, rounded)
+    }
+}
+
+/// `a + b` rounded down and rounded up, found exactly (Knuth's TwoSum).
+fn add_ends(a: f64, b: f64) -> (f64, f64) {
+    let s = a + b;
+    if !s.is_finite() || !a.is_finite() || !b.is_finite() {
+        return (s, s);
+    }
+    let bb = s - a;
+    let error = (a - (s - bb)) + (b - bb);
+    directed(s, error)
+}
+
+/// `a * b` rounded down and rounded up. A product with zero is exact.
+fn mul_ends(a: f64, b: f64) -> (f64, f64) {
+    let p = a * b;
+    if !p.is_finite() || a == 0.0 || b == 0.0 {
+        return (p, p);
+    }
+    if !(plain(a) && plain(b)) || p.abs() < SAFE_LOW {
+        return (down(p), up(p));
+    }
+    directed(p, a.mul_add(b, -p))
+}
+
+/// `a / b` rounded down and rounded up (`b` is not zero). A quotient of zero is exact.
+fn div_ends(a: f64, b: f64) -> (f64, f64) {
+    let q = a / b;
+    if !q.is_finite() || a == 0.0 {
+        return (q, q);
+    }
+    if !(plain(a) && plain(b)) || q.abs() < SAFE_LOW {
+        return (down(q), up(q));
+    }
+    // `a - q * b` is the remainder, exactly; the quotient's error has its sign over `b`'s.
+    let remainder = (-q).mul_add(b, a);
+    directed(q, remainder * b.signum())
 }
 
 fn down(x: f64) -> f64 {

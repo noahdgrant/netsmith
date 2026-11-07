@@ -158,17 +158,30 @@ fn a_part_with_nothing_that_fits_is_reported_as_it_was() {
 }
 
 #[test]
-fn a_range_that_just_misses_is_reported_as_it_was() {
+fn a_range_that_misses_by_a_hair_is_refused_with_its_numbers() {
+    // `a * 3.001` ends at 303.101, a hair past the 303 that `z` can be.
     let s = run(
-        &bench_mid(4, ".z.resistance == .a.resistance * 3"),
+        &bench_mid(4, ".z.resistance == .a.resistance * 3.001"),
         &catalogs(3),
     );
     assert_eq!(
         messages(&s),
-        [
-            "no combination of candidates satisfies `a` and `u01` and `u02` and `u03` and `u04` and `z` together: the closest, a = 100 1% and u01 = 100 1% and u02 = 100 1% and u03 = 100 1% and u04 = 100 1% and z = 300 1%, fails because `z.resistance` must stay within 297Ω..303Ω, but (a.resistance * 3) works out to 297Ω..303Ω"
-        ]
+        ["the `resistor` catalog has nothing for `z`, which needs nothing in particular"]
     );
+}
+
+/// The range of `a * 3` is 297 to 303 exactly, which is the range of `z`: nothing in the
+/// arithmetic rounds, so the range is not pushed past the limit (ADR 0056). It used to be
+/// refused, with the same two ranges in the message.
+#[test]
+fn a_range_that_touches_exactly_is_accepted() {
+    let s = run(
+        &bench_mid(4, ".z.resistance == .a.resistance * 3"),
+        &catalogs(3),
+    );
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert!(unresolved(&s).is_empty());
+    assert!(!s.picks.is_empty());
 }
 
 #[test]
