@@ -2624,7 +2624,7 @@ impl Solver<'_> {
                 // A row with no value there fits no design that asks for one (a rating it
                 // does not state cannot be shown to be met). A design that does not mention
                 // the field has no use for the value, so the row is still offered, but only
-                // for a column that a catalog may leave empty (`table::OPTIONAL`): an empty
+                // for a column that a catalog may leave empty (`Standard::is_optional`): an empty
                 // package or resistance is not a value that nothing needs.
                 (None, _) => self.may_be_empty(part, key) && !self.asked(*f),
                 (Some(Value::Open(sense)), _) => self.need_of(*f, *sense).is_some(),
