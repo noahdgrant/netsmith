@@ -892,13 +892,17 @@ fn open_circle_findings(
                 paths.sort();
                 paths
             };
-            let mut shown = quote(&c.fields);
-            let more = shown.len().saturating_sub(CIRCULAR_SHOWN);
-            shown.truncate(CIRCULAR_SHOWN);
-            let more = match more {
-                0 => String::new(),
-                n => format!(" and {n} more"),
+            // The first few, in path order, and how many more there are.
+            let names = |fields: &[FieldId]| -> String {
+                let mut shown = quote(fields);
+                let more = shown.len().saturating_sub(CIRCULAR_SHOWN);
+                shown.truncate(CIRCULAR_SHOWN);
+                match more {
+                    0 => shown.join(", "),
+                    n => format!("{} and {n} more", shown.join(", ")),
+                }
             };
+            let shown = names(&c.fields);
             // The design's own checks come before the library's (a part's rating): the line
             // shows only the first few.
             let mut order = c.checks.clone();
@@ -922,15 +926,16 @@ fn open_circle_findings(
             };
             let start = start_of(whole, &c.fields);
             let waits = |c: &netsmith_solve::OpenCircle| -> Option<(String, InstId)> {
-                if c.closed {
+                // No sentence with an empty list in it: a group that waits on nothing to name
+                // is advised like a closed one.
+                if c.closed || c.waiting.is_empty() {
                     return None;
                 }
-                let waiting = quote(&c.waiting);
                 Some((
                     format!(
                         "a range on them alone would not start them, because they also read {}, which nothing states: state {} first",
-                        waiting.join(", "),
-                        if waiting.len() == 1 { "it" } else { "them" }
+                        names(&c.waiting),
+                        if c.waiting.len() == 1 { "it" } else { "them" }
                     ),
                     c.waiting
                         .first()
@@ -1003,8 +1008,7 @@ fn open_circle_findings(
             Guideline {
                 rule: "open circle",
                 message: format!(
-                    "these values depend on each other and none has a value: {}{more}; so the checks {listed}{rest} are not evaluated, and the parts they would judge are chosen without them; {what_to_state}",
-                    shown.join(", ")
+                    "these values depend on each other and none has a value: {shown}; so the checks {listed}{rest} are not evaluated, and the parts they would judge are chosen without them; {what_to_state}"
                 ),
                 at: Some(at),
             }
