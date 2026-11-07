@@ -10,7 +10,7 @@ use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 
 use netsmith_check::{Domain, FieldId, InstId, InstKind, RExpr, Relation, SourceId};
 use netsmith_lang::Span;
-use netsmith_lang::ast::CmpOp;
+use netsmith_lang::ast::{BinOp, CmpOp};
 
 use super::{Job, OpenCircle, Solver, Verdict};
 use crate::eval::fields_in;
@@ -30,6 +30,11 @@ pub struct UnconstrainedPick {
     /// if there is one: the one a board can state, and what two parts that hang from one
     /// member are reported together by.
     pub held_by: Option<HeldBy>,
+    /// The checks that limit the pick only as a ratio, where there are any: they hold whatever
+    /// the size of the value is, as long as the picks they name are scaled together (a divider's
+    /// output voltage fixes the ratio of its two resistors and not either of them). Where each
+    /// is written. The pick is unconstrained in size all the same.
+    pub ratio: Vec<(SourceId, Span)>,
 }
 
 /// The member a part's value is held to.
@@ -70,6 +75,10 @@ pub(super) struct Survey {
     field: FieldId,
     limits: Vec<Limit>,
     held_by: Option<HeldBy>,
+    /// The fields that hold the pick's value (the part's, the members it is held to, what `~`
+    /// joins to them), and what is worked out from them.
+    family: HashSet<FieldId>,
+    reach: HashSet<FieldId>,
 }
 
 /// How fields are linked, built once for a solve.
@@ -115,12 +124,26 @@ impl Solver<'_> {
                 family.entry(*g).or_default().push((*out, Some(i)));
             }
         }
+        // A balance carries a value to a term only where the solver could set that term from
+        // the others (`solve_balance_but`): never to a stated current, which is a budget and is
+        // judged and not set (ADR 0038), and never to a part's own current on a net of more than
+        // two live terms or an incomplete balance (ADR 0026, ADR 0027). Otherwise a pick would
+        // seem to decide the current of every load on the nets it is on.
         for b in self.model.balances().iter().filter(|b| !b.returns) {
+            let live = b
+                .draws
+                .iter()
+                .filter(|d| !self.model.draw_is_zero(d))
+                .count();
             for d in &b.draws {
                 for o in &b.draws {
-                    if o.field != d.field {
-                        worked_out.entry(d.field).or_default().push(o.field);
+                    if o.field == d.field || self.stated.contains_key(&o.field) {
+                        continue;
                     }
+                    if self.is_part_current(o) && (live > 2 || !b.is_complete()) {
+                        continue;
+                    }
+                    worked_out.entry(d.field).or_default().push(o.field);
                 }
             }
         }
@@ -241,9 +264,15 @@ impl Solver<'_> {
                 }
             }
             for (i, b) in self.model.balances().iter().enumerate() {
+                // A stated current on the net limits the pick only if the pick's value changes
+                // whether the budget holds: some other term of the net is worked out from it.
+                // A load that the pick does not feed is compared with the net's other terms,
+                // which the pick does not change.
                 if !b.returns
-                    && b.draws.iter().any(|d| reach.contains(&d.field))
                     && b.draws.iter().any(|d| self.stated.contains_key(&d.field))
+                    && b.draws
+                        .iter()
+                        .any(|d| reach.contains(&d.field) && !self.stated.contains_key(&d.field))
                 {
                     limits.push(Limit::Budget(i));
                 }
@@ -280,6 +309,8 @@ impl Solver<'_> {
                 field,
                 limits,
                 held_by,
+                family: family.keys().copied().collect(),
+                reach,
             });
         }
         out
@@ -298,8 +329,9 @@ impl Solver<'_> {
     }
 
     /// The surveyed picks that nothing limited: none of what might limit them was judged once
-    /// the model was solved. A pick whose only limits wait for a value that nothing sets is
-    /// left to the open circle that names those checks (one finding for one cause).
+    /// the model was solved, or only checks that hold whatever the size of the values is. A
+    /// pick whose only limits wait for a value that nothing sets is left to the open circle that
+    /// names those checks (one finding for one cause).
     pub(super) fn unconstrained_picks(
         &self,
         surveys: &[Survey],
@@ -323,15 +355,84 @@ impl Solver<'_> {
                 })
             }
         };
+        let picked: Vec<&Survey> = surveys
+            .iter()
+            .filter(|s| self.picks.iter().any(|p| p.part == s.part))
+            .collect();
+        // The picks whose size nothing limits. A check that holds whatever the size is, when
+        // the picks that it reads are all scaled together (the output of a divider of two
+        // unstated resistors), limits the ratio and not the size (`SizeBlind`). A pick that a
+        // check limits in size leaves the set, and a check that read it is then no longer
+        // blind to the picks that remain: they are tied to a value that is not free.
+        let definitions = SizeBlind::new(self);
+        let mut free: Vec<bool> = vec![true; picked.len()];
+        loop {
+            let scaled: HashSet<FieldId> = picked
+                .iter()
+                .zip(&free)
+                .filter(|(_, f)| **f)
+                .flat_map(|(s, _)| s.family.iter().copied())
+                .collect();
+            let reach: HashSet<FieldId> = picked
+                .iter()
+                .zip(&free)
+                .filter(|(_, f)| **f)
+                .flat_map(|(s, _)| s.reach.iter().copied())
+                .collect();
+            let mut changed = false;
+            for (i, s) in picked.iter().enumerate() {
+                if !free[i] {
+                    continue;
+                }
+                let limited = s.limits.iter().any(|l| {
+                    judged(l)
+                        && match l {
+                            Limit::Relation(r, _) => !definitions.blind(self, r, &scaled, &reach),
+                            Limit::Budget(_) => true,
+                        }
+                });
+                if limited {
+                    free[i] = false;
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+        let scaled: HashSet<FieldId> = picked
+            .iter()
+            .zip(&free)
+            .filter(|(_, f)| **f)
+            .flat_map(|(s, _)| s.family.iter().copied())
+            .collect();
+        let reach: HashSet<FieldId> = picked
+            .iter()
+            .zip(&free)
+            .filter(|(_, f)| **f)
+            .flat_map(|(s, _)| s.reach.iter().copied())
+            .collect();
         let mut out = Vec::new();
-        for s in surveys {
+        for (s, free) in picked.iter().zip(free) {
+            if !free {
+                continue;
+            }
             let Some(pick) = self.picks.iter().find(|p| p.part == s.part) else {
                 continue;
             };
-            if s.limits.iter().any(judged) {
-                continue;
-            }
-            if !s.limits.is_empty() && s.limits.iter().all(named_by_a_circle) {
+            let ratio: Vec<(SourceId, Span)> = s
+                .limits
+                .iter()
+                .filter_map(|l| match l {
+                    Limit::Relation(r, _)
+                        if judged(l) && definitions.blind(self, r, &scaled, &reach) =>
+                    {
+                        Some((r.source, r.span))
+                    }
+                    _ => None,
+                })
+                .collect();
+            if ratio.is_empty() && !s.limits.is_empty() && s.limits.iter().all(named_by_a_circle) {
                 continue;
             }
             out.push(UnconstrainedPick {
@@ -340,6 +441,7 @@ impl Solver<'_> {
                 field: s.field,
                 row: pick.candidate.clone(),
                 held_by: s.held_by.clone(),
+                ratio,
             });
         }
         out
@@ -448,5 +550,122 @@ impl Solver<'_> {
                 checks: checks.into_iter().collect(),
             })
             .collect()
+    }
+}
+
+/// Whether a check holds whatever the size of the unconstrained picks is (ADR 0065, "A ratio is
+/// not a size"). The picks scale together by one factor, and the check is expanded through the
+/// equations that define the values it reads: if both of its sides are homogeneous of the same
+/// degree, the check is unchanged by the scaling, so it says nothing about the size. What it
+/// cannot expand (a value worked out by a balance, by a join, by two equations) it cannot call
+/// blind, which leaves the pick limited: the finding is missed and never made wrongly.
+struct SizeBlind {
+    /// The equation that defines each field, when it has exactly one `==` with it alone on the
+    /// left: the index into the model's relations.
+    defined: HashMap<FieldId, usize>,
+    /// Fields that a join or a balance also gives a value to.
+    otherwise: HashSet<FieldId>,
+}
+
+impl SizeBlind {
+    fn new(solver: &Solver<'_>) -> Self {
+        let mut count: HashMap<FieldId, (usize, usize)> = HashMap::new();
+        for (i, r) in solver.model.relations().iter().enumerate() {
+            if let (CmpOp::EqEq, RExpr::Field(f)) = (&r.op, &r.lhs) {
+                let e = count.entry(*f).or_insert((0, i));
+                e.0 += 1;
+            }
+        }
+        let defined = count
+            .into_iter()
+            .filter(|(_, (n, _))| *n == 1)
+            .map(|(f, (_, i))| (f, i))
+            .collect();
+        let mut otherwise: HashSet<FieldId> = solver
+            .model
+            .equalities()
+            .iter()
+            .flat_map(|&(a, b)| [a, b])
+            .collect();
+        otherwise.extend(
+            solver
+                .model
+                .balances()
+                .iter()
+                .flat_map(|b| b.draws.iter().map(|d| d.field)),
+        );
+        Self { defined, otherwise }
+    }
+
+    /// The degree of homogeneity of `e` when every field of `scaled` is multiplied by one
+    /// factor: `None` if it is not homogeneous or cannot be told.
+    fn degree(
+        &self,
+        solver: &Solver<'_>,
+        e: &RExpr,
+        scaled: &HashSet<FieldId>,
+        reach: &HashSet<FieldId>,
+        open: &mut Vec<FieldId>,
+    ) -> Option<i32> {
+        match e {
+            RExpr::Const(_) => Some(0),
+            RExpr::Text(_) => None,
+            RExpr::Neg(inner) => self.degree(solver, inner, scaled, reach, open),
+            RExpr::Bin(op, a, b) => {
+                let da = self.degree(solver, a, scaled, reach, open)?;
+                let db = self.degree(solver, b, scaled, reach, open)?;
+                match op {
+                    BinOp::Add | BinOp::Sub => (da == db).then_some(da),
+                    BinOp::Mul => Some(da + db),
+                    BinOp::Div => Some(da - db),
+                }
+            }
+            RExpr::Field(f) => {
+                if scaled.contains(f) {
+                    return Some(1);
+                }
+                // Not worked out from any of the picks: it does not change with them.
+                if !reach.contains(f) {
+                    return Some(0);
+                }
+                if open.contains(f) || self.otherwise.contains(f) {
+                    return None;
+                }
+                let i = *self.defined.get(f)?;
+                open.push(*f);
+                let degree = self.degree(
+                    solver,
+                    &solver.model.relations()[i].rhs,
+                    scaled,
+                    reach,
+                    open,
+                );
+                open.pop();
+                degree
+            }
+        }
+    }
+
+    /// Whether the check `r` is the same for every scaling of the picks.
+    fn blind(
+        &self,
+        solver: &Solver<'_>,
+        r: &Relation,
+        scaled: &HashSet<FieldId>,
+        reach: &HashSet<FieldId>,
+    ) -> bool {
+        let mut open = Vec::new();
+        match (&r.op, &r.lhs) {
+            // A check that an equation or narrowing makes against a range its left side has of
+            // its own: that range does not scale.
+            (CmpOp::EqEq | CmpOp::Narrow, RExpr::Field(_)) => {
+                self.degree(solver, &r.rhs, scaled, reach, &mut open) == Some(0)
+            }
+            _ => {
+                let l = self.degree(solver, &r.lhs, scaled, reach, &mut open);
+                let rr = self.degree(solver, &r.rhs, scaled, reach, &mut open);
+                l.is_some() && l == rr
+            }
+        }
     }
 }
