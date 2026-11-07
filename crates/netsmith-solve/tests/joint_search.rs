@@ -105,7 +105,7 @@ fn a_part_no_candidate_can_serve_is_named_at_once_however_many_parts_are_tied_to
 #[test]
 fn a_bound_the_other_parts_can_help_is_not_blamed_on_one_part() {
     // `z` and `u01` together: neither is the cause alone, so the search runs as it did and the
-    // message names the parts searched together.
+    // message names the two parts that the failure is made of, and not `u02`.
     let s = run(
         &tied(2, ".u01.resistance + .z.resistance >= 1Mohm"),
         &catalogs(3),
@@ -113,7 +113,7 @@ fn a_bound_the_other_parts_can_help_is_not_blamed_on_one_part() {
     let m = messages(&s);
     assert_eq!(m.len(), 1, "{m:#?}");
     assert!(
-        m[0].starts_with("no combination of candidates satisfies `u01` and `u02` and `z` together"),
+        m[0].starts_with("no combination of candidates satisfies `u01` and `z` together"),
         "{}",
         m[0]
     );
