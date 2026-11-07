@@ -10,6 +10,7 @@ import { ALL, canStep, stepPick } from '../sheets';
 import type { Sheet } from '../schematic/drawing';
 import { filterSheets, parseTitle, rowHover, type SheetStats } from '../schematic/nav';
 import { EmptyState } from '../components/ui';
+import { SeverityMark } from '../components/Icons';
 import { plural } from '../util';
 
 /** A sheet as the lists show it. */
@@ -50,13 +51,12 @@ function Badges({ stats }: { stats: SheetStats | undefined }) {
         </span>
       )}
       {bad > 0 && (
-        <span
-          class={`sl-badge ${stats.errors > 0 ? 'bad' : 'warn'}`}
-          title={`${plural(stats.errors, 'error')}, ${plural(stats.warnings, 'warning')}`}
-          aria-label={`${plural(stats.errors, 'error')}, ${plural(stats.warnings, 'warning')}`}
-        >
-          ! {bad}
-        </span>
+        <SeverityMark
+          badge
+          severity={stats.errors > 0 ? 'error' : 'warning'}
+          count={bad}
+          counts={{ error: stats.errors, warning: stats.warnings }}
+        />
       )}
     </span>
   );

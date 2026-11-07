@@ -20,6 +20,10 @@ class Mark extends GutterMarker {
   toDOM() {
     const el = iconDom(this.severity, 14, `cm-sev ${this.severity}`);
     el.title = this.message;
+    // named like every other mark of a severity, with the word first (CodeMirror hides its gutters from a screen reader; the line's own
+    // diagnostic is read in the editor's lint tooltip and the Problems dock)
+    el.setAttribute('role', 'img');
+    el.setAttribute('aria-label', `${this.severity === 'error' ? 'Error' : 'Warning'}: ${this.message}`);
     el.setAttribute('data-testid', `gutter-${this.severity}`);
     return el;
   }

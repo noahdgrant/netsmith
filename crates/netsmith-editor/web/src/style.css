@@ -158,7 +158,6 @@ button.tab { background: none; border: none; font: inherit; }
 .sev-toggle:active { background: var(--hover-strong); }
 .sev-toggle.on { background: var(--surface-3); color: var(--text); }
 .sev-toggle .n { font-variant-numeric: tabular-nums; font-weight: var(--fw-semibold); }
-.sev-toggle.error .icon { color: var(--danger); } .sev-toggle.warning .icon { color: var(--warning); } .sev-toggle.note .icon { color: var(--info); }
 .sev-toggle:not(.on) .icon { opacity: .5; }
 .sev-toggle .name { color: var(--text-muted); }
 @media (max-width: 1000px) { .sev-toggle .name { display: none; } }
@@ -194,6 +193,10 @@ button.tab { background: none; border: none; font: inherit; }
 .problem .msg, .problem .where, .problem .scope, .problem .origin { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .problem .origin { color: var(--text-faint); }
 .problem .where { color: var(--text-muted); font-family: var(--mono); font-size: var(--fs-sm); letter-spacing: 0; }
+.problem .where-link { max-width: 100%; padding: 0.125rem 0.25rem; margin: 0 -0.25rem; border: 0; border-radius: var(--r-xs); background: none; color: inherit; font: inherit; letter-spacing: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; text-decoration: underline transparent; text-underline-offset: 2px; }
+.problem:hover .where-link, .problem:focus-within .where-link { text-decoration-color: var(--text-faint); }
+.problem .where-link:hover { color: var(--accent-text); text-decoration-color: currentColor; }
+.problem .where-link:focus-visible { outline: 2px solid var(--sel); outline-offset: 0; color: var(--accent-text); text-decoration-color: currentColor; }
 .problem .scope { color: var(--text-faint); font-family: var(--mono); font-size: var(--fs-sm); letter-spacing: 0; }
 @media (max-width: 900px) { .dock-cols, .problem { grid-template-columns: 1.625rem minmax(0, 1fr) 9.375rem; } .dock-cols > :nth-child(3), .problem .origin, .dock-cols > :nth-child(5), .problem .scope { display: none; } }
 .dock-group-head { display: flex; align-items: center; gap: 0.5rem; height: 1.625rem; padding: 0 0.875rem; font-size: var(--fs-xs); color: var(--text-faint); font-weight: var(--fw-semibold); background: color-mix(in srgb, var(--text) 3%, transparent); }
@@ -216,7 +219,7 @@ button.tab { background: none; border: none; font: inherit; }
 .statusbar .counts .e .icon { color: var(--text-faint); }
 .statusbar .counts.bad { background: var(--danger-bg); }
 .statusbar .counts.bad .e, .statusbar .counts.bad .e .icon { color: var(--danger-text); }
-.statusbar .counts .w .icon { color: var(--warning); }
+.statusbar .counts .nt { color: var(--text-muted); }
 .statusbar .counts .w { color: var(--text-muted); }
 .statusbar .analysing { color: var(--accent-text); }
 .statusbar .stale { color: var(--warning-text); }
@@ -929,7 +932,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .sl-badges { display: flex; gap: 0.1875rem; flex: none; }
 .sl-badge { min-width: 1.6em; padding: 0 0.3125rem; border-radius: var(--r-pill); background: var(--surface-raised); border: 1px solid var(--border); color: var(--text-muted); font-size: 0.6875rem; text-align: center; font-variant-numeric: tabular-nums; }
 .sl-badge.leave { color: var(--info); }
-.sl-badge.bad { color: var(--danger); border-color: var(--danger-line); } .sl-badge.warn { color: var(--warning); border-color: var(--warning-line); }
 .sl-none { padding: 0.625rem 0.75rem; color: var(--text-faint); }
 
 /* the overview */

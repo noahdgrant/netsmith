@@ -48,6 +48,8 @@ const FIXTURES = {
   led_panel: 'examples/led_panel.nsm',
   // A header with a requirement on where it goes and a layout file that breaks it (ADR 0045).
   constrained: 'scripts/editor-verify-js/fixtures/constrained.nsm',
+  // A board whose rail is drawn too thin for its current: two guideline warnings, and it builds. For the warning markers.
+  warn_bench: 'scripts/editor-verify-js/fixtures/warn_bench.nsm',
   // A project with no board: the views say where to write the first one.
   empty: 'scripts/editor-verify-js/fixtures/empty.nsm',
   // The LED example with a project catalog and a fake LCSC endpoint (ADR 0039).

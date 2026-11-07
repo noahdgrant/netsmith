@@ -7,7 +7,7 @@ import { computed, effect, signal } from '@preact/signals';
 import { noteError } from '../diagnostics';
 import { load, save } from '../storage';
 import { DOCK_DEFAULT, type DockPrefs, clampDock, parseDock } from './dock';
-import { DEFAULT_FILTER, type Filter, type Group } from './problems';
+import { DEFAULT_FILTER, type Filter, type Group, parseGroup } from './problems';
 import {
   type Analysed,
   type Connection,
@@ -30,7 +30,7 @@ export const dock = signal<DockPrefs>(parseDock(load<unknown>(DOCK_KEY, null)));
 effect(() => save(DOCK_KEY, dock.value));
 
 export const filter = signal<Filter>({ ...DEFAULT_FILTER, ...load<Partial<Filter>>(FILTER_KEY, {}), text: '' });
-export const group = signal<Group>(load<Group>(`${FILTER_KEY}.group`, 'none'));
+export const group = signal<Group>(parseGroup(load<unknown>(`${FILTER_KEY}.group`, 'none')));
 effect(() => {
   const { text: _text, ...kept } = filter.value;
   save(FILTER_KEY, kept);

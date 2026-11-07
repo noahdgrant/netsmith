@@ -10,7 +10,9 @@ import {
   groupRows,
   inScope,
   instancePath,
+  locationOf,
   nextRow,
+  parseGroup,
   rowOfFinding,
   rowOfPowerIssue,
   rowOfProblem,
@@ -152,6 +154,50 @@ describe('groupRows', () => {
   });
   it('is one list with no grouping', () => {
     expect(groupRows(list, 'none')).toHaveLength(1);
+  });
+  it('groups by stage in the order of the stage chips, whatever the order of the rows', () => {
+    const staged = [
+      rowOfProblem({ ...problem('note', 'n', at('a.nsm', 9)), stage: 'solve' }, 0),
+      rowOfProblem({ ...problem('warning', 'g', at('a.nsm', 8)), stage: 'guideline' }, 1),
+      rowOfProblem({ ...problem('error', 'c', at('a.nsm', 7)), stage: 'check' }, 2),
+      rowOfProblem({ ...problem('error', 's', at('a.nsm', 6)), stage: 'syntax' }, 3),
+      rowOfProblem({ ...problem('warning', 'g2', at('a.nsm', 1)), stage: 'guideline' }, 4),
+    ];
+    const g = groupRows(staged, 'stage');
+    expect(g.map((x) => x.title)).toEqual(['Syntax', 'Checker', 'Solver', 'Guideline']);
+    expect(groupRows([...staged].reverse(), 'stage').map((x) => x.title)).toEqual(['Syntax', 'Checker', 'Solver', 'Guideline']);
+    expect(g[3].rows.map((r) => r.message)).toEqual(['g2', 'g']);
+  });
+  it('keeps the severities in the order errors, warnings, notes even when the first row is a note', () => {
+    const noteFirst = [...rows([problem('note', 'n', at('a.nsm', 1))]), ...list];
+    expect(groupRows(noteFirst, 'severity').map((x) => x.title)).toEqual(['Errors', 'Warnings', 'Notes']);
+  });
+  it('steps through the rows in the order of the groups', () => {
+    const a = rowOfProblem({ ...problem('error', 'c', at('a.nsm', 7)), stage: 'check' }, 0);
+    const b = rowOfProblem({ ...problem('warning', 's', at('a.nsm', 6)), stage: 'syntax' }, 1);
+    expect(steps([a, b], 'stage').map((r) => r.message)).toEqual(['s', 'c']);
+  });
+});
+
+describe('parseGroup', () => {
+  it('knows the four groupings and takes anything else for none', () => {
+    expect(['none', 'file', 'severity', 'stage'].map(parseGroup)).toEqual(['none', 'file', 'severity', 'stage']);
+    expect(parseGroup('by-colour')).toBe('none');
+    expect(parseGroup(undefined)).toBe('none');
+  });
+});
+
+describe('locationOf', () => {
+  it('is the place the server gave', () => {
+    expect(locationOf(rows([problem('error', 'x', at('a.nsm', 3, 5))])[0])).toEqual(at('a.nsm', 3, 5));
+  });
+  it('is the place the message names, when the server gave none', () => {
+    const r = { ...rows([problem('error', 'x')])[0], mentions: 'src/main.physical.nsm:12' };
+    expect(locationOf(r)).toEqual({ file: 'src/main.physical.nsm', line: 12, column: 1, endLine: 12, endColumn: 1 });
+    expect(whereText(r)).toBe('src/main.physical.nsm:12');
+  });
+  it('is none for a row that has no place', () => {
+    expect(locationOf(rows([problem('error', 'x')])[0])).toBeNull();
   });
 });
 

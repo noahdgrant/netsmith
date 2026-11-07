@@ -20,7 +20,7 @@ The colouring of a file is chosen by its extension (`src/languages.ts`, `languag
 
 ### Errors, warnings and notes: `drive big-problems` after `launch --fixture big`
 
-The problems dock lists errors and warnings; notes (what the solver left alone: a relation not evaluated, a balance that is incomplete) are hidden until the Notes toggle in its header is pressed, and the toggle carries their count. Each note goes to the line of the instance it is about, in its own file. The status bar's counts and the dock's are errors and warnings only; notes get no squiggle. More in `problems-dock.md`.
+The problems dock lists errors and warnings; notes (what the solver left alone: a relation not evaluated, a balance that is incomplete) are hidden until the Notes toggle in its header is pressed, and the toggle carries their count. Each note goes to the line of the instance it is about, in its own file. The status bar counts errors and warnings, and shows the notes' count too while there are any (a quieter third figure); notes get no squiggle. More in `problems-dock.md`.
 
 ### Hover cards, breadcrumbs, history, outline, hints, tabs: `drive source-editor` (fixture `two_boards`)
 

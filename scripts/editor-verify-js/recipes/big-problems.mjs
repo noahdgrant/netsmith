@@ -4,15 +4,20 @@ export const fixture = 'big';
 
 export async function run({ page, shot, step, expect, section }) {
   await section('source');
-  step('the status bar counts errors and warnings, not notes');
+  step('the status bar counts errors and warnings, and shows the notes\' count as a quieter third figure');
   const bar = await page.locator('.statusbar .counts').innerText();
   expect(/^0\s/.test(bar.replace(/\n/g, ' ')), `no errors (${bar.replace(/\n/g, ' ')})`);
+  await page.waitForSelector('.statusbar .counts .nt');
+  const barNotes = Number((await page.locator('.statusbar .counts .nt').innerText()).trim());
+  expect(barNotes > 0, `and the notes are counted too (${barNotes})`);
 
   step('open the dock: the warnings are listed and the notes are hidden, with their count');
   await page.locator('.statusbar .counts').click();
   await page.waitForSelector('.dock');
   expect((await page.locator('.problem.note').count()) === 0, 'the notes are not listed yet');
   expect(/\d+\s+Notes/.test(await page.locator('.sev-toggle.note').innerText()), 'the Notes toggle has their count');
+  await page.waitForTimeout(1500); // the power tree's notes land a moment after the analysis: both counts are read after
+  expect(Number(await page.locator('.sev-toggle.note .n').innerText()) === Number((await page.locator('.statusbar .counts .nt').innerText()).trim()), 'the same count as the status bar\'s');
   await shot('notes-closed');
 
   step('show the notes: a note goes to its source line');

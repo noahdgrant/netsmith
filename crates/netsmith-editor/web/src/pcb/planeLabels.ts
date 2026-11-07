@@ -1,8 +1,9 @@
 // A plane's label sits in a corner of its plane, and a part may lie there. The label is drawn after the parts so it is never under a pad,
 // which makes it lie across one instead (J2's pad, on the four-layer example). At the zoom the board is shown at, the label (a size of
 // the screen, 9 to 11 px) is tried in the four corners of its plane, in the order top left, top right, bottom left, bottom right (then a line or two
-// further in, under or over a label a corner has, then along the top and the bottom edge), and put in the first where it meets no part and no other label; when none is free it is hidden, and a tag `+N`
-// stands in a free place for the ones that are (its tooltip lists them; zooming in makes room, and the layers panel names the planes as well). Pure geometry here (`placeAll`, `moreTag`), the page's boxes in `fitPlaneLabels`.
+// further in, under or over a label a corner has, then along the top and the bottom edge), and put in the first where it meets no part and no other label; when none is free it is hidden, and the canvas
+// says so with a chip `+N` pinned to the corner of the view (`PlaneMore.tsx`: a button that lists the planes and zooms to the one chosen; a mark
+// in the drawing itself was a few pixels of text over a board that was itself a few pixels). Pure geometry here (`placeAll`, `moreChip`), the page's boxes in `fitPlaneLabels`.
 
 export type Box = { left: number; top: number; right: number; bottom: number };
 
@@ -48,16 +49,6 @@ export function spots(box: [number, number, number, number], stacked: number): S
   // and last, along the top and the bottom edge, every 2.5 mm: where a part or a designator leaves a gap that is not a corner
   for (let at = x + INSET + EDGE_STEP; at < x + w - INSET - EDGE_STEP; at += EDGE_STEP) {
     out.push({ x: at, y: y + INSET, anchor: 'start' }, { x: at, y: y + h - INSET, anchor: 'start' });
-  }
-  return out;
-}
-
-/** Places for something small anywhere in the plane (the `+N` tag): a grid over its inside, row by row from the top, `step` apart, after the label's own places. */
-export function gridSpots(box: [number, number, number, number], step = 2): Spot[] {
-  const [x, y, w, h] = box;
-  const out: Spot[] = [];
-  for (let yy = y + INSET + step; yy < y + h - INSET - step / 2; yy += step) {
-    for (let xx = x + INSET; xx < x + w - INSET; xx += step) out.push({ x: xx, y: yy, anchor: 'start' });
   }
   return out;
 }
@@ -110,23 +101,47 @@ export function placeAll<L>(items: Placeable<L>[], blocks: Box[], pad = 2): { ch
   return { chosen, boxes };
 }
 
-/** The tag for the labels that found no place: `+2`, and the names it stands for, one to a line, for its tooltip. Null when none was hidden. */
-export function moreTag(hidden: string[]): { text: string; title: string } | null {
-  return hidden.length ? { text: `+${hidden.length}`, title: hidden.join('\n') } : null;
+/** A plane whose label has no room at this zoom: what the chip lists, and the box (the drawing's millimetres) a click zooms to. */
+export interface HiddenPlane {
+  /** What its label would say (`GND · In1.Cu`). */
+  name: string;
+  net: string;
+  layer: string | null;
+  /** 1 to 4: the tone of its layer, for the swatch. */
+  tone: string;
+  box: { x: number; y: number; width: number; height: number };
+}
+
+/** The chip for the labels that found no place: `+2`, its accessible name (the planes in a sentence) and the title it shows. Null when none was hidden. */
+export function moreChip(hidden: Pick<HiddenPlane, 'name'>[]): { text: string; label: string; title: string } | null {
+  if (!hidden.length) return null;
+  const names = hidden.map((h) => h.name).join(', ');
+  const n = hidden.length;
+  return {
+    text: `+${n}`,
+    label: `${n} ${n === 1 ? 'plane has' : 'planes have'} no room for a label at this zoom: ${names}. Show the list`,
+    title: `${n} ${n === 1 ? 'plane' : 'planes'} with no room for a label at this zoom. Click for the list`,
+  };
 }
 
 /**
  * Put each plane label of the drawing in the first corner of its plane where it meets no part and no label placed before it, at the
- * zoom the drawing is at now (call it again when the zoom changes). A label with no free corner is hidden (`plane-label-off`), and
- * a `+N` tag (`plane-label-more`, with the names in its tooltip) stands in the first free place of the hidden ones' planes.
- * Returns how many were moved off their first corner, and how many hidden.
+ * zoom the drawing is at now (call it again when the zoom changes). A label with no free corner is hidden (`plane-label-off`) and
+ * handed back in `planes`, for the chip that counts them. With the planes layer switched off there is nothing to label: no label is
+ * hidden for want of room and `planes` is empty.
+ * Returns how many were moved off their first corner, how many hidden, and which.
  */
-export function fitPlaneLabels(svg: SVGSVGElement): { moved: number; hidden: number } {
+export function fitPlaneLabels(svg: SVGSVGElement): { moved: number; hidden: number; planes: HiddenPlane[] } {
   const holder = svg.querySelector<SVGGElement>(':scope > g.l-plane-labels');
   holder?.querySelectorAll('.plane-label-more').forEach((e) => e.remove());
   const labels = [...svg.querySelectorAll<SVGTextElement>('.l-plane-labels > text.plane-label')];
-  const done = { moved: 0, hidden: 0 };
+  const done = { moved: 0, hidden: 0, planes: [] as HiddenPlane[] };
   if (!labels.length) return done;
+  const layer = svg.querySelector('.l-planes');
+  if (layer && getComputedStyle(layer).display === 'none') {
+    labels.forEach((l) => l.classList.remove('plane-label-off'));
+    return done;
+  }
   // what a label must stay off: the parts, and the designators drawn beside them (their own boxes, not the browser's)
   const parts = [...svg.querySelectorAll('g[data-path]')].map((g) => boxOf(g.getBoundingClientRect())).filter((b) => b.right > b.left);
   for (const t of svg.querySelectorAll<SVGTextElement>('.l-refs text')) {
@@ -157,9 +172,7 @@ export function fitPlaneLabels(svg: SVGSVGElement): { moved: number; hidden: num
       return item.boxAt(spot);
     },
   }));
-  const { chosen, boxes } = placeAll(probe, parts);
-  const hiddenNames: string[] = [];
-  const hiddenSpots: Spot[][] = [];
+  const { chosen } = placeAll(probe, parts);
   items.forEach((item, i) => {
     const at = chosen[i];
     if (at >= 0) {
@@ -176,40 +189,14 @@ export function fitPlaneLabels(svg: SVGSVGElement): { moved: number; hidden: num
     item.label.setAttribute('text-anchor', first.anchor);
     item.label.classList.add('plane-label-off');
     done.hidden++;
-    hiddenNames.push(item.label.textContent ?? '');
-    hiddenSpots.push([...item.spots, ...gridSpots(planes[labels.indexOf(item.label)]!)]);
+    const box = planes[labels.indexOf(item.label)]!;
+    done.planes.push({
+      name: item.label.textContent ?? '',
+      net: item.label.getAttribute('data-net') ?? '',
+      layer: item.label.getAttribute('data-layer'),
+      tone: item.label.getAttribute('data-plane') ?? '1',
+      box: { x: box[0], y: box[1], width: box[2], height: box[3] },
+    });
   });
-  const tag = moreTag(hiddenNames);
-  if (tag && holder) {
-    const el = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    el.setAttribute('class', 'plane-label plane-label-more');
-    el.setAttribute('data-testid', 'plane-label-more');
-    el.textContent = tag.text;
-    const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-    title.textContent = `Planes with no room for a label at this zoom: ${tag.title.split('\n').join(', ')}`;
-    el.appendChild(title);
-    holder.appendChild(el);
-    // the first place, among the planes of the hidden labels, where the short tag meets nothing; else (a board drawn so small that parts fill it)
-    // the first where it meets no label: two characters over a part say more than none.
-    const labelsPlaced = boxes.filter((b): b is Box => !!b);
-    const tries: Box[][] = [[...parts, ...labelsPlaced], labelsPlaced];
-    let put = false;
-    for (const taken of tries) {
-      for (const list of hiddenSpots) {
-        for (const spot of list) {
-          el.setAttribute('x', String(spot.x));
-          el.setAttribute('y', String(spot.y));
-          el.setAttribute('text-anchor', spot.anchor);
-          if (firstFree([ownBox(el, spot.x, spot.y, spot.anchor)], taken) === 0) {
-            put = true;
-            break;
-          }
-        }
-        if (put) break;
-      }
-      if (put) break;
-    }
-    if (!put) el.classList.add('plane-label-off');
-  }
   return done;
 }

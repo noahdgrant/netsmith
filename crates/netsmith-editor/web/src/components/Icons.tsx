@@ -370,14 +370,56 @@ export function Icon({ name, size = 16, class: cls }: { name: IconName; size?: n
       stroke-linejoin="round"
       aria-hidden="true"
       focusable="false"
+      data-icon={name}
     >
       {P[name]}
     </svg>
   );
 }
 
+/** The icon of a severity: a cross in a circle, a triangle, a note. The colour of each is one rule (`.icon[data-icon=…]` in `views.css`), so it is the
+ * same wherever it is drawn. */
 export function SeverityIcon({ severity, size }: { severity: Severity; size?: number }) {
-  return <Icon name={severity} size={size ?? 14} />;
+  return <Icon name={severity} size={size ?? 14} class={`sev-icon ${severity}`} />;
+}
+
+/** The words for a severity count, in the order a person reads them: `2 errors, 1 warning`; with `quiet`, nothing for a severity that has none. */
+export function severityWords(c: { error?: number; warning?: number; note?: number }, quiet = false): string {
+  const one = (n: number | undefined, w: string) => (quiet && !n ? '' : `${n ?? 0} ${w}${n === 1 ? '' : 's'}`);
+  return [one(c.error, 'error'), one(c.warning, 'warning'), one(c.note, 'note')].filter(Boolean).join(', ');
+}
+
+/**
+ * The mark of a severity wherever problems are counted (the file tree, the outline, a file's tab, the sheet list): its icon, and its count
+ * when it has one, with the words in its accessible name (an icon alone says nothing to a screen reader). `severity` is the worst of what
+ * is counted; `counts` is all of it, for the name.
+ */
+export function SeverityMark({
+  severity,
+  count,
+  counts,
+  where,
+  size = 12,
+  class: cls,
+  badge,
+}: {
+  severity: Severity;
+  count?: number;
+  counts: { error?: number; warning?: number; note?: number };
+  /** `in this file`: what the count is of, said after it. */
+  where?: string;
+  size?: number;
+  class?: string;
+  /** A filled pill (the tree's and the outline's badge) rather than the bare icon. */
+  badge?: boolean;
+}) {
+  const name = `${severityWords(counts, true)}${where ? ` ${where}` : ''}`;
+  return (
+    <span class={`sev-mark ${severity} ${badge ? 'badge' : ''} ${cls ?? ''}`} role="img" aria-label={name} title={name} data-severity={severity}>
+      <SeverityIcon severity={severity} size={size} />
+      {count !== undefined && <span class="n">{count}</span>}
+    </span>
+  );
 }
 
 export const CheckIcon = ({ size }: { size?: number }) => <Icon name="check-circle" size={size ?? 14} />;

@@ -126,7 +126,8 @@ export function Pcb() {
   const sc = scene.value && scene.value.board === name ? scene.value : null;
   const found = findings.value && findings.value.board === name ? findings.value : null;
   const drawing = useMemo(() => (sc ? prepare(sc.svg) : null), [sc?.svg]);
-  const css = useMemo(() => hidden.map((l) => `.pcb-host .l-${l}{display:none}`).join(''), [hidden]);
+  // The planes layer takes the planes' labels with it: a name on nothing is noise.
+  const css = useMemo(() => hidden.map((l) => `.pcb-host .l-${l}${l === 'planes' ? ', .pcb-host .l-plane-labels' : ''}{display:none}`).join(''), [hidden]);
 
   if (!name) return <NoBoard what="show" />;
   const fab = fabReports.value[name];
@@ -335,6 +336,7 @@ export function Pcb() {
             onTip={setTip}
             onCursor={setCursor}
             focus={focus}
+            onZoomPlane={(box) => setFocus({ box, seq: (focus?.seq ?? 0) + 1 })}
             cmp={cmpMarks.value?.parts ?? null}
             marks={(found?.findings ?? []).map((f) => ({
               id: f.id,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { type Box, INSET, LINE, type Placeable, firstFree, labelBox, meets, gridSpots, moreTag, placeAll, spots } from './planeLabels';
+import { type Box, INSET, LINE, type Placeable, firstFree, labelBox, meets, moreChip, placeAll, spots } from './planeLabels';
 
 const box = (left: number, top: number, w: number, h: number): Box => ({ left, top, right: left + w, bottom: top + h });
 
@@ -118,26 +118,20 @@ describe('placing every label of a drawing', () => {
   });
 });
 
-describe('the tag for labels that found no place', () => {
-  it('says how many and lists them, one to a line', () => {
-    expect(moreTag(['GND \u00b7 In1.Cu', '3V3 \u00b7 In2.Cu'])).toEqual({ text: '+2', title: 'GND \u00b7 In1.Cu\n3V3 \u00b7 In2.Cu' });
-    expect(moreTag(['GND \u00b7 In1.Cu'])?.text).toBe('+1');
+describe('the chip for labels that found no place', () => {
+  const hidden = (name: string) => ({ name });
+  it('says how many, and names the planes in its accessible name', () => {
+    const chip = moreChip([hidden('GND \u00b7 In1.Cu'), hidden('3V3 \u00b7 In2.Cu')]);
+    expect(chip?.text).toBe('+2');
+    expect(chip?.label).toBe('2 planes have no room for a label at this zoom: GND \u00b7 In1.Cu, 3V3 \u00b7 In2.Cu. Show the list');
+    expect(chip?.title).toContain('2 planes');
+  });
+  it('is singular for one', () => {
+    const chip = moreChip([hidden('GND \u00b7 In1.Cu')]);
+    expect(chip?.text).toBe('+1');
+    expect(chip?.label).toMatch(/^1 plane has no room/);
   });
   it('is none when every label has its place', () => {
-    expect(moreTag([])).toBeNull();
-  });
-});
-
-describe('places for the tag anywhere in a plane', () => {
-  it('are a grid inside the border, row by row from the top, none outside the plane', () => {
-    const g = gridSpots([10, 20, 50, 30], 2);
-    expect(g.length).toBeGreaterThan(50);
-    expect(g.every((p) => p.x >= 10 + INSET && p.x < 10 + 50 - INSET && p.y > 20 + INSET && p.y < 20 + 30 - INSET)).toBe(true);
-    const ys = g.map((p) => p.y);
-    expect([...ys].sort((a, b) => a - b)).toEqual(ys);
-    expect(g[0].anchor).toBe('start');
-  });
-  it('is nothing for a plane too small to hold one', () => {
-    expect(gridSpots([0, 0, 1.5, 1.5], 2)).toEqual([]);
+    expect(moreChip([])).toBeNull();
   });
 });

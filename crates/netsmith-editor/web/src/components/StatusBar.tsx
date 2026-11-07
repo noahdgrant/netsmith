@@ -372,8 +372,8 @@ export function StatusBar() {
         )}
         <Item
           class={`counts ${c.error > 0 ? 'bad' : ''}`}
-          label={`${plural(c.error, 'error')}, ${plural(c.warning, 'warning')}. Show the problems (Ctrl+J)`}
-          title="Errors and warnings in the project. Click to show the problems (Ctrl+J); F8 goes to the next one."
+          label={`${plural(c.error, 'error')}, ${plural(c.warning, 'warning')}${c.note > 0 ? `, ${plural(c.note, 'note')}` : ''}. Show the problems (Ctrl+J)`}
+          title="Errors and warnings in the project, and its notes when there are any. Click to show the problems (Ctrl+J); F8 goes to the next one."
           onClick={toggleDock}
           pressed={dock.value.open}
         >
@@ -383,6 +383,11 @@ export function StatusBar() {
           <span class="w">
             <SeverityIcon severity="warning" size={13} /> {c.warning}
           </span>
+          {c.note > 0 && (
+            <span class="nt">
+              <SeverityIcon severity="note" size={13} /> {c.note}
+            </span>
+          )}
         </Item>
         <AnalysisItem />
         <JobItem />

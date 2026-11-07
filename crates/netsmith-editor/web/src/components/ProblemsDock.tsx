@@ -5,8 +5,8 @@
 import { useEffect, useRef } from 'preact/hooks';
 
 import type { Severity } from '../api';
-import { allRows, counts, extras, listed, revealRow, viewScope } from '../feedback/derive';
-import { type Group, ORIGIN_LABEL, type Origin, type Row, filterRows, groupRows, stagesOf, whereText } from '../feedback/problems';
+import { allRows, counts, extras, listed, revealPlace, revealRow, viewScope } from '../feedback/derive';
+import { type Group, ORIGIN_LABEL, type Origin, type Row, filterRows, groupRows, locationOf, stagesOf, whereText } from '../feedback/problems';
 import {
   activeRow,
   dock,
@@ -99,6 +99,7 @@ function Resizer({ host }: { host: preact.RefObject<HTMLElement> }) {
 function ProblemRow({ row }: { row: Row }) {
   const on = activeRow.value === row.id;
   const where = whereText(row);
+  const place = locationOf(row);
   return (
     <div
       class={`problem ${row.severity} ${on ? 'active' : ''}`}
@@ -113,6 +114,8 @@ function ProblemRow({ row }: { row: Row }) {
       title={`${row.full}${row.at ? `\n${row.at.file}:${row.at.line}:${row.at.column}` : ''}`}
       onClick={() => revealRow(row)}
       onKeyDown={(e) => {
+        // the place's own button answers its own keys
+        if (e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           revealRow(row);
@@ -129,7 +132,23 @@ function ProblemRow({ row }: { row: Row }) {
         {ORIGIN_LABEL[row.origin]}
       </span>
       <span class="where" role="cell">
-        {where}
+        {place ? (
+          <button
+            type="button"
+            class="where-link"
+            data-testid="problem-place"
+            aria-label={`Open ${where} in the source`}
+            title={`Open ${where} in the source`}
+            onClick={(e) => {
+              e.stopPropagation();
+              revealPlace(row);
+            }}
+          >
+            {where}
+          </button>
+        ) : (
+          where
+        )}
       </span>
       <span class="scope" role="cell" title={[row.board && `Board ${row.board}`, row.path && `Module ${row.path}`].filter(Boolean).join('\n') || undefined}>
         {row.path ?? row.board ?? ''}
@@ -142,6 +161,7 @@ const GROUPS: { id: Group; label: string }[] = [
   { id: 'none', label: 'No grouping' },
   { id: 'file', label: 'Group by file' },
   { id: 'severity', label: 'Group by severity' },
+  { id: 'stage', label: 'Group by stage' },
 ];
 
 function Empty({ hidden }: { hidden: { notes: number; filtered: 'text' | 'view' | null } }) {
@@ -200,11 +220,14 @@ export function ProblemsDock() {
   const active = activeRow.value;
   const view = viewScope.value;
 
-  // The row F8 lands on is brought into view.
+  // The row that is picked stays in view: when it is picked (F8, a click, the status bar) and when the list under it changes (a filter, the
+  // grouping, a new analysis, the dock opened or made smaller), which moves it.
+  // (its place in the list, not the list's length: scrolling the list by hand while an analysis lands must not pull it back).
+  const where = `${group.value}|${rows.findIndex((r) => r.id === active)}`;
   useEffect(() => {
     if (!active) return;
     host.current?.querySelector(`[data-id="${CSS.escape(active)}"]`)?.scrollIntoView({ block: 'nearest' });
-  }, [active, d.open]);
+  }, [active, d.open, d.height, where]);
 
   if (!d.open) return null;
   const shownGroups = groupRows(rows, group.value);
@@ -294,7 +317,8 @@ export function ProblemsDock() {
             onKeyDown={(e) => {
               if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
               const all = [...(e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('.problem')];
-              const at = all.indexOf(document.activeElement as HTMLElement);
+              // the focus may be on the row or on the place's button inside it
+              const at = all.indexOf((document.activeElement as HTMLElement | null)?.closest<HTMLElement>('.problem') as HTMLElement);
               const next = all[Math.min(all.length - 1, Math.max(0, at + (e.key === 'ArrowDown' ? 1 : -1)))];
               if (next) {
                 e.preventDefault();
@@ -304,6 +328,9 @@ export function ProblemsDock() {
           >
             {shownGroups.map((g) => {
               const slice = g.rows.slice(0, Math.max(0, budget));
+              // the picked row is drawn even past the limit: the list never loses what it was asked to show
+              const kept = active && !slice.some((r) => r.id === active) ? g.rows.find((r) => r.id === active) : undefined;
+              if (kept) slice.push(kept);
               budget -= slice.length;
               return (
                 <div key={g.key} class="dock-group-block" role="rowgroup">

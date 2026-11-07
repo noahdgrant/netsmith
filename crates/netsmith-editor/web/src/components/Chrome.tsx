@@ -43,7 +43,8 @@ import { chordLabels, chordText, find, runCommand } from '../commands';
 import { openPicker } from '../quickpick';
 import { seconds } from '../util';
 import { useElapsed } from './JobProgress';
-import { Icon, SeverityIcon } from './Icons';
+import { fileProblems } from '../fileProblems';
+import { Icon, SeverityIcon, SeverityMark } from './Icons';
 import { Popover, Spinner } from './ui';
 import { firstError, goToFirstError, neverBuilt } from '../feedback/derive';
 import { Logo } from './Logo';
@@ -727,6 +728,18 @@ export function Tabs() {
                   <LockIcon />
                 </span>
               )}
+              {(() => {
+                const bad = fileProblems.value.get(path);
+                return bad && bad.error + bad.warning > 0 ? (
+                  <SeverityMark
+                    class="tab-problems"
+                    severity={bad.error ? 'error' : 'warning'}
+                    counts={{ error: bad.error, warning: bad.warning }}
+                    where="in this file"
+                    size={13}
+                  />
+                ) : null;
+              })()}
               <span class="tab-end">
                 {f && dirty(f) ? <span class="dot" aria-label="unsaved changes" /> : null}
                 <span

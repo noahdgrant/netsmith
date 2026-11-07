@@ -12,7 +12,7 @@ import { kindOfType } from '../source/card';
 import { highlight } from '../tree';
 import { activeFile, cursor, detail, goTo, problems, project, viewBoardOfDefinition } from '../store';
 import { useFileSymbols } from './Breadcrumbs';
-import { Icon } from './Icons';
+import { Icon, SeverityMark } from './Icons';
 import { KindIcon } from './TreeIcons';
 import { EmptyState } from './ui';
 
@@ -219,9 +219,14 @@ export function Outline() {
                   </span>
                 )}
                 {bad > 0 && (
-                  <span class={`ft-problems ${row.errors ? 'error' : 'warning'}`} title={`${row.errors} errors, ${row.warnings} warnings`} aria-label={`${row.errors} errors, ${row.warnings} warnings`}>
-                    {bad}
-                  </span>
+                  <SeverityMark
+                    class="ft-problems"
+                    badge
+                    severity={row.errors ? 'error' : 'warning'}
+                    count={bad}
+                    counts={{ error: row.errors, warning: row.warnings }}
+                    where={`in ${s.name}`}
+                  />
                 )}
               </div>
             );

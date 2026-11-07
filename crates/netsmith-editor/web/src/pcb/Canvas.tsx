@@ -34,7 +34,8 @@ import {
 import { fitView } from '../sheets';
 import { type Drawing, SCALE, light, previewMove } from './drawing';
 import { moveParts } from './edits';
-import { fitPlaneLabels } from './planeLabels';
+import { type HiddenPlane, fitPlaneLabels } from './planeLabels';
+import { PlaneMore } from './PlaneMore';
 import {
   type Handle,
   type Pt,
@@ -111,6 +112,8 @@ export function Canvas(props: {
   marks: { id: string; box: PcbBox; level: string; on: boolean }[];
   /** What the comparison with a ref says of each part (by path), when its marks are on: a crisp outline outside the pick's (`.cmp-rect`). */
   cmp?: ReadonlyMap<string, 'added' | 'changed' | 'renumbered'> | null;
+  /** The chip `+N` zooms the board to a plane whose label has no room. */
+  onZoomPlane?: (box: PcbBox) => void;
 }) {
   const { drawing, scene: sc } = props;
   const holder = useRef<HTMLDivElement>(null);
@@ -118,6 +121,9 @@ export function Canvas(props: {
   const [zoom, setZoom] = useState(1);
   const [preview, setPreview] = useState<Preview>({});
   const [hovered, setHovered] = useState<string | null>(null);
+  // The planes whose label has no room at this zoom (the chip `+N` lists them), and the one the list points at.
+  const [noRoom, setNoRoom] = useState<HiddenPlane[]>([]);
+  const [peek, setPeek] = useState<HiddenPlane | null>(null);
   const frame = frameOf(sc);
   const picked = selection.value;
   const selected = useMemo(() => sc.parts.filter((p) => picked.includes(p.path)), [sc, picked]);
@@ -136,11 +142,25 @@ export function Canvas(props: {
     light(svg, nets, new Set(selected.map((p) => p.refdes)));
   }, [drawing, props.litNet, selected]);
 
-  // A plane's label goes to the corner of its plane where no part lies, at the zoom the board is shown at (planeLabels.ts).
+  // A plane's label goes to the corner of its plane where no part lies, at the zoom the board is shown at (planeLabels.ts); the planes
+  // that have no room are the chip's. A layer switched off (`props.css`) changes which planes are drawn.
   useEffect(() => {
     const svg = svgEl();
-    if (svg) fitPlaneLabels(svg);
-  }, [drawing, zoom]);
+    if (!svg) return;
+    const { planes } = fitPlaneLabels(svg);
+    setNoRoom((was) => (was.length === planes.length && was.every((w, i) => w.name === planes[i].name) ? was : planes));
+  }, [drawing, zoom, props.css]);
+
+  // The plane the chip's list points at is outlined on the board.
+  useEffect(() => {
+    const svg = svgEl();
+    if (!svg) return;
+    svg.querySelectorAll('.l-planes > rect.plane-peek').forEach((e) => e.classList.remove('plane-peek'));
+    if (!peek) return;
+    [...svg.querySelectorAll('.l-planes > rect[data-net]')]
+      .find((e) => e.getAttribute('data-net') === peek.net && e.getAttribute('data-layer') === peek.layer)
+      ?.classList.add('plane-peek');
+  }, [peek, drawing]);
 
   // The canvas in pixels to the sheet: one pointer position in mm, and how many pixels an mm is.
   function toBoard(e: { clientX: number; clientY: number }): { p: Pt; scale: number } | null {
@@ -442,6 +462,7 @@ export function Canvas(props: {
       memoKey={`pcb|${sc.board}`}
       onView={setZoom}
       focus={focus}
+      overlay={<PlaneMore planes={noRoom} onPeek={setPeek} onZoom={(p) => props.onZoomPlane?.(p.box)} />}
     >
       <style>{props.css}</style>
       <div
