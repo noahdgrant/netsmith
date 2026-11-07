@@ -12,6 +12,7 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | Source editor and live diagnostics | `source-editor.md` | `editor` | `two_boards` |
 | Source: hover cards, breadcrumbs, history, outline, inline hints, tabs, folds, find, completion | `source-editor.md` | `source-editor` | `two_boards` |
 | Schematic view and click-through | `schematic.md` | `schematic`, `big-schematic` | `two_boards`, `big` |
+| Schematic layout file (server side): hints read and drawn, findings in the Problems list at the file and line, `GET`/`PUT /api/schematic-hints`, the watcher; no page UI yet | `schematic-hints.md` | `schematic-hints` | `two_boards` |
 | Schematic and the shared selection: go to anything lands on the module at a legible zoom with a ring, a net picked in the drawing, a flag followed, Esc clears everywhere | `schematic-integration.md` | `schematic-integration` | `schematic_bench` |
 | Power tree | `power-tree.md` | `power`, `single-board`, `big-power` | `two_boards`, `regulator`, `big` |
 | Power tree of an invented board: layout, collapsed loads, path from the source, keys, hover, issues | `power-tree.md` | `power-tree`, `power-issues` | `power_tree` |

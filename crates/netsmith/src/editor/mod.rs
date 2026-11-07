@@ -12,6 +12,7 @@ mod fileops;
 mod files;
 mod findings;
 mod git;
+mod hints;
 mod orders;
 mod outline;
 mod panel;
@@ -39,7 +40,7 @@ use netsmith_editor::{
     api::{
         Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
         FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited,
-        PcbFindings, PcbReport, PcbScene, PowerTree, Project, Saved, SystemView,
+        PcbFindings, PcbReport, PcbScene, PowerTree, Project, Saved, SchematicHints, SystemView,
     },
 };
 
@@ -477,6 +478,19 @@ impl Backend for Workspace {
         let state = self.fresh();
         let data = state.snapshot.board(board)?;
         data.svg.clone().map_err(ApiError::internal)
+    }
+
+    fn schematic_hints(&self, board: &str) -> Result<SchematicHints, ApiError> {
+        self.schematic_hints_of(board)
+    }
+
+    fn write_schematic_hints(
+        &self,
+        board: &str,
+        text: &str,
+        stamp: Option<&str>,
+    ) -> Result<SchematicHints, ApiError> {
+        self.write_schematic_hints_of(board, text, stamp)
     }
 
     fn power(&self, board: &str) -> Result<PowerTree, ApiError> {

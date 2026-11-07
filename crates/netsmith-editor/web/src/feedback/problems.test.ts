@@ -236,7 +236,7 @@ describe("the server's stage, board and instance", () => {
 
   it('maps every stage to its own stage in the dock', () => {
     const of = (stage: Problem['stage']) => rowOfProblem(served({ severity: 'error', message: 'x', stage }), 0).origin;
-    expect([of('syntax'), of('check'), of('solve'), of('lower'), of('guideline')]).toEqual(['syntax', 'checker', 'solver', 'lower', 'guideline']);
+    expect([of('syntax'), of('check'), of('solve'), of('lower'), of('guideline'), of('layout')]).toEqual(['syntax', 'checker', 'solver', 'lower', 'guideline', 'layout']);
   });
 
   it('does not read a board out of a message whose problem the server says has none', () => {

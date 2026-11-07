@@ -137,8 +137,11 @@ pub fn diff(base: &Digest, head: &Digest, only: Option<&str>) -> Diff {
     }
 }
 
+/// The problems of one board, or of none. The layout file's (stage `layout`, ADR 0061) are about
+/// how the schematic is drawn and not about the circuit, which is what a comparison is of.
 fn problems_of(all: &[Problem], board: Option<&String>) -> Vec<Problem> {
     all.iter()
+        .filter(|p| p.stage != Some(netsmith_editor::api::ProblemStage::Layout))
         .filter(|p| p.board.as_ref() == board)
         .cloned()
         .collect()
@@ -1570,6 +1573,28 @@ mod tests {
         assert!(d.changed);
         // A note is in the lists and not in the sentence.
         assert_eq!(d.summary, "3 new problems, 1 resolved");
+    }
+
+    #[test]
+    fn the_layout_files_problems_are_not_a_change_of_the_circuit() {
+        let layout = |board: Option<&str>| Problem {
+            stage: Some(ProblemStage::Layout),
+            ..problem(Severity::Note, board, "the design has no part `gone`")
+        };
+        let mut base = digest(board(Vec::new(), Vec::new()));
+        let mut head = digest(board(Vec::new(), Vec::new()));
+        base.problems = vec![problem(Severity::Warning, Some("B"), "same")];
+        head.problems = vec![
+            problem(Severity::Warning, Some("B"), "same"),
+            layout(Some("B")),
+            layout(None),
+        ];
+        let d = diff(&base, &head, None);
+        assert!(only(&d).problems.new.is_empty() && d.problems.new.is_empty());
+        assert!(
+            !d.changed,
+            "a new note of the layout file changes nothing compared"
+        );
     }
 
     #[test]

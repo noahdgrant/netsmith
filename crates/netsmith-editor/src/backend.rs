@@ -6,7 +6,7 @@ use netsmith_core::job::Cancel;
 use crate::api::{
     Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
     FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited,
-    PcbFindings, PcbReport, PcbScene, PowerTree, Project, Saved, SystemView,
+    PcbFindings, PcbReport, PcbScene, PowerTree, Project, Saved, SchematicHints, SystemView,
 };
 
 /// A refusal, with the HTTP status that says why.
@@ -221,6 +221,31 @@ pub trait Backend: Send + Sync + 'static {
     fn check(&self, path: &str, text: &str) -> Result<Analysis, ApiError>;
     fn board(&self, name: &str) -> Result<BoardDetail, ApiError>;
     fn schematic(&self, board: &str) -> Result<String, ApiError>;
+    /// The schematic layout file of the source file `board` is in, with what it says and how
+    /// it matches the board (ADR 0061). A file that is not there is no error: no hints, no
+    /// findings.
+    fn schematic_hints(&self, board: &str) -> Result<SchematicHints, ApiError> {
+        let _ = board;
+        Err(ApiError::not_found(
+            "this backend has no schematic layout file",
+        ))
+    }
+    /// Write the file: `text` is read as the file is, and what is written is the canonical text
+    /// of what it says (`to_toml`). Refused with `422` (`schematic_hints_invalid`, with the `line`
+    /// of the first fault) if `text` does not read, and with `409` if `stamp` is given and the
+    /// file is not as it was at that stamp; then nothing is written. The project is analysed
+    /// again as the file changed, once, and the answer is the file as the drawing now has it.
+    fn write_schematic_hints(
+        &self,
+        board: &str,
+        text: &str,
+        stamp: Option<&str>,
+    ) -> Result<SchematicHints, ApiError> {
+        let _ = (board, text, stamp);
+        Err(ApiError::not_found(
+            "this backend has no schematic layout file",
+        ))
+    }
     fn power(&self, board: &str) -> Result<PowerTree, ApiError>;
     /// A system by name, or a board by its name.
     fn system(&self, name: &str) -> Result<SystemView, ApiError>;
