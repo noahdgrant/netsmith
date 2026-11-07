@@ -228,8 +228,21 @@ impl Checker<'_> {
                         }
                     },
                     _ => {
-                        self.error(*span, "both ends of a range must be fixed numbers");
-                        None
+                        // An end that is a value (a member, an expression over members) is
+                        // read when the solver knows it (ADR 0066). The ends are numbers of
+                        // one dimension, and an end text is not one.
+                        let (VTy::Q(ld), VTy::Q(hd)) = (l.ty, h.ty) else {
+                            self.error(*span, "the ends of a range are numbers, not text");
+                            return None;
+                        };
+                        if ld != hd {
+                            self.error(*span, format!("cannot form a range from {ld} and {hd}"));
+                            return None;
+                        }
+                        Some(Typed {
+                            ty: VTy::Q(ld),
+                            e: RExpr::Range(Box::new(l.e), Box::new(h.e)),
+                        })
                     }
                 }
             }

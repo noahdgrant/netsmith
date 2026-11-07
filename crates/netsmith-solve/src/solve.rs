@@ -375,6 +375,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         derived: HashSet::new(),
         stated: stated_currents(model),
         sole_equation: sole_equations(model),
+        claimed: claimed_by_ranges(model),
         several_equations: several_equations(model),
         equations_of: equations_of(model),
         fed: HashSet::new(),
@@ -605,6 +606,9 @@ struct Solver<'a> {
     /// (through the field or any field joined to it). Only such an equation narrows a field
     /// that has a range; see `propagate`.
     sole_equation: Vec<bool>,
+    /// The fields that a range with a value at an end states (`f &= lo .. hi`, ADR 0066): they
+    /// are not worked out from a balance while the statement waits for its ends.
+    claimed: HashSet<FieldId>,
     /// The fields that more than one equation states (the left side of an equation that is not
     /// a sole one): each equation says what the value is, none says what it may be.
     several_equations: HashSet<FieldId>,
@@ -649,6 +653,22 @@ fn stated_currents(model: &Model) -> HashMap<FieldId, Quantity> {
         .filter(|f| !equated.contains(f))
         .filter_map(|f| match &model.field(f).domain {
             Domain::Quantity(q) => Some((f, *q)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The fields a range with a value at its end narrows (ADR 0066). A part states its own draw
+/// that way, and the draw is the part's to state: while an end has no value (a catalog row not
+/// picked yet) the balance of the net must not work the current out from the others, because
+/// the range would later be met with what the others allowed and the part's own maximum would
+/// be lost in the overlap (a supply allowed 500 nA, a part that may draw 750 nA).
+fn claimed_by_ranges(model: &Model) -> HashSet<FieldId> {
+    model
+        .relations()
+        .iter()
+        .filter_map(|r| match (&r.op, &r.lhs, &r.rhs) {
+            (CmpOp::Narrow | CmpOp::Default, RExpr::Field(f), RExpr::Range(..)) => Some(*f),
             _ => None,
         })
         .collect()
@@ -1045,6 +1065,11 @@ impl Solver<'_> {
             }
         }
         let u = unknown?;
+        // A current that a range with values at its ends will state, and whose ends are not
+        // known yet, is not worked out from the others (ADR 0066).
+        if self.claimed.contains(&u.field) && self.domain(u.field) == Domain::Unset {
+            return None;
+        }
         // An incomplete balance (ADR 0027) has pins whose currents are not terms. What the
         // terms leave is theirs as much as a part's, so no part is set from it; a rail is, as
         // before (an enable pin on a supply net does not stop the supply being worked out),
@@ -1095,7 +1120,9 @@ impl Solver<'_> {
             .draws
             .iter()
             .enumerate()
-            .filter(|(_, d)| self.stated.contains_key(&d.field));
+            // A current stated as exactly zero adds nothing to the net and is not an
+            // allowance (a part's reference rail, ADR 0066), so it is not the stated term.
+            .filter(|(_, d)| self.stated.contains_key(&d.field) && !self.model.draw_is_zero(d));
         let (index, d) = stated.next()?;
         if stated.next().is_some() {
             return None;

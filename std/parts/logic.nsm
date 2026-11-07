@@ -66,7 +66,7 @@ part Sn74lvc1g04 {
 /// A single-supply level translator: a buffer whose input accepts a lower logic level than its
 /// own supply and whose output swings between ground and its supply, so a signal from a 1.8 V
 /// part reaches a 3.3 V one. A part states what its datasheet gives; a design states the
-/// stresses it puts on the part (ADR 0063).
+/// stresses it puts on the part (ADR 0063, ADR 0066).
 ///
 /// - `.vcc_min` and `.vcc_max` are the supply range of the datasheet's Recommended Operating
 ///   Conditions: the supply rail's voltage must be inside it.
@@ -75,14 +75,22 @@ part Sn74lvc1g04 {
 ///   transients included, and only the design knows them; each must be at most its maximum.
 /// - `.vt_plus_max` is the highest the input's positive-going threshold can be, so an input
 ///   driven above it is a high for sure; `.vt_minus_min` is the lowest its negative-going
-///   threshold can be, so an input driven below it is a low for sure. A design that joins a
-///   driver to `.a` states that the driver's high level is above the first and its low level
-///   below the second.
+///   threshold can be, so an input driven below it is a low for sure. They are the input's
+///   levels: `.a.vih` is `.vt_plus_max` and `.a.vil` is `.vt_minus_min`, so the solver judges
+///   the driver of `.a.line` against them with no statement of the design (ADR 0046), and
+///   `.a.line.abs_max` is `.a_abs_max`, which the solver checks against the worst voltage of
+///   the input's net.
+/// - `.y` is a `Logic` line on the supply that states no level: the catalog has no column for
+///   the output's `voh` and `vol`, which a datasheet gives only at a stated load. A receiver on
+///   `.y.line` that states its own levels is therefore listed as not evaluated against it, and
+///   a design that has the datasheet's pair states it (`.u.y.voh &= .u.vcc.voltage - 0.1V`).
 /// - `.max_output_current` is the current the output may source or sink, and `.output_current`
-///   the magnitude that the design draws from it. `.max_supply_current` is the largest current
-///   the supply pin draws: `.vcc.current` must be at most that. A catalog column cannot narrow
-///   the rail's current, so a design that wants the draw counted on its rail states it
-///   (`.u.vcc.current &= 0A..750nA`, from the datasheet) and the relation checks it.
+///   the magnitude that the design draws from it.
+/// - `.max_supply_current` is the largest current the supply pin draws in the use the row is
+///   for, and the part states it as its own draw: `.vcc.current` is `0A .. .max_supply_current`
+///   (ADR 0066), so the rail the translator is on carries it. A row whose datasheet gives only
+///   a static current for a part that switches states the figure for its use. A design that
+///   states `.vcc.current` narrows it, and cannot widen it.
 ///
 /// The pad of each pin is the same in the 5-pin packages of the single-gate logic families
 /// (pad 1 NC, 2 A, 3 GND, 4 Y, 5 VCC), and there is a table for each package that its catalog
@@ -92,6 +100,16 @@ generic LevelTranslator {
 
     /// The supply, VCC and GND.
     .vcc: Rail
+    /// The input, with the levels the part's thresholds give. Join its `.line`.
+    .a: Logic
+    /// The output. It states no level (see above). Join its `.line`.
+    .y: Logic
+    .a.reference ~ .vcc
+    .y.reference ~ .vcc
+    // A line's reference rail names the supply for its levels and carries nothing itself: all
+    // the part draws is `.vcc.current`, so the balance of the net has no unknown term.
+    .a.reference.current &= 0A
+    .y.reference.current &= 0A
 
     .vcc_min: Voltage
     .vcc_max: Voltage
@@ -113,21 +131,28 @@ generic LevelTranslator {
     .vcc_peak <= .vcc_abs_max
     .a_peak <= .a_abs_max
     .output_current <= .max_output_current
-    .vcc.current <= .max_supply_current
+
+    // The input's levels are the thresholds' worst cases, and its absolute maximum the rating.
+    .a.vih &= .vt_plus_max
+    .a.vil &= .vt_minus_min
+    .a.line.abs_max &= .a_abs_max
+
+    // The part's own draw, which its rail carries.
+    .vcc.current &= 0A .. .max_supply_current
 
     pins "SOT-23-5" {
-        .nc      no_connect "NC"  "1"
-        .a       input      "A"   "2"
-        .vcc.neg power      "GND" "3"
-        .y       output     "Y"   "4"
-        .vcc.pos power      "VCC" "5"
+        .nc       no_connect "NC"  "1"
+        .a.line   input      "A"   "2"
+        .vcc.neg  power      "GND" "3"
+        .y.line   output     "Y"   "4"
+        .vcc.pos  power      "VCC" "5"
     }
     pins "SOT-353_SC-70-5" {
-        .nc      no_connect "NC"  "1"
-        .a       input      "A"   "2"
-        .vcc.neg power      "GND" "3"
-        .y       output     "Y"   "4"
-        .vcc.pos power      "VCC" "5"
+        .nc       no_connect "NC"  "1"
+        .a.line   input      "A"   "2"
+        .vcc.neg  power      "GND" "3"
+        .y.line   output     "Y"   "4"
+        .vcc.pos  power      "VCC" "5"
     }
 
     .package: Package

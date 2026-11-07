@@ -56,6 +56,8 @@ Two choices of the agent. When nothing passes the choice on, the part's own pin 
 
 ## Open questions
 
+Note of 2026-11-06 (ADR 0066): questions 1 and 2 are answered there. `.a` and `.y` are `Logic` lines, and the supply draw is the range `0A .. .max_supply_current`, stated by the part; the sentences above about plain pins and about a design stating the draw describe the generic as it was made.
+
 1. Whether `LevelTranslator` should have `.a` and `.y` as `Logic` lines, with `.a.vih == .vt_plus_max` and `.a.vil == .vt_minus_min` and a `.y` with levels of the supply. The solver would then judge the driver by the net rule it has, with no statement of the board.
 2. Whether the generic should have a `.vcc.current` range through a catalog column, which needs a range whose ends are values, a change to the language.
 3. The pad order is one for all the 5-pin packages. A package with another order (a 6-pin one with two grounds) is another table in a provider; a translator of another family is a provider of its own.
