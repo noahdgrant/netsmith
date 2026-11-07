@@ -177,6 +177,11 @@ pub(crate) fn notes(model: &Model) -> Vec<NotEvaluated> {
         let first = model.path_of(group.ends[0]);
         out.push(NotEvaluated {
             at: model.owner_of(group.ends[0]).unwrap_or(group.ends[0]),
+            involves: group
+                .ends
+                .iter()
+                .map(|&e| model.owner_of(e).unwrap_or(e))
+                .collect(),
             message: format!(
                 "not evaluated: the clock of bus `{first}` is not stated, so the limits on it are not checked ({}); state the clock the board runs, `.{first}.{clock} &= <the clock>`",
                 and(&limits)

@@ -956,7 +956,13 @@ impl Model {
     /// logic levels that a bus interface carries for all its lines (ADR 0064).
     pub fn is_levels(&self, inst: InstId) -> bool {
         let i = self.instance(inst);
-        i.kind == InstKind::Interface && i.type_name == "Levels" && i.std
+        i.kind == InstKind::Interface
+            && i.type_name == "Levels"
+            && self
+                .sources
+                .0
+                .as_ref()
+                .is_none_or(|s| s.get(i.source).name.starts_with("std/"))
     }
 
     /// The `current` field and the `pos` pin of an interface that draws current from a
