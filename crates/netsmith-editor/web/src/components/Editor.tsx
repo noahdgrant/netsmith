@@ -3,7 +3,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { bracketMatching, foldKeymap, indentOnInput, indentUnit } from '@codemirror/language';
 import { type Diagnostic, setDiagnostics } from '@codemirror/lint';
 import { highlightSelectionMatches } from '@codemirror/search';
-import { Annotation, Compartment, EditorState, type Extension } from '@codemirror/state';
+import { Annotation, Compartment, EditorState, type Extension, type StateEffect } from '@codemirror/state';
 import {
   EditorView,
   drawSelection,
@@ -182,6 +182,9 @@ export function Editor() {
   const current = useRef<string | null>(null);
   // The `rev` of each file's text that the editor has, so a replaced text is noticed and typing is not.
   const revs = useRef(new Map<string, number>());
+  // Where each file was scrolled to when the editor left it, and the last request to put the cursor somewhere that was carried out.
+  const scrolls = useRef(new Map<string, StateEffect<unknown>>());
+  const revealed = useRef(0);
 
   const path = activeFile.value;
   const file = path ? openFiles.value[path] : undefined;
@@ -200,7 +203,10 @@ export function Editor() {
   useEffect(() => {
     const v = view.current;
     if (!v) return;
-    if (current.current && current.current !== path) states.current.set(current.current, v.state);
+    if (current.current && current.current !== path) {
+      states.current.set(current.current, v.state);
+      scrolls.current.set(current.current, v.scrollSnapshot());
+    }
     if (!path || !file) {
       current.current = null;
       sourceEditor.path = null;
@@ -212,6 +218,9 @@ export function Editor() {
       v.setState(kept ?? EditorState.create({ doc: file.text, extensions: extensionsFor(path, file.readonly) }));
       // A kept state was made under the theme and the wrapping of its day.
       v.dispatch({ effects: [darkness.reconfigure(darknessFor(colourTheme.peek())), wrapping.reconfigure(wrapFor(wordWrap.peek())), vimKeys.reconfigure(vimExtension(vimMode.peek()))] });
+      // Back to a file that was left: its scroll position as it was (its cursor is in the kept state).
+      const scroll = kept ? scrolls.current.get(path) : undefined;
+      if (scroll) v.dispatch({ effects: scroll });
       revs.current.set(path, file.rev);
       current.current = path;
       sourceEditor.path = path;
@@ -323,6 +332,9 @@ export function Editor() {
   useEffect(() => {
     const v = view.current;
     if (!v || !ask || ask.at.file !== path || current.current !== path) return;
+    // Each request is carried out once: coming back to a file must not take the cursor to the place it was last sent to.
+    if (revealed.current === ask.nonce) return;
+    revealed.current = ask.nonce;
     const target = revealTarget(v.state.doc, ask.at, ask.name);
     v.dispatch({
       selection: { anchor: target.anchor, head: target.head },
