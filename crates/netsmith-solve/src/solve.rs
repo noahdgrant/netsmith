@@ -272,6 +272,15 @@ struct Conflict {
     fields: Vec<FieldId>,
 }
 
+/// A candidate that was accepted, with what it needs of its open columns.
+struct Accepted {
+    needs: Vec<(String, Need)>,
+    /// Whether every bound that waits for a part still to be chosen (`verify_possible`) also
+    /// holds over the whole range its values have now. A candidate for which one holds only
+    /// for some values is accepted only when no candidate has them all (ADR 0065, 9.6).
+    whole: bool,
+}
+
 struct Rejection {
     message: String,
     margin: f64,
@@ -3038,101 +3047,117 @@ impl Solver<'_> {
         // Candidates rejected for a reason that no count changes (a rating too low for the
         // rail): a larger count is not tried with them.
         let mut count_free_failure = vec![false; fitting.len()];
+        // Two tiers within each count (ADR 0065, 9.6): the first takes only a candidate for which
+        // every bound that waits holds over the whole range its values have, the second the
+        // candidates that were left out because a bound holds only for some values, in the same
+        // order. The fewest count still comes first.
+        let mut deferred = vec![false; counts.len() * fitting.len()];
         for (pass, &count) in counts.iter().enumerate() {
-            for (index, c) in fitting.iter().enumerate() {
-                let examined = pass * fitting.len() + index;
-                if count_free_failure[index] {
-                    continue;
-                }
-                if failed
-                    .iter()
-                    .any(|&(f, n)| n == count && self.interchangeable(job, f, c))
-                {
-                    continue;
-                }
-                if search.trials >= MAX_TRIALS {
-                    search.gave_up = true;
-                    return Outcome::GaveUp;
-                }
-                // A trial is a rollback and a propagation: milliseconds, so one checkpoint for
-                // each is the grain a cancel is heard at.
-                job::checkpoint();
-                search.trials += 1;
-                let checkpoint = self.model.checkpoint();
-                let bank = job.count.zip(count);
-                match self.try_candidate(job.part, &job.columns, c, bank, coupling, &later) {
-                    Ok(_) if jump.is_some() => {
-                        // The parts after this one would fail again, as they did.
-                        self.model.rollback(checkpoint);
-                        failed.push((c, count));
+            for tier in 0..2 {
+                for (index, c) in fitting.iter().enumerate() {
+                    let examined = pass * fitting.len() + index;
+                    if tier == 1 && !deferred[examined] {
+                        continue;
                     }
-                    Ok(needs) => {
-                        search
-                            .chosen
-                            .push(format!("{} = {}", job.path, choice_name(c, count)));
-                        search.picks.push(Pick {
-                            part: job.part,
-                            catalog: job.catalog.name.clone(),
-                            candidate: c.name.clone(),
-                            label: c.label.clone(),
-                            lcsc: c.lcsc.clone(),
-                            mpn: c.mpn.clone(),
-                            library: c.library,
-                            assembly: c.assembly.clone(),
-                            generic: c.generic.as_ref().map(|g| g.with_needs(&needs)),
-                            rejected: examined,
-                            count: count.map_or(1, |n| n as u32),
-                        });
-                        let outcome = self.search(jobs, group, depth + 1, search, coupling);
-                        if let Outcome::Solved = outcome {
-                            self.model.commit(checkpoint);
-                            return outcome;
-                        }
-                        search.chosen.pop();
-                        search.picks.pop();
-                        self.model.rollback(checkpoint);
-                        match outcome {
-                            Outcome::Failed(mut depends_on) => {
-                                if depends_on.remove(&depth) {
-                                    conflict.extend(depends_on);
-                                } else {
-                                    jump = Some(depends_on);
-                                }
-                            }
-                            _ => return Outcome::GaveUp,
-                        }
-                        failed.push((c, count));
+                    if count_free_failure[index] {
+                        continue;
                     }
-                    Err(r) => {
-                        // `try_candidate` put the model back.
-                        self.model.commit(checkpoint);
-                        let mut assignment = search.chosen.clone();
-                        assignment.push(format!("{} = {}", job.path, choice_name(c, count)));
-                        if search.closest.as_ref().is_none_or(|best| {
-                            depth > best.depth || (depth == best.depth && r.margin < best.margin)
-                        }) {
-                            search.closest = Some(Closest {
-                                depth,
-                                margin: r.margin,
-                                assignment: if group.len() == 1 {
-                                    vec![choice_name(c, count)]
-                                } else {
-                                    assignment
-                                },
-                                message: r.message,
-                                at: r.at,
+                    if failed
+                        .iter()
+                        .any(|&(f, n)| n == count && self.interchangeable(job, f, c))
+                    {
+                        continue;
+                    }
+                    if search.trials >= MAX_TRIALS {
+                        search.gave_up = true;
+                        return Outcome::GaveUp;
+                    }
+                    // A trial is a rollback and a propagation: milliseconds, so one checkpoint for
+                    // each is the grain a cancel is heard at.
+                    job::checkpoint();
+                    search.trials += 1;
+                    let checkpoint = self.model.checkpoint();
+                    let bank = job.count.zip(count);
+                    match self.try_candidate(job.part, &job.columns, c, bank, coupling, &later) {
+                        Ok(accepted) if tier == 0 && !accepted.whole => {
+                            // Not yet: a candidate that meets every waiting bound comes first.
+                            self.model.rollback(checkpoint);
+                            deferred[examined] = true;
+                        }
+                        Ok(_) if jump.is_some() => {
+                            // The parts after this one would fail again, as they did.
+                            self.model.rollback(checkpoint);
+                            failed.push((c, count));
+                        }
+                        Ok(Accepted { needs, .. }) => {
+                            search
+                                .chosen
+                                .push(format!("{} = {}", job.path, choice_name(c, count)));
+                            search.picks.push(Pick {
+                                part: job.part,
+                                catalog: job.catalog.name.clone(),
+                                candidate: c.name.clone(),
+                                label: c.label.clone(),
+                                lcsc: c.lcsc.clone(),
+                                mpn: c.mpn.clone(),
+                                library: c.library,
+                                assembly: c.assembly.clone(),
+                                generic: c.generic.as_ref().map(|g| g.with_needs(&needs)),
+                                rejected: examined,
+                                count: count.map_or(1, |n| n as u32),
                             });
+                            let outcome = self.search(jobs, group, depth + 1, search, coupling);
+                            if let Outcome::Solved = outcome {
+                                self.model.commit(checkpoint);
+                                return outcome;
+                            }
+                            search.chosen.pop();
+                            search.picks.pop();
+                            self.model.rollback(checkpoint);
+                            match outcome {
+                                Outcome::Failed(mut depends_on) => {
+                                    if depends_on.remove(&depth) {
+                                        conflict.extend(depends_on);
+                                    } else {
+                                        jump = Some(depends_on);
+                                    }
+                                }
+                                _ => return Outcome::GaveUp,
+                            }
+                            failed.push((c, count));
                         }
-                        // The rejection was worked out from these fields and the candidate's own.
-                        let mut reads = coupling.classes_of(&r.reads);
-                        reads.extend(inside.iter().copied());
-                        conflict.extend(coupling.earlier(group, depth, &reads));
-                        // A failure that reads nothing worked out from the count is the same
-                        // at every count.
-                        if let (Some(cf), Some(_)) = (job.count, count)
-                            && !coupling.classes_of(&r.own).contains(&coupling.class[cf.0])
-                        {
-                            count_free_failure[index] = true;
+                        Err(r) => {
+                            // `try_candidate` put the model back.
+                            self.model.commit(checkpoint);
+                            let mut assignment = search.chosen.clone();
+                            assignment.push(format!("{} = {}", job.path, choice_name(c, count)));
+                            if search.closest.as_ref().is_none_or(|best| {
+                                depth > best.depth
+                                    || (depth == best.depth && r.margin < best.margin)
+                            }) {
+                                search.closest = Some(Closest {
+                                    depth,
+                                    margin: r.margin,
+                                    assignment: if group.len() == 1 {
+                                        vec![choice_name(c, count)]
+                                    } else {
+                                        assignment
+                                    },
+                                    message: r.message,
+                                    at: r.at,
+                                });
+                            }
+                            // The rejection was worked out from these fields and the candidate's own.
+                            let mut reads = coupling.classes_of(&r.reads);
+                            reads.extend(inside.iter().copied());
+                            conflict.extend(coupling.earlier(group, depth, &reads));
+                            // A failure that reads nothing worked out from the count is the same
+                            // at every count.
+                            if let (Some(cf), Some(_)) = (job.count, count)
+                                && !coupling.classes_of(&r.own).contains(&coupling.class[cf.0])
+                            {
+                                count_free_failure[index] = true;
+                            }
                         }
                     }
                 }
@@ -3411,7 +3436,7 @@ impl Solver<'_> {
         bank: Option<(FieldId, f64)>,
         coupling: &Coupling,
         later: &HashSet<usize>,
-    ) -> Result<Vec<(String, Need)>, Rejection> {
+    ) -> Result<Accepted, Rejection> {
         let backup = self.model.checkpoint();
         let result = self.try_candidate_from(part, columns, c, bank, coupling, later, &backup);
         // A candidate that is refused leaves the model as it was.
@@ -3432,7 +3457,7 @@ impl Solver<'_> {
         coupling: &Coupling,
         later: &HashSet<usize>,
         backup: &Checkpoint,
-    ) -> Result<Vec<(String, Need)>, Rejection> {
+    ) -> Result<Accepted, Rejection> {
         let mut needs: Vec<(String, Need)> = Vec::new();
         // A bank of this many of the row (ADR 0052): the count is as much the choice as the
         // row is.
@@ -3575,6 +3600,7 @@ impl Solver<'_> {
         // The relations are checked in order, so the one that fails is the first, and the
         // rejection depends on every relation up to it.
         let mut reads = Vec::new();
+        let mut whole_range = true;
         let judged = relevant
             .iter()
             .map(|&index| (index, true))
@@ -3594,8 +3620,15 @@ impl Solver<'_> {
                 let message = self.relation_message(index, r, message);
                 return reject(message, margin, (r.source, r.span), reads, own, Some(index));
             }
+            // A bound that can hold, but not for every value of the range as it is.
+            if !whole && matches!(self.verify(r), Verdict::Fail { .. }) {
+                whole_range = false;
+            }
         }
-        Ok(needs)
+        Ok(Accepted {
+            needs,
+            whole: whole_range,
+        })
     }
 
     /// What the design asks of a field that a generic part leaves open (ADR 0047), or `None`
