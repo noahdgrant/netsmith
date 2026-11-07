@@ -6,7 +6,16 @@ import { LED, POWER, bodyPoint, entries, layoutFile, onGrid, openBoard, partStat
 
 export const fixture = 'two_boards';
 
-export async function run({ page, shot, step, expect, project, allowConsole }) {
+/** The recipe leaves no layout file behind: the next recipe of the session draws the same project. */
+export async function run(tools) {
+  try {
+    await body(tools);
+  } finally {
+    layoutFile(tools.project).remove();
+  }
+}
+
+async function body({ page, shot, step, expect, project, allowConsole }) {
   const layout = layoutFile(project);
   layout.remove();
   await page.setViewportSize({ width: 1400, height: 900 });

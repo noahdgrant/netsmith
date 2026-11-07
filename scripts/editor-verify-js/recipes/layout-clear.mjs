@@ -6,7 +6,20 @@ import { openSheet } from '../schematic-helpers.mjs';
 
 export const fixture = 'schematic_bench';
 
-export async function run({ page, shot, step, expect, project, section }) {
+/** The recipe leaves no layout file behind: the next recipe of the session draws the same project. */
+export async function run(tools) {
+  try {
+    await body(tools);
+  } finally {
+    layoutFile(tools.project, 'schematic_bench.sch.toml').remove();
+    // Long enough for the page to read the open file once more, which says 404, while the console is still listened to.
+    await tools.page.waitForTimeout(1500);
+  }
+}
+
+async function body({ page, shot, step, expect, project, section, allowConsole }) {
+  // The file is open in a tab of Source and is deleted at the end: the page reads the open files after each analysis and the server says 404.
+  allowConsole(/api\/file\?path=schematic_bench\.sch\.toml/);
   const NAME = 'schematic_bench.sch.toml';
   const layout = layoutFile(project, NAME);
   layout.remove();
@@ -77,9 +90,12 @@ export async function run({ page, shot, step, expect, project, section }) {
   const treeRow = page.locator('.sidebar .ft-row', { hasText: NAME }).first();
   await treeRow.waitFor({ timeout: 15000 });
   expect((await page.locator('.sidebar').innerText()).includes('Schematic layout'), 'a section "Schematic layout"');
+  const tabOpen = (n) => page.evaluate((x) => [...document.querySelectorAll('[role=tab], .tab, .ftab')].some((t) => t.textContent.includes(x)), n);
   await treeRow.click();
+  await page.waitForTimeout(1500);
+  if (!(await tabOpen(NAME))) await treeRow.dblclick();
+  await page.waitForFunction((x) => [...document.querySelectorAll('[role=tab], .tab, .ftab')].some((t) => t.textContent.includes(x)), NAME, { timeout: 20000 });
   await page.waitForSelector('.cm-content');
-  await page.waitForFunction((n) => document.body.innerText.includes(n), NAME);
   const tab = await page.evaluate(() => [...document.querySelectorAll('[role=tab], .tab, .ftab')].map((t) => t.textContent).join(' | '));
   expect(tab.includes(NAME), `its tab is open (${tab})`);
   const coloured = await page.evaluate(() => document.querySelectorAll('.cm-content .cm-line span').length);
