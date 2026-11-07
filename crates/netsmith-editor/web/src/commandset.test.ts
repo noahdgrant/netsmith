@@ -153,6 +153,7 @@ const SOURCE_KEYS: Record<string, string[]> = {
   'source.zoom.reset': ['Mod+0'],
   'source.replace': ['Mod+H'],
   'source.wrap.toggle': ['Alt+Z'],
+  'source.comment.toggle': ['Mod+/'],
 };
 const SOURCE_SWITCHES = ['source.hints.toggle', 'source.cards.toggle', 'source.outline.toggle', 'source.wrap.toggle'];
 
