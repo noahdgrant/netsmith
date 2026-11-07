@@ -1,5 +1,5 @@
 // The source editor's keys and settings, one step for each: Ctrl+/ comments the lines (the shortcuts stay on `?`),
-// autosave writes a file after a pause, comments can be set in another font, and Vim keys can be turned on.
+// autosave writes a file after a pause, comments can be set in another font, Vim keys can be turned on, and imports are sorted by Shift+Alt+O and on save.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -131,4 +131,35 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => !document.querySelector('.cm-vim-panel'));
   expect(true, 'the mode bar is gone with Vim off');
+
+  step('Shift+Alt+O sorts the imports: std, then src, with a blank line between');
+  await page.locator('.cm-line', { hasText: 'import std::parts::connector' }).first().click();
+  await page.keyboard.press('Home');
+  await page.keyboard.type('import src::zzz::Z\n');
+  await page.keyboard.press('Shift+Alt+O');
+  await page.waitForFunction(() => {
+    const lines = [...document.querySelectorAll('.cm-line')].map((l) => l.innerText);
+    const at = lines.findIndex((l) => l.startsWith('import src::zzz'));
+    return at > 0 && lines[at - 1].trim() === '';
+  });
+  expect(true, 'the src import is last, after a blank line');
+  await shot('imports-sorted');
+  for (let i = 0; i < 6; i++) await page.keyboard.press('Control+z');
+
+  step('sort imports on save: Ctrl+S sorts first');
+  await openOptions();
+  await page.locator('[data-testid="opt-sortsave"]').click();
+  await page.keyboard.press('Escape');
+  await page.locator('.cm-line', { hasText: 'import std::parts::connector' }).first().click();
+  await page.keyboard.press('Home');
+  await page.keyboard.type('import src::yyy::Y\n');
+  await page.keyboard.press('Control+s');
+  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null, { timeout: 8000 });
+  const saved = fs.readFileSync(file, 'utf8');
+  expect(saved.indexOf('import src::yyy::Y') > saved.indexOf('import std::mfg'), 'the src import was written after the std ones');
+  for (let i = 0; i < 6; i++) await page.keyboard.press('Control+z');
+  await page.keyboard.press('Control+s');
+  await openOptions();
+  await page.locator('[data-testid="opt-sortsave"]').click();
+  await page.keyboard.press('Escape');
 }

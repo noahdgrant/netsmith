@@ -10,7 +10,7 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | Project tree: nesting, guide lines, icons, keyboard, filter, collapse all, width, click a definition, scroll kept | `project-tree.md` | `tree-nested` | `tree` |
 | Project tree: new file and folder, rename, delete (toolbar, right-click menu, F2, Delete, Ctrl+N) | `project-tree.md` | `tree-files` | `tree` |
 | Source editor and live diagnostics | `source-editor.md` | `editor` | `two_boards` |
-| Source: Ctrl+/ comment, autosave, comment font, Vim keys | `source-editor.md` | `source-keys` | `two_boards` |
+| Source: Ctrl+/ comment, autosave, comment font, Vim keys, sort imports | `source-editor.md` | `source-keys` | `two_boards` |
 | Source: hover cards, breadcrumbs, history, outline, inline hints, tabs, folds, find, completion | `source-editor.md` | `source-editor` | `two_boards` |
 | Schematic view and click-through | `schematic.md` | `schematic`, `big-schematic` | `two_boards`, `big` |
 | Schematic box of a part with a `tri_state` pin (the side it is on, the mark of an open one) | `schematic.md` | `tri-state` | `tri_state` |
