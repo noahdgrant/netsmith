@@ -84,7 +84,7 @@ export const tomlLanguage = StreamLanguage.define<TomlState>({
 
 const tomlHighlight = syntaxHighlighting(
   HighlightStyle.define([
-    { tag: t.comment, color: 'var(--syn-comment)', fontStyle: 'italic' },
+    { tag: t.comment, color: 'var(--syn-comment)', fontStyle: 'var(--comment-style, normal)', fontFamily: 'var(--comment-family, inherit)' },
     { tag: t.heading, color: 'var(--syn-keyword)', fontWeight: '600' },
     { tag: t.propertyName, color: 'var(--syn-property)' },
     { tag: t.string, color: 'var(--syn-string)' },
