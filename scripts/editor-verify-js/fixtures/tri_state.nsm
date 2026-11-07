@@ -1,0 +1,58 @@
+//! An invented SPI flash and its processor, for the schematic's fallback box: the flash's data out
+//! is `tri_state`, drawn with the other kinds (ADR 0064). No part has a KiCad symbol, so every
+//! part is the box the view draws from the pin table.
+
+import std::bus::{Spi, SpiRole}
+import std::sources::Rail
+
+/// Zcpu, an invented processor: an SPI master with a plain pin of its own.
+part Zcpu {
+    .designator &= "U"
+    .vdd: Rail
+    .spi: Spi
+    .spi.role &= SpiRole::Master
+
+    pins {
+        .vdd.pos  power         "VDD"  "1"
+        .vdd.neg  power         "VSS"  "2"
+        .spi.sclk output        "SCK"  "3"
+        .spi.mosi output        "MOSI" "4"
+        .spi.miso input         "MISO" "5"
+        .spi.cs   output        "CS0"  "6"
+        .gpio     bidirectional "IO7"  "7"
+        .nc       no_connect    "NC"   "8"
+    }
+}
+
+/// Zflash, an invented serial flash on 3.3 V.
+part Zflash {
+    .designator &= "U"
+    .vdd: Rail
+    .spi: Spi
+    .spi.role &= SpiRole::Slave
+
+    pins {
+        .vdd.pos  power     "VCC" "8"
+        .vdd.neg  power     "GND" "4"
+        .spi.sclk input     "CLK" "6"
+        .spi.mosi input     "DI"  "5"
+        // The datasheet says DO is high impedance while /CS is high (an invented page).
+        .spi.miso tri_state "DO"  "2"
+        .spi.cs   input     "/CS" "1"
+        // A second line of the same kind, left open: the mark names its kind.
+        .ready    tri_state "RDY" "3"
+    }
+}
+
+board TriStateBoard {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .cpu: Zcpu
+    .flash: Zflash
+    .supply ~ .cpu.vdd
+    .supply ~ .flash.vdd
+    .cpu.spi ~ .flash.spi
+}
