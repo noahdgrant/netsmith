@@ -33,7 +33,8 @@ import { severityGutter } from '../source/cm-sev';
 import { cmTheme, lintCardTheme } from '../source/cm-theme';
 import { sourceEditor } from '../source/handle';
 import { inlineHints as hintsFor } from '../source/hints';
-import { fontSize, inlineHints, wordWrap } from '../source/prefs';
+import { fontSize, inlineHints, vimMode, wordWrap } from '../source/prefs';
+import { vimExtension } from '../source/cm-vim';
 import {
   activeFile,
   cursor,
@@ -62,8 +63,13 @@ const darknessFor = (t: Theme): Extension => EditorView.darkTheme.of(isDark(t));
 const wrapping = new Compartment();
 const wrapFor = (on: boolean): Extension => (on ? EditorView.lineWrapping : []);
 
+/** Vim keys, or none, as chosen; set again for a state that was kept while the choice changed. */
+const vimKeys = new Compartment();
+
 function extensionsFor(path: string, readonly: boolean): Extension[] {
   return [
+    // First: Vim's keys come before every other keymap's.
+    vimKeys.of(vimExtension(vimMode.peek())),
     severityGutter,
     lineNumbers(),
     changesExtension(path),
@@ -205,7 +211,7 @@ export function Editor() {
       const kept = revs.current.get(path) === file.rev ? states.current.get(path) : undefined;
       v.setState(kept ?? EditorState.create({ doc: file.text, extensions: extensionsFor(path, file.readonly) }));
       // A kept state was made under the theme and the wrapping of its day.
-      v.dispatch({ effects: [darkness.reconfigure(darknessFor(colourTheme.peek())), wrapping.reconfigure(wrapFor(wordWrap.peek()))] });
+      v.dispatch({ effects: [darkness.reconfigure(darknessFor(colourTheme.peek())), wrapping.reconfigure(wrapFor(wordWrap.peek())), vimKeys.reconfigure(vimExtension(vimMode.peek()))] });
       revs.current.set(path, file.rev);
       current.current = path;
       sourceEditor.path = path;
@@ -226,6 +232,10 @@ export function Editor() {
   useEffect(() => {
     view.current?.dispatch({ effects: wrapping.reconfigure(wrapFor(wrap)) });
   }, [wrap]);
+  const vimOn = vimMode.value;
+  useEffect(() => {
+    view.current?.dispatch({ effects: vimKeys.reconfigure(vimExtension(vimOn)) });
+  }, [vimOn]);
   const size = fontSize.value;
   useEffect(() => {
     view.current?.requestMeasure();

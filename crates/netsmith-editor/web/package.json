@@ -23,6 +23,7 @@
     "@codemirror/view": "^6.36.0",
     "@lezer/highlight": "^1.2.0",
     "@preact/signals": "^2.0.0",
+    "@replit/codemirror-vim": "^6.4.0",
     "preact": "^10.26.0"
   },
   "devDependencies": {
