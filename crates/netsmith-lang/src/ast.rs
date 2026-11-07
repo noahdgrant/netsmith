@@ -141,6 +141,11 @@ pub enum Item {
     Catalog(Catalog),
     Pins(Pins),
     Tie(Tie),
+    /// `peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }`; only a part may hold one
+    /// (ADR 0062).
+    Peripheral(Peripheral),
+    /// `shared SERIAL0 { UARTE0 SPIM0 }`; only a part may hold one (ADR 0062).
+    Shared(Shared),
     /// A `case { ... }` section; only a physical file may hold one.
     Case(Case),
     /// A `row .a1 .. .a12 along x pitch 2.54mm` statement; only a physical file may hold one.
@@ -298,6 +303,48 @@ pub struct Tie {
     pub a: Path,
     pub b: Path,
     pub span: Span,
+}
+
+/// `peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }`: the functions of a part
+/// that belong together and are in use together (ADR 0062). A function takes its kind from the
+/// peripheral, as it would from a pin row (ADR 0046). With `on CLASS`, every pin whose row lists
+/// the function `CLASS` offers the peripheral's functions as well.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Peripheral {
+    pub name: Ident,
+    /// The class after `on`: a function that rows list.
+    pub on: Option<Ident>,
+    pub functions: Vec<PinFunction>,
+    pub span: Span,
+}
+
+/// `shared UARTS limit 2 { UARTE0 UARTE1 .p10 }`: the hardware that its members use at most
+/// `limit` of at a time, one when it states none (ADR 0062). A member is a peripheral or a
+/// function, by name, or a pin.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Shared {
+    pub name: Ident,
+    /// `limit N`: how many members may be in use at once.
+    pub limit: Option<(u32, Span)>,
+    pub members: Vec<SharedMember>,
+    pub span: Span,
+}
+
+/// A member of a `shared` resource: a name (a peripheral or a function of the part) or a pin
+/// (`.p10`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum SharedMember {
+    Name(Ident),
+    Pin(Path),
+}
+
+impl SharedMember {
+    pub fn span(&self) -> Span {
+        match self {
+            Self::Name(n) => n.span,
+            Self::Pin(p) => p.span,
+        }
+    }
 }
 
 /// `bridge .a ~> .b`: a two-terminal part that a `~>` chain passes through,

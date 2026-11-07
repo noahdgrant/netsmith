@@ -81,6 +81,18 @@ interface Usb2 {
 /// So the resistor's current, and with it the draw on `supply`, is 0 up to
 /// `supply.voltage / resistance`. A board that states a current on `supply` itself states a
 /// budget (ADR 0038): the draw must be able to fit in it. Two `PullUp`s on one rail add.
+///
+/// That is the steady draw, with two assumptions that the module offers and a board may
+/// replace (ADR 0061):
+///
+/// - `overdrive`, how far above `supply` a driver holds the line, at most. It is 0 V: the line
+///   is never driven above the supply. A line a 5 V driver pulls above a 3.3 V supply pushes
+///   current back into the rail, a negative draw of up to `overdrive / resistance`, which a
+///   board that has such a driver states (`.pull.overdrive &= 0V..1.7V`); the draw then
+///   reaches below 0 and a budget of draws only fails.
+/// - `supply_top`, the voltage the draw is worked out at. It is `supply.voltage`, the steady
+///   range, which is what a budget and a power rating read. A board that wants the draw at
+///   the transient its rail can reach states it (`.pull.supply_top &= .rail.peak`).
 module PullUp {
     .supply: Rail
     .line: Pin
@@ -91,7 +103,11 @@ module PullUp {
 
     .line_low: Number
     .line_low &= 0..1
-    .resistor.current == .line_low * .supply.voltage / .resistor.resistance
+    .overdrive: Voltage
+    .overdrive ?= 0V
+    .supply_top: Voltage
+    .supply_top ?= .supply.voltage
+    .resistor.current == (.line_low * .supply_top - .overdrive) / .resistor.resistance
 }
 
 /// The two pull-up resistors of an I2C bus, one on `sda` and one on `scl`, to the positive
@@ -108,7 +124,10 @@ module PullUp {
 /// worst case, 0 to 1 each, and the two lines can be low at once. `supply.current` is the sum of
 /// the two, worked out by the solver from the resistors the board's `.resistance` picks. A board
 /// that states a current on `supply` itself states a budget (ADR 0038): the sum must be able to
-/// fit in it.
+/// fit in it. It is the steady draw, with the two assumptions of `PullUp`, offered the same
+/// way: `overdrive` (0 V: no driver holds a line above `supply`; a negative draw of up to
+/// `overdrive / resistance` otherwise) and `supply_top` (`supply.voltage`; the transient the
+/// board states, for the draw at it). Both apply to both lines.
 module I2cPullups {
     .bus: I2c
     .supply: Rail
@@ -124,6 +143,10 @@ module I2cPullups {
     .scl_low: Number
     .sda_low &= 0..1
     .scl_low &= 0..1
-    .sda_pullup.current == .sda_low * .supply.voltage / .sda_pullup.resistance
-    .scl_pullup.current == .scl_low * .supply.voltage / .scl_pullup.resistance
+    .overdrive: Voltage
+    .overdrive ?= 0V
+    .supply_top: Voltage
+    .supply_top ?= .supply.voltage
+    .sda_pullup.current == (.sda_low * .supply_top - .overdrive) / .sda_pullup.resistance
+    .scl_pullup.current == (.scl_low * .supply_top - .overdrive) / .scl_pullup.resistance
 }

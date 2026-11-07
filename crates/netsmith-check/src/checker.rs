@@ -41,6 +41,12 @@ fn module_key(file_name: &str) -> String {
         .replace('/', "::")
 }
 
+/// The module path of a file nothing loaded: its name without `.` and `..` steps, so that
+/// `./src/main.nsm` and `src/main.nsm` are one module.
+fn rootless_key(file_name: &str) -> String {
+    module_key(&crate::loader::normalise_name(file_name))
+}
+
 /// A row of a generic's `pins` table, which a provider's row for the pin must agree with
 /// (ADR 0059).
 #[derive(Clone)]
@@ -136,6 +142,11 @@ pub(crate) struct Checker<'a> {
     pub(crate) generic_members: HashMap<(InstId, String), String>,
     /// The rows of the `pins` tables of generics, for the instance they were read into.
     pub(crate) contract_rows: Vec<ContractRow>,
+    /// The definitions being made, outermost first: a definition that is made again inside
+    /// itself would never end, so it is refused where it is declared.
+    pub(crate) making: Vec<(usize, usize)>,
+    /// Where the member being declared is written, for a message about what it makes.
+    pub(crate) use_site: Option<(SourceId, Span)>,
     /// The loaded files as they were when the last model was made, shared by the models made
     /// while no file was added.
     snapshot: Option<std::sync::Arc<Sources>>,
@@ -195,6 +206,8 @@ impl<'a> Checker<'a> {
             uses: Vec::new(),
             generic_members: HashMap::new(),
             contract_rows: Vec::new(),
+            making: Vec::new(),
+            use_site: None,
             snapshot: None,
         }
     }
@@ -244,7 +257,7 @@ impl<'a> Checker<'a> {
         self.in_kind(DefKind::Panel)
     }
 
-    fn in_kind(&self, kind: DefKind) -> bool {
+    pub(crate) fn in_kind(&self, kind: DefKind) -> bool {
         self.cur_def
             .is_some_and(|(m, i)| self.modules[m].defs[i].kind == kind)
     }
@@ -261,8 +274,17 @@ impl<'a> Checker<'a> {
 
     // ---- modules and imports -------------------------------------------------
 
+    /// The file the check is given. When the loader holds the same file as a module of the
+    /// project (`src/main.nsm` is `src::main`, however the name was typed) the root is that
+    /// module, cached under its key like every other file, so that a file which imports the
+    /// root finds it and does not read a second copy (ADR 0059 section 11); a file the
+    /// loader does not hold takes its module path from its name with the `.` steps removed.
     pub fn add_root(&mut self, name: &str, text: &str) -> usize {
-        self.add_module(name, text, None)
+        let named = self.loader.root_key(name);
+        let key = named.clone().unwrap_or_else(|| rootless_key(name));
+        // Only a module the loader holds can be imported, so only that is cached.
+        let cached = named.filter(|k| self.loader.get(k).is_some());
+        self.add_module_as(name, text, cached, key)
     }
 
     fn load_module(&mut self, path: &[String]) -> Option<usize> {
@@ -275,6 +297,18 @@ impl<'a> Checker<'a> {
     }
 
     fn add_module(&mut self, name: &str, text: &str, key: Option<String>) -> usize {
+        self.add_module_as(name, text, key, module_key(name))
+    }
+
+    /// Read a file as a module with the module path `module_path`, cached under `key` (an
+    /// import's path) if it has one.
+    fn add_module_as(
+        &mut self,
+        name: &str,
+        text: &str,
+        key: Option<String>,
+        module_path: String,
+    ) -> usize {
         let source = self.sources.add(name, text);
         let mut file = match parse(text) {
             Ok(file) => file,
@@ -321,7 +355,7 @@ impl<'a> Checker<'a> {
             defs,
             scope,
             std: name.starts_with("std/"),
-            key: module_key(name),
+            key: module_path,
         });
         // Cached before the imports run so a cycle cannot recurse forever.
         if let Some(key) = key {
@@ -607,6 +641,8 @@ impl<'a> Checker<'a> {
         self.uses.clear();
         self.generic_members.clear();
         self.contract_rows.clear();
+        self.making.clear();
+        self.use_site = None;
         self.scope.clear();
         self.uf.clear();
         self.skipped.clear();
@@ -617,7 +653,9 @@ impl<'a> Checker<'a> {
         self.source_override = None;
         let def = self.modules[module].defs[index].clone();
         let name = def.name.name.clone();
-        let root = self.instantiate(&def, (module, index), &name, None);
+        let root = self
+            .instantiate(&def, (module, index), &name, None)
+            .expect("the root is made inside nothing, so nothing repeats");
         self.model.root = root;
         self.resolve_defaults();
         self.finalize_nets();
@@ -632,14 +670,19 @@ impl<'a> Checker<'a> {
         def_ref: (usize, usize),
         name: &str,
         parent: Option<InstId>,
-    ) -> InstId {
+    ) -> Option<InstId> {
         match parent {
             // A member declared with the type of a generic stands for one of its providers
             // (ADR 0059). A generic that is elaborated on its own is checked as it is.
             Some(parent) if def.kind == DefKind::Generic => {
                 self.instantiate_use(def, def_ref, name, parent)
             }
-            _ => self.instantiate_as(def, def_ref, name, parent, None),
+            // A definition inside itself, or inside what it holds, never ends: refused.
+            Some(_) if self.making.contains(&def_ref) => {
+                self.report_cycle(name, None, def_ref);
+                None
+            }
+            _ => Some(self.instantiate_as(def, def_ref, name, parent, None)),
         }
     }
 
@@ -663,6 +706,7 @@ impl<'a> Checker<'a> {
             DefKind::Generic => InstKind::Module,
             DefKind::Enum => unreachable!("an enum is a type, so nothing instantiates it"),
         };
+        self.making.push(def_ref);
         let id = self.model.add_instance(Instance {
             name: name.to_string(),
             kind,
@@ -673,6 +717,7 @@ impl<'a> Checker<'a> {
             catalog: None,
             tables: Vec::new(),
             ties: Vec::new(),
+            rules: Default::default(),
             source: self.modules[def_ref.0].source,
             span: def.span,
             declared: None,
@@ -756,6 +801,9 @@ impl<'a> Checker<'a> {
             self.leave_def(saved);
         }
         self.process(&def.items);
+        if kind == InstKind::Part {
+            self.finish_rules(id);
+        }
         if !generics.is_empty() {
             self.conform(id, def, &generics);
         }
@@ -766,6 +814,7 @@ impl<'a> Checker<'a> {
         self.cur_module = saved_module;
         self.cur_def = saved_def;
         self.scope = saved_scope;
+        self.making.pop();
         id
     }
 
@@ -815,6 +864,7 @@ impl<'a> Checker<'a> {
             catalog: None,
             tables: Vec::new(),
             ties: Vec::new(),
+            rules: Default::default(),
             source,
             span,
             declared: None,
@@ -957,11 +1007,15 @@ impl<'a> Checker<'a> {
                 }
                 Ty::Def(m, i) => {
                     let def = self.modules[m].defs[i].clone();
-                    let child = self.instantiate(&def, (m, i), &name, Some(cur));
-                    self.model.instances[child.0].docs = d.docs.clone();
                     let last = d.ty.segments.last().map_or(d.name.span.end, |s| s.span.end);
-                    self.model.instances[child.0].declared =
-                        Some((self.cur_source(), Span::new(d.name.span.start, last)));
+                    let site = (self.cur_source(), Span::new(d.name.span.start, last));
+                    self.use_site = Some(site);
+                    let Some(child) = self.instantiate(&def, (m, i), &name, Some(cur)) else {
+                        self.model.add_member(cur, &name, Member::Poison);
+                        continue;
+                    };
+                    self.model.instances[child.0].docs = d.docs.clone();
+                    self.model.instances[child.0].declared = Some(site);
                     self.model.add_member(cur, &name, Member::Inst(child));
                     self.no_provider(child, d);
                     if self.scope.len() == 1
@@ -1062,6 +1116,7 @@ impl<'a> Checker<'a> {
             catalog: None,
             tables: Vec::new(),
             ties: Vec::new(),
+            rules: Default::default(),
             source: self.cur_source(),
             span,
             declared: None,
@@ -1123,11 +1178,15 @@ impl<'a> Checker<'a> {
                 Item::Catalog(c) if self.phys.is_none() => self.catalog(c),
                 Item::Pins(p) if self.phys.is_none() => self.pins(p),
                 Item::Tie(t) if self.phys.is_none() => self.tie(t),
+                Item::Peripheral(p) if self.phys.is_none() => self.peripheral(p),
+                Item::Shared(s) if self.phys.is_none() => self.shared(s),
                 Item::Connect(c) => self.not_physical(c.span, "a connection with `~`"),
                 Item::Bridge(b) => self.not_physical(b.span, "a `bridge`"),
                 Item::Catalog(c) => self.not_physical(c.span, "a `catalog`"),
                 Item::Pins(p) => self.not_physical(p.span, "a `pins` table"),
                 Item::Tie(t) => self.not_physical(t.span, "a `tie`"),
+                Item::Peripheral(p) => self.not_physical(p.span, "a `peripheral`"),
+                Item::Shared(s) => self.not_physical(s.span, "a `shared` resource"),
             }
         }
     }

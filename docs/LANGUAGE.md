@@ -1947,6 +1947,399 @@ error: net `net-a.pa2` has only inputs (`a.pa2` (`Mcu8` function `UART1_RX`, an 
 
 The same pins with `GPIO` chosen on either side are a bidirectional pin on the net, and are accepted. A kind that is not one of the six is a parse error: ``unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive and no_connect``.
 
+### Peripherals that share hardware
+
+A microcontroller's serial unit runs as a UART, an SPI master or an I2C master, one at a time. The pin table cannot say so: each pin lists the functions it can be, and nothing relates two pins' functions. Two statements in the part carry it (ADR 0062).
+
+`peripheral NAME { FUNCTION[:kind] ... }` names the functions that belong together, a UART's `TX` and `RX`. The functions are separated by spaces or line ends, each with an optional kind as in a pin row. A peripheral is **in use** when the board chooses one of its functions on a pin, and two of its lines are still one use. A function takes its kind from the peripheral that lists it, so the pin rows write the function without a kind.
+
+`shared NAME { PERIPHERAL ... }` says that at most one of its members is in use at a time. The name is the datasheet's name for the hardware, and it is what a message prints.
+
+The pin table stays what it was: one row for each pin, with the functions the pin can be. Every function of a peripheral must be listed by at least one row, because a function that no pin offers can never be chosen. The part below is invented; its four pins list every function.
+
+```nsm module=src::zmcu
+/// Zmcu, an invented microcontroller: two serial units, each of which runs as a UART or an
+/// I2C master, one at a time.
+part Zmcu {
+    peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }
+    peripheral TWIM0 { TWIM0_SCL:bidirectional TWIM0_SDA:bidirectional }
+    peripheral UARTE1 { UARTE1_TX:output UARTE1_RX:input }
+    peripheral TWIM1 { TWIM1_SCL:bidirectional TWIM1_SDA:bidirectional }
+
+    shared SERIAL0 { UARTE0 TWIM0 }
+    shared SERIAL1 { UARTE1 TWIM1 }
+
+    pins {
+        .p00 bidirectional "P0.00" "1" fn GPIO UARTE0_TX UARTE0_RX TWIM0_SCL TWIM0_SDA UARTE1_TX UARTE1_RX TWIM1_SCL TWIM1_SDA
+        .p01 bidirectional "P0.01" "2" fn GPIO UARTE0_TX UARTE0_RX TWIM0_SCL TWIM0_SDA UARTE1_TX UARTE1_RX TWIM1_SCL TWIM1_SDA
+        .p02 bidirectional "P0.02" "3" fn GPIO UARTE0_TX UARTE0_RX TWIM0_SCL TWIM0_SDA UARTE1_TX UARTE1_RX TWIM1_SCL TWIM1_SDA
+        .p03 bidirectional "P0.03" "4" fn GPIO UARTE0_TX UARTE0_RX TWIM0_SCL TWIM0_SDA UARTE1_TX UARTE1_RX TWIM1_SCL TWIM1_SDA
+    }
+}
+```
+
+A console on one unit and a sensor on the other, each with a function chosen on each pin as before:
+
+```nsm
+import src::zmcu::Zmcu
+import std::parts::connector::Header1x4
+
+board Sensors {
+    .u: Zmcu
+    .j: Header1x4
+    .u.p00 ~ .j.p1
+    .u.p01 ~ .j.p2
+    .u.p02 ~ .j.p3
+    .u.p03 ~ .j.p4
+    .u.p00.function &= "UARTE0_TX"
+    .u.p01.function &= "UARTE0_RX"
+    .u.p02.function &= "TWIM1_SCL"
+    .u.p03.function &= "TWIM1_SDA"
+}
+```
+
+A third interface on a unit that is in use is refused. The message names the part, the shared resource, both uses with their functions and lines, and whether another unit is free; the error points at the second use, in path order. Here the sensor went on the unit the console uses:
+
+```nsm fails
+import src::zmcu::Zmcu
+import std::parts::connector::Header1x4
+
+board Crowded {
+    .u: Zmcu
+    .j: Header1x4
+    .u.p00 ~ .j.p1
+    .u.p01 ~ .j.p2
+    .u.p02 ~ .j.p3
+    .u.p03 ~ .j.p4
+    .u.p00.function &= "UARTE0_TX"
+    .u.p01.function &= "UARTE0_RX"
+    .u.p02.function &= "TWIM0_SCL"
+    .u.p03.function &= "TWIM0_SDA"
+}
+```
+
+```text
+error: `u` (`Zmcu`) uses UARTE0 and TWIM0, which share `SERIAL0` and run one at a time: UARTE0 on `u.p00` as UARTE0_TX (main.nsm:11) and on `u.p01` as UARTE0_RX (main.nsm:12), TWIM0 on `u.p02` as TWIM0_SCL (main.nsm:13) and on `u.p03` as TWIM0_SDA (main.nsm:14); the other shared resources of `Zmcu`: `SERIAL1` has nothing in use
+   --> main.nsm:13:5
+   |
+13 |     .u.p02.function &= "TWIM0_SCL"
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A function counts as soon as it is chosen, also on a pin that nothing is connected to: the statement is deliberate. A function that no peripheral lists (`GPIO`) is never a use of one. The rule needs no package and no catalog row; it is judged for every `Zmcu` the board has, with its full path (`hub.mcu` for a part in a module), before the solver runs.
+
+A part's author is told about a statement that is wrong, at that statement. A member that is not a peripheral, a function or a pin of the part names the nearest name:
+
+```nsm fails
+part Zmcu {
+    peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }
+    peripheral TWIM0 { TWIM0_SCL:bidirectional TWIM0_SDA:bidirectional }
+    shared SERIAL0 { UARTE0 TWIM9 }
+    pins {
+        .p00 bidirectional "P0.00" "1" fn UARTE0_TX UARTE0_RX TWIM0_SCL TWIM0_SDA
+    }
+}
+```
+
+```text
+error: `TWIM9` in `shared SERIAL0` is not a peripheral, a function or a pin of `Zmcu`; did you mean `TWIM0`? the peripherals are UARTE0 and TWIM0
+  --> main.nsm:4:29
+  |
+4 |     shared SERIAL0 { UARTE0 TWIM9 }
+  |                             ^^^^^
+```
+
+A function that no row lists is on no pin:
+
+```nsm fails
+part Zmcu {
+    peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }
+    pins {
+        .p00 bidirectional "P0.00" "1" fn UARTE0_TX
+    }
+}
+```
+
+```text
+error: `peripheral UARTE0` lists `UARTE0_RX`, but no row of any `pins` table of `Zmcu` lists it, so no pin can be it; list it as `fn UARTE0_RX` on the pins that carry it
+  --> main.nsm:2:42
+  |
+2 |     peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }
+  |                                          ^^^^^^^^^
+```
+
+A row that writes a kind for a function of a peripheral is refused, because the peripheral gives it its kind:
+
+```nsm fails
+part Zmcu {
+    peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }
+    pins {
+        .p00 bidirectional "P0.00" "1" fn UARTE0_TX:output UARTE0_RX
+    }
+}
+```
+
+```text
+error: `.p00` lists `UARTE0_TX:output`, a function of `peripheral UARTE0`, which gives it its kind; write `UARTE0_TX` without a kind
+  --> main.nsm:4:9
+  |
+4 |         .p00 bidirectional "P0.00" "1" fn UARTE0_TX:output UARTE0_RX
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A function belongs to one peripheral, and a peripheral and a function do not share a name. Statement order does not matter: a `shared` may come before the peripherals it names and the rows that list their functions. A `peripheral` or a `shared` can only be in a part: a generic states what every provider has, and a peripheral is a fact of one part's datasheet, so a part that provides the generic states its own.
+
+### A peripheral on any pin
+
+On many microcontrollers any pin of a core can carry any line of a peripheral. Listing every such function on every row would make the table as long as the pins times the peripherals, so a peripheral says where it goes instead: `peripheral NAME on CLASS { ... }` offers its functions on every pin whose row lists the function `CLASS`. A class is an ordinary function: the rows list it (`fn APP_GPIO`), and it is also what a board chooses for a pin that is a plain GPIO of that core.
+
+A core that owns a pin is carried the same way. Every pin lists the cores that may own it, a peripheral of a core is `on` that core's class, and a pin that the silicon gives to one core lists one class. A peripheral with no `on` is offered only on the pins whose rows list its functions by name: a dedicated pin. Its functions each need a row that lists them; a function of a peripheral that is `on` a class does not.
+
+```nsm module=src::zmcu2
+/// Zmcu2, an invented microcontroller: an application core and a network core, a UART and
+/// an I2C master that share one serial unit, a UART of the network core, and a fast SPI on
+/// dedicated pins.
+part Zmcu2 {
+    peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }
+    peripheral TWIM0 on APP_GPIO { TWIM0_SCL:bidirectional TWIM0_SDA:bidirectional }
+    peripheral NETUART on NET_GPIO { NETUART_TX:output NETUART_RX:input }
+    peripheral HSSPI { HSSPI_SCK:output HSSPI_MOSI:output }
+
+    shared SERIAL0 { UARTE0 TWIM0 }
+
+    pins {
+        .p00 bidirectional "P0.00" "1" fn APP_GPIO NET_GPIO
+        .p01 bidirectional "P0.01" "2" fn APP_GPIO NET_GPIO
+        .p02 bidirectional "P0.02" "3" fn APP_GPIO
+        .p03 bidirectional "P0.03" "4" fn NET_GPIO
+        .p04 bidirectional "P0.04" "5" fn APP_GPIO NET_GPIO HSSPI_SCK
+        .p05 bidirectional "P0.05" "6" fn APP_GPIO NET_GPIO HSSPI_MOSI
+    }
+}
+```
+
+One row for each pin, and no row grows with the peripherals. The application core's console on `.p02`, the network core's on `.p03` and a fast SPI on its dedicated pins:
+
+```nsm
+import src::zmcu2::Zmcu2
+import std::parts::connector::Header1x8
+
+board Cores {
+    .u: Zmcu2
+    .j: Header1x8
+    .u.p00 ~ .j.p1
+    .u.p02 ~ .j.p2
+    .u.p03 ~ .j.p3
+    .u.p04 ~ .j.p4
+    .u.p05 ~ .j.p5
+    .u.p00.function &= "UARTE0_TX"
+    .u.p02.function &= "UARTE0_RX"
+    .u.p03.function &= "NETUART_TX"
+    .u.p04.function &= "HSSPI_SCK"
+    .u.p05.function &= "HSSPI_MOSI"
+}
+```
+
+A function on a pin that does not offer it says where it is offered, and what the pin offers. A peripheral on a class has too many functions to list on every pin, so the message names the peripherals. A dedicated function on the wrong pin, and a network-core line on a pin that the network core does not own:
+
+```nsm fails
+import src::zmcu2::Zmcu2
+import std::parts::connector::Header1x8
+
+board WrongPin {
+    .u: Zmcu2
+    .j: Header1x8
+    .u.p01 ~ .j.p1
+    .u.p01.function &= "HSSPI_SCK"
+}
+```
+
+```text
+error: `u.p01` cannot be `HSSPI_SCK`; that function is offered only on `u.p04`; `u.p01` offers APP_GPIO, NET_GPIO and the lines of the peripherals on those pins: UARTE0, TWIM0, NETUART
+  --> main.nsm:8:5
+  |
+8 |     .u.p01.function &= "HSSPI_SCK"
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+```nsm fails
+import src::zmcu2::Zmcu2
+import std::parts::connector::Header1x8
+
+board WrongCore {
+    .u: Zmcu2
+    .j: Header1x8
+    .u.p02 ~ .j.p1
+    .u.p02.function &= "NETUART_TX"
+}
+```
+
+```text
+error: `u.p02` cannot be `NETUART_TX`; that function is offered on every pin that lists `NET_GPIO`; `u.p02` offers APP_GPIO and the lines of the peripherals on those pins: UARTE0, TWIM0
+  --> main.nsm:8:5
+  |
+8 |     .u.p02.function &= "NETUART_TX"
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A name that no pin offers is a slip, and the message names the nearest function (`did you mean`). A connected pin that lists only a class still has several functions, because its peripherals' lines are functions of it, and needs one chosen. Shared resources count the functions a class offers: a board that puts `UARTE0` and `TWIM0` on pins of this part gets the message of the previous section, though no row lists either.
+
+A part's author is refused a class that no row lists, and a row that lists what its class already offers:
+
+```nsm fails
+part Zmcu2 {
+    peripheral UARTE0 on GPIO { UARTE0_TX:output UARTE0_RX:input }
+    pins {
+        .p00 bidirectional "P0.00" "1" fn APP_GPIO NET_GPIO
+    }
+}
+```
+
+```text
+error: `peripheral UARTE0 on GPIO`: no row of any `pins` table of `Zmcu2` lists the function `GPIO`, so UARTE0 is offered on no pin; the functions that rows list are APP_GPIO and NET_GPIO
+  --> main.nsm:2:26
+  |
+2 |     peripheral UARTE0 on GPIO { UARTE0_TX:output UARTE0_RX:input }
+  |                          ^^^^
+```
+
+```nsm fails
+part Zmcu2 {
+    peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }
+    pins {
+        .p00 bidirectional "P0.00" "1" fn APP_GPIO UARTE0_TX
+    }
+}
+```
+
+```text
+error: `.p00` lists `UARTE0_TX`, which `peripheral UARTE0` already offers on every pin that lists `APP_GPIO`, as `.p00` does; remove it from the row
+  --> main.nsm:4:9
+  |
+4 |         .p00 bidirectional "P0.00" "1" fn APP_GPIO UARTE0_TX
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### Counts, functions and pins that share
+
+`shared NAME limit N { MEMBER ... }` allows at most N of its members at once; without `limit` it allows one. A limit is a whole number of at least 1 and fewer than the number of members. A member is a peripheral, a function or a pin:
+
+- a **peripheral** is in use as before;
+- a **function** is in use when it is chosen on a pin (`shared CLOCK { TWIM0_SCL SPIM0_SCK }`: two functions of two peripherals that cannot both be used);
+- a **pin**, written with its dot (`.p10`), is in use when the board chooses its function or connects it, which means that its net has a pin that is not the part's own, or the board names the net. "If you use pin X you cannot use pin Y" is about the copper.
+
+A name may be a member of several shared resources, a name twice in one is an error, and so is a function that is a member besides its own peripheral. A function that two pins both chose is already an error of its own.
+
+```nsm module=src::zmcu3
+/// Zmcu3, an invented microcontroller: three UARTs of which only two run at once, and two pins
+/// that share an analogue reference.
+part Zmcu3 {
+    peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }
+    peripheral UARTE1 on APP_GPIO { UARTE1_TX:output UARTE1_RX:input }
+    peripheral UARTE2 on APP_GPIO { UARTE2_TX:output UARTE2_RX:input }
+
+    shared UARTS limit 2 { UARTE0 UARTE1 UARTE2 }
+    shared REFERENCE { .p10 .p11 }
+
+    pins {
+        .p00 bidirectional "P0.00" "1" fn APP_GPIO
+        .p01 bidirectional "P0.01" "2" fn APP_GPIO
+        .p02 bidirectional "P0.02" "3" fn APP_GPIO
+        .p10 bidirectional "P0.10" "4" fn APP_GPIO
+        .p11 bidirectional "P0.11" "5" fn APP_GPIO
+    }
+}
+```
+
+Two UARTs and one of the reference pins is fine:
+
+```nsm
+import src::zmcu3::Zmcu3
+import std::parts::connector::Header1x4
+
+board TwoUarts {
+    .u: Zmcu3
+    .j: Header1x4
+    .u.p00 ~ .j.p1
+    .u.p01 ~ .j.p2
+    .u.p10 ~ .j.p3
+    .u.p00.function &= "UARTE0_TX"
+    .u.p01.function &= "UARTE1_TX"
+    .u.p10.function &= "APP_GPIO"
+}
+```
+
+A third UART is more than the limit. The message counts the members in use, names each with its uses, and lists what the resource has; it points at the first use of the member that goes over:
+
+```nsm fails
+import src::zmcu3::Zmcu3
+import std::parts::connector::Header1x4
+
+board ThreeUarts {
+    .u: Zmcu3
+    .j: Header1x4
+    .u.p00 ~ .j.p1
+    .u.p01 ~ .j.p2
+    .u.p02 ~ .j.p3
+    .u.p00.function &= "UARTE0_TX"
+    .u.p01.function &= "UARTE1_TX"
+    .u.p02.function &= "UARTE2_TX"
+}
+```
+
+```text
+error: `u` (`Zmcu3`) uses 3 of the peripherals of `UARTS`, which allows 2 at a time: UARTE0 on `u.p00` as UARTE0_TX (main.nsm:10), UARTE1 on `u.p01` as UARTE1_TX (main.nsm:11), UARTE2 on `u.p02` as UARTE2_TX (main.nsm:12); `UARTS` lists UARTE0, UARTE1 and UARTE2
+   --> main.nsm:12:5
+   |
+12 |     .u.p02.function &= "UARTE2_TX"
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+Two pins that cannot both be used, each named with how it is in use:
+
+```nsm fails
+import src::zmcu3::Zmcu3
+import std::parts::connector::Header1x4
+
+board TwoReferences {
+    .u: Zmcu3
+    .j: Header1x4
+    .u.p10 ~ .j.p1
+    .u.p11 ~ .j.p2
+    .u.p10.function &= "APP_GPIO"
+    .u.p11.function &= "UARTE0_TX"
+}
+```
+
+```text
+error: `u.p10` and `u.p11` of `Zmcu3` are both in use, but they share `REFERENCE`, which allows 1 at a time: `u.p10` as APP_GPIO (main.nsm:9) and `u.p11` as UARTE0_TX (main.nsm:10)
+   --> main.nsm:10:5
+   |
+10 |     .u.p11.function &= "UARTE0_TX"
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A limit of 0, a fraction or a number with a unit is a parse error; a limit that is not fewer than the members is refused where it is written:
+
+```nsm fails
+part Zmcu3 {
+    peripheral UARTE0 on APP_GPIO { UARTE0_TX:output }
+    peripheral UARTE1 on APP_GPIO { UARTE1_TX:output }
+    shared UARTS limit 2 { UARTE0 UARTE1 }
+    pins {
+        .p00 bidirectional "P0.00" "1" fn APP_GPIO
+    }
+}
+```
+
+```text
+error: `shared UARTS limit 2` allows every one of its 2 members at once, so it states no limit at all; a limit is at least 1 and fewer than the number of members: lower it, or remove it for one at a time
+  --> main.nsm:4:24
+  |
+4 |     shared UARTS limit 2 { UARTE0 UARTE1 }
+  |                        ^
+```
+
 ### Outputs
 
 Two outputs on one net would fight, so the checker refuses them. An output and a bidirectional pin may share a net.
@@ -2665,9 +3058,11 @@ part OtherCoax provides CoaxReceptacle {
 Rules.
 
 - A part or module may provide several generics: `part AcmeMicroCoax provides CoaxReceptacle, RfConnector`. Only a `generic` is provided; `board`, `system`, `panel`, `interface` and `enum` cannot say `provides`.
-- Each pin of the generic has a row of the same kind in every `pins` table of the part, or is an alias of a pin that has one.
+- Each pin of the generic has a row of the same kind in every `pins` table of the part, or is an alias of a pin that has a row of that kind: the row the alias is joined to is what the checker reads for the net, so it is the one compared (`.signal ~ .rf` with `.rf output` is refused where the generic says `.signal passive`, at the row of `.rf`).
 - The providers of one generic are all parts or all modules: a generic is placed as the kind its providers have. A generic that has a `pins` table is provided by parts.
 - A provider is checked where it is written, as any part is, so an unused provider's mistakes show.
+- No two providers of one generic have the same name, in whatever files they are: a part is known by its name in the bill of materials, in the `[[part]]` entries of `kicad.toml` and in the notes, so two would share a kind and a mapping. The later one (by the order below) is refused at its own name, with both module paths.
+- A provider does not contain a use of the generic it provides, directly or through the parts and modules inside it: a pick that could take the provider being made would make it again inside itself. A provider that wraps `BuckConverter` in `.inner: BuckConverter` is refused at that line with the cycle named (`AFilteredBuck > AFilteredBuck`), whatever its name sorts as; wrap a part, or a module that does not provide the generic. Nor does any definition contain itself, directly or through another.
 
 ### A use
 
@@ -2700,10 +3095,10 @@ feed.rf is a CoaxReceptacle: picked AcmeMicroCoax; passed over AcmeBasicCoax (no
 Which providers are candidates, and in what order:
 
 - A candidate is a provider in a file that the board's file imports, directly or through other files, or in the board's own file. The import list is the list: no second list is kept. An import used only to bring providers into scope is a plain import, and a comment says so.
-- The order is fixed: the generic itself first when it is its own provider (it has pads or a catalog), then the providers of the standard library, then the project's, each by module path and then by name. It never depends on where a definition is written in a file, so moving one changes nothing.
-- The pick is the first candidate for which every check of the whole design holds. Nothing compares candidates: a design that cares states a requirement or names the type. A provider that leaves a value open that the use puts a bound on (`.rf: G { .max_frequency >= 1GHz }` and a provider that never states `.max_frequency`) cannot be judged, which is not holding: it is passed over for one that can be, and if none can, the first stands and the build names the bound as `not evaluated`.
+- The order is fixed: the generic itself first when it is its own provider (it has pads or a catalog), then the providers of the standard library, then the project's, each by module path and then by name. It never depends on where a definition is written in a file, so moving one changes nothing. The module path of a file is its path under the project's root (`src/main.nsm` is `src::main`) whichever way its name is typed (`./src/main.nsm`, an absolute path), and a file that imports the file being built finds that file, held once, not a second copy of it.
+- The pick is the first candidate for which every check of the whole design holds. Nothing compares candidates: a design that cares states a requirement or names the type. A provider that leaves a value open that the use puts a bound on (`.rf: G { .max_frequency >= 1GHz }` and a provider that never states `.max_frequency`) cannot be judged, which is not holding: it is passed over for one that can be, and if none can, the first stands and the build names the bound as `not evaluated`. What cannot be judged is: a bound or an equation that waits on a value inside the use that nothing states (of the use itself, of an interface or a part inside it, such as the datasheet number of the IC inside a module provider), and a logic level or an absolute maximum that could not be checked because a pin of the use states no value for it. A value the use shares with the board (the board's rail that `.vin` is joined to, whose `.peak` the board leaves open) is the design's, and is no reason to try another provider.
 - The pick depends on the sources, the catalog files and `netsmith.toml` only: not on the KiCad libraries, the mapping, stock or the time. A provider with no entry in `kicad.toml` is not skipped; the build fails at export and names it.
-- A failing design is tried with the other providers only for the uses that matter: a use is varied alone first, and one whose other providers change nothing about what fails is left at its first. At most 64 combinations are tried (`gave up after trying 64 provider combinations`).
+- A failing design is tried with the other providers only for the uses that matter: a use is varied alone first, and one whose other providers change nothing about what fails is left at its first. At most 64 combinations are tried. When the search stops at that bound without an answer, the build prints the errors of the design as it stands first (the first solve's), and then `gave up after trying 64 provider combinations for ...`, naming the first six uses it did not reach and counting the rest: the bound is never the only thing said about a design that has a mistake of its own.
 
 The three ways to say what part the board wants:
 
@@ -7042,7 +7437,7 @@ error: net `net-a.i2c.sda` carries the sda line of an I2C bus (`a.i2c.sda`, `b.i
 A reset, an enable or an open-drain output often needs a resistor from a rail to the line. A plain `Resistor` between the rail's `pos` and the line works for the circuit and leaves the net unsolved: the resistor starts a chain on the rail's net, nothing says what it carries, so the net has two unknowns and every check on it waits (the regulator's current, its power, the resistor's own power). `std::bus::PullUp` is that resistor with its draw stated.
 
 - `.supply` is the rail whose `pos` the resistor is on, `.line` is the pin it pulls, and `.resistance` is the value the board states, with its tolerance (`.pull.resistance &= 10kohm +/- 5%`). A board that forgets it gets the unconstrained pick finding for the resistor, with the member named (see "A value that nobody stated"). The resistor inside is `.resistor`.
-- The line is held low for the share `.line_low` of the time, 0 to 1 and never narrower unless the board says so (`.pull.line_low &= 0..0.1`). While it is low the resistor carries `supply.voltage / resistance`, and while it is released nothing, so the resistor's `.current`, and the draw on `supply`, is 0 up to the supply over the resistance. That is the worst case: the lowest the line goes is 0 V, and a driver's real low level draws a little less.
+- The line is held low for the share `.line_low` of the time, 0 to 1 and never narrower unless the board says so (`.pull.line_low &= 0..0.1`). While it is low the resistor carries `supply.voltage / resistance`, and while it is released nothing, so the resistor's `.current`, and the draw on `supply`, is 0 up to the supply over the resistance. That is the worst case: the lowest the line goes is 0 V, and a driver's real low level draws a little less. It is the steady draw, with two assumptions the module offers and the board may replace (ADR 0061): `.overdrive`, how far above the supply a driver holds the line, 0 V unless stated (`.pull.overdrive &= 0V..1.7V` for a 5 V driver on a 3.3 V pull-up: the draw then reaches `-overdrive / resistance`, current pushed back into the rail), and `.supply_top`, the voltage the draw is worked out at, `supply.voltage` unless stated (`.pull.supply_top &= .pull.supply.peak` for the draw at the transient the rail's stated `.peak` allows).
 - A current the board states on `supply` is a budget (ADR 0038): the draw has to be able to fit in it. Two `PullUp`s on one rail add on its net.
 - The resistor is a pull-up for the checker's I2C rule too: a `PullUp` on `sda` and one on `scl` satisfy it. `I2cPullups` is the same circuit for both lines of a bus; it is not built from two `PullUp`s, because its members keep the paths that boards and tests name (`.pullups.sda_pullup.current`).
 
@@ -7100,7 +7495,7 @@ board Forgetful {
 ```
 
 ```text
-Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:89), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
+Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:101), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
 ```
 
 A module that wraps a `PullUp` states the resistance itself or forwards it through a member of its own (`.pull.resistance &= .resistance`, with the wrapped member on the left: the solver works a value out from the right side towards the left). A board that forgets a forwarded member is told about the wrapper's member, which is the one it can state.
@@ -7182,8 +7577,8 @@ Parts are numbered by their letters in the order of their paths (a number at the
 |---|---|
 | `std::parts::regulator::FeedbackDivider` | The resistors that set an adjustable output: pins `top`, `fb`, `bottom`, voltages `vref` and `vout`, the `current` it draws, with `vout == vref * (1 + rtop / rbottom)` in the worst case. |
 | `std::parts::regulator::BuckStage` | Everything around a buck converter IC: inductor, input and output capacitors and a `FeedbackDivider`, with ports `vin`, `vout` and `buck`, and the values `ripple`, `divider_current`, `input_count` and `output_count` (how many capacitors stand in parallel on each side, 1 to 8, chosen by the solver or stated by the board). Checks the input range, the output current, the ripple and the inductor's saturation, the inductor limits the IC states, the capacitance the IC asks for of each side's bank, and that each capacitor is rated for the rail's voltage and for its `.peak`. |
-| `std::bus::PullUp` | A pull-up resistor from a rail's `pos` to one line: a `supply` (`Rail`), a `line` (`Pin`), a `.resistance` the board states, and `.line_low`, the share of the time the line is low (0 to 1). It states what it draws from `supply`: its resistor carries 0 up to `supply.voltage / resistance`, so the net it is on is solved and the checks after it are evaluated. |
-| `std::bus::I2cPullups` | The two pull-up resistors of an I2C bus: a `bus` (`I2c`), a `supply` (`Rail`) and a `.resistance` the board states. It states what it draws from `supply`: each line's pull-up carries 0 up to `supply.voltage / resistance` (`.sda_low` and `.scl_low`, 0 to 1, are the share), and `supply.current` is the sum, so the net it is on is solved and the checks after it are evaluated. |
+| `std::bus::PullUp` | A pull-up resistor from a rail's `pos` to one line: a `supply` (`Rail`), a `line` (`Pin`), a `.resistance` the board states, `.line_low`, the share of the time the line is low (0 to 1), and the offers `.overdrive` (0 V) and `.supply_top` (`supply.voltage`). It states what it draws from `supply`: its resistor carries 0 up to `supply.voltage / resistance` (below 0 when a stated `.overdrive` lets a driver push current back), so the net it is on is solved and the checks after it are evaluated. |
+| `std::bus::I2cPullups` | The two pull-up resistors of an I2C bus: a `bus` (`I2c`), a `supply` (`Rail`) and a `.resistance` the board states. It states what it draws from `supply`: each line's pull-up carries 0 up to `supply.voltage / resistance` (`.sda_low` and `.scl_low`, 0 to 1, are the share; `.overdrive` and `.supply_top` are offered as for `PullUp`), and `supply.current` is the sum, so the net it is on is solved and the checks after it are evaluated. |
 
 ### Enums
 

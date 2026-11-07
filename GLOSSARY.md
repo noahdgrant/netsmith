@@ -207,7 +207,7 @@ A definition, `generic Name { ... }`, of what a board may rely on of any part or
 _Avoid_: Abstract part, trait, protocol, role, family, spec
 
 **Provider**:
-A `part` or `module` whose header says `provides Name` (`part AcmeMicroCoax provides CoaxReceptacle`), naming a generic. It has every member and statement of the generic, does not declare them again, and adds its own pin table, numbers, catalog and, for a module, parts. It is a candidate for a use of the generic when its file is imported, directly or through other files, by the board's file. A provider is never a **supply provider**, the source of price and stock; say which one is meant (ADR 0059, proposed). A part may provide a standard generic such as `Resistor`: the generic's own catalog and pads are not read into it, and the design lists the generics it provides (`Part.provides`), so that the schematic and the placer treat it as the kind it provides.
+A `part` or `module` whose header says `provides Name` (`part AcmeMicroCoax provides CoaxReceptacle`), naming a generic. It has every member and statement of the generic, does not declare them again, and adds its own pin table, numbers, catalog and, for a module, parts. It is a candidate for a use of the generic when its file is imported, directly or through other files, by the board's file. A provider's name is unique among the providers of one generic, and it does not contain a use of the generic it provides (ADR 0059 section 13). A provider is never a **supply provider**, the source of price and stock; say which one is meant (ADR 0059, proposed). A part may provide a standard generic such as `Resistor`: the generic's own catalog and pads are not read into it, and the design lists the generics it provides (`Part.provides`), so that the schematic and the placer treat it as the kind it provides.
 _Avoid_: Implementation, implementer, subtype, instance (of a generic)
 
 **Use of a generic**:
@@ -250,8 +250,17 @@ _Avoid_: Short, jumper
 
 **Function**:
 One of the things a pin can be, listed with `fn` in its pinout row (`fn GPIO UART1_TX`). A connected pin with more than one function needs the board to choose, `.u.pa2.function &= "UART1_TX"`; there is no default, and one function can be chosen on only one pin of a part. A function may carry its own kind after a colon (`fn GPIO:bidirectional UART1_TX:output`, ADR 0046); the net rules judge a pin by the kind of the function chosen, and the pin's kind is the default for any function without one.
+A function may be listed by a peripheral instead of a row, and a **class** is a function that rows list (`fn APP_GPIO NET_GPIO`) and peripherals are `on`: the function a board chooses for a pin that a core owns names the core (ADR 0062).
 A module's own pin (`.scl: Pin`) passes a choice on to a pin of a part inside with an equation, `.mcu.p04.function == .scl.function`; `.function &=` on a module's pin that no such equation reads is an error, because it has no effect (ADR 0062, stage 0).
 _Avoid_: Alternate function, mux, mode
+
+**Peripheral**:
+`peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }` in a part: the functions of one part that belong together (a UART's `TX` and `RX`), each with an optional kind as in a pin row. It is **in use** when the board chooses one of its functions on a pin; two of its lines are still one use. With `on CLASS`, every pin whose row lists the function `CLASS` offers its functions (so a part where any pin can carry any line keeps one row for each pin); with no `on`, only the rows that list a function by name offer it, a dedicated pin. A function belongs to one peripheral, and a peripheral and a function have different names (ADR 0062).
+_Avoid_: Group, block, role, mode, mux, unit (a unit is the hardware a `shared` resource names, not a peripheral)
+
+**Shared resource**:
+`shared UARTS limit 2 { UARTE0 UARTE1 UARTE2 .p10 }` in a part: the hardware that at most `limit` of its members use at a time (one without `limit`; a limit is at least 1 and fewer than the members). A member is a peripheral, a function (in use when chosen on a pin) or a pin (in use when its function is chosen or the board connects it). Using more members than allowed is an error that names the part, the resource, every use and its line; it is judged for each instance of the part, before the solve, from the functions the board chose (ADR 0062).
+_Avoid_: Conflict set, exclusive set, group, resource (alone)
 
 **Logic level**:
 One of the four voltages of a `Logic` line, as a datasheet gives them and relative to the line's ground (the `neg` of its `.reference` rail): `.vih` the lowest an input reads as high, `.vil` the highest it reads as low, `.voh` the lowest an output drives a high to, `.vol` the highest it drives a low to. After the rails are solved, the solver requires `voh >= vih` and `vol <= vil` for every output and input on a net, and says "not evaluated" when a level has no value or the grounds differ (ADR 0046).

@@ -46,7 +46,7 @@ impl Checker<'_> {
     }
 
     /// The pin a row or a tie names, which must be a pin of the part being defined.
-    fn part_pin(&mut self, path: &ast::Path) -> Option<InstId> {
+    pub(crate) fn part_pin(&mut self, path: &ast::Path) -> Option<InstId> {
         let part = self.current();
         match self.resolve_path(path) {
             Res::Inst(i) => {
