@@ -34,7 +34,7 @@ export function changed(): Compare {
       added: [],
       removed: [],
       changed: [
-        { path: 'r1', designatorBase: 'R1', designatorHead: 'R1', fields: [{ field: 'value', old: '100', new: '150' }, { field: 'lcsc', old: 'C25076', new: 'C22775' }], at: at(21), baseAt: at(21) },
+        { path: 'r1', designatorBase: 'R1', designatorHead: 'R1', kind: 'Resistor', fields: [{ field: 'value', old: '100', new: '150' }, { field: 'lcsc', old: 'C25076', new: 'C22775' }], at: at(21), baseAt: at(21) },
       ],
       renumbered: [],
       unchanged: 2,
@@ -55,10 +55,10 @@ export function changed(): Compare {
     parts: {
       added: [{ path: 'stage.bulk', designator: 'C1', kind: 'Capacitor', value: '47u', package: '0805', lcsc: 'C16780', assembly: 'fab', at: at(24) }],
       removed: [{ path: 'stage.snubber', designator: 'C9', kind: 'Capacitor', value: '100n', assembly: 'fab', at: at(30) }],
-      changed: [{ path: 'stage.regulator', basePath: 'ldo.regulator', designatorBase: 'U1', designatorHead: 'U1', fields: [{ field: 'path', old: 'ldo.regulator', new: 'stage.regulator' }], at: at(12), baseAt: at(12) }],
+      changed: [{ path: 'stage.regulator', basePath: 'ldo.regulator', designatorBase: 'U1', designatorHead: 'U1', kind: 'LinearRegulator', fields: [{ field: 'path', old: 'ldo.regulator', new: 'stage.regulator' }], at: at(12), baseAt: at(12) }],
       renumbered: [
-        { path: 'stage.input_cap', designatorBase: 'C1', designatorHead: 'C2', fields: [{ field: 'designator', old: 'C1', new: 'C2' }], at: at(25), baseAt: at(24) },
-        { path: 'stage.output_cap', designatorBase: 'C2', designatorHead: 'C3', fields: [{ field: 'designator', old: 'C2', new: 'C3' }], at: at(26), baseAt: at(25) },
+        { path: 'stage.input_cap', designatorBase: 'C1', designatorHead: 'C2', kind: 'Capacitor', fields: [{ field: 'designator', old: 'C1', new: 'C2' }], at: at(25), baseAt: at(24) },
+        { path: 'stage.output_cap', designatorBase: 'C2', designatorHead: 'C3', kind: 'Capacitor', fields: [{ field: 'designator', old: 'C2', new: 'C3' }], at: at(26), baseAt: at(25) },
       ],
       unchanged: 1,
     },

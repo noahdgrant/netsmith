@@ -1768,3 +1768,163 @@ fn a_file_the_editor_does_not_open_can_be_read_from_disk_for_the_comparison_of_a
         );
     }
 }
+
+// ---- the extensions of ADR 0059: the kind of a part ----
+
+#[test]
+fn a_part_that_is_another_library_part_has_both_kinds_and_is_not_counted_as_a_value() {
+    need_tools!();
+    let (r, _, _) = committed("kind", "");
+    // The same two pins on the same nets, from another part of the library.
+    r.edit(
+        "src/main.nsm",
+        ".power_in: Header1x2",
+        ".power_in: Socket1x2",
+    );
+    let c = compare(&r.workspace(), "HEAD").unwrap();
+    let power = board(&c, "TwoBoards/power");
+    let change = power
+        .parts
+        .changed
+        .iter()
+        .find(|p| p.path == "power_in")
+        .unwrap_or_else(|| panic!("{:#?}", power.parts));
+    assert_eq!(change.kind, "Socket1x2");
+    assert_eq!(change.base_kind.as_deref(), Some("Header1x2"));
+    let kind = change.fields.iter().find(|f| f.field == "kind").unwrap();
+    assert_eq!(
+        (kind.old.as_deref(), kind.new.as_deref()),
+        (Some("Header1x2"), Some("Socket1x2"))
+    );
+    assert!(
+        c.summary
+            .contains("1 part's kind changed from Header1x2 to Socket1x2"),
+        "{}",
+        c.summary
+    );
+    assert!(!c.summary.contains("value changed"), "{}", c.summary);
+    // The same part with another value says its kind and no base kind.
+    let (r, _, _) = committed("kind-same", "");
+    r.edit(
+        "src/main.nsm",
+        ".r1: Resistor {}",
+        ".r1: Resistor { .resistance &= 150ohm +/- 1% }",
+    );
+    let c = compare(&r.workspace(), "HEAD").unwrap();
+    let r1 = board(&c, "TwoBoards/led")
+        .parts
+        .changed
+        .iter()
+        .find(|p| p.path == "r1")
+        .unwrap();
+    assert_eq!((r1.kind.as_str(), r1.base_kind.clone()), ("Resistor", None));
+}
+
+// ---- the extensions of ADR 0059: warnings and notes from a ref ----
+
+/// A 2 A supply and load on a `5V` / `GND` pair with the rail drawn `width` wide: the track guideline
+/// (ADR 0036) warns for a narrow one, twice (the load and the source), and for none that is wide enough.
+fn heater(width: &str) -> String {
+    format!(
+        "import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+board Heater {{
+    .process: TwoLayer {{
+        .stackup.thickness &= 1.6mm
+    }}
+    .load: Rail {{
+        .pos.net &= \"5V\"
+        .neg.net &= \"GND\"
+        .current &= 0A..2A
+        .min_track &= {width}..1m
+    }}
+    .source: Rail {{
+        .pos.net &= \"5V\"
+        .neg.net &= \"GND\"
+        .current &= -2A..0A
+    }}
+    .supply: Header1x2
+    .out: Header1x2
+    .supply.p1 ~ .source.pos
+    .supply.p2 ~ .source.neg
+    .out.p1 ~ .load.pos
+    .out.p2 ~ .load.neg
+}}
+"
+    )
+}
+
+fn severities(list: &[netsmith_editor::api::Problem]) -> (usize, usize, usize) {
+    let n = |s: Severity| list.iter().filter(|p| p.severity == s).count();
+    (n(Severity::Error), n(Severity::Warning), n(Severity::Note))
+}
+
+#[test]
+fn a_new_warning_and_a_resolved_one_are_compared_between_two_refs_each_by_its_severity() {
+    need_tools!();
+    let r = Repo::new("warnings", "");
+    fs::write(r.project.join("src/main.nsm"), heater("1mm")).unwrap();
+    let wide = r.commit("a wide track");
+    fs::write(r.project.join("src/main.nsm"), heater("0.2mm")).unwrap();
+    let narrow = r.commit("a narrow track");
+    let w = r.workspace();
+    // The warnings of the second side are new.
+    let c = compare_refs(&w, &wide, &narrow).unwrap();
+    assert_eq!(c.error, None, "{:?}", c.error);
+    let h = board(&c, "Heater");
+    let (errors, warnings, _) = severities(&h.problems.new);
+    assert_eq!((errors, warnings), (0, 2), "{:#?}", h.problems);
+    assert!(
+        h.problems
+            .resolved
+            .iter()
+            .all(|p| p.severity != Severity::Warning)
+    );
+    assert!(
+        h.problems
+            .new
+            .iter()
+            .all(|p| p.message.contains("IPC-2221") || p.severity == Severity::Note)
+    );
+    assert!(c.summary.contains("2 new warnings"), "{}", c.summary);
+    assert!(!c.summary.contains("error"), "{}", c.summary);
+    assert_eq!(h.status, BoardStatus::Changed);
+    assert!(c.changed);
+    // Each warning has the line of the side it is on.
+    assert!(h.problems.new.iter().any(|p| p.at.is_some()));
+    // The other way round they are resolved, and the sentence says so.
+    let back = compare_refs(&w, &narrow, &wide).unwrap();
+    let h = board(&back, "Heater");
+    assert_eq!(severities(&h.problems.resolved).1, 2, "{:#?}", h.problems);
+    assert!(
+        back.summary.contains("2 warnings resolved"),
+        "{}",
+        back.summary
+    );
+    assert!(!back.summary.contains("new warning"), "{}", back.summary);
+    // A warning that is on both sides is neither.
+    let same = compare_refs(&w, &narrow, &narrow).unwrap();
+    let h = board(&same, "Heater");
+    assert_eq!(severities(&h.problems.new), (0, 0, 0));
+    assert!(h.problems.unchanged >= 2);
+    assert_eq!(same.summary, "No circuit changes");
+}
+
+#[test]
+fn a_warning_of_the_files_on_disk_against_a_ref_and_the_notes_in_the_sentence() {
+    need_tools!();
+    let r = Repo::new("warnings-disk", "");
+    fs::write(r.project.join("src/main.nsm"), heater("1mm")).unwrap();
+    r.commit("a wide track");
+    fs::write(r.project.join("src/main.nsm"), heater("0.2mm")).unwrap();
+    let c = compare(&r.workspace(), "HEAD").unwrap();
+    let h = board(&c, "Heater");
+    assert_eq!(severities(&h.problems.new).1, 2, "{:#?}", h.problems);
+    assert!(c.summary.starts_with("2 new warnings"), "{}", c.summary);
+    // Notes are counted too, and come after the warnings.
+    let notes = severities(&h.problems.new).2;
+    let said = c.summary.contains(&format!("{notes} new note"));
+    assert_eq!(said, notes > 0, "{} ({notes} notes)", c.summary);
+}

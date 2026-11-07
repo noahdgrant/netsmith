@@ -1002,6 +1002,17 @@ path: string,
  */
 basePath?: string, designatorBase: string, designatorHead: string, 
 /**
+ * What the part is on the head side: `Capacitor`, `Led`, `Header1x2` (the library part it
+ * is made from). A changed row can say what it is.
+ */
+kind: string, 
+/**
+ * What it was at the ref, when that is another kind: the part is a different library part,
+ * not the same one with another value (and `fields` has a `kind` entry). Absent when the
+ * kind is the same.
+ */
+baseKind?: string, 
+/**
  * In a fixed order: `path`, `kind`, `value`, `package`, `lcsc`, `mpn`, `assembly`,
  * `designator`. Never empty; a part in `renumbered` has only `designator`.
  */

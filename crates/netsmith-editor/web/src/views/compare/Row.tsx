@@ -140,6 +140,13 @@ export function RowView({ row, showBoard }: { row: ChangeRow; showBoard?: boolea
           </span>
           {row.baseTitle && row.baseTitle !== row.title && <span class="cr-was" title={`At the ref: ${row.baseTitle}`}>was {row.baseTitle}</span>}
           {row.type && row.kind !== 'problem' && <span class="cr-type">{row.type}</span>}
+          {row.kindChange && (
+            <span class="cr-kindnote" data-testid="kind-changed">
+              <Pill tone="info" title={`A different library part: ${row.kindChange.old} at the ref, ${row.kindChange.new} now`}>
+                Kind changed
+              </Pill>
+            </span>
+          )}
           {showBoard && row.board && <span class="cr-board">{row.board}</span>}
         </span>
         <Chips row={row} />

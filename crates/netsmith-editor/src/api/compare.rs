@@ -206,6 +206,15 @@ pub struct ComparePartChange {
     pub base_path: Option<String>,
     pub designator_base: String,
     pub designator_head: String,
+    /// What the part is on the head side: `Capacitor`, `Led`, `Header1x2` (the library part it
+    /// is made from). A changed row can say what it is.
+    pub kind: String,
+    /// What it was at the ref, when that is another kind: the part is a different library part,
+    /// not the same one with another value (and `fields` has a `kind` entry). Absent when the
+    /// kind is the same.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub base_kind: Option<String>,
     /// In a fixed order: `path`, `kind`, `value`, `package`, `lcsc`, `mpn`, `assembly`,
     /// `designator`. Never empty; a part in `renumbered` has only `designator`.
     pub fields: Vec<CompareField>,

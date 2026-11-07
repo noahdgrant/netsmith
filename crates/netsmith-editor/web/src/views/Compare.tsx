@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
-import type { Compare as CompareData, Problem } from '../api';
+import type { Compare as CompareData, Problem, Severity } from '../api';
 import { Icon } from '../components/Icons';
 import { ViewHelp } from '../components/ViewHelp';
 import { useElapsed } from '../components/JobProgress';
@@ -26,6 +26,8 @@ import {
   onlySourceChanged,
   rowsOf,
   scopeSummary,
+  severityCounts,
+  severityWord,
   stageIndex,
   stageText,
   STAGE_ORDER,
@@ -214,9 +216,10 @@ function TileView({ t }: { t: Tile }) {
       <span class="cmp-tile-chips">
         {t.chips.length === 0 && <span class="cmp-tile-sub">{t.sub ?? 'no change'}</span>}
         {t.chips.map((c) => (
-          <span key={c.sign} class={`tchip ${c.sign === '+' ? 'add' : c.sign === '-' ? 'del' : 'chg'}`} title={`${c.n} ${c.label}`}>
+          <span key={`${c.sign}${c.word ?? ''}`} class={`tchip ${c.tone ?? (c.sign === '+' ? 'add' : c.sign === '-' ? 'del' : 'chg')}`} title={`${c.n} ${c.label}`}>
             {c.sign === '-' ? '−' : c.sign}
             {c.n}
+            {c.word ? ` ${c.word}` : ''}
           </span>
         ))}
         {t.chips.length > 0 && t.sub && <span class="cmp-tile-sub">{t.sub}</span>}
@@ -342,7 +345,11 @@ function Body({ data }: { data: CompareData }) {
   const rows = useMemo(() => rowsOf(data, sc), [data, sc]);
   const n = useMemo(() => counts(data, sc), [data, sc]);
   const tl = useMemo(() => tiles(data, sc), [data, sc]);
-  const list: ChangeRow[] = active === 'source' ? [] : (rows[active as Exclude<Category, 'source'>] as ChangeRow[]);
+  // The Problems tab can be narrowed to errors, warnings or notes.
+  const [sev, setSev] = useState<Severity | 'all'>('all');
+  const everything: ChangeRow[] = active === 'source' ? [] : (rows[active as Exclude<Category, 'source'>] as ChangeRow[]);
+  const list: ChangeRow[] = active === 'problems' && sev !== 'all' ? everything.filter((r) => r.severity === sev) : everything;
+  const sevN = severityCounts(everything);
   const shown = filterRows(list, query);
   const renum = filterRows(rows.renumbered, query);
   // The bill of materials is always grouped by what happened to the line (Added, Removed, Changed): the server's order mixes the boards' lines.
@@ -404,6 +411,17 @@ function Body({ data }: { data: CompareData }) {
               />
             </label>
             <span class="spacer" />
+            {active === 'problems' && everything.length > 0 && (
+              <Segmented<Severity | 'all'>
+                label="Show problems of a severity"
+                value={sev}
+                onChange={setSev}
+                options={[
+                  { value: 'all', label: `All ${sevN.all}`, tip: 'Errors, warnings and notes', testid: 'sev-all' },
+                  ...(['error', 'warning', 'note'] as const).map((s) => ({ value: s, label: `${severityWord(s, 2).replace(/^./, (c) => c.toUpperCase())} ${sevN[s]}`, tip: s === 'error' ? 'What stops a build' : s === 'warning' ? 'A part not chosen, a guideline: the design has a hole or breaks advice' : 'What the solver left alone', testid: `sev-${s}` })),
+                ]}
+              />
+            )}
             {(active === 'parts' || active === 'nets' || active === 'modules' || active === 'problems') && (
               <Segmented<GroupBy>
                 label="Group the rows"
@@ -424,8 +442,10 @@ function Body({ data }: { data: CompareData }) {
           <div class="cmp-scroll" id="cmp-panel" role="tabpanel" aria-labelledby={`cmp-tab-${active}`}>
             {active === 'source' ? (
               <Source data={data} />
-            ) : list.length === 0 ? (
+            ) : everything.length === 0 ? (
               <EmptyTab category={active} against={refText.value} only={onlySourceChanged(data)} since={sinceText.value} />
+            ) : list.length === 0 ? (
+              <EmptyState compact icon="check-circle" tone="ok" title={`No ${severityWord(sev as Severity, 2)} are new or resolved`} help="Another severity has changes." actions={<button class="tool" onClick={() => setSev('all')}>Show all</button>} />
             ) : shown.length === 0 && renum.length === 0 ? (
               <EmptyState compact icon="search" title="No row matches" help={`Nothing fits “${query.trim()}”.`} actions={<button class="tool" onClick={() => setQuery('')}>Clear the filter</button>} />
             ) : (

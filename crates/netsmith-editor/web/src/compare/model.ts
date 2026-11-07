@@ -72,6 +72,8 @@ export interface ChangeRow {
   baseTitle?: string;
   /** What it is: `Resistor`, a module's definition, a severity. */
   type?: string;
+  /** A part that is another library part than it was: the kind at the ref and now. */
+  kindChange?: { old: string; new: string };
   /** The old and the new of what changed, in two chips. */
   before?: string;
   after?: string;
@@ -112,9 +114,9 @@ function row(r: Omit<ChangeRow, 'search' | 'fields' | 'pins' | 'module' | 'board
 
 // ---- parts ----
 
-/** The field a part's chips show: its value when that changed, else the first that did. */
+/** The field a part's chips show: its kind when that changed (a different library part), else its value, else the first that did. */
 export function headline(fields: CompareField[]): CompareField | undefined {
-  return fields.find((f) => f.field === 'value') ?? fields.find((f) => f.field !== 'path' && f.field !== 'designator') ?? fields[0];
+  return fields.find((f) => f.field === 'kind') ?? fields.find((f) => f.field === 'value') ?? fields.find((f) => f.field !== 'path' && f.field !== 'designator') ?? fields[0];
 }
 
 export function partRows(b: CompareBoard): ChangeRow[] {
@@ -137,6 +139,8 @@ export function partRows(b: CompareBoard): ChangeRow[] {
         board: b.name,
         title: c.path,
         baseTitle: c.basePath,
+        type: c.kind,
+        kindChange: c.baseKind ? { old: c.baseKind, new: c.kind } : undefined,
         before: h ? fieldText(h.old) : undefined,
         after: h ? fieldText(h.new) : undefined,
         field: h?.field,
@@ -511,6 +515,10 @@ export interface TileChip {
   sign: '+' | '-' | '~';
   n: number;
   label: string;
+  /** A word to say after the number (`warnings`): for a chip that is not of one kind of thing. */
+  word?: string;
+  /** The colour, when it is not the sign's (`+` green, `-` red, `~` amber): a new error is red, a resolved one green. */
+  tone?: 'add' | 'del' | 'chg';
 }
 
 export interface Tile {
@@ -542,6 +550,32 @@ export function costDelta(d: number | undefined | null): string {
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 
+export const SEVERITIES: Severity[] = ['error', 'warning', 'note'];
+
+/** `error`, `warnings`: a severity's word, plural for any number but one. */
+export const severityWord = (s: Severity, n: number): string => `${s}${n === 1 ? '' : 's'}`;
+
+/** The problems tile's chips: what is new and what is resolved, each by severity (`+2 warnings`, `−1 error`). */
+function problemChips(probs: { new: Problem[]; resolved: Problem[] }[]): TileChip[] {
+  const out: TileChip[] = [];
+  for (const [d, sign] of [['new', '+'], ['resolved', '-']] as const) {
+    for (const s of SEVERITIES) {
+      const n = sum(probs.map((p) => p[d].filter((x) => x.severity === s).length));
+      // A new error or warning is bad news and a resolved one good; a new note is only worth a look.
+      const tone = d === 'resolved' ? 'add' : s === 'note' ? 'chg' : 'del';
+      if (n) out.push({ sign, n, label: `${d} ${severityWord(s, n)}`, word: severityWord(s, n), tone });
+    }
+  }
+  return out;
+}
+
+/** How many problems of each severity a list has, for the filter of the Problems tab. */
+export function severityCounts(rows: ChangeRow[]): Record<Severity | 'all', number> {
+  const out = { all: rows.length, error: 0, warning: 0, note: 0 };
+  for (const r of rows) if (r.severity) out[r.severity]++;
+  return out;
+}
+
 /** The stat tiles for the boards in scope. */
 export function tiles(c: Compare, scope: Scope): Tile[] {
   const boards = boardsIn(c, scope);
@@ -550,6 +584,7 @@ export function tiles(c: Compare, scope: Scope): Tile[] {
   const partsR = n((b) => b.parts.removed);
   const partsC = n((b) => b.parts.changed);
   const renum = n((b) => b.parts.renumbered);
+  const kinds = boards.reduce((a, b) => a + b.parts.changed.filter((p) => p.baseKind !== undefined).length, 0);
   const netsA = n((b) => b.nets.added);
   const netsR = n((b) => b.nets.removed);
   const netsC = n((b) => b.nets.renamed) + n((b) => b.nets.changed);
@@ -576,8 +611,9 @@ export function tiles(c: Compare, scope: Scope): Tile[] {
   const probs = [c.problems, ...boards.map((b) => b.problems)];
   const pNew = sum(probs.map((p) => p.new.length));
   const pRes = sum(probs.map((p) => p.resolved.length));
+  const pNewSerious = sum(probs.map((p) => p.new.filter((x) => x.severity !== 'note').length));
   return [
-    { id: 'parts', label: 'Parts', value: String(partsA + partsR + partsC), sub: renum ? `${renum} renumbered` : undefined, tone: 'neutral', chips: chips(partsA, partsR, partsC), tab: 'parts' },
+    { id: 'parts', label: 'Parts', value: String(partsA + partsR + partsC), sub: [kinds ? `${plural(kinds, 'kind')} changed` : '', renum ? `${renum} renumbered` : ''].filter(Boolean).join(', ') || undefined, tone: 'neutral', chips: chips(partsA, partsR, partsC), tab: 'parts' },
     { id: 'nets', label: 'Nets', value: String(netsA + netsR + netsC), tone: 'neutral', chips: chips(netsA, netsR, netsC), tab: 'nets' },
     { id: 'rails', label: 'Rails', value: String(railsA + railsR + railsC), sub: shrank ? `${plural(shrank, 'headroom')} shrank` : undefined, tone: shrank ? 'warn' : 'neutral', chips: chips(railsA, railsR, railsC), tab: 'rails' },
     {
@@ -592,7 +628,15 @@ export function tiles(c: Compare, scope: Scope): Tile[] {
     },
     { id: 'systems', label: 'Systems', value: String(rows.systems.length), tone: 'neutral', chips: chips(sysA, sysR, sysC), tab: 'systems' },
     { id: 'pcb', label: 'PCB', value: String(rows.pcb.length), sub: movedParts ? `${plural(movedParts, 'part')} moved` : undefined, tone: 'neutral', chips: chips(pcbA, pcbR, pcbC), tab: 'pcb' },
-    { id: 'problems', label: 'Problems', value: pNew === 0 && pRes === 0 ? 'None' : `${pNew} new`, sub: pRes ? `${pRes} resolved` : undefined, tone: pNew > 0 ? 'bad' : pRes > 0 ? 'ok' : 'neutral', chips: [...(pNew ? [{ sign: '+' as const, n: pNew, label: 'new' }] : []), ...(pRes ? [{ sign: '-' as const, n: pRes, label: 'resolved' }] : [])], tab: 'problems' },
+    {
+      id: 'problems',
+      label: 'Problems',
+      value: pNew === 0 && pRes === 0 ? 'None' : `${pNew} new`,
+      // Only an error or a warning that is new is red: a note says what the solver left alone.
+      tone: pNewSerious > 0 ? 'bad' : pRes > 0 ? 'ok' : 'neutral',
+      chips: problemChips(probs),
+      tab: 'problems',
+    },
   ];
 }
 

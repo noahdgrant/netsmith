@@ -111,6 +111,7 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .cr-title { font-weight: var(--fw-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .cr-title.plain { font-weight: var(--fw-normal); white-space: normal; overflow-wrap: anywhere; font-family: var(--sans); }
 .cr-title.gone { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--cmp-removed) 70%, transparent); color: var(--text-muted); }
+.cr-name > .cr-kindnote { flex: none; align-self: center; }
 .cr-was, .cr-type, .cr-board { color: var(--text-faint); font-size: var(--fs-sm); white-space: nowrap; }
 .cr-was { font-family: var(--mono); }
 .cr-board { padding: 0 0.375rem; border-radius: var(--r-pill); border: 1px solid var(--border-subtle); }

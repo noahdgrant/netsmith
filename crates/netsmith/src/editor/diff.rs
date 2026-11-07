@@ -384,6 +384,8 @@ fn parts(b: &BoardDigest, h: &BoardDigest) -> (PartsDiff, HashMap<String, String
             base_path: (b.path != h.path).then(|| b.path.clone()),
             designator_base: b.designator.clone(),
             designator_head: h.designator.clone(),
+            kind: h.kind.clone(),
+            base_kind: (b.kind != h.kind).then(|| b.kind.clone()),
             at: h.at.clone(),
             base_at: b.at.clone(),
             fields,
@@ -1380,6 +1382,18 @@ fn problems(base: Vec<Problem>, head: Vec<Problem>) -> ProblemsDiff {
     }
 }
 
+/// `error`, `warnings`: the word for a severity, in the plural for any number but one.
+fn severity_word(severity: Severity, n: usize) -> &'static str {
+    match (severity, n == 1) {
+        (Severity::Error, true) => "error",
+        (Severity::Error, false) => "errors",
+        (Severity::Warning, true) => "warning",
+        (Severity::Warning, false) => "warnings",
+        (Severity::Note, true) => "note",
+        (Severity::Note, false) => "notes",
+    }
+}
+
 pub fn count(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
@@ -1438,6 +1452,9 @@ fn summarize(
     let mut values = 0;
     let mut moved = 0;
     let mut others = 0;
+    // A part that is another library part (`Resistor` to `Capacitor`) is counted for that, and not
+    // again for the value that came with it.
+    let mut kinds: Vec<(&str, &str)> = Vec::new();
     for b in &both {
         for c in &b.parts.changed {
             let only = |name: &str| {
@@ -1446,7 +1463,9 @@ fn summarize(
                     .filter(|f| f.field != "designator")
                     .all(|f| f.field == name)
             };
-            if c.fields.iter().any(|f| f.field == "value") {
+            if let Some(was) = &c.base_kind {
+                kinds.push((was, &c.kind));
+            } else if c.fields.iter().any(|f| f.field == "value") {
                 values += 1;
             } else if only("path") {
                 moved += 1;
@@ -1466,6 +1485,11 @@ fn summarize(
         } else {
             format!("{} removed", count(parts_removed, "part", "parts"))
         });
+    }
+    match kinds.as_slice() {
+        [] => {}
+        [(was, now)] => pieces.push(format!("1 part's kind changed from {was} to {now}")),
+        many => pieces.push(format!("{} parts' kinds changed", many.len())),
     }
     if values > 0 {
         pieces.push(format!("{} changed", count(values, "value", "values")));
@@ -1567,33 +1591,31 @@ fn summarize(
             delta.abs()
         ));
     }
-    let own = |f: &dyn Fn(&ProblemsDiff) -> Vec<&Problem>| -> usize {
-        let mut n = both.iter().map(|b| f(&b.problems).len()).sum::<usize>();
+    // What the checker said that it did not say before, and what it no longer says, by how serious
+    // it is: errors, warnings (a part not chosen, a guideline) and notes (what the solver left
+    // alone). A note is last in the sentence, as it is the least to act on.
+    let own = |severity: Severity, resolved: bool| -> usize {
+        let list = |p: &ProblemsDiff| {
+            let list = if resolved { &p.resolved } else { &p.new };
+            list.iter().filter(|p| p.severity == severity).count()
+        };
+        let mut n = both.iter().map(|b| list(&b.problems)).sum::<usize>();
         if let Some(p) = project {
-            n += f(p).len();
+            n += list(p);
         }
         n
     };
-    let new = own(&|p| {
-        p.new
-            .iter()
-            .filter(|p| p.severity != Severity::Note)
-            .collect()
-    });
-    let resolved = own(&|p| {
-        p.resolved
-            .iter()
-            .filter(|p| p.severity != Severity::Note)
-            .collect()
-    });
-    if new > 0 {
-        pieces.push(format!(
-            "{new} new {}",
-            if new == 1 { "problem" } else { "problems" }
-        ));
+    for severity in [Severity::Error, Severity::Warning, Severity::Note] {
+        let n = own(severity, false);
+        if n > 0 {
+            pieces.push(format!("{n} new {}", severity_word(severity, n)));
+        }
     }
-    if resolved > 0 {
-        pieces.push(format!("{resolved} resolved"));
+    for severity in [Severity::Error, Severity::Warning, Severity::Note] {
+        let n = own(severity, true);
+        if n > 0 {
+            pieces.push(format!("{n} {} resolved", severity_word(severity, n)));
+        }
     }
     if pieces.is_empty() {
         return if renumbered > 0 {
@@ -2196,8 +2218,11 @@ mod tests {
         assert_eq!(said(&d.problems.resolved), ["a note of the project"]);
         assert_eq!(b.status, BoardStatus::Changed);
         assert!(d.changed);
-        // A note is in the lists and not in the sentence.
-        assert_eq!(d.summary, "3 new problems, 1 resolved");
+        // Errors, warnings and notes are each said, the notes last.
+        assert_eq!(
+            d.summary,
+            "2 new errors, 1 new warning, 1 warning resolved, 1 note resolved"
+        );
     }
 
     #[test]
@@ -2747,5 +2772,83 @@ mod tests {
         let nets: Vec<&str> = s.rails.changed.iter().map(|r| r.net.as_str()).collect();
         assert_eq!(nets, ["l:VIN"], "{:#?}", s.rails);
         assert_eq!(d.boards[0].rails.changed.len(), 1);
+    }
+
+    // ---- the kind of a part ----
+
+    fn kind_part(path: &str, kind: &str, value: &str) -> PartDigest {
+        PartDigest {
+            kind: kind.into(),
+            ..part(path, "R1", value, &[])
+        }
+    }
+
+    #[test]
+    fn a_part_that_is_another_library_part_says_what_it_was_and_what_it_is() {
+        let base = digest(board(vec![kind_part("x", "Resistor", "1k")], Vec::new()));
+        let head = digest(board(vec![kind_part("x", "Capacitor", "10u")], Vec::new()));
+        let d = diff(&base, &head, None);
+        let c = &only(&d).parts.changed[0];
+        assert_eq!(
+            (c.kind.as_str(), c.base_kind.as_deref()),
+            ("Capacitor", Some("Resistor"))
+        );
+        let fields: Vec<&str> = c.fields.iter().map(|f| f.field.as_str()).collect();
+        assert_eq!(fields, ["kind", "value"]);
+        // Counted once, as a kind: the value that came with it is not another change.
+        assert_eq!(
+            d.summary,
+            "1 part's kind changed from Resistor to Capacitor"
+        );
+        assert_eq!(only(&d).summary, d.summary);
+    }
+
+    #[test]
+    fn a_value_alone_leaves_the_kind_to_the_row_and_says_no_kind_changed() {
+        let base = digest(board(vec![kind_part("x", "Resistor", "1k")], Vec::new()));
+        let head = digest(board(vec![kind_part("x", "Resistor", "2k")], Vec::new()));
+        let d = diff(&base, &head, None);
+        let c = &only(&d).parts.changed[0];
+        assert_eq!((c.kind.as_str(), c.base_kind.clone()), ("Resistor", None));
+        assert_eq!(d.summary, "1 value changed");
+    }
+
+    #[test]
+    fn several_kind_changes_are_counted_and_beside_values_and_a_kind_alone_with_the_same_value() {
+        let base = digest(board(
+            vec![
+                kind_part("a", "Header1x2", "Conn_01x02"),
+                kind_part("b", "Resistor", "1k"),
+                kind_part("c", "Led", "red"),
+            ],
+            Vec::new(),
+        ));
+        let head = digest(board(
+            vec![
+                kind_part("a", "Socket1x2", "Conn_01x02"),
+                kind_part("b", "Inductor", "1k"),
+                kind_part("c", "Led", "green"),
+            ],
+            Vec::new(),
+        ));
+        let d = diff(&base, &head, None);
+        let a = only(&d)
+            .parts
+            .changed
+            .iter()
+            .find(|p| p.path == "a")
+            .unwrap();
+        // The value is the same: the kind is the whole of the change.
+        assert_eq!(a.fields.len(), 1);
+        assert_eq!(a.fields[0].field, "kind");
+        assert_eq!(d.summary, "2 parts' kinds changed, 1 value changed");
+        // A kind that is the same is not mentioned for a part that only moved.
+        let moved = diff(
+            &digest(board(vec![kind_part("old.x", "Led", "red")], Vec::new())),
+            &digest(board(vec![kind_part("new.x", "Led", "red")], Vec::new())),
+            None,
+        );
+        assert_eq!(only(&moved).parts.changed[0].base_kind, None);
+        assert_eq!(moved.summary, "1 part moved");
     }
 }
