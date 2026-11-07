@@ -26,6 +26,12 @@
 //! exactly one more series part is there and no main part (a connector, an IC) has a pin on it.
 //!
 //! The IC qualifies when it has both sides and the rails are known. `engine/spine.rs` draws it.
+//!
+//! A **link** is the same line with no IC: a chain of series parts that runs from one main part
+//! (a connector the power comes in at) to another (what it goes to), a supply rail at each end.
+//! The part at the end with no parts to ground on it is the **source**: it is the `ic` of the
+//! spine, its input side is empty and its output side is the chain; the other end is the
+//! **load**, which the sheet puts next to the end of the row and level with it.
 
 use super::*;
 
@@ -74,6 +80,9 @@ pub(crate) struct Spine {
     pub output: Side,
     /// Chains to the left of the input side, the nearest first.
     pub free: Vec<Side>,
+    /// For a link: the main part at the far end of the output chain (the `ic` is the source and
+    /// the input side is empty).
+    pub load: Option<usize>,
 }
 
 /// The longest chain of series parts on one side.
@@ -102,8 +111,16 @@ impl Spine {
         for n in &self.input.nodes {
             out.push((*n, -1));
         }
-        for n in &self.output.nodes {
-            out.push((*n, 1));
+        for (i, n) in self.output.nodes.iter().enumerate() {
+            // A link's source end is wired straight to its part: no symbol (a symbol that joins
+            // nothing else on the sheet reads as a port to somewhere); its far end, the rail the
+            // load takes, has the one symbol.
+            let pref = if self.load.is_some() && i + 1 < self.output.nodes.len() {
+                0
+            } else {
+                1
+            };
+            out.push((*n, pref));
         }
         for side in &self.free {
             let last = side.nodes.len() - 1;
@@ -341,7 +358,118 @@ pub(crate) fn find(ctx: &Ctx) -> Vec<Spine> {
             out.push(spine);
         }
     }
+    for a in 0..ctx.design.parts.len() {
+        if let Some(link) = link_of(ctx, a, &mut taken) {
+            out.push(link);
+        }
+    }
     out
+}
+
+/// Whether `p` can stand at the end of a link: a main part whose turn is the line's to choose
+/// (not a table of pins, not a unit of a symbol).
+fn is_end(ctx: &Ctx, p: usize) -> bool {
+    let g = &ctx.glyphs[p];
+    g.symbol.is_some()
+        && !g.dense
+        && g.unit.is_none()
+        && !is_stackable(ctx, p)
+        && g.pins.iter().filter(|q| !q.hidden).count() >= 2
+}
+
+/// The number of parts to ground on `net`, other than those taken.
+fn shunts(ctx: &Ctx, net: usize, taken: &[bool]) -> usize {
+    parts_on(ctx, net)
+        .into_iter()
+        .filter(|&p| !taken[p] && to_ground(ctx, p, net))
+        .count()
+}
+
+/// Whether a series part that no chain has taken is on `net`.
+fn in_series_elsewhere(ctx: &Ctx, net: usize, taken: &[bool]) -> bool {
+    parts_on(ctx, net)
+        .into_iter()
+        .any(|p| !taken[p] && series_nets(ctx, p).is_some())
+}
+
+/// The link that leaves main part `a` by one of its nets: a chain of series parts, each net of it
+/// with one series part on it besides the one before (a rail that feeds several branches is no
+/// chain), that ends on a net with a pin of another main part, with a supply rail somewhere on it.
+fn link_of(ctx: &Ctx, a: usize, taken: &mut [bool]) -> Option<Spine> {
+    if taken[a] || !is_end(ctx, a) {
+        return None;
+    }
+    let mut nets: Vec<usize> = (0..ctx.design.nets.len())
+        .filter(|&n| !ctx.ground[n] && touches(ctx, n, a))
+        .collect();
+    nets.sort_unstable();
+    for start in nets {
+        let mut scratch = taken.to_vec();
+        scratch[a] = true;
+        // The first step must be the only way out of the net.
+        if candidates(ctx, a, start, &scratch, &[start], false).len() != 1 {
+            continue;
+        }
+        let (parts, nodes) = walk(ctx, a, start, &mut scratch);
+        let end = *nodes.last().expect("a node");
+        if parts.is_empty() || end == start {
+            continue;
+        }
+        let Some(b) = parts_on(ctx, end)
+            .into_iter()
+            .find(|&p| p != a && !taken[p] && is_end(ctx, p))
+        else {
+            continue;
+        };
+        // Both ends are supply rails: the chain carries power from one to the other. A resistor
+        // from a rail to a signal net (a pull-up) is no link.
+        if [start, end]
+            .iter()
+            .any(|&n| ctx.power[n] != Some(PowerKind::Supply))
+        {
+            continue;
+        }
+        // Neither end is a rail that feeds other series parts too (the pull-ups of a rail, the
+        // branches of a supply): that is a net with parts beside its pins, not the end of a chain.
+        for &p in &parts {
+            scratch[p] = true;
+        }
+        if [start, end]
+            .iter()
+            .any(|&n| in_series_elsewhere(ctx, n, &scratch))
+        {
+            continue;
+        }
+        // The end with parts to ground on it is the one the load is on; with none, or as many on
+        // each, the chain stays as it was found.
+        let (mut ic, mut load) = (a, b);
+        let (mut parts, mut nodes) = (parts, nodes);
+        scratch = taken.to_vec();
+        scratch[a] = true;
+        scratch[b] = true;
+        for &p in &parts {
+            scratch[p] = true;
+        }
+        if shunts(ctx, start, &scratch) > shunts(ctx, end, &scratch) {
+            std::mem::swap(&mut ic, &mut load);
+            parts.reverse();
+            nodes.reverse();
+        }
+        taken[ic] = true;
+        for &p in &parts {
+            taken[p] = true;
+        }
+        let mut output = Side::new(parts, nodes);
+        hang(ctx, ic, &mut output, taken, false);
+        return Some(Spine {
+            ic,
+            input: Side::default(),
+            output,
+            free: Vec::new(),
+            load: Some(load),
+        });
+    }
+    None
 }
 
 fn is_main(ctx: &Ctx, ic: usize) -> bool {
@@ -456,6 +584,7 @@ fn spine_of(ctx: &Ctx, ic: usize, taken: &mut [bool]) -> Option<Spine> {
         input,
         output,
         free,
+        load: None,
     })
 }
 
@@ -584,6 +713,62 @@ pub(crate) fn orientation(ctx: &Ctx, spine: &Spine) -> Orient {
         }
         if let (Some(a), Some(b)) = (y_in, y_out) {
             score -= 0.1 * ((a - b).abs() / GRID).min(20.0);
+        }
+        if score > best.0 + 1e-9 {
+            best = (score, orient);
+        }
+    }
+    best.1
+}
+
+/// The turn of an end of a link: the pins on the net of the chain leave toward it (the source's to
+/// the right, the load's to the left), grounds below and other supplies above, and the library's
+/// drawing when two turns tie.
+pub(crate) fn link_orientation(ctx: &Ctx, spine: &Spine, p: usize) -> Orient {
+    let (net, want) = if p == spine.ic {
+        (spine.output.nodes[0], Dir::Right)
+    } else {
+        (*spine.output.nodes.last().expect("a node"), Dir::Left)
+    };
+    let glyph = &ctx.glyphs[p];
+    let readable: Vec<Orient> = Orient::ALL
+        .into_iter()
+        .filter(|&o| !glyph.texts_collide(o))
+        .collect();
+    let candidates = if readable.is_empty() {
+        Orient::ALL.to_vec()
+    } else {
+        readable
+    };
+    let mut best = (f64::NEG_INFINITY, candidates[0]);
+    for orient in candidates {
+        let mut score = 0.0;
+        for pin in glyph.pins.iter().filter(|q| !q.hidden) {
+            let Some(n) = net_of(ctx, p, &pin.id) else {
+                continue;
+            };
+            let escape = orient.dir((-pin.toward_body.0, -pin.toward_body.1));
+            if n == net {
+                score += if escape == want {
+                    10.0
+                } else if escape == want.opposite() {
+                    -10.0
+                } else {
+                    -3.0
+                };
+            } else if ctx.ground[n] {
+                score += match escape {
+                    Dir::Down => 2.0,
+                    Dir::Up => -2.0,
+                    _ => 0.0,
+                };
+            } else if ctx.power[n] == Some(PowerKind::Supply) {
+                score += match escape {
+                    Dir::Up => 1.0,
+                    Dir::Down => -1.0,
+                    _ => 0.0,
+                };
+            }
         }
         if score > best.0 + 1e-9 {
             best = (score, orient);

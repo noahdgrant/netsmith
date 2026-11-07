@@ -324,6 +324,8 @@ struct Piece {
     grounds: BTreeSet<usize>,
     /// The corridors of the rows of a spine, from the origin.
     lanes: Vec<Rect>,
+    /// Set for the source of a link: the next piece is its load, and the two stay in one row.
+    joined: bool,
 }
 
 /// Room above a row for its supply rails and their symbols, and below it for its grounds':
@@ -649,14 +651,35 @@ pub(super) fn run(
         let ext = placed[b.anchor].extent;
         let (supplies, grounds) = rails_of(&b.members);
         spine_nets.extend(b.spine_nets.iter().copied());
+        // The load of a link is level with the row that runs into it: on its pin.
+        let load_row = ctx
+            .spines
+            .iter()
+            .find(|s| s.load == Some(b.anchor))
+            .and_then(|s| {
+                let net = *s.output.nodes.last()?;
+                placed[b.anchor]
+                    .pins
+                    .iter()
+                    .filter(|q| q.net == Some(net))
+                    .map(|q| q.at.y)
+                    .min_by(f64::total_cmp)
+            });
         pieces.push(Piece {
             anchor: Some(b.anchor),
             members: b.members,
             rect: b.rect,
-            middle: b.level.unwrap_or((ext.min.y + ext.max.y) / 2.0),
+            middle: b
+                .level
+                .or(load_row)
+                .unwrap_or((ext.min.y + ext.max.y) / 2.0),
             supplies,
             grounds,
             lanes: b.spine_lanes,
+            joined: ctx
+                .spines
+                .iter()
+                .any(|s| s.ic == b.anchor && s.load.is_some()),
         });
     }
     let free: Vec<usize> = (0..units.len())
@@ -685,6 +708,7 @@ pub(super) fn run(
             supplies,
             grounds,
             lanes: Vec::new(),
+            joined: false,
         });
     }
 
@@ -941,7 +965,9 @@ fn pack(pieces: &[Piece]) -> Vec<Vec<usize>> {
             let row = rows.last().expect("a row");
             let mut with = row.clone();
             with.push(i);
-            if !row.is_empty() && width(&with) > wanted {
+            // A source and its load are never cut apart.
+            let held = row.last().is_some_and(|&last| pieces[last].joined);
+            if !row.is_empty() && width(&with) > wanted && !held {
                 rows.push(vec![i]);
             } else {
                 rows.last_mut().expect("a row").push(i);
@@ -2816,6 +2842,10 @@ impl<'a> Scene<'a> {
     /// supply where the power comes in or goes out.
     fn spine_symbols(&mut self) {
         for (net, pref) in self.spine_pref.clone() {
+            // No symbol on this net (the source end of a link).
+            if pref == 0 {
+                continue;
+            }
             let Some(kind) = self.ctx.power[net] else {
                 continue;
             };
