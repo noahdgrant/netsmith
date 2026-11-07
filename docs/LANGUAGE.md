@@ -3870,7 +3870,7 @@ r1 is a Resistor: picked PrecisionThinFilm; passed over Resistor (the `resistor`
 - The generic's statements hold for the provider, so a provider cannot state other designator letters than the generic's (`.designator &= "RN"` is a contradiction of `"R"`).
 - Only a part provides a standard generic: a module that says `provides Resistor` is refused, because the generic has a `pins` table.
 
-The series of values that have no row (ADR 0047) and the columns that a file of rows may leave out (`.temperature_coefficient` of a resistor, `.dielectric` of a capacitor, `.rms_current` of an inductor) belong to the **catalogs** `resistor`, `capacitor`, `inductor` and `led` (an LED has no series, only its packages), which are the standard generics' own: one table of the solver names them, and it is the only place that does (ADR 0068, stage 3). A catalog is one name that every part listing it shares, so a part or a provider that lists `catalog resistor` has the series and the omitted columns of that catalog, whatever the generic it provides. A provider whose catalog has another name has no series, and its file has every column it lists.
+The series of values that have no row (ADR 0047) and the columns that a file of rows may leave out (`.temperature_coefficient` of a resistor, `.dielectric` of a capacitor, `.rms_current` of an inductor) belong to the **catalogs** `resistor`, `capacitor`, `inductor` and `led` (an LED has no series, only its packages), which are the standard generics' own: one table of the solver names them, and it is the only place that does (ADR 0068, stage 3). A catalog is one name that every part listing it shares, so a part or a provider that lists `catalog resistor` has the series and the omitted columns of that catalog, whatever the generic it provides. One more column may be left out of a file that no generic synthesizes: `.breakdown_voltage` of a TVS diode, in the `tvs` catalog (ADR 0073). A provider whose catalog has another name has no series, and its file has every column it lists.
 
 ## Modules
 
@@ -6804,6 +6804,8 @@ A diode, a Zener, a TVS diode and a capacitor have a `.bias`: the DC voltage acr
 | `std::parts::diode::Zener` | `.bias * .current <= .max_power` | `.zener_voltage` with its tolerance. For a clamp, the line `.z.bias <= .z.zener_voltage`. Catalog `zener`. |
 | `std::parts::diode::Tvs` | `.bias <= .standoff_voltage`, `.clamping_voltage <= .protected_limit` | The ratings, and `.protected_limit`: the absolute maximum of what is behind it. Catalog `tvs`. |
 
+A `Tvs` also has an optional `.breakdown_voltage`, the minimum breakdown voltage VBR: between the stand-off voltage and it the diode leaks a little, below it the diode does not conduct (ADR 0073, provisional). A design that needs a margin between the highest the line reaches and the point where the diode starts to conduct states it, `.tvs.breakdown_voltage >= .input.peak * 1.1`. It is a catalog column that the standard rows leave empty (`data/jlcpcb/README.md`), so a design that states it is offered no standard row, and gets one from a project's `tvs` catalog file that records the column; a file written before the column may leave it out, and a design that does not state the field picks as before and has no new check.
+
 A 12 V input with a fuse and a TVS diode. The values are the board's own, as if copied from datasheets.
 
 ```nsm evaluate
@@ -6849,10 +6851,37 @@ board Standoff {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 9 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
-    --> std/parts/diode.nsm:143:5
+    --> std/parts/diode.nsm:153:5
     |
-143 |     .bias <= .standoff_voltage
+153 |     .bias <= .standoff_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A margin on the breakdown voltage is a requirement the standard rows cannot meet, since none records it, and the message is the usual one for a catalog with nothing for the part:
+
+```nsm fails
+import std::parts::diode::Tvs
+import std::sources::Rail
+
+board Margin {
+    .input: Rail {
+        .voltage &= 12V +/- 5%
+        .peak &= 16V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .tvs: Tvs {}
+    .tvs.breakdown_voltage >= .input.peak * 1.1
+    .input.pos ~> .tvs ~> .input.neg
+}
+```
+
+```text
+error: the `tvs` catalog has nothing for `tvs`, which needs nothing in particular (rows with an empty cell are never offered, since a part with no stated rating cannot be shown to stay within it: 9 for `breakdown_voltage`)
+   --> main.nsm:11:5
+   |
+11 |     .tvs: Tvs {}
+   |     ^^^^^^^^^
 ```
 
 A Zener used as a clamp, and a diode that blocks less than the rail it sits across:
@@ -7170,7 +7199,7 @@ board Budget {
 ```
 
 ```text
-error: no `fuse` candidate satisfies `fuse`: the closest of the 6 that fit, SMD1206P200TF 2A 6V resettable fuse 1206 C20988, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 2A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
+error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
     --> std/parts/passive.nsm:248:5
     |
 248 |     .current <= .rated_current
@@ -8864,7 +8893,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::parts::diode::Diode` | A diode: `.forward_voltage`, `.max_reverse_voltage`, `.max_forward_current`, `.bias`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Requires `.bias <= .max_reverse_voltage` and `.current <= .max_forward_current`. |
 | `std::parts::diode::Schottky` | A Schottky diode, with the fields and ratings of `Diode`. Catalog `schottky`. |
 | `std::parts::diode::Zener` | A Zener diode: `.zener_voltage` (with tolerance), `.max_power`, `.bias`. Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias * .current <= .max_power`. |
-| `std::parts::diode::Tvs` | A unidirectional TVS diode: `.standoff_voltage`, `.clamping_voltage`, `.peak_pulse_current`, `.protected_limit`, `.bias`. Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias <= .standoff_voltage` and `.clamping_voltage <= .protected_limit`. |
+| `std::parts::diode::Tvs` | A unidirectional TVS diode: `.standoff_voltage`, `.clamping_voltage`, `.peak_pulse_current`, `.protected_limit`, `.bias` and the optional `.breakdown_voltage` (a catalog column the standard rows leave empty). Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias <= .standoff_voltage` and `.clamping_voltage <= .protected_limit`. |
 | `std::parts::transistor::NMosfet` | An N-channel MOSFET: pins `gate` (input), `source`, `drain`, bridge `drain ~> source`. Maxima for drain-source voltage, drain current and gate-source voltage; `.gate_threshold`; `.on_resistance`. Requires the stresses `.drain_source_voltage` and `.gate_source_voltage` and `.current` within them, and the gate drive above the threshold. Catalog `n_mosfet`. |
 | `std::parts::transistor::PMosfet` | A P-channel MOSFET: as `NMosfet` with bridge `source ~> drain`; voltages are magnitudes. A generic with the catalog `p_mosfet`, whose standard file has no rows: a project adds its own. |
 | `std::parts::logic::Sn74lvc1g04` | A single inverter, TI SN74LVC1G04 (SCES214AF), for a supply of 3 V to 3.6 V: rail `vcc`, lines `a` (input) and `y` (output) as `Logic` with the levels and absolute maximums of the datasheet, SOT-23-5. No catalog row. |
