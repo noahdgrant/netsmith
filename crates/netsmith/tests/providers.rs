@@ -426,13 +426,80 @@ fn the_search_stops_at_the_bound_and_says_which_uses_it_was_about() {
         .err()
         .unwrap();
     assert_eq!(providers::trials_run() - before, MAX_PROVIDER_TRIALS - 1);
-    assert_eq!(e.len(), 1);
+    // What is wrong with the design as it stands first, one error for each of the four uses
+    // at their first provider; then that the search gave up.
+    let m = messages(&e);
+    assert_eq!(m.len(), 5, "{m:?}");
+    for (message, use_) in m.iter().zip(["a", "b", "c", "d"]) {
+        assert!(
+            message.starts_with(&format!("{use_}.rating must always be at least 10V")),
+            "{message}"
+        );
+    }
     assert_eq!(
-        e[0].message,
+        m[4],
         format!(
             "gave up after trying {MAX_PROVIDER_TRIALS} provider combinations for `a` and `b` and `c` and `d`; give them fewer providers in scope, or name a provider as the type of one of them"
         )
     );
+}
+
+#[test]
+fn a_failing_design_with_many_uses_says_what_is_wrong_before_it_says_it_gave_up() {
+    // 70 uses of a generic with two providers, both of which serve, and a resistor that no
+    // row serves: the mistake is the resistor's, and the other providers change nothing. The
+    // bound is reached before every use has been varied, and the build used to say only that
+    // it gave up.
+    let w = world(&[ALPHA, BETA]);
+    let mut body = String::from("    .r: Resistor { .resistance &= 1ohm +/- 0.0001% }\n");
+    for i in 0..70 {
+        body.push_str(&format!("    .rf{i:02}: CoaxReceptacle\n"));
+    }
+    let source = format!(
+        "import std::parts::passive::Resistor\n{}\nboard Feed {{\n{body}}}\n",
+        imports(&[ALPHA, BETA])
+    );
+    let before = providers::trials_run();
+    let e = build(&w, &source).err().unwrap();
+    assert_eq!(providers::trials_run() - before, MAX_PROVIDER_TRIALS - 1);
+    let m = messages(&e);
+    assert_eq!(m.len(), 2, "{m:?}");
+    assert!(
+        m[0].starts_with("the `resistor` catalog has nothing for `r`"),
+        "{}",
+        m[0]
+    );
+    // The seven uses the bound did not reach, six named and the rest counted.
+    assert_eq!(
+        m[1],
+        format!(
+            "gave up after trying {MAX_PROVIDER_TRIALS} provider combinations for `rf63` and `rf64` and `rf65` and `rf66` and `rf67` and `rf68` and 1 more; give them fewer providers in scope, or name a provider as the type of one of them"
+        )
+    );
+}
+
+#[test]
+fn a_pass_found_while_a_use_is_varied_alone_is_not_solved_again() {
+    // `a` needs 2 GHz, which only the second provider has, and `b` asks nothing. Varying `a`
+    // alone finds the pass; the search in order reaches the same assignment and takes it
+    // from there, so the two trials are the two assignments tried, not three.
+    let w = world(&[ALPHA, BETA]);
+    let before = providers::trials_run();
+    let o = build(
+        &w,
+        &feed(
+            &[ALPHA, BETA],
+            "    .a: CoaxReceptacle { .max_frequency >= 2GHz }\n    .b: CoaxReceptacle",
+        ),
+    )
+    .unwrap();
+    assert_eq!(providers::trials_run() - before, 2);
+    let picked: Vec<(&str, &str)> = o.boards[0]
+        .providers
+        .iter()
+        .map(|p| (p.path.as_str(), p.chosen.as_str()))
+        .collect();
+    assert_eq!(picked, [("a", "BetaCoax"), ("b", "AlphaCoax")]);
 }
 
 #[test]
@@ -849,4 +916,153 @@ fn a_design_that_uses_no_generic_is_solved_once_and_has_no_provider_notes() {
     assert_eq!(providers::trials_run() - before, 0);
     assert!(o.boards[0].providers.is_empty());
     assert!(o.boards[0].notes.iter().all(|n| !n.contains("picked")));
+}
+
+// ---- what cannot be judged: levels, and values inside a provider's parts --------------------
+
+const LINE_DRIVER: &str = "\
+import std::logic::Logic
+import std::sources::Rail
+
+/// A part that drives one logic line from its supply. Invented.
+generic LineDriver {
+    .vdd: Rail
+    .out: Logic
+    pins {
+        .vdd.pos   power
+        .vdd.neg   power
+        .out.line  output
+    }
+}
+";
+
+fn line_driver(name: &str, levels: &str) -> String {
+    format!(
+        "import src::drv::LineDriver\n\npart {name} provides LineDriver {{\n    .out.reference ~ .vdd\n{levels}    pins {{\n        .vdd.pos   power  \"VDD\" \"1\"\n        .vdd.neg   power  \"GND\" \"2\"\n        .out.line  output \"OUT\" \"3\"\n    }}\n}}\n"
+    )
+}
+
+const RECEIVER: &str = "\
+import std::logic::Logic
+import std::sources::Rail
+
+part Receiver {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.vih &= 0.7 * .vdd.voltage
+    .in.vil &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos   power \"VDD\" \"1\"
+        .vdd.neg   power \"GND\" \"2\"
+        .in.line   input \"IN\"  \"3\"
+    }
+}
+";
+
+#[test]
+fn a_provider_whose_logic_levels_are_open_is_passed_over_for_one_that_states_them() {
+    let mut loader = Loader::std();
+    loader.insert("src::drv", "src/drv.nsm", LINE_DRIVER);
+    loader.insert("src::rx", "src/rx.nsm", RECEIVER);
+    // `AaaDriver` sorts first and states no level: the check against the receiver is not made.
+    loader.insert("src::aaa", "src/aaa.nsm", &line_driver("AaaDriver", ""));
+    loader.insert(
+        "src::zeta",
+        "src/zeta.nsm",
+        &line_driver(
+            "ZetaDriver",
+            "    .out.voh &= .vdd.voltage - 0.1V\n    .out.vol &= 0.1V\n",
+        ),
+    );
+    let source = "\
+import std::sources::Rail
+import src::drv::LineDriver
+import src::rx::Receiver
+import src::aaa::AaaDriver
+import src::zeta::ZetaDriver
+
+board Feed {
+    .s3: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= \"3V3\"
+        .neg.net &= \"GND\"
+    }
+    .drv: LineDriver
+    .rx: Receiver
+    .s3 ~ .drv.vdd
+    .s3 ~ .rx.vdd
+    .drv.out.line ~ .rx.in.line
+}
+";
+    let o = outcome_with("main.nsm", source, &loader, &Catalogs::jlcpcb(), None)
+        .unwrap_or_else(|e| panic!("{:?}", messages(&e)));
+    let b = &o.boards[0];
+    assert_eq!(b.providers[0].chosen, "ZetaDriver");
+    let (name, why) = &b.providers[0].passed_over[0];
+    assert_eq!(name, "AaaDriver");
+    assert!(
+        why.starts_with("not evaluated: the high level from `drv.out` to `rx.in` on net"),
+        "{why}"
+    );
+    assert!(
+        b.notes.iter().all(|n| !n.starts_with("not evaluated")),
+        "{:?}",
+        b.notes
+    );
+}
+
+#[test]
+fn a_module_provider_whose_inner_part_leaves_a_datasheet_number_open_is_passed_over() {
+    // `AaaStage` wraps a core whose input limit is not stated, so the check that the rail is
+    // within it waits; `ZetaStage` states it. The open value is inside a part of the module
+    // that is the provider, not the design's: a rail the board joins to the use is.
+    let mut loader = Loader::std();
+    loader.insert(
+        "src::stage",
+        "src/stage.nsm",
+        "import std::sources::Rail\n\ngeneric Stage {\n    .vin: Rail\n}\n",
+    );
+    loader.insert(
+        "src::core",
+        "src/core.nsm",
+        "/// The IC of a stage. Invented.\npart Core {\n    .max_input: Voltage\n}\n",
+    );
+    let stage = |name: &str, state: &str| {
+        format!(
+            "import src::stage::Stage\nimport src::core::Core\n\nmodule {name} provides Stage {{\n    .core: Core\n{state}    .core.max_input >= .vin.voltage\n}}\n"
+        )
+    };
+    loader.insert("src::aaa", "src/aaa.nsm", &stage("AaaStage", ""));
+    loader.insert(
+        "src::zeta",
+        "src/zeta.nsm",
+        &stage("ZetaStage", "    .core.max_input &= 12V\n"),
+    );
+    let source = "\
+import std::sources::Rail
+import src::stage::Stage
+import src::aaa::AaaStage
+import src::zeta::ZetaStage
+
+board Feed {
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= \"VIN\"
+        .neg.net &= \"GND\"
+    }
+    .st: Stage
+    .supply ~ .st.vin
+}
+";
+    let o = outcome_with("main.nsm", source, &loader, &Catalogs::jlcpcb(), None)
+        .unwrap_or_else(|e| panic!("{:?}", messages(&e)));
+    let b = &o.boards[0];
+    assert_eq!(b.providers[0].chosen, "ZetaStage");
+    let (name, why) = &b.providers[0].passed_over[0];
+    assert_eq!(name, "AaaStage");
+    assert!(
+        why.starts_with("not evaluated: ") && why.contains("st.core.max_input"),
+        "{why}"
+    );
 }

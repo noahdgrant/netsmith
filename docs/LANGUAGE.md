@@ -314,7 +314,7 @@ board Units {
 
 Rules.
 
-- A range or a tolerance needs fixed numbers on both sides. `.x &= .y +/- 1%` is an error.
+- A tolerance needs fixed numbers on both sides: `.x &= .y +/- 1%` is an error. A range may have a value at an end (next section).
 - A value has a dimension and a field accepts only its own: a `Voltage` field takes volts.
 - A divisor whose range includes zero is an error.
 
@@ -382,6 +382,86 @@ error: the low end of the range is above the high end
   |
 4 |     .a: Rail { .voltage &= 3V..1V }
   |                            ^^^^^^
+```
+
+### A range whose end is a value
+
+The ends of a range may be values, not only numbers (ADR 0066): a member, or an expression over members. The range `0A .. .max_supply_current` is the current from nothing up to the member `.max_supply_current`, whatever that turns out to be. It is the syntax that was always there with a name at an end, and nothing else is added. Write a space after `..` before a name that starts with a dot, so that the text is not read as three dots.
+
+```nsm-fragment
+part Gate {
+    .vcc: Rail
+    .max_supply_current: Current
+    .vcc.current &= 0A .. .max_supply_current
+}
+```
+
+The statement waits for its ends, as any statement that names a value does, and then it means what the same range with the numbers written in would mean. The range holds the lowest value of the low end and the highest of the high end, so an end that is itself a range (a value with a tolerance, a cell that holds a range) is never trusted to be narrower than it says. While an end has no value, the statement claims nothing: it narrows nothing, refuses nothing, and the build lists it as not evaluated, with the range as written, `gate.vcc.current (0A..gate.max_supply_current)`. A low end above the high end is an error, with the two ends and their values.
+
+This is how a part states its own draw when the draw is a catalog column: the row's maximum is the range's high end, and the rail the part is on carries the range as soon as the row is picked (the translator below). Only a range has this: a tolerance, `.x +/- 5%`, still needs a number at both ends.
+
+```nsm evaluate
+import std::sources::Rail
+
+/// Invented: a gate whose datasheet gives the largest current its supply pin draws.
+part Gate {
+    .designator &= "U"
+    .vcc: Rail
+    .max_supply_current: Current
+    .vcc.current &= 0A .. .max_supply_current
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+    }
+}
+
+board Counted {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= -1uA..0A
+    }
+    .gate: Gate { .max_supply_current &= 750nA }
+    .supply ~ .gate.vcc
+}
+```
+
+The gate draws 0 A to 750 nA, which fits the 1 uA that the supply is allowed to give (a supply gives, so its current is the draws negated). A supply that is allowed 500 nA does not, and the build says so:
+
+```nsm fails
+import std::sources::Rail
+
+/// Invented: a gate whose datasheet gives the largest current its supply pin draws.
+part Gate {
+    .designator &= "U"
+    .vcc: Rail
+    .max_supply_current: Current
+    .vcc.current &= 0A .. .max_supply_current
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+    }
+}
+
+board Counted {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= -500nA..0A
+    }
+    .gate: Gate { .max_supply_current &= 750nA }
+    .supply ~ .gate.vcc
+}
+```
+
+```text
+error: the currents on net `3V3` do not add up: `supply.current` must stay within -500nA..0A, but the others on it work out to -750nA..0A (all of them: `gate.vcc.current` is 0A..750nA, `supply.current` is -500nA..0A)
+   --> main.nsm:20:9
+   |
+20 |         .current &= -500nA..0A
+   |         ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ## Enums: a value from a fixed list
@@ -707,9 +787,43 @@ A pick is limited when at least one of these holds, and the checks it names are 
 - the value, or a member it is held to or a field a `~` joins it to, has a value, a range or a tolerance: a `&=`, a `?=` default that applied, or a range that a member carries in. Any range counts, however wide;
 - a bound (`>=` or `<=`) has the value, or such a member, alone on one side. A bound on a member that a part is held to counts once it reaches the part (see the end of "Catalogs and how the solver picks parts");
 - a check that the pick decides: a bound, or an equation or `&=` whose left side has a range of its own, that names a value worked out from the pick (an LED's stated current in `.led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance`);
-- a current stated on a net that a value worked out from the pick is a term of (a budget, ADR 0038).
+- a current stated on a net that a value worked out from the pick is a term of (a budget, ADR 0038), when the pick changes whether the budget holds: a load that the module states on the same supply, and that the pick does not feed, is not a limit on the pick.
 
 What does not limit a pick: a bound on a rating (`.r.max_power >= 0.25W`, a `max_voltage`, the package); a relation that a part's own definition states (a resistor's `drop * current <= max_power`, a diode's `current >= 0mA`); and the catalog being filtered, because a filter on the package says nothing about the value. A bound that waits for a value that nothing sets is not judged, so it does not limit the pick, and the finding is made unless an open circle finding already names that check (one finding for one cause). A part with no row for its requirements is reported by its own message and not by this one.
+
+A check that holds whatever the size of the values is, does not limit their size. The output of a divider, `.out == .supply.voltage * .bottom.resistance / .total_resistance` with `.out >= 1.5V` and `.out <= 1.8V`, fixes the ratio of the two resistors and says nothing of whether they are 330 ohm or 330 kohm; if both are unstated, both are unconstrained in size. The solver tells it by scaling the unlimited picks together by one factor and expanding each check through the equations that define what it reads: a check whose two sides are unchanged by the scaling limits a ratio. The finding says so. A range on one resistor, on the total, or a bound on a current that the divider draws (`.draw <= 200uA`) limits the size, and ends it. What the solver cannot expand (a value worked out by a join, by a balance of currents or by two equations) it does not call a ratio, so the finding is then missed and never made wrongly.
+
+```nsm solve warns
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+module Divider {
+    .supply: Rail
+    .total_resistance: Resistance
+    .top: Resistor
+    .bottom: Resistor
+    .total_resistance == .top.resistance + .bottom.resistance
+    .supply.pos ~> .top ~> .bottom ~> .supply.neg
+    .out: Voltage
+    .out == .supply.voltage * .bottom.resistance / .total_resistance
+    .out >= 1.5V
+    .out <= 1.8V
+}
+
+board RatioOnly {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .divider: Divider
+    .divider.supply ~ .supply
+}
+```
+
+```text
+RatioOnly: unconstrained pick guideline: `divider.top` and `divider.bottom` (Resistor) were chosen with nothing limiting their resistance in size, so the solver took the first row that fits, 330Ω 1% 0402 C25104 for each; their resistance is limited as a ratio, not in size, by `.out >= 1.5V` and `.out <= 1.8V` (main.nsm:13 and 14), which hold whatever the size is: state one of them, `.divider.top.resistance &= 4.7kohm +/- 5%`, or bound a value that changes with the size, not only with the ratio (a current or a voltage the design checks), or say that any value will do, `.divider.top.resistance &= 10kohm..100kohm`
+```
 
 An **unstated value** is a value declared in a module or a board that a check reads, which was not evaluated because nothing states the value or works it out. It is for what is not a pick: a voltage that a board states for a check, an enum, a text.
 
@@ -2763,6 +2877,53 @@ error: no `resistor` candidate satisfies `fixed.r`: the closest of the 219 that 
    |     ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
+A value that two equations state is held to a window that the board stated, whatever range the part's own member has (ADR 0065). The frequency of an oscillator is worked out from its timing resistor, and the board states the window it wants; the module links the two with `.osc.fsw == .fsw`. Both lines are equations on `.osc.fsw`, and neither is its allowance: a stated range on `.fsw`, which no pick changes, is, and what the circuit works out must lie inside it. A range that the oscillator's own member `.rt_resistance` has makes the frequency a range before any resistor is picked, and the window is then compared with the pick as it is without that line: a resistor outside the window is refused where it is picked, and a stated resistor outside it fails the build with the numbers. Two values that the picks change and that nothing bounds only have to share a value.
+
+```nsm fails
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+module Oscillator {
+    .rt_resistance: Resistance
+    .rt_resistance &= 10kohm..230kohm
+    .fsw_nominal: Frequency
+    .fsw_nominal == 46.5MHz * 1kohm / (.rt_resistance + 5.2kohm)
+    .fsw_tolerance: Number
+    .fsw_tolerance &= 0.925..1.075
+    .fsw: Frequency
+    .fsw == .fsw_nominal * .fsw_tolerance
+}
+
+module Timer {
+    .fsw: Frequency
+    .supply: Rail
+    .osc: Oscillator
+    .timing: Resistor { .resistance &= 15kohm +/- 1% }
+    .supply.pos ~> .timing ~> .supply.neg
+    .osc.rt_resistance == .timing.resistance
+    .osc.fsw == .fsw
+}
+
+board Probe {
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .timer: Timer
+    .timer.supply ~ .supply
+    .timer.fsw &= 0.9MHz..1.1MHz
+}
+```
+
+```text
+error: `timer.osc.fsw` must stay within 900kHz..1.1MHz, but (timer.osc.fsw_nominal * timer.osc.fsw_tolerance) works out to 2.113MHz..2.494MHz
+   --> main.nsm:12:5
+   |
+12 |     .fsw == .fsw_nominal * .fsw_tolerance
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
 A part is picked after the parts whose picks decide what it needs. A capacitor behind a diode that the solver picks has the bias of the rail it sits on, which is the supply's voltage less the diode's forward voltage, and that is known only once the diode is chosen. The solver therefore chooses the diode first, and the board below builds with its parts named in either order. A part that needs a value that no pick can set is not delayed: it fails as it would alone, with a message that says which field to state. Ties go by path, and the same inputs give the same board.
 
 ```nsm evaluate
@@ -2791,6 +2952,8 @@ board Behind {
     .load.pos ~> .a_cap ~> .load.neg
 }
 ```
+
+Two groups of parts that read each other's values through a bound (a window that the tap of one divider must stay inside, set by another divider's output) are searched one after the other, in path order, and the one that comes first is picked while the bound waits for the other. Its first fit can leave nothing for the other, and the board would then build or fail by what its instances are called. When a group fails and an earlier group shares a bound with it, the solver searches them again, the failed one first, so that the others are judged by the bound against its picks. If that does not find parts for all of them the first failure and its message stand. Parts that were found this way are the parts that the other order of the names gives (ADR 0065).
 
 The JLCPCB catalogs hold 1% resistors (0402 E24 from 10 ohm to 1 Mohm, Basic 0603, 250 mW 0805), Basic 0402 and 0603 ceramic capacitors, LEDs in five colors, one fixed-output linear regulator, and a few Schottky, Zener and TVS diodes, ferrite beads, power inductors, resettable fuses, N-channel MOSFETs and crystals (ADR 0025). A resistor's rating, `max_power`, is a column: a row with an empty cell is never offered, because the resistor's own check uses it. An empty cell is no obstacle for a column the design never mentions (`temperature_coefficient` is empty in every standard row), and a design that bounds the column is offered only the rows that state it. `data/jlcpcb/README.md` lists every row and its source.
 
@@ -3182,9 +3345,11 @@ part OtherCoax provides CoaxReceptacle {
 Rules.
 
 - A part or module may provide several generics: `part AcmeMicroCoax provides CoaxReceptacle, RfConnector`. Only a `generic` is provided; `board`, `system`, `panel`, `interface` and `enum` cannot say `provides`.
-- Each pin of the generic has a row of the same kind in every `pins` table of the part, or is an alias of a pin that has one.
+- Each pin of the generic has a row of the same kind in every `pins` table of the part, or is an alias of a pin that has a row of that kind: the row the alias is joined to is what the checker reads for the net, so it is the one compared (`.signal ~ .rf` with `.rf output` is refused where the generic says `.signal passive`, at the row of `.rf`).
 - The providers of one generic are all parts or all modules: a generic is placed as the kind its providers have. A generic that has a `pins` table is provided by parts.
 - A provider is checked where it is written, as any part is, so an unused provider's mistakes show.
+- No two providers of one generic have the same name, in whatever files they are: a part is known by its name in the bill of materials, in the `[[part]]` entries of `kicad.toml` and in the notes, so two would share a kind and a mapping. The later one (by the order below) is refused at its own name, with both module paths.
+- A provider does not contain a use of the generic it provides, directly or through the parts and modules inside it: a pick that could take the provider being made would make it again inside itself. A provider that wraps `BuckConverter` in `.inner: BuckConverter` is refused at that line with the cycle named (`AFilteredBuck > AFilteredBuck`), whatever its name sorts as; wrap a part, or a module that does not provide the generic. Nor does any definition contain itself, directly or through another.
 
 ### A use
 
@@ -3217,10 +3382,10 @@ feed.rf is a CoaxReceptacle: picked AcmeMicroCoax; passed over AcmeBasicCoax (no
 Which providers are candidates, and in what order:
 
 - A candidate is a provider in a file that the board's file imports, directly or through other files, or in the board's own file. The import list is the list: no second list is kept. An import used only to bring providers into scope is a plain import, and a comment says so.
-- The order is fixed: the generic itself first when it is its own provider (it has pads or a catalog), then the providers of the standard library, then the project's, each by module path and then by name. It never depends on where a definition is written in a file, so moving one changes nothing.
-- The pick is the first candidate for which every check of the whole design holds. Nothing compares candidates: a design that cares states a requirement or names the type. A provider that leaves a value open that the use puts a bound on (`.rf: G { .max_frequency >= 1GHz }` and a provider that never states `.max_frequency`) cannot be judged, which is not holding: it is passed over for one that can be, and if none can, the first stands and the build names the bound as `not evaluated`.
+- The order is fixed: the generic itself first when it is its own provider (it has pads or a catalog), then the providers of the standard library, then the project's, each by module path and then by name. It never depends on where a definition is written in a file, so moving one changes nothing. The module path of a file is its path under the project's root (`src/main.nsm` is `src::main`) whichever way its name is typed (`./src/main.nsm`, an absolute path), and a file that imports the file being built finds that file, held once, not a second copy of it.
+- The pick is the first candidate for which every check of the whole design holds. Nothing compares candidates: a design that cares states a requirement or names the type. A provider that leaves a value open that the use puts a bound on (`.rf: G { .max_frequency >= 1GHz }` and a provider that never states `.max_frequency`) cannot be judged, which is not holding: it is passed over for one that can be, and if none can, the first stands and the build names the bound as `not evaluated`. What cannot be judged is: a bound or an equation that waits on a value inside the use that nothing states (of the use itself, of an interface or a part inside it, such as the datasheet number of the IC inside a module provider), and a logic level or an absolute maximum that could not be checked because a pin of the use states no value for it. A value the use shares with the board (the board's rail that `.vin` is joined to, whose `.peak` the board leaves open) is the design's, and is no reason to try another provider.
 - The pick depends on the sources, the catalog files and `netsmith.toml` only: not on the KiCad libraries, the mapping, stock or the time. A provider with no entry in `kicad.toml` is not skipped; the build fails at export and names it.
-- A failing design is tried with the other providers only for the uses that matter: a use is varied alone first, and one whose other providers change nothing about what fails is left at its first. At most 64 combinations are tried (`gave up after trying 64 provider combinations`).
+- A failing design is tried with the other providers only for the uses that matter: a use is varied alone first, and one whose other providers change nothing about what fails is left at its first. At most 64 combinations are tried. When the search stops at that bound without an answer, the build prints the errors of the design as it stands first (the first solve's), and then `gave up after trying 64 provider combinations for ...`, naming the first six uses it did not reach and counting the rest: the bound is never the only thing said about a design that has a mistake of its own.
 
 The three ways to say what part the board wants:
 
@@ -3570,6 +3735,8 @@ r1 is a Resistor: picked PrecisionThinFilm; passed over Resistor (the `resistor`
 - A provider's pin table has a row of the generic's kind for each of the generic's pins: `.a` and `.b` for a resistor, `.anode` and `.cathode` for an LED or a diode, `.gate`, `.source` and `.drain` for a MOSFET, `.vin.pos`, `.vin.neg` and `.vout.pos` for a linear regulator.
 - The generic's statements hold for the provider, so a provider cannot state other designator letters than the generic's (`.designator &= "RN"` is a contradiction of `"R"`).
 - Only a part provides a standard generic: a module that says `provides Resistor` is refused, because the generic has a `pins` table.
+
+The series of values that have no row (ADR 0047) and the columns that a file of rows may leave out (`.temperature_coefficient` of a resistor, `.dielectric` of a capacitor, `.rms_current` of an inductor) belong to the catalogs `resistor`, `capacitor`, `inductor` and `led`, which are the standard generics' own: one table of the solver names them, and it is the only place that does (ADR 0059, stage 3). The catalog of a provider has another name, so it has no series and its file has every column it lists, whatever the generic it provides.
 
 ## Modules
 
@@ -6568,6 +6735,7 @@ board Adjustable {
     .divider: FeedbackDivider {
         .vref &= 1.0V +/- 1%
         .vout &= 3.8V +/- 3%
+        .current <= 1mA
     }
     .out: Rail {
         .pos.net &= "VOUT"
@@ -6579,7 +6747,7 @@ board Adjustable {
 }
 ```
 
-The solver picks 6.2 kohm over 2.2 kohm, whose worst-case output is 3.686 V to 3.914 V. The reference and the two resistors are each good to 1%, which already moves the output by about 2.5%, so asking for 2% either way cannot be met. The message names the closest pair and the range its output works out to:
+The output fixes the ratio of the two resistors and not their size, so a board also says how much the divider may draw (`.current <= 1mA`); without it the resistors are unconstrained in size and the build says so (see "A value that nobody stated"). The solver picks 6.2 kohm over 2.2 kohm, whose worst-case output is 3.686 V to 3.914 V. The reference and the two resistors are each good to 1%, which already moves the output by about 2.5%, so asking for 2% either way cannot be met. The message names the closest pair and the range its output works out to:
 
 ```nsm fails
 import std::parts::regulator::FeedbackDivider
@@ -7155,12 +7323,14 @@ The level checks apply to the lines that are `Logic` and to the pins of a bus in
 
 ### A level translator
 
-`std::parts::logic::LevelTranslator` is the generic of a single-supply translating buffer: a gate whose input accepts a lower level than its own supply and whose output swings between ground and that supply, so a signal from a 1.8 V part reaches a 3.3 V one. It has the rail `vcc` and the pins `a` (an input, which must be connected), `y` (an output) and `nc`, in the pad order of the 5-pin single-gate packages (SOT-23-5 and SOT-353_SC-70-5, drawn with KiCad's `74xGxx:74LVC1G17`). A part states what its datasheet gives, as columns of the catalog `level_translator`:
+`std::parts::logic::LevelTranslator` is the generic of a single-supply translating buffer: a gate whose input accepts a lower level than its own supply and whose output swings between ground and that supply, so a signal from a 1.8 V part reaches a 3.3 V one. It has the rail `vcc` and the lines `a` (an input `Logic`, which must be connected) and `y` (an output `Logic`), and the pin `nc`, in the pad order of the 5-pin single-gate packages (SOT-23-5 and SOT-353_SC-70-5, drawn with KiCad's `74xGxx:74LVC1G17`). Join `.a.line` and `.y.line`, as for any `Logic`. A part states what its datasheet gives, as columns of the catalog `level_translator`:
 
 - `.vcc_min` and `.vcc_max`: the supply range; the rail on `vcc` must be inside it.
-- `.vcc_abs_max` and `.a_abs_max`: the absolute maximums of the supply and of the input. The design states the highest voltage it can put on each, transients included, as `.vcc_peak` and `.a_peak`, and each must be at most its maximum.
-- `.vt_plus_max` and `.vt_minus_min`: the input thresholds. An input is a high for sure above the first (the positive-going threshold's highest value) and a low for sure below the second (the negative-going threshold's lowest value). The input `a` is a plain pin, so the design states the check against its driver: the driver's `.voh` is at least `.vt_plus_max` and its `.vol` at most `.vt_minus_min`.
-- `.max_output_current` and `.max_supply_current`: the output may source or sink that much, and `.output_current`, which the design states, is at most that. `.vcc.current` is at most `.max_supply_current`; a design states it (`.u.vcc.current &= 0A..750nA`) to have the draw counted on its rail.
+- `.vcc_abs_max` and `.a_abs_max`: the absolute maximums of the supply and of the input. The design states the highest voltage it can put on each, transients included, as `.vcc_peak` and `.a_peak`, and each must be at most its maximum. The input line's `.abs_max` is `.a_abs_max` too, so the solver also checks the worst voltage of the input's net against it (ADR 0046).
+- `.vt_plus_max` and `.vt_minus_min`: the input thresholds. An input is a high for sure above the first (the positive-going threshold's highest value) and a low for sure below the second (the negative-going threshold's lowest value). They are the input's levels: `.a.vih` is `.vt_plus_max` and `.a.vil` is `.vt_minus_min`, so the solver judges the driver on the net of `.a.line` with no statement of the design: its `voh` must always be at least the first and its `vol` at most the second.
+- `.y` states no level, because the catalog has no column for the output's `voh` and `vol` (a datasheet gives them at a stated load). A receiver on `.y.line` that states its own levels is listed as not evaluated against it; a design that has the datasheet's pair states it, `.u.y.voh &= .u.vcc.voltage - 0.1V`.
+- `.max_output_current`: the output may source or sink that much, and `.output_current`, which the design states, is at most that.
+- `.max_supply_current`: the largest current the supply pin draws in the use the row is for. The part states it as its own draw, `.vcc.current &= 0A .. .max_supply_current` (a range with a value at its end, see Values), so the rail the translator is on carries it with nothing stated by the design. A design may narrow it (`.u.vcc.current &= 0A..500nA`) and cannot widen it: a draw wholly above the maximum is a contradiction, and a wider one is narrowed to it. A row from a datasheet that gives only a static current for a part that switches states the figure for its use.
 
 The standard catalog has no rows, because no translator has been entered with a recorded source (`data/jlcpcb/README.md`). A project writes the rows of its parts in a file named `level_translator.csv`, as for any standard catalog, or a part of its own says `provides LevelTranslator`. The part of this example is invented, and so is its row:
 
@@ -7188,7 +7358,7 @@ part Sensor {
 }
 ```
 
-A 1.8 V sensor drives a 3.3 V line through the translator. The design states the checks of the input against the driver, the stresses, and the draw of the supply pin:
+A 1.8 V sensor drives a 3.3 V line through the translator. The design states the stresses; the input is judged against the driver by the solver, and the supply pin's draw is the row's own:
 
 ```nsm evaluate catalogs=translator
 import src::sensor::Sensor
@@ -7211,13 +7381,10 @@ board Sensing {
         .vcc_peak &= 3.6V
         .a_peak &= 1.98V
         .output_current &= 1mA
-        .vcc.current &= 0A..750nA
     }
     .sensor.vdd ~ .low
     .u.vcc ~ .high
-    .sensor.out.line ~ .u.a
-    .sensor.out.voh >= .u.vt_plus_max
-    .sensor.out.vol <= .u.vt_minus_min
+    .sensor.out.line ~ .u.a.line
 }
 ```
 
@@ -7244,22 +7411,19 @@ board Sensing {
         .vcc_peak &= 3.6V
         .a_peak &= 1.32V
         .output_current &= 1mA
-        .vcc.current &= 0A..750nA
     }
     .sensor.vdd ~ .low
     .u.vcc ~ .high
-    .sensor.out.line ~ .u.a
-    .sensor.out.voh >= .u.vt_plus_max
-    .sensor.out.vol <= .u.vt_minus_min
+    .sensor.out.line ~ .u.a.line
 }
 ```
 
 ```text
-error: no `level_translator` candidate satisfies `u`: the closest of the 1 that fit, ZT-17 single-supply translator, fails because sensor.out.voh must always be at least u.vt_plus_max, but 940mV..1.06V is not always above 1.1V
-   --> main.nsm:26:5
+error: net `net-sensor.out.line`: `sensor.out.voh` is 940mV..1.06V but `u.a.vih` needs 1.1V: a high of 940mV is not always read as a high, which takes 1.1V
+   --> main.nsm:16:5
    |
-26 |     .sensor.out.voh >= .u.vt_plus_max
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+16 |     .sensor: Sensor
+   |     ^^^^^^^^^^^^^^^
 ```
 
 ### Logic levels of a bus
@@ -8246,7 +8410,7 @@ error: connected values disagree: `a.spi.mode` is SpiMode::Mode1 but `b.spi.mode
 A reset, an enable or an open-drain output often needs a resistor from a rail to the line. A plain `Resistor` between the rail's `pos` and the line works for the circuit and leaves the net unsolved: the resistor starts a chain on the rail's net, nothing says what it carries, so the net has two unknowns and every check on it waits (the regulator's current, its power, the resistor's own power). `std::bus::PullUp` is that resistor with its draw stated.
 
 - `.supply` is the rail whose `pos` the resistor is on, `.line` is the pin it pulls, and `.resistance` is the value the board states, with its tolerance (`.pull.resistance &= 10kohm +/- 5%`). A board that forgets it gets the unconstrained pick finding for the resistor, with the member named (see "A value that nobody stated"). The resistor inside is `.resistor`.
-- The line is held low for the share `.line_low` of the time, 0 to 1 and never narrower unless the board says so (`.pull.line_low &= 0..0.1`). While it is low the resistor carries `supply.voltage / resistance`, and while it is released nothing, so the resistor's `.current`, and the draw on `supply`, is 0 up to the supply over the resistance. That is the worst case: the lowest the line goes is 0 V, and a driver's real low level draws a little less.
+- The line is held low for the share `.line_low` of the time, 0 to 1 and never narrower unless the board says so (`.pull.line_low &= 0..0.1`). While it is low the resistor carries `supply.voltage / resistance`, and while it is released nothing, so the resistor's `.current`, and the draw on `supply`, is 0 up to the supply over the resistance. That is the worst case: the lowest the line goes is 0 V, and a driver's real low level draws a little less. It is the steady draw, with two assumptions the module offers and the board may replace (ADR 0061): `.overdrive`, how far above the supply a driver holds the line, 0 V unless stated (`.pull.overdrive &= 0V..1.7V` for a 5 V driver on a 3.3 V pull-up: the draw then reaches `-overdrive / resistance`, current pushed back into the rail), and `.supply_top`, the voltage the draw is worked out at, `supply.voltage` unless stated (`.pull.supply_top &= .pull.supply.peak` for the draw at the transient the rail's stated `.peak` allows).
 - A current the board states on `supply` is a budget (ADR 0038): the draw has to be able to fit in it. Two `PullUp`s on one rail add on its net.
 - The resistor is a pull-up for the checker's I2C rule too: a `PullUp` on `sda` and one on `scl` satisfy it. `I2cPullups` is the same circuit for both lines of a bus; it is not built from two `PullUp`s, because its members keep the paths that boards and tests name (`.pullups.sda_pullup.current`).
 
@@ -8304,7 +8468,7 @@ board Forgetful {
 ```
 
 ```text
-Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:218), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
+Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:230), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
 ```
 
 A module that wraps a `PullUp` states the resistance itself or forwards it through a member of its own (`.pull.resistance &= .resistance`, with the wrapped member on the left: the solver works a value out from the right side towards the left). A board that forgets a forwarded member is told about the wrapper's member, which is the one it can state.
@@ -8353,7 +8517,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::parts::transistor::NMosfet` | An N-channel MOSFET: pins `gate` (input), `source`, `drain`, bridge `drain ~> source`. Maxima for drain-source voltage, drain current and gate-source voltage; `.gate_threshold`; `.on_resistance`. Requires the stresses `.drain_source_voltage` and `.gate_source_voltage` and `.current` within them, and the gate drive above the threshold. Catalog `n_mosfet`. |
 | `std::parts::transistor::PMosfet` | A P-channel MOSFET: as `NMosfet` with bridge `source ~> drain`; voltages are magnitudes. A generic with the catalog `p_mosfet`, whose standard file has no rows: a project adds its own. |
 | `std::parts::logic::Sn74lvc1g04` | A single inverter, TI SN74LVC1G04 (SCES214AF), for a supply of 3 V to 3.6 V: rail `vcc`, lines `a` (input) and `y` (output) as `Logic` with the levels and absolute maximums of the datasheet, SOT-23-5. No catalog row. |
-| `std::parts::logic::LevelTranslator` | A single-supply level translator, a buffer whose input takes a lower level than its supply and whose output swings to the supply: rail `vcc`, pins `a` (input), `y` (output) and `nc`, a pin table for SOT-23-5 and one for SOT-353_SC-70-5. `.vcc_min` and `.vcc_max` bound the supply; the stresses `.vcc_peak`, `.a_peak` and `.output_current` are at most `.vcc_abs_max`, `.a_abs_max` and `.max_output_current`; `.vt_plus_max` and `.vt_minus_min` are the input thresholds; `.vcc.current` is 0 up to `.max_supply_current`. A generic with the catalog `level_translator`, whose standard file has no rows: a project adds its own. |
+| `std::parts::logic::LevelTranslator` | A single-supply level translator, a buffer whose input takes a lower level than its supply and whose output swings to the supply: rail `vcc`, the `Logic` lines `a` (input) and `y` (output) and the pin `nc`, a pin table for SOT-23-5 and one for SOT-353_SC-70-5. `.vcc_min` and `.vcc_max` bound the supply; the stresses `.vcc_peak`, `.a_peak` and `.output_current` are at most `.vcc_abs_max`, `.a_abs_max` and `.max_output_current`; `.vt_plus_max` and `.vt_minus_min` are the input's `.vih` and `.vil`, and `.y` states no level; `.vcc.current` is 0 up to `.max_supply_current`, stated by the part. A generic with the catalog `level_translator`, whose standard file has no rows: a project adds its own. |
 | `std::parts::mechanical::MountingHole` | A drill with no copper. No pins. |
 | `std::parts::mechanical::PlatedHole` | A plated mounting hole. One pin `p1`, the plating, that the board joins to a net or leaves open. |
 | `std::parts::mechanical::Fiducial` | A fiducial mark. No pins. |
@@ -8387,8 +8551,8 @@ Parts are numbered by their letters in the order of their paths (a number at the
 |---|---|
 | `std::parts::regulator::FeedbackDivider` | The resistors that set an adjustable output: pins `top`, `fb`, `bottom`, voltages `vref` and `vout`, the `current` it draws, with `vout == vref * (1 + rtop / rbottom)` in the worst case. |
 | `std::parts::regulator::BuckStage` | Everything around a buck converter IC: inductor, input and output capacitors and a `FeedbackDivider`, with ports `vin`, `vout` and `buck`, and the values `ripple`, `divider_current`, `input_count` and `output_count` (how many capacitors stand in parallel on each side, 1 to 8, chosen by the solver or stated by the board). Checks the input range, the output current, the ripple and the inductor's saturation, the inductor limits the IC states, the capacitance the IC asks for of each side's bank, and that each capacitor is rated for the rail's voltage and for its `.peak`. |
-| `std::bus::PullUp` | A pull-up resistor from a rail's `pos` to one line: a `supply` (`Rail`), a `line` (`Pin`), a `.resistance` the board states, and `.line_low`, the share of the time the line is low (0 to 1). It states what it draws from `supply`: its resistor carries 0 up to `supply.voltage / resistance`, so the net it is on is solved and the checks after it are evaluated. |
-| `std::bus::I2cPullups` | The two pull-up resistors of an I2C bus: a `bus` (`I2c`), a `supply` (`Rail`) and a `.resistance` the board states. It states what it draws from `supply`: each line's pull-up carries 0 up to `supply.voltage / resistance` (`.sda_low` and `.scl_low`, 0 to 1, are the share), and `supply.current` is the sum, so the net it is on is solved and the checks after it are evaluated. |
+| `std::bus::PullUp` | A pull-up resistor from a rail's `pos` to one line: a `supply` (`Rail`), a `line` (`Pin`), a `.resistance` the board states, `.line_low`, the share of the time the line is low (0 to 1), and the offers `.overdrive` (0 V) and `.supply_top` (`supply.voltage`). It states what it draws from `supply`: its resistor carries 0 up to `supply.voltage / resistance` (below 0 when a stated `.overdrive` lets a driver push current back), so the net it is on is solved and the checks after it are evaluated. |
+| `std::bus::I2cPullups` | The two pull-up resistors of an I2C bus: a `bus` (`I2c`), a `supply` (`Rail`) and a `.resistance` the board states. It states what it draws from `supply`: each line's pull-up carries 0 up to `supply.voltage / resistance` (`.sda_low` and `.scl_low`, 0 to 1, are the share; `.overdrive` and `.supply_top` are offered as for `PullUp`), and `supply.current` is the sum, so the net it is on is solved and the checks after it are evaluated. |
 
 ### Enums
 

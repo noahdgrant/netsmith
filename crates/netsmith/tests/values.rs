@@ -233,3 +233,42 @@ fn the_examples_state_what_they_need_and_get_neither_finding() {
         }
     }
 }
+
+const DIVIDER: &str = r#"import std::parts::passive::Resistor
+import std::sources::Rail
+
+module Divider {
+    .supply: Rail
+    .total_resistance: Resistance
+    .top: Resistor
+    .bottom: Resistor
+    .total_resistance == .top.resistance + .bottom.resistance
+    .supply.pos ~> .top ~> .bottom ~> .supply.neg
+    .out: Voltage
+    .out == .supply.voltage * .bottom.resistance / .total_resistance
+    .out >= 1.5V
+    .out <= 1.8V
+}
+
+board RatioOnly {
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .divider: Divider
+    .divider.supply ~ .supply
+}
+"#;
+
+#[test]
+fn a_divider_whose_size_nobody_states_is_one_finding_that_says_the_ratio_is_limited() {
+    assert_eq!(
+        warnings(DIVIDER),
+        [
+            "RatioOnly: unconstrained pick guideline: `divider.top` and `divider.bottom` (Resistor) were chosen with nothing limiting their resistance in size, so the solver took the first row that fits, 330Ω 1% 0402 C25104 for each; their resistance is limited as a ratio, not in size, by `.out >= 1.5V` and `.out <= 1.8V` (values.nsm:13 and 14), which hold whatever the size is: state one of them, `.divider.top.resistance &= 4.7kohm +/- 5%`, or bound a value that changes with the size, not only with the ratio (a current or a voltage the design checks), or say that any value will do, `.divider.top.resistance &= 10kohm..100kohm`",
+        ]
+    );
+    // Stating the total ends it.
+    let stated = DIVIDER.replace(
+        "    .divider.supply ~ .supply\n",
+        "    .divider.supply ~ .supply\n    .divider.total_resistance &= 10kohm..200kohm\n",
+    );
+    assert_eq!(warnings(&stated), Vec::<String>::new());
+}

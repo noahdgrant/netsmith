@@ -770,6 +770,28 @@ fn a_current_the_board_states_on_the_pullup_supply_is_a_budget() {
 }
 
 #[test]
+fn i2c_pullups_take_the_same_two_offers_for_both_lines() {
+    // Nothing stated: 0 up to the supply over the resistance, as always.
+    let plain = run(&i2c_board("4.7kohm +/- 5%", ""));
+    assert_eq!(range(&plain, "pullups.overdrive").hi(), 0.0);
+    assert_eq!(
+        range(&plain, "pullups.supply_top"),
+        range(&plain, "pullups.supply.voltage")
+    );
+    // A driver that holds a line 1.7 V above the supply: both lines can push current back.
+    let s = run(&i2c_board("4.7kohm +/- 5%", ".overdrive &= 0V..1.7V"));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    let r_lo = range(&s, "pullups.sda_pullup.resistance").lo();
+    for line in ["pullups.sda_pullup.current", "pullups.scl_pullup.current"] {
+        let i = range(&s, line);
+        assert!((i.lo() + 1.7 / r_lo).abs() < 1e-9, "{line} {i}");
+        assert!(i.hi() > 0.0);
+    }
+    let supply = range(&s, "pullups.supply.current");
+    assert!(supply.lo() < 0.0, "{supply}");
+}
+
+#[test]
 fn a_current_the_board_states_that_the_pullups_cannot_keep_is_a_contradiction() {
     // 3 mA to 4 mA cannot be drawn by two pull-ups of 4.7 kohm.
     let s = run(&i2c_board("4.7kohm +/- 5%", ".supply.current &= 3mA..4mA"));

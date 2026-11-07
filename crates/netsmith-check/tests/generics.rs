@@ -985,3 +985,268 @@ part ThickWasher provides Washer {
     assert_eq!(w.placed_as, None);
     assert!(model.field_at("w.package").is_some());
 }
+
+// ---- the second review: cycles, the root file, aliases and names -------------------------------
+
+const PLAIN_BUCK: &str = "\
+import std::sources::Rail
+
+/// What a buck converter gives its users. Invented.
+generic BuckConverter {
+    .vin: Rail
+    .vout: Rail
+}
+";
+
+const ZBK9_BUCK: &str = "\
+import src::buck::BuckConverter
+
+module Zbk9Buck provides BuckConverter {
+}
+";
+
+/// A module that wraps the generic it provides: its inner use takes the first provider.
+fn wrapper(name: &str) -> String {
+    format!(
+        "import src::buck::BuckConverter\n\nmodule {name} provides BuckConverter {{\n    .inner: BuckConverter\n    .inner.vin ~ .vin\n    .inner.vout ~ .vout\n}}\n"
+    )
+}
+
+fn buck_board(imports: &[&str]) -> String {
+    let mut text = String::from("import src::buck::BuckConverter\n");
+    for i in imports {
+        text.push_str(&format!("import {i}\n"));
+    }
+    text.push_str("board Feed {\n    .buck: BuckConverter\n}\n");
+    text
+}
+
+#[test]
+fn a_provider_that_uses_its_own_generic_is_refused_where_it_sorts_first() {
+    // `AFilteredBuck` sorts before `Zbk9Buck`, so the use inside it would take itself, again
+    // and again: the elaboration used to overflow the stack.
+    let w = wrapper("AFilteredBuck");
+    let board = buck_board(&["src::a_filtered::AFilteredBuck", "src::zbk9::Zbk9Buck"]);
+    let c = run(
+        &board,
+        &[
+            ("src::buck", PLAIN_BUCK),
+            ("src::a_filtered", &w),
+            ("src::zbk9", ZBK9_BUCK),
+        ],
+    );
+    let m = messages(&c);
+    assert_eq!(m.len(), 1, "{m:?}");
+    assert!(
+        m[0].starts_with("`inner` is a `BuckConverter`, and `AFilteredBuck`, which is being made here, can be the provider picked for it, so `AFilteredBuck` would contain itself without end (the cycle: `AFilteredBuck` > `AFilteredBuck`)"),
+        "{}",
+        m[0]
+    );
+    assert!(m[0].contains("a provider cannot contain a use of the generic it provides"));
+    // It is reported at the use inside the provider, in the provider's own file.
+    assert_eq!(
+        c.sources.get(c.diagnostics[0].source).name,
+        "src/a_filtered.nsm"
+    );
+}
+
+#[test]
+fn a_provider_that_uses_its_own_generic_is_refused_whatever_its_name_sorts_as() {
+    // `Zwrap` sorts after the real provider, so the use inside it used to take `Zbk9Buck`
+    // and be accepted: whether it was a mistake depended on a name. Read as the root file's own
+    // definition it is refused the same.
+    let w = wrapper("Zwrap");
+    let c = check(
+        "src/z_wrap.nsm",
+        &w,
+        &loader(&[("src::buck", PLAIN_BUCK), ("src::zbk9", ZBK9_BUCK)]),
+    );
+    // The wrapper's file imports no real provider, so its only candidate is itself.
+    let m = messages(&c);
+    assert!(
+        m.iter()
+            .any(|m| m.contains("`Zwrap` would contain itself without end")),
+        "{m:?}"
+    );
+    // With the real provider in scope and sorting first, the wrapper is still refused: the
+    // pick that could take it is what is refused, not the one that happens to be elsewhere.
+    let with_real = format!("import src::zbk9::Zbk9Buck\n{w}");
+    let c = check(
+        "src/z_wrap.nsm",
+        &with_real,
+        &loader(&[("src::buck", PLAIN_BUCK), ("src::zbk9", ZBK9_BUCK)]),
+    );
+    let m = messages(&c);
+    assert!(
+        m.iter()
+            .any(|m| m.contains("`Zwrap` would contain itself without end")),
+        "{m:?}"
+    );
+}
+
+#[test]
+fn a_cycle_through_two_generics_and_a_definition_in_itself_are_refused_and_named() {
+    let files = [
+        (
+            "src::g",
+            "generic First {\n    .a: Number\n}\ngeneric Second {\n    .b: Number\n}\n",
+        ),
+        (
+            "src::p",
+            "import src::g::First\nimport src::g::Second\nmodule P1 provides First {\n    .h: Second\n}\nmodule P2 provides Second {\n    .g: First\n}\n",
+        ),
+    ];
+    let board = "import src::g::First\nimport src::p::P1\nboard Feed {\n    .x: First\n}\n";
+    let c = run(board, &files);
+    let m = messages(&c);
+    assert!(
+        m.iter()
+            .any(|m| m.contains("(the cycle: `P1` > `P2` > `P1`)")),
+        "{m:?}"
+    );
+    // A definition that holds itself.
+    let c = run("module Ring {\n    .inner: Ring\n}\n", &[]);
+    let m = messages(&c);
+    assert_eq!(m.len(), 1, "{m:?}");
+    assert!(
+        m[0].starts_with(
+            "`inner` would make `Ring` inside itself without end (the cycle: `Ring` > `Ring`)"
+        ),
+        "{}",
+        m[0]
+    );
+}
+
+const MAIN_WITH_ZETA: &str = "\
+import src::rf::CoaxReceptacle
+import src::acme::AcmeMicroCoax
+
+part ZetaCoax provides CoaxReceptacle {
+    pins {
+        .signal passive \"S\" \"1\"
+        .shield passive \"G\" \"2\"
+    }
+}
+
+board Feed {
+    .rf: CoaxReceptacle
+}
+";
+
+fn candidate_ids(c: &Checked) -> Vec<String> {
+    uses(c)[0].candidates.iter().map(|p| p.id.clone()).collect()
+}
+
+#[test]
+fn the_order_of_providers_does_not_depend_on_how_the_root_file_is_spelled() {
+    let want = ["src::acme::AcmeMicroCoax", "src::main::ZetaCoax"];
+    // The project holds the root file as a module, and a tool may be given its name any way.
+    let with_main = loader(&[
+        ("src::rf", RF),
+        ("src::acme", ACME),
+        ("src::main", MAIN_WITH_ZETA),
+    ]);
+    let without = loader(&[("src::rf", RF), ("src::acme", ACME)]);
+    for name in [
+        "src/main.nsm",
+        "./src/main.nsm",
+        "src/../src/main.nsm",
+        ".//src/./main.nsm",
+    ] {
+        for l in [&with_main, &without] {
+            let c = check(name, MAIN_WITH_ZETA, l);
+            ok(&c);
+            assert_eq!(candidate_ids(&c), want, "spelled {name}");
+        }
+    }
+    // A name a tool knows to be that module (an absolute path in a project).
+    let mut known = loader(&[("src::rf", RF), ("src::acme", ACME)]);
+    known.attach_root_key("/work/demo/src/main.nsm", "src::main");
+    let c = check("/work/demo/src/main.nsm", MAIN_WITH_ZETA, &known);
+    ok(&c);
+    assert_eq!(candidate_ids(&c), want);
+}
+
+#[test]
+fn a_cycle_through_the_root_file_holds_the_root_once() {
+    // `src/main.nsm` imports a file that imports the root back: the provider in that file
+    // provides the root's own generic, not the generic of a second copy of the root.
+    let main = "\
+import src::prov::Prov
+
+generic Gadget {
+    pins {
+        .a passive
+    }
+}
+
+board Feed {
+    .x: Gadget
+}
+";
+    let prov = "\
+import src::main::Gadget
+
+part Prov provides Gadget {
+    pins {
+        .a passive \"A\" \"1\"
+    }
+}
+";
+    let l = loader(&[("src::main", main), ("src::prov", prov)]);
+    for name in ["src/main.nsm", "./src/main.nsm"] {
+        let c = check(name, main, &l);
+        ok(&c);
+        assert_eq!(candidate_ids(&c), ["src::prov::Prov"]);
+        assert_eq!(uses(&c)[0].path, "x");
+    }
+}
+
+#[test]
+fn an_alias_for_a_generic_pin_has_the_generics_kind() {
+    let other = |kind: &str| {
+        format!(
+            "import src::rf::CoaxReceptacle\n\npart OtherCoax provides CoaxReceptacle {{\n    pins {{\n        .rf      {kind}  \"RF\"   \"1\"\n        .shield  passive  \"GND\"  \"2\"\n    }}\n    .signal ~ .rf\n}}\n"
+        )
+    };
+    let board = "import src::rf::CoaxReceptacle\nimport src::other::OtherCoax\nboard Feed {\n .rf: CoaxReceptacle\n}\n";
+    // The row the alias is joined to says what the checker reads for the net: an output where
+    // the generic says passive is refused, at that row.
+    let c = run(board, &[("src::rf", RF), ("src::other", &other("output"))]);
+    let m = messages(&c);
+    assert_eq!(m.len(), 1, "{m:?}");
+    assert_eq!(
+        m[0],
+        "`.signal` is a passive pin in `CoaxReceptacle`, which `OtherCoax` provides, but the row of `.rf`, which `.signal` is joined to, says an output; a provider's row has the generic's kind, because the kind decides what the checker asks of the board"
+    );
+    // The same kind is accepted.
+    let c = run(board, &[("src::rf", RF), ("src::other", &other("passive"))]);
+    ok(&c);
+}
+
+#[test]
+fn two_providers_of_one_generic_cannot_share_a_name() {
+    let vendor = "import src::rf::CoaxReceptacle\n\npart Coax provides CoaxReceptacle {\n    pins {\n        .signal passive \"S\" \"1\"\n        .shield passive \"G\" \"2\"\n    }\n}\n";
+    let more = "import src::vendor_b::Coax\nmodule Anchor {\n}\n";
+    let board = "import src::rf::CoaxReceptacle\nimport src::vendor_a::Coax\nimport src::more::Anchor\nboard Feed {\n .rf: CoaxReceptacle\n}\n";
+    let c = run(
+        board,
+        &[
+            ("src::rf", RF),
+            ("src::vendor_a", vendor),
+            ("src::vendor_b", vendor),
+            ("src::more", more),
+        ],
+    );
+    let m = messages(&c);
+    assert_eq!(m.len(), 1, "{m:?}");
+    assert_eq!(
+        m[0],
+        "`Coax` is a provider of `CoaxReceptacle` in `src::vendor_b` and is also one in `src::vendor_a::Coax`; two providers of one generic need different names, because a part is known by its name in the bill of materials, in `kicad.toml` and in the notes: rename one"
+    );
+    // At the second one's name, in its own file.
+    assert_eq!(
+        c.sources.get(c.diagnostics[0].source).name,
+        "src/vendor_b.nsm"
+    );
+}

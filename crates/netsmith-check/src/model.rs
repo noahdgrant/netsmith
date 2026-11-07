@@ -61,6 +61,12 @@ pub enum Member {
     Poison,
 }
 
+/// The standard generics whose parts are banks (ADR 0052): a number of identical parts that
+/// stand in parallel in one place, chosen by the design or by the solver through the part's
+/// `.count`. The bank is the generic's, so a provider of it is one too and nothing a design
+/// defines is (ADR 0059 open question 9: no syntax for it yet, and a list in one place).
+const BANKS: [&str; 1] = ["Capacitor"];
+
 #[derive(Debug, Clone)]
 pub struct Instance {
     pub name: String,
@@ -87,18 +93,17 @@ pub struct Instance {
     pub(crate) def: Option<(usize, usize)>,
     /// The generics its definition provides (`part X provides A, B`, ADR 0059), by name.
     pub provides: Vec<String>,
-    /// Those of `provides` that are generics of the standard library: a part that provides
-    /// the standard `Capacitor` is a bank like it (ADR 0052, ADR 0059 stage 2).
-    pub provides_std: Vec<String>,
+    /// The generics of the standard library it stands for, by name: its own definition when
+    /// that is one (`Capacitor` placed as itself, since a standard generic is its own first
+    /// provider), and those of `provides` that are in the standard library (ADR 0059). What a
+    /// standard generic gives a part (a bank, ADR 0052) a provider of it has too.
+    pub standard: Vec<String>,
     /// For a use of a generic after a provider was put in its place: the generic's name
     /// (`CoaxReceptacle`). `type_name` is then the provider's. None for a part or module that
     /// was written by its own type, `.rf: AcmeMicroCoax`.
     pub placed_as: Option<String>,
     /// The definition of the generic a use was placed as.
     pub(crate) placed_def: Option<(usize, usize)>,
-    /// Whether the definition is in a file of the standard library. A bank (ADR 0052) is a
-    /// property of the standard `Capacitor` and of nothing a design defines.
-    pub std: bool,
 }
 
 /// One part or module that can stand where a generic is used (ADR 0059).
@@ -429,6 +434,9 @@ pub enum RExpr {
     Field(FieldId),
     Neg(Box<RExpr>),
     Bin(BinOp, Box<RExpr>, Box<RExpr>),
+    /// `lo..hi` where an end is not a fixed number (ADR 0066): the smallest range that holds
+    /// the low end's lowest value and the high end's highest, once both are known.
+    Range(Box<RExpr>, Box<RExpr>),
 }
 
 impl RExpr {
@@ -438,7 +446,7 @@ impl RExpr {
             Self::Const(_) | Self::Text(_) => {}
             Self::Field(f) => out.push(*f),
             Self::Neg(inner) => inner.fields(out),
-            Self::Bin(_, a, b) => {
+            Self::Bin(_, a, b) | Self::Range(a, b) => {
                 a.fields(out);
                 b.fields(out);
             }
@@ -809,6 +817,9 @@ impl Model {
                 };
                 format!("({} {sym} {})", self.show_expr(a), self.show_expr(b))
             }
+            RExpr::Range(lo, hi) => {
+                format!("({}..{})", self.show_expr(lo), self.show_expr(hi))
+            }
         }
     }
 
@@ -883,13 +894,12 @@ impl Model {
     }
 
     /// The `.count` of a part that is a bank (ADR 0052): the number of identical parts that
-    /// stand in this place. Only the standard library's `Capacitor`, and a part that provides
-    /// it, is one, whatever a design's own part names its members.
+    /// stand in this place. Only a part that stands for a standard generic in [`BANKS`] is one,
+    /// whatever a design's own part names its members.
     pub fn bank_count(&self, part: InstId) -> Option<FieldId> {
         let inst = self.instance(part);
-        let capacitor = (inst.std && inst.type_name == "Capacitor")
-            || inst.provides_std.iter().any(|g| g == "Capacitor");
-        if inst.kind != InstKind::Part || !capacitor {
+        let bank = inst.standard.iter().any(|g| BANKS.contains(&g.as_str()));
+        if inst.kind != InstKind::Part || !bank {
             return None;
         }
         match self.member(part, "count")? {

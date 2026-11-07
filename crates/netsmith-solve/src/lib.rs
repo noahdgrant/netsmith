@@ -11,6 +11,7 @@ mod jlcpcb;
 mod levels;
 mod place;
 mod solve;
+mod standard;
 mod table;
 
 pub use catalog::{

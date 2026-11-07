@@ -47,9 +47,9 @@ import std::parts::logic::LevelTranslator
 part ZtWide provides LevelTranslator {
     pins {
         .nc      no_connect \"NC\"  \"1\"
-        .a       input      \"A\"   \"2\"
+        .a.line  input      \"A\"   \"2\"
         .vcc.neg power      \"GND\" \"3\"
-        .y       output     \"Y\"   \"4\"
+        .y.line  output     \"Y\"   \"4\"
         .vcc.pos power      \"VCC\" \"5\"
     }
     catalog zt_wide { .vcc_min, .vcc_max, .vcc_abs_max, .a_abs_max, .vt_plus_max, .vt_minus_min, .max_output_current, .max_supply_current, .package }
@@ -118,7 +118,7 @@ fn translated(imports: &str, supply: &str, extra: &str) -> String {
         "import std::parts::connector::Header1x2\nimport std::parts::logic::LevelTranslator\n{imports}import std::sources::Rail\n\n\
 board Shifter {{\n    .supply: Rail {{\n        .voltage &= {supply}\n        .pos.net &= \"VCC\"\n        .neg.net &= \"GND\"\n    }}\n\
     .u: LevelTranslator {{\n        .vcc_peak &= 3.6V\n        .a_peak &= 1.98V\n        .output_current &= 1mA\n        .vcc.current &= 0A..750nA\n{extra}    }}\n\
-    .j: Header1x2\n    .supply ~ .u.vcc\n    .j.p1 ~ .u.a\n    .j.p2 ~ .u.y\n}}\n"
+    .j: Header1x2\n    .supply ~ .u.vcc\n    .j.p1 ~ .u.a.line\n    .j.p2 ~ .u.y.line\n}}\n"
     )
 }
 
@@ -282,11 +282,19 @@ fn a_translator_supply_outside_its_range_or_a_stress_beyond_its_maxima_is_refuse
         m.contains("u.output_current must always be at most u.max_output_current, but 6mA is not always below 3mA"),
         "{m}"
     );
-    // The draw of the supply pin: 2 uA against 900 nA.
+    // The draw of the supply pin is the row's own (ADR 0066): a design that states a wider
+    // range than the 750 nA is narrowed to it, and one wholly above it is a contradiction.
     let source = translated("", "3.3V +/- 5%", "").replace("0A..750nA", "0A..2uA");
+    let o = build(&w, &source).unwrap_or_else(|e| panic!("{e:?}"));
+    let draw = o.boards[0].trace.model.domain_at("u.vcc.current").cloned();
+    let Some(netsmith_check::Domain::Quantity(q)) = draw else {
+        panic!("no draw: {draw:?}")
+    };
+    assert!((q.lo(), q.hi()) == (0.0, 750e-9), "{q}");
+    let source = translated("", "3.3V +/- 5%", "").replace("0A..750nA", "2uA..3uA");
     let m = fails(&w, &source);
     assert!(
-        m.contains("u.vcc.current must always be at most u.max_supply_current, but 0A..2uA is not always below 750nA"),
+        m.contains("contradiction on `u.vcc.current`: it is already 2uA..3uA, which does not overlap 0A..750nA"),
         "{m}"
     );
 }
@@ -320,4 +328,30 @@ fn an_invented_provider_of_the_translator_conforms_and_serves_a_5v_supply() {
     let u = b.design.parts.iter().find(|p| p.path == "u").unwrap();
     assert_eq!(u.provides, ["LevelTranslator"]);
     assert_eq!(mpn_of(b, "U1"), Some("ZT-55"));
+}
+
+#[test]
+fn a_picked_translator_row_puts_its_own_supply_current_on_the_rail() {
+    let w = world(&[], &[("level_translator", ZT_ROWS)]);
+    // The design states no draw: the row's 750 nA is the translator's, and the rail counts it: a supply that is
+    // allowed less is refused below.
+    let source =
+        translated("", "3.3V +/- 5%", "").replace("        .vcc.current &= 0A..750nA\n", "");
+    assert!(!source.contains("vcc.current"));
+    let o = build(&w, &source).unwrap_or_else(|e| panic!("{e:?}"));
+    let model = &o.boards[0].trace.model;
+    let Some(netsmith_check::Domain::Quantity(q)) = model.domain_at("u.vcc.current") else {
+        panic!("the draw has no value")
+    };
+    assert!((q.lo(), q.hi()) == (0.0, 750e-9), "{q}");
+    // A supply that may give 500 nA is refused with the numbers.
+    let source = source.replace(
+        "        .pos.net &= \"VCC\"\n",
+        "        .pos.net &= \"VCC\"\n        .current &= -500nA..0A\n",
+    );
+    let m = fails(&w, &source);
+    assert!(
+        m.contains("`supply.current` must stay within -500nA..0A, but the others on it work out to -750nA..0A"),
+        "{m}"
+    );
 }

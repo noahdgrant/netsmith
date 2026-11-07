@@ -335,3 +335,62 @@ fn a_module_forwards_the_resistance_of_its_pullup_through_its_own_member() {
         .collect();
     assert_eq!(found, ["reset.resistance"]);
 }
+
+#[test]
+fn the_defaults_state_a_line_that_stays_under_the_supply_at_the_steady_voltage() {
+    // Nothing stated: the draw is the one the module always had, and the two offers are what
+    // they say they are.
+    let s = run(&pullup(""));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert!(not_evaluated(&s).is_empty(), "{:?}", not_evaluated(&s));
+    assert_eq!(range(&s, "pull.overdrive").lo(), 0.0);
+    assert_eq!(range(&s, "pull.overdrive").hi(), 0.0);
+    assert_eq!(
+        range(&s, "pull.supply_top"),
+        range(&s, "pull.supply.voltage")
+    );
+    let draw = range(&s, "pull.resistor.current");
+    assert!(
+        draw.lo() == 0.0 && (draw.hi() - 350e-6).abs() < 1e-6,
+        "{draw}"
+    );
+}
+
+#[test]
+fn a_line_a_driver_holds_above_the_supply_gives_a_negative_draw() {
+    // A 5 V driver on a line pulled to 3.3 V: up to 1.7 V over the supply pushes current back
+    // into the rail, 1.7 V over the lowest the resistor can be.
+    let s = run(&pullup("        .overdrive &= 0V..1.7V\n"));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    let draw = range(&s, "pull.resistor.current");
+    let r_lo = range(&s, "pull.resistor.resistance").lo();
+    assert!(
+        (draw.lo() + 1.7 / r_lo).abs() < 1e-9 && (draw.hi() - 350e-6).abs() < 1e-6,
+        "{draw} at {r_lo}"
+    );
+    // What the regulator behind the rail supplies is then not always a supply: it may have to
+    // take the current back, so its upper end moves above where the gate alone puts it.
+    let ldo = range(&s, "ldo.vout.current");
+    assert!(ldo.hi() > -100e-6, "{ldo}");
+    // Without the statement the draw never goes below nothing.
+    let plain = run(&pullup(""));
+    assert!(range(&plain, "pull.resistor.current").lo() >= 0.0);
+}
+
+#[test]
+fn a_board_that_states_its_rails_peak_can_have_the_draw_worked_out_at_it() {
+    let extra = "        .supply_top &= .supply.peak\n";
+    let board = board(&format!(
+        "    .pull: PullUp {{ .resistance &= 10kohm +/- 5%\n{extra} }}\n    \
+         .pull.supply ~ .load\n    .pull.line ~ .gate.a\n    .gate.b ~ .load.pos\n    \
+         .load.peak &= 3.465V..6V\n"
+    ));
+    let s = run(&board);
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    let draw = range(&s, "pull.resistor.current");
+    let r_lo = range(&s, "pull.resistor.resistance").lo();
+    assert!((draw.hi() - 6.0 / r_lo).abs() < 1e-9, "{draw} at {r_lo}");
+    // And the steady draw is what it was when the board states no peak.
+    let plain = run(&pullup(""));
+    assert!(range(&plain, "pull.resistor.current").hi() < draw.hi());
+}

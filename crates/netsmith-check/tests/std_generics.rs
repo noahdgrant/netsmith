@@ -45,9 +45,9 @@ const GENERICS: [(&str, &str, Pins); 14] = [
         "logic",
         &[
             ("nc", "no_connect"),
-            ("a", "input"),
+            ("a.line", "input"),
             ("vcc.neg", "power"),
-            ("y", "output"),
+            ("y.line", "output"),
             ("vcc.pos", "power"),
         ],
     ),

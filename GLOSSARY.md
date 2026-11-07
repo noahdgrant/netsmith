@@ -151,7 +151,7 @@ Everything around a buck converter IC except the IC: `std::parts::regulator::Buc
 _Avoid_: Buck module, power stage
 
 **Bank**:
-Identical capacitors in parallel that stand in one place of the design, a `Capacitor` with a `.count` (ADR 0052, proposed). The count is one number the board may state (`.count &= 3`, `.stage.output_count &= 3`), a range the solver chooses from (`1..8`, the fewest that holds every check), or unset, which is one. Every other field is the value of one capacitor of the bank. Lowering makes one part for each, on the same nets, and the bill of materials lists the row once with the quantity; the second and later parts have the path of the first with `#2`, `#3`. Only the standard `Capacitor` is a bank (a user part with a member named `count` is one part), and a requirement on a bank's part path in the physical file holds for each of its capacitors. A bank is not a repetition construct: the language has none.
+Identical capacitors in parallel that stand in one place of the design, a `Capacitor` with a `.count` (ADR 0052, proposed). The count is one number the board may state (`.count &= 3`, `.stage.output_count &= 3`), a range the solver chooses from (`1..8`, the fewest that holds every check), or unset, which is one. Every other field is the value of one capacitor of the bank. Lowering makes one part for each, on the same nets, and the bill of materials lists the row once with the quantity; the second and later parts have the path of the first with `#2`, `#3`. Only the standard `Capacitor`, and a part that provides it, is a bank (a user part with a member named `count` is one part; which generics are banks is one list in the checker, ADR 0059 stage 3), and a requirement on a bank's part path in the physical file holds for each of its capacitors. A bank is not a repetition construct: the language has none.
 _Avoid_: Array, capacitor slots (`cap_a`, `cap_b`), parallel group, multiplier, multiplicity
 
 **Dielectric**:
@@ -207,7 +207,7 @@ A definition, `generic Name { ... }`, of what a board may rely on of any part or
 _Avoid_: Abstract part, trait, protocol, role (a **Role** is a part's end of a bus, not a name for a generic), family, spec
 
 **Provider**:
-A `part` or `module` whose header says `provides Name` (`part AcmeMicroCoax provides CoaxReceptacle`), naming a generic. It has every member and statement of the generic, does not declare them again, and adds its own pin table, numbers, catalog and, for a module, parts. It is a candidate for a use of the generic when its file is imported, directly or through other files, by the board's file. A provider is never a **supply provider**, the source of price and stock; say which one is meant (ADR 0059, proposed). A part may provide a standard generic such as `Resistor`: the generic's own catalog and pads are not read into it, and the design lists the generics it provides (`Part.provides`), so that the schematic and the placer treat it as the kind it provides.
+A `part` or `module` whose header says `provides Name` (`part AcmeMicroCoax provides CoaxReceptacle`), naming a generic. It has every member and statement of the generic, does not declare them again, and adds its own pin table, numbers, catalog and, for a module, parts. It is a candidate for a use of the generic when its file is imported, directly or through other files, by the board's file. A provider's name is unique among the providers of one generic, and it does not contain a use of the generic it provides (ADR 0059 section 13). A provider is never a **supply provider**, the source of price and stock; say which one is meant (ADR 0059, proposed). A part may provide a standard generic such as `Resistor`: the generic's own catalog and pads are not read into it, and the design lists the generics it provides (`Part.provides`), so that the schematic and the placer treat it as the kind it provides.
 _Avoid_: Implementation, implementer, subtype, instance (of a generic)
 
 **Use of a generic**:
@@ -279,8 +279,12 @@ One of the four voltages of a `Logic` line, or of the `Levels` of a bus interfac
 _Avoid_: Threshold, noise margin
 
 **Level translator**:
-A `LevelTranslator` (`std::parts::logic`, ADR 0063): a single-supply buffer whose input accepts a lower logic level than its supply and whose output swings to its supply. Its input thresholds are `.vt_plus_max` (above it the input is a high for sure) and `.vt_minus_min` (below it a low for sure). A generic with the catalog `level_translator`, which has no standard row.
+A `LevelTranslator` (`std::parts::logic`, ADR 0063, ADR 0066): a single-supply buffer whose input accepts a lower logic level than its supply and whose output swings to its supply. Its input is a `Logic` line whose `.vih` is `.vt_plus_max` (above it the input is a high for sure) and whose `.vil` is `.vt_minus_min` (below it a low for sure), so the solver judges the driver without a statement of the design; its output is a `Logic` line that states no level. Its supply draw is the row's own: `0A .. .max_supply_current`. A generic with the catalog `level_translator`, which has no standard row.
 _Avoid_: Level shifter, voltage translator
+
+**Range with values at its ends**:
+A range whose ends are values, `0A .. .max_supply_current` (ADR 0066): a member or an expression over members, read when both have a value, as the range from the low end's lowest value to the high end's highest. While an end has no value the statement claims nothing and is listed as not evaluated. It is how a part states its own draw from a catalog column. A tolerance (`+/-`) still needs numbers.
+_Avoid_: Computed range, dynamic range
 
 **Absolute maximum**:
 The voltages a pin survives, `.abs_min` and `.abs_max` of the pin, relative to its ground. The solver holds them against the worst-case voltage of the pin's net (ADR 0046).
@@ -317,6 +321,10 @@ _Avoid_: Supplier feed, price list (a file provider reads one)
 **Generic part**:
 (A pick, not a definition: see **generic**.) A passive or LED the solver chooses by value alone: a resistor, a ceramic capacitor, an inductor or an LED with no supplier or part number. A rating it cannot know (a capacitor's rated voltage, an inductor's saturation current and DC resistance, an LED's forward voltage) is taken from what the design states or demands. A separate step resolves it to a catalog row (JLCPCB Basic first; a capacitor only to a row with a recorded DC-bias curve), or reports it unresolved with the nearest alternatives and whether the checks pass with each (ADR 0047, provisional).
 _Avoid_: Virtual part, ideal part
+
+**Synthesized provider**:
+The second provider of a standard generic that has a series: the generic parts of an E-series (ADR 0047), offered after the rows of the generic's own catalog. It is Rust, not a definition, because the language has no way to say how a value is generated (ADR 0059 open question 10), and there is one for each of the four catalogs `resistor`, `capacitor`, `inductor` and `led`, described by one table of the solver (`standard.rs`: the columns it fills, the value columns of ADR 0065, and the columns a file of rows may leave out, which are the ones it leaves empty). A provider that a project writes has none, whatever it provides (ADR 0059 stage 3).
+_Avoid_: Series provider, virtual provider
 
 **Peak voltage**:
 The highest voltage a rail reaches, transients included: the `.peak` of a `Rail`, where `.voltage` is the steady range. A part that clamps a transient (a TVS diode) states it for the rail behind it, joined rails share it, and the parts on the rail are rated for it. A peak below the rail's steady voltage is refused as a mistake (where a stage checks the ratings, as `BuckStage` does).
@@ -369,7 +377,7 @@ A value a module or part offers for a field and a board may replace, written `.f
 _Avoid_: Initial value, preset, fallback, soft constraint, weak narrowing
 
 **Unconstrained pick**:
-A part of a catalog with a value column (a resistor's resistance, a capacitor's capacitance, an inductor's inductance) that was picked while nothing limited the value, so the solver took the first row that fits (ADR 0065). A value is limited by a statement (`&=`, an applied default, a range a member carries in), by a bound that reaches it, or by a check or a current budget that the pick decides and that was judged once the board was solved; a bound on a rating and a relation a part's own definition states do not limit it. A guideline finding: a warning by default, an error with `--strict` or `guidelines = "error"`. A range, however wide, is how a board says that any value will do.
+A part of a catalog with a value column (a resistor's resistance, a capacitor's capacitance, an inductor's inductance) that was picked while nothing limited the value, so the solver took the first row that fits (ADR 0065). A value is limited by a statement (`&=`, an applied default, a range a member carries in), by a bound that reaches it, or by a check or a current budget that the pick decides and that was judged once the board was solved (a budget counts only if the pick changes whether it holds); a check that holds whatever the size of the values is, such as the output voltage of a divider, limits their ratio and not their size, and the finding says so; a bound on a rating and a relation a part's own definition states do not limit it. A guideline finding: a warning by default, an error with `--strict` or `guidelines = "error"`. A range, however wide, is how a board says that any value will do.
 _Avoid_: Unset value, free pick, default pick, loose part
 
 **Unstated value**:

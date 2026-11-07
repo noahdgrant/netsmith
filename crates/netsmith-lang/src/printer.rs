@@ -135,7 +135,12 @@ impl Expr {
             }
             Self::Neg(inner, _) => format!("-{}", inner.to_source()),
             Self::Paren(inner, _) => format!("({})", inner.to_source()),
-            Self::Range { lo, hi, .. } => format!("{}..{}", lo.to_source(), hi.to_source()),
+            Self::Range { lo, hi, .. } => {
+                // A path with a leading dot after `..` would read as `...`.
+                let hi = hi.to_source();
+                let gap = if hi.starts_with('.') { " " } else { "" };
+                format!("{}..{gap}{hi}", lo.to_source())
+            }
             Self::Tolerance { center, tol, .. } => {
                 format!("{} +/- {}", center.to_source(), tol.to_source())
             }

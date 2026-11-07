@@ -41,6 +41,12 @@ fn module_key(file_name: &str) -> String {
         .replace('/', "::")
 }
 
+/// The module path of a file nothing loaded: its name without `.` and `..` steps, so that
+/// `./src/main.nsm` and `src/main.nsm` are one module.
+fn rootless_key(file_name: &str) -> String {
+    module_key(&crate::loader::normalise_name(file_name))
+}
+
 /// A row of a generic's `pins` table, which a provider's row for the pin must agree with
 /// (ADR 0059).
 #[derive(Clone)]
@@ -139,6 +145,11 @@ pub(crate) struct Checker<'a> {
     pub(crate) generic_members: HashMap<(InstId, String), String>,
     /// The rows of the `pins` tables of generics, for the instance they were read into.
     pub(crate) contract_rows: Vec<ContractRow>,
+    /// The definitions being made, outermost first: a definition that is made again inside
+    /// itself would never end, so it is refused where it is declared.
+    pub(crate) making: Vec<(usize, usize)>,
+    /// Where the member being declared is written, for a message about what it makes.
+    pub(crate) use_site: Option<(SourceId, Span)>,
     /// The loaded files as they were when the last model was made, shared by the models made
     /// while no file was added.
     snapshot: Option<std::sync::Arc<Sources>>,
@@ -199,6 +210,8 @@ impl<'a> Checker<'a> {
             uses: Vec::new(),
             generic_members: HashMap::new(),
             contract_rows: Vec::new(),
+            making: Vec::new(),
+            use_site: None,
             snapshot: None,
         }
     }
@@ -265,8 +278,17 @@ impl<'a> Checker<'a> {
 
     // ---- modules and imports -------------------------------------------------
 
+    /// The file the check is given. When the loader holds the same file as a module of the
+    /// project (`src/main.nsm` is `src::main`, however the name was typed) the root is that
+    /// module, cached under its key like every other file, so that a file which imports the
+    /// root finds it and does not read a second copy (ADR 0059 section 11); a file the
+    /// loader does not hold takes its module path from its name with the `.` steps removed.
     pub fn add_root(&mut self, name: &str, text: &str) -> usize {
-        self.add_module(name, text, None)
+        let named = self.loader.root_key(name);
+        let key = named.clone().unwrap_or_else(|| rootless_key(name));
+        // Only a module the loader holds can be imported, so only that is cached.
+        let cached = named.filter(|k| self.loader.get(k).is_some());
+        self.add_module_as(name, text, cached, key)
     }
 
     fn load_module(&mut self, path: &[String]) -> Option<usize> {
@@ -279,6 +301,18 @@ impl<'a> Checker<'a> {
     }
 
     fn add_module(&mut self, name: &str, text: &str, key: Option<String>) -> usize {
+        self.add_module_as(name, text, key, module_key(name))
+    }
+
+    /// Read a file as a module with the module path `module_path`, cached under `key` (an
+    /// import's path) if it has one.
+    fn add_module_as(
+        &mut self,
+        name: &str,
+        text: &str,
+        key: Option<String>,
+        module_path: String,
+    ) -> usize {
         let source = self.sources.add(name, text);
         let mut file = match parse(text) {
             Ok(file) => file,
@@ -325,7 +359,7 @@ impl<'a> Checker<'a> {
             defs,
             scope,
             std: name.starts_with("std/"),
-            key: module_key(name),
+            key: module_path,
         });
         // Cached before the imports run so a cycle cannot recurse forever.
         if let Some(key) = key {
@@ -611,6 +645,8 @@ impl<'a> Checker<'a> {
         self.uses.clear();
         self.generic_members.clear();
         self.contract_rows.clear();
+        self.making.clear();
+        self.use_site = None;
         self.scope.clear();
         self.uf.clear();
         self.skipped.clear();
@@ -622,7 +658,9 @@ impl<'a> Checker<'a> {
         self.source_override = None;
         let def = self.modules[module].defs[index].clone();
         let name = def.name.name.clone();
-        let root = self.instantiate(&def, (module, index), &name, None);
+        let root = self
+            .instantiate(&def, (module, index), &name, None)
+            .expect("the root is made inside nothing, so nothing repeats");
         self.model.root = root;
         self.resolve_defaults();
         self.finalize_nets();
@@ -637,14 +675,19 @@ impl<'a> Checker<'a> {
         def_ref: (usize, usize),
         name: &str,
         parent: Option<InstId>,
-    ) -> InstId {
+    ) -> Option<InstId> {
         match parent {
             // A member declared with the type of a generic stands for one of its providers
             // (ADR 0059). A generic that is elaborated on its own is checked as it is.
             Some(parent) if def.kind == DefKind::Generic => {
                 self.instantiate_use(def, def_ref, name, parent)
             }
-            _ => self.instantiate_as(def, def_ref, name, parent, None),
+            // A definition inside itself, or inside what it holds, never ends: refused.
+            Some(_) if self.making.contains(&def_ref) => {
+                self.report_cycle(name, None, def_ref);
+                None
+            }
+            _ => Some(self.instantiate_as(def, def_ref, name, parent, None)),
         }
     }
 
@@ -668,6 +711,7 @@ impl<'a> Checker<'a> {
             DefKind::Generic => InstKind::Module,
             DefKind::Enum => unreachable!("an enum is a type, so nothing instantiates it"),
         };
+        self.making.push(def_ref);
         let id = self.model.add_instance(Instance {
             name: name.to_string(),
             kind,
@@ -685,10 +729,9 @@ impl<'a> Checker<'a> {
             docs: def.docs.clone(),
             def: Some(def_ref),
             provides: def.provides.iter().map(|p| p.name.clone()).collect(),
-            provides_std: Vec::new(),
+            standard: Vec::new(),
             placed_as: placed.as_ref().map(|(_, n)| n.clone()),
             placed_def: placed.map(|(d, _)| d),
-            std: self.modules[def_ref.0].std,
         });
         // Every part has a field for who assembles it (ADR 0024): the board narrows it, the
         // catalog row may state a default, and lowering reads it. It has one for the letters
@@ -733,10 +776,18 @@ impl<'a> Checker<'a> {
         // A part or module that provides generics has their members and statements first
         // (ADR 0059), each read in its own file.
         let generics = self.provided(def);
-        self.model.instances[id.0].provides_std = generics
-            .iter()
-            .filter(|(_, gref)| self.modules[gref.0].std)
-            .map(|(g, _)| g.name.name.clone())
+        // The standard generics it stands for: its own definition when that is one (a standard
+        // generic is its own first provider, ADR 0059), and those it provides.
+        let own = (def.kind == DefKind::Generic && self.modules[def_ref.0].std)
+            .then(|| def.name.name.clone());
+        self.model.instances[id.0].standard = own
+            .into_iter()
+            .chain(
+                generics
+                    .iter()
+                    .filter(|(_, gref)| self.modules[gref.0].std)
+                    .map(|(g, _)| g.name.name.clone()),
+            )
             .collect();
         for (g, gref) in &generics {
             let items = self.generic_items(g, def, kind);
@@ -775,6 +826,7 @@ impl<'a> Checker<'a> {
         self.cur_module = saved_module;
         self.cur_def = saved_def;
         self.scope = saved_scope;
+        self.making.pop();
         id
     }
 
@@ -831,10 +883,9 @@ impl<'a> Checker<'a> {
             docs: Vec::new(),
             def: None,
             provides: Vec::new(),
-            provides_std: Vec::new(),
+            standard: Vec::new(),
             placed_as: None,
             placed_def: None,
-            std: false,
         });
         let module = self.model.instance(owner).kind == InstKind::Module;
         let fields = [
@@ -967,11 +1018,15 @@ impl<'a> Checker<'a> {
                 }
                 Ty::Def(m, i) => {
                     let def = self.modules[m].defs[i].clone();
-                    let child = self.instantiate(&def, (m, i), &name, Some(cur));
-                    self.model.instances[child.0].docs = d.docs.clone();
                     let last = d.ty.segments.last().map_or(d.name.span.end, |s| s.span.end);
-                    self.model.instances[child.0].declared =
-                        Some((self.cur_source(), Span::new(d.name.span.start, last)));
+                    let site = (self.cur_source(), Span::new(d.name.span.start, last));
+                    self.use_site = Some(site);
+                    let Some(child) = self.instantiate(&def, (m, i), &name, Some(cur)) else {
+                        self.model.add_member(cur, &name, Member::Poison);
+                        continue;
+                    };
+                    self.model.instances[child.0].docs = d.docs.clone();
+                    self.model.instances[child.0].declared = Some(site);
                     self.model.add_member(cur, &name, Member::Inst(child));
                     self.no_provider(child, d);
                     if self.scope.len() == 1
@@ -1079,10 +1134,9 @@ impl<'a> Checker<'a> {
             docs,
             def: None,
             provides: Vec::new(),
-            provides_std: Vec::new(),
+            standard: Vec::new(),
             placed_as: None,
             placed_def: None,
-            std: false,
         });
         for field in ["function", "net"] {
             let f = self.model.add_field(pin, field, FieldKind::Text);

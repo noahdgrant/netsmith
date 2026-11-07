@@ -23,6 +23,11 @@ use netsmith_quantity::{Dimension, Quantity};
 #[derive(Debug, Clone, PartialEq)]
 pub struct NotEvaluated {
     pub at: InstId,
+    /// The instances the check could not be made for: the `Logic`s whose level has no value,
+    /// or whose grounds differ, and the part whose absolute maximum has nothing to be read
+    /// against. A provider picked for a use (ADR 0059) is judged by these: the check was not
+    /// made because of what that provider states, or leaves open.
+    pub involves: Vec<InstId>,
     pub message: String,
 }
 
@@ -68,9 +73,13 @@ fn is_receiver(kind: PinKind) -> bool {
 }
 
 impl Run<'_> {
-    fn note(&mut self, at: InstId, message: String) {
+    fn note(&mut self, at: InstId, involves: Vec<InstId>, message: String) {
         if self.seen.insert(message.clone()) {
-            self.notes.push(NotEvaluated { at, message });
+            self.notes.push(NotEvaluated {
+                at,
+                involves,
+                message,
+            });
         }
     }
 
@@ -217,6 +226,7 @@ impl Run<'_> {
         if !self.same_ground(dg, rg) {
             self.note(
                 d.part,
+                vec![d.logic, r.logic],
                 format!(
                     "not evaluated: the logic levels of `{dl}` against `{rl}` on net `{}`: their grounds differ (`{}` is on net `{}`, `{}` on net `{}`)",
                     net.name,
@@ -295,8 +305,15 @@ impl Run<'_> {
             .map(|(path, name, _)| format!("`{path}.{name}`"))
             .collect();
         let model = self.model;
+        let lacking_logics: Vec<InstId> = [d.logic, r.logic]
+            .into_iter()
+            .zip(need.iter())
+            .filter(|(_, (_, _, none))| *none)
+            .map(|(logic, _)| logic)
+            .collect();
         self.note(
             d.part,
+            lacking_logics,
             format!(
                 "not evaluated: the {which} level from `{}` to `{}` on net `{}`: {} {} no value",
                 model.path_of(d.logic),
@@ -336,6 +353,7 @@ impl Run<'_> {
             let Some(logic) = self.logic_of(pin) else {
                 self.note(
                     owner,
+                    vec![owner],
                     format!(
                         "not evaluated: the absolute maximum of `{path}`: it is not the `line` of a `Logic` or a pin of an interface with `levels`, so its ground is not known"
                     ),
@@ -350,6 +368,7 @@ impl Run<'_> {
                 Err(why) => {
                     self.note(
                         owner,
+                        vec![owner],
                         format!(
                             "not evaluated: the absolute maximum of `{path}` against net `{}`: {why}",
                             model.nets()[index].name
