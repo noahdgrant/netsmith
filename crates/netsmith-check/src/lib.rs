@@ -24,10 +24,11 @@ pub use diag::{Diagnostic, Source, SourceId, Sources};
 pub use faults::{pin_faults, pin_faults_solved};
 pub use loader::Loader;
 pub use model::{
-    Balance, Catalog, Chain, Contact, ContactSide, Domain, Draw, EnumId, EnumInfo, Field, FieldId,
-    FieldKind, GenericUse, GroundGroup, GroundNet, InstId, InstKind, Instance, Mate, Member, Model,
-    Net, PartRules, Peripheral, PeripheralBus, PeripheralFunction, PinKind, PinRow, PinTable,
-    Pinout, Provider, RExpr, Relation, Requirement, Role, SharedMember, SharedRes, Tie,
+    Balance, Catalog, Chain, Checkpoint, Contact, ContactSide, Domain, Draw, EnumId, EnumInfo,
+    Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet, InstId, InstKind, Instance,
+    Mate, Member, Model, Net, PartRules, Peripheral, PeripheralBus, PeripheralFunction, PinKind,
+    PinRow, PinTable, Pinout, Provider, RExpr, Relation, Requirement, Role, SharedMember,
+    SharedRes, Snapshot, Tie,
 };
 
 use std::collections::BTreeMap;

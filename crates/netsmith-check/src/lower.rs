@@ -489,7 +489,7 @@ impl Checker<'_> {
             return;
         }
         let source = self.cur_source();
-        self.model.relations.push(Relation {
+        std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
             lhs: l.e,
             op: c.op,
             rhs: r.e,
@@ -557,7 +557,7 @@ impl Checker<'_> {
             RExpr::Text(s) => self.narrow(field, Domain::Text(s), span),
             other => {
                 let source = self.cur_source();
-                self.model.relations.push(Relation {
+                std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
                     lhs: RExpr::Field(field),
                     op,
                     rhs: other,
