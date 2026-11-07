@@ -25,11 +25,11 @@ export interface Token {
   kind: Kind;
 }
 
-/** The words that start a definition or a statement. */
-export const KEYWORDS = new Set(['board', 'system', 'panel', 'part', 'interface', 'module', 'import', 'catalog', 'bridge']);
+/** The words that start a definition or a statement, and the markers after a pin row (`required`, `optional`, ADR 0016). */
+export const KEYWORDS = new Set(['board', 'system', 'panel', 'part', 'interface', 'module', 'enum', 'generic', 'provides', 'import', 'catalog', 'bridge', 'required', 'optional']);
 
 // Longest spellings first, as the lexer reads them.
-const OPERATORS = ['~>', '&=', '==', '>=', '<=', '+/-', '..', '::', '~', '+', '-', '*', '/', '=', '>', '<'];
+const OPERATORS = ['~>', '&=', '?=', '==', '>=', '<=', '+/-', '..', '::', '~', '+', '-', '*', '/', '=', '>', '<'];
 
 const isDigit = (c: string) => c >= '0' && c <= '9';
 const isWordStart = (c: string) => /[\p{L}_]/u.test(c);
@@ -115,7 +115,9 @@ export function tokenize(line: string): Token[] {
       let kind: Kind;
       if (afterDot) kind = 'member';
       else if (KEYWORDS.has(word)) kind = 'keyword';
-      else if (line.slice(j, j + 2) === '::') kind = 'namespace';
+      // A name before `::` is a module in a path (`std::parts`) unless it is capitalised, which
+      // makes it a type: the enum of a variant, `AssemblyMode::Hand`.
+      else if (line.slice(j, j + 2) === '::' && !/^\p{Lu}/u.test(word)) kind = 'namespace';
       else if (/^\p{Lu}/u.test(word)) kind = 'type';
       else kind = 'name';
       push(i, j, kind);

@@ -211,7 +211,12 @@ function Row({ l, cols, lit, staleAfter, mark, marking }: { l: BomLine; cols: Se
       </td>
       {marking && <DeltaCell mark={mark} />}
       {cols.has('qty') && <td class="num">{l.quantity}</td>}
-      {cols.has('value') && <td title={l.kind}>{l.value}</td>}
+      {cols.has('value') && (
+        <td title={l.via ? `${l.kind}, picked as a ${l.via}` : l.kind}>
+          {l.value}
+          {l.via && <div class="checked">as {l.via}</div>}
+        </td>
+      )}
       {cols.has('package') && <td title={l.footprint ?? ''}>{l.package ?? l.footprint ?? '-'}</td>}
       {cols.has('lcsc') && <td class="mono lcsc">{l.lcsc ?? (l.unresolved ? 'unresolved' : l.handSolder ? 'by hand' : 'none')}</td>}
       {cols.has('library') && <td>{l.library ? <span class={`pill ${l.library.toLowerCase()}`}>{l.library}</span> : ''}</td>}

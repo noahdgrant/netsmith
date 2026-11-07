@@ -595,7 +595,12 @@ unresolved: string | null,
 /**
  * Soldered by hand: the board house does not place it.
  */
-handSolder: boolean, };
+handSolder: boolean, 
+/**
+ * The generic this part was picked to provide (`CoaxReceptacle`, ADR 0068): `kind` is
+ * the provider's name. `None` for a part written by its own type.
+ */
+via: string | null, };
 
 export type Bom = { board: string, 
 /**
