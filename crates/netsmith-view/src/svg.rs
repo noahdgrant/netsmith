@@ -94,6 +94,12 @@ const STYLE: &str = "\
 /// What a note is drawn with by default; the page maps the tokens (`--note-fill`, `--note-stroke`,
 /// `--note-text`, `--note-stroke-text`) to its own. Written only into a drawing that has notes,
 /// so a drawing without any is the same bytes as before notes existed.
+/// The look of the arrowheads of a bus's entries, written only into a drawing that has one.
+const ARROW_STYLE: &str = "\
+.schematic .bus-arrow{fill:var(--wire);stroke:none}
+.schematic .bus-group.on .bus-arrow{fill:var(--hit)}
+";
+
 const NOTE_STYLE: &str = "\
 .schematic .note-frame{fill:var(--note-fill,#fff9db);stroke:var(--note-stroke,#d4b95e);stroke-width:.25}\n\
 .schematic .note text{fill:var(--note-text,#4a4120);stroke:none;font-weight:400}\n\
@@ -183,7 +189,12 @@ fn draw(design: &Design, l: &Layout) -> String {
     );
     let _ = writeln!(w, "<title>{}</title>", esc(&design.name));
     let notes_style = if l.notes.is_empty() { "" } else { NOTE_STYLE };
-    let _ = writeln!(w, "<style>\n{STYLE}{notes_style}</style>");
+    let arrows = l
+        .buses
+        .iter()
+        .any(|b| b.entries.iter().any(|e| e.flow.is_some()));
+    let arrow_style = if arrows { ARROW_STYLE } else { "" };
+    let _ = writeln!(w, "<style>\n{STYLE}{arrow_style}{notes_style}</style>");
     let _ = writeln!(
         w,
         "<rect class=\"sheet\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>",
@@ -444,6 +455,21 @@ fn draw_bus(w: &mut String, design: &Design, bus: &crate::layout::Bus) {
     if let Some(o) = &bus.other {
         text_element(w, o, "bus-label bus-members", 1.27, &attrs);
     }
+    for entry in &bus.entries {
+        for tri in entry.arrows() {
+            let points: Vec<String> = tri
+                .iter()
+                .map(|p| format!("{},{}", n(p.x), n(p.y)))
+                .collect();
+            let flow = entry.flow.map_or("", |f| f.word());
+            let _ = writeln!(
+                w,
+                "<polygon class=\"bus-arrow bus-arrow-{flow}\" data-net=\"{}\" points=\"{}\"/>",
+                esc(&design.nets[entry.net].name),
+                points.join(" ")
+            );
+        }
+    }
     if let Some(f) = &bus.flag {
         let (dx, dy) = f.dir.vector();
         let at = |a: f64, b: f64| {
@@ -464,8 +490,11 @@ fn draw_bus(w: &mut String, design: &Design, bus: &crate::layout::Bus) {
         .join(" ");
         let _ = writeln!(
             w,
-            "<g class=\"bus-flag\" data-bus=\"{}\"><title>{} (goes to another module)</title><polygon class=\"flag\" points=\"{points}\"/>",
+            "<g class=\"bus-flag\" data-bus=\"{}\"{}><title>{} (goes to another module)</title><polygon class=\"flag\" points=\"{points}\"/>",
             esc(&bus.path),
+            bus.other_path
+                .as_ref()
+                .map_or_else(String::new, |p| format!(" data-other=\"{}\"", esc(p))),
             esc(&bus.path)
         );
         text_element(w, &f.label, "bus-label", Port::TEXT, &attrs);

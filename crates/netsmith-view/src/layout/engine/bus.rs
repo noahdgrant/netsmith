@@ -5,21 +5,40 @@
 //!
 //! [`plan`] decides which nets are a bus before anything is placed, from the interface
 //! instances the design carries ([`netsmith_core::Design::interfaces`]) and from where the
-//! pins are, never from net names. A net is a candidate when it is not a rail, has exactly
-//! one pin on each of two main parts (or, when it goes on to another sheet, on one), and its
-//! pins on a part are all on one side. Per interface instance, nets with the same two parts
-//! and the same two sides are one bus when they number [`MIN_MEMBERS`] or more; a net is in
-//! the bus of the instance that has most of them (then the shortest path, then the path), so
-//! a module's port and the part's pins of the same interface are drawn once. The drawing is
-//! then a pure function of the plan: the rows of the pins give the order of the entries, the
-//! spine stands in the first column past everything else at that side of the part, and the
-//! trunk is routed on the grid like any wire. When a bus cannot be drawn its nets are drawn as
-//! they were before (a flag or a name each, or a wire).
+//! pins are, never from net names. A net is a candidate when it is not a rail, has a name that
+//! someone chose, and has exactly one pin on each of two or more main parts (or, when it goes on
+//! to another sheet, on one or more), and its pins on a part are all on one side. Per interface
+//! instance (with the members of the interfaces nested in it, under dotted names), nets with the
+//! same parts, the same flag and the same sides are one bus when they number [`MIN_MEMBERS`] or
+//! more between two places, or [`MIN_MEMBERS_SHARED`] among three or more (parts, and the flag);
+//! a net is in the bus of the instance that has most of them (then the shortest path, then the
+//! path), so a module's port and the part's pins of the same interface are drawn once. The drawing
+//! is then a pure function of the plan: the rows of the pins give the order of the entries, the
+//! spine stands in the first column past everything else at that side of the part, the trunk
+//! is routed on the grid like any wire, and each part past the second runs to the line already
+//! drawn. A pin whose kind the part's pin table gives has an arrowhead on its entry. When a bus
+//! cannot be drawn its nets are drawn as they were before (a flag or a name each, or a wire).
+//! ADR 0049 and ADR 0067.
 
 use super::*;
 
 /// A bus has at least this many members on the sheet.
 pub(super) const MIN_MEMBERS: usize = 3;
+/// A bus that is shared by three or more places (parts, or two parts and the flag: an I2C bus
+/// with several devices) has at least this many.
+const MIN_MEMBERS_SHARED: usize = 2;
+/// A bus has at most this many parts at its ends.
+const MAX_ENDS: usize = 8;
+
+/// How many members make a bus of `ends` places (the parts, and the flag when the members go
+/// on to another sheet).
+fn min_members(ends: usize) -> usize {
+    if ends >= 3 {
+        MIN_MEMBERS_SHARED
+    } else {
+        MIN_MEMBERS
+    }
+}
 /// The spine is at least this many cells from the pins (two beyond the end of a stub, so that
 /// it never touches the name at the stub of a pin between the members), and at most
 /// [`SPINE_MAX`].
@@ -53,11 +72,22 @@ pub(super) struct BusPlan {
     pub nets: Vec<usize>,
     /// What the instance calls each member, in the same order.
     pub names: Vec<String>,
-    /// Two ends, or one for a bus that goes on to another sheet.
+    /// The parts at its ends: two or more, or one for a bus that goes on to another sheet.
     pub ends: Vec<EndPlan>,
-    /// What the interface at the other end is called and what it calls the members, when that
-    /// differs from the first.
-    pub other: Option<(String, Vec<String>)>,
+    /// Whether the members go on to another sheet: the thick line then ends in a flag.
+    pub flag: bool,
+    /// The interface at the other end: what it is called and what it calls the members. A bus
+    /// of two ends has it when that differs from the first; a bus that goes on to another sheet
+    /// always has it when the other sheet's instance is known.
+    pub other: Option<OtherEnd>,
+}
+
+/// The interface instance at the other end of a bus, as that end names it.
+pub(super) struct OtherEnd {
+    /// The instance's path (`modem.uart`).
+    pub path: String,
+    /// What it calls the members, in the order of the bus's members.
+    pub names: Vec<String>,
 }
 
 fn list_of(names: &[String]) -> String {
@@ -75,9 +105,13 @@ impl BusPlan {
     }
 
     pub fn other_text(&self) -> Option<String> {
-        self.other
-            .as_ref()
-            .map(|(name, names)| format!("{name}: {}", list_of(names)))
+        self.other.as_ref().map(|o| {
+            if self.goes_on() {
+                format!("\u{2192} {}: {}", o.path, list_of(&o.names))
+            } else {
+                format!("{}: {}", leaf(&o.path), list_of(&o.names))
+            }
+        })
     }
 
     /// How wide the first line of texts is, in millimetres.
@@ -91,8 +125,71 @@ impl BusPlan {
     }
 
     fn goes_on(&self) -> bool {
-        self.ends.len() == 1
+        self.flag
     }
+}
+
+/// Which way the signal goes at the pin `pad` of `part`, from the pin kind the part's pin
+/// table gives it (the language says it there and not in the interface, ADR 0016): an output
+/// gives, an input takes, a bidirectional pin does both. Any other kind, and a part that has
+/// no pin table, say nothing.
+fn member_flow(part: &netsmith_core::Part, pad: &str) -> Option<MemberFlow> {
+    let pin = part.pins.iter().find(|q| q.pads.iter().any(|x| x == pad))?;
+    match pin.kind {
+        netsmith_core::PinKind::Output => Some(MemberFlow::Gives),
+        netsmith_core::PinKind::Input => Some(MemberFlow::Takes),
+        netsmith_core::PinKind::Bidirectional => Some(MemberFlow::Both),
+        _ => None,
+    }
+}
+
+/// The members of each interface instance, with those of the interfaces nested in it: an
+/// instance that sits inside another listed instance (`mcu.link.data` inside `mcu.link`) gives
+/// its members to it under its relative path (`data.sclk`), so one interface is one bus
+/// whatever it is made of. A nested `Rail` is power and is not a member. Each is
+/// `(name, net)`, the instance's own members first, in the order the design has them.
+fn flat_members(design: &Design) -> Vec<Vec<(String, String)>> {
+    let index: BTreeMap<&str, usize> = design
+        .interfaces
+        .iter()
+        .enumerate()
+        .map(|(i, inst)| (inst.path.as_str(), i))
+        .collect();
+    let mut flat: Vec<Vec<(String, String)>> = design
+        .interfaces
+        .iter()
+        .map(|inst| {
+            inst.members
+                .iter()
+                .map(|m| (m.name.clone(), m.net.clone()))
+                .collect()
+        })
+        .collect();
+    for inst in design.interfaces.iter() {
+        if inst.type_name == "Rail" {
+            continue;
+        }
+        let mut cut = inst.path.len();
+        while let Some(at) = inst.path[..cut].rfind('.') {
+            cut = at;
+            if let Some(&i) = index.get(&inst.path[..at]) {
+                let relative = &inst.path[at + 1..];
+                for m in &inst.members {
+                    flat[i].push((format!("{relative}.{}", m.name), m.net.clone()));
+                }
+            }
+        }
+    }
+    flat
+}
+
+/// Whether the instance at `path` belongs to a part (or a module) that has a part on this
+/// sheet: a part's own interface (`sensor1.spi`, part `sensor1.u`) or a module's port.
+fn on_this_sheet(design: &Design, path: &str) -> bool {
+    let owner = path.rsplit_once('.').map_or("", |(owner, _)| owner);
+    design.parts.iter().any(|p| {
+        !owner.is_empty() && p.path.starts_with(owner) && p.path[owner.len()..].starts_with('.')
+    })
 }
 
 fn leaf(path: &str) -> &str {
@@ -144,13 +241,16 @@ pub(super) fn plan(
     struct Cand {
         iface: usize,
         parts: Vec<usize>,
+        flag: bool,
         members: Vec<Elig>,
     }
+    let flat = flat_members(design);
     let mut cands: Vec<Cand> = Vec::new();
-    for (ii, inst) in design.interfaces.iter().enumerate() {
-        let mut buckets: BTreeMap<Vec<usize>, Vec<Elig>> = BTreeMap::new();
-        for m in &inst.members {
-            let Some(&net) = net_ix.get(m.net.as_str()) else {
+    for (ii, own) in flat.iter().enumerate() {
+        netsmith_core::job::checkpoint();
+        let mut buckets: BTreeMap<(Vec<usize>, bool), Vec<Elig>> = BTreeMap::new();
+        for (_, member_net) in own {
+            let Some(&net) = net_ix.get(member_net.as_str()) else {
                 continue;
             };
             if ctx.power[net].is_some() || ctx.ground[net] || !is_named(&design.nets[net].name) {
@@ -167,22 +267,29 @@ pub(super) fn plan(
                     _ => ok = false,
                 }
             }
-            let want = if ctx.external[net] { 1 } else { 2 };
+            // Two or more parts on the sheet, or one when the net goes on to another sheet: a
+            // net on more than two is a shared line (an I2C bus with several devices).
+            let external = ctx.external[net];
+            let at_least = if external { 1 } else { 2 };
             let mut parts: Vec<usize> = ends.iter().map(|e| e.0).collect();
             parts.sort_unstable();
             parts.dedup();
             if !ok
-                || ends.len() != want
-                || parts.len() != want
+                || ends.len() < at_least
+                || ends.len() > MAX_ENDS
+                || parts.len() != ends.len()
                 || !parts.iter().all(|&p| is_anchor(p))
             {
                 continue;
             }
             ends.sort_by_key(|e| (design.parts[e.0].path.clone(), e.0));
             let key: Vec<usize> = ends.iter().map(|e| e.0).collect();
-            buckets.entry(key).or_default().push(Elig { net, ends });
+            buckets
+                .entry((key, external))
+                .or_default()
+                .push(Elig { net, ends });
         }
-        for (parts, members) in buckets {
+        for ((parts, flag), members) in buckets {
             // The nets that have their pins on the same sides: the biggest such set.
             let mut by_sides: BTreeMap<Vec<u8>, Vec<Elig>> = BTreeMap::new();
             for e in members {
@@ -196,10 +303,11 @@ pub(super) fn plan(
             else {
                 continue;
             };
-            if best.len() >= MIN_MEMBERS {
+            if best.len() >= min_members(parts.len() + usize::from(flag)) {
                 cands.push(Cand {
                     iface: ii,
                     parts,
+                    flag,
                     members: best,
                 });
             }
@@ -229,26 +337,16 @@ pub(super) fn plan(
     let mut out: Vec<BusPlan> = Vec::new();
     for c in cands {
         let members: Vec<Elig> = c.members.into_iter().filter(|e| !taken[e.net]).collect();
-        if members.len() < MIN_MEMBERS {
+        if members.len() < min_members(c.parts.len() + usize::from(c.flag)) {
             continue;
         }
         let inst = &design.interfaces[c.iface];
-        // The first end is the part that is in the instance's own module, else the first by path.
-        let first = if c.parts.len() == 2
-            && common_segments(&inst.path, &design.parts[c.parts[1]].path)
-                > common_segments(&inst.path, &design.parts[c.parts[0]].path)
-        {
-            1
-        } else {
-            0
-        };
-        let order: Vec<usize> = if c.parts.len() == 1 {
-            vec![0]
-        } else if first == 0 {
-            vec![0, 1]
-        } else {
-            vec![1, 0]
-        };
+        // The first end is the part that is in the instance's own module, else the first by
+        // path; the others follow in the order of their paths.
+        let mut order: Vec<usize> = (0..c.parts.len()).collect();
+        order.sort_by_key(|&o| {
+            std::cmp::Reverse(common_segments(&inst.path, &design.parts[c.parts[o]].path))
+        });
         let pin_of = |e: &Elig, part: usize| {
             *e.ends
                 .iter()
@@ -266,13 +364,13 @@ pub(super) fn plan(
             key(x).total_cmp(&key(y))
         });
         let nets: Vec<usize> = sorted.iter().map(|e| e.net).collect();
-        let name_in = |i: &netsmith_core::InterfaceInstance, net: usize| {
-            i.members
+        let name_in = |i: usize, net: usize| {
+            flat[i]
                 .iter()
-                .find(|m| net_ix.get(m.net.as_str()) == Some(&net))
-                .map_or_else(String::new, |m| m.name.clone())
+                .find(|(_, n)| net_ix.get(n.as_str()) == Some(&net))
+                .map_or_else(String::new, |(name, _)| name.clone())
         };
-        let names: Vec<String> = nets.iter().map(|&n| name_in(inst, n)).collect();
+        let names: Vec<String> = nets.iter().map(|&n| name_in(c.iface, n)).collect();
         let mut ends = Vec::new();
         for &o in &order {
             let part = c.parts[o];
@@ -286,31 +384,32 @@ pub(super) fn plan(
             ends.push(EndPlan { part, side, pins });
         }
         // What the other end calls it: another instance, from another module, with most of
-        // the same nets.
-        let other = if ends.len() == 2 {
-            let first_segment = inst.path.split('.').next().unwrap_or("");
-            design
-                .interfaces
-                .iter()
-                .filter(|j| j.path != inst.path && j.path.split('.').next() != Some(first_segment))
-                .map(|j| {
-                    let n = nets.iter().filter(|&&x| !name_in(j, x).is_empty()).count();
-                    (n, j)
+        // the same nets. Across a sheet's edge it is the instance on the sheet the bus goes to.
+        let first_segment = inst.path.split('.').next().unwrap_or("");
+        let other = design
+            .interfaces
+            .iter()
+            .enumerate()
+            .filter(|(_, j)| j.path != inst.path && j.path.split('.').next() != Some(first_segment))
+            // Across a sheet's edge: not an instance of a part that is on this sheet.
+            .filter(|(_, j)| !c.flag || !on_this_sheet(design, &j.path))
+            .map(|(jx, j)| {
+                let n = nets.iter().filter(|&&x| !name_in(jx, x).is_empty()).count();
+                (n, jx, j)
+            })
+            .filter(|&(n, _, _)| n >= MIN_MEMBERS.min(nets.len()))
+            .max_by(|(na, _, a), (nb, _, b)| {
+                na.cmp(nb)
+                    .then_with(|| b.path.split('.').count().cmp(&a.path.split('.').count()))
+                    .then_with(|| b.path.cmp(&a.path))
+            })
+            .and_then(|(_, jx, j)| {
+                let theirs: Vec<String> = nets.iter().map(|&n| name_in(jx, n)).collect();
+                (c.flag || leaf(&j.path) != leaf(&inst.path) || theirs != names).then(|| OtherEnd {
+                    path: j.path.clone(),
+                    names: theirs,
                 })
-                .filter(|&(n, _)| n >= MIN_MEMBERS.min(nets.len()))
-                .max_by(|(na, a), (nb, b)| {
-                    na.cmp(nb)
-                        .then_with(|| b.path.split('.').count().cmp(&a.path.split('.').count()))
-                        .then_with(|| b.path.cmp(&a.path))
-                })
-                .and_then(|(_, j)| {
-                    let theirs: Vec<String> = nets.iter().map(|&n| name_in(j, n)).collect();
-                    (leaf(&j.path) != leaf(&inst.path) || theirs != names)
-                        .then(|| (leaf(&j.path).to_string(), theirs))
-                })
-        } else {
-            None
-        };
+            });
         for &n in &nets {
             taken[n] = true;
         }
@@ -321,6 +420,7 @@ pub(super) fn plan(
             nets,
             names,
             ends,
+            flag: c.flag,
             other,
         });
     }
@@ -382,12 +482,12 @@ pub(super) fn rooms(
                     };
                 }
             }
-            let extra = if plan.goes_on() {
-                COUNT_ROOM + width + flag + 2.54
-            } else if e == 0 {
-                COUNT_ROOM + width
-            } else {
+            let extra = if e > 0 {
                 0.0
+            } else if plan.goes_on() {
+                COUNT_ROOM + width + flag + 2.54
+            } else {
+                COUNT_ROOM + width
             };
             let reach = far + outward * (SPINE_ROOM + extra);
             let (a0, a1) = (lo - 1.9, hi + 1.9);
@@ -585,12 +685,13 @@ impl<'a> Scene<'a> {
                 self.grid.claim_wire(g.at(a), g.at(a + 1), id);
             }
         }
-        // Where the thick line leaves each spine: level with the other end when it can.
+        // Where the thick line leaves each spine: level with the first end when it can (the
+        // first end: with the second).
         let mid = |g: &EndGeom| (g.span.0 + g.span.1) / 2;
         let attach: Vec<i32> = (0..ends.len())
             .map(|e| {
                 let g = &ends[e];
-                match ends.get(1 - e.min(1)).filter(|_| ends.len() == 2) {
+                match ends.get(if e == 0 { 1 } else { 0 }) {
                     Some(o) if o.side.is_vertical() == g.side.is_vertical() => {
                         let lo = g.span.0.max(o.span.0);
                         let hi = g.span.1.min(o.span.1);
@@ -613,7 +714,12 @@ impl<'a> Scene<'a> {
             ]);
         }
         let a0 = ends[0].at(attach[0]);
-        let trunk: Vec<Node>;
+        // The thick line beyond the spines, as runs of nodes: from the first end out to the
+        // flag when the members go on, between the first two ends when they do not, and from
+        // each further end to what is drawn of it so far (a bus shared by several parts is one
+        // line with a branch to each).
+        let mut trunks: Vec<Vec<Node>> = Vec::new();
+        let mut network: HashSet<Node> = HashSet::new();
         let mut flag: Option<BusFlag> = None;
         let mut texts_run: Vec<(Pt, Pt)> = Vec::new();
         if plan.goes_on() {
@@ -644,7 +750,7 @@ impl<'a> Scene<'a> {
                     break;
                 }
             }
-            trunk = found?;
+            let trunk = found?;
             let tip = self.grid.pt(*trunk.last()?);
             self.grid.claim_wire(a0, *trunk.last()?, id);
             flag = Some(BusFlag {
@@ -654,6 +760,8 @@ impl<'a> Scene<'a> {
                 label: port_label(&plan.name, tip, g.side),
             });
             texts_run.push((self.grid.pt(a0), tip));
+            network.extend(trunk.iter().copied().skip(1));
+            trunks.push(trunk);
         } else {
             let b0 = ends[1].at(attach[1]);
             let start = ends[0].out(attach[0]);
@@ -669,16 +777,41 @@ impl<'a> Scene<'a> {
             all.push(b0);
             self.grid.claim_wire(a0, start, id);
             self.grid.claim_wire(goal, b0, id);
-            trunk = grid::corners(&all);
+            network.extend(path.iter().copied());
+            let trunk = grid::corners(&all);
             for w in trunk.windows(2) {
                 texts_run.push((self.grid.pt(w[0]), self.grid.pt(w[1])));
             }
+            trunks.push(trunk);
         }
-        let trunk_pts: Vec<Pt> = grid::corners(&trunk)
-            .iter()
-            .map(|&n| self.grid.pt(n))
-            .collect();
-        lines.push(trunk_pts);
+        // The further ends: each runs to the line, at the nearest place it can.
+        let joiners = if plan.goes_on() { 1 } else { 2 };
+        for e in joiners..ends.len() {
+            netsmith_core::job::checkpoint();
+            let (ae, oe) = (ends[e].at(attach[e]), ends[e].out(attach[e]));
+            if !self.grid.free_for(oe, id) {
+                return None;
+            }
+            let path = self.grid.route(id, oe, ends[e].side, &network)?;
+            self.grid.commit(&path, id);
+            self.grid.claim_wire(ae, oe, id);
+            network.extend(path.iter().copied());
+            let mut all = vec![ae];
+            all.extend(path.iter().copied());
+            let trunk = grid::corners(&all);
+            for w in trunk.windows(2) {
+                texts_run.push((self.grid.pt(w[0]), self.grid.pt(w[1])));
+            }
+            trunks.push(trunk);
+        }
+        for trunk in &trunks {
+            lines.push(
+                grid::corners(trunk)
+                    .iter()
+                    .map(|&n| self.grid.pt(n))
+                    .collect(),
+            );
+        }
 
         let writing = self.place_writing(plan, &texts_run, id)?;
         for r in &writing.rects {
@@ -702,10 +835,14 @@ impl<'a> Scene<'a> {
                 self.grid.unblock(p.3);
                 self.grid.claim_wire(p.3, at, Self::net_id(net));
                 self.push_wire(net, &[p.3, at]);
+                let (from, to) = (self.grid.pt(p.3), self.grid.pt(at));
                 entries.push(BusEntry {
                     net,
                     end: e,
-                    at: self.grid.pt(at),
+                    at: to,
+                    flow: member_flow(&ctx.design.parts[p.0], &self.parts[p.0].pins[p.1].id),
+                    out: g.side,
+                    length: (to.x - from.x).abs() + (to.y - from.y).abs(),
                 });
             }
         }
@@ -735,6 +872,11 @@ impl<'a> Scene<'a> {
             flag,
             label: writing.label,
             list: writing.list,
+            other_path: writing
+                .other
+                .is_some()
+                .then(|| plan.other.as_ref().map(|o| o.path.clone()))
+                .flatten(),
             other: writing.other,
             tick: writing.tick,
             count: writing.count,
