@@ -27,3 +27,20 @@ interface Logic {
     .voh: Voltage
     .vol: Voltage
 }
+
+/// The logic levels of all the lines of a bus interface, as a datasheet gives them for a
+/// supply: the four voltages of `Logic` and the rail they are relative to. A bus interface
+/// (`std::bus::Spi`, `Uart`, `I2c`, `Swd`) has one as `.levels`, so a part that has a bus states
+/// them once for the interface: `.spi.levels.reference ~ .vdd`, `.spi.levels.vih &= 0.7 *
+/// .vdd.voltage`, and an input's `.spi.sclk.abs_max &= .vdd.voltage + 0.3V`. The solver judges
+/// a bus pin as it judges the `.line` of a `Logic`, with the numbers of ADR 0046; which lines
+/// a part drives and which it reads is what its pin table says. `~` between two bus interfaces
+/// joins no levels (each belongs to its own part, and the reference rail is that part's
+/// supply), and a part that states none of them is not judged.
+interface Levels {
+    .reference: Rail
+    .vih: Voltage
+    .vil: Voltage
+    .voh: Voltage
+    .vol: Voltage
+}

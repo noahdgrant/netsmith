@@ -912,15 +912,23 @@ impl Model {
             && self.instance(f.owner).kind == InstKind::Interface
     }
 
-    /// Whether `field` is a logic level of a `Logic` line (`vih`, `vil`, `voh`, `vol`). It is
-    /// what one part's pin guarantees or needs, so connecting two lines does not equate them
-    /// the way it equates the voltage of two rails (ADR 0046).
+    /// Whether `field` is a logic level of a `Logic` line or of the `Levels` of a bus interface
+    /// (`vih`, `vil`, `voh`, `vol`). It is what one part's pin guarantees or needs, so
+    /// connecting two lines does not equate them the way it equates the voltage of two rails
+    /// (ADR 0046, ADR 0064).
     pub fn is_level(&self, field: FieldId) -> bool {
         let f = self.field(field);
         matches!(f.name.as_str(), "vih" | "vil" | "voh" | "vol")
             && f.kind == FieldKind::Quantity(Dimension::VOLTAGE)
             && self.instance(f.owner).kind == InstKind::Interface
-            && self.instance(f.owner).type_name == "Logic"
+            && (self.instance(f.owner).type_name == "Logic" || self.is_levels(f.owner))
+    }
+
+    /// Whether an instance is the `Levels` of the standard library (`std::logic::Levels`): the
+    /// logic levels that a bus interface carries for all its lines (ADR 0064).
+    pub fn is_levels(&self, inst: InstId) -> bool {
+        let i = self.instance(inst);
+        i.kind == InstKind::Interface && i.type_name == "Levels" && i.std
     }
 
     /// The `current` field and the `pos` pin of an interface that draws current from a

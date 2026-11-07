@@ -7017,7 +7017,7 @@ board Inverters {
 
 The note, in `netsmith build`'s output: `not evaluated: the absolute maximum of `u1.a.line` against net `net-j.p1`: nothing sets its voltage: no rail is on it and no `Logic` line drives it`.
 
-The level checks apply only to lines that are `Logic`: `Uart`, `Spi` and `I2c` pins are plain pins and are not judged. A rating of a pin with no `Logic` (its `.abs_max` stated on a plain `Pin`) is listed as not evaluated.
+The level checks apply to the lines that are `Logic` and to the pins of a bus interface that states `.levels` (see "Logic levels of a bus" below). A rating of any other pin (its `.abs_max` stated on a plain `Pin`) is listed as not evaluated.
 
 ### A level translator
 
@@ -7127,6 +7127,192 @@ error: no `level_translator` candidate satisfies `u`: the closest of the 1 that 
 26 |     .sensor.out.voh >= .u.vt_plus_max
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
+
+### Logic levels of a bus
+
+Every bus interface but `Usb2` has `.levels`, an interface `std::logic::Levels` with the rail `.reference` and the four voltages `.vih`, `.vil`, `.voh` and `.vol` of a `Logic` (ADR 0064). A datasheet gives one set for the supply of a group of pins, so a part states them once for the interface, in the way it states a `Logic`: `.spi.levels.reference ~ .vdd`, `.spi.levels.vih &= 0.7 * .vdd.voltage`, and the absolute maximum of an input on the pin, `.spi.sclk.abs_max &= 2.1V`. Which lines a part drives and which it reads is what its pin table says (`output` and `tri_state` drive, `input` reads, `bidirectional` does both), so `voh` and `vol` judge the lines it drives and `vih` and `vil` the lines it reads. The checks are those of the previous section, with the same numbers and the same notes: a pair of pins of which neither states a level is not looked at, and one that states them on one side only is a note. A part that has two supplies for two groups of pins states two interfaces.
+
+`~` between two bus interfaces joins no levels: they belong to two parts, and the reference rail of each is that part's supply, so a join would be a short between a 3.3 V net and a 1.8 V net.
+
+Three invented parts: a processor on 3.3 V, a sensor with its pins on a 1.8 V supply of their own that survives 2.1 V on an input, and a translator for SPI that is a slave on its side `a` and a master on its side `b`, each side on its own rail.
+
+```nsm module=src::zlevels
+import std::bus::{Spi, SpiRole}
+import std::sources::Rail
+
+/// Zproc, an invented processor on 3.3 V.
+part Zproc {
+    .vdd: Rail
+    .spi: Spi
+    .spi.role &= SpiRole::Master
+    // Table 11, DC characteristics of the I/O pins.
+    .spi.levels.reference ~ .vdd
+    .spi.levels.vih &= 0.7 * .vdd.voltage
+    .spi.levels.vil &= 0.3 * .vdd.voltage
+    .spi.levels.voh &= .vdd.voltage - 0.4V
+    .spi.levels.vol &= 0.4V
+
+    pins {
+        .vdd.pos  power  "VDD"  "1"
+        .vdd.neg  power  "VSS"  "2"
+        .spi.sclk output "SCK"  "3"
+        .spi.mosi output "MOSI" "4"
+        .spi.miso input  "MISO" "5"
+        .spi.cs   output "CS"   "6"
+    }
+}
+
+/// Zsense, an invented sensor. The core is on `vdd` and the pins on their own supply `vddio`.
+part Zsense {
+    .vdd: Rail
+    .vddio: Rail
+    .vddio.neg ~ .vdd.neg
+    .spi: Spi
+    .spi.role &= SpiRole::Slave
+    // Table 5, the levels of the pins on `vddio`, and table 3, the absolute maximum of an
+    // input: 2.1 V.
+    .spi.levels.reference ~ .vddio
+    .spi.levels.vih &= 0.7 * .vddio.voltage
+    .spi.levels.vil &= 0.3 * .vddio.voltage
+    .spi.levels.voh &= .vddio.voltage - 0.2V
+    .spi.levels.vol &= 0.2V
+    .spi.sclk.abs_max &= 2.1V
+    .spi.mosi.abs_max &= 2.1V
+    .spi.cs.abs_max &= 2.1V
+
+    pins {
+        .vdd.pos   power     "VDD"   "8"
+        .vddio.pos power     "VDDIO" "5"
+        .vdd.neg   power     "GND"   "6" "7"
+        .spi.sclk  input     "SCL"   "1"
+        .spi.mosi  input     "SDI"   "2"
+        // Table 14: SDO is "high impedance while CS is high".
+        .spi.miso  tri_state "SDO"   "3"
+        .spi.cs    input     "CS"    "4"
+    }
+}
+
+/// Zshift, an invented SPI level translator: side `a` faces the processor on `vcca`, side `b`
+/// faces the sensor on `vccb`.
+part Zshift {
+    .vcca: Rail
+    .vccb: Rail
+    .vccb.neg ~ .vcca.neg
+    .a: Spi
+    .b: Spi
+    .a.role &= SpiRole::Slave
+    .b.role &= SpiRole::Master
+    .a.levels.reference ~ .vcca
+    .a.levels.vih &= 0.7 * .vcca.voltage
+    .a.levels.vil &= 0.3 * .vcca.voltage
+    .a.levels.voh &= .vcca.voltage - 0.2V
+    .a.levels.vol &= 0.2V
+    .b.levels.reference ~ .vccb
+    .b.levels.vih &= 0.7 * .vccb.voltage
+    .b.levels.vil &= 0.3 * .vccb.voltage
+    .b.levels.voh &= .vccb.voltage - 0.2V
+    .b.levels.vol &= 0.2V
+    .a.sclk.abs_max &= 3.6V
+    .a.mosi.abs_max &= 3.6V
+    .a.cs.abs_max &= 3.6V
+    .b.miso.abs_max &= 2.1V
+
+    pins {
+        .vcca.pos  power     "VCCA" "1"
+        .vccb.pos  power     "VCCB" "2"
+        .vcca.neg  power     "GND"  "3"
+        .a.sclk    input     "A1"   "4"
+        .a.mosi    input     "A2"   "5"
+        .a.miso    tri_state "A3"   "6"
+        .a.cs      input     "A4"   "7"
+        .b.sclk    output    "B1"   "8"
+        .b.mosi    output    "B2"   "9"
+        .b.miso    input     "B3"   "10"
+        .b.cs      output    "B4"   "11"
+    }
+}
+```
+
+Both on 3.3 V they would build. Here the sensor's pins are on `vddio`, which is the 1.8 V rail: the processor's 3.3 V lines are refused, once for each input that states a maximum, and the way back, a sensor's 1.69 V high that the processor does not read as a high, is refused with the numbers of both:
+
+```nsm fails
+import src::zlevels::{Zproc, Zsense}
+import std::sources::Rail
+
+board Mismatch {
+    .s3: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .s18: Rail {
+        .voltage &= 1.8V +/- 5%
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+    }
+    .proc: Zproc
+    .sense: Zsense
+    .s3 ~ .proc.vdd
+    .s3 ~ .sense.vdd
+    .s18 ~ .sense.vddio
+    .proc.spi ~ .sense.spi
+}
+```
+
+```text
+error: net `net-proc.spi.miso`: `sense.spi.levels.voh` is 1.51V..1.69V but `proc.spi.levels.vih` needs 2.194V..2.426V: a high of 1.51V is not always read as a high, which takes 2.426V
+   --> main.nsm:16:5
+   |
+16 |     .sense: Zsense
+   |     ^^^^^^^^^^^^^^
+error: net `net-proc.spi.sclk` reaches 3.465V above its ground `GND` (`proc.spi.sclk`, a line of `proc.spi.levels.reference`) but `sense.spi.sclk.abs_max` is 2.1V: it must not exceed 2.1V
+   --> main.nsm:16:5
+   |
+16 |     .sense: Zsense
+   |     ^^^^^^^^^^^^^^
+error: net `net-proc.spi.mosi` reaches 3.465V above its ground `GND` (`proc.spi.mosi`, a line of `proc.spi.levels.reference`) but `sense.spi.mosi.abs_max` is 2.1V: it must not exceed 2.1V
+   --> main.nsm:16:5
+   |
+16 |     .sense: Zsense
+   |     ^^^^^^^^^^^^^^
+error: net `net-proc.spi.cs` reaches 3.465V above its ground `GND` (`proc.spi.cs`, a line of `proc.spi.levels.reference`) but `sense.spi.cs.abs_max` is 2.1V: it must not exceed 2.1V
+   --> main.nsm:16:5
+   |
+16 |     .sense: Zsense
+   |     ^^^^^^^^^^^^^^
+```
+
+A translator between the two supplies is a part with a bus on each side. The board joins the processor to its `a` side and the sensor to its `b` side, and neither message appears, because each side's levels are judged on its own rail:
+
+```nsm evaluate
+import src::zlevels::{Zproc, Zsense, Zshift}
+import std::sources::Rail
+
+board Translated {
+    .s3: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .s18: Rail {
+        .voltage &= 1.8V +/- 5%
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+    }
+    .proc: Zproc
+    .shift: Zshift
+    .sense: Zsense
+    .s3 ~ .proc.vdd
+    .s3 ~ .shift.vcca
+    .s18 ~ .shift.vccb
+    .s3 ~ .sense.vdd
+    .s18 ~ .sense.vddio
+    .proc.spi ~ .shift.a
+    .shift.b ~ .sense.spi
+}
+```
+
+A single-supply buffer used as a translator (`LevelTranslator`) states plain pins and thresholds and is judged by its own relations: a bus does not pass through it by role.
 
 ### Buses
 
@@ -7920,7 +8106,7 @@ board Forgetful {
 ```
 
 ```text
-Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:196), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
+Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:202), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
 ```
 
 A module that wraps a `PullUp` states the resistance itself or forwards it through a member of its own (`.pull.resistance &= .resistance`, with the wrapped member on the left: the solver works a value out from the right side towards the left). A board that forgets a forwarded member is told about the wrapper's member, which is the one it can state.
@@ -7982,6 +8168,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 |---|---|
 | `std::sources::Rail` | A DC rail: pins `pos` and `neg`, a `.voltage`, a `.current` (the draw), a `.peak` (the highest voltage, transients included) and a `.min_track` (the narrowest track of its nets). |
 | `std::parts::regulator::Buck` | What a buck converter IC says about itself: the switching node `sw` (a rail the IC supplies), the feedback pin `fb`, `vref`, `fsw`, the input range, `max_output_current`, `efficiency`, `min_inductance`, the optional `min_inductor_saturation` and `max_inductor_dcr`, and the capacitance asked for on each side. A concrete IC is a part with a `.buck: Buck` member (ADR 0025). |
+| `std::logic::Levels` | The logic levels of all the lines of a bus interface, the member `.levels` of `Uart`, `Spi`, `I2c` and `Swd`: the rail `.reference` and the four voltages `.vih`, `.vil`, `.voh` and `.vol` (ADR 0064). |
 | `std::logic::Logic` | A digital line `.line`, the `.reference` rail that defines its levels, and the levels `.vih`, `.vil`, `.voh` and `.vol` a part may state (ADR 0046). |
 | `std::bus::Uart` | Pins `tx`, `rx`, `rts`, `cts`, named by the device, and `.baud`. `~` between two joins `tx` to `rx` and `rts` to `cts`; two ends make a bus (`lines limit 2`). |
 | `std::bus::Spi` | Pins `sclk`, `mosi`, `miso`, `cs`, a `.role` (`SpiRole`) and a `.frequency`. One master on a bus, a `single` select for each slave, a slave's `miso` is required. |

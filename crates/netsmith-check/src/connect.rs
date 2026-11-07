@@ -330,6 +330,9 @@ impl Checker<'_> {
                     InstKind::Pin if join_pins && !(self.undescribed(x) && self.undescribed(y)) => {
                         self.union(x, y)
                     }
+                    // The levels of a bus interface are its part's own, and their reference
+                    // rail is that part's supply: joining them would join two supplies.
+                    InstKind::Interface if self.model.is_levels(x) => {}
                     InstKind::Interface => {
                         self.connect_interfaces(x, y, at, join_pins);
                     }

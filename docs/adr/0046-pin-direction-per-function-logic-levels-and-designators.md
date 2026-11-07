@@ -58,6 +58,8 @@ The first real part that states levels is `std::parts::logic::Sn74lvc1g04`, TI's
 
 Limits. The voltage of a net is not followed through anything but resistors, so a net that a plain output or an open-drain line drives is not evaluated; a level check does not know the load (the part states the load of its numbers in its comment); and a standard kind cannot be given other levels by a board, because it is one value (the limit of `.assembly`, ADR 0024).
 
+ADR 0064 extends the check to the pins of a bus interface: the same four voltages and the reference rail are the `Levels` of the interface (`std::logic::Levels`, the member `.levels` of `Uart`, `Spi`, `I2c` and `Swd`), and `levels.rs` finds the pin's levels through `Logic` or through `Levels`. Nothing else in this section changes.
+
 ## Left open
 
 A default that a board may replace, for the letters of a standard kind and for `.assembly` (one language choice for both). More parts with datasheet levels, and a catalog row for `Sn74lvc1g04` once an LCSC number has its evidence. Levels across a level shifter or a series resistor, and for open-drain lines. A fab package that was ordered before a change of letters keeps its old designators, as said under Designators.

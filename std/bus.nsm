@@ -8,8 +8,10 @@
 //! (`.spi.role &= SpiRole::Slave`); a part that states none is judged by the kinds in its pin
 //! table alone. The kind of each row in a part's table is still what its datasheet says (ADR
 //! 0016): the role judges the table and the nets, and invents no datasheet fact. Names are those
-//! of the device that has the bus.
+//! of the device that has the bus. Every bus but `Usb2` has `.levels`, the logic levels of its pins
+//! (`std::logic::Levels`): a part states them for the interface, as it states those of a `Logic`.
 
+import std::logic::Levels
 import std::parts::passive::Resistor
 import std::sources::Rail
 
@@ -26,6 +28,7 @@ interface Uart {
     .rx: Pin
     .rts: Pin
     .cts: Pin
+    .levels: Levels
     .baud: Frequency
 
     lines limit 2 {
@@ -61,6 +64,7 @@ interface Spi {
     .mosi: Pin
     .miso: Pin
     .cs: Pin
+    .levels: Levels
     .frequency: Frequency
 
     lines SpiRole::Master limit 1 {
@@ -95,6 +99,7 @@ interface I2c {
     .role: I2cRole
     .sda: Pin
     .scl: Pin
+    .levels: Levels
     .frequency: Frequency
 
     lines I2cRole::Controller {
@@ -125,6 +130,7 @@ interface Swd {
     .swclk: Pin
     .swo: Pin
     .reset: Pin
+    .levels: Levels
     .frequency: Frequency
 
     lines SwdRole::Probe limit 1 {
