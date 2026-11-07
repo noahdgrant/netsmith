@@ -531,6 +531,66 @@ fn a_bidirectional_row_where_the_role_gives_a_direction_is_advice_and_not_an_err
     );
 }
 
+// ---- a joined interface that states no role (the guideline of stage 5) ------------------
+
+fn unstated(c: &Checked) -> Vec<String> {
+    joined_without_role(&c.board("B").unwrap().model)
+        .into_iter()
+        .map(|(_, m)| m)
+        .collect()
+}
+
+#[test]
+fn a_joined_interface_that_states_no_role_is_advice_and_not_an_error() {
+    let src = board(
+        &[("cpu", "Zcpu"), ("old", "Zold")],
+        "    .cpu.spi ~ .old.spi\n",
+    );
+    let c = run(&src);
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(
+        unstated(&c),
+        [
+            "`old.spi` is joined to another end of a `Spi` bus and states no role, so the limit and the table of `old` are not judged: write `.spi.role &=` `SpiRole::Master` or `SpiRole::Slave`, as its datasheet says"
+        ]
+    );
+}
+
+#[test]
+fn two_joined_interfaces_that_state_no_role_are_each_advised() {
+    let src = board(&[("a", "Zold"), ("b", "Zold")], "    .a.spi ~ .b.spi\n");
+    let c = run(&src);
+    let found = unstated(&c);
+    assert_eq!(found.len(), 2, "{found:#?}");
+    assert!(found[0].starts_with("`a.spi` is joined"), "{found:#?}");
+    assert!(found[1].starts_with("`b.spi` is joined"), "{found:#?}");
+}
+
+#[test]
+fn an_interface_joined_pin_by_pin_is_joined_all_the_same() {
+    let src = board(
+        &[("cpu", "Zcpu"), ("old", "Zold")],
+        "    .cpu.spi.sclk ~ .old.spi.sclk\n",
+    );
+    assert_eq!(unstated(&run(&src)).len(), 1);
+}
+
+#[test]
+fn an_interface_alone_on_its_bus_a_bus_with_no_roles_and_a_stated_role_are_not_advised() {
+    // Alone: no net joins it to another end.
+    let c = run(&board(&[("old", "Zold")], ""));
+    assert!(unstated(&c).is_empty());
+    // A `Uart` has no roles to state.
+    let c = run(&good(&[]));
+    assert!(unstated(&c).is_empty(), "{:#?}", unstated(&c));
+    // Every end states its role.
+    let c = run(&board(
+        &[("cpu", "Zcpu"), ("flash", "Zflash")],
+        "    .cpu.spi ~ .flash.spi\n",
+    ));
+    assert!(unstated(&c).is_empty());
+}
+
 // ---- the role is not a value that a bus shares --------------------------------------
 
 #[test]

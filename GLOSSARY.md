@@ -238,7 +238,7 @@ What a pin is electrically, from a closed set: `power`, `input`, `output`, `bidi
 _Avoid_: Pin type, direction
 
 **Role**:
-A part's end of a bus: a variant of the bus's enum (`SpiRole::Slave`), stated with `&=` on the interface by the part or by the board (`.spi.role &= SpiRole::Slave`). The checker compares the part's pin table with the lines the role has, and counts the role against its `limit`. A part that states none is judged by the kinds of its table alone (ADR 0064). `~` between two interfaces does not equate it.
+A part's end of a bus: a variant of the bus's enum (`SpiRole::Slave`), stated with `&=` on the interface by the part or by the board (`.spi.role &= SpiRole::Slave`). The checker compares the part's pin table with the lines the role has, and counts the role against its `limit`. A part that states none is judged by the kinds of its table alone, and an interface of a bus with roles that is joined to another end and states none is a guideline finding, `bus role` (ADR 0064, ADR 0030). `~` between two interfaces does not equate it.
 _Avoid_: Mode, direction, master/slave (they are the variants of `SpiRole`, not the name of the construct)
 
 **Line**:

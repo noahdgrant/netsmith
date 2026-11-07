@@ -843,7 +843,10 @@ pub(crate) fn agrees(role: PinKind, row: PinKind) -> bool {
 
 /// Rule 10, the advice: a `bidirectional` row on a line whose role gives a plain direction is
 /// accepted, and the part is asked to say `output`, `input` or `tri_state` as its datasheet says.
-/// One finding for each such pin, with the part it is a pin of.
+/// One finding for each such pin, with the part it is a pin of. For a pin that carries the
+/// function of a peripheral that is an end of a bus, the function is the place to say it, and
+/// only a function that states no kind of its own is advised (one that states its kind is
+/// judged where the peripheral is defined).
 pub fn bidirectional_rows(model: &Model) -> Vec<(InstId, String)> {
     let mut pins: Vec<InstId> = model
         .instances()
@@ -858,10 +861,25 @@ pub fn bidirectional_rows(model: &Model) -> Vec<(InstId, String)> {
         let Some(bp) = model.bus_pin(pin) else {
             continue;
         };
-        // The function of a peripheral states its own kind, and its definition is judged.
-        if bp.role.is_none() || matches!(bp.end, End::Periph(..)) {
+        if bp.role.is_none() {
             continue;
         }
+        // The function a peripheral's end names, when the pin is one.
+        let function = match bp.end {
+            End::Iface(_) => None,
+            End::Periph(part, _) => {
+                let Some((_, f)) = model
+                    .function_of(pin)
+                    .and_then(|name| model.peripheral_of(part, &name))
+                else {
+                    continue;
+                };
+                if f.kind.is_some() {
+                    continue;
+                }
+                Some(f.name.clone())
+            }
+        };
         let Some((line, role, _)) = model.line_row(&bp) else {
             continue;
         };
@@ -876,21 +894,80 @@ pub fn bidirectional_rows(model: &Model) -> Vec<(InstId, String)> {
         let Some(part) = model.owner_of(pin) else {
             continue;
         };
-        let what = match line.kind {
-            PinKind::Input => "an input: write `input`",
-            PinKind::Output => "an output: write `output` or `tri_state`",
-            _ => "a `tri_state` output: write `tri_state`",
+        let what = match (&function, line.kind) {
+            (None, PinKind::Input) => "an input: write `input`".to_string(),
+            (None, PinKind::Output) => "an output: write `output` or `tri_state`".to_string(),
+            (None, _) => "a `tri_state` output: write `tri_state`".to_string(),
+            (Some(f), PinKind::Input) => format!("an input: write `{f}:input`"),
+            (Some(f), PinKind::Output) => {
+                format!("an output: write `{f}:output` or `{f}:tri_state`")
+            }
+            (Some(f), _) => format!("a `tri_state` output: write `{f}:tri_state`"),
+        };
+        let table = match &function {
+            None => format!("in the table of `{}`", model.instance(part).type_name),
+            Some(f) => format!(
+                "in the table of `{}`, and its function `{f}` states no kind of its own",
+                model.instance(part).type_name
+            ),
         };
         out.push((
             part,
             format!(
-                "`{}` is `bidirectional` in the table of `{}`, and `{role}` makes `{}` {what}, as the datasheet says, unless the datasheet says the pin also {}",
+                "`{}` is `bidirectional` {table}, and `{role}` makes `{}` {what}, as the datasheet says, unless the datasheet says the pin also {}",
                 model.path_of(pin),
-                model.instance(part).type_name,
                 bp.line,
                 if line.kind == PinKind::Input { "drives" } else { "receives" },
             ),
         ));
+    }
+    out
+}
+
+/// Stage 5, the advice: an interface that is joined to another of its bus and states no role.
+/// The limit and the table of it are not judged (rule 7), so the part is asked to say which end
+/// it is. A bus that has no roles (`Uart`) has none to state and is not judged, an interface
+/// that no net joins to another of its bus is not, and a peripheral states its role in its
+/// definition. One finding for each such interface, with the part that has it.
+pub fn joined_without_role(model: &Model) -> Vec<(InstId, String)> {
+    let per_net = collect(model);
+    let mut out = Vec::new();
+    for ends in components(model, &per_net) {
+        let ends: Vec<InstId> = ends
+            .into_iter()
+            .filter_map(|e| match e {
+                End::Iface(i) => Some(i),
+                End::Periph(..) => None,
+            })
+            .collect();
+        let Some((_, bus)) = ends.first().and_then(|&e| model.bus_def_of(e)) else {
+            continue;
+        };
+        let Some(roles) = &bus.role_enum else {
+            continue;
+        };
+        if ends.len() < 2 {
+            continue;
+        }
+        let names: Vec<String> = bus
+            .tables
+            .iter()
+            .filter_map(|t| t.role.as_ref().map(|v| format!("`{roles}::{v}`")))
+            .collect();
+        for e in ends.iter().copied().filter(|&e| model.role_of(e).is_none()) {
+            let owner = model.owner_of(e).unwrap_or(e);
+            out.push((
+                owner,
+                format!(
+                    "`{}` is joined to another end of a `{}` bus and states no role, so the limit and the table of `{}` are not judged: write `.{}.role &=` {}, as its datasheet says",
+                    model.path_of(e),
+                    bus.name,
+                    model.path_of(owner),
+                    model.instance(e).name,
+                    names.join(" or ")
+                ),
+            ));
+        }
     }
     out
 }
