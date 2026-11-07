@@ -95,10 +95,10 @@ impl Solver<'_> {
     /// Whether propagation finds nothing wrong with the model as it is. A model that already
     /// contradicts itself would "show" every region empty, and is reported on its own.
     fn consistent(&mut self) -> bool {
-        let saved = self.model.clone();
+        let saved = self.model.snapshot();
         let derived = self.derived.clone();
         let clean = self.propagate().is_empty();
-        self.model = saved;
+        self.model.restore(&saved);
         self.derived = derived;
         clean
     }
@@ -157,7 +157,7 @@ impl Solver<'_> {
     /// Hold `cut` to `range` on a copy of the model, propagate, and read what its equation
     /// then gives.
     fn trial(&mut self, cut: FieldId, rel: &Relation, range: Quantity) -> Trial {
-        let saved = self.model.clone();
+        let saved = self.model.snapshot();
         let derived = self.derived.clone();
         self.model.set_domain(cut, Domain::Quantity(range));
         let conflicts = self.propagate();
@@ -169,7 +169,7 @@ impl Solver<'_> {
                 _ => Trial::Unknown,
             }
         };
-        self.model = saved;
+        self.model.restore(&saved);
         self.derived = derived;
         out
     }
