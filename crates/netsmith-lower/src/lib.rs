@@ -738,8 +738,8 @@ pub struct Lowered {
     /// What the design does against a guideline (ADR 0036): findings that a person decides
     /// about, which the project may make blocking (`guidelines = "error"`).
     pub guidelines: Vec<guidelines::Guideline>,
-    /// Things worth knowing that did not stop the lowering: the nets whose tracks were not
-    /// sized from their current because it is not known (ADR 0036).
+    /// Things worth knowing that did not stop the lowering: the nets with a current that is
+    /// not known, whose tracks are therefore a lower bound (ADR 0036).
     pub notes: Vec<String>,
     /// Where the design states each requirement on a position (ADR 0045), for a caller that
     /// has the source files to put in `design.features.constraints[..].source`.

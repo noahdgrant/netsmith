@@ -1,5 +1,5 @@
 ---
-status: accepted (user review 2026-11-02); amended by the section "Amendment: the router sizes every net" (PROVISIONAL)
+status: accepted (user review 2026-11-02); amended by the sections "Amendment: the router sizes every net", "Amendment 2" and "Amendment 3: a net with a current that is not known is sized for the known part" (all PROVISIONAL; amendment 3 awaits the owner's review)
 ---
 
 # Track width against current
@@ -28,7 +28,7 @@ IPC-2221 is the formula in every track width calculator and is easy to state and
 
 ## Limits
 
-- The current of a net is the largest single current on it in the original decision; the amendment of 2026-11-04 below replaces that with the sum.
+- The current of a net is the largest single current on it in the original decision; the amendment of 2026-11-04 below replaces that with the sum. Where a current is not known, amendment 3 sizes the net for the sum of the known ones.
 - A net is checked at one width, the net's. The router may draw shorter runs narrower where there is no room (a neck-down between pads, a stub at a pad's width), and the pad's own copper carries the last millimetres. Vias are not checked.
 - The router's masks reach as far as the width of the track needs: a track wider than a via once reached further than the masks looked, which put 0.6 and 0.9 mm rails too close to other copper (shorts included). Every line the router returns has also been measured as drawn, against the other nets' pads, tracks, vias, holes and the board edge; a track nearer than the rules allow is drawn at the process's least instead, and a line that still is too near is left unrouted.
 - Nets that are planes or pours are not checked; a pour's real width at a bottleneck is not measured.
@@ -68,6 +68,20 @@ Issue #4 was reopened with the owner's direction (2026-11-04): analyse the curre
 **Choices made without the owner, to be reviewed.** The larger of the two sums rather than the load side alone; a module's port left out only when something inside it is on the net; the pessimism at a regulator's ground left as it is; no quiescent current added. The IPC constants are as in the first amendment (provisional).
 
 **Examples.** None of the examples in `examples/` changes its widths or notes: their currents are milliamps, at the process's least track.
+
+## Amendment 3: a net with a current that is not known is sized for the known part (PROVISIONAL, awaiting the owner's review)
+
+Found on a real 12 V automotive board: a net `+3V8` carried a modem load of 1.2 A that was stated and a divider resistor whose current the solver could not work out (the solver leaves the currents of a net with two or more unknown ones unsolved, issue #18). The first and second amendments left such a net at the process's least track, 0.09 mm, and then warned that 0.09 mm carries 417 mA against the 1.2 A that was known. The tool drew a track it knew to be too narrow, and warned about it, because it would not size from a partial sum.
+
+**The change.** The currents that are known are a lower bound on the net's current: loads only add up, so a current that is not known can make the sum larger and never smaller (it holds for the larger of the two sums too, since each side only gains terms). Drawing the net at least as wide as the known sum needs is therefore not a guess. When some currents on a net are not known and no rail states a `.min_track`, lowering gives the net the width IPC-2221 needs for the sum of the known currents, rounded up to 0.01 mm, whenever that is more than the process's least; otherwise it stays at the least. A net where every current is known behaves as before. This replaces the paragraphs "A current that is not known" of the first amendment and "A current that is not known stays unknown" of the second, which refused to use the known part.
+
+**The note stays, reworded.** `build` and `fab-notes.txt` still print a note, per net with a missing current, naming the net and the carriers whose current is missing, and now say the width is a lower bound: `... so the tracks of net `GND` are 0.39 mm, a lower bound: sized for the 1.2 A that is known, not for the whole current; state that current, or give a rail on the net a `.min_track``, or `are the process's least, 0.1 mm, a lower bound: no current on the net is known` (or `it carries the 5.01 mA that is known` when the known current needs less than the least). It is still a note and not a guideline: it does not change with `--strict`, because the person has nothing to correct in a finding the tool cannot make beyond stating the current. A rail that states a `.min_track` on the net has decided the width and gets no note, as before.
+
+**The guideline fires only against a stated width.** A net the tool sized, or left at the least that the known current does not exceed, is never too narrow for what is known, so it has no finding. A width the board stated (`.min_track`) that is below what the known current needs is still a finding, as for any net, worded `carries at least N A` (and not `up to`) with the sentence `the current of ... is not known, so it may be more`, because the sum is a lower bound there.
+
+**What it costs.** The lower bound can be far from the truth and the note says so; the width is the least the net can have, not the width it needs. A board with a missing current draws wider nets than before, which can make a tight board harder to route, as for any sized net. The alternative that was rejected is the choice of the earlier amendments, to leave the net at the least and say so: it produced a known-too-narrow track and a warning the person could only silence by stating a width, which is the failure issue #4 set out to remove. Also considered and rejected: sizing for a guess at the unknown current (a guess is as likely too narrow as too wide, the reason of the first amendment), and a finding that fails the build.
+
+**Left open.** Whether a net whose rail states a `.min_track` should also get the note when a current on it is not known (it does not today; the guideline names the missing carriers instead). Whether the note should be a guideline that `--strict` can turn into an error. Both are the owner's. The code is `plan_tracks` in `crates/netsmith-lower/src/guidelines.rs`; the tests are in `crates/netsmith-lower/tests/guidelines.rs`.
 
 ## Consequences
 

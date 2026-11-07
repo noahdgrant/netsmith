@@ -253,7 +253,7 @@ fn a_note_is_the_solvers_or_lowerings_and_says_its_board_and_instance() {
     let lowering = analysis
         .problems
         .iter()
-        .find(|p| p.message.contains("tracks of net `3V3` are not sized"))
+        .find(|p| p.message.contains("tracks of net `3V3` are"))
         .unwrap_or_else(|| panic!("{:?}", analysis.problems));
     assert_eq!(lowering.stage, Some(ProblemStage::Lower));
     assert_eq!(lowering.board.as_deref(), Some("Notes"));

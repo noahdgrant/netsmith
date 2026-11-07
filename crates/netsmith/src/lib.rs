@@ -1095,7 +1095,7 @@ fn export(
     sources: &Sources,
     libraries: Option<&Libraries>,
 ) -> Result<Built, Vec<Problem>> {
-    // The nets whose tracks were not sized from their current (ADR 0048).
+    // The nets with a current that is not known, whose tracks are a lower bound (ADR 0036).
     notes.extend(lowered.notes.iter().cloned());
     let lowering_notes = lowered.notes.len();
     let label = match system {

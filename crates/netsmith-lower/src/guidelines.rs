@@ -8,7 +8,7 @@
 //!
 //! The same module sizes the tracks: a net whose current the solver has worked out and
 //! that no rail gives a `.min_track` is drawn at the width IPC-2221 needs for that current
-//! (ADR 0036), and a net whose current is not known is named in a note instead.
+//! (ADR 0036), and a net whose current is not known is sized for the part that is known and named in a note.
 
 use netsmith_check::{Domain, InstId, InstKind, Member, Model};
 use netsmith_core::{Features, OUNCE_OF_COPPER, Process};
@@ -225,14 +225,14 @@ impl<'a> Flow<'a> {
 /// What the track check works out for a board (ADR 0036, ADR 0036).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TrackPlan {
-    /// The width in mm that IPC-2221 needs, by net, for each net whose current is known,
+    /// The width in mm that IPC-2221 needs, by net, for the current that is known on each net
     /// that no rail gave a `.min_track` and that needs more than the process's least track.
     /// The router draws the net at this width. Sorted by net name.
     pub widths: Vec<(String, f64)>,
-    /// The nets drawn narrower than IPC-2221 needs: a rail's `.min_track` that is too
-    /// narrow, or a net whose current is not fully known.
+    /// The nets drawn narrower than IPC-2221 needs for the current that is known: a rail's
+    /// `.min_track` that is too narrow.
     pub findings: Vec<Guideline>,
-    /// The nets that were not sized from their current because it is not known, by name.
+    /// The nets with a current that is not known, whose tracks are a lower bound, by name.
     pub notes: Vec<String>,
 }
 
@@ -254,9 +254,10 @@ pub struct TrackPlan {
 /// Its tracks are as wide as the rails on
 /// it ask (`.min_track`, the widest bottom, in `features.net_widths`) and never narrower than
 /// the process's least. A net no rail states a width for, whose every current is known, is
-/// given the width IPC-2221 needs (ADR 0036) in [`TrackPlan::widths`]; a net where some
-/// current on it is not known is not sized (a guess would be as likely too narrow as too
-/// wide) and is named in [`TrackPlan::notes`]. The router draws on the outer layers only,
+/// given the width IPC-2221 needs (ADR 0036) in [`TrackPlan::widths`]. Where some current on
+/// the net is not known, the known ones are a lower bound (loads only add up) and the net is
+/// given the width they need, never narrower than the process's least, and is named in
+/// [`TrackPlan::notes`] (ADR 0036, amendment 3). The router draws on the outer layers only,
 /// so the outer-layer constant and the outer copper are used. A net that is a plane or an
 /// outer pour is not checked: its copper is an area and not a track.
 pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> TrackPlan {
@@ -401,39 +402,49 @@ pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> Tra
             .iter()
             .find(|(n, _)| *n == net.name)
             .map(|(_, w)| *w);
-        // A current that is not known may be larger than the ones that are: do not size
-        // the net from the known ones, and say so (the check below still holds the net to
-        // what is known).
-        if !unknown.is_empty() && stated.is_none() && supplied[index] {
-            plan.notes
-                .push(unknown_note(&net.name, &unknown, process.min_track));
-        }
         let (total, terms) = flow.worst();
+        // The currents that are known are a lower bound on the net's current: loads only add
+        // up, so a current that is not known can make the sum larger and never smaller. A net
+        // is drawn at least as wide as the known part needs, which is no guess (ADR 0036,
+        // amendment 3).
+        let needs = if total > 0.0 {
+            ipc2221_width(total, copper, rise, layer)
+        } else {
+            0.0
+        };
+        // Rounded up to the 0.01 mm that a width is written in, so that asking for what the
+        // message says passes.
+        let asks = (needs * 100.0 - 1e-9).ceil() / 100.0;
+        let sized = stated.is_none() && asks > process.min_track;
+        // A current that is not known may be larger than the ones that are: say so, with the
+        // width the net got. A rail that states a `.min_track` has decided the width.
+        if !unknown.is_empty() && stated.is_none() && supplied[index] {
+            let width = if sized { asks } else { process.min_track };
+            let known = (total > 0.0).then_some(total);
+            plan.notes
+                .push(unknown_note(&net.name, &unknown, width, known, sized));
+        }
         let Some(&(worst, _)) = terms.first() else {
             continue;
         };
         if total <= 0.0 {
             continue;
         }
-        let needs = ipc2221_width(total, copper, rise, layer);
-        // Rounded up to the 0.01 mm that a width is written in, so that asking for what the
-        // message says passes.
-        let asks = (needs * 100.0 - 1e-9).ceil() / 100.0;
-        if stated.is_none() && unknown.is_empty() && asks > process.min_track {
+        if sized {
             plan.widths.push((net.name.clone(), asks));
             continue;
         }
-        let width = stated.map_or(process.min_track, |w| w.max(process.min_track));
+        // Only a width the board stated can be below what the net needs here: a net no rail
+        // states a width for is at least as wide as the known current needs, or at the
+        // process's least, which that current does not exceed.
+        let Some(stated) = stated else {
+            continue;
+        };
+        let width = stated.max(process.min_track);
         let carries = ipc2221_current(width, copper, rise, layer);
         if width >= needs {
             continue;
         }
-        let source = match stated {
-            Some(_) => "a rail's `.min_track`",
-            None => {
-                "the process's least, because no rail on it states a `.min_track` and a current on it is not known"
-            }
-        };
         let what = match terms.as_slice() {
             [(c, hi)] => match c.range {
                 Some((lo, _)) if lo >= 0.0 && lo != *hi => {
@@ -457,10 +468,21 @@ pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> Tra
                 )
             }
         };
+        let (carries_word, what) = if unknown.is_empty() {
+            ("up to", what)
+        } else {
+            (
+                "at least",
+                format!(
+                    "{what}; the current of {} is not known, so it may be more",
+                    unknown.join(", ")
+                ),
+            )
+        };
         plan.findings.push(Guideline {
             rule: "IPC-2221",
             message: format!(
-                "net `{}` carries up to {} ({what}) but its tracks are {} mm wide ({source}), in {} oz ({} mm) {} copper; at a temperature rise of {} K{} that width carries {} and IPC-2221 needs {} mm: give a rail on the net `.min_track &= {}mm..1m`, or allow a higher `.process.max_temperature_rise`",
+                "net `{}` carries {carries_word} {} ({what}) but its tracks are {} mm wide (a rail's `.min_track`), in {} oz ({} mm) {} copper; at a temperature rise of {} K{} that width carries {} and IPC-2221 needs {} mm: give a rail on the net `.min_track &= {}mm..1m`, or allow a higher `.process.max_temperature_rise`",
                 net.name,
                 amps(total),
                 mm(width),
@@ -480,13 +502,36 @@ pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> Tra
     plan
 }
 
-/// The note for a net whose tracks were not sized from its current. The carriers come first
-/// so that the editor, which puts a note at the first path it finds in the text, puts it at
-/// one of them and not at a generated net name.
-fn unknown_note(net: &str, unknown: &[&str], least: f64) -> String {
+/// The note for a net with a current that is not known. The tracks are a lower bound: they
+/// are drawn for the part of the current that is known (`known`, in amperes, when there is
+/// any) and are at least the process's least `least`; `sized` says the known current is what
+/// decided `width`. The carriers come first so that the editor, which puts a note at the first
+/// path it finds in the text, puts it at one of them and not at a generated net name.
+fn unknown_note(
+    net: &str,
+    unknown: &[&str],
+    width: f64,
+    known: Option<f64>,
+    sized: bool,
+) -> String {
+    let bound = match (known, sized) {
+        (Some(known), true) => format!(
+            "{} mm, a lower bound: sized for the {} that is known, not for the whole current",
+            mm(width),
+            amps(known)
+        ),
+        (Some(known), false) => format!(
+            "the process's least, {} mm, a lower bound: it carries the {} that is known, not the whole current",
+            mm(width),
+            amps(known)
+        ),
+        (None, _) => format!(
+            "the process's least, {} mm, a lower bound: no current on the net is known",
+            mm(width)
+        ),
+    };
     format!(
-        "the current of {} is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `{net}` are not sized from their current and are the process's least, {} mm; state that current, or give a rail on the net a `.min_track`",
+        "the current of {} is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `{net}` are {bound}; state that current, or give a rail on the net a `.min_track`",
         unknown.join(", "),
-        mm(least),
     )
 }
