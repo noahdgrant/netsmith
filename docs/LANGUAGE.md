@@ -787,9 +787,43 @@ A pick is limited when at least one of these holds, and the checks it names are 
 - the value, or a member it is held to or a field a `~` joins it to, has a value, a range or a tolerance: a `&=`, a `?=` default that applied, or a range that a member carries in. Any range counts, however wide;
 - a bound (`>=` or `<=`) has the value, or such a member, alone on one side. A bound on a member that a part is held to counts once it reaches the part (see the end of "Catalogs and how the solver picks parts");
 - a check that the pick decides: a bound, or an equation or `&=` whose left side has a range of its own, that names a value worked out from the pick (an LED's stated current in `.led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance`);
-- a current stated on a net that a value worked out from the pick is a term of (a budget, ADR 0038).
+- a current stated on a net that a value worked out from the pick is a term of (a budget, ADR 0038), when the pick changes whether the budget holds: a load that the module states on the same supply, and that the pick does not feed, is not a limit on the pick.
 
 What does not limit a pick: a bound on a rating (`.r.max_power >= 0.25W`, a `max_voltage`, the package); a relation that a part's own definition states (a resistor's `drop * current <= max_power`, a diode's `current >= 0mA`); and the catalog being filtered, because a filter on the package says nothing about the value. A bound that waits for a value that nothing sets is not judged, so it does not limit the pick, and the finding is made unless an open circle finding already names that check (one finding for one cause). A part with no row for its requirements is reported by its own message and not by this one.
+
+A check that holds whatever the size of the values is, does not limit their size. The output of a divider, `.out == .supply.voltage * .bottom.resistance / .total_resistance` with `.out >= 1.5V` and `.out <= 1.8V`, fixes the ratio of the two resistors and says nothing of whether they are 330 ohm or 330 kohm; if both are unstated, both are unconstrained in size. The solver tells it by scaling the unlimited picks together by one factor and expanding each check through the equations that define what it reads: a check whose two sides are unchanged by the scaling limits a ratio. The finding says so. A range on one resistor, on the total, or a bound on a current that the divider draws (`.draw <= 200uA`) limits the size, and ends it. What the solver cannot expand (a value worked out by a join, by a balance of currents or by two equations) it does not call a ratio, so the finding is then missed and never made wrongly.
+
+```nsm solve warns
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+module Divider {
+    .supply: Rail
+    .total_resistance: Resistance
+    .top: Resistor
+    .bottom: Resistor
+    .total_resistance == .top.resistance + .bottom.resistance
+    .supply.pos ~> .top ~> .bottom ~> .supply.neg
+    .out: Voltage
+    .out == .supply.voltage * .bottom.resistance / .total_resistance
+    .out >= 1.5V
+    .out <= 1.8V
+}
+
+board RatioOnly {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .divider: Divider
+    .divider.supply ~ .supply
+}
+```
+
+```text
+RatioOnly: unconstrained pick guideline: `divider.top` and `divider.bottom` (Resistor) were chosen with nothing limiting their resistance in size, so the solver took the first row that fits, 330Ω 1% 0402 C25104 for each; their resistance is limited as a ratio, not in size, by `.out >= 1.5V` and `.out <= 1.8V` (main.nsm:13 and 14), which hold whatever the size is: state one of them, `.divider.top.resistance &= 4.7kohm +/- 5%`, or bound a value that changes with the size, not only with the ratio (a current or a voltage the design checks), or say that any value will do, `.divider.top.resistance &= 10kohm..100kohm`
+```
 
 An **unstated value** is a value declared in a module or a board that a check reads, which was not evaluated because nothing states the value or works it out. It is for what is not a pick: a voltage that a board states for a check, an enum, a text.
 
@@ -2636,6 +2670,53 @@ error: no `resistor` candidate satisfies `fixed.r`: the closest of the 219 that 
    |     ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
+A value that two equations state is held to a window that the board stated, whatever range the part's own member has (ADR 0065). The frequency of an oscillator is worked out from its timing resistor, and the board states the window it wants; the module links the two with `.osc.fsw == .fsw`. Both lines are equations on `.osc.fsw`, and neither is its allowance: a stated range on `.fsw`, which no pick changes, is, and what the circuit works out must lie inside it. A range that the oscillator's own member `.rt_resistance` has makes the frequency a range before any resistor is picked, and the window is then compared with the pick as it is without that line: a resistor outside the window is refused where it is picked, and a stated resistor outside it fails the build with the numbers. Two values that the picks change and that nothing bounds only have to share a value.
+
+```nsm fails
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+module Oscillator {
+    .rt_resistance: Resistance
+    .rt_resistance &= 10kohm..230kohm
+    .fsw_nominal: Frequency
+    .fsw_nominal == 46.5MHz * 1kohm / (.rt_resistance + 5.2kohm)
+    .fsw_tolerance: Number
+    .fsw_tolerance &= 0.925..1.075
+    .fsw: Frequency
+    .fsw == .fsw_nominal * .fsw_tolerance
+}
+
+module Timer {
+    .fsw: Frequency
+    .supply: Rail
+    .osc: Oscillator
+    .timing: Resistor { .resistance &= 15kohm +/- 1% }
+    .supply.pos ~> .timing ~> .supply.neg
+    .osc.rt_resistance == .timing.resistance
+    .osc.fsw == .fsw
+}
+
+board Probe {
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .timer: Timer
+    .timer.supply ~ .supply
+    .timer.fsw &= 0.9MHz..1.1MHz
+}
+```
+
+```text
+error: `timer.osc.fsw` must stay within 900kHz..1.1MHz, but (timer.osc.fsw_nominal * timer.osc.fsw_tolerance) works out to 2.113MHz..2.494MHz
+   --> main.nsm:12:5
+   |
+12 |     .fsw == .fsw_nominal * .fsw_tolerance
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
 A part is picked after the parts whose picks decide what it needs. A capacitor behind a diode that the solver picks has the bias of the rail it sits on, which is the supply's voltage less the diode's forward voltage, and that is known only once the diode is chosen. The solver therefore chooses the diode first, and the board below builds with its parts named in either order. A part that needs a value that no pick can set is not delayed: it fails as it would alone, with a message that says which field to state. Ties go by path, and the same inputs give the same board.
 
 ```nsm evaluate
@@ -2664,6 +2745,8 @@ board Behind {
     .load.pos ~> .a_cap ~> .load.neg
 }
 ```
+
+Two groups of parts that read each other's values through a bound (a window that the tap of one divider must stay inside, set by another divider's output) are searched one after the other, in path order, and the one that comes first is picked while the bound waits for the other. Its first fit can leave nothing for the other, and the board would then build or fail by what its instances are called. When a group fails and an earlier group shares a bound with it, the solver searches them again, the failed one first, so that the others are judged by the bound against its picks. If that does not find parts for all of them the first failure and its message stand. Parts that were found this way are the parts that the other order of the names gives (ADR 0065).
 
 The JLCPCB catalogs hold 1% resistors (0402 E24 from 10 ohm to 1 Mohm, Basic 0603, 250 mW 0805), Basic 0402 and 0603 ceramic capacitors, LEDs in five colors, one fixed-output linear regulator, and a few Schottky, Zener and TVS diodes, ferrite beads, power inductors, resettable fuses, N-channel MOSFETs and crystals (ADR 0025). A resistor's rating, `max_power`, is a column: a row with an empty cell is never offered, because the resistor's own check uses it. An empty cell is no obstacle for a column the design never mentions (`temperature_coefficient` is empty in every standard row), and a design that bounds the column is offered only the rows that state it. `data/jlcpcb/README.md` lists every row and its source.
 
@@ -6445,6 +6528,7 @@ board Adjustable {
     .divider: FeedbackDivider {
         .vref &= 1.0V +/- 1%
         .vout &= 3.8V +/- 3%
+        .current <= 1mA
     }
     .out: Rail {
         .pos.net &= "VOUT"
@@ -6456,7 +6540,7 @@ board Adjustable {
 }
 ```
 
-The solver picks 6.2 kohm over 2.2 kohm, whose worst-case output is 3.686 V to 3.914 V. The reference and the two resistors are each good to 1%, which already moves the output by about 2.5%, so asking for 2% either way cannot be met. The message names the closest pair and the range its output works out to:
+The output fixes the ratio of the two resistors and not their size, so a board also says how much the divider may draw (`.current <= 1mA`); without it the resistors are unconstrained in size and the build says so (see "A value that nobody stated"). The solver picks 6.2 kohm over 2.2 kohm, whose worst-case output is 3.686 V to 3.914 V. The reference and the two resistors are each good to 1%, which already moves the output by about 2.5%, so asking for 2% either way cannot be met. The message names the closest pair and the range its output works out to:
 
 ```nsm fails
 import std::parts::regulator::FeedbackDivider
