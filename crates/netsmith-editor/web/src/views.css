@@ -444,11 +444,11 @@ button.chip.pin-chip.cur, button.chip.cur { border-color: var(--sel-line); backg
 .icon.sev-icon.note { color: var(--info); }
 .sev-mark { flex: none; display: inline-flex; align-items: center; gap: 0.25rem; font-size: var(--fs-xs); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
 .sev-mark.error .n { color: var(--danger-text); } .sev-mark.warning .n { color: var(--warning-text); } .sev-mark.note .n { color: var(--info-text); }
-.sev-mark.badge { min-width: 1.25rem; height: 1.125rem; padding: 0 0.375rem 0 0.3125rem; justify-content: center; gap: 0.1875rem; border-radius: var(--r-pill); }
-.sev-mark.badge.error { background: var(--danger-bg); box-shadow: inset 0 0 0 1px var(--danger-line); }
-.sev-mark.badge.warning { background: var(--warning-bg); box-shadow: inset 0 0 0 1px var(--warning-line); }
-.sev-mark.badge.note { background: var(--info-bg); box-shadow: inset 0 0 0 1px var(--info-line); }
-.sev-mark.badge .icon { --icon-k: 1; }
+.sev-mark.sev-badge { min-width: 1.25rem; height: 1.125rem; padding: 0 0.4375rem 0 0.375rem; justify-content: center; gap: 0.1875rem; border-radius: var(--r-pill); }
+.sev-mark.sev-badge.error { background: var(--danger-bg); box-shadow: inset 0 0 0 1px var(--danger-line); }
+.sev-mark.sev-badge.warning { background: var(--warning-bg); box-shadow: inset 0 0 0 1px var(--warning-line); }
+.sev-mark.sev-badge.note { background: var(--info-bg); box-shadow: inset 0 0 0 1px var(--info-line); }
+.sev-mark.sev-badge .icon { --icon-k: 1; }
 .tab-problems { margin-right: 0.125rem; }
 .ft-resizer::after { width: 2px; left: 0.1875rem; border-radius: 2px; }
 .ft-legend { top: 0.5rem; }

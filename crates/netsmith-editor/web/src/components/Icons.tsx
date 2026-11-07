@@ -415,7 +415,7 @@ export function SeverityMark({
 }) {
   const name = `${severityWords(counts, true)}${where ? ` ${where}` : ''}`;
   return (
-    <span class={`sev-mark ${severity} ${badge ? 'badge' : ''} ${cls ?? ''}`} role="img" aria-label={name} title={name} data-severity={severity}>
+    <span class={`sev-mark ${severity} ${badge ? 'sev-badge' : ''} ${cls ?? ''}`} role="img" aria-label={name} title={name} data-severity={severity}>
       <SeverityIcon severity={severity} size={size} />
       {count !== undefined && <span class="n">{count}</span>}
     </span>
