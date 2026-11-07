@@ -350,7 +350,7 @@ export function Schematic() {
     if (overview) setPainted((n) => n + 1);
   }, [drawing, hover, selNet, selBus, selModule, marked.join(','), picked.join(','), netsOfPart, navPin, current, overview]);
 
-  // Which parts the layout file has an entry for, which can be dragged, and which is the sheet's anchor (it cannot: its offset moves
+  // Which parts the layout file has an entry for, which can be dragged, and which is the sheet's reference part (it cannot: its offset moves
   // the whole sheet and no distance, so the drawing says why).
   useLayoutEffect(() => {
     const svg = holder.current?.querySelector('svg.schematic');
@@ -361,15 +361,17 @@ export function Schematic() {
       const f = ctx?.facts.get(g.getAttribute('data-ref')!);
       const state = ctx && f ? entryState(ctx, f) : { has: false, refused: false };
       const hint = hintRectOf(g);
-      hint?.classList.toggle('on', state.has);
+      // Not `on`: the paint of picks and hovers clears every `.on` of the drawing.
+      hint?.classList.toggle('hinted', state.has);
       hint?.classList.toggle('refused', state.refused);
       const refusal = ctx && f ? dragRefusal(ctx, f.ref) : 'not drawn';
-      g.classList.toggle('movable', refusal === null);
-      g.classList.toggle('anchor', !!f?.anchor);
+      // An attribute, not a class: a part's class is its state (picked, lit, marked) and nothing else.
+      if (refusal === null) g.setAttribute('data-movable', '');
+      else g.removeAttribute('data-movable');
       const title = g.querySelector(':scope > title');
-      if (title && f?.anchor && !title.hasAttribute('data-anchor-note')) {
-        title.textContent = `${title.textContent ?? ''}\nThe sheet's anchor: drag a neighbour.`;
-        title.setAttribute('data-anchor-note', '');
+      if (title && f?.reference && !title.hasAttribute('data-reference-note')) {
+        title.textContent = `${title.textContent ?? ''}\nThe sheet's reference part: drag a neighbour.`;
+        title.setAttribute('data-reference-note', '');
       }
     }
   }, [drawing, hintData, current, refPaths, definition]);
@@ -598,7 +600,7 @@ export function Schematic() {
     const f = ctx.facts.get(ref);
     const z = zoom.current;
     if (!f || !z || !drawing) return;
-    const fixed = [...ctx.facts.values()].find((o) => o.slot === f.slot && o.ref !== ref && (o.anchor || o.address.sheet === f.address.sheet));
+    const fixed = [...ctx.facts.values()].find((o) => o.slot === f.slot && o.ref !== ref && (o.reference || o.address.sheet === f.address.sheet));
     const box = fixed && drawing.index.partBox.get(fixed.ref);
     steady.current = fixed && box ? { view: z.view(), ref: fixed.ref, box } : null;
   };
@@ -622,7 +624,7 @@ export function Schematic() {
     let drop: (r: { sx: number; sy: number; pin: boolean }) => void;
     if (part) {
       const ref = part.getAttribute('data-ref')!;
-      // The sheet's anchor, or a file with a fault: the press pans, as it did before.
+      // The sheet's reference part, or a file with a fault: the press pans, as it did before.
       if (dragRefusal(ctx, ref)) return;
       moving = [...svg.querySelectorAll(`g.part[data-ref="${CSS.escape(ref)}"]`)];
       label = ref;

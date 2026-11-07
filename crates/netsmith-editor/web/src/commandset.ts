@@ -68,6 +68,9 @@ const idle = () => job.value === null;
 // drawing by `keyFrom`, so a button or a list that has the focus keeps them. The palette and the
 // buttons run a command whatever has the focus.
 
+/** The cheat sheet's group of the keys that arrange the drawing by hand (ADR 0061), apart from the Schematic's own: one group of both would not fit the sheet's window, where the Schematic group is scrolled to. */
+const LAYOUT_GROUP = 'Schematic layout';
+
 const schematicHere = () => focusedSection() === 'schematic' && schematicActions.current !== null;
 /** The drawing has the key: it was pressed on the drawing or on nothing (the page). A button or a
  * list that has the focus keeps Tab, Enter and the arrows. */
@@ -98,7 +101,7 @@ const schematicCommands = (): Command[] => {
   const nudge = (id: string, title: string, key: string, sx: number, sy: number, far: boolean): Command => ({
     id: `schematic.nudge.${id}`,
     title,
-    group: 'Schematic',
+    group: LAYOUT_GROUP,
     keys: key,
     aliases: ['move the part', 'arrange', 'layout'],
     keyFrom: onDrawing,
@@ -193,7 +196,7 @@ const schematicCommands = (): Command[] => {
     {
       id: 'schematic.rotate',
       title: 'Rotate the selected part a quarter turn',
-      group: 'Schematic',
+      group: LAYOUT_GROUP,
       keys: 'R',
       aliases: ['turn', 'orientation', 'layout'],
       keyFrom: onDrawing,
@@ -203,7 +206,7 @@ const schematicCommands = (): Command[] => {
     {
       id: 'schematic.rotate.back',
       title: 'Rotate the selected part a quarter turn the other way',
-      group: 'Schematic',
+      group: LAYOUT_GROUP,
       keys: 'Shift+R',
       aliases: ['turn', 'orientation', 'layout'],
       keyFrom: onDrawing,
@@ -213,7 +216,7 @@ const schematicCommands = (): Command[] => {
     {
       id: 'schematic.mirror',
       title: 'Mirror the selected part',
-      group: 'Schematic',
+      group: LAYOUT_GROUP,
       keys: 'M',
       aliases: ['flip', 'orientation', 'layout'],
       keyFrom: onDrawing,
@@ -223,7 +226,7 @@ const schematicCommands = (): Command[] => {
     {
       id: 'schematic.layout.clearpart',
       title: "Clear the selected part's layout entry",
-      group: 'Schematic',
+      group: LAYOUT_GROUP,
       keys: 'Backspace',
       alsoKeys: ['Delete'],
       aliases: ['put back', 'reset position', 'forget the move', 'layout'],
@@ -234,7 +237,7 @@ const schematicCommands = (): Command[] => {
     {
       id: 'schematic.layout.clearsheet',
       title: 'Clear the layout of this module',
-      group: 'Schematic',
+      group: LAYOUT_GROUP,
       aliases: ['reset the arrangement', 'put every part back', 'layout'],
       when: () => sheet() && schematicActions.current!.layout.sheetEntries() > 0,
       run: () => act().layout.clearSheet(),
@@ -242,7 +245,7 @@ const schematicCommands = (): Command[] => {
     {
       id: 'schematic.layout.clearall',
       title: 'Clear every layout entry of the file',
-      group: 'Schematic',
+      group: LAYOUT_GROUP,
       aliases: ['reset the arrangement', 'delete the layout file', 'layout'],
       when: () => schematicHere() && schematicActions.current!.layout.allEntries() > 0,
       run: () => act().layout.clearAll(),

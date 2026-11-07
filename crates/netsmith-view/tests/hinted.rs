@@ -1059,6 +1059,7 @@ fn what_a_move_does_to_the_rest_of_a_sheet_is_measured() {
 fn part_tags(svg: &str) -> Vec<&str> {
     svg.match_indices("<g class=\"part")
         .map(|(at, _)| &svg[at..at + svg[at..].find('>').unwrap()])
+        .filter(|tag| attr(tag, "data-ref").is_some())
         .collect()
 }
 
@@ -1127,7 +1128,7 @@ fn the_reference_part_of_each_sheet_is_marked_and_is_the_one_the_frame_starts_at
         let svg = render_layout(&design, &layout);
         let marked: Vec<&str> = part_tags(&svg)
             .into_iter()
-            .filter(|t| attr(t, "data-anchor").is_some())
+            .filter(|t| attr(t, "data-reference").is_some())
             .collect();
         // One for each sheet the drawing has: the board's own, and a module's.
         let sheets = design
@@ -1181,7 +1182,7 @@ fn the_reference_part_of_each_sheet_is_marked_and_is_the_one_the_frame_starts_at
             assert_eq!(
                 part_tags(&svg2)
                     .iter()
-                    .filter(|t| attr(t, "data-anchor").is_some())
+                    .filter(|t| attr(t, "data-reference").is_some())
                     .count(),
                 1,
                 "{}",

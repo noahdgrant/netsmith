@@ -16,7 +16,7 @@ function groups(): { group: string; commands: Command[] }[] {
     if (!c.keys) continue;
     by.set(c.group, [...(by.get(c.group) ?? []), c]);
   }
-  const order = ['Go to', 'View', 'Selection', 'Schematic', 'Problems', 'File', 'Build', 'Help'];
+  const order = ['Go to', 'View', 'Selection', 'Schematic', 'Schematic layout', 'Problems', 'File', 'Build', 'Help'];
   return [...by.entries()]
     .map(([group, commands]) => ({ group, commands }))
     .sort((a, b) => (order.indexOf(a.group) + 1 || 99) - (order.indexOf(b.group) + 1 || 99));

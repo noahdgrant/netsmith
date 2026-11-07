@@ -372,10 +372,9 @@ body:has(.status-popover) .toasts { right: calc(1rem + 21.25rem + 0.75rem); }
  * the drawing refused. A drag shows the block moving (a transform on the part, on the 1.27 mm grid) and a ghost where it was (a clone
  * with the `drag-ghost` class), in --sch-mark; the reference part of a sheet is not draggable and says so. */
 .schematic-host svg.schematic .part-hint { fill: none; stroke: none; pointer-events: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-dasharray: 4 3; }
-.schematic-host svg.schematic .part-hint.on { stroke: var(--sch-muted); stroke-width: 1.5px; }
-.schematic-host svg.schematic .part-hint.on.refused { stroke: var(--sch-bad); }
-.schematic-host svg.schematic .part.movable { cursor: grab; }
-.schematic-host svg.schematic .part.anchor { cursor: pointer; }
+.schematic-host svg.schematic .part-hint.hinted { stroke: var(--sch-muted); stroke-width: 1.5px; }
+.schematic-host svg.schematic .part-hint.hinted.refused { stroke: var(--sch-bad); }
+.schematic-host svg.schematic .part[data-movable] { cursor: grab; }
 .schematic-host svg.schematic.is-dragging, .schematic-host svg.schematic.is-dragging .part, .schematic-host svg.schematic.is-dragging .note { cursor: grabbing; }
 .schematic-host svg.schematic.is-dragging :is(.part, .note):not(.dragging) { pointer-events: none; }
 .schematic-host svg.schematic .dragging { opacity: .96; filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--sch-mark) 70%, transparent)); }

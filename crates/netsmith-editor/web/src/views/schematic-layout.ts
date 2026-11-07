@@ -15,7 +15,7 @@ import { ApiFailure, api, wasCancelled } from '../client';
 import { notify } from '../feedback/state';
 import { type HintAddress, type NoteEntry, type PartEntry, type Tables, tablesOf, toToml, withNote, withPart } from '../schematic/hints';
 import { OneAtATime } from '../schematic/writes';
-import { awaitRebuild, say } from '../store';
+import { awaitRebuild, refreshAfterChange, say } from '../store';
 
 /** What the server read of the layout file of the board on show, with the board it is for. */
 export const hintsState = signal<{ board: string; data: SchematicHints } | null>(null);
@@ -33,6 +33,9 @@ export interface Edit {
   label: string;
   /** The tables after the change, from the tables as the file has them now; `null` writes nothing. */
   apply: (tables: Tables) => Tables | null;
+  /** Looks at the drawing the write made (the SVG, parsed) and says why the change did nothing, or `null`: a block that holds the sheet's
+   * reference part moves the whole drawing and no distance in it. The change is then undone, as a refusal is. */
+  after?: (drawing: ParentNode) => string | null;
   /** The entry the change is about, to see whether the drawing refused it and to put it back: `before` is what it was. */
   entry?: { kind: 'part'; at: HintAddress; before: PartEntry | undefined } | { kind: 'note'; at: HintAddress; before: NoteEntry | undefined };
 }
@@ -97,14 +100,28 @@ async function perform(job: Edit): Promise<void> {
     const answer = await api.writeSchematicHints(job.board, toToml(next), data.stamp);
     hintsState.value = { board: job.board, data: answer };
     await awaitRebuild();
-    const refused = job.entry ? refusalAt(answer, entryLine(answer, job.definition, job.entry)) : null;
+    let refused = job.entry ? refusalAt(answer, entryLine(answer, job.definition, job.entry)) : null;
+    let said = 'the drawing cannot put it there';
+    if (!refused && job.after) {
+      // Did the drawing change anything? A drawing the page cannot read says nothing: the write stands.
+      const doc = await api.schematic(job.board).then((t) => new DOMParser().parseFromString(t, 'image/svg+xml'), () => null);
+      refused = doc ? job.after(doc) : null;
+      said = 'nothing was arranged';
+    }
     if (refused && job.entry) {
       // The drawing could not honour it: the entry goes back to what it was, and the block with it.
       const back = job.entry.kind === 'part' ? withPart(next, job.definition, job.entry.at, job.entry.before ?? null) : withNote(next, job.definition, job.entry.at, job.entry.before ?? null);
-      notify({ kind: 'bad', title: `${job.label}: the drawing cannot put it there`, detail: `${refused}. It is back where it was.` });
-      const restored = await api.writeSchematicHints(job.board, toToml(back), answer.stamp);
-      hintsState.value = { board: job.board, data: restored };
-      await awaitRebuild();
+      notify({ kind: 'bad', title: `${job.label}: ${said}`, detail: `${refused}. It is back where it was.` });
+      if (!data.exists && Object.keys(back).length === 0) {
+        // The drop made the file, and nothing is left in it: it goes, as it was not there before.
+        await api.deletePath(answer.file, false);
+        await refreshAfterChange();
+        await loadHints(job.board);
+      } else {
+        const restored = await api.writeSchematicHints(job.board, toToml(back), answer.stamp);
+        hintsState.value = { board: job.board, data: restored };
+        await awaitRebuild();
+      }
     }
   } catch (e) {
     if (e instanceof ApiFailure && e.status === 409) {

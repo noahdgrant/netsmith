@@ -494,11 +494,11 @@ fn the_file_is_removed_alone_and_with_its_source_but_never_renamed_on_its_own() 
     let e = editor.rename_path(FILE, "src/other.sch.toml").unwrap_err();
     assert_eq!(e.status, 400, "{}", e.message);
     assert!(e.message.contains("rename its source"), "{}", e.message);
-    editor.remove_path(FILE, false).unwrap();
+    editor.delete_path(FILE, false).unwrap();
     assert!(!root.join(FILE).exists() && root.join("src/main.nsm").exists());
     // With its top-level source it goes too: an arrangement of a drawing that is gone.
     fs::write(root.join(FILE), MOVED).unwrap();
-    editor.remove_path("src/main.nsm", true).unwrap();
+    editor.delete_path("src/main.nsm", true).unwrap();
     assert!(!root.join(FILE).exists());
 }
 

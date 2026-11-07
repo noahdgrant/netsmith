@@ -1,6 +1,6 @@
 // What the page needs to know about a part to write its entry in the layout file (ADR 0061), read from the drawing: where its
 // symbol's origin is, how it is turned, whether it is the reference part of its sheet, and which sheet of the file it belongs to.
-// `readFacts` reads the SVG's `data-origin`, `data-orient` and `data-anchor`; the rest is arithmetic on those.
+// `readFacts` reads the SVG's `data-origin`, `data-orient` and `data-reference`; the rest is arithmetic on those.
 
 import { type Orientation, type PinFrame, parseOrient } from './drag';
 import { type HintAddress, type PartEntry, addressOf, keyFrom } from './hints';
@@ -15,7 +15,7 @@ export interface PartFacts {
   /** The origin of the symbol as drawn, in millimetres. */
   origin: [number, number] | null;
   /** The reference part of its sheet: the one the sheet's frame starts at, which is inert. */
-  anchor: boolean;
+  reference: boolean;
   /** The drawn sheet (`stage`, `stage (2/3)`, or the empty name when the board is one picture): a cut sheet has a reference part for each box. */
   slot: string;
 }
@@ -37,7 +37,7 @@ export function readFacts(root: ParentNode, pathOf: (ref: string) => string | un
     const first = out.get(ref);
     if (first) {
       // A further unit's box: the reference part is the box the engine marked; the part is the reference if any of its boxes is.
-      if (g.hasAttribute('data-anchor')) first.anchor = true;
+      if (g.hasAttribute('data-reference')) first.reference = true;
       continue;
     }
     out.set(ref, {
@@ -46,7 +46,7 @@ export function readFacts(root: ParentNode, pathOf: (ref: string) => string | un
       address: addressOf(path),
       orient: parseOrient(g.getAttribute('data-orient')),
       origin: pair(g.getAttribute('data-origin')),
-      anchor: g.hasAttribute('data-anchor'),
+      reference: g.hasAttribute('data-reference'),
       slot,
     });
   }
@@ -71,9 +71,9 @@ export function moduleNames(paths: Iterable<string>): Set<string> {
 }
 
 /** The reference part of the sheet `part` is on, if the drawing marks one. */
-export function anchorOf(facts: Map<string, PartFacts>, part: PartFacts): PartFacts | undefined {
+export function referenceOf(facts: Map<string, PartFacts>, part: PartFacts): PartFacts | undefined {
   for (const f of facts.values()) {
-    if (f.anchor && f.slot === part.slot && f.address.sheet === part.address.sheet) return f;
+    if (f.reference && f.slot === part.slot && f.address.sheet === part.address.sheet) return f;
   }
   return undefined;
 }
@@ -85,7 +85,7 @@ export function pinFrame(
   part: PartFacts,
   entryOf: (f: PartFacts) => { entry: PartEntry | undefined; honoured: boolean },
 ): PinFrame | null {
-  const ref = anchorOf(facts, part);
+  const ref = referenceOf(facts, part);
   if (!ref?.origin || !part.origin) return null;
   const { entry: e, honoured } = entryOf(ref);
   const off = e && honoured && !e.pin ? [e.dx ?? 0, e.dy ?? 0] : [0, 0];
@@ -97,6 +97,8 @@ export function pinFrame(
 export interface NoteFacts {
   index: number;
   path: string;
+  /** The designator of the first part the note is about, if it names one. */
+  ref: string | null;
   kind: 'doc' | 'relation';
   nth: number;
   slot: string;
@@ -106,6 +108,7 @@ export function readNotes(root: ParentNode): Map<number, NoteFacts> {
   const raw = [...root.querySelectorAll('g.note[data-note][data-n]')].map((g) => ({
     index: Number(g.getAttribute('data-n')),
     path: g.getAttribute('data-note') ?? '',
+    ref: g.getAttribute('data-ref'),
     kind: g.classList.contains('note-relation') ? ('relation' as const) : ('doc' as const),
     slot: g.closest('.sheet-slot')?.getAttribute('data-sheet') ?? '',
   }));
@@ -123,3 +126,13 @@ export function readNotes(root: ParentNode): Map<number, NoteFacts> {
 
 /** The key a note has in the file, given the sheet it is drawn on. */
 export const noteKeyOf = (n: NoteFacts, sheet: string | null): string => `${keyFrom(sheet, n.path)}#${n.kind}${n.kind === 'relation' && n.nth > 1 ? n.nth : ''}`;
+
+/** The sheet of the file a note is on: the drawn sheet's, or, for a board drawn as one picture (no sheets in the drawing), the sheet of the part
+ * it is about, else the module its path is in. `null` is the board's own sheet. */
+export function noteSheet(note: NoteFacts, facts: Map<string, PartFacts>, modules: ReadonlySet<string>): string | null {
+  if (note.slot !== '') return hintSheet(note.slot, modules);
+  const anchored = note.ref ? facts.get(note.ref)?.address.sheet : undefined;
+  if (anchored !== undefined) return anchored;
+  const first = note.path.split('.')[0];
+  return modules.has(first) ? first : null;
+}

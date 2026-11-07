@@ -2,12 +2,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const BOARD = 'TwoBoards/led';
-export const DEFINITION = 'LedBoard';
+/** The boards of the `two_boards` fixture. `power` has a module (`stage`: the regulator and two capacitors, which can be arranged) and parts of its
+ * own (two headers); `led` is three parts that hang from one another, so no part of it can be moved apart from the others (the block of each holds
+ * the sheet's reference part). */
+export const POWER = { board: 'TwoBoards/power', definition: 'PowerBoard' };
+export const LED = { board: 'TwoBoards/led', definition: 'LedBoard' };
 
 /** The layout file of the scratch project, and a way to read, write and remove it as another program would. */
-export function layoutFile(project) {
-  const file = path.join(project, 'src/main.sch.toml');
+export function layoutFile(project, name = 'src/main.sch.toml') {
+  const file = path.join(project, name);
   return {
     file,
     exists: () => fs.existsSync(file),
@@ -17,13 +20,13 @@ export function layoutFile(project) {
   };
 }
 
-/** Pick the LED board and wait for its drawing; returns the part list (`path` to designator) of the board. */
-export async function openLedBoard(page) {
+/** Pick a board and wait for its drawing; returns the part list (`path` to designator) of the board. */
+export async function openBoard(page, { board, definition }) {
   await page.waitForSelector('.schematic');
-  await page.selectOption('.boardpick select', BOARD);
-  await page.waitForSelector(`.schematic[data-board="${DEFINITION}"]`);
+  await page.selectOption('.boardpick select', board);
+  await page.waitForSelector(`.schematic[data-board="${definition}"]`);
   await page.waitForSelector('svg.schematic .part[data-ref]');
-  return partsOf(page, BOARD);
+  return partsOf(page, board);
 }
 
 /** The parts of a board by path: `{ r1: 'R1', ... }`. Recipes name a part by its path and read its designator from here. */
@@ -35,7 +38,7 @@ export async function partsOf(page, board) {
 /** The drawn part on show with a designator. */
 export const partSel = (ref) => `svg.schematic > g.sheet-slot:not([style*="none"]) .part[data-ref="${ref}"], svg.schematic .part[data-ref="${ref}"]`;
 
-/** The state of each part on show: the designator, whether it is the sheet's anchor, movable, wears the hand-arranged outline, and
+/** The state of each part on show: the designator, whether it is the sheet's reference part, movable, wears the hand-arranged outline, and
  * where its middle is on the screen. */
 export function partStates(page) {
   return page.evaluate(() => {
@@ -48,9 +51,9 @@ export function partStates(page) {
       const b = g.getBoundingClientRect();
       out[ref] = {
         ref,
-        anchor: g.hasAttribute('data-anchor'),
-        movable: g.classList.contains('movable'),
-        hinted: !!hint?.classList.contains('part-hint') && hint.classList.contains('on'),
+        reference: g.hasAttribute('data-reference'),
+        movable: g.hasAttribute('data-movable'),
+        hinted: !!hint?.classList.contains('part-hint') && hint.classList.contains('hinted'),
         refused: !!hint?.classList.contains('refused'),
         title: g.querySelector(':scope > title')?.textContent ?? '',
         x: b.left + b.width / 2,

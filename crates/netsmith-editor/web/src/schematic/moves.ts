@@ -4,7 +4,7 @@
 
 import type { SchematicHints } from '../api';
 import type { Edit } from '../views/schematic-layout';
-import { type NoteFacts, type PartFacts, hintSheet, noteKeyOf, pinFrame } from './blocks';
+import { type NoteFacts, type PartFacts, noteKeyOf, noteSheet, pinFrame, readFacts, referenceOf } from './blocks';
 import { movedEntry, mirroredEntry, turnedEntry } from './drag';
 import {
   type HintAddress,
@@ -51,7 +51,7 @@ export function dragRefusal(ctx: Ctx, ref: string): string | null {
   const f = ctx.facts.get(ref);
   if (!f) return 'The drawing has no such part.';
   if (!writable(ctx.data)) return `${ctx.data.file} has an error and is ignored: fix it in the Source first.`;
-  if (f.anchor) return "The sheet's anchor: drag a neighbour.";
+  if (f.reference) return "The sheet's reference part: drag a neighbour.";
   return null;
 }
 
@@ -91,19 +91,40 @@ function partEdit(ctx: Ctx, f: PartFacts, label: string, change: (entry: PartEnt
   };
 }
 
+/** Where `f` is from the reference part of its sheet, in millimetres: what a move of its block changes, and a move of the block that holds
+ * the reference part does not (it translates the whole drawing: the frame starts at the reference part where the engine put it). */
+function relative(facts: Map<string, PartFacts>, f: PartFacts | undefined): [number, number] | null {
+  const ref = f && referenceOf(facts, f);
+  return f?.origin && ref?.origin ? [f.origin[0] - ref.origin[0], f.origin[1] - ref.origin[1]] : null;
+}
+
+/** After a write: the reason the move changed nothing, when the part is in the same place from the sheet's reference part as before. A block
+ * that holds the reference part (a main part with the parts that hang from it) moves the whole drawing and no distance in it, so the entry is
+ * no arrangement. `null` when the part moved, or when the drawing cannot say. */
+export function inertAfter(before: Map<string, PartFacts>, ref: string, after: ParentNode): string | null {
+  const was = relative(before, before.get(ref));
+  const now = readFacts(after, (r) => before.get(r)?.path);
+  const is = relative(now, now.get(ref));
+  if (!was || !is) return null;
+  if (Math.abs(was[0] - is[0]) > 0.01 || Math.abs(was[1] - is[1]) > 0.01) return null;
+  return `${ref} holds the sheet's reference part, so moving it only moves the whole drawing`;
+}
+
 /** A part's block was dropped `sx`, `sy` grid steps from where it is drawn. */
 export function dropEdit(ctx: Ctx, ref: string, sx: number, sy: number, pin: boolean): Edit | null {
   const f = ctx.facts.get(ref);
   if (!f || dragRefusal(ctx, ref)) return null;
   const frame = pin ? pinFrame(ctx.facts, f, (a) => currentEntry(ctx, a)) : null;
-  return partEdit(ctx, f, `${ref} ${pin && frame ? 'pinned' : 'moved'}`, (e, ok) => movedEntry(e, sx, sy, pin, frame, ok));
+  const edit = partEdit(ctx, f, `${ref} ${pin && frame ? 'pinned' : 'moved'}`, (e, ok) => movedEntry(e, sx, sy, pin, frame, ok));
+  return { ...edit, after: (drawing) => inertAfter(ctx.facts, ref, drawing) };
 }
 
 /** An arrow key: the block of the selected part is moved by `sx`, `sy` grid steps. */
 export function nudgeEdit(ctx: Ctx, ref: string, sx: number, sy: number): Edit | null {
   const f = ctx.facts.get(ref);
   if (!f || dragRefusal(ctx, ref)) return null;
-  return partEdit(ctx, f, `${ref} moved`, (e, ok) => movedEntry(e, sx, sy, false, null, ok));
+  const edit = partEdit(ctx, f, `${ref} moved`, (e, ok) => movedEntry(e, sx, sy, false, null, ok));
+  return { ...edit, after: (drawing) => inertAfter(ctx.facts, ref, drawing) };
 }
 
 /** A quarter turn counterclockwise (`dir` 1) or clockwise (-1), from the orientation the part is drawn in. */
@@ -137,7 +158,7 @@ export function clearPartEdit(ctx: Ctx, ref: string): Edit | null {
 /** A note's frame was dropped `sx`, `sy` grid steps from where it is drawn. */
 export function noteDropEdit(ctx: Ctx, note: NoteFacts, sx: number, sy: number): Edit | null {
   if (!writable(ctx.data)) return null;
-  const sheet = hintSheet(note.slot, ctx.modules);
+  const sheet = noteSheet(note, ctx.facts, ctx.modules);
   const key = noteKeyOf(note, sheet);
   const at: HintAddress = { sheet, key };
   const before = noteEntry(tablesOfCtx(ctx), ctx.definition, at);

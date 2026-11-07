@@ -15,7 +15,7 @@ const facts = (...fs: Partial<PartFacts>[]): Map<string, PartFacts> =>
         address: { sheet: null, key: 'r1' },
         orient: { mirror: false, turns: 0 },
         origin: [0, 0],
-        anchor: false,
+        reference: false,
         slot: 'Led',
         ...f,
       };
@@ -39,7 +39,7 @@ const hints = (boards: Record<string, HintBoard> = {}, over: Partial<SchematicHi
 const ctx = (data: SchematicHints, fs: Map<string, PartFacts>): Ctx => ({ board: 'x/led', definition: 'Led', data, facts: fs, modules: new Set(['stage']) });
 const apply = (c: Ctx, edit: ReturnType<typeof dropEdit>): Tables => edit!.apply(tablesOf(c.data.boards))!;
 const PARTS = facts(
-  { ref: 'U1', path: 'u1', address: { sheet: null, key: 'u1' }, anchor: true, origin: [0, 0] },
+  { ref: 'U1', path: 'u1', address: { sheet: null, key: 'u1' }, reference: true, origin: [0, 0] },
   { ref: 'R1', path: 'r1', address: { sheet: null, key: 'r1' }, origin: [10.16, 2.54] },
   { ref: 'C1', path: 'stage.c1', address: { sheet: 'stage', key: 'c1' }, orient: { mirror: true, turns: 1 }, slot: 'stage' },
 );
@@ -77,14 +77,14 @@ describe('a drop', () => {
   });
   it('measures a pin from where the engine put the reference part, not where an entry moved it', () => {
     const c = ctx(hints({ Led: { parts: { u1: { dx: 2.54, dy: 0, line: 3 } }, notes: {}, sheets: {} } }), facts(
-      { ref: 'U1', path: 'u1', address: { sheet: null, key: 'u1' }, anchor: true, origin: [2.54, 0] },
+      { ref: 'U1', path: 'u1', address: { sheet: null, key: 'u1' }, reference: true, origin: [2.54, 0] },
       { ref: 'R1', path: 'r1', address: { sheet: null, key: 'r1' }, origin: [10.16, 2.54] },
     ));
     expect(partEntry(apply(c, dropEdit(c, 'R1', 0, 0, true)), 'Led', { sheet: null, key: 'r1' })).toEqual({ pin: [10.16, 2.54] });
   });
-  it('does not move the reference part: it is the sheet’s anchor', () => {
+  it('does not move the reference part: it is the sheet’s reference part', () => {
     const c = ctx(hints(), PARTS);
-    expect(dragRefusal(c, 'U1')).toMatch(/anchor: drag a neighbour/);
+    expect(dragRefusal(c, 'U1')).toMatch(/reference part: drag a neighbour/);
     expect(dropEdit(c, 'U1', 1, 0, false)).toBeNull();
     expect(nudgeEdit(c, 'U1', 1, 0)).toBeNull();
     expect(dragRefusal(c, 'R1')).toBeNull();
@@ -108,7 +108,7 @@ describe('the keys', () => {
     expect(partEntry(apply(c, nudgeEdit(c, 'R1', 10, 0)), 'Led', { sheet: null, key: 'r1' })).toEqual({ dx: 13.97, dy: 0 });
     expect(partEntry(apply(c, nudgeEdit(c, 'R1', 0, -1)), 'Led', { sheet: null, key: 'r1' })).toEqual({ dx: 1.27, dy: -1.27 });
   });
-  it('turn from the orientation the drawing has, and the anchor can be turned', () => {
+  it('turn from the orientation the drawing has, and the reference part can be turned', () => {
     const c = ctx(hints(), PARTS);
     expect(partEntry(apply(c, turnEdit(c, 'C1', 1)), 'Led', { sheet: 'stage', key: 'c1' })).toEqual({ rotate: 180 });
     expect(partEntry(apply(c, turnEdit(c, 'U1', 1)), 'Led', { sheet: null, key: 'u1' })).toEqual({ rotate: 90 });
@@ -149,11 +149,19 @@ describe('clearing', () => {
 });
 
 describe('a note', () => {
-  const note: NoteFacts = { index: 2, path: 'stage.c1', kind: 'doc', nth: 1, slot: 'stage (1/2)' };
+  const note: NoteFacts = { index: 2, path: 'stage.c1', ref: 'C1', kind: 'doc', nth: 1, slot: 'stage (1/2)' };
   it('is moved by an offset in its sheet’s table, keyed by its path from the sheet', () => {
     const c = ctx(hints(), PARTS);
     const t = noteDropEdit(c, note, 4, 0)!.apply({})!;
     expect(t.Led.sheets.stage.notes['c1#doc']).toEqual({ dx: 5.08, dy: 0 });
+  });
+  it('of a board drawn as one picture is on the sheet of the part it is about', () => {
+    const c = ctx(hints(), PARTS);
+    const one: NoteFacts = { ...note, slot: '' };
+    expect(Object.keys(noteDropEdit(c, one, 1, 0)!.apply({})!.Led.sheets)).toEqual(['stage']);
+    // With no part, the module its path is in, else the board's own sheet.
+    const none: NoteFacts = { ...note, ref: null, path: 'r1', slot: '' };
+    expect(Object.keys(noteDropEdit(c, none, 1, 0)!.apply({})!.Led.notes)).toEqual(['r1#doc']);
   });
   it('adds to the offset it has', () => {
     const c = ctx(hints({ Led: { parts: {}, notes: {}, sheets: { stage: { parts: {}, notes: { 'c1#doc': { dx: 5.08, dy: 0, line: 4 } } } } } }), PARTS);
@@ -169,10 +177,10 @@ describe('what the drawing says of its parts and notes', () => {
     classList: { contains: (c: string) => (extra.classes ?? []).includes(c) },
     closest: () => ({ getAttribute: () => extra.slot ?? '' }),
   });
-  it('reads the origin, the turn and the anchor of each part, and the first box of a part with units is its own', () => {
+  it('reads the origin, the turn and the reference mark of each part, and the first box of a part with units is its own', () => {
     const root = {
       querySelectorAll: () => [
-        el({ 'data-ref': 'U1', 'data-origin': '10 -5.08', 'data-orient': '1 2', 'data-anchor': '1' }, { slot: 'stage' }),
+        el({ 'data-ref': 'U1', 'data-origin': '10 -5.08', 'data-orient': '1 2', 'data-reference': '1' }, { slot: 'stage' }),
         el({ 'data-ref': 'U1', 'data-origin': '30 0', 'data-orient': '0 0' }, { slot: 'stage' }),
         el({ 'data-ref': 'R1', 'data-origin': '1 2', 'data-orient': '0 0' }, { slot: 'stage' }),
         el({ 'data-ref': 'X9', 'data-origin': '1 2' }),
@@ -180,14 +188,14 @@ describe('what the drawing says of its parts and notes', () => {
     } as unknown as ParentNode;
     const f = readFacts(root, (r) => ({ U1: 'stage.u1', R1: 'stage.r1' })[r]);
     expect([...f.keys()]).toEqual(['U1', 'R1']);
-    expect(f.get('U1')).toMatchObject({ path: 'stage.u1', address: { sheet: 'stage', key: 'u1' }, origin: [10, -5.08], orient: { mirror: true, turns: 2 }, anchor: true, slot: 'stage' });
-    expect(f.get('R1')!.anchor).toBe(false);
+    expect(f.get('U1')).toMatchObject({ path: 'stage.u1', address: { sheet: 'stage', key: 'u1' }, origin: [10, -5.08], orient: { mirror: true, turns: 2 }, reference: true, slot: 'stage' });
+    expect(f.get('R1')!.reference).toBe(false);
   });
   it('finds the reference part of a part’s sheet, and a cut sheet has one for each box', () => {
     const f = facts(
-      { ref: 'A', address: { sheet: 'stage', key: 'a' }, slot: 'stage (1/2)', anchor: true },
+      { ref: 'A', address: { sheet: 'stage', key: 'a' }, slot: 'stage (1/2)', reference: true },
       { ref: 'B', address: { sheet: 'stage', key: 'b' }, slot: 'stage (1/2)' },
-      { ref: 'C', address: { sheet: 'stage', key: 'c' }, slot: 'stage (2/2)', anchor: true, origin: [50, 0] },
+      { ref: 'C', address: { sheet: 'stage', key: 'c' }, slot: 'stage (2/2)', reference: true, origin: [50, 0] },
       { ref: 'D', address: { sheet: 'stage', key: 'd' }, slot: 'stage (2/2)', origin: [60, 0] },
     );
     expect(pinFrame(f, f.get('D')!, () => ({ entry: undefined, honoured: true }))!.frame).toEqual([50, 0]);

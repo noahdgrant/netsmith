@@ -5,7 +5,7 @@
 //! drawing scales with the viewer. A part also says where its symbol's origin is
 //! (`data-origin`, `x y`), how it is turned (`data-orient`, `mirror turns`: `0 1` is a quarter
 //! turn counterclockwise, as the layout file's `rotate = 90` and `mirror`, ADR 0061) and, for
-//! the reference part of its sheet, `data-anchor="1"`.
+//! the reference part of its sheet, `data-reference="1"`.
 
 use std::fmt::Write as _;
 
@@ -625,10 +625,14 @@ fn draw_part(w: &mut String, design: &Design, p: &PlacedPart) {
     // Where the symbol's origin is, how it is turned and whether it is the sheet's reference
     // part: what a page that moves a part writes into the layout file (ADR 0061) needs.
     let (mirror, turns) = p.orient.mirror_and_turns();
-    let anchor = if p.anchor { " data-anchor=\"1\"" } else { "" };
+    let reference = if p.is_reference {
+        " data-reference=\"1\""
+    } else {
+        ""
+    };
     let _ = writeln!(
         w,
-        "<g class=\"{class}\" data-ref=\"{}\" data-kind=\"{}\"{unit_attr} data-origin=\"{} {}\" data-orient=\"{} {turns}\"{anchor}>",
+        "<g class=\"{class}\" data-ref=\"{}\" data-kind=\"{}\"{unit_attr} data-origin=\"{} {}\" data-orient=\"{} {turns}\"{reference}>",
         esc(&part.refdes),
         esc(&part.kind),
         n(p.at.x),
