@@ -318,10 +318,21 @@ fn a_part_where_a_value_is_expected_is_refused() {
 }
 
 #[test]
-fn a_range_needs_fixed_ends_and_a_tolerance_a_fixed_value() {
+fn a_tolerance_needs_a_fixed_value_and_a_range_end_may_be_a_value() {
+    // A tolerance still needs fixed numbers (ADR 0066 changes ranges only).
+    one_error(
+        "board B {\n    .s: Rail\n    .r: Resistor\n    .r.resistance &= .s.voltage +/- 5%\n}\n",
+        "a tolerance needs a fixed value and a fixed tolerance",
+    );
+    // A value at a range's end is allowed; its dimension must still match the other end.
+    one_error(
+        "board B {\n    .s: Rail\n    .t: Rail\n    .t.current &= .s.voltage..5mA\n}\n",
+        "cannot form a range from V and A",
+    );
+    // And the range is of the dimension of the field it narrows.
     one_error(
         "board B {\n    .s: Rail\n    .r: Resistor\n    .r.resistance &= .s.voltage..5V\n}\n",
-        "both ends of a range must be fixed numbers",
+        "`r.resistance` holds Ω, but this value is V",
     );
 }
 
