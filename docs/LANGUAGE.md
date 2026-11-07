@@ -6637,12 +6637,14 @@ The level checks apply only to lines that are `Logic`: `Uart`, `Spi` and `I2c` p
 
 ### A level translator
 
-`std::parts::logic::LevelTranslator` is the generic of a single-supply translating buffer: a gate whose input accepts a lower level than its own supply and whose output swings between ground and that supply, so a signal from a 1.8 V part reaches a 3.3 V one. It has the rail `vcc` and the pins `a` (an input, which must be connected), `y` (an output) and `nc`, in the pad order of the 5-pin single-gate packages (SOT-23-5 and SOT-353_SC-70-5, drawn with KiCad's `74xGxx:74LVC1G17`). A part states what its datasheet gives, as columns of the catalog `level_translator`:
+`std::parts::logic::LevelTranslator` is the generic of a single-supply translating buffer: a gate whose input accepts a lower level than its own supply and whose output swings between ground and that supply, so a signal from a 1.8 V part reaches a 3.3 V one. It has the rail `vcc` and the lines `a` (an input `Logic`, which must be connected) and `y` (an output `Logic`), and the pin `nc`, in the pad order of the 5-pin single-gate packages (SOT-23-5 and SOT-353_SC-70-5, drawn with KiCad's `74xGxx:74LVC1G17`). Join `.a.line` and `.y.line`, as for any `Logic`. A part states what its datasheet gives, as columns of the catalog `level_translator`:
 
 - `.vcc_min` and `.vcc_max`: the supply range; the rail on `vcc` must be inside it.
-- `.vcc_abs_max` and `.a_abs_max`: the absolute maximums of the supply and of the input. The design states the highest voltage it can put on each, transients included, as `.vcc_peak` and `.a_peak`, and each must be at most its maximum.
-- `.vt_plus_max` and `.vt_minus_min`: the input thresholds. An input is a high for sure above the first (the positive-going threshold's highest value) and a low for sure below the second (the negative-going threshold's lowest value). The input `a` is a plain pin, so the design states the check against its driver: the driver's `.voh` is at least `.vt_plus_max` and its `.vol` at most `.vt_minus_min`.
-- `.max_output_current` and `.max_supply_current`: the output may source or sink that much, and `.output_current`, which the design states, is at most that. `.vcc.current` is at most `.max_supply_current`; a design states it (`.u.vcc.current &= 0A..750nA`) to have the draw counted on its rail.
+- `.vcc_abs_max` and `.a_abs_max`: the absolute maximums of the supply and of the input. The design states the highest voltage it can put on each, transients included, as `.vcc_peak` and `.a_peak`, and each must be at most its maximum. The input line's `.abs_max` is `.a_abs_max` too, so the solver also checks the worst voltage of the input's net against it (ADR 0046).
+- `.vt_plus_max` and `.vt_minus_min`: the input thresholds. An input is a high for sure above the first (the positive-going threshold's highest value) and a low for sure below the second (the negative-going threshold's lowest value). They are the input's levels: `.a.vih` is `.vt_plus_max` and `.a.vil` is `.vt_minus_min`, so the solver judges the driver on the net of `.a.line` with no statement of the design: its `voh` must always be at least the first and its `vol` at most the second.
+- `.y` states no level, because the catalog has no column for the output's `voh` and `vol` (a datasheet gives them at a stated load). A receiver on `.y.line` that states its own levels is listed as not evaluated against it; a design that has the datasheet's pair states it, `.u.y.voh &= .u.vcc.voltage - 0.1V`.
+- `.max_output_current`: the output may source or sink that much, and `.output_current`, which the design states, is at most that.
+- `.max_supply_current`: the largest current the supply pin draws in the use the row is for. The part states it as its own draw, `.vcc.current &= 0A .. .max_supply_current` (a range with a value at its end, see Values), so the rail the translator is on carries it with nothing stated by the design. A design may narrow it (`.u.vcc.current &= 0A..500nA`) and cannot widen it: a draw wholly above the maximum is a contradiction, and a wider one is narrowed to it. A row from a datasheet that gives only a static current for a part that switches states the figure for its use.
 
 The standard catalog has no rows, because no translator has been entered with a recorded source (`data/jlcpcb/README.md`). A project writes the rows of its parts in a file named `level_translator.csv`, as for any standard catalog, or a part of its own says `provides LevelTranslator`. The part of this example is invented, and so is its row:
 
@@ -6670,7 +6672,7 @@ part Sensor {
 }
 ```
 
-A 1.8 V sensor drives a 3.3 V line through the translator. The design states the checks of the input against the driver, the stresses, and the draw of the supply pin:
+A 1.8 V sensor drives a 3.3 V line through the translator. The design states the stresses; the input is judged against the driver by the solver, and the supply pin's draw is the row's own:
 
 ```nsm evaluate catalogs=translator
 import src::sensor::Sensor
@@ -6693,13 +6695,10 @@ board Sensing {
         .vcc_peak &= 3.6V
         .a_peak &= 1.98V
         .output_current &= 1mA
-        .vcc.current &= 0A..750nA
     }
     .sensor.vdd ~ .low
     .u.vcc ~ .high
-    .sensor.out.line ~ .u.a
-    .sensor.out.voh >= .u.vt_plus_max
-    .sensor.out.vol <= .u.vt_minus_min
+    .sensor.out.line ~ .u.a.line
 }
 ```
 
@@ -6726,22 +6725,19 @@ board Sensing {
         .vcc_peak &= 3.6V
         .a_peak &= 1.32V
         .output_current &= 1mA
-        .vcc.current &= 0A..750nA
     }
     .sensor.vdd ~ .low
     .u.vcc ~ .high
-    .sensor.out.line ~ .u.a
-    .sensor.out.voh >= .u.vt_plus_max
-    .sensor.out.vol <= .u.vt_minus_min
+    .sensor.out.line ~ .u.a.line
 }
 ```
 
 ```text
-error: no `level_translator` candidate satisfies `u`: the closest of the 1 that fit, ZT-17 single-supply translator, fails because sensor.out.voh must always be at least u.vt_plus_max, but 940mV..1.06V is not always above 1.1V
-   --> main.nsm:26:5
+error: net `net-sensor.out.line`: `sensor.out.voh` is 940mV..1.06V but `u.a.vih` needs 1.1V: a high of 940mV is not always read as a high, which takes 1.1V
+   --> main.nsm:16:5
    |
-26 |     .sensor.out.voh >= .u.vt_plus_max
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+16 |     .sensor: Sensor
+   |     ^^^^^^^^^^^^^^^
 ```
 
 ### Buses
@@ -7147,7 +7143,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::parts::transistor::NMosfet` | An N-channel MOSFET: pins `gate` (input), `source`, `drain`, bridge `drain ~> source`. Maxima for drain-source voltage, drain current and gate-source voltage; `.gate_threshold`; `.on_resistance`. Requires the stresses `.drain_source_voltage` and `.gate_source_voltage` and `.current` within them, and the gate drive above the threshold. Catalog `n_mosfet`. |
 | `std::parts::transistor::PMosfet` | A P-channel MOSFET: as `NMosfet` with bridge `source ~> drain`; voltages are magnitudes. A generic with the catalog `p_mosfet`, whose standard file has no rows: a project adds its own. |
 | `std::parts::logic::Sn74lvc1g04` | A single inverter, TI SN74LVC1G04 (SCES214AF), for a supply of 3 V to 3.6 V: rail `vcc`, lines `a` (input) and `y` (output) as `Logic` with the levels and absolute maximums of the datasheet, SOT-23-5. No catalog row. |
-| `std::parts::logic::LevelTranslator` | A single-supply level translator, a buffer whose input takes a lower level than its supply and whose output swings to the supply: rail `vcc`, pins `a` (input), `y` (output) and `nc`, a pin table for SOT-23-5 and one for SOT-353_SC-70-5. `.vcc_min` and `.vcc_max` bound the supply; the stresses `.vcc_peak`, `.a_peak` and `.output_current` are at most `.vcc_abs_max`, `.a_abs_max` and `.max_output_current`; `.vt_plus_max` and `.vt_minus_min` are the input thresholds; `.vcc.current` is 0 up to `.max_supply_current`. A generic with the catalog `level_translator`, whose standard file has no rows: a project adds its own. |
+| `std::parts::logic::LevelTranslator` | A single-supply level translator, a buffer whose input takes a lower level than its supply and whose output swings to the supply: rail `vcc`, the `Logic` lines `a` (input) and `y` (output) and the pin `nc`, a pin table for SOT-23-5 and one for SOT-353_SC-70-5. `.vcc_min` and `.vcc_max` bound the supply; the stresses `.vcc_peak`, `.a_peak` and `.output_current` are at most `.vcc_abs_max`, `.a_abs_max` and `.max_output_current`; `.vt_plus_max` and `.vt_minus_min` are the input's `.vih` and `.vil`, and `.y` states no level; `.vcc.current` is 0 up to `.max_supply_current`, stated by the part. A generic with the catalog `level_translator`, whose standard file has no rows: a project adds its own. |
 | `std::parts::mechanical::MountingHole` | A drill with no copper. No pins. |
 | `std::parts::mechanical::PlatedHole` | A plated mounting hole. One pin `p1`, the plating, that the board joins to a net or leaves open. |
 | `std::parts::mechanical::Fiducial` | A fiducial mark. No pins. |

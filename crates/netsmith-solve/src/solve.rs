@@ -1025,7 +1025,9 @@ impl Solver<'_> {
             .draws
             .iter()
             .enumerate()
-            .filter(|(_, d)| self.stated.contains_key(&d.field));
+            // A current stated as exactly zero adds nothing to the net and is not an
+            // allowance (a part's reference rail, ADR 0066), so it is not the stated term.
+            .filter(|(_, d)| self.stated.contains_key(&d.field) && !self.model.draw_is_zero(d));
         let (index, d) = stated.next()?;
         if stated.next().is_some() {
             return None;
