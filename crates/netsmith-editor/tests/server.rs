@@ -23,6 +23,8 @@ use netsmith_editor::{
 
 /// Answers each question with something recognisable.
 struct Fake {
+    /// What the page last said about analysing on change.
+    auto: AtomicBool,
     version: AtomicU64,
     /// The first analysis is running: `analysis` and `check` wait for it, as a real one does.
     pending: AtomicBool,
@@ -44,6 +46,7 @@ struct Fake {
 impl Fake {
     fn new(version: u64, pending: bool) -> Fake {
         Fake {
+            auto: AtomicBool::new(true),
             version: AtomicU64::new(version),
             pending: AtomicBool::new(pending),
             observer: Mutex::new(None),
@@ -108,6 +111,7 @@ fn analysis(version: u64) -> Analysis {
         module_uses: None,
         elapsed_ms: None,
         cancelled: None,
+        stale: None,
     }
 }
 
@@ -188,6 +192,9 @@ impl Backend for Fake {
     fn cancel_analysis(&self) -> bool {
         self.cancels_of_analysis.fetch_add(1, Ordering::SeqCst);
         self.analysing.load(Ordering::SeqCst)
+    }
+    fn set_auto_analysis(&self, auto: bool) {
+        self.auto.store(auto, Ordering::SeqCst);
     }
     fn run_analysis(&self) -> Analysis {
         self.reruns.fetch_add(1, Ordering::SeqCst);
@@ -1967,4 +1974,31 @@ fn what_the_solver_has_counted_and_a_cancelled_analysis_reach_the_page() {
         plain,
         serde_json::json!({"type": "progress", "task": "fab", "board": "B", "message": "placing"})
     );
+}
+
+#[test]
+fn the_page_says_whether_a_change_is_analysed_at_once() {
+    let s = start();
+    assert_eq!(
+        s.request("POST", "/api/analysis/auto", &[], r#"{"auto":false}"#, None)
+            .status,
+        403
+    );
+    let r = s.request(
+        "POST",
+        "/api/analysis/auto",
+        &[GUARD, ("Content-Type", "application/json")],
+        r#"{"auto":false}"#,
+        None,
+    );
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert!(!s.backend.auto.load(Ordering::SeqCst));
+    s.request(
+        "POST",
+        "/api/analysis/auto",
+        &[GUARD, ("Content-Type", "application/json")],
+        r#"{"auto":true}"#,
+        None,
+    );
+    assert!(s.backend.auto.load(Ordering::SeqCst));
 }

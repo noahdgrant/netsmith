@@ -52,7 +52,7 @@ import { plural } from '../util';
 import { useElapsed } from './JobProgress';
 import { Icon, SeverityIcon } from './Icons';
 import { settings } from '../settings';
-import { COMMENT_FONTS, FONT, autosave, commentFont, fontSize, hoverCards, inlineHints, outlineOpen, resetEditorZoom, sortImportsOnSave, vimMode, wordWrap, zoomEditor } from '../source/prefs';
+import { COMMENT_FONTS, FONT, autosave, commentFont, fontSize, hoverCards, inlineHints, outlineOpen, rebuildOnSave, resetEditorZoom, sortImportsOnSave, vimMode, wordWrap, zoomEditor } from '../source/prefs';
 import { chordText, find } from '../commands';
 import { CompareChip } from './CompareChip';
 import { SourceChangesItem } from './SourceChangesItem';
@@ -235,6 +235,14 @@ function AnalysisItem() {
       </Item>
     );
   }
+  if (analysis.value?.stale) {
+    return (
+      <Item class="unbuilt" label="Not rebuilt. Rebuild" title="A file was saved and the project was not read again, as chosen: the views show the last reading. Click, or Ctrl+B, to rebuild." onClick={() => void runAnalysisAgain()}>
+        <Icon name="refresh" size={13} />
+        <span class="sb-label">Not rebuilt · Rebuild</span>
+      </Item>
+    );
+  }
   if (ban?.kind === 'stale') {
     return (
       <Item class="stale" title={`${ban.detail} Click to go to the first error.`} onClick={goToFirstError}>
@@ -321,6 +329,7 @@ function SourceOptions({ close }: { close: () => void }) {
         {row('Hover cards', hoverCards.value, () => (hoverCards.value = !hoverCards.value), 'source.cards.toggle', 'opt-cards')}
         {row('Word wrap', wordWrap.value, () => (wordWrap.value = !wordWrap.value), 'source.wrap.toggle', 'opt-wrap')}
         {row('Autosave', autosave.value, () => (autosave.value = !autosave.value), 'source.autosave.toggle', 'opt-autosave')}
+        {row('Rebuild on save', rebuildOnSave.value, () => (rebuildOnSave.value = !rebuildOnSave.value), 'source.rebuild.toggle', 'opt-rebuild')}
         {row('Sort imports on save', sortImportsOnSave.value, () => (sortImportsOnSave.value = !sortImportsOnSave.value), 'source.sortsave.toggle', 'opt-sortsave')}
         {row('Vim keys', vimMode.value, () => (vimMode.value = !vimMode.value), 'source.vim.toggle', 'opt-vim')}
         {row('Outline', outlineOpen.value, () => (outlineOpen.value = !outlineOpen.value), 'source.outline.toggle', 'opt-outline')}

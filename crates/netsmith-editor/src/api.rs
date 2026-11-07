@@ -363,6 +363,20 @@ pub struct Analysis {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub cancelled: Option<bool>,
+    /// A file on disk changed and was not analysed, because the page asked for no analysis on
+    /// change (`POST /api/analysis/auto`): this is the reading before it. It stays so until
+    /// `POST /api/analysis/run`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub stale: Option<bool>,
+}
+
+/// The body of `POST /api/analysis/auto`: whether a change to a file on disk is analysed at once
+/// (the default), or only when `POST /api/analysis/run` asks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoBuild {
+    pub auto: bool,
 }
 
 /// What a route that cancels a job answers (`POST /api/analysis/cancel`, `/api/compare/cancel`,
@@ -1403,6 +1417,7 @@ pub fn typescript() -> String {
         CompareBoard,
         Compare,
         CancelAnswer,
+        AutoBuild,
         ClientMessage,
         ServerMessage,
     );

@@ -232,6 +232,7 @@ fn router(state: Shared) -> Router {
         .route("/api/analysis", get(analysis))
         .route("/api/analysis/cancel", post(cancel_analysis))
         .route("/api/analysis/run", post(run_analysis))
+        .route("/api/analysis/auto", post(auto_analysis))
         .route("/api/file", get(read_file).put(write_file))
         .route("/api/fs/create-file", post(create_file))
         .route("/api/fs/create-dir", post(create_dir))
@@ -422,6 +423,15 @@ async fn cancel_analysis(State(s): State<Shared>) -> Json<CancelAnswer> {
     Json(CancelAnswer {
         cancelled: s.backend.cancel_analysis(),
     })
+}
+
+/// Sets whether a change to a file is analysed at once or only when the page asks.
+async fn auto_analysis(
+    State(s): State<Shared>,
+    Json(body): Json<crate::api::AutoBuild>,
+) -> Json<crate::api::AutoBuild> {
+    s.backend.set_auto_analysis(body.auto);
+    Json(body)
 }
 
 /// Analyses the files again now, as the page's "Run again" after a cancelled analysis. The
@@ -1041,6 +1051,7 @@ fn failed_check(message: &str) -> crate::api::Analysis {
         module_uses: None,
         elapsed_ms: None,
         cancelled: None,
+        stale: None,
     }
 }
 

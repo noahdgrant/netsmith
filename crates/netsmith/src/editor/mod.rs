@@ -62,6 +62,10 @@ pub struct Workspace {
     /// Whether the first analysis has finished. Read without the state's lock, which an
     /// analysis holds for as long as it runs.
     ready: AtomicBool,
+    /// Whether a change to a file is analysed at once; off, only [`Backend::run_analysis`] does.
+    auto_analysis: AtomicBool,
+    /// Set by `run_analysis`: the next reading is made though the page asked for none on change.
+    forced: AtomicBool,
     /// When the workspace was opened, for how long the first analysis has taken so far.
     opened: Instant,
     /// What was read of the refs the project was compared with, by commit hash (ADR 0059).
@@ -190,6 +194,8 @@ impl Workspace {
             network: crate::refresh::Network::default(),
             observer: OnceLock::new(),
             ready: AtomicBool::new(false),
+            auto_analysis: AtomicBool::new(true),
+            forced: AtomicBool::new(false),
             opened: Instant::now(),
             compare_cache: Mutex::new(compare::Cache::default()),
             comparing: Mutex::new(()),
@@ -253,6 +259,11 @@ impl Workspace {
         // An analysis of these very files was cancelled: they are not analysed again until one
         // changes or the page asks (`run_analysis`).
         if all_read && state.cancelled.as_ref() == Some(&stamp) {
+            return state;
+        }
+        // The page asked for no analysis on change: the files are read when it asks.
+        let forced = self.forced.swap(false, Ordering::AcqRel);
+        if !forced && state.version > 0 && all_read && !self.auto_analysis.load(Ordering::Acquire) {
             return state;
         }
         let started = Instant::now();
@@ -413,9 +424,13 @@ impl Backend for Workspace {
 
     fn analysis(&self) -> Analysis {
         let state = self.fresh();
+        let stale = !self.auto_analysis.load(Ordering::Acquire)
+            && state.version > 0
+            && state.stamp.as_ref() != Some(&files::stamps(&self.target.watched()));
         Analysis {
             elapsed_ms: state.elapsed_ms,
             cancelled: state.cancelled.is_some().then_some(true),
+            stale: stale.then_some(true),
             ..state.snapshot.summary(state.version)
         }
     }
@@ -434,12 +449,20 @@ impl Backend for Workspace {
         }
     }
 
+    fn set_auto_analysis(&self, auto: bool) {
+        self.auto_analysis.store(auto, Ordering::Release);
+    }
+
     fn run_analysis(&self) -> Analysis {
+        self.forced.store(true, Ordering::Release);
         self.state
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .cancelled = None;
-        self.analysis()
+        let reading = self.analysis();
+        // Nothing was read (no file changed): the request is spent, and must not carry over to the next change.
+        self.forced.store(false, Ordering::Release);
+        reading
     }
 
     fn pending(&self) -> Option<u32> {

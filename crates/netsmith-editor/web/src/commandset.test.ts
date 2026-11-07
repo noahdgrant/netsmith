@@ -233,3 +233,14 @@ describe('Next change and Previous change', () => {
     for (const c of [next!, prev!]) expect(allCommands().filter((o) => o.id !== c.id && o.keys && sameChord(parseChord(o.keys), parseChord(c.keys!)))).toEqual([]);
   });
 });
+
+describe('rebuilding the project by hand', () => {
+  beforeAll(() => registerAppCommands());
+
+  it('has Rebuild on Ctrl+B, working inside the editor, and a switch for the rebuild on save', () => {
+    const c = find('analysis.rebuild');
+    expect(c?.keys).toBe('Mod+B');
+    expect(c?.inFields).toBe(true);
+    expect(find('source.rebuild.toggle')).toBeDefined();
+  });
+});

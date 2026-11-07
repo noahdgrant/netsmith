@@ -126,6 +126,7 @@ impl Snapshot {
             module_uses: self.module_uses(),
             elapsed_ms: None,
             cancelled: None,
+            stale: None,
         }
     }
 

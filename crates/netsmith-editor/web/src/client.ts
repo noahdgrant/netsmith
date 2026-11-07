@@ -2,6 +2,7 @@
 
 import type {
   Analysis,
+  AutoBuild,
   BoardDetail,
   CancelAnswer,
   Bom,
@@ -114,6 +115,8 @@ export const api = {
   cancelAnalysis: () => post<CancelAnswer>('/api/analysis/cancel'),
   /** Analyse the files again now, after a cancelled analysis ("Run again"). */
   runAnalysis: () => post<Analysis>('/api/analysis/run'),
+  /** Whether a change on disk is analysed at once (the server's default) or only when `runAnalysis` asks. */
+  setAutoAnalysis: (auto: boolean) => post<AutoBuild>('/api/analysis/auto', { auto }),
   /** Stop the running comparison, schematic build, fab or order. */
   cancelCompare: () => post<CancelAnswer>('/api/compare/cancel'),
   cancelBuild: () => post<CancelAnswer>('/api/build/cancel'),
