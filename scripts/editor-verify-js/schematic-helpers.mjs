@@ -103,8 +103,10 @@ export const partBoxes = (page) =>
 export const overlaps = (a, b, slack = 0.5) => a.x + a.w - slack > b.x && b.x + b.w - slack > a.x && a.y + a.h - slack > b.y && b.y + b.h - slack > a.y;
 
 /** The halos of the parts on show that have a fill or a stroke now, by designator of the part they stand behind. */
-export const visibleHalos = (page) =>
-  page.evaluate(() =>
+export const visibleHalos = async (page) => {
+  // A halo's fill and stroke are CSS transitions: read after they have run, not on the frame of the pick (CI saw `none`).
+  await page.waitForFunction(() => [...document.querySelectorAll('svg.schematic .part-halo')].every((h) => h.getAnimations().length === 0), null, { timeout: 3000 }).catch(() => {});
+  return page.evaluate(() =>
     [...document.querySelectorAll('svg.schematic g.part[data-ref]')]
       .filter((p) => p.getClientRects().length > 0)
       .map((p) => {
@@ -115,6 +117,7 @@ export const visibleHalos = (page) =>
       })
       .filter((h) => h.visible),
   );
+};
 
 export const THEMES = ['light', 'dark', 'hc-light', 'hc-dark'];
 

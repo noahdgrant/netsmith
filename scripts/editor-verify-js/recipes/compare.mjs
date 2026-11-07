@@ -33,6 +33,10 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   const text = (sel) => page.locator(sel).first().innerText();
   const settle = (ms = 300) => page.waitForTimeout(ms);
   const visible = (sel) => page.locator(`.section:not(.away) ${sel}`);
+  // The popover is in the page a frame before its key handler is: the page attaches the handler, then focuses the
+  // search box, in one effect (RefPicker.tsx). A key pressed on seeing the popover alone was lost on a slow runner
+  // (Escape did not close the picker, CI). The focus in the search box says the picker is ready for keys.
+  const pickerReady = () => page.waitForSelector('[data-testid="ref-popover"] input:focus');
   const pick = async (name) => {
     if (!(await page.locator('[data-testid="ref-popover"]').count())) await visible('[data-testid="ref-button"]').click();
     await page.waitForSelector('[data-testid="ref-popover"]');
@@ -73,6 +77,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   step('the ref picker: HEAD, the default branch, branches, tags and recent commits, with the state of the work tree');
   await visible('[data-testid="ref-button"]').click();
   await page.waitForSelector('[data-testid="ref-popover"]');
+  await pickerReady();
   const names = await page.locator('[data-testid="ref-item"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-name')));
   expect(names[0] === 'HEAD' && names[1] === 'main', `HEAD first, then the default branch (${names.slice(0, 3).join(', ')})`);
   expect(['broken', 'feature', 'v1.0'].every((n) => names.includes(n)), 'the branches and the tag are listed');
@@ -603,6 +608,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await shot('broken-ref');
   await page.click('[data-testid="another-ref"]');
   await page.waitForSelector('[data-testid="ref-popover"]');
+  await pickerReady();
   expect(true, 'Compare with another ref opens the picker');
   await page.keyboard.press('Escape');
   // The picker is closed before the button is clicked again: on a slow runner the click came while it was
@@ -614,13 +620,16 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   allowConsole(/Failed to load resource: the server responded with a status of 404/);
   await visible('[data-testid="ref-button"]').click();
   await page.waitForSelector('[data-testid="ref-popover"]');
+  await pickerReady();
   await page.keyboard.type('no-such-branch');
   await page.waitForSelector('[data-testid="ref-custom"]');
   await page.keyboard.press('Enter');
   await page.waitForSelector('[data-testid="cmp-failed"]', { timeout: 30000 });
   expect(/no ref called/.test(await text('[data-testid="cmp-failed"]')), 'there is no ref called that');
   await page.click('[data-testid="another-ref"]');
+  await pickerReady();
   await page.keyboard.press('Escape');
+  await page.waitForSelector('[data-testid="ref-popover"]', { state: 'hidden' });
   await pick('main');
   await summary();
 

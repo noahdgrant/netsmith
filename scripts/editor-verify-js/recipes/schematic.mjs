@@ -32,6 +32,15 @@ export async function run({ page, shot, step, expect, section }) {
       const text = getComputedStyle(part.querySelector('text.ref'));
       return { sel, selRgb, stroke: body.stroke, dash: body.strokeDasharray, width: body.strokeWidth, haloStroke: halo.stroke, haloFill: halo.fill, textFill: text.fill, classes: part.getAttribute('class') };
     });
+  // The halo's stroke and fill are CSS transitions (style.css, --dur-fast): a stroke goes from `none` to a colour at the
+  // middle of one, so a read on the first frame of the pick saw `none` on a slow runner (CI). Read when they have run;
+  // a halo that never comes is then what the next line reports.
+  await page
+    .waitForFunction(() => {
+      const halo = document.querySelector('.schematic .part[data-ref="R1"]')?.previousElementSibling;
+      return !!halo && halo.getAnimations().length === 0 && getComputedStyle(halo).stroke !== 'none';
+    }, null, { timeout: 5000 })
+    .catch(() => {});
   const picked = await wear();
   expect(picked.haloStroke === picked.selRgb, `a picked part has a halo in the selection's blue, behind it (${picked.haloStroke})`);
   expect(picked.dash === 'none' && picked.stroke !== picked.selRgb && picked.textFill !== picked.selRgb, `and its own strokes and labels are as drawn: not recoloured, not dashed (${picked.stroke}, ${picked.dash})`);
