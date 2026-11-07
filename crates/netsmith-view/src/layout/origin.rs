@@ -91,6 +91,41 @@ pub(super) fn anchor(design: &Design, layout: &mut Layout, hinted: &[Pt]) {
     );
 }
 
+/// Marks the reference part of each sheet of `layout` (`PlacedPart::is_reference`), by the rule the
+/// engine and [`anchor`] use. `sheet_of` is the sheet of each part when one drawing holds several
+/// (a small board drawn as one picture; a `pin` is from the reference part of its own sheet),
+/// and none when the drawing is one sheet. The box of a further unit is a box of its part's sheet.
+pub(super) fn mark_references(design: &Design, layout: &mut Layout, sheet_of: Option<&[usize]>) {
+    let mut sheets: std::collections::BTreeMap<usize, Vec<usize>> =
+        std::collections::BTreeMap::new();
+    for p in &mut layout.parts {
+        p.is_reference = false;
+    }
+    for (k, p) in layout.parts.iter().enumerate() {
+        let sheet = sheet_of.and_then(|s| s.get(p.part)).copied().unwrap_or(0);
+        sheets.entry(sheet).or_default().push(k);
+    }
+    let marked: Vec<usize> = {
+        let parts = &layout.parts;
+        sheets
+            .values()
+            .filter_map(|boxes| {
+                reference_among(boxes.iter().copied(), |k| {
+                    let p: &PlacedPart = &parts[k];
+                    RefKey::of(
+                        &p.glyph,
+                        p.pins.len(),
+                        super::canon::part_name(&design.parts[p.part]),
+                    )
+                })
+            })
+            .collect()
+    };
+    for k in marked {
+        layout.parts[k].is_reference = true;
+    }
+}
+
 /// A coordinate to a millionth of a millimetre: a sum of grid steps carries no stray digits.
 fn round(v: f64) -> f64 {
     (v * 1e6).round() / 1e6

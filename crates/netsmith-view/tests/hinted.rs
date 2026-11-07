@@ -1052,3 +1052,142 @@ fn what_a_move_does_to_the_rest_of_a_sheet_is_measured() {
     assert!(blocks >= cases, "every move carries at least its main part");
     assert!(still as f64 >= 0.9 * others as f64, "{still}/{others}");
 }
+
+// --- what the drawing says to a page that moves parts (stage 4) ------------------------------
+
+/// The `<g class="part" ...>` tags of an SVG, one string each.
+fn part_tags(svg: &str) -> Vec<&str> {
+    svg.match_indices("<g class=\"part")
+        .map(|(at, _)| &svg[at..at + svg[at..].find('>').unwrap()])
+        .filter(|tag| attr(tag, "data-ref").is_some())
+        .collect()
+}
+
+fn attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
+    let key = format!(" {name}=\"");
+    let at = tag.find(&key)? + key.len();
+    Some(&tag[at..at + tag[at..].find('"')?])
+}
+
+#[test]
+fn a_part_says_where_its_origin_is_and_how_it_is_turned() {
+    for (case, design) in small() {
+        // A turn and a move, so that the attributes are not the defaults.
+        let hints = hints_of(
+            &design,
+            &[(
+                &design.parts[0].refdes,
+                PartHint {
+                    place: Some(Place::Offset(Steps::new(2, 1))),
+                    rotate: Some(90),
+                    mirror: Some(true),
+                },
+            )],
+        );
+        let (layout, found) = draw(&case, &design, &case.groups, true, &hints);
+        let svg = render_layout(&design, &layout);
+        let tags = part_tags(&svg);
+        assert_eq!(tags.len(), layout.parts.len(), "{}", case.name);
+        for (tag, p) in tags.iter().zip(&layout.parts) {
+            let origin: Vec<f64> = attr(tag, "data-origin")
+                .unwrap_or_else(|| panic!("{}: {tag}", case.name))
+                .split(' ')
+                .map(|n| n.parse().unwrap())
+                .collect();
+            assert!(
+                near(Pt::new(origin[0], origin[1]), p.at),
+                "{}: {tag} against {:?}",
+                case.name,
+                p.at
+            );
+            let (mirror, turns) = p.orient.mirror_and_turns();
+            assert_eq!(
+                attr(tag, "data-orient"),
+                Some(format!("{} {turns}", u8::from(mirror)).as_str()),
+                "{}: {tag}",
+                case.name
+            );
+        }
+        // The part that was turned says so: mirrored, a quarter turn (unless the drawing refused the entry).
+        if found.is_empty() {
+            assert_eq!(attr(tags[0], "data-orient"), Some("1 1"), "{}", case.name);
+        }
+    }
+}
+
+#[test]
+fn the_reference_part_of_each_sheet_is_marked_and_is_the_one_the_frame_starts_at() {
+    for (case, design) in small() {
+        let (layout, _) = draw(
+            &case,
+            &design,
+            &case.groups,
+            true,
+            &ResolvedHints::default(),
+        );
+        let svg = render_layout(&design, &layout);
+        let marked: Vec<&str> = part_tags(&svg)
+            .into_iter()
+            .filter(|t| attr(t, "data-reference").is_some())
+            .collect();
+        // One for each sheet the drawing has: the board's own, and a module's.
+        let sheets = design
+            .parts
+            .iter()
+            .map(|p| p.path.split_once('.').map_or("", |(m, _)| m))
+            .collect::<std::collections::BTreeSet<_>>()
+            .len();
+        assert!(
+            !marked.is_empty() && marked.len() <= sheets.max(1),
+            "{}: {} marked of {sheets} sheets",
+            case.name,
+            marked.len()
+        );
+        // The frame starts at the reference part: for a drawing of one sheet it is at the origin.
+        if sheets == 1 {
+            let origin: Vec<f64> = attr(marked[0], "data-origin")
+                .unwrap()
+                .split(' ')
+                .map(|n| n.parse().unwrap())
+                .collect();
+            assert!(
+                near(Pt::new(origin[0], origin[1]), Pt::new(0.0, 0.0)),
+                "{}: {}",
+                case.name,
+                marked[0]
+            );
+        }
+        // And what a hint does to the reference part's offset changes no mark.
+        let reference = layout
+            .parts
+            .iter()
+            .position(|p| near(p.at, Pt::new(0.0, 0.0)))
+            .unwrap();
+        if sheets == 1 {
+            let again = draw(
+                &case,
+                &design,
+                &case.groups,
+                true,
+                &hints_of(
+                    &design,
+                    &[(
+                        &design.parts[(reference + 1) % design.parts.len()].refdes,
+                        offset(3, 0),
+                    )],
+                ),
+            )
+            .0;
+            let svg2 = render_layout(&design, &again);
+            assert_eq!(
+                part_tags(&svg2)
+                    .iter()
+                    .filter(|t| attr(t, "data-reference").is_some())
+                    .count(),
+                1,
+                "{}",
+                case.name
+            );
+        }
+    }
+}

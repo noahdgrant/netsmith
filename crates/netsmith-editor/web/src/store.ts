@@ -610,7 +610,7 @@ export async function save(path: string) {
 /** After a file was written the server builds the project again: the page is analysing until that
  * is done. Asking for the analysis waits for the build, so this ends when the answer is here,
  * even if no file the server watches changed, or the push is lost. */
-async function awaitRebuild() {
+export async function awaitRebuild() {
   track({ type: 'saved', now: Date.now() });
   try {
     const a = await api.analysis();

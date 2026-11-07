@@ -367,6 +367,25 @@ body:has(.status-popover) .toasts { right: calc(1rem + 21.25rem + 0.75rem); }
 .schematic-host svg.schematic .part-halo:has(+ .part.mark.linked) { fill: color-mix(in srgb, var(--sel) 6%, transparent); stroke: color-mix(in srgb, var(--sel) 50%, transparent); stroke-width: 1.5px; }
 .schematic-host svg.schematic .part-halo:has(+ .part.mark.hover-lit) { fill: color-mix(in srgb, var(--sel) 17%, transparent); }
 @media (prefers-reduced-motion: reduce) { .schematic-host svg.schematic :is(.part-halo, .part-cmp) { transition: none; } }
+/* Arranging by hand (ADR 0061, stage 4). A part with an entry in the layout file wears a dashed outline, outside the comparison's mark
+ * (schematic/halo.ts `part-hint`): --sch-muted is a graphic held at 3:1 on the sheet in every theme, --sch-bad is the same for an entry
+ * the drawing refused. A drag shows the block moving (a transform on the part, on the 1.27 mm grid) and a ghost where it was (a clone
+ * with the `drag-ghost` class), in --sch-mark; the reference part of a sheet is not draggable and says so. */
+.schematic-host svg.schematic .part-hint { fill: none; stroke: none; pointer-events: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-dasharray: 4 3; }
+.schematic-host svg.schematic .part-hint.hinted { stroke: var(--sch-muted); stroke-width: 1.5px; }
+.schematic-host svg.schematic .part-hint.hinted.refused { stroke: var(--sch-bad); }
+.schematic-host svg.schematic .part[data-movable] { cursor: grab; }
+.schematic-host svg.schematic.is-dragging, .schematic-host svg.schematic.is-dragging .part, .schematic-host svg.schematic.is-dragging .note { cursor: grabbing; }
+.schematic-host svg.schematic.is-dragging :is(.part, .note):not(.dragging) { pointer-events: none; }
+.schematic-host svg.schematic .dragging { opacity: .96; filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--sch-mark) 70%, transparent)); }
+.schematic-host svg.schematic .drag-ghost { opacity: .4; pointer-events: none; }
+.schematic-host svg.schematic .drag-ghost * { stroke: var(--sch-mark); }
+.schematic-host svg.schematic .drag-ghost text { fill: var(--sch-mark); stroke: none; }
+.schematic-host.redrawing svg.schematic { opacity: .72; transition: opacity var(--dur) var(--ease); }
+.drag-readout { position: fixed; z-index: var(--z-popover); pointer-events: none; padding: 0.125rem 0.5rem; background: var(--pop); border: 1px solid var(--pop-border); border-radius: var(--r-pill); color: var(--text); font: var(--fs-xs) var(--mono); box-shadow: var(--elev-2); white-space: nowrap; }
+.redraw-chip { position: absolute; z-index: 6; top: 0.75rem; right: 0.75rem; display: flex; align-items: center; gap: 0.625rem; padding: 0.25rem 0.25rem 0.25rem 0.875rem; background: var(--pop); border: 1px solid var(--pop-border); border-radius: var(--r-pill); color: var(--text-muted); font-size: var(--fs-sm); box-shadow: var(--elev-2); }
+.redraw-chip button { height: var(--h-sm); padding: 0 0.75rem; border: 1px solid var(--border-strong); border-radius: var(--r-pill); background: var(--surface-3); color: var(--text); cursor: pointer; font-weight: var(--fw-semibold); }
+.redraw-chip button:hover { background: var(--hover-strong); }
 /* A note (a doc comment or a `==` relation; the server draws it as `g.note` with a frame, a heading and the words): a card in the theme's note tokens. The drawing's own embedded
  * style is only a fallback (the same custom properties, set above, reach it too); these rules have four classes, so they outrank it and the rule that colours the words of a lit
  * thing (`.on text`, three classes). A click opens the source at the line the note is written at (views/Schematic.tsx); the card lifts a little under the pointer. A note is no part:

@@ -129,6 +129,7 @@ describe('where and what', () => {
     file('src/sheets/adc.nsm', 'module', 'module'),
     file('src/sheets/adc.physical.nsm', 'physical'),
     file('elsewhere/top.nsm', 'top_level', 'board'),
+    file('src/main.sch.toml', 'schematic_layout'),
     file('netsmith.toml', 'manifest'),
     file('std/bus.nsm', 'std', 'interface'),
   ];
@@ -178,6 +179,8 @@ describe('where and what', () => {
     expect(allowed(fileNode('src/main.nsm')).rename).toContain('netsmith.toml');
     expect(allowed(fileNode('src/main.nsm')).remove).toBeNull();
     expect(allowed(fileNode('src/sheets/adc.physical.nsm')).rename).toContain('source');
+    expect(allowed(fileNode('src/main.sch.toml')).rename).toContain('source');
+    expect(allowed(fileNode('src/main.sch.toml')).remove).toBeNull();
     expect(allowed(fileNode('netsmith.toml')).remove).toContain('outside the editor');
     expect(allowed(fileNode('std/bus.nsm')).rename).toContain('standard library');
     expect(allowed(section('module')).rename).toContain('Select');

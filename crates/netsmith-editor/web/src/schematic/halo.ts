@@ -39,6 +39,8 @@ export function padBox(b: Box, pad: number, least = 0): Box {
 /** Millimetres of the drawing around the body: the halo of a pick, and the comparison's mark outside it. */
 export const HALO_PAD = 1.1;
 export const MARK_PAD = 2.2;
+/** The dashed outline of a part that has an entry in the layout file (ADR 0061) stands outside the comparison's mark. */
+export const HINT_PAD = 3.4;
 
 const NS = 'http://www.w3.org/2000/svg';
 const BODY = ':scope > :is(polyline, polygon, rect, circle, path, ellipse, line), :scope > g.pin > line.pin-line';
@@ -66,7 +68,15 @@ function rect(cls: string, b: Box, rx: number): SVGRectElement {
   return r;
 }
 
-/** Give every part of `root` that has a box and no halo yet its two rectangles, in front of it in the document (`part-cmp` outside `part-halo`). */
+/** The rectangle that marks a part as arranged by hand (the layout file has an entry for it), or null for a part with no halos yet. It is
+ * the third of the part's previous siblings: `part-hint`, `part-cmp`, `part-halo`, the part. */
+export function hintRectOf(part: Element): Element | null {
+  const r = part.previousElementSibling?.previousElementSibling?.previousElementSibling;
+  return r?.classList.contains('part-hint') ? r : null;
+}
+
+/** Give every part of `root` that has a box and no halo yet its three rectangles, in front of it in the document (`part-hint` outside
+ * `part-cmp` outside `part-halo`). */
 export function addHalos(root: Element) {
   for (const part of root.querySelectorAll<SVGGElement>('g.part:not([data-halo])')) {
     // Nothing is laid out for a part of a sheet that is hidden: it is done when the sheet is shown.
@@ -75,6 +85,7 @@ export function addHalos(root: Element) {
     if (!body) continue;
     const parent = part.parentNode;
     if (!parent) continue;
+    parent.insertBefore(rect('part-hint', padBox(body, HINT_PAD, 2 * HINT_PAD), 2.4), part);
     parent.insertBefore(rect('part-cmp', padBox(body, MARK_PAD, 2 * MARK_PAD), 1.8), part);
     parent.insertBefore(rect('part-halo', padBox(body, HALO_PAD, 2 * HALO_PAD), 1.2), part);
     part.setAttribute('data-halo', '');

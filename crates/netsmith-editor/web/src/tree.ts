@@ -48,12 +48,13 @@ export interface DefNode {
 
 export type Node = SectionNode | FolderNode | FileNode | DefNode;
 
-export const SECTION_ORDER: FileRole[] = ['top_level', 'module', 'physical', 'manifest', 'std'];
+export const SECTION_ORDER: FileRole[] = ['top_level', 'module', 'physical', 'schematic_layout', 'manifest', 'std'];
 
 export const SECTION_LABEL: Record<FileRole, string> = {
   top_level: 'Top level',
   module: 'Modules',
   physical: 'Physical files',
+  schematic_layout: 'Schematic layout',
   manifest: 'Project',
   std: 'Standard library',
 };
@@ -63,6 +64,7 @@ export const SECTION_HELP: Record<FileRole, string> = {
   top_level: 'The files the project builds: the boards, systems and panels in them are what the views show',
   module: 'The files under src/ that the top-level files import',
   physical: 'The physical file beside a source: the case, the outline, where parts go',
+  schematic_layout: 'The file beside a source that keeps where parts were moved in the schematic (written by dragging, editable by hand)',
   manifest: 'The project manifest',
   std: 'The standard library that ships with netsmith (read-only)',
 };

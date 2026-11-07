@@ -2,7 +2,10 @@
 //!
 //! Every wire, junction, label, pin and part carries `data-net`, `data-ref` or `data-pin`
 //! so the page can highlight them. Coordinates are millimetres on the sheet, so the
-//! drawing scales with the viewer.
+//! drawing scales with the viewer. A part also says where its symbol's origin is
+//! (`data-origin`, `x y`), how it is turned (`data-orient`, `mirror turns`: `0 1` is a quarter
+//! turn counterclockwise, as the layout file's `rotate = 90` and `mirror`, ADR 0061) and, for
+//! the reference part of its sheet, `data-reference="1"`.
 
 use std::fmt::Write as _;
 
@@ -619,11 +622,22 @@ fn draw_part(w: &mut String, design: &Design, p: &PlacedPart) {
     } else {
         format!(" data-unit=\"{unit}\"")
     };
+    // Where the symbol's origin is, how it is turned and whether it is the sheet's reference
+    // part: what a page that moves a part writes into the layout file (ADR 0061) needs.
+    let (mirror, turns) = p.orient.mirror_and_turns();
+    let reference = if p.is_reference {
+        " data-reference=\"1\""
+    } else {
+        ""
+    };
     let _ = writeln!(
         w,
-        "<g class=\"{class}\" data-ref=\"{}\" data-kind=\"{}\"{unit_attr}>",
+        "<g class=\"{class}\" data-ref=\"{}\" data-kind=\"{}\"{unit_attr} data-origin=\"{} {}\" data-orient=\"{} {turns}\"{reference}>",
         esc(&part.refdes),
-        esc(&part.kind)
+        esc(&part.kind),
+        n(p.at.x),
+        n(p.at.y),
+        u8::from(mirror)
     );
     let mut summary = format!("{} {} {}", part.refdes, part.kind, part.value);
     if let Some(package) = &part.package {

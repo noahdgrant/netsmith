@@ -299,6 +299,7 @@ impl Workspace {
                 abs: file,
                 top_level: entry.role == FileRole::TopLevel,
                 physical: entry.role == FileRole::Physical,
+                layout: entry.role == FileRole::SchematicLayout,
             });
         }
         if words.len() >= 2 && words[0] == SOURCE_DIR {
@@ -365,6 +366,9 @@ impl Workspace {
             Thing::File { physical: true, .. } => Err(ApiError::bad_request(format!(
                 "`{from}` is a physical file: rename its source, and it goes with it"
             ))),
+            Thing::File { layout: true, .. } => Err(ApiError::bad_request(format!(
+                "`{from}` is a schematic layout file: rename its source, and it goes with it"
+            ))),
             Thing::File { abs, .. } => {
                 let (stem, physical) = check_file_name(&name)?;
                 if physical {
@@ -420,6 +424,7 @@ impl Workspace {
                 abs,
                 top_level,
                 physical,
+                layout: _,
             } => {
                 if top_level && !confirm {
                     return Err(ApiError::new(
@@ -434,6 +439,11 @@ impl Workspace {
                 let side = crate::physical::physical_path(&abs);
                 if !physical && side.is_file() {
                     fs::remove_file(&side).map_err(|e| io_error(path, &e))?;
+                }
+                // And a top-level file's schematic layout file: an arrangement of a drawing that is gone.
+                let drawn = netsmith_view::schematic_hints_path(&abs);
+                if top_level && drawn.is_file() {
+                    fs::remove_file(&drawn).map_err(|e| io_error(path, &e))?;
                 }
             }
             Thing::Folder { abs, rel } => {
@@ -507,6 +517,8 @@ enum Thing {
         abs: PathBuf,
         top_level: bool,
         physical: bool,
+        /// A schematic layout file (`<stem>.sch.toml`): removed on its own, renamed with its source.
+        layout: bool,
     },
     Folder {
         abs: PathBuf,

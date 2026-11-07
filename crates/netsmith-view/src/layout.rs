@@ -264,7 +264,7 @@ pub struct PlacedPin {
     pub net: Option<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct PlacedPart {
     /// Index into `design.parts`: the part this box draws. A part whose symbol has several
     /// units has a box for each, with the same `part`; the first `design.parts.len()` boxes of
@@ -280,6 +280,39 @@ pub struct PlacedPart {
     pub value: Option<Text>,
     /// The body, pins and texts.
     pub extent: Rect,
+    /// Whether this box is the **reference part** of its sheet, the one the sheet's frame starts
+    /// at (`origin::reference_among`), which a `pin` of the layout file (ADR 0061) is from. The
+    /// drawing says it (`data-reference`) so that a page that moves parts knows which one is inert.
+    /// Set once the layout is final; false while the sheet is being drawn.
+    pub is_reference: bool,
+}
+
+/// Two boxes are the same when they are drawn the same: [`PlacedPart::is_reference`] says what
+/// the page may do with a box, not where it is, and is not the layout's geometry (the drawing of
+/// one picture marks the reference part of each sheet of the file, and a drawing with no sheets
+/// one in all). Every other field is compared; a field added without a place here does not compile.
+impl PartialEq for PlacedPart {
+    fn eq(&self, other: &Self) -> bool {
+        let PlacedPart {
+            part,
+            glyph,
+            at,
+            orient,
+            pins,
+            reference,
+            value,
+            extent,
+            is_reference: _,
+        } = self;
+        *part == other.part
+            && *glyph == other.glyph
+            && *at == other.at
+            && *orient == other.orient
+            && *pins == other.pins
+            && *reference == other.reference
+            && *value == other.value
+            && *extent == other.extent
+    }
 }
 
 /// A run of wire along one net.
@@ -965,7 +998,10 @@ pub(crate) fn layout_with_hints(
         None,
     )?;
     if hints.is_empty() {
-        return Ok((plain.layout, Vec::new()));
+        // The reference part of each sheet is told of the drawing with no file as of any other.
+        let mut layout = plain.layout;
+        origin::mark_references(design, &mut layout, sheet_of);
+        return Ok((layout, Vec::new()));
     }
     let draw_with = |kept: &BTreeSet<hinting::Key>| {
         let dropped = hinting::dropped_except(hints, kept);
@@ -1069,6 +1105,7 @@ fn layout_with_tuning(
         }
     }
     origin::anchor(design, &mut layout, &hinted);
+    origin::mark_references(design, &mut layout, hints.and_then(|h| h.sheet_of));
     Ok(Made {
         layout,
         touched: drawn.touched,
@@ -2175,6 +2212,7 @@ fn place_part(ctx: &Ctx, p: usize, orient: Orient, nets: &[Option<usize>]) -> Pl
         reference,
         value,
         extent,
+        is_reference: false,
     }
 }
 

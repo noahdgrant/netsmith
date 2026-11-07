@@ -294,6 +294,7 @@ function Legend({ onClose }: { onClose: () => void }) {
         [
           ['nsm.nsm', 'netsmith source'],
           ['x.physical.nsm', 'physical file: the case, the outline, where parts go'],
+          ['x.sch.toml', 'schematic layout: where parts were moved in the drawing'],
           ['netsmith.toml', 'the project manifest'],
           ['parts.csv', 'a table'],
           ['x.kicad_pcb', 'a KiCad file'],

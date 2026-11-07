@@ -102,6 +102,9 @@ pub enum FileRole {
     /// `<stem>.physical.nsm` beside a top-level file or a module: the physical intent of its
     /// boards (ADR 0048).
     Physical,
+    /// `<stem>.sch.toml` beside a top-level file: where a person arranged its schematic
+    /// (ADR 0061). Listed only when it exists.
+    SchematicLayout,
 }
 
 /// A definition in a file: `board`, `system`, `panel`, `part`, `interface` or `module`.

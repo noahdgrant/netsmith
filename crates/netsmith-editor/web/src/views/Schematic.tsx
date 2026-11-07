@@ -7,7 +7,24 @@ import { EmptyState } from '../components/ui';
 import { NoBoard } from '../components/ViewStatus';
 import { busName, busTargets, litNets } from '../schematic/bus';
 import { type Bus } from '../schematic/drawing';
-import { addHalos } from '../schematic/halo';
+import { type PartFacts, hintSheet, moduleNames, readFacts, readNotes } from '../schematic/blocks';
+import { beginDrag, dragReadout } from '../schematic/dragdom';
+import { addHalos, hintRectOf } from '../schematic/halo';
+import { countAll, countIn, tablesOf } from '../schematic/hints';
+import {
+  type Ctx,
+  clearAllEdit,
+  clearPartEdit,
+  clearSheetEdit,
+  dragRefusal,
+  dropEdit,
+  entryState,
+  hasEntry,
+  mirrorEdit,
+  noteDropEdit,
+  nudgeEdit,
+  turnEdit,
+} from '../schematic/moves';
 import { marksOf } from '../schematic/marks';
 import { type Drawing, loadDrawing } from '../schematic/load';
 import { litNotes, noteLocation, parseNoteAt, prepareNotes } from '../schematic/notes';
@@ -39,7 +56,9 @@ import { load, save } from '../storage';
 import { toggleCheatSheet } from '../quickpick';
 import { hoverEnter, hoverLeave, hoverOfRefs } from '../hover';
 import { modulesOf, revealRequest, sameSelection, selection } from '../selection';
-import { analysis, board, detail, goTo, problems, revealSection } from '../store';
+import { ask as confirmWith } from '../components/Confirm';
+import { analysis, board, cancelAnalysis, detail, goTo, problems, revealSection } from '../store';
+import { hintsState, lastWriteAt, loadHints, redrawing, submitEdit, writing } from './schematic-layout';
 import { Inspector, type PinRef } from './SchematicInspector';
 import { type SchematicActions, netFacts, schematicActions } from './schematic-actions';
 import { SheetNavPanel, SheetBar, rowOf } from './SheetNav';
@@ -164,6 +183,8 @@ export function Schematic() {
       return;
     }
     let live = true;
+    // The layout file is read with the drawing: both are of the analysis the page has (a write of the file is one).
+    void loadHints(name);
     server
       .schematic(name)
       .then((text) => {
@@ -179,6 +200,20 @@ export function Schematic() {
   }, [name, version]);
 
   const d = detail.value && detail.value.name === name ? detail.value : null;
+  // The layout file (ADR 0061): what the server read of it for this board, the board's table in it, and the parts it can move.
+  const hs = hintsState.value;
+  const hintData = hs && hs.board === name ? hs.data : null;
+  const definition = analysis.value?.boards.find((b) => b.name === name)?.definition ?? null;
+  const refPaths = useMemo(() => new Map((d?.parts ?? []).map((p) => [p.refdes, p.path] as const)), [d]);
+  const modules = useMemo(() => moduleNames((d?.parts ?? []).map((p) => p.path)), [d]);
+  /** Where the view was, and a part that does not move, when a write of the file began: the drawing that comes back is put so that part
+   * is where it was on the screen (the page's frame shifts when a block was the leftmost or topmost thing of its sheet). */
+  const steady = useRef<{ view: { k: number; x: number; y: number }; ref: string; box: Box } | null>(null);
+  const layoutCtx = (): Ctx | null => {
+    const root = holder.current;
+    if (!root || !hintData || !definition || !name) return null;
+    return { board: name, definition, data: hintData, facts: readFacts(root, (r) => refPaths.get(r)), modules };
+  };
 
   const netsOfPart = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -314,6 +349,51 @@ export function Schematic() {
     }
     if (overview) setPainted((n) => n + 1);
   }, [drawing, hover, selNet, selBus, selModule, marked.join(','), picked.join(','), netsOfPart, navPin, current, overview]);
+
+  // Which parts the layout file has an entry for, which can be dragged, and which is the sheet's reference part (it cannot: its offset moves
+  // the whole sheet and no distance, so the drawing says why).
+  useLayoutEffect(() => {
+    const svg = holder.current?.querySelector('svg.schematic');
+    if (!svg) return;
+    addHalos(svg);
+    const ctx = layoutCtx();
+    for (const g of svg.querySelectorAll('g.part[data-ref]')) {
+      const f = ctx?.facts.get(g.getAttribute('data-ref')!);
+      const state = ctx && f ? entryState(ctx, f) : { has: false, refused: false };
+      const hint = hintRectOf(g);
+      // Not `on`: the paint of picks and hovers clears every `.on` of the drawing.
+      hint?.classList.toggle('hinted', state.has);
+      hint?.classList.toggle('refused', state.refused);
+      const refusal = ctx && f ? dragRefusal(ctx, f.ref) : 'not drawn';
+      // An attribute, not a class: a part's class is its state (picked, lit, marked) and nothing else.
+      if (refusal === null) g.setAttribute('data-movable', '');
+      else g.removeAttribute('data-movable');
+      const title = g.querySelector(':scope > title');
+      if (title && f?.reference && !title.hasAttribute('data-reference-note')) {
+        title.textContent = `${title.textContent ?? ''}\nThe sheet's reference part: drag a neighbour.`;
+        title.setAttribute('data-reference-note', '');
+      }
+    }
+  }, [drawing, hintData, current, refPaths, definition]);
+
+  // A drawing that comes back from a write of the layout file: the part that did not move is where it was on the screen, and the zoom
+  // is what it was.
+  useLayoutEffect(() => {
+    const st = steady.current;
+    const z = zoom.current;
+    if (!st || !drawing || !z) return;
+    if (!writing() && Date.now() - lastWriteAt() > 4000) {
+      steady.current = null;
+      return;
+    }
+    const b = drawing.index.partBox.get(st.ref);
+    if (!b) return;
+    const dx = b.x - st.box.x;
+    const dy = b.y - st.box.y;
+    const kept = { k: st.view.k, x: st.view.x - dx * st.view.k, y: st.view.y - dy * st.view.k };
+    z.set(kept);
+    steady.current = { view: kept, ref: st.ref, box: b };
+  }, [drawing]);
 
   // The pin the net navigator is on belongs to the net that is selected.
   useEffect(() => setNavPin(null), [selNet]);
@@ -514,6 +594,135 @@ export function Schematic() {
     return () => clearTimeout(t);
   }, [pulse?.seq]);
 
+  // ---- arranging by hand (ADR 0061, stage 4) ----
+  /** Make the view steady across the drawing a write brings back: a part that does not move stays where it is on the screen. */
+  const holdView = (ctx: Ctx, ref: string) => {
+    const f = ctx.facts.get(ref);
+    const z = zoom.current;
+    if (!f || !z || !drawing) return;
+    const fixed = [...ctx.facts.values()].find((o) => o.slot === f.slot && o.ref !== ref && (o.reference || o.address.sheet === f.address.sheet));
+    const box = fixed && drawing.index.partBox.get(fixed.ref);
+    steady.current = fixed && box ? { view: z.view(), ref: fixed.ref, box } : null;
+  };
+  const submitFor = (ctx: Ctx, ref: string, edit: ReturnType<typeof dropEdit>) => {
+    if (!edit) return;
+    holdView(ctx, ref);
+    submitEdit(edit);
+  };
+  const startDrag = (e: PointerEvent) => {
+    if (e.button !== 0 || overview) return;
+    const el = e.target instanceof Element ? e.target : null;
+    const svg = holder.current?.querySelector('svg.schematic');
+    const z = zoom.current;
+    if (!el || !svg || !z) return;
+    const ctx = layoutCtx();
+    if (!ctx) return;
+    const part = el.closest('g.part[data-ref]');
+    const noteEl = part ? null : el.closest('g.note[data-n]');
+    let moving: Element[];
+    let label: string;
+    let drop: (r: { sx: number; sy: number; pin: boolean }) => void;
+    if (part) {
+      const ref = part.getAttribute('data-ref')!;
+      // The sheet's reference part, or a file with a fault: the press pans, as it did before.
+      if (dragRefusal(ctx, ref)) return;
+      moving = [...svg.querySelectorAll(`g.part[data-ref="${CSS.escape(ref)}"]`)];
+      label = ref;
+      drop = (r) => {
+        const now = layoutCtx();
+        if (!now) return;
+        // The dragged part is the pick, so the keys that follow are about it.
+        selectPart(ref);
+        submitFor(now, ref, dropEdit(now, ref, r.sx, r.sy, r.pin));
+      };
+    } else if (noteEl) {
+      const note = readNotes(svg).get(Number(noteEl.getAttribute('data-n')));
+      if (!note || !hintData || hintData.errors.length > 0) return;
+      moving = [noteEl];
+      label = 'note';
+      drop = (r) => {
+        const now = layoutCtx();
+        const edit = now && noteDropEdit(now, note, r.sx, r.sy);
+        if (now && edit) {
+          const first = [...now.facts.keys()][0];
+          if (first) holdView(now, first);
+          submitEdit(edit);
+        }
+      };
+    } else return;
+    // A press that moves is a drag: it is not the canvas's pan. One that does not move is a click, as it was.
+    e.stopPropagation();
+    (el.closest('.panzoom') as HTMLElement | null)?.focus({ preventScroll: true });
+    beginDrag({ svg, moving, x: e.clientX, y: e.clientY, k: z.view().k, label, onDrop: drop });
+  };
+  const selectedFacts = (): { ctx: Ctx; f: PartFacts } | null => {
+    const ctx = layoutCtx();
+    const f = ctx && selPart ? ctx.facts.get(selPart) : undefined;
+    return ctx && f ? { ctx, f } : null;
+  };
+  const here = (f: PartFacts) => f.slot === current || f.slot === '' || overview;
+  const sheetTitle = () => rows.find((r) => r.sheet.name === current)?.name ?? current;
+  const entries = () => {
+    const t = hintData ? tablesOf(hintData.boards) : {};
+    return t;
+  };
+  const layoutActions = {
+    canMove: () => {
+      const s = selectedFacts();
+      return !!s && !overview && here(s.f) && dragRefusal(s.ctx, s.f.ref) === null;
+    },
+    canTurn: () => {
+      const s = selectedFacts();
+      return !!s && !overview && here(s.f) && !!s.f.orient && !!hintData && hintData.errors.length === 0;
+    },
+    nudge: (sx: number, sy: number) => {
+      const s = selectedFacts();
+      if (s) submitFor(s.ctx, s.f.ref, nudgeEdit(s.ctx, s.f.ref, sx, sy));
+    },
+    turn: (dir: 1 | -1) => {
+      const s = selectedFacts();
+      if (s) submitFor(s.ctx, s.f.ref, turnEdit(s.ctx, s.f.ref, dir));
+    },
+    mirror: () => {
+      const s = selectedFacts();
+      if (s) submitFor(s.ctx, s.f.ref, mirrorEdit(s.ctx, s.f.ref));
+    },
+    hinted: () => {
+      const s = selectedFacts();
+      return !!s && hasEntry(s.ctx, s.f.ref);
+    },
+    clearPart: () => {
+      const s = selectedFacts();
+      if (s) submitFor(s.ctx, s.f.ref, clearPartEdit(s.ctx, s.f.ref));
+    },
+    sheetEntries: () => (overview ? 0 : countIn(entries(), definition ?? '', hintSheet(current, modules))),
+    allEntries: () => countAll(entries()),
+    clearSheet: () => {
+      const ctx = layoutCtx();
+      const edit = ctx && clearSheetEdit(ctx, hintSheet(current, modules));
+      if (!ctx || !edit) return;
+      const n = countIn(entries(), ctx.definition, hintSheet(current, modules));
+      confirmWith({
+        title: `Clear the layout of ${sheetTitle()}?`,
+        lines: [`${n === 1 ? 'The 1 entry' : `The ${n} entries`} of this module in ${ctx.data.file} will be removed, and what they moved goes back where the drawing puts it.`, 'The file is the only place they are kept; git has them if the file is committed.'],
+        yes: 'Clear the module',
+        run: () => submitEdit(edit),
+      });
+    },
+    clearAll: () => {
+      const ctx = layoutCtx();
+      const edit = ctx && clearAllEdit(ctx);
+      if (!ctx || !edit) return;
+      const n = countAll(entries());
+      confirmWith({
+        title: 'Clear every layout entry?',
+        lines: [`${n === 1 ? 'The 1 entry' : `All ${n} entries`} in ${ctx.data.file}, for every board and module in it, will be removed. The file is kept, with nothing in it.`, 'The file is the only place they are kept; git has them if the file is committed.'],
+        yes: 'Clear the file',
+        run: () => submitEdit(edit),
+      });
+    },
+  };
+
   // The keys of this view are commands (`commandset.ts`, group Schematic): they act through these.
   // The handle is made again on each render, so what they do is always about what is shown.
   const live = useRef<SchematicActions | null>(null);
@@ -531,6 +740,7 @@ export function Schematic() {
     pan: (dx, dy) => zoom.current?.panBy(dx, dy),
     pin: stepPins,
     source: () => selPart && goToSource(selPart),
+    layout: layoutActions,
   };
   useEffect(() => {
     const now = () => live.current!;
@@ -546,6 +756,19 @@ export function Schematic() {
       pan: (dx, dy) => now().pan(dx, dy),
       pin: (dir) => now().pin(dir),
       source: () => now().source(),
+      layout: {
+        canMove: () => now().layout.canMove(),
+        canTurn: () => now().layout.canTurn(),
+        nudge: (sx, sy) => now().layout.nudge(sx, sy),
+        turn: (dir) => now().layout.turn(dir),
+        mirror: () => now().layout.mirror(),
+        hinted: () => now().layout.hinted(),
+        clearPart: () => now().layout.clearPart(),
+        sheetEntries: () => now().layout.sheetEntries(),
+        allEntries: () => now().layout.allEntries(),
+        clearSheet: () => now().layout.clearSheet(),
+        clearAll: () => now().layout.clearAll(),
+      },
     };
     schematicActions.current = stable;
     return () => {
@@ -658,7 +881,7 @@ export function Schematic() {
             fitKey={`${name}:${drawing.width}x${drawing.height}:${current}`}
             fitBox={box}
             memoKey={`schematic|${name}|${current}`}
-            class={`schematic-host ${overview ? 'is-hidden' : ''}`}
+            class={`schematic-host ${overview ? 'is-hidden' : ''} ${redrawing.value?.board === name ? 'redrawing' : ''}`}
             scale100={K100}
             presets
             arrowKeys
@@ -674,6 +897,7 @@ export function Schematic() {
               ref={holder}
               class="hit-target"
               dangerouslySetInnerHTML={{ __html: drawing.html }}
+              onPointerDown={(e) => startDrag(e)}
               onPointerOver={(e) => {
                 // A section that was away when the drawing came has no halos yet.
                 if (holder.current) addHalos(holder.current);
@@ -746,6 +970,8 @@ export function Schematic() {
               stamp={painted}
             />
           )}
+          <RedrawChip board={name} />
+          <DragReadout />
           {held && (
             <div class="hold-chip no-pan" role="status">
               <span>Zoomed in to keep the text readable</span>
@@ -789,6 +1015,31 @@ export function Schematic() {
           />
         )}
       </div>
+    </div>
+  );
+}
+
+/** What a drag says beside the pointer: the offset, and that it is a pin. */
+function DragReadout() {
+  const r = dragReadout.value;
+  return r ? (
+    <div class="drag-readout" role="status" data-testid="drag-readout" style={{ left: r.x, top: r.y }}>
+      {r.text}
+    </div>
+  ) : null;
+}
+
+/** While the layout file is written the whole project is analysed again: the drawing says so, and the analysis can be stopped. */
+function RedrawChip({ board }: { board: string }) {
+  const r = redrawing.value;
+  if (!r || r.board !== board) return null;
+  return (
+    <div class="redraw-chip no-pan" role="status" data-testid="redrawing">
+      <span>
+        Redrawing the schematic: {r.label}
+        {r.queued ? ' (one more is waiting)' : ''}
+      </span>
+      <button onClick={() => void cancelAnalysis()}>Cancel</button>
     </div>
   );
 }
