@@ -660,7 +660,7 @@ impl Checker<'_> {
                 Some(&at) => at,
                 None => self.model.instance(part).at(),
             };
-            self.model.relations.push(Relation {
+            std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
                 lhs: RExpr::Field(bias),
                 op: CmpOp::EqEq,
                 rhs: RExpr::Field(*voltage),
@@ -886,7 +886,7 @@ impl Checker<'_> {
         }
         balances.extend(self.balance_joins());
         balances.sort_by_key(|b| (self.model.path_of(b.scope), b.net.clone()));
-        self.model.balances = balances;
+        self.model.balances = std::sync::Arc::new(balances);
     }
 
     /// The pins on a net, seen from one scope, that its balance does not account for

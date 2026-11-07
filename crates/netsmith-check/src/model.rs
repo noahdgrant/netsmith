@@ -643,17 +643,38 @@ impl std::fmt::Debug for SourceTexts {
     }
 }
 
+/// The domains and the added relations of a model at one moment ([`Model::snapshot`]).
+#[derive(Debug, Clone)]
+pub struct Snapshot {
+    domains: Vec<Domain>,
+    relations: Arc<Vec<Relation>>,
+}
+
+impl Snapshot {
+    /// The domain a field had.
+    pub fn domain(&self, field: FieldId) -> &Domain {
+        &self.domains[field.0]
+    }
+}
+
+/// A moment of a model to go back to ([`Model::checkpoint`]).
+#[derive(Debug)]
+pub struct Checkpoint {
+    mark: usize,
+    relations: Arc<Vec<Relation>>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Model {
     pub root: InstId,
     pub(crate) instances: Vec<Instance>,
     pub(crate) fields: Vec<Field>,
-    pub(crate) relations: Vec<Relation>,
+    pub(crate) relations: Arc<Vec<Relation>>,
     /// Pairs of fields joined by connecting two interfaces: they hold one value.
     pub(crate) equalities: Vec<(FieldId, FieldId)>,
     pub(crate) chains: Vec<Chain>,
     pub(crate) nets: Vec<Net>,
-    pub(crate) balances: Vec<Balance>,
+    pub(crate) balances: Arc<Vec<Balance>>,
     /// In a system, the pairs of ports that were joined with `~`. Their pins are not on a
     /// net together (only a board names nets); their values are equated and their currents
     /// are balanced.
@@ -674,6 +695,11 @@ pub struct Model {
     /// (ADR 0064).
     pub(crate) bus_defs: std::collections::BTreeMap<(usize, usize), BusDef>,
     pub(crate) sources: SourceTexts,
+    /// The domains that [`Model::set_domain`] replaced while a checkpoint was open, oldest
+    /// first, with the field. Empty when none is open.
+    journal: Vec<(FieldId, Domain)>,
+    /// How many checkpoints are open.
+    open_checkpoints: usize,
 }
 
 impl Model {
@@ -682,11 +708,11 @@ impl Model {
             root: InstId(0),
             instances: Vec::new(),
             fields: Vec::new(),
-            relations: Vec::new(),
+            relations: Arc::new(Vec::new()),
             equalities: Vec::new(),
             chains: Vec::new(),
             nets: Vec::new(),
-            balances: Vec::new(),
+            balances: Arc::new(Vec::new()),
             joins: Vec::new(),
             mate_decls: Vec::new(),
             explicit_joins: Vec::new(),
@@ -697,6 +723,8 @@ impl Model {
             uses: Vec::new(),
             bus_defs: std::collections::BTreeMap::new(),
             sources: SourceTexts::default(),
+            journal: Vec::new(),
+            open_checkpoints: 0,
         }
     }
 
@@ -753,7 +781,7 @@ impl Model {
         m.root = board;
         m.nets.retain(|n| n.pins.iter().all(inside));
         m.chains.retain(|c| inside(&c.start));
-        m.balances.retain(|b| inside(&b.scope));
+        Arc::make_mut(&mut m.balances).retain(|b| inside(&b.scope));
         m.joins.clear();
         m.mate_decls.clear();
         m.explicit_joins.clear();
@@ -761,7 +789,7 @@ impl Model {
         m.ground_groups.clear();
         m.uses.retain(|u| inside(&u.inst));
         m.equalities.retain(|(a, b)| owned(a) && owned(b));
-        m.relations.retain(|r| {
+        Arc::make_mut(&mut m.relations).retain(|r| {
             let mut fields = Vec::new();
             r.lhs.fields(&mut fields);
             r.rhs.fields(&mut fields);
@@ -786,7 +814,87 @@ impl Model {
     }
 
     pub fn set_domain(&mut self, field: FieldId, domain: Domain) {
-        self.fields[field.0].domain = domain;
+        let old = std::mem::replace(&mut self.fields[field.0].domain, domain);
+        if self.open_checkpoints > 0 {
+            self.journal.push((field, old));
+        }
+    }
+
+    /// Start keeping what changes, to be put back by [`Model::rollback`] or kept by
+    /// [`Model::commit`]. A search that tries a choice and takes it back does this instead of
+    /// copying the domains of every field: what it costs is what the choice changed. Checkpoints
+    /// nest, and each is closed, in the reverse order they were opened, by one of the two.
+    pub fn checkpoint(&mut self) -> Checkpoint {
+        self.open_checkpoints += 1;
+        Checkpoint {
+            mark: self.journal.len(),
+            relations: Arc::clone(&self.relations),
+        }
+    }
+
+    /// Put the model back as it was at the checkpoint, and close it.
+    pub fn rollback(&mut self, checkpoint: Checkpoint) {
+        while self.journal.len() > checkpoint.mark {
+            let (field, old) = self
+                .journal
+                .pop()
+                .expect("the journal is longer than the mark");
+            self.fields[field.0].domain = old;
+        }
+        self.relations = checkpoint.relations;
+        self.close_checkpoint();
+    }
+
+    /// Keep what changed since the checkpoint, and close it. An open checkpoint outside it
+    /// still puts it back.
+    pub fn commit(&mut self, checkpoint: Checkpoint) {
+        drop(checkpoint);
+        self.close_checkpoint();
+    }
+
+    fn close_checkpoint(&mut self) {
+        self.open_checkpoints -= 1;
+        if self.open_checkpoints == 0 {
+            self.journal.clear();
+        }
+    }
+
+    /// The fields whose domain is not what it was at the checkpoint.
+    pub fn changed_since(&self, checkpoint: &Checkpoint) -> std::collections::HashSet<FieldId> {
+        // The oldest entry of a field is the domain it had then.
+        let mut then: std::collections::HashMap<FieldId, &Domain> =
+            std::collections::HashMap::new();
+        for (field, old) in &self.journal[checkpoint.mark..] {
+            then.entry(*field).or_insert(old);
+        }
+        then.into_iter()
+            .filter(|(field, old)| self.fields[field.0].domain != **old)
+            .map(|(field, _)| field)
+            .collect()
+    }
+
+    /// What the solver changes of a model: the domain of each field and the relations it adds
+    /// ([`Model::set_domain`], [`Model::push_relation`], [`Model::truncate_relations`], the
+    /// only changes the model takes once it is checked). A search that tries a choice and puts
+    /// the model back takes this instead of a copy of the whole model, which holds every
+    /// instance and every name too.
+    pub fn snapshot(&self) -> Snapshot {
+        Snapshot {
+            domains: self.fields.iter().map(|f| f.domain.clone()).collect(),
+            relations: Arc::clone(&self.relations),
+        }
+    }
+
+    /// Put the model back as it was when `snapshot` was taken of it. The model must be the one
+    /// the snapshot was taken of, changed only by the solver's three changes.
+    pub fn restore(&mut self, snapshot: &Snapshot) {
+        debug_assert_eq!(self.fields.len(), snapshot.domains.len());
+        for (index, domain) in snapshot.domains.iter().enumerate() {
+            if self.fields[index].domain != *domain {
+                self.set_domain(FieldId(index), domain.clone());
+            }
+        }
+        self.relations = Arc::clone(&snapshot.relations);
     }
 
     /// Whether `inst` is `ancestor` or something inside it.
@@ -827,16 +935,22 @@ impl Model {
         &self.relations
     }
 
+    /// The list of relations itself, which is another list (not the same one) after any change
+    /// to it: what a cache of answers over the relations keeps to know that it is stale.
+    pub fn shared_relations(&self) -> &Arc<Vec<Relation>> {
+        &self.relations
+    }
+
     /// Add a relation after the check: the solver adds the ones that a bound entails and takes
     /// them out again with [`Model::truncate_relations`] (ADR 0065). They go at the end, so no
     /// index of a relation of the design changes.
     pub fn push_relation(&mut self, relation: Relation) {
-        self.relations.push(relation);
+        Arc::make_mut(&mut self.relations).push(relation);
     }
 
     /// Keep the first `len` relations and drop the rest.
     pub fn truncate_relations(&mut self, len: usize) {
-        self.relations.truncate(len);
+        Arc::make_mut(&mut self.relations).truncate(len);
     }
 
     /// `file:line` of a statement of this model, if its file is known.
@@ -869,6 +983,11 @@ impl Model {
     }
 
     pub fn balances(&self) -> &[Balance] {
+        &self.balances
+    }
+
+    /// The list of balances itself, to hold while the model changes (the structure does not).
+    pub fn shared_balances(&self) -> &Arc<Vec<Balance>> {
         &self.balances
     }
 

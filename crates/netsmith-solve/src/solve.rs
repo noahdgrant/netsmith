@@ -25,14 +25,15 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 mod findings;
+mod reads;
 mod seed;
 mod transfer;
 pub use findings::{HeldBy, UnconstrainedPick, UnstatedValue};
 pub use seed::Seeded;
 
 use netsmith_check::{
-    Balance, Board, Diagnostic, Domain, Draw, FieldId, FieldKind, InstId, InstKind, Model, RExpr,
-    Relation, SourceId, System,
+    Balance, Board, Checkpoint, Diagnostic, Domain, Draw, FieldId, FieldKind, InstId, InstKind,
+    Model, RExpr, Relation, Snapshot, SourceId, System,
 };
 use netsmith_lang::Span;
 use netsmith_lang::ast::CmpOp;
@@ -168,7 +169,7 @@ const MAX_TRIALS: usize = 250_000;
 /// The solver's state before a group of parts was searched, to put it back.
 #[derive(Clone)]
 struct Mark {
-    model: Model,
+    model: Snapshot,
     diagnostics: usize,
     seen: HashSet<Diagnostic>,
     picks: usize,
@@ -378,6 +379,9 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         original_relations: model.relations().len(),
         extras: Vec::new(),
         surveys: Vec::new(),
+        reads: Default::default(),
+        stamp: vec![0; model.fields().count()],
+        clock: 1,
     };
     s.relax_pinned();
     s.fed_at_start = s.fed_at_start();
@@ -638,6 +642,11 @@ struct Solver<'a> {
     extras: Vec<(Relation, transfer::Transfer)>,
     /// What the picks of parts with a value column might be limited by, found before the picks.
     surveys: Vec<findings::Survey>,
+    /// What the design reads, for the relations the model has (`reads`).
+    reads: std::cell::RefCell<Option<std::rc::Rc<reads::Reads>>>,
+    /// When `propagate` last changed each field, on a clock that counts its changes.
+    stamp: Vec<u64>,
+    clock: u64,
 }
 
 /// The currents in a balance that the design gave a range (`.x.current &= a..b`) and that
@@ -788,26 +797,45 @@ impl Solver<'_> {
         }
     }
 
+    /// Set a field's domain in `propagate`, noting when.
+    fn set_field(&mut self, field: FieldId, domain: Domain) {
+        self.clock += 1;
+        self.stamp[field.0] = self.clock;
+        self.model.set_domain(field, domain);
+    }
+
     fn propagate(&mut self) -> Vec<Conflict> {
         let mut conflicts: Vec<Conflict> = Vec::new();
         let mut said: HashSet<String> = HashSet::new();
         // The structure does not change while values narrow, so it is copied once.
         let equalities = self.model.equalities().to_vec();
-        let relations = self.model.relations().to_vec();
-        let balances = self.model.balances().to_vec();
+        let relations = std::sync::Arc::clone(self.model.shared_relations());
+        let balances = std::sync::Arc::clone(self.model.shared_balances());
+        let reads = self.reads();
+        // The pass in which each item was last worked through, as a time on the clock of
+        // `set_field`: an item whose fields have not changed since is worked through again to
+        // the same effect (it changed nothing, or it changed its own field, which is a change).
+        let mut equalities_at = vec![0u64; equalities.len()];
+        let mut relations_at = vec![0u64; relations.len()];
+        let mut balances_at = vec![0u64; balances.len()];
         for _ in 0..64 {
             let mut changed = false;
 
-            for &(a, b) in &equalities {
+            for (item, &(a, b)) in equalities.iter().enumerate() {
+                let at = equalities_at[item];
+                if at != 0 && self.stamp[a.0] <= at && self.stamp[b.0] <= at {
+                    continue;
+                }
+                equalities_at[item] = self.clock;
                 let (da, db) = (self.domain(a), self.domain(b));
                 match merge(&da, &db) {
                     Some(m) => {
                         if m != da {
-                            self.model.set_domain(a, m.clone());
+                            self.set_field(a, m.clone());
                             changed = true;
                         }
                         if m != db {
-                            self.model.set_domain(b, m);
+                            self.set_field(b, m);
                             changed = true;
                         }
                     }
@@ -842,20 +870,25 @@ impl Solver<'_> {
                     continue;
                 }
                 let RExpr::Field(f) = &r.lhs else { continue };
-                let Ok(v) = eval(&self.model, &r.rhs) else {
+                let at = relations_at[index];
+                if at != 0 && reads.inputs_of(index).iter().all(|f| self.stamp[f.0] <= at) {
+                    continue;
+                }
+                relations_at[index] = self.clock;
+                let Some(v) = reads.value_of_rhs(&self.model, index, r) else {
                     continue;
                 };
                 let value = domain_of(v);
                 let current = self.domain(*f);
                 match (r.op, &current) {
                     (_, Domain::Unset) => {
-                        self.model.set_domain(*f, value);
+                        self.set_field(*f, value);
                         changed = true;
                     }
                     (CmpOp::Narrow, _) => match merge(&current, &value) {
                         Some(m) => {
                             if m != current {
-                                self.model.set_domain(*f, m);
+                                self.set_field(*f, m);
                                 changed = true;
                             }
                         }
@@ -897,7 +930,7 @@ impl Solver<'_> {
                             && let Ok(Some(both)) = d.intersect(v)
                             && both != *d
                         {
-                            self.model.set_domain(*f, Domain::Quantity(both));
+                            self.set_field(*f, Domain::Quantity(both));
                             changed = true;
                         }
                     }
@@ -906,7 +939,7 @@ impl Solver<'_> {
                             && v != d
                             && d.encloses(v).unwrap_or(false)
                         {
-                            self.model.set_domain(*f, value);
+                            self.set_field(*f, value);
                             changed = true;
                         }
                     }
@@ -929,7 +962,7 @@ impl Solver<'_> {
                             && v != d
                             && d.encloses(v).unwrap_or(false)
                         {
-                            self.model.set_domain(*f, value);
+                            self.set_field(*f, value);
                             changed = true;
                         }
                     }
@@ -941,11 +974,16 @@ impl Solver<'_> {
             // can settle that way takes its value from the join, which can only say what the
             // others allow, so the joins wait until nothing else changes.
             for joins in [false, true] {
-                for b in &balances {
+                for (item, b) in balances.iter().enumerate() {
                     let is_join = self.model.instance(b.scope).kind == InstKind::System;
                     if is_join != joins || b.returns {
                         continue;
                     }
+                    let at = balances_at[item];
+                    if at != 0 && b.draws.iter().all(|d| self.stamp[d.field.0] <= at) {
+                        continue;
+                    }
+                    balances_at[item] = self.clock;
                     if let Some((field, value)) = self.solve_balance(b) {
                         match self.domain(field) {
                             Domain::Unset => {
@@ -957,7 +995,7 @@ impl Solver<'_> {
                             // that share nothing are left to `verify_balances`.
                             Domain::Quantity(old) => match self.reworked(b, &old, &value) {
                                 Some(both) => {
-                                    self.model.set_domain(field, Domain::Quantity(both));
+                                    self.set_field(field, Domain::Quantity(both));
                                     changed = true;
                                     continue;
                                 }
@@ -965,7 +1003,7 @@ impl Solver<'_> {
                             },
                             _ => continue,
                         }
-                        self.model.set_domain(field, Domain::Quantity(value));
+                        self.set_field(field, Domain::Quantity(value));
                         changed = true;
                     } else if let Some(budget) = self.budget(b)
                         && budget.stated.encloses(&budget.works_out).unwrap_or(false)
@@ -979,7 +1017,7 @@ impl Solver<'_> {
                         if let Ok(Some(both)) = old.intersect(&budget.field_value())
                             && both != old
                         {
-                            self.model.set_domain(field, Domain::Quantity(both));
+                            self.set_field(field, Domain::Quantity(both));
                             changed = true;
                         }
                     }
@@ -1336,24 +1374,20 @@ impl Solver<'_> {
     /// the net). Return nets repeat the same terms and are left out. A requirement that
     /// mentions no current in a balance is returned as it was.
     fn with_currents(&self, r: &Relation, message: String) -> String {
-        let balances: Vec<Balance> = self
-            .model
-            .balances()
-            .iter()
-            .filter(|b| !b.returns && self.model.instance(b.scope).kind != InstKind::System)
-            .cloned()
-            .collect();
+        let balances = self.model.balances();
+        let reads = self.reads();
         let mut fields = Vec::new();
         fields_in(&r.lhs, &mut fields);
         fields_in(&r.rhs, &mut fields);
-        let mut seen = vec![false; balances.len()];
+        let mut seen: HashSet<usize> = HashSet::new();
         let mut notes = Vec::new();
         while let Some(f) = fields.pop() {
-            for (i, b) in balances.iter().enumerate() {
-                if seen[i] || !b.draws.iter().any(|d| d.field == f) {
+            // The balances that sum the field, in the order the model lists them.
+            for &i in reads.supply_balances_of(f) {
+                let b = &balances[i];
+                if !seen.insert(i) {
                     continue;
                 }
-                seen[i] = true;
                 let terms: Vec<String> = b
                     .draws
                     .iter()
@@ -1779,6 +1813,12 @@ impl Solver<'_> {
         parts.sort_by(|a, b| a.0.cmp(&b.0));
 
         let mut jobs: Vec<Job> = Vec::new();
+        // What `Catalogs::resolve` gave for a catalog and its columns: the same for every part
+        // that is of the type, so it is worked out once (it makes the generic parts, which
+        // takes longer than the search of a part with a few rows).
+        type Kinds = Vec<(String, FieldKind)>;
+        type Resolved = Option<Result<crate::catalog::Catalog, String>>;
+        let mut resolved_before: Vec<(String, Kinds, Resolved)> = Vec::new();
         for (path, part) in parts {
             let catalog = self
                 .model
@@ -1802,7 +1842,18 @@ impl Solver<'_> {
                 .iter()
                 .map(|(f, key)| (key.clone(), self.model.field(*f).kind))
                 .collect();
-            let resolved = self.catalogs.resolve(&catalog.name, &kinds).map(|found| {
+            let found = match resolved_before
+                .iter()
+                .find(|(name, k, _)| *name == catalog.name && *k == kinds)
+            {
+                Some((_, _, found)) => found.clone(),
+                None => {
+                    let found = self.catalogs.resolve(&catalog.name, &kinds);
+                    resolved_before.push((catalog.name.clone(), kinds.clone(), found.clone()));
+                    found
+                }
+            };
+            let resolved = found.map(|found| {
                 found.and_then(|cat| self.check_enum_cells(&catalog.name, &columns, cat))
             });
             match resolved {
@@ -1930,7 +1981,7 @@ impl Solver<'_> {
     /// What `search_again_together` needs to put the solver back as it was before a group.
     fn mark(&self) -> Mark {
         Mark {
-            model: self.model.clone(),
+            model: self.model.snapshot(),
             diagnostics: self.diagnostics.len(),
             seen: self.seen.clone(),
             picks: self.picks.len(),
@@ -1941,7 +1992,7 @@ impl Solver<'_> {
     }
 
     fn restore(&mut self, mark: &Mark) {
-        self.model = mark.model.clone();
+        self.model.restore(&mark.model);
         self.diagnostics.truncate(mark.diagnostics);
         self.seen = mark.seen.clone();
         self.picks.truncate(mark.picks);
@@ -2501,18 +2552,30 @@ impl Solver<'_> {
         }
         let class = |f: FieldId, fparent: &mut Vec<usize>| find(fparent, f.0);
 
-        // The value classes inside each part.
-        let mut inside: Vec<std::collections::HashSet<usize>> =
-            vec![Default::default(); jobs.len()];
+        // The jobs that each class of values is inside of: of a field, its owner and every
+        // instance around the owner is a part to pick or is not.
+        let job_of: HashMap<InstId, usize> = jobs
+            .iter()
+            .enumerate()
+            .map(|(j, job)| (job.part, j))
+            .collect();
+        let mut jobs_of_class: HashMap<usize, Vec<usize>> = HashMap::new();
         for (id, field) in self.model.fields() {
             if fixed(id) {
                 continue;
             }
-            for (j, job) in jobs.iter().enumerate() {
-                if self.model.is_inside(field.owner, job.part) {
-                    inside[j].insert(class(id, &mut fparent));
+            let class = class(id, &mut fparent);
+            let mut at = Some(field.owner);
+            while let Some(inst) = at {
+                if let Some(&j) = job_of.get(&inst) {
+                    jobs_of_class.entry(class).or_default().push(j);
                 }
+                at = self.model.instance(inst).parent;
             }
+        }
+        for list in jobs_of_class.values_mut() {
+            list.sort_unstable();
+            list.dedup();
         }
 
         let mut jparent: Vec<usize> = (0..jobs.len()).collect();
@@ -2521,11 +2584,14 @@ impl Solver<'_> {
             fields_in(&r.lhs, &mut fields);
             fields_in(&r.rhs, &mut fields);
             fields.retain(|&f| !fixed(f));
-            let classes: std::collections::HashSet<usize> =
-                fields.iter().map(|&f| class(f, &mut fparent)).collect();
-            let touched: Vec<usize> = (0..jobs.len())
-                .filter(|&j| inside[j].iter().any(|c| classes.contains(c)))
+            let mut touched: Vec<usize> = fields
+                .iter()
+                .filter_map(|&f| jobs_of_class.get(&class(f, &mut fparent)))
+                .flatten()
+                .copied()
                 .collect();
+            touched.sort_unstable();
+            touched.dedup();
             for w in touched.windows(2) {
                 union(&mut jparent, w[0], w[1]);
             }
@@ -2759,11 +2825,11 @@ impl Solver<'_> {
                 }
                 let mut read: Vec<&str> = Vec::new();
                 for &count in &counts {
-                    let snapshot = self.model.clone();
+                    let checkpoint = self.model.checkpoint();
                     let bank = job.count.zip(count);
                     let outcome =
                         self.try_candidate(job.part, &job.columns, c, bank, coupling, &later);
-                    self.model = snapshot;
+                    self.model.rollback(checkpoint);
                     match outcome {
                         Err(r)
                             if r.relation
@@ -2887,12 +2953,12 @@ impl Solver<'_> {
                     return Outcome::GaveUp;
                 }
                 search.trials += 1;
-                let snapshot = self.model.clone();
+                let checkpoint = self.model.checkpoint();
                 let bank = job.count.zip(count);
                 match self.try_candidate(job.part, &job.columns, c, bank, coupling, &later) {
                     Ok(_) if jump.is_some() => {
                         // The parts after this one would fail again, as they did.
-                        self.model = snapshot;
+                        self.model.rollback(checkpoint);
                         failed.push((c, count));
                     }
                     Ok(needs) => {
@@ -2914,11 +2980,12 @@ impl Solver<'_> {
                         });
                         let outcome = self.search(jobs, group, depth + 1, search, coupling);
                         if let Outcome::Solved = outcome {
+                            self.model.commit(checkpoint);
                             return outcome;
                         }
                         search.chosen.pop();
                         search.picks.pop();
-                        self.model = snapshot;
+                        self.model.rollback(checkpoint);
                         match outcome {
                             Outcome::Failed(mut depends_on) => {
                                 if depends_on.remove(&depth) {
@@ -2932,6 +2999,8 @@ impl Solver<'_> {
                         failed.push((c, count));
                     }
                     Err(r) => {
+                        // `try_candidate` put the model back.
+                        self.model.commit(checkpoint);
                         let mut assignment = search.chosen.clone();
                         assignment.push(format!("{} = {}", job.path, choice_name(c, count)));
                         if search.closest.as_ref().is_none_or(|best| {
@@ -3007,21 +3076,21 @@ impl Solver<'_> {
     /// that names only this field (`.effective_capacitance >= 1uF`) only judges the part that
     /// holds it.
     fn mentioned(&self, field: FieldId) -> bool {
-        self.model
-            .equalities()
-            .iter()
-            .any(|&(a, b)| a == field || b == field)
-            || self
-                .model
-                .balances()
-                .iter()
-                .any(|b| b.draws.iter().any(|d| d.field == field))
-            || self.model.relations().iter().any(|r| {
-                let mut fields = Vec::new();
-                fields_in(&r.lhs, &mut fields);
-                fields_in(&r.rhs, &mut fields);
-                fields.contains(&field) && fields.iter().any(|&g| g != field)
-            })
+        self.reads().shared(field)
+    }
+
+    /// What the design reads, worked out again when the relations are not those it was worked
+    /// out for.
+    fn reads(&self) -> std::rc::Rc<reads::Reads> {
+        let mut cache = self.reads.borrow_mut();
+        match cache.as_ref() {
+            Some(r) if r.is_of(&self.model) => std::rc::Rc::clone(r),
+            _ => {
+                let r = std::rc::Rc::new(reads::Reads::of(&self.model));
+                *cache = Some(std::rc::Rc::clone(&r));
+                r
+            }
+        }
     }
 
     fn fits(&self, part: InstId, columns: &[(FieldId, String)], c: &Candidate) -> bool {
@@ -3145,21 +3214,7 @@ impl Solver<'_> {
         if !matches!(self.domain(field), Domain::Unset) {
             return true;
         }
-        self.model
-            .equalities()
-            .iter()
-            .any(|&(a, b)| a == field || b == field)
-            || self
-                .model
-                .balances()
-                .iter()
-                .any(|b| b.draws.iter().any(|d| d.field == field))
-            || self.model.relations().iter().any(|r| {
-                let mut fields = Vec::new();
-                fields_in(&r.lhs, &mut fields);
-                fields_in(&r.rhs, &mut fields);
-                fields.contains(&field)
-            })
+        self.reads().read(field)
     }
 
     /// A candidate's value after derating, at the bias the design gives its part.
@@ -3252,7 +3307,27 @@ impl Solver<'_> {
         coupling: &Coupling,
         later: &HashSet<usize>,
     ) -> Result<Vec<(String, Need)>, Rejection> {
-        let backup = self.model.clone();
+        let backup = self.model.checkpoint();
+        let result = self.try_candidate_from(part, columns, c, bank, coupling, later, &backup);
+        // A candidate that is refused leaves the model as it was.
+        match result {
+            Ok(_) => self.model.commit(backup),
+            Err(_) => self.model.rollback(backup),
+        }
+        result
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn try_candidate_from(
+        &mut self,
+        part: InstId,
+        columns: &[(FieldId, String)],
+        c: &Candidate,
+        bank: Option<(FieldId, f64)>,
+        coupling: &Coupling,
+        later: &HashSet<usize>,
+        backup: &Checkpoint,
+    ) -> Result<Vec<(String, Need)>, Rejection> {
         let mut needs: Vec<(String, Need)> = Vec::new();
         // A bank of this many of the row (ADR 0052): the count is as much the choice as the
         // row is.
@@ -3262,14 +3337,12 @@ impl Solver<'_> {
         {
             self.model.set_domain(field, Domain::Quantity(q));
         }
-        let reject = |this: &mut Self,
-                      message: String,
+        let reject = |message: String,
                       margin: f64,
                       at: (SourceId, Span),
                       reads: Vec<FieldId>,
                       own: Vec<FieldId>,
                       relation: Option<usize>| {
-            this.model = backup.clone();
             Err(Rejection {
                 message,
                 margin,
@@ -3313,7 +3386,6 @@ impl Solver<'_> {
             && let Some(conflict) = self.propagate().into_iter().next()
         {
             return reject(
-                self,
                 conflict.message,
                 1.0,
                 (conflict.source, conflict.span),
@@ -3335,7 +3407,6 @@ impl Solver<'_> {
 
         if let Some(conflict) = self.propagate().into_iter().next() {
             return reject(
-                self,
                 conflict.message,
                 1.0,
                 (conflict.source, conflict.span),
@@ -3356,35 +3427,28 @@ impl Solver<'_> {
         // fails on it can still hold for the part that is chosen. Such a bound is not judged,
         // but the candidate is refused if no value of the range meets it (`verify_possible`,
         // ADR 0065, 9.5).
-        let changed: HashSet<FieldId> = self
-            .model
-            .fields()
-            .filter(|(id, field)| backup.field(*id).domain != field.domain)
-            .map(|(id, _)| id)
-            .collect();
-        let relevant: Vec<(usize, Relation)> = self
-            .model
-            .relations()
+        let changed = self.model.changed_since(backup);
+        let relations = std::sync::Arc::clone(self.model.shared_relations());
+        let design = self.reads();
+        let touched = design.touching(part, changed.iter().copied());
+        let relevant: Vec<usize> = touched
             .iter()
-            .enumerate()
-            .filter(|(index, r)| {
-                let mut fields = Vec::new();
-                fields_in(&r.lhs, &mut fields);
-                fields_in(&r.rhs, &mut fields);
+            .copied()
+            .filter(|&index| {
+                let fields = design.fields_of(index);
                 let inside = fields
                     .iter()
                     .any(|&f| self.model.is_inside(self.model.field(f).owner, part));
                 // A bound that the solver added reads a value another part may still decide
                 // (the right side), so it waits for those parts as a bound on a worked-out
                 // value does.
-                if *index >= self.original_relations {
-                    return inside && coupling.feeding[*index].is_disjoint(later);
+                if index >= self.original_relations {
+                    return inside && coupling.feeding[index].is_disjoint(later);
                 }
                 inside
                     || (fields.iter().any(|f| changed.contains(f))
-                        && coupling.feeding[*index].is_disjoint(later))
+                        && coupling.feeding[index].is_disjoint(later))
             })
-            .map(|(index, r)| (index, r.clone()))
             .collect();
         // The bounds the choice changed that wait for a part still to be chosen. They are not
         // judged, but one that no value of the ranges as they are can meet is refused: the
@@ -3392,33 +3456,26 @@ impl Solver<'_> {
         // this a bound on a value that another group's picks feed (the input voltage of a
         // stage, behind a filter whose drop its load decides) never reached the pick that
         // sets the value, however plainly the pick broke it.
-        let waiting: Vec<(usize, Relation)> = self
-            .model
-            .relations()
+        let waiting: Vec<usize> = touched
             .iter()
-            .enumerate()
-            .filter(|(index, r)| {
-                *index < self.original_relations
-                    && matches!(r.op, CmpOp::Ge | CmpOp::Le)
-                    && !coupling.feeding[*index].is_disjoint(later)
-                    && !relevant.iter().any(|(i, _)| i == index)
-                    && {
-                        let mut fields = Vec::new();
-                        fields_in(&r.lhs, &mut fields);
-                        fields_in(&r.rhs, &mut fields);
-                        fields.iter().any(|f| changed.contains(f))
-                    }
+            .copied()
+            .filter(|&index| {
+                index < self.original_relations
+                    && matches!(relations[index].op, CmpOp::Ge | CmpOp::Le)
+                    && !coupling.feeding[index].is_disjoint(later)
+                    && !relevant.contains(&index)
+                    && design.fields_of(index).iter().any(|f| changed.contains(f))
             })
-            .map(|(index, r)| (index, r.clone()))
             .collect();
         // The relations are checked in order, so the one that fails is the first, and the
         // rejection depends on every relation up to it.
         let mut reads = Vec::new();
         let judged = relevant
             .iter()
-            .map(|(index, r)| (index, r, true))
-            .chain(waiting.iter().map(|(index, r)| (index, r, false)));
-        for (index, r, whole) in judged {
+            .map(|&index| (index, true))
+            .chain(waiting.iter().map(|&index| (index, false)));
+        for (index, whole) in judged {
+            let r = &relations[index];
             let mut own = Vec::new();
             fields_in(&r.lhs, &mut own);
             fields_in(&r.rhs, &mut own);
@@ -3429,16 +3486,8 @@ impl Solver<'_> {
                 self.verify_possible(r)
             };
             if let Verdict::Fail { message, margin } = verdict {
-                let message = self.relation_message(*index, r, message);
-                return reject(
-                    self,
-                    message,
-                    margin,
-                    (r.source, r.span),
-                    reads,
-                    own,
-                    Some(*index),
-                );
+                let message = self.relation_message(index, r, message);
+                return reject(message, margin, (r.source, r.span), reads, own, Some(index));
             }
         }
         Ok(needs)
