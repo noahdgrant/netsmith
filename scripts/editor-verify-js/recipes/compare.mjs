@@ -605,11 +605,15 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await page.waitForSelector('[data-testid="ref-popover"]');
   expect(true, 'Compare with another ref opens the picker');
   await page.keyboard.press('Escape');
+  // The picker is closed before the button is clicked again: on a slow runner the click came while it was
+  // still closing and shut it instead of opening it (CI, ref-custom never appeared).
+  await page.waitForSelector('[data-testid="ref-popover"]', { state: 'hidden' });
 
   step('a name that is no ref: the page says so');
   // The server answers 404 and the browser logs that as an error; it is the request this step is for.
   allowConsole(/Failed to load resource: the server responded with a status of 404/);
   await visible('[data-testid="ref-button"]').click();
+  await page.waitForSelector('[data-testid="ref-popover"]');
   await page.keyboard.type('no-such-branch');
   await page.waitForSelector('[data-testid="ref-custom"]');
   await page.keyboard.press('Enter');
