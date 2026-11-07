@@ -375,6 +375,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         refused_counts: HashSet::new(),
         derived: HashSet::new(),
         stated: stated_currents(model),
+        stated_late: stated_late(model),
         sole_equation: sole_equations(model),
         claimed: claimed_by_ranges(model),
         several_equations: several_equations(model),
@@ -623,6 +624,10 @@ struct Solver<'a> {
     /// determines, with the range as written (ADR 0038): each is a budget, and what the
     /// circuit determines must lie inside it.
     stated: HashMap<FieldId, Quantity>,
+    /// The same, for a current whose range has a value at an end (ADR 0066): it states its
+    /// range when the ends have a value, and is then a budget as the same range written with
+    /// numbers is (`stated_range`).
+    stated_late: HashSet<FieldId>,
     /// Per relation: whether it is an equation on a field that no other equation states
     /// (through the field or any field joined to it). Only such an equation narrows a field
     /// that has a range; see `propagate`.
@@ -681,10 +686,48 @@ fn stated_currents(model: &Model) -> HashMap<FieldId, Quantity> {
         .iter()
         .flat_map(|b| b.draws.iter().map(|d| d.field))
         .filter(|f| !equated.contains(f))
+        // What a statement gives a part's own current is the part's claim, not an allowance.
+        .filter(|f| !inside_part(model, *f))
         .filter_map(|f| match &model.field(f).domain {
             Domain::Quantity(q) => Some((f, *q)),
             _ => None,
         })
+        .collect()
+}
+
+/// Whether a field is part of a part (the draw of its supply pin, the current through it):
+/// what a part states of itself is the part's claim (ADR 0066, 3).
+fn inside_part(model: &Model, field: FieldId) -> bool {
+    let mut at = Some(model.field(field).owner);
+    while let Some(inst) = at {
+        if model.instance(inst).kind == InstKind::Part {
+            return true;
+        }
+        at = model.instance(inst).parent;
+    }
+    false
+}
+
+/// The currents in a balance that a range with a value at an end states, outside a part's
+/// own body: they are stated like the same range written with numbers, once the ends have a
+/// value (ADR 0066, 3).
+fn stated_late(model: &Model) -> HashSet<FieldId> {
+    let equated: HashSet<FieldId> = model
+        .relations()
+        .iter()
+        .filter_map(|r| match (&r.op, &r.lhs) {
+            (CmpOp::EqEq, RExpr::Field(f)) => Some(*f),
+            _ => None,
+        })
+        .collect();
+    let on_balance: HashSet<FieldId> = model
+        .balances()
+        .iter()
+        .flat_map(|b| b.draws.iter().map(|d| d.field))
+        .collect();
+    claimed_by_ranges(model)
+        .into_iter()
+        .filter(|f| on_balance.contains(f) && !equated.contains(f) && !inside_part(model, *f))
         .collect()
 }
 
@@ -1167,6 +1210,17 @@ impl Solver<'_> {
     /// and no current that a balance worked out (such a current takes up whatever the rest
     /// leaves, so it says nothing about the stated one). What the other terms determine is
     /// what the stated one works out to, and it has to lie inside what was stated.
+    /// The range a design stated for a current in a balance, if it is a budget term.
+    fn stated_range(&self, field: FieldId) -> Option<Quantity> {
+        if let Some(q) = self.stated.get(&field) {
+            return Some(*q);
+        }
+        match self.domain(field) {
+            Domain::Quantity(q) if self.stated_late.contains(&field) => Some(q),
+            _ => None,
+        }
+    }
+
     fn budget(&self, b: &Balance) -> Option<Budget> {
         if !b.is_complete()
             || b.draws.len() < 2
@@ -1186,7 +1240,7 @@ impl Solver<'_> {
             .enumerate()
             // A current stated as exactly zero adds nothing to the net and is not an
             // allowance (a part's reference rail, ADR 0066), so it is not the stated term.
-            .filter(|(_, d)| self.stated.contains_key(&d.field) && !self.model.draw_is_zero(d));
+            .filter(|(_, d)| self.stated_range(d.field).is_some() && !self.model.draw_is_zero(d));
         let (index, d) = stated.next()?;
         if stated.next().is_some() {
             return None;
@@ -1198,7 +1252,7 @@ impl Solver<'_> {
             .map(|(_, q)| *q);
         let first = others.next()?;
         let sum = others.try_fold(first, |sum, q| sum.add(&q).ok())?;
-        let range = self.stated[&d.field];
+        let range = self.stated_range(d.field)?;
         Some(Budget {
             field: d.field,
             index,
