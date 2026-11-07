@@ -314,7 +314,7 @@ board Units {
 
 Rules.
 
-- A range or a tolerance needs fixed numbers on both sides. `.x &= .y +/- 1%` is an error.
+- A tolerance needs fixed numbers on both sides: `.x &= .y +/- 1%` is an error. A range may have a value at an end (next section).
 - A value has a dimension and a field accepts only its own: a `Voltage` field takes volts.
 - A divisor whose range includes zero is an error.
 
@@ -382,6 +382,86 @@ error: the low end of the range is above the high end
   |
 4 |     .a: Rail { .voltage &= 3V..1V }
   |                            ^^^^^^
+```
+
+### A range whose end is a value
+
+The ends of a range may be values, not only numbers (ADR 0066): a member, or an expression over members. The range `0A .. .max_supply_current` is the current from nothing up to the member `.max_supply_current`, whatever that turns out to be. It is the syntax that was always there with a name at an end, and nothing else is added. Write a space after `..` before a name that starts with a dot, so that the text is not read as three dots.
+
+```nsm-fragment
+part Gate {
+    .vcc: Rail
+    .max_supply_current: Current
+    .vcc.current &= 0A .. .max_supply_current
+}
+```
+
+The statement waits for its ends, as any statement that names a value does, and then it means what the same range with the numbers written in would mean. The range holds the lowest value of the low end and the highest of the high end, so an end that is itself a range (a value with a tolerance, a cell that holds a range) is never trusted to be narrower than it says. While an end has no value, the statement claims nothing: it narrows nothing, refuses nothing, and the build lists it as not evaluated, with the range as written, `gate.vcc.current (0A..gate.max_supply_current)`. A low end above the high end is an error, with the two ends and their values.
+
+This is how a part states its own draw when the draw is a catalog column: the row's maximum is the range's high end, and the rail the part is on carries the range as soon as the row is picked (the translator below). Only a range has this: a tolerance, `.x +/- 5%`, still needs a number at both ends.
+
+```nsm evaluate
+import std::sources::Rail
+
+/// Invented: a gate whose datasheet gives the largest current its supply pin draws.
+part Gate {
+    .designator &= "U"
+    .vcc: Rail
+    .max_supply_current: Current
+    .vcc.current &= 0A .. .max_supply_current
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+    }
+}
+
+board Counted {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= -1uA..0A
+    }
+    .gate: Gate { .max_supply_current &= 750nA }
+    .supply ~ .gate.vcc
+}
+```
+
+The gate draws 0 A to 750 nA, which fits the 1 uA that the supply is allowed to give (a supply gives, so its current is the draws negated). A supply that is allowed 500 nA does not, and the build says so:
+
+```nsm fails
+import std::sources::Rail
+
+/// Invented: a gate whose datasheet gives the largest current its supply pin draws.
+part Gate {
+    .designator &= "U"
+    .vcc: Rail
+    .max_supply_current: Current
+    .vcc.current &= 0A .. .max_supply_current
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+    }
+}
+
+board Counted {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= -500nA..0A
+    }
+    .gate: Gate { .max_supply_current &= 750nA }
+    .supply ~ .gate.vcc
+}
+```
+
+```text
+error: the currents on net `3V3` do not add up: `supply.current` must stay within -500nA..0A, but the others on it work out to -750nA..0A (all of them: `gate.vcc.current` is 0A..750nA, `supply.current` is -500nA..0A)
+   --> main.nsm:20:9
+   |
+20 |         .current &= -500nA..0A
+   |         ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ## Enums: a value from a fixed list

@@ -137,6 +137,39 @@ fn units_tolerances_and_ranges() {
 }
 
 #[test]
+fn a_range_may_have_values_at_its_ends_and_prints_back_so() {
+    // The grammar always read an expression at each end (ADR 0066 gives the meaning).
+    let Expr::Range { lo, hi, .. } = expr("0A .. .max_supply_current") else {
+        panic!("range")
+    };
+    assert!(matches!(*lo, Expr::Number(..)));
+    assert!(matches!(*hi, Expr::Path(..)));
+    // The printer puts a space where a path with a leading dot follows `..`, so the text is
+    // not read as `...`, and the printed text parses to the same tree.
+    assert_eq!(
+        canon("0A..  .max_supply_current"),
+        "0A.. .max_supply_current"
+    );
+    assert_eq!(canon(".min..max"), ".min..max");
+    assert_eq!(canon(".lo .. .hi - 1uA"), ".lo.. .hi - 1uA");
+    for src in [
+        "0A.. .max_supply_current",
+        ".lo.. .hi - 1uA",
+        "(.a..  .b) * 2",
+    ] {
+        let once = canon(src);
+        assert_eq!(canon(&once), once, "{src}");
+    }
+    // An end may wrap to the next line after `..`.
+    assert_eq!(canon("0A..\n    .max"), "0A.. .max");
+    // A range is still the loosest operator: arithmetic binds inside each end.
+    let Expr::Range { hi, .. } = expr("0A .. .a + .b") else {
+        panic!("range")
+    };
+    assert!(matches!(*hi, Expr::Binary { op: BinOp::Add, .. }));
+}
+
+#[test]
 fn precedence() {
     // `+` binds looser than `*`.
     let Expr::Binary {

@@ -261,6 +261,10 @@ _Avoid_: Threshold, noise margin
 A `LevelTranslator` (`std::parts::logic`, ADR 0063): a single-supply buffer whose input accepts a lower logic level than its supply and whose output swings to its supply. Its input thresholds are `.vt_plus_max` (above it the input is a high for sure) and `.vt_minus_min` (below it a low for sure). A generic with the catalog `level_translator`, which has no standard row.
 _Avoid_: Level shifter, voltage translator
 
+**Range with values at its ends**:
+A range whose ends are values, `0A .. .max_supply_current` (ADR 0066): a member or an expression over members, read when both have a value, as the range from the low end's lowest value to the high end's highest. While an end has no value the statement claims nothing and is listed as not evaluated. It is how a part states its own draw from a catalog column. A tolerance (`+/-`) still needs numbers.
+_Avoid_: Computed range, dynamic range
+
 **Absolute maximum**:
 The voltages a pin survives, `.abs_min` and `.abs_max` of the pin, relative to its ground. The solver holds them against the worst-case voltage of the pin's net (ADR 0046).
 _Avoid_: Rating (a rating is a field such as `.max_power`)

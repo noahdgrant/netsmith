@@ -279,6 +279,9 @@ pub enum RExpr {
     Field(FieldId),
     Neg(Box<RExpr>),
     Bin(BinOp, Box<RExpr>, Box<RExpr>),
+    /// `lo..hi` where an end is not a fixed number (ADR 0066): the smallest range that holds
+    /// the low end's lowest value and the high end's highest, once both are known.
+    Range(Box<RExpr>, Box<RExpr>),
 }
 
 impl RExpr {
@@ -288,7 +291,7 @@ impl RExpr {
             Self::Const(_) | Self::Text(_) => {}
             Self::Field(f) => out.push(*f),
             Self::Neg(inner) => inner.fields(out),
-            Self::Bin(_, a, b) => {
+            Self::Bin(_, a, b) | Self::Range(a, b) => {
                 a.fields(out);
                 b.fields(out);
             }
@@ -654,6 +657,9 @@ impl Model {
                     BinOp::Div => "/",
                 };
                 format!("({} {sym} {})", self.show_expr(a), self.show_expr(b))
+            }
+            RExpr::Range(lo, hi) => {
+                format!("({}..{})", self.show_expr(lo), self.show_expr(hi))
             }
         }
     }
