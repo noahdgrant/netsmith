@@ -338,7 +338,11 @@ fn doc_text(lines: &[String]) -> String {
 }
 
 /// The part (of `drawn`) that `inst` is, or that it is a terminal or an interface of.
-fn drawn_part_of(model: &Model, inst: InstId, drawn: &HashMap<InstId, String>) -> Option<InstId> {
+fn drawn_part_of(
+    model: &Model,
+    inst: InstId,
+    drawn: &HashMap<InstId, Vec<String>>,
+) -> Option<InstId> {
     let mut cur = Some(inst);
     while let Some(c) = cur {
         if model.instance(c).kind == InstKind::Part {
@@ -355,7 +359,7 @@ fn drawn_part_of(model: &Model, inst: InstId, drawn: &HashMap<InstId, String>) -
 /// `//` comments are gone before the model, the standard library's own docs are not kept
 /// (`Instance::doc_at`), and a relation of a physical file states where parts go, not what the
 /// circuit is. `drawn` has the parts of the design, with their references.
-fn notes_of(model: &Model, drawn: &HashMap<InstId, String>) -> Vec<Note> {
+fn notes_of(model: &Model, drawn: &HashMap<InstId, Vec<String>>) -> Vec<Note> {
     let paths: Vec<String> = {
         let mut v: Vec<String> = drawn.keys().map(|&p| model.path_of(p)).collect();
         v.sort();

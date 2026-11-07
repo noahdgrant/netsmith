@@ -13,13 +13,17 @@ pub mod no_supplier;
 pub mod order;
 pub mod physical;
 pub mod project;
+pub mod providers;
 pub mod refresh;
 pub mod resolve;
 pub mod supply;
+mod values;
 
 use std::path::{Path, PathBuf};
 
-use netsmith_check::{Checked, Domain, InstId, InstKind, Loader, Model, SourceId, Sources, check};
+use netsmith_check::{
+    Checked, Domain, FieldId, FieldKind, InstId, InstKind, Loader, Model, SourceId, Sources, check,
+};
 use netsmith_core::{Design, PanelSpec};
 use netsmith_kicad::{Mapping, Pinout, emit_schematic, project_file};
 use netsmith_lang::{ParseError, Span};
@@ -29,6 +33,7 @@ use netsmith_pcb::{Subject, validate_pinout};
 use netsmith_solve::{Catalogs, Solution, solve, solve_system};
 
 pub use libraries::Libraries;
+pub use providers::{MAX_PROVIDER_TRIALS, ProviderNote};
 
 /// One board, built.
 pub struct Built {
@@ -56,6 +61,9 @@ pub struct Built {
     pub notes: Vec<String>,
     /// How many of the last `notes` come from lowering and not from the solver.
     pub lowering_notes: usize,
+    /// For each use of a generic on this board: the provider that stands in its place and the
+    /// providers passed over (ADR 0068). Empty for a board that uses no generic.
+    pub providers: Vec<ProviderNote>,
     /// What the design does against a guideline (ADR 0036): a warning that did not stop
     /// the build. With `guidelines = "error"` or `--strict` the build stops instead and
     /// this is empty.
@@ -360,37 +368,76 @@ pub fn outcome_observed(
             total,
         };
         observe(step(Stage::Solve));
-        let solution = solve(board, catalogs);
-        if !solution.diagnostics.is_empty() {
-            return Err(diagnostic_problems(
-                &solution.diagnostics,
-                &checked.sources,
-                &|_| board.name.clone(),
-            ));
-        }
-        observe(step(Stage::Lower));
-        let lowered = lower(board, &solution)
-            .map_err(|errors| lowering_problems(Some(&board.name), &board.name, &errors))?;
-        if catalogs.strict_guidelines() {
-            refuse_guidelines(
+        let first = solve(board, catalogs);
+        // A failure with a use that has several providers is tried with the others, and so is
+        // a bound on such a use that could not be judged (ADR 0068).
+        let mut picked = None;
+        if !first.diagnostics.is_empty() || !providers::unjudged(&first).is_empty() {
+            match providers::search(
+                providers::Source {
+                    name,
+                    text,
+                    loader,
+                    catalogs,
+                },
                 &board.name,
-                &lowered.guidelines,
-                &solution.model,
-                &checked.sources,
-            )?;
+                providers::Root::Board,
+                &checked,
+                &first,
+            ) {
+                providers::Outcome::Unchanged if !first.diagnostics.is_empty() => {
+                    return Err(diagnostic_problems(
+                        &first.diagnostics,
+                        &checked.sources,
+                        &|_| board.name.clone(),
+                    ));
+                }
+                providers::Outcome::Unchanged => {}
+                providers::Outcome::Failed(problems) => return Err(problems),
+                providers::Outcome::Found(found) => picked = Some(*found),
+            }
         }
-        let notes = notes(&solution, None);
+        let (solution, passed) = match picked.as_ref() {
+            Some(p) => (&p.solution, p.passed_over.clone()),
+            None => (&first, Default::default()),
+        };
+        let board = picked
+            .as_ref()
+            .and_then(|p| p.checked.board(&board.name))
+            .unwrap_or(board);
+        let sources = picked
+            .as_ref()
+            .map_or(&checked.sources, |p| &p.checked.sources);
+        observe(step(Stage::Lower));
+        let mut lowered = lower(board, solution)
+            .map_err(|errors| lowering_problems(Some(&board.name), &board.name, &errors))?;
+        lowered
+            .guidelines
+            .extend(open_circle_findings(solution, sources, None));
+        lowered
+            .guidelines
+            .extend(values::unconstrained_pick_findings(solution, sources, None));
+        lowered
+            .guidelines
+            .extend(values::unstated_value_findings(solution, sources, None));
+        if catalogs.strict_guidelines() {
+            refuse_guidelines(&board.name, &lowered.guidelines, &solution.model, sources)?;
+        }
+        let provided = providers::notes_for(&solution.model, None, &passed);
+        let mut notes = provider_lines(&provided);
+        notes.extend(self::notes(solution, None));
         let mut one = export(
             None,
             &board.name,
             lowered,
             notes,
             &solution.model,
-            &checked.sources,
+            sources,
             libraries,
         )?;
+        one.providers = provided;
         one.rechecks = resolve::recheck_alternatives(
-            &solution,
+            solution,
             &one.design.parts,
             catalogs,
             &|pinned: &Catalogs| quietly(|| solve(board, pinned)),
@@ -414,46 +461,93 @@ pub fn outcome_observed(
             )]);
         }
         observe(step(Stage::Solve));
-        let solution = solve_system(system, catalogs);
-        if !solution.diagnostics.is_empty() {
-            // A message written inside the definition of a member's board is about that board;
-            // any other is about the system.
-            return Err(diagnostic_problems(
-                &solution.diagnostics,
-                &checked.sources,
-                &|d| {
-                    let member = system
-                        .boards
-                        .iter()
-                        .find(|m| inside_definition(&solution.model, m.inst, d.source, d.span));
-                    match member {
-                        Some(m) => format!("{}/{}", system.name, m.name),
-                        None => system.name.clone(),
-                    }
+        let first = solve_system(system, catalogs);
+        let mut picked = None;
+        if !first.diagnostics.is_empty() || !providers::unjudged(&first).is_empty() {
+            match providers::search(
+                providers::Source {
+                    name,
+                    text,
+                    loader,
+                    catalogs,
                 },
-            ));
+                &system.name,
+                providers::Root::System,
+                &checked,
+                &first,
+            ) {
+                providers::Outcome::Unchanged if !first.diagnostics.is_empty() => {
+                    // A message written inside the definition of a member's board is about that
+                    // board; any other is about the system.
+                    return Err(diagnostic_problems(
+                        &first.diagnostics,
+                        &checked.sources,
+                        &|d| {
+                            let member = system.boards.iter().find(|m| {
+                                inside_definition(&first.model, m.inst, d.source, d.span)
+                            });
+                            match member {
+                                Some(m) => format!("{}/{}", system.name, m.name),
+                                None => system.name.clone(),
+                            }
+                        },
+                    ));
+                }
+                providers::Outcome::Unchanged => {}
+                providers::Outcome::Failed(problems) => return Err(problems),
+                providers::Outcome::Found(found) => picked = Some(*found),
+            }
         }
+        let (solution, passed) = match picked.as_ref() {
+            Some(p) => (&p.solution, p.passed_over.clone()),
+            None => (&first, Default::default()),
+        };
+        let system = picked
+            .as_ref()
+            .and_then(|p| p.checked.system(&system.name))
+            .unwrap_or(system);
+        let sources = picked
+            .as_ref()
+            .map_or(&checked.sources, |p| &p.checked.sources);
         observe(step(Stage::Lower));
         for member in &system.boards {
             let label = format!("{}/{}", system.name, member.name);
-            let lowered = lower_system_board(system, member, &solution)
+            let mut lowered = lower_system_board(system, member, solution)
                 .map_err(|errors| lowering_problems(Some(&label), &label, &errors))?;
+            lowered
+                .guidelines
+                .extend(open_circle_findings(solution, sources, Some(member.inst)));
+            lowered
+                .guidelines
+                .extend(values::unconstrained_pick_findings(
+                    solution,
+                    sources,
+                    Some(member.inst),
+                ));
+            lowered.guidelines.extend(values::unstated_value_findings(
+                solution,
+                sources,
+                Some(member.inst),
+            ));
             let scoped = solution.model.scoped_to(member.inst);
             if catalogs.strict_guidelines() {
-                refuse_guidelines(&label, &lowered.guidelines, &scoped, &checked.sources)?;
+                refuse_guidelines(&label, &lowered.guidelines, &scoped, sources)?;
             }
-            let notes = notes(&solution, Some(member.inst));
+            let provided = providers::notes_for(&solution.model, Some(member.inst), &passed);
+            let mut notes = provider_lines(&provided);
+            notes.extend(self::notes(solution, Some(member.inst)));
             let mut one = export(
                 Some(&system.name),
                 &member.name,
                 lowered,
                 notes,
                 &scoped,
-                &checked.sources,
+                sources,
                 libraries,
             )?;
+            one.providers = provided;
             one.rechecks = resolve::recheck_alternatives(
-                &solution,
+                solution,
                 &one.design.parts,
                 catalogs,
                 &|pinned: &Catalogs| quietly(|| solve_system(system, pinned)),
@@ -463,7 +557,7 @@ pub fn outcome_observed(
         solved.push(SolvedSystem {
             name: system.name.clone(),
             model: solution.model.clone(),
-            sources: checked.sources.clone(),
+            sources: sources.clone(),
             boards: system
                 .boards
                 .iter()
@@ -660,7 +754,251 @@ fn notes(solution: &Solution, board: Option<InstId>) -> Vec<String> {
                     )
                 })
         }))
+        .chain(
+            solution
+                .circular
+                .iter()
+                .filter(|group| group.iter().any(|&f| inside(whole.field(f).owner)))
+                .map(|group| circular_note(model, group)),
+        )
+        .chain(
+            solution
+                .seeded
+                .iter()
+                .filter(|seed| inside(whole.field(seed.field).owner))
+                .map(|seed| started_note(model, seed)),
+        )
         .collect()
+}
+
+/// A line of the notes for each use of a generic that a provider was picked for. A generic
+/// that is its own provider (the standard passives, one day) says nothing: its pick is the
+/// part.
+fn provider_lines(notes: &[ProviderNote]) -> Vec<String> {
+    notes
+        .iter()
+        .filter(|n| n.chosen != n.generic)
+        .map(ProviderNote::line)
+        .collect()
+}
+
+/// The checks that a circle of values left unmade (see `Solution::open_circles`, ADR 0057),
+/// as findings of the kind a project may make blocking (`guidelines = "error"`, `--strict`):
+/// the build passes with a warning by default, because the checks are the only thing that is
+/// missing and the design may be right, and stops with `--strict`. For one board of a system,
+/// only those inside it.
+fn open_circle_findings(
+    solution: &Solution,
+    sources: &Sources,
+    board: Option<InstId>,
+) -> Vec<Guideline> {
+    let whole = &solution.model;
+    let model = &board.map_or_else(|| whole.clone(), |b| whole.scoped_to(b));
+    let inside = |inst: InstId| board.is_none_or(|b| whole.is_inside(inst, b));
+    solution
+        .open_circles
+        .iter()
+        .filter(|c| c.fields.iter().any(|&f| inside(whole.field(f).owner)))
+        .map(|c| {
+            let quote = |fields: &[FieldId]| -> Vec<String> {
+                let mut paths: Vec<String> = fields
+                    .iter()
+                    .map(|&f| format!("`{}`", model.path_of_field(f)))
+                    .collect();
+                paths.sort();
+                paths
+            };
+            let mut shown = quote(&c.fields);
+            let more = shown.len().saturating_sub(CIRCULAR_SHOWN);
+            shown.truncate(CIRCULAR_SHOWN);
+            let more = match more {
+                0 => String::new(),
+                n => format!(" and {n} more"),
+            };
+            // The design's own checks come before the library's (a part's rating): the line
+            // shows only the first few.
+            let mut order = c.checks.clone();
+            order.sort_by_key(|&i| sources.get(whole.relations()[i].source).name.starts_with("std/"));
+            let checks: Vec<String> = order
+                .iter()
+                .map(|&i| {
+                    let r = &whole.relations()[i];
+                    format!(
+                        "`{} {} {}`",
+                        model.show_expr(&r.lhs),
+                        r.op.symbol(),
+                        model.show_expr(&r.rhs)
+                    )
+                })
+                .collect();
+            let listed = checks.iter().take(3).cloned().collect::<Vec<_>>().join(", ");
+            let rest = match checks.len().saturating_sub(3) {
+                0 => String::new(),
+                n => format!(" and {n} more"),
+            };
+            let start = start_of(whole, &c.fields);
+            let waits = |c: &netsmith_solve::OpenCircle| -> Option<(String, InstId)> {
+                if c.closed {
+                    return None;
+                }
+                let waiting = quote(&c.waiting);
+                Some((
+                    format!(
+                        "a range on them alone would not start them, because they also read {}, which nothing states: state {} first",
+                        waiting.join(", "),
+                        if waiting.len() == 1 { "it" } else { "them" }
+                    ),
+                    c.waiting
+                        .first()
+                        .map_or(whole.field(start).owner, |&f| whole.field(f).owner),
+                ))
+            };
+            let (what_to_state, at) = if let Some(first) = c.nets.first() {
+                // A group that closes through the currents of a net (issue #18).
+                let nets: Vec<String> = c
+                    .nets
+                    .iter()
+                    .map(|n| {
+                        format!(
+                            "net `{}` carries {} currents ({}), none of which has a value",
+                            n.net,
+                            n.unknown.len(),
+                            quote(&n.unknown).join(", ")
+                        )
+                    })
+                    .collect();
+                let current = first.unsolved.first().copied().unwrap_or(c.fields[0]);
+                let voltage = (matches!(
+                    whole.field(start).kind,
+                    FieldKind::Quantity(d) if d == netsmith_quantity::Dimension::VOLTAGE
+                ))
+                .then(|| format!(", or on a voltage in the circle, for example `{}`", model.path_of_field(start)));
+                // A rail or port of the net that nothing is said to draw from: the shortest path.
+                let outside = first
+                    .unknown
+                    .iter()
+                    .copied()
+                    .filter(|&f| {
+                        whole.instance(whole.field(f).owner).kind != InstKind::Part
+                    })
+                    .min_by_key(|&f| {
+                        let path = model.path_of_field(f);
+                        (path.matches('.').count(), path)
+                    });
+                let nothing_else = outside
+                    .map(|f| {
+                        format!(
+                            "; if nothing else draws from the net, `{} &= 0A` makes it a circle of equations, which a voltage starts",
+                            model.path_of_field(f)
+                        )
+                    })
+                    .unwrap_or_default();
+                let mut text = format!(
+                    "{}, and the solver works a part's current out only from a net of two currents (ADR 0026), so what the checks wait on is never set: state a range on `{}` (the part's current: the most and the least that the net's loads draw through it){}{nothing_else}; the checks are then made against what you state, and nothing compares it with the net's other currents",
+                    nets.join("; "),
+                    model.path_of_field(current),
+                    voltage.unwrap_or_default()
+                );
+                let mut at = whole.field(current).owner;
+                if let Some((more, owner)) = waits(c) {
+                    text = format!("{text}; and {more}");
+                    at = owner;
+                }
+                (text, at)
+            } else if let Some(waiting) = waits(c) {
+                waiting
+            } else {
+                (
+                    format!(
+                        "state a range on one of them with `&=`, for example `{}`, that holds every value it can take: the checks are then made against it, and a range that is too small makes them fail",
+                        model.path_of_field(start)
+                    ),
+                    whole.field(start).owner,
+                )
+            };
+            Guideline {
+                rule: "open circle",
+                message: format!(
+                    "these values depend on each other and none has a value: {}{more}; so the checks {listed}{rest} are not evaluated, and the parts they would judge are chosen without them; {what_to_state}",
+                    shown.join(", ")
+                ),
+                at: Some(at),
+            }
+        })
+        .collect()
+}
+
+/// The field of a circle to suggest a range for: one that an equation sets from a value of
+/// the same kind that has a range already (the load's voltage from the supply's, the first cut
+/// of ADR 0053), else the first voltage, else the first field.
+fn start_of(model: &Model, fields: &[FieldId]) -> FieldId {
+    let kind_of = |f: FieldId| match model.field(f).kind {
+        FieldKind::Quantity(d) => Some(d),
+        _ => None,
+    };
+    let from_a_range = fields.iter().copied().find(|&f| {
+        model.relations().iter().any(|r| {
+            let (netsmith_lang::ast::CmpOp::EqEq, netsmith_check::RExpr::Field(out)) =
+                (&r.op, &r.lhs)
+            else {
+                return false;
+            };
+            let mut reads = Vec::new();
+            r.rhs.fields(&mut reads);
+            *out == f
+                && reads.iter().any(|&g| {
+                    g != f
+                        && kind_of(g) == kind_of(f)
+                        && matches!(model.field(g).domain, Domain::Quantity(_))
+                })
+        })
+    });
+    from_a_range
+        .or_else(|| {
+            fields
+                .iter()
+                .copied()
+                .find(|&f| kind_of(f) == Some(netsmith_quantity::Dimension::VOLTAGE))
+        })
+        .unwrap_or(fields[0])
+}
+
+/// A circle of values that the solver started itself (see `Solution::seeded`, ADR 0053).
+fn started_note(model: &Model, seed: &netsmith_solve::Seeded) -> String {
+    let from: Vec<String> = seed
+        .from
+        .iter()
+        .map(|&f| format!("`{}`", model.path_of_field(f)))
+        .collect();
+    format!(
+        "`{}` depends on itself through its own equations and nothing stated a range for it, so the solver started it from {} and worked out {}, the range its equations map into itself; no other value inside {}, the range its part works in, satisfies them (state a range on it with `&=` to replace this)",
+        model.path_of_field(seed.field),
+        from.join(", "),
+        seed.range,
+        seed.within
+    )
+}
+
+/// The fields a group names before the note says how many more there are.
+const CIRCULAR_SHOWN: usize = 10;
+
+/// Values that wait on each other (see `Solution::circular`).
+fn circular_note(model: &Model, group: &[FieldId]) -> String {
+    let mut paths: Vec<String> = group
+        .iter()
+        .map(|&f| format!("`{}`", model.path_of_field(f)))
+        .collect();
+    paths.sort();
+    let more = paths.len().saturating_sub(CIRCULAR_SHOWN);
+    paths.truncate(CIRCULAR_SHOWN);
+    let more = match more {
+        0 => String::new(),
+        n => format!(" and {n} more"),
+    };
+    format!(
+        "these values depend on each other and none has a value, so the checks that use them are not evaluated: {}{more}; state a range on one of them with `&=` to start the solver, or state the range the part works in (`>=` and `<=` on the voltage) so that the solver can start it",
+        paths.join(", ")
+    )
 }
 
 /// The schematic and report of a lowered board.
@@ -789,6 +1127,7 @@ fn export(
         schematic,
         notes,
         lowering_notes,
+        providers: Vec::new(),
         guidelines: lowered.guidelines,
         trace: Trace {
             model: model.clone(),

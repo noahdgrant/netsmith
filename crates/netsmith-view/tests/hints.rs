@@ -11,6 +11,7 @@ use netsmith_view::{
 
 fn part(refdes: &str, path: &str) -> Part {
     Part {
+        provides: Vec::new(),
         refdes: refdes.into(),
         kind: "Resistor".into(),
         value: "1k".into(),

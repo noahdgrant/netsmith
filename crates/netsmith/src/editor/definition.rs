@@ -136,6 +136,12 @@ pub fn find(loader: &Loader, path: &str, text: &str, offset: usize) -> Option<Fo
         .enumerate()
         .find(|(_, d)| contains(d.span, byte))?;
 
+    // `part X provides G`: the generic.
+    if let Some(name) = def.provides.iter().find(|n| contains(n.span, byte)) {
+        let (module, i) = resolve_type(loader, &here, &name.name)?;
+        return Some(Found::definition(&module, i, &kinds));
+    }
+
     // Every declaration and path of the definition, with the declarations around each.
     let mut found = Vec::new();
     for item in &def.items {
@@ -274,7 +280,7 @@ fn expr_paths<'a>(e: &'a Expr, out: &mut Vec<&'a Path>) {
             expr_paths(center, out);
             expr_paths(tol, out);
         }
-        Expr::Number(..) | Expr::Str(..) => {}
+        Expr::Number(..) | Expr::Str(..) | Expr::Variant { .. } => {}
     }
 }
 

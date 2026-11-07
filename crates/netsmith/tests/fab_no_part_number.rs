@@ -105,7 +105,8 @@ fn every_part_with_no_part_number_is_named_together_with_what_to_write() {
     }
     // What works today: the board says who solders each part, in the file that declares it.
     assert!(
-        err.contains(".first.assembly &= \"hand\"") && err.contains(".second.assembly &= \"hand\""),
+        err.contains(".first.assembly &= AssemblyMode::Hand")
+            && err.contains(".second.assembly &= AssemblyMode::Hand"),
         "{err}"
     );
     assert!(err.contains("invented.nsm"), "{err}");
@@ -124,11 +125,11 @@ fn marking_the_parts_hand_soldered_gets_past_it_and_the_notes_say_so() {
     let source = FIRST_AND_SECOND
         .replace(
             ".first: Resistor { .resistance &= 1.23kohm..1.24kohm }",
-            ".first: Resistor { .resistance &= 1.23kohm..1.24kohm\n .assembly &= \"hand\" }",
+            ".first: Resistor { .resistance &= 1.23kohm..1.24kohm\n .assembly &= AssemblyMode::Hand }",
         )
         .replace(
             ".second: Resistor { .resistance &= 1.23kohm..1.24kohm }",
-            ".second: Resistor { .resistance &= 1.23kohm..1.24kohm\n .assembly &= \"hand\" }",
+            ".second: Resistor { .resistance &= 1.23kohm..1.24kohm\n .assembly &= AssemblyMode::Hand }",
         );
     let made = run(&source, &dir).unwrap_or_else(|e| panic!("{e}"));
     let notes = fs::read_to_string(dir.join("Invented").join("fab-notes.txt")).unwrap();
@@ -158,10 +159,10 @@ fn a_part_inside_a_module_is_named_by_path_with_the_ways_the_module_allows() {
         "the board cannot write that: {err}"
     );
     assert!(
-        err.contains(".pair.assembly_mode &= \"hand\"") && err.contains("Pair"),
+        err.contains(".pair.assembly_mode &= AssemblyMode::Hand") && err.contains("Pair"),
         "{err}"
     );
-    assert!(err.contains("`.a.assembly &= \"hand\"`"), "{err}");
+    assert!(err.contains("`.a.assembly &= AssemblyMode::Hand`"), "{err}");
     assert!(!err.contains("--allow-missing-lcsc"), "{err}");
 }
 
@@ -201,7 +202,7 @@ fn the_module_way_the_message_names_gets_past_it() {
     let source = IN_A_MODULE
         .replace(
             "    .supply: Rail\n    .a:",
-            "    .supply: Rail\n    .assembly_mode: String\n    .a:",
+            "    .supply: Rail\n    .assembly_mode: AssemblyMode\n    .a:",
         )
         .replace(
             "    .supply.pos ~> .a ~> .b ~> .supply.neg\n}",
@@ -209,7 +210,7 @@ fn the_module_way_the_message_names_gets_past_it() {
         )
         .replace(
             "    .pair: Pair\n",
-            "    .pair: Pair { .assembly_mode &= \"hand\" }\n",
+            "    .pair: Pair { .assembly_mode &= AssemblyMode::Hand }\n",
         );
     assert_ne!(source, IN_A_MODULE);
     let made = run(&source, &dir).unwrap_or_else(|e| panic!("{e}"));

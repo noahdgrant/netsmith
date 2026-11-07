@@ -632,7 +632,8 @@ fn copy_std(to: &Path) -> Vec<String> {
 fn the_standard_catalogs_refresh_with_the_saved_responses_and_change_only_checked() {
     let root = dir("std");
     let names = copy_std(&root.join("catalog"));
-    assert_eq!(names.len(), 13, "thirteen catalogs");
+    // Thirteen with rows and, since ADR 0063, `p_mosfet` and `level_translator` with a header only.
+    assert_eq!(names.len(), 15, "fifteen catalogs");
     let before: Vec<String> = names
         .iter()
         .map(|n| fs::read_to_string(root.join("catalog").join(n)).unwrap())
@@ -707,7 +708,7 @@ fn the_standard_catalogs_refresh_with_the_saved_responses_and_change_only_checke
 #[test]
 fn every_standard_catalog_has_a_checked_column_just_after_date() {
     let targets = resolve_targets(Path::new(STD), &[PathBuf::from(".")]).unwrap();
-    assert_eq!(targets.len(), 13);
+    assert_eq!(targets.len(), 15);
     for t in targets {
         let text = fs::read_to_string(&t.path).unwrap();
         let header = parse_csv(&text).unwrap()[0].1.clone();
@@ -836,7 +837,8 @@ fn every_row_of_every_standard_file_survives_a_refresh_with_only_its_checked_cel
         report.files.iter().map(|f| f.rows.len()).sum::<usize>(),
         rows_total
     );
-    assert!(report.files.iter().all(|f| f.written));
+    // A file with no row has nothing to write (ADR 0063: `p_mosfet` and `level_translator`).
+    assert!(report.files.iter().all(|f| f.written || f.rows.is_empty()));
 
     for (name, old) in names.iter().zip(&before) {
         let new = fs::read_to_string(root.join("catalog").join(name)).unwrap();
@@ -921,7 +923,7 @@ fn with_no_argument_outside_a_project_and_the_repository_there_is_nothing_to_act
     let repo = dir("repo");
     copy_std(&repo.join("data/jlcpcb/catalog"));
     let targets = resolve_targets(&repo, &[]).unwrap();
-    assert_eq!(targets.len(), 13);
+    assert_eq!(targets.len(), 15);
     assert_eq!(targets[0].shown, "data/jlcpcb/catalog/capacitor.csv");
 }
 

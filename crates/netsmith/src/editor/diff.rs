@@ -2097,6 +2097,7 @@ mod tests {
             unknown: None,
             unresolved: None,
             hand_solder: false,
+            via: None,
         }
     }
 

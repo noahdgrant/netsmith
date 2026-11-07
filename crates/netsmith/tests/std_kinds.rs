@@ -234,6 +234,17 @@ fn connectors_and_mechanical_parts_have_their_pins() {
     assert!(usb2.contains(&row("usb.dm", Bidirectional, "D-", &["A7", "B7"])));
     assert_eq!(usb2.len(), power.len() + 4);
 
+    // The OBD-II plug (SAE J1962): sixteen pads, the supply on 16 and 4, signal ground on 5.
+    let obd2 = pins_of("std::parts::connector", "Obd2M");
+    assert_eq!(obd2.len(), 16);
+    assert!(obd2.contains(&row("vbatt.pos", Power, "BATTPOWER", &["16"])));
+    assert!(obd2.contains(&row("vbatt.neg", Power, "CHASGND", &["4"])));
+    assert!(obd2.contains(&row("signal_gnd", Power, "SIGGND", &["5"])));
+    assert!(obd2.contains(&row("can_high", Bidirectional, "CANHIGH", &["6"])));
+    assert!(obd2.contains(&row("can_low", Bidirectional, "CANLOW", &["14"])));
+    assert!(obd2.contains(&row("iso_k", Bidirectional, "ISOK-LINE", &["7"])));
+    assert!(obd2.contains(&row("iso_l", Bidirectional, "ISOL-LINE", &["15"])));
+
     assert_eq!(pins_of("std::parts::mechanical", "MountingHole"), vec![]);
     assert_eq!(pins_of("std::parts::mechanical", "Fiducial"), vec![]);
     assert_eq!(
@@ -262,7 +273,7 @@ fn the_mechanical_parts_and_the_programming_pads_are_fitted_by_nobody() {
         let m = &c.board("B").expect("the board checks").model;
         assert_eq!(
             m.domain_at("m.x.assembly"),
-            Some(&netsmith_check::Domain::Text("none".into())),
+            Some(&netsmith_check::Domain::Text("None".into())),
             "{kind}"
         );
     }
@@ -741,4 +752,52 @@ fn an_i2c_bus_without_pullups_is_refused_and_i2c_pullups_satisfy_it() {
         "{}",
         m[1]
     );
+}
+
+#[test]
+fn the_obd2_plug_supplies_from_pin_16_and_leaves_every_other_pin_open() {
+    // The supply is the connector's; nothing else on it needs a connection, signal ground
+    // included.
+    clean(
+        "import std::parts::connector::Obd2M\nimport std::sources::Rail\n\
+         board B {\n\
+             .obd: Obd2M {\n\
+                 .vbatt.voltage &= 12V +/- 15%\n\
+                 .vbatt.pos.net &= \"VBATT\"\n\
+                 .vbatt.neg.net &= \"GND\"\n\
+             }\n\
+             .load: Rail { .current &= 100mA..1A }\n\
+             .obd.vbatt ~ .load\n\
+         }\n",
+    );
+}
+
+#[test]
+fn joined_rails_share_their_peak_voltage() {
+    let src = "import std::sources::Rail\nboard B {\n    .a: Rail {\n        .voltage &= 12V\n        \
+               .peak &= 40V\n    }\n    .b: Rail\n    .a ~ .b\n    .b.peak <= 30V\n}\n";
+    let m = messages(src);
+    assert_eq!(m.len(), 1, "{m:#?}");
+    assert!(m[0].contains("b.peak") && m[0].contains("40V"), "{}", m[0]);
+}
+
+#[test]
+fn a_capacitor_with_a_count_is_still_a_two_pin_part_and_the_count_is_a_plain_number() {
+    // The count is a value of the part and not a pin: a bank has the pads of one capacitor.
+    assert_eq!(pins_of("std::parts::passive", "Capacitor").len(), 2);
+    let board = |count: &str| {
+        on_12v(
+            "import std::parts::passive::Capacitor",
+            &format!(
+                "    .c: Capacitor {{ .capacitance &= 100nF +/- 20%; .count &= {count} }}\n    \
+                 .supply.pos ~> .c ~> .supply.neg"
+            ),
+        )
+    };
+    clean(&board("3"));
+    clean(&board("1..4"));
+    // A count is a number, not a capacitance.
+    let m = messages(&board("3uF"));
+    assert!(!m.is_empty());
+    assert!(m.iter().any(|m| m.contains("c.count")), "{m:#?}");
 }
