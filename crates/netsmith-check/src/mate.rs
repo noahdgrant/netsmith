@@ -926,7 +926,7 @@ impl Checker<'_> {
                     Box::new(RExpr::Field(rating)),
                 );
                 for current in [carried.clone(), RExpr::Neg(Box::new(carried))] {
-                    self.model.relations.push(Relation {
+                    std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
                         lhs: capacity.clone(),
                         op: CmpOp::Ge,
                         rhs: current,
