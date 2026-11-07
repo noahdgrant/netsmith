@@ -724,10 +724,9 @@ impl<'a> Checker<'a> {
             docs: def.docs.clone(),
             def: Some(def_ref),
             provides: def.provides.iter().map(|p| p.name.clone()).collect(),
-            provides_std: Vec::new(),
+            standard: Vec::new(),
             placed_as: placed.as_ref().map(|(_, n)| n.clone()),
             placed_def: placed.map(|(d, _)| d),
-            std: self.modules[def_ref.0].std,
         });
         // Every part has a field for who assembles it (ADR 0024): the board narrows it, the
         // catalog row may state a default, and lowering reads it. It has one for the letters
@@ -772,10 +771,18 @@ impl<'a> Checker<'a> {
         // A part or module that provides generics has their members and statements first
         // (ADR 0059), each read in its own file.
         let generics = self.provided(def);
-        self.model.instances[id.0].provides_std = generics
-            .iter()
-            .filter(|(_, gref)| self.modules[gref.0].std)
-            .map(|(g, _)| g.name.name.clone())
+        // The standard generics it stands for: its own definition when that is one (a standard
+        // generic is its own first provider, ADR 0059), and those it provides.
+        let own = (def.kind == DefKind::Generic && self.modules[def_ref.0].std)
+            .then(|| def.name.name.clone());
+        self.model.instances[id.0].standard = own
+            .into_iter()
+            .chain(
+                generics
+                    .iter()
+                    .filter(|(_, gref)| self.modules[gref.0].std)
+                    .map(|(g, _)| g.name.name.clone()),
+            )
             .collect();
         for (g, gref) in &generics {
             let items = self.generic_items(g, def, kind);
@@ -871,10 +878,9 @@ impl<'a> Checker<'a> {
             docs: Vec::new(),
             def: None,
             provides: Vec::new(),
-            provides_std: Vec::new(),
+            standard: Vec::new(),
             placed_as: None,
             placed_def: None,
-            std: false,
         });
         let module = self.model.instance(owner).kind == InstKind::Module;
         let fields = [
@@ -1123,10 +1129,9 @@ impl<'a> Checker<'a> {
             docs,
             def: None,
             provides: Vec::new(),
-            provides_std: Vec::new(),
+            standard: Vec::new(),
             placed_as: None,
             placed_def: None,
-            std: false,
         });
         for field in ["function", "net"] {
             let f = self.model.add_field(pin, field, FieldKind::Text);
