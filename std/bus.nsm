@@ -169,13 +169,18 @@ enum UsbRole {
     Host,
     /// Is enumerated, and draws from the bus.
     Device,
+    /// Passes the bus through: a receptacle or a plug is not an end of the bus, and the role is
+    /// the one of the end behind it. It has no `lines`, so the part is not judged by a table,
+    /// counts toward no limit and is never asked for another role.
+    Passthrough,
 }
 
 /// A USB 2.0 port: the data pair `dp` and `dm` and the bus power `vbus`, whose `pos` is VBUS
 /// and whose `neg` is the ground. The host and the device join with `~`: D+ to D+ and D- to
 /// D-. `vbus.current` is negative at the host, which supplies, and positive at a device that
-/// draws. A receptacle is not an end of the bus and states no role; a part that is a host or a
-/// device by what is plugged in (OTG) states none either.
+/// draws. A receptacle (a connector that the bus goes through, `std::parts::connector::UsbC2`)
+/// is not an end of the bus and states `UsbRole::Passthrough`, so the rules judge the ends
+/// behind it; a part that is a host or a device by what is plugged in (OTG) states none.
 interface Usb2 {
     .role: UsbRole
     .dp: Pin

@@ -238,8 +238,12 @@ What a pin is electrically, from a closed set: `power`, `input`, `output`, `bidi
 _Avoid_: Pin type, direction
 
 **Role**:
-A part's end of a bus: a variant of the bus's enum (`SpiRole::Slave`), stated with `&=` on the interface by the part or by the board (`.spi.role &= SpiRole::Slave`). The checker compares the part's pin table with the lines the role has, and counts the role against its `limit`. A part that states none is judged by the kinds of its table alone, and an interface of a bus with roles that is joined to another end and states none is a guideline finding, `bus role` (ADR 0064, ADR 0030). `~` between two interfaces does not equate it.
+A part's end of a bus: a variant of the bus's enum (`SpiRole::Slave`), stated with `&=` on the interface by the part or by the board (`.spi.role &= SpiRole::Slave`). The checker compares the part's pin table with the lines the role has, and counts the role against its `limit`. A part that states none is judged by the kinds of its table alone (a connector that the bus goes through states a **Pass-through**), and an interface of a bus with roles that is joined to another end and states none is a guideline finding, `bus role` (ADR 0064, ADR 0030). `~` between two interfaces does not equate it.
 _Avoid_: Mode, direction, master/slave (they are the variants of `SpiRole`, not the name of the construct)
+
+**Pass-through**:
+A role that an interface has no `lines` for, such as `UsbRole::Passthrough`, which a receptacle (`std::parts::connector::UsbC2`) states: the bus goes through the part, so it is not an end of the bus and the role is the one of the end behind it. It has no table to judge, counts toward no limit, satisfies the `bus role` guideline, and the guideline and the note name the end behind it that states no role, never the pass-through (ADR 0064, section 10). A **Role** that is an end of the bus has `lines`.
+_Avoid_: Transparent end, bypass, receptacle role, none (there is no role `none`)
 
 **Line**:
 A pin of a bus interface as a role's `lines` table gives it: its kind, and the words `single` (one interface of the role on a net), `crosses` (joined to the other end's other line, a `Uart`'s `tx` to `rx`), `optional` and `required` (whether it must be connected), and `limit N` on the role (ADR 0064).

@@ -360,6 +360,14 @@ impl BusDef {
         self.tables.iter().find(|t| t.role.as_deref() == role)
     }
 
+    /// Whether a variant of the role enum passes the bus through: the interface has `lines` for
+    /// other variants and none for this one (`UsbRole::Passthrough`, a receptacle). Such an end
+    /// is not an end of the bus: it has no table to judge and no limit to count, and what it
+    /// states is not a role that another end could disagree with (ADR 0064, section 10).
+    pub fn passes_through(&self, role: &str) -> bool {
+        self.role_enum.is_some() && self.table(Some(role)).is_none()
+    }
+
     /// The line that `line` crosses to, or that crosses to it: `tx` and `rx`.
     pub fn partner(&self, line: &str) -> Option<&str> {
         self.tables
