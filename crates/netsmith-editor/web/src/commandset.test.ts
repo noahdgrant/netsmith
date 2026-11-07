@@ -1,8 +1,10 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
-import { allCommands, chordClashes, chordText, find, parseChord, sameChord } from './commands';
+import { allCommands, available, chordClashes, chordText, find, parseChord, sameChord } from './commands';
 import { registerAppCommands } from './commandset';
+import { partSel, setSelection } from './selection';
 import { back, layout } from './store';
+import { type SchematicActions, schematicActions } from './views/schematic-actions';
 
 // The Schematic's keys are commands like any other: in the palette, in the cheat sheet, once.
 const KEYS: Record<string, string[]> = {
@@ -21,7 +23,26 @@ const KEYS: Record<string, string[]> = {
   'schematic.pin.next': ['Tab'],
   'schematic.pin.previous': ['Shift+Tab'],
   'schematic.source': ['Enter'],
+  // Arranging by hand (ADR 0061, stage 4). The nudges share the arrow chords with the pans: they never apply together (see below).
+  'schematic.nudge.left': ['ArrowLeft'],
+  'schematic.nudge.right': ['ArrowRight'],
+  'schematic.nudge.up': ['ArrowUp'],
+  'schematic.nudge.down': ['ArrowDown'],
+  'schematic.nudge.left10': ['Shift+ArrowLeft'],
+  'schematic.nudge.right10': ['Shift+ArrowRight'],
+  'schematic.nudge.up10': ['Shift+ArrowUp'],
+  'schematic.nudge.down10': ['Shift+ArrowDown'],
+  'schematic.rotate': ['R'],
+  'schematic.rotate.back': ['Shift+R'],
+  'schematic.mirror': ['M'],
+  'schematic.layout.clearpart': ['Backspace', 'Delete'],
+  // In the palette only: they ask first.
+  'schematic.layout.clearsheet': [],
+  'schematic.layout.clearall': [],
 };
+/** The chords the pans and the nudges share. */
+const ARROWS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
+const sharedArrow = (clash: string) => ARROWS.has(clash.split(':')[0]);
 
 describe('the Schematic group of the command registry', () => {
   beforeAll(() => registerAppCommands());
@@ -31,7 +52,7 @@ describe('the Schematic group of the command registry', () => {
       const c = find(id);
       expect(c, id).toBeDefined();
       expect(c!.group).toBe('Schematic');
-      expect([c!.keys, ...(c!.alsoKeys ?? [])]).toEqual(keys);
+      expect([c!.keys, ...(c!.alsoKeys ?? [])].filter(Boolean)).toEqual(keys);
     }
     expect(allCommands().filter((c) => c.group === 'Schematic').map((c) => c.id).sort()).toEqual(Object.keys(KEYS).sort());
   });
@@ -39,15 +60,63 @@ describe('the Schematic group of the command registry', () => {
   it('shares no chord with a command of another group', () => {
     const others = allCommands().filter((c) => c.group !== 'Schematic');
     for (const c of allCommands().filter((x) => x.group === 'Schematic')) {
-      for (const k of [c.keys!, ...(c.alsoKeys ?? [])]) {
+      for (const k of [c.keys, ...(c.alsoKeys ?? [])].filter((x): x is string => !!x)) {
         for (const o of others) {
           const same = [o.keys, ...(o.alsoKeys ?? [])].some((ok) => ok && sameChord(parseChord(ok), parseChord(k)));
           expect(same, `${k} of ${c.id} is also ${o.id}`).toBe(false);
         }
       }
     }
-    // Two of the group never share one either.
-    expect(chordClashes(allCommands().filter((c) => c.group === 'Schematic'))).toEqual([]);
+    // Two of the group never share one either, except the arrows, which pan or nudge by what is selected.
+    expect(chordClashes(allCommands().filter((c) => c.group === 'Schematic')).filter((c) => !sharedArrow(c))).toEqual([]);
+  });
+
+  it('pans with the arrows, or nudges the selected part with them, never both', () => {
+    const noop = () => undefined;
+    const fake = (movable: boolean): SchematicActions => ({
+      overview: () => false,
+      sheets: () => 1,
+      sheet: noop,
+      fit: noop,
+      fitWidth: noop,
+      actual: noop,
+      zoomSelection: noop,
+      zoom: noop,
+      pan: noop,
+      pin: noop,
+      source: noop,
+      layout: {
+        canMove: () => movable,
+        canTurn: () => true,
+        nudge: noop,
+        turn: noop,
+        mirror: noop,
+        hinted: () => false,
+        clearPart: noop,
+        sheetEntries: () => 0,
+        allEntries: () => 0,
+        clearSheet: noop,
+        clearAll: noop,
+      },
+    });
+    const ids = () => available().map((c) => c.id).filter((id) => /^schematic\.(pan|nudge)\./.test(id));
+    try {
+      schematicActions.current = fake(true);
+      setSelection(null);
+      expect(ids().filter((i) => i.startsWith('schematic.nudge'))).toEqual([]);
+      expect(ids().filter((i) => i.startsWith('schematic.pan'))).toHaveLength(4);
+      // A part selected whose block moves: the arrows nudge.
+      setSelection(partSel('r1'));
+      expect(ids().filter((i) => i.startsWith('schematic.pan'))).toEqual([]);
+      expect(ids().filter((i) => i.startsWith('schematic.nudge'))).toHaveLength(8);
+      // The sheet's anchor (cannot move): the arrows still pan.
+      schematicActions.current = fake(false);
+      expect(ids().filter((i) => i.startsWith('schematic.nudge'))).toEqual([]);
+      expect(ids().filter((i) => i.startsWith('schematic.pan'))).toHaveLength(4);
+    } finally {
+      schematicActions.current = null;
+      setSelection(null);
+    }
   });
 
   it('shows its chords as text', () => {
@@ -107,7 +176,7 @@ describe('the Source group of the command registry', () => {
   });
 
   it('shares no chord with another command (Escape is shared on purpose: it goes back, and clears the selection, when each applies)', () => {
-    expect(chordClashes().filter((c) => !c.startsWith('Escape:'))).toEqual([]);
+    expect(chordClashes().filter((c) => !c.startsWith('Escape:') && !sharedArrow(c))).toEqual([]);
   });
 });
 

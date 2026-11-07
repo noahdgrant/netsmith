@@ -388,24 +388,8 @@ impl Workspace {
                         "`{stem}.physical.nsm` is already there"
                     )));
                 }
-                // So does the schematic layout file (ADR 0061): it is `<stem>.sch.toml`.
-                let drawn = netsmith_view::schematic_hints_path(&abs);
-                let drawn_to = parent.join(format!("{stem}.sch.toml"));
-                let moves_drawn = drawn.is_file();
-                if moves_drawn && taken(&parent, &format!("{stem}.sch.toml")) {
-                    return Err(ApiError::conflict(format!(
-                        "`{stem}.sch.toml` is already there"
-                    )));
-                }
                 fs::rename(&abs, parent.join(&name)).map_err(|e| io_error(from, &e))?;
                 if moves_side && let Err(e) = fs::rename(&side, &side_to) {
-                    let _ = fs::rename(parent.join(&name), &abs);
-                    return Err(io_error(from, &e));
-                }
-                if moves_drawn && let Err(e) = fs::rename(&drawn, &drawn_to) {
-                    if moves_side {
-                        let _ = fs::rename(&side_to, &side);
-                    }
                     let _ = fs::rename(parent.join(&name), &abs);
                     return Err(io_error(from, &e));
                 }
@@ -440,7 +424,7 @@ impl Workspace {
                 abs,
                 top_level,
                 physical,
-                layout,
+                layout: _,
             } => {
                 if top_level && !confirm {
                     return Err(ApiError::new(
@@ -456,9 +440,9 @@ impl Workspace {
                 if !physical && side.is_file() {
                     fs::remove_file(&side).map_err(|e| io_error(path, &e))?;
                 }
-                // And the schematic layout file: an arrangement of a drawing that is gone.
+                // And a top-level file's schematic layout file: an arrangement of a drawing that is gone.
                 let drawn = netsmith_view::schematic_hints_path(&abs);
-                if !layout && !physical && drawn.is_file() {
+                if top_level && drawn.is_file() {
                     fs::remove_file(&drawn).map_err(|e| io_error(path, &e))?;
                 }
             }

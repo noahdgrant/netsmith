@@ -24,6 +24,30 @@ export interface SchematicActions {
   pin(dir: 1 | -1): void;
   /** Open the selected part in the source. */
   source(): void;
+  /** Arranging by hand (ADR 0061): the layout file, through the one writer. */
+  layout: LayoutActions;
+}
+
+export interface LayoutActions {
+  /** A part is selected and its block can be moved: the file reads, and it is not the sheet's anchor. */
+  canMove(): boolean;
+  /** A part is selected and can be turned or mirrored (the anchor can). */
+  canTurn(): boolean;
+  /** Move the selected part's block by grid steps. */
+  nudge(sx: number, sy: number): void;
+  /** A quarter turn counterclockwise (1) or clockwise (-1) of the selected part. */
+  turn(dir: 1 | -1): void;
+  mirror(): void;
+  /** The selected part has an entry in the file. */
+  hinted(): boolean;
+  /** Remove the selected part's entry. */
+  clearPart(): void;
+  /** How many entries the module on show has, and the file (every board). */
+  sheetEntries(): number;
+  allEntries(): number;
+  /** Ask, then remove every entry of the module on show, or of the file. */
+  clearSheet(): void;
+  clearAll(): void;
 }
 
 /** The view's hands, while it is mounted; null otherwise. */
@@ -37,6 +61,10 @@ export interface NetFacts {
   canStep: boolean;
 }
 export const netFacts = signal<NetFacts | null>(null);
+
+/** How many grid steps an arrow key nudges a part, and Shift+arrow. */
+export const NUDGE = 1;
+export const NUDGE_FAR = 10;
 
 /** How far an arrow key pans, in screen pixels. */
 export const PAN_STEP = 80;

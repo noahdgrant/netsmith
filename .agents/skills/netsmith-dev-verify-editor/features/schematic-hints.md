@@ -1,8 +1,8 @@
-# The schematic layout file (stage 3: the server; no page UI yet)
+# The schematic layout file (stage 3: the server; the page's side is `schematic-layout.md`)
 
 ## How to get to it
 
-There is nothing to click yet: stage 4 of ADR 0061 adds the drag. What exists is the server: it reads `src/main.sch.toml` beside the top-level file (`<stem>.sch.toml`), draws the schematic with it, puts what is wrong with it in the Problems list and serves `GET` and `PUT /api/schematic-hints?board=`. The Schematic section shows the result: a board whose file moves a part is drawn with it.
+Dragging is `schematic-layout.md` (stage 4 of ADR 0061). This page is the server: it reads `src/main.sch.toml` beside the top-level file (`<stem>.sch.toml`), draws the schematic with it, puts what is wrong with it in the Problems list and serves `GET` and `PUT /api/schematic-hints?board=`. The Schematic section shows the result: a board whose file moves a part is drawn with it.
 
 ## Driving it
 
@@ -21,4 +21,4 @@ There is nothing to click yet: stage 4 of ADR 0061 adds the drag. What exists is
 - The file is watched with the sources, so an edit by another program waits for the server's next look (up to half a second) and then analyses the whole project once: the drawing is made by the analysis. A `PUT` analyses before it answers, so its answer and the next `GET /api/schematic.svg` are of the file just written; the watcher then finds nothing new.
 - A comment in the file is lost when the editor writes it (ADR 0061).
 - The dock lists errors, then warnings; the notes (an entry that matches nothing) show only when the notes toggle is on. A fault of the file's text is a warning for that reason.
-- The location of a problem is `src/main.sch.toml:N`. The file is not in the project tree, so the page cannot open it yet (stage 4).
+- The location of a problem is `src/main.sch.toml:N`. The file is a tree file once it exists (stage 4), so a click on the problem opens it in Source at that line.

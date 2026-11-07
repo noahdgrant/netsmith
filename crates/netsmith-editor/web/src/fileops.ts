@@ -170,7 +170,8 @@ export function removalPrompt(node: Exclude<Node, { type: 'section' }>, openUnsa
       strong = true;
     }
     if (file.role === 'schematic_layout') lines.push('Every part the schematic had moved goes back to where the drawing puts it.');
-    else if (file.role !== 'physical') lines.push('Its physical file and its schematic layout file beside it, if it has them, are deleted too.');
+    else if (file.role !== 'physical') lines.push('Its physical file beside it, if it has one, is deleted too.');
+    if (file.role === 'top_level') lines.push('So is its schematic layout file (where parts were moved in the drawing), if it has one.');
   }
   lines.push('This cannot be undone.');
   if (openUnsaved.length) lines.push(`Unsaved changes in ${openUnsaved.join(', ')} are lost.`);

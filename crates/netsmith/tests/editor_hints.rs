@@ -448,3 +448,72 @@ fn a_check_of_typed_text_reads_the_file_too() {
         "a check is not announced"
     );
 }
+
+// ---- the file in the tree (stage 4) ----
+
+#[test]
+fn the_tree_lists_the_file_once_it_exists_and_it_opens_and_saves_like_a_source() {
+    use netsmith_editor::api::FileRole;
+    let (root, editor, _) = project("tree");
+    let layout_files = |editor: &Workspace| -> Vec<String> {
+        editor
+            .project()
+            .files
+            .iter()
+            .filter(|f| f.role == FileRole::SchematicLayout)
+            .map(|f| f.path.clone())
+            .collect()
+    };
+    assert!(layout_files(&editor).is_empty(), "no file, no row");
+    fs::write(root.join(FILE), MOVED).unwrap();
+    assert_eq!(layout_files(&editor), [FILE]);
+    // It is read and saved by its name, as a source is, so a problem at `src/main.sch.toml:N` opens.
+    let content = editor.read_file(FILE).unwrap();
+    assert_eq!(content.text, MOVED);
+    assert!(!content.readonly);
+    let edited = MOVED.replace("25.4", "5.08");
+    editor.write_file(FILE, &edited, &content.stamp).unwrap();
+    assert_eq!(fs::read_to_string(root.join(FILE)).unwrap(), edited);
+    // It has no outline: it is not a source.
+    assert!(
+        editor
+            .project()
+            .files
+            .iter()
+            .find(|f| f.role == FileRole::SchematicLayout)
+            .unwrap()
+            .defs
+            .is_empty()
+    );
+}
+
+#[test]
+fn the_file_is_removed_alone_and_with_its_source_but_never_renamed_on_its_own() {
+    let (root, editor, _) = project("remove");
+    fs::write(root.join(FILE), MOVED).unwrap();
+    let e = editor.rename_path(FILE, "src/other.sch.toml").unwrap_err();
+    assert_eq!(e.status, 400, "{}", e.message);
+    assert!(e.message.contains("rename its source"), "{}", e.message);
+    editor.remove_path(FILE, false).unwrap();
+    assert!(!root.join(FILE).exists() && root.join("src/main.nsm").exists());
+    // With its top-level source it goes too: an arrangement of a drawing that is gone.
+    fs::write(root.join(FILE), MOVED).unwrap();
+    editor.remove_path("src/main.nsm", true).unwrap();
+    assert!(!root.join(FILE).exists());
+}
+
+#[test]
+fn a_check_of_the_files_unsaved_text_reads_that_text() {
+    let (root, editor, _) = project("typed");
+    fs::write(root.join(FILE), MOVED).unwrap();
+    editor.analysis();
+    // Typed, not saved: a key the file does not have. The check says where, and the disk is not touched.
+    let typed = "version = 1\n\n[LedBoard.parts.r1]\ndx = 25.4\ndy = 0\nspin = 3\n";
+    let checked = editor.check(FILE, typed).unwrap();
+    let found = layout_problems(&checked);
+    assert_eq!(found.len(), 1, "{:?}", checked.problems);
+    assert_eq!(found[0].at.as_ref().unwrap().line, line_of(typed, "spin"));
+    assert!(found[0].message.contains("the file is ignored"));
+    assert_eq!(fs::read_to_string(root.join(FILE)).unwrap(), MOVED);
+    assert!(layout_problems(&editor.analysis()).is_empty());
+}

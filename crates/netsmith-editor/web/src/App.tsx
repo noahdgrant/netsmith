@@ -21,6 +21,7 @@ import { FileTabMenu } from './components/FileTabMenu';
 import { QuickPick } from './components/QuickPick';
 import { Splash } from './components/Splash';
 import { StatusBar } from './components/StatusBar';
+import { Confirm } from './components/Confirm';
 import { Toasts } from './components/Toasts';
 import { TooltipLayer } from './components/Tooltip';
 import { ProgressLine, StaleStrip } from './components/ViewStatus';
@@ -268,6 +269,7 @@ export function App() {
       <CheatSheet />
       <About />
       <Splash />
+      <Confirm />
       <Toasts />
       <TooltipLayer />
       {dragged && <div class="drag-ghost" style={{ left: dragged.x + 12, top: dragged.y + 12 }}>{SECTIONS.find((s) => s.id === dragged.section)?.label}</div>}

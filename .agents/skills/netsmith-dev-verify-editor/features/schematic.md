@@ -56,7 +56,7 @@ Only the open module's drawing is shown (the page regroups the server's SVG by m
 - The key `?` and the toolbar's `?` button both open the cheat sheet of the whole editor; the button scrolls it to the Schematic group (`section[data-group="Schematic"]`, marked `.aimed`). `drive schematic-keys` (fixture `schematic_bench`) checks the keys in the palette and the cheat sheet, that they work, that a text field keeps its letters, and that the BOM does not offer them.
 - Esc closes the schematic's flag menu before it clears the selection (`data-esc-closes` on it tells the `selection.clear` command to wait).
 - There is one selection chip, the top bar's (`.selchip`); the drawing has none. The "zoomed in to keep the text readable" chip (`.hold-chip`) and the ring (`.pulse-ring`) are not selection chips.
-- Moving symbols is not built (ADR 0019 designs the sidecar file).
+- Moving parts is built (ADR 0061, `schematic-layout.md`): a press that moves on a part is a drag, the sheet's anchor and the overview excepted; with a part selected the arrow keys nudge it instead of panning.
 
 ## The state of a part is an overlay (round 6)
 

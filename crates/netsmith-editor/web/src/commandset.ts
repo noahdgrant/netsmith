@@ -49,7 +49,7 @@ import {
   visible,
   windowWidth,
 } from './store';
-import { PAN_STEP, schematicActions } from './views/schematic-actions';
+import { NUDGE, NUDGE_FAR, PAN_STEP, schematicActions } from './views/schematic-actions';
 import { type PickedBus, goToBus } from './views/schematic-selection';
 
 /** The section of the pane that last had the pointer or the keys. */
@@ -78,6 +78,9 @@ const onDrawing = (t: EventTarget | null) => {
 const sheet = () => schematicHere() && !schematicActions.current!.overview();
 const sheetOrOverview = () => schematicHere();
 const picked = () => selection.value?.kind === 'part' || selection.value?.kind === 'net';
+/** A part is selected and its block can be moved: the arrow keys nudge it and no longer pan the view (ADR 0061, stage 4). */
+const nudgeable = () => sheet() && selection.value?.kind === 'part' && schematicActions.current!.layout.canMove();
+const turnable = () => sheet() && selection.value?.kind === 'part' && schematicActions.current!.layout.canTurn();
 
 const schematicCommands = (): Command[] => {
   const act = () => schematicActions.current!;
@@ -88,8 +91,19 @@ const schematicCommands = (): Command[] => {
     keys: key,
     aliases: ['scroll', 'move the view'],
     keyFrom: onDrawing,
-    when: sheet,
+    // With a part selected whose block can be moved the same keys nudge it (below): the two never apply together.
+    when: () => sheet() && !nudgeable(),
     run: () => act().pan(dx * PAN_STEP, dy * PAN_STEP),
+  });
+  const nudge = (id: string, title: string, key: string, sx: number, sy: number, far: boolean): Command => ({
+    id: `schematic.nudge.${id}`,
+    title,
+    group: 'Schematic',
+    keys: key,
+    aliases: ['move the part', 'arrange', 'layout'],
+    keyFrom: onDrawing,
+    when: nudgeable,
+    run: () => act().layout.nudge(sx * (far ? NUDGE_FAR : NUDGE), sy * (far ? NUDGE_FAR : NUDGE)),
   });
   return [
     {
@@ -168,6 +182,71 @@ const schematicCommands = (): Command[] => {
     pan('right', 'Pan right', 'ArrowRight', -1, 0),
     pan('up', 'Pan up', 'ArrowUp', 0, 1),
     pan('down', 'Pan down', 'ArrowDown', 0, -1),
+    nudge('left', 'Nudge the selected part left one grid step', 'ArrowLeft', -1, 0, false),
+    nudge('right', 'Nudge the selected part right one grid step', 'ArrowRight', 1, 0, false),
+    nudge('up', 'Nudge the selected part up one grid step', 'ArrowUp', 0, -1, false),
+    nudge('down', 'Nudge the selected part down one grid step', 'ArrowDown', 0, 1, false),
+    nudge('left10', 'Nudge the selected part left ten grid steps', 'Shift+ArrowLeft', -1, 0, true),
+    nudge('right10', 'Nudge the selected part right ten grid steps', 'Shift+ArrowRight', 1, 0, true),
+    nudge('up10', 'Nudge the selected part up ten grid steps', 'Shift+ArrowUp', 0, -1, true),
+    nudge('down10', 'Nudge the selected part down ten grid steps', 'Shift+ArrowDown', 0, 1, true),
+    {
+      id: 'schematic.rotate',
+      title: 'Rotate the selected part a quarter turn',
+      group: 'Schematic',
+      keys: 'R',
+      aliases: ['turn', 'orientation', 'layout'],
+      keyFrom: onDrawing,
+      when: turnable,
+      run: () => act().layout.turn(1),
+    },
+    {
+      id: 'schematic.rotate.back',
+      title: 'Rotate the selected part a quarter turn the other way',
+      group: 'Schematic',
+      keys: 'Shift+R',
+      aliases: ['turn', 'orientation', 'layout'],
+      keyFrom: onDrawing,
+      when: turnable,
+      run: () => act().layout.turn(-1),
+    },
+    {
+      id: 'schematic.mirror',
+      title: 'Mirror the selected part',
+      group: 'Schematic',
+      keys: 'M',
+      aliases: ['flip', 'orientation', 'layout'],
+      keyFrom: onDrawing,
+      when: turnable,
+      run: () => act().layout.mirror(),
+    },
+    {
+      id: 'schematic.layout.clearpart',
+      title: "Clear the selected part's layout entry",
+      group: 'Schematic',
+      keys: 'Backspace',
+      alsoKeys: ['Delete'],
+      aliases: ['put back', 'reset position', 'forget the move', 'layout'],
+      keyFrom: onDrawing,
+      when: () => sheet() && selection.value?.kind === 'part' && schematicActions.current!.layout.hinted(),
+      run: () => act().layout.clearPart(),
+    },
+    {
+      id: 'schematic.layout.clearsheet',
+      title: 'Clear the layout of this module',
+      group: 'Schematic',
+      aliases: ['reset the arrangement', 'put every part back', 'layout'],
+      when: () => sheet() && schematicActions.current!.layout.sheetEntries() > 0,
+      run: () => act().layout.clearSheet(),
+    },
+    {
+      id: 'schematic.layout.clearall',
+      title: 'Clear every layout entry of the file',
+      group: 'Schematic',
+      aliases: ['reset the arrangement', 'delete the layout file', 'layout'],
+      when: () => schematicHere() && schematicActions.current!.layout.allEntries() > 0,
+      run: () => act().layout.clearAll(),
+    },
     {
       id: 'schematic.pin.next',
       title: 'Next pin of the selected net',
