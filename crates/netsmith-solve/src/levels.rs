@@ -57,7 +57,10 @@ struct Run<'a> {
 }
 
 fn is_driver(kind: PinKind) -> bool {
-    matches!(kind, PinKind::Output | PinKind::Bidirectional)
+    matches!(
+        kind,
+        PinKind::Output | PinKind::TriState | PinKind::Bidirectional
+    )
 }
 
 fn is_receiver(kind: PinKind) -> bool {

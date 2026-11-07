@@ -1377,6 +1377,7 @@ A row is `.path kind "NAME" "pad" ["pad" ...] [fn FUNCTION[:kind] ...] [optional
 | `bidirectional` | A signal in both directions. | No, unless `required` |
 | `passive` | A pin with no direction, such as a resistor's. | No, unless `required` |
 | `no_connect` | A pin that must stay open. | Never connected |
+| `tri_state` | An output that drives only while its part is selected, and is high impedance otherwise. | No, unless `required` |
 
 "Connected" means that another pin is on its net: a pin of another part, or a rail the board declares, which is supplied from outside. A net made only of the part's own pins does not count.
 
@@ -1911,7 +1912,7 @@ error: net `net-a.pa2` has only inputs (`a.pa2` (`Mcu8` function `UART1_RX`, an 
   |     ^^^^^^^^
 ```
 
-The same pins with `GPIO` chosen on either side are a bidirectional pin on the net, and are accepted. A kind that is not one of the six is a parse error: ``unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive and no_connect``.
+The same pins with `GPIO` chosen on either side are a bidirectional pin on the net, and are accepted. A kind that is not one of the seven is a parse error: ``unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive, no_connect and tri_state``.
 
 ### Peripherals that share hardware
 
@@ -2333,6 +2334,78 @@ error: net `net-a.out` has two outputs: `a.out`, `b.out`
   |     ^^^^^^^^^^
 ```
 
+### A line that several parts drive
+
+A line that two parts drive can work if every driver lets go of it while it is not selected: the data out of several SPI slaves on one `miso`, each one selected by its own chip select. The kind for that pin is `tri_state` (ADR 0064). A net whose drivers are all `tri_state` is accepted, and that at most one of them is selected at a time is a fact of the protocol, which the select lines and the firmware carry; the checker says no more. A `bidirectional` pin is never counted as a driver, as before.
+
+A part writes `tri_state` only when its datasheet says the pin is high impedance while the part is not selected, with the page in a comment, as a rail's range and a level are written (see _A part states its own requirements_ in `docs/DESIGN-RULES.md`). A datasheet that draws the pin as an output and says no more gives `output`, which says exactly what is known, and a board that shares that line is refused:
+
+```nsm
+/// Zrom, an invented serial memory.
+part Zrom {
+    pins {
+        // Page 8: DO is high impedance while /CS is high.
+        .do  tri_state "DO"  "1"
+        .cs  input     "/CS" "2"
+        .gnd passive   "GND" "3"
+    }
+}
+
+/// Zhost, an invented controller that reads the data line and selects each memory.
+part Zhost {
+    pins {
+        .din input   "DIN" "1"
+        .cs0 output  "CS0" "2"
+        .cs1 output  "CS1" "3"
+        .gnd passive "GND" "4"
+    }
+}
+
+board Shared {
+    .a: Zrom
+    .b: Zrom
+    .host: Zhost
+    .a.do ~ .b.do
+    .a.do ~ .host.din
+    .a.cs ~ .host.cs0
+    .b.cs ~ .host.cs1
+}
+```
+
+Two `tri_state` outputs and a receiver on one net build. A part whose datasheet is silent writes `output`, and the board that shares its line is refused with what to read:
+
+```nsm fails
+part Zrom {
+    pins {
+        // Page 8: DO is high impedance while /CS is high.
+        .do  tri_state "DO"  "1"
+        .cs  input     "/CS" "2" optional
+    }
+}
+
+part Zgyro {
+    pins {
+        // The datasheet draws SDO as an output and says nothing about CS.
+        .do  output "SDO" "1"
+        .cs  input  "CS"  "2" optional
+    }
+}
+
+board Silent {
+    .a: Zrom
+    .b: Zgyro
+    .a.do ~ .b.do
+}
+```
+
+```text
+error: net `net-a.do` has 2 drivers and `b.do` is not `tri_state`: `a.do` (`Zrom`, a `tri_state` output) and `b.do` (`Zgyro`, an output); it would drive the net while another driver on it is selected; the datasheet of `Zgyro` must say that the pin is high impedance while its part is not selected (then write `tri_state` for it, with the page), or give `b.do` a net of its own
+   --> main.nsm:18:5
+   |
+18 |     .a: Zrom
+   |     ^^^^^^^^
+```
+
 ### Pads
 
 Pads are checked after the solver has chosen the package, because they depend on it. Two pins on one pad are an error unless the part joins them, which makes them one pin:
@@ -2447,7 +2520,7 @@ part UnknownKind {
 ```
 
 ```text
-error: unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive and no_connect
+error: unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive, no_connect and tri_state
   --> main.nsm:3:12
   |
 3 |         .a tristate "A" "1"

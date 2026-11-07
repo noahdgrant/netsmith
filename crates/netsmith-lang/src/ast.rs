@@ -197,6 +197,9 @@ pub enum PinKind {
     Passive,
     /// A pin that must stay unconnected.
     NoConnect,
+    /// An output that drives only while its part is selected and is high impedance
+    /// otherwise: it may share a net with other drivers (ADR 0064).
+    TriState,
 }
 
 impl PinRow {
@@ -207,13 +210,14 @@ impl PinRow {
 }
 
 impl PinKind {
-    pub const ALL: [PinKind; 6] = [
+    pub const ALL: [PinKind; 7] = [
         Self::Power,
         Self::Input,
         Self::Output,
         Self::Bidirectional,
         Self::Passive,
         Self::NoConnect,
+        Self::TriState,
     ];
 
     /// The word for it in source and in messages.
@@ -225,6 +229,7 @@ impl PinKind {
             Self::Bidirectional => "bidirectional",
             Self::Passive => "passive",
             Self::NoConnect => "no_connect",
+            Self::TriState => "tri_state",
         }
     }
 

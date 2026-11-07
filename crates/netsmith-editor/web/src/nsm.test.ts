@@ -109,6 +109,11 @@ describe('tokenize', () => {
     expect(kinds('.p1 passive "P" "1" fn on limit').map((k) => k[1]).slice(-2)).toEqual(['name', 'name']);
   });
 
+  it('reads tri_state in a pin row as it reads the other kinds: a plain name, no error (ADR 0064)', () => {
+    expect(kinds('.do tri_state "DO" "2"').map((k) => k[1])).toEqual(['punct', 'member', 'name', 'string', 'string']);
+    expect(kinds('.p1 bidirectional "P" "1" fn GPIO MISO:tri_state').map((k) => k[1]).includes('error')).toBe(false);
+  });
+
   it('reads required as the marker of a pin row, and as a plain name where a member is called that', () => {
     expect(kinds('.p1 passive "TP" "1" required').at(-1)).toEqual(['required', 'keyword']);
     expect(kinds('.p1 power "VCC" "1" optional').at(-1)).toEqual(['optional', 'keyword']);

@@ -562,31 +562,90 @@ impl<'a> Run<'a> {
         }
     }
 
-    /// Two outputs on one net. Pins joined inside their part are one output.
+    /// Two drivers on one net: pins whose kind is `output` or `tri_state`. Pins joined inside
+    /// their part are one driver. Drivers that are all `tri_state` share the line (at most
+    /// one is selected at a time, which firmware and the select line carry); two `output` pins
+    /// are two outputs, and an `output` among `tri_state` pins drives while the others are
+    /// selected (ADR 0064). A `bidirectional` pin is not counted, as before.
     fn outputs(&mut self, net: &Net, terminals: &[InstId]) {
         let model = self.model;
-        let outputs: Vec<InstId> = terminals
+        let drivers: Vec<(InstId, PinKind)> = terminals
             .iter()
-            .copied()
-            .filter(|&t| self.kind_here(t) == Some(PinKind::Output))
+            .filter_map(|&t| match self.kind_here(t) {
+                Some(k @ (PinKind::Output | PinKind::TriState)) => Some((t, k)),
+                _ => None,
+            })
             .collect();
-        let mut distinct: Vec<InstId> = Vec::new();
-        for o in outputs {
+        let mut distinct: Vec<(InstId, PinKind)> = Vec::new();
+        for (o, kind) in drivers {
             let group = model.joined_inside(o);
-            if !distinct.iter().any(|d| group.contains(d)) {
-                distinct.push(o);
+            if !distinct.iter().any(|(d, _)| group.contains(d)) {
+                distinct.push((o, kind));
             }
         }
-        if distinct.len() >= 2 {
-            let names: Vec<String> = distinct.iter().map(|&p| self.describe(p)).collect();
-            let at = model
-                .instance(model.owner_of(distinct[0]).expect("a terminal"))
-                .at();
+        if distinct.len() < 2 {
+            return;
+        }
+        let plain: Vec<InstId> = distinct
+            .iter()
+            .filter(|(_, k)| *k == PinKind::Output)
+            .map(|&(p, _)| p)
+            .collect();
+        let at = model
+            .instance(model.owner_of(distinct[0].0).expect("a terminal"))
+            .at();
+        if plain.is_empty() {
+            return;
+        }
+        if plain.len() == distinct.len() {
+            let names: Vec<String> = distinct.iter().map(|&(p, _)| self.describe(p)).collect();
             self.report(
                 at,
                 format!("net `{}` has two outputs: {}", net.name, list_plain(&names)),
             );
+            return;
         }
+        // An `output` among `tri_state` pins: the output drives while the others are selected.
+        let says = |p: InstId, kind: PinKind| {
+            let ty = model
+                .owner_of(p)
+                .map_or(String::new(), |o| model.instance(o).type_name.clone());
+            let what = if kind == PinKind::TriState {
+                "a `tri_state` output"
+            } else {
+                "an output"
+            };
+            format!("`{}` (`{ty}`, {what})", model.path_of(p))
+        };
+        let all: Vec<String> = distinct.iter().map(|&(p, k)| says(p, k)).collect();
+        let plain_names: Vec<String> = plain
+            .iter()
+            .map(|&p| format!("`{}`", model.path_of(p)))
+            .collect();
+        let mut types: Vec<String> = plain
+            .iter()
+            .filter_map(|&p| model.owner_of(p))
+            .map(|o| format!("`{}`", model.instance(o).type_name))
+            .collect();
+        types.sort();
+        types.dedup();
+        let (be, copula) = if plain.len() == 1 {
+            ("is", "it")
+        } else {
+            ("are", "they")
+        };
+        self.report(
+            at,
+            format!(
+                "net `{}` has {} drivers and {} {be} not `tri_state`: {}; {copula} would drive the net while another driver on it is selected; the datasheet of {} must say that the pin is high impedance while its part is not selected (then write `tri_state` for it, with the page), or give {} a net of its own",
+                net.name,
+                distinct.len(),
+                plain_names.join(", "),
+                all.join(" and "),
+                types.join(", "),
+                plain_names.join(", "),
+            ),
+        );
     }
 
     /// A net whose pins are all inputs has nothing that drives it (a UART's `rx` wired to
