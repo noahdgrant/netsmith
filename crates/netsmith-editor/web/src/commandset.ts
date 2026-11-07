@@ -19,6 +19,7 @@ import { cardAtCursor } from './source/cm-card';
 import { openCard } from './source/cm-card';
 import { changeHunks, stepChange } from './source/changeSteps';
 import { changeLines } from './source/cm-changes';
+import { toggleLineComment } from './source/comment';
 import { sourceEditor } from './source/handle';
 import { canBack, canForward } from './source/navhistory';
 import { hoverCards, inlineHints, outlineOpen, resetEditorZoom, wordWrap, zoomEditor } from './source/prefs';
@@ -318,6 +319,21 @@ function stepSourceChange(dir: 1 | -1) {
 }
 
 const sourceCommands = (): Command[] => [
+  {
+    id: 'source.comment.toggle',
+    title: 'Source: Comment or uncomment the lines',
+    group: 'Source',
+    keys: 'Mod+/',
+    inFields: true,
+    aliases: ['toggle comment', 'comment out', 'uncomment', 'block comment'],
+    when: editorOn,
+    run: () => {
+      const v = sourceEditor.view;
+      if (!v || v.state.readOnly) return;
+      v.focus();
+      toggleLineComment(v);
+    },
+  },
   {
     id: 'source.card.show',
     title: 'Show the hover card at the cursor',
@@ -743,7 +759,8 @@ export function registerAppCommands() {
       title: 'Keyboard shortcuts',
       group: 'Help',
       keys: '?',
-      alsoKeys: ['Mod+/'],
+      // `?` types a ? in a text field and in the editor; F1 opens the list from there too.
+      alsoKeys: ['F1'],
       aliases: ['cheat sheet', 'keys', 'help'],
       run: () => toggleCheatSheet(),
     },
@@ -815,6 +832,7 @@ export const LOCAL_KEYS: { group: string; keys: [string, string][] }[] = [
       ['Ctrl+Alt+[ · Ctrl+Alt+]', 'fold all · unfold all'],
       ['Ctrl+F · Ctrl+G', 'find · find next'],
       ['Ctrl+Z · Ctrl+Shift+Z', 'undo / redo (survives a file switch)'],
+      ['Ctrl+/', 'comment or uncomment the selected lines'],
       ['Tab · Shift+Tab', 'indent / outdent'],
     ],
   },

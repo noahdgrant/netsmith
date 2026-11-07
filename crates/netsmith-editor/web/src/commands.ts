@@ -146,7 +146,8 @@ export function commandsForEvent(e: Parameters<typeof chordOfEvent>[0] & { targe
  * the key was pressed (`inField`: a text field or the source editor). */
 export function commandForKey(e: Parameters<typeof chordOfEvent>[0] & { target?: EventTarget | null }, inField: boolean): Command | null {
   const chord = chordOfEvent(e);
-  const modified = chord.mod || chord.alt;
+  // A function key types nothing, so it works in a field like a chord with Ctrl or Alt does.
+  const modified = chord.mod || chord.alt || /^F\d+$/.test(chord.key);
   for (const c of commandsForEvent(e)) {
     if (inField && !(c.inFields ?? modified)) continue;
     return c;
