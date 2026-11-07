@@ -87,6 +87,28 @@ describe('tokenize', () => {
     expect(kinds('.provides &= 1')[1]).toEqual(['provides', 'member']);
   });
 
+  it('reads peripheral and shared with their clauses as keywords only where the parser does (ADR 0071)', () => {
+    expect(kinds('peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }').slice(0, 4)).toEqual([
+      ['peripheral', 'keyword'],
+      ['UARTE0', 'type'],
+      ['on', 'keyword'],
+      ['APP_GPIO', 'type'],
+    ]);
+    expect(kinds('shared UARTS limit 2 { UARTE0 UARTE1 }').slice(0, 4)).toEqual([
+      ['shared', 'keyword'],
+      ['UARTS', 'type'],
+      ['limit', 'keyword'],
+      ['2', 'number'],
+    ]);
+    // Names where a name is meant: a member, a bare path, a member's clause words.
+    expect(kinds('.peripheral: Rail')[1]).toEqual(['peripheral', 'member']);
+    expect(kinds('.shared &= 1')[1]).toEqual(['shared', 'member']);
+    expect(kinds('shared.pos ~ peripheral.neg')[0]).toEqual(['shared', 'name']);
+    expect(kinds('.on &= 1')[1]).toEqual(['on', 'member']);
+    expect(kinds('limit.x &= 1')[0]).toEqual(['limit', 'name']);
+    expect(kinds('.p1 passive "P" "1" fn on limit').map((k) => k[1]).slice(-2)).toEqual(['name', 'name']);
+  });
+
   it('reads required as the marker of a pin row, and as a plain name where a member is called that', () => {
     expect(kinds('.p1 passive "TP" "1" required').at(-1)).toEqual(['required', 'keyword']);
     expect(kinds('.p1 power "VCC" "1" optional').at(-1)).toEqual(['optional', 'keyword']);

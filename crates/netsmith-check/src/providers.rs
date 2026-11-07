@@ -212,6 +212,9 @@ impl Checker<'_> {
             match item {
                 Item::Pins(_) if provider_kind == InstKind::Module => {}
                 Item::Catalog(_) if own => {}
+                // A generic that holds one is refused where it is checked on its own; a
+                // provider does not take it in (ADR 0071 section 6).
+                Item::Peripheral(_) | Item::Shared(_) => {}
                 Item::Pins(table) if own => {
                     let at = *contract.get_or_insert_with(|| {
                         items.push(Item::Pins(netsmith_lang::ast::Pins {

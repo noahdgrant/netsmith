@@ -14,6 +14,7 @@ mod pinout;
 mod pins;
 mod providers;
 mod row;
+mod shared;
 
 pub use checker::physical_file_name;
 pub use diag::{Diagnostic, Source, SourceId, Sources};
@@ -22,8 +23,8 @@ pub use loader::Loader;
 pub use model::{
     Balance, Catalog, Chain, Contact, ContactSide, Domain, Draw, EnumId, EnumInfo, Field, FieldId,
     FieldKind, GenericUse, GroundGroup, GroundNet, InstId, InstKind, Instance, Mate, Member, Model,
-    Net, PinKind, PinRow, PinTable, Pinout, Provider, RExpr, Relation, Requirement, Role, Tie,
-    Written,
+    Net, PartRules, Peripheral, PeripheralFunction, PinKind, PinRow, PinTable, Pinout, Provider,
+    RExpr, Relation, Requirement, Role, SharedMember, SharedRes, Tie, Written,
 };
 
 use std::collections::BTreeMap;

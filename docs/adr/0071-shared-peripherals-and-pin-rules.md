@@ -1,5 +1,5 @@
 ---
-status: proposed for owner review (a design draft written by an agent that was told to design and not to build; the words `peripheral` and `shared`, the clause `on`, the clause `limit` and the forwarding statement of section 5 are the owner's to accept or change, and nothing here is implemented)
+status: implemented, all stages (stage 0 on 2026-11-05, stages 1 to 3 on 2026-11-06; the owner reviewed the syntax and asked for it to be built, and the open questions of section 9 were decided as recommended there; section 11 says what was built and where it differs from the text above)
 ---
 
 # Peripherals that share hardware, and pin rules a part states once
@@ -395,3 +395,18 @@ Each has a recommendation.
 - Section 4: why relations cannot carry this, and why a role does not.
 - The stage counts, and that stage 0 can be built first.
 - `GLOSSARY.md` is not edited by this ADR. The entries it proposes: **Peripheral** (the functions of one part that belong together and are in use together; in use when one is chosen on a pin), **Shared resource** (`shared`: the hardware that its members use at most N of at once), and a changed **Function** (a function may be listed by a peripheral, and a class makes every pin that lists it offer the peripheral's functions). Avoid for the new terms: group, block, role, mode, mux, conflict set.
+
+## 11. As built (stages 1 to 3)
+
+Built as described in sections 2 and 7: `peripheral NAME [on CLASS] { FUNCTION[:kind] ... }` and `shared NAME [limit N] { MEMBER ... }`, a member being a peripheral or a function by name, or a pin (`.p10`). The checker is `crates/netsmith-check/src/shared.rs` (the definition errors when a part's body is done, so statement order never matters; the rule `overuse`, called from the board pass of `faults.rs` for every part, whatever its package), `Model::offers`, `class_peripherals` and `offered_count` in `pinout.rs` (what a pin offers is computed when asked, because a `peripheral` may follow the table), and the parser, AST and printer in `netsmith-lang`. Tests: `netsmith-lang/tests/peripherals.rs` (16), `netsmith-check/tests/shared.rs` (20, stage 1), `classes.rs` (14, stage 2), `limits.rs` (13, stage 3); the guide has the examples of each stage.
+
+Open questions, as decided: 1 the words as written; 2 the class is a function; 3 and 4 a pin is in use when its function is chosen or it is connected, and a function chosen on an unconnected pin is a use; 5 `limit`, function and pin members are stages 2 and 3 as planned; 6, 7 and 8 not built; 9 stage 0; 10 a generic refuses both statements (`a generic states what every provider has; a peripheral is a fact of one part's datasheet, so `peripheral` goes in a part that provides it`) and a provider does not receive them; 11 the clause of message 1 is kept, see below; 12 function names stay text.
+
+Differences from the text above:
+
+- **Message 3's example is impossible.** It chooses `APP_GPIO` on both `u.p10` and `u.p11`, and the rule that one function is chosen on one pin of a part (ADR 0016) already refuses that, with its own message. The test and the guide choose different functions (`APP_GPIO` on one pin, a peripheral's line on the other); the message is otherwise as written. A pin connected and with no function chosen reads `u.q0 connected to probe.a12`, and points at the part's declaration, because a board's `~` has no statement the checker keeps.
+- **The clause about other shared resources (question 11).** It lists only the other resources whose members are of the same kind (all peripherals, all functions, all pins) and that have the same limit, so `UARTS` and `REFERENCE` of the example are not listed with the `SERIAL` units. Members are listed in the path order of their first use, so the example's message names `UARTE0` before `SPIM1` when `u.p00` comes first.
+- **Messages.** The nearest name for a member picks the first of equally near ones (`SPIM9` offers `SPIM0`, not `SPIM1`); the list of names is cut after six with `...`. A pin that is connected and lists only a class has several functions, because its peripherals' lines are functions of it, and needs a choice (`... has several functions (APP_GPIO and the lines of the peripherals on those pins) and is connected`). A part with no `peripheral` keeps every message it had, word for word.
+- **Added refusals** (section 2 states them in prose): a peripheral declared twice, a shared resource declared twice, a function listed twice in a peripheral, a limit that is not fewer than the members (`limit 1` is allowed and is the default spelled out), and a member that is a function of a peripheral which is also a member of the same resource.
+- **`limit`** is a plain word after the name of a shared resource and `on` after the name of a peripheral; both are plain names anywhere else, and the editor page highlights them only there.
+- **Not built, as the ADR says:** a `note` on a peripheral, a pair that must be used together, a module that exports a peripheral as a unit.

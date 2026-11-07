@@ -76,6 +76,8 @@ pub struct Instance {
     pub tables: Vec<PinTable>,
     /// For a part: the pairs of pins its board must put on one net.
     pub ties: Vec<Tie>,
+    /// For a part: its peripherals and shared resources (ADR 0071).
+    pub rules: PartRules,
     pub source: SourceId,
     pub span: Span,
     /// The member declaration that made it (`.r1: Resistor`), where the user wrote it.
@@ -231,6 +233,63 @@ pub struct Tie {
     pub a: InstId,
     pub b: InstId,
     pub source: SourceId,
+    pub span: Span,
+}
+
+/// What a part says about how its functions go together: the `peripheral` and `shared`
+/// statements of its definition (ADR 0071), in source order.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PartRules {
+    pub peripherals: Vec<Peripheral>,
+    pub shares: Vec<SharedRes>,
+}
+
+/// `peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }`: functions that belong
+/// together. It is in use when the board chooses one of them on a pin. With `on`, every pin
+/// whose row lists the class offers them (ADR 0071).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Peripheral {
+    pub name: String,
+    /// The function after `on`.
+    pub class: Option<String>,
+    pub class_span: Span,
+    pub functions: Vec<PeripheralFunction>,
+    pub source: SourceId,
+    /// The whole statement.
+    pub span: Span,
+    /// The name after the keyword.
+    pub name_span: Span,
+}
+
+/// One function of a peripheral. It has its own kind when the peripheral gives one
+/// (`UARTE0_TX:output`, ADR 0046).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PeripheralFunction {
+    pub name: String,
+    pub kind: Option<PinKind>,
+    pub span: Span,
+}
+
+/// `shared UARTS limit 2 { UARTE0 UARTE1 .p10 }`: hardware that at most `limit` of its members
+/// use at a time (one when the statement has no `limit`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SharedRes {
+    pub name: String,
+    pub limit: u32,
+    /// The number after `limit`, when the statement wrote one.
+    pub limit_span: Option<Span>,
+    pub members: Vec<SharedMember>,
+    pub source: SourceId,
+    pub span: Span,
+    pub name_span: Span,
+}
+
+/// A member of a shared resource, as written: the name of a peripheral or of a function, or a
+/// pin (`pin` is set, and `name` is how it was written, `.p10`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SharedMember {
+    pub name: String,
+    pub pin: Option<InstId>,
     pub span: Span,
 }
 

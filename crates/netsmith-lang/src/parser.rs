@@ -439,6 +439,8 @@ impl Parser {
                     | Item::Catalog(_)
                     | Item::Pins(_)
                     | Item::Tie(_)
+                    | Item::Peripheral(_)
+                    | Item::Shared(_)
                     | Item::Case(_)
                     | Item::Row(_)
                     | Item::Constraint(_)
@@ -451,7 +453,8 @@ impl Parser {
             }
         };
 
-        // `bridge`, `catalog`, `tie`, `pins` and `case` are keywords at the start of a statement.
+        // `bridge`, `catalog`, `tie`, `pins`, `peripheral`, `shared` and `case` are keywords at the
+        // start of a statement.
         if let Tok::Ident(word) = self.peek().tok.clone() {
             let starts_name = matches!(
                 self.peek_second(),
@@ -461,6 +464,12 @@ impl Parser {
                 "bridge" if starts_name => return only_decls(self.bridge(start)?),
                 "catalog" if starts_name => return only_decls(self.catalog(start)?),
                 "tie" if starts_name => return only_decls(self.tie(start)?),
+                "peripheral" if matches!(self.peek_second(), Tok::Ident(_)) => {
+                    return only_decls(self.peripheral(start)?);
+                }
+                "shared" if matches!(self.peek_second(), Tok::Ident(_)) => {
+                    return only_decls(self.shared(start)?);
+                }
                 "pins" if matches!(self.peek_second(), Tok::LBrace | Tok::Str(_)) => {
                     return only_decls(self.pins(start)?);
                 }
@@ -616,6 +625,167 @@ impl Parser {
         Ok(Item::Tie(Tie {
             a,
             b,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// `peripheral NAME [on CLASS] { FUNCTION[:kind] ... }`.
+    fn peripheral(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let name = self.ident("the name of the peripheral")?;
+        let on = if matches!(&self.peek().tok, Tok::Ident(w) if w == "on") {
+            self.bump();
+            Some(self.ident("a function after `on`, such as `on APP_GPIO`")?)
+        } else {
+            None
+        };
+        let open = self.expect(
+            &Tok::LBrace,
+            if on.is_some() {
+                "`{` after the function that the peripheral is on"
+            } else {
+                "`{` or `on` after the name of the peripheral"
+            },
+        )?;
+        let mut functions: Vec<PinFunction> = Vec::new();
+        loop {
+            self.skip_separators();
+            let t = self.peek().clone();
+            match &t.tok {
+                Tok::RBrace => {
+                    self.bump();
+                    break;
+                }
+                Tok::Eof => return Err(ParseError::new(open.span, "this `{` is never closed")),
+                Tok::DocOuter(_) | Tok::DocInner(_) => {
+                    return Err(ParseError::new(
+                        t.span,
+                        "a peripheral takes `//` notes, not doc comments",
+                    ));
+                }
+                Tok::Ident(_) => {
+                    let function = self.ident("a function name")?;
+                    let kind = self.function_kind(&function)?;
+                    functions.push(PinFunction {
+                        name: function,
+                        kind,
+                    });
+                }
+                Tok::Str(_) | Tok::Number(_) | Tok::QuotedIdent(_) => {
+                    return Err(ParseError::new(
+                        t.span,
+                        "a function is a plain name such as UARTE0_TX, without quotes",
+                    ));
+                }
+                _ => return Err(unexpected(&t, "a function name or `}`")),
+            }
+        }
+        if functions.is_empty() {
+            return Err(ParseError::new(
+                name.span,
+                format!(
+                    "`peripheral {}` has no functions; list at least one in the braces, such as `{}_TX:output`",
+                    name.name, name.name
+                ),
+            ));
+        }
+        Ok(Item::Peripheral(Peripheral {
+            name,
+            on,
+            functions,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// `shared NAME [limit N] { MEMBER ... }`.
+    fn shared(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let name = self.ident("the name of the shared resource")?;
+        let limit = if matches!(&self.peek().tok, Tok::Ident(w) if w == "limit") {
+            self.bump();
+            let t = self.peek().clone();
+            match &t.tok {
+                Tok::Number(n) if n.unit.is_none() => {
+                    let whole =
+                        n.value.fract() == 0.0 && n.value >= 1.0 && n.value <= f64::from(u32::MAX);
+                    if !whole {
+                        return Err(ParseError::new(
+                            t.span,
+                            format!(
+                                "a limit is a whole number of at least 1, such as `limit 2`; `{}` is not",
+                                n.text
+                            ),
+                        ));
+                    }
+                    self.bump();
+                    Some((n.value as u32, t.span))
+                }
+                Tok::Number(n) => {
+                    return Err(ParseError::new(
+                        t.span,
+                        format!(
+                            "a limit is a count, a whole number with no unit, such as `limit 2`; `{}` has one",
+                            n.text
+                        ),
+                    ));
+                }
+                _ => {
+                    return Err(unexpected(
+                        &t,
+                        "a whole number after `limit`, such as `limit 2`",
+                    ));
+                }
+            }
+        } else {
+            None
+        };
+        let open = self.expect(
+            &Tok::LBrace,
+            if limit.is_some() {
+                "`{` after the limit"
+            } else {
+                "`{` or `limit` after the name of the shared resource"
+            },
+        )?;
+        let mut members: Vec<SharedMember> = Vec::new();
+        loop {
+            self.skip_separators();
+            let t = self.peek().clone();
+            match &t.tok {
+                Tok::RBrace => {
+                    self.bump();
+                    break;
+                }
+                Tok::Eof => return Err(ParseError::new(open.span, "this `{` is never closed")),
+                Tok::DocOuter(_) | Tok::DocInner(_) => {
+                    return Err(ParseError::new(
+                        t.span,
+                        "a shared resource takes `//` notes, not doc comments",
+                    ));
+                }
+                Tok::Ident(_) => members.push(SharedMember::Name(self.ident("a member")?)),
+                Tok::LeadingDot => members.push(SharedMember::Pin(self.path()?)),
+                _ => {
+                    return Err(unexpected(
+                        &t,
+                        "the name of a peripheral or a function, a pin such as `.p10`, or `}`",
+                    ));
+                }
+            }
+        }
+        if members.is_empty() {
+            return Err(ParseError::new(
+                name.span,
+                format!(
+                    "`shared {}` has no members; list the peripherals, functions or pins that share it in braces",
+                    name.name
+                ),
+            ));
+        }
+        Ok(Item::Shared(Shared {
+            name,
+            limit,
+            members,
             span: self.span_from(start),
         }))
     }

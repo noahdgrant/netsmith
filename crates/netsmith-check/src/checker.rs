@@ -260,7 +260,7 @@ impl<'a> Checker<'a> {
         self.in_kind(DefKind::Panel)
     }
 
-    fn in_kind(&self, kind: DefKind) -> bool {
+    pub(crate) fn in_kind(&self, kind: DefKind) -> bool {
         self.cur_def
             .is_some_and(|(m, i)| self.modules[m].defs[i].kind == kind)
     }
@@ -704,6 +704,7 @@ impl<'a> Checker<'a> {
             catalog: None,
             tables: Vec::new(),
             ties: Vec::new(),
+            rules: Default::default(),
             source: self.modules[def_ref.0].source,
             span: def.span,
             declared: None,
@@ -795,6 +796,9 @@ impl<'a> Checker<'a> {
             self.leave_def(saved);
         }
         self.process(&def.items);
+        if kind == InstKind::Part {
+            self.finish_rules(id);
+        }
         if !generics.is_empty() {
             self.conform(id, def, &generics);
         }
@@ -854,6 +858,7 @@ impl<'a> Checker<'a> {
             catalog: None,
             tables: Vec::new(),
             ties: Vec::new(),
+            rules: Default::default(),
             source,
             span,
             declared: None,
@@ -1107,6 +1112,7 @@ impl<'a> Checker<'a> {
             catalog: None,
             tables: Vec::new(),
             ties: Vec::new(),
+            rules: Default::default(),
             source: self.cur_source(),
             span,
             declared: None,
@@ -1170,11 +1176,15 @@ impl<'a> Checker<'a> {
                 Item::Catalog(c) if self.phys.is_none() => self.catalog(c),
                 Item::Pins(p) if self.phys.is_none() => self.pins(p),
                 Item::Tie(t) if self.phys.is_none() => self.tie(t),
+                Item::Peripheral(p) if self.phys.is_none() => self.peripheral(p),
+                Item::Shared(s) if self.phys.is_none() => self.shared(s),
                 Item::Connect(c) => self.not_physical(c.span, "a connection with `~`"),
                 Item::Bridge(b) => self.not_physical(b.span, "a `bridge`"),
                 Item::Catalog(c) => self.not_physical(c.span, "a `catalog`"),
                 Item::Pins(p) => self.not_physical(p.span, "a `pins` table"),
                 Item::Tie(t) => self.not_physical(t.span, "a `tie`"),
+                Item::Peripheral(p) => self.not_physical(p.span, "a `peripheral`"),
+                Item::Shared(s) => self.not_physical(s.span, "a `shared` resource"),
             }
         }
     }
