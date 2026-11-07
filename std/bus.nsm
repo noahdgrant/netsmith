@@ -12,7 +12,7 @@ import std::parts::passive::Resistor
 import std::sources::Rail
 
 /// A UART: a transmit line `tx`, a receive line `rx`, and the flow-control lines `rts` and
-/// `cts`. The names are the device's own, so the lines of two devices cross: the board joins
+/// `cts`; `baud` is the symbol rate, in the unit a frequency has. The names are the device's own, so the lines of two devices cross: the board joins
 /// one device's `tx` to the other's `rx` and the reverse, a pin at a time, because `~` between
 /// two UARTs would join `tx` to `tx`. That is two outputs on one net, and the checker says so.
 /// A device without flow control gives no pin to `rts` and `cts` and leaves them alone.
@@ -21,36 +21,45 @@ interface Uart {
     .rx: Pin
     .rts: Pin
     .cts: Pin
+    .baud: Frequency
 }
 
 /// An SPI bus: the clock `sclk`, the data out of the master `mosi`, the data out of the slave
 /// `miso`, and the select `cs`. Both ends call the lines the same, so the master and the
 /// slave join with `~`: the master's `mosi` is an output and the slave's an input, and the
-/// pin kinds catch a master joined to a master.
+/// pin kinds catch a master joined to a master. `frequency` is the clock: the board states the
+/// clock it will run (`.cpu.spi.frequency &= 8MHz`), each part bounds it by its datasheet
+/// (`.spi.frequency <= 10MHz`), and `~` between two interfaces equates it, so one value runs
+/// along the bus and a part whose bound it breaks is named.
 interface Spi {
     .sclk: Pin
     .mosi: Pin
     .miso: Pin
     .cs: Pin
+    .frequency: Frequency
 }
 
 /// An I2C bus: the data line `sda` and the clock `scl`. Both are open-drain: they are pulled
 /// to the supply by a resistor on the bus, one on each line, and no device drives them high.
 /// `std::bus::I2cPullups` is that resistor pair. The checker refuses a line that has no
-/// resistor to a rail's positive pin (ADR 0044).
+/// resistor to a rail's positive pin (ADR 0044). `frequency` is the clock of the bus, as for
+/// `Spi`.
 interface I2c {
     .sda: Pin
     .scl: Pin
+    .frequency: Frequency
 }
 
 /// A serial-wire debug port: the data line `swdio`, the clock `swclk`, the trace output `swo`
 /// and the reset `reset`. The target's `swo` is an output, its `swclk` an input and its `swdio`
-/// a bidirectional pin; a probe's connector has passive pins.
+/// a bidirectional pin; a probe's connector has passive pins. `frequency` is the clock of the
+/// port, as for `Spi`.
 interface Swd {
     .swdio: Pin
     .swclk: Pin
     .swo: Pin
     .reset: Pin
+    .frequency: Frequency
 }
 
 /// A USB 2.0 port: the data pair `dp` and `dm` and the bus power `vbus`, whose `pos` is VBUS

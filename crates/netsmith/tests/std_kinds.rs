@@ -682,6 +682,65 @@ fn two_spi_masters_have_their_outputs_on_the_same_nets() {
     }
 }
 
+// ---- the clock of a bus (ADR 0064, stage 0) --------------------------------------------
+
+/// A part with an SPI port whose clock is bounded by its datasheet: `limit` is the bound
+/// as it is written (`<= 10MHz`). The pins are `bidirectional`, so that the parts say nothing
+/// about who drives (the roles are another stage).
+fn clocked_part(name: &str, limit: &str) -> String {
+    format!(
+        "part {name} {{\n .vdd: Rail\n .spi: Spi\n .spi.frequency {limit}\n pins {{\n \
+         .vdd.pos power \"VDD\" \"1\"\n .vdd.neg power \"VSS\" \"2\"\n \
+         .spi.sclk bidirectional \"SCK\" \"3\"\n .spi.mosi bidirectional \"MOSI\" \"4\"\n \
+         .spi.miso bidirectional \"MISO\" \"5\"\n .spi.cs bidirectional \"CS\" \"6\"\n }}\n}}\n"
+    )
+}
+
+/// A processor, a flash and an IMU on one bus, the processor's clock stated by `clock`.
+fn clock_board(clock: &str) -> String {
+    format!(
+        "import std::bus::Spi\nimport std::sources::Rail\n{}{}{}\
+         board B {{\n .supply: Rail {{\n .voltage &= 3.3V +/- 5%\n .pos.net &= \"3V3\"\n .neg.net &= \"GND\" }}\n \
+         .cpu: Zcpu\n .flash: Zflash\n .imu: Zimu\n .supply ~ .cpu.vdd\n .supply ~ .flash.vdd\n .supply ~ .imu.vdd\n \
+         .cpu.spi ~ .flash.spi\n .cpu.spi ~ .imu.spi\n{clock}\n}}\n",
+        clocked_part("Zcpu", "<= 32MHz"),
+        clocked_part("Zflash", "<= 33MHz"),
+        clocked_part("Zimu", "<= 10MHz"),
+    )
+}
+
+#[test]
+fn a_bus_clock_inside_every_bound_builds() {
+    clean(&clock_board(" .cpu.spi.frequency &= 8MHz"));
+}
+
+#[test]
+fn a_bus_clock_above_a_bound_is_refused_naming_the_field() {
+    let m = messages(&clock_board(" .cpu.spi.frequency &= 20MHz"));
+    assert_eq!(m.len(), 1, "{m:#?}");
+    assert!(
+        m[0].contains("imu.spi.frequency") && m[0].contains("10MHz") && m[0].contains("20MHz"),
+        "{}",
+        m[0]
+    );
+}
+
+#[test]
+fn a_bus_clock_joined_by_a_tilde_reaches_the_third_part() {
+    let checked = run(&clock_board(" .cpu.spi.frequency &= 8MHz"));
+    assert!(checked.is_ok(), "{}", checked.render());
+    let solution = solve(checked.board("B").unwrap(), &catalogs());
+    for part in ["cpu", "flash", "imu"] {
+        let path = format!("{part}.spi.frequency");
+        let shown = solution
+            .model
+            .domain_at(&path)
+            .map(|d| format!("{d:?}"))
+            .unwrap_or_default();
+        assert!(shown.contains("8000000"), "{path} is {shown}");
+    }
+}
+
 #[test]
 fn the_i2c_pullups_pick_resistors_inside_the_stated_resistance() {
     let src = bus_board(&format!("{CROSSED}{SPI}{I2C}"));

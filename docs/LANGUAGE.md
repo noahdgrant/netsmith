@@ -7419,6 +7419,78 @@ error: net `net-a.i2c.sda` carries the sda line of an I2C bus (`a.i2c.sda`, `b.i
    |     ^^^^^^^^^^
 ```
 
+### The clock of a bus
+
+`Spi`, `I2c` and `Swd` have a `.frequency`, and `Uart` has a `.baud`, a value in the unit of a frequency (ADR 0064). A part states what its datasheet allows as a bound (`.spi.frequency <= 10MHz`, with the page in a comment), and the board states the clock it will run (`.cpu.spi.frequency &= 8MHz`). `~` between two interfaces equates the two values, as it does for every value but a current and a logic level, so one value runs along the bus and each part's bound judges it. The firmware sets the clock, so the board's statement is its intention, and the check is that the intention is within every part's limit. A board that states none is left alone.
+
+```nsm module=src::clocked
+import std::bus::Spi
+import std::sources::Rail
+
+/// Zflash, an invented serial flash.
+part Zflash {
+    .vdd: Rail
+    .spi: Spi
+    // Section 7: the clock is at most 33 MHz.
+    .spi.frequency <= 33MHz
+
+    pins {
+        .vdd.pos  power         "VCC" "8"
+        .vdd.neg  power         "GND" "4"
+        .spi.sclk bidirectional "CLK" "6"
+        .spi.mosi bidirectional "DI"  "5"
+        .spi.miso bidirectional "DO"  "2"
+        .spi.cs   bidirectional "/CS" "1"
+    }
+}
+
+/// Zimu, an invented IMU.
+part Zimu {
+    .vdd: Rail
+    .spi: Spi
+    // Table 4: the clock is at most 10 MHz.
+    .spi.frequency <= 10MHz
+
+    pins {
+        .vdd.pos  power         "VDD" "8"
+        .vdd.neg  power         "GND" "6"
+        .spi.sclk bidirectional "SCL" "1"
+        .spi.mosi bidirectional "SDI" "2"
+        .spi.miso bidirectional "SDO" "3"
+        .spi.cs   bidirectional "CS"  "4"
+    }
+}
+```
+
+A clock above a bound is refused, naming the value that is out of range:
+
+```nsm fails
+import src::clocked::{Zflash, Zimu}
+import std::sources::Rail
+
+board TooFast {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .flash: Zflash
+    .imu: Zimu
+    .supply ~ .flash.vdd
+    .supply ~ .imu.vdd
+    .flash.spi ~ .imu.spi
+    .flash.spi.frequency &= 20MHz
+}
+```
+
+```text
+error: imu.spi.frequency must always be at most 10MHz, but 20MHz is not always below 10MHz
+   --> src/clocked.nsm:26:5
+   |
+26 |     .spi.frequency <= 10MHz
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+```
+
 ### A pull-up on one line
 
 A reset, an enable or an open-drain output often needs a resistor from a rail to the line. A plain `Resistor` between the rail's `pos` and the line works for the circuit and leaves the net unsolved: the resistor starts a chain on the rail's net, nothing says what it carries, so the net has two unknowns and every check on it waits (the regulator's current, its power, the resistor's own power). `std::bus::PullUp` is that resistor with its draw stated.
@@ -7482,7 +7554,7 @@ board Forgetful {
 ```
 
 ```text
-Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:89), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
+Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:98), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
 ```
 
 A module that wraps a `PullUp` states the resistance itself or forwards it through a member of its own (`.pull.resistance &= .resistance`, with the wrapped member on the left: the solver works a value out from the right side towards the left). A board that forgets a forwarded member is told about the wrapper's member, which is the one it can state.
