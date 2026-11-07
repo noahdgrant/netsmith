@@ -18,6 +18,7 @@ use netsmith_check::FieldKind;
 use netsmith_quantity::{Dimension, Quantity};
 
 use crate::catalog::{Candidate, Catalogs, Derating, Library, Value};
+use crate::standard::{Fill, Standard};
 
 /// An E-series: the values of one decade that a tolerance class is built on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -259,12 +260,7 @@ impl Generic {
 
     /// The column that holds the value, for a kind that has one.
     fn value_column(&self) -> Option<&'static str> {
-        match &self.spec {
-            Spec::Resistor { .. } => Some("resistance"),
-            Spec::Capacitor { .. } => Some("capacitance"),
-            Spec::Inductor { .. } => Some("inductance"),
-            Spec::Led { .. } => None,
-        }
+        Standard::of_spec(&self.spec).marked()
     }
 
     /// `340 ohm 1% 0402 62.5 mW (E24)`, `100 nF 10% 0402 at least 10 V (E24)`,
@@ -422,59 +418,13 @@ fn label(x: f64) -> String {
 
 /// The generic candidates of a catalog, in the order they are tried (smallest package first,
 /// then rising value), if the catalog is one that has generic parts and the part lists only
-/// columns they can fill. `None` otherwise.
+/// columns they can fill. `None` otherwise. [`Standard`] says which catalogs have them.
 pub fn candidates(
     series: Series,
     catalog: &str,
     columns: &[(String, FieldKind)],
 ) -> Option<Vec<Candidate>> {
-    let known: &[&str] = match catalog {
-        "resistor" => &[
-            "resistance",
-            "max_power",
-            "package",
-            "temperature_coefficient",
-        ],
-        "capacitor" => &[
-            "capacitance",
-            "effective_capacitance",
-            "max_voltage",
-            "package",
-            "dielectric",
-        ],
-        "inductor" => &[
-            "inductance",
-            "saturation_current",
-            "dc_resistance",
-            "package",
-            "rms_current",
-        ],
-        "led" => &["color", "forward_voltage", "package"],
-        _ => return None,
-    };
-    if !columns
-        .iter()
-        .all(|(name, _)| known.contains(&name.as_str()))
-    {
-        return None;
-    }
-    let value_column = match catalog {
-        "resistor" => Some("resistance"),
-        "capacitor" => Some("capacitance"),
-        "inductor" => Some("inductance"),
-        _ => None,
-    };
-    if let Some(v) = value_column
-        && !columns.iter().any(|(n, _)| n == v)
-    {
-        return None;
-    }
-    match catalog {
-        "resistor" => resistors(series, catalog, columns),
-        "capacitor" => capacitors(series.for_reactive(), catalog, columns),
-        "inductor" => inductors(series.for_reactive(), catalog, columns),
-        _ => leds(catalog, columns),
-    }
+    Standard::of_catalog(catalog)?.candidates(series, columns)
 }
 
 fn centered(nominal: f64, dim: Dimension, percent: f64) -> Option<Quantity> {
@@ -483,16 +433,16 @@ fn centered(nominal: f64, dim: Dimension, percent: f64) -> Option<Quantity> {
     Quantity::tolerance(&center, &tolerance, true).ok()
 }
 
-fn resistors(
+pub(crate) fn resistors(
+    standard: &Standard,
     series: Series,
-    catalog: &str,
     columns: &[(String, FieldKind)],
 ) -> Option<Vec<Candidate>> {
     let mut out = Vec::new();
     for (package, power) in PACKAGES {
         for ohms in series.resistances() {
             let generic = Generic {
-                catalog: catalog.to_string(),
+                catalog: standard.catalog.to_string(),
                 package: package.to_string(),
                 spec: Spec::Resistor {
                     series,
@@ -503,14 +453,17 @@ fn resistors(
             };
             let mut values = Vec::new();
             for (name, _) in columns {
-                let value = match name.as_str() {
-                    "resistance" => {
+                let value = match standard.fill(name)? {
+                    Fill::Marked => {
                         Value::Quantity(centered(ohms, Dimension::RESISTANCE, TOLERANCE_PERCENT)?)
                     }
-                    "max_power" => Value::Quantity(Quantity::point(Dimension::POWER, power).ok()?),
+                    Fill::PackagePower => {
+                        Value::Quantity(Quantity::point(Dimension::POWER, power).ok()?)
+                    }
                     // A generic part has no temperature coefficient: that cell is empty.
-                    "temperature_coefficient" => continue,
-                    _ => Value::Text(package.to_string()),
+                    Fill::Empty => continue,
+                    Fill::Package => Value::Text(package.to_string()),
+                    Fill::NoCurve | Fill::Open(_) => return None,
                 };
                 values.push((name.clone(), value));
             }
@@ -526,11 +479,12 @@ fn resistors(
     Some(out)
 }
 
-fn capacitors(
+pub(crate) fn capacitors(
+    standard: &Standard,
     series: Series,
-    catalog: &str,
     columns: &[(String, FieldKind)],
 ) -> Option<Vec<Candidate>> {
+    let series = series.for_reactive();
     // 1 pF up to 100 uF.
     let values: Vec<f64> = series
         .values(-12..=-4)
@@ -543,7 +497,7 @@ fn capacitors(
             for &farads in &values {
                 let marked = centered(farads, Dimension::CAPACITANCE, percent)?;
                 let generic = Generic {
-                    catalog: catalog.to_string(),
+                    catalog: standard.catalog.to_string(),
                     package: package.to_string(),
                     spec: Spec::Capacitor {
                         series,
@@ -554,20 +508,21 @@ fn capacitors(
                 };
                 let mut cells = Vec::new();
                 for (name, _) in columns {
-                    let value = match name.as_str() {
-                        "capacitance" => Value::Quantity(marked),
+                    let value = match standard.fill(name)? {
+                        Fill::Marked => Value::Quantity(marked),
                         // No published curve: the effective capacitance is unknown, as for a
                         // row whose cell is `derate capacitance by bias:` with nothing after.
-                        "effective_capacitance" => Value::Derated(Derating {
+                        Fill::NoCurve => Value::Derated(Derating {
                             marked,
                             against: "bias".to_string(),
                             curve: Vec::new(),
                         }),
-                        "max_voltage" => Value::Open(Sense::AtLeast),
+                        Fill::Open(sense) => Value::Open(sense),
                         // A generic part has no dielectric: that cell is empty, so a design
                         // that needs one is given a catalog row.
-                        "dielectric" => continue,
-                        _ => Value::Text(package.to_string()),
+                        Fill::Empty => continue,
+                        Fill::Package => Value::Text(package.to_string()),
+                        Fill::PackagePower => return None,
                     };
                     cells.push((name.clone(), value));
                 }
@@ -584,11 +539,12 @@ fn capacitors(
     Some(out)
 }
 
-fn inductors(
+pub(crate) fn inductors(
+    standard: &Standard,
     series: Series,
-    catalog: &str,
     columns: &[(String, FieldKind)],
 ) -> Option<Vec<Candidate>> {
+    let series = series.for_reactive();
     // 1 nH up to 1 mH.
     let values: Vec<f64> = series
         .values(-9..=-3)
@@ -601,7 +557,7 @@ fn inductors(
             for &henries in &values {
                 let marked = centered(henries, Dimension::INDUCTANCE, percent)?;
                 let generic = Generic {
-                    catalog: catalog.to_string(),
+                    catalog: standard.catalog.to_string(),
                     package: package.to_string(),
                     spec: Spec::Inductor {
                         series,
@@ -613,13 +569,13 @@ fn inductors(
                 };
                 let mut cells = Vec::new();
                 for (name, _) in columns {
-                    let value = match name.as_str() {
-                        "inductance" => Value::Quantity(marked),
-                        "saturation_current" => Value::Open(Sense::AtLeast),
-                        "dc_resistance" => Value::Open(Sense::AtMost),
+                    let value = match standard.fill(name)? {
+                        Fill::Marked => Value::Quantity(marked),
+                        Fill::Open(sense) => Value::Open(sense),
                         // A generic part has no heating current: that cell is empty.
-                        "rms_current" => continue,
-                        _ => Value::Text(package.to_string()),
+                        Fill::Empty => continue,
+                        Fill::Package => Value::Text(package.to_string()),
+                        Fill::PackagePower | Fill::NoCurve => return None,
                     };
                     cells.push((name.clone(), value));
                 }
@@ -636,11 +592,15 @@ fn inductors(
     Some(out)
 }
 
-fn leds(catalog: &str, columns: &[(String, FieldKind)]) -> Option<Vec<Candidate>> {
+pub(crate) fn leds(
+    standard: &Standard,
+    _series: Series,
+    columns: &[(String, FieldKind)],
+) -> Option<Vec<Candidate>> {
     let mut out = Vec::new();
     for package in LED_PACKAGES {
         let generic = Generic {
-            catalog: catalog.to_string(),
+            catalog: standard.catalog.to_string(),
             package: package.to_string(),
             spec: Spec::Led {
                 color: Need::Nothing,
@@ -650,13 +610,16 @@ fn leds(catalog: &str, columns: &[(String, FieldKind)]) -> Option<Vec<Candidate>
         let cells = columns
             .iter()
             .map(|(name, _)| {
-                let value = match name.as_str() {
-                    "color" | "forward_voltage" => Value::Open(Sense::Stated),
-                    _ => Value::Text(package.to_string()),
+                let value = match standard.fill(name)? {
+                    Fill::Open(sense) => Value::Open(sense),
+                    Fill::Package => Value::Text(package.to_string()),
+                    Fill::Marked | Fill::PackagePower | Fill::NoCurve | Fill::Empty => {
+                        return None;
+                    }
                 };
-                (name.clone(), value)
+                Some((name.clone(), value))
             })
-            .collect();
+            .collect::<Option<Vec<_>>>()?;
         out.push(Candidate {
             name: format!("generic {}", generic.describe()),
             label: "LED".to_string(),
@@ -686,41 +649,6 @@ fn rank(library: Option<Library>) -> u8 {
         Some(Library::Preferred) => 1,
         Some(Library::Extended) => 2,
         None => 3,
-    }
-}
-
-/// The columns a generic part of this catalog is matched on.
-fn kinds(catalog: &str) -> Vec<(String, FieldKind)> {
-    let q = |name: &str, dim| (name.to_string(), FieldKind::Quantity(dim));
-    let text = |name: &str| (name.to_string(), FieldKind::Text);
-    match catalog {
-        "capacitor" => vec![
-            q("capacitance", Dimension::CAPACITANCE),
-            q("effective_capacitance", Dimension::CAPACITANCE),
-            q("max_voltage", Dimension::VOLTAGE),
-            text("package"),
-            // Read with the others; a generic part has none and no row is matched on it.
-            text("dielectric"),
-        ],
-        "inductor" => vec![
-            q("inductance", Dimension::INDUCTANCE),
-            q("saturation_current", Dimension::CURRENT),
-            q("dc_resistance", Dimension::RESISTANCE),
-            text("package"),
-            q("rms_current", Dimension::CURRENT),
-        ],
-        "led" => vec![
-            text("color"),
-            q("forward_voltage", Dimension::VOLTAGE),
-            text("package"),
-        ],
-        _ => vec![
-            q("resistance", Dimension::RESISTANCE),
-            q("max_power", Dimension::POWER),
-            text("package"),
-            // Read with the others; a generic part has none and no row is matched on it.
-            q("temperature_coefficient", Dimension::NONE),
-        ],
     }
 }
 
@@ -833,7 +761,9 @@ pub fn resolve(
     catalogs: &Catalogs,
     stock: &dyn Fn(&str) -> Option<u64>,
 ) -> Result<Orderable, String> {
-    let Some(Ok(catalog)) = catalogs.identity(&generic.catalog, &kinds(&generic.catalog)) else {
+    let Some(Ok(catalog)) =
+        catalogs.identity(&generic.catalog, &Standard::of_spec(&generic.spec).kinds())
+    else {
         return Err(format!(
             "unresolved: there is no readable `{}` catalog to find {} in",
             generic.catalog,
@@ -897,7 +827,7 @@ pub fn resolve(
     if alternatives.is_empty() {
         message.push_str(&format!(
             " The catalog has no {} to offer instead.",
-            part_word(&generic.catalog)
+            Standard::of_spec(&generic.spec).word
         ));
     } else {
         message.push_str(&format!(
@@ -920,7 +850,9 @@ pub const CHANGE_THE_VALUE: &str = " Change the value in the design and build ag
 /// catalog cannot be read. These are the alternatives the message offers and that a build
 /// can check the design against.
 pub fn alternatives(generic: &Generic, catalogs: &Catalogs) -> Vec<Alternative> {
-    let Some(Ok(catalog)) = catalogs.identity(&generic.catalog, &kinds(&generic.catalog)) else {
+    let Some(Ok(catalog)) =
+        catalogs.identity(&generic.catalog, &Standard::of_spec(&generic.spec).kinds())
+    else {
         return Vec::new();
     };
     let rows: Vec<&Candidate> = catalog
@@ -934,16 +866,6 @@ pub fn alternatives(generic: &Generic, catalogs: &Catalogs) -> Vec<Alternative> 
         .filter(|c| misses(generic, c).is_empty())
         .collect();
     nearest(generic, &rows, &fits)
-}
-
-fn part_word(catalog: &str) -> &str {
-    match catalog {
-        "resistor" => "resistor",
-        "capacitor" => "capacitor",
-        "inductor" => "inductor",
-        "led" => "LED",
-        other => other,
-    }
 }
 
 /// A row near a generic part, for a message and for the re-check of an alternative.

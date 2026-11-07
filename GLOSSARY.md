@@ -151,7 +151,7 @@ Everything around a buck converter IC except the IC: `std::parts::regulator::Buc
 _Avoid_: Buck module, power stage
 
 **Bank**:
-Identical capacitors in parallel that stand in one place of the design, a `Capacitor` with a `.count` (ADR 0052, proposed). The count is one number the board may state (`.count &= 3`, `.stage.output_count &= 3`), a range the solver chooses from (`1..8`, the fewest that holds every check), or unset, which is one. Every other field is the value of one capacitor of the bank. Lowering makes one part for each, on the same nets, and the bill of materials lists the row once with the quantity; the second and later parts have the path of the first with `#2`, `#3`. Only the standard `Capacitor` is a bank (a user part with a member named `count` is one part), and a requirement on a bank's part path in the physical file holds for each of its capacitors. A bank is not a repetition construct: the language has none.
+Identical capacitors in parallel that stand in one place of the design, a `Capacitor` with a `.count` (ADR 0052, proposed). The count is one number the board may state (`.count &= 3`, `.stage.output_count &= 3`), a range the solver chooses from (`1..8`, the fewest that holds every check), or unset, which is one. Every other field is the value of one capacitor of the bank. Lowering makes one part for each, on the same nets, and the bill of materials lists the row once with the quantity; the second and later parts have the path of the first with `#2`, `#3`. Only the standard `Capacitor`, and a part that provides it, is a bank (a user part with a member named `count` is one part; which generics are banks is one list in the checker, ADR 0068 stage 3), and a requirement on a bank's part path in the physical file holds for each of its capacitors. A bank is not a repetition construct: the language has none.
 _Avoid_: Array, capacitor slots (`cap_a`, `cap_b`), parallel group, multiplier, multiplicity
 
 **Dielectric**:
@@ -309,6 +309,10 @@ _Avoid_: Supplier feed, price list (a file provider reads one)
 **Generic part**:
 (A pick, not a definition: see **generic**.) A passive or LED the solver chooses by value alone: a resistor, a ceramic capacitor, an inductor or an LED with no supplier or part number. A rating it cannot know (a capacitor's rated voltage, an inductor's saturation current and DC resistance, an LED's forward voltage) is taken from what the design states or demands. A separate step resolves it to a catalog row (JLCPCB Basic first; a capacitor only to a row with a recorded DC-bias curve), or reports it unresolved with the nearest alternatives and whether the checks pass with each (ADR 0047, provisional).
 _Avoid_: Virtual part, ideal part
+
+**Synthesized provider**:
+The second provider of a standard generic that has a series: the generic parts of an E-series (ADR 0047), offered after the rows of the generic's own catalog. It is Rust, not a definition, because the language has no way to say how a value is generated (ADR 0068 open question 10), and there is one for each of the four catalogs `resistor`, `capacitor`, `inductor` and `led`, described by one table of the solver (`standard.rs`: the columns it fills, the value columns of ADR 0065, and the columns a file of rows may leave out, which are the ones it leaves empty). A provider that a project writes has none, whatever it provides (ADR 0068 stage 3).
+_Avoid_: Series provider, virtual provider
 
 **Peak voltage**:
 The highest voltage a rail reaches, transients included: the `.peak` of a `Rail`, where `.voltage` is the steady range. A part that clamps a transient (a TVS diode) states it for the rail behind it, joined rails share it, and the parts on the rail are rated for it. A peak below the rail's steady voltage is refused as a mistake (where a stage checks the ratings, as `BuckStage` does).
