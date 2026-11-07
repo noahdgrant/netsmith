@@ -95,6 +95,8 @@ pub(crate) fn unconstrained_pick_findings(
     for u in solution.unconstrained.iter().filter(|u| inside(u.part)) {
         let key = match &u.held_by {
             Some(h) => (Some(model.path_of_field(h.member)), String::new()),
+            // Parts that only the same checks limit, as a ratio, are one finding.
+            None if !u.ratio.is_empty() => (None, format!("~{:?}", u.ratio)),
             None => (None, model.path_of(u.part)),
         };
         groups.entry(key).or_default().push(u);
@@ -138,12 +140,36 @@ pub(crate) fn unconstrained_pick_findings(
             };
             let column = &picks[0].column;
             let (value, any) = examples(model, picks[0].field);
+            // A check that holds whatever the size is limits a ratio, and the value is still
+            // free in size (ADR 0065).
+            let ratio: Vec<(netsmith_check::SourceId, netsmith_lang::Span)> = picks[0].ratio.clone();
             let head = format!(
-                "{} ({}) {} chosen with nothing limiting {its} {column}, so the solver {took}",
+                "{} ({}) {} chosen with nothing limiting {its} {column}{}, so the solver {took}",
                 list(&names),
                 types.join(", "),
                 if many { "were" } else { "was" },
+                if ratio.is_empty() { "" } else { " in size" },
             );
+            let head = if ratio.is_empty() {
+                head
+            } else {
+                let checks: Vec<String> = ratio
+                    .iter()
+                    .map(|&(source, span)| {
+                        format!(
+                            "`{}`",
+                            model
+                                .statement_text(source, span)
+                                .unwrap_or_else(|| "a check".to_string())
+                        )
+                    })
+                    .collect();
+                format!(
+                    "{head}; {its} {column} is limited as a ratio, not in size, by {} ({}), which hold whatever the size is",
+                    list(&checks),
+                    places(sources, &ratio)
+                )
+            };
             let message = match &picks[0].held_by {
                 Some(held) => {
                     let member = model.path_of_field(held.member);
@@ -177,7 +203,13 @@ pub(crate) fn unconstrained_pick_findings(
                 None => {
                     let path = model.path_of(picks[0].part);
                     format!(
-                        "{head}: state it, `.{path}.{column} &= {value}`, or bound a value that it decides (a current or a voltage the design checks), or say that any value will do, `.{path}.{column} &= {any}`"
+                        "{head}: state {}, `.{path}.{column} &= {value}`, or bound a value that {} (a current or a voltage the design checks), or say that any value will do, `.{path}.{column} &= {any}`",
+                        if many { "one of them" } else { "it" },
+                        if ratio.is_empty() {
+                            "it decides"
+                        } else {
+                            "changes with the size, not only with the ratio"
+                        }
                     )
                 }
             };
