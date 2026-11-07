@@ -203,6 +203,10 @@ pub trait Backend: Send + Sync + 'static {
     fn run_analysis(&self) -> Analysis {
         self.analysis()
     }
+    /// Whether a change to a file on disk is analysed at once (the default) or only when
+    /// [`Backend::run_analysis`] asks. Until then the reading stays the one before, and
+    /// `Analysis::stale` says so. A backend that always analyses ignores it.
+    fn set_auto_analysis(&self, _auto: bool) {}
     /// `Some(milliseconds the first analysis has been running)` until it has finished, `None`
     /// from then on. A backend whose files are read before it is served is never pending.
     /// While it is `Some`, `analysis` blocks until the first analysis is done, and `version`

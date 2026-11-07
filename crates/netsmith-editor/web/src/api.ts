@@ -301,7 +301,13 @@ elapsedMs?: number,
  * before it (or, for the first, an empty one with a note), which does not show the files as
  * they are. It stays so until a file changes or `POST /api/analysis/run`.
  */
-cancelled?: boolean, };
+cancelled?: boolean, 
+/**
+ * A file on disk changed and was not analysed, because the page asked for no analysis on
+ * change (`POST /api/analysis/auto`): this is the reading before it. It stays so until
+ * `POST /api/analysis/run`.
+ */
+stale?: boolean, };
 
 export type Pending = { 
 /**

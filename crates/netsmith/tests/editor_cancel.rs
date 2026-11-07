@@ -162,6 +162,7 @@ fn a_cancelled_analysis_publishes_nothing() {
     assert_eq!(
         Analysis {
             cancelled: None,
+            stale: None,
             ..after.clone()
         },
         first
@@ -472,4 +473,44 @@ fn a_token_cancelled_before_a_job_starts_ends_it_before_it_does_anything() {
     assert!(!root.join("out").exists() && !root.join("fab").exists());
     // What the job says may be the one line that it began.
     assert!(*lines.lock().unwrap() <= 2);
+}
+
+#[test]
+fn with_no_analysis_on_change_a_file_is_read_when_the_page_asks() {
+    let (root, editor, probe) = project("manual");
+    assert_eq!(editor.analysis().version, 1);
+    editor.set_auto_analysis(false);
+    probe.heard();
+    edit(&root, 1);
+    // The change is not analysed, however often the watcher asks; the reading says it is behind.
+    for _ in 0..3 {
+        let a = editor.analysis();
+        assert_eq!((a.version, a.stale), (1, Some(true)));
+    }
+    assert_eq!(probe.heard(), Vec::<String>::new());
+    // The page asks: the file is read, and the reading is whole again.
+    let ran = editor.run_analysis();
+    assert_eq!((ran.version, ran.stale), (2, None));
+    assert!(probe.heard().contains(&"progress:solve".to_string()));
+    // With nothing changed, asking again does nothing.
+    assert_eq!(editor.run_analysis().version, 2);
+    // Switched back on, a change is analysed at once.
+    editor.set_auto_analysis(true);
+    edit(&root, 2);
+    assert_eq!(
+        (editor.analysis().version, editor.analysis().stale),
+        (3, None)
+    );
+}
+
+#[test]
+fn asking_for_an_analysis_with_nothing_changed_does_not_run_the_next_change() {
+    let (root, editor, probe) = project("spent");
+    editor.analysis();
+    editor.set_auto_analysis(false);
+    assert_eq!(editor.run_analysis().version, 1);
+    probe.heard();
+    edit(&root, 1);
+    assert_eq!(editor.analysis().stale, Some(true));
+    assert_eq!(probe.heard(), Vec::<String>::new());
 }
