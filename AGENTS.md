@@ -27,6 +27,7 @@ A part number goes into a catalog only with a recorded source (`data/jlcpcb/READ
 ## Git
 
 Stage files by explicit path when committing, so other people's in-progress files stay out.
+Write commit messages (and pull request titles) as [Conventional Commits](https://www.conventionalcommits.org): `type(scope): summary`, with a type such as `feat`, `fix`, `docs`, `refactor`, `test`, `ci` or `chore`, and `!` after the type for a breaking change.
 
 ## Skills
 
