@@ -165,6 +165,27 @@ enum Underated {
 /// The most the search will try before it stops and says so.
 const MAX_TRIALS: usize = 250_000;
 
+/// The solver's state before a group of parts was searched, to put it back.
+#[derive(Clone)]
+struct Mark {
+    model: Model,
+    diagnostics: usize,
+    seen: HashSet<Diagnostic>,
+    picks: usize,
+    unresolved: usize,
+    refused_counts: HashSet<FieldId>,
+    derived: HashSet<FieldId>,
+}
+
+/// A group of parts that was searched, where it stands in the listing of picks, and the state
+/// before it.
+struct Step {
+    position: usize,
+    group: Vec<usize>,
+    mark: Mark,
+    picks: Vec<Pick>,
+}
+
 /// One part that needs a real part chosen for it.
 struct Job {
     part: InstId,
@@ -1756,18 +1777,43 @@ impl Solver<'_> {
             pending.push((position, component));
         }
         pending.sort_by_key(|(position, group)| (*position, group[0]));
-        let mut picked: Vec<(usize, Vec<Pick>)> = Vec::new();
+        let mut steps: Vec<Step> = Vec::new();
+        // Jobs that were searched together again after a failure, once: the second search is not
+        // started again for them.
+        let mut joined: HashSet<usize> = HashSet::new();
         while !pending.is_empty() {
             let next = self.next_group(&jobs, &pending);
             let (position, group) = pending.remove(next);
-            let before = self.picks.len();
+            let mark = self.mark();
             let elsewhere: HashSet<usize> = pending
                 .iter()
                 .flat_map(|(_, g)| g.iter().copied())
                 .collect();
             self.solve_group(&jobs, &group, &coupling, elsewhere);
-            picked.push((position, self.picks.split_off(before)));
+            let picks = self.picks.split_off(mark.picks);
+            let step = Step {
+                position,
+                group,
+                mark,
+                picks,
+            };
+            if self.failed(&jobs, &step) {
+                self.search_again_together(
+                    &jobs,
+                    &coupling,
+                    &mut steps,
+                    step,
+                    &pending,
+                    &mut joined,
+                );
+            } else {
+                steps.push(step);
+            }
         }
+        let mut picked: Vec<(usize, Vec<Pick>)> = steps
+            .into_iter()
+            .map(|step| (step.position, step.picks))
+            .collect();
         picked.sort_by_key(|(position, _)| *position);
         // The picks of the components of one group are listed in the order that one search of
         // the whole group would have made them.
@@ -1791,6 +1837,128 @@ impl Solver<'_> {
             listed.extend(picks);
         }
         self.picks.extend(listed);
+    }
+
+    /// What `search_again_together` needs to put the solver back as it was before a group.
+    fn mark(&self) -> Mark {
+        Mark {
+            model: self.model.clone(),
+            diagnostics: self.diagnostics.len(),
+            seen: self.seen.clone(),
+            picks: self.picks.len(),
+            unresolved: self.unresolved.len(),
+            refused_counts: self.refused_counts.clone(),
+            derived: self.derived.clone(),
+        }
+    }
+
+    fn restore(&mut self, mark: &Mark) {
+        self.model = mark.model.clone();
+        self.diagnostics.truncate(mark.diagnostics);
+        self.seen = mark.seen.clone();
+        self.picks.truncate(mark.picks);
+        self.unresolved.truncate(mark.unresolved);
+        self.refused_counts = mark.refused_counts.clone();
+        self.derived = mark.derived.clone();
+    }
+
+    /// Whether a part of the step's group has no pick.
+    fn failed(&self, jobs: &[Job], step: &Step) -> bool {
+        step.group.iter().any(|&j| {
+            self.unresolved[step.mark.unresolved..]
+                .iter()
+                .any(|u| u.part == jobs[j].part)
+        })
+    }
+
+    /// Whether a relation reads values that parts of both groups decide: a bound between two
+    /// groups that no equation joins, such as a window that one group's value must stay
+    /// inside and another group's value sets.
+    fn share_a_relation(coupling: &Coupling, a: &[usize], b: &[usize]) -> bool {
+        coupling
+            .feeding
+            .iter()
+            .any(|f| a.iter().any(|j| f.contains(j)) && b.iter().any(|j| f.contains(j)))
+    }
+
+    /// A group failed, and an earlier group shares a relation with it (a bound that reads a
+    /// value of each). The earlier group was searched while that relation waited for the parts
+    /// that feed it, so its first fit may leave nothing for this one; and which of two such
+    /// groups comes first is decided by the path order of their names. So the groups are
+    /// searched again with the failed one first: the others are then judged by the relation
+    /// against its picks, as it was judged against theirs. The board is the same whatever the
+    /// instances are called, which was not so before. If that does not find parts for every
+    /// group, the solver is put back as the first failure left it, and its message stands.
+    fn search_again_together(
+        &mut self,
+        jobs: &[Job],
+        coupling: &Coupling,
+        steps: &mut Vec<Step>,
+        failed: Step,
+        pending: &[(usize, Vec<usize>)],
+        joined: &mut HashSet<usize>,
+    ) {
+        let linked: Vec<usize> = (0..steps.len())
+            .filter(|&i| {
+                !steps[i].group.iter().any(|j| joined.contains(j))
+                    && Self::share_a_relation(coupling, &steps[i].group, &failed.group)
+            })
+            .collect();
+        if linked.is_empty() || failed.group.iter().any(|j| joined.contains(j)) {
+            steps.push(failed);
+            return;
+        }
+        let first = linked[0];
+        // The groups from the first linked one on, with the failed one ahead of them: the order
+        // of the second attempt. Those the failed group shares nothing with keep the order they
+        // had, after the linked ones.
+        let order: Vec<(usize, Vec<usize>)> =
+            std::iter::once((failed.position, failed.group.clone()))
+                .chain(
+                    linked
+                        .iter()
+                        .map(|&i| (steps[i].position, steps[i].group.clone())),
+                )
+                .chain(
+                    (first..steps.len())
+                        .filter(|i| !linked.contains(i))
+                        .map(|i| (steps[i].position, steps[i].group.clone())),
+                )
+                .collect();
+        let left_as_failed = self.mark();
+        self.restore(&steps[first].mark.clone());
+        let mut new_steps: Vec<Step> = Vec::new();
+        let mut ok = true;
+        for (n, (position, group)) in order.iter().cloned().enumerate() {
+            let mark = self.mark();
+            let elsewhere: HashSet<usize> = pending
+                .iter()
+                .map(|(_, g)| g)
+                .chain(order[n + 1..].iter().map(|(_, g)| g))
+                .flat_map(|g| g.iter().copied())
+                .collect();
+            self.solve_group(jobs, &group, coupling, elsewhere);
+            let picks = self.picks.split_off(mark.picks);
+            let step = Step {
+                position,
+                group,
+                mark,
+                picks,
+            };
+            if self.failed(jobs, &step) {
+                ok = false;
+                break;
+            }
+            new_steps.push(step);
+        }
+        if ok {
+            steps.truncate(first);
+            joined.extend(order.iter().flat_map(|(_, g)| g.iter().copied()));
+            steps.extend(new_steps);
+        } else {
+            self.restore(&left_as_failed);
+            steps.push(failed);
+        }
     }
 
     /// The fields that a pick can change: every field worked out, however indirectly, from the
