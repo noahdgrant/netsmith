@@ -524,6 +524,8 @@ export function Sidebar() {
 
   const finishNew = async (t: Typing, name: string, template: Template | null): Promise<string | null> => {
     const target = `${t.dir}/${name}`;
+    // A rename takes the old path off the disk before the page moves its tab: a rebuild between must not read it.
+    const done = 'rename' in t ? removingPath(`${t.dir}/${t.rename}`, t.kind === 'folder') : () => {};
     try {
       if ('rename' in t) {
         await api.renamePath(`${t.dir}/${t.rename}`, target);
@@ -537,6 +539,8 @@ export function Sidebar() {
       }
     } catch (e) {
       return said(e);
+    } finally {
+      done();
     }
     setTyping(null);
     try {
