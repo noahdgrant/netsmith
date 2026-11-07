@@ -248,8 +248,8 @@ export const nsmLanguage = StreamLanguage.define<LineState>({
 
 export const nsmHighlight = syntaxHighlighting(
   HighlightStyle.define([
-    { tag: t.comment, color: 'var(--syn-comment)', fontStyle: 'italic' },
-    { tag: t.docComment, color: 'var(--syn-doc)', fontStyle: 'italic' },
+    { tag: t.comment, color: 'var(--syn-comment)', fontStyle: 'var(--comment-style, normal)', fontFamily: 'var(--comment-family, inherit)' },
+    { tag: t.docComment, color: 'var(--syn-doc)', fontStyle: 'var(--comment-style, normal)', fontFamily: 'var(--comment-family, inherit)' },
     { tag: t.string, color: 'var(--syn-string)' },
     { tag: t.number, color: 'var(--syn-number)' },
     { tag: t.keyword, color: 'var(--syn-keyword)', fontWeight: '600' },

@@ -153,6 +153,8 @@
 .src-opt .src-check { width: 1rem; height: 1rem; display: inline-flex; align-items: center; justify-content: center; flex: none; border: 1px solid var(--border-strong); border-radius: var(--r-xs); color: var(--accent-fg); }
 .src-opt[aria-checked="true"] .src-check { background: var(--accent-fill); border-color: transparent; }
 .src-opt kbd { margin-left: auto; }
+.src-comment { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; padding: 0.375rem 0.5rem 2px; color: var(--text-muted); font-size: var(--fs-sm); }
+.src-comment .tool[aria-checked="true"] { background: var(--accent-fill); color: var(--accent-fg); border-color: transparent; }
 .src-size { display: flex; align-items: center; gap: 0.375rem; padding: 0.375rem 0.5rem 2px; color: var(--text-muted); font-size: var(--fs-sm); }
 .src-size output { min-width: 4ch; text-align: center; color: var(--text); font-variant-numeric: tabular-nums; }
 .src-size .icon-btn { width: 1.625rem; height: 1.625rem; border: 1px solid var(--border); background: var(--surface-raised); }

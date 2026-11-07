@@ -24,6 +24,21 @@ export const inlineHints = kept('netsmith.source.inlineHints.v1', true);
 export const wordWrap = kept('netsmith.source.wrap.v1', false);
 /** A file is saved a moment after the last edit, with no Ctrl+S. Off until chosen: a save builds the project again. */
 export const autosave = kept('netsmith.source.autosave.v1', false);
+/** How comments and `///` docs are set in the source: upright in the code's font (the default), the old slanted one, or the page's
+ * own reading font. Slanted monospace is the hardest of the three to read at a small size. */
+export type CommentFont = 'upright' | 'italic' | 'sans';
+export const COMMENT_FONTS: { id: CommentFont; label: string; hint: string; style: string; family: string }[] = [
+  { id: 'upright', label: 'Code font', hint: 'Upright, in the font of the code: the default', style: 'normal', family: 'inherit' },
+  { id: 'italic', label: 'Code font, slanted', hint: 'Slanted, in the font of the code', style: 'italic', family: 'inherit' },
+  { id: 'sans', label: 'Reading font', hint: "Upright, in the page's own reading font", style: 'normal', family: 'var(--sans)' },
+];
+export const commentFont = kept<CommentFont>(
+  'netsmith.source.commentFont.v1',
+  'upright',
+  (v): v is CommentFont => COMMENT_FONTS.some((f) => f.id === v),
+);
+export const commentFontOf = (id: CommentFont) => COMMENT_FONTS.find((f) => f.id === id) ?? COMMENT_FONTS[0];
+export const nextCommentFont = (id: CommentFont): CommentFont => COMMENT_FONTS[(COMMENT_FONTS.findIndex((f) => f.id === id) + 1) % COMMENT_FONTS.length].id;
 export const fontSize = kept('netsmith.source.fontSize.v1', FONT.initial, (v): v is number => typeof v === 'number' && v >= FONT.min && v <= FONT.max);
 /** The outline panel at the foot of the file tree: open or folded, and how tall. */
 export const outlineOpen = kept('netsmith.source.outline.v1', true);
@@ -49,5 +64,14 @@ export const resetEditorZoom = () => (fontSize.value = FONT.initial);
 if (typeof document !== 'undefined') {
   effect(() => {
     document.documentElement.style.setProperty('--source-fs', `calc(${fontSize.value}px * var(--ui-scale, 1))`);
+  });
+}
+
+// The choice reaches the highlight styles (nsm.ts, languages.ts) through two custom properties on the page.
+if (typeof document !== 'undefined') {
+  effect(() => {
+    const f = commentFontOf(commentFont.value);
+    document.documentElement.style.setProperty('--comment-style', f.style);
+    document.documentElement.style.setProperty('--comment-family', f.family);
   });
 }

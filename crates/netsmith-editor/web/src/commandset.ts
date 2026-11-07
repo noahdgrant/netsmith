@@ -22,7 +22,7 @@ import { changeLines } from './source/cm-changes';
 import { toggleLineComment } from './source/comment';
 import { sourceEditor } from './source/handle';
 import { canBack, canForward } from './source/navhistory';
-import { autosave, hoverCards, inlineHints, outlineOpen, resetEditorZoom, wordWrap, zoomEditor } from './source/prefs';
+import { COMMENT_FONTS, autosave, commentFont, commentFontOf, hoverCards, inlineHints, outlineOpen, nextCommentFont, resetEditorZoom, wordWrap, zoomEditor } from './source/prefs';
 import { openReplace } from './source/cm-search';
 import { type Selection, selectAndReveal, selection, setSelection } from './selection';
 import { THEMES, isDark, theme } from './theme';
@@ -494,6 +494,16 @@ const sourceSwitches = (): Command[] => [
     run: () => {
       autosave.value = !autosave.peek();
       say(autosave.peek() ? 'Autosave on: a file is saved a moment after your last edit' : 'Autosave off: save with Ctrl+S');
+    },
+  },
+  {
+    id: 'source.commentfont.next',
+    title: `Source: Comment font (now ${commentFontOf(commentFont.value).label.toLowerCase()}; ${COMMENT_FONTS.length} to choose from)`,
+    group: 'Source',
+    aliases: ['comment style', 'doc comment font', 'italic comments', 'font'],
+    run: () => {
+      commentFont.value = nextCommentFont(commentFont.peek());
+      say(`Comments in the ${commentFontOf(commentFont.peek()).label.toLowerCase()}`);
     },
   },
   {

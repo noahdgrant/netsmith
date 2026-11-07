@@ -52,7 +52,7 @@ import { plural } from '../util';
 import { useElapsed } from './JobProgress';
 import { Icon, SeverityIcon } from './Icons';
 import { settings } from '../settings';
-import { FONT, autosave, fontSize, hoverCards, inlineHints, outlineOpen, resetEditorZoom, wordWrap, zoomEditor } from '../source/prefs';
+import { COMMENT_FONTS, FONT, autosave, commentFont, fontSize, hoverCards, inlineHints, outlineOpen, resetEditorZoom, wordWrap, zoomEditor } from '../source/prefs';
 import { chordText, find } from '../commands';
 import { CompareChip } from './CompareChip';
 import { SourceChangesItem } from './SourceChangesItem';
@@ -322,6 +322,14 @@ function SourceOptions({ close }: { close: () => void }) {
         {row('Word wrap', wordWrap.value, () => (wordWrap.value = !wordWrap.value), 'source.wrap.toggle', 'opt-wrap')}
         {row('Autosave', autosave.value, () => (autosave.value = !autosave.value), 'source.autosave.toggle', 'opt-autosave')}
         {row('Outline', outlineOpen.value, () => (outlineOpen.value = !outlineOpen.value), 'source.outline.toggle', 'opt-outline')}
+        <div class="src-comment" role="radiogroup" aria-label="Comment font">
+          Comments
+          {COMMENT_FONTS.map((f) => (
+            <button key={f.id} type="button" class="tool small" role="radio" aria-checked={commentFont.value === f.id} title={f.hint} data-testid={`opt-comments-${f.id}`} onClick={() => (commentFont.value = f.id)}>
+              {f.label}
+            </button>
+          ))}
+        </div>
         <div class="src-size" role="group" aria-label="Text size">
           Text size
           <button type="button" class="icon-btn" aria-label="Smaller text" data-tip="Smaller text" disabled={fontSize.value <= FONT.min} onClick={() => zoomEditor(-1)}>
