@@ -14,7 +14,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use netsmith_check::{
-    Assignment, Checked, Diagnostic, GenericUse, InstId, Loader, Model, Sources, check_one,
+    Assignment, Checked, Diagnostic, FieldId, GenericUse, InstId, Loader, Model, Sources, check_one,
 };
 use netsmith_solve::{Catalogs, Solution, solve, solve_system};
 
@@ -23,6 +23,9 @@ use crate::{Problem, Stage};
 /// The most provider combinations one board or system is tried with. A trial is a whole
 /// solve, so the bound is on time, as `MAX_TRIALS` of the part search is.
 pub const MAX_PROVIDER_TRIALS: usize = 64;
+
+/// The most uses the message about the bound names; the others are counted.
+const MAX_NAMED_USES: usize = 6;
 
 /// What was decided for one use of a generic: which provider stands in its place, and the
 /// providers tried before it that were passed over, each with the reason.
@@ -122,20 +125,36 @@ struct Search<'a> {
     /// Trials that did not fail but could not judge a bound on a use (`unjudged`), by their
     /// choices: the first of them is the pick when no trial is judged in full.
     weak: BTreeMap<Choices, Pass>,
+    /// Trials that passed in full and have not been taken yet, by their choices. A pass found
+    /// while a use is varied alone is kept here, so that the search in order, which may reach
+    /// the same assignment, does not solve it again (nor count it twice against the bound).
+    passes: HashMap<Choices, Pass>,
 }
 
 enum Leaf {
-    Pass(Pass),
+    /// The trial passed in full; its elaboration and solution wait in `Search::passes` under
+    /// these choices.
+    Pass(Choices),
     Fail(usize),
 }
 
-/// The bounds on a value of a use itself (`rf.max_frequency >= 1.61GHz`) that the solver could not
-/// evaluate, in a solution where the use has more than one provider, because the provider that
-/// was put in its place does not state the value (it is still unset). A bound that waits on
-/// something else, a rail's `.peak` that nothing states, is the design's and not the provider's,
-/// and is not this. Such a design does not fail, and the build names the
-/// bound as not evaluated, but nothing has shown the provider meets it; a provider that can be
-/// judged is preferred to one that cannot. One diagnostic for each bound.
+/// The checks that the solver could not make in a solution where a use has more than one
+/// provider, because of what the provider that was put in its place states, or leaves open.
+/// Such a design does not fail, and the build names each check as not evaluated, but nothing
+/// has shown the provider meets it; a provider that can be judged is preferred to one that
+/// cannot (ADR 0068 sections 11 and 13). What counts, for a use whose pick is not the generic
+/// itself:
+///
+/// - a bound or an equation, among the relations that waited, that reads a value inside the
+///   use that is still unset: a value of the use itself (`rf.max_frequency`), or of an
+///   interface or a part inside it that nothing outside the use shares (the datasheet number
+///   of the controller of a module that wraps a part, `reg.controller.max_vin`);
+/// - a logic level or an absolute maximum that could not be checked because a `Logic`, or
+///   the part, inside the use has no value for it (`NotEvaluated::involves`).
+///
+/// A bound that waits on a value that the board shares with the use (the board's rail that
+/// `reg.vin` is joined to, whose `.peak` the board leaves open) is the design's and counts
+/// for none. One diagnostic for each check.
 pub(crate) fn unjudged(solution: &Solution) -> Vec<Diagnostic> {
     let model = &solution.model;
     let uses: Vec<InstId> = model
@@ -154,7 +173,51 @@ pub(crate) fn unjudged(solution: &Solution) -> Vec<Diagnostic> {
     if uses.is_empty() {
         return Vec::new();
     }
-    solution
+    let inside = |inst: InstId| uses.iter().any(|&u| model.is_inside(inst, u));
+    // A value inside a use that nothing states is the provider's to state, unless it is one
+    // and the same value as one outside the use, which the use's user stated or left open:
+    // the rail of the board that a use's `.vin` is joined to, with its `.peak`. That is the
+    // design's, and every provider leaves it as it is.
+    let open_in_use = |f: FieldId| -> bool {
+        let field = model.field(f);
+        if field.domain != netsmith_check::Domain::Unset {
+            return false;
+        }
+        let Some(u) = uses
+            .iter()
+            .copied()
+            .find(|&u| model.is_inside(field.owner, u))
+        else {
+            return false;
+        };
+        if field.owner == u {
+            return true;
+        }
+        let mut reached = vec![f];
+        let mut next = 0;
+        while next < reached.len() {
+            let here = reached[next];
+            next += 1;
+            for &(a, b) in model.equalities() {
+                let other = if a == here {
+                    b
+                } else if b == here {
+                    a
+                } else {
+                    continue;
+                };
+                if reached.contains(&other) {
+                    continue;
+                }
+                if !model.is_inside(model.field(other).owner, u) {
+                    return false;
+                }
+                reached.push(other);
+            }
+        }
+        true
+    };
+    let mut out: Vec<Diagnostic> = solution
         .deferred
         .iter()
         .filter_map(|&i| {
@@ -162,25 +225,33 @@ pub(crate) fn unjudged(solution: &Solution) -> Vec<Diagnostic> {
             let mut fields = Vec::new();
             r.lhs.fields(&mut fields);
             r.rhs.fields(&mut fields);
-            // A value of the use that nothing states: the provider leaves it open.
-            fields
-                .iter()
-                .any(|&f| {
-                    uses.contains(&model.field(f).owner)
-                        && model.field(f).domain == netsmith_check::Domain::Unset
-                })
-                .then(|| Diagnostic {
-                    source: r.source,
-                    span: r.span,
-                    message: format!(
-                        "not evaluated: {} {} {}",
-                        model.show_expr(&r.lhs),
-                        r.op.symbol(),
-                        model.show_expr(&r.rhs)
-                    ),
-                })
+            fields.iter().any(|&f| open_in_use(f)).then(|| Diagnostic {
+                source: r.source,
+                span: r.span,
+                message: format!(
+                    "not evaluated: {} {} {}",
+                    model.show_expr(&r.lhs),
+                    r.op.symbol(),
+                    model.show_expr(&r.rhs)
+                ),
+            })
         })
-        .collect()
+        .collect();
+    out.extend(
+        solution
+            .not_evaluated
+            .iter()
+            .filter(|n| n.involves.iter().any(|&i| inside(i)))
+            .map(|n| {
+                let (source, span) = model.instance(n.at).at();
+                Diagnostic {
+                    source,
+                    span,
+                    message: n.message.clone(),
+                }
+            }),
+    );
+    out
 }
 
 impl Search<'_> {
@@ -242,6 +313,9 @@ impl Search<'_> {
         if let Some(&at) = self.seen.get(&choices) {
             return Some(Leaf::Fail(at));
         }
+        if self.passes.contains_key(&choices) {
+            return Some(Leaf::Pass(choices));
+        }
         if self.trials >= MAX_PROVIDER_TRIALS {
             self.gave_up = true;
             return None;
@@ -253,7 +327,9 @@ impl Search<'_> {
             if solution.diagnostics.is_empty() {
                 let weak = unjudged(&solution);
                 if weak.is_empty() {
-                    return Some(Leaf::Pass(Box::new((checked, solution))));
+                    self.passes
+                        .insert(choices.clone(), Box::new((checked, solution)));
+                    return Some(Leaf::Pass(choices));
                 }
                 self.weak
                     .insert(choices.clone(), Box::new((checked, solution)));
@@ -282,7 +358,7 @@ impl Search<'_> {
             .find(|u| !assign.contains_key(&u.path) && !self.irrelevant.contains(&u.path));
         let Some(open) = open else {
             return match self.leaf(assign)? {
-                Leaf::Pass(found) => Some(found),
+                Leaf::Pass(choices) => self.passes.remove(&choices),
                 Leaf::Fail(_) => None,
             };
         };
@@ -320,6 +396,7 @@ pub(crate) fn search(
         seen: HashMap::new(),
         irrelevant: HashSet::new(),
         weak: BTreeMap::new(),
+        passes: HashMap::new(),
     };
     let uses = s.multi(checked);
     if uses.is_empty() {
@@ -406,7 +483,7 @@ pub(crate) fn search(
             passed_over,
         }));
     }
-    Outcome::Failed(failure(&s, checked, &uses))
+    Outcome::Failed(failure(&s, checked, &uses, &first_diagnostics))
 }
 
 /// For each use, the providers tried and failed before the pick, with the first diagnostic of
@@ -433,9 +510,18 @@ fn passed_over(s: &Search<'_>, picked: &Checked) -> BTreeMap<String, Vec<(String
     out
 }
 
-/// No assignment works: one error at the first use that matters, naming the closest provider
-/// and what each of the others fails on.
-fn failure(s: &Search<'_>, checked: &Checked, uses: &[GenericUse]) -> Vec<Problem> {
+/// No assignment works. When the search ran to its end, one error at the first use that
+/// matters, naming the closest provider and what each of the others fails on. When it stopped
+/// at the bound, the combinations it did not reach are not an answer, so the build says what
+/// is wrong with the design as it stands, the diagnostics of the first solve, and then that
+/// the search gave up (the design's own mistake is what a person has to fix first, and it was
+/// hidden by the bound).
+fn failure(
+    s: &Search<'_>,
+    checked: &Checked,
+    uses: &[GenericUse],
+    first: &[Diagnostic],
+) -> Vec<Problem> {
     let sources: &Sources = &checked.sources;
     let model = s.model(checked).expect("the root was elaborated");
     let Some(u) = uses.iter().find(|u| !s.irrelevant.contains(&u.path)) else {
@@ -454,11 +540,16 @@ fn failure(s: &Search<'_>, checked: &Checked, uses: &[GenericUse]) -> Vec<Proble
             })
     };
     let message = if s.gave_up {
-        let paths: Vec<String> = uses
+        let mut paths: Vec<String> = uses
             .iter()
             .filter(|u| !s.irrelevant.contains(&u.path))
             .map(|u| format!("`{}`", u.path))
             .collect();
+        if paths.len() > MAX_NAMED_USES {
+            let more = paths.len() - MAX_NAMED_USES;
+            paths.truncate(MAX_NAMED_USES);
+            paths.push(format!("{more} more"));
+        }
         format!(
             "gave up after trying {MAX_PROVIDER_TRIALS} provider combinations for {}; give them fewer providers in scope, or name a provider as the type of one of them",
             paths.join(" and ")
@@ -521,9 +612,15 @@ fn failure(s: &Search<'_>, checked: &Checked, uses: &[GenericUse]) -> Vec<Proble
                 .unwrap_or_else(|| s.root.to_string()),
         }
     };
+    let mut problems = if s.gave_up {
+        crate::diagnostic_problems(first, sources, &board_of)
+    } else {
+        Vec::new()
+    };
     let mut problem = Problem::of(Stage::Solve, &diagnostic, sources);
     problem.board = Some(board_of(&diagnostic));
-    vec![problem]
+    problems.push(problem);
+    problems
 }
 
 /// What was picked for each use of a built board, with what the search passed over. For one

@@ -1,5 +1,5 @@
 ---
-status: stage 1 and stage 2 implemented on 2026-11-06 (section 12 says what stage 2 built and where it differs from section 7; the layering is the owner's decision of 2026-11-06: a part, and above it a general interface that picks a part from requirements, with the passives moving to it in three stages; the owner reviewed the syntax in the summary below and accepted it, and took as decided the word `generic`, the import closure as the candidates, the order of section 4 with no JLCPCB class in stage 1, regulators as providers of a module-shaped `BuckConverter` with `interface Buck` unchanged, and a strict rule that a provider does not redeclare the generic's members; the other open questions of section 9 were decided as recommended there; stage 3 is not started; section 11 says what stage 1 built and where it differs from the text above)
+status: stage 1 and stage 2 implemented on 2026-11-06 (section 12 says what stage 2 built and where it differs from section 7; the layering is the owner's decision of 2026-11-06: a part, and above it a general interface that picks a part from requirements, with the passives moving to it in three stages; the owner reviewed the syntax in the summary below and accepted it, and took as decided the word `generic`, the import closure as the candidates, the order of section 4 with no JLCPCB class in stage 1, regulators as providers of a module-shaped `BuckConverter` with `interface Buck` unchanged, and a strict rule that a provider does not redeclare the generic's members; the other open questions of section 9 were decided as recommended there; stage 3 is not started; section 11 says what stage 1 built and where it differs from the text above; section 13 says what the second independent review found and how each of its nine findings was fixed)
 ---
 
 # A generic is the interface that picks a part: parts and modules `provide` it
@@ -474,7 +474,7 @@ The other checks of the plan, as run: the elaboration is pure (the same board ch
 10. **A provider's id is `module::Name`** where the module is the file's name without `.nsm` and with `::` for `/` (`src::parts::acme_micro_coax::AcmeMicroCoax`; for the file `check` is given, its own name). That is what an `Assignment` names.
 11. **The alias example of section 3 is a tested block of the guide** (`OtherCoax`, with a catalog so that it is complete), and a test.
 
-12. **A provider that cannot be judged does not hold** (accepted by the owner on 2026-11-06; section 4 said the first for which "every check of the whole design holds", and the solver, as ADR 0057 left it, passes a bound whose value nothing states with a note `not evaluated`). A provider that is put in a use's place and leaves a value of the use open (`.max_frequency` never stated) while a bound names it would be picked first by name and the bound would stay unchecked. Soundness (ADR 0053, ADR 0057) is that a pick never rests on a check that was not made, so such a trial counts as unjudged: a provider that can be judged is preferred, and when none can the first in order stands and the bound is named in the notes as before. Only a bound that names a value of the use itself that is still unset counts; a bound that waits on something else (a rail's `.peak` that nothing states, a value a provider's own parts work out) is the design's, is named as before, and does not start a search. The cost is the same one extra trial for each other provider of such a use, and none for a design whose bounds are all judged.
+12. **A provider that cannot be judged does not hold** (widened by section 13, item 6) (accepted by the owner on 2026-11-06; section 4 said the first for which "every check of the whole design holds", and the solver, as ADR 0057 left it, passes a bound whose value nothing states with a note `not evaluated`). A provider that is put in a use's place and leaves a value of the use open (`.max_frequency` never stated) while a bound names it would be picked first by name and the bound would stay unchecked. Soundness (ADR 0053, ADR 0057) is that a pick never rests on a check that was not made, so such a trial counts as unjudged: a provider that can be judged is preferred, and when none can the first in order stands and the bound is named in the notes as before. Only a bound that names a value of the use itself that is still unset counts; a bound that waits on something else (a rail's `.peak` that nothing states, a value a provider's own parts work out) is the design's, is named as before, and does not start a search. The cost is the same one extra trial for each other provider of such a use, and none for a design whose bounds are all judged.
 
 ### Left open, as before
 
@@ -521,3 +521,69 @@ Unit tests: `is_series_kind` (`netsmith-view`), `is_capacitor_kind` (`netsmith-p
 ### Left open
 
 The fallback to a generic's kind in `kicad.toml` (a provider of `Resistor` needs its own `[[part]]` entry; open question 7); the rest of stage 3; a provider of a standard generic that is a module (refused). A project that adds a provider of `Resistor` pays one solve for each use in a design that fails, as in section 11.
+
+## 13. The second independent review, as fixed (2026-11-06)
+
+A second reading of stages 1 and 2 (nothing in it was run) found nine faults; the owner decided that none stays half done. Each is fixed here, with the decision where there was one. The numbers are invented, as everywhere in the tests.
+
+### 1. A provider that contains a use of its own generic
+
+`module AFilteredBuck provides BuckConverter { .inner: BuckConverter ... }` takes provider 0 for `.inner`, and when it sorts first that is itself: the elaboration never ended and the process died of a stack overflow (the editor's server with it). The wrapper pattern of section 3 is a module that wraps a foreign part, not the generic it provides.
+
+Decision: refuse, at the use inside the provider, naming the cycle. The checker keeps the stack of the definitions it is making (`Checker::making`); a member whose type is a definition already on the stack, or a generic one of whose providers is on it, is an error and a poisoned member, and nothing is made. Whatever the order of the providers: a pick that *can* take the provider being made is what is refused, not only one that does.
+
+```text
+error: `inner` is a `BuckConverter`, and `AFilteredBuck`, which is being made here, can be the provider picked for it, so `AFilteredBuck` would contain itself without end (the cycle: `AFilteredBuck` > `AFilteredBuck`); a provider cannot contain a use of the generic it provides, directly or through the parts and modules inside it: wrap a part, or a module that does not provide `BuckConverter`
+```
+
+A definition that holds itself (`module Ring { .inner: Ring }`) says ``` `inner` would make `Ring` inside itself without end (the cycle: `Ring` > `Ring`) ```, and a cycle through two generics names each definition (`P1` > `P2` > `P1`).
+
+Rejected: leaving the provider on the stack out of the candidates of the inner use (the other way the review offered). It makes a wrapper valid or not by how its name sorts (`Zwrap` would wrap `Zbk9Buck`; `AFilteredBuck` would be refused or silently take another provider), which is the fault of finding 3 again. Whoever wants an adapter around a foreign part writes a module around that part.
+
+Where it is seen: when the board that picks the provider is built, and when the provider's own file is the root of a check, which elaborates every definition of it (the editor checks each module of a project as a root as well). A cycle that a pick would not take (a provider of a generic that no board in scope picks, an indirect cycle whose providers sort so that the elaboration never enters it) is seen when the elaboration enters it, like any other mistake in a provider that is not picked (section 11 item 4). Tests: `crates/netsmith-check/tests/generics.rs` (the wrapper sorting first, the same wrapper sorting last and read as the root, a cycle through two generics, a definition in itself) and `crates/netsmith/tests/providers_editor.rs` (the editor reports it and does not die). Run against the code before the fix, the first and the cycle tests abort the process.
+
+### 2. A failing design with many uses hid its own error behind the bound
+
+With more than about 63 uses that have several providers and a failure that no provider changes (an LDO row nobody has), the alone-variation of section 11 item 2 spent trial after trial, reached `MAX_PROVIDER_TRIALS` before it had varied every use, and the build said only `gave up after trying 64 provider combinations for ...`: the real error of the first solve was never shown. Two changes:
+
+- When the search stops at the bound without an answer, the build prints the diagnostics of the first solve first, and then the bound's message. That message names the first six uses it did not reach and counts the rest (`... for `c00` and `c01` and `c02` and `c03` and `c04` and `c05` and 51 more; ...`), not all of them. When the search ran to its end the closest provider is named as before (that is the answer, not an absence of one).
+- A trial that passes while a use is varied alone is kept (`Search::passes`) and taken when the search in order reaches the same assignment, where it used to be dropped and solved again, counting twice against the bound.
+
+Measured on an invented board of 82 uses with two providers each (40 resistors, 40 capacitors, a project provider of each; one LDO whose row no catalog has), release builds, one run after the other on a loaded machine: the snapshot before this change 34.1 s and 34.5 s (23.8 s on a quieter run), ending only in the bound's message with all 63 uses it had not reached named; after, 36.5 s and 34.3 s, ending in `the `ldo` catalog has nothing for `ldo`, which needs vout.voltage within 3.2996V..3.3004V` and then the bound's message with 6 uses named and 51 counted. Both stop at the bound after 63 trials, so the time is the same: the fix is in what is said, not in the cost.
+
+Not changed: the cost. Every use with a second provider is still varied alone, one whole solve each, up to the bound. Varying fewer uses (only those a diagnostic names) would give up designs whose cause the diagnostic does not name (a rail's voltage that a provider sets), so it is not done; the bound is what stops a long wait, and what it says is now true. The double count showed in `a_pass_found_while_a_use_is_varied_alone_is_not_solved_again`: two assignments are two trials, where the same design cost three.
+
+### 3 and 4. The root file is one module, whatever its name
+
+The module path of a file (`src::main`) is the second key of the order of section 4 and the start of a provider's id, and the root's was its name as typed: `src/main.nsm` and `./src/main.nsm` were `src::main` and `.::src::main`, which sort differently, so the pick between a provider in the root and one imported depended on the spelling. And the root was not held in `Checker::cache`, so a file that imports the root (a cycle through it) read a second copy, with generics that are other generics, and the providers in that file never reached a use written in the root, though section 11 says every file is held once.
+
+Now the root is read as the module it is: `Loader::root_key` finds the module of the project whose file name is the typed name with its `.` and `..` steps taken out, or the key a tool attached to the spelling (`Target::loader` attaches the project's key for each top-level file it is given, by the canonical path, so an absolute path is `src::main` too), and the root is cached under that key like every other file. A root the loader does not hold takes its key from its name with the `.` steps taken out and is not cached, since nothing can import it. Tests: `crates/netsmith-check/tests/generics.rs` (four spellings, with and without the file among the modules, and a key attached to an absolute name; the cycle through the root) and `crates/netsmith/tests/root_spelling.rs` (a project built under four spellings of its file's absolute path).
+
+### 5. The bill of materials line of a bank
+
+A provider of `Capacitor` is a bank when the design says how many (section 12 item 5): the first capacitor has the use's path and the others `bulk#2`, `bulk#3`, so the editor's lookup of the use (`via`) found it for the first only, and one bank printed as two lines. The lookup now takes the use's path from the part's by removing the `#k` of a bank. Test: `providers_editor.rs`, a bank of three picked as a provider is one line of three with `via`.
+
+### 6. What cannot be judged
+
+Section 11 item 12 looked at the fields the use itself owns, and at deferred relations only. Its reason, that a pick never rests on a check that was not made, is wider than that, so a trial of a use whose pick is not the generic itself is also unjudged when:
+
+- a deferred bound or equation reads a value that is unset and lies inside the use, in an interface or a part of it that nothing outside the use shares: the datasheet number of the IC inside a module provider (`reg.controller.max_vin`) is the provider's, where it was said to be the design's; or
+- a logic level or an absolute maximum could not be checked (`Solution::not_evaluated`) because a `Logic`, or the part, inside the use has no value for it (`NotEvaluated::involves`, new, names the instances the check was about).
+
+What stays the design's: a value inside the use that is one and the same value as one outside it (`Model::equalities`, followed through the use), such as the `.peak` of the board's rail that `.vin` is joined to and that the board leaves open. Every provider leaves that as it is, so it does not start a search (the test `the_same_converter_at_five_volts_takes_the_first_ic` is unchanged and still costs no trial). The review's sentence counted every unset field inside the use, `reg.vin.peak` included; that would have tried every provider of every `BuckConverter` on a rail with no stated peak, for nothing, so the shared values are left out. The silent case of `levels.rs`, a pair of pins of which neither side states any level, is not a check anyone asked for, so it is not counted. The circle records (`open_circles`, `circular`) are made of deferred relations, so a circle that reads an open value inside the use is found by the first rule; no list of its own is needed. The exemption for a use whose chosen provider is the generic itself (section 12 item 4) is as it was, and so is the cost: one more trial for each other provider of such a use, up to the bound. Tests: `providers.rs` (`a_provider_whose_logic_levels_are_open_is_passed_over_for_one_that_states_them`, `a_module_provider_whose_inner_part_leaves_a_datasheet_number_open_is_passed_over`).
+
+### 7. An alias carries the generic's kind
+
+`.signal ~ .rf` replaced the kind of `.rf`'s row by the generic's own before comparing, so an alias was accepted with any kind, and the board met "two outputs on one net" instead of the provider being refused. The row the alias is joined to is compared, and the message names it: ``` `.signal` is a passive pin in `CoaxReceptacle`, which `OtherCoax` provides, but the row of `.rf`, which `.signal` is joined to, says an output; ... ```.
+
+### 8. Providers with one name
+
+`src::vendor_a::Coax` and `src::vendor_b::Coax` would lower to one kind (`Coax`), one `[[part]]` entry and one name in the notes. Refused at the later one's name, in its file: ``` `Coax` is a provider of `CoaxReceptacle` in `src::vendor_b` and is also one in `src::vendor_a::Coax`; two providers of one generic need different names, because a part is known by its name in the bill of materials, in `kicad.toml` and in the notes: rename one ```. Rejected: qualifying the kind with the module path (`vendor_b::Coax`): it changes every kind name, the mapping and the bill of materials for a case the author controls.
+
+### 9. The draw of a pull-up
+
+Recorded in ADR 0070 (the note of 2026-11-06): two offered members, `.overdrive` (0 V) and `.supply_top` (`supply.voltage`), for `PullUp` and `I2cPullups`.
+
+### The proof that nothing changed
+
+`netsmith build` of the eight `examples/*.nsm`, also with `--strict`, and of `examples/enclosure_sensor` and `examples/schematic_bench` as projects (89 files: standard output, standard error, exit status and every file written), release binary of this tree against the snapshot taken before it: identical, no difference. `enclosure_sensor` uses `I2cPullups`, so the new equation of finding 9 is covered. The changes of behaviour that exist are those of the findings: the message of the bound (finding 2), and what a design that has the mistakes of findings 1, 3, 4, 7 and 8 is told.

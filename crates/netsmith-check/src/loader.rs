@@ -9,6 +9,10 @@ pub struct Loader {
     /// A source file's name (as `check` is given it, or as `insert` names a module) to the
     /// physical file beside it: its display name and text (ADR 0048).
     physical: HashMap<String, (String, String)>,
+    /// A top-level file's name as it was typed to the module key it has in the project
+    /// (`./src/main.nsm` and `/home/me/proj/src/main.nsm` to `src::main`), for a name that
+    /// the file names of the modules do not match as they are.
+    root_keys: HashMap<String, String>,
 }
 
 impl Loader {
@@ -118,6 +122,29 @@ impl Loader {
         self
     }
 
+    /// Say that the top-level file typed as `file_name` is the module `key` of the project
+    /// (`src::main`): whatever spelling a tool was given for it, the file is one module, held
+    /// once, and its providers sort under the same module path (ADR 0068 sections 4 and 11).
+    pub fn attach_root_key(&mut self, file_name: &str, key: &str) {
+        self.root_keys
+            .insert(file_name.to_string(), key.to_string());
+    }
+
+    /// The module key of the top-level file `file_name` when it is one of the loaded modules:
+    /// the key attached to this spelling, or the module whose file name is this one with its
+    /// `.` and `..` steps taken out (`./src/main.nsm` is `src/main.nsm`). `None` for a file
+    /// that no module is.
+    pub(crate) fn root_key(&self, file_name: &str) -> Option<String> {
+        if let Some(key) = self.root_keys.get(file_name) {
+            return Some(key.clone());
+        }
+        let wanted = normalise_name(file_name);
+        self.modules
+            .iter()
+            .find(|(_, (name, _))| normalise_name(name) == wanted)
+            .map(|(key, _)| key.clone())
+    }
+
     /// The physical file paired with a source file: its name and text.
     pub(crate) fn physical_of(&self, source_name: &str) -> Option<&(String, String)> {
         self.physical.get(source_name)
@@ -138,4 +165,22 @@ impl Loader {
     pub(crate) fn get(&self, module: &str) -> Option<&(String, String)> {
         self.modules.get(module)
     }
+}
+
+/// A file name without the `.` steps, the empty steps and the `..` steps that undo a step
+/// before them: the same file spelled two ways has one normal form (`./src/../src/main.nsm`
+/// is `src/main.nsm`).
+pub(crate) fn normalise_name(name: &str) -> String {
+    let mut steps: Vec<&str> = Vec::new();
+    for step in name.split('/') {
+        match step {
+            "" | "." => {}
+            ".." if steps.last().is_some_and(|last| *last != "..") => {
+                steps.pop();
+            }
+            step => steps.push(step),
+        }
+    }
+    let absolute = if name.starts_with('/') { "/" } else { "" };
+    format!("{absolute}{}", steps.join("/"))
 }

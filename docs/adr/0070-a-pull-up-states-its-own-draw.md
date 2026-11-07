@@ -60,3 +60,26 @@ It was to be written with two `PullUp`s only if every existing test, example and
 - That the draw is the worst case 0 to `supply.voltage / resistance` unless the board narrows `.line_low`.
 - That the module is in `std/bus.nsm` and not in `std/parts/passive.nsm`.
 - That `I2cPullups` is not re-expressed, for the reason of the paths, and that its `.resistance` is not `required`.
+
+## Note of 2026-11-06 (second review): what the draw assumes
+
+A second review found that `0 .. supply.voltage / resistance` is stated as a fact with two assumptions that it did not say: that no driver holds the line above `supply` (a 5 V push-pull driver on a line pulled to 3.3 V pushes current back into the rail, a negative draw, so a budget that counts only draws would pass), and that the rail has no transient (the draw uses `supply.voltage`, the steady range, not `supply.peak`). The owner asked for both to be modelled, with results unchanged where nothing states them.
+
+The smallest sound change is two members that `PullUp` and `I2cPullups` offer with a default (`?=`, ADR 0051), and an equation that reads them:
+
+```nsm-fragment
+    .overdrive: Voltage
+    .overdrive ?= 0V
+    .supply_top: Voltage
+    .supply_top ?= .supply.voltage
+    .resistor.current == (.line_low * .supply_top - .overdrive) / .resistor.resistance
+```
+
+- `.overdrive` is how far above `supply` a driver holds the line, at most. It is 0 V, so the lower end of the draw is 0 as before; a board with such a driver states it (`.pull.overdrive &= 0V..1.7V`) and the draw reaches down to `-overdrive / resistance` (-171.8 uA with 10 kohm +/- 5% and 1.7 V in the test). The net then sees a current that can be negative, and so does the regulator behind it, so its checks are made with it.
+- `.supply_top` is the voltage the draw is worked out at. It is the rail's steady `voltage`, which is what a budget and a power rating read. A board that wants the draw at the transient its rail can reach states `.pull.supply_top &= .pull.supply.peak` (606 uA at 6 V in the test, 350 uA at the steady 3.465 V).
+
+With nothing stated the results are the ones before: the same ranges (the default of `.overdrive` is the point 0 V, so `x - 0` and the quotient are exact), no new note and no new finding, which the tests of the pull-ups, `examples/enclosure_sensor` (it uses `I2cPullups`) and the guide check.
+
+Rejected: reading `supply.peak` in the equation. A relation that reads an unset value waits and is listed as not evaluated, so every pull-up on a rail with no stated peak would print a note that it did not print before, and its resistor's current would be unknown (the fault this ADR fixed). A default with the rail's peak has the same effect. There is no way in the language to read a value only when it is stated, and adding one is the owner's decision; the board states `.supply_top` instead, and the member is the documented place to do it. Rejected: widening the lower end always, to `-(peak / resistance)`: it makes every budget on a pull-up's rail fail or lose its meaning for a board with no such driver. Rejected: only writing both assumptions in the doc: a board that has the driver then has nothing to state.
+
+Not changed: `.line_low`, which is the share of the time the line is held low, 0 to 1. The time a line is driven above the supply is not a share the module models; `.overdrive` is the worst case the line reaches, and the draw's range is the span from it to the draw with the line low, so the two cannot be told apart in time (the interval is wider than a mix of the two would give, never narrower).

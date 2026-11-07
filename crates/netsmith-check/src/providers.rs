@@ -322,9 +322,21 @@ impl Checker<'_> {
         generic_ref: (usize, usize),
         name: &str,
         parent: InstId,
-    ) -> InstId {
+    ) -> Option<InstId> {
         let providers = self.providers_of(generic_ref);
         self.check_provider_kinds(generic_ref);
+        // Whatever the order of the providers, a pick that can take a definition that is
+        // being made here would make it again inside itself, so the use is refused, not the
+        // first provider that happens to be another one.
+        let again = providers
+            .iter()
+            .map(|p| p.def)
+            .chain(providers.is_empty().then_some(generic_ref))
+            .find(|d| self.making.contains(d));
+        if let Some(again) = again {
+            self.report_cycle(name, Some(&generic.name.name), again);
+            return None;
+        }
         let path = match self.model.path_of(parent) {
             up if up.is_empty() => name.to_string(),
             up => format!("{up}.{name}"),
@@ -360,7 +372,40 @@ impl Checker<'_> {
             None => self.instantiate_as(generic, generic_ref, name, Some(parent), None),
         };
         self.uses[slot].inst = id;
-        id
+        Some(id)
+    }
+
+    /// A definition that would be made inside itself: the member, the cycle of definitions
+    /// from the one made again to the member, and what to do, at the member's declaration.
+    pub(crate) fn report_cycle(
+        &mut self,
+        member: &str,
+        generic: Option<&str>,
+        again: (usize, usize),
+    ) {
+        let name_of =
+            |this: &Self, d: (usize, usize)| this.modules()[d.0].defs[d.1].name.name.clone();
+        let from = self.making.iter().position(|d| *d == again).unwrap_or(0);
+        let mut chain: Vec<String> = self.making[from..]
+            .iter()
+            .map(|d| format!("`{}`", name_of(self, *d)))
+            .collect();
+        chain.push(format!("`{}`", name_of(self, again)));
+        let chain = chain.join(" > ");
+        let held = name_of(self, again);
+        let message = match generic {
+            Some(generic) => format!(
+                "`{member}` is a `{generic}`, and `{held}`, which is being made here, can be the provider picked for it, so `{held}` would contain itself without end (the cycle: {chain}); a provider cannot contain a use of the generic it provides, directly or through the parts and modules inside it: wrap a part, or a module that does not provide `{generic}`"
+            ),
+            None => format!(
+                "`{member}` would make `{held}` inside itself without end (the cycle: {chain}); a definition cannot contain itself, directly or through the parts and modules inside it"
+            ),
+        };
+        let (source, span) = self.use_site.unwrap_or((
+            self.cur_source(),
+            self.modules()[again.0].defs[again.1].span,
+        ));
+        self.report(source, span, message);
     }
 
     /// What a provider owes the generics it provides, after both have been read into the
@@ -414,14 +459,23 @@ impl Checker<'_> {
                 let own_row = t
                     .row(r.pin)
                     .map(|row| (row.kind, row.requirement, row.span));
-                let row = own_row.or_else(|| {
-                    // An alias: the pin is joined inside the part to one that has a row here.
-                    self.model
-                        .joined_inside(r.pin)
-                        .into_iter()
-                        .find_map(|p| t.row(p).map(|row| (row.kind, row.requirement, row.span)))
-                        .map(|found| (r.kind, found.1, found.2))
-                });
+                // An alias: the pin is joined inside the part to one that has a row here, and
+                // that row is what the checker reads for the net, so its kind is compared.
+                let (row, alias) = match own_row {
+                    Some(row) => (Some(row), None),
+                    None => {
+                        let joined = self.model.joined_inside(r.pin).into_iter().find_map(|p| {
+                            t.row(p)
+                                .map(|row| (p, (row.kind, row.requirement, row.span)))
+                        });
+                        match joined {
+                            Some((p, row)) => {
+                                (Some(row), Some(self.model.instance(p).name.clone()))
+                            }
+                            None => (None, None),
+                        }
+                    }
+                };
                 let table = t.describe();
                 match row {
                     None => self.report(
@@ -437,11 +491,17 @@ impl Checker<'_> {
                     ),
                     Some((kind, requirement, span)) => {
                         if kind != r.kind {
+                            let row = match &alias {
+                                Some(joined) => format!(
+                                    "the row of `.{joined}`, which `.{pin_name}` is joined to,"
+                                ),
+                                None => "this row".to_string(),
+                            };
                             self.report(
                                 t.source,
                                 span,
                                 format!(
-                                    "`.{pin_name}` is {} in `{}`, which `{}` provides, but this row says {}; a provider's row has the generic's kind, because the kind decides what the checker asks of the board",
+                                    "`.{pin_name}` is {} in `{}`, which `{}` provides, but {row} says {}; a provider's row has the generic's kind, because the kind decides what the checker asks of the board",
                                     crate::pins::article(r.kind),
                                     r.generic,
                                     def.name.name,
@@ -485,10 +545,11 @@ impl Checker<'_> {
     /// the other kind than the first is reported at its own name, in its own file.
     pub(crate) fn check_provider_kinds(&mut self, generic: (usize, usize)) {
         let providers = self.providers_of(generic);
+        let generic_name = self.modules()[generic.0].defs[generic.1].name.name.clone();
+        self.check_provider_names(&providers, &generic_name);
         let Some(first) = providers.iter().find(|p| !p.info.own) else {
             return;
         };
-        let generic_name = self.modules()[generic.0].defs[generic.1].name.name.clone();
         let (first_name, first_is_module) = (first.info.name.clone(), first.info.module_shaped);
         for p in providers.iter().filter(|p| !p.info.own) {
             if p.info.module_shaped == first_is_module {
@@ -506,6 +567,35 @@ impl Checker<'_> {
                     p.info.name,
                     if p.info.module_shaped { "module" } else { "part" },
                     if first_is_module { "module" } else { "part" },
+                ),
+            );
+        }
+    }
+
+    /// No two providers of one generic have the same name (ADR 0068): a part is known by its
+    /// name in the bill of materials, in `kicad.toml`'s `[[part]]` entries and in the notes, so
+    /// two of them would share a kind, a mapping and a line. The later one is reported, at its
+    /// own name in its own file, with both module paths.
+    fn check_provider_names(&mut self, providers: &[ProviderRef], generic: &str) {
+        for (at, p) in providers.iter().enumerate() {
+            let Some(first) = providers[..at].iter().find(|q| q.info.name == p.info.name) else {
+                continue;
+            };
+            let (source, span) = {
+                let def = &self.modules()[p.def.0].defs[p.def.1];
+                (self.modules()[p.def.0].source, def.name.span)
+            };
+            let first_is = if first.info.own {
+                format!("the generic itself (`{}`)", first.info.id)
+            } else {
+                format!("`{}`", first.info.id)
+            };
+            self.report(
+                source,
+                span,
+                format!(
+                    "`{}` is a provider of `{generic}` in `{}` and is also one in {first_is}; two providers of one generic need different names, because a part is known by its name in the bill of materials, in `kicad.toml` and in the notes: rename one",
+                    p.info.name, p.info.module
                 ),
             );
         }
