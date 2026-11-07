@@ -9,7 +9,7 @@ The left column of the Source section (key 1), one real tree (`role=tree`). Sect
 `scripts/editor-verify drive tree` (fixture `two_boards`):
 
 1. The tree lists the project name, `main.nsm` with `LdoStage`, `PowerBoard`, `LedBoard`, `TwoBoards`, the module `power.nsm` and `netsmith.toml`.
-2. Open the Standard library section and click `passive.nsm`: a tab opens with `part Resistor` in it. Typing changes nothing (the file is read-only).
+2. Open the Standard library section and click `passive.nsm`: a tab opens with `generic Resistor` in it. Typing changes nothing (the file is read-only).
 3. Click `LedBoard` in the tree: the source scrolls to `board LedBoard` and the board selector at the top switches to `TwoBoards/led`; the cursor is on the name and fewer than five letters are marked.
 
 ### The invented greenhouse project: `launch --fixture tree`, then `drive tree-nested`

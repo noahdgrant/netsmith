@@ -56,8 +56,8 @@ export async function run({ page, shot, step, expect, project, section }) {
   const resistor = page.locator('.cm-line', { hasText: '.r1: Resistor' }).locator('span', { hasText: 'Resistor' }).first();
   await resistor.click({ modifiers: ['Control'] });
   await page.waitForSelector('.tab.active:has-text("passive.nsm")');
-  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('part Resistor'));
-  expect(true, 'the editor at `part Resistor` in std/parts/passive.nsm');
+  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('generic Resistor'));
+  expect(true, 'the editor at `generic Resistor` in std/parts/passive.nsm');
   await shot('definition');
 
   step('another program changes the file: the page reads it again');

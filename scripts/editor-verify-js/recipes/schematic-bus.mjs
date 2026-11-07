@@ -112,7 +112,10 @@ export async function run({ page, shot, step, expect }) {
   const rows = await panel.locator('.bus-member').evaluateAll((els) =>
     els.map((e) => ({ name: e.querySelector('.bus-member-name').textContent, net: e.querySelector('.net-link').textContent, groups: [...e.querySelectorAll('.net-group .grp > span:not(.count)')].map((g) => g.textContent) })),
   );
-  expect(rows.map((r) => `${r.name}=${r.net}`).join(' ') === 'tx=MODEM_TX rx=MODEM_RX rts=MODEM_RTS cts=MODEM_CTS', `the members with their nets, in the order of the pins (${rows.map((r) => `${r.name}=${r.net}`).join(' ')})`);
+  // The members come in the order of the pins at the first end, the processor: TX, RX, RTS, CTS. `~` between two
+  // `Uart` interfaces crosses them (ADR 0064), so `.cpu.uart ~ .uart0` joins the processor's TX pin to uart0's `rx`,
+  // and the interface's own names read rx, tx, cts, rts down the pins. (Before the crossing it read tx, rx, rts, cts.)
+  expect(rows.map((r) => `${r.name}=${r.net}`).join(' ') === 'rx=MODEM_RX tx=MODEM_TX cts=MODEM_CTS rts=MODEM_RTS', `the members with their nets, in the order of the pins (${rows.map((r) => `${r.name}=${r.net}`).join(' ')})`);
   expect(rows.every((r) => r.groups.includes('brain') && r.groups.includes('link') && r.groups.includes('probe')), `each net's pins are listed by module: brain, link and probe (${rows[0].groups.join(', ')})`);
   expect((await panel.locator('.bus-member .chip').count()) >= 12, 'with each pin as a link');
   expect(/also on/i.test(await panel.innerText()), 'and where else the bus goes');

@@ -276,7 +276,7 @@ export function moduleCard(ctx: CardContext, m: ModuleInfo, typeName: string | n
 }
 
 /** The role of a declaration from the kind of its type, as the outline gives it. */
-const roleOfKind = (k: string | undefined): Role => (k === 'part' ? 'part' : k === 'module' || k === 'board' || k === 'system' || k === 'panel' ? 'module' : k === 'interface' ? 'port' : 'field');
+const roleOfKind = (k: string | undefined): Role => (k === 'part' || k === 'generic' ? 'part' : k === 'module' || k === 'board' || k === 'system' || k === 'panel' ? 'module' : k === 'interface' ? 'port' : 'field');
 
 /** The card of a definition by name, from the project's file list (the server's `endLine` and `children` say what it declares and where
  * it ends), `ctx.served` (the server's signature and doc comment) and, for what the server does not say, the text of its file. */

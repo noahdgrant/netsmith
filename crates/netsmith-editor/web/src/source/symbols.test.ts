@@ -111,6 +111,13 @@ describe('roleOf', () => {
   it('says what a declaration stands for by the kind of its type', () => {
     expect(syms[0].children.map((c) => roleOf(c, (t) => kinds[t]))).toEqual(['part', 'module', 'port', 'field']);
   });
+  it('takes a generic for a part: it is declared as one (ADR 0068)', () => {
+    expect(syms[0].children.map((c) => roleOf(c, (t) => (t === 'Resistor' ? 'generic' : undefined)))).toEqual(['part', 'field', 'field', 'field']);
+  });
+  it('knows the definitions of a generic and an enum', () => {
+    const defs = scanSymbols('generic Resistor {\n    .resistance: Resistance\n}\n\nenum SpiRole {\n    Master,\n}\n');
+    expect(defs.map((d) => [d.name, d.kind])).toEqual([['Resistor', 'generic'], ['SpiRole', 'enum']]);
+  });
 });
 
 describe('scanCached', () => {

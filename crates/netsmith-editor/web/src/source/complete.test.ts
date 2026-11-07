@@ -54,6 +54,11 @@ describe('offerAt', () => {
     expect(at('    .r1: Res')!.from).toBe(9);
     expect(at('    .r1: std::parts::Res')!.from).toBe('    .r1: std::parts::'.length);
   });
+  it('offers a generic as a part: the library has Resistor and Capacitor as generics (ADR 0068)', () => {
+    const std = { path: 'std/parts/passive.nsm', role: 'std' as const, readonly: true, defs: [{ kind: 'generic', name: 'Resistor', line: 1 }, { kind: 'enum', name: 'SpiRole', line: 9 }] };
+    const o = at('    .r1: Res', data(5, { project: { ...project, files: [project.files[0], std] } }))!;
+    expect(o.options.map((x) => [x.label, x.kind])).toEqual([['LdoStage', 'module'], ['Resistor', 'part']]);
+  });
   it('puts the project own definitions before the library', () => {
     const o = typeOptions(project);
     expect(o.find((x) => x.label === 'LdoStage')!.boost!).toBeGreaterThan(o.find((x) => x.label === 'Resistor')!.boost!);
