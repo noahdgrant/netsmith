@@ -25,6 +25,15 @@ export interface Token {
   kind: Kind;
 }
 
+/**
+ * The words of the statements of ADR 0062 (`peripheral NAME [on CLASS] {`, `shared NAME [limit N] {`). They are
+ * words only where the parser reads them as words: at the start of a statement and before a name (`peripheral`,
+ * `shared`), and in the header of that statement (`on`, `limit`). A member is called by its leading dot, and a bare
+ * path may start with either.
+ */
+const STATEMENT_WORDS: Record<string, string> = { peripheral: '', shared: '' };
+const CLAUSE_WORDS: Record<string, string> = { on: 'peripheral', limit: 'shared' };
+
 /** The words that start a definition or a statement, and the markers after a pin row (`required`, `optional`, ADR 0016). */
 export const KEYWORDS = new Set(['board', 'system', 'panel', 'part', 'interface', 'module', 'enum', 'generic', 'provides', 'import', 'catalog', 'bridge', 'required', 'optional']);
 
@@ -113,8 +122,11 @@ export function tokenize(line: string): Token[] {
       while (j < line.length && isWord(line[j])) j++;
       const word = line.slice(i, j);
       let kind: Kind;
+      const first = out.length > 0 ? line.slice(out[0].from, out[0].to) : null;
       if (afterDot) kind = 'member';
       else if (KEYWORDS.has(word)) kind = 'keyword';
+      else if (first === null && word in STATEMENT_WORDS && /^[ \t]+\p{L}/u.test(line.slice(j))) kind = 'keyword';
+      else if (CLAUSE_WORDS[word] !== undefined && first === CLAUSE_WORDS[word] && out[0].kind === 'keyword') kind = 'keyword';
       // A name before `::` is a module in a path (`std::parts`) unless it is capitalised, which
       // makes it a type: the enum of a variant, `AssemblyMode::Hand`.
       else if (line.slice(j, j + 2) === '::' && !/^\p{Lu}/u.test(word)) kind = 'namespace';
