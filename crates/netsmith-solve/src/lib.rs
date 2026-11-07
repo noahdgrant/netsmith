@@ -1,6 +1,7 @@
 //! The solver: choose real parts for a checked board and verify, in the worst case, that
 //! everything the design says still holds.
 
+mod busclock;
 mod catalog;
 mod cycles;
 mod eval;

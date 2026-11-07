@@ -18,7 +18,7 @@ mod providers;
 mod row;
 mod shared;
 
-pub use busnets::{bidirectional_rows, unstated_roles};
+pub use busnets::{BusGroup, bidirectional_rows, bus_groups, unstated_roles};
 pub use checker::physical_file_name;
 pub use diag::{Diagnostic, Source, SourceId, Sources};
 pub use faults::{pin_faults, pin_faults_solved};

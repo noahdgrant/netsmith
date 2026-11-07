@@ -8014,7 +8014,7 @@ part Zimu {
 }
 ```
 
-A clock above a bound is refused, naming the value that is out of range:
+A clock above a bound is refused in the words of the bus: the clock it is joined at, the part that does not allow it, its limit, and what the other parts allow, so that the author sees which part sets the speed of the bus:
 
 ```nsm fails
 import src::clocked::{Zflash, Zimu}
@@ -8036,11 +8036,75 @@ board TooFast {
 ```
 
 ```text
-error: imu.spi.frequency must always be at most 10MHz, but 20MHz is not always below 10MHz
-   --> src/clocked.nsm:26:5
+error: bus `flash.spi` is joined at 20MHz, which `imu` (`Zimu`) does not allow: its limit `imu.spi.frequency` is at most 10MHz; `flash` (`Zflash`) allows 33MHz, so the bus runs at 10MHz at most
+   --> main.nsm:11:5
    |
-26 |     .spi.frequency <= 10MHz
-   |     ^^^^^^^^^^^^^^^^^^^^^^^
+11 |     .imu: Zimu
+   |     ^^^^^^^^^^
+```
+
+The interfaces that the nets show to be on one bus hold one clock, whether the board joined them with `~` or one pin at a time, so the board states the clock on any one of them. A bus whose parts state limits and whose board states no clock is not a pass: the build says so as a note, `not evaluated: the clock of bus `flash.spi` is not stated, so the limits on it are not checked (...); state the clock the board runs`.
+
+The SPI mode is `.mode`, an enum `SpiMode` (`Mode0` to `Mode3`), and it is equated along the bus like the clock. A part that supports exactly one mode states it (`.spi.mode &= SpiMode::Mode3`, with the page in a comment); a part that supports several states nothing and says which in a comment, because a value is one mode and no list. That refuses the pair that cannot work, a mode 1 part with a mode 3 part, and nothing that is fine:
+
+```nsm fails
+import std::bus::{Spi, SpiMode}
+import std::sources::Rail
+
+/// Zone, an invented sensor that supports mode 1 only.
+part Zone {
+    .vdd: Rail
+    .spi: Spi
+    // Page 9: CPOL = 0, CPHA = 1 only.
+    .spi.mode &= SpiMode::Mode1
+
+    pins {
+        .vdd.pos  power         "VDD" "8"
+        .vdd.neg  power         "GND" "4"
+        .spi.sclk bidirectional "SCK" "6"
+        .spi.mosi bidirectional "SDI" "5"
+        .spi.miso bidirectional "SDO" "2"
+        .spi.cs   bidirectional "CS"  "1"
+    }
+}
+
+/// Zthree, an invented flash that supports mode 3 only.
+part Zthree {
+    .vdd: Rail
+    .spi: Spi
+    // Page 7: CPOL = 1, CPHA = 1 only.
+    .spi.mode &= SpiMode::Mode3
+
+    pins {
+        .vdd.pos  power         "VCC" "8"
+        .vdd.neg  power         "GND" "4"
+        .spi.sclk bidirectional "CLK" "6"
+        .spi.mosi bidirectional "DI"  "5"
+        .spi.miso bidirectional "DO"  "2"
+        .spi.cs   bidirectional "/CS" "1"
+    }
+}
+
+board Modes {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .a: Zone
+    .b: Zthree
+    .supply ~ .a.vdd
+    .supply ~ .b.vdd
+    .a.spi ~ .b.spi
+}
+```
+
+```text
+error: connected values disagree: `a.spi.mode` is SpiMode::Mode1 but `b.spi.mode` is SpiMode::Mode3
+  --> main.nsm:9:5
+  |
+9 |     .spi.mode &= SpiMode::Mode1
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A pull-up on one line
@@ -8106,7 +8170,7 @@ board Forgetful {
 ```
 
 ```text
-Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:202), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
+Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:218), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
 ```
 
 A module that wraps a `PullUp` states the resistance itself or forwards it through a member of its own (`.pull.resistance &= .resistance`, with the wrapped member on the left: the solver works a value out from the right side towards the left). A board that forgets a forwarded member is told about the wrapper's member, which is the one it can state.
@@ -8171,7 +8235,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::logic::Levels` | The logic levels of all the lines of a bus interface, the member `.levels` of `Uart`, `Spi`, `I2c` and `Swd`: the rail `.reference` and the four voltages `.vih`, `.vil`, `.voh` and `.vol` (ADR 0064). |
 | `std::logic::Logic` | A digital line `.line`, the `.reference` rail that defines its levels, and the levels `.vih`, `.vil`, `.voh` and `.vol` a part may state (ADR 0046). |
 | `std::bus::Uart` | Pins `tx`, `rx`, `rts`, `cts`, named by the device, and `.baud`. `~` between two joins `tx` to `rx` and `rts` to `cts`; two ends make a bus (`lines limit 2`). |
-| `std::bus::Spi` | Pins `sclk`, `mosi`, `miso`, `cs`, a `.role` (`SpiRole`) and a `.frequency`. One master on a bus, a `single` select for each slave, a slave's `miso` is required. |
+| `std::bus::Spi` | Pins `sclk`, `mosi`, `miso`, `cs`, a `.role` (`SpiRole`), a `.frequency` and a `.mode` (`SpiMode`). One master on a bus, a `single` select for each slave, a slave's `miso` is required. |
 | `std::bus::I2c` | Pins `sda` and `scl`, a `.role` (`I2cRole`) and a `.frequency`. A pull-up on each line. |
 | `std::bus::Swd` | Pins `swdio`, `swclk`, `swo`, `reset`, a `.role` (`SwdRole`) and a `.frequency`. One probe on a port. |
 | `std::bus::Usb2` | Pins `dp` and `dm`, a rail `vbus` and a `.role` (`UsbRole`). One host and one device on a bus. |
@@ -8199,6 +8263,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::bus::SpiRole` | The role of a part on an SPI bus: `Master` or `Slave`. The type of `Spi`'s `.role`. |
 | `std::bus::I2cRole` | The role of a part on an I2C bus: `Controller` or `Target`. |
 | `std::bus::SwdRole` | The role of a part on a debug port: `Probe` or `Target`. |
+| `std::bus::SpiMode` | The clock mode of an SPI bus: `Mode0` to `Mode3`. The type of `Spi`'s `.mode`, equated along the bus. |
 | `std::bus::UsbRole` | The role of a part on a USB port: `Host` or `Device`. |
 | `std::parts::passive::Dielectric` | The class of a ceramic capacitor, `C0G`, `X5R` or `X7R`: the type of `Capacitor`'s `.dielectric` and of the `dielectric` column of the capacitor catalog (ADR 0055). Import it with the part. |
 | `std::prelude::AssemblyMode` | Who puts a part on the board: `Fab`, `Hand` or `None`. The type of the built-in `.assembly` of every part and of the `.assembly_mode` a module offers. In scope in every file without an import (ADR 0054). |

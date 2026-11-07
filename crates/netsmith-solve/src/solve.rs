@@ -404,6 +404,12 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
             Verdict::Unknown => deferred.push(i),
             Verdict::Fail { .. } if relation_mentions_any(r, &refused) => {}
             Verdict::Fail { message, .. } => {
+                // A bound on the clock of a bus is said in the words of the bus (ADR 0064).
+                if let Some((part, text)) = crate::busclock::failure(&s.model, r) {
+                    let (source, span) = s.model.instance(part).at();
+                    s.report(source, span, text);
+                    continue;
+                }
                 let message = s.relation_message(i, r, message);
                 s.report(r.source, r.span, message)
             }
@@ -415,6 +421,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         s.report(d.source, d.span, d.message);
     }
     let (level_faults, mut not_evaluated) = crate::levels::check(&s.model);
+    not_evaluated.extend(crate::busclock::notes(&s.model));
     // A bus on which one part states its role and another does not (ADR 0064).
     for (at, message) in netsmith_check::unstated_roles(&s.model) {
         not_evaluated.push(crate::levels::NotEvaluated { at, message });
@@ -725,9 +732,11 @@ impl Solver<'_> {
                             .find_map(|&f| self.model.field(f).narrowed_at.last().copied())
                             .unwrap_or((owner.source, owner.span));
                         let message = format!(
-                            "connected values disagree: `{}` is {da} but `{}` is {db}",
+                            "connected values disagree: `{}` is {} but `{}` is {}",
                             self.model.path_of_field(a),
-                            self.model.path_of_field(b)
+                            self.model.show_value(a, &da),
+                            self.model.path_of_field(b),
+                            self.model.show_value(b, &db)
                         );
                         if said.insert(message.clone()) {
                             conflicts.push(Conflict {

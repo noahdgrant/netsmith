@@ -47,6 +47,18 @@ enum SpiRole {
     Slave,
 }
 
+/// The clock mode of an SPI bus: the idle level of `sclk` and the edge that data is sampled on.
+enum SpiMode {
+    /// Idle low, sampled on the rising edge.
+    Mode0,
+    /// Idle low, sampled on the falling edge.
+    Mode1,
+    /// Idle high, sampled on the falling edge.
+    Mode2,
+    /// Idle high, sampled on the rising edge.
+    Mode3,
+}
+
 /// An SPI bus: the clock `sclk`, the data out of the master `mosi`, the data out of the slave
 /// `miso`, and the select `cs`. Both ends call the lines the same, so the master and the
 /// slave join with `~`. A part states its role (`.spi.role &= SpiRole::Slave`) and the checker
@@ -57,7 +69,10 @@ enum SpiRole {
 /// `tri_state` in its row. `frequency` is the clock: the board states the clock it will run
 /// (`.cpu.spi.frequency &= 8MHz`), each part bounds it by its datasheet
 /// (`.spi.frequency <= 10MHz`), and `~` between two interfaces equates it, so one value runs
-/// along the bus and a part whose bound it breaks is named.
+/// along the bus and a part whose bound it breaks is named. `mode` is the clock mode: a part that
+/// supports exactly one states it (`.spi.mode &= SpiMode::Mode0`), a part that supports two or more
+/// states nothing and its datasheet says which in a comment; the value is equated along the bus, so
+/// two parts that can only be in different modes are refused, and nothing that is fine is.
 interface Spi {
     .role: SpiRole
     .sclk: Pin
@@ -66,6 +81,7 @@ interface Spi {
     .cs: Pin
     .levels: Levels
     .frequency: Frequency
+    .mode: SpiMode
 
     lines SpiRole::Master limit 1 {
         .sclk output

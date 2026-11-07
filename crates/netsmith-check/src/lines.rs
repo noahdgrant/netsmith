@@ -63,6 +63,7 @@ impl Checker<'_> {
         // The pins the interface declares, and its `.role` if it has one.
         let mut pins: Vec<String> = Vec::new();
         let mut role: Option<(EnumId, String)> = None;
+        let mut clock: Option<String> = None;
         for item in &def.items {
             let Item::Decl(d) = item else { continue };
             if !(d.name.leading_dot && d.name.segments.len() == 1) {
@@ -71,6 +72,12 @@ impl Checker<'_> {
             let name = d.name.segments[0].name.clone();
             match self.resolve_type(&d.ty) {
                 Ty::Builtin(Builtin::Pin) => pins.push(name),
+                Ty::Builtin(Builtin::Quantity(dim))
+                    if dim == netsmith_quantity::Dimension::FREQUENCY
+                        && matches!(name.as_str(), "frequency" | "baud") =>
+                {
+                    clock = Some(name);
+                }
                 Ty::Enum(m, i) if name == "role" => {
                     let id = self.enum_id(m, i);
                     let enum_name = self.model.enum_info(id).name.clone();
@@ -142,6 +149,7 @@ impl Checker<'_> {
         Some(BusDef {
             name: def.name.name.clone(),
             role_enum: role.map(|(_, name)| name),
+            clock,
             tables,
         })
     }

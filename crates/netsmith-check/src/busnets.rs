@@ -182,7 +182,17 @@ pub(crate) fn check(model: &Model) -> BusFindings {
         found: BusFindings::default(),
     };
     rules.tables_against_roles();
-    // The bus pins of every net, in the order of the nets.
+    let per_net = collect(model);
+    for (net, pins) in &per_net {
+        rules.one_line_on_a_net(net, pins);
+        rules.single_lines(net, pins);
+    }
+    rules.limits(&per_net);
+    rules.found
+}
+
+/// The bus pins of every net of a board, in the order of the nets and, on a net, of the paths.
+fn collect(model: &Model) -> Vec<(&Net, Vec<BusPin>)> {
     let mut per_net: Vec<(&Net, Vec<BusPin>)> = Vec::new();
     for net in model.nets() {
         let mut pins: Vec<BusPin> = net
@@ -201,12 +211,104 @@ pub(crate) fn check(model: &Model) -> BusFindings {
         pins.sort_by_key(|p| model.path_of(p.pin));
         per_net.push((net, pins));
     }
-    for (net, pins) in &per_net {
-        rules.one_line_on_a_net(net, pins);
-        rules.single_lines(net, pins);
+    per_net
+}
+
+/// The interfaces that share a net, in groups: each is a bus. The ends of a group are of one
+/// definition, in path order, and the groups are in the order of their first end.
+fn components(model: &Model, per_net: &[(&Net, Vec<BusPin>)]) -> Vec<Vec<InstId>> {
+    let mut parent: BTreeMap<InstId, InstId> = BTreeMap::new();
+    fn find(parent: &mut BTreeMap<InstId, InstId>, x: InstId) -> InstId {
+        let p = *parent.entry(x).or_insert(x);
+        if p == x {
+            return x;
+        }
+        let root = find(parent, p);
+        parent.insert(x, root);
+        root
     }
-    rules.limits(&per_net);
-    rules.found
+    for (_, pins) in per_net {
+        let mut first: BTreeMap<DefRef, InstId> = BTreeMap::new();
+        for p in pins {
+            find(&mut parent, p.end);
+            match first.get(&p.def) {
+                Some(&f) => {
+                    let (a, b) = (find(&mut parent, f), find(&mut parent, p.end));
+                    if a != b {
+                        parent.insert(a.max(b), a.min(b));
+                    }
+                }
+                None => {
+                    first.insert(p.def, p.end);
+                }
+            }
+        }
+    }
+    let mut by_root: BTreeMap<InstId, Vec<InstId>> = BTreeMap::new();
+    let ends: Vec<InstId> = parent.keys().copied().collect();
+    for e in ends {
+        let root = find(&mut parent, e);
+        by_root.entry(root).or_default().push(e);
+    }
+    let mut groups: Vec<Vec<InstId>> = by_root.into_values().collect();
+    for g in &mut groups {
+        g.sort_by_key(|&e| model.path_of(e));
+    }
+    groups.sort_by_key(|g| model.path_of(g[0]));
+    groups
+}
+
+/// The values that the interfaces of a bus share, as the nets show it: the same fields that `~`
+/// between two interfaces equates (a clock, a mode), for the interfaces whose pins the board
+/// joined one at a time. Each interface is paired with the first of its bus, so the pairs do
+/// not depend on the order of the statements (ADR 0064, stage 3).
+pub(crate) fn shared_values(model: &Model) -> Vec<(FieldId, FieldId)> {
+    let per_net = collect(model);
+    let mut pairs = Vec::new();
+    for ends in components(model, &per_net) {
+        let first = ends[0];
+        for &other in &ends[1..] {
+            for (name, member) in &model.instance(first).children {
+                let (Member::Field(x), Some(Member::Field(y))) =
+                    (member, model.member(other, name))
+                else {
+                    continue;
+                };
+                if model.is_flow(*x) || model.is_level(*x) || model.is_role(*x) {
+                    continue;
+                }
+                pairs.push((*x, y));
+            }
+        }
+    }
+    pairs
+}
+
+/// A bus as the clock rules see it: the interfaces of one definition that share a net.
+pub struct BusGroup {
+    /// The interface's name: `Spi`.
+    pub name: String,
+    /// The interfaces, in path order.
+    pub ends: Vec<InstId>,
+    /// The member that holds the clock (`frequency`, `baud`), if the interface has one.
+    pub clock: Option<String>,
+}
+
+/// The buses of a board: each interface that has `lines` and shares a net with another of its
+/// definition, and each that is alone (a bus of one).
+pub fn bus_groups(model: &Model) -> Vec<BusGroup> {
+    let per_net = collect(model);
+    components(model, &per_net)
+        .into_iter()
+        .filter_map(|ends| {
+            let (_, bus) = model.bus_def_of(ends[0])?;
+            Some(BusGroup {
+                name: bus.name.clone(),
+                clock: bus.clock.clone(),
+                ends,
+            })
+        })
+        .collect()
 }
 
 impl Rules<'_> {
@@ -477,40 +579,7 @@ impl Rules<'_> {
     /// interfaces of one definition that share a net.
     fn limits(&mut self, per_net: &[(&Net, Vec<BusPin>)]) {
         let model = self.model;
-        // Union the interfaces on each net, by definition.
-        let mut parent: BTreeMap<InstId, InstId> = BTreeMap::new();
-        fn find(parent: &mut BTreeMap<InstId, InstId>, x: InstId) -> InstId {
-            let p = *parent.entry(x).or_insert(x);
-            if p == x {
-                return x;
-            }
-            let root = find(parent, p);
-            parent.insert(x, root);
-            root
-        }
-        for (_, pins) in per_net {
-            for pair in pins.windows(2) {
-                if pair[0].def != pair[1].def {
-                    continue;
-                }
-                let a = find(&mut parent, pair[0].end);
-                let b = find(&mut parent, pair[1].end);
-                if a != b {
-                    parent.insert(a.max(b), a.min(b));
-                }
-            }
-            for p in pins {
-                find(&mut parent, p.end);
-            }
-        }
-        let mut components: BTreeMap<InstId, Vec<InstId>> = BTreeMap::new();
-        let ends: Vec<InstId> = parent.keys().copied().collect();
-        for e in ends {
-            let root = find(&mut parent, e);
-            components.entry(root).or_default().push(e);
-        }
-        for (_, mut members) in components {
-            members.sort_by_key(|&e| model.path_of(e));
+        for members in components(model, per_net) {
             let Some((def, bus)) = model.bus_def_of(members[0]) else {
                 continue;
             };
@@ -691,50 +760,28 @@ pub fn bidirectional_rows(model: &Model) -> Vec<(InstId, String)> {
 /// Rule 7, the note: a bus on which some end states its role and another does not, so the
 /// limit and the table of the second are not judged. One note for each such end.
 pub fn unstated_roles(model: &Model) -> Vec<(InstId, String)> {
-    let mut pins: Vec<BusPin> = model
-        .instances()
-        .filter(|(id, i)| {
-            i.kind == InstKind::Pin && model.is_terminal(*id) && model.board_of(*id).is_some()
-        })
-        .filter_map(|(id, _)| model.bus_pin(id))
-        .collect();
-    pins.sort_by_key(|p| model.path_of(p.pin));
-    // Which ends share a net, by definition.
-    let mut together: BTreeMap<(DefRef, usize), Vec<InstId>> = BTreeMap::new();
-    for (index, net) in model.nets().iter().enumerate() {
-        for t in &net.terminals {
-            if let Some(bp) = pins.iter().find(|p| p.pin == *t) {
-                let ends = together.entry((bp.def, index)).or_default();
-                if !ends.contains(&bp.end) {
-                    ends.push(bp.end);
-                }
-            }
-        }
-    }
-    let mut noted: BTreeSet<InstId> = BTreeSet::new();
+    let per_net = collect(model);
     let mut out = Vec::new();
-    for ((def, _), ends) in together {
-        let Some(bus) = model.bus_defs.get(&def) else {
+    for ends in components(model, &per_net) {
+        let Some((_, bus)) = model.bus_def_of(ends[0]) else {
             continue;
         };
-        if bus.role_enum.is_none() || ends.len() < 2 {
+        if bus.role_enum.is_none()
+            || ends.len() < 2
+            || !ends.iter().any(|&e| model.role_of(e).is_some())
+        {
             continue;
         }
-        if !ends.iter().any(|&e| model.role_of(e).is_some()) {
-            continue;
-        }
-        for e in ends {
-            if model.role_of(e).is_none() && noted.insert(e) {
-                let owner = model.owner_of(e).unwrap_or(e);
-                out.push((
-                    owner,
-                    format!(
-                        "not evaluated: the role of `{}` is not stated, so the limit and the table of `{}` are not judged",
-                        model.path_of(e),
-                        model.path_of(owner)
-                    ),
-                ));
-            }
+        for e in ends.iter().copied().filter(|&e| model.role_of(e).is_none()) {
+            let owner = model.owner_of(e).unwrap_or(e);
+            out.push((
+                owner,
+                format!(
+                    "not evaluated: the role of `{}` is not stated, so the limit and the table of `{}` are not judged",
+                    model.path_of(e),
+                    model.path_of(owner)
+                ),
+            ));
         }
     }
     out

@@ -584,6 +584,23 @@ impl Checker<'_> {
         self.analyse_mates();
         self.balance_currents();
         self.derive_bias();
+        self.equate_bus_values();
+    }
+
+    /// The values that the interfaces of one bus share (its clock, its mode) are equated when the
+    /// nets show them to be on one bus, as `~` between two interfaces equates them. The pairs
+    /// that a `~` has made already are not made twice (ADR 0064, stage 3).
+    fn equate_bus_values(&mut self) {
+        for (x, y) in crate::busnets::shared_values(&self.model) {
+            let known = self
+                .model
+                .equalities
+                .iter()
+                .any(|&(a, b)| (a, b) == (x, y) || (a, b) == (y, x));
+            if !known {
+                self.model.equalities.push((x, y));
+            }
+        }
     }
 
     /// Give each part with a `bias` (a capacitor) the voltage of the rail it sits across.

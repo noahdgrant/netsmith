@@ -294,6 +294,8 @@ pub struct BusDef {
     pub name: String,
     /// The enum of the interface's `.role`: `SpiRole`. None for a bus with one role.
     pub role_enum: Option<String>,
+    /// The member that holds the clock of the bus: `frequency`, or `baud` for a `Uart`.
+    pub clock: Option<String>,
     /// One table for each role, or the one table of a bus with a single role.
     pub tables: Vec<RoleLines>,
 }
