@@ -1,5 +1,5 @@
 // The source editor's keys and settings, one step for each: Ctrl+/ comments the lines (the shortcuts stay on `?`),
-// and autosave writes a file after a pause.
+// autosave writes a file after a pause, and comments can be set in another font.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -81,4 +81,31 @@ export async function run({ page, shot, step, expect, project, section }) {
   await openOptions();
   await page.locator('[data-testid="opt-autosave"]').click();
   await page.keyboard.press('Escape');
+
+  step('the comment font: upright by default, and slanted when chosen');
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('Control+Home');
+  await page.keyboard.type('// font probe\n');
+  const probe = (test) =>
+    page.waitForFunction((t) => {
+      const c = [...document.querySelectorAll('.cm-line span')].find((x) => x.textContent.includes('font probe'));
+      if (!c) return false;
+      const cs = getComputedStyle(c);
+      const base = getComputedStyle(document.querySelector('.cm-content'));
+      return t === 'upright' ? cs.fontStyle === 'normal' : t === 'italic' ? cs.fontStyle === 'italic' : cs.fontFamily !== base.fontFamily;
+    }, test);
+  await probe('upright');
+  expect(true, 'upright by default');
+  await openOptions();
+  await page.locator('[data-testid="opt-comments-italic"]').click();
+  await probe('italic');
+  expect(true, 'slanted after the choice');
+  await page.locator('[data-testid="opt-comments-sans"]').click();
+  await probe('sans');
+  expect(true, 'the reading font after the choice');
+  await shot('comment-font');
+  await page.locator('[data-testid="opt-comments-upright"]').click();
+  await page.keyboard.press('Escape');
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('Control+z');
 }
