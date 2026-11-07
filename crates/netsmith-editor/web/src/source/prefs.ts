@@ -39,6 +39,8 @@ export const commentFont = kept<CommentFont>(
 );
 export const commentFontOf = (id: CommentFont) => COMMENT_FONTS.find((f) => f.id === id) ?? COMMENT_FONTS[0];
 export const nextCommentFont = (id: CommentFont): CommentFont => COMMENT_FONTS[(COMMENT_FONTS.findIndex((f) => f.id === id) + 1) % COMMENT_FONTS.length].id;
+/** Vim keys in the source editor. */
+export const vimMode = kept('netsmith.source.vim.v1', false);
 export const fontSize = kept('netsmith.source.fontSize.v1', FONT.initial, (v): v is number => typeof v === 'number' && v >= FONT.min && v <= FONT.max);
 /** The outline panel at the foot of the file tree: open or folded, and how tall. */
 export const outlineOpen = kept('netsmith.source.outline.v1', true);

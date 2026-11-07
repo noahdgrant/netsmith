@@ -1,5 +1,5 @@
 // The source editor's keys and settings, one step for each: Ctrl+/ comments the lines (the shortcuts stay on `?`),
-// autosave writes a file after a pause, and comments can be set in another font.
+// autosave writes a file after a pause, comments can be set in another font, and Vim keys can be turned on.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -108,4 +108,27 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.keyboard.press('Escape');
   await page.locator('.cm-content').click();
   await page.keyboard.press('Control+z');
+
+  step('Vim keys: off until chosen; then Esc, dd and :w work');
+  await openOptions();
+  await page.locator('[data-testid="opt-vim"]').click();
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.cm-vim-panel');
+  expect(true, 'the mode bar is under the text');
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+Home');
+  const before = await page.locator('.cm-line').count();
+  await page.keyboard.type('dd');
+  await page.waitForFunction((n) => document.querySelectorAll('.cm-line').length === n - 1, before);
+  expect(true, 'dd removed a line in normal mode');
+  await page.keyboard.type(':w\n');
+  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null, { timeout: 8000 });
+  expect(true, ':w saved the file');
+  await shot('vim');
+  await openOptions();
+  await page.locator('[data-testid="opt-vim"]').click();
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('.cm-vim-panel'));
+  expect(true, 'the mode bar is gone with Vim off');
 }

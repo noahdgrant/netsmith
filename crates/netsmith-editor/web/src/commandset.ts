@@ -22,7 +22,7 @@ import { changeLines } from './source/cm-changes';
 import { toggleLineComment } from './source/comment';
 import { sourceEditor } from './source/handle';
 import { canBack, canForward } from './source/navhistory';
-import { COMMENT_FONTS, autosave, commentFont, commentFontOf, hoverCards, inlineHints, outlineOpen, nextCommentFont, resetEditorZoom, wordWrap, zoomEditor } from './source/prefs';
+import { COMMENT_FONTS, autosave, commentFont, commentFontOf, hoverCards, inlineHints, outlineOpen, nextCommentFont, resetEditorZoom, vimMode, wordWrap, zoomEditor } from './source/prefs';
 import { openReplace } from './source/cm-search';
 import { type Selection, selectAndReveal, selection, setSelection } from './selection';
 import { THEMES, isDark, theme } from './theme';
@@ -504,6 +504,16 @@ const sourceSwitches = (): Command[] => [
     run: () => {
       commentFont.value = nextCommentFont(commentFont.peek());
       say(`Comments in the ${commentFontOf(commentFont.peek()).label.toLowerCase()}`);
+    },
+  },
+  {
+    id: 'source.vim.toggle',
+    title: vimMode.value ? 'Source: Turn Vim keys off' : 'Source: Turn Vim keys on',
+    group: 'Source',
+    aliases: ['vim', 'vi', 'modal', 'keybindings', 'normal mode'],
+    run: () => {
+      vimMode.value = !vimMode.peek();
+      say(vimMode.peek() ? 'Vim keys on: Esc for normal mode, :w saves' : 'Vim keys off');
     },
   },
   {
