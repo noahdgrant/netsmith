@@ -21,8 +21,8 @@ pub use hints::{
     Place, ResolvedHints, ResolvedNote, ResolvedPart, SheetHints, Steps, schematic_hints_path,
 };
 pub use layout::{
-    Bus, BusEntry, BusFlag, BusMember, Layout, MarkKind, Marks, PinMark, Port, PowerKind,
-    PowerSymbol, Rails, Tuning, layout, layout_marked, layout_rails, layout_tuned,
+    Bus, BusEntry, BusFlag, BusMember, Layout, MarkKind, Marks, MemberFlow, PinMark, Port,
+    PowerKind, PowerSymbol, Rails, Tuning, layout, layout_marked, layout_rails, layout_tuned,
     layout_tuned_touched,
 };
 pub use sheets::{

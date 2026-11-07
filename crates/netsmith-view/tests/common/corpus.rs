@@ -138,6 +138,52 @@ pub fn corpus() -> Vec<Case> {
         lib: SymbolLib::at(testlib::sample_symbols()),
         dir: None,
     });
+    // The bus boards of ADR 0067 come last: tests count into the list by position.
+    // The same board with its pin tables: the entries of a bus carry the direction of the pins.
+    let (dir, mapping, lib) = super::bus::setup();
+    let (design, groups) = super::bus::board_directed(4, 0);
+    out.push(Case {
+        name: "UartDirected".into(),
+        design,
+        groups,
+        rails: super::bus::rails(),
+        mapping,
+        lib,
+        dir: Some(dir),
+    });
+    // An interface that nests another, on one sheet and on two.
+    for (name, caps) in [("UartNested", 0), ("UartNestedSheets", 8)] {
+        let (dir, mapping, lib) = super::bus::setup();
+        let (design, groups) = super::bus::board_nested(caps);
+        out.push(Case {
+            name: name.into(),
+            design,
+            groups: if caps == 0 { Vec::new() } else { groups },
+            rails: super::bus::rails(),
+            mapping,
+            lib,
+            dir: Some(dir),
+        });
+    }
+    // One SPI bus with several sensors on it (and an I2C-sized one, two lines on three
+    // parts), on one sheet and on two.
+    for (name, devices, lines, caps) in [
+        ("SpiShared", 3, 3, 0),
+        ("I2cShared", 2, 2, 0),
+        ("SpiSharedSheets", 4, 3, 14),
+    ] {
+        let (dir, mapping, lib) = super::bus::setup();
+        let (design, groups) = super::bus::board_shared(devices, lines, caps);
+        out.push(Case {
+            name: name.into(),
+            design,
+            groups: if caps == 0 { Vec::new() } else { groups },
+            rails: super::bus::rails(),
+            mapping,
+            lib,
+            dir: Some(dir),
+        });
+    }
     out
 }
 

@@ -4,7 +4,7 @@
 
 #![allow(dead_code)]
 
-use netsmith_core::{Design, InterfaceInstance, InterfaceMember};
+use netsmith_core::{Design, InterfaceInstance, InterfaceMember, PartPin, PinKind};
 use netsmith_kicad::testlib::{self, TempDir};
 use netsmith_kicad::{Mapping, SymbolLib};
 use netsmith_view::{Group, Rails};
@@ -194,4 +194,190 @@ pub fn rails() -> Rails {
     r.ground.insert("GND".into());
     r.positive.insert("VCC".into());
     r
+}
+
+fn table_pin(name: &str, pad: &str, kind: PinKind) -> PartPin {
+    PartPin {
+        name: name.into(),
+        datasheet: name.to_uppercase(),
+        kind,
+        pads: vec![pad.into()],
+        function: None,
+    }
+}
+
+/// The UART board with the pin tables of its two parts, as the language gives them: the
+/// processor's `tx` and `rts` are outputs and its `rx` and `cts` inputs, the modem's pins the
+/// other way round on the same lines, the wake line is bidirectional at both.
+pub fn board_directed(lines: usize, caps: usize) -> (Design, Vec<Group>) {
+    let (mut design, groups) = board(lines, caps);
+    design.parts[0].pins = vec![
+        table_pin("uart0.tx", "1", PinKind::Output),
+        table_pin("uart0.rx", "2", PinKind::Input),
+        table_pin("wake", "3", PinKind::Bidirectional),
+        table_pin("uart0.rts", "4", PinKind::Output),
+        table_pin("uart0.cts", "5", PinKind::Input),
+        table_pin("vcc", "6", PinKind::Power),
+        table_pin("gnd", "7", PinKind::Power),
+    ];
+    design.parts[1].pins = vec![
+        table_pin("uart.rx", "1", PinKind::Output),
+        table_pin("uart.tx", "2", PinKind::Input),
+        table_pin("uart.cts", "3", PinKind::Input),
+        table_pin("uart.rts", "4", PinKind::Output),
+        table_pin("wake", "5", PinKind::Bidirectional),
+        table_pin("vcc", "6", PinKind::Power),
+        table_pin("gnd", "7", PinKind::Power),
+    ];
+    (design, groups)
+}
+
+fn typed(path: &str, type_name: &str, members: &[(&str, &str)]) -> InterfaceInstance {
+    InterfaceInstance {
+        type_name: type_name.into(),
+        ..instance(path, members)
+    }
+}
+
+/// The UART board with its four lines declared as one interface that nests another: each
+/// side has `link` (a `Link` with the `irq` line) with `data` (an `Spi`, three lines) inside
+/// it and a nested `Rail` for the supply, the way an interface that is made of others lists
+/// its instances. Both sides call the lines the same.
+pub fn board_nested(caps: usize) -> (Design, Vec<Group>) {
+    let (mut design, groups) = board(4, caps);
+    let side = |module: &str| {
+        vec![
+            typed(&format!("{module}.link"), "Link", &[("irq", "UART_RTS")]),
+            typed(
+                &format!("{module}.link.data"),
+                "Spi",
+                &[
+                    ("sclk", "UART_TX"),
+                    ("mosi", "UART_RX"),
+                    ("miso", "UART_CTS"),
+                ],
+            ),
+            typed(
+                &format!("{module}.link.power"),
+                "Rail",
+                &[("pos", "VCC"), ("neg", "GND")],
+            ),
+        ]
+    };
+    design.interfaces = side("modem").into_iter().chain(side("mcu")).collect();
+    (design, groups)
+}
+
+/// A processor `U1` and `devices` sensors on one SPI bus: the clock, `mosi` and `miso` (the
+/// first `lines` of them) are one net each with a pin on every part, and the first sensor has
+/// a select line of its own. Every part declares the bus as `spi` (the lines are named alike
+/// at both ends). With `caps` capacitors on the supply (split between the processor's module
+/// `mcu` and a module `bank` that holds the second half of the sensors) the board is more than
+/// 16 parts and is drawn as two sheets.
+pub fn board_shared(devices: usize, lines: usize, caps: usize) -> (Design, Vec<Group>) {
+    let mut parts: Vec<(String, &str, &str, String)> =
+        vec![("U1".into(), "Cpu", "Cpu", "mcu.u".into())];
+    for d in 0..devices {
+        // The first half of the sensors with the processor, the rest in the other module.
+        let module = if d < devices.div_ceil(2) {
+            "mcu"
+        } else {
+            "bank"
+        };
+        let path = if module == "mcu" {
+            format!("sensor{}.u", d + 1)
+        } else {
+            format!("bank.sensor{}.u", d + 1)
+        };
+        parts.push((format!("U{}", d + 2), "Modem", "Modem", path));
+    }
+    for c in 0..caps {
+        let module = if c < caps / 2 { "mcu" } else { "bank" };
+        parts.push((
+            format!("C{}", c + 1),
+            "Capacitor",
+            "100n",
+            format!("{module}.c{c}"),
+        ));
+    }
+    let parts_ref: Vec<(&str, &str, &str, Option<&str>)> = parts
+        .iter()
+        .map(|(r, k, v, _)| {
+            (
+                r.as_str(),
+                *k,
+                *v,
+                if *k == "Capacitor" {
+                    Some("0402")
+                } else {
+                    Some("P")
+                },
+            )
+        })
+        .collect();
+    let shared = [("SCLK", "1"), ("MOSI", "2"), ("MISO", "4")];
+    let mut owned: Vec<(String, Vec<String>)> = Vec::new();
+    for &(net, pin) in &shared[..lines] {
+        let mut pins = vec![format!("U1.{pin}")];
+        for d in 0..devices {
+            pins.push(format!("U{}.{pin}", d + 2));
+        }
+        owned.push((net.to_string(), pins));
+    }
+    owned.push(("CS1".into(), vec!["U1.3".into(), "U2.5".into()]));
+    let mut vcc: Vec<String> = (1..=devices + 1).map(|u| format!("U{u}.6")).collect();
+    let mut gnd: Vec<String> = (1..=devices + 1).map(|u| format!("U{u}.7")).collect();
+    for c in 0..caps {
+        vcc.push(format!("C{}.1", c + 1));
+        gnd.push(format!("C{}.2", c + 1));
+    }
+    owned.push(("VCC".into(), vcc));
+    owned.push(("GND".into(), gnd));
+    let nets: Vec<(&str, Vec<&str>)> = owned
+        .iter()
+        .map(|(n, p)| (n.as_str(), p.iter().map(String::as_str).collect()))
+        .collect();
+    let nets_ref: Vec<(&str, &[&str])> = nets.iter().map(|(n, p)| (*n, p.as_slice())).collect();
+    let mut design = super::design("SharedBus", &parts_ref, &nets_ref);
+    for (p, (_, _, _, path)) in design.parts.iter_mut().zip(&parts) {
+        p.path = path.clone();
+    }
+    let members: Vec<(&str, &str)> =
+        [("sclk", "SCLK"), ("mosi", "MOSI"), ("miso", "MISO")][..lines].to_vec();
+    design.interfaces = std::iter::once(typed("mcu.spi", "Spi", &members))
+        .chain((0..devices).map(|d| {
+            let owner = if d < devices.div_ceil(2) { "" } else { "bank." };
+            typed(&format!("{owner}sensor{}.spi", d + 1), "Spi", &members)
+        }))
+        .collect();
+    let in_module = |module: &str, first: bool| -> Vec<usize> {
+        let mut v = Vec::new();
+        if first {
+            v.push(0);
+        }
+        for d in 0..devices {
+            if (d < devices.div_ceil(2)) == (module == "mcu") {
+                v.push(d + 1);
+            }
+        }
+        for c in 0..caps {
+            if (c < caps / 2) == (module == "mcu") {
+                v.push(devices + 1 + c);
+            }
+        }
+        v
+    };
+    let groups = vec![
+        Group {
+            name: "mcu".into(),
+            detail: "Cpu and sensors".into(),
+            parts: in_module("mcu", true),
+        },
+        Group {
+            name: "bank".into(),
+            detail: "More sensors".into(),
+            parts: in_module("bank", false),
+        },
+    ];
+    (design, groups)
 }

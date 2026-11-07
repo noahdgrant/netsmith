@@ -240,21 +240,43 @@ pub fn layout_sheets_hinted_findings(
             });
             net_of_global.push(n);
         }
-        // The interface instances with a member on a net of this sheet, with those members.
+        // The interface instances with a member on a net of this sheet, with those members;
+        // and the instances around one that has a member here (an interface that nests
+        // another), even with none of their own, so that the sheet names the nest as a whole
+        // as the others do.
         let here: std::collections::HashSet<&str> = nets.iter().map(|n| n.name.as_str()).collect();
-        let interfaces = design
+        let mine: Vec<Vec<netsmith_core::InterfaceMember>> = design
             .interfaces
             .iter()
-            .filter_map(|i| {
-                let members: Vec<_> = i
-                    .members
+            .map(|i| {
+                i.members
                     .iter()
                     .filter(|m| here.contains(m.net.as_str()))
                     .cloned()
-                    .collect();
-                (!members.is_empty()).then(|| netsmith_core::InterfaceInstance {
-                    members,
-                    ..i.clone()
+                    .collect()
+            })
+            .collect();
+        let mut around: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for (i, inst) in design.interfaces.iter().enumerate() {
+            if mine[i].is_empty() || inst.type_name == "Rail" {
+                continue;
+            }
+            let mut cut = inst.path.len();
+            while let Some(at) = inst.path[..cut].rfind('.') {
+                cut = at;
+                around.insert(&inst.path[..at]);
+            }
+        }
+        let interfaces = design
+            .interfaces
+            .iter()
+            .zip(mine)
+            .filter_map(|(i, members)| {
+                (!members.is_empty() || around.contains(i.path.as_str())).then(|| {
+                    netsmith_core::InterfaceInstance {
+                        members,
+                        ..i.clone()
+                    }
                 })
             })
             .collect();

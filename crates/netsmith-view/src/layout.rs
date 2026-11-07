@@ -50,15 +50,18 @@
 //!    at their pins), not beyond every part drawn in the same row: the supply of a power unit
 //!    that stands beside a taller signal unit is just above it.
 //! 4. A wire never crosses a text. A pin that connects to nothing has an X.
-//! 5. The members of one interface instance (the design carries them, [`netsmith_core::Design::interfaces`])
-//!    are a **bus** when three or more of them run between the same two main parts, or leave the
-//!    sheet from one part, each with one pin on each part and all on one side of it. The pins stay
+//! 5. The members of one interface instance (the design carries them, [`netsmith_core::Design::interfaces`],
+//!    with those of the interfaces nested in it) are a **bus** when three or more of them run between
+//!    the same two main parts, or leave the sheet from one part, or two or more run between three or
+//!    more places (a shared bus, one line with a branch to each part), each with one pin on each part
+//!    and all on one side of it. The pins stay
 //!    one by one on the part's edge; each member's wire is a short entry that meets one thick
 //!    line, a spine beside the pins and a trunk that runs to the other part's spine or, where the
-//!    members go on to another sheet, ends in **one** flag with the interface's name. The line is
-//!    named once, by the instance, with the list of members and a slash with their count, and it
-//!    joins nothing: each entry joins the net of its name at the other end, as a label does. The
-//!    members have no flag or name of their own. See `engine/bus.rs` and ADR 0049.
+//!    members go on to another sheet, ends in **one** flag with the interface's name (and the other
+//!    sheet's instance, `→ modem.uart: {rx, tx}`). The line is named once, by the instance, with the
+//!    list of members and a slash with their count, an entry has an arrowhead where the part's pin
+//!    table says the pin's direction, and the line joins nothing: each entry joins the net of its name at the other end, as a label does. The
+//!    members have no flag or name of their own. See `engine/bus.rs`, ADR 0049 and ADR 0067.
 //!
 //! 6. The power path through a regulator is a **spine**, one row from left to right, as it is
 //!    on a hand drawing (`spine.rs`, `engine/spine.rs`; found from the netlist, the pin kinds and
@@ -360,6 +363,72 @@ pub struct BusEntry {
     pub end: usize,
     /// Where the wire meets the thick line.
     pub at: Pt,
+    /// Which way the member's signal goes at this end, seen from the part, as the part's pin
+    /// table says (`Output`, `Input`, `Bidirectional`); `None` for a pin of any other kind and
+    /// for a part that does not state its pins.
+    pub flow: Option<MemberFlow>,
+    /// The way the wire runs from the pin to the thick line.
+    pub out: Dir,
+    /// How long the wire is, from the pin to the thick line, in millimetres.
+    pub length: f64,
+}
+
+/// Which way a member's signal goes at one end of a bus, seen from the part there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemberFlow {
+    /// The part's pin is an output: the signal leaves the part along the entry.
+    Gives,
+    /// The part's pin is an input: the signal comes in along the entry.
+    Takes,
+    /// The part's pin is bidirectional: both.
+    Both,
+}
+
+impl MemberFlow {
+    /// The class the SVG gives the arrowhead.
+    pub fn word(self) -> &'static str {
+        match self {
+            MemberFlow::Gives => "out",
+            MemberFlow::Takes => "in",
+            MemberFlow::Both => "inout",
+        }
+    }
+}
+
+/// How long and how wide an arrowhead on an entry is.
+const ARROW_LENGTH: f64 = 1.1;
+const ARROW_HALF: f64 = 0.5;
+
+impl BusEntry {
+    /// The arrowheads of the entry, as triangles (tip first): one for an output (pointing away
+    /// from the part) or an input (pointing at it), at the middle of the wire; two for a
+    /// bidirectional pin, one each way, a third and two thirds along.
+    pub fn arrows(&self) -> Vec<[Pt; 3]> {
+        let Some(flow) = self.flow else {
+            return Vec::new();
+        };
+        let (dx, dy) = self.out.vector();
+        let pin = Pt::new(self.at.x - dx * self.length, self.at.y - dy * self.length);
+        let head = |centre: f64, outward: bool| {
+            let sign = if outward { 1.0 } else { -1.0 };
+            let along = |d: f64| Pt::new(pin.x + dx * d, pin.y + dy * d);
+            let tip = along(centre + sign * ARROW_LENGTH / 2.0);
+            let base = along(centre - sign * ARROW_LENGTH / 2.0);
+            [
+                tip,
+                Pt::new(base.x - dy * ARROW_HALF, base.y + dx * ARROW_HALF),
+                Pt::new(base.x + dy * ARROW_HALF, base.y - dx * ARROW_HALF),
+            ]
+        };
+        match flow {
+            MemberFlow::Gives => vec![head(self.length / 2.0, true)],
+            MemberFlow::Takes => vec![head(self.length / 2.0, false)],
+            MemberFlow::Both => vec![
+                head(self.length / 3.0, false),
+                head(self.length * 2.0 / 3.0, true),
+            ],
+        }
+    }
 }
 
 /// The flag that ends a bus whose members go on to another sheet: one for the whole bus, with
@@ -422,6 +491,9 @@ pub struct Bus {
     pub list: Text,
     /// What the other end calls the interface, when it is not the same (`uart: {rx, tx}`).
     pub other: Option<Text>,
+    /// The path of the interface instance that `other` names (`modem.uart`): for a bus that
+    /// goes on to another sheet, the instance on the sheet it goes to.
+    pub other_path: Option<String>,
     /// The slash across the thick line, and the count of members beside it.
     pub tick: (Pt, Pt),
     pub count: Text,
