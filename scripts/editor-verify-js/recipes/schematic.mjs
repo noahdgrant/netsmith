@@ -2,7 +2,7 @@
 // (Back returns); put the cursor on a declaration and the part is marked in the drawing. The notes (doc comments and `==` relations drawn as
 // cards, ADR 0060) are the page's: its colours in all four themes, a hover, a click that opens the source at the line they are written at,
 // and no overlap with a part.
-import { THEMES, contrastOf, noteFacts, overlaps, partBoxes, setTheme, visibleHalos } from '../schematic-helpers.mjs';
+import { THEMES, contrastOf, noteFacts, overlaps, partBoxes, setTheme, visibleHalos, zoomPercent } from '../schematic-helpers.mjs';
 
 export const fixture = 'two_boards';
 
@@ -209,6 +209,53 @@ export async function run({ page, shot, step, expect, section }) {
   expect(ring.filter === 'none' && ring.frameFilter === 'none' && ring.frameWidth <= 0.5, `no halo and the frame itself is not made heavier (${ring.filter}, ${ring.frameFilter}, ${ring.frameWidth})`);
   expect(Math.abs(ring.gap - 2) < 0.75, `the ring stands 2 px clear of the frame (${ring.gap.toFixed(2)} px)`);
   await shot('note-focus-ring');
+
+  step('the ring keeps its 2 px, 2 px clear of the frame while the zoom changes under a note that keeps the focus (two levels)');
+  const ringNow = () =>
+    page.evaluate(() => {
+      const n = document.activeElement;
+      const frame = n?.querySelector?.('.note-frame');
+      const rg = n?.querySelector?.('.note-ring');
+      if (!n?.matches?.('g.note') || !frame || !rg) return null;
+      const unit = n.ownerSVGElement?.getScreenCTM()?.a ?? 1;
+      const f = frame.getBoundingClientRect();
+      const r = rg.getBoundingClientRect();
+      const stroke = (parseFloat(getComputedStyle(frame).strokeWidth) * unit) / 2;
+      // From the outside of the frame's own stroke to the inside of the ring's 2 px line, on each side, in screen pixels.
+      const gaps = [f.left - r.left, r.right - f.right, f.top - r.top, r.bottom - f.bottom].map((g) => g - stroke - 1);
+      return { gaps, width: parseFloat(getComputedStyle(rg).strokeWidth), shown: getComputedStyle(rg).display !== 'none', unit, frameWidth: f.width };
+    });
+  // The note nearest the middle of the canvas, so it stays in view when the zoom (about the middle) changes.
+  const middle = await page.evaluate(() => {
+    const box = document.querySelector('.schematic-host')?.getBoundingClientRect();
+    const notes = [...document.querySelectorAll('svg.schematic g.note')];
+    const dist = (n) => {
+      const r = n.querySelector('.note-frame').getBoundingClientRect();
+      return Math.hypot(r.x + r.width / 2 - (box.x + box.width / 2), r.y + r.height / 2 - (box.y + box.height / 2));
+    };
+    return notes.indexOf(notes.reduce((a, b) => (dist(b) < dist(a) ? b : a)));
+  });
+  await page.locator('.schematic g.note').nth(middle).focus();
+  await page.mouse.move(2, 2);
+  const before = await ringNow();
+  expect(before && before.shown, 'a ring is shown on the note that has the focus');
+  const percentBefore = await zoomPercent(page);
+  for (let i = 0; i < 4; i++) await page.keyboard.press('+');
+  await page.waitForFunction((p0) => Number(document.querySelector('.zoombar span:not(.zsep)')?.textContent.replace('%', '')) > p0 * 1.5, percentBefore);
+  await page.waitForTimeout(250);
+  const zoomedIn = await ringNow();
+  expect(zoomedIn && zoomedIn.frameWidth > before.frameWidth * 1.5, `the drawing is larger (note ${before?.frameWidth.toFixed(0)} to ${zoomedIn?.frameWidth.toFixed(0)} px wide)`);
+  expect(zoomedIn.shown && zoomedIn.gaps.every((g) => Math.abs(g - 2) < 0.75) && zoomedIn.width === 2, `zoomed in the ring is still 2 px and 2 px clear on every side (${zoomedIn.gaps.map((g) => g.toFixed(2)).join(', ')} px)`);
+  await shot('note-focus-ring-zoomed-in');
+  for (let i = 0; i < 9; i++) await page.keyboard.press('-');
+  await page.waitForFunction((p0) => Number(document.querySelector('.zoombar span:not(.zsep)')?.textContent.replace('%', '')) < p0 * 0.8, percentBefore);
+  await page.waitForTimeout(250);
+  const zoomedOut = await ringNow();
+  expect(zoomedOut && zoomedOut.frameWidth < before.frameWidth * 0.8, `the drawing is smaller (note ${zoomedOut?.frameWidth.toFixed(0)} px wide)`);
+  expect(zoomedOut.shown && zoomedOut.gaps.every((g) => Math.abs(g - 2) < 0.75) && zoomedOut.width === 2, `zoomed out the ring is still 2 px and 2 px clear on every side (${zoomedOut.gaps.map((g) => g.toFixed(2)).join(', ')} px)`);
+  await shot('note-focus-ring-zoomed-out');
+  for (let i = 0; i < 5; i++) await page.keyboard.press('+');
+  await page.waitForTimeout(250);
   const second = await page.evaluate(() => {
     const all = [...document.querySelectorAll('svg.schematic g.note')];
     return all.indexOf(document.activeElement);
