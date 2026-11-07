@@ -172,7 +172,12 @@ export function rowOfPowerIssue(
   };
 }
 
-export type Group = 'none' | 'file' | 'severity';
+export type Group = 'none' | 'file' | 'severity' | 'stage';
+
+/** A stored grouping that is one of the known ones, else none (the dock kept it in the browser: an older or newer page may have written another). */
+export function parseGroup(v: unknown): Group {
+  return v === 'file' || v === 'severity' || v === 'stage' ? v : 'none';
+}
 
 export interface Filter {
   errors: boolean;
@@ -280,19 +285,31 @@ export interface RowGroup {
   rows: Row[];
 }
 
-/** The rows, in the order the dock shows them, with the heads of their groups. */
+const SEVERITY_TITLE: Record<Severity, string> = { error: 'Errors', warning: 'Warnings', note: 'Notes' };
+
+/** The rows, in the order the dock shows them, with the heads of their groups. Severities and stages come in a fixed order (errors, warnings,
+ * notes; the stages as their chips are), so a group does not move when the list changes; files come in the order of their first row, so a
+ * file with an error comes before one with a note. */
 export function groupRows(rows: Row[], by: Group): RowGroup[] {
   const sorted = sortRows(rows);
   if (by === 'none') return [{ key: '', title: '', rows: sorted }];
   const map = new Map<string, RowGroup>();
   for (const r of sorted) {
-    const key = by === 'file' ? fileOf(r) || '(no file)' : r.severity;
-    const title = by === 'file' ? key : r.severity === 'error' ? 'Errors' : r.severity === 'warning' ? 'Warnings' : 'Notes';
+    const key = by === 'file' ? fileOf(r) || '(no file)' : by === 'stage' ? r.origin : r.severity;
+    const title = by === 'file' ? key : by === 'stage' ? ORIGIN_LABEL[r.origin] : SEVERITY_TITLE[r.severity];
     if (!map.has(key)) map.set(key, { key, title, rows: [] });
     map.get(key)!.rows.push(r);
   }
-  // Groups come in the order of their first row, so a file with an error comes before one with a note.
-  return [...map.values()];
+  const groups = [...map.values()];
+  if (by === 'stage') groups.sort((a, b) => ORIGIN_ORDER.indexOf(a.key as Origin) - ORIGIN_ORDER.indexOf(b.key as Origin));
+  return groups;
+}
+
+/** Where a row points in the source: the place the server gave, else the `file.nsm:12` its message names. Null for a row with neither. */
+export function locationOf(r: Row): Location | null {
+  if (r.at) return r.at;
+  const m = r.mentions ? /^(.*):(\d+)$/.exec(r.mentions) : null;
+  return m ? { file: m[1], line: Number(m[2]), column: 1, endLine: Number(m[2]), endColumn: 1 } : null;
 }
 
 /** The rows in the order the dock lists them (what F8 steps through): notes are left out unless

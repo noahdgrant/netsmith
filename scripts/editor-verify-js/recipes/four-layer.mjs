@@ -75,28 +75,29 @@ export async function run({ page, shot, step, expect, section }) {
     expect(bad.length === 0, `still none after zoom ${label} (${await page.locator('.sec-pcb .zoombar span').first().innerText()}): ${bad.join('; ') || (await state())}`);
     expect((await clash()).length === 0, `and no two labels meet after zoom ${label} (${(await clash()).join('; ')})`);
   }
-  step('a label that finds no room is hidden and counted by a +N tag whose tooltip lists the planes; the tag meets no label');
+  step('a label that finds no room is hidden and counted by the chip +N (a button over the canvas; pcb-plane-more drives it); no mark is left in the drawing');
   for (let i = 0; i < 6; i++) {
     await page.locator('.sec-pcb .zoombar button', { hasText: /^\u2212$/ }).first().click();
     await page.waitForTimeout(150);
   }
   await page.waitForTimeout(300);
   const tagState = await page.evaluate(() => {
-    const all = [...document.querySelectorAll('.pcb-host svg .l-plane-labels > text.plane-label:not(.plane-label-more)')];
+    const all = [...document.querySelectorAll('.pcb-host svg .l-plane-labels > text.plane-label')];
     const hidden = all.filter((t) => t.classList.contains('plane-label-off')).map((t) => t.textContent);
-    const tag = document.querySelector('.pcb-host svg text[data-testid="plane-label-more"]');
-    return { hidden, tag: tag ? { text: tag.textContent.replace(/Planes.*$/, ''), off: tag.classList.contains('plane-label-off'), title: tag.querySelector('title')?.textContent ?? '' } : null };
+    const chip = document.querySelector('.sec-pcb [data-testid="plane-more"]');
+    return { hidden, chip: chip ? { text: chip.textContent.trim(), label: chip.getAttribute('aria-label') } : null, inDrawing: document.querySelectorAll('.pcb-host svg .plane-label-more').length };
   });
   expect(tagState.hidden.length > 0, `zoomed far out some labels are hidden (${tagState.hidden.join(', ')})`);
-  expect(tagState.tag && tagState.tag.text === `+${tagState.hidden.length}` && tagState.hidden.every((n) => tagState.tag.title.includes(n)), `and a tag says +${tagState.hidden.length} with the names in its tooltip (${tagState.tag?.text}: ${tagState.tag?.title})`);
-  expect((await clash()).length === 0, 'the tag and the labels that are left meet nowhere');
+  expect(tagState.chip && tagState.chip.text === `+${tagState.hidden.length}` && tagState.hidden.every((n) => tagState.chip.label.includes(n)), `and a chip says +${tagState.hidden.length} with the names in its accessible name (${tagState.chip?.text}: ${tagState.chip?.label})`);
+  expect(tagState.inDrawing === 0, 'nothing is drawn on the board for it');
+  expect((await clash()).length === 0, 'the labels that are left meet nowhere');
   await shot('plane-labels-more');
   for (let i = 0; i < 6; i++) {
     await page.locator('.sec-pcb .zoombar button', { hasText: /^\+$/ }).first().click();
     await page.waitForTimeout(100);
   }
   await page.waitForTimeout(300);
-  expect((await page.locator('.pcb-host svg text[data-testid="plane-label-more"]').count()) === 0 || (await page.locator('.pcb-host svg .plane-label-off:not(.plane-label-more)').count()) > 0, 'zoomed in again the tag is gone with the labels it stood for');
+  expect((await page.locator('.sec-pcb [data-testid="plane-more"]').count()) === 0 || (await page.locator('.pcb-host svg .plane-label-off').count()) > 0, 'zoomed in again the chip is gone with the labels it stood for');
   await page.locator('.sec-pcb .zoombar button', { hasText: /^Fit$/ }).first().click();
   await page.waitForTimeout(250);
   step('route it');

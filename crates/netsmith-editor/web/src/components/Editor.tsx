@@ -237,8 +237,13 @@ export function Editor() {
     if (!v || !file || !path || current.current !== path) return;
     if (revs.current.get(path) === file.rev) return;
     revs.current.set(path, file.rev);
+    // The cursor stays where it was (as far as the new text reaches): a whole-text replacement alone would put it at the top, and with it
+    // the line a reveal had just taken it to.
+    const { anchor, head } = v.state.selection.main;
+    const end = file.text.length;
     v.dispatch({
       changes: { from: 0, to: v.state.doc.length, insert: file.text },
+      selection: { anchor: Math.min(anchor, end), head: Math.min(head, end) },
       annotations: External.of(true),
     });
   }, [file?.rev]);

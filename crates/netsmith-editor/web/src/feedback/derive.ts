@@ -30,6 +30,7 @@ import {
   type ViewScope,
   countRows,
   filterRows,
+  locationOf,
   nextRow,
   rowOfFinding,
   rowOfPowerIssue,
@@ -198,6 +199,15 @@ export function revealRow(row: Row) {
   } else if (row.home === 'power') {
     revealSection('power');
   }
+}
+
+/** A click on a row's place (`src/main.nsm:12`): the source opens there. Not the row's own reveal, which also picks the thing the row is about
+ * in the views (a PCB finding's parts on the board): the place is the place. */
+export function revealPlace(row: Row) {
+  const at = locationOf(row);
+  if (!at) return;
+  activeRow.value = row.id;
+  void goTo(at);
 }
 
 /** F8 and Shift+F8: the next problem or the one before, from wherever the page is. */

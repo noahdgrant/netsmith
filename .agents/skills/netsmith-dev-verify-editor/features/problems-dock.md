@@ -24,6 +24,16 @@ The first load: the page and the tree paint at once, the first analysis request 
 
 A finished build, fab, order or route is a toast with the result and its cause when it failed, and a button to go on (download the Gerbers, open the Build or PCB section when it is not already on screen). A failure stays until it is dismissed.
 
+## Round 9: the place, the order, the marks
+
+`drive problems-leftovers` and `drive warning-marks` (fixture `warn_bench`: a board whose rail is drawn thinner than IPC-2221 allows, two guideline warnings and no error).
+
+- **The place of a row is a button** (`[data-testid=problem-place]`, `Open src/main.nsm:12 in the source`): a click or Enter opens the source on that line (`revealPlace` in `feedback/derive.ts`; the row's own click still picks the part, net or finding and zooms the PCB). A row with a place has it as the next Tab stop after the row; arrows move between rows from the button too. `locationOf` (`feedback/problems.ts`) is the server's `at`, else the `file.nsm:12` a PCB finding's message names. A row with neither has no button.
+- **The picked row stays in view**: when it is picked (F8, a click) and when its place in the list changes (a filter, the grouping, a new analysis, a smaller dock). It is drawn even past the 1000-row limit.
+- **Four groupings** (`Group` in `feedback/problems.ts`): none, by file, by severity, by stage. Severities (errors, warnings, notes) and stages (in the chips' order: Syntax, Checker, Solver, Lowering, Guideline, Layout, Power, Placement, Routing, Design rules, KiCad) come in a fixed order, so a group does not move when the list changes; files come in the order of their first row. F8 steps in the order shown. A grouping kept in the browser that the page does not know is none (`parseGroup`).
+- **A count for each severity**: the head's toggles (Errors, Warnings, Notes: icon, number, name) and the status bar (`[icon] 0 [icon] 2`, and a third, `[icon] N`, in a quieter tone only while there are notes, which round 9 added: the big fixture's 60 or so notes are shown there too, and only the Notes toggle in the dock decides whether they are listed).
+- **One mark for a severity** (`SeverityIcon`, `SeverityMark` in `components/Icons.tsx`; the rules are the top of the marks block of `views.css`): the warning triangle is the same drawing (`P.warning`) and the colour `--warning` in the tree, a file's tab, the outline, the status bar, the dock's toggle and rows, the source's gutter (`iconDom` carries `data-icon`) and the overview ruler, the PCB's findings chip, Compare and the cards; the error cross is `--danger` and the note `--info`. A mark that counts (`.sev-mark`: the tree's row, the outline's, a file's tab with no number, the sheet list's) is `role=img` named with the counts and where (`2 warnings in this file`); the old bare numbers and the `! 3` of the sheet list are gone. `warning-marks` reads each place in the four themes: the same path, the colour of the token, a name with the word `warning`, and the same with an error.
+
 ## Gotchas
 
 - Every section that has been shown is kept in the DOM, so `.stale-strip` exists once for each of them: scope it (`.section:not(.away) .stale-strip`).

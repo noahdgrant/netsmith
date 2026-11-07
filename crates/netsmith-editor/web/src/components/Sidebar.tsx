@@ -5,8 +5,8 @@ import { type Hover, hoverEnter, hoverLeave, partsOfDefinition } from '../hover'
 import { allowed, folderFor, removalPrompt, starter, stemOf, type Kind, type Template } from '../fileops';
 import { load, save } from '../storage';
 import { remScale } from '../util';
-import { computed } from '@preact/signals';
-import { Icon } from './Icons';
+import { fileProblems } from '../fileProblems';
+import { Icon, SeverityMark } from './Icons';
 import { Outline } from './Outline';
 import { EmptyState } from './ui';
 import {
@@ -17,7 +17,6 @@ import {
   goTo,
   openFile,
   openFiles,
-  problems,
   project,
   refreshAfterChange,
   removingPath,
@@ -92,18 +91,6 @@ function Marked({ text, filter }: { text: string; filter: string }) {
   );
 }
 
-/** The errors and warnings of each file, for the badge in its row. */
-const fileProblems = computed(() => {
-  const by = new Map<string, { error: number; warning: number }>();
-  for (const p of problems.value) {
-    if (!p.at || p.severity === 'note') continue;
-    const e = by.get(p.at.file) ?? { error: 0, warning: 0 };
-    e[p.severity]++;
-    by.set(p.at.file, e);
-  }
-  return by;
-});
-
 function Pill({ n, title }: { n: number; title: string }) {
   return (
     <span class="ft-count" title={title} aria-label={title}>
@@ -171,13 +158,14 @@ function TreeRow({
         meta = (
           <>
             {bad && (
-              <span
-                class={`ft-problems ${bad.error ? 'error' : 'warning'}`}
-                title={`${bad.error ? `${bad.error} error${bad.error === 1 ? '' : 's'}` : ''}${bad.error && bad.warning ? ', ' : ''}${bad.warning ? `${bad.warning} warning${bad.warning === 1 ? '' : 's'}` : ''} in this file`}
-                aria-label={`${bad.error} errors, ${bad.warning} warnings`}
-              >
-                {bad.error + bad.warning}
-              </span>
+              <SeverityMark
+                class="ft-problems"
+                badge
+                severity={bad.error ? 'error' : 'warning'}
+                count={bad.error + bad.warning}
+                counts={{ error: bad.error, warning: bad.warning }}
+                where="in this file"
+              />
             )}
             {node.file.readonly && (
               <span class="ft-lock" title={readonlyReason(node.file)} aria-label={readonlyReason(node.file)}>

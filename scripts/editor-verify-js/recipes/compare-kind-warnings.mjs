@@ -131,6 +131,17 @@ export async function run({ page, shot, step, expect, project, resetRepo }) {
     await page.click('[data-testid="sev-warning"]');
     await settle(150);
     expect((await page.locator('[data-testid="cmp-row"]').count()) === 2, 'the filter leaves the two warnings');
+    // the same triangle and the same colour as everywhere else a warning is shown (warning-marks)
+    const mark = await page.evaluate(() => {
+      const probe = document.createElement('i');
+      probe.style.color = 'var(--warning)';
+      document.body.append(probe);
+      const token = getComputedStyle(probe).color;
+      probe.remove();
+      const icons = [...document.querySelectorAll('[data-testid="cmp-row"] svg[data-icon="warning"]')];
+      return { n: icons.length, same: icons.every((i) => i.querySelector('path')?.getAttribute('d') === 'M8 2.2l6.2 11H1.8z' && getComputedStyle(i).color === token) };
+    });
+    expect(mark.n === 2 && mark.same, `the rows of the warnings carry the warning triangle in the --warning colour (${mark.n} icons)`);
     await page.click('[data-testid="sev-error"]');
     await settle(150);
     expect((await page.locator('[data-testid="cmp-row"]').count()) === 0 && /No errors are new or resolved/.test(await text('.cmp-scroll')), 'no error is new: said, with the way back');

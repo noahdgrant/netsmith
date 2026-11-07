@@ -47,6 +47,7 @@ export function iconDom(name: IconName, size = 14, cls = ''): HTMLSpanElement {
   svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('aria-hidden', 'true');
   svg.setAttribute('focusable', 'false');
+  svg.setAttribute('data-icon', name);
   build(P[name], svg);
   span.appendChild(svg);
   return span;

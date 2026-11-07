@@ -1,0 +1,29 @@
+// A board whose rail is drawn thinner than IPC-2221 allows for its current: the guideline checker
+// warns about the `5V` net and the `GND` net, and the board builds. The editor's warning markers
+// (the file tree, the status bar, the Problems dock, the outline) have something to show.
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+board Heater {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .load: Rail {
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+        .current &= 0A..2A
+        .min_track &= 0.1mm..1m
+    }
+    .source: Rail {
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+        .current &= -2A..0A
+    }
+    .supply: Header1x2
+    .out: Header1x2
+    .supply.p1 ~ .source.pos
+    .supply.p2 ~ .source.neg
+    .out.p1 ~ .load.pos
+    .out.p2 ~ .load.neg
+}

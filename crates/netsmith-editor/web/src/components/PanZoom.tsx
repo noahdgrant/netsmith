@@ -36,6 +36,8 @@ export function PanZoom(props: {
   /** A box of the canvas (in its pixels) to zoom to when `seq` changes. */
   focus?: { x: number; y: number; w: number; h: number; seq: number };
   children: ComponentChildren;
+  /** Controls pinned over the canvas, in the box's own pixels (they neither move nor scale with the drawing). Give each the class `no-pan`. */
+  overlay?: ComponentChildren;
   class?: string;
   /** Whether a drag with the main button pans (the default). Where it is `false` the main
    * button belongs to the children (selecting, moving), and the middle or right button pans. */
@@ -387,6 +389,7 @@ export function PanZoom(props: {
           Fit
         </button>
       </div>
+      {props.overlay}
     </div>
   );
 }
