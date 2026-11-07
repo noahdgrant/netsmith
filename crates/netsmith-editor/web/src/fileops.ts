@@ -144,6 +144,9 @@ export function allowed(node: Node | null): Allowed {
   if (file.role === 'physical') {
     return { newHere: true, rename: 'A physical file goes with its source: rename the source.', remove: null };
   }
+  if (file.role === 'schematic_layout') {
+    return { newHere: true, rename: 'A schematic layout file goes with its source: rename the source.', remove: null };
+  }
   return { newHere: true, rename: null, remove: null };
 }
 
@@ -166,7 +169,8 @@ export function removalPrompt(node: Exclude<Node, { type: 'section' }>, openUnsa
       lines.push('This is a top-level file: netsmith.toml lists it, and the project does not build without it until the list is changed.');
       strong = true;
     }
-    if (file.role !== 'physical') lines.push('Its physical file beside it, if it has one, is deleted too.');
+    if (file.role === 'schematic_layout') lines.push('Every part the schematic had moved goes back to where the drawing puts it.');
+    else if (file.role !== 'physical') lines.push('Its physical file and its schematic layout file beside it, if it has them, are deleted too.');
   }
   lines.push('This cannot be undone.');
   if (openUnsaved.length) lines.push(`Unsaved changes in ${openUnsaved.join(', ')} are lost.`);

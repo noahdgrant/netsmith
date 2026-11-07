@@ -280,6 +280,11 @@ pub struct PlacedPart {
     pub value: Option<Text>,
     /// The body, pins and texts.
     pub extent: Rect,
+    /// Whether this box is the **reference part** of its sheet, the one the sheet's frame starts
+    /// at (`origin::reference_among`), which a `pin` of the layout file (ADR 0061) is from. The
+    /// drawing says it (`data-anchor`) so that a page that moves parts knows which one is inert.
+    /// Set once the layout is final; false while the sheet is being drawn.
+    pub anchor: bool,
 }
 
 /// A run of wire along one net.
@@ -1069,6 +1074,7 @@ fn layout_with_tuning(
         }
     }
     origin::anchor(design, &mut layout, &hinted);
+    origin::mark_references(design, &mut layout, hints.and_then(|h| h.sheet_of));
     Ok(Made {
         layout,
         touched: drawn.touched,
@@ -2175,6 +2181,7 @@ fn place_part(ctx: &Ctx, p: usize, orient: Orient, nets: &[Option<usize>]) -> Pl
         reference,
         value,
         extent,
+        anchor: false,
     }
 }
 

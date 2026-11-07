@@ -8,7 +8,7 @@
 //! is without a file, and a problem says why.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     fs,
     path::{Path, PathBuf},
 };
@@ -63,7 +63,17 @@ pub(super) fn name_of(source: &str) -> String {
 }
 
 pub(super) fn read(path: &Path) -> Read {
-    match fs::read_to_string(path) {
+    read_in(path, &HashMap::new())
+}
+
+/// [`read`], with the text a person has typed and not saved (`unsaved`, by the file's path) read
+/// in place of the file, as a check of typed text reads a source.
+pub(super) fn read_in(path: &Path, unsaved: &HashMap<PathBuf, String>) -> Read {
+    let text = match unsaved.get(path) {
+        Some(text) => Ok(text.clone()),
+        None => fs::read_to_string(path),
+    };
+    match text {
         Ok(text) => match hints::parse(&text) {
             Ok(h) => Read::Hints(h, text),
             Err(errors) => Read::Invalid { text, errors },

@@ -488,7 +488,7 @@ impl Workspace {
                     // is a problem, and the drawing is the one there is without it.
                     let hints_path = netsmith_view::schematic_hints_path(&file.path);
                     let hints_name = hints::name_of(&file.name);
-                    let hints_file = hints::read(&hints_path);
+                    let hints_file = hints::read_in(&hints_path, unsaved);
                     let source_boards: Vec<String> = outcome
                         .boards
                         .iter()

@@ -41,6 +41,7 @@ const FILES: TreeFile[] = [
   file('src/parts/led.nsm', ['part', 'part']),
   file('src/legacy/vendor/archive/old.nsm', ['module']),
   file('src/main.physical.nsm', [], 'physical'),
+  file('src/main.sch.toml', [], 'schematic_layout'),
   file('netsmith.toml', [], 'manifest'),
   file('std/bus.nsm', ['interface'], 'std'),
   file('std/mfg/jlcpcb.nsm', ['interface'], 'std'),
@@ -53,7 +54,7 @@ const folder = (nodes: SectionNode['children'], first: string) => nodes.find((n)
 
 describe('buildTree', () => {
   it('makes a section for each role that has files, in a fixed order', () => {
-    expect(tree.map((s) => s.role)).toEqual(['top_level', 'module', 'physical', 'manifest', 'std']);
+    expect(tree.map((s) => s.role)).toEqual(['top_level', 'module', 'physical', 'schematic_layout', 'manifest', 'std']);
     expect(buildTree([FILES[1]]).map((s) => s.role)).toEqual(['module']);
   });
 

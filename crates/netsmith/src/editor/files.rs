@@ -111,6 +111,23 @@ impl Workspace {
             })
             .collect();
         entries.extend(physical);
+        // The schematic layout file beside each top-level source that has one (ADR 0061); a
+        // module has none of its own, its sheets are in the board's.
+        let drawn: Vec<Entry> = entries
+            .iter()
+            .filter(|e| e.role == FileRole::TopLevel)
+            .filter_map(|e| {
+                let file = netsmith_view::schematic_hints_path(e.fs.as_ref()?);
+                file.is_file().then(|| Entry {
+                    path: super::hints::name_of(&e.path),
+                    role: FileRole::SchematicLayout,
+                    fs: Some(file),
+                    embedded: None,
+                    readonly: false,
+                })
+            })
+            .collect();
+        entries.extend(drawn);
         let loader = Loader::std();
         for (_, file, text) in loader.modules() {
             entries.push(Entry {
@@ -145,7 +162,7 @@ impl Workspace {
             .map(|e| {
                 let text = self.text_of(&e).ok();
                 let defs = match (&e.role, &text) {
-                    (FileRole::Manifest, _) | (_, None) => Vec::new(),
+                    (FileRole::Manifest | FileRole::SchematicLayout, _) | (_, None) => Vec::new(),
                     (_, Some(text)) => outline::definitions(text, &kinds),
                 };
                 TreeFile {
