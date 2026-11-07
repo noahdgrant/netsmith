@@ -259,6 +259,7 @@ fn pins_of(model: &Model, part: InstId) -> Vec<PartPin> {
                 PinKind::Bidirectional => netsmith_core::PinKind::Bidirectional,
                 PinKind::Passive => netsmith_core::PinKind::Passive,
                 PinKind::NoConnect => netsmith_core::PinKind::NoConnect,
+                PinKind::TriState => netsmith_core::PinKind::TriState,
             },
             pads: row.pads.clone(),
             function: model.function_of(row.pin),

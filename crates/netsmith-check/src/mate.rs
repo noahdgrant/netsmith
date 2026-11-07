@@ -29,11 +29,12 @@ struct Side {
     outputs: Vec<InstId>,
     inputs: Vec<InstId>,
     bidirectional: Vec<InstId>,
+    tri_state: Vec<InstId>,
 }
 
 impl Side {
     fn drives(&self) -> bool {
-        !self.outputs.is_empty() || !self.bidirectional.is_empty()
+        !self.outputs.is_empty() || !self.bidirectional.is_empty() || !self.tri_state.is_empty()
     }
 }
 
@@ -405,6 +406,7 @@ impl Checker<'_> {
             outputs: Vec::new(),
             inputs: Vec::new(),
             bidirectional: Vec::new(),
+            tri_state: Vec::new(),
         };
         let Some(net) = self.model.net_of(pin).cloned() else {
             return side;
@@ -424,6 +426,7 @@ impl Checker<'_> {
                     Some(PinKind::Output) => side.outputs.push(p),
                     Some(PinKind::Input) => side.inputs.push(p),
                     Some(PinKind::Bidirectional) => side.bidirectional.push(p),
+                    Some(PinKind::TriState) => side.tri_state.push(p),
                     _ => {}
                 }
             }
@@ -461,6 +464,13 @@ impl Checker<'_> {
                 if !a.outputs.is_empty() && !b.outputs.is_empty() {
                     return refuse(
                         "is an output on both boards, and two outputs cannot share a net",
+                    );
+                }
+                if (!a.outputs.is_empty() && !b.tri_state.is_empty())
+                    || (!a.tri_state.is_empty() && !b.outputs.is_empty())
+                {
+                    return refuse(
+                        "is an output on one board and a tri_state output on the other: a line that several parts drive needs every driver to be tri_state",
                     );
                 }
                 let driven = a.drives() || b.drives();
@@ -503,8 +513,9 @@ impl Checker<'_> {
             };
             let detail = match s.role {
                 Role::Signal => format!(
-                    "{}{}{}",
+                    "{}{}{}{}",
                     pins(&s.outputs, "output"),
+                    pins(&s.tri_state, "tri_state"),
                     pins(&s.inputs, "input"),
                     pins(&s.bidirectional, "bidirectional")
                 ),

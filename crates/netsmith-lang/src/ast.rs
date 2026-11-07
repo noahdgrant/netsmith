@@ -146,6 +146,8 @@ pub enum Item {
     Peripheral(Peripheral),
     /// `shared SERIAL0 { UARTE0 SPIM0 }`; only a part may hold one (ADR 0071).
     Shared(Shared),
+    /// `lines SpiRole::Slave { .sclk input ... }`; only an interface may hold one (ADR 0064).
+    Lines(Lines),
     /// A `case { ... }` section; only a physical file may hold one.
     Case(Case),
     /// A `row .a1 .. .a12 along x pitch 2.54mm` statement; only a physical file may hold one.
@@ -197,6 +199,9 @@ pub enum PinKind {
     Passive,
     /// A pin that must stay unconnected.
     NoConnect,
+    /// An output that drives only while its part is selected and is high impedance
+    /// otherwise: it may share a net with other drivers (ADR 0064).
+    TriState,
 }
 
 impl PinRow {
@@ -207,13 +212,14 @@ impl PinRow {
 }
 
 impl PinKind {
-    pub const ALL: [PinKind; 6] = [
+    pub const ALL: [PinKind; 7] = [
         Self::Power,
         Self::Input,
         Self::Output,
         Self::Bidirectional,
         Self::Passive,
         Self::NoConnect,
+        Self::TriState,
     ];
 
     /// The word for it in source and in messages.
@@ -225,6 +231,7 @@ impl PinKind {
             Self::Bidirectional => "bidirectional",
             Self::Passive => "passive",
             Self::NoConnect => "no_connect",
+            Self::TriState => "tri_state",
         }
     }
 
@@ -265,6 +272,9 @@ pub struct Pad {
 pub struct PinFunction {
     pub name: Ident,
     pub kind: Option<(PinKind, Span)>,
+    /// `as sclk`: in a peripheral that has a bus (`as Spi SpiRole::Master`), the line of the bus
+    /// that the function is (ADR 0064). Always None in a pin row.
+    pub line: Option<Ident>,
 }
 
 /// One line of a pin table: `.sense input "SENSE" "3" fn GPIO UART1_TX optional`.
@@ -314,7 +324,19 @@ pub struct Peripheral {
     pub name: Ident,
     /// The class after `on`: a function that rows list.
     pub on: Option<Ident>,
+    /// `as Spi SpiRole::Master`: the bus interface that the peripheral is an end of, and its role
+    /// (ADR 0064, stage 4). A function that names a line (`SPIM0_SCK:output as sclk`) is a pin of
+    /// that bus when the board chooses it on a pin.
+    pub bus: Option<PeripheralBus>,
     pub functions: Vec<PinFunction>,
+    pub span: Span,
+}
+
+/// The `as Spi SpiRole::Master` of a peripheral.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PeripheralBus {
+    pub interface: TypePath,
+    pub role: Option<Expr>,
     pub span: Span,
 }
 
@@ -327,6 +349,35 @@ pub struct Shared {
     /// `limit N`: how many members may be in use at once.
     pub limit: Option<(u32, Span)>,
     pub members: Vec<SharedMember>,
+    pub span: Span,
+}
+
+/// `lines SpiRole::Master limit 1 { .sclk output  .miso input optional }`: for each role of a bus
+/// interface, the kind of each line and a few properties of a line (ADR 0064). The role is a
+/// variant of an enum; an interface with one role states none (`lines limit 2 { ... }`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Lines {
+    /// The variant after `lines`: `SpiRole::Master`.
+    pub role: Option<Expr>,
+    /// `limit N`: how many interfaces of this role may be on one bus.
+    pub limit: Option<(u32, Span)>,
+    pub rows: Vec<LineRow>,
+    pub span: Span,
+}
+
+/// One row of a `lines` table: `.tx output crosses .rx`, `.miso output required`,
+/// `.cs input single`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LineRow {
+    /// The pin of the interface that the row is about (`.sclk`).
+    pub pin: Path,
+    pub kind: PinKind,
+    /// `optional` or `required`, as on a pin row.
+    pub requirement: Option<(Requirement, Span)>,
+    /// `single`: a net carries this line of at most one interface of the role.
+    pub single: Option<Span>,
+    /// `crosses .rx`: the line is joined to this one of the other end, not to its own name.
+    pub crosses: Option<Path>,
     pub span: Span,
 }
 

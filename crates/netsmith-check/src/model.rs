@@ -258,6 +258,9 @@ pub struct Peripheral {
     /// The function after `on`.
     pub class: Option<String>,
     pub class_span: Span,
+    /// The bus interface the peripheral is an end of, if it says (`as Spi SpiRole::Master`,
+    /// ADR 0064, stage 4).
+    pub bus: Option<PeripheralBus>,
     pub functions: Vec<PeripheralFunction>,
     pub source: SourceId,
     /// The whole statement.
@@ -272,7 +275,20 @@ pub struct Peripheral {
 pub struct PeripheralFunction {
     pub name: String,
     pub kind: Option<PinKind>,
+    /// The line of the peripheral's bus that the function is (`as sclk`).
+    pub line: Option<String>,
     pub span: Span,
+}
+
+/// The bus a peripheral is an end of: the definition of the interface and the role it plays.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PeripheralBus {
+    /// The module and index of the interface's definition.
+    pub(crate) def: (usize, usize),
+    /// The interface's name: `Spi`.
+    pub interface: String,
+    /// The variant it plays (`Master`), if the bus has roles.
+    pub role: Option<String>,
 }
 
 /// `shared UARTS limit 2 { UARTE0 UARTE1 .p10 }`: hardware that at most `limit` of its members
@@ -296,6 +312,81 @@ pub struct SharedMember {
     pub name: String,
     pub pin: Option<InstId>,
     pub span: Span,
+}
+
+/// The `lines` of a bus interface (ADR 0064): for each role of the bus, the kind of each of its
+/// lines and a few properties of a line. It belongs to the interface's definition, so that a
+/// peripheral that names the interface (`as Spi SpiRole::Master`) reads the same rows.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BusDef {
+    /// The interface's name: `Spi`.
+    pub name: String,
+    /// The enum of the interface's `.role`: `SpiRole`. None for a bus with one role.
+    pub role_enum: Option<String>,
+    /// The member that holds the clock of the bus: `frequency`, or `baud` for a `Uart`.
+    pub clock: Option<String>,
+    /// One table for each role, or the one table of a bus with a single role.
+    pub tables: Vec<RoleLines>,
+}
+
+/// One `lines` table: the lines a role has.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RoleLines {
+    /// The variant the table is for (`Master`), or None for a bus with one role.
+    pub role: Option<String>,
+    /// `limit N`: at most N interfaces of this role on one bus.
+    pub limit: Option<u32>,
+    pub rows: Vec<LineRow>,
+    pub source: SourceId,
+    pub span: Span,
+}
+
+/// One line of a role: its name is the member of the interface (`sclk`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LineRow {
+    pub name: String,
+    pub kind: PinKind,
+    pub requirement: Option<Requirement>,
+    /// A net carries this line of at most one interface of the role.
+    pub single: bool,
+    /// The line of the other end that this one is joined to, instead of its own name.
+    pub crosses: Option<String>,
+    pub span: Span,
+}
+
+impl BusDef {
+    /// The table for a role: the variant's table, or the one table of a bus with no roles.
+    pub fn table(&self, role: Option<&str>) -> Option<&RoleLines> {
+        self.tables.iter().find(|t| t.role.as_deref() == role)
+    }
+
+    /// The line that `line` crosses to, or that crosses to it: `tx` and `rx`.
+    pub fn partner(&self, line: &str) -> Option<&str> {
+        self.tables
+            .iter()
+            .flat_map(|t| t.rows.iter())
+            .find_map(|r| match (&r.crosses, r.name == line) {
+                (Some(other), true) => Some(other.as_str()),
+                (Some(other), false) if other == line => Some(r.name.as_str()),
+                _ => None,
+            })
+    }
+
+    /// Every pair of lines that cross, each once, in the order the tables write them.
+    pub fn crossings(&self) -> Vec<(&str, &str)> {
+        let mut pairs: Vec<(&str, &str)> = Vec::new();
+        for r in self.tables.iter().flat_map(|t| t.rows.iter()) {
+            if let Some(other) = &r.crosses
+                && !pairs.iter().any(|(a, b)| {
+                    (*a, *b) == (r.name.as_str(), other.as_str())
+                        || (*b, *a) == (r.name.as_str(), other.as_str())
+                })
+            {
+                pairs.push((r.name.as_str(), other.as_str()));
+            }
+        }
+        pairs
+    }
 }
 
 /// Which pin table applies to a part, and why not if none does.
@@ -602,6 +693,9 @@ pub struct Model {
     pub(crate) enums: Vec<EnumInfo>,
     /// The members declared with the type of a generic, in the order they were made.
     pub uses: Vec<GenericUse>,
+    /// The `lines` of the bus interfaces in use, by the module and index of their definition
+    /// (ADR 0064).
+    pub(crate) bus_defs: std::collections::BTreeMap<(usize, usize), BusDef>,
     pub(crate) sources: SourceTexts,
 }
 
@@ -624,6 +718,7 @@ impl Model {
             part_joins: Vec::new(),
             enums: Vec::new(),
             uses: Vec::new(),
+            bus_defs: std::collections::BTreeMap::new(),
             sources: SourceTexts::default(),
         }
     }
@@ -868,15 +963,29 @@ impl Model {
             && self.instance(f.owner).kind == InstKind::Interface
     }
 
-    /// Whether `field` is a logic level of a `Logic` line (`vih`, `vil`, `voh`, `vol`). It is
-    /// what one part's pin guarantees or needs, so connecting two lines does not equate them
-    /// the way it equates the voltage of two rails (ADR 0046).
+    /// Whether `field` is a logic level of a `Logic` line or of the `Levels` of a bus interface
+    /// (`vih`, `vil`, `voh`, `vol`). It is what one part's pin guarantees or needs, so
+    /// connecting two lines does not equate them the way it equates the voltage of two rails
+    /// (ADR 0046, ADR 0064).
     pub fn is_level(&self, field: FieldId) -> bool {
         let f = self.field(field);
         matches!(f.name.as_str(), "vih" | "vil" | "voh" | "vol")
             && f.kind == FieldKind::Quantity(Dimension::VOLTAGE)
             && self.instance(f.owner).kind == InstKind::Interface
-            && self.instance(f.owner).type_name == "Logic"
+            && (self.instance(f.owner).type_name == "Logic" || self.is_levels(f.owner))
+    }
+
+    /// Whether an instance is the `Levels` of the standard library (`std::logic::Levels`): the
+    /// logic levels that a bus interface carries for all its lines (ADR 0064).
+    pub fn is_levels(&self, inst: InstId) -> bool {
+        let i = self.instance(inst);
+        i.kind == InstKind::Interface
+            && i.type_name == "Levels"
+            && self
+                .sources
+                .0
+                .as_ref()
+                .is_none_or(|s| s.get(i.source).name.starts_with("std/"))
     }
 
     /// The `current` field and the `pos` pin of an interface that draws current from a

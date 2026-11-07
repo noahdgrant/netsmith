@@ -2,10 +2,12 @@
 //! quantities, checks dimensions, and builds a model for the solver.
 
 mod buses;
+mod busnets;
 mod checker;
 mod connect;
 mod diag;
 mod faults;
+mod lines;
 mod loader;
 mod lower;
 mod mate;
@@ -16,6 +18,7 @@ mod providers;
 mod row;
 mod shared;
 
+pub use busnets::{BusGroup, bidirectional_rows, bus_groups, unstated_roles};
 pub use checker::physical_file_name;
 pub use diag::{Diagnostic, Source, SourceId, Sources};
 pub use faults::{pin_faults, pin_faults_solved};
@@ -23,8 +26,8 @@ pub use loader::Loader;
 pub use model::{
     Balance, Catalog, Chain, Contact, ContactSide, Domain, Draw, EnumId, EnumInfo, Field, FieldId,
     FieldKind, GenericUse, GroundGroup, GroundNet, InstId, InstKind, Instance, Mate, Member, Model,
-    Net, PartRules, Peripheral, PeripheralFunction, PinKind, PinRow, PinTable, Pinout, Provider,
-    RExpr, Relation, Requirement, Role, SharedMember, SharedRes, Tie, Written,
+    Net, PartRules, Peripheral, PeripheralBus, PeripheralFunction, PinKind, PinRow, PinTable,
+    Pinout, Provider, RExpr, Relation, Requirement, Role, SharedMember, SharedRes, Tie, Written,
 };
 
 use std::collections::BTreeMap;

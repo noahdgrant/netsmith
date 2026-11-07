@@ -1,5 +1,6 @@
 //! The whole pipeline, from source text to a KiCad schematic.
 
+mod bus_roles;
 pub mod cli;
 pub mod compare;
 pub mod constraints;
@@ -420,6 +421,9 @@ pub fn outcome_observed(
         lowered
             .guidelines
             .extend(values::unstated_value_findings(solution, sources, None));
+        lowered
+            .guidelines
+            .extend(bus_roles::bidirectional_findings(solution, None));
         if catalogs.strict_guidelines() {
             refuse_guidelines(&board.name, &lowered.guidelines, &solution.model, sources)?;
         }
@@ -527,6 +531,10 @@ pub fn outcome_observed(
             lowered.guidelines.extend(values::unstated_value_findings(
                 solution,
                 sources,
+                Some(member.inst),
+            ));
+            lowered.guidelines.extend(bus_roles::bidirectional_findings(
+                solution,
                 Some(member.inst),
             ));
             let scoped = solution.model.scoped_to(member.inst);

@@ -54,12 +54,15 @@ impl Checker<'_> {
             return;
         };
         let source = self.cur_source();
+        let (bus, lines) = self.peripheral_bus(p);
         let functions = p
             .functions
             .iter()
-            .map(|f| PeripheralFunction {
+            .zip(lines)
+            .map(|(f, line)| PeripheralFunction {
                 name: f.name.name.clone(),
                 kind: f.kind.map(|(k, _)| k),
+                line,
                 span: f.name.span,
             })
             .collect();
@@ -70,6 +73,7 @@ impl Checker<'_> {
                 name: p.name.name.clone(),
                 class: p.on.as_ref().map(|c| c.name.clone()),
                 class_span: p.on.as_ref().map_or(p.name.span, |c| c.span),
+                bus,
                 functions,
                 source,
                 span: p.span,
