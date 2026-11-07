@@ -615,3 +615,17 @@ kind = "Sn74lvc1g04"
 package = "SOT-23-5"
 symbol = "74xGxx:74LVC1G04"
 footprint = "Package_TO_SOT_SMD:SOT-23-5"
+
+# KiCad's stock single-gate symbol (74LVC1G17: pins 1 NC, 2 A, 3 GND, 4 Y, 5 VCC) for a
+# `LevelTranslator`, on the two 5-pin packages its pin tables have.
+[[part]]
+kind = "LevelTranslator"
+package = "SOT-23-5"
+symbol = "74xGxx:74LVC1G17"
+footprint = "Package_TO_SOT_SMD:SOT-23-5"
+
+[[part]]
+kind = "LevelTranslator"
+package = "SOT-353_SC-70-5"
+symbol = "74xGxx:74LVC1G17"
+footprint = "Package_TO_SOT_SMD:SOT-353_SC-70-5"

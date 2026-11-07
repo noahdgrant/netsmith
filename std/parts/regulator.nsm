@@ -7,7 +7,7 @@ import std::sources::Rail
 /// pad is which depends on the package, so there is a pin table for each package its
 /// catalog has. The output's ground (`.vout.neg`) is joined to the input's inside the part,
 /// so it needs no row.
-part LinearRegulator {
+generic LinearRegulator {
     .designator &= "U"
 
     .vin:  Rail
@@ -68,9 +68,12 @@ module FeedbackDivider {
     .vref: Voltage
     /// The output voltage the divider sets.
     .vout: Voltage
+    /// The current that runs through both resistors, from the output to ground.
+    .current: Current
     .rtop: Resistor
     .rbottom: Resistor
 
+    .current == .rtop.current
     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
     .rtop.current == (.vout - .vref) / .rtop.resistance
     .rbottom.current == .vref / .rbottom.resistance
@@ -117,6 +120,13 @@ interface Buck {
     /// The smallest inductance the datasheet allows (a table of recommended values is not
     /// one number; the IC states the smallest).
     .min_inductance: Inductance
+    /// The least saturation current an inductor may have, when the datasheet gives one (for
+    /// example, a figure above the IC's high-side current limit). An IC that leaves it open
+    /// does not check the inductor's saturation beyond the load and half the ripple.
+    .min_inductor_saturation: Current
+    /// The largest DC resistance an inductor may have, when the datasheet gives one. An IC
+    /// that leaves it open sets no limit.
+    .max_inductor_dcr: Resistance
     /// The capacitance the datasheet asks for on the input and the output, as effective
     /// capacitance in use (ADR 0013).
     .min_input_capacitance: Capacitance
@@ -141,16 +151,34 @@ interface Buck {
 ///   saturating: `isat >= iout + ripple / 2`. In a chain the inductor's `.current` is the
 ///   load, the average (ADR 0014), so the half ripple is added here and the part's own
 ///   `current <= saturation_current` is the weaker check of the average;
-/// - the inductor is at least the IC's minimum, and each capacitor has at least the effective
-///   capacitance the IC asks for at the voltage across it.
+/// - the inductor is at least the IC's minimum, has at least the saturation current and at
+///   most the DC resistance that the IC states (`.min_inductor_saturation`,
+///   `.max_inductor_dcr`; each is checked only when the IC states it), and each capacitor has at least the effective
+///   capacitance the IC asks for at the voltage across it and is rated for the peak of its
+///   rail (`.peak`, unset when nothing states it, and then that check is not evaluated) and
+///   for the rail's steady voltage, so a peak stated too low cannot let a capacitor through
+///   that the steady voltage would not.
 ///
 /// The divider's current and the quiescent current of the IC are not added to the load, so
-/// the inductor carries the load: `.inductor.current == -.vout.current`. The divider's pins
+/// the inductor carries the load: `.inductor.current == -.vout.current`. A design that adds
+/// up a quiescent budget reads the divider's share from `.divider_current`. The divider's pins
 /// are on the output net and are not modelled, so the balance there is not complete and
 /// cannot say that itself (ADR 0027).
-/// There is one capacitor on each side: an IC that asks for more states the bigger
-/// capacitance. The IC's recommended inductance is its `min_inductance`; the converter's
-/// stability and its loop are not modelled.
+///
+/// Each side is a bank of identical capacitors in parallel (ADR 0052): `.input_cap` and
+/// `.output_cap` stand for one capacitor of the bank, and `.input_count` and `.output_count`
+/// say how many. The solver chooses the row and the count together, the fewest from 1 up to
+/// 8 for which every check holds with `count * effective_capacitance` against what the IC
+/// asks for and the rating, the voltage and the rest per capacitor. A datasheet that asks for
+/// more than any one capacitor keeps at its voltage is met by several. The board may state the
+/// count (`.stage.output_count &= 2`, which the checks then hold to) or a range
+/// (`.stage.output_count &= 1..3`, which is what the solver may choose from); it reads
+/// the chosen number from the same member. A bank of one is the single capacitor this module
+/// had before. The ripple current a capacitor takes is not modelled, so it is not divided
+/// between the capacitors of a bank.
+///
+/// The IC's recommended inductance is its `min_inductance`; the converter's stability and
+/// its loop are not modelled.
 module BuckStage {
     /// Joined to the IC's `buck`.
     .buck: Buck
@@ -160,11 +188,23 @@ module BuckStage {
     .inductor: Inductor
     .input_cap: Capacitor
     .output_cap: Capacitor
+    /// How many capacitors of `.input_cap` stand in parallel at the input.
+    .input_count: Number
+    /// How many capacitors of `.output_cap` stand in parallel at the output.
+    .output_count: Number
     /// The peak-to-peak ripple current of the inductor.
     .ripple: Current
+    /// The current the feedback divider draws from the output.
+    .divider_current: Current
 
     .vin.current &= 0A
     .inductor.current == -.vout.current
+
+    // A bank is from one to eight capacitors unless the board says otherwise.
+    .input_cap.count ?= 1..8
+    .output_cap.count ?= 1..8
+    .input_count == .input_cap.count
+    .output_count == .output_cap.count
 
     .vin.neg ~ .vout.neg
     .buck.sw.neg ~ .vin.neg
@@ -174,6 +214,7 @@ module BuckStage {
     .divider.fb ~ .buck.fb
     .divider.vref == .buck.vref
     .divider.vout == .vout.voltage
+    .divider_current == .divider.current
 
     .buck.sw.pos ~> .inductor ~> .vout.pos
     .vin.pos ~> .input_cap ~> .vin.neg
@@ -183,10 +224,16 @@ module BuckStage {
     .vin.voltage <= .buck.max_input_voltage
     .vin.voltage >= .vout.voltage
     -.vout.current <= .buck.max_output_current
+    .input_cap.max_voltage >= .vin.voltage
+    .output_cap.max_voltage >= .vout.voltage
+    .input_cap.max_voltage >= .vin.peak
+    .output_cap.max_voltage >= .vout.peak
 
     .ripple == (.vin.voltage - .vout.voltage) * .vout.voltage / (.vin.voltage * .inductor.inductance * .buck.fsw)
     .inductor.current + .ripple / 2 <= .inductor.saturation_current
     .inductor.inductance >= .buck.min_inductance
-    .input_cap.effective_capacitance >= .buck.min_input_capacitance
-    .output_cap.effective_capacitance >= .buck.min_output_capacitance
+    .inductor.saturation_current >= .buck.min_inductor_saturation
+    .inductor.dc_resistance <= .buck.max_inductor_dcr
+    .input_cap.count * .input_cap.effective_capacitance >= .buck.min_input_capacitance
+    .output_cap.count * .output_cap.effective_capacitance >= .buck.min_output_capacitance
 }

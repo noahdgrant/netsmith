@@ -255,7 +255,7 @@ part Header2x3 {
         .p6 passive "P6" "6"
     }
 
-    .assembly &= "none"
+    .assembly &= AssemblyMode::None
     .mating: Mating {
         .kind &= "pin_header"
         .gender &= "header"
@@ -404,6 +404,39 @@ part UsbC2 {
     .package: Package
 }
 
+/// An OBD-II (SAE J1962) 16-pin vehicle connector, male: the plug that goes into the vehicle's
+/// diagnostic socket. `.vbatt` is the supply the vehicle gives, with `pos` on battery power
+/// (pin 16) and `neg` on chassis ground (pin 4). Signal ground (pin 5) is optional. The pins
+/// J1962 leaves to the manufacturer are named by their number.
+part Obd2M {
+    .designator &= "J"
+
+    .vbatt: Rail
+
+    pins {
+        //  pin         kind           name          pad
+        .p1             bidirectional  "1"           "1"
+        .j1850_bus_pos  bidirectional  "J1850BUS+"   "2"
+        .p3             bidirectional  "3"           "3"
+        .vbatt.neg      power          "CHASGND"     "4"
+        .signal_gnd     power          "SIGGND"      "5"  optional
+        .can_high       bidirectional  "CANHIGH"     "6"
+        .iso_k          bidirectional  "ISOK-LINE"   "7"
+        .p8             bidirectional  "8"           "8"
+        .p9             bidirectional  "9"           "9"
+        .j1850_bus      bidirectional  "J1850BUS"    "10"
+        .p11            bidirectional  "11"          "11"
+        .p12            bidirectional  "12"          "12"
+        .p13            bidirectional  "13"          "13"
+        .can_low        bidirectional  "CANLOW"      "14"
+        .iso_l          bidirectional  "ISOL-LINE"   "15"
+        .vbatt.pos      power          "BATTPOWER"   "16"
+    }
+
+    .package: Package
+    catalog obd2_m { .package }
+}
+
 /// Six pads in a footprint that a spring-pin cable presses on, to program a board with no
 /// connector fitted. It is the generic form of a Tag-Connect cable's footprint: the pads are
 /// `p1` to `p6`, and the board decides what each carries. See `Swd` for a debug port.
@@ -419,6 +452,6 @@ part ProgrammingPads6 {
         .p6 passive "P6" "6"
     }
 
-    .assembly &= "none"
+    .assembly &= AssemblyMode::None
     .package: Package
 }

@@ -12,6 +12,10 @@ interface Rail {
     .neg: Pin
     .voltage: Voltage
     .current: Current
+    /// The highest voltage the rail reaches, transients included (a clamp's voltage, a load
+    /// dump). `voltage` is the steady range. Rails joined with `~` share it, and a part that
+    /// limits a transient states it for the rail behind it.
+    .peak: Voltage
     /// The narrowest track the nets of this rail are routed with: a lower bound, written as
     /// a range (`.min_track &= 0.5mm..1m`). Both pins get it, since the return current is the
     /// same current. A net takes the widest of the rails on it, so `GND` is as wide as the
