@@ -12,7 +12,7 @@
 //! datasheet; a part without a row is unrated, and the check of the current through a mate
 //! lists it as not evaluated. Only the single-row parts have rows (`data/jlcpcb/README.md`).
 
-import std::bus::Usb2
+import std::bus::{Usb2, UsbRole}
 import std::sources::Rail
 
 /// What a connector says about how it meets another (ADR 0040). A system mates two connectors
@@ -381,13 +381,16 @@ part UsbCPower {
 /// receptacle: VBUS on A4, B4, A9 and B9, GND on A1, B1, A12 and B12, CC1 on A5, CC2 on B5, and
 /// the shell on S1, as in the Type-C specification and KiCad's footprints. `.usb` is the
 /// `Usb2` port, with D+ on A6 and B6, D- on A7 and B7. The two rows of the receptacle are one
-/// pin each, because the plug connects only one of them. The high-speed pairs are not brought
+/// pin each, because the plug connects only one of them. It is not an end of the bus: `.usb`
+/// states `UsbRole::Passthrough`, so the host or the device that its pins reach is judged, and
+/// the receptacle is never asked for a role. The high-speed pairs are not brought
 /// out; the sideband pins `.sbu1` (A8) and `.sbu2` (B8) are, because the footprint has the
 /// pads, and are left open. The shell is a pin (`.shell`).
 part UsbC2 {
     .designator &= "J"
 
     .usb: Usb2
+    .usb.role &= UsbRole::Passthrough
 
     pins {
         .usb.vbus.pos power         "VBUS"  "A4" "B4" "A9" "B9"

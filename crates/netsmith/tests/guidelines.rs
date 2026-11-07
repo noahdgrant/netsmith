@@ -427,3 +427,48 @@ fn a_joined_interface_with_no_role_is_an_error_under_strict_and_not_otherwise() 
         "{e}"
     );
 }
+
+/// A board that joins the library's receptacle to a processor's USB port.
+fn usb_board(role: &str) -> String {
+    format!(
+        "import std::bus::{{Usb2, UsbRole}}
+import std::parts::connector::UsbC2
+
+/// A processor with a USB port.
+part Mcu {{
+    .usb: Usb2
+{role}    pins {{
+        .usb.vbus.pos power         \"VBUS\" \"1\"
+        .usb.vbus.neg power         \"GND\"  \"2\"
+        .usb.dp       bidirectional \"DP\"   \"3\"
+        .usb.dm       bidirectional \"DM\"   \"4\"
+    }}
+}}
+
+board Usb {{
+    .mcu: Mcu
+    .jack: UsbC2
+    .mcu.usb ~ .jack.usb
+}}
+"
+    )
+}
+
+#[test]
+fn a_receptacle_joined_to_a_usb_port_is_not_asked_for_a_role_but_the_port_behind_it_is() {
+    let strict = Catalogs::jlcpcb().with_strict_guidelines(true);
+    let Err(e) = build(&usb_board(""), &strict) else {
+        panic!("a strict build of a finding must fail");
+    };
+    assert!(
+        e.contains("error: Usb: bus role guideline: `mcu.usb` is joined to another end of a `Usb2` bus and states no role"),
+        "{e}"
+    );
+    assert!(!e.contains("`jack.usb` is joined"), "{e}");
+    // With the role stated, the receptacle is no reason for a finding.
+    let stated = usb_board("    .usb.role &= UsbRole::Device\n");
+    let Err(e) = build(&stated, &strict) else {
+        panic!("the parts have no symbol");
+    };
+    assert!(!e.contains("bus role guideline"), "{e}");
+}

@@ -7626,7 +7626,7 @@ A bus interface names its lines, and its definition in `std::bus` says more: for
 - An SPI bus does not cross. The master's `mosi` is an output and the slave's is an input, and the two join with `~`.
 - An I2C bus needs a pull-up on each line, and the checker refuses a line without one. `std::bus::I2cPullups` is the pair, with the resistance as a value (`.pullups.resistance &= 4.7kohm +/- 5%`) and a supply rail. The module states the current it draws from that rail (each pull-up carries nothing while its line is released and at most the supply voltage over its resistance while it is held low, the two together on `supply.current`), so a board states no load for it; a current the board does state on `supply` is a budget the sum must fit in (ADR 0038).
 - A debug port `Swd` meets a programming connector pin by pin: the connector's pins are passive.
-- `Usb2` joins a host and a device with `~`: D+ to D+. `vbus` is a `Rail`.
+- `Usb2` joins a host and a device with `~`: D+ to D+. `vbus` is a `Rail`. A receptacle between them is a pass-through, not an end (below).
 
 Some invented parts for the examples. A UART has the same pins at both ends, so one part serves for both; SPI has a master and a slave.
 
@@ -7968,6 +7968,7 @@ A part states the role it plays with an ordinary statement, `.spi.role &= SpiRol
 - **The table against the role.** A part that states a role has a row for each line the role has, with the kind the role gives it. The same kind agrees, and so do `bidirectional` (a pin that drives and receives contradicts nothing, and the guideline below asks for the honest kind), `passive`, `no_connect`, and a `tri_state` output for an `output`. For a line that the role makes `bidirectional` (I2C), any signal kind agrees.
 - **A line the role requires** is connected, for an interface that has any line connected: the board that never uses a bus a part declares is left alone.
 - **A part that states no role** is not judged by the table or the limit, an interface that is joined to another end of its bus and states no role is a guideline (below), and a bus on which one part states its role and another does not gets a note, `not evaluated: the role of `x.spi` is not stated, so the limit and the table of `x` are not judged`. The first three rules above are judged for its pins all the same.
+- **A pass-through.** A role that an interface has no `lines` for passes the bus through: `UsbRole::Passthrough`, which `std::parts::connector::UsbC2` states, says that a receptacle is not an end of the bus and that the role is the one of the end behind it. The part has no table to judge and counts toward no limit, it satisfies the guideline below, and the note and the guideline name the end behind it that states none, never the receptacle. Two receptacles joined to each other say nothing special. A role that is an end of the bus has `lines`; a variant without them is a pass-through, whatever its name.
 
 Three invented parts: a processor that is an SPI master, a flash that is a slave and writes `tri_state` for its data out (the page is in the comment), and an IMU.
 
@@ -8285,6 +8286,53 @@ board WithCard {
 
 A module that draws a `Uart` port from the other end's side (its `tx` is the line the other end sends on) joins its port to a part's `.uart` with `~`: that join now crosses, and the board's join crosses again, so the two crossings undo each other and the net rules find two outputs. A module that forwards a `Uart` writes its port as a part would (its `tx` is the line the module sends on), joins the part's pins to it one by one with the same names, and lets the board's `~` cross.
 
+A receptacle is a pass-through, not an end of the bus: the `UsbC2` of the library states `UsbRole::Passthrough`, so a board that joins its `.usb` to a processor's port is judged by the processor's role, and is asked for no role of the receptacle. An invented device with a USB port, and the board:
+
+```nsm module=src::usbparts
+import std::bus::{Usb2, UsbRole}
+import std::sources::Rail
+
+/// Zdongle, an invented USB device that draws its supply from the bus.
+part Zdongle {
+    .designator &= "U"
+    .vdd: Rail
+    .usb: Usb2
+    .usb.role &= UsbRole::Device
+    .usb.vbus.neg ~ .vdd.neg
+    .usb.vbus.current &= 0A
+
+    pins {
+        .vdd.pos       power         "VDD"  "1"
+        .vdd.neg       power         "VSS"  "2"
+        .usb.dp        bidirectional "DP"   "3"
+        .usb.dm        bidirectional "DM"   "4"
+        .usb.vbus.pos  input         "VBUS" "5" optional
+    }
+}
+```
+
+```nsm evaluate
+import src::usbparts::Zdongle
+import std::parts::connector::UsbC2
+import std::sources::Rail
+
+board Dongle {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .dongle: Zdongle
+    .supply ~ .dongle.vdd
+    .jack: UsbC2 {
+        .usb.vbus.voltage &= 5V +/- 5%
+    }
+    .dongle.usb ~ .jack.usb
+}
+```
+
+Had `Zdongle` stated no role, the `bus role` guideline would name `dongle.usb` and not `jack.usb`.
+
 ### The clock of a bus
 
 `Spi`, `I2c` and `Swd` have a `.frequency`, and `Uart` has a `.baud`, a value in the unit of a frequency (ADR 0064). A part states what its datasheet allows as a bound (`.spi.frequency <= 10MHz`, with the page in a comment), and the board states the clock it will run (`.cpu.spi.frequency &= 8MHz`). `~` between two interfaces equates the two values, as it does for every value but a current and a logic level, so one value runs along the bus and each part's bound judges it. The firmware sets the clock, so the board's statement is its intention, and the check is that the intention is within every part's limit. A board that states none is left alone.
@@ -8484,7 +8532,7 @@ board Forgetful {
 ```
 
 ```text
-Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:230), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
+Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:235), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
 ```
 
 A module that wraps a `PullUp` states the resistance itself or forwards it through a member of its own (`.pull.resistance &= .resistance`, with the wrapped member on the left: the solver works a value out from the right side towards the left). A board that forgets a forwarded member is told about the wrapper's member, which is the one it can state.
@@ -8518,7 +8566,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::parts::connector::Header2x10` | A two-row header with 20 pins `p1` to `p20`, pin N on pad N. |
 | `std::parts::connector::Coax` | A coaxial (RF) connector: pins `signal` and `shield`, `.impedance`, `.max_frequency`. |
 | `std::parts::connector::UsbCPower` | A USB Type-C receptacle, power only: rail `vbus` (pos on VBUS, neg on GND), pins `cc1`, `cc2`, `shell`. |
-| `std::parts::connector::UsbC2` | A USB Type-C receptacle for USB 2.0: the pins `cc1`, `cc2`, `shell`, `sbu1`, `sbu2`, and the port `usb` (`Usb2`). |
+| `std::parts::connector::UsbC2` | A USB Type-C receptacle for USB 2.0: the pins `cc1`, `cc2`, `shell`, `sbu1`, `sbu2`, and the port `usb` (`Usb2`, role `UsbRole::Passthrough`). |
 | `std::parts::connector::Obd2M` | A male OBD-II (SAE J1962) 16-pin vehicle connector: rail `vbatt` (pos on pin 16, neg on pin 4), optional `signal_gnd`, `can_high`, `can_low`, `iso_k`, `iso_l`, `j1850_bus_pos`, `j1850_bus` and `p1`, `p3`, `p8`, `p9`, `p11`, `p12`, `p13`. Catalog `obd2_m`, with no standard row. |
 | `std::parts::connector::ProgrammingPads6` | Six pads `p1` to `p6` for a spring-pin programming cable. The board decides what each carries. |
 | `std::parts::passive::Inductor` | An inductor: `.inductance`, `.saturation_current`, `.dc_resistance` and the optional `.rms_current` (a catalog column the standard rows leave empty). Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .saturation_current`. Catalog `inductor`. |
@@ -8552,7 +8600,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::bus::Spi` | Pins `sclk`, `mosi`, `miso`, `cs`, a `.role` (`SpiRole`), a `.frequency` and a `.mode` (`SpiMode`). One master on a bus, a `single` select for each slave, a slave's `miso` is required. |
 | `std::bus::I2c` | Pins `sda` and `scl`, a `.role` (`I2cRole`) and a `.frequency`. A pull-up on each line. |
 | `std::bus::Swd` | Pins `swdio`, `swclk`, `swo`, `reset`, a `.role` (`SwdRole`) and a `.frequency`. One probe on a port. |
-| `std::bus::Usb2` | Pins `dp` and `dm`, a rail `vbus` and a `.role` (`UsbRole`). One host and one device on a bus. |
+| `std::bus::Usb2` | Pins `dp` and `dm`, a rail `vbus` and a `.role` (`UsbRole`). One host and one device on a bus; a receptacle states `UsbRole::Passthrough` and is not an end of it. |
 | `std::parts::connector::Mating` | What a connector says about how it meets another (ADR 0040), the member `.mating` of a header or socket: `.kind` (`"pin_header"`), `.gender` (`"header"` or `"socket"`), `.pitch`, `.rows`, `.positions`, `.pin_current` (the rated current of one contact, from the `header` catalog; unset is unrated) and `.keyed` (`"none"`, or `"shrouded"` or `"polarised"`; unset is the same as `"none"`). A system mates two with `~`. |
 | `std::mfg::stackup::Stackup` | Layers, thickness, copper weight and, for inner layers, the prepreg and core. |
 | `std::mfg::stackup::Plane` | An inner layer that is one sheet of copper on a net. The board names the net. |
@@ -8578,7 +8626,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::bus::I2cRole` | The role of a part on an I2C bus: `Controller` or `Target`. |
 | `std::bus::SwdRole` | The role of a part on a debug port: `Probe` or `Target`. |
 | `std::bus::SpiMode` | The clock mode of an SPI bus: `Mode0` to `Mode3`. The type of `Spi`'s `.mode`, equated along the bus. |
-| `std::bus::UsbRole` | The role of a part on a USB port: `Host` or `Device`. |
+| `std::bus::UsbRole` | The role of a part on a USB port: `Host` or `Device`, or `Passthrough` for a connector that the bus goes through (no `lines`, no limit, judged from the end behind it). |
 | `std::parts::passive::Dielectric` | The class of a ceramic capacitor, `C0G`, `X5R` or `X7R`: the type of `Capacitor`'s `.dielectric` and of the `dielectric` column of the capacitor catalog (ADR 0055). Import it with the part. |
 | `std::prelude::AssemblyMode` | Who puts a part on the board: `Fab`, `Hand` or `None`. The type of the built-in `.assembly` of every part and of the `.assembly_mode` a module offers. In scope in every file without an import (ADR 0054). |
 

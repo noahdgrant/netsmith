@@ -69,6 +69,15 @@ impl Model {
         }
     }
 
+    /// Whether an interface states the role of a pass-through (`UsbRole::Passthrough`): the bus
+    /// goes through its part, and the role is the one of the end behind it.
+    pub(crate) fn states_passthrough(&self, iface: InstId) -> bool {
+        match (self.role_of(iface), self.bus_def_of(iface)) {
+            (Some(role), Some((_, bus))) => bus.passes_through(&role),
+            _ => false,
+        }
+    }
+
     /// Whether `field` is the `.role` of a bus interface. What a part is on the bus is not a
     /// value that two ends share, so `~` does not equate it (as it does not equate a current or
     /// a logic level).
@@ -239,7 +248,14 @@ impl Model {
         net.terminals
             .iter()
             .filter_map(|&t| self.bus_pin(t))
-            .any(|bp| bp.role.is_some())
+            .any(|bp| {
+                bp.role.is_some()
+                    && !self
+                        .bus_defs
+                        .get(&bp.def)
+                        .zip(bp.role.as_deref())
+                        .is_some_and(|(bus, role)| bus.passes_through(role))
+            })
     }
 }
 
@@ -782,7 +798,7 @@ impl Rules<'_> {
             (Some(v), Some(e)) => {
                 let mut by_role: BTreeMap<String, Vec<String>> = BTreeMap::new();
                 for &end in members.iter().filter(|e| !same.contains(e)) {
-                    if let Some(r) = model.end_role(end) {
+                    if let Some(r) = model.end_role(end).filter(|r| !bus.passes_through(r)) {
                         by_role.entry(r).or_default().push(model.end_name(end));
                     }
                 }
@@ -928,7 +944,10 @@ pub fn bidirectional_rows(model: &Model) -> Vec<(InstId, String)> {
 /// The limit and the table of it are not judged (rule 7), so the part is asked to say which end
 /// it is. A bus that has no roles (`Uart`) has none to state and is not judged, an interface
 /// that no net joins to another of its bus is not, and a peripheral states its role in its
-/// definition. One finding for each such interface, with the part that has it.
+/// definition. A pass-through (`UsbRole::Passthrough`) states a role, which is what makes it
+/// transparent: the bus is judged from the ends behind it, and the finding names an end of that
+/// bus that states none, never the pass-through. One finding for each such interface, with the
+/// part that has it.
 pub fn joined_without_role(model: &Model) -> Vec<(InstId, String)> {
     let per_net = collect(model);
     let mut out = Vec::new();
@@ -973,7 +992,8 @@ pub fn joined_without_role(model: &Model) -> Vec<(InstId, String)> {
 }
 
 /// Rule 7, the note: a bus on which some end states its role and another does not, so the
-/// limit and the table of the second are not judged. One note for each such end.
+/// limit and the table of the second are not judged. A pass-through (`UsbRole::Passthrough`)
+/// is no end that states a role. One note for each such end.
 pub fn unstated_roles(model: &Model) -> Vec<(InstId, String)> {
     let per_net = collect(model);
     let mut out = Vec::new();
@@ -990,7 +1010,9 @@ pub fn unstated_roles(model: &Model) -> Vec<(InstId, String)> {
         };
         if bus.role_enum.is_none()
             || ends.len() < 2
-            || !ends.iter().any(|&e| model.role_of(e).is_some())
+            || !ends
+                .iter()
+                .any(|&e| model.role_of(e).is_some() && !model.states_passthrough(e))
         {
             continue;
         }
