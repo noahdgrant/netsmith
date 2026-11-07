@@ -1980,6 +1980,7 @@ mod tests {
 
     fn part(refdes: &str, kind: &str, package: Option<&str>) -> Part {
         Part {
+            provides: Vec::new(),
             refdes: refdes.into(),
             kind: kind.into(),
             value: "1".into(),

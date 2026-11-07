@@ -126,10 +126,27 @@ impl Assembly {
         }
     }
 
+    /// The word for it in the catalog files and the project manifest (`"fab"`).
     pub fn parse(word: &str) -> Option<Self> {
         [Self::Fab, Self::Hand, Self::None]
             .into_iter()
             .find(|a| a.word() == word)
+    }
+
+    /// The variant of the language's `AssemblyMode` for it (`Fab`, ADR 0054).
+    pub fn variant(self) -> &'static str {
+        match self {
+            Self::Fab => "Fab",
+            Self::Hand => "Hand",
+            Self::None => "None",
+        }
+    }
+
+    /// The part a variant of `AssemblyMode` names.
+    pub fn from_variant(variant: &str) -> Option<Self> {
+        [Self::Fab, Self::Hand, Self::None]
+            .into_iter()
+            .find(|a| a.variant() == variant)
     }
 }
 
@@ -160,16 +177,56 @@ fn assembly_of(
     pick: Option<&netsmith_solve::Pick>,
     errors: &mut Vec<String>,
 ) -> Option<Assembly> {
-    let word =
-        text_of(model, part, "assembly").or_else(|| pick.and_then(|p| p.assembly.clone()))?;
+    // The design says it with a variant of `AssemblyMode`; the checker has refused any
+    // other value, so a variant that is not one of the three is a mistake of the tool.
+    if let Some(variant) = text_of(model, part, "assembly") {
+        let found = Assembly::from_variant(&variant);
+        if found.is_none() {
+            errors.push(format!(
+                "`{}` has `.assembly` {variant}, which is not `AssemblyMode::Fab`, `AssemblyMode::Hand` or `AssemblyMode::None`",
+                model.path_of(part)
+            ));
+        }
+        return found;
+    }
+    // The catalog row says it with a word.
+    let word = pick.and_then(|p| p.assembly.clone())?;
     let found = Assembly::parse(&word);
     if found.is_none() {
         errors.push(format!(
-            "`{}` has `.assembly` \"{word}\", which is not \"fab\", \"hand\" or \"none\"",
+            "`{}` has `.assembly` \"{word}\" in its catalog row, which is not \"fab\", \"hand\" or \"none\"",
             model.path_of(part)
         ));
     }
     found
+}
+
+/// The most parts a bank may stand for. The solver offers far fewer; this stops a stated
+/// number that is a mistake.
+const MAX_BANK: f64 = 64.0;
+
+/// How many identical parts stand in this place (a bank, ADR 0052): the whole number in the
+/// part's `.count`, and one for a part with none or with none stated. A count that is not a
+/// whole number from 1 up, or that is still a range, is reported.
+fn bank_of(model: &Model, part: InstId, errors: &mut Vec<String>) -> usize {
+    let Some(field) = model.bank_count(part) else {
+        return 1;
+    };
+    match &model.field(field).domain {
+        Domain::Unset => 1,
+        Domain::Quantity(q)
+            if q.lo() == q.hi() && q.lo().fract() == 0.0 && (1.0..=MAX_BANK).contains(&q.lo()) =>
+        {
+            q.lo() as usize
+        }
+        other => {
+            errors.push(format!(
+                "`{}` is {other}, which is not a whole number of parts from 1 to {MAX_BANK}: state `.count` as one number, or leave it to the solver to choose",
+                model.path_of_field(field)
+            ));
+            1
+        }
+    }
 }
 
 /// The part a terminal belongs to, reaching up through any interfaces it sits in.
@@ -837,17 +894,16 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
     ids.sort_by(|a, b| natural_path_order(&a.0, &b.0));
 
     let mut counters: BTreeMap<String, usize> = BTreeMap::new();
-    let mut refdes_of: HashMap<InstId, String> = HashMap::new();
+    let mut refdes_of: HashMap<InstId, Vec<String>> = HashMap::new();
     let mut parts = Vec::new();
     let mut sourcing = Vec::new();
     let mut origins = Vec::new();
+    // The path of each part that is a bank of more than one, and how many (ADR 0052).
+    let mut banks: BTreeMap<String, usize> = BTreeMap::new();
     for (_, id) in &ids {
         netsmith_core::job::checkpoint();
         let inst = model.instance(*id);
         let letters = designator_of(model, *id, &mut errors);
-        let n = counters.entry(letters.clone()).or_insert(0);
-        *n += 1;
-        let refdes = format!("{letters}{n}");
         let pick = solution.picks.iter().find(|p| p.part == *id);
         // A label's value is the text it prints.
         let value = match (inst.type_name.as_str(), text_of(model, *id, "text")) {
@@ -865,28 +921,45 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
                 None => (Assembly::Fab, false),
             },
         };
-        sourcing.push(Sourced {
-            refdes: refdes.clone(),
-            kind: inst.type_name.clone(),
-            value: value.clone(),
-            package: package.clone(),
-            lcsc: pick.and_then(|p| p.lcsc.clone()),
-            mpn: pick.and_then(|p| p.mpn.clone()),
-            library: pick.and_then(|p| p.library),
-            assembly,
-            assembly_stated,
-            generic: pick.and_then(|p| p.generic.clone()),
-        });
-        parts.push(Part {
-            refdes: refdes.clone(),
-            kind: inst.type_name.clone(),
-            value,
-            package,
-            path: model.path_of(*id),
-            pins: pins_of(model, *id),
-        });
-        refdes_of.insert(*id, refdes);
-        origins.push(*id);
+        // A bank is one part in the design for each of its capacitors, numbered one after
+        // the other (ADR 0052). The first has the path of the instance and the others add
+        // `#2`, `#3`, so that each is a part a layout file keys by its own path.
+        let bank = bank_of(model, *id, &mut errors);
+        if bank > 1 {
+            banks.insert(model.path_of(*id), bank);
+        }
+        for k in 1..=bank {
+            let n = counters.entry(letters.clone()).or_insert(0);
+            *n += 1;
+            let refdes = format!("{letters}{n}");
+            let path = match k {
+                1 => model.path_of(*id),
+                k => format!("{}#{k}", model.path_of(*id)),
+            };
+            sourcing.push(Sourced {
+                refdes: refdes.clone(),
+                kind: inst.type_name.clone(),
+                value: value.clone(),
+                package: package.clone(),
+                lcsc: pick.and_then(|p| p.lcsc.clone()),
+                mpn: pick.and_then(|p| p.mpn.clone()),
+                library: pick.and_then(|p| p.library),
+                assembly,
+                assembly_stated,
+                generic: pick.and_then(|p| p.generic.clone()),
+            });
+            parts.push(Part {
+                refdes: refdes.clone(),
+                kind: inst.type_name.clone(),
+                provides: inst.provides.clone(),
+                value: value.clone(),
+                package: package.clone(),
+                path,
+                pins: pins_of(model, *id),
+            });
+            refdes_of.entry(*id).or_default().push(refdes);
+            origins.push(*id);
+        }
     }
 
     let mut nets = Vec::new();
@@ -913,13 +986,16 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
                 }
             };
             for pad in pads {
-                let pin = PinRef {
-                    refdes: refdes_of[&part].clone(),
-                    pin: pad,
-                };
-                // Two pins of one part on the same pad are one physical pin.
-                if !pins.contains(&pin) {
-                    pins.push(pin);
+                // Each part of a bank has the pad on the net.
+                for refdes in &refdes_of[&part] {
+                    let pin = PinRef {
+                        refdes: refdes.clone(),
+                        pin: pad.clone(),
+                    };
+                    // Two pins of one part on the same pad are one physical pin.
+                    if !pins.contains(&pin) {
+                        pins.push(pin);
+                    }
                 }
             }
         }
@@ -964,8 +1040,18 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
     features.constraints = constraints;
     let (offsets, offset_sites) = features::offsets(model, &mut errors);
     features.offsets = offsets;
-    let (protrusions, protrusion_sites) = features::protrusions(model, &mut errors);
+    let (protrusions, mut protrusion_sites) = features::protrusions(model, &mut errors);
     features.protrusions = protrusions;
+    let (mut constraint_sites, mut offset_sites) = (constraint_sites, offset_sites);
+    let mut bank_notes: Vec<String> = Vec::new();
+    features::expand_banks(
+        &mut features,
+        &mut constraint_sites,
+        &mut offset_sites,
+        &mut protrusion_sites,
+        &banks,
+        &mut bank_notes,
+    );
     // Tracks sized from the current of nets no rail gave a width (ADR 0036).
     let plan = match &process {
         Some(process) => guidelines::plan_tracks(model, process, &features),
@@ -989,7 +1075,11 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
             sourcing,
             origins,
             guidelines: guideline_findings,
-            notes: plan.notes,
+            notes: {
+                let mut notes = plan.notes;
+                notes.extend(bank_notes);
+                notes
+            },
             constraint_sites,
             offset_sites,
             protrusion_sites,
@@ -1003,8 +1093,9 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
 
 #[cfg(test)]
 mod tests {
-    /// The `part` names of the standard library with the file they are in and the letters
-    /// their body states (`None` for none).
+    /// The `part` and `generic` names of the standard library (a standard generic is a part
+    /// that is its own first provider, ADR 0068) and the letters their body states (`None` for
+    /// none).
     fn std_parts() -> Vec<(String, Option<String>)> {
         let std = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../std");
         let mut parts = Vec::new();
@@ -1018,7 +1109,10 @@ mod tests {
                     let text = std::fs::read_to_string(&path).unwrap();
                     let mut current: Option<usize> = None;
                     for line in text.lines() {
-                        if let Some(rest) = line.strip_prefix("part ") {
+                        if let Some(rest) = line
+                            .strip_prefix("part ")
+                            .or_else(|| line.strip_prefix("generic "))
+                        {
                             let name = rest.split([' ', '{']).next().unwrap();
                             parts.push((name.to_string(), None));
                             current = Some(parts.len() - 1);
@@ -1059,6 +1153,7 @@ mod tests {
             ("Coax", "J"),
             ("UsbCPower", "J"),
             ("UsbC2", "J"),
+            ("Obd2M", "J"),
             ("ProgrammingPads6", "J"),
             ("TestPoint", "TP"),
             ("MountingHole", "H"),

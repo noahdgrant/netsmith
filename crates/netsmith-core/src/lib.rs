@@ -13,13 +13,20 @@ pub struct Part {
     /// The library definition it was made from: `Resistor`, `Led`. An exporter decides
     /// what each kind looks like in its own tool.
     pub kind: String,
+    /// The generics the part's definition provides (`part X provides Resistor`, ADR 0068),
+    /// by name. A tool that treats a kind of part in its own way (an inductor lies along the
+    /// wire it is in, a capacitor decouples) reads it as well as `kind`, so that a provider
+    /// with a name of its own is treated as the kind it provides. Empty for a standard part
+    /// and for a part that provides nothing.
+    pub provides: Vec<String>,
     /// What a schematic shows as the part's value: `300`.
     pub value: String,
     /// The package the part was chosen in, such as `0402`, if it was chosen.
     pub package: Option<String>,
     /// Where the part is in the design: `stage.output_cap`, the path of its instance from
     /// the board. It does not change when reference designators are renumbered, so it is
-    /// what a layout file keys a part by (ADR 0030).
+    /// what a layout file keys a part by (ADR 0030). The second and later capacitors of a
+    /// bank add `#2`, `#3` (ADR 0052).
     pub path: String,
     /// The part's pins in the package it is in, in the order its pin table lists them. Empty
     /// for a part that has no pin table.
@@ -601,6 +608,7 @@ mod tests {
 
     fn part(refdes: &str) -> Part {
         Part {
+            provides: Vec::new(),
             refdes: refdes.into(),
             kind: "Resistor".into(),
             value: "1k".into(),

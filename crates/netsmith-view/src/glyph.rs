@@ -1447,6 +1447,7 @@ mod tests {
 
     fn part(kind: &str, package: Option<&str>) -> Part {
         Part {
+            provides: Vec::new(),
             refdes: "X1".into(),
             kind: kind.into(),
             value: "v".into(),
