@@ -1576,6 +1576,28 @@ mod tests {
     }
 
     #[test]
+    fn the_layout_files_problems_are_not_a_change_of_the_circuit() {
+        let layout = |board: Option<&str>| Problem {
+            stage: Some(ProblemStage::Layout),
+            ..problem(Severity::Note, board, "the design has no part `gone`")
+        };
+        let mut base = digest(board(Vec::new(), Vec::new()));
+        let mut head = digest(board(Vec::new(), Vec::new()));
+        base.problems = vec![problem(Severity::Warning, Some("B"), "same")];
+        head.problems = vec![
+            problem(Severity::Warning, Some("B"), "same"),
+            layout(Some("B")),
+            layout(None),
+        ];
+        let d = diff(&base, &head, None);
+        assert!(only(&d).problems.new.is_empty() && d.problems.new.is_empty());
+        assert!(
+            !d.changed,
+            "a new note of the layout file changes nothing compared"
+        );
+    }
+
+    #[test]
     fn a_module_and_a_port_are_kept_by_path() {
         let inst = |path: &str, type_name: &str| InstanceDigest {
             path: path.into(),

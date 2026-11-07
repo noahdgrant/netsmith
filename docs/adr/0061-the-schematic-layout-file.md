@@ -1,5 +1,5 @@
 ---
-status: proposed (the owner decided on 2026-11-06 that the schematic keeps where a person moved a part, and left the choices of the file to the author; every choice below is for the owner to review. Stage 1 of 4 is built: the file's types, reader, writer and matching; the drawing does not read it yet)
+status: proposed (the owner decided on 2026-11-06 that the schematic keeps where a person moved a part, and left the choices of the file to the author; every choice below is for the owner to review. Stages 1 to 3 of 4 are built: the file's types, reader, writer and matching; the drawing reads it; the editor server reads, reports and serves it. The page has no UI for it yet)
 ---
 
 # The schematic remembers where a person moved a part, in a layout file of its own
@@ -107,7 +107,7 @@ Rename `radio` to `rf` in the source and the finding becomes `[Trellis.sheets.ra
 
 - **Stage 1 (built, this ADR).** `netsmith_view::hints`: `LayoutHints`, `parse`, `to_toml`, `LayoutHints::resolve`, `unknown_boards`, `schematic_hints_path`, `HintFinding`, `ResolvedHints`, the tests, the glossary entry. No change to the engine.
 - **Stage 2 (built, "Built in stage 2" below).** The layout engine takes `&ResolvedHints` (an explicit argument of `layout_sheets_hinted`, empty for none) and applies it after the automatic placement: the block is moved with its satellites, the wires are routed on the moved drawing, `check`'s rules and the metrics hold for every hint, and the drawing with no hints is byte for byte today's. It raises `HintFinding::unusable` for a block that would overlap, and decides what a pin needs of the stable layout's origin.
-- **Stage 3.** The server reads `<stem>.sch.toml` beside the top-level file when the page asks for the schematic, calls `resolve` with `module_groups`, passes the result to the drawing and adds the findings to the Problems list (stage `layout`, the file and line as the location), and routes `GET` and `PUT /api/schematic-hints` with the `X-Netsmith` header (ADR 0019) that read and write the file with `to_toml`.
+- **Stage 3 (built, "Built in stage 3" below).** The server reads `<stem>.sch.toml` beside the top-level file when the page asks for the schematic, calls `resolve` with `module_groups`, passes the result to the drawing and adds the findings to the Problems list (stage `layout`, the file and line as the location), and routes `GET` and `PUT /api/schematic-hints` with the `X-Netsmith` header (ADR 0019) that read and write the file with `to_toml`.
 - **Stage 4.** The page: drag a part (its block) on the grid and write `dx`, `dy`; a modifier pins it; rotate and mirror keys; a way to clear a part's entry and a sheet's. Dragging only changes the file; undo is the file's own history.
 - **Not built, any stage:** wires, labels, buses or nets in the file; hints on the page's arrangement of sheets; a per-unit key; a tool that renames entries with a part.
 
@@ -136,3 +136,47 @@ The drawing reads the file. What was decided while building it, for the owner to
 
 **Measured** (`crates/netsmith-view/tests/hinted.rs`): moving the block of one main part by four steps, on the three boards of several sheets, moves that block (five parts on average) and nothing else of its sheet in the sheet's own frame (65 of 65 other parts stay, the wires of the block are routed again). Seeded random files (offsets, pins, turns, mirrors, note offsets, stale entries) on every board the tests draw, with and without rails: 104 drawings, 646 entries, 0 rules broken, each drawing the same twice and with the design listed the other way round (parts, wires, findings). Known limits: a turn that is not the engine's own takes a part out of its stack, so the sheet may re-flow more than for a move; and the page puts each sheet's box at its place in the arrangement, so a block that was the leftmost thing of its sheet shifts the box's edge and the whole sheet moves by the same steps on the page.
 
+
+## Built in stage 3
+
+The editor server reads the file, draws with it, reports it and serves it. What was decided while building it, for the owner to review (the file's format is unchanged).
+
+**Where the file is read: in the analysis.** The schematic's drawing is made by the analysis (the `draw` step, once for each board), so that is where the file is read: once for each top-level source file, matched with each of its boards (`LayoutHints::resolve`, with `module_groups`), and passed to `layout_sheets_hinted_findings`. "When the page asks for the schematic" in the stage list above is therefore "when the project is analysed"; `GET /api/schematic.svg` serves what that drew. A typed-text check (`check` over the socket) reads the file too, so its problems list agrees with the saved one. A read is never ambient: the file's text goes into the analysis as an argument.
+
+**What is wrong with the file is in the Problems list, stage `layout`** (`ProblemStage::Layout`, `layout` in the page; the dock's origin is "Layout"), at the file and line (`at.file` is the file's name in the project, `src/main.sch.toml`, the line is the table header's, the range the whole line):
+
+- an entry that matches nothing (`StaleSheet`, `StaleEntry`, `WrongSheet`), and one the drawing cannot honour (`Unusable`): a **note**, with the board's name in `board`, as ADR 0061 says a finding is. Notes show in the dock only once its toggle is on.
+- a table for a board the source file does not have (`unknown_boards`, given all the boards of the file): a note with no `board` (it belongs to no board).
+- a fault in the file's text, with its line (one problem for each, in the order of the file): a **warning**, not an error. The file as a whole is ignored and the drawing is the one there is without a file, byte for byte; the board builds, so nothing is an error and no view is dimmed as stale. The warning says so (`; the file is ignored and the schematic is drawn without it`). A file that cannot be read at all (not a missing one) is the same warning with no line.
+- a missing file is nothing.
+
+The layout findings are left out of a comparison with a git ref (ADR 0059): it is about the circuit, and a layout note is about how it is drawn.
+
+**The file is watched with the sources** (`Target::watched` lists the `.sch.toml` beside each top-level file that exists), so creating, editing and deleting it, in the editor or by another program, analyses the project again, once, as a change to the source does; the server's poll of every half second does not change. There is no separate bookkeeping for the editor's own writes, as the PCB layout file has (`layouts`): the file changes the drawing, which the analysis makes, so a write of our own is one analysis and not an echo (see the `PUT` below).
+
+**`GET /api/schematic-hints?board=`** answers the file of the source file the board is in (`BoardSummary.name`, `Demo/main` for a board of a system; `404` for a board that is not there; the route waits for the first analysis like the views, and answers `503` to a request that sends `X-Netsmith-Pending: 1`):
+
+```
+{ board, file: "src/main.sch.toml", exists, stamp, text, errors: [{line, message}],
+  boards: { <definition name>: { parts: {<path>: HintPart}, notes: {<key>: HintNote},
+                                 sheets: {<sheet>: {parts, notes}} } },
+  findings: [{kind, line, entry, message}], version }
+```
+
+`text` is the file as it is on disk (`""` with none); `stamp` is as `GET /api/file` has it (`none` for no file); `errors` are the faults of the text, and when there are any `boards` is empty (the file is ignored as a whole); `boards` is what the text says, in millimetres as written (`HintPart` has `dx`, `dy`, `pin: [x, y]`, `rotate`, `mirror` where given, and `line`; `HintNote` has `dx`, `dy`, `line`), so a page needs no TOML reader; `findings` are the entries not used for this board plus the tables for boards the source lacks, in file order, each `kind` one of `stale_sheet`, `stale_entry`, `wrong_sheet`, `unknown_board`, `unusable`; `version` is the analysis they are of.
+
+**`PUT /api/schematic-hints?board=`** takes the **text** of the file as a `text/plain` body (as `PUT /api/file` does, and unlike `POST /api/pcb/edit`, which takes changes) and an optional `X-Stamp` header. It needs `X-Netsmith: 1` (ADR 0019). It reads the text with `parse` and writes `to_toml` of what it says, atomically (a temporary file beside it, then a rename), so the page may send any text that reads (and a person's comments and spelling are normalised, the limit the ADR already states) and the file on disk is always the canonical one. It answers with the same body as `GET`, of the analysis that has the new file. Refusals leave the file as it was:
+
+- `422` with `{code: "schematic_hints_invalid", message, file, line, lines}` (a request that accepts JSON): `message` is every fault as `src/main.sch.toml:4: ...`, one to a line; `line` is the first fault's, `lines` all of them, comma separated (the structured body holds only strings).
+- `409` when `X-Stamp` is given and the file is not as it was at that stamp (another program edited it). Without `X-Stamp` the write goes through.
+- `404` for a board that is not there.
+
+A text with no entry writes `version = 1` and not a deleted file: deleting is the page's, or a person's, to do, and an empty file draws what no file draws.
+
+**One analysis, no loop.** The `PUT` writes the file, then reads the project's state as every request does, which analyses because the file's stamp changed (or, for a file created by it, because the watched list got longer); the answer is of that analysis, so the next `GET /api/schematic.svg` and the page's `rebuilt` are of the file just written, and the server's watcher, which polls the same state, finds the stamp already read and does nothing. Counted in `crates/netsmith/tests/editor_hints.rs`: the analyses that begin across a `PUT`, three more rounds of reads, a change by another program and a delete are exactly one each. Two `PUT`s are one after the other (the lock the PCB edit holds).
+
+**Cost, and what is left open.**
+
+- A change to the file analyses the **whole project**, not only the drawing: the check, solve, lower and draw steps run again, because the drawing is made inside the analysis and a board's build (`Built`) is not kept apart from it. For a project whose analysis takes seconds that is the delay of every drag stage 4 writes. The fix is to redraw the boards from the last build when only a `.sch.toml` changed (the drawing needs only the design, groups, rails and marks the build holds, plus the hints); it needs `Built` to be shared (it is not `Clone`) and a version bump with no analysis, as the PCB layout file has. Not built, for the owner to decide before stage 4.
+- The file is not in the project tree (`GET /api/project`) and `GET /api/file` does not serve it, so a problem's location `src/main.sch.toml:N` cannot be opened in the source editor yet; `GET /api/schematic-hints` returns its text. Whether it becomes a tree file (a role next to `physical`, with rename and delete following the source) is stage 4's question.
+- A board a system places twice has one table (its definition's name), and each of the two members gets the findings: a problem shows once, as the dock does for any problem of two boards with the same message and place.
