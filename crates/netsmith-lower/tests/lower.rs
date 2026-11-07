@@ -1376,3 +1376,82 @@ board Plain {
     .supply.pos ~> .r1 ~> .supply.neg
 }
 "#;
+
+// ---- the parts a relation is about (ADR 0060, "Built in the polish") ----------------------
+
+/// Two rails, a resistor between them and a relation of the rails only; `loads` more resistors
+/// from the output to ground, so ground has all of them and the output net has each of them.
+fn rails_only(loads: usize) -> String {
+    let mut src = String::from(
+        r#"
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Divided {
+    .input: Rail {
+        .voltage &= 5V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "VOUT"
+        .neg.net &= "GND"
+    }
+    .r1: Resistor { .resistance &= 1kohm +/- 1% }
+    .input.pos ~> .r1 ~> .output.pos
+    .input.neg ~ .output.neg
+    .output.voltage == .input.voltage / 2
+"#,
+    );
+    for i in 2..2 + loads {
+        src.push_str(&format!(
+            "    .r{i}: Resistor {{ .resistance &= 10kohm +/- 1% }}\n    .output.pos ~> .r{i} ~> .output.neg\n"
+        ));
+    }
+    src.push_str("}\n");
+    src
+}
+
+fn relation_anchors(d: &Design) -> Vec<Vec<String>> {
+    use netsmith_core::NoteKind;
+    d.notes
+        .iter()
+        .filter(|n| n.kind == NoteKind::Relation)
+        .map(|n| n.anchors.clone())
+        .collect()
+}
+
+#[test]
+fn a_relation_of_rails_only_is_about_the_parts_on_their_nets() {
+    let d = lowered(&rails_only(0)).unwrap();
+    assert_eq!(relation_anchors(&d), [["r1"]], "{:?}", d.notes);
+}
+
+#[test]
+fn the_return_net_of_a_rail_is_left_out_because_every_part_is_on_it() {
+    // `rb` is on ground and on the middle of a chain, and on no net a rail supplies.
+    let mut src = rails_only(0);
+    src.truncate(src.rfind('}').unwrap());
+    src.push_str(
+        "    .ra: Resistor { .resistance &= 10kohm +/- 1% }\n    .rb: Resistor { .resistance &= 10kohm +/- 1% }\n    .output.pos ~> .ra ~> .rb ~> .output.neg\n}\n",
+    );
+    let d = lowered(&src).unwrap();
+    assert_eq!(relation_anchors(&d), [["r1", "ra"]], "{:?}", d.notes);
+}
+
+#[test]
+fn a_relation_of_rails_with_more_than_three_parts_on_them_is_the_sheets() {
+    let d = lowered(&rails_only(3)).unwrap();
+    assert_eq!(
+        relation_anchors(&d),
+        [Vec::<String>::new()],
+        "{:?}",
+        d.notes
+    );
+}
+
+#[test]
+fn a_relation_that_names_a_part_is_about_the_parts_it_names_and_not_the_rails_parts() {
+    let d = lowered(NOTED).unwrap();
+    assert_eq!(relation_anchors(&d), [["light.d", "light.r"]]);
+}

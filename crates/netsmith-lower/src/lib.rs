@@ -13,7 +13,7 @@ pub use features::Sites;
 pub mod guidelines;
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use netsmith_check::{
     Board, Domain, InstId, InstKind, Member, Model, Panel, PinKind, Pinout, System, SystemBoard,
@@ -316,6 +316,38 @@ fn notes_of(model: &Model, drawn: &HashMap<InstId, String>) -> Vec<Note> {
             })
             .unwrap_or_default()
     };
+    // The parts on the nets of the pins of an interface, by path in natural order, leaving out
+    // the nets of `skip`.
+    let interface_parts = |id: InstId, skip: &BTreeSet<String>| -> Vec<String> {
+        let mut parts: Vec<InstId> = Vec::new();
+        for (_, member) in &model.instance(id).children {
+            if let Member::Inst(pin) = member
+                && model.instance(*pin).kind == InstKind::Pin
+                && !model.net_of(*pin).is_some_and(|n| skip.contains(&n.name))
+            {
+                parts.extend(net_parts(*pin));
+            }
+        }
+        let mut named: Vec<String> = parts.iter().map(|&p| model.path_of(p)).collect();
+        named.sort_by(|a, b| natural_path_order(a, b));
+        named.dedup();
+        named
+    };
+    // The nets a return runs on and that no rail draws from: ground, which every part is on.
+    let ground: BTreeSet<String> = {
+        let supply: BTreeSet<&str> = model
+            .balances()
+            .iter()
+            .filter(|b| !b.returns)
+            .map(|b| b.net.as_str())
+            .collect();
+        model
+            .balances()
+            .iter()
+            .filter(|b| b.returns && !supply.contains(b.net.as_str()))
+            .map(|b| b.net.clone())
+            .collect()
+    };
     let mut notes = Vec::new();
     for (id, inst) in model.instances() {
         let Some((file, line)) = &inst.doc_at else {
@@ -356,17 +388,7 @@ fn notes_of(model: &Model, drawn: &HashMap<InstId, String>) -> Vec<Note> {
                 if in_part {
                     continue;
                 }
-                let mut parts: Vec<InstId> = Vec::new();
-                for (_, member) in &inst.children {
-                    if let Member::Inst(pin) = member
-                        && model.instance(*pin).kind == InstKind::Pin
-                    {
-                        parts.extend(net_parts(*pin));
-                    }
-                }
-                let mut named: Vec<String> = parts.iter().map(|&p| model.path_of(p)).collect();
-                named.sort_by(|a, b| natural_path_order(a, b));
-                named.dedup();
+                let named = interface_parts(id, &BTreeSet::new());
                 // An interface nothing drawn is on (a process, a plain port) is not in the
                 // schematic: its comment stays in the source.
                 if named.is_empty() {
@@ -414,6 +436,39 @@ fn notes_of(model: &Model, drawn: &HashMap<InstId, String>) -> Vec<Note> {
                 if !anchors.contains(&path) {
                     anchors.push(path);
                 }
+            }
+        }
+        // A relation of rails only (`.cards.voltage == .supply.voltage * 0.9`) names no part: it
+        // is about the parts on the nets of the rails it names, as an interface's doc comment is,
+        // without the return net (ground has every part) and, as there, only when there are few.
+        if anchors.is_empty() {
+            let mut interfaces: Vec<InstId> = Vec::new();
+            for f in &fields {
+                let mut cur = Some(model.field(*f).owner);
+                while let Some(c) = cur {
+                    match model.instance(c).kind {
+                        InstKind::Interface => {
+                            if !interfaces.contains(&c) {
+                                interfaces.push(c);
+                            }
+                            break;
+                        }
+                        // The interface of a part that is not drawn is that part's own.
+                        InstKind::Part => break,
+                        _ => cur = model.instance(c).parent,
+                    }
+                }
+            }
+            let mut named: Vec<String> = Vec::new();
+            for i in interfaces {
+                for path in interface_parts(i, &ground) {
+                    if !named.contains(&path) {
+                        named.push(path);
+                    }
+                }
+            }
+            if named.len() <= MAX_DOC_ANCHORS {
+                anchors = named;
             }
         }
         let scope = model.path_of(written.scope);

@@ -318,6 +318,90 @@ fn the_svg_of_a_note_has_its_classes_and_references() {
     );
 }
 
+/// The attribute `data-anchors` lists the designators of every part a note is about, in the
+/// order the design's note names them, so the page need not read the words of a relation.
+fn anchors_of(doc: &str, n: usize) -> String {
+    let at = doc
+        .find(&format!(" data-n=\"{n}\""))
+        .unwrap_or_else(|| panic!("no note {n} in {doc:.200}"));
+    let tag = &doc[doc[..at].rfind("<g ").unwrap()..];
+    let tag = &tag[..tag.find('>').unwrap()];
+    let key = " data-anchors=\"";
+    let from = tag
+        .find(key)
+        .unwrap_or_else(|| panic!("note {n} has no data-anchors: {tag}"))
+        + key.len();
+    tag[from..from + tag[from..].find('"').unwrap()].to_string()
+}
+
+#[test]
+fn a_doc_note_of_a_part_names_that_part() {
+    let doc = svg(&board());
+    assert_eq!(anchors_of(&doc, 1), "R1");
+}
+
+#[test]
+fn a_relation_names_every_part_it_is_about_in_the_order_of_the_note() {
+    let doc = svg(&board());
+    assert_eq!(anchors_of(&doc, 2), "D1 R1");
+    // The first of them is the one `data-ref` names.
+    assert!(doc.contains("data-n=\"2\" data-ref=\"D1\""), "{doc:.200}");
+}
+
+#[test]
+fn a_relation_of_three_parts_names_all_three_not_only_the_first() {
+    let mut d = board();
+    d.notes.push(relation(
+        &["r1", "d1", "d1"],
+        ".r1.resistance == .led.current * 3",
+        None,
+    ));
+    // Every part once, in the order the note has them.
+    assert_eq!(anchors_of(&svg(&d), 3), "R1 D1");
+}
+
+#[test]
+fn the_note_of_a_sheet_names_no_part_but_says_so() {
+    let doc = svg(&board());
+    assert_eq!(anchors_of(&doc, 0), "");
+    assert!(!doc.contains("data-ref=\"\""));
+}
+
+#[test]
+fn a_relation_across_two_sheets_names_the_parts_of_both() {
+    let (mut d, groups): (Design, Vec<Group>) = common::supplies(3);
+    for g in &groups {
+        for &p in &g.parts {
+            d.parts[p].path = format!("{}.{}", g.name, d.parts[p].refdes.to_lowercase());
+        }
+    }
+    let (a, b) = (
+        d.parts[groups[0].parts[0]].clone(),
+        d.parts[groups[1].parts[0]].clone(),
+    );
+    d.notes = vec![relation(
+        &[a.path.as_str(), b.path.as_str()],
+        ".a.resistance == .b.resistance",
+        None,
+    )];
+    let (m, lib) = lib();
+    let l = layout_sheets_rails(&d, &groups, &Rails::default(), &m, &lib).unwrap();
+    let doc = netsmith_view::render_layout(&d, &l);
+    // The note is on the sheet of its first part, and names the part of the other sheet too.
+    assert_eq!(
+        anchors_of(&doc, 0),
+        format!("{} {}", a.refdes, b.refdes),
+        "{doc:.300}"
+    );
+}
+
+#[test]
+fn a_design_with_no_note_has_no_data_anchors() {
+    let mut d = board();
+    d.notes.clear();
+    assert!(!svg(&d).contains("data-anchors"));
+}
+
 #[test]
 fn more_than_eight_notes_go_in_one_column_at_the_right_margin() {
     let mut d = board();
