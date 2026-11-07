@@ -27,6 +27,7 @@ import {
 } from './layout';
 import { noteCompareProgress } from './compare/progress';
 import { booting, noteElapsed, notify, pending, setSocket, track } from './feedback/state';
+import { autosave } from './source/prefs';
 import { load, save as keep } from './storage';
 import {
   type Selection,
@@ -557,7 +558,35 @@ export function edit(path: string, text: string) {
     return;
   }
   scheduleCheck(path);
+  scheduleAutosave(path);
 }
+
+/** The pause after the last edit of a file before autosave writes it. */
+export const AUTOSAVE_MS = 1200;
+const autosaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** With autosave on, a file that has been left alone for a moment is saved, with no toast: the same write as Ctrl+S. A file whose
+ * disk copy changed under it (a conflict) is not written over; the person decides. */
+function scheduleAutosave(path: string) {
+  clearTimeout(autosaveTimers.get(path));
+  autosaveTimers.delete(path);
+  if (!autosave.peek()) return;
+  autosaveTimers.set(
+    path,
+    setTimeout(() => {
+      autosaveTimers.delete(path);
+      const f = openFiles.peek()[path];
+      if (!autosave.peek() || !f || f.readonly || f.conflict || !dirty(f)) return;
+      void save(path, true);
+    }, AUTOSAVE_MS),
+  );
+}
+
+// Turning autosave on writes the files that were already waiting.
+effect(() => {
+  if (!autosave.value) return;
+  for (const [path, f] of Object.entries(openFiles.peek())) if (dirty(f)) scheduleAutosave(path);
+});
 
 let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -601,7 +630,7 @@ export function closeFile(path: string) {
 
 const saving = new Set<string>();
 
-export async function save(path: string) {
+export async function save(path: string, quiet = false) {
   const f = openFiles.value[path];
   if (!f || f.readonly || !dirty(f) || saving.has(path)) return;
   saving.add(path);
@@ -610,7 +639,7 @@ export async function save(path: string) {
     // Edits made while the write was on its way stay edits.
     const now = openFiles.value[path] ?? f;
     setFile({ ...now, saved: f.text, stamp: saved.stamp, conflict: false });
-    notify({ kind: 'ok', title: `Saved ${path}`, ms: 2200 });
+    if (!quiet) notify({ kind: 'ok', title: `Saved ${path}`, ms: 2200 });
     void awaitRebuild();
   } catch (e) {
     const status = e instanceof ApiFailure ? e.status : 0;

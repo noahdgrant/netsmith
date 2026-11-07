@@ -22,6 +22,8 @@ export const hoverCards = kept('netsmith.source.hoverCards.v1', true);
 /** The muted value and part number at the end of a declaration's line. */
 export const inlineHints = kept('netsmith.source.inlineHints.v1', true);
 export const wordWrap = kept('netsmith.source.wrap.v1', false);
+/** A file is saved a moment after the last edit, with no Ctrl+S. Off until chosen: a save builds the project again. */
+export const autosave = kept('netsmith.source.autosave.v1', false);
 export const fontSize = kept('netsmith.source.fontSize.v1', FONT.initial, (v): v is number => typeof v === 'number' && v >= FONT.min && v <= FONT.max);
 /** The outline panel at the foot of the file tree: open or folded, and how tall. */
 export const outlineOpen = kept('netsmith.source.outline.v1', true);
