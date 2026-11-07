@@ -130,24 +130,25 @@
 //!    `docs/research/schematic-metrics-baseline.md`.
 //!
 //! 10. **A person's moves are an input** (`hinting.rs`, ADR 0061). The layout file's hints
-//!    ([`crate::ResolvedHints`], an explicit argument of [`crate::layout_sheets_hinted`]; empty
-//!    for none, and then the drawing is byte for byte the one there is without them) are applied
-//!    where the engine can do it without drawing twice, and never after a wire is routed:
-//!    - a turn or a mirror (`rotate`, `mirror`) replaces the automatic orientation of the box
-//!      before anything is placed; the choices the engine makes for a pair satellite, a series
-//!      part and a part of a spine skip it, and a part that is turned leaves its stack;
-//!    - a move (`dx`, `dy`, `pin`) carries the **block** (a main part with its satellites, or the
-//!      unit a satellite stands in) once every block has its place in the rows and before the wires
-//!      are routed. The slot of the block in the rows stays, so the rest of the sheet is where it
-//!      was (a hinted block is a fixed piece of the rows' arrangement); a block that would lie on
-//!      another part, or stand more than 127 mm outside the drawing, is not moved (a finding);
-//!    - a note's offset is applied after the notes are placed, to a place that is free of
-//!      everything else;
-//!    - the frame still starts where the reference part would be without the file, so an offset
-//!      means the same in any drawing and a `pin` is from that part.
-//!    A drawing that breaks a rule of [`crate::check`] with the file that it does not break
-//!    without is drawn again entry by entry, keeping each one that breaks none (a hint can make a
-//!    drawing ugly and cannot make it wrong).
+//!     ([`crate::ResolvedHints`], an explicit argument of [`crate::layout_sheets_hinted`]; empty
+//!     for none, and then the drawing is byte for byte the one there is without them) are applied
+//!     where the engine can do it without drawing twice, and never after a wire is routed:
+//!     - a turn or a mirror (`rotate`, `mirror`) replaces the automatic orientation of the box
+//!       before anything is placed; the choices the engine makes for a pair satellite, a series
+//!       part and a part of a spine skip it, and a part that is turned leaves its stack;
+//!     - a move (`dx`, `dy`, `pin`) carries the **block** (a main part with its satellites, or the
+//!       unit a satellite stands in) once every block has its place in the rows and before the wires
+//!       are routed. The slot of the block in the rows stays, so the rest of the sheet is where it
+//!       was (a hinted block is a fixed piece of the rows' arrangement); a block that would lie on
+//!       another part, or stand more than 127 mm outside the drawing, is not moved (a finding);
+//!     - a note's offset is applied after the notes are placed, to a place that is free of
+//!       everything else;
+//!     - the frame still starts where the reference part would be without the file, so an offset
+//!       means the same in any drawing and a `pin` is from that part.
+//!
+//!     A drawing that breaks a rule of [`crate::check`] with the file that it does not break
+//!     without is drawn again entry by entry, keeping each one that breaks none (a hint can make a
+//!     drawing ugly and cannot make it wrong).
 //!
 //! Nothing here knows how a layout is drawn: [`crate::render_svg`] reads the result.
 
@@ -1265,9 +1266,9 @@ fn draw(
     }
 
     let mut orient = orientations(&ctx, &units, &column_of);
-    for p in 0..orient.len() {
+    for (p, o) in orient.iter_mut().enumerate() {
         if ctx.hints.turned(p) {
-            orient[p] = ctx.hints.orient(p, orient[p]);
+            *o = ctx.hints.orient(p, *o);
         }
     }
     // Draw the sheet, see which nets are better as names, and draw it again with them: a name

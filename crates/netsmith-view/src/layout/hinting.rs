@@ -601,11 +601,12 @@ mod tests {
     }
 
     fn plan(moves: Vec<Move>) -> Plan {
-        let mut p = Plan::default();
-        p.group = vec![0; 4];
-        p.reference.insert(0, 0);
-        p.moves = moves;
-        p
+        Plan {
+            group: vec![0; 4],
+            reference: BTreeMap::from([(0, 0)]),
+            moves,
+            ..Plan::default()
+        }
     }
 
     #[test]
