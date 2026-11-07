@@ -24,7 +24,14 @@ impl File {
             }
             write_docs(&mut out, &def.docs, "///", 0);
             let _ = write!(out, "{} {} ", def.kind.keyword(), def.name.to_source());
-            write_block(&mut out, &def.inner_docs, &def.items, 0);
+            if !def.provides.is_empty() {
+                let _ = write!(out, "provides {} ", join(&def.provides, ", "));
+            }
+            if def.kind == DefKind::Enum {
+                write_variants(&mut out, &def.inner_docs, &def.variants);
+            } else {
+                write_block(&mut out, &def.inner_docs, &def.items, 0);
+            }
             out.push('\n');
         }
         for (i, unit) in self.physicals.iter().enumerate() {
@@ -78,12 +85,10 @@ impl PinFunction {
 
 impl PinRow {
     pub fn to_source(&self) -> String {
-        let mut out = format!(
-            "{} {} {}",
-            self.pin.to_source(),
-            self.kind.word(),
-            quote(&self.name)
-        );
+        let mut out = format!("{} {}", self.pin.to_source(), self.kind.word());
+        if !self.is_contract() {
+            let _ = write!(out, " {}", quote(&self.name));
+        }
         for pad in &self.pads {
             let _ = write!(out, " {}", quote(&pad.text));
         }
@@ -105,6 +110,9 @@ impl Expr {
             Self::Number(n, _) => n.text.clone(),
             Self::Str(s, _) => quote(s),
             Self::Path(p) => p.to_source(),
+            Self::Variant { ty, variant, .. } => {
+                format!("{}::{}", join(&ty.segments, "::"), variant.to_source())
+            }
             Self::Neg(inner, _) => format!("-{}", inner.to_source()),
             Self::Paren(inner, _) => format!("({})", inner.to_source()),
             Self::Range { lo, hi, .. } => format!("{}..{}", lo.to_source(), hi.to_source()),
@@ -128,6 +136,7 @@ impl CmpOp {
     pub fn symbol(self) -> &'static str {
         match self {
             Self::Narrow => "&=",
+            Self::Default => "?=",
             Self::EqEq => "==",
             Self::Ge => ">=",
             Self::Le => "<=",
@@ -169,6 +178,23 @@ fn write_docs(out: &mut String, docs: &[String], marker: &str, depth: usize) {
         }
         out.push('\n');
     }
+}
+
+/// Writes the `{ ... }` of an `enum`: one variant on each line.
+fn write_variants(out: &mut String, inner_docs: &[String], variants: &[Variant]) {
+    if variants.is_empty() && inner_docs.is_empty() {
+        out.push_str("{}");
+        return;
+    }
+    out.push_str("{\n");
+    write_docs(out, inner_docs, "//!", 1);
+    for variant in variants {
+        write_docs(out, &variant.docs, "///", 1);
+        out.push_str("    ");
+        out.push_str(&variant.name.to_source());
+        out.push_str(",\n");
+    }
+    out.push('}');
 }
 
 /// Writes `{ ... }` at `depth`, leaving the cursor after the closing brace.

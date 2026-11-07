@@ -29,8 +29,32 @@ fn message(src: &str) -> String {
 #[test]
 fn passive_parts_parse() {
     let file = parse(PASSIVE).unwrap();
-    assert_eq!(file.definitions.len(), 8);
-    assert!(file.definitions.iter().all(|d| d.kind == DefKind::Part));
+    // Eight parts and the enum `Dielectric` of the capacitor (ADR 0055). Seven of the parts
+    // are generics that are their own first provider (ADR 0068 stage 2); `Switch` has no
+    // catalog and stays a `part`.
+    assert_eq!(file.definitions.len(), 9);
+    assert_eq!(
+        file.definitions
+            .iter()
+            .filter(|d| matches!(d.kind, DefKind::Part | DefKind::Generic))
+            .count(),
+        8
+    );
+    assert_eq!(
+        file.definitions
+            .iter()
+            .filter(|d| d.kind == DefKind::Generic)
+            .count(),
+        7
+    );
+    let dielectric = def(&file, "Dielectric");
+    assert_eq!(dielectric.kind, DefKind::Enum);
+    let variants: Vec<&str> = dielectric
+        .variants
+        .iter()
+        .map(|v| v.name.name.as_str())
+        .collect();
+    assert_eq!(variants, ["C0G", "X5R", "X7R"]);
 
     let r = def(&file, "Resistor");
     let bridges: Vec<_> = r
@@ -62,7 +86,12 @@ fn passive_parts_parse() {
             .iter()
             .map(Path::to_source)
             .collect::<Vec<_>>(),
-        [".resistance", ".max_power", ".package"]
+        [
+            ".resistance",
+            ".max_power",
+            ".package",
+            ".temperature_coefficient"
+        ]
     );
 
     let led = def(&file, "Led");
@@ -95,8 +124,8 @@ fn sources_parse() {
     assert_eq!(rail.kind, DefKind::Interface);
     assert_eq!(
         rail.items.len(),
-        5,
-        "pos, neg, the voltage between them, the current drawn through pos, and the narrowest track"
+        6,
+        "pos, neg, the voltage between them, the current drawn through pos, the peak voltage, and the narrowest track"
     );
 }
 
