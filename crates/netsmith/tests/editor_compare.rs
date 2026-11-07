@@ -241,7 +241,10 @@ fn a_changed_value_is_a_field_with_old_and_new_and_a_designator_on_each_side() {
     assert_eq!(change.base_at.as_ref().unwrap().line, at.line);
     // The LED the solver picks for the new current is another one too.
     assert!(led.parts.changed.iter().any(|p| p.path == "led"));
-    assert_eq!(c.summary, "2 values changed, 1 rail changed");
+    assert_eq!(
+        c.summary,
+        "2 values changed, 1 system port changed, 1 rail changed"
+    );
     // The power board is untouched.
     assert_eq!(board(&c, "TwoBoards/power").status, BoardStatus::Unchanged);
     // The line of the bill of materials changed with it.
@@ -1341,7 +1344,10 @@ fn two_refs_are_compared_with_each_other_and_the_files_on_disk_are_not_read() {
 
     // Later refs: the resistor is the change between them.
     let c = compare_refs(&w, &second, &third).unwrap();
-    assert_eq!(c.summary, "2 values changed, 1 rail changed");
+    assert_eq!(
+        c.summary,
+        "2 values changed, 1 system port changed, 1 rail changed"
+    );
     let led = board(&c, "TwoBoards/led");
     let r1 = led.parts.changed.iter().find(|p| p.path == "r1").unwrap();
     // Each side's line is in that side's own commit.
@@ -1493,4 +1499,272 @@ fn a_comparison_of_two_refs_that_is_cancelled_leaves_nothing_behind() {
         fs::read_to_string(r.project.join("src/main.nsm")).unwrap(),
     );
     assert_eq!(before, after);
+}
+
+// ---- the extensions of ADR 0059: systems and the PCB ----
+
+fn system<'a>(c: &'a Compare, name: &str) -> &'a netsmith_editor::api::CompareSystem {
+    c.systems
+        .iter()
+        .find(|s| s.name == name)
+        .unwrap_or_else(|| {
+            panic!(
+                "no system {name} in {:?}",
+                c.systems.iter().map(|s| &s.name).collect::<Vec<_>>()
+            )
+        })
+}
+
+/// The layout file of the two boards: the resistor of the LED board and the output capacitor of
+/// the power board put by hand, and nothing else (the placer chooses the rest).
+fn layout(r1: &str, extra: &str) -> String {
+    format!(
+        "version = 1\n\n[LedBoard.parts.\"r1\"]\nat = [{r1}]\nrotation = 0.0\nside = \"top\"\nsource = \"hand\"\n{extra}\n[PowerBoard.parts.\"stage.output_cap\"]\nat = [10.0, 4.0]\nrotation = 0.0\nside = \"top\"\nsource = \"hand\"\n"
+    )
+}
+
+#[test]
+fn a_system_whose_port_changed_says_what_it_was_and_what_it_is() {
+    need_tools!();
+    let (r, _, _) = committed("system-port", "");
+    r.edit(
+        "src/main.nsm",
+        ".current &= 0mA..50mA",
+        ".current &= 0mA..30mA",
+    );
+    let c = compare(&r.workspace(), "HEAD").unwrap();
+    let s = system(&c, "TwoBoards");
+    assert_eq!(s.status, BoardStatus::Changed);
+    let port = s
+        .ports
+        .changed
+        .iter()
+        .find(|p| (p.board.as_str(), p.name.as_str()) == ("power", "output"))
+        .unwrap_or_else(|| panic!("{:#?}", s.ports));
+    let current = port.fields.iter().find(|f| f.field == "current").unwrap();
+    assert!(
+        current.old.as_deref().unwrap().contains("50"),
+        "{current:?}"
+    );
+    assert!(
+        current.new.as_deref().unwrap().contains("30"),
+        "{current:?}"
+    );
+    assert!(
+        s.boards.added.is_empty() && s.joins.added.is_empty() && s.mates.changed.is_empty(),
+        "{s:#?}"
+    );
+    assert!(c.summary.contains("system port"), "{}", c.summary);
+    assert!(c.changed);
+    // The board's own rail says it too, and the system does not say it again.
+    assert!(
+        s.rails.changed.iter().all(|r| !r.net.starts_with("power:")),
+        "{:#?}",
+        s.rails
+    );
+    // A board asked for alone has no systems in its answer.
+    let one = compare_with(&r.workspace(), "HEAD", Some("TwoBoards/power"), &silent()).unwrap();
+    assert!(one.systems.is_empty());
+}
+
+#[test]
+fn a_renamed_net_is_not_a_mate_or_a_system_rail_that_changed() {
+    need_tools!();
+    let (r, _, _) = committed("system-rename", "");
+    r.edit("src/main.nsm", "\"3V3\"", "\"VOUT\"");
+    let c = compare(&r.workspace(), "HEAD").unwrap();
+    assert_eq!(c.summary, "1 net renamed");
+    let s = system(&c, "TwoBoards");
+    assert_eq!(s.status, BoardStatus::Unchanged, "{s:#?}");
+    assert!(s.rails.added.is_empty() && s.rails.removed.is_empty() && s.rails.changed.is_empty());
+}
+
+#[test]
+fn a_system_that_is_only_on_one_side_is_added_or_removed() {
+    need_tools!();
+    let (r, first, w) = committed("system-gone", "");
+    // The second commit has no system: its boards are the system's, so they go with it.
+    let text = fs::read_to_string(r.project.join("src/main.nsm")).unwrap();
+    let cut = text.find("system TwoBoards").unwrap();
+    fs::write(r.project.join("src/main.nsm"), &text[..cut]).unwrap();
+    let second = r.commit("no system");
+    let gone = compare_refs(&w, &first, &second).unwrap();
+    assert_eq!(gone.error, None, "{:?}", gone.error);
+    assert_eq!(system(&gone, "TwoBoards").status, BoardStatus::Removed);
+    assert!(
+        gone.summary.contains("system TwoBoards removed"),
+        "{}",
+        gone.summary
+    );
+    let back = compare_refs(&w, &second, &first).unwrap();
+    assert_eq!(system(&back, "TwoBoards").status, BoardStatus::Added);
+    assert!(
+        back.summary.contains("system TwoBoards added"),
+        "{}",
+        back.summary
+    );
+    assert!(back.changed);
+}
+
+#[test]
+fn a_part_moved_on_the_pcb_has_its_old_and_new_place_and_a_part_the_placer_chose_is_not_listed() {
+    need_tools!();
+    let r = Repo::new("pcb-moved", "");
+    fs::write(r.project.join("src/main.pcb.toml"), layout("5.0, 2.0", "")).unwrap();
+    let first = r.commit("a layout");
+    // The resistor is 2.5 mm to the right, turned, on the other face; and a part is added, which
+    // moves the parts the placer chose.
+    fs::write(
+        r.project.join("src/main.pcb.toml"),
+        layout("7.5, 2.0", "").replace(
+            "rotation = 0.0\nside = \"top\"\nsource = \"hand\"\n\n[PowerBoard",
+            "rotation = 90.0\nside = \"bottom\"\nsource = \"hand\"\n\n[PowerBoard",
+        ),
+    )
+    .unwrap();
+    r.edit("src/main.nsm", INPUT_CAP, &format!("{BULK}{INPUT_CAP}"));
+    let w = r.workspace();
+    let c = compare(&w, &first).unwrap();
+    let led = board(&c, "TwoBoards/led");
+    assert_eq!(led.pcb_error, None);
+    let pcb = led.pcb.as_ref().expect("a PCB comparison");
+    assert_eq!(pcb.layout_file, "src/main.pcb.toml");
+    assert_eq!(pcb.moved.len(), 1, "{:#?}", pcb.moved);
+    let m = &pcb.moved[0];
+    assert_eq!(m.path, "r1");
+    assert_eq!((m.base.x, m.base.y), (5.0, 2.0));
+    assert_eq!((m.head.x, m.head.y), (7.5, 2.0));
+    assert!((m.distance_mm - 2.5).abs() < 1e-9);
+    let fields: Vec<(&str, &str, &str)> = m
+        .fields
+        .iter()
+        .map(|f| {
+            (
+                f.field.as_str(),
+                f.old.as_deref().unwrap(),
+                f.new.as_deref().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        fields,
+        [
+            ("position", "5, 2 mm", "7.5, 2 mm"),
+            ("rotation", "0°", "90°"),
+            ("side", "top", "bottom"),
+        ]
+    );
+    assert_eq!(
+        (m.base.placement.as_str(), m.head.placement.as_str()),
+        ("hand", "hand")
+    );
+    // The LED the placer chose is where the placer put it on both sides: not a statement.
+    assert!(pcb.moved.iter().all(|p| p.path != "led"));
+    assert!(led.parts.changed.is_empty(), "the circuit is the same");
+    assert_eq!(
+        led.status,
+        BoardStatus::Changed,
+        "a part moved on the PCB is a change"
+    );
+    // The power board gained a part, which the placer-chosen parts follow: still no move listed,
+    // and the outline is the parts' size, not something the design said.
+    let power = board(&c, "TwoBoards/power");
+    let power_pcb = power.pcb.as_ref().unwrap();
+    assert!(
+        power_pcb.moved.is_empty() && power_pcb.outline.is_none(),
+        "{power_pcb:#?}"
+    );
+    assert!(
+        c.summary.contains("1 part moved on the PCB"),
+        "{}",
+        c.summary
+    );
+    assert!(c.changed);
+    // Against a ref with no layout file the same part is derived on that side: it is compared.
+    let none = Repo::new("pcb-none", "");
+    let base = none.commit("no layout");
+    fs::write(
+        none.project.join("src/main.pcb.toml"),
+        layout("7.5, 2.0", ""),
+    )
+    .unwrap();
+    let c = compare(&none.workspace(), &base).unwrap();
+    let moved = &board(&c, "TwoBoards/led").pcb.as_ref().unwrap().moved;
+    assert_eq!(moved.len(), 1, "{moved:#?}");
+    assert_eq!(moved[0].base.placement, "derived");
+    assert_eq!(moved[0].head.placement, "hand");
+}
+
+#[test]
+fn a_layout_file_that_cannot_be_placed_says_so_instead_of_comparing_half_a_board() {
+    need_tools!();
+    let r = Repo::new("pcb-error", "");
+    fs::write(r.project.join("src/main.pcb.toml"), layout("5.0, 2.0", "")).unwrap();
+    let first = r.commit("a layout");
+    // A part the board does not have: the layout does not fit the board.
+    fs::write(
+        r.project.join("src/main.pcb.toml"),
+        layout(
+            "5.0, 2.0",
+            "\n[LedBoard.parts.\"nothing\"]\nat = [1.0, 1.0]\n",
+        ),
+    )
+    .unwrap();
+    let c = compare(&r.workspace(), &first).unwrap();
+    let led = board(&c, "TwoBoards/led");
+    assert!(led.pcb.is_none());
+    let error = led
+        .pcb_error
+        .as_deref()
+        .expect("why the PCB is not compared");
+    assert!(error.contains("head side"), "{error}");
+}
+
+#[test]
+fn the_pcb_and_the_systems_of_two_refs_are_read_from_the_commits() {
+    need_tools!();
+    let r = Repo::new("pcb-refs", "");
+    fs::write(r.project.join("src/main.pcb.toml"), layout("5.0, 2.0", "")).unwrap();
+    let first = r.commit("a layout");
+    fs::write(r.project.join("src/main.pcb.toml"), layout("6.0, 3.0", "")).unwrap();
+    let second = r.commit("the resistor moved");
+    // The files on disk say something else again, which two refs do not read.
+    fs::write(r.project.join("src/main.pcb.toml"), layout("9.0, 9.0", "")).unwrap();
+    let w = r.workspace();
+    let c = compare_refs(&w, &first, &second).unwrap();
+    let moved = &board(&c, "TwoBoards/led").pcb.as_ref().unwrap().moved;
+    assert_eq!(moved.len(), 1);
+    assert_eq!((moved[0].head.x, moved[0].head.y), (6.0, 3.0));
+    assert_eq!(c.summary, "1 part moved on the PCB");
+}
+
+#[test]
+fn a_file_the_editor_does_not_open_can_be_read_from_disk_for_the_comparison_of_a_file() {
+    need_tools!();
+    let (r, _, w) = committed("worktree-file", "");
+    fs::write(r.project.join("src/main.pcb.toml"), "version = 1\n").unwrap();
+    let f = w.git_file(":worktree", "src/main.pcb.toml").unwrap();
+    assert_eq!((f.text.as_str(), f.readonly), ("version = 1\n", true));
+    assert_eq!(f.stamp, "worktree");
+    // The same rules as for a ref: the project's own text files, inside it.
+    assert_eq!(
+        w.git_file(":worktree", "src/main.rs").unwrap_err().status,
+        403
+    );
+    assert_eq!(
+        w.git_file(":worktree", "../x.toml").unwrap_err().status,
+        403
+    );
+    assert_eq!(
+        w.git_file(":worktree", "src/none.toml").unwrap_err().status,
+        404
+    );
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink("/etc/hostname", r.project.join("src/link.toml")).unwrap();
+        assert_eq!(
+            w.git_file(":worktree", "src/link.toml").unwrap_err().status,
+            403
+        );
+    }
 }

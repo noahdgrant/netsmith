@@ -22,16 +22,43 @@ use netsmith_solve::Catalogs;
 
 use super::{
     Workspace,
-    analysis::{BoardData, api_location},
-    diff::{self, BoardDigest, Digest, InstanceDigest, NetDigest, PartDigest},
+    analysis::{BoardData, api_location, contained},
+    diff::{self, BoardDigest, Digest, InstanceDigest, NetDigest, PartDigest, SystemDigest},
     git::{self, Place, Scratch},
-    millis, power,
+    millis, pcb, power, system,
 };
 use crate::{
     locate,
     project::{MANIFEST, Project, SourceFile, Target},
     resolve::resolve_generics,
 };
+
+/// What `GET /api/git/file?ref=` takes for the files on disk instead of a commit.
+pub const WORKTREE: &str = ":worktree";
+
+/// The most a file of the project may have for the page to read it as a side of a comparison.
+const MAX_DISK_FILE: u64 = 8 * 1024 * 1024;
+
+/// A file of the project as it is on disk, read only: a regular file in the project's folder
+/// (never a link), as text.
+fn disk_file(dir: &Path, path: &str) -> Result<FileContent, ApiError> {
+    let full = dir.join(path);
+    let meta = std::fs::symlink_metadata(&full)
+        .map_err(|_| ApiError::not_found(format!("`{path}` is not a file on disk")))?;
+    if !meta.is_file() || meta.len() > MAX_DISK_FILE {
+        return Err(ApiError::forbidden(format!(
+            "`{path}` is not a regular file of the project that can be read"
+        )));
+    }
+    let text = std::fs::read_to_string(&full)
+        .map_err(|_| ApiError::forbidden(format!("`{path}` is not text")))?;
+    Ok(FileContent {
+        path: path.to_string(),
+        text,
+        stamp: "worktree".to_string(),
+        readonly: true,
+    })
+}
 
 /// How many refs' readings are kept.
 const KEPT: usize = 8;
@@ -149,6 +176,11 @@ impl Workspace {
             )));
         }
         let dir = self.git_dir();
+        // The files on disk, for the page's comparison of a file the editor does not open (a layout
+        // file): `:worktree` is no name a ref can have (git refuses a colon in one).
+        if rev == WORKTREE {
+            return disk_file(&dir, path);
+        }
         let place = git::place(&dir).map_err(git::unavailable)?;
         let commit = git::resolve(&dir, rev)?;
         let full = join(&place.prefix, path);
@@ -221,6 +253,7 @@ impl Workspace {
             changed: false,
             source: source.clone(),
             boards: Vec::new(),
+            systems: Vec::new(),
             problems: empty_problems(),
         };
         let digest = match &*reading {
@@ -291,6 +324,7 @@ impl Workspace {
             changed: result.changed,
             source,
             boards: result.boards,
+            systems: result.systems,
             problems: result.problems,
         })
     }
@@ -618,7 +652,7 @@ pub(super) fn digest_of(ws: &Workspace) -> Result<Digest, ApiError> {
             // give it a moment to settle.
             std::thread::sleep(std::time::Duration::from_millis(50 * u64::from(attempt)));
         }
-        let (version, handles, problems, trees) = {
+        let (version, handles, problems, trees, systems) = {
             let state = ws.fresh();
             // The analysis of a workspace that a job reads for itself ends when the job is
             // cancelled, with no boards: that is no reading to digest.
@@ -637,11 +671,45 @@ pub(super) fn digest_of(ws: &Workspace) -> Result<Digest, ApiError> {
                 .iter()
                 .map(|(b, _)| power::tree(&state.snapshot, &b.built.label()).ok())
                 .collect();
+            // The systems are read under the lock too: their views are made from the snapshot.
+            let systems: BTreeMap<String, SystemDigest> = state
+                .snapshot
+                .systems
+                .iter()
+                .filter_map(|(data, _)| {
+                    let name = data.solved.name.clone();
+                    let view = system::view(&state.snapshot, &name).ok();
+                    let rails = power::tree(&state.snapshot, &name)
+                        .map(|t| {
+                            t.nodes
+                                .into_iter()
+                                // `led:3V3`: the member and the net, which is what names a rail
+                                // across the boards of a system.
+                                .map(|mut n| {
+                                    n.net = n.id.clone();
+                                    n
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    view.map(|view| {
+                        (
+                            name,
+                            SystemDigest {
+                                file: data.file.clone(),
+                                view,
+                                rails,
+                            },
+                        )
+                    })
+                })
+                .collect();
             (
                 state.version,
                 handles,
                 state.snapshot.problems.clone(),
                 trees,
+                systems,
             )
         };
         let catalogs = ws.target.catalogs();
@@ -649,13 +717,25 @@ pub(super) fn digest_of(ws: &Workspace) -> Result<Digest, ApiError> {
         for ((data, stale), tree) in handles.iter().zip(trees) {
             let label = data.built.label();
             let bom = Backend::bom(ws, &label).map_err(|e| e.message);
-            boards.insert(
-                label,
-                board_digest(data, *stale, tree, bom, catalogs.as_ref().ok()),
+            let mut digest = board_digest(data, *stale, tree, bom, catalogs.as_ref().ok());
+            // Placing a board takes seconds on a big one: a cancelled compare ends between boards.
+            job::checkpoint();
+            // A panic in the placer ends this board's PCB, not the compare (a cancellation goes on).
+            digest.pcb = Some(
+                match contained(|| pcb::place(data, &label).map(|e| pcb::digest(&e, data))) {
+                    Ok(Ok(placed)) => Ok(placed),
+                    Ok(Err(e)) => Err(e.message),
+                    Err(panic) => Err(format!("the placer panicked: {panic}")),
+                },
             );
+            boards.insert(label, digest);
         }
         if ws.fresh().version == version {
-            return Ok(Digest { boards, problems });
+            return Ok(Digest {
+                boards,
+                systems,
+                problems,
+            });
         }
     }
     Err(ApiError::conflict(
@@ -765,6 +845,7 @@ fn board_digest(
         modules,
         interfaces,
         bom,
+        pcb: None,
     }
 }
 

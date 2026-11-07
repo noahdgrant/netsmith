@@ -438,6 +438,7 @@ impl Backend for Fake {
                 error: None,
             },
             boards: Vec::new(),
+            systems: Vec::new(),
             problems: ProblemsDiff {
                 new: Vec::new(),
                 resolved: Vec::new(),

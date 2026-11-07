@@ -102,7 +102,7 @@ function Progress({ since, against }: { since: number; against: string }) {
         ))}
       </ol>
       <div class="cmp-sk-tiles" aria-hidden="true">
-        {[0, 1, 2, 3, 4].map((i) => (
+        {[0, 1, 2, 3, 4, 5, 6].map((i) => (
           <span key={i} class="sk sk-tile" />
         ))}
       </div>
@@ -190,7 +190,7 @@ function Summary({ data }: { data: CompareData }) {
           </span>
         )}
         <span class="spacer" />
-        <span class="cmp-total" data-testid="cmp-total" data-tip="Parts, nets, rails, modules and interfaces that changed. The bill of materials, the problems and the source's lines are counted in their own tabs.">
+        <span class="cmp-total" data-testid="cmp-total" data-tip="Parts, nets, rails, modules and interfaces, systems and the PCB that changed. The bill of materials, the problems and the source's lines are counted in their own tabs.">
           <b>{total}</b> circuit {total === 1 ? 'change' : 'changes'}
           <span class="faint">{sc === 'all' ? (several ? `in ${plural(data.boards.length, 'board')}` : '') : `in ${sc}`}</span>
         </span>
@@ -277,7 +277,7 @@ function Tabs({ n }: { n: Record<Category, number> }) {
 }
 
 function EmptyTab({ category, against, only, since }: { category: Category; against: string; only: boolean; since?: string }) {
-  const word: Record<Category, string> = { parts: 'No part changed', nets: 'No net changed', rails: 'No rail changed', bom: 'No line of the bill of materials changed', modules: 'No module or interface changed', problems: 'No problem is new or resolved', source: 'No file differs' };
+  const word: Record<Category, string> = { parts: 'No part changed', nets: 'No net changed', rails: 'No rail changed', bom: 'No line of the bill of materials changed', modules: 'No module or interface changed', systems: 'No system changed', pcb: 'Nothing changed on the PCB', problems: 'No problem is new or resolved', source: 'No file differs' };
   return <EmptyState compact icon="check-circle" tone="ok" title={word[category]} help={only && category !== 'source' ? `Only the source differs from ${against}.` : `In this board, ${since ?? `since ${against}`}.`} />;
 }
 
@@ -348,7 +348,7 @@ function Body({ data }: { data: CompareData }) {
   // The bill of materials is always grouped by what happened to the line (Added, Removed, Changed): the server's order mixes the boards' lines.
   const groups = groupRows(shown, active === 'bom' ? 'change' : group);
   const several = sc === 'all' && data.boards.length > 1;
-  const rowsTotal = n.parts + n.nets + n.rails + n.bom + n.modules + n.problems;
+  const rowsTotal = n.parts + n.nets + n.rails + n.bom + n.modules + n.systems + n.pcb + n.problems;
   // No change to the circuit: say so with a check, and what did differ in the source (comments, formatting, a layout file).
   const calm = !data.changed && rowsTotal === 0 && n.parts + n.nets + n.rails === 0;
   const onlySource = calm && data.source.filesChanged > 0;
@@ -490,7 +490,7 @@ export function Compare() {
     body = (
       <div class="cmp-progress" aria-busy="true" aria-label="Reading the repository" data-testid="cmp-skeleton">
         <div class="cmp-sk-tiles" aria-hidden="true">
-          {[0, 1, 2, 3, 4].map((i) => (
+          {[0, 1, 2, 3, 4, 5, 6].map((i) => (
             <span key={i} class="sk sk-tile" />
           ))}
         </div>

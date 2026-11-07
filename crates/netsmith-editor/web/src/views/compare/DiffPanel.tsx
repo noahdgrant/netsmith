@@ -13,7 +13,7 @@ import { type Collapsed, type ViewRow, createDiffView, openRegion, scrollToRow, 
 import { barText, collapsedRegions, diffControls, hideChoice, hidesUnchanged, openBar, openedBars, regionAt } from '../../compare/collapse';
 import { changeStarts, inlineRows, sideRows, splitLines } from '../../compare/linediff';
 import { baseText, closeDiff, compare, diffTarget, headTextAtRef, openDiff, type DiffTarget } from '../../compare/store';
-import { goTo, openFiles, revealSection } from '../../store';
+import { goTo, openFiles, project, revealSection } from '../../store';
 import { load, save } from '../../storage';
 
 type Mode = 'inline' | 'side';
@@ -23,8 +23,11 @@ const MODE_KEY = 'netsmith.compare.diffmode';
 async function headText(path: string): Promise<{ text: string; open: boolean } | null> {
   const f = openFiles.peek()[path];
   if (f) return { text: f.text, open: true };
+  // A file the editor does not open (a board's layout file) is read from disk through the comparison's own route, which is not
+  // asked for a file the editor has, and does not make the server answer 404 for one it has not.
+  const listed = project.peek()?.files.some((x) => x.path === path);
   try {
-    return { text: (await api.file(path)).text, open: false };
+    return { text: (listed ? await api.file(path) : await api.gitFile(':worktree', path)).text, open: false };
   } catch {
     return null;
   }

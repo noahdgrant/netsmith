@@ -8,16 +8,20 @@ import type {
   CompareBoard,
   CompareBomLine,
   CompareField,
+  ComparePcbArea,
   ComparePin,
+  CompareSystem,
   Location,
+  PcbBox,
   Problem,
+  RailsDiff,
   Severity,
   SourceFile,
 } from '../api';
 import { ampsText } from '../power/format';
 import { dollars, plural } from '../util';
 
-export type Category = 'parts' | 'nets' | 'rails' | 'bom' | 'modules' | 'problems' | 'source';
+export type Category = 'parts' | 'nets' | 'rails' | 'bom' | 'modules' | 'systems' | 'pcb' | 'problems' | 'source';
 
 export const CATEGORIES: { id: Category; label: string }[] = [
   { id: 'parts', label: 'Parts' },
@@ -25,6 +29,8 @@ export const CATEGORIES: { id: Category; label: string }[] = [
   { id: 'rails', label: 'Rails' },
   { id: 'bom', label: 'BOM' },
   { id: 'modules', label: 'Modules and interfaces' },
+  { id: 'systems', label: 'Systems' },
+  { id: 'pcb', label: 'PCB' },
   { id: 'problems', label: 'Problems' },
   { id: 'source', label: 'Source' },
 ];
@@ -42,7 +48,7 @@ export const STATUS_LABEL: Record<RowStatus, string> = {
   resolved: 'Resolved',
 };
 
-export type RowKind = 'part' | 'net' | 'rail' | 'bom' | 'module' | 'port' | 'problem' | 'file';
+export type RowKind = 'part' | 'net' | 'rail' | 'bom' | 'module' | 'port' | 'problem' | 'file' | 'system' | 'mate' | 'pcb';
 
 /** A pin that joined or left a net, for the row's details. */
 export interface PinChange {
@@ -191,14 +197,19 @@ export function netRows(b: CompareBoard): ChangeRow[] {
 const headroomText = (a: number | undefined): string => (a === undefined ? 'unknown' : ampsText(a));
 
 export function railRows(b: CompareBoard): ChangeRow[] {
+  return railRowsOf(b.rails, b.name, 'rails');
+}
+
+/** The rows of a list of rails, for a board (the Rails tab) or for a system (the Systems tab: `led:3V3` is the member and the net). */
+function railRowsOf(d: RailsDiff, board: string, category: Category): ChangeRow[] {
   const out: ChangeRow[] = [];
-  for (const r of b.rails.added) {
-    out.push(row({ id: `rail+${r.net}`, category: 'rails', kind: 'rail', status: 'added', board: b.name, title: r.net, type: r.voltage?.text, after: r.voltage?.text, field: 'voltage', select: { kind: 'net', key: r.net }, head: r.at, fields: railFields(r) }));
+  for (const r of d.added) {
+    out.push(row({ id: `rail+${r.net}`, category, kind: 'rail', status: 'added', board, title: r.net, type: r.voltage?.text, after: r.voltage?.text, field: 'voltage', select: { kind: 'net', key: r.net }, head: r.at, fields: railFields(r) }));
   }
-  for (const r of b.rails.removed) {
-    out.push(row({ id: `rail-${r.net}`, category: 'rails', kind: 'rail', status: 'removed', board: b.name, title: r.net, type: r.voltage?.text, before: r.voltage?.text, field: 'voltage', base: r.at, fields: railFields(r) }));
+  for (const r of d.removed) {
+    out.push(row({ id: `rail-${r.net}`, category, kind: 'rail', status: 'removed', board, title: r.net, type: r.voltage?.text, before: r.voltage?.text, field: 'voltage', base: r.at, fields: railFields(r) }));
   }
-  for (const r of b.rails.changed) {
+  for (const r of d.changed) {
     const fields: CompareField[] = [];
     if (r.baseNet) fields.push({ field: 'name', old: r.baseNet, new: r.net });
     if (r.voltage) fields.push({ field: 'voltage', old: r.voltage.base?.text, new: r.voltage.head?.text });
@@ -211,10 +222,10 @@ export function railRows(b: CompareBoard): ChangeRow[] {
     out.push(
       row({
         id: `rail~${r.net}`,
-        category: 'rails',
+        category,
         kind: 'rail',
         status: 'changed',
-        board: b.name,
+        board,
         title: r.net,
         baseTitle: r.baseNet,
         before: first ? fieldText(first.old) : undefined,
@@ -302,6 +313,78 @@ export function moduleRows(b: CompareBoard): ChangeRow[] {
   return out;
 }
 
+// ---- systems ----
+
+/** The systems of the comparison that a scope is about: all of them, and none for one board, as the server's answer for one board
+ * has none (a system belongs to no board, so the boards' counts and the systems' add up to the whole). */
+export function systemsIn(c: Compare, scope: Scope): CompareSystem[] {
+  return scope === 'all' ? (c.systems ?? []) : [];
+}
+
+const nameOf = (v: string | undefined) => (v === undefined || v === '' ? 'none' : v);
+
+export function systemRows(s: CompareSystem): ChangeRow[] {
+  const out: ChangeRow[] = [];
+  const base = { category: 'systems' as const, board: s.name };
+  const whole = s.status === 'added' || s.status === 'removed';
+  if (whole) {
+    out.push(row({ ...base, id: `system${s.status}`, kind: 'system', status: s.status as 'added' | 'removed', title: s.name, type: 'system', before: s.status === 'removed' ? plural(s.boards.removed.length, 'board') : undefined, after: s.status === 'added' ? plural(s.boards.added.length, 'board') : undefined, field: 'boards' }));
+    return out;
+  }
+  for (const i of s.boards.added) out.push(row({ ...base, id: `sboard+${i.path}`, kind: 'system', status: 'added', title: i.path, type: 'board', after: i.typeName, field: 'type', head: i.at }));
+  for (const i of s.boards.removed) out.push(row({ ...base, id: `sboard-${i.path}`, kind: 'system', status: 'removed', title: i.path, type: 'board', before: i.typeName, field: 'type', base: i.at }));
+  for (const i of s.boards.changed) out.push(row({ ...base, id: `sboard~${i.path}`, kind: 'system', status: 'changed', title: i.path, type: 'board', before: i.baseType, after: i.headType, field: 'type', fields: [{ field: 'type', old: i.baseType, new: i.headType }], head: i.at }));
+  const port = (p: { board: string; name: string; voltage?: string; current?: string }) => `${p.board}.${p.name}`;
+  const portFields = (p: { voltage?: string; current?: string }): CompareField[] => [...(p.voltage ? [{ field: 'voltage', new: p.voltage }] : []), ...(p.current ? [{ field: 'current', new: p.current }] : [])];
+  for (const p of s.ports.added) out.push(row({ ...base, id: `sport+${port(p)}`, kind: 'port', status: 'added', title: port(p), type: 'port', after: p.voltage ?? p.current, field: p.voltage ? 'voltage' : 'current', fields: portFields(p) }));
+  for (const p of s.ports.removed) out.push(row({ ...base, id: `sport-${port(p)}`, kind: 'port', status: 'removed', title: port(p), type: 'port', before: p.voltage ?? p.current, field: p.voltage ? 'voltage' : 'current', fields: portFields(p) }));
+  for (const p of s.ports.changed) {
+    const first = p.fields[0];
+    out.push(row({ ...base, id: `sport~${port(p)}`, kind: 'port', status: 'changed', title: port(p), type: 'port', before: first ? nameOf(first.old) : undefined, after: first ? nameOf(first.new) : undefined, field: first?.field, fields: p.fields }));
+  }
+  for (const j of s.joins.added) out.push(row({ ...base, id: `join+${j}`, kind: 'system', status: 'added', title: j, type: 'join' }));
+  for (const j of s.joins.removed) out.push(row({ ...base, id: `join-${j}`, kind: 'system', status: 'removed', title: j, type: 'join' }));
+  const mateName = (m: { a: string; b: string }) => `${m.a} ~ ${m.b}`;
+  for (const m of s.mates.added) out.push(row({ ...base, id: `mate+${mateName(m)}`, kind: 'mate', status: 'added', title: mateName(m), type: 'mate', head: m.at, fields: m.ports.length ? [{ field: 'ports', new: m.ports.join(', ') }] : [] }));
+  for (const m of s.mates.removed) out.push(row({ ...base, id: `mate-${mateName(m)}`, kind: 'mate', status: 'removed', title: mateName(m), type: 'mate', base: m.at, fields: m.ports.length ? [{ field: 'ports', old: m.ports.join(', ') }] : [] }));
+  for (const m of s.mates.changed) {
+    const first = m.fields[0];
+    out.push(row({ ...base, id: `mate~${mateName(m)}`, kind: 'mate', status: 'changed', title: mateName(m), type: 'mate', before: first ? nameOf(first.old) : undefined, after: first ? nameOf(first.new) : undefined, field: first?.field, fields: m.fields, head: m.at }));
+  }
+  for (const g of s.groundGroups.added) out.push(row({ ...base, id: `ground+${g}`, kind: 'system', status: 'added', title: g, type: 'ground group' }));
+  for (const g of s.groundGroups.removed) out.push(row({ ...base, id: `ground-${g}`, kind: 'system', status: 'removed', title: g, type: 'ground group' }));
+  out.push(...railRowsOf(s.rails, s.name, 'systems'));
+  return out;
+}
+
+// ---- the PCB ----
+
+const sizeText = (s: { width: number; height: number }) => `${mmText(s.width)} × ${mmText(s.height)} mm`;
+const mmText = (v: number) => String(Math.round(v * 100) / 100);
+const areaText = (b: PcbBox | undefined) => (b ? `${mmText(b.width)} × ${mmText(b.height)} mm at ${mmText(b.x)}, ${mmText(b.y)}` : 'none');
+
+export function pcbRows(b: CompareBoard): ChangeRow[] {
+  const p = b.pcb;
+  if (!p) return [];
+  const out: ChangeRow[] = [];
+  const layout: Location = { file: p.layoutFile, line: 1, column: 1, endLine: 1, endColumn: 1 };
+  const base = { category: 'pcb' as const, kind: 'pcb' as const, board: b.name };
+  for (const m of p.moved) {
+    const first = m.fields[0];
+    out.push(row({ ...base, id: `pcb~${m.path}`, status: 'moved', title: m.path, baseTitle: m.basePath, type: m.fields.map((f) => f.field).join(', '), before: first ? nameOf(first.old) : undefined, after: first ? nameOf(first.new) : undefined, field: first?.field, desBase: m.designatorBase, desHead: m.designatorHead, fields: m.fields, module: parentPath(m.path), select: { kind: 'part', key: m.path }, head: layout, base: layout }));
+  }
+  if (p.outline) out.push(row({ ...base, id: 'pcb-outline', status: 'changed', title: 'Outline', type: 'board size', before: sizeText(p.outline.base), after: sizeText(p.outline.head), field: 'size', fields: [{ field: 'size', old: sizeText(p.outline.base), new: sizeText(p.outline.head) }], head: layout, base: layout }));
+  if (p.layers) {
+    const [was, now] = [p.layers.base, p.layers.head];
+    out.push(row({ ...base, id: 'pcb-layers', status: 'changed', title: 'Layers', type: 'copper layers', before: plural(was.length, 'layer'), after: plural(now.length, 'layer'), field: 'layers', fields: [{ field: 'layers', old: was.join(', '), new: now.join(', ') }], head: layout, base: layout }));
+  }
+  const area = (a: ComparePcbArea, what: 'keepout' | 'cutout') =>
+    row({ ...base, id: `pcb-${what}-${a.status}-${a.name}`, status: a.status === 'unchanged' ? 'changed' : a.status, title: a.name, type: what, before: a.base ? areaText(a.base) : undefined, after: a.head ? areaText(a.head) : undefined, field: 'area', fields: [{ field: 'area', old: a.base ? areaText(a.base) : undefined, new: a.head ? areaText(a.head) : undefined }], head: a.status === 'removed' ? undefined : layout, base: a.status === 'added' ? undefined : layout });
+  for (const a of p.keepouts) out.push(area(a, 'keepout'));
+  for (const a of p.cutouts) out.push(area(a, 'cutout'));
+  return out;
+}
+
 // ---- problems ----
 
 export function problemRows(board: string, d: { new: Problem[]; resolved: Problem[] }): ChangeRow[] {
@@ -343,6 +426,8 @@ export interface Rows {
   rails: ChangeRow[];
   bom: ChangeRow[];
   modules: ChangeRow[];
+  systems: ChangeRow[];
+  pcb: ChangeRow[];
   problems: ChangeRow[];
 }
 
@@ -356,6 +441,8 @@ export function rowsOf(c: Compare, scope: Scope): Rows {
     rails: boards.flatMap(railRows),
     bom: boards.flatMap(bomRows),
     modules: boards.flatMap(moduleRows),
+    systems: systemsIn(c, scope).flatMap(systemRows),
+    pcb: boards.flatMap(pcbRows),
     problems: [...problemRows('', c.problems), ...boards.flatMap((b) => problemRows(b.name, b.problems))],
   };
 }
@@ -363,14 +450,14 @@ export function rowsOf(c: Compare, scope: Scope): Rows {
 /** How many rows a tab has (the renumbered parts are counted apart, as the summary does). */
 export function counts(c: Compare, scope: Scope): Record<Category, number> {
   const r = rowsOf(c, scope);
-  return { parts: r.parts.length, nets: r.nets.length, rails: r.rails.length, bom: r.bom.length, modules: r.modules.length, problems: r.problems.length, source: c.source.files.length };
+  return { parts: r.parts.length, nets: r.nets.length, rails: r.rails.length, bom: r.bom.length, modules: r.modules.length, systems: r.systems.length, pcb: r.pcb.length, problems: r.problems.length, source: c.source.files.length };
 }
 
-/** The circuit changes of the boards in scope: parts, nets, rails, modules and ports, not the bill of materials, the problems or
+/** The circuit changes of the boards in scope: parts, nets, rails, modules and ports, the PCB and the systems, not the bill of materials, the problems or
  * the source's lines. This one number is the tiles' total in the section, and the chip's in the status bar when the scope is all. */
 export function circuitChanges(c: Compare | null, scope: Scope = 'all'): number {
   if (!c || c.error) return 0;
-  return boardsIn(c, scope).reduce((n, b) => n + boardChanges(b), 0);
+  return boardsIn(c, scope).reduce((n, b) => n + boardChanges(b), 0) + systemsIn(c, scope).reduce((n, s) => n + systemChanges(s), 0);
 }
 
 /** What the status chip counts: the circuit changes of every board. */
@@ -427,7 +514,7 @@ export interface TileChip {
 }
 
 export interface Tile {
-  id: 'parts' | 'nets' | 'rails' | 'bom' | 'problems';
+  id: 'parts' | 'nets' | 'rails' | 'bom' | 'systems' | 'pcb' | 'problems';
   label: string;
   value: string;
   sub?: string;
@@ -477,6 +564,15 @@ export function tiles(c: Compare, scope: Scope): Tile[] {
   const delta = deltas.length > 0 && deltas.every((d) => d !== undefined && d !== null) ? sum(deltas as number[]) : undefined;
   const bomChanged = bomA + bomR + bomC > 0;
   const bomCostUnknown = boards.some((b) => b.bom === undefined) && !bomChanged ? true : bomChanged && delta === undefined;
+  const rows = rowsOf(c, scope);
+  const byStatus = (list: ChangeRow[], ...s: RowStatus[]) => list.filter((r) => s.includes(r.status)).length;
+  const sysA = byStatus(rows.systems, 'added');
+  const sysR = byStatus(rows.systems, 'removed');
+  const sysC = byStatus(rows.systems, 'changed', 'moved', 'renamed');
+  const pcbA = byStatus(rows.pcb, 'added');
+  const pcbR = byStatus(rows.pcb, 'removed');
+  const pcbC = byStatus(rows.pcb, 'changed', 'moved');
+  const movedParts = boards.reduce((a, b) => a + (b.pcb?.moved.length ?? 0), 0);
   const probs = [c.problems, ...boards.map((b) => b.problems)];
   const pNew = sum(probs.map((p) => p.new.length));
   const pRes = sum(probs.map((p) => p.resolved.length));
@@ -494,6 +590,8 @@ export function tiles(c: Compare, scope: Scope): Tile[] {
       tab: 'bom',
       ...(bomCostUnknown ? { muted: true, tip: 'No prices in the catalogs yet' } : {}),
     },
+    { id: 'systems', label: 'Systems', value: String(rows.systems.length), tone: 'neutral', chips: chips(sysA, sysR, sysC), tab: 'systems' },
+    { id: 'pcb', label: 'PCB', value: String(rows.pcb.length), sub: movedParts ? `${plural(movedParts, 'part')} moved` : undefined, tone: 'neutral', chips: chips(pcbA, pcbR, pcbC), tab: 'pcb' },
     { id: 'problems', label: 'Problems', value: pNew === 0 && pRes === 0 ? 'None' : `${pNew} new`, sub: pRes ? `${pRes} resolved` : undefined, tone: pNew > 0 ? 'bad' : pRes > 0 ? 'ok' : 'neutral', chips: [...(pNew ? [{ sign: '+' as const, n: pNew, label: 'new' }] : []), ...(pRes ? [{ sign: '-' as const, n: pRes, label: 'resolved' }] : [])], tab: 'problems' },
   ];
 }
@@ -508,8 +606,23 @@ export function boardChanges(b: CompareBoard): number {
     b.parts.added.length + b.parts.removed.length + b.parts.changed.length +
     b.nets.added.length + b.nets.removed.length + b.nets.renamed.length + b.nets.changed.length +
     b.rails.added.length + b.rails.removed.length + b.rails.changed.length +
-    inst(b.modules) + inst(b.interfaces)
+    inst(b.modules) + inst(b.interfaces) +
+    pcbChanges(b)
   );
+}
+
+/** How many things differ on a board's PCB: parts moved, the outline, the layers, keepouts and cutouts. */
+export function pcbChanges(b: CompareBoard): number {
+  const p = b.pcb;
+  return p ? p.moved.length + (p.outline ? 1 : 0) + (p.layers ? 1 : 0) + p.keepouts.length + p.cutouts.length : 0;
+}
+
+/** How many things differ in a system: boards, ports, joins, mates, ground groups and the rails only it explains. A system that is
+ * added or removed is one change. */
+export function systemChanges(s: CompareSystem): number {
+  if (s.status === 'added' || s.status === 'removed') return 1;
+  const d = (x: { added: unknown[]; removed: unknown[]; changed?: unknown[] }) => x.added.length + x.removed.length + (x.changed?.length ?? 0);
+  return d(s.boards) + d(s.ports) + d(s.joins) + d(s.mates) + d(s.groundGroups) + d(s.rails);
 }
 
 /** What a list of boards says of each: `3 changes`, `new board`, `removed`, `unchanged`. */

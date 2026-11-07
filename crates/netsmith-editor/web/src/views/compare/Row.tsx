@@ -13,7 +13,7 @@ import { hoverAttrs } from '../../hover';
 import { selectAndReveal, selection } from '../../selection';
 import { board, chooseBoard, goTo, revealSection } from '../../store';
 
-const KIND_ICON: Record<RowKind, IconName> = { part: 'part', net: 'net', rail: 'power', bom: 'bom', module: 'module', port: 'bus', problem: 'note', file: 'file' };
+const KIND_ICON: Record<RowKind, IconName> = { part: 'part', net: 'net', rail: 'power', bom: 'bom', module: 'module', port: 'bus', problem: 'note', file: 'file', system: 'system', mate: 'link', pcb: 'pcb' };
 const TONE: Record<RowStatus, Tone> = { added: 'ok', removed: 'bad', changed: 'warn', renumbered: 'neutral', renamed: 'info', moved: 'info', new: 'bad', resolved: 'ok' };
 
 /** Pick what a row stands for in every view, in the board it is on. False when it stands for nothing on the head side. */
