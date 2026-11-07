@@ -33,6 +33,10 @@ A net that the checked model says is the return of a rail (the `neg` side) is dr
 
 `scripts/editor-verify launch --fixture schematic_bench` (the invented project `examples/schematic_bench`: four sheets, `adc`, `mcu`, `buck`, `modem`) then `drive schematic-rules` measures the page's own SVG with the browser's text boxes and asserts each rule above (wires not names, parts beside their pins, a symbol only at the end of a wire, no wire over any text, an X on every open pin, one box for a three-unit symbol, a table for 97 pins, 22 parts on one sheet). `SHOT_LABEL=after scripts/editor-verify drive schematic-shots` takes each sheet at 1366 x 768 and 2000 x 1000. Look at the screenshots.
 
+### The kind of a pin
+
+The view draws no symbol for a pin's kind. A KiCad symbol has its own pins, and the box the view draws for a part with no symbol puts a pin on a side by its kind: an input and a passive pin on the left, an output and a `tri_state` pin on the right, a bidirectional pin and a no-connect pin on whichever side is shorter, power above and ground below (`Sides::put` in `crates/netsmith-view/src/glyph.rs`). The kind is in the tooltip of the mark on an open pin (`not connected: U2 RDY (tri_state)`). `scripts/editor-verify launch --fixture tri_state` then `drive tri-state` checks the sides and the marks of an invented flash and processor, one row of each kind; look at `tri-state-02-marks.png`.
+
 ### A symbol of several units, or of many pins
 
 A part whose symbol has several units is one box with every pin on the side the symbol puts it; a symbol of more than 60 pads is one box with two columns of pins in labelled groups (Power, Ground, then by the start of the pin names, the unconnected last) and says "N pins". Pin names are as big as net names there. The KiCad export keeps the units.

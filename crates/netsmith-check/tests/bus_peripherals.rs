@@ -371,3 +371,55 @@ fn a_generic_refuses_the_statement_as_before() {
         c.render()
     );
 }
+
+// ---- the advice about a function that states no kind (message 10) ----------------------
+
+const BARE: &str = r#"
+import std::bus::{Spi, SpiRole}
+import std::sources::Rail
+
+/// Zbare, an invented processor whose functions state no kind of their own.
+part Zbare {
+    .vdd: Rail
+    peripheral SPIM0 on APP_GPIO as Spi SpiRole::Master {
+        SPIM0_SCK  as sclk
+        SPIM0_MOSI:output as mosi
+        SPIM0_MISO as miso
+    }
+    pins {
+        .vdd.pos power         "VDD"   "1"
+        .vdd.neg power         "VSS"   "2"
+        .p00     bidirectional "P0.00" "3" fn APP_GPIO
+        .p01     bidirectional "P0.01" "4" fn APP_GPIO
+        .p02     bidirectional "P0.02" "5" fn APP_GPIO
+    }
+}
+board B {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: Zbare
+    .supply ~ .u.vdd
+    .u.p00.function &= "SPIM0_SCK"
+    .u.p01.function &= "SPIM0_MOSI"
+    .u.p02.function &= "SPIM0_MISO"
+}
+"#;
+
+#[test]
+fn a_function_that_states_no_kind_on_a_bidirectional_pin_is_advised_to_say_it() {
+    let c = run(BARE);
+    let rows: Vec<String> = bidirectional_rows(&c.board("B").unwrap().model)
+        .into_iter()
+        .map(|(_, m)| m)
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            "`u.p00` is `bidirectional` in the table of `Zbare`, and its function `SPIM0_SCK` states no kind of its own, and `SpiRole::Master` makes `sclk` an output: write `SPIM0_SCK:output` or `SPIM0_SCK:tri_state`, as the datasheet says, unless the datasheet says the pin also receives",
+            "`u.p02` is `bidirectional` in the table of `Zbare`, and its function `SPIM0_MISO` states no kind of its own, and `SpiRole::Master` makes `miso` an input: write `SPIM0_MISO:input`, as the datasheet says, unless the datasheet says the pin also drives",
+        ]
+    );
+}

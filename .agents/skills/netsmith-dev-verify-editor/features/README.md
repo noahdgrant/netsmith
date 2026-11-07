@@ -11,6 +11,7 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | Project tree: new file and folder, rename, delete (toolbar, right-click menu, F2, Delete, Ctrl+N) | `project-tree.md` | `tree-files` | `tree` |
 | Source editor and live diagnostics | `source-editor.md` | `editor` | `two_boards` |
 | Schematic view and click-through | `schematic.md` | `schematic`, `big-schematic` | `two_boards`, `big` |
+| Schematic box of a part with a `tri_state` pin (the side it is on, the mark of an open one) | `schematic.md` | `tri-state` | `tri_state` |
 | Power tree | `power-tree.md` | `power`, `single-board`, `big-power` | `two_boards`, `regulator`, `big` |
 | Power tree of an invented board: layout, collapsed loads, path from the source, keys, hover, issues | `power-tree.md` | `power-tree`, `power-issues` | `power_tree` |
 | Files coloured by extension (TOML, plain text, .nsm), the note on an invalid-token mark | `source-editor.md` | `languages` | `catalog_refresh` |
