@@ -8,7 +8,7 @@
 import type { Location, PcbFinding, Problem, ProblemStage, Severity } from '../api';
 import type { Section } from '../layout';
 
-export type Origin = 'syntax' | 'checker' | 'solver' | 'lower' | 'guideline' | 'power' | 'placement' | 'routing' | 'rules' | 'kicad';
+export type Origin = 'syntax' | 'checker' | 'solver' | 'lower' | 'guideline' | 'layout' | 'power' | 'placement' | 'routing' | 'rules' | 'kicad';
 
 export const ORIGIN_LABEL: Record<Origin, string> = {
   syntax: 'Syntax',
@@ -16,6 +16,7 @@ export const ORIGIN_LABEL: Record<Origin, string> = {
   solver: 'Solver',
   lower: 'Lowering',
   guideline: 'Guideline',
+  layout: 'Layout',
   power: 'Power',
   placement: 'Placement',
   routing: 'Routing',
@@ -87,6 +88,7 @@ export const ORIGIN_OF_STAGE: Record<ProblemStage, Origin> = {
   solve: 'solver',
   lower: 'lower',
   guideline: 'guideline',
+  layout: 'layout',
 };
 
 /** The stage, the board, the instance and the message without the board's label of a problem:
@@ -187,7 +189,7 @@ export interface Filter {
 export const DEFAULT_FILTER: Filter = { errors: true, warnings: true, notes: false, thisView: false, text: '', off: [] };
 
 /** The stages in the order their chips come: the compiler's in the order of the pipeline, then what the views find. */
-export const ORIGIN_ORDER: Origin[] = ['syntax', 'checker', 'solver', 'lower', 'guideline', 'power', 'placement', 'routing', 'rules', 'kicad'];
+export const ORIGIN_ORDER: Origin[] = ['syntax', 'checker', 'solver', 'lower', 'guideline', 'layout', 'power', 'placement', 'routing', 'rules', 'kicad'];
 
 /** The stages that have rows, each with its count, in chip order. */
 export function stagesOf(rows: Row[]): { origin: Origin; n: number }[] {

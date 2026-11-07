@@ -8,8 +8,10 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 mod compare;
+mod hints;
 
 pub use compare::*;
+pub use hints::*;
 
 /// A place in a file, from its first character to its last.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -51,6 +53,9 @@ pub enum ProblemStage {
     Lower,
     /// A guideline (ADR 0036), a warning unless the project makes it an error.
     Guideline,
+    /// The schematic layout file (ADR 0061): a fault in its text, or an entry that matches
+    /// nothing in the design or that the drawing could not honour. `at` is the file and line.
+    Layout,
 }
 
 /// One message of the compiler or solver, or a note of the build.
@@ -1262,6 +1267,14 @@ pub fn typescript() -> String {
         Severity,
         ProblemStage,
         Problem,
+        HintFault,
+        HintFindingKind,
+        HintFindingInfo,
+        HintPart,
+        HintNote,
+        HintSheet,
+        HintBoard,
+        SchematicHints,
         FileRole,
         Def,
         DefChild,

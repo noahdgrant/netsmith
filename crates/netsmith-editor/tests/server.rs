@@ -17,7 +17,7 @@ use netsmith_editor::{
         Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, ClientMessage, Compare,
         CompareHead, Definition, Download, FabReport, FileContent, GitCommit, GitInfo,
         OrderBoardInfo, OrderInfo, OrderReport, PanelView, PcbReport, PowerTree, ProblemsDiff,
-        Project, Saved, ServerMessage, SourceDiff, SystemView,
+        Project, Saved, SchematicHints, ServerMessage, SourceDiff, SystemView,
     },
 };
 
@@ -211,6 +211,30 @@ impl Backend for Fake {
     }
     fn schematic(&self, board: &str) -> Result<String, ApiError> {
         Ok(format!("<svg data-board=\"{board}\"/>"))
+    }
+    fn schematic_hints(&self, board: &str) -> Result<SchematicHints, ApiError> {
+        if board == "Nope" {
+            return Err(ApiError::not_found("there is no board `Nope`"));
+        }
+        Ok(hints_of(board, "", "none"))
+    }
+    fn write_schematic_hints(
+        &self,
+        board: &str,
+        text: &str,
+        stamp: Option<&str>,
+    ) -> Result<SchematicHints, ApiError> {
+        if stamp.is_some_and(|s| s != "none") {
+            return Err(ApiError::conflict("the file changed on disk"));
+        }
+        if text.contains("garbage") {
+            return Err(ApiError::unprocessable(
+                "src/a.sch.toml:3: expected a key",
+                "schematic_hints_invalid",
+                &[("file", "src/a.sch.toml"), ("line", "3")],
+            ));
+        }
+        Ok(hints_of(board, text, "written"))
     }
     fn power(&self, board: &str) -> Result<PowerTree, ApiError> {
         Ok(PowerTree {
@@ -443,6 +467,20 @@ impl Backend for Fake {
                 end_column: 2,
             },
         }))
+    }
+}
+
+fn hints_of(board: &str, text: &str, stamp: &str) -> SchematicHints {
+    SchematicHints {
+        board: board.to_string(),
+        file: "src/a.sch.toml".to_string(),
+        exists: !text.is_empty(),
+        stamp: stamp.to_string(),
+        text: text.to_string(),
+        errors: Vec::new(),
+        boards: Default::default(),
+        findings: Vec::new(),
+        version: 1,
     }
 }
 
@@ -687,6 +725,86 @@ fn saving_needs_the_stamp_and_reports_a_conflict() {
     let none = s.request("PUT", "/api/file?path=a.nsm", &[GUARD], "x", None);
     assert_eq!(none.status, 400);
     assert!(none.body.contains("X-Stamp"));
+}
+
+#[test]
+fn the_schematic_hints_are_read_with_get_and_written_with_a_put_that_needs_the_guard_header() {
+    let s = start();
+    let r = s.get("/api/schematic-hints?board=B");
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert!(r.headers.contains("application/json"), "{}", r.headers);
+    let body: serde_json::Value = serde_json::from_str(&r.body).unwrap();
+    assert_eq!(body["board"], "B");
+    assert_eq!(body["exists"], false);
+    assert_eq!(body["stamp"], "none");
+    assert_eq!(body["errors"], serde_json::json!([]));
+    assert_eq!(body["findings"], serde_json::json!([]));
+    assert_eq!(
+        s.get("/api/schematic-hints").status,
+        400,
+        "a board is needed"
+    );
+    assert_eq!(s.get("/api/schematic-hints?board=Nope").status, 404);
+
+    // A change needs the header, like every change.
+    let r = s.request(
+        "PUT",
+        "/api/schematic-hints?board=B",
+        &[],
+        "version = 1\n",
+        None,
+    );
+    assert_eq!(r.status, 403);
+    assert!(r.body.contains("X-Netsmith"), "{}", r.body);
+    // The body is the text of the file; the stamp is optional, and a stale one is a conflict.
+    let r = s.request(
+        "PUT",
+        "/api/schematic-hints?board=B",
+        &[GUARD],
+        "version = 1\n",
+        None,
+    );
+    assert_eq!(r.status, 200, "{}", r.body);
+    let body: serde_json::Value = serde_json::from_str(&r.body).unwrap();
+    assert_eq!(
+        (body["exists"].clone(), body["stamp"].clone()),
+        (true.into(), "written".into())
+    );
+    let r = s.request(
+        "PUT",
+        "/api/schematic-hints?board=B",
+        &[GUARD, ("X-Stamp", "5")],
+        "version = 1\n",
+        None,
+    );
+    assert_eq!(r.status, 409);
+    // A text that does not read is `422`, with the line in the structured body.
+    let r = s.request(
+        "PUT",
+        "/api/schematic-hints?board=B",
+        &[GUARD, ("Accept", "application/json")],
+        "garbage",
+        None,
+    );
+    assert_eq!(r.status, 422);
+    let body: serde_json::Value = serde_json::from_str(&r.body).unwrap();
+    assert_eq!(body["code"], "schematic_hints_invalid");
+    assert_eq!(body["line"], "3");
+    assert_eq!(body["file"], "src/a.sch.toml");
+}
+
+#[test]
+fn the_schematic_hints_wait_for_the_first_analysis_like_the_views() {
+    let s = start_pending();
+    let r = s.request(
+        "GET",
+        "/api/schematic-hints?board=B",
+        &[("X-Netsmith-Pending", "1")],
+        "",
+        None,
+    );
+    assert_eq!(r.status, 503, "{}", r.body);
+    assert!(r.body.contains("\"pending\":true"), "{}", r.body);
 }
 
 #[test]

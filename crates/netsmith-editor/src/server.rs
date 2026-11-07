@@ -58,6 +58,7 @@ const NEEDS_ANALYSIS: &[&str] = &[
     "/api/fs/delete",
     "/api/board",
     "/api/schematic.svg",
+    "/api/schematic-hints",
     "/api/power",
     "/api/system",
     "/api/panel",
@@ -238,6 +239,10 @@ fn router(state: Shared) -> Router {
         .route("/api/fs/delete", post(delete_path))
         .route("/api/board", get(board))
         .route("/api/schematic.svg", get(schematic))
+        .route(
+            "/api/schematic-hints",
+            get(schematic_hints).put(write_schematic_hints),
+        )
         .route("/api/power", get(power))
         .route("/api/system", get(system))
         .route("/api/panel", get(panel))
@@ -539,6 +544,34 @@ async fn schematic(State(s): State<Shared>, Query(q): Query1) -> Result<Response
     blocking(move || s.backend.schematic(&board))
         .await?
         .map(svg)
+}
+
+async fn schematic_hints(
+    State(s): State<Shared>,
+    Query(q): Query1,
+) -> Result<Json<crate::api::SchematicHints>, ApiError> {
+    let board = param(&q, "board")?;
+    json(move || s.backend.schematic_hints(&board)).await
+}
+
+/// The text of the layout file as the body, as `PUT /api/file` takes a source's; `X-Stamp` is
+/// optional here (a page that read the file sends it, so that a hand edit is not overwritten).
+async fn write_schematic_hints(
+    State(s): State<Shared>,
+    Query(q): Query1,
+    headers: HeaderMap,
+    text: String,
+) -> Result<Json<crate::api::SchematicHints>, ApiError> {
+    let board = param(&q, "board")?;
+    let stamp = headers
+        .get("x-stamp")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    json(move || {
+        s.backend
+            .write_schematic_hints(&board, &text, stamp.as_deref())
+    })
+    .await
 }
 
 async fn power(

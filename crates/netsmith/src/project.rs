@@ -638,6 +638,14 @@ impl Target {
                 .map(|f| crate::physical::physical_path(&f.path))
                 .filter(|p| p.is_file()),
         );
+        // The schematic layout file of a source (ADR 0061) changes the drawing, which is made
+        // by the analysis.
+        paths.extend(
+            self.files
+                .iter()
+                .map(|f| netsmith_view::schematic_hints_path(&f.path))
+                .filter(|p| p.is_file()),
+        );
         if let Some(project) = &self.project {
             paths.push(project.root.join(MANIFEST));
             let mapping = project.root.join(netsmith_kicad::PROJECT_FILE);

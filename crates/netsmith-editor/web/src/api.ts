@@ -5,7 +5,7 @@ export type Location = { file: string, line: number, column: number, endLine: nu
 
 export type Severity = "error" | "warning" | "note";
 
-export type ProblemStage = "syntax" | "check" | "solve" | "lower" | "guideline";
+export type ProblemStage = "syntax" | "check" | "solve" | "lower" | "guideline" | "layout";
 
 export type Problem = { severity: Severity, 
 /**
@@ -34,6 +34,98 @@ board?: string,
  * checker and the solver have none: they are about a statement, which `at` locates.
  */
 path?: string, };
+
+export type HintFault = { 
+/**
+ * 1 for the first line of the file.
+ */
+line: number, message: string, };
+
+export type HintFindingKind = "stale_sheet" | "stale_entry" | "wrong_sheet" | "unknown_board" | "unusable";
+
+export type HintFindingInfo = { kind: HintFindingKind, 
+/**
+ * The line of the entry's table header; 0 if it has none.
+ */
+line: number, 
+/**
+ * The entry as the file names it: `[Trellis.sheets.stage.parts."output_cap"]`.
+ */
+entry: string, 
+/**
+ * What is wrong with it, ending with what happens to it.
+ */
+message: string, };
+
+export type HintPart = { 
+/**
+ * Moved by this much from where the automatic drawing puts it.
+ */
+dx?: number, dy?: number, 
+/**
+ * Instead of `dx` and `dy`: the block's origin at this place from the sheet's reference
+ * part.
+ */
+pin?: [number, number], 
+/**
+ * 0, 90, 180 or 270 degrees counterclockwise, replacing the automatic turn.
+ */
+rotate?: number, 
+/**
+ * Flipped left to right before the turn, replacing the automatic mirror.
+ */
+mirror?: boolean, 
+/**
+ * The line of the entry's table header in the file.
+ */
+line: number, };
+
+export type HintNote = { dx: number, dy: number, line: number, };
+
+export type HintSheet = { parts: { [key in string]: HintPart }, notes: { [key in string]: HintNote }, };
+
+export type HintBoard = { parts: { [key in string]: HintPart }, notes: { [key in string]: HintNote }, sheets: { [key in string]: HintSheet }, };
+
+export type SchematicHints = { 
+/**
+ * The board asked for, as `BoardSummary.name` has it.
+ */
+board: string, 
+/**
+ * The file's name in the project (`src/main.sch.toml`): where the file is or goes.
+ */
+file: string, 
+/**
+ * Whether the file is on disk. Without it there are no hints and nothing is wrong.
+ */
+exists: boolean, 
+/**
+ * What the file was like when read: a `PUT` that sends it back is refused (`409`) if the
+ * file is different now. `none` for a file that is not there.
+ */
+stamp: string, 
+/**
+ * The file as it is on disk; empty without one.
+ */
+text: string, 
+/**
+ * What the text says wrong, in the order of the file. When there is any the file is
+ * ignored: `boards` is empty and the drawing is the one there is without a file.
+ */
+errors: Array<HintFault>, 
+/**
+ * The tables of the file, by the board's definition name, as the text says them.
+ */
+boards: { [key in string]: HintBoard }, 
+/**
+ * The entries not used for this board, and the tables for boards the source lacks, in the
+ * order of the file. The same notes are in the problems list.
+ */
+findings: Array<HintFindingInfo>, 
+/**
+ * The version of the analysis the drawing and the findings are of (`Analysis.version`).
+ */
+version: bigint, };
 
 export type FileRole = "top_level" | "module" | "std" | "manifest" | "physical";
 

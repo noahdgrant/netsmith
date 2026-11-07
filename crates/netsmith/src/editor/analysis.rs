@@ -20,7 +20,7 @@ use netsmith_editor::{
     },
 };
 
-use super::Workspace;
+use super::{Workspace, hints};
 use crate::{Built, Libraries, SolvedSystem, Stage, locate, outcome_observed};
 
 /// A board that built, with its drawing.
@@ -37,6 +37,9 @@ pub struct BoardData {
     /// Whether a requirement on where a part goes that is not met is a warning, as the
     /// manifest's `constraints = "warn"` makes it (ADR 0045), and not an error.
     pub constraints_warn: bool,
+    /// The schematic layout file of the source file (ADR 0061) and what is not used of it for
+    /// this board.
+    pub hints: super::hints::Hints,
 }
 
 impl BoardData {
@@ -480,6 +483,21 @@ impl Workspace {
             };
             match outcome {
                 Ok(outcome) => {
+                    // The schematic layout file beside the source file: read once, for all of
+                    // its boards. A file that is not there is not wrong; one that does not read
+                    // is a problem, and the drawing is the one there is without it.
+                    let hints_path = netsmith_view::schematic_hints_path(&file.path);
+                    let hints_name = hints::name_of(&file.name);
+                    let hints_file = hints::read(&hints_path);
+                    let source_boards: Vec<String> = outcome
+                        .boards
+                        .iter()
+                        .map(|b| b.design.name.clone())
+                        .collect();
+                    snapshot.problems.extend(hints_file.problems(
+                        &hints_name,
+                        &source_boards.iter().map(String::as_str).collect::<Vec<_>>(),
+                    ));
                     let layout = Some((
                         crate::layout::layout_path(&file.path),
                         outcome
@@ -491,6 +509,13 @@ impl Workspace {
                     let drawn = outcome.boards.len() as u32;
                     for (n, built) in outcome.boards.into_iter().enumerate() {
                         let label = built.label();
+                        // The entries of the layout file that match this board, and the ones
+                        // the drawing cannot honour.
+                        let groups = module_groups(&built);
+                        let (resolved, mut hint_findings) = match hints_file.hints() {
+                            Some(h) => h.resolve(&built.design, &groups),
+                            None => Default::default(),
+                        };
                         // One board's drawing that panics is that board's problem: the rest
                         // are drawn.
                         let drawing = contained(|| {
@@ -512,31 +537,55 @@ impl Workspace {
                             // schematic draws boxes and says why.
                             job::reporting(Rc::clone(&sink), || {
                                 (*libraries).as_ref().map_err(Clone::clone).and_then(|l| {
-                                    netsmith_view::render_svg_by_module_marked(
+                                    netsmith_view::layout_sheets_hinted_findings(
                                         &built.design,
-                                        &module_groups(&built),
+                                        &groups,
                                         &rails_of(&built),
                                         &must_connect(&built),
+                                        &resolved,
                                         &l.mapping,
                                         &l.symbols,
                                     )
+                                    .map(|(layout, unusable)| {
+                                        (
+                                            netsmith_view::render_layout(&built.design, &layout),
+                                            unusable,
+                                        )
+                                    })
                                     .map_err(|e| e.to_string())
                                 })
                             })
                         });
-                        let svg = drawing.unwrap_or_else(|message| {
-                            eprintln!(
-                                "netsmith editor: drawing the schematic of {label} panicked: {message}"
-                            );
-                            let problem = internal_problem(
-                                &format!("drawing the schematic of {label}"),
-                                &message,
+                        let svg = match drawing {
+                            Ok(Ok((svg, unusable))) => {
+                                hint_findings.extend(unusable);
+                                Ok(svg)
+                            }
+                            Ok(Err(shown)) => Err(shown),
+                            Err(message) => {
+                                eprintln!(
+                                    "netsmith editor: drawing the schematic of {label} panicked: {message}"
+                                );
+                                let problem = internal_problem(
+                                    &format!("drawing the schematic of {label}"),
+                                    &message,
+                                    Some(label.clone()),
+                                );
+                                let shown = problem.message.clone();
+                                snapshot.problems.push(problem);
+                                Err(shown)
+                            }
+                        };
+                        hint_findings
+                            .sort_by(|a, b| (a.line, &a.message).cmp(&(b.line, &b.message)));
+                        for finding in &hint_findings {
+                            snapshot.problems.push(hints::finding_problem(
+                                finding,
+                                &hints_name,
+                                hints_file.text(),
                                 Some(label.clone()),
-                            );
-                            let shown = problem.message.clone();
-                            snapshot.problems.push(problem);
-                            Err(shown)
-                        });
+                            ));
+                        }
                         let solver_notes = built.notes.len() - built.lowering_notes;
                         for (n, note) in built.notes.iter().enumerate() {
                             snapshot
@@ -554,6 +603,12 @@ impl Workspace {
                                 libraries: libraries.clone(),
                                 layout: layout.clone(),
                                 constraints_warn: catalogs.constraints_warn(),
+                                hints: hints::Hints {
+                                    path: hints_path.clone(),
+                                    name: hints_name.clone(),
+                                    boards: source_boards.clone(),
+                                    findings: hint_findings,
+                                },
                             }),
                             false,
                         ));

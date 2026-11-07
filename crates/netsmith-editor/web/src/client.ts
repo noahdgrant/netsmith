@@ -24,6 +24,7 @@ import type {
   PowerTree,
   Project,
   Saved,
+  SchematicHints,
   ServerMessage,
   PanelView,
   SystemView,
@@ -135,6 +136,18 @@ export const api = {
   deletePath: (path: string, confirm: boolean) => post<Changed>('/api/fs/delete', { path, confirm }),
   board: (name: string) => getJson<BoardDetail>(`/api/board?${q({ name })}`),
   schematic: (board: string) => getText(`/api/schematic.svg?${q({ board })}`),
+  /** The schematic layout file of the board's source file: its text, what it says, the faults of its text
+   * and the entries that match nothing (ADR 0061). A file that is not there is no error. */
+  schematicHints: (board: string) => getJson<SchematicHints>(`/api/schematic-hints?${q({ board })}`),
+  /** Write the schematic layout file from its text. The server writes the canonical text of what it says, and
+   * answers `ApiFailure` with status 422 and code `schematic_hints_invalid` for text that does not read, or 409
+   * if `stamp` (the file's, as read) is no longer the file's. The project is analysed again as the file changed. */
+  async writeSchematicHints(board: string, text: string, stamp?: string): Promise<SchematicHints> {
+    const headers: Record<string, string> = { ...GUARD, Accept: 'application/json', 'Content-Type': 'text/plain; charset=utf-8' };
+    if (stamp !== undefined) headers['X-Stamp'] = stamp;
+    const response = await fetch(`/api/schematic-hints?${q({ board })}`, { method: 'PUT', headers, body: text });
+    return (await check(response)).json();
+  },
   power: (board: string) => getJson<PowerTree>(`/api/power?${q({ board })}`),
   system: (name: string) => getJson<SystemView>(`/api/system?${q({ name })}`),
   panel: (name: string) => getJson<PanelView>(`/api/panel?${q({ name })}`),
