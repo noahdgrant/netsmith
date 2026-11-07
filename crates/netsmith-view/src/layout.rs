@@ -78,7 +78,10 @@
 //!    kept free: the satellites of the IC's other pins are placed first beside it, the row's parts
 //!    beyond them, and the wires of a pair satellite (a bootstrap capacitor) join the row where
 //!    they meet it and cross nothing. The sheet of a spine and a few more pieces is not cut into
-//!    rows.
+//!    rows. The same row with no IC is a **link**: a chain of series parts between two main parts
+//!    (a fuse and a diode from a connector to a header) runs from the source, the end with no parts
+//!    to ground on it, to the load, which stands right after it in the same row and level with it;
+//!    the source's net is a plain wire and the load's has the one symbol (ADR 0072).
 //!
 //! 7. A part whose library symbol has several **units** is drawn as one box for each, as the
 //!    library draws the unit, upright, with the part's reference and the unit's letter (`U5A`
@@ -1366,7 +1369,21 @@ fn draw(
         .enumerate()
         .flat_map(|(u, unit)| unit.parts.iter().map(move |&p| (p, u)))
         .collect();
-    let order = column_order(&ctx, &units, &unit_of);
+    let mut order = column_order(&ctx, &units, &unit_of);
+    // The load of a link stands right after its source, on its right.
+    for sp in ctx.spines.iter().filter(|s| s.load.is_some()) {
+        let (Some(&src), Some(&load)) =
+            (unit_of.get(&sp.ic), unit_of.get(&sp.load.expect("a load")))
+        else {
+            continue;
+        };
+        order.retain(|&u| u != load);
+        let at = order
+            .iter()
+            .position(|&u| u == src)
+            .map_or(order.len(), |i| i + 1);
+        order.insert(at, load);
+    }
     let mut column_of = vec![0; design.parts.len()];
     for (col, &u) in order.iter().enumerate() {
         for &p in &units[u].parts {
@@ -1995,8 +2012,16 @@ fn orientations(ctx: &Ctx, units: &[Unit], column_of: &[usize]) -> Vec<Orient> {
                 // unit of a symbol is drawn as the library draws it.
                 Orient::IDENTITY
             } else if let Some(sp) = ctx.spines.iter().find(|s| s.ic == p) {
-                // The input of a regulator on the left, its switching pin on the right.
-                spine::orientation(ctx, sp)
+                // The input of a regulator on the left, its switching pin on the right; the
+                // source of a link has its chain on the right.
+                if sp.load.is_some() {
+                    spine::link_orientation(ctx, sp, p)
+                } else {
+                    spine::orientation(ctx, sp)
+                }
+            } else if let Some(sp) = ctx.spines.iter().find(|s| s.load == Some(p)) {
+                // The load of a link has the chain on its left.
+                spine::link_orientation(ctx, sp, p)
             } else if unit.up_pads.is_empty() {
                 best_orientation(ctx, p, column_of)
             } else {

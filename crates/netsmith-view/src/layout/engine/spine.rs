@@ -47,7 +47,10 @@ pub(super) fn lanes(ctx: &Ctx, placed: &[PlacedPart], spine: &Spine) -> Vec<Rect
     let a = &placed[spine.ic];
     let mut out = Vec::new();
     for (side, d) in [(&spine.input, -1.0), (&spine.output, 1.0)] {
-        let Some(pin) = row_pin(ctx, a, side.nodes[0], d) else {
+        let Some(&first) = side.nodes.first() else {
+            continue;
+        };
+        let Some(pin) = row_pin(ctx, a, first, d) else {
             continue;
         };
         let start = pin.at.x + d * (STUB + 0.7);
@@ -342,11 +345,15 @@ pub(super) fn place(
         (&spine.input, -1.0, Dir::Right),
         (&spine.output, 1.0, Dir::Left),
     ] {
-        let Some(pin) = row_pin(ctx, a, side.nodes[0], d) else {
+        let Some(&first) = side.nodes.first() else {
+            continue;
+        };
+        let Some(pin) = row_pin(ctx, a, first, d) else {
             continue;
         };
         let y = pin.at.y;
-        if d < 0.0 {
+        // The row a piece is level on: the input's, and for a link, which has none, the output's.
+        if d < 0.0 || spine.load.is_some() {
             level = Some(y);
         }
         let mut x0 = pin.at.x + d * STUB;
@@ -380,8 +387,10 @@ pub(super) fn place(
             min: Pt::new(lo, y - 0.6),
             max: Pt::new(hi, y + 0.6),
         };
-        // Room for the symbol at the outer end.
-        lane.include(Pt::new(end, y - SYMBOL_UP));
+        // Room for the symbol at the outer end (a link ends at the load, which has none).
+        if spine.load.is_none() {
+            lane.include(Pt::new(end, y - SYMBOL_UP));
+        }
         draft.cover(lane);
         let corridor = Rect {
             min: Pt::new(lo, y - 0.6),
