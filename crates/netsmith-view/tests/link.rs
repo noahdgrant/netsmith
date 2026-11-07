@@ -268,3 +268,24 @@ fn a_rail_with_several_parts_on_it_is_no_link() {
     let d = draw(design);
     assert!(d.layout.spines.is_empty(), "{:?}", d.layout.spines);
 }
+
+/// A resistor from a rail to a signal net (a pull-up to a pin of another main part) carries no
+/// power from one rail to another: it is a part beside a pin, and no link.
+#[test]
+fn a_pull_up_from_a_rail_to_a_signal_net_is_no_link() {
+    let design = common::design(
+        "PullUp",
+        &[
+            ("J1", "Header1x2", "Conn_01x02", None),
+            ("J2", "Obd", "OBDII", Some("J")),
+            ("F1", "LkFuse", "10k", Some("P")),
+        ],
+        &[
+            ("+VBATT", &["J2.16", "F1.1"]),
+            ("SENSE", &["F1.2", "J1.1"]),
+            ("GND", &["J2.4", "J1.2"]),
+        ],
+    );
+    let d = draw(design);
+    assert!(d.layout.spines.is_empty(), "{:?}", d.layout.spines);
+}

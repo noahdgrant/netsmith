@@ -28,7 +28,7 @@
 //! The IC qualifies when it has both sides and the rails are known. `engine/spine.rs` draws it.
 //!
 //! A **link** is the same line with no IC: a chain of series parts that runs from one main part
-//! (a connector the power comes in at) to another (what it goes to), with a supply rail on it.
+//! (a connector the power comes in at) to another (what it goes to), a supply rail at each end.
 //! The part at the end with no parts to ground on it is the **source**: it is the `ic` of the
 //! spine, its input side is empty and its output side is the chain; the other end is the
 //! **load**, which the sheet puts next to the end of the row and level with it.
@@ -421,9 +421,11 @@ fn link_of(ctx: &Ctx, a: usize, taken: &mut [bool]) -> Option<Spine> {
         else {
             continue;
         };
-        if !nodes
+        // Both ends are supply rails: the chain carries power from one to the other. A resistor
+        // from a rail to a signal net (a pull-up) is no link.
+        if [start, end]
             .iter()
-            .any(|&n| ctx.power[n] == Some(PowerKind::Supply))
+            .any(|&n| ctx.power[n] != Some(PowerKind::Supply))
         {
             continue;
         }
