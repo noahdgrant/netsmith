@@ -60,9 +60,11 @@ fn line_of(text: &str, needle: &str) -> u32 {
     text.lines().position(|l| l.contains(needle)).unwrap() as u32 + 1
 }
 
-/// The file's text with a connector's block moved right by two grid steps: honoured by the
-/// drawing of the LED board.
-const MOVED: &str = "version = 1\n\n[LedBoard.parts.power_in]\ndx = 2.54\ndy = 0\n";
+/// The file's text with the resistor's block (it and the LED, which it serves) moved right by
+/// 25.4 mm: honoured by the drawing of the LED board. A part that is the reference part of its
+/// sheet is not used for this: the sheet is drawn from it, so moving it moves the whole drawing
+/// and changes no distance in it.
+const MOVED: &str = "version = 1\n\n[LedBoard.parts.r1]\ndx = 25.4\ndy = 0\n";
 
 #[test]
 fn without_a_file_there_are_no_hints_and_nothing_is_wrong() {
@@ -274,8 +276,7 @@ fn putting_writes_the_canonical_text_and_the_drawing_has_it() {
     let (root, editor, _) = project("put");
     let before = editor.schematic(LED).unwrap();
     // Not as the editor writes it: a comment, spaces, a number with a trailing zero.
-    let body =
-        "# my layout\nversion=1\n[LedBoard.parts.power_in]\ndx = 2.540\ndy=0 # no move down\n";
+    let body = "# my layout\nversion=1\n[LedBoard.parts.r1]\ndx = 25.40\ndy=0 # no move down\n";
     let answer = editor
         .write_schematic_hints(LED, body, Some("none"))
         .unwrap();
@@ -291,7 +292,7 @@ fn putting_writes_the_canonical_text_and_the_drawing_has_it() {
     // The answer is the file as it is now, as a GET says it.
     assert!(answer.exists);
     assert_eq!(answer.text, on_disk);
-    assert_eq!(answer.boards["LedBoard"].parts["power_in"].dx, Some(2.54));
+    assert_eq!(answer.boards["LedBoard"].parts["r1"].dx, Some(25.4));
     assert_eq!(answer, editor.schematic_hints(LED).unwrap());
     // And the drawing has it.
     assert_ne!(editor.schematic(LED).unwrap(), before);

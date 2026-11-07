@@ -56,11 +56,11 @@ export async function run({ page, shot, step, expect, project }) {
   expect((await layoutProblems()).length === 0, 'no problem of stage layout');
 
   step('a PUT writes the canonical text, the drawing has it, and the page redraws without a reload');
-  const written = await put('# a comment\nversion=1\n[LedBoard.parts.power_in]\ndx = 25.40\ndy = 0\n');
+  const written = await put('# a comment\nversion=1\n[LedBoard.parts.r1]\ndx = 25.40\ndy = 0\n');
   expect(written.status === 200, `the PUT is answered 200 (${written.status})`);
   const disk = fs.readFileSync(file, 'utf8');
-  expect(disk === 'version = 1\n\n[LedBoard.parts.power_in]\ndx = 25.4\ndy = 0\n', `the file is the canonical text, with no comment (${JSON.stringify(disk)})`);
-  expect(written.body.exists && written.body.text === disk && written.body.boards.LedBoard.parts.power_in.dx === 25.4, 'the answer is the file as the drawing now has it');
+  expect(disk === 'version = 1\n\n[LedBoard.parts.r1]\ndx = 25.4\ndy = 0\n', `the file is the canonical text, with no comment (${JSON.stringify(disk)})`);
+  expect(written.body.exists && written.body.text === disk && written.body.boards.LedBoard.parts.r1.dx === 25.4, 'the answer is the file as the drawing now has it');
   const moved = await svg();
   expect(moved !== drawingBefore, 'the drawing from the server changed');
   await page.waitForFunction(([a, b, x]) => {
@@ -73,7 +73,7 @@ export async function run({ page, shot, step, expect, project }) {
   await shot('moved');
 
   step('a file edited by another program is read too, and a finding for an entry that matches nothing is a note at its line');
-  const text = 'version = 1\n\n[LedBoard.parts.power_in]\ndx = 25.4\ndy = 0\n\n[LedBoard.parts.gone]\ndx = 1.27\ndy = 0\n\n[Retired.parts.x]\ndx = 1.27\ndy = 0\n';
+  const text = 'version = 1\n\n[LedBoard.parts.r1]\ndx = 25.4\ndy = 0\n\n[LedBoard.parts.gone]\ndx = 1.27\ndy = 0\n\n[Retired.parts.x]\ndx = 1.27\ndy = 0\n';
   fs.writeFileSync(file, text);
   await page.waitForFunction(async () => (await (await fetch('/api/analysis', { cache: 'no-store' })).json()).problems.some((p) => p.stage === 'layout'), null, { timeout: 15000 });
   const lineOf = (needle) => text.split('\n').findIndex((l) => l.includes(needle)) + 1;
@@ -89,7 +89,7 @@ export async function run({ page, shot, step, expect, project }) {
   expect((await svg()) === moved, 'the entries that match nothing leave the drawing as it was');
 
   step('a file that does not read: a warning in the dock at its line, and the drawing is the one without a file');
-  const broken = 'version = 1\n\n[LedBoard.parts.power_in]\ndx = 25.4\ndy = 0\nspin = 3\n';
+  const broken = 'version = 1\n\n[LedBoard.parts.r1]\ndx = 25.4\ndy = 0\nspin = 3\n';
   fs.writeFileSync(file, broken);
   await page.waitForFunction(async () => (await (await fetch('/api/analysis', { cache: 'no-store' })).json()).problems.some((p) => p.stage === 'layout' && p.severity === 'warning'), null, { timeout: 15000 });
   expect((await svg()) === drawingBefore, 'the drawing is byte for byte the one without a file');
@@ -107,7 +107,7 @@ export async function run({ page, shot, step, expect, project }) {
   const request = (method, headers, body, query = `board=${encodeURIComponent(board)}`) => fetch(`${base}/api/schematic-hints?${query}`, { method, headers, body });
   const noHeader = await request('PUT', { 'Content-Type': 'text/plain' }, 'version = 1\n');
   expect(noHeader.status === 403, `a PUT without X-Netsmith is refused (${noHeader.status})`);
-  const invalid = await request('PUT', { 'X-Netsmith': '1', Accept: 'application/json' }, 'version = 1\n\n[LedBoard.parts.power_in]\ndx = 1.3\ndy = 0\n');
+  const invalid = await request('PUT', { 'X-Netsmith': '1', Accept: 'application/json' }, 'version = 1\n\n[LedBoard.parts.r1]\ndx = 1.3\ndy = 0\n');
   const detail422 = await invalid.json();
   expect(invalid.status === 422 && detail422.code === 'schematic_hints_invalid' && detail422.line === '4' && detail422.file === 'src/main.sch.toml', `422 ${JSON.stringify(detail422)}`);
   const stale = await request('PUT', { 'X-Netsmith': '1', 'X-Stamp': '1-1' }, 'version = 1\n');
