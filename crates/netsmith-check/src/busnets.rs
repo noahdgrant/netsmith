@@ -748,7 +748,23 @@ impl Rules<'_> {
                 let names: Vec<String> = ps.iter().map(|p| model.path_of(p.pin)).collect();
                 format!("`{}` ({})", net.name, and_list(&names))
             })
-            .unwrap_or_default();
+            .unwrap_or_else(|| {
+                // The offending ends share no net: they are on one bus through the ends between.
+                let mut nets: Vec<String> = Vec::new();
+                for e in same {
+                    if let Some((net, _)) = per_net
+                        .iter()
+                        .find(|(_, ps)| ps.iter().any(|p| p.end == *e))
+                        && !nets.contains(&net.name)
+                    {
+                        nets.push(net.name.clone());
+                    }
+                }
+                format!(
+                    "the nets {}, which the other ends of the bus join",
+                    and_list(&nets)
+                )
+            });
         // The ends past the limit, in path order: the ones to move.
         let extra = and_texts(
             &same[limit as usize..]

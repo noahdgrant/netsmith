@@ -251,6 +251,20 @@ fn two_masters_on_one_bus_are_one_message_and_the_nets_say_no_more() {
     );
 }
 
+#[test]
+fn two_masters_that_share_no_net_are_on_one_bus_through_a_slave() {
+    // The masters meet only on the flash: one on its clock, the other on its data in.
+    let src = board(
+        &[("cpu", "Zcpu"), ("host", "Zcpu"), ("flash", "Zflash")],
+        "    .cpu.spi.sclk ~ .flash.spi.sclk\n    .host.spi.mosi ~ .flash.spi.mosi\n",
+    );
+    let m = messages(&run(&src));
+    assert!(
+        m.iter().any(|m| m.starts_with("`cpu.spi` and `host.spi` are both `SpiRole::Master` on one `Spi` bus, and `Spi` allows 1 `Master` on a bus: they are on one bus through the nets `net-cpu.spi.sclk` and `net-flash.spi.mosi`, which the other ends of the bus join; the slave on it is `flash.spi`; give `host.spi` a bus of its own")),
+        "{m:#?}"
+    );
+}
+
 // ---- message 3: a UART's lines cross ---------------------------------------------
 
 #[test]
