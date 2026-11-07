@@ -1,10 +1,21 @@
 # Checks every pull request and every push to main: formatting, clippy with warnings as errors,
 # and the tests. The same three commands as AGENTS.md ("Build, test, lint").
 #
-# The `test` job has no KiCad on its runner, so it stays fast. The tests that need `kicad-cli` or
-# KiCad's stock libraries skip themselves there (they print "skipped: ..."); the rest build with
-# the small libraries of `netsmith_kicad::testlib`. The `kicad` job installs KiCad 9 and runs the
-# same suite, so those tests really run. No Node either: the editor's page is the committed bundle.
+# A pull request runs only the jobs its change needs. The `changes` job lists the paths the pull
+# request changes and scripts/ci-changes turns them into three flags, `rust`, `kicad` and
+# `recipes` (the rules, and why, are in that script). `fmt` always runs. `clippy` and `test` need
+# `rust`, `kicad` needs `kicad`, `recipes` needs `recipes`: a change to prose only runs `fmt`. A
+# push to main, a change to the workflows or to scripts/, and a path the script does not know run
+# everything. `ci-ok` waits for all the others and fails if one failed or was cancelled; a job
+# that was left out counts as passed. It is the one check a branch protection rule needs to name.
+#
+# `test` has no KiCad on its runner, so it stays fast. The tests that need `kicad-cli` or KiCad's
+# stock libraries skip themselves there (they print "skipped: ..."); the rest build with the
+# small libraries of `netsmith_kicad::testlib`. The `kicad` job installs KiCad 9 and runs the
+# same suite, so those tests really run. No Node either: the editor's page is the committed
+# bundle. `test` is four slices of cargo nextest that run side by side (one run of
+# `cargo test` took fourteen minutes, three of them compiling, and runs one test binary after
+# the other); scripts/ci-test-slices proves that the slices run every test once.
 #
 # The `recipes` job drives the editor in headless Chromium (Playwright, Node 22): it builds the
 # `netsmith` binary and runs `scripts/editor-verify-all`, every recipe of
@@ -12,6 +23,10 @@
 # the `kicad` job does: the build and order recipes write KiCad files, and the PCB recipes of the
 # `outline_and_pours` fixture draw its stock footprints. It is not a required check yet; the
 # screenshots and the server log of a failing sweep are the `recipes-evidence` artifact of the run.
+#
+# The Rust cache (Swatinem/rust-cache) is saved by pushes to main only, and a pull request
+# restores the newest of main's: the pull requests do not fill the repository's cache quota with
+# a copy each.
 name: ci
 
 on:
@@ -31,6 +46,34 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Which of the jobs below the change needs: the paths of the pull request (the merge commit
+  # against its first parent, renames as a deletion and an addition) through scripts/ci-changes.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.flags.outputs.rust }}
+      kicad: ${{ steps.flags.outputs.kicad }}
+      recipes: ${{ steps.flags.outputs.recipes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: flags
+        run: |
+          everything() { printf 'rust=true\nkicad=true\nrecipes=true\n'; }
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            echo "not a pull request: everything runs"
+            everything >> "$GITHUB_OUTPUT"
+          elif ! git rev-parse --verify --quiet HEAD^2 > /dev/null; then
+            echo "no merge commit to compare: everything runs"
+            everything >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only --no-renames HEAD^1 HEAD | tee changed.txt
+            scripts/ci-changes < changed.txt | tee -a "$GITHUB_OUTPUT"
+          fi
+
   fmt:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -45,6 +88,8 @@ jobs:
       - run: cargo fmt --all --check
 
   clippy:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -56,22 +101,53 @@ jobs:
           components: clippy
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
+  # --no-fail-fast: one run lists every failing test, not just the first test that fails.
+  # nextest deals the tests of the whole workspace out to the slices one by one (so the slow
+  # tests of one binary go to different slices) and runs the tests of a slice in parallel,
+  # across binaries. It does not run doc tests; `cargo test --doc` does, in the first slice (the
+  # workspace has none today).
   test:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        slice: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
 
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      # Every slice builds the same binaries and shares one cache; the first saves it.
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.slice == 1 }}
 
-      # --no-fail-fast: one run lists every failing test, not just the first test binary that fails.
-      - run: cargo test --workspace --no-fail-fast
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+        with:
+          tool: nextest@0.9.151
+
+      - name: Test, slice ${{ matrix.slice }} of ${{ strategy.job-total }}
+        run: cargo nextest run --workspace --no-fail-fast --partition slice:${{ matrix.slice }}/${{ strategy.job-total }}
+
+      - name: Doc tests
+        if: matrix.slice == 1
+        run: cargo test --workspace --doc --no-fail-fast
+
+      # The slices between them are the whole run, each test in one slice, and as many tests as
+      # `cargo test` lists.
+      - name: Every test runs in exactly one slice
+        if: matrix.slice == 1
+        run: scripts/ci-test-slices ${{ strategy.job-total }}
 
   # The whole suite with KiCad 9 installed, so the tests that skip themselves in `test` run.
   # The runner's own Ubuntu archive carries KiCad 9 (ubuntu-latest is 26.04: 9.0.8). The version
@@ -80,6 +156,8 @@ jobs:
   # moves to a release that ships another major, the step fails; add the KiCad team's PPA
   # (ppa:kicad/kicad-9.0-releases) for that release then.
   kicad:
+    needs: changes
+    if: needs.changes.outputs.kicad == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -89,6 +167,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # kicad-cli, and the stock symbol and footprint libraries (separate packages, only
       # recommended by `kicad`). The 3D models (kicad-packages3d, several GB) are not installed,
@@ -164,6 +244,8 @@ jobs:
   # the committed bundle, so the binary is a plain debug build and Node is only for the driver.
   # The sweep runs every recipe, session by session, and lists each one that failed.
   recipes:
+    needs: changes
+    if: needs.changes.outputs.recipes == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -173,6 +255,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - run: cargo build -p netsmith
 
@@ -249,3 +333,22 @@ jobs:
           # The sweep's default: $NETSMITH_VERIFY_DIR-all.
           path: /tmp/netsmith-verify-all
           retention-days: 7
+
+  # The one check that says whether the run is good: it fails if a job failed or was cancelled,
+  # and passes if each one passed or was left out for want of a reason to run (`changes` says
+  # so). A required check named for one of the other jobs would block a pull request that does
+  # not run it.
+  ci-ok:
+    if: always()
+    needs: [changes, fmt, clippy, test, kicad, recipes]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      NEEDS: ${{ toJSON(needs) }}
+    steps:
+      - run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          if echo "$NEEDS" | jq -e 'any(.[]; .result != "success" and .result != "skipped")' > /dev/null; then
+            echo "::error::a job failed or was cancelled"
+            exit 1
+          fi
