@@ -1,7 +1,7 @@
 //! Loading modules, resolving imports and names, and elaborating definitions into a
 //! [`Model`].
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 
 use netsmith_lang::ast::{Decl, DefKind, Definition, Import, Item, Path, Physical, TypePath};
@@ -10,7 +10,10 @@ use netsmith_quantity::Dimension;
 
 use crate::diag::{Diagnostic, SourceId, Sources};
 use crate::loader::Loader;
-use crate::model::{FieldKind, InstId, InstKind, Instance, Member, Model};
+use crate::model::{
+    EnumId, EnumInfo, FieldKind, GenericUse, InstId, InstKind, Instance, Member, Model,
+};
+use crate::providers::generic_is_part_shaped;
 
 #[derive(Clone, Copy)]
 pub(crate) enum Binding {
@@ -25,6 +28,30 @@ pub(crate) struct ModuleData {
     pub scope: HashMap<String, Binding>,
     /// A file of the standard library (its name starts with `std/`).
     pub std: bool,
+    /// The module path of the file (`src::rf`, `std::parts::passive`): its name without
+    /// `.nsm`, with `::` for `/`. What a provider's id starts with.
+    pub key: String,
+}
+
+/// `src/rf.nsm` is the module `src::rf`.
+fn module_key(file_name: &str) -> String {
+    file_name
+        .strip_suffix(".nsm")
+        .unwrap_or(file_name)
+        .replace('/', "::")
+}
+
+/// A row of a generic's `pins` table, which a provider's row for the pin must agree with
+/// (ADR 0068).
+#[derive(Clone)]
+pub(crate) struct ContractRow {
+    /// The instance whose pin it is.
+    pub inst: InstId,
+    pub pin: InstId,
+    pub kind: netsmith_lang::ast::PinKind,
+    pub requirement: Option<netsmith_lang::ast::Requirement>,
+    /// The generic that stated it.
+    pub generic: String,
 }
 
 /// A `physical for` unit and the module (the physical file) that holds it.
@@ -50,6 +77,8 @@ pub(crate) enum Builtin {
 pub(crate) enum Ty {
     Builtin(Builtin),
     Def(usize, usize),
+    /// An `enum` (ADR 0054), by module and index in it.
+    Enum(usize, usize),
     Poison,
     Bad,
 }
@@ -66,7 +95,7 @@ pub(crate) enum Res {
 pub(crate) struct Checker<'a> {
     loader: &'a Loader,
     pub sources: Sources,
-    modules: Vec<ModuleData>,
+    pub(crate) modules: Vec<ModuleData>,
     cache: HashMap<String, usize>,
     diags: Vec<Diagnostic>,
     /// The diagnostics of `diags` that are parse errors.
@@ -77,7 +106,7 @@ pub(crate) struct Checker<'a> {
     pub scope: Vec<InstId>,
     pub cur_module: usize,
     /// The definition whose source text is being checked. Anything else is "outside".
-    cur_def: Option<(usize, usize)>,
+    pub(crate) cur_def: Option<(usize, usize)>,
     pub uf: HashMap<usize, usize>,
     skipped: HashSet<(usize, usize)>,
     /// Pins that a row of a `pins` table declared, as opposed to a `.name: Pin` member.
@@ -88,7 +117,37 @@ pub(crate) struct Checker<'a> {
     attached: HashMap<(usize, usize), Vec<AttachedUnit>>,
     /// Set while a board's physical file is being read (ADR 0048).
     pub(crate) phys: Option<PhysState>,
+    /// The fields that some `&=` statement states, in the elaboration in progress. A default
+    /// (`?=`) gives way to one of these (ADR 0051).
+    pub(crate) stated: HashSet<crate::model::FieldId>,
+    /// The `?=` statements of the elaboration in progress, resolved when every statement has
+    /// been read, so that their order never matters.
+    pub(crate) defaults: Vec<crate::lower::PendingDefault>,
+    /// The source a default is applied for, while it is applied after the statements are read.
+    pub(crate) source_override: Option<SourceId>,
+    /// The enums that fields of the model in progress have the type of, by the module and
+    /// index of their definition.
+    enum_ids: HashMap<(usize, usize), EnumId>,
+    /// The providers chosen for the uses of the definition being elaborated: a use's path to
+    /// a provider's id (ADR 0068).
+    pub(crate) assign: BTreeMap<String, String>,
+    /// The uses of generics found in the elaboration in progress.
+    pub(crate) uses: Vec<GenericUse>,
+    /// The members that a generic declared in an instance, by instance and name, with the
+    /// generic's name: a provider may not declare one again (ADR 0068).
+    pub(crate) generic_members: HashMap<(InstId, String), String>,
+    /// The rows of the `pins` tables of generics, for the instance they were read into.
+    pub(crate) contract_rows: Vec<ContractRow>,
+    /// The loaded files as they were when the last model was made, shared by the models made
+    /// while no file was added.
+    snapshot: Option<std::sync::Arc<Sources>>,
 }
+
+/// The names that are in scope in every file without an `import` (ADR 0054): the enums that
+/// the built-in members of every part have the type of. It is a file of the standard library.
+const PRELUDE: &str = include_str!("../../../std/prelude.nsm");
+/// Its module name, as `import` would write it.
+pub const PRELUDE_MODULE: &str = "std::prelude";
 
 fn builtin(name: &str) -> Option<Builtin> {
     use Dimension as D;
@@ -131,7 +190,20 @@ impl<'a> Checker<'a> {
             table_pins: HashSet::new(),
             attached: HashMap::new(),
             phys: None,
+            stated: HashSet::new(),
+            defaults: Vec::new(),
+            source_override: None,
+            enum_ids: HashMap::new(),
+            assign: BTreeMap::new(),
+            uses: Vec::new(),
+            generic_members: HashMap::new(),
+            contract_rows: Vec::new(),
+            snapshot: None,
         }
+    }
+
+    pub(crate) fn modules(&self) -> &[ModuleData] {
+        &self.modules
     }
 
     pub fn into_diagnostics(self) -> (Vec<Diagnostic>, Vec<Diagnostic>, Sources) {
@@ -207,7 +279,8 @@ impl<'a> Checker<'a> {
     }
 
     pub fn cur_source(&self) -> SourceId {
-        self.modules[self.cur_module].source
+        self.source_override
+            .unwrap_or(self.modules[self.cur_module].source)
     }
 
     pub fn error(&mut self, span: Span, message: impl Into<String>) {
@@ -277,6 +350,7 @@ impl<'a> Checker<'a> {
             defs,
             scope,
             std: name.starts_with("std/"),
+            key: module_key(name),
         });
         // Cached before the imports run so a cycle cannot recurse forever.
         if let Some(key) = key {
@@ -320,6 +394,7 @@ impl<'a> Checker<'a> {
             defs: Vec::new(),
             scope: HashMap::new(),
             std: false,
+            key: module_key(name),
         });
         for import in &file.imports {
             self.apply_import(id, import);
@@ -471,32 +546,112 @@ impl<'a> Checker<'a> {
             return Ty::Bad;
         }
         match bound {
-            Some(Binding::Def(m, i)) => Ty::Def(m, i),
+            Some(Binding::Def(m, i)) => self.def_type(m, i),
             Some(Binding::Poison) => Ty::Poison,
-            None => match builtin(&first.name) {
-                Some(b) => Ty::Builtin(b),
-                None => {
-                    self.error(first.span, format!("unknown type `{}`", first.name));
-                    Ty::Bad
-                }
+            None => match self.prelude_def(&first.name) {
+                Some((m, i)) => self.def_type(m, i),
+                None => match builtin(&first.name) {
+                    Some(b) => Ty::Builtin(b),
+                    None => {
+                        self.error(first.span, format!("unknown type `{}`", first.name));
+                        Ty::Bad
+                    }
+                },
             },
         }
     }
 
+    fn def_type(&self, module: usize, index: usize) -> Ty {
+        if self.modules[module].defs[index].kind == DefKind::Enum {
+            Ty::Enum(module, index)
+        } else {
+            Ty::Def(module, index)
+        }
+    }
+
+    /// The prelude, read the first time a name is looked up in it (ADR 0054).
+    fn prelude(&mut self) -> usize {
+        match self.cache.get(PRELUDE_MODULE) {
+            Some(&id) => id,
+            None => self.add_module("std/prelude.nsm", PRELUDE, Some(PRELUDE_MODULE.to_string())),
+        }
+    }
+
+    /// A definition of the prelude by name.
+    fn prelude_def(&mut self, name: &str) -> Option<(usize, usize)> {
+        let module = self.prelude();
+        match self.modules[module].scope.get(name) {
+            Some(Binding::Def(m, i)) => Some((*m, *i)),
+            _ => None,
+        }
+    }
+
+    /// The id that fields of the model in progress use for an enum.
+    pub(crate) fn enum_id(&mut self, module: usize, index: usize) -> EnumId {
+        if let Some(&id) = self.enum_ids.get(&(module, index)) {
+            return id;
+        }
+        let def = &self.modules[module].defs[index];
+        let info = EnumInfo {
+            name: def.name.name.clone(),
+            variants: def.variants.iter().map(|v| v.name.name.clone()).collect(),
+        };
+        self.model.enums.push(info);
+        let id = EnumId(self.model.enums.len() - 1);
+        self.enum_ids.insert((module, index), id);
+        id
+    }
+
+    /// The enum of the prelude that the built-in members of a part have the type of.
+    pub(crate) fn assembly_mode(&mut self) -> FieldKind {
+        let (m, i) = self
+            .prelude_def("AssemblyMode")
+            .expect("the prelude defines AssemblyMode");
+        FieldKind::Enum(self.enum_id(m, i))
+    }
+
     // ---- elaboration ---------------------------------------------------------
 
+    /// The loaded files, shared with the earlier models when nothing was loaded since.
+    fn source_snapshot(&mut self) -> std::sync::Arc<Sources> {
+        match &self.snapshot {
+            Some(s) if s.len() == self.sources.len() => s.clone(),
+            _ => {
+                let s = std::sync::Arc::new(self.sources.clone());
+                self.snapshot = Some(s.clone());
+                s
+            }
+        }
+    }
+
     /// Build a fresh model of one definition, with the checks that need the whole tree.
-    pub fn elaborate(&mut self, module: usize, index: usize) -> Model {
+    pub fn elaborate(
+        &mut self,
+        module: usize,
+        index: usize,
+        assign: Option<&BTreeMap<String, String>>,
+    ) -> Model {
         self.model = Model::new();
+        self.assign = assign.cloned().unwrap_or_default();
+        self.uses.clear();
+        self.generic_members.clear();
+        self.contract_rows.clear();
         self.scope.clear();
         self.uf.clear();
         self.skipped.clear();
         self.table_pins.clear();
+        self.stated.clear();
+        self.defaults.clear();
+        self.enum_ids.clear();
+        self.source_override = None;
         let def = self.modules[module].defs[index].clone();
         let name = def.name.name.clone();
         let root = self.instantiate(&def, (module, index), &name, None);
         self.model.root = root;
+        self.resolve_defaults();
         self.finalize_nets();
+        self.model.uses = std::mem::take(&mut self.uses);
+        self.model.sources = crate::model::SourceTexts(Some(self.source_snapshot()));
         std::mem::replace(&mut self.model, Model::new())
     }
 
@@ -507,6 +662,24 @@ impl<'a> Checker<'a> {
         name: &str,
         parent: Option<InstId>,
     ) -> InstId {
+        match parent {
+            // A member declared with the type of a generic stands for one of its providers
+            // (ADR 0068). A generic that is elaborated on its own is checked as it is.
+            Some(parent) if def.kind == DefKind::Generic => {
+                self.instantiate_use(def, def_ref, name, parent)
+            }
+            _ => self.instantiate_as(def, def_ref, name, parent, None),
+        }
+    }
+
+    pub(crate) fn instantiate_as(
+        &mut self,
+        def: &Rc<Definition>,
+        def_ref: (usize, usize),
+        name: &str,
+        parent: Option<InstId>,
+        placed: Option<((usize, usize), String)>,
+    ) -> InstId {
         // One for each instance made: a board of a thousand parts is a thousand of these.
         netsmith_core::job::checkpoint();
         let kind = match def.kind {
@@ -516,6 +689,10 @@ impl<'a> Checker<'a> {
             DefKind::Module => InstKind::Module,
             DefKind::Part => InstKind::Part,
             DefKind::Interface => InstKind::Interface,
+            // A generic is made as a part when it has pins or a catalog, else as a module.
+            DefKind::Generic if generic_is_part_shaped(def) => InstKind::Part,
+            DefKind::Generic => InstKind::Module,
+            DefKind::Enum => unreachable!("an enum is a type, so nothing instantiates it"),
         };
         let id = self.model.add_instance(Instance {
             name: name.to_string(),
@@ -540,14 +717,20 @@ impl<'a> Checker<'a> {
                 && (!def.docs.is_empty() || !def.inner_docs.is_empty()))
             .then(|| self.line_in(self.modules[def_ref.0].source, def.span)),
             def: Some(def_ref),
+            provides: def.provides.iter().map(|p| p.name.clone()).collect(),
+            provides_std: Vec::new(),
+            placed_as: placed.as_ref().map(|(_, n)| n.clone()),
+            placed_def: placed.map(|(d, _)| d),
+            std: self.modules[def_ref.0].std,
         });
         // Every part has a field for who assembles it (ADR 0024): the board narrows it, the
         // catalog row may state a default, and lowering reads it. It has one for the letters
         // of its reference designator too (ADR 0046): its kind states them, a user part or a
         // board may narrow it, and lowering reads it.
         if kind == InstKind::Part {
-            for name in ["assembly", "designator"] {
-                let field = self.model.add_field(id, name, FieldKind::Text);
+            let assembly = self.assembly_mode();
+            for (name, kind) in [("assembly", assembly), ("designator", FieldKind::Text)] {
+                let field = self.model.add_field(id, name, kind);
                 self.model.add_member(id, name, Member::Field(field));
             }
             // And one for how tall its body stands above the board (ADR 0045, "Height
@@ -580,8 +763,41 @@ impl<'a> Checker<'a> {
         // A definition's own text is circuit source, even when a physical file is what
         // asked for it to be made.
         let saved_phys = self.phys.take();
+        // A part or module that provides generics has their members and statements first
+        // (ADR 0068), each read in its own file.
+        let generics = self.provided(def);
+        self.model.instances[id.0].provides_std = generics
+            .iter()
+            .filter(|(_, gref)| self.modules[gref.0].std)
+            .map(|(g, _)| g.name.name.clone())
+            .collect();
+        for (g, gref) in &generics {
+            let items = self.generic_items(g, def, kind);
+            let before = self.model.instance(id).children.len();
+            let saved = self.enter_def(*gref);
+            self.declare(&items);
+            self.leave_def(saved);
+            let names: Vec<String> = self.model.instance(id).children[before..]
+                .iter()
+                .map(|(n, _)| n.clone())
+                .collect();
+            for n in names {
+                self.generic_members
+                    .entry((id, n))
+                    .or_insert_with(|| g.name.name.clone());
+            }
+        }
         self.declare(&def.items);
+        for (g, gref) in &generics {
+            let items = self.generic_items(g, def, kind);
+            let saved = self.enter_def(*gref);
+            self.process(&items);
+            self.leave_def(saved);
+        }
         self.process(&def.items);
+        if !generics.is_empty() {
+            self.conform(id, def, &generics);
+        }
         if kind == InstKind::Board {
             self.merge_physical(def_ref);
         }
@@ -590,6 +806,17 @@ impl<'a> Checker<'a> {
         self.cur_def = saved_def;
         self.scope = saved_scope;
         id
+    }
+
+    /// Make the reading of a definition's text happen in its own file; the pair undoes it.
+    pub(crate) fn enter_def(&mut self, def_ref: (usize, usize)) -> (usize, Option<(usize, usize)>) {
+        let module = std::mem::replace(&mut self.cur_module, def_ref.0);
+        (module, self.cur_def.replace(def_ref))
+    }
+
+    pub(crate) fn leave_def(&mut self, saved: (usize, Option<(usize, usize)>)) {
+        self.cur_module = saved.0;
+        self.cur_def = saved.1;
     }
 
     /// Read the physical file of the board being made, as part of the board (ADR 0048): its
@@ -634,6 +861,11 @@ impl<'a> Checker<'a> {
             def_docs: Vec::new(),
             doc_at: None,
             def: None,
+            provides: Vec::new(),
+            provides_std: Vec::new(),
+            placed_as: None,
+            placed_def: None,
+            std: false,
         });
         let module = self.model.instance(owner).kind == InstKind::Module;
         let fields = [
@@ -698,20 +930,36 @@ impl<'a> Checker<'a> {
             }
             let name = d.name.segments[0].name.clone();
             if self.model.member(cur, &name).is_some() {
-                self.error(
-                    d.name.span,
-                    format!("`{name}` is already declared in this block"),
-                );
+                let message = self.redeclared(cur, &name, d);
+                self.error(d.name.span, message);
                 self.skipped.insert(key);
                 continue;
             }
 
             let ty = self.resolve_type(&d.ty);
+            if self.in_kind(DefKind::Generic)
+                && let Ty::Def(m, i) = &ty
+                && self.modules[*m].defs[*i].kind != DefKind::Interface
+            {
+                let (ty_name, word) = {
+                    let def = &self.modules[*m].defs[*i];
+                    (def.name.name.clone(), crate::providers::kind_word(def))
+                };
+                self.error(
+                    d.ty.segments[0].span,
+                    format!(
+                        "a generic holds values, pins and interfaces, and no parts or modules; `{name}` is a {word} (`{ty_name}`): put it in a provider"
+                    ),
+                );
+                self.model.add_member(cur, &name, Member::Poison);
+                continue;
+            }
             if !self.fits_here(&ty, d) {
                 self.model.add_member(cur, &name, Member::Poison);
                 continue;
             }
-            if (self.in_system() || self.in_panel()) && matches!(ty, Ty::Builtin(_)) {
+            if (self.in_system() || self.in_panel()) && matches!(ty, Ty::Builtin(_) | Ty::Enum(..))
+            {
                 let holder = self.model.instance(self.current()).kind.word();
                 self.error(
                     d.ty.segments[0].span,
@@ -725,15 +973,21 @@ impl<'a> Checker<'a> {
             }
             match ty {
                 Ty::Poison | Ty::Bad => self.model.add_member(cur, &name, Member::Poison),
-                Ty::Builtin(Builtin::Quantity(dim)) => self.add_scalar(
-                    cur,
-                    &name,
-                    FieldKind::Quantity(dim),
-                    d.body.is_some(),
-                    d.span,
-                ),
+                Ty::Builtin(Builtin::Quantity(dim)) => {
+                    self.add_scalar(
+                        cur,
+                        &name,
+                        FieldKind::Quantity(dim),
+                        d.body.is_some(),
+                        d.span,
+                    );
+                }
                 Ty::Builtin(Builtin::Text) => {
-                    self.add_scalar(cur, &name, FieldKind::Text, d.body.is_some(), d.span)
+                    self.add_scalar(cur, &name, FieldKind::Text, d.body.is_some(), d.span);
+                }
+                Ty::Enum(m, i) => {
+                    let kind = FieldKind::Enum(self.enum_id(m, i));
+                    self.add_scalar(cur, &name, kind, d.body.is_some(), d.span);
                 }
                 Ty::Builtin(Builtin::Pin) => {
                     let pin = self.add_pin(cur, &name, d.span, d.docs.clone());
@@ -754,6 +1008,7 @@ impl<'a> Checker<'a> {
                     self.model.instances[child.0].declared =
                         Some((self.cur_source(), Span::new(d.name.span.start, last)));
                     self.model.add_member(cur, &name, Member::Inst(child));
+                    self.no_provider(child, d);
                     if self.scope.len() == 1
                         && let Some(phys) = &mut self.phys
                     {
@@ -789,13 +1044,13 @@ impl<'a> Checker<'a> {
             format!(
                 "a system holds boards, but `{}` is a {}; put it on a board",
                 def.name.name,
-                def.kind.keyword()
+                crate::providers::kind_word(def)
             )
         } else if self.in_panel() && !board_member && def.kind != DefKind::Interface {
             format!(
                 "a panel holds the board it repeats and its fabricator's panel rules, but `{}` is a {}",
                 def.name.name,
-                def.kind.keyword()
+                crate::providers::kind_word(def)
             )
         } else if !self.in_system()
             && !self.in_panel()
@@ -859,6 +1114,11 @@ impl<'a> Checker<'a> {
             def_docs: Vec::new(),
             doc_at: None,
             def: None,
+            provides: Vec::new(),
+            provides_std: Vec::new(),
+            placed_as: None,
+            placed_def: None,
+            std: false,
         });
         for field in ["function", "net"] {
             let f = self.model.add_field(pin, field, FieldKind::Text);
@@ -931,6 +1191,19 @@ impl<'a> Checker<'a> {
         // may only state physical intent about it: `physical_gate` refuses the rest.
         if self.phys.is_some() {
             return true;
+        }
+        // A use of a generic reaches the members the generic declares, so that the board works
+        // with whichever provider is picked (ADR 0068).
+        if let Some(generic) = self.outside_contract(owner, &name.name) {
+            let ty = self.model.instance(owner).type_name.clone();
+            self.error(
+                name.span,
+                format!(
+                    "`{}` is not declared by `{generic}`; a use of a generic reaches only the members the generic declares, so that it holds for every provider (declare it in `{generic}`, or name a provider, `{ty}`, as the type)",
+                    name.name
+                ),
+            );
+            return false;
         }
         let inst = self.model.instance(owner);
         let outside =

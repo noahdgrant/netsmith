@@ -6,13 +6,26 @@ use netsmith_lang::ast::{BinOp, CmpOp};
 pub use netsmith_lang::ast::{PinKind, Requirement};
 use netsmith_quantity::{Dimension, Quantity};
 
-use crate::diag::SourceId;
+use std::sync::Arc;
+
+use crate::diag::{SourceId, Sources};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct InstId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FieldId(pub usize);
+
+/// An `enum` that a field of the model has the type of (ADR 0054).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct EnumId(pub usize);
+
+/// An `enum`: its name and its variants, in the order written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnumInfo {
+    pub name: String,
+    pub variants: Vec<String>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstKind {
@@ -78,6 +91,54 @@ pub struct Instance {
     /// declaration (or of the definition when only that has docs).
     pub doc_at: Option<(String, usize)>,
     pub(crate) def: Option<(usize, usize)>,
+    /// The generics its definition provides (`part X provides A, B`, ADR 0068), by name.
+    pub provides: Vec<String>,
+    /// Those of `provides` that are generics of the standard library: a part that provides
+    /// the standard `Capacitor` is a bank like it (ADR 0052, ADR 0068 stage 2).
+    pub provides_std: Vec<String>,
+    /// For a use of a generic after a provider was put in its place: the generic's name
+    /// (`CoaxReceptacle`). `type_name` is then the provider's. None for a part or module that
+    /// was written by its own type, `.rf: AcmeMicroCoax`.
+    pub placed_as: Option<String>,
+    /// The definition of the generic a use was placed as.
+    pub(crate) placed_def: Option<(usize, usize)>,
+    /// Whether the definition is in a file of the standard library. A bank (ADR 0052) is a
+    /// property of the standard `Capacitor` and of nothing a design defines.
+    pub std: bool,
+}
+
+/// One part or module that can stand where a generic is used (ADR 0068).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Provider {
+    /// `src::rf::AcmeMicroCoax`: the module the definition is in and its name. What an
+    /// assignment names.
+    pub id: String,
+    pub name: String,
+    /// `src::rf`.
+    pub module: String,
+    /// Defined in a file of the standard library.
+    pub std: bool,
+    /// The generic itself, which is its own provider when it has a pin table with pads or a
+    /// catalog.
+    pub own: bool,
+    /// Whether it is a module, not a part.
+    pub module_shaped: bool,
+}
+
+/// A member declared with the type of a generic (`.rf: CoaxReceptacle { ... }`): what
+/// provides it, in the order a pick tries them, and which one stands in its place.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GenericUse {
+    /// `rf`, or `antenna.rf` for a use inside a module.
+    pub path: String,
+    pub inst: InstId,
+    /// The generic's name.
+    pub generic: String,
+    /// Every provider in scope of the file, in the order of ADR 0068 section 4.
+    pub candidates: Vec<Provider>,
+    /// The index into `candidates` of the provider the instance was made from. With no
+    /// candidates, zero and the instance is the generic itself.
+    pub chosen: usize,
 }
 
 impl Instance {
@@ -194,6 +255,9 @@ pub enum Pinout<'a> {
 pub enum FieldKind {
     Quantity(Dimension),
     Text,
+    /// One variant of an `enum` (ADR 0054). Its domain is `Domain::Text` holding the name of
+    /// the variant.
+    Enum(EnumId),
 }
 
 /// What is currently known about a field's value.
@@ -432,6 +496,18 @@ pub(crate) struct ExplicitJoin {
     pub span: Span,
 }
 
+/// The text of the files that a model's statements are in, kept so that a message can say where a
+/// statement is and show it as it was written (the solver names the lines of the two statements
+/// that make a bound reach a part, ADR 0065).
+#[derive(Clone, Default)]
+pub(crate) struct SourceTexts(pub(crate) Option<Arc<Sources>>);
+
+impl std::fmt::Debug for SourceTexts {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SourceTexts(..)")
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Model {
     pub root: InstId,
@@ -455,6 +531,11 @@ pub struct Model {
     /// Pairs of pins that a part's own definition joins (`.vin.neg ~ .vout.neg`): one
     /// physical pin, or pins that are one node inside the part.
     pub(crate) part_joins: Vec<(InstId, InstId)>,
+    /// The enums that fields of this model have the type of.
+    pub(crate) enums: Vec<EnumInfo>,
+    /// The members declared with the type of a generic, in the order they were made.
+    pub uses: Vec<GenericUse>,
+    pub(crate) sources: SourceTexts,
 }
 
 impl Model {
@@ -474,7 +555,26 @@ impl Model {
             mates: Vec::new(),
             ground_groups: Vec::new(),
             part_joins: Vec::new(),
+            enums: Vec::new(),
+            uses: Vec::new(),
+            sources: SourceTexts::default(),
         }
+    }
+
+    /// A value of a field as a message shows it: a variant of an enum as it is written in
+    /// source (`AssemblyMode::Hand`), anything else as its domain prints.
+    pub fn show_value(&self, field: FieldId, domain: &Domain) -> String {
+        match (self.field(field).kind, domain) {
+            (FieldKind::Enum(e), Domain::Text(variant)) => {
+                format!("{}::{variant}", self.enum_info(e).name)
+            }
+            _ => domain.to_string(),
+        }
+    }
+
+    /// The enum a field of kind `FieldKind::Enum` has the type of.
+    pub fn enum_info(&self, id: EnumId) -> &EnumInfo {
+        &self.enums[id.0]
     }
 
     pub fn instance(&self, id: InstId) -> &Instance {
@@ -520,6 +620,7 @@ impl Model {
         m.explicit_joins.clear();
         m.mates.clear();
         m.ground_groups.clear();
+        m.uses.retain(|u| inside(&u.inst));
         m.equalities.retain(|(a, b)| owned(a) && owned(b));
         m.relations.retain(|r| {
             let mut fields = Vec::new();
@@ -584,6 +685,28 @@ impl Model {
         &self.relations
     }
 
+    /// Add a relation after the check: the solver adds the ones that a bound entails and takes
+    /// them out again with [`Model::truncate_relations`] (ADR 0065). They go at the end, so no
+    /// index of a relation of the design changes.
+    pub fn push_relation(&mut self, relation: Relation) {
+        self.relations.push(relation);
+    }
+
+    /// Keep the first `len` relations and drop the rest.
+    pub fn truncate_relations(&mut self, len: usize) {
+        self.relations.truncate(len);
+    }
+
+    /// `file:line` of a statement of this model, if its file is known.
+    pub fn place_of_statement(&self, source: SourceId, span: Span) -> Option<String> {
+        self.sources.0.as_ref()?.place(source, span)
+    }
+
+    /// A statement of this model as it was written, on one line, if its file is known.
+    pub fn statement_text(&self, source: SourceId, span: Span) -> Option<String> {
+        self.sources.0.as_ref()?.statement(source, span)
+    }
+
     pub fn equalities(&self) -> &[(FieldId, FieldId)] {
         &self.equalities
     }
@@ -594,6 +717,13 @@ impl Model {
 
     pub fn nets(&self) -> &[Net] {
         &self.nets
+    }
+
+    /// Whether a current of a balance is exactly zero now (a stated `0A`, or worked out to
+    /// it): it adds nothing to the net, so it does not count as a term when a part's current is
+    /// worked out from the others (ADR 0026).
+    pub fn draw_is_zero(&self, d: &Draw) -> bool {
+        matches!(&self.field(d.field).domain, Domain::Quantity(q) if q.lo() == 0.0 && q.hi() == 0.0)
     }
 
     pub fn balances(&self) -> &[Balance] {
@@ -617,6 +747,22 @@ impl Model {
             {
                 Some(i)
             }
+            _ => None,
+        }
+    }
+
+    /// The `.count` of a part that is a bank (ADR 0052): the number of identical parts that
+    /// stand in this place. Only the standard library's `Capacitor`, and a part that provides
+    /// it, is one, whatever a design's own part names its members.
+    pub fn bank_count(&self, part: InstId) -> Option<FieldId> {
+        let inst = self.instance(part);
+        let capacitor = (inst.std && inst.type_name == "Capacitor")
+            || inst.provides_std.iter().any(|g| g == "Capacitor");
+        if inst.kind != InstKind::Part || !capacitor {
+            return None;
+        }
+        match self.member(part, "count")? {
+            Member::Field(f) if matches!(self.field(f).kind, FieldKind::Quantity(_)) => Some(f),
             _ => None,
         }
     }

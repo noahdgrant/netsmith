@@ -93,10 +93,60 @@ impl Checker<'_> {
         }
     }
 
+    /// A generic's `pins` table whose rows have no name and no pads (ADR 0068): what a
+    /// provider's own rows must agree with. It is not a table of the instance, which has no
+    /// pads to give.
+    fn contract_table(&mut self, table: &ast::Pins) {
+        let part = self.current();
+        let generic = self
+            .cur_def
+            .map(|(m, i)| self.modules[m].defs[i].name.name.clone())
+            .unwrap_or_default();
+        for row in &table.rows {
+            let Some(pin) = self.part_pin(&row.pin) else {
+                continue;
+            };
+            if self
+                .contract_rows
+                .iter()
+                .any(|r| r.inst == part && r.pin == pin && r.generic == generic)
+            {
+                self.error(
+                    row.pin.span,
+                    format!(
+                        "`{}` is listed twice in this pin table; one row gives its kind",
+                        row.pin.to_source()
+                    ),
+                );
+                continue;
+            }
+            let Some(built) = self.table_row(pin, row) else {
+                continue;
+            };
+            self.contract_rows.push(crate::checker::ContractRow {
+                inst: part,
+                pin,
+                kind: row.kind,
+                requirement: built.requirement,
+                generic: generic.clone(),
+            });
+        }
+    }
+
     pub fn pins(&mut self, table: &ast::Pins) {
         let part = self.current();
         if self.model.instance(part).kind != InstKind::Part {
             self.error(table.span, "`pins` can only appear directly inside a part");
+            return;
+        }
+        if !table.rows.is_empty() && table.rows.iter().all(|r| r.is_contract()) {
+            if let Some((_, span)) = &table.package {
+                self.error(
+                    *span,
+                    "a generic's `pins` table is the same for every package: leave the package out",
+                );
+            }
+            self.contract_table(table);
             return;
         }
         let package = table.package.as_ref().map(|(p, _)| p.clone());
@@ -146,6 +196,16 @@ impl Checker<'_> {
         let source = self.cur_source();
         let mut rows: Vec<PinRow> = Vec::new();
         for row in &table.rows {
+            if row.is_contract() {
+                self.error(
+                    row.span,
+                    format!(
+                        "`{}` has no datasheet name and no pad, and the other rows of this table have; a generic's rows with no name and no pads go in a table of their own",
+                        row.pin.to_source()
+                    ),
+                );
+                continue;
+            }
             let Some(pin) = self.part_pin(&row.pin) else {
                 continue;
             };

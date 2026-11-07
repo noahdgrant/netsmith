@@ -1,7 +1,10 @@
 //! What the pin tables of a part say about one of its pins, in the package it is in
 //! (ADR 0016). The faults built on these are in [`crate::faults`].
 
-use crate::model::{Domain, InstId, Member, Model, Net, PinKind, PinRow, PinTable, Pinout};
+use crate::model::{
+    Domain, InstId, InstKind, Member, Model, Net, PinKind, PinRow, PinTable, Pinout, RExpr,
+};
+use netsmith_lang::ast::CmpOp;
 
 impl Model {
     /// The package a part is in, if its `package` field holds one.
@@ -169,8 +172,16 @@ impl Model {
         row.map(|r| r.kind_with(self.function_of(pin).as_deref()))
     }
 
-    /// The function the board chose for a pin.
+    /// The function the board chose for a pin: the pin's own, or else the one that a
+    /// forwarding equation takes from a pin of a module (ADR 0071, stage 0).
     pub fn function_of(&self, pin: InstId) -> Option<String> {
+        self.function_chain(pin)
+            .into_iter()
+            .find_map(|p| self.own_function(p))
+    }
+
+    /// The text a pin's own `function` field holds.
+    fn own_function(&self, pin: InstId) -> Option<String> {
         match self.member(pin, "function")? {
             Member::Field(f) => match &self.field(f).domain {
                 Domain::Text(t) => Some(t.clone()),
@@ -179,4 +190,73 @@ impl Model {
             _ => None,
         }
     }
+
+    /// The pin an equation `.mcu.p04.function == .scl.function` takes this pin's function
+    /// from: the pin whose `function` is alone on the right of an `==` whose left side is this
+    /// pin's `function`. A module forwards the choice of its board to a pin of a part this way.
+    fn forwarded_from(&self, pin: InstId) -> Option<InstId> {
+        let Member::Field(own) = self.member(pin, "function")? else {
+            return None;
+        };
+        self.relations()
+            .iter()
+            .find_map(|r| match (&r.lhs, r.op, &r.rhs) {
+                (RExpr::Field(l), CmpOp::EqEq, RExpr::Field(g)) if *l == own => {
+                    let g = self.field(*g);
+                    (g.name == "function" && self.instance(g.owner).kind == InstKind::Pin)
+                        .then_some(g.owner)
+                }
+                _ => None,
+            })
+    }
+
+    /// The pins whose function an equation sets from this pin's: `.mcu.p04` for `.scl`, with
+    /// `.mcu.p04.function == .scl.function`.
+    fn read_by(&self, pin: InstId) -> Vec<InstId> {
+        let Some(Member::Field(g)) = self.member(pin, "function") else {
+            return Vec::new();
+        };
+        self.relations()
+            .iter()
+            .filter_map(|r| match (&r.lhs, r.op, &r.rhs) {
+                (RExpr::Field(l), CmpOp::EqEq, RExpr::Field(x)) if *x == g => {
+                    let l = self.field(*l);
+                    (l.name == "function" && self.instance(l.owner).kind == InstKind::Pin)
+                        .then_some(l.owner)
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The pin, then the pins its function is taken from, one after the other, to a depth
+    /// of a few (a module in a module).
+    pub fn function_chain(&self, pin: InstId) -> Vec<InstId> {
+        let mut chain = vec![pin];
+        while chain.len() <= FORWARD_DEPTH {
+            match self.forwarded_from(*chain.last().expect("a pin")) {
+                Some(next) if !chain.contains(&next) => chain.push(next),
+                _ => break,
+            }
+        }
+        chain
+    }
+
+    /// Whether the function stated on a pin reaches a pin that a part's table describes:
+    /// the pin is a row, or an equation passes its function on to a pin that reaches one.
+    pub fn function_is_read(&self, pin: InstId) -> bool {
+        self.function_read_within(pin, FORWARD_DEPTH)
+    }
+
+    fn function_read_within(&self, pin: InstId, depth: usize) -> bool {
+        self.pin_facts(pin).is_some()
+            || (depth > 0
+                && self
+                    .read_by(pin)
+                    .into_iter()
+                    .any(|q| q != pin && self.function_read_within(q, depth - 1)))
+    }
 }
+
+/// How many modules deep a function choice is followed from the part's pin out.
+const FORWARD_DEPTH: usize = 6;

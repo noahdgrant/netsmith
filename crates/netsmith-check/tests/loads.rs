@@ -101,9 +101,9 @@ fn a_capacitor_draws_nothing_at_dc() {
         .flat_map(|b| terms(&m, &m.path_of(b.scope), &b.net).unwrap())
         .collect();
     assert!(!all.iter().any(|t| t.contains("cap")), "{all:?}");
-    // The decoupling chains have no current to count and add no equality: only the four joins of rails, which tie a voltage and a
-    // track width each.
-    assert_eq!(m.equalities().len(), 8);
+    // The decoupling chains have no current to count and add no equality: only the four joins of rails, which tie a voltage, a peak
+    // voltage and a track width each.
+    assert_eq!(m.equalities().len(), 12);
     // The same on a board of its own: the chain has a part, and no balance gets a term.
     let m = board("    .bypass: Capacitor\n    .supply.pos ~> .bypass ~> .supply.neg\n");
     assert_eq!(terms(&m, "", "V").unwrap(), ["supply.current"]);
