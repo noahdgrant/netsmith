@@ -22,7 +22,8 @@ only=" $* "
 # recipe has just deleted along with its folder: the page's rebuild handler (`onRebuilt` in
 # store.ts) reads the files that were open when it started, one after the other, so a file closed
 # meanwhile is still asked for. The page ignores the answer; the browser logs the 404, which fails
-# the recipe. Fix that in the page and delete this list. Nothing else is retried.
+# the recipe (issue #118, with the one-line fix in the page). Fix that and delete this list.
+# Nothing else is retried.
 retry_once=" tree-files "
 
 rm -rf "$out"
