@@ -142,6 +142,20 @@ impl Canon {
         }
     }
 
+    /// For each part of the original design, its index in the canonical design.
+    pub fn canonical_parts(&self) -> Vec<usize> {
+        let mut at = vec![0; self.parts.len()];
+        for (c, &o) in self.parts.iter().enumerate() {
+            at[o] = c;
+        }
+        at
+    }
+
+    /// For each part of the canonical design, its index in the original design.
+    pub fn original_parts(&self) -> &[usize] {
+        &self.parts
+    }
+
     /// `external[n]` of the original design's nets as the canonical design's.
     pub fn nets_of<T: Clone>(&self, original: &[T]) -> Vec<T> {
         self.nets.iter().map(|&n| original[n].clone()).collect()

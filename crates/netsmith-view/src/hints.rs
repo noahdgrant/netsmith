@@ -32,7 +32,8 @@
 //! the entries on a design: the entry of each part and note that is still there, and a
 //! [`HintFinding`] for each entry that is not (a stale path, a sheet that is gone). An entry
 //! is never an error once the file is read; at worst it is a finding and is ignored. The
-//! drawing engine does not read hints yet (ADR 0061, stage 2).
+//! drawing engine reads the [`ResolvedHints`] (`layout_sheets_hinted`, ADR 0061 stage 2) and
+//! raises a finding of its own for an entry it cannot honour ([`HintFinding::unusable`]).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
@@ -884,6 +885,9 @@ pub struct ResolvedPart {
     pub hint: PartHint,
     /// The entry's line in the file.
     pub line: u32,
+    /// The entry as the file names it (`[Trellis.sheets.stage.parts."output_cap"]`), for a
+    /// finding the drawing raises about it.
+    pub entry: String,
 }
 
 /// A note's hint, with where it is in the design.
@@ -894,6 +898,8 @@ pub struct ResolvedNote {
     pub key: String,
     pub hint: NoteHint,
     pub line: u32,
+    /// The entry as the file names it, for a finding the drawing raises about it.
+    pub entry: String,
 }
 
 /// The entries of a file that match a design, by the index of the part in `design.parts` and
@@ -1068,6 +1074,7 @@ impl LayoutHints {
                             path: sheets.design_path(p),
                             hint: hint.value,
                             line: hint.line,
+                            entry: entry.clone(),
                         },
                     );
                 }
@@ -1086,6 +1093,7 @@ impl LayoutHints {
                             key: key.clone(),
                             hint: hint.value,
                             line: hint.line,
+                            entry: entry.clone(),
                         },
                     );
                 }

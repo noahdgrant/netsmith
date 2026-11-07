@@ -156,6 +156,12 @@ pub fn render_svg_with(
     Ok(draw(design, &l))
 }
 
+/// Draw a layout already made (by [`crate::layout_sheets_hinted`], say) as one SVG document,
+/// as [`render_svg_by_module_marked`] draws its own.
+pub fn render_layout(design: &Design, l: &Layout) -> String {
+    draw(design, l)
+}
+
 fn draw(design: &Design, l: &Layout) -> String {
     let b = l.bounds;
     let view = format!(

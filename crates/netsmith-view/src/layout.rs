@@ -129,11 +129,33 @@
 //!    environment variable. What each part of it did is measured in
 //!    `docs/research/schematic-metrics-baseline.md`.
 //!
+//! 10. **A person's moves are an input** (`hinting.rs`, ADR 0061). The layout file's hints
+//!     ([`crate::ResolvedHints`], an explicit argument of [`crate::layout_sheets_hinted`]; empty
+//!     for none, and then the drawing is byte for byte the one there is without them) are applied
+//!     where the engine can do it without drawing twice, and never after a wire is routed:
+//!     - a turn or a mirror (`rotate`, `mirror`) replaces the automatic orientation of the box
+//!       before anything is placed; the choices the engine makes for a pair satellite, a series
+//!       part and a part of a spine skip it, and a part that is turned leaves its stack;
+//!     - a move (`dx`, `dy`, `pin`) carries the **block** (a main part with its satellites, or the
+//!       unit a satellite stands in) once every block has its place in the rows and before the wires
+//!       are routed. The slot of the block in the rows stays, so the rest of the sheet is where it
+//!       was (a hinted block is a fixed piece of the rows' arrangement); a block that would lie on
+//!       another part, or stand more than 127 mm outside the drawing, is not moved (a finding);
+//!     - a note's offset is applied after the notes are placed, to a place that is free of
+//!       everything else;
+//!     - the frame still starts where the reference part would be without the file, so an offset
+//!       means the same in any drawing and a `pin` is from that part.
+//!
+//!     A drawing that breaks a rule of [`crate::check`] with the file that it does not break
+//!     without is drawn again entry by entry, keeping each one that breaks none (a hint can make a
+//!     drawing ugly and cannot make it wrong).
+//!
 //! Nothing here knows how a layout is drawn: [`crate::render_svg`] reads the result.
 
 mod canon;
 mod engine;
 mod grid;
+mod hinting;
 pub(crate) mod notes;
 mod origin;
 mod policy;
@@ -147,13 +169,14 @@ pub use notes::{
 };
 pub(crate) use units::unit_letter;
 
-use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use netsmith_core::{Design, DesignError, NoteKind};
 use netsmith_kicad::{Mapping, Pinout, SymbolLib};
 
 use crate::geom::{Dir, Orient, Pt, Rect, snap, snap_up};
 use crate::glyph::{CHAR_WIDTH, Flow, Glyph, used_pads};
+use crate::hints::{HintFinding, ResolvedHints};
 
 const GRID: f64 = 1.27;
 /// Distance from a pin to where its wire may first turn.
@@ -648,6 +671,9 @@ struct Ctx<'a> {
     touched: std::cell::Cell<u8>,
     /// Where the pair satellites were placed, for the drawings of this sheet to share.
     pair_places: engine::PairCache,
+    /// What the layout file says (ADR 0061): the turns the engine leaves alone, the moves it
+    /// applies once the blocks are placed. Empty for a drawing with no file.
+    hints: hinting::Plan,
 }
 
 impl Ctx<'_> {
@@ -792,7 +818,9 @@ pub fn layout_tuned_touched(
     lib: &SymbolLib,
     tuning: Tuning,
 ) -> Result<(Layout, Tuning), DesignError> {
-    let (layout, touched) = layout_with_tuning(
+    let Made {
+        layout, touched, ..
+    } = layout_with_tuning(
         design,
         mapping,
         lib,
@@ -801,6 +829,8 @@ pub fn layout_tuned_touched(
         &Marks::default(),
         rails.ground.len() > 1,
         Some(tuning),
+        None,
+        None,
     )?;
     Ok((
         layout,
@@ -832,13 +862,167 @@ pub(crate) fn layout_with(
         marks,
         label_grounds,
         None,
+        None,
+        None,
     )
-    .map(|(layout, _)| layout)
+    .map(|made| made.layout)
 }
 
-/// [`layout_with`], drawn only with `only` if it is given; and the choices of [`Tuning`] (as
-/// bits) that made a difference in the first drawing. The design is drawn in canonical order
-/// ([`canon`]) and the result has the design's own, and the drawing is anchored on its
+/// The layout file's hints for one drawing, and which of its entries to leave out.
+#[derive(Clone, Copy)]
+struct HintArgs<'a> {
+    hints: &'a ResolvedHints,
+    /// The sheet of each part, when the drawing holds several.
+    sheet_of: Option<&'a [usize]>,
+    dropped: &'a hinting::Dropped,
+}
+
+/// What a drawing is held to when hints are applied: a hint may make it ugly and not wrong. The
+/// rules of [`crate::check`] it breaks, by kind, and the pairs of symbols that lie on each
+/// other.
+struct Faults {
+    kinds: BTreeMap<&'static str, usize>,
+    overlaps: usize,
+}
+
+impl Faults {
+    fn of(design: &Design, layout: &Layout) -> Faults {
+        let mut kinds: BTreeMap<&'static str, usize> = BTreeMap::new();
+        for v in crate::check::check(design, layout) {
+            *kinds.entry(v.kind()).or_default() += 1;
+        }
+        let boxes: Vec<Rect> = layout
+            .parts
+            .iter()
+            .map(crate::sheetview::symbol_box)
+            .collect();
+        let mut overlaps = 0;
+        for (i, a) in boxes.iter().enumerate() {
+            for b in &boxes[i + 1..] {
+                if a.min.x < b.max.x - 1e-6
+                    && b.min.x < a.max.x - 1e-6
+                    && a.min.y < b.max.y - 1e-6
+                    && b.min.y < a.max.y - 1e-6
+                {
+                    overlaps += 1;
+                }
+            }
+        }
+        Faults { kinds, overlaps }
+    }
+
+    fn clean(&self) -> bool {
+        self.kinds.is_empty() && self.overlaps == 0
+    }
+
+    /// The first rule that `self` breaks more often than `base` does.
+    fn worse_than(&self, base: &Faults) -> Option<String> {
+        if self.overlaps > base.overlaps {
+            return Some("two parts lie on each other".into());
+        }
+        self.kinds
+            .iter()
+            .find(|&(k, &n)| n > base.kinds.get(k).copied().unwrap_or(0))
+            .map(|(k, _)| (*k).to_string())
+    }
+}
+
+/// [`layout_with`] with the hints of a layout file (ADR 0061), and the findings the drawing
+/// raises about entries it cannot honour. `sheet_of` is the sheet of each part when the drawing
+/// holds several sheets, so that a `pin` is from the reference part of its own sheet.
+///
+/// With no entry this is [`layout_with`], byte for byte. Otherwise the hints are applied in the
+/// engine (turns before the blocks are placed, moves after they are placed and before a wire is
+/// routed, notes last); an entry that would put its block on another part, or too far, is a
+/// finding and is left out ([`hinting::resolve`]); and a drawing that breaks a rule of
+/// [`crate::check`] that the drawing without the file does not break (or has two parts lie on
+/// each other) is made again with the entries taken in a fixed order, keeping each one that
+/// breaks nothing: a hint can make a drawing ugly and never wrong.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn layout_with_hints(
+    design: &Design,
+    mapping: &Mapping,
+    lib: &SymbolLib,
+    external: &[bool],
+    rails: &Rails,
+    marks: &Marks,
+    label_grounds: bool,
+    hints: &ResolvedHints,
+    sheet_of: Option<&[usize]>,
+) -> Result<(Layout, Vec<HintFinding>), DesignError> {
+    // The drawing without the file: what the engine chooses for the sheet by trying it, and what
+    // the drawing with the file is held to.
+    let plain = layout_with_tuning(
+        design,
+        mapping,
+        lib,
+        external,
+        rails,
+        marks,
+        label_grounds,
+        None,
+        None,
+        None,
+    )?;
+    if hints.is_empty() {
+        return Ok((plain.layout, Vec::new()));
+    }
+    let draw_with = |kept: &BTreeSet<hinting::Key>| {
+        let dropped = hinting::dropped_except(hints, kept);
+        layout_with_tuning(
+            design,
+            mapping,
+            lib,
+            external,
+            rails,
+            marks,
+            label_grounds,
+            None,
+            Some(HintArgs {
+                hints,
+                sheet_of,
+                dropped: &dropped,
+            }),
+            Some(&plain.choices),
+        )
+        .map(|made| (made.layout, made.findings))
+    };
+    let all: BTreeSet<hinting::Key> = hinting::keys(hints).into_iter().collect();
+    let (layout, findings) = draw_with(&all)?;
+    let faults = Faults::of(design, &layout);
+    if faults.clean() {
+        return Ok((layout, findings));
+    }
+    let base = Faults::of(design, &plain.layout);
+    if faults.worse_than(&base).is_none() {
+        return Ok((layout, findings));
+    }
+    // Some entry breaks a rule: take the entries in order and keep each that breaks none.
+    let mut kept: BTreeSet<hinting::Key> = BTreeSet::new();
+    let mut refused: Vec<HintFinding> = Vec::new();
+    for key in hinting::keys(hints) {
+        let mut trial = kept.clone();
+        trial.insert(key);
+        let (l, _) = draw_with(&trial)?;
+        match Faults::of(design, &l).worse_than(&base) {
+            None => kept = trial,
+            Some(rule) => {
+                let (entry, line) = hinting::describe(hints, key);
+                refused.push(hinting::rule_finding(entry, line, &rule));
+            }
+        }
+    }
+    let (layout, mut findings) = draw_with(&kept)?;
+    findings.extend(refused);
+    Ok((layout, findings))
+}
+
+/// [`layout_with`], drawn only with `only` if it is given, with the hints of a layout file if
+/// there are any, and with the `fixed` choices of an earlier drawing of the sheet (the one
+/// without the hints) when they are given instead of trying the sheet again; and what it was
+/// made with, the choices of [`Tuning`] (as bits) that made a difference in the first drawing,
+/// and the findings about hints the engine could not honour. The design is drawn in canonical
+/// order ([`canon`]) and the result has the design's own, and the drawing is anchored on its
 /// reference part ([`origin`]).
 #[allow(clippy::too_many_arguments)]
 fn layout_with_tuning(
@@ -850,11 +1034,17 @@ fn layout_with_tuning(
     marks: &Marks,
     label_grounds: bool,
     only: Option<Tuning>,
-) -> Result<(Layout, u8), DesignError> {
+    hints: Option<HintArgs<'_>>,
+    fixed: Option<&Choices>,
+) -> Result<Made, DesignError> {
     design.validate()?;
     let canon = canon::Canon::of(design);
+    let input = match hints {
+        Some(h) => hinting::Input::new(&canon, h.hints, h.sheet_of, h.dropped),
+        None => hinting::Input::default(),
+    };
     let external = canon.nets_of(external);
-    let (mut layout, touched) = draw(
+    let drawn = draw(
         &canon.design,
         mapping,
         lib,
@@ -863,10 +1053,59 @@ fn layout_with_tuning(
         marks,
         label_grounds,
         only,
+        &input,
+        fixed,
     )?;
+    let mut layout = drawn.layout;
     canon.restore(&mut layout);
-    origin::anchor(design, &mut layout);
-    Ok((layout, touched))
+    // How far the file moved each box, by the box's index in the restored layout.
+    let mut hinted: Vec<Pt> = Vec::new();
+    if !drawn.shifts.is_empty() {
+        let n = canon.original_parts().len();
+        hinted = vec![Pt::new(0.0, 0.0); layout.parts.len()];
+        for (k, &by) in drawn.shifts.iter().enumerate() {
+            let at = if k < n { canon.original_parts()[k] } else { k };
+            hinted[at] = by;
+        }
+    }
+    origin::anchor(design, &mut layout, &hinted);
+    Ok(Made {
+        layout,
+        touched: drawn.touched,
+        findings: drawn.findings,
+        choices: drawn.choices,
+    })
+}
+
+/// A sheet drawn by [`draw`].
+struct DrawnSheet {
+    layout: Layout,
+    touched: u8,
+    /// How far the file moved each box from where the engine put it (by index of the working
+    /// design's boxes); empty when no move was asked.
+    shifts: Vec<Pt>,
+    findings: Vec<HintFinding>,
+    /// What the drawing was made with.
+    choices: Choices,
+}
+
+/// What the engine chose for a sheet by trying it: the [`Tuning`] kept and the nets drawn as
+/// names, by net of the canonical design. A drawing with the layout file's hints is made with
+/// the choices of the drawing without them (`draw` is given them), so that a part that is
+/// moved does not change what the engine decides for the rest of the sheet (which nets are
+/// named, which way the satellites of a pin are placed), and the rest of the sheet stays.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Choices {
+    tuning: Tuning,
+    labelled: Vec<bool>,
+}
+
+/// A drawing made by [`layout_with_tuning`].
+struct Made {
+    layout: Layout,
+    touched: u8,
+    findings: Vec<HintFinding>,
+    choices: Choices,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -879,7 +1118,9 @@ fn draw(
     marks: &Marks,
     label_grounds: bool,
     only: Option<Tuning>,
-) -> Result<(Layout, u8), DesignError> {
+    hints: &hinting::Input,
+    fixed: Option<&Choices>,
+) -> Result<DrawnSheet, DesignError> {
     let notes_of = design;
     let used = used_pads(design);
     // A part whose symbol has several units is drawn as one box for each: the engine draws a
@@ -965,7 +1206,26 @@ fn draw(
         tuning: Tuning::default(),
         touched: std::cell::Cell::new(0),
         pair_places: engine::PairCache::default(),
+        hints: hinting::Plan::default(),
     };
+    if !hints.is_empty() {
+        // The layout file: a turn or a mirror replaces the engine's own, and the moves wait for
+        // the blocks to be placed (`engine::run`). The reference part of each sheet is chosen by
+        // the rule `origin::anchor` starts the frame at.
+        let origin_of = |k: usize| split.as_ref().map_or(k, |s| s.origin[k]);
+        let reference = |boxes: &[usize]| {
+            origin::reference_among(boxes.iter().copied(), |k| {
+                origin::RefKey::of(
+                    &ctx.glyphs[k],
+                    ctx.glyphs[k].pins.len(),
+                    canon::part_name(&notes_of.parts[origin_of(k)]),
+                )
+            })
+        };
+        let origins: &[usize] = split.as_ref().map_or(&[][..], |s| s.origin.as_slice());
+        let plan = hinting::Plan::build(hints, notes_of.parts.len(), origins, reference);
+        ctx.hints = plan;
+    }
     ctx.leaf = (0..design.parts.len())
         .map(|p| is_leaf_shunt(&ctx, p))
         .collect();
@@ -1005,7 +1265,12 @@ fn draw(
         }
     }
 
-    let orient = orientations(&ctx, &units, &column_of);
+    let mut orient = orientations(&ctx, &units, &column_of);
+    for (p, o) in orient.iter_mut().enumerate() {
+        if ctx.hints.turned(p) {
+            *o = ctx.hints.orient(p, *o);
+        }
+    }
     // Draw the sheet, see which nets are better as names, and draw it again with them: a name
     // takes room, and a net named changes what crosses what. Nets are only ever added, so
     // this ends; it stops after a few passes in any case.
@@ -1026,6 +1291,36 @@ fn draw(
         }
         (drawn, labelled)
     };
+    // What is left to do once a sheet is drawn: the boxes of the units told back to their
+    // parts, and the notes (the layout file's moves of them included).
+    let finish = |mut drawn: engine::Drawn, ctx: &Ctx, choices: Choices, touched: u8| {
+        drawn.layout.spines = spine_marks.clone();
+        if let Some(s) = &split {
+            for (placed, &part) in drawn.layout.parts.iter_mut().zip(&s.origin) {
+                placed.part = part;
+            }
+            for m in &mut drawn.layout.marks {
+                m.part = s.origin[m.part];
+            }
+        }
+        // The notes go last, in the free room of the drawing that is made: no wire is moved for
+        // one, and a sheet with none is as it was.
+        let mut findings = std::mem::take(&mut drawn.findings);
+        findings.extend(notes::place(notes_of, &mut drawn.layout, &ctx.hints.notes));
+        DrawnSheet {
+            layout: drawn.layout,
+            touched,
+            shifts: drawn.shifts,
+            findings,
+            choices,
+        }
+    };
+    if let Some(c) = fixed {
+        ctx.tuning = c.tuning;
+        ctx.touched.set(0);
+        let drawn = engine::run(&ctx, &units, &order, &orient, marks, &c.labelled);
+        return Ok(finish(drawn, &ctx, c.clone(), 0));
+    }
     if let Some(tuning) = only {
         ctx.tuning = tuning;
     }
@@ -1110,20 +1405,12 @@ fn draw(
         }
         ctx.tuning = Tuning::default();
     }
-    let mut drawn = runs.swap_remove(kept_run).drawn;
-    drawn.layout.spines = spine_marks;
-    if let Some(s) = &split {
-        for (placed, &part) in drawn.layout.parts.iter_mut().zip(&s.origin) {
-            placed.part = part;
-        }
-        for m in &mut drawn.layout.marks {
-            m.part = s.origin[m.part];
-        }
-    }
-    // The notes go last, in the free room of the drawing that is made: no wire is moved for
-    // one, and a sheet with none is as it was.
-    notes::place(notes_of, &mut drawn.layout);
-    Ok((drawn.layout, touched_first))
+    let run = runs.swap_remove(kept_run);
+    let choices = Choices {
+        tuning: run.tuning,
+        labelled,
+    };
+    Ok(finish(run.drawn, &ctx, choices, touched_first))
 }
 
 /// A sheet drawn with some choices of [`Tuning`], and where in it those choices mattered.
@@ -1296,7 +1583,9 @@ fn find_units(ctx: &Ctx) -> Vec<Unit> {
             .pins
             .iter()
             .map(|pin| (find(&pin.refdes), pin.pin.as_str()))
-            .filter(|&(p, _)| is_stackable(ctx, p) && !ctx.spine_part[p])
+            // A part the layout file turns leaves its stack: the stack's parts are one above
+            // the other by their pads, which a chosen turn would no longer be.
+            .filter(|&(p, _)| is_stackable(ctx, p) && !ctx.spine_part[p] && !ctx.hints.turned(p))
             .collect();
         // Parts that hang on a node with something else (an inductor, a fuse) are not in
         // series with each other, but each in series with what the node goes to.

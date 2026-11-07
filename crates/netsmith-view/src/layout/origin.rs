@@ -14,42 +14,77 @@ use netsmith_core::Design;
 use super::{GRID, Layout, PlacedPart};
 use crate::geom::{Pt, Rect, snap};
 
-/// The part of `layout` that is the sheet's reference: the box with most pins, then the
-/// largest symbol, then the first by path (else reference). A drawing with no part has none.
-pub(super) fn reference(design: &Design, layout: &Layout) -> Option<usize> {
-    let key = |p: &PlacedPart| -> (usize, i64) {
-        let r = p.glyph.bounds();
-        (
-            p.pins.len(),
-            ((r.max.x - r.min.x) * (r.max.y - r.min.y) * 100.0).round() as i64,
-        )
-    };
-    let name = |p: &PlacedPart| {
-        let part = &design.parts[p.part];
-        if part.path.is_empty() {
-            part.refdes.clone()
-        } else {
-            part.path.clone()
+/// What the choice of a sheet's reference part reads of a box: its pins, the size of its
+/// symbol, its name (path, else reference) and its unit.
+pub(super) struct RefKey<'a> {
+    pub pins: usize,
+    pub area: i64,
+    pub name: &'a str,
+    pub unit: Option<u32>,
+}
+
+impl<'a> RefKey<'a> {
+    pub fn of(glyph: &crate::glyph::Glyph, pins: usize, name: &'a str) -> Self {
+        let r = glyph.bounds();
+        RefKey {
+            pins,
+            area: ((r.max.x - r.min.x) * (r.max.y - r.min.y) * 100.0).round() as i64,
+            name,
+            unit: glyph.unit,
         }
-    };
-    (0..layout.parts.len()).max_by(|&a, &b| {
-        let (pa, pb) = (&layout.parts[a], &layout.parts[b]);
-        key(pa)
-            .cmp(&key(pb))
-            // The smaller name is the greater: `max_by` keeps the first of equals.
-            .then_with(|| {
-                super::canon::natural_cmp(&name(pb), &name(pa))
-                    .then_with(|| pb.glyph.unit.cmp(&pa.glyph.unit))
-            })
+    }
+}
+
+/// The reference among `boxes`: the one with most pins, then the largest symbol, then the
+/// first by name (the smaller name is the greater: `max_by` keeps the first of equals), then
+/// the first unit. The engine and [`reference`] choose by this one rule, so that a `pin` of the
+/// layout file is from the part the frame starts at.
+pub(super) fn reference_among<'a>(
+    boxes: impl Iterator<Item = usize>,
+    key: impl Fn(usize) -> RefKey<'a>,
+) -> Option<usize> {
+    boxes.max_by(|&a, &b| {
+        let (ka, kb) = (key(a), key(b));
+        (ka.pins, ka.area).cmp(&(kb.pins, kb.area)).then_with(|| {
+            super::canon::natural_cmp(kb.name, ka.name).then_with(|| kb.unit.cmp(&ka.unit))
+        })
     })
 }
 
-/// Moves the drawing so that its reference part's origin is at (0, 0) on the grid.
-pub(super) fn anchor(design: &Design, layout: &mut Layout) {
+/// The part of `layout` that is the sheet's reference: the box with most pins, then the
+/// largest symbol, then the first by path (else reference). A drawing with no part has none.
+pub(super) fn reference(design: &Design, layout: &Layout) -> Option<usize> {
+    let names: Vec<&str> = layout
+        .parts
+        .iter()
+        .map(|p| {
+            let part = &design.parts[p.part];
+            if part.path.is_empty() {
+                part.refdes.as_str()
+            } else {
+                part.path.as_str()
+            }
+        })
+        .collect();
+    reference_among(0..layout.parts.len(), |i| {
+        let p: &PlacedPart = &layout.parts[i];
+        RefKey::of(&p.glyph, p.pins.len(), names[i])
+    })
+}
+
+/// Moves the drawing so that its reference part's origin is at (0, 0) on the grid. `hinted`
+/// is how far the layout file moved each box from where the drawing put it (by index of
+/// `layout.parts`; empty for none): the frame starts where the reference part would have
+/// been, so that a part moved by the file does not move the frame, and an offset or a pin
+/// means the same however the rest of the sheet is drawn.
+pub(super) fn anchor(design: &Design, layout: &mut Layout, hinted: &[Pt]) {
     let Some(r) = reference(design, layout) else {
         return;
     };
-    let at = layout.parts[r].at;
+    let mut at = layout.parts[r].at;
+    if let Some(by) = hinted.get(r) {
+        at = Pt::new(at.x - by.x, at.y - by.y);
+    }
     translate(
         layout,
         Pt::new(0.0 - snap(at.x, GRID), 0.0 - snap(at.y, GRID)),

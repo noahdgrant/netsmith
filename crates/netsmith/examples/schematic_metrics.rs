@@ -23,7 +23,9 @@
 //! must-connect pins, its module groups and the project folder the symbols come from) as JSON,
 //! and `schematic_metrics --inputs <file>` draws from that file alone, so a change to the
 //! drawing can be measured at once. `--svg <file>` writes the drawing as the editor serves it (a file of several boards
-//! writes `<file>-<board>.svg` for each).
+//! writes `<file>-<board>.svg` for each). `--hints <file.sch.toml>` draws with a schematic layout file (ADR 0061): its
+//! errors stop the run, and what no longer matches the design and what the drawing could not honour are printed as
+//! `# layout file:` lines.
 
 use std::{env, fs, path::PathBuf, process::ExitCode};
 
@@ -35,9 +37,12 @@ use netsmith_core::{
     PinKind, PinRef,
 };
 use netsmith_view::check::check;
+use netsmith_view::hints;
 use netsmith_view::metrics::measure;
 use netsmith_view::stability::{self, Board};
-use netsmith_view::{Group, Marks, Rails, layout_sheets_marked, render_svg_by_module_marked};
+use netsmith_view::{
+    Group, Marks, Rails, layout_sheets_hinted_findings, render_layout, render_svg_by_module_marked,
+};
 use serde_json::{Value, json};
 
 /// Everything the drawing of one board is made from.
@@ -304,6 +309,7 @@ fn write_overlay(
 fn main() -> ExitCode {
     let mut path: Option<String> = None;
     let (mut plain, mut violations, mut stable) = (false, false, false);
+    let mut hints_file: Option<String> = None;
     let mut only: Vec<String> = Vec::new();
     let (mut overlay, mut edit): (Option<String>, Option<String>) = (None, None);
     let mut min_parts = 8usize;
@@ -329,6 +335,7 @@ fn main() -> ExitCode {
             "--save-inputs" => save = args.next(),
             "--inputs" => load = args.next(),
             "--svg" => svg = args.next(),
+            "--hints" => hints_file = args.next(),
             other => path = Some(other.to_string()),
         }
     }
@@ -408,6 +415,33 @@ fn main() -> ExitCode {
             }
         }
     }
+    // The schematic layout file (ADR 0061), read once: its errors stop the run, what no longer
+    // matches the design is a finding printed for each board.
+    let layout_hints = match &hints_file {
+        None => None,
+        Some(path) => {
+            let text = match fs::read_to_string(path) {
+                Ok(t) => t,
+                Err(e) => return fail(format!("{path}: {e}")),
+            };
+            match hints::parse(&text) {
+                Ok(h) => {
+                    let names: Vec<&str> =
+                        boards.iter().map(|(_, i)| i.design.name.as_str()).collect();
+                    for f in h.unknown_boards(&names) {
+                        println!("# layout file: {}", f.render(path));
+                    }
+                    Some(h)
+                }
+                Err(errors) => {
+                    for e in &errors {
+                        eprintln!("{path}:{}: {}", e.line, e.message);
+                    }
+                    return ExitCode::from(2);
+                }
+            }
+        }
+    };
     let mut rows: Vec<stability::Row> = Vec::new();
     for (file, inputs) in &boards {
         if let Some(out) = &save
@@ -463,17 +497,28 @@ fn main() -> ExitCode {
             ));
             continue;
         }
-        let layout = match layout_sheets_marked(
+        let (resolved, mut findings) = match &layout_hints {
+            Some(h) => h.resolve(&inputs.design, &inputs.groups),
+            None => Default::default(),
+        };
+        let (layout, engine_findings) = match layout_sheets_hinted_findings(
             &inputs.design,
             &inputs.groups,
             &inputs.rails,
             &inputs.marks,
+            &resolved,
             &libraries.mapping,
             &libraries.symbols,
         ) {
             Ok(l) => l,
             Err(e) => return fail(format!("{}: {e}", inputs.design.name)),
         };
+        findings.extend(engine_findings);
+        if let Some(path) = &hints_file {
+            for f in &findings {
+                println!("# layout file: {}", f.render(path));
+            }
+        }
         if let Some(out) = &svg {
             // A file of several boards writes one picture for each, named after the board.
             let out = &if boards.len() > 1 {
@@ -484,21 +529,8 @@ fn main() -> ExitCode {
             } else {
                 out.clone()
             };
-            let drawn = render_svg_by_module_marked(
-                &inputs.design,
-                &inputs.groups,
-                &inputs.rails,
-                &inputs.marks,
-                &libraries.mapping,
-                &libraries.symbols,
-            );
-            match drawn {
-                Ok(text) => {
-                    if let Err(e) = fs::write(out, text) {
-                        return fail(format!("{out}: {e}"));
-                    }
-                }
-                Err(e) => return fail(e.to_string()),
+            if let Err(e) = fs::write(out, render_layout(&inputs.design, &layout)) {
+                return fail(format!("{out}: {e}"));
             }
         }
         let metrics = measure(&layout);
