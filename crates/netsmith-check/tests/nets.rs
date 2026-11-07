@@ -76,12 +76,20 @@ fn a_net_of_only_inputs_has_nothing_to_drive_it() {
 
 #[test]
 fn uart_receive_lines_joined_together_are_found_with_the_net_and_the_pins() {
+    // `rx` to `rx` and `tx` to `tx`: since ADR 0064 the line rule says so, once for each net,
+    // and the rules of a net (only inputs, two outputs) leave those nets to it.
     let c = run(&format!(
         "board B {{\n{SUPPLY}    .a: Uart32\n    .b: Uart32\n    .supply ~ .a.vdd\n    .supply ~ .b.vdd\n    .a.uart.rx ~ .b.uart.rx\n    .a.uart.tx ~ .b.uart.tx\n}}\n"
     ));
     let m = messages(&c);
+    assert_eq!(m.len(), 2, "{m:?}");
     assert!(
-        m.contains(&"net `net-a.uart.rx` has only inputs (`a.uart.rx`, `b.uart.rx`): nothing drives it, so it floats; join an output, a bidirectional pin or a rail to it, or a pull resistor".to_string()),
+        m.contains(&"net `net-a.uart.rx` joins `rx` to `rx` (`a.uart.rx`, `b.uart.rx`): `rx` crosses `tx` in a `Uart`, so it is joined to the other end's `tx`; write `.a.uart.rx ~ .b.uart.tx`, or join the two interfaces with `.a.uart ~ .b.uart`, which crosses `tx` to `rx` and `rts` to `cts`".to_string()),
+        "{m:?}"
+    );
+    assert!(
+        m.iter()
+            .all(|m| !m.contains("only inputs") && !m.contains("two outputs")),
         "{m:?}"
     );
 }

@@ -10,16 +10,18 @@
 use std::collections::{BTreeMap, HashSet};
 
 use crate::diag::Diagnostic;
-use crate::model::{InstId, InstKind, Model, Net, PinKind, PinRow, PinTable, Pinout, Requirement};
+use crate::model::{InstId, InstKind, Model, Net, PinKind, PinRow, PinTable, Pinout};
 use crate::pins::article;
 
 /// The faults that the board alone settles: every part whose package is known, and every
 /// net whose parts all are.
 pub fn pin_faults(model: &Model) -> Vec<Diagnostic> {
     let deferred = unknown_package(model);
-    let mut run = Run::new(model, &deferred, Pass::Board);
+    let bus = crate::busnets::check(model);
+    let mut run = Run::new(model, &deferred, Pass::Board, bus.nets);
     run.go();
     run.out.extend(crate::buses::i2c_pullups(model));
+    run.out.extend(bus.out);
     run.out
 }
 
@@ -28,7 +30,8 @@ pub fn pin_faults(model: &Model) -> Vec<Diagnostic> {
 /// solver chose).
 pub fn pin_faults_solved(before: &Model, solved: &Model) -> Vec<Diagnostic> {
     let deferred = unknown_package(before);
-    let mut run = Run::new(solved, &deferred, Pass::Solved);
+    let bus = crate::busnets::check(solved);
+    let mut run = Run::new(solved, &deferred, Pass::Solved, bus.nets);
     run.go();
     run.out
 }
@@ -56,6 +59,8 @@ struct Run<'a> {
     model: &'a Model,
     deferred: &'a HashSet<InstId>,
     pass: Pass,
+    /// The nets a bus rule has reported (ADR 0064): the rules of a net skip them.
+    bus_nets: std::collections::HashSet<String>,
     out: Vec<Diagnostic>,
 }
 
@@ -73,11 +78,17 @@ fn list(items: &[String]) -> String {
 }
 
 impl<'a> Run<'a> {
-    fn new(model: &'a Model, deferred: &'a HashSet<InstId>, pass: Pass) -> Self {
+    fn new(
+        model: &'a Model,
+        deferred: &'a HashSet<InstId>,
+        pass: Pass,
+        bus_nets: std::collections::HashSet<String>,
+    ) -> Self {
         Self {
             model,
             deferred,
             pass,
+            bus_nets,
             out: Vec::new(),
         }
     }
@@ -290,17 +301,16 @@ impl<'a> Run<'a> {
                 }
             }
 
-            let must = matches!(
-                (row.kind, row.requirement),
-                (_, Some(Requirement::Required)) | (PinKind::Power | PinKind::Input, None)
-            );
+            let (must, by_role) = model.must_be_connected_by(pin, row);
             if must && !self.has_company(part, pin) {
+                let because = by_role.unwrap_or_default();
                 self.report(
                     inst.at(),
                     format!(
-                        "`{name}` is {} that must be connected ({pads}, `{}`), but nothing else is on its net",
+                        "`{name}` is {} that must be connected ({pads}, `{}`){}{because} nothing else is on its net",
                         article(row.kind),
-                        row.name
+                        row.name,
+                        if because.is_empty() { ", but" } else { ": " },
                     ),
                 );
             }
@@ -557,36 +567,102 @@ impl<'a> Run<'a> {
             if any_mine != (self.pass == Pass::Solved) {
                 continue;
             }
+            // A net that a bus rule has reported is said once (ADR 0064).
+            if self.bus_nets.contains(&net.name) {
+                continue;
+            }
             self.outputs(net, &mine);
             self.floating_inputs(net);
         }
     }
 
-    /// Two outputs on one net. Pins joined inside their part are one output.
+    /// Two drivers on one net: pins whose kind is `output` or `tri_state`. Pins joined inside
+    /// their part are one driver. Drivers that are all `tri_state` share the line (at most
+    /// one is selected at a time, which firmware and the select line carry); two `output` pins
+    /// are two outputs, and an `output` among `tri_state` pins drives while the others are
+    /// selected (ADR 0064). A `bidirectional` pin is not counted, as before.
     fn outputs(&mut self, net: &Net, terminals: &[InstId]) {
         let model = self.model;
-        let outputs: Vec<InstId> = terminals
+        let drivers: Vec<(InstId, PinKind)> = terminals
             .iter()
-            .copied()
-            .filter(|&t| self.kind_here(t) == Some(PinKind::Output))
+            .filter_map(|&t| match self.kind_here(t) {
+                Some(k @ (PinKind::Output | PinKind::TriState)) => Some((t, k)),
+                _ => None,
+            })
             .collect();
-        let mut distinct: Vec<InstId> = Vec::new();
-        for o in outputs {
+        let mut distinct: Vec<(InstId, PinKind)> = Vec::new();
+        for (o, kind) in drivers {
             let group = model.joined_inside(o);
-            if !distinct.iter().any(|d| group.contains(d)) {
-                distinct.push(o);
+            if !distinct.iter().any(|(d, _)| group.contains(d)) {
+                distinct.push((o, kind));
             }
         }
-        if distinct.len() >= 2 {
-            let names: Vec<String> = distinct.iter().map(|&p| self.describe(p)).collect();
-            let at = model
-                .instance(model.owner_of(distinct[0]).expect("a terminal"))
-                .at();
-            self.report(
-                at,
-                format!("net `{}` has two outputs: {}", net.name, list_plain(&names)),
-            );
+        if distinct.len() < 2 {
+            return;
         }
+        let plain: Vec<InstId> = distinct
+            .iter()
+            .filter(|(_, k)| *k == PinKind::Output)
+            .map(|&(p, _)| p)
+            .collect();
+        let at = model
+            .instance(model.owner_of(distinct[0].0).expect("a terminal"))
+            .at();
+        if plain.is_empty() {
+            return;
+        }
+        if plain.len() == distinct.len() {
+            let names: Vec<String> = distinct.iter().map(|&(p, _)| self.describe(p)).collect();
+            let mut message = format!("net `{}` has two outputs: {}", net.name, list_plain(&names));
+            if model.net_has_stated_role(net) {
+                message.push_str(
+                    "; a line that several parts share needs every driver to be `tri_state`",
+                );
+            }
+            self.report(at, message);
+            return;
+        }
+        // An `output` among `tri_state` pins: the output drives while the others are selected.
+        let says = |p: InstId, kind: PinKind| {
+            let ty = model
+                .owner_of(p)
+                .map_or(String::new(), |o| model.instance(o).type_name.clone());
+            let what = if kind == PinKind::TriState {
+                "a `tri_state` output"
+            } else {
+                "an output"
+            };
+            format!("`{}` (`{ty}`, {what})", model.path_of(p))
+        };
+        let all: Vec<String> = distinct.iter().map(|&(p, k)| says(p, k)).collect();
+        let plain_names: Vec<String> = plain
+            .iter()
+            .map(|&p| format!("`{}`", model.path_of(p)))
+            .collect();
+        let mut types: Vec<String> = plain
+            .iter()
+            .filter_map(|&p| model.owner_of(p))
+            .map(|o| format!("`{}`", model.instance(o).type_name))
+            .collect();
+        types.sort();
+        types.dedup();
+        let (be, copula) = if plain.len() == 1 {
+            ("is", "it")
+        } else {
+            ("are", "they")
+        };
+        self.report(
+            at,
+            format!(
+                "net `{}` has {} drivers and {} {be} not `tri_state`: {}; {copula} would drive the net while another driver on it is selected; the datasheet of {} must say that the pin is high impedance while its part is not selected (then write `tri_state` for it, with the page), or give {} a net of its own",
+                net.name,
+                distinct.len(),
+                plain_names.join(", "),
+                all.join(" and "),
+                types.join(", "),
+                plain_names.join(", "),
+            ),
+        );
     }
 
     /// A net whose pins are all inputs has nothing that drives it (a UART's `rx` wired to

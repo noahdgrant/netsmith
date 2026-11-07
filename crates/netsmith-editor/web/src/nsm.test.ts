@@ -109,6 +109,55 @@ describe('tokenize', () => {
     expect(kinds('.p1 passive "P" "1" fn on limit').map((k) => k[1]).slice(-2)).toEqual(['name', 'name']);
   });
 
+  it('reads tri_state in a pin row as it reads the other kinds: a plain name, no error (ADR 0064)', () => {
+    expect(kinds('.do tri_state "DO" "2"').map((k) => k[1])).toEqual(['punct', 'member', 'name', 'string', 'string']);
+    expect(kinds('.p1 bidirectional "P" "1" fn GPIO MISO:tri_state').map((k) => k[1]).includes('error')).toBe(false);
+  });
+
+  it('reads lines with its role and limit, and the words of a row, as keywords only where the parser does (ADR 0064)', () => {
+    expect(kinds('lines SpiRole::Master limit 1 {').slice(0, 5)).toEqual([
+      ['lines', 'keyword'],
+      ['SpiRole', 'type'],
+      ['::', 'punct'],
+      ['Master', 'type'],
+      ['limit', 'keyword'],
+    ]);
+    expect(kinds('lines limit 2 {').slice(0, 2)).toEqual([
+      ['lines', 'keyword'],
+      ['limit', 'keyword'],
+    ]);
+    expect(kinds('lines {')[0]).toEqual(['lines', 'keyword']);
+    expect(kinds('.tx output crosses .rx').map((k) => k[1])).toEqual(['punct', 'member', 'name', 'keyword', 'punct', 'member']);
+    expect(kinds('.cs input single').at(-1)).toEqual(['single', 'keyword']);
+    expect(kinds('.rts output crosses .cts optional').at(-1)).toEqual(['optional', 'keyword']);
+    expect(kinds('.a output single crosses .b required').map((k) => k[0] + ':' + k[1]).filter((k) => k.endsWith('keyword'))).toEqual([
+      'single:keyword',
+      'crosses:keyword',
+      'required:keyword',
+    ]);
+    // Names where a name is meant.
+    expect(kinds('.lines: Rail')[1]).toEqual(['lines', 'member']);
+    expect(kinds('lines.pos ~ x.neg')[0]).toEqual(['lines', 'name']);
+    expect(kinds('.single &= 1')[1]).toEqual(['single', 'member']);
+    expect(kinds('.crosses ~ .single').map((k) => k[1])).toEqual(['punct', 'member', 'operator', 'punct', 'member']);
+    expect(kinds('single.pos ~ crosses.neg').map((k) => k[1]).includes('keyword')).toBe(false);
+    expect(kinds('limit.x &= 1')[0]).toEqual(['limit', 'name']);
+    // A pin row of a part that names a function `single` is not a lines row.
+    expect(kinds('.p1 passive "P" "1" fn single').at(-1)).toEqual(['single', 'name']);
+  });
+
+  it('reads as in a peripheral, in its header and after a function, and nowhere else (ADR 0064)', () => {
+    expect(kinds('peripheral SPIM0 on APP_GPIO as Spi SpiRole::Master {').filter((k) => k[1] === 'keyword').map((k) => k[0])).toEqual(['peripheral', 'on', 'as']);
+    expect(kinds('peripheral TX0 as Uart { TX0_TX:output as tx TX0_RX:input as rx }').filter((k) => k[1] === 'keyword').map((k) => k[0])).toEqual(['peripheral', 'as', 'as', 'as']);
+    expect(kinds('SPIM0_SCK:output as sclk').map((k) => k[0] + ':' + k[1])).toEqual(['SPIM0_SCK:type', '::punct', 'output:name', 'as:keyword', 'sclk:name']);
+    expect(kinds('SPIM0_DCX as dcx')[1]).toEqual(['as', 'keyword']);
+    // Names where a name is meant.
+    expect(kinds('.as: Rail')[1]).toEqual(['as', 'member']);
+    expect(kinds('as.pos ~ x.neg')[0]).toEqual(['as', 'name']);
+    expect(kinds('.x ~ .as.pos')[4]).toEqual(['as', 'member']);
+    expect(kinds('.p1 passive "P" "1" fn as').at(-1)).toEqual(['as', 'name']);
+  });
+
   it('reads required as the marker of a pin row, and as a plain name where a member is called that', () => {
     expect(kinds('.p1 passive "TP" "1" required').at(-1)).toEqual(['required', 'keyword']);
     expect(kinds('.p1 power "VCC" "1" optional').at(-1)).toEqual(['optional', 'keyword']);

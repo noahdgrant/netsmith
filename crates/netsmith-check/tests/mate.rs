@@ -280,6 +280,33 @@ fn two_outputs_on_one_contact_and_an_input_nobody_drives_are_refused() {
 }
 
 #[test]
+fn an_output_on_one_board_and_a_tri_state_output_on_the_other_are_refused() {
+    // The serial card's `tx` on contact 7, where the controller's `tx` is, now `tri_state`: a
+    // line that several parts drive needs every driver `tri_state`.
+    let src = changed(
+        "    .chip.uart.rx ~ .j1.p7\n    .chip.uart.tx ~ .j1.p8",
+        "    .chip.uart.tx ~ .j1.p7\n    .chip.uart.rx ~ .j1.p8",
+    );
+    let src = src.replacen(
+        ".uart.tx  output \"TX\"   \"3\"",
+        ".uart.tx  tri_state \"TX\" \"3\"",
+        1,
+    );
+    let c = run(&src);
+    let msgs = messages(&c);
+    let seven = msgs
+        .iter()
+        .find(|m| m.contains("contact 7"))
+        .unwrap_or_else(|| panic!("{msgs:#?}"));
+    assert!(
+        seven.contains("is an output on one board and a tri_state output on the other")
+            && seven.contains("(tri_state `carrier.mcu.uart.tx`)")
+            && seven.contains("(output `serial.chip.uart.tx`)"),
+        "{seven}"
+    );
+}
+
+#[test]
 fn ground_against_power_or_a_signal_is_a_short() {
     // Swap the ground and the supply on the sensor card's header: contact 1 is ground on the
     // carrier and power on the card.

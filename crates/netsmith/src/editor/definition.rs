@@ -220,6 +220,15 @@ fn visit<'a>(
                 path(&row.pin, inside);
             }
         }
+        // The lines of an interface are its own pins, and the line a row crosses to.
+        Item::Lines(lines) => {
+            for row in &lines.rows {
+                path(&row.pin, inside);
+                if let Some(other) = &row.crosses {
+                    path(other, inside);
+                }
+            }
+        }
         // A peripheral names functions, which are words and not paths.
         Item::Peripheral(_) => {}
         Item::Shared(shared) => {

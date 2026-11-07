@@ -40,6 +40,7 @@ pub enum PinKind {
     Bidirectional,
     Passive,
     NoConnect,
+    TriState,
 }
 
 impl PinKind {
@@ -52,6 +53,7 @@ impl PinKind {
             Self::Bidirectional => "bidirectional",
             Self::Passive => "passive",
             Self::NoConnect => "no_connect",
+            Self::TriState => "tri_state",
         }
     }
 }

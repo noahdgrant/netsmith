@@ -125,7 +125,7 @@ fn an_unknown_pin_kind_lists_the_kinds() {
     let (msg, line, col) = row_error(".a tristate \"A\" \"1\"");
     assert_eq!(
         msg,
-        "unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive and no_connect"
+        "unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive, no_connect and tri_state"
     );
     assert_eq!((line, col), (3, 12));
 }
@@ -134,7 +134,7 @@ fn an_unknown_pin_kind_lists_the_kinds() {
 fn a_row_that_stops_early_says_what_is_missing() {
     let (msg, ..) = row_error(".a");
     assert!(
-        msg.starts_with("expected a pin kind (power, input, output, bidirectional, passive and no_connect) after `.a`, found end of line"),
+        msg.starts_with("expected a pin kind (power, input, output, bidirectional, passive, no_connect and tri_state) after `.a`, found end of line"),
         "{msg}"
     );
     let (msg, ..) = row_error(".a passive");
@@ -309,12 +309,12 @@ fn the_kind_of_a_function_must_be_a_kind_and_touch_its_name() {
     let (msg, line, col) = row_error(".a bidirectional \"A\" \"1\" fn GPIO:tristate");
     assert_eq!(
         msg,
-        "unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive and no_connect"
+        "unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive, no_connect and tri_state"
     );
     assert_eq!((line, col), (3, 42));
     let (msg, ..) = row_error(".a bidirectional \"A\" \"1\" fn GPIO:");
     assert!(
-        msg.contains("a pin kind (power, input, output, bidirectional, passive and no_connect) right after `GPIO:`"),
+        msg.contains("a pin kind (power, input, output, bidirectional, passive, no_connect and tri_state) right after `GPIO:`"),
         "{msg}"
     );
     let (msg, ..) = row_error(".a bidirectional \"A\" \"1\" fn GPIO :output");
@@ -324,4 +324,42 @@ fn the_kind_of_a_function_must_be_a_kind_and_touch_its_name() {
     );
     let (msg, ..) = row_error(".a bidirectional \"A\" \"1\" fn GPIO: output");
     assert!(msg.contains("right after `GPIO:`"), "{msg}");
+}
+
+#[test]
+fn tri_state_is_a_kind_of_a_row_and_of_a_function() {
+    let src = row(
+        ".do tri_state \"DO\" \"2\"\n        .io bidirectional \"IO\" \"3\" fn GPIO MISO:tri_state",
+    );
+    let file = parse(&src).unwrap();
+    let Item::Pins(table) = &file.definitions[0].items[0] else {
+        panic!()
+    };
+    assert_eq!(table.rows[0].kind, PinKind::TriState);
+    assert_eq!(PinKind::TriState.word(), "tri_state");
+    assert_eq!(
+        table.rows[1].functions[1].kind.map(|(k, _)| k),
+        Some(PinKind::TriState)
+    );
+    let printed = file.to_source();
+    assert!(printed.contains(".do tri_state \"DO\" \"2\""), "{printed}");
+    assert!(printed.contains("fn GPIO MISO:tri_state"), "{printed}");
+    assert_eq!(parse(&printed).unwrap().to_source(), printed);
+}
+
+#[test]
+fn the_seven_kinds_are_the_words_of_the_unknown_kind_message() {
+    let words: Vec<&str> = PinKind::ALL.iter().map(|k| k.word()).collect();
+    assert_eq!(
+        words,
+        [
+            "power",
+            "input",
+            "output",
+            "bidirectional",
+            "passive",
+            "no_connect",
+            "tri_state"
+        ]
+    );
 }
