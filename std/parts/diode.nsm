@@ -49,7 +49,7 @@ part Diode {
 /// same fields and ratings, and is its own kind because it is a different symbol and a
 /// different catalog, and because a design says which it needs ("a Schottky for the
 /// reverse-polarity drop").
-part Schottky {
+generic Schottky {
     .designator &= "D"
 
     pins {
@@ -88,7 +88,7 @@ part Schottky {
 /// breakdown. As a shunt regulator, it sits across the rail it makes and the rail's voltage
 /// is the Zener's. What is always true is the power limit: the voltage across it times the
 /// current through it, cathode to anode, is at most `.max_power`.
-part Zener {
+generic Zener {
     .designator &= "D"
 
     pins {
@@ -121,7 +121,7 @@ part Zener {
 /// is across. What it protects is the board's to say. A design states the lowest absolute
 /// maximum of what is behind the diode as `.protected_limit` (a voltage, from that part's
 /// datasheet), and then the clamping voltage is checked against it.
-part Tvs {
+generic Tvs {
     .designator &= "D"
 
     pins {

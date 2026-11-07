@@ -297,8 +297,20 @@ fn a_regulator_output_no_part_offers_is_blamed_on_the_regulator_not_the_capacito
         &source.text[d.span.start..d.span.end],
         ".regulator:  LinearRegulator"
     );
-    // The capacitors were not half-chosen either (a connector's pick is its own).
-    assert!(s.picks.iter().all(|p| p.catalog == "header"));
+    // The input capacitor reads only the range the board states for the input, so nothing the
+    // regulator is decides it: it is chosen (ADR 0057). The output capacitor's voltage is
+    // the regulator's, so it is left with it, as before. (A connector's pick is its own.)
+    let left: Vec<_> = s
+        .unresolved
+        .iter()
+        .map(|u| s.model.path_of(u.part))
+        .collect();
+    assert_eq!(left, ["stage.output_cap", "stage.regulator"]);
+    assert!(
+        s.picks
+            .iter()
+            .any(|p| s.model.path_of(p.part) == "stage.input_cap")
+    );
 }
 
 // ---- the catalog's order is the policy -------------------------------------------
@@ -496,9 +508,12 @@ fn a_regulator_without_headroom_fails_with_the_numbers() {
     let (_, s) = run(&low);
     let msgs = messages(&s);
     assert_eq!(msgs.len(), 1, "{msgs:#?}");
+    // The regulator is the cause whatever the capacitors are, and the message says so alone
+    // (ADR 0057); it used to name every part searched with it.
     assert!(
-        msgs[0].contains("no combination of candidates satisfies")
-            && msgs[0].contains("`stage.regulator`"),
+        msgs[0].contains(
+            "no `ldo` candidate satisfies `stage.regulator`: the closest of the 1 that fit"
+        ),
         "{}",
         msgs[0]
     );
@@ -738,6 +753,10 @@ fn changing_only_the_catalog_order_changes_the_resistor_pick() {
             FieldKind::Quantity(Dimension::POWER),
         ),
         ("package".to_string(), FieldKind::Text),
+        (
+            "temperature_coefficient".to_string(),
+            FieldKind::Quantity(Dimension::NONE),
+        ),
     ];
     let mut resistors = by_value.resolve("resistor", &kinds).unwrap().unwrap();
     resistors.candidates.sort_by(|a, b| {
@@ -1336,8 +1355,7 @@ fn a_load_beyond_the_regulators_current_names_the_current_and_the_limit() {
     assert_eq!(msgs.len(), 1, "{msgs:#?}");
     let m = &msgs[0];
     assert!(
-        m.contains("no combination of candidates satisfies")
-            && m.contains("`stage.regulator`")
+        m.contains("no `ldo` candidate satisfies `stage.regulator`")
             && m.contains(
                 "-stage.regulator.vout.current must always be at most stage.regulator.max_current"
             )

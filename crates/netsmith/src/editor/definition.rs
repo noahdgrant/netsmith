@@ -136,6 +136,12 @@ pub fn find(loader: &Loader, path: &str, text: &str, offset: usize) -> Option<Fo
         .enumerate()
         .find(|(_, d)| contains(d.span, byte))?;
 
+    // `part X provides G`: the generic.
+    if let Some(name) = def.provides.iter().find(|n| contains(n.span, byte)) {
+        let (module, i) = resolve_type(loader, &here, &name.name)?;
+        return Some(Found::definition(&module, i, &kinds));
+    }
+
     // Every declaration and path of the definition, with the declarations around each.
     let mut found = Vec::new();
     for item in &def.items {
@@ -250,6 +256,24 @@ fn visit<'a>(
                 path(&row.pin, inside);
             }
         }
+        // The lines of an interface are its own pins, and the line a row crosses to.
+        Item::Lines(lines) => {
+            for row in &lines.rows {
+                path(&row.pin, inside);
+                if let Some(other) = &row.crosses {
+                    path(other, inside);
+                }
+            }
+        }
+        // A peripheral names functions, which are words and not paths.
+        Item::Peripheral(_) => {}
+        Item::Shared(shared) => {
+            for member in &shared.members {
+                if let netsmith_lang::ast::SharedMember::Pin(p) = member {
+                    path(p, inside);
+                }
+            }
+        }
         Item::Case(case) => {
             for inner in &case.items {
                 visit(inner, inside, out);
@@ -274,7 +298,7 @@ fn expr_paths<'a>(e: &'a Expr, out: &mut Vec<&'a Path>) {
             expr_paths(center, out);
             expr_paths(tol, out);
         }
-        Expr::Number(..) | Expr::Str(..) => {}
+        Expr::Number(..) | Expr::Str(..) | Expr::Variant { .. } => {}
     }
 }
 

@@ -215,6 +215,7 @@ fn resistors(c: &Catalogs) -> Vec<String> {
         q("resistance", Dimension::RESISTANCE),
         q("max_power", Dimension::POWER),
         t("package"),
+        q("temperature_coefficient", Dimension::NONE),
     ];
     c.resolve("resistor", &columns)
         .unwrap()

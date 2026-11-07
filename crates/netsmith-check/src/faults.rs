@@ -10,16 +10,18 @@
 use std::collections::{BTreeMap, HashSet};
 
 use crate::diag::Diagnostic;
-use crate::model::{InstId, InstKind, Model, Net, PinKind, PinRow, PinTable, Pinout, Requirement};
+use crate::model::{InstId, InstKind, Model, Net, PinKind, PinRow, PinTable, Pinout};
 use crate::pins::article;
 
 /// The faults that the board alone settles: every part whose package is known, and every
 /// net whose parts all are.
 pub fn pin_faults(model: &Model) -> Vec<Diagnostic> {
     let deferred = unknown_package(model);
-    let mut run = Run::new(model, &deferred, Pass::Board);
+    let bus = crate::busnets::check(model);
+    let mut run = Run::new(model, &deferred, Pass::Board, bus.nets);
     run.go();
     run.out.extend(crate::buses::i2c_pullups(model));
+    run.out.extend(bus.out);
     run.out
 }
 
@@ -28,7 +30,8 @@ pub fn pin_faults(model: &Model) -> Vec<Diagnostic> {
 /// solver chose).
 pub fn pin_faults_solved(before: &Model, solved: &Model) -> Vec<Diagnostic> {
     let deferred = unknown_package(before);
-    let mut run = Run::new(solved, &deferred, Pass::Solved);
+    let bus = crate::busnets::check(solved);
+    let mut run = Run::new(solved, &deferred, Pass::Solved, bus.nets);
     run.go();
     run.out
 }
@@ -56,6 +59,8 @@ struct Run<'a> {
     model: &'a Model,
     deferred: &'a HashSet<InstId>,
     pass: Pass,
+    /// The nets a bus rule has reported (ADR 0064): the rules of a net skip them.
+    bus_nets: std::collections::HashSet<String>,
     out: Vec<Diagnostic>,
 }
 
@@ -73,11 +78,17 @@ fn list(items: &[String]) -> String {
 }
 
 impl<'a> Run<'a> {
-    fn new(model: &'a Model, deferred: &'a HashSet<InstId>, pass: Pass) -> Self {
+    fn new(
+        model: &'a Model,
+        deferred: &'a HashSet<InstId>,
+        pass: Pass,
+        bus_nets: std::collections::HashSet<String>,
+    ) -> Self {
         Self {
             model,
             deferred,
             pass,
+            bus_nets,
             out: Vec::new(),
         }
     }
@@ -114,8 +125,100 @@ impl<'a> Run<'a> {
             if self.pass == Pass::Solved {
                 self.pads(part);
             }
+            if self.pass == Pass::Board {
+                self.shared(part);
+            }
         }
         self.nets(&parts);
+        if self.pass == Pass::Board {
+            self.stray_functions();
+        }
+    }
+
+    /// A function stated on a pin that no part reads has no effect (ADR 0071, stage 0): a
+    /// module's own pin whose choice nothing passes on, or a pin of a part that its table does
+    /// not describe. It is an error, because a statement that is accepted and does nothing
+    /// sends the reader to the wrong place.
+    fn stray_functions(&mut self) {
+        let model = self.model;
+        let mut pins: Vec<(String, InstId)> = model
+            .instances()
+            .filter(|(id, i)| i.kind == InstKind::Pin && model.board_of(*id).is_some())
+            .map(|(id, _)| (model.path_of(id), id))
+            .collect();
+        pins.sort();
+        for (path, pin) in pins {
+            let Some(crate::model::Member::Field(field)) = model.member(pin, "function") else {
+                continue;
+            };
+            let Some(&at) = model.field(field).narrowed_at.last() else {
+                continue;
+            };
+            if model.function_is_read(pin) {
+                continue;
+            }
+            let Some(owner) = model.owner_of(pin) else {
+                continue;
+            };
+            let inst = model.instance(owner);
+            let name = format!("`{path}`");
+            let message = if inst.kind == InstKind::Part {
+                format!(
+                    "`{path}.function` is stated, but {name} has no row in the pin table of `{}`, so it has no effect; the function of a pin is chosen on a pin of the table",
+                    inst.type_name
+                )
+            } else {
+                let ty = &inst.type_name;
+                let own = model.path_below(pin, owner);
+                let hint = self.forwarding_hint(owner, pin, &own);
+                format!(
+                    "`{path}.function` is stated, but {name} is a pin of {} `{ty}` and nothing passes it to a pin of a part, so it has no effect; inside `{ty}`, write {hint}",
+                    inst.kind.word()
+                )
+            };
+            self.report(at, message);
+        }
+    }
+
+    /// The equation a module writes to pass the function of its own pin to a pin of a part:
+    /// with the part's pin named when exactly one pin with functions is on the same net inside
+    /// the module, else with its place left to fill.
+    fn forwarding_hint(&self, module: InstId, pin: InstId, own: &str) -> String {
+        let model = self.model;
+        let candidates: Vec<InstId> = model
+            .net_of(pin)
+            .map(|n| {
+                n.pins
+                    .iter()
+                    .copied()
+                    .filter(|&p| {
+                        p != pin
+                            && model.owner_of(p).is_some_and(|o| {
+                                model.is_inside(o, module)
+                                    && o != module
+                                    && model
+                                        .pin_facts(p)
+                                        .is_some_and(|r| model.offered_count(o, r) > 0)
+                            })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        match candidates.as_slice() {
+            [one] => format!(
+                "`.{}.function == .{own}.function`",
+                model.path_below(*one, module)
+            ),
+            _ => format!("`.<part>.<pin>.function == .{own}.function`"),
+        }
+    }
+
+    /// What a part's `shared` resources allow (ADR 0071). It needs no package, so it is judged
+    /// in the board pass for every part, deferred or not.
+    fn shared(&mut self, part: InstId) {
+        for (at, message) in crate::shared::overuse(self.model, part) {
+            self.report(at, message);
+        }
     }
 
     /// The pin tables say how a part is in the package it is in, if any does.
@@ -199,17 +302,16 @@ impl<'a> Run<'a> {
                 }
             }
 
-            let must = matches!(
-                (row.kind, row.requirement),
-                (_, Some(Requirement::Required)) | (PinKind::Power | PinKind::Input, None)
-            );
+            let (must, by_role) = model.must_be_connected_by(pin, row);
             if must && !self.has_company(part, pin) {
+                let because = by_role.unwrap_or_default();
                 self.report(
                     inst.at(),
                     format!(
-                        "`{name}` is {} that must be connected ({pads}, `{}`), but nothing else is on its net",
+                        "`{name}` is {} that must be connected ({pads}, `{}`){}{because} nothing else is on its net",
                         article(row.kind),
-                        row.name
+                        row.name,
+                        if because.is_empty() { ", but" } else { ": " },
                     ),
                 );
             }
@@ -232,28 +334,55 @@ impl<'a> Run<'a> {
         let name = model.path_of(pin);
         let chosen = model.function_of(pin);
         let functions: Vec<String> = row.function_names();
+        let classed = model.class_peripherals(part, row);
         match chosen {
-            Some(f) if !functions.contains(&f) => {
+            Some(f) if !model.offers(part, row, &f) => {
                 let at = self.function_site(pin, part);
-                let message = if functions.is_empty() {
-                    format!("`{name}` cannot be `{f}`; it has no functions to choose from")
+                let message = if model.instance(part).rules.peripherals.is_empty() {
+                    if functions.is_empty() {
+                        format!("`{name}` cannot be `{f}`; it has no functions to choose from")
+                    } else {
+                        format!(
+                            "`{name}` cannot be `{f}`; its functions are {}",
+                            functions.join(", ")
+                        )
+                    }
                 } else {
-                    format!(
-                        "`{name}` cannot be `{f}`; its functions are {}",
-                        functions.join(", ")
-                    )
+                    self.not_offered(part, pin, row, &f)
                 };
                 self.report(at, message);
             }
             Some(_) => {}
-            None if functions.len() > 1 && model.is_connected(pin) => {
-                let scope = model.instance(part).parent.unwrap_or(model.root);
+            None if model.offered_count(part, row) > 1 && model.is_connected(pin) => {
+                // A pin that a module forwards is chosen where the board can write it: on the
+                // module's own pin, by the path the board knows.
+                let chain = model.function_chain(pin);
+                let outer = *chain.last().expect("a pin");
+                let (at, scope, pin) = match model.owner_of(outer).filter(|_| outer != pin) {
+                    Some(module) => (
+                        model.instance(module).at(),
+                        model.instance(module).parent.unwrap_or(model.root),
+                        outer,
+                    ),
+                    None => (
+                        model.instance(part).at(),
+                        model.instance(part).parent.unwrap_or(model.root),
+                        pin,
+                    ),
+                };
                 let relative = model.path_below(pin, scope);
-                self.report(
-                    model.instance(part).at(),
+                let shown = if classed.is_empty() {
+                    functions.join(", ")
+                } else {
                     format!(
-                        "`{name}` has several functions ({}) and is connected: choose one with `.{relative}.function &= \"{}\"`",
-                        functions.join(", "),
+                        "{} and the lines of the peripherals on those pins",
+                        functions.join(", ")
+                    )
+                };
+                self.report(
+                    at,
+                    format!(
+                        "`{name}` has several functions ({shown}) and is connected: choose one with `.{relative}.function &= \"{}\"`",
                         functions[0]
                     ),
                 );
@@ -262,22 +391,94 @@ impl<'a> Run<'a> {
         }
     }
 
-    /// Where the board chose a function: the statement, or else the part.
+    /// The message for a function that a pin does not offer, in a part that has peripherals:
+    /// where the function is offered when a peripheral lists it, the nearest function when no
+    /// pin does, and what this pin offers. A pin whose peripherals are on a class has too many
+    /// functions to list, so it names the peripherals.
+    fn not_offered(&self, part: InstId, pin: InstId, row: &PinRow, function: &str) -> String {
+        let model = self.model;
+        let name = model.path_of(pin);
+        let functions = row.function_names();
+        let classed = model.class_peripherals(part, row);
+        let mut message = format!("`{name}` cannot be `{function}`");
+        if let Some((peripheral, _)) = model.peripheral_of(part, function) {
+            let mut pins: Vec<String> = model
+                .instance(part)
+                .tables
+                .iter()
+                .flat_map(|t| t.rows.iter())
+                .filter(|r| r.functions.iter().any(|f| f.name == function))
+                .map(|r| format!("`{}`", model.path_of(r.pin)))
+                .collect();
+            pins.sort();
+            pins.dedup();
+            let on = pins.join(", ");
+            message.push_str(&match (&peripheral.class, pins.is_empty()) {
+                (Some(class), true) => {
+                    format!("; that function is offered on every pin that lists `{class}`")
+                }
+                (Some(class), false) => format!(
+                    "; that function is offered on every pin that lists `{class}` and on {on}"
+                ),
+                (None, _) => format!("; that function is offered only on {on}"),
+            });
+            message.push_str("; ");
+        } else {
+            let mut known: Vec<String> = model
+                .instance(part)
+                .tables
+                .iter()
+                .flat_map(|t| t.rows.iter())
+                .flat_map(|r| r.functions.iter().map(|f| f.name.clone()))
+                .chain(
+                    model
+                        .instance(part)
+                        .rules
+                        .peripherals
+                        .iter()
+                        .flat_map(|p| p.functions.iter().map(|f| f.name.clone())),
+                )
+                .collect();
+            known.sort();
+            known.dedup();
+            match crate::lower::closest(function, &known) {
+                Some(near) => message.push_str(&format!("; did you mean `{near}`? ")),
+                None => message.push_str("; "),
+            }
+        }
+        if classed.is_empty() {
+            if functions.is_empty() {
+                message.push_str("it has no functions to choose from");
+            } else {
+                message.push_str(&format!("its functions are {}", functions.join(", ")));
+            }
+        } else {
+            let lines: Vec<String> = classed.iter().map(|p| p.name.clone()).collect();
+            message.push_str(&format!(
+                "`{name}` offers {} and the lines of the peripherals on those pins: {}",
+                functions.join(", "),
+                lines.join(", ")
+            ));
+        }
+        message
+    }
+
+    /// Where the board chose a function: the statement, on the pin or on the pin of a module
+    /// that forwards to it, or else the part.
     fn function_site(
         &self,
         pin: InstId,
         part: InstId,
     ) -> (crate::diag::SourceId, netsmith_lang::Span) {
         let model = self.model;
-        match model.member(pin, "function") {
-            Some(crate::model::Member::Field(f)) => model
-                .field(f)
-                .narrowed_at
-                .last()
-                .copied()
-                .unwrap_or_else(|| model.instance(part).at()),
-            _ => model.instance(part).at(),
-        }
+        model
+            .function_chain(pin)
+            .into_iter()
+            .find_map(|p| match model.member(p, "function") {
+                Some(crate::model::Member::Field(f)) => model.field(f).narrowed_at.last().copied(),
+                _ => None,
+            })
+            .unwrap_or_else(|| model.instance(part).at())
     }
 
     fn functions_used_twice(&mut self, part: InstId, table: &PinTable) {
@@ -368,36 +569,102 @@ impl<'a> Run<'a> {
             if any_mine != (self.pass == Pass::Solved) {
                 continue;
             }
+            // A net that a bus rule has reported is said once (ADR 0064).
+            if self.bus_nets.contains(&net.name) {
+                continue;
+            }
             self.outputs(net, &mine);
             self.floating_inputs(net);
         }
     }
 
-    /// Two outputs on one net. Pins joined inside their part are one output.
+    /// Two drivers on one net: pins whose kind is `output` or `tri_state`. Pins joined inside
+    /// their part are one driver. Drivers that are all `tri_state` share the line (at most
+    /// one is selected at a time, which firmware and the select line carry); two `output` pins
+    /// are two outputs, and an `output` among `tri_state` pins drives while the others are
+    /// selected (ADR 0064). A `bidirectional` pin is not counted, as before.
     fn outputs(&mut self, net: &Net, terminals: &[InstId]) {
         let model = self.model;
-        let outputs: Vec<InstId> = terminals
+        let drivers: Vec<(InstId, PinKind)> = terminals
             .iter()
-            .copied()
-            .filter(|&t| self.kind_here(t) == Some(PinKind::Output))
+            .filter_map(|&t| match self.kind_here(t) {
+                Some(k @ (PinKind::Output | PinKind::TriState)) => Some((t, k)),
+                _ => None,
+            })
             .collect();
-        let mut distinct: Vec<InstId> = Vec::new();
-        for o in outputs {
+        let mut distinct: Vec<(InstId, PinKind)> = Vec::new();
+        for (o, kind) in drivers {
             let group = model.joined_inside(o);
-            if !distinct.iter().any(|d| group.contains(d)) {
-                distinct.push(o);
+            if !distinct.iter().any(|(d, _)| group.contains(d)) {
+                distinct.push((o, kind));
             }
         }
-        if distinct.len() >= 2 {
-            let names: Vec<String> = distinct.iter().map(|&p| self.describe(p)).collect();
-            let at = model
-                .instance(model.owner_of(distinct[0]).expect("a terminal"))
-                .at();
-            self.report(
-                at,
-                format!("net `{}` has two outputs: {}", net.name, list_plain(&names)),
-            );
+        if distinct.len() < 2 {
+            return;
         }
+        let plain: Vec<InstId> = distinct
+            .iter()
+            .filter(|(_, k)| *k == PinKind::Output)
+            .map(|&(p, _)| p)
+            .collect();
+        let at = model
+            .instance(model.owner_of(distinct[0].0).expect("a terminal"))
+            .at();
+        if plain.is_empty() {
+            return;
+        }
+        if plain.len() == distinct.len() {
+            let names: Vec<String> = distinct.iter().map(|&(p, _)| self.describe(p)).collect();
+            let mut message = format!("net `{}` has two outputs: {}", net.name, list_plain(&names));
+            if model.net_has_stated_role(net) {
+                message.push_str(
+                    "; a line that several parts share needs every driver to be `tri_state`",
+                );
+            }
+            self.report(at, message);
+            return;
+        }
+        // An `output` among `tri_state` pins: the output drives while the others are selected.
+        let says = |p: InstId, kind: PinKind| {
+            let ty = model
+                .owner_of(p)
+                .map_or(String::new(), |o| model.instance(o).type_name.clone());
+            let what = if kind == PinKind::TriState {
+                "a `tri_state` output"
+            } else {
+                "an output"
+            };
+            format!("`{}` (`{ty}`, {what})", model.path_of(p))
+        };
+        let all: Vec<String> = distinct.iter().map(|&(p, k)| says(p, k)).collect();
+        let plain_names: Vec<String> = plain
+            .iter()
+            .map(|&p| format!("`{}`", model.path_of(p)))
+            .collect();
+        let mut types: Vec<String> = plain
+            .iter()
+            .filter_map(|&p| model.owner_of(p))
+            .map(|o| format!("`{}`", model.instance(o).type_name))
+            .collect();
+        types.sort();
+        types.dedup();
+        let (be, copula) = if plain.len() == 1 {
+            ("is", "it")
+        } else {
+            ("are", "they")
+        };
+        self.report(
+            at,
+            format!(
+                "net `{}` has {} drivers and {} {be} not `tri_state`: {}; {copula} would drive the net while another driver on it is selected; the datasheet of {} must say that the pin is high impedance while its part is not selected (then write `tri_state` for it, with the page), or give {} a net of its own",
+                net.name,
+                distinct.len(),
+                plain_names.join(", "),
+                all.join(" and "),
+                types.join(", "),
+                plain_names.join(", "),
+            ),
+        );
     }
 
     /// A net whose pins are all inputs has nothing that drives it (a UART's `rx` wired to
@@ -472,9 +739,10 @@ impl<'a> Run<'a> {
     /// none.
     fn kind_in(&self, part: InstId, pin: InstId) -> Option<PinKind> {
         match self.model.pinout(part) {
-            Pinout::Table(table) => table
-                .row(pin)
-                .map(|r| r.kind_with(self.model.function_of(pin).as_deref())),
+            Pinout::Table(table) => table.row(pin).map(|r| {
+                self.model
+                    .kind_with(part, r, self.model.function_of(pin).as_deref())
+            }),
             _ => None,
         }
     }
@@ -495,7 +763,7 @@ impl<'a> Run<'a> {
             Pinout::Table(table) => table.row(pin),
             _ => model.pin_facts(pin),
         }?;
-        let kind = row.function_kind(Some(&chosen))?;
+        let kind = model.function_kind(part, row, Some(&chosen))?;
         Some((chosen, kind))
     }
 

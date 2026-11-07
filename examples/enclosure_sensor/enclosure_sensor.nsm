@@ -9,7 +9,7 @@
 //! footprints, and a footprint of the project's own, through the project's `kicad.toml`; the
 //! board is not a design to build.
 
-import std::bus::{I2c, I2cPullups}
+import std::bus::{I2c, I2cPullups, I2cRole}
 import std::parts::connector::{Coax, Socket1x10, UsbCPower}
 import std::parts::mechanical::TestPoint
 import std::parts::passive::{Capacitor, Led, Resistor, Switch}
@@ -46,11 +46,14 @@ part SensorPlug16 {
 }
 
 /// An invented I2C memory chip in an 8-pin package, standing in for the board's controller.
+/// A memory answers on the bus, and its table says so: `SCL` is an input, which is how an
+/// `I2cRole::Target` reads the clock.
 part Memory {
     .designator &= "U"
 
     .vcc: Rail
     .i2c: I2c
+    .i2c.role &= I2cRole::Target
 
     pins "SOIC-8" {
         .a0       input         "A0"  "1"
@@ -191,7 +194,7 @@ board EnclosureSensor {
 
     // Power: USB-C in, 3.3 V out.
     .usb: UsbCPower {
-        .assembly &= "hand"
+        .assembly &= AssemblyMode::Hand
         .vbus.voltage &= 5V +/- 5%
         .vbus.pos.net &= "VBUS"
         .vbus.neg.net &= "GND"
@@ -215,7 +218,7 @@ board EnclosureSensor {
     .ldo.vout ~ .supply
 
     // The controller stand-in, its bus, and a write-protect switch.
-    .mcu: Memory { .package &= "SOIC-8"; .assembly &= "hand" }
+    .mcu: Memory { .package &= "SOIC-8"; .assembly &= AssemblyMode::Hand }
     .mcu.vcc ~ .supply
     .mcu.a0 ~ .supply.neg
     .mcu.a1 ~ .supply.neg
@@ -227,7 +230,7 @@ board EnclosureSensor {
     .pullups: I2cPullups { .resistance &= 4.7kohm +/- 5% }
     .pullups.bus ~ .bus
     .pullups.supply ~ .supply
-    .wp_switch: Switch { .assembly &= "hand" }
+    .wp_switch: Switch { .assembly &= AssemblyMode::Hand }
     .wp_pullup: Resistor { .resistance &= 10kohm +/- 5% }
     .wp_pullup.a ~ .supply.pos
     .wp_pullup.b ~ .mcu.wp
@@ -235,7 +238,7 @@ board EnclosureSensor {
     .wp_switch.b ~ .supply.neg
 
     // The plug for the sensor head.
-    .plug: SensorPlug16 { .package &= "2.54mm-horizontal"; .assembly &= "hand" }
+    .plug: SensorPlug16 { .package &= "2.54mm-horizontal"; .assembly &= AssemblyMode::Hand }
     .plug.p1 ~ .supply.neg
     .plug.p2 ~ .supply.pos
     .plug.p3 ~ .bus.sda
@@ -261,13 +264,13 @@ board EnclosureSensor {
     .radio.power ~ .supply
 
     // The flat cell on the back, across the sockets; a person fits it after the pins are cut.
-    .cell: FlatCell { .assembly &= "hand" }
+    .cell: FlatCell { .assembly &= AssemblyMode::Hand }
     .cell.pos ~ .supply.pos
     .cell.neg ~ .supply.neg
 
     // The antenna and its coax connector.
-    .coax: Coax { .assembly &= "hand" }
-    .antenna: ChipAntenna { .package &= "2450AT43F0100"; .assembly &= "hand" }
+    .coax: Coax { .assembly &= AssemblyMode::Hand }
+    .antenna: ChipAntenna { .package &= "2450AT43F0100"; .assembly &= AssemblyMode::Hand }
     .coax.signal ~ .antenna.feed
     .coax.shield ~ .supply.neg
 

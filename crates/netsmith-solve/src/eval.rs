@@ -16,6 +16,9 @@ pub enum EvalError {
     /// A field the expression needs has no value yet.
     Unknown(FieldId),
     Quantity(QuantityError),
+    /// A range whose low end (its lowest value) is above its high end (its highest), with the
+    /// two ends as evaluated (ADR 0066).
+    EmptyRange(Quantity, Quantity),
     /// Text where a number belongs, or the reverse.
     Type,
 }
@@ -25,6 +28,10 @@ impl std::fmt::Display for EvalError {
         match self {
             Self::Unknown(_) => write!(f, "a value it needs is not known yet"),
             Self::Quantity(e) => write!(f, "{e}"),
+            Self::EmptyRange(lo, hi) => write!(
+                f,
+                "the low end of the range is above the high end: {lo} against {hi}"
+            ),
             Self::Type => write!(f, "text and numbers are mixed"),
         }
     }
@@ -60,6 +67,16 @@ pub fn eval(model: &Model, e: &RExpr) -> Result<Val, EvalError> {
     tight(model, e, &Env::new(), &mut budget, 0)
 }
 
+/// Whether `e` has a range with a value at an end somewhere in it (ADR 0066).
+fn has_range(e: &RExpr) -> bool {
+    match e {
+        RExpr::Range(..) => true,
+        RExpr::Neg(x) => has_range(x),
+        RExpr::Bin(_, a, b) => has_range(a) || has_range(b),
+        RExpr::Const(_) | RExpr::Text(_) | RExpr::Field(_) => false,
+    }
+}
+
 /// `splits` counts the cuts made on the way here.
 fn tight(
     model: &Model,
@@ -68,6 +85,12 @@ fn tight(
     budget: &mut usize,
     splits: usize,
 ) -> Result<Val, EvalError> {
+    // A range with a value at an end is not a smooth function of its fields (it is the hull of
+    // two ends), so nothing is tightened and the plain interval result stands: wider at worst,
+    // never narrower than the values it can take.
+    if has_range(e) {
+        return plain(model, e, env, budget);
+    }
     let repeated = repeated_variables(model, e, env)?;
     let Some(&var) = repeated.first() else {
         return plain(model, e, env, budget);
@@ -190,6 +213,11 @@ fn derivative(e: &RExpr, var: FieldId) -> Option<RExpr> {
     let bin = |op, a: RExpr, b: RExpr| Bin(op, Box::new(a), Box::new(b));
     match e {
         RExpr::Const(_) | RExpr::Text(_) => None,
+        // Not reached (`tight` leaves a range alone); a derivative that spans zero says that
+        // its sign is unknown.
+        RExpr::Range(..) => Quantity::interval(netsmith_quantity::Dimension::NONE, -1.0, 1.0)
+            .ok()
+            .map(Const),
         Field(f) => (*f == var).then(one),
         Neg(x) => derivative(x, var).map(|d| Neg(Box::new(d))),
         Bin(op, a, b) => {
@@ -270,6 +298,22 @@ fn plain(model: &Model, e: &RExpr, env: &Env, budget: &mut usize) -> Result<Val,
             };
             result.map(Val::Q).map_err(EvalError::Quantity)
         }
+        // A range with a value at an end is a claim only when both ends are known: an end
+        // with no value is `Unknown`, and nothing is narrowed or checked (ADR 0066). The
+        // range holds the low end's lowest value and the high end's highest, as the written
+        // `lo..hi` does, so an end that is itself a range is never trusted more than it says.
+        RExpr::Range(lo, hi) => {
+            let (x, y) = (plain(model, lo, env, budget), plain(model, hi, env, budget));
+            let (Val::Q(x), Val::Q(y)) = (x?, y?) else {
+                return Err(EvalError::Type);
+            };
+            if x.dim() == y.dim() && x.lo() > y.hi() {
+                return Err(EvalError::EmptyRange(x, y));
+            }
+            Quantity::range(&x, &y)
+                .map(Val::Q)
+                .map_err(EvalError::Quantity)
+        }
     }
 }
 
@@ -278,7 +322,7 @@ pub fn fields_in(e: &RExpr, out: &mut Vec<FieldId>) {
     match e {
         RExpr::Field(f) => out.push(*f),
         RExpr::Neg(inner) => fields_in(inner, out),
-        RExpr::Bin(_, a, b) => {
+        RExpr::Bin(_, a, b) | RExpr::Range(a, b) => {
             fields_in(a, out);
             fields_in(b, out);
         }

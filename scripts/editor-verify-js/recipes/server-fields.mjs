@@ -91,9 +91,9 @@ export async function run({ page, shot, step, expect, section }) {
   await goDef('LdoStage');
   await hoverToken('.regulator:', 'LinearRegulator');
   await page.waitForSelector('[data-testid="hover-card"][data-kind="definition"]', { timeout: 4000 });
-  await page.waitForFunction(() => /part LinearRegulator \{/.test(document.querySelector('[data-testid="hover-card"] .hc-sig')?.innerText ?? ''), null, { timeout: 5000 });
+  await page.waitForFunction(() => /generic LinearRegulator \{/.test(document.querySelector('[data-testid="hover-card"] .hc-sig')?.innerText ?? ''), null, { timeout: 5000 });
   const sig = await page.locator('[data-testid="hover-card"] .hc-sig').innerText();
-  expect(/^part LinearRegulator \{.*\}$/s.test(sig.trim()), `the signature is the server's (${sig.replace(/\s+/g, ' ')})`);
+  expect(/^generic LinearRegulator \{.*\}$/s.test(sig.trim()), `the signature is the server's (${sig.replace(/\s+/g, ' ')})`);
   const since = requests.slice(before);
   expect(since.some((r) => r.startsWith('/api/definition')), 'it asked /api/definition');
   expect(!since.some((r) => r.startsWith('/api/file')), `and read no file (${since.filter((r) => r.startsWith('/api/f')).join(', ') || 'none'})`);

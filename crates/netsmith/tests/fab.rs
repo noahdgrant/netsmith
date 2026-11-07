@@ -143,7 +143,7 @@ fn who_assembles_a_part_decides_the_bom_the_placement_file_and_the_notes() {
         )
         .replace(
             "    .led: Led {\n",
-            "    .led: Led {\n        .assembly &= \"hand\"\n",
+            "    .led: Led {\n        .assembly &= AssemblyMode::Hand\n",
         )
         .replace(
             "    .supply.pos ~> .r1",
@@ -190,7 +190,7 @@ fn offered_assembly_board(choice: &str) -> String {
          import std::mfg::jlcpcb::TwoLayer\n\
          module Lamp {{\n\
          \x20   .supply: Rail\n\
-         \x20   .assembly_mode: String\n\
+         \x20   .assembly_mode: AssemblyMode\n\
          \x20   .led: Led {{ .current &= 5mA..15mA }}\n\
          \x20   .r1: Resistor\n\
          \x20   .led.assembly &= .assembly_mode\n\
@@ -239,7 +239,7 @@ fn a_module_that_offers_assembly_lets_the_board_move_its_parts_out_of_the_bom() 
     let dir = out("offered-hand");
     fab(
         "offered.nsm",
-        &offered_assembly_board("    .lamp.assembly_mode &= \"hand\"\n"),
+        &offered_assembly_board("    .lamp.assembly_mode &= AssemblyMode::Hand\n"),
         &dir,
         &Catalogs::jlcpcb(),
         &Libraries::standard(),

@@ -1,7 +1,13 @@
 //! What the pin tables of a part say about one of its pins, in the package it is in
 //! (ADR 0016). The faults built on these are in [`crate::faults`].
 
-use crate::model::{Domain, InstId, Member, Model, Net, PinKind, PinRow, PinTable, Pinout};
+use crate::diag::SourceId;
+use crate::model::{
+    Domain, InstId, InstKind, Member, Model, Net, Peripheral, PeripheralFunction, PinKind, PinRow,
+    PinTable, Pinout, RExpr,
+};
+use netsmith_lang::Span;
+use netsmith_lang::ast::CmpOp;
 
 impl Model {
     /// The package a part is in, if its `package` field holds one.
@@ -166,11 +172,105 @@ impl Model {
             Pinout::Table(table) => table.row(pin),
             _ => self.pin_facts(pin),
         };
-        row.map(|r| r.kind_with(self.function_of(pin).as_deref()))
+        row.map(|r| self.kind_with(part, r, self.function_of(pin).as_deref()))
     }
 
-    /// The function the board chose for a pin.
+    /// The kind of a pin for the rules of a net, given the function the board chose for it:
+    /// the function's own kind if it has one, else the pin's (ADR 0046). A function that a
+    /// peripheral of the part lists takes its kind from the peripheral (ADR 0071).
+    pub fn kind_with(&self, part: InstId, row: &PinRow, chosen: Option<&str>) -> PinKind {
+        self.function_kind(part, row, chosen).unwrap_or(row.kind)
+    }
+
+    /// The function's own kind, when the board chose a function that has one: from the
+    /// peripheral that lists it, or else from the row.
+    pub fn function_kind(
+        &self,
+        part: InstId,
+        row: &PinRow,
+        chosen: Option<&str>,
+    ) -> Option<PinKind> {
+        let name = chosen?;
+        self.peripheral_of(part, name)
+            .and_then(|(_, f)| f.kind)
+            .or_else(|| row.function_kind(Some(name)))
+    }
+
+    /// The peripherals that are `on` a function the row lists: every pin with such a row offers
+    /// their functions as well (ADR 0071). Computed from the part's peripherals when it is
+    /// asked, because a `peripheral` may be stated after the table.
+    pub fn class_peripherals(&self, part: InstId, row: &PinRow) -> Vec<&Peripheral> {
+        let mut found: Vec<&Peripheral> = Vec::new();
+        for p in &self.instance(part).rules.peripherals {
+            let on_row = p
+                .class
+                .as_ref()
+                .is_some_and(|c| row.functions.iter().any(|f| f.name == *c));
+            if on_row && !found.iter().any(|q| q.name == p.name) {
+                found.push(p);
+            }
+        }
+        found
+    }
+
+    /// Whether a pin with this row can be the function: the row lists it, or a peripheral on a
+    /// function the row lists does.
+    pub fn offers(&self, part: InstId, row: &PinRow, function: &str) -> bool {
+        row.functions.iter().any(|f| f.name == function)
+            || self
+                .class_peripherals(part, row)
+                .iter()
+                .any(|p| p.functions.iter().any(|f| f.name == function))
+    }
+
+    /// How many functions a pin with this row can be.
+    pub fn offered_count(&self, part: InstId, row: &PinRow) -> usize {
+        let mut names: Vec<&str> = row.functions.iter().map(|f| f.name.as_str()).collect();
+        for p in self.class_peripherals(part, row) {
+            for f in &p.functions {
+                if !names.contains(&f.name.as_str()) {
+                    names.push(&f.name);
+                }
+            }
+        }
+        names.len()
+    }
+
+    /// The peripheral of a part that lists a function, and the function as it lists it.
+    pub fn peripheral_of(
+        &self,
+        part: InstId,
+        function: &str,
+    ) -> Option<(&Peripheral, &PeripheralFunction)> {
+        self.instance(part).rules.peripherals.iter().find_map(|p| {
+            p.functions
+                .iter()
+                .find(|f| f.name == function)
+                .map(|f| (p, f))
+        })
+    }
+
+    /// The statement that chose a pin's function: on the pin, or on the pin of a module that
+    /// forwards to it.
+    pub fn function_stated_at(&self, pin: InstId) -> Option<(SourceId, Span)> {
+        self.function_chain(pin)
+            .into_iter()
+            .find_map(|p| match self.member(p, "function") {
+                Some(Member::Field(f)) => self.field(f).narrowed_at.last().copied(),
+                _ => None,
+            })
+    }
+
+    /// The function the board chose for a pin: the pin's own, or else the one that a
+    /// forwarding equation takes from a pin of a module (ADR 0071, stage 0).
     pub fn function_of(&self, pin: InstId) -> Option<String> {
+        self.function_chain(pin)
+            .into_iter()
+            .find_map(|p| self.own_function(p))
+    }
+
+    /// The text a pin's own `function` field holds.
+    fn own_function(&self, pin: InstId) -> Option<String> {
         match self.member(pin, "function")? {
             Member::Field(f) => match &self.field(f).domain {
                 Domain::Text(t) => Some(t.clone()),
@@ -179,4 +279,73 @@ impl Model {
             _ => None,
         }
     }
+
+    /// The pin an equation `.mcu.p04.function == .scl.function` takes this pin's function
+    /// from: the pin whose `function` is alone on the right of an `==` whose left side is this
+    /// pin's `function`. A module forwards the choice of its board to a pin of a part this way.
+    fn forwarded_from(&self, pin: InstId) -> Option<InstId> {
+        let Member::Field(own) = self.member(pin, "function")? else {
+            return None;
+        };
+        self.relations()
+            .iter()
+            .find_map(|r| match (&r.lhs, r.op, &r.rhs) {
+                (RExpr::Field(l), CmpOp::EqEq, RExpr::Field(g)) if *l == own => {
+                    let g = self.field(*g);
+                    (g.name == "function" && self.instance(g.owner).kind == InstKind::Pin)
+                        .then_some(g.owner)
+                }
+                _ => None,
+            })
+    }
+
+    /// The pins whose function an equation sets from this pin's: `.mcu.p04` for `.scl`, with
+    /// `.mcu.p04.function == .scl.function`.
+    fn read_by(&self, pin: InstId) -> Vec<InstId> {
+        let Some(Member::Field(g)) = self.member(pin, "function") else {
+            return Vec::new();
+        };
+        self.relations()
+            .iter()
+            .filter_map(|r| match (&r.lhs, r.op, &r.rhs) {
+                (RExpr::Field(l), CmpOp::EqEq, RExpr::Field(x)) if *x == g => {
+                    let l = self.field(*l);
+                    (l.name == "function" && self.instance(l.owner).kind == InstKind::Pin)
+                        .then_some(l.owner)
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The pin, then the pins its function is taken from, one after the other, to a depth
+    /// of a few (a module in a module).
+    pub fn function_chain(&self, pin: InstId) -> Vec<InstId> {
+        let mut chain = vec![pin];
+        while chain.len() <= FORWARD_DEPTH {
+            match self.forwarded_from(*chain.last().expect("a pin")) {
+                Some(next) if !chain.contains(&next) => chain.push(next),
+                _ => break,
+            }
+        }
+        chain
+    }
+
+    /// Whether the function stated on a pin reaches a pin that a part's table describes:
+    /// the pin is a row, or an equation passes its function on to a pin that reaches one.
+    pub fn function_is_read(&self, pin: InstId) -> bool {
+        self.function_read_within(pin, FORWARD_DEPTH)
+    }
+
+    fn function_read_within(&self, pin: InstId, depth: usize) -> bool {
+        self.pin_facts(pin).is_some()
+            || (depth > 0
+                && self
+                    .read_by(pin)
+                    .into_iter()
+                    .any(|q| q != pin && self.function_read_within(q, depth - 1)))
+    }
 }
+
+/// How many modules deep a function choice is followed from the part's pin out.
+const FORWARD_DEPTH: usize = 6;

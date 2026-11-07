@@ -100,6 +100,7 @@ pub fn hard_boards(count: usize) -> Vec<Board> {
                 notes: Vec::new(),
                 parts: (1..=8)
                     .map(|i| Part {
+                        provides: Vec::new(),
                         refdes: format!("R{i}"),
                         kind: "Resistor".into(),
                         value: "1k".into(),
@@ -381,6 +382,7 @@ fn synthetic_board_with(
         (state >> 33) as usize % bound
     };
     let mut parts = vec![Part {
+        provides: Vec::new(),
         refdes: "U1".into(),
         kind: "Quad".into(),
         value: "QUAD".into(),
@@ -397,6 +399,7 @@ fn synthetic_board_with(
         };
         let refdes = format!("{}{}", &kind[..1], i + 1);
         parts.push(Part {
+            provides: Vec::new(),
             refdes: refdes.clone(),
             kind: kind.into(),
             value: value.into(),
@@ -409,6 +412,7 @@ fn synthetic_board_with(
     for i in 0..regulators {
         let refdes = format!("Q{}", i + 1);
         parts.push(Part {
+            provides: Vec::new(),
             refdes: refdes.clone(),
             kind: "LinearRegulator".into(),
             value: "reg".into(),
@@ -486,6 +490,7 @@ fn synthetic_board_with(
         for k in 0..8 {
             let refdes = format!("Cd{}", k + 1);
             parts.push(Part {
+                provides: Vec::new(),
                 refdes: refdes.clone(),
                 kind: "Capacitor".into(),
                 value: "100n".into(),
@@ -645,6 +650,7 @@ pub fn land_grid_board_sized(
     let ring: Vec<usize> = (1..=side * side).filter(|&p| !inside(p)).collect();
     let inner: Vec<usize> = (1..=side * side).filter(|&p| inside(p)).collect();
     let mut parts = vec![Part {
+        provides: Vec::new(),
         refdes: "U1".into(),
         kind: "Lga".into(),
         value: "LGA".into(),
@@ -658,6 +664,7 @@ pub fn land_grid_board_sized(
     for k in 0..nets {
         let refdes = format!("R{}", k + 1);
         parts.push(Part {
+            provides: Vec::new(),
             refdes: refdes.clone(),
             kind: "Resistor".into(),
             value: "10k".into(),
@@ -691,6 +698,7 @@ pub fn land_grid_board_sized(
     }
     // A capacitor between the planes.
     parts.push(Part {
+        provides: Vec::new(),
         refdes: "C1".into(),
         kind: "Capacitor".into(),
         value: "100n".into(),

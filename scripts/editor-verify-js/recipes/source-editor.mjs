@@ -85,7 +85,7 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.waitForSelector('[data-testid="hover-card"][data-kind="definition"]', { timeout: 4000 });
   await page.waitForFunction(() => /resistor\. Its/i.test(document.querySelector('[data-testid="hover-card"]')?.innerText ?? ''), null, { timeout: 5000 });
   card = await page.locator('[data-testid="hover-card"]').innerText();
-  expect(card.includes('part Resistor') && card.includes('.resistance') && card.includes('std/parts/passive.nsm'), 'signature, members and file');
+  expect(card.includes('generic Resistor') && card.includes('.resistance') && card.includes('std/parts/passive.nsm'), 'signature, members and file');
   await shot('hover-definition');
   await away();
 

@@ -1640,6 +1640,14 @@ fn levels(part_nets: &[Vec<usize>], connector: &[bool], ground: &[bool]) -> Vec<
 // ---------------------------------------------------------------------------------------
 // Columns
 
+/// Whether a part hangs in series on the wire it is in rather than across it: an inductor, a
+/// ferrite bead or a fuse, or a provider of one (ADR 0068), whatever its own name.
+pub(crate) fn is_series_kind(part: &netsmith_core::Part) -> bool {
+    std::iter::once(part.kind.as_str())
+        .chain(part.provides.iter().map(String::as_str))
+        .any(|k| matches!(k, "Inductor" | "FerriteBead" | "Fuse"))
+}
+
 /// A part with two pins on one axis, facing opposite ways, can stand in a stack.
 fn is_stackable(ctx: &Ctx, p: usize) -> bool {
     let g = &ctx.glyphs[p];
@@ -1698,12 +1706,7 @@ fn find_units(ctx: &Ctx) -> Vec<Unit> {
             .collect();
         // Parts that hang on a node with something else (an inductor, a fuse) are not in
         // series with each other, but each in series with what the node goes to.
-        let in_series_kind = |p: usize| {
-            matches!(
-                ctx.design.parts[p].kind.as_str(),
-                "Inductor" | "FerriteBead" | "Fuse"
-            )
-        };
+        let in_series_kind = |p: usize| is_series_kind(&ctx.design.parts[p]);
         if let [(a, pa), (b, pb)] = stackable[..]
             && a != b
             && !(net.pins.len() > 2 && (in_series_kind(a) || in_series_kind(b)))
@@ -2356,6 +2359,25 @@ mod tests {
             .turned()
             .extent();
         assert!((r.min.y - 20.0).abs() < 1e-9 && (r.max.y - (20.0 + width)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_provider_of_an_inductor_hangs_in_series_whatever_its_name() {
+        let part = |kind: &str, provides: &[&str]| netsmith_core::Part {
+            refdes: "L1".into(),
+            kind: kind.into(),
+            provides: provides.iter().map(|g| g.to_string()).collect(),
+            value: String::new(),
+            package: None,
+            path: String::new(),
+            pins: Vec::new(),
+        };
+        for kind in ["Inductor", "FerriteBead", "Fuse"] {
+            assert!(is_series_kind(&part(kind, &[])), "{kind}");
+            assert!(is_series_kind(&part("AcmeChoke", &[kind])), "{kind}");
+        }
+        assert!(!is_series_kind(&part("AcmeChoke", &[])));
+        assert!(!is_series_kind(&part("AcmeChoke", &["Resistor"])));
     }
 
     #[test]

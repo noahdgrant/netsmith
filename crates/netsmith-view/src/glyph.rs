@@ -1070,6 +1070,7 @@ impl Entry {
             flow: match pin.kind {
                 PinKind::Input | PinKind::Power => Flow::In,
                 PinKind::Output => Flow::Out,
+                PinKind::TriState => Flow::TriState,
                 PinKind::Bidirectional => Flow::Bidirectional,
                 PinKind::Passive | PinKind::NoConnect => Flow::Unspecified,
             },
@@ -1080,6 +1081,7 @@ impl Entry {
                 PinKind::Power => "power",
                 PinKind::Passive => "passive",
                 PinKind::NoConnect => "no_connect",
+                PinKind::TriState => "tri_state",
             },
         }
     }
@@ -1116,7 +1118,7 @@ impl Sides {
             PinKind::Power if is_ground(pin) => self.bottom.push(entry),
             PinKind::Power => self.top.push(entry),
             PinKind::Input | PinKind::Passive => self.left.push(entry),
-            PinKind::Output => self.right.push(entry),
+            PinKind::Output | PinKind::TriState => self.right.push(entry),
             PinKind::Bidirectional => self.either.push(entry),
             PinKind::NoConnect => self.no_connect.push(entry),
         }
@@ -1447,6 +1449,7 @@ mod tests {
 
     fn part(kind: &str, package: Option<&str>) -> Part {
         Part {
+            provides: Vec::new(),
             refdes: "X1".into(),
             kind: kind.into(),
             value: "v".into(),

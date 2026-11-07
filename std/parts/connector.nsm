@@ -12,7 +12,7 @@
 //! datasheet; a part without a row is unrated, and the check of the current through a mate
 //! lists it as not evaluated. Only the single-row parts have rows (`data/jlcpcb/README.md`).
 
-import std::bus::Usb2
+import std::bus::{Usb2, UsbRole}
 import std::sources::Rail
 
 /// What a connector says about how it meets another (ADR 0040). A system mates two connectors
@@ -255,7 +255,7 @@ part Header2x3 {
         .p6 passive "P6" "6"
     }
 
-    .assembly &= "none"
+    .assembly &= AssemblyMode::None
     .mating: Mating {
         .kind &= "pin_header"
         .gender &= "header"
@@ -381,13 +381,16 @@ part UsbCPower {
 /// receptacle: VBUS on A4, B4, A9 and B9, GND on A1, B1, A12 and B12, CC1 on A5, CC2 on B5, and
 /// the shell on S1, as in the Type-C specification and KiCad's footprints. `.usb` is the
 /// `Usb2` port, with D+ on A6 and B6, D- on A7 and B7. The two rows of the receptacle are one
-/// pin each, because the plug connects only one of them. The high-speed pairs are not brought
+/// pin each, because the plug connects only one of them. It is not an end of the bus: `.usb`
+/// states `UsbRole::Passthrough`, so the host or the device that its pins reach is judged, and
+/// the receptacle is never asked for a role. The high-speed pairs are not brought
 /// out; the sideband pins `.sbu1` (A8) and `.sbu2` (B8) are, because the footprint has the
 /// pads, and are left open. The shell is a pin (`.shell`).
 part UsbC2 {
     .designator &= "J"
 
     .usb: Usb2
+    .usb.role &= UsbRole::Passthrough
 
     pins {
         .usb.vbus.pos power         "VBUS"  "A4" "B4" "A9" "B9"
@@ -402,6 +405,39 @@ part UsbC2 {
     }
 
     .package: Package
+}
+
+/// An OBD-II (SAE J1962) 16-pin vehicle connector, male: the plug that goes into the vehicle's
+/// diagnostic socket. `.vbatt` is the supply the vehicle gives, with `pos` on battery power
+/// (pin 16) and `neg` on chassis ground (pin 4). Signal ground (pin 5) is optional. The pins
+/// J1962 leaves to the manufacturer are named by their number.
+part Obd2M {
+    .designator &= "J"
+
+    .vbatt: Rail
+
+    pins {
+        //  pin         kind           name          pad
+        .p1             bidirectional  "1"           "1"
+        .j1850_bus_pos  bidirectional  "J1850BUS+"   "2"
+        .p3             bidirectional  "3"           "3"
+        .vbatt.neg      power          "CHASGND"     "4"
+        .signal_gnd     power          "SIGGND"      "5"  optional
+        .can_high       bidirectional  "CANHIGH"     "6"
+        .iso_k          bidirectional  "ISOK-LINE"   "7"
+        .p8             bidirectional  "8"           "8"
+        .p9             bidirectional  "9"           "9"
+        .j1850_bus      bidirectional  "J1850BUS"    "10"
+        .p11            bidirectional  "11"          "11"
+        .p12            bidirectional  "12"          "12"
+        .p13            bidirectional  "13"          "13"
+        .can_low        bidirectional  "CANLOW"      "14"
+        .iso_l          bidirectional  "ISOL-LINE"   "15"
+        .vbatt.pos      power          "BATTPOWER"   "16"
+    }
+
+    .package: Package
+    catalog obd2_m { .package }
 }
 
 /// Six pads in a footprint that a spring-pin cable presses on, to program a board with no
@@ -419,6 +455,6 @@ part ProgrammingPads6 {
         .p6 passive "P6" "6"
     }
 
-    .assembly &= "none"
+    .assembly &= AssemblyMode::None
     .package: Package
 }

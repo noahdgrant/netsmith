@@ -51,6 +51,120 @@ describe('tokenize', () => {
     expect(kinds('.pos.net &= "VIN"').at(-1)).toEqual(['"VIN"', 'string']);
   });
 
+  it('reads a default and an enum with its variants', () => {
+    expect(kinds('.current ?= 10mA..20mA')).toEqual([
+      ['.', 'punct'],
+      ['current', 'member'],
+      ['?=', 'operator'],
+      ['10mA', 'number'],
+      ['..', 'operator'],
+      ['20mA', 'number'],
+    ]);
+    expect(kinds('enum Drive {')[0]).toEqual(['enum', 'keyword']);
+    expect(kinds('.assembly &= AssemblyMode::Hand').slice(-3)).toEqual([
+      ['AssemblyMode', 'type'],
+      ['::', 'punct'],
+      ['Hand', 'type'],
+    ]);
+  });
+
+  it('reads a generic and the generics a part provides (ADR 0068)', () => {
+    expect(kinds('generic CoaxReceptacle {').slice(0, 2)).toEqual([
+      ['generic', 'keyword'],
+      ['CoaxReceptacle', 'type'],
+    ]);
+    expect(kinds('part AcmeMicroCoax provides CoaxReceptacle, RfConnector {').map((k) => k[1])).toEqual([
+      'keyword',
+      'type',
+      'keyword',
+      'type',
+      'punct',
+      'type',
+      'punct',
+    ]);
+    // Both are ordinary names as a member.
+    expect(kinds('.generic: Number')[1]).toEqual(['generic', 'member']);
+    expect(kinds('.provides &= 1')[1]).toEqual(['provides', 'member']);
+  });
+
+  it('reads peripheral and shared with their clauses as keywords only where the parser does (ADR 0071)', () => {
+    expect(kinds('peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }').slice(0, 4)).toEqual([
+      ['peripheral', 'keyword'],
+      ['UARTE0', 'type'],
+      ['on', 'keyword'],
+      ['APP_GPIO', 'type'],
+    ]);
+    expect(kinds('shared UARTS limit 2 { UARTE0 UARTE1 }').slice(0, 4)).toEqual([
+      ['shared', 'keyword'],
+      ['UARTS', 'type'],
+      ['limit', 'keyword'],
+      ['2', 'number'],
+    ]);
+    // Names where a name is meant: a member, a bare path, a member's clause words.
+    expect(kinds('.peripheral: Rail')[1]).toEqual(['peripheral', 'member']);
+    expect(kinds('.shared &= 1')[1]).toEqual(['shared', 'member']);
+    expect(kinds('shared.pos ~ peripheral.neg')[0]).toEqual(['shared', 'name']);
+    expect(kinds('.on &= 1')[1]).toEqual(['on', 'member']);
+    expect(kinds('limit.x &= 1')[0]).toEqual(['limit', 'name']);
+    expect(kinds('.p1 passive "P" "1" fn on limit').map((k) => k[1]).slice(-2)).toEqual(['name', 'name']);
+  });
+
+  it('reads tri_state in a pin row as it reads the other kinds: a plain name, no error (ADR 0064)', () => {
+    expect(kinds('.do tri_state "DO" "2"').map((k) => k[1])).toEqual(['punct', 'member', 'name', 'string', 'string']);
+    expect(kinds('.p1 bidirectional "P" "1" fn GPIO MISO:tri_state').map((k) => k[1]).includes('error')).toBe(false);
+  });
+
+  it('reads lines with its role and limit, and the words of a row, as keywords only where the parser does (ADR 0064)', () => {
+    expect(kinds('lines SpiRole::Master limit 1 {').slice(0, 5)).toEqual([
+      ['lines', 'keyword'],
+      ['SpiRole', 'type'],
+      ['::', 'punct'],
+      ['Master', 'type'],
+      ['limit', 'keyword'],
+    ]);
+    expect(kinds('lines limit 2 {').slice(0, 2)).toEqual([
+      ['lines', 'keyword'],
+      ['limit', 'keyword'],
+    ]);
+    expect(kinds('lines {')[0]).toEqual(['lines', 'keyword']);
+    expect(kinds('.tx output crosses .rx').map((k) => k[1])).toEqual(['punct', 'member', 'name', 'keyword', 'punct', 'member']);
+    expect(kinds('.cs input single').at(-1)).toEqual(['single', 'keyword']);
+    expect(kinds('.rts output crosses .cts optional').at(-1)).toEqual(['optional', 'keyword']);
+    expect(kinds('.a output single crosses .b required').map((k) => k[0] + ':' + k[1]).filter((k) => k.endsWith('keyword'))).toEqual([
+      'single:keyword',
+      'crosses:keyword',
+      'required:keyword',
+    ]);
+    // Names where a name is meant.
+    expect(kinds('.lines: Rail')[1]).toEqual(['lines', 'member']);
+    expect(kinds('lines.pos ~ x.neg')[0]).toEqual(['lines', 'name']);
+    expect(kinds('.single &= 1')[1]).toEqual(['single', 'member']);
+    expect(kinds('.crosses ~ .single').map((k) => k[1])).toEqual(['punct', 'member', 'operator', 'punct', 'member']);
+    expect(kinds('single.pos ~ crosses.neg').map((k) => k[1]).includes('keyword')).toBe(false);
+    expect(kinds('limit.x &= 1')[0]).toEqual(['limit', 'name']);
+    // A pin row of a part that names a function `single` is not a lines row.
+    expect(kinds('.p1 passive "P" "1" fn single').at(-1)).toEqual(['single', 'name']);
+  });
+
+  it('reads as in a peripheral, in its header and after a function, and nowhere else (ADR 0064)', () => {
+    expect(kinds('peripheral SPIM0 on APP_GPIO as Spi SpiRole::Master {').filter((k) => k[1] === 'keyword').map((k) => k[0])).toEqual(['peripheral', 'on', 'as']);
+    expect(kinds('peripheral TX0 as Uart { TX0_TX:output as tx TX0_RX:input as rx }').filter((k) => k[1] === 'keyword').map((k) => k[0])).toEqual(['peripheral', 'as', 'as', 'as']);
+    expect(kinds('SPIM0_SCK:output as sclk').map((k) => k[0] + ':' + k[1])).toEqual(['SPIM0_SCK:type', '::punct', 'output:name', 'as:keyword', 'sclk:name']);
+    expect(kinds('SPIM0_DCX as dcx')[1]).toEqual(['as', 'keyword']);
+    // Names where a name is meant.
+    expect(kinds('.as: Rail')[1]).toEqual(['as', 'member']);
+    expect(kinds('as.pos ~ x.neg')[0]).toEqual(['as', 'name']);
+    expect(kinds('.x ~ .as.pos')[4]).toEqual(['as', 'member']);
+    expect(kinds('.p1 passive "P" "1" fn as').at(-1)).toEqual(['as', 'name']);
+  });
+
+  it('reads required as the marker of a pin row, and as a plain name where a member is called that', () => {
+    expect(kinds('.p1 passive "TP" "1" required').at(-1)).toEqual(['required', 'keyword']);
+    expect(kinds('.p1 power "VCC" "1" optional').at(-1)).toEqual(['optional', 'keyword']);
+    // A member may be called that.
+    expect(kinds('.required &= 1')[1]).toEqual(['required', 'member']);
+  });
+
   it('marks an unclosed string and a block comment as errors, as the compiler does', () => {
     expect(kinds('"open').at(-1)?.[1]).toBe('error');
     expect(kinds('/* no */')[0]).toEqual(['/*', 'error']);

@@ -1,65 +1,247 @@
-//! Buses: the signals of a serial interface, joined as one.
+//! Buses: the signals of a serial interface, joined as one, the roles of the parts that have
+//! one, and the pull-up resistors that hold their lines.
 //!
-//! Who drives a signal is not said here. It is said by the pin kind in the pin table of the
-//! part that has the bus (ADR 0016): the master's `mosi` is an `output` and the slave's is an
-//! `input`, and the checker's rules do the rest. Two outputs on one net are refused, and an
-//! `input` that is connected to nothing is refused, so a bus joined the wrong way round is found
-//! without a rule of its own. Names are those of the device that has the bus. Levels are the
-//! supply of the part (see `std::logic::Logic`).
+//! An interface states its lines and, for each role of the bus, which way each line goes
+//! (`lines`, ADR 0064): the master's `mosi` is an `output` and the slave's an `input`, the
+//! slave's `miso` is an `output` that its row must call `tri_state` when the part's datasheet
+//! says it is high impedance while the part is not selected. A part states the role it plays
+//! (`.spi.role &= SpiRole::Slave`); a part that states none is judged by the kinds in its pin
+//! table alone. The kind of each row in a part's table is still what its datasheet says (ADR
+//! 0016): the role judges the table and the nets, and invents no datasheet fact. Names are those
+//! of the device that has the bus. Every bus but `Usb2` has `.levels`, the logic levels of its pins
+//! (`std::logic::Levels`): a part states them for the interface, as it states those of a `Logic`.
 
+import std::logic::Levels
 import std::parts::passive::Resistor
 import std::sources::Rail
 
 /// A UART: a transmit line `tx`, a receive line `rx`, and the flow-control lines `rts` and
-/// `cts`. The names are the device's own, so the lines of two devices cross: the board joins
-/// one device's `tx` to the other's `rx` and the reverse, a pin at a time, because `~` between
-/// two UARTs would join `tx` to `tx`. That is two outputs on one net, and the checker says so.
-/// A device without flow control gives no pin to `rts` and `cts` and leaves them alone.
+/// `cts`, and `baud`, the symbol rate, in the unit of a frequency. The names are the device's
+/// own: `tx` is the line that a device sends on, so the two ends of a link cross, and `~`
+/// between two `Uart` interfaces joins one end's `tx` to the other's `rx` and its `rts` to the
+/// other's `cts` (`crosses`). A board that joins pin by pin writes the crossing itself, and a
+/// `tx` joined to a `tx` is refused. A device without flow control gives no pin to `rts` and
+/// `cts` and leaves them alone. Both ends are the same, so a `Uart` has no role, and two ends
+/// make a link.
 interface Uart {
     .tx: Pin
     .rx: Pin
     .rts: Pin
     .cts: Pin
+    .levels: Levels
+    .baud: Frequency
+
+    lines limit 2 {
+        .tx  output crosses .rx
+        .rx  input
+        .rts output crosses .cts optional
+        .cts input optional
+    }
+}
+
+/// The role of a part on an SPI bus.
+enum SpiRole {
+    /// Drives `sclk` and `mosi`, and reads `miso`.
+    Master,
+    /// Reads `sclk` and `mosi`, and drives `miso` while it is selected.
+    Slave,
+}
+
+/// The clock mode of an SPI bus: the idle level of `sclk` and the edge that data is sampled on.
+enum SpiMode {
+    /// Idle low, sampled on the rising edge.
+    Mode0,
+    /// Idle low, sampled on the falling edge.
+    Mode1,
+    /// Idle high, sampled on the falling edge.
+    Mode2,
+    /// Idle high, sampled on the rising edge.
+    Mode3,
 }
 
 /// An SPI bus: the clock `sclk`, the data out of the master `mosi`, the data out of the slave
 /// `miso`, and the select `cs`. Both ends call the lines the same, so the master and the
-/// slave join with `~`: the master's `mosi` is an output and the slave's an input, and the
-/// pin kinds catch a master joined to a master.
+/// slave join with `~`. A part states its role (`.spi.role &= SpiRole::Slave`) and the checker
+/// judges the table against it, the nets (a `mosi` is never on a `miso`; one `cs` of a slave on
+/// one net), and the number of masters on a bus (one). `~` joins `cs` as it joins every line, so
+/// a second slave on one master's interface joins its `sclk`, `mosi` and `miso` pin by pin and
+/// takes a select of its own. A slave's `miso` that is shared with another slave must be
+/// `tri_state` in its row. `frequency` is the clock: the board states the clock it will run
+/// (`.cpu.spi.frequency &= 8MHz`), each part bounds it by its datasheet
+/// (`.spi.frequency <= 10MHz`), and `~` between two interfaces equates it, so one value runs
+/// along the bus and a part whose bound it breaks is named. `mode` is the clock mode: a part that
+/// supports exactly one states it (`.spi.mode &= SpiMode::Mode0`), a part that supports two or more
+/// states nothing and its datasheet says which in a comment; the value is equated along the bus, so
+/// two parts that can only be in different modes are refused, and nothing that is fine is.
 interface Spi {
+    .role: SpiRole
     .sclk: Pin
     .mosi: Pin
     .miso: Pin
     .cs: Pin
+    .levels: Levels
+    .frequency: Frequency
+    .mode: SpiMode
+
+    lines SpiRole::Master limit 1 {
+        .sclk output
+        .mosi output
+        .miso input optional
+        .cs   output optional
+    }
+    lines SpiRole::Slave {
+        .sclk input
+        .mosi input
+        .miso output required
+        .cs   input single
+    }
+}
+
+/// The role of a part on an I2C bus.
+enum I2cRole {
+    /// Drives `scl` and starts every transfer.
+    Controller,
+    /// Reads `scl` and answers when it is addressed.
+    Target,
 }
 
 /// An I2C bus: the data line `sda` and the clock `scl`. Both are open-drain: they are pulled
 /// to the supply by a resistor on the bus, one on each line, and no device drives them high.
 /// `std::bus::I2cPullups` is that resistor pair. The checker refuses a line that has no
-/// resistor to a rail's positive pin (ADR 0044).
+/// resistor to a rail's positive pin (ADR 0044). `frequency` is the clock of the bus, as for
+/// `Spi`. A bus may have several controllers and targets, so no `limit` is stated, and the
+/// address of a target is not judged.
 interface I2c {
+    .role: I2cRole
     .sda: Pin
     .scl: Pin
+    .levels: Levels
+    .frequency: Frequency
+
+    lines I2cRole::Controller {
+        .sda bidirectional
+        .scl bidirectional
+    }
+    lines I2cRole::Target {
+        .sda bidirectional
+        .scl input
+    }
+}
+
+/// The role of a part on a serial-wire debug port.
+enum SwdRole {
+    /// The debug probe: drives the clock and the reset, and reads the trace.
+    Probe,
+    /// The part that is debugged.
+    Target,
 }
 
 /// A serial-wire debug port: the data line `swdio`, the clock `swclk`, the trace output `swo`
 /// and the reset `reset`. The target's `swo` is an output, its `swclk` an input and its `swdio`
-/// a bidirectional pin; a probe's connector has passive pins.
+/// a bidirectional pin; a probe's connector has passive pins. `frequency` is the clock of the
+/// port, as for `Spi`.
 interface Swd {
+    .role: SwdRole
     .swdio: Pin
     .swclk: Pin
     .swo: Pin
     .reset: Pin
+    .levels: Levels
+    .frequency: Frequency
+
+    lines SwdRole::Probe limit 1 {
+        .swdio bidirectional
+        .swclk output
+        .swo   input optional
+        .reset output optional
+    }
+    lines SwdRole::Target {
+        .swdio bidirectional
+        .swclk input
+        .swo   output optional
+        .reset input
+    }
+}
+
+/// The role of a part on a USB 2.0 port.
+enum UsbRole {
+    /// Supplies the bus and enumerates the devices.
+    Host,
+    /// Is enumerated, and draws from the bus.
+    Device,
+    /// Passes the bus through: a receptacle or a plug is not an end of the bus, and the role is
+    /// the one of the end behind it. It has no `lines`, so the part is not judged by a table,
+    /// counts toward no limit and is never asked for another role.
+    Passthrough,
 }
 
 /// A USB 2.0 port: the data pair `dp` and `dm` and the bus power `vbus`, whose `pos` is VBUS
 /// and whose `neg` is the ground. The host and the device join with `~`: D+ to D+ and D- to
 /// D-. `vbus.current` is negative at the host, which supplies, and positive at a device that
-/// draws.
+/// draws. A receptacle (a connector that the bus goes through, `std::parts::connector::UsbC2`)
+/// is not an end of the bus and states `UsbRole::Passthrough`, so the rules judge the ends
+/// behind it; a part that is a host or a device by what is plugged in (OTG) states none.
 interface Usb2 {
+    .role: UsbRole
     .dp: Pin
     .dm: Pin
     .vbus: Rail
+
+    lines UsbRole::Host limit 1 {
+        .dp bidirectional
+        .dm bidirectional
+    }
+    lines UsbRole::Device limit 1 {
+        .dp bidirectional
+        .dm bidirectional
+    }
+}
+
+/// A pull-up resistor: one resistor from the positive pin of `supply` to `line`, which holds
+/// the line high while nothing drives it. The board states the resistance, as a value with its
+/// tolerance (`.pullup.resistance &= 10kohm +/- 5%`), and the solver picks a resistor that stays
+/// inside it; a board that does not gets an unconstrained pick finding for the resistor, with
+/// the member named (ADR 0065). Use it on a reset, an enable, an open-drain output or any one
+/// line; `I2cPullups` is the same circuit twice, for the two lines of an I2C bus.
+///
+/// The module states what it draws from `supply`, so the net it is on has every current it
+/// needs (ADR 0026): a plain `Resistor` between a rail and a line leaves the current of the
+/// resistor unknown, the rail's net has two unknowns, and every check on that net waits. The
+/// line is held low, at worst, for the share `line_low` of the time, 0 to 1 (a board that knows
+/// its line is low only part of the time narrows it: `.pullup.line_low &= 0..0.1`). While it
+/// is low the resistor carries the supply voltage over its resistance (the lowest the line
+/// goes is 0 V; the line gives no low level of a driver, so this is the worst case, and a
+/// driver's real level draws a little less), and while the line is released it carries nothing.
+/// So the resistor's current, and with it the draw on `supply`, is 0 up to
+/// `supply.voltage / resistance`. A board that states a current on `supply` itself states a
+/// budget (ADR 0038): the draw must be able to fit in it. Two `PullUp`s on one rail add.
+///
+/// That is the steady draw, with two assumptions that the module offers and a board may
+/// replace (ADR 0070):
+///
+/// - `overdrive`, how far above `supply` a driver holds the line, at most. It is 0 V: the line
+///   is never driven above the supply. A line a 5 V driver pulls above a 3.3 V supply pushes
+///   current back into the rail, a negative draw of up to `overdrive / resistance`, which a
+///   board that has such a driver states (`.pull.overdrive &= 0V..1.7V`); the draw then
+///   reaches below 0 and a budget of draws only fails.
+/// - `supply_top`, the voltage the draw is worked out at. It is `supply.voltage`, the steady
+///   range, which is what a budget and a power rating read. A board that wants the draw at
+///   the transient its rail can reach states it (`.pull.supply_top &= .rail.peak`).
+module PullUp {
+    .supply: Rail
+    .line: Pin
+    .resistance: Resistance
+    .resistor: Resistor
+    .resistance == .resistor.resistance
+    .supply.pos ~> .resistor ~> .line
+
+    .line_low: Number
+    .line_low &= 0..1
+    .overdrive: Voltage
+    .overdrive ?= 0V
+    .supply_top: Voltage
+    .supply_top ?= .supply.voltage
+    .resistor.current == (.line_low * .supply_top - .overdrive) / .resistor.resistance
 }
 
 /// The two pull-up resistors of an I2C bus, one on `sda` and one on `scl`, to the positive
@@ -67,6 +249,19 @@ interface Usb2 {
 /// (`.pullups.resistance &= 4.7kohm +/- 5%`), and the solver picks resistors that stay inside
 /// it. There is one pair for the whole bus, wherever it sits; two pairs on one bus are in
 /// parallel and the board's concern.
+///
+/// The module states what it draws from `supply`, so the net it is on has every current it
+/// needs (ADR 0026): a pull-up carries nothing while its line is released or its driver is off,
+/// and at most the supply voltage over its resistance while the line is held low (the lowest the
+/// line goes is 0 V; the bus interface gives no low level of a driver, so this is the worst case,
+/// and a driver's real level draws a little less). `sda_low` and `scl_low` are the share of that
+/// worst case, 0 to 1 each, and the two lines can be low at once. `supply.current` is the sum of
+/// the two, worked out by the solver from the resistors the board's `.resistance` picks. A board
+/// that states a current on `supply` itself states a budget (ADR 0038): the sum must be able to
+/// fit in it. It is the steady draw, with the two assumptions of `PullUp`, offered the same
+/// way: `overdrive` (0 V: no driver holds a line above `supply`; a negative draw of up to
+/// `overdrive / resistance` otherwise) and `supply_top` (`supply.voltage`; the transient the
+/// board states, for the draw at it). Both apply to both lines.
 module I2cPullups {
     .bus: I2c
     .supply: Rail
@@ -77,4 +272,15 @@ module I2cPullups {
     .resistance == .scl_pullup.resistance
     .supply.pos ~> .sda_pullup ~> .bus.sda
     .supply.pos ~> .scl_pullup ~> .bus.scl
+
+    .sda_low: Number
+    .scl_low: Number
+    .sda_low &= 0..1
+    .scl_low &= 0..1
+    .overdrive: Voltage
+    .overdrive ?= 0V
+    .supply_top: Voltage
+    .supply_top ?= .supply.voltage
+    .sda_pullup.current == (.sda_low * .supply_top - .overdrive) / .sda_pullup.resistance
+    .scl_pullup.current == (.scl_low * .supply_top - .overdrive) / .scl_pullup.resistance
 }

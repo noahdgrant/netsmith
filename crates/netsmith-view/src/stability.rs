@@ -237,6 +237,7 @@ pub fn plan(board: &Board, layout: &Layout, sheet: &str, kind: Kind) -> Option<E
         None => String::new(),
     };
     let new_part = |kind: &str, refdes: &str, value: &str, near: &Part, name: &str| Part {
+        provides: Vec::new(),
         refdes: refdes.into(),
         kind: kind.into(),
         value: value.into(),

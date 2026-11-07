@@ -2,14 +2,14 @@
 //! and text on the silkscreen.
 //!
 //! None of these has a value to pick, so none has a catalog. A hole, a fiducial and a test
-//! point are fitted by nobody, so each states `.assembly &= "none"` and is on no BOM and no
+//! point are fitted by nobody, so each states `.assembly &= AssemblyMode::None` and is on no BOM and no
 //! placement file (ADR 0024).
 
 /// A mounting hole with no copper: a drill for a screw that touches no net. It has no pins,
 /// so it is on no net.
 part MountingHole {
     .designator &= "H"
-    .assembly &= "none"
+    .assembly &= AssemblyMode::None
     .package: Package
 }
 
@@ -23,7 +23,7 @@ part PlatedHole {
         .p1 passive "1" "1"
     }
 
-    .assembly &= "none"
+    .assembly &= AssemblyMode::None
     .package: Package
 }
 
@@ -31,7 +31,7 @@ part PlatedHole {
 /// has no pins, so it is on no net.
 part Fiducial {
     .designator &= "FID"
-    .assembly &= "none"
+    .assembly &= AssemblyMode::None
     .package: Package
 }
 
@@ -44,7 +44,7 @@ part TestPoint {
         .p1 passive "TP" "1" required
     }
 
-    .assembly &= "none"
+    .assembly &= AssemblyMode::None
     .package: Package
 }
 
@@ -53,7 +53,7 @@ part TestPoint {
 /// process's smallest text; unset, it is that.
 part Label {
     .designator &= "LBL"
-    .assembly &= "none"
+    .assembly &= AssemblyMode::None
     .text: String
     .text_height: Length
 }

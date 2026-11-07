@@ -46,8 +46,17 @@ pub fn bom(
                     .unwrap_or(&m.footprint)
                     .to_string()
             });
+        // The generic a picked provider stands for (ADR 0068), for a part that is a use itself.
+        // Every capacitor of a bank stands for it: the later ones are `x#2`, `x#3` of the use.
+        let via = built
+            .providers
+            .iter()
+            .find(|p| p.path == use_path(&part.path))
+            .map(|p| p.generic.clone())
+            .filter(|generic| *generic != source.kind);
         let existing = lines.iter_mut().find(|l| {
-            l.value == source.value
+            l.via == via
+                && l.value == source.value
                 && l.footprint == footprint
                 && l.lcsc == source.lcsc
                 && l.kind == source.kind
@@ -82,6 +91,7 @@ pub fn bom(
                         .find(|u| u.refdes == part.refdes)
                         .map(|u| u.message.clone()),
                     hand_solder: source.assembly == Assembly::Hand,
+                    via,
                 });
             }
         }
@@ -192,6 +202,15 @@ fn age(line: &mut BomLine, today: &str, date: Option<&str>) {
     let age = date.and_then(|d| refresh::age_days(d, today));
     line.age_days = age.and_then(|a| i32::try_from(a).ok());
     line.stale = age.is_some_and(|a| a > i64::from(refresh::STALE_DAYS));
+}
+
+/// The path of the use a part belongs to: a bank's second and later capacitors are the use's
+/// path and `#2`, `#3` (ADR 0052), and the first has the path itself.
+fn use_path(part_path: &str) -> &str {
+    match part_path.rsplit_once('#') {
+        Some((use_path, k)) if !k.is_empty() && k.bytes().all(|b| b.is_ascii_digit()) => use_path,
+        _ => part_path,
+    }
 }
 
 /// `C2` before `C10`: the letters, then the number.

@@ -25,6 +25,7 @@ pub fn design(
         parts: parts
             .iter()
             .map(|&(refdes, kind, value, package)| Part {
+                provides: Vec::new(),
                 refdes: refdes.into(),
                 kind: kind.into(),
                 value: value.into(),
@@ -133,6 +134,7 @@ pub fn supplies(modules: usize) -> (Design, Vec<netsmith_view::Group>) {
             (name("D"), "Led", "LED", None),
         ] {
             parts.push(Part {
+                provides: Vec::new(),
                 refdes,
                 kind: kind.into(),
                 value: value.into(),

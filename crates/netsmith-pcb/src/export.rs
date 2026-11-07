@@ -965,6 +965,7 @@ mod tests {
     fn pads_that_share_a_number_share_a_net_and_a_pad_on_no_net_has_none() {
         let mut design = led_design();
         design.parts.push(netsmith_core::Part {
+            provides: Vec::new(),
             refdes: "U1".into(),
             kind: "LinearRegulator".into(),
             value: "LDO".into(),

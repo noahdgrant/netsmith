@@ -867,7 +867,7 @@ pub fn rails_of(built: &Built) -> netsmith_view::Rails {
 /// table of a part under construction shows; it asks the checker's own question and changes
 /// nothing in it.
 pub fn must_connect(built: &Built) -> netsmith_view::Marks {
-    use netsmith_check::{InstKind, PinKind, Pinout, Requirement};
+    use netsmith_check::{InstKind, PinKind, Pinout};
     let model = &built.trace.model;
     let refdes: std::collections::HashMap<&str, &str> = built
         .design
@@ -888,10 +888,7 @@ pub fn must_connect(built: &Built) -> netsmith_view::Marks {
             continue;
         };
         for row in &table.rows {
-            let must = matches!(
-                (row.kind, row.requirement),
-                (_, Some(Requirement::Required)) | (PinKind::Power | PinKind::Input, None)
-            );
+            let must = model.must_be_connected(row.pin, row);
             let company = model
                 .net_of(row.pin)
                 .is_some_and(|net| net.pins.iter().any(|&p| model.owner_of(p) != Some(id)));
@@ -905,6 +902,7 @@ pub fn must_connect(built: &Built) -> netsmith_view::Marks {
                 PinKind::Bidirectional => "a bidirectional pin",
                 PinKind::Passive => "a passive pin",
                 PinKind::NoConnect => "a no_connect pin",
+                PinKind::TriState => "a tri_state output",
             };
             let pads = if row.pads.len() == 1 {
                 format!("pad {}", row.pads[0])

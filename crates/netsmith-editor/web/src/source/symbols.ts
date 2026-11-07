@@ -8,7 +8,7 @@
 import { tokenize } from '../nsm';
 
 /** The words that start a definition. */
-export const DEFINITION_KINDS = ['board', 'system', 'panel', 'module', 'part', 'interface'] as const;
+export const DEFINITION_KINDS = ['board', 'system', 'panel', 'module', 'part', 'interface', 'enum', 'generic'] as const;
 export type DefinitionKind = (typeof DEFINITION_KINDS)[number];
 
 /** What a declaration stands for, when the kind of its type is known. */
@@ -145,7 +145,8 @@ export function docAbove(lines: string[], line: number): string[] {
 export function roleOf(sym: Sym, kindOf: (type: string) => string | undefined): Role {
   if (sym.kind !== 'decl') return 'field';
   const k = sym.typeName ? kindOf(sym.typeName) : undefined;
-  if (k === 'part') return 'part';
+  // A generic is declared as a part is (ADR 0068): `.r1: Resistor`.
+  if (k === 'part' || k === 'generic') return 'part';
   if (k === 'module' || k === 'board' || k === 'system' || k === 'panel') return 'module';
   if (k === 'interface') return 'port';
   return 'field';

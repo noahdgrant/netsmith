@@ -40,6 +40,7 @@ use netsmith_lang::parse_expr;
 use netsmith_quantity::{Dimension, Quantity, parse_unit};
 
 use crate::catalog::{Candidate, Derating, Library, Value};
+use crate::standard::Standard;
 
 /// The columns that are about the row, not about the part.
 const FIXED: [&str; 13] = [
@@ -57,6 +58,27 @@ const FIXED: [&str; 13] = [
     "label",
     "notes",
 ];
+
+/// The value columns of a standard kind's catalog, if it has any: the columns that carry the
+/// part's value, the number a design is expected to choose or bound (ADR 0065), a resistor's
+/// resistance, a capacitor's marked and effective capacitance, an inductor's inductance. A pick
+/// of such a part that nothing limits is a guideline finding. A rating (`max_power`,
+/// `max_voltage`) is not a value, and the catalogs of other kinds (a Zener's voltage, a
+/// crystal's frequency) are rows that a design names or states; they get an entry in
+/// [`Standard`] when their use shows the same failure.
+pub(crate) fn value_columns(catalog: &str) -> Vec<&'static str> {
+    Standard::of_catalog(catalog).map_or_else(Vec::new, Standard::value_columns)
+}
+
+/// Whether a column of a standard kind's catalog may be empty in a row without taking the row
+/// out of every design that does not mention it, and may be missing from a file: the columns
+/// added after files were written (ADR 0055, ADR 0058), so that a project's catalog that
+/// predates one stays valid. Any other empty cell is an unknown value of something every
+/// design needs (a package, a resistance, a rating), so the row is never offered, and any
+/// other column the part lists must be in the file.
+pub(crate) fn is_optional(catalog: &str, column: &str) -> bool {
+    Standard::of_catalog(catalog).is_some_and(|s| s.is_optional(column))
+}
 
 /// The fields of one CSV record and the 1-based line it starts on.
 pub type Record = (usize, Vec<String>);
@@ -329,6 +351,9 @@ impl Table {
             }
             let mut values = Vec::new();
             for (column, kind) in columns {
+                if !row.header.names.contains(column) && is_optional(name, column) {
+                    continue;
+                }
                 if !row.header.names.contains(column) {
                     return Err(format!(
                         "{}:{}: there is no `{column}` column, which `catalog {name}` lists ({})",
@@ -444,7 +469,9 @@ impl Row {
         let at = format!("{}:{}", self.file, self.line);
         let bad = |why: String| format!("{at}: `{column}` of `catalog {catalog}`: {why}");
         match kind {
-            FieldKind::Text => {
+            // A cell of an enum column is the variant's name as it is; the solver checks it
+            // against the variants when it reads the catalog for a part (ADR 0054).
+            FieldKind::Text | FieldKind::Enum(_) => {
                 if cell.starts_with('"') {
                     return Err(bad(format!(
                         "{cell} is written with quotes, but a text column holds its text as it is (write {})",
@@ -576,6 +603,10 @@ fn constant(e: &Expr) -> Result<Quantity, String> {
                 .map_err(|e| e.to_string())
         }
         Expr::Str(..) => Err("a value is a number with its unit, not a quoted string".into()),
+        Expr::Variant { .. } => Err(format!(
+            "`{}` is a variant of an enum; a value is a number with its unit",
+            e.to_source()
+        )),
         Expr::Path(p) => Err(format!(
             "`{}` is a name; a value is a number with its unit (`10kohm`, `3.3V +/- 5%`, `1.8V..5.5V`)",
             p.to_source()

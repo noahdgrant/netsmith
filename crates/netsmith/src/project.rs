@@ -383,6 +383,24 @@ impl Project {
         Ok(found)
     }
 
+    /// The module path of a file of this project, however its name was typed: `src/power.nsm`,
+    /// `./src/power.nsm` and its absolute path are all `src::power`. `None` for a file that
+    /// is not under the project's root or cannot be read.
+    pub fn key_of(&self, file: &Path) -> Option<String> {
+        let file = fs::canonicalize(file).ok()?;
+        let root = fs::canonicalize(&self.root).ok()?;
+        let relative = file.strip_prefix(&root).ok()?;
+        let mut steps: Vec<String> = relative
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect();
+        let last = steps.last_mut()?;
+        if let Some(stem) = last.strip_suffix(".nsm") {
+            *last = stem.to_string();
+        }
+        Some(steps.join("::"))
+    }
+
     /// The standard JLCPCB catalogs and the catalog files the manifest lists, read again on
     /// each call. A problem names the file and line.
     pub fn catalogs(&self) -> Result<Catalogs, String> {
@@ -614,6 +632,15 @@ impl Target {
         // A top-level file may stand outside `src/`: it has its physical file all the same.
         for file in &self.files {
             crate::physical::attach(&mut loader, &file.name, &file.path, unsaved)?;
+            // Its module path is the project's, not the spelling it was typed with: the
+            // providers in it sort the same whichever way a person names the file (ADR 0068).
+            if let Some(key) = self
+                .project
+                .as_ref()
+                .and_then(|project| project.key_of(&file.path))
+            {
+                loader.attach_root_key(&file.name, &key);
+            }
         }
         Ok(loader)
     }

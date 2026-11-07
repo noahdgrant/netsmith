@@ -111,17 +111,18 @@ fn unresolved(s: &Solution) -> Vec<String> {
         .collect()
 }
 
-// ---- what the search says and chooses does not change -------------------------------
+// ---- what the search says and chooses -------------------------------
 //
-// The expected text below is what the search printed before it backjumped.
+// The parts that the failure is made of are named, and only they (`conflict_core.rs`); which
+// parts are chosen does not change.
 
 #[test]
-fn a_conflict_with_the_first_part_is_reported_as_it_was() {
+fn a_conflict_with_the_first_part_names_the_two_parts() {
     let s = run(&bench(3, true), &catalogs(3));
     assert_eq!(
         messages(&s),
         [
-            "no combination of candidates satisfies `a` and `u01` and `u02` and `u03` and `z` together: the closest, a = 300 1% and u01 = 100 1% and u02 = 100 1% and u03 = 100 1% and z = 300 1%, fails because (a.resistance + z.resistance) must always be at least 1MΩ, but 594Ω..606Ω is not always above 1MΩ"
+            "no combination of candidates satisfies `a` and `z` together, whatever the other parts of the group are: the closest, a = 300 1% and z = 300 1%, fails because (a.resistance + z.resistance) must always be at least 1MΩ, but 594Ω..606Ω is not always above 1MΩ"
         ]
     );
     assert_eq!(unresolved(&s), ["a", "u01", "u02", "u03", "z"]);
@@ -129,7 +130,7 @@ fn a_conflict_with_the_first_part_is_reported_as_it_was() {
 }
 
 #[test]
-fn a_conflict_with_a_middle_part_is_reported_as_it_was() {
+fn a_conflict_with_a_middle_part_names_the_two_parts() {
     let s = run(
         &bench_mid(4, ".u02.resistance + .z.resistance >= 1Mohm"),
         &catalogs(3),
@@ -137,7 +138,7 @@ fn a_conflict_with_a_middle_part_is_reported_as_it_was() {
     assert_eq!(
         messages(&s),
         [
-            "no combination of candidates satisfies `a` and `u01` and `u02` and `u03` and `u04` and `z` together: the closest, a = 100 1% and u01 = 100 1% and u02 = 300 1% and u03 = 100 1% and u04 = 100 1% and z = 300 1%, fails because (u02.resistance + z.resistance) must always be at least 1MΩ, but 594Ω..606Ω is not always above 1MΩ"
+            "no combination of candidates satisfies `u02` and `z` together, whatever the other parts of the group are: the closest, u02 = 300 1% and z = 300 1%, fails because (u02.resistance + z.resistance) must always be at least 1MΩ, but 594Ω..606Ω is not always above 1MΩ"
         ]
     );
     assert!(s.picks.is_empty());
@@ -158,17 +159,30 @@ fn a_part_with_nothing_that_fits_is_reported_as_it_was() {
 }
 
 #[test]
-fn a_range_that_just_misses_is_reported_as_it_was() {
+fn a_range_that_misses_by_a_hair_is_refused_with_its_numbers() {
+    // `a * 3.001` ends at 303.101, a hair past the 303 that `z` can be.
     let s = run(
-        &bench_mid(4, ".z.resistance == .a.resistance * 3"),
+        &bench_mid(4, ".z.resistance == .a.resistance * 3.001"),
         &catalogs(3),
     );
     assert_eq!(
         messages(&s),
-        [
-            "no combination of candidates satisfies `a` and `u01` and `u02` and `u03` and `u04` and `z` together: the closest, a = 100 1% and u01 = 100 1% and u02 = 100 1% and u03 = 100 1% and u04 = 100 1% and z = 300 1%, fails because `z.resistance` must stay within 297Ω..303Ω, but (a.resistance * 3) works out to 297Ω..303Ω"
-        ]
+        ["the `resistor` catalog has nothing for `z`, which needs nothing in particular"]
     );
+}
+
+/// The range of `a * 3` is 297 to 303 exactly, which is the range of `z`: nothing in the
+/// arithmetic rounds, so the range is not pushed past the limit (ADR 0056). It used to be
+/// refused, with the same two ranges in the message.
+#[test]
+fn a_range_that_touches_exactly_is_accepted() {
+    let s = run(
+        &bench_mid(4, ".z.resistance == .a.resistance * 3"),
+        &catalogs(3),
+    );
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert!(unresolved(&s).is_empty());
+    assert!(!s.picks.is_empty());
 }
 
 #[test]

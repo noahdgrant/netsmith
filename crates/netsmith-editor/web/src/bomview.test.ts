@@ -23,6 +23,7 @@ const line = (over: Partial<BomLine>): BomLine => ({
   unknown: null,
   unresolved: null,
   handSolder: false,
+  via: null,
   ...over,
 });
 

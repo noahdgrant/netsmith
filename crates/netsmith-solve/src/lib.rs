@@ -1,7 +1,9 @@
 //! The solver: choose real parts for a checked board and verify, in the worst case, that
 //! everything the design says still holds.
 
+mod busclock;
 mod catalog;
+mod cycles;
 mod eval;
 mod expand;
 mod generic;
@@ -9,6 +11,7 @@ mod jlcpcb;
 mod levels;
 mod place;
 mod solve;
+mod standard;
 mod table;
 
 pub use catalog::{
@@ -21,5 +24,8 @@ pub use generic::{
 };
 pub use levels::NotEvaluated;
 pub use place::{PlaceOffset, Window, offsets, window};
-pub use solve::{Pick, Solution, Unresolved, solve, solve_system};
+pub use solve::{
+    HeldBy, OpenCircle, Pick, Seeded, Solution, UnconstrainedPick, Unresolved, UnsolvedNet,
+    UnstatedValue, solve, solve_system,
+};
 pub use table::{Record, Supplier, Table, parse_csv};

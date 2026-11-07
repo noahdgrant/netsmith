@@ -112,6 +112,7 @@ fn from_json(v: &Value) -> Inputs {
     let parts = list(&v["parts"])
         .iter()
         .map(|p| Part {
+            provides: strs(&p["provides"]),
             refdes: s(&p["refdes"]),
             kind: s(&p["kind"]),
             value: s(&p["value"]),

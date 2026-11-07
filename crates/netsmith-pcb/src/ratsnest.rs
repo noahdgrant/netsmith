@@ -317,6 +317,7 @@ mod tests {
             notes: Vec::new(),
             parts: (1..=4)
                 .map(|i| Part {
+                    provides: Vec::new(),
                     refdes: format!("R{i}"),
                     kind: "Resistor".into(),
                     value: "1k".into(),
@@ -359,6 +360,7 @@ mod tests {
             notes: Vec::new(),
             parts: vec![
                 Part {
+                    provides: Vec::new(),
                     refdes: "U1".into(),
                     kind: "LinearRegulator".into(),
                     value: "LDO".into(),
@@ -367,6 +369,7 @@ mod tests {
                     pins: Vec::new(),
                 },
                 Part {
+                    provides: Vec::new(),
                     refdes: "R1".into(),
                     kind: "Resistor".into(),
                     value: "1k".into(),
@@ -596,6 +599,7 @@ mod tests {
             interfaces: Vec::new(),
             notes: Vec::new(),
             parts: vec![Part {
+                provides: Vec::new(),
                 refdes: "R1".into(),
                 kind: "Resistor".into(),
                 value: "1k".into(),

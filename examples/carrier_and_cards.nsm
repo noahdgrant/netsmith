@@ -11,7 +11,7 @@
 //! The controller and the two chips are invented parts, written here to keep the example
 //! whole; they have no KiCad symbol, so this file is checked and solved but not exported.
 
-import std::bus::{Spi, Uart}
+import std::bus::{Spi, SpiRole, Uart}
 import std::parts::connector::{Header1x10, Socket1x10}
 import std::parts::passive::Fuse
 import std::sources::Rail
@@ -22,6 +22,8 @@ part Controller {
     .vdd: Rail
     .uart: Uart
     .spi: Spi
+    // Its table drives `sclk`, `mosi` and `cs` and reads `miso`: the master's end of the bus.
+    .spi.role &= SpiRole::Master
 
     pins {
         .vdd.pos  power  "VDD"  "1"
@@ -39,6 +41,8 @@ part Controller {
 part SpiSensor {
     .vdd: Rail
     .spi: Spi
+    // Its table reads `sclk`, `mosi` and the select and drives `miso`: a slave's end of the bus.
+    .spi.role &= SpiRole::Slave
 
     pins {
         .vdd.pos  power  "VDD"  "1"

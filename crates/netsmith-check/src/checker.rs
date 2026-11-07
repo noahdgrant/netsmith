@@ -1,7 +1,7 @@
 //! Loading modules, resolving imports and names, and elaborating definitions into a
 //! [`Model`].
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 
 use netsmith_lang::ast::{Decl, DefKind, Definition, Import, Item, Path, Physical, TypePath};
@@ -10,7 +10,10 @@ use netsmith_quantity::Dimension;
 
 use crate::diag::{Diagnostic, SourceId, Sources};
 use crate::loader::Loader;
-use crate::model::{FieldKind, InstId, InstKind, Instance, Member, Model};
+use crate::model::{
+    EnumId, EnumInfo, FieldKind, GenericUse, InstId, InstKind, Instance, Member, Model,
+};
+use crate::providers::generic_is_part_shaped;
 
 #[derive(Clone, Copy)]
 pub(crate) enum Binding {
@@ -25,6 +28,36 @@ pub(crate) struct ModuleData {
     pub scope: HashMap<String, Binding>,
     /// A file of the standard library (its name starts with `std/`).
     pub std: bool,
+    /// The module path of the file (`src::rf`, `std::parts::passive`): its name without
+    /// `.nsm`, with `::` for `/`. What a provider's id starts with.
+    pub key: String,
+}
+
+/// `src/rf.nsm` is the module `src::rf`.
+fn module_key(file_name: &str) -> String {
+    file_name
+        .strip_suffix(".nsm")
+        .unwrap_or(file_name)
+        .replace('/', "::")
+}
+
+/// The module path of a file nothing loaded: its name without `.` and `..` steps, so that
+/// `./src/main.nsm` and `src/main.nsm` are one module.
+fn rootless_key(file_name: &str) -> String {
+    module_key(&crate::loader::normalise_name(file_name))
+}
+
+/// A row of a generic's `pins` table, which a provider's row for the pin must agree with
+/// (ADR 0068).
+#[derive(Clone)]
+pub(crate) struct ContractRow {
+    /// The instance whose pin it is.
+    pub inst: InstId,
+    pub pin: InstId,
+    pub kind: netsmith_lang::ast::PinKind,
+    pub requirement: Option<netsmith_lang::ast::Requirement>,
+    /// The generic that stated it.
+    pub generic: String,
 }
 
 /// A `physical for` unit and the module (the physical file) that holds it.
@@ -50,6 +83,8 @@ pub(crate) enum Builtin {
 pub(crate) enum Ty {
     Builtin(Builtin),
     Def(usize, usize),
+    /// An `enum` (ADR 0054), by module and index in it.
+    Enum(usize, usize),
     Poison,
     Bad,
 }
@@ -66,7 +101,7 @@ pub(crate) enum Res {
 pub(crate) struct Checker<'a> {
     loader: &'a Loader,
     pub sources: Sources,
-    modules: Vec<ModuleData>,
+    pub(crate) modules: Vec<ModuleData>,
     cache: HashMap<String, usize>,
     diags: Vec<Diagnostic>,
     /// The diagnostics of `diags` that are parse errors.
@@ -77,7 +112,7 @@ pub(crate) struct Checker<'a> {
     pub scope: Vec<InstId>,
     pub cur_module: usize,
     /// The definition whose source text is being checked. Anything else is "outside".
-    cur_def: Option<(usize, usize)>,
+    pub(crate) cur_def: Option<(usize, usize)>,
     pub uf: HashMap<usize, usize>,
     skipped: HashSet<(usize, usize)>,
     /// Pins that a row of a `pins` table declared, as opposed to a `.name: Pin` member.
@@ -88,7 +123,45 @@ pub(crate) struct Checker<'a> {
     attached: HashMap<(usize, usize), Vec<AttachedUnit>>,
     /// Set while a board's physical file is being read (ADR 0048).
     pub(crate) phys: Option<PhysState>,
+    /// The fields that some `&=` statement states, in the elaboration in progress. A default
+    /// (`?=`) gives way to one of these (ADR 0051).
+    pub(crate) stated: HashSet<crate::model::FieldId>,
+    /// The `?=` statements of the elaboration in progress, resolved when every statement has
+    /// been read, so that their order never matters.
+    pub(crate) defaults: Vec<crate::lower::PendingDefault>,
+    /// The source a default is applied for, while it is applied after the statements are read.
+    pub(crate) source_override: Option<SourceId>,
+    /// The enums that fields of the model in progress have the type of, by the module and
+    /// index of their definition.
+    enum_ids: HashMap<(usize, usize), EnumId>,
+    /// The interface definitions whose `lines` had a mistake (ADR 0064), so that the rules do not
+    /// read them and the mistake is said once.
+    pub(crate) bus_def_failed: HashSet<(usize, usize)>,
+    /// The providers chosen for the uses of the definition being elaborated: a use's path to
+    /// a provider's id (ADR 0068).
+    pub(crate) assign: BTreeMap<String, String>,
+    /// The uses of generics found in the elaboration in progress.
+    pub(crate) uses: Vec<GenericUse>,
+    /// The members that a generic declared in an instance, by instance and name, with the
+    /// generic's name: a provider may not declare one again (ADR 0068).
+    pub(crate) generic_members: HashMap<(InstId, String), String>,
+    /// The rows of the `pins` tables of generics, for the instance they were read into.
+    pub(crate) contract_rows: Vec<ContractRow>,
+    /// The definitions being made, outermost first: a definition that is made again inside
+    /// itself would never end, so it is refused where it is declared.
+    pub(crate) making: Vec<(usize, usize)>,
+    /// Where the member being declared is written, for a message about what it makes.
+    pub(crate) use_site: Option<(SourceId, Span)>,
+    /// The loaded files as they were when the last model was made, shared by the models made
+    /// while no file was added.
+    snapshot: Option<std::sync::Arc<Sources>>,
 }
+
+/// The names that are in scope in every file without an `import` (ADR 0054): the enums that
+/// the built-in members of every part have the type of. It is a file of the standard library.
+const PRELUDE: &str = include_str!("../../../std/prelude.nsm");
+/// Its module name, as `import` would write it.
+pub const PRELUDE_MODULE: &str = "std::prelude";
 
 fn builtin(name: &str) -> Option<Builtin> {
     use Dimension as D;
@@ -131,7 +204,23 @@ impl<'a> Checker<'a> {
             table_pins: HashSet::new(),
             attached: HashMap::new(),
             phys: None,
+            stated: HashSet::new(),
+            defaults: Vec::new(),
+            source_override: None,
+            enum_ids: HashMap::new(),
+            bus_def_failed: HashSet::new(),
+            assign: BTreeMap::new(),
+            uses: Vec::new(),
+            generic_members: HashMap::new(),
+            contract_rows: Vec::new(),
+            making: Vec::new(),
+            use_site: None,
+            snapshot: None,
         }
+    }
+
+    pub(crate) fn modules(&self) -> &[ModuleData] {
+        &self.modules
     }
 
     pub fn into_diagnostics(self) -> (Vec<Diagnostic>, Vec<Diagnostic>, Sources) {
@@ -188,7 +277,7 @@ impl<'a> Checker<'a> {
         self.in_kind(DefKind::Panel)
     }
 
-    fn in_kind(&self, kind: DefKind) -> bool {
+    pub(crate) fn in_kind(&self, kind: DefKind) -> bool {
         self.cur_def
             .is_some_and(|(m, i)| self.modules[m].defs[i].kind == kind)
     }
@@ -207,7 +296,8 @@ impl<'a> Checker<'a> {
     }
 
     pub fn cur_source(&self) -> SourceId {
-        self.modules[self.cur_module].source
+        self.source_override
+            .unwrap_or(self.modules[self.cur_module].source)
     }
 
     pub fn error(&mut self, span: Span, message: impl Into<String>) {
@@ -217,8 +307,17 @@ impl<'a> Checker<'a> {
 
     // ---- modules and imports -------------------------------------------------
 
+    /// The file the check is given. When the loader holds the same file as a module of the
+    /// project (`src/main.nsm` is `src::main`, however the name was typed) the root is that
+    /// module, cached under its key like every other file, so that a file which imports the
+    /// root finds it and does not read a second copy (ADR 0068 section 11); a file the
+    /// loader does not hold takes its module path from its name with the `.` steps removed.
     pub fn add_root(&mut self, name: &str, text: &str) -> usize {
-        self.add_module(name, text, None)
+        let named = self.loader.root_key(name);
+        let key = named.clone().unwrap_or_else(|| rootless_key(name));
+        // Only a module the loader holds can be imported, so only that is cached.
+        let cached = named.filter(|k| self.loader.get(k).is_some());
+        self.add_module_as(name, text, cached, key)
     }
 
     fn load_module(&mut self, path: &[String]) -> Option<usize> {
@@ -231,6 +330,18 @@ impl<'a> Checker<'a> {
     }
 
     fn add_module(&mut self, name: &str, text: &str, key: Option<String>) -> usize {
+        self.add_module_as(name, text, key, module_key(name))
+    }
+
+    /// Read a file as a module with the module path `module_path`, cached under `key` (an
+    /// import's path) if it has one.
+    fn add_module_as(
+        &mut self,
+        name: &str,
+        text: &str,
+        key: Option<String>,
+        module_path: String,
+    ) -> usize {
         let source = self.sources.add(name, text);
         let mut file = match parse(text) {
             Ok(file) => file,
@@ -277,6 +388,7 @@ impl<'a> Checker<'a> {
             defs,
             scope,
             std: name.starts_with("std/"),
+            key: module_path,
         });
         // Cached before the imports run so a cycle cannot recurse forever.
         if let Some(key) = key {
@@ -320,6 +432,7 @@ impl<'a> Checker<'a> {
             defs: Vec::new(),
             scope: HashMap::new(),
             std: false,
+            key: module_key(name),
         });
         for import in &file.imports {
             self.apply_import(id, import);
@@ -471,32 +584,117 @@ impl<'a> Checker<'a> {
             return Ty::Bad;
         }
         match bound {
-            Some(Binding::Def(m, i)) => Ty::Def(m, i),
+            Some(Binding::Def(m, i)) => self.def_type(m, i),
             Some(Binding::Poison) => Ty::Poison,
-            None => match builtin(&first.name) {
-                Some(b) => Ty::Builtin(b),
-                None => {
-                    self.error(first.span, format!("unknown type `{}`", first.name));
-                    Ty::Bad
-                }
+            None => match self.prelude_def(&first.name) {
+                Some((m, i)) => self.def_type(m, i),
+                None => match builtin(&first.name) {
+                    Some(b) => Ty::Builtin(b),
+                    None => {
+                        self.error(first.span, format!("unknown type `{}`", first.name));
+                        Ty::Bad
+                    }
+                },
             },
         }
     }
 
+    fn def_type(&self, module: usize, index: usize) -> Ty {
+        if self.modules[module].defs[index].kind == DefKind::Enum {
+            Ty::Enum(module, index)
+        } else {
+            Ty::Def(module, index)
+        }
+    }
+
+    /// The prelude, read the first time a name is looked up in it (ADR 0054).
+    fn prelude(&mut self) -> usize {
+        match self.cache.get(PRELUDE_MODULE) {
+            Some(&id) => id,
+            None => self.add_module("std/prelude.nsm", PRELUDE, Some(PRELUDE_MODULE.to_string())),
+        }
+    }
+
+    /// A definition of the prelude by name.
+    fn prelude_def(&mut self, name: &str) -> Option<(usize, usize)> {
+        let module = self.prelude();
+        match self.modules[module].scope.get(name) {
+            Some(Binding::Def(m, i)) => Some((*m, *i)),
+            _ => None,
+        }
+    }
+
+    /// The id that fields of the model in progress use for an enum.
+    pub(crate) fn enum_id(&mut self, module: usize, index: usize) -> EnumId {
+        if let Some(&id) = self.enum_ids.get(&(module, index)) {
+            return id;
+        }
+        let def = &self.modules[module].defs[index];
+        let info = EnumInfo {
+            name: def.name.name.clone(),
+            variants: def.variants.iter().map(|v| v.name.name.clone()).collect(),
+        };
+        self.model.enums.push(info);
+        let id = EnumId(self.model.enums.len() - 1);
+        self.enum_ids.insert((module, index), id);
+        id
+    }
+
+    /// The enum of the prelude that the built-in members of a part have the type of.
+    pub(crate) fn assembly_mode(&mut self) -> FieldKind {
+        let (m, i) = self
+            .prelude_def("AssemblyMode")
+            .expect("the prelude defines AssemblyMode");
+        FieldKind::Enum(self.enum_id(m, i))
+    }
+
     // ---- elaboration ---------------------------------------------------------
 
+    /// The loaded files, shared with the earlier models when nothing was loaded since.
+    fn source_snapshot(&mut self) -> std::sync::Arc<Sources> {
+        match &self.snapshot {
+            Some(s) if s.len() == self.sources.len() => s.clone(),
+            _ => {
+                let s = std::sync::Arc::new(self.sources.clone());
+                self.snapshot = Some(s.clone());
+                s
+            }
+        }
+    }
+
     /// Build a fresh model of one definition, with the checks that need the whole tree.
-    pub fn elaborate(&mut self, module: usize, index: usize) -> Model {
+    pub fn elaborate(
+        &mut self,
+        module: usize,
+        index: usize,
+        assign: Option<&BTreeMap<String, String>>,
+    ) -> Model {
         self.model = Model::new();
+        self.assign = assign.cloned().unwrap_or_default();
+        self.uses.clear();
+        self.generic_members.clear();
+        self.contract_rows.clear();
+        self.making.clear();
+        self.use_site = None;
         self.scope.clear();
         self.uf.clear();
         self.skipped.clear();
         self.table_pins.clear();
+        self.stated.clear();
+        self.defaults.clear();
+        self.enum_ids.clear();
+        self.bus_def_failed.clear();
+        self.source_override = None;
         let def = self.modules[module].defs[index].clone();
         let name = def.name.name.clone();
-        let root = self.instantiate(&def, (module, index), &name, None);
+        let root = self
+            .instantiate(&def, (module, index), &name, None)
+            .expect("the root is made inside nothing, so nothing repeats");
         self.model.root = root;
+        self.resolve_defaults();
         self.finalize_nets();
+        self.model.uses = std::mem::take(&mut self.uses);
+        self.model.sources = crate::model::SourceTexts(Some(self.source_snapshot()));
         std::mem::replace(&mut self.model, Model::new())
     }
 
@@ -506,6 +704,29 @@ impl<'a> Checker<'a> {
         def_ref: (usize, usize),
         name: &str,
         parent: Option<InstId>,
+    ) -> Option<InstId> {
+        match parent {
+            // A member declared with the type of a generic stands for one of its providers
+            // (ADR 0068). A generic that is elaborated on its own is checked as it is.
+            Some(parent) if def.kind == DefKind::Generic => {
+                self.instantiate_use(def, def_ref, name, parent)
+            }
+            // A definition inside itself, or inside what it holds, never ends: refused.
+            Some(_) if self.making.contains(&def_ref) => {
+                self.report_cycle(name, None, def_ref);
+                None
+            }
+            _ => Some(self.instantiate_as(def, def_ref, name, parent, None)),
+        }
+    }
+
+    pub(crate) fn instantiate_as(
+        &mut self,
+        def: &Rc<Definition>,
+        def_ref: (usize, usize),
+        name: &str,
+        parent: Option<InstId>,
+        placed: Option<((usize, usize), String)>,
     ) -> InstId {
         // One for each instance made: a board of a thousand parts is a thousand of these.
         netsmith_core::job::checkpoint();
@@ -516,7 +737,12 @@ impl<'a> Checker<'a> {
             DefKind::Module => InstKind::Module,
             DefKind::Part => InstKind::Part,
             DefKind::Interface => InstKind::Interface,
+            // A generic is made as a part when it has pins or a catalog, else as a module.
+            DefKind::Generic if generic_is_part_shaped(def) => InstKind::Part,
+            DefKind::Generic => InstKind::Module,
+            DefKind::Enum => unreachable!("an enum is a type, so nothing instantiates it"),
         };
+        self.making.push(def_ref);
         let id = self.model.add_instance(Instance {
             name: name.to_string(),
             kind,
@@ -527,6 +753,7 @@ impl<'a> Checker<'a> {
             catalog: None,
             tables: Vec::new(),
             ties: Vec::new(),
+            rules: Default::default(),
             source: self.modules[def_ref.0].source,
             span: def.span,
             declared: None,
@@ -540,14 +767,19 @@ impl<'a> Checker<'a> {
                 && (!def.docs.is_empty() || !def.inner_docs.is_empty()))
             .then(|| self.line_in(self.modules[def_ref.0].source, def.span)),
             def: Some(def_ref),
+            provides: def.provides.iter().map(|p| p.name.clone()).collect(),
+            standard: Vec::new(),
+            placed_as: placed.as_ref().map(|(_, n)| n.clone()),
+            placed_def: placed.map(|(d, _)| d),
         });
         // Every part has a field for who assembles it (ADR 0024): the board narrows it, the
         // catalog row may state a default, and lowering reads it. It has one for the letters
         // of its reference designator too (ADR 0046): its kind states them, a user part or a
         // board may narrow it, and lowering reads it.
         if kind == InstKind::Part {
-            for name in ["assembly", "designator"] {
-                let field = self.model.add_field(id, name, FieldKind::Text);
+            let assembly = self.assembly_mode();
+            for (name, kind) in [("assembly", assembly), ("designator", FieldKind::Text)] {
+                let field = self.model.add_field(id, name, kind);
                 self.model.add_member(id, name, Member::Field(field));
             }
             // And one for how tall its body stands above the board (ADR 0045, "Height
@@ -580,8 +812,52 @@ impl<'a> Checker<'a> {
         // A definition's own text is circuit source, even when a physical file is what
         // asked for it to be made.
         let saved_phys = self.phys.take();
+        // A part or module that provides generics has their members and statements first
+        // (ADR 0068), each read in its own file.
+        let generics = self.provided(def);
+        // The standard generics it stands for: its own definition when that is one (a standard
+        // generic is its own first provider, ADR 0068), and those it provides.
+        let own = (def.kind == DefKind::Generic && self.modules[def_ref.0].std)
+            .then(|| def.name.name.clone());
+        self.model.instances[id.0].standard = own
+            .into_iter()
+            .chain(
+                generics
+                    .iter()
+                    .filter(|(_, gref)| self.modules[gref.0].std)
+                    .map(|(g, _)| g.name.name.clone()),
+            )
+            .collect();
+        for (g, gref) in &generics {
+            let items = self.generic_items(g, def, kind);
+            let before = self.model.instance(id).children.len();
+            let saved = self.enter_def(*gref);
+            self.declare(&items);
+            self.leave_def(saved);
+            let names: Vec<String> = self.model.instance(id).children[before..]
+                .iter()
+                .map(|(n, _)| n.clone())
+                .collect();
+            for n in names {
+                self.generic_members
+                    .entry((id, n))
+                    .or_insert_with(|| g.name.name.clone());
+            }
+        }
         self.declare(&def.items);
+        for (g, gref) in &generics {
+            let items = self.generic_items(g, def, kind);
+            let saved = self.enter_def(*gref);
+            self.process(&items);
+            self.leave_def(saved);
+        }
         self.process(&def.items);
+        if kind == InstKind::Part {
+            self.finish_rules(id);
+        }
+        if !generics.is_empty() {
+            self.conform(id, def, &generics);
+        }
         if kind == InstKind::Board {
             self.merge_physical(def_ref);
         }
@@ -589,7 +865,19 @@ impl<'a> Checker<'a> {
         self.cur_module = saved_module;
         self.cur_def = saved_def;
         self.scope = saved_scope;
+        self.making.pop();
         id
+    }
+
+    /// Make the reading of a definition's text happen in its own file; the pair undoes it.
+    pub(crate) fn enter_def(&mut self, def_ref: (usize, usize)) -> (usize, Option<(usize, usize)>) {
+        let module = std::mem::replace(&mut self.cur_module, def_ref.0);
+        (module, self.cur_def.replace(def_ref))
+    }
+
+    pub(crate) fn leave_def(&mut self, saved: (usize, Option<(usize, usize)>)) {
+        self.cur_module = saved.0;
+        self.cur_def = saved.1;
     }
 
     /// Read the physical file of the board being made, as part of the board (ADR 0048): its
@@ -627,6 +915,7 @@ impl<'a> Checker<'a> {
             catalog: None,
             tables: Vec::new(),
             ties: Vec::new(),
+            rules: Default::default(),
             source,
             span,
             declared: None,
@@ -634,6 +923,10 @@ impl<'a> Checker<'a> {
             def_docs: Vec::new(),
             doc_at: None,
             def: None,
+            provides: Vec::new(),
+            standard: Vec::new(),
+            placed_as: None,
+            placed_def: None,
         });
         let module = self.model.instance(owner).kind == InstKind::Module;
         let fields = [
@@ -698,20 +991,36 @@ impl<'a> Checker<'a> {
             }
             let name = d.name.segments[0].name.clone();
             if self.model.member(cur, &name).is_some() {
-                self.error(
-                    d.name.span,
-                    format!("`{name}` is already declared in this block"),
-                );
+                let message = self.redeclared(cur, &name, d);
+                self.error(d.name.span, message);
                 self.skipped.insert(key);
                 continue;
             }
 
             let ty = self.resolve_type(&d.ty);
+            if self.in_kind(DefKind::Generic)
+                && let Ty::Def(m, i) = &ty
+                && self.modules[*m].defs[*i].kind != DefKind::Interface
+            {
+                let (ty_name, word) = {
+                    let def = &self.modules[*m].defs[*i];
+                    (def.name.name.clone(), crate::providers::kind_word(def))
+                };
+                self.error(
+                    d.ty.segments[0].span,
+                    format!(
+                        "a generic holds values, pins and interfaces, and no parts or modules; `{name}` is a {word} (`{ty_name}`): put it in a provider"
+                    ),
+                );
+                self.model.add_member(cur, &name, Member::Poison);
+                continue;
+            }
             if !self.fits_here(&ty, d) {
                 self.model.add_member(cur, &name, Member::Poison);
                 continue;
             }
-            if (self.in_system() || self.in_panel()) && matches!(ty, Ty::Builtin(_)) {
+            if (self.in_system() || self.in_panel()) && matches!(ty, Ty::Builtin(_) | Ty::Enum(..))
+            {
                 let holder = self.model.instance(self.current()).kind.word();
                 self.error(
                     d.ty.segments[0].span,
@@ -725,15 +1034,21 @@ impl<'a> Checker<'a> {
             }
             match ty {
                 Ty::Poison | Ty::Bad => self.model.add_member(cur, &name, Member::Poison),
-                Ty::Builtin(Builtin::Quantity(dim)) => self.add_scalar(
-                    cur,
-                    &name,
-                    FieldKind::Quantity(dim),
-                    d.body.is_some(),
-                    d.span,
-                ),
+                Ty::Builtin(Builtin::Quantity(dim)) => {
+                    self.add_scalar(
+                        cur,
+                        &name,
+                        FieldKind::Quantity(dim),
+                        d.body.is_some(),
+                        d.span,
+                    );
+                }
                 Ty::Builtin(Builtin::Text) => {
-                    self.add_scalar(cur, &name, FieldKind::Text, d.body.is_some(), d.span)
+                    self.add_scalar(cur, &name, FieldKind::Text, d.body.is_some(), d.span);
+                }
+                Ty::Enum(m, i) => {
+                    let kind = FieldKind::Enum(self.enum_id(m, i));
+                    self.add_scalar(cur, &name, kind, d.body.is_some(), d.span);
                 }
                 Ty::Builtin(Builtin::Pin) => {
                     let pin = self.add_pin(cur, &name, d.span, d.docs.clone());
@@ -744,16 +1059,21 @@ impl<'a> Checker<'a> {
                 }
                 Ty::Def(m, i) => {
                     let def = self.modules[m].defs[i].clone();
-                    let child = self.instantiate(&def, (m, i), &name, Some(cur));
+                    let last = d.ty.segments.last().map_or(d.name.span.end, |s| s.span.end);
+                    let site = (self.cur_source(), Span::new(d.name.span.start, last));
+                    self.use_site = Some(site);
+                    let Some(child) = self.instantiate(&def, (m, i), &name, Some(cur)) else {
+                        self.model.add_member(cur, &name, Member::Poison);
+                        continue;
+                    };
                     self.model.instances[child.0].docs = d.docs.clone();
                     if !d.docs.is_empty() && !self.is_library(self.cur_source()) {
                         let at = self.line_in(self.cur_source(), d.span);
                         self.model.instances[child.0].doc_at = Some(at);
                     }
-                    let last = d.ty.segments.last().map_or(d.name.span.end, |s| s.span.end);
-                    self.model.instances[child.0].declared =
-                        Some((self.cur_source(), Span::new(d.name.span.start, last)));
+                    self.model.instances[child.0].declared = Some(site);
                     self.model.add_member(cur, &name, Member::Inst(child));
+                    self.no_provider(child, d);
                     if self.scope.len() == 1
                         && let Some(phys) = &mut self.phys
                     {
@@ -789,13 +1109,13 @@ impl<'a> Checker<'a> {
             format!(
                 "a system holds boards, but `{}` is a {}; put it on a board",
                 def.name.name,
-                def.kind.keyword()
+                crate::providers::kind_word(def)
             )
         } else if self.in_panel() && !board_member && def.kind != DefKind::Interface {
             format!(
                 "a panel holds the board it repeats and its fabricator's panel rules, but `{}` is a {}",
                 def.name.name,
-                def.kind.keyword()
+                crate::providers::kind_word(def)
             )
         } else if !self.in_system()
             && !self.in_panel()
@@ -852,6 +1172,7 @@ impl<'a> Checker<'a> {
             catalog: None,
             tables: Vec::new(),
             ties: Vec::new(),
+            rules: Default::default(),
             source: self.cur_source(),
             span,
             declared: None,
@@ -859,6 +1180,10 @@ impl<'a> Checker<'a> {
             def_docs: Vec::new(),
             doc_at: None,
             def: None,
+            provides: Vec::new(),
+            standard: Vec::new(),
+            placed_as: None,
+            placed_def: None,
         });
         for field in ["function", "net"] {
             let f = self.model.add_field(pin, field, FieldKind::Text);
@@ -910,11 +1235,17 @@ impl<'a> Checker<'a> {
                 Item::Catalog(c) if self.phys.is_none() => self.catalog(c),
                 Item::Pins(p) if self.phys.is_none() => self.pins(p),
                 Item::Tie(t) if self.phys.is_none() => self.tie(t),
+                Item::Peripheral(p) if self.phys.is_none() => self.peripheral(p),
+                Item::Shared(s) if self.phys.is_none() => self.shared(s),
+                Item::Lines(l) if self.phys.is_none() => self.lines(l),
                 Item::Connect(c) => self.not_physical(c.span, "a connection with `~`"),
                 Item::Bridge(b) => self.not_physical(b.span, "a `bridge`"),
                 Item::Catalog(c) => self.not_physical(c.span, "a `catalog`"),
                 Item::Pins(p) => self.not_physical(p.span, "a `pins` table"),
                 Item::Tie(t) => self.not_physical(t.span, "a `tie`"),
+                Item::Peripheral(p) => self.not_physical(p.span, "a `peripheral`"),
+                Item::Shared(s) => self.not_physical(s.span, "a `shared` resource"),
+                Item::Lines(l) => self.not_physical(l.span, "a `lines` table"),
             }
         }
     }
@@ -931,6 +1262,19 @@ impl<'a> Checker<'a> {
         // may only state physical intent about it: `physical_gate` refuses the rest.
         if self.phys.is_some() {
             return true;
+        }
+        // A use of a generic reaches the members the generic declares, so that the board works
+        // with whichever provider is picked (ADR 0068).
+        if let Some(generic) = self.outside_contract(owner, &name.name) {
+            let ty = self.model.instance(owner).type_name.clone();
+            self.error(
+                name.span,
+                format!(
+                    "`{}` is not declared by `{generic}`; a use of a generic reaches only the members the generic declares, so that it holds for every provider (declare it in `{generic}`, or name a provider, `{ty}`, as the type)",
+                    name.name
+                ),
+            );
+            return false;
         }
         let inst = self.model.instance(owner);
         let outside =

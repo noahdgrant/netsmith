@@ -2639,6 +2639,7 @@ mod tests {
             .iter()
             .enumerate()
             .map(|(i, path)| Part {
+                provides: Vec::new(),
                 refdes: format!("R{}", i + 1),
                 kind: "Resistor".into(),
                 value: "1k".into(),

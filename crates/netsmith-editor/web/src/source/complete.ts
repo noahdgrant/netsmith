@@ -45,7 +45,8 @@ export const UNITS: [string, string][] = [
 ];
 
 const WORD = '[\\p{L}\\p{N}_]';
-const kindOfDef = (k: string): CompletionKind | null => (k === 'part' || k === 'module' || k === 'interface' ? k : null);
+// A generic is a type to declare, as a part is (ADR 0068): `.r1: Resistor`.
+const kindOfDef = (k: string): CompletionKind | null => (k === 'part' || k === 'generic' ? 'part' : k === 'module' || k === 'interface' ? k : null);
 
 /** The type words of the project: parts, modules and interfaces, the project's own first. */
 export function typeOptions(project: Project | null): Option[] {

@@ -11,7 +11,7 @@ The section "Source" (the first, key 1): the project tree on the left with the f
 1. Click a definition in the tree to scroll to `LedBoard`, put the cursor at the start of `.r1: Resistor {}` and type `.oops: Missing` and a newline. Within about a second a red squiggle appears, the status bar shows one error, and the problems dock (Ctrl+J) shows the compiler's own message (`unknown type `Missing``), its stage (Checker) and `src/main.nsm:88`. The file on disk is unchanged: the check is in memory.
 2. Click the problem: the cursor goes to that line. Undo (`Ctrl+Z`): the squiggle goes.
 3. Type a comment at the top and press `Ctrl+S`: the dot on the tab goes and the file on disk starts with the comment.
-4. `Ctrl+click` on `Resistor` in a declaration: a tab for `std/parts/passive.nsm` opens at `part Resistor`.
+4. `Ctrl+click` on `Resistor` in a declaration: a tab for `std/parts/passive.nsm` opens at `generic Resistor`.
 5. Change the file on disk from outside: the editor shows the new text within a second (it has no unsaved edits). Write a mistake to disk: the squiggle, the count and a strip on the schematic ("Showing last good version", the first error, Go to error) appear; fix it on disk and they go.
 
 ### File languages: `drive languages` after `launch --fixture catalog_refresh`

@@ -6,13 +6,26 @@ use netsmith_lang::ast::{BinOp, CmpOp};
 pub use netsmith_lang::ast::{PinKind, Requirement};
 use netsmith_quantity::{Dimension, Quantity};
 
-use crate::diag::SourceId;
+use std::sync::Arc;
+
+use crate::diag::{SourceId, Sources};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct InstId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FieldId(pub usize);
+
+/// An `enum` that a field of the model has the type of (ADR 0054).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct EnumId(pub usize);
+
+/// An `enum`: its name and its variants, in the order written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnumInfo {
+    pub name: String,
+    pub variants: Vec<String>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstKind {
@@ -48,6 +61,12 @@ pub enum Member {
     Poison,
 }
 
+/// The standard generics whose parts are banks (ADR 0052): a number of identical parts that
+/// stand in parallel in one place, chosen by the design or by the solver through the part's
+/// `.count`. The bank is the generic's, so a provider of it is one too and nothing a design
+/// defines is (ADR 0068 open question 9: no syntax for it yet, and a list in one place).
+const BANKS: [&str; 1] = ["Capacitor"];
+
 #[derive(Debug, Clone)]
 pub struct Instance {
     pub name: String,
@@ -63,6 +82,8 @@ pub struct Instance {
     pub tables: Vec<PinTable>,
     /// For a part: the pairs of pins its board must put on one net.
     pub ties: Vec<Tie>,
+    /// For a part: its peripherals and shared resources (ADR 0071).
+    pub rules: PartRules,
     pub source: SourceId,
     pub span: Span,
     /// The member declaration that made it (`.r1: Resistor`), where the user wrote it.
@@ -78,6 +99,53 @@ pub struct Instance {
     /// declaration (or of the definition when only that has docs).
     pub doc_at: Option<(String, usize)>,
     pub(crate) def: Option<(usize, usize)>,
+    /// The generics its definition provides (`part X provides A, B`, ADR 0068), by name.
+    pub provides: Vec<String>,
+    /// The generics of the standard library it stands for, by name: its own definition when
+    /// that is one (`Capacitor` placed as itself, since a standard generic is its own first
+    /// provider), and those of `provides` that are in the standard library (ADR 0068). What a
+    /// standard generic gives a part (a bank, ADR 0052) a provider of it has too.
+    pub standard: Vec<String>,
+    /// For a use of a generic after a provider was put in its place: the generic's name
+    /// (`CoaxReceptacle`). `type_name` is then the provider's. None for a part or module that
+    /// was written by its own type, `.rf: AcmeMicroCoax`.
+    pub placed_as: Option<String>,
+    /// The definition of the generic a use was placed as.
+    pub(crate) placed_def: Option<(usize, usize)>,
+}
+
+/// One part or module that can stand where a generic is used (ADR 0068).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Provider {
+    /// `src::rf::AcmeMicroCoax`: the module the definition is in and its name. What an
+    /// assignment names.
+    pub id: String,
+    pub name: String,
+    /// `src::rf`.
+    pub module: String,
+    /// Defined in a file of the standard library.
+    pub std: bool,
+    /// The generic itself, which is its own provider when it has a pin table with pads or a
+    /// catalog.
+    pub own: bool,
+    /// Whether it is a module, not a part.
+    pub module_shaped: bool,
+}
+
+/// A member declared with the type of a generic (`.rf: CoaxReceptacle { ... }`): what
+/// provides it, in the order a pick tries them, and which one stands in its place.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GenericUse {
+    /// `rf`, or `antenna.rf` for a use inside a module.
+    pub path: String,
+    pub inst: InstId,
+    /// The generic's name.
+    pub generic: String,
+    /// Every provider in scope of the file, in the order of ADR 0068 section 4.
+    pub candidates: Vec<Provider>,
+    /// The index into `candidates` of the provider the instance was made from. With no
+    /// candidates, zero and the instance is the generic itself.
+    pub chosen: usize,
 }
 
 impl Instance {
@@ -173,6 +241,162 @@ pub struct Tie {
     pub span: Span,
 }
 
+/// What a part says about how its functions go together: the `peripheral` and `shared`
+/// statements of its definition (ADR 0071), in source order.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PartRules {
+    pub peripherals: Vec<Peripheral>,
+    pub shares: Vec<SharedRes>,
+}
+
+/// `peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }`: functions that belong
+/// together. It is in use when the board chooses one of them on a pin. With `on`, every pin
+/// whose row lists the class offers them (ADR 0071).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Peripheral {
+    pub name: String,
+    /// The function after `on`.
+    pub class: Option<String>,
+    pub class_span: Span,
+    /// The bus interface the peripheral is an end of, if it says (`as Spi SpiRole::Master`,
+    /// ADR 0064, stage 4).
+    pub bus: Option<PeripheralBus>,
+    pub functions: Vec<PeripheralFunction>,
+    pub source: SourceId,
+    /// The whole statement.
+    pub span: Span,
+    /// The name after the keyword.
+    pub name_span: Span,
+}
+
+/// One function of a peripheral. It has its own kind when the peripheral gives one
+/// (`UARTE0_TX:output`, ADR 0046).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PeripheralFunction {
+    pub name: String,
+    pub kind: Option<PinKind>,
+    /// The line of the peripheral's bus that the function is (`as sclk`).
+    pub line: Option<String>,
+    pub span: Span,
+}
+
+/// The bus a peripheral is an end of: the definition of the interface and the role it plays.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PeripheralBus {
+    /// The module and index of the interface's definition.
+    pub(crate) def: (usize, usize),
+    /// The interface's name: `Spi`.
+    pub interface: String,
+    /// The variant it plays (`Master`), if the bus has roles.
+    pub role: Option<String>,
+}
+
+/// `shared UARTS limit 2 { UARTE0 UARTE1 .p10 }`: hardware that at most `limit` of its members
+/// use at a time (one when the statement has no `limit`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SharedRes {
+    pub name: String,
+    pub limit: u32,
+    /// The number after `limit`, when the statement wrote one.
+    pub limit_span: Option<Span>,
+    pub members: Vec<SharedMember>,
+    pub source: SourceId,
+    pub span: Span,
+    pub name_span: Span,
+}
+
+/// A member of a shared resource, as written: the name of a peripheral or of a function, or a
+/// pin (`pin` is set, and `name` is how it was written, `.p10`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SharedMember {
+    pub name: String,
+    pub pin: Option<InstId>,
+    pub span: Span,
+}
+
+/// The `lines` of a bus interface (ADR 0064): for each role of the bus, the kind of each of its
+/// lines and a few properties of a line. It belongs to the interface's definition, so that a
+/// peripheral that names the interface (`as Spi SpiRole::Master`) reads the same rows.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BusDef {
+    /// The interface's name: `Spi`.
+    pub name: String,
+    /// The enum of the interface's `.role`: `SpiRole`. None for a bus with one role.
+    pub role_enum: Option<String>,
+    /// The member that holds the clock of the bus: `frequency`, or `baud` for a `Uart`.
+    pub clock: Option<String>,
+    /// One table for each role, or the one table of a bus with a single role.
+    pub tables: Vec<RoleLines>,
+}
+
+/// One `lines` table: the lines a role has.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RoleLines {
+    /// The variant the table is for (`Master`), or None for a bus with one role.
+    pub role: Option<String>,
+    /// `limit N`: at most N interfaces of this role on one bus.
+    pub limit: Option<u32>,
+    pub rows: Vec<LineRow>,
+    pub source: SourceId,
+    pub span: Span,
+}
+
+/// One line of a role: its name is the member of the interface (`sclk`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LineRow {
+    pub name: String,
+    pub kind: PinKind,
+    pub requirement: Option<Requirement>,
+    /// A net carries this line of at most one interface of the role.
+    pub single: bool,
+    /// The line of the other end that this one is joined to, instead of its own name.
+    pub crosses: Option<String>,
+    pub span: Span,
+}
+
+impl BusDef {
+    /// The table for a role: the variant's table, or the one table of a bus with no roles.
+    pub fn table(&self, role: Option<&str>) -> Option<&RoleLines> {
+        self.tables.iter().find(|t| t.role.as_deref() == role)
+    }
+
+    /// Whether a variant of the role enum passes the bus through: the interface has `lines` for
+    /// other variants and none for this one (`UsbRole::Passthrough`, a receptacle). Such an end
+    /// is not an end of the bus: it has no table to judge and no limit to count, and what it
+    /// states is not a role that another end could disagree with (ADR 0064, section 10).
+    pub fn passes_through(&self, role: &str) -> bool {
+        self.role_enum.is_some() && self.table(Some(role)).is_none()
+    }
+
+    /// The line that `line` crosses to, or that crosses to it: `tx` and `rx`.
+    pub fn partner(&self, line: &str) -> Option<&str> {
+        self.tables
+            .iter()
+            .flat_map(|t| t.rows.iter())
+            .find_map(|r| match (&r.crosses, r.name == line) {
+                (Some(other), true) => Some(other.as_str()),
+                (Some(other), false) if other == line => Some(r.name.as_str()),
+                _ => None,
+            })
+    }
+
+    /// Every pair of lines that cross, each once, in the order the tables write them.
+    pub fn crossings(&self) -> Vec<(&str, &str)> {
+        let mut pairs: Vec<(&str, &str)> = Vec::new();
+        for r in self.tables.iter().flat_map(|t| t.rows.iter()) {
+            if let Some(other) = &r.crosses
+                && !pairs.iter().any(|(a, b)| {
+                    (*a, *b) == (r.name.as_str(), other.as_str())
+                        || (*b, *a) == (r.name.as_str(), other.as_str())
+                })
+            {
+                pairs.push((r.name.as_str(), other.as_str()));
+            }
+        }
+        pairs
+    }
+}
+
 /// Which pin table applies to a part, and why not if none does.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pinout<'a> {
@@ -194,6 +418,9 @@ pub enum Pinout<'a> {
 pub enum FieldKind {
     Quantity(Dimension),
     Text,
+    /// One variant of an `enum` (ADR 0054). Its domain is `Domain::Text` holding the name of
+    /// the variant.
+    Enum(EnumId),
 }
 
 /// What is currently known about a field's value.
@@ -223,6 +450,9 @@ pub enum RExpr {
     Field(FieldId),
     Neg(Box<RExpr>),
     Bin(BinOp, Box<RExpr>, Box<RExpr>),
+    /// `lo..hi` where an end is not a fixed number (ADR 0066): the smallest range that holds
+    /// the low end's lowest value and the high end's highest, once both are known.
+    Range(Box<RExpr>, Box<RExpr>),
 }
 
 impl RExpr {
@@ -232,7 +462,7 @@ impl RExpr {
             Self::Const(_) | Self::Text(_) => {}
             Self::Field(f) => out.push(*f),
             Self::Neg(inner) => inner.fields(out),
-            Self::Bin(_, a, b) => {
+            Self::Bin(_, a, b) | Self::Range(a, b) => {
                 a.fields(out);
                 b.fields(out);
             }
@@ -432,17 +662,50 @@ pub(crate) struct ExplicitJoin {
     pub span: Span,
 }
 
+/// The text of the files that a model's statements are in, kept so that a message can say where a
+/// statement is and show it as it was written (the solver names the lines of the two statements
+/// that make a bound reach a part, ADR 0065).
+#[derive(Clone, Default)]
+pub(crate) struct SourceTexts(pub(crate) Option<Arc<Sources>>);
+
+impl std::fmt::Debug for SourceTexts {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SourceTexts(..)")
+    }
+}
+
+/// The domains and the added relations of a model at one moment ([`Model::snapshot`]).
+#[derive(Debug, Clone)]
+pub struct Snapshot {
+    domains: Vec<Domain>,
+    relations: Arc<Vec<Relation>>,
+}
+
+impl Snapshot {
+    /// The domain a field had.
+    pub fn domain(&self, field: FieldId) -> &Domain {
+        &self.domains[field.0]
+    }
+}
+
+/// A moment of a model to go back to ([`Model::checkpoint`]).
+#[derive(Debug)]
+pub struct Checkpoint {
+    mark: usize,
+    relations: Arc<Vec<Relation>>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Model {
     pub root: InstId,
     pub(crate) instances: Vec<Instance>,
     pub(crate) fields: Vec<Field>,
-    pub(crate) relations: Vec<Relation>,
+    pub(crate) relations: Arc<Vec<Relation>>,
     /// Pairs of fields joined by connecting two interfaces: they hold one value.
     pub(crate) equalities: Vec<(FieldId, FieldId)>,
     pub(crate) chains: Vec<Chain>,
     pub(crate) nets: Vec<Net>,
-    pub(crate) balances: Vec<Balance>,
+    pub(crate) balances: Arc<Vec<Balance>>,
     /// In a system, the pairs of ports that were joined with `~`. Their pins are not on a
     /// net together (only a board names nets); their values are equated and their currents
     /// are balanced.
@@ -455,6 +718,19 @@ pub struct Model {
     /// Pairs of pins that a part's own definition joins (`.vin.neg ~ .vout.neg`): one
     /// physical pin, or pins that are one node inside the part.
     pub(crate) part_joins: Vec<(InstId, InstId)>,
+    /// The enums that fields of this model have the type of.
+    pub(crate) enums: Vec<EnumInfo>,
+    /// The members declared with the type of a generic, in the order they were made.
+    pub uses: Vec<GenericUse>,
+    /// The `lines` of the bus interfaces in use, by the module and index of their definition
+    /// (ADR 0064).
+    pub(crate) bus_defs: std::collections::BTreeMap<(usize, usize), BusDef>,
+    pub(crate) sources: SourceTexts,
+    /// The domains that [`Model::set_domain`] replaced while a checkpoint was open, oldest
+    /// first, with the field. Empty when none is open.
+    journal: Vec<(FieldId, Domain)>,
+    /// How many checkpoints are open.
+    open_checkpoints: usize,
 }
 
 impl Model {
@@ -463,18 +739,40 @@ impl Model {
             root: InstId(0),
             instances: Vec::new(),
             fields: Vec::new(),
-            relations: Vec::new(),
+            relations: Arc::new(Vec::new()),
             equalities: Vec::new(),
             chains: Vec::new(),
             nets: Vec::new(),
-            balances: Vec::new(),
+            balances: Arc::new(Vec::new()),
             joins: Vec::new(),
             mate_decls: Vec::new(),
             explicit_joins: Vec::new(),
             mates: Vec::new(),
             ground_groups: Vec::new(),
             part_joins: Vec::new(),
+            enums: Vec::new(),
+            uses: Vec::new(),
+            bus_defs: std::collections::BTreeMap::new(),
+            sources: SourceTexts::default(),
+            journal: Vec::new(),
+            open_checkpoints: 0,
         }
+    }
+
+    /// A value of a field as a message shows it: a variant of an enum as it is written in
+    /// source (`AssemblyMode::Hand`), anything else as its domain prints.
+    pub fn show_value(&self, field: FieldId, domain: &Domain) -> String {
+        match (self.field(field).kind, domain) {
+            (FieldKind::Enum(e), Domain::Text(variant)) => {
+                format!("{}::{variant}", self.enum_info(e).name)
+            }
+            _ => domain.to_string(),
+        }
+    }
+
+    /// The enum a field of kind `FieldKind::Enum` has the type of.
+    pub fn enum_info(&self, id: EnumId) -> &EnumInfo {
+        &self.enums[id.0]
     }
 
     pub fn instance(&self, id: InstId) -> &Instance {
@@ -514,14 +812,15 @@ impl Model {
         m.root = board;
         m.nets.retain(|n| n.pins.iter().all(inside));
         m.chains.retain(|c| inside(&c.start));
-        m.balances.retain(|b| inside(&b.scope));
+        Arc::make_mut(&mut m.balances).retain(|b| inside(&b.scope));
         m.joins.clear();
         m.mate_decls.clear();
         m.explicit_joins.clear();
         m.mates.clear();
         m.ground_groups.clear();
+        m.uses.retain(|u| inside(&u.inst));
         m.equalities.retain(|(a, b)| owned(a) && owned(b));
-        m.relations.retain(|r| {
+        Arc::make_mut(&mut m.relations).retain(|r| {
             let mut fields = Vec::new();
             r.lhs.fields(&mut fields);
             r.rhs.fields(&mut fields);
@@ -546,7 +845,87 @@ impl Model {
     }
 
     pub fn set_domain(&mut self, field: FieldId, domain: Domain) {
-        self.fields[field.0].domain = domain;
+        let old = std::mem::replace(&mut self.fields[field.0].domain, domain);
+        if self.open_checkpoints > 0 {
+            self.journal.push((field, old));
+        }
+    }
+
+    /// Start keeping what changes, to be put back by [`Model::rollback`] or kept by
+    /// [`Model::commit`]. A search that tries a choice and takes it back does this instead of
+    /// copying the domains of every field: what it costs is what the choice changed. Checkpoints
+    /// nest, and each is closed, in the reverse order they were opened, by one of the two.
+    pub fn checkpoint(&mut self) -> Checkpoint {
+        self.open_checkpoints += 1;
+        Checkpoint {
+            mark: self.journal.len(),
+            relations: Arc::clone(&self.relations),
+        }
+    }
+
+    /// Put the model back as it was at the checkpoint, and close it.
+    pub fn rollback(&mut self, checkpoint: Checkpoint) {
+        while self.journal.len() > checkpoint.mark {
+            let (field, old) = self
+                .journal
+                .pop()
+                .expect("the journal is longer than the mark");
+            self.fields[field.0].domain = old;
+        }
+        self.relations = checkpoint.relations;
+        self.close_checkpoint();
+    }
+
+    /// Keep what changed since the checkpoint, and close it. An open checkpoint outside it
+    /// still puts it back.
+    pub fn commit(&mut self, checkpoint: Checkpoint) {
+        drop(checkpoint);
+        self.close_checkpoint();
+    }
+
+    fn close_checkpoint(&mut self) {
+        self.open_checkpoints -= 1;
+        if self.open_checkpoints == 0 {
+            self.journal.clear();
+        }
+    }
+
+    /// The fields whose domain is not what it was at the checkpoint.
+    pub fn changed_since(&self, checkpoint: &Checkpoint) -> std::collections::HashSet<FieldId> {
+        // The oldest entry of a field is the domain it had then.
+        let mut then: std::collections::HashMap<FieldId, &Domain> =
+            std::collections::HashMap::new();
+        for (field, old) in &self.journal[checkpoint.mark..] {
+            then.entry(*field).or_insert(old);
+        }
+        then.into_iter()
+            .filter(|(field, old)| self.fields[field.0].domain != **old)
+            .map(|(field, _)| field)
+            .collect()
+    }
+
+    /// What the solver changes of a model: the domain of each field and the relations it adds
+    /// ([`Model::set_domain`], [`Model::push_relation`], [`Model::truncate_relations`], the
+    /// only changes the model takes once it is checked). A search that tries a choice and puts
+    /// the model back takes this instead of a copy of the whole model, which holds every
+    /// instance and every name too.
+    pub fn snapshot(&self) -> Snapshot {
+        Snapshot {
+            domains: self.fields.iter().map(|f| f.domain.clone()).collect(),
+            relations: Arc::clone(&self.relations),
+        }
+    }
+
+    /// Put the model back as it was when `snapshot` was taken of it. The model must be the one
+    /// the snapshot was taken of, changed only by the solver's three changes.
+    pub fn restore(&mut self, snapshot: &Snapshot) {
+        debug_assert_eq!(self.fields.len(), snapshot.domains.len());
+        for (index, domain) in snapshot.domains.iter().enumerate() {
+            if self.fields[index].domain != *domain {
+                self.set_domain(FieldId(index), domain.clone());
+            }
+        }
+        self.relations = Arc::clone(&snapshot.relations);
     }
 
     /// Whether `inst` is `ancestor` or something inside it.
@@ -577,11 +956,42 @@ impl Model {
                 };
                 format!("({} {sym} {})", self.show_expr(a), self.show_expr(b))
             }
+            RExpr::Range(lo, hi) => {
+                format!("({}..{})", self.show_expr(lo), self.show_expr(hi))
+            }
         }
     }
 
     pub fn relations(&self) -> &[Relation] {
         &self.relations
+    }
+
+    /// The list of relations itself, which is another list (not the same one) after any change
+    /// to it: what a cache of answers over the relations keeps to know that it is stale.
+    pub fn shared_relations(&self) -> &Arc<Vec<Relation>> {
+        &self.relations
+    }
+
+    /// Add a relation after the check: the solver adds the ones that a bound entails and takes
+    /// them out again with [`Model::truncate_relations`] (ADR 0065). They go at the end, so no
+    /// index of a relation of the design changes.
+    pub fn push_relation(&mut self, relation: Relation) {
+        Arc::make_mut(&mut self.relations).push(relation);
+    }
+
+    /// Keep the first `len` relations and drop the rest.
+    pub fn truncate_relations(&mut self, len: usize) {
+        Arc::make_mut(&mut self.relations).truncate(len);
+    }
+
+    /// `file:line` of a statement of this model, if its file is known.
+    pub fn place_of_statement(&self, source: SourceId, span: Span) -> Option<String> {
+        self.sources.0.as_ref()?.place(source, span)
+    }
+
+    /// A statement of this model as it was written, on one line, if its file is known.
+    pub fn statement_text(&self, source: SourceId, span: Span) -> Option<String> {
+        self.sources.0.as_ref()?.statement(source, span)
     }
 
     pub fn equalities(&self) -> &[(FieldId, FieldId)] {
@@ -596,7 +1006,19 @@ impl Model {
         &self.nets
     }
 
+    /// Whether a current of a balance is exactly zero now (a stated `0A`, or worked out to
+    /// it): it adds nothing to the net, so it does not count as a term when a part's current is
+    /// worked out from the others (ADR 0026).
+    pub fn draw_is_zero(&self, d: &Draw) -> bool {
+        matches!(&self.field(d.field).domain, Domain::Quantity(q) if q.lo() == 0.0 && q.hi() == 0.0)
+    }
+
     pub fn balances(&self) -> &[Balance] {
+        &self.balances
+    }
+
+    /// The list of balances itself, to hold while the model changes (the structure does not).
+    pub fn shared_balances(&self) -> &Arc<Vec<Balance>> {
         &self.balances
     }
 
@@ -617,6 +1039,21 @@ impl Model {
             {
                 Some(i)
             }
+            _ => None,
+        }
+    }
+
+    /// The `.count` of a part that is a bank (ADR 0052): the number of identical parts that
+    /// stand in this place. Only a part that stands for a standard generic in [`BANKS`] is one,
+    /// whatever a design's own part names its members.
+    pub fn bank_count(&self, part: InstId) -> Option<FieldId> {
+        let inst = self.instance(part);
+        let bank = inst.standard.iter().any(|g| BANKS.contains(&g.as_str()));
+        if inst.kind != InstKind::Part || !bank {
+            return None;
+        }
+        match self.member(part, "count")? {
+            Member::Field(f) if matches!(self.field(f).kind, FieldKind::Quantity(_)) => Some(f),
             _ => None,
         }
     }
@@ -653,15 +1090,29 @@ impl Model {
             && self.instance(f.owner).kind == InstKind::Interface
     }
 
-    /// Whether `field` is a logic level of a `Logic` line (`vih`, `vil`, `voh`, `vol`). It is
-    /// what one part's pin guarantees or needs, so connecting two lines does not equate them
-    /// the way it equates the voltage of two rails (ADR 0046).
+    /// Whether `field` is a logic level of a `Logic` line or of the `Levels` of a bus interface
+    /// (`vih`, `vil`, `voh`, `vol`). It is what one part's pin guarantees or needs, so
+    /// connecting two lines does not equate them the way it equates the voltage of two rails
+    /// (ADR 0046, ADR 0064).
     pub fn is_level(&self, field: FieldId) -> bool {
         let f = self.field(field);
         matches!(f.name.as_str(), "vih" | "vil" | "voh" | "vol")
             && f.kind == FieldKind::Quantity(Dimension::VOLTAGE)
             && self.instance(f.owner).kind == InstKind::Interface
-            && self.instance(f.owner).type_name == "Logic"
+            && (self.instance(f.owner).type_name == "Logic" || self.is_levels(f.owner))
+    }
+
+    /// Whether an instance is the `Levels` of the standard library (`std::logic::Levels`): the
+    /// logic levels that a bus interface carries for all its lines (ADR 0064).
+    pub fn is_levels(&self, inst: InstId) -> bool {
+        let i = self.instance(inst);
+        i.kind == InstKind::Interface
+            && i.type_name == "Levels"
+            && self
+                .sources
+                .0
+                .as_ref()
+                .is_none_or(|s| s.get(i.source).name.starts_with("std/"))
     }
 
     /// The `current` field and the `pos` pin of an interface that draws current from a

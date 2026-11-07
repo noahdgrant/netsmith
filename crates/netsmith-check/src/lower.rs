@@ -4,27 +4,25 @@
 //! is order independent, because intersecting is. Anything that mentions another field
 //! is recorded as a [`Relation`] for the solver instead of being evaluated here, so the
 //! meaning of a block never depends on the order of its statements.
+//!
+//! A default (`?=`) waits until every statement of the board has been read. It then becomes
+//! the same narrowing as `&=` for each field that no `&=` statement states, and is dropped
+//! for the rest (ADR 0051).
 
 use netsmith_lang::Span;
 use netsmith_lang::ast::{self, BinOp, CmpOp, Expr};
 use netsmith_quantity::{Dimension, Quantity, parse_unit};
 
-use crate::checker::{Checker, Res};
-use crate::model::{Domain, FieldId, FieldKind, InstKind, Member, RExpr, Relation};
+use crate::checker::{Checker, Res, Ty};
+use crate::diag::SourceId;
+use crate::model::{Domain, EnumId, FieldId, FieldKind, InstKind, Member, RExpr, Relation};
 
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum VTy {
     Q(Dimension),
     Text,
-}
-
-impl VTy {
-    fn describe(self) -> String {
-        match self {
-            Self::Q(d) => d.to_string(),
-            Self::Text => "text".to_string(),
-        }
-    }
+    /// A variant of an enum (ADR 0054).
+    Enum(EnumId),
 }
 
 pub(crate) struct Typed {
@@ -32,7 +30,131 @@ pub(crate) struct Typed {
     pub ty: VTy,
 }
 
+/// A `?=` statement that has been checked and waits to be resolved.
+pub(crate) struct PendingDefault {
+    field: FieldId,
+    value: Typed,
+    source: SourceId,
+    span: Span,
+}
+
 impl Checker<'_> {
+    /// What a value of this type is called in a message.
+    fn describe(&self, ty: VTy) -> String {
+        match ty {
+            VTy::Q(d) => d.to_string(),
+            VTy::Text => "text".to_string(),
+            VTy::Enum(e) => format!("a variant of `{}`", self.model.enum_info(e).name),
+        }
+    }
+
+    /// What a field holds, for a message.
+    fn describe_kind(&self, kind: FieldKind) -> String {
+        match kind {
+            FieldKind::Quantity(d) => d.to_string(),
+            FieldKind::Text => "text".to_string(),
+            FieldKind::Enum(e) => format!("a variant of `{}`", self.model.enum_info(e).name),
+        }
+    }
+
+    /// `AssemblyMode::Hand`: the type of the enum and the variant, if the enum has it.
+    fn lower_variant(
+        &mut self,
+        ty: &ast::TypePath,
+        variant: &ast::Ident,
+        span: Span,
+    ) -> Option<Typed> {
+        let (m, i) = match self.resolve_type(ty) {
+            Ty::Enum(m, i) => (m, i),
+            Ty::Poison | Ty::Bad => return None,
+            Ty::Def(m, i) => {
+                let kind = self.module_def_kind(m, i);
+                self.error(
+                    span,
+                    format!(
+                        "`{}` is a {kind}, not an enum, so `{}::{}` is not a value",
+                        ty.segments.last()?.name,
+                        ty.segments.last()?.name,
+                        variant.name
+                    ),
+                );
+                return None;
+            }
+            Ty::Builtin(_) => {
+                self.error(
+                    span,
+                    format!(
+                        "`{}` is not an enum, so `{}::{}` is not a value",
+                        ty.segments.last()?.name,
+                        ty.segments.last()?.name,
+                        variant.name
+                    ),
+                );
+                return None;
+            }
+        };
+        let id = self.enum_id(m, i);
+        let info = self.model.enum_info(id).clone();
+        if !info.variants.contains(&variant.name) {
+            let listed: Vec<String> = info
+                .variants
+                .iter()
+                .map(|v| format!("`{}::{v}`", info.name))
+                .collect();
+            let hint = closest(&variant.name, &info.variants)
+                .map(|v| format!("; did you mean `{}::{v}`?", info.name))
+                .unwrap_or_default();
+            self.error(
+                variant.span,
+                format!(
+                    "`{}` has no variant `{}`; its variants are {}{hint}",
+                    info.name,
+                    variant.name,
+                    list_of(&listed)
+                ),
+            );
+            return None;
+        }
+        Some(Typed {
+            e: RExpr::Text(variant.name.clone()),
+            ty: VTy::Enum(id),
+        })
+    }
+
+    /// A text that a field of an enum may not hold, said with the variant it was meant to be.
+    fn text_for_enum(&self, e: EnumId, text: &str) -> String {
+        let info = self.model.enum_info(e);
+        let listed: Vec<String> = info
+            .variants
+            .iter()
+            .map(|v| format!("`{}::{v}`", info.name))
+            .collect();
+        let found = info
+            .variants
+            .iter()
+            .find(|v| v.eq_ignore_ascii_case(text))
+            .or_else(|| {
+                closest(text, &info.variants).and_then(|c| info.variants.iter().find(|v| *v == &c))
+            });
+        match found {
+            Some(v) => format!(
+                "a variant of `{}` is not written as text: write `{}::{v}` (the variants are {})",
+                info.name,
+                info.name,
+                list_of(&listed)
+            ),
+            None => format!(
+                "a variant of `{}` is not written as text, and \"{text}\" is none of them: the variants are {}",
+                info.name,
+                list_of(&listed)
+            ),
+        }
+    }
+
+    fn module_def_kind(&self, module: usize, index: usize) -> &'static str {
+        crate::providers::kind_word(&self.module_defs(module)[index])
+    }
+
     pub fn lower(&mut self, e: &Expr) -> Option<Typed> {
         match e {
             Expr::Number(n, span) => match Quantity::literal(n.value, n.unit.as_deref()) {
@@ -49,11 +171,13 @@ impl Checker<'_> {
                 e: RExpr::Text(s.clone()),
                 ty: VTy::Text,
             }),
+            Expr::Variant { ty, variant, span } => self.lower_variant(ty, variant, *span),
             Expr::Path(p) => match self.resolve_path(p) {
                 Res::Field(f) => {
                     let ty = match self.model.field(f).kind {
                         FieldKind::Quantity(d) => VTy::Q(d),
                         FieldKind::Text => VTy::Text,
+                        FieldKind::Enum(e) => VTy::Enum(e),
                     };
                     Some(Typed {
                         e: RExpr::Field(f),
@@ -104,8 +228,21 @@ impl Checker<'_> {
                         }
                     },
                     _ => {
-                        self.error(*span, "both ends of a range must be fixed numbers");
-                        None
+                        // An end that is a value (a member, an expression over members) is
+                        // read when the solver knows it (ADR 0066). The ends are numbers of
+                        // one dimension, and an end text is not one.
+                        let (VTy::Q(ld), VTy::Q(hd)) = (l.ty, h.ty) else {
+                            self.error(*span, "the ends of a range are numbers, not text");
+                            return None;
+                        };
+                        if ld != hd {
+                            self.error(*span, format!("cannot form a range from {ld} and {hd}"));
+                            return None;
+                        }
+                        Some(Typed {
+                            ty: VTy::Q(ld),
+                            e: RExpr::Range(Box::new(l.e), Box::new(h.e)),
+                        })
                     }
                 }
             }
@@ -191,38 +328,121 @@ impl Checker<'_> {
 
     pub fn constraint(&mut self, c: &ast::Constraint) {
         match c.op {
-            CmpOp::Narrow => self.narrow_statement(c),
+            CmpOp::Narrow | CmpOp::Default => self.narrow_statement(c),
             _ => self.relation_statement(c),
         }
     }
 
+    /// `&=` narrows now (or queues a relation), `?=` is kept until every statement is read.
     fn narrow_statement(&mut self, c: &ast::Constraint) {
+        let symbol = c.op.symbol();
         let Expr::Path(p) = &c.lhs else {
+            let example = if c.op == CmpOp::Default {
+                ".voltage ?= 5V"
+            } else {
+                ".voltage &= 5V"
+            };
             self.error(
                 c.lhs.span(),
-                "`&=` needs a field on its left, such as `.voltage &= 5V`",
+                format!("`{symbol}` needs a field on its left, such as `{example}`"),
             );
             return;
         };
         let target = self.resolve_path(p);
         let rhs = self.lower(&c.rhs);
         match (target, rhs) {
-            (Res::Field(f), Some(t)) => {
+            (Res::Field(f), rhs) => {
+                if c.op == CmpOp::Narrow {
+                    self.stated.insert(f);
+                }
+                let Some(t) = rhs else { return };
                 let mut fields = vec![f];
                 t.e.fields(&mut fields);
-                if self.physical_gate(&fields, c.span) {
+                if !self.physical_gate(&fields, c.span) {
+                    return;
+                }
+                if c.op == CmpOp::Narrow {
                     self.apply(f, t, CmpOp::Narrow, c.span);
+                } else if self.check_value(f, &t, c.span) {
+                    let source = self.cur_source();
+                    self.defaults.push(PendingDefault {
+                        field: f,
+                        value: t,
+                        source,
+                        span: c.span,
+                    });
                 }
             }
             (Res::Inst(i), _) => {
                 let word = self.model.instance(i).kind.word();
                 self.error(
                     p.span,
-                    format!("`&=` sets a value, but `{}` is a {word}", p.to_source()),
+                    format!(
+                        "`{symbol}` sets a value, but `{}` is a {word}",
+                        p.to_source()
+                    ),
                 );
             }
             _ => {}
         }
+    }
+
+    /// Give each field its default unless a `&=` states it (ADR 0051). The rule looks at
+    /// statements only: a value that reaches the field through `==` or `~` is not stated.
+    /// Two defaults for one field are an error, whatever else is stated.
+    pub(crate) fn resolve_defaults(&mut self) {
+        let mut pending = std::mem::take(&mut self.defaults);
+        pending.sort_by_key(|d| (d.field.0, d.source.0, d.span.start));
+        let mut apply = Vec::new();
+        let mut at = 0;
+        while at < pending.len() {
+            let field = pending[at].field;
+            let end = pending[at..]
+                .iter()
+                .position(|d| d.field != field)
+                .map_or(pending.len(), |n| at + n);
+            if end - at > 1 {
+                let places: Vec<String> = pending[at..end]
+                    .iter()
+                    .map(|d| self.place_of(d.source, d.span))
+                    .collect();
+                let path = self.model.path_of_field(field);
+                let (source, span) = (pending[at + 1].source, pending[at + 1].span);
+                self.report(
+                    source,
+                    span,
+                    format!(
+                        "`{path}` has {} defaults, at {}: a field has one default; keep one `?=`",
+                        end - at,
+                        places.join(" and ")
+                    ),
+                );
+            }
+            at = end;
+        }
+        // Decide with every statement in view before narrowing anything: a default that
+        // narrows a face for the parts of a module must not change which others are dropped.
+        let mut count = std::collections::HashMap::new();
+        for d in &pending {
+            *count.entry(d.field).or_insert(0) += 1;
+        }
+        for d in pending {
+            if count[&d.field] == 1 && !self.stated.contains(&d.field) {
+                apply.push(d);
+            }
+        }
+        for d in apply {
+            self.source_override = Some(d.source);
+            self.apply_checked(d.field, d.value, CmpOp::Narrow, d.span);
+        }
+        self.source_override = None;
+    }
+
+    /// `file:line` of a span.
+    pub(crate) fn place_of(&self, source: SourceId, span: Span) -> String {
+        let source = self.sources.get(source);
+        let (line, _) = netsmith_lang::ParseError::new(span, "").line_col(&source.text);
+        format!("{}:{line}", source.name)
     }
 
     /// The statement at `span` as the source has it, for a drawing to show, if it is one the
@@ -269,22 +489,38 @@ impl Checker<'_> {
         let comparable = match (l.ty, r.ty) {
             (VTy::Q(a), VTy::Q(b)) => a == b,
             (VTy::Text, VTy::Text) => c.op == CmpOp::EqEq,
+            (VTy::Enum(a), VTy::Enum(b)) => a == b && c.op == CmpOp::EqEq,
             _ => false,
         };
         if !comparable {
-            self.error(
-                c.span,
-                format!(
-                    "the two sides do not match: left is {}, right is {}",
-                    l.ty.describe(),
-                    r.ty.describe()
-                ),
+            let mut message = format!(
+                "the two sides do not match: left is {}, right is {}",
+                self.describe(l.ty),
+                self.describe(r.ty)
             );
+            if l.ty == r.ty && !matches!(l.ty, VTy::Q(_)) {
+                message = format!(
+                    "`{}` compares numbers; {} are compared with `==` only",
+                    c.op.symbol(),
+                    if matches!(l.ty, VTy::Enum(_)) {
+                        "variants"
+                    } else {
+                        "text values"
+                    }
+                );
+            }
+            // A variant against a quoted word: the migration from text to the enum.
+            for (side, text) in [(&l, &r), (&r, &l)] {
+                if let (VTy::Enum(e), VTy::Text, RExpr::Text(word)) = (side.ty, text.ty, &text.e) {
+                    message = format!("{message}; {}", self.text_for_enum(e, word));
+                }
+            }
+            self.error(c.span, message);
             return;
         }
         let source = self.cur_source();
         let written = self.written(c.span);
-        self.model.relations.push(Relation {
+        std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
             lhs: l.e,
             op: c.op,
             rhs: r.e,
@@ -296,6 +532,14 @@ impl Checker<'_> {
 
     /// Narrow `field` by a constant now, or queue the constraint for the solver.
     fn apply(&mut self, field: FieldId, value: Typed, op: CmpOp, span: Span) {
+        if self.check_value(field, &value, span) {
+            self.apply_checked(field, value, op, span);
+        }
+    }
+
+    /// Whether `value` may be stated for `field`, reporting it when not: only a board names
+    /// nets, and the value must be the kind the field holds.
+    fn check_value(&mut self, field: FieldId, value: &Typed, span: Span) -> bool {
         // Net names are board-wide, so a module or part that named one would give every
         // instance of itself the same net. Only the board names nets: that holds for a
         // pin's `net` and for the `net` of a plane in a manufacturing process alike.
@@ -311,35 +555,41 @@ impl Checker<'_> {
                 )
             };
             self.error(span, message);
-            return;
+            return false;
         }
         let kind = self.model.field(field).kind;
         let matches = match (kind, value.ty) {
             (FieldKind::Quantity(a), VTy::Q(b)) => a == b,
             (FieldKind::Text, VTy::Text) => true,
+            (FieldKind::Enum(a), VTy::Enum(b)) => a == b,
             _ => false,
         };
         if !matches {
-            let holds = match kind {
-                FieldKind::Quantity(d) => d.to_string(),
-                FieldKind::Text => "text".to_string(),
-            };
+            let holds = self.describe_kind(kind);
             let path = self.model.path_of_field(field);
-            self.error(
-                span,
-                format!(
-                    "`{path}` holds {holds}, but this value is {}",
-                    value.ty.describe()
-                ),
+            let mut message = format!(
+                "`{path}` holds {holds}, but this value is {}",
+                self.describe(value.ty)
             );
-            return;
+            if let (FieldKind::Enum(e), VTy::Text, RExpr::Text(word)) = (kind, value.ty, &value.e) {
+                message = format!(
+                    "`{path}` holds {holds}, but this value is text; {}",
+                    self.text_for_enum(e, word)
+                );
+            }
+            self.error(span, message);
+            return false;
         }
+        true
+    }
+
+    fn apply_checked(&mut self, field: FieldId, value: Typed, op: CmpOp, span: Span) {
         match value.e {
             RExpr::Const(q) => self.narrow(field, Domain::Quantity(q), span),
             RExpr::Text(s) => self.narrow(field, Domain::Text(s), span),
             other => {
                 let source = self.cur_source();
-                self.model.relations.push(Relation {
+                std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
                     lhs: RExpr::Field(field),
                     op,
                     rhs: other,
@@ -476,6 +726,10 @@ impl Checker<'_> {
                     );
                     return;
                 }
+                let (old, new) = (
+                    self.model.show_value(field, &old),
+                    self.model.show_value(field, &new),
+                );
                 self.report(
                     source,
                     span,
@@ -486,4 +740,47 @@ impl Checker<'_> {
             }
         }
     }
+}
+
+/// `` `A`, `B` and `C` ``
+pub(crate) fn list_of(items: &[String]) -> String {
+    match items.split_last() {
+        None => String::new(),
+        Some((only, [])) => only.clone(),
+        Some((last, init)) => format!("{} and {last}", init.join(", ")),
+    }
+}
+
+/// The word of `options` that `word` is most likely a slip for: the same letters in another
+/// case, or at most two edits away (and fewer than half its length).
+pub(crate) fn closest(word: &str, options: &[String]) -> Option<String> {
+    let lower = word.to_lowercase();
+    if let Some(same) = options.iter().find(|o| o.to_lowercase() == lower) {
+        return Some(same.clone());
+    }
+    let limit = (word.chars().count() / 2).min(2);
+    options
+        .iter()
+        .map(|o| (edit_distance(&lower, &o.to_lowercase()), o))
+        .filter(|(d, _)| *d <= limit)
+        .min_by_key(|(d, _)| *d)
+        .map(|(_, o)| o.clone())
+}
+
+fn edit_distance(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.iter().enumerate() {
+        let mut diagonal = row[0];
+        row[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let above = row[j + 1];
+            row[j + 1] = (above + 1)
+                .min(row[j] + 1)
+                .min(diagonal + usize::from(ca != cb));
+            diagonal = above;
+        }
+    }
+    row[b.len()]
 }

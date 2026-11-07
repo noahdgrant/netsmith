@@ -24,9 +24,16 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+mod findings;
+mod reads;
+mod seed;
+mod transfer;
+pub use findings::{HeldBy, UnconstrainedPick, UnstatedValue};
+pub use seed::Seeded;
+
 use netsmith_check::{
-    Balance, Board, Diagnostic, Domain, Draw, FieldId, FieldKind, InstId, InstKind, Model, RExpr,
-    Relation, SourceId, System,
+    Balance, Board, Checkpoint, Diagnostic, Domain, Draw, FieldId, FieldKind, InstId, InstKind,
+    Model, RExpr, Relation, Snapshot, SourceId, System,
 };
 use netsmith_core::job;
 use netsmith_lang::Span;
@@ -48,6 +55,18 @@ pub struct Solution {
     /// Indices into `model.relations()` that could not be evaluated: something they
     /// depend on has no value.
     pub deferred: Vec<usize>,
+    /// Groups of fields that depend on each other in a cycle while none has a value, so
+    /// that nothing in them or after them could be worked out. Only a note says so: a range
+    /// stated on one of the fields would start the solver.
+    pub circular: Vec<Vec<FieldId>>,
+    /// Circles of values (closed or not) with a check that reads them and could not be
+    /// made, after the solver's own start (ADR 0053): the build says so as a finding, not
+    /// only as a note (ADR 0057).
+    pub open_circles: Vec<OpenCircle>,
+    /// Circles of values that the solver started itself, from the range of a value the board
+    /// states, because the part's own range holds no other value that its equations allow
+    /// (ADR 0053).
+    pub seeded: Vec<Seeded>,
     pub diagnostics: Vec<Diagnostic>,
     /// The project's default for who assembles a part (`fab`, `hand` or `none`), from the
     /// catalogs the board was solved with (ADR 0028). Lowering applies it.
@@ -59,6 +78,46 @@ pub struct Solution {
     /// spent choosing parts. Tests use it to show that a failing design is not searched
     /// once per combination of parts that have nothing to do with the failure.
     pub trials: usize,
+    /// Parts of a catalog with a value column (a resistor's resistance) that were picked while
+    /// nothing limited the value, so the solver took the first row that fits (ADR 0065): a
+    /// guideline finding.
+    pub unconstrained: Vec<UnconstrainedPick>,
+    /// Values declared in a module or board that checks which could not be evaluated read, and
+    /// that nothing states or works out (ADR 0065): a guideline finding.
+    pub unstated: Vec<UnstatedValue>,
+}
+
+/// A circle of values that stayed open, with the checks it left unmade.
+#[derive(Debug, Clone)]
+pub struct OpenCircle {
+    /// The fields of the circle, in field order.
+    pub fields: Vec<FieldId>,
+    /// Whether a range stated on one of `fields` starts it. If not, `waiting` lists the values
+    /// outside it that nothing states and that something in it reads.
+    pub closed: bool,
+    pub waiting: Vec<FieldId>,
+    /// Indices into `model.relations()`: the bounds (`>=`, `<=`) that read a field of the
+    /// circle, or a value worked out from one, and were not evaluated.
+    pub checks: Vec<usize>,
+    /// Empty for a circle of equations. For a group that closes through the currents of a net
+    /// (a balance of more than two currents, which the solver does not work out a part's
+    /// current from): each such net. A range on one of the currents starts the group, as one
+    /// on a voltage in it does.
+    pub nets: Vec<UnsolvedNet>,
+}
+
+/// A net whose currents add up to zero (Kirchhoff's current law) and whose parts' currents the
+/// solver does not work out from the others (ADR 0026, issue #18).
+#[derive(Debug, Clone)]
+pub struct UnsolvedNet {
+    /// The net's name.
+    pub net: String,
+    /// The board or module whose balance it is.
+    pub scope: InstId,
+    /// Every current on the net that has no value, in field order.
+    pub unknown: Vec<FieldId>,
+    /// Those of them that are a part's through-current: what a stated range would start.
+    pub unsolved: Vec<FieldId>,
 }
 
 #[derive(Debug, Clone)]
@@ -80,6 +139,10 @@ pub struct Pick {
     pub generic: Option<crate::Generic>,
     /// How many candidates fit the design's constraints but failed a relation first.
     pub rejected: usize,
+    /// How many identical parts of this candidate stand in parallel (a bank, ADR 0052): the
+    /// value of the part's `.count` when the design leaves it to the solver or states it, and
+    /// 1 for a part that has none.
+    pub count: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -104,6 +167,27 @@ enum Underated {
 /// The most the search will try before it stops and says so.
 const MAX_TRIALS: usize = 250_000;
 
+/// The solver's state before a group of parts was searched, to put it back.
+#[derive(Clone)]
+struct Mark {
+    model: Snapshot,
+    diagnostics: usize,
+    seen: HashSet<Diagnostic>,
+    picks: usize,
+    unresolved: usize,
+    refused_counts: HashSet<FieldId>,
+    derived: HashSet<FieldId>,
+}
+
+/// A group of parts that was searched, where it stands in the listing of picks, and the state
+/// before it.
+struct Step {
+    position: usize,
+    group: Vec<usize>,
+    mark: Mark,
+    picks: Vec<Pick>,
+}
+
 /// One part that needs a real part chosen for it.
 struct Job {
     part: InstId,
@@ -113,6 +197,9 @@ struct Job {
     /// uses cannot change what any other part or relation sees.
     used: Vec<bool>,
     catalog: Catalog,
+    /// The part's `.count` field, if it has one (a bank, ADR 0052). When the design gives it a
+    /// range, the search chooses the whole number in it together with the row.
+    count: Option<FieldId>,
 }
 
 /// `a` or `an` for a type name in a message. A name like `Mcu32` is read letter by letter,
@@ -132,6 +219,17 @@ fn article(word: &str) -> &'static str {
     }
 }
 
+/// The most identical parts a bank may be asked for, whatever range a design gives its count.
+const MAX_BANK: f64 = 64.0;
+
+/// A choice as a message names it: the row, and for a bank how many of it.
+fn choice_name(c: &Candidate, count: Option<f64>) -> String {
+    match count {
+        Some(n) => format!("{n} x {}", c.name),
+        None => c.name.clone(),
+    }
+}
+
 /// How often the scan of the fields that finds which parts share a relation says how far it is.
 const FIELDS_REPORT_EVERY: usize = 512;
 
@@ -148,6 +246,8 @@ struct Search {
     chosen: Vec<String>,
     picks: Vec<Pick>,
     closest: Option<Closest>,
+    /// The jobs of the groups not searched yet.
+    elsewhere: HashSet<usize>,
     /// The most parts that were chosen at once: it only grows, and is what progress reports
     /// (a search that backs up has not un-chosen what it got through).
     deepest: usize,
@@ -155,11 +255,14 @@ struct Search {
 
 /// The choice that came nearest to working, kept for the error message: the one that got
 /// furthest through the parts, and among those the one that missed by the least.
+#[derive(Clone)]
 struct Closest {
     /// How many parts had been chosen before the one that failed.
     depth: usize,
     margin: f64,
     assignment: Vec<String>,
+    /// The depth in the group of the part each entry of `assignment` is for.
+    depths: Vec<usize>,
     message: String,
     at: (SourceId, Span),
 }
@@ -172,13 +275,37 @@ struct Conflict {
     fields: Vec<FieldId>,
 }
 
+/// A candidate that was accepted, with what it needs of its open columns.
+struct Accepted {
+    needs: Vec<(String, Need)>,
+    /// Whether every bound that waits for a part still to be chosen (`verify_possible`) also
+    /// holds over the whole range its values have now. A candidate for which one holds only
+    /// for some values is accepted only when no candidate has them all (ADR 0065, 9.6).
+    whole: bool,
+}
+
 struct Rejection {
-    candidate: String,
     message: String,
     margin: f64,
     at: (SourceId, Span),
-    /// The fields whose values the rejection and its message were worked out from.
-    reads: Vec<FieldId>,
+    /// The fields of the one relation or conflict that failed: if none of them is worked out
+    /// from the part's count, a larger count fails the same way.
+    own: Vec<FieldId>,
+    /// The relation that failed (its place in the model's list), if it was one and not a
+    /// conflict found while propagating.
+    relation: Option<usize>,
+}
+
+/// Why a part, or the parts after it, could not be chosen.
+struct Failure {
+    /// The depths of the earlier parts whose choices the failure depends on.
+    depends: BTreeSet<usize>,
+    /// The depths of the parts the failure involves, however deep: this part if it is one, the
+    /// earlier parts it depends on, and the parts after it that the failure came from. The
+    /// smallest set of picks that cannot be met together, as far as the search has learned.
+    core: BTreeSet<usize>,
+    /// The rejection nearest to working among those the failure is made of.
+    closest: Option<Closest>,
 }
 
 /// How a search of a group's parts ended.
@@ -189,32 +316,92 @@ enum Outcome {
     /// holds the depths of the earlier parts whose choices that failure depends on (see
     /// [`Coupling`]); a failure that does not depend on the part just above is not undone
     /// by changing that part.
-    Failed(BTreeSet<usize>),
+    Failed(Failure),
     /// The search stopped at the trial limit.
     GaveUp,
 }
 
 /// Which parts can see each other's choices. A part's choice sets its columns; propagation
-/// then carries the values along the connections, the equations and the balances of
-/// currents, and nowhere else. The fields those join form a class, and a value in a class
-/// depends only on the choices of parts whose columns are in it. A check that reads some
-/// fields (a relation, a conflict, the domains that decide which candidates fit) is
-/// therefore settled by the parts that share a class with them, and by no others.
+/// then carries the values along the connections (both ways), the equations (from the right
+/// side to the left) and the balances of currents (each term from the others), and nowhere
+/// else. A value therefore depends on the choices of the parts whose columns it is worked out
+/// from, which `Coupling::fed_by` finds by following those edges, and a check that reads some
+/// fields (a relation, a conflict, the domains that decide which candidates fit) is settled by
+/// those parts and by no others. The class of a field (the fields joined to it by any of the
+/// edges, in either direction) is wider and only used where a rejection is compared with the
+/// count of a bank.
 struct Coupling {
-    /// For each job, the classes of its columns.
-    columns: Vec<HashSet<usize>>,
-    /// For each job, the classes of every field inside its part.
-    inside: Vec<HashSet<usize>>,
     /// The class of each field.
     class: Vec<usize>,
+    /// For each relation (by its place in the model's list), the jobs whose columns the
+    /// fields it names are worked out from, however indirectly: the parts whose pick the
+    /// relation's value waits for. A relation that none of the parts still to be chosen feeds
+    /// can be judged by the choice that completes what it reads.
+    feeding: Vec<HashSet<usize>>,
+    /// For each field, whether its value is the same whatever parts are chosen (see
+    /// `Solver::constants`).
+    constant: Vec<bool>,
+    /// What each field is worked out from (see `Solver::coupling`), and the job whose pick sets
+    /// each column: the parts a field's value depends on are found by following them.
+    from: HashMap<FieldId, Vec<FieldId>>,
+    job_of: HashMap<FieldId, usize>,
+    /// The jobs each field was found to be fed by.
+    fed_by_field: std::cell::RefCell<HashMap<FieldId, std::rc::Rc<HashSet<usize>>>>,
+}
+
+/// Keep in `best` the rejection that came nearest to working: the one that got furthest
+/// through the parts, and among those the one that missed by the least.
+fn nearer(best: &mut Option<Closest>, other: Option<&Closest>) {
+    if let Some(c) = other
+        && best
+            .as_ref()
+            .is_none_or(|b| c.depth > b.depth || (c.depth == b.depth && c.margin < b.margin))
+    {
+        *best = Some(c.clone());
+    }
 }
 
 impl Coupling {
-    /// The depths below `depth` of the parts whose columns share a class with `reads`.
-    fn earlier(&self, jobs_at: &[usize], depth: usize, reads: &HashSet<usize>) -> BTreeSet<usize> {
-        (0..depth)
-            .filter(|&p| !self.columns[jobs_at[p]].is_disjoint(reads))
-            .collect()
+    /// The jobs whose pick sets the value of one of `fields`, however indirectly: the parts
+    /// the value is worked out from. Narrower than the classes, which join everything that
+    /// shares an equation or a net; this follows the direction in which values are worked out.
+    fn fed_by(&self, fields: &[FieldId]) -> HashSet<usize> {
+        let mut out = HashSet::new();
+        for &f in fields {
+            let cached = self.fed_by_field.borrow().get(&f).cloned();
+            let found = cached.unwrap_or_else(|| {
+                let mut found = HashSet::new();
+                if !self.constant[f.0] {
+                    let mut seen: HashSet<FieldId> = HashSet::from([f]);
+                    let mut todo = vec![f];
+                    while let Some(g) = todo.pop() {
+                        if let Some(&j) = self.job_of.get(&g) {
+                            found.insert(j);
+                        }
+                        for &h in self.from.get(&g).into_iter().flatten() {
+                            if !self.constant[h.0] && seen.insert(h) {
+                                todo.push(h);
+                            }
+                        }
+                    }
+                }
+                let found = std::rc::Rc::new(found);
+                self.fed_by_field.borrow_mut().insert(f, found.clone());
+                found
+            });
+            out.extend(found.iter().copied());
+        }
+        out
+    }
+
+    /// The depths below `depth` of the parts in `jobs`.
+    fn earlier_jobs(
+        &self,
+        jobs_at: &[usize],
+        depth: usize,
+        jobs: &HashSet<usize>,
+    ) -> BTreeSet<usize> {
+        (0..depth).filter(|&p| jobs.contains(&jobs_at[p])).collect()
     }
 
     fn classes_of(&self, fields: &[FieldId]) -> HashSet<usize> {
@@ -259,21 +446,54 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         seen: HashSet::new(),
         picks: Vec::new(),
         unresolved: Vec::new(),
+        refused_counts: HashSet::new(),
         derived: HashSet::new(),
         stated: stated_currents(model),
+        stated_late: stated_late(model),
         sole_equation: sole_equations(model),
+        claimed: claimed_by_ranges(model),
+        several_equations: several_equations(model),
+        equations_of: equations_of(model),
+        fed: HashSet::new(),
+        fed_at_start: HashSet::new(),
         trials: 0,
+        seeded: Vec::new(),
+        original_relations: model.relations().len(),
+        extras: Vec::new(),
+        surveys: Vec::new(),
+        reads: Default::default(),
+        stamp: vec![0; model.fields().count()],
+        clock: 1,
         chosen_before: 0,
         to_choose: 0,
     };
     job::checkpoint();
     s.relax_pinned();
+    s.fed_at_start = s.fed_at_start();
     for c in s.propagate() {
         s.report(c.source, c.span, c.message);
     }
+    // A circle of values that no range starts is started from the supply's (ADR 0053), before
+    // the picks that need its values, and again after them for a circle that a pick closed.
+    if s.seed_circles() {
+        for c in s.propagate() {
+            s.report(c.source, c.span, c.message);
+        }
+    }
+    // The bounds that the design's own bounds entail for the fields held to a value that still
+    // has none (ADR 0065) are in the model while parts are picked and checked, and out of it
+    // otherwise. A member that has a value by now is judged on it.
+    s.find_transfers();
+    s.add_transfers();
     s.pick_parts();
+    s.drop_transfers();
     for c in s.propagate() {
         s.report(c.source, c.span, c.message);
+    }
+    if s.seed_circles() {
+        for c in s.propagate() {
+            s.report(c.source, c.span, c.message);
+        }
     }
     s.check_windows();
 
@@ -284,36 +504,160 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         .into_iter()
         .map(|o| o.relation)
         .collect();
+    // A bank whose pick failed has been reported with the count and row that came nearest. A
+    // relation that mentions its `.count` would fail again on the range the count was left
+    // with (a stated `.output_count` of a stage, tied by `==` to the capacitor's `.count`),
+    // so it says nothing more (ADR 0052).
+    let refused = std::mem::take(&mut s.refused_counts);
+    s.add_transfers();
     for (i, r) in s.model.relations().to_vec().iter().enumerate() {
         job::checkpoint();
+        // A bound that the solver added says nothing when it holds or cannot be judged (the
+        // design's own bound is the line that waits), and says why when it fails.
+        let own = i >= s.original_relations;
         match s.verify(r) {
             Verdict::Pass => {}
-            Verdict::Unknown if between_parts.contains(&i) => {}
+            Verdict::Unknown if own || between_parts.contains(&i) => {}
             Verdict::Unknown => deferred.push(i),
+            Verdict::Fail { .. } if relation_mentions_any(r, &refused) => {}
             Verdict::Fail { message, .. } => {
-                let message = s.with_currents(r, message);
+                // A bound on the clock of a bus is said in the words of the bus (ADR 0064).
+                if let Some((part, text)) = crate::busclock::failure(&s.model, r) {
+                    let (source, span) = s.model.instance(part).at();
+                    s.report(source, span, text);
+                    continue;
+                }
+                let message = s.relation_message(i, r, message);
                 s.report(r.source, r.span, message)
             }
         }
     }
+    s.drop_transfers();
     s.verify_balances();
     for d in netsmith_check::pin_faults_solved(model, &s.model) {
         s.report(d.source, d.span, d.message);
     }
-    let (level_faults, not_evaluated) = crate::levels::check(&s.model);
+    let (level_faults, mut not_evaluated) = crate::levels::check(&s.model);
+    not_evaluated.extend(crate::busclock::notes(&s.model));
+    // A bus on which one part states its role and another does not (ADR 0064).
+    for (at, message) in netsmith_check::unstated_roles(&s.model) {
+        not_evaluated.push(crate::levels::NotEvaluated {
+            at,
+            involves: vec![at],
+            message,
+        });
+    }
     for d in level_faults {
         s.report(d.source, d.span, d.message);
     }
+    let circular = if deferred.is_empty() {
+        Vec::new()
+    } else {
+        crate::cycles::find(&s.model)
+    };
+    let open_circles = if deferred.is_empty() {
+        Vec::new()
+    } else {
+        open_circles(&s.model, &deferred)
+    };
+    let unconstrained = s.unconstrained_picks(&s.surveys, &open_circles);
+    let held: HashSet<FieldId> = unconstrained
+        .iter()
+        .filter_map(|u| u.held_by.as_ref().map(|h| h.member))
+        .collect();
+    let unstated = s.unstated_values(&deferred, &open_circles, &held);
     Solution {
         model: s.model,
         picks: s.picks,
         unresolved: s.unresolved,
         deferred,
+        circular,
+        open_circles,
+        seeded: s.seeded,
         diagnostics: s.diagnostics,
         default_assembly: catalogs.default_assembly().map(str::to_string),
         not_evaluated,
         trials: s.trials,
+        unconstrained,
+        unstated,
     }
+}
+
+/// The circles of values that stayed open and have a bound that reads them (or a value
+/// worked out from them) among the relations that were not evaluated.
+fn open_circles(model: &Model, deferred: &[usize]) -> Vec<OpenCircle> {
+    let relations = model.relations();
+    let mut out: Vec<OpenCircle> = Vec::new();
+    let found = |circles: Vec<crate::cycles::Circle>, out: &mut Vec<OpenCircle>| {
+        for circle in circles {
+            // The values worked out from the circle's: a field that an equation sets from them.
+            let mut reach: HashSet<FieldId> = circle.fields.iter().copied().collect();
+            loop {
+                let before = reach.len();
+                for r in relations {
+                    if let (CmpOp::EqEq | CmpOp::Narrow, RExpr::Field(f)) = (&r.op, &r.lhs) {
+                        let mut reads = Vec::new();
+                        fields_in(&r.rhs, &mut reads);
+                        if reads.iter().any(|g| reach.contains(g)) {
+                            reach.insert(*f);
+                        }
+                    }
+                }
+                if reach.len() == before {
+                    break;
+                }
+            }
+            let checks: Vec<usize> = deferred
+                .iter()
+                .copied()
+                // One that a circle already named is not named again.
+                .filter(|i| !out.iter().any(|o| o.checks.contains(i)))
+                .filter(|&i| {
+                    let r = &relations[i];
+                    let mut fields = Vec::new();
+                    fields_in(&r.lhs, &mut fields);
+                    fields_in(&r.rhs, &mut fields);
+                    matches!(r.op, CmpOp::Ge | CmpOp::Le)
+                        && fields.iter().any(|f| reach.contains(f))
+                })
+                .collect();
+            if !checks.is_empty() {
+                let nets = circle
+                    .through
+                    .into_iter()
+                    .map(|t| {
+                        let b = &model.balances()[t.balance];
+                        UnsolvedNet {
+                            net: b.net.clone(),
+                            scope: b.scope,
+                            unknown: t.unknown,
+                            unsolved: t.unsolved,
+                        }
+                    })
+                    .collect();
+                out.push(OpenCircle {
+                    fields: circle.fields,
+                    closed: circle.closed,
+                    waiting: circle.waiting,
+                    checks,
+                    nets,
+                });
+            }
+        }
+    };
+    found(crate::cycles::circles(model), &mut out);
+    // The groups that close through the currents of a net come after, and name only the checks
+    // that no circle of equations has named (issue #18).
+    found(crate::cycles::balance_circles(model), &mut out);
+    out
+}
+
+/// Whether a relation mentions any of the fields.
+fn relation_mentions_any(r: &Relation, fields: &HashSet<FieldId>) -> bool {
+    let mut mentioned = Vec::new();
+    fields_in(&r.lhs, &mut mentioned);
+    fields_in(&r.rhs, &mut mentioned);
+    mentioned.iter().any(|f| fields.contains(f))
 }
 
 /// A stated current and what the rest of its net determines it to be (ADR 0038). Both are
@@ -344,6 +688,8 @@ struct Solver<'a> {
     seen: HashSet<Diagnostic>,
     picks: Vec<Pick>,
     unresolved: Vec<Unresolved>,
+    /// The `.count` of each bank whose search for a row failed (ADR 0052).
+    refused_counts: HashSet<FieldId>,
     /// Currents that propagation worked out from a balance (they were not stated). Such a
     /// current is worked out again when the terms it came from narrow, so it never goes
     /// stale: a value the design stated is not touched.
@@ -352,12 +698,45 @@ struct Solver<'a> {
     /// determines, with the range as written (ADR 0038): each is a budget, and what the
     /// circuit determines must lie inside it.
     stated: HashMap<FieldId, Quantity>,
+    /// The same, for a current whose range has a value at an end (ADR 0066): it states its
+    /// range when the ends have a value, and is then a budget as the same range written with
+    /// numbers is (`stated_range`).
+    stated_late: HashSet<FieldId>,
     /// Per relation: whether it is an equation on a field that no other equation states
     /// (through the field or any field joined to it). Only such an equation narrows a field
     /// that has a range; see `propagate`.
     sole_equation: Vec<bool>,
+    /// The fields that a range with a value at an end states (`f &= lo .. hi`, ADR 0066): they
+    /// are not worked out from a balance while the statement waits for its ends.
+    claimed: HashSet<FieldId>,
+    /// The fields that more than one equation states (the left side of an equation that is not
+    /// a sole one): each equation says what the value is, none says what it may be.
+    several_equations: HashSet<FieldId>,
+    /// The equations (by their place in the model's list) that have each field alone on the left.
+    equations_of: HashMap<FieldId, Vec<usize>>,
+    /// The fields that a pick can change: worked out, however indirectly, from the columns of a
+    /// part still to be chosen. Empty until the parts are picked.
+    fed: HashSet<FieldId>,
+    /// The same, worked out before the parts are looked at, from the columns of every part that
+    /// has a catalog: `fed` is empty while the first propagation runs, and the rule for several
+    /// equations that `propagate` applies only to fields a pick can change must hold then too.
+    fed_at_start: HashSet<FieldId>,
     /// Candidates tried so far, over every group.
     trials: usize,
+    /// The circles of values that were started from the supply's range (ADR 0053).
+    seeded: Vec<Seeded>,
+    /// How many relations the design wrote: the ones after them are the solver's own
+    /// (`extras`) while they are in the model.
+    original_relations: usize,
+    /// The bounds that the design's bounds entail (ADR 0065), with why.
+    extras: Vec<(Relation, transfer::Transfer)>,
+    /// What the picks of parts with a value column might be limited by, found before the picks.
+    surveys: Vec<findings::Survey>,
+    /// What the design reads, for the relations the model has (`reads`).
+    reads: std::cell::RefCell<Option<std::rc::Rc<reads::Reads>>>,
+    /// When `propagate` last changed each field, on a clock that counts its changes.
+    stamp: Vec<u64>,
+    clock: u64,
     /// How many parts the groups before this one have chosen, and how many there are to
     /// choose in all: what the progress of picking is counted in (see `job::report`).
     chosen_before: usize,
@@ -381,8 +760,87 @@ fn stated_currents(model: &Model) -> HashMap<FieldId, Quantity> {
         .iter()
         .flat_map(|b| b.draws.iter().map(|d| d.field))
         .filter(|f| !equated.contains(f))
+        // What a statement gives a part's own current is the part's claim, not an allowance.
+        .filter(|f| !inside_part(model, *f))
         .filter_map(|f| match &model.field(f).domain {
             Domain::Quantity(q) => Some((f, *q)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Whether a field is part of a part (the draw of its supply pin, the current through it):
+/// what a part states of itself is the part's claim (ADR 0066, 3).
+fn inside_part(model: &Model, field: FieldId) -> bool {
+    let mut at = Some(model.field(field).owner);
+    while let Some(inst) = at {
+        if model.instance(inst).kind == InstKind::Part {
+            return true;
+        }
+        at = model.instance(inst).parent;
+    }
+    false
+}
+
+/// The currents in a balance that a range with a value at an end states, outside a part's
+/// own body: they are stated like the same range written with numbers, once the ends have a
+/// value (ADR 0066, 3).
+fn stated_late(model: &Model) -> HashSet<FieldId> {
+    let equated: HashSet<FieldId> = model
+        .relations()
+        .iter()
+        .filter_map(|r| match (&r.op, &r.lhs) {
+            (CmpOp::EqEq, RExpr::Field(f)) => Some(*f),
+            _ => None,
+        })
+        .collect();
+    let on_balance: HashSet<FieldId> = model
+        .balances()
+        .iter()
+        .flat_map(|b| b.draws.iter().map(|d| d.field))
+        .collect();
+    claimed_by_ranges(model)
+        .into_iter()
+        .filter(|f| on_balance.contains(f) && !equated.contains(f) && !inside_part(model, *f))
+        .collect()
+}
+
+/// The fields a range with a value at its end narrows (ADR 0066). A part states its own draw
+/// that way, and the draw is the part's to state: while an end has no value (a catalog row not
+/// picked yet) the balance of the net must not work the current out from the others, because
+/// the range would later be met with what the others allowed and the part's own maximum would
+/// be lost in the overlap (a supply allowed 500 nA, a part that may draw 750 nA).
+fn claimed_by_ranges(model: &Model) -> HashSet<FieldId> {
+    model
+        .relations()
+        .iter()
+        .filter_map(|r| match (&r.op, &r.lhs, &r.rhs) {
+            (CmpOp::Narrow | CmpOp::Default, RExpr::Field(f), RExpr::Range(..)) => Some(*f),
+            _ => None,
+        })
+        .collect()
+}
+
+fn equations_of(model: &Model) -> HashMap<FieldId, Vec<usize>> {
+    let mut out: HashMap<FieldId, Vec<usize>> = HashMap::new();
+    for (i, r) in model.relations().iter().enumerate() {
+        if let (CmpOp::EqEq, RExpr::Field(f)) = (&r.op, &r.lhs) {
+            out.entry(*f).or_default().push(i);
+        }
+    }
+    out
+}
+
+/// The fields on the left of more than one `==` (counting a field and the fields joined to it as
+/// one).
+fn several_equations(model: &Model) -> HashSet<FieldId> {
+    let sole = sole_equations(model);
+    model
+        .relations()
+        .iter()
+        .zip(sole)
+        .filter_map(|(r, sole)| match (&r.op, &r.lhs) {
+            (CmpOp::EqEq, RExpr::Field(f)) if !sole => Some(*f),
             _ => None,
         })
         .collect()
@@ -461,27 +919,56 @@ impl Solver<'_> {
         self.model.field(f).domain.clone()
     }
 
+    /// A failure of a relation as it is reported: with what the currents say, or, for a bound
+    /// that the solver added, with the statements that make it a bound on the part (ADR 0065).
+    fn relation_message(&self, index: usize, r: &Relation, message: String) -> String {
+        if index >= self.original_relations {
+            self.transferred_message(index, message)
+        } else {
+            self.with_currents(r, message)
+        }
+    }
+
+    /// Set a field's domain in `propagate`, noting when.
+    fn set_field(&mut self, field: FieldId, domain: Domain) {
+        self.clock += 1;
+        self.stamp[field.0] = self.clock;
+        self.model.set_domain(field, domain);
+    }
+
     fn propagate(&mut self) -> Vec<Conflict> {
         let mut conflicts: Vec<Conflict> = Vec::new();
         let mut said: HashSet<String> = HashSet::new();
         // The structure does not change while values narrow, so it is copied once.
         let equalities = self.model.equalities().to_vec();
-        let relations = self.model.relations().to_vec();
-        let balances = self.model.balances().to_vec();
+        let relations = std::sync::Arc::clone(self.model.shared_relations());
+        let balances = std::sync::Arc::clone(self.model.shared_balances());
+        let reads = self.reads();
+        // The pass in which each item was last worked through, as a time on the clock of
+        // `set_field`: an item whose fields have not changed since is worked through again to
+        // the same effect (it changed nothing, or it changed its own field, which is a change).
+        let mut equalities_at = vec![0u64; equalities.len()];
+        let mut relations_at = vec![0u64; relations.len()];
+        let mut balances_at = vec![0u64; balances.len()];
         for _ in 0..64 {
             job::checkpoint();
             let mut changed = false;
 
-            for &(a, b) in &equalities {
+            for (item, &(a, b)) in equalities.iter().enumerate() {
+                let at = equalities_at[item];
+                if at != 0 && self.stamp[a.0] <= at && self.stamp[b.0] <= at {
+                    continue;
+                }
+                equalities_at[item] = self.clock;
                 let (da, db) = (self.domain(a), self.domain(b));
                 match merge(&da, &db) {
                     Some(m) => {
                         if m != da {
-                            self.model.set_domain(a, m.clone());
+                            self.set_field(a, m.clone());
                             changed = true;
                         }
                         if m != db {
-                            self.model.set_domain(b, m);
+                            self.set_field(b, m);
                             changed = true;
                         }
                     }
@@ -493,9 +980,11 @@ impl Solver<'_> {
                             .find_map(|&f| self.model.field(f).narrowed_at.last().copied())
                             .unwrap_or((owner.source, owner.span));
                         let message = format!(
-                            "connected values disagree: `{}` is {da} but `{}` is {db}",
+                            "connected values disagree: `{}` is {} but `{}` is {}",
                             self.model.path_of_field(a),
-                            self.model.path_of_field(b)
+                            self.model.show_value(a, &da),
+                            self.model.path_of_field(b),
+                            self.model.show_value(b, &db)
                         );
                         if said.insert(message.clone()) {
                             conflicts.push(Conflict {
@@ -515,27 +1004,34 @@ impl Solver<'_> {
                     continue;
                 }
                 let RExpr::Field(f) = &r.lhs else { continue };
-                let Ok(v) = eval(&self.model, &r.rhs) else {
+                let at = relations_at[index];
+                if at != 0 && reads.inputs_of(index).iter().all(|f| self.stamp[f.0] <= at) {
+                    continue;
+                }
+                relations_at[index] = self.clock;
+                let Some(v) = reads.value_of_rhs(&self.model, index, r) else {
                     continue;
                 };
                 let value = domain_of(v);
                 let current = self.domain(*f);
                 match (r.op, &current) {
                     (_, Domain::Unset) => {
-                        self.model.set_domain(*f, value);
+                        self.set_field(*f, value);
                         changed = true;
                     }
                     (CmpOp::Narrow, _) => match merge(&current, &value) {
                         Some(m) => {
                             if m != current {
-                                self.model.set_domain(*f, m);
+                                self.set_field(*f, m);
                                 changed = true;
                             }
                         }
                         None => {
                             let message = format!(
-                                "contradiction on `{}`: it is already {current}, which does not overlap {value}",
-                                self.model.path_of_field(*f)
+                                "contradiction on `{}`: it is already {}, which does not overlap {}",
+                                self.model.path_of_field(*f),
+                                self.model.show_value(*f, &current),
+                                self.model.show_value(*f, &value)
                             );
                             if said.insert(message.clone()) {
                                 let mut fields = vec![*f];
@@ -568,7 +1064,7 @@ impl Solver<'_> {
                             && let Ok(Some(both)) = d.intersect(v)
                             && both != *d
                         {
-                            self.model.set_domain(*f, Domain::Quantity(both));
+                            self.set_field(*f, Domain::Quantity(both));
                             changed = true;
                         }
                     }
@@ -577,7 +1073,30 @@ impl Solver<'_> {
                             && v != d
                             && d.encloses(v).unwrap_or(false)
                         {
-                            self.model.set_domain(*f, value);
+                            self.set_field(*f, value);
+                            changed = true;
+                        }
+                    }
+                    // A value that several equations state and no statement bounds (the
+                    // frequency of an oscillator that the board's window and the circuit both
+                    // give): the first equation that could be worked out gave it a range, and
+                    // that range is stale once a pick narrows what the equation reads. The
+                    // value is what each equation says, so it follows an equation whose range
+                    // lies inside it. Without this the equation that came later (the window)
+                    // was judged against the range of the earlier one and passed whatever the
+                    // pick was (ADR 0065, "A value that two equations state"). Only for a value
+                    // that a pick can change (`fed`), as in `verify`: two equations that no pick
+                    // changes keep the old rule (ADR 0065, section 9.1, "Not done").
+                    (CmpOp::EqEq, Domain::Quantity(d))
+                        if self.several_equations.contains(f)
+                            && (self.fed.contains(f) || self.fed_at_start.contains(f))
+                            && self.model.field(*f).narrowed_at.is_empty() =>
+                    {
+                        if let Domain::Quantity(v) = &value
+                            && v != d
+                            && d.encloses(v).unwrap_or(false)
+                        {
+                            self.set_field(*f, value);
                             changed = true;
                         }
                     }
@@ -589,12 +1108,17 @@ impl Solver<'_> {
             // can settle that way takes its value from the join, which can only say what the
             // others allow, so the joins wait until nothing else changes.
             for joins in [false, true] {
-                for b in &balances {
+                for (item, b) in balances.iter().enumerate() {
                     job::checkpoint();
                     let is_join = self.model.instance(b.scope).kind == InstKind::System;
                     if is_join != joins || b.returns {
                         continue;
                     }
+                    let at = balances_at[item];
+                    if at != 0 && b.draws.iter().all(|d| self.stamp[d.field.0] <= at) {
+                        continue;
+                    }
+                    balances_at[item] = self.clock;
                     if let Some((field, value)) = self.solve_balance(b) {
                         match self.domain(field) {
                             Domain::Unset => {
@@ -606,7 +1130,7 @@ impl Solver<'_> {
                             // that share nothing are left to `verify_balances`.
                             Domain::Quantity(old) => match self.reworked(b, &old, &value) {
                                 Some(both) => {
-                                    self.model.set_domain(field, Domain::Quantity(both));
+                                    self.set_field(field, Domain::Quantity(both));
                                     changed = true;
                                     continue;
                                 }
@@ -614,7 +1138,7 @@ impl Solver<'_> {
                             },
                             _ => continue,
                         }
-                        self.model.set_domain(field, Domain::Quantity(value));
+                        self.set_field(field, Domain::Quantity(value));
                         changed = true;
                     } else if let Some(budget) = self.budget(b)
                         && budget.stated.encloses(&budget.works_out).unwrap_or(false)
@@ -628,7 +1152,7 @@ impl Solver<'_> {
                         if let Ok(Some(both)) = old.intersect(&budget.field_value())
                             && both != old
                         {
-                            self.model.set_domain(field, Domain::Quantity(both));
+                            self.set_field(field, Domain::Quantity(both));
                             changed = true;
                         }
                     }
@@ -722,6 +1246,11 @@ impl Solver<'_> {
             }
         }
         let u = unknown?;
+        // A current that a range with values at its ends will state, and whose ends are not
+        // known yet, is not worked out from the others (ADR 0066).
+        if self.claimed.contains(&u.field) && self.domain(u.field) == Domain::Unset {
+            return None;
+        }
         // An incomplete balance (ADR 0027) has pins whose currents are not terms. What the
         // terms leave is theirs as much as a part's, so no part is set from it; a rail is, as
         // before (an enable pin on a supply net does not stop the supply being worked out),
@@ -731,8 +1260,15 @@ impl Solver<'_> {
             return None;
         }
         // A balance of two terms equates them (a fuse in series with a load carries the
-        // load's current); a longer one subtracts, and what it leaves is not a part's.
-        if b.draws.len() > 2 && self.is_part_current(u) {
+        // load's current); a longer one subtracts, and what it leaves is not a part's. A term
+        // that is exactly zero (a board's rail stated `&= 0A`: nothing else draws here) adds
+        // nothing, so it is not a term: the same two currents are equal.
+        let live = b
+            .draws
+            .iter()
+            .filter(|d| !self.model.draw_is_zero(d))
+            .count();
+        if live > 2 && self.is_part_current(u) {
             return None;
         }
         let value = match rest {
@@ -748,6 +1284,17 @@ impl Solver<'_> {
     /// and no current that a balance worked out (such a current takes up whatever the rest
     /// leaves, so it says nothing about the stated one). What the other terms determine is
     /// what the stated one works out to, and it has to lie inside what was stated.
+    /// The range a design stated for a current in a balance, if it is a budget term.
+    fn stated_range(&self, field: FieldId) -> Option<Quantity> {
+        if let Some(q) = self.stated.get(&field) {
+            return Some(*q);
+        }
+        match self.domain(field) {
+            Domain::Quantity(q) if self.stated_late.contains(&field) => Some(q),
+            _ => None,
+        }
+    }
+
     fn budget(&self, b: &Balance) -> Option<Budget> {
         if !b.is_complete()
             || b.draws.len() < 2
@@ -765,7 +1312,9 @@ impl Solver<'_> {
             .draws
             .iter()
             .enumerate()
-            .filter(|(_, d)| self.stated.contains_key(&d.field));
+            // A current stated as exactly zero adds nothing to the net and is not an
+            // allowance (a part's reference rail, ADR 0066), so it is not the stated term.
+            .filter(|(_, d)| self.stated_range(d.field).is_some() && !self.model.draw_is_zero(d));
         let (index, d) = stated.next()?;
         if stated.next().is_some() {
             return None;
@@ -777,7 +1326,7 @@ impl Solver<'_> {
             .map(|(_, q)| *q);
         let first = others.next()?;
         let sum = others.try_fold(first, |sum, q| sum.add(&q).ok())?;
-        let range = self.stated[&d.field];
+        let range = self.stated_range(d.field)?;
         Some(Budget {
             field: d.field,
             index,
@@ -972,24 +1521,20 @@ impl Solver<'_> {
     /// the net). Return nets repeat the same terms and are left out. A requirement that
     /// mentions no current in a balance is returned as it was.
     fn with_currents(&self, r: &Relation, message: String) -> String {
-        let balances: Vec<Balance> = self
-            .model
-            .balances()
-            .iter()
-            .filter(|b| !b.returns && self.model.instance(b.scope).kind != InstKind::System)
-            .cloned()
-            .collect();
+        let balances = self.model.balances();
+        let reads = self.reads();
         let mut fields = Vec::new();
         fields_in(&r.lhs, &mut fields);
         fields_in(&r.rhs, &mut fields);
-        let mut seen = vec![false; balances.len()];
+        let mut seen: HashSet<usize> = HashSet::new();
         let mut notes = Vec::new();
         while let Some(f) = fields.pop() {
-            for (i, b) in balances.iter().enumerate() {
-                if seen[i] || !b.draws.iter().any(|d| d.field == f) {
+            // The balances that sum the field, in the order the model lists them.
+            for &i in reads.supply_balances_of(f) {
+                let b = &balances[i];
+                if !seen.insert(i) {
                     continue;
                 }
-                seen[i] = true;
                 let terms: Vec<String> = b
                     .draws
                     .iter()
@@ -1044,10 +1589,41 @@ impl Solver<'_> {
             })
     }
 
+    /// A cell of a column that holds an enum must be one of its variants (ADR 0054): a row
+    /// that names a class the enum does not have is refused, with the row and the variants.
+    fn check_enum_cells(
+        &self,
+        catalog: &str,
+        columns: &[(FieldId, String)],
+        cat: Catalog,
+    ) -> Result<Catalog, String> {
+        for (field, key) in columns {
+            let FieldKind::Enum(e) = self.model.field(*field).kind else {
+                continue;
+            };
+            let info = self.model.enum_info(e);
+            for c in &cat.candidates {
+                if let Some(Value::Text(word)) = c.column(key)
+                    && !info.variants.contains(word)
+                {
+                    let listed: Vec<String> =
+                        info.variants.iter().map(|v| format!("`{v}`")).collect();
+                    return Err(format!(
+                        "the `{key}` of `{}` in the `{catalog}` catalog is \"{word}\", which is not a variant of `{}` ({})",
+                        c.name,
+                        info.name,
+                        listed.join(", ")
+                    ));
+                }
+            }
+        }
+        Ok(cat)
+    }
+
     /// Whether `e` is a text field that nothing has set.
     fn is_unset_text(&self, e: &RExpr) -> bool {
         matches!(e, RExpr::Field(f)
-            if self.model.field(*f).kind == FieldKind::Text
+            if matches!(self.model.field(*f).kind, FieldKind::Text | FieldKind::Enum(_))
                 && self.model.field(*f).domain == Domain::Unset)
     }
 
@@ -1087,8 +1663,43 @@ impl Solver<'_> {
             CmpOp::Ge | CmpOp::Le => is_place(&r.lhs)
                 .map(|f| (f, &r.rhs))
                 .or_else(|| is_place(&r.rhs).map(|f| (f, &r.lhs))),
-            CmpOp::Narrow => is_place(&r.lhs).map(|f| (f, &r.rhs)),
+            CmpOp::Narrow | CmpOp::Default => is_place(&r.lhs).map(|f| (f, &r.rhs)),
             CmpOp::EqEq => None,
+        }
+    }
+
+    /// Whether the bound `r`, a `>=` or a `<=`, can hold for some value of the ranges as they
+    /// are: `Fail` only when it holds for none, which no later narrowing of the ranges
+    /// changes. A range that is unknown, or a comparison of anything but quantities, is
+    /// `Unknown`: it is judged when it is known.
+    fn verify_possible(&self, r: &Relation) -> Verdict {
+        let (Ok(Val::Q(l)), Ok(Val::Q(v))) = (eval(&self.model, &r.lhs), eval(&self.model, &r.rhs))
+        else {
+            return Verdict::Unknown;
+        };
+        let (possible, word, gap) = if r.op == CmpOp::Ge {
+            (l.hi() >= v.lo(), "at least", v.lo() - l.hi())
+        } else {
+            (l.lo() <= v.hi(), "at most", l.lo() - v.hi())
+        };
+        if possible {
+            return Verdict::Pass;
+        }
+        let scale = l
+            .lo()
+            .abs()
+            .max(l.hi().abs())
+            .max(v.lo().abs())
+            .max(v.hi().abs())
+            .max(1e-30);
+        Verdict::Fail {
+            message: format!(
+                "{} must be {word} {}, but {l} is always {} {v}",
+                self.model.show_expr(&r.lhs),
+                self.model.show_expr(&r.rhs),
+                if r.op == CmpOp::Ge { "below" } else { "above" },
+            ),
+            margin: gap / scale,
         }
     }
 
@@ -1123,7 +1734,9 @@ impl Solver<'_> {
         };
 
         match r.op {
-            CmpOp::Narrow => match eval(&self.model, &r.rhs) {
+            // The checker turns every `?=` into a `&=` or drops it (ADR 0051), so the solver
+            // reads `Default` as the narrowing it became.
+            CmpOp::Narrow | CmpOp::Default => match eval(&self.model, &r.rhs) {
                 Ok(_) => Verdict::Pass,
                 // A text field nobody set narrows nothing: a value a module offers
                 // (`.j.assembly &= .assembly_mode`, ADR 0042) may be left alone. A text
@@ -1140,6 +1753,77 @@ impl Solver<'_> {
                 };
                 if let RExpr::Field(f) = &r.lhs {
                     let name = self.model.path_of_field(*f);
+                    // A value that several equations state and no statement bounds has no
+                    // allowance of its own: it is what the equations say, and a pick sets it.
+                    // An equation whose right side no pick changes (a window the board stated,
+                    // reached through a join or a link such as `.osc.fsw == .fsw`) is an
+                    // allowance, and what the other equations work out must lie inside it. With
+                    // no allowance among them, equations that a pick changes only have to share
+                    // a value: both are what the circuit works out, and neither is a promise.
+                    if let (Domain::Quantity(dx), Val::Q(v)) = (&self.model.field(*f).domain, &rhs)
+                        && self.several_equations.contains(f)
+                        && self.fed.contains(f)
+                        && self.model.field(*f).narrowed_at.is_empty()
+                        && !self.derived.contains(f)
+                    {
+                        let changes = |e: &RExpr| {
+                            let mut read = Vec::new();
+                            fields_in(e, &mut read);
+                            read.iter().any(|g| self.fed.contains(g))
+                        };
+                        // What the equations that no pick changes allow, together.
+                        let mut allowance: Option<Quantity> = None;
+                        for &i in self.equations_of.get(f).into_iter().flatten() {
+                            let other = &self.model.relations()[i];
+                            if changes(&other.rhs) {
+                                continue;
+                            }
+                            if let Ok(Val::Q(q)) = eval(&self.model, &other.rhs) {
+                                allowance = match allowance {
+                                    None => Some(q),
+                                    Some(a) => match a.intersect(&q) {
+                                        Ok(Some(both)) => Some(both),
+                                        _ => Some(a),
+                                    },
+                                };
+                            }
+                        }
+                        return if !changes(&r.rhs) {
+                            if v.encloses(dx).unwrap_or(false) {
+                                Verdict::Pass
+                            } else {
+                                fail(
+                                    format!(
+                                        "`{name}` must stay within {v}, which {} says, but it works out to {dx}",
+                                        show(&r.rhs)
+                                    ),
+                                    overshoot(v, dx),
+                                )
+                            }
+                        } else if let Some(a) = allowance {
+                            if a.encloses(v).unwrap_or(false) {
+                                Verdict::Pass
+                            } else {
+                                fail(
+                                    format!(
+                                        "`{name}` must stay within {a}, but {} works out to {v}",
+                                        show(&r.rhs)
+                                    ),
+                                    overshoot(&a, v),
+                                )
+                            }
+                        } else if dx.intersect(v).ok().flatten().is_some() {
+                            Verdict::Pass
+                        } else {
+                            fail(
+                                format!(
+                                    "`{name}` is {dx} but {} works out to {v}; they can never be equal",
+                                    show(&r.rhs)
+                                ),
+                                overshoot(dx, v),
+                            )
+                        };
+                    }
                     return match (&self.model.field(*f).domain, rhs) {
                         (Domain::Unset, _) => Verdict::Unknown,
                         (Domain::Quantity(d), Val::Q(v)) => {
@@ -1161,10 +1845,21 @@ impl Solver<'_> {
                             }
                         }
                         (Domain::Text(d), Val::T(v)) if *d == v => Verdict::Pass,
-                        (Domain::Text(d), Val::T(v)) => fail(
-                            format!("`{name}` must be \"{d}\", but {} is \"{v}\"", show(&r.rhs)),
-                            1.0,
-                        ),
+                        (Domain::Text(d), Val::T(v)) => {
+                            let (d, v) = (
+                                self.model.show_value(*f, &Domain::Text(d.clone())),
+                                self.model.show_value(*f, &Domain::Text(v)),
+                            );
+                            let message = match (&r.rhs, self.model.field(*f).kind) {
+                                // A variant written in the check: it is not an expression
+                                // that works out to something else.
+                                (RExpr::Text(_), FieldKind::Enum(_)) => {
+                                    format!("`{name}` is {d}, but this check requires {v}")
+                                }
+                                _ => format!("`{name}` must be {d}, but {} is {v}", show(&r.rhs)),
+                            };
+                            fail(message, 1.0)
+                        }
                         _ => fail(
                             format!("`{name}` and {} are different kinds of value", show(&r.rhs)),
                             1.0,
@@ -1266,6 +1961,12 @@ impl Solver<'_> {
         parts.sort_by(|a, b| a.0.cmp(&b.0));
 
         let mut jobs: Vec<Job> = Vec::new();
+        // What `Catalogs::resolve` gave for a catalog and its columns: the same for every part
+        // that is of the type, so it is worked out once (it makes the generic parts, which
+        // takes longer than the search of a part with a few rows).
+        type Kinds = Vec<(String, FieldKind)>;
+        type Resolved = Option<Result<crate::catalog::Catalog, String>>;
+        let mut resolved_before: Vec<(String, Kinds, Resolved)> = Vec::new();
         let to_prepare = parts.len() as u64;
         for (n, (path, part)) in parts.into_iter().enumerate() {
             job::checkpoint();
@@ -1292,7 +1993,21 @@ impl Solver<'_> {
                 .iter()
                 .map(|(f, key)| (key.clone(), self.model.field(*f).kind))
                 .collect();
-            match self.catalogs.resolve(&catalog.name, &kinds) {
+            let found = match resolved_before
+                .iter()
+                .find(|(name, k, _)| *name == catalog.name && *k == kinds)
+            {
+                Some((_, _, found)) => found.clone(),
+                None => {
+                    let found = self.catalogs.resolve(&catalog.name, &kinds);
+                    resolved_before.push((catalog.name.clone(), kinds.clone(), found.clone()));
+                    found
+                }
+            };
+            let resolved = found.map(|found| {
+                found.and_then(|cat| self.check_enum_cells(&catalog.name, &columns, cat))
+            });
+            match resolved {
                 None => self.unresolved.push(Unresolved {
                     part,
                     reason: format!("there is no `{}` catalog to choose from", catalog.name),
@@ -1321,12 +2036,14 @@ impl Solver<'_> {
                             .retain(|c| c.generic.is_none() && c.name == row);
                     }
                     let used = columns.iter().map(|(f, _)| self.mentioned(*f)).collect();
+                    let count = self.model.bank_count(part);
                     jobs.push(Job {
                         part,
                         path,
                         columns,
                         used,
                         catalog: cat,
+                        count,
                     });
                 }
             }
@@ -1335,16 +2052,407 @@ impl Solver<'_> {
         self.to_choose = jobs.len();
         self.chosen_before = 0;
         job::report("parts chosen", 0, Some(self.to_choose as u64));
+        self.fed = self.fed_by(&jobs);
+        self.surveys = self.survey_picks(&jobs);
         let coupling = self.coupling(&jobs);
-        for group in self.group_jobs(&jobs) {
-            self.solve_group(&jobs, &group, &coupling);
+        // A group waits while a value it needs is still to come from another group's picks
+        // (see `next_group`), so the groups are not always searched in path order. The picks
+        // are listed in path order all the same, so the order never shows.
+        // The groups, and each of them split into the parts that share no value that a pick
+        // can change (ADR 0057). A component keeps its group's place in the listing of picks.
+        let whole = self.group_jobs(&jobs, None);
+        let mut pending: Vec<(usize, Vec<usize>)> = Vec::new();
+        for component in self.group_jobs(&jobs, Some(&coupling.constant)) {
+            let position = whole
+                .iter()
+                .position(|g| g.contains(&component[0]))
+                .expect("a component is part of a group");
+            pending.push((position, component));
+        }
+        pending.sort_by_key(|(position, group)| (*position, group[0]));
+        let mut steps: Vec<Step> = Vec::new();
+        // Jobs that were searched together again after a failure, once: the second search is not
+        // started again for them.
+        let mut joined: HashSet<usize> = HashSet::new();
+        while !pending.is_empty() {
+            let next = self.next_group(&jobs, &pending);
+            let (position, group) = pending.remove(next);
+            let mark = self.mark();
+            let elsewhere: HashSet<usize> = pending
+                .iter()
+                .flat_map(|(_, g)| g.iter().copied())
+                .collect();
+            self.solve_group(&jobs, &group, &coupling, elsewhere);
             self.chosen_before += group.len();
             job::report(
                 "parts chosen",
-                self.chosen_before as u64,
+                self.chosen_before.min(self.to_choose) as u64,
                 Some(self.to_choose as u64),
             );
+            let picks = self.picks.split_off(mark.picks);
+            let step = Step {
+                position,
+                group,
+                mark,
+                picks,
+            };
+            if self.failed(&jobs, &step) {
+                self.search_again_together(
+                    &jobs,
+                    &coupling,
+                    &mut steps,
+                    step,
+                    &pending,
+                    &mut joined,
+                );
+            } else {
+                steps.push(step);
+            }
         }
+        let mut picked: Vec<(usize, Vec<Pick>)> = steps
+            .into_iter()
+            .map(|step| (step.position, step.picks))
+            .collect();
+        picked.sort_by_key(|(position, _)| *position);
+        // The picks of the components of one group are listed in the order that one search of
+        // the whole group would have made them.
+        let mut listed: Vec<Pick> = Vec::new();
+        let mut rest = picked.into_iter().peekable();
+        while let Some((position, mut picks)) = rest.next() {
+            let mut parts_of_group = false;
+            while let Some((_, more)) = rest.next_if(|(next, _)| *next == position) {
+                picks.extend(more);
+                parts_of_group = true;
+            }
+            if parts_of_group {
+                let order = self.order_group(&jobs, &whole[position]);
+                picks.sort_by_key(|p| {
+                    order
+                        .iter()
+                        .position(|&j| jobs[j].part == p.part)
+                        .unwrap_or(usize::MAX)
+                });
+            }
+            listed.extend(picks);
+        }
+        self.picks.extend(listed);
+    }
+
+    /// What `search_again_together` needs to put the solver back as it was before a group.
+    fn mark(&self) -> Mark {
+        Mark {
+            model: self.model.snapshot(),
+            diagnostics: self.diagnostics.len(),
+            seen: self.seen.clone(),
+            picks: self.picks.len(),
+            unresolved: self.unresolved.len(),
+            refused_counts: self.refused_counts.clone(),
+            derived: self.derived.clone(),
+        }
+    }
+
+    fn restore(&mut self, mark: &Mark) {
+        self.model.restore(&mark.model);
+        self.diagnostics.truncate(mark.diagnostics);
+        self.seen = mark.seen.clone();
+        self.picks.truncate(mark.picks);
+        self.unresolved.truncate(mark.unresolved);
+        self.refused_counts = mark.refused_counts.clone();
+        self.derived = mark.derived.clone();
+    }
+
+    /// Whether a part of the step's group has no pick.
+    fn failed(&self, jobs: &[Job], step: &Step) -> bool {
+        step.group.iter().any(|&j| {
+            self.unresolved[step.mark.unresolved..]
+                .iter()
+                .any(|u| u.part == jobs[j].part)
+        })
+    }
+
+    /// Whether a relation reads values that parts of both groups decide: a bound between two
+    /// groups that no equation joins, such as a window that one group's value must stay
+    /// inside and another group's value sets.
+    fn share_a_relation(coupling: &Coupling, a: &[usize], b: &[usize]) -> bool {
+        coupling
+            .feeding
+            .iter()
+            .any(|f| a.iter().any(|j| f.contains(j)) && b.iter().any(|j| f.contains(j)))
+    }
+
+    /// A group failed, and an earlier group shares a relation with it (a bound that reads a
+    /// value of each). The earlier group was searched while that relation waited for the parts
+    /// that feed it, so its first fit may leave nothing for this one; and which of two such
+    /// groups comes first is decided by the path order of their names. So the groups are
+    /// searched again with the failed one first: the others are then judged by the relation
+    /// against its picks, as it was judged against theirs. The board is the same whatever the
+    /// instances are called, which was not so before. If that does not find parts for every
+    /// group, the solver is put back as the first failure left it, and its message stands.
+    fn search_again_together(
+        &mut self,
+        jobs: &[Job],
+        coupling: &Coupling,
+        steps: &mut Vec<Step>,
+        failed: Step,
+        pending: &[(usize, Vec<usize>)],
+        joined: &mut HashSet<usize>,
+    ) {
+        let linked: Vec<usize> = (0..steps.len())
+            .filter(|&i| {
+                !steps[i].group.iter().any(|j| joined.contains(j))
+                    && Self::share_a_relation(coupling, &steps[i].group, &failed.group)
+            })
+            .collect();
+        if linked.is_empty() || failed.group.iter().any(|j| joined.contains(j)) {
+            steps.push(failed);
+            return;
+        }
+        let first = linked[0];
+        // The groups from the first linked one on, with the failed one ahead of them: the order
+        // of the second attempt. Those the failed group shares nothing with keep the order they
+        // had, after the linked ones.
+        let order: Vec<(usize, Vec<usize>)> =
+            std::iter::once((failed.position, failed.group.clone()))
+                .chain(
+                    linked
+                        .iter()
+                        .map(|&i| (steps[i].position, steps[i].group.clone())),
+                )
+                .chain(
+                    (first..steps.len())
+                        .filter(|i| !linked.contains(i))
+                        .map(|i| (steps[i].position, steps[i].group.clone())),
+                )
+                .collect();
+        // What the first failure left, which a failed retry puts back whole: `restore` cuts the
+        // lists of diagnostics and unresolved parts at the length of a mark, and the retry may
+        // add its own after that.
+        let left_as_failed = self.mark();
+        let first_diagnostics = self.diagnostics.clone();
+        let first_unresolved = self.unresolved.clone();
+        self.restore(&steps[first].mark.clone());
+        let mut new_steps: Vec<Step> = Vec::new();
+        let mut ok = true;
+        for (n, (position, group)) in order.iter().cloned().enumerate() {
+            let mark = self.mark();
+            let elsewhere: HashSet<usize> = pending
+                .iter()
+                .map(|(_, g)| g)
+                .chain(order[n + 1..].iter().map(|(_, g)| g))
+                .flat_map(|g| g.iter().copied())
+                .collect();
+            self.solve_group(jobs, &group, coupling, elsewhere);
+            let picks = self.picks.split_off(mark.picks);
+            let step = Step {
+                position,
+                group,
+                mark,
+                picks,
+            };
+            if self.failed(jobs, &step) {
+                ok = false;
+                break;
+            }
+            new_steps.push(step);
+        }
+        if ok {
+            steps.truncate(first);
+            joined.extend(order.iter().flat_map(|(_, g)| g.iter().copied()));
+            steps.extend(new_steps);
+        } else {
+            self.restore(&left_as_failed);
+            self.diagnostics = first_diagnostics;
+            self.unresolved = first_unresolved;
+            steps.push(failed);
+        }
+    }
+
+    /// The fields that a pick can change: every field worked out, however indirectly, from the
+    /// columns (and the count) of a part that is to be chosen.
+    fn fed_by(&self, jobs: &[Job]) -> HashSet<FieldId> {
+        self.fed_from(
+            jobs.iter()
+                .flat_map(|job| job.columns.iter().map(|(f, _)| *f).chain(job.count)),
+        )
+    }
+
+    /// `fed_by`, before the catalogs are read: the columns (and the count) of every part that
+    /// has a catalog, whether or not it will be found.
+    fn fed_at_start(&self) -> HashSet<FieldId> {
+        let roots: Vec<FieldId> = self
+            .model
+            .instances()
+            .filter(|(_, i)| i.kind == InstKind::Part)
+            .flat_map(|(id, i)| {
+                i.catalog
+                    .iter()
+                    .flat_map(|c| c.fields.iter().copied())
+                    .chain(self.model.bank_count(id))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        self.fed_from(roots.into_iter())
+    }
+
+    fn fed_from(&self, roots: impl Iterator<Item = FieldId>) -> HashSet<FieldId> {
+        let links = self.links();
+        let mut fed: HashSet<FieldId> = HashSet::new();
+        let mut todo: Vec<FieldId> = Vec::new();
+        for f in roots {
+            if fed.insert(f) {
+                todo.push(f);
+            }
+        }
+        while let Some(f) = todo.pop() {
+            for &g in links.worked_out(f) {
+                if fed.insert(g) {
+                    todo.push(g);
+                }
+            }
+        }
+        fed
+    }
+
+    /// The group to search next: the first, in path order, that is not waiting for another
+    /// group (see `waits_for`). Every relation is verified again once all parts are
+    /// picked, so the order changes no verdict, only whether a value was known when it was
+    /// needed.
+    ///
+    /// If every group waits (they wait on each other), the first goes first and fails or
+    /// not as it would have: a field that no pick can set is the design's to state.
+    fn next_group(&self, jobs: &[Job], pending: &[(usize, Vec<usize>)]) -> usize {
+        (0..pending.len())
+            .find(|&i| {
+                let others: Vec<usize> = pending
+                    .iter()
+                    .enumerate()
+                    .filter(|&(k, _)| k != i)
+                    .flat_map(|(_, (_, group))| group.iter().copied())
+                    .collect();
+                !self.waits_for(jobs, &pending[i].1, &others)
+            })
+            .unwrap_or(0)
+    }
+
+    /// The parts of a group in the order they are searched: path order, except that a part
+    /// that waits for another part of the group (see `waits_for`) comes after it.
+    fn order_group(&self, jobs: &[Job], group: &[usize]) -> Vec<usize> {
+        let mut left = group.to_vec();
+        let mut ordered = Vec::with_capacity(group.len());
+        while !left.is_empty() {
+            let next = (0..left.len())
+                .find(|&i| {
+                    let others: Vec<usize> = left
+                        .iter()
+                        .enumerate()
+                        .filter(|&(k, _)| k != i)
+                        .map(|(_, &j)| j)
+                        .collect();
+                    !self.waits_for(jobs, &left[i..=i], &others)
+                })
+                .unwrap_or(0);
+            ordered.push(left.remove(next));
+        }
+        ordered
+    }
+
+    /// Whether the parts `mine` should be searched after the parts `others`: a column of one
+    /// of them needs a field that no pick has set yet (a capacitor's effective capacitance
+    /// needs its bias, which a diode ahead of it on the rail sets with its forward voltage)
+    /// and a column of one of the others can set that field. Only a pick decides such a
+    /// value, so a part searched first would be refused for want of it, and the same board
+    /// would build or not by the names of its parts.
+    fn waits_for(&self, jobs: &[Job], mine: &[usize], others: &[usize]) -> bool {
+        let wanted: Vec<FieldId> = mine.iter().flat_map(|&j| self.waits_on(&jobs[j])).collect();
+        if wanted.is_empty() {
+            return false;
+        }
+        let reach = self.feeders(&wanted);
+        others
+            .iter()
+            .any(|&j| jobs[j].columns.iter().any(|(f, _)| reach.contains(f)))
+    }
+
+    /// The fields without a value that a job's columns need before a candidate can be judged:
+    /// the bias of a derated column the design asks for, and what the rating a generic part
+    /// leaves open is bounded by.
+    fn waits_on(&self, job: &Job) -> Vec<FieldId> {
+        let mut wanted: Vec<FieldId> = Vec::new();
+        for (f, key) in &job.columns {
+            let mut candidates = job.catalog.candidates.iter().filter_map(|c| c.column(key));
+            let bias = candidates.clone().find_map(|v| match v {
+                Value::Derated(d) => Some(d.against.clone()),
+                _ => None,
+            });
+            if let Some(against) = bias
+                && self.asked(*f)
+            {
+                let path = format!("{}.{against}", self.model.path_of(job.part));
+                if let Some(bias) = self.model.field_at(&path)
+                    && matches!(self.domain(bias), Domain::Unset)
+                {
+                    wanted.push(bias);
+                }
+            }
+            let open = candidates.any(|v| matches!(v, Value::Open(Sense::AtLeast | Sense::AtMost)));
+            if open && matches!(self.domain(*f), Domain::Unset) {
+                for r in self.model.relations() {
+                    let other = match (&r.op, &r.lhs, &r.rhs) {
+                        (CmpOp::Ge, RExpr::Field(g), other)
+                        | (CmpOp::Le, other, RExpr::Field(g))
+                            if g == f =>
+                        {
+                            other
+                        }
+                        _ => continue,
+                    };
+                    let mut read = Vec::new();
+                    fields_in(other, &mut read);
+                    wanted.extend(read.into_iter().filter(|&g| {
+                        matches!(self.domain(g), Domain::Unset)
+                            && !self.model.is_inside(self.model.field(g).owner, job.part)
+                    }));
+                }
+            }
+        }
+        wanted.sort();
+        wanted.dedup();
+        wanted
+    }
+
+    /// Every field without a value that something in `wanted` is worked out from, however
+    /// indirectly, and `wanted` itself: what propagation would carry a pick's value along.
+    /// A field that has a value is not followed, since nothing waits for it.
+    fn feeders(&self, wanted: &[FieldId]) -> HashSet<FieldId> {
+        let mut from: HashMap<FieldId, Vec<FieldId>> = HashMap::new();
+        for &(a, b) in self.model.equalities() {
+            from.entry(a).or_default().push(b);
+            from.entry(b).or_default().push(a);
+        }
+        for r in self.model.relations() {
+            if let (CmpOp::EqEq | CmpOp::Narrow, RExpr::Field(out)) = (&r.op, &r.lhs) {
+                let mut reads = Vec::new();
+                fields_in(&r.rhs, &mut reads);
+                from.entry(*out).or_default().extend(reads);
+            }
+        }
+        for b in self.model.balances().iter().filter(|b| !b.returns) {
+            for d in &b.draws {
+                from.entry(d.field)
+                    .or_default()
+                    .extend(b.draws.iter().map(|o| o.field).filter(|&o| o != d.field));
+            }
+        }
+        let mut reach: HashSet<FieldId> = wanted.iter().copied().collect();
+        let mut todo: Vec<FieldId> = wanted.to_vec();
+        while let Some(f) = todo.pop() {
+            for &g in from.get(&f).into_iter().flatten() {
+                if matches!(self.domain(g), Domain::Unset) && reach.insert(g) {
+                    todo.push(g);
+                }
+            }
+        }
+        reach
     }
 
     /// A keyed catalog (`catalog mcu by .mpn`) is not searched: the design names the row.
@@ -1431,33 +2539,151 @@ impl Solver<'_> {
             }
         }
         let class: Vec<usize> = (0..n_fields).map(|f| find(&mut parent, f)).collect();
-        let columns = jobs
-            .iter()
-            .map(|job| job.columns.iter().map(|(f, _)| class[f.0]).collect())
-            .collect();
-        let mut inside: Vec<HashSet<usize>> = vec![HashSet::new(); jobs.len()];
-        for (id, field) in self.model.fields() {
-            job::checkpoint();
-            if id.0 % FIELDS_REPORT_EVERY == 0 {
-                job::report("fields scanned", id.0 as u64, Some(n_fields as u64));
+        // What each field is worked out from: an equation's right side for its left side, a
+        // connection both ways, and the draws of a balance each from the others.
+        let mut from: HashMap<FieldId, Vec<FieldId>> = HashMap::new();
+        for &(a, b) in self.model.equalities() {
+            from.entry(a).or_default().push(b);
+            from.entry(b).or_default().push(a);
+        }
+        for r in self.model.relations() {
+            if let (CmpOp::EqEq | CmpOp::Narrow, RExpr::Field(out)) = (&r.op, &r.lhs) {
+                let mut reads = Vec::new();
+                fields_in(&r.rhs, &mut reads);
+                from.entry(*out).or_default().extend(reads);
             }
-            for (j, job) in jobs.iter().enumerate() {
-                if self.model.is_inside(field.owner, job.part) {
-                    inside[j].insert(class[id.0]);
+        }
+        for b in self.model.balances().iter().filter(|b| !b.returns) {
+            for d in &b.draws {
+                from.entry(d.field)
+                    .or_default()
+                    .extend(b.draws.iter().map(|o| o.field).filter(|&o| o != d.field));
+            }
+        }
+        // A derated column is worked out from the part's bias (ADR 0013): a row's capacitance
+        // at the voltage across it. The bias is the rail's voltage, which another part's pick
+        // can decide, so what reads such a column reads that too.
+        for job in jobs {
+            for (f, key) in &job.columns {
+                let against = job
+                    .catalog
+                    .candidates
+                    .iter()
+                    .find_map(|c| match c.column(key) {
+                        Some(Value::Derated(d)) => Some(d.against.clone()),
+                        _ => None,
+                    });
+                if let Some(against) = against {
+                    let path = format!("{}.{against}", self.model.path_of(job.part));
+                    if let Some(bias) = self.model.field_at(&path) {
+                        from.entry(*f).or_default().push(bias);
+                    }
                 }
             }
         }
-        Coupling {
-            columns,
-            inside,
-            class,
+        let mut job_of: HashMap<FieldId, usize> = HashMap::new();
+        for (j, job) in jobs.iter().enumerate() {
+            for (f, _) in &job.columns {
+                job_of.insert(*f, j);
+            }
+            if let Some(count) = job.count {
+                job_of.insert(count, j);
+            }
         }
+        let constant = self.constants(jobs);
+        let feeding = self
+            .model
+            .relations()
+            .iter()
+            .map(|r| {
+                let mut start = Vec::new();
+                fields_in(&r.lhs, &mut start);
+                fields_in(&r.rhs, &mut start);
+                start.retain(|f| !constant[f.0]);
+                let mut seen: HashSet<FieldId> = start.iter().copied().collect();
+                let mut todo = start;
+                let mut found = HashSet::new();
+                while let Some(f) = todo.pop() {
+                    if let Some(&j) = job_of.get(&f) {
+                        found.insert(j);
+                    }
+                    for &g in from.get(&f).into_iter().flatten() {
+                        if !constant[g.0] && seen.insert(g) {
+                            todo.push(g);
+                        }
+                    }
+                }
+                found
+            })
+            .collect();
+        Coupling {
+            class,
+            feeding,
+            constant,
+            from,
+            job_of,
+            fed_by_field: Default::default(),
+        }
+    }
+
+    /// Which fields have a value that no choice of parts can change: the field, with the
+    /// fields joined to it by `~`, has a value now (stated, or settled by the first
+    /// propagation), and none of them is worked out from anything (the left side of an
+    /// equation that reads a field, a term of a balance of currents) or is a column of a
+    /// part still to be chosen. A rail whose voltage the board states, and that nothing
+    /// derives, is such a value: the parts on it read the same range whatever they are.
+    fn constants(&self, jobs: &[Job]) -> Vec<bool> {
+        let size = self.model.fields().map(|(f, _)| f.0 + 1).max().unwrap_or(0);
+        let mut parent: Vec<usize> = (0..size).collect();
+        for &(a, b) in self.model.equalities() {
+            union(&mut parent, a.0, b.0);
+        }
+        let mut derivable = vec![false; size];
+        let mut valued = vec![false; size];
+        for r in self.model.relations() {
+            if let (CmpOp::EqEq | CmpOp::Narrow, RExpr::Field(out)) = (&r.op, &r.lhs) {
+                let mut reads = Vec::new();
+                fields_in(&r.rhs, &mut reads);
+                if !reads.is_empty() {
+                    derivable[find(&mut parent, out.0)] = true;
+                }
+            }
+        }
+        for b in self.model.balances().iter().filter(|b| !b.returns) {
+            for d in &b.draws {
+                derivable[find(&mut parent, d.field.0)] = true;
+            }
+        }
+        for job in jobs {
+            for (f, _) in &job.columns {
+                derivable[find(&mut parent, f.0)] = true;
+            }
+            if let Some(count) = job.count {
+                derivable[find(&mut parent, count.0)] = true;
+            }
+        }
+        for (id, field) in self.model.fields() {
+            if field.domain != Domain::Unset {
+                valued[find(&mut parent, id.0)] = true;
+            }
+        }
+        (0..size)
+            .map(|f| {
+                let root = find(&mut parent, f);
+                valued[root] && !derivable[root]
+            })
+            .collect()
     }
 
     /// Split the parts to pick into groups that share a relation. Parts in different
     /// groups cannot affect each other, so each group is searched on its own: one part
     /// with no valid choice does not undo the picks of parts unrelated to it.
-    fn group_jobs(&self, jobs: &[Job]) -> Vec<Vec<usize>> {
+    ///
+    /// With `constant` (see `Solver::constants`), a field whose value no pick changes joins
+    /// nothing: two parts that read the same stated rail, and have no other value in common,
+    /// are two groups (ADR 0057).
+    fn group_jobs(&self, jobs: &[Job], constant: Option<&[bool]>) -> Vec<Vec<usize>> {
+        let fixed = |f: FieldId| constant.is_some_and(|c| c[f.0]);
         // Fields joined by a connection hold one value, so they count as one.
         let n_fields = self.model.fields().count();
         let mut fparent: Vec<usize> = (0..n_fields).collect();
@@ -1466,19 +2692,34 @@ impl Solver<'_> {
         }
         let class = |f: FieldId, fparent: &mut Vec<usize>| find(fparent, f.0);
 
-        // The value classes inside each part.
-        let mut inside: Vec<std::collections::HashSet<usize>> =
-            vec![Default::default(); jobs.len()];
+        // The jobs that each class of values is inside of: of a field, its owner and every
+        // instance around the owner is a part to pick or is not.
+        let job_of: HashMap<InstId, usize> = jobs
+            .iter()
+            .enumerate()
+            .map(|(j, job)| (job.part, j))
+            .collect();
+        let mut jobs_of_class: HashMap<usize, Vec<usize>> = HashMap::new();
         for (id, field) in self.model.fields() {
             job::checkpoint();
             if id.0 % FIELDS_REPORT_EVERY == 0 {
                 job::report("fields scanned", id.0 as u64, Some(n_fields as u64));
             }
-            for (j, job) in jobs.iter().enumerate() {
-                if self.model.is_inside(field.owner, job.part) {
-                    inside[j].insert(class(id, &mut fparent));
-                }
+            if fixed(id) {
+                continue;
             }
+            let class = class(id, &mut fparent);
+            let mut at = Some(field.owner);
+            while let Some(inst) = at {
+                if let Some(&j) = job_of.get(&inst) {
+                    jobs_of_class.entry(class).or_default().push(j);
+                }
+                at = self.model.instance(inst).parent;
+            }
+        }
+        for list in jobs_of_class.values_mut() {
+            list.sort_unstable();
+            list.dedup();
         }
 
         let mut jparent: Vec<usize> = (0..jobs.len()).collect();
@@ -1486,11 +2727,15 @@ impl Solver<'_> {
             let mut fields = Vec::new();
             fields_in(&r.lhs, &mut fields);
             fields_in(&r.rhs, &mut fields);
-            let classes: std::collections::HashSet<usize> =
-                fields.iter().map(|&f| class(f, &mut fparent)).collect();
-            let touched: Vec<usize> = (0..jobs.len())
-                .filter(|&j| inside[j].iter().any(|c| classes.contains(c)))
+            fields.retain(|&f| !fixed(f));
+            let mut touched: Vec<usize> = fields
+                .iter()
+                .filter_map(|&f| jobs_of_class.get(&class(f, &mut fparent)))
+                .flatten()
+                .copied()
                 .collect();
+            touched.sort_unstable();
+            touched.dedup();
             for w in touched.windows(2) {
                 union(&mut jparent, w[0], w[1]);
             }
@@ -1512,23 +2757,59 @@ impl Solver<'_> {
     /// Find a choice for every part in a group that satisfies every relation together,
     /// backing up when a later part has nothing that works. The first solution in catalog
     /// order (parts in path order) is the one used.
-    fn solve_group(&mut self, jobs: &[Job], group: &[usize], coupling: &Coupling) {
-        let mut search = Search::default();
+    fn solve_group(
+        &mut self,
+        jobs: &[Job],
+        group: &[usize],
+        coupling: &Coupling,
+        elsewhere: HashSet<usize>,
+    ) {
+        let ordered = self.order_group(jobs, group);
+        let group = &ordered[..];
+        let mut search = Search {
+            elsewhere,
+            ..Search::default()
+        };
         // A part with no candidate that fits what the design already says cannot be chosen
         // whatever the others are, so that is the cause to report. Searching first would
         // blame whichever earlier part's choices failed on the way to it.
+        // A part that waits for another of the group is not starved yet: what it needs
+        // is set by that part's pick, and the search finds it out if it still has nothing.
         let starved = group.iter().copied().find(|&j| {
             let job = &jobs[j];
+            let others: Vec<usize> = group.iter().copied().filter(|&o| o != j).collect();
             !job.catalog
                 .candidates
                 .iter()
                 .any(|c| self.fits(job.part, &job.columns, c))
+                && !self.waits_for(jobs, &[j], &others)
         });
-        let solved = starved.is_none()
-            && matches!(
-                self.search(jobs, group, 0, &mut search, coupling),
-                Outcome::Solved
-            );
+        // A part that every candidate of fails whatever the others are is the cause: say so
+        // now, and do not search the combinations of the parts before it (ADR 0057).
+        let hopeless = if starved.is_none() && group.len() > 1 {
+            self.hopeless(jobs, group, coupling, &search.elsewhere)
+        } else {
+            None
+        };
+        let culprit = hopeless.as_ref().map(|h| h.0);
+        if let Some((_, closest, fits)) = hopeless {
+            search.closest = Some(closest);
+            search.first_level_fits = fits;
+        }
+        let outcome = if starved.is_none() && culprit.is_none() {
+            Some(self.search(jobs, group, 0, &mut search, coupling))
+        } else {
+            None
+        };
+        let solved = matches!(outcome, Some(Outcome::Solved));
+        // What the search learned: the parts that no choice of candidates can serve together,
+        // when that is fewer than the group.
+        let learned = match outcome {
+            Some(Outcome::Failed(f)) if f.core.len() < group.len() && f.closest.is_some() => {
+                Some(f)
+            }
+            _ => None,
+        };
         self.trials += search.trials;
         if solved {
             self.picks.extend(search.picks);
@@ -1539,7 +2820,7 @@ impl Solver<'_> {
             .iter()
             .map(|&j| format!("`{}`", jobs[j].path))
             .collect();
-        let first = &jobs[group[0]];
+        let first = &jobs[culprit.unwrap_or(group[0])];
         let part = self.model.instance(first.part);
         let (part_source, part_span) = part.at();
 
@@ -1552,9 +2833,46 @@ impl Solver<'_> {
                     names.join(" and ")
                 ),
             );
-        } else if let Some(c) = search.closest.take() {
+        } else if let Some(c) = learned
+            .as_ref()
+            .and_then(|f| f.closest.clone())
+            .or_else(|| search.closest.take())
+        {
             let (source, span) = c.at;
-            let message = if group.len() == 1 {
+            // The parts of the group that the failure is made of, when the search learned that
+            // it is fewer than all of them, and the closest choice for those parts only.
+            let (involved, assignment): (Vec<usize>, Vec<String>) = match &learned {
+                Some(f) => (
+                    f.core.iter().map(|&d| group[d]).collect(),
+                    c.assignment
+                        .iter()
+                        .zip(&c.depths)
+                        .filter(|&(_, d)| f.core.contains(d))
+                        .map(|(a, _)| a.clone())
+                        .collect(),
+                ),
+                None => (group.to_vec(), c.assignment.clone()),
+            };
+            let involved_names: Vec<String> = involved
+                .iter()
+                .map(|&j| format!("`{}`", jobs[j].path))
+                .collect();
+            let message = if learned.is_some() && involved.len() == 1 {
+                format!(
+                    "no `{}` candidate satisfies `{}` whatever the other parts of the group are: the closest, {}, fails because {}",
+                    jobs[involved[0]].catalog.name,
+                    jobs[involved[0]].path,
+                    assignment.join(" and "),
+                    c.message
+                )
+            } else if learned.is_some() {
+                format!(
+                    "no combination of candidates satisfies {} together, whatever the other parts of the group are: the closest, {}, fails because {}",
+                    involved_names.join(" and "),
+                    assignment.join(" and "),
+                    c.message
+                )
+            } else if group.len() == 1 || culprit.is_some() {
                 format!(
                     "no `{}` candidate satisfies `{}`: the closest of the {} that fit, {}, fails because {}",
                     first.catalog.name,
@@ -1571,7 +2889,7 @@ impl Solver<'_> {
                     c.message
                 )
             };
-            let notes: Vec<String> = group
+            let notes: Vec<String> = involved
                 .iter()
                 .flat_map(|&j| {
                     [
@@ -1595,9 +2913,11 @@ impl Solver<'_> {
             let wants: Vec<String> = job
                 .columns
                 .iter()
-                .filter_map(|(f, key)| match self.domain(*f) {
+                .map(|(f, key)| (*f, key.as_str()))
+                .chain(job.count.map(|f| (f, "count")))
+                .filter_map(|(f, key)| match self.domain(f) {
                     Domain::Unset => None,
-                    d => Some(format!("{key} within {d}")),
+                    d => Some(format!("{key} within {}", self.model.show_value(f, &d))),
                 })
                 .collect();
             let wants = if wants.is_empty() {
@@ -1630,6 +2950,9 @@ impl Solver<'_> {
             );
         }
         for &j in group {
+            if let Some(count) = jobs[j].count {
+                self.refused_counts.insert(count);
+            }
             self.unresolved.push(Unresolved {
                 part: jobs[j].part,
                 reason: if group.len() == 1 {
@@ -1639,6 +2962,105 @@ impl Solver<'_> {
                 },
             });
         }
+    }
+
+    /// The part of a group that no candidate can serve, whatever the other parts are: each
+    /// candidate that fits is tried alone, and every one that fits is refused by a relation
+    /// whose value only this part's choice decides (no other part's column is among what it
+    /// is worked out from, `Coupling::feeding`). The others cannot help it, so searching them
+    /// first would only repeat the failure. With its place in the group, the candidate that
+    /// came nearest, and how many fitted. A part with a bank count, and a part with any
+    /// candidate that passes alone or is refused for what other parts decide, is not it.
+    fn hopeless(
+        &mut self,
+        jobs: &[Job],
+        group: &[usize],
+        coupling: &Coupling,
+        elsewhere: &HashSet<usize>,
+    ) -> Option<(usize, Closest, usize)> {
+        for &j in group {
+            let job = &jobs[j];
+            let fitting: Vec<&Candidate> = job
+                .catalog
+                .candidates
+                .iter()
+                .filter(|c| self.fits(job.part, &job.columns, c))
+                .collect();
+            if fitting.is_empty() {
+                continue;
+            }
+            // A bank is tried at every count its range holds: a row is refused only when no
+            // count of it is accepted (ADR 0052). A part with no count has the one pass.
+            let counts = self.counts_of(job);
+            if counts.is_empty() {
+                continue;
+            }
+            let mut later = elsewhere.clone();
+            later.extend(group.iter().copied().filter(|&o| o != j));
+            let mut nearest: Option<Closest> = None;
+            // A refused candidate, with the columns that the relation that refused it reads:
+            // a candidate that is equal to it in those, and in every column the design uses, is
+            // refused the same way. A column that only that relation reads (a bound on one
+            // field, which no other field names) is not among the used ones, so the used
+            // columns alone would call a row with another value there a twin.
+            let mut dead: Vec<(&Candidate, Vec<&str>)> = Vec::new();
+            let mut every = true;
+            'candidates: for c in &fitting {
+                if dead.iter().any(|(d, read)| {
+                    self.interchangeable(job, d, c)
+                        && read.iter().all(|k| d.column(k) == c.column(k))
+                }) {
+                    continue;
+                }
+                let mut read: Vec<&str> = Vec::new();
+                for &count in &counts {
+                    let checkpoint = self.model.checkpoint();
+                    let bank = job.count.zip(count);
+                    let outcome =
+                        self.try_candidate(job.part, &job.columns, c, bank, coupling, &later);
+                    self.model.rollback(checkpoint);
+                    match outcome {
+                        Err(r)
+                            if r.relation
+                                .is_some_and(|i| coupling.feeding[i].iter().all(|&k| k == j)) =>
+                        {
+                            read.extend(
+                                job.columns
+                                    .iter()
+                                    .filter(|(f, _)| r.own.contains(f))
+                                    .map(|(_, key)| key.as_str()),
+                            );
+                            if nearest.as_ref().is_none_or(|n| r.margin < n.margin) {
+                                nearest = Some(Closest {
+                                    depth: 0,
+                                    margin: r.margin,
+                                    assignment: vec![choice_name(c, count)],
+                                    depths: vec![0],
+                                    message: r.message,
+                                    at: r.at,
+                                });
+                            }
+                            // A refusal that reads nothing worked out from the count is the
+                            // same at every count (as in `search`).
+                            if let Some(cf) = job.count
+                                && !coupling.classes_of(&r.own).contains(&coupling.class[cf.0])
+                            {
+                                break;
+                            }
+                        }
+                        _ => {
+                            every = false;
+                            break 'candidates;
+                        }
+                    }
+                }
+                dead.push((c, read));
+            }
+            if every && let Some(closest) = nearest {
+                return Some((j, closest, fitting.len()));
+            }
+        }
+        None
     }
 
     /// Depth-first: choose a candidate for the part at `depth`, then the rest. Every
@@ -1665,7 +3087,7 @@ impl Solver<'_> {
             search.deepest = depth;
             job::report(
                 "parts chosen",
-                (self.chosen_before + depth) as u64,
+                (self.chosen_before + depth).min(self.to_choose) as u64,
                 Some(self.to_choose as u64),
             );
         }
@@ -1673,7 +3095,6 @@ impl Solver<'_> {
             return Outcome::Solved;
         }
         let job = &jobs[group[depth]];
-        let inside = &coupling.inside[group[depth]];
         let fitting: Vec<&Candidate> = job
             .catalog
             .candidates
@@ -1683,97 +3104,205 @@ impl Solver<'_> {
         if depth == 0 {
             search.first_level_fits = fitting.len();
         }
-        // Which candidates fit depends on the domains of this part's fields.
-        let mut conflict = coupling.earlier(group, depth, inside);
+        // Which candidates fit depends on the domains of this part's columns, which the picks
+        // before it may have narrowed.
+        let own_fields: Vec<FieldId> = job
+            .columns
+            .iter()
+            .map(|(f, _)| *f)
+            .chain(job.count)
+            .collect();
+        let mut conflict = coupling.earlier_jobs(group, depth, &coupling.fed_by(&own_fields));
+        let failure = |depends: BTreeSet<usize>, core: BTreeSet<usize>, closest| Failure {
+            core: core.union(&depends).copied().chain([depth]).collect(),
+            depends,
+            closest,
+        };
         if fitting.is_empty() {
             search.no_fit.get_or_insert(group[depth]);
-            return Outcome::Failed(conflict);
+            return Outcome::Failed(failure(conflict, BTreeSet::new(), None));
         }
+
+        // The whole numbers of a bank's count that the design leaves open, fewest first (ADR
+        // 0052); one pass with no count for a part that has none.
+        let counts = self.counts_of(job);
+        if counts.is_empty() {
+            search.no_fit.get_or_insert(group[depth]);
+            return Outcome::Failed(failure(conflict, BTreeSet::new(), None));
+        }
+
+        // The parts still to be chosen after this one, here or in another group: a value
+        // that one of them feeds is not worked out yet, and a bound on it cannot be judged.
+        let mut later = search.elsewhere.clone();
+        later.extend(group[depth + 1..].iter().copied());
 
         // Set once the parts after this one failed without depending on it: the choices of
         // the parts before it that they depend on.
-        let mut jump: Option<BTreeSet<usize>> = None;
-        // Candidates whose every completion failed. A later candidate that behaves the same
-        // fails the same way, so it is not tried.
-        let mut failed: Vec<&Candidate> = Vec::new();
-        for (examined, c) in fitting.iter().enumerate() {
-            if failed.iter().any(|f| self.interchangeable(job, f, c)) {
-                continue;
-            }
-            if search.trials >= MAX_TRIALS {
-                search.gave_up = true;
-                return Outcome::GaveUp;
-            }
-            // A trial is a copy of the model and a propagation: milliseconds, so one
-            // checkpoint for each is the grain a cancel is heard at.
-            job::checkpoint();
-            search.trials += 1;
-            let snapshot = self.model.clone();
-            match self.try_candidate(job.part, &job.columns, c) {
-                Ok(_) if jump.is_some() => {
-                    // The parts after this one would fail again, as they did.
-                    self.model = snapshot;
-                    failed.push(c);
-                }
-                Ok(needs) => {
-                    search.chosen.push(format!("{} = {}", job.path, c.name));
-                    search.picks.push(Pick {
-                        part: job.part,
-                        catalog: job.catalog.name.clone(),
-                        candidate: c.name.clone(),
-                        label: c.label.clone(),
-                        lcsc: c.lcsc.clone(),
-                        mpn: c.mpn.clone(),
-                        library: c.library,
-                        assembly: c.assembly.clone(),
-                        generic: c.generic.as_ref().map(|g| g.with_needs(&needs)),
-                        rejected: examined,
-                    });
-                    let outcome = self.search(jobs, group, depth + 1, search, coupling);
-                    if let Outcome::Solved = outcome {
-                        return outcome;
+        let mut jump: Option<Failure> = None;
+        // What the failures of this part's candidates were made of, for `Failure::core` and
+        // `Failure::closest`.
+        let mut core: BTreeSet<usize> = BTreeSet::new();
+        let mut nearest: Option<Closest> = None;
+        // Choices whose every completion failed. A later one that behaves the same fails the
+        // same way, so it is not tried.
+        let mut failed: Vec<(&Candidate, Option<f64>)> = Vec::new();
+        // Candidates rejected for a reason that no count changes (a rating too low for the
+        // rail): a larger count is not tried with them.
+        let mut count_free_failure = vec![false; fitting.len()];
+        // Two tiers within each count (ADR 0065, 9.6): the first takes only a candidate for which
+        // every bound that waits holds over the whole range its values have, the second the
+        // candidates that were left out because a bound holds only for some values, in the same
+        // order. The fewest count still comes first.
+        let mut deferred = vec![false; counts.len() * fitting.len()];
+        for (pass, &count) in counts.iter().enumerate() {
+            for tier in 0..2 {
+                for (index, c) in fitting.iter().enumerate() {
+                    let examined = pass * fitting.len() + index;
+                    if tier == 1 && !deferred[examined] {
+                        continue;
                     }
-                    search.chosen.pop();
-                    search.picks.pop();
-                    self.model = snapshot;
-                    match outcome {
-                        Outcome::Failed(mut depends_on) => {
-                            if depends_on.remove(&depth) {
-                                conflict.extend(depends_on);
-                            } else {
-                                jump = Some(depends_on);
+                    if count_free_failure[index] {
+                        continue;
+                    }
+                    if failed
+                        .iter()
+                        .any(|&(f, n)| n == count && self.interchangeable(job, f, c))
+                    {
+                        continue;
+                    }
+                    if search.trials >= MAX_TRIALS {
+                        search.gave_up = true;
+                        return Outcome::GaveUp;
+                    }
+                    // A trial is a rollback and a propagation: milliseconds, so one checkpoint for
+                    // each is the grain a cancel is heard at.
+                    job::checkpoint();
+                    search.trials += 1;
+                    let checkpoint = self.model.checkpoint();
+                    let bank = job.count.zip(count);
+                    match self.try_candidate(job.part, &job.columns, c, bank, coupling, &later) {
+                        Ok(accepted) if tier == 0 && !accepted.whole => {
+                            // Not yet: a candidate that meets every waiting bound comes first.
+                            self.model.rollback(checkpoint);
+                            deferred[examined] = true;
+                        }
+                        Ok(_) if jump.is_some() => {
+                            // The parts after this one would fail again, as they did.
+                            self.model.rollback(checkpoint);
+                            failed.push((c, count));
+                        }
+                        Ok(Accepted { needs, .. }) => {
+                            search
+                                .chosen
+                                .push(format!("{} = {}", job.path, choice_name(c, count)));
+                            search.picks.push(Pick {
+                                part: job.part,
+                                catalog: job.catalog.name.clone(),
+                                candidate: c.name.clone(),
+                                label: c.label.clone(),
+                                lcsc: c.lcsc.clone(),
+                                mpn: c.mpn.clone(),
+                                library: c.library,
+                                assembly: c.assembly.clone(),
+                                generic: c.generic.as_ref().map(|g| g.with_needs(&needs)),
+                                rejected: examined,
+                                count: count.map_or(1, |n| n as u32),
+                            });
+                            let outcome = self.search(jobs, group, depth + 1, search, coupling);
+                            if let Outcome::Solved = outcome {
+                                self.model.commit(checkpoint);
+                                return outcome;
+                            }
+                            search.chosen.pop();
+                            search.picks.pop();
+                            self.model.rollback(checkpoint);
+                            match outcome {
+                                Outcome::Failed(mut below) => {
+                                    if below.depends.remove(&depth) {
+                                        conflict.extend(below.depends.iter().copied());
+                                        core.extend(below.core.iter().copied());
+                                        nearer(&mut nearest, below.closest.as_ref());
+                                    } else {
+                                        jump = Some(below);
+                                    }
+                                }
+                                _ => return Outcome::GaveUp,
+                            }
+                            failed.push((c, count));
+                        }
+                        Err(r) => {
+                            // `try_candidate` put the model back.
+                            self.model.commit(checkpoint);
+                            let mut assignment = search.chosen.clone();
+                            assignment.push(format!("{} = {}", job.path, choice_name(c, count)));
+                            let failure_fed_by = coupling.fed_by(&self.failure_reads(&r));
+                            let rejected = Closest {
+                                depth,
+                                margin: r.margin,
+                                assignment: if group.len() == 1 {
+                                    vec![choice_name(c, count)]
+                                } else {
+                                    assignment
+                                },
+                                depths: if group.len() == 1 {
+                                    vec![0]
+                                } else {
+                                    (0..=depth).collect()
+                                },
+                                message: r.message,
+                                at: r.at,
+                            };
+                            nearer(&mut nearest, Some(&rejected));
+                            nearer(&mut search.closest, Some(&rejected));
+                            // The rejection was worked out from these fields, and so from the parts
+                            // that their values are worked out from.
+                            let reads = coupling.earlier_jobs(group, depth, &failure_fed_by);
+                            conflict.extend(reads.iter().copied());
+                            core.extend(reads);
+                            // A value that a part still to be chosen feeds is judged on the range
+                            // it has, so the failure is also that part's: it is named with the
+                            // rest, though no choice of it is undone.
+                            core.extend(
+                                (depth + 1..group.len())
+                                    .filter(|&p| failure_fed_by.contains(&group[p])),
+                            );
+                            // A failure that reads nothing worked out from the count is the same
+                            // at every count.
+                            if let (Some(cf), Some(_)) = (job.count, count)
+                                && !coupling.classes_of(&r.own).contains(&coupling.class[cf.0])
+                            {
+                                count_free_failure[index] = true;
                             }
                         }
-                        _ => return Outcome::GaveUp,
                     }
-                    failed.push(c);
-                }
-                Err(r) => {
-                    let mut assignment = search.chosen.clone();
-                    assignment.push(format!("{} = {}", job.path, c.name));
-                    if search.closest.as_ref().is_none_or(|best| {
-                        depth > best.depth || (depth == best.depth && r.margin < best.margin)
-                    }) {
-                        search.closest = Some(Closest {
-                            depth,
-                            margin: r.margin,
-                            assignment: if group.len() == 1 {
-                                vec![r.candidate]
-                            } else {
-                                assignment
-                            },
-                            message: r.message,
-                            at: r.at,
-                        });
-                    }
-                    // The rejection was worked out from these fields and the candidate's own.
-                    let mut reads = coupling.classes_of(&r.reads);
-                    reads.extend(inside.iter().copied());
-                    conflict.extend(coupling.earlier(group, depth, &reads));
                 }
             }
         }
-        Outcome::Failed(jump.unwrap_or(conflict))
+        Outcome::Failed(match jump {
+            Some(below) => below,
+            None => failure(conflict, core, nearest),
+        })
+    }
+
+    /// The counts a part's search goes through, fewest first (ADR 0052): the whole numbers of
+    /// its `.count` range, or the one number the design states, or a single pass with none for
+    /// a part that has no count or whose count is unset (that is one part). Empty if the range
+    /// holds no whole number.
+    fn counts_of(&self, job: &Job) -> Vec<Option<f64>> {
+        let Some(field) = job.count else {
+            return vec![None];
+        };
+        let Domain::Quantity(q) = self.domain(field) else {
+            return vec![None];
+        };
+        let (first, last) = (q.lo().ceil().max(1.0), q.hi().floor().min(MAX_BANK));
+        let mut counts = Vec::new();
+        let mut n = first;
+        while n <= last {
+            counts.push(Some(n));
+            n += 1.0;
+        }
+        counts
     }
 
     /// Whether the design cannot tell two candidates of one part apart: they are equal in
@@ -1795,21 +3324,21 @@ impl Solver<'_> {
     /// that names only this field (`.effective_capacitance >= 1uF`) only judges the part that
     /// holds it.
     fn mentioned(&self, field: FieldId) -> bool {
-        self.model
-            .equalities()
-            .iter()
-            .any(|&(a, b)| a == field || b == field)
-            || self
-                .model
-                .balances()
-                .iter()
-                .any(|b| b.draws.iter().any(|d| d.field == field))
-            || self.model.relations().iter().any(|r| {
-                let mut fields = Vec::new();
-                fields_in(&r.lhs, &mut fields);
-                fields_in(&r.rhs, &mut fields);
-                fields.contains(&field) && fields.iter().any(|&g| g != field)
-            })
+        self.reads().shared(field)
+    }
+
+    /// What the design reads, worked out again when the relations are not those it was worked
+    /// out for.
+    fn reads(&self) -> std::rc::Rc<reads::Reads> {
+        let mut cache = self.reads.borrow_mut();
+        match cache.as_ref() {
+            Some(r) if r.is_of(&self.model) => std::rc::Rc::clone(r),
+            _ => {
+                let r = std::rc::Rc::new(reads::Reads::of(&self.model));
+                *cache = Some(std::rc::Rc::clone(&r));
+                r
+            }
+        }
     }
 
     fn fits(&self, part: InstId, columns: &[(FieldId, String)], c: &Candidate) -> bool {
@@ -1819,7 +3348,12 @@ impl Solver<'_> {
         columns.iter().all(|(f, key)| {
             let domain = &self.model.field(*f).domain;
             match (c.column(key), domain) {
-                (None, _) => false,
+                // A row with no value there fits no design that asks for one (a rating it
+                // does not state cannot be shown to be met). A design that does not mention
+                // the field has no use for the value, so the row is still offered, but only
+                // for a column that a catalog may leave empty (`Standard::is_optional`): an empty
+                // package or resistance is not a value that nothing needs.
+                (None, _) => self.may_be_empty(part, key) && !self.asked(*f),
                 (Some(Value::Open(sense)), _) => self.need_of(*f, *sense).is_some(),
                 (Some(Value::Derated(d)), domain) => match self.derated(part, d) {
                     Ok(q) => match domain {
@@ -1883,12 +3417,13 @@ impl Solver<'_> {
     }
 
     /// What to add to a message when rows were left out for an empty cell: a row with no
-    /// value for a column fits no design, so a part without a rating (`max_power`) is never
-    /// picked, and the message says how many rows that is.
+    /// value for a column the design asks about fits no design, so a part without a rating
+    /// (`max_power`) is never picked, and the message says how many rows that is.
     fn blank_note(&self, job: &Job) -> Option<String> {
         let blank: Vec<String> = job
             .columns
             .iter()
+            .filter(|(f, key)| !self.may_be_empty(job.part, key) || self.asked(*f))
             .filter_map(|(_, key)| {
                 let n = job
                     .catalog
@@ -1907,17 +3442,27 @@ impl Solver<'_> {
         })
     }
 
-    /// Whether the design says anything about a field: it narrows it or a relation uses it.
+    /// Whether a row of the part's catalog may have no value in `column` and still be offered
+    /// to a design that does not mention it (ADR 0055): only the columns added after the
+    /// files were written. For any other column an empty cell is a value the design needs and
+    /// does not get, and the row is never offered.
+    fn may_be_empty(&self, part: InstId, column: &str) -> bool {
+        self.model
+            .instance(part)
+            .catalog
+            .as_ref()
+            .is_some_and(|c| crate::table::is_optional(&c.name, column))
+    }
+
+    /// Whether the design says anything about a field: it narrows it, a relation uses it, a
+    /// connection joins it to another field, or a balance of currents sums it. A value that
+    /// reaches the field by any of these routes is a requirement on it, and a row with no
+    /// value for it cannot be shown to meet that.
     fn asked(&self, field: FieldId) -> bool {
         if !matches!(self.domain(field), Domain::Unset) {
             return true;
         }
-        self.model.relations().iter().any(|r| {
-            let mut fields = Vec::new();
-            fields_in(&r.lhs, &mut fields);
-            fields_in(&r.rhs, &mut fields);
-            fields.contains(&field)
-        })
+        self.reads().read(field)
     }
 
     /// A candidate's value after derating, at the bias the design gives its part.
@@ -1999,6 +3544,26 @@ impl Solver<'_> {
         None
     }
 
+    /// The fields a rejection was worked out from: those of the relation or conflict that failed,
+    /// and, for an equation, those of the other equations on the same value, which `verify` holds
+    /// it against. The relations that were judged before it and passed are not among them: a
+    /// candidate that fails this one is refused whatever those say.
+    fn failure_reads(&self, r: &Rejection) -> Vec<FieldId> {
+        let mut fields = r.own.clone();
+        if let Some(index) = r.relation
+            && let relation = &self.model.relations()[index]
+            && let (CmpOp::EqEq, RExpr::Field(f)) = (&relation.op, &relation.lhs)
+            && let Some(others) = self.equations_of.get(f)
+        {
+            for &k in others {
+                let other = &self.model.relations()[k];
+                fields_in(&other.lhs, &mut fields);
+                fields_in(&other.rhs, &mut fields);
+            }
+        }
+        fields
+    }
+
     /// Try one candidate. On success its values stay in the model; on failure the model
     /// is put back exactly as it was.
     fn try_candidate(
@@ -2006,25 +3571,65 @@ impl Solver<'_> {
         part: InstId,
         columns: &[(FieldId, String)],
         c: &Candidate,
-    ) -> Result<Vec<(String, Need)>, Rejection> {
-        let backup = self.model.clone();
+        bank: Option<(FieldId, f64)>,
+        coupling: &Coupling,
+        later: &HashSet<usize>,
+    ) -> Result<Accepted, Rejection> {
+        let backup = self.model.checkpoint();
+        let result = self.try_candidate_from(part, columns, c, bank, coupling, later, &backup);
+        // A candidate that is refused leaves the model as it was.
+        match result {
+            Ok(_) => self.model.commit(backup),
+            Err(_) => self.model.rollback(backup),
+        }
+        result
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn try_candidate_from(
+        &mut self,
+        part: InstId,
+        columns: &[(FieldId, String)],
+        c: &Candidate,
+        bank: Option<(FieldId, f64)>,
+        coupling: &Coupling,
+        later: &HashSet<usize>,
+        backup: &Checkpoint,
+    ) -> Result<Accepted, Rejection> {
         let mut needs: Vec<(String, Need)> = Vec::new();
+        // A bank of this many of the row (ADR 0052): the count is as much the choice as the
+        // row is.
+        if let Some((field, n)) = bank
+            && let FieldKind::Quantity(dim) = self.model.field(field).kind
+            && let Ok(q) = Quantity::point(dim, n)
+        {
+            self.model.set_domain(field, Domain::Quantity(q));
+        }
+        let reject = |message: String,
+                      margin: f64,
+                      at: (SourceId, Span),
+                      own: Vec<FieldId>,
+                      relation: Option<usize>| {
+            Err(Rejection {
+                message,
+                margin,
+                at,
+                own,
+                relation,
+            })
+        };
+
+        // The columns a generic part leaves open (ADR 0047), in column order.
+        let mut open: Vec<(FieldId, &String, Sense)> = Vec::new();
         for (f, key) in columns {
-            let value = match c.column(key).expect("`fits` checked the column") {
+            // A row with no value for a column that the design does not ask about stays
+            // unset (`fits` let it through).
+            let Some(value) = c.column(key) else { continue };
+            let value = match value {
                 Value::Quantity(q) => Domain::Quantity(*q),
                 Value::Text(t) => Domain::Text(t.clone()),
                 Value::Open(sense) => {
-                    // A generic part takes what the design says. A relation's demand is
-                    // taken exactly, so the relation holds with nothing to spare and any
-                    // row that meets the need holds it too.
-                    let need = self.need_of(*f, *sense).unwrap_or(Need::Nothing);
-                    if let (Need::AtLeast(x) | Need::AtMost(x), FieldKind::Quantity(dim)) =
-                        (&need, self.model.field(*f).kind)
-                        && let Ok(q) = Quantity::point(dim, *x)
-                    {
-                        self.model.set_domain(*f, Domain::Quantity(q));
-                    }
-                    needs.push((key.clone(), need));
+                    open.push((*f, key, *sense));
                     continue;
                 }
                 Value::Derated(d) => match self.derated(part, d) {
@@ -2036,57 +3641,125 @@ impl Solver<'_> {
             self.model.set_domain(*f, value);
         }
 
-        let reject = |this: &mut Self,
-                      message: String,
-                      margin: f64,
-                      at: (SourceId, Span),
-                      reads: Vec<FieldId>| {
-            this.model = backup.clone();
-            Err(Rejection {
-                candidate: c.name.clone(),
-                message,
-                margin,
-                at,
-                reads,
-            })
-        };
-
-        if let Some(conflict) = self.propagate().into_iter().next() {
+        // A generic part takes what the design says of the columns it leaves open, and what
+        // the design says can depend on the columns it does have: the ripple of a buck
+        // converter's inductor needs its inductance, and the stage asks for a saturation
+        // current of the load and half that ripple. So the values that follow from the marked
+        // columns are worked out first, and the demand on each open column is read after
+        // them (ADR 0057). A relation's demand is taken exactly, so the relation holds with
+        // nothing to spare and any row that meets the need holds it too.
+        if !open.is_empty()
+            && let Some(conflict) = self.propagate().into_iter().next()
+        {
             return reject(
-                self,
                 conflict.message,
                 1.0,
                 (conflict.source, conflict.span),
                 conflict.fields,
+                None,
+            );
+        }
+        for (f, key, sense) in open {
+            let need = self.need_of(f, sense).unwrap_or(Need::Nothing);
+            if let (Need::AtLeast(x) | Need::AtMost(x), FieldKind::Quantity(dim)) =
+                (&need, self.model.field(f).kind)
+                && let Ok(q) = Quantity::point(dim, *x)
+            {
+                self.model.set_domain(f, Domain::Quantity(q));
+            }
+            needs.push((key.clone(), need));
+        }
+
+        if let Some(conflict) = self.propagate().into_iter().next() {
+            return reject(
+                conflict.message,
+                1.0,
+                (conflict.source, conflict.span),
+                conflict.fields,
+                None,
             );
         }
 
-        let relevant: Vec<Relation> = self
-            .model
-            .relations()
+        // The relations this choice can decide: those that name a field of the part, and
+        // those that name a field the choice made known or narrower (a value an equation works
+        // out from the part's columns: a named ratio, a module's declared current, a frequency
+        // two equations away from the resistor) when no part still to be chosen feeds any
+        // field the relation names. A bound on such a value judges the part just as a bound
+        // written on its columns does (ADR 0057); without it the pick is made without the
+        // bound and only the check afterwards refuses it. While a part that feeds the value is
+        // unchosen the value is a range of what that part may still be, and a bound that
+        // fails on it can still hold for the part that is chosen. Such a bound is not judged,
+        // but the candidate is refused if no value of the range meets it (`verify_possible`,
+        // ADR 0065, 9.5).
+        let changed = self.model.changed_since(backup);
+        let relations = std::sync::Arc::clone(self.model.shared_relations());
+        let design = self.reads();
+        let touched = design.touching(part, changed.iter().copied());
+        let relevant: Vec<usize> = touched
             .iter()
-            .filter(|r| {
-                let mut fields = Vec::new();
-                fields_in(&r.lhs, &mut fields);
-                fields_in(&r.rhs, &mut fields);
-                fields
+            .copied()
+            .filter(|&index| {
+                let fields = design.fields_of(index);
+                let inside = fields
                     .iter()
-                    .any(|&f| self.model.is_inside(self.model.field(f).owner, part))
+                    .any(|&f| self.model.is_inside(self.model.field(f).owner, part));
+                // A bound that the solver added reads a value another part may still decide
+                // (the right side), so it waits for those parts as a bound on a worked-out
+                // value does.
+                if index >= self.original_relations {
+                    return inside && coupling.feeding[index].is_disjoint(later);
+                }
+                inside
+                    || (fields.iter().any(|f| changed.contains(f))
+                        && coupling.feeding[index].is_disjoint(later))
             })
-            .cloned()
             .collect();
-        // The relations are checked in order, so the one that fails is the first, and the
-        // rejection depends on every relation up to it.
-        let mut reads = Vec::new();
-        for r in &relevant {
-            fields_in(&r.lhs, &mut reads);
-            fields_in(&r.rhs, &mut reads);
-            if let Verdict::Fail { message, margin } = self.verify(r) {
-                let message = self.with_currents(r, message);
-                return reject(self, message, margin, (r.source, r.span), reads);
+        // The bounds the choice changed that wait for a part still to be chosen. They are not
+        // judged, but one that no value of the ranges as they are can meet is refused: the
+        // parts chosen later only narrow the ranges, so they cannot meet it either. Without
+        // this a bound on a value that another group's picks feed (the input voltage of a
+        // stage, behind a filter whose drop its load decides) never reached the pick that
+        // sets the value, however plainly the pick broke it.
+        let waiting: Vec<usize> = touched
+            .iter()
+            .copied()
+            .filter(|&index| {
+                index < self.original_relations
+                    && matches!(relations[index].op, CmpOp::Ge | CmpOp::Le)
+                    && !coupling.feeding[index].is_disjoint(later)
+                    && !relevant.contains(&index)
+                    && design.fields_of(index).iter().any(|f| changed.contains(f))
+            })
+            .collect();
+        // The relations are checked in order, so the one that fails is the first.
+        let mut whole_range = true;
+        let judged = relevant
+            .iter()
+            .map(|&index| (index, true))
+            .chain(waiting.iter().map(|&index| (index, false)));
+        for (index, whole) in judged {
+            let r = &relations[index];
+            let mut own = Vec::new();
+            fields_in(&r.lhs, &mut own);
+            fields_in(&r.rhs, &mut own);
+            let verdict = if whole {
+                self.verify(r)
+            } else {
+                self.verify_possible(r)
+            };
+            if let Verdict::Fail { message, margin } = verdict {
+                let message = self.relation_message(index, r, message);
+                return reject(message, margin, (r.source, r.span), own, Some(index));
+            }
+            // A bound that can hold, but not for every value of the range as it is.
+            if !whole && matches!(self.verify(r), Verdict::Fail { .. }) {
+                whole_range = false;
             }
         }
-        Ok(needs)
+        Ok(Accepted {
+            needs,
+            whole: whole_range,
+        })
     }
 
     /// What the design asks of a field that a generic part leaves open (ADR 0047), or `None`

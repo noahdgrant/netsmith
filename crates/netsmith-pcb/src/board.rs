@@ -220,6 +220,9 @@ pub struct Placed {
     /// The part's path in the design (`stage.output_cap`), which a layout file keys it by.
     pub path: String,
     pub kind: String,
+    /// The generics the part's definition provides (ADR 0068), by name, as the design has
+    /// them: a provider of `Capacitor` is a capacitor to the placer whatever its own name.
+    pub provides: Vec<String>,
     pub value: String,
     /// `Resistor_SMD:R_0402_1005Metric`
     pub library_id: String,
@@ -1208,6 +1211,7 @@ impl Board {
                     refdes: part.refdes.clone(),
                     path: part.path.clone(),
                     kind: part.kind.clone(),
+                    provides: part.provides.clone(),
                     value: part.value.clone(),
                     footprint: Footprint::label(&part.value, height, rules.min_text_thickness),
                     power_pads: Vec::new(),
@@ -1246,6 +1250,7 @@ impl Board {
                 refdes: part.refdes.clone(),
                 path: part.path.clone(),
                 kind: part.kind.clone(),
+                provides: part.provides.clone(),
                 value: part.value.clone(),
                 footprint: loaded[&mapped.footprint].clone(),
                 power_pads: part
@@ -2181,6 +2186,7 @@ pub(crate) mod tests {
 
     fn part(refdes: &str, kind: &str, value: &str, package: Option<&str>) -> Part {
         Part {
+            provides: Vec::new(),
             refdes: refdes.into(),
             kind: kind.into(),
             value: value.into(),

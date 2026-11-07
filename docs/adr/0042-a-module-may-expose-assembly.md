@@ -1,5 +1,5 @@
 ---
-status: accepted (user decision 2026-11-02)
+status: accepted (user decision 2026-11-02); the type of `.assembly_mode` is amended by ADR 0054 (proposed): it is an `AssemblyMode`, not a `String`
 ---
 
 # A module may expose assembly

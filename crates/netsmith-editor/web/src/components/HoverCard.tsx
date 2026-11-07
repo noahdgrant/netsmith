@@ -251,7 +251,7 @@ function ModuleBody({ card, done, other }: { card: ModuleCard; done: () => void;
   );
 }
 
-const DEF_ICON: Record<string, IconName> = { board: 'board', system: 'system', panel: 'panel', module: 'module', part: 'part', interface: 'bus' };
+const DEF_ICON: Record<string, IconName> = { board: 'board', system: 'system', panel: 'panel', module: 'module', part: 'part', generic: 'part', interface: 'bus' };
 
 function DefinitionBody({ card, done }: { card: DefinitionCard; done: () => void }) {
   const shownMembers = card.members.slice(0, 8);

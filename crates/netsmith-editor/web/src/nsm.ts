@@ -25,15 +25,56 @@ export interface Token {
   kind: Kind;
 }
 
-/** The words that start a definition or a statement. */
-export const KEYWORDS = new Set(['board', 'system', 'panel', 'part', 'interface', 'module', 'import', 'catalog', 'bridge']);
+/**
+ * The words of the statements of ADR 0071 (`peripheral NAME [on CLASS] {`, `shared NAME [limit N] {`) and of ADR 0064
+ * (`lines [ENUM::Variant] [limit N] {`). They are words only where the parser reads them as words: at the start of a
+ * statement and before what the parser expects (`peripheral`, `shared`: a name; `lines`: a name or `{`), and in the
+ * header of that statement (`on`, `limit`). A member is called by its leading dot, and a bare path may start with
+ * either. The value is what may follow the word, as a pattern on the rest of the line.
+ */
+const STATEMENT_WORDS: Record<string, RegExp> = {
+  peripheral: /^[ \t]+\p{L}/u,
+  shared: /^[ \t]+\p{L}/u,
+  lines: /^[ \t]*(\p{L}|\{)/u,
+};
+const CLAUSE_WORDS: Record<string, string[]> = { on: ['peripheral'], limit: ['shared', 'lines'] };
+
+/**
+ * `as` in a peripheral (ADR 0064, stage 4): in the header, `peripheral NAME on CLASS as Spi SpiRole::Master {`, and after a function of
+ * its body, `SPIM0_SCK:output as sclk`. It is a word only after the first word of a line, and the first word is a name, so a path that
+ * starts with `as` and a member called `as` stay names.
+ */
+function isAsClause(line: string, out: Token[]): boolean {
+  if (out.length === 0) return false;
+  const first = out[0];
+  if (first.kind === 'keyword') return line.slice(first.from, first.to) === 'peripheral';
+  if (first.kind !== 'name' && first.kind !== 'type') return false;
+  const prev = out[out.length - 1];
+  const text = line.slice(prev.from, prev.to);
+  return prev === first || (prev.kind === 'name' && PIN_KINDS.has(text) && out.length >= 3);
+}
+
+/** The words of a row of a `lines` table after its kind (ADR 0064). They are words only on a line that starts with a member path and has a pin kind before them. */
+const ROW_WORDS = new Set(['single', 'crosses']);
+const PIN_KINDS = new Set(['power', 'input', 'output', 'bidirectional', 'passive', 'no_connect', 'tri_state']);
+
+/** The words that start a definition or a statement, and the markers after a pin row (`required`, `optional`, ADR 0016). */
+export const KEYWORDS = new Set(['board', 'system', 'panel', 'part', 'interface', 'module', 'enum', 'generic', 'provides', 'import', 'catalog', 'bridge', 'required', 'optional']);
 
 // Longest spellings first, as the lexer reads them.
-const OPERATORS = ['~>', '&=', '==', '>=', '<=', '+/-', '..', '::', '~', '+', '-', '*', '/', '=', '>', '<'];
+const OPERATORS = ['~>', '&=', '?=', '==', '>=', '<=', '+/-', '..', '::', '~', '+', '-', '*', '/', '=', '>', '<'];
 
 const isDigit = (c: string) => c >= '0' && c <= '9';
 const isWordStart = (c: string) => /[\p{L}_]/u.test(c);
 const isWord = (c: string) => /[\p{L}\p{N}_]/u.test(c);
+
+/** Whether the tokens so far are a member path and a pin kind (or the words after one): the start of a row of `lines`. */
+function isLineRow(line: string, out: Token[]): boolean {
+  if (out.length < 3 || out[0].kind !== 'punct' || line.slice(out[0].from, out[0].to) !== '.') return false;
+  const prev = out[out.length - 1];
+  const text = line.slice(prev.from, prev.to);
+  return (prev.kind === 'name' && PIN_KINDS.has(text)) || (prev.kind === 'keyword' && (text === 'single' || text === 'optional' || text === 'required'));
+}
 
 /** The tokens of one line, as ranges of the line. Nothing in the language spans lines. */
 export function tokenize(line: string): Token[] {
@@ -113,9 +154,16 @@ export function tokenize(line: string): Token[] {
       while (j < line.length && isWord(line[j])) j++;
       const word = line.slice(i, j);
       let kind: Kind;
+      const first = out.length > 0 ? line.slice(out[0].from, out[0].to) : null;
       if (afterDot) kind = 'member';
       else if (KEYWORDS.has(word)) kind = 'keyword';
-      else if (line.slice(j, j + 2) === '::') kind = 'namespace';
+      else if (first === null && word in STATEMENT_WORDS && STATEMENT_WORDS[word].test(line.slice(j))) kind = 'keyword';
+      else if (CLAUSE_WORDS[word] !== undefined && first !== null && CLAUSE_WORDS[word].includes(first) && out[0].kind === 'keyword') kind = 'keyword';
+      else if (ROW_WORDS.has(word) && isLineRow(line, out)) kind = 'keyword';
+      else if (word === 'as' && isAsClause(line, out)) kind = 'keyword';
+      // A name before `::` is a module in a path (`std::parts`) unless it is capitalised, which
+      // makes it a type: the enum of a variant, `AssemblyMode::Hand`.
+      else if (line.slice(j, j + 2) === '::' && !/^\p{Lu}/u.test(word)) kind = 'namespace';
       else if (/^\p{Lu}/u.test(word)) kind = 'type';
       else kind = 'name';
       push(i, j, kind);

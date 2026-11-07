@@ -15,6 +15,16 @@
 //! - ` ```nsm solve notes ` must build, and the next ` ```text ` block is the notes that name a
 //!   net whose tracks were not sized from its current (ADR 0036), one per line, as the
 //!   command line prints them after `note: `.
+//! - ` ```nsm evaluate picks ` must build as `evaluate` does but through the whole pick of
+//!   providers (ADR 0068, no KiCad needed), and the next ` ```text ` block is the line for each use
+//!   of a generic, as the command line prints it after `note: `.
+//! - ` ```nsm solve circular ` must build, and the next ` ```text ` block is the note that
+//!   names values that depend on each other while none has a value, as the command line
+//!   prints it after `note: `. With `warns` too (`solve warns circular`), the first
+//!   ` ```text ` block is the warning and the second the note.
+//! - ` ```nsm solve started ` must build, and the next ` ```text ` block is the note that says
+//!   the solver started a circle of values itself (ADR 0053), as the command line prints it
+//!   after `note: `.
 //! - ` ```nsm fails ` must not build, and the next ` ```text ` block is the exact message.
 //! - ` ```nsm-physical ` directly after an ` ```nsm ` block is that block's physical file
 //!   (ADR 0048, `main.physical.nsm` beside `main.nsm`): the block is checked and built with
@@ -34,7 +44,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use netsmith::{Libraries, build_with};
+use netsmith::{Libraries, build_with, outcome_with};
 use netsmith_check::{Loader, check};
 use netsmith_solve::{Catalogs, solve, solve_system};
 
@@ -329,9 +339,14 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
             None => loader.clone(),
         };
         let loader = &block_loader;
+        // A block with several checks (`warns circular`) has one ```text block for each, in the
+        // order the checks are made.
+        let taken = std::cell::Cell::new(0usize);
         let next_text = || {
+            let k = taken.get();
+            taken.set(k + 1);
             blocks
-                .get(after)
+                .get(after + k)
                 .filter(|next| next.is("text"))
                 .unwrap_or_else(|| panic!("{at}: the next block must be a ```text block"))
         };
@@ -362,6 +377,24 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
         } else if b.has("solve") {
             let built = build_with(name, &b.text, loader, &catalogs, &Libraries::sample())
                 .unwrap_or_else(|e| panic!("{at}: should build:\n{e}"));
+            // A block that does not say it warns states what its parts and values need (ADR
+            // 0065): the two findings about a value that nobody stated are for a block that
+            // shows them.
+            if !b.has("warns") {
+                let unstated: Vec<String> = built
+                    .iter()
+                    .flat_map(|x| x.guideline_warnings())
+                    .filter(|w| {
+                        w.contains(": unconstrained pick guideline:")
+                            || w.contains(": unstated value guideline:")
+                    })
+                    .collect();
+                assert!(
+                    unstated.is_empty(),
+                    "{at}: this block should state what it needs and does not (mark it `warns` if it shows the finding):\n{}",
+                    unstated.join("\n")
+                );
+            }
             if b.has("warns") {
                 let warnings: String = built
                     .iter()
@@ -394,6 +427,52 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
                 assert!(
                     !notes.is_empty(),
                     "{at}: this block should say a net is not sized and does not"
+                );
+                let next = next_text();
+                if bless {
+                    rewrites.push((next.body.0, next.body.1, notes));
+                } else {
+                    assert!(
+                        same(&next.text, &notes),
+                        "{at}: the notes differ.\n--- guide\n{}\n--- tool\n{notes}",
+                        next.text
+                    );
+                }
+            }
+            if b.has("circular") {
+                let notes: String = built
+                    .iter()
+                    .flat_map(|x| x.notes.iter())
+                    .filter(|n| n.contains("depend on each other"))
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                assert!(
+                    !notes.is_empty(),
+                    "{at}: this block should name values that wait on each other and does not"
+                );
+                let next = next_text();
+                if bless {
+                    rewrites.push((next.body.0, next.body.1, notes));
+                } else {
+                    assert!(
+                        same(&next.text, &notes),
+                        "{at}: the notes differ.\n--- guide\n{}\n--- tool\n{notes}",
+                        next.text
+                    );
+                }
+            }
+            if b.has("started") {
+                let notes: String = built
+                    .iter()
+                    .flat_map(|x| x.notes.iter())
+                    .filter(|n| n.contains("depends on itself"))
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                assert!(
+                    !notes.is_empty(),
+                    "{at}: this block should say the solver started a circle of values and does not"
                 );
                 let next = next_text();
                 if bless {
@@ -448,6 +527,33 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
                         next.text
                     );
                 }
+            }
+        } else if b.has("evaluate") && b.has("picks") {
+            let outcome =
+                outcome_with(name, &b.text, loader, &catalogs, None).unwrap_or_else(|e| {
+                    panic!("{at}: should build:\n{}", netsmith::render_problems(&e))
+                });
+            let lines: String = outcome
+                .boards
+                .iter()
+                .flat_map(|x| x.notes.iter())
+                .filter(|n| n.contains(": picked "))
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n");
+            assert!(
+                !lines.is_empty(),
+                "{at}: this block should pick a provider and does not"
+            );
+            let next = next_text();
+            if bless {
+                rewrites.push((next.body.0, next.body.1, lines));
+            } else {
+                assert!(
+                    same(&next.text, &lines),
+                    "{at}: the picks differ.\n--- guide\n{}\n--- tool\n{lines}",
+                    next.text
+                );
             }
         } else if b.has("evaluate") {
             let checked = check(name, &b.text, loader);
@@ -523,7 +629,15 @@ fn std_definitions() -> Vec<String> {
             .collect::<Vec<_>>()
             .join("::");
         for line in fs::read_to_string(&file).unwrap().lines() {
-            for kind in ["part ", "interface ", "module ", "board ", "system "] {
+            for kind in [
+                "part ",
+                "interface ",
+                "module ",
+                "board ",
+                "system ",
+                "enum ",
+                "generic ",
+            ] {
                 if let Some(rest) = line.strip_prefix(kind) {
                     let name: String = rest
                         .chars()

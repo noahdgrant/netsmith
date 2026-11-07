@@ -52,6 +52,7 @@ fn board(
     std::fs::write(folder.join("ANGLE.kicad_mod"), header).unwrap();
     std::fs::write(folder.join("BIG.kicad_mod"), BIG).unwrap();
     let part = |refdes: &str, package: &str| Part {
+        provides: Vec::new(),
         refdes: refdes.into(),
         kind: "Resistor".into(),
         value: package.into(),

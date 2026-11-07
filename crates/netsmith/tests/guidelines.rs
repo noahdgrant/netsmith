@@ -342,3 +342,133 @@ fn the_editor_shows_no_warning_for_a_net_the_router_sized() {
         a.problems
     );
 }
+
+// ---- a joined bus interface that states no role (ADR 0064, stage 5) ----------------------
+
+fn bus_board() -> String {
+    "import std::bus::{Spi, SpiRole}
+import std::sources::Rail
+
+part Master {
+    .vdd: Rail
+    .spi: Spi
+    .spi.role &= SpiRole::Master
+    pins {
+        .vdd.pos  power  \"VDD\"  \"1\"
+        .vdd.neg  power  \"VSS\"  \"2\"
+        .spi.sclk output \"SCK\"  \"3\"
+        .spi.mosi output \"MOSI\" \"4\"
+        .spi.miso input  \"MISO\" \"5\"
+        .spi.cs   output \"CS\"   \"6\"
+    }
+}
+
+/// A sensor whose datasheet is not at hand: no role.
+part Sensor {
+    .vdd: Rail
+    .spi: Spi
+    pins {
+        .vdd.pos  power  \"VDD\" \"1\"
+        .vdd.neg  power  \"GND\" \"2\"
+        .spi.sclk input  \"SCL\" \"3\"
+        .spi.mosi input  \"SDI\" \"4\"
+        .spi.miso output \"SDO\" \"5\"
+        .spi.cs   input  \"CS\"  \"6\"
+    }
+}
+
+board Sensors {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= \"3V3\"
+        .neg.net &= \"GND\"
+    }
+    .cpu: Master
+    .imu: Sensor
+    .supply ~ .cpu.vdd
+    .supply ~ .imu.vdd
+    .cpu.spi ~ .imu.spi
+}
+"
+    .to_string()
+}
+
+#[test]
+fn a_joined_interface_with_no_role_is_an_error_under_strict_and_not_otherwise() {
+    // The parts have no KiCad symbol, so a build that is not refused stops at the export; what
+    // matters is that the strict build is refused first, with the finding.
+    let strict = Catalogs::jlcpcb().with_strict_guidelines(true);
+    let Err(e) = build(&bus_board(), &strict) else {
+        panic!("a strict build of a finding must fail");
+    };
+    assert!(
+        e.contains(
+            "error: Sensors: bus role guideline: `imu.spi` is joined to another end of a `Spi` bus and states no role"
+        ) && e.contains("--> heater.nsm:"),
+        "{e}"
+    );
+    let Err(e) = build(&bus_board(), &Catalogs::jlcpcb()) else {
+        panic!("the parts have no symbol");
+    };
+    assert!(
+        !e.contains("guideline") && e.contains("no KiCad symbol"),
+        "{e}"
+    );
+    // With the role stated, the strict build is not refused for it.
+    let stated = bus_board().replace(
+        "    .spi: Spi\n    pins {\n        .vdd.pos  power  \"VDD\" \"1\"\n        .vdd.neg  power  \"GND\"",
+        "    .spi: Spi\n    .spi.role &= SpiRole::Slave\n    pins {\n        .vdd.pos  power  \"VDD\" \"1\"\n        .vdd.neg  power  \"GND\"",
+    );
+    let Err(e) = build(&stated, &strict) else {
+        panic!("the parts have no symbol");
+    };
+    assert!(
+        !e.contains("guideline") && e.contains("no KiCad symbol"),
+        "{e}"
+    );
+}
+
+/// A board that joins the library's receptacle to a processor's USB port.
+fn usb_board(role: &str) -> String {
+    format!(
+        "import std::bus::{{Usb2, UsbRole}}
+import std::parts::connector::UsbC2
+
+/// A processor with a USB port.
+part Mcu {{
+    .usb: Usb2
+{role}    pins {{
+        .usb.vbus.pos power         \"VBUS\" \"1\"
+        .usb.vbus.neg power         \"GND\"  \"2\"
+        .usb.dp       bidirectional \"DP\"   \"3\"
+        .usb.dm       bidirectional \"DM\"   \"4\"
+    }}
+}}
+
+board Usb {{
+    .mcu: Mcu
+    .jack: UsbC2
+    .mcu.usb ~ .jack.usb
+}}
+"
+    )
+}
+
+#[test]
+fn a_receptacle_joined_to_a_usb_port_is_not_asked_for_a_role_but_the_port_behind_it_is() {
+    let strict = Catalogs::jlcpcb().with_strict_guidelines(true);
+    let Err(e) = build(&usb_board(""), &strict) else {
+        panic!("a strict build of a finding must fail");
+    };
+    assert!(
+        e.contains("error: Usb: bus role guideline: `mcu.usb` is joined to another end of a `Usb2` bus and states no role"),
+        "{e}"
+    );
+    assert!(!e.contains("`jack.usb` is joined"), "{e}");
+    // With the role stated, the receptacle is no reason for a finding.
+    let stated = usb_board("    .usb.role &= UsbRole::Device\n");
+    let Err(e) = build(&stated, &strict) else {
+        panic!("the parts have no symbol");
+    };
+    assert!(!e.contains("bus role guideline"), "{e}");
+}

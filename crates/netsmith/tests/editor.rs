@@ -469,7 +469,7 @@ fn go_to_definition_follows_imports_types_and_members() {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../std/parts/passive.nsm"),
     )
     .unwrap();
-    assert_eq!(resistor.at.line, line_of(&passive, "part Resistor"));
+    assert_eq!(resistor.at.line, line_of(&passive, "generic Resistor"));
 
     // The same name in an import.
     let imported = find(at("Resistor", 0) + 1).unwrap();

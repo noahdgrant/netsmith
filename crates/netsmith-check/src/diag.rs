@@ -33,6 +33,31 @@ impl Sources {
     pub fn get(&self, id: SourceId) -> &Source {
         &self.0[id.0]
     }
+
+    /// How many files are loaded.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// `file:line` of a span, if the file is known.
+    pub fn place(&self, source: SourceId, span: Span) -> Option<String> {
+        let source = self.0.get(source.0)?;
+        let (line, _) = ParseError::new(span, "").line_col(&source.text);
+        Some(format!("{}:{line}", source.name))
+    }
+
+    /// The text of a span, on one line, if the file is known: a statement as it was written.
+    pub fn statement(&self, source: SourceId, span: Span) -> Option<String> {
+        let source = self.0.get(source.0)?;
+        let text = source
+            .text
+            .get(span.start..span.end.min(source.text.len()))?;
+        Some(text.split_whitespace().collect::<Vec<_>>().join(" "))
+    }
 }
 
 impl Diagnostic {

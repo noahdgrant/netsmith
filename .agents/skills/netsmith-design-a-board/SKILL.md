@@ -40,3 +40,4 @@ When the design is several boards (a carrier with sockets, plug-in cards with ma
 ## Done when
 
 `netsmith build` prints no error and no `warning:` you have not told the user about, `netsmith fab` prints `design rules check: passed` for every board, and you can list for the user every note that `fab-notes.txt` raised.
+- A part on a bus states its role (`.spi.role &= SpiRole::Master`), or the board does for a part that can be either (a receptacle such as `UsbC2` passes the bus through and states none to be asked for): the checker then finds a `mosi` on a `miso`, two masters, two slaves on one select, and a row that contradicts the role.

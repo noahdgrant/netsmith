@@ -55,7 +55,7 @@ pub struct Import {
     pub span: Span,
 }
 
-/// A top-level `board`, `system`, `panel`, `part`, `interface` or `module`. They share one body grammar;
+/// A top-level `board`, `system`, `panel`, `part`, `interface`, `module`, `enum` or `generic`. They share one body grammar;
 /// what each kind may contain is a later stage's concern.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Definition {
@@ -65,8 +65,20 @@ pub struct Definition {
     pub inner_docs: Vec<String>,
     pub kind: DefKind,
     pub name: Ident,
+    /// The generics a `part` or a `module` provides (`part X provides A, B`, ADR 0068), in the
+    /// order written. Empty for every other kind.
+    pub provides: Vec<Ident>,
     pub items: Vec<Item>,
+    /// The variants of an `enum` (ADR 0054), in the order written. Empty for every other kind.
+    pub variants: Vec<Variant>,
     pub span: Span,
+}
+
+/// One variant of an `enum`: `Hand`, with the `///` lines above it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Variant {
+    pub docs: Vec<String>,
+    pub name: Ident,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,6 +95,11 @@ pub enum DefKind {
     Interface,
     /// A reusable sub-circuit.
     Module,
+    /// A type with a fixed set of named values (ADR 0054).
+    Enum,
+    /// What the users of a part or module may rely on, and what a part or module that
+    /// provides it must have (ADR 0068).
+    Generic,
 }
 
 impl DefKind {
@@ -94,6 +111,8 @@ impl DefKind {
             Self::Part => "part",
             Self::Interface => "interface",
             Self::Module => "module",
+            Self::Enum => "enum",
+            Self::Generic => "generic",
         }
     }
 
@@ -105,6 +124,8 @@ impl DefKind {
             Self::Part,
             Self::Interface,
             Self::Module,
+            Self::Enum,
+            Self::Generic,
         ]
         .into_iter()
         .find(|k| k.keyword() == word)
@@ -120,6 +141,13 @@ pub enum Item {
     Catalog(Catalog),
     Pins(Pins),
     Tie(Tie),
+    /// `peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }`; only a part may hold one
+    /// (ADR 0071).
+    Peripheral(Peripheral),
+    /// `shared SERIAL0 { UARTE0 SPIM0 }`; only a part may hold one (ADR 0071).
+    Shared(Shared),
+    /// `lines SpiRole::Slave { .sclk input ... }`; only an interface may hold one (ADR 0064).
+    Lines(Lines),
     /// A `case { ... }` section; only a physical file may hold one.
     Case(Case),
     /// A `row .a1 .. .a12 along x pitch 2.54mm` statement; only a physical file may hold one.
@@ -171,16 +199,27 @@ pub enum PinKind {
     Passive,
     /// A pin that must stay unconnected.
     NoConnect,
+    /// An output that drives only while its part is selected and is high impedance
+    /// otherwise: it may share a net with other drivers (ADR 0064).
+    TriState,
+}
+
+impl PinRow {
+    /// Whether this is a row of a generic's contract: it has no name and no pads.
+    pub fn is_contract(&self) -> bool {
+        self.pads.is_empty()
+    }
 }
 
 impl PinKind {
-    pub const ALL: [PinKind; 6] = [
+    pub const ALL: [PinKind; 7] = [
         Self::Power,
         Self::Input,
         Self::Output,
         Self::Bidirectional,
         Self::Passive,
         Self::NoConnect,
+        Self::TriState,
     ];
 
     /// The word for it in source and in messages.
@@ -192,6 +231,7 @@ impl PinKind {
             Self::Bidirectional => "bidirectional",
             Self::Passive => "passive",
             Self::NoConnect => "no_connect",
+            Self::TriState => "tri_state",
         }
     }
 
@@ -232,9 +272,16 @@ pub struct Pad {
 pub struct PinFunction {
     pub name: Ident,
     pub kind: Option<(PinKind, Span)>,
+    /// `as sclk`: in a peripheral that has a bus (`as Spi SpiRole::Master`), the line of the bus
+    /// that the function is (ADR 0064). Always None in a pin row.
+    pub line: Option<Ident>,
 }
 
 /// One line of a pin table: `.sense input "SENSE" "3" fn GPIO UART1_TX optional`.
+///
+/// In a `generic` (ADR 0068) a row may have no name and no pads, `.signal passive required`:
+/// it states the kind a provider's row for the pin must have. Such a row has an empty `name`
+/// and no `pads`; every row of a part has at least one pad.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PinRow {
     /// A plain pin of the part (`.sense`), which the row declares, or a pin of one of
@@ -266,6 +313,89 @@ pub struct Tie {
     pub a: Path,
     pub b: Path,
     pub span: Span,
+}
+
+/// `peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }`: the functions of a part
+/// that belong together and are in use together (ADR 0071). A function takes its kind from the
+/// peripheral, as it would from a pin row (ADR 0046). With `on CLASS`, every pin whose row lists
+/// the function `CLASS` offers the peripheral's functions as well.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Peripheral {
+    pub name: Ident,
+    /// The class after `on`: a function that rows list.
+    pub on: Option<Ident>,
+    /// `as Spi SpiRole::Master`: the bus interface that the peripheral is an end of, and its role
+    /// (ADR 0064, stage 4). A function that names a line (`SPIM0_SCK:output as sclk`) is a pin of
+    /// that bus when the board chooses it on a pin.
+    pub bus: Option<PeripheralBus>,
+    pub functions: Vec<PinFunction>,
+    pub span: Span,
+}
+
+/// The `as Spi SpiRole::Master` of a peripheral.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PeripheralBus {
+    pub interface: TypePath,
+    pub role: Option<Expr>,
+    pub span: Span,
+}
+
+/// `shared UARTS limit 2 { UARTE0 UARTE1 .p10 }`: the hardware that its members use at most
+/// `limit` of at a time, one when it states none (ADR 0071). A member is a peripheral or a
+/// function, by name, or a pin.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Shared {
+    pub name: Ident,
+    /// `limit N`: how many members may be in use at once.
+    pub limit: Option<(u32, Span)>,
+    pub members: Vec<SharedMember>,
+    pub span: Span,
+}
+
+/// `lines SpiRole::Master limit 1 { .sclk output  .miso input optional }`: for each role of a bus
+/// interface, the kind of each line and a few properties of a line (ADR 0064). The role is a
+/// variant of an enum; an interface with one role states none (`lines limit 2 { ... }`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Lines {
+    /// The variant after `lines`: `SpiRole::Master`.
+    pub role: Option<Expr>,
+    /// `limit N`: how many interfaces of this role may be on one bus.
+    pub limit: Option<(u32, Span)>,
+    pub rows: Vec<LineRow>,
+    pub span: Span,
+}
+
+/// One row of a `lines` table: `.tx output crosses .rx`, `.miso output required`,
+/// `.cs input single`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LineRow {
+    /// The pin of the interface that the row is about (`.sclk`).
+    pub pin: Path,
+    pub kind: PinKind,
+    /// `optional` or `required`, as on a pin row.
+    pub requirement: Option<(Requirement, Span)>,
+    /// `single`: a net carries this line of at most one interface of the role.
+    pub single: Option<Span>,
+    /// `crosses .rx`: the line is joined to this one of the other end, not to its own name.
+    pub crosses: Option<Path>,
+    pub span: Span,
+}
+
+/// A member of a `shared` resource: a name (a peripheral or a function of the part) or a pin
+/// (`.p10`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum SharedMember {
+    Name(Ident),
+    Pin(Path),
+}
+
+impl SharedMember {
+    pub fn span(&self) -> Span {
+        match self {
+            Self::Name(n) => n.span,
+            Self::Pin(p) => p.span,
+        }
+    }
 }
 
 /// `bridge .a ~> .b`: a two-terminal part that a `~>` chain passes through,
@@ -325,6 +455,9 @@ pub struct Constraint {
 pub enum CmpOp {
     /// `&=` narrow a field to the intersection with a set.
     Narrow,
+    /// `?=` give a field a default: its value if no `&=` statement states the field.
+    /// The checker resolves it, so the solver never sees this operator.
+    Default,
     /// `==` a relation that must hold in the worst case; a field with no limit yet
     /// takes the computed value.
     EqEq,
@@ -353,6 +486,13 @@ pub enum Expr {
     Number(Number, Span),
     Str(String, Span),
     Path(Path),
+    /// `AssemblyMode::Hand`: a variant of an enum (ADR 0054). `ty` is the enum's name as
+    /// written (`AssemblyMode`), `variant` the name after the last `::`.
+    Variant {
+        ty: TypePath,
+        variant: Ident,
+        span: Span,
+    },
     Neg(Box<Expr>, Span),
     Binary {
         op: BinOp,
@@ -383,6 +523,7 @@ impl Expr {
             | Self::Neg(_, s)
             | Self::Paren(_, s)
             | Self::Binary { span: s, .. }
+            | Self::Variant { span: s, .. }
             | Self::Range { span: s, .. }
             | Self::Tolerance { span: s, .. } => *s,
             Self::Path(p) => p.span,
