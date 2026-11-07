@@ -262,20 +262,26 @@ pub struct PeripheralFunction {
     pub span: Span,
 }
 
-/// `shared SERIAL0 { UARTE0 SPIM0 }`: hardware that at most one of its members uses at a time.
+/// `shared UARTS limit 2 { UARTE0 UARTE1 .p10 }`: hardware that at most `limit` of its members
+/// use at a time (one when the statement has no `limit`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SharedRes {
     pub name: String,
+    pub limit: u32,
+    /// The number after `limit`, when the statement wrote one.
+    pub limit_span: Option<Span>,
     pub members: Vec<SharedMember>,
     pub source: SourceId,
     pub span: Span,
     pub name_span: Span,
 }
 
-/// A member of a shared resource, as written: a peripheral's name.
+/// A member of a shared resource, as written: the name of a peripheral or of a function, or a
+/// pin (`pin` is set, and `name` is how it was written, `.p10`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SharedMember {
     pub name: String,
+    pub pin: Option<InstId>,
     pub span: Span,
 }
 

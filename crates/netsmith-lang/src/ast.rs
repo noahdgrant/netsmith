@@ -318,13 +318,33 @@ pub struct Peripheral {
     pub span: Span,
 }
 
-/// `shared SERIAL0 { UARTE0 SPIM0 TWIM0 }`: the hardware that its members use at most one of
-/// at a time (ADR 0062).
+/// `shared UARTS limit 2 { UARTE0 UARTE1 .p10 }`: the hardware that its members use at most
+/// `limit` of at a time, one when it states none (ADR 0062). A member is a peripheral or a
+/// function, by name, or a pin.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Shared {
     pub name: Ident,
-    pub members: Vec<Ident>,
+    /// `limit N`: how many members may be in use at once.
+    pub limit: Option<(u32, Span)>,
+    pub members: Vec<SharedMember>,
     pub span: Span,
+}
+
+/// A member of a `shared` resource: a name (a peripheral or a function of the part) or a pin
+/// (`.p10`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum SharedMember {
+    Name(Ident),
+    Pin(Path),
+}
+
+impl SharedMember {
+    pub fn span(&self) -> Span {
+        match self {
+            Self::Name(n) => n.span,
+            Self::Pin(p) => p.span,
+        }
+    }
 }
 
 /// `bridge .a ~> .b`: a two-terminal part that a `~>` chain passes through,

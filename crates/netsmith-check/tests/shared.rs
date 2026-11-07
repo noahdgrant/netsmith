@@ -329,7 +329,7 @@ fn a_member_that_is_not_a_peripheral_names_the_nearest() {
     let c = run_with(&part, "");
     only(
         &c,
-        "`SPIM9` in `shared SERIAL1` is not a peripheral of `Zmcu`; did you mean `SPIM0`? the peripherals are UARTE0, SPIM0, TWIM0, UARTE1, SPIM1, TWIM1, ...",
+        "`SPIM9` in `shared SERIAL1` is not a peripheral, a function or a pin of `Zmcu`; did you mean `SPIM0`? the peripherals are UARTE0, SPIM0, TWIM0, UARTE1, SPIM1, TWIM1, ...",
     );
     assert_eq!(line_of(&c, 0), "shared SERIAL1 { UARTE1 SPIM9 TWIM1 }");
 }
@@ -343,7 +343,7 @@ fn a_part_with_no_peripherals_says_so_to_a_member() {
     );
     only(
         &c,
-        "`UARTE0` in `shared S` is not a peripheral of `P`; `P` has no peripherals, so declare one with `peripheral NAME { FUNCTION ... }`",
+        "`UARTE0` in `shared S` is not a peripheral, a function or a pin of `P`; `P` has no peripherals, so declare one with `peripheral NAME { FUNCTION ... }`",
     );
 }
 

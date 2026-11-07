@@ -259,7 +259,7 @@ _Avoid_: Alternate function, mux, mode
 _Avoid_: Group, block, role, mode, mux, unit (a unit is the hardware a `shared` resource names, not a peripheral)
 
 **Shared resource**:
-`shared SERIAL0 { UARTE0 SPIM0 TWIM0 }` in a part: the hardware that its members use at most one of at a time. Using two members is an error that names the part, the resource, both uses and their lines; it is judged for each instance of the part, before the solve, from the functions the board chose (ADR 0062).
+`shared UARTS limit 2 { UARTE0 UARTE1 UARTE2 .p10 }` in a part: the hardware that at most `limit` of its members use at a time (one without `limit`; a limit is at least 1 and fewer than the members). A member is a peripheral, a function (in use when chosen on a pin) or a pin (in use when its function is chosen or the board connects it). Using more members than allowed is an error that names the part, the resource, every use and its line; it is judged for each instance of the part, before the solve, from the functions the board chose (ADR 0062).
 _Avoid_: Conflict set, exclusive set, group, resource (alone)
 
 **Logic level**:

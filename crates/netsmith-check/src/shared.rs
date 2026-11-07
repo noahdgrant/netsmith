@@ -19,7 +19,7 @@ use crate::checker::Checker;
 use crate::diag::SourceId;
 use crate::lower::{closest, list_of};
 use crate::model::{
-    InstId, InstKind, Model, Peripheral, PeripheralFunction, SharedMember, SharedRes,
+    InstId, InstKind, Instance, Model, Peripheral, PeripheralFunction, SharedMember, SharedRes,
 };
 
 /// How many names a message lists before it says `...`.
@@ -82,16 +82,29 @@ impl Checker<'_> {
             return;
         };
         let source = self.cur_source();
-        let members = s
-            .members
-            .iter()
-            .map(|m| SharedMember {
-                name: m.name.clone(),
-                span: m.span,
-            })
-            .collect();
+        let mut members = Vec::new();
+        for m in &s.members {
+            match m {
+                ast::SharedMember::Name(n) => members.push(SharedMember {
+                    name: n.name.clone(),
+                    pin: None,
+                    span: n.span,
+                }),
+                ast::SharedMember::Pin(path) => {
+                    if let Some(pin) = self.part_pin(path) {
+                        members.push(SharedMember {
+                            name: path.to_source(),
+                            pin: Some(pin),
+                            span: path.span,
+                        });
+                    }
+                }
+            }
+        }
         self.model.instances[part.0].rules.shares.push(SharedRes {
             name: s.name.name.clone(),
+            limit: s.limit.map_or(1, |(n, _)| n),
+            limit_span: s.limit.map(|(_, span)| span),
             members,
             source,
             span: s.span,
@@ -279,7 +292,8 @@ impl Checker<'_> {
             }
         }
 
-        // A shared resource is declared once, and its members are peripherals of the part.
+        // A shared resource is declared once, and its members are peripherals, functions or
+        // pins of the part.
         let names: Vec<String> = {
             let mut v: Vec<String> = Vec::new();
             for p in &rules.peripherals {
@@ -289,6 +303,17 @@ impl Checker<'_> {
             }
             v
         };
+        let mut known: Vec<String> = names.clone();
+        for f in row_order.iter().chain(
+            rules
+                .peripherals
+                .iter()
+                .flat_map(|p| p.functions.iter().map(|f| &f.name)),
+        ) {
+            if !known.contains(f) {
+                known.push(f.clone());
+            }
+        }
         let mut shared_seen: BTreeSet<&str> = BTreeSet::new();
         for s in &rules.shares {
             if !shared_seen.insert(&s.name) {
@@ -302,10 +327,35 @@ impl Checker<'_> {
                 ));
                 continue;
             }
-            let mut members: BTreeSet<&str> = BTreeSet::new();
+            if let Some(span) = s.limit_span
+                && s.limit as usize >= s.members.len()
+            {
+                found.push((
+                    s.source,
+                    span,
+                    format!(
+                        "`shared {} limit {}` allows every one of its {} members at once, so it states no limit at all; a limit is at least 1 and fewer than the number of members: lower it, or remove it for one at a time",
+                        s.name,
+                        s.limit,
+                        s.members.len()
+                    ),
+                ));
+            }
+            let mut written: BTreeSet<&str> = BTreeSet::new();
+            let mut pins: BTreeSet<InstId> = BTreeSet::new();
             for m in &s.members {
-                if !names.contains(&m.name) {
-                    let hint = closest(&m.name, &names)
+                if let Some(pin) = m.pin {
+                    if !pins.insert(pin) {
+                        found.push((
+                            s.source,
+                            m.span,
+                            format!("`{}` is listed twice in `shared {}`", m.name, s.name),
+                        ));
+                    }
+                    continue;
+                }
+                if !known.contains(&m.name) {
+                    let hint = closest(&m.name, &known)
                         .map(|n| format!("; did you mean `{n}`?"))
                         .unwrap_or_default();
                     let sep = if hint.is_empty() { "; " } else { " " };
@@ -320,15 +370,26 @@ impl Checker<'_> {
                         s.source,
                         m.span,
                         format!(
-                            "`{}` in `shared {}` is not a peripheral of `{ty}`{hint}{have}",
+                            "`{}` in `shared {}` is not a peripheral, a function or a pin of `{ty}`{hint}{have}",
                             m.name, s.name
                         ),
                     ));
-                } else if !members.insert(&m.name) {
+                } else if !written.insert(&m.name) {
                     found.push((
                         s.source,
                         m.span,
                         format!("`{}` is listed twice in `shared {}`", m.name, s.name),
+                    ));
+                } else if let Some(&first) = owner.get(m.name.as_str())
+                    && s.members.iter().any(|o| o.pin.is_none() && o.name == first)
+                {
+                    found.push((
+                        s.source,
+                        m.span,
+                        format!(
+                            "`{}` is a function of `peripheral {first}`, which is also a member of `shared {}`; list one of them",
+                            m.name, s.name
+                        ),
                     ));
                 }
             }
@@ -349,11 +410,117 @@ fn listed(names: &[String]) -> String {
     }
 }
 
-/// One use of a peripheral: a pin of the part whose chosen function is one of its functions.
+/// What a member of a shared resource is.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Category {
+    Peripheral,
+    Function,
+    Pin,
+}
+
+/// One use of a member: the pin, the function the board chose on it (a pin member may be in
+/// use by being connected only), and the statement that made it a use.
 struct Use {
     path: String,
-    function: String,
+    function: Option<String>,
+    /// For a pin that is in use by its connection only: another pin on its net.
+    joined_to: Option<String>,
     at: Option<(SourceId, Span)>,
+}
+
+/// A member that is in use, with its uses.
+struct Active {
+    member: SharedMember,
+    category: Category,
+    uses: Vec<Use>,
+}
+
+fn category(inst: &crate::model::Instance, m: &SharedMember) -> Category {
+    if m.pin.is_some() {
+        Category::Pin
+    } else if inst.rules.peripherals.iter().any(|p| p.name == m.name) {
+        Category::Peripheral
+    } else {
+        Category::Function
+    }
+}
+
+fn use_of(model: &Model, pin: InstId, path: &str, function: &str) -> Use {
+    Use {
+        path: path.to_string(),
+        function: Some(function.to_string()),
+        joined_to: None,
+        at: model.function_stated_at(pin),
+    }
+}
+
+/// The members of a resource that are in use, in the path order of their first use.
+fn active(
+    model: &Model,
+    inst: &Instance,
+    chosen: &[(InstId, String, String)],
+    s: &SharedRes,
+) -> Vec<Active> {
+    let mut found: Vec<Active> = Vec::new();
+    for m in &s.members {
+        let category = category(inst, m);
+        let uses: Vec<Use> = match (category, m.pin) {
+            (Category::Pin, Some(pin)) => {
+                let function = model.function_of(pin);
+                let joined_to = if function.is_none() && model.is_connected(pin) {
+                    let mut others: Vec<String> = model
+                        .others_on_net(pin)
+                        .into_iter()
+                        .map(|o| model.path_of(o))
+                        .collect();
+                    others.sort();
+                    Some(others.first().cloned().unwrap_or_else(|| {
+                        model
+                            .net_of(pin)
+                            .map(|n| n.name.clone())
+                            .unwrap_or_default()
+                    }))
+                } else {
+                    None
+                };
+                if function.is_none() && joined_to.is_none() {
+                    Vec::new()
+                } else {
+                    vec![Use {
+                        path: model.path_of(pin),
+                        at: model.function_stated_at(pin),
+                        function,
+                        joined_to,
+                    }]
+                }
+            }
+            (Category::Peripheral, _) => {
+                let Some(p) = inst.rules.peripherals.iter().find(|p| p.name == m.name) else {
+                    continue;
+                };
+                chosen
+                    .iter()
+                    .filter(|(_, _, f)| p.functions.iter().any(|g| g.name == *f))
+                    .map(|(pin, path, f)| use_of(model, *pin, path, f))
+                    .collect()
+            }
+            _ => chosen
+                .iter()
+                .filter(|(_, _, f)| *f == m.name)
+                .map(|(pin, path, f)| use_of(model, *pin, path, f))
+                .collect(),
+        };
+        if uses.is_empty() || found.iter().any(|a| a.member.name == m.name) {
+            continue;
+        }
+        found.push(Active {
+            member: m.clone(),
+            category,
+            uses,
+        });
+    }
+    found.sort_by(|a, b| a.uses[0].path.cmp(&b.uses[0].path));
+    found
 }
 
 /// The shared resources of a part that have more members in use than they allow, as the
@@ -367,7 +534,8 @@ pub(crate) fn overuse(model: &Model, part: InstId) -> Vec<((SourceId, Span), Str
     let path = model.path_of(part);
     let ty = &inst.type_name;
 
-    // The pins of the part, in path order: every pin that any of its tables has a row for.
+    // The pins of the part, in path order: every pin that any of its tables has a row for, with
+    // the function the board chose on it.
     let mut pins: Vec<InstId> = inst
         .tables
         .iter()
@@ -375,45 +543,56 @@ pub(crate) fn overuse(model: &Model, part: InstId) -> Vec<((SourceId, Span), Str
         .collect();
     pins.sort_by_key(|&p| model.path_of(p));
     pins.dedup();
-
-    // The uses of each peripheral.
-    let mut uses: BTreeMap<&str, Vec<Use>> = BTreeMap::new();
-    for pin in pins {
-        let Some(function) = model.function_of(pin) else {
-            continue;
-        };
-        let Some((peripheral, _)) = model.peripheral_of(part, &function) else {
-            continue;
-        };
-        uses.entry(&peripheral.name).or_default().push(Use {
-            path: model.path_of(pin),
-            function,
-            at: model.function_stated_at(pin),
-        });
-    }
+    let chosen: Vec<(InstId, String, String)> = pins
+        .iter()
+        .filter_map(|&pin| Some((pin, model.path_of(pin), model.function_of(pin)?)))
+        .collect();
+    let active = |s: &'_ SharedRes| active(model, inst, &chosen, s);
 
     let place = |u: &Use| -> String {
         u.at.and_then(|(source, span)| model.place_of_statement(source, span))
             .map(|p| format!(" ({p})"))
             .unwrap_or_default()
     };
-    let member_text = |name: &str, used: &[Use]| -> String {
-        let each: Vec<String> = used
-            .iter()
-            .map(|u| format!("on `{}` as {}{}", u.path, u.function, place(u)))
-            .collect();
-        format!("{name} {}", list_of(&each))
+    let one_use = |u: &Use, member: &SharedMember, category: Category| -> String {
+        match category {
+            Category::Peripheral => format!(
+                "on `{}` as {}{}",
+                u.path,
+                u.function.as_deref().unwrap_or_default(),
+                place(u)
+            ),
+            Category::Function => format!("on `{}`{}", u.path, place(u)),
+            Category::Pin => match (&u.function, &u.joined_to) {
+                (Some(f), _) => format!("`{}` as {f}{}", u.path, place(u)),
+                (None, Some(other)) => format!("`{}` connected to `{other}`", u.path),
+                (None, None) => format!("`{}`", member.name),
+            },
+        }
     };
-    // The members of a resource that are in use, in the path order of their first use.
-    let in_use = |s: &SharedRes| -> Vec<(String, &Vec<Use>)> {
-        let mut found: Vec<(String, &Vec<Use>)> = s
-            .members
+    let member_text = |a: &Active| -> String {
+        let each: Vec<String> = a
+            .uses
             .iter()
-            .filter_map(|m| uses.get(m.name.as_str()).map(|u| (m.name.clone(), u)))
+            .map(|u| one_use(u, &a.member, a.category))
             .collect();
-        found.sort_by(|a, b| a.1[0].path.cmp(&b.1[0].path));
-        found.dedup_by(|a, b| a.0 == b.0);
-        found
+        match a.category {
+            Category::Pin => list_of(&each),
+            _ => format!("{} {}", a.member.name, list_of(&each)),
+        }
+    };
+    let shown = |a: &Active| -> String {
+        match a.category {
+            Category::Pin => format!("`{}`", a.uses[0].path),
+            _ => a.member.name.clone(),
+        }
+    };
+    let kind_of_res = |s: &SharedRes| -> Option<Category> {
+        let first = category(inst, s.members.first()?);
+        s.members
+            .iter()
+            .all(|m| category(inst, m) == first)
+            .then_some(first)
     };
 
     let mut shares: Vec<&SharedRes> = inst.rules.shares.iter().collect();
@@ -422,52 +601,88 @@ pub(crate) fn overuse(model: &Model, part: InstId) -> Vec<((SourceId, Span), Str
 
     let mut out = Vec::new();
     for s in &shares {
-        let used = in_use(s);
-        if used.len() < 2 {
+        let used = active(s);
+        let limit = s.limit as usize;
+        if used.len() <= limit {
             continue;
         }
-        let Some(at) = used[1].1[0].at else {
-            continue;
-        };
-        let names: Vec<String> = used.iter().map(|(n, _)| n.clone()).collect();
-        let members: Vec<String> = used.iter().map(|(n, u)| member_text(n, u)).collect();
-        // The other resources: which have a member in use, and which are free.
-        let others: Vec<String> = shares
-            .iter()
-            .filter(|o| o.name != s.name)
-            .map(|o| {
-                let by: Vec<String> = in_use(o).into_iter().map(|(n, _)| n).collect();
-                if by.is_empty() {
-                    format!("`{}` has nothing in use", o.name)
-                } else {
-                    format!("`{}` by {}", o.name, list_of(&by))
-                }
-            })
-            .collect();
-        let all_busy = shares
-            .iter()
-            .filter(|o| o.name != s.name)
-            .all(|o| !in_use(o).is_empty());
-        let rest = match (others.is_empty(), all_busy) {
-            (true, _) => String::new(),
-            (false, true) => format!(
-                "; the other shared resources of `{ty}` are in use as well, {}, so none is free",
-                list_of(&others)
-            ),
-            (false, false) => format!(
-                "; the other shared resources of `{ty}`: {}",
-                list_of(&others)
-            ),
-        };
-        out.push((
-            at,
+        let over = &used[limit];
+        let at = over.uses[0].at.unwrap_or_else(|| inst.at());
+        let members: Vec<String> = used.iter().map(member_text).collect();
+        let message = if limit > 1 {
+            // More members in use than a limit allows.
+            let word = match kind_of_res(s) {
+                Some(Category::Peripheral) => "peripherals",
+                Some(Category::Function) => "functions",
+                Some(Category::Pin) => "pins",
+                None => "members",
+            };
+            let listed_members: Vec<String> = s
+                .members
+                .iter()
+                .map(|m| match m.pin {
+                    Some(_) => format!("`{}`", m.name),
+                    None => m.name.clone(),
+                })
+                .collect();
+            format!(
+                "`{path}` (`{ty}`) uses {} of the {word} of `{}`, which allows {} at a time: {}; `{}` lists {}",
+                used.len(),
+                s.name,
+                s.limit,
+                members.join(", "),
+                s.name,
+                list_of(&listed_members)
+            )
+        } else if used.iter().all(|a| a.category == Category::Pin) {
+            // Pins that cannot both be used.
+            let names: Vec<String> = used.iter().map(shown).collect();
+            let both = if used.len() == 2 { "both" } else { "all" };
+            format!(
+                "{} of `{ty}` are {both} in use, but they share `{}`, which allows 1 at a time: {}",
+                list_of(&names),
+                s.name,
+                list_of(&members)
+            )
+        } else {
+            // Members that run one at a time: say whether another resource like this one is free.
+            let names: Vec<String> = used.iter().map(shown).collect();
+            let like = kind_of_res(s);
+            let others: Vec<String> = shares
+                .iter()
+                .filter(|o| o.name != s.name && o.limit == s.limit && kind_of_res(o) == like)
+                .map(|o| {
+                    let by: Vec<String> = active(o).iter().map(shown).collect();
+                    if by.is_empty() {
+                        format!("`{}` has nothing in use", o.name)
+                    } else {
+                        format!("`{}` by {}", o.name, list_of(&by))
+                    }
+                })
+                .collect();
+            let all_busy = shares
+                .iter()
+                .filter(|o| o.name != s.name && o.limit == s.limit && kind_of_res(o) == like)
+                .all(|o| !active(o).is_empty());
+            let rest = match (others.is_empty(), all_busy) {
+                (true, _) => String::new(),
+                (false, true) => format!(
+                    "; the other shared resources of `{ty}` are in use as well, {}, so none is free",
+                    list_of(&others)
+                ),
+                (false, false) => format!(
+                    "; the other shared resources of `{ty}`: {}",
+                    list_of(&others)
+                ),
+            };
             format!(
                 "`{path}` (`{ty}`) uses {}, which share `{}` and run one at a time: {}{rest}",
                 list_of(&names),
                 s.name,
                 members.join(", ")
-            ),
-        ));
+            )
+        };
+        out.push((at, message));
     }
     out
 }

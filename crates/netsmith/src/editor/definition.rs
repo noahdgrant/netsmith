@@ -220,8 +220,15 @@ fn visit<'a>(
                 path(&row.pin, inside);
             }
         }
-        // They name peripherals and functions, which are words and not paths.
-        Item::Peripheral(_) | Item::Shared(_) => {}
+        // A peripheral names functions, which are words and not paths.
+        Item::Peripheral(_) => {}
+        Item::Shared(shared) => {
+            for member in &shared.members {
+                if let netsmith_lang::ast::SharedMember::Pin(p) = member {
+                    path(p, inside);
+                }
+            }
+        }
         Item::Case(case) => {
             for inner in &case.items {
                 visit(inner, inside, out);

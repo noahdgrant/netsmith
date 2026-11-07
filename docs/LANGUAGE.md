@@ -1994,7 +1994,7 @@ error: `u` (`Zmcu`) uses UARTE0 and TWIM0, which share `SERIAL0` and run one at 
 
 A function counts as soon as it is chosen, also on a pin that nothing is connected to: the statement is deliberate. A function that no peripheral lists (`GPIO`) is never a use of one. The rule needs no package and no catalog row; it is judged for every `Zmcu` the board has, with its full path (`hub.mcu` for a part in a module), before the solver runs.
 
-A part's author is told about a statement that is wrong, at that statement. A member that is not a peripheral of the part names the nearest peripheral:
+A part's author is told about a statement that is wrong, at that statement. A member that is not a peripheral, a function or a pin of the part names the nearest name:
 
 ```nsm fails
 part Zmcu {
@@ -2008,7 +2008,7 @@ part Zmcu {
 ```
 
 ```text
-error: `TWIM9` in `shared SERIAL0` is not a peripheral of `Zmcu`; did you mean `TWIM0`? the peripherals are UARTE0 and TWIM0
+error: `TWIM9` in `shared SERIAL0` is not a peripheral, a function or a pin of `Zmcu`; did you mean `TWIM0`? the peripherals are UARTE0 and TWIM0
   --> main.nsm:4:29
   |
 4 |     shared SERIAL0 { UARTE0 TWIM9 }
@@ -2184,6 +2184,126 @@ error: `.p00` lists `UARTE0_TX`, which `peripheral UARTE0` already offers on eve
   |
 4 |         .p00 bidirectional "P0.00" "1" fn APP_GPIO UARTE0_TX
   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### Counts, functions and pins that share
+
+`shared NAME limit N { MEMBER ... }` allows at most N of its members at once; without `limit` it allows one. A limit is a whole number of at least 1 and fewer than the number of members. A member is a peripheral, a function or a pin:
+
+- a **peripheral** is in use as before;
+- a **function** is in use when it is chosen on a pin (`shared CLOCK { TWIM0_SCL SPIM0_SCK }`: two functions of two peripherals that cannot both be used);
+- a **pin**, written with its dot (`.p10`), is in use when the board chooses its function or connects it, which means that its net has a pin that is not the part's own, or the board names the net. "If you use pin X you cannot use pin Y" is about the copper.
+
+A name may be a member of several shared resources, a name twice in one is an error, and so is a function that is a member besides its own peripheral. A function that two pins both chose is already an error of its own.
+
+```nsm module=src::zmcu3
+/// Zmcu3, an invented microcontroller: three UARTs of which only two run at once, and two pins
+/// that share an analogue reference.
+part Zmcu3 {
+    peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }
+    peripheral UARTE1 on APP_GPIO { UARTE1_TX:output UARTE1_RX:input }
+    peripheral UARTE2 on APP_GPIO { UARTE2_TX:output UARTE2_RX:input }
+
+    shared UARTS limit 2 { UARTE0 UARTE1 UARTE2 }
+    shared REFERENCE { .p10 .p11 }
+
+    pins {
+        .p00 bidirectional "P0.00" "1" fn APP_GPIO
+        .p01 bidirectional "P0.01" "2" fn APP_GPIO
+        .p02 bidirectional "P0.02" "3" fn APP_GPIO
+        .p10 bidirectional "P0.10" "4" fn APP_GPIO
+        .p11 bidirectional "P0.11" "5" fn APP_GPIO
+    }
+}
+```
+
+Two UARTs and one of the reference pins is fine:
+
+```nsm
+import src::zmcu3::Zmcu3
+import std::parts::connector::Header1x4
+
+board TwoUarts {
+    .u: Zmcu3
+    .j: Header1x4
+    .u.p00 ~ .j.p1
+    .u.p01 ~ .j.p2
+    .u.p10 ~ .j.p3
+    .u.p00.function &= "UARTE0_TX"
+    .u.p01.function &= "UARTE1_TX"
+    .u.p10.function &= "APP_GPIO"
+}
+```
+
+A third UART is more than the limit. The message counts the members in use, names each with its uses, and lists what the resource has; it points at the first use of the member that goes over:
+
+```nsm fails
+import src::zmcu3::Zmcu3
+import std::parts::connector::Header1x4
+
+board ThreeUarts {
+    .u: Zmcu3
+    .j: Header1x4
+    .u.p00 ~ .j.p1
+    .u.p01 ~ .j.p2
+    .u.p02 ~ .j.p3
+    .u.p00.function &= "UARTE0_TX"
+    .u.p01.function &= "UARTE1_TX"
+    .u.p02.function &= "UARTE2_TX"
+}
+```
+
+```text
+error: `u` (`Zmcu3`) uses 3 of the peripherals of `UARTS`, which allows 2 at a time: UARTE0 on `u.p00` as UARTE0_TX (main.nsm:10), UARTE1 on `u.p01` as UARTE1_TX (main.nsm:11), UARTE2 on `u.p02` as UARTE2_TX (main.nsm:12); `UARTS` lists UARTE0, UARTE1 and UARTE2
+   --> main.nsm:12:5
+   |
+12 |     .u.p02.function &= "UARTE2_TX"
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+Two pins that cannot both be used, each named with how it is in use:
+
+```nsm fails
+import src::zmcu3::Zmcu3
+import std::parts::connector::Header1x4
+
+board TwoReferences {
+    .u: Zmcu3
+    .j: Header1x4
+    .u.p10 ~ .j.p1
+    .u.p11 ~ .j.p2
+    .u.p10.function &= "APP_GPIO"
+    .u.p11.function &= "UARTE0_TX"
+}
+```
+
+```text
+error: `u.p10` and `u.p11` of `Zmcu3` are both in use, but they share `REFERENCE`, which allows 1 at a time: `u.p10` as APP_GPIO (main.nsm:9) and `u.p11` as UARTE0_TX (main.nsm:10)
+   --> main.nsm:10:5
+   |
+10 |     .u.p11.function &= "UARTE0_TX"
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A limit of 0, a fraction or a number with a unit is a parse error; a limit that is not fewer than the members is refused where it is written:
+
+```nsm fails
+part Zmcu3 {
+    peripheral UARTE0 on APP_GPIO { UARTE0_TX:output }
+    peripheral UARTE1 on APP_GPIO { UARTE1_TX:output }
+    shared UARTS limit 2 { UARTE0 UARTE1 }
+    pins {
+        .p00 bidirectional "P0.00" "1" fn APP_GPIO
+    }
+}
+```
+
+```text
+error: `shared UARTS limit 2` allows every one of its 2 members at once, so it states no limit at all; a limit is at least 1 and fewer than the number of members: lower it, or remove it for one at a time
+  --> main.nsm:4:24
+  |
+4 |     shared UARTS limit 2 { UARTE0 UARTE1 }
+  |                        ^
 ```
 
 ### Outputs

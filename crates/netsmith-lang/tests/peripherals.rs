@@ -66,7 +66,14 @@ fn a_shared_resource_lists_its_members() {
         panic!()
     };
     assert_eq!(s.name.name, "SERIAL0");
-    let members: Vec<&str> = s.members.iter().map(|m| m.name.as_str()).collect();
+    let members: Vec<String> = s
+        .members
+        .iter()
+        .map(|m| match m {
+            SharedMember::Name(n) => n.name.clone(),
+            SharedMember::Pin(p) => p.to_source(),
+        })
+        .collect();
     assert_eq!(members, ["UARTE0", "SPIM0"]);
 }
 
@@ -137,7 +144,7 @@ fn a_peripheral_needs_functions_and_a_shared_resource_members() {
     let (msg, ..) = err(&in_part("shared SERIAL0 { }"));
     assert_eq!(
         msg,
-        "`shared SERIAL0` has no members; list the peripherals that share it in braces"
+        "`shared SERIAL0` has no members; list the peripherals, functions or pins that share it in braces"
     );
 }
 
@@ -150,7 +157,7 @@ fn braces_are_needed_and_must_close() {
     );
     let (msg, ..) = err(&in_part("shared SERIAL0 UARTE0"));
     assert!(
-        msg.starts_with("expected `{` after the name of the shared resource"),
+        msg.starts_with("expected `{` or `limit` after the name of the shared resource"),
         "{msg}"
     );
     let (msg, line, _) = err("part P {\n    peripheral A { A_TX\n");
@@ -229,4 +236,82 @@ fn on_needs_a_function_and_braces() {
     );
     let (msg, ..) = err(&in_part("peripheral UARTE0 on \"APP_GPIO\" { UARTE0_TX }"));
     assert!(msg.starts_with("expected a function after `on`"), "{msg}");
+}
+
+// ---- `limit N`, and function and pin members (stage 3) ----
+
+#[test]
+fn a_shared_resource_may_state_a_limit_and_list_functions_and_pins() {
+    let file = parse(&in_part(
+        "shared UARTS limit 2 { UARTE0 UARTE1 UARTE2_TX .p10 .vdd.pos }",
+    ))
+    .unwrap();
+    let Item::Shared(s) = &file.definitions[0].items[0] else {
+        panic!()
+    };
+    assert_eq!(s.limit.map(|(n, _)| n), Some(2));
+    let shown: Vec<String> = s
+        .members
+        .iter()
+        .map(|m| match m {
+            SharedMember::Name(n) => format!("name {}", n.name),
+            SharedMember::Pin(p) => format!("pin {}", p.to_source()),
+        })
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            "name UARTE0",
+            "name UARTE1",
+            "name UARTE2_TX",
+            "pin .p10",
+            "pin .vdd.pos"
+        ]
+    );
+    // No limit is none.
+    let file = parse(&in_part("shared S { A B }")).unwrap();
+    let Item::Shared(s) = &file.definitions[0].items[0] else {
+        panic!()
+    };
+    assert!(s.limit.is_none());
+}
+
+#[test]
+fn the_limit_and_the_members_print_back() {
+    let src = "part P {\n    shared UARTS limit 2 { UARTE0 UARTE1 .p10 }\n    shared REFERENCE { .p10 .p11 }\n}\n";
+    let printed = parse(src).unwrap().to_source();
+    assert_eq!(printed, src);
+    assert_eq!(parse(&printed).unwrap().to_source(), printed);
+}
+
+#[test]
+fn a_limit_is_a_whole_number_of_at_least_one() {
+    for (text, shown) in [("0", "0"), ("1.5", "1.5"), ("-2", "-2")] {
+        let (msg, ..) = err(&in_part(&format!("shared S limit {text} {{ A B }}")));
+        assert!(
+            msg.starts_with("a limit is a whole number of at least 1, such as `limit 2`")
+                || msg.starts_with("expected a whole number after `limit`"),
+            "{shown}: {msg}"
+        );
+    }
+    let (msg, ..) = err(&in_part("shared S limit 2V { A B C }"));
+    assert_eq!(
+        msg,
+        "a limit is a count, a whole number with no unit, such as `limit 2`; `2V` has one"
+    );
+    let (msg, ..) = err(&in_part("shared S limit { A B }"));
+    assert!(
+        msg.starts_with("expected a whole number after `limit`, such as `limit 2`"),
+        "{msg}"
+    );
+    let (msg, ..) = err(&in_part("shared S limit 2 A B"));
+    assert!(msg.starts_with("expected `{` after the limit"), "{msg}");
+}
+
+#[test]
+fn limit_is_a_plain_name_elsewhere() {
+    // A shared resource or a peripheral may be called `limit`, and a function too.
+    parse(&in_part("shared limit { A B }")).unwrap();
+    parse(&in_part("peripheral limit { limit_tx }")).unwrap();
+    parse(&in_part("shared S limit 2 { limit A B }")).unwrap();
 }
