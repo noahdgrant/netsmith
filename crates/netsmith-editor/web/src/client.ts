@@ -176,7 +176,7 @@ export const api = {
   /** The git state of the project: refs, recent commits, whether the work tree has changes (ADR 0059). Needs no analysis. */
   git: () => getJson<GitInfo>('/api/git'),
   /** What changed in the circuit between `ref` and the files on disk. A ref that does not analyse is a 200 with `error`. */
-  compare: (ref: string, board?: string) => getJson<Compare>(`/api/compare?${q(board ? { ref, board } : { ref })}`),
+  compare: (ref: string, board?: string, against?: string) => getJson<Compare>(`/api/compare?${q({ ref, ...(board ? { board } : {}), ...(against ? { against } : {}) })}`),
   /** A file of the project as it was at `ref`, read-only. */
   gitFile: (ref: string, path: string) => getJson<FileContent>(`/api/git/file?${q({ ref, path })}`),
 };

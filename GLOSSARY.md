@@ -367,7 +367,7 @@ Wire or dot in the editor's schematic that serves nothing: an end that touches n
 _Avoid_: Dangling wire, spur, stub (a stub is the short wire straight out of a pin)
 
 **Ref comparison**:
-What the editor says changed in the circuit between a git ref (the base) and the files on disk (the head): the parts, nets, rails, ports, bill of materials and problems that differ, each with its source line on both sides (ADR 0059). A part is the same on both sides by its path in the board, a net by its name or its pins, a rail by its net; a part that only has another designator is renumbered, not changed. It reads the ref with `git archive` and never touches the work tree. Not the _Netlist comparison_ (two designs that share no names) and not a text diff.
+What the editor says changed in the circuit between a git ref (the base) and the files on disk (the head), or between two refs (the head is then the second ref, which is read as the first is and leaves the files on disk unread): the parts, nets, rails, ports, bill of materials and problems that differ, and what changed in the systems and on the PCB (where a part is in the layout file, the outline, the layers), each with its source line on both sides (ADR 0059). A part is the same on both sides by its path in the board, a net by its name or its pins, a rail by its net; a part that only has another designator is renumbered, not changed. It reads the ref with `git archive` and never touches the work tree. Not the _Netlist comparison_ (two designs that share no names) and not a text diff.
 _Avoid_: Diff (a diff compares lines), git diff, branch diff
 
 **Checkpoint**:

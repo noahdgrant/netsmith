@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use super::{Budget, Location, Problem, Range};
+use super::{Budget, Location, PcbBox, PcbSide, Problem, Range};
 
 /// A commit, as `git log` has it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -206,6 +206,15 @@ pub struct ComparePartChange {
     pub base_path: Option<String>,
     pub designator_base: String,
     pub designator_head: String,
+    /// What the part is on the head side: `Capacitor`, `Led`, `Header1x2` (the library part it
+    /// is made from). A changed row can say what it is.
+    pub kind: String,
+    /// What it was at the ref, when that is another kind: the part is a different library part,
+    /// not the same one with another value (and `fields` has a `kind` entry). Absent when the
+    /// kind is the same.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub base_kind: Option<String>,
     /// In a fixed order: `path`, `kind`, `value`, `package`, `lcsc`, `mpn`, `assembly`,
     /// `designator`. Never empty; a part in `renumbered` has only `designator`.
     pub fields: Vec<CompareField>,
@@ -536,6 +545,213 @@ pub struct CompareBoard {
     #[ts(optional)]
     pub bom_error: Option<String>,
     pub problems: ProblemsDiff,
+    /// What changed on the PCB: where the parts are, the outline, the layers, the keepouts and
+    /// cutouts. Absent when the board has no PCB on either side (it has no process) or
+    /// `pcb_error` says it cannot be compared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pcb: Option<PcbDiff>,
+    /// Why the PCB is not compared: the board is placed on one side only, or cannot be placed on
+    /// one of them (a footprint is missing), and a comparison of the other side alone would say
+    /// nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pcb_error: Option<String>,
+}
+
+/// A part's place on the PCB: millimetres from the outline's top left corner, as the layout file
+/// has them (`PartPlacement`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ComparePcbPlace {
+    pub x: f64,
+    pub y: f64,
+    /// Degrees, counterclockwise on screen.
+    pub rotation: f64,
+    pub side: PcbSide,
+    pub locked: bool,
+    /// `derived` when the layout file has no entry for the part (the placer chose), else who
+    /// wrote the entry: `hand`, `auto` or `regen` (`PcbPart.placement`).
+    pub placement: String,
+}
+
+/// A part that is on both sides and is somewhere else, turned, on the other face or locked.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ComparePcbPartChange {
+    /// Its path on the head side.
+    pub path: String,
+    /// Its path at the ref, when the part moved in the source.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub base_path: Option<String>,
+    pub designator_base: String,
+    pub designator_head: String,
+    pub base: ComparePcbPlace,
+    pub head: ComparePcbPlace,
+    /// In a fixed order, only what differs: `position` (`12.5, 3 mm`), `rotation`, `side`,
+    /// `locked`.
+    pub fields: Vec<CompareField>,
+    /// How far the origin moved, in millimetres (0 when it did not).
+    pub distance_mm: f64,
+}
+
+/// The board's size, in millimetres.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+pub struct CompareSize {
+    pub width: f64,
+    pub height: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+pub struct OutlineChange {
+    pub base: CompareSize,
+    pub head: CompareSize,
+}
+
+/// The copper layers, top first, on each side.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct LayersChange {
+    pub base: Vec<String>,
+    pub head: Vec<String>,
+}
+
+/// A keepout or a cutout that is on one side only, or whose area changed. Areas are in the
+/// frame of the outline's top left corner, as the parts are.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ComparePcbArea {
+    pub name: String,
+    /// `added`, `removed` or `changed`.
+    pub status: BoardStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub base: Option<PcbBox>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub head: Option<PcbBox>,
+}
+
+/// What differs on the PCB of a board between the two sides (the vocabulary of the PCB view:
+/// `PcbPart`, `PcbKeepout`, `PcbCutout`, the outline and the layers of `PcbScene`). A part that
+/// the placer chose on both sides (`derived`) is not listed: it moves with every part added,
+/// and that is not something the design said.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PcbDiff {
+    /// The layout file of the board, as the project names it (`src/main.pcb.toml`), which the
+    /// page can open at both refs.
+    pub layout_file: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub outline: Option<OutlineChange>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub layers: Option<LayersChange>,
+    pub moved: Vec<ComparePcbPartChange>,
+    pub keepouts: Vec<ComparePcbArea>,
+    pub cutouts: Vec<ComparePcbArea>,
+    /// Parts on both sides that are where they were.
+    pub unchanged: u32,
+}
+
+/// A port of a board of a system (`SystemNode.ports`): its voltage and current as the System
+/// view prints them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct CompareSystemPort {
+    /// The member of the system: `power`.
+    pub board: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub voltage: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub current: Option<String>,
+}
+
+/// A port on both sides whose voltage or current differs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct CompareSystemPortChange {
+    pub board: String,
+    pub name: String,
+    /// `voltage`, `current`, in that order, only what differs; an absent side had none.
+    pub fields: Vec<CompareField>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct SystemPortsDiff {
+    pub added: Vec<CompareSystemPort>,
+    pub removed: Vec<CompareSystemPort>,
+    pub changed: Vec<CompareSystemPortChange>,
+}
+
+/// Texts that are on one side only: the joins (`power.output ~ led.input`) and the ground groups.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct NamesDiff {
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
+}
+
+/// Two connectors a system mates, by the paths of the two ends.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct CompareMate {
+    pub a: String,
+    pub b: String,
+    /// The ports it joins.
+    pub ports: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub at: Option<Location>,
+}
+
+/// A mate on both sides whose contacts or ports differ.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct CompareMateChange {
+    pub a: String,
+    pub b: String,
+    /// One per contact that differs, `contact 3`: what each side had behind it (`ground`,
+    /// `power on 3V3`, `signal on SDA`, `open`), then the ports that joined and left as `ports`.
+    pub fields: Vec<CompareField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub at: Option<Location>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct MatesDiff {
+    pub added: Vec<CompareMate>,
+    pub removed: Vec<CompareMate>,
+    pub changed: Vec<CompareMateChange>,
+}
+
+/// One system of the project on either side, by its name (the System view's).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct CompareSystem {
+    pub name: String,
+    pub status: BoardStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub base_file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub head_file: Option<String>,
+    pub summary: String,
+    /// The boards it holds, by their member name (`led`); the type is the board's definition.
+    pub boards: InstancesDiff,
+    pub ports: SystemPortsDiff,
+    pub joins: NamesDiff,
+    pub mates: MatesDiff,
+    pub ground_groups: NamesDiff,
+    /// The rails of the system's power tree that no board's own comparison already lists: what a
+    /// join gives a rail (its capacity, so its budget) differs from one side to the other. A
+    /// rail is `led:3V3` (the member, the net).
+    pub rails: RailsDiff,
 }
 
 /// `GET /api/compare?ref=<rev>&board=<name>`: what changed in the circuit between `ref` and
@@ -550,6 +766,12 @@ pub struct Compare {
     /// The ref as asked.
     #[serde(rename = "ref")]
     pub rev: String,
+    /// The second ref, when the comparison is of two refs (`?against=`): then `head.commit` is
+    /// the commit it resolved to, `head.dirty` is false and the files on disk are not read.
+    /// Absent when the ref is compared with the files on disk.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub against: Option<String>,
     /// What it resolved to.
     pub base: GitCommit,
     pub head: CompareHead,
@@ -572,6 +794,8 @@ pub struct Compare {
     pub source: SourceDiff,
     /// By name; every board of either side, or the one asked for.
     pub boards: Vec<CompareBoard>,
+    /// The systems of either side, by name; empty when a board is asked for.
+    pub systems: Vec<CompareSystem>,
     /// The problems that name no board (a mistake in a module, a file that did not read).
     pub problems: ProblemsDiff,
 }

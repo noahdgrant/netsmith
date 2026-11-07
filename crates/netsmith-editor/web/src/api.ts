@@ -1002,6 +1002,17 @@ path: string,
  */
 basePath?: string, designatorBase: string, designatorHead: string, 
 /**
+ * What the part is on the head side: `Capacitor`, `Led`, `Header1x2` (the library part it
+ * is made from). A changed row can say what it is.
+ */
+kind: string, 
+/**
+ * What it was at the ref, when that is another kind: the part is a different library part,
+ * not the same one with another value (and `fields` has a `kind` entry). Absent when the
+ * kind is the same.
+ */
+baseKind?: string, 
+/**
  * In a fixed order: `path`, `kind`, `value`, `package`, `lcsc`, `mpn`, `assembly`,
  * `designator`. Never empty; a part in `renumbered` has only `designator`.
  */
@@ -1143,6 +1154,102 @@ new: Array<Problem>,
  */
 resolved: Array<Problem>, unchanged: number, };
 
+export type ComparePcbPlace = { x: number, y: number, 
+/**
+ * Degrees, counterclockwise on screen.
+ */
+rotation: number, side: PcbSide, locked: boolean, 
+/**
+ * `derived` when the layout file has no entry for the part (the placer chose), else who
+ * wrote the entry: `hand`, `auto` or `regen` (`PcbPart.placement`).
+ */
+placement: string, };
+
+export type ComparePcbPartChange = { 
+/**
+ * Its path on the head side.
+ */
+path: string, 
+/**
+ * Its path at the ref, when the part moved in the source.
+ */
+basePath?: string, designatorBase: string, designatorHead: string, base: ComparePcbPlace, head: ComparePcbPlace, 
+/**
+ * In a fixed order, only what differs: `position` (`12.5, 3 mm`), `rotation`, `side`,
+ * `locked`.
+ */
+fields: Array<CompareField>, 
+/**
+ * How far the origin moved, in millimetres (0 when it did not).
+ */
+distanceMm: number, };
+
+export type CompareSize = { width: number, height: number, };
+
+export type OutlineChange = { base: CompareSize, head: CompareSize, };
+
+export type LayersChange = { base: Array<string>, head: Array<string>, };
+
+export type ComparePcbArea = { name: string, 
+/**
+ * `added`, `removed` or `changed`.
+ */
+status: BoardStatus, base?: PcbBox, head?: PcbBox, };
+
+export type PcbDiff = { 
+/**
+ * The layout file of the board, as the project names it (`src/main.pcb.toml`), which the
+ * page can open at both refs.
+ */
+layoutFile: string, outline?: OutlineChange, layers?: LayersChange, moved: Array<ComparePcbPartChange>, keepouts: Array<ComparePcbArea>, cutouts: Array<ComparePcbArea>, 
+/**
+ * Parts on both sides that are where they were.
+ */
+unchanged: number, };
+
+export type CompareSystemPort = { 
+/**
+ * The member of the system: `power`.
+ */
+board: string, name: string, voltage?: string, current?: string, };
+
+export type CompareSystemPortChange = { board: string, name: string, 
+/**
+ * `voltage`, `current`, in that order, only what differs; an absent side had none.
+ */
+fields: Array<CompareField>, };
+
+export type SystemPortsDiff = { added: Array<CompareSystemPort>, removed: Array<CompareSystemPort>, changed: Array<CompareSystemPortChange>, };
+
+export type NamesDiff = { added: Array<string>, removed: Array<string>, };
+
+export type CompareMate = { a: string, b: string, 
+/**
+ * The ports it joins.
+ */
+ports: Array<string>, at?: Location, };
+
+export type CompareMateChange = { a: string, b: string, 
+/**
+ * One per contact that differs, `contact 3`: what each side had behind it (`ground`,
+ * `power on 3V3`, `signal on SDA`, `open`), then the ports that joined and left as `ports`.
+ */
+fields: Array<CompareField>, at?: Location, };
+
+export type MatesDiff = { added: Array<CompareMate>, removed: Array<CompareMate>, changed: Array<CompareMateChange>, };
+
+export type CompareSystem = { name: string, status: BoardStatus, baseFile?: string, headFile?: string, summary: string, 
+/**
+ * The boards it holds, by their member name (`led`); the type is the board's definition.
+ */
+boards: InstancesDiff, ports: SystemPortsDiff, joins: NamesDiff, mates: MatesDiff, groundGroups: NamesDiff, 
+/**
+ * The rails of the system's power tree that no board's own comparison already lists: what a
+ * join gives a rail (its capacity, so its budget) differs from one side to the other. A
+ * rail is `led:3V3` (the member, the net).
+ */
+rails: RailsDiff, };
+
 export type CompareBoard = { 
 /**
  * As `BoardSummary.name` has it: what `?board=` and the other endpoints take.
@@ -1167,13 +1274,31 @@ interfaces: InstancesDiff,
 /**
  * Absent when the bill of materials cannot be made on one side (`bom_error` says why).
  */
-bom?: BomDiff, bomError?: string, problems: ProblemsDiff, };
+bom?: BomDiff, bomError?: string, problems: ProblemsDiff, 
+/**
+ * What changed on the PCB: where the parts are, the outline, the layers, the keepouts and
+ * cutouts. Absent when the board has no PCB on either side (it has no process) or
+ * `pcb_error` says it cannot be compared.
+ */
+pcb?: PcbDiff, 
+/**
+ * Why the PCB is not compared: the board is placed on one side only, or cannot be placed on
+ * one of them (a footprint is missing), and a comparison of the other side alone would say
+ * nothing.
+ */
+pcbError?: string, };
 
 export type Compare = { 
 /**
  * The ref as asked.
  */
 ref: string, 
+/**
+ * The second ref, when the comparison is of two refs (`?against=`): then `head.commit` is
+ * the commit it resolved to, `head.dirty` is false and the files on disk are not read.
+ * Absent when the ref is compared with the files on disk.
+ */
+against?: string, 
 /**
  * What it resolved to.
  */
@@ -1208,6 +1333,10 @@ changed: boolean, source: SourceDiff,
  * By name; every board of either side, or the one asked for.
  */
 boards: Array<CompareBoard>, 
+/**
+ * The systems of either side, by name; empty when a board is asked for.
+ */
+systems: Array<CompareSystem>, 
 /**
  * The problems that name no board (a mistake in a module, a file that did not read).
  */

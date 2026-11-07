@@ -12,9 +12,9 @@ use std::{
 use netsmith_editor::{
     ApiError, Say,
     api::{
-        DrawnKeepout, KeepoutOrigin, KeepoutPlacement, KicadState, PartPlacement, PcbBox,
-        PcbChange, PcbCutout, PcbFinding, PcbFindings, PcbKeepout, PcbPad, PcbPart, PcbReport,
-        PcbScene, PcbSide, Severity,
+        ComparePcbPlace, CompareSize, DrawnKeepout, KeepoutOrigin, KeepoutPlacement, KicadState,
+        PartPlacement, PcbBox, PcbChange, PcbCutout, PcbFinding, PcbFindings, PcbKeepout, PcbPad,
+        PcbPart, PcbReport, PcbScene, PcbSide, Severity,
     },
 };
 use netsmith_pcb::{
@@ -25,6 +25,7 @@ use netsmith_pcb::{
 
 use super::{
     analysis::BoardData,
+    diff::{PcbDigest, PcbPartDigest},
     findings::{self, KicadResult},
     progress::{Reporting, forward},
 };
@@ -695,4 +696,82 @@ pub fn change_layout(
     }
     *layout = next;
     Ok(())
+}
+
+/// What a comparison reads of a placed board (ADR 0059, the extensions): where each part is, in
+/// millimetres from the outline's top left corner as the layout file has them, the outline's
+/// size, the copper layers, and the keepouts and cutouts, without drawing anything.
+pub fn digest(entry: &Entry, data: &BoardData) -> PcbDigest {
+    let board = &entry.board;
+    let entries = entry.entries();
+    let o = board.outline.min;
+    // The layout file keeps the hundredth of a millimetre; so does a comparison.
+    let round = |v: f64| (v * 100.0).round() / 100.0;
+    let rel = |r: Rect| PcbBox {
+        x: round(r.min.x - o.x),
+        y: round(r.min.y - o.y),
+        width: round(r.width()),
+        height: round(r.height()),
+    };
+    let parts = board
+        .parts
+        .iter()
+        .map(|p| {
+            let place = entries.and_then(|e| e.parts.get(&p.path));
+            PcbPartDigest {
+                path: p.path.clone(),
+                designator: p.refdes.clone(),
+                place: ComparePcbPlace {
+                    x: round(p.at.x - o.x),
+                    y: round(p.at.y - o.y),
+                    rotation: round(p.rotation),
+                    side: side_of(p.side),
+                    locked: place.is_some_and(|e| e.lock),
+                    placement: place.map_or("derived".to_string(), |e| {
+                        e.source.clone().unwrap_or_else(|| "hand".to_string())
+                    }),
+                },
+            }
+        })
+        .collect();
+    let areas = board.keepout_areas();
+    let keepouts = board
+        .keepouts
+        .iter()
+        .map(|k| {
+            (
+                k.name.clone(),
+                areas.iter().find(|a| a.name == k.name).map(|a| rel(a.rect)),
+            )
+        })
+        .collect();
+    let cutouts = board
+        .cutouts
+        .iter()
+        .map(|c| {
+            (
+                c.name.clone(),
+                board
+                    .cutout_shapes()
+                    .into_iter()
+                    .find(|(shape, _)| shape.name == c.name)
+                    .map(|(_, shape)| rel(shape.rect)),
+            )
+        })
+        .collect();
+    let layout_file = crate::layout::layout_path(std::path::Path::new(&data.file))
+        .to_string_lossy()
+        .into_owned();
+    PcbDigest {
+        layout_file,
+        outline_stated: data.built.design.features.outline.is_some(),
+        outline: CompareSize {
+            width: round(board.outline.width()),
+            height: round(board.outline.height()),
+        },
+        layers: entry.layers(),
+        parts,
+        keepouts,
+        cutouts,
+    }
 }

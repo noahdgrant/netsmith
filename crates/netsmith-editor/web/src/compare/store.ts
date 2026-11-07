@@ -10,7 +10,7 @@ import { load, save } from '../storage';
 import { analysis, board, project, say } from '../store';
 import { type Category, type Scope, changeCount, marksOf } from './model';
 import { beginCompareProgress, endCompareProgress } from './progress';
-import { recallRef, refLabel, rememberRef, suggestedRef } from './refs';
+import { recallAgainst, recallRef, refLabel, rememberAgainst, rememberRef, suggestedRef } from './refs';
 
 /** What the repository offers. Null before it was asked. */
 export const gitInfo = signal<GitInfo | null>(null);
@@ -18,6 +18,10 @@ export const gitFailure = signal<string | null>(null);
 
 /** The ref chosen for this project (a name or a commit's hash), if any. */
 export const refName = signal<string | null>(null);
+
+/** The second ref, when two refs are compared with each other; null when the ref is compared with the working tree (ADR 0059,
+ * the extensions). */
+export const againstName = signal<string | null>(null);
 
 export type CompareState =
   | { kind: 'idle' }
@@ -45,6 +49,13 @@ export const compare = computed<Compare | null>(() => {
   return s.kind === 'ready' && !s.data.error ? s.data : null;
 });
 
+/** The comparison with the files on disk, when that is what is shown: the marks of the other views, the source's gutter and the
+ * file's own comparison are all about the working tree, which a comparison of two refs does not read. */
+export const diskCompare = computed<Compare | null>(() => {
+  const c = compare.value;
+  return c && !c.against ? c : null;
+});
+
 /** The scope the section shows: what was chosen if the comparison has it, else all the boards (the one board of a project that
  * has one). The board in front does not matter: the tiles, the counts of the tabs and the rows are the whole comparison until a
  * board is chosen in the section, so they agree with the sentence and the status bar's chip. */
@@ -59,18 +70,27 @@ export const scope = computed<Scope>(() => {
 /** The label of the chosen ref, for chips: `main`, `v1.2`, `4f2a9c1`. */
 export const refText = computed(() => (refName.value ? refLabel(gitInfo.value, refName.value) : ''));
 
+/** The label of the second ref, or `the working tree` when there is none. */
+export const againstText = computed(() => (againstName.value ? refLabel(gitInfo.value, againstName.value) : 'the working tree'));
+
+/** `since main` for a ref against the working tree, `between main and feature` for two refs. */
+export const sinceText = computed(() => (againstName.value ? `between ${refText.value} and ${againstText.value}` : `since ${refText.value}`));
+
+/** What the chip and the sentences call the pair: `main`, or `main and feature` for two refs. */
+export const pairText = computed(() => (againstName.value ? `${refText.value} and ${againstText.value}` : refText.value));
+
 export const changes = computed(() => changeCount(compare.value));
 
 /** The marks of the board in front, when the switch is on. */
 export const marks = computed(() => {
-  const c = compare.value;
+  const c = diskCompare.value;
   if (!showChanges.value || !c) return null;
   const name = board.value;
   return marksOf(c.boards.find((b) => b.name === name));
 });
 
 /** The comparison of the board in front, whatever the switch says. */
-export const boardCompare = computed(() => compare.value?.boards.find((b) => b.name === board.value));
+export const boardCompare = computed(() => diskCompare.value?.boards.find((b) => b.name === board.value));
 
 // ---- asking ----
 
@@ -82,7 +102,10 @@ export async function loadGit(): Promise<GitInfo | null> {
     const info = await api.git();
     gitInfo.value = info;
     gitFailure.value = null;
-    if (info.available && refName.peek() === null) refName.value = recallRef(info);
+    if (info.available && refName.peek() === null) {
+      refName.value = recallRef(info);
+      againstName.value = refName.value ? recallAgainst(info) : null;
+    }
     return info;
   } catch (e) {
     gitFailure.value = e instanceof Error ? e.message : String(e);
@@ -90,10 +113,11 @@ export async function loadGit(): Promise<GitInfo | null> {
   }
 }
 
-/** Compare the project with `ref`. A newer ask makes an older answer be dropped. */
-export async function runCompare(ref: string, quiet = false): Promise<void> {
+/** Compare the project with `ref`, or, with `against`, `ref` with another ref. A newer ask makes an older answer be dropped. */
+export async function runCompare(ref: string, quiet = false, against: string | null = againstName.peek()): Promise<void> {
   const mine = ++seq;
   refName.value = ref;
+  againstName.value = against;
   const prev = state.peek();
   if (quiet && prev.kind === 'ready') state.value = { ...prev, refreshing: true };
   else {
@@ -101,10 +125,13 @@ export async function runCompare(ref: string, quiet = false): Promise<void> {
     beginCompareProgress(ref);
   }
   try {
-    const data = await api.compare(ref);
+    const data = await api.compare(ref, undefined, against ?? undefined);
     if (mine !== seq) return;
     state.value = { kind: 'ready', ref, data, refreshing: false };
-    if (!data.error) rememberRef(gitInfo.peek(), ref);
+    if (!data.error) {
+      rememberRef(gitInfo.peek(), ref);
+      rememberAgainst(gitInfo.peek(), against);
+    }
   } catch (e) {
     if (mine !== seq) return;
     if (wasCancelled(e)) {
@@ -127,11 +154,21 @@ export async function cancelCompare(): Promise<void> {
   }
 }
 
-/** Choose a ref and compare with it. */
+/** Choose a ref and compare with it (the second ref, if one was chosen, stays). */
 export function chooseRef(ref: string) {
   pickerOpen.value = false;
   baseTexts.clear();
   void runCompare(ref);
+}
+
+/** Choose the second ref of a comparison of two refs, or `null` to go back to the working tree. The first ref stays; with none
+ * chosen yet the second is kept until one is. */
+export function chooseAgainst(ref: string | null) {
+  pickerOpen.value = false;
+  baseTexts.clear();
+  const base = refName.peek() ?? startingRef();
+  if (base) void runCompare(base, false, ref);
+  else againstName.value = ref;
 }
 
 /** Forget the comparison (the ref no longer exists, or the person cleared it). */
@@ -140,6 +177,7 @@ export function clearCompare() {
   state.value = { kind: 'idle' };
   endCompareProgress();
   refName.value = null;
+  againstName.value = null;
 }
 
 /** The ref to start from: what the project last used, else the repository's suggestion. */
@@ -147,6 +185,10 @@ export const startingRef = (): string | null => refName.peek() ?? recallRef(gitI
 
 /** Turn the marks on or off. On, with no ref chosen, the person is asked for one. */
 export function setShowChanges(on: boolean, askRef?: () => void) {
+  if (on && againstName.peek()) {
+    say('The views mark what changed on disk. Two refs are compared in the Compare section only: compare a ref with the working tree to mark the views.');
+    return;
+  }
   showChanges.value = on;
   if (!on || compare.peek()) return;
   // The marks need an answer: compare with the ref the project used last, else ask for one (the repository is read first,
@@ -166,22 +208,21 @@ let lastVersion: number | undefined;
 effect(() => {
   const v = analysis.value?.version;
   const s = state.peek();
-  if (v !== undefined && lastVersion !== undefined && v !== lastVersion && s.kind === 'ready') void runCompare(s.ref, true);
+  // Two refs do not change when the files on disk do.
+  if (v !== undefined && lastVersion !== undefined && v !== lastVersion && s.kind === 'ready' && !s.data.against) void runCompare(s.ref, true);
   lastVersion = v;
 });
 
-// ---- the base side of a file ----
+// ---- the sides of a file ----
 
 const baseTexts = new Map<string, string | null>();
 
-/** A file of the project as it was at the compared commit; null when it did not exist there. */
-export async function baseText(path: string): Promise<string | null> {
-  const c = compare.peek();
-  if (!c) return null;
-  const key = `${c.base.hash}:${path}`;
+/** A file of the project as it was at the commit `hash`; null when it did not exist there. */
+async function textAt(hash: string, path: string): Promise<string | null> {
+  const key = `${hash}:${path}`;
   if (baseTexts.has(key)) return baseTexts.get(key)!;
   try {
-    const f = await api.gitFile(c.base.hash, path);
+    const f = await api.gitFile(hash, path);
     baseTexts.set(key, f.text);
     return f.text;
   } catch (e) {
@@ -192,6 +233,18 @@ export async function baseText(path: string): Promise<string | null> {
     }
     return null;
   }
+}
+
+/** A file of the project as it was at the compared commit; null when it did not exist there. */
+export async function baseText(path: string): Promise<string | null> {
+  const c = compare.peek();
+  return c ? textAt(c.base.hash, path) : null;
+}
+
+/** A file as it was at the second ref of a comparison of two refs; undefined when the head side is the working tree. */
+export async function headTextAtRef(path: string): Promise<string | null | undefined> {
+  const hash = compare.peek()?.against ? compare.peek()?.head.commit?.hash : undefined;
+  return hash ? textAt(hash, path) : undefined;
 }
 
 // ---- the diff view ----

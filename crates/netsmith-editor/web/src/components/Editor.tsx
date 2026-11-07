@@ -19,7 +19,7 @@ import { EmptyState } from './ui';
 import { languageExtensions } from '../languages';
 import { flashLine, nextFlash, revealFlash, revealTarget } from '../reveal';
 import { ensurePower, power } from '../source/boarddata';
-import { baseText, compare, showChanges } from '../compare/store';
+import { baseText, diskCompare, showChanges } from '../compare/store';
 import { cardExtension } from '../source/cm-card';
 import { changesExtension, setBaseText } from '../source/cm-changes';
 import { rulerExtension } from '../source/cm-ruler';
@@ -279,7 +279,7 @@ export function Editor() {
 
   // The marks of the comparison with a git ref: the file at the ref is the base the margin diffs the text against.
   const marking = showChanges.value;
-  const cmp = compare.value;
+  const cmp = diskCompare.value;
   useEffect(() => {
     const v = view.current;
     if (!v || !path || current.current !== path) return;

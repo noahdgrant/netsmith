@@ -12,8 +12,8 @@ import { Segmented, Spinner } from '../../components/ui';
 import { type Collapsed, type ViewRow, createDiffView, openRegion, scrollToRow, syncScroll } from '../../compare/cm-diff';
 import { barText, collapsedRegions, diffControls, hideChoice, hidesUnchanged, openBar, openedBars, regionAt } from '../../compare/collapse';
 import { changeStarts, inlineRows, sideRows, splitLines } from '../../compare/linediff';
-import { baseText, closeDiff, compare, diffTarget, openDiff, type DiffTarget } from '../../compare/store';
-import { goTo, openFiles, revealSection } from '../../store';
+import { baseText, closeDiff, compare, diffTarget, headTextAtRef, openDiff, type DiffTarget } from '../../compare/store';
+import { goTo, openFiles, project, revealSection } from '../../store';
 import { load, save } from '../../storage';
 
 type Mode = 'inline' | 'side';
@@ -23,8 +23,11 @@ const MODE_KEY = 'netsmith.compare.diffmode';
 async function headText(path: string): Promise<{ text: string; open: boolean } | null> {
   const f = openFiles.peek()[path];
   if (f) return { text: f.text, open: true };
+  // A file the editor does not open (a board's layout file) is read from disk through the comparison's own route, which is not
+  // asked for a file the editor has, and does not make the server answer 404 for one it has not.
+  const listed = project.peek()?.files.some((x) => x.path === path);
   try {
-    return { text: (await api.file(path)).text, open: false };
+    return { text: (listed ? await api.file(path) : await api.gitFile(':worktree', path)).text, open: false };
   } catch {
     return null;
   }
@@ -131,7 +134,13 @@ function Body({ target }: { target: DiffTarget }) {
   useEffect(() => {
     let live = true;
     setTexts('loading');
-    void Promise.all([baseText(path), headText(path)]).then(([base, head]) => live && setTexts({ base, head }));
+    // The head side is the file on disk, or, for two refs, the file at the second ref.
+    const head = async (): Promise<{ text: string; open: boolean } | null> => {
+      const atRef = await headTextAtRef(path);
+      if (atRef === undefined) return headText(path);
+      return atRef === null ? null : { text: atRef, open: false };
+    };
+    void Promise.all([baseText(path), head()]).then(([base, head]) => live && setTexts({ base, head }));
     return () => {
       live = false;
     };
@@ -139,6 +148,8 @@ function Body({ target }: { target: DiffTarget }) {
   useEffect(() => root.current?.focus(), [path]);
 
   const ref = c?.base.short ?? 'the ref';
+  // The head side: the files on disk, or the second ref of a comparison of two refs.
+  const headWord = c?.against ? (c.head.commit?.short ?? c.against) : null;
   const step = (d: 1 | -1) => {
     const n = Math.min(Math.max(at + d, 0), Math.max(0, count - 1));
     setAt(n);
@@ -193,7 +204,7 @@ function Body({ target }: { target: DiffTarget }) {
           <span class="diff-versus">
             <span class="diff-side base">{ref}</span>
             <Icon name="arrow-right" size={12} />
-            <span class="diff-side head">{loaded?.head?.open ? 'working file' : 'on disk'}</span>
+            <span class="diff-side head" data-testid="diff-head-side">{headWord ?? (loaded?.head?.open ? 'working file' : 'on disk')}</span>
           </span>
           {isNew && <span class="chip ok">new file</span>}
           {isGone && <span class="chip bad">deleted</span>}
@@ -229,7 +240,7 @@ function Body({ target }: { target: DiffTarget }) {
             setAt(0);
           }}
           options={[
-            { value: 'side', label: 'Side by side', tip: 'The file at the ref on the left, the file on disk on the right', testid: 'diff-mode-side' },
+            { value: 'side', label: 'Side by side', tip: 'The file at the first ref on the left, the other side on the right', testid: 'diff-mode-side' },
             { value: 'inline', label: 'Inline', tip: 'Removed and added lines in one column', testid: 'diff-mode-inline' },
           ]}
         />
@@ -237,7 +248,8 @@ function Body({ target }: { target: DiffTarget }) {
           <button
             class="tool small"
             data-testid="diff-in-source"
-            disabled={isGone}
+            disabled={isGone || !!headWord}
+            data-tip={headWord ? 'The source shows the files on disk; two refs are compared here only' : undefined}
             onClick={() => {
               openDiff({ ...target, where: 'source' });
               revealSection('source');

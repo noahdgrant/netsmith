@@ -22,16 +22,43 @@ use netsmith_solve::Catalogs;
 
 use super::{
     Workspace,
-    analysis::{BoardData, api_location},
-    diff::{self, BoardDigest, Digest, InstanceDigest, NetDigest, PartDigest},
+    analysis::{BoardData, api_location, contained},
+    diff::{self, BoardDigest, Digest, InstanceDigest, NetDigest, PartDigest, SystemDigest},
     git::{self, Place, Scratch},
-    millis, power,
+    millis, pcb, power, system,
 };
 use crate::{
     locate,
     project::{MANIFEST, Project, SourceFile, Target},
     resolve::resolve_generics,
 };
+
+/// What `GET /api/git/file?ref=` takes for the files on disk instead of a commit.
+pub const WORKTREE: &str = ":worktree";
+
+/// The most a file of the project may have for the page to read it as a side of a comparison.
+const MAX_DISK_FILE: u64 = 8 * 1024 * 1024;
+
+/// A file of the project as it is on disk, read only: a regular file in the project's folder
+/// (never a link), as text.
+fn disk_file(dir: &Path, path: &str) -> Result<FileContent, ApiError> {
+    let full = dir.join(path);
+    let meta = std::fs::symlink_metadata(&full)
+        .map_err(|_| ApiError::not_found(format!("`{path}` is not a file on disk")))?;
+    if !meta.is_file() || meta.len() > MAX_DISK_FILE {
+        return Err(ApiError::forbidden(format!(
+            "`{path}` is not a regular file of the project that can be read"
+        )));
+    }
+    let text = std::fs::read_to_string(&full)
+        .map_err(|_| ApiError::forbidden(format!("`{path}` is not text")))?;
+    Ok(FileContent {
+        path: path.to_string(),
+        text,
+        stamp: "worktree".to_string(),
+        readonly: true,
+    })
+}
 
 /// How many refs' readings are kept.
 const KEPT: usize = 8;
@@ -149,6 +176,11 @@ impl Workspace {
             )));
         }
         let dir = self.git_dir();
+        // The files on disk, for the page's comparison of a file the editor does not open (a layout
+        // file): `:worktree` is no name a ref can have (git refuses a colon in one).
+        if rev == WORKTREE {
+            return disk_file(&dir, path);
+        }
         let place = git::place(&dir).map_err(git::unavailable)?;
         let commit = git::resolve(&dir, rev)?;
         let full = join(&place.prefix, path);
@@ -167,9 +199,11 @@ impl Workspace {
         }
     }
 
+    /// Compare `rev` with the files on disk, or with the commit `against` when there is one.
     pub(super) fn compare_with(
         &self,
         rev: &str,
+        against: Option<&str>,
         board: Option<&str>,
         observe: &Observer,
         cancel: &Cancel,
@@ -178,44 +212,88 @@ impl Workspace {
         let dir = self.git_dir();
         let place = git::place(&dir).map_err(git::unavailable)?;
         let base = git::resolve(&dir, rev)?;
-        let (reading, cached) = self.read_ref(&place, &base, observe, cancel)?;
-        // Between the reading of the ref and the reading of the files on disk.
+        // Both names are resolved before anything is read: a name that is no commit is a 404 at
+        // once, not after the first ref has been analysed.
+        let other = against.map(|a| git::resolve(&dir, a)).transpose()?;
+        let (reading, base_cached) = self.read_ref(&place, &base, observe, cancel)?;
+        let head_reading = match &other {
+            Some(commit) if !matches!(&*reading, Reading::Failed { .. }) => {
+                Some(self.read_ref(&place, commit, observe, cancel)?)
+            }
+            _ => None,
+        };
+        // Between the reading of the ref(s) and the reading of the files on disk.
         job::checkpoint();
-        let head_commit = git::resolve(&dir, "HEAD").ok();
-        let dirty = git::project_dirty(&dir);
+        let (head_commit, dirty) = match &other {
+            Some(commit) => (Some(commit.clone()), false),
+            None => (git::resolve(&dir, "HEAD").ok(), git::project_dirty(&dir)),
+        };
+        let cached = base_cached && head_reading.as_ref().is_none_or(|(_, c)| *c);
+        let compared_with = other
+            .as_ref()
+            .map_or("the files on disk", |c| c.short.as_str());
         tell(
             observe,
             "diff",
             0,
             1,
-            format!("comparing {} with the files on disk", base.short),
+            format!("comparing {} with {compared_with}", base.short),
         );
-        let source = git::source_diff(&dir, &base.hash);
+        let source = git::source_diff(&dir, &base.hash, other.as_ref().map(|c| c.hash.as_str()));
+        let broken = |error: String, problems: Vec<Problem>, head: CompareHead| Compare {
+            rev: rev.to_string(),
+            against: against.map(str::to_string),
+            base: base.clone(),
+            head,
+            error: Some(error.clone()),
+            base_problems: problems,
+            cached,
+            elapsed_ms: millis(started),
+            summary: error,
+            changed: false,
+            source: source.clone(),
+            boards: Vec::new(),
+            systems: Vec::new(),
+            problems: empty_problems(),
+        };
         let digest = match &*reading {
             Reading::Failed { error, problems } => {
-                let head = self.head_status(None, head_commit, dirty);
-                return Ok(Compare {
-                    rev: rev.to_string(),
-                    base,
-                    head,
-                    error: Some(error.clone()),
-                    base_problems: problems.clone(),
-                    cached,
-                    elapsed_ms: millis(started),
-                    summary: error.clone(),
-                    changed: false,
-                    source,
-                    boards: Vec::new(),
-                    problems: empty_problems(),
-                });
+                let head = if other.is_some() {
+                    CompareHead {
+                        commit: head_commit,
+                        dirty,
+                        errors: 0,
+                    }
+                } else {
+                    self.head_status(None, head_commit, dirty)
+                };
+                return Ok(broken(error.clone(), problems.clone(), head));
             }
             Reading::Digest(digest) => digest,
         };
-        let now = digest_of(self)?;
-        let head = self.head_status(Some(&now), head_commit, dirty);
-        let mut result = diff::diff(digest, &now, board);
+        // The head side: the other ref's reading, or the files on disk as they are now.
+        let now_owned;
+        let now = match &head_reading {
+            Some((reading, _)) => match &**reading {
+                Reading::Digest(d) => d,
+                Reading::Failed { error, problems } => {
+                    let head = CompareHead {
+                        commit: head_commit,
+                        dirty,
+                        errors: problems.len() as u32,
+                    };
+                    return Ok(broken(error.clone(), problems.clone(), head));
+                }
+            },
+            None => {
+                now_owned = digest_of(self)?;
+                &now_owned
+            }
+        };
+        let head = self.head_status(Some(now), head_commit, dirty);
+        let mut result = diff::diff(digest, now, board);
         // A file that does not build has no boards on disk, which is not that they are gone.
-        if head.errors > 0 {
+        if head.errors > 0 && other.is_none() {
             result.summary = format!(
                 "{} on disk: {}",
                 diff::count(head.errors as usize, "error", "errors"),
@@ -226,12 +304,16 @@ impl Workspace {
             && result.boards.is_empty()
         {
             return Err(ApiError::not_found(format!(
-                "there is no board `{board}` at {} or in the files on disk",
-                base.short
+                "there is no board `{board}` at {} or in {}",
+                base.short,
+                other
+                    .as_ref()
+                    .map_or_else(|| "the files on disk".to_string(), |c| c.short.clone())
             )));
         }
         Ok(Compare {
             rev: rev.to_string(),
+            against: against.map(str::to_string),
             base,
             head,
             error: None,
@@ -242,6 +324,7 @@ impl Workspace {
             changed: result.changed,
             source,
             boards: result.boards,
+            systems: result.systems,
             problems: result.problems,
         })
     }
@@ -569,7 +652,7 @@ pub(super) fn digest_of(ws: &Workspace) -> Result<Digest, ApiError> {
             // give it a moment to settle.
             std::thread::sleep(std::time::Duration::from_millis(50 * u64::from(attempt)));
         }
-        let (version, handles, problems, trees) = {
+        let (version, handles, problems, trees, systems) = {
             let state = ws.fresh();
             // The analysis of a workspace that a job reads for itself ends when the job is
             // cancelled, with no boards: that is no reading to digest.
@@ -588,11 +671,45 @@ pub(super) fn digest_of(ws: &Workspace) -> Result<Digest, ApiError> {
                 .iter()
                 .map(|(b, _)| power::tree(&state.snapshot, &b.built.label()).ok())
                 .collect();
+            // The systems are read under the lock too: their views are made from the snapshot.
+            let systems: BTreeMap<String, SystemDigest> = state
+                .snapshot
+                .systems
+                .iter()
+                .filter_map(|(data, _)| {
+                    let name = data.solved.name.clone();
+                    let view = system::view(&state.snapshot, &name).ok();
+                    let rails = power::tree(&state.snapshot, &name)
+                        .map(|t| {
+                            t.nodes
+                                .into_iter()
+                                // `led:3V3`: the member and the net, which is what names a rail
+                                // across the boards of a system.
+                                .map(|mut n| {
+                                    n.net = n.id.clone();
+                                    n
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    view.map(|view| {
+                        (
+                            name,
+                            SystemDigest {
+                                file: data.file.clone(),
+                                view,
+                                rails,
+                            },
+                        )
+                    })
+                })
+                .collect();
             (
                 state.version,
                 handles,
                 state.snapshot.problems.clone(),
                 trees,
+                systems,
             )
         };
         let catalogs = ws.target.catalogs();
@@ -600,13 +717,25 @@ pub(super) fn digest_of(ws: &Workspace) -> Result<Digest, ApiError> {
         for ((data, stale), tree) in handles.iter().zip(trees) {
             let label = data.built.label();
             let bom = Backend::bom(ws, &label).map_err(|e| e.message);
-            boards.insert(
-                label,
-                board_digest(data, *stale, tree, bom, catalogs.as_ref().ok()),
+            let mut digest = board_digest(data, *stale, tree, bom, catalogs.as_ref().ok());
+            // Placing a board takes seconds on a big one: a cancelled compare ends between boards.
+            job::checkpoint();
+            // A panic in the placer ends this board's PCB, not the compare (a cancellation goes on).
+            digest.pcb = Some(
+                match contained(|| pcb::place(data, &label).map(|e| pcb::digest(&e, data))) {
+                    Ok(Ok(placed)) => Ok(placed),
+                    Ok(Err(e)) => Err(e.message),
+                    Err(panic) => Err(format!("the placer panicked: {panic}")),
+                },
             );
+            boards.insert(label, digest);
         }
         if ws.fresh().version == version {
-            return Ok(Digest { boards, problems });
+            return Ok(Digest {
+                boards,
+                systems,
+                problems,
+            });
         }
     }
     Err(ApiError::conflict(
@@ -716,6 +845,7 @@ fn board_digest(
         modules,
         interfaces,
         bom,
+        pcb: None,
     }
 }
 

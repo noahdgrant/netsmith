@@ -654,8 +654,8 @@ async fn git_file(
     json(move || s.backend.git_file(&rev, &path)).await
 }
 
-/// `?ref=<rev>` and, for one board, `&board=<name>`. The request is answered when the
-/// comparison is done; while it runs the socket carries `progress` messages with the task
+/// `?ref=<rev>` and, for one board, `&board=<name>`, and, to compare with another ref instead of
+/// the files on disk, `&against=<rev>`. The request is answered when the comparison is done; while it runs the socket carries `progress` messages with the task
 /// `compare` and the ref as their board.
 async fn compare(
     State(s): State<Shared>,
@@ -663,6 +663,7 @@ async fn compare(
 ) -> Result<Json<crate::api::Compare>, ApiError> {
     let rev = param(&q, "ref")?;
     let board = q.get("board").cloned().filter(|b| !b.is_empty());
+    let against = q.get("against").cloned().filter(|b| !b.is_empty());
     let observe = job_observer(&s, "compare", &rev);
     // A page that goes away (the connection drops, and with it this future) takes the compare
     // with it: nobody is left to read the answer, and it would hold the next compare up.
@@ -672,7 +673,8 @@ async fn compare(
     let asked = rev.clone();
     let result = blocking(move || {
         let _registered = registered;
-        s.backend.compare(&rev, board.as_deref(), &observe, &token)
+        s.backend
+            .compare_against(&rev, against.as_deref(), board.as_deref(), &observe, &token)
     })
     .await?;
     disconnect.answered();

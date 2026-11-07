@@ -417,6 +417,7 @@ impl Backend for Fake {
         }
         Ok(Compare {
             rev: rev.into(),
+            against: None,
             base: commit("deadbeef"),
             head: CompareHead {
                 commit: None,
@@ -437,6 +438,7 @@ impl Backend for Fake {
                 error: None,
             },
             boards: Vec::new(),
+            systems: Vec::new(),
             problems: ProblemsDiff {
                 new: Vec::new(),
                 resolved: Vec::new(),

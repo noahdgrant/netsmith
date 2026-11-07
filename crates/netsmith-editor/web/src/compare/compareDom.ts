@@ -14,7 +14,7 @@ import { reconcile, want, type WantedMap } from '../domMarks';
 import { partByPath } from '../selection';
 import { board, detail } from '../store';
 import { boardMarks, marksOf, markTargets, otherBoardTargets } from './model';
-import { compare, marks, showChanges } from './store';
+import { diskCompare, marks, showChanges } from './store';
 
 export const ROOT_CLASS = 'cmp-on';
 
@@ -44,7 +44,7 @@ export function installCompareDom(root: Document = document): () => void {
   };
   const collect = (put: (selector: string, cls: string, delta?: string) => void) => {
     const m = marks.value;
-    const c = compare.value;
+    const c = diskCompare.value;
     root.documentElement.classList.toggle(ROOT_CLASS, showChanges.value && !!c);
     if (!showChanges.value || !c) return;
     const short = (name: string) => name.slice(name.lastIndexOf('/') + 1);
@@ -65,11 +65,11 @@ export function installCompareDom(root: Document = document): () => void {
   const stop = effect(() => {
     void marks.value;
     void board.value;
-    void compare.value;
+    void diskCompare.value;
     void showChanges.value;
     void detail.value;
     schedule();
-    const on = showChanges.value && !!compare.value;
+    const on = showChanges.value && !!diskCompare.value;
     if (on && !redraws && typeof MutationObserver === 'function') {
       // What is added or removed, and the `class` of what is drawn again; a write that changes nothing is not made (reconcile).
       redraws = new MutationObserver(schedule);

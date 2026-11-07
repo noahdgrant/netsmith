@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { board } from '../store';
-import { chooseRef, clearCompare, compare, changes, baseText, gitInfo, loadGit, marks, refName, runCompare, scope, scopeChoice, setShowChanges, showChanges, state } from './store';
+import { againstName, chooseAgainst, chooseRef, clearCompare, compare, changes, baseText, diskCompare, gitInfo, headTextAtRef, loadGit, marks, pairText, refName, runCompare, scope, scopeChoice, setShowChanges, showChanges, sinceText, state } from './store';
 import { changed, info } from './testdata';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -26,6 +26,86 @@ beforeEach(() => {
   board.value = null;
 });
 afterEach(() => vi.unstubAllGlobals());
+
+describe('two refs compared with each other', () => {
+  const two = () => ({ ...changed(), against: 'feature', head: { commit: { hash: 'f'.repeat(40), short: 'ffffff0', subject: 'the feature', author: 'A', date: '2026-11-05T10:00:00+01:00' }, dirty: false, errors: 0 } });
+  it('asks the server for `against`, and says the pair in its words', async () => {
+    const seen: string[] = [];
+    server({
+      '/api/compare': (url) => {
+        seen.push(url.search);
+        return json(url.searchParams.get('against') ? two() : changed());
+      },
+    });
+    await runCompare('main', false, 'feature');
+    expect(seen[0]).toContain('ref=main');
+    expect(seen[0]).toContain('against=feature');
+    expect(againstName.value).toBe('feature');
+    expect(pairText.value).toBe('main and feature');
+    expect(sinceText.value).toBe('between main and feature');
+    // A ref against the working tree sends no `against`.
+    await runCompare('main', false, null);
+    expect(seen[1]).not.toContain('against');
+    expect(againstName.value).toBeNull();
+    expect(sinceText.value).toBe('since main');
+  });
+  it('marks no view: the views draw the files on disk', async () => {
+    server({ '/api/compare': () => json(two()) });
+    board.value = 'TwoBoards/led';
+    showChanges.value = true;
+    await runCompare('main', false, 'feature');
+    expect(compare.value).not.toBeNull();
+    expect(diskCompare.value).toBeNull();
+    expect(marks.value).toBeNull();
+    // Back against the working tree the marks are there.
+    server({ '/api/compare': () => json(changed()) });
+    await runCompare('main', false, null);
+    expect(diskCompare.value).not.toBeNull();
+    expect(marks.value?.parts.get('r1')).toBe('changed');
+  });
+  it('turning the marks on while two refs are compared says why it cannot', async () => {
+    server({ '/api/compare': () => json(two()) });
+    await runCompare('main', false, 'feature');
+    setShowChanges(true);
+    expect(showChanges.value).toBe(false);
+  });
+  it('choosing the second ref keeps the first, and `null` goes back to the working tree', async () => {
+    const seen: string[] = [];
+    server({ '/api/compare': (url) => (seen.push(url.search), json(url.searchParams.get('against') ? two() : changed())) });
+    await runCompare('main');
+    chooseAgainst('feature');
+    await vi.waitFor(() => expect(state.value.kind).toBe('ready'));
+    await vi.waitFor(() => expect(againstName.value).toBe('feature'));
+    expect(seen.at(-1)).toContain('ref=main');
+    expect(seen.at(-1)).toContain('against=feature');
+    chooseRef('v1.0');
+    await vi.waitFor(() => expect(seen.at(-1)).toContain('ref=v1.0'));
+    expect(seen.at(-1)).toContain('against=feature');
+    chooseAgainst(null);
+    await vi.waitFor(() => expect(againstName.value).toBeNull());
+    expect(seen.at(-1)).not.toContain('against');
+  });
+  it('reads the head side of a file at the second ref, and nothing for the working tree', async () => {
+    const files: string[] = [];
+    server({
+      '/api/compare': () => json(two()),
+      '/api/git/file': (url) => (files.push(url.searchParams.get('ref')!), json({ path: 'src/main.nsm', text: 'x', stamp: 'f', readonly: true })),
+    });
+    await runCompare('main', false, 'feature');
+    expect(await headTextAtRef('src/main.nsm')).toBe('x');
+    expect(files).toEqual(['f'.repeat(40)]);
+    server({ '/api/compare': () => json(changed()) });
+    await runCompare('main', false, null);
+    expect(await headTextAtRef('src/main.nsm')).toBeUndefined();
+  });
+  it('is forgotten with the comparison', async () => {
+    server({ '/api/compare': () => json(two()) });
+    await runCompare('main', false, 'feature');
+    clearCompare();
+    expect(againstName.value).toBeNull();
+    expect(refName.value).toBeNull();
+  });
+});
 
 describe('asking for a comparison', () => {
   it('is loading, then ready with the answer, the changes and the marks of the board in front', async () => {

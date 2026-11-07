@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
-import type { Compare as CompareData, Problem } from '../api';
+import type { Compare as CompareData, Problem, Severity } from '../api';
 import { Icon } from '../components/Icons';
 import { ViewHelp } from '../components/ViewHelp';
 import { useElapsed } from '../components/JobProgress';
@@ -26,6 +26,8 @@ import {
   onlySourceChanged,
   rowsOf,
   scopeSummary,
+  severityCounts,
+  severityWord,
   stageIndex,
   stageText,
   STAGE_ORDER,
@@ -33,7 +35,7 @@ import {
 } from '../compare/model';
 import { compareProgress } from '../compare/progress';
 import { relativeDate } from '../compare/refs';
-import { cancelCompare, chooseRef, diffable, gitFailure, gitInfo, loadGit, openDiff, pickerOpen, refName, refText, runCompare, scope, scopeChoice, startingRef, state, tab } from '../compare/store';
+import { againstName, againstText, cancelCompare, chooseRef, diffable, gitFailure, gitInfo, loadGit, openDiff, pickerOpen, refName, refText, runCompare, scope, scopeChoice, sinceText, startingRef, state, tab } from '../compare/store';
 import { analysis } from '../store';
 import { load, save } from '../storage';
 import { plural, seconds } from '../util';
@@ -80,7 +82,9 @@ function Progress({ since, against }: { since: number; against: string }) {
       <div class="cmp-progress-head">
         <Spinner size={16} />
         <div>
-          <div class="cmp-progress-title">Comparing with <span class="mono">{against}</span></div>
+          <div class="cmp-progress-title">
+            Comparing {againstName.value ? <><span class="mono">{against}</span> with <span class="mono">{againstText.value}</span></> : <>with <span class="mono">{against}</span></>}
+          </div>
           <div class="cmp-progress-stage" data-testid="cmp-stage">
             {waiting ? 'Waiting for the first analysis of the files on disk' : stageText(p)}
             {p && p.total > 0 && !/\d of \d/.test(p.message) ? `, ${p.done} of ${p.total}` : ''}
@@ -100,7 +104,7 @@ function Progress({ since, against }: { since: number; against: string }) {
         ))}
       </ol>
       <div class="cmp-sk-tiles" aria-hidden="true">
-        {[0, 1, 2, 3, 4].map((i) => (
+        {[0, 1, 2, 3, 4, 5, 6].map((i) => (
           <span key={i} class="sk sk-tile" />
         ))}
       </div>
@@ -171,14 +175,24 @@ function Summary({ data }: { data: CompareData }) {
         </span>
         <span class="cmp-sub">{data.base.subject}</span>
         <span class="faint cmp-when" data-tip={`${new Date(data.base.date).toLocaleString()}. ${took}`}>{relativeDate(data.base.date, now)}</span>
-        {data.head.dirty && (
+        {data.against && data.head.commit && (
+          <>
+            <Icon name="arrow-right" size={12} class="cmp-arrow" />
+            <span class="mono" data-testid="cmp-against" title={data.head.commit.subject}>
+              {data.head.commit.short}
+            </span>
+            <span class="cmp-sub">{data.head.commit.subject}</span>
+            <span class="faint cmp-when">{relativeDate(data.head.commit.date, now)}</span>
+          </>
+        )}
+        {data.head.dirty && !data.against && (
           <span class="cmp-dirty" data-tip="The files on disk are compared as they are, uncommitted changes included">
             <Icon name="warning" size={12} />
             working tree has uncommitted changes (compared as is)
           </span>
         )}
         <span class="spacer" />
-        <span class="cmp-total" data-testid="cmp-total" data-tip="Parts, nets, rails, modules and interfaces that changed. The bill of materials, the problems and the source's lines are counted in their own tabs.">
+        <span class="cmp-total" data-testid="cmp-total" data-tip="Parts, nets, rails, modules and interfaces, systems and the PCB that changed. The bill of materials, the problems and the source's lines are counted in their own tabs.">
           <b>{total}</b> circuit {total === 1 ? 'change' : 'changes'}
           <span class="faint">{sc === 'all' ? (several ? `in ${plural(data.boards.length, 'board')}` : '') : `in ${sc}`}</span>
         </span>
@@ -202,9 +216,10 @@ function TileView({ t }: { t: Tile }) {
       <span class="cmp-tile-chips">
         {t.chips.length === 0 && <span class="cmp-tile-sub">{t.sub ?? 'no change'}</span>}
         {t.chips.map((c) => (
-          <span key={c.sign} class={`tchip ${c.sign === '+' ? 'add' : c.sign === '-' ? 'del' : 'chg'}`} title={`${c.n} ${c.label}`}>
+          <span key={`${c.sign}${c.word ?? ''}`} class={`tchip ${c.tone ?? (c.sign === '+' ? 'add' : c.sign === '-' ? 'del' : 'chg')}`} title={`${c.n} ${c.label}`}>
             {c.sign === '-' ? '−' : c.sign}
             {c.n}
+            {c.word ? ` ${c.word}` : ''}
           </span>
         ))}
         {t.chips.length > 0 && t.sub && <span class="cmp-tile-sub">{t.sub}</span>}
@@ -264,15 +279,15 @@ function Tabs({ n }: { n: Record<Category, number> }) {
   );
 }
 
-function EmptyTab({ category, against, only }: { category: Category; against: string; only: boolean }) {
-  const word: Record<Category, string> = { parts: 'No part changed', nets: 'No net changed', rails: 'No rail changed', bom: 'No line of the bill of materials changed', modules: 'No module or interface changed', problems: 'No problem is new or resolved', source: 'No file differs' };
-  return <EmptyState compact icon="check-circle" tone="ok" title={word[category]} help={only && category !== 'source' ? `Only the source differs from ${against}.` : `In this board, since ${against}.`} />;
+function EmptyTab({ category, against, only, since }: { category: Category; against: string; only: boolean; since?: string }) {
+  const word: Record<Category, string> = { parts: 'No part changed', nets: 'No net changed', rails: 'No rail changed', bom: 'No line of the bill of materials changed', modules: 'No module or interface changed', systems: 'No system changed', pcb: 'Nothing changed on the PCB', problems: 'No problem is new or resolved', source: 'No file differs' };
+  return <EmptyState compact icon="check-circle" tone="ok" title={word[category]} help={only && category !== 'source' ? `Only the source differs from ${against}.` : `In this board, ${since ?? `since ${against}`}.`} />;
 }
 
 function Source({ data }: { data: CompareData }) {
   const s = data.source;
   if (s.error) return <EmptyState compact icon="warning" tone="warn" title="Git could not count the lines" help={s.error} />;
-  if (s.files.length === 0) return <EmptyTab category="source" against={refText.value} only={false} />;
+  if (s.files.length === 0) return <EmptyTab category="source" against={refText.value} only={false} since={sinceText.value} />;
   return (
     <div class="cmp-source" role="list">
       <div class="cmp-source-total" data-testid="source-total">
@@ -330,16 +345,22 @@ function Body({ data }: { data: CompareData }) {
   const rows = useMemo(() => rowsOf(data, sc), [data, sc]);
   const n = useMemo(() => counts(data, sc), [data, sc]);
   const tl = useMemo(() => tiles(data, sc), [data, sc]);
-  const list: ChangeRow[] = active === 'source' ? [] : (rows[active as Exclude<Category, 'source'>] as ChangeRow[]);
+  // The Problems tab can be narrowed to errors, warnings or notes.
+  const [sev, setSev] = useState<Severity | 'all'>('all');
+  const everything: ChangeRow[] = active === 'source' ? [] : (rows[active as Exclude<Category, 'source'>] as ChangeRow[]);
+  const list: ChangeRow[] = active === 'problems' && sev !== 'all' ? everything.filter((r) => r.severity === sev) : everything;
+  const sevN = severityCounts(everything);
   const shown = filterRows(list, query);
   const renum = filterRows(rows.renumbered, query);
   // The bill of materials is always grouped by what happened to the line (Added, Removed, Changed): the server's order mixes the boards' lines.
   const groups = groupRows(shown, active === 'bom' ? 'change' : group);
   const several = sc === 'all' && data.boards.length > 1;
-  const rowsTotal = n.parts + n.nets + n.rails + n.bom + n.modules + n.problems;
+  const rowsTotal = n.parts + n.nets + n.rails + n.bom + n.modules + n.systems + n.pcb + n.problems;
   // No change to the circuit: say so with a check, and what did differ in the source (comments, formatting, a layout file).
   const calm = !data.changed && rowsTotal === 0 && n.parts + n.nets + n.rails === 0;
   const onlySource = calm && data.source.filesChanged > 0;
+  const two = !!data.against;
+  const here = two ? againstText.value : 'disk';
   return (
     <>
       <div class="cmp-tiles" role="group" aria-label="Summary">
@@ -356,8 +377,8 @@ function Body({ data }: { data: CompareData }) {
             title="No changes in the circuit"
             help={
               onlySource
-                ? `The parts, nets, rails and bill of materials are the same as at ${refText.value}. Only the source differs: ${plural(data.source.filesChanged, 'file')}, +${data.source.added} \u2212${data.source.removed} lines, which is comments, formatting or something the circuit does not read.`
-                : `The circuit on disk is the same as at ${refText.value}${rows.renumbered.length ? ` (${plural(rows.renumbered.length, 'part')} only got another designator)` : ''}.`
+                ? `The parts, nets, rails and bill of materials are the same as at ${refText.value}${two ? ` and ${here}` : ''}. Only the source differs: ${plural(data.source.filesChanged, 'file')}, +${data.source.added} \u2212${data.source.removed} lines, which is comments, formatting or something the circuit does not read.`
+                : `The circuit ${two ? `at ${here}` : 'on disk'} is the same as at ${refText.value}${rows.renumbered.length ? ` (${plural(rows.renumbered.length, 'part')} only got another designator)` : ''}.`
             }
             testid="cmp-empty"
             actions={!onlySource ? <AnotherRef label="Compare with another ref" /> : undefined}
@@ -390,6 +411,17 @@ function Body({ data }: { data: CompareData }) {
               />
             </label>
             <span class="spacer" />
+            {active === 'problems' && everything.length > 0 && (
+              <Segmented<Severity | 'all'>
+                label="Show problems of a severity"
+                value={sev}
+                onChange={setSev}
+                options={[
+                  { value: 'all', label: `All ${sevN.all}`, tip: 'Errors, warnings and notes', testid: 'sev-all' },
+                  ...(['error', 'warning', 'note'] as const).map((s) => ({ value: s, label: `${severityWord(s, 2).replace(/^./, (c) => c.toUpperCase())} ${sevN[s]}`, tip: s === 'error' ? 'What stops a build' : s === 'warning' ? 'A part not chosen, a guideline: the design has a hole or breaks advice' : 'What the solver left alone', testid: `sev-${s}` })),
+                ]}
+              />
+            )}
             {(active === 'parts' || active === 'nets' || active === 'modules' || active === 'problems') && (
               <Segmented<GroupBy>
                 label="Group the rows"
@@ -410,8 +442,10 @@ function Body({ data }: { data: CompareData }) {
           <div class="cmp-scroll" id="cmp-panel" role="tabpanel" aria-labelledby={`cmp-tab-${active}`}>
             {active === 'source' ? (
               <Source data={data} />
+            ) : everything.length === 0 ? (
+              <EmptyTab category={active} against={refText.value} only={onlySourceChanged(data)} since={sinceText.value} />
             ) : list.length === 0 ? (
-              <EmptyTab category={active} against={refText.value} only={onlySourceChanged(data)} />
+              <EmptyState compact icon="check-circle" tone="ok" title={`No ${severityWord(sev as Severity, 2)} are new or resolved`} help="Another severity has changes." actions={<button class="tool" onClick={() => setSev('all')}>Show all</button>} />
             ) : shown.length === 0 && renum.length === 0 ? (
               <EmptyState compact icon="search" title="No row matches" help={`Nothing fits “${query.trim()}”.`} actions={<button class="tool" onClick={() => setQuery('')}>Clear the filter</button>} />
             ) : (
@@ -476,7 +510,7 @@ export function Compare() {
     body = (
       <div class="cmp-progress" aria-busy="true" aria-label="Reading the repository" data-testid="cmp-skeleton">
         <div class="cmp-sk-tiles" aria-hidden="true">
-          {[0, 1, 2, 3, 4].map((i) => (
+          {[0, 1, 2, 3, 4, 5, 6].map((i) => (
             <span key={i} class="sk sk-tile" />
           ))}
         </div>
@@ -583,7 +617,7 @@ export function Compare() {
           {data && !data.error && <BoardScope data={data} />}
           {info?.available && refName.value && (
             <>
-              <ChangesSwitch label="Show changes in the other views" />
+              {!data?.against && <ChangesSwitch label="Show changes in the other views" />}
               <button class="icon-btn" data-tip="Compare again" aria-label="Compare again" disabled={s.kind === 'loading'} onClick={() => refName.value && void runCompare(refName.value)}>
                 <Icon name="refresh" size={15} />
               </button>
@@ -594,7 +628,7 @@ export function Compare() {
       <div class="cmp-main">{body}</div>
       <DiffPanel where="compare" />
       <ViewHelp id="compare">
-        <p>What changed in the circuit on disk against the same project at a git ref: its parts, nets, rails, modules and bill of materials, not the lines of text.</p>
+        <p>What changed in the circuit on disk against the same project at a git ref, or between two refs (choose <b>Against</b> in the picker): its parts, nets, rails, modules and bill of materials, not the lines of text.</p>
         <p>
           <b>+</b> is added, <b>−</b> removed, <b>~</b> changed. A renumbered part only got another designator: the circuit is the same.
         </p>

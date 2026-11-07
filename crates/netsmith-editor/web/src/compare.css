@@ -23,7 +23,7 @@
 .cmp-total b { color: var(--text); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
 
 /* the tiles */
-.cmp-tiles, .cmp-sk-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.75rem; padding: 0 1.25rem 0.875rem; }
+.cmp-tiles, .cmp-sk-tiles { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.75rem; padding: 0 1.25rem 0.875rem; }
 .cmp-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 0.625rem 0.875rem 0.6875rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--elev-1); min-width: 0; text-align: left; cursor: pointer; transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease); }
 .cmp-tile:hover { border-color: var(--border-strong); background: var(--surface-raised); }
 .cmp-tile-label { color: var(--text-faint); font-size: var(--fs-sm); }
@@ -111,6 +111,7 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .cr-title { font-weight: var(--fw-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .cr-title.plain { font-weight: var(--fw-normal); white-space: normal; overflow-wrap: anywhere; font-family: var(--sans); }
 .cr-title.gone { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--cmp-removed) 70%, transparent); color: var(--text-muted); }
+.cr-name > .cr-kindnote { flex: none; align-self: center; }
 .cr-was, .cr-type, .cr-board { color: var(--text-faint); font-size: var(--fs-sm); white-space: nowrap; }
 .cr-was { font-family: var(--mono); }
 .cr-board { padding: 0 0.375rem; border-radius: var(--r-pill); border: 1px solid var(--border-subtle); }
@@ -138,7 +139,7 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .cr-msg { font-size: var(--fs-md); line-height: var(--lh); overflow-wrap: anywhere; max-width: 90ch; }
 
 /* before and after as two chips: the old is struck and tinted red, the new is tinted green */
-.vchip { display: inline-flex; align-items: center; height: calc(var(--h-xs) + 0.125rem); max-width: 26ch; padding: 0 0.4375rem; border-radius: var(--r-xs); font-family: var(--mono); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 1px solid transparent; }
+.vchip { display: inline-flex; align-items: center; height: calc(var(--h-xs) + 0.125rem); max-width: 34ch; padding: 0 0.4375rem; border-radius: var(--r-xs); font-family: var(--mono); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 1px solid transparent; }
 .vold { background: color-mix(in srgb, var(--cmp-removed) 16%, var(--surface)); border-color: color-mix(in srgb, var(--cmp-removed) 34%, transparent); color: var(--text-muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--cmp-removed) 75%, transparent); text-decoration-thickness: 1px; }
 .vnew { background: color-mix(in srgb, var(--cmp-added) 16%, var(--surface)); border-color: color-mix(in srgb, var(--cmp-added) 38%, transparent); }
 .vnew.vt-shrank { background: color-mix(in srgb, var(--cmp-removed) 16%, var(--surface)); border-color: color-mix(in srgb, var(--cmp-removed) 38%, transparent); }
@@ -169,6 +170,13 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .ref-btn .ref-caret { color: var(--text-faint); }
 .popover.ref-pop { width: 35rem; max-width: min(35rem, 92vw); max-height: min(35rem, calc(100vh - 10rem)); display: flex; flex-direction: column; padding: 0.5rem 0.5rem 0.375rem; }
 .ref-search { margin: 0 0 0.375rem; }
+.ref-slots { display: grid; grid-template-columns: 1fr 1fr; gap: 0.375rem; margin: 0 0 0.5rem; }
+.ref-slot { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; padding: 0.3125rem 0.625rem; background: var(--surface); border: 1px solid var(--border-subtle); border-radius: var(--r-sm); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.ref-slot:hover { background: var(--hover); }
+.ref-slot.on { border-color: var(--sel-bar); background: var(--pick); }
+.ref-slot:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.ref-slot-label { color: var(--text-faint); font-size: var(--fs-xs); font-weight: var(--fw-semibold); }
+.ref-slot-value { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-md); font-weight: var(--fw-semibold); }
 .ref-dirty { display: flex; align-items: center; gap: 0.4375rem; margin: 0 0.25rem 0.375rem; color: var(--text-muted); font-size: var(--fs-sm); }
 .ref-dirty.warn { color: var(--warning-text); }
 .ref-list { overflow-y: auto; flex: 1; min-height: 0; margin: 0 -2px; padding: 0 2px; }
@@ -185,10 +193,12 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .ref-hash { color: var(--text-faint); font-size: var(--fs-xs); }
 .ref-date { color: var(--text-faint); font-size: var(--fs-sm); min-width: 6ch; text-align: right; white-space: nowrap; }
 .ref-item.custom { grid-template-columns: 1.125rem 1fr; }
+.ref-item.worktree { grid-template-columns: 1.125rem 9.5rem minmax(0, 1fr); }
 .ref-none { padding: 1.125rem 0.625rem; text-align: center; color: var(--text-muted); font-size: var(--fs-sm); }
 
 /* ==== the switch in each view's toolbar, the chip in the status bar ==== */
 .cmp-switch .icon { color: var(--text-faint); }
+.cmp-switch.off { color: var(--text-muted); cursor: default; }
 .cmp-switch.on .icon { color: var(--cmp-changed); }
 .statusbar .cmp-chip { gap: 0.375rem; }
 .statusbar .cmp-chip .mono { font-size: var(--fs-xs); }
@@ -342,7 +352,7 @@ button.cr { display: block; width: 100%; padding: 0; background: none; border: n
 .bom-table tr.grp-row.removed td { color: var(--danger-text); }
 
 @media (max-width: 1100px) {
-  .cmp-tiles, .cmp-sk-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cmp-tiles, .cmp-sk-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .cr-main { grid-template-columns: 1.25rem 1.375rem minmax(7.5rem, 1fr) auto 5.625rem; }
   .cr-main > .cr-des, .cr-main > .cr-links { display: none; }
   .diff-cols.side { grid-template-columns: minmax(0, 1fr); }

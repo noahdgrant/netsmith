@@ -1,6 +1,6 @@
 // A comparison to test with: the shape the server answers (ADR 0059) for the small project of the recipe, written out.
 
-import type { Compare, CompareBoard, GitInfo, InstancesDiff, Location } from '../api';
+import type { Compare, CompareBoard, ComparePcbPlace, CompareSystem, GitInfo, InstancesDiff, Location, PcbDiff } from '../api';
 
 export const at = (line: number, file = 'src/main.nsm'): Location => ({ file, line, column: 5, endLine: line, endColumn: 20 });
 
@@ -34,7 +34,7 @@ export function changed(): Compare {
       added: [],
       removed: [],
       changed: [
-        { path: 'r1', designatorBase: 'R1', designatorHead: 'R1', fields: [{ field: 'value', old: '100', new: '150' }, { field: 'lcsc', old: 'C25076', new: 'C22775' }], at: at(21), baseAt: at(21) },
+        { path: 'r1', designatorBase: 'R1', designatorHead: 'R1', kind: 'Resistor', fields: [{ field: 'value', old: '100', new: '150' }, { field: 'lcsc', old: 'C25076', new: 'C22775' }], at: at(21), baseAt: at(21) },
       ],
       renumbered: [],
       unchanged: 2,
@@ -55,10 +55,10 @@ export function changed(): Compare {
     parts: {
       added: [{ path: 'stage.bulk', designator: 'C1', kind: 'Capacitor', value: '47u', package: '0805', lcsc: 'C16780', assembly: 'fab', at: at(24) }],
       removed: [{ path: 'stage.snubber', designator: 'C9', kind: 'Capacitor', value: '100n', assembly: 'fab', at: at(30) }],
-      changed: [{ path: 'stage.regulator', basePath: 'ldo.regulator', designatorBase: 'U1', designatorHead: 'U1', fields: [{ field: 'path', old: 'ldo.regulator', new: 'stage.regulator' }], at: at(12), baseAt: at(12) }],
+      changed: [{ path: 'stage.regulator', basePath: 'ldo.regulator', designatorBase: 'U1', designatorHead: 'U1', kind: 'LinearRegulator', fields: [{ field: 'path', old: 'ldo.regulator', new: 'stage.regulator' }], at: at(12), baseAt: at(12) }],
       renumbered: [
-        { path: 'stage.input_cap', designatorBase: 'C1', designatorHead: 'C2', fields: [{ field: 'designator', old: 'C1', new: 'C2' }], at: at(25), baseAt: at(24) },
-        { path: 'stage.output_cap', designatorBase: 'C2', designatorHead: 'C3', fields: [{ field: 'designator', old: 'C2', new: 'C3' }], at: at(26), baseAt: at(25) },
+        { path: 'stage.input_cap', designatorBase: 'C1', designatorHead: 'C2', kind: 'Capacitor', fields: [{ field: 'designator', old: 'C1', new: 'C2' }], at: at(25), baseAt: at(24) },
+        { path: 'stage.output_cap', designatorBase: 'C2', designatorHead: 'C3', kind: 'Capacitor', fields: [{ field: 'designator', old: 'C2', new: 'C3' }], at: at(26), baseAt: at(25) },
       ],
       unchanged: 1,
     },
@@ -100,8 +100,71 @@ export function changed(): Compare {
     changed: true,
     source: { filesChanged: 1, added: 5, removed: 3, files: [{ path: 'src/main.nsm', status: 'modified', added: 5, removed: 3 }] },
     boards: [led, power],
+    systems: [],
     problems: { new: [], resolved: [], unchanged: 0 },
   };
+}
+
+const place = (x: number, y: number, placement = 'hand'): ComparePcbPlace => ({ x, y, rotation: 0, side: 'top', locked: false, placement });
+
+/** What moved on the PCB of the led board: the resistor 2.5 mm to the right and turned, the outline stated and bigger, two more layers,
+ * a keepout that grew and one that is new, a cutout that is gone. */
+export function pcbChanged(): PcbDiff {
+  const box = (x: number, w: number) => ({ x, y: 1, width: w, height: 2 });
+  return {
+    layoutFile: 'src/main.pcb.toml',
+    outline: { base: { width: 30, height: 20 }, head: { width: 32, height: 20 } },
+    layers: { base: ['top', 'bottom'], head: ['top', 'inner1', 'inner2', 'bottom'] },
+    moved: [
+      {
+        path: 'r1',
+        designatorBase: 'R1',
+        designatorHead: 'R1',
+        base: place(5, 2),
+        head: { ...place(7.5, 2), rotation: 90 },
+        fields: [
+          { field: 'position', old: '5, 2 mm', new: '7.5, 2 mm' },
+          { field: 'rotation', old: '0°', new: '90°' },
+        ],
+        distanceMm: 2.5,
+      },
+    ],
+    keepouts: [
+      { name: 'antenna', status: 'changed', base: box(1, 4), head: box(1, 6) },
+      { name: 'rf', status: 'added', head: box(8, 2) },
+    ],
+    cutouts: [{ name: 'slot', status: 'removed', base: box(3, 2) }],
+    unchanged: 2,
+  };
+}
+
+/** The system of the two boards: its output port's current lowered, a join and a mate gone, a ground group new, a rail only it explains. */
+export function systemChanged(): CompareSystem {
+  return {
+    name: 'TwoBoards',
+    status: 'changed',
+    baseFile: 'src/main.nsm',
+    headFile: 'src/main.nsm',
+    summary: '1 system port changed',
+    boards: { added: [{ path: 'aux', typeName: 'AuxBoard', at: at(110) }], removed: [], changed: [{ path: 'led', baseType: 'LedBoard', headType: 'LedBoard2', at: at(104) }] },
+    ports: { added: [], removed: [{ board: 'led', name: 'spare', voltage: '3.3V' }], changed: [{ board: 'power', name: 'output', fields: [{ field: 'current', old: '0mA..50mA', new: '0mA..30mA' }] }] },
+    joins: { added: ['power.aux ~ aux.input'], removed: [] },
+    mates: {
+      added: [],
+      removed: [{ a: 'power.j2', b: 'led.j2', ports: ['power.x ~ led.x'], at: at(106) }],
+      changed: [{ a: 'power.power_out.mating', b: 'led.power_in.mating', fields: [{ field: 'contact 2', old: 'ground to ground', new: 'signal to ground' }], at: at(108) }],
+    },
+    groundGroups: { added: ['power.GND + led.GND + aux.GND'], removed: [] },
+    rails: { added: [], removed: [], changed: [{ net: 'led:VIN', headroomBase: 0.03, headroomHead: 0.01, budget: { base: 'within', head: 'over' }, at: at(112), baseAt: at(112) }], unchanged: 0 },
+  };
+}
+
+/** `changed()` with a PCB on the led board and the system. */
+export function changedWithSystemAndPcb(): Compare {
+  const c = changed();
+  c.boards[0] = { ...c.boards[0], pcb: pcbChanged() };
+  c.systems = [systemChanged()];
+  return c;
 }
 
 export function info(patch: Partial<GitInfo> = {}): GitInfo {

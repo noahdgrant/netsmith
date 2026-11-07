@@ -103,7 +103,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   expect((await page.locator('[data-testid="cmp-board"]').inputValue()) === 'all', 'the section starts on All boards, not the board in front');
   await settle();
   const tiles = await page.locator('[data-testid^="tile-"]').evaluateAll((els) => els.map((e) => [e.getAttribute('data-testid'), e.innerText.replace(/\s+/g, ' ')]));
-  expect(tiles.length === 5, 'five tiles');
+  expect(tiles.length === 7, 'seven tiles: parts, nets, rails, BOM cost, systems, PCB, problems');
   const tile = (id) => tiles.find((t) => t[0] === `tile-${id}`)[1];
   expect(/Parts 4/.test(tile('parts')) && /\+1/.test(tile('parts')) && /−1|-1/.test(tile('parts')) && /renumbered/.test(tile('parts')), `parts tile (${tile('parts')})`);
   expect(/Rails/.test(tile('rails')) && /1 headroom shrank/.test(tile('rails')), `rails tile says a headroom shrank (${tile('rails')})`);
@@ -114,8 +114,8 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   expect(/vs\s+main/.test(chip) && /\d+ circuit changes/.test(chip), `the status bar chip says circuit changes (${chip.replace(/\s+/g, ' ')})`);
   const chipN = Number(chip.match(/(\d+) circuit changes?/)[1]);
   const totalN = Number((await text('[data-testid="cmp-total"]')).match(/\d+/)[0]);
-  const tileSum = ['parts', 'nets', 'rails'].reduce((n, id) => n + Number(tile(id).match(/ (\d+) /)?.[1] ?? NaN), 0);
-  const tabSum = (await Promise.all(['parts', 'nets', 'rails', 'modules'].map(async (id) => Number(await text(`[data-testid="count-${id}"]`))))).reduce((a, b) => a + b, 0);
+  const tileSum = ['parts', 'nets', 'rails', 'systems', 'pcb'].reduce((n, id) => n + Number(tile(id).match(/ (\d+) /)?.[1] ?? NaN), 0);
+  const tabSum = (await Promise.all(['parts', 'nets', 'rails', 'modules', 'systems', 'pcb'].map(async (id) => Number(await text(`[data-testid="count-${id}"]`))))).reduce((a, b) => a + b, 0);
   expect(chipN === totalN && totalN === tileSum && tileSum === tabSum, `one number everywhere: the chip ${chipN}, the section's total ${totalN}, the tiles ${tileSum}, the tabs ${tabSum}`);
   expect(/line/.test((await page.locator('[data-testid="compare-chip"]').getAttribute('data-tip')) ?? ''), 'the chip\'s tooltip has the source lines');
   const boardSentence = async (name) => {
@@ -123,10 +123,11 @@ export async function run({ page, shot, step, expect, section, project, resetRep
     await settle(250);
     return { sentence: await text('[data-testid="cmp-summary"]'), total: Number((await text('[data-testid="cmp-total"]')).match(/\d+/)[0]), parts: Number((await text('[data-testid="tile-parts"]')).replace(/\s+/g, ' ').match(/ (\d+) /)?.[1] ?? NaN) };
   };
+  const systemsN = Number(await text('[data-testid="count-systems"]'));
   const ledOnly = await boardSentence('TwoBoards/led');
   expect(ledOnly.sentence !== sentence && ledOnly.total < chipN && ledOnly.total >= 1, `one board selected: its own sentence (${ledOnly.sentence}) and its own total (${ledOnly.total} of ${chipN})`);
   const powerOnly = await boardSentence('TwoBoards/power');
-  expect(ledOnly.total + powerOnly.total === chipN && ledOnly.parts + powerOnly.parts === 4, `the boards add up to the whole (${ledOnly.total} + ${powerOnly.total} = ${chipN}; parts ${ledOnly.parts} + ${powerOnly.parts})`);
+  expect(ledOnly.total + powerOnly.total + systemsN === chipN && ledOnly.parts + powerOnly.parts === 4, `the boards and the systems add up to the whole (${ledOnly.total} + ${powerOnly.total} + ${systemsN} = ${chipN}; parts ${ledOnly.parts} + ${powerOnly.parts})`);
   expect((await boardSentence('all')).sentence === sentence, 'All boards says the server\'s sentence again');
   const options = await page.locator('[data-testid="cmp-board"] option').allInnerTexts();
   expect(options.length === 3 && /All boards/.test(options[0]) && /TwoBoards\/led \(\d+ changes?\)/.test(options[1]), `the board selector (${options.join(' | ')})`);

@@ -348,6 +348,22 @@ pub trait Backend: Send + Sync + 'static {
         let _ = (rev, board, observe, cancel);
         Err(ApiError::not_found("this backend cannot compare"))
     }
+    /// [`Backend::compare`] with the other side a ref too: `against` is the head, a commit
+    /// read out of git as `rev` is, instead of the files on disk (`None`: the files on disk).
+    /// Refused with 404 for an `against` that does not exist, as `rev` is.
+    fn compare_against(
+        &self,
+        rev: &str,
+        against: Option<&str>,
+        board: Option<&str>,
+        observe: &Observer,
+        cancel: &Cancel,
+    ) -> Result<Compare, ApiError> {
+        match against {
+            None => self.compare(rev, board, observe, cancel),
+            Some(_) => Err(ApiError::not_found("this backend cannot compare two refs")),
+        }
+    }
     /// The text of a file of the project as it is at `rev`, read from git (`readonly`, the
     /// stamp is the commit's hash).
     fn git_file(&self, rev: &str, path: &str) -> Result<FileContent, ApiError> {

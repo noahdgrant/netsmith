@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { sourceLines } from '../compare/model';
-import { changes, clearCompare, compare, refName, refText, runCompare, showChanges, state } from '../compare/store';
+import { againstName, againstText, changes, clearCompare, compare, pairText, refName, refText, runCompare, showChanges, state } from '../compare/store';
 import { plural } from '../util';
 import { find, chordText } from '../commands';
 import { askForRef, toggleChanges } from './ChangesSwitch';
@@ -47,7 +47,7 @@ function Menu({ close }: { close: () => void }) {
   );
   return (
     <div class="status-popover cmp-chip-menu" ref={box} role="dialog" aria-label="Comparison with a git ref" data-esc-closes>
-      <div class="status-popover-title">Compared with {refText.value}</div>
+      <div class="status-popover-title">{againstName.value ? `Compared ${refText.value} with ${againstText.value}` : `Compared with ${refText.value}`}</div>
       {c && <p class="cmp-chip-sentence">{c.summary}</p>}
       {s.kind === 'ready' && s.data.error && <p class="cmp-chip-sentence">{s.data.error}</p>}
       {s.kind === 'failed' && <p class="cmp-chip-sentence">{s.message}</p>}
@@ -80,7 +80,7 @@ export function CompareChip() {
             : plural(n, 'circuit change')
           : '';
   const c = compare.value;
-  const tip = `Compared with ${refText.value}.${c ? ` ${plural(n, 'circuit change')} (parts, nets, rails, modules); the source differs in ${plural(c.source.filesChanged, 'file')}, ${plural(sourceLines(c), 'line')}.` : ''} Click for the comparison and for marking the views.`;
+  const tip = `${againstName.value ? `Compared ${refText.value} with ${againstText.value}` : `Compared with ${refText.value}`}.${c ? ` ${plural(n, 'circuit change')} (parts, nets, rails, modules); the source differs in ${plural(c.source.filesChanged, 'file')}, ${plural(sourceLines(c), 'line')}.` : ''} Click for the comparison and for marking the views.`;
   const bad = s.kind === 'failed' || (s.kind === 'ready' && !!s.data.error);
   return (
     <span class={`status-anchor cmp-chip-anchor ${open ? 'open' : ''}`}>
@@ -88,7 +88,7 @@ export function CompareChip() {
         class={`item cmp-chip ${bad ? 'bad' : ''} ${showChanges.value ? 'marking' : ''}`}
         data-testid="compare-chip"
         data-tip={tip}
-        aria-label={`Compared with ${refText.value}: ${text}`}
+        aria-label={`${againstName.value ? `Compared ${refText.value} with ${againstText.value}` : `Compared with ${refText.value}`}: ${text}`}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
@@ -96,7 +96,7 @@ export function CompareChip() {
         {s.kind === 'loading' ? <span class="spinner" aria-hidden="true" /> : <Icon name={bad ? 'warning' : 'compare'} size={13} />}
         <span class="cmp-chip-text">
           <span class="cmp-vs">
-            vs <span class="mono">{refText.value}</span>:{' '}
+            vs <span class="mono" data-testid="chip-pair">{pairText.value}</span>:{' '}
           </span>
           {text}
         </span>

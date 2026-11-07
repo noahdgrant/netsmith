@@ -20,6 +20,11 @@ import {
   markTargets,
   otherBoardTargets,
   moduleRows,
+  pcbRows,
+  pcbChanges,
+  systemChanges,
+  systemRows,
+  systemsIn,
   netRows,
   onlySourceChanged,
   partRows,
@@ -29,12 +34,15 @@ import {
   renumberedRows,
   rowsOf,
   scopeSummary,
+  severityCounts,
+  severityWord,
   sheetOfRemoved,
   stageIndex,
   stageText,
   tiles,
 } from './model';
-import { board, changed } from './testdata';
+import { board, changed, changedWithSystemAndPcb, systemChanged } from './testdata';
+import type { Compare, ComparePartChange } from '../api';
 
 const c = changed();
 const power = c.boards[1];
@@ -166,7 +174,7 @@ describe('the rows of a scope', () => {
     expect(new Set(rowsOf(c, 'all').parts.map((r) => r.board))).toEqual(new Set(['TwoBoards/led', 'TwoBoards/power']));
   });
   it('count each tab, and the source files', () => {
-    expect(counts(c, 'TwoBoards/power')).toEqual({ parts: 3, nets: 3, rails: 3, bom: 0, modules: 2, problems: 2, source: 1 });
+    expect(counts(c, 'TwoBoards/power')).toEqual({ parts: 3, nets: 3, rails: 3, bom: 0, modules: 2, systems: 0, pcb: 0, problems: 2, source: 1 });
   });
   it('the chip counts the changes to the circuit, not its bill, its problems or its sources', () => {
     // led: 1 part, 0 nets, 0 rails; power: 3 parts, 3 nets, 3 rails, 2 modules
@@ -232,10 +240,36 @@ describe('the tiles', () => {
     expect(tiles({ ...c, boards: [board('B', { bom: undefined, bomError: 'x' })] }, 'all').find((x) => x.id === 'bom')!.value).toBe('unknown');
   });
   it('the problems tile is red for a new problem and green for one that was resolved', () => {
-    expect(t('TwoBoards/power').problems).toMatchObject({ value: '1 new', sub: '1 resolved', tone: 'bad' });
+    expect(t('TwoBoards/power').problems).toMatchObject({ value: '1 new', tone: 'bad' });
     expect(t('TwoBoards/led').problems).toMatchObject({ value: 'None', tone: 'neutral' });
     const resolved = { ...c, boards: [board('B', { problems: { new: [], resolved: power.problems.resolved, unchanged: 0 } })] };
-    expect(tiles(resolved, 'all').find((x) => x.id === 'problems')).toMatchObject({ value: '0 new', sub: '1 resolved', tone: 'ok' });
+    expect(tiles(resolved, 'all').find((x) => x.id === 'problems')).toMatchObject({ value: '0 new', tone: 'ok' });
+  });
+  it('the problems tile says each severity, and only a new error or warning makes it red', () => {
+    const p = (severity: 'error' | 'warning' | 'note', message: string) => ({ severity, message, rendered: '', at: null, stage: 'solve' as const, board: 'B' });
+    const withProblems = (news: ReturnType<typeof p>[], resolved: ReturnType<typeof p>[]) => ({ ...c, boards: [board('B', { problems: { new: news, resolved, unchanged: 0 } })] });
+    const tile = (cmp: typeof c) => tiles(cmp, 'all').find((x) => x.id === 'problems')!;
+    const mixed = tile(withProblems([p('warning', 'a'), p('warning', 'b'), p('error', 'c'), p('note', 'd')], [p('warning', 'e'), p('note', 'f'), p('note', 'g')]));
+    expect(mixed.value).toBe('4 new');
+    expect(mixed.tone).toBe('bad');
+    expect(mixed.chips.map((x) => `${x.sign}${x.n} ${x.word} ${x.tone}`)).toEqual(['+1 error del', '+2 warnings del', '+1 note chg', '−1 warning add'.replace('−', '-'), '-2 notes add']);
+    // A note alone is only worth a look; a warning alone is red; a resolved warning is green.
+    expect(tile(withProblems([p('note', 'd')], [])).tone).toBe('neutral');
+    expect(tile(withProblems([p('warning', 'w')], [])).tone).toBe('bad');
+    expect(tile(withProblems([], [p('warning', 'w')])).tone).toBe('ok');
+    expect(tile(withProblems([], [])).chips).toEqual([]);
+  });
+  it('counts problems by severity for the filter of the Problems tab', () => {
+    const rows = problemRows('B', {
+      new: [
+        { severity: 'warning', message: 'a', rendered: '', at: null, stage: 'lower' },
+        { severity: 'note', message: 'b', rendered: '', at: null, stage: 'solve' },
+      ],
+      resolved: [{ severity: 'warning', message: 'c', rendered: '', at: null, stage: 'lower' }],
+    });
+    expect(severityCounts(rows)).toEqual({ all: 3, error: 0, warning: 2, note: 1 });
+    expect(severityWord('warning', 1)).toBe('warning');
+    expect(severityWord('note', 3)).toBe('notes');
   });
   it('writes a cost delta as a person would', () => {
     expect(costDelta(0.012)).toBe('+$0.012');
@@ -388,5 +422,129 @@ describe('the bill of materials marks', () => {
   });
   it('is empty without a bill', () => {
     expect(bomMarks(undefined).byKey.size).toBe(0);
+  });
+});
+
+describe('the systems and the PCB of a comparison (ADR 0059, the extensions)', () => {
+  const both = changedWithSystemAndPcb();
+  it('a system lists its boards, ports, joins, mates, ground groups and the rails only it explains', () => {
+    const rows = systemRows(systemChanged());
+    const by = (id: string) => rows.find((r) => r.id.includes(id))!;
+    expect(rows.every((r) => r.category === 'systems' && r.board === 'TwoBoards')).toBe(true);
+    expect(by('sboard+aux')).toMatchObject({ status: 'added', title: 'aux', after: 'AuxBoard' });
+    expect(by('sboard~led')).toMatchObject({ status: 'changed', before: 'LedBoard', after: 'LedBoard2' });
+    expect(by('sport~power.output')).toMatchObject({ status: 'changed', field: 'current', before: '0mA..50mA', after: '0mA..30mA', kind: 'port' });
+    expect(by('sport-led.spare')).toMatchObject({ status: 'removed', before: '3.3V' });
+    expect(by('join+')).toMatchObject({ status: 'added', title: 'power.aux ~ aux.input' });
+    expect(by('mate-')).toMatchObject({ status: 'removed', kind: 'mate' });
+    expect(by('mate~')).toMatchObject({ status: 'changed', field: 'contact 2', before: 'ground to ground', after: 'signal to ground' });
+    expect(by('ground+')).toMatchObject({ status: 'added', type: 'ground group' });
+    // A rail is a rail row, with its headroom, under the system.
+    expect(by('rail~led:VIN')).toMatchObject({ status: 'changed', kind: 'rail', category: 'systems', trend: 'shrank', field: 'headroom' });
+    expect(new Set(rows.map((r) => r.id)).size).toBe(rows.length);
+  });
+  it('a system that is added or removed is one row, with how many boards it holds', () => {
+    const added = systemRows({ ...systemChanged(), status: 'added', baseFile: undefined });
+    expect(added).toHaveLength(1);
+    expect(added[0]).toMatchObject({ status: 'added', kind: 'system', title: 'TwoBoards', after: '1 board' });
+    expect(systemRows({ ...systemChanged(), status: 'removed' })[0].status).toBe('removed');
+    expect(systemChanges({ ...systemChanged(), status: 'added' })).toBe(1);
+    // 2 boards + 2 ports + 1 join + 2 mates + 1 ground group + 1 rail
+    expect(systemChanges(systemChanged())).toBe(2 + 2 + 1 + 2 + 1 + 1);
+  });
+  it('all boards show every system, and one board shows none: the boards and the systems add up to the whole', () => {
+    expect(systemsIn(both, 'all')).toHaveLength(1);
+    expect(systemsIn(both, 'TwoBoards/led')).toHaveLength(0);
+    expect(rowsOf(both, 'TwoBoards/power').systems).toEqual([]);
+    expect(rowsOf(changed(), 'all').systems).toEqual([]);
+    const boards = both.boards.reduce((n, b) => n + circuitChanges(both, b.name), 0);
+    expect(boards + systemChanges(systemChanged())).toBe(changeCount(both));
+  });
+  it('the PCB lists a part moved with its fields, the outline, the layers, and a keepout or cutout by name', () => {
+    const rows = pcbRows(both.boards[0]);
+    const by = (id: string) => rows.find((r) => r.id.includes(id))!;
+    expect(by('pcb~r1')).toMatchObject({ status: 'moved', field: 'position', before: '5, 2 mm', after: '7.5, 2 mm', desBase: 'R1', category: 'pcb', select: { kind: 'part', key: 'r1' } });
+    expect(by('pcb~r1').fields.map((f) => f.field)).toEqual(['position', 'rotation']);
+    expect(by('pcb-outline')).toMatchObject({ before: '30 × 20 mm', after: '32 × 20 mm' });
+    expect(by('pcb-layers')).toMatchObject({ before: '2 layers', after: '4 layers' });
+    expect(by('keepout-changed-antenna')).toMatchObject({ status: 'changed', type: 'keepout' });
+    expect(by('keepout-added-rf')).toMatchObject({ status: 'added', before: undefined });
+    expect(by('cutout-removed-slot')).toMatchObject({ status: 'removed', after: undefined });
+    // The layout file is where Base and Head go.
+    expect(by('pcb~r1').base?.file).toBe('src/main.pcb.toml');
+    expect(rows.every((r) => r.board === 'TwoBoards/led')).toBe(true);
+    expect(pcbRows(board('B'))).toEqual([]);
+    expect(pcbChanges(both.boards[0])).toBe(1 + 1 + 1 + 2 + 1);
+  });
+  it('counts, tiles and the chip say them too', () => {
+    const n = counts(both, 'all');
+    expect(n.systems).toBe(systemRows(systemChanged()).length);
+    expect(n.pcb).toBe(6);
+    const t = Object.fromEntries(tiles(both, 'all').map((x) => [x.id, x]));
+    expect(Object.keys(t)).toEqual(['parts', 'nets', 'rails', 'bom', 'systems', 'pcb', 'problems']);
+    expect(t.pcb).toMatchObject({ value: '6', sub: '1 part moved', tab: 'pcb' });
+    expect(t.pcb.chips).toEqual([
+      { sign: '+', n: 1, label: 'added' },
+      { sign: '-', n: 1, label: 'removed' },
+      { sign: '~', n: 4, label: 'changed' },
+    ]);
+    expect(t.systems).toMatchObject({ value: String(n.systems), tab: 'systems' });
+    expect(t.systems.chips.find((x) => x.sign === '~')!.n).toBeGreaterThan(0);
+    // One board in scope: its own PCB, and no system.
+    expect(tiles(both, 'TwoBoards/power').find((x) => x.id === 'pcb')!.value).toBe('0');
+    expect(tiles(both, 'TwoBoards/power').find((x) => x.id === 'systems')!.value).toBe('0');
+    // The chip: the circuit changes of the boards, their PCBs and the systems.
+    expect(changeCount(both)).toBe(changeCount(c) + pcbChanges(both.boards[0]) + systemChanges(systemChanged()));
+    expect(circuitChanges(both, 'TwoBoards/power')).toBe(circuitChanges(c, 'TwoBoards/power'));
+  });
+  it('the boards list says the PCB changes among a board\'s changes', () => {
+    expect(boardStatusText(both.boards[0])).toBe(`${1 + pcbChanges(both.boards[0])} changes`);
+  });
+});
+
+describe('the kind of a changed part (ADR 0059, the extensions)', () => {
+  const kindChange = (patch: Partial<ComparePartChange> = {}): ComparePartChange => ({
+    path: 'power_in',
+    designatorBase: 'J1',
+    designatorHead: 'J1',
+    kind: 'Socket1x2',
+    baseKind: 'Header1x2',
+    fields: [{ field: 'kind', old: 'Header1x2', new: 'Socket1x2' }],
+    ...patch,
+  });
+  const withParts = (changedParts: ComparePartChange[]): Compare => {
+    const base = changed();
+    base.boards = [board('B', { status: 'changed', parts: { added: [], removed: [], changed: changedParts, renumbered: [], unchanged: 1 } })];
+    return base;
+  };
+  it('a changed row says what the part is, and when it is another library part, from what and to what', () => {
+    const rows = partRows(withParts([kindChange(), { ...kindChange({ path: 'r1', kind: 'Resistor', baseKind: undefined, fields: [{ field: 'value', old: '100', new: '150' }] }) }]).boards[0]);
+    const k = rows.find((r) => r.title === 'power_in')!;
+    expect(k).toMatchObject({ type: 'Socket1x2', kindChange: { old: 'Header1x2', new: 'Socket1x2' }, field: 'kind', before: 'Header1x2', after: 'Socket1x2', status: 'changed' });
+    const v = rows.find((r) => r.title === 'r1')!;
+    expect(v).toMatchObject({ type: 'Resistor', field: 'value', before: '100', after: '150' });
+    expect(v.kindChange).toBeUndefined();
+  });
+  it('the kind is the headline even when the value changed with it, and the value stays in the fields', () => {
+    const row = partRows(
+      withParts([kindChange({ kind: 'Capacitor', baseKind: 'Resistor', fields: [{ field: 'kind', old: 'Resistor', new: 'Capacitor' }, { field: 'value', old: '1k', new: '10u' }] })]).boards[0],
+    )[0];
+    expect(row).toMatchObject({ field: 'kind', before: 'Resistor', after: 'Capacitor' });
+    expect(row.fields.map((f) => f.field)).toEqual(['kind', 'value']);
+    expect(row.search).toContain('capacitor');
+  });
+  it('a part that moved and is another kind is a moved row that says so', () => {
+    const row = partRows(withParts([kindChange({ basePath: 'old.power_in', fields: [{ field: 'path', old: 'old.power_in', new: 'power_in' }, { field: 'kind', old: 'Header1x2', new: 'Socket1x2' }] })]).boards[0])[0];
+    expect(row.status).toBe('moved');
+    expect(row.kindChange).toBeDefined();
+  });
+  it('the Parts tile says how many kinds changed beside the renumbered parts', () => {
+    const tile = (c: Compare) => tiles(c, 'all').find((t) => t.id === 'parts')!;
+    expect(tile(withParts([kindChange()])).sub).toBe('1 kind changed');
+    expect(tile(withParts([kindChange(), kindChange({ path: 'b' })])).sub).toBe('2 kinds changed');
+    expect(tile(withParts([kindChange({ baseKind: undefined })])).sub).toBeUndefined();
+    const two = withParts([kindChange()]);
+    two.boards[0].parts.renumbered = [{ path: 'x', designatorBase: 'C1', designatorHead: 'C2', kind: 'Capacitor', fields: [{ field: 'designator', old: 'C1', new: 'C2' }] }];
+    expect(tile(two).sub).toBe('1 kind changed, 1 renumbered');
   });
 });

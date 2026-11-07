@@ -241,7 +241,10 @@ fn a_changed_value_is_a_field_with_old_and_new_and_a_designator_on_each_side() {
     assert_eq!(change.base_at.as_ref().unwrap().line, at.line);
     // The LED the solver picks for the new current is another one too.
     assert!(led.parts.changed.iter().any(|p| p.path == "led"));
-    assert_eq!(c.summary, "2 values changed, 1 rail changed");
+    assert_eq!(
+        c.summary,
+        "2 values changed, 1 system port changed, 1 rail changed"
+    );
     // The power board is untouched.
     assert_eq!(board(&c, "TwoBoards/power").status, BoardStatus::Unchanged);
     // The line of the bill of materials changed with it.
@@ -995,6 +998,15 @@ fn the_server_answers_git_and_compare_and_tells_the_socket_how_far_it_is() {
     assert_eq!(v["source"]["files"][0]["path"], "src/main.nsm");
     let (status, body) = http(port, "/api/compare?ref=nothing-here");
     assert_eq!(status, 404, "{body}");
+    // The other side a ref too: `against` is read as `ref` is.
+    let (status, body) = http(port, "/api/compare?ref=HEAD&against=HEAD");
+    assert_eq!(status, 200, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["against"], "HEAD");
+    assert_eq!(v["summary"], "No circuit changes");
+    assert_eq!(v["head"]["dirty"], false);
+    let (status, body) = http(port, "/api/compare?ref=HEAD&against=nothing-here");
+    assert_eq!(status, 404, "{body}");
     let (status, body) = http(port, "/api/git/file?ref=HEAD&path=src%2Fmain.nsm");
     assert_eq!(status, 200, "{body}");
     assert!(body.contains("TwoBoards"));
@@ -1260,4 +1272,659 @@ fn a_compare_is_refused_while_the_analysis_of_the_files_on_disk_is_cancelled_and
         .compare("HEAD", None, &silent(), &netsmith_editor::Cancel::new())
         .unwrap();
     assert_eq!(c.error, None);
+}
+
+// ---- the extensions of ADR 0059: ref against ref ----
+
+/// `rev` against the commit `against`, as a request for two refs is made.
+fn compare_refs(w: &Workspace, rev: &str, against: &str) -> Result<Compare, ApiError> {
+    let _one = lock();
+    let result = w.compare_against(
+        rev,
+        Some(against),
+        None,
+        &silent(),
+        &netsmith_editor::Cancel::new(),
+    );
+    assert_eq!(
+        scratch_folders(),
+        Vec::<String>::new(),
+        "a scratch folder was left"
+    );
+    result
+}
+
+/// Three commits (the design, a renamed net, a resistor of another value) and a work tree that
+/// has a change of its own, which no comparison of two refs may see.
+fn three_commits(label: &str) -> (Repo, [String; 3], Workspace) {
+    let r = Repo::new(label, "");
+    let first = r.commit("first");
+    r.edit("src/main.nsm", "\"3V3\"", "\"VOUT\"");
+    let second = r.commit("rename the output net");
+    r.edit(
+        "src/main.nsm",
+        ".r1: Resistor {}",
+        ".r1: Resistor { .resistance &= 150ohm +/- 1% }",
+    );
+    let third = r.commit("a bigger resistor");
+    // Uncommitted: the files on disk differ from every commit.
+    r.edit("src/main.nsm", INPUT_CAP, &format!("{BULK}{INPUT_CAP}"));
+    fs::write(r.project.join("NOTES.md"), "not in git\n").unwrap();
+    let w = r.workspace();
+    (r, [first, second, third], w)
+}
+
+#[test]
+fn two_refs_are_compared_with_each_other_and_the_files_on_disk_are_not_read() {
+    need_tools!();
+    let (_r, [first, second, third], w) = three_commits("refs");
+    let c = compare_refs(&w, &first, &second).unwrap();
+    assert_eq!(c.error, None);
+    assert_eq!(c.rev, first);
+    assert_eq!(c.against.as_deref(), Some(second.as_str()));
+    assert_eq!(c.base.hash, first);
+    // The head side is the other commit: not dirty, no errors, and its hash.
+    assert_eq!(c.head.commit.as_ref().unwrap().hash, second);
+    assert!(!c.head.dirty && c.head.errors == 0);
+    assert_eq!(c.summary, "1 net renamed");
+    // The uncommitted capacitor and the untracked file are not in it.
+    let power = board(&c, "TwoBoards/power");
+    assert!(power.parts.added.is_empty() && power.parts.removed.is_empty());
+    assert_eq!(
+        (c.source.files_changed, c.source.added, c.source.removed),
+        (1, 1, 1)
+    );
+    assert_eq!(c.source.files[0].path, "src/main.nsm");
+    assert!(
+        c.source
+            .files
+            .iter()
+            .all(|f| f.status != SourceStatus::Untracked)
+    );
+
+    // Later refs: the resistor is the change between them.
+    let c = compare_refs(&w, &second, &third).unwrap();
+    assert_eq!(
+        c.summary,
+        "2 values changed, 1 system port changed, 1 rail changed"
+    );
+    let led = board(&c, "TwoBoards/led");
+    let r1 = led.parts.changed.iter().find(|p| p.path == "r1").unwrap();
+    // Each side's line is in that side's own commit.
+    assert_eq!(r1.at.as_ref().unwrap().file, "src/main.nsm");
+    assert!(r1.base_at.is_some());
+
+    // The files on disk against the same first commit say more: the capacitor and the notes.
+    let on_disk = compare(&w, &first).unwrap();
+    assert_eq!(on_disk.against, None);
+    assert!(on_disk.head.dirty);
+    assert!(
+        on_disk.summary.contains("1 part added"),
+        "{}",
+        on_disk.summary
+    );
+    assert!(
+        on_disk
+            .source
+            .files
+            .iter()
+            .any(|f| f.status == SourceStatus::Untracked)
+    );
+}
+
+#[test]
+fn the_same_ref_on_both_sides_and_the_two_directions_of_a_pair() {
+    need_tools!();
+    let (_r, [first, second, _], w) = three_commits("refs-pair");
+    let same = compare_refs(&w, &second, &second).unwrap();
+    assert!(!same.changed);
+    assert_eq!(same.summary, "No circuit changes");
+    assert_eq!(same.source.files_changed, 0);
+    // A name and the hash of the same commit are the same ref.
+    let by_name = compare_refs(&w, "HEAD~2", &first).unwrap();
+    assert!(!by_name.changed, "{}", by_name.summary);
+
+    let forward = compare_refs(&w, &first, &second).unwrap();
+    let back = compare_refs(&w, &second, &first).unwrap();
+    let net = |c: &Compare| {
+        let n = &board(c, "TwoBoards/power").nets;
+        let ren = n.renamed.first().expect("a renamed net");
+        (ren.base_name.clone(), ren.name.clone())
+    };
+    assert_eq!(net(&forward), ("3V3".to_string(), "VOUT".to_string()));
+    assert_eq!(net(&back), ("VOUT".to_string(), "3V3".to_string()));
+}
+
+#[test]
+fn a_second_ref_that_is_no_ref_is_refused_before_anything_is_read() {
+    need_tools!();
+    let (_r, [first, ..], w) = three_commits("refs-bad");
+    let missing = compare_refs(&w, &first, "nothing-here").unwrap_err();
+    assert_eq!(missing.status, 404, "{missing:?}");
+    let hostile = compare_refs(&w, &first, "--output=x").unwrap_err();
+    assert_eq!(hostile.status, 400, "{hostile:?}");
+    // Nothing was read of the first ref either: asking again is not served from the cache.
+    assert!(!compare_refs(&w, &first, "HEAD").unwrap().cached);
+}
+
+#[test]
+fn a_second_ref_that_does_not_analyse_is_an_answer_naming_that_commit() {
+    need_tools!();
+    let (r, [first, ..], w) = three_commits("refs-broken");
+    r.edit(
+        "src/main.nsm",
+        "Resistor { .resistance",
+        "Resistr { .resistance",
+    );
+    let broken = r.commit("a typo");
+    let c = compare_refs(&w, &first, &broken).unwrap();
+    let error = c.error.as_deref().expect("the second ref does not analyse");
+    assert!(error.contains("does not analyse at"), "{error}");
+    assert!(error.contains(&broken[..7]), "{error}");
+    assert!(error.contains("Resistr"), "{error}");
+    assert!(!c.base_problems.is_empty());
+    assert!(c.boards.is_empty());
+    assert_eq!(c.head.commit.as_ref().unwrap().hash, broken);
+    assert!(!c.head.dirty);
+    // The broken one as the first ref says so too, and the second is not read.
+    let c = compare_refs(&w, &broken, &first).unwrap();
+    assert!(c.error.as_deref().unwrap().contains(&broken[..7]));
+}
+
+#[test]
+fn a_comparison_of_two_refs_is_cached_by_each_commit() {
+    need_tools!();
+    let (_r, [first, second, third], w) = three_commits("refs-cache");
+    assert!(!compare_refs(&w, &first, &second).unwrap().cached);
+    assert!(compare_refs(&w, &first, &second).unwrap().cached);
+    // The second is kept: against a new one it is read once, and the pair is only half cached.
+    assert!(!compare_refs(&w, &second, &third).unwrap().cached);
+    assert!(compare_refs(&w, &third, &first).unwrap().cached);
+}
+
+#[test]
+fn a_comparison_of_two_refs_that_is_cancelled_leaves_nothing_behind() {
+    if !tools_here() {
+        return;
+    }
+    let (r, [first, second, _], w) = three_commits("refs-cancel");
+    let before = (
+        git(&r.dir, &["status", "--porcelain"]),
+        fs::read_to_string(r.project.join("src/main.nsm")).unwrap(),
+    );
+    let _one = lock();
+    // Cancelled when the second ref begins to solve: the first ref's reading is whole and kept.
+    let token = netsmith_editor::Cancel::new();
+    let solves = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let observe: Observer = {
+        let (token, solves) = (token.clone(), Arc::clone(&solves));
+        Arc::new(move |event| {
+            if let AnalysisEvent::Progress { stage, .. } = &event
+                && stage == "solve"
+                && solves.fetch_add(1, std::sync::atomic::Ordering::SeqCst) >= 1
+            {
+                token.cancel();
+            }
+        })
+    };
+    let error = w
+        .compare_against(&first, Some(&second), None, &observe, &token)
+        .expect_err("cancelled");
+    assert!(error.is_cancelled(), "{error:?}");
+    assert_eq!(scratch_folders(), Vec::<String>::new());
+    // Nothing of the second was kept: it is read again; the first was.
+    let again = w
+        .compare_against(
+            &first,
+            Some(&second),
+            None,
+            &silent(),
+            &netsmith_editor::Cancel::new(),
+        )
+        .unwrap();
+    assert!(!again.cached);
+    assert_eq!(again.summary, "1 net renamed");
+    // A token cancelled before it starts reads nothing.
+    let early = netsmith_editor::Cancel::new();
+    early.cancel();
+    assert!(
+        w.compare_against("HEAD", Some("HEAD~1"), None, &silent(), &early)
+            .expect_err("cancelled")
+            .is_cancelled()
+    );
+    assert_eq!(scratch_folders(), Vec::<String>::new());
+    // The work tree is as it was.
+    let after = (
+        git(&r.dir, &["status", "--porcelain"]),
+        fs::read_to_string(r.project.join("src/main.nsm")).unwrap(),
+    );
+    assert_eq!(before, after);
+}
+
+// ---- the extensions of ADR 0059: systems and the PCB ----
+
+fn system<'a>(c: &'a Compare, name: &str) -> &'a netsmith_editor::api::CompareSystem {
+    c.systems
+        .iter()
+        .find(|s| s.name == name)
+        .unwrap_or_else(|| {
+            panic!(
+                "no system {name} in {:?}",
+                c.systems.iter().map(|s| &s.name).collect::<Vec<_>>()
+            )
+        })
+}
+
+/// The layout file of the two boards: the resistor of the LED board and the output capacitor of
+/// the power board put by hand, and nothing else (the placer chooses the rest).
+fn layout(r1: &str, extra: &str) -> String {
+    format!(
+        "version = 1\n\n[LedBoard.parts.\"r1\"]\nat = [{r1}]\nrotation = 0.0\nside = \"top\"\nsource = \"hand\"\n{extra}\n[PowerBoard.parts.\"stage.output_cap\"]\nat = [10.0, 4.0]\nrotation = 0.0\nside = \"top\"\nsource = \"hand\"\n"
+    )
+}
+
+#[test]
+fn a_system_whose_port_changed_says_what_it_was_and_what_it_is() {
+    need_tools!();
+    let (r, _, _) = committed("system-port", "");
+    r.edit(
+        "src/main.nsm",
+        ".current &= 0mA..50mA",
+        ".current &= 0mA..30mA",
+    );
+    let c = compare(&r.workspace(), "HEAD").unwrap();
+    let s = system(&c, "TwoBoards");
+    assert_eq!(s.status, BoardStatus::Changed);
+    let port = s
+        .ports
+        .changed
+        .iter()
+        .find(|p| (p.board.as_str(), p.name.as_str()) == ("power", "output"))
+        .unwrap_or_else(|| panic!("{:#?}", s.ports));
+    let current = port.fields.iter().find(|f| f.field == "current").unwrap();
+    assert!(
+        current.old.as_deref().unwrap().contains("50"),
+        "{current:?}"
+    );
+    assert!(
+        current.new.as_deref().unwrap().contains("30"),
+        "{current:?}"
+    );
+    assert!(
+        s.boards.added.is_empty() && s.joins.added.is_empty() && s.mates.changed.is_empty(),
+        "{s:#?}"
+    );
+    assert!(c.summary.contains("system port"), "{}", c.summary);
+    assert!(c.changed);
+    // The board's own rail says it too, and the system does not say it again.
+    assert!(
+        s.rails.changed.iter().all(|r| !r.net.starts_with("power:")),
+        "{:#?}",
+        s.rails
+    );
+    // A board asked for alone has no systems in its answer.
+    let one = compare_with(&r.workspace(), "HEAD", Some("TwoBoards/power"), &silent()).unwrap();
+    assert!(one.systems.is_empty());
+}
+
+#[test]
+fn a_renamed_net_is_not_a_mate_or_a_system_rail_that_changed() {
+    need_tools!();
+    let (r, _, _) = committed("system-rename", "");
+    r.edit("src/main.nsm", "\"3V3\"", "\"VOUT\"");
+    let c = compare(&r.workspace(), "HEAD").unwrap();
+    assert_eq!(c.summary, "1 net renamed");
+    let s = system(&c, "TwoBoards");
+    assert_eq!(s.status, BoardStatus::Unchanged, "{s:#?}");
+    assert!(s.rails.added.is_empty() && s.rails.removed.is_empty() && s.rails.changed.is_empty());
+}
+
+#[test]
+fn a_system_that_is_only_on_one_side_is_added_or_removed() {
+    need_tools!();
+    let (r, first, w) = committed("system-gone", "");
+    // The second commit has no system: its boards are the system's, so they go with it.
+    let text = fs::read_to_string(r.project.join("src/main.nsm")).unwrap();
+    let cut = text.find("system TwoBoards").unwrap();
+    fs::write(r.project.join("src/main.nsm"), &text[..cut]).unwrap();
+    let second = r.commit("no system");
+    let gone = compare_refs(&w, &first, &second).unwrap();
+    assert_eq!(gone.error, None, "{:?}", gone.error);
+    assert_eq!(system(&gone, "TwoBoards").status, BoardStatus::Removed);
+    assert!(
+        gone.summary.contains("system TwoBoards removed"),
+        "{}",
+        gone.summary
+    );
+    let back = compare_refs(&w, &second, &first).unwrap();
+    assert_eq!(system(&back, "TwoBoards").status, BoardStatus::Added);
+    assert!(
+        back.summary.contains("system TwoBoards added"),
+        "{}",
+        back.summary
+    );
+    assert!(back.changed);
+}
+
+#[test]
+fn a_part_moved_on_the_pcb_has_its_old_and_new_place_and_a_part_the_placer_chose_is_not_listed() {
+    need_tools!();
+    let r = Repo::new("pcb-moved", "");
+    fs::write(r.project.join("src/main.pcb.toml"), layout("5.0, 2.0", "")).unwrap();
+    let first = r.commit("a layout");
+    // The resistor is 2.5 mm to the right, turned, on the other face; and a part is added, which
+    // moves the parts the placer chose.
+    fs::write(
+        r.project.join("src/main.pcb.toml"),
+        layout("7.5, 2.0", "").replace(
+            "rotation = 0.0\nside = \"top\"\nsource = \"hand\"\n\n[PowerBoard",
+            "rotation = 90.0\nside = \"bottom\"\nsource = \"hand\"\n\n[PowerBoard",
+        ),
+    )
+    .unwrap();
+    r.edit("src/main.nsm", INPUT_CAP, &format!("{BULK}{INPUT_CAP}"));
+    let w = r.workspace();
+    let c = compare(&w, &first).unwrap();
+    let led = board(&c, "TwoBoards/led");
+    assert_eq!(led.pcb_error, None);
+    let pcb = led.pcb.as_ref().expect("a PCB comparison");
+    assert_eq!(pcb.layout_file, "src/main.pcb.toml");
+    assert_eq!(pcb.moved.len(), 1, "{:#?}", pcb.moved);
+    let m = &pcb.moved[0];
+    assert_eq!(m.path, "r1");
+    assert_eq!((m.base.x, m.base.y), (5.0, 2.0));
+    assert_eq!((m.head.x, m.head.y), (7.5, 2.0));
+    assert!((m.distance_mm - 2.5).abs() < 1e-9);
+    let fields: Vec<(&str, &str, &str)> = m
+        .fields
+        .iter()
+        .map(|f| {
+            (
+                f.field.as_str(),
+                f.old.as_deref().unwrap(),
+                f.new.as_deref().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        fields,
+        [
+            ("position", "5, 2 mm", "7.5, 2 mm"),
+            ("rotation", "0°", "90°"),
+            ("side", "top", "bottom"),
+        ]
+    );
+    assert_eq!(
+        (m.base.placement.as_str(), m.head.placement.as_str()),
+        ("hand", "hand")
+    );
+    // The LED the placer chose is where the placer put it on both sides: not a statement.
+    assert!(pcb.moved.iter().all(|p| p.path != "led"));
+    assert!(led.parts.changed.is_empty(), "the circuit is the same");
+    assert_eq!(
+        led.status,
+        BoardStatus::Changed,
+        "a part moved on the PCB is a change"
+    );
+    // The power board gained a part, which the placer-chosen parts follow: still no move listed,
+    // and the outline is the parts' size, not something the design said.
+    let power = board(&c, "TwoBoards/power");
+    let power_pcb = power.pcb.as_ref().unwrap();
+    assert!(
+        power_pcb.moved.is_empty() && power_pcb.outline.is_none(),
+        "{power_pcb:#?}"
+    );
+    assert!(
+        c.summary.contains("1 part moved on the PCB"),
+        "{}",
+        c.summary
+    );
+    assert!(c.changed);
+    // Against a ref with no layout file the same part is derived on that side: it is compared.
+    let none = Repo::new("pcb-none", "");
+    let base = none.commit("no layout");
+    fs::write(
+        none.project.join("src/main.pcb.toml"),
+        layout("7.5, 2.0", ""),
+    )
+    .unwrap();
+    let c = compare(&none.workspace(), &base).unwrap();
+    let moved = &board(&c, "TwoBoards/led").pcb.as_ref().unwrap().moved;
+    assert_eq!(moved.len(), 1, "{moved:#?}");
+    assert_eq!(moved[0].base.placement, "derived");
+    assert_eq!(moved[0].head.placement, "hand");
+}
+
+#[test]
+fn a_layout_file_that_cannot_be_placed_says_so_instead_of_comparing_half_a_board() {
+    need_tools!();
+    let r = Repo::new("pcb-error", "");
+    fs::write(r.project.join("src/main.pcb.toml"), layout("5.0, 2.0", "")).unwrap();
+    let first = r.commit("a layout");
+    // A part the board does not have: the layout does not fit the board.
+    fs::write(
+        r.project.join("src/main.pcb.toml"),
+        layout(
+            "5.0, 2.0",
+            "\n[LedBoard.parts.\"nothing\"]\nat = [1.0, 1.0]\n",
+        ),
+    )
+    .unwrap();
+    let c = compare(&r.workspace(), &first).unwrap();
+    let led = board(&c, "TwoBoards/led");
+    assert!(led.pcb.is_none());
+    let error = led
+        .pcb_error
+        .as_deref()
+        .expect("why the PCB is not compared");
+    assert!(error.contains("head side"), "{error}");
+}
+
+#[test]
+fn the_pcb_and_the_systems_of_two_refs_are_read_from_the_commits() {
+    need_tools!();
+    let r = Repo::new("pcb-refs", "");
+    fs::write(r.project.join("src/main.pcb.toml"), layout("5.0, 2.0", "")).unwrap();
+    let first = r.commit("a layout");
+    fs::write(r.project.join("src/main.pcb.toml"), layout("6.0, 3.0", "")).unwrap();
+    let second = r.commit("the resistor moved");
+    // The files on disk say something else again, which two refs do not read.
+    fs::write(r.project.join("src/main.pcb.toml"), layout("9.0, 9.0", "")).unwrap();
+    let w = r.workspace();
+    let c = compare_refs(&w, &first, &second).unwrap();
+    let moved = &board(&c, "TwoBoards/led").pcb.as_ref().unwrap().moved;
+    assert_eq!(moved.len(), 1);
+    assert_eq!((moved[0].head.x, moved[0].head.y), (6.0, 3.0));
+    assert_eq!(c.summary, "1 part moved on the PCB");
+}
+
+#[test]
+fn a_file_the_editor_does_not_open_can_be_read_from_disk_for_the_comparison_of_a_file() {
+    need_tools!();
+    let (r, _, w) = committed("worktree-file", "");
+    fs::write(r.project.join("src/main.pcb.toml"), "version = 1\n").unwrap();
+    let f = w.git_file(":worktree", "src/main.pcb.toml").unwrap();
+    assert_eq!((f.text.as_str(), f.readonly), ("version = 1\n", true));
+    assert_eq!(f.stamp, "worktree");
+    // The same rules as for a ref: the project's own text files, inside it.
+    assert_eq!(
+        w.git_file(":worktree", "src/main.rs").unwrap_err().status,
+        403
+    );
+    assert_eq!(
+        w.git_file(":worktree", "../x.toml").unwrap_err().status,
+        403
+    );
+    assert_eq!(
+        w.git_file(":worktree", "src/none.toml").unwrap_err().status,
+        404
+    );
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink("/etc/hostname", r.project.join("src/link.toml")).unwrap();
+        assert_eq!(
+            w.git_file(":worktree", "src/link.toml").unwrap_err().status,
+            403
+        );
+    }
+}
+
+// ---- the extensions of ADR 0059: the kind of a part ----
+
+#[test]
+fn a_part_that_is_another_library_part_has_both_kinds_and_is_not_counted_as_a_value() {
+    need_tools!();
+    let (r, _, _) = committed("kind", "");
+    // The same two pins on the same nets, from another part of the library.
+    r.edit(
+        "src/main.nsm",
+        ".power_in: Header1x2",
+        ".power_in: Socket1x2",
+    );
+    let c = compare(&r.workspace(), "HEAD").unwrap();
+    let power = board(&c, "TwoBoards/power");
+    let change = power
+        .parts
+        .changed
+        .iter()
+        .find(|p| p.path == "power_in")
+        .unwrap_or_else(|| panic!("{:#?}", power.parts));
+    assert_eq!(change.kind, "Socket1x2");
+    assert_eq!(change.base_kind.as_deref(), Some("Header1x2"));
+    let kind = change.fields.iter().find(|f| f.field == "kind").unwrap();
+    assert_eq!(
+        (kind.old.as_deref(), kind.new.as_deref()),
+        (Some("Header1x2"), Some("Socket1x2"))
+    );
+    assert!(
+        c.summary
+            .contains("1 part's kind changed from Header1x2 to Socket1x2"),
+        "{}",
+        c.summary
+    );
+    assert!(!c.summary.contains("value changed"), "{}", c.summary);
+    // The same part with another value says its kind and no base kind.
+    let (r, _, _) = committed("kind-same", "");
+    r.edit(
+        "src/main.nsm",
+        ".r1: Resistor {}",
+        ".r1: Resistor { .resistance &= 150ohm +/- 1% }",
+    );
+    let c = compare(&r.workspace(), "HEAD").unwrap();
+    let r1 = board(&c, "TwoBoards/led")
+        .parts
+        .changed
+        .iter()
+        .find(|p| p.path == "r1")
+        .unwrap();
+    assert_eq!((r1.kind.as_str(), r1.base_kind.clone()), ("Resistor", None));
+}
+
+// ---- the extensions of ADR 0059: warnings and notes from a ref ----
+
+/// A 2 A supply and load on a `5V` / `GND` pair with the rail drawn `width` wide: the track guideline
+/// (ADR 0036) warns for a narrow one, twice (the load and the source), and for none that is wide enough.
+fn heater(width: &str) -> String {
+    format!(
+        "import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+board Heater {{
+    .process: TwoLayer {{
+        .stackup.thickness &= 1.6mm
+    }}
+    .load: Rail {{
+        .pos.net &= \"5V\"
+        .neg.net &= \"GND\"
+        .current &= 0A..2A
+        .min_track &= {width}..1m
+    }}
+    .source: Rail {{
+        .pos.net &= \"5V\"
+        .neg.net &= \"GND\"
+        .current &= -2A..0A
+    }}
+    .supply: Header1x2
+    .out: Header1x2
+    .supply.p1 ~ .source.pos
+    .supply.p2 ~ .source.neg
+    .out.p1 ~ .load.pos
+    .out.p2 ~ .load.neg
+}}
+"
+    )
+}
+
+fn severities(list: &[netsmith_editor::api::Problem]) -> (usize, usize, usize) {
+    let n = |s: Severity| list.iter().filter(|p| p.severity == s).count();
+    (n(Severity::Error), n(Severity::Warning), n(Severity::Note))
+}
+
+#[test]
+fn a_new_warning_and_a_resolved_one_are_compared_between_two_refs_each_by_its_severity() {
+    need_tools!();
+    let r = Repo::new("warnings", "");
+    fs::write(r.project.join("src/main.nsm"), heater("1mm")).unwrap();
+    let wide = r.commit("a wide track");
+    fs::write(r.project.join("src/main.nsm"), heater("0.2mm")).unwrap();
+    let narrow = r.commit("a narrow track");
+    let w = r.workspace();
+    // The warnings of the second side are new.
+    let c = compare_refs(&w, &wide, &narrow).unwrap();
+    assert_eq!(c.error, None, "{:?}", c.error);
+    let h = board(&c, "Heater");
+    let (errors, warnings, _) = severities(&h.problems.new);
+    assert_eq!((errors, warnings), (0, 2), "{:#?}", h.problems);
+    assert!(
+        h.problems
+            .resolved
+            .iter()
+            .all(|p| p.severity != Severity::Warning)
+    );
+    assert!(
+        h.problems
+            .new
+            .iter()
+            .all(|p| p.message.contains("IPC-2221") || p.severity == Severity::Note)
+    );
+    assert!(c.summary.contains("2 new warnings"), "{}", c.summary);
+    assert!(!c.summary.contains("error"), "{}", c.summary);
+    assert_eq!(h.status, BoardStatus::Changed);
+    assert!(c.changed);
+    // Each warning has the line of the side it is on.
+    assert!(h.problems.new.iter().any(|p| p.at.is_some()));
+    // The other way round they are resolved, and the sentence says so.
+    let back = compare_refs(&w, &narrow, &wide).unwrap();
+    let h = board(&back, "Heater");
+    assert_eq!(severities(&h.problems.resolved).1, 2, "{:#?}", h.problems);
+    assert!(
+        back.summary.contains("2 warnings resolved"),
+        "{}",
+        back.summary
+    );
+    assert!(!back.summary.contains("new warning"), "{}", back.summary);
+    // A warning that is on both sides is neither.
+    let same = compare_refs(&w, &narrow, &narrow).unwrap();
+    let h = board(&same, "Heater");
+    assert_eq!(severities(&h.problems.new), (0, 0, 0));
+    assert!(h.problems.unchanged >= 2);
+    assert_eq!(same.summary, "No circuit changes");
+}
+
+#[test]
+fn a_warning_of_the_files_on_disk_against_a_ref_and_the_notes_in_the_sentence() {
+    need_tools!();
+    let r = Repo::new("warnings-disk", "");
+    fs::write(r.project.join("src/main.nsm"), heater("1mm")).unwrap();
+    r.commit("a wide track");
+    fs::write(r.project.join("src/main.nsm"), heater("0.2mm")).unwrap();
+    let c = compare(&r.workspace(), "HEAD").unwrap();
+    let h = board(&c, "Heater");
+    assert_eq!(severities(&h.problems.new).1, 2, "{:#?}", h.problems);
+    assert!(c.summary.starts_with("2 new warnings"), "{}", c.summary);
+    // Notes are counted too, and come after the warnings.
+    let notes = severities(&h.problems.new).2;
+    let said = c.summary.contains(&format!("{notes} new note"));
+    assert_eq!(said, notes > 0, "{} ({notes} notes)", c.summary);
 }

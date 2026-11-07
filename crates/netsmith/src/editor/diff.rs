@@ -7,21 +7,58 @@
 //! A net that was renamed is found again by its pins, which are named by the paths of their
 //! parts (ADR 0017's idea, with the paths to hand: no colouring of a graph is needed).
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use netsmith_editor::api::{
     BoardStatus, Bom, BomDiff, BomLine, BudgetChange, CompareBoard, CompareBomChange,
-    CompareBomLine, CompareField, CompareInstance, CompareInstanceChange, CompareNet,
-    CompareNetChange, ComparePart, ComparePartChange, ComparePin, CompareRail, CompareRailChange,
-    InstancesDiff, Location, NetsDiff, PartsDiff, PowerNode, Problem, ProblemsDiff, RailsDiff,
-    Range, RangeChange, Severity,
+    CompareBomLine, CompareField, CompareInstance, CompareInstanceChange, CompareMate,
+    CompareMateChange, CompareNet, CompareNetChange, ComparePart, ComparePartChange,
+    ComparePcbArea, ComparePcbPartChange, ComparePcbPlace, ComparePin, CompareRail,
+    CompareRailChange, CompareSize, CompareSystem, CompareSystemPort, CompareSystemPortChange,
+    EdgeKind, InstancesDiff, LayersChange, Location, MatesDiff, NamesDiff, NetsDiff, OutlineChange,
+    PartsDiff, PcbBox, PcbDiff, PcbSide, PowerNode, Problem, ProblemsDiff, RailsDiff, Range,
+    RangeChange, Severity, SystemPortsDiff, SystemView,
 };
 
 /// One analysis, reduced to what a comparison reads.
 #[derive(Debug, Clone)]
 pub struct Digest {
     pub boards: BTreeMap<String, BoardDigest>,
+    /// The systems, by name.
+    pub systems: BTreeMap<String, SystemDigest>,
     pub problems: Vec<Problem>,
+}
+
+/// A system as the System view and the power tree read it.
+#[derive(Debug, Clone)]
+pub struct SystemDigest {
+    pub file: String,
+    pub view: SystemView,
+    /// The nodes of the system's power tree, each named `member:net`.
+    pub rails: Vec<PowerNode>,
+}
+
+/// A part's place on the PCB.
+#[derive(Debug, Clone)]
+pub struct PcbPartDigest {
+    pub path: String,
+    pub designator: String,
+    pub place: ComparePcbPlace,
+}
+
+/// A board as placed (`pcb::digest`): what the PCB view draws, in the frame of the outline's top
+/// left corner so that a board that grew on its left moves none of its parts.
+#[derive(Debug, Clone)]
+pub struct PcbDigest {
+    pub layout_file: String,
+    pub outline: CompareSize,
+    /// The design states the outline (the case's, or the board's own). A board that does not
+    /// is as big as its parts need, so its size moves with every part added.
+    pub outline_stated: bool,
+    pub layers: Vec<String>,
+    pub parts: Vec<PcbPartDigest>,
+    pub keepouts: Vec<(String, Option<PcbBox>)>,
+    pub cutouts: Vec<(String, Option<PcbBox>)>,
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +72,9 @@ pub struct BoardDigest {
     pub modules: Vec<InstanceDigest>,
     pub interfaces: Vec<InstanceDigest>,
     pub bom: Result<Bom, String>,
+    /// The board placed, or why it could not be; absent when the board was not placed (it is
+    /// not on this side).
+    pub pcb: Option<Result<PcbDigest, String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -87,6 +127,7 @@ impl BoardDigest {
                 stale_after_days: 0,
                 catalogs: Vec::new(),
             }),
+            pcb: None,
         }
     }
 }
@@ -94,6 +135,7 @@ impl BoardDigest {
 /// The result of comparing two digests.
 pub struct Diff {
     pub boards: Vec<CompareBoard>,
+    pub systems: Vec<CompareSystem>,
     /// The problems that name no board.
     pub problems: ProblemsDiff,
     pub summary: String,
@@ -124,13 +166,20 @@ pub fn diff(base: &Digest, head: &Digest, only: Option<&str>) -> Diff {
         problems_of(&base.problems, None),
         problems_of(&head.problems, None),
     );
-    // A single board asked for leaves the project's problems out of the sentence.
+    // A single board asked for leaves the systems and the project's problems out of the sentence.
+    let systems = if only.is_none() {
+        systems(base, head, &boards)
+    } else {
+        Vec::new()
+    };
     let project = only.is_none().then_some(&problems);
-    let summary = summarize(&boards, project);
+    let summary = summarize(&boards, &systems, project);
     let changed = boards.iter().any(|b| b.status != BoardStatus::Unchanged)
+        || systems.iter().any(|s| s.status != BoardStatus::Unchanged)
         || project.is_some_and(|p| !p.new.is_empty() || !p.resolved.is_empty());
     Diff {
         boards,
+        systems,
         problems,
         summary,
         changed,
@@ -158,7 +207,7 @@ fn board(
 ) -> CompareBoard {
     let (parts, canon) = parts(b, h);
     let (nets, renames) = nets(b, h, &canon);
-    let rails = rails(b, h, &renames);
+    let rails = rails_of(&b.rails, &h.rails, &renames);
     let modules = instances(&b.modules, &h.modules);
     let interfaces = instances(&b.interfaces, &h.interfaces);
     let (bom, bom_error) = match (&b.bom, &h.bom) {
@@ -167,6 +216,7 @@ fn board(
         (_, Err(e)) => (None, Some(format!("the bill of materials: {e}"))),
     };
     let problems = problems(base_problems, head_problems);
+    let (pcb, pcb_error) = pcb(b, h, &canon);
     let status = match (base, head) {
         (None, _) => BoardStatus::Added,
         (_, None) => BoardStatus::Removed,
@@ -191,7 +241,14 @@ fn board(
                     !b.added.is_empty() || !b.removed.is_empty() || !b.changed.is_empty()
                 })
                 || !problems.new.is_empty()
-                || !problems.resolved.is_empty();
+                || !problems.resolved.is_empty()
+                || pcb.as_ref().is_some_and(|p| {
+                    !p.moved.is_empty()
+                        || p.outline.is_some()
+                        || p.layers.is_some()
+                        || !p.keepouts.is_empty()
+                        || !p.cutouts.is_empty()
+                });
             if differs {
                 BoardStatus::Changed
             } else {
@@ -214,8 +271,10 @@ fn board(
         bom,
         bom_error,
         problems,
+        pcb,
+        pcb_error,
     };
-    out.summary = summarize(std::slice::from_ref(&out), None);
+    out.summary = summarize(std::slice::from_ref(&out), &[], None);
     out
 }
 
@@ -325,6 +384,8 @@ fn parts(b: &BoardDigest, h: &BoardDigest) -> (PartsDiff, HashMap<String, String
             base_path: (b.path != h.path).then(|| b.path.clone()),
             designator_base: b.designator.clone(),
             designator_head: h.designator.clone(),
+            kind: h.kind.clone(),
+            base_kind: (b.kind != h.kind).then(|| b.kind.clone()),
             at: h.at.clone(),
             base_at: b.at.clone(),
             fields,
@@ -630,8 +691,8 @@ fn rail_entry(n: &PowerNode) -> CompareRail {
     }
 }
 
-fn rails(b: &BoardDigest, h: &BoardDigest, renames: &HashMap<String, String>) -> RailsDiff {
-    let head: BTreeMap<&str, &PowerNode> = h.rails.iter().map(|n| (n.net.as_str(), n)).collect();
+fn rails_of(b: &[PowerNode], h: &[PowerNode], renames: &HashMap<String, String>) -> RailsDiff {
+    let head: BTreeMap<&str, &PowerNode> = h.iter().map(|n| (n.net.as_str(), n)).collect();
     let mut seen = BTreeSet::new();
     let mut out = RailsDiff {
         added: Vec::new(),
@@ -639,7 +700,7 @@ fn rails(b: &BoardDigest, h: &BoardDigest, renames: &HashMap<String, String>) ->
         changed: Vec::new(),
         unchanged: 0,
     };
-    for base in &b.rails {
+    for base in b {
         let name = renames.get(&base.net).unwrap_or(&base.net);
         let Some(&now) = head.get(name.as_str()) else {
             out.removed.push(rail_entry(base));
@@ -688,7 +749,7 @@ fn rails(b: &BoardDigest, h: &BoardDigest, renames: &HashMap<String, String>) ->
             base_at: base.at.clone(),
         });
     }
-    for now in &h.rails {
+    for now in h {
         if !seen.contains(now.net.as_str()) {
             out.added.push(rail_entry(now));
         }
@@ -823,6 +884,451 @@ fn bom(b: &Bom, h: &Bom) -> BomDiff {
     out
 }
 
+// ---- the PCB ----
+
+/// Millimetres the layout file does not tell apart: it keeps the hundredth.
+const PCB_EPS: f64 = 0.006;
+
+/// Millimetres as a person writes them: `12.5`, `3`, `0.25`.
+fn mm(v: f64) -> String {
+    let text = format!("{v:.2}");
+    text.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+/// Degrees between two angles, whichever way round is shorter.
+fn turn_between(a: f64, b: f64) -> f64 {
+    let d = (a - b).rem_euclid(360.0);
+    d.min(360.0 - d)
+}
+
+fn same_box(a: &Option<PcbBox>, b: &Option<PcbBox>) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(a), Some(b)) => {
+            (a.x - b.x).abs() < PCB_EPS
+                && (a.y - b.y).abs() < PCB_EPS
+                && (a.width - b.width).abs() < PCB_EPS
+                && (a.height - b.height).abs() < PCB_EPS
+        }
+        _ => false,
+    }
+}
+
+fn side_word(s: PcbSide) -> &'static str {
+    match s {
+        PcbSide::Top => "top",
+        PcbSide::Bottom => "bottom",
+    }
+}
+
+/// The PCBs of a board on the two sides. `canon` maps a part's path on the head side to its path
+/// at the ref (a part that moved in the source keeps its place), as the part diff made it.
+fn pcb(
+    b: &BoardDigest,
+    h: &BoardDigest,
+    canon: &HashMap<String, String>,
+) -> (Option<PcbDiff>, Option<String>) {
+    match (&b.pcb, &h.pcb) {
+        (Some(Ok(base)), Some(Ok(head))) => (Some(pcb_diff(base, head, canon)), None),
+        (Some(Ok(_)), Some(Err(e))) => (
+            None,
+            Some(format!(
+                "the PCB cannot be placed on the head side, so it is not compared: {e}"
+            )),
+        ),
+        (Some(Err(e)), Some(Ok(_))) => (
+            None,
+            Some(format!(
+                "the PCB cannot be placed at the ref, so it is not compared: {e}"
+            )),
+        ),
+        // Not placed on a side (a board that is only on the other), or on neither (it has no
+        // process): nothing to say.
+        _ => (None, None),
+    }
+}
+
+fn pcb_diff(b: &PcbDigest, h: &PcbDigest, canon: &HashMap<String, String>) -> PcbDiff {
+    let base: HashMap<&str, &PcbPartDigest> =
+        b.parts.iter().map(|p| (p.path.as_str(), p)).collect();
+    let mut moved = Vec::new();
+    let mut unchanged = 0;
+    for hp in &h.parts {
+        let was = canon.get(&hp.path).unwrap_or(&hp.path);
+        let Some(bp) = base.get(was.as_str()) else {
+            continue;
+        };
+        let (old, new) = (&bp.place, &hp.place);
+        // The placer's own choice on both sides moves with every part added: not a statement.
+        if old.placement == "derived" && new.placement == "derived" {
+            unchanged += 1;
+            continue;
+        }
+        let distance = (new.x - old.x).hypot(new.y - old.y);
+        let mut fields = Vec::new();
+        if distance >= PCB_EPS {
+            fields.push(CompareField {
+                field: "position".into(),
+                old: Some(format!("{}, {} mm", mm(old.x), mm(old.y))),
+                new: Some(format!("{}, {} mm", mm(new.x), mm(new.y))),
+            });
+        }
+        if turn_between(old.rotation, new.rotation) >= PCB_EPS {
+            fields.push(CompareField {
+                field: "rotation".into(),
+                old: Some(format!("{}°", mm(old.rotation))),
+                new: Some(format!("{}°", mm(new.rotation))),
+            });
+        }
+        if old.side != new.side {
+            fields.push(CompareField {
+                field: "side".into(),
+                old: Some(side_word(old.side).into()),
+                new: Some(side_word(new.side).into()),
+            });
+        }
+        if old.locked != new.locked {
+            fields.push(CompareField {
+                field: "locked".into(),
+                old: Some(old.locked.to_string()),
+                new: Some(new.locked.to_string()),
+            });
+        }
+        if fields.is_empty() {
+            unchanged += 1;
+            continue;
+        }
+        moved.push(ComparePcbPartChange {
+            path: hp.path.clone(),
+            base_path: (bp.path != hp.path).then(|| bp.path.clone()),
+            designator_base: bp.designator.clone(),
+            designator_head: hp.designator.clone(),
+            base: old.clone(),
+            head: new.clone(),
+            fields,
+            distance_mm: if distance >= PCB_EPS { distance } else { 0.0 },
+        });
+    }
+    moved.sort_by(|a, b| a.path.cmp(&b.path));
+    let outline = ((b.outline_stated || h.outline_stated)
+        && ((b.outline.width - h.outline.width).abs() >= PCB_EPS
+            || (b.outline.height - h.outline.height).abs() >= PCB_EPS))
+        .then_some(OutlineChange {
+            base: b.outline,
+            head: h.outline,
+        });
+    let layers = (b.layers != h.layers).then(|| LayersChange {
+        base: b.layers.clone(),
+        head: h.layers.clone(),
+    });
+    PcbDiff {
+        layout_file: h.layout_file.clone(),
+        outline,
+        layers,
+        moved,
+        keepouts: areas(&b.keepouts, &h.keepouts),
+        cutouts: areas(&b.cutouts, &h.cutouts),
+        unchanged,
+    }
+}
+
+fn areas(b: &[(String, Option<PcbBox>)], h: &[(String, Option<PcbBox>)]) -> Vec<ComparePcbArea> {
+    let base: BTreeMap<&str, &Option<PcbBox>> = b.iter().map(|(n, a)| (n.as_str(), a)).collect();
+    let head: BTreeMap<&str, &Option<PcbBox>> = h.iter().map(|(n, a)| (n.as_str(), a)).collect();
+    let mut out = Vec::new();
+    for (name, now) in &head {
+        match base.get(name) {
+            None => out.push(ComparePcbArea {
+                name: name.to_string(),
+                status: BoardStatus::Added,
+                base: None,
+                head: **now,
+            }),
+            Some(was) if !same_box(was, now) => out.push(ComparePcbArea {
+                name: name.to_string(),
+                status: BoardStatus::Changed,
+                base: **was,
+                head: **now,
+            }),
+            Some(_) => {}
+        }
+    }
+    for (name, was) in &base {
+        if !head.contains_key(name) {
+            out.push(ComparePcbArea {
+                name: name.to_string(),
+                status: BoardStatus::Removed,
+                base: **was,
+                head: None,
+            });
+        }
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
+// ---- the systems ----
+
+fn names(b: &BTreeSet<String>, h: &BTreeSet<String>) -> NamesDiff {
+    NamesDiff {
+        added: h.difference(b).cloned().collect(),
+        removed: b.difference(h).cloned().collect(),
+    }
+}
+
+fn system_ports(v: &SystemView) -> BTreeMap<(String, String), CompareSystemPort> {
+    v.nodes
+        .iter()
+        .filter(|n| n.kind == "board")
+        .flat_map(|n| {
+            n.ports.iter().map(|p| {
+                (
+                    (n.name.clone(), p.name.clone()),
+                    CompareSystemPort {
+                        board: n.name.clone(),
+                        name: p.name.clone(),
+                        voltage: p.voltage.clone(),
+                        current: p.current.clone(),
+                    },
+                )
+            })
+        })
+        .collect()
+}
+
+fn mates(b: &SystemView, h: &SystemView) -> MatesDiff {
+    let key = |m: &netsmith_editor::api::MateView| (m.a.clone(), m.b.clone());
+    let base: BTreeMap<_, _> = b.mates.iter().map(|m| (key(m), m)).collect();
+    let head: BTreeMap<_, _> = h.mates.iter().map(|m| (key(m), m)).collect();
+    let entry = |m: &netsmith_editor::api::MateView| CompareMate {
+        a: m.a.clone(),
+        b: m.b.clone(),
+        ports: m.ports.clone(),
+        at: m.at.clone(),
+    };
+    let mut out = MatesDiff {
+        added: Vec::new(),
+        removed: Vec::new(),
+        changed: Vec::new(),
+    };
+    for (k, now) in &head {
+        let Some(was) = base.get(k) else {
+            out.added.push(entry(now));
+            continue;
+        };
+        let mut fields = Vec::new();
+        let contacts = |m: &netsmith_editor::api::MateView| -> BTreeMap<u32, String> {
+            m.contacts
+                .iter()
+                .map(|c| {
+                    (
+                        c.number,
+                        // The roles only: what a board calls the net behind a contact is the
+                        // board's, and a rename is said in its nets.
+                        format!("{} to {}", c.a_role, c.b_role),
+                    )
+                })
+                .collect()
+        };
+        let (cb, ch) = (contacts(was), contacts(now));
+        let numbers: BTreeSet<u32> = cb.keys().chain(ch.keys()).copied().collect();
+        for n in numbers {
+            if cb.get(&n) != ch.get(&n) {
+                fields.push(CompareField {
+                    field: format!("contact {n}"),
+                    old: cb.get(&n).cloned(),
+                    new: ch.get(&n).cloned(),
+                });
+            }
+        }
+        if was.ports != now.ports {
+            fields.push(CompareField {
+                field: "ports".into(),
+                old: Some(was.ports.join(", ")),
+                new: Some(now.ports.join(", ")),
+            });
+        }
+        if !fields.is_empty() {
+            out.changed.push(CompareMateChange {
+                a: now.a.clone(),
+                b: now.b.clone(),
+                fields,
+                at: now.at.clone(),
+            });
+        }
+    }
+    for (k, was) in &base {
+        if !head.contains_key(k) {
+            out.removed.push(entry(was));
+        }
+    }
+    out
+}
+
+fn system_diff(
+    name: &str,
+    base: Option<&SystemDigest>,
+    head: Option<&SystemDigest>,
+    known_rails: &HashSet<(String, String)>,
+) -> CompareSystem {
+    let empty = SystemDigest {
+        file: String::new(),
+        view: SystemView {
+            name: name.to_string(),
+            kind: "system".into(),
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            mates: Vec::new(),
+            ground_groups: Vec::new(),
+        },
+        rails: Vec::new(),
+    };
+    let (b, h) = (base.unwrap_or(&empty), head.unwrap_or(&empty));
+    let boards = |d: &SystemDigest| -> Vec<InstanceDigest> {
+        d.view
+            .nodes
+            .iter()
+            .filter(|n| n.kind == "board")
+            .map(|n| InstanceDigest {
+                path: n.name.clone(),
+                type_name: n.type_name.clone(),
+                at: n.at.clone(),
+            })
+            .collect()
+    };
+    let boards = instances(&boards(b), &boards(h));
+    let (pb, ph) = (system_ports(&b.view), system_ports(&h.view));
+    let mut ports = SystemPortsDiff {
+        added: Vec::new(),
+        removed: Vec::new(),
+        changed: Vec::new(),
+    };
+    for (k, now) in &ph {
+        match pb.get(k) {
+            None => ports.added.push(now.clone()),
+            Some(was) => {
+                let mut fields = Vec::new();
+                if was.voltage != now.voltage {
+                    fields.push(CompareField {
+                        field: "voltage".into(),
+                        old: was.voltage.clone(),
+                        new: now.voltage.clone(),
+                    });
+                }
+                if was.current != now.current {
+                    fields.push(CompareField {
+                        field: "current".into(),
+                        old: was.current.clone(),
+                        new: now.current.clone(),
+                    });
+                }
+                if !fields.is_empty() {
+                    ports.changed.push(CompareSystemPortChange {
+                        board: now.board.clone(),
+                        name: now.name.clone(),
+                        fields,
+                    });
+                }
+            }
+        }
+    }
+    for (k, was) in &pb {
+        if !ph.contains_key(k) {
+            ports.removed.push(was.clone());
+        }
+    }
+    let joins = |v: &SystemView| -> BTreeSet<String> {
+        v.edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::Join)
+            .map(|e| e.label.clone())
+            .collect()
+    };
+    let grounds = |v: &SystemView| -> BTreeSet<String> {
+        v.ground_groups.iter().map(|g| g.nets.join(" + ")).collect()
+    };
+    let mut rails = rails_of(&b.rails, &h.rails, &HashMap::new());
+    // What a board's own comparison says of its rail is not said again here: this lists what only
+    // the system's joins explain.
+    let listed = |net: &str| {
+        net.split_once(':').is_some_and(|(member, n)| {
+            known_rails.contains(&(format!("{name}/{member}"), n.to_string()))
+        })
+    };
+    rails.added.retain(|r| !listed(&r.net));
+    rails.removed.retain(|r| !listed(&r.net));
+    rails
+        .changed
+        .retain(|r| !listed(&r.net) && !r.base_net.as_deref().is_some_and(listed));
+    let mut out = CompareSystem {
+        name: name.to_string(),
+        status: BoardStatus::Unchanged,
+        base_file: base.map(|b| b.file.clone()),
+        head_file: head.map(|h| h.file.clone()),
+        summary: String::new(),
+        boards,
+        ports,
+        joins: names(&joins(&b.view), &joins(&h.view)),
+        mates: mates(&b.view, &h.view),
+        ground_groups: names(&grounds(&b.view), &grounds(&h.view)),
+        rails,
+    };
+    out.status = match (base, head) {
+        (None, _) => BoardStatus::Added,
+        (_, None) => BoardStatus::Removed,
+        _ if system_changes(&out) > 0 => BoardStatus::Changed,
+        _ => BoardStatus::Unchanged,
+    };
+    out.summary = summarize(&[], std::slice::from_ref(&out), None);
+    out
+}
+
+/// How many things differ in a system on both sides.
+pub fn system_changes(s: &CompareSystem) -> usize {
+    s.boards.added.len()
+        + s.boards.removed.len()
+        + s.boards.changed.len()
+        + s.ports.added.len()
+        + s.ports.removed.len()
+        + s.ports.changed.len()
+        + s.joins.added.len()
+        + s.joins.removed.len()
+        + s.mates.added.len()
+        + s.mates.removed.len()
+        + s.mates.changed.len()
+        + s.ground_groups.added.len()
+        + s.ground_groups.removed.len()
+        + s.rails.added.len()
+        + s.rails.removed.len()
+        + s.rails.changed.len()
+}
+
+fn systems(base: &Digest, head: &Digest, boards: &[CompareBoard]) -> Vec<CompareSystem> {
+    // The rails the boards' own comparisons list, by the board's name and the net's.
+    let mut known: HashSet<(String, String)> = HashSet::new();
+    for b in boards {
+        for r in b.rails.added.iter().chain(&b.rails.removed) {
+            known.insert((b.name.clone(), r.net.clone()));
+        }
+        for r in &b.rails.changed {
+            known.insert((b.name.clone(), r.net.clone()));
+            if let Some(n) = &r.base_net {
+                known.insert((b.name.clone(), n.clone()));
+            }
+        }
+        // A rail whose net was renamed and nothing else is not in the rails: it is in the nets.
+        for n in &b.nets.renamed {
+            known.insert((b.name.clone(), n.name.clone()));
+            known.insert((b.name.clone(), n.base_name.clone()));
+        }
+    }
+    let names: BTreeSet<&String> = base.systems.keys().chain(head.systems.keys()).collect();
+    names
+        .into_iter()
+        .map(|n| system_diff(n, base.systems.get(n), head.systems.get(n), &known))
+        .collect()
+}
+
 fn rank(severity: Severity) -> u8 {
     match severity {
         Severity::Error => 0,
@@ -876,6 +1382,18 @@ fn problems(base: Vec<Problem>, head: Vec<Problem>) -> ProblemsDiff {
     }
 }
 
+/// `error`, `warnings`: the word for a severity, in the plural for any number but one.
+fn severity_word(severity: Severity, n: usize) -> &'static str {
+    match (severity, n == 1) {
+        (Severity::Error, true) => "error",
+        (Severity::Error, false) => "errors",
+        (Severity::Warning, true) => "warning",
+        (Severity::Warning, false) => "warnings",
+        (Severity::Note, true) => "note",
+        (Severity::Note, false) => "notes",
+    }
+}
+
 pub fn count(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
@@ -896,7 +1414,11 @@ pub fn amps(a: f64) -> String {
 
 /// One line for the boards: `3 parts added, 1 removed, 2 values changed, 1 rail's headroom
 /// shrank from 80 mA to 20 mA`. `project` is the problems that name no board.
-fn summarize(boards: &[CompareBoard], project: Option<&ProblemsDiff>) -> String {
+fn summarize(
+    boards: &[CompareBoard],
+    systems: &[CompareSystem],
+    project: Option<&ProblemsDiff>,
+) -> String {
     let mut pieces: Vec<String> = Vec::new();
     let added_boards: Vec<&str> = boards
         .iter()
@@ -930,6 +1452,9 @@ fn summarize(boards: &[CompareBoard], project: Option<&ProblemsDiff>) -> String 
     let mut values = 0;
     let mut moved = 0;
     let mut others = 0;
+    // A part that is another library part (`Resistor` to `Capacitor`) is counted for that, and not
+    // again for the value that came with it.
+    let mut kinds: Vec<(&str, &str)> = Vec::new();
     for b in &both {
         for c in &b.parts.changed {
             let only = |name: &str| {
@@ -938,7 +1463,9 @@ fn summarize(boards: &[CompareBoard], project: Option<&ProblemsDiff>) -> String 
                     .filter(|f| f.field != "designator")
                     .all(|f| f.field == name)
             };
-            if c.fields.iter().any(|f| f.field == "value") {
+            if let Some(was) = &c.base_kind {
+                kinds.push((was, &c.kind));
+            } else if c.fields.iter().any(|f| f.field == "value") {
                 values += 1;
             } else if only("path") {
                 moved += 1;
@@ -958,6 +1485,11 @@ fn summarize(boards: &[CompareBoard], project: Option<&ProblemsDiff>) -> String 
         } else {
             format!("{} removed", count(parts_removed, "part", "parts"))
         });
+    }
+    match kinds.as_slice() {
+        [] => {}
+        [(was, now)] => pieces.push(format!("1 part's kind changed from {was} to {now}")),
+        many => pieces.push(format!("{} parts' kinds changed", many.len())),
     }
     if values > 0 {
         pieces.push(format!("{} changed", count(values, "value", "values")));
@@ -1006,6 +1538,8 @@ fn summarize(boards: &[CompareBoard], project: Option<&ProblemsDiff>) -> String 
         "port",
         "ports",
     ));
+    summarize_systems(systems, &mut pieces);
+    summarize_pcb(&both, &mut pieces);
     // Rails: the headroom first, as it is what the owner looks for.
     let mut shrank = Vec::new();
     let mut grew = 0;
@@ -1057,33 +1591,31 @@ fn summarize(boards: &[CompareBoard], project: Option<&ProblemsDiff>) -> String 
             delta.abs()
         ));
     }
-    let own = |f: &dyn Fn(&ProblemsDiff) -> Vec<&Problem>| -> usize {
-        let mut n = both.iter().map(|b| f(&b.problems).len()).sum::<usize>();
+    // What the checker said that it did not say before, and what it no longer says, by how serious
+    // it is: errors, warnings (a part not chosen, a guideline) and notes (what the solver left
+    // alone). A note is last in the sentence, as it is the least to act on.
+    let own = |severity: Severity, resolved: bool| -> usize {
+        let list = |p: &ProblemsDiff| {
+            let list = if resolved { &p.resolved } else { &p.new };
+            list.iter().filter(|p| p.severity == severity).count()
+        };
+        let mut n = both.iter().map(|b| list(&b.problems)).sum::<usize>();
         if let Some(p) = project {
-            n += f(p).len();
+            n += list(p);
         }
         n
     };
-    let new = own(&|p| {
-        p.new
-            .iter()
-            .filter(|p| p.severity != Severity::Note)
-            .collect()
-    });
-    let resolved = own(&|p| {
-        p.resolved
-            .iter()
-            .filter(|p| p.severity != Severity::Note)
-            .collect()
-    });
-    if new > 0 {
-        pieces.push(format!(
-            "{new} new {}",
-            if new == 1 { "problem" } else { "problems" }
-        ));
+    for severity in [Severity::Error, Severity::Warning, Severity::Note] {
+        let n = own(severity, false);
+        if n > 0 {
+            pieces.push(format!("{n} new {}", severity_word(severity, n)));
+        }
     }
-    if resolved > 0 {
-        pieces.push(format!("{resolved} resolved"));
+    for severity in [Severity::Error, Severity::Warning, Severity::Note] {
+        let n = own(severity, true);
+        if n > 0 {
+            pieces.push(format!("{n} {} resolved", severity_word(severity, n)));
+        }
     }
     if pieces.is_empty() {
         return if renumbered > 0 {
@@ -1096,6 +1628,120 @@ fn summarize(boards: &[CompareBoard], project: Option<&ProblemsDiff>) -> String 
         };
     }
     pieces.join(", ")
+}
+
+/// `2 system ports changed`, `1 system added`: the systems' part of the sentence.
+fn summarize_systems(systems: &[CompareSystem], pieces: &mut Vec<String>) {
+    let status = |s: BoardStatus| -> Vec<&str> {
+        systems
+            .iter()
+            .filter(|x| x.status == s)
+            .map(|x| x.name.as_str())
+            .collect()
+    };
+    for (names, verb) in [
+        (status(BoardStatus::Added), "added"),
+        (status(BoardStatus::Removed), "removed"),
+    ] {
+        match names.as_slice() {
+            [] => {}
+            [one] => pieces.push(format!("system {one} {verb}")),
+            many => pieces.push(format!("{} {verb}", count(many.len(), "system", "systems"))),
+        }
+    }
+    let both: Vec<&CompareSystem> = systems
+        .iter()
+        .filter(|s| !matches!(s.status, BoardStatus::Added | BoardStatus::Removed))
+        .collect();
+    let sum = |f: &dyn Fn(&CompareSystem) -> usize| both.iter().map(|s| f(s)).sum::<usize>();
+    for (n, what) in [
+        (sum(&|s| s.boards.added.len()), "system boards added"),
+        (sum(&|s| s.boards.removed.len()), "system boards removed"),
+        (sum(&|s| s.boards.changed.len()), "system boards changed"),
+    ] {
+        if n > 0 {
+            pieces.push(format!("{n} {what}"));
+        }
+    }
+    let one_or_many =
+        |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+    let ports = sum(&|s| s.ports.added.len() + s.ports.removed.len() + s.ports.changed.len());
+    if ports > 0 {
+        pieces.push(one_or_many(
+            ports,
+            "system port changed",
+            "system ports changed",
+        ));
+    }
+    let joins = sum(&|s| s.joins.added.len() + s.joins.removed.len());
+    if joins > 0 {
+        pieces.push(one_or_many(
+            joins,
+            "system join changed",
+            "system joins changed",
+        ));
+    }
+    let mates = sum(&|s| s.mates.added.len() + s.mates.removed.len() + s.mates.changed.len());
+    if mates > 0 {
+        pieces.push(one_or_many(mates, "mate changed", "mates changed"));
+    }
+    let grounds = sum(&|s| s.ground_groups.added.len() + s.ground_groups.removed.len());
+    if grounds > 0 {
+        pieces.push(one_or_many(
+            grounds,
+            "ground group changed",
+            "ground groups changed",
+        ));
+    }
+    let rails = sum(&|s| s.rails.added.len() + s.rails.removed.len() + s.rails.changed.len());
+    if rails > 0 {
+        pieces.push(one_or_many(
+            rails,
+            "system rail changed",
+            "system rails changed",
+        ));
+    }
+}
+
+/// `2 parts moved on the PCB`, `outline 30 × 20 → 32 × 20 mm`, `layers 2 → 4`: the PCB's part.
+fn summarize_pcb(boards: &[&CompareBoard], pieces: &mut Vec<String>) {
+    let pcbs: Vec<&PcbDiff> = boards.iter().filter_map(|b| b.pcb.as_ref()).collect();
+    let moved: usize = pcbs.iter().map(|p| p.moved.len()).sum();
+    if moved > 0 {
+        pieces.push(format!(
+            "{} moved on the PCB",
+            count(moved, "part", "parts")
+        ));
+    }
+    let outlines: Vec<&OutlineChange> = pcbs.iter().filter_map(|p| p.outline.as_ref()).collect();
+    match outlines.as_slice() {
+        [] => {}
+        [o] => pieces.push(format!(
+            "outline {} × {} → {} × {} mm",
+            mm(o.base.width),
+            mm(o.base.height),
+            mm(o.head.width),
+            mm(o.head.height)
+        )),
+        many => pieces.push(format!("{} outlines changed", many.len())),
+    }
+    let layers: Vec<&LayersChange> = pcbs.iter().filter_map(|p| p.layers.as_ref()).collect();
+    match layers.as_slice() {
+        [] => {}
+        [l] => pieces.push(format!("layers {} → {}", l.base.len(), l.head.len())),
+        many => pieces.push(format!("{} layer stacks changed", many.len())),
+    }
+    let keepouts: usize = pcbs.iter().map(|p| p.keepouts.len()).sum();
+    if keepouts > 0 {
+        pieces.push(format!(
+            "{} changed",
+            count(keepouts, "keepout", "keepouts")
+        ));
+    }
+    let cutouts: usize = pcbs.iter().map(|p| p.cutouts.len()).sum();
+    if cutouts > 0 {
+        pieces.push(format!("{} changed", count(cutouts, "cutout", "cutouts")));
+    }
 }
 
 #[cfg(test)]
@@ -1145,6 +1791,7 @@ mod tests {
     fn digest(b: BoardDigest) -> Digest {
         Digest {
             boards: BTreeMap::from([("B".to_string(), b)]),
+            systems: BTreeMap::new(),
             problems: Vec::new(),
         }
     }
@@ -1571,8 +2218,11 @@ mod tests {
         assert_eq!(said(&d.problems.resolved), ["a note of the project"]);
         assert_eq!(b.status, BoardStatus::Changed);
         assert!(d.changed);
-        // A note is in the lists and not in the sentence.
-        assert_eq!(d.summary, "3 new problems, 1 resolved");
+        // Errors, warnings and notes are each said, the notes last.
+        assert_eq!(
+            d.summary,
+            "2 new errors, 1 new warning, 1 warning resolved, 1 note resolved"
+        );
     }
 
     #[test]
@@ -1633,5 +2283,572 @@ mod tests {
         assert_eq!(amps(1.5), "1.5 A");
         assert_eq!(amps(0.000_25), "250 µA");
         assert_eq!(amps(0.0), "0 µA");
+    }
+
+    // ---- the PCB ----
+
+    fn place(x: f64, y: f64, placement: &str) -> ComparePcbPlace {
+        ComparePcbPlace {
+            x,
+            y,
+            rotation: 0.0,
+            side: PcbSide::Top,
+            locked: false,
+            placement: placement.into(),
+        }
+    }
+
+    fn pcb_part(path: &str, place: ComparePcbPlace) -> PcbPartDigest {
+        PcbPartDigest {
+            path: path.into(),
+            designator: "R1".into(),
+            place,
+        }
+    }
+
+    fn placed(parts: Vec<PcbPartDigest>) -> PcbDigest {
+        PcbDigest {
+            layout_file: "src/main.pcb.toml".into(),
+            outline: CompareSize {
+                width: 30.0,
+                height: 20.0,
+            },
+            outline_stated: false,
+            layers: vec!["top".into(), "bottom".into()],
+            parts,
+            keepouts: Vec::new(),
+            cutouts: Vec::new(),
+        }
+    }
+
+    fn with_pcb(mut b: BoardDigest, p: Result<PcbDigest, String>) -> BoardDigest {
+        b.pcb = Some(p);
+        b
+    }
+
+    fn pcb_of(base: PcbDigest, head: PcbDigest) -> (Diff, PcbDiff) {
+        let d = diff(
+            &digest(with_pcb(board(Vec::new(), Vec::new()), Ok(base))),
+            &digest(with_pcb(board(Vec::new(), Vec::new()), Ok(head))),
+            None,
+        );
+        let p = only(&d).pcb.clone().expect("a PCB diff");
+        (d, p)
+    }
+
+    #[test]
+    fn a_part_that_moved_turned_flipped_or_was_locked_is_listed_with_each_field() {
+        let mut turned = place(5.0, 2.0, "hand");
+        turned.rotation = 90.0;
+        turned.side = PcbSide::Bottom;
+        turned.locked = true;
+        let (d, p) = pcb_of(
+            placed(vec![
+                pcb_part("a", place(5.0, 2.0, "hand")),
+                pcb_part("b", place(1.0, 1.0, "hand")),
+            ]),
+            placed(vec![
+                pcb_part("a", turned),
+                pcb_part("b", place(1.003, 1.0, "hand")),
+            ]),
+        );
+        assert_eq!(p.moved.len(), 1, "{:#?}", p.moved);
+        let names: Vec<&str> = p.moved[0].fields.iter().map(|f| f.field.as_str()).collect();
+        assert_eq!(names, ["rotation", "side", "locked"]);
+        assert_eq!(p.moved[0].distance_mm, 0.0);
+        // The hundredth of a millimetre is what the layout file keeps: 0.003 is no move.
+        assert_eq!(p.unchanged, 1);
+        assert_eq!(d.summary, "1 part moved on the PCB");
+        assert_eq!(only(&d).status, BoardStatus::Changed);
+        assert!(d.changed);
+    }
+
+    #[test]
+    fn what_the_placer_chose_on_both_sides_is_not_a_move_but_one_side_stated_is() {
+        let (d, p) = pcb_of(
+            placed(vec![
+                pcb_part("a", place(5.0, 2.0, "derived")),
+                pcb_part("b", place(1.0, 1.0, "derived")),
+            ]),
+            placed(vec![
+                pcb_part("a", place(9.0, 9.0, "derived")),
+                pcb_part("b", place(4.0, 1.0, "hand")),
+            ]),
+        );
+        assert_eq!(p.moved.len(), 1);
+        assert_eq!(p.moved[0].path, "b");
+        assert_eq!(p.moved[0].base.placement, "derived");
+        assert!((p.moved[0].distance_mm - 3.0).abs() < 1e-9);
+        assert_eq!(p.unchanged, 1);
+        assert_eq!(d.summary, "1 part moved on the PCB");
+    }
+
+    #[test]
+    fn a_part_that_moved_in_the_source_is_followed_to_its_new_path() {
+        let digest_of = |path: &str, x: f64| {
+            let mut b = board(vec![part(path, "R1", "1k", &[])], Vec::new());
+            b.pcb = Some(Ok(placed(vec![pcb_part(path, place(x, 2.0, "hand"))])));
+            digest(b)
+        };
+        let d = diff(&digest_of("old.r", 5.0), &digest_of("new.r", 6.0), None);
+        let b = only(&d);
+        assert_eq!(b.parts.changed[0].base_path.as_deref(), Some("old.r"));
+        let m = &b.pcb.as_ref().unwrap().moved[0];
+        assert_eq!(
+            (m.path.as_str(), m.base_path.as_deref()),
+            ("new.r", Some("old.r"))
+        );
+    }
+
+    #[test]
+    fn an_outline_is_compared_when_the_design_states_it_and_not_when_it_follows_the_parts() {
+        let bigger = |stated: bool| {
+            let mut p = placed(Vec::new());
+            p.outline.width = 32.0;
+            p.outline_stated = stated;
+            p
+        };
+        let (d, p) = pcb_of(placed(Vec::new()), bigger(false));
+        assert!(p.outline.is_none());
+        assert_eq!(d.summary, "No circuit changes");
+        assert_eq!(only(&d).status, BoardStatus::Unchanged);
+        let (d, p) = pcb_of(placed(Vec::new()), bigger(true));
+        assert_eq!(p.outline.unwrap().head.width, 32.0);
+        assert_eq!(d.summary, "outline 30 × 20 → 32 × 20 mm");
+        // Stated on the other side only is a statement too.
+        let mut base = placed(Vec::new());
+        base.outline_stated = true;
+        let (_, p) = pcb_of(base, bigger(false));
+        assert!(p.outline.is_some());
+    }
+
+    #[test]
+    fn layers_keepouts_and_cutouts_are_compared_by_name() {
+        let area = |x: f64| {
+            Some(PcbBox {
+                x,
+                y: 1.0,
+                width: 4.0,
+                height: 2.0,
+            })
+        };
+        let mut base = placed(Vec::new());
+        base.keepouts = vec![("antenna".into(), area(1.0)), ("gone".into(), area(2.0))];
+        base.cutouts = vec![("slot".into(), area(3.0))];
+        let mut head = placed(Vec::new());
+        head.layers = vec![
+            "top".into(),
+            "inner1".into(),
+            "inner2".into(),
+            "bottom".into(),
+        ];
+        head.keepouts = vec![("antenna".into(), area(6.0)), ("new".into(), area(2.0))];
+        head.cutouts = vec![("slot".into(), area(3.001))];
+        let (d, p) = pcb_of(base, head);
+        assert_eq!(p.layers.as_ref().unwrap().head.len(), 4);
+        let status = |v: &[ComparePcbArea]| -> Vec<(String, BoardStatus)> {
+            v.iter().map(|a| (a.name.clone(), a.status)).collect()
+        };
+        assert_eq!(
+            status(&p.keepouts),
+            [
+                ("antenna".to_string(), BoardStatus::Changed),
+                ("gone".to_string(), BoardStatus::Removed),
+                ("new".to_string(), BoardStatus::Added),
+            ]
+        );
+        assert!(p.cutouts.is_empty(), "0.001 mm is the same area");
+        assert_eq!(d.summary, "layers 2 → 4, 3 keepouts changed");
+    }
+
+    #[test]
+    fn a_board_that_cannot_be_placed_on_one_side_says_so_and_on_both_says_nothing() {
+        let side = |p: Option<Result<PcbDigest, String>>| BoardDigest {
+            pcb: p,
+            ..board(Vec::new(), Vec::new())
+        };
+        let ok = || Some(Ok(placed(Vec::new())));
+        let broken = || Some(Err("no footprint".to_string()));
+        let d = diff(&digest(side(ok())), &digest(side(broken())), None);
+        assert!(only(&d).pcb.is_none());
+        assert!(only(&d).pcb_error.as_deref().unwrap().contains("head side"));
+        let d = diff(&digest(side(broken())), &digest(side(ok())), None);
+        assert!(
+            only(&d)
+                .pcb_error
+                .as_deref()
+                .unwrap()
+                .contains("at the ref")
+        );
+        let d = diff(&digest(side(broken())), &digest(side(broken())), None);
+        assert!(only(&d).pcb.is_none() && only(&d).pcb_error.is_none());
+        let d = diff(&digest(side(None)), &digest(side(None)), None);
+        assert!(only(&d).pcb.is_none() && only(&d).pcb_error.is_none());
+    }
+
+    // ---- the systems ----
+
+    use netsmith_editor::api::{Edge, GroundGroupView, MateContact, MateView, Port, SystemNode};
+
+    fn node(name: &str, ty: &str, ports: &[(&str, Option<&str>, Option<&str>)]) -> SystemNode {
+        SystemNode {
+            id: name.into(),
+            name: name.into(),
+            type_name: ty.into(),
+            kind: "board".into(),
+            ports: ports
+                .iter()
+                .map(|(n, v, c)| Port {
+                    name: (*n).into(),
+                    voltage: v.map(str::to_string),
+                    current: c.map(str::to_string),
+                })
+                .collect(),
+            at: None,
+        }
+    }
+
+    fn contact(n: u32, a: &str, b: &str) -> MateContact {
+        MateContact {
+            number: n,
+            a_role: a.into(),
+            b_role: b.into(),
+            a_net: Some("NETA".into()),
+            b_net: Some("NETB".into()),
+        }
+    }
+
+    fn mate(a: &str, b: &str, contacts: Vec<MateContact>) -> MateView {
+        MateView {
+            a: a.into(),
+            b: b.into(),
+            a_board: "p".into(),
+            b_board: "l".into(),
+            contacts,
+            ports: vec!["p.out ~ l.in".into()],
+            reversible: None,
+            at: None,
+        }
+    }
+
+    fn sys(
+        nodes: Vec<SystemNode>,
+        joins: &[&str],
+        mates: Vec<MateView>,
+        grounds: &[&str],
+        rails: Vec<PowerNode>,
+    ) -> SystemDigest {
+        SystemDigest {
+            file: "src/main.nsm".into(),
+            view: SystemView {
+                name: "S".into(),
+                kind: "system".into(),
+                nodes,
+                edges: joins
+                    .iter()
+                    .map(|j| Edge {
+                        from: "p".into(),
+                        to: "l".into(),
+                        label: (*j).into(),
+                        kind: EdgeKind::Join,
+                        at: None,
+                    })
+                    .collect(),
+                mates,
+                ground_groups: grounds
+                    .iter()
+                    .map(|g| GroundGroupView {
+                        nets: g.split(',').map(str::to_string).collect(),
+                        contacts: Vec::new(),
+                    })
+                    .collect(),
+            },
+            rails,
+        }
+    }
+
+    fn with_systems(d: Digest, s: Option<SystemDigest>) -> Digest {
+        Digest {
+            systems: s.into_iter().map(|s| ("S".to_string(), s)).collect(),
+            ..d
+        }
+    }
+
+    fn system_of(d: &Diff) -> &CompareSystem {
+        assert_eq!(d.systems.len(), 1);
+        &d.systems[0]
+    }
+
+    fn quiet() -> Digest {
+        digest(board(Vec::new(), Vec::new()))
+    }
+
+    #[test]
+    fn a_system_compares_its_boards_ports_joins_mates_and_grounds() {
+        let base = sys(
+            vec![
+                node("p", "PowerBoard", &[("out", Some("3.3V"), Some("0..50mA"))]),
+                node("l", "LedBoard", &[("in", None, None)]),
+                node("gone", "Old", &[]),
+            ],
+            &["p.out ~ l.in", "p.a ~ l.a"],
+            vec![
+                mate(
+                    "p.j1",
+                    "l.j1",
+                    vec![contact(1, "power", "power"), contact(2, "ground", "ground")],
+                ),
+                mate("p.j2", "l.j2", vec![contact(1, "signal", "signal")]),
+            ],
+            &["p.GND,l.GND"],
+            Vec::new(),
+        );
+        let head = sys(
+            vec![
+                node(
+                    "p",
+                    "PowerBoard2",
+                    &[
+                        ("out", Some("3.3V"), Some("0..30mA")),
+                        ("aux", Some("5V"), None),
+                    ],
+                ),
+                node("l", "LedBoard", &[("in", None, None)]),
+                node("new", "Fresh", &[]),
+            ],
+            &["p.out ~ l.in", "p.b ~ l.b"],
+            vec![
+                mate(
+                    "p.j1",
+                    "l.j1",
+                    vec![
+                        contact(1, "power", "power"),
+                        contact(2, "signal", "ground"),
+                        contact(3, "open", "open"),
+                    ],
+                ),
+                mate("p.j3", "l.j3", vec![]),
+            ],
+            &["p.GND,l.GND,x.GND"],
+            Vec::new(),
+        );
+        let d = diff(
+            &with_systems(quiet(), Some(base)),
+            &with_systems(quiet(), Some(head)),
+            None,
+        );
+        let s = system_of(&d);
+        assert_eq!(s.status, BoardStatus::Changed);
+        assert_eq!(s.boards.added[0].path, "new");
+        assert_eq!(s.boards.removed[0].path, "gone");
+        assert_eq!(
+            (
+                s.boards.changed[0].base_type.as_str(),
+                s.boards.changed[0].head_type.as_str()
+            ),
+            ("PowerBoard", "PowerBoard2")
+        );
+        assert_eq!(s.ports.added[0].name, "aux");
+        let c = &s.ports.changed[0];
+        assert_eq!((c.board.as_str(), c.name.as_str()), ("p", "out"));
+        assert_eq!(c.fields.len(), 1);
+        assert_eq!(c.fields[0].old.as_deref(), Some("0..50mA"));
+        assert_eq!(c.fields[0].new.as_deref(), Some("0..30mA"));
+        assert_eq!(
+            (s.joins.added.as_slice(), s.joins.removed.as_slice()),
+            (
+                &["p.b ~ l.b".to_string()][..],
+                &["p.a ~ l.a".to_string()][..]
+            )
+        );
+        assert_eq!(
+            (s.mates.added[0].a.as_str(), s.mates.removed[0].a.as_str()),
+            ("p.j3", "p.j2")
+        );
+        let changed = &s.mates.changed[0];
+        let fields: Vec<(&str, Option<&str>, Option<&str>)> = changed
+            .fields
+            .iter()
+            .map(|f| (f.field.as_str(), f.old.as_deref(), f.new.as_deref()))
+            .collect();
+        assert_eq!(
+            fields,
+            [
+                (
+                    "contact 2",
+                    Some("ground to ground"),
+                    Some("signal to ground")
+                ),
+                ("contact 3", None, Some("open to open")),
+            ]
+        );
+        assert_eq!(s.ground_groups.added, ["p.GND + l.GND + x.GND"]);
+        assert_eq!(s.ground_groups.removed, ["p.GND + l.GND"]);
+        assert_eq!(
+            d.summary,
+            "1 system boards added, 1 system boards removed, 1 system boards changed, 2 system ports changed, 2 system joins changed, 3 mates changed, 2 ground groups changed"
+        );
+    }
+
+    #[test]
+    fn what_the_nets_of_a_mate_are_called_is_not_a_change_of_the_mate() {
+        let with = |net: &str| {
+            let mut c = contact(1, "power", "power");
+            c.a_net = Some(net.into());
+            sys(
+                Vec::new(),
+                &[],
+                vec![mate("p.j1", "l.j1", vec![c])],
+                &[],
+                Vec::new(),
+            )
+        };
+        let d = diff(
+            &with_systems(quiet(), Some(with("VOUT"))),
+            &with_systems(quiet(), Some(with("3V3"))),
+            None,
+        );
+        assert_eq!(system_of(&d).status, BoardStatus::Unchanged);
+        assert_eq!(d.summary, "No circuit changes");
+    }
+
+    #[test]
+    fn a_system_on_one_side_is_added_or_removed_and_the_sentence_names_it() {
+        let one = || sys(vec![node("p", "P", &[])], &[], Vec::new(), &[], Vec::new());
+        let d = diff(
+            &with_systems(quiet(), None),
+            &with_systems(quiet(), Some(one())),
+            None,
+        );
+        assert_eq!(system_of(&d).status, BoardStatus::Added);
+        assert_eq!(system_of(&d).base_file, None);
+        assert_eq!(d.summary, "system S added");
+        let d = diff(
+            &with_systems(quiet(), Some(one())),
+            &with_systems(quiet(), None),
+            None,
+        );
+        assert_eq!(system_of(&d).status, BoardStatus::Removed);
+        assert_eq!(d.summary, "system S removed");
+        assert!(d.changed);
+        // One board asked for leaves the systems out.
+        let d = diff(
+            &with_systems(digest(board(Vec::new(), Vec::new())), None),
+            &with_systems(digest(board(Vec::new(), Vec::new())), Some(one())),
+            Some("B"),
+        );
+        assert!(d.systems.is_empty());
+    }
+
+    #[test]
+    fn a_system_rail_is_listed_only_when_no_board_already_says_it() {
+        // `p:3V3` is a rail of the board `S/p`, whose own comparison lists it; `l:VIN` only the
+        // system explains (what a join gives it).
+        let node_rail = |id: &str, capacity: f64| {
+            let mut r = rail(id, 0.01, Some(capacity));
+            r.id = id.into();
+            r
+        };
+        let rails = |c: f64| vec![node_rail("p:3V3", c), node_rail("l:VIN", c)];
+        let base_board = board(Vec::new(), Vec::new());
+        let mut head_board = board(Vec::new(), Vec::new());
+        head_board.rails = vec![rail("3V3", 0.01, Some(0.02))];
+        let mut base_board2 = base_board.clone();
+        base_board2.rails = vec![rail("3V3", 0.01, Some(0.05))];
+        let named = |b: BoardDigest| Digest {
+            boards: BTreeMap::from([("S/p".to_string(), b)]),
+            ..quiet()
+        };
+        let base = with_systems(
+            named(base_board2),
+            Some(sys(Vec::new(), &[], Vec::new(), &[], rails(0.05))),
+        );
+        let head = with_systems(
+            named(head_board),
+            Some(sys(Vec::new(), &[], Vec::new(), &[], rails(0.02))),
+        );
+        let d = diff(&base, &head, None);
+        let s = system_of(&d);
+        let nets: Vec<&str> = s.rails.changed.iter().map(|r| r.net.as_str()).collect();
+        assert_eq!(nets, ["l:VIN"], "{:#?}", s.rails);
+        assert_eq!(d.boards[0].rails.changed.len(), 1);
+    }
+
+    // ---- the kind of a part ----
+
+    fn kind_part(path: &str, kind: &str, value: &str) -> PartDigest {
+        PartDigest {
+            kind: kind.into(),
+            ..part(path, "R1", value, &[])
+        }
+    }
+
+    #[test]
+    fn a_part_that_is_another_library_part_says_what_it_was_and_what_it_is() {
+        let base = digest(board(vec![kind_part("x", "Resistor", "1k")], Vec::new()));
+        let head = digest(board(vec![kind_part("x", "Capacitor", "10u")], Vec::new()));
+        let d = diff(&base, &head, None);
+        let c = &only(&d).parts.changed[0];
+        assert_eq!(
+            (c.kind.as_str(), c.base_kind.as_deref()),
+            ("Capacitor", Some("Resistor"))
+        );
+        let fields: Vec<&str> = c.fields.iter().map(|f| f.field.as_str()).collect();
+        assert_eq!(fields, ["kind", "value"]);
+        // Counted once, as a kind: the value that came with it is not another change.
+        assert_eq!(
+            d.summary,
+            "1 part's kind changed from Resistor to Capacitor"
+        );
+        assert_eq!(only(&d).summary, d.summary);
+    }
+
+    #[test]
+    fn a_value_alone_leaves_the_kind_to_the_row_and_says_no_kind_changed() {
+        let base = digest(board(vec![kind_part("x", "Resistor", "1k")], Vec::new()));
+        let head = digest(board(vec![kind_part("x", "Resistor", "2k")], Vec::new()));
+        let d = diff(&base, &head, None);
+        let c = &only(&d).parts.changed[0];
+        assert_eq!((c.kind.as_str(), c.base_kind.clone()), ("Resistor", None));
+        assert_eq!(d.summary, "1 value changed");
+    }
+
+    #[test]
+    fn several_kind_changes_are_counted_and_beside_values_and_a_kind_alone_with_the_same_value() {
+        let base = digest(board(
+            vec![
+                kind_part("a", "Header1x2", "Conn_01x02"),
+                kind_part("b", "Resistor", "1k"),
+                kind_part("c", "Led", "red"),
+            ],
+            Vec::new(),
+        ));
+        let head = digest(board(
+            vec![
+                kind_part("a", "Socket1x2", "Conn_01x02"),
+                kind_part("b", "Inductor", "1k"),
+                kind_part("c", "Led", "green"),
+            ],
+            Vec::new(),
+        ));
+        let d = diff(&base, &head, None);
+        let a = only(&d)
+            .parts
+            .changed
+            .iter()
+            .find(|p| p.path == "a")
+            .unwrap();
+        // The value is the same: the kind is the whole of the change.
+        assert_eq!(a.fields.len(), 1);
+        assert_eq!(a.fields[0].field, "kind");
+        assert_eq!(d.summary, "2 parts' kinds changed, 1 value changed");
+        // A kind that is the same is not mentioned for a part that only moved.
+        let moved = diff(
+            &digest(board(vec![kind_part("old.x", "Led", "red")], Vec::new())),
+            &digest(board(vec![kind_part("new.x", "Led", "red")], Vec::new())),
+            None,
+        );
+        assert_eq!(only(&moved).parts.changed[0].base_kind, None);
+        assert_eq!(moved.summary, "1 part moved");
     }
 }
