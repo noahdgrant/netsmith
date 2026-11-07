@@ -111,17 +111,18 @@ fn unresolved(s: &Solution) -> Vec<String> {
         .collect()
 }
 
-// ---- what the search says and chooses does not change -------------------------------
+// ---- what the search says and chooses -------------------------------
 //
-// The expected text below is what the search printed before it backjumped.
+// The parts that the failure is made of are named, and only they (`conflict_core.rs`); which
+// parts are chosen does not change.
 
 #[test]
-fn a_conflict_with_the_first_part_is_reported_as_it_was() {
+fn a_conflict_with_the_first_part_names_the_two_parts() {
     let s = run(&bench(3, true), &catalogs(3));
     assert_eq!(
         messages(&s),
         [
-            "no combination of candidates satisfies `a` and `u01` and `u02` and `u03` and `z` together: the closest, a = 300 1% and u01 = 100 1% and u02 = 100 1% and u03 = 100 1% and z = 300 1%, fails because (a.resistance + z.resistance) must always be at least 1MΩ, but 594Ω..606Ω is not always above 1MΩ"
+            "no combination of candidates satisfies `a` and `z` together, whatever the other parts of the group are: the closest, a = 300 1% and z = 300 1%, fails because (a.resistance + z.resistance) must always be at least 1MΩ, but 594Ω..606Ω is not always above 1MΩ"
         ]
     );
     assert_eq!(unresolved(&s), ["a", "u01", "u02", "u03", "z"]);
@@ -129,7 +130,7 @@ fn a_conflict_with_the_first_part_is_reported_as_it_was() {
 }
 
 #[test]
-fn a_conflict_with_a_middle_part_is_reported_as_it_was() {
+fn a_conflict_with_a_middle_part_names_the_two_parts() {
     let s = run(
         &bench_mid(4, ".u02.resistance + .z.resistance >= 1Mohm"),
         &catalogs(3),
@@ -137,7 +138,7 @@ fn a_conflict_with_a_middle_part_is_reported_as_it_was() {
     assert_eq!(
         messages(&s),
         [
-            "no combination of candidates satisfies `a` and `u01` and `u02` and `u03` and `u04` and `z` together: the closest, a = 100 1% and u01 = 100 1% and u02 = 300 1% and u03 = 100 1% and u04 = 100 1% and z = 300 1%, fails because (u02.resistance + z.resistance) must always be at least 1MΩ, but 594Ω..606Ω is not always above 1MΩ"
+            "no combination of candidates satisfies `u02` and `z` together, whatever the other parts of the group are: the closest, u02 = 300 1% and z = 300 1%, fails because (u02.resistance + z.resistance) must always be at least 1MΩ, but 594Ω..606Ω is not always above 1MΩ"
         ]
     );
     assert!(s.picks.is_empty());

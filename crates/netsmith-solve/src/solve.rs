@@ -255,11 +255,14 @@ struct Search {
 
 /// The choice that came nearest to working, kept for the error message: the one that got
 /// furthest through the parts, and among those the one that missed by the least.
+#[derive(Clone)]
 struct Closest {
     /// How many parts had been chosen before the one that failed.
     depth: usize,
     margin: f64,
     assignment: Vec<String>,
+    /// The depth in the group of the part each entry of `assignment` is for.
+    depths: Vec<usize>,
     message: String,
     at: (SourceId, Span),
 }
@@ -272,18 +275,37 @@ struct Conflict {
     fields: Vec<FieldId>,
 }
 
+/// A candidate that was accepted, with what it needs of its open columns.
+struct Accepted {
+    needs: Vec<(String, Need)>,
+    /// Whether every bound that waits for a part still to be chosen (`verify_possible`) also
+    /// holds over the whole range its values have now. A candidate for which one holds only
+    /// for some values is accepted only when no candidate has them all (ADR 0065, 9.6).
+    whole: bool,
+}
+
 struct Rejection {
     message: String,
     margin: f64,
     at: (SourceId, Span),
-    /// The fields whose values the rejection and its message were worked out from.
-    reads: Vec<FieldId>,
     /// The fields of the one relation or conflict that failed: if none of them is worked out
     /// from the part's count, a larger count fails the same way.
     own: Vec<FieldId>,
     /// The relation that failed (its place in the model's list), if it was one and not a
     /// conflict found while propagating.
     relation: Option<usize>,
+}
+
+/// Why a part, or the parts after it, could not be chosen.
+struct Failure {
+    /// The depths of the earlier parts whose choices the failure depends on.
+    depends: BTreeSet<usize>,
+    /// The depths of the parts the failure involves, however deep: this part if it is one, the
+    /// earlier parts it depends on, and the parts after it that the failure came from. The
+    /// smallest set of picks that cannot be met together, as far as the search has learned.
+    core: BTreeSet<usize>,
+    /// The rejection nearest to working among those the failure is made of.
+    closest: Option<Closest>,
 }
 
 /// How a search of a group's parts ended.
@@ -294,22 +316,21 @@ enum Outcome {
     /// holds the depths of the earlier parts whose choices that failure depends on (see
     /// [`Coupling`]); a failure that does not depend on the part just above is not undone
     /// by changing that part.
-    Failed(BTreeSet<usize>),
+    Failed(Failure),
     /// The search stopped at the trial limit.
     GaveUp,
 }
 
 /// Which parts can see each other's choices. A part's choice sets its columns; propagation
-/// then carries the values along the connections, the equations and the balances of
-/// currents, and nowhere else. The fields those join form a class, and a value in a class
-/// depends only on the choices of parts whose columns are in it. A check that reads some
-/// fields (a relation, a conflict, the domains that decide which candidates fit) is
-/// therefore settled by the parts that share a class with them, and by no others.
+/// then carries the values along the connections (both ways), the equations (from the right
+/// side to the left) and the balances of currents (each term from the others), and nowhere
+/// else. A value therefore depends on the choices of the parts whose columns it is worked out
+/// from, which `Coupling::fed_by` finds by following those edges, and a check that reads some
+/// fields (a relation, a conflict, the domains that decide which candidates fit) is settled by
+/// those parts and by no others. The class of a field (the fields joined to it by any of the
+/// edges, in either direction) is wider and only used where a rejection is compared with the
+/// count of a bank.
 struct Coupling {
-    /// For each job, the classes of its columns, and of its count if it is a bank.
-    columns: Vec<HashSet<usize>>,
-    /// For each job, the classes of every field inside its part.
-    inside: Vec<HashSet<usize>>,
     /// The class of each field.
     class: Vec<usize>,
     /// For each relation (by its place in the model's list), the jobs whose columns the
@@ -320,14 +341,67 @@ struct Coupling {
     /// For each field, whether its value is the same whatever parts are chosen (see
     /// `Solver::constants`).
     constant: Vec<bool>,
+    /// What each field is worked out from (see `Solver::coupling`), and the job whose pick sets
+    /// each column: the parts a field's value depends on are found by following them.
+    from: HashMap<FieldId, Vec<FieldId>>,
+    job_of: HashMap<FieldId, usize>,
+    /// The jobs each field was found to be fed by.
+    fed_by_field: std::cell::RefCell<HashMap<FieldId, std::rc::Rc<HashSet<usize>>>>,
+}
+
+/// Keep in `best` the rejection that came nearest to working: the one that got furthest
+/// through the parts, and among those the one that missed by the least.
+fn nearer(best: &mut Option<Closest>, other: Option<&Closest>) {
+    if let Some(c) = other
+        && best
+            .as_ref()
+            .is_none_or(|b| c.depth > b.depth || (c.depth == b.depth && c.margin < b.margin))
+    {
+        *best = Some(c.clone());
+    }
 }
 
 impl Coupling {
-    /// The depths below `depth` of the parts whose columns share a class with `reads`.
-    fn earlier(&self, jobs_at: &[usize], depth: usize, reads: &HashSet<usize>) -> BTreeSet<usize> {
-        (0..depth)
-            .filter(|&p| !self.columns[jobs_at[p]].is_disjoint(reads))
-            .collect()
+    /// The jobs whose pick sets the value of one of `fields`, however indirectly: the parts
+    /// the value is worked out from. Narrower than the classes, which join everything that
+    /// shares an equation or a net; this follows the direction in which values are worked out.
+    fn fed_by(&self, fields: &[FieldId]) -> HashSet<usize> {
+        let mut out = HashSet::new();
+        for &f in fields {
+            let cached = self.fed_by_field.borrow().get(&f).cloned();
+            let found = cached.unwrap_or_else(|| {
+                let mut found = HashSet::new();
+                if !self.constant[f.0] {
+                    let mut seen: HashSet<FieldId> = HashSet::from([f]);
+                    let mut todo = vec![f];
+                    while let Some(g) = todo.pop() {
+                        if let Some(&j) = self.job_of.get(&g) {
+                            found.insert(j);
+                        }
+                        for &h in self.from.get(&g).into_iter().flatten() {
+                            if !self.constant[h.0] && seen.insert(h) {
+                                todo.push(h);
+                            }
+                        }
+                    }
+                }
+                let found = std::rc::Rc::new(found);
+                self.fed_by_field.borrow_mut().insert(f, found.clone());
+                found
+            });
+            out.extend(found.iter().copied());
+        }
+        out
+    }
+
+    /// The depths below `depth` of the parts in `jobs`.
+    fn earlier_jobs(
+        &self,
+        jobs_at: &[usize],
+        depth: usize,
+        jobs: &HashSet<usize>,
+    ) -> BTreeSet<usize> {
+        (0..depth).filter(|&p| jobs.contains(&jobs_at[p])).collect()
     }
 
     fn classes_of(&self, fields: &[FieldId]) -> HashSet<usize> {
@@ -375,6 +449,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         refused_counts: HashSet::new(),
         derived: HashSet::new(),
         stated: stated_currents(model),
+        stated_late: stated_late(model),
         sole_equation: sole_equations(model),
         claimed: claimed_by_ranges(model),
         several_equations: several_equations(model),
@@ -623,6 +698,10 @@ struct Solver<'a> {
     /// determines, with the range as written (ADR 0038): each is a budget, and what the
     /// circuit determines must lie inside it.
     stated: HashMap<FieldId, Quantity>,
+    /// The same, for a current whose range has a value at an end (ADR 0066): it states its
+    /// range when the ends have a value, and is then a budget as the same range written with
+    /// numbers is (`stated_range`).
+    stated_late: HashSet<FieldId>,
     /// Per relation: whether it is an equation on a field that no other equation states
     /// (through the field or any field joined to it). Only such an equation narrows a field
     /// that has a range; see `propagate`.
@@ -681,10 +760,48 @@ fn stated_currents(model: &Model) -> HashMap<FieldId, Quantity> {
         .iter()
         .flat_map(|b| b.draws.iter().map(|d| d.field))
         .filter(|f| !equated.contains(f))
+        // What a statement gives a part's own current is the part's claim, not an allowance.
+        .filter(|f| !inside_part(model, *f))
         .filter_map(|f| match &model.field(f).domain {
             Domain::Quantity(q) => Some((f, *q)),
             _ => None,
         })
+        .collect()
+}
+
+/// Whether a field is part of a part (the draw of its supply pin, the current through it):
+/// what a part states of itself is the part's claim (ADR 0066, 3).
+fn inside_part(model: &Model, field: FieldId) -> bool {
+    let mut at = Some(model.field(field).owner);
+    while let Some(inst) = at {
+        if model.instance(inst).kind == InstKind::Part {
+            return true;
+        }
+        at = model.instance(inst).parent;
+    }
+    false
+}
+
+/// The currents in a balance that a range with a value at an end states, outside a part's
+/// own body: they are stated like the same range written with numbers, once the ends have a
+/// value (ADR 0066, 3).
+fn stated_late(model: &Model) -> HashSet<FieldId> {
+    let equated: HashSet<FieldId> = model
+        .relations()
+        .iter()
+        .filter_map(|r| match (&r.op, &r.lhs) {
+            (CmpOp::EqEq, RExpr::Field(f)) => Some(*f),
+            _ => None,
+        })
+        .collect();
+    let on_balance: HashSet<FieldId> = model
+        .balances()
+        .iter()
+        .flat_map(|b| b.draws.iter().map(|d| d.field))
+        .collect();
+    claimed_by_ranges(model)
+        .into_iter()
+        .filter(|f| on_balance.contains(f) && !equated.contains(f) && !inside_part(model, *f))
         .collect()
 }
 
@@ -1167,6 +1284,17 @@ impl Solver<'_> {
     /// and no current that a balance worked out (such a current takes up whatever the rest
     /// leaves, so it says nothing about the stated one). What the other terms determine is
     /// what the stated one works out to, and it has to lie inside what was stated.
+    /// The range a design stated for a current in a balance, if it is a budget term.
+    fn stated_range(&self, field: FieldId) -> Option<Quantity> {
+        if let Some(q) = self.stated.get(&field) {
+            return Some(*q);
+        }
+        match self.domain(field) {
+            Domain::Quantity(q) if self.stated_late.contains(&field) => Some(q),
+            _ => None,
+        }
+    }
+
     fn budget(&self, b: &Balance) -> Option<Budget> {
         if !b.is_complete()
             || b.draws.len() < 2
@@ -1186,7 +1314,7 @@ impl Solver<'_> {
             .enumerate()
             // A current stated as exactly zero adds nothing to the net and is not an
             // allowance (a part's reference rail, ADR 0066), so it is not the stated term.
-            .filter(|(_, d)| self.stated.contains_key(&d.field) && !self.model.draw_is_zero(d));
+            .filter(|(_, d)| self.stated_range(d.field).is_some() && !self.model.draw_is_zero(d));
         let (index, d) = stated.next()?;
         if stated.next().is_some() {
             return None;
@@ -1198,7 +1326,7 @@ impl Solver<'_> {
             .map(|(_, q)| *q);
         let first = others.next()?;
         let sum = others.try_fold(first, |sum, q| sum.add(&q).ok())?;
-        let range = self.stated[&d.field];
+        let range = self.stated_range(d.field)?;
         Some(Budget {
             field: d.field,
             index,
@@ -2411,31 +2539,6 @@ impl Solver<'_> {
             }
         }
         let class: Vec<usize> = (0..n_fields).map(|f| find(&mut parent, f)).collect();
-        // A pick sets the columns and, for a bank, the count (ADR 0052), so a relation that
-        // reads only the count (`.a.count == .b.count`) depends on the bank's choice as much
-        // as one that reads a column.
-        let columns = jobs
-            .iter()
-            .map(|job| {
-                job.columns
-                    .iter()
-                    .map(|(f, _)| class[f.0])
-                    .chain(job.count.map(|f| class[f.0]))
-                    .collect()
-            })
-            .collect();
-        let mut inside: Vec<HashSet<usize>> = vec![HashSet::new(); jobs.len()];
-        for (id, field) in self.model.fields() {
-            job::checkpoint();
-            if id.0 % FIELDS_REPORT_EVERY == 0 {
-                job::report("fields scanned", id.0 as u64, Some(n_fields as u64));
-            }
-            for (j, job) in jobs.iter().enumerate() {
-                if self.model.is_inside(field.owner, job.part) {
-                    inside[j].insert(class[id.0]);
-                }
-            }
-        }
         // What each field is worked out from: an equation's right side for its left side, a
         // connection both ways, and the draws of a balance each from the others.
         let mut from: HashMap<FieldId, Vec<FieldId>> = HashMap::new();
@@ -2514,11 +2617,12 @@ impl Solver<'_> {
             })
             .collect();
         Coupling {
-            columns,
-            inside,
             class,
             feeding,
             constant,
+            from,
+            job_of,
+            fed_by_field: Default::default(),
         }
     }
 
@@ -2692,12 +2796,20 @@ impl Solver<'_> {
             search.closest = Some(closest);
             search.first_level_fits = fits;
         }
-        let solved = starved.is_none()
-            && culprit.is_none()
-            && matches!(
-                self.search(jobs, group, 0, &mut search, coupling),
-                Outcome::Solved
-            );
+        let outcome = if starved.is_none() && culprit.is_none() {
+            Some(self.search(jobs, group, 0, &mut search, coupling))
+        } else {
+            None
+        };
+        let solved = matches!(outcome, Some(Outcome::Solved));
+        // What the search learned: the parts that no choice of candidates can serve together,
+        // when that is fewer than the group.
+        let learned = match outcome {
+            Some(Outcome::Failed(f)) if f.core.len() < group.len() && f.closest.is_some() => {
+                Some(f)
+            }
+            _ => None,
+        };
         self.trials += search.trials;
         if solved {
             self.picks.extend(search.picks);
@@ -2721,9 +2833,46 @@ impl Solver<'_> {
                     names.join(" and ")
                 ),
             );
-        } else if let Some(c) = search.closest.take() {
+        } else if let Some(c) = learned
+            .as_ref()
+            .and_then(|f| f.closest.clone())
+            .or_else(|| search.closest.take())
+        {
             let (source, span) = c.at;
-            let message = if group.len() == 1 || culprit.is_some() {
+            // The parts of the group that the failure is made of, when the search learned that
+            // it is fewer than all of them, and the closest choice for those parts only.
+            let (involved, assignment): (Vec<usize>, Vec<String>) = match &learned {
+                Some(f) => (
+                    f.core.iter().map(|&d| group[d]).collect(),
+                    c.assignment
+                        .iter()
+                        .zip(&c.depths)
+                        .filter(|&(_, d)| f.core.contains(d))
+                        .map(|(a, _)| a.clone())
+                        .collect(),
+                ),
+                None => (group.to_vec(), c.assignment.clone()),
+            };
+            let involved_names: Vec<String> = involved
+                .iter()
+                .map(|&j| format!("`{}`", jobs[j].path))
+                .collect();
+            let message = if learned.is_some() && involved.len() == 1 {
+                format!(
+                    "no `{}` candidate satisfies `{}` whatever the other parts of the group are: the closest, {}, fails because {}",
+                    jobs[involved[0]].catalog.name,
+                    jobs[involved[0]].path,
+                    assignment.join(" and "),
+                    c.message
+                )
+            } else if learned.is_some() {
+                format!(
+                    "no combination of candidates satisfies {} together, whatever the other parts of the group are: the closest, {}, fails because {}",
+                    involved_names.join(" and "),
+                    assignment.join(" and "),
+                    c.message
+                )
+            } else if group.len() == 1 || culprit.is_some() {
                 format!(
                     "no `{}` candidate satisfies `{}`: the closest of the {} that fit, {}, fails because {}",
                     first.catalog.name,
@@ -2740,7 +2889,7 @@ impl Solver<'_> {
                     c.message
                 )
             };
-            let notes: Vec<String> = group
+            let notes: Vec<String> = involved
                 .iter()
                 .flat_map(|&j| {
                     [
@@ -2886,6 +3035,7 @@ impl Solver<'_> {
                                     depth: 0,
                                     margin: r.margin,
                                     assignment: vec![choice_name(c, count)],
+                                    depths: vec![0],
                                     message: r.message,
                                     at: r.at,
                                 });
@@ -2945,7 +3095,6 @@ impl Solver<'_> {
             return Outcome::Solved;
         }
         let job = &jobs[group[depth]];
-        let inside = &coupling.inside[group[depth]];
         let fitting: Vec<&Candidate> = job
             .catalog
             .candidates
@@ -2955,11 +3104,23 @@ impl Solver<'_> {
         if depth == 0 {
             search.first_level_fits = fitting.len();
         }
-        // Which candidates fit depends on the domains of this part's fields.
-        let mut conflict = coupling.earlier(group, depth, inside);
+        // Which candidates fit depends on the domains of this part's columns, which the picks
+        // before it may have narrowed.
+        let own_fields: Vec<FieldId> = job
+            .columns
+            .iter()
+            .map(|(f, _)| *f)
+            .chain(job.count)
+            .collect();
+        let mut conflict = coupling.earlier_jobs(group, depth, &coupling.fed_by(&own_fields));
+        let failure = |depends: BTreeSet<usize>, core: BTreeSet<usize>, closest| Failure {
+            core: core.union(&depends).copied().chain([depth]).collect(),
+            depends,
+            closest,
+        };
         if fitting.is_empty() {
             search.no_fit.get_or_insert(group[depth]);
-            return Outcome::Failed(conflict);
+            return Outcome::Failed(failure(conflict, BTreeSet::new(), None));
         }
 
         // The whole numbers of a bank's count that the design leaves open, fewest first (ADR
@@ -2967,7 +3128,7 @@ impl Solver<'_> {
         let counts = self.counts_of(job);
         if counts.is_empty() {
             search.no_fit.get_or_insert(group[depth]);
-            return Outcome::Failed(conflict);
+            return Outcome::Failed(failure(conflict, BTreeSet::new(), None));
         }
 
         // The parts still to be chosen after this one, here or in another group: a value
@@ -2977,87 +3138,105 @@ impl Solver<'_> {
 
         // Set once the parts after this one failed without depending on it: the choices of
         // the parts before it that they depend on.
-        let mut jump: Option<BTreeSet<usize>> = None;
+        let mut jump: Option<Failure> = None;
+        // What the failures of this part's candidates were made of, for `Failure::core` and
+        // `Failure::closest`.
+        let mut core: BTreeSet<usize> = BTreeSet::new();
+        let mut nearest: Option<Closest> = None;
         // Choices whose every completion failed. A later one that behaves the same fails the
         // same way, so it is not tried.
         let mut failed: Vec<(&Candidate, Option<f64>)> = Vec::new();
         // Candidates rejected for a reason that no count changes (a rating too low for the
         // rail): a larger count is not tried with them.
         let mut count_free_failure = vec![false; fitting.len()];
+        // Two tiers within each count (ADR 0065, 9.6): the first takes only a candidate for which
+        // every bound that waits holds over the whole range its values have, the second the
+        // candidates that were left out because a bound holds only for some values, in the same
+        // order. The fewest count still comes first.
+        let mut deferred = vec![false; counts.len() * fitting.len()];
         for (pass, &count) in counts.iter().enumerate() {
-            for (index, c) in fitting.iter().enumerate() {
-                let examined = pass * fitting.len() + index;
-                if count_free_failure[index] {
-                    continue;
-                }
-                if failed
-                    .iter()
-                    .any(|&(f, n)| n == count && self.interchangeable(job, f, c))
-                {
-                    continue;
-                }
-                if search.trials >= MAX_TRIALS {
-                    search.gave_up = true;
-                    return Outcome::GaveUp;
-                }
-                // A trial is a rollback and a propagation: milliseconds, so one checkpoint for
-                // each is the grain a cancel is heard at.
-                job::checkpoint();
-                search.trials += 1;
-                let checkpoint = self.model.checkpoint();
-                let bank = job.count.zip(count);
-                match self.try_candidate(job.part, &job.columns, c, bank, coupling, &later) {
-                    Ok(_) if jump.is_some() => {
-                        // The parts after this one would fail again, as they did.
-                        self.model.rollback(checkpoint);
-                        failed.push((c, count));
+            for tier in 0..2 {
+                for (index, c) in fitting.iter().enumerate() {
+                    let examined = pass * fitting.len() + index;
+                    if tier == 1 && !deferred[examined] {
+                        continue;
                     }
-                    Ok(needs) => {
-                        search
-                            .chosen
-                            .push(format!("{} = {}", job.path, choice_name(c, count)));
-                        search.picks.push(Pick {
-                            part: job.part,
-                            catalog: job.catalog.name.clone(),
-                            candidate: c.name.clone(),
-                            label: c.label.clone(),
-                            lcsc: c.lcsc.clone(),
-                            mpn: c.mpn.clone(),
-                            library: c.library,
-                            assembly: c.assembly.clone(),
-                            generic: c.generic.as_ref().map(|g| g.with_needs(&needs)),
-                            rejected: examined,
-                            count: count.map_or(1, |n| n as u32),
-                        });
-                        let outcome = self.search(jobs, group, depth + 1, search, coupling);
-                        if let Outcome::Solved = outcome {
-                            self.model.commit(checkpoint);
-                            return outcome;
+                    if count_free_failure[index] {
+                        continue;
+                    }
+                    if failed
+                        .iter()
+                        .any(|&(f, n)| n == count && self.interchangeable(job, f, c))
+                    {
+                        continue;
+                    }
+                    if search.trials >= MAX_TRIALS {
+                        search.gave_up = true;
+                        return Outcome::GaveUp;
+                    }
+                    // A trial is a rollback and a propagation: milliseconds, so one checkpoint for
+                    // each is the grain a cancel is heard at.
+                    job::checkpoint();
+                    search.trials += 1;
+                    let checkpoint = self.model.checkpoint();
+                    let bank = job.count.zip(count);
+                    match self.try_candidate(job.part, &job.columns, c, bank, coupling, &later) {
+                        Ok(accepted) if tier == 0 && !accepted.whole => {
+                            // Not yet: a candidate that meets every waiting bound comes first.
+                            self.model.rollback(checkpoint);
+                            deferred[examined] = true;
                         }
-                        search.chosen.pop();
-                        search.picks.pop();
-                        self.model.rollback(checkpoint);
-                        match outcome {
-                            Outcome::Failed(mut depends_on) => {
-                                if depends_on.remove(&depth) {
-                                    conflict.extend(depends_on);
-                                } else {
-                                    jump = Some(depends_on);
-                                }
+                        Ok(_) if jump.is_some() => {
+                            // The parts after this one would fail again, as they did.
+                            self.model.rollback(checkpoint);
+                            failed.push((c, count));
+                        }
+                        Ok(Accepted { needs, .. }) => {
+                            search
+                                .chosen
+                                .push(format!("{} = {}", job.path, choice_name(c, count)));
+                            search.picks.push(Pick {
+                                part: job.part,
+                                catalog: job.catalog.name.clone(),
+                                candidate: c.name.clone(),
+                                label: c.label.clone(),
+                                lcsc: c.lcsc.clone(),
+                                mpn: c.mpn.clone(),
+                                library: c.library,
+                                assembly: c.assembly.clone(),
+                                generic: c.generic.as_ref().map(|g| g.with_needs(&needs)),
+                                rejected: examined,
+                                count: count.map_or(1, |n| n as u32),
+                            });
+                            let outcome = self.search(jobs, group, depth + 1, search, coupling);
+                            if let Outcome::Solved = outcome {
+                                self.model.commit(checkpoint);
+                                return outcome;
                             }
-                            _ => return Outcome::GaveUp,
+                            search.chosen.pop();
+                            search.picks.pop();
+                            self.model.rollback(checkpoint);
+                            match outcome {
+                                Outcome::Failed(mut below) => {
+                                    if below.depends.remove(&depth) {
+                                        conflict.extend(below.depends.iter().copied());
+                                        core.extend(below.core.iter().copied());
+                                        nearer(&mut nearest, below.closest.as_ref());
+                                    } else {
+                                        jump = Some(below);
+                                    }
+                                }
+                                _ => return Outcome::GaveUp,
+                            }
+                            failed.push((c, count));
                         }
-                        failed.push((c, count));
-                    }
-                    Err(r) => {
-                        // `try_candidate` put the model back.
-                        self.model.commit(checkpoint);
-                        let mut assignment = search.chosen.clone();
-                        assignment.push(format!("{} = {}", job.path, choice_name(c, count)));
-                        if search.closest.as_ref().is_none_or(|best| {
-                            depth > best.depth || (depth == best.depth && r.margin < best.margin)
-                        }) {
-                            search.closest = Some(Closest {
+                        Err(r) => {
+                            // `try_candidate` put the model back.
+                            self.model.commit(checkpoint);
+                            let mut assignment = search.chosen.clone();
+                            assignment.push(format!("{} = {}", job.path, choice_name(c, count)));
+                            let failure_fed_by = coupling.fed_by(&self.failure_reads(&r));
+                            let rejected = Closest {
                                 depth,
                                 margin: r.margin,
                                 assignment: if group.len() == 1 {
@@ -3065,26 +3244,44 @@ impl Solver<'_> {
                                 } else {
                                     assignment
                                 },
+                                depths: if group.len() == 1 {
+                                    vec![0]
+                                } else {
+                                    (0..=depth).collect()
+                                },
                                 message: r.message,
                                 at: r.at,
-                            });
-                        }
-                        // The rejection was worked out from these fields and the candidate's own.
-                        let mut reads = coupling.classes_of(&r.reads);
-                        reads.extend(inside.iter().copied());
-                        conflict.extend(coupling.earlier(group, depth, &reads));
-                        // A failure that reads nothing worked out from the count is the same
-                        // at every count.
-                        if let (Some(cf), Some(_)) = (job.count, count)
-                            && !coupling.classes_of(&r.own).contains(&coupling.class[cf.0])
-                        {
-                            count_free_failure[index] = true;
+                            };
+                            nearer(&mut nearest, Some(&rejected));
+                            nearer(&mut search.closest, Some(&rejected));
+                            // The rejection was worked out from these fields, and so from the parts
+                            // that their values are worked out from.
+                            let reads = coupling.earlier_jobs(group, depth, &failure_fed_by);
+                            conflict.extend(reads.iter().copied());
+                            core.extend(reads);
+                            // A value that a part still to be chosen feeds is judged on the range
+                            // it has, so the failure is also that part's: it is named with the
+                            // rest, though no choice of it is undone.
+                            core.extend(
+                                (depth + 1..group.len())
+                                    .filter(|&p| failure_fed_by.contains(&group[p])),
+                            );
+                            // A failure that reads nothing worked out from the count is the same
+                            // at every count.
+                            if let (Some(cf), Some(_)) = (job.count, count)
+                                && !coupling.classes_of(&r.own).contains(&coupling.class[cf.0])
+                            {
+                                count_free_failure[index] = true;
+                            }
                         }
                     }
                 }
             }
         }
-        Outcome::Failed(jump.unwrap_or(conflict))
+        Outcome::Failed(match jump {
+            Some(below) => below,
+            None => failure(conflict, core, nearest),
+        })
     }
 
     /// The counts a part's search goes through, fewest first (ADR 0052): the whole numbers of
@@ -3347,6 +3544,26 @@ impl Solver<'_> {
         None
     }
 
+    /// The fields a rejection was worked out from: those of the relation or conflict that failed,
+    /// and, for an equation, those of the other equations on the same value, which `verify` holds
+    /// it against. The relations that were judged before it and passed are not among them: a
+    /// candidate that fails this one is refused whatever those say.
+    fn failure_reads(&self, r: &Rejection) -> Vec<FieldId> {
+        let mut fields = r.own.clone();
+        if let Some(index) = r.relation
+            && let relation = &self.model.relations()[index]
+            && let (CmpOp::EqEq, RExpr::Field(f)) = (&relation.op, &relation.lhs)
+            && let Some(others) = self.equations_of.get(f)
+        {
+            for &k in others {
+                let other = &self.model.relations()[k];
+                fields_in(&other.lhs, &mut fields);
+                fields_in(&other.rhs, &mut fields);
+            }
+        }
+        fields
+    }
+
     /// Try one candidate. On success its values stay in the model; on failure the model
     /// is put back exactly as it was.
     fn try_candidate(
@@ -3357,7 +3574,7 @@ impl Solver<'_> {
         bank: Option<(FieldId, f64)>,
         coupling: &Coupling,
         later: &HashSet<usize>,
-    ) -> Result<Vec<(String, Need)>, Rejection> {
+    ) -> Result<Accepted, Rejection> {
         let backup = self.model.checkpoint();
         let result = self.try_candidate_from(part, columns, c, bank, coupling, later, &backup);
         // A candidate that is refused leaves the model as it was.
@@ -3378,7 +3595,7 @@ impl Solver<'_> {
         coupling: &Coupling,
         later: &HashSet<usize>,
         backup: &Checkpoint,
-    ) -> Result<Vec<(String, Need)>, Rejection> {
+    ) -> Result<Accepted, Rejection> {
         let mut needs: Vec<(String, Need)> = Vec::new();
         // A bank of this many of the row (ADR 0052): the count is as much the choice as the
         // row is.
@@ -3391,14 +3608,12 @@ impl Solver<'_> {
         let reject = |message: String,
                       margin: f64,
                       at: (SourceId, Span),
-                      reads: Vec<FieldId>,
                       own: Vec<FieldId>,
                       relation: Option<usize>| {
             Err(Rejection {
                 message,
                 margin,
                 at,
-                reads,
                 own,
                 relation,
             })
@@ -3440,7 +3655,6 @@ impl Solver<'_> {
                 conflict.message,
                 1.0,
                 (conflict.source, conflict.span),
-                conflict.fields.clone(),
                 conflict.fields,
                 None,
             );
@@ -3461,7 +3675,6 @@ impl Solver<'_> {
                 conflict.message,
                 1.0,
                 (conflict.source, conflict.span),
-                conflict.fields.clone(),
                 conflict.fields,
                 None,
             );
@@ -3518,9 +3731,8 @@ impl Solver<'_> {
                     && design.fields_of(index).iter().any(|f| changed.contains(f))
             })
             .collect();
-        // The relations are checked in order, so the one that fails is the first, and the
-        // rejection depends on every relation up to it.
-        let mut reads = Vec::new();
+        // The relations are checked in order, so the one that fails is the first.
+        let mut whole_range = true;
         let judged = relevant
             .iter()
             .map(|&index| (index, true))
@@ -3530,7 +3742,6 @@ impl Solver<'_> {
             let mut own = Vec::new();
             fields_in(&r.lhs, &mut own);
             fields_in(&r.rhs, &mut own);
-            reads.extend(own.iter().copied());
             let verdict = if whole {
                 self.verify(r)
             } else {
@@ -3538,10 +3749,17 @@ impl Solver<'_> {
             };
             if let Verdict::Fail { message, margin } = verdict {
                 let message = self.relation_message(index, r, message);
-                return reject(message, margin, (r.source, r.span), reads, own, Some(index));
+                return reject(message, margin, (r.source, r.span), own, Some(index));
+            }
+            // A bound that can hold, but not for every value of the range as it is.
+            if !whole && matches!(self.verify(r), Verdict::Fail { .. }) {
+                whole_range = false;
             }
         }
-        Ok(needs)
+        Ok(Accepted {
+            needs,
+            whole: whole_range,
+        })
     }
 
     /// What the design asks of a field that a generic part leaves open (ADR 0047), or `None`
