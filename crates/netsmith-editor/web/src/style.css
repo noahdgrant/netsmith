@@ -390,8 +390,8 @@ body:has(.status-popover) .toasts { right: calc(1rem + 21.25rem + 0.75rem); }
  * style is only a fallback (the same custom properties, set above, reach it too); these rules have four classes, so they outrank it and the rule that colours the words of a lit
  * thing (`.on text`, three classes). A click opens the source at the line the note is written at (views/Schematic.tsx); the card lifts a little under the pointer. A note is no part:
  * it has no halo, no mark of the comparison, and the pointer over it lights nothing else. */
-.schematic-host svg.schematic .note { cursor: pointer; pointer-events: bounding-box; }
-.schematic-host svg.schematic .note .note-frame { fill: var(--sch-note-fill); stroke: var(--sch-note-stroke); stroke-width: .25; transition: stroke-width var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease); }
+.schematic-host svg.schematic .note { --note-stroke: .25; cursor: pointer; pointer-events: bounding-box; }
+.schematic-host svg.schematic .note .note-frame { fill: var(--sch-note-fill); stroke: var(--sch-note-stroke); stroke-width: var(--note-stroke); transition: stroke-width var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease); }
 .schematic-host svg.schematic .note .note-heading { fill: var(--sch-note-heading); }
 .schematic-host svg.schematic .note .note-text { fill: var(--sch-note-text); stroke: none; }
 .schematic-host svg.schematic .note:hover .note-frame { stroke-width: .4; filter: drop-shadow(0 .3px .6px color-mix(in srgb, var(--sch-note-text) 38%, transparent)); }
@@ -400,6 +400,9 @@ body:has(.status-popover) .toasts { right: calc(1rem + 21.25rem + 0.75rem); }
 /* A note takes Tab (it is a button for the keyboard: Enter or Space opens its line): the focus ring is a crisp 2 px line in the page's focus colour, 2 px clear of
  * the frame, with no halo (notes.ts puts the rectangle and sizes it at the zoom the drawing has; `non-scaling-stroke` keeps the line 2 px at every zoom), and a note that has
  * the focus is never dimmed. */
+/* While it has the focus the frame keeps its resting width (the lift of a hover and the heavier line of a lit note are for a note without the ring), so the 2 px of room the
+ * ring leaves is the same whatever else the note is doing; `--note-stroke` is the width notes.ts sizes the ring by. */
+.schematic-host svg.schematic .note:focus-visible .note-frame { stroke-width: var(--note-stroke); filter: none; }
 .schematic-host svg.schematic .note:focus { outline: none; }
 .schematic-host svg.schematic .note .note-ring { display: none; fill: none; stroke: var(--focus); stroke-width: 2px; vector-effect: non-scaling-stroke; pointer-events: none; }
 .schematic-host svg.schematic .note:focus-visible .note-ring { display: inline; }

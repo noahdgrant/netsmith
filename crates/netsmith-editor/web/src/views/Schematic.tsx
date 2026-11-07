@@ -27,7 +27,7 @@ import {
 } from '../schematic/moves';
 import { marksOf } from '../schematic/marks';
 import { type Drawing, loadDrawing } from '../schematic/load';
-import { litNotes, noteLocation, parseNoteAt, prepareNotes } from '../schematic/notes';
+import { litNotes, noteLocation, parseNoteAt, prepareNotes, refreshRing } from '../schematic/notes';
 import {
   netNavOrder,
   netSheets,
@@ -291,9 +291,15 @@ export function Schematic() {
     }
     // The overlay of a part (schematic/halo.ts) needs a part that is laid out: the sheet on show.
     addHalos(svg);
-    // The notes take Tab and name their parts (the server writes only the first).
+    // The notes take Tab (and name their parts, when the drawing does not).
     prepareNotes(svg, partRefs);
   }, [drawing, current, partRefs]);
+
+  // A note that has the keyboard's focus shows a ring sized for the zoom it had when the focus came: size it again when the zoom changes.
+  useLayoutEffect(() => {
+    const svg = holder.current?.querySelector('svg.schematic');
+    if (svg) refreshRing(svg);
+  }, [vp?.k]);
 
   // Paint what is selected, what the pointer is over, and what the cursor's line declares. With
   // a net selected nothing else lights, so the rest stays dimmed while the pointer moves.

@@ -24,7 +24,7 @@ export function parseNoteAt(text: string | null | undefined): NoteAt | null {
 /** The place for `goTo`: the start of the line (the server states a line, not a column). */
 export const noteLocation = (at: NoteAt): Location => ({ file: at.file, line: at.line, column: 1, endLine: at.line, endColumn: 1 });
 
-/** The designators a note is about, from what the drawing carries. The server writes only the first part of a note (`data-ref`); a relation names more
+/** The designators a note is about, read from its words: what stands in for the drawing's own `data-anchors` (the server writes every part of a note since ADR 0060's polish; this is for a drawing that lacks them). A note has its first part as `data-ref`; a relation names more
  * (`.led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance`), each as a dotted path from the instance the note belongs to (`owner`,
  * `data-note`: `""` for the board). Every dotted path whose longest prefix is a part of the board gives that part's designator, in the order the text
  * names them, after `first`. `byPath` maps a part's path from the board (`stage.led`) to its designator. A doc comment is about its first part only. */
@@ -109,9 +109,20 @@ export function ringRect(frame: { x: number; y: number; width: number; height: n
 function placeRing(el: SVGGraphicsElement, frame: SVGRectElement, ring: SVGRectElement) {
   const m = el.ownerSVGElement?.getScreenCTM();
   const n = (name: string) => Number(frame.getAttribute(name)) || 0;
-  const stroke = parseFloat(getComputedStyle(frame).strokeWidth) || 0;
+  // The width the frame keeps while the note has the focus (`--note-stroke`, style.css): not the width it has now, which a transition may be changing.
+  const stroke = parseFloat(getComputedStyle(el).getPropertyValue('--note-stroke')) || 0;
   const r = ringRect({ x: n('x'), y: n('y'), width: n('width'), height: n('height'), rx: n('rx'), stroke }, m ? Math.hypot(m.a, m.b) : 1);
   for (const [name, v] of [['x', r.x], ['y', r.y], ['width', r.width], ['height', r.height], ['rx', r.rx], ['ry', r.rx]] as const) ring.setAttribute(name, String(v));
+}
+
+/** Put the ring of the note that has the focus (if one has) round its frame at the zoom the drawing has now. The ring is sized when the focus
+ * arrives; a zoom made while the note keeps the focus (the `+` and `-` keys, the wheel, a button) calls this, so the ring keeps its 2 px
+ * and its 2 px of room at every level. */
+export function refreshRing(root: ParentNode, active: Element | null = document.activeElement) {
+  if (!active || !active.matches('g.note') || !root.contains(active)) return;
+  const frame = active.querySelector<SVGRectElement>(':scope > .note-frame');
+  const ring = active.querySelector<SVGRectElement>(':scope > .note-ring');
+  if (frame && ring) placeRing(active as SVGGraphicsElement, frame, ring);
 }
 
 /** Make the notes of the drawing reachable by keyboard (Tab, in the order the drawing writes them, which is after the parts) and readable by a screen reader,

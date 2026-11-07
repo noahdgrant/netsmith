@@ -323,8 +323,9 @@ fn draw(design: &Design, l: &Layout) -> String {
 /// A note: a rounded frame and its text as one `<text>` with a `<tspan>` for each line, so it
 /// can be selected. `data-note` is the path of what it belongs to (`""` for the board),
 /// `data-n` the note's index in the design's notes, `data-ref` the reference of the part it is
-/// about when it is about one, `data-at` the `file:line` it is written at; the tooltip has the
-/// whole text when the drawn text is cut.
+/// about when it is about one, `data-anchors` the references of every part it is about (a
+/// space between; empty for the note of a sheet), `data-at` the `file:line` it is written at;
+/// the tooltip has the whole text when the drawn text is cut.
 fn draw_note(w: &mut String, design: &Design, note: &crate::layout::PlacedNote) {
     use netsmith_core::NoteKind;
     let kind = match note.kind {
@@ -340,6 +341,20 @@ fn draw_note(w: &mut String, design: &Design, note: &crate::layout::PlacedNote) 
     if let Some(a) = note.anchor {
         let _ = write!(attrs, " data-ref=\"{}\"", esc(&design.parts[a].refdes));
     }
+    // Every part the note is about, on this sheet or another, as designators in the order the
+    // design's note names them (`data-ref` is the first of those that is on this sheet).
+    let mut parts: Vec<&str> = Vec::new();
+    for a in &source.anchors {
+        if let Some(p) = design
+            .parts
+            .iter()
+            .find(|p| !p.path.is_empty() && p.path == *a)
+            && !parts.contains(&p.refdes.as_str())
+        {
+            parts.push(&p.refdes);
+        }
+    }
+    let _ = write!(attrs, " data-anchors=\"{}\"", esc(&parts.join(" ")));
     if let Some(at) = &source.at {
         let _ = write!(attrs, " data-at=\"{}:{}\"", esc(&at.file), at.line);
     }
