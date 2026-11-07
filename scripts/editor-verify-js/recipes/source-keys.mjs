@@ -1,8 +1,16 @@
-// The source editor's keys and settings, one step for each: Ctrl+/ comments the lines (the shortcuts stay on `?`).
+// The source editor's keys and settings, one step for each: Ctrl+/ comments the lines (the shortcuts stay on `?`),
+// and autosave writes a file after a pause.
+import fs from 'node:fs';
+import path from 'node:path';
 
 export const fixture = 'two_boards';
 
-export async function run({ page, step, expect, section }) {
+export async function run({ page, shot, step, expect, project, section }) {
+  const file = path.join(project, 'src/main.nsm');
+  const openOptions = async () => {
+    await page.locator('.source-opts-item').click();
+    await page.waitForSelector('[data-testid="opt-autosave"]');
+  };
   await section('source');
   await page.waitForSelector('.cm-content');
 
@@ -50,4 +58,27 @@ export async function run({ page, step, expect, section }) {
   await page.waitForFunction(() => document.querySelector('.cm-line').innerText === '/// probe doc');
   expect(true, 'a doc line is commented and uncommented without losing a character');
   for (let i = 0; i < 6; i++) await page.keyboard.press('Control+z');
+
+  step('autosave: off until chosen, then a file is written after a pause with no Ctrl+S');
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('Control+Home');
+  await page.keyboard.type('// typed once\n');
+  await page.waitForSelector('.tab .dot');
+  await page.waitForTimeout(2200);
+  expect(!fs.readFileSync(file, 'utf8').includes('typed once'), 'nothing written while autosave is off');
+  await openOptions();
+  expect((await page.locator('[data-testid="opt-autosave"]').getAttribute('aria-checked')) === 'false', 'the menu shows it off');
+  await page.locator('[data-testid="opt-autosave"]').click();
+  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null, { timeout: 8000 });
+  expect(fs.readFileSync(file, 'utf8').includes('typed once'), 'the waiting edit was written when autosave went on');
+  await page.keyboard.press('Escape');
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('Control+Home');
+  await page.keyboard.type('// typed twice\n');
+  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null, { timeout: 8000 });
+  expect(fs.readFileSync(file, 'utf8').includes('typed twice'), 'the next edit was written by itself');
+  await shot('autosaved');
+  await openOptions();
+  await page.locator('[data-testid="opt-autosave"]').click();
+  await page.keyboard.press('Escape');
 }
