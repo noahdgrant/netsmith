@@ -272,6 +272,9 @@ pub struct Pad {
 pub struct PinFunction {
     pub name: Ident,
     pub kind: Option<(PinKind, Span)>,
+    /// `as sclk`: in a peripheral that has a bus (`as Spi SpiRole::Master`), the line of the bus
+    /// that the function is (ADR 0064). Always None in a pin row.
+    pub line: Option<Ident>,
 }
 
 /// One line of a pin table: `.sense input "SENSE" "3" fn GPIO UART1_TX optional`.
@@ -321,7 +324,19 @@ pub struct Peripheral {
     pub name: Ident,
     /// The class after `on`: a function that rows list.
     pub on: Option<Ident>,
+    /// `as Spi SpiRole::Master`: the bus interface that the peripheral is an end of, and its role
+    /// (ADR 0064, stage 4). A function that names a line (`SPIM0_SCK:output as sclk`) is a pin of
+    /// that bus when the board chooses it on a pin.
+    pub bus: Option<PeripheralBus>,
     pub functions: Vec<PinFunction>,
+    pub span: Span,
+}
+
+/// The `as Spi SpiRole::Master` of a peripheral.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PeripheralBus {
+    pub interface: TypePath,
+    pub role: Option<Expr>,
     pub span: Span,
 }
 

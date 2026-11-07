@@ -31,15 +31,23 @@ pub(crate) struct BusFindings {
     pub nets: HashSet<String>,
 }
 
-/// A pin of a bus interface of a part: which line of which bus end it is.
+/// An end of a bus: an interface a part declares (`cpu.spi`), or a peripheral of a part that is
+/// an end of a bus (`as Spi SpiRole::Master`, ADR 0064, stage 4): the part and the index of the
+/// peripheral among its own.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub(crate) enum End {
+    Iface(InstId),
+    Periph(InstId, usize),
+}
+
+/// A pin of a part that is a line of a bus: which line of which bus end it is.
 #[derive(Clone)]
 struct BusPin {
     pin: InstId,
-    /// The interface instance, the end of the bus.
-    end: InstId,
+    end: End,
     def: DefRef,
     line: String,
-    /// The variant the interface states (`Slave`), if it states one.
+    /// The variant the end states (`Slave`), if it states one.
     role: Option<String>,
 }
 
@@ -74,25 +82,111 @@ impl Model {
                 .is_some_and(|(_, b)| b.role_enum.is_some())
     }
 
-    /// The bus pin a terminal is, if it is the line of an interface that has `lines`.
+    /// The bus pin a terminal is: the line of an interface that has `lines`, or a pin of a part
+    /// on which the board chose the function of a peripheral that is an end of a bus.
     fn bus_pin(&self, pin: InstId) -> Option<BusPin> {
-        let end = self.instance(pin).parent?;
-        if self.instance(end).kind != InstKind::Interface {
+        match self.instance(pin).parent {
+            Some(end) if self.instance(end).kind == InstKind::Interface => {
+                let (def, bus) = self.bus_def_of(end)?;
+                let line = self.instance(pin).name.clone();
+                bus.tables
+                    .iter()
+                    .flat_map(|t| t.rows.iter())
+                    .any(|r| r.name == line)
+                    .then(|| BusPin {
+                        pin,
+                        end: End::Iface(end),
+                        def,
+                        role: self.role_of(end),
+                        line,
+                    })
+            }
+            _ => self.peripheral_pin(pin),
+        }
+    }
+
+    /// The pin of a part whose chosen function is a line of a peripheral's bus.
+    fn peripheral_pin(&self, pin: InstId) -> Option<BusPin> {
+        let part = self.owner_of(pin)?;
+        if self.instance(part).kind != InstKind::Part {
             return None;
         }
-        let (def, bus) = self.bus_def_of(end)?;
-        let line = self.instance(pin).name.clone();
-        bus.tables
+        let function = self.function_of(pin)?;
+        let (periph, f) = self.peripheral_of(part, &function)?;
+        let (bus, line) = (periph.bus.as_ref()?, f.line.clone()?);
+        let index = self
+            .instance(part)
+            .rules
+            .peripherals
             .iter()
-            .flat_map(|t| t.rows.iter())
-            .any(|r| r.name == line)
-            .then(|| BusPin {
-                pin,
-                end,
-                def,
-                role: self.role_of(end),
-                line,
-            })
+            .position(|p| p.name == periph.name)?;
+        Some(BusPin {
+            pin,
+            end: End::Periph(part, index),
+            def: bus.def,
+            line,
+            role: bus.role.clone(),
+        })
+    }
+
+    /// The part an end of a bus belongs to.
+    fn end_part(&self, end: End) -> InstId {
+        match end {
+            End::Iface(i) => self.owner_of(i).unwrap_or(i),
+            End::Periph(part, _) => part,
+        }
+    }
+
+    /// An end as a message names it, with its quotes: `cpu.spi`, or `u` (`SPIM0`).
+    fn end_name(&self, end: End) -> String {
+        match end {
+            End::Iface(i) => format!("`{}`", self.path_of(i)),
+            End::Periph(part, index) => format!(
+                "`{}` (`{}`)",
+                self.path_of(part),
+                self.instance(part).rules.peripherals[index].name
+            ),
+        }
+    }
+
+    /// What an end sorts by: its path, and for a peripheral the part's path and its name.
+    fn end_key(&self, end: End) -> String {
+        match end {
+            End::Iface(i) => self.path_of(i),
+            End::Periph(part, index) => format!(
+                "{}.{}",
+                self.path_of(part),
+                self.instance(part).rules.peripherals[index].name
+            ),
+        }
+    }
+
+    /// The variant an end plays, if it states one.
+    fn end_role(&self, end: End) -> Option<String> {
+        match end {
+            End::Iface(i) => self.role_of(i),
+            End::Periph(part, index) => self.instance(part).rules.peripherals[index]
+                .bus
+                .as_ref()
+                .and_then(|b| b.role.clone()),
+        }
+    }
+
+    /// Whether the board uses an end: any of its lines is connected.
+    fn end_in_use(&self, end: End) -> bool {
+        match end {
+            End::Iface(i) => self.instance(i).children.iter().any(|(_, m)| {
+                matches!(m, Member::Inst(p) if self.instance(*p).kind == InstKind::Pin && self.is_connected(*p))
+            }),
+            End::Periph(part, index) => self.instances().any(|(id, i)| {
+                i.kind == InstKind::Pin
+                    && self.owner_of(id) == Some(part)
+                    && self.is_connected(id)
+                    && self
+                        .peripheral_pin(id)
+                        .is_some_and(|bp| bp.end == End::Periph(part, index))
+            }),
+        }
     }
 
     /// The row of a role's table for a bus pin, with the role's name as it is written.
@@ -127,9 +221,7 @@ impl Model {
             && let Some((line, role, bus)) = self.line_row(&bp)
             && let Some(requirement) = line.requirement
         {
-            let used = self.instance(bp.end).children.iter().any(|(_, m)| {
-                matches!(m, Member::Inst(p) if self.instance(*p).kind == InstKind::Pin && self.is_connected(*p))
-            });
+            let used = self.end_in_use(bp.end);
             return match requirement {
                 Requirement::Optional => (false, None),
                 Requirement::Required => (
@@ -163,6 +255,11 @@ fn count_word(n: usize) -> String {
 /// `` `a`, `b` and `c` ``
 fn and_list(items: &[String]) -> String {
     crate::lower::list_of(&items.iter().map(|i| format!("`{i}`")).collect::<Vec<_>>())
+}
+
+/// `` `a`, `b` and `c` `` for names that are already quoted.
+fn and_texts(items: &[String]) -> String {
+    crate::lower::list_of(items)
 }
 
 /// A role's name for a plural in a message: `Slave` is `slaves`.
@@ -216,9 +313,9 @@ fn collect(model: &Model) -> Vec<(&Net, Vec<BusPin>)> {
 
 /// The interfaces that share a net, in groups: each is a bus. The ends of a group are of one
 /// definition, in path order, and the groups are in the order of their first end.
-fn components(model: &Model, per_net: &[(&Net, Vec<BusPin>)]) -> Vec<Vec<InstId>> {
-    let mut parent: BTreeMap<InstId, InstId> = BTreeMap::new();
-    fn find(parent: &mut BTreeMap<InstId, InstId>, x: InstId) -> InstId {
+fn components(model: &Model, per_net: &[(&Net, Vec<BusPin>)]) -> Vec<Vec<End>> {
+    let mut parent: BTreeMap<End, End> = BTreeMap::new();
+    fn find(parent: &mut BTreeMap<End, End>, x: End) -> End {
         let p = *parent.entry(x).or_insert(x);
         if p == x {
             return x;
@@ -228,7 +325,7 @@ fn components(model: &Model, per_net: &[(&Net, Vec<BusPin>)]) -> Vec<Vec<InstId>
         root
     }
     for (_, pins) in per_net {
-        let mut first: BTreeMap<DefRef, InstId> = BTreeMap::new();
+        let mut first: BTreeMap<DefRef, End> = BTreeMap::new();
         for p in pins {
             find(&mut parent, p.end);
             match first.get(&p.def) {
@@ -244,17 +341,17 @@ fn components(model: &Model, per_net: &[(&Net, Vec<BusPin>)]) -> Vec<Vec<InstId>
             }
         }
     }
-    let mut by_root: BTreeMap<InstId, Vec<InstId>> = BTreeMap::new();
-    let ends: Vec<InstId> = parent.keys().copied().collect();
+    let mut by_root: BTreeMap<End, Vec<End>> = BTreeMap::new();
+    let ends: Vec<End> = parent.keys().copied().collect();
     for e in ends {
         let root = find(&mut parent, e);
         by_root.entry(root).or_default().push(e);
     }
-    let mut groups: Vec<Vec<InstId>> = by_root.into_values().collect();
+    let mut groups: Vec<Vec<End>> = by_root.into_values().collect();
     for g in &mut groups {
-        g.sort_by_key(|&e| model.path_of(e));
+        g.sort_by_key(|&e| model.end_key(e));
     }
-    groups.sort_by_key(|g| model.path_of(g[0]));
+    groups.sort_by_key(|g| model.end_key(g[0]));
     groups
 }
 
@@ -266,7 +363,14 @@ pub(crate) fn shared_values(model: &Model) -> Vec<(FieldId, FieldId)> {
     let per_net = collect(model);
     let mut pairs = Vec::new();
     for ends in components(model, &per_net) {
-        let first = ends[0];
+        let ends: Vec<InstId> = ends
+            .into_iter()
+            .filter_map(|e| match e {
+                End::Iface(i) => Some(i),
+                End::Periph(..) => None,
+            })
+            .collect();
+        let Some(&first) = ends.first() else { continue };
         for &other in &ends[1..] {
             for (name, member) in &model.instance(first).children {
                 let (Member::Field(x), Some(Member::Field(y))) =
@@ -301,7 +405,14 @@ pub fn bus_groups(model: &Model) -> Vec<BusGroup> {
     components(model, &per_net)
         .into_iter()
         .filter_map(|ends| {
-            let (_, bus) = model.bus_def_of(ends[0])?;
+            let ends: Vec<InstId> = ends
+                .into_iter()
+                .filter_map(|e| match e {
+                    End::Iface(i) => Some(i),
+                    End::Periph(..) => None,
+                })
+                .collect();
+            let (_, bus) = model.bus_def_of(*ends.first()?)?;
             Some(BusGroup {
                 name: bus.name.clone(),
                 clock: bus.clock.clone(),
@@ -428,33 +539,39 @@ impl Rules<'_> {
                 let Some(partner) = bus.partner(line) else {
                     return;
                 };
-                let ends: BTreeSet<InstId> = ps.iter().map(|p| p.end).collect();
+                let ends: BTreeSet<End> = ps.iter().map(|p| p.end).collect();
                 if ends.len() < 2 {
                     return;
                 }
-                let (first, second) = (ps[0], ps[ps.len() - 1]);
+                let first = ps[0];
+                let other = ps.iter().find(|p| p.end != first.end).map_or(first, |p| *p);
                 let pairs: Vec<String> = bus
                     .crossings()
                     .iter()
                     .map(|(a, b)| format!("`{a}` to `{b}`"))
                     .collect();
-                let (e1, e2) = (
-                    model.path_of(first.end),
-                    model.path_of(
-                        ps.iter()
-                            .find(|p| p.end != first.end)
-                            .map_or(second.end, |p| p.end),
+                // A pin of a peripheral is joined by hand: the way to write it is a pin by pin join.
+                let way = match (first.end, other.end) {
+                    (End::Iface(a), End::Iface(b)) => {
+                        let (e1, e2) = (model.path_of(a), model.path_of(b));
+                        format!(
+                            "write `.{} ~ .{e2}.{partner}`, or join the two interfaces with `.{e1} ~ .{e2}`, which crosses {}",
+                            model.path_of(first.pin),
+                            crate::lower::list_of(&pairs)
+                        )
+                    }
+                    _ => format!(
+                        "write `.{} ~ .<the other end>.{partner}`, the pin that is the `{partner}` of the other end",
+                        model.path_of(first.pin)
                     ),
-                );
+                };
                 self.report(
                     at,
                     format!(
-                        "net `{}` joins `{line}` to `{line}` ({}): `{line}` crosses `{partner}` in a `{}`, so it is joined to the other end's `{partner}`; write `.{} ~ .{e2}.{partner}`, or join the two interfaces with `.{e1} ~ .{e2}`, which crosses {}",
+                        "net `{}` joins `{line}` to `{line}` ({}): `{line}` crosses `{partner}` in a `{}`, so it is joined to the other end's `{partner}`; {way}",
                         net.name,
                         names_of(ps).iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", "),
                         bus.name,
-                        model.path_of(first.pin),
-                        crate::lower::list_of(&pairs)
                     ),
                 );
                 self.found.nets.insert(net.name.clone());
@@ -550,7 +667,7 @@ impl Rules<'_> {
             }
         }
         for ((def, role, line), ps) in groups {
-            let ends: BTreeSet<InstId> = ps.iter().map(|p| p.end).collect();
+            let ends: BTreeSet<End> = ps.iter().map(|p| p.end).collect();
             if ends.len() < 2 {
                 continue;
             }
@@ -580,16 +697,22 @@ impl Rules<'_> {
     fn limits(&mut self, per_net: &[(&Net, Vec<BusPin>)]) {
         let model = self.model;
         for members in components(model, per_net) {
-            let Some((def, bus)) = model.bus_def_of(members[0]) else {
+            let Some(def) = per_net
+                .iter()
+                .flat_map(|(_, ps)| ps.iter())
+                .find(|p| p.end == members[0])
+                .map(|p| p.def)
+            else {
                 continue;
             };
+            let bus = &model.bus_defs[&def];
             // Count the ends by role: the role's variant, or None for a bus with one role.
             for table in &bus.tables {
                 let Some(limit) = table.limit else { continue };
-                let same: Vec<InstId> = members
+                let same: Vec<End> = members
                     .iter()
                     .copied()
-                    .filter(|&e| model.role_of(e) == table.role)
+                    .filter(|&e| model.end_role(e) == table.role)
                     .collect();
                 if same.len() as u32 <= limit {
                     continue;
@@ -610,13 +733,13 @@ impl Rules<'_> {
         bus: &BusDef,
         table: &crate::model::RoleLines,
         limit: u32,
-        same: &[InstId],
-        members: &[InstId],
+        same: &[End],
+        members: &[End],
         nets: &[&Net],
         per_net: &[(&Net, Vec<BusPin>)],
     ) {
         let model = self.model;
-        let ends = and_list(&same.iter().map(|&e| model.path_of(e)).collect::<Vec<_>>());
+        let ends = and_texts(&same.iter().map(|&e| model.end_name(e)).collect::<Vec<_>>());
         // The net where two of the offending ends meet: the first one, with the pins on it.
         let through = per_net
             .iter()
@@ -627,10 +750,10 @@ impl Rules<'_> {
             })
             .unwrap_or_default();
         // The ends past the limit, in path order: the ones to move.
-        let extra = and_list(
+        let extra = and_texts(
             &same[limit as usize..]
                 .iter()
-                .map(|&e| model.path_of(e))
+                .map(|&e| model.end_name(e))
                 .collect::<Vec<_>>(),
         );
         let own = if same.len() as u32 - limit == 1 {
@@ -643,8 +766,8 @@ impl Rules<'_> {
             (Some(v), Some(e)) => {
                 let mut by_role: BTreeMap<String, Vec<String>> = BTreeMap::new();
                 for &end in members.iter().filter(|e| !same.contains(e)) {
-                    if let Some(r) = model.role_of(end) {
-                        by_role.entry(r).or_default().push(model.path_of(end));
+                    if let Some(r) = model.end_role(end) {
+                        by_role.entry(r).or_default().push(model.end_name(end));
                     }
                 }
                 let rest: String = by_role
@@ -658,7 +781,7 @@ impl Rules<'_> {
                                 plural(role)
                             },
                             if ends.len() == 1 { "is" } else { "are" },
-                            and_list(ends)
+                            and_texts(ends)
                         )
                     })
                     .collect();
@@ -682,9 +805,7 @@ impl Rules<'_> {
             ),
         };
         let at_end = same[(limit as usize).min(same.len() - 1)];
-        let at = model
-            .owner_of(at_end)
-            .map_or_else(|| model.instance(at_end).at(), |o| model.instance(o).at());
+        let at = model.instance(model.end_part(at_end)).at();
         self.report(
             at,
             format!("{head}: they are on one bus through {through}{others}; give {extra} {own}"),
@@ -696,7 +817,7 @@ impl Rules<'_> {
 }
 
 /// Whether the kind a part's row gives a line agrees with the kind its role gives it.
-fn agrees(role: PinKind, row: PinKind) -> bool {
+pub(crate) fn agrees(role: PinKind, row: PinKind) -> bool {
     use PinKind::*;
     row == role
         || matches!(row, Bidirectional | Passive | NoConnect)
@@ -721,7 +842,8 @@ pub fn bidirectional_rows(model: &Model) -> Vec<(InstId, String)> {
         let Some(bp) = model.bus_pin(pin) else {
             continue;
         };
-        if bp.role.is_none() {
+        // The function of a peripheral states its own kind, and its definition is judged.
+        if bp.role.is_none() || matches!(bp.end, End::Periph(..)) {
             continue;
         }
         let Some((line, role, _)) = model.line_row(&bp) else {
@@ -763,7 +885,14 @@ pub fn unstated_roles(model: &Model) -> Vec<(InstId, String)> {
     let per_net = collect(model);
     let mut out = Vec::new();
     for ends in components(model, &per_net) {
-        let Some((_, bus)) = model.bus_def_of(ends[0]) else {
+        let ends: Vec<InstId> = ends
+            .into_iter()
+            .filter_map(|e| match e {
+                End::Iface(i) => Some(i),
+                End::Periph(..) => None,
+            })
+            .collect();
+        let Some((_, bus)) = ends.first().and_then(|&e| model.bus_def_of(e)) else {
             continue;
         };
         if bus.role_enum.is_none()

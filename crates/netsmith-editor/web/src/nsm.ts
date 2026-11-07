@@ -39,6 +39,21 @@ const STATEMENT_WORDS: Record<string, RegExp> = {
 };
 const CLAUSE_WORDS: Record<string, string[]> = { on: ['peripheral'], limit: ['shared', 'lines'] };
 
+/**
+ * `as` in a peripheral (ADR 0064, stage 4): in the header, `peripheral NAME on CLASS as Spi SpiRole::Master {`, and after a function of
+ * its body, `SPIM0_SCK:output as sclk`. It is a word only after the first word of a line, and the first word is a name, so a path that
+ * starts with `as` and a member called `as` stay names.
+ */
+function isAsClause(line: string, out: Token[]): boolean {
+  if (out.length === 0) return false;
+  const first = out[0];
+  if (first.kind === 'keyword') return line.slice(first.from, first.to) === 'peripheral';
+  if (first.kind !== 'name' && first.kind !== 'type') return false;
+  const prev = out[out.length - 1];
+  const text = line.slice(prev.from, prev.to);
+  return prev === first || (prev.kind === 'name' && PIN_KINDS.has(text) && out.length >= 3);
+}
+
 /** The words of a row of a `lines` table after its kind (ADR 0064). They are words only on a line that starts with a member path and has a pin kind before them. */
 const ROW_WORDS = new Set(['single', 'crosses']);
 const PIN_KINDS = new Set(['power', 'input', 'output', 'bidirectional', 'passive', 'no_connect', 'tri_state']);
@@ -145,6 +160,7 @@ export function tokenize(line: string): Token[] {
       else if (first === null && word in STATEMENT_WORDS && STATEMENT_WORDS[word].test(line.slice(j))) kind = 'keyword';
       else if (CLAUSE_WORDS[word] !== undefined && first !== null && CLAUSE_WORDS[word].includes(first) && out[0].kind === 'keyword') kind = 'keyword';
       else if (ROW_WORDS.has(word) && isLineRow(line, out)) kind = 'keyword';
+      else if (word === 'as' && isAsClause(line, out)) kind = 'keyword';
       // A name before `::` is a module in a path (`std::parts`) unless it is capitalised, which
       // makes it a type: the enum of a variant, `AssemblyMode::Hand`.
       else if (line.slice(j, j + 2) === '::' && !/^\p{Lu}/u.test(word)) kind = 'namespace';

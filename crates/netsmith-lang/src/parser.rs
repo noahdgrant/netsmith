@@ -643,12 +643,40 @@ impl Parser {
         } else {
             None
         };
+        let bus = if matches!(&self.peek().tok, Tok::Ident(w) if w == "as") {
+            let at = self.peek().span.start;
+            self.bump();
+            let interface = self.type_path()?;
+            let role = match self.peek().tok.clone() {
+                Tok::Ident(_) if matches!(self.peek_second(), Tok::ColonColon) => {
+                    let role_start = self.peek().span.start;
+                    let mut segments = vec![self.ident("an enum name")?];
+                    while self.eat(&Tok::ColonColon) {
+                        segments.push(self.ident("a name after `::`")?);
+                    }
+                    let variant = segments.pop().expect("a path has a segment");
+                    Some(Expr::Variant {
+                        ty: TypePath { segments },
+                        variant,
+                        span: self.span_from(role_start),
+                    })
+                }
+                _ => None,
+            };
+            Some(PeripheralBus {
+                interface,
+                role,
+                span: self.span_from(at),
+            })
+        } else {
+            None
+        };
         let open = self.expect(
             &Tok::LBrace,
-            if on.is_some() {
-                "`{` after the function that the peripheral is on"
-            } else {
-                "`{` or `on` after the name of the peripheral"
+            match (&on, &bus) {
+                (_, Some(_)) => "`{` after the bus that the peripheral is an end of",
+                (Some(_), None) => "`{` or `as` after the function that the peripheral is on",
+                (None, None) => "`{`, `on` or `as` after the name of the peripheral",
             },
         )?;
         let mut functions: Vec<PinFunction> = Vec::new();
@@ -670,9 +698,19 @@ impl Parser {
                 Tok::Ident(_) => {
                     let function = self.ident("a function name")?;
                     let kind = self.function_kind(&function)?;
+                    let line =
+                        if matches!(&self.peek().tok, Tok::Ident(w) if w == "as") {
+                            self.bump();
+                            Some(self.ident(
+                                "the line of the bus that the function is, such as `as sclk`",
+                            )?)
+                        } else {
+                            None
+                        };
                     functions.push(PinFunction {
                         name: function,
                         kind,
+                        line,
                     });
                 }
                 Tok::Str(_) | Tok::Number(_) | Tok::QuotedIdent(_) => {
@@ -696,6 +734,7 @@ impl Parser {
         Ok(Item::Peripheral(Peripheral {
             name,
             on,
+            bus,
             functions,
             span: self.span_from(start),
         }))
@@ -1107,7 +1146,11 @@ impl Parser {
                     Tok::Ident(w) if w != "optional" && w != "required" => {
                         let name = self.ident("a function name")?;
                         let kind = self.function_kind(&name)?;
-                        functions.push(PinFunction { name, kind });
+                        functions.push(PinFunction {
+                            name,
+                            kind,
+                            line: None,
+                        });
                     }
                     Tok::Str(_) | Tok::Number(_) | Tok::QuotedIdent(_) => {
                         return Err(ParseError::new(

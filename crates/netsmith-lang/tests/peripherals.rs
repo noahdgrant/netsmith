@@ -152,7 +152,7 @@ fn a_peripheral_needs_functions_and_a_shared_resource_members() {
 fn braces_are_needed_and_must_close() {
     let (msg, ..) = err(&in_part("peripheral UARTE0 UARTE0_TX"));
     assert!(
-        msg.starts_with("expected `{` or `on` after the name of the peripheral"),
+        msg.starts_with("expected `{`, `on` or `as` after the name of the peripheral"),
         "{msg}"
     );
     let (msg, ..) = err(&in_part("shared SERIAL0 UARTE0"));
@@ -231,7 +231,7 @@ fn on_needs_a_function_and_braces() {
     );
     let (msg, ..) = err(&in_part("peripheral UARTE0 on APP_GPIO UARTE0_TX"));
     assert!(
-        msg.starts_with("expected `{` after the function that the peripheral is on"),
+        msg.starts_with("expected `{` or `as` after the function that the peripheral is on"),
         "{msg}"
     );
     let (msg, ..) = err(&in_part("peripheral UARTE0 on \"APP_GPIO\" { UARTE0_TX }"));

@@ -2187,6 +2187,140 @@ error: `.p00` lists `UARTE0_TX`, which `peripheral UARTE0` already offers on eve
   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
+### A peripheral that is an end of a bus
+
+A processor whose SPI pins are any pin of a class has no `.spi: Spi` to state a role on: its master end is a peripheral, and a function names no bus. The peripheral says which bus it is an end of with one clause, and the lines that are its functions (ADR 0064):
+
+```nsm-fragment
+peripheral SPIM0 on APP_GPIO as Spi SpiRole::Master {
+    SPIM0_SCK:output  as sclk
+    SPIM0_MOSI:output as mosi
+    SPIM0_MISO:input  as miso
+}
+```
+
+`as Spi SpiRole::Master` names the interface and the role (a bus with one role writes `as Uart`), and `as sclk` after a function names the line it is. A function that names no line (a data/command pin of a display) is not on the bus. The part is refused when the interface has no such role, when a line is not one the role has, when two functions are one line, and when the kind a function states disagrees with the line (`SPIM0_MISO:output as miso` for a master, whose `miso` is an input). The peripheral is the end of the bus (`u`, `SPIM0`), and a pin on which the board chose one of its functions is a pin of that line and role: the rules of the previous section read it as they read the pin of an interface, with the end named by the part and the peripheral. The board's `.u.p00.function &= "SPIM0_SCK"` is the statement that puts the pin on the bus, and a pin that the board leaves at `APP_GPIO` is a plain pin.
+
+```nsm module=src::zmcubus
+import std::bus::{Spi, SpiRole}
+import std::sources::Rail
+
+/// Zmcubus, an invented processor whose serial units reach any pin of the application core.
+part Zmcubus {
+    .vdd: Rail
+
+    peripheral SPIM0 on APP_GPIO as Spi SpiRole::Master {
+        SPIM0_SCK:output  as sclk
+        SPIM0_MOSI:output as mosi
+        SPIM0_MISO:input  as miso
+    }
+
+    pins {
+        .vdd.pos power         "VDD"   "1"
+        .vdd.neg power         "VSS"   "2"
+        .p00     bidirectional "P0.00" "3" fn APP_GPIO
+        .p01     bidirectional "P0.01" "4" fn APP_GPIO
+        .p02     bidirectional "P0.02" "5" fn APP_GPIO
+        .p03     bidirectional "P0.03" "6" fn APP_GPIO
+    }
+}
+```
+
+The master joined to the flash of the previous section builds, with the select on a plain pin of the processor:
+
+```nsm evaluate
+import src::zmcubus::Zmcubus
+import src::zparts::Zflash
+import std::sources::Rail
+
+board AnyPin {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: Zmcubus
+    .flash: Zflash
+    .supply ~ .u.vdd
+    .supply ~ .flash.vdd
+
+    .u.p00.function &= "SPIM0_SCK"
+    .u.p01.function &= "SPIM0_MOSI"
+    .u.p02.function &= "SPIM0_MISO"
+    .u.p03.function &= "APP_GPIO"
+    .u.p00 ~ .flash.spi.sclk
+    .u.p01 ~ .flash.spi.mosi
+    .u.p02 ~ .flash.spi.miso
+    .u.p03 ~ .flash.spi.cs
+}
+```
+
+With the pins of `mosi` and `miso` joined to the wrong lines of the flash, the rules find it, naming the pins:
+
+```nsm fails
+import src::zmcubus::Zmcubus
+import src::zparts::Zflash
+import std::sources::Rail
+
+board Crossed {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: Zmcubus
+    .flash: Zflash
+    .supply ~ .u.vdd
+    .supply ~ .flash.vdd
+
+    .u.p00.function &= "SPIM0_SCK"
+    .u.p01.function &= "SPIM0_MOSI"
+    .u.p02.function &= "SPIM0_MISO"
+    .u.p03.function &= "APP_GPIO"
+    .u.p00 ~ .flash.spi.sclk
+    .u.p01 ~ .flash.spi.miso
+    .u.p02 ~ .flash.spi.mosi
+    .u.p03 ~ .flash.spi.cs
+}
+```
+
+```text
+error: net `net-flash.spi.miso` joins two different lines of a `Spi`: `miso` (`flash.spi.miso`) and `mosi` (`u.p01`); a `Spi` joins `miso` to `miso` and `mosi` to `mosi`, and `u.p01` is on the net of `miso`
+   --> main.nsm:12:5
+   |
+12 |     .flash: Zflash
+   |     ^^^^^^^^^^^^^^
+error: net `net-flash.spi.mosi` joins two different lines of a `Spi`: `miso` (`u.p02`) and `mosi` (`flash.spi.mosi`); a `Spi` joins `miso` to `miso` and `mosi` to `mosi`, and `flash.spi.mosi` is on the net of `miso`
+   --> main.nsm:12:5
+   |
+12 |     .flash: Zflash
+   |     ^^^^^^^^^^^^^^
+```
+
+A function of a peripheral that disagrees with its line is refused in the part:
+
+```nsm fails
+import std::bus::{Spi, SpiRole}
+
+part Zmcubus {
+    peripheral SPIM0 on APP_GPIO as Spi SpiRole::Master {
+        SPIM0_SCK:output as sclk
+        SPIM0_MISO:output as miso
+    }
+    pins {
+        .p00 bidirectional "P0.00" "3" fn APP_GPIO
+    }
+}
+```
+
+```text
+error: `SPIM0_MISO` is an output in `peripheral SPIM0`, but `SpiRole::Master` makes `miso` an input of `Spi`
+  --> main.nsm:6:20
+  |
+6 |         SPIM0_MISO:output as miso
+  |                    ^^^^^^
+```
+
 ### Counts, functions and pins that share
 
 `shared NAME limit N { MEMBER ... }` allows at most N of its members at once; without `limit` it allows one. A limit is a whole number of at least 1 and fewer than the number of members. A member is a peripheral, a function or a pin:

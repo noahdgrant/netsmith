@@ -245,6 +245,9 @@ pub struct Peripheral {
     /// The function after `on`.
     pub class: Option<String>,
     pub class_span: Span,
+    /// The bus interface the peripheral is an end of, if it says (`as Spi SpiRole::Master`,
+    /// ADR 0064, stage 4).
+    pub bus: Option<PeripheralBus>,
     pub functions: Vec<PeripheralFunction>,
     pub source: SourceId,
     /// The whole statement.
@@ -259,7 +262,20 @@ pub struct Peripheral {
 pub struct PeripheralFunction {
     pub name: String,
     pub kind: Option<PinKind>,
+    /// The line of the peripheral's bus that the function is (`as sclk`).
+    pub line: Option<String>,
     pub span: Span,
+}
+
+/// The bus a peripheral is an end of: the definition of the interface and the role it plays.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PeripheralBus {
+    /// The module and index of the interface's definition.
+    pub(crate) def: (usize, usize),
+    /// The interface's name: `Spi`.
+    pub interface: String,
+    /// The variant it plays (`Master`), if the bus has roles.
+    pub role: Option<String>,
 }
 
 /// `shared UARTS limit 2 { UARTE0 UARTE1 .p10 }`: hardware that at most `limit` of its members

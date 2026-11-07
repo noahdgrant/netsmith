@@ -76,10 +76,14 @@ impl Path {
 
 impl PinFunction {
     pub fn to_source(&self) -> String {
-        match self.kind {
+        let mut out = match self.kind {
             Some((kind, _)) => format!("{}:{}", self.name.to_source(), kind.word()),
             None => self.name.to_source(),
+        };
+        if let Some(line) = &self.line {
+            let _ = write!(out, " as {}", line.to_source());
         }
+        out
     }
 }
 
@@ -274,9 +278,19 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     Some(class) => format!(" on {}", class.to_source()),
                     None => String::new(),
                 };
+                let bus = match &p.bus {
+                    Some(bus) => {
+                        let role = match &bus.role {
+                            Some(r) => format!(" {}", r.to_source()),
+                            None => String::new(),
+                        };
+                        format!(" as {}{role}", join(&bus.interface.segments, "::"))
+                    }
+                    None => String::new(),
+                };
                 let _ = write!(
                     out,
-                    "peripheral {}{on} {{ {} }}",
+                    "peripheral {}{on}{bus} {{ {} }}",
                     p.name.to_source(),
                     functions.join(" ")
                 );

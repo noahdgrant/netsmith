@@ -146,6 +146,18 @@ describe('tokenize', () => {
     expect(kinds('.p1 passive "P" "1" fn single').at(-1)).toEqual(['single', 'name']);
   });
 
+  it('reads as in a peripheral, in its header and after a function, and nowhere else (ADR 0064)', () => {
+    expect(kinds('peripheral SPIM0 on APP_GPIO as Spi SpiRole::Master {').filter((k) => k[1] === 'keyword').map((k) => k[0])).toEqual(['peripheral', 'on', 'as']);
+    expect(kinds('peripheral TX0 as Uart { TX0_TX:output as tx TX0_RX:input as rx }').filter((k) => k[1] === 'keyword').map((k) => k[0])).toEqual(['peripheral', 'as', 'as', 'as']);
+    expect(kinds('SPIM0_SCK:output as sclk').map((k) => k[0] + ':' + k[1])).toEqual(['SPIM0_SCK:type', '::punct', 'output:name', 'as:keyword', 'sclk:name']);
+    expect(kinds('SPIM0_DCX as dcx')[1]).toEqual(['as', 'keyword']);
+    // Names where a name is meant.
+    expect(kinds('.as: Rail')[1]).toEqual(['as', 'member']);
+    expect(kinds('as.pos ~ x.neg')[0]).toEqual(['as', 'name']);
+    expect(kinds('.x ~ .as.pos')[4]).toEqual(['as', 'member']);
+    expect(kinds('.p1 passive "P" "1" fn as').at(-1)).toEqual(['as', 'name']);
+  });
+
   it('reads required as the marker of a pin row, and as a plain name where a member is called that', () => {
     expect(kinds('.p1 passive "TP" "1" required').at(-1)).toEqual(['required', 'keyword']);
     expect(kinds('.p1 power "VCC" "1" optional').at(-1)).toEqual(['optional', 'keyword']);

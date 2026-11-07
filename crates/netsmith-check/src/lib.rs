@@ -26,8 +26,8 @@ pub use loader::Loader;
 pub use model::{
     Balance, Catalog, Chain, Contact, ContactSide, Domain, Draw, EnumId, EnumInfo, Field, FieldId,
     FieldKind, GenericUse, GroundGroup, GroundNet, InstId, InstKind, Instance, Mate, Member, Model,
-    Net, PartRules, Peripheral, PeripheralFunction, PinKind, PinRow, PinTable, Pinout, Provider,
-    RExpr, Relation, Requirement, Role, SharedMember, SharedRes, Tie,
+    Net, PartRules, Peripheral, PeripheralBus, PeripheralFunction, PinKind, PinRow, PinTable,
+    Pinout, Provider, RExpr, Relation, Requirement, Role, SharedMember, SharedRes, Tie,
 };
 
 use std::collections::BTreeMap;

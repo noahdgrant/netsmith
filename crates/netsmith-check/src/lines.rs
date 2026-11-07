@@ -11,7 +11,7 @@ use netsmith_lang::ast::{self, DefKind, Item, PinKind};
 
 use crate::checker::{Builtin, Checker, Ty};
 use crate::lower::{VTy, list_of};
-use crate::model::{BusDef, EnumId, LineRow, RExpr, RoleLines};
+use crate::model::{BusDef, EnumId, LineRow, PeripheralBus, RExpr, RoleLines};
 
 impl Checker<'_> {
     /// A `lines` statement: refused anywhere but directly inside an interface, and otherwise
@@ -308,5 +308,193 @@ impl Checker<'_> {
             ),
         );
         None
+    }
+}
+
+impl Checker<'_> {
+    /// The bus clause of a peripheral (`as Spi SpiRole::Master`, ADR 0064, stage 4), and for each
+    /// function the line it is (`as sclk`). A clause or a line that is wrong is reported, and the
+    /// peripheral is then judged with no bus.
+    pub(crate) fn peripheral_bus(
+        &mut self,
+        p: &ast::Peripheral,
+    ) -> (Option<PeripheralBus>, Vec<Option<String>>) {
+        let none = vec![None; p.functions.len()];
+        let Some(clause) = &p.bus else {
+            for f in &p.functions {
+                if let Some(line) = &f.line {
+                    self.error(
+                        line.span,
+                        format!(
+                            "`{}` names the line `{}` of a bus, but `peripheral {}` is not an end of one: write `peripheral {} as Spi SpiRole::Master {{ ... }}` with the bus it is an end of",
+                            f.name.name, line.name, p.name.name, p.name.name
+                        ),
+                    );
+                }
+            }
+            return (None, none);
+        };
+        let def_ref = match self.resolve_type(&clause.interface) {
+            Ty::Def(m, i) if self.modules[m].defs[i].kind == DefKind::Interface => (m, i),
+            Ty::Def(..) | Ty::Enum(..) | Ty::Builtin(_) => {
+                let name = clause
+                    .interface
+                    .segments
+                    .last()
+                    .map_or("", |s| s.name.as_str());
+                self.error(
+                    clause.span,
+                    format!("`as` names the interface that the peripheral is an end of, such as `Spi`; `{name}` is not one"),
+                );
+                return (None, none);
+            }
+            Ty::Poison | Ty::Bad => return (None, none),
+        };
+        if !self.read_bus_def(def_ref) {
+            let name = self.modules[def_ref.0].defs[def_ref.1].name.name.clone();
+            self.error(
+                clause.span,
+                format!("`{name}` has no `lines`, so it has no roles or lines for a peripheral to be one of"),
+            );
+            return (None, none);
+        }
+        let bus = self.model.bus_defs[&def_ref].clone();
+        let mut ok = true;
+        let role = match (&clause.role, &bus.role_enum) {
+            (Some(expr), Some(enum_name)) => match self.lower(expr) {
+                Some(typed) => match (&typed.e, typed.ty) {
+                    (RExpr::Text(variant), VTy::Enum(found))
+                        if self.model.enum_info(found).name == *enum_name =>
+                    {
+                        if bus.table(Some(variant)).is_some() {
+                            Some(variant.clone())
+                        } else {
+                            self.error(
+                                expr.span(),
+                                format!(
+                                    "`{}` has no `lines` for `{enum_name}::{variant}`",
+                                    bus.name
+                                ),
+                            );
+                            ok = false;
+                            None
+                        }
+                    }
+                    _ => {
+                        self.error(
+                            expr.span(),
+                            format!("the role of `{}` is a variant of `{enum_name}`", bus.name),
+                        );
+                        ok = false;
+                        None
+                    }
+                },
+                None => {
+                    ok = false;
+                    None
+                }
+            },
+            (Some(expr), None) => {
+                self.error(
+                    expr.span(),
+                    format!(
+                        "`{}` has no roles: write `as {}` and no role",
+                        bus.name, bus.name
+                    ),
+                );
+                ok = false;
+                None
+            }
+            (None, Some(enum_name)) => {
+                self.error(
+                    clause.span,
+                    format!(
+                        "`{}` has roles (`{enum_name}`): say which one the peripheral is, such as `as {} {enum_name}::{}`",
+                        bus.name,
+                        bus.name,
+                        bus.tables
+                            .iter()
+                            .find_map(|t| t.role.clone())
+                            .unwrap_or_default()
+                    ),
+                );
+                ok = false;
+                None
+            }
+            (None, None) => None,
+        };
+        if !ok {
+            return (None, none);
+        }
+        let Some(table) = bus.table(role.as_deref()) else {
+            return (None, none);
+        };
+        let role_text = match (&role, &bus.role_enum) {
+            (Some(v), Some(e)) => format!("{e}::{v}"),
+            _ => bus.name.clone(),
+        };
+        let line_names: Vec<String> = table.rows.iter().map(|r| r.name.clone()).collect();
+        let mut lines: Vec<Option<String>> = Vec::new();
+        let mut taken: Vec<String> = Vec::new();
+        for f in &p.functions {
+            let Some(line) = &f.line else {
+                lines.push(None);
+                continue;
+            };
+            let Some(row) = table.rows.iter().find(|r| r.name == line.name) else {
+                let near = crate::lower::closest(&line.name, &line_names)
+                    .map(|n| format!("; did you mean `{n}`?"))
+                    .unwrap_or_default();
+                let listed: Vec<String> = line_names.iter().map(|n| format!("`{n}`")).collect();
+                self.error(
+                    line.span,
+                    format!(
+                        "`{}` has no line `{}` for `{role_text}`; its lines are {}{near}",
+                        bus.name,
+                        line.name,
+                        list_of(&listed)
+                    ),
+                );
+                lines.push(None);
+                continue;
+            };
+            if taken.contains(&line.name) {
+                self.error(
+                    line.span,
+                    format!(
+                        "`{}` is already the function that is `{}` in this peripheral",
+                        line.name, line.name
+                    ),
+                );
+                lines.push(None);
+                continue;
+            }
+            taken.push(line.name.clone());
+            if let Some((kind, span)) = f.kind
+                && !crate::busnets::agrees(row.kind, kind)
+            {
+                self.error(
+                    span,
+                    format!(
+                        "`{}` is {} in `peripheral {}`, but `{role_text}` makes `{}` {} of `{}`",
+                        f.name.name,
+                        crate::pins::article(kind),
+                        p.name.name,
+                        line.name,
+                        crate::pins::article(row.kind),
+                        bus.name
+                    ),
+                );
+            }
+            lines.push(Some(line.name.clone()));
+        }
+        (
+            Some(PeripheralBus {
+                def: def_ref,
+                interface: bus.name.clone(),
+                role,
+            }),
+            lines,
+        )
     }
 }
