@@ -12,6 +12,7 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | Source editor and live diagnostics | `source-editor.md` | `editor` | `two_boards` |
 | Source: hover cards, breadcrumbs, history, outline, inline hints, tabs, folds, find, completion | `source-editor.md` | `source-editor` | `two_boards` |
 | Schematic view and click-through | `schematic.md` | `schematic`, `big-schematic` | `two_boards`, `big` |
+| Schematic box of a part with a `tri_state` pin (the side it is on, the mark of an open one) | `schematic.md` | `tri-state` | `tri_state` |
 | Schematic layout file (server side): hints read and drawn, findings in the Problems list at the file and line, `GET`/`PUT /api/schematic-hints`, the watcher | `schematic-hints.md` | `schematic-hints` | `two_boards` |
 | Arranging the schematic by hand: drag on the grid with a ghost, Alt pins, Esc cancels, the anchor is inert, a refused drop is put back; arrows, `r`, `m`, Backspace; clear a module or the file; the layout file in the tree and in Source | `schematic-layout.md` | `layout-drag`, `layout-keys`, `layout-clear` | `two_boards` |
 | Schematic and the shared selection: go to anything lands on the module at a legible zoom with a ring, a net picked in the drawing, a flag followed, Esc clears everywhere | `schematic-integration.md` | `schematic-integration` | `schematic_bench` |

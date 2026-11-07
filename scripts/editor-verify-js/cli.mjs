@@ -37,6 +37,8 @@ const FIXTURES = {
   power_tree: 'scripts/editor-verify-js/fixtures/power_tree.nsm',
   // An invented board for the System view: 13 modules, a processor with 22 ports, a modem with 10.
   system_view: 'scripts/editor-verify-js/fixtures/system_view.nsm',
+  // An invented SPI processor and flash with no KiCad symbols, so the schematic draws their boxes: one pin of each kind.
+  tri_state: 'scripts/editor-verify-js/fixtures/tri_state.nsm',
   // An invented board for the busses: a processor module and a modem module joined by a UART, an SPI inside one.
   bus_bench: 'scripts/editor-verify-js/fixtures/bus_bench.nsm',
   // One module used by two boards: a declaration inside it has a card for each board (the server's `moduleUses`).
@@ -412,7 +414,7 @@ function cleanup() {
 
 const commands = { doctor, launch, drive, groups, evidence, cleanup };
 if (!commands[command]) {
-  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|empty|shared_module|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | groups | evidence | cleanup [--keep-evidence]  (launch also takes --git)');
+  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|empty|tri_state|shared_module|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | groups | evidence | cleanup [--keep-evidence]  (launch also takes --git)');
   process.exit(2);
 }
 await commands[command]();

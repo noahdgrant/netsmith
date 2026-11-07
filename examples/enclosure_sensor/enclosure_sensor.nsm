@@ -9,7 +9,7 @@
 //! footprints, and a footprint of the project's own, through the project's `kicad.toml`; the
 //! board is not a design to build.
 
-import std::bus::{I2c, I2cPullups}
+import std::bus::{I2c, I2cPullups, I2cRole}
 import std::parts::connector::{Coax, Socket1x10, UsbCPower}
 import std::parts::mechanical::TestPoint
 import std::parts::passive::{Capacitor, Led, Resistor, Switch}
@@ -46,11 +46,14 @@ part SensorPlug16 {
 }
 
 /// An invented I2C memory chip in an 8-pin package, standing in for the board's controller.
+/// A memory answers on the bus, and its table says so: `SCL` is an input, which is how an
+/// `I2cRole::Target` reads the clock.
 part Memory {
     .designator &= "U"
 
     .vcc: Rail
     .i2c: I2c
+    .i2c.role &= I2cRole::Target
 
     pins "SOIC-8" {
         .a0       input         "A0"  "1"

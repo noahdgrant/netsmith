@@ -3942,7 +3942,7 @@ A carrier with two sockets and two plug-in cards, with power, a UART and an SPI 
 //! The controller and the two chips are invented parts, written here to keep the example
 //! whole; they have no KiCad symbol, so this file is checked and solved but not exported.
 
-import std::bus::{Spi, Uart}
+import std::bus::{Spi, SpiRole, Uart}
 import std::parts::connector::{Header1x10, Socket1x10}
 import std::parts::passive::Fuse
 import std::sources::Rail
@@ -3953,6 +3953,8 @@ part Controller {
     .vdd: Rail
     .uart: Uart
     .spi: Spi
+    // Its table drives `sclk`, `mosi` and `cs` and reads `miso`: the master's end of the bus.
+    .spi.role &= SpiRole::Master
 
     pins {
         .vdd.pos  power  "VDD"  "1"
@@ -3970,6 +3972,8 @@ part Controller {
 part SpiSensor {
     .vdd: Rail
     .spi: Spi
+    // Its table reads `sclk`, `mosi` and the select and drives `miso`: a slave's end of the bus.
+    .spi.role &= SpiRole::Slave
 
     pins {
         .vdd.pos  power  "VDD"  "1"
@@ -7961,7 +7965,7 @@ A part states the role it plays with an ordinary statement, `.spi.role &= SpiRol
 - **`single`.** A net carries the select of one slave.
 - **The table against the role.** A part that states a role has a row for each line the role has, with the kind the role gives it. The same kind agrees, and so do `bidirectional` (a pin that drives and receives contradicts nothing, and the guideline below asks for the honest kind), `passive`, `no_connect`, and a `tri_state` output for an `output`. For a line that the role makes `bidirectional` (I2C), any signal kind agrees.
 - **A line the role requires** is connected, for an interface that has any line connected: the board that never uses a bus a part declares is left alone.
-- **A part that states no role** is not judged by the table or the limit, and a bus on which one part states its role and another does not gets a note, `not evaluated: the role of `x.spi` is not stated, so the limit and the table of `x` are not judged`. The first three rules above are judged for its pins all the same.
+- **A part that states no role** is not judged by the table or the limit, an interface that is joined to another end of its bus and states no role is a guideline (below), and a bus on which one part states its role and another does not gets a note, `not evaluated: the role of `x.spi` is not stated, so the limit and the table of `x` are not judged`. The first three rules above are judged for its pins all the same.
 
 Three invented parts: a processor that is an SPI master, a flash that is a slave and writes `tri_state` for its data out (the page is in the comment), and an IMU.
 
@@ -8236,6 +8240,16 @@ A part whose table is older than the roles may write every pin `bidirectional`. 
 ```text
 warning: Sensors: bus role guideline: `imu.spi.miso` is `bidirectional` in the table of `Zimu`, and `SpiRole::Slave` makes `miso` a `tri_state` output: write `tri_state`, as the datasheet says, unless the datasheet says the pin also receives
 ```
+
+The same advice is given for a pin that carries a function of a `peripheral` that is an end of a bus when the function states no kind of its own and the pin is `bidirectional` (every pin of an any-pin processor is): `` `u.p02` is `bidirectional` in the table of `Zmcu`, and its function `SPIM0_MISO` states no kind of its own, and `SpiRole::Master` makes `miso` an input: write `SPIM0_MISO:input`, as the datasheet says, unless the datasheet says the pin also drives ``. A function that states its kind is judged where the peripheral is defined.
+
+An interface that is joined to another end of its bus and states no role is the same guideline, because the table and the limit of a part that states none are not judged (a bus whose interfaces nobody joins, a `Uart`, which has no roles, and a peripheral, which states its role after `as`, are not asked). Every part of the library that has a bus and every example states its role. The datasheet says which it is, and a part that does not know writes the one its pin table implies and says so in a comment:
+
+```text
+warning: Sensors: bus role guideline: `old.spi` is joined to another end of a `Spi` bus and states no role, so the limit and the table of `old` are not judged: write `.spi.role &=` `SpiRole::Master` or `SpiRole::Slave`, as its datasheet says
+```
+
+An error with `--strict` or `guidelines = "error"`, as every guideline is.
 
 A module that forwards a bus is a way through: its pins are not terminals, and the part inside has the role. The module says the role of its port in the same way a function is forwarded, with an equation:
 
