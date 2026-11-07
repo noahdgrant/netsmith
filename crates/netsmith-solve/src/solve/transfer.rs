@@ -100,6 +100,7 @@ impl Solver<'_> {
                                 rhs: other.clone(),
                                 source: b.source,
                                 span: b.span,
+                                written: None,
                             },
                             Transfer {
                                 links: links.clone(),

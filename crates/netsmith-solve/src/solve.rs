@@ -219,9 +219,6 @@ fn article(word: &str) -> &'static str {
     }
 }
 
-/// How often the scan of the fields that finds which parts share a relation says how far it is.
-const FIELDS_REPORT_EVERY: usize = 512;
-
 /// The most identical parts a bank may be asked for, whatever range a design gives its count.
 const MAX_BANK: f64 = 64.0;
 
@@ -232,6 +229,9 @@ fn choice_name(c: &Candidate, count: Option<f64>) -> String {
         None => c.name.clone(),
     }
 }
+
+/// How often the scan of the fields that finds which parts share a relation says how far it is.
+const FIELDS_REPORT_EVERY: usize = 512;
 
 /// What a search has learned so far.
 #[derive(Default)]
@@ -246,11 +246,11 @@ struct Search {
     chosen: Vec<String>,
     picks: Vec<Pick>,
     closest: Option<Closest>,
+    /// The jobs of the groups not searched yet.
+    elsewhere: HashSet<usize>,
     /// The most parts that were chosen at once: it only grows, and is what progress reports
     /// (a search that backs up has not un-chosen what it got through).
     deepest: usize,
-    /// The jobs of the groups not searched yet.
-    elsewhere: HashSet<usize>,
 }
 
 /// The choice that came nearest to working, kept for the error message: the one that got
@@ -382,8 +382,6 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         fed: HashSet::new(),
         fed_at_start: HashSet::new(),
         trials: 0,
-        chosen_before: 0,
-        to_choose: 0,
         seeded: Vec::new(),
         original_relations: model.relations().len(),
         extras: Vec::new(),
@@ -391,6 +389,8 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         reads: Default::default(),
         stamp: vec![0; model.fields().count()],
         clock: 1,
+        chosen_before: 0,
+        to_choose: 0,
     };
     job::checkpoint();
     s.relax_pinned();
@@ -644,10 +644,6 @@ struct Solver<'a> {
     fed_at_start: HashSet<FieldId>,
     /// Candidates tried so far, over every group.
     trials: usize,
-    /// How many parts the groups before this one have chosen, and how many there are to
-    /// choose in all: what the progress of picking is counted in (see `job::report`).
-    chosen_before: usize,
-    to_choose: usize,
     /// The circles of values that were started from the supply's range (ADR 0053).
     seeded: Vec<Seeded>,
     /// How many relations the design wrote: the ones after them are the solver's own
@@ -662,6 +658,10 @@ struct Solver<'a> {
     /// When `propagate` last changed each field, on a clock that counts its changes.
     stamp: Vec<u64>,
     clock: u64,
+    /// How many parts the groups before this one have chosen, and how many there are to
+    /// choose in all: what the progress of picking is counted in (see `job::report`).
+    chosen_before: usize,
+    to_choose: usize,
 }
 
 /// The currents in a balance that the design gave a range (`.x.current &= a..b`) and that
@@ -3000,8 +3000,8 @@ impl Solver<'_> {
                     search.gave_up = true;
                     return Outcome::GaveUp;
                 }
-                // A trial is a copy of the model and a propagation: milliseconds, so one
-                // checkpoint for each is the grain a cancel is heard at.
+                // A trial is a rollback and a propagation: milliseconds, so one checkpoint for
+                // each is the grain a cancel is heard at.
                 job::checkpoint();
                 search.trials += 1;
                 let checkpoint = self.model.checkpoint();

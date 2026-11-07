@@ -60,11 +60,11 @@ pub struct Built {
     /// Things worth knowing that did not stop the build: what the solver decided and left
     /// alone, then the notes of lowering (the last `lowering_notes` of them).
     pub notes: Vec<String>,
-    /// How many of the last `notes` come from lowering and not from the solver.
-    pub lowering_notes: usize,
     /// For each use of a generic on this board: the provider that stands in its place and the
     /// providers passed over (ADR 0068). Empty for a board that uses no generic.
     pub providers: Vec<ProviderNote>,
+    /// How many of the last `notes` come from lowering and not from the solver.
+    pub lowering_notes: usize,
     /// What the design does against a guideline (ADR 0036): a warning that did not stop
     /// the build. With `guidelines = "error"` or `--strict` the build stops instead and
     /// this is empty.
@@ -1133,8 +1133,8 @@ fn export(
         rechecks: Vec::new(),
         schematic,
         notes,
-        lowering_notes,
         providers: Vec::new(),
+        lowering_notes,
         guidelines: lowered.guidelines,
         trace: Trace {
             model: model.clone(),
