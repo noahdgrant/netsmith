@@ -236,12 +236,12 @@ fn a_definition_answer_carries_a_signature_and_the_doc_comment() {
     let signature = rail.signature.unwrap();
     assert_eq!(
         signature,
-        "interface Rail { .pos: Pin .neg: Pin .voltage: Voltage .current: Current .min_track: Length }"
+        "interface Rail { .pos: Pin .neg: Pin .voltage: Voltage .current: Current .peak: Voltage .min_track: Length }"
     );
-    // A part's other statements (its pin tables, catalog) are the `...`.
+    // A generic's other statements (its pin table, catalog) are the `...`.
     let capacitor = find("Capacitor", 1, 1).signature.unwrap();
     assert!(
-        capacitor.starts_with("part Capacitor { .capacitance: Capacitance")
+        capacitor.starts_with("generic Capacitor { .capacitance: Capacitance")
             && capacitor.ends_with(" ... }"),
         "{capacitor}"
     );
