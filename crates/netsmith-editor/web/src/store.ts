@@ -494,11 +494,14 @@ async function onRebuilt(tree = true) {
   pcbReports.value = {};
   void loadDetail();
   // A file that changed on disk and has no edits here is read again.
-  for (const f of Object.values(openFiles.value)) {
-    if (f.readonly) continue;
+  for (const listed of Object.values(openFiles.value)) {
+    // The loop awaits each request, so a file can be closed (and deleted) meanwhile: asking for it is a 404.
+    if (listed.readonly || !openFiles.value[listed.path]) continue;
     try {
-      const fresh = await api.file(f.path);
-      if (fresh.stamp === f.stamp) continue;
+      const fresh = await api.file(listed.path);
+      // What is open now, not what was open when the loop began (an edit typed during the request stays).
+      const f = openFiles.value[listed.path];
+      if (!f || fresh.stamp === f.stamp) continue;
       if (dirty(f)) {
         setFile({ ...f, conflict: true });
       } else {
