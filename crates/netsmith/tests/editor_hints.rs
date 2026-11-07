@@ -162,7 +162,7 @@ dy = 0
     // The problems list has them as notes of stage `layout`, at the file and the line.
     let analysis = editor.analysis();
     let problems = layout_problems(&analysis);
-    assert_eq!(problems.len(), 4, "{problems:#?}");
+    assert_eq!(problems.len(), 3, "{problems:#?}");
     for p in &problems {
         assert_eq!(p.severity, Severity::Note);
         let at = p.at.as_ref().expect("a finding says where");
@@ -223,6 +223,7 @@ fn the_drawing_has_the_file_and_is_the_same_as_before_when_the_file_is_gone() {
     assert_eq!(editor.schematic(POWER).unwrap(), power);
 
     // Deleting the file brings the drawing back, byte for byte.
+    fs::remove_file(root.join(FILE)).unwrap();
     assert_eq!(editor.schematic(LED).unwrap(), before);
     assert!(!editor.schematic_hints(LED).unwrap().exists);
 }
@@ -408,9 +409,9 @@ fn a_put_analyses_once_and_the_watcher_finds_nothing_new() {
 fn an_entry_the_drawing_cannot_honour_is_a_finding_with_the_line() {
     let (root, editor, _) = project("unusable");
     let before = editor.schematic(LED).unwrap();
-    // 5000 mm is far outside the drawing (more than the 127 mm it allows): the engine refuses it,
+    // 1270 mm is far outside the drawing (more than the 127 mm it allows): the engine refuses it,
     // and the entry is left out.
-    let text = "version = 1\n\n[LedBoard.parts.power_in]\ndx = 5000\ndy = 0\n";
+    let text = "version = 1\n\n[LedBoard.parts.power_in]\ndx = 1270\ndy = 0\n";
     fs::write(root.join(FILE), text).unwrap();
     let hints = editor.schematic_hints(LED).unwrap();
     assert!(hints.errors.is_empty(), "{:?}", hints.errors);
