@@ -1417,6 +1417,7 @@ pub fn typescript() -> String {
         CompareBoard,
         Compare,
         CancelAnswer,
+        AutoBuild,
         ClientMessage,
         ServerMessage,
     );

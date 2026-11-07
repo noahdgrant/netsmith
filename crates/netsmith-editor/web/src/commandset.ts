@@ -23,7 +23,7 @@ import { toggleLineComment } from './source/comment';
 import { sourceEditor } from './source/handle';
 import { sortImports } from './source/imports';
 import { canBack, canForward } from './source/navhistory';
-import { COMMENT_FONTS, autosave, commentFont, commentFontOf, hoverCards, inlineHints, outlineOpen, nextCommentFont, resetEditorZoom, sortImportsOnSave, vimMode, wordWrap, zoomEditor } from './source/prefs';
+import { COMMENT_FONTS, autosave, commentFont, commentFontOf, hoverCards, inlineHints, outlineOpen, nextCommentFont, rebuildOnSave, resetEditorZoom, sortImportsOnSave, vimMode, wordWrap, zoomEditor } from './source/prefs';
 import { openReplace } from './source/cm-search';
 import { type Selection, selectAndReveal, selection, setSelection } from './selection';
 import { THEMES, isDark, theme } from './theme';
@@ -44,6 +44,7 @@ import {
   requestRun,
   revealSection,
   routeBoard,
+  runAnalysisAgain,
   say,
   save,
   showInSource,
@@ -506,6 +507,27 @@ const sourceSwitches = (): Command[] => [
       v.focus();
       v.dispatch({ changes: edit, userEvent: 'input.sort' });
       say('Imports sorted: std, other projects, then src');
+    },
+  },
+  {
+    id: 'analysis.rebuild',
+    title: 'Rebuild the project now',
+    group: 'Build',
+    keys: 'Mod+B',
+    inFields: true,
+    aliases: ['analyse', 'analyze', 'check', 'refresh', 'run again', 'read the files'],
+    run: () => {
+      void runAnalysisAgain();
+    },
+  },
+  {
+    id: 'source.rebuild.toggle',
+    title: rebuildOnSave.value ? 'File: Do not rebuild when a file is saved' : 'File: Rebuild when a file is saved',
+    group: 'File',
+    aliases: ['build on save', 'analyse on save', 'manual build', 'rebuild on save'],
+    run: () => {
+      rebuildOnSave.value = !rebuildOnSave.peek();
+      say(rebuildOnSave.peek() ? 'A saved file is rebuilt at once' : 'A saved file is not rebuilt: use Rebuild (Ctrl+B) when you want the views to catch up');
     },
   },
   {

@@ -29,7 +29,7 @@ import { noteCompareProgress } from './compare/progress';
 import { booting, noteElapsed, notify, pending, setSocket, track } from './feedback/state';
 import { sourceEditor } from './source/handle';
 import { sortImports } from './source/imports';
-import { autosave, sortImportsOnSave } from './source/prefs';
+import { autosave, rebuildOnSave, sortImportsOnSave } from './source/prefs';
 import { load, save as keep } from './storage';
 import {
   type Selection,
@@ -355,7 +355,13 @@ export async function cancelAnalysis(): Promise<void> {
   }
 }
 
-/** "Run again": analyse the files now, after a cancelled analysis. The socket carries the progress and `rebuilt`. */
+// What the page chose about rebuilding on save goes to the server, and again whenever the socket is back (a restarted server forgets it).
+effect(() => {
+  const auto = rebuildOnSave.value;
+  if (connected.value) void api.setAutoAnalysis(auto).catch(() => undefined);
+});
+
+/** "Run again": analyse the files now, after a cancelled analysis; also the Rebuild button. The socket carries the progress and `rebuilt`. */
 export async function runAnalysisAgain(): Promise<void> {
   try {
     const a = await api.runAnalysis();
@@ -653,7 +659,9 @@ export async function save(path: string, quiet = false) {
     const now = openFiles.value[path] ?? f;
     setFile({ ...now, saved: f.text, stamp: saved.stamp, conflict: false });
     if (!quiet) notify({ kind: 'ok', title: `Saved ${path}`, ms: 2200 });
-    void awaitRebuild();
+    // With no rebuild on save the server keeps its reading; asking for it says that it is behind.
+    if (rebuildOnSave.peek()) void awaitRebuild();
+    else void showStale();
   } catch (e) {
     const status = e instanceof ApiFailure ? e.status : 0;
     const now = openFiles.value[path];
@@ -661,6 +669,16 @@ export async function save(path: string, quiet = false) {
     say(e instanceof Error ? e.message : String(e), true);
   } finally {
     saving.delete(path);
+  }
+}
+
+/** The reading as the server has it: with no rebuild on save, it says `stale` once a file changed. */
+async function showStale() {
+  try {
+    const a = await api.analysis();
+    if (a.version === (analysis.peek()?.version ?? a.version)) analysis.value = a;
+  } catch {
+    // The status bar will say it at the next refresh.
   }
 }
 

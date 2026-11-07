@@ -224,6 +224,7 @@ button.tab { background: none; border: none; font: inherit; }
 .statusbar .analysing { color: var(--accent-text); }
 .statusbar .stale { color: var(--warning-text); }
 .statusbar .cancelled { color: var(--warning-text); }
+.statusbar .unbuilt { color: var(--warning-text); }
 .statusbar .cancel-analysis { color: var(--accent-text); border: 1px solid var(--border); height: calc(var(--h-sm) - 0.25rem); margin-left: 0.125rem; }
 .statusbar .idle { color: var(--text-faint); }
 .statusbar .unsaved { color: var(--text); }

@@ -1355,6 +1355,8 @@ problems: ProblemsDiff, };
 
 export type CancelAnswer = { cancelled: boolean, };
 
+export type AutoBuild = { auto: boolean, };
+
 export type ClientMessage = { "type": "check", id: number, path: string, text: string, };
 
 export type ServerMessage = { "type": "rebuilt", analysis: Analysis, elapsedMs?: number, } | { "type": "analysing", since: number, } | { "type": "checked", id: number, analysis: Analysis, } | { "type": "progress", task: string, board: string, message: string, stage?: string, done?: number, total?: number, unit?: string, unitDone?: number, unitTotal?: number, } | { "type": "cancelled", task: string, board: string, message: string, };

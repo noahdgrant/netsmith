@@ -1,5 +1,5 @@
 // The source editor's keys and settings, one step for each: Ctrl+/ comments the lines (the shortcuts stay on `?`),
-// autosave writes a file after a pause, comments can be set in another font, Vim keys can be turned on, and imports are sorted by Shift+Alt+O and on save.
+// autosave writes a file after a pause, comments can be set in another font, Vim keys can be turned on, imports are sorted by Shift+Alt+O and on save, and the project is rebuilt by hand.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -161,5 +161,26 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.keyboard.press('Control+s');
   await openOptions();
   await page.locator('[data-testid="opt-sortsave"]').click();
+  await page.keyboard.press('Escape');
+
+  step('rebuild on save off: a saved edit is not analysed until Rebuild is pressed');
+  await openOptions();
+  await page.locator('[data-testid="opt-autosave"]').click();
+  await page.locator('[data-testid="opt-rebuild"]').click();
+  await page.keyboard.press('Escape');
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('Control+Home');
+  await page.keyboard.type('// not analysed yet\n');
+  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null, { timeout: 8000 });
+  expect(fs.readFileSync(file, 'utf8').includes('not analysed yet'), 'the file was saved by autosave');
+  await page.waitForSelector('.statusbar .unbuilt', { timeout: 10000 });
+  expect(true, 'the status bar says the project was not rebuilt');
+  await shot('not-rebuilt');
+  await page.locator('[data-testid="rebuild"]').click();
+  await page.waitForSelector('.statusbar .unbuilt', { state: 'detached', timeout: 20000 });
+  expect(true, 'Rebuild read the project again and the notice went');
+  await openOptions();
+  await page.locator('[data-testid="opt-rebuild"]').click();
+  await page.locator('[data-testid="opt-autosave"]').click();
   await page.keyboard.press('Escape');
 }
