@@ -256,6 +256,40 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
             Item::Tie(t) => {
                 let _ = write!(out, "tie {} ~ {}", t.a.to_source(), t.b.to_source());
             }
+            Item::Peripheral(p) => {
+                let functions: Vec<String> =
+                    p.functions.iter().map(PinFunction::to_source).collect();
+                let on = match &p.on {
+                    Some(class) => format!(" on {}", class.to_source()),
+                    None => String::new(),
+                };
+                let _ = write!(
+                    out,
+                    "peripheral {}{on} {{ {} }}",
+                    p.name.to_source(),
+                    functions.join(" ")
+                );
+            }
+            Item::Shared(s) => {
+                let limit = match s.limit {
+                    Some((n, _)) => format!(" limit {n}"),
+                    None => String::new(),
+                };
+                let members: Vec<String> = s
+                    .members
+                    .iter()
+                    .map(|m| match m {
+                        SharedMember::Name(n) => n.to_source(),
+                        SharedMember::Pin(p) => p.to_source(),
+                    })
+                    .collect();
+                let _ = write!(
+                    out,
+                    "shared {}{limit} {{ {} }}",
+                    s.name.to_source(),
+                    members.join(" ")
+                );
+            }
             Item::Pins(p) => {
                 out.push_str("pins ");
                 if let Some((package, _)) = &p.package {
