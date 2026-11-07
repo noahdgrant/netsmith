@@ -38,7 +38,7 @@ fn suits(kind: PinKind, symbol: PinType) -> bool {
     match kind {
         PinKind::Power => matches!(symbol, PowerIn | PowerOut),
         PinKind::Input => symbol == Input,
-        PinKind::Output => matches!(symbol, Output | TriState | OpenCollector),
+        PinKind::Output | PinKind::TriState => matches!(symbol, Output | TriState | OpenCollector),
         PinKind::Bidirectional => !matches!(symbol, PowerIn | PowerOut),
         PinKind::NoConnect => symbol == NoConnect,
         // A passive pin neither takes nor gives, so a symbol that says more about it
@@ -435,6 +435,11 @@ mod tests {
                 Bidirectional,
                 vec![T::Bidirectional, T::Input, T::TriState, T::Unspecified],
                 vec![T::PowerIn, T::PowerOut],
+            ),
+            (
+                TriState,
+                vec![T::TriState, T::Output, T::OpenCollector, T::Passive],
+                vec![T::Input, T::PowerOut],
             ),
             (NoConnect, vec![T::NoConnect, T::Passive], vec![T::Input]),
             (

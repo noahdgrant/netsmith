@@ -27,6 +27,20 @@ part Driver {
     }
 }
 
+/// Like `Driver`, but its output is `tri_state`: it drives only while it is selected.
+part ShareDriver {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.voh &= .vdd.voltage - 0.1V
+    .out.vol &= 0.1V
+    pins {
+        .vdd.pos   power     "VDD" "1"
+        .vdd.neg   power     "GND" "2"
+        .out.line  tri_state "OUT" "3"
+    }
+}
+
 /// Drives a line and states no level at all.
 part Silent {
     .vdd: Rail
@@ -250,4 +264,19 @@ fn joining_two_lines_as_interfaces_does_not_equate_their_levels() {
     ));
     assert_eq!(faults(&s), Vec::<String>::new());
     assert_eq!(notes(&s), Vec::<String>::new());
+}
+
+#[test]
+fn a_tri_state_line_is_judged_as_a_driver() {
+    // A 3.3 V `tri_state` driver into an input that wants 70 % of 5 V: the same fault, with
+    // the same numbers, as for an `output`.
+    let s = solved(&format!(
+        "{S3}{S5}    .a: ShareDriver\n    .b: Receiver\n    .s3 ~ .a.vdd\n    .s5 ~ .b.vdd\n    .a.out.line ~ .b.in.line\n"
+    ));
+    assert_eq!(
+        faults(&s),
+        [
+            "net `net-a.out.line`: `a.out.voh` is 3.035V..3.365V but `b.in.vih` needs 3.325V..3.675V: a high of 3.035V is not always read as a high, which takes 3.675V"
+        ]
+    );
 }

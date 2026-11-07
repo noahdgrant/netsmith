@@ -132,6 +132,9 @@ pub(crate) struct Checker<'a> {
     /// The enums that fields of the model in progress have the type of, by the module and
     /// index of their definition.
     enum_ids: HashMap<(usize, usize), EnumId>,
+    /// The interface definitions whose `lines` had a mistake (ADR 0064), so that the rules do not
+    /// read them and the mistake is said once.
+    pub(crate) bus_def_failed: HashSet<(usize, usize)>,
     /// The providers chosen for the uses of the definition being elaborated: a use's path to
     /// a provider's id (ADR 0059).
     pub(crate) assign: BTreeMap<String, String>,
@@ -202,6 +205,7 @@ impl<'a> Checker<'a> {
             defaults: Vec::new(),
             source_override: None,
             enum_ids: HashMap::new(),
+            bus_def_failed: HashSet::new(),
             assign: BTreeMap::new(),
             uses: Vec::new(),
             generic_members: HashMap::new(),
@@ -650,6 +654,7 @@ impl<'a> Checker<'a> {
         self.stated.clear();
         self.defaults.clear();
         self.enum_ids.clear();
+        self.bus_def_failed.clear();
         self.source_override = None;
         let def = self.modules[module].defs[index].clone();
         let name = def.name.name.clone();
@@ -1185,6 +1190,7 @@ impl<'a> Checker<'a> {
                 Item::Tie(t) if self.phys.is_none() => self.tie(t),
                 Item::Peripheral(p) if self.phys.is_none() => self.peripheral(p),
                 Item::Shared(s) if self.phys.is_none() => self.shared(s),
+                Item::Lines(l) if self.phys.is_none() => self.lines(l),
                 Item::Connect(c) => self.not_physical(c.span, "a connection with `~`"),
                 Item::Bridge(b) => self.not_physical(b.span, "a `bridge`"),
                 Item::Catalog(c) => self.not_physical(c.span, "a `catalog`"),
@@ -1192,6 +1198,7 @@ impl<'a> Checker<'a> {
                 Item::Tie(t) => self.not_physical(t.span, "a `tie`"),
                 Item::Peripheral(p) => self.not_physical(p.span, "a `peripheral`"),
                 Item::Shared(s) => self.not_physical(s.span, "a `shared` resource"),
+                Item::Lines(l) => self.not_physical(l.span, "a `lines` table"),
             }
         }
     }

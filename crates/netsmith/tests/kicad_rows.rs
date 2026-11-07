@@ -58,6 +58,7 @@ fn pinout_of(kind: &str, package: &str) -> Pinout {
                         LangKind::Bidirectional => PinKind::Bidirectional,
                         LangKind::Passive => PinKind::Passive,
                         LangKind::NoConnect => PinKind::NoConnect,
+                        LangKind::TriState => PinKind::TriState,
                     },
                     pads: r.pads.clone(),
                     function: None,

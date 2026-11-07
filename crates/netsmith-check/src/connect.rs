@@ -302,10 +302,37 @@ impl Checker<'_> {
             return false;
         }
         let children = self.model.instance(a).children.clone();
+        // The lines that cross (a `Uart`'s `tx` and `rx`) are joined to the other end's partner
+        // line, not to their own name (ADR 0064).
+        let crossed: Vec<(String, String)> = match self.model.bus_def_of(a) {
+            Some((_, bus)) => bus
+                .crossings()
+                .into_iter()
+                .flat_map(|(x, y)| {
+                    [
+                        (x.to_string(), y.to_string()),
+                        (y.to_string(), x.to_string()),
+                    ]
+                })
+                .collect(),
+            None => Vec::new(),
+        };
         for (name, member) in children {
-            match (member, self.model.member(b, &name)) {
+            let there = crossed
+                .iter()
+                .find(|(own, _)| *own == name)
+                .map_or(name.as_str(), |(_, other)| other.as_str());
+            match (member, self.model.member(b, there)) {
                 (Member::Inst(x), Some(Member::Inst(y))) => match self.model.instance(x).kind {
-                    InstKind::Pin if join_pins => self.union(x, y),
+                    // Two pins that no part's table describes join nothing: a device without
+                    // flow control gives no pin to `rts` and `cts`, and two of them make no
+                    // net with copper on it.
+                    InstKind::Pin if join_pins && !(self.undescribed(x) && self.undescribed(y)) => {
+                        self.union(x, y)
+                    }
+                    // The levels of a bus interface are its part's own, and their reference
+                    // rail is that part's supply: joining them would join two supplies.
+                    InstKind::Interface if self.model.is_levels(x) => {}
                     InstKind::Interface => {
                         self.connect_interfaces(x, y, at, join_pins);
                     }
@@ -314,7 +341,9 @@ impl Checker<'_> {
                 // A current is not shared by a connection: a rail can feed several loads.
                 // The currents are summed at the net instead (`Balance`).
                 (Member::Field(x), Some(Member::Field(y)))
-                    if !self.model.is_flow(x) && !self.model.is_level(x) =>
+                    if !self.model.is_flow(x)
+                        && !self.model.is_level(x)
+                        && !self.model.is_role(x) =>
                 {
                     self.model.equalities.push((x, y))
                 }
@@ -322,6 +351,17 @@ impl Checker<'_> {
             }
         }
         true
+    }
+
+    /// Whether a pin is one that its part leaves out: the part has a pin table, and no table
+    /// has a row for the pin.
+    fn undescribed(&self, pin: InstId) -> bool {
+        self.model.owner_of(pin).is_some_and(|part| {
+            let inst = self.model.instance(part);
+            inst.kind == InstKind::Part
+                && !inst.tables.is_empty()
+                && self.model.pin_facts(pin).is_none()
+        })
     }
 
     fn pin_of(&mut self, p: &ast::Path) -> Option<InstId> {
@@ -544,6 +584,23 @@ impl Checker<'_> {
         self.analyse_mates();
         self.balance_currents();
         self.derive_bias();
+        self.equate_bus_values();
+    }
+
+    /// The values that the interfaces of one bus share (its clock, its mode) are equated when the
+    /// nets show them to be on one bus, as `~` between two interfaces equates them. The pairs
+    /// that a `~` has made already are not made twice (ADR 0064, stage 3).
+    fn equate_bus_values(&mut self) {
+        for (x, y) in crate::busnets::shared_values(&self.model) {
+            let known = self
+                .model
+                .equalities
+                .iter()
+                .any(|&(a, b)| (a, b) == (x, y) || (a, b) == (y, x));
+            if !known {
+                self.model.equalities.push((x, y));
+            }
+        }
     }
 
     /// Give each part with a `bias` (a capacitor) the voltage of the rail it sits across.

@@ -410,3 +410,4 @@ Differences from the text above:
 - **Added refusals** (section 2 states them in prose): a peripheral declared twice, a shared resource declared twice, a function listed twice in a peripheral, a limit that is not fewer than the members (`limit 1` is allowed and is the default spelled out), and a member that is a function of a peripheral which is also a member of the same resource.
 - **`limit`** is a plain word after the name of a shared resource and `on` after the name of a peripheral; both are plain names anywhere else, and the editor page highlights them only there.
 - **Not built, as the ADR says:** a `note` on a peripheral, a pair that must be used together, a module that exports a peripheral as a unit.
+- **The bus clause** (`peripheral NAME on CLASS as Spi SpiRole::Master { F:kind as line }`) is ADR 0064, stage 4: it makes a peripheral the end of a bus for the rules of that ADR.

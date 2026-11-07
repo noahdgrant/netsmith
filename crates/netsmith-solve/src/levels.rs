@@ -62,7 +62,10 @@ struct Run<'a> {
 }
 
 fn is_driver(kind: PinKind) -> bool {
-    matches!(kind, PinKind::Output | PinKind::Bidirectional)
+    matches!(
+        kind,
+        PinKind::Output | PinKind::TriState | PinKind::Bidirectional
+    )
 }
 
 fn is_receiver(kind: PinKind) -> bool {
@@ -91,14 +94,22 @@ impl Run<'_> {
         }
     }
 
-    /// The `Logic` a pin is the line of.
+    /// The interface that holds the levels of a pin: the `Logic` the pin is the line of, or the
+    /// `Levels` of the bus interface it is a pin of (ADR 0064). Both have the reference rail
+    /// and the four voltages, and everything below reads them from whichever it gets.
     fn logic_of(&self, pin: InstId) -> Option<InstId> {
         let inst = self.model.instance(pin);
         let parent = inst.parent?;
-        (inst.name == "line"
-            && self.model.instance(parent).kind == InstKind::Interface
-            && self.model.instance(parent).type_name == "Logic")
-            .then_some(parent)
+        if self.model.instance(parent).kind != InstKind::Interface {
+            return None;
+        }
+        if inst.name == "line" && self.model.instance(parent).type_name == "Logic" {
+            return Some(parent);
+        }
+        match self.model.member(parent, "levels")? {
+            Member::Inst(levels) if self.model.is_levels(levels) => Some(levels),
+            _ => None,
+        }
     }
 
     /// The value of a quantity field of an instance, if it has one.
@@ -344,7 +355,7 @@ impl Run<'_> {
                     owner,
                     vec![owner],
                     format!(
-                        "not evaluated: the absolute maximum of `{path}`: it is not the `line` of a `Logic`, so its ground is not known"
+                        "not evaluated: the absolute maximum of `{path}`: it is not the `line` of a `Logic` or a pin of an interface with `levels`, so its ground is not known"
                     ),
                 );
                 continue;
@@ -521,7 +532,7 @@ impl Run<'_> {
             let path = model.path_of(t);
             let Some(logic) = self.logic_of(t) else {
                 return Err(format!(
-                    "`{path}` can drive it and is not the `line` of a `Logic`, so how far it swings is not known"
+                    "`{path}` can drive it and is not the `line` of a `Logic` or a pin of an interface with `levels`, so how far it swings is not known"
                 ));
             };
             let Some(g) = self.ground_pin(logic) else {

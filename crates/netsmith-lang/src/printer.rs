@@ -76,10 +76,14 @@ impl Path {
 
 impl PinFunction {
     pub fn to_source(&self) -> String {
-        match self.kind {
+        let mut out = match self.kind {
             Some((kind, _)) => format!("{}:{}", self.name.to_source(), kind.word()),
             None => self.name.to_source(),
+        };
+        if let Some(line) = &self.line {
+            let _ = write!(out, " as {}", line.to_source());
         }
+        out
     }
 }
 
@@ -96,6 +100,22 @@ impl PinRow {
             let functions: Vec<String> =
                 self.functions.iter().map(PinFunction::to_source).collect();
             let _ = write!(out, " fn {}", functions.join(" "));
+        }
+        if let Some((requirement, _)) = self.requirement {
+            let _ = write!(out, " {}", requirement.word());
+        }
+        out
+    }
+}
+
+impl LineRow {
+    pub fn to_source(&self) -> String {
+        let mut out = format!("{} {}", self.pin.to_source(), self.kind.word());
+        if self.single.is_some() {
+            out.push_str(" single");
+        }
+        if let Some(other) = &self.crosses {
+            let _ = write!(out, " crosses {}", other.to_source());
         }
         if let Some((requirement, _)) = self.requirement {
             let _ = write!(out, " {}", requirement.word());
@@ -263,9 +283,19 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     Some(class) => format!(" on {}", class.to_source()),
                     None => String::new(),
                 };
+                let bus = match &p.bus {
+                    Some(bus) => {
+                        let role = match &bus.role {
+                            Some(r) => format!(" {}", r.to_source()),
+                            None => String::new(),
+                        };
+                        format!(" as {}{role}", join(&bus.interface.segments, "::"))
+                    }
+                    None => String::new(),
+                };
                 let _ = write!(
                     out,
-                    "peripheral {}{on} {{ {} }}",
+                    "peripheral {}{on}{bus} {{ {} }}",
                     p.name.to_source(),
                     functions.join(" ")
                 );
@@ -289,6 +319,23 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     s.name.to_source(),
                     members.join(" ")
                 );
+            }
+            Item::Lines(l) => {
+                out.push_str("lines");
+                if let Some(role) = &l.role {
+                    let _ = write!(out, " {}", role.to_source());
+                }
+                if let Some((n, _)) = l.limit {
+                    let _ = write!(out, " limit {n}");
+                }
+                out.push_str(" {\n");
+                for row in &l.rows {
+                    out.push_str(&"    ".repeat(depth + 2));
+                    out.push_str(&row.to_source());
+                    out.push('\n');
+                }
+                out.push_str(&"    ".repeat(depth + 1));
+                out.push('}');
             }
             Item::Pins(p) => {
                 out.push_str("pins ");
