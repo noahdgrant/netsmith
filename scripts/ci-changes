@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Which of CI's jobs a change needs. Reads the changed paths (one per line, from the repository's
+# root) on stdin and prints `rust=`, `kicad=` and `recipes=` as `true` or `false`; the `changes`
+# job of .github/workflows/ci.yml writes them to its outputs. `fmt` always runs, so it has no flag.
+#   rust     clippy and the tests: anything a build or a test reads.
+#   kicad    the `kicad` job (about twenty minutes): the crates whose tests call kicad-cli or read
+#            KiCad's libraries (netsmith-kicad, -fab, -pcb and the netsmith crate), the crates
+#            that make the files those tests check (netsmith-core, -lower, -netlist), and the
+#            data the tests read: std/ (kicad.toml maps kinds to KiCad's footprints), examples/
+#            (the boards they build) and data/.
+#   recipes  the editor's browser recipes: the editor, its views, the page, the boards and the
+#            standard library the recipes open, and what builds the binary.
+# A change to the workflows or to scripts/ runs everything, and so does a path nothing here knows:
+# when in doubt, the job runs. Only files that nothing builds or tests read (prose, the licence,
+# the issue templates) leave clippy and the tests out. A test does read docs/LANGUAGE.md and
+# the skills in .agents/skills (crates/netsmith/tests/guide.rs, src/init.rs), so those count as code.
+# A push to main skips this script: the job runs everything there.
+#   scripts/ci-changes < paths
+set -eu
+
+rust=false kicad=false recipes=false
+all() { rust=true kicad=true recipes=true; }
+
+while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    # A Markdown file in the root (README.md, AGENTS.md, ...) is prose.
+    case "$path" in */*) ;; *.md) continue ;; esac
+    case "$path" in
+        .github/workflows/* | scripts/*) all ;;
+
+        # Prose that nothing reads.
+        .github/ISSUE_TEMPLATE/* | .github/*.md | .github/CODEOWNERS | .github/dependabot.yml | .github/PULL_REQUEST_TEMPLATE*) ;;
+        .gitignore | .gitattributes | .editorconfig | LICENSE* | GLOSSARY.md) ;;
+        docs/LANGUAGE.md) rust=true ;;
+        docs/*) ;;
+        .agents/skills/netsmith-dev-verify-editor/*) rust=true recipes=true ;;
+        .agents/skills/* | .claude/*) rust=true ;;
+        .agents/*) ;;
+
+        crates/netsmith-kicad/* | crates/netsmith-core/* | crates/netsmith-fab/* | crates/netsmith-pcb/*) rust=true kicad=true ;;
+        crates/netsmith-lower/* | crates/netsmith-netlist/*) rust=true kicad=true ;;
+        crates/netsmith/src/editor/*) rust=true kicad=true recipes=true ;;
+        crates/netsmith/*) rust=true kicad=true ;;
+        crates/netsmith-editor/* | crates/netsmith-view/*) rust=true recipes=true ;;
+        crates/*) rust=true ;;
+        Cargo.toml | Cargo.lock | rust-toolchain* | .cargo/*) all ;;
+        std/* | examples/*) all ;;
+        data/*) rust=true kicad=true ;;
+        rustfmt.toml | .rustfmt.toml | clippy.toml) rust=true ;;
+
+        *) all ;;
+    esac
+done
+
+echo "rust=$rust"
+echo "kicad=$kicad"
+echo "recipes=$recipes"
