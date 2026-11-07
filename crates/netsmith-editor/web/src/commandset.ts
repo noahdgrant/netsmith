@@ -22,7 +22,7 @@ import { changeLines } from './source/cm-changes';
 import { toggleLineComment } from './source/comment';
 import { sourceEditor } from './source/handle';
 import { canBack, canForward } from './source/navhistory';
-import { hoverCards, inlineHints, outlineOpen, resetEditorZoom, wordWrap, zoomEditor } from './source/prefs';
+import { autosave, hoverCards, inlineHints, outlineOpen, resetEditorZoom, wordWrap, zoomEditor } from './source/prefs';
 import { openReplace } from './source/cm-search';
 import { type Selection, selectAndReveal, selection, setSelection } from './selection';
 import { THEMES, isDark, theme } from './theme';
@@ -484,6 +484,16 @@ const sourceSwitches = (): Command[] => [
     aliases: ['symbols', 'structure', 'sidebar'],
     run: () => {
       outlineOpen.value = !outlineOpen.peek();
+    },
+  },
+  {
+    id: 'source.autosave.toggle',
+    title: autosave.value ? 'File: Turn autosave off' : 'File: Turn autosave on',
+    group: 'File',
+    aliases: ['auto save', 'save automatically', 'save after delay'],
+    run: () => {
+      autosave.value = !autosave.peek();
+      say(autosave.peek() ? 'Autosave on: a file is saved a moment after your last edit' : 'Autosave off: save with Ctrl+S');
     },
   },
   {

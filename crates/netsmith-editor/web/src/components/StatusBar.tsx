@@ -52,7 +52,7 @@ import { plural } from '../util';
 import { useElapsed } from './JobProgress';
 import { Icon, SeverityIcon } from './Icons';
 import { settings } from '../settings';
-import { FONT, fontSize, hoverCards, inlineHints, outlineOpen, resetEditorZoom, wordWrap, zoomEditor } from '../source/prefs';
+import { FONT, autosave, fontSize, hoverCards, inlineHints, outlineOpen, resetEditorZoom, wordWrap, zoomEditor } from '../source/prefs';
 import { chordText, find } from '../commands';
 import { CompareChip } from './CompareChip';
 import { SourceChangesItem } from './SourceChangesItem';
@@ -320,6 +320,7 @@ function SourceOptions({ close }: { close: () => void }) {
         {row('Inline hints', inlineHints.value, () => (inlineHints.value = !inlineHints.value), 'source.hints.toggle', 'opt-hints')}
         {row('Hover cards', hoverCards.value, () => (hoverCards.value = !hoverCards.value), 'source.cards.toggle', 'opt-cards')}
         {row('Word wrap', wordWrap.value, () => (wordWrap.value = !wordWrap.value), 'source.wrap.toggle', 'opt-wrap')}
+        {row('Autosave', autosave.value, () => (autosave.value = !autosave.value), 'source.autosave.toggle', 'opt-autosave')}
         {row('Outline', outlineOpen.value, () => (outlineOpen.value = !outlineOpen.value), 'source.outline.toggle', 'opt-outline')}
         <div class="src-size" role="group" aria-label="Text size">
           Text size
