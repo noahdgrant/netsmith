@@ -174,3 +174,41 @@ fn a_board_for_which_no_order_works_keeps_the_first_failure() {
         "{m:#?}"
     );
 }
+
+#[test]
+fn a_retry_that_fails_at_a_later_group_leaves_the_first_failure_whole() {
+    // The reference cannot meet the tap's bound (the tap's own bound, `>= 4.5V`, which no row of
+    // the reference's divider can meet) and the retry, with the reference first, fails at the
+    // tap, which is a later group of the retry. The message and the parts without a pick are
+    // those of the first attempt: the reference's, as the tap was searched first and fit.
+    let src = source("a", "b").replace(
+        "    .b: Reference",
+        "    .a.sense_at_cell_max >= 4.5V\n    .b: Reference",
+    );
+    let s = run(&src);
+    let m = messages(&s);
+    assert!(
+        m.iter()
+            .any(|m| m.contains("b.bottom") && m.contains("b.top") && m.contains("b.out")),
+        "{m:#?}"
+    );
+    assert!(
+        !m.iter().any(|m| m.contains("a.sense_bottom")),
+        "the message of the second attempt stands: {m:#?}"
+    );
+    let unresolved: Vec<String> = s
+        .unresolved
+        .iter()
+        .map(|u| s.model.path_of(u.part))
+        .collect();
+    for part in ["b.top", "b.bottom"] {
+        assert!(unresolved.contains(&part.to_string()), "{unresolved:?}");
+    }
+    for p in &s.picks {
+        let path = s.model.path_of(p.part);
+        assert!(
+            !unresolved.contains(&path),
+            "{path} has a pick and is listed as unresolved: {unresolved:?}"
+        );
+    }
+}

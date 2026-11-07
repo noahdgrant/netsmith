@@ -3529,7 +3529,7 @@ r1 is a Resistor: picked PrecisionThinFilm; passed over Resistor (the `resistor`
 - The generic's statements hold for the provider, so a provider cannot state other designator letters than the generic's (`.designator &= "RN"` is a contradiction of `"R"`).
 - Only a part provides a standard generic: a module that says `provides Resistor` is refused, because the generic has a `pins` table.
 
-The series of values that have no row (ADR 0047) and the columns that a file of rows may leave out (`.temperature_coefficient` of a resistor, `.dielectric` of a capacitor, `.rms_current` of an inductor) belong to the catalogs `resistor`, `capacitor`, `inductor` and `led`, which are the standard generics' own: one table of the solver names them, and it is the only place that does (ADR 0059, stage 3). The catalog of a provider has another name, so it has no series and its file has every column it lists, whatever the generic it provides.
+The series of values that have no row (ADR 0047) and the columns that a file of rows may leave out (`.temperature_coefficient` of a resistor, `.dielectric` of a capacitor, `.rms_current` of an inductor) belong to the **catalogs** `resistor`, `capacitor`, `inductor` and `led` (an LED has no series, only its packages), which are the standard generics' own: one table of the solver names them, and it is the only place that does (ADR 0059, stage 3). A catalog is one name that every part listing it shares, so a part or a provider that lists `catalog resistor` has the series and the omitted columns of that catalog, whatever the generic it provides. A provider whose catalog has another name has no series, and its file has every column it lists.
 
 ## Modules
 
