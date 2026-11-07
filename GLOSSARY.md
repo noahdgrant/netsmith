@@ -389,6 +389,10 @@ _Avoid_: Unset value, free pick, default pick, loose part
 A value declared in a module or a board (not in a part, an interface or a catalog column) that a check reads and that nothing states or works out, so the check is not evaluated (ADR 0065). Only the root is named: a member that a wrapper forwards to is not one, the wrapper's is. A guideline finding with the same severity as an **Unconstrained pick**.
 _Avoid_: Missing value, unset member, open value
 
+**Optional member**:
+A value declared with the word `optional` after its type, `.max_inductor_dcr: Resistance optional`, in a part, a module, an interface or a generic (ADR 0074, provisional). A design may leave it unstated, and a relation that reads it is then skipped: not checked, not listed as not evaluated, no finding. It is skipped only when nothing **states** the member: an `&=`, an applied `?=`, an equation with the member alone on its left, or a bound against numbers alone (`<=`, `>=`), anywhere in the design, also on the other side of a `~` join. A relation that reads another value that nothing states is still not evaluated, once the optional member is stated. It is the same word as `optional` in a `pins` row and in a catalog column, a modifier that says a thing may be absent. Not the `required` of ADR 0069, which was dropped.
+_Avoid_: Nullable, maybe, conditional check
+
 **Transferred bound**:
 A bound on a member that a part's field is held to (`.top.resistance &= .balance`, `.balance >= 20kohm`), read as a bound on the field too, because `&=` puts the field inside the member and a bound on all of the member is a bound on every part of it (ADR 0065). The solver adds it as a relation of its own while it picks and checks the parts, and takes it out of the model it returns. It adds a refusal and never a value.
 _Avoid_: Propagated bound, inherited bound, derived bound (ADR 0057 uses that for a bound on a value worked out from a part)

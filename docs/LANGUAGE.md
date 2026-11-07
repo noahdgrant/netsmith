@@ -867,11 +867,93 @@ board Probe {
 
 Rules.
 
-- **Only a root is named.** A value is reported when it is declared in a module or a board (not in a part, not in an interface such as a rail, not a catalog column), has no value after the solve, is not the left side of an equation or `&=` that works it out, and is not joined or a term of a balance of currents. A member that a wrapper forwards to (`.inner.driver_high == .driver_high`) is not a root; the wrapper's member is, and it is the one named, because it is the one the board can state. A part's unset datasheet value is a gap in the library (ADR 0046), and an interface's optional values are offered open on purpose, so neither is reported.
+- **Only a root is named.** A value is reported when it is declared in a module or a board (not in a part, not in an interface such as a rail, not a catalog column), has no value after the solve, is not the left side of an equation or `&=` that works it out, and is not joined or a term of a balance of currents. A member that a wrapper forwards to (`.inner.driver_high == .driver_high`) is not a root; the wrapper's member is, and it is the one named, because it is the one the board can state. A part's unset datasheet value is a gap in the library (ADR 0046), and an interface's optional values (marked `optional`, below) are offered open on purpose, so neither is reported.
 - **A check reads it.** A member that no check reads is not reported: a value that nothing checks and nothing picks from changes nothing. A bound on a member that reached a part was judged there, and is the way the board states the member. A definition that waits (`.x == .y * 2`, `.part.field &= .member`) is not a check.
 - **A member that an unconstrained pick names is named once,** by the pick finding, and so is a value that an open circle finding already asks to be stated.
 - **A module checked alone is not judged.** Both findings are made on a solved board, where the use is known. A module that no board uses builds.
 - **A default is a statement of the library.** `.balance_resistance ?= 4.7kohm +/- 5%` in the module that offers it limits the pick, so a board that says nothing gets no finding, and a board that states its own value replaces it (see "Defaults a board can replace").
+
+### A value that may stay open
+
+Some numbers are on a datasheet only sometimes: an IC may name the largest DC resistance of the inductor it works with, or leave it out. A check against such a number is made when the IC states it and means nothing when it does not. A member says so with the word `optional` after its type (ADR 0074, provisional), the word that a `pins` row and a catalog column already use for "may be absent":
+
+```nsm solve
+interface Limits {
+    /// The largest DC resistance, when the datasheet gives one.
+    .max_dcr: Resistance optional
+}
+
+module Coil {
+    .limits: Limits
+    .dcr: Resistance
+    .dcr <= .limits.max_dcr
+}
+
+board Quiet {
+    .coil: Coil { .dcr &= 0.08ohm }
+}
+```
+
+`Quiet` states nothing about `.coil.limits.max_dcr`, so the relation `.dcr <= .limits.max_dcr` is skipped: it is not checked, the build does not list it as not evaluated, and no finding is made for it. Without `optional` the same board would list the relation as not evaluated, as it does for any value that nothing states. When something states the member, the relation is checked as any other. Here the limit is stated on the other side of a join, as an IC states it, and the coil is refused with the numbers:
+
+```nsm fails
+interface Limits {
+    /// The largest DC resistance, when the datasheet gives one.
+    .max_dcr: Resistance optional
+}
+
+module Coil {
+    .limits: Limits
+    .dcr: Resistance
+    .dcr <= .limits.max_dcr
+}
+
+module Ic {
+    .limits: Limits
+}
+
+board Strict {
+    .coil: Coil { .dcr &= 0.08ohm }
+    .ic: Ic { .limits.max_dcr &= 0.05ohm }
+    .coil.limits ~ .ic.limits
+}
+```
+
+```text
+error: coil.dcr must always be at most coil.limits.max_dcr, but 80mΩ is not always below 50mΩ
+  --> main.nsm:9:5
+  |
+9 |     .dcr <= .limits.max_dcr
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+Rules.
+
+- **Stated is what is written.** A member is stated when a statement of the design names it, as ADR 0069 had it for `required`, and not when the solver gave it a value. The statements that count are an `&=`, a `?=` default that applies, an equation (`==`) with the member alone on its left whose right side has no unstated optional member, and a bound against numbers alone (`.max_dcr <= 0.5ohm`). A statement anywhere that can state the member counts: the board, a module around it, the part.
+- **A join carries it.** `~` between two interfaces makes their members one value, so a limit that the IC states on its side is stated on the stage's side, and a limit that neither side states is stated on neither.
+- **The member alone is guarded.** A relation is skipped because an optional member in it is unstated, never because another value in it is. The relation `.dcr <= .limits.max_dcr` is itself a bound with the member alone on one side, and it does not state the member. A relation over an optional member that is stated and a value that nothing states is listed as not evaluated, as before.
+- **A bound that gives no value is not silent.** `.limits.max_dcr <= 0.5ohm` states the member and gives it no value, so the relation is kept and listed as not evaluated, which says the check was not made.
+- **Where it is allowed.** On a value (a quantity, text or an enum) declared in a part, a module, an interface or a generic. It is an error on a pin (a pin that need not be connected says so in its `pins` row), on a member whose type is an interface, a part or a module (mark the values inside it), and in a board, a system, a panel or a physical file, which have no user above them.
+- **Not in the definition that declares it.** A statement of an optional member in the interface or module that declares it (`&=`, `?=`, `==`, or a bound against numbers) would state it for every use, so the relation would never be skipped: it is an error that names the two places. A part that has the interface as a member may state it, as that is its own datasheet.
+
+```nsm fails
+interface Limits {
+    .max_dcr: Resistance optional
+    .max_dcr &= 0.1ohm
+}
+
+board Misuse {
+    .limits: Limits
+}
+```
+
+```text
+error: `max_dcr` is `optional` (at main.nsm:2) and is stated here with `&=`, in the definition that declares it: a statement here would state it for every use, so the checks that read it would never be skipped; keep `optional` and let the design state it, or remove `optional` and keep the statement
+  --> main.nsm:3:5
+  |
+3 |     .max_dcr &= 0.1ohm
+  |     ^^^^^^^^^^^^^^^^^^
+```
 
 ### Values that wait on each other
 
@@ -7157,7 +7239,7 @@ Each side of the stage is a bank of identical capacitors (the section on capacit
 }
 ```
 
-The two inductor limits are optional, as are the other numbers an IC may leave open: an IC that states `.min_inductor_saturation` (a datasheet that asks for more than the current limit, say) or `.max_inductor_dcr` has them checked against the picked inductor's `saturation_current` and `dc_resistance`, and an inductor that does not meet them is refused with the numbers. One that leaves them open has no such check, and the build lists each as not evaluated, as for any value that nothing states. A heating (RMS) rating of the inductor is not checked by the stage: `Inductor` has the optional column `rms_current`, which the standard rows leave empty (see Dielectric and package size), so a check that needed it would refuse every standard inductor.
+The two inductor limits are optional, as are the other numbers an IC may leave open: an IC that states `.min_inductor_saturation` (a datasheet that asks for more than the current limit, say) or `.max_inductor_dcr` has them checked against the picked inductor's `saturation_current` and `dc_resistance`, and an inductor that does not meet them is refused with the numbers. Both are `optional` members of `Buck` (ADR 0074): one that the IC leaves unstated has no such check, and the build says nothing about it, where it lists a check on any other value that nothing states as not evaluated. A limit is stated for the stage when the IC states it on its side of `.stage.buck ~ .u.buck`. A heating (RMS) rating of the inductor is not checked by the stage: `Inductor` has the optional column `rms_current`, which the standard rows leave empty (see Dielectric and package size), so a check that needed it would refuse every standard inductor.
 
 Misuse: a load larger than the IC can give (an input above its range, such as 12 V, is refused the same way, by `stage.vin.voltage must always be at most stage.buck.max_input_voltage`).
 
@@ -7190,9 +7272,9 @@ board Overload {
 
 ```text
 error: -stage.vout.current must always be at most stage.buck.max_output_current, but 0A..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..0A) add up to zero; net `1V8` in `stage`: -stage.inductor.current (0A..3A) + -stage.vout.current (-3A..0A) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (0A..3A) + stage.inductor.current (0A..3A) add up to zero; net `net-stage.inductor.a`: stage.buck.sw.current (0A..3A) + u.buck.sw.current (-3A..0A) add up to zero)
-    --> std/parts/regulator.nsm:226:5
+    --> std/parts/regulator.nsm:229:5
     |
-226 |     -.vout.current <= .buck.max_output_current
+229 |     -.vout.current <= .buck.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 

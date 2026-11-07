@@ -499,6 +499,11 @@ impl Parser {
                 let name = as_path(lhs, "a name before `:`")?;
                 self.bump();
                 let ty = self.type_path()?;
+                // `optional` after the type is a modifier of the declaration (ADR 0074), the
+                // word a pin row also uses. It is read as a plain word, so a member or a type
+                // may still be called `optional`.
+                let is_optional = matches!(&self.peek().tok, Tok::Ident(w) if w == "optional");
+                let optional = is_optional.then(|| self.bump().span);
                 let body = if self.at(&Tok::LBrace) {
                     let open = self.bump();
                     Some(self.block(open.span)?)
@@ -509,6 +514,7 @@ impl Parser {
                     docs,
                     name,
                     ty,
+                    optional,
                     body,
                     span: self.span_from(start),
                 }))

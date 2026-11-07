@@ -693,6 +693,7 @@ impl<'a> Checker<'a> {
         self.model.root = root;
         self.resolve_defaults();
         self.finalize_nets();
+        self.skip_unstated_optional();
         self.model.uses = std::mem::take(&mut self.uses);
         self.model.sources = crate::model::SourceTexts(Some(self.source_snapshot()));
         std::mem::replace(&mut self.model, Model::new())
@@ -1032,6 +1033,7 @@ impl<'a> Checker<'a> {
                 self.model.add_member(cur, &name, Member::Poison);
                 continue;
             }
+            let optional = self.optional_ok(d, &ty);
             match ty {
                 Ty::Poison | Ty::Bad => self.model.add_member(cur, &name, Member::Poison),
                 Ty::Builtin(Builtin::Quantity(dim)) => {
@@ -1082,6 +1084,9 @@ impl<'a> Checker<'a> {
                 }
             }
 
+            if optional {
+                self.mark_optional(d);
+            }
             if let (Some(body), Some(Member::Inst(child))) =
                 (&d.body, self.model.member(cur, &name))
             {

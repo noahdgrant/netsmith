@@ -12,6 +12,7 @@ mod loader;
 mod lower;
 mod mate;
 mod model;
+mod optional;
 mod pinout;
 mod pins;
 mod providers;
@@ -26,9 +27,9 @@ pub use loader::Loader;
 pub use model::{
     Balance, Catalog, Chain, Checkpoint, Contact, ContactSide, Domain, Draw, EnumId, EnumInfo,
     Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet, InstId, InstKind, Instance,
-    Mate, Member, Model, Net, PartRules, Peripheral, PeripheralBus, PeripheralFunction, PinKind,
-    PinRow, PinTable, Pinout, Provider, RExpr, Relation, Requirement, Role, SharedMember,
-    SharedRes, Snapshot, Tie, Written,
+    Mate, Member, Model, Net, OptionalMark, PartRules, Peripheral, PeripheralBus,
+    PeripheralFunction, PinKind, PinRow, PinTable, Pinout, Provider, RExpr, Relation, Requirement,
+    Role, SharedMember, SharedRes, Snapshot, Tie, Written,
 };
 
 use std::collections::BTreeMap;

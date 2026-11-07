@@ -243,6 +243,9 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     d.name.to_source(),
                     join(&d.ty.segments, "::")
                 );
+                if d.optional.is_some() {
+                    out.push_str(" optional");
+                }
                 if let Some(body) = &d.body {
                     out.push(' ');
                     write_block(out, &[], body, depth + 1);
