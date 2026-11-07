@@ -354,6 +354,50 @@ mod tests {
     }
 
     #[test]
+    fn the_columns_a_file_may_leave_out_and_the_value_columns_are_the_ones_the_adrs_name() {
+        // ADR 0055 and ADR 0058: the columns added after catalog files were written.
+        let optional: Vec<(&str, &str)> = STANDARD
+            .iter()
+            .flat_map(|s| {
+                s.columns
+                    .iter()
+                    .filter(|c| s.is_optional(c.name))
+                    .map(|c| (s.catalog, c.name))
+            })
+            .collect();
+        assert_eq!(
+            optional,
+            [
+                ("resistor", "temperature_coefficient"),
+                ("capacitor", "dielectric"),
+                ("inductor", "rms_current"),
+            ]
+        );
+        // ADR 0065: the number a design is expected to choose or bound.
+        assert_eq!(RESISTOR.value_columns(), ["resistance"]);
+        assert_eq!(
+            CAPACITOR.value_columns(),
+            ["capacitance", "effective_capacitance"]
+        );
+        assert_eq!(INDUCTOR.value_columns(), ["inductance"]);
+        assert!(LED.value_columns().is_empty());
+        assert_eq!(
+            [
+                RESISTOR.marked(),
+                CAPACITOR.marked(),
+                INDUCTOR.marked(),
+                LED.marked()
+            ],
+            [
+                Some("resistance"),
+                Some("capacitance"),
+                Some("inductance"),
+                None
+            ]
+        );
+    }
+
+    #[test]
     fn only_the_four_have_an_entry_and_the_names_are_found_both_ways() {
         for standard in STANDARD {
             assert!(std::ptr::eq(
