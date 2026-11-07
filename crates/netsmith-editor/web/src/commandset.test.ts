@@ -154,6 +154,7 @@ const SOURCE_KEYS: Record<string, string[]> = {
   'source.replace': ['Mod+H'],
   'source.wrap.toggle': ['Alt+Z'],
   'source.comment.toggle': ['Mod+/'],
+  'source.imports.sort': ['Shift+Alt+O'],
 };
 const SOURCE_SWITCHES = ['source.hints.toggle', 'source.cards.toggle', 'source.outline.toggle', 'source.wrap.toggle'];
 

@@ -21,8 +21,9 @@ import { changeHunks, stepChange } from './source/changeSteps';
 import { changeLines } from './source/cm-changes';
 import { toggleLineComment } from './source/comment';
 import { sourceEditor } from './source/handle';
+import { sortImports } from './source/imports';
 import { canBack, canForward } from './source/navhistory';
-import { COMMENT_FONTS, autosave, commentFont, commentFontOf, hoverCards, inlineHints, outlineOpen, nextCommentFont, resetEditorZoom, vimMode, wordWrap, zoomEditor } from './source/prefs';
+import { COMMENT_FONTS, autosave, commentFont, commentFontOf, hoverCards, inlineHints, outlineOpen, nextCommentFont, resetEditorZoom, sortImportsOnSave, vimMode, wordWrap, zoomEditor } from './source/prefs';
 import { openReplace } from './source/cm-search';
 import { type Selection, selectAndReveal, selection, setSelection } from './selection';
 import { THEMES, isDark, theme } from './theme';
@@ -487,6 +488,37 @@ const sourceSwitches = (): Command[] => [
     },
   },
   {
+    id: 'source.imports.sort',
+    title: 'Source: Sort the imports',
+    group: 'Source',
+    keys: 'Shift+Alt+O',
+    inFields: true,
+    aliases: ['organize imports', 'order imports', 'isort', 'std src'],
+    when: () => editorOn() && activeFile.value?.endsWith('.nsm') === true,
+    run: () => {
+      const v = sourceEditor.view;
+      if (!v || v.state.readOnly) return;
+      const edit = sortImports(v.state.doc.toString());
+      if (!edit) {
+        say('The imports are sorted already');
+        return;
+      }
+      v.focus();
+      v.dispatch({ changes: edit, userEvent: 'input.sort' });
+      say('Imports sorted: std, other projects, then src');
+    },
+  },
+  {
+    id: 'source.sortsave.toggle',
+    title: sortImportsOnSave.value ? 'File: Do not sort the imports when saving' : 'File: Sort the imports when saving',
+    group: 'File',
+    aliases: ['sort imports on save', 'organize imports on save', 'isort'],
+    run: () => {
+      sortImportsOnSave.value = !sortImportsOnSave.peek();
+      say(sortImportsOnSave.peek() ? 'Ctrl+S sorts the imports first (autosave does not)' : 'Saving leaves the imports as they are');
+    },
+  },
+  {
     id: 'source.autosave.toggle',
     title: autosave.value ? 'File: Turn autosave off' : 'File: Turn autosave on',
     group: 'File',
@@ -863,6 +895,7 @@ export const LOCAL_KEYS: { group: string; keys: [string, string][] }[] = [
       ['Ctrl+F · Ctrl+G', 'find · find next'],
       ['Ctrl+Z · Ctrl+Shift+Z', 'undo / redo (survives a file switch)'],
       ['Ctrl+/', 'comment or uncomment the selected lines'],
+      ['Shift+Alt+O', 'sort the imports: std, other projects, then src'],
       ['Tab · Shift+Tab', 'indent / outdent'],
     ],
   },

@@ -27,7 +27,9 @@ import {
 } from './layout';
 import { noteCompareProgress } from './compare/progress';
 import { booting, noteElapsed, notify, pending, setSocket, track } from './feedback/state';
-import { autosave } from './source/prefs';
+import { sourceEditor } from './source/handle';
+import { sortImports } from './source/imports';
+import { autosave, sortImportsOnSave } from './source/prefs';
 import { load, save as keep } from './storage';
 import {
   type Selection,
@@ -630,7 +632,18 @@ export function closeFile(path: string) {
 
 const saving = new Set<string>();
 
+/** Sorts the imports of the file in the editor, as one change the editor can undo; the editor tells the store of the new text. */
+function sortBeforeSave(path: string) {
+  if (!sortImportsOnSave.peek() || !path.endsWith('.nsm')) return;
+  const v = sourceEditor.view;
+  if (!v || sourceEditor.path !== path || v.state.readOnly) return;
+  const change = sortImports(v.state.doc.toString());
+  if (change) v.dispatch({ changes: change, userEvent: 'input.sort' });
+}
+
 export async function save(path: string, quiet = false) {
+  // Autosave never sorts: it would move the line being typed.
+  if (!quiet) sortBeforeSave(path);
   const f = openFiles.value[path];
   if (!f || f.readonly || !dirty(f) || saving.has(path)) return;
   saving.add(path);
