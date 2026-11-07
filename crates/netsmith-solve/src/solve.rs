@@ -1486,6 +1486,41 @@ impl Solver<'_> {
         }
     }
 
+    /// Whether the bound `r`, a `>=` or a `<=`, can hold for some value of the ranges as they
+    /// are: `Fail` only when it holds for none, which no later narrowing of the ranges
+    /// changes. A range that is unknown, or a comparison of anything but quantities, is
+    /// `Unknown`: it is judged when it is known.
+    fn verify_possible(&self, r: &Relation) -> Verdict {
+        let (Ok(Val::Q(l)), Ok(Val::Q(v))) = (eval(&self.model, &r.lhs), eval(&self.model, &r.rhs))
+        else {
+            return Verdict::Unknown;
+        };
+        let (possible, word, gap) = if r.op == CmpOp::Ge {
+            (l.hi() >= v.lo(), "at least", v.lo() - l.hi())
+        } else {
+            (l.lo() <= v.hi(), "at most", l.lo() - v.hi())
+        };
+        if possible {
+            return Verdict::Pass;
+        }
+        let scale = l
+            .lo()
+            .abs()
+            .max(l.hi().abs())
+            .max(v.lo().abs())
+            .max(v.hi().abs())
+            .max(1e-30);
+        Verdict::Fail {
+            message: format!(
+                "{} must be {word} {}, but {l} is always {} {v}",
+                self.model.show_expr(&r.lhs),
+                self.model.show_expr(&r.rhs),
+                if r.op == CmpOp::Ge { "below" } else { "above" },
+            ),
+            margin: gap / scale,
+        }
+    }
+
     fn verify(&self, r: &Relation) -> Verdict {
         let show = |e: &RExpr| self.model.show_expr(e);
         let fail = |message: String, margin: f64| Verdict::Fail { message, margin };
@@ -3318,7 +3353,9 @@ impl Solver<'_> {
         // written on its columns does (ADR 0057); without it the pick is made without the
         // bound and only the check afterwards refuses it. While a part that feeds the value is
         // unchosen the value is a range of what that part may still be, and a bound that
-        // fails on it can still hold for the part that is chosen.
+        // fails on it can still hold for the part that is chosen. Such a bound is not judged,
+        // but the candidate is refused if no value of the range meets it (`verify_possible`,
+        // ADR 0065, 9.5).
         let changed: HashSet<FieldId> = self
             .model
             .fields()
@@ -3349,15 +3386,49 @@ impl Solver<'_> {
             })
             .map(|(index, r)| (index, r.clone()))
             .collect();
+        // The bounds the choice changed that wait for a part still to be chosen. They are not
+        // judged, but one that no value of the ranges as they are can meet is refused: the
+        // parts chosen later only narrow the ranges, so they cannot meet it either. Without
+        // this a bound on a value that another group's picks feed (the input voltage of a
+        // stage, behind a filter whose drop its load decides) never reached the pick that
+        // sets the value, however plainly the pick broke it.
+        let waiting: Vec<(usize, Relation)> = self
+            .model
+            .relations()
+            .iter()
+            .enumerate()
+            .filter(|(index, r)| {
+                *index < self.original_relations
+                    && matches!(r.op, CmpOp::Ge | CmpOp::Le)
+                    && !coupling.feeding[*index].is_disjoint(later)
+                    && !relevant.iter().any(|(i, _)| i == index)
+                    && {
+                        let mut fields = Vec::new();
+                        fields_in(&r.lhs, &mut fields);
+                        fields_in(&r.rhs, &mut fields);
+                        fields.iter().any(|f| changed.contains(f))
+                    }
+            })
+            .map(|(index, r)| (index, r.clone()))
+            .collect();
         // The relations are checked in order, so the one that fails is the first, and the
         // rejection depends on every relation up to it.
         let mut reads = Vec::new();
-        for (index, r) in &relevant {
+        let judged = relevant
+            .iter()
+            .map(|(index, r)| (index, r, true))
+            .chain(waiting.iter().map(|(index, r)| (index, r, false)));
+        for (index, r, whole) in judged {
             let mut own = Vec::new();
             fields_in(&r.lhs, &mut own);
             fields_in(&r.rhs, &mut own);
             reads.extend(own.iter().copied());
-            if let Verdict::Fail { message, margin } = self.verify(r) {
+            let verdict = if whole {
+                self.verify(r)
+            } else {
+                self.verify_possible(r)
+            };
+            if let Verdict::Fail { message, margin } = verdict {
                 let message = self.relation_message(*index, r, message);
                 return reject(
                     self,
