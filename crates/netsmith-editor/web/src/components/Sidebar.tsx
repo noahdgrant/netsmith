@@ -20,6 +20,7 @@ import {
   problems,
   project,
   refreshAfterChange,
+  removingPath,
   renameOpen,
   say,
   viewBoardOfDefinition,
@@ -558,13 +559,16 @@ export function Sidebar() {
     const folder = node.type === 'folder';
     const target = folder ? node.dir : node.file.path;
     setRemoving({ ...removing, busy: true, error: null });
+    const done = removingPath(target, folder);
     try {
       await api.deletePath(target, true);
     } catch (e) {
+      done();
       setRemoving({ ...removing, busy: false, error: said(e) });
       return;
     }
     dropOpen(target, folder);
+    done();
     setRemoving(null);
     const near = rows[Math.max(0, rows.findIndex((r) => r.id === removing.id) - 1)]?.id;
     try {
