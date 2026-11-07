@@ -12,7 +12,7 @@ import { clearCompare, diffTarget, diskCompare, openDiff, refName, refText, runC
 import { diffControls } from './compare/collapse';
 import { type Command, provide, register, runCommand } from './commands';
 import { stepProblem } from './feedback/derive';
-import { dock, filter, setDockOpen, toggleDock } from './feedback/state';
+import { busy, dock, filter, pending, setDockOpen, toggleDock } from './feedback/state';
 import { SECTIONS, canSplit, closePane, splitRight } from './layout';
 import { openPicker, toggleCheatSheet } from './quickpick';
 import { cardAtCursor } from './source/cm-card';
@@ -34,6 +34,7 @@ import {
   back,
   board,
   chooseBoard,
+  cancelAnalysis,
   closeFile,
   job,
   layout,
@@ -518,6 +519,16 @@ const sourceSwitches = (): Command[] => [
     aliases: ['analyse', 'analyze', 'check', 'refresh', 'run again', 'read the files'],
     run: () => {
       void runAnalysisAgain();
+    },
+  },
+  {
+    id: 'analysis.stop',
+    title: 'Stop the rebuild',
+    group: 'Build',
+    aliases: ['cancel', 'cancel analysis', 'stop analysis', 'abort'],
+    when: () => busy.value && !!pending.value.server,
+    run: () => {
+      void cancelAnalysis();
     },
   },
   {

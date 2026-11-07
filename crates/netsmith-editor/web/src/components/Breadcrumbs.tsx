@@ -12,7 +12,8 @@ import { canBack, canForward } from '../source/navhistory';
 import { inlineHints, outlineOpen, wordWrap } from '../source/prefs';
 import { fileSymbols } from '../source/serverSyms';
 import { scanCached } from '../source/symbols';
-import { activeFile, cursor, goTo, navBack, navForward, navHistory, openFile, openFiles, project, say } from '../store';
+import { busy, pending } from '../feedback/state';
+import { activeFile, cancelAnalysis, cursor, goTo, navBack, navForward, navHistory, openFile, openFiles, project, say } from '../store';
 import { Icon, type IconName } from './Icons';
 import { KindIcon } from './TreeIcons';
 
@@ -112,6 +113,28 @@ function Toggle({ icon, label, on, onClick, id, keys: command }: { icon: IconNam
   );
 }
 
+/** Rebuild, and while the project is being analysed, Stop: the same place for both, so the button that starts it is the one that ends it. */
+function RebuildOrStop() {
+  const p = pending.value;
+  // Only an analysis the server runs can be stopped (the first, and those a file change or Rebuild starts).
+  if (busy.value && p.server) {
+    return (
+      <button
+        type="button"
+        class="icon-btn bc-tool stop"
+        aria-label="Stop the rebuild"
+        data-tip={p.cancelling ? 'Stopping…' : 'Stop the rebuild. Nothing it has made is kept: the views stay on the last result.'}
+        data-testid="stop-rebuild"
+        disabled={p.cancelling}
+        onClick={() => void cancelAnalysis()}
+      >
+        <Icon name="stop" size={15} />
+      </button>
+    );
+  }
+  return <Action id="rebuild" icon="refresh" label="Rebuild the project" command="analysis.rebuild" />;
+}
+
 /** A button of the bar that does something and keeps no state: a command of the registry. */
 function Action({ icon, label, command, id }: { icon: IconName; label: string; command: string; id: string }) {
   return (
@@ -204,7 +227,7 @@ export function Breadcrumbs() {
         <Toggle id="toggle-wrap" icon="wrap" label="Word wrap" keys="source.wrap.toggle" on={wordWrap.value} onClick={() => (wordWrap.value = !wordWrap.value)} />
         <Toggle id="toggle-hints" icon="eye" label="Inline hints" keys="source.hints.toggle" on={inlineHints.value} onClick={() => (inlineHints.value = !inlineHints.value)} />
         <Toggle id="toggle-outline" icon="outline" label="Outline" keys="source.outline.toggle" on={outlineOpen.value} onClick={() => (outlineOpen.value = !outlineOpen.value)} />
-        <Action id="rebuild" icon="refresh" label="Rebuild the project" command="analysis.rebuild" />
+        <RebuildOrStop />
         <Toggle id="toggle-changes" icon="compare" label={showChanges.value ? `Hide changes${refText.value ? ` vs ${refText.value}` : ''}` : `Show changes${refText.value ? ` vs ${refText.value}` : ' vs a git ref'}`} keys="compare.marks.toggle" on={showChanges.value} onClick={toggleChanges} />
       </div>
       {menu && anchor && options.length > 0 && <CrumbMenu options={options} anchor={anchor} onPick={pick} onClose={() => setMenu(null)} />}

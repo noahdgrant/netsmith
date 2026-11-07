@@ -214,6 +214,7 @@ export const P: Record<string, ComponentChildren> = {
   'collapse-all': <path d="M4.5 3L8 6l3.5-3M4.5 13L8 10l3.5 3" />,
   'expand-all': <path d="M4.5 6L8 3l3.5 3M4.5 10L8 13l3.5-3" />,
   play: <path d="M5 3.2v9.6L12.8 8z" />,
+  stop: <rect x="4" y="4" width="8" height="8" rx="1.2" />,
   terminal: (
     <>
       <rect x="1.5" y="2.75" width="13" height="10.5" rx="1.8" />

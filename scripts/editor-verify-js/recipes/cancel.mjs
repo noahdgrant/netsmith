@@ -87,9 +87,25 @@ export async function run({ page, shot, step, expect, section, project }) {
   await page.waitForSelector(`${bar} .item.cancelled`, { timeout: 15000 });
   expect(true, 'cancelled again');
 
+  step('the source view has a Stop button where its Rebuild button is, while the analysis runs');
+  fs.writeFileSync(main, small);
+  await idle();
+  await section('source');
+  await page.waitForSelector('[data-testid="rebuild"]');
+  expect((await page.locator('[data-testid="stop-rebuild"]').count()) === 0, 'no Stop while nothing runs');
+  await startLong();
+  await page.waitForSelector('[data-testid="stop-rebuild"]', { timeout: 15000 });
+  expect((await page.locator('[data-testid="rebuild"]').count()) === 0, 'Stop is where Rebuild was');
+  await shot('stop-button');
+  await page.locator('[data-testid="stop-rebuild"]').click();
+  await page.waitForSelector(`${bar} .item.cancelled`, { timeout: 15000 });
+  await page.waitForSelector('[data-testid="rebuild"]', { timeout: 15000 });
+  expect((await page.locator('[data-testid="stop-rebuild"]').count()) === 0, 'Rebuild is back once it stopped');
+
   step('put the small board back: it analyses, and the page is as it was');
   fs.writeFileSync(main, small);
   await idle();
+  await section('schematic');
   const last = await sheetNames(page);
   expect(last.includes('stage8') && !last.includes('stage9'), 'the small board');
 }

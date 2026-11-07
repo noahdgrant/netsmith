@@ -159,3 +159,4 @@
 .src-size output { min-width: 4ch; text-align: center; color: var(--text); font-variant-numeric: tabular-nums; }
 .src-size .icon-btn { width: 1.625rem; height: 1.625rem; border: 1px solid var(--border); background: var(--surface-raised); }
 .src-size .src-reset { margin-left: auto; }
+.bc-tool.stop { color: var(--danger-text); }

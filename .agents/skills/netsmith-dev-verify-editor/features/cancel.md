@@ -21,3 +21,5 @@ Change a file of a big project (the `big` fixture, or any board that takes secon
 - The routes (`POST /api/analysis/cancel`, `/api/analysis/run`, `/api/compare/cancel`, `/api/build/cancel`, `/api/fab/cancel`, `/api/order/cancel`) answer `{cancelled: bool}` (`run` answers the reading) and need the `X-Netsmith` header. A cancelled job's own request answers `499`.
 - A recipe that cancels in the middle of a stage depends on the stage being long. The recipes use forty rails so that a release build is still slow enough; a faster machine needs more.
 - The status bar item is a sibling of the analysis item, not inside it (a button in a button is not valid).
+
+The source view's toolbar has a Rebuild button (`[data-testid="rebuild"]`); while the server analyses the project it is a Stop button (`[data-testid="stop-rebuild"]`) in the same place, and the palette has `Stop the rebuild`. The recipe checks it after the Run again step.
