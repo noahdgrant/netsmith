@@ -697,8 +697,19 @@ impl Backend for Workspace {
         observe: &Observer,
         cancel: &Cancel,
     ) -> Result<Compare, ApiError> {
+        self.compare_against(rev, None, board, observe, cancel)
+    }
+
+    fn compare_against(
+        &self,
+        rev: &str,
+        against: Option<&str>,
+        board: Option<&str>,
+        observe: &Observer,
+        cancel: &Cancel,
+    ) -> Result<Compare, ApiError> {
         cancellable(cancel, "the compare", || {
-            self.compare_with(rev, board, observe, cancel)
+            self.compare_with(rev, against, board, observe, cancel)
         })?
     }
 

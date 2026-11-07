@@ -1175,6 +1175,12 @@ export type Compare = {
  */
 ref: string, 
 /**
+ * The second ref, when the comparison is of two refs (`?against=`): then `head.commit` is
+ * the commit it resolved to, `head.dirty` is false and the files on disk are not read.
+ * Absent when the ref is compared with the files on disk.
+ */
+against?: string, 
+/**
  * What it resolved to.
  */
 base: GitCommit, head: CompareHead, 

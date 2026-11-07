@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { allRefs, dirtyText, findRef, projectKey, recallRef, refGroups, refLabel, relativeDate, rememberRef, suggestedRef } from './refs';
+import { allRefs, dirtyText, findRef, projectKey, recallAgainst, recallRef, refGroups, refLabel, relativeDate, rememberAgainst, rememberRef, suggestedRef } from './refs';
 import { info } from './testdata';
 
 /** A storage that holds text, or breaks. */
@@ -117,6 +117,24 @@ describe('the ref remembered for a project', () => {
     expect(rememberRef(info(), 'main', store(undefined, 'write'))).toBe(false);
     expect(rememberRef(info(), 'main', store(undefined, 'both'))).toBe(false);
     for (const junk of ['not json', '[1,2]', '3', 'null', '{"x":3}']) expect(recallRef(info(), store(junk))).toBeNull();
+  });
+  it('keeps the second ref apart, by project, and forgets it for the working tree', () => {
+    const s = store();
+    expect(recallAgainst(info(), s)).toBeNull();
+    expect(rememberAgainst(info(), 'v1.0', s)).toBe(true);
+    expect(rememberAgainst(info({ projectDir: 'other' }), 'main', s)).toBe(true);
+    expect(recallAgainst(info(), s)).toBe('v1.0');
+    expect(recallAgainst(info({ projectDir: 'other' }), s)).toBe('main');
+    // The first ref is untouched by it.
+    expect(recallRef(info(), s)).toBeNull();
+    expect(rememberAgainst(info(), null, s)).toBe(true);
+    expect(recallAgainst(info(), s)).toBeNull();
+    expect(recallAgainst(info({ projectDir: 'other' }), s)).toBe('main');
+    // A branch that is gone is no second ref, a commit hash is kept, and a broken store is no error.
+    rememberAgainst(info(), 'deleted-branch', s);
+    expect(recallAgainst(info(), s)).toBeNull();
+    expect(rememberAgainst(info(), 'main', null)).toBe(false);
+    expect(recallAgainst(info(), store(undefined, 'read'))).toBeNull();
   });
   it('does not lose another project when it keeps one', () => {
     const s = store(JSON.stringify({ '/elsewhere/': 'main' }));

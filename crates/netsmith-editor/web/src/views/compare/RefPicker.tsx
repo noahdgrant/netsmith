@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { Icon, type IconName } from '../../components/Icons';
-import { chooseRef, gitInfo, pickerOpen, refText } from '../../compare/store';
+import { againstName, againstText, chooseAgainst, chooseRef, gitInfo, pickerOpen, refText } from '../../compare/store';
 import { type RefItem, dirtyText, refGroups, relativeDate } from '../../compare/refs';
 import { refName } from '../../compare/store';
 import { inModal } from '../../components/layers';
@@ -16,7 +16,12 @@ const KIND_WORD: Record<RefItem['kind'], string> = { head: 'HEAD', upstream: 'up
 export function RefPicker({ align = 'left' }: { align?: 'left' | 'right' }) {
   const open = pickerOpen.value;
   const info = gitInfo.value;
-  const chosen = refName.value;
+  const against = againstName.value;
+  // The popover chooses one of two refs: the base (`vs main`) or, to compare two refs with each other, the other side, which is the
+  // working tree until a ref is chosen for it.
+  const [slot, setSlot] = useState<'base' | 'against'>('base');
+  const chosen = slot === 'against' ? against : refName.value;
+  const offset = slot === 'against' ? 1 : 0;
   const root = useRef<HTMLSpanElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
@@ -26,11 +31,12 @@ export function RefPicker({ align = 'left' }: { align?: 'left' | 'right' }) {
   const typed = query.trim();
   // A name or a hash the repository does not list: the server resolves it, and says if it cannot.
   const custom = typed !== '' && !flat.some((i) => i.name === typed || i.label === typed) ? typed : null;
-  const total = flat.length + (custom ? 1 : 0);
+  const total = offset + flat.length + (custom ? 1 : 0);
   const now = Date.now();
 
   useEffect(() => {
     if (!open) return;
+    setSlot('base');
     setQuery('');
     setActive(0);
     queueMicrotask(() => input.current?.focus());
@@ -56,12 +62,14 @@ export function RefPicker({ align = 'left' }: { align?: 'left' | 'right' }) {
     if (open) root.current?.querySelector('.ref-item.active')?.scrollIntoView({ block: 'nearest' });
   }, [active, open]);
 
+  const choose = (name: string) => (slot === 'against' ? chooseAgainst(name) : chooseRef(name));
   const pick = (at: number) => {
-    const item = flat[at];
-    if (item) chooseRef(item.name);
-    else if (custom) chooseRef(custom);
+    if (offset && at === 0) return chooseAgainst(null);
+    const item = flat[at - offset];
+    if (item) choose(item.name);
+    else if (custom) choose(custom);
   };
-  let index = -1;
+  let index = offset - 1;
   return (
     <span class="popover-anchor ref-anchor" ref={root}>
       <button
@@ -73,11 +81,17 @@ export function RefPicker({ align = 'left' }: { align?: 'left' | 'right' }) {
         data-tip="Choose the git ref to compare the project with"
         onClick={() => (pickerOpen.value = !open)}
       >
-        <Icon name={chosen ? 'branch' : 'compare'} size={14} />
-        {chosen ? (
+        <Icon name={refName.value ? 'branch' : 'compare'} size={14} />
+        {refName.value ? (
           <>
             <span class="ref-vs">vs</span>
             <span class="ref-name mono">{refText.value}</span>
+            {against && (
+              <>
+                <span class="ref-vs">and</span>
+                <span class="ref-name mono" data-testid="ref-against-name">{againstText.value}</span>
+              </>
+            )}
           </>
         ) : (
           'Compare with…'
@@ -86,6 +100,31 @@ export function RefPicker({ align = 'left' }: { align?: 'left' | 'right' }) {
       </button>
       {open && (
         <div class={`popover ref-pop ${align}`} role="dialog" aria-label="Choose a ref to compare with" data-testid="ref-popover" data-esc-closes>
+          <div class="ref-slots" role="group" aria-label="Which side to choose">
+            {(
+              [
+                ['base', 'Base', refText.value || 'none chosen', 'The ref the comparison starts from'],
+                ['against', 'Against', againstText.value, 'What it is compared with: the working tree, or another ref'],
+              ] as const
+            ).map(([id, label, value, tip]) => (
+              <button
+                type="button"
+                key={id}
+                class={`ref-slot ${slot === id ? 'on' : ''}`}
+                data-testid={`ref-slot-${id}`}
+                aria-pressed={slot === id}
+                data-tip={tip}
+                onClick={() => {
+                  setSlot(id);
+                  setActive(0);
+                  input.current?.focus();
+                }}
+              >
+                <span class="ref-slot-label">{label}</span>
+                <span class="ref-slot-value mono">{value}</span>
+              </button>
+            ))}
+          </div>
           <label class="field-icon ref-search">
             <Icon name="search" size={13} />
             <input
@@ -116,11 +155,30 @@ export function RefPicker({ align = 'left' }: { align?: 'left' | 'right' }) {
               }}
             />
           </label>
-          <div class={`ref-dirty ${info?.projectDirty ? 'warn' : ''}`} data-testid="ref-dirty">
-            <Icon name={info?.projectDirty ? 'warning' : 'check-circle'} size={13} />
-            {dirtyText(info)}
+          <div class={`ref-dirty ${info?.projectDirty && !against ? 'warn' : ''}`} data-testid="ref-dirty">
+            <Icon name={info?.projectDirty && !against ? 'warning' : 'check-circle'} size={13} />
+            {against ? 'Two refs are compared as committed: the files on disk are not read.' : dirtyText(info)}
           </div>
           <div class="ref-list" id="ref-list" role="listbox" aria-label="Refs">
+            {offset === 1 && (
+              <button
+                type="button"
+                id="ref-opt-0"
+                role="option"
+                tabIndex={-1}
+                aria-selected={against === null}
+                class={`ref-item worktree ${active === 0 ? 'active' : ''} ${against === null ? 'chosen' : ''}`}
+                data-testid="ref-worktree"
+                onPointerMove={() => setActive(0)}
+                onClick={() => pick(0)}
+              >
+                <span class="ref-kind" aria-hidden="true">
+                  <Icon name="file" size={14} />
+                </span>
+                <span class="ref-label mono">the working tree</span>
+                <span class="ref-subject">The files on disk, uncommitted changes included (the default)</span>
+              </button>
+            )}
             {groups.map((g) => (
               <div class="ref-group" key={g.id} role="group" aria-label={g.label}>
                 <div class="ref-group-head">{g.label}</div>
@@ -166,13 +224,13 @@ export function RefPicker({ align = 'left' }: { align?: 'left' | 'right' }) {
               <button
                 type="button"
                 role="option"
-                id={`ref-opt-${flat.length}`}
+                id={`ref-opt-${offset + flat.length}`}
                 tabIndex={-1}
                 aria-selected="false"
-                class={`ref-item custom ${active === flat.length ? 'active' : ''}`}
+                class={`ref-item custom ${active === offset + flat.length ? 'active' : ''}`}
                 data-testid="ref-custom"
-                onPointerMove={() => setActive(flat.length)}
-                onClick={() => chooseRef(custom)}
+                onPointerMove={() => setActive(offset + flat.length)}
+                onClick={() => choose(custom)}
               >
                 <span class="ref-kind" aria-hidden="true">
                   <Icon name="compare" size={14} />
@@ -182,7 +240,7 @@ export function RefPicker({ align = 'left' }: { align?: 'left' | 'right' }) {
                 </span>
               </button>
             )}
-            {total === 0 && <div class="ref-none">Nothing in the repository matches.</div>}
+            {total === offset && <div class="ref-none">Nothing in the repository matches.</div>}
           </div>
         </div>
       )}

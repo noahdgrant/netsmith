@@ -4,7 +4,7 @@
 import { signal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
 
-import { compare, openDiff, refText } from '../compare/store';
+import { diskCompare, openDiff, refText } from '../compare/store';
 import { closeFile, revealSection } from '../store';
 import { askForRef } from './ChangesSwitch';
 
@@ -18,7 +18,7 @@ export function FileTabMenu() {
   }, [m?.path, m?.x, m?.y]);
   if (!m) return null;
   const close = () => (fileTabMenu.value = null);
-  const c = compare.value;
+  const c = diskCompare.value;
   const listed = !!c?.source.files.some((f) => f.path === m.path);
   const known = !!c && /\.(nsm|toml|csv)$/.test(m.path);
   return (

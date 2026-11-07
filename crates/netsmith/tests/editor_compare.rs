@@ -995,6 +995,15 @@ fn the_server_answers_git_and_compare_and_tells_the_socket_how_far_it_is() {
     assert_eq!(v["source"]["files"][0]["path"], "src/main.nsm");
     let (status, body) = http(port, "/api/compare?ref=nothing-here");
     assert_eq!(status, 404, "{body}");
+    // The other side a ref too: `against` is read as `ref` is.
+    let (status, body) = http(port, "/api/compare?ref=HEAD&against=HEAD");
+    assert_eq!(status, 200, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["against"], "HEAD");
+    assert_eq!(v["summary"], "No circuit changes");
+    assert_eq!(v["head"]["dirty"], false);
+    let (status, body) = http(port, "/api/compare?ref=HEAD&against=nothing-here");
+    assert_eq!(status, 404, "{body}");
     let (status, body) = http(port, "/api/git/file?ref=HEAD&path=src%2Fmain.nsm");
     assert_eq!(status, 200, "{body}");
     assert!(body.contains("TwoBoards"));
@@ -1260,4 +1269,228 @@ fn a_compare_is_refused_while_the_analysis_of_the_files_on_disk_is_cancelled_and
         .compare("HEAD", None, &silent(), &netsmith_editor::Cancel::new())
         .unwrap();
     assert_eq!(c.error, None);
+}
+
+// ---- the extensions of ADR 0059: ref against ref ----
+
+/// `rev` against the commit `against`, as a request for two refs is made.
+fn compare_refs(w: &Workspace, rev: &str, against: &str) -> Result<Compare, ApiError> {
+    let _one = lock();
+    let result = w.compare_against(
+        rev,
+        Some(against),
+        None,
+        &silent(),
+        &netsmith_editor::Cancel::new(),
+    );
+    assert_eq!(
+        scratch_folders(),
+        Vec::<String>::new(),
+        "a scratch folder was left"
+    );
+    result
+}
+
+/// Three commits (the design, a renamed net, a resistor of another value) and a work tree that
+/// has a change of its own, which no comparison of two refs may see.
+fn three_commits(label: &str) -> (Repo, [String; 3], Workspace) {
+    let r = Repo::new(label, "");
+    let first = r.commit("first");
+    r.edit("src/main.nsm", "\"3V3\"", "\"VOUT\"");
+    let second = r.commit("rename the output net");
+    r.edit(
+        "src/main.nsm",
+        ".r1: Resistor {}",
+        ".r1: Resistor { .resistance &= 150ohm +/- 1% }",
+    );
+    let third = r.commit("a bigger resistor");
+    // Uncommitted: the files on disk differ from every commit.
+    r.edit("src/main.nsm", INPUT_CAP, &format!("{BULK}{INPUT_CAP}"));
+    fs::write(r.project.join("NOTES.md"), "not in git\n").unwrap();
+    let w = r.workspace();
+    (r, [first, second, third], w)
+}
+
+#[test]
+fn two_refs_are_compared_with_each_other_and_the_files_on_disk_are_not_read() {
+    need_tools!();
+    let (_r, [first, second, third], w) = three_commits("refs");
+    let c = compare_refs(&w, &first, &second).unwrap();
+    assert_eq!(c.error, None);
+    assert_eq!(c.rev, first);
+    assert_eq!(c.against.as_deref(), Some(second.as_str()));
+    assert_eq!(c.base.hash, first);
+    // The head side is the other commit: not dirty, no errors, and its hash.
+    assert_eq!(c.head.commit.as_ref().unwrap().hash, second);
+    assert!(!c.head.dirty && c.head.errors == 0);
+    assert_eq!(c.summary, "1 net renamed");
+    // The uncommitted capacitor and the untracked file are not in it.
+    let power = board(&c, "TwoBoards/power");
+    assert!(power.parts.added.is_empty() && power.parts.removed.is_empty());
+    assert_eq!(
+        (c.source.files_changed, c.source.added, c.source.removed),
+        (1, 1, 1)
+    );
+    assert_eq!(c.source.files[0].path, "src/main.nsm");
+    assert!(
+        c.source
+            .files
+            .iter()
+            .all(|f| f.status != SourceStatus::Untracked)
+    );
+
+    // Later refs: the resistor is the change between them.
+    let c = compare_refs(&w, &second, &third).unwrap();
+    assert_eq!(c.summary, "2 values changed, 1 rail changed");
+    let led = board(&c, "TwoBoards/led");
+    let r1 = led.parts.changed.iter().find(|p| p.path == "r1").unwrap();
+    // Each side's line is in that side's own commit.
+    assert_eq!(r1.at.as_ref().unwrap().file, "src/main.nsm");
+    assert!(r1.base_at.is_some());
+
+    // The files on disk against the same first commit say more: the capacitor and the notes.
+    let on_disk = compare(&w, &first).unwrap();
+    assert_eq!(on_disk.against, None);
+    assert!(on_disk.head.dirty);
+    assert!(
+        on_disk.summary.contains("1 part added"),
+        "{}",
+        on_disk.summary
+    );
+    assert!(
+        on_disk
+            .source
+            .files
+            .iter()
+            .any(|f| f.status == SourceStatus::Untracked)
+    );
+}
+
+#[test]
+fn the_same_ref_on_both_sides_and_the_two_directions_of_a_pair() {
+    need_tools!();
+    let (_r, [first, second, _], w) = three_commits("refs-pair");
+    let same = compare_refs(&w, &second, &second).unwrap();
+    assert!(!same.changed);
+    assert_eq!(same.summary, "No circuit changes");
+    assert_eq!(same.source.files_changed, 0);
+    // A name and the hash of the same commit are the same ref.
+    let by_name = compare_refs(&w, "HEAD~2", &first).unwrap();
+    assert!(!by_name.changed, "{}", by_name.summary);
+
+    let forward = compare_refs(&w, &first, &second).unwrap();
+    let back = compare_refs(&w, &second, &first).unwrap();
+    let net = |c: &Compare| {
+        let n = &board(c, "TwoBoards/power").nets;
+        let ren = n.renamed.first().expect("a renamed net");
+        (ren.base_name.clone(), ren.name.clone())
+    };
+    assert_eq!(net(&forward), ("3V3".to_string(), "VOUT".to_string()));
+    assert_eq!(net(&back), ("VOUT".to_string(), "3V3".to_string()));
+}
+
+#[test]
+fn a_second_ref_that_is_no_ref_is_refused_before_anything_is_read() {
+    need_tools!();
+    let (_r, [first, ..], w) = three_commits("refs-bad");
+    let missing = compare_refs(&w, &first, "nothing-here").unwrap_err();
+    assert_eq!(missing.status, 404, "{missing:?}");
+    let hostile = compare_refs(&w, &first, "--output=x").unwrap_err();
+    assert_eq!(hostile.status, 400, "{hostile:?}");
+    // Nothing was read of the first ref either: asking again is not served from the cache.
+    assert!(!compare_refs(&w, &first, "HEAD").unwrap().cached);
+}
+
+#[test]
+fn a_second_ref_that_does_not_analyse_is_an_answer_naming_that_commit() {
+    need_tools!();
+    let (r, [first, ..], w) = three_commits("refs-broken");
+    r.edit(
+        "src/main.nsm",
+        "Resistor { .resistance",
+        "Resistr { .resistance",
+    );
+    let broken = r.commit("a typo");
+    let c = compare_refs(&w, &first, &broken).unwrap();
+    let error = c.error.as_deref().expect("the second ref does not analyse");
+    assert!(error.contains("does not analyse at"), "{error}");
+    assert!(error.contains(&broken[..7]), "{error}");
+    assert!(error.contains("Resistr"), "{error}");
+    assert!(!c.base_problems.is_empty());
+    assert!(c.boards.is_empty());
+    assert_eq!(c.head.commit.as_ref().unwrap().hash, broken);
+    assert!(!c.head.dirty);
+    // The broken one as the first ref says so too, and the second is not read.
+    let c = compare_refs(&w, &broken, &first).unwrap();
+    assert!(c.error.as_deref().unwrap().contains(&broken[..7]));
+}
+
+#[test]
+fn a_comparison_of_two_refs_is_cached_by_each_commit() {
+    need_tools!();
+    let (_r, [first, second, third], w) = three_commits("refs-cache");
+    assert!(!compare_refs(&w, &first, &second).unwrap().cached);
+    assert!(compare_refs(&w, &first, &second).unwrap().cached);
+    // The second is kept: against a new one it is read once, and the pair is only half cached.
+    assert!(!compare_refs(&w, &second, &third).unwrap().cached);
+    assert!(compare_refs(&w, &third, &first).unwrap().cached);
+}
+
+#[test]
+fn a_comparison_of_two_refs_that_is_cancelled_leaves_nothing_behind() {
+    if !tools_here() {
+        return;
+    }
+    let (r, [first, second, _], w) = three_commits("refs-cancel");
+    let before = (
+        git(&r.dir, &["status", "--porcelain"]),
+        fs::read_to_string(r.project.join("src/main.nsm")).unwrap(),
+    );
+    let _one = lock();
+    // Cancelled when the second ref begins to solve: the first ref's reading is whole and kept.
+    let token = netsmith_editor::Cancel::new();
+    let solves = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let observe: Observer = {
+        let (token, solves) = (token.clone(), Arc::clone(&solves));
+        Arc::new(move |event| {
+            if let AnalysisEvent::Progress { stage, .. } = &event
+                && stage == "solve"
+                && solves.fetch_add(1, std::sync::atomic::Ordering::SeqCst) >= 1
+            {
+                token.cancel();
+            }
+        })
+    };
+    let error = w
+        .compare_against(&first, Some(&second), None, &observe, &token)
+        .expect_err("cancelled");
+    assert!(error.is_cancelled(), "{error:?}");
+    assert_eq!(scratch_folders(), Vec::<String>::new());
+    // Nothing of the second was kept: it is read again; the first was.
+    let again = w
+        .compare_against(
+            &first,
+            Some(&second),
+            None,
+            &silent(),
+            &netsmith_editor::Cancel::new(),
+        )
+        .unwrap();
+    assert!(!again.cached);
+    assert_eq!(again.summary, "1 net renamed");
+    // A token cancelled before it starts reads nothing.
+    let early = netsmith_editor::Cancel::new();
+    early.cancel();
+    assert!(
+        w.compare_against("HEAD", Some("HEAD~1"), None, &silent(), &early)
+            .expect_err("cancelled")
+            .is_cancelled()
+    );
+    assert_eq!(scratch_folders(), Vec::<String>::new());
+    // The work tree is as it was.
+    let after = (
+        git(&r.dir, &["status", "--porcelain"]),
+        fs::read_to_string(r.project.join("src/main.nsm")).unwrap(),
+    );
+    assert_eq!(before, after);
 }

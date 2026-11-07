@@ -8,7 +8,7 @@ import { EditorView, closeHoverTooltips } from '@codemirror/view';
 
 import { askForRef, toggleChanges } from './components/ChangesSwitch';
 import { api } from './client';
-import { clearCompare, compare, diffTarget, openDiff, refName, refText, runCompare, showChanges } from './compare/store';
+import { clearCompare, diffTarget, diskCompare, openDiff, refName, refText, runCompare, showChanges } from './compare/store';
 import { diffControls } from './compare/collapse';
 import { type Command, provide, register, runCommand } from './commands';
 import { stepProblem } from './feedback/derive';
@@ -903,7 +903,7 @@ export function registerCompareCommands() {
       title: 'Show changes in source',
       group: 'Compare',
       aliases: ['diff', 'what changed in this file', 'base side', 'file at the ref'],
-      when: () => compare.value !== null && activeFile.value !== null,
+      when: () => diskCompare.value !== null && activeFile.value !== null,
       run: () => {
         const path = activeFile.peek();
         if (!path) return;

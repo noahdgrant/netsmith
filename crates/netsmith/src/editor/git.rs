@@ -859,37 +859,22 @@ fn count_lines(file: &Path, budget: &mut u64) -> usize {
     lines + usize::from(last != b'\n')
 }
 
-/// What differs in `dir` between `hash` and the files on disk, as `git diff --stat` counts it
-/// (and untracked files as all added).
-pub fn source_diff(dir: &Path, hash: &str) -> SourceDiff {
+/// What differs in `dir` between the commit `hash` and the files on disk, as `git diff --stat`
+/// counts it (and untracked files as all added), or, with `against`, between the commit `hash`
+/// and that commit (ADR 0059, the extensions): two commits have no untracked files.
+pub fn source_diff(dir: &Path, hash: &str, against: Option<&str>) -> SourceDiff {
     let mut files: Vec<SourceFile> = Vec::new();
     let mut error = None;
     // `--relative` with no value makes the paths relative to `dir`, and leaves out what is
     // outside it.
-    let numstat = run(
-        dir,
-        &[
-            "diff",
-            "--numstat",
-            "--no-renames",
-            "--relative",
-            hash,
-            "--",
-            ".",
-        ],
-    );
-    let status = run(
-        dir,
-        &[
-            "diff",
-            "--name-status",
-            "--no-renames",
-            "--relative",
-            hash,
-            "--",
-            ".",
-        ],
-    );
+    let diff = |mode: &str| {
+        let mut args = vec!["diff", mode, "--no-renames", "--relative", hash];
+        args.extend(against);
+        args.extend(["--", "."]);
+        run(dir, &args)
+    };
+    let numstat = diff("--numstat");
+    let status = diff("--name-status");
     match (numstat, status) {
         (Ok(numstat), Ok(status)) => {
             let kinds: std::collections::HashMap<&str, SourceStatus> = status
@@ -927,7 +912,9 @@ pub fn source_diff(dir: &Path, hash: &str) -> SourceDiff {
     // all added. Their lines are counted by reading each file in chunks, for the first
     // `MAX_UNTRACKED_COUNTED` files and as long as `MAX_UNTRACKED_TOTAL` bytes are not read in all;
     // a link is never read. Later files are listed with no lines counted.
-    if let Ok(text) = run(dir, &["ls-files", "--others", "--exclude-standard"]) {
+    if against.is_none()
+        && let Ok(text) = run(dir, &["ls-files", "--others", "--exclude-standard"])
+    {
         let mut budget = MAX_UNTRACKED_TOTAL;
         for (listed, path) in text.lines().enumerate() {
             if listed == MAX_UNTRACKED_LISTED {

@@ -8,7 +8,7 @@ import type { CompareField, Location } from '../../api';
 import { Icon, type IconName, SeverityIcon } from '../../components/Icons';
 import { Pill, type Tone } from '../../components/ui';
 import { STATUS_LABEL, type ChangeRow, type RowKind, type RowStatus } from '../../compare/model';
-import { baseLocation, openDiff } from '../../compare/store';
+import { baseLocation, compare, diffable, openDiff } from '../../compare/store';
 import { hoverAttrs } from '../../hover';
 import { selectAndReveal, selection } from '../../selection';
 import { board, chooseBoard, goTo, revealSection } from '../../store';
@@ -18,7 +18,8 @@ const TONE: Record<RowStatus, Tone> = { added: 'ok', removed: 'bad', changed: 'w
 
 /** Pick what a row stands for in every view, in the board it is on. False when it stands for nothing on the head side. */
 export function activate(row: ChangeRow): boolean {
-  if (!row.select) return false;
+  // Two refs are not what the views draw: a row of that comparison picks nothing in them.
+  if (!row.select || compare.peek()?.against) return false;
   if (row.board && row.board !== board.peek()) chooseBoard(row.board);
   selectAndReveal(row.select);
   return true;
@@ -86,12 +87,15 @@ export function RowView({ row, showBoard }: { row: ChangeRow; showBoard?: boolea
   const headAt = row.head;
   // The ref's file is shown only where the server gives it: a declaration in the standard library has a Head and no Base.
   const baseTarget = baseLocation(baseAt);
+  // Two refs: the head side's lines are in the second ref's file, so Head opens the comparison of the file and not the source.
+  const refHead = !!compare.value?.against;
+  const headTarget = refHead && headAt && diffable(headAt.file) ? ({ path: headAt.file, line: headAt.line, side: 'head', where: 'compare' } as const) : null;
   return (
     <div class={`cr cr-${row.status} ${picked ? 'sel' : ''} ${open ? 'open' : ''}`} data-testid="cmp-row" data-status={row.status} data-kind={row.kind} data-row={row.id} role="listitem">
       <div
         class="cr-main"
         tabIndex={0}
-        {...hoverAttrs(row.select ? { kind: row.select.kind, key: row.select.key } : null)}
+        {...hoverAttrs(row.select && !refHead ? { kind: row.select.kind, key: row.select.key } : null)}
         aria-selected={picked}
         onClick={() => {
           if (!activate(row)) toggle();
@@ -162,17 +166,19 @@ export function RowView({ row, showBoard }: { row: ChangeRow; showBoard?: boolea
             type="button"
             class="cr-link"
             data-testid="link-head"
-            disabled={!headAt}
-            data-tip={headAt ? `On disk: ${where(headAt)}. Opens the source there.` : 'Not on disk'}
+            disabled={refHead ? !headTarget : !headAt}
+            data-tip={refHead ? (headTarget ? `At the second ref: ${where(headAt!)}. Opens the file at both refs.` : 'Not at the second ref') : headAt ? `On disk: ${where(headAt)}. Opens the source there.` : 'Not on disk'}
             aria-label={headAt ? `Head: ${where(headAt)}` : 'Head: not on disk'}
             onClick={(e) => {
               e.stopPropagation();
-              if (headAt) void goTo(headAt);
+              if (refHead) {
+                if (headTarget) openDiff(headTarget);
+              } else if (headAt) void goTo(headAt);
             }}
           >
             Head
           </button>
-          {row.select && (
+          {row.select && !refHead && (
             <button
               type="button"
               class="cr-link icon"

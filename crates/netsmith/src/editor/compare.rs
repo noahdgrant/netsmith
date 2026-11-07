@@ -167,9 +167,11 @@ impl Workspace {
         }
     }
 
+    /// Compare `rev` with the files on disk, or with the commit `against` when there is one.
     pub(super) fn compare_with(
         &self,
         rev: &str,
+        against: Option<&str>,
         board: Option<&str>,
         observe: &Observer,
         cancel: &Cancel,
@@ -178,44 +180,87 @@ impl Workspace {
         let dir = self.git_dir();
         let place = git::place(&dir).map_err(git::unavailable)?;
         let base = git::resolve(&dir, rev)?;
-        let (reading, cached) = self.read_ref(&place, &base, observe, cancel)?;
-        // Between the reading of the ref and the reading of the files on disk.
+        // Both names are resolved before anything is read: a name that is no commit is a 404 at
+        // once, not after the first ref has been analysed.
+        let other = against.map(|a| git::resolve(&dir, a)).transpose()?;
+        let (reading, base_cached) = self.read_ref(&place, &base, observe, cancel)?;
+        let head_reading = match &other {
+            Some(commit) if !matches!(&*reading, Reading::Failed { .. }) => {
+                Some(self.read_ref(&place, commit, observe, cancel)?)
+            }
+            _ => None,
+        };
+        // Between the reading of the ref(s) and the reading of the files on disk.
         job::checkpoint();
-        let head_commit = git::resolve(&dir, "HEAD").ok();
-        let dirty = git::project_dirty(&dir);
+        let (head_commit, dirty) = match &other {
+            Some(commit) => (Some(commit.clone()), false),
+            None => (git::resolve(&dir, "HEAD").ok(), git::project_dirty(&dir)),
+        };
+        let cached = base_cached && head_reading.as_ref().is_none_or(|(_, c)| *c);
+        let compared_with = other
+            .as_ref()
+            .map_or("the files on disk", |c| c.short.as_str());
         tell(
             observe,
             "diff",
             0,
             1,
-            format!("comparing {} with the files on disk", base.short),
+            format!("comparing {} with {compared_with}", base.short),
         );
-        let source = git::source_diff(&dir, &base.hash);
+        let source = git::source_diff(&dir, &base.hash, other.as_ref().map(|c| c.hash.as_str()));
+        let broken = |error: String, problems: Vec<Problem>, head: CompareHead| Compare {
+            rev: rev.to_string(),
+            against: against.map(str::to_string),
+            base: base.clone(),
+            head,
+            error: Some(error.clone()),
+            base_problems: problems,
+            cached,
+            elapsed_ms: millis(started),
+            summary: error,
+            changed: false,
+            source: source.clone(),
+            boards: Vec::new(),
+            problems: empty_problems(),
+        };
         let digest = match &*reading {
             Reading::Failed { error, problems } => {
-                let head = self.head_status(None, head_commit, dirty);
-                return Ok(Compare {
-                    rev: rev.to_string(),
-                    base,
-                    head,
-                    error: Some(error.clone()),
-                    base_problems: problems.clone(),
-                    cached,
-                    elapsed_ms: millis(started),
-                    summary: error.clone(),
-                    changed: false,
-                    source,
-                    boards: Vec::new(),
-                    problems: empty_problems(),
-                });
+                let head = if other.is_some() {
+                    CompareHead {
+                        commit: head_commit,
+                        dirty,
+                        errors: 0,
+                    }
+                } else {
+                    self.head_status(None, head_commit, dirty)
+                };
+                return Ok(broken(error.clone(), problems.clone(), head));
             }
             Reading::Digest(digest) => digest,
         };
-        let now = digest_of(self)?;
-        let head = self.head_status(Some(&now), head_commit, dirty);
-        let mut result = diff::diff(digest, &now, board);
+        // The head side: the other ref's reading, or the files on disk as they are now.
+        let now_owned;
+        let now = match &head_reading {
+            Some((reading, _)) => match &**reading {
+                Reading::Digest(d) => d,
+                Reading::Failed { error, problems } => {
+                    let head = CompareHead {
+                        commit: head_commit,
+                        dirty,
+                        errors: problems.len() as u32,
+                    };
+                    return Ok(broken(error.clone(), problems.clone(), head));
+                }
+            },
+            None => {
+                now_owned = digest_of(self)?;
+                &now_owned
+            }
+        };
+        let head = self.head_status(Some(now), head_commit, dirty);
+        let mut result = diff::diff(digest, now, board);
         // A file that does not build has no boards on disk, which is not that they are gone.
-        if head.errors > 0 {
+        if head.errors > 0 && other.is_none() {
             result.summary = format!(
                 "{} on disk: {}",
                 diff::count(head.errors as usize, "error", "errors"),
@@ -226,12 +271,16 @@ impl Workspace {
             && result.boards.is_empty()
         {
             return Err(ApiError::not_found(format!(
-                "there is no board `{board}` at {} or in the files on disk",
-                base.short
+                "there is no board `{board}` at {} or in {}",
+                base.short,
+                other
+                    .as_ref()
+                    .map_or_else(|| "the files on disk".to_string(), |c| c.short.clone())
             )));
         }
         Ok(Compare {
             rev: rev.to_string(),
+            against: against.map(str::to_string),
             base,
             head,
             error: None,

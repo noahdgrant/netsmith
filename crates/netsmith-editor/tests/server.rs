@@ -417,6 +417,7 @@ impl Backend for Fake {
         }
         Ok(Compare {
             rev: rev.into(),
+            against: None,
             base: commit("deadbeef"),
             head: CompareHead {
                 commit: None,

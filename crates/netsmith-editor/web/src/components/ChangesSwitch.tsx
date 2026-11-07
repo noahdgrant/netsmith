@@ -2,7 +2,7 @@
 // view's toolbar has one; they all read and write the same signal, and the palette and the status
 // chip's menu do too.
 
-import { gitInfo, showChanges, pickerOpen, refText, setShowChanges, state } from '../compare/store';
+import { againstName, gitInfo, showChanges, pickerOpen, refText, setShowChanges, state } from '../compare/store';
 import { revealSection } from '../store';
 import { Icon } from './Icons';
 import { Spinner } from './ui';
@@ -22,14 +22,17 @@ export function ChangesSwitch({ label, compact, class: cls }: { label?: string; 
   const on = showChanges.value;
   const ref = refText.value;
   const loading = state.value.kind === 'loading';
+  // Two refs are compared in the Compare section only: the views draw the files on disk.
+  const two = againstName.value !== null;
   const text = label ?? (ref ? `Changes vs ${ref}` : 'Show changes');
   return (
     <button
       type="button"
-      class={`tool small cmp-switch ${on ? 'on' : ''} ${cls ?? ''}`}
+      class={`tool small cmp-switch ${on && !two ? 'on' : ''} ${two ? 'off' : ''} ${cls ?? ''}`}
       data-testid="changes-switch"
-      aria-pressed={on}
-      data-tip={on ? `Marks changes since ${ref || 'the ref'} in every view. Click to hide them.` : ref ? `Mark what changed since ${ref} in every view` : 'Compare with a git ref and mark what changed in every view'}
+      aria-pressed={on && !two}
+      aria-disabled={two}
+      data-tip={two ? 'The views draw the files on disk. Compare a ref with the working tree to mark what changed in them.' : on ? `Marks changes since ${ref || 'the ref'} in every view. Click to hide them.` : ref ? `Mark what changed since ${ref} in every view` : 'Compare with a git ref and mark what changed in every view'}
       aria-label={text}
       onClick={toggleChanges}
     >

@@ -97,6 +97,8 @@ export function dirtyText(info: GitInfo | null): string {
 // ---- remembered per project ----
 
 const KEY = 'netsmith.compare.ref.v1';
+/** The second ref of a comparison of two refs, by project. A project with none is compared with the working tree. */
+const AGAINST_KEY = 'netsmith.compare.against.v1';
 
 /** The key of a project: where it is in the work tree. */
 export const projectKey = (info: GitInfo | null): string => `${info?.root ?? ''}/${info?.projectDir ?? ''}`;
@@ -112,9 +114,9 @@ function browser(): Storage | null {
   }
 }
 
-function readAll(store: Reader): Record<string, string> {
+function readAll(store: Reader, key = KEY): Record<string, string> {
   try {
-    const text = store?.getItem(KEY);
+    const text = store?.getItem(key);
     if (!text) return {};
     const parsed: unknown = JSON.parse(text);
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
@@ -137,6 +139,27 @@ export function rememberRef(info: GitInfo | null, ref: string, store: Writer = b
   try {
     if (!store) return false;
     store.setItem(KEY, JSON.stringify({ ...readAll(store), [projectKey(info)]: ref }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The second ref this project was last compared against, when the repository still has it; null for the working tree. */
+export function recallAgainst(info: GitInfo | null, store: Reader = browser()): string | null {
+  const ref = readAll(store, AGAINST_KEY)[projectKey(info)];
+  if (!ref) return null;
+  return findRef(info, ref) || /^[0-9a-f]{7,40}$/i.test(ref) ? ref : null;
+}
+
+/** Keep `ref` as this project's second ref, or forget it for `null` (the working tree). */
+export function rememberAgainst(info: GitInfo | null, ref: string | null, store: Writer = browser()): boolean {
+  try {
+    if (!store) return false;
+    const all = readAll(store, AGAINST_KEY);
+    if (ref === null) delete all[projectKey(info)];
+    else all[projectKey(info)] = ref;
+    store.setItem(AGAINST_KEY, JSON.stringify(all));
     return true;
   } catch {
     return false;
