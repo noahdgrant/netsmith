@@ -1,4 +1,4 @@
-//! Interfaces as buses (GLOSSARY: Bus): the members of one interface instance that run
+//! Interfaces as buses (GLOSSARY: Bus drawing): the members of one interface instance that run
 //! between the same two main parts of a sheet, or leave the sheet from one, are drawn as short
 //! entries from their pins that meet one thick line, which runs to the other part or ends in
 //! one flag.
