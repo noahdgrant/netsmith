@@ -23,7 +23,7 @@ export async function run({ page, shot, step, expect, section }) {
 
   step('sections, nested folders and guide lines');
   const heads = await page.locator('.ft-section .ft-label').allInnerTexts();
-  expect(heads.join('|') === 'Top level|Modules|Physical files|Project|Standard library', `the five sections, got ${heads.join('|')}`);
+  expect(heads.join('|') === 'Top level|Imported files|Physical files|Project|Standard library', `the five sections, got ${heads.join('|')}`);
   const level = async (id) => Number(await row(id).getAttribute('aria-level'));
   expect((await level('d:module:proposed')) === 2, 'proposed is directly in its section (level 2)');
   expect((await level('d:module:proposed/superseded')) === 3, 'superseded is inside proposed (level 3)');

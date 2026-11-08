@@ -52,7 +52,7 @@ export const SECTION_ORDER: FileRole[] = ['top_level', 'module', 'physical', 'sc
 
 export const SECTION_LABEL: Record<FileRole, string> = {
   top_level: 'Top level',
-  module: 'Modules',
+  module: 'Imported files',
   physical: 'Physical files',
   schematic_layout: 'Schematic layout',
   manifest: 'Project',
@@ -62,7 +62,7 @@ export const SECTION_LABEL: Record<FileRole, string> = {
 /** What a section holds, for its tooltip. */
 export const SECTION_HELP: Record<FileRole, string> = {
   top_level: 'The files the project builds: the boards, systems and panels in them are what the views show',
-  module: 'The files under src/ that the top-level files import',
+  module: 'The files under src/ that the top-level files import: modules, parts, interfaces and the rest of what a design is built from',
   physical: 'The physical file beside a source: the case, the outline, where parts go',
   schematic_layout: 'The file beside a source that keeps where parts were moved in the schematic (written by dragging, editable by hand)',
   manifest: 'The project manifest',
