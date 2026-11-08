@@ -311,8 +311,8 @@ fn readme(name: &str) -> String {
          ```\n\
          \n\
          Real parts come from catalogs. A part the standard JLCPCB catalogs lack goes in a CSV\n\
-         file named after its catalog (`catalogs/resistor.csv`), listed under `catalogs` in\n\
-         `netsmith.toml`; every row that names a part needs its `source`.\n\
+         file named after its catalog (`catalogs/resistor.csv`): every `*.csv` in `catalogs/` is a\n\
+         catalog (`catalog_dirs` in `netsmith.toml`); every row that names a part needs its `source`.\n\
          \n\
          For people and coding agents: `AGENTS.md` says how to work here, `docs/netsmith/LANGUAGE.md`\n\
          is the language guide, and `.agents/skills/` has the netsmith skills (`.claude/skills`\n\

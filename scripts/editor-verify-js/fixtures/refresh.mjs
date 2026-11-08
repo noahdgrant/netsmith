@@ -14,7 +14,6 @@ C9999998,ZZR-317,317ohm +/- 1%,250mW,0402,Extended,0.0124,40,2026-06-01,,https:/
 export function writeRefresh(project, ledSource) {
   fs.mkdirSync(path.join(project, 'catalogs'), { recursive: true });
   fs.writeFileSync(path.join(project, 'catalogs/resistor.csv'), CATALOG);
-  fs.appendFileSync(path.join(project, 'netsmith.toml'), '\ncatalogs = ["catalogs/resistor.csv"]\n');
   fs.writeFileSync(
     path.join(project, 'src/main.nsm'),
     ledSource.replace('.r1: Resistor {}', '.r1: Resistor { .resistance &= 316ohm +/- 1% }'),

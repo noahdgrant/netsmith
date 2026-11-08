@@ -104,6 +104,12 @@ fn init_makes_the_project_files_and_says_what_to_run() {
     );
     assert!(manifest.orders.is_empty());
     assert_eq!(manifest, Manifest::new("my-sensor"));
+    // Both defaults are written out, so a reader sees where the files are.
+    assert!(
+        text.contains("top_level = [\"src/main.nsm\"]\n")
+            && text.contains("catalog_dirs = [\"catalogs\"]\n"),
+        "{text}"
+    );
     let main = read(&root, "src/main.nsm");
     assert!(main.contains("board MySensor {"), "{main}");
     assert!(!main.contains("LedExample"), "{main}");
@@ -885,15 +891,14 @@ board Zz9Board {
 const ZZ9_CSV: &str = "mpn,package,vout.voltage,dropout,max_current,library,price,stock,date,source\n\
 ZZ9-33-S,SOT-23-5,3.3V +/- 2%,0.3V,0.5A,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n";
 
-/// A project whose `netsmith.toml` lists `catalogs`, with the regulator module and board.
-fn catalog_project(name: &str, catalogs: &str, csv: &str) -> TempDir {
+/// A project whose `netsmith.toml` has the `manifest_lines` (about its catalogs), with the
+/// regulator module and board, and `catalogs/zz9.csv`.
+fn catalog_project(name: &str, manifest_lines: &str, csv: &str) -> TempDir {
     let root = dir(name);
     write(
         &root,
         "netsmith.toml",
-        &format!(
-            "[project]\nname = \"zz\"\ntop_level = [\"src/main.nsm\"]\ncatalogs = {catalogs}\n"
-        ),
+        &format!("[project]\nname = \"zz\"\ntop_level = [\"src/main.nsm\"]\n{manifest_lines}\n"),
     );
     write(&root, "src/ics.nsm", ZZ9);
     write(&root, "src/main.nsm", ZZ9_BOARD);
@@ -925,7 +930,8 @@ fn picks(root: &Path) -> Vec<(String, Option<String>)> {
 
 #[test]
 fn a_board_uses_an_ic_that_only_the_projects_catalog_file_has() {
-    let root = catalog_project("own-ic", "[\"catalogs/zz9.csv\"]", ZZ9_CSV);
+    // The manifest says nothing: `catalogs/*.csv` is read.
+    let root = catalog_project("own-ic", "", ZZ9_CSV);
     assert_eq!(
         picks(&root),
         [("ZZ9-33-S".to_string(), Some("ZZ9-33-S".to_string()))]
@@ -939,8 +945,8 @@ fn a_board_uses_an_ic_that_only_the_projects_catalog_file_has() {
 }
 
 #[test]
-fn without_the_manifest_listing_the_file_the_catalog_does_not_exist() {
-    let root = catalog_project("unlisted", "[]", ZZ9_CSV);
+fn with_no_folder_and_no_listing_the_catalog_does_not_exist() {
+    let root = catalog_project("unlisted", "catalog_dirs = []", ZZ9_CSV);
     let target = Target::resolve_from(&root, None).unwrap();
     assert!(!target.catalogs().unwrap().contains("zz9"));
 }
@@ -1015,11 +1021,7 @@ fn a_manifest_assembly_that_is_no_assembly_stops_every_command_naming_the_field(
 #[test]
 fn a_project_file_named_like_a_standard_catalog_adds_parts_to_it_through_the_program() {
     let root = dir("own-resistor");
-    write(
-        &root,
-        "netsmith.toml",
-        "[project]\nname = \"zr\"\ncatalogs = [\"catalogs/resistor.csv\"]\n",
-    );
+    write(&root, "netsmith.toml", "[project]\nname = \"zr\"\n");
     write(
         &root,
         "catalogs/resistor.csv",
@@ -1066,7 +1068,7 @@ fn a_mistake_in_a_project_catalog_file_names_the_file_and_line_through_the_progr
             "catalogs/zz9.csv:3: the mpn `ZZ9-33-S` is already a row at catalogs/zz9.csv:2",
         ),
     ] {
-        let root = catalog_project("own-bad", "[\"catalogs/zz9.csv\"]", &csv);
+        let root = catalog_project("own-bad", "", &csv);
         let run = netsmith(&root, &["build"]);
         let said = String::from_utf8_lossy(&run.stderr);
         assert!(!run.status.success(), "{expect}");
@@ -1077,11 +1079,7 @@ fn a_mistake_in_a_project_catalog_file_names_the_file_and_line_through_the_progr
 #[test]
 fn a_project_file_that_repeats_a_standard_part_is_refused_naming_both_files() {
     let root = dir("own-dup");
-    write(
-        &root,
-        "netsmith.toml",
-        "[project]\nname = \"zd\"\ncatalogs = [\"catalogs/resistor.csv\"]\n",
-    );
+    write(&root, "netsmith.toml", "[project]\nname = \"zd\"\n");
     write(
         &root,
         "catalogs/resistor.csv",
@@ -1099,7 +1097,11 @@ fn a_project_file_that_repeats_a_standard_part_is_refused_naming_both_files() {
 
 #[test]
 fn a_catalog_file_the_manifest_lists_but_is_missing_is_reported() {
-    let root = catalog_project("own-missing", "[\"catalogs/nope.csv\"]", ZZ9_CSV);
+    let root = catalog_project(
+        "own-missing",
+        "catalogs = [\"catalogs/nope.csv\"]\ncatalog_dirs = []",
+        ZZ9_CSV,
+    );
     let e = Target::resolve_from(&root, None)
         .unwrap()
         .catalogs()
@@ -1110,13 +1112,193 @@ fn a_catalog_file_the_manifest_lists_but_is_missing_is_reported() {
     );
 }
 
+/// The catalog files of the project at `root`, as `catalog: file` pairs.
+fn catalog_files(root: &Path) -> Result<Vec<String>, String> {
+    Project::load(root)
+        .and_then(|p| p.catalog_files())
+        .map(|files| {
+            files
+                .into_iter()
+                .map(|f| format!("{}: {}", f.name, f.file))
+                .collect()
+        })
+}
+
+#[test]
+fn every_csv_of_the_catalogs_folder_is_a_catalog_in_file_name_order() {
+    let root = dir("folder-default");
+    write(&root, "netsmith.toml", "[project]\nname = \"p\"\n");
+    for file in ["zeta", "alpha", "mid_1"] {
+        write(&root, &format!("catalogs/{file}.csv"), "mpn\n");
+    }
+    // Not catalogs: other kinds of file, and a sub-folder, are not read (not even an
+    // odd name inside it).
+    write(&root, "catalogs/README.md", "notes");
+    write(&root, "catalogs/old/odd-name.csv", "x");
+    assert_eq!(
+        catalog_files(&root).unwrap(),
+        [
+            "alpha: catalogs/alpha.csv",
+            "mid_1: catalogs/mid_1.csv",
+            "zeta: catalogs/zeta.csv"
+        ]
+    );
+    // The same files whether the key is left out or written.
+    write(
+        &root,
+        "netsmith.toml",
+        "[project]\nname = \"p\"\ncatalog_dirs = [\"catalogs\"]\n",
+    );
+    assert_eq!(catalog_files(&root).unwrap().len(), 3);
+    // `[]` reads no folder; a folder that does not exist holds nothing.
+    write(
+        &root,
+        "netsmith.toml",
+        "[project]\nname = \"p\"\ncatalog_dirs = []\n",
+    );
+    assert!(catalog_files(&root).unwrap().is_empty());
+    write(
+        &root,
+        "netsmith.toml",
+        "[project]\nname = \"p\"\ncatalog_dirs = [\"nowhere\"]\n",
+    );
+    assert!(catalog_files(&root).unwrap().is_empty());
+}
+
+#[test]
+fn more_folders_and_single_files_add_to_the_default_in_the_order_written() {
+    let root = dir("folder-more");
+    write(
+        &root,
+        "proj/netsmith.toml",
+        "[project]\nname = \"p\"\ncatalog_dirs = [\"catalogs\", \"../shared\"]\ncatalogs = [\"extra/z_one.csv\"]\n",
+    );
+    write(&root, "proj/catalogs/b.csv", "mpn\n");
+    write(&root, "shared/a.csv", "mpn\n");
+    write(&root, "proj/extra/z_one.csv", "mpn\n");
+    // A file of `extra/` that the list does not name is not a catalog.
+    write(&root, "proj/extra/other.csv", "mpn\n");
+    assert_eq!(
+        catalog_files(&root.join("proj")).unwrap(),
+        [
+            "b: catalogs/b.csv",
+            "a: ../shared/a.csv",
+            "z_one: extra/z_one.csv"
+        ]
+    );
+}
+
+#[test]
+fn a_csv_in_a_catalog_folder_that_is_not_named_like_a_catalog_is_refused_naming_it() {
+    let root = dir("folder-stray");
+    write(&root, "netsmith.toml", "[project]\nname = \"p\"\n");
+    write(&root, "catalogs/fine.csv", "mpn\n");
+    for name in ["my-parts.csv", "3x.csv", "two words.csv", ".csv"] {
+        write(&root, &format!("catalogs/{name}"), "x\n");
+        let e = catalog_files(&root).unwrap_err();
+        assert!(
+            e.contains(&format!("catalogs/{name}"))
+                && e.contains("is not a catalog")
+                && e.contains("catalog_dirs"),
+            "{name}: {e}"
+        );
+        fs::remove_file(root.join(format!("catalogs/{name}"))).unwrap();
+    }
+    // The program says the same, and does not build.
+    write(&root, "catalogs/readings-2026.csv", "x\n");
+    write(&root, "src/main.nsm", LED);
+    let run = netsmith(&root, &["build"]);
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert!(!run.status.success());
+    assert!(
+        said.contains("catalogs/readings-2026.csv") && said.contains("is not a catalog"),
+        "{said}"
+    );
+}
+
+#[test]
+fn a_catalog_in_two_files_or_a_file_named_twice_is_refused_naming_both() {
+    let root = dir("folder-twice");
+    // A folder file that the list names too.
+    write(
+        &root,
+        "netsmith.toml",
+        "[project]\nname = \"p\"\ncatalogs = [\"./catalogs/ldo.csv\"]\n",
+    );
+    write(&root, "catalogs/ldo.csv", "mpn\n");
+    let e = catalog_files(&root).unwrap_err();
+    assert!(
+        e.contains("catalogs/ldo.csv is named twice")
+            && e.contains("catalog_dirs")
+            && e.contains("Remove it from `catalogs`"),
+        "{e}"
+    );
+    // Two files of one stem: one in a folder, one from elsewhere.
+    write(
+        &root,
+        "netsmith.toml",
+        "[project]\nname = \"p\"\ncatalogs = [\"other/ldo.csv\"]\n",
+    );
+    write(&root, "other/ldo.csv", "mpn\n");
+    let e = catalog_files(&root).unwrap_err();
+    assert!(
+        e.contains("the catalog `ldo` is in two files, catalogs/ldo.csv and other/ldo.csv"),
+        "{e}"
+    );
+    // Two folders.
+    write(
+        &root,
+        "netsmith.toml",
+        "[project]\nname = \"p\"\ncatalog_dirs = [\"catalogs\", \"other\"]\n",
+    );
+    let e = catalog_files(&root).unwrap_err();
+    assert!(
+        e.contains("catalogs/ldo.csv") && e.contains("other/ldo.csv"),
+        "{e}"
+    );
+    // The program refuses to build, with the message.
+    write(&root, "src/main.nsm", LED);
+    let run = netsmith(&root, &["build"]);
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert!(!run.status.success());
+    assert!(
+        said.contains("catalogs/ldo.csv") && said.contains("other/ldo.csv"),
+        "{said}"
+    );
+    // Listing the file only (no folder) is the way it was.
+    write(
+        &root,
+        "netsmith.toml",
+        "[project]\nname = \"p\"\ncatalog_dirs = []\ncatalogs = [\"other/ldo.csv\"]\n",
+    );
+    assert_eq!(catalog_files(&root).unwrap(), ["ldo: other/ldo.csv"]);
+}
+
+#[test]
+fn a_catalog_folder_that_is_a_file_is_refused() {
+    let root = dir("folder-file");
+    write(
+        &root,
+        "netsmith.toml",
+        "[project]\nname = \"p\"\ncatalog_dirs = [\"parts\"]\n",
+    );
+    write(&root, "parts", "x");
+    let e = catalog_files(&root).unwrap_err();
+    assert!(e.contains("catalog_dirs \"parts\" is not a folder"), "{e}");
+}
+
 #[test]
 fn the_manifest_checks_its_catalog_list() {
     let with = |line: &str| Manifest::parse(&format!("[project]\nname = \"a\"\n{line}\n"));
     let ok = with("catalogs = [\"catalogs/acme_ldo.csv\", \"parts.csv\"]").unwrap();
     assert_eq!(ok.catalogs, ["catalogs/acme_ldo.csv", "parts.csv"]);
-    // Nothing is written for an empty list, so a scaffold's manifest stays as it was.
-    assert!(!Manifest::new("a").render().contains("catalogs"));
+    // Nothing is written for an empty `catalogs` list; a scaffold writes the folder.
+    let scaffold = Manifest::new("a").render();
+    assert!(!scaffold.contains("\ncatalogs ="), "{scaffold}");
+    assert!(
+        scaffold.contains("catalog_dirs = [\"catalogs\"]"),
+        "{scaffold}"
+    );
     let m = Manifest {
         catalogs: ok.catalogs,
         ..Manifest::new("a")

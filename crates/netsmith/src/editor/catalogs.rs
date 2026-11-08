@@ -11,8 +11,8 @@ use crate::refresh::{self, Network, Options, Report, Status};
 
 impl Workspace {
     /// The same code as the command line, over the files the manifest lists. The standard
-    /// catalogs are inside the binary and cannot be written, so a project that lists no
-    /// catalogs has nothing to refresh, and the page is told so. A run that has to stop
+    /// catalogs are inside the binary and cannot be written, so a project that has no
+    /// catalog files has nothing to refresh, and the page is told so. A run that has to stop
     /// (blocked, a changed endpoint) answers with the reason and has written nothing.
     pub(super) fn refresh_project_catalogs(
         &self,
@@ -37,10 +37,15 @@ impl Workspace {
                 String::new(),
             ));
         };
-        let paths: Vec<_> = project.manifest.catalogs.iter().map(Into::into).collect();
+        let paths: Vec<std::path::PathBuf> = project
+            .catalog_files()
+            .map_err(ApiError::bad_request)?
+            .into_iter()
+            .map(|f| f.path)
+            .collect();
         if paths.is_empty() {
             return Ok(answer(
-                Some("netsmith.toml lists no `catalogs`. The standard catalogs are built into netsmith; their rows are checked against LCSC in the netsmith repository (`netsmith catalog refresh` there) and reach you with a release".into()),
+                Some("netsmith.toml has no catalog files of its own (no `*.csv` in its `catalog_dirs` folders and none under `catalogs`). The standard catalogs are built into netsmith; their rows are checked against LCSC in the netsmith repository (`netsmith catalog refresh` there) and reach you with a release".into()),
                 Vec::new(),
                 0,
                 String::new(),
