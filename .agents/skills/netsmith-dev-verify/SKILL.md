@@ -31,7 +31,7 @@ For a change to the editor or to a view it shows, also run the browser check in 
 
 ## The editor's committed page
 
-`crates/netsmith-editor/web-dist` is the built page, committed so netsmith builds without Node. `SOURCE-HASH` in it is a hash of the bytes of the sources in `web/`, and `build.rs` embeds it only when that is the sources' hash (never by file times). After any change under `web/`, with Node 20+, run `scripts/web-bundle update` and commit `web-dist`. `scripts/web-bundle check` rebuilds the page and fails, naming the files, if `web-dist` differs; `cargo test -p netsmith-editor --test bundle` fails without Node when a source changed and `update` was not run. To see a no-Node build, put a `PATH` and `HOME` without Node on a fresh `git clone` (`build_web.rs` also looks in `~/.nvm`): `cargo build -p netsmith` must print no warning and `netsmith editor` must serve the page.
+`crates/netsmith-editor/web-dist` is the built page, committed so netsmith builds without Node. `SOURCE-HASH` in it is a hash of the bytes of the sources in `web/`, and `build.rs` embeds it only when that is the sources' hash (never by file times). After any change under `web/`, with Node 20+, run `scripts/web-bundle update` and commit `web-dist`. `scripts/web-bundle check` rebuilds the page and fails, naming the files, if `web-dist` differs; `cargo test -p netsmith-editor --test main bundle::` fails without Node when a source changed and `update` was not run. To see a no-Node build, put a `PATH` and `HOME` without Node on a fresh `git clone` (`build_web.rs` also looks in `~/.nvm`): `cargo build -p netsmith` must print no warning and `netsmith editor` must serve the page.
 
 ## Language guide
 
