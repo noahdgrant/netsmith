@@ -9640,6 +9640,71 @@ Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen w
 
 A module that wraps a `PullUp` states the resistance itself or forwards it through a member of its own (`.pull.resistance &= .resistance`, with the wrapped member on the left: the solver works a value out from the right side towards the left). A board that forgets a forwarded member is told about the wrapper's member, which is the one it can state.
 
+### A pull-down on one line
+
+A boot-mode pin, an enable or a gate often needs a resistor from the line to ground, so that it reads low when its driver lets go. A plain `Resistor` from the line to the rail's `neg` works for the circuit and leaves the resistor's current unknown: nothing in the circuit says what the driver puts into it, and its drop and power wait. `std::bus::PullDown` is that resistor with its current stated, the mirror of `PullUp`.
+
+- `.reference` is the rail whose `neg` the resistor is on, `.line` is the pin it holds low, and `.resistance` is the value the board states, with its tolerance (`.pull.resistance &= 100kohm +/- 5%`). A board that forgets it gets the unconstrained pick finding for the resistor, with the member named. The resistor inside is `.resistor`.
+- The line is high for the share `.line_high` of the time, 0 to 1 and never narrower unless the board says so (`.pull.line_high &= 0..0.1`). While it is high the resistor carries the line's voltage over its resistance, and while it is low or released nothing, so the resistor's `.current` is 0 up to `.line_top / resistance`. `.line_top`, the highest voltage the line is held at above `reference`'s `neg`, is `reference.voltage` unless the board states it (`.pull.line_top &= 0V..5.25V` for a 5 V driver on a line judged against 3.3 V; ADR 0070's way of offering an assumption).
+- Unlike a `PullUp`, it draws nothing from a rail: the current comes from the line's driver, whose supply the module does not know. `.reference` names the ground and the level, it is not a load, and the module states `.reference.current &= 0A`, as `Levels` does, so joining it to the board's rail adds no unknown to that net. The driver's own output current, and the input current of the pins on the line, are not stated by anything yet (issue 192).
+
+```nsm evaluate
+import std::bus::PullDown
+import std::sources::Rail
+
+/// A gate with an enable input that must read low at power-up. Illustrative; not a real part.
+part EnableGate {
+    .designator &= "U"
+    .vcc: Rail
+    .vcc.current &= 100uA..1mA
+
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+        .enable input "EN" "3"
+    }
+}
+
+board Enable {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .gate: EnableGate
+    .supply ~ .gate.vcc
+
+    // The enable line is held low by 100 kohm and is high a tenth of the time at most.
+    .pull: PullDown {
+        .resistance &= 100kohm +/- 5%
+        .line_high &= 0..0.1
+    }
+    .supply ~ .pull.reference
+    .pull.line ~ .gate.enable
+}
+```
+
+A board that forgets the resistance is told so, with the member to state:
+
+```nsm solve warns
+import std::bus::PullDown
+import std::sources::Rail
+
+board Forgetful {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .pull: PullDown
+    .supply ~ .pull.reference
+}
+```
+
+```text
+Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:324), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
+```
+
 ## The standard library
 
 The library is `.nsm` source in `std/`. It states only what is always true of a part. Import a definition by its full path, for example `import std::parts::passive::Resistor`.
@@ -9719,6 +9784,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::parts::regulator::FeedbackDivider` | The resistors that set an adjustable output: pins `top`, `fb`, `bottom`, voltages `vref` and `vout`, the `current` it draws, with `vout == vref * (1 + rtop / rbottom)` in the worst case. |
 | `std::parts::regulator::BuckStage` | Everything around a buck converter IC: inductor, input and output capacitors and a `FeedbackDivider`, with ports `vin`, `vout` and `buck`, and the values `ripple`, `divider_current`, `input_count` and `output_count` (how many capacitors stand in parallel on each side, 1 to 8, chosen by the solver or stated by the board). Checks the input range, the output current, the ripple and the inductor's saturation, the inductor limits the IC states, the capacitance the IC asks for of each side's bank, and that each capacitor is rated for the rail's voltage and for its `.peak`. |
 | `std::bus::PullUp` | A pull-up resistor from a rail's `pos` to one line: a `supply` (`Rail`), a `line` (`Pin`), a `.resistance` the board states, `.line_low`, the share of the time the line is low (0 to 1), and the offers `.overdrive` (0 V) and `.supply_top` (`supply.voltage`). It states what it draws from `supply`: its resistor carries 0 up to `supply.voltage / resistance` (below 0 when a stated `.overdrive` lets a driver push current back), so the net it is on is solved and the checks after it are evaluated. |
+| `std::bus::PullDown` | A pull-down resistor from one line to the `neg` of a rail: a `reference` (`Rail`, a reference and not a load: `reference.current` is 0 A), a `line` (`Pin`), a `.resistance` the board states, `.line_high`, the share of the time the line is high (0 to 1), and the offer `.line_top` (`reference.voltage`, the highest the line is held at). Its resistor carries 0 up to `line_top / resistance`, so its drop and power are evaluated; it draws nothing from a rail. |
 | `std::bus::I2cPullups` | The two pull-up resistors of an I2C bus: a `bus` (`I2c`), a `supply` (`Rail`) and a `.resistance` the board states. It states what it draws from `supply`: each line's pull-up carries 0 up to `supply.voltage / resistance` (`.sda_low` and `.scl_low`, 0 to 1, are the share; `.overdrive` and `.supply_top` are offered as for `PullUp`), and `supply.current` is the sum, so the net it is on is solved and the checks after it are evaluated. |
 
 ### Enums
