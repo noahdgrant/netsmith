@@ -70,12 +70,12 @@ fn setup() -> (TempDir, Mapping, SymbolLib) {
     (dir, mapping, lib)
 }
 
-/// The owner's board: a vehicle connector `J2` (battery power on pin 16, ground on 4 and 5), a
+/// A vehicle's input protection: a vehicle connector `J2` (battery power on pin 16, ground on 4 and 5), a
 /// fuse `F1` and a diode `D1` in series from it, a TVS diode `D2` on the far node, and a header
 /// `J1` that takes the protected supply. The header is listed first, as it was.
 fn guard() -> Design {
     common::design(
-        "CarGuard",
+        "VehicleInput",
         &[
             ("J1", "Header1x2", "Conn_01x02", None),
             ("J2", "Obd", "OBDII", Some("J")),

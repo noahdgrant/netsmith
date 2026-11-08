@@ -16,14 +16,14 @@ describe('importGroup', () => {
 });
 
 describe('sortImports', () => {
-  it("sorts the example from the owner's board into std, then src, with a blank line between", () => {
+  it("sorts the imports of a board with a project sheet, std parts and a std process into std, then src, with a blank line between", () => {
     const text = `import src::sheets::input_protection::InputProtection
 import std::mfg::jlcpcb::FourLayer
 import std::parts::connector::Obd2M
 
 import std::parts::connector::Header1x2
 
-board CarGuard {
+board Guard {
 }
 `;
     expect(sorted(text)).toBe(`import std::mfg::jlcpcb::FourLayer
@@ -32,7 +32,7 @@ import std::parts::connector::Obd2M
 
 import src::sheets::input_protection::InputProtection
 
-board CarGuard {
+board Guard {
 }
 `);
   });
