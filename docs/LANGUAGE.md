@@ -7041,10 +7041,80 @@ A diode, a Zener, a TVS diode and a capacitor have a `.bias`: the DC voltage acr
 | Part | What is always true | What the design states |
 |---|---|---|
 | `std::parts::diode::Diode`, `std::parts::diode::Schottky` | `.bias <= .max_reverse_voltage`, `.current <= .max_forward_current` | The ratings. |
-| `std::parts::diode::Zener` | `.bias * .current <= .max_power` | `.zener_voltage` with its tolerance. For a clamp, the line `.z.bias <= .z.zener_voltage`. Catalog `zener`. |
+| `std::parts::diode::Zener` | `.bias * .current <= .max_power` | `.zener_voltage` with its tolerance. For a clamp, the line `.z.bias <= .z.zener_voltage`; over a temperature range, `.temperature_shift` (below). Catalog `zener`. |
 | `std::parts::diode::Tvs` | `.bias <= .standoff_voltage`, `.clamping_voltage <= .protected_limit` | The ratings, and `.protected_limit`: the absolute maximum of what is behind it. Catalog `tvs`. |
 
 A `Tvs` also has an optional `.breakdown_voltage`, the minimum breakdown voltage VBR: between the stand-off voltage and it the diode leaks a little, below it the diode does not conduct (ADR 0073, provisional). A design that needs a margin between the highest the line reaches and the point where the diode starts to conduct states it, `.tvs.breakdown_voltage >= .input.peak * 1.1`. It is a catalog column that the standard rows leave empty (`data/jlcpcb/README.md`), so a design that states it is offered no standard row, and gets one from a project's `tvs` catalog file that records the column; a file written before the column may leave it out, and a design that does not state the field picks as before and has no new check.
+
+A Zener has the figures a design needs to bound a clamp over temperature (issue #199; the first four are optional catalog columns, ADR 0078, which the standard `zener` rows fill from the datasheet table that each row's notes name):
+
+| Member | What it is |
+|---|---|
+| `.test_current` | The current the datasheet publishes `.zener_voltage` at (IZT). The row's `.zener_voltage` is the minimum to maximum at this current. |
+| `.temperature_coefficient` | The change of `.zener_voltage` for one kelvin, as the datasheet's range. A `Voltage`, because no kind holds volts per kelvin: `18.4mV..22mV` is "18.4 to 22 mV/C". The datasheet's figure is a typical one, so the margin is the design's. |
+| `.leakage_current`, `.leakage_test_voltage` | The reverse current below the breakdown, and the reverse voltage it is stated at. |
+| `.temperature_shift` | How far the temperature goes from the 25 C the datasheet states, in kelvin: `-65K..100K` for -40 C to 125 C. A design states it; it is an `optional` member (ADR 0074). |
+| `.voltage_over_temperature` | `.zener_voltage + .temperature_coefficient * .temperature_shift`, worst case: the upper end of the range is the voltage at the hot corner and the lower end the voltage at the cold one. |
+
+A column that a row leaves empty is no obstacle to a design that does not mention it, and a design that names one (`.z.leakage_current <= 1uA`) is offered only the rows that state it. A design that states no `.temperature_shift` has no `.voltage_over_temperature`: nothing is checked, nothing is listed for the relation, and the row's coefficient is not asked for, so every board written before the columns picks as it did. A design that states the shift is offered only the rows that state the coefficient, so a row without it is never picked with a wrong number. A bound on `.voltage_over_temperature` with no shift stated is listed as not evaluated.
+
+A supply pin held under its absolute maximum by a series resistor and a Zener. The board's own numbers: a 24 V input, a pin that stands 18 V, and a clamp that must hold from -40 C to 125 C. The picked row is BZT52C15 (13.8 V to 15.6 V at 5 mA, 9.2 to 13.0 mV/C). Its hot corner is 15.6 V + 13.0 mV * 100 = 16.9 V, under the 18 V; its cold corner is 13.8 V + 13.0 mV * (-65) = 12.955 V (a message prints it as `12.95V`). The Zener's voltage is that whole range, so the current through it and its power are checked at the worst end of it.
+
+```nsm evaluate
+import std::parts::diode::Zener
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board PinClamp {
+    .input: Rail {
+        .voltage &= 24V +/- 10%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .r: Resistor { .resistance &= 2.2kohm +/- 1% }
+    .z: Zener {
+        .zener_voltage &= 13V..16V
+        .temperature_shift &= -65K..100K
+    }
+    .z.bias == .z.voltage_over_temperature
+    .z.current == (.input.voltage - .z.voltage_over_temperature) / .r.resistance
+    .z.voltage_over_temperature <= 18V
+    .input.pos ~> .r ~> .z ~> .input.neg
+}
+```
+
+A pin that cannot stand the clamp's hot corner is refused with the numbers (the limit here is below what any Zener of that voltage holds):
+
+```nsm fails
+import std::parts::diode::Zener
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board PinClamp {
+    .input: Rail {
+        .voltage &= 24V +/- 10%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .r: Resistor { .resistance &= 2.2kohm +/- 1% }
+    .z: Zener {
+        .zener_voltage &= 13V..16V
+        .temperature_shift &= -65K..100K
+    }
+    .z.bias == .z.voltage_over_temperature
+    .z.current == (.input.voltage - .z.voltage_over_temperature) / .r.resistance
+    .z.voltage_over_temperature <= 10V
+    .input.pos ~> .r ~> .z ~> .input.neg
+}
+```
+
+```text
+error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C15 15V 500mW Zener SOD-123 C2104, fails because z.voltage_over_temperature must always be at most 10V, but 12.95V..16.9V is not always below 10V
+   --> main.nsm:18:5
+   |
+18 |     .z.voltage_over_temperature <= 10V
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
 
 A 12 V input with a fuse and a TVS diode. The values are the board's own, as if copied from datasheets.
 
@@ -7091,9 +7161,9 @@ board Standoff {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 9 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
-    --> std/parts/diode.nsm:156:5
+    --> std/parts/diode.nsm:195:5
     |
-156 |     .bias <= .standoff_voltage
+195 |     .bias <= .standoff_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -9609,7 +9679,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::parts::passive::Switch` | A single-pole single-throw switch or button: `.rated_current`, `.rated_voltage`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current`. |
 | `std::parts::diode::Diode` | A diode: `.forward_voltage`, `.max_reverse_voltage`, `.max_forward_current`, `.bias`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Requires `.bias <= .max_reverse_voltage` and `.current <= .max_forward_current`. |
 | `std::parts::diode::Schottky` | A Schottky diode, with the fields and ratings of `Diode`. Catalog `schottky`. |
-| `std::parts::diode::Zener` | A Zener diode: `.zener_voltage` (with tolerance), `.max_power`, `.bias`. Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias * .current <= .max_power`. |
+| `std::parts::diode::Zener` | A Zener diode: `.zener_voltage` (with tolerance, at `.test_current`), `.max_power`, `.bias`, and the optional catalog columns `.test_current`, `.temperature_coefficient`, `.leakage_current` and `.leakage_test_voltage`. Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias * .current <= .max_power`, and, when the design states `.temperature_shift`, defines `.voltage_over_temperature`. |
 | `std::parts::diode::Tvs` | A unidirectional TVS diode: `.standoff_voltage`, `.clamping_voltage`, `.peak_pulse_current`, `.protected_limit`, `.bias` and the optional `.breakdown_voltage` (a catalog column the standard rows leave empty). Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias <= .standoff_voltage` and `.clamping_voltage <= .protected_limit`. |
 | `std::parts::transistor::NMosfet` | An N-channel MOSFET: pins `gate` (input), `source`, `drain`, bridge `drain ~> source`. Maxima for drain-source voltage, drain current and gate-source voltage; `.gate_threshold`; `.on_resistance`. Requires the stresses `.drain_source_voltage` and `.gate_source_voltage` and `.current` within them, and the gate drive above the threshold. Catalog `n_mosfet`. |
 | `std::parts::transistor::PMosfet` | A P-channel MOSFET: as `NMosfet` with bridge `source ~> drain`; voltages are magnitudes. A generic with the catalog `p_mosfet`, whose standard file has no rows: a project adds its own. |
