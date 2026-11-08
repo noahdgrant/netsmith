@@ -219,7 +219,9 @@ impl Checker<'_> {
                     match (prev, next) {
                         (End::Pin(a), End::Pin(b)) => self.union(a, b),
                         (End::Iface(a), End::Iface(b)) => {
-                            self.connect_interfaces(a, b, path.span, true);
+                            if self.connect_interfaces(a, b, path.span, true) {
+                                self.note_rail_alias(a, b);
+                            }
                         }
                         _ => {
                             self.error(
@@ -283,6 +285,31 @@ impl Checker<'_> {
                 parts: b.parts,
                 end: b.end,
             });
+        }
+    }
+
+    /// Remember a `~` in a module that joins an interface of the module itself to an interface
+    /// of a part inside it, if the two are rails (they have a `current` and a `pos`). Whether
+    /// the module's is then an alias of the part's is decided with the balances (ADR 0077).
+    fn note_rail_alias(&mut self, a: InstId, b: InstId) {
+        let Some(&module) = self.scope.last() else {
+            return;
+        };
+        if self.model.instance(module).kind != InstKind::Module {
+            return;
+        }
+        for (own, inner) in [(a, b), (b, a)] {
+            let in_part = self.model.instance(inner).parent.is_some_and(|p| {
+                self.model.instance(p).kind == InstKind::Part
+                    && self.model.instance(p).parent == Some(module)
+            });
+            if self.model.instance(own).parent == Some(module)
+                && in_part
+                && self.model.draw_of(own).is_some()
+                && self.model.draw_of(inner).is_some()
+            {
+                self.model.rail_aliases.push((own, inner));
+            }
         }
     }
 
@@ -859,6 +886,33 @@ impl Checker<'_> {
             }
         }
 
+        // A module's rail joined to the rail of the one part inside it that draws from the net
+        // is that part's current (ADR 0077): the module's balance there is the two of them, and
+        // the reference rails of the part's logic lines, which carry nothing, are not terms.
+        for (own, inner) in self.rail_aliases() {
+            let (Some((own_field, own_pos)), Some((inner_field, _))) =
+                (self.model.draw_of(own), self.model.draw_of(inner))
+            else {
+                continue;
+            };
+            let module = self
+                .model
+                .instance(own)
+                .parent
+                .expect("a module's own rail");
+            let root = self.find(own_pos.0);
+            if let Some(group) = groups.get_mut(&(module, root))
+                && group
+                    .draws
+                    .iter()
+                    .all(|(_, d)| self.carries_nothing_else(d, own_field, inner_field))
+            {
+                group
+                    .draws
+                    .retain(|(_, d)| d.field == own_field || d.field == inner_field);
+            }
+        }
+
         let mut balances = Vec::new();
         for ((scope, root), mut group) in groups {
             // A return net with one draw on it is a rail whose `neg` goes nowhere in
@@ -888,6 +942,43 @@ impl Checker<'_> {
         balances.extend(self.balance_joins());
         balances.sort_by_key(|b| (self.model.path_of(b.scope), b.net.clone()));
         self.model.balances = std::sync::Arc::new(balances);
+    }
+
+    /// The pairs a module's rail and the rail of a part inside it that the module's `~`
+    /// statements join, in which each rail is joined to one other only: a module rail joined to
+    /// two parts' rails is what they draw together, and a part's rail joined to two of the
+    /// module's is the supply of both (ADR 0077).
+    fn rail_aliases(&self) -> Vec<(InstId, InstId)> {
+        let pairs = &self.model.rail_aliases;
+        let mut counts: HashMap<InstId, usize> = HashMap::new();
+        for &(own, inner) in pairs {
+            *counts.entry(own).or_default() += 1;
+            *counts.entry(inner).or_default() += 1;
+        }
+        let mut pairs: Vec<(InstId, InstId)> = pairs
+            .iter()
+            .copied()
+            .filter(|(own, inner)| counts[own] == 1 && counts[inner] == 1)
+            .collect();
+        pairs.sort_by_key(|&(own, _)| self.model.path_of(own));
+        pairs
+    }
+
+    /// Whether a term on the net of an alias leaves the alias true: the two rails themselves,
+    /// a current that is exactly zero, or the reference rail of a logic line or a bus's levels,
+    /// which names a supply for a level and carries nothing itself (ADR 0066). Any other draw
+    /// on the net inside the module (a chain that starts on it, another part's rail, another
+    /// rail of the module that others draw from) is a share of the module's current that the
+    /// part's does not have.
+    fn carries_nothing_else(&self, d: &Draw, own: FieldId, inner: FieldId) -> bool {
+        if d.field == own || d.field == inner || self.model.draw_is_zero(d) {
+            return true;
+        }
+        let rail = self.model.field(d.field).owner;
+        self.model.instance(rail).parent.is_some_and(|p| {
+            self.model.instance(p).kind == InstKind::Interface
+                && (self.model.is_levels(p) || self.model.instance(p).type_name == "Logic")
+        })
     }
 
     /// The pins on a net, seen from one scope, that its balance does not account for

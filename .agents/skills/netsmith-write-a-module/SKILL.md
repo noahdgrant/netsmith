@@ -29,7 +29,7 @@ Make a module when a circuit appears twice or has a name of its own: a regulator
 - A module never names a net. The board names a module's nets through its rails and pins.
 - Two instances are independent. Give each its own values from the board.
 - A module with no parts, only quantities and pins, is an `interface`. Use one when several modules need the same bundle of pins.
-- The module's own rail is a port: from inside it supplies what is inside. State loads on the board's consuming rail and let the balance carry them in.
+- The module's own rail is a port: from inside it supplies what is inside. State loads on the board's consuming rail and let the balance carry them in. A `~` from the module's own rail to the rail of the one part inside that draws from it makes the two one current (ADR 0077): the part's stated supply current is the module's, so do not write `.vs.current == .sensor.vs.current`. Another load on that net inside the module (a pull-up chain, a second part) stops it.
 
 ## A part or module that stands for a generic
 
