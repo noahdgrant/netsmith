@@ -68,7 +68,7 @@ fn the_bill_of_materials_lists_the_row_once_with_the_quantity_of_the_bank() {
 
 #[test]
 fn fab_writes_every_capacitor_of_the_bank_and_passes_its_own_design_rules_check() {
-    let Some(cli) = KicadCliExe::locate() else {
+    let Some(cli) = KicadCliExe::locate_runnable() else {
         eprintln!("skipped: no KiCad");
         return;
     };
@@ -129,7 +129,7 @@ physical for Banked {
 
 #[test]
 fn a_requirement_on_the_banks_part_is_checked_for_every_capacitor_and_names_the_one_it_is_about() {
-    let Some(cli) = KicadCliExe::locate() else {
+    let Some(cli) = KicadCliExe::locate_runnable() else {
         eprintln!("skipped: no KiCad");
         return;
     };

@@ -1434,6 +1434,67 @@ board Notes {
 }
 ";
 
+/// A part with a bus whose levels are judged against the part's supply: it joins the levels'
+/// reference rail to the supply and states no current for it.
+const LISTENER: &str = "//! A listener on a 3.3 V rail.
+
+import std::bus::Spi
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+part Zlisten {
+    .designator &= \"U\"
+    .vdd: Rail
+    .spi: Spi
+    .spi.levels.reference ~ .vdd
+    .spi.levels.vih &= 0.7 * .vdd.voltage
+    pins {
+        .vdd.pos  power \"VDD\"  \"1\"
+        .vdd.neg  power \"VSS\"  \"2\"
+        .spi.sclk no_connect \"SCK\"  \"3\"
+        .spi.mosi no_connect \"MOSI\" \"4\"
+        .spi.miso no_connect \"MISO\" \"5\"
+        .spi.cs   no_connect \"CS\"   \"6\"
+    }
+}
+
+board Bench {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= \"3V3\"
+        .neg.net &= \"GND\"
+    }
+    .l: Zlisten
+    .power_in: Header1x2
+    .supply ~ .l.vdd
+    .l.vdd.current &= 1mA..2mA
+    .supply.pos ~ .power_in.p1
+    .supply.neg ~ .power_in.p2
+}
+";
+
+#[test]
+fn a_levels_reference_joined_to_a_supply_is_no_unsettled_load_in_the_power_view() {
+    let (root, _) = project("reference-load");
+    fs::write(root.join("src/main.nsm"), LISTENER).unwrap();
+    let editor = Workspace::open(Target::resolve_from(&root, None).unwrap()).unwrap();
+    let a = editor.analysis();
+    assert_eq!(a.errors, 0, "{:?}", a.problems);
+    let tree = editor.power("Bench").unwrap();
+    let node = tree.nodes.iter().find(|n| n.net == "3V3").expect("3V3");
+    // The reference states no current and is not a load the solver cannot settle.
+    assert!(
+        node.loads.iter().all(|l| l.range.is_some()),
+        "{:?}",
+        node.loads
+    );
+    assert_eq!(node.budget, Budget::Unlimited, "{node:?}");
+}
+
 #[test]
 fn what_the_solver_left_alone_is_a_note_and_not_counted_as_a_warning() {
     let (root, _) = project("notes");

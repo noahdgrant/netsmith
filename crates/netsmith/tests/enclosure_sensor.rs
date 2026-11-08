@@ -51,7 +51,7 @@ fn fab_example(
 
 #[test]
 fn the_enclosure_sensor_example_meets_every_requirement_and_passes_the_design_rules_check() {
-    if KicadCliExe::locate().is_none() {
+    if KicadCliExe::locate_runnable().is_none() {
         return;
     }
     let (dir, made) = fab_example("enclosure-sensor", PHYSICAL);

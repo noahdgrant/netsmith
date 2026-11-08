@@ -26,7 +26,7 @@ pub fn bom(
     let built = &data.built;
     let libraries = data.libraries()?;
     let mut lines: Vec<BomLine> = Vec::new();
-    let (sourcing, unresolved) = resolve_generics(&built.sourcing, &built.rechecks, catalogs);
+    let (sourcing, unresolved) = resolve_generics(&built.sourcing, catalogs);
     // A part with `.assembly` `none` is on no bill of materials.
     for (part, source) in built
         .design
@@ -89,7 +89,7 @@ pub fn bom(
                     unresolved: unresolved
                         .iter()
                         .find(|u| u.refdes == part.refdes)
-                        .map(|u| u.message.clone()),
+                        .map(|u| u.checked(&built.rechecks, catalogs)),
                     hand_solder: source.assembly == Assembly::Hand,
                     via,
                 });

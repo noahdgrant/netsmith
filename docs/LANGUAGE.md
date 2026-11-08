@@ -2806,7 +2806,7 @@ Rules.
 
 - Order is the policy. The solver takes the first candidate that works, so the order of the rows in the catalog's file decides which part you get, and nothing sorts it. The JLCPCB catalogs list Basic parts first (no feeder fee), then ascending price, then ascending value. The result is the cheapest Basic part that works.
 - The check is the worst case. A requirement on a result must contain the whole range the inputs can produce, not a typical value.
-- Parts that share a relation are searched together, depth first, and a failed choice backtracks. The search goes back to the nearest part that a failure depends on (the parts whose values the failed relation is worked out from), not to the part just before it, and when it fails it names the parts the failure is made of and the relation that cannot be met, `no combination of candidates satisfies `a` and `z` together, whatever the other parts of the group are: the closest, ... fails because ...`, with no word about parts that played no part in it (ADR 0057). The search stops after 250,000 combinations and says so; it only reaches that when the failure depends on every part. Parts that read only the same stated value (a rail whose voltage the board states) and nothing else in common are searched apart, so a part that fails does not undo the picks of the others. Before a group is searched, a part that no candidate can serve whatever the others are (every candidate that fits is refused by a check that only its own choice decides; for a bank, at every count it may have, and a check on what a capacitor holds at its voltage counts as decided by the part that sets that voltage too, so it does not blame the bank) is named at once: `no resistor candidate satisfies t10: the closest of the 343 that fit, ... fails because ...` (ADR 0057).
+- Parts that share a relation are searched together, depth first, and a failed choice backtracks. The search goes back to the nearest part that a failure depends on (the parts whose values the failed relation is worked out from), not to the part just before it, and when it fails it names the parts the failure is made of and the relation that cannot be met, `no combination of candidates satisfies `a` and `z` together, whatever the other parts of the group are: the closest, ... fails because ...`, with no word about parts that played no part in it (ADR 0057). The search stops after 250,000 combinations, or after as much work as a board of its size allows (a trial of a large board costs more than one of a small board, so a large one stops sooner: both are counts, never seconds, so the answer is the same on every machine), and says so: `gave up after trying 250000 combinations of candidates for `a` and `m` and `z`; a bound reads values of all of them, so no part could be blamed alone. State a value for one of them, narrow a window that a bound on them reads, or split the group so that fewer parts share a bound`. It names the parts it was choosing together (the first twelve, and how many more), and a stop for work adds that it was the work and not the number of combinations. It only reaches that when the failure depends on every part (ADR 0057, 2026-11-07 amendment, issue #177). Parts that read only the same stated value (a rail whose voltage the board states) and nothing else in common are searched apart, so a part that fails does not undo the picks of the others. Before a group is searched, a part that no candidate can serve whatever the others are (every candidate that fits is refused by a check that only its own choice decides; for a bank, at every count it may have, and a check on what a capacitor holds at its voltage counts as decided by the part that sets that voltage too, so it does not blame the bank) is named at once: `no resistor candidate satisfies t10: the closest of the 343 that fit, ... fails because ...` (ADR 0057).
 - A column the design leaves alone takes the candidate's value, so `.r1: Resistor {}` works.
 - A part is picked after the parts whose picks decide what it needs, never by the order of names (below).
 - Narrow only what the design needs. A tighter range removes candidates.
@@ -3163,15 +3163,15 @@ When no candidate fits the constraints, the catalog has nothing:
 import std::parts::passive::Resistor
 
 board NoValue {
-    .r1: Resistor { .resistance &= 12.3kohm +/- 1% }
+    .r1: Resistor { .resistance &= 12.34kohm +/- 0.1% }
 }
 ```
 
 ```text
-error: the `resistor` catalog has nothing for `r1`, which needs resistance within 12.17kΩ..12.43kΩ
+error: the `resistor` catalog has nothing for `r1`, which needs resistance within 12.327kΩ..12.353kΩ
   --> main.nsm:4:5
   |
-4 |     .r1: Resistor { .resistance &= 12.3kohm +/- 1% }
+4 |     .r1: Resistor { .resistance &= 12.34kohm +/- 0.1% }
   |     ^^^^^^^^^^^^^
 ```
 
@@ -4729,7 +4729,7 @@ board Overload {
     .output: Rail {
         .pos.net &= "3V3"
         .neg.net &= "GND"
-        .current &= 0mA..150mA
+        .current &= 0mA..50A
     }
     .input ~ .stage.vin
     .stage.vout ~ .output
@@ -4743,7 +4743,7 @@ board Overload {
 ```
 
 ```text
-error: no `ldo` candidate satisfies `stage.regulator`: the closest of the 1 that fit, XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446, fails because -stage.regulator.vout.current must always be at most stage.regulator.max_current, but 0A..150mA is not always below 100mA (the currents on net `3V3` in `stage`: stage.regulator.vout.current (-150mA..0A) + -stage.vout.current (-150mA..0A) add up to zero; net `3V3`: output.current (0A..150mA) + stage.vout.current (-150mA..0A) add up to zero)
+error: no `ldo` candidate satisfies `stage.regulator`: the closest of the 1 that fit, XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446, fails because -stage.regulator.vout.current must always be at most stage.regulator.max_current, but 0A..50A is not always below 100mA (the currents on net `3V3` in `stage`: stage.regulator.vout.current (-50A..0A) + -stage.vout.current (-50A..0A) add up to zero; net `3V3`: output.current (0A..50A) + stage.vout.current (-50A..0A) add up to zero)
    --> std/parts/regulator.nsm:27:5
    |
 27 |     -.vout.current <= .max_current
@@ -4868,17 +4868,17 @@ board TooBig {
         .pos.net &= "3V3"
         .neg.net &= "GND"
     }
-    .bypass: Capacitor { .effective_capacitance >= 100uF }
+    .bypass: Capacitor { .effective_capacitance >= 10mF }
     .supply.pos ~> .bypass ~> .supply.neg
 }
 ```
 
 ```text
-error: no `capacitor` candidate satisfies `bypass`: the closest of the 31 that fit, 47uF 20% 6.3V X5R 0805 C16780, fails because bypass.effective_capacitance must always be at least 100uF, but 16.09uF..26.7uF is not always above 100uF (`bypass.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
+error: no `capacitor` candidate satisfies `bypass`: the closest of the 31 that fit, 47uF 20% 6.3V X5R 0805 C16780, fails because bypass.effective_capacitance must always be at least 10mF, but 16.09uF..26.7uF is not always above 10mF (`bypass.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
    --> main.nsm:10:26
    |
-10 |     .bypass: Capacitor { .effective_capacitance >= 100uF }
-   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 |     .bypass: Capacitor { .effective_capacitance >= 10mF }
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Dielectric and package size
@@ -4993,16 +4993,16 @@ board Short {
         .neg.net &= "GND"
     }
     .bulk: Capacitor { .count &= 1..2 }
-    .bulk.count * .bulk.effective_capacitance >= 60uF
+    .bulk.count * .bulk.effective_capacitance >= 10mF
     .supply.pos ~> .bulk ~> .supply.neg
 }
 ```
 
 ```text
-error: no `capacitor` candidate satisfies `bulk`: the closest of the 31 that fit, 2 x 47uF 20% 6.3V X5R 0805 C16780, fails because (bulk.count * bulk.effective_capacitance) must always be at least 60uF, but 21.86uF..32.81uF is not always above 60uF (`bulk.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
+error: no `capacitor` candidate satisfies `bulk`: the closest of the 31 that fit, 2 x 47uF 20% 6.3V X5R 0805 C16780, fails because (bulk.count * bulk.effective_capacitance) must always be at least 10mF, but 21.86uF..32.81uF is not always above 10mF (`bulk.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
    --> main.nsm:11:5
    |
-11 |     .bulk.count * .bulk.effective_capacitance >= 60uF
+11 |     .bulk.count * .bulk.effective_capacitance >= 10mF
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -6632,7 +6632,7 @@ board Standoff {
         .pos.net &= "VIN"
         .neg.net &= "GND"
     }
-    .tvs: Tvs { .protected_limit &= 20V }
+    .tvs: Tvs { .protected_limit &= 14V }
     .input.pos ~> .tvs ~> .input.neg
 }
 ```
@@ -6691,7 +6691,7 @@ The worst case is over the current the circuit really carries. `.led.current &= 
 
 A resistor whose current nothing states has no power to check, and the relation is listed as not evaluated. A catalog row with no `max_power` (an empty cell) is an unrated part: it is never offered to any design, and the "nothing for it" message says how many rows were left out for that reason. Fill the cell from the datasheet or leave the part out.
 
-A 10 ohm resistor that carries 1 A dissipates 10 W. The catalog's biggest 10 ohm part is rated 250 mW, so the solver names it as the closest and says by how much it fails:
+A 10 ohm resistor that carries 100 A dissipates 100 kW, far more than any surface-mount resistor is rated for. The catalog's biggest 10 ohm part is rated 250 mW, so the solver names it as the closest and says by how much it fails:
 
 ```nsm fails
 import std::parts::passive::Resistor
@@ -6699,13 +6699,13 @@ import std::parts::passive::Resistor
 board Hot {
     .r: Resistor {
         .resistance &= 10ohm +/- 1%
-        .current &= 1A
+        .current &= 100A
     }
 }
 ```
 
 ```text
-error: no `resistor` candidate satisfies `r`: the closest of the 3 that fit, 10Ω 1% 0805 C317221, fails because (r.drop * r.current) must always be at most r.max_power, but 9.9W..10.1W is not always below 250mW
+error: no `resistor` candidate satisfies `r`: the closest of the 3 that fit, 10Ω 1% 0805 C317221, fails because (r.drop * r.current) must always be at most r.max_power, but 99kW..101kW is not always below 250mW
    --> std/parts/passive.nsm:41:5
    |
 41 |     .drop * .current <= .max_power
@@ -6763,7 +6763,7 @@ board Adjustable {
 }
 ```
 
-The output fixes the ratio of the two resistors and not their size, so a board also says how much the divider may draw (`.current <= 1mA`); without it the resistors are unconstrained in size and the build says so (see "A value that nobody stated"). The solver picks 6.2 kohm over 2.2 kohm, whose worst-case output is 3.686 V to 3.914 V. The reference and the two resistors are each good to 1%, which already moves the output by about 2.5%, so asking for 2% either way cannot be met. The message names the closest pair and the range its output works out to:
+The output fixes the ratio of the two resistors and not their size, so a board also says how much the divider may draw (`.current <= 1mA`); without it the resistors are unconstrained in size and the build says so (see "A value that nobody stated"). The solver picks 6.2 kohm over 2.2 kohm, whose worst-case output is 3.686 V to 3.914 V. The reference alone is good to 1% and the two resistors add their tolerance to it, so asking for 1% either way cannot be met, whatever resistors a catalog holds. The message names the closest pair and the range its output works out to:
 
 ```nsm fails
 import std::parts::regulator::FeedbackDivider
@@ -6772,7 +6772,7 @@ import std::sources::Rail
 board TooTight {
     .divider: FeedbackDivider {
         .vref &= 1.0V +/- 1%
-        .vout &= 3.8V +/- 2%
+        .vout &= 3.8V +/- 1%
     }
     .out: Rail {
         .pos.net &= "VOUT"
@@ -6785,7 +6785,7 @@ board TooTight {
 ```
 
 ```text
-error: no combination of candidates satisfies `divider.rbottom` and `divider.rtop` together: the closest, divider.rbottom = 20kΩ 1% 0402 C25765 and divider.rtop = 56kΩ 1% 0603 C23206, fails because `divider.vout` must stay within 3.724V..3.876V, but (divider.vref * (1 + (divider.rtop.resistance / divider.rbottom.resistance))) works out to 3.707V..3.896V
+error: no combination of candidates satisfies `divider.rbottom` and `divider.rtop` together: the closest, divider.rbottom = 20kΩ 1% 0402 C25765 and divider.rtop = 56kΩ 1% 0603 C23206, fails because `divider.vout` must stay within 3.762V..3.838V, but (divider.vref * (1 + (divider.rtop.resistance / divider.rbottom.resistance))) works out to 3.707V..3.896V
    --> std/parts/regulator.nsm:77:5
    |
 77 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
@@ -6949,7 +6949,7 @@ board Budget {
         .neg.net &= "GND"
     }
     .load: Rail {
-        .current &= 100mA..3A
+        .current &= 100mA..1kA
         .pos.net &= "VFUSED"
         .neg.net &= "GND"
     }
@@ -6960,7 +6960,7 @@ board Budget {
 ```
 
 ```text
-error: no `fuse` candidate satisfies `fuse`: the closest of the 6 that fit, SMD1206P200TF 2A 6V resettable fuse 1206 C20988, fails because fuse.current must always be at most fuse.rated_current, but 100mA..3A is not always below 2A (the currents on net `VFUSED`: -fuse.current (100mA..3A) + load.current (100mA..3A) add up to zero; net `VIN`: fuse.current (100mA..3A) + input.current (-3A..-100mA) add up to zero)
+error: no `fuse` candidate satisfies `fuse`: the closest of the 6 that fit, SMD1206P200TF 2A 6V resettable fuse 1206 C20988, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 2A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
     --> std/parts/passive.nsm:248:5
     |
 248 |     .current <= .rated_current
@@ -6979,7 +6979,7 @@ board Saturates {
     }
     .l: Inductor {
         .inductance &= 2.2uH +/- 30%
-        .current &= 5A
+        .current &= 500A
     }
     .supply.pos ~ .l.a
     .supply.neg ~ .l.b
@@ -6987,7 +6987,7 @@ board Saturates {
 ```
 
 ```text
-error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758, fails because l.current must always be at most l.saturation_current, but 5A is not always below 3.6A
+error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758, fails because l.current must always be at most l.saturation_current, but 500A is not always below 3.6A
     --> std/parts/passive.nsm:170:5
     |
 170 |     .current <= .saturation_current
@@ -7011,8 +7011,8 @@ board Switch {
         .neg.net &= "GND"
     }
     .logic: Rail {
-        .voltage &= 1.2V +/- 5%
-        .pos.net &= "1V2"
+        .voltage &= 0.3V +/- 5%
+        .pos.net &= "V0V3"
         .neg.net &= "GND"
     }
     .q: NMosfet {
@@ -7026,7 +7026,7 @@ board Switch {
 ```
 
 ```text
-error: no `n_mosfet` candidate satisfies `q`: the closest of the 2 that fit, AO3400A 30V 5.7A N-MOSFET SOT-23 C20917, fails because q.gate_source_voltage must always be at least q.gate_threshold, but 1.14V..1.26V is not always above 650mV..1.45V
+error: no `n_mosfet` candidate satisfies `q`: the closest of the 2 that fit, AO3400A 30V 5.7A N-MOSFET SOT-23 C20917, fails because q.gate_source_voltage must always be at least q.gate_threshold, but 285mV..315mV is not always above 650mV..1.45V
    --> std/parts/transistor.nsm:41:5
    |
 41 |     .gate_source_voltage >= .gate_threshold
@@ -7061,7 +7061,7 @@ board HighSide {
 }
 ```
 
-The stresses are checked against the maxima as they are for an `NMosfet`. A 24 V supply puts 24 V between the gate and the source, which is more than this part's gate takes, and the design is refused with the numbers:
+The stresses are checked against the maxima as they are for an `NMosfet`. A 100 V supply puts 100 V across the drain and the source and between the gate and the source, which is more than this part takes, and the design is refused with the numbers:
 
 ```nsm fails catalogs=pfet
 import std::parts::transistor::PMosfet
@@ -7069,7 +7069,7 @@ import std::sources::Rail
 
 board HighSide {
     .supply: Rail {
-        .voltage &= 24V +/- 5%
+        .voltage &= 100V +/- 5%
         .pos.net &= "VIN"
         .neg.net &= "GND"
     }
@@ -7085,16 +7085,16 @@ board HighSide {
 ```
 
 ```text
-error: no `p_mosfet` candidate satisfies `q`: the closest of the 1 that fit, ZP-30 30V 4A P-MOSFET, fails because q.gate_source_voltage must always be at most q.max_gate_source_voltage, but 22.8V..25.2V is not always below 12V
-   --> std/parts/transistor.nsm:76:5
+error: no `p_mosfet` candidate satisfies `q`: the closest of the 1 that fit, ZP-30 30V 4A P-MOSFET, fails because q.drain_source_voltage must always be at most q.max_drain_source_voltage, but 95V..105V is not always below 30V
+   --> std/parts/transistor.nsm:75:5
    |
-76 |     .gate_source_voltage <= .max_gate_source_voltage
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+75 |     .drain_source_voltage <= .max_drain_source_voltage
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Capacitor voltage rating
 
-`Capacitor` does not state a derating: a design that wants one writes it, in the capacitor, in one line that does not name the rail, because `.bias` is the rail across it. Here every capacitor on a 12 V input is rated for 1.5 times the voltage it sees:
+`Capacitor` does not state a derating: a design that wants one writes it, in the capacitor, in one line that does not name the rail, because `.bias` is the rail across it. Here every capacitor on a 400 V input is rated for 1.5 times the voltage it sees:
 
 ```nsm fails
 import std::parts::passive::Capacitor
@@ -7102,7 +7102,7 @@ import std::sources::Rail
 
 board Derate {
     .input: Rail {
-        .voltage &= 12V +/- 5%
+        .voltage &= 400V +/- 5%
         .pos.net &= "VIN"
         .neg.net &= "GND"
     }
@@ -7115,7 +7115,7 @@ board Derate {
 ```
 
 ```text
-error: no `capacitor` candidate satisfies `bulk`: the closest of the 1 that fit, 47uF 20% 6.3V X5R 0805 C16780, fails because bulk.max_voltage must always be at least (bulk.bias * 1.5), but 6.3V is not always above 17.1V..18.9V
+error: no `capacitor` candidate satisfies `bulk`: the closest of the 1 that fit, 47uF 20% 6.3V X5R 0805 C16780, fails because bulk.max_voltage must always be at least (bulk.bias * 1.5), but 6.3V is not always above 570V..630V
    --> main.nsm:12:9
    |
 12 |         .max_voltage >= .bias * 1.5
@@ -7404,7 +7404,7 @@ board Sensing {
 }
 ```
 
-The same sensor on a 1.2 V rail drives a high of 1.0 V, which the translator does not read as a high for sure:
+The same sensor on a 0.5 V rail drives a high of 0.3 V, which the translator does not read as a high for sure:
 
 ```nsm fails catalogs=translator
 import src::sensor::Sensor
@@ -7413,8 +7413,8 @@ import std::sources::Rail
 
 board Sensing {
     .low: Rail {
-        .voltage &= 1.2V +/- 5%
-        .pos.net &= "1V2"
+        .voltage &= 0.5V +/- 5%
+        .pos.net &= "0V5"
         .neg.net &= "GND"
     }
     .high: Rail {
@@ -7425,7 +7425,7 @@ board Sensing {
     .sensor: Sensor
     .u: LevelTranslator {
         .vcc_peak &= 3.6V
-        .a_peak &= 1.32V
+        .a_peak &= 0.55V
         .output_current &= 1mA
     }
     .sensor.vdd ~ .low
@@ -7435,7 +7435,7 @@ board Sensing {
 ```
 
 ```text
-error: net `net-sensor.out.line`: `sensor.out.voh` is 940mV..1.06V but `u.a.vih` needs 1.1V: a high of 940mV is not always read as a high, which takes 1.1V
+error: net `net-sensor.out.line`: `sensor.out.voh` is 275mV..325mV but `u.a.vih` needs 1.1V: a high of 275mV is not always read as a high, which takes 1.1V
    --> main.nsm:16:5
    |
 16 |     .sensor: Sensor
@@ -7445,6 +7445,8 @@ error: net `net-sensor.out.line`: `sensor.out.voh` is 940mV..1.06V but `u.a.vih`
 ### Logic levels of a bus
 
 Every bus interface but `Usb2` has `.levels`, an interface `std::logic::Levels` with the rail `.reference` and the four voltages `.vih`, `.vil`, `.voh` and `.vol` of a `Logic` (ADR 0064). A datasheet gives one set for the supply of a group of pins, so a part states them once for the interface, in the way it states a `Logic`: `.spi.levels.reference ~ .vdd`, `.spi.levels.vih &= 0.7 * .vdd.voltage`, and the absolute maximum of an input on the pin, `.spi.sclk.abs_max &= 2.1V`. Which lines a part drives and which it reads is what its pin table says (`output` and `tri_state` drive, `input` reads, `bidirectional` does both), so `voh` and `vol` judge the lines it drives and `vih` and `vil` the lines it reads. The checks are those of the previous section, with the same numbers and the same notes: a pair of pins of which neither states a level is not looked at, and one that states them on one side only is a note. A part that has two supplies for two groups of pins states two interfaces.
+
+The reference rail is a reference for the checker, not a load: `Levels` states `.reference.current &= 0A` itself, so a part that joins it to its supply (`.spi.levels.reference ~ .vdd`) does not state a current for it, and the net of that supply keeps no term that nobody can settle. The part's whole draw is `.vdd.current`.
 
 `~` between two bus interfaces joins no levels: they belong to two parts, and the reference rail of each is that part's supply, so a join would be a short between a 3.3 V net and a 1.8 V net.
 

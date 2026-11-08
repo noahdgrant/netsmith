@@ -17,7 +17,7 @@ mod common;
 /// The violations ERC finds in a schematic, as `type: description`, or `None` if KiCad is
 /// not here.
 fn erc(name: &str, schematic: &str) -> Option<Vec<String>> {
-    let Some(cli) = KicadCliExe::locate() else {
+    let Some(cli) = KicadCliExe::locate_runnable() else {
         eprintln!("skipped: no kicad-cli (set KICAD_CLI, or install KiCad)");
         return None;
     };

@@ -98,7 +98,7 @@ fn the_holes_of_the_board_are_all_in_the_drill_files() {
 
 #[test]
 fn the_board_agrees_with_kicads_own_plot() {
-    let Some(kicad) = KicadCliExe::locate() else {
+    let Some(kicad) = KicadCliExe::locate_runnable() else {
         eprintln!("skipped: no KiCad");
         return;
     };

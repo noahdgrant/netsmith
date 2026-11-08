@@ -383,7 +383,7 @@ fn the_scaffolded_project_builds() {
 
 #[test]
 fn the_scaffolded_project_passes_fab() {
-    let Some(kicad) = KicadCliExe::locate() else {
+    let Some(kicad) = KicadCliExe::locate_runnable() else {
         return;
     };
     let root = scaffold("fabme");

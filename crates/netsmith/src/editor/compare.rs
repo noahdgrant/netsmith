@@ -755,7 +755,7 @@ fn board_digest(
     let trace = &built.trace;
     let model = &trace.model;
     let sourcing = match catalogs {
-        Some(catalogs) => resolve_generics(&built.sourcing, &built.rechecks, catalogs).0,
+        Some(catalogs) => resolve_generics(&built.sourcing, catalogs).0,
         None => built.sourcing.clone(),
     };
     let at = |inst| {

@@ -416,7 +416,7 @@ fn a_board_with_the_imported_outline_goes_through_fab_with_the_holes_where_the_c
     );
     fs::write(dir.join("case.pcb.toml"), OUTLINE_AND_POURS_LAYOUT).unwrap();
 
-    let cli = KicadCliExe::locate();
+    let cli = KicadCliExe::locate_runnable();
     let made = fab_with_options(
         "case.nsm",
         OUTLINE_AND_POURS,
