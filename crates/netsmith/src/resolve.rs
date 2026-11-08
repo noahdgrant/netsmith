@@ -6,11 +6,13 @@
 //! has no stock passed over. A part no row stands for is **unresolved**, with the nearest
 //! rows, and `fab` refuses it by name.
 
+use std::sync::{Arc, OnceLock};
+
 use netsmith_core::Part;
 use netsmith_lower::Sourced;
 use netsmith_solve::{CHANGE_THE_VALUE, Catalogs, Solution, alternatives, resolve};
 
-/// The most times a build solves a board again to check alternatives. Each unresolved part
+/// The most times the board is solved again to check alternatives. Each unresolved part
 /// takes one solve for each of its (up to three) alternatives; parts past the limit are
 /// listed without the check, as they were before it existed.
 pub const MAX_RECHECKS: usize = 30;
@@ -35,56 +37,142 @@ impl Recheck {
     }
 }
 
-/// For each generic part of a solved board that no row stands for, solve the board again
-/// with the part held to each of its nearest alternatives, and report whether the checks
-/// still pass. `again` solves the same board with the catalogs it is given (one with the
-/// part pinned); `parts` are the board's parts, to name each by its reference designator.
-pub fn recheck_alternatives(
-    solution: &Solution,
-    parts: &[Part],
-    catalogs: &Catalogs,
-    again: &dyn Fn(&Catalogs) -> Solution,
-) -> Vec<Recheck> {
-    let stock = |lcsc: &str| catalogs.availability().and_then(|a| a.stock(lcsc));
-    let mut out = Vec::new();
-    let mut solves = 0;
-    for pick in &solution.picks {
-        let Some(generic) = pick.generic.as_ref().filter(|_| pick.lcsc.is_none()) else {
-            continue;
-        };
-        if resolve(generic, catalogs, &stock).is_ok() {
-            continue;
-        }
-        let path = solution.model.path_of(pick.part);
-        let Some(part) = parts.iter().find(|p| p.path == path) else {
-            continue;
-        };
-        for alt in alternatives(generic, catalogs) {
-            if solves >= MAX_RECHECKS {
-                return out;
-            }
-            solves += 1;
-            let solved = again(&catalogs.with_pin(&path, &alt.name));
-            netsmith_core::job::report("alternative parts re-solved", solves as u64, None);
-            let outcome = match solved.diagnostics.first() {
-                None => Ok(()),
-                Some(d) => {
-                    let line = d.message.lines().next().unwrap_or_default();
-                    // "no `x` candidate satisfies `p`: the closest ..., fails because <why>"
-                    Err(line
-                        .split_once(" fails because ")
-                        .map_or(line, |(_, why)| why)
-                        .to_string())
-                }
+/// The alternatives of a board's unresolved generic parts, and the board's checks run again
+/// with each (ADR 0047). What to re-solve is planned when the board is built, and costs no
+/// solve; the solves are made when the first caller asks for the result (`get`), because the
+/// only places that show it are the unresolved message of `fab` and of the bill of materials.
+/// A build that shows neither (`netsmith build`, the editor's analysis) solves the board once.
+#[derive(Clone, Default)]
+pub struct Rechecks {
+    plan: Option<Arc<Plan>>,
+}
+
+/// The alternatives to solve for, and the solve that does it.
+struct Plan {
+    /// One row for each alternative to check, in the order of the board's picks, with the
+    /// reference designator and path of the part it stands in for.
+    jobs: Vec<Job>,
+    /// Solves the same board with the catalogs it is given.
+    again: Box<dyn Fn(&Catalogs) -> Solution + Send + Sync>,
+    done: OnceLock<Vec<Recheck>>,
+}
+
+struct Job {
+    refdes: String,
+    path: String,
+    alternative: String,
+}
+
+impl std::fmt::Debug for Rechecks {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Rechecks")
+            .field("planned", &self.planned())
+            .field("solved", &self.is_solved())
+            .finish()
+    }
+}
+
+impl Rechecks {
+    /// No part has an alternative to check.
+    pub fn none() -> Self {
+        Self::default()
+    }
+
+    /// For each generic part of a solved board that no row stands for, plan a solve of the
+    /// board with the part held to each of its nearest alternatives. `parts` are the board's
+    /// parts, to name each by its reference designator. `again` makes the function that
+    /// solves the same board with the catalogs it is given (one with the part pinned); it is
+    /// called only if some part is unresolved, so a board that has none is not copied.
+    pub fn plan(
+        solution: &Solution,
+        parts: &[Part],
+        catalogs: &Catalogs,
+        again: impl FnOnce() -> Box<dyn Fn(&Catalogs) -> Solution + Send + Sync>,
+    ) -> Self {
+        let stock = |lcsc: &str| catalogs.availability().and_then(|a| a.stock(lcsc));
+        let mut jobs = Vec::new();
+        'picks: for pick in &solution.picks {
+            let Some(generic) = pick.generic.as_ref().filter(|_| pick.lcsc.is_none()) else {
+                continue;
             };
-            out.push(Recheck {
-                refdes: part.refdes.clone(),
-                alternative: alt.name,
-                outcome,
-            });
+            if resolve(generic, catalogs, &stock).is_ok() {
+                continue;
+            }
+            let path = solution.model.path_of(pick.part);
+            let Some(part) = parts.iter().find(|p| p.path == path) else {
+                continue;
+            };
+            for alt in alternatives(generic, catalogs) {
+                if jobs.len() >= MAX_RECHECKS {
+                    break 'picks;
+                }
+                jobs.push(Job {
+                    refdes: part.refdes.clone(),
+                    path: path.clone(),
+                    alternative: alt.name,
+                });
+            }
+        }
+        if jobs.is_empty() {
+            return Self::none();
+        }
+        Self {
+            plan: Some(Arc::new(Plan {
+                jobs,
+                again: again(),
+                done: OnceLock::new(),
+            })),
         }
     }
-    out
+
+    /// How many alternatives will be (or were) solved for.
+    pub fn planned(&self) -> usize {
+        self.plan.as_ref().map_or(0, |p| p.jobs.len())
+    }
+
+    /// Whether the solves have been made.
+    pub fn is_solved(&self) -> bool {
+        self.plan.as_ref().is_some_and(|p| p.done.get().is_some())
+    }
+
+    /// The result of each alternative's re-check: the first call makes the solves, each with
+    /// one row of `catalogs` (the project's, as the build had them) pinned; a later call reads
+    /// what it made.
+    pub fn get(&self, catalogs: &Catalogs) -> &[Recheck] {
+        match &self.plan {
+            None => &[],
+            Some(plan) => plan.done.get_or_init(|| plan.solve(catalogs)),
+        }
+    }
+}
+
+impl Plan {
+    fn solve(&self, catalogs: &Catalogs) -> Vec<Recheck> {
+        self.jobs
+            .iter()
+            .enumerate()
+            .map(|(n, job)| {
+                let solved = (self.again)(&catalogs.with_pin(&job.path, &job.alternative));
+                netsmith_core::job::report("alternative parts re-solved", n as u64 + 1, None);
+                let outcome = match solved.diagnostics.first() {
+                    None => Ok(()),
+                    Some(d) => {
+                        let line = d.message.lines().next().unwrap_or_default();
+                        // "no `x` candidate satisfies `p`: the closest ..., fails because <why>"
+                        Err(line
+                            .split_once(" fails because ")
+                            .map_or(line, |(_, why)| why)
+                            .to_string())
+                    }
+                };
+                Recheck {
+                    refdes: job.refdes.clone(),
+                    alternative: job.alternative.clone(),
+                    outcome,
+                }
+            })
+            .collect()
+    }
 }
 
 /// A generic part that no row stands for.
@@ -96,9 +184,17 @@ pub struct Unresolved {
 }
 
 impl Unresolved {
-    /// `R3: unresolved: ...`
-    pub fn line(&self) -> String {
-        format!("{}: {}", self.refdes, self.message)
+    /// `R3: unresolved: ...`, with the check of each alternative (this makes the solves of
+    /// `rechecks` if they are not made yet).
+    pub fn line(&self, rechecks: &Rechecks, catalogs: &Catalogs) -> String {
+        format!("{}: {}", self.refdes, self.checked(rechecks, catalogs))
+    }
+
+    /// The message with the result of each alternative's re-check put before the closing
+    /// advice. The part with no alternative to check has the message as it is, and the solves
+    /// are not made for it.
+    pub fn checked(&self, rechecks: &Rechecks, catalogs: &Catalogs) -> String {
+        with_rechecks(&self.message, &self.refdes, rechecks, catalogs)
     }
 }
 
@@ -107,7 +203,6 @@ impl Unresolved {
 /// about is the catalogs' `Availability`, if the project has one.
 pub fn resolve_generics(
     sourcing: &[Sourced],
-    rechecks: &[Recheck],
     catalogs: &Catalogs,
 ) -> (Vec<Sourced>, Vec<Unresolved>) {
     let stock = |lcsc: &str| catalogs.availability().and_then(|a| a.stock(lcsc));
@@ -127,7 +222,7 @@ pub fn resolve_generics(
                 }
                 Err(message) => unresolved.push(Unresolved {
                     refdes: s.refdes.clone(),
-                    message: with_rechecks(message, &s.refdes, rechecks),
+                    message,
                 }),
             }
             s
@@ -137,20 +232,21 @@ pub fn resolve_generics(
 }
 
 /// The message of an unresolved part with the result of each alternative's re-check put
-/// before the closing advice.
-fn with_rechecks(message: String, refdes: &str, rechecks: &[Recheck]) -> String {
+/// before the closing advice. The re-checks are made only if the part has an alternative.
+fn with_rechecks(message: &str, refdes: &str, rechecks: &Rechecks, catalogs: &Catalogs) -> String {
+    if rechecks.planned() == 0 {
+        return message.to_string();
+    }
     let mine: Vec<String> = rechecks
+        .get(catalogs)
         .iter()
         .filter(|r| r.refdes == refdes)
         .map(Recheck::phrase)
         .collect();
     if mine.is_empty() {
-        return message;
+        return message.to_string();
     }
-    let head = message
-        .strip_suffix(CHANGE_THE_VALUE)
-        .unwrap_or(&message)
-        .to_string();
+    let head = message.strip_suffix(CHANGE_THE_VALUE).unwrap_or(message);
     format!(
         "{head} Checked again with each alternative in this part's place, its stated value left out: {}.{CHANGE_THE_VALUE}",
         mine.join("; ")
@@ -219,7 +315,7 @@ mod tests {
         let mut numbered = generic_part("R2");
         numbered.lcsc = Some("C900099".into());
         let (resolved, unresolved) =
-            resolve_generics(&[generic_part("R1"), numbered], &[], &catalogs(None));
+            resolve_generics(&[generic_part("R1"), numbered], &catalogs(None));
         assert!(unresolved.is_empty());
         assert_eq!(resolved[0].lcsc.as_deref(), Some("C900001"));
         assert_eq!(resolved[0].mpn.as_deref(), Some("ZZR-A"));
@@ -230,23 +326,23 @@ mod tests {
     #[test]
     fn a_row_with_no_stock_is_passed_over_and_unknown_stock_is_not() {
         let sold_out = Stock(vec![("C900001", 0)]);
-        let (resolved, _) = resolve_generics(&[generic_part("R1")], &[], &catalogs(Some(sold_out)));
+        let (resolved, _) = resolve_generics(&[generic_part("R1")], &catalogs(Some(sold_out)));
         assert_eq!(resolved[0].lcsc.as_deref(), Some("C900002"));
         // The provider knows nothing of either row: Basic first, as with no provider.
         let other = Stock(vec![("C900077", 0)]);
-        let (resolved, _) = resolve_generics(&[generic_part("R1")], &[], &catalogs(Some(other)));
+        let (resolved, _) = resolve_generics(&[generic_part("R1")], &catalogs(Some(other)));
         assert_eq!(resolved[0].lcsc.as_deref(), Some("C900001"));
     }
 
     #[test]
     fn when_every_fitting_row_is_sold_out_the_part_is_unresolved_and_named() {
         let all_out = Stock(vec![("C900001", 0), ("C900002", 0)]);
-        let (resolved, unresolved) =
-            resolve_generics(&[generic_part("R7")], &[], &catalogs(Some(all_out)));
+        let catalogs = catalogs(Some(all_out));
+        let (resolved, unresolved) = resolve_generics(&[generic_part("R7")], &catalogs);
         assert_eq!(resolved[0].lcsc, None);
         assert_eq!(unresolved.len(), 1);
         assert_eq!(unresolved[0].refdes, "R7");
-        let line = unresolved[0].line();
+        let line = unresolved[0].line(&Rechecks::none(), &catalogs);
         assert!(
             line.starts_with("R7: unresolved: no row of the `resistor` catalog"),
             "{line}"
