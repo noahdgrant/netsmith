@@ -30,7 +30,7 @@ fn project(label: &str, resistance: &str) -> TempDir {
     fs::create_dir_all(root.join("catalogs")).unwrap();
     fs::write(
         root.join("netsmith.toml"),
-        "[project]\nname = \"own\"\nseries = \"E96\"\ncatalogs = [\"catalogs/resistor.csv\"]\n",
+        "[project]\nname = \"own\"\nseries = \"E96\"\n",
     )
     .unwrap();
     fs::write(root.join("catalogs/resistor.csv"), OWN_CATALOG).unwrap();
