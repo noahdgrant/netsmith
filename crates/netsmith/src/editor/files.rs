@@ -59,7 +59,7 @@ impl Workspace {
     /// manifest and the standard library.
     fn entries(&self) -> Vec<Entry> {
         let mut entries: Vec<Entry> = self
-            .target
+            .target()
             .files
             .iter()
             .map(|f| Entry {
@@ -70,7 +70,7 @@ impl Workspace {
                 readonly: false,
             })
             .collect();
-        if let Some(project) = &self.target.project {
+        if let Some(project) = &self.target().project {
             for module in project.modules().unwrap_or_default() {
                 if entries
                     .iter()
@@ -154,7 +154,7 @@ impl Workspace {
         // What a declaration's type is, for the outline: the modules of the project and the
         // standard library, read again as `build` reads them. Without them (a module that
         // cannot be read) only the definitions of a file itself resolve.
-        let loader = self.target.loader().ok();
+        let loader = self.target().loader().ok();
         let kinds = loader.as_ref().map_or_else(Kinds::alone, Kinds::new);
         let files = self
             .entries()
@@ -174,8 +174,8 @@ impl Workspace {
             })
             .collect();
         Project {
-            title: self.target.title.clone(),
-            has_manifest: self.target.project.is_some(),
+            title: self.target().title.clone(),
+            has_manifest: self.target().project.is_some(),
             kicad: kicad.is_some(),
             files,
             folders: self.folders(),
@@ -189,7 +189,7 @@ impl Workspace {
 
     /// The project folder, absolute: the manifest's, or for a single file the one it is in.
     fn root(&self) -> Option<PathBuf> {
-        let folder = match (&self.target.project, self.target.files.first()) {
+        let folder = match (&self.target().project, self.target().files.first()) {
             (Some(project), _) => project.root.clone(),
             (None, Some(file)) => file.path.parent()?.to_path_buf(),
             (None, None) => return None,

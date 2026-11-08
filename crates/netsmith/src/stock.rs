@@ -1,0 +1,56 @@
+//! The note for a part the solver picked although a file says it is out of stock (issue #176).
+//!
+//! The solver does not read stock (ADR 0047) and the pick is the same with or without this
+//! note. After lowering, when each part has its reference designator, a part whose catalog row
+//! states a `stock` of 0, or whose LCSC number the standard `considered.csv` records as out of
+//! stock when it was read, gets one line among the board's notes. An empty `stock` cell states
+//! nothing and gets none. The editor shows the same line.
+
+use netsmith_lower::Lowered;
+use netsmith_solve::{Catalogs, SoldOut};
+
+/// The notes of a lowered board, one for each part (a bank is one part) that a file says is
+/// out of stock, in the order of the design.
+pub(crate) fn notes(lowered: &Lowered, catalogs: &Catalogs) -> Vec<String> {
+    // Each part of a bank has the same pick: one note, naming every reference designator.
+    let mut found: Vec<(netsmith_check::InstId, Vec<&str>, usize, SoldOut)> = Vec::new();
+    for (i, (sourced, origin)) in lowered.sourcing.iter().zip(&lowered.origins).enumerate() {
+        if let Some(entry) = found.iter_mut().find(|(o, ..)| o == origin) {
+            entry.1.push(&sourced.refdes);
+            continue;
+        }
+        let Some(lcsc) = sourced.lcsc.as_deref() else {
+            continue;
+        };
+        if let Some(why) = catalogs.sold_out(lcsc) {
+            found.push((*origin, vec![&sourced.refdes], i, why));
+        }
+    }
+    found
+        .into_iter()
+        .map(|(_, refdes, i, why)| {
+            let sourced = &lowered.sourcing[i];
+            let lcsc = sourced.lcsc.as_deref().unwrap_or_default();
+            let part = match sourced.mpn.as_deref() {
+                Some(mpn) => format!("{lcsc} ({mpn})"),
+                None => lcsc.to_string(),
+            };
+            let path = &lowered.design.parts[i].path;
+            let path = path.split('#').next().unwrap_or(path);
+            let reason = match why {
+                SoldOut::Stated { at } => {
+                    format!("its catalog row ({at}) states a stock of 0")
+                }
+                SoldOut::Considered => "data/jlcpcb/considered.csv records it as out of stock \
+                     when it was read, and a catalog of this project offers it"
+                    .to_string(),
+            };
+            format!(
+                "{} (`{path}`) is {part}, and {reason}: the solver does not read stock, so it \
+                 picked the part; choose another row of the catalog or state a different value, \
+                 and read the supplier's stock before ordering",
+                refdes.join(", ")
+            )
+        })
+        .collect()
+}

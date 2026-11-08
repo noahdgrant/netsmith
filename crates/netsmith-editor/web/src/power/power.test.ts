@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Draw, Edge, PowerNode, PowerTree, Range } from '../api';
 import { DOTS, amps, ampsText, rangeText, voltRangeText, voltsText } from './format';
 import { type Item, layoutTree } from '../flow/layout';
-import { TOP, issuesOf, levels, loadOf, modelOf, splitLabel, stageKind } from './model';
+import { TOP, levels, loadOf, modelOf, splitLabel, stageKind } from './model';
 import { downstream, move, trace, upstream } from '../flow/select';
 
 const range = (lo: number, hi: number): Range => ({ lo, hi, text: `${lo}..${hi}` });
@@ -72,7 +72,7 @@ describe('a rail', () => {
     ...Array.from({ length: 22 }, (_, i) => draw(`mcu.pin${String(i).padStart(2, '0')}_ref`, 0, 0)),
     draw('sense.power', 0, null),
   ];
-  const tree: PowerTree = { title: 't', nodes: [node('V3V3', many, { demand: range(0, 0.1), capacity: range(0, 0.2), budget: 'within' })], edges: [], stages: [] };
+  const tree: PowerTree = { title: 't', nodes: [node('V3V3', many, { demand: range(0, 0.1), capacity: range(0, 0.2), budget: 'within' })], edges: [], stages: [], issues: [] };
   const rail = modelOf(tree).rails[0];
   it('lists the five heaviest, then the rest, and the zeros apart', () => {
     expect(rail.top.map((l) => l.who)).toEqual(['p6.vdd', 'p5.vdd', 'p4.vdd', 'p3.vdd', 'p2.vdd']);
@@ -83,7 +83,7 @@ describe('a rail', () => {
     expect(rail.loads).toHaveLength(30);
   });
   it('orders equal currents by name', () => {
-    const t: PowerTree = { title: '', nodes: [node('A', [draw('z.p', 0, 1), draw('a.p', 0, 1), draw('m.p', 0, 2)])], edges: [], stages: [] };
+    const t: PowerTree = { title: '', nodes: [node('A', [draw('z.p', 0, 1), draw('a.p', 0, 1), draw('m.p', 0, 2)])], edges: [], stages: [], issues: [] };
     expect(modelOf(t).rails[0].top.map((l) => l.who)).toEqual(['m.p', 'a.p', 'z.p']);
   });
   it('says how full its supply is', () => {
@@ -105,6 +105,7 @@ describe('stages', () => {
       { label: 'protect (ProtectionStage)', efficiency: null, efficiencyUnsettled: false },
       { label: 'buck (BuckConverter)', efficiency: range(0.86, 0.94), efficiencyUnsettled: false },
     ],
+    issues: [],
   };
   const m = modelOf(tree);
   it('has a kind and a title that says what it makes', () => {
@@ -134,61 +135,38 @@ describe('stages', () => {
 });
 
 describe('issues', () => {
+  // The server works the issues out (`issues_of` in crates/netsmith/src/editor/power.rs, with its
+  // tests); the page draws them, and does not look at the rails for more.
+  const at = { file: 'src/main.nsm', line: 12, column: 1, endLine: 12, endColumn: 9 };
   const tree: PowerTree = {
     title: '',
     nodes: [
       node('OVER', [draw('a.p', 0, 0.3)], { demand: range(0, 0.3), capacity: range(0, 0.1), budget: 'over', supplies: [draw('s', -0.3, -0.1)] }),
       node('ORPHAN', [draw('b.p', 0, 0.01)], { demand: range(0, 0.01) }),
-      node('UNSURE', [draw('c.p', 0, null)], { budget: 'unknown', supplies: [draw('s2', -1, -0.1)] }),
       node('FINE', [draw('d.p', 0, 0.01)], { demand: range(0, 0.01), supplies: [draw('s3', -0.1, -0.01)] }),
     ],
     edges: [],
     stages: [],
+    issues: [
+      { id: 'OVER', severity: 'error', subject: 'OVER', text: 'can draw up to 300 mA, more than the 100 mA its supply can give', at },
+      { id: 'ORPHAN', severity: 'note', subject: 'ORPHAN', text: 'has no source: nothing supplies it' },
+      { id: 'stage:x (T)', severity: 'note', subject: 'x', text: 'has an efficiency the solver has not settled', at },
+    ],
   };
   const m = modelOf(tree);
-  it('lists an overdrawn supply, a rail with no source and an unsettled current, worst first', () => {
-    expect(m.issues.map((i) => [i.where, i.level])).toEqual([
-      ['OVER', 'bad'],
-      ['ORPHAN', 'warn'],
-      ['UNSURE', 'warn'],
+  it("draws the server's issues as they come: an error is red, a note amber", () => {
+    expect(m.issues.map((i) => [i.id, i.where, i.level, i.at])).toEqual([
+      ['OVER', 'OVER', 'bad', at],
+      ['ORPHAN', 'ORPHAN', 'warn', null],
+      ['stage:x (T)', 'x', 'warn', at],
     ]);
     expect(m.issues[0].text).toContain('300 mA');
     expect(m.issues[0].text).toContain('100 mA');
   });
-  it('lists a converter whose efficiency is not settled', () => {
-    const rails = m.rails;
-    const stage = { id: 'stage:x', name: 'x', type: 'T', kind: 'buck' as const, title: '', from: [], to: [], at: null, efficiency: null, efficiencyUnknown: true };
-    const found = issuesOf(rails, [stage]);
-    expect(found.some((i) => i.id === 'stage:x' && i.level === 'warn' && i.text.includes('efficiency'))).toBe(true);
-  });
-  it("carries the server's place for the node, and the first draw's when the server sent none", () => {
-    const here = { file: 'src/main.nsm', line: 12, column: 1, endLine: 12, endColumn: 9 };
-    const there = { file: 'src/power.nsm', line: 3, column: 1, endLine: 3, endColumn: 9 };
-    const withAt = modelOf({
-      title: '',
-      nodes: [node('ORPHAN', [{ ...draw('b.p', 0, 0.01), at: there }], { demand: range(0, 0.01), at: here })],
-      edges: [],
-      stages: [],
-    });
-    expect(withAt.issues[0].at).toEqual(here);
-    const without = modelOf({
-      title: '',
-      nodes: [node('ORPHAN', [{ ...draw('b.p', 0, 0.01), at: there }], { demand: range(0, 0.01) })],
-      edges: [],
-      stages: [],
-    });
-    expect(without.issues[0].at).toEqual(there);
-  });
-  it("a converter's issue is at its declaration, from the stage the server lists", () => {
-    const at = { file: 'src/main.nsm', line: 30, column: 1, endLine: 30, endColumn: 5 };
-    const model = modelOf({
-      title: '',
-      nodes: [node('IN', [], { supplies: [draw('s', -1, -0.1)] }), node('OUT', [draw('l.p', 0, 0.1)], { supplies: [draw('x', -1, -0.1)] })],
-      edges: [edge('IN', 'OUT', 'buck (BuckConverter)')],
-      stages: [{ label: 'buck (BuckConverter)', efficiency: range(0.8, 0.9), efficiencyUnsettled: true, at }],
-    });
-    const found = model.issues.find((i) => i.id.startsWith('stage:'));
-    expect(found?.at).toEqual(at);
+  it('does not find an issue of its own in a rail with no source or no settled current', () => {
+    const none = modelOf({ ...tree, issues: [] });
+    expect(none.issues).toEqual([]);
+    expect(none.rails.find((r) => r.id === 'ORPHAN')!.sourced).toBe(false);
   });
   it('gives each node its worst level', () => {
     const l = levels([...m.issues, { id: 'OVER', level: 'warn', where: 'OVER', text: 'x', at: null }]);

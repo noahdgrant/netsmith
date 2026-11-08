@@ -213,6 +213,7 @@ fn problem(severity: Severity, p: &crate::Problem) -> Problem {
             Stage::Solve => ProblemStage::Solve,
             Stage::Lower => ProblemStage::Lower,
             Stage::Guideline => ProblemStage::Guideline,
+            Stage::Power => ProblemStage::Power,
         }),
         board: p.board.clone(),
         path: p.path.clone(),
@@ -398,14 +399,21 @@ impl Workspace {
         live: Option<Observer>,
     ) -> Snapshot {
         let mut snapshot = Snapshot::default();
-        let loader = match self.target.loader_with(unsaved) {
+        // The manifest on disk cannot be read: nothing is built from it, as for `netsmith
+        // build`, and its own message is the problem, until it is mended.
+        if let Some(e) = self.manifest_error() {
+            snapshot.problems.push(general(e));
+            return snapshot;
+        }
+        let target = self.target();
+        let loader = match target.loader_with(unsaved) {
             Ok(loader) => loader,
             Err(e) => {
                 snapshot.problems.push(general(e));
                 return snapshot;
             }
         };
-        let catalogs = match self.target.catalogs() {
+        let catalogs = match target.catalogs() {
             Ok(catalogs) => catalogs,
             Err(e) => {
                 snapshot.problems.push(general(e));
@@ -413,10 +421,10 @@ impl Workspace {
             }
         };
         let libraries = Arc::new(Libraries::for_project(
-            self.target.project.as_ref().map(|p| p.root.as_path()),
+            target.project.as_ref().map(|p| p.root.as_path()),
         ));
-        let files = self.target.files.len() as u32;
-        for (index, file) in self.target.files.iter().enumerate() {
+        let files = target.files.len() as u32;
+        for (index, file) in target.files.iter().enumerate() {
             observe(AnalysisEvent::Progress {
                 stage: "check".to_string(),
                 board: file.name.clone(),
@@ -596,6 +604,9 @@ impl Workspace {
                         for guideline in &built.guidelines {
                             snapshot.problems.push(guideline_problem(&built, guideline));
                         }
+                        for issue in &built.power {
+                            snapshot.problems.push(power_problem(&built, issue));
+                        }
                         snapshot.boards.push((
                             Arc::new(BoardData {
                                 file: file.name.clone(),
@@ -663,7 +674,7 @@ impl Workspace {
                 }
             }
         }
-        self.check_modules(unsaved, &loader, &mut snapshot, observe);
+        self.check_modules(&target, unsaved, &loader, &mut snapshot, observe);
         // A mistake in a module shows once, however many files import it.
         let mut seen = Vec::new();
         snapshot.problems.retain(|p| {
@@ -677,12 +688,13 @@ impl Workspace {
 
     fn check_modules(
         &self,
+        target: &crate::project::Target,
         unsaved: &HashMap<PathBuf, String>,
         loader: &Loader,
         snapshot: &mut Snapshot,
         observe: &dyn Fn(AnalysisEvent),
     ) {
-        let Some(project) = &self.target.project else {
+        let Some(project) = &target.project else {
             return;
         };
         let Ok(modules) = project.modules() else {
@@ -691,8 +703,7 @@ impl Workspace {
         let modules: Vec<_> = modules
             .into_iter()
             .filter(|module| {
-                !self
-                    .target
+                !target
                     .files
                     .iter()
                     .any(|f| same_file(&f.path, &module.path))
@@ -1020,6 +1031,22 @@ fn guideline_problem(built: &Built, guideline: &netsmith_lower::guidelines::Guid
             .at
             .map(|inst| model.path_of(inst))
             .filter(|p| !p.is_empty()),
+    }
+}
+
+/// What the power model leaves unsettled (issue #187) is a note, at the rail or converter it is
+/// about. A rail that can draw more than its supply gives stops the build, so it is an error
+/// of the build and not one of these.
+fn power_problem(built: &Built, issue: &crate::PowerIssue) -> Problem {
+    let message = format!("{}: {} {}", built.label(), issue.subject, issue.text);
+    Problem {
+        severity: Severity::Note,
+        rendered: format!("note: {message}\n"),
+        message,
+        at: issue.at.clone(),
+        stage: Some(ProblemStage::Power),
+        board: Some(built.label()),
+        path: Some(issue.subject.clone()),
     }
 }
 

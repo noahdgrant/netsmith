@@ -5,7 +5,7 @@ export type Location = { file: string, line: number, column: number, endLine: nu
 
 export type Severity = "error" | "warning" | "note";
 
-export type ProblemStage = "syntax" | "check" | "solve" | "lower" | "guideline" | "layout";
+export type ProblemStage = "syntax" | "check" | "solve" | "lower" | "guideline" | "power" | "layout";
 
 export type Problem = { severity: Severity, 
 /**
@@ -471,7 +471,40 @@ export type PowerTree = { title: string, nodes: Array<PowerNode>, edges: Array<E
 /**
  * The converters of the edges, with the efficiency of each that has one.
  */
-stages: Array<Stage>, };
+stages: Array<Stage>, 
+/**
+ * The rails and converters with trouble, worst first: what `netsmith build` and the
+ * analysis report as the `power` stage. Computed here, not by the page.
+ */
+issues: Array<PowerIssue>, };
+
+export type PowerIssue = { 
+/**
+ * The node it is on: a rail's id, or `stage:<label>` for a converter.
+ */
+id: string, 
+/**
+ * `Error` for an overdrawn supply, `Note` for the rest.
+ */
+severity: Severity, 
+/**
+ * What it is about: the rail's net (`V3V3`), or the converter's name (`ldo`).
+ */
+subject: string, 
+/**
+ * What is wrong, to read after the subject: `has no source: nothing supplies it`.
+ */
+text: string, 
+/**
+ * The place in the source to look at: the node's, else its first draw's; a converter's
+ * declaration.
+ */
+at?: Location, 
+/**
+ * The board of a system it is on, as `PowerNode::board` has it; none for a stand-alone
+ * board.
+ */
+board?: string, };
 
 export type Stage = { 
 /**

@@ -3,7 +3,7 @@
 //! a real address.
 
 use netsmith_check::{Loader, check};
-use netsmith_solve::{Catalogs, Solution, Value, solve};
+use netsmith_solve::{Catalogs, SoldOut, Solution, Value, solve};
 
 /// A regulator with a part number as its key, in one package.
 const BOARD: &str = r#"
@@ -528,4 +528,65 @@ fn a_row_may_state_who_assembles_its_part_and_the_pick_carries_it() {
     // An empty cell is a row with nothing to say.
     let silent = solved(r#".mpn &= "ZZ9-33-D""#, &c);
     assert_eq!(silent.picks[0].assembly, None);
+}
+
+/// A resistor row of a project's own file, with the cells the test varies: `lcsc`, `stock`.
+fn resistor_rows(lcsc: &str, stock: &str) -> String {
+    format!(
+        "lcsc,mpn,resistance,max_power,package,library,stock,source\n\
+         {lcsc},ZZR-1,45.9kohm +/- 0.1%,100mW,0603,Extended,{stock},https://example.invalid/zzr-1\n"
+    )
+}
+
+fn project_resistors(lcsc: &str, stock: &str) -> Catalogs {
+    let mut c = Catalogs::jlcpcb();
+    c.add_file(
+        "resistor",
+        "catalogs/resistor.csv",
+        &resistor_rows(lcsc, stock),
+    )
+    .unwrap();
+    c
+}
+
+#[test]
+fn a_row_that_states_a_stock_of_zero_is_sold_out_and_its_file_and_line_are_named() {
+    // The row is the first line after the header of the project's file.
+    let c = project_resistors("C900001", "0");
+    assert_eq!(
+        c.sold_out("C900001"),
+        Some(SoldOut::Stated {
+            at: "catalogs/resistor.csv:2".to_string()
+        })
+    );
+}
+
+#[test]
+fn an_empty_or_a_positive_stock_states_nothing_to_note() {
+    for stock in ["", "1", "25000"] {
+        let c = project_resistors("C900001", stock);
+        assert_eq!(c.sold_out("C900001"), None, "stock `{stock}`");
+    }
+    // A number no file lists, and a standard row (which ships no stock), are not sold out.
+    let c = project_resistors("C900001", "0");
+    assert_eq!(c.sold_out("C404040"), None);
+    assert_eq!(c.sold_out("C25104"), None);
+}
+
+#[test]
+fn a_part_that_considered_csv_records_as_out_of_stock_is_sold_out_unless_the_row_says_otherwise() {
+    // C1723147 is in data/jlcpcb/considered.csv as out of stock when it was read.
+    let c = project_resistors("C1723147", "");
+    assert_eq!(c.sold_out("C1723147"), Some(SoldOut::Considered));
+    // The row's own number is later knowledge: stock 0 says so itself, a positive stock wins.
+    let zero = project_resistors("C1723147", "0");
+    assert!(matches!(
+        zero.sold_out("C1723147"),
+        Some(SoldOut::Stated { .. })
+    ));
+    let some = project_resistors("C1723147", "300");
+    assert_eq!(some.sold_out("C1723147"), None);
+    // A part considered for another reason (the AMS1117) is not a part out of stock.
+    let other = project_resistors("C6186", "");
+    assert_eq!(other.sold_out("C6186"), None);
 }

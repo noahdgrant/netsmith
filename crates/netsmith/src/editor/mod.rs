@@ -17,7 +17,7 @@ mod orders;
 mod outline;
 mod panel;
 mod pcb;
-mod power;
+pub(crate) mod power;
 mod progress;
 mod release;
 mod solved;
@@ -26,9 +26,9 @@ mod system;
 
 use std::{
     collections::HashMap,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
-        Mutex, MutexGuard, OnceLock,
+        Arc, Mutex, MutexGuard, OnceLock, RwLock,
         atomic::{AtomicBool, Ordering},
     },
     time::{Instant, SystemTime, UNIX_EPOCH},
@@ -51,7 +51,13 @@ pub use git::sweep_scratch;
 
 /// The project behind the editor.
 pub struct Workspace {
-    target: Target,
+    /// What is built. Replaced by [`Workspace::reload_manifest`] when `netsmith.toml` has
+    /// changed, so that the catalogs it lists, its top-level files and its name are the ones on
+    /// disk, as for a command-line build.
+    target: RwLock<Arc<Target>>,
+    /// Why the manifest on disk cannot be read, if it cannot: the analysis then reports it
+    /// and builds nothing, until the file is changed again. The target is the last good one.
+    manifest_error: Mutex<Option<String>>,
     state: Mutex<State>,
     /// Held while a layout edit is made, so two edits are one after the other.
     editing: Mutex<()>,
@@ -153,12 +159,14 @@ fn code_of(paths: &[PathBuf]) -> HashMap<PathBuf, u64> {
 }
 
 /// Whether the watched files that changed since the last analysis are all `.nsm` files whose program,
-/// apart from plain comments, is what was analysed: a catalog, the manifest or a layout file that
-/// changed is always a change.
+/// apart from plain comments, is what was analysed: a catalog or a layout file that changed is
+/// always a change, and so is the manifest, unless it is `same_manifest`, the one that reads as
+/// the manifest the project was analysed with.
 fn only_comments_changed(
     state: &State,
     paths: &[PathBuf],
     stamp: &[Option<(std::time::SystemTime, u64)>],
+    same_manifest: Option<&Path>,
 ) -> bool {
     let Some(old) = &state.stamp else {
         return false;
@@ -172,6 +180,9 @@ fn only_comments_changed(
             continue;
         }
         changed = true;
+        if same_manifest == Some(path.as_path()) {
+            continue;
+        }
         let Some(before) = state.code.get(path) else {
             return false;
         };
@@ -236,7 +247,8 @@ impl Workspace {
             std::fs::metadata(&file.path).map_err(|e| format!("{}: {e}", file.name))?;
         }
         Ok(Workspace {
-            target,
+            target: RwLock::new(Arc::new(target)),
+            manifest_error: Mutex::new(None),
             state: Mutex::new(State::default()),
             editing: Mutex::new(()),
             network: crate::refresh::Network::default(),
@@ -273,13 +285,54 @@ impl Workspace {
         self
     }
 
-    pub fn title(&self) -> &str {
-        &self.target.title
+    pub fn title(&self) -> String {
+        self.target().title.clone()
+    }
+
+    /// The target as last read: a clone of a pointer, so a caller can keep it across a reload.
+    fn target(&self) -> Arc<Target> {
+        Arc::clone(&self.target.read().unwrap_or_else(|e| e.into_inner()))
+    }
+
+    /// The mistake in the manifest on disk, if there is one.
+    fn manifest_error(&self) -> Option<String> {
+        self.manifest_error
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// Reads `netsmith.toml` again, and whether what it says differs from what the editor has
+    /// (so a change of its comments alone is none). If it reads, the target is built from it;
+    /// if not, the target stays as it was and the mistake is kept for the analysis to report
+    /// (a project is not built from a manifest nobody can read). A manifest that is mended to
+    /// what the last good one said is a change, as the mistake goes.
+    fn reload_manifest(&self) -> bool {
+        let reloaded = self.target().reloaded();
+        let mut error = self
+            .manifest_error
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        match reloaded {
+            Ok(target) => {
+                let changed = target.is_some() || error.is_some();
+                if let Some(target) = target {
+                    *self.target.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(target);
+                }
+                *error = None;
+                changed
+            }
+            Err(e) => {
+                let changed = error.as_ref() != Some(&e);
+                *error = Some(e);
+                changed
+            }
+        }
     }
 
     /// The layout files beside the top-level files (they may not exist).
     fn layout_files(&self) -> Vec<PathBuf> {
-        self.target
+        self.target()
             .files
             .iter()
             .map(|f| crate::layout::layout_path(&f.path))
@@ -299,17 +352,36 @@ impl Workspace {
             state.elapsed_ms = None;
         }
         state.layouts = layouts;
-        let paths = self.target.watched();
-        let stamp = files::stamps(&paths);
-        let all_read = stamp.iter().all(Option::is_some);
+        let mut paths = self.target().watched();
+        let mut stamp = files::stamps(&paths);
+        let mut all_read = stamp.iter().all(Option::is_some);
         if state.version > 0 && state.stamp.as_ref() == Some(&stamp) && all_read {
             return state;
+        }
+        // A watched file changed, and the manifest may be it: read it again first, as what is
+        // watched (the catalogs it lists, the top-level files) comes from it. One that says
+        // what it did (a comment was changed) is no change.
+        let mut same_manifest = None;
+        if state.version > 0 {
+            let manifest = self
+                .target()
+                .project
+                .as_ref()
+                .map(|p| p.root.join(crate::project::MANIFEST));
+            if let Some(manifest) = manifest {
+                if !self.reload_manifest() {
+                    same_manifest = Some(manifest);
+                }
+                paths = self.target().watched();
+                stamp = files::stamps(&paths);
+                all_read = stamp.iter().all(Option::is_some);
+            }
         }
         // Only plain comments changed: the reading is still right, and the files are as good as read.
         if state.version > 0
             && all_read
             && state.cancelled.is_none()
-            && only_comments_changed(&state, &paths, &stamp)
+            && only_comments_changed(&state, &paths, &stamp, same_manifest.as_deref())
         {
             state.stamp = Some(stamp);
             return state;
@@ -451,7 +523,7 @@ impl Workspace {
 
 impl Backend for Workspace {
     fn title(&self) -> String {
-        self.target.title.clone()
+        self.target().title.clone()
     }
 
     fn project(&self) -> Project {
@@ -486,7 +558,7 @@ impl Backend for Workspace {
         let state = self.fresh();
         let stale = !self.auto_analysis.load(Ordering::Acquire)
             && state.version > 0
-            && state.stamp.as_ref() != Some(&files::stamps(&self.target.watched()));
+            && state.stamp.as_ref() != Some(&files::stamps(&self.target().watched()));
         Analysis {
             elapsed_ms: state.elapsed_ms,
             cancelled: state.cancelled.is_some().then_some(true),
@@ -607,10 +679,10 @@ impl Backend for Workspace {
 
     fn bom(&self, board: &str) -> Result<Bom, ApiError> {
         let state = self.fresh();
-        let catalogs = self.target.catalogs().map_err(ApiError::internal)?;
+        let catalogs = self.target().catalogs().map_err(ApiError::internal)?;
         let today =
             crate::refresh::date_of(self.network.now.unwrap_or_else(crate::refresh::now_secs));
-        let own = match &self.target.project {
+        let own = match &self.target().project {
             Some(project) => project
                 .catalog_files()
                 .map_err(ApiError::internal)?
@@ -619,7 +691,7 @@ impl Backend for Workspace {
                 .collect(),
             None => Vec::new(),
         };
-        let supply = match &self.target.project {
+        let supply = match &self.target().project {
             Some(project) => project.supply().map_err(ApiError::internal)?,
             None => crate::supply::Supply::none(),
         };
@@ -825,7 +897,7 @@ impl Backend for Workspace {
         offset: usize,
     ) -> Result<Option<Definition>, ApiError> {
         let entry = self.entry(path)?;
-        let loader = self.target.loader().map_err(ApiError::internal)?;
+        let loader = self.target().loader().map_err(ApiError::internal)?;
         Ok(
             definition::find(&loader, &entry.path, text, offset).map(|found| Definition {
                 at: found.at,

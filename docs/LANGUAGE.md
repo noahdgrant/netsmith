@@ -974,6 +974,112 @@ Behind: open circle guideline: these values depend on each other and none has a 
 - A current that is exactly zero is not a term. `.after.current &= 0A` says nothing else draws from the net, so the part's current is the divider's, and what is left is a circle of equations, which a voltage starts as above (and the finding then says so in its first form).
 - The finding is given when a bound (`>=` or `<=`) that reads a value in the circle is not evaluated, and the circle would close through the currents of a net of more than two terms that has no value. A design whose load simply has no stated current (a fuse in front of a load) is no circle and gets the notes alone; so does a net that has pins the solver cannot account for (an IC's signal pin), because nothing on it is determined by the others even in principle.
 
+#### What starts it: the rail that supplies the net, with its sign
+
+Two statements look alike and only one starts the circle. Take the board above and let a lamp, a `Rail` with its own range, share the net `AFTER` (`.after ~ .lamp`). The lamp's `.current &= 0A..4mA` is a load, so it counts positive (see _The sign of a current_ under Load current). It does not start the circle: it is a fourth term on a net whose other three currents still have no value, and the finding is the same:
+
+```nsm solve warns
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+module Divider {
+    .vin: Rail
+    .mid: Pin
+    .max_draw: Current
+    .top: Resistor
+    .bottom: Resistor
+    .vin.pos ~> .top ~> .mid
+    .mid ~> .bottom ~> .vin.neg
+    .top.current == .vin.voltage / (.top.resistance + .bottom.resistance)
+    .bottom.current == .top.current
+    .top.current <= .max_draw
+}
+
+board Behind {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .supply: Rail {
+        .voltage &= 14V..22V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .series: Resistor { .resistance &= 68ohm +/- 1% }
+    .after: Rail {
+        .pos.net &= "AFTER"
+        .neg.net &= "GND"
+    }
+    .supply.neg ~ .after.neg
+    .supply.pos ~> .series ~> .after.pos
+    .after.voltage == .supply.voltage - .series.drop
+
+    .divider: Divider { .max_draw &= 40uA }
+    .divider.mid.net &= "MID"
+    .after ~ .divider.vin
+    .lamp: Rail {
+        .pos.net &= "AFTER"
+        .neg.net &= "GND"
+        .current &= 0A..4mA
+    }
+    .after ~ .lamp
+}
+```
+
+```text
+Behind: open circle guideline: these values depend on each other and none has a value: `after.current`, `after.voltage`, `divider.top.current`, `divider.vin.current`, `divider.vin.voltage`, `lamp.voltage`, `series.current`, `series.drop`, `supply.current`; so the checks `divider.top.current <= divider.max_draw`, `(series.drop * series.current) <= series.max_power`, `(divider.top.drop * divider.top.current) <= divider.top.max_power` and 1 more are not evaluated, and the parts they would judge are chosen without them; net `AFTER` carries 3 currents (`after.current`, `divider.vin.current`, `series.current`), none of which has a value, and the solver works a part's current out only from a net of two currents (ADR 0026), so what the checks wait on is never set: state a range on `series.current` (the part's current: the most and the least that the net's loads draw through it), or on a voltage in the circle, for example `after.voltage`; if nothing else draws from the net, `after.current &= 0A` makes it a circle of equations, which a voltage starts; the checks are then made against what you state, and nothing compares it with the net's other currents
+```
+
+The rail that supplies the net starts it. Here that is `.supply`, which supplies the net `VIN` and whose current counts negative: `.supply.current &= -8mA..0A` says it supplies at most 8 mA. The net `VIN` has two currents, the supply's and the series part's, so the series part's current follows from the supply's, and the circle is started. The finding goes and the divider is picked against its 40 uA (1M, not 330 ohm):
+
+```nsm solve
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+module Divider {
+    .vin: Rail
+    .mid: Pin
+    .max_draw: Current
+    .top: Resistor
+    .bottom: Resistor
+    .vin.pos ~> .top ~> .mid
+    .mid ~> .bottom ~> .vin.neg
+    .top.current == .vin.voltage / (.top.resistance + .bottom.resistance)
+    .bottom.current == .top.current
+    .top.current <= .max_draw
+}
+
+board Behind {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .supply: Rail {
+        .voltage &= 14V..22V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .series: Resistor { .resistance &= 68ohm +/- 1% }
+    .after: Rail {
+        .pos.net &= "AFTER"
+        .neg.net &= "GND"
+    }
+    .supply.neg ~ .after.neg
+    .supply.pos ~> .series ~> .after.pos
+    .after.voltage == .supply.voltage - .series.drop
+
+    .divider: Divider { .max_draw &= 40uA }
+    .divider.mid.net &= "MID"
+    .after ~ .divider.vin
+    .lamp: Rail {
+        .pos.net &= "AFTER"
+        .neg.net &= "GND"
+        .current &= 0A..4mA
+    }
+    .after ~ .lamp
+    .supply.current &= -8mA..0A
+}
+```
+
+- Write the supplier's own current, negative: `-8mA..0A`, not `0A..8mA`. A load states its draw positive, a rail that supplies states what it supplies negative.
+- A range on a load joined with `~` onto a net that has other terms without a value (`.lamp.current &= 0A..4mA` here) does not start a circle; a range on the supplier's current does.
+
 #### A circle the solver starts from the supply
 
 A load that states the range it works in (`.load.voltage >= 4V` and `<= 30V`, as a regulator IC states its input range) lets the solver start the circle itself. It takes the range of a value the equation reads that already has one, the supply's `9V..16V`, and grows it until the equation maps it into itself, the way a stated range would be checked. That is the range the load's voltage is in, here 8.4 V to 15.7 V, and the current and the drop follow from it.
@@ -2979,7 +3085,7 @@ catalog_dirs = ["catalogs"]
 The first line of a file names the columns. Two kinds of column can be there, in any order.
 
 - The columns of the part: the paths of the fields in its `catalog X { ... }` declaration, without the leading dot (`resistance`, `package`, `vout.voltage`, `mpn`). A cell of a quantity column is a value as the language writes it, with its unit: `10kohm +/- 1%`, `1.8V..5.5V`, `0.3V`. It must be in the dimension of the field. A cell of a text column is its text as it is, without quotes: `0402`, `SOT-23-5`. An empty cell means the row has no value there: the row fits no design that asks for one, and, for any column a design needs (the package, the resistance, a rating), the row is never offered at all. Only three columns of the standard kinds may be empty in a row that is offered, because they were added after the files were written: `temperature_coefficient` of `resistor`, `rms_current` of `inductor` and `dielectric` of `capacitor`. Such a row is offered to a design that says nothing about the field, and a design says something by narrowing it, by a relation that names it, by a `~` that joins it or by a balance of currents that sums it.
-- The fixed columns, all optional except as noted: `lcsc` (the supplier's number), `mpn` (the manufacturer's; also a column of the part if its catalog lists `.mpn`), `library` (`Basic`, `Extended` or `Preferred`), `price` and `stock` (JLCPCB's snapshot, entered by hand; the solver does not read them, so a row is offered whatever its `stock` says; the bill of materials shows them only when no supply provider has the part, ADR 0047), `price_breaks` (`1:0.0019 1000:0.0015`, the price for one piece from each quantity; entered by hand and read by nothing), `date` (`2026-10-31`, the day the `price` and `stock` were read), `checked` (`2026-11-02`, the day `catalog refresh` last found the row's `mpn` and `package` equal to LCSC's record; empty if never, read by nothing), `name` and `label` (what a message calls the row, and what the schematic's value field shows; both default to the `mpn`, then the `lcsc`), `notes`, and `source`. **A row with an `lcsc` or an `mpn` must have a `source`**: the URL or text that says where its numbers were read. A row with neither is a made-up part and needs a `name`.
+- The fixed columns, all optional except as noted: `lcsc` (the supplier's number), `mpn` (the manufacturer's; also a column of the part if its catalog lists `.mpn`), `library` (`Basic`, `Extended` or `Preferred`), `price` and `stock` (JLCPCB's snapshot, entered by hand; the solver does not read them, so a row is offered whatever its `stock` says, and the build notes a pick whose `stock` is 0; the bill of materials shows them only when no supply provider has the part, ADR 0047), `price_breaks` (`1:0.0019 1000:0.0015`, the price for one piece from each quantity; entered by hand and read by nothing), `date` (`2026-10-31`, the day the `price` and `stock` were read), `checked` (`2026-11-02`, the day `catalog refresh` last found the row's `mpn` and `package` equal to LCSC's record; empty if never, read by nothing), `name` and `label` (what a message calls the row, and what the schematic's value field shows; both default to the `mpn`, then the `lcsc`), `notes`, and `source`. **A row with an `lcsc` or an `mpn` must have a `source`**: the URL or text that says where its numbers were read. A row with neither is a made-up part and needs a `name`.
 
 `price`, `stock` and `library` are JLCPCB's numbers and `date` is the day they were read: they are a hand-entered snapshot (the standard catalogs that ship in netsmith leave `price`, `stock`, `date` and `checked` empty: read a part's price and stock from the supplier before ordering), and `netsmith catalog refresh` never writes them (it asks LCSC, never JLCPCB, and only verifies the row and records the day in `checked`; see Commands). `netsmith catalog age` lists the rows whose price and stock were read long ago and those whose price and stock are unknown. The price and stock of a part come from a supply provider (the `[supply]` table of `netsmith.toml`, ADR 0047, provisional): `provider = "file"` with `file = "supply/quotes.csv"`, a CSV with the columns `lcsc` or `mpn`, `channel` (`jlcpcb-assembly` or `lcsc-retail`: the two stocks differ, and the answer says which it is), `stock`, `price_breaks` (`1:0.0100 100:0.0050`), `currency` and `date`; `channel` and `cache_hours` choose the stock shown and how long a cached answer is used. With no provider, or one that does not list the part, price and stock are unknown in the bill of materials, never guessed and never 0. The manifest has no field for a key or a password. The solver never asks; it reads the rows and no price or stock.
 
@@ -3012,6 +3118,25 @@ board OwnPart {
 ```text
 board OwnPart
   R1   Resistor        ACME-R316       Resistor_SMD:R_0402_1005Metric                             no LCSC number
+```
+
+The solver does not read `stock`, so a row that states a stock of 0 is still picked when it is the first that fits. The build says so in a note, and the editor shows the same line among its problems: the part's designator and path, the row's LCSC number and manufacturer's number, the file and line of the row, and what to do (choose another row, or state a different value). A part that the standard `data/jlcpcb/considered.csv` records as out of stock when it was read gets the same note when a project's row offers it and states no stock. An empty `stock` cell states nothing and gets no note, and a positive stock gets none. The note is not a guideline and never stops a build, and the pick is the same with or without it.
+
+```csv file=catalogs/resistor.csv set=sold_out
+lcsc,mpn,resistance,max_power,package,library,stock,source
+C900001,ACME-R316,316ohm +/- 1%,62.5mW,0402,Extended,0,https://example.invalid/acme-r316.pdf
+```
+
+```nsm solve stock catalogs=sold_out
+import std::parts::passive::Resistor
+
+board SoldOut {
+    .r1: Resistor { .resistance &= 316ohm +/- 1% }
+}
+```
+
+```text
+R1 (`r1`) is C900001 (ACME-R316), and its catalog row (catalogs/resistor.csv:2) states a stock of 0: the solver does not read stock, so it picked the part; choose another row of the catalog or state a different value, and read the supplier's stock before ordering
 ```
 
 A resistor's `temperature_coefficient` is a column too: how far the resistance moves per kelvin, as a fraction (`0.00005` is 50 ppm/K; take the datasheet's largest figure). The standard rows leave it empty, because no value goes into a standard catalog without a recorded source. A design that does not mention the field picks rows as before. A design that limits it, `.r1.temperature_coefficient <= 0.0001`, is offered only the rows that state it, so it needs a row of a project's file (a file that leaves the column out of its first line is read as empty there, which is why the file above needs nothing new):
@@ -4592,7 +4717,7 @@ error: a panel joins nothing: it repeats one board in a grid, and the boards sta
 
 ## Load current
 
-A `Rail` has a `current` field: the current drawn from the net through the rail's `pos` pin by whatever is behind the rail. It is positive when the thing draws and negative when it supplies (ADR 0007). A design states the consuming side.
+A `Rail` has a `current` field: the current drawn from the net through the rail's `pos` pin by whatever is behind the rail. It is positive when the thing draws and negative when it supplies (ADR 0007; see _The sign of a current_ at the end of this section). A design states the consuming side.
 
 ```nsm solve
 import std::parts::connector::Header1x2
@@ -4791,6 +4916,17 @@ error: the currents at the join `load.input ~ power.output` cannot add up to zer
    |                    ^^^^^^^^^^^^^^^^^^
 ```
 
+### The sign of a current
+
+Every `current` has one sign convention (ADR 0007), and the rest of this guide uses it. A current is the draw on a net: it is positive when the rail or part takes current from the net, and negative when it supplies the net. A load counts positive and a rail that supplies counts negative.
+
+- A load states its own draw as a positive range: `.output: Rail { .current &= 0mA..50mA }` draws up to 50 mA.
+- The output of whatever supplies a net is negative: a board's `.input` rail, a regulator's `.vout`. `.regulator.vout.current &= -1.2A..0A` says the regulator supplies up to 1.2 A. A regulator's `.vin.current` is positive and equals `-.vout.current`.
+- A range with the wrong sign is a different claim: `0A..1.2A` on a `.vout` says that the output draws.
+- A rail of a module is a port, and from inside the module it counts with its sign flipped (see _Load current_ above).
+
+Which statement starts a circle that runs through the currents of a net depends on this sign: see _A circle through the currents of a net_.
+
 ## Capacitors: marked value, effective capacitance and bias
 
 A `Capacitor` has two capacitances because they are two quantities (ADR 0013).
@@ -4874,7 +5010,7 @@ board TooBig {
 ```
 
 ```text
-error: no `capacitor` candidate satisfies `bypass`: the closest of the 31 that fit, 47uF 20% 6.3V X5R 0805 C16780, fails because bypass.effective_capacitance must always be at least 10mF, but 16.09uF..26.7uF is not always above 10mF (`bypass.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
+error: no `capacitor` candidate satisfies `bypass`: the closest of the 34 that fit, 47uF 20% 6.3V X5R 0805 C16780, fails because bypass.effective_capacitance must always be at least 10mF, but 16.09uF..26.7uF is not always above 10mF (`bypass.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
    --> main.nsm:10:26
    |
 10 |     .bypass: Capacitor { .effective_capacitance >= 10mF }
@@ -4999,7 +5135,7 @@ board Short {
 ```
 
 ```text
-error: no `capacitor` candidate satisfies `bulk`: the closest of the 31 that fit, 2 x 47uF 20% 6.3V X5R 0805 C16780, fails because (bulk.count * bulk.effective_capacitance) must always be at least 10mF, but 21.86uF..32.81uF is not always above 10mF (`bulk.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
+error: no `capacitor` candidate satisfies `bulk`: the closest of the 34 that fit, 2 x 47uF 20% 6.3V X5R 0805 C16780, fails because (bulk.count * bulk.effective_capacitance) must always be at least 10mF, but 21.86uF..32.81uF is not always above 10mF (`bulk.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
    --> main.nsm:11:5
    |
 11 |     .bulk.count * .bulk.effective_capacitance >= 10mF
@@ -6565,6 +6701,8 @@ netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--
 
 `--strict` (on `build` and `fab`) makes a finding against a guideline an error for this run, like `guidelines = "error"` in `netsmith.toml`; without it a finding is a warning.
 
+The power model's findings come from `netsmith`, not from the editor's page: `build`, the editor's analysis (its `power` stage, the Problems dock's `Power` group) and the power tree it draws all carry the same ones. A rail that can draw more than the supply that states what it can give (`max_current`) is an error that stops the build, where the solver had no relation to check it against; `--strict` is not needed. The notes do not stop it, with or without `--strict`: a rail nothing supplies (`V5 has no source: nothing supplies it`), a rail with loads whose current the solver has not settled, and a converter whose efficiency it has not settled.
+
 `fab` writes the Gerbers, drill files and placement file itself and runs netsmith's own design rules check (ADR 0037), so it does not need KiCad. An error of the check (a clearance, a short, a missing connection, a hole, the edge, a courtyard, a keepout) stops `fab` unless you pass `--allow-drc-violations` (which never waives a `[constraint]` finding: a requirement on where a part goes is relaxed only by `constraints = "warn"` or `--constraints warn`), and `fab-notes.txt` then says the board is not clean; its warnings (silkscreen on a pad, a narrow mask web, a via in a pad) are listed in the notes. `--cross-check` compares the files and the findings with KiCad's own plot and design rules check of the same board (it needs KiCad's command-line tool: `$KICAD_CLI`, then `kicad-cli` on `PATH`, then Windows KiCad 9 under WSL). It writes, for each board, a Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb` and `.kicad_pro`, and an `.svg`. Read `fab-notes.txt` before you order.
 
 `catalog refresh` is the one command that uses the network, and it is opt-in (ADR 0039): nothing else, and never the solver, asks anyone anything. **JLCPCB data is not fetched**: the command asks LCSC only (ADR 0039, the 2026-11-02 decision). For each row with an `lcsc` number it reads LCSC's record of that part and checks the manufacturer's number and the package against the row. A row that agrees is `VERIFIED`, and if the file has a `checked` column it gets the day there: that is the only cell the command ever writes. It **never writes `price`, `stock`, `price_breaks`, `library` or `date`**: the board is assembled from JLCPCB's parts library, those cells are JLCPCB's numbers entered by hand, and LCSC's price (often at a first break above one piece) and stock differ from them. It may say, as a note and not a finding, that LCSC lists stock 0 where the row has some (or the reverse), so you read JLCPCB's parts page by hand; the age of a row's own numbers is still its `date`, so a refresh never makes a stale row fresh. It keeps the order, quoting and line endings of the file, so the result is a small diff. With no path it acts on the project's catalog files (the `*.csv` of its `catalog_dirs` folders and the files under `catalogs`) and, in the netsmith repository, on `data/jlcpcb/catalog/`; a path is a catalog file or a directory of them (the standard catalogs inside the binary cannot be written, so they are checked in the repository and arrive with a release). A row is reported, not changed, when the records disagree with it: `CONFLICT` if the manufacturer's number or the package is not the row's, `MISSING` if LCSC no longer lists the number (a row is never deleted); `SKIPPED` is a row `--offline` has no kept answer for. `--dry-run` prints the diff, cell by cell, and writes nothing; `--only` and `--lcsc` choose catalogs and rows. The exit code is 0, 1 if any row is `CONFLICT` or `MISSING`, and 2 when the run had to stop (the endpoint refused, or answered in another shape: nothing is written then). LCSC's endpoint is unofficial and LCSC's terms of use have not been read: a person must read them before the command is advertised, and official APIs (JLCAPI, the LCSC API; they need an account) are future work (ADR 0039). Meanwhile the command is polite: one request at a time, `--delay` milliseconds apart (default 500), a User-Agent that says what it is, answers kept for `--cache-ttl` hours (default 24; `--no-cache` keeps none) and retried with a growing wait. `--offline` asks nothing and uses the kept answers of any age. `catalog age` prints the rows whose price and stock were read more than `--days` days ago (the supply provider's answer, else the row's `date`) and, apart, the rows whose price and stock are unknown because no provider has them and the row has no `date` (unknown is not old and not 0); it reads the `[supply]` table of the project that contains the directory. The editor's bill of materials marks the old lines, says `unknown` for the rest, and has a "Check parts against LCSC" button for the project's own catalogs.
@@ -6992,6 +7130,71 @@ error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHC
     |
 170 |     .current <= .saturation_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+#### What a part in a chain does not see of its rail
+
+A part in a `~>` chain from a rail is given the chain's current and nothing else of the rail. A part reads its own fields, and the one value the checker derives for it from a rail is `.bias`, for a part across the rail (ADR 0013). So a rating of a part in series is compared with the rail only by a line the board writes:
+
+- A `Fuse`'s `.rated_voltage` is not compared with anything. A board that has a peak to interrupt writes `.fuse.rated_voltage >= .input.peak`.
+- A `Schottky` or `Diode` behind a fuse carries the draw of what is behind the chain, so its `.max_forward_current` is checked against that and not against the fuse's rating. A board that wants it rated for what the fuse lets through writes `.d.max_forward_current >= .fuse.rated_current`, and states the largest reverse voltage the input can be wired to as `.d.bias`, which is checked against `.max_reverse_voltage`. A diode in series is across no rail, so its `.bias` is unset until then, and the rating is listed as not evaluated.
+
+Each such line is checked in the worst case, and a line that waits on a `.peak` the board leaves open is listed as not evaluated. This one passes, with the library's 6 V fuses for a 5 V rail that peaks at 5.5 V:
+
+```nsm evaluate
+import std::parts::passive::Fuse
+import std::sources::Rail
+
+board Interrupts {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .peak &= 5.5V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .load: Rail {
+        .current &= 10mA..100mA
+        .pos.net &= "VFUSED"
+        .neg.net &= "GND"
+    }
+    .fuse: Fuse {}
+    .fuse.rated_voltage >= .input.peak
+    .input.pos ~> .fuse ~> .load.pos
+    .input.neg ~ .load.neg
+}
+```
+
+And a peak far above what any fuse in the library interrupts is refused by the same line:
+
+```nsm fails
+import std::parts::passive::Fuse
+import std::sources::Rail
+
+board Arcs {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .peak &= 5kV
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .load: Rail {
+        .current &= 10mA..100mA
+        .pos.net &= "VFUSED"
+        .neg.net &= "GND"
+    }
+    .fuse: Fuse {}
+    .fuse.rated_voltage >= .input.peak
+    .input.pos ~> .fuse ~> .load.pos
+    .input.neg ~ .load.neg
+}
+```
+
+```text
+error: no `fuse` candidate satisfies `fuse`: the closest of the 6 that fit, SMD1206P020TF 0.2A 24V resettable fuse 1206 C20984, fails because fuse.rated_voltage must always be at least input.peak, but 24V is not always above 5kV
+   --> main.nsm:17:5
+   |
+17 |     .fuse.rated_voltage >= .input.peak
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 `Crystal` has `.frequency` (state it with its tolerance, `16MHz +/- 20ppm`) and `.load_capacitance`, and no relation: the two load capacitors are the design's. `FerriteBead` has `.impedance` at `.impedance_frequency`.
@@ -7445,6 +7648,8 @@ error: net `net-sensor.out.line`: `sensor.out.voh` is 275mV..325mV but `u.a.vih`
 ### Logic levels of a bus
 
 Every bus interface but `Usb2` has `.levels`, an interface `std::logic::Levels` with the rail `.reference` and the four voltages `.vih`, `.vil`, `.voh` and `.vol` of a `Logic` (ADR 0064). A datasheet gives one set for the supply of a group of pins, so a part states them once for the interface, in the way it states a `Logic`: `.spi.levels.reference ~ .vdd`, `.spi.levels.vih &= 0.7 * .vdd.voltage`, and the absolute maximum of an input on the pin, `.spi.sclk.abs_max &= 2.1V`. Which lines a part drives and which it reads is what its pin table says (`output` and `tri_state` drive, `input` reads, `bidirectional` does both), so `voh` and `vol` judge the lines it drives and `vih` and `vil` the lines it reads. The checks are those of the previous section, with the same numbers and the same notes: a pair of pins of which neither states a level is not looked at, and one that states them on one side only is a note. A part that has two supplies for two groups of pins states two interfaces.
+
+The reference rail is a reference for the checker, not a load: `Levels` states `.reference.current &= 0A` itself, so a part that joins it to its supply (`.spi.levels.reference ~ .vdd`) does not state a current for it, and the net of that supply keeps no term that nobody can settle. The part's whole draw is `.vdd.current`.
 
 `~` between two bus interfaces joins no levels: they belong to two parts, and the reference rail of each is that part's supply, so a join would be a short between a 3.3 V net and a 1.8 V net.
 

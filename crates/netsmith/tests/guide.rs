@@ -15,6 +15,9 @@
 //! - ` ```nsm solve notes ` must build, and the next ` ```text ` block is the notes that name a
 //!   net whose tracks were not sized from its current (ADR 0036), one per line, as the
 //!   command line prints them after `note: `.
+//! - ` ```nsm solve stock ` must build, and the next ` ```text ` block is the notes about a
+//!   picked part that a file says is out of stock (issue #176), one per line, as the command
+//!   line prints them after `note: `.
 //! - ` ```nsm evaluate picks ` must build as `evaluate` does but through the whole pick of
 //!   providers (ADR 0068, no KiCad needed), and the next ` ```text ` block is the line for each use
 //!   of a generic, as the command line prints it after `note: `.
@@ -431,6 +434,29 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
                 assert!(
                     !notes.is_empty(),
                     "{at}: this block should say a net is not sized and does not"
+                );
+                let next = next_text();
+                if bless {
+                    rewrites.push((next.body.0, next.body.1, notes));
+                } else {
+                    assert!(
+                        same(&next.text, &notes),
+                        "{at}: the notes differ.\n--- guide\n{}\n--- tool\n{notes}",
+                        next.text
+                    );
+                }
+            }
+            if b.has("stock") {
+                let notes: String = built
+                    .iter()
+                    .flat_map(|x| x.notes.iter())
+                    .filter(|n| n.contains("the solver does not read stock"))
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                assert!(
+                    !notes.is_empty(),
+                    "{at}: this block should say a part is out of stock and does not"
                 );
                 let next = next_text();
                 if bless {

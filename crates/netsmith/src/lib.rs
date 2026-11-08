@@ -17,6 +17,7 @@ pub mod project;
 pub mod providers;
 pub mod refresh;
 pub mod resolve;
+mod stock;
 pub mod supply;
 mod values;
 
@@ -34,6 +35,7 @@ use netsmith_pcb::{Subject, validate_pinout};
 use netsmith_solve::{Catalogs, Solution, solve, solve_system};
 
 pub use libraries::Libraries;
+pub use netsmith_editor::api::PowerIssue;
 pub use providers::{MAX_PROVIDER_TRIALS, ProviderNote};
 
 /// One board, built.
@@ -70,6 +72,11 @@ pub struct Built {
     /// the build. With `guidelines = "error"` or `--strict` the build stops instead and
     /// this is empty.
     pub guidelines: Vec<Guideline>,
+    /// What the power model leaves unsettled, as notes that did not stop the build: a rail
+    /// nothing supplies, a load whose current the solver did not settle, a converter whose
+    /// efficiency it did not settle. A rail that can draw more than its supply gives stops
+    /// the build instead ([`Stage::Power`]), so none of these is an error.
+    pub power: Vec<PowerIssue>,
     /// What the build knew about the source, for a tool that points back into it.
     pub trace: Trace,
 }
@@ -127,6 +134,8 @@ pub enum Stage {
     Lower,
     /// A guideline that the project makes an error (ADR 0036).
     Guideline,
+    /// The power model: a rail that can draw more than its supply can give (issue #187).
+    Power,
 }
 
 /// One mistake that stops a build: the message, where it is if it is in the source, and
@@ -260,6 +269,15 @@ impl Built {
         self.guidelines
             .iter()
             .map(|g| format!("{label}: {} guideline: {}", g.rule, g.message))
+            .collect()
+    }
+
+    /// The notes of the power model as the command line prints them, one line each.
+    pub fn power_notes(&self) -> Vec<String> {
+        let label = self.label();
+        self.power
+            .iter()
+            .map(|i| format!("{label}: {} {}", i.subject, i.text))
             .collect()
     }
 
@@ -428,9 +446,12 @@ pub fn outcome_observed(
         if catalogs.strict_guidelines() {
             refuse_guidelines(&board.name, &lowered.guidelines, &solution.model, sources)?;
         }
+        let power_issues = editor::power::board_tree(&solution.model, sources).issues;
+        refuse_power(&board.name, &power_issues, |_| true)?;
         let provided = providers::notes_for(&solution.model, None, &passed);
         let mut notes = provider_lines(&provided);
         notes.extend(self::notes(solution, None));
+        notes.extend(stock::notes(&lowered, catalogs));
         let mut one = export(
             None,
             &board.name,
@@ -441,6 +462,7 @@ pub fn outcome_observed(
             libraries,
         )?;
         one.providers = provided;
+        one.power = power_issues;
         one.rechecks = resolve::Rechecks::plan(solution, &one.design.parts, catalogs, || {
             let board = board.clone();
             Box::new(move |pinned: &Catalogs| quietly(|| solve(&board, pinned)))
@@ -513,6 +535,18 @@ pub fn outcome_observed(
             .as_ref()
             .map_or(&checked.sources, |p| &p.checked.sources);
         observe(step(Stage::Lower));
+        // The issues of the whole system: a rail that a port of another board supplies has a
+        // source here, which the board alone does not show.
+        let power_issues = editor::power::system_tree(
+            &solution.model,
+            sources,
+            &system
+                .boards
+                .iter()
+                .map(|m| (m.inst, Some(m.name.clone())))
+                .collect::<Vec<_>>(),
+        )
+        .issues;
         for member in &system.boards {
             let label = format!("{}/{}", system.name, member.name);
             let mut lowered = lower_system_board(system, member, solution)
@@ -539,9 +573,12 @@ pub fn outcome_observed(
             if catalogs.strict_guidelines() {
                 refuse_guidelines(&label, &lowered.guidelines, &scoped, sources)?;
             }
+            let mine = |issue: &PowerIssue| issue.board.as_deref() == Some(member.name.as_str());
+            refuse_power(&label, &power_issues, mine)?;
             let provided = providers::notes_for(&solution.model, Some(member.inst), &passed);
             let mut notes = provider_lines(&provided);
             notes.extend(self::notes(solution, Some(member.inst)));
+            notes.extend(stock::notes(&lowered, catalogs));
             let mut one = export(
                 Some(&system.name),
                 &member.name,
@@ -552,6 +589,7 @@ pub fn outcome_observed(
                 libraries,
             )?;
             one.providers = provided;
+            one.power = power_issues.iter().filter(|i| mine(i)).cloned().collect();
             one.rechecks = resolve::Rechecks::plan(solution, &one.design.parts, catalogs, || {
                 let system = system.clone();
                 Box::new(move |pinned: &Catalogs| quietly(|| solve_system(&system, pinned)))
@@ -654,6 +692,48 @@ fn refuse_guidelines(
             problem
         })
         .collect())
+}
+
+/// A rail that can draw more than its supply can give stops the build, as a supply that the
+/// solver can prove overdrawn does: one problem for each, at the supply (issue #187). `mine`
+/// picks the issues that are about this board. The notes of the power model do not stop it.
+fn refuse_power(
+    label: &str,
+    issues: &[PowerIssue],
+    mine: impl Fn(&PowerIssue) -> bool,
+) -> Result<(), Vec<Problem>> {
+    use netsmith_editor::api::Severity;
+    let problems: Vec<Problem> = issues
+        .iter()
+        .filter(|i| i.severity == Severity::Error && mine(i))
+        .map(|i| {
+            let message = format!("{label}: {} {}", i.subject, i.text);
+            let at = i.at.as_ref().map(|l| Location {
+                file: l.file.clone(),
+                line: l.line as usize,
+                column: l.column as usize,
+                end_line: l.end_line as usize,
+                end_column: l.end_column as usize,
+            });
+            let place = at.as_ref().map_or(String::new(), |l| {
+                let pad = " ".repeat(l.line.to_string().len());
+                format!("{pad} --> {}:{}:{}\n", l.file, l.line, l.column)
+            });
+            Problem {
+                rendered: format!("error: {message}\n{place}"),
+                message,
+                at,
+                stage: Stage::Power,
+                board: Some(label.to_string()),
+                path: Some(i.subject.clone()),
+            }
+        })
+        .collect();
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(problems)
+    }
 }
 
 /// The solver's mistakes. `board_of` says which board a mistake is about.
@@ -1133,6 +1213,7 @@ fn export(
         providers: Vec::new(),
         lowering_notes,
         guidelines: lowered.guidelines,
+        power: Vec::new(),
         trace: Trace {
             model: model.clone(),
             sources: sources.clone(),

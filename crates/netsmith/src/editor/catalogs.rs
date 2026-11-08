@@ -29,7 +29,7 @@ impl Workspace {
             summary,
             notice: refresh::NOTICE.to_string(),
         };
-        let Some(project) = &self.target.project else {
+        let Some(project) = &self.target().project else {
             return Ok(answer(
                 Some("this is not a project (there is no netsmith.toml), so it has no catalog files of its own to refresh".into()),
                 Vec::new(),

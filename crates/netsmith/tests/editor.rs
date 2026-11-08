@@ -985,6 +985,197 @@ fn a_catalog_file_that_appears_or_goes_in_a_catalog_folder_builds_again_without_
     assert_eq!(editor.bom(&name).unwrap().catalogs, ["shared/zz_extra.csv"]);
 }
 
+/// The LED example with a 316 ohm resistor, which no standard row stands for: a project builds
+/// it only with a catalog file of its own listed in `netsmith.toml`.
+fn project_wanting_a_316_ohm_resistor(name: &str) -> (TempDir, Workspace) {
+    let root = TempDir::new(&format!("editor-test-{name}"));
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(root.join("netsmith.toml"), "[project]\nname = \"own\"\n").unwrap();
+    let led = include_str!("../../../examples/led.nsm").replace(
+        ".r1: Resistor {}",
+        ".r1: Resistor { .resistance &= 316ohm +/- 1% }",
+    );
+    fs::write(root.join("src/main.nsm"), led).unwrap();
+    let editor = Workspace::open(Target::resolve_from(&root, None).unwrap()).unwrap();
+    (root, editor)
+}
+
+/// The catalog file that has the 316 ohm resistor, in a folder the default `catalog_dirs`
+/// (`catalogs/`) does not name: nothing reads it until the manifest says so.
+fn write_the_316_ohm_catalog(root: &TempDir) {
+    fs::create_dir_all(root.join("parts")).unwrap();
+    fs::write(
+        root.join("parts/resistor.csv"),
+        "mpn,resistance,max_power,package,library,source\n\
+         ACME-R316,316ohm +/- 1%,62.5mW,0402,Basic,https://example.invalid/acme-r316.pdf\n",
+    )
+    .unwrap();
+}
+
+const MANIFEST_WITH_THE_CATALOG: &str =
+    "[project]\nname = \"own\"\ncatalogs = [\"parts/resistor.csv\"]\n";
+
+#[test]
+fn a_catalog_the_manifest_gains_while_the_editor_runs_is_read() {
+    let (root, editor) = project_wanting_a_316_ohm_resistor("manifest-catalog");
+    let first = editor.analysis();
+    assert_eq!(first.errors, 1, "{:?}", first.problems);
+    assert!(
+        first.problems[0]
+            .message
+            .contains("`resistor` catalog has nothing for `r1`"),
+        "{:?}",
+        first.problems
+    );
+
+    // The file is written first (nothing lists it yet), then the manifest lists it: the
+    // build that `netsmith build` would make is the editor's too, with no restart.
+    write_the_316_ohm_catalog(&root);
+    assert_eq!(editor.analysis().errors, 1);
+    fs::write(root.join("netsmith.toml"), MANIFEST_WITH_THE_CATALOG).unwrap();
+    let after = editor.analysis();
+    assert_eq!(after.errors, 0, "{:?}", after.problems);
+    assert!(after.version > first.version);
+    let bom = editor.bom(&after.boards[0].name).unwrap();
+    let resistor = bom.lines.iter().find(|l| l.kind == "Resistor").unwrap();
+    assert_eq!(resistor.mpn.as_deref(), Some("ACME-R316"));
+
+    // The manifest taking the catalog away again is as much a change.
+    fs::write(root.join("netsmith.toml"), "[project]\nname = \"own\"\n").unwrap();
+    assert_eq!(editor.analysis().errors, 1);
+}
+
+#[test]
+fn a_catalog_folder_the_manifest_gains_while_the_editor_runs_is_read() {
+    let (root, editor) = project_wanting_a_316_ohm_resistor("manifest-catalog-dirs");
+    assert_eq!(editor.analysis().errors, 1);
+    write_the_316_ohm_catalog(&root);
+    assert_eq!(editor.analysis().errors, 1);
+    fs::write(
+        root.join("netsmith.toml"),
+        "[project]\nname = \"own\"\ncatalog_dirs = [\"parts\"]\n",
+    )
+    .unwrap();
+    let after = editor.analysis();
+    assert_eq!(after.errors, 0, "{:?}", after.problems);
+}
+
+#[test]
+fn a_manifest_that_cannot_be_read_is_the_problem_until_it_is_mended() {
+    let (root, editor) = project_wanting_a_316_ohm_resistor("manifest-broken");
+    assert_eq!(editor.analysis().errors, 1);
+    write_the_316_ohm_catalog(&root);
+    fs::write(root.join("netsmith.toml"), MANIFEST_WITH_THE_CATALOG).unwrap();
+    let good = editor.analysis();
+    assert_eq!(good.errors, 0, "{:?}", good.problems);
+
+    // The manifest's own message, as `netsmith build` prints it, and nothing else: the page is
+    // not told the last good reading is the project's now.
+    fs::write(
+        root.join("netsmith.toml"),
+        format!("{MANIFEST_WITH_THE_CATALOG}colour = \"red\"\n"),
+    )
+    .unwrap();
+    let broken = editor.analysis();
+    assert!(broken.version > good.version);
+    assert_eq!(broken.errors, 1, "{:?}", broken.problems);
+    let message = &broken.problems[0].message;
+    assert!(
+        message.contains("netsmith.toml") && message.contains("unknown field `colour`"),
+        "{message}"
+    );
+    assert!(broken.boards.is_empty(), "{:?}", broken.boards.len());
+    // It is the same on the next look: no new reading, and no panic.
+    assert_eq!(editor.analysis().version, broken.version);
+
+    // Mended to what the last good one said, it builds again with the catalog.
+    fs::write(root.join("netsmith.toml"), MANIFEST_WITH_THE_CATALOG).unwrap();
+    let again = editor.analysis();
+    assert!(again.version > broken.version);
+    assert_eq!(again.errors, 0, "{:?}", again.problems);
+    assert_eq!(again.boards.len(), 1);
+}
+
+#[test]
+fn a_manifest_that_cannot_be_read_does_not_hide_a_change_made_to_it_again() {
+    let (root, editor) = project_wanting_a_316_ohm_resistor("manifest-broken-twice");
+    write_the_316_ohm_catalog(&root);
+    // Broken from the first edit on: the old target is kept, and the second mistake is told.
+    fs::write(root.join("netsmith.toml"), "[project\nname = \"own\"\n").unwrap();
+    let first = editor.analysis();
+    assert_eq!(first.errors, 1, "{:?}", first.problems);
+    fs::write(
+        root.join("netsmith.toml"),
+        "[project]\nname = \"own\"\nflavour = 1\n",
+    )
+    .unwrap();
+    let second = editor.analysis();
+    assert!(second.version > first.version);
+    assert!(
+        second.problems[0]
+            .message
+            .contains("unknown field `flavour`"),
+        "{:?}",
+        second.problems
+    );
+}
+
+#[test]
+fn a_change_to_a_comment_of_the_manifest_is_no_change_but_a_line_it_uncomments_is() {
+    let (root, editor) = project_wanting_a_316_ohm_resistor("manifest-comment");
+    write_the_316_ohm_catalog(&root);
+    let commented = "[project]\nname = \"own\"\n# catalogs = [\"parts/resistor.csv\"]\n";
+    fs::write(root.join("netsmith.toml"), commented).unwrap();
+    let first = editor.analysis();
+    assert_eq!(first.errors, 1, "{:?}", first.problems);
+
+    // The manifest reads as it did: nothing is built again.
+    fs::write(
+        root.join("netsmith.toml"),
+        commented.replace(
+            "# catalogs",
+            "# the catalogs of the board, later\n# catalogs",
+        ),
+    )
+    .unwrap();
+    assert_eq!(editor.analysis().version, first.version);
+
+    // The same file with the comment mark taken off is a manifest that says something else.
+    fs::write(root.join("netsmith.toml"), MANIFEST_WITH_THE_CATALOG).unwrap();
+    let after = editor.analysis();
+    assert!(after.version > first.version);
+    assert_eq!(after.errors, 0, "{:?}", after.problems);
+}
+
+#[test]
+fn a_top_level_file_and_the_name_the_manifest_gains_are_the_running_editors() {
+    let (root, editor) = project("manifest-top-level");
+    assert_eq!(editor.title(), "demo");
+    let before = editor.analysis();
+    let boards: Vec<String> = before.boards.iter().map(|b| b.name.clone()).collect();
+    fs::write(
+        root.join("src/second.nsm"),
+        include_str!("../../../examples/led.nsm"),
+    )
+    .unwrap();
+    fs::write(
+        root.join("netsmith.toml"),
+        "[project]\nname = \"renamed\"\ntop_level = [\"src/main.nsm\", \"src/second.nsm\"]\n",
+    )
+    .unwrap();
+    let after = editor.analysis();
+    assert_eq!(after.errors, 0, "{:?}", after.problems);
+    assert_eq!(after.boards.len(), boards.len() + 1, "{boards:?}");
+    assert_eq!(editor.title(), "renamed");
+    assert!(
+        editor
+            .project()
+            .files
+            .iter()
+            .any(|f| f.path == "src/second.nsm" && f.role == FileRole::TopLevel)
+    );
+}
+
 /// A project whose one catalog file has a part only it has, a day-old row for the LED example.
 fn project_with_priced_catalog(name: &str) -> (TempDir, String) {
     let root = TempDir::new(&format!("editor-test-{name}"));
@@ -1242,6 +1433,67 @@ board Notes {
     .supply.neg ~ .power_in.p2
 }
 ";
+
+/// A part with a bus whose levels are judged against the part's supply: it joins the levels'
+/// reference rail to the supply and states no current for it.
+const LISTENER: &str = "//! A listener on a 3.3 V rail.
+
+import std::bus::Spi
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+part Zlisten {
+    .designator &= \"U\"
+    .vdd: Rail
+    .spi: Spi
+    .spi.levels.reference ~ .vdd
+    .spi.levels.vih &= 0.7 * .vdd.voltage
+    pins {
+        .vdd.pos  power \"VDD\"  \"1\"
+        .vdd.neg  power \"VSS\"  \"2\"
+        .spi.sclk no_connect \"SCK\"  \"3\"
+        .spi.mosi no_connect \"MOSI\" \"4\"
+        .spi.miso no_connect \"MISO\" \"5\"
+        .spi.cs   no_connect \"CS\"   \"6\"
+    }
+}
+
+board Bench {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= \"3V3\"
+        .neg.net &= \"GND\"
+    }
+    .l: Zlisten
+    .power_in: Header1x2
+    .supply ~ .l.vdd
+    .l.vdd.current &= 1mA..2mA
+    .supply.pos ~ .power_in.p1
+    .supply.neg ~ .power_in.p2
+}
+";
+
+#[test]
+fn a_levels_reference_joined_to_a_supply_is_no_unsettled_load_in_the_power_view() {
+    let (root, _) = project("reference-load");
+    fs::write(root.join("src/main.nsm"), LISTENER).unwrap();
+    let editor = Workspace::open(Target::resolve_from(&root, None).unwrap()).unwrap();
+    let a = editor.analysis();
+    assert_eq!(a.errors, 0, "{:?}", a.problems);
+    let tree = editor.power("Bench").unwrap();
+    let node = tree.nodes.iter().find(|n| n.net == "3V3").expect("3V3");
+    // The reference states no current and is not a load the solver cannot settle.
+    assert!(
+        node.loads.iter().all(|l| l.range.is_some()),
+        "{:?}",
+        node.loads
+    );
+    assert_eq!(node.budget, Budget::Unlimited, "{node:?}");
+}
 
 #[test]
 fn what_the_solver_left_alone_is_a_note_and_not_counted_as_a_warning() {

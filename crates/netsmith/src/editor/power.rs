@@ -4,7 +4,10 @@
 use netsmith_check::{Domain, InstId, InstKind, Member, Model, Sources};
 use netsmith_editor::{
     ApiError,
-    api::{Budget, Draw, Edge, EdgeKind, PowerNode, PowerTree, Range, Stage},
+    api::{
+        Budget, Draw, Edge, EdgeKind, Location, PowerIssue, PowerNode, PowerTree, Range, Severity,
+        Stage,
+    },
 };
 use netsmith_quantity::{Dimension, Quantity};
 
@@ -16,38 +19,56 @@ use crate::locate;
 pub fn tree(snapshot: &Snapshot, name: &str) -> Result<PowerTree, ApiError> {
     if let Some(system) = snapshot.system(name) {
         let solved = &system.solved;
-        let scopes: Vec<(InstId, Option<String>)> = solved
-            .boards
-            .iter()
-            .map(|(member, _, inst)| (*inst, Some(member.clone())))
-            .collect();
-        let mut tree = build(&solved.model, &solved.sources, &scopes);
-        for &(a, b) in solved.model.joins() {
-            let (from, to) = (
-                node_of(&solved.model, &scopes, a),
-                node_of(&solved.model, &scopes, b),
-            );
-            if let (Some(from), Some(to)) = (from, to) {
-                let label = format!("{} ~ {}", solved.model.path_of(a), solved.model.path_of(b));
-                tree.edges.push(Edge {
-                    from,
-                    to,
-                    label,
-                    kind: EdgeKind::Join,
-                    at: None,
-                });
-            }
-        }
-        classify(&mut tree);
+        let mut tree = system_tree(&solved.model, &solved.sources, &solved_scopes(solved));
         tree.title = name.to_string();
         return Ok(tree);
     }
     let data = snapshot.board(name)?;
     let trace = &data.built.trace;
-    let scopes = [(trace.model.root, None)];
-    let mut tree = build(&trace.model, &trace.sources, &scopes);
+    let mut tree = board_tree(&trace.model, &trace.sources);
     tree.title = name.to_string();
     Ok(tree)
+}
+
+/// The scope of each board of a solved system: its instance and its name in the system.
+pub(crate) fn solved_scopes(solved: &crate::SolvedSystem) -> Vec<(InstId, Option<String>)> {
+    solved
+        .boards
+        .iter()
+        .map(|(member, _, inst)| (*inst, Some(member.clone())))
+        .collect()
+}
+
+/// The power tree of one board's model, with its issues.
+pub(crate) fn board_tree(model: &Model, sources: &Sources) -> PowerTree {
+    build(model, sources, &[(model.root, None)])
+}
+
+/// The power tree of a system's model: each board a scope, and the joins of their ports as
+/// edges. Its issues are the whole system's, which a board alone cannot see (a rail that a
+/// port of another board supplies has a source here).
+pub(crate) fn system_tree(
+    model: &Model,
+    sources: &Sources,
+    scopes: &[(InstId, Option<String>)],
+) -> PowerTree {
+    let mut tree = build(model, sources, scopes);
+    for &(a, b) in model.joins() {
+        let (from, to) = (node_of(model, scopes, a), node_of(model, scopes, b));
+        if let (Some(from), Some(to)) = (from, to) {
+            let label = format!("{} ~ {}", model.path_of(a), model.path_of(b));
+            tree.edges.push(Edge {
+                from,
+                to,
+                label,
+                kind: EdgeKind::Join,
+                at: None,
+            });
+        }
+    }
+    classify(&mut tree);
+    tree.issues = issues_of(&tree);
+    tree
 }
 
 /// The id of the node on the net a port's `pos` pin is on, if the net has a node.
@@ -238,6 +259,7 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
         nodes,
         edges,
         stages,
+        issues: Vec::new(),
     };
     for (node, limit, from, holder) in capacity {
         if let Some(n) = tree.nodes.iter_mut().find(|n| n.id == node) {
@@ -267,6 +289,7 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
         }
     }
     classify(&mut tree);
+    tree.issues = issues_of(&tree);
     tree
 }
 
@@ -352,6 +375,159 @@ fn classify(tree: &mut PowerTree) {
     }
 }
 
+/// An amount of current as the editor writes it: the biggest unit it is at least one of, three
+/// significant digits, no trailing zeros (`84 mA`, `2.5 A`, `0 A`).
+pub(crate) fn amps_text(x: f64) -> String {
+    if !x.is_finite() {
+        return "?".to_string();
+    }
+    let a = x.abs();
+    if a <= NEGLIGIBLE {
+        return "0 A".to_string();
+    }
+    let sign = if x < 0.0 { "-" } else { "" };
+    // Rounding to three digits can carry into the next unit (999.6 mA is 1 A).
+    for (unit, per) in [("A", 1.0), ("mA", 1e-3), ("uA", 1e-6), ("nA", 1e-9)] {
+        let v = a / per;
+        if v >= 0.9995 || unit == "nA" {
+            let rounded: f64 = format!("{v:.2e}").parse().unwrap_or(v);
+            return format!("{sign}{rounded} {unit}");
+        }
+    }
+    "0 A".to_string()
+}
+
+/// The name of a converter in an edge's label (`ldo (LdoStage)` is `ldo`).
+fn stage_name(label: &str) -> &str {
+    match label.find(" (") {
+        Some(open) if label.ends_with(')') => &label[..open],
+        _ => label,
+    }
+}
+
+/// The rails and converters with trouble, worst first, then in name order: a rail that can
+/// draw more than its supply can give (an error), a rail nothing supplies, a rail with a load
+/// whose current the solver did not settle, and a converter with an efficiency it did not
+/// settle (notes). The page draws these; it does not work them out.
+pub(crate) fn issues_of(tree: &PowerTree) -> Vec<PowerIssue> {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let known: BTreeSet<&str> = tree.nodes.iter().map(|n| n.id.as_str()).collect();
+    let info: BTreeMap<&str, &Stage> = tree.stages.iter().map(|s| (s.label.as_str(), s)).collect();
+    // One stage for each label: a converter with two outputs is one box.
+    struct One<'a> {
+        name: &'a str,
+        from: Vec<&'a str>,
+        at: Option<Location>,
+        unsettled: bool,
+    }
+    let mut edges: Vec<&Edge> = tree
+        .edges
+        .iter()
+        .filter(|e| known.contains(e.from.as_str()) && known.contains(e.to.as_str()))
+        .collect();
+    edges.sort_by(|a, b| (&a.label, &a.from, &a.to).cmp(&(&b.label, &b.from, &b.to)));
+    let mut stages: BTreeMap<&str, One> = BTreeMap::new();
+    let mut supplied: BTreeSet<&str> = BTreeSet::new();
+    for e in edges {
+        let one = stages.entry(e.label.as_str()).or_insert_with(|| {
+            let stage = info.get(e.label.as_str());
+            One {
+                name: stage_name(&e.label),
+                from: Vec::new(),
+                at: stage.and_then(|s| s.at.clone()).or_else(|| e.at.clone()),
+                unsettled: stage.is_some_and(|s| s.efficiency_unsettled),
+            }
+        });
+        if !one.from.contains(&e.from.as_str()) {
+            one.from.push(e.from.as_str());
+        }
+        supplied.insert(e.to.as_str());
+    }
+
+    let mut out: Vec<PowerIssue> = Vec::new();
+    let mut nodes: Vec<&PowerNode> = tree.nodes.iter().collect();
+    nodes.sort_by(|a, b| a.id.cmp(&b.id));
+    for n in nodes {
+        // The converters this rail feeds draw from it, and are not loads of its own.
+        let feeds: BTreeSet<&str> = stages
+            .values()
+            .filter(|s| s.from.contains(&n.id.as_str()))
+            .map(|s| s.name)
+            .collect();
+        let is_feed = |who: &str| {
+            who.rfind('.')
+                .is_some_and(|dot| dot > 0 && feeds.contains(&who[..dot]))
+        };
+        let loads: Vec<&Draw> = n.loads.iter().filter(|d| !is_feed(&d.who)).collect();
+        let unknowns = loads.iter().filter(|d| d.range.is_none()).count();
+        let sourced = !n.supplies.is_empty() || supplied.contains(n.id.as_str());
+        // The node's place; a node with none has its first draw's.
+        let at =
+            n.at.clone()
+                .or_else(|| n.supplies.iter().find_map(|d| d.at.clone()))
+                .or_else(|| loads.iter().find_map(|d| d.at.clone()));
+        let mut issue = |severity: Severity, text: String| {
+            out.push(PowerIssue {
+                id: n.id.clone(),
+                severity,
+                subject: n.net.clone(),
+                text,
+                at: at.clone(),
+                board: n.board.clone(),
+            });
+        };
+        if let (Budget::Over, Some(demand), Some(capacity)) = (n.budget, &n.demand, &n.capacity) {
+            issue(
+                Severity::Error,
+                format!(
+                    "can draw up to {}, more than the {} its supply can give",
+                    amps_text(demand.hi),
+                    amps_text(capacity.hi)
+                ),
+            );
+        }
+        if !sourced {
+            issue(
+                Severity::Note,
+                "has no source: nothing supplies it".to_string(),
+            );
+        }
+        if n.budget == Budget::Unknown || unknowns > 0 {
+            let loads = match unknowns.max(1) {
+                1 => "a load".to_string(),
+                k => format!("{k} loads"),
+            };
+            issue(
+                Severity::Note,
+                format!("has {loads} with a current the solver has not settled"),
+            );
+        }
+    }
+    for (label, s) in &stages {
+        if s.unsettled {
+            let board = s
+                .from
+                .first()
+                .and_then(|r| tree.nodes.iter().find(|n| n.id == *r))
+                .and_then(|n| n.board.clone());
+            out.push(PowerIssue {
+                id: format!("stage:{label}"),
+                severity: Severity::Note,
+                subject: s.name.to_string(),
+                text: "has an efficiency the solver has not settled".to_string(),
+                at: s.at.clone(),
+                board,
+            });
+        }
+    }
+    let rank = |s: Severity| if s == Severity::Error { 0 } else { 1 };
+    out.sort_by(|a, b| {
+        (rank(a.severity), &a.subject, &a.text).cmp(&(rank(b.severity), &b.subject, &b.text))
+    });
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -395,6 +571,7 @@ mod tests {
             nodes: vec![n],
             edges: Vec::new(),
             stages: Vec::new(),
+            issues: Vec::new(),
         };
         classify(&mut tree);
         (
@@ -439,5 +616,134 @@ mod tests {
             Some(range(0.0, 1.0)),
         ));
         assert_eq!((budget, demand), (Budget::Unknown, None));
+    }
+
+    #[test]
+    fn currents_are_written_as_the_page_wrote_them() {
+        for (x, text) in [
+            (0.08401, "84 mA"),
+            (0.002501, "2.5 mA"),
+            (9.702e-4, "970 uA"),
+            (1.121, "1.12 A"),
+            (26.84e-6, "26.8 uA"),
+            (-0.1401, "-140 mA"),
+            (0.9996, "1 A"),
+            (0.0, "0 A"),
+            (5e-324, "0 A"),
+        ] {
+            assert_eq!(amps_text(x), text, "{x}");
+        }
+    }
+
+    fn rail(id: &str, loads: Vec<Draw>, budget: Budget) -> PowerNode {
+        let mut n = node(loads, None);
+        n.id = id.into();
+        n.net = id.into();
+        n.budget = budget;
+        n.supplies = vec![draw("s", -1.0, -0.1)];
+        n
+    }
+
+    fn found(tree: &PowerTree) -> Vec<(Severity, String, String)> {
+        issues_of(tree)
+            .into_iter()
+            .map(|i| (i.severity, i.subject, i.text))
+            .collect()
+    }
+
+    #[test]
+    fn the_four_issues_are_found_worst_first() {
+        let mut over = rail("OVER", vec![draw("a.p", 0.0, 0.3)], Budget::Over);
+        over.demand = Some(range(0.0, 0.3));
+        over.capacity = Some(range(0.0, 0.1));
+        let mut orphan = rail("ORPHAN", vec![draw("b.p", 0.0, 0.01)], Budget::Unlimited);
+        orphan.supplies.clear();
+        let mut unsure = rail("UNSURE", vec![draw("c.p", 0.0, 0.0)], Budget::Unknown);
+        unsure.loads[0].range = None;
+        let mut two = rail(
+            "TWO",
+            vec![draw("d.p", 0.0, 0.0), draw("e.p", 0.0, 0.0)],
+            Budget::Unknown,
+        );
+        two.loads.iter_mut().for_each(|d| d.range = None);
+        let edge = Edge {
+            from: "UNSURE".into(),
+            to: "ORPHAN".into(),
+            label: "buck (BuckConverter)".into(),
+            kind: EdgeKind::Converts,
+            at: None,
+        };
+        let stage = Stage {
+            label: "buck (BuckConverter)".into(),
+            efficiency: None,
+            efficiency_unsettled: true,
+            at: None,
+        };
+        let tree = PowerTree {
+            title: String::new(),
+            nodes: vec![over, orphan, unsure, two],
+            edges: vec![edge],
+            stages: vec![stage],
+            issues: Vec::new(),
+        };
+        let unsettled = "with a current the solver has not settled";
+        // The converter makes ORPHAN, so it has a source now: only the other three, in order.
+        assert_eq!(
+            found(&tree),
+            [
+                (
+                    Severity::Error,
+                    "OVER".to_string(),
+                    "can draw up to 300 mA, more than the 100 mA its supply can give".to_string()
+                ),
+                (
+                    Severity::Note,
+                    "TWO".to_string(),
+                    format!("has 2 loads {unsettled}")
+                ),
+                (
+                    Severity::Note,
+                    "UNSURE".to_string(),
+                    format!("has a load {unsettled}")
+                ),
+                (
+                    Severity::Note,
+                    "buck".to_string(),
+                    "has an efficiency the solver has not settled".to_string()
+                ),
+            ]
+        );
+        // Without the converter, ORPHAN has no source.
+        let mut tree = tree;
+        tree.edges.clear();
+        assert!(found(&tree).contains(&(
+            Severity::Note,
+            "ORPHAN".to_string(),
+            "has no source: nothing supplies it".to_string()
+        )));
+    }
+
+    #[test]
+    fn a_converter_a_rail_feeds_is_not_one_of_its_loads() {
+        // `buck.vin` draws a current the solver did not settle, but it is the converter's
+        // input, which the unsettled efficiency says; the rail's budget is within.
+        let mut feeder = rail("IN", vec![draw("buck.vin", 0.0, 0.0)], Budget::Within);
+        feeder.loads[0].range = None;
+        let out = rail("OUT", vec![draw("l.p", 0.0, 0.1)], Budget::Within);
+        let edge = Edge {
+            from: "IN".into(),
+            to: "OUT".into(),
+            label: "buck (BuckConverter)".into(),
+            kind: EdgeKind::Converts,
+            at: None,
+        };
+        let tree = PowerTree {
+            title: String::new(),
+            nodes: vec![feeder, out],
+            edges: vec![edge],
+            stages: Vec::new(),
+            issues: Vec::new(),
+        };
+        assert_eq!(found(&tree), []);
     }
 }

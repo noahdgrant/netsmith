@@ -1,5 +1,7 @@
-// The issues strip and the badges of the power tree. The solver will not build a board whose
-// supply is overdrawn, so the answer is changed in flight to show what the page does with one.
+// The issues strip and the badges of the power tree. The server works the issues out (`issues` of
+// the tree: `issues_of` in crates/netsmith/src/editor/power.rs, and `netsmith build` and the analysis
+// report the same), and a board whose supply can be overdrawn does not build, so the answer is
+// changed in flight to show what the page draws from what the server sends.
 export const fixture = 'power_tree';
 
 export async function run({ page, shot, step, expect, section }) {
@@ -25,7 +27,14 @@ export async function run({ page, shot, step, expect, section }) {
     sens.budget = 'unknown';
     sens.demand = null;
     tree.stages.find((s) => s.label.startsWith('boost')).efficiency = null;
-    tree.stages.find((s) => s.label.startsWith('boost')).efficiencyUnsettled = true;
+    const boost = tree.stages.find((s) => s.label.startsWith('boost'));
+    boost.efficiencyUnsettled = true;
+    tree.issues = [
+      { id: v3.id, severity: 'error', subject: 'V3V3', text: 'can draw up to 120 mA, more than the 100 mA its supply can give' },
+      { id: ana.id, severity: 'note', subject: 'VANA', text: 'has no source: nothing supplies it' },
+      { id: sens.id, severity: 'note', subject: 'VSENS', text: 'has a load with a current the solver has not settled' },
+      { id: `stage:${boost.label}`, severity: 'note', subject: boost.label.replace(/ \(.*$/, ''), text: 'has an efficiency the solver has not settled' },
+    ];
     await route.fulfill({ response, json: tree });
   });
   await page.reload();

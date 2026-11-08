@@ -147,7 +147,7 @@ fn tell(observe: &Observer, stage: &str, done: u32, total: u32, message: String)
 impl Workspace {
     /// The folder git is asked about: the project's, else the folder of the file.
     fn git_dir(&self) -> PathBuf {
-        let dir = match (&self.target.project, self.target.files.first()) {
+        let dir = match (&self.target().project, self.target().files.first()) {
             (Some(project), _) => project.root.clone(),
             (None, Some(file)) => file
                 .path
@@ -501,7 +501,7 @@ impl Workspace {
     ) -> Result<Target, Failure> {
         let hash = &base.hash;
         let tree = scratch.path().join(&place.prefix);
-        match &self.target.project {
+        match &self.target().project {
             Some(project) => {
                 // The folder must have been there, or `git archive` fails on its name.
                 if !place.prefix.is_empty() && !git::is_tree(&place.root, hash, &place.prefix) {
@@ -518,11 +518,12 @@ impl Workspace {
                         base.short
                     )));
                 }
-                let manifest_based = self.target.files.iter().map(|f| f.name.as_str()).eq(project
-                    .manifest
-                    .top_level
+                let manifest_based = self
+                    .target()
+                    .files
                     .iter()
-                    .map(String::as_str));
+                    .map(|f| f.name.as_str())
+                    .eq(project.manifest.top_level.iter().map(String::as_str));
                 if manifest_based {
                     Target::resolve_from(&tree, None).map_err(|e| {
                         Failure::Unreadable(format!(
@@ -538,7 +539,7 @@ impl Workspace {
                         ))
                     })?;
                     let mut files = Vec::new();
-                    for file in &self.target.files {
+                    for file in &self.target().files {
                         let absolute =
                             std::path::absolute(&file.path).unwrap_or_else(|_| file.path.clone());
                         let relative = absolute.strip_prefix(&project.root).map_err(|_| {
@@ -562,16 +563,16 @@ impl Workspace {
                     Ok(Target {
                         project: Some(base_project),
                         files,
-                        build_out: self.target.build_out.clone(),
-                        fab_out: self.target.fab_out.clone(),
-                        title: self.target.title.clone(),
+                        build_out: self.target().build_out.clone(),
+                        fab_out: self.target().fab_out.clone(),
+                        title: self.target().title.clone(),
                     })
                 }
             }
             None => {
                 let mut spec = Vec::new();
                 let mut files = Vec::new();
-                for file in &self.target.files {
+                for file in &self.target().files {
                     let absolute =
                         std::path::absolute(&file.path).unwrap_or_else(|_| file.path.clone());
                     let name = absolute
@@ -598,9 +599,9 @@ impl Workspace {
                 Ok(Target {
                     project: None,
                     files,
-                    build_out: self.target.build_out.clone(),
-                    fab_out: self.target.fab_out.clone(),
-                    title: self.target.title.clone(),
+                    build_out: self.target().build_out.clone(),
+                    fab_out: self.target().fab_out.clone(),
+                    title: self.target().title.clone(),
                 })
             }
         }
@@ -712,7 +713,7 @@ pub(super) fn digest_of(ws: &Workspace) -> Result<Digest, ApiError> {
                 systems,
             )
         };
-        let catalogs = ws.target.catalogs();
+        let catalogs = ws.target().catalogs();
         let mut boards = BTreeMap::new();
         for ((data, stale), tree) in handles.iter().zip(trees) {
             let label = data.built.label();
