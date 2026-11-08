@@ -28,12 +28,13 @@ export async function run({ page, shot, step, expect, section }) {
 
   step('an overdrawn supply is red');
   // The solver refuses to build a board whose regulator is overdrawn, so the answer is
-  // changed in flight to show what the page does with one.
+  // changed in flight to show what the page draws of the issue the server would send.
   await page.route('**/api/power?*', async (route) => {
     const response = await route.fetch();
     const tree = await response.json();
     const node = tree.nodes.find((n) => n.net === 'RAIL3');
     node.budget = 'over';
+    tree.issues = [{ id: node.id, severity: 'error', subject: node.net, text: 'can draw up to 120 mA, more than the 100 mA its supply can give' }];
     await route.fulfill({ response, json: tree });
   });
   await page.reload();

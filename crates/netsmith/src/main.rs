@@ -388,6 +388,9 @@ fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool) -> ExitCode {
                     for warning in b.guideline_warnings() {
                         eprintln!("warning: {warning}");
                     }
+                    for note in b.power_notes() {
+                        eprintln!("note: {note}");
+                    }
                     println!("wrote {}", dir.display());
                 }
             }

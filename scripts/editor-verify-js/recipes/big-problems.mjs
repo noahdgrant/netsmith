@@ -16,7 +16,6 @@ export async function run({ page, shot, step, expect, section }) {
   await page.waitForSelector('.dock');
   expect((await page.locator('.problem.note').count()) === 0, 'the notes are not listed yet');
   expect(/\d+\s+Notes/.test(await page.locator('.sev-toggle.note').innerText()), 'the Notes toggle has their count');
-  await page.waitForTimeout(1500); // the power tree's notes land a moment after the analysis: both counts are read after
   expect(Number(await page.locator('.sev-toggle.note .n').innerText()) === Number((await page.locator('.statusbar .counts .nt').innerText()).trim()), 'the same count as the status bar\'s');
   await shot('notes-closed');
 

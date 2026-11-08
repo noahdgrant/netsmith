@@ -17,7 +17,7 @@ mod orders;
 mod outline;
 mod panel;
 mod pcb;
-mod power;
+pub(crate) mod power;
 mod progress;
 mod release;
 mod solved;

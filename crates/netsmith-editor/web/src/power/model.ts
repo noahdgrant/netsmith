@@ -2,8 +2,8 @@
 // rails have trouble, and in what order the loads are listed. Pure functions of what the editor
 // sends (`PowerTree`); nothing here draws.
 
-import type { Edge, Location, PowerNode, PowerTree, Range, Stage } from '../api';
-import { NEGLIGIBLE, ampsText, percentText, voltsText } from './format';
+import type { Edge, Location, PowerIssue, PowerNode, PowerTree, Range, Stage } from '../api';
+import { NEGLIGIBLE, percentText, voltsText } from './format';
 
 /** The heaviest loads a card lists before "+N more". */
 export const TOP = 5;
@@ -50,6 +50,7 @@ export interface StageModel {
 
 export type Level = 'bad' | 'warn';
 
+/** What the server says is wrong with a rail or a converter (`PowerTree.issues`); the page only draws it. */
 export interface Issue {
   /** The node the issue is on. */
   id: string;
@@ -57,7 +58,7 @@ export interface Issue {
   /** `V3V3`. */
   where: string;
   text: string;
-  /** The place in the source to look at, as the server says (`PowerNode.at`, `Stage.at`). */
+  /** The place in the source to look at, as the server says. */
   at: Location | null;
 }
 
@@ -224,7 +225,7 @@ export function modelOf(tree: PowerTree): PowerModel {
     ...s.from.map((r) => ({ from: r, to: s.id })),
     ...s.to.map((r) => ({ from: s.id, to: r })),
   ]);
-  return { rails, stages: stageList, issues: issuesOf(rails, stageList), links };
+  return { rails, stages: stageList, issues: (tree.issues ?? []).map(issueOf), links };
 }
 
 function sortedEdges(edges: Edge[]): Edge[] {
@@ -271,32 +272,9 @@ function railOf(n: PowerNode, feeding: StageModel[], supplied: boolean): RailMod
   };
 }
 
-/** The rails and converters with trouble, worst first, then in name order. */
-export function issuesOf(rails: RailModel[], stages: StageModel[]): Issue[] {
-  const out: Issue[] = [];
-  for (const r of rails) {
-    // The server's place for the node; a server older than the field leaves the first draw's.
-    const at = r.at ?? r.supplies.find((l) => l.at)?.at ?? r.loads.find((l) => l.at)?.at ?? null;
-    if (r.budget === 'over' && r.demand && r.capacity) {
-      out.push({
-        id: r.id,
-        level: 'bad',
-        where: r.net,
-        text: `can draw up to ${ampsText(r.demand.hi)}, more than the ${ampsText(r.capacity.hi)} its supply can give`,
-        at,
-      });
-    }
-    if (!r.sourced) out.push({ id: r.id, level: 'warn', where: r.net, text: 'has no source: nothing supplies it', at });
-    if (r.budget === 'unknown' || r.unknowns.length > 0) {
-      const n = Math.max(1, r.unknowns.length);
-      out.push({ id: r.id, level: 'warn', where: r.net, text: `has ${n === 1 ? 'a load' : `${n} loads`} with a current the solver has not settled`, at });
-    }
-  }
-  for (const s of stages) {
-    if (s.efficiencyUnknown) out.push({ id: s.id, level: 'warn', where: s.name, text: 'has an efficiency the solver has not settled', at: s.at });
-  }
-  const rank = (l: Level) => (l === 'bad' ? 0 : 1);
-  return out.sort((a, b) => rank(a.level) - rank(b.level) || a.where.localeCompare(b.where) || a.text.localeCompare(b.text));
+/** An issue as the page draws it: the server's severity is its level (an error is red, a note amber). */
+function issueOf(i: PowerIssue): Issue {
+  return { id: i.id, level: i.severity === 'error' ? 'bad' : 'warn', where: i.subject, text: i.text, at: i.at ?? null };
 }
 
 /** The worst issue level of each node. */

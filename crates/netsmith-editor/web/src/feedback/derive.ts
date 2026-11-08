@@ -1,11 +1,9 @@
 // What the dock and the status bar list, read from the store: the compiler's problems, the PCB's
-// findings and the power tree's issues as one list of rows; and what a click or F8 on a row does.
+// findings as one list of rows (the power model's problems are the compiler's: the analysis carries them); and what a click or F8 on a row does.
 
 import { computed, effect, signal } from '@preact/signals';
 
 import type { Location } from '../api';
-import { api } from '../client';
-import { modelOf } from '../power/model';
 import { findings, loadFindings, pickedFinding, scene, select, wrote } from '../pcbstore';
 import { type Selection, netSel, partSel, selectAndReveal, setSelection } from '../selection';
 import {
@@ -20,7 +18,6 @@ import {
   live,
   revealSection,
   shown,
-  systemName,
   visible,
 } from '../store';
 import { covers } from '../util';
@@ -33,7 +30,6 @@ import {
   locationOf,
   nextRow,
   rowOfFinding,
-  rowOfPowerIssue,
   rowOfProblem,
   sortRows,
   steps,
@@ -53,13 +49,8 @@ const pcbRows = computed<Row[]>(() => {
   return f.findings.map((x) => rowOfFinding(x, name));
 });
 
-/** The issues of the power tree, as far as the dock has asked for them. */
-const power = signal<{ key: string; rows: Row[] } | null>(null);
-const powerKey = computed(() => `${systemName.value ?? board.value}|${analysis.value?.version}`);
-const powerRows = computed<Row[]>(() => (power.value && power.value.key === powerKey.value ? power.value.rows : []));
-
 /** Everything the dock can list. */
-export const allRows = computed<Row[]>(() => [...projectRows.value, ...pcbRows.value, ...powerRows.value]);
+export const allRows = computed<Row[]>(() => [...projectRows.value, ...pcbRows.value]);
 
 export const counts = computed(() => countRows(allRows.value));
 
@@ -90,46 +81,31 @@ export const banner = computed<Banner | null>(() =>
 /** The page has an error and no drawing at all: nothing built yet. */
 export const neverBuilt = computed(() => (analysis.value?.boards.length ?? 0) === 0 && (analysis.value?.errors ?? 0) > 0);
 
-// ---- what PCB and power add
+// ---- what the PCB adds
 
 type Extras = 'idle' | 'loading' | 'ready';
 export const extras = signal<Extras>('idle');
 
-async function loadExtras(name: string, withPcb: boolean) {
+async function loadExtras(name: string) {
   extras.value = 'loading';
-  const key = powerKey.peek();
-  const target = systemName.peek() ?? name;
   try {
-    await Promise.all([
-      withPcb ? loadFindings(name) : undefined,
-      api
-        .power(target)
-        .then((tree) => {
-          const model = modelOf(tree);
-          // The issue carries the place the server gave its node (a stage its converter's).
-          const rows = model.issues.map((issue) => rowOfPowerIssue(issue, name, issue.at));
-          power.value = { key, rows };
-        })
-        .catch(() => {
-          power.value = { key, rows: [] };
-        }),
-    ]);
+    await loadFindings(name);
   } finally {
     extras.value = 'ready';
   }
 }
 
-// The PCB and the power tree are asked for a moment after the analysis settles. They are the
-// server's to compute, and a page that is typing must not wait for them: only a read of the saved
-// files asks again. The PCB's findings are asked for once the dock is open or the PCB view has
-// been shown: a board that cannot be placed (a power architecture of `Load` parts) answers with an
-// error, which is the PCB view's to say, not a failure at every start.
+// The PCB's findings are the server's to compute, and a page that is typing must not wait for
+// them: they are asked for a moment after the analysis settles, once the dock is open or the PCB
+// view has been shown. A board that cannot be placed (a power architecture of `Load` parts)
+// answers with an error, which is the PCB view's to say, not a failure at every start. The power
+// problems need no such call: the analysis carries them (`stage: "power"`).
 effect(() => {
   const name = board.value;
-  void powerKey.value;
+  void analysis.value?.version;
   const withPcb = dock.value.open || scene.value?.board === name;
-  if (!name || boardStale.value) return;
-  const timer = setTimeout(() => void loadExtras(name, withPcb), 500);
+  if (!name || boardStale.value || !withPcb) return;
+  const timer = setTimeout(() => void loadExtras(name), 500);
   return () => clearTimeout(timer);
 });
 

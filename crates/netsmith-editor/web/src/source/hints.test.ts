@@ -54,6 +54,7 @@ const power = (nodes: Partial<PowerTree['nodes'][number]>[]): PowerTree => ({
   title: 't',
   edges: [],
   stages: [],
+  issues: [],
   nodes: nodes.map((n, i) => ({ id: `n${i}`, net: 'X', board: null, voltage: null, loads: [], supplies: [], demand: null, capacity: null, capacityFrom: null, budget: 'unknown' as const, ...n })),
 });
 
