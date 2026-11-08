@@ -437,6 +437,122 @@ fn a_peak_stated_below_the_steady_voltage_cannot_weaken_a_capacitors_rating() {
 }
 
 #[test]
+fn a_stage_without_a_voltage_margin_rates_its_capacitors_as_it_did() {
+    // The default margin is 1 (ADR 0084): the rating is at least the rail's highest voltage and
+    // no more, so the rows are the ones of a stage that has no such member.
+    let plain = run(&converter(
+        &guide_ic(),
+        "0mA..1A",
+        "    .input.peak &= 6V\n",
+    ));
+    let one = run(&converter(
+        &guide_ic(),
+        "0mA..1A",
+        "    .input.peak &= 6V\n    .stage.voltage_margin &= 1\n",
+    ));
+    assert!(messages(&plain).is_empty(), "{:?}", messages(&plain));
+    for path in ["stage.input_cap", "stage.output_cap"] {
+        assert_eq!(picked(&plain, path), picked(&one, path), "{path}");
+    }
+    assert_eq!(range(&plain, "stage.voltage_margin").lo(), 1.0);
+    let v = range(&plain, "stage.input_cap.max_voltage");
+    assert!(v.lo() >= 6.3 - 1e-9 && v.lo() < 7.5, "{v}");
+}
+
+#[test]
+fn a_voltage_margin_picks_a_capacitor_rated_above_the_peak_by_that_factor() {
+    // A 6 V peak is within the 6.3 V capacitors the stage picks with no margin. With 1.25 the
+    // rating is at least 7.5 V, so the input takes a 10 V row; the output (1.854 V at most,
+    // 2.3 V with the margin) is still within a 6.3 V one.
+    let s = run(&converter(
+        &guide_ic(),
+        "0mA..1A",
+        "    .input.peak &= 6V\n    .stage.voltage_margin &= 1.25\n",
+    ));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    let v = range(&s, "stage.input_cap.max_voltage");
+    assert!(v.lo() >= 7.5 - 1e-9, "{v}");
+    let o = range(&s, "stage.output_cap.max_voltage");
+    assert!(o.lo() >= 1.854 * 1.25 - 1e-9, "{o}");
+    // It is the margin that moved the pick.
+    let plain = run(&converter(
+        &guide_ic(),
+        "0mA..1A",
+        "    .input.peak &= 6V\n",
+    ));
+    assert!(range(&plain, "stage.input_cap.max_voltage").lo() < 7.5);
+}
+
+#[test]
+fn a_voltage_margin_applies_to_the_steady_voltage_when_no_peak_is_stated() {
+    // The steady maximum of the input is 5.25 V, so 1.25 x it is 6.56 V and a 6.3 V row is out.
+    let s = run(&converter(
+        &guide_ic(),
+        "0mA..1A",
+        "    .stage.voltage_margin &= 1.25\n",
+    ));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    let v = range(&s, "stage.input_cap.max_voltage");
+    assert!(v.lo() >= 5.25 * 1.25 - 1e-9, "{v}");
+}
+
+#[test]
+fn a_voltage_margin_no_capacitor_can_meet_is_refused_with_the_numbers() {
+    // Everything else holds: the rails are within the IC's range and the catalog has rows rated
+    // for the plain peak of 30 V that keep the 2 uF the IC asks for, so with a margin of 1 the
+    // board builds. A margin of 5 asks for 150 V (and 26.25 V of the steady voltage): no row
+    // does, so only the rating fails.
+    let s = run(&converter(
+        &guide_ic(),
+        "0mA..1A",
+        "    .input.peak &= 30V\n",
+    ));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    let s = run(&converter(
+        &guide_ic(),
+        "0mA..1A",
+        "    .input.peak &= 30V\n    .stage.voltage_margin &= 5\n",
+    ));
+    let m = messages(&s);
+    assert_eq!(m.len(), 1, "{m:#?}");
+    assert!(
+        m[0].contains("candidate satisfies `stage.input_cap`"),
+        "{}",
+        m[0]
+    );
+    assert!(
+        m[0].contains("stage.input_cap.max_voltage must always be at least")
+            && m[0].contains("stage.voltage_margin"),
+        "{}",
+        m[0]
+    );
+}
+
+#[test]
+fn a_module_that_wraps_the_stage_forwards_a_voltage_margin_to_it() {
+    // A board cannot reach the stage's capacitors, so a wrapping module offers the margin and
+    // states it for the stage: `.stage.voltage_margin &= .margin`.
+    let src = format!(
+        "{}\nimport std::parts::regulator::BuckStage\n\nmodule Reg {{\n    .vin: Rail\n    \
+         .vout: Rail\n    .buck: Buck\n    .margin: Number\n    .stage: BuckStage\n    \
+         .vin ~ .stage.vin\n    .vout ~ .stage.vout\n    .buck ~ .stage.buck\n    \
+         .stage.vout.voltage &= 1.8V +/- 3%\n    .stage.voltage_margin &= .margin\n}}\n\n\
+         board Converter {{\n    .input: Rail {{\n        .voltage &= 5V +/- 5%\n        \
+         .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n    }}\n    .output: Rail {{\n        \
+         .pos.net &= \"1V8\"\n        .neg.net &= \"GND\"\n        .current &= 0mA..1A\n    }}\n    \
+         .u: Zbk2\n    .reg: Reg {{ .margin &= 1.25 }}\n    .input ~ .reg.vin\n    \
+         .input ~ .u.vin\n    .reg.vout ~ .output\n    .reg.buck ~ .u.buck\n    \
+         .u.en ~ .input.pos\n}}\n",
+        guide_ic()
+    );
+    let s = run(&src);
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert_eq!(range(&s, "reg.stage.voltage_margin").lo(), 1.25);
+    let v = range(&s, "reg.stage.input_cap.max_voltage");
+    assert!(v.lo() >= 5.25 * 1.25 - 1e-9, "{v}");
+}
+
+#[test]
 fn the_buck_stage_states_the_current_its_divider_draws() {
     let s = run(&converter(&guide_ic(), "0mA..1A", ""));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));

@@ -378,6 +378,10 @@ _Avoid_: Series provider, virtual provider
 The highest voltage a rail reaches, transients included: the `.peak` of a `Rail`, where `.voltage` is the steady range. A part that clamps a transient (a TVS diode) states it for the rail behind it, joined rails share it, and the parts on the rail are rated for it. A peak below the rail's steady voltage is refused as a mistake (where a stage checks the ratings, as `BuckStage` does).
 _Avoid_: Surge voltage, transient voltage (the transient is the event; the peak is the number)
 
+**Voltage margin**:
+The factor on the highest voltage of a rail that a capacitor's rating must have: `.voltage_margin` of `BuckStage` (ADR 0085, provisional), 1 unless the board states it (`.stage.voltage_margin &= 1.25`). It multiplies both the rail's steady `.voltage` and its `.peak`.
+_Avoid_: Derating factor, safety factor, headroom
+
 **Bias**:
 The DC voltage across a part: a capacitor, a diode, a Zener or a TVS diode. A part with a `.bias` and a `bridge` placed between a rail's `pos` and `neg` has the rail's voltage as its `.bias` without being told; a design states `.bias` only for a part that is across no rail.
 

@@ -193,7 +193,7 @@ fn an_input_capacitor_bank_no_row_is_rated_for_is_named_though_it_is_searched_wi
         m[0]
     );
     assert!(
-        m[0].contains("reg.stage.input_cap.max_voltage must always be at least reg.stage.vin.peak")
+        m[0].contains("reg.stage.input_cap.max_voltage must always be at least (reg.stage.vin.peak * reg.stage.voltage_margin)")
             && m[0].contains("not always above 75V"),
         "{}",
         m[0]

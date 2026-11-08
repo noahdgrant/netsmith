@@ -203,6 +203,13 @@ module BuckStage {
     .ripple: Current
     /// The current the feedback divider draws from the output.
     .divider_current: Current
+    /// The factor each capacitor's rating has over the highest voltage of its rail (ADR 0084,
+    /// provisional): `.input_cap.max_voltage >= .vin.peak * .voltage_margin`, and the same for
+    /// the steady `.voltage` and for the output. A default of 1, which asks for no more than
+    /// the rail's peak; a board that derates its capacitors states it
+    /// (`.stage.voltage_margin &= 1.25`), and a module that wraps the stage forwards its own.
+    .voltage_margin: Number
+    .voltage_margin ?= 1
 
     .vin.current &= 0A
     .inductor.current == -.vout.current
@@ -231,10 +238,10 @@ module BuckStage {
     .vin.voltage <= .buck.max_input_voltage
     .vin.voltage >= .vout.voltage
     -.vout.current <= .buck.max_output_current
-    .input_cap.max_voltage >= .vin.voltage
-    .output_cap.max_voltage >= .vout.voltage
-    .input_cap.max_voltage >= .vin.peak
-    .output_cap.max_voltage >= .vout.peak
+    .input_cap.max_voltage >= .vin.voltage * .voltage_margin
+    .output_cap.max_voltage >= .vout.voltage * .voltage_margin
+    .input_cap.max_voltage >= .vin.peak * .voltage_margin
+    .output_cap.max_voltage >= .vout.peak * .voltage_margin
 
     .ripple == (.vin.voltage - .vout.voltage) * .vout.voltage / (.vin.voltage * .inductor.inductance * .buck.fsw)
     .inductor.current + .ripple / 2 <= .inductor.saturation_current
