@@ -341,6 +341,14 @@ _Avoid_: Subnet, partition, section, cluster
 One combination of the ends of the ranges an island has (a resistance at its least or its greatest, a supply or a load at either end, a diode's forward voltage at either end) with a state for each diode (blocking or conducting). The range a current or a voltage takes is the hull of its values over the corners, which counts each value once (ADR 0076, section 3).
 _Avoid_: Case, scenario, worst case (the worst case is a result, an end of the range a corner makes)
 
+**Regulator (at DC)**:
+A part that states `dc linear_regulator` or `dc switching_regulator`: an ideal source on the net of its output rail, over the range of the rail's voltage, and an input rail that draws what the output asks (what it supplies for a linear one, `Pout / (efficiency * Vin)` for a switching one). It cuts the network into the island behind it and the island in front of it (ADR 0076, amendment 3).
+_Avoid_: Converter model, power stage (a `BuckStage` is the module around the IC, and the IC is the regulator)
+
+**Collapse**:
+A corner of an island in which a regulator's input falls to nothing because its output asks for more power than the source can give through the resistance in front of it (12 V through 10 ohm gives at most 3.6 W): the circuit has no operating point there, and the analysis reports an error that names the regulator, what it asks and the states (ADR 0076, amendment 3).
+_Avoid_: Brown-out, undervoltage (an input that is low but has an operating point is below the regulator's minimum, which its own relation reports), failure to start
+
 **Catalog**:
 The columns of a list of real parts that a part's fields are matched against when the solver picks one. A catalog may be keyed by a column (`catalog mcu by .mpn`), and then the design names the row. The rows are a CSV file named after the catalog, in the order the solver tries them (ADR 0022); a project adds its own files: every `*.csv` in its `catalogs/` folder, or in another folder `catalog_dirs` names in `netsmith.toml`. A row with an empty cell is never offered, except in a column that a catalog may leave empty (`temperature_coefficient`, `rms_current`, `dielectric`, and a TVS diode's `breakdown_voltage`, ADR 0073), and then only to a design that says nothing about the field by any route (a narrowing, a relation, a join, a balance).
 

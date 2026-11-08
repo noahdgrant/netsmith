@@ -13,10 +13,19 @@
 //!
 //! The circuit is the nodes of one island: the nets that no source holds (`free`, the unknowns)
 //! and the nets a source holds (`held`, each a range that is one of the island's values). The
-//! elements are resistors, diodes and current sources. A diode blocks or holds its forward
-//! voltage and carries a current of at least zero; a state that is not what the solution says
-//! (a diode conducting a negative current, one blocking with more than its forward voltage
-//! across it) is refused and not counted.
+//! elements are resistors, diodes, current sources and the inputs of regulators. A diode blocks
+//! or holds its forward voltage and carries a current of at least zero; a state that is not what
+//! the solution says (a diode conducting a negative current, one blocking with more than its
+//! forward voltage across it) is refused and not counted.
+//!
+//! A regulator's input (ADR 0076, amendment 3) draws a current set by the regulator's output
+//! and not by its own voltage: a linear one draws what its output supplies, a switching one
+//! `Pout / (eff * Vin)`, which depends on the input voltage that its own current lowers through
+//! the resistance in front of it. That is solved by a fixed point from zero, whose iterates rise
+//! to the least fixed point when there is one; when there is none the input falls to nothing
+//! and the combination is a *collapse*: the source cannot give what the load asks. A collapse
+//! is reported when the states are the circuit's, and never as the side effect of a refused
+//! state (a diode blocking in front of a regulator leaves it no input, and is no finding).
 
 use netsmith_quantity::{Dimension, Quantity};
 
@@ -32,10 +41,28 @@ pub(crate) const MIN_RESISTANCE: f64 = 1e-3;
 /// without it is not touched.
 const GMIN: f64 = 1e-15;
 
+/// The size of a pivot, relative to the largest entry of the matrix, below which it is zero: an
+/// elimination of conductances up to 1000 S leaves a rounding of about 1e-13 S where a cluster
+/// of nodes is held by nothing.
+const SINGULAR: f64 = 1e-13;
+
 /// A state that is wrong by no more than this is kept: a diode that conducts may carry `-1 pA`,
 /// one that blocks may have 1 nV across it the wrong way.
 const CURRENT_SLACK: f64 = 1e-12;
 const VOLTAGE_SLACK: f64 = 1e-9;
+
+/// The most rounds of the fixed point of the regulators' inputs, and the round after which it
+/// takes half steps. The rise from zero settles in nine or fewer on a real power tree.
+const MAX_ROUNDS: usize = 400;
+const HALF_STEP_FROM: usize = 60;
+
+/// An input below this at a regulator that draws a power is a collapse: the load asks for more
+/// than the source can give through the resistance in between.
+const COLLAPSE_VOLTS: f64 = 1e-3;
+
+/// What the rounds of the fixed point cost, as a factor on the work of one solve, for the limit
+/// of an island with a switching regulator in it.
+const ROUNDS_WORK: u64 = 12;
 
 /// More combinations than this is left alone: the island is too large to enumerate, and the
 /// cheap bound of ADR 0026 is all it gets. A combination is a few microseconds in an optimised
@@ -95,6 +122,15 @@ impl Range {
     }
 }
 
+/// What a regulator's input draws.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Draw {
+    /// What its output supplies: a current of the range `i`.
+    Linear { i: Range },
+    /// `p / (eff * v_in)` for the output power `p` and the efficiency `eff`.
+    Switching { p: Range, eff: Range },
+}
+
 /// What an element is. Nodes are numbered `0..free` for the free nodes and then the held ones.
 #[derive(Clone, Debug)]
 pub(crate) enum Kind {
@@ -114,6 +150,13 @@ pub(crate) enum Kind {
         from: usize,
         to: usize,
         i: Range,
+    },
+    /// The input of a regulator: a current taken out of `from` (its input's positive pin) and
+    /// put into `to` (its ground), set by what its output asks.
+    Regulator {
+        from: usize,
+        to: usize,
+        draw: Draw,
     },
 }
 
@@ -141,10 +184,33 @@ pub(crate) struct Island {
 /// A choice of one element or of one held node, with the words for it.
 #[derive(Clone, Debug)]
 enum Point {
-    R { a: usize, b: usize, r: f64 },
-    I { from: usize, to: usize, i: f64 },
-    DiodeOn { a: usize, k: usize, vf: f64 },
-    DiodeOff { a: usize, k: usize, vf: f64 },
+    R {
+        a: usize,
+        b: usize,
+        r: f64,
+    },
+    I {
+        from: usize,
+        to: usize,
+        i: f64,
+    },
+    DiodeOn {
+        a: usize,
+        k: usize,
+        vf: f64,
+    },
+    DiodeOff {
+        a: usize,
+        k: usize,
+        vf: f64,
+    },
+    /// A regulator's input that draws `p / (eff * v_in)`, found by the fixed point.
+    Sink {
+        from: usize,
+        to: usize,
+        p: f64,
+        eff: f64,
+    },
 }
 
 #[derive(Debug, PartialEq)]
@@ -155,6 +221,26 @@ pub(crate) enum Error {
     NoOperatingPoint,
     /// A matrix that cannot be solved (a loop of ideal sources, a node nothing connects).
     Singular,
+}
+
+/// A combination in which a regulator asks for more than the source can give: the input fell
+/// to `vin` volts and no operating point exists.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Collapse {
+    /// The element of the island (a regulator's input).
+    pub element: usize,
+    pub combination: u64,
+    pub vin: f64,
+}
+
+/// What one operating point was.
+enum Op {
+    /// A solution whose states are the circuit's.
+    Point,
+    /// A state is not the solution's, or a regulator's input is the side effect of one.
+    Refused,
+    /// The states are the circuit's and a regulator's input fell to `vin` (the element's index).
+    Collapse { element: usize, vin: f64 },
 }
 
 /// The result: a range per quantity, and the combination that made each end.
@@ -169,8 +255,9 @@ pub(crate) struct Report {
     nodes: usize,
     elements: usize,
     pub combinations: u64,
-    #[cfg_attr(not(test), allow(dead_code))]
     pub consistent: u64,
+    /// The first combination in which each regulator collapsed, by element.
+    pub collapses: Vec<Collapse>,
 }
 
 /// Which quantity of an element or node.
@@ -182,6 +269,9 @@ pub(crate) enum Which {
     Current(usize),
     /// `V(a) - V(b)` across an element.
     Drop(usize),
+    /// The current that a held node gives into the elements of the island (the index into
+    /// `Island::held`): what a regulator's output supplies to the island.
+    HeldDraw(usize),
 }
 
 impl Report {
@@ -190,6 +280,7 @@ impl Report {
             Which::NodeVoltage(n) => n,
             Which::Current(e) => self.nodes + e,
             Which::Drop(e) => self.nodes + self.elements + e,
+            Which::HeldDraw(h) => self.nodes + 2 * self.elements + h,
         }
     }
 
@@ -243,7 +334,7 @@ impl Report {
         parts.join(", ")
     }
 
-    fn describe(&self, mut combination: u64) -> String {
+    pub fn describe(&self, mut combination: u64) -> String {
         let mut parts = Vec::new();
         for (name, labels) in &self.variables {
             let n = labels.len() as u64;
@@ -263,6 +354,13 @@ fn volts(v: f64) -> String {
 
 fn amps(v: f64) -> String {
     Quantity::point(Dimension::CURRENT, v).map_or_else(|_| format!("{v}"), |q| q.to_string())
+}
+
+fn watts(v: f64) -> String {
+    Quantity::point(Dimension::POWER, v)
+        .map_or_else(|_| format!("{v}"), |q| q.to_string())
+        .trim_end_matches('W')
+        .to_string()
 }
 
 fn ohms(v: f64) -> String {
@@ -311,6 +409,39 @@ impl Island {
                         )
                     })
                     .collect(),
+                Kind::Regulator { from, to, draw } => match *draw {
+                    Draw::Linear { i } => i
+                        .corners()
+                        .into_iter()
+                        .map(|i| {
+                            (
+                                format!("supplying {}", amps(i)),
+                                Variant::Point(Point::I {
+                                    from: *from,
+                                    to: *to,
+                                    i,
+                                }),
+                            )
+                        })
+                        .collect(),
+                    Draw::Switching { p, eff } => {
+                        let mut v = Vec::new();
+                        for p in p.corners() {
+                            for eff in eff.corners() {
+                                v.push((
+                                    format!("asking {} W out at {:.1} %", watts(p), eff * 100.0),
+                                    Variant::Point(Point::Sink {
+                                        from: *from,
+                                        to: *to,
+                                        p,
+                                        eff,
+                                    }),
+                                ));
+                            }
+                        }
+                        v
+                    }
+                },
                 Kind::Diode { anode, cathode, vf } => {
                     let mut v = vec![(
                         "blocking".to_string(),
@@ -359,6 +490,13 @@ impl Island {
                         3
                     }
                 }
+                Kind::Regulator { draw, .. } => {
+                    let two = |r: Range| if r.is_point() { 1 } else { 2 };
+                    match *draw {
+                        Draw::Linear { i } => two(i),
+                        Draw::Switching { p, eff } => two(p) * two(eff),
+                    }
+                }
             };
             total = total.saturating_mul(n);
         }
@@ -374,7 +512,20 @@ impl Island {
                 .iter()
                 .filter(|e| matches!(e.kind, Kind::Diode { .. }))
                 .count()) as u64;
-        let limit = limit.min(MAX_WORK / (size.pow(3) + 50));
+        let rounds = if self.elements.iter().any(|e| {
+            matches!(
+                e.kind,
+                Kind::Regulator {
+                    draw: Draw::Switching { .. },
+                    ..
+                }
+            )
+        }) {
+            ROUNDS_WORK
+        } else {
+            1
+        };
+        let limit = limit.min(MAX_WORK / ((size.pow(3) + 50) * rounds));
         if total > limit {
             return Err(Error::TooManyCombinations {
                 combinations: total,
@@ -384,7 +535,8 @@ impl Island {
         let variants = self.variants();
         let nodes = self.nodes();
         let n = self.elements.len();
-        let quantities = nodes + 2 * n;
+        let quantities = nodes + 2 * n + self.held.len();
+        let mut collapses: Vec<Collapse> = Vec::new();
         let mut ranges = vec![Range::EMPTY; quantities];
         let mut at_lo = vec![0u64; quantities];
         let mut at_hi = vec![0u64; quantities];
@@ -411,7 +563,7 @@ impl Island {
                 }
             }
             match self.operating_point(&points, &held_v, &mut work, &mut out) {
-                Ok(true) => {
+                Ok(Op::Point) => {
                     consistent += 1;
                     for (i, &v) in out.iter().enumerate() {
                         if v < ranges[i].lo {
@@ -423,7 +575,16 @@ impl Island {
                         ranges[i].include(v);
                     }
                 }
-                Ok(false) => {}
+                Ok(Op::Refused) => {}
+                Ok(Op::Collapse { element, vin }) => {
+                    if !collapses.iter().any(|c| c.element == element) {
+                        collapses.push(Collapse {
+                            element,
+                            combination,
+                            vin,
+                        });
+                    }
+                }
                 Err(()) => singular = true,
             }
         }
@@ -432,7 +593,9 @@ impl Island {
         if singular {
             return Err(Error::Singular);
         }
-        if consistent == 0 {
+        // Every combination that is the circuit's collapsed: the report says which, and has no
+        // range to give.
+        if consistent == 0 && collapses.is_empty() {
             return Err(Error::NoOperatingPoint);
         }
         let mut names: Vec<(String, Vec<String>)> = Vec::new();
@@ -451,6 +614,7 @@ impl Island {
             elements: n,
             combinations: total,
             consistent,
+            collapses,
         })
     }
 
@@ -467,73 +631,176 @@ impl Island {
             }
         }
         let mut work = Work::new(self.free, self.elements.len());
-        let mut out = vec![0.0; self.nodes() + 2 * self.elements.len()];
+        let mut out = vec![0.0; self.nodes() + 2 * self.elements.len() + held_count];
         match self.operating_point(&points, &held_v, &mut work, &mut out) {
-            Ok(true) => Some(out),
+            Ok(Op::Point) => Some(out),
             _ => None,
         }
     }
 
-    /// One operating point. `Ok(false)` when a state is not the solution's, `Err` when the
+    /// One operating point. `Op::Refused` when a state is not the solution's, `Err` when the
     /// matrix cannot be solved. `out` receives the node voltages (free, then held), then the
-    /// current and the drop of each element.
+    /// current and the drop of each element, then what each held node gives into the elements.
     fn operating_point(
         &self,
         points: &[Point],
         held_v: &[f64],
         work: &mut Work,
         out: &mut [f64],
-    ) -> Result<bool, ()> {
+    ) -> Result<Op, ()> {
         let free = self.free;
         let on: Vec<usize> = (0..points.len())
             .filter(|&k| matches!(points[k], Point::DiodeOn { .. }))
             .collect();
-        let held = |node: usize| held_v[node - free];
-        let x = match self.stamp_and_solve(points, held_v, &on, work, 0.0) {
-            Some(x) => x,
-            None => self
-                .stamp_and_solve(points, held_v, &on, work, GMIN)
-                .ok_or(())?,
+        let sinks: Vec<usize> = (0..points.len())
+            .filter(|&k| matches!(points[k], Point::Sink { .. }))
+            .collect();
+        for d in work.draw.iter_mut() {
+            *d = 0.0;
+        }
+        let volt = |x: &[f64], node: usize| {
+            if node < free {
+                x[node]
+            } else {
+                held_v[node - free]
+            }
         };
-        let v = |node: usize| if node < free { x[node] } else { held(node) };
-        // The states are what the solution says.
-        for (k, p) in points.iter().enumerate() {
-            match *p {
-                Point::DiodeOn { .. } => {
-                    let branch = free + on.iter().position(|&o| o == k).unwrap_or(0);
-                    if x[branch] < -CURRENT_SLACK {
-                        return Ok(false);
+        let mut x = self.solved(points, held_v, &on, work)?;
+        if !sinks.is_empty() {
+            // The fixed point: each input draws what its output's power asks at the voltage the
+            // last round left it. From zero the rounds rise to the least fixed point, and fall
+            // to nothing when there is none.
+            let mut settled = false;
+            let mut last = (sinks[0], 0.0);
+            for round in 1..=MAX_ROUNDS {
+                let mut worst = 0.0f64;
+                let mut size = 0.0f64;
+                for &k in &sinks {
+                    let Point::Sink { from, to, p, eff } = points[k] else {
+                        continue;
+                    };
+                    let vin = volt(&x, from) - volt(&x, to);
+                    last = (k, vin);
+                    if vin < COLLAPSE_VOLTS {
+                        return Ok(if self.states_ok(points, &on, &x, held_v) {
+                            Op::Collapse { element: k, vin }
+                        } else {
+                            Op::Refused
+                        });
                     }
+                    let want = p / (eff * vin);
+                    let step = if round > HALF_STEP_FROM { 0.5 } else { 1.0 };
+                    worst = worst.max((want - work.draw[k]).abs());
+                    size = size.max(want.abs());
+                    work.next[k] = work.draw[k] + step * (want - work.draw[k]);
                 }
-                Point::DiodeOff { a, k: cathode, vf } if v(a) - v(cathode) > vf + VOLTAGE_SLACK => {
-                    return Ok(false);
+                if worst <= 1e-12 + 1e-10 * size {
+                    settled = true;
+                    break;
                 }
-                _ => {}
+                for &k in &sinks {
+                    work.draw[k] = work.next[k];
+                }
+                x = self.solved(points, held_v, &on, work)?;
+            }
+            if !settled {
+                let (element, vin) = last;
+                return Ok(if self.states_ok(points, &on, &x, held_v) {
+                    Op::Collapse { element, vin }
+                } else {
+                    Op::Refused
+                });
             }
         }
+        if !self.states_ok(points, &on, &x, held_v) {
+            return Ok(Op::Refused);
+        }
+        let v = |node: usize| volt(&x, node);
         let nodes = self.nodes();
         for (node, slot) in out.iter_mut().enumerate().take(nodes) {
             *slot = v(node);
         }
         let n = points.len();
+        let branch_of = |k: usize| free + on.iter().position(|&o| o == k).unwrap_or(0);
+        // The current of each element, from its first node to its second.
+        let mut currents = vec![0.0; n];
         for (k, p) in points.iter().enumerate() {
             let (current, drop) = match *p {
                 Point::R { a, b, r } => ((v(a) - v(b)) / r, v(a) - v(b)),
                 Point::I { from, to, i } => (i, v(from) - v(to)),
+                Point::Sink { from, to, .. } => (work.draw[k], v(from) - v(to)),
                 Point::DiodeOn { a, k: cathode, .. } => {
-                    let branch = free + on.iter().position(|&o| o == k).unwrap_or(0);
-                    (x[branch].max(0.0), v(a) - v(cathode))
+                    (x[branch_of(k)].max(0.0), v(a) - v(cathode))
                 }
                 Point::DiodeOff { a, k: cathode, .. } => (0.0, v(a) - v(cathode)),
             };
+            currents[k] = current;
             out[nodes + k] = current;
             out[nodes + n + k] = drop;
         }
-        Ok(true)
+        // What each held node gives: the sum of the currents that leave it into an element.
+        for h in 0..self.held.len() {
+            let node = free + h;
+            let mut gives = 0.0;
+            for (k, p) in points.iter().enumerate() {
+                let (first, second) = match *p {
+                    Point::R { a, b, .. } => (a, b),
+                    Point::I { from, to, .. } | Point::Sink { from, to, .. } => (from, to),
+                    Point::DiodeOn { a, k: cathode, .. }
+                    | Point::DiodeOff { a, k: cathode, .. } => (a, cathode),
+                };
+                if first == node {
+                    gives += currents[k];
+                }
+                if second == node {
+                    gives -= currents[k];
+                }
+            }
+            out[nodes + 2 * n + h] = gives;
+        }
+        Ok(Op::Point)
+    }
+
+    /// Whether the states are what the solution says: a diode that conducts carries a current
+    /// of at least zero, one that blocks has no more than its drop across it.
+    fn states_ok(&self, points: &[Point], on: &[usize], x: &[f64], held_v: &[f64]) -> bool {
+        let free = self.free;
+        let v = |node: usize| {
+            if node < free {
+                x[node]
+            } else {
+                held_v[node - free]
+            }
+        };
+        points.iter().enumerate().all(|(k, p)| match *p {
+            Point::DiodeOn { .. } => {
+                let branch = free + on.iter().position(|&o| o == k).unwrap_or(0);
+                x[branch] >= -CURRENT_SLACK
+            }
+            Point::DiodeOff { a, k: cathode, vf } => v(a) - v(cathode) <= vf + VOLTAGE_SLACK,
+            _ => true,
+        })
+    }
+
+    /// The solution of one combination, with `gmin` only when it is singular without it.
+    fn solved(
+        &self,
+        points: &[Point],
+        held_v: &[f64],
+        on: &[usize],
+        work: &mut Work,
+    ) -> Result<Vec<f64>, ()> {
+        match self.stamp_and_solve(points, held_v, on, work, 0.0) {
+            Some(x) => Ok(x),
+            None => self
+                .stamp_and_solve(points, held_v, on, work, GMIN)
+                .ok_or(()),
+        }
     }
 
     /// The matrix of one combination, with `gmin` from every free node to the ground, and its
-    /// solution: the free node voltages, then the current of each conducting diode.
+    /// solution: the free node voltages, then the current of each conducting diode. The
+    /// regulators' inputs draw the currents of the last round (`work.draw`).
     fn stamp_and_solve(
         &self,
         points: &[Point],
@@ -574,6 +841,15 @@ impl Island {
                         work.rhs[to] += i;
                     }
                 }
+                Point::Sink { from, to, .. } => {
+                    let i = work.draw[k];
+                    if from < free {
+                        work.rhs[from] -= i;
+                    }
+                    if to < free {
+                        work.rhs[to] += i;
+                    }
+                }
                 Point::DiodeOn { a, k: cathode, vf } => {
                     let branch = free + on.iter().position(|&o| o == k).unwrap_or(0);
                     // The branch current leaves `a` and enters `cathode`.
@@ -594,7 +870,10 @@ impl Island {
                 Point::DiodeOff { .. } => {}
             }
         }
-        work.solve(size)
+        // Without `gmin` a pivot that is rounding and not a conductance (a cluster of nodes that
+        // nothing holds, behind a diode that blocks) is as good as zero: the solution of such a
+        // matrix is a number of the size of 1 / rounding, and must not pass for a voltage.
+        work.solve(size, if gmin > 0.0 { 0.0 } else { SINGULAR })
     }
 }
 
@@ -608,6 +887,9 @@ struct Work {
     m: Vec<f64>,
     rhs: Vec<f64>,
     stride: usize,
+    /// The current each regulator's input draws in the round, by point, and the next round's.
+    draw: Vec<f64>,
+    next: Vec<f64>,
 }
 
 impl Work {
@@ -617,6 +899,8 @@ impl Work {
             m: vec![0.0; stride * stride],
             rhs: vec![0.0; stride],
             stride,
+            draw: vec![0.0; elements],
+            next: vec![0.0; elements],
         }
     }
 
@@ -633,9 +917,17 @@ impl Work {
         self.m[row * self.stride + col] += v;
     }
 
-    /// Gaussian elimination with partial pivoting, on the first `size` rows.
-    fn solve(&mut self, size: usize) -> Option<Vec<f64>> {
+    /// Gaussian elimination with partial pivoting, on the first `size` rows. A pivot below
+    /// `tiny` times the largest entry of the matrix is zero.
+    fn solve(&mut self, size: usize, tiny: f64) -> Option<Vec<f64>> {
         let s = self.stride;
+        let mut scale = 0.0f64;
+        for row in 0..size {
+            for k in 0..size {
+                scale = scale.max(self.m[row * s + k].abs());
+            }
+        }
+        let threshold = (tiny * scale).max(1e-30);
         for col in 0..size {
             let mut pivot = col;
             for row in col + 1..size {
@@ -643,7 +935,7 @@ impl Work {
                     pivot = row;
                 }
             }
-            if self.m[pivot * s + col].abs() < 1e-30 {
+            if self.m[pivot * s + col].abs() < threshold {
                 return None;
             }
             if pivot != col {
@@ -692,7 +984,7 @@ pub(crate) fn check_interior(island: &Island, report: &Report, samples: usize) -
     };
     let free = island.free;
     let mut work = Work::new(free, island.elements.len());
-    let mut out = vec![0.0; island.nodes() + 2 * island.elements.len()];
+    let mut out = vec![0.0; island.nodes() + 2 * island.elements.len() + island.held.len()];
     let mut outside = 0;
     for _ in 0..samples {
         let held_v: Vec<f64> = island
@@ -714,6 +1006,19 @@ pub(crate) fn check_interior(island: &Island, report: &Report, samples: usize) -
                     to: *to,
                     i: i.lo + (i.hi - i.lo) * rng(),
                 },
+                Kind::Regulator { from, to, draw } => match *draw {
+                    Draw::Linear { i } => Point::I {
+                        from: *from,
+                        to: *to,
+                        i: i.lo + (i.hi - i.lo) * rng(),
+                    },
+                    Draw::Switching { p, eff } => Point::Sink {
+                        from: *from,
+                        to: *to,
+                        p: p.lo + (p.hi - p.lo) * rng(),
+                        eff: eff.lo + (eff.hi - eff.lo) * rng(),
+                    },
+                },
                 Kind::Diode { anode, cathode, vf } => {
                     let vf = vf.lo + (vf.hi - vf.lo) * rng();
                     if rng() < 0.5 {
@@ -732,7 +1037,7 @@ pub(crate) fn check_interior(island: &Island, report: &Report, samples: usize) -
                 }
             })
             .collect();
-        if let Ok(true) = island.operating_point(&points, &held_v, &mut work, &mut out) {
+        if let Ok(Op::Point) = island.operating_point(&points, &held_v, &mut work, &mut out) {
             for (i, &v) in out.iter().enumerate() {
                 let r = report.ranges[i];
                 let slack = 1e-9 * r.lo.abs().max(r.hi.abs()) + 1e-15;

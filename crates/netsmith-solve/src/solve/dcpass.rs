@@ -41,6 +41,11 @@ pub struct DcSummary {
     pub combinations: u64,
     /// The fields of parts that were given a range or narrowed.
     pub written: usize,
+    /// The regulators whose input was solved with the power their output asks.
+    pub regulators: usize,
+    /// How many regulators had no operating point in some combination of states: the source
+    /// cannot give what the load asks.
+    pub collapsed: usize,
 }
 
 /// An island and its result, kept to say which states give an end of a range.
@@ -117,12 +122,20 @@ impl Solver<'_> {
                 Ok(report) => {
                     summary.solved += 1;
                     summary.combinations += report.combinations;
+                    summary.regulators += planned.sinks.len();
+                    summary.collapsed += report.collapses.len();
+                    for c in &report.collapses {
+                        self.dc_collapse(&planned, &report, c);
+                    }
+                    let solved_any = report.consistent > 0;
                     let run = Rc::new(Run {
                         island: planned.island,
                         report,
                     });
-                    for m in &planned.parts {
-                        summary.written += self.dc_write(m, &run);
+                    if solved_any {
+                        for m in &planned.parts {
+                            summary.written += self.dc_write(m, &run);
+                        }
                     }
                 }
                 Err(Error::TooManyCombinations {
@@ -153,6 +166,46 @@ impl Solver<'_> {
             }
         }
         (summary, notes)
+    }
+
+    /// A regulator that has no operating point in some combination of states: its output asks
+    /// for more power than the source can give through the resistance in front of it. The states
+    /// are those of the combination that is the circuit's, and not those of a refused one.
+    fn dc_collapse(&mut self, planned: &dc::Planned, report: &dc::Report, c: &dc::Collapse) {
+        let Some(m) = planned.parts.iter().find(|m| m.element == c.element) else {
+            return;
+        };
+        let element = &planned.island.elements[c.element];
+        let asks = match &element.kind {
+            dc::net::Kind::Regulator {
+                draw: dc::net::Draw::Switching { p, eff },
+                ..
+            } => {
+                let percent = |x: f64| format!("{} %", (x * 1000.0).round() / 10.0);
+                let power = Quantity::interval(Dimension::POWER, p.lo, p.hi)
+                    .map_or_else(|_| String::new(), |q| q.to_string());
+                let eff = if eff.is_point() {
+                    percent(eff.lo)
+                } else {
+                    format!("{}..{}", percent(eff.lo), percent(eff.hi))
+                };
+                format!(" ({power} at its output, efficiency {eff})")
+            }
+            _ => String::new(),
+        };
+        let states = report.describe(c.combination);
+        let message = format!(
+            "the source cannot give what `{}` asks{asks}: its input falls to {} and no operating point exists{}",
+            element.name,
+            end(Dimension::VOLTAGE, c.vin.max(0.0)),
+            if states.is_empty() {
+                String::new()
+            } else {
+                format!(", with {states}")
+            }
+        );
+        let (source, span) = self.model.instance(m.part).at();
+        self.report(source, span, message);
     }
 
     /// Write one part's current and drop. Returns how many fields were written.

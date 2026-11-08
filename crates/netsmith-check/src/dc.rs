@@ -1,9 +1,8 @@
 //! The `dc` statement: what a part is in a DC analysis (ADR 0076, amendment 1).
 //!
 //! A part says it once, in the part or in the generic it provides, and the checker records
-//! the element on the part's instance ([`DcElement`]). Nothing reads the record yet: the
-//! analysis that builds a network from these is a later stage, and a build that has `dc`
-//! statements is solved exactly as one without.
+//! the element on the part's instance ([`DcElement`]). The solver's DC analysis reads the
+//! records (`netsmith-solve`, `dc/`).
 
 use netsmith_lang::ast;
 use netsmith_quantity::Dimension;
@@ -61,7 +60,28 @@ impl Checker<'_> {
         let mut pins = Vec::new();
         for (path, role) in d.operands.iter().zip(pin_roles) {
             match self.resolve_path(path) {
-                Res::Inst(i) if self.model.instance(i).kind == InstKind::Pin => {
+                Res::Inst(i)
+                    if kind.takes_rails()
+                        && self.model.instance(i).kind == InstKind::Interface
+                        && self.model.rail_of(i).is_some() =>
+                {
+                    if self.model.owner_of(i) == Some(cur) {
+                        pins.push(i);
+                    } else {
+                        self.error(
+                            path.span,
+                            format!(
+                                "`{}` is not a rail of this part, and `dc {}` names the rails of the part it is in (the {role})",
+                                path.to_source(),
+                                kind.word()
+                            ),
+                        );
+                        ok = false;
+                    }
+                }
+                Res::Inst(i)
+                    if !kind.takes_rails() && self.model.instance(i).kind == InstKind::Pin =>
+                {
                     if self.model.owner_of(i) == Some(cur) {
                         pins.push(i);
                     } else {
@@ -80,8 +100,9 @@ impl Checker<'_> {
                     self.error(
                         path.span,
                         format!(
-                            "`dc {}` takes the {role} here, a pin, and `{}` is not one; the statement is `{}`",
+                            "`dc {}` takes the {role} here, {}, and `{}` is not one; the statement is `{}`",
                             kind.word(),
+                            if kind.takes_rails() { "a rail" } else { "a pin" },
                             path.to_source(),
                             kind.example()
                         ),
@@ -149,9 +170,10 @@ impl Checker<'_> {
             self.error(
                 d.span,
                 format!(
-                    "`dc {}` names the same pin twice; its pins are different ones, as in `{}`",
+                    "`dc {}` names the same {what} twice; its {what}s are different ones, as in `{}`",
                     kind.word(),
-                    kind.example()
+                    kind.example(),
+                    what = if kind.takes_rails() { "rail" } else { "pin" }
                 ),
             );
             return;
@@ -195,6 +217,8 @@ impl Checker<'_> {
         let channel = match el.kind {
             DcKind::Resistor | DcKind::Diode => [el.pins[0], el.pins[1]],
             DcKind::Nmos | DcKind::Pmos => [el.pins[1], el.pins[2]],
+            // A regulator is between rails, and a `bridge` is no part of it.
+            DcKind::LinearRegulator | DcKind::SwitchingRegulator => return,
         };
         if (channel[0] == a && channel[1] == b) || (channel[0] == b && channel[1] == a) {
             return;
@@ -224,6 +248,7 @@ pub(crate) fn quantity_word(dim: Dimension) -> String {
         (Dimension::FREQUENCY, "frequency"),
         (Dimension::TIME, "time"),
         (Dimension::LENGTH, "length"),
+        (Dimension::NONE, "number"),
         (Dimension::TEMPERATURE, "temperature"),
     ]
     .into_iter()
