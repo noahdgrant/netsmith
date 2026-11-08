@@ -7161,9 +7161,9 @@ board Standoff {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 9 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
-    --> std/parts/diode.nsm:193:5
+    --> std/parts/diode.nsm:195:5
     |
-193 |     .bias <= .standoff_voltage
+195 |     .bias <= .standoff_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
