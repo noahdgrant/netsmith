@@ -213,6 +213,7 @@ fn problem(severity: Severity, p: &crate::Problem) -> Problem {
             Stage::Solve => ProblemStage::Solve,
             Stage::Lower => ProblemStage::Lower,
             Stage::Guideline => ProblemStage::Guideline,
+            Stage::Power => ProblemStage::Power,
         }),
         board: p.board.clone(),
         path: p.path.clone(),
@@ -595,6 +596,9 @@ impl Workspace {
                         }
                         for guideline in &built.guidelines {
                             snapshot.problems.push(guideline_problem(&built, guideline));
+                        }
+                        for issue in &built.power {
+                            snapshot.problems.push(power_problem(&built, issue));
                         }
                         snapshot.boards.push((
                             Arc::new(BoardData {
@@ -1020,6 +1024,22 @@ fn guideline_problem(built: &Built, guideline: &netsmith_lower::guidelines::Guid
             .at
             .map(|inst| model.path_of(inst))
             .filter(|p| !p.is_empty()),
+    }
+}
+
+/// What the power model leaves unsettled (issue #187) is a note, at the rail or converter it is
+/// about. A rail that can draw more than its supply gives stops the build, so it is an error
+/// of the build and not one of these.
+fn power_problem(built: &Built, issue: &crate::PowerIssue) -> Problem {
+    let message = format!("{}: {} {}", built.label(), issue.subject, issue.text);
+    Problem {
+        severity: Severity::Note,
+        rendered: format!("note: {message}\n"),
+        message,
+        at: issue.at.clone(),
+        stage: Some(ProblemStage::Power),
+        board: Some(built.label()),
+        path: Some(issue.subject.clone()),
     }
 }
 

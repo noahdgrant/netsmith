@@ -88,6 +88,7 @@ export const ORIGIN_OF_STAGE: Record<ProblemStage, Origin> = {
   solve: 'solver',
   lower: 'lower',
   guideline: 'guideline',
+  power: 'power',
   layout: 'layout',
 };
 
@@ -112,6 +113,8 @@ export function describeProblem(p: Problem): { origin: Origin; board: string | n
 export function rowOfProblem(p: Problem, index: number): Row {
   const { board, rest, origin, path } = describeProblem(p);
   const at = p.at;
+  // A power problem is about a rail or a converter, which the power view shows: the row opens it.
+  const power = origin === 'power';
   return {
     id: `p|${p.severity}|${at ? `${at.file}:${at.line}:${at.column}` : '-'}|${first(p.message)}|${index}`,
     severity: p.severity,
@@ -121,7 +124,8 @@ export function rowOfProblem(p: Problem, index: number): Row {
     at,
     board,
     path,
-    home: null,
+    home: power ? 'power' : null,
+    ...(power && path ? { net: path } : {}),
   };
 }
 
@@ -147,28 +151,6 @@ export function rowOfFinding(f: PcbFinding, board: string): Row {
     path: f.parts.length ? f.parts.join(', ') : null,
     home: 'pcb',
     pcb: f,
-  };
-}
-
-/** An issue the power tree lists. A supply that is overdrawn is an error; the rest (a rail with no
- * source, a current the solver did not settle) are notes: the solver already says most of them,
- * and a rail fed from a connector has "no source" in the model, so they must not count as warnings. */
-export function rowOfPowerIssue(
-  issue: { id: string; level: 'bad' | 'warn'; where: string; text: string },
-  board: string | null,
-  at: Location | null,
-): Row {
-  return {
-    id: `w|${board ?? ''}|${issue.id}|${issue.text}`,
-    severity: issue.level === 'bad' ? 'error' : 'note',
-    message: `${issue.where} ${issue.text}`,
-    full: `${issue.where} ${issue.text}`,
-    origin: 'power',
-    at,
-    board,
-    path: issue.where,
-    home: 'power',
-    net: issue.where,
   };
 }
 

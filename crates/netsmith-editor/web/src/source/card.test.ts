@@ -100,6 +100,7 @@ describe('netCard', () => {
     title: 't',
     edges: [],
     stages: [],
+    issues: [],
     nodes: [{ id: 'n', net: '3V3', board: null, voltage: { lo: 3.1, hi: 3.4, text: '3.135 V .. 3.465 V' }, loads: [{ who: 'a', kind: 'rail', range: null, at: null }], supplies: [{ who: 'b', kind: 'rail', range: null, at: null }], demand: { lo: 0, hi: 0.05, text: '0 A .. 50 mA' }, capacity: null, capacityFrom: null, budget: 'within' }],
   };
   it('gives the pins, the modules it spans and whether a part of the board is on it', () => {

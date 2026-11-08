@@ -14,7 +14,6 @@ import {
   nextRow,
   parseGroup,
   rowOfFinding,
-  rowOfPowerIssue,
   rowOfProblem,
   sortRows,
   splitBoard,
@@ -126,13 +125,16 @@ describe('filterRows', () => {
 });
 
 describe('inScope', () => {
-  const power = rowOfPowerIssue({ id: 'n1', level: 'bad', where: 'V3V3', text: 'can draw more than its supply gives' }, 'Led', null);
+  // The problems of the power model come from the server, as the analysis carries them.
+  const served = (severity: Problem['severity'], message: string): Problem => ({ severity, message, rendered: '', at: null, stage: 'power', board: 'Led', path: 'V3V3' });
+  const power = rowOfProblem(served('error', 'Led: V3V3 can draw more than its supply gives'), 0);
   it('puts a power issue in the power view and a PCB finding in the PCB view', () => {
     expect(inScope(power, { section: 'power', file: null, board: 'Led' })).toBe(true);
     expect(inScope(power, { section: 'schematic', file: null, board: 'Led' })).toBe(false);
     expect(power.severity).toBe('error');
     expect(power.origin).toBe('power');
-    const loose = rowOfPowerIssue({ id: 'n2', level: 'warn', where: 'VIN', text: 'has no source: nothing supplies it' }, 'Led', null);
+    expect(power).toMatchObject({ home: 'power', net: 'V3V3', message: 'V3V3 can draw more than its supply gives', board: 'Led' });
+    const loose = rowOfProblem(served('note', 'Led: VIN has no source: nothing supplies it'), 1);
     expect(loose.severity).toBe('note');
   });
 });
@@ -282,7 +284,7 @@ describe("the server's stage, board and instance", () => {
 
   it('maps every stage to its own stage in the dock', () => {
     const of = (stage: Problem['stage']) => rowOfProblem(served({ severity: 'error', message: 'x', stage }), 0).origin;
-    expect([of('syntax'), of('check'), of('solve'), of('lower'), of('guideline'), of('layout')]).toEqual(['syntax', 'checker', 'solver', 'lower', 'guideline', 'layout']);
+    expect([of('syntax'), of('check'), of('solve'), of('lower'), of('guideline'), of('power'), of('layout')]).toEqual(['syntax', 'checker', 'solver', 'lower', 'guideline', 'power', 'layout']);
   });
 
   it('does not read a board out of a message whose problem the server says has none', () => {

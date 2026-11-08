@@ -13,7 +13,7 @@ const rail = (net: string, supplier: string): PowerNode => ({
   id: net, net, board: null, voltage: null, loads: [], supplies: [draw(`${supplier}.out`)], demand: null, capacity: null, capacityFrom: null, budget: 'unlimited',
 });
 const view = (nodes: SystemNode[], edges: ReturnType<typeof edge>[]): SystemView => ({ name: 'T', kind: 'board', nodes, edges, mates: [], groundGroups: [] });
-const tree = (nodes: PowerNode[]): PowerTree => ({ title: 'T', nodes, edges: [], stages: [] });
+const tree = (nodes: PowerNode[]): PowerTree => ({ title: 'T', nodes, edges: [], stages: [], issues: [] });
 
 describe('port values', () => {
   it('reads the numbers of a quantity in base units', () => {

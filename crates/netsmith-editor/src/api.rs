@@ -53,6 +53,10 @@ pub enum ProblemStage {
     Lower,
     /// A guideline (ADR 0036), a warning unless the project makes it an error.
     Guideline,
+    /// The power model (issue #187): a rail that can draw more than its supply gives (an
+    /// error), a rail nothing supplies, a current or an efficiency the solver did not settle
+    /// (notes).
+    Power,
     /// The schematic layout file (ADR 0061): a fault in its text, or an entry that matches
     /// nothing in the design or that the drawing could not honour. `at` is the file and line.
     Layout,
@@ -635,6 +639,35 @@ pub struct PowerTree {
     pub edges: Vec<Edge>,
     /// The converters of the edges, with the efficiency of each that has one.
     pub stages: Vec<Stage>,
+    /// The rails and converters with trouble, worst first: what `netsmith build` and the
+    /// analysis report as the `power` stage. Computed here, not by the page.
+    #[serde(default)]
+    pub issues: Vec<PowerIssue>,
+}
+
+/// One trouble of the power model: an error where a supply can be asked for more than it
+/// gives, a note for what the solver left unsettled.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PowerIssue {
+    /// The node it is on: a rail's id, or `stage:<label>` for a converter.
+    pub id: String,
+    /// `Error` for an overdrawn supply, `Note` for the rest.
+    pub severity: Severity,
+    /// What it is about: the rail's net (`V3V3`), or the converter's name (`ldo`).
+    pub subject: String,
+    /// What is wrong, to read after the subject: `has no source: nothing supplies it`.
+    pub text: String,
+    /// The place in the source to look at: the node's, else its first draw's; a converter's
+    /// declaration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub at: Option<Location>,
+    /// The board of a system it is on, as `PowerNode::board` has it; none for a stand-alone
+    /// board.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub board: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -1330,6 +1363,7 @@ pub fn typescript() -> String {
         EdgeKind,
         Edge,
         PowerTree,
+        PowerIssue,
         Stage,
         Port,
         SystemNode,
