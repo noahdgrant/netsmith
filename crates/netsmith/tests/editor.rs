@@ -1399,7 +1399,9 @@ fn the_check_says_why_it_cannot_and_what_a_blocked_endpoint_did() {
 }
 
 /// A rail with resistors across it in parallel: their currents are not settled, so the solver
-/// leaves the relations that need them and says so.
+/// leaves the relations that need them and says so. A header taps the middle of the two in
+/// series, so that nothing bounds their ends (Ohm's law proves the checks of a resistor whose
+/// ends have a range): a connector can put any voltage there.
 const BANK: &str = "//! A rail with a bank of resistors across it.
 
 import std::parts::connector::Header1x2
@@ -1415,6 +1417,9 @@ module Bank {
     .c: Resistor { .resistance &= 4.7kohm +/- 1% }
     .power.pos ~> .a ~> .b ~> .power.neg
     .power.pos ~> .c ~> .power.neg
+    .tap: Header1x2
+    .a.b ~ .tap.p1
+    .tap.p2 ~ .power.neg
 }
 
 board Notes {

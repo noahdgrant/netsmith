@@ -1,5 +1,5 @@
 ---
-status: accepted (user review 2026-11-02); amended by the sections "Amendment: the router sizes every net", "Amendment 2" and "Amendment 3: a net with a current that is not known is sized for the known part" (all PROVISIONAL; amendment 3 awaits the owner's review)
+status: accepted (user review 2026-11-02); amended by the sections "Amendment: the router sizes every net", "Amendment 2", "Amendment 3: a net with a current that is not known is sized for the known part" and "Amendment 4: a current that is not known but bounded" (all PROVISIONAL; amendments 3 and 4 await the owner's review)
 ---
 
 # Track width against current
@@ -86,3 +86,9 @@ Found on a real 12 V automotive board: a net `+3V8` carried a modem load of 1.2 
 ## Consequences
 
 Boards that were silently under-width now warn. None of the examples did. A project that wants the check to block puts `guidelines = "error"` in its manifest. `Temperature` is a new type name in the language (kelvin only; no temperature curves yet).
+
+## Amendment 4: a current that is not known but bounded (PROVISIONAL, awaiting the owner's review)
+
+ADR 0026's Ohm bound (the amendment "the Ohm bound, pass-only") gives a resistor whose current nothing states an upper bound, `max |Va - Vb| / R`, when both ends have a known voltage range. It is not a current, and the track planner does not size for it: a bound across a supply (a fuse across 16 V is 323 A) would draw the net at a width nobody needs, and amendment 3 already rejected sizing for a guess. What it can say is that the known part is no lower bound after all.
+
+**The change.** On a net with a current that is not known, no rail's `.min_track`, the note of amendment 3 is left out when every current that is not known is a resistor's with an Ohm bound and the width the net is drawn at (the width the known sum needs, or the process's least) carries the known sum plus every bound together, in whichever direction a bound flows. The width itself is never changed by a bound: it is what amendment 3 gives. A net with any current that has no bound (a rail's, a transistor's, a resistor whose ends have no range) keeps its note and its wording, and so does a net whose bound needs more than the width. The finding against a stated `.min_track` is as before: a bound does not make a stated width wide enough, and the words `at least` still say that the sum is a lower bound there. This is sound where amendment 3's note was true: the note said the tracks are only a lower bound, and where the bounds fit, they are not.

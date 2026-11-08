@@ -146,11 +146,13 @@ fn an_incomplete_balance_is_noted_with_the_pins_it_does_not_model() {
         "{:#?}",
         b.notes
     );
-    // The resistors' power is not evaluated, which is no failure.
+    // The input resistor's power is not evaluated, which is no failure: its ends are two rails
+    // that are 1.5 V to 2.2 V apart over 1 ohm, which Ohm's law does not prove within a rating.
+    // The divider's two resistors are proven by the bound and say nothing.
     assert!(
         b.notes
             .iter()
-            .any(|n| n.starts_with("not evaluated:") && n.contains("stage.r_top.max_power")),
+            .any(|n| n.starts_with("not evaluated:") && n.contains("stage.loose.max_power")),
         "{:#?}",
         b.notes
     );

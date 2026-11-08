@@ -1059,7 +1059,9 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
     );
     // Tracks sized from the current of nets no rail gave a width (ADR 0036).
     let plan = match &process {
-        Some(process) => guidelines::plan_tracks(model, process, &features),
+        Some(process) => {
+            guidelines::plan_tracks(model, process, &features, &solution.current_bounds)
+        }
         None => guidelines::TrackPlan::default(),
     };
     features.net_widths.extend(plan.widths);

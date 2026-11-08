@@ -31,14 +31,20 @@ pub struct NotEvaluated {
     pub message: String,
 }
 
-/// The faults found and the checks that could not be made.
-pub(crate) fn check(model: &Model) -> (Vec<Diagnostic>, Vec<NotEvaluated>) {
-    let mut run = Run {
+/// The readers of the logic interfaces and resistors of a model, for the passes that need
+/// them and make no check of their own.
+pub(crate) fn reader(model: &Model) -> Run<'_> {
+    Run {
         model,
         faults: Vec::new(),
         notes: Vec::new(),
         seen: BTreeSet::new(),
-    };
+    }
+}
+
+/// The faults found and the checks that could not be made.
+pub(crate) fn check(model: &Model) -> (Vec<Diagnostic>, Vec<NotEvaluated>) {
+    let mut run = reader(model);
     for index in 0..model.nets().len() {
         netsmith_core::job::checkpoint();
         run.levels(index);
@@ -55,7 +61,7 @@ struct Line {
     kind: PinKind,
 }
 
-struct Run<'a> {
+pub(crate) struct Run<'a> {
     model: &'a Model,
     faults: Vec<Diagnostic>,
     notes: Vec<NotEvaluated>,
@@ -98,7 +104,7 @@ impl Run<'_> {
     /// The interface that holds the levels of a pin: the `Logic` the pin is the line of, or the
     /// `Levels` of the bus interface it is a pin of (ADR 0064). Both have the reference rail
     /// and the four voltages, and everything below reads them from whichever it gets.
-    fn logic_of(&self, pin: InstId) -> Option<InstId> {
+    pub(crate) fn logic_of(&self, pin: InstId) -> Option<InstId> {
         let inst = self.model.instance(pin);
         let parent = inst.parent?;
         if self.model.instance(parent).kind != InstKind::Interface {
@@ -114,7 +120,7 @@ impl Run<'_> {
     }
 
     /// The value of a quantity field of an instance, if it has one.
-    fn value(&self, inst: InstId, name: &str) -> Option<(FieldId, Quantity)> {
+    pub(crate) fn value(&self, inst: InstId, name: &str) -> Option<(FieldId, Quantity)> {
         match self.model.member(inst, name)? {
             Member::Field(f) => match self.model.field(f).domain {
                 Domain::Quantity(q) => Some((f, q)),
@@ -132,7 +138,7 @@ impl Run<'_> {
     }
 
     /// The `neg` pin of a `Logic`'s reference rail: its ground.
-    fn ground_pin(&self, logic: InstId) -> Option<InstId> {
+    pub(crate) fn ground_pin(&self, logic: InstId) -> Option<InstId> {
         let Some(Member::Inst(reference)) = self.model.member(logic, "reference") else {
             return None;
         };
@@ -142,7 +148,7 @@ impl Run<'_> {
         }
     }
 
-    fn net_index(&self, pin: InstId) -> Option<usize> {
+    pub(crate) fn net_index(&self, pin: InstId) -> Option<usize> {
         self.model.nets().iter().position(|n| n.pins.contains(&pin))
     }
 
@@ -494,7 +500,7 @@ impl Run<'_> {
 
     /// The terminal at the other end of a resistor, if `pin` is one end of a part that is
     /// one: it has a `bridge` and a `resistance`.
-    fn resistor_far_end(&self, pin: InstId) -> Option<InstId> {
+    pub(crate) fn resistor_far_end(&self, pin: InstId) -> Option<InstId> {
         let model = self.model;
         let part = model.owner_of(pin)?;
         let (a, b) = model.instance(part).bridge?;

@@ -258,9 +258,17 @@ pub struct TrackPlan {
 /// the net is not known, the known ones are a lower bound (loads only add up) and the net is
 /// given the width they need, never narrower than the process's least, and is named in
 /// [`TrackPlan::notes`] (ADR 0036, amendment 3). The router draws on the outer layers only,
-/// so the outer-layer constant and the outer copper are used. A net that is a plane or an
+/// so the outer-layer constant and the outer copper are used. A current that is not known but
+/// has an upper bound (`bounds`, Ohm's law over the voltages at the ends of a resistor) leaves
+/// the width as it is and says nothing more when the width drawn already carries the known
+/// current and every bound together, at both signs (ADR 0036, amendment 4). A net that is a plane or an
 /// outer pour is not checked: its copper is an area and not a track.
-pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> TrackPlan {
+pub fn plan_tracks(
+    model: &Model,
+    process: &Process,
+    features: &Features,
+    bounds: &[netsmith_solve::CurrentBound],
+) -> TrackPlan {
     let mut plan = TrackPlan::default();
     let copper = process.stackup.copper_weight * OUNCE_OF_COPPER;
     if copper <= 0.0 {
@@ -380,6 +388,9 @@ pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> Tra
 
         let mut flow = Flow::default();
         let mut unknown: Vec<&str> = Vec::new();
+        // The sum of the upper bounds of the unknown currents, or `None` when one of them has
+        // none (a rail, a part that Ohm's law does not bound).
+        let mut bounded: Option<f64> = Some(0.0);
         for c in &counted {
             let at_from = net.pins.contains(&c.from);
             let at_to = c.to.is_some_and(|t| net.pins.contains(&t));
@@ -389,6 +400,8 @@ pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> Tra
             }
             let Some(range) = c.range else {
                 unknown.push(c.who.as_str());
+                let bound = bounds.iter().find(|b| !c.is_rail && b.part == c.inst);
+                bounded = bounded.zip(bound).map(|(sum, b)| sum + b.current);
                 continue;
             };
             if at_from {
@@ -418,8 +431,14 @@ pub fn plan_tracks(model: &Model, process: &Process, features: &Features) -> Tra
         let sized = stated.is_none() && asks > process.min_track;
         // A current that is not known may be larger than the ones that are: say so, with the
         // width the net got. A rail that states a `.min_track` has decided the width.
-        if !unknown.is_empty() && stated.is_none() && supplied[index] {
-            let width = if sized { asks } else { process.min_track };
+        // Every current that is not known has an upper bound, and the width drawn carries the
+        // known current and all of them at once, in whichever direction they flow: the
+        // tracks are no lower bound, they are enough.
+        let width = if sized { asks } else { process.min_track };
+        let enough = bounded.is_some_and(|more| {
+            ipc2221_width(total + more, copper, rise, layer) <= width * (1.0 + 1e-9)
+        });
+        if !unknown.is_empty() && stated.is_none() && supplied[index] && !enough {
             let known = (total > 0.0).then_some(total);
             plan.notes
                 .push(unknown_note(&net.name, &unknown, width, known, sized));

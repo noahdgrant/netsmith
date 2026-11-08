@@ -211,6 +211,9 @@ module Bank {
     .c: Resistor { .resistance &= 4.7kohm +/- 1% }
     .power.pos ~> .a ~> .b ~> .power.neg
     .power.pos ~> .c ~> .power.neg
+    .tap: Header1x2
+    .a.b ~ .tap.p1
+    .tap.p2 ~ .power.neg
 }
 
 board Notes {

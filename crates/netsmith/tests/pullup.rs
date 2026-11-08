@@ -96,13 +96,15 @@ fn pullup(extra: &str) -> String {
 fn a_plain_resistor_leaves_the_net_unsolved() {
     // The fault `PullUp` fixes: the resistor is the start of a chain on the 3.3 V net and
     // nothing says what it carries, so the net has two unknowns and the checks on it (the
-    // regulator's current and its power, the resistor's own power) wait.
+    // regulator's current and its power) wait. The resistor's own power is made all the same:
+    // Ohm's law over the net's range bounds its current (the cheap bound, pass-only), though
+    // its current stays unknown and the regulator's checks, which need the real one, wait.
     let s = run(&board(PLAIN));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     let open = not_evaluated(&s);
     assert!(
-        open.iter().any(|r| r.contains("pull.current")),
-        "the resistor's power was evaluated: {open:#?}"
+        !open.iter().any(|r| r.contains("pull.")),
+        "the resistor's checks are proven by the bound: {open:#?}"
     );
     assert!(
         open.iter().any(|r| r.contains("ldo.vout.current")),
