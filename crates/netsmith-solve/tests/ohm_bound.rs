@@ -155,19 +155,23 @@ fn a_divider_is_bounded_by_the_range_of_the_line_over_each_resistor() {
 }
 
 #[test]
-fn a_resistor_across_a_wide_rail_is_not_cleared_and_not_failed() {
-    // 3.465 V over 1 ohm is 3.5 A and 12 W: far over its rating. Pass-only: it waits.
+fn a_resistor_across_a_wide_rail_is_failed_by_the_dc_analysis_and_not_by_the_bound() {
+    // 3.465 V over 1 ohm is 3.5 A and 12 W: far over its rating. The bound is pass-only and
+    // would leave it waiting; the DC analysis solves the circuit (a rail across one resistor),
+    // so the check is made and fails, with the states that give the current (ADR 0076).
     let s = solved(&format!(
         "{S3}    .r: Resistor {{ .resistance &= 1ohm +/- 1% }}\n    .r.a ~ .s3.pos\n    .r.b ~ .s3.neg\n"
     ));
-    assert_eq!(faults(&s), Vec::<String>::new());
+    let faults = faults(&s);
+    assert_eq!(faults.len(), 1, "{faults:?}");
     assert!(
-        waiting(&s)
-            .iter()
-            .any(|w| w == "(r.drop * r.current) <= r.max_power"),
-        "{:?}",
-        waiting(&s)
+        faults[0].contains("(r.drop * r.current) must always be at most r.max_power")
+            && faults[0].contains("the DC analysis puts `r.current` at")
+            && faults[0].contains("its high end with s3 at 3.465V, r at 990mΩ"),
+        "{}",
+        faults[0]
     );
+    assert!(waiting(&s).is_empty(), "{:?}", waiting(&s));
 }
 
 #[test]

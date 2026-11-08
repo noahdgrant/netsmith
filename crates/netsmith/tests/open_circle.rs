@@ -339,20 +339,22 @@ fn a_start_ends_the_finding_and_the_limit_is_made_part_of_the_pick() {
 }
 
 #[test]
-fn nothing_else_on_the_net_leaves_an_ordinary_circle() {
-    let boards = build(&behind("\n    .after.current &= 0A"), &Catalogs::jlcpcb()).unwrap();
-    let warnings = boards[0].guideline_warnings();
-    assert_eq!(warnings.len(), 1, "{warnings:?}");
+fn nothing_else_on_the_net_is_a_circle_the_dc_analysis_closes_and_judges_the_pick_by() {
+    // The outside draws exactly nothing, so the network is the series resistor and the
+    // divider. The equations leave the circle open and the pick unlimited (330 and 330); the DC
+    // analysis solves the network after the pick and judges the divider's limit on the draw with
+    // the numbers: 14 V to 22 V over 660 ohm is far over 40 uA, so the build fails and says so
+    // (ADR 0076: a failed rating or bound found by the pass is an error). The circle itself is
+    // not reported: nothing is left open.
+    let err = build(&behind("\n    .after.current &= 0A"), &Catalogs::jlcpcb())
+        .err()
+        .expect("the arbitrary pick draws more than the divider's limit");
     assert!(
-        warnings[0].contains("state a range on one of them with `&=`, for example `after.voltage`"),
-        "{}",
-        warnings[0]
+        err.contains("divider.top.current must always be at most divider.max_draw")
+            && err.contains("the DC analysis puts `divider.top.current` at"),
+        "{err}"
     );
-    assert!(
-        !warnings[0].contains("net `AFTER` carries"),
-        "{}",
-        warnings[0]
-    );
+    assert!(!err.contains("carries"), "{err}");
 }
 
 #[test]

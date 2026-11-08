@@ -24,11 +24,13 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+mod dcpass;
 mod findings;
 mod narrow;
 mod reads;
 mod seed;
 mod transfer;
+pub use dcpass::DcSummary;
 pub use findings::{HeldBy, UnconstrainedPick, UnstatedValue};
 pub use seed::Seeded;
 
@@ -93,6 +95,9 @@ pub struct Solution {
     /// The parts whose current has no value and that Ohm's law bounds, with the bound (see
     /// [`CurrentBound`]). The model does not hold it as the part's current.
     pub current_bounds: Vec<CurrentBound>,
+    /// What the DC analysis did (ADR 0076): how many islands it solved, left alone, and how many
+    /// fields of parts it wrote.
+    pub dc: DcSummary,
 }
 
 /// An upper bound on the size of a part's current, from Ohm's law over the voltages that can
@@ -508,6 +513,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         trials: 0,
         work: 0,
         seeded: Vec::new(),
+        dc_ends: Default::default(),
         original_relations: model.relations().len(),
         extras: Vec::new(),
         surveys: Vec::new(),
@@ -546,6 +552,12 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         }
     }
     s.check_windows();
+    // The picked parts' network is solved, and what it gives is written where nothing states
+    // a value (ADR 0076); the relations that waited are then judged with numbers.
+    let (dc, dc_notes) = s.dc_pass();
+    for c in s.propagate() {
+        s.report(c.source, c.span, c.message);
+    }
 
     let mut deferred = Vec::new();
     // A relation between the places of two parts is the placer's and the check's to
@@ -592,6 +604,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
     }
     let (level_faults, mut not_evaluated) = crate::levels::check(&s.model);
     not_evaluated.extend(crate::busclock::notes(&s.model));
+    not_evaluated.extend(dc_notes);
     // A bus on which one part states its role and another does not (ADR 0064).
     for (at, message) in netsmith_check::unstated_roles(&s.model) {
         not_evaluated.push(crate::levels::NotEvaluated {
@@ -635,6 +648,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         unconstrained,
         unstated,
         current_bounds,
+        dc,
     }
 }
 
@@ -784,6 +798,9 @@ struct Solver<'a> {
     work: u64,
     /// The circles of values that were started from the supply's range (ADR 0053).
     seeded: Vec<Seeded>,
+    /// The fields the DC analysis wrote, with the states at the ends of what it wrote
+    /// (ADR 0076): a failed relation that reads one says them.
+    dc_ends: dcpass::DcEndsMap,
     /// How many relations the design wrote: the ones after them are the solver's own
     /// (`extras`) while they are in the model.
     original_relations: usize,
@@ -984,7 +1001,11 @@ impl Solver<'_> {
         if index >= self.original_relations {
             self.transferred_message(index, message)
         } else {
-            self.with_currents(r, message)
+            let mut fields = Vec::new();
+            r.lhs.fields(&mut fields);
+            r.rhs.fields(&mut fields);
+            let note = self.dc_note(&fields);
+            format!("{}{note}", self.with_currents(r, message))
         }
     }
 

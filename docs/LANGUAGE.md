@@ -737,7 +737,7 @@ module Lamp {
 
 board Plain {
     .supply: Rail {
-        .voltage &= 5V +/- 5%
+        .voltage &= 3.3V +/- 5%
         .pos.net &= "VCC"
         .neg.net &= "GND"
     }
@@ -7725,7 +7725,7 @@ The standard `Resistor`, `Fuse`, `FerriteBead`, `Diode`, `Schottky`, `NMosfet` a
 
 The rules. A `dc` statement is in a part (or a generic that has pins); the element is one of `resistor`, `diode`, `nmos` and `pmos`; the pins are pins of the part and are different; each value is a field of the part with the quantity of its place; a part has one `dc` statement; and when the part has a `bridge`, the element runs between the two pins the `bridge` joins (the drain and the source for a MOSFET). The order of the statements does not matter.
 
-This is only recorded for now. Nothing solves with a `dc` statement yet, so a design builds exactly as it did without it. The analysis that will use it (ADR 0076) tries every combination of the states of the pins it sees, which is the worst case: a design cannot yet say that two lines are never high together (issue #45).
+The resistor and the diode are solved by the DC analysis (next section); the MOSFET is recorded and not solved yet, so a part that has one is a boundary there too.
 
 A part of your own that is a resistor at DC, and a provider of the standard fuse, which has the fuse's statement without writing one:
 
@@ -8002,6 +8002,79 @@ physical for Mechanical {
     }
 }
 ```
+
+### DC analysis
+
+After the parts are picked, the solver builds the network of the parts that state what they are at DC and solves it (ADR 0076, provisional). Where the equations of the design cannot say what a part carries (a net with two currents that nothing states, ADR 0026), the network can: the pass writes `.current` and `.drop` of a part, and the checks that waited for them (`.drop == .current * .resistance`, `.drop * .current <= .max_power`, a fuse's `.current <= .rated_current`) are judged with the numbers. A pass that finds a rating exceeded is an error, like any relation, and says which states of the circuit give it.
+
+What it models in this stage:
+
+- **Resistors.** A `dc resistor` part (a resistor, a fuse, a ferrite bead) is its resistance over the range of the field, `10kohm +/- 1%` taken at both ends. A resistance that can be zero (a bead's `0ohm..70mohm`) is taken as at least 1 mohm.
+- **Diodes.** A `dc diode` part blocks, or holds its forward voltage (both ends of the range) and carries a current of at least zero. A state that is not what the circuit says is refused and not counted: a diode in front of a load that always draws cannot block, and one with its anode below its cathode cannot conduct.
+- **Supplies.** A `Rail` that the board itself declares, with a `.voltage` that the board states, is an ideal source over that range between its `pos` and its `neg`. A rail of a part or of a module is no source: a part's rail is what the part draws, and a module's is a port whose range may be a seed or a promise. A range that is not a source cannot be treated as one: the voltage of a node would then move apart from the current that makes it.
+- **Loads.** A rail of a part, or a rail of the board that is not a supply, with a `.current` that is never negative is a current source over that range from its `pos` to its `neg`. A part with a `bridge` and no `dc` statement (an LED, an inductor) that has a `.current` with a value, stated or worked out, is a current source over it between the pins of its `bridge`: this is how a board states what is behind a pin that nothing models (a boundary takes a stated `.current`). A pin that the checker says draws nothing (ADR 0027: a capacitor, an input) adds nothing, and a capacitor is open at DC.
+
+What it does not model, and leaves as it was: a regulator, a logic pin that drives, a MOSFET, and every pin of a part with no `dc` statement and no `.current`. A net that has such a pin on it is not solved, and neither is the island it is in (below): a part there keeps its `not evaluated` checks, and the cheap bound of Ohm's law (ADR 0026) is what it gets, as before. A rail of a part that can give current (a `.current` that has a negative end) is an output, which holds its net and is not modelled in this stage.
+
+**Islands and corners.** A net that a supply holds is cut: what is on its two sides is solved on its own, with the supply's range as one of its values. The network between the cuts is an *island*. For each island the pass solves every *corner* of its ranges (both ends of each resistance, supply and load, both ends of a diode's forward voltage, and a diode that blocks) and keeps the range each current and voltage takes over all of them. A corner solve gives each value one number in each solve, so nothing is counted twice: a divider of two resistors of 1 % is `4.95 V..5.05 V` and not the `4.90 V..5.10 V` that arithmetic on ranges gives. The corners are the circuit's range where the quantity is monotone in each value, which is so for a voltage or a current of a network with one supply, and for a series chain; a network with two supplies through resistors need not be. An island with more combinations than a limit is left alone, and a note names it and says to cut it at a node a rail holds. The limit is 65536, and less for a large island: the work is the combinations times the cube of the number of nodes, which is capped, so that no island takes more than a tenth of a second (an island of 15 nodes and 16 resistors of 1 % is the largest that is solved).
+
+**What it writes.** A field of a modelled part that nothing states takes the range the circuit gives it. A range that a statement gave a field is a budget (ADR 0038): the circuit has to fit inside it, and when it needs more the error says what it needs and the states that give it. A value the solver worked out from a balance is narrowed to what both say. The ranges are widened by a billionth, and by a picoampere or a nanovolt, so that a rounding does not take a value out of the range it is in.
+
+A divider with an LED on its middle. The top resistor carries what the bottom one and the LED take; nothing states it, and the checks of both resistors are made:
+
+```nsm solve
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+
+board Lit {
+    .supply: Rail {
+        .voltage &= 5V
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .top: Resistor { .resistance &= 1kohm +/- 1% }
+    .bottom: Resistor { .resistance &= 2kohm +/- 1% }
+    .led: Led { .current &= 1mA..2mA; .forward_voltage &= 1.8V..2.4V }
+    .supply.pos ~ .top.a
+    .top.b ~ .bottom.a
+    .top.b ~ .led.anode
+    .bottom.b ~ .supply.neg
+    .led.cathode ~ .supply.neg
+}
+```
+
+A stated range is a budget. Here the fuse is stated to carry at most 100 mA, and what hangs behind it needs up to 300 mA:
+
+```nsm fails
+import std::parts::passive::Fuse
+import std::sources::Rail
+
+part Mcu {
+    .vdd: Rail
+}
+
+board Fused {
+    .supply: Rail {
+        .voltage &= 9V..16V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .fuse: Fuse { .rated_current &= 1A; .current &= 0A..100mA }
+    .mcu: Mcu { .vdd.current &= 50mA..300mA }
+    .supply.pos ~> .fuse ~> .mcu.vdd.pos
+    .supply.neg ~ .mcu.vdd.neg
+}
+```
+
+```text
+error: `fuse.current` is stated 0A..100mA, but the DC analysis of the circuit around it finds 50mA..300mA: at most 300mA at the high end with mcu.vdd at 300mA
+   --> main.nsm:14:41
+   |
+14 |     .fuse: Fuse { .rated_current &= 1A; .current &= 0A..100mA }
+   |                                         ^^^^^^^^^^^^^^^^^^^^^
+```
+
+**Limits.** The pass tries every combination of the states of the parts it sees, which is the worst case. A design cannot say that two pins are never high together, or that two loads never run together: the pass does not know, and it adds both (issue #45 asks for a way to say it). Temperature is a stated tolerance and nothing else. A capacitor is open, so nothing charges: an inrush current is not seen. A diode's reverse leakage and a MOSFET's body diode are not modelled. A regulator's efficiency, a logic pin's drive states and a MOSFET as a switch are later stages of ADR 0076.
 
 ### Logic levels and absolute maximums
 

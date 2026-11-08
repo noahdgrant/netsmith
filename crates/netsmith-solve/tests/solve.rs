@@ -1717,7 +1717,7 @@ fn what_a_tapped_chain_gives_back_is_not_checked_but_what_it_draws_is_counted() 
     // r1 and r2 form a divider with a load on the middle, so their currents differ. The
     // supply is charged with r1's, and nothing is claimed about the return.
     let (_, s) = run(&on_supply(
-        "    .r1: Resistor { .current &= 2mA..3mA }\n    .r2: Resistor { .current &= 1mA..2mA }\n    .load: Resistor\n    .supply.pos ~> .r1 ~> .r2 ~> .supply.neg\n    .r1.b ~ .load.a\n    .load.b ~ .supply.neg\n",
+        "    .r1: Resistor { .resistance &= 1kohm +/- 1%; .current &= 2mA..3mA }\n    .r2: Resistor { .resistance &= 2kohm +/- 1%; .current &= 1mA..2mA }\n    .load: Resistor { .resistance &= 2kohm +/- 1% }\n    .supply.pos ~> .r1 ~> .r2 ~> .supply.neg\n    .r1.b ~ .load.a\n    .load.b ~ .supply.neg\n",
     ));
     assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
     assert!(close(range(&s, "supply.current"), (-0.003, -0.002)));

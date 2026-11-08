@@ -37,7 +37,7 @@ module Lamp {
 }
 
 board Plain {
-    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
     .lamp: Lamp
     .supply ~ .lamp.supply
     .pull: Resistor
@@ -102,7 +102,7 @@ interface Setting {
 }
 
 board A {
-    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
     .setting: Setting
     .r: Resistor
     .r.resistance &= .setting.value
@@ -110,7 +110,7 @@ board A {
 }
 
 board B {
-    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
     .setting: Setting
     .other: Resistor
     .supply.pos ~> .other ~> .supply.neg

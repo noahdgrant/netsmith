@@ -237,9 +237,11 @@ board B {{
 #[test]
 fn a_bound_on_a_value_the_pick_decides_limits_it() {
     let s = run(&single("    .pull.drop <= 3V"));
-    // `drop` waits for the current, which nothing sets, so the bound is not judged and does
-    // not limit the pick.
-    assert_eq!(unconstrained(&s), ["pull"]);
+    // `drop` waits for the current, which nothing states, so the bound cannot be judged while
+    // the part is picked and does not limit the pick. The DC analysis solves the resistor across
+    // the supply after the pick and judges the bound then, so the pick is not reported: the
+    // value it took is held to the bound.
+    assert!(s.unconstrained.is_empty(), "{:?}", unconstrained(&s));
     // A bound that can be judged does: the supply's voltage is stated and the drop is worked
     // out from the current that the board states for the resistor.
     let s = run(&single(

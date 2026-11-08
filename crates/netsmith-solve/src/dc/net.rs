@@ -1,0 +1,746 @@
+//! The network of an island and its worst case: every corner of the ranges and every state of
+//! the diodes, each solved as one operating point, and the range each quantity takes over all
+//! of them (ADR 0076, section 3).
+//!
+//! Interval arithmetic counts a value once for each time it is written (`10 * R2 / (R1 + R2)`
+//! with both resistors `1 kohm +/- 1 %` is `4.90 V..5.10 V` that way, `4.95 V..5.05 V` for the
+//! circuit). A corner solve gives each value one number in each solve, so nothing is counted
+//! twice. The range of a quantity is the hull of its values over the combinations. It is the
+//! range of the circuit where the quantity is monotone in each value (a node voltage or a branch
+//! current of a network with one source, a series chain); a ladder with two sources need not be,
+//! and [`check_interior`] (for tests) draws points inside the ranges to say how many fall
+//! outside the hull.
+//!
+//! The circuit is the nodes of one island: the nets that no source holds (`free`, the unknowns)
+//! and the nets a source holds (`held`, each a range that is one of the island's values). The
+//! elements are resistors, diodes and current sources. A diode blocks or holds its forward
+//! voltage and carries a current of at least zero; a state that is not what the solution says
+//! (a diode conducting a negative current, one blocking with more than its forward voltage
+//! across it) is refused and not counted.
+
+use netsmith_quantity::{Dimension, Quantity};
+
+/// The smallest resistance a resistor is given, 1 mohm: a bead's `0 ohm..70 mohm` has a lower
+/// end of zero, and a zero resistance is not a conductance a matrix can hold. A millivolt at an
+/// ampere is below every tolerance the circuits here have (ADR 0076, section 2).
+pub(crate) const MIN_RESISTANCE: f64 = 1e-3;
+
+/// A conductance from every free node to the ground, as SPICE does, added only to a combination
+/// whose matrix is singular without it, so that a node that nothing holds (a diode that blocks
+/// and a load behind it) has a voltage and not a singular matrix. A picoamp per megavolt: it
+/// moves the current of a 10 Mohm resistor by 1e-8 of itself, and a network that is solved
+/// without it is not touched.
+const GMIN: f64 = 1e-15;
+
+/// A state that is wrong by no more than this is kept: a diode that conducts may carry `-1 pA`,
+/// one that blocks may have 1 nV across it the wrong way.
+const CURRENT_SLACK: f64 = 1e-12;
+const VOLTAGE_SLACK: f64 = 1e-9;
+
+/// More combinations than this is left alone: the island is too large to enumerate, and the
+/// cheap bound of ADR 0026 is all it gets. A combination is a few microseconds in an optimised
+/// build, so the limit is a tenth of a second at the most for one island.
+pub(crate) const MAX_COMBINATIONS: u64 = 1 << 16;
+
+/// The work an island may take, in the units of one multiplication of the elimination: a
+/// combination costs about the cube of the network's size (the free nodes and the diodes that
+/// conduct) and a constant. An island of fifteen nodes is 65536 combinations; one of thirty is
+/// 8000, so that no island takes more than a tenth of a second in an optimised build.
+pub(crate) const MAX_WORK: u64 = 1 << 28;
+
+/// A closed range of reals.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Range {
+    pub lo: f64,
+    pub hi: f64,
+}
+
+impl Range {
+    pub const EMPTY: Range = Range {
+        lo: f64::INFINITY,
+        hi: f64::NEG_INFINITY,
+    };
+
+    pub fn new(a: f64, b: f64) -> Range {
+        Range {
+            lo: a.min(b),
+            hi: a.max(b),
+        }
+    }
+
+    pub fn point(v: f64) -> Range {
+        Range { lo: v, hi: v }
+    }
+
+    pub fn is_point(self) -> bool {
+        self.lo == self.hi
+    }
+
+    pub fn is_empty(self) -> bool {
+        self.lo > self.hi
+    }
+
+    fn include(&mut self, v: f64) {
+        self.lo = self.lo.min(v);
+        self.hi = self.hi.max(v);
+    }
+
+    /// The values a corner enumeration tries: one for a point, the two ends otherwise.
+    fn corners(self) -> Vec<f64> {
+        if self.is_point() {
+            vec![self.lo]
+        } else {
+            vec![self.lo, self.hi]
+        }
+    }
+}
+
+/// What an element is. Nodes are numbered `0..free` for the free nodes and then the held ones.
+#[derive(Clone, Debug)]
+pub(crate) enum Kind {
+    Resistor {
+        a: usize,
+        b: usize,
+        r: Range,
+    },
+    /// Blocks, or holds `vf` from `anode` to `cathode` and carries a current of at least zero.
+    Diode {
+        anode: usize,
+        cathode: usize,
+        vf: Range,
+    },
+    /// A current `i` taken out of `from` and put into `to`.
+    Current {
+        from: usize,
+        to: usize,
+        i: Range,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct Element {
+    pub name: String,
+    pub kind: Kind,
+}
+
+/// A node that a source holds: its voltage is a range that the combinations take the ends of.
+#[derive(Clone, Debug)]
+pub(crate) struct Held {
+    pub name: String,
+    pub v: Range,
+}
+
+/// One island: the nodes no source holds, the nodes a source holds, and what is between them.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Island {
+    pub free: usize,
+    pub held: Vec<Held>,
+    pub elements: Vec<Element>,
+}
+
+/// A choice of one element or of one held node, with the words for it.
+#[derive(Clone, Debug)]
+enum Point {
+    R { a: usize, b: usize, r: f64 },
+    I { from: usize, to: usize, i: f64 },
+    DiodeOn { a: usize, k: usize, vf: f64 },
+    DiodeOff { a: usize, k: usize, vf: f64 },
+}
+
+#[derive(Debug, PartialEq)]
+pub(crate) enum Error {
+    /// The product of the variants is more than the limit.
+    TooManyCombinations { combinations: u64, limit: u64 },
+    /// No combination had consistent states and a solution.
+    NoOperatingPoint,
+    /// A matrix that cannot be solved (a loop of ideal sources, a node nothing connects).
+    Singular,
+}
+
+/// The result: a range per quantity, and the combination that made each end.
+#[derive(Debug)]
+pub(crate) struct Report {
+    ranges: Vec<Range>,
+    at_lo: Vec<u64>,
+    at_hi: Vec<u64>,
+    /// For each variable (held nodes first, then elements): its name and the label of each
+    /// variant, to name a combination.
+    variables: Vec<(String, Vec<String>)>,
+    nodes: usize,
+    elements: usize,
+    pub combinations: u64,
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub consistent: u64,
+}
+
+/// Which quantity of an element or node.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Which {
+    #[cfg_attr(not(test), allow(dead_code))]
+    NodeVoltage(usize),
+    /// The current through an element, from `a` to `b` (a diode: anode to cathode).
+    Current(usize),
+    /// `V(a) - V(b)` across an element.
+    Drop(usize),
+}
+
+impl Report {
+    fn index(&self, q: Which) -> usize {
+        match q {
+            Which::NodeVoltage(n) => n,
+            Which::Current(e) => self.nodes + e,
+            Which::Drop(e) => self.nodes + self.elements + e,
+        }
+    }
+
+    pub fn range(&self, q: Which) -> Range {
+        self.ranges[self.index(q)]
+    }
+
+    /// The states of the combination that produced the low or the high end of a quantity: the
+    /// variants of the values that have a choice, in the order the island lists them.
+    #[cfg(test)]
+    pub fn produced_by(&self, q: Which, high: bool) -> String {
+        let i = self.index(q);
+        let c = if high { self.at_hi[i] } else { self.at_lo[i] };
+        self.describe(c)
+    }
+
+    /// The states that matter for an end of a quantity: those of the combination that made it,
+    /// less each value that can be put at its other end (or in its other state) with the
+    /// quantity at the same value. A current that is a load's is the load's, whatever the
+    /// supply is, and the supply is not named.
+    pub fn states_at(&self, island: &Island, q: Which, high: bool) -> String {
+        let i = self.index(q);
+        let combination = if high { self.at_hi[i] } else { self.at_lo[i] };
+        let variants = island.variants();
+        let mut picks: Vec<usize> = Vec::with_capacity(variants.len());
+        let mut c = combination;
+        for v in &variants {
+            let n = v.len() as u64;
+            picks.push((c % n) as usize);
+            c /= n;
+        }
+        let value = |picks: &[usize]| island.evaluate(&variants, picks).map(|out| out[i]);
+        let Some(here) = value(&picks) else {
+            return self.describe(combination);
+        };
+        let same = |a: f64, b: f64| (a - b).abs() <= 1e-9 * a.abs().max(b.abs()).max(1e-15);
+        let mut parts = Vec::new();
+        for (k, (name, labels)) in self.variables.iter().enumerate() {
+            if labels.len() < 2 {
+                continue;
+            }
+            let matters = (0..labels.len()).filter(|&o| o != picks[k]).all(|o| {
+                let mut other = picks.clone();
+                other[k] = o;
+                !matches!(value(&other), Some(v) if same(v, here))
+            });
+            if matters {
+                parts.push(format!("{name} {}", labels[picks[k]]));
+            }
+        }
+        parts.join(", ")
+    }
+
+    fn describe(&self, mut combination: u64) -> String {
+        let mut parts = Vec::new();
+        for (name, labels) in &self.variables {
+            let n = labels.len() as u64;
+            let k = (combination % n) as usize;
+            combination /= n;
+            if n > 1 {
+                parts.push(format!("{name} {}", labels[k]));
+            }
+        }
+        parts.join(", ")
+    }
+}
+
+fn volts(v: f64) -> String {
+    Quantity::point(Dimension::VOLTAGE, v).map_or_else(|_| format!("{v}"), |q| q.to_string())
+}
+
+fn amps(v: f64) -> String {
+    Quantity::point(Dimension::CURRENT, v).map_or_else(|_| format!("{v}"), |q| q.to_string())
+}
+
+fn ohms(v: f64) -> String {
+    Quantity::point(Dimension::RESISTANCE, v).map_or_else(|_| format!("{v}"), |q| q.to_string())
+}
+
+impl Island {
+    pub fn nodes(&self) -> usize {
+        self.free + self.held.len()
+    }
+
+    /// The variants of each variable: held nodes first, then elements.
+    fn variants(&self) -> Vec<Vec<(String, Variant)>> {
+        let mut all: Vec<Vec<(String, Variant)>> = Vec::new();
+        for h in &self.held {
+            all.push(
+                h.v.corners()
+                    .into_iter()
+                    .map(|v| (format!("at {}", volts(v)), Variant::Held(v)))
+                    .collect(),
+            );
+        }
+        for e in &self.elements {
+            all.push(match &e.kind {
+                Kind::Resistor { a, b, r } => r
+                    .corners()
+                    .into_iter()
+                    .map(|r| {
+                        (
+                            format!("at {}", ohms(r)),
+                            Variant::Point(Point::R { a: *a, b: *b, r }),
+                        )
+                    })
+                    .collect(),
+                Kind::Current { from, to, i } => i
+                    .corners()
+                    .into_iter()
+                    .map(|i| {
+                        (
+                            format!("at {}", amps(i)),
+                            Variant::Point(Point::I {
+                                from: *from,
+                                to: *to,
+                                i,
+                            }),
+                        )
+                    })
+                    .collect(),
+                Kind::Diode { anode, cathode, vf } => {
+                    let mut v = vec![(
+                        "blocking".to_string(),
+                        Variant::Point(Point::DiodeOff {
+                            a: *anode,
+                            k: *cathode,
+                            vf: vf.hi,
+                        }),
+                    )];
+                    for drop in vf.corners() {
+                        v.push((
+                            format!("conducting at {}", volts(drop)),
+                            Variant::Point(Point::DiodeOn {
+                                a: *anode,
+                                k: *cathode,
+                                vf: drop,
+                            }),
+                        ));
+                    }
+                    v
+                }
+            });
+        }
+        all
+    }
+
+    /// The number of combinations, without building them.
+    pub fn combinations(&self) -> u64 {
+        let mut total: u64 = 1;
+        for h in &self.held {
+            total = total.saturating_mul(if h.v.is_point() { 1 } else { 2 });
+        }
+        for e in &self.elements {
+            let n = match &e.kind {
+                Kind::Resistor { r: v, .. } | Kind::Current { i: v, .. } => {
+                    if v.is_point() {
+                        1
+                    } else {
+                        2
+                    }
+                }
+                Kind::Diode { vf, .. } => {
+                    if vf.is_point() {
+                        2
+                    } else {
+                        3
+                    }
+                }
+            };
+            total = total.saturating_mul(n);
+        }
+        total
+    }
+
+    /// Solve every combination within the limit and collect the ranges.
+    pub fn analyze(&self, limit: u64) -> Result<Report, Error> {
+        let total = self.combinations();
+        let size = (self.free
+            + self
+                .elements
+                .iter()
+                .filter(|e| matches!(e.kind, Kind::Diode { .. }))
+                .count()) as u64;
+        let limit = limit.min(MAX_WORK / (size.pow(3) + 50));
+        if total > limit {
+            return Err(Error::TooManyCombinations {
+                combinations: total,
+                limit,
+            });
+        }
+        let variants = self.variants();
+        let nodes = self.nodes();
+        let n = self.elements.len();
+        let quantities = nodes + 2 * n;
+        let mut ranges = vec![Range::EMPTY; quantities];
+        let mut at_lo = vec![0u64; quantities];
+        let mut at_hi = vec![0u64; quantities];
+        let held_count = self.held.len();
+        let mut held_v = vec![0.0; held_count];
+        let mut points: Vec<Point> = Vec::with_capacity(n);
+        let mut work = Work::new(self.free, self.elements.len());
+        let mut out = vec![0.0; quantities];
+        let mut consistent = 0u64;
+        let mut singular = false;
+        for combination in 0..total {
+            if combination % 256 == 0 {
+                netsmith_core::job::checkpoint();
+            }
+            let mut c = combination;
+            points.clear();
+            for (k, v) in variants.iter().enumerate() {
+                let m = v.len() as u64;
+                let (_, variant) = &v[(c % m) as usize];
+                c /= m;
+                match variant {
+                    Variant::Held(x) => held_v[k] = *x,
+                    Variant::Point(p) => points.push(p.clone()),
+                }
+            }
+            match self.operating_point(&points, &held_v, &mut work, &mut out) {
+                Ok(true) => {
+                    consistent += 1;
+                    for (i, &v) in out.iter().enumerate() {
+                        if v < ranges[i].lo {
+                            at_lo[i] = combination;
+                        }
+                        if v > ranges[i].hi {
+                            at_hi[i] = combination;
+                        }
+                        ranges[i].include(v);
+                    }
+                }
+                Ok(false) => {}
+                Err(()) => singular = true,
+            }
+        }
+        // A combination whose matrix cannot be solved says the circuit is not one this
+        // analysis understands: no answer is better than a part of one.
+        if singular {
+            return Err(Error::Singular);
+        }
+        if consistent == 0 {
+            return Err(Error::NoOperatingPoint);
+        }
+        let mut names: Vec<(String, Vec<String>)> = Vec::new();
+        for (h, v) in self.held.iter().zip(&variants) {
+            names.push((h.name.clone(), v.iter().map(|(l, _)| l.clone()).collect()));
+        }
+        for (e, v) in self.elements.iter().zip(&variants[held_count..]) {
+            names.push((e.name.clone(), v.iter().map(|(l, _)| l.clone()).collect()));
+        }
+        Ok(Report {
+            ranges,
+            at_lo,
+            at_hi,
+            variables: names,
+            nodes,
+            elements: n,
+            combinations: total,
+            consistent,
+        })
+    }
+
+    /// The quantities of one combination, given as the index of the variant of each variable,
+    /// or `None` when the combination is refused or cannot be solved.
+    fn evaluate(&self, variants: &[Vec<(String, Variant)>], picks: &[usize]) -> Option<Vec<f64>> {
+        let held_count = self.held.len();
+        let mut held_v = vec![0.0; held_count];
+        let mut points = Vec::new();
+        for (k, v) in variants.iter().enumerate() {
+            match &v[picks[k]].1 {
+                Variant::Held(x) => held_v[k] = *x,
+                Variant::Point(p) => points.push(p.clone()),
+            }
+        }
+        let mut work = Work::new(self.free, self.elements.len());
+        let mut out = vec![0.0; self.nodes() + 2 * self.elements.len()];
+        match self.operating_point(&points, &held_v, &mut work, &mut out) {
+            Ok(true) => Some(out),
+            _ => None,
+        }
+    }
+
+    /// One operating point. `Ok(false)` when a state is not the solution's, `Err` when the
+    /// matrix cannot be solved. `out` receives the node voltages (free, then held), then the
+    /// current and the drop of each element.
+    fn operating_point(
+        &self,
+        points: &[Point],
+        held_v: &[f64],
+        work: &mut Work,
+        out: &mut [f64],
+    ) -> Result<bool, ()> {
+        let free = self.free;
+        let on: Vec<usize> = (0..points.len())
+            .filter(|&k| matches!(points[k], Point::DiodeOn { .. }))
+            .collect();
+        let held = |node: usize| held_v[node - free];
+        let x = match self.stamp_and_solve(points, held_v, &on, work, 0.0) {
+            Some(x) => x,
+            None => self
+                .stamp_and_solve(points, held_v, &on, work, GMIN)
+                .ok_or(())?,
+        };
+        let v = |node: usize| if node < free { x[node] } else { held(node) };
+        // The states are what the solution says.
+        for (k, p) in points.iter().enumerate() {
+            match *p {
+                Point::DiodeOn { .. } => {
+                    let branch = free + on.iter().position(|&o| o == k).unwrap_or(0);
+                    if x[branch] < -CURRENT_SLACK {
+                        return Ok(false);
+                    }
+                }
+                Point::DiodeOff { a, k: cathode, vf } if v(a) - v(cathode) > vf + VOLTAGE_SLACK => {
+                    return Ok(false);
+                }
+                _ => {}
+            }
+        }
+        let nodes = self.nodes();
+        for (node, slot) in out.iter_mut().enumerate().take(nodes) {
+            *slot = v(node);
+        }
+        let n = points.len();
+        for (k, p) in points.iter().enumerate() {
+            let (current, drop) = match *p {
+                Point::R { a, b, r } => ((v(a) - v(b)) / r, v(a) - v(b)),
+                Point::I { from, to, i } => (i, v(from) - v(to)),
+                Point::DiodeOn { a, k: cathode, .. } => {
+                    let branch = free + on.iter().position(|&o| o == k).unwrap_or(0);
+                    (x[branch].max(0.0), v(a) - v(cathode))
+                }
+                Point::DiodeOff { a, k: cathode, .. } => (0.0, v(a) - v(cathode)),
+            };
+            out[nodes + k] = current;
+            out[nodes + n + k] = drop;
+        }
+        Ok(true)
+    }
+
+    /// The matrix of one combination, with `gmin` from every free node to the ground, and its
+    /// solution: the free node voltages, then the current of each conducting diode.
+    fn stamp_and_solve(
+        &self,
+        points: &[Point],
+        held_v: &[f64],
+        on: &[usize],
+        work: &mut Work,
+        gmin: f64,
+    ) -> Option<Vec<f64>> {
+        let free = self.free;
+        let size = free + on.len();
+        work.reset(size);
+        let held = |node: usize| held_v[node - free];
+        if gmin > 0.0 {
+            for row in 0..free {
+                work.add(row, row, gmin);
+            }
+        }
+        for (k, p) in points.iter().enumerate() {
+            match *p {
+                Point::R { a, b, r } => {
+                    let g = 1.0 / r;
+                    for (x, y) in [(a, b), (b, a)] {
+                        if x < free {
+                            work.add(x, x, g);
+                            if y < free {
+                                work.add(x, y, -g);
+                            } else {
+                                work.rhs[x] += g * held(y);
+                            }
+                        }
+                    }
+                }
+                Point::I { from, to, i } => {
+                    if from < free {
+                        work.rhs[from] -= i;
+                    }
+                    if to < free {
+                        work.rhs[to] += i;
+                    }
+                }
+                Point::DiodeOn { a, k: cathode, vf } => {
+                    let branch = free + on.iter().position(|&o| o == k).unwrap_or(0);
+                    // The branch current leaves `a` and enters `cathode`.
+                    if a < free {
+                        work.add(a, branch, 1.0);
+                        work.add(branch, a, 1.0);
+                    } else {
+                        work.rhs[branch] -= held(a);
+                    }
+                    if cathode < free {
+                        work.add(cathode, branch, -1.0);
+                        work.add(branch, cathode, -1.0);
+                    } else {
+                        work.rhs[branch] += held(cathode);
+                    }
+                    work.rhs[branch] += vf;
+                }
+                Point::DiodeOff { .. } => {}
+            }
+        }
+        work.solve(size)
+    }
+}
+
+enum Variant {
+    Held(f64),
+    Point(Point),
+}
+
+/// The matrix and the right side of one solve, kept between combinations.
+struct Work {
+    m: Vec<f64>,
+    rhs: Vec<f64>,
+    stride: usize,
+}
+
+impl Work {
+    fn new(free: usize, elements: usize) -> Work {
+        let stride = free + elements;
+        Work {
+            m: vec![0.0; stride * stride],
+            rhs: vec![0.0; stride],
+            stride,
+        }
+    }
+
+    fn reset(&mut self, size: usize) {
+        for i in 0..size * self.stride {
+            self.m[i] = 0.0;
+        }
+        for r in self.rhs.iter_mut() {
+            *r = 0.0;
+        }
+    }
+
+    fn add(&mut self, row: usize, col: usize, v: f64) {
+        self.m[row * self.stride + col] += v;
+    }
+
+    /// Gaussian elimination with partial pivoting, on the first `size` rows.
+    fn solve(&mut self, size: usize) -> Option<Vec<f64>> {
+        let s = self.stride;
+        for col in 0..size {
+            let mut pivot = col;
+            for row in col + 1..size {
+                if self.m[row * s + col].abs() > self.m[pivot * s + col].abs() {
+                    pivot = row;
+                }
+            }
+            if self.m[pivot * s + col].abs() < 1e-30 {
+                return None;
+            }
+            if pivot != col {
+                for k in 0..size {
+                    self.m.swap(col * s + k, pivot * s + k);
+                }
+                self.rhs.swap(col, pivot);
+            }
+            for row in col + 1..size {
+                let f = self.m[row * s + col] / self.m[col * s + col];
+                if f == 0.0 {
+                    continue;
+                }
+                for k in col..size {
+                    let sub = f * self.m[col * s + k];
+                    self.m[row * s + k] -= sub;
+                }
+                let sub = f * self.rhs[col];
+                self.rhs[row] -= sub;
+            }
+        }
+        let mut x = vec![0.0; size];
+        for row in (0..size).rev() {
+            let mut sum = self.rhs[row];
+            for (k, xk) in x.iter().enumerate().skip(row + 1) {
+                sum -= self.m[row * s + k] * xk;
+            }
+            x[row] = sum / self.m[row * s + row];
+        }
+        Some(x)
+    }
+}
+
+/// Draw `samples` points inside the ranges (and every state of the diodes) and count the
+/// results that fall outside the report's ranges, by quantity. Zero is evidence that the hull
+/// of the corners covers the box, not proof. For tests: a fixed seed, so every run draws the
+/// same points.
+#[cfg(test)]
+pub(crate) fn check_interior(island: &Island, report: &Report, samples: usize) -> usize {
+    let mut s: u64 = 0x9E37_79B9_7F4A_7C15;
+    let mut rng = move || {
+        s ^= s << 13;
+        s ^= s >> 7;
+        s ^= s << 17;
+        (s >> 11) as f64 / (1u64 << 53) as f64
+    };
+    let free = island.free;
+    let mut work = Work::new(free, island.elements.len());
+    let mut out = vec![0.0; island.nodes() + 2 * island.elements.len()];
+    let mut outside = 0;
+    for _ in 0..samples {
+        let held_v: Vec<f64> = island
+            .held
+            .iter()
+            .map(|h| h.v.lo + (h.v.hi - h.v.lo) * rng())
+            .collect();
+        let points: Vec<Point> = island
+            .elements
+            .iter()
+            .map(|e| match &e.kind {
+                Kind::Resistor { a, b, r } => Point::R {
+                    a: *a,
+                    b: *b,
+                    r: r.lo + (r.hi - r.lo) * rng(),
+                },
+                Kind::Current { from, to, i } => Point::I {
+                    from: *from,
+                    to: *to,
+                    i: i.lo + (i.hi - i.lo) * rng(),
+                },
+                Kind::Diode { anode, cathode, vf } => {
+                    let vf = vf.lo + (vf.hi - vf.lo) * rng();
+                    if rng() < 0.5 {
+                        Point::DiodeOn {
+                            a: *anode,
+                            k: *cathode,
+                            vf,
+                        }
+                    } else {
+                        Point::DiodeOff {
+                            a: *anode,
+                            k: *cathode,
+                            vf,
+                        }
+                    }
+                }
+            })
+            .collect();
+        if let Ok(true) = island.operating_point(&points, &held_v, &mut work, &mut out) {
+            for (i, &v) in out.iter().enumerate() {
+                let r = report.ranges[i];
+                let slack = 1e-9 * r.lo.abs().max(r.hi.abs()) + 1e-15;
+                if v < r.lo - slack || v > r.hi + slack {
+                    outside += 1;
+                }
+            }
+        }
+    }
+    outside
+}

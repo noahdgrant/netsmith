@@ -138,7 +138,10 @@ board Supply {
 
 #[test]
 fn an_incomplete_balance_is_noted_with_the_pins_it_does_not_model() {
-    let b = &built(OUTLINE_STAGE)[0];
+    // What the output draws is not stated, so the DC analysis has nothing to solve with and the
+    // equations are all there is (a stated load is the next test).
+    let src = OUTLINE_STAGE.replace("        .current &= 0A..2A\n", "");
+    let b = &built(&src)[0];
     assert!(
         b.notes.iter().any(|n| n
             == "the balance on net `3V3` in `stage` is incomplete: `stage.loose.b` is not modelled, \
@@ -155,6 +158,36 @@ fn an_incomplete_balance_is_noted_with_the_pins_it_does_not_model() {
             .any(|n| n.starts_with("not evaluated:") && n.contains("stage.loose.max_power")),
         "{:#?}",
         b.notes
+    );
+}
+
+#[test]
+fn a_stated_load_lets_the_dc_analysis_judge_the_stage_and_the_notes_go() {
+    // With what the output draws stated, the DC analysis solves the stage (the resistor, the
+    // divider and the load) and judges the resistor's power with the numbers: nothing waits, and
+    // the balance's note goes with the current it said was not set (ADR 0076).
+    let src = OUTLINE_STAGE.replace("0A..2A", "0A..20mA");
+    let b = &built(&src)[0];
+    assert!(
+        !b.notes.iter().any(|n| n.contains("stage.loose.max_power")),
+        "{:#?}",
+        b.notes
+    );
+    assert!(
+        !b.notes.iter().any(|n| n.contains("is incomplete")),
+        "{:#?}",
+        b.notes
+    );
+    // A load that the 1 ohm resistor cannot carry within its rating is an error that says so.
+    let err = build("t.nsm", OUTLINE_STAGE, &Catalogs::jlcpcb())
+        .err()
+        .expect("2 A through 1 ohm and 100 mW");
+    assert!(
+        err.contains(
+            "(stage.loose.drop * stage.loose.current) must always be at most stage.loose.max_power"
+        ) && err.contains("the DC analysis puts `stage.loose.current` at")
+            && err.contains("output at 2A"),
+        "{err}"
     );
 }
 

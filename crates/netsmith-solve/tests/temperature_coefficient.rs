@@ -12,7 +12,7 @@ import std::sources::Rail
 
 board B {{
     .supply: Rail {{
-        .voltage &= 5V +/- 5%
+        .voltage &= 0.5V +/- 5%
         .pos.net &= \"VCC\"
         .neg.net &= \"GND\"
     }}

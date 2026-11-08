@@ -83,10 +83,12 @@ fn a_pull_down_whose_bound_fits_the_least_track_has_no_note_and_the_same_width()
 
 #[test]
 fn a_resistor_whose_bound_needs_more_than_the_track_keeps_the_note() {
-    // Two 1 ohm resistors across the supply, so that neither current is worked out: the bound
-    // of each is 3.5 A, which the least track does not carry.
+    // Two 1 ohm resistors from a pin that drives a line to the ground, so that neither current
+    // is worked out (the pin is one the DC analysis does not model, ADR 0076, so it leaves the
+    // island to the bound; two resistors straight across the supply are solved, and their
+    // currents known): the bound of each is 3.5 A, which the least track does not carry.
     let l = lowered(
-        "    .r: Resistor { .resistance &= 1ohm +/- 1% }\n    .q: Resistor { .resistance &= 1ohm +/- 1% }\n    .r.a ~ .s3.pos\n    .r.b ~ .s3.neg\n    .q.a ~ .s3.pos\n    .q.b ~ .s3.neg\n",
+        "    .a: Driver\n    .s3 ~ .a.vdd\n    .r: Resistor { .resistance &= 1ohm +/- 1% }\n    .q: Resistor { .resistance &= 1ohm +/- 1% }\n    .r.a ~ .a.out.line\n    .r.b ~ .s3.neg\n    .q.a ~ .a.out.line\n    .q.b ~ .s3.neg\n",
     );
     for part in ["r", "q"] {
         let said = notes_naming_part(&l, part);
