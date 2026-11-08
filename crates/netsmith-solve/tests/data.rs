@@ -73,6 +73,10 @@ fn columns(name: &str) -> Vec<(String, FieldKind)> {
             q("zener_voltage", Dimension::VOLTAGE),
             q("max_power", Dimension::POWER),
             t("package"),
+            q("test_current", Dimension::CURRENT),
+            q("temperature_coefficient", Dimension::VOLTAGE),
+            q("leakage_current", Dimension::CURRENT),
+            q("leakage_test_voltage", Dimension::VOLTAGE),
         ],
         "tvs" => vec![
             q("standoff_voltage", Dimension::VOLTAGE),
@@ -126,8 +130,21 @@ fn columns(name: &str) -> Vec<(String, FieldKind)> {
 }
 
 fn catalog(name: &str) -> Catalog {
+    // The columns the `catalog` statement marks `optional` (ADR 0078), for the kind that has
+    // any besides the three passive ones.
+    let optional: Vec<String> = match name {
+        "zener" => [
+            "test_current",
+            "temperature_coefficient",
+            "leakage_current",
+            "leakage_test_voltage",
+        ]
+        .map(String::from)
+        .to_vec(),
+        _ => Vec::new(),
+    };
     Catalogs::jlcpcb()
-        .resolve(name, &columns(name), &[])
+        .resolve(name, &columns(name), &optional)
         .unwrap_or_else(|| panic!("no {name} catalog"))
         .unwrap_or_else(|e| panic!("{e}"))
 }
@@ -767,6 +784,71 @@ fn a_zener_row_is_the_range_of_the_datasheet_at_the_test_current() {
     let v = value(&z, "zener_voltage");
     assert_eq!((v.lo(), v.hi()), (4.8, 5.4));
     assert_eq!(value(&z, "max_power"), quantity(0.5, "W"));
+}
+
+/// Every standard Zener row that states a figure the clamp over temperature reads cites the
+/// datasheet in its source and the table the figures come from in its notes, and states all
+/// four together: a half-filled row would be offered to a design that asks for one of them
+/// and read wrongly by one that asks for another.
+#[test]
+fn every_zener_row_with_a_temperature_figure_cites_the_datasheet_table() {
+    let columns = [
+        "test_current",
+        "temperature_coefficient",
+        "leakage_current",
+        "leakage_test_voltage",
+    ];
+    let mut stating = 0;
+    for row in records("jlcpcb/catalog/zener.csv") {
+        let lcsc = &row["lcsc"];
+        let filled = columns.iter().filter(|c| !row[**c].is_empty()).count();
+        if filled == 0 {
+            continue;
+        }
+        stating += 1;
+        assert_eq!(filled, columns.len(), "{lcsc} states only some of the four");
+        assert!(
+            row["source"].contains("datasheet:https://"),
+            "{lcsc} states temperature figures and cites no datasheet"
+        );
+        assert!(
+            row["notes"].contains("ELECTRICAL CHARACTERISTICS table (page 2"),
+            "{lcsc}: the notes do not say which table the figures were read from"
+        );
+    }
+    assert_eq!(stating, 7);
+}
+
+/// The figures are the datasheet's, each read from the ELECTRICAL CHARACTERISTICS table of
+/// the Changjing BZT52C2V4-BZT52C43 datasheet (Rev. - 2.1, page 2): IZT, the typical
+/// temperature coefficient (min to max, mV/C), IR at VR.
+#[test]
+fn the_zener_rows_state_the_datasheet_test_current_coefficient_and_leakage() {
+    let cases = [
+        ("C2112", (-0.0035, 0.0), (5e-6, 1.0)),
+        ("C2113", (-0.0035, 0.0), (5e-6, 1.0)),
+        ("C2117", (-0.0027, 0.0012), (2e-6, 2.0)),
+        ("C2123", (0.0038, 0.007), (0.5e-6, 6.0)),
+        ("C43491", (0.006, 0.010), (0.1e-6, 8.0)),
+        ("C2104", (0.0092, 0.013), (0.1e-6, 10.5)),
+        ("C2109", (0.0184, 0.022), (0.1e-6, 16.8)),
+    ];
+    for (lcsc, (lo, hi), (leak, at)) in cases {
+        let z = row_of("zener", lcsc);
+        assert_eq!(value(&z, "test_current"), quantity(5.0, "mA"), "{lcsc}");
+        let c = value(&z, "temperature_coefficient");
+        assert!(
+            (c.lo() - lo).abs() < 1e-12 && (c.hi() - hi).abs() < 1e-12,
+            "{lcsc}: {c:?}"
+        );
+        let i = value(&z, "leakage_current");
+        assert!((i.lo() - leak).abs() < 1e-12, "{lcsc}: {i:?}");
+        assert_eq!(
+            value(&z, "leakage_test_voltage"),
+            quantity(at, "V"),
+            "{lcsc}"
+        );
+    }
 }
 
 #[test]

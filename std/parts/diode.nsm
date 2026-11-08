@@ -82,7 +82,8 @@ generic Schottky {
 
 /// A Zener diode, used in its reverse direction: it conducts from cathode to anode above
 /// `.zener_voltage`. The voltage is a range because of the tolerance
-/// (`.zener_voltage &= 5.1V +/- 5%`).
+/// (`.zener_voltage &= 5.1V +/- 5%`); in a catalog row it is the datasheet's minimum to
+/// maximum at the test current `.test_current`.
 ///
 /// A Zener is used two ways, so the part states neither. As a clamp, the rail across it must
 /// stay below the breakdown, and the design says so with one line,
@@ -90,6 +91,26 @@ generic Schottky {
 /// breakdown. As a shunt regulator, it sits across the rail it makes and the rail's voltage
 /// is the Zener's. What is always true is the power limit: the voltage across it times the
 /// current through it, cathode to anode, is at most `.max_power`.
+///
+/// What a design needs to bound a clamp over temperature is in four more members, each an
+/// optional column of the catalog (ADR 0078): a row that does not state one is still offered
+/// to a design that does not mention it, and a design that names it is offered only the
+/// rows that state it. `.test_current` is the current the datasheet publishes
+/// `.zener_voltage` at. `.temperature_coefficient` is the datasheet's range of the change of
+/// the voltage for one kelvin, in volts (`33.4mV..41.2mV` for "33.4 to 41.2 mV/C"; it is a
+/// `Voltage` because no kind holds volts per kelvin). `.leakage_current` is the reverse current
+/// below the breakdown, stated at `.leakage_test_voltage`.
+///
+/// A design that runs the clamp over a temperature range states how far it goes from the 25 C
+/// of the datasheet, `.temperature_shift &= -65K..100K` (kelvin away from 25 C: 125 C is
+/// `100K`, -40 C is `-65K`; a range gives both corners). `.voltage_over_temperature` is then
+/// `.zener_voltage + .temperature_coefficient * .temperature_shift`, in the worst case: the
+/// upper end of the range is the voltage at the hot corner and the lower end the voltage at
+/// the cold one, so `.z.voltage_over_temperature <= 45V` is the check of a clamp against a
+/// limit. A design that states no shift has no such relation, so it is not listed as not
+/// evaluated, and the row's temperature coefficient is not asked for. `.voltage_over_temperature`
+/// is the datasheet's typical figure carried over the range: a datasheet's coefficient is
+/// not a bound on a part, and the margin is the design's.
 generic Zener {
     .designator &= "D"
 
@@ -101,6 +122,19 @@ generic Zener {
     /// The breakdown voltage, with its tolerance.
     .zener_voltage: Voltage
     .max_power: Power
+    /// The current `.zener_voltage` is published at (IZT).
+    .test_current: Current
+    /// The change of `.zener_voltage` for one kelvin, as a range of volts.
+    .temperature_coefficient: Voltage
+    /// The reverse current below the breakdown, at `.leakage_test_voltage`.
+    .leakage_current: Current
+    /// The reverse voltage `.leakage_current` is stated at.
+    .leakage_test_voltage: Voltage
+    /// How far the temperature goes from 25 C, in kelvin. A design states it to have
+    /// `.voltage_over_temperature`.
+    .temperature_shift: Temperature optional
+    /// `.zener_voltage` over `.temperature_shift`, in the worst case.
+    .voltage_over_temperature: Voltage
     /// Through-current in the breakdown direction, cathode to anode.
     .current: Current
     /// The DC voltage across the diode, cathode relative to anode. A Zener placed between a
@@ -108,10 +142,15 @@ generic Zener {
     .bias: Voltage
 
     .bias * .current <= .max_power
+    .voltage_over_temperature == .zener_voltage + .temperature_coefficient * (.temperature_shift / 1K)
     bridge .cathode ~> .anode
 
     .package: Package
-    catalog zener { .zener_voltage, .max_power, .package }
+    catalog zener {
+        .zener_voltage, .max_power, .package,
+        .test_current optional, .temperature_coefficient optional,
+        .leakage_current optional, .leakage_test_voltage optional
+    }
 }
 
 /// A unidirectional transient-voltage-suppression diode. It does not conduct below
