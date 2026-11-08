@@ -140,6 +140,51 @@ fn cancellable<T>(cancel: &Cancel, what: &str, work: impl FnOnce() -> T) -> Resu
         .map_err(|_| ApiError::cancelled(format!("{what} was cancelled")))
 }
 
+/// The fingerprint of the program of each `.nsm` file in `paths` that reads and lexes.
+fn code_of(paths: &[PathBuf]) -> HashMap<PathBuf, u64> {
+    paths
+        .iter()
+        .filter(|p| p.extension().is_some_and(|e| e == "nsm"))
+        .filter_map(|p| {
+            let text = std::fs::read_to_string(p).ok()?;
+            Some((p.clone(), netsmith_lang::code_fingerprint(&text)?))
+        })
+        .collect()
+}
+
+/// Whether the watched files that changed since the last analysis are all `.nsm` files whose program,
+/// apart from plain comments, is what was analysed: a catalog, the manifest or a layout file that
+/// changed is always a change.
+fn only_comments_changed(
+    state: &State,
+    paths: &[PathBuf],
+    stamp: &[Option<(std::time::SystemTime, u64)>],
+) -> bool {
+    let Some(old) = &state.stamp else {
+        return false;
+    };
+    if old.len() != stamp.len() {
+        return false;
+    }
+    let mut changed = false;
+    for (i, path) in paths.iter().enumerate() {
+        if old[i] == stamp[i] {
+            continue;
+        }
+        changed = true;
+        let Some(before) = state.code.get(path) else {
+            return false;
+        };
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return false;
+        };
+        if netsmith_lang::code_fingerprint(&text) != Some(*before) {
+            return false;
+        }
+    }
+    changed
+}
+
 fn millis(since: Instant) -> u32 {
     since.elapsed().as_millis().min(u128::from(u32::MAX)) as u32
 }
@@ -151,6 +196,9 @@ struct State {
     /// The same for the layout files beside the top-level files, which do not make the
     /// project build again but do make a board placed again.
     layouts: Vec<Option<(std::time::SystemTime, u64)>>,
+    /// What the program of each watched `.nsm` file said when it was last analysed, apart from its plain
+    /// comments ([`netsmith_lang::code_fingerprint`]): a change that leaves it as it is is not analysed.
+    code: HashMap<PathBuf, u64>,
     /// Goes up by one each time the files are read again.
     version: u64,
     /// The stamp of the files an analysis was cancelled on (ADR 0062). While the files are as
@@ -251,9 +299,19 @@ impl Workspace {
             state.elapsed_ms = None;
         }
         state.layouts = layouts;
-        let stamp = files::stamps(&self.target.watched());
+        let paths = self.target.watched();
+        let stamp = files::stamps(&paths);
         let all_read = stamp.iter().all(Option::is_some);
         if state.version > 0 && state.stamp.as_ref() == Some(&stamp) && all_read {
+            return state;
+        }
+        // Only plain comments changed: the reading is still right, and the files are as good as read.
+        if state.version > 0
+            && all_read
+            && state.cancelled.is_none()
+            && only_comments_changed(&state, &paths, &stamp)
+        {
+            state.stamp = Some(stamp);
             return state;
         }
         // An analysis of these very files was cancelled: they are not analysed again until one
@@ -267,6 +325,7 @@ impl Workspace {
             return state;
         }
         let started = Instant::now();
+        let code = code_of(&paths);
         // An analysis that panics is a result like another: the last good reading and a
         // problem that says so. The stamp and the version change only here, after the
         // result, so that nothing is left half done and the files are not analysed again
@@ -318,6 +377,7 @@ impl Workspace {
         state.pcb.clear();
         state.cancelled = None;
         state.stamp = Some(stamp);
+        state.code = code;
         state.version += 1;
         state.snapshot = snapshot;
         state.elapsed_ms = Some(millis(started));
@@ -478,6 +538,21 @@ impl Backend for Workspace {
         let Some(fs) = file.fs.filter(|_| !file.readonly) else {
             return Err(ApiError::bad_request(format!("{path} cannot be edited")));
         };
+        {
+            // The typed text has the program that was analysed, only its plain comments differ: the reading of the
+            // files is the reading of the text, and nothing is analysed for a word in a comment.
+            let state = self.fresh();
+            if state.version > 0
+                && state.cancelled.is_none()
+                && state.code.get(&fs).copied() == netsmith_lang::code_fingerprint(text)
+                && state.code.contains_key(&fs)
+            {
+                return Ok(Analysis {
+                    elapsed_ms: Some(0),
+                    ..state.snapshot.summary(state.version)
+                });
+            }
+        }
         let version = self.fresh().version;
         let unsaved = HashMap::from([(fs, text.to_string())]);
         // A check of typed text is not an analysis of the files on disk: nobody is told of it.

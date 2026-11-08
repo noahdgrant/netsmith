@@ -94,7 +94,7 @@ fn project(name: &str) -> (TempDir, Workspace, Arc<Probe>) {
 fn edit(root: &TempDir, n: usize) {
     fs::write(
         root.join("src/main.nsm"),
-        format!("{TWO_BOARDS}\n// edit {}\n", "x".repeat(n)),
+        format!("{TWO_BOARDS}\n{}", "// edit\n".repeat(n)),
     )
     .unwrap();
 }

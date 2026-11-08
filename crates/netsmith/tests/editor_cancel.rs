@@ -112,11 +112,12 @@ fn project(name: &str) -> (TempDir, Arc<Workspace>, Arc<Probe>) {
     (root, editor, probe)
 }
 
-/// Changes the file so that its stamp (time and length) is not the one read.
+/// Changes the file so that its stamp (time and length) is not the one read, and so does its program's place: a plain
+/// comment that leaves every token where it was is no change to the analysis, but each added line moves the end of the file.
 fn edit(root: &TempDir, n: usize) {
     fs::write(
         root.join("src/main.nsm"),
-        format!("{TWO_BOARDS}\n// edit {}\n", "x".repeat(n)),
+        format!("{TWO_BOARDS}\n{}", "// edit\n".repeat(n)),
     )
     .unwrap();
 }
@@ -496,7 +497,12 @@ fn with_no_analysis_on_change_a_file_is_read_when_the_page_asks() {
     assert_eq!(editor.run_analysis().version, 2);
     // Switched back on, a change is analysed at once.
     editor.set_auto_analysis(true);
-    edit(&root, 2);
+    // (A change of the program: one more line of the same comment would be no change at all.)
+    fs::write(
+        root.join("src/main.nsm"),
+        format!("{TWO_BOARDS}\nboard Another {{\n}}\n"),
+    )
+    .unwrap();
     assert_eq!(
         (editor.analysis().version, editor.analysis().stale),
         (3, None)
@@ -513,4 +519,65 @@ fn asking_for_an_analysis_with_nothing_changed_does_not_run_the_next_change() {
     edit(&root, 1);
     assert_eq!(editor.analysis().stale, Some(true));
     assert_eq!(probe.heard(), Vec::<String>::new());
+}
+
+/// Writes `text` to the project's file and returns the reading's version after the server has looked.
+fn write_and_read(root: &TempDir, editor: &Workspace, text: &str) -> u64 {
+    fs::write(root.join("src/main.nsm"), text).unwrap();
+    editor.analysis().version
+}
+
+#[test]
+fn a_change_to_a_plain_comment_is_not_analysed_but_a_change_to_the_program_is() {
+    let (root, editor, probe) = project("comment");
+    assert_eq!(editor.analysis().version, 1);
+    probe.heard();
+    // A plain comment at the end of an existing line, longer and shorter: the reading stays.
+    let with_comment = TWO_BOARDS.replacen(
+        "import std::sources::Rail\n",
+        "import std::sources::Rail // a note\n",
+        1,
+    );
+    assert_ne!(with_comment, TWO_BOARDS);
+    assert_eq!(write_and_read(&root, &editor, &with_comment), 1);
+    let longer = with_comment.replace("// a note", "// a much longer note than before");
+    assert_eq!(write_and_read(&root, &editor, &longer), 1);
+    assert_eq!(probe.heard(), Vec::<String>::new(), "no analysis ran");
+    // The status of the reading is as it was: not stale, not cancelled.
+    let a = editor.analysis();
+    assert_eq!((a.stale, a.cancelled), (None, None));
+    // A line added moves everything below it, so that is analysed.
+    let added = format!("// a new line\n{TWO_BOARDS}");
+    assert_eq!(write_and_read(&root, &editor, &added), 2);
+    assert!(probe.heard().contains(&"progress:solve".to_string()));
+    // A doc comment is part of the design (it is a note on the schematic): analysed.
+    let doc = format!("//! a doc\n{TWO_BOARDS}");
+    assert_eq!(write_and_read(&root, &editor, &doc), 3);
+    let doc2 = format!("//! another doc\n{TWO_BOARDS}");
+    assert_eq!(write_and_read(&root, &editor, &doc2), 4);
+    // So is a change to the program.
+    let code = format!("{TWO_BOARDS}\nboard Extra {{\n}}\n");
+    assert_eq!(write_and_read(&root, &editor, &code), 5);
+}
+
+#[test]
+fn a_check_of_typed_text_that_differs_only_in_a_comment_is_the_reading_of_the_files() {
+    let (_root, editor, probe) = project("typed");
+    let read = editor.analysis();
+    probe.heard();
+    let typed = TWO_BOARDS.replacen(
+        "import std::sources::Rail\n",
+        "import std::sources::Rail // typed in the editor\n",
+        1,
+    );
+    let checked = editor.check("src/main.nsm", &typed).unwrap();
+    assert_eq!(
+        (checked.errors, checked.version),
+        (read.errors, read.version)
+    );
+    assert_eq!(probe.heard(), Vec::<String>::new());
+    // A typed mistake is a check as ever.
+    let wrong = TWO_BOARDS.replace("LedBoard", "LedBoard2 {} board Wrong {} // ");
+    let checked = editor.check("src/main.nsm", &wrong);
+    assert!(checked.is_ok());
 }

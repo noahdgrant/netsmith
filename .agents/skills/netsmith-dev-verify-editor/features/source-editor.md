@@ -75,3 +75,7 @@ What a screenshot should show: the card at 12 px radius over the code, never cut
 ### Where each file was left: `drive source-position` (fixture `two_boards`)
 
 Put the cursor on a line of `main.nsm` and scroll; open `power.nsm` and come back through its tab: the cursor is on the same line and the scroll position is the same. (A request to go to a place, from the tree, the problems list or Back, is carried out once; it used to be carried out again when the file came back and took the cursor to the place it was last sent to.)
+
+### A plain comment is not a change: `drive comment-only` (fixture `two_boards`)
+
+Typing or saving a `//` comment at the end of an existing line does not analyse the project: the status bar never says `Analysing…`, and `/api/analysis`'s `version` stays. The server compares the tokens of the file, with the line and column of each, to what it analysed (`netsmith_lang::code_fingerprint`): a plain comment leaves them as they were, and a doc comment (`///`, `//!`, it is a note on the schematic), code, a catalog or any other watched file changes them. A line added or removed moves everything below it, so that is analysed. The live check of typed text uses the same test.
