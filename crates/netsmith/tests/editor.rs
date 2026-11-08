@@ -809,9 +809,21 @@ fn the_server_serves_the_project_and_tells_the_page_when_a_file_changes() {
         "{}",
         &svg[..200.min(svg.len())]
     );
-    // The rails the checker's model has are drawn with power symbols, whatever their names.
+    // The rails the checker's model has are drawn with power symbols, whatever their names. (The LED board's supply
+    // is wired straight from its connector to a series resistor, so it has a name on a stem and no symbol.)
     assert!(
-        svg.contains("class=\"power supply\"") && svg.contains("class=\"power ground\""),
+        svg.contains("class=\"power ground\""),
+        "no ground symbol in the drawing of a board with rails"
+    );
+    let (_, power) = http(
+        port,
+        "GET",
+        "/api/schematic.svg?board=TwoBoards%2Fpower",
+        "",
+        "",
+    );
+    assert!(
+        power.contains("class=\"power supply\"") && power.contains("class=\"power ground\""),
         "no power symbols in the drawing of a board with rails"
     );
 
