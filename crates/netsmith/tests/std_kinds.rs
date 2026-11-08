@@ -442,6 +442,92 @@ fn a_fuse_is_checked_against_the_draw_of_its_load() {
     );
 }
 
+/// A part in a `~>` chain from a rail sees the chain's current and nothing else of the rail: no
+/// field of the rail's reaches it (a part reads its own fields, and only `bias` is derived
+/// from a rail, for a part across one). So the library cannot check `.rated_voltage` against
+/// the rail's `.peak`, nor a diode's rating against the fuse in front of it; a board states
+/// those lines, and each is checked in the worst case like any rating (issue 175).
+#[test]
+fn a_fuse_rated_voltage_is_compared_with_the_peak_only_where_the_board_states_it() {
+    let board = |rated: &str, line: &str| {
+        on_12v(
+            "import std::parts::passive::Fuse",
+            &format!(
+                "    .supply.peak &= 40V\n    \
+                 .load: Rail {{ .current &= 100mA..600mA\n .pos.net &= \"VF\"\n .neg.net &= \"GND\" }}\n    \
+                 .fuse: Fuse {{ .rated_current &= 1A\n .rated_voltage &= {rated} }}\n    \
+                 .supply.pos ~> .fuse ~> .load.pos\n    .supply.neg ~ .load.neg\n{line}"
+            ),
+        )
+    };
+    let line = "    .fuse.rated_voltage >= .supply.peak";
+    clean(&board("60V", line));
+    one(
+        &board("32V", line),
+        &[
+            "fuse.rated_voltage must always be at least supply.peak",
+            "32V",
+            "40V",
+        ],
+    );
+    // Without the line nothing compares the rating with the rail: a 32 V fuse on a 40 V
+    // peak is not found. This is the gap the issue names, and the test keeps it visible.
+    clean(&board("32V", ""));
+}
+
+#[test]
+fn a_diode_behind_a_fuse_is_rated_only_for_its_own_current_unless_the_board_says_more() {
+    let board = |diode_rating: &str, line: &str| {
+        on_12v(
+            "import std::parts::diode::Schottky\nimport std::parts::passive::Fuse",
+            &format!(
+                "    .load: Rail {{ .current &= 100mA..600mA\n .pos.net &= \"VF\"\n .neg.net &= \"GND\" }}\n    \
+                 .fuse: Fuse {{ .rated_current &= 3A }}\n    \
+                 .d: Schottky {{ .max_forward_current &= {diode_rating} }}\n    \
+                 .supply.pos ~> .fuse ~> .d ~> .load.pos\n    .supply.neg ~ .load.neg\n{line}"
+            ),
+        )
+    };
+    let line = "    .d.max_forward_current >= .fuse.rated_current";
+    // The diode carries the load's draw (the chain passes one current), so 1 A is enough for
+    // that check and the diode is not found short of the fuse's 3 A.
+    clean(&board("1A", ""));
+    clean(&board("5A", line));
+    one(
+        &board("1A", line),
+        &[
+            "d.max_forward_current must always be at least fuse.rated_current",
+            "1A",
+            "3A",
+        ],
+    );
+}
+
+#[test]
+fn a_reverse_polarity_diode_blocks_the_voltage_the_board_states_and_not_one_it_leaves_out() {
+    let board = |blocks: &str, stress: &str| {
+        on_12v(
+            "import std::parts::diode::Schottky",
+            &format!(
+                "    .load: Rail {{ .current &= 100mA..600mA\n .pos.net &= \"VF\"\n .neg.net &= \"GND\" }}\n    \
+                 .d: Schottky {{ .max_reverse_voltage &= {blocks}\n .max_forward_current &= 1A\n {stress} }}\n    \
+                 .supply.pos ~> .d ~> .load.pos\n    .supply.neg ~ .load.neg"
+            ),
+        )
+    };
+    clean(&board("40V", ".bias &= 24V"));
+    one(
+        &board("40V", ".bias &= 60V"),
+        &[
+            "d.bias must always be at most d.max_reverse_voltage",
+            "60V",
+            "40V",
+        ],
+    );
+    // A diode in series is across no rail, so its bias is unset until the board states it.
+    clean(&board("40V", ""));
+}
+
 #[test]
 fn a_fuse_whose_current_is_only_a_remainder_is_not_evaluated() {
     // The fuse starts a chain that ends on a signal pin, and the rail it is on has a supply
