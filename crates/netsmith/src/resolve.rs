@@ -6,11 +6,12 @@
 //! has no stock passed over. A part no row stands for is **unresolved**, with the nearest
 //! rows, and `fab` refuses it by name.
 
-use std::sync::{Arc, OnceLock};
-
+use netsmith_check::InstId;
 use netsmith_core::Part;
 use netsmith_lower::Sourced;
+use netsmith_lower::guidelines::Guideline;
 use netsmith_solve::{CHANGE_THE_VALUE, Catalogs, Solution, alternatives, resolve};
+use std::sync::{Arc, OnceLock};
 
 /// The most times the board is solved again to check alternatives. Each unresolved part
 /// takes one solve for each of its (up to three) alternatives; parts past the limit are
@@ -196,6 +197,16 @@ impl Unresolved {
     pub fn checked(&self, rechecks: &Rechecks, catalogs: &Catalogs) -> String {
         with_rechecks(&self.message, &self.refdes, rechecks, catalogs)
     }
+
+    /// The message without its `unresolved: ` lead and the advice that closes it, to be said
+    /// in a sentence of its own.
+    fn detail(&self) -> &str {
+        let text = self
+            .message
+            .strip_prefix("unresolved: ")
+            .unwrap_or(&self.message);
+        text.strip_suffix(CHANGE_THE_VALUE).unwrap_or(text)
+    }
 }
 
 /// The sourcing with every generic part that a row stands for given that row's numbers, and
@@ -229,6 +240,45 @@ pub fn resolve_generics(
         })
         .collect();
     (resolved, unresolved)
+}
+
+/// The guideline of a generic part that the design assembles and no catalog row can be
+/// ordered for (issue #182): the solver kept it because no row meets the design, and `fab`
+/// would refuse the board. It is the same check as `fab`'s (`resolve_generics`), made when the
+/// board is built, for every assembled generic and not only on power paths; a part that is
+/// fitted by hand or not at all is left out, as `fab` leaves it out. `origins` is the
+/// instance of each part of `sourcing`, and `path_of` says the path of an instance.
+pub(crate) fn unresolved_findings(
+    sourcing: &[Sourced],
+    origins: &[InstId],
+    catalogs: &Catalogs,
+    path_of: &dyn Fn(InstId) -> String,
+) -> Vec<Guideline> {
+    resolve_generics(sourcing, catalogs)
+        .1
+        .iter()
+        .filter_map(|u| {
+            let at = sourcing
+                .iter()
+                .position(|s| s.refdes == u.refdes && s.assembled())?;
+            let catalog = sourcing[at].generic.as_ref()?.catalog.as_str();
+            let inst = origins.get(at).copied();
+            let place = inst
+                .map(path_of)
+                .filter(|p| !p.is_empty())
+                .map_or(String::new(), |p| format!(" ({p})"));
+            let detail = u.detail();
+            let stop = if detail.ends_with('.') { "" } else { "." };
+            Some(Guideline {
+                rule: "unresolved generic",
+                message: format!(
+                    "{}{place}: the solver kept a generic part because {detail}{stop} `fab` will refuse the board until a row meets it: add one to the project's `{catalog}` catalog (`catalogs/{catalog}.csv`), or change the design so that a row in the catalogs does.",
+                    u.refdes
+                ),
+                at: inst,
+            })
+        })
+        .collect()
 }
 
 /// The message of an unresolved part with the result of each alternative's re-check put
@@ -348,5 +398,49 @@ mod tests {
             "{line}"
         );
         assert!(line.contains("Rows that fit were passed over"), "{line}");
+    }
+
+    fn findings(parts: &[Sourced], catalogs: &Catalogs) -> Vec<Guideline> {
+        unresolved_findings(parts, &[], catalogs, &|_| String::new())
+    }
+
+    #[test]
+    fn an_assembled_generic_that_no_row_stands_for_is_a_finding_with_the_need_and_the_advice() {
+        let all_out = Stock(vec![("C900001", 0), ("C900002", 0)]);
+        let found = findings(&[generic_part("R7")], &catalogs(Some(all_out)));
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].rule, "unresolved generic");
+        let message = &found[0].message;
+        assert!(
+            message.starts_with("R7: the solver kept a generic part because no row of the `resistor` catalog can be ordered for 249 ohm 1% 0402 62.5 mW (E96)."),
+            "{message}"
+        );
+        assert!(
+            message.contains("Rows that fit were passed over"),
+            "{message}"
+        );
+        assert!(
+            message.ends_with("`fab` will refuse the board until a row meets it: add one to the project's `resistor` catalog (`catalogs/resistor.csv`), or change the design so that a row in the catalogs does."),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn a_generic_that_a_row_stands_for_is_no_finding() {
+        assert!(findings(&[generic_part("R1")], &catalogs(None)).is_empty());
+    }
+
+    #[test]
+    fn a_part_fitted_by_hand_or_not_at_all_is_no_finding() {
+        let all_out = Stock(vec![("C900001", 0), ("C900002", 0)]);
+        let catalogs = catalogs(Some(all_out));
+        let mut hand = generic_part("R1");
+        hand.assembly = Assembly::Hand;
+        let mut none = generic_part("R2");
+        none.assembly = Assembly::None;
+        assert!(findings(&[hand, none], &catalogs).is_empty());
+        // The one the board house assembles is still named.
+        let found = findings(&[generic_part("R3")], &catalogs);
+        assert_eq!(found.len(), 1);
     }
 }
