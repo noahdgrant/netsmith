@@ -9,12 +9,15 @@ import { allRows, counts, extras, listed, revealPlace, revealRow, viewScope } fr
 import { type Group, ORIGIN_LABEL, type Origin, type Row, filterRows, groupRows, locationOf, stagesOf, whereText } from '../feedback/problems';
 import {
   activeRow,
+  closedGroups,
   dock,
   filter,
   group,
+  groupId,
   resetDockHeight,
   setDockHeight,
   setDockOpen,
+  toggleGroup,
 } from '../feedback/state';
 import { type Hover, hoverAttrs } from '../hover';
 import { SECTIONS } from '../layout';
@@ -162,6 +165,7 @@ const GROUPS: { id: Group; label: string }[] = [
   { id: 'file', label: 'Group by file' },
   { id: 'severity', label: 'Group by severity' },
   { id: 'stage', label: 'Group by stage' },
+  { id: 'cause', label: 'Group by cause' },
 ];
 
 function Empty({ hidden }: { hidden: { notes: number; filtered: 'text' | 'view' | null } }) {
@@ -327,7 +331,8 @@ export function ProblemsDock() {
             }}
           >
             {shownGroups.map((g) => {
-              const slice = g.rows.slice(0, Math.max(0, budget));
+              const closed = g.title !== '' && closedGroups.value.includes(groupId(group.value, g.key));
+              const slice = closed ? [] : g.rows.slice(0, Math.max(0, budget));
               // the picked row is drawn even past the limit: the list never loses what it was asked to show
               const kept = active && !slice.some((r) => r.id === active) ? g.rows.find((r) => r.id === active) : undefined;
               if (kept) slice.push(kept);
@@ -335,9 +340,18 @@ export function ProblemsDock() {
               return (
                 <div key={g.key} class="dock-group-block" role="rowgroup">
                   {g.title && (
-                    <div class="dock-group-head" role="row">
-                      <span role="columnheader">{g.title}</span>
-                      <span class="count">{g.rows.length}</span>
+                    <div class="dock-group-head" role="row" data-group={g.key}>
+                      <button
+                        class="dock-group-toggle"
+                        aria-expanded={!closed}
+                        title={g.why ?? (closed ? `Show ${g.title}` : `Hide ${g.title}`)}
+                        onClick={() => toggleGroup(group.value, g.key)}
+                      >
+                        <Icon name={closed ? 'chevron-right' : 'chevron-down'} size={12} />
+                        <span role="columnheader">{g.title}</span>
+                        <span class="count">{g.rows.length}</span>
+                        {g.why && <span class="why">{g.why}</span>}
+                      </button>
                     </div>
                   )}
                   {slice.map((r) => (

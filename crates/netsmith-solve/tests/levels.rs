@@ -263,6 +263,20 @@ fn a_level_with_no_value_is_not_evaluated_and_never_passes() {
 }
 
 #[test]
+fn a_level_nothing_states_is_a_gap_of_the_parts_model_and_grounds_that_differ_are_not_judgeable() {
+    use netsmith_core::Cause;
+    let causes = |s: &Solution| s.not_evaluated.iter().map(|n| n.cause).collect::<Vec<_>>();
+    let s = solved(&format!(
+        "{S3}    .a: Driver\n    .b: Bare\n    .s3 ~ .a.vdd\n    .s3 ~ .b.vdd\n    .a.out.line ~ .b.in.line\n"
+    ));
+    assert_eq!(causes(&s), [Cause::PartModel, Cause::PartModel]);
+    let s = solved(&format!(
+        "{S3}    .s5: Rail {{\n        .voltage &= 5V +/- 5%\n        .pos.net &= \"VCC5\"\n        .neg.net &= \"GND5\"\n    }}\n    .a: Driver\n    .b: Receiver\n    .s3 ~ .a.vdd\n    .s5 ~ .b.vdd\n    .a.out.line ~ .b.in.line\n"
+    ));
+    assert_eq!(causes(&s), [Cause::Unjudged]);
+}
+
+#[test]
 fn two_pins_that_state_no_level_at_all_are_not_looked_at() {
     // Both lines are `Logic`, neither states a level: as before levels existed.
     let s = solved(&format!(

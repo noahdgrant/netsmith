@@ -16,8 +16,8 @@ use std::{
 use netsmith_editor::{
     ApiError,
     api::{
-        HintBoard, HintFault, HintFindingInfo, HintFindingKind, HintNote, HintPart, HintSheet,
-        Location, Problem, ProblemStage, SchematicHints, Severity,
+        Cause, HintBoard, HintFault, HintFindingInfo, HintFindingKind, HintNote, HintPart,
+        HintSheet, Location, Problem, ProblemStage, SchematicHints, Severity,
     },
 };
 use netsmith_view::{
@@ -136,6 +136,7 @@ fn fault(name: &str, line: u32, text: &str, message: &str) -> Problem {
         stage: Some(ProblemStage::Layout),
         board: None,
         path: None,
+        cause: None,
     }
 }
 
@@ -154,6 +155,7 @@ pub(super) fn finding_problem(
         stage: Some(ProblemStage::Layout),
         board,
         path: None,
+        cause: Some(Cause::Other),
     }
 }
 

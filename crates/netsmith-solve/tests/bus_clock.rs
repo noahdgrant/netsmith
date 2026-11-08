@@ -100,6 +100,15 @@ fn a_clock_inside_every_limit_passes_and_says_nothing() {
 }
 
 #[test]
+fn the_note_of_a_clock_nobody_states_says_it_is_a_value_nothing_states() {
+    let s = solved(&three_parts(), &board(""));
+    assert_eq!(
+        s.not_evaluated.iter().map(|n| n.cause).collect::<Vec<_>>(),
+        [netsmith_core::Cause::NotStated]
+    );
+}
+
+#[test]
 fn a_bus_with_limits_and_no_clock_is_a_note_and_never_a_pass() {
     let s = solved(&three_parts(), &board(""));
     assert_eq!(faults(&s), Vec::<String>::new());

@@ -1044,6 +1044,7 @@ fn failed_check(message: &str) -> crate::api::Analysis {
             stage: Some(ProblemStage::Check),
             board: None,
             path: None,
+            cause: None,
         }],
         boards: Vec::new(),
         systems: Vec::new(),

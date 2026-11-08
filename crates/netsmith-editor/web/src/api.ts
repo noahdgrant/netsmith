@@ -7,6 +7,8 @@ export type Severity = "error" | "warning" | "note";
 
 export type ProblemStage = "syntax" | "check" | "solve" | "lower" | "guideline" | "power" | "layout";
 
+export type Cause = "not_stated" | "part_model" | "unjudged" | "circular" | "supply" | "pick" | "track" | "other";
+
 export type Problem = { severity: Severity, 
 /**
  * Without the file and line.
@@ -33,7 +35,12 @@ board?: string,
  * knows one: a note, a not-chosen warning and a guideline finding. The mistakes of the
  * checker and the solver have none: they are about a statement, which `at` locates.
  */
-path?: string, };
+path?: string, 
+/**
+ * Why a note is there, which the dock groups the notes by. Set on every note of a
+ * build (the tool that made it says it); a problem that is not a note has none.
+ */
+cause?: Cause, };
 
 export type HintFault = { 
 /**

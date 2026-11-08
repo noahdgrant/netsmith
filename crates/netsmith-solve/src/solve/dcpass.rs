@@ -142,6 +142,7 @@ impl Solver<'_> {
                         notes.push(NotEvaluated {
                             at,
                             involves,
+                            cause: netsmith_core::Cause::Unjudged,
                             message: format!(
                                 "the DC analysis left the network of {} to the bound from Ohm's law: its {combinations} combinations of corners and states are more than the limit of {limit}; cut it at a node whose voltage a rail holds",
                                 list(&names)
