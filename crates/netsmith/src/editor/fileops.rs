@@ -158,7 +158,7 @@ fn taken(parent: &Path, name: &str) -> bool {
 impl Workspace {
     /// The project's root as the disk has it (links resolved), or why there is none.
     fn project_root(&self) -> Result<PathBuf, ApiError> {
-        let Some(project) = &self.target.project else {
+        let Some(project) = &self.target().project else {
             return Err(ApiError::bad_request(
                 "files can be made and changed only in a project: there is no netsmith.toml here",
             ));
@@ -333,7 +333,7 @@ impl Workspace {
     /// The top-level files below a folder, by name.
     fn top_level_in(&self, folder: &str) -> Vec<String> {
         let prefix = format!("{folder}/");
-        self.target
+        self.target()
             .files
             .iter()
             .filter(|f| f.name.starts_with(&prefix))
@@ -476,7 +476,7 @@ impl Workspace {
     /// The folders below `src/`, with their paths from the project root, for the tree to show
     /// a folder that has no file in it yet. A link is not followed.
     pub(super) fn folders(&self) -> Vec<String> {
-        let Some(project) = &self.target.project else {
+        let Some(project) = &self.target().project else {
             return Vec::new();
         };
         fn walk(dir: &Path, rel: &str, depth: usize, out: &mut Vec<String>) {
