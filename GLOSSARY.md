@@ -282,6 +282,10 @@ _Avoid_: Conflict set, exclusive set, group, resource (alone)
 One of the four voltages of a `Logic` line, or of the `Levels` of a bus interface (`.spi.levels`, ADR 0064), as a datasheet gives them and relative to the line's ground (the `neg` of its `.reference` rail): `.vih` the lowest an input reads as high, `.vil` the highest it reads as low, `.voh` the lowest an output drives a high to, `.vol` the highest it drives a low to. After the rails are solved, the solver requires `voh >= vih` and `vol <= vil` for every output and input on a net, and says "not evaluated" when a level has no value or the grounds differ (ADR 0046).
 _Avoid_: Threshold, noise margin
 
+**Open-drain line**:
+A line that a device only pulls low or releases, and a resistor to a rail holds high, such as the `sda` of an `I2c` bus. The levels check (ADR 0075, provisional) recognises a driver of one by what its part states, a `vol` and no `voh`, on a net that a resistor joins to the positive pin of a rail: the line's high is that rail's voltage range, which the receivers' `vih` is judged against. There is no kind or marker for it in the language.
+_Avoid_: Open-collector (KiCad's name for the pin type, which netsmith does not have), wired-AND
+
 **Level translator**:
 A `LevelTranslator` (`std::parts::logic`, ADR 0063, ADR 0066): a single-supply buffer whose input accepts a lower logic level than its supply and whose output swings to its supply. Its input is a `Logic` line whose `.vih` is `.vt_plus_max` (above it the input is a high for sure) and whose `.vil` is `.vt_minus_min` (below it a low for sure), so the solver judges the driver without a statement of the design; its output is a `Logic` line that states no level. Its supply draw is the row's own: `0A .. .max_supply_current`. A generic with the catalog `level_translator`, which has no standard row.
 _Avoid_: Level shifter, voltage translator

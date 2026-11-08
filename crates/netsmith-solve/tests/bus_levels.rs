@@ -374,3 +374,175 @@ fn a_current_stated_for_a_reference_is_refused_nothing_is_drawn_through_it() {
     let said = format!("{}\n{}", c.render(), faults(&s).join("\n"));
     assert!(said.contains("reference.current"), "{said}");
 }
+
+// ---- an open-drain line: the pull-up's rail is the high level (ADR 0075) ------------------
+
+/// Invented I2C parts: pins that are open-drain by their datasheet, which states a low level
+/// (VOL) and the thresholds of a reader (VIH, VIL) and no VOH. `Zpush` states a VOH too.
+const I2C_PARTS: &str = r#"
+import std::bus::{I2c, I2cRole, I2cPullups}
+import std::sources::Rail
+
+/// A controller on its supply: VOL and the thresholds, no VOH.
+part Zhost {
+    .vdd: Rail
+    .i2c: I2c
+    .i2c.role &= I2cRole::Controller
+    .i2c.levels.reference ~ .vdd
+    .i2c.levels.vih &= 0.7 * .vdd.voltage
+    .i2c.levels.vil &= 0.3 * .vdd.voltage
+    .i2c.levels.vol &= 0.4V
+    pins {
+        .vdd.pos  power         "VDD" "1"
+        .vdd.neg  power         "VSS" "2"
+        .i2c.sda  bidirectional "SDA" "3"
+        .i2c.scl  bidirectional "SCL" "4"
+    }
+}
+
+/// A target whose datasheet gives VOL and no VOH, because the pull-up sets the high.
+part Ztarget {
+    .vdd: Rail
+    .i2c: I2c
+    .i2c.role &= I2cRole::Target
+    .i2c.levels.reference ~ .vdd
+    .i2c.levels.vih &= 0.7 * .vdd.voltage
+    .i2c.levels.vil &= 0.3 * .vdd.voltage
+    .i2c.levels.vol &= 0.4V
+    pins {
+        .vdd.pos  power         "VDD" "1"
+        .vdd.neg  power         "GND" "2"
+        .i2c.sda  bidirectional "SDA" "3"
+        .i2c.scl  input         "SCL" "4"
+    }
+}
+
+/// A target that states no VOL: it says nothing about its low.
+part Znolow {
+    .vdd: Rail
+    .i2c: I2c
+    .i2c.role &= I2cRole::Target
+    .i2c.levels.reference ~ .vdd
+    .i2c.levels.vih &= 0.7 * .vdd.voltage
+    .i2c.levels.vil &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos  power         "VDD" "1"
+        .vdd.neg  power         "GND" "2"
+        .i2c.sda  bidirectional "SDA" "3"
+        .i2c.scl  input         "SCL" "4"
+    }
+}
+
+/// A target whose line is push-pull to its own supply: it states VOH.
+part Zpush {
+    .vdd: Rail
+    .i2c: I2c
+    .i2c.role &= I2cRole::Target
+    .i2c.levels.reference ~ .vdd
+    .i2c.levels.vih &= 0.7 * .vdd.voltage
+    .i2c.levels.vil &= 0.3 * .vdd.voltage
+    .i2c.levels.voh &= .vdd.voltage - 0.4V
+    .i2c.levels.vol &= 0.4V
+    pins {
+        .vdd.pos  power         "VDD" "1"
+        .vdd.neg  power         "GND" "2"
+        .i2c.sda  bidirectional "SDA" "3"
+        .i2c.scl  input         "SCL" "4"
+    }
+}
+"#;
+
+fn solved_i2c(body: &str) -> Solution {
+    let c = check(
+        "test.nsm",
+        &format!("{I2C_PARTS}\nboard B {{\n{body}}}\n"),
+        &Loader::std(),
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    solve(&c.boards[0], &Catalogs::jlcpcb())
+}
+
+/// A controller and a target on 3.3 V, the bus pulled up to `pull` (`s3` or `s18`).
+fn i2c_board(target: &str, pull: &str) -> String {
+    format!(
+        "{S3}{S18}    .m: Zhost\n    .t: {target}\n    .s3 ~ .m.vdd\n    .s3 ~ .t.vdd\n    .m.i2c ~ .t.i2c\n    .pullups: I2cPullups {{ .resistance &= 4.7kohm +/- 5% }}\n    .{pull} ~ .pullups.supply\n    .m.i2c ~ .pullups.bus\n"
+    )
+}
+
+fn high_notes(s: &Solution) -> Vec<String> {
+    notes(s)
+        .into_iter()
+        .filter(|n| n.contains("the high level"))
+        .collect()
+}
+
+#[test]
+fn an_open_drain_bus_with_a_pull_up_and_parts_that_state_vol_and_vih_has_no_note() {
+    // Before ADR 0075 each ordered pair of devices on each line was a note, `voh` has no value.
+    let s = solved_i2c(&i2c_board("Ztarget", "s3"));
+    assert_eq!(faults(&s), Vec::<String>::new());
+    assert_eq!(notes(&s), Vec::<String>::new());
+}
+
+#[test]
+fn a_pull_up_to_a_rail_that_sets_a_low_high_is_refused_with_the_numbers() {
+    // The bus is pulled up to 1.8 V +/- 5 % and the target reads a high from 70 % of 3.3 V.
+    let s = solved_i2c(&i2c_board("Ztarget", "s18"));
+    let f = faults(&s);
+    let want = "net `net-m.i2c.sda`: the pull-up `pullups.sda_pullup` to rail `s18` holds the line at 1.71V..1.89V (a driver that states `vol` and no `voh` leaves the high to the pull-up) but `t.i2c.levels.vih` needs 2.194V..2.426V: a high of 1.71V is not always read as a high, which takes 2.426V";
+    assert!(f.contains(&want.to_string()), "{want}\nnot in {f:#?}");
+    // Only the pull-up is at fault: no `voh` is blamed, and nothing is left unevaluated.
+    assert!(f.iter().all(|m| !m.contains(".voh` is")), "{f:#?}");
+    assert!(high_notes(&s).is_empty(), "{:#?}", notes(&s));
+}
+
+#[test]
+fn a_driver_that_states_no_vol_still_gets_its_note() {
+    let s = solved_i2c(&i2c_board("Znolow", "s3"));
+    assert_eq!(faults(&s), Vec::<String>::new());
+    let n = notes(&s);
+    // Its high and its low are both unknown: the pull-up does not stand in for a part that says
+    // nothing about its output.
+    for want in [
+        "not evaluated: the high level from `t.i2c.levels` to `m.i2c.levels` on net `net-m.i2c.sda`: `t.i2c.levels.voh` has no value",
+        "not evaluated: the low level from `t.i2c.levels` to `m.i2c.levels` on net `net-m.i2c.sda`: `t.i2c.levels.vol` has no value",
+    ] {
+        assert!(n.contains(&want.to_string()), "{want}\nnot in {n:#?}");
+    }
+    // The controller states VOL, so its high is the pull-up's and has no note.
+    assert!(
+        n.iter().all(|m| !m.contains("from `m.i2c.levels`")),
+        "{n:#?}"
+    );
+}
+
+#[test]
+fn a_driver_that_states_voh_is_checked_as_before_whatever_pulls_the_line_up() {
+    // The target's own supply is 1.8 V and its line is push-pull to it: its VOH of 1.4 V is not
+    // a high for the controller (VIH 70 % of 3.3 V), though the pull-up is at 3.3 V.
+    let body = format!(
+        "{S3}{S18}    .m: Zhost\n    .t: Zpush\n    .s3 ~ .m.vdd\n    .s18 ~ .t.vdd\n    .m.i2c ~ .t.i2c\n    .pullups: I2cPullups {{ .resistance &= 4.7kohm +/- 5% }}\n    .s3 ~ .pullups.supply\n    .m.i2c ~ .pullups.bus\n"
+    );
+    let s = solved_i2c(&body);
+    let f = faults(&s);
+    let want = "net `net-m.i2c.sda`: `t.i2c.levels.voh` is 1.31V..1.49V but `m.i2c.levels.vih` needs 2.194V..2.426V: a high of 1.31V is not always read as a high, which takes 2.426V";
+    assert!(f.contains(&want.to_string()), "{f:#?}");
+    // The controller states no `voh` and the 3.3 V pull-up is the high it gives: that way passes.
+    assert!(f.iter().all(|m| !m.contains("the pull-up")), "{f:#?}");
+}
+
+#[test]
+fn a_plain_resistor_to_a_rail_is_a_pull_up_too() {
+    let body = format!(
+        "{S3}    .m: Zhost\n    .t: Ztarget\n    .rs: Resistor\n    .rc: Resistor\n    .rs.resistance &= 4.7kohm +/- 5%\n    .rc.resistance &= 4.7kohm +/- 5%\n    .s3 ~ .m.vdd\n    .s3 ~ .t.vdd\n    .m.i2c ~ .t.i2c\n    .s3.pos ~> .rs ~> .m.i2c.sda\n    .s3.pos ~> .rc ~> .m.i2c.scl\n"
+    );
+    let c = check(
+        "test.nsm",
+        &format!("import std::parts::passive::Resistor\n{I2C_PARTS}\nboard B {{\n{body}}}\n"),
+        &Loader::std(),
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    let s = solve(&c.boards[0], &Catalogs::jlcpcb());
+    assert_eq!(faults(&s), Vec::<String>::new());
+    assert!(high_notes(&s).is_empty(), "{:#?}", notes(&s));
+}

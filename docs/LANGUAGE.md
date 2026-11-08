@@ -7621,7 +7621,7 @@ A digital line is a `Logic` (`std::logic::Logic`): a pin `.line` and the rail `.
 
 After the rails are solved, the solver checks two things. A fault is an error; a check that cannot be made is a note `not evaluated: ...`, never a pass.
 
-- **Levels.** For every output or bidirectional `Logic` line on a net and every input or bidirectional `Logic` line on it, the output's `voh` must always be at least the input's `vih`, and its `vol` at most the input's `vil`, in the worst case of both ranges. A level with no value, or two lines whose grounds (`reference.neg`) are not on one net or in one ground group, is not evaluated. A pair in which neither line states a level is not looked at.
+- **Levels.** For every output or bidirectional `Logic` line on a net and every input or bidirectional `Logic` line on it, the output's `voh` must always be at least the input's `vih`, and its `vol` at most the input's `vil`, in the worst case of both ranges. A level with no value, or two lines whose grounds (`reference.neg`) are not on one net or in one ground group, is not evaluated. A pair in which neither line states a level is not looked at. An output that states a `vol` and no `voh` is open-drain, and the line's high is what its pull-up gives it (see "An open-drain line" below).
 - **Absolute maximum.** A pin with `.abs_min` or `.abs_max` must have a net whose worst-case voltage relative to its ground stays within them. The net's voltage is the hull of: its ground (0 V), each rail whose `pos` is on it, each `Logic` line that drives it (between its reference rail's `neg` and its voltage), and each rail or ground that a resistor joins it to (a pull-up or a pull-down). It is not evaluated for a pin that is not the `.line` of a `Logic` (its ground is not known), for a net that something drives that is not a `Logic` line, for a rail or driver on another ground, and for a net nothing sets.
 
 Join the lines of two parts pin to pin, `.a.out.line ~ .b.in.line`, and each part's reference rail to its own supply. Joining the two `Logic`s (`.a.out ~ .b.in`) also joins their reference rails, which is right only when both parts have the same supply; it does not equate their levels, which are each pin's own.
@@ -8059,6 +8059,129 @@ board Translated {
 ```
 
 A single-supply buffer used as a translator (`LevelTranslator`) states plain pins and thresholds and is judged by its own relations: a bus does not pass through it by role.
+
+#### An open-drain line
+
+An open-drain line, such as the `sda` of an `I2c` bus, is never driven high: a device only pulls it low or lets go, and a resistor to a rail holds it high. A datasheet states its `VOL` and no `VOH`, because the part does not set the high. The levels check reads such a part as it is, without a new word in the language (ADR 0075, provisional): a driver that states `vol` and no `voh`, on a net that a resistor joins to the positive pin of a rail (`I2cPullups`, `PullUp` or a plain `Resistor`), has as its high the rail's voltage range, and the receivers' `vih` is judged against that. A finding names the pull-up resistor, its rail and the receiver's `vih`, and the driver's `vol` is judged against each receiver's `vil` as before. The rule is narrow:
+
+- A driver that states `voh` is judged by it, whatever else is on the net: the datasheet says what the part does.
+- A driver that states no `vol` either says nothing about its output, and gets the notes for its high and its low, as before.
+- A net with a resistor to its ground as well is a divider, and the rule does not apply. The note says the high has no value.
+- A rail on another ground than the receiver's, or a rail with no voltage, is a note that names it, not a pass.
+
+Two invented I2C parts that state `VOL` and the thresholds, and no `VOH`:
+
+```nsm module=src::zi2c
+import std::bus::{I2c, I2cRole}
+import std::sources::Rail
+
+/// A controller whose pins are open-drain: VOL and the thresholds, no VOH.
+part Zihost {
+    .designator &= "U"
+    .vdd: Rail
+    .i2c: I2c
+    .i2c.role &= I2cRole::Controller
+    .i2c.levels.reference ~ .vdd
+    .i2c.levels.vih &= 0.7 * .vdd.voltage
+    .i2c.levels.vil &= 0.3 * .vdd.voltage
+    .i2c.levels.vol &= 0.4V
+    pins {
+        .vdd.pos  power         "VDD" "1"
+        .vdd.neg  power         "VSS" "2"
+        .i2c.sda  bidirectional "SDA" "3"
+        .i2c.scl  bidirectional "SCL" "4"
+    }
+}
+
+/// A target with the same levels, on its own 3.3 V supply.
+part Zitarget {
+    .designator &= "U"
+    .vdd: Rail
+    .i2c: I2c
+    .i2c.role &= I2cRole::Target
+    .i2c.levels.reference ~ .vdd
+    .i2c.levels.vih &= 0.7 * .vdd.voltage
+    .i2c.levels.vil &= 0.3 * .vdd.voltage
+    .i2c.levels.vol &= 0.4V
+    pins {
+        .vdd.pos  power         "VDD" "1"
+        .vdd.neg  power         "GND" "2"
+        .i2c.sda  bidirectional "SDA" "3"
+        .i2c.scl  input         "SCL" "4"
+    }
+}
+```
+
+On one 3.3 V rail with `I2cPullups`, the build says nothing about the levels of the two lines: each part's high is the rail's, 3.135V to 3.465V, and each reads it above 70 % of its own supply.
+
+```nsm evaluate
+import src::zi2c::{Zihost, Zitarget}
+import std::bus::I2cPullups
+import std::sources::Rail
+
+board Pulled {
+    .s3: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .m: Zihost
+    .t: Zitarget
+    .pullups: I2cPullups { .resistance &= 4.7kohm +/- 5% }
+    .s3 ~ .m.vdd
+    .s3 ~ .t.vdd
+    .s3 ~ .pullups.supply
+    .m.i2c ~ .t.i2c
+    .m.i2c ~ .pullups.bus
+}
+```
+
+The same bus pulled up to 1.8 V, with parts that read a high from 70 % of 3.3 V, is refused with the numbers: a high of 1.71 V is not a high for them.
+
+```nsm fails
+import src::zi2c::{Zihost, Zitarget}
+import std::bus::I2cPullups
+import std::sources::Rail
+
+board PulledLow {
+    .s3: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .s18: Rail {
+        .voltage &= 1.8V +/- 5%
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+    }
+    .m: Zihost
+    .t: Zitarget
+    .pullups: I2cPullups { .resistance &= 4.7kohm +/- 5% }
+    .s3 ~ .m.vdd
+    .s3 ~ .t.vdd
+    .s18 ~ .pullups.supply
+    .m.i2c ~ .t.i2c
+    .m.i2c ~ .pullups.bus
+}
+```
+
+```text
+error: net `net-m.i2c.scl`: the pull-up `pullups.scl_pullup` to rail `s18` holds the line at 1.71V..1.89V (a driver that states `vol` and no `voh` leaves the high to the pull-up) but `t.i2c.levels.vih` needs 2.194V..2.426V: a high of 1.71V is not always read as a high, which takes 2.426V
+   --> main.nsm:17:5
+   |
+17 |     .t: Zitarget
+   |     ^^^^^^^^^^^^
+error: net `net-m.i2c.sda`: the pull-up `pullups.sda_pullup` to rail `s18` holds the line at 1.71V..1.89V (a driver that states `vol` and no `voh` leaves the high to the pull-up) but `t.i2c.levels.vih` needs 2.194V..2.426V: a high of 1.71V is not always read as a high, which takes 2.426V
+   --> main.nsm:17:5
+   |
+17 |     .t: Zitarget
+   |     ^^^^^^^^^^^^
+error: net `net-m.i2c.sda`: the pull-up `pullups.sda_pullup` to rail `s18` holds the line at 1.71V..1.89V (a driver that states `vol` and no `voh` leaves the high to the pull-up) but `m.i2c.levels.vih` needs 2.194V..2.426V: a high of 1.71V is not always read as a high, which takes 2.426V
+   --> main.nsm:16:5
+   |
+16 |     .m: Zihost
+   |     ^^^^^^^^^^
+```
 
 ### Buses
 

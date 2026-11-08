@@ -240,8 +240,32 @@ impl Run<'_> {
             return;
         }
         // A high must be read as a high: the output's lowest high against the input's
-        // highest threshold.
-        match (self.value(d.logic, "voh"), self.value(r.logic, "vih")) {
+        // highest threshold. An output that states a low and no high is open-drain: its high
+        // is the one its pull-up gives the line (ADR 0075).
+        let voh = self.value(d.logic, "voh");
+        if voh.is_none() && self.value(d.logic, "vol").is_some() {
+            match self.pullups(net, dg) {
+                Ok(pulls) if !pulls.is_empty() => {
+                    self.high_from_pullups(net, d, r, &pulls);
+                    self.low(net, d, r);
+                    return;
+                }
+                Ok(_) => {}
+                Err(why) => {
+                    self.note(
+                        d.part,
+                        vec![d.logic, r.logic],
+                        format!(
+                            "not evaluated: the high level from `{dl}` to `{rl}` on net `{}`: `{dl}.voh` has no value and the pull-up that would set it cannot be read: {why}",
+                            net.name
+                        ),
+                    );
+                    self.low(net, d, r);
+                    return;
+                }
+            }
+        }
+        match (voh, self.value(r.logic, "vih")) {
             (Some((fo, voh)), Some((fi, vih))) => {
                 if voh.lo() < vih.hi() {
                     self.fault(
@@ -265,6 +289,61 @@ impl Run<'_> {
                 [(&dl, "voh", o.is_none()), (&rl, "vih", i.is_none())],
             ),
         }
+        self.low(net, d, r);
+    }
+
+    /// The high of an open-drain line is what its pull-up resistors hold it at: it must be
+    /// read as a high by the receiver, in the worst case of the rail's range.
+    fn high_from_pullups(&mut self, net: &Net, d: &Line, r: &Line, pulls: &[PullUp]) {
+        let model = self.model;
+        let Some((fi, vih)) = self.value(r.logic, "vih") else {
+            let rl = model.path_of(r.logic);
+            self.missing(
+                net,
+                d,
+                r,
+                "high",
+                [(&model.path_of(d.logic), "voh", false), (&rl, "vih", true)],
+            );
+            return;
+        };
+        // The lowest of the rails that pull the line up is its lowest high.
+        let Some(low) = pulls.iter().min_by(|a, b| a.lo.total_cmp(&b.lo)) else {
+            return;
+        };
+        let (lo, hi) = pulls
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
+                (lo.min(p.lo), hi.max(p.hi))
+            });
+        if lo < vih.hi() {
+            let point = |v| Quantity::point(Dimension::VOLTAGE, v);
+            let high = match (point(lo), point(hi)) {
+                (Ok(a), Ok(b)) => {
+                    Quantity::range(&a, &b).map_or_else(|_| volts(lo), |q| q.to_string())
+                }
+                _ => volts(lo),
+            };
+            self.fault(
+                r.part,
+                format!(
+                    "net `{}`: the pull-up `{}` to rail `{}` holds the line at {high} (a driver that states `vol` and no `voh` leaves the high to the pull-up) but `{}` needs {vih}: a high of {} is not always read as a high, which takes {}",
+                    net.name,
+                    low.resistor,
+                    low.rail,
+                    model.path_of_field(fi),
+                    volts(lo),
+                    volts(vih.hi()),
+                ),
+            );
+        }
+    }
+
+    /// A low must be read as a low: the output's highest low against the input's lowest
+    /// threshold.
+    fn low(&mut self, net: &Net, d: &Line, r: &Line) {
+        let model = self.model;
+        let (dl, rl) = (model.path_of(d.logic), model.path_of(r.logic));
         // A low must be read as a low.
         match (self.value(d.logic, "vol"), self.value(r.logic, "vil")) {
             (Some((fo, vol)), Some((fi, vil))) => {
@@ -432,6 +511,64 @@ impl Run<'_> {
         }
     }
 
+    /// The resistors that pull a net up to a rail: each resistor from the net to a net that
+    /// has the positive pin of a rail (one step, as `net_range` reads a pull). Empty when there
+    /// is none, and also when the net has a resistor to its ground as well, which makes it a
+    /// divider whose voltage is not the rail's. The reason a rail cannot be read otherwise.
+    fn pullups(&self, net: &Net, ground: InstId) -> Result<Vec<PullUp>, String> {
+        let model = self.model;
+        let mut found: Vec<PullUp> = Vec::new();
+        for &t in &net.terminals {
+            let Some(far) = self.resistor_far_end(t) else {
+                continue;
+            };
+            let Some(far_net) = self.net_index(far) else {
+                continue;
+            };
+            if self.net_index(ground) == Some(far_net) {
+                return Ok(Vec::new());
+            }
+            let Some(part) = model.owner_of(t) else {
+                continue;
+            };
+            let resistor = model.path_of(part);
+            for &pin in &model.nets()[far_net].pins {
+                let Some(parent) = model.instance(pin).parent else {
+                    continue;
+                };
+                let Some((voltage, pos, neg)) = model.rail_of(parent) else {
+                    continue;
+                };
+                if pin != pos {
+                    continue;
+                }
+                let rail = model.path_of(parent);
+                if !self.same_ground(neg, ground) {
+                    return Err(format!(
+                        "a resistor joins it to rail `{rail}`, whose ground `{}` is on net `{}`, not `{}`",
+                        model.path_of(neg),
+                        self.name_of_net(neg),
+                        self.name_of_net(ground)
+                    ));
+                }
+                let Domain::Quantity(q) = model.field(voltage).domain else {
+                    return Err(format!(
+                        "a resistor joins it to rail `{rail}`, which has no voltage"
+                    ));
+                };
+                found.push(PullUp {
+                    resistor: resistor.clone(),
+                    rail,
+                    lo: q.lo(),
+                    hi: q.hi(),
+                });
+                // The rails on one net have one voltage: the first names it.
+                break;
+            }
+        }
+        Ok(found)
+    }
+
     /// What the net at the far end of a resistor sets: ground, or a rail that has the same
     /// ground. Anything else it may be joined to is not followed.
     fn pull(&self, far: usize, ground: InstId, swing: &mut Swing) -> Result<(), String> {
@@ -572,6 +709,15 @@ impl Run<'_> {
         }
         Ok(swing)
     }
+}
+
+/// A resistor that holds a net at a rail: the rail and the range of its voltage.
+struct PullUp {
+    /// The path of the resistor.
+    resistor: String,
+    rail: String,
+    lo: f64,
+    hi: f64,
 }
 
 /// The range a net can take, with what sets each end.
