@@ -1,0 +1,29 @@
+name: PR title
+
+# Pull requests are squash-merged, so the title becomes the commit on main, and release-please reads
+# the commits on main to work out the next version and the changelog. The title must be a
+# Conventional Commit (AGENTS.md): `type(scope): summary`, with `!` after the type for a breaking
+# change. This is a check of its own, apart from `ci-ok`: require it by name in the branch
+# protection rule if it is to block a merge.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  pull-requests: read
+
+jobs:
+  conventional-title:
+    name: Conventional Commit title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: ytanikin/pr-conventional-commits@1.4.0
+        with:
+          task_types: '["build","chore","ci","docs","feat","fix","perf","refactor","style","test","revert"]'
+          add_label: 'false'

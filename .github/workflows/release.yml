@@ -3,10 +3,12 @@
 # was run on Linux (WSL, x86_64-unknown-linux-gnu) only; the macOS and Windows legs, the KiCad
 # installs and the upload step are untested. Expect to fix them on the first run on a tag.
 #
-# On a tag `v*` it builds netsmith on Linux, macOS and Windows runners with scripts/release-build.sh
-# (release build, `netsmith --version`, a smoke test of init/build/fab and the editor page, then a
-# tar.gz or zip with LICENSE, README.md and checksums) and attaches the archives and their .sha256
-# files to a draft GitHub release. No Node is installed: the editor's page is the committed bundle.
+# On a tag `v*` (release-please makes the tag and the release: release-please.yml) it builds
+# netsmith on Linux, macOS and Windows runners with scripts/release-build.sh (release build,
+# `netsmith --version`, a smoke test of init/build/fab and the editor page, then a tar.gz or zip
+# with LICENSE, README.md and checksums) and attaches the archives and their .sha256 files to the
+# GitHub release of the tag (a draft one if there is none). No Node is installed: the editor's
+# page is the committed bundle.
 # `build` and `fab` need KiCad's libraries, so each runner installs KiCad for the smoke test; the
 # archives do not contain KiCad (a user needs KiCad's libraries too, see the README).
 name: release
@@ -88,4 +90,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -l dist-release
-          gh release create "$GITHUB_REF_NAME" dist-release/* --repo "$GITHUB_REPOSITORY" --draft --title "$GITHUB_REF_NAME" --generate-notes
+          # release-please makes the release for the tag; add the archives to it. A tag pushed by
+          # hand has no release yet: make a draft.
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist-release/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist-release/* --repo "$GITHUB_REPOSITORY" --draft --title "$GITHUB_REF_NAME" --generate-notes
+          fi

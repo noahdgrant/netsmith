@@ -1,0 +1,36 @@
+name: release-please
+
+# Each push to main opens or updates the release pull request: the next version and the changelog,
+# worked out from the Conventional Commits on main since the last release (`feat` raises the minor
+# version, `fix` the patch, and a `!` or a `BREAKING CHANGE:` footer the major one, or the minor
+# one while the version is 0.x). Merging that pull request makes the tag vX.Y.Z and a GitHub
+# release. Config: release-please-config.json and .release-please-manifest.json.
+#
+# The `release` workflow builds the archives when a tag `v*` is pushed. A tag that the default
+# token makes starts no other workflow, so for the archives to be built, add a repository secret
+# `RELEASE_PLEASE_TOKEN` (a personal access token with contents and pull-requests write); without
+# it the release is made and the `release` workflow can be started by hand on the tag.
+
+on:
+  push:
+    branches: [main]
+  # A push event that GitHub drops leaves a release unmade; this starts the job by hand.
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    name: Release pull request
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
