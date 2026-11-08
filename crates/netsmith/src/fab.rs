@@ -364,7 +364,7 @@ fn fab_board(
 
         // A generic part (ADR 0047) becomes the row that stands for it now; one that no row
         // stands for cannot be ordered, and is refused by name with the nearest rows.
-        let (sourcing, unresolved) = resolve_generics(&built.sourcing, &built.rechecks, catalogs);
+        let (sourcing, unresolved) = resolve_generics(&built.sourcing, catalogs);
         let unresolved: Vec<String> = unresolved
             .iter()
             .filter(|u| {
@@ -373,7 +373,7 @@ fn fab_board(
                     .iter()
                     .any(|s| s.refdes == u.refdes && s.assembled())
             })
-            .map(|u| fail(u.line()))
+            .map(|u| fail(u.line(&built.rechecks, catalogs)))
             .collect();
         // Every part to assemble needs a supplier part number. All that lack one are named
         // together, now and not after the routing, with what to write to say that the board

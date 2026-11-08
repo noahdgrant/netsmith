@@ -48,9 +48,10 @@ pub struct Built {
     /// manufacturer part number and JLCPCB library, and whether the board house places it.
     pub sourcing: Vec<Sourced>,
     /// For each generic part that no catalog row stands for, the board's checks run again
-    /// with each nearest alternative in its place (ADR 0047). Empty if every generic part
-    /// has a row.
-    pub rechecks: Vec<resolve::Recheck>,
+    /// with each nearest alternative in its place (ADR 0047). Nothing is solved when the
+    /// board is built: `rechecks.get(catalogs)` makes the solves, for the one who shows the result.
+    /// Empty if every generic part has a row.
+    pub rechecks: resolve::Rechecks,
     /// The text of the `.kicad_sch`.
     pub schematic: String,
     /// The text of the `.kicad_pro`.
@@ -440,12 +441,10 @@ pub fn outcome_observed(
             libraries,
         )?;
         one.providers = provided;
-        one.rechecks = resolve::recheck_alternatives(
-            solution,
-            &one.design.parts,
-            catalogs,
-            &|pinned: &Catalogs| quietly(|| solve(board, pinned)),
-        );
+        one.rechecks = resolve::Rechecks::plan(solution, &one.design.parts, catalogs, || {
+            let board = board.clone();
+            Box::new(move |pinned: &Catalogs| quietly(|| solve(&board, pinned)))
+        });
         built.push(one);
     }
     let standalone = total - checked.systems.len();
@@ -553,12 +552,10 @@ pub fn outcome_observed(
                 libraries,
             )?;
             one.providers = provided;
-            one.rechecks = resolve::recheck_alternatives(
-                solution,
-                &one.design.parts,
-                catalogs,
-                &|pinned: &Catalogs| quietly(|| solve_system(system, pinned)),
-            );
+            one.rechecks = resolve::Rechecks::plan(solution, &one.design.parts, catalogs, || {
+                let system = system.clone();
+                Box::new(move |pinned: &Catalogs| quietly(|| solve_system(&system, pinned)))
+            });
             built.push(one);
         }
         solved.push(SolvedSystem {
@@ -612,7 +609,7 @@ pub fn outcome_observed(
 
 /// Runs a solve that is a check of an alternative part, not the board's own: it counts nothing
 /// of what it chooses, so that the count of the board's solve is not told again from zero
-/// (`recheck_alternatives` says how many alternatives it has solved).
+/// (`Rechecks::get` says how many alternatives it has solved).
 fn quietly<T>(work: impl FnOnce() -> T) -> T {
     netsmith_core::job::reporting(std::rc::Rc::new(|_| {}), work)
 }
@@ -1130,7 +1127,7 @@ fn export(
         project,
         design,
         sourcing,
-        rechecks: Vec::new(),
+        rechecks: resolve::Rechecks::none(),
         schematic,
         notes,
         providers: Vec::new(),
