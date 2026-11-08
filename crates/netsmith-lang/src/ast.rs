@@ -138,6 +138,8 @@ pub enum Item {
     Constraint(Constraint),
     Connect(Connect),
     Bridge(Bridge),
+    /// `dc resistor .a .b .resistance`: what a part is at DC (ADR 0076, amendment 1).
+    Dc(Dc),
     Catalog(Catalog),
     Pins(Pins),
     Tie(Tie),
@@ -407,6 +409,17 @@ pub struct Bridge {
     pub span: Span,
 }
 
+/// `dc resistor .a .b .resistance`: the element a part is in a DC analysis, then the operands
+/// of that element in the order its kind fixes (pins first, then values). The parser keeps the
+/// operands as written; the checker knows each kind's operands (ADR 0076, amendment 1).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Dc {
+    /// The word after `dc`: `resistor`, `diode`, `nmos` or `pmos`.
+    pub kind: Ident,
+    pub operands: Vec<Path>,
+    pub span: Span,
+}
+
 /// `catalog resistor { .resistance, .package }`: the columns of a parts catalog that
 /// this part's fields are matched against. `catalog mcu by .mpn { .mpn, .package }` names
 /// the column that picks one row, which the design must set. A column may end with
@@ -455,6 +468,9 @@ pub struct Constraint {
     pub lhs: Expr,
     pub op: CmpOp,
     pub rhs: Expr,
+    /// `at 2mA` after the right side: the load a datasheet measures a level at (ADR 0076,
+    /// amendment 1). The statement means what it does without it.
+    pub at: Option<Expr>,
     pub span: Span,
 }
 

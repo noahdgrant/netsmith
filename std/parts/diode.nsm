@@ -41,6 +41,7 @@ part Diode {
     .current <= .max_forward_current
     .bias <= .max_reverse_voltage
     bridge .anode ~> .cathode
+    dc diode .anode .cathode .forward_voltage
 
     .package: Package
 }
@@ -73,6 +74,7 @@ generic Schottky {
     .current <= .max_forward_current
     .bias <= .max_reverse_voltage
     bridge .anode ~> .cathode
+    dc diode .anode .cathode .forward_voltage
 
     .package: Package
     catalog schottky { .forward_voltage, .max_reverse_voltage, .max_forward_current, .package }

@@ -259,6 +259,15 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     c.op.symbol(),
                     c.rhs.to_source()
                 );
+                if let Some(at) = &c.at {
+                    let _ = write!(out, " at {}", at.to_source());
+                }
+            }
+            Item::Dc(d) => {
+                let _ = write!(out, "dc {}", d.kind.name);
+                for operand in &d.operands {
+                    let _ = write!(out, " {}", operand.to_source());
+                }
             }
             Item::Bridge(b) => {
                 let _ = write!(out, "bridge {} ~> {}", b.from.to_source(), b.to.to_source());

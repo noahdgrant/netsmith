@@ -7091,9 +7091,9 @@ board Standoff {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 9 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
-    --> std/parts/diode.nsm:154:5
+    --> std/parts/diode.nsm:156:5
     |
-154 |     .bias <= .standoff_voltage
+156 |     .bias <= .standoff_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7440,9 +7440,9 @@ board Budget {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
-    --> std/parts/passive.nsm:248:5
+    --> std/parts/passive.nsm:250:5
     |
-248 |     .current <= .rated_current
+250 |     .current <= .rated_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7467,9 +7467,9 @@ board Saturates {
 
 ```text
 error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758, fails because l.current must always be at most l.saturation_current, but 500A is not always below 3.6A
-    --> std/parts/passive.nsm:170:5
+    --> std/parts/passive.nsm:171:5
     |
-170 |     .current <= .saturation_current
+171 |     .current <= .saturation_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7630,10 +7630,214 @@ board HighSide {
 
 ```text
 error: no `p_mosfet` candidate satisfies `q`: the closest of the 1 that fit, ZP-30 30V 4A P-MOSFET, fails because q.drain_source_voltage must always be at most q.max_drain_source_voltage, but 95V..105V is not always below 30V
-   --> std/parts/transistor.nsm:75:5
+   --> std/parts/transistor.nsm:76:5
    |
-75 |     .drain_source_voltage <= .max_drain_source_voltage
+76 |     .drain_source_voltage <= .max_drain_source_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### What a part is at DC
+
+A part says what it is to a DC analysis with a `dc` statement, once, in the part or in the generic that it provides (ADR 0076, amendment 1, provisional). The statement names the element, then its pins, then its values, in the order the element fixes:
+
+```nsm-fragment
+dc resistor .a .b .resistance
+dc diode .anode .cathode .forward_voltage
+dc nmos .gate .drain .source .gate_threshold .on_resistance
+dc pmos .gate .drain .source .gate_threshold .on_resistance
+```
+
+- `dc resistor <terminal> <terminal> <resistance>`: a resistance between two pins, over the range of the field (a resistor, a fuse, a ferrite bead's `.dc_resistance`).
+- `dc diode <anode> <cathode> <forward voltage>`: blocks, or holds the forward voltage and carries a current of at least zero.
+- `dc nmos` and `dc pmos`, `<gate> <drain> <source> <gate threshold> <on resistance>`: a MOSFET as a switch, `.on_resistance` between drain and source when the gate drive is above the threshold and open when it is below. The gate draws nothing, and the values are magnitudes as in `NMosfet` and `PMosfet`.
+
+The standard `Resistor`, `Fuse`, `FerriteBead`, `Diode`, `Schottky`, `NMosfet` and `PMosfet` state theirs, so a provider of one of them has it on its own pins and fields without writing it. A part with a `bridge` and no `dc` statement is a boundary: a DC analysis cannot see through it. `Inductor`, `Led`, `Switch`, `Zener` and `Tvs` are boundaries for now. A module has no `dc` statement of its own: its network is the elements of the parts inside it.
+
+The rules. A `dc` statement is in a part (or a generic that has pins); the element is one of `resistor`, `diode`, `nmos` and `pmos`; the pins are pins of the part and are different; each value is a field of the part with the quantity of its place; a part has one `dc` statement; and when the part has a `bridge`, the element runs between the two pins the `bridge` joins (the drain and the source for a MOSFET). The order of the statements does not matter.
+
+This is only recorded for now. Nothing solves with a `dc` statement yet, so a design builds exactly as it did without it. The analysis that will use it (ADR 0076) tries every combination of the states of the pins it sees, which is the worst case: a design cannot yet say that two lines are never high together (issue #45).
+
+A part of your own that is a resistor at DC, and a provider of the standard fuse, which has the fuse's statement without writing one:
+
+```nsm
+import std::parts::passive::Fuse
+
+/// Invented: a current-sense resistor.
+part Shunt {
+    .designator &= "R"
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+    .resistance: Resistance
+    bridge .a ~> .b
+    dc resistor .a .b .resistance
+}
+
+/// Invented: a fuse from a project's own parts. `dc resistor .a .b .resistance` comes from `Fuse`.
+part SlowBlow provides Fuse {
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+}
+
+board Protected {
+    .shunt: Shunt
+    .fuse: SlowBlow
+}
+```
+
+The statement is checked, and each refusal names the element or the operand. An element that is not one of the four lists them:
+
+```nsm fails
+part Shunt {
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+    .resistance: Resistance
+    .forward_voltage: Voltage
+    dc coil .a .b .resistance
+}
+
+board B {
+    .r: Shunt
+}
+```
+
+```text
+error: `dc` does not know the element `coil`; the elements are resistor, diode, nmos and pmos
+  --> main.nsm:8:8
+  |
+8 |     dc coil .a .b .resistance
+  |        ^^^^
+```
+
+The wrong number of operands shows the whole statement:
+
+```nsm fails
+part Shunt {
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+    .resistance: Resistance
+    .forward_voltage: Voltage
+    dc resistor .a .resistance
+}
+
+board B {
+    .r: Shunt
+}
+```
+
+```text
+error: `dc resistor` takes 2 pins and then 1 value, as in `dc resistor .a .b .resistance`; this has 2 operands
+  --> main.nsm:8:5
+  |
+8 |     dc resistor .a .resistance
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A value must be a field of the quantity of its place; here a resistor is given the forward voltage:
+
+```nsm fails
+part Shunt {
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+    .resistance: Resistance
+    .forward_voltage: Voltage
+    dc resistor .a .b .forward_voltage
+}
+
+board B {
+    .r: Shunt
+}
+```
+
+```text
+error: `dc resistor` takes the resistance here, a resistance, and `.forward_voltage` is a voltage
+  --> main.nsm:8:23
+  |
+8 |     dc resistor .a .b .forward_voltage
+  |                       ^^^^^^^^^^^^^^^^
+```
+
+The element runs between the pins the `bridge` joins:
+
+```nsm fails
+part Shunt {
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+        .c passive "C" "3"
+    }
+    .resistance: Resistance
+    bridge .a ~> .b
+    dc resistor .a .c .resistance
+}
+
+board B {
+    .r: Shunt
+}
+```
+
+```text
+error: `dc resistor` runs between .a and .c, and this part's `bridge` joins .a and .b: a `~>` chain passes through the element the part is at DC, so the two must be the same pins
+  --> main.nsm:9:5
+  |
+9 |     dc resistor .a .c .resistance
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A part is one element, so a second statement is refused, with the place of the first (a provider that repeats the statement of its generic gets the same message):
+
+```nsm fails
+part Shunt {
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+    .resistance: Resistance
+    .forward_voltage: Voltage
+    dc resistor .a .b .resistance
+    dc diode .a .b .forward_voltage
+}
+
+board B {
+    .r: Shunt
+}
+```
+
+```text
+error: this part already has a `dc` statement (at main.nsm:8); a part is one element at DC
+  --> main.nsm:9:5
+  |
+9 |     dc diode .a .b .forward_voltage
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A module has no element of its own (nor has a board): its network is the elements of the parts inside it.
+
+```nsm fails
+module Filter {
+    dc resistor .a .b .resistance
+}
+
+board B {
+    .f: Filter
+}
+```
+
+```text
+error: `dc` can only appear inside a part, and this is a module: a module's DC network is the elements of the parts inside it
+  --> main.nsm:2:5
+  |
+2 |     dc resistor .a .b .resistance
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Capacitor voltage rating
@@ -7880,6 +8084,156 @@ board Inverters {
 The note, in `netsmith build`'s output: `not evaluated: the absolute maximum of `u1.a.line` against net `net-j.p1`: nothing sets its voltage: no rail is on it and no `Logic` line drives it`.
 
 The level checks apply to the lines that are `Logic` and to the pins of a bus interface that states `.levels` (see "Logic levels of a bus" below). A rating of any other pin (its `.abs_max` stated on a plain `Pin`) is listed as not evaluated.
+
+#### A level and the current it was measured at
+
+A datasheet gives an output level at a load: `VOH = VDD - 0.4 V at IOH = 2 mA`. A part states it the same way, with `at` and the current after the value (ADR 0076, amendment 1, provisional):
+
+```nsm-fragment
+.out.voh &= .vdd.voltage - 0.4V at 2mA
+.out.vol &= 0.4V at 8mA
+```
+
+The statement means what it means without `at`: the same narrowing, the same check of the levels above. The current is recorded beside the level, for the analysis that will derive the pin's output resistance from it (`(vdd - voh) / 2 mA` at most). Only `voh` and `vol` take one, of a `Logic` or of a bus's `Levels`; every comparison (`&=`, `?=`, `==`, `>=`, `<=`) may carry it. The current is one positive number written in the statement, not a range and not another field, and a level is stated at one load.
+
+```nsm evaluate
+import std::logic::Logic
+import std::sources::Rail
+
+/// Invented: drives a high to its supply less 0.4 V at 2 mA and a low to 0.4 V at 8 mA.
+part Driver {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.voh &= .vdd.voltage - 0.4V at 2mA
+    .out.vol &= 0.4V at 8mA
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+board Stated {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: Driver
+    .supply ~ .u.vdd
+}
+```
+
+An input level is measured at no load, and the current must be a current:
+
+```nsm fails
+import std::logic::Logic
+import std::sources::Rail
+
+part Driver {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.vih &= 2V at 2mA
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+board B {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: Driver
+    .supply ~ .u.vdd
+}
+```
+
+```text
+error: `at <current>` states the load of an output level; `.out.vih` is a level that a datasheet states without a load: only an output level, `voh` or `vol`, is measured at a current
+  --> main.nsm:8:23
+  |
+8 |     .out.vih &= 2V at 2mA
+  |                       ^^^
+```
+
+```nsm fails
+import std::logic::Logic
+import std::sources::Rail
+
+part Driver {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.voh &= 2.4V at 2V
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+board B {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: Driver
+    .supply ~ .u.vdd
+}
+```
+
+```text
+error: `at` takes the current the level is measured at, such as `2mA`, not a voltage
+  --> main.nsm:8:25
+  |
+8 |     .out.voh &= 2.4V at 2V
+  |                         ^^
+```
+
+A level has one load. A datasheet that gives it at two currents gives two values, and a level holds one:
+
+```nsm fails
+import std::logic::Logic
+import std::sources::Rail
+
+part Driver {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.voh &= 2.4V at 2mA
+    .out.voh >= 2V at 8mA
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+board B {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: Driver
+    .supply ~ .u.vdd
+}
+```
+
+```text
+error: `.out.voh` is already stated at 2mA (at main.nsm:8): a level is one value at one load, so keep one `at`
+  --> main.nsm:9:23
+  |
+9 |     .out.voh >= 2V at 8mA
+  |                       ^^^
+```
 
 ### A level translator
 

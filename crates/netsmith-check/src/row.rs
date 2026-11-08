@@ -78,12 +78,14 @@ impl Checker<'_> {
                 },
                 op: CmpOp::EqEq,
                 rhs: r.pitch.clone(),
+                at: None,
                 span: r.span,
             };
             let line = Constraint {
                 lhs: field(b, across),
                 op: CmpOp::EqEq,
                 rhs: field(a, across),
+                at: None,
                 span: r.span,
             };
             self.constraint(&pitch_line);

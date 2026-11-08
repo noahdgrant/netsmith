@@ -41,6 +41,7 @@ generic NMosfet {
     .gate_source_voltage >= .gate_threshold
     .current <= .max_drain_current
     bridge .drain ~> .source
+    dc nmos .gate .drain .source .gate_threshold .on_resistance
 
     .package: Package
     catalog n_mosfet { .max_drain_source_voltage, .max_drain_current, .max_gate_source_voltage, .gate_threshold, .on_resistance, .package }
@@ -77,6 +78,7 @@ generic PMosfet {
     .gate_source_voltage >= .gate_threshold
     .current <= .max_drain_current
     bridge .source ~> .drain
+    dc pmos .gate .drain .source .gate_threshold .on_resistance
 
     .package: Package
     catalog p_mosfet { .max_drain_source_voltage, .max_drain_current, .max_gate_source_voltage, .gate_threshold, .on_resistance, .package }

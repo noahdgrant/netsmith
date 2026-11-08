@@ -1,5 +1,5 @@
 ---
-status: provisional (the owner decided the seven questions of section 10 on 2026-11-07, as recorded there; only the cheap bound of phase 1 is built in the solver, and the crate `netsmith-dc` is a prototype that nothing uses: the language, the checker, the solver and every existing behaviour are unchanged; the syntax of questions 1 and 2 is the owner's to confirm when phase 2 writes it)
+status: provisional (the owner decided the seven questions of section 10 on 2026-11-07, as recorded there; only the cheap bound of phase 1 is built in the solver, and the crate `netsmith-dc` is a prototype that nothing uses; the syntax of questions 1 and 2 is written in amendment 1 below, which the parser and the checker implement (phase 2, stage 1) and which stays provisional until the owner confirms it; the solver and every existing behaviour are unchanged by it)
 ---
 
 # A post-pick DC analysis solves the network of the picked parts
@@ -166,3 +166,49 @@ Two things the prototype showed that were not expected. The cell voltage of the 
 - Convergence of the fixed point is shown by the tests and by its monotone rise from zero, not proved for a regulator with a hysteresis or an efficiency that depends on its load; and an input below a regulator's minimum is only a warning.
 - The fuse's data. The catalog row has the typical cold resistance (32 mohm) and no maximum and no hot value, so the chain's drops are a typical and not a worst case; the pass makes a missing maximum visible and cannot supply it.
 - The effect on the build's other results: no existing test was run, since no existing code changed. The workspace tests are not part of this change; the crate's 23 tests, its formatting and its lints are.
+
+## Amendment 1 (provisional): the syntax of `dc` and of a level with its test current
+
+Written for phase 2, stage 1, on the owner's decisions of section 10 (question 1, a `dc` statement in the part or the generic; question 2, a level with its test current) and with the owner's authority to fix the exact syntax within today's grammar. The owner confirms or changes it. It adds the syntax, its checks and the records the checker keeps. It changes no solver behaviour: nothing reads the records yet, so a build is the same with the statements as without.
+
+**The grammar.**
+
+```text
+dc-statement = "dc" element operand* NEWLINE        operand = path (`.a`, `.vin.pos`)
+dc resistor  <terminal> <terminal> <resistance>
+dc diode     <anode> <cathode> <forward voltage>
+dc nmos      <gate> <drain> <source> <gate threshold> <on resistance>
+dc pmos      <gate> <drain> <source> <gate threshold> <on resistance>
+
+statement    = path op expression [ "at" expression ]    op = `&=` | `?=` | `==` | `>=` | `<=`
+```
+
+`dc` is a keyword at the start of a statement when a word follows it, as `bridge` is, so a member called `dc` still works. `at` is read after the right side of a constraint; a member called `at` still works, because no value can be followed by a word.
+
+**What a `dc` statement says.** A part is one element at DC, and says which, once, with the pins and the fields it is made of (ADR 0076 section 2 gives each model):
+
+- `dc resistor .a .b .resistance`: a resistance between two pins, over the range of the field. Used for a resistor, a fuse and a ferrite bead (`.dc_resistance`).
+- `dc diode .anode .cathode .forward_voltage`: blocks, or holds the forward voltage between anode and cathode and carries a current of at least zero.
+- `dc nmos .gate .drain .source .gate_threshold .on_resistance` and `dc pmos ...` with the same operands: a MOSFET as a switch. The channel is `.on_resistance` between drain and source when the gate drive is above the threshold and open when it is below; the gate draws nothing. The two words differ in the polarity of the drive, and both are written with magnitudes (see `std::parts::PMosfet`).
+
+The pins are the first operands and the values the last, in the order above, so a reader and the checker know which is which. A value operand is a field of the part with the quantity of its place: a resistance for a resistor, a voltage for a diode's drop and a threshold. A pin operand is a pin of the part, directly or in one of its interfaces. The two or three pins of an element are different. A part has one `dc` statement. When a part has a `bridge` too, the pins the element runs between (both of a resistor or a diode, the drain and the source of a transistor) are the two pins the `bridge` joins, in either order, because a `~>` chain passes through the element. Statement order does not matter: the check waits until the whole part is read.
+
+**Where it is written and who has it.** In a `part`, or in a `generic`. A provider of a generic takes the generic's items as it takes its `bridge` (ADR 0068), so `generic Fuse { ... dc resistor .a .b .resistance }` gives every provider of `Fuse` the element on its own pins and fields, and a provider that states a second `dc` is refused with the place of the first. A module and a board have none: the network of a module is the elements of the parts inside it, found by walking the instances. A `dc` in a module, a board or a physical file is an error. A part with a `bridge` and no `dc` is a boundary (question 1), and the analysis names it; this stage does not name anything.
+
+**The standard library.** `Resistor`, `Fuse`, `FerriteBead`, `Diode`, `Schottky`, `NMosfet` and `PMosfet` state their element, as the table of section 2 has them. The others are left out until each has its own decision: `Inductor` (the winding's `.dc_resistance` is a resistor, and it is not in the table), `Led` (a diode whose drop is `.forward_voltage`), `Switch` (a closed contact), `Zener` and `Tvs` (conducting only past a voltage that the part states in another form), `Capacitor` (open at DC, question 7: it needs no element), and the regulators, the level translator and the logic pins (they are not one of the four kinds: see "Left open").
+
+**A level with its test current.** `.voh &= .vdd.voltage - 0.4V at 2mA` is the datasheet's `VOH = VDD - 0.4 V at IOH = 2 mA`. It means exactly what the statement means without `at`: the same narrowing or relation, the same levels check (ADR 0046), the same everything. `at` adds one fact, the current the level was measured at, which the checker records with the level. The analysis derives from it the pin's output resistance of question 2 (`roh` at most `(vdd - voh) / 2 mA`, `rol` at most `vol / 8 mA`, and at least zero); that derivation is stage 2's, and with no `at` the pin has none stated. Rules: `at` goes on `voh` or `vol` of a `Logic` or of a `Levels` (a `vih` and a `vil` are thresholds and have no load); the current is one positive number written in the statement (not a range, not an expression of other fields, since it is what the datasheet prints); a level is stated at one load, so a second `at` on the same level is refused with the place of the first (a datasheet that gives `VOH` at two currents is two statements of two different values, and a level holds one).
+
+**Rejected.**
+
+- *Words for each operand* (`dc resistor between .a .b value .resistance`). Longer, and the checker still has to know which operands each element takes. The position is fixed by the element, as in a `pins` row.
+- *A block* (`dc { element: resistor, a: .a ... }`). A block for one line, and a second way to name a pin.
+- *The element in the `bridge`* (`bridge .a ~> .b as resistor`), or inferred from the field names. A second spelling for `bridge`, and an inference the library cannot see, which question 1 refused as option (c).
+- *One word for both MOSFETs with a polarity operand* (`dc mosfet n ...`). The polarity is the part's kind, as `NMosfet` and `PMosfet` are two generics; two words keep the statement as long as the others.
+- *Members `roh`, `rol` and `ii` for the drive* (question 2, option (a)). The owner chose the datasheet's form.
+- *The test current before the level* (`.voh at 2mA &= ...`) or in the unit (`0.4V@2mA`). The statement reads as the datasheet does, a value and then where it was measured, and the left side stays a plain field.
+
+**What the checker records** (stage 2 reads these, in `crates/netsmith-check`): `Instance::dc: Option<DcElement>` (`src/model.rs`), with `DcKind`, the pins and the fields as `InstId`s and `FieldId`s in the order of `DcKind::pin_roles` and `DcKind::value_roles`, and the source place; `Model::dc_elements()` walks the parts that have one. `Model::level_tests() -> &[LevelTest]` and `Model::level_test(field)`: for a level field, the test current as a `Quantity`, the operator and the statement's place. Both are in the model of each board and of each system.
+
+**Left open.** (1) The leakage of a pin in the datasheet's form, `Ii` at a test voltage `Vi`: there is no member to state it on (`Logic` and `Levels` have the four levels only), and adding one is a change to those interfaces that is the owner's. (2) The element kinds of the regulator (a power-conserving source, section 2), the logic pin and the constant-power load: the regulator's efficiency and quiescent current are fields of the part, and how a `dc` statement names an output, an input, a supply and a ground is a design of its own; this amendment gives no `dc regulator`. (3) Two elements in one part (a MOSFET's body diode, section 5 says it is not modelled). (4) Whether a part with a `bridge` and no `dc` should be an error at the checker or only a note of the analysis: it is the analysis's note here (question 1). (5) The count of the elements a part is, for a part that holds two (a dual diode, a resistor network): a `dc` statement for each, which needs a name for each, is not designed.
+
