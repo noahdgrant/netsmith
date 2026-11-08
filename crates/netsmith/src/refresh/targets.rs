@@ -45,7 +45,8 @@ impl Target {
 }
 
 /// The files to act on. With `paths`, each is a catalog file or a directory of them. With
-/// none: the catalogs the project's `netsmith.toml` lists (the project that contains `cwd`)
+/// none: the catalog files of the project that contains `cwd` (its `catalog_dirs` folders and
+/// its `catalogs` list)
 /// and, in the netsmith repository, the standard ones in `data/jlcpcb/catalog/`. The standard
 /// catalogs are inside the `netsmith` binary too, but the binary's copy cannot be written, so
 /// they are refreshed in the repository's files.
@@ -53,8 +54,8 @@ pub fn resolve_targets(cwd: &Path, paths: &[PathBuf]) -> Result<Vec<Target>, Str
     let mut targets = Vec::new();
     if paths.is_empty() {
         if let Some(project) = Project::find(cwd)? {
-            for file in &project.manifest.catalogs {
-                targets.push(Target::of(project.root.join(file), cwd)?);
+            for file in project.catalog_files()? {
+                targets.push(Target::of(file.path, cwd)?);
             }
         }
         let std = cwd.join(STD_DIR);
@@ -63,7 +64,7 @@ pub fn resolve_targets(cwd: &Path, paths: &[PathBuf]) -> Result<Vec<Target>, Str
         }
         if targets.is_empty() {
             return Err(format!(
-                "there are no catalog files to act on: {MANIFEST} (here or above) lists no `catalogs`, and there is no {STD_DIR}/ here; name a catalog file or a directory of them"
+                "there are no catalog files to act on: {MANIFEST} (here or above) has no catalog files (`catalog_dirs`, `catalogs`), and there is no {STD_DIR}/ here; name a catalog file or a directory of them"
             ));
         }
         return Ok(targets);

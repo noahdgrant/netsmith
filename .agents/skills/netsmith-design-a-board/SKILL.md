@@ -33,7 +33,7 @@ When the design is several boards (a carrier with sockets, plug-in cards with ma
 - State what the circuit needs, not what you hope the part is: `.effective_capacitance >= 4.7uF`, not a marked value.
 - Put reusable circuits in `src/*.nsm` as modules (`netsmith-write-a-module`).
 - A board that has no `process` builds only as a schematic.
-- The standard catalogs hold only the verified JLCPCB parts. If a catalog has nothing for a value, change the requirement or the circuit, and tell the user which. A part the user wants and the catalogs lack goes in the project's own catalog file (`catalogs/<catalog>.csv`, listed under `catalogs` in `netsmith.toml`), with its `source` and only from a record you fetched. Do not invent a part number.
+- The standard catalogs hold only the verified JLCPCB parts. If a catalog has nothing for a value, change the requirement or the circuit, and tell the user which. A part the user wants and the catalogs lack goes in the project's own catalog file (`catalogs/<catalog>.csv`: every `*.csv` in `catalogs/` is a catalog, no line in `netsmith.toml`), with its `source` and only from a record you fetched. Do not invent a part number.
 - Who assembles the parts: `assembly = "fab"`, `"hand"` or `"none"` under `[project]` in `netsmith.toml` is the default for every part nothing else speaks for (a part's own `.assembly &=` wins). Ask the user before setting it.
 - Statements may come in any order. There is one way to say each thing.
 

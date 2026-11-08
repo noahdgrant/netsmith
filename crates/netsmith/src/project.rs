@@ -49,9 +49,16 @@ pub struct Manifest {
     /// The KiCad version the output is for.
     #[serde(default = "default_kicad")]
     pub kicad: i64,
-    /// The project's own catalog files, relative to the project root, one per catalog and
-    /// named by it (`catalogs/acme_ldo.csv` is the catalog `acme_ldo`), in addition to the
-    /// standard JLCPCB catalogs (ADR 0022).
+    /// The folders whose `*.csv` files are the project's own catalogs, relative to the
+    /// project root (`..` is allowed, so projects can share a folder): each file is the
+    /// catalog its name says (`catalogs/acme_ldo.csv` is the catalog `acme_ldo`). The
+    /// default is `["catalogs"]`; `[]` reads no folder. Sub-folders are not read, files
+    /// are read in file-name order (ADR 0022, amended).
+    #[serde(default = "default_catalog_dirs")]
+    pub catalog_dirs: Vec<String>,
+    /// Single catalog files from anywhere inside the project, relative to the project
+    /// root, one per catalog and named by it, in addition to the files of `catalog_dirs`
+    /// and the standard JLCPCB catalogs (ADR 0022).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub catalogs: Vec<String>,
     /// Who assembles a part that nothing else speaks for: `"fab"`, `"hand"` or `"none"`
@@ -136,6 +143,13 @@ fn default_top_level() -> Vec<String> {
     vec![format!("{SOURCE_DIR}/main.nsm")]
 }
 
+/// The folder of a project's catalogs when the manifest says nothing.
+pub const CATALOG_DIR: &str = "catalogs";
+
+fn default_catalog_dirs() -> Vec<String> {
+    vec![CATALOG_DIR.to_string()]
+}
+
 fn default_out() -> String {
     "out".to_string()
 }
@@ -177,6 +191,7 @@ impl Manifest {
             out: default_out(),
             fab: default_fab(),
             kicad: default_kicad(),
+            catalog_dirs: default_catalog_dirs(),
             catalogs: Vec::new(),
             assembly: None,
             guidelines: None,
@@ -261,6 +276,17 @@ impl Manifest {
                 ));
             }
         }
+        for (index, dir) in self.catalog_dirs.iter().enumerate() {
+            check_folder("catalog_dirs", dir)?;
+            if self.catalog_dirs[..index]
+                .iter()
+                .any(|earlier| same_folder(earlier, dir))
+            {
+                return Err(format!(
+                    "{MANIFEST}: catalog_dirs lists the folder {dir:?} twice"
+                ));
+            }
+        }
         let mut names: Vec<&str> = Vec::new();
         for file in &self.catalogs {
             check_relative("catalogs", file)?;
@@ -331,11 +357,60 @@ fn check_relative(key: &str, path: &str) -> Result<(), String> {
     }
 }
 
+/// A folder in the manifest: relative to the project root, `..` allowed (a folder several
+/// projects share), never absolute and never empty.
+fn check_folder(key: &str, path: &str) -> Result<(), String> {
+    let usable = !path.is_empty()
+        && Path::new(path).components().all(|c| {
+            matches!(
+                c,
+                Component::Normal(_) | Component::CurDir | Component::ParentDir
+            )
+        })
+        && Path::new(path)
+            .components()
+            .any(|c| !matches!(c, Component::CurDir));
+    if usable {
+        Ok(())
+    } else {
+        Err(format!(
+            "{MANIFEST}: {key} {path:?} must be a folder relative to the project (`catalogs`, `../shared`), not absolute and not empty"
+        ))
+    }
+}
+
+/// A path as messages show it: with `/`, without `.` steps and without a trailing slash.
+fn tidy(path: &str) -> String {
+    Path::new(path)
+        .components()
+        .filter(|c| !matches!(c, Component::CurDir))
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn same_folder(a: &str, b: &str) -> bool {
+    tidy(a) == tidy(b)
+}
+
 /// A manifest and the directory it was found in.
 #[derive(Debug, Clone)]
 pub struct Project {
     pub root: PathBuf,
     pub manifest: Manifest,
+}
+
+/// One catalog file of a project: found in a `catalog_dirs` folder, or listed under
+/// `catalogs`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogFile {
+    /// The catalog it holds: the file's name without `.csv`.
+    pub name: String,
+    /// The file as messages name it: relative to the project root, with `/`.
+    pub file: String,
+    pub path: PathBuf,
+    /// The `catalog_dirs` entry that holds it; `None` for a file the `catalogs` list names.
+    pub folder: Option<String>,
 }
 
 impl Project {
@@ -401,19 +476,125 @@ impl Project {
         Some(steps.join("::"))
     }
 
-    /// The standard JLCPCB catalogs and the catalog files the manifest lists, read again on
-    /// each call. A problem names the file and line.
+    /// The `*.csv` files directly in each `catalog_dirs` folder (sub-folders are not
+    /// read), each folder's in file-name order, as `(folder, shown name, path, file
+    /// name)`. A folder that does not exist holds none: the default `catalogs` is
+    /// there for a project that has no catalogs of its own yet.
+    fn folder_csvs(&self) -> Result<Vec<(String, String, PathBuf, String)>, String> {
+        let mut found = Vec::new();
+        for dir in &self.manifest.catalog_dirs {
+            let path = self.root.join(dir);
+            if !path.exists() {
+                continue;
+            }
+            let io = |e: io::Error| format!("{MANIFEST}: catalog_dirs {dir:?}: {e}");
+            if !path.is_dir() {
+                return Err(format!(
+                    "{MANIFEST}: catalog_dirs {dir:?} is not a folder ({})",
+                    path.display()
+                ));
+            }
+            let mut names: Vec<String> = Vec::new();
+            for entry in fs::read_dir(&path).map_err(io)? {
+                let entry = entry.map_err(io)?;
+                let name = entry.file_name().to_string_lossy().into_owned();
+                // `is_file` follows a link; a sub-folder is not read.
+                if name.ends_with(".csv") && entry.path().is_file() {
+                    names.push(name);
+                }
+            }
+            names.sort();
+            let folder = tidy(dir);
+            for name in names {
+                let shown = format!("{folder}/{name}");
+                found.push((folder.clone(), shown, path.join(&name), name));
+            }
+        }
+        Ok(found)
+    }
+
+    /// Every catalog file of the project: the `*.csv` files of the `catalog_dirs` folders
+    /// (folders in the order the manifest lists them, files in file-name order), then the
+    /// files `catalogs` lists. A `.csv` in a folder whose name is not a catalog name, a
+    /// file that the folder and the list both name, and two files of one catalog are
+    /// errors that name the files.
+    pub fn catalog_files(&self) -> Result<Vec<CatalogFile>, String> {
+        let mut found: Vec<CatalogFile> = Vec::new();
+        for (folder, file, path, file_name) in self.folder_csvs()? {
+            let name = catalog_name(&file_name).ok_or_else(|| {
+                format!(
+                    "{MANIFEST}: {file} in the catalog_dirs folder {folder:?} is not a catalog: a catalog file is named after its catalog (letters, digits and `_`, not starting with a digit) and ends in .csv. Rename it, or move it out of the folder (a folder's sub-folders are not read)"
+                )
+            })?;
+            found.push(CatalogFile {
+                name: name.to_string(),
+                file,
+                path,
+                folder: Some(folder),
+            });
+        }
+        for file in &self.manifest.catalogs {
+            found.push(CatalogFile {
+                name: catalog_name(file)
+                    .expect("the manifest was validated")
+                    .to_string(),
+                file: tidy(file),
+                path: self.root.join(file),
+                folder: None,
+            });
+        }
+        for (index, later) in found.iter().enumerate() {
+            let Some(earlier) = found[..index].iter().find(|f| f.name == later.name) else {
+                continue;
+            };
+            let same_file = earlier.file == later.file
+                || matches!(
+                    (fs::canonicalize(&earlier.path), fs::canonicalize(&later.path)),
+                    (Ok(a), Ok(b)) if a == b
+                );
+            return Err(match (&earlier.folder, &later.folder) {
+                (Some(folder), None) if same_file => format!(
+                    "{MANIFEST}: {} is named twice: the catalog_dirs folder {folder:?} holds it and `catalogs` lists it. Remove it from `catalogs`: a file in a catalog_dirs folder needs no entry",
+                    later.file
+                ),
+                _ => format!(
+                    "{MANIFEST}: the catalog `{}` is in two files, {} and {}; a catalog is one file. Rename or remove one",
+                    later.name, earlier.file, later.file
+                ),
+            });
+        }
+        Ok(found)
+    }
+
+    /// The catalog files to watch for changes: those of `catalog_dirs` folders as they are
+    /// now (a new or a removed file changes the list, so the editor sees it) and those
+    /// `catalogs` lists. A mistake in a name is reported by [`Project::catalogs`], not here.
+    fn catalog_paths(&self) -> Vec<PathBuf> {
+        let mut paths: Vec<PathBuf> = self
+            .folder_csvs()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(_, _, path, _)| path)
+            .collect();
+        paths.extend(self.manifest.catalogs.iter().map(|c| self.root.join(c)));
+        paths
+    }
+
+    /// The standard JLCPCB catalogs and the project's own catalog files
+    /// ([`Project::catalog_files`]), read again on each call. A problem names the file and
+    /// line.
     pub fn catalogs(&self) -> Result<Catalogs, String> {
         let mut catalogs = Catalogs::jlcpcb()
             .with_default_assembly(self.manifest.assembly.as_deref())
             .with_strict_guidelines(self.manifest.guidelines.as_deref() == Some("error"))
             .with_constraints_warn(self.manifest.constraints.as_deref() == Some("warn"))
             .with_series(series_of(self.manifest.series.as_deref()));
-        for file in &self.manifest.catalogs {
-            let path = self.root.join(file);
+        for CatalogFile {
+            name, file, path, ..
+        } in self.catalog_files()?
+        {
             let text = fs::read_to_string(&path).map_err(|e| format!("{MANIFEST}: {file}: {e}"))?;
-            let name = catalog_name(file).expect("the manifest was validated");
-            catalogs.add_file(name, file, &text)?;
+            catalogs.add_file(&name, &file, &text)?;
         }
         if self.manifest.supply.is_some() {
             catalogs = catalogs.with_availability(self.supply()?.into_availability());
@@ -679,13 +860,7 @@ impl Target {
             if mapping.is_file() {
                 paths.push(mapping);
             }
-            paths.extend(
-                project
-                    .manifest
-                    .catalogs
-                    .iter()
-                    .map(|c| project.root.join(c)),
-            );
+            paths.extend(project.catalog_paths());
             // A name that is no module is reported by `loader`, not here.
             for module in project.modules().unwrap_or_default() {
                 let physical = crate::physical::physical_path(&module.path);
@@ -815,5 +990,47 @@ mod tests {
         assert!(e.contains("fab \"../fab\""), "{e}");
         let e = parse("[project]\nname = \"two words\"\n").unwrap_err();
         assert!(e.contains("\"two words\""), "{e}");
+    }
+
+    #[test]
+    fn catalog_dirs_default_to_the_catalogs_folder_and_survive_a_round_trip() {
+        assert_eq!(
+            parse("[project]\nname = \"a\"\n").unwrap().catalog_dirs,
+            ["catalogs"]
+        );
+        // The scaffold writes the default out, beside `top_level`.
+        let text = Manifest::new("a").render();
+        assert!(text.contains("catalog_dirs = [\"catalogs\"]"), "{text}");
+        assert!(text.contains("top_level = [\"src/main.nsm\"]"), "{text}");
+        // An empty list reads no folder, and is not the same as leaving the key out.
+        let none = parse("[project]\nname = \"a\"\ncatalog_dirs = []\n").unwrap();
+        assert!(none.catalog_dirs.is_empty());
+        assert_eq!(Manifest::parse(&none.render()).unwrap(), none);
+        let two = parse("[project]\nname = \"a\"\ncatalog_dirs = [\"catalogs\", \"../shared\"]\n")
+            .unwrap();
+        assert_eq!(two.catalog_dirs, ["catalogs", "../shared"]);
+        assert_eq!(Manifest::parse(&two.render()).unwrap(), two);
+    }
+
+    #[test]
+    fn a_catalog_dirs_entry_is_a_relative_folder() {
+        let with = |line: &str| parse(&format!("[project]\nname = \"a\"\n{line}\n")).unwrap_err();
+        for line in [
+            "catalog_dirs = [\"/etc\"]",
+            "catalog_dirs = [\"\"]",
+            "catalog_dirs = [\".\"]",
+        ] {
+            let e = with(line);
+            assert!(
+                e.contains("catalog_dirs")
+                    && e.contains("must be a folder relative to the project"),
+                "{line}: {e}"
+            );
+        }
+        let e = with("catalog_dirs = [\"catalogs\", \"./catalogs/\"]");
+        assert!(e.contains("lists the folder \"./catalogs/\" twice"), "{e}");
+        assert!(
+            parse("[project]\nname = \"a\"\ncatalog_dirs = [\"../shared\", \"./x\"]\n").is_ok()
+        );
     }
 }

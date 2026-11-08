@@ -887,11 +887,7 @@ fn the_bom_reads_price_and_stock_from_the_projects_own_catalog_files_too() {
     let root = TempDir::new("editor-test-catalog");
     fs::create_dir_all(root.join("src")).unwrap();
     fs::create_dir_all(root.join("catalogs")).unwrap();
-    fs::write(
-        root.join("netsmith.toml"),
-        "[project]\nname = \"own\"\ncatalogs = [\"catalogs/resistor.csv\"]\n",
-    )
-    .unwrap();
+    fs::write(root.join("netsmith.toml"), "[project]\nname = \"own\"\n").unwrap();
     // A resistor only this project has, with a number that is not a real LCSC part.
     fs::write(
         root.join("catalogs/resistor.csv"),
@@ -937,16 +933,64 @@ fn the_bom_reads_price_and_stock_from_the_projects_own_catalog_files_too() {
     assert_eq!((resistor.unit_usd, resistor.stock), (Some(0.0456), Some(7)));
 }
 
+#[test]
+fn a_catalog_file_that_appears_or_goes_in_a_catalog_folder_builds_again_without_a_restart() {
+    let root = TempDir::new("editor-test-catalog-folder");
+    fs::create_dir_all(root.join("src")).unwrap();
+    // The default folder, `catalogs/`, does not exist yet.
+    fs::write(
+        root.join("netsmith.toml"),
+        "[project]\nname = \"own\"\ncatalog_dirs = [\"catalogs\", \"shared\"]\n",
+    )
+    .unwrap();
+    let led = include_str!("../../../examples/led.nsm").replace(
+        ".r1: Resistor {}",
+        ".r1: Resistor { .resistance &= 316ohm +/- 1% }",
+    );
+    fs::write(root.join("src/main.nsm"), led).unwrap();
+    let editor = Workspace::open(Target::resolve_from(&root, None).unwrap()).unwrap();
+    let first = editor.analysis();
+    // Only a catalog file of the project has a 316 ohm resistor (it is not in E24).
+    assert!(first.errors > 0, "{:?}", first.problems);
+
+    let row = "lcsc,mpn,resistance,max_power,package,library,price,stock,date,source\n\
+         C9999999,ZZR-316,316ohm +/- 1%,250mW,0402,Extended,0.0123,42,2026-10-31,https://example.invalid/zzr\n";
+    // A file appears in the first folder, and then one in the second.
+    fs::create_dir_all(root.join("catalogs")).unwrap();
+    fs::write(root.join("catalogs/resistor.csv"), row).unwrap();
+    let second = editor.analysis();
+    assert!(second.version > first.version);
+    assert_eq!(second.errors, 0, "{:?}", second.problems);
+    let name = second.boards[0].name.clone();
+    let bom = editor.bom(&name).unwrap();
+    let resistor = bom.lines.iter().find(|l| l.kind == "Resistor").unwrap();
+    assert_eq!(resistor.lcsc.as_deref(), Some("C9999999"));
+    assert_eq!(bom.catalogs, ["catalogs/resistor.csv"]);
+
+    fs::create_dir_all(root.join("shared")).unwrap();
+    fs::write(root.join("shared/zz_extra.csv"), "mpn,package\n").unwrap();
+    let third = editor.analysis();
+    assert!(third.version > second.version);
+    assert_eq!(third.errors, 0, "{:?}", third.problems);
+    assert_eq!(
+        editor.bom(&name).unwrap().catalogs,
+        ["catalogs/resistor.csv", "shared/zz_extra.csv"]
+    );
+
+    // And one goes: the build is made again and the 316 ohm resistor has no part.
+    fs::remove_file(root.join("catalogs/resistor.csv")).unwrap();
+    let fourth = editor.analysis();
+    assert!(fourth.version > third.version);
+    assert!(fourth.errors > 0, "{:?}", fourth.problems);
+    assert_eq!(editor.bom(&name).unwrap().catalogs, ["shared/zz_extra.csv"]);
+}
+
 /// A project whose one catalog file has a part only it has, a day-old row for the LED example.
 fn project_with_priced_catalog(name: &str) -> (TempDir, String) {
     let root = TempDir::new(&format!("editor-test-{name}"));
     fs::create_dir_all(root.join("src")).unwrap();
     fs::create_dir_all(root.join("catalogs")).unwrap();
-    fs::write(
-        root.join("netsmith.toml"),
-        "[project]\nname = \"own\"\ncatalogs = [\"catalogs/resistor.csv\"]\n",
-    )
-    .unwrap();
+    fs::write(root.join("netsmith.toml"), "[project]\nname = \"own\"\n").unwrap();
     let catalog = "lcsc,mpn,resistance,max_power,package,library,price,stock,date,checked,source\n\
          C9999999,ZZR-316,316ohm +/- 1%,250mW,0402,Extended,0.0123,42,2026-10-31,,https://example.invalid/zzr\n"
         .to_string();
@@ -1142,7 +1186,7 @@ fn the_check_says_why_it_cannot_and_what_a_blocked_endpoint_did() {
     let r = editor.refresh_catalogs(false, false, &say).unwrap();
     let why = r.error.unwrap();
     assert!(
-        why.contains("lists no `catalogs`") && why.contains("built into netsmith"),
+        why.contains("has no catalog files") && why.contains("built into netsmith"),
         "{why}"
     );
     assert!(r.files.is_empty());

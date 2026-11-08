@@ -46,13 +46,8 @@ struct Setup<'a> {
 fn open(s: &Setup) -> (TempDir, Workspace) {
     let root = TempDir::new(&format!("supply-test-{}", s.name));
     fs::create_dir_all(root.join("src")).unwrap();
+    // The catalog file, if there is one, is in `catalogs/`, which the manifest reads by default.
     let mut manifest = format!("[project]\nname = \"own\"\n{}\n", s.project);
-    if s.catalog.is_some() {
-        manifest = manifest.replace(
-            "name = \"own\"\n",
-            "name = \"own\"\ncatalogs = [\"catalogs/resistor.csv\"]\n",
-        );
-    }
     if let Some(supply) = s.supply {
         manifest.push_str(&format!("[supply]\n{supply}\n"));
     }

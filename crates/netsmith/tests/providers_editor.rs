@@ -43,7 +43,7 @@ fn project(name: &str) -> (TempDir, Workspace) {
     fs::create_dir_all(root.join("catalogs")).unwrap();
     fs::write(
         root.join("netsmith.toml"),
-        "[project]\nname = \"demo\"\ntop_level = [\"src/main.nsm\"]\ncatalogs = [\"catalogs/alphacoax.csv\", \"catalogs/betacoax.csv\"]\n",
+        "[project]\nname = \"demo\"\ntop_level = [\"src/main.nsm\"]\n",
     )
     .unwrap();
     fs::write(root.join("src/rf.nsm"), GENERIC).unwrap();
@@ -156,16 +156,9 @@ fn project_of(
     let root = TempDir::new(&format!("providers-editor-{name}"));
     fs::create_dir_all(root.join("src")).unwrap();
     fs::create_dir_all(root.join("catalogs")).unwrap();
-    let listed: Vec<String> = catalogs
-        .iter()
-        .map(|(file, _)| format!("\"catalogs/{file}\""))
-        .collect();
     fs::write(
         root.join("netsmith.toml"),
-        format!(
-            "[project]\nname = \"demo\"\ntop_level = [\"src/main.nsm\"]\ncatalogs = [{}]\n",
-            listed.join(", ")
-        ),
+        "[project]\nname = \"demo\"\ntop_level = [\"src/main.nsm\"]\n",
     )
     .unwrap();
     for (file, text) in files {

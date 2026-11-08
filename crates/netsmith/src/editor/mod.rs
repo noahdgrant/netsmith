@@ -610,12 +610,15 @@ impl Backend for Workspace {
         let catalogs = self.target.catalogs().map_err(ApiError::internal)?;
         let today =
             crate::refresh::date_of(self.network.now.unwrap_or_else(crate::refresh::now_secs));
-        let own = self
-            .target
-            .project
-            .as_ref()
-            .map(|p| p.manifest.catalogs.clone())
-            .unwrap_or_default();
+        let own = match &self.target.project {
+            Some(project) => project
+                .catalog_files()
+                .map_err(ApiError::internal)?
+                .into_iter()
+                .map(|f| f.file)
+                .collect(),
+            None => Vec::new(),
+        };
         let supply = match &self.target.project {
             Some(project) => project.supply().map_err(ApiError::internal)?,
             None => crate::supply::Supply::none(),

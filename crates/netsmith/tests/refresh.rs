@@ -879,11 +879,7 @@ fn every_row_of_every_standard_file_survives_a_refresh_with_only_its_checked_cel
 #[test]
 fn a_projects_own_catalog_is_refreshed_with_no_argument_and_the_standard_ones_are_not_touched() {
     let root = dir("project");
-    write(
-        &root,
-        "netsmith.toml",
-        "[project]\nname = \"acme\"\ncatalogs = [\"catalogs/acme_res.csv\"]\n",
-    );
+    write(&root, "netsmith.toml", "[project]\nname = \"acme\"\n");
     write(&root, "src/main.nsm", "");
     let path = write(&root, "catalogs/acme_res.csv", &small_catalog());
     let targets = resolve_targets(&root, &[]).unwrap();
@@ -911,7 +907,7 @@ fn with_no_argument_outside_a_project_and_the_repository_there_is_nothing_to_act
     let root = dir("nothing");
     let e = resolve_targets(&root, &[]).unwrap_err();
     assert!(
-        e.contains("lists no `catalogs`") && e.contains("data/jlcpcb/catalog/"),
+        e.contains("has no catalog files") && e.contains("data/jlcpcb/catalog/"),
         "{e}"
     );
     let e = resolve_targets(&root, &[PathBuf::from("nope.csv")]).unwrap_err();
@@ -1021,11 +1017,7 @@ fn netsmith(cwd: &Path, fake: &Fake, args: &[&str]) -> std::process::Output {
 #[test]
 fn the_command_refreshes_the_projects_catalog_prints_the_summary_and_exits_1_on_a_finding() {
     let root = dir("command");
-    write(
-        &root,
-        "netsmith.toml",
-        "[project]\nname = \"acme\"\ncatalogs = [\"catalogs/acme_res.csv\"]\n",
-    );
+    write(&root, "netsmith.toml", "[project]\nname = \"acme\"\n");
     let path = write(&root, "catalogs/acme_res.csv", &small_catalog());
     let fake = Fake::fixtures();
 
