@@ -71,3 +71,7 @@ What a screenshot should show: the card at 12 px radius over the code, never cut
 4. **Vim keys** (`[data-testid="opt-vim"]`): off by default; on, the editor has Vim's modes (the bar `-- NORMAL --` under the text is `.cm-vim-panel`) and `:w` saves.
 5. **Sort the imports** (`Shift+Alt+O`): the `import` lines of the file's head go into groups, std first, other projects, then `src`, a blank line between them (`source/imports.ts`). The toast says so, or that they are sorted already. **Sort imports on save** (`[data-testid="opt-sortsave"]`, off by default): `Ctrl+S` (and `:w`) sorts first, as one undoable change; autosave never does.
 6. **Rebuild** (`[data-testid="rebuild"]` in the breadcrumb bar, `Ctrl+B`, the palette's `Rebuild the project now`): reads the files and checks them again. The source options' `Rebuild on save` (`[data-testid="opt-rebuild"]`, on by default) says whether a saved file is analysed at once; off, the server holds its reading (`POST /api/analysis/auto`), the views stay on it, and the status bar shows `Not rebuilt · Rebuild` (`.statusbar .unbuilt`, `Analysis.stale`) until Rebuild is pressed.
+
+### Where each file was left: `drive source-position` (fixture `two_boards`)
+
+Put the cursor on a line of `main.nsm` and scroll; open `power.nsm` and come back through its tab: the cursor is on the same line and the scroll position is the same. (A request to go to a place, from the tree, the problems list or Back, is carried out once; it used to be carried out again when the file came back and took the cursor to the place it was last sent to.)
