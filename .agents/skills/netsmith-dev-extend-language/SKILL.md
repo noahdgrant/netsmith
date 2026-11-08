@@ -35,7 +35,7 @@ Put it in `std/**.nsm` with `///` docs that state its source for any number. A n
 
 ## Update the documents
 
-- `docs/LANGUAGE.md`: the construct's section, its example and its message. Examples marked `nsm` are run by `crates/netsmith/tests/guide.rs`. Run `GUIDE_BLESS=1 cargo test -p netsmith --test guide` to refresh message blocks, then read the diff.
+- `docs/LANGUAGE.md`: the construct's section, its example and its message. Examples marked `nsm` are run by `crates/netsmith/tests/guide.rs`. Run `GUIDE_BLESS=1 cargo test -p netsmith --test main guide::` to refresh message blocks, then read the diff.
 - `GLOSSARY.md` for new terms, `docs/DESIGN-RULES.md` for design rules, a GitHub issue for what stays open, an ADR when the choice qualifies.
 
 ## Finish
