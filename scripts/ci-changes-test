@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+# Tests scripts/ci-changes: a table of changed paths and the flags the script must print for them
+# (`rust kicad recipes`, each `1` or `0`), so that an edit of the rules cannot widen or narrow
+# them by accident. The `changes` job of .github/workflows/ci.yml runs it before it uses the
+# script. It needs nothing but bash and git.
+#
+# The rows that read a test file run over a small tree of its own (CI_CHANGES_ROOT): a test file
+# that names no KiCad, one that does by each token, a deleted one. A last check runs over the
+# real repository: every test file that skips itself without KiCad, or looks for kicad-cli, must
+# turn `kicad` on, whatever the token list of the script says.
+#   scripts/ci-changes-test
+set -eu
+
+here="$(cd "$(dirname "$0")" && pwd)"
+script="$here/ci-changes"
+repo="$(cd "$here/.." && pwd)"
+
+tree="$(mktemp -d)"
+trap 'rm -rf "$tree"' EXIT
+
+# A test file of the fixture tree, with `$2` as its text.
+file() {
+    mkdir -p "$tree/$(dirname "$1")"
+    printf '%s\n' "$2" > "$tree/$1"
+}
+
+failed=0
+
+# The flags `ci-changes` prints for the paths on the arguments, as "rust kicad recipes" of 0 and 1.
+flags_of() {
+    printf '%s\n' "$@" | CI_CHANGES_ROOT="$tree" "$script" | awk -F= '
+        { v[$1] = ($2 == "true") ? 1 : 0 }
+        END { print v["rust"], v["kicad"], v["recipes"] }'
+}
+
+# row "<rust kicad recipes>" path...: the paths together must give those flags.
+row() {
+    want="$1"
+    shift
+    got="$(flags_of "$@")"
+    if [ "$got" != "$want" ]; then
+        echo "FAIL: $* -> $got, wanted $want"
+        failed=1
+    fi
+}
+
+# --- the fixture tree ---------------------------------------------------------------------
+pure='use netsmith_kicad::testlib::TempDir;
+use netsmith::{Libraries, build_with};
+fn t() { build_with(name, text, &loader, &catalogs, &Libraries::with_mapping(m, s, f)); }'
+file crates/netsmith/tests/pure.rs "$pure"
+file crates/netsmith-fab/tests/pure.rs "$pure"
+file crates/netsmith-pcb/tests/pure.rs "$pure"
+file crates/netsmith-lower/tests/pure.rs "$pure"
+file crates/netsmith/src/supply/tests.rs "$pure"
+file crates/netsmith-fab/src/tests.rs "$pure"
+file crates/netsmith/tests/main.rs "mod pure;"
+i=0
+for token in 'KicadCliExe::locate_runnable()' 'skip_without_kicad_libraries()' 'kicad_libraries_installed()' \
+    'Libraries::standard()' 'SymbolLib::installed()' 'Libraries::for_project(p)' 'Search::machine()' 'install::locate(Kind::Symbols)' 'use netsmith::build;' 'use netsmith::{Built, build};' 'use netsmith::{build, Built};' 'netsmith::build(a, b, c)' 'use netsmith::{
+    Built,
+    build,
+}' 'Workspace::open(t)' \
+    'env!("CARGO_BIN_EXE_netsmith")' 'Command::new("git")' '.env("KICAD_CLI", x)' \
+    '.env("NETSMITH_KICAD_SYMBOLS", x)' 'std::env::set_var("NETSMITH_KICAD_SYMBOLS", x)' 'std::env::var("KICAD_X")' 'install::SYMBOLS_VARIABLE' 'eprintln!("skipped: no KiCad")' 'let cli: &dyn KicadCli = c;'; do
+    i=$((i + 1))
+    file "crates/netsmith/tests/asks$i.rs" "$pure
+$token"
+done
+# Names a variable only in a message it expects: no process, no lookup.
+file crates/netsmith/tests/message.rs "$pure
+assert!(e.contains(\"NETSMITH_KICAD_SYMBOLS\"), \"{e}\");"
+file crates/netsmith/tests/mapping.rs "$pure
+std::env::var("STD_PRINT").is_ok(); SymbolLib::installed_by(&machine); let m = Mapping::standard(); let n = netsmith_kicad::Mapping::for_project(Some(d)).unwrap();
+use netsmith::{Built, build_with};"
+file crates/netsmith/tests/common/mod.rs "$pure"
+file crates/netsmith/tests/fixtures/board.nsm "board B {}"
+file crates/netsmith-view/tests/asks.rs "KicadCliExe::locate()"
+file crates/netsmith/src/refresh/mod.rs "KicadCliExe::locate()"
+
+# --- prose and files nothing reads: no job -------------------------------------------------
+row "0 0 0" README.md
+row "0 0 0" AGENTS.md CLAUDE.md CHANGELOG.md
+row "0 0 0" GLOSSARY.md
+row "0 0 0" LICENSE LICENSE-MIT
+row "0 0 0" .gitignore .gitattributes .editorconfig
+row "0 0 0" docs/DESIGN-RULES.md docs/adr/0081-a-pin-states-its-own-swing.md
+row "0 0 0" .github/ISSUE_TEMPLATE/bug.yml .github/CODEOWNERS .github/dependabot.yml .github/PULL_REQUEST_TEMPLATE.md
+row "0 0 0" .agents/notes.txt
+row "0 0 0" # an empty change
+
+# --- what a test or the editor skill reads: the tests, not KiCad or the recipes -------------
+row "1 0 0" docs/LANGUAGE.md
+row "1 0 0" .agents/skills/netsmith-dev-verify/SKILL.md .agents/skills/netsmith-write-nsm/SKILL.md
+row "1 0 0" .claude/settings.json
+row "1 0 1" .agents/skills/netsmith-dev-verify-editor/SKILL.md
+row "1 0 0" rustfmt.toml clippy.toml
+
+# --- workflows and scripts: everything ------------------------------------------------------
+row "1 1 1" .github/workflows/ci.yml
+row "1 1 1" .github/workflows/pr-title.yml
+row "1 1 1" scripts/ci-changes
+row "1 1 1" scripts/editor-verify-js/recipes/pcb.mjs
+row "1 1 1" scripts/ci-changes-test
+
+# --- the toolchain, the unknown, the boards and the standard library: everything -------------
+row "1 1 1" Cargo.toml
+row "1 1 1" Cargo.lock rust-toolchain.toml .cargo/config.toml
+row "1 1 1" std/kicad.toml
+row "1 1 1" std/parts/passive.nsm
+row "1 1 1" examples/led.nsm
+row "1 1 1" data/jlcpcb/resistor.csv
+row "1 1 1" something/nothing/knows.txt
+row "1 1 1" Makefile
+row "1 1 1" "" crates.txt
+
+# --- the crates that do not reach KiCad ------------------------------------------------------
+row "1 0 0" crates/netsmith-solve/src/solve.rs
+row "1 0 0" crates/netsmith-check/src/checker.rs
+row "1 0 0" crates/netsmith-lang/src/parse.rs crates/netsmith-quantity/src/lib.rs crates/netsmith-dc/src/lib.rs
+row "1 0 0" crates/netsmith-dxf/src/lib.rs
+row "1 0 0" crates/netsmith-solve/tests/main.rs
+
+# --- the editor and its views: the recipes, not KiCad ----------------------------------------
+row "1 0 1" crates/netsmith-editor/src/api.rs
+row "1 0 1" crates/netsmith-editor/web/src/app.ts crates/netsmith-editor/web-dist/index.html
+row "1 0 1" crates/netsmith-view/src/layout.rs
+row "1 0 0" crates/netsmith-view/tests/layout.rs
+row "1 0 0" crates/netsmith-view/tests/asks.rs
+row "1 0 0" crates/netsmith-editor/tests/bundle.rs
+row "1 0 1" crates/netsmith-editor/Cargo.toml
+
+# --- the crates that reach KiCad: their source is what the tests, and the binary, run ---------
+row "1 1 1" crates/netsmith/src/lib.rs
+row "1 1 1" crates/netsmith/src/fab.rs crates/netsmith/src/order.rs crates/netsmith/src/compare.rs
+row "1 1 1" crates/netsmith/src/editor/analysis.rs
+row "1 1 1" crates/netsmith/src/supply/mod.rs
+row "1 1 1" crates/netsmith/src/main.rs
+row "1 1 1" crates/netsmith/Cargo.toml
+row "1 1 1" crates/netsmith-kicad/src/symbols.rs
+row "1 1 1" crates/netsmith-fab/src/lib.rs crates/netsmith-pcb/src/footprint.rs
+row "1 1 1" crates/netsmith-core/src/lib.rs crates/netsmith-lower/src/lib.rs crates/netsmith-netlist/src/lib.rs
+row "1 1 1" crates/netsmith-fab/Cargo.toml
+row "1 1 0" crates/netsmith-kicad/examples/locate.rs crates/netsmith-fab/examples/drc.rs
+row "1 0 1" crates/netsmith/src/refresh/mod.rs
+row "1 0 1" crates/netsmith/src/refresh/http.rs crates/netsmith/src/refresh/csvfile.rs
+
+# --- test files of those crates: KiCad only when the file can ask; never the recipes ----------
+row "1 0 0" crates/netsmith/tests/pure.rs
+row "1 0 0" crates/netsmith-fab/tests/pure.rs crates/netsmith-pcb/tests/pure.rs crates/netsmith-lower/tests/pure.rs
+row "1 0 0" crates/netsmith/src/supply/tests.rs crates/netsmith-fab/src/tests.rs
+row "1 0 0" crates/netsmith/tests/pure.rs crates/netsmith-pcb/tests/pure.rs
+row "1 0 0" crates/netsmith/tests/message.rs crates/netsmith/tests/mapping.rs
+for n in $(seq 1 "$i"); do
+    row "1 1 0" "crates/netsmith/tests/asks$n.rs"
+done
+row "1 1 0" crates/netsmith/tests/common/mod.rs
+row "1 1 0" crates/netsmith/tests/main.rs
+row "1 1 0" crates/netsmith/tests/fixtures/board.nsm
+row "1 1 0" crates/netsmith/tests/deleted.rs
+row "1 1 0" crates/netsmith-core/tests/deleted.rs
+row "1 1 0" crates/netsmith-fab/tests/unknown/data.json
+row "1 1 0" crates/netsmith/tests/pure.rs crates/netsmith/tests/asks1.rs
+# A KiCad-backed test next to a change that has nothing to do with it: the flags add up.
+row "1 1 1" crates/netsmith/tests/pure.rs crates/netsmith/src/lib.rs
+row "1 0 1" crates/netsmith/tests/pure.rs crates/netsmith-editor/src/api.rs
+row "1 0 0" crates/netsmith/tests/pure.rs docs/adr/0081-a-pin-states-its-own-swing.md README.md
+row "1 0 0" docs/LANGUAGE.md crates/netsmith/tests/pure.rs
+row "1 1 0" docs/LANGUAGE.md crates/netsmith/tests/asks1.rs
+# A path with a blank line between: blank lines are skipped.
+row "1 0 0" crates/netsmith/tests/pure.rs ""
+
+# --- the real repository: a test file that can skip without KiCad turns `kicad` on ------------
+# Independent of the token list of the script: these are the spellings of the repository's own
+# helpers (netsmith_kicad::testlib, netsmith_fab::KicadCliExe).
+cd "$repo"
+checked=0
+for f in crates/*/tests/*.rs crates/*/src/tests.rs crates/*/src/*/tests.rs; do
+    [ -f "$f" ] || continue
+    if grep -qE 'skip_without_kicad_libraries|kicad_libraries_installed|locate_runnable|KicadCliExe::locate|skipped: no KiCad' "$f"; then
+        checked=$((checked + 1))
+        case "$f" in
+            crates/netsmith-editor/* | crates/netsmith-view/* | crates/netsmith-solve/* | crates/netsmith-check/* | crates/netsmith-lang/* | crates/netsmith-quantity/* | crates/netsmith-dc/* | crates/netsmith-dxf/*) continue ;;
+        esac
+        got="$(printf '%s\n' "$f" | "$script" | awk -F= '$1 == "kicad" { print $2 }')"
+        if [ "$got" != true ]; then
+            echo "FAIL: $f can skip without KiCad, but kicad=$got"
+            failed=1
+        fi
+    fi
+done
+if [ "$checked" -lt 5 ]; then
+    echo "FAIL: found only $checked KiCad-backed test files in the repository (looking in the wrong place?)"
+    failed=1
+fi
+
+if [ "$failed" -ne 0 ]; then
+    exit 1
+fi
+echo "ci-changes: every row holds"

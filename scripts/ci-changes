@@ -3,25 +3,80 @@
 # root) on stdin and prints `rust=`, `kicad=` and `recipes=` as `true` or `false`; the `changes`
 # job of .github/workflows/ci.yml writes them to its outputs. `fmt` always runs, so it has no flag.
 #   rust     clippy and the tests: anything a build or a test reads.
-#   kicad    the `kicad` job (about twenty minutes): the crates whose tests call kicad-cli or read
-#            KiCad's libraries (netsmith-kicad, -fab, -pcb and the netsmith crate), the crates
-#            that make the files those tests check (netsmith-core, -lower, -netlist), and the
-#            data the tests read: std/ (kicad.toml maps kinds to KiCad's footprints), examples/
-#            (the boards they build) and data/.
-#   recipes  the editor's browser recipes: the editor, its views, the page, the boards and the
-#            standard library the recipes open, and what builds the binary. The recipes install
-#            KiCad 9 and write and read KiCad files (build, order, the PCB views), so whatever
-#            makes the `kicad` job run makes this one run too.
+#   kicad    the `kicad` job: the same tests with KiCad 9 installed, so the ones that skip
+#            themselves in `test` run. A change needs it when it can change what those tests see:
+#            the crates that call kicad-cli or read KiCad's libraries (netsmith-kicad, -fab, -pcb
+#            and the netsmith crate), the crates that make the files those tests check
+#            (netsmith-core, -lower, -netlist), and the data the tests read: std/ (kicad.toml maps
+#            kinds to KiCad's footprints), examples/ (the boards they build) and data/.
+#   recipes  the `recipes` job: the editor's browser recipes. They drive the `netsmith` binary
+#            (its editor, and the build, fab and order pipeline behind it, with KiCad 9 installed)
+#            against fixtures, so what is linked into that binary, the page, and the boards and
+#            catalogs the recipes open make it run. It does not follow `kicad`: a path that only
+#            the tests read does not reach the binary.
+#
+# What a test file is, and why it is the one narrowing of `kicad`. A file of tests runs in `test`
+# and again in `kicad`; the second run differs only for a test that asks for KiCad. So a change
+# to a test file turns `kicad` on only if the file can ask: it names kicad-cli, one of the
+# helpers that look for KiCad or its stock libraries, a variable of the KiCad lookup, a Workspace (it opens
+# libraries of the project, or the stock ones), or starts the binary (see KICAD_TOKENS below).
+# A file that names none of them is `rust` only, and a test file never turns `recipes` on, since
+# the binary does not contain it. The file is read from the checkout (the pull request's merge
+# commit in CI): a path that is not there (a deletion) or that is no `tests/*.rs` file of its
+# crate (the shared `tests/common`, `tests/main.rs`, fixtures) counts as KiCad-backed. The same
+# holds for the `tests.rs` of a module in `src/`. A change in the source of a crate (even in
+# crates/netsmith/src/lib.rs, which builds the design and exports its KiCad files) is not
+# narrowed: it is the code those tests run. The one exception is crates/netsmith/src/refresh/*
+# (the catalog refresh: CSV and HTTP, nothing of KiCad), which keeps `recipes` (the editor
+# refreshes catalogs) and drops `kicad`.
+#
 # A change to the workflows or to scripts/ runs everything, and so does a path nothing here knows:
 # when in doubt, the job runs. Only files that nothing builds or tests read (prose, the licence,
 # the issue templates) leave clippy and the tests out. A test does read docs/LANGUAGE.md and
 # the skills in .agents/skills (crates/netsmith/tests/guide.rs, src/init.rs), so those count as code.
 # A push to main skips this script: the job runs everything there.
+# The rules are pinned by scripts/ci-changes-test (the `changes` job runs it).
 #   scripts/ci-changes < paths
+# CI_CHANGES_ROOT names the tree the test files are read from (the repository by default).
 set -eu
+
+root="${CI_CHANGES_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+# What makes a test file ask for KiCad (grep -E): the kicad-cli program and its variable, the
+# environment of a process or of the lookup (`.env(`, `set_var` of a KiCad variable, the
+# `*_VARIABLE` names of netsmith_kicad::install; a test that only names NETSMITH_KICAD_SYMBOLS
+# in a message it expects does not ask), the lookup of this machine (`Search::machine()`;
+# `installed_by(&search)` over a search of the test's own is no lookup of the machine), the helpers that look for KiCad or skip without it, the
+# constructors of the stock libraries (`Libraries::standard()`, `::installed()`,
+# `Libraries::for_project()`, which fall back to them) and `netsmith::build` (which uses
+# `standard()`), a Workspace (it builds with those), the binary under test (it looks for KiCad
+# itself) and any other process. (`Mapping::standard()` and `Mapping::for_project()` read the
+# mapping only, and `build_with` takes the libraries as an argument.)
+KICAD_TOKENS='KicadCli|kicad-cli|KICAD_CLI|\.envs?\(|(set_var|env::var)\("(NETSMITH_)?KICAD|_VARIABLE|Search::machine\(|locate\(Kind::|locate_runnable|kicad_libraries_installed|skip_without_kicad_libraries|Libraries::(standard|for_project)\(|::installed\(|netsmith::build\b|netsmith::\{([^}]*[ ])?build[,} ]|^[[:space:]]+build,?$|Workspace|CARGO_BIN_EXE|Command::new|skipped: no KiCad'
 
 rust=false kicad=false recipes=false
 all() { rust=true kicad=true recipes=true; }
+
+# Whether a file of tests asks for KiCad: it is unreadable here, or names one of the tokens.
+asks_for_kicad() {
+    [ -f "$root/$1" ] || return 0
+    grep -qE "$KICAD_TOKENS" "$root/$1"
+}
+
+# A change in a crate whose tests (or whose output the tests check) reach KiCad: `$1` is the part
+# of the path under the crate's folder, `$2` the whole path.
+kicad_crate() {
+    case "$1" in
+        # The shared helpers, the list of modules, the fixtures: every test file uses them.
+        tests/main.rs | tests/*/*) rust=true kicad=true ;;
+        tests/*.rs | tests.rs | */tests.rs)
+            rust=true
+            if asks_for_kicad "$2"; then kicad=true; fi
+            ;;
+        tests/* | examples/* | benches/*) rust=true kicad=true ;;
+        *) all ;;
+    esac
+}
 
 while IFS= read -r path; do
     [ -n "$path" ] || continue
@@ -39,22 +94,20 @@ while IFS= read -r path; do
         .agents/skills/* | .claude/*) rust=true ;;
         .agents/*) ;;
 
-        crates/netsmith-kicad/* | crates/netsmith-core/* | crates/netsmith-fab/* | crates/netsmith-pcb/*) rust=true kicad=true ;;
-        crates/netsmith-lower/* | crates/netsmith-netlist/*) rust=true kicad=true ;;
-        crates/netsmith/src/editor/*) rust=true kicad=true recipes=true ;;
-        crates/netsmith/*) rust=true kicad=true ;;
+        crates/netsmith/src/refresh/*) rust=true recipes=true ;;
+        crates/netsmith-kicad/* | crates/netsmith-core/* | crates/netsmith-fab/* | crates/netsmith-pcb/*) kicad_crate "${path#crates/*/}" "$path" ;;
+        crates/netsmith-lower/* | crates/netsmith-netlist/* | crates/netsmith/*) kicad_crate "${path#crates/*/}" "$path" ;;
+        crates/netsmith-editor/tests/* | crates/netsmith-view/tests/*) rust=true ;;
         crates/netsmith-editor/* | crates/netsmith-view/*) rust=true recipes=true ;;
         crates/*) rust=true ;;
         Cargo.toml | Cargo.lock | rust-toolchain* | .cargo/*) all ;;
         std/* | examples/*) all ;;
-        data/*) rust=true kicad=true ;;
+        data/*) all ;;
         rustfmt.toml | .rustfmt.toml | clippy.toml) rust=true ;;
 
         *) all ;;
     esac
 done
-
-[ "$kicad" = false ] || recipes=true
 
 echo "rust=$rust"
 echo "kicad=$kicad"
