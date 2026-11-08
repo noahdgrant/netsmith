@@ -14,9 +14,13 @@
 //! nothing sets. A pair of pins of which neither states any level is not looked at at all,
 //! as before levels existed.
 
-use std::collections::BTreeSet;
+use std::cell::OnceCell;
+use std::collections::{BTreeSet, HashMap};
 
-use netsmith_check::{Diagnostic, Domain, FieldId, InstId, InstKind, Member, Model, Net, PinKind};
+use netsmith_check::{
+    Diagnostic, Domain, FieldId, InstId, InstKind, Member, Model, Net, PinKind, RExpr,
+};
+use netsmith_lang::ast::{BinOp, CmpOp};
 use netsmith_quantity::{Dimension, Quantity};
 
 /// A check the solver could not make, and the part it is about.
@@ -39,6 +43,7 @@ pub(crate) fn reader(model: &Model) -> Run<'_> {
         faults: Vec::new(),
         notes: Vec::new(),
         seen: BTreeSet::new(),
+        fractions: OnceCell::new(),
     }
 }
 
@@ -66,6 +71,8 @@ pub(crate) struct Run<'a> {
     faults: Vec<Diagnostic>,
     notes: Vec<NotEvaluated>,
     seen: BTreeSet<String>,
+    /// The levels stated as a constant times a rail's voltage, found once (ADR 0081).
+    fractions: OnceCell<HashMap<FieldId, (f64, FieldId)>>,
 }
 
 fn is_driver(kind: PinKind) -> bool {
@@ -273,7 +280,27 @@ impl Run<'_> {
         }
         match (voh, self.value(r.logic, "vih")) {
             (Some((fo, voh)), Some((fi, vih))) => {
-                if voh.lo() < vih.hi() {
+                if let Some((fd, fr)) = self.correlated(fo, fi, d, r) {
+                    // One supply voltage: `k_d * V >= k_r * V` for every `V` above zero is
+                    // `k_d >= k_r`, and nothing looser (ADR 0081).
+                    if fd.factor < fr.factor {
+                        self.fault(
+                            d.part,
+                            format!(
+                                "net `{}`: `{}` is {} x `{}` but `{}` needs {} x `{}`, the same supply voltage: a high of {} x the supply is not always read as a high, which takes {} x the supply",
+                                net.name,
+                                model.path_of_field(fo),
+                                fd.factor,
+                                model.path_of_field(fd.rail),
+                                model.path_of_field(fi),
+                                fr.factor,
+                                model.path_of_field(fr.rail),
+                                fd.factor,
+                                fr.factor,
+                            ),
+                        );
+                    }
+                } else if voh.lo() < vih.hi() {
                     self.fault(
                         d.part,
                         format!(
@@ -353,7 +380,26 @@ impl Run<'_> {
         // A low must be read as a low.
         match (self.value(d.logic, "vol"), self.value(r.logic, "vil")) {
             (Some((fo, vol)), Some((fi, vil))) => {
-                if vol.hi() > vil.lo() {
+                if let Some((fd, fr)) = self.correlated(fo, fi, d, r) {
+                    // The same reduction for the low: `k_d * V <= k_r * V` is `k_d <= k_r`.
+                    if fd.factor > fr.factor {
+                        self.fault(
+                            d.part,
+                            format!(
+                                "net `{}`: `{}` is {} x `{}` but `{}` allows {} x `{}`, the same supply voltage: a low of {} x the supply is not always read as a low, which takes {} x the supply",
+                                net.name,
+                                model.path_of_field(fo),
+                                fd.factor,
+                                model.path_of_field(fd.rail),
+                                model.path_of_field(fi),
+                                fr.factor,
+                                model.path_of_field(fr.rail),
+                                fd.factor,
+                                fr.factor,
+                            ),
+                        );
+                    }
+                } else if vol.hi() > vil.lo() {
                     self.fault(
                         d.part,
                         format!(
@@ -375,6 +421,80 @@ impl Run<'_> {
                 [(&dl, "vol", o.is_none()), (&rl, "vil", i.is_none())],
             ),
         }
+    }
+
+    /// The levels stated as a constant times a rail's voltage: `.voh &= 0.7 * .vdd.voltage`
+    /// (or `.vdd.voltage * 0.7`, or the voltage alone). The checker keeps the statement as a
+    /// relation whose right side is the expression, which is where the form survives the
+    /// evaluation to a range (ADR 0081). A field is listed only when that one statement is
+    /// all there is to it: no other relation mentions it and no constant narrows it.
+    fn fractions(&self) -> &HashMap<FieldId, (f64, FieldId)> {
+        self.fractions.get_or_init(|| {
+            let model = self.model;
+            let mut mentions: HashMap<FieldId, usize> = HashMap::new();
+            let mut found: HashMap<FieldId, (f64, FieldId)> = HashMap::new();
+            for relation in model.relations() {
+                let mut fields = Vec::new();
+                relation.lhs.fields(&mut fields);
+                relation.rhs.fields(&mut fields);
+                for f in fields {
+                    *mentions.entry(f).or_insert(0) += 1;
+                }
+                if relation.op != CmpOp::Narrow {
+                    continue;
+                }
+                let RExpr::Field(level) = relation.lhs else {
+                    continue;
+                };
+                if let Some(factor) = factor_of_rail(&relation.rhs) {
+                    found.insert(level, factor);
+                }
+            }
+            found.retain(|f, _| {
+                mentions.get(f) == Some(&1) && model.field(*f).narrowed_at.is_empty()
+            });
+            found
+        })
+    }
+
+    /// The factor and the rail voltage of a level, if it is one of those [`Self::fractions`]
+    /// lists and the rail is a real one: a rail whose voltage is above zero at its lowest
+    /// (the reduction to the factors divides by it) and whose ground is the level's.
+    fn fraction(&self, level: FieldId, logic: InstId) -> Option<Fraction> {
+        let model = self.model;
+        let &(factor, rail) = self.fractions().get(&level)?;
+        let owner = model.field(rail).owner;
+        let (voltage, pos, neg) = model.rail_of(owner)?;
+        if voltage != rail || !factor.is_finite() {
+            return None;
+        }
+        let Domain::Quantity(q) = model.field(rail).domain else {
+            return None;
+        };
+        if q.lo() <= 0.0 || !self.same_ground(neg, self.ground_pin(logic)?) {
+            return None;
+        }
+        Some(Fraction {
+            factor,
+            rail,
+            pos: self.net_index(pos)?,
+        })
+    }
+
+    /// The two levels of a driver and a receiver, when both are the same constant times the
+    /// voltage of one supply: the rails whose voltages they name have their positive pins on
+    /// one net and the same ground, so the voltage is one number for both. `None` for
+    /// anything else, and the ranges are then compared as independent ones.
+    fn correlated(
+        &self,
+        driver: FieldId,
+        receiver: FieldId,
+        d: &Line,
+        r: &Line,
+    ) -> Option<(Fraction, Fraction)> {
+        let fd = self.fraction(driver, d.logic)?;
+        let fr = self.fraction(receiver, r.logic)?;
+        (fd.pos == fr.pos).then_some((fd, fr))
     }
 
     fn missing(
@@ -714,6 +834,33 @@ impl Run<'_> {
             );
         }
         Ok(swing)
+    }
+}
+
+/// A level that is `factor` times the voltage of a rail.
+struct Fraction {
+    factor: f64,
+    /// The voltage field of the rail the expression names.
+    rail: FieldId,
+    /// The net the rail's positive pin is on.
+    pos: usize,
+}
+
+/// `k * V`, `V * k` or `V`, where `V` is a field and `k` a number with no dimension and no
+/// width: the factor and the field.
+fn factor_of_rail(e: &RExpr) -> Option<(f64, FieldId)> {
+    let number = |e: &RExpr| match e {
+        RExpr::Const(q) if q.dim().is_dimensionless() && q.is_point() => Some(q.lo()),
+        _ => None,
+    };
+    match e {
+        RExpr::Field(v) => Some((1.0, *v)),
+        RExpr::Bin(BinOp::Mul, a, b) => match (&**a, &**b) {
+            (k, RExpr::Field(v)) => Some((number(k)?, *v)),
+            (RExpr::Field(v), k) => Some((number(k)?, *v)),
+            _ => None,
+        },
+        _ => None,
     }
 }
 
