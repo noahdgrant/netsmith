@@ -198,7 +198,11 @@ fn fab_with_footprint(
     if !layout.is_empty() {
         fs::write(&file, layout).unwrap();
     }
-    let cli = if cross { KicadCliExe::locate_runnable() } else { None };
+    let cli = if cross {
+        KicadCliExe::locate_runnable()
+    } else {
+        None
+    };
     let made = fab_with_options(
         "widget.nsm",
         &source.circuit,
