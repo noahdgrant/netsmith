@@ -213,6 +213,8 @@ pub struct Catalogs {
     availability: Option<Arc<dyn Availability>>,
     pins: Vec<(String, String)>,
     search_budget: SearchBudget,
+    no_narrowing: bool,
+    narrowing_audit: bool,
 }
 
 impl Catalogs {
@@ -279,6 +281,31 @@ impl Catalogs {
 
     pub fn search_budget(&self) -> SearchBudget {
         self.search_budget
+    }
+
+    /// Whether the search leaves out the candidates of a part that no trial would accept without
+    /// trying each of them (issue #184). On by default; it changes how long a search takes and
+    /// nothing it chooses or says, so a test turns it off to compare.
+    #[doc(hidden)]
+    pub fn with_narrowing(mut self, on: bool) -> Self {
+        self.no_narrowing = !on;
+        self
+    }
+
+    pub fn narrowing(&self) -> bool {
+        !self.no_narrowing
+    }
+
+    /// Whether each candidate that the narrowing leaves out is also tried, and the search stops
+    /// with a panic if one is accepted: a check of the narrowing, for tests.
+    #[doc(hidden)]
+    pub fn with_narrowing_audit(mut self, on: bool) -> Self {
+        self.narrowing_audit = on;
+        self
+    }
+
+    pub fn narrowing_audit(&self) -> bool {
+        self.narrowing_audit
     }
 
     /// Where the step that resolves generic parts asks about stock (ADR 0047). It travels

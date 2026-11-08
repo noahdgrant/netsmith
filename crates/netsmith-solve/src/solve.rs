@@ -25,6 +25,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 mod findings;
+mod narrow;
 mod reads;
 mod seed;
 mod transfer;
@@ -279,6 +280,13 @@ struct Search {
     /// The most parts that were chosen at once: it only grows, and is what progress reports
     /// (a search that backs up has not un-chosen what it got through).
     deepest: usize,
+    /// Whether a part's candidates are narrowed before they are tried (`narrow.rs`).
+    narrow: bool,
+    /// How many parts' turns had candidates to skip, how many candidates the narrowing skipped,
+    /// and the work of the questions it asked to find them.
+    pruned: usize,
+    skipped: usize,
+    probe_work: u64,
 }
 
 /// The choice that came nearest to working, kept for the error message: the one that got
@@ -2835,7 +2843,7 @@ impl Solver<'_> {
             search.first_level_fits = fits;
         }
         let outcome = if starved.is_none() && culprit.is_none() {
-            Some(self.search(jobs, group, 0, &mut search, coupling))
+            Some(self.search_group(jobs, group, &mut search, coupling))
         } else {
             None
         };
@@ -3095,6 +3103,71 @@ impl Solver<'_> {
         None
     }
 
+    /// The search of a group, from its first part. Candidates that a trial would refuse are
+    /// skipped (`narrow.rs`); a group that is then solved has the picks it always had. A group
+    /// that is not solved, when something could be skipped, is searched again with every candidate
+    /// tried, from the state it was in, so that its message, its counts and its work are what
+    /// they were.
+    fn search_group(
+        &mut self,
+        jobs: &[Job],
+        group: &[usize],
+        search: &mut Search,
+        coupling: &Coupling,
+    ) -> Outcome {
+        if !self.catalogs.narrowing() {
+            return self.search(jobs, group, 0, search, coupling);
+        }
+        let (work, derived) = (self.work, self.derived.clone());
+        let mut narrowed = Search {
+            narrow: true,
+            elsewhere: search.elsewhere.clone(),
+            work_from: search.work_from,
+            closest: search.closest.clone(),
+            first_level_fits: search.first_level_fits,
+            ..Search::default()
+        };
+        let outcome = self.search(jobs, group, 0, &mut narrowed, coupling);
+        if matches!(outcome, Outcome::Solved) {
+            *search = narrowed;
+            return outcome;
+        }
+        if narrowed.pruned == 0 {
+            // Nothing was left out, so this is the plain search, but for the work of the
+            // questions that found nothing to leave out.
+            self.work -= narrowed.probe_work;
+            *search = narrowed;
+            return outcome;
+        }
+        self.work = work;
+        self.derived = derived;
+        self.search(jobs, group, 0, search, coupling)
+    }
+
+    /// With the audit on (`Catalogs::with_narrowing_audit`), the trial of a candidate that was
+    /// skipped is made, and must be refused: the proof that the narrowing leaves out only what
+    /// would have been refused.
+    fn audit_skipped(
+        &mut self,
+        job: &Job,
+        c: &Candidate,
+        coupling: &Coupling,
+        later: &HashSet<usize>,
+    ) {
+        let (work, derived) = (self.work, self.derived.clone());
+        let checkpoint = self.model.checkpoint();
+        let tried = self.try_candidate(job.part, &job.columns, c, None, coupling, later);
+        self.model.rollback(checkpoint);
+        self.work = work;
+        self.derived = derived;
+        assert!(
+            tried.is_err(),
+            "the narrowing skipped `{}` for `{}`, which a trial accepts",
+            c.name,
+            job.path
+        );
+    }
+
     /// Depth-first: choose a candidate for the part at `depth`, then the rest. Every
     /// relation that can be evaluated is checked as soon as it can, so a bad choice is
     /// dropped before the parts after it are tried.
@@ -3170,6 +3243,23 @@ impl Solver<'_> {
         let mut later = search.elsewhere.clone();
         later.extend(group[depth + 1..].iter().copied());
 
+        // The candidates that a trial would refuse, found without trying each (`narrow.rs`).
+        // Only for a part with no count to choose: a bank's refusals are tracked per count.
+        let skip =
+            if search.narrow && job.count.is_none() && fitting.len() > 16 && counts.len() == 1 {
+                let found = self.skippable(job, &fitting, coupling, &later, search);
+                if found.is_some() {
+                    search.pruned += 1;
+                    // What a refusal depended on is not worked out for the candidates skipped, so
+                    // the failure of this part depends on every earlier pick of the group: a
+                    // later part does not jump over one of them for it.
+                    conflict.extend(0..depth);
+                }
+                found
+            } else {
+                None
+            };
+
         // Set once the parts after this one failed without depending on it: the choices of
         // the parts before it that they depend on.
         let mut jump: Option<Failure> = None;
@@ -3196,6 +3286,13 @@ impl Solver<'_> {
                         continue;
                     }
                     if count_free_failure[index] {
+                        continue;
+                    }
+                    if skip.as_ref().is_some_and(|s| s[index]) {
+                        search.skipped += 1;
+                        if self.catalogs.narrowing_audit() {
+                            self.audit_skipped(job, c, coupling, &later);
+                        }
                         continue;
                     }
                     self.work += failed.len() as u64;
