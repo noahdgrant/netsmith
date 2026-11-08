@@ -327,14 +327,118 @@ impl Checker<'_> {
     }
 
     pub fn constraint(&mut self, c: &ast::Constraint) {
-        match c.op {
+        let field = match c.op {
             CmpOp::Narrow | CmpOp::Default => self.narrow_statement(c),
             _ => self.relation_statement(c),
+        };
+        // `at 2mA` changes nothing of what the statement means; it is checked and recorded
+        // beside it (ADR 0076, amendment 1).
+        if let Some(at) = &c.at {
+            self.level_test(c, at, field);
         }
     }
 
+    /// The test current of a level: `.voh &= .vdd.voltage - 0.4V at 2mA`. `field` is the field
+    /// the statement states, when the statement could be read.
+    fn level_test(&mut self, c: &ast::Constraint, at: &Expr, field: Option<FieldId>) {
+        let Some(level) = field else {
+            if !matches!(c.lhs, Expr::Path(_)) {
+                self.error(
+                    c.lhs.span(),
+                    "`at` needs a level on the left of the statement, such as `.voh &= .vdd.voltage - 0.4V at 2mA`",
+                );
+            }
+            return;
+        };
+        let f = self.model.field(level);
+        let name = f.name.clone();
+        // The level as the definition that states it names it, so that the message reads the
+        // same when the part is checked alone and when a board has made one.
+        let path = self.model.field_in_scope(level);
+        if !self.model.is_level(level) || !matches!(name.as_str(), "voh" | "vol") {
+            let why = if self.model.is_level(level) {
+                format!(
+                    "`{path}` is a level that a datasheet states without a load: only an output level, `voh` or `vol`, is measured at a current"
+                )
+            } else {
+                format!(
+                    "`{path}` is not an output level (`voh` or `vol` of a `Logic` or of `Levels`)"
+                )
+            };
+            self.error(
+                at.span(),
+                format!("`at <current>` states the load of an output level; {why}"),
+            );
+            return;
+        }
+        let Some(t) = self.lower(at) else { return };
+        let current = match (t.ty, t.e) {
+            (VTy::Q(d), RExpr::Const(q)) if d == Dimension::CURRENT => q,
+            (VTy::Q(d), _) if d != Dimension::CURRENT => {
+                let word = crate::dc::quantity_word(d);
+                self.error(
+                    at.span(),
+                    format!(
+                        "`at` takes the current the level is measured at, such as `2mA`, not a {word}"
+                    ),
+                );
+                return;
+            }
+            (VTy::Q(_), _) => {
+                self.error(
+                    at.span(),
+                    "the test current is the number the datasheet prints (`at 2mA`), not a value that depends on another field",
+                );
+                return;
+            }
+            (ty, _) => {
+                let word = self.describe(ty);
+                self.error(
+                    at.span(),
+                    format!(
+                        "`at` takes the current the level is measured at, such as `2mA`, not {word}"
+                    ),
+                );
+                return;
+            }
+        };
+        if current.lo() != current.hi() {
+            self.error(
+                at.span(),
+                format!("the test current is one number, not the range {current}"),
+            );
+            return;
+        }
+        if current.lo() <= 0.0 {
+            self.error(
+                at.span(),
+                format!("the test current must be above zero, not {current}"),
+            );
+            return;
+        }
+        if let Some(earlier) = self.model.level_tests.iter().find(|t| t.level == level) {
+            let (source, span, amps) = (earlier.source, earlier.span, earlier.current);
+            let place = self.place_of(source, span);
+            self.error(
+                at.span(),
+                format!(
+                    "`{path}` is already stated at {amps} (at {place}): a level is one value at one load, so keep one `at`"
+                ),
+            );
+            return;
+        }
+        let source = self.cur_source();
+        self.model.level_tests.push(crate::model::LevelTest {
+            level,
+            op: c.op,
+            current,
+            source,
+            span: c.span,
+        });
+    }
+
     /// `&=` narrows now (or queues a relation), `?=` is kept until every statement is read.
-    fn narrow_statement(&mut self, c: &ast::Constraint) {
+    fn narrow_statement(&mut self, c: &ast::Constraint) -> Option<FieldId> {
         let symbol = c.op.symbol();
         let Expr::Path(p) = &c.lhs else {
             let example = if c.op == CmpOp::Default {
@@ -346,21 +450,25 @@ impl Checker<'_> {
                 c.lhs.span(),
                 format!("`{symbol}` needs a field on its left, such as `{example}`"),
             );
-            return;
+            return None;
         };
         let target = self.resolve_path(p);
         let rhs = self.lower(&c.rhs);
+        let stated = match target {
+            Res::Field(f) => Some(f),
+            _ => None,
+        };
         match (target, rhs) {
             (Res::Field(f), rhs) => {
                 self.refuse_own_statement(f, symbol, c.span);
                 if c.op == CmpOp::Narrow {
                     self.stated.insert(f);
                 }
-                let Some(t) = rhs else { return };
+                let Some(t) = rhs else { return stated };
                 let mut fields = vec![f];
                 t.e.fields(&mut fields);
                 if !self.physical_gate(&fields, c.span) {
-                    return;
+                    return stated;
                 }
                 if c.op == CmpOp::Narrow {
                     self.apply(f, t, CmpOp::Narrow, c.span);
@@ -386,6 +494,7 @@ impl Checker<'_> {
             }
             _ => {}
         }
+        stated
     }
 
     /// Give each field its default unless a `&=` states it (ADR 0051). The rule looks at
@@ -476,15 +585,21 @@ impl Checker<'_> {
         })
     }
 
-    fn relation_statement(&mut self, c: &ast::Constraint) {
+    fn relation_statement(&mut self, c: &ast::Constraint) -> Option<FieldId> {
         let l = self.lower(&c.lhs);
         let r = self.lower(&c.rhs);
-        let (Some(l), Some(r)) = (l, r) else { return };
+        let (Some(l), Some(r)) = (l, r) else {
+            return None;
+        };
+        let stated = match &l.e {
+            RExpr::Field(f) => Some(*f),
+            _ => None,
+        };
         let mut fields = Vec::new();
         l.e.fields(&mut fields);
         r.e.fields(&mut fields);
         if !self.physical_gate(&fields, c.span) {
-            return;
+            return stated;
         }
 
         let comparable = match (l.ty, r.ty) {
@@ -517,7 +632,7 @@ impl Checker<'_> {
                 }
             }
             self.error(c.span, message);
-            return;
+            return stated;
         }
         if let Some(f) = crate::optional::states(c.op, &l.e, &r.e) {
             self.refuse_own_statement(f, c.op.symbol(), c.span);
@@ -532,6 +647,7 @@ impl Checker<'_> {
             span: c.span,
             written,
         });
+        stated
     }
 
     /// Narrow `field` by a constant now, or queue the constraint for the solver.

@@ -77,6 +77,9 @@ pub struct Instance {
     pub children: Vec<(String, Member)>,
     /// Terminals a `~>` chain enters and leaves a part by.
     pub bridge: Option<(InstId, InstId)>,
+    /// For a part: the element it is in a DC analysis, from its `dc` statement or its
+    /// generic's (ADR 0076, amendment 1). None for a part that states none.
+    pub dc: Option<DcElement>,
     pub catalog: Option<Catalog>,
     /// For a part: its `pins` tables, in source order (ADR 0016).
     pub tables: Vec<PinTable>,
@@ -112,6 +115,101 @@ pub struct Instance {
     pub placed_as: Option<String>,
     /// The definition of the generic a use was placed as.
     pub(crate) placed_def: Option<(usize, usize)>,
+}
+
+/// The kind of DC element a part states with `dc` (ADR 0076, amendment 1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DcKind {
+    /// `dc resistor .a .b .resistance`
+    Resistor,
+    /// `dc diode .anode .cathode .forward_voltage`
+    Diode,
+    /// `dc nmos .gate .drain .source .gate_threshold .on_resistance`: an N-channel MOSFET as a
+    /// switch.
+    Nmos,
+    /// `dc pmos .gate .drain .source .gate_threshold .on_resistance`: a P-channel MOSFET as a
+    /// switch. Voltages and currents of a part are magnitudes (see `std::parts::PMosfet`).
+    Pmos,
+}
+
+impl DcKind {
+    pub const ALL: [DcKind; 4] = [Self::Resistor, Self::Diode, Self::Nmos, Self::Pmos];
+
+    /// The word after `dc`.
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Resistor => "resistor",
+            Self::Diode => "diode",
+            Self::Nmos => "nmos",
+            Self::Pmos => "pmos",
+        }
+    }
+
+    pub fn from_word(word: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|k| k.word() == word)
+    }
+
+    /// The pins the statement names, first, and what each is.
+    pub fn pin_roles(self) -> &'static [&'static str] {
+        match self {
+            Self::Resistor => &["terminal", "terminal"],
+            Self::Diode => &["anode", "cathode"],
+            Self::Nmos | Self::Pmos => &["gate", "drain", "source"],
+        }
+    }
+
+    /// The values the statement names after the pins, with what each is.
+    pub fn value_roles(self) -> &'static [(&'static str, Dimension)] {
+        match self {
+            Self::Resistor => &[("resistance", Dimension::RESISTANCE)],
+            Self::Diode => &[("forward voltage", Dimension::VOLTAGE)],
+            Self::Nmos | Self::Pmos => &[
+                ("gate threshold", Dimension::VOLTAGE),
+                ("on resistance", Dimension::RESISTANCE),
+            ],
+        }
+    }
+
+    /// The statement written with the names the standard library uses, for a message.
+    pub fn example(self) -> &'static str {
+        match self {
+            Self::Resistor => "dc resistor .a .b .resistance",
+            Self::Diode => "dc diode .anode .cathode .forward_voltage",
+            Self::Nmos => "dc nmos .gate .drain .source .gate_threshold .on_resistance",
+            Self::Pmos => "dc pmos .gate .drain .source .gate_threshold .on_resistance",
+        }
+    }
+}
+
+/// The DC element of a part: its `dc` statement with every name resolved. A later stage builds
+/// the network of an analysis from these. `pins` are in the order of [`DcKind::pin_roles`] and
+/// `values` in the order of [`DcKind::value_roles`], so that a resistor's two terminals are
+/// `pins[0]` and `pins[1]` and its resistance is `values[0]`, a diode's anode is `pins[0]`, and
+/// a MOSFET's gate, drain and source are `pins[0]`, `pins[1]` and `pins[2]`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DcElement {
+    pub kind: DcKind,
+    pub pins: Vec<InstId>,
+    pub values: Vec<FieldId>,
+    pub source: SourceId,
+    pub span: Span,
+}
+
+/// An output level that a part states with the current it is measured at, as its datasheet
+/// does (`.voh &= .vdd.voltage - 0.4V at 2mA`, ADR 0076, amendment 1). The statement also
+/// narrows or constrains the level as it would without `at`; this records the load only.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LevelTest {
+    /// The `voh` or `vol` field of a `Logic` or of a `Levels`.
+    pub level: FieldId,
+    /// The operator of the statement (`&=`, `?=`, `==`, `>=` or `<=`).
+    pub op: CmpOp,
+    /// The test current, a single positive number. `voh` is measured with this current drawn
+    /// from the pin, `vol` with it sunk.
+    pub current: Quantity,
+    pub source: SourceId,
+    /// The whole statement.
+    pub span: Span,
 }
 
 /// One part or module that can stand where a generic is used (ADR 0068).
@@ -737,6 +835,8 @@ pub struct Model {
     /// a part inside it, as (the module's, the part's). Whether each makes the module's an
     /// alias of the part's is settled when the balances are made (ADR 0077).
     pub(crate) rail_aliases: Vec<(InstId, InstId)>,
+    /// The output levels stated with a test current, in the order they were read (ADR 0076).
+    pub(crate) level_tests: Vec<LevelTest>,
     /// The enums that fields of this model have the type of.
     pub(crate) enums: Vec<EnumInfo>,
     /// The members declared with the type of a generic, in the order they were made.
@@ -770,6 +870,7 @@ impl Model {
             ground_groups: Vec::new(),
             part_joins: Vec::new(),
             rail_aliases: Vec::new(),
+            level_tests: Vec::new(),
             enums: Vec::new(),
             uses: Vec::new(),
             bus_defs: std::collections::BTreeMap::new(),
@@ -793,6 +894,42 @@ impl Model {
     /// The enum a field of kind `FieldKind::Enum` has the type of.
     pub fn enum_info(&self, id: EnumId) -> &EnumInfo {
         &self.enums[id.0]
+    }
+
+    /// A field's path from the part, module or board whose definition declares it, with the
+    /// interfaces it is in: `.out.voh`. The same whether the definition is read alone or inside
+    /// a board, so a message that names it is one message.
+    pub fn field_in_scope(&self, field: FieldId) -> String {
+        let f = self.field(field);
+        let scope = if self.instance(f.owner).kind == InstKind::Interface {
+            self.owner_of(f.owner)
+        } else {
+            Some(f.owner)
+        };
+        match scope {
+            Some(scope) if scope != f.owner => {
+                format!(".{}.{}", self.path_below(f.owner, scope), f.name)
+            }
+            _ => format!(".{}", f.name),
+        }
+    }
+
+    /// The output levels stated with a test current (`.voh &= ... at 2mA`), in source order.
+    pub fn level_tests(&self) -> &[LevelTest] {
+        &self.level_tests
+    }
+
+    /// The test current a level was stated at, if it was (ADR 0076).
+    pub fn level_test(&self, level: FieldId) -> Option<&LevelTest> {
+        self.level_tests.iter().find(|t| t.level == level)
+    }
+
+    /// The parts that state a DC element, with it, in the order the parts were made.
+    pub fn dc_elements(&self) -> impl Iterator<Item = (InstId, &DcElement)> {
+        self.instances
+            .iter()
+            .enumerate()
+            .filter_map(|(i, inst)| inst.dc.as_ref().map(|d| (InstId(i), d)))
     }
 
     pub fn instance(&self, id: InstId) -> &Instance {

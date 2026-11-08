@@ -436,6 +436,7 @@ impl Parser {
                 (
                     Some(at),
                     Item::Bridge(_)
+                    | Item::Dc(_)
                     | Item::Catalog(_)
                     | Item::Pins(_)
                     | Item::Tie(_)
@@ -463,6 +464,9 @@ impl Parser {
             );
             match word.as_str() {
                 "bridge" if starts_name => return only_decls(self.bridge(start)?),
+                "dc" if matches!(self.peek_second(), Tok::Ident(_)) => {
+                    return only_decls(self.dc(start)?);
+                }
                 "catalog" if starts_name => return only_decls(self.catalog(start)?),
                 "tie" if starts_name => return only_decls(self.tie(start)?),
                 "peripheral" if matches!(self.peek_second(), Tok::Ident(_)) => {
@@ -534,10 +538,19 @@ impl Parser {
                 self.bump();
                 self.skip_newlines();
                 let rhs = self.expr()?;
+                // `at` and a current after the value: the load a level is measured at.
+                let at = if matches!(&self.peek().tok, Tok::Ident(w) if w == "at") {
+                    self.bump();
+                    self.skip_newlines();
+                    Some(self.expr()?)
+                } else {
+                    None
+                };
                 only_decls(Item::Constraint(Constraint {
                     lhs,
                     op,
                     rhs,
+                    at,
                     span: self.span_from(start),
                 }))
             }
@@ -616,6 +629,24 @@ impl Parser {
         Ok(Item::Bridge(Bridge {
             from,
             to,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// `dc KIND OPERAND...`: the operands are paths on one line.
+    fn dc(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let kind = self.ident("the kind of element after `dc`")?;
+        let mut operands = Vec::new();
+        while matches!(
+            self.peek().tok,
+            Tok::LeadingDot | Tok::Ident(_) | Tok::QuotedIdent(_)
+        ) {
+            operands.push(self.path()?);
+        }
+        Ok(Item::Dc(Dc {
+            kind,
+            operands,
             span: self.span_from(start),
         }))
     }

@@ -40,6 +40,7 @@ generic Resistor {
     .drop == .current * .resistance
     .drop * .current <= .max_power
     bridge .a ~> .b
+    dc resistor .a .b .resistance
 
     .package: Package
     catalog resistor { .resistance, .max_power, .package, .temperature_coefficient optional }
@@ -198,6 +199,7 @@ generic FerriteBead {
     .drop == .current * .dc_resistance
     .current <= .rated_current
     bridge .a ~> .b
+    dc resistor .a .b .dc_resistance
 
     .package: Package
     catalog ferrite_bead { .impedance, .impedance_frequency, .rated_current, .dc_resistance, .package }
@@ -247,6 +249,7 @@ generic Fuse {
     .drop == .current * .resistance
     .current <= .rated_current
     bridge .a ~> .b
+    dc resistor .a .b .resistance
 
     .package: Package
     catalog fuse { .rated_current, .rated_voltage, .resistance, .package }
