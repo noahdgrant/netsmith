@@ -171,7 +171,7 @@ pub struct ComparePart {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub mpn: Option<String>,
-    /// `fab`, `hand`, `none` or `consigned` (ADR 0024, ADR 0084).
+    /// `fab`, `hand` or `none` (ADR 0024).
     pub assembly: String,
     /// The declaration: on the head side for an added part, on the base side for a removed one.
     #[serde(default, skip_serializing_if = "Option::is_none")]

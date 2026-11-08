@@ -520,7 +520,7 @@ board Solder {
 ```
 
 ```text
-error: `AssemblyMode` has no variant `Hnad`; its variants are `AssemblyMode::Fab`, `AssemblyMode::Hand` and `AssemblyMode::None`; did you mean `AssemblyMode::Hand`?
+error: `AssemblyMode` has no variant `Hnad`; its variants are `AssemblyMode::Fab`, `AssemblyMode::Hand`, `AssemblyMode::None` and `AssemblyMode::Consigned`; did you mean `AssemblyMode::Hand`?
   --> main.nsm:5:36
   |
 5 |         .assembly &= AssemblyMode::Hnad
@@ -540,7 +540,7 @@ board Quoted {
 ```
 
 ```text
-error: `r1.assembly` holds a variant of `AssemblyMode`, but this value is text; a variant of `AssemblyMode` is not written as text: write `AssemblyMode::Hand` (the variants are `AssemblyMode::Fab`, `AssemblyMode::Hand` and `AssemblyMode::None`)
+error: `r1.assembly` holds a variant of `AssemblyMode`, but this value is text; a variant of `AssemblyMode` is not written as text: write `AssemblyMode::Hand` (the variants are `AssemblyMode::Fab`, `AssemblyMode::Hand`, `AssemblyMode::None` and `AssemblyMode::Consigned`)
   --> main.nsm:5:9
   |
 5 |         .assembly &= "hand"

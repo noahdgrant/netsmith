@@ -320,7 +320,7 @@ fn a_part_is_assembled_by_the_fab_unless_the_design_says_otherwise() {
 #[test]
 fn a_part_the_board_marks_consigned_is_placed_by_the_board_house_and_needs_no_number() {
     use Assembly::*;
-    let src = "import std::parts::passive::Resistor\nboard B {\n    .r: Resistor { .resistance &= 330ohm +/- 1% }\n    .s: Resistor { .resistance &= 330ohm +/- 1% .assembly &= AssemblyMode::Consigned }\n}\n";
+    let src = "import std::parts::passive::Resistor\nboard B {\n    .r: Resistor { .resistance &= 330ohm +/- 1% }\n    .s: Resistor { .resistance &= 330ohm +/- 1%\n        .assembly &= AssemblyMode::Consigned\n    }\n}\n";
     let lowered = lowered_with_sourcing(src).unwrap();
     let by: Vec<_> = lowered
         .sourcing
