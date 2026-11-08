@@ -15,7 +15,9 @@ A design could not say that a TVS diode must stay non-conducting with a margin a
 - A design that states it (`.d.breakdown_voltage >= .input.peak * 1.1`, or `&=`) is offered only the rows that record one, as for `.dielectric` and `.rms_current`. A row with an empty cell fits no such design (ADR 0047, ADR 0058, "asked").
 - The standard `tvs.csv` has the column and every cell is empty. The `notes` of the rows carry the JLCPCB record's figures, but no datasheet table was read for a VBR, and a value enters a catalog only with its source (`docs/DESIGN-RULES.md`). `data/jlcpcb/README.md` says so. So a design that states `.breakdown_voltage` is refused with the standard rows (the usual "the `tvs` catalog has nothing for") until a project's catalog gives rows with the column.
 
-How it is built. The optional columns of ADR 0055 were the ones of `Standard` in `crates/netsmith-solve/src/standard.rs`, the four generics whose catalogs have synthesized parts. `Tvs` has none, so `is_optional` in `crates/netsmith-solve/src/table.rs` also reads a short list of the optional columns of the other standard catalogs (`OPTIONAL_OF_KINDS`), which holds `tvs` and `breakdown_voltage` and nothing else. A later optional column of another standard kind is one more entry there.
+How it was built (before ADR 0078). The optional columns of ADR 0055 were the ones of `Standard` in `crates/netsmith-solve/src/standard.rs`, the four generics whose catalogs have synthesized parts. `Tvs` has none, so `is_optional` in `crates/netsmith-solve/src/table.rs` also reads a short list of the optional columns of the other standard catalogs (`OPTIONAL_OF_KINDS`), which holds `tvs` and `breakdown_voltage` and nothing else. A later optional column of another standard kind is one more entry there.
+
+*Amended by ADR 0078:* the list is gone. The `catalog tvs` statement marks `.breakdown_voltage optional`, and any part, standard or a project's, marks its own columns the same way.
 
 ## What was rejected
 
@@ -34,6 +36,6 @@ The check is the design's own: the library does not say which margin is enough, 
 ## What to look at
 
 - The column being optional, and not required as in the project part.
-- `OPTIONAL_OF_KINDS` in `table.rs` as the place of the rule for a standard kind that `Standard` does not describe; the other choice is to describe `Tvs` in `Standard` with no synthesized parts, which changes that table's meaning.
+- The place of the rule for a standard kind that `Standard` does not describe: first a list in `table.rs` (`OPTIONAL_OF_KINDS`), now the marker in the `catalog` statement (ADR 0078).
 - The standard rows leaving the cell empty, so the line in a design is refused until a project has rows.
 - No relation between `.standoff_voltage` and `.breakdown_voltage`.

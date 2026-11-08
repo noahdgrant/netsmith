@@ -428,9 +428,15 @@ impl Checker<'_> {
             return;
         }
         let mut fields = Vec::new();
-        for path in &c.fields {
+        let mut marked = Vec::new();
+        for (path, optional) in c.fields.iter().zip(&c.optional) {
             match self.resolve_path(path) {
-                Res::Field(f) => fields.push(f),
+                Res::Field(f) => {
+                    fields.push(f);
+                    if optional.is_some() {
+                        marked.push((f, path));
+                    }
+                }
                 Res::Inst(_) => self.error(
                     path.span,
                     format!(
@@ -468,10 +474,27 @@ impl Checker<'_> {
                 }
                 Res::Poison | Res::Bad => None,
             });
+        // The key names the one row the design chooses: it has a value in every row.
+        let mut optional = Vec::new();
+        for (f, path) in marked {
+            if key == Some(f) {
+                self.error(
+                    path.span,
+                    format!(
+                        "`{}` is the key of `catalog {}` and names the row, so it cannot be `optional`: a row without it could not be chosen",
+                        path.to_source(),
+                        c.name.name
+                    ),
+                );
+            } else if !optional.contains(&f) {
+                optional.push(f);
+            }
+        }
         self.model.instances[cur.0].catalog = Some(Catalog {
             name: c.name.name.clone(),
             fields,
             key,
+            optional,
         });
     }
 

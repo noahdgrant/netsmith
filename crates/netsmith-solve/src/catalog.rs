@@ -378,7 +378,8 @@ impl Catalogs {
     }
 
     /// The catalog `name` for a part whose `catalog name { ... }` lists `columns`, with every
-    /// cell of a file read as its column's kind. `None` if there is no such catalog. An
+    /// cell of a file read as its column's kind. `None` if there is no such catalog. `optional`
+    /// names the columns the statement marks `optional` (ADR 0078). An
     /// error names the file and line of the cell. If the project states an E-series, the
     /// generic parts of that series come after the rows (ADR 0047), so a value with a row is
     /// picked as before and only a value without one is new.
@@ -386,8 +387,9 @@ impl Catalogs {
         &self,
         name: &str,
         columns: &[(String, FieldKind)],
+        optional: &[String],
     ) -> Option<Result<Catalog, String>> {
-        let mut found = self.identity(name, columns)?;
+        let mut found = self.identity(name, columns, optional)?;
         if let (Ok(catalog), Some(series)) = (&mut found, self.series)
             && let Some(generic) = crate::generic::candidates(series, name, columns)
         {
@@ -401,15 +403,20 @@ impl Catalogs {
         &self,
         name: &str,
         columns: &[(String, FieldKind)],
+        optional: &[String],
     ) -> Option<Result<Catalog, String>> {
         if let Some(catalog) = self.map.get(name) {
             return Some(Ok(catalog.clone()));
         }
         let table = self.tables.get(name)?;
-        Some(table.candidates(name, columns).map(|candidates| Catalog {
-            name: name.to_string(),
-            candidates,
-        }))
+        Some(
+            table
+                .candidates(name, columns, optional)
+                .map(|candidates| Catalog {
+                    name: name.to_string(),
+                    candidates,
+                }),
+        )
     }
 
     /// What the catalog files say about an LCSC number, the standard ones and a project's

@@ -758,7 +758,7 @@ fn changing_only_the_catalog_order_changes_the_resistor_pick() {
             FieldKind::Quantity(Dimension::NONE),
         ),
     ];
-    let mut resistors = by_value.resolve("resistor", &kinds).unwrap().unwrap();
+    let mut resistors = by_value.resolve("resistor", &kinds, &[]).unwrap().unwrap();
     resistors.candidates.sort_by(|a, b| {
         let ohms = |c: &Candidate| match c.column("resistance") {
             Some(Value::Quantity(q)) => q.mid(),

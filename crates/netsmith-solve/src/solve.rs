@@ -2119,7 +2119,7 @@ impl Solver<'_> {
         // takes longer than the search of a part with a few rows).
         type Kinds = Vec<(String, FieldKind)>;
         type Resolved = Option<Result<crate::catalog::Catalog, String>>;
-        let mut resolved_before: Vec<(String, Kinds, Resolved)> = Vec::new();
+        let mut resolved_before: Vec<(String, Kinds, Vec<String>, Resolved)> = Vec::new();
         let to_prepare = parts.len() as u64;
         for (n, (path, part)) in parts.into_iter().enumerate() {
             job::checkpoint();
@@ -2146,14 +2146,25 @@ impl Solver<'_> {
                 .iter()
                 .map(|(f, key)| (key.clone(), self.model.field(*f).kind))
                 .collect();
+            // The columns the statement marks `optional` (ADR 0078), by their key.
+            let optional: Vec<String> = columns
+                .iter()
+                .filter(|(f, _)| catalog.optional.contains(f))
+                .map(|(_, key)| key.clone())
+                .collect();
             let found = match resolved_before
                 .iter()
-                .find(|(name, k, _)| *name == catalog.name && *k == kinds)
+                .find(|(name, k, o, _)| *name == catalog.name && *k == kinds && *o == optional)
             {
-                Some((_, _, found)) => found.clone(),
+                Some((_, _, _, found)) => found.clone(),
                 None => {
-                    let found = self.catalogs.resolve(&catalog.name, &kinds);
-                    resolved_before.push((catalog.name.clone(), kinds.clone(), found.clone()));
+                    let found = self.catalogs.resolve(&catalog.name, &kinds, &optional);
+                    resolved_before.push((
+                        catalog.name.clone(),
+                        kinds.clone(),
+                        optional.clone(),
+                        found.clone(),
+                    ));
                     found
                 }
             };
@@ -3593,9 +3604,9 @@ impl Solver<'_> {
                 // A row with no value there fits no design that asks for one (a rating it
                 // does not state cannot be shown to be met). A design that does not mention
                 // the field has no use for the value, so the row is still offered, but only
-                // for a column that a catalog may leave empty (`Standard::is_optional`): an empty
+                // for a column that a catalog may leave empty (marked `optional`, ADR 0078): an empty
                 // package or resistance is not a value that nothing needs.
-                (None, _) => self.may_be_empty(part, key) && !self.asked(*f),
+                (None, _) => self.may_be_empty(part, *f, key) && !self.asked(*f),
                 (Some(Value::Open(sense)), _) => self.need_of(*f, *sense).is_some(),
                 (Some(Value::Derated(d)), domain) => match self.derated(part, d) {
                     Ok(q) => match domain {
@@ -3665,7 +3676,7 @@ impl Solver<'_> {
         let blank: Vec<String> = job
             .columns
             .iter()
-            .filter(|(f, key)| !self.may_be_empty(job.part, key) || self.asked(*f))
+            .filter(|(f, key)| !self.may_be_empty(job.part, *f, key) || self.asked(*f))
             .filter_map(|(_, key)| {
                 let n = job
                     .catalog
@@ -3685,15 +3696,14 @@ impl Solver<'_> {
     }
 
     /// Whether a row of the part's catalog may have no value in `column` and still be offered
-    /// to a design that does not mention it (ADR 0055): only the columns added after the
-    /// files were written. For any other column an empty cell is a value the design needs and
-    /// does not get, and the row is never offered.
-    fn may_be_empty(&self, part: InstId, column: &str) -> bool {
-        self.model
-            .instance(part)
-            .catalog
-            .as_ref()
-            .is_some_and(|c| crate::table::is_optional(&c.name, column))
+    /// to a design that does not mention it (ADR 0055): only the columns the part's `catalog`
+    /// statement marks `optional` (ADR 0078), and the ones the standard kinds had before the
+    /// marker. For any other column an empty cell is a value the design needs and does not
+    /// get, and the row is never offered.
+    fn may_be_empty(&self, part: InstId, field: FieldId, column: &str) -> bool {
+        self.model.instance(part).catalog.as_ref().is_some_and(|c| {
+            c.optional.contains(&field) || crate::table::is_optional(&c.name, column, &[])
+        })
     }
 
     /// Whether the design says anything about a field: it narrows it, a relation uses it, a

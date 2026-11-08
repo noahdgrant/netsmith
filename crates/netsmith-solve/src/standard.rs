@@ -280,6 +280,12 @@ mod tests {
     /// The columns of the `catalog` statement of each standard generic, in the order it lists
     /// them, as the checker reads them from the standard library.
     fn declared(generic: &str, module: &str) -> (String, Vec<String>) {
+        let (name, columns, _) = declared_with_optional(generic, module);
+        (name, columns)
+    }
+
+    /// [`declared`], and the columns that the statement marks `optional` (ADR 0078).
+    fn declared_with_optional(generic: &str, module: &str) -> (String, Vec<String>, Vec<String>) {
         let source =
             format!("import std::parts::{module}::{generic}\nboard B {{\n    .x: {generic}\n}}\n");
         let checked = check("main.nsm", &source, &Loader::std());
@@ -292,15 +298,30 @@ mod tests {
             .as_ref()
             .expect("a standard generic has a catalog");
         let prefix = format!("{}.", model.path_of(part));
-        let columns = catalog
-            .fields
-            .iter()
-            .map(|&f| {
-                let path = model.path_of_field(f);
-                path.strip_prefix(&prefix).unwrap_or(&path).to_string()
-            })
-            .collect();
-        (catalog.name.clone(), columns)
+        let name_of = |&f: &_| {
+            let path = model.path_of_field(f);
+            path.strip_prefix(&prefix).unwrap_or(&path).to_string()
+        };
+        let columns = catalog.fields.iter().map(name_of).collect();
+        let optional = catalog.optional.iter().map(name_of).collect();
+        (catalog.name.clone(), columns, optional)
+    }
+
+    #[test]
+    fn the_standard_catalog_statements_mark_optional_the_columns_a_synthesized_part_leaves_empty() {
+        // ADR 0078: `optional` in the `catalog` statement and `Fill::Empty` here say the same
+        // thing for the four standard kinds, so the marker in the library is not a second
+        // truth that could drift from the rule the solver also keeps under the catalog's name.
+        for standard in STANDARD {
+            let (_, _, marked) = declared_with_optional(standard.generic, "passive");
+            let ours: Vec<&str> = standard
+                .columns
+                .iter()
+                .filter(|c| standard.is_optional(c.name))
+                .map(|c| c.name)
+                .collect();
+            assert_eq!(marked, ours, "{}", standard.generic);
+        }
     }
 
     #[test]

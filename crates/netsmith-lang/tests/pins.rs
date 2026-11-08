@@ -271,6 +271,47 @@ fn a_catalog_may_name_the_column_that_picks_a_row() {
 }
 
 #[test]
+fn a_catalog_column_may_be_marked_optional_after_its_path() {
+    // ADR 0078: the word a member (ADR 0074) and a `pins` row use.
+    let src = "part P {\n    catalog tvs { .clamping_voltage, .breakdown_voltage optional, .package }\n}\n";
+    let file = parse(src).unwrap();
+    let Item::Catalog(c) = &file.definitions[0].items[0] else {
+        panic!()
+    };
+    let marked: Vec<bool> = c.optional.iter().map(Option::is_some).collect();
+    assert_eq!(marked, [false, true, false]);
+    assert_eq!(c.optional.len(), c.fields.len());
+    assert_eq!(file.to_source(), src);
+
+    // Also on the last column, with a key, and over several lines.
+    let src = "part P {\n    catalog mcu by .mpn { .mpn, .package, .max_current optional }\n}\n";
+    let file = parse(src).unwrap();
+    assert_eq!(file.to_source(), src);
+    let multi =
+        parse("part P {\n    catalog r {\n        .a,\n        .b optional\n    }\n}\n").unwrap();
+    let Item::Catalog(c) = &multi.definitions[0].items[0] else {
+        panic!()
+    };
+    assert!(c.optional[1].is_some() && c.optional[0].is_none());
+
+    // The word is a modifier only after a column: `.optional` is still a column's name.
+    let named = parse("part P {\n    catalog r { .optional, .b }\n}\n").unwrap();
+    let Item::Catalog(c) = &named.definitions[0].items[0] else {
+        panic!()
+    };
+    assert_eq!(c.fields[0].to_source(), ".optional");
+    assert!(c.optional.iter().all(Option::is_none));
+
+    // On a line of its own it is not a modifier.
+    let (msg, ..) = err("part P {\n    catalog r {\n        .a\n        optional\n    }\n}\n");
+    assert!(msg.contains("`,` or `}`"), "{msg}");
+
+    // Nothing else may follow a column.
+    let (msg, ..) = err("part P {\n    catalog r { .a required }\n}\n");
+    assert!(msg.contains("`,` or `}`"), "{msg}");
+}
+
+#[test]
 fn a_function_may_carry_its_own_kind() {
     let src = row(
         ".pa2 bidirectional \"PA2\" \"12\" fn GPIO:bidirectional UART1_TX:output UART1_RX:input SPI1_SCK optional",
