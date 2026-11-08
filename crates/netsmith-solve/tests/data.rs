@@ -786,6 +786,18 @@ fn a_zener_row_is_the_range_of_the_datasheet_at_the_test_current() {
     assert_eq!(value(&z, "max_power"), quantity(0.5, "W"));
 }
 
+/// The BZT52C39 (C2111) is the range of the same datasheet table at its 2 mA test current.
+#[test]
+fn the_bzt52c39_is_37_to_41_volts_at_2_milliamps() {
+    let z = row_of("zener", "C2111");
+    assert_eq!(z.mpn.as_deref(), Some("BZT52C39"));
+    assert_eq!(z.library, Some(Library::Extended));
+    let v = value(&z, "zener_voltage");
+    assert_eq!((v.lo(), v.hi()), (37.0, 41.0));
+    assert_eq!(value(&z, "max_power"), quantity(0.5, "W"));
+    assert_eq!(z.column("package"), Some(&Value::Text("SOD-123".into())));
+}
+
 /// Every standard Zener row that states a figure the clamp over temperature reads cites the
 /// datasheet in its source and the table the figures come from in its notes, and states all
 /// four together: a half-filled row would be offered to a design that asks for one of them
@@ -816,7 +828,7 @@ fn every_zener_row_with_a_temperature_figure_cites_the_datasheet_table() {
             "{lcsc}: the notes do not say which table the figures were read from"
         );
     }
-    assert_eq!(stating, 7);
+    assert_eq!(stating, 8);
 }
 
 /// The figures are the datasheet's, each read from the ELECTRICAL CHARACTERISTICS table of
@@ -832,10 +844,13 @@ fn the_zener_rows_state_the_datasheet_test_current_coefficient_and_leakage() {
         ("C43491", (0.006, 0.010), (0.1e-6, 8.0)),
         ("C2104", (0.0092, 0.013), (0.1e-6, 10.5)),
         ("C2109", (0.0184, 0.022), (0.1e-6, 16.8)),
+        ("C2111", (0.0334, 0.0412), (0.1e-6, 27.3)),
     ];
     for (lcsc, (lo, hi), (leak, at)) in cases {
         let z = row_of("zener", lcsc);
-        assert_eq!(value(&z, "test_current"), quantity(5.0, "mA"), "{lcsc}");
+        // The types from BZT52C27 to BZT52C39 are tested at 2 mA, the others at 5 mA.
+        let izt = if lcsc == "C2111" { 2.0 } else { 5.0 };
+        assert_eq!(value(&z, "test_current"), quantity(izt, "mA"), "{lcsc}");
         let c = value(&z, "temperature_coefficient");
         assert!(
             (c.lo() - lo).abs() < 1e-12 && (c.hi() - hi).abs() < 1e-12,
@@ -858,6 +873,20 @@ fn a_tvs_row_has_the_standoff_the_clamp_at_the_pulse_current() {
     assert_eq!(value(&t, "standoff_voltage"), quantity(12.0, "V"));
     assert_eq!(value(&t, "clamping_voltage"), quantity(19.9, "V"));
     assert_eq!(value(&t, "peak_pulse_current"), quantity(20.1, "A"));
+}
+
+/// The Littelfuse SMDJ36A (C108363), read from the Littelfuse SMDJ series datasheet: the one SMC
+/// row, and the one row that states a minimum breakdown voltage (40 V at 1 mA).
+#[test]
+fn the_smdj36a_carries_the_littelfuse_table_row() {
+    let t = row_of("tvs", "C108363");
+    assert_eq!(t.mpn.as_deref(), Some("SMDJ36A"));
+    assert_eq!(t.library, Some(Library::Extended));
+    assert_eq!(value(&t, "standoff_voltage"), quantity(36.0, "V"));
+    assert_eq!(value(&t, "breakdown_voltage"), quantity(40.0, "V"));
+    assert_eq!(value(&t, "clamping_voltage"), quantity(58.1, "V"));
+    assert_eq!(value(&t, "peak_pulse_current"), quantity(51.6, "A"));
+    assert_eq!(t.column("package"), Some(&Value::Text("SMC".into())));
 }
 
 #[test]
@@ -906,14 +935,18 @@ fn no_standard_inductor_states_a_heating_current() {
     }
 }
 
-/// The minimum breakdown voltage of a TVS diode is a column that no standard row fills: no
-/// row has a datasheet figure read for it (ADR 0073).
+/// The minimum breakdown voltage of a TVS diode is a column that one standard row fills: only
+/// the SMDJ36A has a datasheet table row read for it (ADR 0073).
 #[test]
-fn no_standard_tvs_diode_states_a_breakdown_voltage() {
+fn only_the_smdj36a_states_a_breakdown_voltage() {
     let tvs = catalog("tvs");
     assert!(!tvs.candidates.is_empty());
     for c in &tvs.candidates {
-        assert_eq!(c.column("breakdown_voltage"), None, "{}", c.name);
+        if c.lcsc.as_deref() == Some("C108363") {
+            assert!(c.column("breakdown_voltage").is_some(), "{}", c.name);
+        } else {
+            assert_eq!(c.column("breakdown_voltage"), None, "{}", c.name);
+        }
     }
 }
 
@@ -947,6 +980,13 @@ fn the_fuses_the_beads_and_the_mosfets_have_their_rows() {
     let bead = row_of("ferrite_bead", "C14709");
     assert_eq!(bead.library, Some(Library::Basic));
     assert_eq!(value(&bead, "rated_current"), quantity(2.0, "A"));
+    // The BLM31PG601SN1L: Murata's reference specification (0.08 ohm initial maximum), which the
+    // LCSC and JLCPCB records agree with; the 2009 catalog sheet's 0.09 ohm is in the notes.
+    let big = row_of("ferrite_bead", "C16902");
+    assert_eq!(big.mpn.as_deref(), Some("BLM31PG601SN1L"));
+    assert_eq!(value(&big, "dc_resistance"), quantity(0.08, "ohm"));
+    assert_eq!(value(&big, "rated_current"), quantity(1.5, "A"));
+    assert_eq!(big.column("package"), Some(&Value::Text("1206".into())));
     let fet = row_of("n_mosfet", "C20917");
     assert_eq!(fet.mpn.as_deref(), Some("AO3400A"));
     let th = value(&fet, "gate_threshold");

@@ -203,6 +203,12 @@ symbol = "Device:D_Zener"
 footprint = "Diode_SMD:D_SMB"
 
 [[part]]
+kind = "Tvs"
+package = "SMC"
+symbol = "Device:D_Zener"
+footprint = "Diode_SMD:D_SMC"
+
+[[part]]
 kind = "Inductor"
 package = "0402"
 symbol = "Device:L"
@@ -259,6 +265,12 @@ kind = "FerriteBead"
 package = "0805"
 symbol = "Device:FerriteBead"
 footprint = "Inductor_SMD:L_0805_2012Metric"
+
+[[part]]
+kind = "FerriteBead"
+package = "1206"
+symbol = "Device:FerriteBead"
+footprint = "Inductor_SMD:L_1206_3216Metric"
 
 [[part]]
 kind = "Crystal"
