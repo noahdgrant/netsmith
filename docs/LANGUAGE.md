@@ -505,7 +505,7 @@ board Lamps {
 - `==` compares two values of one enum, a field and a variant or a field and a field, and is checked like any other relation: `.drive == Drive::Steady` fails when the field is `Drive::Dimmed`. Only `==` compares variants; they have no order.
 - `&=`, `?=` and `==` take only a variant of the field's own enum. Text is not one: `.drive &= "Dimmed"` is refused and the message says what to write.
 - A variant is written with its enum's name, so two enums may have a variant of one name, and a variant is never confused with a member or a net name. A file imports the enum, not its variants.
-- `AssemblyMode` (variants `Fab`, `Hand` and `None`) is the one enum that every file knows without an import, because every part has a built-in `.assembly` of that type (Who assembles a part, above). It is defined in `std/prelude.nsm`.
+- `AssemblyMode` (variants `Fab`, `Hand`, `None` and `Consigned`) is the one enum that every file knows without an import, because every part has a built-in `.assembly` of that type (Who assembles a part, above). It is defined in `std/prelude.nsm`.
 
 A variant the enum does not have is refused where it is written, with the variants listed and the nearest one named:
 
@@ -520,7 +520,7 @@ board Solder {
 ```
 
 ```text
-error: `AssemblyMode` has no variant `Hnad`; its variants are `AssemblyMode::Fab`, `AssemblyMode::Hand` and `AssemblyMode::None`; did you mean `AssemblyMode::Hand`?
+error: `AssemblyMode` has no variant `Hnad`; its variants are `AssemblyMode::Fab`, `AssemblyMode::Hand`, `AssemblyMode::None` and `AssemblyMode::Consigned`; did you mean `AssemblyMode::Hand`?
   --> main.nsm:5:36
   |
 5 |         .assembly &= AssemblyMode::Hnad
@@ -540,7 +540,7 @@ board Quoted {
 ```
 
 ```text
-error: `r1.assembly` holds a variant of `AssemblyMode`, but this value is text; a variant of `AssemblyMode` is not written as text: write `AssemblyMode::Hand` (the variants are `AssemblyMode::Fab`, `AssemblyMode::Hand` and `AssemblyMode::None`)
+error: `r1.assembly` holds a variant of `AssemblyMode`, but this value is text; a variant of `AssemblyMode` is not written as text: write `AssemblyMode::Hand` (the variants are `AssemblyMode::Fab`, `AssemblyMode::Hand`, `AssemblyMode::None` and `AssemblyMode::Consigned`)
   --> main.nsm:5:9
   |
 5 |         .assembly &= "hand"
@@ -1664,18 +1664,19 @@ Every part has a field `.assembly`, of the type `AssemblyMode`, that it does not
 | `AssemblyMode::Fab` | The board house places and solders it: a BOM line and a placement row. |
 | `AssemblyMode::Hand` | Soldered by hand: not in the BOM or the placement file, and listed in `fab-notes.txt` as `hand-solder:`. |
 | `AssemblyMode::None` | Not fitted by anyone, such as a hole or a fiducial: in neither file, and listed in `fab-notes.txt` as `not fitted`. |
+| `AssemblyMode::Consigned` | The board house places and solders it, and you ship the part to the board house: a BOM line and a placement row, no supplier part number needed, and listed in `fab-notes.txt` as `consigned:` (ADR 0084, provisional). See Consigned parts, below. |
 
 Where the value comes from, weakest first (ADR 0028 amends ADR 0024):
 
 | | Says |
 |---|---|
 | 1 | The built-in rule: a through-hole part is `Hand` and every other part is `Fab`. |
-| 2 | The project's default, `assembly = "fab"`, `"hand"` or `"none"` under `[project]` in `netsmith.toml`. It is for every part of every board that nothing below speaks for. |
+| 2 | The project's default, `assembly = "fab"`, `"hand"`, `"none"` or `"consigned"` under `[project]` in `netsmith.toml`. It is for every part of every board that nothing below speaks for. |
 | 3 | The part kind's own statement: `MountingHole`, `PlatedHole`, `Fiducial`, `TestPoint` and `ProgrammingPads6` are `None`, and neither the project nor a board can change that. |
 | 4 | The catalog file's optional `assembly` column: the picked row's value. |
 | 5 | The board narrowing it on a part it owns: `.assembly &= AssemblyMode::Hand`; or narrowing the value that a module offers for its parts (below). |
 
-The manifest and the catalog files are not source text, so they write the variant as a lower-case word (`"fab"`, `"hand"`, `"none"`); in `.nsm` it is always the variant.
+The manifest and the catalog files are not source text, so they write the variant as a lower-case word (`"fab"`, `"hand"`, `"none"`, `"consigned"`); in `.nsm` it is always the variant.
 
 ```toml
 [project]
@@ -1683,7 +1684,7 @@ name = "blink"
 assembly = "fab"
 ```
 
-With that manifest the header of the example below is placed by the board house too, and a board that wants one part by hand still says so on the part. Rows 3 and 5 are one field, so a board that contradicts a kind gets the usual empty-intersection error. There is no per-board default: the project has one, and a part says otherwise on itself. A word that is not one of the three variants is refused where it is written (see Enums, below). A part marked `Hand` or `None` still counts in the solver and in the current balance.
+With that manifest the header of the example below is placed by the board house too, and a board that wants one part by hand still says so on the part. Rows 3 and 5 are one field, so a board that contradicts a kind gets the usual empty-intersection error. There is no per-board default: the project has one, and a part says otherwise on itself. A word that is not one of the four variants is refused where it is written (see Enums, below). A part marked `Hand` or `None` still counts in the solver and in the current balance.
 
 ```nsm
 import std::parts::connector::Header1x2
@@ -1701,7 +1702,23 @@ board Assembly {
 }
 ```
 
-A part that the board house is to assemble (`AssemblyMode::Fab`) must have a supplier part number, an `lcsc` in its catalog row. `fab` checks that before it places or routes anything, and refuses with all the parts that have none in one message: each reference designator, its path, what its row says (the manufacturer's number), and what to write and where. There is no flag for it: the design says who does not assemble the part, with `.assembly &= AssemblyMode::Hand` (or `AssemblyMode::None`) on the part in the board, in the module's definition for a part inside a module, or in the `assembly` column of the part's own catalog row. The part is then out of `bom.csv` and `cpl.csv`, and `fab-notes.txt` lists it under `hand-solder:` and, if its catalog row has a manufacturer's number and no `lcsc`, in a line saying the board house does not assemble it and that you buy it yourself. `--allow-drc-violations` does not waive this.
+A part that the board house is to assemble from its stock (`AssemblyMode::Fab`; a consigned part is the exception) must have a supplier part number, an `lcsc` in its catalog row. `fab` checks that before it places or routes anything, and refuses with all the parts that have none in one message: each reference designator, its path, what its row says (the manufacturer's number), and what to write and where. There is no flag for it: the design says who does not assemble the part, with `.assembly &= AssemblyMode::Hand` (or `AssemblyMode::None`, or `AssemblyMode::Consigned` if you ship the part to the board house) on the part in the board, in the module's definition for a part inside a module, or in the `assembly` column of the part's own catalog row. The part is then out of `bom.csv` and `cpl.csv`, and `fab-notes.txt` lists it under `hand-solder:` and, if its catalog row has a manufacturer's number and no `lcsc`, in a line saying the board house does not assemble it and that you buy it yourself. `--allow-drc-violations` does not waive this.
+
+**Consigned parts.** A part that JLCPCB can place but does not stock is bought by you and shipped to JLCPCB (its consigned parts service). Say so with `AssemblyMode::Consigned`, the way you say `Hand`: on the part, through a module's `.assembly_mode`, in the `assembly` column of a catalog row (`consigned`), or as the project's default. The part needs no supplier part number, its row's stock does not matter, and a consigned generic part is not looked up in a catalog:
+
+```nsm
+import std::parts::passive::Resistor
+
+board Shipped {
+    /// A resistor that you buy yourself and ship to the board house.
+    .r1: Resistor {
+        .resistance &= 330ohm +/- 1%
+        .assembly &= AssemblyMode::Consigned
+    }
+}
+```
+
+`build` prints it as `consigned` in the bill-of-materials column. `fab` puts it in `cpl.csv`, so the board house places it, and in `bom.csv`, with the manufacturer's number as the comment and the LCSC cell empty (or the row's number, if it has one). JLCPCB's BOM format has no column that marks a consigned part: you register the parts on its site, ship them, and pick them in the order page's component matching, so `fab-notes.txt` lists them under `consigned:` with their manufacturer's number and quantity, and says that you ship them with the order. Look at the matching step of the order preview before you pay.
 
 A part inside a module is not the board's to name (ADR 0004), so a module that wants the board to choose who assembles its parts offers the choice as a value of its own and ties its parts to it (ADR 0042). Declare a value of the type `AssemblyMode`, and narrow the part's `.assembly` by it inside the module:
 
@@ -7082,7 +7099,7 @@ Only `name` is required.
 | `kicad` | The KiCad version of the files. Only 9 is accepted. |
 | `catalog_dirs` | The folders whose `*.csv` files are the project's own catalogs, each named by its file name (`catalogs/acme_ldo.csv` is the catalog `acme_ldo`), in addition to the standard ones. Default `["catalogs"]`; `init` writes it out. See Catalog files. |
 | `catalogs` | Optional. Single catalog files to add that are not in a `catalog_dirs` folder, each named by its catalog. See Catalog files. |
-| `assembly` | Optional. Who assembles a part nothing else speaks for: `"fab"`, `"hand"` or `"none"`. See Who assembles a part. |
+| `assembly` | Optional. Who assembles a part nothing else speaks for: `"fab"`, `"hand"`, `"none"` or `"consigned"`. See Who assembles a part. |
 | `guidelines` | Optional. What a design that goes against a guideline gets: `"warn"` (the default) reports it and builds, `"error"` refuses to build. `--strict` asks for `"error"` for one run. See Track width against current. |
 
 ### Orders
@@ -7563,6 +7580,51 @@ Each side of the stage is a bank of identical capacitors (the section on capacit
 }
 ```
 
+A margin on the capacitors' ratings is the stage's `.voltage_margin` (ADR 0085, provisional): each capacitor is rated for at least the margin times the highest voltage of its rail, `.input_cap.max_voltage >= .vin.voltage * .voltage_margin` and `>= .vin.peak * .voltage_margin`, and the same on the output. It is 1 unless the board states it, which asks for no more than the rail's highest voltage and changes nothing for a board that never mentions it. A board that derates its ceramic capacitors states it from outside the stage, which cannot be reached any other way (`input_cap` is inside `BuckStage` and is not part of its interface). A module that wraps the stage forwards its own member to it (`.stage.voltage_margin &= .margin`). The stage has no bootstrap or bypass capacitor, since those are inside the IC's own circuit; a module that adds them states its own bound.
+
+```nsm-fragment
+.stage: BuckStage {
+    .vout.voltage &= 1.8V +/- 3%
+    .voltage_margin &= 1.25
+}
+```
+
+The 5 V input of this guide peaks at 5.25 V, so 1.25 times it is 6.56 V and a 6.3 V capacitor, which the stage picks by default, is no longer enough: the input takes a row rated for at least that. A margin no row of the catalog can give is refused with the numbers of the closest row, and only the rating fails: with a margin of 5 the input capacitor would have to be rated for 26.25 V, and no row that keeps the capacitance the IC asks for has more than 25 V.
+
+```nsm fails
+import src::zbk2::Zbk2
+import std::parts::regulator::BuckStage
+import std::sources::Rail
+
+board TooMuchMargin {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+        .current &= 0mA..1A
+    }
+    .u: Zbk2
+    .stage: BuckStage {
+        .vout.voltage &= 1.8V +/- 3%
+        .voltage_margin &= 5
+    }
+
+    .input ~ .stage.vin
+    .input ~ .u.vin
+    .stage.vout ~ .output
+    .stage.buck ~ .u.buck
+    .u.en ~ .input.pos
+}
+```
+
+```text
+error: TooMuchMargin: L1: footprint `Inductor_SMD:L_1210_3225Metric` not found: looked for /tmp/netsmith-sample-libraries-acd28885cc625c91/footprints/Inductor_SMD.pretty/L_1210_3225Metric.kicad_mod; set NETSMITH_KICAD_FOOTPRINTS to the folder that holds the .pretty libraries, or list the library in kicad.toml
+```
+
 The two inductor limits are optional, as are the other numbers an IC may leave open: an IC that states `.min_inductor_saturation` (a datasheet that asks for more than the current limit, say) or `.max_inductor_dcr` has them checked against the picked inductor's `saturation_current` and `dc_resistance`, and an inductor that does not meet them is refused with the numbers. Both are `optional` members of `Buck` (ADR 0074): one that the IC leaves unstated has no such check, and the build says nothing about it, where it lists a check on any other value that nothing states as not evaluated. A limit is stated for the stage when the IC states it on its side of `.stage.buck ~ .u.buck`. A heating (RMS) rating of the inductor is not checked by the stage: `Inductor` has the optional column `rms_current`, which the standard rows leave empty (see Dielectric and package size), so a check that needed it would refuse every standard inductor.
 
 Misuse: a load larger than the IC can give (an input above its range, such as 12 V, is refused the same way, by `stage.vin.voltage must always be at most stage.buck.max_input_voltage`).
@@ -7596,9 +7658,9 @@ board Overload {
 
 ```text
 error: -stage.vout.current must always be at most stage.buck.max_output_current, but 0A..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..0A) add up to zero; net `1V8` in `stage`: -stage.inductor.current (0A..3A) + -stage.vout.current (-3A..0A) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (0A..3A) + stage.inductor.current (0A..3A) add up to zero; net `net-stage.inductor.a`: stage.buck.sw.current (0A..3A) + u.buck.sw.current (-3A..0A) add up to zero)
-    --> std/parts/regulator.nsm:233:5
+    --> std/parts/regulator.nsm:240:5
     |
-233 |     -.vout.current <= .buck.max_output_current
+240 |     -.vout.current <= .buck.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10347,7 +10409,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | Definition | What it is |
 |---|---|
 | `std::parts::regulator::FeedbackDivider` | The resistors that set an adjustable output: pins `top`, `fb`, `bottom`, voltages `vref` and `vout`, the `current` it draws, with `vout == vref * (1 + rtop / rbottom)` in the worst case. |
-| `std::parts::regulator::BuckStage` | Everything around a buck converter IC: inductor, input and output capacitors and a `FeedbackDivider`, with ports `vin`, `vout` and `buck`, and the values `ripple`, `divider_current`, `input_count` and `output_count` (how many capacitors stand in parallel on each side, 1 to 8, chosen by the solver or stated by the board). Checks the input range, the output current, the ripple and the inductor's saturation, the inductor limits the IC states, the capacitance the IC asks for of each side's bank, and that each capacitor is rated for the rail's voltage and for its `.peak`. |
+| `std::parts::regulator::BuckStage` | Everything around a buck converter IC: inductor, input and output capacitors and a `FeedbackDivider`, with ports `vin`, `vout` and `buck`, and the values `ripple`, `divider_current`, `voltage_margin`, `input_count` and `output_count` (how many capacitors stand in parallel on each side, 1 to 8, chosen by the solver or stated by the board). Checks the input range, the output current, the ripple and the inductor's saturation, the inductor limits the IC states, the capacitance the IC asks for of each side's bank, and that each capacitor is rated for the rail's voltage and for its `.peak`, each times `.voltage_margin` (1 unless the board states it, ADR 0085). |
 | `std::bus::PullUp` | A pull-up resistor from a rail's `pos` to one line: a `supply` (`Rail`), a `line` (`Pin`), a `.resistance` the board states, `.line_low`, the share of the time the line is low (0 to 1), and the offers `.overdrive` (0 V) and `.supply_top` (`supply.voltage`). It states what it draws from `supply`: its resistor carries 0 up to `supply.voltage / resistance` (below 0 when a stated `.overdrive` lets a driver push current back), so the net it is on is solved and the checks after it are evaluated. |
 | `std::bus::PullDown` | A pull-down resistor from one line to the `neg` of a rail: a `reference` (`Rail`, a reference and not a load: `reference.current` is 0 A), a `line` (`Pin`), a `.resistance` the board states, `.line_high`, the share of the time the line is high (0 to 1), and the offer `.line_top` (`reference.voltage`, the highest the line is held at). Its resistor carries 0 up to `line_top / resistance`, so its drop and power are evaluated; it draws nothing from a rail. |
 | `std::bus::I2cPullups` | The two pull-up resistors of an I2C bus: a `bus` (`I2c`), a `supply` (`Rail`) and a `.resistance` the board states. It states what it draws from `supply`: each line's pull-up carries 0 up to `supply.voltage / resistance` (`.sda_low` and `.scl_low`, 0 to 1, are the share; `.overdrive` and `.supply_top` are offered as for `PullUp`), and `supply.current` is the sum, so the net it is on is solved and the checks after it are evaluated. |

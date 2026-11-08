@@ -1245,7 +1245,7 @@ fn export(
         .parts
         .iter()
         .zip(&sourcing)
-        .filter(|(_, s)| s.assembly != Assembly::Fab)
+        .filter(|(_, s)| matches!(s.assembly, Assembly::Hand | Assembly::None))
         .map(|(p, _)| p.path.clone())
         .collect();
     let heading = match system {
@@ -1292,6 +1292,7 @@ fn report(heading: &str, design: &Design, sourcing: &[Sourced], mapping: &Mappin
         let supplier = match (&source.lcsc, source.library) {
             _ if source.assembly == Assembly::Hand => "hand-soldered".to_string(),
             _ if source.assembly == Assembly::None => "not fitted".to_string(),
+            _ if source.assembly == Assembly::Consigned => "consigned".to_string(),
             (Some(lcsc), Some(library)) => format!("{lcsc} {library}"),
             (Some(lcsc), None) => lcsc.clone(),
             (None, _) if source.generic.is_some() => {

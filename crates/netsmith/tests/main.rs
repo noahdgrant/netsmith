@@ -10,6 +10,7 @@ mod bank;
 mod build;
 mod compare;
 mod conflicts;
+mod consigned;
 mod constraints;
 mod defaults;
 mod dxf;

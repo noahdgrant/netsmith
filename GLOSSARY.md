@@ -179,8 +179,12 @@ A project's `netsmith.toml`: its name, the top-level files that hold boards, the
 _Avoid_: Config, settings
 
 **Assembly**:
-Who puts a part on the board: the field `.assembly` of every part, of the type `AssemblyMode`: `AssemblyMode::Fab` (the board house places it), `AssemblyMode::Hand` (soldered by hand) or `AssemblyMode::None` (not fitted at all: a hole, a fiducial). It decides the BOM, the placement file and the notes of `fab` (ADR 0024, provisional). A project may set a default for it in `netsmith.toml` (`assembly = "fab"`, ADR 0028; the manifest and the catalog files write the lower-case word). A board cannot reach the parts of a module, so a module that wants the choice offers a value of the type `AssemblyMode` (`.assembly_mode`) and ties its parts to it with `.j.assembly &= .assembly_mode`; the board's narrowing of that value is the design's own statement for those parts (ADR 0042, ADR 0054).
+Who puts a part on the board: the field `.assembly` of every part, of the type `AssemblyMode`: `AssemblyMode::Fab` (the board house places it), `AssemblyMode::Hand` (soldered by hand), `AssemblyMode::None` (not fitted at all: a hole, a fiducial) or `AssemblyMode::Consigned` (the board house places it, and the owner ships the part to it). It decides the BOM, the placement file and the notes of `fab` (ADR 0024, provisional). A project may set a default for it in `netsmith.toml` (`assembly = "fab"`, ADR 0028; the manifest and the catalog files write the lower-case word). A board cannot reach the parts of a module, so a module that wants the choice offers a value of the type `AssemblyMode` (`.assembly_mode`) and ties its parts to it with `.j.assembly &= .assembly_mode`; the board's narrowing of that value is the design's own statement for those parts (ADR 0042, ADR 0054).
 _Avoid_: Population, fitting, DNP
+
+**Consigned part**:
+A part that the board house places and solders, and that the owner buys and ships to it (JLCPCB's consigned parts service). Stated as `AssemblyMode::Consigned` (`.assembly &= AssemblyMode::Consigned`, a module's `.assembly_mode`, the word `consigned` in a catalog row's `assembly` column or the manifest's `assembly`). It is in `cpl.csv` and in `bom.csv` with its manufacturer's number as the comment and the LCSC cell empty, needs no `lcsc`, is listed in `fab-notes.txt` under `consigned:`, and is printed as `consigned` by `build`. The stock note and the unresolved generic warning do not apply to it, since the owner supplies it (ADR 0084, provisional).
+_Avoid_: Customer-supplied part, owner-supplied part, free-issue part, kitted part, supplied part (use _consigned_, as the board house does); and, for the mode, a flag on a `Fab` part
 
 **Enum**:
 A type whose values are a fixed list of named variants, declared with `enum Name { A, B }` and imported like a definition (ADR 0054, proposed). A variant is written with its enum, `Name::A`; a field of the enum type takes only its variants, with `&=`, `?=` and `==`. `AssemblyMode` is the one enum in scope in every file without an import (`std/prelude.nsm`).
@@ -377,6 +381,10 @@ _Avoid_: Series provider, virtual provider
 **Peak voltage**:
 The highest voltage a rail reaches, transients included: the `.peak` of a `Rail`, where `.voltage` is the steady range. A part that clamps a transient (a TVS diode) states it for the rail behind it, joined rails share it, and the parts on the rail are rated for it. A peak below the rail's steady voltage is refused as a mistake (where a stage checks the ratings, as `BuckStage` does).
 _Avoid_: Surge voltage, transient voltage (the transient is the event; the peak is the number)
+
+**Voltage margin**:
+The factor on the highest voltage of a rail that a capacitor's rating must have: `.voltage_margin` of `BuckStage` (ADR 0085, provisional), 1 unless the board states it (`.stage.voltage_margin &= 1.25`). It multiplies both the rail's steady `.voltage` and its `.peak`.
+_Avoid_: Derating factor, safety factor, headroom
 
 **Bias**:
 The DC voltage across a part: a capacitor, a diode, a Zener or a TVS diode. A part with a `.bias` and a `bridge` placed between a rail's `pos` and `neg` has the rail's voltage as its `.bias` without being told; a design states `.bias` only for a part that is across no rail.

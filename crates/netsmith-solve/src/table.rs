@@ -21,7 +21,7 @@
 //! | `lcsc` | the supplier's part number (`C25104`) |
 //! | `mpn` | the manufacturer's part number; also a field of the part if its catalog lists `.mpn` |
 //! | `library` | JLCPCB's `Basic`, `Extended` or `Preferred` |
-//! | `assembly` | who assembles the part when the design does not say: `fab`, `hand` or `none` (ADR 0024) |
+//! | `assembly` | who assembles the part when the design does not say: `fab`, `hand`, `none` or `consigned` (ADR 0024, ADR 0084) |
 //! | `price`, `stock` | the board house's (JLCPCB's) snapshot, USD and pieces, entered by hand; `netsmith catalog refresh` never writes them (ADR 0039). The solver does not read them: a row is offered whatever its stock (ADR 0047), and only the bill of materials shows them, after a supply provider's answer |
 //! | `price_breaks` | the board house's price at each quantity, `1:0.0019 1000:0.0015` (pieces:USD), entered by hand; nothing reads it |
 //! | `source` | where the row was read. Required when the row has an `lcsc` or `mpn` |
@@ -410,10 +410,10 @@ impl Row {
             }
         };
         if let Some(assembly) = self.cell("assembly")
-            && !["fab", "hand", "none"].contains(&assembly)
+            && !["fab", "hand", "none", "consigned"].contains(&assembly)
         {
             return Err(format!(
-                "{at}: assembly `{assembly}` is not fab, hand or none"
+                "{at}: assembly `{assembly}` is not fab, hand, none or consigned"
             ));
         }
         if let Some(price) = self.cell("price")

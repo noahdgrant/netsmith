@@ -371,7 +371,7 @@ fn fab_board(
                 built
                     .sourcing
                     .iter()
-                    .any(|s| s.refdes == u.refdes && s.assembled())
+                    .any(|s| s.refdes == u.refdes && s.needs_part_number())
             })
             .map(|u| fail(u.line(&built.rechecks, catalogs)))
             .collect();
@@ -849,8 +849,9 @@ fn fab_panel(
         width_mm: pkg.geometry.width,
         height_mm: pkg.geometry.height,
         thickness_mm: process.stackup.chosen_thickness(),
-        assembled_parts: pkg.plan.assembled.len(),
+        assembled_parts: crate::order::stock_parts(&pkg.plan),
         bom: pkg.plan.bom.clone(),
+        consigned: pkg.plan.consigned.clone(),
         hand_solder: pkg.plan.hand_solder.clone(),
         not_fitted: pkg.plan.not_fitted.clone(),
         unassembled: pkg.plan.unassembled.clone(),
@@ -906,6 +907,7 @@ fn fit_of(sourcing: &[Sourced]) -> BTreeMap<String, Fit> {
                 Assembly::Fab => Fit::Assembled,
                 Assembly::Hand => Fit::HandSolder,
                 Assembly::None => Fit::NotFitted,
+                Assembly::Consigned => Fit::Consigned,
             };
             (s.refdes.clone(), fit)
         })
@@ -913,8 +915,10 @@ fn fit_of(sourcing: &[Sourced]) -> BTreeMap<String, Fit> {
 }
 
 /// The bill of materials: one entry per distinct part, with every place it is used. Parts
-/// the board house does not place are left out. A part it should place but that has no
-/// part number is kept without one, so the packaging step can refuse it by name.
+/// the board house does not place are left out; a consigned part is kept, with its
+/// manufacturer's number as the comment and no part number unless its row has one. A part it
+/// should place but that has no part number is kept without one, so the packaging step can
+/// refuse it by name.
 pub fn bom_entries(sourcing: &[Sourced], mapping: &Mapping) -> Result<Vec<BomEntry>, String> {
     let mut entries: Vec<BomEntry> = Vec::new();
     for s in sourcing.iter().filter(|s| s.assembled()) {
@@ -928,14 +932,21 @@ pub fn bom_entries(sourcing: &[Sourced], mapping: &Mapping) -> Result<Vec<BomEnt
             .next()
             .unwrap_or(&footprint)
             .to_string();
+        // The comment of a consigned part is the manufacturer's number: JLCPCB has no column that
+        // marks a part as consigned, so the board house reads what the owner shipped from it
+        // (ADR 0084).
+        let value = match (s.assembly, &s.mpn) {
+            (Assembly::Consigned, Some(mpn)) => mpn.clone(),
+            _ => s.value.clone(),
+        };
         match entries
             .iter_mut()
-            .find(|e| e.value == s.value && e.footprint == footprint && e.lcsc == s.lcsc)
+            .find(|e| e.value == value && e.footprint == footprint && e.lcsc == s.lcsc)
         {
             Some(entry) => entry.designators.push(s.refdes.clone()),
             None => entries.push(BomEntry {
                 designators: vec![s.refdes.clone()],
-                value: s.value.clone(),
+                value,
                 footprint,
                 lcsc: s.lcsc.clone(),
             }),

@@ -41,6 +41,9 @@ pub enum Fit {
     HandSolder,
     /// Marked "do not populate".
     NotFitted,
+    /// JLCPCB places it, and the owner ships the part to JLCPCB (a consigned part): it is in
+    /// the BOM and the placement file and needs no LCSC part number.
+    Consigned,
 }
 
 #[derive(Debug, Clone, PartialEq)]

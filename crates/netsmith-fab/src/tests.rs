@@ -33,6 +33,11 @@ fn sample_bom() -> Vec<BomEntry> {
     ]
 }
 
+/// The text of `bom.csv` for a plan: the rows from stock and the consigned ones.
+fn render_rows(plan: &Plan) -> String {
+    bom::render(&plan.bom_rows())
+}
+
 /// SAMPLE with its back-side resistor moved to the front, so the whole board is on top.
 fn all_top_board() -> String {
     SAMPLE.replace("(layer \"B.Cu\")", "(layer \"F.Cu\")")
@@ -81,6 +86,94 @@ fn what_the_design_says_about_a_part_overrides_the_footprints_attributes() {
     assert_eq!(p.not_fitted, ["D1", "H1"]);
     let placed: Vec<_> = p.assembled.iter().map(|p| p.designator.as_str()).collect();
     assert_eq!(placed, ["R1", "J1"]);
+}
+
+#[test]
+fn a_consigned_part_is_in_the_bom_and_the_placement_with_no_part_number() {
+    let board = Board::parse(SAMPLE).unwrap();
+    // R2 is the owner's to ship: its row has the manufacturer's number as the comment and no
+    // LCSC number, and `fab` does not refuse it.
+    let mut bom = sample_bom();
+    bom[1] = entry(&["R2"], "ZZR-1234", None);
+    let options = Options {
+        fit: [("R2".to_string(), Fit::Consigned)].into(),
+        ..Options::default()
+    };
+    let p = plan(&board, &bom, &options).unwrap();
+    assert_eq!(p.bom.len(), 1);
+    assert_eq!(p.bom[0].designators, ["R1"]);
+    assert_eq!(p.consigned.len(), 1);
+    assert_eq!(p.consigned[0].designators, ["R2"]);
+    assert!(p.unassembled.is_empty(), "{:?}", p.unassembled);
+    assert!(p.hand_solder == ["J1"] && p.not_fitted == ["D1"]);
+    let placed: Vec<_> = p.assembled.iter().map(|p| p.designator.as_str()).collect();
+    assert_eq!(placed, ["R1", "R2"]);
+    assert_eq!(
+        render_rows(&p),
+        "Comment,Designator,Footprint,LCSC Part #\n10k,R1,R_0603_1608Metric,C25804\nZZR-1234,R2,R_0603_1608Metric,\n"
+    );
+}
+
+#[test]
+fn a_consigned_part_does_not_share_a_row_with_a_part_from_stock() {
+    let board = Board::parse(SAMPLE).unwrap();
+    // R1 and R2 are one row but for who supplies them.
+    let options = Options {
+        fit: [("R2".to_string(), Fit::Consigned)].into(),
+        ..Options::default()
+    };
+    let p = plan(&board, &sample_bom(), &options).unwrap();
+    assert_eq!(p.bom[0].designators, ["R1"]);
+    assert_eq!(p.consigned[0].designators, ["R2"]);
+    assert_eq!(p.consigned[0].lcsc.as_deref(), Some("C25804"));
+    assert_eq!(p.bom_rows().len(), 2);
+}
+
+#[test]
+fn a_consigned_part_the_bom_does_not_list_is_an_error_like_any_part_to_place() {
+    let board = Board::parse(SAMPLE).unwrap();
+    let mut bom = sample_bom();
+    bom.retain(|e| e.designators != ["R2"]);
+    let options = Options {
+        fit: [("R2".to_string(), Fit::Consigned)].into(),
+        ..Options::default()
+    };
+    let err = plan(&board, &bom, &options).unwrap_err();
+    assert!(
+        matches!(err, Error::NotInBom(ref d) if d == &["R2"]),
+        "{err}"
+    );
+}
+
+#[test]
+fn the_notes_list_consigned_parts_with_their_number_and_quantity_and_say_who_ships_them() {
+    let pcb = write_pcb("consigned", &all_top_board());
+    let mut bom = sample_bom();
+    bom[1] = entry(&["R2"], "ZZR-1234", None);
+    let options = Options {
+        fit: [("R2".to_string(), Fit::Consigned)].into(),
+        ..Options::default()
+    };
+    let pkg = package(&pcb, &bom, &options).unwrap();
+    assert_eq!(
+        pkg.bom_csv,
+        "Comment,Designator,Footprint,LCSC Part #\n10k,R1,R_0603_1608Metric,C25804\nZZR-1234,R2,R_0603_1608Metric,\n"
+    );
+    assert_eq!(
+        pkg.cpl_csv,
+        "Designator,Mid X,Mid Y,Layer,Rotation\nR1,10,10,top,270\nR2,20,10,top,90\n"
+    );
+    let line = pkg
+        .notes
+        .lines()
+        .find(|l| l.starts_with("consigned:"))
+        .unwrap_or_else(|| panic!("{}", pkg.notes));
+    assert!(
+        line.starts_with("consigned: R2 (ZZR-1234, 1 part)")
+            && line.contains("you ship these parts to JLCPCB"),
+        "{line}"
+    );
+    assert!(!pkg.notes.contains("unassembled"), "{}", pkg.notes);
 }
 
 #[test]
