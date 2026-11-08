@@ -251,11 +251,10 @@ pub fn resolve_generics(
 pub(crate) fn unresolved_findings(
     sourcing: &[Sourced],
     origins: &[InstId],
-    rechecks: &[Recheck],
     catalogs: &Catalogs,
     path_of: &dyn Fn(InstId) -> String,
 ) -> Vec<Guideline> {
-    resolve_generics(sourcing, rechecks, catalogs)
+    resolve_generics(sourcing, catalogs)
         .1
         .iter()
         .filter_map(|u| {
@@ -402,7 +401,7 @@ mod tests {
     }
 
     fn findings(parts: &[Sourced], catalogs: &Catalogs) -> Vec<Guideline> {
-        unresolved_findings(parts, &[], &[], catalogs, &|_| String::new())
+        unresolved_findings(parts, &[], catalogs, &|_| String::new())
     }
 
     #[test]

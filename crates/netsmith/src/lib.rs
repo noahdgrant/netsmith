@@ -667,7 +667,6 @@ fn unresolved_generics(
     let findings = resolve::unresolved_findings(
         &one.sourcing,
         &one.trace.origins,
-        &one.rechecks,
         catalogs,
         &|inst| one.trace.model.path_of(inst),
     );
