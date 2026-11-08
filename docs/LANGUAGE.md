@@ -974,6 +974,112 @@ Behind: open circle guideline: these values depend on each other and none has a 
 - A current that is exactly zero is not a term. `.after.current &= 0A` says nothing else draws from the net, so the part's current is the divider's, and what is left is a circle of equations, which a voltage starts as above (and the finding then says so in its first form).
 - The finding is given when a bound (`>=` or `<=`) that reads a value in the circle is not evaluated, and the circle would close through the currents of a net of more than two terms that has no value. A design whose load simply has no stated current (a fuse in front of a load) is no circle and gets the notes alone; so does a net that has pins the solver cannot account for (an IC's signal pin), because nothing on it is determined by the others even in principle.
 
+#### What starts it: the rail that supplies the net, with its sign
+
+Two statements look alike and only one starts the circle. Take the board above and let a lamp, a `Rail` with its own range, share the net `AFTER` (`.after ~ .lamp`). The lamp's `.current &= 0A..4mA` is a load, so it counts positive (see _The sign of a current_ under Load current). It does not start the circle: it is a fourth term on a net whose other three currents still have no value, and the finding is the same:
+
+```nsm solve warns
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+module Divider {
+    .vin: Rail
+    .mid: Pin
+    .max_draw: Current
+    .top: Resistor
+    .bottom: Resistor
+    .vin.pos ~> .top ~> .mid
+    .mid ~> .bottom ~> .vin.neg
+    .top.current == .vin.voltage / (.top.resistance + .bottom.resistance)
+    .bottom.current == .top.current
+    .top.current <= .max_draw
+}
+
+board Behind {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .supply: Rail {
+        .voltage &= 14V..22V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .series: Resistor { .resistance &= 68ohm +/- 1% }
+    .after: Rail {
+        .pos.net &= "AFTER"
+        .neg.net &= "GND"
+    }
+    .supply.neg ~ .after.neg
+    .supply.pos ~> .series ~> .after.pos
+    .after.voltage == .supply.voltage - .series.drop
+
+    .divider: Divider { .max_draw &= 40uA }
+    .divider.mid.net &= "MID"
+    .after ~ .divider.vin
+    .lamp: Rail {
+        .pos.net &= "AFTER"
+        .neg.net &= "GND"
+        .current &= 0A..4mA
+    }
+    .after ~ .lamp
+}
+```
+
+```text
+Behind: open circle guideline: these values depend on each other and none has a value: `after.current`, `after.voltage`, `divider.top.current`, `divider.vin.current`, `divider.vin.voltage`, `lamp.voltage`, `series.current`, `series.drop`, `supply.current`; so the checks `divider.top.current <= divider.max_draw`, `(series.drop * series.current) <= series.max_power`, `(divider.top.drop * divider.top.current) <= divider.top.max_power` and 1 more are not evaluated, and the parts they would judge are chosen without them; net `AFTER` carries 3 currents (`after.current`, `divider.vin.current`, `series.current`), none of which has a value, and the solver works a part's current out only from a net of two currents (ADR 0026), so what the checks wait on is never set: state a range on `series.current` (the part's current: the most and the least that the net's loads draw through it), or on a voltage in the circle, for example `after.voltage`; if nothing else draws from the net, `after.current &= 0A` makes it a circle of equations, which a voltage starts; the checks are then made against what you state, and nothing compares it with the net's other currents
+```
+
+The rail that supplies the net starts it. Here that is `.supply`, which supplies the net `VIN` and whose current counts negative: `.supply.current &= -8mA..0A` says it supplies at most 8 mA. The net `VIN` has two currents, the supply's and the series part's, so the series part's current follows from the supply's, and the circle is started. The finding goes and the divider is picked against its 40 uA (1M, not 330 ohm):
+
+```nsm solve
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+module Divider {
+    .vin: Rail
+    .mid: Pin
+    .max_draw: Current
+    .top: Resistor
+    .bottom: Resistor
+    .vin.pos ~> .top ~> .mid
+    .mid ~> .bottom ~> .vin.neg
+    .top.current == .vin.voltage / (.top.resistance + .bottom.resistance)
+    .bottom.current == .top.current
+    .top.current <= .max_draw
+}
+
+board Behind {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .supply: Rail {
+        .voltage &= 14V..22V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .series: Resistor { .resistance &= 68ohm +/- 1% }
+    .after: Rail {
+        .pos.net &= "AFTER"
+        .neg.net &= "GND"
+    }
+    .supply.neg ~ .after.neg
+    .supply.pos ~> .series ~> .after.pos
+    .after.voltage == .supply.voltage - .series.drop
+
+    .divider: Divider { .max_draw &= 40uA }
+    .divider.mid.net &= "MID"
+    .after ~ .divider.vin
+    .lamp: Rail {
+        .pos.net &= "AFTER"
+        .neg.net &= "GND"
+        .current &= 0A..4mA
+    }
+    .after ~ .lamp
+    .supply.current &= -8mA..0A
+}
+```
+
+- Write the supplier's own current, negative: `-8mA..0A`, not `0A..8mA`. A load states its draw positive, a rail that supplies states what it supplies negative.
+- A range on a load joined with `~` onto a net that has other terms without a value (`.lamp.current &= 0A..4mA` here) does not start a circle; a range on the supplier's current does.
+
 #### A circle the solver starts from the supply
 
 A load that states the range it works in (`.load.voltage >= 4V` and `<= 30V`, as a regulator IC states its input range) lets the solver start the circle itself. It takes the range of a value the equation reads that already has one, the supply's `9V..16V`, and grows it until the equation maps it into itself, the way a stated range would be checked. That is the range the load's voltage is in, here 8.4 V to 15.7 V, and the current and the drop follow from it.
@@ -4611,7 +4717,7 @@ error: a panel joins nothing: it repeats one board in a grid, and the boards sta
 
 ## Load current
 
-A `Rail` has a `current` field: the current drawn from the net through the rail's `pos` pin by whatever is behind the rail. It is positive when the thing draws and negative when it supplies (ADR 0007). A design states the consuming side.
+A `Rail` has a `current` field: the current drawn from the net through the rail's `pos` pin by whatever is behind the rail. It is positive when the thing draws and negative when it supplies (ADR 0007; see _The sign of a current_ at the end of this section). A design states the consuming side.
 
 ```nsm solve
 import std::parts::connector::Header1x2
@@ -4809,6 +4915,17 @@ error: the currents at the join `load.input ~ power.output` cannot add up to zer
 21 |     .input: Rail { .current &= -100mA }
    |                    ^^^^^^^^^^^^^^^^^^
 ```
+
+### The sign of a current
+
+Every `current` has one sign convention (ADR 0007), and the rest of this guide uses it. A current is the draw on a net: it is positive when the rail or part takes current from the net, and negative when it supplies the net. A load counts positive and a rail that supplies counts negative.
+
+- A load states its own draw as a positive range: `.output: Rail { .current &= 0mA..50mA }` draws up to 50 mA.
+- The output of whatever supplies a net is negative: a board's `.input` rail, a regulator's `.vout`. `.regulator.vout.current &= -1.2A..0A` says the regulator supplies up to 1.2 A. A regulator's `.vin.current` is positive and equals `-.vout.current`.
+- A range with the wrong sign is a different claim: `0A..1.2A` on a `.vout` says that the output draws.
+- A rail of a module is a port, and from inside the module it counts with its sign flipped (see _Load current_ above).
+
+Which statement starts a circle that runs through the currents of a net depends on this sign: see _A circle through the currents of a net_.
 
 ## Capacitors: marked value, effective capacitance and bias
 
