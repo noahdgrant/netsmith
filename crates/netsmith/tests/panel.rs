@@ -153,7 +153,7 @@ fn a_panel_of_six_boards_has_six_times_the_holes_parts_and_one_outline() {
 
 #[test]
 fn the_panel_board_agrees_with_kicads_plot_of_it() {
-    let Some(cli) = KicadCliExe::locate() else {
+    let Some(cli) = KicadCliExe::locate_runnable() else {
         return;
     };
     let dir = out("cross-check");

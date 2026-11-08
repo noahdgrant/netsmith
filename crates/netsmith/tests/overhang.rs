@@ -198,7 +198,11 @@ fn fab_with_footprint(
     if !layout.is_empty() {
         fs::write(&file, layout).unwrap();
     }
-    let cli = if cross { KicadCliExe::locate() } else { None };
+    let cli = if cross {
+        KicadCliExe::locate_runnable()
+    } else {
+        None
+    };
     let made = fab_with_options(
         "widget.nsm",
         &source.circuit,
@@ -275,7 +279,7 @@ fn a_plug_that_hangs_over_the_bottom_edge_by_a_stated_requirement_places_routes_
 
 #[test]
 fn kicad_agrees_that_the_board_with_the_overhanging_plug_is_clean() {
-    if KicadCliExe::locate().is_none() {
+    if KicadCliExe::locate_runnable().is_none() {
         return;
     }
     let run = fab_checked("kicad", &source(35, 60, 30, DECLARED), "", true);

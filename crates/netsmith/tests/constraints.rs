@@ -111,7 +111,7 @@ fn fab_waiving(
 }
 
 fn have_libraries() -> bool {
-    KicadCliExe::locate().is_some()
+    KicadCliExe::locate_runnable().is_some()
 }
 
 #[test]

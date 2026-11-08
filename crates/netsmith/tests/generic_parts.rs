@@ -114,7 +114,7 @@ fn a_generic_capacitor_inductor_and_led_are_each_listed_unresolved_by_name() {
 
 #[test]
 fn fab_refuses_each_unresolved_generic_part_by_name() {
-    if KicadCliExe::locate().is_none() {
+    if KicadCliExe::locate_runnable().is_none() {
         eprintln!("skipped: no KiCad to read the footprints from");
         return;
     }
