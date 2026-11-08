@@ -78,6 +78,10 @@ pub struct Solution {
     /// spent choosing parts. Tests use it to show that a failing design is not searched
     /// once per combination of parts that have nothing to do with the failure.
     pub trials: usize,
+    /// The work those trials were, in the units of `SearchBudget::work`: what the budget of a
+    /// search is counted in, because a trial on a large board is not the same effort as one on
+    /// a small board.
+    pub work: u64,
     /// Parts of a catalog with a value column (a resistor's resistance) that were picked while
     /// nothing limited the value, so the solver took the first row that fits (ADR 0065): a
     /// guideline finding.
@@ -164,8 +168,28 @@ enum Underated {
     Curve(DeratingError),
 }
 
-/// The most the search will try before it stops and says so.
-const MAX_TRIALS: usize = 250_000;
+/// How many names the give-up message lists before it counts the rest.
+const GIVE_UP_NAMES: usize = 12;
+
+/// What a search that ran out of its budget says (`SearchBudget`): how many combinations it
+/// tried, which parts it was choosing together, and what to change. The parts are searched
+/// together because a bound reads values of several of them, and the search tried the
+/// combinations in turn because no failure pointed at fewer parts than all.
+fn give_up_message(tried: usize, names: &[String], out_of_work: bool) -> String {
+    let shown = names.len().min(GIVE_UP_NAMES);
+    let mut parts = names[..shown].join(" and ");
+    if names.len() > shown {
+        parts.push_str(&format!(" and {} more", names.len() - shown));
+    }
+    let limit = if out_of_work {
+        " (the search stopped for the work it had done, which grows with the size of the board, and not for the number of combinations it had tried)"
+    } else {
+        ""
+    };
+    format!(
+        "gave up after trying {tried} combinations of candidates for {parts}{limit}; a bound reads values of all of them, so no part could be blamed alone. State a value for one of them, narrow a window that a bound on them reads, or split the group so that fewer parts share a bound"
+    )
+}
 
 /// The solver's state before a group of parts was searched, to put it back.
 #[derive(Clone)]
@@ -237,7 +261,11 @@ const FIELDS_REPORT_EVERY: usize = 512;
 #[derive(Default)]
 struct Search {
     trials: usize,
+    /// `Solver::work` when the search began: the work of this search is what came after.
+    work_from: u64,
     gave_up: bool,
+    /// Whether it gave up for the work it had done and not for the candidates it had tried.
+    out_of_work: bool,
     /// How many candidates fit the first part's constraints, for the message.
     first_level_fits: usize,
     /// The part, if any, that had nothing fitting what the design already says.
@@ -457,6 +485,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         fed: HashSet::new(),
         fed_at_start: HashSet::new(),
         trials: 0,
+        work: 0,
         seeded: Vec::new(),
         original_relations: model.relations().len(),
         extras: Vec::new(),
@@ -578,6 +607,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         default_assembly: catalogs.default_assembly().map(str::to_string),
         not_evaluated,
         trials: s.trials,
+        work: s.work,
         unconstrained,
         unstated,
     }
@@ -723,6 +753,10 @@ struct Solver<'a> {
     fed_at_start: HashSet<FieldId>,
     /// Candidates tried so far, over every group.
     trials: usize,
+    /// The work done so far, over every group (`SearchBudget::work`): a unit for each equation,
+    /// relation and balance that a pass of `propagate` reads, for each relation a trial is
+    /// judged against, and for each candidate that a part's turn looks at.
+    work: u64,
     /// The circles of values that were started from the supply's range (ADR 0053).
     seeded: Vec<Seeded>,
     /// How many relations the design wrote: the ones after them are the solver's own
@@ -953,6 +987,9 @@ impl Solver<'_> {
         for _ in 0..64 {
             job::checkpoint();
             let mut changed = false;
+            // A pass reads every equation, relation and balance, to skip those that did not
+            // change: the work of a trial grows with the board (`SearchBudget::work`).
+            self.work += (equalities.len() + relations.len() + balances.len()) as u64;
 
             for (item, &(a, b)) in equalities.iter().enumerate() {
                 let at = equalities_at[item];
@@ -2768,6 +2805,7 @@ impl Solver<'_> {
         let group = &ordered[..];
         let mut search = Search {
             elsewhere,
+            work_from: self.work,
             ..Search::default()
         };
         // A part with no candidate that fits what the design already says cannot be chosen
@@ -2825,14 +2863,8 @@ impl Solver<'_> {
         let (part_source, part_span) = part.at();
 
         if search.gave_up {
-            self.report(
-                part_source,
-                part_span,
-                format!(
-                    "gave up after trying {MAX_TRIALS} combinations of candidates for {}; narrow what they need or give them fewer choices",
-                    names.join(" and ")
-                ),
-            );
+            let message = give_up_message(search.trials, &names, search.out_of_work);
+            self.report(part_source, part_span, message);
         } else if let Some(c) = learned
             .as_ref()
             .and_then(|f| f.closest.clone())
@@ -3094,7 +3126,9 @@ impl Solver<'_> {
         if depth == group.len() {
             return Outcome::Solved;
         }
+        let budget = self.catalogs.search_budget();
         let job = &jobs[group[depth]];
+        self.work += job.catalog.candidates.len() as u64;
         let fitting: Vec<&Candidate> = job
             .catalog
             .candidates
@@ -3164,14 +3198,17 @@ impl Solver<'_> {
                     if count_free_failure[index] {
                         continue;
                     }
+                    self.work += failed.len() as u64;
                     if failed
                         .iter()
                         .any(|&(f, n)| n == count && self.interchangeable(job, f, c))
                     {
                         continue;
                     }
-                    if search.trials >= MAX_TRIALS {
+                    if search.trials >= budget.trials || self.work - search.work_from >= budget.work
+                    {
                         search.gave_up = true;
+                        search.out_of_work = search.trials < budget.trials;
                         return Outcome::GaveUp;
                     }
                     // A trial is a rollback and a propagation: milliseconds, so one checkpoint for
@@ -3738,6 +3775,7 @@ impl Solver<'_> {
             .map(|&index| (index, true))
             .chain(waiting.iter().map(|&index| (index, false)));
         for (index, whole) in judged {
+            self.work += 1;
             let r = &relations[index];
             let mut own = Vec::new();
             fields_in(&r.lhs, &mut own);
