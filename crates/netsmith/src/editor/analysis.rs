@@ -15,8 +15,8 @@ use netsmith_core::job;
 use netsmith_editor::{
     AnalysisEvent, ApiError, Observer, Work,
     api::{
-        Analysis, BoardDetail, BoardSummary, Location, ModuleUse, NetInfo, PanelSummary, PartInfo,
-        PinInfo, Problem, ProblemStage, Severity, SystemSummary,
+        Analysis, BoardDetail, BoardSummary, Cause, Location, ModuleUse, NetInfo, PanelSummary,
+        PartInfo, PinInfo, Problem, ProblemStage, Severity, SystemSummary,
     },
 };
 
@@ -217,6 +217,7 @@ fn problem(severity: Severity, p: &crate::Problem) -> Problem {
         }),
         board: p.board.clone(),
         path: p.path.clone(),
+        cause: None,
     }
 }
 
@@ -229,6 +230,7 @@ fn general(message: String) -> Problem {
         stage: Some(ProblemStage::Check),
         board: None,
         path: None,
+        cause: None,
     }
 }
 
@@ -270,6 +272,7 @@ fn internal_problem(what: &str, message: &str, board: Option<String>) -> Problem
         stage: Some(ProblemStage::Check),
         board,
         path: None,
+        cause: None,
     }
 }
 
@@ -288,6 +291,7 @@ impl Snapshot {
                 stage: Some(ProblemStage::Check),
                 board: None,
                 path: None,
+                cause: Some(Cause::Other),
             }],
             ..Snapshot::default()
         }
@@ -596,10 +600,15 @@ impl Workspace {
                             ));
                         }
                         let solver_notes = built.notes.len() - built.lowering_notes;
-                        for (n, note) in built.notes.iter().enumerate() {
-                            snapshot
-                                .problems
-                                .push(note_problem(&built, note, n >= solver_notes));
+                        for (n, (note, cause)) in
+                            built.notes.iter().zip(&built.note_causes).enumerate()
+                        {
+                            snapshot.problems.push(note_problem(
+                                &built,
+                                note,
+                                (*cause).into(),
+                                n >= solver_notes,
+                            ));
                         }
                         for guideline in &built.guidelines {
                             snapshot.problems.push(guideline_problem(&built, guideline));
@@ -978,7 +987,7 @@ pub(super) fn api_location(l: crate::Location) -> Location {
 /// A note of the build, at the instance it is about if it names one. A part not chosen is a
 /// warning, because the design has a hole; a relation not evaluated and a balance that is
 /// incomplete are notes, which say what the solver left alone and are mostly expected.
-fn note_problem(built: &Built, note: &str, from_lowering: bool) -> Problem {
+fn note_problem(built: &Built, note: &str, cause: Cause, from_lowering: bool) -> Problem {
     let model = &built.trace.model;
     let at = note_path_at(model, note).map(|inst| {
         let (src, span) = model.instance(inst).at();
@@ -989,6 +998,8 @@ fn note_problem(built: &Built, note: &str, from_lowering: bool) -> Problem {
     } else {
         Severity::Note
     };
+    // Only a note has a cause: a part not chosen is a warning, shown as one.
+    let cause = (severity == Severity::Note).then_some(cause);
     Problem {
         severity,
         message: format!("{}: {note}", built.label()),
@@ -1003,6 +1014,7 @@ fn note_problem(built: &Built, note: &str, from_lowering: bool) -> Problem {
         path: note_path_at(model, note)
             .map(|inst| model.path_of(inst))
             .filter(|p| !p.is_empty()),
+        cause,
     }
 }
 
@@ -1031,6 +1043,7 @@ fn guideline_problem(built: &Built, guideline: &netsmith_lower::guidelines::Guid
             .at
             .map(|inst| model.path_of(inst))
             .filter(|p| !p.is_empty()),
+        cause: None,
     }
 }
 
@@ -1047,6 +1060,8 @@ fn power_problem(built: &Built, issue: &crate::PowerIssue) -> Problem {
         stage: Some(ProblemStage::Power),
         board: Some(built.label()),
         path: Some(issue.subject.clone()),
+        // Every note of the power model is about a supply, a load or a converter left unsettled.
+        cause: Some(Cause::Supply),
     }
 }
 

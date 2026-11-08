@@ -182,6 +182,7 @@ pub(crate) fn notes(model: &Model) -> Vec<NotEvaluated> {
                 .iter()
                 .map(|&e| model.owner_of(e).unwrap_or(e))
                 .collect(),
+            cause: netsmith_core::Cause::NotStated,
             message: format!(
                 "not evaluated: the clock of bus `{first}` is not stated, so the limits on it are not checked ({}); state the clock the board runs, `.{first}.{clock} &= <the clock>`",
                 and(&limits)

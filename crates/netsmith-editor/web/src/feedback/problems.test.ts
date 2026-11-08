@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Location, PcbFinding, Problem } from '../api';
+import type { Cause, Location, PcbFinding, Problem } from '../api';
 import {
+  CAUSE_LABEL,
+  CAUSE_ORDER,
+  CAUSE_WHY,
   DEFAULT_FILTER,
   type Row,
   classify,
@@ -181,9 +184,62 @@ describe('groupRows', () => {
   });
 });
 
+describe('grouping by cause', () => {
+  const note = (message: string, cause: Cause | undefined, line: number) =>
+    rowOfProblem({ ...problem('note', message, at('a.nsm', line)), stage: 'solve', ...(cause ? { cause } : {}) }, line);
+  const error = rowOfProblem({ ...problem('error', 'e', at('a.nsm', 1)), stage: 'check' }, 0);
+  const warning = rowOfProblem({ ...problem('warning', 'w', at('a.nsm', 2)), stage: 'guideline' }, 1);
+
+  it('reads the cause the server names and never the message', () => {
+    expect(note('not evaluated: a == b', 'part_model', 3).cause).toBe('part_model');
+    expect(error.cause).toBeNull();
+  });
+  it('puts the notes under their cause, in the fixed order of the causes, whatever the order of the rows', () => {
+    const notes = [
+      note('n1', 'track', 9),
+      note('n2', 'not_stated', 8),
+      note('n3', 'supply', 7),
+      note('n4', 'not_stated', 6),
+      note('n5', 'part_model', 5),
+    ];
+    const titles = (rs: Row[]) => groupRows(rs, 'cause').map((g) => g.title);
+    const want = [CAUSE_LABEL.not_stated, CAUSE_LABEL.part_model, CAUSE_LABEL.supply, CAUSE_LABEL.track];
+    expect(titles(notes)).toEqual(want);
+    expect(titles([...notes].reverse())).toEqual(want);
+    const g = groupRows(notes, 'cause');
+    expect(g.map((x) => x.rows.length)).toEqual([2, 1, 1, 1]);
+    expect(g[0].rows.map((r) => r.message)).toEqual(['n4', 'n2']);
+    expect(g.every((x) => x.why)).toBe(true);
+  });
+  it('lists an error and a warning first, with no head, so a board with no notes reads as with no grouping', () => {
+    const g = groupRows([warning, error], 'cause');
+    expect(g).toHaveLength(1);
+    expect(g[0].title).toBe('');
+    expect(g[0].rows.map((r) => r.message)).toEqual(['e', 'w']);
+    const withNotes = groupRows([note('n', 'pick', 4), warning, error], 'cause');
+    expect(withNotes.map((x) => x.title)).toEqual(['', CAUSE_LABEL.pick]);
+  });
+  it('shows one group when every note has one cause', () => {
+    const g = groupRows([note('a', 'supply', 1), note('b', 'supply', 2)], 'cause');
+    expect(g).toHaveLength(1);
+    expect(g[0].rows).toHaveLength(2);
+  });
+  it('files a note with no cause (a server older than the field) under other', () => {
+    const g = groupRows([note('old', undefined, 1)], 'cause');
+    expect(g.map((x) => x.key)).toEqual(['other']);
+  });
+  it('has a name and a sentence for every cause, and the order lists each once', () => {
+    expect(new Set(CAUSE_ORDER).size).toBe(CAUSE_ORDER.length);
+    for (const c of CAUSE_ORDER) {
+      expect(CAUSE_LABEL[c]).toBeTruthy();
+      expect(CAUSE_WHY[c]).toBeTruthy();
+    }
+  });
+});
+
 describe('parseGroup', () => {
-  it('knows the four groupings and takes anything else for none', () => {
-    expect(['none', 'file', 'severity', 'stage'].map(parseGroup)).toEqual(['none', 'file', 'severity', 'stage']);
+  it('knows the groupings and takes anything else for none', () => {
+    expect(['none', 'file', 'severity', 'stage', 'cause'].map(parseGroup)).toEqual(['none', 'file', 'severity', 'stage', 'cause']);
     expect(parseGroup('by-colour')).toBe('none');
     expect(parseGroup(undefined)).toBe('none');
   });

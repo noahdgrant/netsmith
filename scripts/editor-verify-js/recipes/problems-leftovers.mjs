@@ -61,7 +61,9 @@ export async function run({ page, shot, step, expect, project, section }) {
     await page.waitForSelector('.dock-group-head');
     const heads = await page.locator('.dock-group-head').evaluateAll((els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
     expect(heads.length === 1 && /^Guideline\s*2$/.test(heads[0]), `grouped by stage: ${heads.join(' | ')}`);
-    expect((await page.locator('.dock-group option').allTextContents()).join(',') === 'No grouping,Group by file,Group by severity,Group by stage', 'four groupings in the menu');
+    expect((await page.locator('.dock-group option').allTextContents()).join(',') === 'No grouping,Group by file,Group by severity,Group by stage,Group by cause', 'five groupings in the menu');
+    await page.locator('.dock-group').selectOption('cause');
+    expect((await page.locator('.dock-group-head').count()) === 0, 'by cause: two warnings and no note have no head, as with no grouping');
     await page.locator('.dock-group').selectOption('none');
 
     step('many warnings: F8 steps through them and the picked row is always in view');

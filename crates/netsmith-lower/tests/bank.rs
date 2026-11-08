@@ -200,6 +200,22 @@ fn a_requirement_on_a_banks_part_holds_for_every_capacitor_and_a_note_says_so() 
 }
 
 #[test]
+fn what_a_bank_says_of_what_it_did_has_the_cause_other() {
+    let l = lowered_physical(&format!(
+        "{OUTLINE}    .bulk.place.x - .r1.place.x == 5.5mm +/- 3.5mm\n}}\n"
+    ));
+    assert!(!l.notes.is_empty());
+    assert_eq!(l.note_causes.len(), l.notes.len());
+    assert!(
+        l.note_causes
+            .iter()
+            .all(|&c| c == netsmith_core::Cause::Other),
+        "{:?}",
+        l.note_causes
+    );
+}
+
+#[test]
 fn a_relation_with_a_banks_part_holds_for_every_capacitor_and_a_note_says_so() {
     let l = lowered_physical(&format!(
         "{OUTLINE}    .bulk.place.x - .r1.place.x == 5.5mm +/- 3.5mm\n}}\n"

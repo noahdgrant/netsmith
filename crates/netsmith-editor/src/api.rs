@@ -62,6 +62,46 @@ pub enum ProblemStage {
     Layout,
 }
 
+/// Why a note of the build is there: what would make it go (issue #192). The tool that makes
+/// the note says it; the dock groups the notes by it. A closed set (`netsmith_core::Cause`,
+/// which the tools use, is the same list): a note that fits none is `other`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum Cause {
+    /// A check waits on a value that nothing states.
+    NotStated,
+    /// A part's model leaves a value open that a check needs.
+    PartModel,
+    /// netsmith cannot judge the pin or the net yet.
+    Unjudged,
+    /// Values that depend on each other while none has a value.
+    Circular,
+    /// A rail nothing supplies, a load or a converter the solver did not settle.
+    Supply,
+    /// A part a provider stands in for, or one the catalog says is out of stock.
+    Pick,
+    /// A net whose track width is a lower bound, for a current that is not known.
+    Track,
+    /// Anything else the build says about what it did.
+    Other,
+}
+
+impl From<netsmith_core::Cause> for Cause {
+    fn from(c: netsmith_core::Cause) -> Cause {
+        use netsmith_core::Cause as C;
+        match c {
+            C::NotStated => Cause::NotStated,
+            C::PartModel => Cause::PartModel,
+            C::Unjudged => Cause::Unjudged,
+            C::Circular => Cause::Circular,
+            C::Supply => Cause::Supply,
+            C::Pick => Cause::Pick,
+            C::Track => Cause::Track,
+            C::Other => Cause::Other,
+        }
+    }
+}
+
 /// One message of the compiler or solver, or a note of the build.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -90,6 +130,11 @@ pub struct Problem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub path: Option<String>,
+    /// Why a note is there, which the dock groups the notes by. Set on every note of a
+    /// build (the tool that made it says it); a problem that is not a note has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cause: Option<Cause>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -1319,6 +1364,7 @@ pub fn typescript() -> String {
         Location,
         Severity,
         ProblemStage,
+        Cause,
         Problem,
         HintFault,
         HintFindingKind,
