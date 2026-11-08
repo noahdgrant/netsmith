@@ -21,7 +21,7 @@ const DOWNLOADS: [(&str, &str); 2] = [("summary", SUMMARY_FILE), ("bom", BOM_FIL
 impl Workspace {
     /// The orders of the manifest, as it was read when the editor started.
     pub(super) fn list_orders(&self) -> Vec<OrderInfo> {
-        let Some(project) = &self.target.project else {
+        let Some(project) = &self.target().project else {
             return Vec::new();
         };
         project
@@ -50,8 +50,8 @@ impl Workspace {
         say: &Say,
     ) -> Result<OrderReport, ApiError> {
         let started = Instant::now();
-        let order = self
-            .target
+        let target = self.target();
+        let order = target
             .project
             .as_ref()
             .and_then(|p| p.manifest.orders.iter().find(|o| o.name == name))
@@ -65,16 +65,16 @@ impl Workspace {
             downloads,
             elapsed_ms: u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX),
         };
-        let loader = self.target.loader().map_err(ApiError::internal)?;
-        let catalogs = self.target.catalogs().map_err(ApiError::internal)?;
+        let loader = target.loader().map_err(ApiError::internal)?;
+        let catalogs = target.catalogs().map_err(ApiError::internal)?;
         let libraries =
-            crate::Libraries::for_project(self.target.project.as_ref().map(|p| p.root.as_path()))
+            crate::Libraries::for_project(target.project.as_ref().map(|p| p.root.as_path()))
                 .map_err(ApiError::internal)?;
         // The stages `netsmith fab` prints to stderr go to the page instead.
         let _reporting = Reporting::to(say);
         let made = fab_order(
             order,
-            &self.target,
+            &target,
             &loader,
             &catalogs,
             &libraries,
@@ -84,7 +84,7 @@ impl Workspace {
                 allow_drc_violations,
                 ..FabOptions::default()
             },
-            &self.target.fab_out,
+            &target.fab_out,
         );
         Ok(match made {
             Err(problems) => report(false, String::new(), String::new(), problems, Vec::new()),

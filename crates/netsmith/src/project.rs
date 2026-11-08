@@ -797,6 +797,55 @@ impl Target {
         }
     }
 
+    /// This target built again from the manifest on disk, for a long-running editor that finds
+    /// `netsmith.toml` changed: `None` if the manifest reads as it did (a comment, or white
+    /// space), or if there is no project. A target of a project's top-level files (the
+    /// manifest's own list) takes its files, title and output directories from the new
+    /// manifest; one of a named file keeps those and takes only the project. A manifest that
+    /// cannot be read, or that names a top-level file that is no file, is the error: the
+    /// target is not changed by it.
+    pub fn reloaded(&self) -> Result<Option<Target>, String> {
+        let Some(old) = &self.project else {
+            return Ok(None);
+        };
+        let project = Project::load(&old.root)?;
+        if project.manifest == old.manifest {
+            return Ok(None);
+        }
+        let from_manifest = self
+            .files
+            .iter()
+            .map(|f| &f.name)
+            .eq(old.manifest.top_level.iter());
+        if !from_manifest {
+            return Ok(Some(Target {
+                project: Some(project),
+                ..self.clone()
+            }));
+        }
+        let mut files = Vec::new();
+        for name in &project.manifest.top_level {
+            let path = project.root.join(name);
+            if !path.is_file() {
+                return Err(format!(
+                    "{MANIFEST} lists {name} in top_level, but {} is not a file",
+                    path.display()
+                ));
+            }
+            files.push(SourceFile {
+                name: name.clone(),
+                path,
+            });
+        }
+        Ok(Some(Target {
+            title: project.manifest.name.clone(),
+            build_out: project.out_dir(),
+            fab_out: project.fab_dir(),
+            files,
+            project: Some(project),
+        }))
+    }
+
     /// What `import` can reach: the standard library, and the project's `src/` if the
     /// files belong to a project. Read again on each call, so a long-running `editor` sees
     /// new files.

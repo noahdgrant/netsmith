@@ -398,14 +398,21 @@ impl Workspace {
         live: Option<Observer>,
     ) -> Snapshot {
         let mut snapshot = Snapshot::default();
-        let loader = match self.target.loader_with(unsaved) {
+        // The manifest on disk cannot be read: nothing is built from it, as for `netsmith
+        // build`, and its own message is the problem, until it is mended.
+        if let Some(e) = self.manifest_error() {
+            snapshot.problems.push(general(e));
+            return snapshot;
+        }
+        let target = self.target();
+        let loader = match target.loader_with(unsaved) {
             Ok(loader) => loader,
             Err(e) => {
                 snapshot.problems.push(general(e));
                 return snapshot;
             }
         };
-        let catalogs = match self.target.catalogs() {
+        let catalogs = match target.catalogs() {
             Ok(catalogs) => catalogs,
             Err(e) => {
                 snapshot.problems.push(general(e));
@@ -413,10 +420,10 @@ impl Workspace {
             }
         };
         let libraries = Arc::new(Libraries::for_project(
-            self.target.project.as_ref().map(|p| p.root.as_path()),
+            target.project.as_ref().map(|p| p.root.as_path()),
         ));
-        let files = self.target.files.len() as u32;
-        for (index, file) in self.target.files.iter().enumerate() {
+        let files = target.files.len() as u32;
+        for (index, file) in target.files.iter().enumerate() {
             observe(AnalysisEvent::Progress {
                 stage: "check".to_string(),
                 board: file.name.clone(),
@@ -663,7 +670,7 @@ impl Workspace {
                 }
             }
         }
-        self.check_modules(unsaved, &loader, &mut snapshot, observe);
+        self.check_modules(&target, unsaved, &loader, &mut snapshot, observe);
         // A mistake in a module shows once, however many files import it.
         let mut seen = Vec::new();
         snapshot.problems.retain(|p| {
@@ -677,12 +684,13 @@ impl Workspace {
 
     fn check_modules(
         &self,
+        target: &crate::project::Target,
         unsaved: &HashMap<PathBuf, String>,
         loader: &Loader,
         snapshot: &mut Snapshot,
         observe: &dyn Fn(AnalysisEvent),
     ) {
-        let Some(project) = &self.target.project else {
+        let Some(project) = &target.project else {
             return;
         };
         let Ok(modules) = project.modules() else {
@@ -691,8 +699,7 @@ impl Workspace {
         let modules: Vec<_> = modules
             .into_iter()
             .filter(|module| {
-                !self
-                    .target
+                !target
                     .files
                     .iter()
                     .any(|f| same_file(&f.path, &module.path))

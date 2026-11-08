@@ -38,10 +38,10 @@ impl Workspace {
         // The schematic needs KiCad's symbol libraries, which the editor's own reading of
         // the project does not, so the files are built again here, as the command does.
         let built = (|| -> Result<_, String> {
-            let loader = self.target.loader()?;
-            let catalogs = self.target.catalogs()?;
+            let loader = self.target().loader()?;
+            let catalogs = self.target().catalogs()?;
             let libraries = crate::Libraries::for_project(
-                self.target.project.as_ref().map(|p| p.root.as_path()),
+                self.target().project.as_ref().map(|p| p.root.as_path()),
             )?;
             Ok((loader, catalogs, libraries))
         })();
@@ -51,7 +51,7 @@ impl Workspace {
                 output.push_str(&format!("{e}\n"));
             }
             Ok((loader, catalogs, libraries)) => {
-                for source in &self.target.files {
+                for source in &self.target().files {
                     let text = match fs::read_to_string(&source.path) {
                         Ok(t) => t,
                         Err(e) => {
@@ -71,7 +71,7 @@ impl Workspace {
                         Ok(boards) => {
                             for b in boards {
                                 say(&format!("{}: writing the schematic", b.label()));
-                                match b.write(&self.target.build_out) {
+                                match b.write(&self.target().build_out) {
                                     Ok(dir) => {
                                         let tables = netsmith_kicad::library_tables(
                                             libraries.mapping.libraries(),
@@ -126,8 +126,8 @@ impl Workspace {
             let data = state.snapshot.board(board)?;
             (data.file.clone(), data.built.label())
         };
-        let source = self
-            .target
+        let target = self.target();
+        let source = target
             .files
             .iter()
             .find(|f| f.name == file)
@@ -145,9 +145,9 @@ impl Workspace {
             };
         let text = fs::read_to_string(&source.path)
             .map_err(|e| ApiError::internal(format!("{}: {e}", source.name)))?;
-        let loader = self.target.loader().map_err(ApiError::internal)?;
+        let loader = target.loader().map_err(ApiError::internal)?;
         let libraries =
-            crate::Libraries::for_project(self.target.project.as_ref().map(|p| p.root.as_path()))
+            crate::Libraries::for_project(target.project.as_ref().map(|p| p.root.as_path()))
                 .map_err(ApiError::internal)?;
         // The stages `netsmith fab` prints to stderr go to the page instead.
         let _reporting = Reporting::to(say);
@@ -155,8 +155,8 @@ impl Workspace {
             &source.name,
             &text,
             &loader,
-            &self.target.fab_out,
-            &self.target.catalogs().map_err(ApiError::internal)?,
+            &target.fab_out,
+            &target.catalogs().map_err(ApiError::internal)?,
             &libraries,
             None,
             &FabOptions {
