@@ -955,6 +955,39 @@ error: `max_dcr` is `optional` (at main.nsm:2) and is stated here with `&=`, in 
   |     ^^^^^^^^^^^^^^^^^^
 ```
 
+### A generic part that no row can be ordered for
+
+The solver keeps a generic part (a resistor, capacitor, inductor or LED of a value that no catalog row has, ADR 0047) when no row meets the design, and records what the design asks of it: for an inductor in a converter, a saturation current of at least 6.05 A. The bill of materials and `fab` then look for a row that can be ordered for it, and `fab` refuses the board when there is none. A third finding says so when the board is built, for every assembled generic part and not only those on a power path (issue #182). It is a guideline like the two above: a `warning:` line by default and an error with `--strict` or `guidelines = "error"` in `netsmith.toml`.
+
+```nsm solve warns generics
+import std::parts::passive::Capacitor
+import std::sources::Rail
+
+board Odd {
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .c: Capacitor {
+        .capacitance &= 130nF +/- 10%
+        .max_voltage >= 12V
+    }
+    .supply.pos ~ .c.a
+    .supply.neg ~ .c.b
+}
+```
+
+```text
+Odd: unresolved generic guideline: C1 (c): the solver kept a generic part because no row of the `capacitor` catalog can be ordered for 130 nF 10% 0402, rated voltage at least 12 V (E24, needs a recorded DC-bias curve). Nearest in the catalog: 100nF 10% 16V X7R 0402 C1525 (-23.1%, Basic), 100nF 10% 50V X7R 0402 C307331 (-23.1%, Basic), 220nF 10% 16V X7R 0402 C16772 (+69.2%, Basic). Checked again with each alternative in this part's place, its stated value left out: 100nF 10% 16V X7R 0402 C1525 passes every check; 100nF 10% 50V X7R 0402 C307331 passes every check; 220nF 10% 16V X7R 0402 C16772 passes every check. `fab` will refuse the board until a row meets it: add one to the project's `capacitor` catalog (`catalogs/capacitor.csv`), or change the design so that a row in the catalogs does.
+```
+
+The finding names the part (its reference designator and its path), what the solver kept (value, tolerance, package) and the need it recorded, the rows nearest the need and what the design does with each in the part's place, and what to add: a row that meets it, in the project's catalog (ADR 0022). The rows are ranked by how near they come to the need that fails, not by value, so a project row that nearly meets it (a 5.3 A inductor for a 6.05 A need) is listed before a standard row of the right value that falls far short. `fab` prints the same list in its refusal.
+
+- **A part that is not assembled is not reported.** A part with `.assembly &= AssemblyMode::Hand` or `AssemblyMode::None`, or a through-hole part that is soldered by hand, needs no row for the board house; `fab` does not refuse it either.
+- **A generic that a row can be ordered for is not reported.** The check is `fab`'s own (the stock a provider reports is read as it is for `fab`), so the finding appears exactly when `fab` would refuse the part.
+- **It is made after the other findings.** With `--strict`, a board that has an unconstrained pick or an open circle is refused for those first, and this one is listed once they are fixed.
+
 ### Values that wait on each other
 
 The solver sets a field from an equation only when every field on the right has a value. If equations feed each other in a circle and no field of the circle has a value, none can be set first: every relation in the circle, and every check after it, stays unevaluated. A load that draws constant power through a series resistor is such a circle. Its voltage needs the drop across the resistor, the drop needs the current, and the current needs the voltage.
@@ -3180,7 +3213,7 @@ A file named like a standard catalog adds its rows after the standard ones, so t
 - An **inductor** is a value of the series from 1 nH to 1 mH, a tolerance of 30%, 20% or 10%, and a 0402, 0603, 0805 or 1210 package. Its saturation current is the least that any relation demands, the stage's included (`.inductor.current + .ripple / 2 <= .inductor.saturation_current` is worked out after the part's marked inductance has set the ripple, ADR 0057), so it is a requirement on the row that will stand for the part; its DC resistance the most that a relation allows. A rating that nothing bounds is left unknown, and the check that mentions it is listed as not evaluated.
 - An **LED** is a package (0402, 0603 or 0805) with the colour and the forward voltage the design states, and is used only where the design states the forward voltage, since other values are worked out from it.
 
-When the bill of materials or `fab` is made, each generic part is resolved to the row of the catalog with the same package and value, a tolerance no wider and every rating it was given no lower (and, for a capacitor, a recorded bias curve): JLCPCB Basic before Preferred before Extended, then the order of the file, passing over a row that a supply provider says has no stock. A generic part no row stands for is *unresolved*: the bill of materials lists it with the nearest rows and `fab` refuses it by name. The message also says, for each nearest row, whether the board's checks pass with that row in the part's place (the part's own stated value left out, every relation kept), at most 30 solves for a board; it ends "Change the value in the design and build again", because a new value is checked against every relation by the build.
+When the bill of materials or `fab` is made, each generic part is resolved to the row of the catalog with the same package and value, a tolerance no wider and every rating it was given no lower (and, for a capacitor, a recorded bias curve): JLCPCB Basic before Preferred before Extended, then the order of the file, passing over a row that a supply provider says has no stock. A generic part no row stands for is *unresolved*: the bill of materials lists it with the nearest rows and `fab` refuses it by name. The message also says, for each nearest row, whether the board's checks pass with that row in the part's place (the part's own stated value left out, every relation kept), at most 30 solves for a board; it ends "Change the value in the design and build again", because a new value is checked against every relation by the build. The nearest rows are ranked by how near they come to the rating that fails (a project row at 5.3 A for a need of 6.05 A before a standard row at 3.6 A), then by package and value. `build` says the same about every assembled generic part that is unresolved, as a guideline finding (see "A generic part that no row can be ordered for").
 
 A project's file, `catalogs/resistor.csv`, adds a 316 ohm resistor to the standard resistors, and a board asks for it:
 

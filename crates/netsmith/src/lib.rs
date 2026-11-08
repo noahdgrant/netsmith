@@ -467,6 +467,7 @@ pub fn outcome_observed(
             let board = board.clone();
             Box::new(move |pinned: &Catalogs| quietly(|| solve(&board, pinned)))
         });
+        unresolved_generics(&mut one, &board.name, catalogs, sources)?;
         built.push(one);
     }
     let standalone = total - checked.systems.len();
@@ -594,6 +595,7 @@ pub fn outcome_observed(
                 let system = system.clone();
                 Box::new(move |pinned: &Catalogs| quietly(|| solve_system(&system, pinned)))
             });
+            unresolved_generics(&mut one, &label, catalogs, sources)?;
             built.push(one);
         }
         solved.push(SolvedSystem {
@@ -650,6 +652,31 @@ pub fn outcome_observed(
 /// (`Rechecks::get` says how many alternatives it has solved).
 fn quietly<T>(work: impl FnOnce() -> T) -> T {
     netsmith_core::job::reporting(std::rc::Rc::new(|_| {}), work)
+}
+
+/// The guideline of each assembled generic part that no catalog row can be ordered for (issue
+/// #182), which is `fab`'s refusal said when the board is built: a warning, or with
+/// guidelines made errors a problem for each, at the part. It is made after the board is
+/// exported, because what is assembled by hand is known only then.
+fn unresolved_generics(
+    one: &mut Built,
+    label: &str,
+    catalogs: &Catalogs,
+    sources: &Sources,
+) -> Result<(), Vec<Problem>> {
+    let findings = resolve::unresolved_findings(
+        &one.sourcing,
+        &one.trace.origins,
+        &one.rechecks,
+        catalogs,
+        &|inst| one.trace.model.path_of(inst),
+    );
+    if catalogs.strict_guidelines() {
+        refuse_guidelines(label, &findings, &one.trace.model, sources)
+    } else {
+        one.guidelines.extend(findings);
+        Ok(())
+    }
 }
 
 /// With guidelines made errors (ADR 0036), a finding stops the build: one problem for each,
