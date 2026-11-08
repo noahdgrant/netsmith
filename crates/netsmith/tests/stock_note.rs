@@ -137,7 +137,7 @@ fn netsmith_build_prints_the_note_and_still_builds() {
     fs::create_dir_all(root.join("catalogs")).unwrap();
     fs::write(
         root.join("netsmith.toml"),
-        "[project]\nname = \"invented\"\ncatalogs = [\"catalogs/resistor.csv\"]\n",
+        "[project]\nname = \"invented\"\n",
     )
     .unwrap();
     fs::write(root.join("src/main.nsm"), BOARD).unwrap();
