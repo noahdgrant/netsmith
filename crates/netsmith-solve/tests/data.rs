@@ -394,7 +394,7 @@ fn capacitors_carry_tolerance_voltage_and_package() {
     assert!(ids.contains(&"C16780".to_string()), "a verified 0805");
     assert!(
         !ids.contains(&"C15008".to_string()),
-        "1206 has no footprint"
+        "the 1206 100 uF is recorded in considered.csv, not offered"
     );
 }
 
@@ -696,7 +696,8 @@ fn the_standard_kind_rows_say_where_every_number_was_read() {
         for row in records(&format!("jlcpcb/catalog/{name}.csv")) {
             let lcsc = &row["lcsc"];
             assert!(
-                row["source"].contains("read 2026-11-01"),
+                row["source"].contains("read 2026-11-01")
+                    || row["source"].contains("read 2026-11-07"),
                 "{name} {lcsc}: {}",
                 row["source"]
             );
@@ -738,10 +739,20 @@ fn the_schottky_diodes_carry_the_datasheet_ratings_and_the_ss_series_is_basic() 
     let ss34 = row_of("schottky", "C8678");
     assert_eq!(value(&ss34, "max_forward_current"), quantity(3.0, "A"));
     assert_eq!(ss34.column("package"), Some(&Value::Text("SMA".into())));
+    // The SS3H10 (100 V, 3 A, SMC) is the one Extended Schottky, read from Vishay's datasheet
+    // 88752 (issue 179); the rest are Basic.
+    let ss3h10 = row_of("schottky", "C467997");
+    assert_eq!(ss3h10.mpn.as_deref(), Some("SS3H10-E3/9AT"));
+    assert_eq!(ss3h10.library, Some(Library::Extended));
+    assert_eq!(value(&ss3h10, "forward_voltage"), quantity(0.8, "V"));
+    assert_eq!(value(&ss3h10, "max_reverse_voltage"), quantity(100.0, "V"));
+    assert_eq!(value(&ss3h10, "max_forward_current"), quantity(3.0, "A"));
+    assert_eq!(ss3h10.column("package"), Some(&Value::Text("SMC".into())));
     assert!(
         catalog("schottky")
             .candidates
             .iter()
+            .filter(|c| c.lcsc.as_deref() != Some("C467997"))
             .all(|c| c.library == Some(Library::Basic))
     );
 }

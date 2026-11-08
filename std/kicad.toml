@@ -42,6 +42,18 @@ symbol = "Device:C"
 footprint = "Capacitor_SMD:C_0805_2012Metric"
 
 [[part]]
+kind = "Capacitor"
+package = "1206"
+symbol = "Device:C"
+footprint = "Capacitor_SMD:C_1206_3216Metric"
+
+[[part]]
+kind = "Capacitor"
+package = "1210"
+symbol = "Device:C"
+footprint = "Capacitor_SMD:C_1210_3225Metric"
+
+[[part]]
 kind = "LinearRegulator"
 package = "SOT-23"
 symbol = "Regulator_Linear:AP1117-15"
@@ -133,6 +145,12 @@ kind = "Schottky"
 package = "SMB"
 symbol = "Device:D_Schottky"
 footprint = "Diode_SMD:D_SMB"
+
+[[part]]
+kind = "Schottky"
+package = "SMC"
+symbol = "Device:D_Schottky"
+footprint = "Diode_SMD:D_SMC"
 
 [[part]]
 kind = "Zener"

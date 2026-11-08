@@ -269,7 +269,7 @@ switch/Switch: trials 1 picks [q=2N7002 60V 115mA N-MOSFET SOT-23 C8545x1] findi
 switch_weak/Switch: trials 2 picks [] findings 1\n\
 inductor/Filter: trials 4 picks [fb=BLM18PG221SN1D 220R 1.4A ferrite bead 0603 C80165x1, l=MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758x1, xtal=X503216MSB2GI 16MHz 20pF crystal 5032 C112572x1] findings 0\n\
 saturates/Saturates: trials 1 picks [] findings 1\n\
-bank/Bank: trials 184 picks [bulk=47uF 20% 6.3V X5R 0805 C16780x6] findings 0\n\
+bank/Bank: trials 199 picks [bulk=47uF 20% 6.3V X5R 0805 C16780x6] findings 0\n\
 tight/Tight: trials 0 picks [] findings 1\n\
 ";
 
