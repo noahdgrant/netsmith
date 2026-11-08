@@ -810,6 +810,17 @@ impl Run<'_> {
                     self.name_of_net(g)
                 ));
             }
+            // A line that states its own swing (ADR 0081) is held to it, as written and
+            // relative to its ground; one that does not swings from the ground to the top of
+            // its reference rail.
+            if let Some((_, q)) = self.value(logic, "swing") {
+                swing.add(
+                    q.lo(),
+                    q.hi(),
+                    &format!("`{path}`, a line that states a swing of {q}"),
+                );
+                continue;
+            }
             let Some(Member::Inst(reference)) = model.member(logic, "reference") else {
                 continue;
             };

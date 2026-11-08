@@ -97,6 +97,70 @@ part Pad {
     }
 }
 
+/// A module whose output swings to an internal 1.8 V rail that has no pad: it joins the
+/// reference rail to its battery supply for the ground, and states the swing.
+part Modem {
+    .vbat: Rail
+    .status: Logic
+    .status.reference ~ .vbat
+    .status.swing &= 0V..1.8V
+    pins {
+        .vbat.pos     power  "VBAT" "1"
+        .vbat.neg     power  "GND"  "2"
+        .status.line  output "STATUS" "3"
+    }
+}
+
+/// Like `Modem`, but the swing is signed: it goes 0.3 V below the ground.
+part Ringing {
+    .vbat: Rail
+    .status: Logic
+    .status.reference ~ .vbat
+    .status.swing &= -0.3V..1.8V
+    pins {
+        .vbat.pos     power  "VBAT" "1"
+        .vbat.neg     power  "GND"  "2"
+        .status.line  output "STATUS" "3"
+    }
+}
+
+/// Survives 0 V to 1 V.
+part Pad1 {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.line.abs_max &= 1V
+    pins {
+        .vdd.pos   power "VDD" "1"
+        .vdd.neg   power "GND" "2"
+        .in.line   input "IN"  "3"
+    }
+}
+
+/// Survives 0 V and up to 3.6 V.
+part Pad0 {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.line.abs_min &= 0V
+    .in.line.abs_max &= 3.6V
+    pins {
+        .vdd.pos   power "VDD" "1"
+        .vdd.neg   power "GND" "2"
+        .in.line   input "IN"  "3"
+    }
+}
+
+/// The modem's output as a plain pin, with no `Logic` and so no swing.
+part Plain {
+    .vbat: Rail
+    pins {
+        .vbat.pos  power  "VBAT" "1"
+        .vbat.neg  power  "GND"  "2"
+        .stat      output "STATUS" "3"
+    }
+}
+
 /// A receiver that states no levels.
 part Bare {
     .vdd: Rail
@@ -278,5 +342,84 @@ fn a_tri_state_line_is_judged_as_a_driver() {
         [
             "net `net-a.out.line`: `a.out.voh` is 3.035V..3.365V but `b.in.vih` needs 3.325V..3.675V: a high of 3.035V is not always read as a high, which takes 3.675V"
         ]
+    );
+}
+
+const VBAT: &str = "    .vbat: Rail {\n        .voltage &= 3.8V +/- 5%\n        .pos.net &= \"VBAT\"\n        .neg.net &= \"GND\"\n    }\n";
+
+#[test]
+fn a_line_that_states_its_swing_is_judged_against_it_and_not_its_reference_rail() {
+    // The reference is the 3.8 V battery, and the receiver survives 3.6 V: the stated swing
+    // of 0 V to 1.8 V is what the net reaches, so nothing is wrong and nothing is a note.
+    let s = solved(&format!(
+        "{VBAT}{S3}    .m: Modem\n    .b: Pad\n    .vbat ~ .m.vbat\n    .s3 ~ .b.vdd\n    .m.status.line ~ .b.in.line\n"
+    ));
+    assert_eq!(faults(&s), Vec::<String>::new());
+    // The modem states no level, so the pair is a note; the absolute maximum is judged.
+    assert!(
+        notes(&s).iter().all(|n| !n.contains("absolute maximum")),
+        "{:#?}",
+        notes(&s)
+    );
+}
+
+#[test]
+fn a_stated_swing_above_the_absolute_maximum_is_a_fault_with_the_numbers() {
+    // A pin that survives 1.0 V only: the 1.8 V swing is too much, and the message says
+    // where the number comes from.
+    let s = solved(&format!(
+        "{VBAT}{S3}    .m: Modem\n    .b: Pad1\n    .vbat ~ .m.vbat\n    .s3 ~ .b.vdd\n    .m.status.line ~ .b.in.line\n"
+    ));
+    assert_eq!(
+        faults(&s),
+        [
+            "net `net-b.in.line` reaches 1.8V above its ground `GND` (`m.status.line`, a line that states a swing of 0V..1.8V) but `b.in.line.abs_max` is 1V: it must not exceed 1V"
+        ]
+    );
+}
+
+#[test]
+fn a_signed_swing_is_read_as_written_relative_to_the_ground() {
+    let s = solved(&format!(
+        "{VBAT}{S3}    .m: Ringing\n    .b: Pad\n    .vbat ~ .m.vbat\n    .s3 ~ .b.vdd\n    .m.status.line ~ .b.in.line\n"
+    ));
+    // The pad survives -0.5 V: -0.3 V is within it.
+    assert_eq!(faults(&s), Vec::<String>::new());
+    let s = solved(&format!(
+        "{VBAT}{S3}    .m: Ringing\n    .b: Pad0\n    .vbat ~ .m.vbat\n    .s3 ~ .b.vdd\n    .m.status.line ~ .b.in.line\n"
+    ));
+    assert_eq!(
+        faults(&s),
+        [
+            "net `net-b.in.line` reaches -300mV relative to its ground `GND` (`m.status.line`, a line that states a swing of -300mV..1.8V) but `b.in.line.abs_min` is 0V: it must not go below 0V"
+        ]
+    );
+}
+
+#[test]
+fn a_line_that_states_no_swing_still_swings_to_its_reference_rail() {
+    // `Driver` on the 3.8 V battery swings to 3.99 V: the same pad is refused, as before.
+    let s = solved(&format!(
+        "{VBAT}{S3}    .a: Driver\n    .b: Pad\n    .vbat ~ .a.vdd\n    .s3 ~ .b.vdd\n    .a.out.line ~ .b.in.line\n"
+    ));
+    assert_eq!(
+        faults(&s),
+        [
+            "net `net-a.out.line` reaches 3.99V above its ground `GND` (`a.out.line`, a line of `a.out.reference`) but `b.in.line.abs_max` is 3.6V: it must not exceed 3.6V"
+        ]
+    );
+}
+
+#[test]
+fn a_plain_pin_of_a_modem_stays_a_note_that_says_how_far_it_swings_is_not_known() {
+    let s = solved(&format!(
+        "{VBAT}{S3}    .m: Plain\n    .b: Pad\n    .vbat ~ .m.vbat\n    .s3 ~ .b.vdd\n    .m.stat ~ .b.in.line\n"
+    ));
+    assert!(
+        notes(&s)
+            .iter()
+            .any(|n| n.contains("so how far it swings is not known")),
+        "{:#?}",
+        notes(&s)
     );
 }

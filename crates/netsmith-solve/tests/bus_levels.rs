@@ -32,6 +32,26 @@ part Zm {
     }
 }
 
+/// A master whose pins swing to an internal 1.8 V supply that has no pad (ADR 0081): the
+/// reference rail is the 3.3 V supply, for the ground, and the swing says what the lines reach.
+part Zq {
+    .vdd: Rail
+    .spi: Spi
+    .spi.role &= SpiRole::Master
+    .spi.levels.reference ~ .vdd
+    .spi.levels.swing &= 0V..1.8V
+    .spi.levels.voh &= 1.5V
+    .spi.levels.vol &= 0.3V
+    pins {
+        .vdd.pos  power         "VDD"  "1"
+        .vdd.neg  power         "VSS"  "2"
+        .spi.sclk output        "SCK"  "3"
+        .spi.mosi output        "MOSI" "4"
+        .spi.miso input         "MISO" "5"
+        .spi.cs   output        "CS"   "6"
+    }
+}
+
 /// A slave that joins its reference rail and states none of the four levels.
 part Zbare {
     .vdd: Rail
@@ -545,4 +565,18 @@ fn a_plain_resistor_to_a_rail_is_a_pull_up_too() {
     let s = solve(&c.boards[0], &Catalogs::jlcpcb());
     assert_eq!(faults(&s), Vec::<String>::new());
     assert!(high_notes(&s).is_empty(), "{:#?}", notes(&s));
+}
+
+#[test]
+fn the_levels_of_a_bus_state_a_swing_that_the_absolute_maximum_is_judged_against() {
+    // `Zq` hangs on a 3.3 V supply and swings to 1.8 V: the slave's 2.1 V maximum holds. The
+    // same wiring with `Zm`, whose lines swing to its supply, is refused (above).
+    let body = format!(
+        "{S3}{S18}    .m: Zq\n    .s: Zs\n    .s3 ~ .m.vdd\n    .s3 ~ .s.vdd\n    .s18 ~ .s.vddio\n    .m.spi.sclk ~ .s.spi.sclk\n    .m.spi.mosi ~ .s.spi.mosi\n    .m.spi.miso ~ .s.spi.miso\n    .m.spi.cs ~ .s.spi.cs\n"
+    );
+    let s = solved(&body);
+    let f = faults(&s);
+    assert!(f.iter().all(|m| !m.contains("must not exceed")), "{f:#?}");
+    let n = notes(&s);
+    assert!(n.iter().all(|m| !m.contains("absolute maximum")), "{n:#?}");
 }

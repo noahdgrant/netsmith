@@ -282,6 +282,10 @@ _Avoid_: Conflict set, exclusive set, group, resource (alone)
 One of the four voltages of a `Logic` line, or of the `Levels` of a bus interface (`.spi.levels`, ADR 0064), as a datasheet gives them and relative to the line's ground (the `neg` of its `.reference` rail): `.vih` the lowest an input reads as high, `.vil` the highest it reads as low, `.voh` the lowest an output drives a high to, `.vol` the highest it drives a low to. After the rails are solved, the solver requires `voh >= vih` and `vol <= vil` for every output and input on a net, and says "not evaluated" when a level has no value or the grounds differ (ADR 0046).
 _Avoid_: Threshold, noise margin
 
+**Swing**:
+The range of voltage a `Logic` line can have, `.swing` of the `Logic` or of the `Levels` of a bus interface (ADR 0081, provisional), relative to the line's ground (the `neg` of its `.reference` rail) and read as written, so `-0.3V..1.8V` goes 0.3 V below the ground. A part states it when its outputs swing to a supply that has no pad. The absolute-maximum check holds a receiver's limits against it; a line that states none swings from its ground to the top of its reference rail.
+_Avoid_: Output range, internal rail (a rail has pads)
+
 **Open-drain line**:
 A line that a device only pulls low or releases, and a resistor to a rail holds high, such as the `sda` of an `I2c` bus. The levels check (ADR 0075, provisional) recognises a driver of one by what its part states, a `vol` and no `voh`, on a net that a resistor joins to the positive pin of a rail: the line's high is that rail's voltage range, which the receivers' `vih` is judged against. There is no kind or marker for it in the language.
 _Avoid_: Open-collector (KiCad's name for the pin type, which netsmith does not have), wired-AND

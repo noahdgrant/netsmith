@@ -8343,6 +8343,122 @@ The rule is narrow, and anything it does not recognise is compared as independen
 - Two rails on different nets (two supplies, even of the same nominal voltage) are two voltages, so their ranges are independent.
 - A rail whose voltage can be zero or negative is not used (the reduction divides by it).
 
+#### A line that states its own swing
+
+A module whose outputs swing to an internal supply that has no pad (a cellular module's `STATUS` pin swings to an internal 1.8 V rail that the module does not bring out) cannot state that rail as a `Logic`'s `reference`: a rail in a part needs pads. It states the swing instead (ADR 0081, provisional): `.swing`, a voltage range on the `Logic` or on the `Levels` of a bus interface, the range of voltage the line can have **relative to its ground**, the `neg` of its `.reference` rail, which is where the four levels and the absolute maximums are read from. A signed range is read as it is written: `-0.3V .. 1.8V` goes 0.3 V below the ground and 1.8 V above it. The part joins `.reference` to a supply it does have (`~ .vbat`) for the ground only; that rail's voltage is then not what the line swings to.
+
+The absolute-maximum check takes the stated range as what the line contributes to the voltage of its net (and the Ohm's-law bound on a resistor's current takes it too), in place of "from the ground to the top of the reference rail". A line that states no swing is judged exactly as before. The invented `Modem` below swings to 1.8 V from a 3.8 V battery, and `Sensor` survives 2.1 V:
+
+```nsm evaluate
+import std::logic::Logic
+import std::sources::Rail
+
+/// Invented: a module on a 3.8 V battery whose STATUS output swings to an internal 1.8 V
+/// rail that has no pad.
+part Modem {
+    .vbat: Rail
+    .status: Logic
+    .status.reference ~ .vbat
+    .status.swing &= 0V .. 1.8V
+    pins {
+        .vbat.pos     power  "VBAT"   "1"
+        .vbat.neg     power  "GND"    "2"
+        .status.line  output "STATUS" "3"
+    }
+}
+
+/// Invented: an input that survives 2.1 V.
+part Sensor {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.line.abs_max &= 2.1V
+    pins {
+        .vdd.pos  power "VDD" "1"
+        .vdd.neg  power "GND" "2"
+        .in.line  input "IN"  "3"
+    }
+}
+
+board Telemetry {
+    .battery: Rail {
+        .voltage &= 3.8V +/- 5%
+        .pos.net &= "VBAT"
+        .neg.net &= "GND"
+    }
+    .io: Rail {
+        .voltage &= 1.8V +/- 5%
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+    }
+    .m: Modem
+    .s: Sensor
+    .battery ~ .m.vbat
+    .io ~ .s.vdd
+    .m.status.line ~ .s.in.line
+}
+```
+
+Without the statement the line would be taken to swing to the battery's 3.99 V, and the same sensor on a 1.0 V maximum is refused with the stated range named:
+
+```nsm fails
+import std::logic::Logic
+import std::sources::Rail
+
+/// Invented: a module on a 3.8 V battery whose STATUS output swings to an internal 1.8 V
+/// rail that has no pad.
+part Modem {
+    .vbat: Rail
+    .status: Logic
+    .status.reference ~ .vbat
+    .status.swing &= 0V .. 1.8V
+    pins {
+        .vbat.pos     power  "VBAT"   "1"
+        .vbat.neg     power  "GND"    "2"
+        .status.line  output "STATUS" "3"
+    }
+}
+
+/// Invented: an input that survives 1.0 V.
+part Sensor {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.line.abs_max &= 1V
+    pins {
+        .vdd.pos  power "VDD" "1"
+        .vdd.neg  power "GND" "2"
+        .in.line  input "IN"  "3"
+    }
+}
+
+board Telemetry {
+    .battery: Rail {
+        .voltage &= 3.8V +/- 5%
+        .pos.net &= "VBAT"
+        .neg.net &= "GND"
+    }
+    .io: Rail {
+        .voltage &= 1.8V +/- 5%
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+    }
+    .m: Modem
+    .s: Sensor
+    .battery ~ .m.vbat
+    .io ~ .s.vdd
+    .m.status.line ~ .s.in.line
+}
+```
+
+```text
+error: net `net-m.status.line` reaches 1.8V above its ground `GND` (`m.status.line`, a line that states a swing of 0V..1.8V) but `s.in.line.abs_max` is 1V: it must not exceed 1V
+   --> main.nsm:43:5
+   |
+43 |     .s: Sensor
+   |     ^^^^^^^^^^
+```
+
 #### A level and the current it was measured at
 
 A datasheet gives an output level at a load: `VOH = VDD - 0.4 V at IOH = 2 mA`. A part states it the same way, with `at` and the current after the value (ADR 0076, amendment 1, provisional):
