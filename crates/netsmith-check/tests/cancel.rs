@@ -2,7 +2,7 @@
 //! it runs, ends it at the next checkpoint, and a call that is not cancelled gives what it gave
 //! without the checkpoints.
 
-mod common;
+use crate::common;
 
 use std::time::{Duration, Instant};
 
