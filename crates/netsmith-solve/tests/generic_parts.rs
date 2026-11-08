@@ -216,6 +216,47 @@ fn a_generic_inductor_resolves_to_a_row_with_the_saturation_current_and_resistan
     assert!(e.contains("Nearest in the catalog:"), "{e}");
 }
 
+const RANKED: &str = "lcsc,mpn,name,label,inductance,saturation_current,dc_resistance,package,library,source\n\
+C900401,ZZ-2R2,ZZ-2R2 2.2uH 3.6A,ZZ-2R2,2.2uH +/- 20%,3.6A,0.085ohm,1210,Extended,https://example.invalid/a\n\
+C900402,ZZ-3R3,ZZ-3R3 3.3uH 1.25A,ZZ-3R3,3.3uH +/- 20%,1.25A,0.144ohm,1210,Extended,https://example.invalid/b\n\
+C900403,ZZ-1R0,ZZ-1R0 1uH 1A 0402,ZZ-1R0,1uH +/- 20%,1A,0.2ohm,0402,Extended,https://example.invalid/c\n\
+C900404,ZZ-4R7,ZZ-4R7 4.7uH 5.3A,ZZ-4R7,4.7uH +/- 20%,5.3A,0.03ohm,5030,Extended,https://example.invalid/d\n";
+
+#[test]
+fn the_nearest_rows_are_those_nearest_the_need_that_fails_and_not_the_nearest_in_value() {
+    let c = catalogs("inductor", RANKED);
+    let generic = netsmith_solve::Generic {
+        catalog: "inductor".into(),
+        package: "0402".into(),
+        spec: Spec::Inductor {
+            series: Series::E24,
+            nominal: 1e-6,
+            tolerance_percent: 30.0,
+            saturation_current: Need::AtLeast(6.05),
+            dc_resistance: Need::Nothing,
+        },
+    };
+    // No row saturates at 6.05 A. The 1 uH row of the same package is nearest in value and
+    // far from the need; the 4.7 uH row at 5.3 A is the one that nearly meets it.
+    let e = resolve(&generic, &c, &never).unwrap_err();
+    assert!(e.contains("saturation current at least 6.05 A"), "{e}");
+    let names: Vec<String> = netsmith_solve::alternatives(&generic, &c)
+        .into_iter()
+        .map(|a| a.name)
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "ZZ-4R7 4.7uH 5.3A",
+            "ZZ-2R2 2.2uH 3.6A",
+            "ZZ-3R3 3.3uH 1.25A"
+        ],
+        "{e}"
+    );
+    let nearest = e.split("Nearest in the catalog: ").nth(1).unwrap();
+    assert!(nearest.starts_with("ZZ-4R7 4.7uH 5.3A"), "{e}");
+}
+
 // ---- LEDs --------------------------------------------------------------------------
 
 const LEDS: &str = "lcsc,mpn,name,label,color,forward_voltage,package,library,source\n\

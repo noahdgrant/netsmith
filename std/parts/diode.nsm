@@ -123,10 +123,11 @@ generic Zener {
 /// datasheet), and then the clamping voltage is checked against it.
 ///
 /// `.breakdown_voltage` is the minimum breakdown voltage VBR, an optional catalog column (ADR
-/// 0073): between the stand-off voltage and it the diode leaks a little, below it the diode
-/// does not conduct. A design that needs a margin from the highest the line reaches states it,
-/// `.d.breakdown_voltage >= .vin.peak * 1.1`, and the standard rows, which record no VBR, are
-/// then not offered; a project's catalog gives rows that do.
+/// 0073; the `catalog` statement marks it `optional`, ADR 0078): between the stand-off voltage
+/// and it the diode leaks a little, below it the diode does not conduct. A design that needs
+/// a margin from the highest the line reaches states it, `.d.breakdown_voltage >= .vin.peak *
+/// 1.1`, and the standard rows, which record no VBR, are then not offered; a project's catalog
+/// gives rows that do.
 generic Tvs {
     .designator &= "D"
 
@@ -155,5 +156,5 @@ generic Tvs {
     bridge .cathode ~> .anode
 
     .package: Package
-    catalog tvs { .standoff_voltage, .clamping_voltage, .peak_pulse_current, .package, .breakdown_voltage }
+    catalog tvs { .standoff_voltage, .clamping_voltage, .peak_pulse_current, .package, .breakdown_voltage optional }
 }

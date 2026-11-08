@@ -5,15 +5,16 @@
 use netsmith_kicad::testlib::TempDir;
 use std::fs;
 
-use netsmith::Libraries;
 use netsmith::editor::Workspace;
 use netsmith::fab::{FabOptions, fab_with_options};
 use netsmith::project::{Project, Target};
 use netsmith::refresh::Network;
+use netsmith::{Libraries, outcome_with, render_problems};
 use netsmith_check::Loader;
 use netsmith_editor::Backend;
 use netsmith_editor::api::Bom;
 use netsmith_fab::KicadCliExe;
+use netsmith_solve::Catalogs;
 
 /// A capacitor of 130 nF (E24 has it, no standard row does), an inductor of 3.3 uH with
 /// 15 mA to carry, and a red LED whose forward voltage is lower than any row's.
@@ -194,4 +195,100 @@ board Saturates {
         why.ends_with("checks every relation again with it."),
         "{why}"
     );
+}
+
+// ---- the finding at build (issue #182) ----
+
+fn catalogs(strict: bool) -> Catalogs {
+    let root = project("catalogs");
+    Project::load(root.path())
+        .unwrap()
+        .catalogs()
+        .unwrap()
+        .with_strict_guidelines(strict)
+}
+
+fn build(src: &str, strict: bool) -> Result<Vec<netsmith::Built>, String> {
+    // No KiCad library is read: the design and its sourcing are complete without one.
+    outcome_with("main.nsm", src, &Loader::std(), &catalogs(strict), None)
+        .map(|o| o.boards)
+        .map_err(|problems| render_problems(&problems))
+}
+
+fn warnings(src: &str) -> Vec<String> {
+    build(src, false)
+        .unwrap_or_else(|e| panic!("{e}"))
+        .iter()
+        .flat_map(|b| b.guideline_warnings())
+        .filter(|w| w.contains("unresolved generic guideline"))
+        .collect()
+}
+
+/// Findings for each assembled part of `MIXED`.
+fn parts_named(found: &[String]) -> Vec<String> {
+    found
+        .iter()
+        .map(|w| w.split(' ').nth(4).unwrap_or_default().to_string())
+        .collect()
+}
+
+#[test]
+fn a_generic_no_row_can_be_ordered_for_is_a_finding_at_build_for_each_assembled_part() {
+    let found = warnings(MIXED);
+    assert_eq!(parts_named(&found), ["C1", "L1", "D1"], "{found:#?}");
+    let c = &found[0];
+    assert!(
+        c.starts_with("Mixed: unresolved generic guideline: C1 (c): the solver kept a generic part because no row of the `capacitor` catalog can be ordered for 130 nF 10% 0402, rated voltage at least 7.875 V"),
+        "{c}"
+    );
+    let l = &found[1];
+    // What the solver kept, the need it recorded, and the nearest rows, then what to add.
+    assert!(
+        l.starts_with("Mixed: unresolved generic guideline: L1 (l): the solver kept a generic part because no row of the `inductor` catalog can be ordered for 3.3 uH 20% 0402, saturation current at least 15 mA"),
+        "{l}"
+    );
+    assert!(l.contains("Nearest in the catalog: LQH32PN3R3NN0L"), "{l}");
+    assert!(
+        l.ends_with("`fab` will refuse the board until a row meets it: add one to the project's `inductor` catalog (`catalogs/inductor.csv`), or change the design so that a row in the catalogs does."),
+        "{l}"
+    );
+    // It is a warning: the board built, and the bill of materials says the same.
+    let built = build(MIXED, false).unwrap();
+    assert_eq!(built.len(), 1);
+}
+
+#[test]
+fn strict_makes_each_unresolved_generic_an_error_at_the_part() {
+    let e = build(MIXED, true).err().expect("strict refuses");
+    for part in ["C1 (c)", "L1 (l)", "D1 (led)"] {
+        assert!(
+            e.contains(&format!(
+                "unresolved generic guideline: {part}: the solver kept a generic part"
+            )),
+            "{part}: {e}"
+        );
+    }
+    // Each is an error at the part's own line of the source.
+    assert!(e.contains("main.nsm:18"), "{e}");
+}
+
+#[test]
+fn a_part_fitted_by_hand_or_not_at_all_is_not_reported() {
+    let src = MIXED
+        .replace(
+            "        .inductance &= 3.3uH +/- 20%\n",
+            "        .inductance &= 3.3uH +/- 20%\n        .assembly &= AssemblyMode::Hand\n",
+        )
+        .replace(
+            "        .color &= \"RED\"\n",
+            "        .color &= \"RED\"\n        .assembly &= AssemblyMode::None\n",
+        );
+    let found = warnings(&src);
+    assert_eq!(parts_named(&found), ["C1"], "{found:#?}");
+    // The same under --strict: only the capacitor is refused.
+    let e = build(&src, true)
+        .err()
+        .expect("strict refuses the capacitor");
+    assert!(e.contains("C1 (c)"), "{e}");
+    assert!(!e.contains("L1") && !e.contains("D1"), "{e}");
 }

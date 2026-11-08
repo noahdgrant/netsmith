@@ -1252,12 +1252,18 @@ impl Parser {
             },
         )?;
         let mut fields = Vec::new();
+        let mut optional = Vec::new();
         loop {
             self.skip_newlines();
             if self.eat(&Tok::RBrace) {
                 break;
             }
             fields.push(self.path()?);
+            // `optional` after a column is a modifier of the column (ADR 0078), the word of
+            // a member (ADR 0074) and of a `pins` row (ADR 0016). It must be on the line of
+            // the column: a column is never called `optional` without its leading dot.
+            let is_optional = matches!(&self.peek().tok, Tok::Ident(w) if w == "optional");
+            optional.push(is_optional.then(|| self.bump().span));
             self.skip_newlines();
             if !self.eat(&Tok::Comma) {
                 self.expect(&Tok::RBrace, "`,` or `}`")?;
@@ -1268,6 +1274,7 @@ impl Parser {
             name,
             key,
             fields,
+            optional,
             span: self.span_from(start),
         }))
     }

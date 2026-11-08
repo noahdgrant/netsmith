@@ -12,6 +12,8 @@
 //!   not place, and the next ` ```text ` block is the findings as `fab` prints them.
 //! - ` ```nsm solve warns ` must build, and the next ` ```text ` block is the guideline
 //!   warnings (ADR 0036), one per line, as the command line prints them after `warning: `.
+//! - ` generics ` on a ` ```nsm solve ` block offers generic parts after the catalogs' rows, as a
+//!   project does by default (ADR 0047, `series = "E24"`).
 //! - ` ```nsm solve notes ` must build, and the next ` ```text ` block is the notes that name a
 //!   net with a current that is not known, whose tracks are a lower bound (ADR 0036), one per
 //!   line, as the command line prints them after `note: `.
@@ -365,6 +367,13 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
             None if set.is_empty() => standard.clone(),
             None => panic!("{at}: there is no csv block in the set `{set}`"),
         };
+        // A block that says `generics` is built as a project is by default (`series = "E24"`),
+        // offering a generic part after the rows (ADR 0047).
+        let catalogs = if b.has("generics") {
+            catalogs.with_series(Some(netsmith_solve::Series::E24))
+        } else {
+            catalogs
+        };
 
         if b.has("fails") {
             let message = match build_with(name, &b.text, loader, &catalogs, &Libraries::sample()) {
@@ -386,7 +395,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
                 .unwrap_or_else(|e| panic!("{at}: should build:\n{e}"));
             // A block that does not say it warns states what its parts and values need (ADR
             // 0065): the two findings about a value that nobody stated are for a block that
-            // shows them.
+            // shows them, and so is the one about a generic part that no row can be ordered for.
             if !b.has("warns") {
                 let unstated: Vec<String> = built
                     .iter()
@@ -394,6 +403,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
                     .filter(|w| {
                         w.contains(": unconstrained pick guideline:")
                             || w.contains(": unstated value guideline:")
+                            || w.contains(": unresolved generic guideline:")
                     })
                     .collect();
                 assert!(
