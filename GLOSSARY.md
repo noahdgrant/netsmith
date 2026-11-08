@@ -314,7 +314,7 @@ The two terminals of a part that a series chain enters and leaves by.
 A run of series connections from one pin through bridge parts to another. A series chain passes one current, the through-current (`.current`) of each of its parts, taken from the first terminal of the part's `bridge` to the second; the first part's is drawn from the net the chain starts on (ADR 0014).
 
 **DC element**:
-What a part is in a DC analysis, stated once by a `dc` statement in the part or its generic: `dc resistor .a .b .resistance`, `dc diode .anode .cathode .forward_voltage`, `dc nmos` or `dc pmos` with a gate, a drain, a source, a threshold and an on resistance. Its pins are the pins its `bridge` joins. A provider of a generic has the generic's; a module has none, and the elements of the parts inside it make its network. The checker records it (ADR 0076, amendment 1); nothing solves with it yet.
+What a part is in a DC analysis, stated once by a `dc` statement in the part or its generic: `dc resistor .a .b .resistance`, `dc diode .anode .cathode .forward_voltage`, `dc nmos` or `dc pmos` with a gate, a drain, a source, a threshold and an on resistance. Its pins are the pins its `bridge` joins. A provider of a generic has the generic's; a module has none, and the elements of the parts inside it make its network. The checker records it (ADR 0076, amendment 1); the DC analysis solves a resistor and a diode, and a MOSFET is recorded and not solved yet (ADR 0076, amendment 2).
 _Avoid_: Model (of a part), stamp, SPICE model
 
 **Boundary**:
@@ -324,6 +324,18 @@ _Avoid_: Black box, unmodelled part
 **Test current**:
 The current a logic level was measured at, written after the value: `.voh &= .vdd.voltage - 0.4V at 2mA`. The statement narrows or constrains the level as it does without `at`; the checker records the current beside the level, and a later analysis derives the pin's output resistance from it (ADR 0076, amendment 1). Only `voh` and `vol` take one, and a level has one.
 _Avoid_: Load current (a part's `.current` is its draw), drive current
+
+**Operating point**:
+One solution of the network of the picked parts at DC: a voltage at each node and a current in each element, for one choice of a value in each range and one state of each diode. The analysis solves every one of them in an island and keeps, for each current and voltage, the range it takes over all of them (ADR 0076).
+_Avoid_: Bias point, quiescent point, snapshot (a result is the range over the operating points, not one of them)
+
+**Island**:
+The part of the network between the nets that a supply holds: the nets no source holds, joined by the elements between them, and the held nets at its edge, whose range is one of its values. An island is solved on its own, and one that has a pin nothing models, or too many combinations, is left to the bound from Ohm's law (ADR 0076).
+_Avoid_: Subnet, partition, section, cluster
+
+**Corner**:
+One combination of the ends of the ranges an island has (a resistance at its least or its greatest, a supply or a load at either end, a diode's forward voltage at either end) with a state for each diode (blocking or conducting). The range a current or a voltage takes is the hull of its values over the corners, which counts each value once (ADR 0076, section 3).
+_Avoid_: Case, scenario, worst case (the worst case is a result, an end of the range a corner makes)
 
 **Catalog**:
 The columns of a list of real parts that a part's fields are matched against when the solver picks one. A catalog may be keyed by a column (`catalog mcu by .mpn`), and then the design names the row. The rows are a CSV file named after the catalog, in the order the solver tries them (ADR 0022); a project adds its own files: every `*.csv` in its `catalogs/` folder, or in another folder `catalog_dirs` names in `netsmith.toml`. A row with an empty cell is never offered, except in a column that a catalog may leave empty (`temperature_coefficient`, `rms_current`, `dielectric`, and a TVS diode's `breakdown_voltage`, ADR 0073), and then only to a design that says nothing about the field by any route (a narrowing, a relation, a join, a balance).
