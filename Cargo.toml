@@ -7,6 +7,15 @@ version = "0.0.1"
 edition = "2024"
 license = "MIT"
 
+# A test build is one executable for every file in a crate's `tests/` folder, and each links the
+# whole dependency tree with its own debug information. Line tables alone (no variable or type
+# information) keep what a failing test needs, a backtrace with file and line, and make the
+# executables and the link a good deal smaller (#190). A debugger no longer shows local
+# variables: set `CARGO_PROFILE_DEV_DEBUG=2` for a build you want to step through. The release
+# profile is not touched.
+[profile.dev]
+debug = "line-tables-only"
+
 # The placer and the router are loops over thousands of small steps: a debug build of the
 # rest of the workspace is quick to build and to step through, and this crate is optimised so
 # that its tests (a board of seventy parts is placed and routed) take seconds, not minutes.
