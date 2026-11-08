@@ -94,6 +94,10 @@ fn a_part_the_board_marks_consigned_is_assembled_by_the_board_house_with_no_numb
 
 #[test]
 fn the_report_prints_a_consigned_part_as_consigned() {
+    // The report names each part's footprint, which needs KiCad's libraries (the `kicad` job).
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
     let src = board("        .assembly_mode &= AssemblyMode::Consigned").replace(
         ".a.assembly &= .assembly_mode\n",
         ".a.assembly &= .assembly_mode\n    .b.assembly &= AssemblyMode::Hand\n",
