@@ -172,12 +172,12 @@ fn a_failure_that_every_part_takes_part_in_names_every_part() {
 fn a_failure_that_every_part_feeds_still_gives_up_at_the_limit_with_the_same_message() {
     // The bound reads the sum and every candidate of the last part fails it for the choices
     // before it, so nothing is learned that cuts the 8^9 combinations: the limit is the safety
-    // net, and its message is the one it always was.
+    // net, and its message names the parts and says what to change (issue #177).
     let s = run(&board(6, "    .total >= 100Mohm\n"), &catalogs(8));
     assert_eq!(
         messages(&s),
         [
-            "gave up after trying 250000 combinations of candidates for `a` and `m` and `u01` and `u02` and `u03` and `u04` and `u05` and `u06` and `z`; narrow what they need or give them fewer choices"
+            "gave up after trying 250000 combinations of candidates for `a` and `m` and `u01` and `u02` and `u03` and `u04` and `u05` and `u06` and `z`; a bound reads values of all of them, so no part could be blamed alone. State a value for one of them, narrow a window that a bound on them reads, or split the group so that fewer parts share a bound"
         ]
     );
     assert_eq!(s.trials, 250_000);
