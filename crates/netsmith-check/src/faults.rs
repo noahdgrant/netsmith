@@ -303,7 +303,7 @@ impl<'a> Run<'a> {
             }
 
             let (must, by_role) = model.must_be_connected_by(pin, row);
-            if must && !self.has_company(part, pin) {
+            if must && !self.has_company(part, pin) && model.unused_by(pin).is_none() {
                 let because = by_role.unwrap_or_default();
                 self.report(
                     inst.at(),

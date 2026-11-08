@@ -143,6 +143,8 @@ pub enum Item {
     Catalog(Catalog),
     Pins(Pins),
     Tie(Tie),
+    /// `unused .processor.usb`: the board says that nothing on it uses an interface (ADR 0083).
+    Unused(Unused),
     /// `peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }`; only a part may hold one
     /// (ADR 0071).
     Peripheral(Peripheral),
@@ -314,6 +316,15 @@ pub struct Pins {
 pub struct Tie {
     pub a: Path,
     pub b: Path,
+    pub span: Span,
+}
+
+/// `unused .processor.usb`: a board states that the interface named is not used by anything on
+/// it, so the limits the part states for that function, the sources its pins would need and the
+/// level checks of its pins do not apply (ADR 0083).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Unused {
+    pub path: Path,
     pub span: Span,
 }
 

@@ -32,6 +32,7 @@ mod shared;
 mod std_generics;
 mod system;
 mod tri_state;
+mod unused;
 mod usb_roles;
 
 /// A file in this folder without a `mod` line above is not part of the executable: its tests would

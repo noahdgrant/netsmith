@@ -195,7 +195,9 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
                 .iter()
                 .filter_map(|(_, m)| match m {
                     Member::Inst(i)
-                        if model.rail_of(*i).is_some() && model.draw_of(*i).is_some() =>
+                        if model.rail_of(*i).is_some()
+                            && model.draw_of(*i).is_some()
+                            && model.unused_by(*i).is_none() =>
                     {
                         Some(*i)
                     }
