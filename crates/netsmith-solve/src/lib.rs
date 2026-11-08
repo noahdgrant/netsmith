@@ -4,6 +4,7 @@
 mod busclock;
 mod catalog;
 mod cycles;
+mod dc;
 mod eval;
 mod expand;
 mod generic;
@@ -27,7 +28,7 @@ pub use generic::{
 pub use levels::NotEvaluated;
 pub use place::{PlaceOffset, Window, offsets, window};
 pub use solve::{
-    CurrentBound, HeldBy, OpenCircle, Pick, Seeded, Solution, UnconstrainedPick, Unresolved,
-    UnsolvedNet, UnstatedValue, solve, solve_system,
+    CurrentBound, DcSummary, HeldBy, OpenCircle, Pick, Seeded, Solution, UnconstrainedPick,
+    Unresolved, UnsolvedNet, UnstatedValue, solve, solve_system,
 };
 pub use table::{Record, Supplier, Table, parse_csv};

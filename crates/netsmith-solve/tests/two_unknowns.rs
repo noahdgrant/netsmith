@@ -157,24 +157,28 @@ fn a_voltage_start_or_a_range_on_the_part_current_ends_it() {
 }
 
 #[test]
-fn a_current_range_on_another_term_of_the_net_does_not_end_it() {
-    // The outside draw is known but the part's current is a balance of three terms still.
+fn a_current_range_on_another_term_of_the_net_is_a_load_the_dc_analysis_solves() {
+    // The outside draw is known, and the part's current is a balance of three terms, which the
+    // equations never set. The DC analysis solves the network (the series resistor, the divider
+    // and the outside draw as a load), so the circle is closed by numbers and nothing is open.
     let s = solved(&board(
         RESISTOR,
         ".series",
         SERIES_DROP,
         "\n    .after.current &= 0A..1mA",
     ));
-    assert_eq!(s.open_circles.len(), 1, "{:?}", s.open_circles);
-    assert_eq!(
-        names(&s, &s.open_circles[0].nets[0].unknown),
-        ["divider.vin.current", "series.current"]
-    );
+    assert!(s.open_circles.is_empty(), "{:?}", s.open_circles);
+    assert!(s.circular.is_empty(), "{:?}", s.circular);
+    let v = value_of(&s, "series.current");
+    assert!(v.contains("Quantity"), "{v}");
+    assert_eq!(s.dc.solved, 1, "{:?}", s.dc);
 }
 
 #[test]
 fn nothing_else_on_the_net_makes_it_a_circle_of_equations_that_a_start_ends() {
-    // A term that is exactly zero is not a term: the part's current is the divider's.
+    // A term that is exactly zero is not a term: the part's current is the divider's. The
+    // circle of values that the equations leave is closed by the DC analysis, which solves the
+    // network, so there is none to start (ADR 0076, section 4).
     let src = board(
         RESISTOR,
         ".series",
@@ -187,7 +191,7 @@ fn nothing_else_on_the_net_makes_it_a_circle_of_equations_that_a_start_ends() {
         "{:?}",
         s.open_circles
     );
-    assert_eq!(s.circular.len(), 1, "{:?}", s.circular);
+    assert!(s.circular.is_empty(), "{:?}", s.circular);
     let started = board(
         RESISTOR,
         ".series",
@@ -252,9 +256,11 @@ fn a_part_current_is_set_from_a_net_whose_other_term_is_zero() {
     let v = value_of(&s, "series.current");
     assert!(v.contains("Quantity") && !v.contains("Unset"), "{v}");
     assert!(value_of(&s, "series.drop").contains("Quantity"));
-    // With a range as the other term it is a balance of three, as before: never set.
+    // With a range as the other term it is a balance of three, which the equations never set.
+    // The DC analysis solves the loads and the resistor together and sets it: 10 mA to 21 mA.
     let s = solved(&two_loads("0A..1mA"));
-    assert!(value_of(&s, "series.current").contains("Unset"));
+    let v = value_of(&s, "series.current");
+    assert!(v.contains("Quantity") && !v.contains("Unset"), "{v}");
 }
 
 #[test]
