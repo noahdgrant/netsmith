@@ -664,12 +664,10 @@ fn unresolved_generics(
     catalogs: &Catalogs,
     sources: &Sources,
 ) -> Result<(), Vec<Problem>> {
-    let findings = resolve::unresolved_findings(
-        &one.sourcing,
-        &one.trace.origins,
-        catalogs,
-        &|inst| one.trace.model.path_of(inst),
-    );
+    let findings =
+        resolve::unresolved_findings(&one.sourcing, &one.trace.origins, catalogs, &|inst| {
+            one.trace.model.path_of(inst)
+        });
     if catalogs.strict_guidelines() {
         refuse_guidelines(label, &findings, &one.trace.model, sources)
     } else {
