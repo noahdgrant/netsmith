@@ -340,15 +340,14 @@ fn a_tvs_diode_with_no_breakdown_voltage_stated_is_picked_from_the_standard_rows
 }
 
 #[test]
-fn a_breakdown_voltage_margin_is_refused_with_the_standard_rows_which_record_none() {
+fn a_breakdown_voltage_margin_is_refused_with_the_standard_rows_that_record_one_or_none() {
+    // Nine standard rows record no breakdown voltage and are never offered; the SMDJ36A records one
+    // (40 V at least, above the margin) and is refused for its clamp over the protected limit.
     let s = solved_with(&tvs(MARGIN), &Catalogs::jlcpcb());
     let m = messages(&s);
     assert_eq!(m.len(), 1, "{m:#?}");
-    assert!(
-        m[0].contains("the `tvs` catalog has nothing for `tvs`"),
-        "{}",
-        m[0]
-    );
+    assert!(m[0].contains("SMDJ36A"), "{}", m[0]);
+    assert!(m[0].contains("tvs.clamping_voltage"), "{}", m[0]);
     assert!(m[0].contains("9 for `breakdown_voltage`"), "{}", m[0]);
     assert!(s.picks.is_empty());
 }
