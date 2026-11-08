@@ -43,6 +43,10 @@ pub struct DcSummary {
     pub written: usize,
     /// The regulators whose input was solved with the power their output asks.
     pub regulators: usize,
+    /// The MOSFETs solved as switches (on and off), and the logic pins solved as drivers
+    /// (high, low, and high impedance where the pin can let go), over every island solved.
+    pub switches: usize,
+    pub pins: usize,
     /// How many regulators had no operating point in some combination of states: the source
     /// cannot give what the load asks.
     pub collapsed: usize,
@@ -123,6 +127,13 @@ impl Solver<'_> {
                     summary.solved += 1;
                     summary.combinations += report.combinations;
                     summary.regulators += planned.sinks.len();
+                    for e in &planned.island.elements {
+                        match e.kind {
+                            dc::net::Kind::Mosfet { .. } => summary.switches += 1,
+                            dc::net::Kind::Pin { .. } => summary.pins += 1,
+                            _ => {}
+                        }
+                    }
                     summary.collapsed += report.collapses.len();
                     for c in &report.collapses {
                         self.dc_collapse(&planned, &report, c);

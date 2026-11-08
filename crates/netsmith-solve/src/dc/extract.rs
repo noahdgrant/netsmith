@@ -14,7 +14,7 @@
 //! - **Elements.** A part with a `dc resistor` or a `dc diode` (stage 1 of the ADR) whose value
 //!   has a range: a resistor between its two terminals, a diode between its anode and cathode.
 //!   A part that has a `bridge` and no element the pass models (a boundary: an LED, an inductor
-//!   with no `dc`, a MOSFET, whose element is a later stage) with a stated or worked-out
+//!   with no `dc`, a MOSFET whose gate nothing sets) with a stated or worked-out
 //!   `.current`: a current source over that range between the terminals of its `bridge`. A
 //!   rail of a part with a `.current` that is never negative (a load): a current source from its
 //!   `pos` to its `neg`. A rail of a part that can give current is an output, which holds its
@@ -26,6 +26,10 @@
 //!   that the regulator's output sets: it joins the island of the input net, and the order in
 //!   which islands are solved (`super::analyze`) is the order of the power tree, the output
 //!   side first.
+//! - **Logic pins that drive** (ADR 0076, amendment 4): a pin with `voh` and `vol` stated at
+//!   their test currents, on a supply that a source holds, alone on its net, is an element with
+//!   its states. **MOSFETs** (`dc nmos`, `dc pmos`) are switches when what sets their gate is
+//!   known (see `extract`); otherwise they are boundaries, as before.
 //! - **What draws nothing.** A pin that the checker says draws nothing (ADR 0027) and is not
 //!   on a connector, and a pin that connects to nothing.
 //!
@@ -42,7 +46,8 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use netsmith_check::{DcKind, Domain, FieldId, InstId, InstKind, Member, Model, PinKind};
+use netsmith_check::{DcKind, Domain, FieldId, InstId, InstKind, Member, Model, PinKind, RExpr};
+use netsmith_lang::ast::BinOp;
 use netsmith_quantity::Dimension;
 
 use super::net::{Draw, Element, Held, Island, Kind, MIN_RESISTANCE, Range};
@@ -350,6 +355,8 @@ pub(crate) fn extract(model: &Model) -> Extracted {
 
     // Resistors and diodes.
     let mut modelled_parts: HashSet<InstId> = HashSet::new();
+    // The MOSFETs are decided after everything else is known (below).
+    let mut switches: Vec<(InstId, &netsmith_check::DcElement)> = Vec::new();
     for (part, dc) in model.dc_elements() {
         if model.instance(part).kind != InstKind::Part {
             continue;
@@ -398,8 +405,11 @@ pub(crate) fn extract(model: &Model) -> Extracted {
                     [dc.pins[0], dc.pins[1]],
                 )
             }
-            // A MOSFET as a switch is a later stage: the part is a boundary here.
-            DcKind::Nmos | DcKind::Pmos => continue,
+            // A MOSFET as a switch is decided below, when the nets its gate can be on are known.
+            DcKind::Nmos | DcKind::Pmos => {
+                switches.push((part, dc));
+                continue;
+            }
             // Regulators are taken above.
             DcKind::LinearRegulator | DcKind::SwitchingRegulator => continue,
         };
@@ -435,40 +445,95 @@ pub(crate) fn extract(model: &Model) -> Extracted {
         });
     }
 
-    // A part with a `bridge` and no element: a current source over its `.current`.
-    for (part, inst) in model.instances() {
-        if inst.kind != InstKind::Part || modelled_parts.contains(&part) {
+    // The logic pins that drive: each is one of its states (high, low, high impedance) through
+    // its output resistance, which the level and the current it is measured at give (ADR 0076,
+    // amendment 4).
+    let reader = crate::levels::reader(model);
+    let mut drivers: Vec<Driver> = Vec::new();
+    for (index, net) in nets.iter().enumerate() {
+        if held.contains_key(&index) {
             continue;
         }
-        let Some((a, b)) = inst.bridge else { continue };
-        let Some(current) = model.through_of(part) else {
-            continue;
-        };
-        let Domain::Quantity(q) = &model.field(current).domain else {
-            continue;
-        };
-        if q.dim() != Dimension::CURRENT || !q.lo().is_finite() || !q.hi().is_finite() {
-            continue;
+        for &t in &net.terminals {
+            if accounted.contains(&t) || source_pins.contains(&t) {
+                continue;
+            }
+            if let Some(d) = driver_of(model, &reader, t, index, &net_of, &held) {
+                drivers.push(d);
+            }
         }
-        let (Some(&na), Some(&nb)) = (net_of.get(&a), net_of.get(&b)) else {
-            continue;
-        };
-        accounted.insert(a);
-        accounted.insert(b);
+    }
+    // Two pins that can drive one net may drive it apart: the states that fight are no circuit
+    // anyone designs, and which pairs are never driven together is not stated, so none of them
+    // is modelled and the net stays open.
+    let mut per_net: HashMap<usize, usize> = HashMap::new();
+    for d in &drivers {
+        *per_net.entry(d.net).or_default() += 1;
+    }
+    for d in drivers.into_iter().filter(|d| per_net[&d.net] == 1) {
+        accounted.insert(d.terminal);
         items.push(Item {
-            kind: Kind::Current {
-                from: 0,
-                to: 0,
-                i: Range::new(q.lo(), q.hi()),
+            kind: Kind::Pin {
+                node: 0,
+                high: d.high.map(|r| (0, r)),
+                low: d.low.map(|r| (0, r)),
+                z: d.z,
             },
-            name: model.path_of(part),
+            name: model.path_of(d.terminal),
             part: None,
             flipped: false,
             current: None,
             drop: None,
-            nets: vec![na, nb],
+            nets: vec![d.net, d.pos, d.neg],
             reg: None,
         });
+    }
+
+    // A part with a `bridge` and no element: a current source over its `.current`.
+    let switch_parts: HashSet<InstId> = switches.iter().map(|(p, _)| *p).collect();
+    let boundary = |part: InstId| -> Option<(Item, InstId, InstId)> {
+        let (a, b) = model.instance(part).bridge?;
+        let current = model.through_of(part)?;
+        let Domain::Quantity(q) = &model.field(current).domain else {
+            return None;
+        };
+        if q.dim() != Dimension::CURRENT || !q.lo().is_finite() || !q.hi().is_finite() {
+            return None;
+        }
+        let (Some(&na), Some(&nb)) = (net_of.get(&a), net_of.get(&b)) else {
+            return None;
+        };
+        Some((
+            Item {
+                kind: Kind::Current {
+                    from: 0,
+                    to: 0,
+                    i: Range::new(q.lo(), q.hi()),
+                },
+                name: model.path_of(part),
+                part: None,
+                flipped: false,
+                current: None,
+                drop: None,
+                nets: vec![na, nb],
+                reg: None,
+            },
+            a,
+            b,
+        ))
+    };
+    for (part, inst) in model.instances() {
+        if inst.kind != InstKind::Part
+            || modelled_parts.contains(&part)
+            || switch_parts.contains(&part)
+        {
+            continue;
+        }
+        if let Some((item, a, b)) = boundary(part) {
+            accounted.insert(a);
+            accounted.insert(b);
+            items.push(item);
+        }
     }
 
     // The pins of nets that a board's ports put on them and no source holds: what the outside
@@ -594,28 +659,126 @@ pub(crate) fn extract(model: &Model) -> Extracted {
     }
 
     // The nets some pin on them may set or draw from, that nothing here models.
-    let mut open: BTreeSet<usize> = outside_open;
-    for (index, net) in nets.iter().enumerate() {
-        if held.contains_key(&index) && !reg_out_nets.contains(&index) {
-            continue;
-        }
-        for &t in &net.terminals {
-            if accounted.contains(&t) || source_pins.contains(&t) {
+    let open_nets = |accounted: &HashSet<InstId>| -> BTreeSet<usize> {
+        let mut open: BTreeSet<usize> = outside_open.clone();
+        for (index, net) in nets.iter().enumerate() {
+            if held.contains_key(&index) && !reg_out_nets.contains(&index) {
                 continue;
             }
-            let Some(part) = model.owner_of(t) else {
-                open.insert(index);
-                break;
-            };
-            let connector = model.member(part, "mating").is_some();
-            let draws_nothing = !connector && model.pin_draws_nothing(t);
-            let unused = model.pin_kind(t) == Some(PinKind::NoConnect);
-            if !(draws_nothing || unused) {
-                open.insert(index);
-                break;
+            for &t in &net.terminals {
+                if accounted.contains(&t) || source_pins.contains(&t) {
+                    continue;
+                }
+                let Some(part) = model.owner_of(t) else {
+                    open.insert(index);
+                    break;
+                };
+                let connector = model.member(part, "mating").is_some();
+                let draws_nothing = !connector && model.pin_draws_nothing(t);
+                let unused = model.pin_kind(t) == Some(PinKind::NoConnect);
+                if !(draws_nothing || unused) {
+                    open.insert(index);
+                    break;
+                }
             }
         }
-    }
+        open
+    };
+
+    // The MOSFETs as switches. One is modelled when what sets its gate is known: the gate's net
+    // is held, or a resistor, a diode or a pin that drives is on it, and nothing else on that
+    // net may set it. A switch whose gate is left to something unmodelled stays a boundary (a
+    // current source over its `.current` when that has a value), so that the island of its drain
+    // and source is solved as it was.
+    let open: BTreeSet<usize> = {
+        let mut tentative = accounted.clone();
+        for (_, dc) in &switches {
+            tentative.extend(dc.pins.iter().copied());
+        }
+        let open_if_all = open_nets(&tentative);
+        let sets_gate = |net: usize, items: &[Item]| {
+            held.contains_key(&net)
+                || items.iter().any(|i| {
+                    matches!(
+                        i.kind,
+                        Kind::Resistor { .. } | Kind::Diode { .. } | Kind::Pin { .. }
+                    ) && i.nets.contains(&net)
+                })
+        };
+        let mut chosen: Vec<Item> = Vec::new();
+        let mut taken: Vec<[InstId; 3]> = Vec::new();
+        let mut fallback: Vec<InstId> = Vec::new();
+        for &(part, dc) in &switches {
+            let value = |f: FieldId, dim: Dimension| match &model.field(f).domain {
+                Domain::Quantity(q)
+                    if q.dim() == dim && q.lo().is_finite() && q.hi().is_finite() =>
+                {
+                    Some(Range::new(q.lo(), q.hi()))
+                }
+                _ => None,
+            };
+            let net = |pin: InstId| net_of.get(&pin).copied();
+            let modelled = (|| {
+                let vth = value(dc.values[0], Dimension::VOLTAGE)?;
+                let ron = value(dc.values[1], Dimension::RESISTANCE).filter(|r| r.hi > 0.0)?;
+                let ron = Range::new(ron.lo.max(MIN_RESISTANCE), ron.hi.max(MIN_RESISTANCE));
+                let (g, d, s) = (net(dc.pins[0])?, net(dc.pins[1])?, net(dc.pins[2])?);
+                if d == s || open_if_all.contains(&g) || !sets_gate(g, &items) {
+                    return None;
+                }
+                let bridge = model.instance(part).bridge;
+                let flipped =
+                    bridge.is_some_and(|(first, _)| first == dc.pins[2] && first != dc.pins[1]);
+                Some(Item {
+                    kind: Kind::Mosfet {
+                        gate: 0,
+                        drain: 0,
+                        source: 0,
+                        p_channel: dc.kind == DcKind::Pmos,
+                        vth,
+                        ron,
+                    },
+                    name: model.path_of(part),
+                    part: Some(part),
+                    flipped,
+                    current: model.through_of(part),
+                    drop: match model.member(part, "drop") {
+                        Some(Member::Field(f))
+                            if model.field(f).kind
+                                == netsmith_check::FieldKind::Quantity(Dimension::VOLTAGE) =>
+                        {
+                            Some(f)
+                        }
+                        _ => None,
+                    },
+                    nets: vec![g, d, s],
+                    reg: None,
+                })
+            })();
+            match modelled {
+                Some(item) => {
+                    chosen.push(item);
+                    taken.push([dc.pins[0], dc.pins[1], dc.pins[2]]);
+                }
+                None => fallback.push(part),
+            }
+        }
+        for (item, pins) in chosen.into_iter().zip(taken) {
+            accounted.extend(pins);
+            if let Some(part) = item.part {
+                modelled_parts.insert(part);
+            }
+            items.push(item);
+        }
+        for part in fallback {
+            if let Some((item, a, b)) = boundary(part) {
+                accounted.insert(a);
+                accounted.insert(b);
+                items.push(item);
+            }
+        }
+        open_nets(&accounted)
+    };
 
     for reg in regs.iter_mut() {
         reg.out_complete = !open.contains(&reg.out_net);
@@ -756,6 +919,25 @@ pub(crate) fn extract(model: &Model) -> Extracted {
                     to: n[1],
                     draw: *draw,
                 },
+                Kind::Mosfet {
+                    p_channel,
+                    vth,
+                    ron,
+                    ..
+                } => Kind::Mosfet {
+                    gate: n[0],
+                    drain: n[1],
+                    source: n[2],
+                    p_channel: *p_channel,
+                    vth: *vth,
+                    ron: *ron,
+                },
+                Kind::Pin { high, low, z, .. } => Kind::Pin {
+                    node: n[0],
+                    high: high.map(|(_, r)| (n[1], r)),
+                    low: low.map(|(_, r)| (n[2], r)),
+                    z: *z,
+                },
             };
             if let Some(reg) = item.reg {
                 sinks.push(Sink {
@@ -821,4 +1003,117 @@ fn hold_net(held: &mut BTreeMap<usize, Held_>, net: usize, hold: Hold, range: Ra
             }
         }
     }
+}
+
+/// A logic pin that can drive its net, with what it takes to model it.
+struct Driver {
+    terminal: InstId,
+    net: usize,
+    /// The nets of its supply and its ground, both held.
+    pos: usize,
+    neg: usize,
+    /// The output resistance when it drives high and when it drives low.
+    high: Option<Range>,
+    low: Option<Range>,
+    /// Whether it can let go of the line.
+    z: bool,
+}
+
+/// The drive of a logic pin, from what its part states (ADR 0076, amendment 4). A pin is
+/// modelled when it is an output, a tri-state output or a bidirectional pin of a `Logic` (or of
+/// a bus's `Levels`) that:
+///
+/// - is not stated unused, and states no `swing` (a swing says the line goes to a supply that
+///   has no pin, and the rail it is a reference to is not what it drives to),
+/// - has a reference rail whose two nets a source holds,
+/// - states a `voh` and a `vol` that have a value, each with the current it is measured at
+///   (`.voh &= .vdd.voltage - 0.4V at 2mA`): the datasheet's own form (question 2 of the ADR).
+///
+/// A pin that states one of the two only might be an open-drain pin or a push-pull one that
+/// leaves its high out; which is a marker the language does not have (ADR 0075), so it is a
+/// boundary and not a guess.
+fn driver_of(
+    model: &Model,
+    reader: &crate::levels::Run<'_>,
+    pin: InstId,
+    net: usize,
+    net_of: &HashMap<InstId, usize>,
+    held: &BTreeMap<usize, Held_>,
+) -> Option<Driver> {
+    let part = model.owner_of(pin)?;
+    if model.instance(part).kind != InstKind::Part || model.unused_by(pin).is_some() {
+        return None;
+    }
+    let z = match model.pin_kind(pin)? {
+        PinKind::Output => false,
+        PinKind::TriState | PinKind::Bidirectional => true,
+        _ => return None,
+    };
+    let logic = reader.logic_of(pin)?;
+    if reader.value(logic, "swing").is_some() {
+        return None;
+    }
+    let Some(Member::Inst(reference)) = model.member(logic, "reference") else {
+        return None;
+    };
+    let (_, pos_pin, neg_pin) = model.rail_of(reference)?;
+    let (&pos, &neg) = (net_of.get(&pos_pin)?, net_of.get(&neg_pin)?);
+    let (supply, ground) = (held.get(&pos)?, held.get(&neg)?);
+    if supply.hold != Hold::Pos(neg) || ground.hold != Hold::Ground {
+        return None;
+    }
+    let level = |name: &str| -> Option<(FieldId, Range, f64)> {
+        let (f, q) = reader.value(logic, name)?;
+        let test = model.level_test(f)?.current;
+        let i = test.lo();
+        if q.dim() != Dimension::VOLTAGE || !q.lo().is_finite() || !q.hi().is_finite() {
+            return None;
+        }
+        (i.is_finite() && i > 0.0).then_some((f, Range::new(q.lo(), q.hi()), i))
+    };
+    let (voh, voh_range, ioh) = level("voh")?;
+    let (_, vol_range, iol) = level("vol")?;
+    // The datasheet gives `VOH = VDD - 0.4 V at 2 mA`: when the level is written that way the
+    // drop is exact, and it is what the resistance is made of. Any other form is the most the
+    // supply can be above the lowest high.
+    let drop = stated_drop(model, voh, net_of, pos).unwrap_or(supply.range.hi - voh_range.lo);
+    let roh = Range::new(MIN_RESISTANCE, (drop / ioh).max(MIN_RESISTANCE));
+    let rol = Range::new(MIN_RESISTANCE, (vol_range.hi / iol).max(MIN_RESISTANCE));
+    Some(Driver {
+        terminal: pin,
+        net,
+        pos,
+        neg,
+        high: Some(roh),
+        low: Some(rol),
+        z,
+    })
+}
+
+/// The constant `c` of a `voh` that is stated as `V - c` where `V` is the voltage of a rail whose
+/// positive pin is on the net `pos`: the drop that the datasheet gives. `c` is taken at its
+/// greatest.
+fn stated_drop(
+    model: &Model,
+    level: FieldId,
+    net_of: &HashMap<InstId, usize>,
+    pos: usize,
+) -> Option<f64> {
+    model.relations().iter().find_map(|r| {
+        let RExpr::Field(l) = &r.lhs else { return None };
+        if *l != level {
+            return None;
+        }
+        let RExpr::Bin(BinOp::Sub, a, b) = &r.rhs else {
+            return None;
+        };
+        let (RExpr::Field(v), RExpr::Const(c)) = (&**a, &**b) else {
+            return None;
+        };
+        let (_, rail_pos, _) = model.rail_of(model.field(*v).owner)?;
+        if net_of.get(&rail_pos) != Some(&pos) || c.dim() != Dimension::VOLTAGE {
+            return None;
+        }
+        (c.hi().is_finite() && c.hi() >= 0.0).then_some(c.hi())
+    })
 }

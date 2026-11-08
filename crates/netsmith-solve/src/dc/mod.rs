@@ -4,10 +4,11 @@
 //! island over every corner of its ranges and every state of its diodes. `solve/dcpass.rs` writes
 //! the results back into the solver's model. This stage models the resistive islands: resistors
 //! (a fuse and a ferrite bead are resistors), diodes, the board's own supplies as ideal sources,
-//! what a part draws as a current source when its `.current` has a value, and regulators (an
-//! output that holds a voltage, an input whose current the output sets). The drive states of
-//! logic pins and MOSFETs as switches are later stages; the cheap bound of `crate::ohm` stays as
-//! the fallback for whatever is not modelled.
+//! what a part draws as a current source when its `.current` has a value, regulators (an
+//! output that holds a voltage, an input whose current the output sets), logic pins that drive
+//! (high, low or high impedance through the output resistance their levels and test currents
+//! give) and MOSFETs as switches (on and off, by what their gate says). The cheap bound of
+//! `crate::ohm` stays as the fallback for whatever is not modelled.
 //!
 //! The islands are solved in the order of the power tree. A regulator's output holds its net, so
 //! what is behind it is an island of its own, and the current it takes from the output is a range

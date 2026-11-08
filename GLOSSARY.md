@@ -346,7 +346,7 @@ The part of the network between the nets that a supply holds: the nets no source
 _Avoid_: Subnet, partition, section, cluster
 
 **Corner**:
-One combination of the ends of the ranges an island has (a resistance at its least or its greatest, a supply or a load at either end, a diode's forward voltage at either end) with a state for each diode (blocking or conducting). The range a current or a voltage takes is the hull of its values over the corners, which counts each value once (ADR 0076, section 3).
+One combination of the ends of the ranges an island has (a resistance at its least or its greatest, a supply or a load at either end, a diode's forward voltage at either end, a pin's output resistance at either end) with a state for each diode (blocking or conducting), each MOSFET (off or on) and each logic pin (high, low or high impedance). The range a current or a voltage takes is the hull of its values over the corners, which counts each value once (ADR 0076, section 3).
 _Avoid_: Case, scenario, worst case (the worst case is a result, an end of the range a corner makes)
 
 **Regulator (at DC)**:

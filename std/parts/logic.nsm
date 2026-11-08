@@ -42,8 +42,8 @@ part Sn74lvc1g04 {
     .a.vil &= 0.8V
 
     // Table 5.5, IOH = -100 uA and IOL = 100 uA.
-    .y.voh &= .vcc.voltage - 0.1V
-    .y.vol &= 0.1V
+    .y.voh &= .vcc.voltage - 0.1V at 100uA
+    .y.vol &= 0.1V at 100uA
 
     // Table 5.1.
     .a.line.abs_min &= -0.5V
