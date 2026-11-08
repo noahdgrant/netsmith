@@ -409,12 +409,16 @@ pub struct Bridge {
 
 /// `catalog resistor { .resistance, .package }`: the columns of a parts catalog that
 /// this part's fields are matched against. `catalog mcu by .mpn { .mpn, .package }` names
-/// the column that picks one row, which the design must set.
+/// the column that picks one row, which the design must set. A column may end with
+/// `optional` (`catalog tvs { .clamping_voltage, .breakdown_voltage optional }`, ADR 0078):
+/// a file may leave it out and a row may leave its cell empty.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Catalog {
     pub name: Ident,
     pub key: Option<Path>,
     pub fields: Vec<Path>,
+    /// One entry per column of `fields`: where its `optional` is, if it has one.
+    pub optional: Vec<Option<Span>>,
     pub span: Span,
 }
 

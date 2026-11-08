@@ -217,7 +217,7 @@ fn resistors(c: &Catalogs) -> Vec<String> {
         t("package"),
         q("temperature_coefficient", Dimension::NONE),
     ];
-    c.resolve("resistor", &columns)
+    c.resolve("resistor", &columns, &[])
         .unwrap()
         .unwrap()
         .candidates
@@ -416,7 +416,7 @@ fn the_picked_row_keeps_its_columns_as_values() {
         q("dropout", Dimension::VOLTAGE),
         q("max_current", Dimension::CURRENT),
     ];
-    let cat = c.resolve("zz9", &columns).unwrap().unwrap();
+    let cat = c.resolve("zz9", &columns, &[]).unwrap().unwrap();
     assert_eq!(
         cat.candidates[0].column("mpn"),
         Some(&Value::Text("ZZ9-33-S".into()))
@@ -438,7 +438,7 @@ fn derate_error(cell: &str) -> String {
         q("capacitance", Dimension::CAPACITANCE),
         q("effective_capacitance", Dimension::CAPACITANCE),
     ];
-    c.resolve("zzcap", &columns).unwrap().unwrap_err()
+    c.resolve("zzcap", &columns, &[]).unwrap().unwrap_err()
 }
 
 #[test]
@@ -473,7 +473,7 @@ fn a_derate_cell_with_no_points_is_a_part_with_no_published_curve() {
         q("capacitance", Dimension::CAPACITANCE),
         q("effective_capacitance", Dimension::CAPACITANCE),
     ];
-    let cat = c.resolve("zzcap", &columns).unwrap().unwrap();
+    let cat = c.resolve("zzcap", &columns, &[]).unwrap().unwrap();
     match cat.candidates[0].column("effective_capacitance") {
         Some(Value::Derated(d)) => assert!(d.curve.is_empty() && d.against == "bias"),
         other => panic!("{other:?}"),

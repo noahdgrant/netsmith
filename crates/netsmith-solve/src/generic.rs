@@ -761,9 +761,11 @@ pub fn resolve(
     catalogs: &Catalogs,
     stock: &dyn Fn(&str) -> Option<u64>,
 ) -> Result<Orderable, String> {
-    let Some(Ok(catalog)) =
-        catalogs.identity(&generic.catalog, &Standard::of_spec(&generic.spec).kinds())
-    else {
+    let Some(Ok(catalog)) = catalogs.identity(
+        &generic.catalog,
+        &Standard::of_spec(&generic.spec).kinds(),
+        &[],
+    ) else {
         return Err(format!(
             "unresolved: there is no readable `{}` catalog to find {} in",
             generic.catalog,
@@ -850,9 +852,11 @@ pub const CHANGE_THE_VALUE: &str = " Change the value in the design and build ag
 /// catalog cannot be read. These are the alternatives the message offers and that a build
 /// can check the design against.
 pub fn alternatives(generic: &Generic, catalogs: &Catalogs) -> Vec<Alternative> {
-    let Some(Ok(catalog)) =
-        catalogs.identity(&generic.catalog, &Standard::of_spec(&generic.spec).kinds())
-    else {
+    let Some(Ok(catalog)) = catalogs.identity(
+        &generic.catalog,
+        &Standard::of_spec(&generic.spec).kinds(),
+        &[],
+    ) else {
         return Vec::new();
     };
     let rows: Vec<&Candidate> = catalog

@@ -1463,7 +1463,7 @@ Rules.
 - A pin declared as `.name: Pin` has no row, so it has no pad. It is for a pin that the part joins to one that has pads (an alias, see below), and in a module or interface, where a pin passes a connection along.
 - A part states only what is always true of it. It does not fix a value a design might change, and it names no KiCad symbol or footprint (ADR 0002).
 - `bridge .a ~> .b` names the two terminals a chain enters and leaves by. A part has at most one.
-- `catalog name { .field, ... }` lists the fields the solver fills from a catalog (next section). The standard catalogs are `resistor`, `capacitor`, `led`, `ldo`, `schottky`, `zener`, `tvs`, `ferrite_bead`, `inductor`, `fuse`, `n_mosfet`, `crystal` and `header` (the contact rating of a pin header or socket, ADR 0040). A part naming another is reported as "not chosen: there is no `x` catalog to choose from".
+- `catalog name { .field, ... }` lists the fields the solver fills from a catalog (next section). A column may end with `optional` (`catalog tvs { .standoff_voltage, .breakdown_voltage optional }`, ADR 0078): a file may leave it out and a row may leave its cell empty ("An optional column" in the next section). The standard catalogs are `resistor`, `capacitor`, `led`, `ldo`, `schottky`, `zener`, `tvs`, `ferrite_bead`, `inductor`, `fuse`, `n_mosfet`, `crystal` and `header` (the contact rating of a pin header or socket, ADR 0040). A part naming another is reported as "not chosen: there is no `x` catalog to choose from".
 - A part with no catalog, such as `Header2x5`, is placed as written. A through-hole part is soldered by hand unless `.assembly` says otherwise (next section).
 
 Misuse.
@@ -3166,7 +3166,7 @@ catalog_dirs = ["catalogs"]
 
 The first line of a file names the columns. Two kinds of column can be there, in any order.
 
-- The columns of the part: the paths of the fields in its `catalog X { ... }` declaration, without the leading dot (`resistance`, `package`, `vout.voltage`, `mpn`). A cell of a quantity column is a value as the language writes it, with its unit: `10kohm +/- 1%`, `1.8V..5.5V`, `0.3V`. It must be in the dimension of the field. A cell of a text column is its text as it is, without quotes: `0402`, `SOT-23-5`. An empty cell means the row has no value there: the row fits no design that asks for one, and, for any column a design needs (the package, the resistance, a rating), the row is never offered at all. Only three columns of the standard kinds may be empty in a row that is offered, because they were added after the files were written: `temperature_coefficient` of `resistor`, `rms_current` of `inductor` and `dielectric` of `capacitor`. Such a row is offered to a design that says nothing about the field, and a design says something by narrowing it, by a relation that names it, by a `~` that joins it or by a balance of currents that sums it.
+- The columns of the part: the paths of the fields in its `catalog X { ... }` declaration, without the leading dot (`resistance`, `package`, `vout.voltage`, `mpn`). A cell of a quantity column is a value as the language writes it, with its unit: `10kohm +/- 1%`, `1.8V..5.5V`, `0.3V`. It must be in the dimension of the field. A cell of a text column is its text as it is, without quotes: `0402`, `SOT-23-5`. An empty cell means the row has no value there: the row fits no design that asks for one, and, for any column a design needs (the package, the resistance, a rating), the row is never offered at all. Only a column that the part's `catalog` statement marks `optional` (ADR 0078, below) may be empty in a row that is offered. The standard parts mark the four that were added after the files were written: `temperature_coefficient` of `resistor`, `rms_current` of `inductor`, `dielectric` of `capacitor` and `breakdown_voltage` of `tvs`. Such a row is offered to a design that says nothing about the field, and a design says something by narrowing it, by a relation that names it, by a `~` that joins it or by a balance of currents that sums it.
 - The fixed columns, all optional except as noted: `lcsc` (the supplier's number), `mpn` (the manufacturer's; also a column of the part if its catalog lists `.mpn`), `library` (`Basic`, `Extended` or `Preferred`), `price` and `stock` (JLCPCB's snapshot, entered by hand; the solver does not read them, so a row is offered whatever its `stock` says, and the build notes a pick whose `stock` is 0; the bill of materials shows them only when no supply provider has the part, ADR 0047), `price_breaks` (`1:0.0019 1000:0.0015`, the price for one piece from each quantity; entered by hand and read by nothing), `date` (`2026-10-31`, the day the `price` and `stock` were read), `checked` (`2026-11-02`, the day `catalog refresh` last found the row's `mpn` and `package` equal to LCSC's record; empty if never, read by nothing), `name` and `label` (what a message calls the row, and what the schematic's value field shows; both default to the `mpn`, then the `lcsc`), `notes`, and `source`. **A row with an `lcsc` or an `mpn` must have a `source`**: the URL or text that says where its numbers were read. A row with neither is a made-up part and needs a `name`.
 
 `price`, `stock` and `library` are JLCPCB's numbers and `date` is the day they were read: they are a hand-entered snapshot (the standard catalogs that ship in netsmith leave `price`, `stock`, `date` and `checked` empty: read a part's price and stock from the supplier before ordering), and `netsmith catalog refresh` never writes them (it asks LCSC, never JLCPCB, and only verifies the row and records the day in `checked`; see Commands). `netsmith catalog age` lists the rows whose price and stock were read long ago and those whose price and stock are unknown. The price and stock of a part come from a supply provider (the `[supply]` table of `netsmith.toml`, ADR 0047, provisional): `provider = "file"` with `file = "supply/quotes.csv"`, a CSV with the columns `lcsc` or `mpn`, `channel` (`jlcpcb-assembly` or `lcsc-retail`: the two stocks differ, and the answer says which it is), `stock`, `price_breaks` (`1:0.0100 100:0.0050`), `currency` and `date`; `channel` and `cache_hours` choose the stock shown and how long a cached answer is used. With no provider, or one that does not list the part, price and stock are unknown in the bill of materials, never guessed and never 0. The manifest has no field for a key or a password. The solver never asks; it reads the rows and no price or stock.
@@ -3296,6 +3296,85 @@ error: `u` is an `Mcu32`; name the part with .mpn: MCU32-A, MCU32-B
 10 |     .u: Mcu32 { .package &= "QFN-32" }
    |     ^^^^^^^^^
 ```
+
+#### An optional column
+
+A column that a row may leave empty says so with the word `optional` after it in the `catalog` statement (ADR 0078, provisional), the word that a member (ADR 0074) and a `pins` row already use for "may be absent". The standard library does it for `temperature_coefficient`, `dielectric`, `rms_current` and a TVS diode's `breakdown_voltage`, and a project's own part does it for a column of its own catalog. A fuse that records a surge rating only for some parts (invented, like the file below):
+
+```nsm module=src::zfuse
+/// A fuse with an optional surge rating. Illustrative; not a real part.
+part Zfuse {
+    .designator &= "F"
+    .rated_current: Current
+    .surge_current: Current
+    pins "0805" {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+    bridge .a ~> .b
+    .package: Package
+    catalog zfuse { .rated_current, .surge_current optional, .package }
+}
+```
+
+The file leaves the cell empty for the row that does not record it, and a file written before the column existed may leave the whole column out:
+
+```csv file=catalogs/zfuse.csv set=surge
+mpn,rated_current,surge_current,package,library,source
+ZF-1,1A,,0805,Extended,https://example.invalid/zf-1.pdf
+ZF-2,1A,8A,0805,Extended,https://example.invalid/zf-2.pdf
+```
+
+A design that says nothing about the column is offered every row, the empty one too. This file has only that row, and the design builds:
+
+```csv file=catalogs/zfuse.csv set=unrated
+mpn,rated_current,package,library,source
+ZF-1,1A,0805,Extended,https://example.invalid/zf-1.pdf
+```
+
+```nsm evaluate catalogs=unrated
+import src::zfuse::Zfuse
+
+board Plain {
+    .f1: Zfuse { .rated_current &= 1A }
+}
+```
+
+A design that states the column, by a bound, an `&=`, a `~` or a balance of currents, is offered only the rows that record it (ADR 0047, ADR 0058). With the first file it gets `ZF-2`:
+
+```nsm evaluate catalogs=surge
+import src::zfuse::Zfuse
+
+board Surge {
+    .f1: Zfuse {
+        .rated_current &= 1A
+        .surge_current >= 5A
+    }
+}
+```
+
+With the file that has no `surge_current` column it has nothing to pick, and the message counts the rows:
+
+```nsm fails catalogs=unrated
+import src::zfuse::Zfuse
+
+board Surge {
+    .f1: Zfuse {
+        .rated_current &= 1A
+        .surge_current >= 5A
+    }
+}
+```
+
+```text
+error: the `zfuse` catalog has nothing for `f1`, which needs rated_current within 1A (rows with an empty cell are never offered, since a part with no stated rating cannot be shown to stay within it: 1 for `surge_current`)
+  --> main.nsm:4:5
+  |
+4 |     .f1: Zfuse {
+  |     ^^^^^^^^^^
+```
+
+The columns the statement does not mark are as they were: a row with an empty cell is never offered, and the file must have the column. The marker is refused on a column the part does not have (the same message as for any column), and on the key of a keyed catalog (`catalog mcu by .mpn { .mpn optional }`), because a row with no key could not be chosen.
 
 A file is read when it is used, and a mistake names the file and line. A row with a part number and no source, and a part twice:
 
@@ -3952,7 +4031,7 @@ r1 is a Resistor: picked PrecisionThinFilm; passed over Resistor (the `resistor`
 - The generic's statements hold for the provider, so a provider cannot state other designator letters than the generic's (`.designator &= "RN"` is a contradiction of `"R"`).
 - Only a part provides a standard generic: a module that says `provides Resistor` is refused, because the generic has a `pins` table.
 
-The series of values that have no row (ADR 0047) and the columns that a file of rows may leave out (`.temperature_coefficient` of a resistor, `.dielectric` of a capacitor, `.rms_current` of an inductor) belong to the **catalogs** `resistor`, `capacitor`, `inductor` and `led` (an LED has no series, only its packages), which are the standard generics' own: one table of the solver names them, and it is the only place that does (ADR 0068, stage 3). A catalog is one name that every part listing it shares, so a part or a provider that lists `catalog resistor` has the series and the omitted columns of that catalog, whatever the generic it provides. One more column may be left out of a file that no generic synthesizes: `.breakdown_voltage` of a TVS diode, in the `tvs` catalog (ADR 0073). A provider whose catalog has another name has no series, and its file has every column it lists.
+The series of values that have no row (ADR 0047) and the columns that a file of rows may leave out (`.temperature_coefficient` of a resistor, `.dielectric` of a capacitor, `.rms_current` of an inductor) belong to the **catalogs** `resistor`, `capacitor`, `inductor` and `led` (an LED has no series, only its packages), which are the standard generics' own: one table of the solver names them, and it is the only place that does (ADR 0068, stage 3). A catalog is one name that every part listing it shares, so a part or a provider that lists `catalog resistor` has the series and the omitted columns of that catalog, whatever the generic it provides. A column may be left out of a file when the part's `catalog` statement marks it `optional` (ADR 0078), also in a catalog that no generic synthesizes: `.breakdown_voltage` of a TVS diode, in the `tvs` catalog (ADR 0073), is marked so in `std`. A provider whose catalog has another name has no series, and its file has every column it lists, unless its statement marks the column `optional`.
 
 ## Modules
 
@@ -6979,9 +7058,9 @@ board Standoff {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 9 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
-    --> std/parts/diode.nsm:153:5
+    --> std/parts/diode.nsm:154:5
     |
-153 |     .bias <= .standoff_voltage
+154 |     .bias <= .standoff_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 

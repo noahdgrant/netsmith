@@ -70,21 +70,20 @@ pub(crate) fn value_columns(catalog: &str) -> Vec<&'static str> {
     Standard::of_catalog(catalog).map_or_else(Vec::new, Standard::value_columns)
 }
 
-/// Whether a column of a standard kind's catalog may be empty in a row without taking the row
-/// out of every design that does not mention it, and may be missing from a file: the columns
-/// added after files were written (ADR 0055, ADR 0058), so that a project's catalog that
-/// predates one stays valid. Any other empty cell is an unknown value of something every
-/// design needs (a package, a resistance, a rating), so the row is never offered, and any
-/// other column the part lists must be in the file.
-pub(crate) fn is_optional(catalog: &str, column: &str) -> bool {
-    OPTIONAL_OF_KINDS.contains(&(catalog, column))
+/// Whether a column of a catalog may be empty in a row without taking the row out of every
+/// design that does not mention it, and may be missing from a file: the columns added after
+/// files were written (ADR 0055, ADR 0058), so that a project's catalog that predates one
+/// stays valid. `optional` lists the columns the part's `catalog` statement marks `optional`
+/// (ADR 0078), the way a part, standard or a project's, declares it. The columns of the
+/// standard kinds that have synthesized parts (`Standard`) are also optional under the
+/// standard catalog's name, as they were before the marker, so that a project's part that
+/// lists one without it is read as before. Any other empty cell is an unknown value of
+/// something every design needs (a package, a resistance, a rating), so the row is never
+/// offered, and any other column the part lists must be in the file.
+pub(crate) fn is_optional(catalog: &str, column: &str, optional: &[String]) -> bool {
+    optional.iter().any(|o| o == column)
         || Standard::of_catalog(catalog).is_some_and(|s| s.is_optional(column))
 }
-
-/// The optional columns of standard catalogs that have no synthesized parts, so that
-/// [`Standard`] does not describe them: a TVS diode's minimum breakdown voltage (ADR 0073).
-/// The standard rows leave each empty.
-const OPTIONAL_OF_KINDS: &[(&str, &str)] = &[("tvs", "breakdown_voltage")];
 
 /// The fields of one CSV record and the 1-based line it starts on.
 pub type Record = (usize, Vec<String>);
@@ -329,11 +328,13 @@ impl Table {
 
     /// The candidates for a part whose `catalog name { ... }` lists `columns`, in the order
     /// of the rows. Every cell is read as its column's kind, and a problem names the file,
-    /// the line and the cell.
+    /// the line and the cell. `optional` names the columns the statement marks `optional`
+    /// (ADR 0078): a file may leave one out, and a row may leave its cell empty.
     pub fn candidates(
         &self,
         name: &str,
         columns: &[(String, FieldKind)],
+        optional: &[String],
     ) -> Result<Vec<Candidate>, String> {
         let listed = || {
             columns
@@ -357,7 +358,7 @@ impl Table {
             }
             let mut values = Vec::new();
             for (column, kind) in columns {
-                if !row.header.names.contains(column) && is_optional(name, column) {
+                if !row.header.names.contains(column) && is_optional(name, column, optional) {
                     continue;
                 }
                 if !row.header.names.contains(column) {

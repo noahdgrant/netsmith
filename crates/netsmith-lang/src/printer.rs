@@ -264,7 +264,15 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                 let _ = write!(out, "bridge {} ~> {}", b.from.to_source(), b.to.to_source());
             }
             Item::Catalog(c) => {
-                let fields: Vec<_> = c.fields.iter().map(Path::to_source).collect();
+                let fields: Vec<_> = c
+                    .fields
+                    .iter()
+                    .zip(&c.optional)
+                    .map(|(f, o)| match o {
+                        Some(_) => format!("{} optional", f.to_source()),
+                        None => f.to_source(),
+                    })
+                    .collect();
                 let key = match &c.key {
                     Some(k) => format!(" by {}", k.to_source()),
                     None => String::new(),

@@ -42,7 +42,7 @@ generic Resistor {
     bridge .a ~> .b
 
     .package: Package
-    catalog resistor { .resistance, .max_power, .package, .temperature_coefficient }
+    catalog resistor { .resistance, .max_power, .package, .temperature_coefficient optional }
 }
 
 /// The dielectric class of a ceramic capacitor, by the code its listing and its datasheet print.
@@ -106,7 +106,7 @@ generic Capacitor {
     bridge .a ~> .b
 
     .package: Package
-    catalog capacitor { .capacitance, .effective_capacitance, .max_voltage, .package, .dielectric }
+    catalog capacitor { .capacitance, .effective_capacitance, .max_voltage, .package, .dielectric optional }
 }
 
 /// A light-emitting diode. Current flows from anode to cathode.
@@ -171,7 +171,7 @@ generic Inductor {
     bridge .a ~> .b
 
     .package: Package
-    catalog inductor { .inductance, .saturation_current, .dc_resistance, .package, .rms_current }
+    catalog inductor { .inductance, .saturation_current, .dc_resistance, .package, .rms_current optional }
 }
 
 /// A ferrite bead: a lossy inductor that blocks high frequencies. `.impedance` is the

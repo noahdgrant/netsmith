@@ -163,6 +163,9 @@ pub struct Catalog {
     /// The column that names one row (`catalog mcu by .mpn`). The design must set it: the
     /// solver does not pick among rows of a keyed catalog.
     pub key: Option<FieldId>,
+    /// The columns marked `optional` in the statement (ADR 0078): a file may leave them
+    /// out, and a row may leave the cell empty. A subset of `fields`.
+    pub optional: Vec<FieldId>,
 }
 
 /// One line of a pin table: what one pin of a part is and which pads it has in the package.
