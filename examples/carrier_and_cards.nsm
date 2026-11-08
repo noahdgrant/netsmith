@@ -80,6 +80,7 @@ board Carrier {
     /// Supplied from outside the system.
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
+        .peak &= 3.6V
         .pos.net &= "3V3"
         .neg.net &= "GND"
         .min_track &= 0.5mm..1m

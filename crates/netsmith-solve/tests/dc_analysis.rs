@@ -136,11 +136,12 @@ fn a_boundary_with_a_stated_current_is_a_load_on_a_divider() {
 /// A fuse, a diode and a load: the chain's current is the load's, the fuse's and the diode's
 /// ratings are judged, and the drop of each is the current through its resistance or its forward
 /// voltage. Without the pass the three relations of the fuse and the diode wait (nothing states
-/// the current: the net has the rail's and the load's).
+/// the current: the net has the rail's and the load's). The supply states its peak, which the fuse
+/// takes (ADR 0086), so its rated voltage is judged too.
 #[test]
 fn a_fuse_and_a_diode_in_front_of_a_load_are_judged_with_numbers() {
     let src = board(
-        "    .fuse: Fuse { .rated_current &= 1A }\n    .diode: Diode { .forward_voltage &= 0.5V..0.8V; .max_forward_current &= 1A; .max_reverse_voltage &= 40V }\n    .mcu: Mcu { .vdd.current &= 50mA..100mA }\n    .aux: Mcu { .vdd.current &= 50mA..200mA }\n    .supply.pos ~> .fuse ~> .diode ~> .mcu.vdd.pos\n    .diode.cathode ~ .aux.vdd.pos\n    .supply.neg ~ .mcu.vdd.neg\n    .supply.neg ~ .aux.vdd.neg\n",
+        "    .supply.peak &= 24V\n    .fuse: Fuse { .rated_current &= 3A }\n    .diode: Diode { .forward_voltage &= 0.5V..0.8V; .max_forward_current &= 1A; .max_reverse_voltage &= 40V }\n    .mcu: Mcu { .vdd.current &= 50mA..100mA }\n    .aux: Mcu { .vdd.current &= 50mA..200mA }\n    .supply.pos ~> .fuse ~> .diode ~> .mcu.vdd.pos\n    .diode.cathode ~ .aux.vdd.pos\n    .supply.neg ~ .mcu.vdd.neg\n    .supply.neg ~ .aux.vdd.neg\n",
     );
     let s = solved(&src);
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
@@ -148,10 +149,11 @@ fn a_fuse_and_a_diode_in_front_of_a_load_are_judged_with_numbers() {
     near(range(&s, "fuse.current").unwrap(), (0.1, 0.3));
     near(range(&s, "diode.current").unwrap(), (0.1, 0.3));
     // The fuse drops its current through its resistance: the picked row's cold resistance is
-    // 0.05 ohm to 0.27 ohm, so `0.1 A * 0.05 ohm` to `0.3 A * 0.27 ohm`.
+    // 32 mohm (the 3 A, 125 V row, the one that interrupts the supply's 24 V peak), so
+    // `0.1 A * 0.032 ohm` to `0.3 A * 0.032 ohm`.
     let (lo, hi) = range(&s, "fuse.drop").unwrap();
     assert!(
-        (lo - 0.005).abs() < 1e-6 && (hi - 0.081).abs() < 1e-6,
+        (lo - 0.0032).abs() < 1e-6 && (hi - 0.0096).abs() < 1e-6,
         "{lo} {hi}"
     );
     assert!(

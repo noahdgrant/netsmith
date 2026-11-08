@@ -442,13 +442,11 @@ fn a_fuse_is_checked_against_the_draw_of_its_load() {
     );
 }
 
-/// A part in a `~>` chain from a rail sees the chain's current and nothing else of the rail: no
-/// field of the rail's reaches it (a part reads its own fields, and only `bias` is derived
-/// from a rail, for a part across one). So the library cannot check `.rated_voltage` against
-/// the rail's `.peak`, nor a diode's rating against the fuse in front of it; a board states
-/// those lines, and each is checked in the worst case like any rating (issue 175).
+/// A part in a `~>` chain from a rail has the rail's `.peak` as its `.supply_peak` (ADR 0086),
+/// so a fuse is compared with it with no line of the board's. What does not reach a part is
+/// still the board's: a diode's rating against the fuse in front of it (issue 175).
 #[test]
-fn a_fuse_rated_voltage_is_compared_with_the_peak_only_where_the_board_states_it() {
+fn a_fuse_rated_voltage_is_compared_with_the_peak_of_its_rail() {
     let board = |rated: &str, line: &str| {
         on_12v(
             "import std::parts::passive::Fuse",
@@ -460,19 +458,29 @@ fn a_fuse_rated_voltage_is_compared_with_the_peak_only_where_the_board_states_it
             ),
         )
     };
-    let line = "    .fuse.rated_voltage >= .supply.peak";
-    clean(&board("60V", line));
+    clean(&board("60V", ""));
     one(
-        &board("32V", line),
+        &board("32V", ""),
         &[
-            "fuse.rated_voltage must always be at least supply.peak",
-            "32V",
+            "fuse.supply_peak must always be at most fuse.rated_voltage",
             "40V",
+            "32V",
         ],
     );
-    // Without the line nothing compares the rating with the rail: a 32 V fuse on a 40 V
-    // peak is not found. This is the gap the issue names, and the test keeps it visible.
-    clean(&board("32V", ""));
+    // The line a board wrote before still holds, and agrees with it.
+    clean(&board("60V", "    .fuse.rated_voltage >= .supply.peak"));
+}
+
+/// A rail that states no `.peak` leaves the fuse's check open: it is listed as not evaluated
+/// and the board builds, as for any rating that waits on a value.
+#[test]
+fn a_fuse_on_a_rail_with_no_peak_is_not_refused() {
+    clean(&on_12v(
+        "import std::parts::passive::Fuse",
+        "    .load: Rail { .current &= 100mA..600mA\n .pos.net &= \"VF\"\n .neg.net &= \"GND\" }\n    \
+         .fuse: Fuse { .rated_current &= 1A\n .rated_voltage &= 32V }\n    \
+         .supply.pos ~> .fuse ~> .load.pos\n    .supply.neg ~ .load.neg",
+    ));
 }
 
 #[test]

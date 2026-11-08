@@ -381,6 +381,10 @@ _Avoid_: Surge voltage, transient voltage (the transient is the event; the peak 
 **Bias**:
 The DC voltage across a part: a capacitor, a diode, a Zener or a TVS diode. A part with a `.bias` and a `bridge` placed between a rail's `pos` and `neg` has the rail's voltage as its `.bias` without being told; a design states `.bias` only for a part that is across no rail.
 
+**Supply peak**:
+The `.supply_peak` of a part in a `~>` chain, a `Fuse`: the `.peak` of the rail whose `pos` the chain starts on, which the checker gives the part without being told (ADR 0086, provisional). The chain carries it as it carries the current, so a part in series, which is across no rail and has no `.bias`, is checked against the highest voltage it has to interrupt. A part in no chain from a rail has none, and a design states it.
+_Avoid_: Chain voltage, input peak
+
 **Marked value**:
 A capacitor's `.capacitance`: the value printed on the part and listed on a bill of materials, with its tolerance. A design states it where it means a part, such as a bypass capacitor.
 _Avoid_: Nominal
