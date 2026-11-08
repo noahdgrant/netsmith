@@ -48,7 +48,9 @@ fn not_evaluated(s: &Solution) -> Vec<String> {
         .collect()
 }
 
-/// An invented gate with a supply that draws 100 uA to 1 mA and two inputs, `a` and `b`.
+/// An invented gate with a supply that draws 100 uA to 1 mA and two lines, `a` and `b`, that it may
+/// drive (pins the DC analysis does not model: an undriven input on a net behind a regulator draws
+/// nothing, which the analysis solves, and a pull-up on it would then draw nothing).
 const GATE: &str = "\
 import std::bus::PullUp
 import std::parts::passive::Resistor
@@ -62,8 +64,8 @@ part Gate {
     pins {
         .vcc.pos power \"VCC\" \"1\"
         .vcc.neg power \"GND\" \"2\"
-        .a input \"A\" \"3\"
-        .b input \"B\" \"4\"
+        .a bidirectional \"A\" \"3\"
+        .b bidirectional \"B\" \"4\"
     }
 }
 ";

@@ -130,10 +130,25 @@ pub enum DcKind {
     /// `dc pmos .gate .drain .source .gate_threshold .on_resistance`: a P-channel MOSFET as a
     /// switch. Voltages and currents of a part are magnitudes (see `std::parts::PMosfet`).
     Pmos,
+    /// `dc linear_regulator .vin .vout`: an ideal output source over the range of the output
+    /// rail's voltage, and an input that draws what the output supplies (ADR 0076, amendment 3).
+    /// The operands are the two rails, not pins.
+    LinearRegulator,
+    /// `dc switching_regulator .vin .sw .efficiency`: an ideal output source, and an input that
+    /// draws the output's power divided by the efficiency and the input voltage (ADR 0076,
+    /// amendment 3). The first two operands are rails.
+    SwitchingRegulator,
 }
 
 impl DcKind {
-    pub const ALL: [DcKind; 4] = [Self::Resistor, Self::Diode, Self::Nmos, Self::Pmos];
+    pub const ALL: [DcKind; 6] = [
+        Self::Resistor,
+        Self::Diode,
+        Self::Nmos,
+        Self::Pmos,
+        Self::LinearRegulator,
+        Self::SwitchingRegulator,
+    ];
 
     /// The word after `dc`.
     pub fn word(self) -> &'static str {
@@ -142,7 +157,15 @@ impl DcKind {
             Self::Diode => "diode",
             Self::Nmos => "nmos",
             Self::Pmos => "pmos",
+            Self::LinearRegulator => "linear_regulator",
+            Self::SwitchingRegulator => "switching_regulator",
         }
+    }
+
+    /// Whether the first operands are rails (interfaces with a `pos`, a `neg` and a `voltage`)
+    /// and not pins.
+    pub fn takes_rails(self) -> bool {
+        matches!(self, Self::LinearRegulator | Self::SwitchingRegulator)
     }
 
     pub fn from_word(word: &str) -> Option<Self> {
@@ -155,6 +178,7 @@ impl DcKind {
             Self::Resistor => &["terminal", "terminal"],
             Self::Diode => &["anode", "cathode"],
             Self::Nmos | Self::Pmos => &["gate", "drain", "source"],
+            Self::LinearRegulator | Self::SwitchingRegulator => &["input rail", "output rail"],
         }
     }
 
@@ -167,6 +191,8 @@ impl DcKind {
                 ("gate threshold", Dimension::VOLTAGE),
                 ("on resistance", Dimension::RESISTANCE),
             ],
+            Self::LinearRegulator => &[],
+            Self::SwitchingRegulator => &[("efficiency", Dimension::NONE)],
         }
     }
 
@@ -177,6 +203,8 @@ impl DcKind {
             Self::Diode => "dc diode .anode .cathode .forward_voltage",
             Self::Nmos => "dc nmos .gate .drain .source .gate_threshold .on_resistance",
             Self::Pmos => "dc pmos .gate .drain .source .gate_threshold .on_resistance",
+            Self::LinearRegulator => "dc linear_regulator .vin .vout",
+            Self::SwitchingRegulator => "dc switching_regulator .vin .buck.sw .buck.efficiency",
         }
     }
 }
@@ -185,7 +213,8 @@ impl DcKind {
 /// the network of an analysis from these. `pins` are in the order of [`DcKind::pin_roles`] and
 /// `values` in the order of [`DcKind::value_roles`], so that a resistor's two terminals are
 /// `pins[0]` and `pins[1]` and its resistance is `values[0]`, a diode's anode is `pins[0]`, and
-/// a MOSFET's gate, drain and source are `pins[0]`, `pins[1]` and `pins[2]`.
+/// a MOSFET's gate, drain and source are `pins[0]`, `pins[1]` and `pins[2]`. A regulator's
+/// `pins` are its input rail and its output rail (interfaces, see [`DcKind::takes_rails`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DcElement {
     pub kind: DcKind,

@@ -64,7 +64,7 @@ fn the_standard_parts_state_their_dc_element() {
         &'static [&'static str],
         &'static [&'static str],
     );
-    let cases: [Case; 7] = [
+    let cases: [Case; 8] = [
         (
             "passive::Resistor",
             "Resistor",
@@ -113,6 +113,13 @@ fn the_standard_parts_state_their_dc_element() {
             DcKind::Pmos,
             &["gate", "drain", "source"],
             &["gate_threshold", "on_resistance"],
+        ),
+        (
+            "regulator::LinearRegulator",
+            "LinearRegulator",
+            DcKind::LinearRegulator,
+            &["vin", "vout"],
+            &[],
         ),
     ];
     for (import, name, kind, pins, values) in cases {
@@ -254,7 +261,7 @@ fn an_unknown_element_lists_the_known_ones() {
     let m = only(&run(&part("dc coil .a .b .resistance")));
     assert_eq!(
         m,
-        "`dc` does not know the element `coil`; the elements are resistor, diode, nmos and pmos"
+        "`dc` does not know the element `coil`; the elements are resistor, diode, nmos, pmos, linear_regulator and switching_regulator"
     );
 }
 
@@ -365,6 +372,77 @@ board B {
     assert_eq!(m.len(), 2, "{m:?}");
     assert!(m[0].contains("takes the gate threshold here, a voltage, and `.ron` is a resistance"));
     assert!(m[1].contains("takes the on resistance here, a resistance, and `.vth` is a voltage"));
+}
+
+/// A part with two rails and an efficiency, whose body is `body`.
+fn converter(body: &str) -> String {
+    format!(
+        "import std::sources::Rail\npart C {{\n    .vin: Rail\n    .vout: Rail\n    .eff: Number\n    .vref: Voltage\n    {body}\n}}\nboard B {{\n    .c: C\n}}\n"
+    )
+}
+
+#[test]
+fn a_regulator_names_its_two_rails_and_a_switching_one_its_efficiency() {
+    let c = run(&converter("dc switching_regulator .vin .vout .eff"));
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(
+        element(&c, "c"),
+        Some((
+            DcKind::SwitchingRegulator,
+            names(&["vin", "vout"]),
+            names(&["eff"])
+        ))
+    );
+    let c = run(&converter("dc linear_regulator .vin .vout"));
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(
+        element(&c, "c"),
+        Some((DcKind::LinearRegulator, names(&["vin", "vout"]), vec![]))
+    );
+}
+
+#[test]
+fn a_regulator_operand_must_be_a_rail_of_the_part_and_the_efficiency_a_number() {
+    // A pin is not a rail.
+    let m = only(&run(&converter("dc linear_regulator .vin.pos .vout")));
+    assert_eq!(
+        m,
+        "`dc linear_regulator` takes the input rail here, a rail, and `.vin.pos` is not one; the statement is `dc linear_regulator .vin .vout`"
+    );
+    // Neither is a field.
+    let m = only(&run(&converter("dc linear_regulator .vin .vref")));
+    assert!(
+        m.contains("takes the output rail here, a rail, and `.vref` is not one"),
+        "{m}"
+    );
+    // The same rail twice.
+    let m = only(&run(&converter("dc linear_regulator .vin .vin")));
+    assert_eq!(
+        m,
+        "`dc linear_regulator` names the same rail twice; its rails are different ones, as in `dc linear_regulator .vin .vout`"
+    );
+    // The efficiency is a number: a voltage is named for what it is.
+    let m = only(&run(&converter("dc switching_regulator .vin .vout .vref")));
+    assert!(
+        m.contains("takes the efficiency here, a number, and `.vref` is a voltage"),
+        "{m}"
+    );
+}
+
+#[test]
+fn a_rail_inside_an_interface_of_the_part_is_a_rail_of_the_part() {
+    // The buck ICs state the output as the `sw` rail of their `Buck` interface.
+    let src = "import std::parts::regulator::Buck\nimport std::sources::Rail\npart C {\n    .vin: Rail\n    .buck: Buck\n    dc switching_regulator .vin .buck.sw .buck.efficiency\n}\nboard B {\n    .c: C\n}\n";
+    let c = run(src);
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(
+        element(&c, "c"),
+        Some((
+            DcKind::SwitchingRegulator,
+            names(&["vin", "buck.sw"]),
+            names(&["efficiency"])
+        ))
+    );
 }
 
 #[test]
