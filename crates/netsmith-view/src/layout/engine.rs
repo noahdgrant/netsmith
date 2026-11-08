@@ -48,6 +48,10 @@ const STUB_EXTRA_CELLS: i32 = 24;
 const TAG_CLEAR: f64 = 1.0;
 /// The wire from a rail's wires to its symbol, in cells.
 const STEM_CELLS: i32 = 2;
+/// A supply's pins are close when their stubs end within this many grid cells (about 20 mm) of each other, and there are at
+/// most [`CLOSE_MAX_PINS`] of them: then it is wired, with its name on a stem, and has no symbol.
+const CLOSE_CELLS: i32 = 16;
+const CLOSE_MAX_PINS: usize = 4;
 
 fn snap_grid(v: f64) -> f64 {
     snap(v, GRID)
@@ -1647,6 +1651,8 @@ struct Scene<'a> {
     local_done: BTreeSet<(usize, usize)>,
     /// The nets of the spines and the way the symbol of each goes (-1 left, 1 right).
     spine_pref: Vec<(usize, i32)>,
+    /// The supply nets drawn as wires with their name on a stub, because their pins are close: no symbol.
+    close_nets: BTreeSet<usize>,
 }
 
 impl<'a> Scene<'a> {
@@ -1722,6 +1728,7 @@ impl<'a> Scene<'a> {
             pair_nets,
             local_done: BTreeSet::new(),
             spine_pref,
+            close_nets: BTreeSet::new(),
         };
         scene.block_parts();
         scene.collect_pins();
@@ -2109,6 +2116,129 @@ impl<'a> Scene<'a> {
     /// Each rail is one wire across its group, at the top (a supply) or the bottom (a ground)
     /// beyond every part, with one symbol; the pins hang from it by straight wires. Pins next
     /// to each other on one side share a bus first.
+    /// A supply whose pins on the sheet are on two or more parts that stand close together, none of them a
+    /// part to ground, is wired and not drawn as a symbol: the symbol would join what a short wire joins
+    /// already (a connector's pin and a fuse's), and read as a port to somewhere. The wire has the net's name on a short stub. A net whose pins are far
+    /// apart (a capacitor across the sheet) keeps its symbol, which is what joins them, and so
+    /// does one that does not wire cleanly or has no room for the name. Grounds are as they were.
+    fn route_close_rails(&mut self) {
+        for net in 0..self.ctx.design.nets.len() {
+            if self.ctx.power[net] != Some(PowerKind::Supply)
+                || self.ctx.spine_net[net]
+                || self.ctx.external[net]
+                || self.bus_skip[net]
+                || self.tag_clusters.contains_key(&net)
+            {
+                continue;
+            }
+            let keys: Vec<(usize, usize)> = self
+                .pins_of(net)
+                .into_iter()
+                .filter(|k| {
+                    self.stubs.contains_key(k)
+                        && !self.bare.contains(k)
+                        && !self.local_done.contains(k)
+                })
+                .collect();
+            let parts: BTreeSet<usize> = keys.iter().map(|k| k.0).collect();
+            if parts.len() < 2 || keys.len() > CLOSE_MAX_PINS {
+                continue;
+            }
+            // A small part from the rail to a ground (a decoupling or bulk capacitor, a TVS diode) is what a supply
+            // symbol is for: the rail has a symbol, and so does every rail that has one.
+            let shunted = parts.iter().any(|&p| {
+                crate::layout::is_stackable(self.ctx, p)
+                    && self.ctx.part_nets[p].iter().any(|&n| self.ctx.ground[n])
+            });
+            if shunted {
+                continue;
+            }
+            let ends: Vec<Node> = keys.iter().map(|k| self.stubs[k].end).collect();
+            let (lo, hi) = ends
+                .iter()
+                .fold(((i32::MAX, i32::MAX), (i32::MIN, i32::MIN)), |(l, h), q| {
+                    ((l.0.min(q.0), l.1.min(q.1)), (h.0.max(q.0), h.1.max(q.1)))
+                });
+            let span = (hi.0 - lo.0) + (hi.1 - lo.1);
+            if span > CLOSE_CELLS {
+                continue;
+            }
+            // Wired on a copy of the grid first: kept only if every pin is joined without a detour and the name fits.
+            let saved = (
+                self.grid.clone(),
+                self.wires.len(),
+                self.trees.get(&net).cloned(),
+            );
+            let tree = self.route_tree(
+                net,
+                &keys,
+                self.trees.get(&net).cloned().unwrap_or_default(),
+            );
+            let joined = keys.iter().all(|k| {
+                let s = &self.stubs[k];
+                tree.contains(&s.pin) && tree.contains(&s.end)
+            });
+            let tidy = tree.len() as i32 <= 2 * span + 2 * keys.len() as i32 + 6;
+            if joined && tidy && self.name_wire(net, &tree) {
+                self.trees.insert(net, tree);
+                self.close_nets.insert(net);
+                continue;
+            }
+            self.grid = saved.0;
+            self.wires.truncate(saved.1);
+            match saved.2 {
+                Some(t) => {
+                    self.trees.insert(net, t);
+                }
+                None => {
+                    self.trees.remove(&net);
+                }
+            }
+        }
+    }
+
+    /// Puts the name of `net` on a short stem up (else down) from the wire `tree`, as far as it goes free: the label of a
+    /// net that is wired and has no symbol. False when no node has room.
+    fn name_wire(&mut self, net: usize, tree: &BTreeSet<Node>) -> bool {
+        let id = Self::net_id(net);
+        let name = ellipsize(&self.ctx.design.nets[net].name);
+        let mid = (
+            tree.iter().map(|n| n.0).sum::<i32>() / tree.len().max(1) as i32,
+            tree.iter().map(|n| n.1).sum::<i32>() / tree.len().max(1) as i32,
+        );
+        let mut nodes: Vec<Node> = tree.iter().copied().collect();
+        nodes.sort_by_key(|n| (Self::manhattan(*n, mid), n.1, n.0));
+        for q in nodes {
+            for dir in [Dir::Up, Dir::Down] {
+                let (dx, dy) = dir.vector();
+                let end = (q.0 + dx as i32 * STEM_CELLS, q.1 + dy as i32 * STEM_CELLS);
+                let free = (1..=STEM_CELLS + 2).all(|k| {
+                    self.grid
+                        .is_free((q.0 + dx as i32 * k, q.1 + dy as i32 * k))
+                });
+                if !free || self.grid.is_blocked(q) {
+                    continue;
+                }
+                let at = self.grid.pt(end);
+                let text = name_text(&name, at, dir);
+                let mut rect = text.extent();
+                let more = 0.15 * text.text.chars().count() as f64 * TEXT_SIZE * CHAR_WIDTH;
+                match dir {
+                    Dir::Up => rect.min.y -= more,
+                    _ => rect.max.y += more,
+                }
+                if !self.rect_is_free(inflate(rect, 0.3)) {
+                    continue;
+                }
+                self.grid.claim_wire(q, end, id);
+                self.push_wire(net, &[q, end]);
+                self.labels.push(NetLabel { net, text, at, dir });
+                return true;
+            }
+        }
+        false
+    }
+
     fn route_rails(&mut self) {
         self.local_rails();
         for g in 0..self.groups.len() {
@@ -2133,6 +2263,7 @@ impl<'a> Scene<'a> {
                     in_group.contains(&p.part)
                         && self.ctx.power[p.net].is_some()
                         && !self.ctx.spine_net[p.net]
+                        && !self.close_nets.contains(&p.net)
                         && self.stubs.contains_key(&(p.part, p.idx))
                         && !self.bare.contains(&(p.part, p.idx))
                         && !self.local_done.contains(&(p.part, p.idx))
@@ -2388,7 +2519,7 @@ impl<'a> Scene<'a> {
             let Some(kind) = self.ctx.power[p.net] else {
                 continue;
             };
-            if self.ctx.spine_net[p.net] {
+            if self.ctx.spine_net[p.net] || self.close_nets.contains(&p.net) {
                 continue;
             }
             let key = (p.part, p.idx);
@@ -2956,6 +3087,7 @@ impl<'a> Scene<'a> {
         // meet, and nothing else is wired along them.
         self.route_signals(true);
         self.route_pairs();
+        self.route_close_rails();
         self.route_rails();
         self.route_signals(false);
         self.spine_symbols();

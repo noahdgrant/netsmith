@@ -289,3 +289,126 @@ fn a_pull_up_from_a_rail_to_a_signal_net_is_no_link() {
     let d = draw(design);
     assert!(d.layout.spines.is_empty(), "{:?}", d.layout.spines);
 }
+
+/// A header whose supply pin is wired straight to a series part: the two are close, the net joins nothing else, and a
+/// symbol would only read as a port to somewhere. The net is the wire, with its name on a short stem.
+fn straight() -> Design {
+    common::design(
+        "Straight",
+        &[
+            ("J1", "Header1x2", "Conn_01x02", None),
+            ("R1", "LkFuse", "330", Some("P")),
+            ("D1", "LkDiode", "LED", Some("P")),
+        ],
+        &[
+            ("+3V3", &["J1.1", "R1.1"]),
+            ("SIG", &["R1.2", "D1.1"]),
+            ("GND", &["D1.2", "J1.2"]),
+        ],
+    )
+}
+
+fn rails_3v3() -> Rails {
+    let mut r = Rails::default();
+    r.ground.insert("GND".into());
+    r.positive.insert("+3V3".into());
+    r
+}
+
+fn draw_with(design: Design, rails: &Rails) -> Drawn {
+    let (dir, mapping, lib) = setup();
+    let layout = layout_rails(&design, rails, &mapping, &lib).unwrap();
+    if let Ok(path) = std::env::var("NETSMITH_LINK_SVG") {
+        std::fs::write(path, netsmith_view::render_layout(&design, &layout)).unwrap();
+    }
+    Drawn {
+        design,
+        layout,
+        _dir: dir,
+    }
+}
+
+#[test]
+fn a_supply_wired_straight_to_a_series_part_has_a_name_and_no_symbol() {
+    let d = draw_with(straight(), &rails_3v3());
+    let net = d.design.nets.iter().position(|n| n.name == "+3V3").unwrap();
+    assert!(
+        d.layout
+            .symbols
+            .iter()
+            .all(|s| !(s.net == net && s.kind == PowerKind::Supply)),
+        "a supply symbol on a net the wire joins already"
+    );
+    let labels: Vec<&str> = d
+        .layout
+        .labels
+        .iter()
+        .filter(|l| l.net == net)
+        .map(|l| l.text.text.as_str())
+        .collect();
+    assert_eq!(labels, ["+3V3"], "the name of the rail, once");
+    // The two pins are joined by wire, and the drawing is the netlist.
+    let found = check(&d.design, &d.layout);
+    assert!(found.is_empty(), "{found:?}");
+}
+
+#[test]
+fn a_supply_with_a_part_to_ground_on_it_keeps_its_symbol() {
+    let mut design = straight();
+    design.parts.push(netsmith_core::Part {
+        provides: Vec::new(),
+        refdes: "D2".into(),
+        kind: "LkTvs".into(),
+        value: "TVS".into(),
+        package: Some("P".into()),
+        path: String::new(),
+        pins: Vec::new(),
+    });
+    for n in &mut design.nets {
+        let pin = |pin: &str| netsmith_core::PinRef {
+            refdes: "D2".into(),
+            pin: pin.into(),
+        };
+        if n.name == "+3V3" {
+            n.pins.push(pin("1"));
+        } else if n.name == "GND" {
+            n.pins.push(pin("2"));
+        }
+    }
+    let d = draw_with(design, &rails_3v3());
+    let net = d.design.nets.iter().position(|n| n.name == "+3V3").unwrap();
+    assert!(
+        d.layout
+            .symbols
+            .iter()
+            .any(|s| s.net == net && s.kind == PowerKind::Supply),
+        "a rail with a shunt on it is drawn with its symbol"
+    );
+    assert!(d.layout.labels.iter().all(|l| l.net != net));
+    let found = check(&d.design, &d.layout);
+    assert!(found.is_empty(), "{found:?}");
+}
+
+#[test]
+fn a_supply_with_one_pin_on_the_sheet_keeps_its_symbol() {
+    let design = common::design(
+        "OnePin",
+        &[
+            ("J1", "Header1x2", "Conn_01x02", None),
+            ("D1", "LkDiode", "LED", Some("P")),
+        ],
+        &[
+            ("+3V3", &["J1.1"]),
+            ("SIG", &["D1.1"]),
+            ("GND", &["D1.2", "J1.2"]),
+        ],
+    );
+    let d = draw_with(design, &rails_3v3());
+    let net = d.design.nets.iter().position(|n| n.name == "+3V3").unwrap();
+    assert!(
+        d.layout
+            .symbols
+            .iter()
+            .any(|s| s.net == net && s.kind == PowerKind::Supply)
+    );
+}

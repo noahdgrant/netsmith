@@ -46,6 +46,10 @@
 //!    one a few steps above the other) share one wire and one symbol too, where the stubs end
 //!    within 20 cells of each other and a path of free nodes joins them: the lower one is wired
 //!    up to the row of the other's stub, across, and has no symbol of its own (`engine::bridge`).
+//!    A supply whose pins are on two or more parts that stand close (stub ends within 16 steps, four pins
+//!    or fewer) and none of them a small part to ground is not drawn with a symbol: it is wired, with its
+//!    name on a short stem from the wire, as the symbol would only join what the wire joins already
+//!    (`engine::route_close_rails`).
 //!    The wire of a main part's rail is beyond the parts that have a pin on it (and what is written
 //!    at their pins), not beyond every part drawn in the same row: the supply of a power unit
 //!    that stands beside a taller signal unit is just above it.
