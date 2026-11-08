@@ -5,6 +5,7 @@ mod buses;
 mod busnets;
 mod checker;
 mod connect;
+mod dc;
 mod diag;
 mod faults;
 mod lines;
@@ -25,11 +26,11 @@ pub use diag::{Diagnostic, Source, SourceId, Sources};
 pub use faults::{pin_faults, pin_faults_solved};
 pub use loader::Loader;
 pub use model::{
-    Balance, Catalog, Chain, Checkpoint, Contact, ContactSide, Domain, Draw, EnumId, EnumInfo,
-    Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet, InstId, InstKind, Instance,
-    Mate, Member, Model, Net, OptionalMark, PartRules, Peripheral, PeripheralBus,
-    PeripheralFunction, PinKind, PinRow, PinTable, Pinout, Provider, RExpr, Relation, Requirement,
-    Role, SharedMember, SharedRes, Snapshot, Tie, Written,
+    Balance, Catalog, Chain, Checkpoint, Contact, ContactSide, DcElement, DcKind, Domain, Draw,
+    EnumId, EnumInfo, Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet, InstId,
+    InstKind, Instance, LevelTest, Mate, Member, Model, Net, OptionalMark, PartRules, Peripheral,
+    PeripheralBus, PeripheralFunction, PinKind, PinRow, PinTable, Pinout, Provider, RExpr,
+    Relation, Requirement, Role, SharedMember, SharedRes, Snapshot, Tie, Written,
 };
 
 use std::collections::BTreeMap;

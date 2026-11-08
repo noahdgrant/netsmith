@@ -751,6 +751,7 @@ impl<'a> Checker<'a> {
             parent,
             children: Vec::new(),
             bridge: None,
+            dc: None,
             catalog: None,
             tables: Vec::new(),
             ties: Vec::new(),
@@ -855,6 +856,7 @@ impl<'a> Checker<'a> {
         self.process(&def.items);
         if kind == InstKind::Part {
             self.finish_rules(id);
+            self.finish_dc(id);
         }
         if !generics.is_empty() {
             self.conform(id, def, &generics);
@@ -913,6 +915,7 @@ impl<'a> Checker<'a> {
             parent: Some(owner),
             children: Vec::new(),
             bridge: None,
+            dc: None,
             catalog: None,
             tables: Vec::new(),
             ties: Vec::new(),
@@ -1174,6 +1177,7 @@ impl<'a> Checker<'a> {
             parent: Some(parent),
             children: Vec::new(),
             bridge: None,
+            dc: None,
             catalog: None,
             tables: Vec::new(),
             ties: Vec::new(),
@@ -1237,6 +1241,7 @@ impl<'a> Checker<'a> {
                 Item::Row(r) => self.row(r),
                 Item::Connect(c) if self.phys.is_none() => self.connect(c),
                 Item::Bridge(b) if self.phys.is_none() => self.bridge(b),
+                Item::Dc(d) if self.phys.is_none() => self.dc(d),
                 Item::Catalog(c) if self.phys.is_none() => self.catalog(c),
                 Item::Pins(p) if self.phys.is_none() => self.pins(p),
                 Item::Tie(t) if self.phys.is_none() => self.tie(t),
@@ -1245,6 +1250,7 @@ impl<'a> Checker<'a> {
                 Item::Lines(l) if self.phys.is_none() => self.lines(l),
                 Item::Connect(c) => self.not_physical(c.span, "a connection with `~`"),
                 Item::Bridge(b) => self.not_physical(b.span, "a `bridge`"),
+                Item::Dc(d) => self.not_physical(d.span, "a `dc` statement"),
                 Item::Catalog(c) => self.not_physical(c.span, "a `catalog`"),
                 Item::Pins(p) => self.not_physical(p.span, "a `pins` table"),
                 Item::Tie(t) => self.not_physical(t.span, "a `tie`"),

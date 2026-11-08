@@ -225,7 +225,15 @@ fn visit<'a>(
             let mut paths = Vec::new();
             expr_paths(&c.lhs, &mut paths);
             expr_paths(&c.rhs, &mut paths);
+            if let Some(at) = &c.at {
+                expr_paths(at, &mut paths);
+            }
             for p in paths {
+                path(p, inside);
+            }
+        }
+        Item::Dc(d) => {
+            for p in &d.operands {
                 path(p, inside);
             }
         }
