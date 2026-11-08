@@ -4,9 +4,9 @@
 //! note. After lowering, when each part has its reference designator, a part whose catalog row
 //! states a `stock` of 0, or whose LCSC number the standard `considered.csv` records as out of
 //! stock when it was read, gets one line among the board's notes. An empty `stock` cell states
-//! nothing and gets none. The editor shows the same line.
+//! nothing and gets none, and neither does a consigned part (ADR 0084): the owner ships it. The editor shows the same line.
 
-use netsmith_lower::Lowered;
+use netsmith_lower::{Assembly, Lowered};
 use netsmith_solve::{Catalogs, SoldOut};
 
 /// The notes of a lowered board, one for each part (a bank is one part) that a file says is
@@ -17,6 +17,10 @@ pub(crate) fn notes(lowered: &Lowered, catalogs: &Catalogs) -> Vec<String> {
     for (i, (sourced, origin)) in lowered.sourcing.iter().zip(&lowered.origins).enumerate() {
         if let Some(entry) = found.iter_mut().find(|(o, ..)| o == origin) {
             entry.1.push(&sourced.refdes);
+            continue;
+        }
+        // The owner buys and ships a consigned part, so what a supplier has of it does not matter.
+        if sourced.assembly == Assembly::Consigned {
             continue;
         }
         let Some(lcsc) = sourced.lcsc.as_deref() else {

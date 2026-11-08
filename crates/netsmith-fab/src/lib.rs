@@ -214,14 +214,29 @@ impl From<cpl::CplError> for Error {
 /// Which parts JLCPCB assembles and what is left for a person.
 #[derive(Debug, PartialEq)]
 pub struct Plan {
-    /// Grouped BOM rows of the parts to assemble, every one with an LCSC number.
+    /// Grouped BOM rows of the parts to assemble from JLCPCB's stock, every one with an LCSC
+    /// number.
     pub bom: Vec<BomEntry>,
-    /// The board's parts to assemble, in the BOM.
+    /// Grouped BOM rows of the consigned parts, which the owner ships to JLCPCB (ADR 0084).
+    /// They need no LCSC number, and `bom.csv` has them beside `bom`, with the manufacturer's
+    /// number as the comment and the LCSC cell empty unless the part's row has a number.
+    pub consigned: Vec<BomEntry>,
+    /// The board's parts to place, in the BOM or among the consigned.
     pub assembled: Vec<BoardPart>,
     pub hand_solder: Vec<String>,
     pub not_fitted: Vec<String>,
     /// Parts without an LCSC number that were allowed through.
     pub unassembled: Vec<String>,
+}
+
+impl Plan {
+    /// The rows of `bom.csv`: the parts from stock and the consigned parts, by first
+    /// designator.
+    pub fn bom_rows(&self) -> Vec<BomEntry> {
+        let mut rows: Vec<BomEntry> = self.bom.iter().chain(&self.consigned).cloned().collect();
+        rows.sort_by(|a, b| bom::designator_cmp(&a.designators[0], &b.designators[0]));
+        rows
+    }
 }
 
 /// Decides which parts go to JLCPCB. Needs no KiCad.
@@ -244,7 +259,7 @@ pub fn plan(board: &Board, entries: &[BomEntry], options: &Options) -> Result<Pl
     let unlisted: Vec<String> = board
         .parts
         .iter()
-        .filter(|p| fit_of(p) == Fit::Assembled && !listed(&p.designator))
+        .filter(|p| matches!(fit_of(p), Fit::Assembled | Fit::Consigned) && !listed(&p.designator))
         .map(|p| p.designator.clone())
         .collect();
     if !unlisted.is_empty() {
@@ -253,15 +268,28 @@ pub fn plan(board: &Board, entries: &[BomEntry], options: &Options) -> Result<Pl
 
     // Keep only the parts that are surface mount and populated, in the grouped rows.
     let mut bom = Vec::new();
+    let mut consigned = Vec::new();
     let mut missing = Vec::new();
     let mut unassembled = Vec::new();
     for entry in &grouped {
-        let designators: Vec<String> = entry
-            .designators
-            .iter()
-            .filter(|d| find(d).is_some_and(|p| fit_of(p) == Fit::Assembled))
-            .cloned()
-            .collect();
+        // A consigned part is its own row, even where a part to assemble from stock has the
+        // same value, footprint and number: JLCPCB does not mix the two in one line.
+        let with_fit = |fit: Fit| -> Vec<String> {
+            entry
+                .designators
+                .iter()
+                .filter(|d| find(d).is_some_and(|p| fit_of(p) == fit))
+                .cloned()
+                .collect()
+        };
+        let own = with_fit(Fit::Consigned);
+        if !own.is_empty() {
+            consigned.push(BomEntry {
+                designators: own,
+                ..entry.clone()
+            });
+        }
+        let designators = with_fit(Fit::Assembled);
         if designators.is_empty() {
             continue;
         }
@@ -287,7 +315,11 @@ pub fn plan(board: &Board, entries: &[BomEntry], options: &Options) -> Result<Pl
     let assembled = board
         .parts
         .iter()
-        .filter(|p| bom.iter().any(|e| e.designators.contains(&p.designator)))
+        .filter(|p| {
+            bom.iter()
+                .chain(&consigned)
+                .any(|e| e.designators.contains(&p.designator))
+        })
         .cloned()
         .collect();
     let with_fit = |fit: Fit| {
@@ -311,6 +343,7 @@ pub fn plan(board: &Board, entries: &[BomEntry], options: &Options) -> Result<Pl
     };
     Ok(Plan {
         bom,
+        consigned,
         assembled,
         hand_solder: with_fit(Fit::HandSolder),
         not_fitted: with_fit(Fit::NotFitted),
@@ -496,7 +529,7 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
     );
     Ok(Package {
         gerber_files: files.into_iter().map(|f| f.name).collect(),
-        bom_csv: bom::render(&plan.bom),
+        bom_csv: bom::render(&plan.bom_rows()),
         cpl_csv: cpl::render(&placed.rows),
         gerber_zip,
         notes,
@@ -581,6 +614,25 @@ fn notes(
     }
     if !plan.hand_solder.is_empty() {
         lines.push(format!("hand-solder: {}", plan.hand_solder.join(", ")));
+    }
+    if !plan.consigned.is_empty() {
+        let parts: Vec<String> = plan
+            .consigned
+            .iter()
+            .map(|e| {
+                format!(
+                    "{} ({}, {} part{})",
+                    e.designators.join(", "),
+                    e.value,
+                    e.designators.len(),
+                    if e.designators.len() == 1 { "" } else { "s" }
+                )
+            })
+            .collect();
+        lines.push(format!(
+            "consigned: {} (you ship these parts to JLCPCB with the order; JLCPCB places and solders them from bom.csv and cpl.csv, matches them on the order page, and cannot go on until they are in its warehouse)",
+            parts.join("; ")
+        ));
     }
     lines.extend(trim.iter().map(|t| format!("trim: {t}")));
     if !plan.not_fitted.is_empty() {

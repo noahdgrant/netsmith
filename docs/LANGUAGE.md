@@ -505,7 +505,7 @@ board Lamps {
 - `==` compares two values of one enum, a field and a variant or a field and a field, and is checked like any other relation: `.drive == Drive::Steady` fails when the field is `Drive::Dimmed`. Only `==` compares variants; they have no order.
 - `&=`, `?=` and `==` take only a variant of the field's own enum. Text is not one: `.drive &= "Dimmed"` is refused and the message says what to write.
 - A variant is written with its enum's name, so two enums may have a variant of one name, and a variant is never confused with a member or a net name. A file imports the enum, not its variants.
-- `AssemblyMode` (variants `Fab`, `Hand` and `None`) is the one enum that every file knows without an import, because every part has a built-in `.assembly` of that type (Who assembles a part, above). It is defined in `std/prelude.nsm`.
+- `AssemblyMode` (variants `Fab`, `Hand`, `None` and `Consigned`) is the one enum that every file knows without an import, because every part has a built-in `.assembly` of that type (Who assembles a part, above). It is defined in `std/prelude.nsm`.
 
 A variant the enum does not have is refused where it is written, with the variants listed and the nearest one named:
 
@@ -520,7 +520,7 @@ board Solder {
 ```
 
 ```text
-error: `AssemblyMode` has no variant `Hnad`; its variants are `AssemblyMode::Fab`, `AssemblyMode::Hand` and `AssemblyMode::None`; did you mean `AssemblyMode::Hand`?
+error: `AssemblyMode` has no variant `Hnad`; its variants are `AssemblyMode::Fab`, `AssemblyMode::Hand`, `AssemblyMode::None` and `AssemblyMode::Consigned`; did you mean `AssemblyMode::Hand`?
   --> main.nsm:5:36
   |
 5 |         .assembly &= AssemblyMode::Hnad
@@ -540,7 +540,7 @@ board Quoted {
 ```
 
 ```text
-error: `r1.assembly` holds a variant of `AssemblyMode`, but this value is text; a variant of `AssemblyMode` is not written as text: write `AssemblyMode::Hand` (the variants are `AssemblyMode::Fab`, `AssemblyMode::Hand` and `AssemblyMode::None`)
+error: `r1.assembly` holds a variant of `AssemblyMode`, but this value is text; a variant of `AssemblyMode` is not written as text: write `AssemblyMode::Hand` (the variants are `AssemblyMode::Fab`, `AssemblyMode::Hand`, `AssemblyMode::None` and `AssemblyMode::Consigned`)
   --> main.nsm:5:9
   |
 5 |         .assembly &= "hand"
@@ -1664,18 +1664,19 @@ Every part has a field `.assembly`, of the type `AssemblyMode`, that it does not
 | `AssemblyMode::Fab` | The board house places and solders it: a BOM line and a placement row. |
 | `AssemblyMode::Hand` | Soldered by hand: not in the BOM or the placement file, and listed in `fab-notes.txt` as `hand-solder:`. |
 | `AssemblyMode::None` | Not fitted by anyone, such as a hole or a fiducial: in neither file, and listed in `fab-notes.txt` as `not fitted`. |
+| `AssemblyMode::Consigned` | The board house places and solders it, and you ship the part to the board house: a BOM line and a placement row, no supplier part number needed, and listed in `fab-notes.txt` as `consigned:` (ADR 0084, provisional). See Consigned parts, below. |
 
 Where the value comes from, weakest first (ADR 0028 amends ADR 0024):
 
 | | Says |
 |---|---|
 | 1 | The built-in rule: a through-hole part is `Hand` and every other part is `Fab`. |
-| 2 | The project's default, `assembly = "fab"`, `"hand"` or `"none"` under `[project]` in `netsmith.toml`. It is for every part of every board that nothing below speaks for. |
+| 2 | The project's default, `assembly = "fab"`, `"hand"`, `"none"` or `"consigned"` under `[project]` in `netsmith.toml`. It is for every part of every board that nothing below speaks for. |
 | 3 | The part kind's own statement: `MountingHole`, `PlatedHole`, `Fiducial`, `TestPoint` and `ProgrammingPads6` are `None`, and neither the project nor a board can change that. |
 | 4 | The catalog file's optional `assembly` column: the picked row's value. |
 | 5 | The board narrowing it on a part it owns: `.assembly &= AssemblyMode::Hand`; or narrowing the value that a module offers for its parts (below). |
 
-The manifest and the catalog files are not source text, so they write the variant as a lower-case word (`"fab"`, `"hand"`, `"none"`); in `.nsm` it is always the variant.
+The manifest and the catalog files are not source text, so they write the variant as a lower-case word (`"fab"`, `"hand"`, `"none"`, `"consigned"`); in `.nsm` it is always the variant.
 
 ```toml
 [project]
@@ -1683,7 +1684,7 @@ name = "blink"
 assembly = "fab"
 ```
 
-With that manifest the header of the example below is placed by the board house too, and a board that wants one part by hand still says so on the part. Rows 3 and 5 are one field, so a board that contradicts a kind gets the usual empty-intersection error. There is no per-board default: the project has one, and a part says otherwise on itself. A word that is not one of the three variants is refused where it is written (see Enums, below). A part marked `Hand` or `None` still counts in the solver and in the current balance.
+With that manifest the header of the example below is placed by the board house too, and a board that wants one part by hand still says so on the part. Rows 3 and 5 are one field, so a board that contradicts a kind gets the usual empty-intersection error. There is no per-board default: the project has one, and a part says otherwise on itself. A word that is not one of the four variants is refused where it is written (see Enums, below). A part marked `Hand` or `None` still counts in the solver and in the current balance.
 
 ```nsm
 import std::parts::connector::Header1x2
@@ -1701,7 +1702,23 @@ board Assembly {
 }
 ```
 
-A part that the board house is to assemble (`AssemblyMode::Fab`) must have a supplier part number, an `lcsc` in its catalog row. `fab` checks that before it places or routes anything, and refuses with all the parts that have none in one message: each reference designator, its path, what its row says (the manufacturer's number), and what to write and where. There is no flag for it: the design says who does not assemble the part, with `.assembly &= AssemblyMode::Hand` (or `AssemblyMode::None`) on the part in the board, in the module's definition for a part inside a module, or in the `assembly` column of the part's own catalog row. The part is then out of `bom.csv` and `cpl.csv`, and `fab-notes.txt` lists it under `hand-solder:` and, if its catalog row has a manufacturer's number and no `lcsc`, in a line saying the board house does not assemble it and that you buy it yourself. `--allow-drc-violations` does not waive this.
+A part that the board house is to assemble from its stock (`AssemblyMode::Fab`; a consigned part is the exception) must have a supplier part number, an `lcsc` in its catalog row. `fab` checks that before it places or routes anything, and refuses with all the parts that have none in one message: each reference designator, its path, what its row says (the manufacturer's number), and what to write and where. There is no flag for it: the design says who does not assemble the part, with `.assembly &= AssemblyMode::Hand` (or `AssemblyMode::None`, or `AssemblyMode::Consigned` if you ship the part to the board house) on the part in the board, in the module's definition for a part inside a module, or in the `assembly` column of the part's own catalog row. The part is then out of `bom.csv` and `cpl.csv`, and `fab-notes.txt` lists it under `hand-solder:` and, if its catalog row has a manufacturer's number and no `lcsc`, in a line saying the board house does not assemble it and that you buy it yourself. `--allow-drc-violations` does not waive this.
+
+**Consigned parts.** A part that JLCPCB can place but does not stock is bought by you and shipped to JLCPCB (its consigned parts service). Say so with `AssemblyMode::Consigned`, the way you say `Hand`: on the part, through a module's `.assembly_mode`, in the `assembly` column of a catalog row (`consigned`), or as the project's default. The part needs no supplier part number, its row's stock does not matter, and a consigned generic part is not looked up in a catalog:
+
+```nsm
+import std::parts::passive::Resistor
+
+board Shipped {
+    /// A resistor that you buy yourself and ship to the board house.
+    .r1: Resistor {
+        .resistance &= 330ohm +/- 1%
+        .assembly &= AssemblyMode::Consigned
+    }
+}
+```
+
+`build` prints it as `consigned` in the bill-of-materials column. `fab` puts it in `cpl.csv`, so the board house places it, and in `bom.csv`, with the manufacturer's number as the comment and the LCSC cell empty (or the row's number, if it has one). JLCPCB's BOM format has no column that marks a consigned part: you register the parts on its site, ship them, and pick them in the order page's component matching, so `fab-notes.txt` lists them under `consigned:` with their manufacturer's number and quantity, and says that you ship them with the order. Look at the matching step of the order preview before you pay.
 
 A part inside a module is not the board's to name (ADR 0004), so a module that wants the board to choose who assembles its parts offers the choice as a value of its own and ties its parts to it (ADR 0042). Declare a value of the type `AssemblyMode`, and narrow the part's `.assembly` by it inside the module:
 
@@ -7081,7 +7098,7 @@ Only `name` is required.
 | `kicad` | The KiCad version of the files. Only 9 is accepted. |
 | `catalog_dirs` | The folders whose `*.csv` files are the project's own catalogs, each named by its file name (`catalogs/acme_ldo.csv` is the catalog `acme_ldo`), in addition to the standard ones. Default `["catalogs"]`; `init` writes it out. See Catalog files. |
 | `catalogs` | Optional. Single catalog files to add that are not in a `catalog_dirs` folder, each named by its catalog. See Catalog files. |
-| `assembly` | Optional. Who assembles a part nothing else speaks for: `"fab"`, `"hand"` or `"none"`. See Who assembles a part. |
+| `assembly` | Optional. Who assembles a part nothing else speaks for: `"fab"`, `"hand"`, `"none"` or `"consigned"`. See Who assembles a part. |
 | `guidelines` | Optional. What a design that goes against a guideline gets: `"warn"` (the default) reports it and builds, `"error"` refuses to build. `--strict` asks for `"error"` for one run. See Track width against current. |
 
 ### Orders

@@ -1128,7 +1128,7 @@ pub fn build(spec: &Spec, cell: &CellInput, options: &Options) -> Result<PanelPa
     );
     Ok(PanelPackage {
         gerber_files: files.into_iter().map(|f| f.name).collect(),
-        bom_csv: bom::render(&plan.bom),
+        bom_csv: bom::render(&plan.bom_rows()),
         cpl_csv: cpl::render(&placed.rows),
         gerber_zip,
         notes,

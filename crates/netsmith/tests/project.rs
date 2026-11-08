@@ -1013,7 +1013,9 @@ fn a_manifest_assembly_that_is_no_assembly_stops_every_command_naming_the_field(
     let said = String::from_utf8_lossy(&run.stderr);
     assert!(!run.status.success());
     assert!(
-        said.contains("assembly = \"solder\" is not one of \"fab\", \"hand\" or \"none\""),
+        said.contains(
+            "assembly = \"solder\" is not one of \"fab\", \"hand\", \"none\" or \"consigned\""
+        ),
         "{said}"
     );
 }

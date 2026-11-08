@@ -222,6 +222,10 @@ pub fn resolve_generics(
         .iter()
         .map(|s| {
             let mut s = s.clone();
+            // The owner supplies a consigned part, so no row of a catalog stands for it.
+            if s.assembly == netsmith_lower::Assembly::Consigned {
+                return s;
+            }
             let Some(generic) = s.generic.clone().filter(|_| s.lcsc.is_none()) else {
                 return s;
             };
@@ -260,7 +264,7 @@ pub(crate) fn unresolved_findings(
         .filter_map(|u| {
             let at = sourcing
                 .iter()
-                .position(|s| s.refdes == u.refdes && s.assembled())?;
+                .position(|s| s.refdes == u.refdes && s.needs_part_number())?;
             let catalog = sourcing[at].generic.as_ref()?.catalog.as_str();
             let inst = origins.get(at).copied();
             let place = inst

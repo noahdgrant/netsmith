@@ -296,7 +296,7 @@ board B {
     assert_eq!(
         messages(&c),
         [
-            "`AssemblyMode` has no variant `Hnad`; its variants are `AssemblyMode::Fab`, `AssemblyMode::Hand` and `AssemblyMode::None`; did you mean `AssemblyMode::Hand`?"
+            "`AssemblyMode` has no variant `Hnad`; its variants are `AssemblyMode::Fab`, `AssemblyMode::Hand`, `AssemblyMode::None` and `AssemblyMode::Consigned`; did you mean `AssemblyMode::Hand`?"
         ]
     );
 }
@@ -325,7 +325,7 @@ board B {
 ";
     let all = messages(&run(src));
     assert!(
-        all[0].contains("\"solder\" is none of them: the variants are `AssemblyMode::Fab`, `AssemblyMode::Hand` and `AssemblyMode::None`"),
+        all[0].contains("\"solder\" is none of them: the variants are `AssemblyMode::Fab`, `AssemblyMode::Hand`, `AssemblyMode::None` and `AssemblyMode::Consigned`"),
         "{all:?}"
     );
 }
