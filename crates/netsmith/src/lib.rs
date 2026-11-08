@@ -17,6 +17,7 @@ pub mod project;
 pub mod providers;
 pub mod refresh;
 pub mod resolve;
+mod stock;
 pub mod supply;
 mod values;
 
@@ -431,6 +432,7 @@ pub fn outcome_observed(
         let provided = providers::notes_for(&solution.model, None, &passed);
         let mut notes = provider_lines(&provided);
         notes.extend(self::notes(solution, None));
+        notes.extend(stock::notes(&lowered, catalogs));
         let mut one = export(
             None,
             &board.name,
@@ -542,6 +544,7 @@ pub fn outcome_observed(
             let provided = providers::notes_for(&solution.model, Some(member.inst), &passed);
             let mut notes = provider_lines(&provided);
             notes.extend(self::notes(solution, Some(member.inst)));
+            notes.extend(stock::notes(&lowered, catalogs));
             let mut one = export(
                 Some(&system.name),
                 &member.name,

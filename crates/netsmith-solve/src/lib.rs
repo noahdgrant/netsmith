@@ -16,7 +16,7 @@ mod table;
 
 pub use catalog::{
     Availability, Candidate, Catalog, Catalogs, Derating, DeratingError, Library, SearchBudget,
-    Value,
+    SoldOut, Value,
 };
 pub use eval::{EvalError, Val, eval};
 pub use generic::{
