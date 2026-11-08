@@ -13,10 +13,14 @@
 //!
 //! The circuit is the nodes of one island: the nets that no source holds (`free`, the unknowns)
 //! and the nets a source holds (`held`, each a range that is one of the island's values). The
-//! elements are resistors, diodes, current sources and the inputs of regulators. A diode blocks
-//! or holds its forward voltage and carries a current of at least zero; a state that is not what
-//! the solution says (a diode conducting a negative current, one blocking with more than its
-//! forward voltage across it) is refused and not counted.
+//! elements are resistors, diodes, current sources, the inputs of regulators, MOSFETs as
+//! switches and logic pins that drive. A diode blocks or holds its forward voltage and carries a
+//! current of at least zero; a state that is not what the solution says (a diode conducting a
+//! negative current, one blocking with more than its forward voltage across it) is refused and
+//! not counted. A MOSFET is off or on through its channel resistance, and is refused when on with
+//! the gate below the least threshold or off above the greatest; a gate that no conducting path
+//! joins to a held node floats, and both states stay. A pin is high, low or high impedance, one
+//! state in each combination.
 //!
 //! A regulator's input (ADR 0076, amendment 3) draws a current set by the regulator's output
 //! and not by its own voltage: a linear one draws what its output supplies, a switching one
@@ -158,6 +162,29 @@ pub(crate) enum Kind {
         to: usize,
         draw: Draw,
     },
+    /// A MOSFET as a switch: `ron` between `drain` and `source` when it is on, open when it is
+    /// off. The gate draws nothing. `vth` is the range of the gate threshold, and the drive is
+    /// `V(gate) - V(source)` for an N-channel part and `V(source) - V(gate)` for a P-channel
+    /// one (the values of the part are magnitudes). On is refused when the drive is below the
+    /// least threshold, off when it is above the greatest; between the two both are kept.
+    Mosfet {
+        gate: usize,
+        drain: usize,
+        source: usize,
+        p_channel: bool,
+        vth: Range,
+        ron: Range,
+    },
+    /// A logic pin that drives (ADR 0076, amendment 4): high, its `node` joined through a
+    /// resistance to the node of its supply (`high`); low, to the node of its ground (`low`);
+    /// and, when the pin can let go of the line, high impedance (`z`), with no leakage (a
+    /// pin does not state one).
+    Pin {
+        node: usize,
+        high: Option<(usize, Range)>,
+        low: Option<(usize, Range)>,
+        z: bool,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -211,6 +238,30 @@ enum Point {
         p: f64,
         eff: f64,
     },
+    /// A switch that is off, a pin that lets go of its line: no current between `a` and `b`.
+    /// A MOSFET's gate and threshold are kept to judge the state.
+    Open {
+        a: usize,
+        b: usize,
+        gate: Option<Gate>,
+    },
+    /// A MOSFET that is on: `r` between `d` and `s`.
+    MosOn {
+        d: usize,
+        s: usize,
+        r: f64,
+        gate: Gate,
+    },
+}
+
+/// What a MOSFET's state is judged by: its gate node, and the nodes and range that make the
+/// drive.
+#[derive(Clone, Copy, Debug)]
+struct Gate {
+    gate: usize,
+    source: usize,
+    p_channel: bool,
+    vth: Range,
 }
 
 #[derive(Debug, PartialEq)]
@@ -463,6 +514,68 @@ impl Island {
                     }
                     v
                 }
+                Kind::Mosfet {
+                    gate,
+                    drain,
+                    source,
+                    p_channel,
+                    vth,
+                    ron,
+                } => {
+                    let judge = Gate {
+                        gate: *gate,
+                        source: *source,
+                        p_channel: *p_channel,
+                        vth: *vth,
+                    };
+                    let mut v = vec![(
+                        "off".to_string(),
+                        Variant::Point(Point::Open {
+                            a: *drain,
+                            b: *source,
+                            gate: Some(judge),
+                        }),
+                    )];
+                    for r in ron.corners() {
+                        v.push((
+                            format!("on at {}", ohms(r)),
+                            Variant::Point(Point::MosOn {
+                                d: *drain,
+                                s: *source,
+                                r,
+                                gate: judge,
+                            }),
+                        ));
+                    }
+                    v
+                }
+                Kind::Pin { node, high, low, z } => {
+                    let mut v = Vec::new();
+                    for (word, side) in [("high", high), ("low", low)] {
+                        let Some((to, r)) = side else { continue };
+                        for r in r.corners() {
+                            v.push((
+                                format!("{word} through {}", ohms(r)),
+                                Variant::Point(Point::R {
+                                    a: *node,
+                                    b: *to,
+                                    r,
+                                }),
+                            ));
+                        }
+                    }
+                    if *z {
+                        v.push((
+                            "high impedance".to_string(),
+                            Variant::Point(Point::Open {
+                                a: *node,
+                                b: *node,
+                                gate: None,
+                            }),
+                        ));
+                    }
+                    v
+                }
             });
         }
         all
@@ -496,6 +609,11 @@ impl Island {
                         Draw::Linear { i } => two(i),
                         Draw::Switching { p, eff } => two(p) * two(eff),
                     }
+                }
+                Kind::Mosfet { ron, .. } => 1 + if ron.is_point() { 1 } else { 2 },
+                Kind::Pin { high, low, z, .. } => {
+                    let two = |r: Range| if r.is_point() { 1 } else { 2 };
+                    high.map_or(0, |(_, r)| two(r)) + low.map_or(0, |(_, r)| two(r)) + u64::from(*z)
                 }
             };
             total = total.saturating_mul(n);
@@ -733,6 +851,8 @@ impl Island {
                     (x[branch_of(k)].max(0.0), v(a) - v(cathode))
                 }
                 Point::DiodeOff { a, k: cathode, .. } => (0.0, v(a) - v(cathode)),
+                Point::Open { a, b, .. } => (0.0, v(a) - v(b)),
+                Point::MosOn { d, s, r, .. } => ((v(d) - v(s)) / r, v(d) - v(s)),
             };
             currents[k] = current;
             out[nodes + k] = current;
@@ -748,6 +868,8 @@ impl Island {
                     Point::I { from, to, .. } | Point::Sink { from, to, .. } => (from, to),
                     Point::DiodeOn { a, k: cathode, .. }
                     | Point::DiodeOff { a, k: cathode, .. } => (a, cathode),
+                    Point::Open { a, b, .. } => (a, b),
+                    Point::MosOn { d, s, .. } => (d, s),
                 };
                 if first == node {
                     gives += currents[k];
@@ -772,14 +894,83 @@ impl Island {
                 held_v[node - free]
             }
         };
+        // Which free nodes a conducting path joins to a held node. A MOSFET's gate that none
+        // does has no voltage the circuit sets: it floats, and the switch may be either way.
+        let joined = points
+            .iter()
+            .any(|p| matches!(p, Point::Open { gate: Some(_), .. } | Point::MosOn { .. }))
+            .then(|| self.joined_to_held(points));
+        let drive = |g: &Gate| {
+            if g.gate < free && joined.as_ref().is_some_and(|j| !j[g.gate]) {
+                return None;
+            }
+            let (gate, source) = (v(g.gate), v(g.source));
+            Some(if g.p_channel {
+                source - gate
+            } else {
+                gate - source
+            })
+        };
         points.iter().enumerate().all(|(k, p)| match *p {
             Point::DiodeOn { .. } => {
                 let branch = free + on.iter().position(|&o| o == k).unwrap_or(0);
                 x[branch] >= -CURRENT_SLACK
             }
             Point::DiodeOff { a, k: cathode, vf } => v(a) - v(cathode) <= vf + VOLTAGE_SLACK,
+            Point::MosOn { gate, .. } => {
+                drive(&gate).is_none_or(|vgs| vgs >= gate.vth.lo - VOLTAGE_SLACK)
+            }
+            Point::Open { gate: Some(g), .. } => {
+                drive(&g).is_none_or(|vgs| vgs <= g.vth.hi + VOLTAGE_SLACK)
+            }
             _ => true,
         })
+    }
+
+    /// For each node, whether a conducting element (a resistor, a diode that conducts, a
+    /// MOSFET that is on, a pin that drives) joins it to a node that a source holds.
+    fn joined_to_held(&self, points: &[Point]) -> Vec<bool> {
+        let nodes = self.nodes();
+        let free = self.free;
+        let mut parent: Vec<usize> = (0..nodes).collect();
+        fn find(parent: &mut [usize], x: usize) -> usize {
+            let mut root = x;
+            while parent[root] != root {
+                root = parent[root];
+            }
+            let mut at = x;
+            while parent[at] != root {
+                let next = parent[at];
+                parent[at] = root;
+                at = next;
+            }
+            root
+        }
+        let join = |parent: &mut Vec<usize>, a: usize, b: usize| {
+            let (ra, rb) = (find(parent, a), find(parent, b));
+            if ra != rb {
+                parent[ra.max(rb)] = ra.min(rb);
+            }
+        };
+        // Every held node is one class: a source holds it.
+        for h in free + 1..nodes {
+            join(&mut parent, free, h);
+        }
+        for p in points {
+            match *p {
+                Point::R { a, b, .. } | Point::DiodeOn { a, k: b, .. } => join(&mut parent, a, b),
+                Point::MosOn { d, s, .. } => join(&mut parent, d, s),
+                _ => {}
+            }
+        }
+        let held_class = if free < nodes {
+            Some(find(&mut parent, free))
+        } else {
+            None
+        };
+        (0..nodes)
+            .map(|n| Some(find(&mut parent, n)) == held_class)
+            .collect()
     }
 
     /// The solution of one combination, with `gmin` only when it is singular without it.
@@ -867,7 +1058,20 @@ impl Island {
                     }
                     work.rhs[branch] += vf;
                 }
-                Point::DiodeOff { .. } => {}
+                Point::DiodeOff { .. } | Point::Open { .. } => {}
+                Point::MosOn { d, s, r, .. } => {
+                    let g = 1.0 / r;
+                    for (x, y) in [(d, s), (s, d)] {
+                        if x < free {
+                            work.add(x, x, g);
+                            if y < free {
+                                work.add(x, y, -g);
+                            } else {
+                                work.rhs[x] += g * held(y);
+                            }
+                        }
+                    }
+                }
             }
         }
         // Without `gmin` a pivot that is rounding and not a conductance (a cluster of nodes that
@@ -1019,6 +1223,54 @@ pub(crate) fn check_interior(island: &Island, report: &Report, samples: usize) -
                         eff: eff.lo + (eff.hi - eff.lo) * rng(),
                     },
                 },
+                Kind::Mosfet {
+                    gate,
+                    drain,
+                    source,
+                    p_channel,
+                    vth,
+                    ron,
+                } => {
+                    let judge = Gate {
+                        gate: *gate,
+                        source: *source,
+                        p_channel: *p_channel,
+                        vth: *vth,
+                    };
+                    if rng() < 0.5 {
+                        Point::MosOn {
+                            d: *drain,
+                            s: *source,
+                            r: ron.lo + (ron.hi - ron.lo) * rng(),
+                            gate: judge,
+                        }
+                    } else {
+                        Point::Open {
+                            a: *drain,
+                            b: *source,
+                            gate: Some(judge),
+                        }
+                    }
+                }
+                Kind::Pin { node, high, low, z } => {
+                    let mut states: Vec<Point> = Vec::new();
+                    for (to, r) in [high, low].into_iter().flatten() {
+                        states.push(Point::R {
+                            a: *node,
+                            b: *to,
+                            r: r.lo + (r.hi - r.lo) * rng(),
+                        });
+                    }
+                    if *z {
+                        states.push(Point::Open {
+                            a: *node,
+                            b: *node,
+                            gate: None,
+                        });
+                    }
+                    let pick = ((rng() * states.len() as f64) as usize).min(states.len() - 1);
+                    states.swap_remove(pick)
+                }
                 Kind::Diode { anode, cathode, vf } => {
                     let vf = vf.lo + (vf.hi - vf.lo) * rng();
                     if rng() < 0.5 {

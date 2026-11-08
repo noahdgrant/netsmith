@@ -517,3 +517,233 @@ fn an_island_with_a_switching_regulator_has_a_smaller_limit() {
         Err(Error::TooManyCombinations { .. })
     ));
 }
+
+fn pin(
+    name: &str,
+    node: usize,
+    high: Option<(usize, Range)>,
+    low: Option<(usize, Range)>,
+    z: bool,
+) -> Element {
+    Element {
+        name: name.to_string(),
+        kind: Kind::Pin { node, high, low, z },
+    }
+}
+
+fn mosfet(
+    name: &str,
+    (gate, drain, source): (usize, usize, usize),
+    p_channel: bool,
+    vth: Range,
+    ron: Range,
+) -> Element {
+    Element {
+        name: name.to_string(),
+        kind: Kind::Mosfet {
+            gate,
+            drain,
+            source,
+            p_channel,
+            vth,
+            ron,
+        },
+    }
+}
+
+/// A pin that drives a 10 kohm +/- 1 % pull-down on a 3.3 V supply: high through up to 100 ohm,
+/// low through up to 50 ohm, or high impedance. The current is the supply over the pull-down and
+/// the pin's output resistance when it is high, `3.3 / (9.9 kohm + 1 mohm)` at the most, and zero
+/// when it is low or lets go (the node is at ground in both).
+#[test]
+fn a_pin_drives_a_pulldown_in_each_of_its_states() {
+    // Nodes: 0 = the line (free), 1 = vdd (held 3.3 V), 2 = ground.
+    let island = Island {
+        free: 1,
+        held: vec![
+            held("vdd", Range::point(3.3)),
+            held("ground", Range::point(0.0)),
+        ],
+        elements: vec![
+            pin(
+                "mcu.out",
+                0,
+                Some((1, Range::new(1e-3, 100.0))),
+                Some((2, Range::new(1e-3, 50.0))),
+                true,
+            ),
+            resistor("pd", 0, 2, tol(1e4, 0.01)),
+        ],
+    };
+    // High 2 + low 2 + high impedance 1, times the two ends of the pull-down.
+    assert_eq!(island.combinations(), 10);
+    let report = island.analyze(MAX_COMBINATIONS).unwrap();
+    assert_eq!(report.consistent, 10);
+    // The pull-down's current runs from the line to ground.
+    range_is(report.range(Which::Current(1)), 0.0, 3.3 / (9900.0 + 1e-3));
+    // The line is `3.3 * R / (R + roh)` at the most (1 mohm), and at ground when low or let go.
+    range_is(
+        report.range(Which::NodeVoltage(0)),
+        0.0,
+        3.3 * 9900.0 / (9900.0 + 1e-3),
+    );
+    // The least high, at the greatest resistance of the pin and the least of the pull-down.
+    let states = report.produced_by(Which::Current(1), true);
+    assert!(states.contains("mcu.out high through"), "{states}");
+    assert_eq!(check_interior(&island, &report, 500), 0);
+}
+
+/// An N-channel switch on a 12 V load of 100 ohm, its gate driven by a pin from a 3.3 V supply
+/// with a 10 kohm pull-down. The threshold is 1 V to 2.5 V and the channel 50 mohm to 100 mohm.
+/// With the pin high the gate is at about 3.3 V, above the greatest threshold: on, and off is
+/// refused. Low, or let go (the pull-down holds it at ground), the gate is below the least
+/// threshold: off, and on is refused.
+#[test]
+fn a_gate_driven_by_a_pin_turns_the_load_on_only_when_the_pin_is_high() {
+    // Nodes: 0 = gate, 1 = drain (free); 2 = 12 V, 3 = 3.3 V, 4 = ground (held).
+    let island = Island {
+        free: 2,
+        held: vec![
+            held("supply", Range::point(12.0)),
+            held("vdd", Range::point(3.3)),
+            held("ground", Range::point(0.0)),
+        ],
+        elements: vec![
+            pin(
+                "mcu.gpio",
+                0,
+                Some((3, Range::new(1e-3, 100.0))),
+                Some((4, Range::new(1e-3, 50.0))),
+                true,
+            ),
+            resistor("pd", 0, 4, tol(1e4, 0.01)),
+            mosfet(
+                "q",
+                (0, 1, 4),
+                false,
+                Range::new(1.0, 2.5),
+                Range::new(0.05, 0.1),
+            ),
+            resistor("load", 2, 1, Range::point(100.0)),
+        ],
+    };
+    let report = island.analyze(MAX_COMBINATIONS).unwrap();
+    // High: 2 pin states x 2 pull-down x on at 2 channel values = 8. Low and let go: 3 pin
+    // states x 2 pull-down x off = 6. The other 16 of the 30 are refused.
+    assert_eq!(report.combinations, 30);
+    assert_eq!(report.consistent, 14);
+    // The load's current is zero when off, `12 / (100 + 0.1)` at the most when on.
+    range_is(report.range(Which::Current(3)), 0.0, 12.0 / 100.05);
+    // The channel carries the same current, and drops 12 V when off.
+    range_is(report.range(Which::Current(2)), 0.0, 12.0 / 100.05);
+    close(report.range(Which::Drop(2)).hi, 12.0, 1e-9);
+    // The most the load takes is with the pin high and the channel at its least resistance.
+    let states = report.produced_by(Which::Current(3), true);
+    assert!(states.contains("q on at 50mΩ"), "{states}");
+    assert!(states.contains("mcu.gpio high through"), "{states}");
+    assert_eq!(check_interior(&island, &report, 500), 0);
+}
+
+/// A pin that can let go of a gate that nothing else holds leaves the gate floating, and a
+/// floating gate is no state the circuit sets: the switch may be on or off.
+#[test]
+fn a_gate_that_nothing_holds_may_be_either_way() {
+    // Nodes: 0 = gate, 1 = drain (free); 2 = 12 V, 3 = 3.3 V, 4 = ground (held).
+    let island = Island {
+        free: 2,
+        held: vec![
+            held("supply", Range::point(12.0)),
+            held("vdd", Range::point(3.3)),
+            held("ground", Range::point(0.0)),
+        ],
+        elements: vec![
+            pin(
+                "mcu.gpio",
+                0,
+                Some((3, Range::point(100.0))),
+                Some((4, Range::point(50.0))),
+                true,
+            ),
+            mosfet(
+                "q",
+                (0, 1, 4),
+                false,
+                Range::new(1.0, 2.5),
+                Range::point(0.1),
+            ),
+            resistor("load", 2, 1, Range::point(100.0)),
+        ],
+    };
+    let report = island.analyze(MAX_COMBINATIONS).unwrap();
+    // High (on only), low (off only), let go (on and off): 1 + 1 + 2 of the 3 x 2 = 6.
+    assert_eq!(report.combinations, 6);
+    assert_eq!(report.consistent, 4);
+    range_is(report.range(Which::Current(2)), 0.0, 12.0 / 100.1);
+    assert!(
+        report
+            .produced_by(Which::Current(2), true)
+            .contains("mcu.gpio"),
+        "the let go state is one of those that turn it on and off"
+    );
+}
+
+/// A P-channel switch from a 12 V supply to a 100 ohm load. The drive is the source above the
+/// gate. A gate at ground gives 12 V: on. A gate at the supply gives 0 V: off.
+#[test]
+fn a_p_channel_switch_is_on_for_a_gate_below_its_source() {
+    let build = |gate: f64| Island {
+        free: 1,
+        // Nodes: 0 = drain (free); 1 = 12 V (the source), 2 = gate, 3 = ground.
+        held: vec![
+            held("supply", Range::point(12.0)),
+            held("gate", Range::point(gate)),
+            held("ground", Range::point(0.0)),
+        ],
+        elements: vec![
+            mosfet(
+                "q",
+                (2, 0, 1),
+                true,
+                Range::new(1.0, 2.5),
+                Range::new(0.05, 0.1),
+            ),
+            resistor("load", 0, 3, Range::point(100.0)),
+        ],
+    };
+    let on = build(0.0).analyze(MAX_COMBINATIONS).unwrap();
+    // On at 50 mohm and at 100 mohm; off is refused.
+    assert_eq!(on.consistent, 2);
+    // The channel's own direction is drain to source: the load takes the current from the source.
+    range_is(on.range(Which::Current(0)), -12.0 / 100.05, -12.0 / 100.1);
+    let off = build(12.0).analyze(MAX_COMBINATIONS).unwrap();
+    assert_eq!(off.consistent, 1);
+    range_is(off.range(Which::Current(0)), 0.0, 0.0);
+}
+
+/// A gate inside the threshold's range keeps both states: 1.5 V is above the least threshold
+/// (on is possible) and below the greatest (off is possible).
+#[test]
+fn a_gate_inside_the_threshold_range_keeps_both_states() {
+    let island = Island {
+        free: 1,
+        // Nodes: 0 = drain; 1 = 12 V, 2 = gate, 3 = ground (the source).
+        held: vec![
+            held("supply", Range::point(12.0)),
+            held("gate", Range::point(1.5)),
+            held("ground", Range::point(0.0)),
+        ],
+        elements: vec![
+            mosfet(
+                "q",
+                (2, 0, 3),
+                false,
+                Range::new(1.0, 2.5),
+                Range::point(0.1),
+            ),
+            resistor("load", 1, 0, Range::point(100.0)),
+        ],
+    };
+    let report = island.analyze(MAX_COMBINATIONS).unwrap();
+    assert_eq!(report.consistent, 2);
+    range_is(report.range(Which::Current(0)), 0.0, 12.0 / 100.1);
+}

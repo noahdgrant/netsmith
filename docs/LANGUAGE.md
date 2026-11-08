@@ -7857,6 +7857,7 @@ ZP-30,ZP-30 30V 4A P-MOSFET,30V,4A,12V,0.4V..1.3V,0.07ohm,SOT-23,Extended,https:
 ```
 
 ```nsm evaluate catalogs=pfet
+import std::parts::passive::Resistor
 import std::parts::transistor::PMosfet
 import std::sources::Rail
 
@@ -7869,13 +7870,17 @@ board HighSide {
     .q: PMosfet {
         .drain_source_voltage &= supply.voltage
         .gate_source_voltage &= supply.voltage
-        .current &= 1A
+        .current &= 0A..1A
     }
+    .load: Resistor { .resistance &= 1kohm +/- 1% }
     .q.gate ~ .supply.neg
     .q.source ~ .supply.pos
-    .q.drain ~ .supply.neg
+    .q.drain ~ .load.a
+    .load.b ~ .supply.neg
 }
 ```
+
+The switch's drain goes to a load. Joined to the ground instead, a switch that is on is a short across the supply, and the DC analysis says so (`q.current` is stated up to 1 A, and the circuit puts 5.25 V across 70 mohm, 75 A): a MOSFET is solved as a switch (see "DC analysis").
 
 The stresses are checked against the maxima as they are for an `NMosfet`. A 100 V supply puts 100 V across the drain and the source and between the gate and the source, which is more than this part takes, and the design is refused with the numbers:
 
@@ -7930,7 +7935,7 @@ The standard `Resistor`, `Fuse`, `FerriteBead`, `Diode`, `Schottky`, `NMosfet`, 
 
 The rules. A `dc` statement is in a part (or a generic that has pins); the element is one of `resistor`, `diode`, `nmos`, `pmos`, `linear_regulator` and `switching_regulator`; the pins are pins of the part (the rails of a regulator are rails of the part) and are different; each value is a field of the part with the quantity of its place; a part has one `dc` statement; and when the part has a `bridge`, the element runs between the two pins the `bridge` joins (the drain and the source for a MOSFET). The order of the statements does not matter.
 
-The resistor, the diode and the regulators are solved by the DC analysis (next section); the MOSFET is recorded and not solved yet, so a part that has one is a boundary there too.
+The resistor, the diode, the regulators and the MOSFET are solved by the DC analysis (next section).
 
 A part of your own that is a resistor at DC, and a provider of the standard fuse, which has the fuse's statement without writing one:
 
@@ -8221,7 +8226,10 @@ What it models in this stage:
 
 - **Regulators.** A part with `dc linear_regulator` or `dc switching_regulator` holds the net of its output rail over the range of the rail's `.voltage` (an ideal source, so what is behind it is an island of its own) and draws from its input what its output asks. A board rail on the output net is then what the regulator supplies: a load, whatever voltage the board states for it. A linear regulator draws what it supplies. A switching one draws `Pout / (efficiency * Vin)`, and `Vin` is what the parts in front of it leave after the current they carry, so the current is the solution of a fixed point, which the pass finds from zero: the iterates rise to the least solution, and when there is none the input falls to nothing. The power tree is solved in order, the output side first: what the loads behind a regulator take (as a range, summed over everything on its output net) is the regulator's load when the island in front of it is solved. A regulator whose output has a pin that nothing models falls back on its own `.vout.current` when something states it (or the balances worked it out), and is otherwise left alone, with the island in front of it. The pass writes the regulator's `.vin.current` and `.vin.voltage` by the rules below, so the part's own relations (`.vin.voltage >= .vout.voltage + .dropout`, `.vin.voltage >= .buck.min_input_voltage`, a stage's `.vin.voltage <= ...`) are judged with the voltage the circuit gives it, and the parts in front (a fuse, a diode, a shunt, a bead) take their currents from it.
 
-What it does not model, and leaves as it was: a logic pin that drives, a MOSFET, and every pin of a part with no `dc` statement and no `.current`. A net that has such a pin on it is not solved, and neither is the island it is in (below): a part there keeps its `not evaluated` checks, and the cheap bound of Ohm's law (ADR 0026) is what it gets, as before. A rail of a part that can give current (a `.current` that has a negative end) and that has no `dc` statement is an output that holds its net, and is not modelled.
+- **Logic pins that drive** (ADR 0076, amendment 4, provisional). A pin of kind `output`, `tri_state` or `bidirectional` that states its `voh` and its `vol` with the current each is measured at, as the datasheet does (`.voh &= .vdd.voltage - 0.4V at 2mA`, `.vol &= 0.4V at 2mA`), is high, low or (a tri-state or bidirectional pin) high impedance. High joins the line to the pin's supply through an output resistance, low joins it to the pin's ground, and high impedance joins it to nothing. The resistance is the drop over the test current, `0.4 V / 2 mA` = 200 ohm, taken from 1 mohm up to that (a lighter load drops less). The pass tries every state of every pin with the states of everything else, and writes what the pin's load carries: a pull-down on the line gets its `.current` and `.drop`, and its relations are judged. The pin needs a reference rail whose two nets a supply or a regulator's output holds, no `.swing` (a line that goes to a supply with no pin has a high the reference rail does not give), and the net to itself: two pins that could drive one net are not modelled, since their states include driving it apart. A pin that states a level without its test current, or only one of the two levels (it might be open drain, which the language has no marker for, ADR 0075), is a boundary.
+- **MOSFETs.** A part with `dc nmos` or `dc pmos` is off, or on with its `.on_resistance` between drain and source (both ends of the range). The gate draws nothing. A gate above the greatest of `.gate_threshold` (above the source for an N-channel part, below it for a P-channel one) turns it on and never off; a gate below the least turns it off and never on; a gate in between keeps both states. A gate that nothing sets in a state (a tri-state pin that let go of a line with no pull) floats, and both states stay. The switch is modelled when what sets its gate is known: the gate's net is held by a supply, or a resistor, a diode or a driving pin is on it, and no pin that nothing models is. Otherwise it is a boundary, a current source over its `.current` when that has a value, as above.
+
+What it does not model, and leaves as it was: a logic pin that does not state its drive, a pin that shares its net with another driver, and every pin of a part with no `dc` statement and no `.current`. A net that has such a pin on it is not solved, and neither is the island it is in (below): a part there keeps its `not evaluated` checks, and the cheap bound of Ohm's law (ADR 0026) is what it gets, as before. A rail of a part that can give current (a `.current` that has a negative end) and that has no `dc` statement is an output that holds its net, and is not modelled.
 
 **Islands and corners.** A net that a supply holds is cut: what is on its two sides is solved on its own, with the supply's range as one of its values. The network between the cuts is an *island*. For each island the pass solves every *corner* of its ranges (both ends of each resistance, supply and load, both ends of a diode's forward voltage, and a diode that blocks) and keeps the range each current and voltage takes over all of them. A corner solve gives each value one number in each solve, so nothing is counted twice: a divider of two resistors of 1 % is `4.95 V..5.05 V` and not the `4.90 V..5.10 V` that arithmetic on ranges gives. The corners are the circuit's range where the quantity is monotone in each value, which is so for a voltage or a current of a network with one supply, and for a series chain; a network with two supplies through resistors need not be. An island with more combinations than a limit is left alone, and a note names it and says to cut it at a node a rail holds. The limit is 65536, and less for a large island: the work is the combinations times the cube of the number of nodes, which is capped, so that no island takes more than a tenth of a second (an island of 15 nodes and 16 resistors of 1 % is the largest that is solved).
 
@@ -8249,6 +8257,66 @@ board Lit {
     .top.b ~ .led.anode
     .bottom.b ~ .supply.neg
     .led.cathode ~ .supply.neg
+}
+```
+
+A pin that drives a pull-down, and a switch that the pin turns on. The controller and the switch are invented. The controller's output is high at 3.3 V less 0.4 V at 2 mA, so its output resistance is at most 200 ohm; the pull-down is allowed no more than the supply over it, and the load carries nothing while the pin is low:
+
+```nsm evaluate
+import std::logic::Logic
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+/// Invented: an output that states its levels at the load of its datasheet.
+part Mcu {
+    .vdd: Rail
+    .gpio: Logic
+    .gpio.reference ~ .vdd
+    .gpio.voh &= .vdd.voltage - 0.4V at 2mA
+    .gpio.vol &= 0.4V at 2mA
+    pins {
+        .vdd.pos   power  "VDD" "1"
+        .vdd.neg   power  "GND" "2"
+        .gpio.line output "IO"  "3"
+    }
+}
+
+/// Invented: an N-channel switch.
+part LowSideSwitch {
+    pins {
+        .gate   input   "G" "1"
+        .source passive "S" "2"
+        .drain  passive "D" "3"
+    }
+    .gate_threshold: Voltage
+    .on_resistance: Resistance
+    .current: Current
+    bridge .drain ~> .source
+    dc nmos .gate .drain .source .gate_threshold .on_resistance
+}
+
+board Switched {
+    .main: Rail {
+        .voltage &= 12V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .logic: Rail {
+        .voltage &= 3.3V +/- 3%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .mcu: Mcu
+    .pd: Resistor { .resistance &= 10kohm +/- 1% }
+    .q: LowSideSwitch { .gate_threshold &= 1V..2.5V; .on_resistance &= 50mohm..100mohm }
+    .load: Resistor { .resistance &= 10kohm +/- 1% }
+    .logic ~ .mcu.vdd
+    .mcu.gpio.line ~ .q.gate
+    .mcu.gpio.line ~ .pd.a
+    .pd.b ~ .logic.neg
+    .main.pos ~ .load.a
+    .load.b ~ .q.drain
+    .q.source ~ .main.neg
 }
 ```
 
@@ -8336,7 +8404,7 @@ error: the source cannot give what `reg` asks (5W at its output, efficiency 90 %
    |     ^^^^^^^^^^^^^^^
 ```
 
-**Limits.** The pass tries every combination of the states of the parts it sees, which is the worst case. A design cannot say that two pins are never high together, or that two loads never run together: the pass does not know, and it adds both (issue #45 asks for a way to say it). Temperature is a stated tolerance and nothing else. A capacitor is open, so nothing charges: an inrush current is not seen. A diode's reverse leakage and a MOSFET's body diode are not modelled. A regulator's efficiency is one range and not a curve over its load and its input, its quiescent current is not modelled, a regulator is an ideal source (its output does not sag, and a current limit is the part's own relation), and an input below its minimum is an error and not a shutdown. A logic pin's drive states and a MOSFET as a switch are later stages of ADR 0076. A regulator's output current is summed over the islands on its output net, each solved on its own, so a load whose current follows the output voltage is taken over the whole range of the output (wider, never narrower).
+**Limits.** The pass tries every combination of the states of the parts it sees, which is the worst case. A design cannot say that two pins are never high together, or that two loads never run together: the pass does not know, and it adds both (issue #45 asks for a way to say it). Temperature is a stated tolerance and nothing else. A capacitor is open, so nothing charges: an inrush current is not seen. A diode's reverse leakage and a MOSFET's body diode are not modelled. A regulator's efficiency is one range and not a curve over its load and its input, its quiescent current is not modelled, a regulator is an ideal source (its output does not sag, and a current limit is the part's own relation), and an input below its minimum is an error and not a shutdown. A logic pin has no leakage (high impedance is an open circuit: the language has no member for the datasheet's `Ii`), and a pin's output resistance is the one at the test current its level states. A regulator's output current is summed over the islands on its output net, each solved on its own, so a load whose current follows the output voltage is taken over the whole range of the output (wider, never narrower).
 
 ### Logic levels and absolute maximums
 

@@ -15,6 +15,7 @@ mod cycles;
 mod data;
 mod dc_analysis;
 mod dc_regulators;
+mod dc_switches;
 mod defaults;
 mod derived_bounds;
 mod empty_cells;

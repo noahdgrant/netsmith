@@ -101,13 +101,15 @@ fn fails(w: &World, source: &str) -> String {
     }
 }
 
-/// A high-side switch: the P-channel part's source on the supply, its drain on the load.
+/// A high-side switch: the P-channel part's source on the supply, its drain on the load (a
+/// drain on the ground would be a short across the supply, which the DC analysis finds).
 fn high_side(imports: &str, volts: &str, gate_drive: &str) -> String {
     format!(
-        "import std::parts::transistor::PMosfet\n{imports}import std::sources::Rail\n\n\
+        "import std::parts::passive::Resistor\nimport std::parts::transistor::PMosfet\n{imports}import std::sources::Rail\n\n\
 board HighSide {{\n    .supply: Rail {{\n        .voltage &= {volts}\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n    }}\n\
-    .q: PMosfet {{\n        .drain_source_voltage &= supply.voltage\n        .gate_source_voltage &= {gate_drive}\n        .current &= 1A\n    }}\n\
-    .q.gate ~ .supply.neg\n    .q.source ~ .supply.pos\n    .q.drain ~ .supply.neg\n}}\n"
+    .q: PMosfet {{\n        .drain_source_voltage &= supply.voltage\n        .gate_source_voltage &= {gate_drive}\n        .current &= 0A..1A\n    }}\n\
+    .load: Resistor {{ .resistance &= 100kohm +/- 1% }}\n\
+    .q.gate ~ .supply.neg\n    .q.source ~ .supply.pos\n    .q.drain ~ .load.a\n    .load.b ~ .supply.neg\n}}\n"
     )
 }
 
@@ -127,6 +129,14 @@ fn mpn_of<'a>(b: &'a netsmith::Built, refdes: &str) -> Option<&'a str> {
     b.sourcing
         .iter()
         .find(|s| s.refdes == refdes)
+        .and_then(|s| s.mpn.as_deref())
+}
+
+/// The part number picked for the switch `Q1` (the load's resistor is the first row).
+fn q_mpn(b: &netsmith::Built) -> Option<&str> {
+    b.sourcing
+        .iter()
+        .find(|s| s.refdes == "Q1")
         .and_then(|s| s.mpn.as_deref())
 }
 
@@ -163,7 +173,7 @@ fn a_project_row_of_an_invented_p_channel_part_is_picked_for_the_requirement() {
     let q = b.design.parts.iter().find(|p| p.path == "q").unwrap();
     assert_eq!((q.kind.as_str(), q.refdes.as_str()), ("PMosfet", "Q1"));
     assert!(q.provides.is_empty(), "the generic itself, no provider");
-    assert_eq!(b.sourcing[0].mpn.as_deref(), Some("ZP-30"));
+    assert_eq!(q_mpn(b), Some("ZP-30"));
     assert!(b.providers.is_empty());
 }
 
@@ -200,7 +210,7 @@ fn an_invented_provider_of_pmosfet_conforms_and_is_picked_when_the_rows_cannot_s
     let imports = "import src::zp::ZpPower\n";
     let o = build(&w, &high_side(imports, "5V +/- 5%", "5V +/- 5%")).unwrap();
     assert!(o.boards[0].providers.is_empty());
-    assert_eq!(o.boards[0].sourcing[0].mpn.as_deref(), Some("ZP-30"));
+    assert_eq!(q_mpn(&o.boards[0]), Some("ZP-30"));
     // A 48 V supply is beyond the row, and the provider's 60 V part serves.
     let o = build(&w, &high_side(imports, "48V +/- 5%", "10V")).unwrap_or_else(|e| panic!("{e:?}"));
     let b = &o.boards[0];
@@ -218,7 +228,7 @@ fn an_invented_provider_of_pmosfet_conforms_and_is_picked_when_the_rows_cannot_s
         (q.kind.as_str(), q.provides.clone()),
         ("ZpPower", vec!["PMosfet".to_string()])
     );
-    assert_eq!(b.sourcing[0].mpn.as_deref(), Some("ZP-60"));
+    assert_eq!(q_mpn(b), Some("ZP-60"));
 }
 
 #[test]
@@ -230,7 +240,7 @@ fn a_provider_of_pmosfet_alone_serves_when_the_standard_catalog_has_no_row() {
     let b = &o.boards[0];
     assert_eq!(b.providers[0].chosen, "ZpPower");
     assert_eq!(b.providers[0].passed_over[0].0, "PMosfet");
-    assert_eq!(b.sourcing[0].mpn.as_deref(), Some("ZP-60"));
+    assert_eq!(q_mpn(b), Some("ZP-60"));
 }
 
 #[test]
