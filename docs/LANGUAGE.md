@@ -2979,7 +2979,7 @@ catalog_dirs = ["catalogs"]
 The first line of a file names the columns. Two kinds of column can be there, in any order.
 
 - The columns of the part: the paths of the fields in its `catalog X { ... }` declaration, without the leading dot (`resistance`, `package`, `vout.voltage`, `mpn`). A cell of a quantity column is a value as the language writes it, with its unit: `10kohm +/- 1%`, `1.8V..5.5V`, `0.3V`. It must be in the dimension of the field. A cell of a text column is its text as it is, without quotes: `0402`, `SOT-23-5`. An empty cell means the row has no value there: the row fits no design that asks for one, and, for any column a design needs (the package, the resistance, a rating), the row is never offered at all. Only three columns of the standard kinds may be empty in a row that is offered, because they were added after the files were written: `temperature_coefficient` of `resistor`, `rms_current` of `inductor` and `dielectric` of `capacitor`. Such a row is offered to a design that says nothing about the field, and a design says something by narrowing it, by a relation that names it, by a `~` that joins it or by a balance of currents that sums it.
-- The fixed columns, all optional except as noted: `lcsc` (the supplier's number), `mpn` (the manufacturer's; also a column of the part if its catalog lists `.mpn`), `library` (`Basic`, `Extended` or `Preferred`), `price` and `stock` (JLCPCB's snapshot, entered by hand; the solver does not read them, so a row is offered whatever its `stock` says; the bill of materials shows them only when no supply provider has the part, ADR 0047), `price_breaks` (`1:0.0019 1000:0.0015`, the price for one piece from each quantity; entered by hand and read by nothing), `date` (`2026-10-31`, the day the `price` and `stock` were read), `checked` (`2026-11-02`, the day `catalog refresh` last found the row's `mpn` and `package` equal to LCSC's record; empty if never, read by nothing), `name` and `label` (what a message calls the row, and what the schematic's value field shows; both default to the `mpn`, then the `lcsc`), `notes`, and `source`. **A row with an `lcsc` or an `mpn` must have a `source`**: the URL or text that says where its numbers were read. A row with neither is a made-up part and needs a `name`.
+- The fixed columns, all optional except as noted: `lcsc` (the supplier's number), `mpn` (the manufacturer's; also a column of the part if its catalog lists `.mpn`), `library` (`Basic`, `Extended` or `Preferred`), `price` and `stock` (JLCPCB's snapshot, entered by hand; the solver does not read them, so a row is offered whatever its `stock` says, and the build notes a pick whose `stock` is 0; the bill of materials shows them only when no supply provider has the part, ADR 0047), `price_breaks` (`1:0.0019 1000:0.0015`, the price for one piece from each quantity; entered by hand and read by nothing), `date` (`2026-10-31`, the day the `price` and `stock` were read), `checked` (`2026-11-02`, the day `catalog refresh` last found the row's `mpn` and `package` equal to LCSC's record; empty if never, read by nothing), `name` and `label` (what a message calls the row, and what the schematic's value field shows; both default to the `mpn`, then the `lcsc`), `notes`, and `source`. **A row with an `lcsc` or an `mpn` must have a `source`**: the URL or text that says where its numbers were read. A row with neither is a made-up part and needs a `name`.
 
 `price`, `stock` and `library` are JLCPCB's numbers and `date` is the day they were read: they are a hand-entered snapshot (the standard catalogs that ship in netsmith leave `price`, `stock`, `date` and `checked` empty: read a part's price and stock from the supplier before ordering), and `netsmith catalog refresh` never writes them (it asks LCSC, never JLCPCB, and only verifies the row and records the day in `checked`; see Commands). `netsmith catalog age` lists the rows whose price and stock were read long ago and those whose price and stock are unknown. The price and stock of a part come from a supply provider (the `[supply]` table of `netsmith.toml`, ADR 0047, provisional): `provider = "file"` with `file = "supply/quotes.csv"`, a CSV with the columns `lcsc` or `mpn`, `channel` (`jlcpcb-assembly` or `lcsc-retail`: the two stocks differ, and the answer says which it is), `stock`, `price_breaks` (`1:0.0100 100:0.0050`), `currency` and `date`; `channel` and `cache_hours` choose the stock shown and how long a cached answer is used. With no provider, or one that does not list the part, price and stock are unknown in the bill of materials, never guessed and never 0. The manifest has no field for a key or a password. The solver never asks; it reads the rows and no price or stock.
 
@@ -3012,6 +3012,25 @@ board OwnPart {
 ```text
 board OwnPart
   R1   Resistor        ACME-R316       Resistor_SMD:R_0402_1005Metric                             no LCSC number
+```
+
+The solver does not read `stock`, so a row that states a stock of 0 is still picked when it is the first that fits. The build says so in a note, and the editor shows the same line among its problems: the part's designator and path, the row's LCSC number and manufacturer's number, the file and line of the row, and what to do (choose another row, or state a different value). A part that the standard `data/jlcpcb/considered.csv` records as out of stock when it was read gets the same note when a project's row offers it and states no stock. An empty `stock` cell states nothing and gets no note, and a positive stock gets none. The note is not a guideline and never stops a build, and the pick is the same with or without it.
+
+```csv file=catalogs/resistor.csv set=sold_out
+lcsc,mpn,resistance,max_power,package,library,stock,source
+C900001,ACME-R316,316ohm +/- 1%,62.5mW,0402,Extended,0,https://example.invalid/acme-r316.pdf
+```
+
+```nsm solve stock catalogs=sold_out
+import std::parts::passive::Resistor
+
+board SoldOut {
+    .r1: Resistor { .resistance &= 316ohm +/- 1% }
+}
+```
+
+```text
+R1 (`r1`) is C900001 (ACME-R316), and its catalog row (catalogs/resistor.csv:2) states a stock of 0: the solver does not read stock, so it picked the part; choose another row of the catalog or state a different value, and read the supplier's stock before ordering
 ```
 
 A resistor's `temperature_coefficient` is a column too: how far the resistance moves per kelvin, as a fraction (`0.00005` is 50 ppm/K; take the datasheet's largest figure). The standard rows leave it empty, because no value goes into a standard catalog without a recorded source. A design that does not mention the field picks rows as before. A design that limits it, `.r1.temperature_coefficient <= 0.0001`, is offered only the rows that state it, so it needs a row of a project's file (a file that leaves the column out of its first line is read as empty there, which is why the file above needs nothing new):

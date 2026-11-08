@@ -25,6 +25,15 @@ pub trait Availability: std::fmt::Debug + Send + Sync {
     fn stock(&self, lcsc: &str) -> Option<u64>;
 }
 
+/// Why a part is thought to be out of stock (see [`Catalogs::sold_out`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SoldOut {
+    /// A catalog row states a `stock` of 0: the file and line.
+    Stated { at: String },
+    /// The standard `considered.csv` records the part as out of stock when it was read.
+    Considered,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Quantity(Quantity),
@@ -380,6 +389,20 @@ impl Catalogs {
     /// own alike. `None` for a part that no file lists.
     pub fn supplier(&self, lcsc: &str) -> Option<crate::table::Supplier> {
         self.tables.values().find_map(|t| t.supplier(lcsc))
+    }
+
+    /// Whether the files give a reason to think the part with this LCSC number is out of stock
+    /// (issue #176). The solver does not read stock (ADR 0047) and this changes no pick: it is
+    /// for a note. The row's own `stock` cell speaks first, and an empty cell states nothing;
+    /// with none, a part that the standard `considered.csv` records as out of stock when it was
+    /// read counts. `None` for a part whose stock nobody states, and for one in stock.
+    pub fn sold_out(&self, lcsc: &str) -> Option<SoldOut> {
+        let row = self.supplier(lcsc);
+        match row.as_ref().and_then(|r| r.stock) {
+            Some(0) => row.map(|r| SoldOut::Stated { at: r.at }),
+            Some(_) => None,
+            None => crate::jlcpcb::out_of_stock_when_read(lcsc).then_some(SoldOut::Considered),
+        }
     }
 
     /// Small catalogs for resistors, capacitors and linear regulators, from

@@ -28,3 +28,70 @@ pub(crate) fn embedded(files: &[(&str, &str, &str)]) -> Catalogs {
     }
     catalogs
 }
+
+/// The parts that were looked at and not offered, `data/jlcpcb/considered.csv`: the LCSC number
+/// of each part whose reason says it was out of stock when it was read. A project's catalog may
+/// still offer such a part, and the build says so (a note, issue #176); the solver does not
+/// read stock and the pick is the same.
+const CONSIDERED: &str = include_str!("../../../data/jlcpcb/considered.csv");
+
+/// Whether `considered.csv` records a part as out of stock when it was read, by its LCSC number.
+pub(crate) fn out_of_stock_when_read(lcsc: &str) -> bool {
+    static LISTED: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    LISTED
+        .get_or_init(|| listed(CONSIDERED))
+        .iter()
+        .any(|number| number == lcsc)
+}
+
+/// The numbers of the rows of a `considered.csv` whose `not_offered` says `out of stock`. The
+/// file is checked by this crate's tests, so one that cannot be read is a bug in the data and
+/// stops here.
+fn listed(text: &str) -> Vec<String> {
+    let records =
+        crate::table::parse_csv(text).unwrap_or_else(|e| panic!("data/jlcpcb/considered.csv: {e}"));
+    let Some((header, rows)) = records.split_first() else {
+        return Vec::new();
+    };
+    let column = |name: &str| {
+        header
+            .1
+            .iter()
+            .position(|c| c == name)
+            .unwrap_or_else(|| panic!("data/jlcpcb/considered.csv has no `{name}` column"))
+    };
+    let (lcsc, reason) = (column("lcsc"), column("not_offered"));
+    rows.iter()
+        .filter(|(_, row)| {
+            row.get(reason)
+                .is_some_and(|r| r.to_ascii_lowercase().contains("out of stock"))
+        })
+        .filter_map(|(_, row)| row.get(lcsc))
+        .map(|number| number.trim().to_string())
+        .filter(|number| !number.is_empty())
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_shipped_considered_file_lists_its_out_of_stock_parts() {
+        for number in ["C1723147", "C4346185", "C2505121"] {
+            assert!(out_of_stock_when_read(number), "{number}");
+        }
+        // Considered for another reason (the AMS1117): not out of stock.
+        assert!(!out_of_stock_when_read("C6186"));
+        assert!(!out_of_stock_when_read("C25104"));
+    }
+
+    #[test]
+    fn only_a_reason_that_says_out_of_stock_counts() {
+        let text = "role,lcsc,not_offered\n\
+                    a,C1,Out of stock when read\n\
+                    b,C2,wrong footprint\n\
+                    c,,out of stock\n";
+        assert_eq!(listed(text), vec!["C1".to_string()]);
+    }
+}
