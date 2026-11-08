@@ -284,3 +284,49 @@ module I2cPullups {
     .sda_pullup.current == (.sda_low * .supply_top - .overdrive) / .sda_pullup.resistance
     .scl_pullup.current == (.scl_low * .supply_top - .overdrive) / .scl_pullup.resistance
 }
+
+/// A pull-down resistor: one resistor from `line` to the negative pin of `reference`, which
+/// holds the line low while nothing drives it. The board states the resistance, as a value with
+/// its tolerance (`.pulldown.resistance &= 100kohm +/- 5%`), and the solver picks a resistor
+/// that stays inside it; a board that does not gets an unconstrained pick finding for the
+/// resistor, with the member named (ADR 0065). Use it on a boot-mode pin, an enable, a gate or
+/// any one line that must read low when its driver lets go; `PullUp` is the same circuit to the
+/// other rail.
+///
+/// The module states what its resistor carries, so no check on it waits for a current that
+/// nothing gives (ADR 0026): a plain `Resistor` between a line and a ground leaves its current
+/// unknown. The line is high, at worst, for the share `line_high` of the time, 0 to 1 (a board
+/// that knows its line is high only part of the time narrows it:
+/// `.pulldown.line_high &= 0..0.1`). While it is high the resistor carries the voltage of the
+/// line over its resistance, and while the line is low or released it carries nothing. So the
+/// resistor's current is 0 up to `line_top / resistance`, the current a driver puts into it.
+///
+/// Unlike `PullUp` the module draws nothing from any rail: the current comes from the driver of
+/// the line, whose own supply is not this module's. `reference` is the rail that names the
+/// ground of the resistor and the level the line is held against, a reference for the checker and
+/// not a load, so the module states `.reference.current &= 0A`, as `Levels` does, and a board
+/// that joins it to a supply (`.pulldown.reference ~ .supply`) adds no unknown to the net.
+///
+/// That is the steady current, with one assumption that the module offers and a board may
+/// replace (ADR 0070):
+///
+/// - `line_top`, the highest voltage the line is held at, relative to the negative pin of
+///   `reference`. It is `reference.voltage`, the steady range: the line is never driven above
+///   the rail it is judged against. A line that a 5 V driver holds above a 3.3 V reference is
+///   stated by a board that has such a driver (`.pulldown.line_top &= 0V..5.25V`), and the
+///   current then reaches `line_top / resistance`.
+module PullDown {
+    .reference: Rail
+    .reference.current &= 0A
+    .line: Pin
+    .resistance: Resistance
+    .resistor: Resistor
+    .resistance == .resistor.resistance
+    .line ~> .resistor ~> .reference.neg
+
+    .line_high: Number
+    .line_high &= 0..1
+    .line_top: Voltage
+    .line_top ?= .reference.voltage
+    .resistor.current == .line_high * .line_top / .resistor.resistance
+}
