@@ -35,6 +35,11 @@
 # The Rust cache (Swatinem/rust-cache) is saved by pushes to main only, and a pull request
 # restores the newest of main's: the pull requests do not fill the repository's cache quota with
 # a copy each.
+# The release pull request that release-please opens (`release-please--branches--main`: a version
+# bump, the changelog) runs nothing here: `changes`, `fmt` and `ci-ok` are skipped by that branch
+# name, and every other job needs `changes`, so it is skipped too. Only the title check
+# (pr-title.yml) runs on it. The release commit's content is a version number and prose; what
+# it releases was tested when each change merged, and a push to main runs everything.
 name: ci
 
 on:
@@ -57,6 +62,7 @@ jobs:
   # Which of the jobs below the change needs: the paths of the pull request (the merge commit
   # against its first parent, renames as a deletion and an addition) through scripts/ci-changes.
   changes:
+    if: github.head_ref != 'release-please--branches--main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -83,6 +89,7 @@ jobs:
           fi
 
   fmt:
+    if: github.head_ref != 'release-please--branches--main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -390,7 +397,7 @@ jobs:
   # all of them. A required check named for one of the other jobs would block a pull request
   # that does not run it.
   ci-ok:
-    if: always()
+    if: always() && github.head_ref != 'release-please--branches--main'
     needs: [changes, fmt, clippy, test, kicad, recipes]
     runs-on: ubuntu-latest
     timeout-minutes: 5
