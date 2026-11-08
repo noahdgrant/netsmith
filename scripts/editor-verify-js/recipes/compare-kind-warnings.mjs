@@ -39,7 +39,10 @@ board Heater {
 }
 `;
 
-export async function run({ page, shot, step, expect, project, resetRepo }) {
+export async function run({ page, shot, step, expect, project, resetRepo, allowConsole }) {
+  // The recipe leaves the board `Heater` by checking out another branch while the page may still ask for it: the server
+  // says 404, which is the recipe's own cleanup and not a fault of the page (it failed on main this way, once in a while).
+  allowConsole(/api\/(board\?name|schematic-hints\?board|schematic\.svg\?board)=Heater/);
   const main = path.join(project, 'src/main.nsm');
   const tryGit = (...args) => {
     try {
