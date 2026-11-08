@@ -1,0 +1,15 @@
+# Island: the gate network of a low-side switch, a pull-down on a processor pin that drives an
+# N-channel MOSFET. From a real 12 V automotive board: the resistor (10k +/-1 %, row C25804), the
+# MOSFET (2N7002, row C8545: threshold 1 V..2.5 V, 7 ohm on) and the nets are read from the
+# export of `netsmith build`; the 3.3 V rail is the board's LDO (3.234 V..3.333 V).
+# ASSUMPTIONS of this prototype, not data: the pin's output resistances (the processor part states
+# voh = vdd - 0.4 V and vol = 0.4 V without a test current: 2 mA would give 200 ohm), its leakage
+# (1 uA at 3.3 V, as 3.3 Mohm to either rail), and the modem's pull-up on the drain (the datasheet gives no value).
+# report: v(ON_OFF) i(r8) p(r8) i(q1) p(q1)
+# today: r8 and the track of the gate net: `current of part r8 is not known` (2 relations and 1 note); q1: `current <= max_drain_current` not evaluated
+V  rail      V3V3 GND 3.234..3.333
+L  pin       ON_OFF V3V3 GND states=HLZ roh=0..200 rol=0..200 rz=3.3M
+R  r8        ON_OFF GND 10k+-1%
+M  q1        ON_OFF DRAIN GND n vth=1..2.5 ron=7
+R  modem_pu  V1V8 DRAIN 100k
+V  v1v8      V1V8 GND 1.71..1.89

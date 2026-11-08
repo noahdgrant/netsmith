@@ -1,0 +1,10 @@
+[package]
+name = "netsmith-dc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "A feasibility prototype of a post-pick DC operating-point analysis (ADR 0076, proposed)"
+
+# No dependencies on purpose: the prototype is a small solver over its own netlist and nothing
+# in the workspace uses it, so it changes no behaviour of `build`.
+[dependencies]

@@ -1,0 +1,12 @@
+# Island: the battery-voltage divider (2 Mohm over 100 kohm) behind the protection, read by a
+# buffer. From a real 12 V automotive board: R2 (2M +/-1 %, row C22976), R1 (100k +/-1 %, row
+# C25741) and the nets from the export of `netsmith build`. The supply is the node behind the fuse
+# and the diode: 9 V less 0.032 ohm and 0.8 V is 8.1 V at the least (see input_chain.cir), 16 V at
+# the most. ASSUMPTION: the buffer's input does not load the node (leakage 1 nA).
+# report: v(DIV) i(r2) p(r2) p(r1)
+# today: this divider states its current by hand (`divider_top.current == vin.voltage / (...)`); its power is checked from that
+V  batt  SAFE GND 8.1..16
+R  r2    SAFE DIV 2M+-1%
+R  r1    DIV GND 100k+-1%
+L  buf   DIV V3V3 GND states=Z rz=3.3G
+V  rail  V3V3 GND 3.234..3.333
