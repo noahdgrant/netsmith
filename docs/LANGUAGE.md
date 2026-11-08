@@ -4893,7 +4893,7 @@ board TooBig {
 ```
 
 ```text
-error: no `capacitor` candidate satisfies `bypass`: the closest of the 31 that fit, 47uF 20% 6.3V X5R 0805 C16780, fails because bypass.effective_capacitance must always be at least 10mF, but 16.09uF..26.7uF is not always above 10mF (`bypass.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
+error: no `capacitor` candidate satisfies `bypass`: the closest of the 34 that fit, 47uF 20% 6.3V X5R 0805 C16780, fails because bypass.effective_capacitance must always be at least 10mF, but 16.09uF..26.7uF is not always above 10mF (`bypass.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
    --> main.nsm:10:26
    |
 10 |     .bypass: Capacitor { .effective_capacitance >= 10mF }
@@ -5018,7 +5018,7 @@ board Short {
 ```
 
 ```text
-error: no `capacitor` candidate satisfies `bulk`: the closest of the 31 that fit, 2 x 47uF 20% 6.3V X5R 0805 C16780, fails because (bulk.count * bulk.effective_capacitance) must always be at least 10mF, but 21.86uF..32.81uF is not always above 10mF (`bulk.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
+error: no `capacitor` candidate satisfies `bulk`: the closest of the 34 that fit, 2 x 47uF 20% 6.3V X5R 0805 C16780, fails because (bulk.count * bulk.effective_capacitance) must always be at least 10mF, but 21.86uF..32.81uF is not always above 10mF (`bulk.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
    --> main.nsm:11:5
    |
 11 |     .bulk.count * .bulk.effective_capacitance >= 10mF
