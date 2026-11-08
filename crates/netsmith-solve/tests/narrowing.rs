@@ -349,7 +349,7 @@ board Converter {
 "#;
 
 /// A timing aid, not a check (a time is not asserted): run it with `cargo test -p netsmith-solve
-/// --test narrowing -- --ignored --nocapture` to see the buck stage and the divider alone,
+/// --test main narrowing:: -- --ignored --nocapture` to see the buck stage and the divider alone,
 /// with the narrowing off and on.
 #[test]
 #[ignore]

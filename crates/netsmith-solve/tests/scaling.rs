@@ -4,7 +4,7 @@
 //! The first test checks what the search chooses for a small board, twice, as an invariant
 //! of the picks (they are the same each time and each stage got its parts). The second is a
 //! timing aid, not a check (a time is not asserted, a machine's is not the next one's): run
-//! it with `cargo test --release -p netsmith-solve --test scaling -- --ignored --nocapture`
+//! it with `cargo test --release -p netsmith-solve --test main scaling:: -- --ignored --nocapture`
 //! and see the time for 10, 20 and 40 stages. Every name and number here is invented.
 
 use std::time::Instant;
