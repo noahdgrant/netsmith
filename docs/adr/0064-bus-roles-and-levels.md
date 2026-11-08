@@ -4,6 +4,8 @@ status: implemented, stages 0 to 5 (2026-11-06) and the receptacle's pass-throug
 
 # Buses state who drives each line, at which levels and how fast
 
+*Words.* In GLOSSARY a **Bus** is the interfaces of one definition that share a net, which is what this ADR counts roles on; how the editor's schematic draws the members of one interface is the **Bus drawing** (ADR 0067). The two ADRs are neighbours and do not depend on each other.
+
 ## Summary
 
 The standard buses (`Uart`, `Spi`, `I2c`, `Swd`, `Usb2` in `std/bus.nsm`) name their lines and say nothing else. Who drives a line is the pin kind in each part's table (ADR 0016), and the net rules (ADR 0044, ADR 0046) judge only that: two `output` pins on one net, an `input` with nothing driving it, a net of only inputs. On a board where the processor, a flash and an IMU write every SPI pin as `bidirectional`, a shared MISO is accepted, which is right, and so are nearly all the miswirings: two slaves' chip selects joined, `mosi` on `miso` when no net is named, a slave's data out left open. A UART's `tx` and `rx` cross by hand, and nothing checks that the right line faces the right line. A line at 3.3 V onto a 1.8 V pin is not judged, because only `Logic` lines have levels. A shared MISO needs every driver to be high impedance when its part is not selected, and the pin kinds cannot say that, so a datasheet that is silent about it cannot be recorded as silent. The clock a bus runs at, and the SPI mode, are not stated anywhere.
