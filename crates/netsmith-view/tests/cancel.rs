@@ -1,7 +1,7 @@
 //! The schematic's layout can be stopped (ADR 0062), and with a token that is not cancelled it
 //! draws the same bytes as without one.
 
-mod common;
+use crate::common;
 
 use std::time::{Duration, Instant};
 

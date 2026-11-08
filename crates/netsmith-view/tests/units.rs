@@ -4,7 +4,7 @@
 //! drawing is still the netlist (`check`), each pad is in exactly one box, and the metrics count
 //! each box as a body.
 
-mod common;
+use crate::common;
 
 use netsmith_core::Design;
 use netsmith_kicad::testlib::{self, TempDir};

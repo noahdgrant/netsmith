@@ -1,7 +1,7 @@
 //! A board drawn by module: sheets that do not overlap, hold their parts and wires, and tie
 //! to the rest of the board by named stubs.
 
-mod common;
+use crate::common;
 
 use netsmith_core::Design;
 use netsmith_kicad::{Mapping, SymbolLib, testlib};

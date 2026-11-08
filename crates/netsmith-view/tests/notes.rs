@@ -3,7 +3,7 @@
 //! inside its frame, stands near the part it is about, and a sheet without notes is drawn as it
 //! was.
 
-mod common;
+use crate::common;
 
 use netsmith_core::{Design, Note, NoteAt, NoteKind};
 use netsmith_kicad::{Mapping, SymbolLib, testlib};

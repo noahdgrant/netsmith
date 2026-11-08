@@ -4,7 +4,7 @@
 //! the pieces, the parts are turned along the row, and the end that has the clamp on it is the
 //! load.
 
-mod common;
+use crate::common;
 
 use netsmith_core::Design;
 use netsmith_kicad::testlib::{self, TempDir};

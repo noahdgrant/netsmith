@@ -1,7 +1,7 @@
 //! A tight board that places but did not route to the end (issue #3): about a hundred parts on
 //! both faces in a small area, round a module of 80 pads of 0.6 mm on a 1.1 mm pitch.
 
-mod common;
+use crate::common;
 
 use std::time::{Duration, Instant};
 
@@ -128,7 +128,7 @@ fn the_lines_that_end_deep_in_the_fine_pitch_module_are_routed_first_so_an_easy_
 
 /// Prints, for each seed in `NETSMITH_SEEDS` (`0..8` by default; `a..b`), the lines left
 /// unrouted and the time: `NETSMITH_SEEDS=0..20 cargo test --release -p netsmith-pcb --test
-/// tight measured -- --ignored --nocapture`.
+/// main tight::measured -- --ignored --nocapture`.
 #[test]
 #[ignore = "a measurement, not a check"]
 fn measured() {

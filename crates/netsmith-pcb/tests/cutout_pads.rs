@@ -3,7 +3,7 @@
 //! drawn tight round its pads, as a library author may, so the courtyard keeping out of the
 //! cutout is not enough to keep the copper 0.2 mm away.
 
-mod common;
+use crate::common;
 
 use netsmith_core::{Cutout, Design, Features, Net, Outline, Part, PinRef};
 use netsmith_kicad::testlib::TempDir;

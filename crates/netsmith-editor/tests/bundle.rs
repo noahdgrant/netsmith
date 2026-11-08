@@ -4,9 +4,7 @@
 //! and the web app's packages installed (or `NETSMITH_REQUIRE_BUNDLE_CHECK=1`, which installs
 //! them): the page the sources build to is, byte for byte, the committed one.
 
-#[allow(dead_code)]
-#[path = "../build_web.rs"]
-mod build_web;
+use crate::build_script as build_web;
 
 use std::{
     env, fs,

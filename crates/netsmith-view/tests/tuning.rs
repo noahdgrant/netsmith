@@ -5,7 +5,7 @@
 //! signals on the bottom, a shunt resistor across its two sense supplies on the top, and a
 //! pull-up on each signal.
 
-mod common;
+use crate::common;
 
 use netsmith_core::Design;
 use netsmith_kicad::testlib::{self, TempDir};

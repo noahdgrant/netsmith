@@ -2,7 +2,7 @@
 //! two main parts, or leave a sheet from one, are short entries that meet one thick line.
 //! The line joins nothing; each entry joins, by name, the net of that name at the other end.
 
-mod common;
+use crate::common;
 
 use common::bus::{board, board_directed, board_nested, board_shared, rails, setup};
 use netsmith_core::Design;

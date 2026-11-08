@@ -8,7 +8,7 @@
 //! tall), F2 (no height), F3 (the pins are not stated), F5 (assembled by the board house),
 //! F6 (no height limit there), and the unchanged board without a protrusion.
 
-mod common;
+use crate::common;
 
 use netsmith_core::{
     Design, Features, Keepout, Outline, Part, PartHeight, PinProtrusion, PlaceBound, PlaceField,

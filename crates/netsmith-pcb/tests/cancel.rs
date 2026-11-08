@@ -2,7 +2,7 @@
 //! which is how a `fab` is cancelled. (The router's own flag, which the PCB view's "stop" sets,
 //! is another thing: it stops the router and keeps what it routed. See `routing.rs`.)
 
-mod common;
+use crate::common;
 
 use std::time::{Duration, Instant};
 

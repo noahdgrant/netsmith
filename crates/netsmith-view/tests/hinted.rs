@@ -5,7 +5,7 @@
 //! The properties are tried on every board the tests draw with seeded random files (std-only,
 //! deterministic): random offsets, pins, turns, mirrors, notes and stale entries.
 
-mod common;
+use crate::common;
 
 use std::collections::BTreeMap;
 use std::fmt::Write;

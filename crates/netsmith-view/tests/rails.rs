@@ -2,7 +2,7 @@
 //! one a few steps above the other, are joined to one `+3V3` symbol and not drawn with one
 //! each, as in a hand drawing. Nothing is crossed or run along to do it.
 
-mod common;
+use crate::common;
 
 use netsmith_core::Design;
 use netsmith_kicad::testlib::{self, TempDir};

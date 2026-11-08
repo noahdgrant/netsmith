@@ -8,7 +8,7 @@ use netsmith_pcb::{
 };
 use netsmith_solve::Catalogs;
 
-mod common;
+use crate::common;
 
 use common::{edge_gap, fixtures};
 

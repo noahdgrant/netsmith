@@ -6,10 +6,6 @@
 
 #![cfg(unix)]
 
-#[allow(dead_code)]
-#[path = "../build_web.rs"]
-mod build_web;
-
 use std::{
     fs,
     os::unix::fs::PermissionsExt,
@@ -17,6 +13,7 @@ use std::{
     time::Duration,
 };
 
+use crate::build_script as build_web;
 use build_web::{Done, INSTALL_STAMP, Provided};
 use netsmith_kicad::testlib::TempDir;
 

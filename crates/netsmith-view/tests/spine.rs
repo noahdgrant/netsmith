@@ -4,7 +4,7 @@
 //! and the bootstrap capacitor stays beside its two pins, crossed by nothing. The metrics
 //! `spine_bends` and `detached_chain` say so in numbers.
 
-mod common;
+use crate::common;
 
 use netsmith_core::Design;
 use netsmith_kicad::testlib::{self, TempDir};

@@ -9,7 +9,7 @@
 //! below are what the engine reaches today, not the ideal: a part added beside a pin makes
 //! room, and what is beside it may shift.
 
-mod common;
+use crate::common;
 
 use common::corpus::{Case, corpus};
 use netsmith_view::stability::{self, Board, Kind, Row};

@@ -1,7 +1,7 @@
 //! The viewer draws what the symbol libraries hold: a large symbol, stacked hidden pins,
 //! several units, and a box where there is no symbol.
 
-mod common;
+use crate::common;
 
 use netsmith_kicad::SymbolLib;
 use netsmith_view::layout::layout;

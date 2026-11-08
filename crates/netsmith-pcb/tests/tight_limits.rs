@@ -5,9 +5,9 @@
 //! Every board is made here: rectangular two-pad parts of a given courtyard, a through-hole
 //! "mounting hole", and nets from a small generator, so the same seed is the same board on
 //! every machine. `NETSMITH_SEEDS=0..40 cargo test --release -p netsmith-pcb --test
-//! tight_limits measured -- --ignored --nocapture` prints, for each seed, how the placer ended.
+//! main tight_limits::measured -- --ignored --nocapture` prints, for each seed, how the placer ended.
 
-mod common;
+use crate::common;
 
 use netsmith_core::{
     Design, Features, Keepout, Net, Outline, Part, PartHeight, PinRef, PlaceBound, PlaceField,

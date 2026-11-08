@@ -3,7 +3,7 @@
 //! stay wired to it, a sheet with many parts is a page and not a strip, and the same design
 //! gives the same drawing.
 
-mod common;
+use crate::common;
 
 use common::corpus::corpus;
 use common::rowcol::setup;

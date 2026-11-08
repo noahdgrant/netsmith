@@ -10,7 +10,7 @@ use netsmith_fab::drc::{self, Extras, Report, kicad};
 use netsmith_fab::{KicadCli, KicadCliExe};
 use netsmith_pcb::{Board, Ratsnest, RouteOptions, kicad_pcb, kicad_pro, route, route_with};
 
-mod common;
+use crate::common;
 
 use common::{hard_boards, synthetic_board};
 
