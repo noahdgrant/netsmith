@@ -8228,6 +8228,121 @@ The note, in `netsmith build`'s output: `not evaluated: the absolute maximum of 
 
 The level checks apply to the lines that are `Logic` and to the pins of a bus interface that states `.levels` (see "Logic levels of a bus" below). A rating of any other pin (its `.abs_max` stated on a plain `Pin`) is listed as not evaluated.
 
+#### Levels that are fractions of one supply
+
+A datasheet often states a level as a fraction of the supply: a digital microphone's output is high at 0.7 of its supply, and the processor's input reads a high from 0.7 of its supply. When both parts are on one rail, at any actual supply voltage the output's high is exactly the input's threshold. Compared as two independent ranges (3.3 V +/- 5 % gives 2.194 V..2.426 V on both sides), the output's lowest high would be below the input's highest threshold, and the pair would be refused for a margin that does not exist.
+
+So a level that is stated as a number times a rail's voltage, `.out.voh &= 0.7 * .vdd.voltage` (or `.vdd.voltage * 0.7`, or the voltage alone), is compared with another such level as a fraction of one supply voltage `V`. This holds when both name rails whose `pos` pins are on one net and whose `neg` pins are the same ground (ADR 0082). For every `V` above zero, `k_driver * V >= k_receiver * V` is exactly `k_driver >= k_receiver`, so the check compares the two factors: a high passes when the driver's factor is at least the receiver's, a low when it is at most.
+
+```nsm evaluate
+import std::logic::Logic
+import std::sources::Rail
+
+/// Invented: a driver whose levels are 0.7 and 0.3 of its supply.
+part Mic {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.voh &= 0.7 * .vdd.voltage
+    .out.vol &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+/// Invented: reads a high from 0.7 of its supply and a low up to 0.3 of it.
+part Receiver {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.vih &= 0.7 * .vdd.voltage
+    .in.vil &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos  power "VDD" "1"
+        .vdd.neg  power "GND" "2"
+        .in.line  input "IN"  "3"
+    }
+}
+
+board OneSupply {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .a: Mic
+    .b: Receiver
+    .supply ~ .a.vdd
+    .supply ~ .b.vdd
+    .a.out.line ~ .b.in.line
+}
+```
+
+An output that is high only at 0.65 of its supply into the same input is refused, and the message names the factors and no ranges:
+
+```nsm fails
+import std::logic::Logic
+import std::sources::Rail
+
+/// Invented: a driver whose high is 0.65 of its supply.
+part Weak {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.voh &= 0.65 * .vdd.voltage
+    .out.vol &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+/// Invented: reads a high from 0.7 of its supply and a low up to 0.3 of it.
+part Receiver {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.vih &= 0.7 * .vdd.voltage
+    .in.vil &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos  power "VDD" "1"
+        .vdd.neg  power "GND" "2"
+        .in.line  input "IN"  "3"
+    }
+}
+
+board OneSupply {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .a: Weak
+    .b: Receiver
+    .supply ~ .a.vdd
+    .supply ~ .b.vdd
+    .a.out.line ~ .b.in.line
+}
+```
+
+```text
+error: net `net-a.out.line`: `a.out.voh` is 0.65 x `a.vdd.voltage` but `b.in.vih` needs 0.7 x `b.vdd.voltage`, the same supply voltage: a high of 0.65 x the supply is not always read as a high, which takes 0.7 x the supply
+   --> main.nsm:38:5
+   |
+38 |     .a: Weak
+   |     ^^^^^^^^
+```
+
+The rule is narrow, and anything it does not recognise is compared as independent ranges, as before:
+
+- A level that is a sum or any other form (`.vdd.voltage - 0.1V`, a clamp, a number alone) is a range, so a fraction against a sum is compared by ranges.
+- A level that is stated by more than one statement (also narrowed by a number, or mentioned by another relation) is not only a fraction.
+- Two rails on different nets (two supplies, even of the same nominal voltage) are two voltages, so their ranges are independent.
+- A rail whose voltage can be zero or negative is not used (the reduction divides by it).
+
 #### A level and the current it was measured at
 
 A datasheet gives an output level at a load: `VOH = VDD - 0.4 V at IOH = 2 mA`. A part states it the same way, with `at` and the current after the value (ADR 0076, amendment 1, provisional):

@@ -10,6 +10,7 @@ mod bus_levels;
 mod cancel;
 mod catalog_files;
 mod conflict_core;
+mod correlated_levels;
 mod cycles;
 mod data;
 mod dc_analysis;
