@@ -1,5 +1,6 @@
 //! `netsmith compare` on the example boards. The tests that read a schematic run real
-//! KiCad (`kicad-cli sch export netlist`), so they skip when it is not installed; the
+//! KiCad (`kicad-cli sch export netlist`), so they skip when it is not installed, or is Windows KiCad that
+//! this shell cannot start (no `cmd.exe`, as under `systemd-run --user`); the
 //! rest need no KiCad.
 
 use netsmith_kicad::testlib::TempDir;
@@ -10,13 +11,33 @@ use std::process::Command;
 use netsmith::compare::{Request, Verdict, compare_files, netlist_of_design};
 use netsmith::{Libraries, build_with};
 use netsmith_check::Loader;
-use netsmith_fab::{KicadCli, KicadCliExe};
+use netsmith_fab::{CliError, KicadCli, KicadCliExe};
 use netsmith_netlist::{Netlist, Options, Outcome, compare, report};
 use netsmith_pcb::{Board, kicad_pcb, route};
 use netsmith_solve::Catalogs;
 
 const LED: &str = include_str!("../../../examples/led.nsm");
 const REGULATOR: &str = include_str!("../../../examples/linear_regulator.nsm");
+
+/// KiCad, or `None` (the test skips) when it is not installed or is Windows KiCad that this
+/// process cannot start (see [`KicadCliExe::interop`]). Any other fault stays a failure.
+fn kicad() -> Option<KicadCliExe> {
+    let cli = KicadCliExe::locate()?;
+    skip_on_no_windows(cli.interop(), cli)
+}
+
+/// `cli` if `interop` is fine; `None`, said on stderr, if Windows programs cannot be started
+/// from here; a panic for any other fault.
+fn skip_on_no_windows(interop: Result<(), CliError>, cli: KicadCliExe) -> Option<KicadCliExe> {
+    match interop {
+        Ok(()) => Some(cli),
+        Err(CliError::NoWindows(why)) => {
+            eprintln!("skipping: Windows KiCad cannot be run from this shell: {why}");
+            None
+        }
+        Err(other) => panic!("{other}"),
+    }
+}
 
 fn scratch(name: &str) -> TempDir {
     TempDir::new(&format!("compare-test-{name}"))
@@ -57,7 +78,7 @@ struct Compared(Verdict, String);
 
 #[test]
 fn the_generated_schematic_matches_its_own_board() {
-    let Some(kicad) = KicadCliExe::locate() else {
+    let Some(kicad) = kicad() else {
         return;
     };
     for (name, source) in [("led", LED), ("regulator", REGULATOR)] {
@@ -71,7 +92,7 @@ fn the_generated_schematic_matches_its_own_board() {
 
 #[test]
 fn the_source_matches_its_schematic_and_its_board() {
-    let Some(kicad) = KicadCliExe::locate() else {
+    let Some(kicad) = kicad() else {
         return;
     };
     let dir = scratch("source");
@@ -86,7 +107,7 @@ fn the_source_matches_its_schematic_and_its_board() {
 
 #[test]
 fn a_schematic_compared_with_itself_matches() {
-    let Some(kicad) = KicadCliExe::locate() else {
+    let Some(kicad) = kicad() else {
         return;
     };
     let dir = scratch("self");
@@ -101,7 +122,7 @@ fn a_schematic_compared_with_itself_matches() {
 
 #[test]
 fn renumbered_designators_and_other_net_names_still_match() {
-    let Some(kicad) = KicadCliExe::locate() else {
+    let Some(kicad) = kicad() else {
         return;
     };
     let dir = scratch("renumber");
@@ -144,7 +165,7 @@ fn renumbered_designators_and_other_net_names_still_match() {
 
 #[test]
 fn a_resistor_of_another_value_is_found_by_kicad_too() {
-    let Some(kicad) = KicadCliExe::locate() else {
+    let Some(kicad) = kicad() else {
         return;
     };
     let dir = scratch("value");
@@ -276,4 +297,23 @@ fn a_board_is_chosen_by_name_when_a_file_has_several() {
     assert!(e.contains("`Nope`") && e.contains("TwoBoards/power"), "{e}");
     let done = compare_files(&request(Some("TwoBoards/power")), None).unwrap();
     assert_eq!(done.verdict, Verdict::Match);
+}
+
+#[test]
+fn windows_kicad_that_cannot_be_started_skips_the_test_and_other_faults_do_not() {
+    let cli = || KicadCliExe::new("/x/kicad-cli.exe");
+    assert!(skip_on_no_windows(Ok(()), cli()).is_some());
+    let none = CliError::NoWindows("cannot ask Windows for its temp directory".into());
+    assert!(skip_on_no_windows(Err(none), cli()).is_none());
+    let real = CliError::Failed {
+        command: "cmd.exe".into(),
+        output: "boom".into(),
+    };
+    let panicked = std::panic::catch_unwind(|| skip_on_no_windows(Err(real), cli()));
+    assert!(panicked.is_err(), "a real fault must fail, not skip");
+}
+
+#[test]
+fn a_linux_kicad_needs_no_windows() {
+    assert!(KicadCliExe::new("/usr/bin/kicad-cli").interop().is_ok());
 }

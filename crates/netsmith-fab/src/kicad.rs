@@ -22,6 +22,11 @@ pub struct Output {
 pub enum CliError {
     /// `kicad-cli` could not be started or its files could not be read.
     Io(String),
+    /// Windows KiCad is installed but this process cannot start Windows programs (under WSL,
+    /// from a shell that has no interop, such as `systemd-run --user`): `cmd.exe` could not
+    /// be run. Nothing that needs Windows KiCad can work here, which is not a failure of
+    /// the code under test; see [`KicadCliExe::interop`].
+    NoWindows(String),
     /// `kicad-cli` ran and failed.
     Failed { command: String, output: String },
 }
@@ -29,7 +34,7 @@ pub enum CliError {
 impl std::fmt::Display for CliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Io(m) => write!(f, "{m}"),
+            Self::Io(m) | Self::NoWindows(m) => write!(f, "{m}"),
             Self::Failed { command, output } => {
                 write!(f, "`{command}` failed:\n{}", output.trim_end())
             }
@@ -100,6 +105,14 @@ impl KicadCliExe {
         self.exe.extension().is_some_and(|e| e == "exe")
     }
 
+    /// Whether this program can be run from here: always for a Linux `kicad-cli`; for Windows
+    /// KiCad, whether `cmd.exe` can be started. `Err(CliError::NoWindows(..))` says Windows
+    /// programs cannot be started from this process, so a test that needs KiCad should skip,
+    /// while any other error is a real failure and stays one.
+    pub fn interop(&self) -> Result<(), CliError> {
+        self.scratch_base().map(|_| ())
+    }
+
     /// The Windows temp directory as a WSL path, asked of `cmd.exe` once per process.
     fn windows_temp() -> Result<PathBuf, CliError> {
         static TEMP: OnceLock<PathBuf> = OnceLock::new();
@@ -111,7 +124,9 @@ impl KicadCliExe {
             command.args(["/c", "echo %TEMP%"]);
             command
         })
-        .map_err(|e| CliError::Io(format!("cannot ask Windows for its temp directory: {e}")))?;
+        .map_err(|e| {
+            CliError::NoWindows(format!("cannot ask Windows for its temp directory: {e}"))
+        })?;
         let win = String::from_utf8_lossy(&ran.output.stdout)
             .trim()
             .to_string();
