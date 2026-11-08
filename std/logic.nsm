@@ -37,8 +37,14 @@ interface Logic {
 /// a part drives and which it reads is what its pin table says. `~` between two bus interfaces
 /// joins no levels (each belongs to its own part, and the reference rail is that part's
 /// supply), and a part that states none of them is not judged.
+///
+/// The reference rail is a reference for the checker and not a load: a part that joins it to
+/// its supply (`.spi.levels.reference ~ .vdd`) gives the net a rail whose current nobody could
+/// state, so `Levels` states it, `.reference.current &= 0A`, and the part's draw is all in its
+/// supply's `current`.
 interface Levels {
     .reference: Rail
+    .reference.current &= 0A
     .vih: Voltage
     .vil: Voltage
     .voh: Voltage
