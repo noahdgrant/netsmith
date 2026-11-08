@@ -3,7 +3,8 @@
 //!
 //! The parts are invented for these tests; none has a datasheet.
 
-use netsmith_check::{Loader, check};
+use netsmith_check::{Domain, Loader, check};
+use netsmith_quantity::Quantity;
 use netsmith_solve::{Catalogs, Solution, solve};
 
 const PARTS: &str = r#"
@@ -279,4 +280,97 @@ fn a_tri_state_bus_line_is_judged_as_a_driver() {
         "{:#?}",
         faults(&s)
     );
+}
+
+/// A listener that joins its reference rail to its supply and states no current for either
+/// (the draw is `.vdd.current`, the board's to state), on a 3.3 V rail.
+const LISTENER: &str = r#"
+import std::bus::Spi
+import std::sources::Rail
+
+part Zlisten {
+    .designator &= "U"
+    .vdd: Rail
+    .spi: Spi
+    .spi.levels.reference ~ .vdd
+    .spi.levels.vih &= 0.7 * .vdd.voltage
+    pins {
+        .vdd.pos  power "VDD"  "1"
+        .vdd.neg  power "VSS"  "2"
+        .spi.sclk no_connect "SCK"  "3"
+        .spi.mosi no_connect "MOSI" "4"
+        .spi.miso no_connect "MISO" "5"
+        .spi.cs   no_connect "CS"   "6"
+    }
+}
+
+board Bench {
+    .s3: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .l: Zlisten
+    .s3 ~ .l.vdd
+    .l.vdd.current &= 1mA..2mA
+}
+"#;
+
+fn current(s: &Solution, path: &str) -> Quantity {
+    match s.model.domain_at(path) {
+        Some(Domain::Quantity(q)) => *q,
+        other => panic!("`{path}` is {other:?}"),
+    }
+}
+
+fn listener(src: &str) -> Solution {
+    let c = check("test.nsm", src, &Loader::std());
+    assert!(c.is_ok(), "{}", c.render());
+    solve(&c.boards[0], &Catalogs::jlcpcb())
+}
+
+#[test]
+fn a_levels_reference_joined_to_a_supply_is_a_reference_and_draws_nothing() {
+    // The part states no current for the reference: `Levels` does (ADR 0064 amendment), so
+    // the net of the supply has one unknown term, the supply's, and it is worked out.
+    let s = listener(LISTENER);
+    assert_eq!(faults(&s), Vec::<String>::new());
+    let reference = current(&s, "l.spi.levels.reference.current");
+    assert!(
+        reference.lo() == 0.0 && reference.hi() == 0.0,
+        "{reference}"
+    );
+    let supply = current(&s, "s3.current");
+    assert!(
+        (supply.lo() + 2e-3).abs() < 1e-12 && (supply.hi() + 1e-3).abs() < 1e-12,
+        "{supply}"
+    );
+}
+
+#[test]
+fn a_part_that_states_the_reference_current_itself_still_does() {
+    // The statement every part had to make before is the same value and agrees with `Levels`.
+    let src = LISTENER.replace(
+        "    .spi.levels.vih &=",
+        "    .spi.levels.reference.current &= 0A\n    .spi.levels.vih &=",
+    );
+    let s = listener(&src);
+    assert_eq!(faults(&s), Vec::<String>::new());
+    let supply = current(&s, "s3.current");
+    assert!(
+        (supply.lo() + 2e-3).abs() < 1e-12 && (supply.hi() + 1e-3).abs() < 1e-12,
+        "{supply}"
+    );
+}
+
+#[test]
+fn a_current_stated_for_a_reference_is_refused_nothing_is_drawn_through_it() {
+    let src = LISTENER.replace(
+        "    .spi.levels.vih &=",
+        "    .spi.levels.reference.current &= 5mA\n    .spi.levels.vih &=",
+    );
+    let c = check("test.nsm", &src, &Loader::std());
+    let s = solve(&c.boards[0], &Catalogs::jlcpcb());
+    let said = format!("{}\n{}", c.render(), faults(&s).join("\n"));
+    assert!(said.contains("reference.current"), "{said}");
 }

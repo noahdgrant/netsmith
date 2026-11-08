@@ -4,6 +4,8 @@ status: proposed (the four gaps that ADR 0049 left open in the drawing are close
 
 # A bus can be shared, nested, directed and followed across sheets
 
+*Words.* This ADR is about the **Bus drawing** (GLOSSARY): how the schematic draws the members of interfaces. A **Bus** in GLOSSARY is the interfaces of one definition that share a net, the thing ADR 0064 (bus roles and levels) counts roles on. The drawing follows the interface a design states, not the roles; ADR 0064 and this ADR are neighbours and do not depend on each other.
+
 ADR 0049 drew an interface as one **bus** (GLOSSARY) and left four things open: the direction of the members was not drawn, an interface that nests another was drawn without the nested one, a bus with more than two parts on its lines (a shared I2C or SPI bus) was not a bus, and a bus that goes on to another sheet said only its own name, so the reader of the other sheet had to find the way by the member lists. All four are drawing conventions of the schematic view (`crates/netsmith-view/src/layout/engine/bus.rs`). The language, the checker, the lowering and `Design` are not touched: the view reads the same `Design::interfaces` and the pin tables of the parts, as before.
 
 ## A flag says where the bus goes

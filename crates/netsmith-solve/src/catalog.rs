@@ -169,6 +169,28 @@ pub struct Catalog {
     pub candidates: Vec<Candidate>,
 }
 
+/// How much one search of coupled parts may do before it stops and says so (issue #177). Both
+/// are counts, so the answer is the same on every machine. A search stops at whichever it
+/// reaches first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SearchBudget {
+    /// Candidates tried: one for each choice of a part that is checked against the design.
+    pub trials: usize,
+    /// Units of work: a trial costs what the size of the board makes it cost (every pass of
+    /// the propagation reads each equation, relation and balance of it), so a board with
+    /// thousands of relations is given up on after fewer trials than one with a dozen.
+    pub work: u64,
+}
+
+impl Default for SearchBudget {
+    fn default() -> Self {
+        SearchBudget {
+            trials: 250_000,
+            work: 1_000_000_000,
+        }
+    }
+}
+
 /// The catalogs a build can pick from: typed ones that code inserted, and the tables read
 /// from catalog files, which are typed when a part says what its columns are.
 #[derive(Debug, Clone, Default)]
@@ -181,6 +203,7 @@ pub struct Catalogs {
     series: Option<Series>,
     availability: Option<Arc<dyn Availability>>,
     pins: Vec<(String, String)>,
+    search_budget: SearchBudget,
 }
 
 impl Catalogs {
@@ -236,6 +259,17 @@ impl Catalogs {
 
     pub fn series(&self) -> Option<Series> {
         self.series
+    }
+
+    /// How much one search of coupled parts may do before it gives up (`SearchBudget`). The
+    /// default is the limit of a build; a test lowers it to reach the limit with a small board.
+    pub fn with_search_budget(mut self, budget: SearchBudget) -> Self {
+        self.search_budget = budget;
+        self
+    }
+
+    pub fn search_budget(&self) -> SearchBudget {
+        self.search_budget
     }
 
     /// Where the step that resolves generic parts asks about stock (ADR 0047). It travels
