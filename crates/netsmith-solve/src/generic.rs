@@ -180,6 +180,33 @@ impl Need {
         }
     }
 
+    /// How far a row's value is from meeting the need: `0` if it meets it, up to `1` for a
+    /// row that has nothing to compare or is off by its whole size. Relative, so that the
+    /// shortfalls of different columns can be added.
+    fn shortfall(&self, value: Option<&Value>) -> f64 {
+        let quantity = match value {
+            Some(Value::Quantity(q)) => Some(q),
+            _ => None,
+        };
+        let over = |amount: f64, scale: f64| (amount / scale.abs().max(f64::MIN_POSITIVE)).min(1.0);
+        match self {
+            Need::Nothing => 0.0,
+            Need::Text(_) => {
+                if self.met_by(value) {
+                    0.0
+                } else {
+                    1.0
+                }
+            }
+            Need::Within { lo, hi } => quantity.map_or(1.0, |q| {
+                over((lo - q.lo()).max(0.0), *lo) + over((q.hi() - hi).max(0.0), *hi)
+            }),
+            Need::AtLeast(x) => quantity.map_or(1.0, |q| over((x - q.lo()).max(0.0), *x)),
+            Need::AtMost(x) => quantity.map_or(1.0, |q| over((q.hi() - x).max(0.0), q.hi())),
+        }
+        .min(1.0)
+    }
+
     /// `at least 10 V`, or `` for nothing.
     fn describe(&self, unit: &str) -> String {
         match self {
@@ -745,6 +772,36 @@ fn misses(generic: &Generic, row: &Candidate) -> Vec<Miss> {
     out
 }
 
+/// How far a row is from the ratings a generic part asked for, added over the columns:
+/// `0` for a row that meets them all. A row near the need ranks first among the rows that
+/// fail it, whatever its value (ADR 0047).
+fn shortfall(generic: &Generic, row: &Candidate) -> f64 {
+    match &generic.spec {
+        Spec::Resistor { max_power, .. } => {
+            Need::AtLeast(*max_power).shortfall(row.column("max_power"))
+        }
+        Spec::Capacitor { max_voltage, .. } => {
+            let no_curve = !matches!(row.column("effective_capacitance"), Some(Value::Derated(d)) if !d.curve.is_empty());
+            max_voltage.shortfall(row.column("max_voltage")) + f64::from(u8::from(no_curve))
+        }
+        Spec::Inductor {
+            saturation_current,
+            dc_resistance,
+            ..
+        } => {
+            saturation_current.shortfall(row.column("saturation_current"))
+                + dc_resistance.shortfall(row.column("dc_resistance"))
+        }
+        Spec::Led {
+            color,
+            forward_voltage,
+        } => {
+            color.shortfall(row.column("color"))
+                + forward_voltage.shortfall(row.column("forward_voltage"))
+        }
+    }
+}
+
 /// Find the row of the catalog that stands for a generic part, or say why there is none.
 ///
 /// A row fits when it has the package, the nominal value (to a millionth), a tolerance no
@@ -885,8 +942,10 @@ pub struct Alternative {
     pub line: String,
 }
 
-/// The three rows nearest a generic part that do not stand for it: same package first, then
-/// nearest in value (an LED: the same colour first), then Basic first.
+/// The three rows nearest a generic part that do not stand for it: an LED's colour first,
+/// then the rows nearest the ratings that the design needs (a row that falls a little short
+/// of the saturation current ahead of one that falls far short, whatever its value), then
+/// the same package, then nearest in value, then Basic first.
 pub fn nearest(generic: &Generic, rows: &[&Candidate], fits: &[&Candidate]) -> Vec<Alternative> {
     let column = generic.value_column();
     let nominal = generic.nominal();
@@ -898,28 +957,29 @@ pub fn nearest(generic: &Generic, rows: &[&Candidate], fits: &[&Candidate]) -> V
         } => matches!(c.column("color"), Some(Value::Text(v)) if v == t),
         _ => true,
     };
-    let mut near: Vec<(&Candidate, f64)> = rows
+    let mut near: Vec<(&Candidate, f64, f64)> = rows
         .iter()
         .copied()
         .filter(|c| !fits.iter().any(|f| std::ptr::eq(*f, *c)))
         .filter_map(|c| match (column, nominal) {
             (Some(col), Some(n)) => {
                 let v = quantity_of(c, col)?.mid();
-                (v > 0.0).then(|| (c, (v / n).ln().abs()))
+                (v > 0.0).then(|| (c, shortfall(generic, c), (v / n).ln().abs()))
             }
-            _ => Some((c, 0.0)),
+            _ => Some((c, shortfall(generic, c), 0.0)),
         })
         .collect();
     near.sort_by(|a, b| {
         (!same_color(a.0))
             .cmp(&!same_color(b.0))
-            .then((!same_package(a.0)).cmp(&!same_package(b.0)))
             .then(a.1.total_cmp(&b.1))
+            .then((!same_package(a.0)).cmp(&!same_package(b.0)))
+            .then(a.2.total_cmp(&b.2))
             .then(rank(a.0.library).cmp(&rank(b.0.library)))
     });
     near.iter()
         .take(3)
-        .map(|(c, _)| {
+        .map(|(c, _, _)| {
             let value = column.and_then(|col| quantity_of(c, col)).map(|q| q.mid());
             let library = c.library.map(|l| format!(", {l}")).unwrap_or_default();
             let line = match (value, nominal) {

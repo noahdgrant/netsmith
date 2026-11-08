@@ -139,8 +139,11 @@ async function body({ page, shot, step, expect, project, section, allowConsole }
   layout.write(`version = 1\n\n[${board}.sheets.buck.parts.c_in]\nrotate = 180\nspin = 3\n`);
   await page.waitForFunction(async () => (await (await fetch('/api/analysis', { cache: 'no-store' })).json()).problems.some((p) => p.stage === 'layout'), null, { timeout: 30000 });
   await page.keyboard.press('Control+j');
-  await page.waitForSelector('.dock .problem.warning');
-  await page.locator('.dock .problem.warning').first().click();
+  // The bench has other warnings (a guideline about a generic part that no row can be ordered
+  // for): click the one that is about the layout file.
+  const fault = page.locator('.dock .problem.warning', { hasText: NAME });
+  await fault.first().waitFor();
+  await fault.first().click();
   await page.waitForSelector('.cm-content');
   await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('spin'), null, { timeout: 10000 });
   const where = await page.evaluate(() => document.querySelector('.cm-activeLine')?.textContent ?? '');
