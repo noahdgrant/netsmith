@@ -27,7 +27,7 @@ fn ours(board: &Board) -> Report {
 
 /// KiCad's check of the same files compared with ours, or `None` if KiCad is not here.
 fn against_kicad(name: &str, board: &Board, mine: &Report) -> Option<kicad::Comparison> {
-    let cli = KicadCliExe::locate()?;
+    let cli = KicadCliExe::locate_runnable()?;
     let dir = TempDir::new(&format!("pcb-drc-{name}"));
     let path = dir.join(format!("{name}.kicad_pcb"));
     std::fs::write(&path, kicad_pcb(board)).ok()?;

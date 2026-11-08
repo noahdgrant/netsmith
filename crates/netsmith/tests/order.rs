@@ -184,7 +184,7 @@ fn per_board(bom_csv: &str, lcsc: &str) -> usize {
 
 #[test]
 fn an_order_makes_only_its_boards_and_a_summary_with_the_numbers_scaled() {
-    let Some(cli) = KicadCliExe::locate() else {
+    let Some(cli) = KicadCliExe::locate_runnable() else {
         return;
     };
     let root = project("make", ORDERS);
@@ -258,7 +258,7 @@ fn an_order_makes_only_its_boards_and_a_summary_with_the_numbers_scaled() {
 
 #[test]
 fn a_system_in_an_order_is_all_its_members_and_a_new_run_replaces_the_old_folder() {
-    let Some(cli) = KicadCliExe::locate() else {
+    let Some(cli) = KicadCliExe::locate_runnable() else {
         return;
     };
     let root = project("system", ORDERS);
@@ -287,7 +287,7 @@ fn a_system_in_an_order_is_all_its_members_and_a_new_run_replaces_the_old_folder
 
 #[test]
 fn the_program_makes_an_order_into_the_out_directory() {
-    let Some(cli) = KicadCliExe::locate() else {
+    let Some(cli) = KicadCliExe::locate_runnable() else {
         return;
     };
     let _ = cli;

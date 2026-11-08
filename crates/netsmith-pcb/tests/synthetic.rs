@@ -290,7 +290,7 @@ fn the_placement_of_the_big_boards_is_measured() {
 /// two (ADR 0034). `None` where KiCad is not installed.
 fn crosscheck(name: &str, board: &netsmith_pcb::Board) -> Option<netsmith_fab::crosscheck::Report> {
     use netsmith_fab::crosscheck::{Limits, check};
-    let cli = netsmith_fab::KicadCliExe::locate()?;
+    let cli = netsmith_fab::KicadCliExe::locate_runnable()?;
     let dir = TempDir::new(&format!("pcb-cross-{name}"));
     let pcb = dir.join(format!("{name}.kicad_pcb"));
     std::fs::write(&pcb, netsmith_pcb::kicad_pcb(board)).ok()?;

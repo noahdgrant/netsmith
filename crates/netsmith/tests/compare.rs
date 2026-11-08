@@ -22,7 +22,7 @@ const REGULATOR: &str = include_str!("../../../examples/linear_regulator.nsm");
 /// KiCad, or `None` (the test skips) when it is not installed or is Windows KiCad that this
 /// process cannot start (see [`KicadCliExe::interop`]). Any other fault stays a failure.
 fn kicad() -> Option<KicadCliExe> {
-    let cli = KicadCliExe::locate()?;
+    let cli = KicadCliExe::locate_runnable()?;
     skip_on_no_windows(cli.interop(), cli)
 }
 

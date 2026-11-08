@@ -331,7 +331,7 @@ fn a_value_a_row_has_is_picked_as_before_and_series_none_turns_generics_off() {
 // ---- fab ---------------------------------------------------------------------------
 
 fn have_libraries() -> bool {
-    KicadCliExe::locate().is_some()
+    KicadCliExe::locate_runnable().is_some()
 }
 
 fn fab_of(root: &Path) -> Result<(), String> {

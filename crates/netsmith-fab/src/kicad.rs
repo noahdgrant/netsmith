@@ -92,6 +92,21 @@ impl KicadCliExe {
             .map(Self::new)
     }
 
+    /// [`KicadCliExe::locate`], for a test: `None` (the test skips, and says why on stderr, once
+    /// per call) when there is no KiCad or when it is Windows KiCad and this process cannot start
+    /// Windows programs ([`KicadCliExe::interop`], `CliError::NoWindows`). Any other fault is
+    /// not a reason to skip: the KiCad is returned and the test fails when it uses it.
+    pub fn locate_runnable() -> Option<Self> {
+        let cli = Self::locate()?;
+        match cli.interop() {
+            Err(CliError::NoWindows(why)) => {
+                eprintln!("skipping: Windows KiCad cannot be run from this shell: {why}");
+                None
+            }
+            _ => Some(cli),
+        }
+    }
+
     /// The program.
     pub fn exe(&self) -> &Path {
         &self.exe

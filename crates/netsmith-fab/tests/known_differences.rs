@@ -18,7 +18,7 @@ fn board_in(name: &str) -> (netsmith_kicad::testlib::TempDir, std::path::PathBuf
 
 #[test]
 fn the_plane_agrees_with_kicads_to_a_tenth_of_what_the_default_limit_allows() {
-    let Some(kicad) = KicadCliExe::locate() else {
+    let Some(kicad) = KicadCliExe::locate_runnable() else {
         eprintln!("skipped: no KiCad");
         return;
     };
@@ -42,7 +42,7 @@ fn the_plane_agrees_with_kicads_to_a_tenth_of_what_the_default_limit_allows() {
 
 #[test]
 fn a_pad_margin_that_kicad_9_0_0_drops_on_the_back_is_named_and_does_not_fail() {
-    let Some(kicad) = KicadCliExe::locate() else {
+    let Some(kicad) = KicadCliExe::locate_runnable() else {
         eprintln!("skipped: no KiCad");
         return;
     };

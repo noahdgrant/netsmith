@@ -573,7 +573,7 @@ fn corpus() -> Vec<Case> {
 #[test]
 fn every_violation_of_the_corpus_is_found_and_kicad_reports_the_same() {
     let cases = corpus();
-    let have_kicad = netsmith_fab::KicadCliExe::locate().is_some();
+    let have_kicad = netsmith_fab::KicadCliExe::locate_runnable().is_some();
     let (mut agreed, mut failures) = (0usize, Vec::new());
     let results: Vec<_> = std::thread::scope(|s| {
         let handles: Vec<_> = cases

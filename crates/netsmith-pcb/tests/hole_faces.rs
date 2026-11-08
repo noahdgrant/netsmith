@@ -234,7 +234,7 @@ fn a_footprint_that_draws_both_courtyards_does_not_fit_there() {
 /// installed (the test then skips).
 fn kicad_courtyard_findings(b: &Board) -> Option<(bool, bool)> {
     use netsmith_fab::{KicadCli, KicadCliExe, drc::kicad};
-    let cli = KicadCliExe::locate()?;
+    let cli = KicadCliExe::locate_runnable()?;
     let dir = TempDir::new("hole-faces-kicad");
     let path = dir.join("faces.kicad_pcb");
     std::fs::write(&path, netsmith_pcb::kicad_pcb(b)).unwrap();

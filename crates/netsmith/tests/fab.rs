@@ -23,7 +23,7 @@ const OUTLINE_AND_POURS_PHYSICAL: &str =
 const OUTLINE_AND_POURS_LAYOUT: &str = include_str!("../../../examples/outline_and_pours.pcb.toml");
 
 fn kicad() -> Option<KicadCliExe> {
-    KicadCliExe::locate()
+    KicadCliExe::locate_runnable()
 }
 
 fn out(name: &str) -> TempDir {
@@ -617,7 +617,7 @@ fn fab_with_physical(
     physical: &str,
     layout: &str,
 ) -> (TempDir, Result<Vec<netsmith::fab::Fabricated>, String>) {
-    let cli = KicadCliExe::locate().expect("the caller checked that KiCad is here");
+    let cli = KicadCliExe::locate_runnable().expect("the caller checked that KiCad is here");
     let dir = out(name);
     let file = dir.join("source").join("outline_and_pours.pcb.toml");
     fs::create_dir_all(file.parent().unwrap()).unwrap();
@@ -675,7 +675,7 @@ fn the_outline_and_pours_example_passes_kicads_check_with_its_layout_file() {
     // agrees with netsmith's files.
     let report = netsmith_fab::crosscheck::check(
         &dir.join("fab/OutlineAndPours/OutlineAndPours.kicad_pcb"),
-        &KicadCliExe::locate().expect("checked above"),
+        &KicadCliExe::locate_runnable().expect("checked above"),
         &Default::default(),
     )
     .unwrap_or_else(|e| panic!("{e}"));

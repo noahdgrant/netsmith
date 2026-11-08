@@ -36,7 +36,7 @@ impl Report {
 /// check (ADR 0037). `None` if KiCad is not here.
 fn drc(name: &str, pcb: &str, pro: &str) -> Option<Report> {
     use netsmith_fab::{KicadCli, drc::kicad};
-    let cli = KicadCliExe::locate()?;
+    let cli = KicadCliExe::locate_runnable()?;
     // Tests run side by side, so each run gets a folder of its own.
     static RUNS: AtomicUsize = AtomicUsize::new(0);
     let serial = RUNS.fetch_add(1, Ordering::SeqCst);
@@ -1178,7 +1178,7 @@ fn a_keepout_a_part_carries_moves_with_it() {
 /// Whether KiCad's own fill of the top pour on `net` covers each point, or `None` if KiCad's
 /// Python is not here.
 fn pour_covers(name: &str, b: &Board, net: &str, points: &[Pt]) -> Option<Vec<bool>> {
-    let Some(cli) = KicadCliExe::locate() else {
+    let Some(cli) = KicadCliExe::locate_runnable() else {
         eprintln!("skipped: no kicad-cli (set KICAD_CLI, or install KiCad)");
         return None;
     };
