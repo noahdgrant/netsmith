@@ -40,6 +40,7 @@ mod scaling;
 mod search_budget;
 mod seed;
 mod solve;
+mod swing_levels;
 mod system;
 mod temperature_coefficient;
 mod transferred_bounds;

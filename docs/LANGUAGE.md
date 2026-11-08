@@ -8520,6 +8520,67 @@ error: net `net-m.status.line` reaches 1.8V above its ground `GND` (`m.status.li
    |     ^^^^^^^^^^
 ```
 
+A line that states a swing and no `voh` or `vol` also has its unloaded output levels from it (ADR 0081, amendment 1, provisional): the high is the top of the swing and the low is its bottom, as single values. The notes `the high level from ... : ... .voh has no value` and `the low level ... .vol has no value` then close, and the receiver's `vih` and `vil` are checked against those levels. A level the line states always wins, so a part that states `voh` or `vol` is judged exactly as before. A line that states a low and no high is still an open-drain line (ADR 0075): its high is what its pull-up holds the line at, not the top of the swing. A line that states no swing behaves as before. The swing alone does not make a pair of lines worth checking: the pair is looked at when one of them states a level, as before. The same modem reaches 1.8 V, and a receiver that reads a high only from 1.9 V is refused, with the swing named:
+
+```nsm fails
+import std::logic::Logic
+import std::sources::Rail
+
+/// Invented: a module on a 3.8 V battery whose STATUS output swings to an internal 1.8 V
+/// rail that has no pad, and states no level.
+part Modem {
+    .vbat: Rail
+    .status: Logic
+    .status.reference ~ .vbat
+    .status.swing &= 0V .. 1.8V
+    pins {
+        .vbat.pos     power  "VBAT"   "1"
+        .vbat.neg     power  "GND"    "2"
+        .status.line  output "STATUS" "3"
+    }
+}
+
+/// Invented: an input that reads a high only from 1.9 V and a low up to 0.4 V.
+part Sensor {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.vih &= 1.9V
+    .in.vil &= 0.4V
+    pins {
+        .vdd.pos  power "VDD" "1"
+        .vdd.neg  power "GND" "2"
+        .in.line  input "IN"  "3"
+    }
+}
+
+board Telemetry {
+    .battery: Rail {
+        .voltage &= 3.8V +/- 5%
+        .pos.net &= "VBAT"
+        .neg.net &= "GND"
+    }
+    .io: Rail {
+        .voltage &= 1.8V +/- 5%
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+    }
+    .m: Modem
+    .s: Sensor
+    .battery ~ .m.vbat
+    .io ~ .s.vdd
+    .m.status.line ~ .s.in.line
+}
+```
+
+```text
+error: net `net-m.status.line`: `m.status.voh` (not stated: the top of its swing, `m.status.swing`) is 1.8V but `s.in.vih` needs 1.9V: a high of 1.8V is not always read as a high, which takes 1.9V
+   --> main.nsm:43:5
+   |
+43 |     .m: Modem
+   |     ^^^^^^^^^
+```
+
 #### A level and the current it was measured at
 
 A datasheet gives an output level at a load: `VOH = VDD - 0.4 V at IOH = 2 mA`. A part states it the same way, with `at` and the current after the value (ADR 0076, amendment 1, provisional):

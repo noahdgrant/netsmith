@@ -27,3 +27,11 @@ A module whose outputs swing to an internal supply that has no pad (a cellular m
 ## Left open
 
 A swing says nothing about what a line drives a receiver to inside the levels check: a driver that states a swing and no `voh` is still a note there. Whether `voh` should default to the swing's high is the owner's.
+
+## Amendment 1: a swing gives the unloaded levels (2026-11-08, provisional)
+
+The question left open above is answered: the owner approved that netsmith derives `voh` and `vol` from the swing. A line (a `Logic`, or the `Levels` of a bus) that states a `.swing` and does not state `voh` gets the top of the swing as its `voh`, and one that does not state `vol` gets the bottom of the swing as its `vol`, each as a single value (`swing.hi`, `swing.lo`), relative to the line's ground as the swing is. The notes `the high level from X to Y: X.voh has no value` and the low one close, and the receiver's `vih` and `vil` are compared with the derived levels by the same rule as with stated ones; a fault names the level as `X.voh (not stated: the top of its swing, X.swing)`.
+
+The rule is narrow. A level the line states always wins, field by field. The open-drain rule of ADR 0075 is unchanged: a line that states a low and no high takes its high from its pull-up, and only when there is none does the swing's top stand in. A part that states no swing is judged as before. The swing does not make a pair of lines worth checking: a pair is still looked at only when one of them states a level of the four, as this ADR said. Levels read as fractions of a rail (ADR 0082) are not derived from a swing: a derived level is compared as a range of one value.
+
+Rejected: a derived `voh` of `swing.lo` for the worst case (the swing's range holds the lowest and highest of its ends, and a part that knows the high it reaches states `voh`); and a derived level that counts as stated, which would make a swing alone start the check of every pair on the net.

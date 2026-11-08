@@ -141,6 +141,42 @@ impl Run<'_> {
         }
     }
 
+    /// The unloaded output level `voh` or `vol` of a line: the one it states, or, when it states
+    /// none and states a swing (ADR 0081), the top (`voh`) or the bottom (`vol`) of the swing,
+    /// read as a single value. The third part says it was derived from the swing, for the
+    /// message to say so. A stated level always wins.
+    fn output_level(&self, logic: InstId, name: &str) -> Option<(FieldId, Quantity, bool)> {
+        if let Some((f, q)) = self.value(logic, name) {
+            return Some((f, q, false));
+        }
+        let (f, swing) = self.value(logic, "swing")?;
+        let at = match name {
+            "voh" => swing.hi(),
+            "vol" => swing.lo(),
+            _ => return None,
+        };
+        Some((
+            f,
+            Quantity::interval(Dimension::VOLTAGE, at, at).ok()?,
+            true,
+        ))
+    }
+
+    /// How a message names an output level: its field when it is stated, else the level and the
+    /// swing that it comes from.
+    fn level_text(&self, logic: InstId, name: &str, field: FieldId, derived: bool) -> String {
+        let model = self.model;
+        if !derived {
+            return format!("`{}`", model.path_of_field(field));
+        }
+        let end = if name == "voh" { "top" } else { "bottom" };
+        format!(
+            "`{}.{name}` (not stated: the {end} of its swing, `{}`)",
+            model.path_of(logic),
+            model.path_of_field(field)
+        )
+    }
+
     /// Whether a `Logic` states any of its four levels.
     fn states_levels(&self, logic: InstId) -> bool {
         ["vih", "vil", "voh", "vol"]
@@ -260,8 +296,8 @@ impl Run<'_> {
         // A high must be read as a high: the output's lowest high against the input's
         // highest threshold. An output that states a low and no high is open-drain: its high
         // is the one its pull-up gives the line (ADR 0075).
-        let voh = self.value(d.logic, "voh");
-        if voh.is_none() && self.value(d.logic, "vol").is_some() {
+        let voh = self.output_level(d.logic, "voh");
+        if self.value(d.logic, "voh").is_none() && self.value(d.logic, "vol").is_some() {
             match self.pullups(net, dg) {
                 Ok(pulls) if !pulls.is_empty() => {
                     self.high_from_pullups(net, d, r, &pulls);
@@ -285,17 +321,17 @@ impl Run<'_> {
             }
         }
         match (voh, self.value(r.logic, "vih")) {
-            (Some((fo, voh)), Some((fi, vih))) => {
-                if let Some((fd, fr)) = self.correlated(fo, fi, d, r) {
+            (Some((fo, voh, derived)), Some((fi, vih))) => {
+                let out = self.level_text(d.logic, "voh", fo, derived);
+                if let Some((fd, fr)) = self.correlated(fo, fi, d, r).filter(|_| !derived) {
                     // One supply voltage: `k_d * V >= k_r * V` for every `V` above zero is
                     // `k_d >= k_r`, and nothing looser (ADR 0082).
                     if fd.factor < fr.factor {
                         self.fault(
                             d.part,
                             format!(
-                                "net `{}`: `{}` is {} x `{}` but `{}` needs {} x `{}`, the same supply voltage: a high of {} x the supply is not always read as a high, which takes {} x the supply",
+                                "net `{}`: {out} is {} x `{}` but `{}` needs {} x `{}`, the same supply voltage: a high of {} x the supply is not always read as a high, which takes {} x the supply",
                                 net.name,
-                                model.path_of_field(fo),
                                 fd.factor,
                                 model.path_of_field(fd.rail),
                                 model.path_of_field(fi),
@@ -310,9 +346,8 @@ impl Run<'_> {
                     self.fault(
                         d.part,
                         format!(
-                            "net `{}`: `{}` is {voh} but `{}` needs {vih}: a high of {} is not always read as a high, which takes {}",
+                            "net `{}`: {out} is {voh} but `{}` needs {vih}: a high of {} is not always read as a high, which takes {}",
                             net.name,
-                            model.path_of_field(fo),
                             model.path_of_field(fi),
                             volts(voh.lo()),
                             volts(vih.hi()),
@@ -384,17 +419,20 @@ impl Run<'_> {
         let model = self.model;
         let (dl, rl) = (model.path_of(d.logic), model.path_of(r.logic));
         // A low must be read as a low.
-        match (self.value(d.logic, "vol"), self.value(r.logic, "vil")) {
-            (Some((fo, vol)), Some((fi, vil))) => {
-                if let Some((fd, fr)) = self.correlated(fo, fi, d, r) {
+        match (
+            self.output_level(d.logic, "vol"),
+            self.value(r.logic, "vil"),
+        ) {
+            (Some((fo, vol, derived)), Some((fi, vil))) => {
+                let out = self.level_text(d.logic, "vol", fo, derived);
+                if let Some((fd, fr)) = self.correlated(fo, fi, d, r).filter(|_| !derived) {
                     // The same reduction for the low: `k_d * V <= k_r * V` is `k_d <= k_r`.
                     if fd.factor > fr.factor {
                         self.fault(
                             d.part,
                             format!(
-                                "net `{}`: `{}` is {} x `{}` but `{}` allows {} x `{}`, the same supply voltage: a low of {} x the supply is not always read as a low, which takes {} x the supply",
+                                "net `{}`: {out} is {} x `{}` but `{}` allows {} x `{}`, the same supply voltage: a low of {} x the supply is not always read as a low, which takes {} x the supply",
                                 net.name,
-                                model.path_of_field(fo),
                                 fd.factor,
                                 model.path_of_field(fd.rail),
                                 model.path_of_field(fi),
@@ -409,9 +447,8 @@ impl Run<'_> {
                     self.fault(
                         d.part,
                         format!(
-                            "net `{}`: `{}` is {vol} but `{}` allows {vil}: a low of {} is not always read as a low, which takes {}",
+                            "net `{}`: {out} is {vol} but `{}` allows {vil}: a low of {} is not always read as a low, which takes {}",
                             net.name,
-                            model.path_of_field(fo),
                             model.path_of_field(fi),
                             volts(vol.hi()),
                             volts(vil.lo()),

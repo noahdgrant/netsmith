@@ -364,12 +364,19 @@ const VBAT: &str = "    .vbat: Rail {\n        .voltage &= 3.8V +/- 5%\n        
 #[test]
 fn a_line_that_states_its_swing_is_judged_against_it_and_not_its_reference_rail() {
     // The reference is the 3.8 V battery, and the receiver survives 3.6 V: the stated swing
-    // of 0 V to 1.8 V is what the net reaches, so nothing is wrong and nothing is a note.
+    // of 0 V to 1.8 V is what the net reaches, so no absolute maximum is exceeded. The modem's
+    // levels come from its swing (ADR 0081, amendment 1), so the pair is checked, and the pad
+    // that reads a high only from 2 V is the one finding.
     let s = solved(&format!(
         "{VBAT}{S3}    .m: Modem\n    .b: Pad\n    .vbat ~ .m.vbat\n    .s3 ~ .b.vdd\n    .m.status.line ~ .b.in.line\n"
     ));
-    assert_eq!(faults(&s), Vec::<String>::new());
-    // The modem states no level, so the pair is a note; the absolute maximum is judged.
+    assert_eq!(
+        faults(&s),
+        [
+            "net `net-b.in.line`: `m.status.voh` (not stated: the top of its swing, `m.status.swing`) is 1.8V but `b.in.vih` needs 2V: a high of 1.8V is not always read as a high, which takes 2V"
+        ]
+    );
+    // The absolute maximum is judged.
     assert!(
         notes(&s).iter().all(|n| !n.contains("absolute maximum")),
         "{:#?}",
@@ -397,8 +404,14 @@ fn a_signed_swing_is_read_as_written_relative_to_the_ground() {
     let s = solved(&format!(
         "{VBAT}{S3}    .m: Ringing\n    .b: Pad\n    .vbat ~ .m.vbat\n    .s3 ~ .b.vdd\n    .m.status.line ~ .b.in.line\n"
     ));
-    // The pad survives -0.5 V: -0.3 V is within it.
-    assert_eq!(faults(&s), Vec::<String>::new());
+    // The pad survives -0.5 V: -0.3 V is within it. Only the high that the swing gives is short
+    // of what the pad reads (ADR 0081, amendment 1).
+    assert!(
+        faults(&s).iter().all(|f| !f.contains("reaches")),
+        "{:?}",
+        faults(&s)
+    );
+    assert_eq!(faults(&s).len(), 1, "{:?}", faults(&s));
     let s = solved(&format!(
         "{VBAT}{S3}    .m: Ringing\n    .b: Pad0\n    .vbat ~ .m.vbat\n    .s3 ~ .b.vdd\n    .m.status.line ~ .b.in.line\n"
     ));
