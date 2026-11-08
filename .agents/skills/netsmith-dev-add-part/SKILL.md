@@ -29,7 +29,7 @@ One file for each catalog, named by it (`resistor.csv`, `capacitor.csv`, `led.cs
 
 ## Order is the policy
 
-The solver takes the first row that works and nothing sorts the file. The standard files are Basic first, then in the order of the unit prices read on a past date, then ascending value. Put a new row after the Basic rows and where the price you read puts it; `cargo test -p netsmith-solve --test data` checks only that Basic rows come before Extended ones. To change the policy itself, ask the user (`netsmith-dev-decision`).
+The solver takes the first row that works and nothing sorts the file. The standard files are Basic first, then in the order of the unit prices read on a past date, then ascending value. Put a new row after the Basic rows and where the price you read puts it; `cargo test -p netsmith-solve --test main data::` checks only that Basic rows come before Extended ones. To change the policy itself, ask the user (`netsmith-dev-decision`).
 
 ## Where the model fields come from
 
@@ -51,7 +51,7 @@ A new package needs a footprint in `crates/netsmith-kicad/src/mapping.rs` (the r
 
 Run `cargo test -p netsmith-solve` first. It checks that every row has its source, the file order, every curve, and that nothing in `considered.csv` is offered. Update counts in those tests when you add rows. Then run the gates in `netsmith-dev-verify`.
 
-Then run `cargo test -p netsmith --test guide`. A new row changes the counts in the guide's messages (`the closest of the 6 that fit`): run it with `GUIDE_BLESS=1` and read the diff. A guide example that is meant to fail must fail for a reason no row can remove (a rating or a value far beyond any real part, or a requirement that contradicts itself), never because the catalog happens to lack a row; if a new row makes one build, change the example (`docs/LANGUAGE.md`), not the row.
+Then run `cargo test -p netsmith --test main guide::`. A new row changes the counts in the guide's messages (`the closest of the 6 that fit`): run it with `GUIDE_BLESS=1` and read the diff. A guide example that is meant to fail must fail for a reason no row can remove (a rating or a value far beyond any real part, or a requirement that contradicts itself), never because the catalog happens to lack a row; if a new row makes one build, change the example (`docs/LANGUAGE.md`), not the row.
 
 ## Refuse
 

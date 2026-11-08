@@ -7,7 +7,7 @@ use netsmith_check::Loader;
 use netsmith_kicad::testlib::TempDir;
 use netsmith_solve::Catalogs;
 
-mod common;
+use crate::common;
 
 const PADS: [&str; 6] = ["1", "2", "3", "4", "5", "6"];
 

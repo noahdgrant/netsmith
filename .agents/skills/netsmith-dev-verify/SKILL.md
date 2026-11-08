@@ -35,7 +35,7 @@ For a change to the editor or to a view it shows, also run the browser check in 
 
 ## Language guide
 
-`cargo test -p netsmith --test guide` runs every `nsm` block of `docs/LANGUAGE.md`, compares every message block with what the tool prints, and checks the skills. After you change a message or a std definition, run it with `GUIDE_BLESS=1` to rewrite the message blocks, then read the diff. List a new std definition in the guide's catalogue.
+`cargo test -p netsmith --test main guide::` runs every `nsm` block of `docs/LANGUAGE.md`, compares every message block with what the tool prints, and checks the skills. After you change a message or a std definition, run it with `GUIDE_BLESS=1` to rewrite the message blocks, then read the diff. List a new std definition in the guide's catalogue.
 
 ## KiCad
 

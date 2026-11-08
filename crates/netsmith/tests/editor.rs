@@ -12,7 +12,7 @@ use std::{
     time::Duration,
 };
 
-mod common;
+use crate::common;
 
 use common::endpoints::{Fake, Reply, Seen};
 use netsmith::editor::Workspace;

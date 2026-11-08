@@ -1,6 +1,6 @@
 //! `netsmith init`, the `netsmith.toml` manifest, and projects of several files.
 
-mod common;
+use crate::common;
 
 use netsmith_kicad::testlib::{TempDir, TempFile};
 use std::fs;

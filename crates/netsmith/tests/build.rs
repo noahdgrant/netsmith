@@ -547,7 +547,7 @@ fn a_system_with_no_boards_is_refused() {
 
 // ---- KiCad libraries -------------------------------------------------------------------
 
-mod common;
+use crate::common;
 
 use netsmith_kicad::Mapping;
 use netsmith_kicad::testlib::TempDir;
