@@ -1,5 +1,5 @@
 //! Levels stated as fractions of one rail's voltage are compared at one supply voltage
-//! (ADR 0081). `Mic`, `Sum` and `Receiver` are invented parts: a driver that states its levels
+//! (ADR 0082). `Mic`, `Sum` and `Receiver` are invented parts: a driver that states its levels
 //! as fractions of its supply, one that states a high as the supply less a drop, and an input
 //! whose thresholds are fractions of its own supply. None is a real part.
 

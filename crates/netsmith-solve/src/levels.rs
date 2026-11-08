@@ -71,7 +71,7 @@ pub(crate) struct Run<'a> {
     faults: Vec<Diagnostic>,
     notes: Vec<NotEvaluated>,
     seen: BTreeSet<String>,
-    /// The levels stated as a constant times a rail's voltage, found once (ADR 0081).
+    /// The levels stated as a constant times a rail's voltage, found once (ADR 0082).
     fractions: OnceCell<HashMap<FieldId, (f64, FieldId)>>,
 }
 
@@ -282,7 +282,7 @@ impl Run<'_> {
             (Some((fo, voh)), Some((fi, vih))) => {
                 if let Some((fd, fr)) = self.correlated(fo, fi, d, r) {
                     // One supply voltage: `k_d * V >= k_r * V` for every `V` above zero is
-                    // `k_d >= k_r`, and nothing looser (ADR 0081).
+                    // `k_d >= k_r`, and nothing looser (ADR 0082).
                     if fd.factor < fr.factor {
                         self.fault(
                             d.part,
@@ -426,7 +426,7 @@ impl Run<'_> {
     /// The levels stated as a constant times a rail's voltage: `.voh &= 0.7 * .vdd.voltage`
     /// (or `.vdd.voltage * 0.7`, or the voltage alone). The checker keeps the statement as a
     /// relation whose right side is the expression, which is where the form survives the
-    /// evaluation to a range (ADR 0081). A field is listed only when that one statement is
+    /// evaluation to a range (ADR 0082). A field is listed only when that one statement is
     /// all there is to it: no other relation mentions it and no constant narrows it.
     fn fractions(&self) -> &HashMap<FieldId, (f64, FieldId)> {
         self.fractions.get_or_init(|| {
