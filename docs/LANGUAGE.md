@@ -7013,6 +7013,71 @@ error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHC
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
+#### What a part in a chain does not see of its rail
+
+A part in a `~>` chain from a rail is given the chain's current and nothing else of the rail. A part reads its own fields, and the one value the checker derives for it from a rail is `.bias`, for a part across the rail (ADR 0013). So a rating of a part in series is compared with the rail only by a line the board writes:
+
+- A `Fuse`'s `.rated_voltage` is not compared with anything. A board that has a peak to interrupt writes `.fuse.rated_voltage >= .input.peak`.
+- A `Schottky` or `Diode` behind a fuse carries the draw of what is behind the chain, so its `.max_forward_current` is checked against that and not against the fuse's rating. A board that wants it rated for what the fuse lets through writes `.d.max_forward_current >= .fuse.rated_current`, and states the largest reverse voltage the input can be wired to as `.d.bias`, which is checked against `.max_reverse_voltage`. A diode in series is across no rail, so its `.bias` is unset until then, and the rating is listed as not evaluated.
+
+Each such line is checked in the worst case, and a line that waits on a `.peak` the board leaves open is listed as not evaluated. This one passes, with the library's 6 V fuses for a 5 V rail that peaks at 5.5 V:
+
+```nsm evaluate
+import std::parts::passive::Fuse
+import std::sources::Rail
+
+board Interrupts {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .peak &= 5.5V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .load: Rail {
+        .current &= 10mA..100mA
+        .pos.net &= "VFUSED"
+        .neg.net &= "GND"
+    }
+    .fuse: Fuse {}
+    .fuse.rated_voltage >= .input.peak
+    .input.pos ~> .fuse ~> .load.pos
+    .input.neg ~ .load.neg
+}
+```
+
+And a peak far above what any fuse in the library interrupts is refused by the same line:
+
+```nsm fails
+import std::parts::passive::Fuse
+import std::sources::Rail
+
+board Arcs {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .peak &= 5kV
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .load: Rail {
+        .current &= 10mA..100mA
+        .pos.net &= "VFUSED"
+        .neg.net &= "GND"
+    }
+    .fuse: Fuse {}
+    .fuse.rated_voltage >= .input.peak
+    .input.pos ~> .fuse ~> .load.pos
+    .input.neg ~ .load.neg
+}
+```
+
+```text
+error: no `fuse` candidate satisfies `fuse`: the closest of the 6 that fit, SMD1206P020TF 0.2A 24V resettable fuse 1206 C20984, fails because fuse.rated_voltage must always be at least input.peak, but 24V is not always above 5kV
+   --> main.nsm:17:5
+   |
+17 |     .fuse.rated_voltage >= .input.peak
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
 `Crystal` has `.frequency` (state it with its tolerance, `16MHz +/- 20ppm`) and `.load_capacitance`, and no relation: the two load capacitors are the design's. `FerriteBead` has `.impedance` at `.impedance_frequency`.
 
 ### Transistors
