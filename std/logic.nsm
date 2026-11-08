@@ -26,7 +26,8 @@ import std::sources::Rail
 /// it is written, so `-0.3V..1.8V` goes 0.3 V below the ground. A line that states a swing is
 /// held to it, when the solver judges a receiver's absolute maximum on the net that it drives
 /// and bounds a resistor's current; a line that states none swings from the ground to the top
-/// of its reference rail's voltage, as before (ADR 0081). It states no level and is no load.
+/// of its reference rail's voltage, as before (ADR 0081); with no `voh` or `vol` stated its unloaded
+/// levels are the swing's top and bottom (amendment 1). It is no load.
 interface Logic {
     .line: Pin
     .reference: Rail
