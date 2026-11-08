@@ -6,8 +6,13 @@
 # `recipes` (the rules, and why, are in that script). `fmt` always runs. `clippy` and `test` need
 # `rust`, `kicad` needs `kicad`, `recipes` needs `recipes`: a change to prose only runs `fmt`. A
 # push to main, a change to the workflows or to scripts/, and a path the script does not know run
-# everything. `ci-ok` waits for all the others and fails if one failed or was cancelled; a job
-# that was left out counts as passed. It is the one check a branch protection rule needs to name.
+# everything. A change to a test file of a crate turns `kicad` on only if the file can ask for
+# KiCad (it names kicad-cli, the stock libraries, a Workspace, the binary...), and never turns
+# `recipes` on; a change to the source of a crate is not narrowed (the script's header says why).
+# The `changes` job runs scripts/ci-changes-test first, a table of paths and the flags they must
+# give, so an edit of the rules cannot widen or narrow them unnoticed. `ci-ok` waits for all the
+# others and fails if one failed or was cancelled; a job that was left out counts as passed. It is
+# the one check a branch protection rule needs to name.
 #
 # `test` has no KiCad on its runner, so it stays fast. The tests that need `kicad-cli` or KiCad's
 # stock libraries skip themselves there (they print "skipped: ..."); the rest build with the
@@ -73,6 +78,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
+
+      # The table of scripts/ci-changes: a second, with nothing but bash.
+      - name: Test the rules of ci-changes
+        run: scripts/ci-changes-test
 
       - id: flags
         run: |

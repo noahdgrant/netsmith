@@ -837,6 +837,14 @@ pub struct Checkpoint {
     relations: Arc<Vec<Relation>>,
 }
 
+/// An interface the board states is not used (`unused .processor.usb`, ADR 0083), and where.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Unused {
+    pub inst: InstId,
+    pub source: SourceId,
+    pub span: Span,
+}
+
 #[derive(Debug, Clone)]
 pub struct Model {
     pub root: InstId,
@@ -866,6 +874,8 @@ pub struct Model {
     pub(crate) rail_aliases: Vec<(InstId, InstId)>,
     /// The output levels stated with a test current, in the order they were read (ADR 0076).
     pub(crate) level_tests: Vec<LevelTest>,
+    /// The interfaces the board states are not used (ADR 0083), in path order.
+    pub(crate) unused: Vec<Unused>,
     /// The enums that fields of this model have the type of.
     pub(crate) enums: Vec<EnumInfo>,
     /// The members declared with the type of a generic, in the order they were made.
@@ -900,6 +910,7 @@ impl Model {
             part_joins: Vec::new(),
             rail_aliases: Vec::new(),
             level_tests: Vec::new(),
+            unused: Vec::new(),
             enums: Vec::new(),
             uses: Vec::new(),
             bus_defs: std::collections::BTreeMap::new(),
@@ -944,6 +955,18 @@ impl Model {
     }
 
     /// The output levels stated with a test current (`.voh &= ... at 2mA`), in source order.
+    /// The interfaces the board states are not used (`unused .processor.usb`, ADR 0083).
+    pub fn unused(&self) -> &[Unused] {
+        &self.unused
+    }
+
+    /// The statement that makes `inst` unused, when it is, or is inside, an interface the board
+    /// states is not used: the pins and values of that interface need no source, its limits are
+    /// not checked and its levels are not compared (ADR 0083).
+    pub fn unused_by(&self, inst: InstId) -> Option<&Unused> {
+        self.unused.iter().find(|u| self.is_inside(inst, u.inst))
+    }
+
     pub fn level_tests(&self) -> &[LevelTest] {
         &self.level_tests
     }

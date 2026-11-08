@@ -63,18 +63,16 @@ impl Checker<'_> {
 
     fn endpoint(&mut self, p: &ast::Path) -> Option<End> {
         match self.resolve_path(p) {
-            Res::Inst(i) => match self.model.instance(i).kind {
-                InstKind::Pin => Some(End::Pin(i)),
-                InstKind::Interface => Some(End::Iface(i)),
-                InstKind::Part => Some(End::Part(i)),
-                InstKind::Module | InstKind::Board | InstKind::System | InstKind::Panel => {
-                    self.error(
-                        p.span,
-                        "connect a pin or an interface of this, not the whole module or board",
-                    );
-                    None
-                }
-            },
+            Res::Inst(i) => {
+                let touch = crate::unused::Touch {
+                    inst: i,
+                    scope: self.current(),
+                    source: self.cur_source(),
+                    span: p.span,
+                };
+                self.touches.push(touch);
+                self.endpoint_of(p, i)
+            }
             Res::Field(_) => {
                 self.error(
                     p.span,
@@ -83,6 +81,21 @@ impl Checker<'_> {
                 None
             }
             Res::Poison | Res::Bad => None,
+        }
+    }
+
+    fn endpoint_of(&mut self, p: &ast::Path, i: InstId) -> Option<End> {
+        match self.model.instance(i).kind {
+            InstKind::Pin => Some(End::Pin(i)),
+            InstKind::Interface => Some(End::Iface(i)),
+            InstKind::Part => Some(End::Part(i)),
+            InstKind::Module | InstKind::Board | InstKind::System | InstKind::Panel => {
+                self.error(
+                    p.span,
+                    "connect a pin or an interface of this, not the whole module or board",
+                );
+                None
+            }
         }
     }
 

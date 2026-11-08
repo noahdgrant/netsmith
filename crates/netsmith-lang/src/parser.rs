@@ -440,6 +440,7 @@ impl Parser {
                     | Item::Catalog(_)
                     | Item::Pins(_)
                     | Item::Tie(_)
+                    | Item::Unused(_)
                     | Item::Peripheral(_)
                     | Item::Shared(_)
                     | Item::Lines(_)
@@ -455,7 +456,7 @@ impl Parser {
             }
         };
 
-        // `bridge`, `catalog`, `tie`, `pins`, `lines`, `peripheral`, `shared` and `case` are keywords at the
+        // `bridge`, `catalog`, `tie`, `unused`, `pins`, `lines`, `peripheral`, `shared` and `case` are keywords at the
         // start of a statement.
         if let Tok::Ident(word) = self.peek().tok.clone() {
             let starts_name = matches!(
@@ -469,6 +470,7 @@ impl Parser {
                 }
                 "catalog" if starts_name => return only_decls(self.catalog(start)?),
                 "tie" if starts_name => return only_decls(self.tie(start)?),
+                "unused" if starts_name => return only_decls(self.unused(start)?),
                 "peripheral" if matches!(self.peek_second(), Tok::Ident(_)) => {
                     return only_decls(self.peripheral(start)?);
                 }
@@ -647,6 +649,25 @@ impl Parser {
         Ok(Item::Dc(Dc {
             kind,
             operands,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// `unused .processor.usb`: one interface of a part or module, by its path.
+    fn unused(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let path = self.path()?;
+        if matches!(
+            self.peek().tok,
+            Tok::Tilde | Tok::TildeArrow | Tok::Colon | Tok::AmpEq | Tok::Ident(_)
+        ) {
+            return Err(ParseError::new(
+                self.peek().span,
+                "`unused` names one interface and nothing else: `unused .processor.usb`",
+            ));
+        }
+        Ok(Item::Unused(Unused {
+            path,
             span: self.span_from(start),
         }))
     }

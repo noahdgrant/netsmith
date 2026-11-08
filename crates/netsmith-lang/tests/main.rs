@@ -15,6 +15,7 @@ mod peripherals;
 mod physical;
 mod pins;
 mod std;
+mod unused;
 
 /// A file in this folder without a `mod` line above is not part of the executable: its tests would
 /// never run, and nothing else would say so. (`::std` because the module `std` is declared above.)

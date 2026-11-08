@@ -19,6 +19,7 @@ mod pins;
 mod providers;
 mod row;
 mod shared;
+mod unused;
 
 pub use busnets::{BusGroup, bidirectional_rows, bus_groups, joined_without_role, unstated_roles};
 pub use checker::physical_file_name;
@@ -30,7 +31,7 @@ pub use model::{
     EnumId, EnumInfo, Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet, InstId,
     InstKind, Instance, LevelTest, Mate, Member, Model, Net, OptionalMark, PartRules, Peripheral,
     PeripheralBus, PeripheralFunction, PinKind, PinRow, PinTable, Pinout, Provider, RExpr,
-    Relation, Requirement, Role, SharedMember, SharedRes, Snapshot, Tie, Written,
+    Relation, Requirement, Role, SharedMember, SharedRes, Snapshot, Tie, Unused, Written,
 };
 
 use std::collections::BTreeMap;

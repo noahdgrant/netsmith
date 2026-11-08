@@ -259,6 +259,7 @@ fn visit<'a>(
             path(&t.a, inside);
             path(&t.b, inside);
         }
+        Item::Unused(u) => path(&u.path, inside),
         Item::Pins(pins) => {
             for row in &pins.rows {
                 path(&row.pin, inside);

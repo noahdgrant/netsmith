@@ -62,6 +62,7 @@ mod std_models;
 mod std_zener;
 mod stock_note;
 mod supply;
+mod unused;
 mod values;
 
 /// A file in this folder without a `mod` line above is not part of the executable: its tests would

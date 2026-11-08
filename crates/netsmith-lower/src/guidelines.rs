@@ -295,6 +295,10 @@ pub fn plan_tracks(
     for (id, inst) in model.instances() {
         match inst.kind {
             InstKind::Interface => {
+                // A rail of an interface the board states unused carries nothing (ADR 0083).
+                if model.unused_by(id).is_some() {
+                    continue;
+                }
                 let Some((_, pos)) = model.draw_of(id) else {
                     continue;
                 };

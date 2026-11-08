@@ -955,6 +955,144 @@ error: `max_dcr` is `optional` (at main.nsm:2) and is stated here with `&=`, in 
   |     ^^^^^^^^^^^^^^^^^^
 ```
 
+### A function the board does not use
+
+A datasheet states some limits for a function whether or not a design uses it: a microcontroller's datasheet limits the voltage on its USB VBUS pin to 4.35 V to 5.5 V, and a board that has no USB port leaves the pin open. The part states the limit once and it is true for every board, so it stays in the part (libraries state only what is always true). A board that never connects the port was left with two notes it could do nothing about: `not evaluated: processor.usb.vbus.voltage >= 4.35V` (and its twin for 5.5 V), because nothing gives the pin a voltage, and `processor.usb.vbus.pos has no source: nothing supplies it` in the power view. The board says that nothing on it uses the interface, with a statement of its own (ADR 0083, provisional):
+
+```nsm-fragment
+unused .processor.usb
+```
+
+The word is `unused`, then the path of one interface of a part or a module (`.processor.usb`, `.modem.usb`). It is a statement of a board, written anywhere in it, also in the body of the part's declaration (`.processor: Processor { unused .usb }`). The parts below are invented.
+
+```nsm module=src::processor
+import std::bus::Usb2
+import std::sources::Rail
+
+/// A processor with a USB port. Its datasheet limits VBUS to 4.35 V to 5.5 V whether or not a
+/// board uses the port. Illustrative; not a real part.
+part Processor {
+    .vdd: Rail
+    .usb: Usb2
+    .usb.vbus.neg ~ .vdd.neg
+    .usb.vbus.voltage >= 4.35V
+    .usb.vbus.voltage <= 5.5V
+
+    pins {
+        .vdd.pos      power         "VDD"  "1"
+        .vdd.neg      power         "VSS"  "2"
+        .usb.vbus.pos power         "VBUS" "3"
+        .usb.dp       bidirectional "DP"   "4"
+        .usb.dm       bidirectional "DM"   "5"
+    }
+}
+
+/// A test pad.
+part Pad {
+    pins {
+        .p passive "P" "1"
+    }
+}
+
+/// A USB receptacle that the bus goes through.
+part Receptacle {
+    .usb: Usb2
+
+    pins {
+        .usb.vbus.pos power         "VBUS" "1" optional
+        .usb.vbus.neg power         "GND"  "2"
+        .usb.dp       bidirectional "D+"   "3"
+        .usb.dm       bidirectional "D-"   "4"
+    }
+}
+```
+
+A board with no USB port says so, and builds with neither note:
+
+```nsm evaluate
+import src::processor::{Pad, Processor}
+import std::sources::Rail
+
+board Sensor {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .processor: Processor
+    .supply ~ .processor.vdd
+    unused .processor.usb
+}
+```
+
+Without the `unused` line the same board builds too, and its notes are the two above. The pin `.usb.vbus.pos` is a `power` pin without `optional`, which must be connected; the statement is also why `Sensor` has no error for it.
+
+What the statement does, for the interface it names and everything inside it:
+
+- **The part's limits for it are not evaluated.** A relation that reads only values of the interface (`.usb.vbus.voltage >= 4.35V`) is taken out before the solve: it is not checked and not listed as not evaluated. A relation that reads another value as well (`.usb.vbus.voltage >= .vdd.voltage - 2V`) is kept: it says something about the rest of the part.
+- **Its pins need no source and no connection.** The power view has no net for the rails of the interface (so no `has no source` note), the width of the tracks of a net is not worked out for them, and a pin of the interface that its table says must be connected is not asked to be.
+- **Its levels do not run.** A pin of it is not compared with another as a driver or a receiver, and its absolute maximum is not read against a net.
+- **Nothing else changes.** Another interface of the part keeps every check, and a board that does not write the statement gets what it got before.
+
+The statement says that nothing on the board uses the interface. A board that also uses it contradicts itself, and the error shows both lines: the connection, and the line of the `unused` statement. A pin of the interface that is on a net with a pin of another part, an interface joined to another with `~`, and a function chosen on a pin of it are all uses:
+
+```nsm fails
+import src::processor::{Processor, Receptacle}
+import std::sources::Rail
+
+board Contradiction {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .processor: Processor
+    .jack: Receptacle
+    .supply ~ .processor.vdd
+    .jack.usb.vbus.neg ~ .supply.neg
+    .processor.usb ~ .jack.usb
+    unused .processor.usb
+}
+```
+
+```text
+error: `processor.usb.dm` is connected here to `jack.usb.dm` (net `net-jack.usb.dm`), but `processor.usb` is stated `unused` at main.nsm:15: the interface is either used or not; remove the connection, or remove `unused`
+   --> main.nsm:14:5
+   |
+14 |     .processor.usb ~ .jack.usb
+   |     ^^^^^^^^^^^^^^
+```
+
+A test pad does not use the interface. A part with passive pins only (a test pad, a header) brings a net out and uses nothing, and neither does a return to ground: **unused means that nothing on the board uses the interface**, not that nothing is connected to it. A module's own USB pads, which the board names and brings out to unpopulated test pads, can be stated unused, and the power view then has no net that nothing supplies for them:
+
+```nsm evaluate
+import src::processor::{Pad, Processor}
+import std::sources::Rail
+
+board Modem {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .processor: Processor
+    .supply ~ .processor.vdd
+    .tp_dp: Pad
+    .tp_vbus: Pad
+    .processor.usb.dp ~ .tp_dp.p
+    .processor.usb.vbus.pos.net &= "USB_VBUS"
+    .tp_vbus.p.net &= "USB_VBUS"
+    .processor.usb.vbus.neg ~ .supply.neg
+    unused .processor.usb
+}
+```
+
+Rules.
+
+- **A board, an interface.** Only a board states it. A part, a module, a system or a panel cannot say that a function of its own is unused, and a physical file states where things are and not what the circuit is. The path must name an interface (a pin, a value, a whole part and a whole module are errors that say so), and naming one twice is an error.
+- **A use is a net or a choice.** An interface is used when one of its pins (not the return of a supply: every ground is one net) shares a net with a pin of another part that is not `passive`, when it is joined to another interface with `~` (a rail of the board that supplies it is one), or when the board states a function for one of its pins. The pins a part's own definition joins inside it are the part's business, and a connection made inside the module that holds the interface is the module's own wiring.
+- **Order does not matter.** The statement acts after every statement of the board is read.
+
 ### A generic part that no row can be ordered for
 
 The solver keeps a generic part (a resistor, capacitor, inductor or LED of a value that no catalog row has, ADR 0047) when no row meets the design, and records what the design asks of it: for an inductor in a converter, a saturation current of at least 6.05 A. The bill of materials and `fab` then look for a row that can be ordered for it, and `fab` refuses the board when there is none. A third finding says so when the board is built, for every assembled generic part and not only those on a power path (issue #182). It is a guideline like the two above: a `warning:` line by default and an error with `--strict` or `guidelines = "error"` in `netsmith.toml`.

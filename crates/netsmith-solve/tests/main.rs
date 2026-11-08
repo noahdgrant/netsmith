@@ -49,6 +49,7 @@ mod two_equations;
 mod two_unknowns;
 mod unconstrained;
 mod unconstrained_gaps;
+mod unused;
 mod waiting_bounds;
 
 /// A file in this folder without a `mod` line above is not part of the executable: its tests would
