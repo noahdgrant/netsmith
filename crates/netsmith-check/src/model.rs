@@ -718,6 +718,10 @@ pub struct Model {
     /// Pairs of pins that a part's own definition joins (`.vin.neg ~ .vout.neg`): one
     /// physical pin, or pins that are one node inside the part.
     pub(crate) part_joins: Vec<(InstId, InstId)>,
+    /// The `~` statements of a module that join one of its own interfaces to an interface of
+    /// a part inside it, as (the module's, the part's). Whether each makes the module's an
+    /// alias of the part's is settled when the balances are made (ADR 0077).
+    pub(crate) rail_aliases: Vec<(InstId, InstId)>,
     /// The enums that fields of this model have the type of.
     pub(crate) enums: Vec<EnumInfo>,
     /// The members declared with the type of a generic, in the order they were made.
@@ -750,6 +754,7 @@ impl Model {
             mates: Vec::new(),
             ground_groups: Vec::new(),
             part_joins: Vec::new(),
+            rail_aliases: Vec::new(),
             enums: Vec::new(),
             uses: Vec::new(),
             bus_defs: std::collections::BTreeMap::new(),

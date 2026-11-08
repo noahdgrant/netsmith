@@ -734,3 +734,57 @@ fn a_pin_shared_by_every_unit_is_labelled_in_each() {
     // Pin 1 is on no net.
     assert_eq!(root.find_all("no_connect").count(), 1);
 }
+
+/// Two stages that each wrap a regulator behind their own rails, on one input rail: the guide's
+/// `Stage` twice. Each stage's rail is joined to its regulator's, and the supply's current is
+/// the sum of what the two stages' loads draw.
+const TWO_STAGES: &str = r#"import std::parts::connector::Header1x2
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+
+module Stage {
+    .vin: Rail
+    .vout: Rail
+    .regulator: LinearRegulator
+    .vin ~ .regulator.vin
+    .regulator.vout ~ .vout
+}
+
+board TwoStages {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .a: Stage { .vout.voltage &= 3.3V +/- 5% }
+    .b: Stage { .vout.voltage &= 3.3V +/- 5% }
+    .out_a: Rail {
+        .pos.net &= "A3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..20mA
+    }
+    .out_b: Rail {
+        .pos.net &= "B3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..30mA
+    }
+    .input ~ .a.vin
+    .input ~ .b.vin
+    .a.vout ~ .out_a
+    .b.vout ~ .out_b
+    .in_header: Header1x2
+    .input.pos ~ .in_header.p1
+    .input.neg ~ .in_header.p2
+}
+"#;
+
+#[test]
+fn two_stages_that_wrap_a_regulator_each_add_up_on_the_input_rail() {
+    // A module's rail is the current of the part it is joined to (ADR 0077): nothing waits on a circle.
+    let b = &built(TWO_STAGES)[0];
+    assert!(
+        !b.notes.iter().any(|n| n.contains("depend on each other")),
+        "{:#?}",
+        b.notes
+    );
+}

@@ -3365,7 +3365,7 @@ Rules.
 
 - An interface may hold pins, quantities and other interfaces. It may hold no parts.
 - An interface with no pins is a bundle of quantities. A manufacturing process is one.
-- `a ~ b` joins the pins that have the same name and makes equal the values that have the same name. It does not equate `current` fields (see Load current).
+- `a ~ b` joins the pins that have the same name and makes equal the values that have the same name. It does not equate `current` fields, except for a module's own rail and the rail of a part inside it (see Load current).
 - Joining two different interfaces is an error (shown in Connections).
 
 ## Generics and providers
@@ -4762,7 +4762,7 @@ The checker records one balance for each net and scope: the currents of the rail
 
 Rules.
 
-- `~` between rails equates every field except `current`. A rail can feed several loads, so equal currents would be wrong.
+- `~` between rails equates every field except `current`. A rail can feed several loads, so equal currents would be wrong. The one exception is a module's own rail joined to the rail of a part inside it: there the two are one current (below, ADR 0077).
 - A module's own rail is a port. From inside, it supplies what is inside, so it counts with its sign flipped.
 - `LinearRegulator` states that its input draws what its output supplies, that the output current is at most `.max_current`, and that `(vin - vout) * current` is at most `.max_power`.
 - The first part of a `~>` chain that starts on a rail's net adds its through-current to that net's sum (ADR 0014). The solver sets the current of a rail from the rest of the net; a part's current is set from a net only when the net has two terms (a fuse in series with a load), and is otherwise verified, never solved by subtraction (ADR 0026). If its own relations do not determine it, the relations that use it are `not evaluated`. A balance is set or verified only when it is complete (ADR 0027): every part pin on the net is a term or belongs to a part that draws nothing at DC (one that states no `current`, has no rail and has only `passive` pins: a capacitor, a header, a test point). An `input` or `no_connect` pin of a part that has a `Rail` also draws nothing (its leakage is ignored; the rail is the part's supply). A pin that is none of these, such as an inductor joined with `~`, an IC's output or bidirectional pin, or an input of a part with no rail, leaves the balance incomplete, and the build lists those pins in a note.
@@ -4926,6 +4926,78 @@ Every `current` has one sign convention (ADR 0007), and the rest of this guide u
 - A rail of a module is a port, and from inside the module it counts with its sign flipped (see _Load current_ above).
 
 Which statement starts a circle that runs through the currents of a net depends on this sign: see _A circle through the currents of a net_.
+
+### A wrapper module's rail
+
+A module that wraps a part (an INA228 with its bypass capacitor, a flash with its decoupling) has a rail of its own and joins it to the rail of the part inside with `~`. The two are one current (ADR 0077): the module's rail draws what the part draws, so a supply current the part states (`.vs.current &= 0A..1.1mA`, the part's claim) is the current of the module's rail, and a sheet that has several such modules on one rail adds them up. The module writes nothing for it; it does not state `.vs.current == .sensor.vs.current`.
+
+```nsm evaluate
+import std::logic::Logic
+import std::parts::passive::Capacitor
+import std::sources::Rail
+
+/// An invented current monitor: its supply and an alert line that names the supply as its
+/// reference.
+part Sensor {
+    .designator &= "U"
+    .vs: Rail
+    .alert: Logic
+    .alert.reference ~ .vs
+    .vs.current &= 0A..1.1mA
+}
+
+/// An invented flash.
+part Flash {
+    .designator &= "U"
+    .vcc: Rail
+    .vcc.current &= 0A..10mA
+}
+
+module Monitor {
+    .vdd: Rail
+    .sensor: Sensor
+    .bypass: Capacitor
+    .vdd ~ .sensor.vs
+    .vdd.pos ~> .bypass ~> .vdd.neg
+}
+
+module Storage {
+    .vcc: Rail
+    .flash: Flash
+    .vcc ~ .flash.vcc
+}
+
+module Sheet {
+    .vdd: Rail
+    .monitor: Monitor
+    .storage: Storage
+    .vdd ~ .monitor.vdd
+    .vdd ~ .storage.vcc
+    .vdd.current == .monitor.vdd.current + .storage.vcc.current
+}
+
+board Wrapped {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 3%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .sheet: Sheet
+    .supply ~ .sheet.vdd
+}
+```
+
+The monitor's rail takes 0 to 1.1 mA and the flash's 0 to 10 mA, the sheet's 0 to 11.1 mA, and the supply's current is -11.1 mA to 0 A. Before ADR 0077 the sheet's equation was not evaluated and the build said, for this board:
+
+```text
+these values depend on each other and none has a value, so the checks that use them are not evaluated: `sheet.monitor.sensor.alert.reference.current`, `sheet.monitor.vdd.current`, `sheet.vdd.current`, `supply.current`; state a range on one of them with `&=` to start the solver, or state the range the part works in (`>=` and `<=` on the voltage) so that the solver can start it
+```
+
+The alert line's reference rail is on the monitor's net and no one says what it draws, so the monitor's balance had two unknown currents, and the rail of the module had no value. The reference rail of a logic line or of a bus's levels carries nothing (ADR 0066), so it is not a term of the wrapper's net.
+
+The rule is narrow, and applies to a `~` written inside a module that joins one of the module's own rails to a rail that is a member of a part inside that module (a part, not another module). Of the rails on the module's net inside it, only the two may draw: a rail that is also joined to another part, a chain that starts on the net (a pull-up from `.vdd.pos`), another rail of the module that others draw from, or a second part's rail on the net, is a share of the module's current that the part's does not have, and the module's rail stays what the balance of the net says. A board's rails, two sibling parts, a module's port joined to the port of an inner module and every `~` outside a module keep their meaning: `~` does not equate currents.
+
+A budget stated at the module's rail (`.monitor.vdd.current &= 0A..500uA` in the sheet) is judged as before against what the part says it may draw, and is refused when the part may draw more (ADR 0038): the two rails are one current and the part's range is not narrowed to fit the budget (ADR 0066).
 
 ## Capacitors: marked value, effective capacitance and bias
 
