@@ -1,8 +1,9 @@
 //! A synthetic board for the tests of cancellation (ADR 0062): `stages` regulated rails, each
 //! with a regulator and two capacitors, an indicator and a bank of resistors, all in one file.
 //! The solver's search over their catalogs is what takes the time, as it does on a real board:
-//! about a second for six stages in a debug build, and more than a quarter of a minute for
-//! twenty-four. The other crates' tests take this file with `#[path]`.
+//! about a second for thirty-two stages in a dev build (the solver crates are optimised in the
+//! dev profile), six seconds for ninety-six and half a minute, with several gigabytes of memory,
+//! for two hundred. The other crates' tests take this file with `#[path]`.
 #![allow(dead_code)]
 
 /// The source of the board, with `stages` rails.
