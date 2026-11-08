@@ -207,11 +207,15 @@ impl Ranges<'_> {
         (lo <= hi).then_some((lo, hi))
     }
 
-    /// What a `Logic` line can drive: from its ground to the top of its reference rail.
+    /// What a `Logic` line can drive: the swing it states (ADR 0081), or from its ground to the
+    /// top of its reference rail.
     fn logic_swing(&self, logic: InstId, ground: usize) -> Option<(f64, f64)> {
         let g = self.read.ground_pin(logic)?;
         if self.net_of.get(&g) != Some(&ground) {
             return None;
+        }
+        if let Some((_, q)) = self.read.value(logic, "swing") {
+            return Some((q.lo(), q.hi()));
         }
         let Some(Member::Inst(reference)) = self.model.member(logic, "reference") else {
             return None;

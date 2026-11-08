@@ -148,6 +148,7 @@ fn logic_is_an_interface_that_carries_its_reference_rail() {
         [
             (".line".to_string(), "Pin".to_string()),
             (".reference".to_string(), "Rail".to_string()),
+            (".swing".to_string(), "Voltage".to_string()),
             (".vih".to_string(), "Voltage".to_string()),
             (".vil".to_string(), "Voltage".to_string()),
             (".voh".to_string(), "Voltage".to_string()),
