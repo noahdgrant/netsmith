@@ -13,8 +13,8 @@
 //! - ` ```nsm solve warns ` must build, and the next ` ```text ` block is the guideline
 //!   warnings (ADR 0036), one per line, as the command line prints them after `warning: `.
 //! - ` ```nsm solve notes ` must build, and the next ` ```text ` block is the notes that name a
-//!   net whose tracks were not sized from its current (ADR 0036), one per line, as the
-//!   command line prints them after `note: `.
+//!   net with a current that is not known, whose tracks are a lower bound (ADR 0036), one per
+//!   line, as the command line prints them after `note: `.
 //! - ` ```nsm solve stock ` must build, and the next ` ```text ` block is the notes about a
 //!   picked part that a file says is out of stock (issue #176), one per line, as the command
 //!   line prints them after `note: `.
@@ -427,7 +427,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
                 let notes: String = built
                     .iter()
                     .flat_map(|x| x.notes.iter())
-                    .filter(|n| n.contains("are not sized from their current"))
+                    .filter(|n| n.contains("a lower bound"))
                     .cloned()
                     .collect::<Vec<_>>()
                     .join("\n");

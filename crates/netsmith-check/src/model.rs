@@ -440,6 +440,18 @@ pub struct Field {
     pub domain: Domain,
     /// The statements that narrowed it, in source order.
     pub narrowed_at: Vec<(SourceId, Span)>,
+    /// Where `optional` marks the declaration (ADR 0074): the relations that read the member
+    /// are skipped when nothing states it.
+    pub optional: Option<OptionalMark>,
+}
+
+/// The place of an `optional` marker, and the definition whose text declared the member (for
+/// a generic's member that is the generic, not the provider whose instance holds it).
+#[derive(Clone, Copy, Debug)]
+pub struct OptionalMark {
+    pub source: SourceId,
+    pub span: Span,
+    pub declared_in: Option<(usize, usize)>,
 }
 
 /// A resolved expression over fields.
@@ -1337,6 +1349,7 @@ impl Model {
             kind,
             domain: Domain::Unset,
             narrowed_at: Vec::new(),
+            optional: None,
         });
         FieldId(self.fields.len() - 1)
     }

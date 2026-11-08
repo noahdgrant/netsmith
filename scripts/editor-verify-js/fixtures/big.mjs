@@ -1,6 +1,6 @@
 // A synthetic big board for the editor recipes: 8 regulated rails, each with a regulator stage,
-// an indicator and a bank of pull-up resistors, in three module files under src/sheets/, and
-// one connector: 89 parts. It is made by a script so the repo holds no large fixture.
+// an indicator and a bank of pull-up resistors with a header on it, in three module files under
+// src/sheets/, and one connector. It is made by a script so the repo holds no large fixture.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -56,10 +56,14 @@ module Indicator {
 
 const PULLS = `//! A bank of resistors across a rail.
 
+import std::parts::connector::Header1x2
 import std::parts::passive::{Resistor, Capacitor}
 import std::sources::Rail
 
-/// Four resistors in two strings and a capacitor across a rail.
+/// Four resistors in two strings and a capacitor across a rail, with a header on the middle of
+/// the first string. The Ohm bound (ADR 0026) does not bound a resistor whose far end is a
+/// connector's pin, where something outside the design may set the voltage, so the currents of
+/// the first string stay unknown and the board keeps its notes (the problems recipe counts them).
 module PullBank {
     .power: Rail
     .power.current &= 0mA..2mA
@@ -69,8 +73,11 @@ module PullBank {
     .c: Resistor { .resistance &= 4.7kohm +/- 1% }
     .d: Resistor { .resistance &= 4.7kohm +/- 1% }
     .filter: Capacitor { .capacitance &= 100nF +/- 20% }
+    .probe: Header1x2
 
     .power.pos ~> .a ~> .b ~> .power.neg
+    .a.b ~ .probe.p1
+    .probe.p2 ~ .power.neg
     .power.pos ~> .c ~> .d ~> .power.neg
     .power.pos ~> .filter ~> .power.neg
 }

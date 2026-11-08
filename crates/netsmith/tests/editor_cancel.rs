@@ -264,9 +264,10 @@ fn an_analysis_in_a_state_nobody_asked_to_cancel_is_not_stopped_by_another_cance
     assert!(!probe.heard().contains(&"cancelled".to_string()));
 }
 
-/// The sizes the latency test uses: a debug build solves them for the better part of a
-/// quarter of a minute, so the cancel is certain to arrive in the middle of the search.
-const STAGES: usize = 16;
+/// The size the latency test uses: a dev build solves it in a few seconds, so the cancel is
+/// certain to arrive in the middle of the search. (With the solver crates optimised in the dev
+/// profile, 16 stages solve in well under half a second, too fast to be cancelled.)
+const STAGES: usize = 64;
 
 #[test]
 fn a_cancel_during_a_long_solve_is_heard_within_a_fraction_of_a_second() {

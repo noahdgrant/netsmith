@@ -31,14 +31,20 @@ pub struct NotEvaluated {
     pub message: String,
 }
 
-/// The faults found and the checks that could not be made.
-pub(crate) fn check(model: &Model) -> (Vec<Diagnostic>, Vec<NotEvaluated>) {
-    let mut run = Run {
+/// The readers of the logic interfaces and resistors of a model, for the passes that need
+/// them and make no check of their own.
+pub(crate) fn reader(model: &Model) -> Run<'_> {
+    Run {
         model,
         faults: Vec::new(),
         notes: Vec::new(),
         seen: BTreeSet::new(),
-    };
+    }
+}
+
+/// The faults found and the checks that could not be made.
+pub(crate) fn check(model: &Model) -> (Vec<Diagnostic>, Vec<NotEvaluated>) {
+    let mut run = reader(model);
     for index in 0..model.nets().len() {
         netsmith_core::job::checkpoint();
         run.levels(index);
@@ -55,7 +61,7 @@ struct Line {
     kind: PinKind,
 }
 
-struct Run<'a> {
+pub(crate) struct Run<'a> {
     model: &'a Model,
     faults: Vec<Diagnostic>,
     notes: Vec<NotEvaluated>,
@@ -98,7 +104,7 @@ impl Run<'_> {
     /// The interface that holds the levels of a pin: the `Logic` the pin is the line of, or the
     /// `Levels` of the bus interface it is a pin of (ADR 0064). Both have the reference rail
     /// and the four voltages, and everything below reads them from whichever it gets.
-    fn logic_of(&self, pin: InstId) -> Option<InstId> {
+    pub(crate) fn logic_of(&self, pin: InstId) -> Option<InstId> {
         let inst = self.model.instance(pin);
         let parent = inst.parent?;
         if self.model.instance(parent).kind != InstKind::Interface {
@@ -114,7 +120,7 @@ impl Run<'_> {
     }
 
     /// The value of a quantity field of an instance, if it has one.
-    fn value(&self, inst: InstId, name: &str) -> Option<(FieldId, Quantity)> {
+    pub(crate) fn value(&self, inst: InstId, name: &str) -> Option<(FieldId, Quantity)> {
         match self.model.member(inst, name)? {
             Member::Field(f) => match self.model.field(f).domain {
                 Domain::Quantity(q) => Some((f, q)),
@@ -132,7 +138,7 @@ impl Run<'_> {
     }
 
     /// The `neg` pin of a `Logic`'s reference rail: its ground.
-    fn ground_pin(&self, logic: InstId) -> Option<InstId> {
+    pub(crate) fn ground_pin(&self, logic: InstId) -> Option<InstId> {
         let Some(Member::Inst(reference)) = self.model.member(logic, "reference") else {
             return None;
         };
@@ -142,7 +148,7 @@ impl Run<'_> {
         }
     }
 
-    fn net_index(&self, pin: InstId) -> Option<usize> {
+    pub(crate) fn net_index(&self, pin: InstId) -> Option<usize> {
         self.model.nets().iter().position(|n| n.pins.contains(&pin))
     }
 
@@ -240,8 +246,32 @@ impl Run<'_> {
             return;
         }
         // A high must be read as a high: the output's lowest high against the input's
-        // highest threshold.
-        match (self.value(d.logic, "voh"), self.value(r.logic, "vih")) {
+        // highest threshold. An output that states a low and no high is open-drain: its high
+        // is the one its pull-up gives the line (ADR 0075).
+        let voh = self.value(d.logic, "voh");
+        if voh.is_none() && self.value(d.logic, "vol").is_some() {
+            match self.pullups(net, dg) {
+                Ok(pulls) if !pulls.is_empty() => {
+                    self.high_from_pullups(net, d, r, &pulls);
+                    self.low(net, d, r);
+                    return;
+                }
+                Ok(_) => {}
+                Err(why) => {
+                    self.note(
+                        d.part,
+                        vec![d.logic, r.logic],
+                        format!(
+                            "not evaluated: the high level from `{dl}` to `{rl}` on net `{}`: `{dl}.voh` has no value and the pull-up that would set it cannot be read: {why}",
+                            net.name
+                        ),
+                    );
+                    self.low(net, d, r);
+                    return;
+                }
+            }
+        }
+        match (voh, self.value(r.logic, "vih")) {
             (Some((fo, voh)), Some((fi, vih))) => {
                 if voh.lo() < vih.hi() {
                     self.fault(
@@ -265,6 +295,61 @@ impl Run<'_> {
                 [(&dl, "voh", o.is_none()), (&rl, "vih", i.is_none())],
             ),
         }
+        self.low(net, d, r);
+    }
+
+    /// The high of an open-drain line is what its pull-up resistors hold it at: it must be
+    /// read as a high by the receiver, in the worst case of the rail's range.
+    fn high_from_pullups(&mut self, net: &Net, d: &Line, r: &Line, pulls: &[PullUp]) {
+        let model = self.model;
+        let Some((fi, vih)) = self.value(r.logic, "vih") else {
+            let rl = model.path_of(r.logic);
+            self.missing(
+                net,
+                d,
+                r,
+                "high",
+                [(&model.path_of(d.logic), "voh", false), (&rl, "vih", true)],
+            );
+            return;
+        };
+        // The lowest of the rails that pull the line up is its lowest high.
+        let Some(low) = pulls.iter().min_by(|a, b| a.lo.total_cmp(&b.lo)) else {
+            return;
+        };
+        let (lo, hi) = pulls
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
+                (lo.min(p.lo), hi.max(p.hi))
+            });
+        if lo < vih.hi() {
+            let point = |v| Quantity::point(Dimension::VOLTAGE, v);
+            let high = match (point(lo), point(hi)) {
+                (Ok(a), Ok(b)) => {
+                    Quantity::range(&a, &b).map_or_else(|_| volts(lo), |q| q.to_string())
+                }
+                _ => volts(lo),
+            };
+            self.fault(
+                r.part,
+                format!(
+                    "net `{}`: the pull-up `{}` to rail `{}` holds the line at {high} (a driver that states `vol` and no `voh` leaves the high to the pull-up) but `{}` needs {vih}: a high of {} is not always read as a high, which takes {}",
+                    net.name,
+                    low.resistor,
+                    low.rail,
+                    model.path_of_field(fi),
+                    volts(lo),
+                    volts(vih.hi()),
+                ),
+            );
+        }
+    }
+
+    /// A low must be read as a low: the output's highest low against the input's lowest
+    /// threshold.
+    fn low(&mut self, net: &Net, d: &Line, r: &Line) {
+        let model = self.model;
+        let (dl, rl) = (model.path_of(d.logic), model.path_of(r.logic));
         // A low must be read as a low.
         match (self.value(d.logic, "vol"), self.value(r.logic, "vil")) {
             (Some((fo, vol)), Some((fi, vil))) => {
@@ -415,7 +500,7 @@ impl Run<'_> {
 
     /// The terminal at the other end of a resistor, if `pin` is one end of a part that is
     /// one: it has a `bridge` and a `resistance`.
-    fn resistor_far_end(&self, pin: InstId) -> Option<InstId> {
+    pub(crate) fn resistor_far_end(&self, pin: InstId) -> Option<InstId> {
         let model = self.model;
         let part = model.owner_of(pin)?;
         let (a, b) = model.instance(part).bridge?;
@@ -430,6 +515,64 @@ impl Run<'_> {
             p if p == b => Some(a),
             _ => None,
         }
+    }
+
+    /// The resistors that pull a net up to a rail: each resistor from the net to a net that
+    /// has the positive pin of a rail (one step, as `net_range` reads a pull). Empty when there
+    /// is none, and also when the net has a resistor to its ground as well, which makes it a
+    /// divider whose voltage is not the rail's. The reason a rail cannot be read otherwise.
+    fn pullups(&self, net: &Net, ground: InstId) -> Result<Vec<PullUp>, String> {
+        let model = self.model;
+        let mut found: Vec<PullUp> = Vec::new();
+        for &t in &net.terminals {
+            let Some(far) = self.resistor_far_end(t) else {
+                continue;
+            };
+            let Some(far_net) = self.net_index(far) else {
+                continue;
+            };
+            if self.net_index(ground) == Some(far_net) {
+                return Ok(Vec::new());
+            }
+            let Some(part) = model.owner_of(t) else {
+                continue;
+            };
+            let resistor = model.path_of(part);
+            for &pin in &model.nets()[far_net].pins {
+                let Some(parent) = model.instance(pin).parent else {
+                    continue;
+                };
+                let Some((voltage, pos, neg)) = model.rail_of(parent) else {
+                    continue;
+                };
+                if pin != pos {
+                    continue;
+                }
+                let rail = model.path_of(parent);
+                if !self.same_ground(neg, ground) {
+                    return Err(format!(
+                        "a resistor joins it to rail `{rail}`, whose ground `{}` is on net `{}`, not `{}`",
+                        model.path_of(neg),
+                        self.name_of_net(neg),
+                        self.name_of_net(ground)
+                    ));
+                }
+                let Domain::Quantity(q) = model.field(voltage).domain else {
+                    return Err(format!(
+                        "a resistor joins it to rail `{rail}`, which has no voltage"
+                    ));
+                };
+                found.push(PullUp {
+                    resistor: resistor.clone(),
+                    rail,
+                    lo: q.lo(),
+                    hi: q.hi(),
+                });
+                // The rails on one net have one voltage: the first names it.
+                break;
+            }
+        }
+        Ok(found)
     }
 
     /// What the net at the far end of a resistor sets: ground, or a rail that has the same
@@ -572,6 +715,15 @@ impl Run<'_> {
         }
         Ok(swing)
     }
+}
+
+/// A resistor that holds a net at a rail: the rail and the range of its voltage.
+struct PullUp {
+    /// The path of the resistor.
+    resistor: String,
+    rail: String,
+    lo: f64,
+    hi: f64,
 }
 
 /// The range a net can take, with what sets each end.

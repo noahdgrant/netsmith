@@ -459,8 +459,9 @@ fn a_stated_min_track_is_an_override_and_is_still_checked() {
 }
 
 #[test]
-fn a_net_whose_current_is_not_known_is_not_sized_and_is_named() {
-    // Two rails that draw an unstated current on one net: the solver can work out neither.
+fn a_net_with_no_current_known_stays_at_the_process_least_and_is_named() {
+    // Two rails that draw an unstated current on one net: the solver can work out neither,
+    // and nothing on the net is known to size it from.
     let src = fuse_diode("", "", "");
     let l = lowered_of(&src);
     assert!(
@@ -471,8 +472,9 @@ fn a_net_whose_current_is_not_known_is_not_sized_and_is_named() {
     let said = |net: &str, who: &str| {
         l.notes.iter().any(|n| {
             n.starts_with(&format!("the current of {who} is not known"))
-                && n.contains(&format!("so the tracks of net `{net}` are not sized"))
-                && n.contains("the process's least, 0.1 mm")
+                && n.contains(&format!(
+                    "so the tracks of net `{net}` are the process's least, 0.1 mm, a lower bound: no current on the net is known"
+                ))
         })
     };
     assert!(
@@ -630,6 +632,12 @@ board Three {
 
 /// The buck converter of the guide, with the IC's efficiency relation unless `no_efficiency`.
 fn converter(no_efficiency: bool) -> String {
+    converter_of(no_efficiency, "1A", "")
+}
+
+/// The same with a load of up to `load` on the output and `extra` more statements on the
+/// output rail.
+fn converter_of(no_efficiency: bool, load: &str, extra: &str) -> String {
     let relation = ".vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)\n";
     let ic = format!(
         "import std::parts::regulator::{{Buck, BuckStage}}
@@ -676,8 +684,8 @@ board Converter {{
     .output: Rail {{
         .pos.net &= \"1V8\"
         .neg.net &= \"GND\"
-        .current &= 0mA..1A
-    }}
+        .current &= 0mA..{load}
+{extra}    }}
     .u: Zbk2
     .stage: BuckStage {{ .vout.voltage &= 1.8V +/- 3% }}
     .input ~ .stage.vin
@@ -717,25 +725,121 @@ fn a_switching_regulator_draws_its_input_from_the_power_balance_not_the_output_c
     assert!(l.notes.is_empty(), "{:?}", l.notes);
 }
 
+/// The width in mm that `amps` needs in 1 oz copper at 10 K, rounded up to 0.01 mm.
+fn width_for(amps: f64) -> f64 {
+    (ipc2221_width(amps, 0.035, 10.0, Layer::External) * 100.0 - 1e-9).ceil() / 100.0
+}
+
+/// The note about net `net`, if there is one.
+fn note_of<'a>(l: &'a netsmith_lower::Lowered, net: &str) -> Option<&'a String> {
+    l.notes
+        .iter()
+        .find(|n| n.contains(&format!("so the tracks of net `{net}` are")))
+}
+
 #[test]
-fn a_regulator_whose_input_current_is_not_modelled_leaves_its_nets_unsized_and_named() {
+fn a_known_current_beside_an_unknown_one_sizes_the_net_for_the_known_part() {
     // The IC states no efficiency relation, so nothing says what it draws at its input and the
     // solver has two unknowns on the input net. Nothing is guessed from the output current.
-    let l = lowered_of(&converter(true));
-    assert_eq!(width_of(&l, "VIN"), None);
-    assert_eq!(width_of(&l, "GND"), None);
-    let named = |net: &str| {
-        l.notes
-            .iter()
-            .find(|n| n.contains(&format!("so the tracks of net `{net}` are not sized")))
-    };
-    let vin = named("VIN").unwrap_or_else(|| panic!("{:?}", l.notes));
+    // The ground returns the load's 1.2 A, which is known, plus the input's current, which is
+    // not: the known part is a lower bound and is what the ground is drawn for.
+    let l = lowered_of(&converter_of(true, "1.2A", ""));
+    let known = width_for(1.2);
+    assert_eq!(known, 0.39, "1.2 A needs 0.3857 mm: 0.39 rounded up");
+    assert_eq!(width_of(&l, "GND"), Some(known));
+    let gnd = note_of(&l, "GND").unwrap_or_else(|| panic!("{:?}", l.notes));
     assert!(
-        vin.contains("rail `u.vin`") && vin.contains("is not known"),
+        gnd.starts_with("the current of rail `input`, rail `u.vin` is not known")
+            && gnd.contains(
+                "so the tracks of net `GND` are 0.39 mm, a lower bound: sized for the 1.2 A that is known, not for the whole current"
+            ),
+        "{gnd}"
+    );
+    // The input net has no known current at all: the process's least, and the note says so.
+    assert_eq!(width_of(&l, "VIN"), None);
+    let vin = note_of(&l, "VIN").unwrap_or_else(|| panic!("{:?}", l.notes));
+    assert!(
+        vin.contains("rail `u.vin`")
+            && vin.contains("is not known")
+            && vin.contains(
+                "are the process's least, 0.1 mm, a lower bound: no current on the net is known"
+            ),
         "{vin}"
     );
-    assert!(named("GND").is_some(), "{:?}", l.notes);
     // The output net does not depend on it.
-    assert_eq!(width_of(&l, "1V8"), Some(0.31));
-    assert!(named("1V8").is_none(), "{:?}", l.notes);
+    assert_eq!(width_of(&l, "1V8"), Some(known));
+    assert!(note_of(&l, "1V8").is_none(), "{:?}", l.notes);
+    // Drawn for what is known, so a width the tool chose is never a finding.
+    assert!(l.guidelines.is_empty(), "{:?}", l.guidelines);
+}
+
+#[test]
+fn a_net_whose_known_current_needs_less_than_the_least_track_keeps_the_least() {
+    // 5 mA is known beside an unknown current: the least track carries it, so the net is at
+    // the process's least, and the note says what the least track carries.
+    let l = lowered_of(&converter_of(true, "5mA", ""));
+    assert_eq!(width_of(&l, "GND"), None);
+    let gnd = note_of(&l, "GND").unwrap_or_else(|| panic!("{:?}", l.notes));
+    assert!(
+        gnd.contains(
+            "are the process's least, 0.1 mm, a lower bound: it carries the 5.01 mA that is known, not the whole current"
+        ),
+        "{gnd}"
+    );
+    assert!(l.guidelines.is_empty(), "{:?}", l.guidelines);
+}
+
+#[test]
+fn a_net_whose_every_current_is_known_is_sized_as_before_and_has_no_note() {
+    let l = lowered_of(&converter_of(false, "1.2A", ""));
+    let into = 1.2 * 1.854 / (4.75 * 0.85);
+    assert_eq!(width_of(&l, "1V8"), Some(0.39));
+    assert_eq!(width_of(&l, "VIN"), Some(width_for(into)));
+    assert_eq!(width_of(&l, "GND"), Some(width_for(1.2 + into)));
+    assert!(l.notes.is_empty(), "{:?}", l.notes);
+    assert!(l.guidelines.is_empty(), "{:?}", l.guidelines);
+}
+
+#[test]
+fn a_stated_min_track_wider_than_the_known_current_needs_is_respected() {
+    let l = lowered_of(&converter_of(
+        true,
+        "1.2A",
+        "        .min_track &= 0.9mm..1m\n",
+    ));
+    // The rail decided the width of its nets: neither raised nor lowered, no finding, and no
+    // note on a net whose width the board stated.
+    assert_eq!(width_of(&l, "GND"), Some(0.9));
+    assert_eq!(width_of(&l, "1V8"), Some(0.9));
+    assert!(l.guidelines.is_empty(), "{:?}", l.guidelines);
+    assert!(note_of(&l, "GND").is_none(), "{:?}", l.notes);
+}
+
+#[test]
+fn a_stated_min_track_narrower_than_the_known_current_needs_is_still_a_finding() {
+    let l = lowered_of(&converter_of(
+        true,
+        "1.2A",
+        "        .min_track &= 0.2mm..1m\n",
+    ));
+    assert_eq!(width_of(&l, "GND"), Some(0.2));
+    let found = about(&l.guidelines, "GND");
+    assert_eq!(found.len(), 1, "{:?}", l.guidelines);
+    // The current is the known part, and the message says there may be more.
+    assert!(
+        found[0].starts_with("net `GND` carries at least 1.2 A (")
+            && found[0].contains(
+                "the current of rail `input`, rail `u.vin` is not known, so it may be more"
+            )
+            && found[0].contains("tracks are 0.2 mm wide (a rail's `.min_track`)")
+            && found[0].contains("IPC-2221 needs 0.39 mm"),
+        "{}",
+        found[0]
+    );
+    // The net whose currents are all known keeps the words it had.
+    let out = about(&l.guidelines, "1V8");
+    assert!(
+        out.len() == 1 && out[0].starts_with("net `1V8` carries up to 1.2 A ("),
+        "{out:?}"
+    );
 }

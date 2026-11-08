@@ -160,6 +160,67 @@ fn a_circle_that_also_waits_on_an_unstated_value_says_which() {
     );
 }
 
+#[test]
+fn a_circle_that_waits_on_a_value_that_waits_on_an_unstated_one_names_the_unstated_one() {
+    // The load draws `.extra`, which is worked out from `.other`, which nothing states: the
+    // circle reads a value that something sets, and it is that something that waits.
+    let src = rated("\n    .extra: Current\n    .other: Current\n    .extra == .other * 2")
+        .replace("0.5W / .load.voltage", "0.5W / .load.voltage + .extra");
+    let boards = build(&src, &Catalogs::jlcpcb()).unwrap();
+    let warnings = boards[0].guideline_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(
+        warnings[0].contains("a range on them alone would not start them, because they also read `other`, which nothing states: state it first"),
+        "{}",
+        warnings[0]
+    );
+    assert!(!warnings[0].contains("read ,"), "{}", warnings[0]);
+}
+
+#[test]
+fn a_long_list_of_waited_on_values_is_cut_like_the_circle_s() {
+    // Twelve unstated currents, summed into the load's draw.
+    let mut extra = String::from("\n    .total: Current\n");
+    let mut sum = Vec::new();
+    for n in 0..12 {
+        extra.push_str(&format!("    .i{n:02}: Current\n"));
+        sum.push(format!(".i{n:02}"));
+    }
+    extra.push_str(&format!("    .total == {}", sum.join(" + ")));
+    let src = rated(&extra).replace("0.5W / .load.voltage", "0.5W / .load.voltage + .total");
+    let boards = build(&src, &Catalogs::jlcpcb()).unwrap();
+    let warnings = boards[0].guideline_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(
+        warnings[0].contains("because they also read `i00`, `i01`, `i02`, `i03`, `i04`, `i05`, `i06`, `i07`, `i08`, `i09` and 2 more, which nothing states: state them first"),
+        "{}",
+        warnings[0]
+    );
+}
+
+#[test]
+fn a_circle_that_waits_on_another_circle_names_the_value_it_reads_from_it() {
+    // `.extra` is part of a circle of its own (`.extra` and `.back` set each other), and the
+    // load reads it: nothing in either can be set first, so the value it reads is named.
+    let src = rated(
+        "\n    .extra: Current\n    .back: Current\n    .extra == .back * 2\n    .back == .extra / 2",
+    )
+    .replace("0.5W / .load.voltage", "0.5W / .load.voltage + .extra");
+    let boards = build(&src, &Catalogs::jlcpcb()).unwrap();
+    let warnings = boards[0].guideline_warnings();
+    assert!(!warnings.is_empty(), "{warnings:?}");
+    for w in &warnings {
+        assert!(!w.contains("read ,"), "{w}");
+    }
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w
+                .contains("because they also read `extra`, which nothing states: state it first")),
+        "{warnings:?}"
+    );
+}
+
 // ---- a circle through the currents of a net (issue #18) ---------------------------------------
 
 /// A divider (two resistors, a limit on its draw) behind a resistor in series, on a supply of

@@ -77,8 +77,14 @@ pub(crate) fn value_columns(catalog: &str) -> Vec<&'static str> {
 /// design needs (a package, a resistance, a rating), so the row is never offered, and any
 /// other column the part lists must be in the file.
 pub(crate) fn is_optional(catalog: &str, column: &str) -> bool {
-    Standard::of_catalog(catalog).is_some_and(|s| s.is_optional(column))
+    OPTIONAL_OF_KINDS.contains(&(catalog, column))
+        || Standard::of_catalog(catalog).is_some_and(|s| s.is_optional(column))
 }
+
+/// The optional columns of standard catalogs that have no synthesized parts, so that
+/// [`Standard`] does not describe them: a TVS diode's minimum breakdown voltage (ADR 0073).
+/// The standard rows leave each empty.
+const OPTIONAL_OF_KINDS: &[(&str, &str)] = &[("tvs", "breakdown_voltage")];
 
 /// The fields of one CSV record and the 1-based line it starts on.
 pub type Record = (usize, Vec<String>);

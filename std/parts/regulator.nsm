@@ -121,12 +121,14 @@ interface Buck {
     /// one number; the IC states the smallest).
     .min_inductance: Inductance
     /// The least saturation current an inductor may have, when the datasheet gives one (for
-    /// example, a figure above the IC's high-side current limit). An IC that leaves it open
-    /// does not check the inductor's saturation beyond the load and half the ripple.
-    .min_inductor_saturation: Current
-    /// The largest DC resistance an inductor may have, when the datasheet gives one. An IC
-    /// that leaves it open sets no limit.
-    .max_inductor_dcr: Resistance
+    /// example, a figure above the IC's high-side current limit). Optional (ADR 0074): an IC
+    /// that states nothing here has no such check, and `BuckStage` does not check the
+    /// inductor's saturation against it, beyond the load and half the ripple.
+    .min_inductor_saturation: Current optional
+    /// The largest DC resistance an inductor may have, when the datasheet gives one.
+    /// Optional (ADR 0074): an IC that states nothing here sets no limit, and `BuckStage`
+    /// checks nothing against it.
+    .max_inductor_dcr: Resistance optional
     /// The capacitance the datasheet asks for on the input and the output, as effective
     /// capacitance in use (ADR 0013).
     .min_input_capacitance: Capacitance
@@ -153,11 +155,12 @@ interface Buck {
 ///   `current <= saturation_current` is the weaker check of the average;
 /// - the inductor is at least the IC's minimum, has at least the saturation current and at
 ///   most the DC resistance that the IC states (`.min_inductor_saturation`,
-///   `.max_inductor_dcr`; each is checked only when the IC states it), and each capacitor has at least the effective
-///   capacitance the IC asks for at the voltage across it and is rated for the peak of its
-///   rail (`.peak`, unset when nothing states it, and then that check is not evaluated) and
-///   for the rail's steady voltage, so a peak stated too low cannot let a capacitor through
-///   that the steady voltage would not.
+///   `.max_inductor_dcr`; both are `optional` members of `Buck` (ADR 0074), so each is
+///   checked when the IC states it and skipped, with no note, when it does not), and each
+///   capacitor has at least the effective capacitance the IC asks for at the voltage across
+///   it and is rated for the peak of its rail (`.peak`, unset when nothing states it, and
+///   then that check is not evaluated) and for the rail's steady voltage, so a peak stated
+///   too low cannot let a capacitor through that the steady voltage would not.
 ///
 /// The divider's current and the quiescent current of the IC are not added to the load, so
 /// the inductor carries the load: `.inductor.current == -.vout.current`. A design that adds

@@ -1,0 +1,14 @@
+# Island: two series resistors into processor inputs: a 10 kohm after a buffer (ADC input) and a
+# 100 ohm in a microphone's data line (PDM input). From a real 12 V automotive board: R3 (10k
+# +/-1 %, row C25804), R16 (100 ohm +/-1 %, row C25076) and the nets from the export of
+# `netsmith build`. ASSUMPTIONS: the buffer's output is 0 V..3.333 V; the microphone's output stage
+# 0..200 ohm; each input is a pin that does not drive (leakage 1 uA).
+# report: i(r3) p(r3) v(ADC) i(r16) p(r16) v(PDM)
+# today: `current of part series_resistor is not known` and the same for pdm_data_series (4 relations not evaluated)
+V  rail   V3V3 GND 3.234..3.333
+V  buffer BUF GND 0..3.333
+R  r3     BUF ADC 10k+-1%
+L  adc_in ADC V3V3 GND states=Z rz=3.3M
+L  mic    MIC V3V3 GND states=HL roh=0..200 rol=0..200 rz=0
+R  r16    MIC PDM 100+-1%
+L  pdm_in PDM V3V3 GND states=Z rz=3.3M

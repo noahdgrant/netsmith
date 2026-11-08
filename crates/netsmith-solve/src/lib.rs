@@ -9,6 +9,7 @@ mod expand;
 mod generic;
 mod jlcpcb;
 mod levels;
+mod ohm;
 mod place;
 mod solve;
 mod standard;
@@ -26,7 +27,7 @@ pub use generic::{
 pub use levels::NotEvaluated;
 pub use place::{PlaceOffset, Window, offsets, window};
 pub use solve::{
-    HeldBy, OpenCircle, Pick, Seeded, Solution, UnconstrainedPick, Unresolved, UnsolvedNet,
-    UnstatedValue, solve, solve_system,
+    CurrentBound, HeldBy, OpenCircle, Pick, Seeded, Solution, UnconstrainedPick, Unresolved,
+    UnsolvedNet, UnstatedValue, solve, solve_system,
 };
 pub use table::{Record, Supplier, Table, parse_csv};

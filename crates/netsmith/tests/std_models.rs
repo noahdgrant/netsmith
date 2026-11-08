@@ -460,6 +460,112 @@ fn an_ic_that_states_no_inductor_limits_checks_none() {
     let s = run(&converter(&guide_ic(), "0mA..1A", ""));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     assert_eq!(label(&s, "stage.inductor"), "MHCD322512A-2R2M-A8S");
+    // The two limits are `optional` members of `Buck` (ADR 0074): the stage's relations over
+    // them are skipped, and the build does not list them as not evaluated.
+    for limit in ["min_inductor_saturation", "max_inductor_dcr"] {
+        let open: Vec<String> = not_evaluated(&s)
+            .into_iter()
+            .filter(|r| r.contains(limit))
+            .collect();
+        assert!(
+            open.is_empty(),
+            "{limit} is listed as not evaluated: {open:#?}"
+        );
+        assert!(
+            relations_over(&s, limit).is_empty(),
+            "{limit}: {:?}",
+            relations_over(&s, limit)
+        );
+    }
+    // The checks of the stage that wait for the rail's peak, which nothing states, are still
+    // named: `optional` guards the two members and nothing else.
+    assert!(
+        not_evaluated(&s)
+            .iter()
+            .any(|r| r.contains("stage.vin.peak")),
+        "{:?}",
+        not_evaluated(&s)
+    );
+}
+
+/// The relations of the solved model that read `needle`, as text.
+fn relations_over(s: &Solution, needle: &str) -> Vec<String> {
+    s.model
+        .relations()
+        .iter()
+        .map(|r| {
+            format!(
+                "{} {} {}",
+                s.model.show_expr(&r.lhs),
+                r.op.symbol(),
+                s.model.show_expr(&r.rhs)
+            )
+        })
+        .filter(|t| t.contains(needle))
+        .collect()
+}
+
+#[test]
+fn a_limit_the_ic_states_reaches_the_stage_across_the_join_and_the_other_is_still_skipped() {
+    // The board joins `.stage.buck ~ .u.buck`, and the IC states one limit on its side: the
+    // stage's member is stated, its relation is kept and judged, and the other stays skipped.
+    let s = run(&converter(
+        &ic_with(".min_inductor_saturation &= 3A"),
+        "0mA..1A",
+        "",
+    ));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert_eq!(
+        relations_over(&s, "min_inductor_saturation"),
+        ["stage.inductor.saturation_current >= stage.buck.min_inductor_saturation"]
+    );
+    assert!(
+        !not_evaluated(&s)
+            .iter()
+            .any(|r| r.contains("min_inductor_saturation")),
+        "{:?}",
+        not_evaluated(&s)
+    );
+    assert_eq!(relations_over(&s, "max_inductor_dcr"), Vec::<String>::new());
+    let s = run(&converter(
+        &ic_with(".max_inductor_dcr &= 0.1ohm"),
+        "0mA..1A",
+        "",
+    ));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert_eq!(
+        relations_over(&s, "max_inductor_dcr"),
+        ["stage.inductor.dc_resistance <= stage.buck.max_inductor_dcr"]
+    );
+    assert_eq!(
+        relations_over(&s, "min_inductor_saturation"),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn a_bound_on_a_limit_states_it_and_the_check_is_named_not_evaluated() {
+    // `>= 3A` states what the design needs of the IC's limit and gives the member no value:
+    // the stage's relation is kept, and is listed as not evaluated, not skipped in silence.
+    let s = run(&converter(
+        &guide_ic(),
+        "0mA..1A",
+        "    .u.buck.min_inductor_saturation >= 3A\n",
+    ));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert!(
+        !relations_over(&s, "stage.buck.min_inductor_saturation").is_empty(),
+        "{:?}",
+        relations_over(&s, "min_inductor_saturation")
+    );
+    assert!(
+        not_evaluated(&s)
+            .iter()
+            .any(|r| r.contains("stage.buck.min_inductor_saturation")),
+        "{:?}",
+        not_evaluated(&s)
+    );
+    assert!(relations_over(&s, "stage.buck.max_inductor_dcr").is_empty());
 }
 
 #[test]

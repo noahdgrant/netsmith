@@ -1859,6 +1859,9 @@ fn a_divider_whose_current_nothing_determines_is_not_evaluated_and_does_not_fail
         .iter()
         .map(|&i| s.model.show_expr(&s.model.relations()[i].lhs))
         .collect();
+    // The sense header is on the divider's middle, where a connector can put any voltage, so
+    // Ohm's law has no range there and gives no bound: the resistors still wait (the Ohm bound
+    // is pass-only and needs a range at both ends).
     for resistor in ["r_top", "r_bottom"] {
         assert!(
             shown
@@ -1950,14 +1953,21 @@ fn a_part_current_is_not_set_from_a_balance_with_an_unmodelled_pin() {
         .iter()
         .map(|&i| s.model.show_expr(&s.model.relations()[i].lhs))
         .collect();
+    // Ohm's law bounds each resistor of the divider (3.399 V over 99 kohm) and the bound proves
+    // their power checks, so they no longer wait (the Ohm bound, pass-only). The inductor, which
+    // Ohm's law does not bound, still waits.
     for resistor in ["r_top", "r_bottom"] {
         assert!(
-            shown
+            !shown
                 .iter()
-                .any(|e| e.contains(&format!("stage.{resistor}.drop"))),
-            "{resistor}'s power is not evaluated: {shown:?}"
+                .any(|e| e.contains(&format!("stage.{resistor}."))),
+            "{resistor}'s power is proven by the bound: {shown:?}"
         );
     }
+    assert!(
+        shown.iter().any(|e| e.contains("stage.l.drop")),
+        "the inductor's relations wait: {shown:?}"
+    );
     // The port's current is a rail's and is solved as before.
     assert!(close(range(&s, "stage.vout.current"), (-2.0, 0.0)));
     // The balance says which pin is the reason.

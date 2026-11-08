@@ -352,6 +352,7 @@ impl Checker<'_> {
         let rhs = self.lower(&c.rhs);
         match (target, rhs) {
             (Res::Field(f), rhs) => {
+                self.refuse_own_statement(f, symbol, c.span);
                 if c.op == CmpOp::Narrow {
                     self.stated.insert(f);
                 }
@@ -517,6 +518,9 @@ impl Checker<'_> {
             }
             self.error(c.span, message);
             return;
+        }
+        if let Some(f) = crate::optional::states(c.op, &l.e, &r.e) {
+            self.refuse_own_statement(f, c.op.symbol(), c.span);
         }
         let source = self.cur_source();
         let written = self.written(c.span);

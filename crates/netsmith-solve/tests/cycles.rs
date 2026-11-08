@@ -163,6 +163,29 @@ fn a_circle_that_waits_on_an_unstated_value_is_open_and_names_it() {
 }
 
 #[test]
+fn a_circle_that_reads_a_worked_out_value_waits_on_what_that_value_waits_on() {
+    // The load also draws `.extra`, which is worked out from `.other`, which nothing states:
+    // the circle waits on `.other`, not on the value that something sets.
+    let src = board("", CYCLE)
+        .replace(
+            ".load.current == 0.5W / .load.voltage",
+            ".load.current == 0.5W / .load.voltage + .extra",
+        )
+        .replace(
+            "    .supply.neg ~ .load.neg",
+            "    .extra: Current\n    .other: Current\n    .extra == .other * 2\n    .supply.neg ~ .load.neg",
+        );
+    let s = solved(&src);
+    let o = open(&s);
+    assert_eq!(o.len(), 1, "{o:?}");
+    assert!(
+        !o[0].1,
+        "not closed: it waits on a value nothing states: {o:?}"
+    );
+    assert_eq!(o[0].2, ["other"]);
+}
+
+#[test]
 fn a_started_circle_and_a_design_with_nothing_unevaluated_have_no_open_circle() {
     let s = solved(&board(
         "",

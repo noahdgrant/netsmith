@@ -8,7 +8,7 @@
 /// A resistor. Its through-current and voltage drop are tied together by Ohm's law, and the
 /// power it dissipates, `.drop * .current`, is at most `.max_power`, in the worst case over the
 /// ranges of the current and the resistance. A design that does not reach the check (a resistor
-/// whose current nothing states) lists it as not evaluated. A catalog row with no `max_power`
+/// whose current nothing states) lists it as not evaluated, unless Ohm's law over its ends proves it. A catalog row with no `max_power`
 /// is an unrated part and is never picked.
 ///
 /// `.temperature_coefficient` is how far the resistance moves with temperature, as a fraction

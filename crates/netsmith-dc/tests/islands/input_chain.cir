@@ -1,0 +1,25 @@
+# Island: the power tree of a real 12 V automotive board: battery -> fuse -> reverse-polarity diode
+# -> shunt -> ferrite bead -> a 5.3 V buck regulator -> a 3.8 V buck regulator (modem load, 1.2 A) ->
+# a 3.3 V LDO (processor load), and the supercap's balancing divider as a load. From the export of
+# `netsmith build`: the fuse (32 mohm typical cold resistance, row C21261120, no tolerance and no
+# maximum stated), the Schottky diode (0 V..0.8 V, row C467997: the datasheet's maximum, no
+# minimum), the shunt (50 mohm +/-1 %, row C912768), the bead (0..70 mohm, row C845119). The
+# rails and the efficiencies are the board's stated windows: the battery 9 V..16 V, the 5.3 V
+# stage 5 V..5.5 V at 0.915..1.0, the 3.8 V stage 3.686 V..3.914 V at 0.8..1.0, the LDO 3.234
+# V..3.333 V at 140 uA quiescent, the modem 0..1.2 A and a 0..0.3 A placeholder for the
+# processor (the board's own). The regulator's minimum input is 3 V.
+# report: v(SAFE) v(VIN5) i(f1) p(f1) i(d2) p(d2) i(r15) p(r15) i(fb1) p(fb1) i(reg5v3.in) i(reg3v8.in) p(reg5v3) p(reg3v8) p(ldo)
+# today: `reg5v3.vin.current` comes from the hand-written equations and the seed `vin.voltage &= 7V..16V`: at most 5.5 V * 1.47 A / (7 V * 0.915) = 1.26 A (hand-evaluated from the same equations); the fuse, diode, shunt and bead currents follow only by the chain rule; a build without the seed fails
+V  batt    VBATT GND 9..16
+R  f1      VBATT FUSE_B 32m
+D  d2      FUSE_B SAFE 0..0.8
+R  r15     SAFE LOAD 50m+-1%
+R  fb1     LOAD VIN5 0..70m
+REG reg5v3 VIN5 V5 GND vout=5..5.5 eff=0.915..1 iq=20u vin_min=3
+REG reg3v8 V5 V38 GND vout=3.686..3.914 eff=0.8..1 vin_min=3
+I  modem   V38 GND 0..1.2
+REG ldo    V38 V33 GND vout=3.234..3.333 linear iq=140u
+I  mcu     V33 GND 0..0.3
+R  cap_r27 V5 CAP_MID 43k+-1%
+R  cap_r26 CAP_MID CAP_BOT 43k+-1%
+R  cap_r28 CAP_BOT GND 10

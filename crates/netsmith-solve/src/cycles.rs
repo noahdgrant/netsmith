@@ -38,8 +38,9 @@ pub(crate) struct Circle {
     /// that have values: a range stated on one of the fields starts it.
     pub closed: bool,
     /// For a group that is not closed, the fields outside it, without a value, that something
-    /// in it reads and that nothing sets: what the board has to state before a range on the
-    /// group could start it. In field order.
+    /// in it reads, directly or through the equations that set what it reads, and that nothing
+    /// sets (or that wait in a circle of their own): what the board has to state before a
+    /// range on the group could start it. In field order.
     pub waiting: Vec<FieldId>,
     /// For a group found by `balance_circles`: the nets (indices into `Model::balances`) whose
     /// balance would close it, and the currents on each that the solver does not work out.
@@ -206,10 +207,33 @@ fn groups(model: &Model, balances_too: bool) -> Vec<Circle> {
             .filter(|&f| unset(f) && c.contains(&class_of(f)))
             .collect();
         fields.sort();
-        let outside: BTreeSet<usize> = mine()
+        // What the group waits on: the classes it reads from outside, and, through whatever
+        // sets those, the classes that nothing sets (a value the board has to state). A class
+        // that something sets is only as good as what it waits on, so it is followed back; one
+        // in another group that depends on itself is named as it is, because nothing in it can
+        // be set first either.
+        let mut outside: BTreeSet<usize> = BTreeSet::new();
+        let mut visited: BTreeSet<usize> = BTreeSet::new();
+        let mut todo: Vec<usize> = mine()
             .flat_map(|p| p.reads.iter().copied())
-            .filter(|n| !inside(n) && !settled.contains(n))
+            .filter(|n| !inside(n))
             .collect();
+        while let Some(n) = todo.pop() {
+            if !visited.insert(n) {
+                continue;
+            }
+            if !settled.contains(&n) || component_of.contains_key(&n) {
+                outside.insert(n);
+                continue;
+            }
+            todo.extend(
+                producers
+                    .iter()
+                    .filter(|p| p.out == n)
+                    .flat_map(|p| p.reads.iter().copied())
+                    .filter(|r| !inside(r)),
+            );
+        }
         let mut waiting: Vec<FieldId> = Vec::new();
         let mut seen: BTreeSet<usize> = BTreeSet::new();
         for (f, _) in model.fields() {

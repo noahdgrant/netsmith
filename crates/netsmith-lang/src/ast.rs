@@ -425,6 +425,9 @@ pub struct Decl {
     pub docs: Vec<String>,
     pub name: Path,
     pub ty: TypePath,
+    /// `optional` after the type (ADR 0074): a value that a design may leave unstated, and
+    /// the checks that read it are then skipped. The word's place.
+    pub optional: Option<Span>,
     pub body: Option<Vec<Item>>,
     pub span: Span,
 }

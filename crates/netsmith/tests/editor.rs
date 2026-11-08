@@ -1399,7 +1399,9 @@ fn the_check_says_why_it_cannot_and_what_a_blocked_endpoint_did() {
 }
 
 /// A rail with resistors across it in parallel: their currents are not settled, so the solver
-/// leaves the relations that need them and says so.
+/// leaves the relations that need them and says so. A header taps the middle of the two in
+/// series, so that nothing bounds their ends (Ohm's law proves the checks of a resistor whose
+/// ends have a range): a connector can put any voltage there.
 const BANK: &str = "//! A rail with a bank of resistors across it.
 
 import std::parts::connector::Header1x2
@@ -1415,6 +1417,9 @@ module Bank {
     .c: Resistor { .resistance &= 4.7kohm +/- 1% }
     .power.pos ~> .a ~> .b ~> .power.neg
     .power.pos ~> .c ~> .power.neg
+    .tap: Header1x2
+    .a.b ~ .tap.p1
+    .tap.p2 ~ .power.neg
 }
 
 board Notes {
@@ -1511,14 +1516,14 @@ fn what_the_solver_left_alone_is_a_note_and_not_counted_as_a_warning() {
     assert!(
         notes.iter().all(|p| p.message.contains("not evaluated")
             || p.message.contains("incomplete")
-            || p.message.contains("are not sized from their current")),
+            || p.message.contains("a lower bound")),
         "{notes:?}"
     );
     // The bank's resistors have no worked-out current (two unknowns on a net), so the nets
-    // they sit on are named and not sized (ADR 0036), at the first resistor that is unknown.
+    // they sit on are named, with the width their known current needs (ADR 0036), at the first resistor that is unknown.
     let not_sized = notes
         .iter()
-        .find(|p| p.message.contains("tracks of net `3V3` are not sized"))
+        .find(|p| p.message.contains("tracks of net `3V3` are"))
         .expect("a note about 3V3");
     assert_eq!(
         not_sized.at.as_ref().map(|at| at.line),

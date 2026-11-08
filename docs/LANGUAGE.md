@@ -867,11 +867,93 @@ board Probe {
 
 Rules.
 
-- **Only a root is named.** A value is reported when it is declared in a module or a board (not in a part, not in an interface such as a rail, not a catalog column), has no value after the solve, is not the left side of an equation or `&=` that works it out, and is not joined or a term of a balance of currents. A member that a wrapper forwards to (`.inner.driver_high == .driver_high`) is not a root; the wrapper's member is, and it is the one named, because it is the one the board can state. A part's unset datasheet value is a gap in the library (ADR 0046), and an interface's optional values are offered open on purpose, so neither is reported.
+- **Only a root is named.** A value is reported when it is declared in a module or a board (not in a part, not in an interface such as a rail, not a catalog column), has no value after the solve, is not the left side of an equation or `&=` that works it out, and is not joined or a term of a balance of currents. A member that a wrapper forwards to (`.inner.driver_high == .driver_high`) is not a root; the wrapper's member is, and it is the one named, because it is the one the board can state. A part's unset datasheet value is a gap in the library (ADR 0046), and an interface's optional values (marked `optional`, below) are offered open on purpose, so neither is reported.
 - **A check reads it.** A member that no check reads is not reported: a value that nothing checks and nothing picks from changes nothing. A bound on a member that reached a part was judged there, and is the way the board states the member. A definition that waits (`.x == .y * 2`, `.part.field &= .member`) is not a check.
 - **A member that an unconstrained pick names is named once,** by the pick finding, and so is a value that an open circle finding already asks to be stated.
 - **A module checked alone is not judged.** Both findings are made on a solved board, where the use is known. A module that no board uses builds.
 - **A default is a statement of the library.** `.balance_resistance ?= 4.7kohm +/- 5%` in the module that offers it limits the pick, so a board that says nothing gets no finding, and a board that states its own value replaces it (see "Defaults a board can replace").
+
+### A value that may stay open
+
+Some numbers are on a datasheet only sometimes: an IC may name the largest DC resistance of the inductor it works with, or leave it out. A check against such a number is made when the IC states it and means nothing when it does not. A member says so with the word `optional` after its type (ADR 0074, provisional), the word that a `pins` row and a catalog column already use for "may be absent":
+
+```nsm solve
+interface Limits {
+    /// The largest DC resistance, when the datasheet gives one.
+    .max_dcr: Resistance optional
+}
+
+module Coil {
+    .limits: Limits
+    .dcr: Resistance
+    .dcr <= .limits.max_dcr
+}
+
+board Quiet {
+    .coil: Coil { .dcr &= 0.08ohm }
+}
+```
+
+`Quiet` states nothing about `.coil.limits.max_dcr`, so the relation `.dcr <= .limits.max_dcr` is skipped: it is not checked, the build does not list it as not evaluated, and no finding is made for it. Without `optional` the same board would list the relation as not evaluated, as it does for any value that nothing states. When something states the member, the relation is checked as any other. Here the limit is stated on the other side of a join, as an IC states it, and the coil is refused with the numbers:
+
+```nsm fails
+interface Limits {
+    /// The largest DC resistance, when the datasheet gives one.
+    .max_dcr: Resistance optional
+}
+
+module Coil {
+    .limits: Limits
+    .dcr: Resistance
+    .dcr <= .limits.max_dcr
+}
+
+module Ic {
+    .limits: Limits
+}
+
+board Strict {
+    .coil: Coil { .dcr &= 0.08ohm }
+    .ic: Ic { .limits.max_dcr &= 0.05ohm }
+    .coil.limits ~ .ic.limits
+}
+```
+
+```text
+error: coil.dcr must always be at most coil.limits.max_dcr, but 80mΩ is not always below 50mΩ
+  --> main.nsm:9:5
+  |
+9 |     .dcr <= .limits.max_dcr
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+Rules.
+
+- **Stated is what is written.** A member is stated when a statement of the design names it, as ADR 0069 had it for `required`, and not when the solver gave it a value. The statements that count are an `&=`, a `?=` default that applies, an equation (`==`) with the member alone on its left whose right side has no unstated optional member, and a bound against numbers alone (`.max_dcr <= 0.5ohm`). A statement anywhere that can state the member counts: the board, a module around it, the part.
+- **A join carries it.** `~` between two interfaces makes their members one value, so a limit that the IC states on its side is stated on the stage's side, and a limit that neither side states is stated on neither.
+- **The member alone is guarded.** A relation is skipped because an optional member in it is unstated, never because another value in it is. The relation `.dcr <= .limits.max_dcr` is itself a bound with the member alone on one side, and it does not state the member. A relation over an optional member that is stated and a value that nothing states is listed as not evaluated, as before.
+- **A bound that gives no value is not silent.** `.limits.max_dcr <= 0.5ohm` states the member and gives it no value, so the relation is kept and listed as not evaluated, which says the check was not made.
+- **Where it is allowed.** On a value (a quantity, text or an enum) declared in a part, a module, an interface or a generic. It is an error on a pin (a pin that need not be connected says so in its `pins` row), on a member whose type is an interface, a part or a module (mark the values inside it), and in a board, a system, a panel or a physical file, which have no user above them.
+- **Not in the definition that declares it.** A statement of an optional member in the interface or module that declares it (`&=`, `?=`, `==`, or a bound against numbers) would state it for every use, so the relation would never be skipped: it is an error that names the two places. A part that has the interface as a member may state it, as that is its own datasheet.
+
+```nsm fails
+interface Limits {
+    .max_dcr: Resistance optional
+    .max_dcr &= 0.1ohm
+}
+
+board Misuse {
+    .limits: Limits
+}
+```
+
+```text
+error: `max_dcr` is `optional` (at main.nsm:2) and is stated here with `&=`, in the definition that declares it: a statement here would state it for every use, so the checks that read it would never be skipped; keep `optional` and let the design state it, or remove `optional` and keep the statement
+  --> main.nsm:3:5
+  |
+3 |     .max_dcr &= 0.1ohm
+  |     ^^^^^^^^^^^^^^^^^^
+```
 
 ### Values that wait on each other
 
@@ -917,7 +999,7 @@ these values depend on each other and none has a value, so the checks that use t
 - Start the solver by stating a range on one field of the circle with `&=`, here `.load.voltage &= 5V..16V`. It is a starting point and not an answer: once the other values are worked out, `.load.voltage` is checked against its own equation, and a range that is too tight is an error. A range that is too wide stays as wide as it was stated: the equation narrows a stated range only when the value it gives lies wholly inside it, so a start taken from the whole range a part works in, such as `3V..65V` for a regulator, is never narrowed once the first pass reaches below it, and every value worked out from its low end stays loose with it (the equation's check then says the range cannot be shown).
 - Or let the load say where it works, and the solver starts the circle itself (ADR 0053). That is the next section.
 - The note is only a note: no design passes or fails differently because of it. The warning is a guideline finding, like the track width one: it is a `warning:` line by default, an error with `--strict` or `guidelines = "error"` in `netsmith.toml`, and it is given only when a bound (`>=` or `<=`) that reads a value of the circle, or a value worked out from one, is not evaluated. A circle with no such check in it (a part with no rating) gets the note alone, and no build is refused for it.
-- A field that is unset only because nothing states it is not a circle and gets no note. A circle that also waits on such a field gets no note either, because a range on the circle would not start it; if a check inside it is not evaluated it gets the warning, which then names the value to state first (`a range on them alone would not start them, because they also read ..., which nothing states: state it first`).
+- A field that is unset only because nothing states it is not a circle and gets no note. A circle that also waits on such a field gets no note either, because a range on the circle would not start it; if a check inside it is not evaluated it gets the warning, which then names the value to state first (`a range on them alone would not start them, because they also read ..., which nothing states: state it first`). The value it names is one that nothing states and nothing works out: when the circle reads a value that another equation works out from an unstated one, it is the unstated one that is named, in path order, with `and N more` after ten.
 
 #### A circle through the currents of a net
 
@@ -3870,7 +3952,7 @@ r1 is a Resistor: picked PrecisionThinFilm; passed over Resistor (the `resistor`
 - The generic's statements hold for the provider, so a provider cannot state other designator letters than the generic's (`.designator &= "RN"` is a contradiction of `"R"`).
 - Only a part provides a standard generic: a module that says `provides Resistor` is refused, because the generic has a `pins` table.
 
-The series of values that have no row (ADR 0047) and the columns that a file of rows may leave out (`.temperature_coefficient` of a resistor, `.dielectric` of a capacitor, `.rms_current` of an inductor) belong to the **catalogs** `resistor`, `capacitor`, `inductor` and `led` (an LED has no series, only its packages), which are the standard generics' own: one table of the solver names them, and it is the only place that does (ADR 0068, stage 3). A catalog is one name that every part listing it shares, so a part or a provider that lists `catalog resistor` has the series and the omitted columns of that catalog, whatever the generic it provides. A provider whose catalog has another name has no series, and its file has every column it lists.
+The series of values that have no row (ADR 0047) and the columns that a file of rows may leave out (`.temperature_coefficient` of a resistor, `.dielectric` of a capacitor, `.rms_current` of an inductor) belong to the **catalogs** `resistor`, `capacitor`, `inductor` and `led` (an LED has no series, only its packages), which are the standard generics' own: one table of the solver names them, and it is the only place that does (ADR 0068, stage 3). A catalog is one name that every part listing it shares, so a part or a provider that lists `catalog resistor` has the series and the omitted columns of that catalog, whatever the generic it provides. One more column may be left out of a file that no generic synthesizes: `.breakdown_voltage` of a TVS diode, in the `tvs` catalog (ADR 0073). A provider whose catalog has another name has no series, and its file has every column it lists.
 
 ## Modules
 
@@ -5504,9 +5586,9 @@ The router draws `VIN` and `GND` at 0.8 mm and `3V3` at 0.5 mm, and the `.kicad_
 
 A track that carries current heats. The solver knows the worst-case current each rail draws (`.current`, see Load current) and, through the series parts of a chain, the current of the nets between them, so netsmith draws every net at a width that can carry it and checks any width you state yourself (ADR 0036). It uses the IPC-2221 formula, `I = k * dT^0.44 * A^0.725`, where `I` is the current in amperes, `dT` the temperature rise in kelvin, `A` the track's cross-section in square mils (its width times the copper's thickness), and `k` is 0.048 for a track on an outer layer and 0.024 on an inner layer. netsmith draws tracks on the outer layers only, so it uses 0.048 and the outer copper of the process (`.stackup.copper_weight` ounces, 0.035 mm each).
 
-A net carries the current that Kirchhoff's current law says it must, the way an EE adds it up (ADR 0036, PROVISIONAL): the sum of the currents of the loads that draw from it (a supply net) or return through it (a ground, or any shared return), with every load on at the same time as the worst case. Two loads of 2 A and 1 A on separate supplies that share a `GND` make `GND` a 3 A net, where each supply net carries its own. The things that count are the rails with a pin on the net and the series parts (`~>` chains) whose bridge ends on it, so the nets between the parts of a chain take the chain's current. A regulator is a load on its input net and a supply on its output net, each with the current the solver worked out: a linear regulator draws what its output supplies, and a switching regulator draws `Pout / efficiency / Vin`, from the efficiency its part model states, so its input net is sized for that and not for the output current. A part model that states no efficiency leaves the input current unknown, and the net is not sized (below). The sum is pessimistic where a current is counted twice: a ground that the load of a regulator's output and the regulator's own input both return through carries the sum of the two, though the load's return goes to the regulator and only the input's goes on to the source. You do not have to state a width for it. A net no rail gives a `.min_track` is drawn at the width IPC-2221 needs for that current (rounded up to 0.01 mm), when the solver knows every current on the net: a 2 A node between a fuse and a diode is drawn at 0.79 mm with nothing written, and the check has nothing to say. A `.min_track` on a rail is an override: the net is drawn at the widest one, never narrower than the process's least track, and the check warns when IPC-2221 needs more. The temperature rise is `.process.max_temperature_rise`, in kelvin, an upper bound like `via_in_pad`; it is 10 K when the board states none, and the finding says so. 10 K is a conservative default of netsmith's and is not a number from a fabricator. The planes of a four-layer board and the nets of a pour are areas and not tracks, and are not sized or checked.
+A net carries the current that Kirchhoff's current law says it must, the way an EE adds it up (ADR 0036, PROVISIONAL): the sum of the currents of the loads that draw from it (a supply net) or return through it (a ground, or any shared return), with every load on at the same time as the worst case. Two loads of 2 A and 1 A on separate supplies that share a `GND` make `GND` a 3 A net, where each supply net carries its own. The things that count are the rails with a pin on the net and the series parts (`~>` chains) whose bridge ends on it, so the nets between the parts of a chain take the chain's current. A regulator is a load on its input net and a supply on its output net, each with the current the solver worked out: a linear regulator draws what its output supplies, and a switching regulator draws `Pout / efficiency / Vin`, from the efficiency its part model states, so its input net is sized for that and not for the output current. A part model that states no efficiency leaves the input current unknown, and the net is sized only for what is known (below). The sum is pessimistic where a current is counted twice: a ground that the load of a regulator's output and the regulator's own input both return through carries the sum of the two, though the load's return goes to the regulator and only the input's goes on to the source. You do not have to state a width for it. A net no rail gives a `.min_track` is drawn at the width IPC-2221 needs for that current (rounded up to 0.01 mm): a 2 A node between a fuse and a diode is drawn at 0.79 mm with nothing written, and the check has nothing to say. A `.min_track` on a rail is an override: the net is drawn at the widest one, never narrower than the process's least track, and the check warns when IPC-2221 needs more. The temperature rise is `.process.max_temperature_rise`, in kelvin, an upper bound like `via_in_pad`; it is 10 K when the board states none, and the finding says so. 10 K is a conservative default of netsmith's and is not a number from a fabricator. The planes of a four-layer board and the nets of a pour are areas and not tracks, and are not sized or checked.
 
-When a current on the net is not known (the solver leaves the currents of a net with two or more unknown ones unsolved), netsmith does not guess: the net keeps the process's least track and `build` prints a note that names the net and the carriers whose current is missing:
+When a current on the net is not known (the solver leaves the currents of a net with two or more unknown ones unsolved), netsmith does not guess it, and does not ignore what is known either. The currents that are known are a lower bound on the net's current, because loads only add up: a current that is not known can make the sum larger and never smaller. So the net is drawn at least as wide as the known currents need (the process's least track or a stated `.min_track` still decides when it is wider), and `build` prints a note that says the width is a lower bound and names the net and the carriers whose current is missing. A net with no known current at all stays at the process's least track, and the note says that. A stated `.min_track` that is narrower than the known current needs is still a finding, worded "carries at least" and naming the carriers whose current is missing. The note appears while a current is missing and goes away when you state it. A net whose every current is known is sized as above and has no note.
 
 ```nsm solve notes
 import std::mfg::jlcpcb::TwoLayer
@@ -5540,10 +5622,56 @@ board Unsized {
 ```
 
 ```text
-the current of rail `supply`, rail `load` is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `GND` are not sized from their current and are the process's least, 0.1 mm; state that current, or give a rail on the net a `.min_track`
-the current of rail `supply`, part `r` is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `VIN` are not sized from their current and are the process's least, 0.1 mm; state that current, or give a rail on the net a `.min_track`
-the current of rail `load`, part `r` is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `VOUT` are not sized from their current and are the process's least, 0.1 mm; state that current, or give a rail on the net a `.min_track`
+the current of rail `supply`, rail `load` is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `GND` are the process's least, 0.1 mm, a lower bound: no current on the net is known; state that current, or give a rail on the net a `.min_track`
+the current of rail `supply`, part `r` is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `VIN` are the process's least, 0.1 mm, a lower bound: no current on the net is known; state that current, or give a rail on the net a `.min_track`
+the current of rail `load`, part `r` is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `VOUT` are the process's least, 0.1 mm, a lower bound: no current on the net is known; state that current, or give a rail on the net a `.min_track`
 ```
+
+Here a fan on the output is known to draw up to 1.2 A, but the supply's and the load's currents are not. `GND` carries at least the fan's 1.2 A, so it is drawn at the 0.39 mm that 1.2 A needs and not at the process's least; `VIN` has nothing known and stays at the least:
+
+```nsm solve notes
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Partial {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .supply: Rail {
+        .voltage &= 12V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .load: Rail {
+        .pos.net &= "VOUT"
+        .neg.net &= "GND"
+    }
+    .fan: Rail {
+        .pos.net &= "VOUT"
+        .neg.net &= "GND"
+        .current &= 0A..1.2A
+    }
+    .r: Resistor { .resistance &= 10kohm +/- 1% }
+    .inlet: Header1x2
+    .outlet: Header1x2
+    .supply.pos ~> .r ~> .load.pos
+    .supply.neg ~ .load.neg
+    .inlet.p1 ~ .supply.pos
+    .inlet.p2 ~ .supply.neg
+    .outlet.p1 ~ .load.pos
+    .outlet.p2 ~ .load.neg
+}
+```
+
+```text
+the current of rail `supply`, rail `load` is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `GND` are 0.39 mm, a lower bound: sized for the 1.2 A that is known, not for the whole current; state that current, or give a rail on the net a `.min_track`
+the current of rail `supply`, part `r` is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `VIN` are the process's least, 0.1 mm, a lower bound: no current on the net is known; state that current, or give a rail on the net a `.min_track`
+the current of rail `load`, part `r` is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `VOUT` are 0.39 mm, a lower bound: sized for the 1.2 A that is known, not for the whole current; state that current, or give a rail on the net a `.min_track`
+```
+
+A current that is not known can still be bounded from above, by Ohm's law for a resistor (see "Resistor power"). The width does not change with the bound. The note goes only when the width the net is drawn at carries the known current and every bound on the net together, in whichever direction they flow, which is so for the pull-down of a logic line (a few hundred microamperes, which the process's least track carries many times over) and not for a part whose bound is amperes. A net with a current that has no bound, a rail's or a transistor's, keeps its note.
 
 The block below states a width that is too narrow for its rail, so it is a finding:
 
@@ -6804,6 +6932,8 @@ A diode, a Zener, a TVS diode and a capacitor have a `.bias`: the DC voltage acr
 | `std::parts::diode::Zener` | `.bias * .current <= .max_power` | `.zener_voltage` with its tolerance. For a clamp, the line `.z.bias <= .z.zener_voltage`. Catalog `zener`. |
 | `std::parts::diode::Tvs` | `.bias <= .standoff_voltage`, `.clamping_voltage <= .protected_limit` | The ratings, and `.protected_limit`: the absolute maximum of what is behind it. Catalog `tvs`. |
 
+A `Tvs` also has an optional `.breakdown_voltage`, the minimum breakdown voltage VBR: between the stand-off voltage and it the diode leaks a little, below it the diode does not conduct (ADR 0073, provisional). A design that needs a margin between the highest the line reaches and the point where the diode starts to conduct states it, `.tvs.breakdown_voltage >= .input.peak * 1.1`. It is a catalog column that the standard rows leave empty (`data/jlcpcb/README.md`), so a design that states it is offered no standard row, and gets one from a project's `tvs` catalog file that records the column; a file written before the column may leave it out, and a design that does not state the field picks as before and has no new check.
+
 A 12 V input with a fuse and a TVS diode. The values are the board's own, as if copied from datasheets.
 
 ```nsm evaluate
@@ -6849,10 +6979,37 @@ board Standoff {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 9 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
-    --> std/parts/diode.nsm:143:5
+    --> std/parts/diode.nsm:153:5
     |
-143 |     .bias <= .standoff_voltage
+153 |     .bias <= .standoff_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A margin on the breakdown voltage is a requirement the standard rows cannot meet, since none records it, and the message is the usual one for a catalog with nothing for the part:
+
+```nsm fails
+import std::parts::diode::Tvs
+import std::sources::Rail
+
+board Margin {
+    .input: Rail {
+        .voltage &= 12V +/- 5%
+        .peak &= 16V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .tvs: Tvs {}
+    .tvs.breakdown_voltage >= .input.peak * 1.1
+    .input.pos ~> .tvs ~> .input.neg
+}
+```
+
+```text
+error: the `tvs` catalog has nothing for `tvs`, which needs nothing in particular (rows with an empty cell are never offered, since a part with no stated rating cannot be shown to stay within it: 9 for `breakdown_voltage`)
+   --> main.nsm:11:5
+   |
+11 |     .tvs: Tvs {}
+   |     ^^^^^^^^^
 ```
 
 A Zener used as a clamp, and a diode that blocks less than the rail it sits across:
@@ -6899,7 +7056,7 @@ A `Resistor` has a power rating, `.max_power`, and states that the power it diss
 
 The worst case is over the current the circuit really carries. `.led.current &= 5mA..15mA` is a window the LED must stay in, and `.led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance` says what the current is for the resistor that was tried: once the resistor is known, the current is the equation's range (7.05 mA to 10.56 mA for 330 ohm), and the resistor is checked at that, not at the 15 mA that ends the window. A window that is not tied to the circuit by an equation (`.current &= 45mA..49mA` on a resistor alone) is still taken at its upper end.
 
-A resistor whose current nothing states has no power to check, and the relation is listed as not evaluated. A catalog row with no `max_power` (an empty cell) is an unrated part: it is never offered to any design, and the "nothing for it" message says how many rows were left out for that reason. Fill the cell from the datasheet or leave the part out.
+A resistor whose current nothing states has no power to check, unless Ohm's law bounds it: when the voltage at each end of the resistor lies in a range the solver knows (a rail's stated range, `0 V` up to the supply of a `Logic` line that drives it, the ends of the resistors beside it, the ground), the current is at most the largest difference between the two ends over the least resistance, and the power at most the square of that difference over the least resistance. A check that this bound proves (a 10 kohm pull-down on a 3.3 V line carries at most 350 uA and 1.2 mW against 62.5 mW) is made, and its note goes. A check that the bound does not prove is left not evaluated, as before, and nothing says it failed: the bound does not know what the pins on the line draw, so it is far above the real current for a 100 ohm resistor in series with an input, and the real current may well pass. The bound is never given to the part as its current: a value that nothing states is still not known, and no pick, range or track width reads the bound as a current. It needs a range at both ends: a line that a pin drives that is not the `line` of a `Logic` is held to the supplies of that pin's own part, and a net with a connector pin, a part whose pins conduct, or a rail with no voltage on it has no range and so no bound. A catalog row with no `max_power` (an empty cell) is an unrated part: it is never offered to any design, and the "nothing for it" message says how many rows were left out for that reason. Fill the cell from the datasheet or leave the part out.
 
 A 10 ohm resistor that carries 100 A dissipates 100 kW, far more than any surface-mount resistor is rated for. The catalog's biggest 10 ohm part is rated 250 mW, so the solver names it as the closest and says by how much it fails:
 
@@ -7084,7 +7241,7 @@ Each side of the stage is a bank of identical capacitors (the section on capacit
 }
 ```
 
-The two inductor limits are optional, as are the other numbers an IC may leave open: an IC that states `.min_inductor_saturation` (a datasheet that asks for more than the current limit, say) or `.max_inductor_dcr` has them checked against the picked inductor's `saturation_current` and `dc_resistance`, and an inductor that does not meet them is refused with the numbers. One that leaves them open has no such check, and the build lists each as not evaluated, as for any value that nothing states. A heating (RMS) rating of the inductor is not checked by the stage: `Inductor` has the optional column `rms_current`, which the standard rows leave empty (see Dielectric and package size), so a check that needed it would refuse every standard inductor.
+The two inductor limits are optional, as are the other numbers an IC may leave open: an IC that states `.min_inductor_saturation` (a datasheet that asks for more than the current limit, say) or `.max_inductor_dcr` has them checked against the picked inductor's `saturation_current` and `dc_resistance`, and an inductor that does not meet them is refused with the numbers. Both are `optional` members of `Buck` (ADR 0074): one that the IC leaves unstated has no such check, and the build says nothing about it, where it lists a check on any other value that nothing states as not evaluated. A limit is stated for the stage when the IC states it on its side of `.stage.buck ~ .u.buck`. A heating (RMS) rating of the inductor is not checked by the stage: `Inductor` has the optional column `rms_current`, which the standard rows leave empty (see Dielectric and package size), so a check that needed it would refuse every standard inductor.
 
 Misuse: a load larger than the IC can give (an input above its range, such as 12 V, is refused the same way, by `stage.vin.voltage must always be at most stage.buck.max_input_voltage`).
 
@@ -7117,9 +7274,9 @@ board Overload {
 
 ```text
 error: -stage.vout.current must always be at most stage.buck.max_output_current, but 0A..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..0A) add up to zero; net `1V8` in `stage`: -stage.inductor.current (0A..3A) + -stage.vout.current (-3A..0A) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (0A..3A) + stage.inductor.current (0A..3A) add up to zero; net `net-stage.inductor.a`: stage.buck.sw.current (0A..3A) + u.buck.sw.current (-3A..0A) add up to zero)
-    --> std/parts/regulator.nsm:226:5
+    --> std/parts/regulator.nsm:229:5
     |
-226 |     -.vout.current <= .buck.max_output_current
+229 |     -.vout.current <= .buck.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7170,7 +7327,7 @@ board Budget {
 ```
 
 ```text
-error: no `fuse` candidate satisfies `fuse`: the closest of the 6 that fit, SMD1206P200TF 2A 6V resettable fuse 1206 C20988, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 2A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
+error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
     --> std/parts/passive.nsm:248:5
     |
 248 |     .current <= .rated_current
@@ -7262,7 +7419,7 @@ board Arcs {
 ```
 
 ```text
-error: no `fuse` candidate satisfies `fuse`: the closest of the 6 that fit, SMD1206P020TF 0.2A 24V resettable fuse 1206 C20984, fails because fuse.rated_voltage must always be at least input.peak, but 24V is not always above 5kV
+error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.rated_voltage must always be at least input.peak, but 125V is not always above 5kV
    --> main.nsm:17:5
    |
 17 |     .fuse.rated_voltage >= .input.peak
@@ -7466,7 +7623,7 @@ A digital line is a `Logic` (`std::logic::Logic`): a pin `.line` and the rail `.
 
 After the rails are solved, the solver checks two things. A fault is an error; a check that cannot be made is a note `not evaluated: ...`, never a pass.
 
-- **Levels.** For every output or bidirectional `Logic` line on a net and every input or bidirectional `Logic` line on it, the output's `voh` must always be at least the input's `vih`, and its `vol` at most the input's `vil`, in the worst case of both ranges. A level with no value, or two lines whose grounds (`reference.neg`) are not on one net or in one ground group, is not evaluated. A pair in which neither line states a level is not looked at.
+- **Levels.** For every output or bidirectional `Logic` line on a net and every input or bidirectional `Logic` line on it, the output's `voh` must always be at least the input's `vih`, and its `vol` at most the input's `vil`, in the worst case of both ranges. A level with no value, or two lines whose grounds (`reference.neg`) are not on one net or in one ground group, is not evaluated. A pair in which neither line states a level is not looked at. An output that states a `vol` and no `voh` is open-drain, and the line's high is what its pull-up gives it (see "An open-drain line" below).
 - **Absolute maximum.** A pin with `.abs_min` or `.abs_max` must have a net whose worst-case voltage relative to its ground stays within them. The net's voltage is the hull of: its ground (0 V), each rail whose `pos` is on it, each `Logic` line that drives it (between its reference rail's `neg` and its voltage), and each rail or ground that a resistor joins it to (a pull-up or a pull-down). It is not evaluated for a pin that is not the `.line` of a `Logic` (its ground is not known), for a net that something drives that is not a `Logic` line, for a rail or driver on another ground, and for a net nothing sets.
 
 Join the lines of two parts pin to pin, `.a.out.line ~ .b.in.line`, and each part's reference rail to its own supply. Joining the two `Logic`s (`.a.out ~ .b.in`) also joins their reference rails, which is right only when both parts have the same supply; it does not equate their levels, which are each pin's own.
@@ -7904,6 +8061,129 @@ board Translated {
 ```
 
 A single-supply buffer used as a translator (`LevelTranslator`) states plain pins and thresholds and is judged by its own relations: a bus does not pass through it by role.
+
+#### An open-drain line
+
+An open-drain line, such as the `sda` of an `I2c` bus, is never driven high: a device only pulls it low or lets go, and a resistor to a rail holds it high. A datasheet states its `VOL` and no `VOH`, because the part does not set the high. The levels check reads such a part as it is, without a new word in the language (ADR 0075, provisional): a driver that states `vol` and no `voh`, on a net that a resistor joins to the positive pin of a rail (`I2cPullups`, `PullUp` or a plain `Resistor`), has as its high the rail's voltage range, and the receivers' `vih` is judged against that. A finding names the pull-up resistor, its rail and the receiver's `vih`, and the driver's `vol` is judged against each receiver's `vil` as before. The rule is narrow:
+
+- A driver that states `voh` is judged by it, whatever else is on the net: the datasheet says what the part does.
+- A driver that states no `vol` either says nothing about its output, and gets the notes for its high and its low, as before.
+- A net with a resistor to its ground as well is a divider, and the rule does not apply. The note says the high has no value.
+- A rail on another ground than the receiver's, or a rail with no voltage, is a note that names it, not a pass.
+
+Two invented I2C parts that state `VOL` and the thresholds, and no `VOH`:
+
+```nsm module=src::zi2c
+import std::bus::{I2c, I2cRole}
+import std::sources::Rail
+
+/// A controller whose pins are open-drain: VOL and the thresholds, no VOH.
+part Zihost {
+    .designator &= "U"
+    .vdd: Rail
+    .i2c: I2c
+    .i2c.role &= I2cRole::Controller
+    .i2c.levels.reference ~ .vdd
+    .i2c.levels.vih &= 0.7 * .vdd.voltage
+    .i2c.levels.vil &= 0.3 * .vdd.voltage
+    .i2c.levels.vol &= 0.4V
+    pins {
+        .vdd.pos  power         "VDD" "1"
+        .vdd.neg  power         "VSS" "2"
+        .i2c.sda  bidirectional "SDA" "3"
+        .i2c.scl  bidirectional "SCL" "4"
+    }
+}
+
+/// A target with the same levels, on its own 3.3 V supply.
+part Zitarget {
+    .designator &= "U"
+    .vdd: Rail
+    .i2c: I2c
+    .i2c.role &= I2cRole::Target
+    .i2c.levels.reference ~ .vdd
+    .i2c.levels.vih &= 0.7 * .vdd.voltage
+    .i2c.levels.vil &= 0.3 * .vdd.voltage
+    .i2c.levels.vol &= 0.4V
+    pins {
+        .vdd.pos  power         "VDD" "1"
+        .vdd.neg  power         "GND" "2"
+        .i2c.sda  bidirectional "SDA" "3"
+        .i2c.scl  input         "SCL" "4"
+    }
+}
+```
+
+On one 3.3 V rail with `I2cPullups`, the build says nothing about the levels of the two lines: each part's high is the rail's, 3.135V to 3.465V, and each reads it above 70 % of its own supply.
+
+```nsm evaluate
+import src::zi2c::{Zihost, Zitarget}
+import std::bus::I2cPullups
+import std::sources::Rail
+
+board Pulled {
+    .s3: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .m: Zihost
+    .t: Zitarget
+    .pullups: I2cPullups { .resistance &= 4.7kohm +/- 5% }
+    .s3 ~ .m.vdd
+    .s3 ~ .t.vdd
+    .s3 ~ .pullups.supply
+    .m.i2c ~ .t.i2c
+    .m.i2c ~ .pullups.bus
+}
+```
+
+The same bus pulled up to 1.8 V, with parts that read a high from 70 % of 3.3 V, is refused with the numbers: a high of 1.71 V is not a high for them.
+
+```nsm fails
+import src::zi2c::{Zihost, Zitarget}
+import std::bus::I2cPullups
+import std::sources::Rail
+
+board PulledLow {
+    .s3: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .s18: Rail {
+        .voltage &= 1.8V +/- 5%
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+    }
+    .m: Zihost
+    .t: Zitarget
+    .pullups: I2cPullups { .resistance &= 4.7kohm +/- 5% }
+    .s3 ~ .m.vdd
+    .s3 ~ .t.vdd
+    .s18 ~ .pullups.supply
+    .m.i2c ~ .t.i2c
+    .m.i2c ~ .pullups.bus
+}
+```
+
+```text
+error: net `net-m.i2c.scl`: the pull-up `pullups.scl_pullup` to rail `s18` holds the line at 1.71V..1.89V (a driver that states `vol` and no `voh` leaves the high to the pull-up) but `t.i2c.levels.vih` needs 2.194V..2.426V: a high of 1.71V is not always read as a high, which takes 2.426V
+   --> main.nsm:17:5
+   |
+17 |     .t: Zitarget
+   |     ^^^^^^^^^^^^
+error: net `net-m.i2c.sda`: the pull-up `pullups.sda_pullup` to rail `s18` holds the line at 1.71V..1.89V (a driver that states `vol` and no `voh` leaves the high to the pull-up) but `t.i2c.levels.vih` needs 2.194V..2.426V: a high of 1.71V is not always read as a high, which takes 2.426V
+   --> main.nsm:17:5
+   |
+17 |     .t: Zitarget
+   |     ^^^^^^^^^^^^
+error: net `net-m.i2c.sda`: the pull-up `pullups.sda_pullup` to rail `s18` holds the line at 1.71V..1.89V (a driver that states `vol` and no `voh` leaves the high to the pull-up) but `m.i2c.levels.vih` needs 2.194V..2.426V: a high of 1.71V is not always read as a high, which takes 2.426V
+   --> main.nsm:16:5
+   |
+16 |     .m: Zihost
+   |     ^^^^^^^^^^
+```
 
 ### Buses
 
@@ -8864,7 +9144,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::parts::diode::Diode` | A diode: `.forward_voltage`, `.max_reverse_voltage`, `.max_forward_current`, `.bias`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Requires `.bias <= .max_reverse_voltage` and `.current <= .max_forward_current`. |
 | `std::parts::diode::Schottky` | A Schottky diode, with the fields and ratings of `Diode`. Catalog `schottky`. |
 | `std::parts::diode::Zener` | A Zener diode: `.zener_voltage` (with tolerance), `.max_power`, `.bias`. Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias * .current <= .max_power`. |
-| `std::parts::diode::Tvs` | A unidirectional TVS diode: `.standoff_voltage`, `.clamping_voltage`, `.peak_pulse_current`, `.protected_limit`, `.bias`. Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias <= .standoff_voltage` and `.clamping_voltage <= .protected_limit`. |
+| `std::parts::diode::Tvs` | A unidirectional TVS diode: `.standoff_voltage`, `.clamping_voltage`, `.peak_pulse_current`, `.protected_limit`, `.bias` and the optional `.breakdown_voltage` (a catalog column the standard rows leave empty). Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias <= .standoff_voltage` and `.clamping_voltage <= .protected_limit`. |
 | `std::parts::transistor::NMosfet` | An N-channel MOSFET: pins `gate` (input), `source`, `drain`, bridge `drain ~> source`. Maxima for drain-source voltage, drain current and gate-source voltage; `.gate_threshold`; `.on_resistance`. Requires the stresses `.drain_source_voltage` and `.gate_source_voltage` and `.current` within them, and the gate drive above the threshold. Catalog `n_mosfet`. |
 | `std::parts::transistor::PMosfet` | A P-channel MOSFET: as `NMosfet` with bridge `source ~> drain`; voltages are magnitudes. A generic with the catalog `p_mosfet`, whose standard file has no rows: a project adds its own. |
 | `std::parts::logic::Sn74lvc1g04` | A single inverter, TI SN74LVC1G04 (SCES214AF), for a supply of 3 V to 3.6 V: rail `vcc`, lines `a` (input) and `y` (output) as `Logic` with the levels and absolute maximums of the datasheet, SOT-23-5. No catalog row. |

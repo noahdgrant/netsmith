@@ -121,6 +121,12 @@ generic Zener {
 /// is across. What it protects is the board's to say. A design states the lowest absolute
 /// maximum of what is behind the diode as `.protected_limit` (a voltage, from that part's
 /// datasheet), and then the clamping voltage is checked against it.
+///
+/// `.breakdown_voltage` is the minimum breakdown voltage VBR, an optional catalog column (ADR
+/// 0073): between the stand-off voltage and it the diode leaks a little, below it the diode
+/// does not conduct. A design that needs a margin from the highest the line reaches states it,
+/// `.d.breakdown_voltage >= .vin.peak * 1.1`, and the standard rows, which record no VBR, are
+/// then not offered; a project's catalog gives rows that do.
 generic Tvs {
     .designator &= "D"
 
@@ -135,6 +141,10 @@ generic Tvs {
     /// The voltage across the diode while it carries `.peak_pulse_current`.
     .clamping_voltage: Voltage
     .peak_pulse_current: Current
+    /// The minimum breakdown voltage VBR, unset until a design states it or a catalog row does.
+    /// Between `.standoff_voltage` and this the diode leaks a little; below it, it does not
+    /// conduct.
+    .breakdown_voltage: Voltage
     /// The absolute maximum voltage of the part this one protects. A design states it.
     .protected_limit: Voltage
     /// The DC voltage across the diode, cathode relative to anode.
@@ -145,5 +155,5 @@ generic Tvs {
     bridge .cathode ~> .anode
 
     .package: Package
-    catalog tvs { .standoff_voltage, .clamping_voltage, .peak_pulse_current, .package }
+    catalog tvs { .standoff_voltage, .clamping_voltage, .peak_pulse_current, .package, .breakdown_voltage }
 }

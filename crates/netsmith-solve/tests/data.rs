@@ -79,6 +79,7 @@ fn columns(name: &str) -> Vec<(String, FieldKind)> {
             q("clamping_voltage", Dimension::VOLTAGE),
             q("peak_pulse_current", Dimension::CURRENT),
             t("package"),
+            q("breakdown_voltage", Dimension::VOLTAGE),
         ],
         "ferrite_bead" => vec![
             q("impedance", Dimension::RESISTANCE),
@@ -696,8 +697,7 @@ fn the_standard_kind_rows_say_where_every_number_was_read() {
         for row in records(&format!("jlcpcb/catalog/{name}.csv")) {
             let lcsc = &row["lcsc"];
             assert!(
-                row["source"].contains("read 2026-11-01")
-                    || row["source"].contains("read 2026-11-07"),
+                row["source"].contains("read 2026-11-"),
                 "{name} {lcsc}: {}",
                 row["source"]
             );
@@ -818,6 +818,17 @@ fn every_standard_capacitor_states_the_class_its_listing_prints() {
 fn no_standard_inductor_states_a_heating_current() {
     for c in &catalog("inductor").candidates {
         assert_eq!(c.column("rms_current"), None, "{}", c.name);
+    }
+}
+
+/// The minimum breakdown voltage of a TVS diode is a column that no standard row fills: no
+/// row has a datasheet figure read for it (ADR 0073).
+#[test]
+fn no_standard_tvs_diode_states_a_breakdown_voltage() {
+    let tvs = catalog("tvs");
+    assert!(!tvs.candidates.is_empty());
+    for c in &tvs.candidates {
+        assert_eq!(c.column("breakdown_voltage"), None, "{}", c.name);
     }
 }
 

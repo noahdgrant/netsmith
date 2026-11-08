@@ -66,7 +66,7 @@ Copper filled on an outer layer round the tracks and joined to one net, such as 
 _Avoid_: Copper fill, ground plane (that is a plane)
 
 **Net class**:
-The width the tracks of a net are drawn at. A rail may state it (`.min_track` on a `Rail`, an override; a net takes the widest of its rails). A net no rail states a width for is drawn at the width IPC-2221 needs for its current (the sum of the loads on it or returning through it, all on at once), when the solver knows every current on it; otherwise at the process's least, and a note names the net. Not a list of nets; the rail names them. A stated width is checked against the net's current by IPC-2221 (ADR 0036).
+The width the tracks of a net are drawn at. A rail may state it (`.min_track` on a `Rail`, an override; a net takes the widest of its rails). A net no rail states a width for is drawn at the width IPC-2221 needs for its current (the sum of the loads on it or returning through it, all on at once), for the currents the solver knows (when some are not known, those are a lower bound: the width is never less than the process's least, and a note names the net and the missing currents). Not a list of nets; the rail names them. A stated width is checked against the net's current by IPC-2221 (ADR 0036).
 _Avoid_: Track class, width rule
 
 **Guideline**:
@@ -282,6 +282,10 @@ _Avoid_: Conflict set, exclusive set, group, resource (alone)
 One of the four voltages of a `Logic` line, or of the `Levels` of a bus interface (`.spi.levels`, ADR 0064), as a datasheet gives them and relative to the line's ground (the `neg` of its `.reference` rail): `.vih` the lowest an input reads as high, `.vil` the highest it reads as low, `.voh` the lowest an output drives a high to, `.vol` the highest it drives a low to. After the rails are solved, the solver requires `voh >= vih` and `vol <= vil` for every output and input on a net, and says "not evaluated" when a level has no value or the grounds differ (ADR 0046).
 _Avoid_: Threshold, noise margin
 
+**Open-drain line**:
+A line that a device only pulls low or releases, and a resistor to a rail holds high, such as the `sda` of an `I2c` bus. The levels check (ADR 0075, provisional) recognises a driver of one by what its part states, a `vol` and no `voh`, on a net that a resistor joins to the positive pin of a rail: the line's high is that rail's voltage range, which the receivers' `vih` is judged against. There is no kind or marker for it in the language.
+_Avoid_: Open-collector (KiCad's name for the pin type, which netsmith does not have), wired-AND
+
 **Level translator**:
 A `LevelTranslator` (`std::parts::logic`, ADR 0063, ADR 0066): a single-supply buffer whose input accepts a lower logic level than its supply and whose output swings to its supply. Its input is a `Logic` line whose `.vih` is `.vt_plus_max` (above it the input is a high for sure) and whose `.vil` is `.vt_minus_min` (below it a low for sure), so the solver judges the driver without a statement of the design; its output is a `Logic` line that states no level. Its supply draw is the row's own: `0A .. .max_supply_current`. A generic with the catalog `level_translator`, which has no standard row.
 _Avoid_: Level shifter, voltage translator
@@ -310,7 +314,7 @@ The two terminals of a part that a series chain enters and leaves by.
 A run of series connections from one pin through bridge parts to another. A series chain passes one current, the through-current (`.current`) of each of its parts, taken from the first terminal of the part's `bridge` to the second; the first part's is drawn from the net the chain starts on (ADR 0014).
 
 **Catalog**:
-The columns of a list of real parts that a part's fields are matched against when the solver picks one. A catalog may be keyed by a column (`catalog mcu by .mpn`), and then the design names the row. The rows are a CSV file named after the catalog, in the order the solver tries them (ADR 0022); a project adds its own files: every `*.csv` in its `catalogs/` folder, or in another folder `catalog_dirs` names in `netsmith.toml`. A row with an empty cell is never offered, except in a column that a catalog may leave empty (`temperature_coefficient`, `rms_current`, `dielectric`), and then only to a design that says nothing about the field by any route (a narrowing, a relation, a join, a balance).
+The columns of a list of real parts that a part's fields are matched against when the solver picks one. A catalog may be keyed by a column (`catalog mcu by .mpn`), and then the design names the row. The rows are a CSV file named after the catalog, in the order the solver tries them (ADR 0022); a project adds its own files: every `*.csv` in its `catalogs/` folder, or in another folder `catalog_dirs` names in `netsmith.toml`. A row with an empty cell is never offered, except in a column that a catalog may leave empty (`temperature_coefficient`, `rms_current`, `dielectric`, and a TVS diode's `breakdown_voltage`, ADR 0073), and then only to a design that says nothing about the field by any route (a narrowing, a relation, a join, a balance).
 
 **Catalog file**:
 A CSV file of the rows of one catalog: a header of the catalog's columns (field paths without the leading dot) and the fixed columns `lcsc`, `mpn`, `library`, `price`, `price_breaks`, `stock`, `source`, `date`, `checked`, `name`, `label`, `notes`. `price`, `stock` and `library` are JLCPCB's numbers, entered by hand, and `date` is the day they were read; the solver does not read them and the bill of materials uses them only when no supply provider has the part (ADR 0047); the build notes a picked part whose row states a `stock` of 0, or whose `lcsc` `considered.csv` records as out of stock, and never changes the pick for it. `checked` is the day a refresh last verified the row against LCSC. A row that names a part must have a `source`. The standard ones are `data/jlcpcb/catalog/*.csv` (ADR 0022). A project's are the `*.csv` files of its `catalog_dirs` folders (default `catalogs`) and the single files its `catalogs` list names (ADR 0022, amended).
@@ -388,6 +392,14 @@ _Avoid_: Unset value, free pick, default pick, loose part
 **Unstated value**:
 A value declared in a module or a board (not in a part, an interface or a catalog column) that a check reads and that nothing states or works out, so the check is not evaluated (ADR 0065). Only the root is named: a member that a wrapper forwards to is not one, the wrapper's is. A guideline finding with the same severity as an **Unconstrained pick**.
 _Avoid_: Missing value, unset member, open value
+
+**Optional member**:
+A value declared with the word `optional` after its type, `.max_inductor_dcr: Resistance optional`, in a part, a module, an interface or a generic (ADR 0074, provisional). A design may leave it unstated, and a relation that reads it is then skipped: not checked, not listed as not evaluated, no finding. It is skipped only when nothing **states** the member: an `&=`, an applied `?=`, an equation with the member alone on its left, or a bound against numbers alone (`<=`, `>=`), anywhere in the design, also on the other side of a `~` join. A relation that reads another value that nothing states is still not evaluated, once the optional member is stated. It is the same word as `optional` in a `pins` row and in a catalog column, a modifier that says a thing may be absent. Not the `required` of ADR 0069, which was dropped.
+_Avoid_: Nullable, maybe, conditional check
+
+**Ohm bound**:
+The largest size of the current through a resistor that Ohm's law allows when the voltage at each of its two ends lies in a range the solver knows: the largest difference between the ends over the least resistance (ADR 0026, amendment). It is used only to prove a check that waits on a current that nothing states: a relation it satisfies is made and its note goes, one it does not satisfy stays not evaluated and says nothing. It is not the part's current: the model never holds it as a value, and a pick, a range or a track width reads no current from it, except that the track note goes when the width already drawn carries the known current and every Ohm bound together (ADR 0036, amendment 4).
+_Avoid_: Estimated current, assumed current, worst-case current (a current is worked out or stated; this is neither)
 
 **Transferred bound**:
 A bound on a member that a part's field is held to (`.top.resistance &= .balance`, `.balance >= 20kohm`), read as a bound on the field too, because `&=` puts the field inside the member and a bound on all of the member is a bound on every part of it (ADR 0065). The solver adds it as a relation of its own while it picks and checks the parts, and takes it out of the model it returns. It adds a refusal and never a value.

@@ -1,6 +1,7 @@
 //! Enum fields in the solver (ADR 0054): a check with `==` judges a variant, and a catalog
 //! column of an enum type (the capacitor's `dielectric`, ADR 0055) matches by the variant's
-//! name. The optional `dielectric` and `rms_current` columns may be left out of a file.
+//! name. The optional `dielectric` and `rms_current` columns, and a TVS diode's
+//! `breakdown_voltage` (ADR 0073), may be left out of a file.
 
 use netsmith_check::{Domain, Loader, check};
 use netsmith_solve::{Catalogs, Solution, solve};
@@ -280,4 +281,134 @@ ZZL-2R2-B,2.2uH +/- 20%,3A,0.1ohm,2.5A,1210,Basic,https://example.invalid/zzl-b.
     let s = solved_with(&inductor("        .rms_current >= 2A\n"), &c);
     assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
     assert_eq!(s.picks[0].candidate, "ZZL-2R2-B");
+}
+
+// ---- the breakdown voltage of a TVS diode (ADR 0073) ---------------------------------
+
+/// A 12 V rail that can reach 16 V, a TVS diode across it, and `body` in the board.
+fn tvs(body: &str) -> String {
+    format!(
+        "import std::parts::diode::Tvs
+import std::sources::Rail
+
+board B {{
+    .input: Rail {{
+        .voltage &= 12V +/- 5%
+        .peak &= 16V
+        .pos.net &= \"VIN\"
+        .neg.net &= \"GND\"
+    }}
+    .tvs: Tvs {{
+        .protected_limit &= 36V
+    }}
+{body}    .input.pos ~> .tvs ~> .input.neg
+}}
+"
+    )
+}
+
+const MARGIN: &str = "    .tvs.breakdown_voltage >= .input.peak * 1.1\n";
+
+/// Two project rows of the `tvs` catalog that record a minimum breakdown voltage: 16.0 V
+/// peak with 10% margin needs 17.6 V, which the first (17.2 V) lacks and the second has.
+const TVS_ROWS: &str = "mpn,standoff_voltage,clamping_voltage,peak_pulse_current,package,breakdown_voltage,library,source
+ZZT-17-A,17V,27V,10A,SMA,17.2V,Extended,https://example.invalid/zzt-a.pdf
+ZZT-17-B,17V,27V,10A,SMA,18.9V,Extended,https://example.invalid/zzt-b.pdf
+";
+
+/// Only the first row: its breakdown voltage is under the margin.
+const TVS_ROWS_ONLY_A: &str = "mpn,standoff_voltage,clamping_voltage,peak_pulse_current,package,breakdown_voltage,library,source
+ZZT-17-A,17V,27V,10A,SMA,17.2V,Extended,https://example.invalid/zzt-a.pdf
+";
+
+/// The same rows from a file written before the column existed.
+const TVS_ROWS_WITHOUT_THE_COLUMN: &str =
+    "mpn,standoff_voltage,clamping_voltage,peak_pulse_current,package,library,source
+ZZT-17-A,17V,27V,10A,SMA,Extended,https://example.invalid/zzt-a.pdf
+";
+
+#[test]
+fn a_tvs_diode_with_no_breakdown_voltage_stated_is_picked_from_the_standard_rows_as_before() {
+    let s = solved_with(&tvs(""), &Catalogs::jlcpcb());
+    assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
+    assert_eq!(s.picks.len(), 1);
+    assert!(
+        s.picks[0].candidate.starts_with("SMAJ"),
+        "{}",
+        s.picks[0].candidate
+    );
+}
+
+#[test]
+fn a_breakdown_voltage_margin_is_refused_with_the_standard_rows_which_record_none() {
+    let s = solved_with(&tvs(MARGIN), &Catalogs::jlcpcb());
+    let m = messages(&s);
+    assert_eq!(m.len(), 1, "{m:#?}");
+    assert!(
+        m[0].contains("the `tvs` catalog has nothing for `tvs`"),
+        "{}",
+        m[0]
+    );
+    assert!(m[0].contains("9 for `breakdown_voltage`"), "{}", m[0]);
+    assert!(s.picks.is_empty());
+}
+
+#[test]
+fn a_narrowed_breakdown_voltage_is_refused_with_the_standard_rows_too() {
+    let s = solved_with(
+        &tvs("    .tvs.breakdown_voltage &= 17.6V..30V\n"),
+        &Catalogs::jlcpcb(),
+    );
+    let m = messages(&s);
+    assert_eq!(m.len(), 1, "{m:#?}");
+    assert!(
+        m[0].contains("the `tvs` catalog has nothing for `tvs`"),
+        "{}",
+        m[0]
+    );
+}
+
+#[test]
+fn a_project_row_that_records_a_breakdown_voltage_meets_the_margin() {
+    let mut c = Catalogs::empty();
+    c.add_file("tvs", "catalogs/tvs.csv", TVS_ROWS).unwrap();
+    let s = solved_with(&tvs(MARGIN), &c);
+    assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
+    assert_eq!(s.picks[0].candidate, "ZZT-17-B");
+}
+
+#[test]
+fn a_project_row_with_too_little_breakdown_voltage_fails_the_margin_naming_the_numbers() {
+    let mut c = Catalogs::empty();
+    c.add_file("tvs", "catalogs/tvs.csv", TVS_ROWS_ONLY_A)
+        .unwrap();
+    let s = solved_with(&tvs(MARGIN), &c);
+    let m = messages(&s);
+    assert_eq!(m.len(), 1, "{m:#?}");
+    assert!(
+        m[0].contains("tvs.breakdown_voltage must always be at least")
+            && m[0].contains("17.2V")
+            && m[0].contains("17.6V"),
+        "{}",
+        m[0]
+    );
+}
+
+#[test]
+fn a_tvs_file_written_before_the_column_stays_valid_and_fits_a_design_that_does_not_state_it() {
+    let mut c = Catalogs::empty();
+    c.add_file("tvs", "catalogs/tvs.csv", TVS_ROWS_WITHOUT_THE_COLUMN)
+        .unwrap();
+    let s = solved_with(&tvs(""), &c);
+    assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
+    assert_eq!(s.picks[0].candidate, "ZZT-17-A");
+    // A design that states the margin gets nothing from it.
+    let s = solved_with(&tvs(MARGIN), &c);
+    let m = messages(&s);
+    assert_eq!(m.len(), 1, "{m:#?}");
+    assert!(
+        m[0].contains("the `tvs` catalog has nothing for `tvs`"),
+        "{}",
+        m[0]
+    );
 }

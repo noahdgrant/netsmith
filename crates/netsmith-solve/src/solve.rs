@@ -34,7 +34,7 @@ pub use seed::Seeded;
 
 use netsmith_check::{
     Balance, Board, Checkpoint, Diagnostic, Domain, Draw, FieldId, FieldKind, InstId, InstKind,
-    Model, RExpr, Relation, Snapshot, SourceId, System,
+    Member, Model, RExpr, Relation, Snapshot, SourceId, System,
 };
 use netsmith_core::job;
 use netsmith_lang::Span;
@@ -90,6 +90,19 @@ pub struct Solution {
     /// Values declared in a module or board that checks which could not be evaluated read, and
     /// that nothing states or works out (ADR 0065): a guideline finding.
     pub unstated: Vec<UnstatedValue>,
+    /// The parts whose current has no value and that Ohm's law bounds, with the bound (see
+    /// [`CurrentBound`]). The model does not hold it as the part's current.
+    pub current_bounds: Vec<CurrentBound>,
+}
+
+/// An upper bound on the size of a part's current, from Ohm's law over the voltages that can
+/// be at its two ends (the Ohm bound, pass-only: ADR 0026, amendment). The part's current stays
+/// without a value; this says only that it is no larger than `current`, in either direction.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CurrentBound {
+    pub part: InstId,
+    /// The largest `|I|` in amperes.
+    pub current: f64,
 }
 
 /// A circle of values that stayed open, with the checks it left unmade.
@@ -570,6 +583,9 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         }
     }
     s.drop_transfers();
+    // A check that waits on a current that is not known is made when Ohm's law bounds the
+    // current and the bound proves it (never otherwise).
+    let (deferred, current_bounds) = s.prove_by_ohm(deferred);
     s.verify_balances();
     for d in netsmith_check::pin_faults_solved(model, &s.model) {
         s.report(d.source, d.span, d.message);
@@ -618,6 +634,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         work: s.work,
         unconstrained,
         unstated,
+        current_bounds,
     }
 }
 
@@ -1388,6 +1405,97 @@ impl Solver<'_> {
     /// sufficient one, and a net that fails it cannot balance. A return net is checked after the supply nets,
     /// and only when nothing has been reported: a fault shows there again, and the first
     /// message is enough.
+    /// Of the relations that wait on a value, those that a bound from Ohm's law proves (see
+    /// [`crate::ohm`]) are made, and the rest stay as they are. The relations of a part whose
+    /// current has no value and is bounded are read once more with the bound standing in for
+    /// the current (and for the drop across it, where that has no value either), and each that
+    /// passes is no longer waiting. The values stand in only while a relation is read: nothing
+    /// is kept in the model, and a relation that fails or still cannot be judged is as before.
+    fn prove_by_ohm(&mut self, deferred: Vec<usize>) -> (Vec<usize>, Vec<CurrentBound>) {
+        let bounds = crate::ohm::bounds(&self.model);
+        let mut kept = Vec::new();
+        for i in deferred {
+            let r = self.model.relations()[i].clone();
+            let mut fields = Vec::new();
+            r.lhs.fields(&mut fields);
+            r.rhs.fields(&mut fields);
+            let owner = fields.first().map(|&f| self.model.field(f).owner);
+            let bound = owner.and_then(|o| bounds.iter().find(|b| b.part == o));
+            let proven = match bound {
+                Some(b)
+                    if fields
+                        .iter()
+                        .all(|&f| Some(self.model.field(f).owner) == owner) =>
+                {
+                    self.proven_with(b, &r)
+                }
+                _ => false,
+            };
+            if !proven {
+                kept.push(i);
+            }
+        }
+        let bounds = bounds
+            .iter()
+            .map(|b| CurrentBound {
+                part: b.part,
+                current: b.current,
+            })
+            .collect();
+        (kept, bounds)
+    }
+
+    /// Whether `r` passes when the current of the part of `bound` is in `+-bound.current` and
+    /// the drop across it in `+-bound.drop`, for each of the two that has no value. A drop
+    /// that is the current through the greatest resistance (the wider of the two ranges that
+    /// both hold the real drop) is tried too, for `.drop == .current * .resistance` asks that
+    /// the drop lies where the current puts it. Each is a range the real values lie in, so
+    /// either one that passes proves the relation.
+    fn proven_with(&mut self, bound: &crate::ohm::Bound, r: &Relation) -> bool {
+        [bound.drop, bound.drop_through]
+            .into_iter()
+            .any(|drop| self.passes_within(bound, drop, r))
+    }
+
+    fn passes_within(&mut self, bound: &crate::ohm::Bound, drop: f64, r: &Relation) -> bool {
+        let model = &self.model;
+        let part = bound.part;
+        let Some(current) = model.through_of(part) else {
+            return false;
+        };
+        let across = match model.member(part, "drop") {
+            Some(Member::Field(f))
+                if model.field(f).kind == FieldKind::Quantity(Dimension::VOLTAGE) =>
+            {
+                Some(f)
+            }
+            _ => None,
+        };
+        let span = |dim: Dimension, x: f64| {
+            let lo = Quantity::point(dim, -x).ok()?;
+            let hi = Quantity::point(dim, x).ok()?;
+            Quantity::range(&lo, &hi).ok()
+        };
+        let mut set: Vec<FieldId> = Vec::new();
+        if let Some(q) = span(Dimension::CURRENT, bound.current)
+            && self.model.field(current).domain == Domain::Unset
+        {
+            self.model.set_domain(current, Domain::Quantity(q));
+            set.push(current);
+        }
+        if let (Some(f), Some(q)) = (across, span(Dimension::VOLTAGE, drop))
+            && self.model.field(f).domain == Domain::Unset
+        {
+            self.model.set_domain(f, Domain::Quantity(q));
+            set.push(f);
+        }
+        let verdict = self.verify(r);
+        for f in set {
+            self.model.set_domain(f, Domain::Unset);
+        }
+        matches!(verdict, Verdict::Pass)
+    }
+
     fn verify_balances(&mut self) {
         let mut balances = self.model.balances().to_vec();
         balances.sort_by_key(|b| b.returns);

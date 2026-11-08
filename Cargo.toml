@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/netsmith-core", "crates/netsmith-kicad", "crates/netsmith-lang", "crates/netsmith-quantity", "crates/netsmith-check", "crates/netsmith-solve", "crates/netsmith-lower", "crates/netsmith", "crates/netsmith-view", "crates/netsmith-pcb", "crates/netsmith-fab", "crates/netsmith-netlist", "crates/netsmith-editor", "crates/netsmith-dxf"]
+members = ["crates/netsmith-core", "crates/netsmith-kicad", "crates/netsmith-lang", "crates/netsmith-quantity", "crates/netsmith-check", "crates/netsmith-solve", "crates/netsmith-lower", "crates/netsmith", "crates/netsmith-view", "crates/netsmith-pcb", "crates/netsmith-fab", "crates/netsmith-netlist", "crates/netsmith-editor", "crates/netsmith-dxf", "crates/netsmith-dc"]
 
 [workspace.package]
 version = "0.0.1"
@@ -20,4 +20,23 @@ debug = "line-tables-only"
 # rest of the workspace is quick to build and to step through, and this crate is optimised so
 # that its tests (a board of seventy parts is placed and routed) take seconds, not minutes.
 [profile.dev.package.netsmith-pcb]
+opt-level = 2
+
+# The solver searches thousands of candidate combinations on a real board: a real 12 V automotive board (about 60 parts, two buck stages) takes
+# about 7.4 s to build in a debug build and 1.25 s with these crates optimised (10.2 s to 1.9 s in
+# the editor, which also draws the schematic with netsmith-view). They are quick to build, so the
+# cost is a first compile of about 30 s and less debuggable solver code.
+[profile.dev.package.netsmith-solve]
+opt-level = 2
+
+[profile.dev.package.netsmith-quantity]
+opt-level = 2
+
+[profile.dev.package.netsmith-core]
+opt-level = 2
+
+[profile.dev.package.netsmith-check]
+opt-level = 2
+
+[profile.dev.package.netsmith-view]
 opt-level = 2
