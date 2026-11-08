@@ -201,6 +201,10 @@ impl Run<'_> {
     fn lines_on(&self, net: &Net) -> Vec<Line> {
         let mut lines = Vec::new();
         for &pin in &net.terminals {
+            // The board states the interface is not used (ADR 0083): its levels are not compared.
+            if self.model.unused_by(pin).is_some() {
+                continue;
+            }
             let (Some(logic), Some(part), Some(kind)) = (
                 self.logic_of(pin),
                 self.model.owner_of(pin),
@@ -549,6 +553,9 @@ impl Run<'_> {
             .collect();
         for pin in pins {
             netsmith_core::job::checkpoint();
+            if model.unused_by(pin).is_some() {
+                continue;
+            }
             let min = self.value(pin, "abs_min");
             let max = self.value(pin, "abs_max");
             if min.is_none() && max.is_none() {

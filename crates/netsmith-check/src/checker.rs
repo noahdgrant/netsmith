@@ -126,6 +126,11 @@ pub(crate) struct Checker<'a> {
     /// The fields that some `&=` statement states, in the elaboration in progress. A default
     /// (`?=`) gives way to one of these (ADR 0051).
     pub(crate) stated: HashSet<crate::model::FieldId>,
+    /// The interfaces that `unused` statements of the board name (ADR 0083), until they act.
+    pub(crate) unused_stmts: Vec<crate::model::Unused>,
+    /// The operands of the `~` and `~>` statements read so far, where a message about a
+    /// connection points.
+    pub(crate) touches: Vec<crate::unused::Touch>,
     /// The `?=` statements of the elaboration in progress, resolved when every statement has
     /// been read, so that their order never matters.
     pub(crate) defaults: Vec<crate::lower::PendingDefault>,
@@ -205,6 +210,8 @@ impl<'a> Checker<'a> {
             attached: HashMap::new(),
             phys: None,
             stated: HashSet::new(),
+            unused_stmts: Vec::new(),
+            touches: Vec::new(),
             defaults: Vec::new(),
             source_override: None,
             enum_ids: HashMap::new(),
@@ -681,6 +688,8 @@ impl<'a> Checker<'a> {
         self.skipped.clear();
         self.table_pins.clear();
         self.stated.clear();
+        self.unused_stmts.clear();
+        self.touches.clear();
         self.defaults.clear();
         self.enum_ids.clear();
         self.bus_def_failed.clear();
@@ -693,6 +702,7 @@ impl<'a> Checker<'a> {
         self.model.root = root;
         self.resolve_defaults();
         self.finalize_nets();
+        self.apply_unused();
         self.skip_unstated_optional();
         self.model.uses = std::mem::take(&mut self.uses);
         self.model.sources = crate::model::SourceTexts(Some(self.source_snapshot()));
@@ -1245,6 +1255,7 @@ impl<'a> Checker<'a> {
                 Item::Catalog(c) if self.phys.is_none() => self.catalog(c),
                 Item::Pins(p) if self.phys.is_none() => self.pins(p),
                 Item::Tie(t) if self.phys.is_none() => self.tie(t),
+                Item::Unused(u) if self.phys.is_none() => self.unused(u),
                 Item::Peripheral(p) if self.phys.is_none() => self.peripheral(p),
                 Item::Shared(s) if self.phys.is_none() => self.shared(s),
                 Item::Lines(l) if self.phys.is_none() => self.lines(l),
@@ -1254,6 +1265,7 @@ impl<'a> Checker<'a> {
                 Item::Catalog(c) => self.not_physical(c.span, "a `catalog`"),
                 Item::Pins(p) => self.not_physical(p.span, "a `pins` table"),
                 Item::Tie(t) => self.not_physical(t.span, "a `tie`"),
+                Item::Unused(u) => self.not_physical(u.span, "an `unused` statement"),
                 Item::Peripheral(p) => self.not_physical(p.span, "a `peripheral`"),
                 Item::Shared(s) => self.not_physical(s.span, "a `shared` resource"),
                 Item::Lines(l) => self.not_physical(l.span, "a `lines` table"),

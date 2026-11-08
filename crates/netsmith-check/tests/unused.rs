@@ -1,0 +1,355 @@
+//! `unused .processor.usb`: a board states that an interface is not used (ADR 0083). The
+//! limits the part states for it, the sources its pins need and the connection rules of its
+//! pins do not apply, and the board may not also use it.
+//!
+//! The parts are invented for these tests.
+
+use netsmith_check::*;
+
+const PARTS: &str = r#"
+import std::bus::Usb2
+import std::sources::Rail
+
+/// Zproc, an invented processor: a supply, and a USB port that its datasheet limits to 4.35 V
+/// to 5.5 V on VBUS whether or not a board uses it.
+part Zproc {
+    .vdd: Rail
+    .usb: Usb2
+    .usb.vbus.neg ~ .vdd.neg
+    .usb.vbus.voltage >= 4.35V
+    .usb.vbus.voltage <= 5.5V
+
+    pins {
+        .vdd.pos      power         "VDD"  "1"
+        .vdd.neg      power         "VSS"  "2"
+        .usb.vbus.pos power         "VBUS" "3"
+        .usb.dp       bidirectional "DP"   "4"
+        .usb.dm       bidirectional "DM"   "5" fn GPIO USB_DM
+    }
+}
+
+/// Zpad, an invented test pad.
+part Zpad {
+    pins {
+        .p passive "P" "1"
+    }
+}
+
+/// Zjack, an invented receptacle that brings a USB port out.
+part Zjack {
+    .usb: Usb2
+
+    pins {
+        .usb.vbus.pos power         "VBUS" "1" optional
+        .usb.vbus.neg power         "GND"  "2"
+        .usb.dp       bidirectional "D+"   "3"
+        .usb.dm       bidirectional "D-"   "4"
+    }
+}
+"#;
+
+fn run(src: &str) -> Checked {
+    check("test.nsm", src, &Loader::std())
+}
+
+fn board(body: &str) -> String {
+    format!(
+        "{PARTS}\nboard B {{\n    .supply: Rail {{\n        .voltage &= 3.3V +/- 5%\n        .pos.net &= \"3V3\"\n        .neg.net &= \"GND\"\n    }}\n    .proc: Zproc\n    .supply ~ .proc.vdd\n{body}}}\n"
+    )
+}
+
+fn messages(c: &Checked) -> Vec<String> {
+    c.diagnostics.iter().map(|d| d.message.clone()).collect()
+}
+
+/// The relations of the board `B` that read `needle`, as text.
+fn reading(c: &Checked, needle: &str) -> Vec<String> {
+    let m = &c.board("B").unwrap().model;
+    m.relations()
+        .iter()
+        .map(|r| {
+            format!(
+                "{} {} {}",
+                m.show_expr(&r.lhs),
+                r.op.symbol(),
+                m.show_expr(&r.rhs)
+            )
+        })
+        .filter(|t| t.contains(needle))
+        .collect()
+}
+
+/// The nets of the board `B` that a balance is made for.
+fn balanced(c: &Checked) -> Vec<String> {
+    let m = &c.board("B").unwrap().model;
+    m.balances().iter().map(|b| b.net.clone()).collect()
+}
+
+#[test]
+fn without_the_statement_the_part_states_its_limits_and_the_pin_has_a_balance() {
+    let c = run(&board(""));
+    assert!(
+        messages(&c).iter().all(|m| !m.contains("stated `unused`")),
+        "{}",
+        c.render()
+    );
+    assert_eq!(
+        reading(&c, "proc.usb.vbus.voltage"),
+        [
+            "proc.usb.vbus.voltage >= 4.35V",
+            "proc.usb.vbus.voltage <= 5.5V"
+        ]
+    );
+    assert!(
+        balanced(&c).iter().any(|n| n.contains("proc.usb.vbus")),
+        "{:?}",
+        balanced(&c)
+    );
+    assert!(c.board("B").unwrap().model.unused().is_empty());
+}
+
+#[test]
+fn the_statement_takes_the_limits_and_the_balance_out_and_its_pins_need_no_connection() {
+    let c = run(&board("    unused .proc.usb\n"));
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(reading(&c, "proc.usb.vbus"), Vec::<String>::new());
+    assert!(
+        balanced(&c).iter().all(|n| !n.contains("proc.usb")),
+        "{:?}",
+        balanced(&c)
+    );
+    let m = &c.board("B").unwrap().model;
+    assert_eq!(m.unused().len(), 1);
+    let pin = m.inst_at("proc.usb.vbus.pos").unwrap();
+    assert!(m.unused_by(pin).is_some());
+    assert!(m.unused_by(m.inst_at("proc.vdd.pos").unwrap()).is_none());
+}
+
+#[test]
+fn a_pin_that_must_be_connected_needs_no_connection_when_its_interface_is_unused() {
+    // Without the statement the power pin of the port must be connected: nothing is on its net.
+    let without = run(&board(""));
+    assert!(
+        messages(&without)
+            .iter()
+            .any(|m| m.contains("`proc.usb.vbus.pos` is a power pin that must be connected")),
+        "{}",
+        without.render()
+    );
+    let with = run(&board("    unused .proc.usb\n"));
+    assert!(with.is_ok(), "{}", with.render());
+}
+
+#[test]
+fn the_statement_reads_the_same_wherever_it_stands() {
+    let before = run(&format!(
+        "{PARTS}\nboard B {{\n    unused .proc.usb\n    .proc: Zproc\n    .supply: Rail\n    .supply ~ .proc.vdd\n}}\n"
+    ));
+    let after = run(&format!(
+        "{PARTS}\nboard B {{\n    .proc: Zproc\n    .supply: Rail\n    .supply ~ .proc.vdd\n    unused .proc.usb\n}}\n"
+    ));
+    let inside = run(&format!(
+        "{PARTS}\nboard B {{\n    .proc: Zproc {{\n        unused .usb\n    }}\n    .supply: Rail\n    .supply ~ .proc.vdd\n}}\n"
+    ));
+    for c in [&before, &after, &inside] {
+        assert!(c.is_ok(), "{}", c.render());
+        assert_eq!(c.board("B").unwrap().model.unused().len(), 1);
+        assert_eq!(reading(c, "proc.usb.vbus"), Vec::<String>::new());
+    }
+}
+
+#[test]
+fn a_relation_that_reads_other_values_too_is_kept() {
+    let src = board("    unused .proc.usb\n    .proc.usb.vbus.voltage >= .proc.vdd.voltage\n");
+    let c = run(&src);
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(
+        reading(&c, "proc.usb.vbus"),
+        ["proc.usb.vbus.voltage >= proc.vdd.voltage"]
+    );
+}
+
+#[test]
+fn joining_the_interface_contradicts_the_statement() {
+    let src = board(
+        "    .jack: Zjack\n    .jack.usb.vbus.neg ~ .supply.neg\n    .proc.usb ~ .jack.usb\n    unused .proc.usb\n",
+    );
+    let c = run(&src);
+    let said = messages(&c);
+    assert!(
+        said.iter().any(
+            |m| m.contains("`proc.usb.dm` is connected here to `jack.usb.dm`")
+                && m.contains("but `proc.usb` is stated `unused` at test.nsm:")
+                && m.contains("remove the connection, or remove `unused`")
+        ),
+        "{}",
+        c.render()
+    );
+    // The error points at the connection; the message names the line of the statement.
+    let at = c
+        .diagnostics
+        .iter()
+        .find(|d| d.message.contains("connected here"))
+        .unwrap();
+    assert!(
+        c.sources.get(at.source).text[at.span.start..at.span.end].contains(".proc.usb"),
+        "{}",
+        c.render()
+    );
+    // One statement joins three pins and is told once.
+    assert_eq!(
+        messages(&c)
+            .iter()
+            .filter(|m| m.contains("connected here"))
+            .count(),
+        1,
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn a_pin_joined_to_a_pin_of_another_part_contradicts_the_statement() {
+    let src = board(
+        "    .jack: Zjack\n    .jack.usb.vbus.neg ~ .supply.neg\n    .proc.usb.dp ~ .jack.usb.dp\n    unused .proc.usb\n",
+    );
+    let c = run(&src);
+    assert!(
+        messages(&c).iter().any(|m| m
+            .contains("`proc.usb.dp` is connected here to `jack.usb.dp` (net `net-jack.usb.dp`)")),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn a_test_pad_and_a_ground_do_not_use_the_interface() {
+    let src = board(
+        "    .tp: Zpad\n    .tp.p ~ .proc.usb.dp\n    .proc.usb.vbus.pos.net &= \"VBUS_TP\"\n    .tp2: Zpad\n    .tp2.p.net &= \"VBUS_TP\"\n    .proc.usb.vbus.neg ~ .supply.neg\n    unused .proc.usb\n",
+    );
+    let c = run(&src);
+    assert!(c.is_ok(), "{}", c.render());
+    // The pads are on their nets, and nothing says the nets have no source.
+    let m = &c.board("B").unwrap().model;
+    assert!(m.net_of(m.inst_at("proc.usb.vbus.pos").unwrap()).is_some());
+    assert!(
+        balanced(&c).iter().all(|n| !n.contains("VBUS_TP")),
+        "{:?}",
+        balanced(&c)
+    );
+}
+
+#[test]
+fn a_function_chosen_on_a_pin_contradicts_the_statement() {
+    let src = board("    .proc.usb.dm.function &= \"USB_DM\"\n    unused .proc.usb\n");
+    let c = run(&src);
+    assert!(
+        messages(&c).iter().any(|m| m.contains(
+            "`proc.usb.dm` is given a function here, but `proc.usb` is stated `unused` at test.nsm:"
+        )),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn only_an_interface_of_a_board_can_be_stated_unused() {
+    for (body, needle) in [
+        (
+            "    unused .proc.vdd.pos\n",
+            "is a pin, and `unused` names an interface",
+        ),
+        (
+            "    unused .proc\n",
+            "is a `Zproc`, and `unused` names an interface",
+        ),
+        (
+            "    unused .proc.usb.vbus.voltage\n",
+            "is a value, and `unused` names an interface",
+        ),
+    ] {
+        let c = run(&board(body));
+        assert!(
+            messages(&c).iter().any(|m| m.contains(needle)),
+            "{body}: {}",
+            c.render()
+        );
+    }
+    let c = run(&board("    unused .proc.usb\n    unused .proc.usb\n"));
+    assert!(
+        messages(&c)
+            .iter()
+            .any(|m| m.contains("`proc.usb` is already stated `unused` at test.nsm:")),
+        "{}",
+        c.render()
+    );
+    // A part, a module or a system cannot state that a function of its own is unused.
+    let c = run(&format!(
+        "{PARTS}\nmodule M {{\n    .u: Zproc\n    unused .u.usb\n}}\n"
+    ));
+    assert!(
+        messages(&c)
+            .iter()
+            .any(|m| m.contains("`unused` is a statement of a board")),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn an_interface_of_a_module_is_unused_when_the_modules_own_wiring_reaches_it() {
+    // The module wires its USB port to the part inside it; the board names the nets of the
+    // pads and brings them out to test pads, and says nothing uses the port.
+    let src = format!(
+        "{PARTS}\nmodule Zmodem {{\n    .usb: Usb2\n    .u: Zjack\n    .usb ~ .u.usb\n}}\n\nboard B {{\n    .supply: Rail {{\n        .voltage &= 3.3V +/- 5%\n        .pos.net &= \"3V3\"\n        .neg.net &= \"GND\"\n    }}\n    .modem: Zmodem\n    .tp_vbus: Zpad\n    .tp_dp: Zpad\n    .modem.usb.vbus.pos.net &= \"MODEM_VBUS\"\n    .tp_vbus.p.net &= \"MODEM_VBUS\"\n    .modem.usb.dp ~ .tp_dp.p\n    unused .modem.usb\n}}\n"
+    );
+    let c = run(&src);
+    assert!(c.is_ok(), "{}", c.render());
+    // The power view reads the balances of the board's own scope: none is for the port.
+    let on_board = |c: &Checked| -> Vec<String> {
+        let m = &c.board("B").unwrap().model;
+        m.balances()
+            .iter()
+            .filter(|b| b.scope == m.root)
+            .map(|b| b.net.clone())
+            .collect()
+    };
+    assert!(
+        on_board(&c)
+            .iter()
+            .all(|n| n != "MODEM_VBUS" && !n.contains("modem.usb")),
+        "{:?}",
+        on_board(&c)
+    );
+    // Without the statement the module's rail is a net that nothing supplies.
+    let without = run(&src.replace("    unused .modem.usb\n", ""));
+    assert!(
+        on_board(&without).iter().any(|n| n == "MODEM_VBUS"),
+        "{:?}",
+        on_board(&without)
+    );
+}
+
+#[test]
+fn a_rail_of_the_board_that_supplies_the_port_contradicts_the_statement() {
+    let src = board(
+        "    .vbus: Rail {\n        .voltage &= 5V +/- 5%\n        .pos.net &= \"VBUS\"\n        .neg.net &= \"GND\"\n    }\n    .vbus ~ .proc.usb.vbus\n    unused .proc.usb\n",
+    );
+    let c = run(&src);
+    assert!(
+        messages(&c).iter().any(|m| m
+            .contains("`proc.usb.vbus` is connected here to `vbus`, but `proc.usb` is stated `unused` at test.nsm:")),
+        "{}",
+        c.render()
+    );
+    // The error is on the line of the join.
+    let at = c
+        .diagnostics
+        .iter()
+        .find(|d| d.message.contains("connected here"))
+        .unwrap();
+    assert_eq!(
+        &c.sources.get(at.source).text[at.span.start..at.span.end],
+        ".proc.usb.vbus"
+    );
+}
