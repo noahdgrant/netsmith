@@ -45,7 +45,7 @@ A part in `std/` that states logic levels or ratings (`std/parts/logic.nsm`, ADR
 
 ## Footprints and placement
 
-A new package needs a footprint in `crates/netsmith-kicad/src/mapping.rs` (the row in `std/kicad.toml`). If the footprint is a chip, SOT-23, SOIC/TSSOP/MSOP, QFN/DFN or pin header, netsmith generates it by the KiCad name (ADR 0043, `crates/netsmith-pcb/src/generate/`): a name in `generate::names()` needs no library. For another package add a row to the generator that fits (its parameters are a table in that file), run `cargo test -p netsmith-pcb --test generated_vs_kicad -- --nocapture`, and make it agree with KiCad's footprint of the same name or record why in `DIFFERENCES`; otherwise the footprint comes from a library file. Its pick-and-place rotation is unverified until a board with it has been assembled, so `crates/netsmith-fab/src/rotation.rs` leaves it out and `fab-notes.txt` flags it.
+A new package needs a footprint in `crates/netsmith-kicad/src/mapping.rs` (the row in `std/kicad.toml`). If the footprint is a chip, SOT-23, SOIC/TSSOP/MSOP, QFN/DFN or pin header, netsmith generates it by the KiCad name (ADR 0043, `crates/netsmith-pcb/src/generate/`): a name in `generate::names()` needs no library. For another package add a row to the generator that fits (its parameters are a table in that file), run `cargo test -p netsmith-pcb --test main generated_vs_kicad:: -- --nocapture`, and make it agree with KiCad's footprint of the same name or record why in `DIFFERENCES`; otherwise the footprint comes from a library file. Its pick-and-place rotation is unverified until a board with it has been assembled, so `crates/netsmith-fab/src/rotation.rs` leaves it out and `fab-notes.txt` flags it.
 
 ## Tests
 

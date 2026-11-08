@@ -4,7 +4,7 @@
 //! keeps counting on both faces. The parts are invented: a right-angle header whose two pads
 //! are at one end of a 5 x 13.5 mm body, and an 8 x 8 mm part with two pads.
 
-mod common;
+use crate::common;
 
 use netsmith_kicad::testlib::TempDir;
 use std::collections::BTreeMap;

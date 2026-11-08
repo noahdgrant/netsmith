@@ -6,7 +6,7 @@
 //!
 //! The boards are the seeded ones of `synthetic.rs`, with widths given to some of their nets.
 
-mod common;
+use crate::common;
 
 use netsmith_fab::drc;
 use netsmith_pcb::{Board, BoardKeepout, Pt, RouteOptions, route_with};

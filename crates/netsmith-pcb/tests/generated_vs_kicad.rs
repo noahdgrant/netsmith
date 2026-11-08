@@ -7,7 +7,7 @@
 //! and the test checks that it still differs, so the table cannot go stale. The test is
 //! skipped when KiCad's libraries are not installed.
 //!
-//! `cargo test -p netsmith-pcb --test generated_vs_kicad -- --nocapture` prints the table.
+//! `cargo test -p netsmith-pcb --test main generated_vs_kicad:: -- --nocapture` prints the table.
 
 use netsmith_pcb::generate::{generate, names};
 use netsmith_pcb::{Footprint, FootprintLibrary, Pad, PadShape};

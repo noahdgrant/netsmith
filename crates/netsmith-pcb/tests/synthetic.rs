@@ -1,7 +1,7 @@
 //! The placer and router on boards the size of a real one, made from seeds so that no
 //! design's data is needed: how long they take, and that what they cannot do is said.
 
-mod common;
+use crate::common;
 
 use netsmith_kicad::testlib::TempDir;
 use std::time::{Duration, Instant};
@@ -232,9 +232,10 @@ fn a_walled_in_pad_on_a_plane_net_gets_a_via_in_the_pad() {
     );
 }
 
-/// Prints the numbers ADR 0033 quotes: `cargo test --release -p netsmith-pcb --test synthetic
-/// measured -- --nocapture`. With `NETSMITH_WRITE_BOARDS` set to a folder it writes the routed
-/// boards there, for `crates/netsmith-pcb/scripts/check-kicad.sh`.
+/// Prints the numbers ADR 0033 quotes: `cargo test --release -p netsmith-pcb --test main
+/// synthetic::the_placement_of_the_big_boards_is_measured -- --nocapture`. With
+/// `NETSMITH_WRITE_BOARDS` set to a folder it writes the routed boards there, for
+/// `crates/netsmith-pcb/scripts/check-kicad.sh`.
 #[test]
 fn the_placement_of_the_big_boards_is_measured() {
     for (name, structured) in [("plain", false), ("structured", true)] {

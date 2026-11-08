@@ -1,6 +1,6 @@
 //! How far the router gets on boards that are hard to route.
 
-mod common;
+use crate::common;
 
 use netsmith_pcb::{Board, Pt, Ratsnest, Rect, RouteOptions, route, route_with};
 

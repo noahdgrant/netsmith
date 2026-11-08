@@ -2,7 +2,7 @@
 //! (`Rules::edge_wall`), not a fixed 2.0 mm, and a pad that sticks out of its courtyard still
 //! keeps the process's copper to edge space.
 
-mod common;
+use crate::common;
 
 use netsmith_core::{Design, Features, Net, Outline, Part, PinRef};
 use netsmith_kicad::testlib::TempDir;

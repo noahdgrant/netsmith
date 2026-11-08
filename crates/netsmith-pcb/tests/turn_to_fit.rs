@@ -3,7 +3,7 @@
 //! invented: a 60 x 5 mm header with a pad at each end, and four small two-pad parts, on an
 //! outline of 40 x 80 mm.
 
-mod common;
+use crate::common;
 
 use netsmith_kicad::testlib::TempDir;
 
