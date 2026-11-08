@@ -12,6 +12,7 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | Source editor and live diagnostics | `source-editor.md` | `editor` | `two_boards` |
 | Source: Ctrl+/ comment, autosave, comment font, Vim keys, sort imports, rebuild | `source-editor.md` | `source-keys` | `two_boards` |
 | Source: the cursor and scroll position of each file kept | `source-editor.md` | `source-position` | `two_boards` |
+| Source: a plain comment is not analysed again | `source-editor.md` | `comment-only` | `two_boards` |
 | Source: hover cards, breadcrumbs, history, outline, inline hints, tabs, folds, find, completion | `source-editor.md` | `source-editor` | `two_boards` |
 | Schematic view and click-through | `schematic.md` | `schematic`, `big-schematic` | `two_boards`, `big` |
 | Schematic box of a part with a `tri_state` pin (the side it is on, the mark of an open one) | `schematic.md` | `tri-state` | `tri_state` |
