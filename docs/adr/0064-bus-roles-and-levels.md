@@ -1,8 +1,10 @@
 ---
-status: implemented, stages 0 to 5 (2026-11-06) and the receptacle's pass-through (2026-11-07, section 10, chosen by the agent on the owner's "pick whatever is reasonable", for review); stage 5, the role as an expected statement, is a guideline finding, and stays one (question 4: an error by default is not planned, section 10). The words `lines`, `role`, `limit`, `single`, `crosses` and `tri_state`, the enum for each bus's roles, the member `.levels` and the shared `.frequency` were reviewed and accepted by the owner as written; section 10 says what was built and where it differs from the text above
+status: implemented, stages 0 to 5 (2026-11-06; the reference rail of `Levels` is not a load, provisional amendment 2026-11-07) and the receptacle's pass-through (2026-11-07, section 10, chosen by the agent on the owner's "pick whatever is reasonable", for review); stage 5, the role as an expected statement, is a guideline finding, and stays one (question 4: an error by default is not planned, section 10). The words `lines`, `role`, `limit`, `single`, `crosses` and `tri_state`, the enum for each bus's roles, the member `.levels` and the shared `.frequency` were reviewed and accepted by the owner as written; section 10 says what was built and where it differs from the text above
 ---
 
 # Buses state who drives each line, at which levels and how fast
+
+*Words.* In GLOSSARY a **Bus** is the interfaces of one definition that share a net, which is what this ADR counts roles on; how the editor's schematic draws the members of one interface is the **Bus drawing** (ADR 0067). The two ADRs are neighbours and do not depend on each other.
 
 ## Summary
 
@@ -619,3 +621,13 @@ Two other loose ends of the section, decided without a change of the rules:
 
 - **`Uart` stays without roles.** Both ends of a UART are the same: a part has a `tx` and an `rx` and no end of the link is the master (flow control is symmetric and `crosses` says which line meets which), so a role would be a name for the same table twice, and a part would have to state a role that its datasheet does not have. The limit of two ends is the `lines limit 2` of the one table. A `Uart` that is joined is not asked for a role by the guideline, as stage 5 says.
 - **The `bus role` guideline stays a guideline, and an error only under `--strict` or `guidelines = "error"`** (question 4, which the owner asked as "later an error?"): not planned. A part that is joined to a bus and states no role is still correct, only less judged, and the same choice as every other guideline of ADR 0030 and ADR 0065 (a warning that the owner or a project can turn into an error) keeps one way to read them. With the receptacle closed, no part of the library or of an example is asked for a role that it has not got. A project that wants the error says `guidelines = "error"`.
+
+### Amendment (provisional, 2026-11-07): the reference rail of `Levels` is not a load
+
+A part joins the reference rail of a bus interface to its own supply (`.spi.levels.reference ~ .vdd`) so that the levels are judged against a rail that has a source. `~` equates every field of two rails but `current` (a rail can feed several loads), so the reference stayed a rail of its own on the supply's net, a term of that net's balance (ADR 0027) with a current that nobody states and nobody could: the datasheet's supply current is the part's `.vdd.current`. The net then had two unknown terms, was left unsolved, and the power view said `+3V3 has N loads with a current the solver has not settled`. Each part or sheet that joined a reference had to state `.levels.reference.current &= 0A`, as ADR 0066 did for the translator's `Logic` lines.
+
+- **What was built.** `interface Levels` states `.reference.current &= 0A` (`std/logic.nsm`), once. It is the one thing in the library that is a reference for the checker and not a load, so the statement belongs to it. A part that states `.levels.reference.current &= 0A` itself still builds (the same value). A part that states another value for it is refused as a contradiction, which is right: nothing is drawn through a reference.
+- **Why a statement in the interface is enough.** A statement inside an interface definition applies to every instance of it, as `TwoLayer` states its minimums; and it is a statement on the field itself, so a join does not have to carry it. A `?=` default would also settle the field, but a default is an offer that a board can replace, and a reference that draws is a mistake that should be refused.
+- **No new syntax, and no change to the checker or solver.** The balances, the budgets and the power view read a stated `0A` as they always did (ADR 0066: a zero term adds nothing and is not an allowance).
+- **Not changed.** `std::logic::Logic` has the same shape (`.line`, `.reference`) and the translator still states `.a.reference.current &= 0A` and `.y.reference.current &= 0A` itself. Moving it into `Logic` changes every part and example that has one, so it stays with ADR 0066, open question 3.
+
