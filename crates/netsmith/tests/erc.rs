@@ -12,7 +12,7 @@ use netsmith_fab::KicadCliExe;
 use netsmith_kicad::testlib::TempDir;
 use netsmith_solve::Catalogs;
 
-mod common;
+use crate::common;
 
 /// The violations ERC finds in a schematic, as `type: description`, or `None` if KiCad is
 /// not here.

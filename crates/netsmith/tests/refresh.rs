@@ -1,7 +1,7 @@
 //! `netsmith catalog refresh` and `catalog age` (ADR 0039), against a fake server that answers
 //! from responses saved from the real endpoints. No test reaches the network.
 
-mod common;
+use crate::common;
 
 use netsmith_kicad::testlib::TempDir;
 use std::collections::BTreeMap;
