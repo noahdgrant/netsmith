@@ -353,6 +353,14 @@ _Avoid_: Case, scenario, worst case (the worst case is a result, an end of the r
 A part that states `dc linear_regulator` or `dc switching_regulator`: an ideal source on the net of its output rail, over the range of the rail's voltage, and an input rail that draws what the output asks (what it supplies for a linear one, `Pout / (efficiency * Vin)` for a switching one). It cuts the network into the island behind it and the island in front of it (ADR 0076, amendment 3).
 _Avoid_: Converter model, power stage (a `BuckStage` is the module around the IC, and the IC is the regulator)
 
+**Source (at DC)**:
+A rail that holds its nets over the range of its voltage in the analysis: a `Rail` that the board declares itself, or the rail that a part gives with `dc source` (a connector's supply, ADR 0076, amendment 5). Its `pos` net is held over the range the design states for `.voltage` and its `neg` net at zero; the network on either side of it is an island.
+_Avoid_: Supply part, power source part (a source is a rail, and the part that gives it states `dc source` for it)
+
+**Carried voltage**:
+The voltage of a rail on a node of a `~>` chain, as the analysis gives it: the source's, less what each part in series drops at the current it carries. The analysis writes it into the rail's `.voltage` where nothing states one, so the board does not restate the drops (ADR 0076, amendment 5).
+_Avoid_: Propagated voltage, derived voltage (a derived value is any worked-out field; this one is the node's)
+
 **Collapse**:
 A corner of an island in which a regulator's input falls to nothing because its output asks for more power than the source can give through the resistance in front of it (12 V through 10 ohm gives at most 3.6 W): the circuit has no operating point there, and the analysis reports an error that names the regulator, what it asks and the states (ADR 0076, amendment 3).
 _Avoid_: Brown-out, undervoltage (an input that is low but has an operating point is below the regulator's minimum, which its own relation reports), failure to start

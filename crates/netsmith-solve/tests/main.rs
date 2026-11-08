@@ -14,6 +14,7 @@ mod correlated_levels;
 mod cycles;
 mod data;
 mod dc_analysis;
+mod dc_chain;
 mod dc_regulators;
 mod dc_switches;
 mod defaults;

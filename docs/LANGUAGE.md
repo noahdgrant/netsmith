@@ -7924,16 +7924,18 @@ dc nmos .gate .drain .source .gate_threshold .on_resistance
 dc pmos .gate .drain .source .gate_threshold .on_resistance
 dc linear_regulator .vin .vout
 dc switching_regulator .vin .buck.sw .buck.efficiency
+dc source .vbatt
 ```
 
 - `dc resistor <terminal> <terminal> <resistance>`: a resistance between two pins, over the range of the field (a resistor, a fuse, a ferrite bead's `.dc_resistance`).
 - `dc diode <anode> <cathode> <forward voltage>`: blocks, or holds the forward voltage and carries a current of at least zero.
 - `dc nmos` and `dc pmos`, `<gate> <drain> <source> <gate threshold> <on resistance>`: a MOSFET as a switch, `.on_resistance` between drain and source when the gate drive is above the threshold and open when it is below. The gate draws nothing, and the values are magnitudes as in `NMosfet` and `PMosfet`.
 - `dc linear_regulator <input rail> <output rail>` and `dc switching_regulator <input rail> <output rail> <efficiency>` (ADR 0076, amendment 3, provisional): a regulator. The first two operands are the part's rails (a rail inside an interface is named through it: `.buck.sw`), not pins. The output rail is an ideal source over the range of its `.voltage`; the input rail draws what the output asks. A linear regulator draws what it supplies; a switching one draws `Pout / (efficiency * Vin)`, with the efficiency a number (a range, `0.85..0.95`, is taken at both ends). The regulator's own quiescent current is not modelled (no standard regulator states one).
+- `dc source <supply rail>` (ADR 0076, amendment 5, provisional): the part gives this rail from outside the board, as a connector gives the supply of a vehicle. The operand is a rail of the part. Its `pos` net is held over the range of the rail's `.voltage` that the design states, and its `neg` net at zero, as a `Rail` that the board declares itself is (see "Supplies" below). A part with a rail it takes its supply from (what a load is) does not state it.
 
-The standard `Resistor`, `Fuse`, `FerriteBead`, `Diode`, `Schottky`, `NMosfet`, `PMosfet` and `LinearRegulator` state theirs (a buck converter's IC is a part of the design's own, and states `dc switching_regulator` itself, as the one in "Switching regulators" does), so a provider of one of them has it on its own pins and fields without writing it. A part with a `bridge` and no `dc` statement is a boundary: a DC analysis cannot see through it. `Inductor`, `Led`, `Switch`, `Zener` and `Tvs` are boundaries for now. A module has no `dc` statement of its own: its network is the elements of the parts inside it.
+The standard `Resistor`, `Fuse`, `FerriteBead`, `Diode`, `Schottky`, `NMosfet`, `PMosfet`, `LinearRegulator`, and the two connectors that give a supply, `Obd2M` (`.vbatt`) and `UsbCPower` (`.vbus`), state theirs (a buck converter's IC is a part of the design's own, and states `dc switching_regulator` itself, as the one in "Switching regulators" does), so a provider of one of them has it on its own pins and fields without writing it. A part with a `bridge` and no `dc` statement is a boundary: a DC analysis cannot see through it. `Inductor`, `Led`, `Switch`, `Zener` and `Tvs` are boundaries for now. A module has no `dc` statement of its own: its network is the elements of the parts inside it.
 
-The rules. A `dc` statement is in a part (or a generic that has pins); the element is one of `resistor`, `diode`, `nmos`, `pmos`, `linear_regulator` and `switching_regulator`; the pins are pins of the part (the rails of a regulator are rails of the part) and are different; each value is a field of the part with the quantity of its place; a part has one `dc` statement; and when the part has a `bridge`, the element runs between the two pins the `bridge` joins (the drain and the source for a MOSFET). The order of the statements does not matter.
+The rules. A `dc` statement is in a part (or a generic that has pins); the element is one of `resistor`, `diode`, `nmos`, `pmos`, `linear_regulator`, `switching_regulator` and `source`; the pins are pins of the part (the rails of a regulator or a source are rails of the part) and are different; each value is a field of the part with the quantity of its place; a part has one `dc` statement; and when the part has a `bridge`, the element runs between the two pins the `bridge` joins (the drain and the source for a MOSFET). The order of the statements does not matter.
 
 The resistor, the diode, the regulators and the MOSFET are solved by the DC analysis (next section).
 
@@ -7987,7 +7989,7 @@ board B {
 ```
 
 ```text
-error: `dc` does not know the element `coil`; the elements are resistor, diode, nmos, pmos, linear_regulator and switching_regulator
+error: `dc` does not know the element `coil`; the elements are resistor, diode, nmos, pmos, linear_regulator, switching_regulator and source
   --> main.nsm:8:8
   |
 8 |     dc coil .a .b .resistance
@@ -8221,7 +8223,7 @@ What it models in this stage:
 
 - **Resistors.** A `dc resistor` part (a resistor, a fuse, a ferrite bead) is its resistance over the range of the field, `10kohm +/- 1%` taken at both ends. A resistance that can be zero (a bead's `0ohm..70mohm`) is taken as at least 1 mohm.
 - **Diodes.** A `dc diode` part blocks, or holds its forward voltage (both ends of the range) and carries a current of at least zero. A state that is not what the circuit says is refused and not counted: a diode in front of a load that always draws cannot block, and one with its anode below its cathode cannot conduct.
-- **Supplies.** A `Rail` that the board itself declares, with a `.voltage` that the board states, is an ideal source over that range between its `pos` and its `neg`. A rail of a part or of a module is no source: a part's rail is what the part draws, and a module's is a port whose range may be a seed or a promise. A range that is not a source cannot be treated as one: the voltage of a node would then move apart from the current that makes it.
+- **Supplies.** A `Rail` that the board itself declares, with a `.voltage` that the board states, is an ideal source over that range between its `pos` and its `neg`, and so is the rail that a part says it gives with `dc source` (a connector's supply: `Obd2M` and `UsbCPower` do) when the design states its `.voltage`. Any other rail of a part or of a module is no source: a part's rail is what the part draws, and a module's is a port whose range may be a seed or a promise. A range that is not a source cannot be treated as one: the voltage of a node would then move apart from the current that makes it.
 - **Loads.** A rail of a part, or a rail of the board that is not a supply, with a `.current` that is never negative is a current source over that range from its `pos` to its `neg`. A part with a `bridge` and no `dc` statement (an LED, an inductor) that has a `.current` with a value, stated or worked out, is a current source over it between the pins of its `bridge`: this is how a board states what is behind a pin that nothing models (a boundary takes a stated `.current`). A pin that the checker says draws nothing (ADR 0027: a capacitor, an input) adds nothing, and a capacitor is open at DC.
 
 - **Regulators.** A part with `dc linear_regulator` or `dc switching_regulator` holds the net of its output rail over the range of the rail's `.voltage` (an ideal source, so what is behind it is an island of its own) and draws from its input what its output asks. A board rail on the output net is then what the regulator supplies: a load, whatever voltage the board states for it. A linear regulator draws what it supplies. A switching one draws `Pout / (efficiency * Vin)`, and `Vin` is what the parts in front of it leave after the current they carry, so the current is the solution of a fixed point, which the pass finds from zero: the iterates rise to the least solution, and when there is none the input falls to nothing. The power tree is solved in order, the output side first: what the loads behind a regulator take (as a range, summed over everything on its output net) is the regulator's load when the island in front of it is solved. A regulator whose output has a pin that nothing models falls back on its own `.vout.current` when something states it (or the balances worked it out), and is otherwise left alone, with the island in front of it. The pass writes the regulator's `.vin.current` and `.vin.voltage` by the rules below, so the part's own relations (`.vin.voltage >= .vout.voltage + .dropout`, `.vin.voltage >= .buck.min_input_voltage`, a stage's `.vin.voltage <= ...`) are judged with the voltage the circuit gives it, and the parts in front (a fuse, a diode, a shunt, a bead) take their currents from it.
@@ -8236,6 +8238,160 @@ What it does not model, and leaves as it was: a logic pin that does not state it
 **A source that cannot give what the load asks.** A regulator whose output asks for more power than the source can give through the resistance in front of it has no operating point: 12 V through 10 ohm can give at most `12^2 / (4 * 10)` = 3.6 W, and a 5 V output at 1 A and 90 % asks 5.56 W. That is an error that names the regulator, what it asks and the states, in the combinations of the ranges where it happens (a battery at 10 V may not give what it gives at 16 V). A state that is not the circuit's (a diode that blocks in front of the regulator) is refused and is never the finding. An input below the regulator's minimum is an error too: it is the relation the part states for it, judged with the voltage the analysis wrote.
 
 **What it writes.** A field of a modelled part that nothing states takes the range the circuit gives it. A range that a statement gave a field is a budget (ADR 0038): the circuit has to fit inside it, and when it needs more the error says what it needs and the states that give it. A value the solver worked out from a balance is narrowed to what both say. The ranges are widened by a billionth, and by a picoampere or a nanovolt, so that a rounding does not take a value out of the range it is in.
+
+**A chain carries the voltage** (ADR 0076, amendment 5, provisional). The network of the parts in a `~>` chain is solved with the supply behind it, so a rail on a node of it has the voltage the chain leaves there: the supply's, less what each part in series drops at the current that it carries, which the loads behind it set. The pass writes that range into the rail's `.voltage` where nothing states it (a rail joined to it with `~` takes it with it), as it writes a part's `.current`: the board does not restate it with `.vout.voltage == .vin.voltage - .fuse.drop - .diode.drop`, which would list the parts of the chain a second time and go stale when one changes. A relation that reads the voltage is judged with it. A voltage that a statement gave the rail (or a rail joined to it) is the design's, and is left as it is, not checked and not narrowed: a window the board states is a claim about the rail, and the circuit's range is never taken as an answer to it (what the circuit gives is in the message of a relation that fails). The chain carries the voltage and not the `peak`: a transient is not a DC quantity, and `.vout.peak` is still stated (a `Tvs`'s `.clamping_voltage` on the rail it clamps, say), as ADR 0086 has a fuse take the rail's peak from the chain's start.
+
+The chain below is invented: a vehicle's 4.75 V to 5.25 V supply (as a `Plug` gives it), a link of 0.1 ohm and a diode that drops 0.3 V to 0.5 V, in series, with a load of 0.1 A to 0.3 A at the end. The module `Protection` does not say what its output is, and the board asks for 4.5 V at least. The circuit leaves the output at 4.22 V to 4.94 V (4.75 V less 0.03 V less 0.5 V at the least), so the check fails with the voltage the chain carries:
+
+```nsm fails
+import std::sources::Rail
+
+/// Invented: a connector that gives the supply of a vehicle.
+part Plug {
+    .designator &= "J"
+    .supply: Rail
+    dc source .supply
+    pins {
+        .supply.pos power "V" "1"
+        .supply.neg power "G" "2"
+    }
+}
+
+/// Invented: a link, the shape of a fuse, with a stated resistance.
+part Link {
+    .designator &= "F"
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+    .resistance: Resistance
+    .current: Current
+    .drop: Voltage
+    .drop == .current * .resistance
+    bridge .a ~> .b
+    dc resistor .a .b .resistance
+}
+
+/// Invented: a diode that drops 0.3 V to 0.5 V.
+part Drop {
+    .designator &= "D"
+    pins {
+        .anode passive "A" "1"
+        .cathode passive "K" "2"
+    }
+    .forward_voltage: Voltage
+    .current: Current
+    .drop: Voltage
+    bridge .anode ~> .cathode
+    dc diode .anode .cathode .forward_voltage
+}
+
+/// A link and a diode in series from `vin` to `vout`.
+module Protection {
+    .vin: Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+    .link: Link { .resistance &= 0.1ohm }
+    .diode: Drop { .forward_voltage &= 0.3V..0.5V }
+    .vin.pos ~> .link ~> .diode ~> .vout.pos
+}
+
+board Powered {
+    .plug: Plug {
+        .supply.voltage &= 4.75V..5.25V
+        .supply.pos.net &= "VIN"
+        .supply.neg.net &= "GND"
+    }
+    .protection: Protection
+    .load: Rail {
+        .pos.net &= "OUT"
+        .neg.net &= "GND"
+        .current &= 100mA..300mA
+    }
+    .plug.supply ~ .protection.vin
+    .protection.vout ~ .load
+    .protection.vout.voltage >= 4.5V
+}
+```
+
+```text
+error: protection.vout.voltage must always be at least 4.5V, but 4.22V..4.94V is not always above 4.5V (the DC analysis puts `protection.vout.voltage` at 4.22V..4.94V, its high end with plug.supply at 5.25V, protection.diode conducting at 300mV, load at 100mA, its low end with plug.supply at 4.75V, protection.diode conducting at 500mV, load at 300mA)
+   --> main.nsm:67:5
+   |
+67 |     .protection.vout.voltage >= 4.5V
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+**A circle that a pick waits on.** A part picked from a catalog can read a voltage that only the circuit gives: a capacitor's effective capacitance falls with the bias across it (ADR 0013), and the bias of the capacitor across a regulator's input is the voltage behind a fuse and a diode, which depends on the regulator's input current, which depends on that voltage. Nothing has a value to start from, and the board used to write a window by hand (`.reg.vin.voltage &= 7V..16V`) that was not a requirement but a start. Now, when a pick waits on a bias that has no value, the solver solves the network once before the picks, with each part still to be picked taken at the hull of the values its candidates can have (a fuse's resistance over the rows that fit what the design says of it), and gives each rail and each regulator's input the voltage range that results. The picks are then judged on that range, which holds whatever they choose; after the picks the pass narrows it to the circuit that was chosen. It starts a circle that the network can solve, and only that: the currents of the loads must be known before the picks (stated, or worked out by the balances from parts that are not still to be picked), because a pick cannot be asked to carry a current that depends on itself. A board that builds without it is solved as before, since the start runs only when a pick waits on a bias. A window stated by the board is used as stated and starts nothing, as ever.
+
+The input capacitor below is picked from the catalog and states only what it must be (4 uF effective at its bias); the board writes no window for the regulator's input voltage:
+
+```nsm evaluate
+import std::parts::passive::Capacitor
+import std::sources::Rail
+
+/// Invented: a connector that gives the supply.
+part Plug {
+    .designator &= "J"
+    .supply: Rail
+    dc source .supply
+    pins {
+        .supply.pos power "V" "1"
+        .supply.neg power "G" "2"
+    }
+}
+
+/// Invented: a link, the shape of a fuse, with a stated resistance.
+part Link {
+    .designator &= "F"
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+    .resistance: Resistance
+    .current: Current
+    .drop: Voltage
+    .drop == .current * .resistance
+    bridge .a ~> .b
+    dc resistor .a .b .resistance
+}
+
+/// Invented: a converter that passes 3.3 V at 90 % efficiency, from at least 3 V.
+part Converter {
+    .designator &= "U"
+    .vin: Rail
+    .vout: Rail
+    .efficiency: Number
+    .vin.neg ~ .vout.neg
+    .vin.voltage >= 3V
+    dc switching_regulator .vin .vout .efficiency
+    pins {
+        .vin.pos power "VIN" "1"
+        .vin.neg power "GND" "2"
+        .vout.pos power "VOUT" "3"
+    }
+}
+
+board Started {
+    .plug: Plug {
+        .supply.voltage &= 4V..5.5V
+        .supply.pos.net &= "VIN"
+        .supply.neg.net &= "GND"
+    }
+    .link: Link { .resistance &= 0.2ohm }
+    .reg: Converter { .efficiency &= 0.9; .vout.voltage &= 3.3V }
+    .load: Rail {
+        .pos.net &= "V33"
+        .neg.net &= "GND"
+        .current &= 1A
+    }
+    .input_cap: Capacitor { .effective_capacitance >= 4uF }
+    .plug.supply.pos ~> .link ~> .reg.vin.pos
+    .plug.supply.neg ~ .reg.vin.neg
+    .reg.vin.pos ~> .input_cap ~> .reg.vin.neg
+    .reg.vout ~ .load
+}
+```
 
 A divider with an LED on its middle. The top resistor carries what the bottom one and the LED take; nothing states it, and the checks of both resistors are made:
 
@@ -8404,7 +8560,7 @@ error: the source cannot give what `reg` asks (5W at its output, efficiency 90 %
    |     ^^^^^^^^^^^^^^^
 ```
 
-**Limits.** The pass tries every combination of the states of the parts it sees, which is the worst case. A design cannot say that two pins are never high together, or that two loads never run together: the pass does not know, and it adds both (issue #45 asks for a way to say it). Temperature is a stated tolerance and nothing else. A capacitor is open, so nothing charges: an inrush current is not seen. A diode's reverse leakage and a MOSFET's body diode are not modelled. A regulator's efficiency is one range and not a curve over its load and its input, its quiescent current is not modelled, a regulator is an ideal source (its output does not sag, and a current limit is the part's own relation), and an input below its minimum is an error and not a shutdown. A logic pin has no leakage (high impedance is an open circuit: the language has no member for the datasheet's `Ii`), and a pin's output resistance is the one at the test current its level states. A regulator's output current is summed over the islands on its output net, each solved on its own, so a load whose current follows the output voltage is taken over the whole range of the output (wider, never narrower).
+**Limits.** The pass tries every combination of the states of the parts it sees, which is the worst case. A regulator's other pins on the nets of its input (an IC with two input pins, an enable tied to the input) are its input's and draw nothing more, and its output is held at the node its part names, which for a buck converter is the switch node: the output beyond the inductor is a little below what a stated window asks, and a window the board states is therefore not checked against the circuit. A power tree is solved only when every pin on its nets is modelled: a regulator that states no `dc` element, or a load whose current is not known, leaves the island in front of it unsolved. Nothing is solved before the picks but the start of a circle, which needs the currents of the loads to be known by then. A design cannot say that two pins are never high together, or that two loads never run together: the pass does not know, and it adds both (issue #45 asks for a way to say it). Temperature is a stated tolerance and nothing else. A capacitor is open, so nothing charges: an inrush current is not seen. A diode's reverse leakage and a MOSFET's body diode are not modelled. A regulator's efficiency is one range and not a curve over its load and its input, its quiescent current is not modelled, a regulator is an ideal source (its output does not sag, and a current limit is the part's own relation), and an input below its minimum is an error and not a shutdown. A logic pin has no leakage (high impedance is an open circuit: the language has no member for the datasheet's `Ii`), and a pin's output resistance is the one at the test current its level states. A regulator's output current is summed over the islands on its output net, each solved on its own, so a load whose current follows the output voltage is taken over the whole range of the output (wider, never narrower).
 
 ### Logic levels and absolute maximums
 

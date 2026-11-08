@@ -17,7 +17,7 @@
 //! The ranges are the hulls of the corners, widened outward a little (see `widen`) so that a
 //! rounding does not take a value out of the range it is in.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use netsmith_check::{Domain, FieldId, InstId};
@@ -41,6 +41,8 @@ pub struct DcSummary {
     pub combinations: u64,
     /// The fields of parts that were given a range or narrowed.
     pub written: usize,
+    /// The rails that were given the voltage of the node they are on (a chain carries it).
+    pub rails: usize,
     /// The regulators whose input was solved with the power their output asks.
     pub regulators: usize,
     /// The MOSFETs solved as switches (on and off), and the logic pins solved as drivers
@@ -118,6 +120,10 @@ impl Solver<'_> {
     pub(super) fn dc_pass(&mut self) -> (DcSummary, Vec<NotEvaluated>) {
         let mut summary = DcSummary::default();
         let mut notes = Vec::new();
+        // The rails on the nodes of the islands, written when every island is done, and the
+        // fields that a part's own write covers (a regulator's input voltage).
+        let mut rails: Vec<(dc::RailNode, Rc<Run>)> = Vec::new();
+        let mut covered: Vec<FieldId> = Vec::new();
         for outcome in dc::analyze(&self.model) {
             netsmith_core::job::checkpoint();
             summary.islands += 1;
@@ -147,6 +153,8 @@ impl Solver<'_> {
                         for m in &planned.parts {
                             summary.written += self.dc_write(m, &run);
                         }
+                        covered.extend(planned.parts.iter().filter_map(|m| m.drop));
+                        rails.extend(planned.rails.iter().map(|r| (*r, Rc::clone(&run))));
                     }
                 }
                 Err(Error::TooManyCombinations {
@@ -177,7 +185,208 @@ impl Solver<'_> {
                 Err(_) => {}
             }
         }
+        // A rail whose voltage a part's drop already gives (the input of a regulator) is that
+        // write's, and one class of rails joined by `~` is written once.
+        let mut done: Vec<FieldId> = Vec::new();
+        for (rail, run) in rails {
+            netsmith_core::job::checkpoint();
+            let class = self.equated(rail.field);
+            if class
+                .iter()
+                .any(|f| covered.contains(f) || done.contains(f))
+            {
+                continue;
+            }
+            done.extend(class.iter().copied());
+            summary.rails += self.dc_write_rail(&rail, &class, &run);
+        }
         (summary, notes)
+    }
+
+    /// Give a rail the voltage of its node (a `~>` chain carries the voltage, and so the drops of
+    /// what is in it). The rule is the one of every field (amendment 2): an unset voltage takes
+    /// the range, one the solver worked out is narrowed to what both say, and one a statement
+    /// narrowed (or a rail joined to it by `~`) is the design's and is left as it is.
+    fn dc_write_rail(
+        &mut self,
+        rail: &dc::RailNode,
+        class: &HashSet<FieldId>,
+        run: &Rc<Run>,
+    ) -> usize {
+        let which = Which::NodeVoltage(rail.node);
+        let r = run.report.range(which);
+        if r.is_empty() || !r.lo.is_finite() || !r.hi.is_finite() {
+            return 0;
+        }
+        let (lo, hi) = widen(Dimension::VOLTAGE, r.lo, r.hi);
+        let Ok(solved) = Quantity::interval(Dimension::VOLTAGE, lo, hi) else {
+            return 0;
+        };
+        let ends = DcEnds {
+            range: solved,
+            run: Rc::clone(run),
+            which,
+            flipped: false,
+        };
+        let mut members: Vec<FieldId> = class.iter().copied().collect();
+        members.sort();
+        let stated = members
+            .iter()
+            .copied()
+            .find(|&f| !self.model.field(f).narrowed_at.is_empty() && !self.derived.contains(&f));
+        // A voltage the design states is the design's. It is not checked here: a regulator's
+        // output is held at the node its part names, and a rail further on (past an inductor, a
+        // shunt) is a little below it, which no design states as a window of the circuit's
+        // (ADR 0076, amendment 5, "Left for the next stages").
+        if stated.is_some() {
+            return 0;
+        }
+        usize::from(self.dc_field(rail.rail, rail.field, solved, ends))
+    }
+
+    /// Whether a relation reads both a value a pick sets (a column of a part to be chosen) and the
+    /// voltage of a rail that has none: a divider's draw is its input voltage over the two
+    /// resistances, and its limit cannot refuse a candidate while the voltage is unknown.
+    fn pick_reads_a_voltage(&self, jobs: &[super::Job]) -> bool {
+        let columns: HashSet<FieldId> = jobs
+            .iter()
+            .flat_map(|j| j.columns.iter().map(|(f, _)| *f))
+            .collect();
+        let unset: HashSet<FieldId> = self
+            .model
+            .instances()
+            .filter_map(|(i, _)| self.model.rail_of(i))
+            .map(|(voltage, _, _)| voltage)
+            .filter(|&v| matches!(self.domain(v), Domain::Unset))
+            .collect();
+        if unset.is_empty() || columns.is_empty() {
+            return false;
+        }
+        self.model.relations().iter().any(|r| {
+            let mut reads = Vec::new();
+            crate::eval::fields_in(&r.lhs, &mut reads);
+            crate::eval::fields_in(&r.rhs, &mut reads);
+            reads.iter().any(|f| unset.contains(f)) && reads.iter().any(|f| columns.contains(f))
+        })
+    }
+
+    /// The start of a circle that a pick waits on (ADR 0076, amendment 5). A pick that reads a
+    /// voltage no one has given yet (a capacitor's bias across a rail behind a fuse, a diode and
+    /// a bead) cannot be judged, and the board used to write a window by hand to start it. The
+    /// network is solved once before the picks with every part that is still to be picked at the
+    /// hull of the values its candidates can have, and the voltage of each rail and each
+    /// regulator input that the circuit gives is the range the picks see. It is an enclosure:
+    /// whatever the picks choose, the voltage ends inside it, and the pass after the picks
+    /// narrows it to the circuit that was picked. It runs only when a pick waits on a voltage
+    /// that has none (a bias, or a relation that reads a column and a rail's voltage), so a board
+    /// with none is solved as before, and it writes voltages only (a current a pick would then
+    /// judge a rating against is the later pass's).
+    pub(super) fn dc_start(&mut self, jobs: &[super::Job]) {
+        if !jobs.iter().any(|j| !self.unset_biases(j).is_empty())
+            && !self.pick_reads_a_voltage(jobs)
+        {
+            return;
+        }
+        let saved = self.model.snapshot();
+        // Each part still to be picked takes the hull of the values its candidates can have.
+        for job in jobs {
+            let Some(dc) = self.model.instance(job.part).dc.clone() else {
+                continue;
+            };
+            for &field in &dc.values {
+                if !matches!(self.domain(field), Domain::Unset) {
+                    continue;
+                }
+                let Some((_, key)) = job.columns.iter().find(|(f, _)| *f == field) else {
+                    continue;
+                };
+                let mut hull: Option<(Dimension, f64, f64)> = None;
+                let mut known = true;
+                for c in job
+                    .catalog
+                    .candidates
+                    .iter()
+                    .filter(|c| self.fits(job.part, &job.columns, c))
+                {
+                    match c.column(key) {
+                        Some(crate::catalog::Value::Quantity(q)) => {
+                            hull = Some(match hull {
+                                None => (q.dim(), q.lo(), q.hi()),
+                                Some((d, lo, hi)) => (d, lo.min(q.lo()), hi.max(q.hi())),
+                            });
+                        }
+                        _ => known = false,
+                    }
+                }
+                if let (true, Some((dim, lo, hi))) = (known, hull)
+                    && let Ok(q) = Quantity::interval(dim, lo, hi)
+                {
+                    self.model.set_domain(field, Domain::Quantity(q));
+                }
+            }
+        }
+        let outcomes = dc::analyze(&self.model);
+        self.model.restore(&saved);
+        let mut written: Vec<(dc::RailNode, Rc<Run>)> = Vec::new();
+        let mut vins: Vec<(InstId, FieldId, Rc<Run>, usize)> = Vec::new();
+        for outcome in outcomes {
+            netsmith_core::job::checkpoint();
+            let dc::Outcome { planned, result } = outcome;
+            let Ok(report) = result else { continue };
+            if report.consistent == 0 {
+                continue;
+            }
+            let run = Rc::new(Run {
+                island: planned.island,
+                report,
+            });
+            for sink in &planned.sinks {
+                if let Some(m) = planned.parts.iter().find(|m| m.element == sink.element)
+                    && let Some(field) = m.drop
+                {
+                    vins.push((m.part, field, Rc::clone(&run), m.element));
+                }
+            }
+            written.extend(planned.rails.iter().map(|r| (*r, Rc::clone(&run))));
+        }
+        // A regulator's input voltage is the drop across its input element.
+        for (part, field, run, element) in vins {
+            let r = run.report.range(Which::Drop(element));
+            if r.is_empty() || !r.lo.is_finite() || !r.hi.is_finite() {
+                continue;
+            }
+            let (lo, hi) = widen(Dimension::VOLTAGE, r.lo, r.hi);
+            let Ok(solved) = Quantity::interval(Dimension::VOLTAGE, lo, hi) else {
+                continue;
+            };
+            let class = self.equated(field);
+            if class
+                .iter()
+                .any(|&f| !matches!(self.domain(f), Domain::Unset))
+            {
+                continue;
+            }
+            let ends = DcEnds {
+                range: solved,
+                run: Rc::clone(&run),
+                which: Which::Drop(element),
+                flipped: false,
+            };
+            self.dc_field(part, field, solved, ends);
+        }
+        let mut done: Vec<FieldId> = Vec::new();
+        for (rail, run) in written {
+            let class = self.equated(rail.field);
+            if class.iter().any(|f| done.contains(f))
+                || class
+                    .iter()
+                    .any(|&f| !matches!(self.domain(f), Domain::Unset))
+            {
+                continue;
+            }
+            done.extend(class.iter().copied());
+            self.dc_write_rail(&rail, &class, &run);
+        }
     }
 
     /// A regulator that has no operating point in some combination of states: its output asks
