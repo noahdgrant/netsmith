@@ -7419,7 +7419,7 @@ board Arcs {
 ```
 
 ```text
-error: no `fuse` candidate satisfies `fuse`: the closest of the 6 that fit, SMD1206P020TF 0.2A 24V resettable fuse 1206 C20984, fails because fuse.rated_voltage must always be at least input.peak, but 24V is not always above 5kV
+error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.rated_voltage must always be at least input.peak, but 125V is not always above 5kV
    --> main.nsm:17:5
    |
 17 |     .fuse.rated_voltage >= .input.peak
