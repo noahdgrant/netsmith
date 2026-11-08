@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Proves, for the `test` job of .github/workflows/ci.yml, that its slices (cargo nextest
+# Proves, for the `test` and `kicad` jobs of .github/workflows/ci.yml, that their slices (cargo nextest
 # `--partition slice:K/N`, K = 1..N) between them run every test that `cargo test --workspace`
 # runs, each in exactly one slice. It lists the tests of the built workspace, so it needs no
 # build of its own beyond what the job did.
-#   scripts/ci-test-slices N
+# Both jobs deal the same list of tests out by the same partition, so one proof serves both; the
+# optional second argument is the job's name, for the messages.
+#   scripts/ci-test-slices N [job]
 set -euo pipefail
-slices="${1:?usage: scripts/ci-test-slices N}"
+slices="${1:?usage: scripts/ci-test-slices N [job]}"
+job="${2:-test}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
@@ -23,11 +26,11 @@ sum=0
 for k in $(seq 1 "$slices"); do
     tests --partition "slice:$k/$slices" > "$work/slice-$k"
     n="$(wc -l < "$work/slice-$k")"
-    echo "slice $k/$slices: $n tests"
-    [ "$n" -gt 0 ] || { echo "::error::slice $k is empty"; exit 1; }
+    echo "$job slice $k/$slices: $n tests"
+    [ "$n" -gt 0 ] || { echo "::error::$job slice $k is empty"; exit 1; }
     sum=$((sum + n))
 done
-echo "all: $total tests, the slices add up to $sum"
+echo "$job, all: $total tests, the slices add up to $sum"
 
 cat "$work"/slice-* | sort > "$work/union"
 if [ "$(uniq -d < "$work/union" | wc -l)" -ne 0 ]; then
@@ -45,4 +48,4 @@ echo "cargo test --list: $listed tests, $ignored ignored"
 if [ $((listed - ignored)) -ne "$total" ]; then
     echo "::error::nextest lists $total tests, cargo test lists $((listed - ignored))"; exit 1
 fi
-echo "ok: $total tests, each in exactly one of $slices slices, the count of cargo test"
+echo "ok ($job): $total tests, each in exactly one of $slices slices, the count of cargo test"

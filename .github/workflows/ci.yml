@@ -15,14 +15,22 @@
 # same suite, so those tests really run. No Node either: the editor's page is the committed
 # bundle. `test` is four slices of cargo nextest that run side by side (one run of
 # `cargo test` took fourteen minutes, three of them compiling, and runs one test binary after
-# the other); scripts/ci-test-slices proves that the slices run every test once.
+# the other), and `kicad` is three slices of the same kind (a slice installs KiCad 9, about
+# twenty seconds, and restores the cache); scripts/ci-test-slices proves that the slices of each
+# run every test once.
 #
 # The `recipes` job drives the editor in headless Chromium (Playwright, Node 22): it builds the
 # `netsmith` binary and runs `scripts/editor-verify-all`, every recipe of
 # scripts/editor-verify-js/recipes against the fixture it declares. It installs KiCad 9 the way
 # the `kicad` job does: the build and order recipes write KiCad files, and the PCB recipes of the
-# `outline_and_pours` fixture draw its stock footprints. It is not a required check yet; the
-# screenshots and the server log of a failing sweep are the `recipes-evidence` artifact of the run.
+# `outline_and_pours` fixture draw its stock footprints. It is three slices, each driving a
+# third of the recipes by the seconds they took (scripts/editor-verify-weights);
+# scripts/ci-recipe-slices deals them out and proves that every recipe runs in exactly one slice
+# (see there to rebalance). It is not a required check yet; the screenshots and the server log of
+# a failing sweep are the `recipes-evidence-<slice>` artifact of the run.
+#
+# A slice is a job of its own (`test (1)`, `kicad (2)`, `recipes (3)`), and a job that is a
+# matrix fails if one of its slices does, so `ci-ok` still names `test`, `kicad` and `recipes`.
 #
 # The Rust cache (Swatinem/rust-cache) is saved by pushes to main only, and a pull request
 # restores the newest of main's: the pull requests do not fill the repository's cache quota with
@@ -155,20 +163,31 @@ jobs:
   # exactly 9.0.0 (ADR 0034), so a 9.0.x newer than that is what is wanted. If ubuntu-latest
   # moves to a release that ships another major, the step fails; add the KiCad team's PPA
   # (ppa:kicad/kicad-9.0-releases) for that release then.
+  # Sliced like `test` (cargo nextest, the same partition, so scripts/ci-test-slices proves it).
   kicad:
     needs: changes
     if: needs.changes.outputs.kicad == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        slice: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
 
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      # Every slice builds the same binaries and shares one cache; the first saves it.
       - uses: Swatinem/rust-cache@v2
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.slice == 1 }}
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+        with:
+          tool: nextest@0.9.151
 
       # kicad-cli, and the stock symbol and footprint libraries (separate packages, only
       # recommended by `kicad`). The 3D models (kicad-packages3d, several GB) are not installed,
@@ -224,15 +243,19 @@ jobs:
       - name: Show the KiCad library lookup with the variables
         run: cargo run --quiet -p netsmith-kicad --example locate
 
-      # --nocapture shows the "skipped: ..." lines, so the run can prove that no test skipped
-      # itself for want of KiCad. The output goes to a file and not through a pipe: a process a
-      # test leaves running (one run had a hung child) would hold the pipe open and the step
-      # would never end, although every test had finished.
-      - name: Test with KiCad
+      # --success-output immediate shows the output of the tests that pass, so the "skipped: ..."
+      # lines are in the log and the run can prove that no test skipped itself for want of KiCad
+      # (`--no-capture` would do that too, but nextest then runs one test at a time). The output
+      # goes to a file and not through a pipe: a process a test leaves running (one run had a
+      # hung child) would hold the pipe open and the step would never end, although every test
+      # had finished.
+      - name: Test with KiCad, slice ${{ matrix.slice }} of ${{ strategy.job-total }}
         timeout-minutes: 30
         run: |
           status=0
-          cargo test --workspace --no-fail-fast -- --nocapture > test.log 2>&1 || status=$?
+          cargo nextest run --workspace --no-fail-fast \
+            --success-output immediate --failure-output immediate \
+            --partition slice:${{ matrix.slice }}/${{ strategy.job-total }} > test.log 2>&1 || status=$?
           cat test.log
           if grep -n "skipped: no KiCad symbol and footprint libraries" test.log; then
             echo "::error::a test skipped itself although KiCad is installed"
@@ -240,23 +263,39 @@ jobs:
           fi
           exit $status
 
+      # nextest does not run doc tests (the workspace has none today).
+      - name: Doc tests
+        if: matrix.slice == 1
+        run: cargo test --workspace --doc --no-fail-fast
+
+      # The same partition as the `test` job, over the same tests: the proof is the same.
+      - name: Every test runs in exactly one slice
+        if: matrix.slice == 1
+        run: scripts/ci-test-slices ${{ strategy.job-total }} kicad
+
   # The editor's browser recipes (.agents/skills/netsmith-dev-verify-editor/SKILL.md). The page is
   # the committed bundle, so the binary is a plain debug build and Node is only for the driver.
-  # The sweep runs every recipe, session by session, and lists each one that failed.
+  # A slice runs its share of the recipes, session by session, and lists each one that failed;
+  # scripts/ci-recipe-slices says which recipes are the slice's, by their seconds.
   recipes:
     needs: changes
     if: needs.changes.outputs.recipes == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        slice: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
 
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      # Every slice builds the same binary and shares one cache; the first saves it.
       - uses: Swatinem/rust-cache@v2
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.slice == 1 }}
 
       - run: cargo build -p netsmith
 
@@ -266,6 +305,11 @@ jobs:
 
       - run: npm ci --no-audit --no-fund
         working-directory: scripts/editor-verify-js
+
+      # The slices between them are the whole sweep, each recipe in one slice. It reads the
+      # recipes' own list, with no browser and no build, so every slice checks it (a second).
+      - name: Every recipe runs in exactly one slice
+        run: scripts/ci-recipe-slices ${{ strategy.job-total }}
 
       # The browser is cached; its system libraries and fonts are not, so they are installed
       # either way.
@@ -322,22 +366,29 @@ jobs:
 
       - run: scripts/editor-verify doctor
 
-      - name: Drive the recipes
-        run: scripts/editor-verify-all
+      # The list goes into a variable first: if the slicing failed inside the argument list, the
+      # sweep would get no names and run every recipe.
+      - name: Drive the recipes, slice ${{ matrix.slice }} of ${{ strategy.job-total }}
+        run: |
+          recipes="$(scripts/ci-recipe-slices ${{ strategy.job-total }} ${{ matrix.slice }})"
+          echo "$recipes"
+          # shellcheck disable=SC2086 # the recipe names are words
+          scripts/editor-verify-all $recipes
 
       - name: Keep the evidence
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: recipes-evidence
+          name: recipes-evidence-${{ matrix.slice }}
           # The sweep's default: $NETSMITH_VERIFY_DIR-all.
           path: /tmp/netsmith-verify-all
           retention-days: 7
 
   # The one check that says whether the run is good: it fails if a job failed or was cancelled,
   # and passes if each one passed or was left out for want of a reason to run (`changes` says
-  # so). A required check named for one of the other jobs would block a pull request that does
-  # not run it.
+  # so). The result of `test`, `kicad` and `recipes` is the worst of their slices: it needs
+  # all of them. A required check named for one of the other jobs would block a pull request
+  # that does not run it.
   ci-ok:
     if: always()
     needs: [changes, fmt, clippy, test, kicad, recipes]

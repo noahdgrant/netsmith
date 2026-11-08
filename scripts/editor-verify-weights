@@ -1,0 +1,84 @@
+# Seconds each editor recipe took on a CI run, for scripts/ci-recipe-slices: it deals the recipes
+# out to the slices of the `recipes` job by these numbers. Only the proportions matter, and a
+# rough table is enough: the slices only have to be about as long as each other.
+#
+# Regenerate from the logs of the recipes jobs of one CI run (the job ids are in
+# `gh run view <run> --json jobs`; the logs of all the slices are read as one):
+#   for id in <job id>...; do gh api --allow-escape-sequences repos/noahdgrant/netsmith/actions/jobs/$id/logs; done |
+#     scripts/ci-recipe-slices weights > scripts/editor-verify-weights
+# (the sum of this table: 750 s for 71 recipes; the first recipe of a session carries its launch.)
+
+# A recipe that is not listed (a new one) weighs this much: the median of the table.
+* 7
+
+a11y 13
+big-pcb 18
+big-power 2
+big-problems 4
+big-schematic 5
+big-tree 2
+bom 1
+broken-start 2
+build 4
+cancel 15
+cancel-jobs 9
+comment-only 5
+compare 36
+compare-interactions 27
+compare-kind-warnings 9
+compare-refs 8
+compare-system-pcb 6
+editor 7
+empty-project 10
+four-layer 7
+hover 8
+integration 6
+languages 5
+layout-clear 29
+layout-drag 16
+layout-keys 13
+motion 4
+order 2
+overview 1
+palette 5
+panel 3
+pcb 2
+pcb-constraints 5
+pcb-edit 15
+pcb-findings 6
+pcb-keepout 6
+pcb-plane-more 8
+pcb-select 5
+power 2
+power-issues 4
+power-tree 12
+problems-dock 4
+problems-leftovers 7
+refresh 4
+schematic 8
+schematic-board-switch 7
+schematic-bus 16
+schematic-hints 3
+schematic-integration 18
+schematic-keys 8
+schematic-rules 26
+schematic-shots 33
+sections 10
+server-fields 11
+settings 26
+single-board 3
+source-editor 49
+source-keys 14
+source-position 2
+split 8
+system 1
+system-mates 3
+system-view 11
+themes 33
+topbar-layout 61
+tree 2
+tree-files 11
+tree-nested 9
+tri-state 3
+view-help 8
+warning-marks 4

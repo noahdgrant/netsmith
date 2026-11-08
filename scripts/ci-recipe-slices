@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Deals the editor's browser recipes out to the slices of the `recipes` job of
+# .github/workflows/ci.yml, by the seconds each took (scripts/editor-verify-weights). Needs Node 20
+# or newer and the recipes' packages (`npm ci` in scripts/editor-verify-js, done on demand), no
+# browser and no build, so it runs anywhere. The logic is scripts/editor-verify-js/slices.mjs.
+#   scripts/ci-recipe-slices N       prove that the N slices run every recipe exactly once, and
+#                                    show how long each is (CI runs this before the slices)
+#   scripts/ci-recipe-slices N K     the recipes of slice K, for `scripts/editor-verify-all $(...)`
+#   scripts/ci-recipe-slices weights regenerate the table from the logs of the recipes jobs of one run,
+#                                    on stdin (the one-liner is in scripts/editor-verify-weights)
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd)"
+if [ "${1:?usage: scripts/ci-recipe-slices N | N K | weights}" = weights ]; then
+    exec "$here/editor-verify" slices weights
+fi
+groups="$("$here/editor-verify" groups)"
+"$here/editor-verify" slices "$@" <<<"$groups"
