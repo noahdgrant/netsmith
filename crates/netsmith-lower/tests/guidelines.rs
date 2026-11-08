@@ -486,6 +486,22 @@ fn a_net_with_no_current_known_stays_at_the_process_least_and_is_named() {
     assert!(l.guidelines.is_empty(), "nothing is known to be too narrow");
 }
 
+#[test]
+fn the_note_of_a_net_whose_width_is_a_lower_bound_says_it_is_a_track_width_not_sized() {
+    // Every note of lowering that names a net with a current not known has the cause `Track`,
+    // one cause for each note, in the order of the notes.
+    let l = lowered_of(&fuse_diode("", "", ""));
+    assert!(!l.notes.is_empty());
+    assert_eq!(l.note_causes.len(), l.notes.len());
+    assert!(
+        l.note_causes
+            .iter()
+            .all(|&c| c == netsmith_core::Cause::Track),
+        "{:?}",
+        l.note_causes
+    );
+}
+
 // ---- Kirchhoff's current law on every net (issue #4, ADR 0036 amendment 2) ------------
 
 /// Two supplies, 5 V and 3.3 V, that return through one ground, with loads of `a` and `b`.

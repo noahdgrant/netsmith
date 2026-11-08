@@ -1833,6 +1833,7 @@ mod tests {
             stage: Some(ProblemStage::Solve),
             board: board.map(str::to_string),
             path: None,
+            cause: None,
         }
     }
 

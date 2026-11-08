@@ -20,6 +20,7 @@ use std::collections::{BTreeSet, HashMap};
 use netsmith_check::{
     Diagnostic, Domain, FieldId, InstId, InstKind, Member, Model, Net, PinKind, RExpr,
 };
+use netsmith_core::Cause;
 use netsmith_lang::ast::{BinOp, CmpOp};
 use netsmith_quantity::{Dimension, Quantity};
 
@@ -33,6 +34,8 @@ pub struct NotEvaluated {
     /// made because of what that provider states, or leaves open.
     pub involves: Vec<InstId>,
     pub message: String,
+    /// Why it was not made (see [`Cause`]).
+    pub cause: Cause,
 }
 
 /// The readers of the logic interfaces and resistors of a model, for the passes that need
@@ -87,12 +90,13 @@ fn is_receiver(kind: PinKind) -> bool {
 }
 
 impl Run<'_> {
-    fn note(&mut self, at: InstId, involves: Vec<InstId>, message: String) {
+    fn note(&mut self, at: InstId, involves: Vec<InstId>, cause: Cause, message: String) {
         if self.seen.insert(message.clone()) {
             self.notes.push(NotEvaluated {
                 at,
                 involves,
                 message,
+                cause,
             });
         }
     }
@@ -241,6 +245,7 @@ impl Run<'_> {
             self.note(
                 d.part,
                 vec![d.logic, r.logic],
+                Cause::Unjudged,
                 format!(
                     "not evaluated: the logic levels of `{dl}` against `{rl}` on net `{}`: their grounds differ (`{}` is on net `{}`, `{}` on net `{}`)",
                     net.name,
@@ -268,6 +273,7 @@ impl Run<'_> {
                     self.note(
                         d.part,
                         vec![d.logic, r.logic],
+                        Cause::Unjudged,
                         format!(
                             "not evaluated: the high level from `{dl}` to `{rl}` on net `{}`: `{dl}.voh` has no value and the pull-up that would set it cannot be read: {why}",
                             net.name
@@ -520,6 +526,7 @@ impl Run<'_> {
         self.note(
             d.part,
             lacking_logics,
+            Cause::PartModel,
             format!(
                 "not evaluated: the {which} level from `{}` to `{}` on net `{}`: {} {} no value",
                 model.path_of(d.logic),
@@ -561,6 +568,7 @@ impl Run<'_> {
                 self.note(
                     owner,
                     vec![owner],
+                    Cause::PartModel,
                     format!(
                         "not evaluated: the absolute maximum of `{path}`: it is not the `line` of a `Logic` or a pin of an interface with `levels`, so its ground is not known"
                     ),
@@ -576,6 +584,7 @@ impl Run<'_> {
                     self.note(
                         owner,
                         vec![owner],
+                        Cause::Unjudged,
                         format!(
                             "not evaluated: the absolute maximum of `{path}` against net `{}`: {why}",
                             model.nets()[index].name

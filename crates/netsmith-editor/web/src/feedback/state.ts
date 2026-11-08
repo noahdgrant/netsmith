@@ -30,12 +30,20 @@ export const dock = signal<DockPrefs>(parseDock(load<unknown>(DOCK_KEY, null)));
 effect(() => save(DOCK_KEY, dock.value));
 
 export const filter = signal<Filter>({ ...DEFAULT_FILTER, ...load<Partial<Filter>>(FILTER_KEY, {}), text: '' });
-export const group = signal<Group>(parseGroup(load<unknown>(`${FILTER_KEY}.group`, 'none')));
+export const group = signal<Group>(parseGroup(load<unknown>(`${FILTER_KEY}.group`, 'cause')));
 effect(() => {
   const { text: _text, ...kept } = filter.value;
   save(FILTER_KEY, kept);
 });
 effect(() => save(`${FILTER_KEY}.group`, group.value));
+
+/** The groups of the dock that are closed, by `<grouping>:<key>` (a grouping's own keys: a cause, a file, a severity, a stage). Not kept: a reload opens them all. */
+export const closedGroups = signal<string[]>([]);
+export const groupId = (by: Group, key: string) => `${by}:${key}`;
+export function toggleGroup(by: Group, key: string) {
+  const id = groupId(by, key);
+  closedGroups.value = closedGroups.peek().includes(id) ? closedGroups.peek().filter((g) => g !== id) : [...closedGroups.peek(), id];
+}
 
 export function setDockOpen(open: boolean) {
   if (dock.peek().open !== open) dock.value = { ...dock.peek(), open };

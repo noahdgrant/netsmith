@@ -73,6 +73,10 @@ _Avoid_: Track class, width rule
 Advice that a person decides about, as opposed to a limit of the fabricator. A design that goes against one gets a `warning:` and still builds; `guidelines = "error"` in `netsmith.toml`, or `--strict` for one run, makes it an error. The first is the track width against current (ADR 0036); the datasheet layout rules of ADR 0030 are the next. An **Open circle** (ADR 0057), an **Unconstrained pick** and an **Unstated value** (ADR 0065) are findings of the same kind.
 _Avoid_: Lint, soft rule
 
+**Cause**:
+Why a note of a build is there: the one thing that would make it go. The tool that makes a note says it, as a typed field, never read back from the text (`netsmith_core::Cause`, sent as `Problem.cause`): _not stated_ (a check waits on a value nothing states), _part model_ (a part's definition leaves a level, a current or a limit open), _unjudged_ (a pin or net netsmith cannot judge yet), _circular_ (values that wait on each other), _supply_ (a rail nothing supplies, a load or a converter not settled), _pick_ (a provider stands in for a generic, a catalog row is out of stock), _track_ (a width that is a lower bound for a current not known) and _other_. The set is closed; the editor's Problems dock groups the notes by it, with a count for each (issue #192). An error and a warning have none.
+_Avoid_: Reason, category, kind of note, note type
+
 **Temperature rise**:
 How far above the board a loaded track may heat, `.process.max_temperature_rise` in kelvin, an upper bound. The track width check designs to it; it is 10 K when the board states none, a default of netsmith's and not a number a fabricator publishes (ADR 0036).
 

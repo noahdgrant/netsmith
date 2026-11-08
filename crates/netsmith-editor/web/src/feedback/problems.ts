@@ -5,7 +5,7 @@
 // the rows read them. `classify`, `splitBoard` and `instancePath` read the same from the message,
 // and are used only for a problem that has no `stage`: a server older than the fields.
 
-import type { Location, PcbFinding, Problem, ProblemStage, Severity } from '../api';
+import type { Cause, Location, PcbFinding, Problem, ProblemStage, Severity } from '../api';
 import type { Section } from '../layout';
 
 export type Origin = 'syntax' | 'checker' | 'solver' | 'lower' | 'guideline' | 'layout' | 'power' | 'placement' | 'routing' | 'rules' | 'kicad';
@@ -24,6 +24,32 @@ export const ORIGIN_LABEL: Record<Origin, string> = {
   kicad: 'KiCad',
 };
 
+/** Why a note is there, as the dock's group head says it: the one thing that would make it go. The server names the cause of each note
+ * (`Problem.cause`, a closed set); these are the words for them, in the order the groups come. */
+export const CAUSE_ORDER: Cause[] = ['not_stated', 'part_model', 'unjudged', 'circular', 'supply', 'pick', 'track', 'other'];
+
+export const CAUSE_LABEL: Record<Cause, string> = {
+  not_stated: 'A value nothing states',
+  part_model: 'A part’s model leaves a value open',
+  unjudged: 'A pin or net netsmith cannot judge yet',
+  circular: 'Values that wait on each other',
+  supply: 'A supply or load not settled',
+  pick: 'A part pick or its stock',
+  track: 'A track width not sized',
+  other: 'Other notes',
+};
+
+export const CAUSE_WHY: Record<Cause, string> = {
+  not_stated: 'A check waits on a value no statement gives: state it.',
+  part_model: 'A part’s definition lacks a level, a current or a limit a check needs: complete the part.',
+  unjudged: 'The levels or voltages there are beyond what netsmith can judge today: nothing to state, a gap in the tool.',
+  circular: 'Values depend on each other and none has a value: state a range on one to start them.',
+  supply: 'A rail nothing supplies, a load whose current is not settled, or a converter whose efficiency is not.',
+  pick: 'A provider stands in for a generic part, or a catalog row says the part is out of stock.',
+  track: 'A current on the net is not known, so its tracks are a lower bound: state the current or a `.min_track`.',
+  other: 'What the build says about what it did.',
+};
+
 /** One line of the dock. */
 export interface Row {
   /** Stable across re-reads of the same problem, so the picked row survives a rebuild. */
@@ -39,6 +65,8 @@ export interface Row {
   board: string | null;
   /** The instance path inside the board (`status_indicator.led`), when the message names one. */
   path: string | null;
+  /** Why a note is there, as the server says; null for a row that is not a note. */
+  cause: Cause | null;
   /** The section the finding belongs to: a PCB finding is the PCB view's. */
   home: Section | null;
   /** A PCB finding, for the click that selects it on the board. */
@@ -124,6 +152,7 @@ export function rowOfProblem(p: Problem, index: number): Row {
     at,
     board,
     path,
+    cause: p.cause ?? null,
     home: power ? 'power' : null,
     ...(power && path ? { net: path } : {}),
   };
@@ -149,16 +178,17 @@ export function rowOfFinding(f: PcbFinding, board: string): Row {
     at,
     board,
     path: f.parts.length ? f.parts.join(', ') : null,
+    cause: null,
     home: 'pcb',
     pcb: f,
   };
 }
 
-export type Group = 'none' | 'file' | 'severity' | 'stage';
+export type Group = 'none' | 'file' | 'severity' | 'stage' | 'cause';
 
 /** A stored grouping that is one of the known ones, else none (the dock kept it in the browser: an older or newer page may have written another). */
 export function parseGroup(v: unknown): Group {
-  return v === 'file' || v === 'severity' || v === 'stage' ? v : 'none';
+  return v === 'file' || v === 'severity' || v === 'stage' || v === 'cause' ? v : 'none';
 }
 
 export interface Filter {
@@ -264,6 +294,8 @@ export function countRows(rows: Row[]): Counts {
 export interface RowGroup {
   key: string;
   title: string;
+  /** What the group is, in a sentence, for the head's tooltip and its line of explanation. */
+  why?: string;
   rows: Row[];
 }
 
@@ -275,6 +307,7 @@ const SEVERITY_TITLE: Record<Severity, string> = { error: 'Errors', warning: 'Wa
 export function groupRows(rows: Row[], by: Group): RowGroup[] {
   const sorted = sortRows(rows);
   if (by === 'none') return [{ key: '', title: '', rows: sorted }];
+  if (by === 'cause') return groupByCause(sorted);
   const map = new Map<string, RowGroup>();
   for (const r of sorted) {
     const key = by === 'file' ? fileOf(r) || '(no file)' : by === 'stage' ? r.origin : r.severity;
@@ -284,6 +317,27 @@ export function groupRows(rows: Row[], by: Group): RowGroup[] {
   }
   const groups = [...map.values()];
   if (by === 'stage') groups.sort((a, b) => ORIGIN_ORDER.indexOf(a.key as Origin) - ORIGIN_ORDER.indexOf(b.key as Origin));
+  return groups;
+}
+
+/** The cause a row is listed under: the server's, else `other` for a note (a server older than the field). A row that is not a note has none. */
+export const causeOf = (r: Row): Cause | null => r.cause ?? (r.severity === 'note' ? 'other' : null);
+
+/** The notes under the cause of each, the causes in a fixed order; what is no note (the errors and warnings, which need no cause to be read) comes first and has no head, so that a board with no notes lists as it does with no grouping. */
+function groupByCause(sorted: Row[]): RowGroup[] {
+  const plain: Row[] = [];
+  const by = new Map<Cause, Row[]>();
+  for (const r of sorted) {
+    const cause = causeOf(r);
+    if (cause === null) plain.push(r);
+    else by.set(cause, [...(by.get(cause) ?? []), r]);
+  }
+  const groups: RowGroup[] = [];
+  if (plain.length) groups.push({ key: '', title: '', rows: plain });
+  for (const cause of CAUSE_ORDER) {
+    const rows = by.get(cause);
+    if (rows) groups.push({ key: cause, title: CAUSE_LABEL[cause], why: CAUSE_WHY[cause], rows });
+  }
   return groups;
 }
 

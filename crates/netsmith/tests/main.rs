@@ -32,6 +32,7 @@ mod guide;
 mod guidelines;
 mod height;
 mod kicad_rows;
+mod note_causes;
 mod open_circle;
 mod order;
 mod overhang;

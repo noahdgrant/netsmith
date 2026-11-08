@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use netsmith_check::{
     Checked, Domain, FieldId, FieldKind, InstId, InstKind, Loader, Model, SourceId, Sources, check,
 };
-use netsmith_core::{Design, PanelSpec};
+use netsmith_core::{Cause, Design, PanelSpec};
 use netsmith_kicad::{Mapping, Pinout, emit_schematic, project_file};
 use netsmith_lang::{ParseError, Span};
 use netsmith_lower::guidelines::Guideline;
@@ -63,6 +63,9 @@ pub struct Built {
     /// Things worth knowing that did not stop the build: what the solver decided and left
     /// alone, then the notes of lowering (the last `lowering_notes` of them).
     pub notes: Vec<String>,
+    /// Why each of `notes` is there, in the same order (see [`Cause`]): the editor groups the
+    /// notes by it.
+    pub note_causes: Vec<Cause>,
     /// For each use of a generic on this board: the provider that stands in its place and the
     /// providers passed over (ADR 0068). Empty for a board that uses no generic.
     pub providers: Vec<ProviderNote>,
@@ -451,7 +454,11 @@ pub fn outcome_observed(
         let provided = providers::notes_for(&solution.model, None, &passed);
         let mut notes = provider_lines(&provided);
         notes.extend(self::notes(solution, None));
-        notes.extend(stock::notes(&lowered, catalogs));
+        notes.extend(
+            stock::notes(&lowered, catalogs)
+                .into_iter()
+                .map(|n| (n, Cause::Pick)),
+        );
         let mut one = export(
             None,
             &board.name,
@@ -579,7 +586,11 @@ pub fn outcome_observed(
             let provided = providers::notes_for(&solution.model, Some(member.inst), &passed);
             let mut notes = provider_lines(&provided);
             notes.extend(self::notes(solution, Some(member.inst)));
-            notes.extend(stock::notes(&lowered, catalogs));
+            notes.extend(
+                stock::notes(&lowered, catalogs)
+                    .into_iter()
+                    .map(|n| (n, Cause::Pick)),
+            );
             let mut one = export(
                 Some(&system.name),
                 &member.name,
@@ -794,7 +805,7 @@ fn lowering_problems(board: Option<&str>, subject: &str, errors: &[String]) -> V
 
 /// What was not decided: parts not chosen and relations not evaluated. For one board of a
 /// system, only those inside it.
-fn notes(solution: &Solution, board: Option<InstId>) -> Vec<String> {
+fn notes(solution: &Solution, board: Option<InstId>) -> Vec<Noted> {
     let whole = &solution.model;
     // Paths are shown from the board, as they are when it is built alone.
     let model = &board.map_or_else(|| whole.clone(), |b| whole.scoped_to(b));
@@ -803,7 +814,12 @@ fn notes(solution: &Solution, board: Option<InstId>) -> Vec<String> {
         .unresolved
         .iter()
         .filter(|u| inside(u.part))
-        .map(|u| format!("{}: not chosen: {}", model.path_of(u.part), u.reason))
+        .map(|u| {
+            (
+                format!("{}: not chosen: {}", model.path_of(u.part), u.reason),
+                Cause::Other,
+            )
+        })
         .chain(whole.balances().iter().filter_map(|b| {
             // An incomplete balance (ADR 0027) is worth a line only where it kept the
             // current of a part from being set.
@@ -829,13 +845,16 @@ fn notes(solution: &Solution, board: Option<InstId>) -> Vec<String> {
                 path if path.is_empty() => String::new(),
                 path => format!(" in `{path}`"),
             };
-            Some(format!(
-                "the balance on net `{}`{scope} is incomplete: {} {} not modelled, so {} {} not set from it",
-                b.net,
-                pins.join(", "),
-                if pins.len() == 1 { "is" } else { "are" },
-                unset.join(", "),
-                if unset.len() == 1 { "is" } else { "are" },
+            Some((
+                format!(
+                    "the balance on net `{}`{scope} is incomplete: {} {} not modelled, so {} {} not set from it",
+                    b.net,
+                    pins.join(", "),
+                    if pins.len() == 1 { "is" } else { "are" },
+                    unset.join(", "),
+                    if unset.len() == 1 { "is" } else { "are" },
+                ),
+                Cause::PartModel,
             ))
         }))
         .chain(
@@ -843,7 +862,7 @@ fn notes(solution: &Solution, board: Option<InstId>) -> Vec<String> {
                 .not_evaluated
                 .iter()
                 .filter(|n| inside(n.at))
-                .map(|n| n.message.clone()),
+                .map(|n| (n.message.clone(), n.cause)),
         )
         .chain(solution.deferred.iter().filter_map(|&i| {
             let r = &whole.relations()[i];
@@ -854,11 +873,14 @@ fn notes(solution: &Solution, board: Option<InstId>) -> Vec<String> {
                 .iter()
                 .any(|&f| inside(whole.field(f).owner))
                 .then(|| {
-                    format!(
-                        "not evaluated: {} {} {}",
-                        model.show_expr(&r.lhs),
-                        r.op.symbol(),
-                        model.show_expr(&r.rhs)
+                    (
+                        format!(
+                            "not evaluated: {} {} {}",
+                            model.show_expr(&r.lhs),
+                            r.op.symbol(),
+                            model.show_expr(&r.rhs)
+                        ),
+                        Cause::NotStated,
                     )
                 })
         }))
@@ -867,26 +889,29 @@ fn notes(solution: &Solution, board: Option<InstId>) -> Vec<String> {
                 .circular
                 .iter()
                 .filter(|group| group.iter().any(|&f| inside(whole.field(f).owner)))
-                .map(|group| circular_note(model, group)),
+                .map(|group| (circular_note(model, group), Cause::Circular)),
         )
         .chain(
             solution
                 .seeded
                 .iter()
                 .filter(|seed| inside(whole.field(seed.field).owner))
-                .map(|seed| started_note(model, seed)),
+                .map(|seed| (started_note(model, seed), Cause::Circular)),
         )
         .collect()
 }
 
+/// A note and why it is there.
+type Noted = (String, Cause);
+
 /// A line of the notes for each use of a generic that a provider was picked for. A generic
 /// that is its own provider (the standard passives, one day) says nothing: its pick is the
 /// part.
-fn provider_lines(notes: &[ProviderNote]) -> Vec<String> {
+fn provider_lines(notes: &[ProviderNote]) -> Vec<Noted> {
     notes
         .iter()
         .filter(|n| n.chosen != n.generic)
-        .map(ProviderNote::line)
+        .map(|n| (n.line(), Cause::Pick))
         .collect()
 }
 
@@ -1118,14 +1143,16 @@ fn export(
     system: Option<&str>,
     board: &str,
     lowered: Lowered,
-    mut notes: Vec<String>,
+    notes: Vec<Noted>,
     model: &Model,
     sources: &Sources,
     libraries: Option<&Libraries>,
 ) -> Result<Built, Vec<Problem>> {
     // The nets with a current that is not known, whose tracks are a lower bound (ADR 0036).
-    notes.extend(lowered.notes.iter().cloned());
     let lowering_notes = lowered.notes.len();
+    let (mut notes, mut note_causes): (Vec<String>, Vec<Cause>) = notes.into_iter().unzip();
+    notes.extend(lowered.notes.iter().cloned());
+    note_causes.extend(lowered.note_causes.iter().copied());
     let label = match system {
         Some(system) => format!("{system}/{board}"),
         None => board.to_string(),
@@ -1238,6 +1265,7 @@ fn export(
         rechecks: resolve::Rechecks::none(),
         schematic,
         notes,
+        note_causes,
         providers: Vec::new(),
         lowering_notes,
         guidelines: lowered.guidelines,

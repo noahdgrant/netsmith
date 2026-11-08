@@ -45,7 +45,7 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | Orders (list, run, summary, downloads) | `build-panel.md` | `order` | `two_boards` |
 | Problems: errors, warnings, notes | `source-editor.md` | `editor`, `big-problems` | `two_boards`, `big` |
 | Problems dock in every view, F8, the strip over a stale view, status bar, toasts | `problems-dock.md` | `problems-dock`, `broken-start` | `two_boards` |
-| Problems dock leftovers: the place of a row is a button (Tab, Enter), the picked row stays in view, grouping by stage in a fixed order, a count for each severity in the head and the status bar | `problems-dock.md` | `problems-leftovers` | `warn_bench` |
+| Problems dock leftovers: the place of a row is a button (Tab, Enter), the picked row stays in view, grouping by stage in a fixed order, a count for each severity in the head and the status bar; notes grouped by cause (the default) with a count and a collapsible head | `problems-dock.md` | `problems-leftovers` | `warn_bench` |
 | The warning triangle everywhere (tree, tab, outline, status bar, dock, gutter, ruler): one drawing, the `--warning` colour in four themes, a name that says warning; the same for an error | `problems-dock.md` | `warning-marks` | `warn_bench` |
 | The selection, the command registry and the dock together: Ctrl+J, F8, `!` in go to anything, the chip and the dock row agree | `integration.md` | `integration` | `two_boards` |
 | Shared hover: a BOM row, a chip, a card, a drawn part or net lights the same thing in the other views; Escape, leave, focus, touch | `hover.md` | `hover` | `two_boards` |

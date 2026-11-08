@@ -611,6 +611,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
             at,
             involves: vec![at],
             message,
+            cause: netsmith_core::Cause::NotStated,
         });
     }
     for d in level_faults {

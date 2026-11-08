@@ -741,6 +741,8 @@ pub struct Lowered {
     /// Things worth knowing that did not stop the lowering: the nets with a current that is
     /// not known, whose tracks are therefore a lower bound (ADR 0036).
     pub notes: Vec<String>,
+    /// Why each of `notes` is there, in the same order (see [`netsmith_core::Cause`]).
+    pub note_causes: Vec<netsmith_core::Cause>,
     /// Where the design states each requirement on a position (ADR 0045), for a caller that
     /// has the source files to put in `design.features.constraints[..].source`.
     pub constraint_sites: Sites,
@@ -1082,6 +1084,12 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
             sourcing,
             origins,
             guidelines: guideline_findings,
+            note_causes: std::iter::repeat_n(netsmith_core::Cause::Track, plan.notes.len())
+                .chain(std::iter::repeat_n(
+                    netsmith_core::Cause::Other,
+                    bank_notes.len(),
+                ))
+                .collect(),
             notes: {
                 let mut notes = plan.notes;
                 notes.extend(bank_notes);
