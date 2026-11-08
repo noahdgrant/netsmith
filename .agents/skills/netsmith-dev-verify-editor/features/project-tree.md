@@ -46,3 +46,5 @@ Imported files are grouped by folder below `src/` (`sheets/power`, `sheets/io`).
 - The folders with no file in them come from `Project.folders`, which the server lists from the disk.
 - A real browser keeps Ctrl+N for itself (a new window) unless the page is an installed app; the toolbar and the menu do the same. Headless Chromium passes the key to the page, which is how the recipe tests it.
 - The tree's open state is in `localStorage`; each recipe has a fresh browser, so it starts from the defaults.
+
+A section or folder that holds the active file is opened once, when that file becomes the active one. The project is read again after every rebuild, and what the person closed since stays closed (`tree-nested` closes the section, changes a file on disk and checks it is still closed).

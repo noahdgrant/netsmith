@@ -2,15 +2,30 @@
 // folders with guide lines, folder and file icons, the keyboard, the filter, collapse and expand
 // all, what is remembered, the width, and a click on a definition (the cursor goes to its name,
 // and the editor does not mark every letter of the keyword).
+import fs from 'node:fs';
+import path from 'node:path';
+
 export const fixture = 'tree';
 
-export async function run({ page, shot, step, expect, section }) {
+export async function run({ page, shot, step, expect, section, project }) {
   const row = (id) => page.locator(`.ft-row[data-id="${id}"]`);
   const focused = () => page.evaluate(() => document.activeElement?.dataset?.id ?? null);
   const press = async (key) => {
     await page.keyboard.press(key);
     await page.waitForTimeout(80);
   };
+  // What a key does shows when the page has handled it, not after a fixed pause: wait for the state to be the one wanted
+  // (up to five seconds) before saying it is not. `want` is a value or a test of the value.
+  const until = async (read, want, label) => {
+    const ok = (got) => (typeof want === 'function' ? want(got) : got === want);
+    let got = await read();
+    for (let i = 0; i < 50 && !ok(got); i++) {
+      await page.waitForTimeout(100);
+      got = await read();
+    }
+    expect(ok(got), `${label} (got ${got})`);
+  };
+  const expanded = (id) => () => row(id).getAttribute('aria-expanded');
   const open = async () => {
     await section('source');
     await page.waitForSelector('.ft-row[role=treeitem]');
@@ -101,35 +116,49 @@ export async function run({ page, shot, step, expect, section }) {
   step('keyboard: Up, Down, Home, End, Left, Right, Enter');
   await row('s:top_level').focus();
   await press('ArrowDown');
-  expect((await focused()) === 'f:src/greenhouse.nsm', 'Down moves to the next row');
+  await until(focused, 'f:src/greenhouse.nsm', 'Down moves to the next row');
   await press('ArrowDown');
-  expect((await focused()) === 'e:src/greenhouse.nsm:interface:Interface0:1' || (await focused()).startsWith('e:src/greenhouse.nsm:'), 'and into the definitions');
+  await until(focused, (id) => !!id && id.startsWith('e:src/greenhouse.nsm:'), 'and into the definitions');
   await press('ArrowUp');
-  expect((await focused()) === 'f:src/greenhouse.nsm', 'Up moves back');
+  await until(focused, 'f:src/greenhouse.nsm', 'Up moves back');
   await press('ArrowLeft');
-  expect((await row('f:src/greenhouse.nsm').getAttribute('aria-expanded')) === 'false', 'Left closes an open file');
+  await until(expanded('f:src/greenhouse.nsm'), 'false', 'Left closes an open file');
   await press('ArrowLeft');
-  expect((await focused()) === 's:top_level', 'Left on a closed one goes to the parent');
+  await until(focused, 's:top_level', 'Left on a closed one goes to the parent');
   await press('ArrowLeft');
-  expect((await row('s:top_level').getAttribute('aria-expanded')) === 'false', 'Left closes the section');
+  await until(expanded('s:top_level'), 'false', 'Left closes the section');
   await press('ArrowRight');
-  expect((await row('s:top_level').getAttribute('aria-expanded')) === 'true', 'Right opens it');
+  await until(expanded('s:top_level'), 'true', 'Right opens it');
   await press('ArrowRight');
-  expect((await focused()) === 'f:src/greenhouse.nsm', 'Right on an open one goes to its first child');
+  await until(focused, 'f:src/greenhouse.nsm', 'Right on an open one goes to its first child');
   await press('End');
-  expect((await focused()) === 's:std', 'End goes to the last row');
+  await until(focused, 's:std', 'End goes to the last row');
   await press('Home');
-  expect((await focused()) === 's:top_level', 'Home goes to the first');
+  await until(focused, 's:top_level', 'Home goes to the first');
   await row('f:src/main.nsm').focus();
   await press('Enter');
   await page.waitForSelector('.tab.active:has-text("main.nsm")');
   expect(true, 'Enter opens a file');
   await row('d:module:proposed').focus();
   await press('Enter');
-  expect((await row('d:module:proposed').getAttribute('aria-expanded')) === 'false', 'Enter closes a folder');
+  await until(expanded('d:module:proposed'), 'false', 'Enter closes a folder');
   await press('Enter');
-  expect((await row('d:module:proposed').getAttribute('aria-expanded')) === 'true', 'and opens it again');
+  await until(expanded('d:module:proposed'), 'true', 'and opens it again');
   expect((await page.locator('.ft-tree[role=tree]').count()) === 1 && (await page.locator('.ft-tree [role=treeitem]').count()) > 20, 'a tree with tree items (the outline below it is a tree of its own)');
+
+  step('a section the person closed stays closed when the project is read again');
+  // main.nsm is the active file, in the section Top level: reading the project again (a file changed on disk) must not open it.
+  await row('s:top_level').focus();
+  await press('ArrowLeft');
+  await until(expanded('s:top_level'), 'false', 'Left closes the section that holds the active file');
+  const main = path.join(project, 'src/main.nsm');
+  fs.appendFileSync(main, '\n// the project is read again\n');
+  await page.waitForFunction(async () => (await fetch('/api/analysis', { cache: 'no-store' }).then((r) => r.json())).version > 1, null, { timeout: 60000 });
+  await page.waitForSelector('.statusbar .item.idle', { timeout: 60000 });
+  await page.waitForTimeout(1500);
+  expect((await row('s:top_level').getAttribute('aria-expanded')) === 'false', 'the section is still closed after the project was read again');
+  await press('ArrowRight');
+  await until(expanded('s:top_level'), 'true', 'and Right opens it');
 
   step('collapse all and expand all');
   const count = () => page.locator('.ft-row').count();

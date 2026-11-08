@@ -420,11 +420,18 @@ export function Sidebar() {
   });
 
   // The file that is on show is in the tree: its folders open, and the row in view if it is not.
+  // Once for each file that becomes the active one: the project is read again after every rebuild, and a section the person
+  // closed since must not open again because of it.
   const path = activeFile.value;
+  const openedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!path || filtering) return;
+    if (!path || filtering || openedFor.current === path) return;
+    const ancestors = ancestorIds(sections, path);
+    // Not in the tree yet (a file just made): try again when the project has it.
+    if (ancestors.length === 0) return;
+    openedFor.current = path;
     const closed = new Set(flatten(sections, overrides).filter((r) => r.open === false).map((r) => r.id));
-    const need = ancestorIds(sections, path).filter((id) => closed.has(id));
+    const need = ancestors.filter((id) => closed.has(id));
     if (need.length) remember({ ...overrides, ...Object.fromEntries(need.map((id) => [id, true])) });
   }, [path, sections]);
   useEffect(() => {
