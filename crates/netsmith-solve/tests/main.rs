@@ -14,6 +14,7 @@ mod correlated_levels;
 mod cycles;
 mod data;
 mod dc_analysis;
+mod dc_regulators;
 mod defaults;
 mod derived_bounds;
 mod empty_cells;

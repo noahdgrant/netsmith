@@ -779,8 +779,11 @@ fn a_window_no_resistor_can_meet_is_refused_and_names_the_resistor() {
 
 // ---- I2cPullups states what it draws (ADR 0026, "A part states its own requirements") ----
 
-/// An invented I2C sensor that draws 100 uA to 1 mA, a linear regulator that makes the 3.3 V
-/// net from 5 V, a load on that net, the sensor and the pull-ups on it. `rail_current` is a
+/// An invented I2C sensor that draws 100 uA to 1 mA (both of its bus pins bidirectional, so a
+/// driver that may pull either line low is on it: a pin that only reads would make the pull-up
+/// carry nothing for the DC analysis, which now sees the net behind the regulator), a linear
+/// regulator that makes the 3.3 V net from 5 V, a load on that net, the sensor and the pull-ups
+/// on it. `rail_current` is a
 /// current a board states on the pull-ups' own supply (`""` for none).
 fn i2c_board(pullup: &str, rail_current: &str) -> String {
     format!(
@@ -790,7 +793,7 @@ fn i2c_board(pullup: &str, rail_current: &str) -> String {
          part Sensor {{\n    .designator &= \"U\"\n    .vcc: Rail\n    .i2c: I2c\n    \
          .vcc.current &= 100uA..1mA\n    pins {{\n        .vcc.pos power \"VCC\" \"1\"\n        \
          .vcc.neg power \"GND\" \"2\"\n        .i2c.sda bidirectional \"SDA\" \"3\"\n        \
-         .i2c.scl input \"SCL\" \"4\"\n    }}\n}}\n\n\
+         .i2c.scl bidirectional \"SCL\" \"4\"\n    }}\n}}\n\n\
          board Bus {{\n    .input: Rail {{\n        .voltage &= 5V +/- 5%\n        \
          .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n    }}\n    \
          .ldo: LinearRegulator {{ .vout.voltage &= 3.3V +/- 5% }}\n    \

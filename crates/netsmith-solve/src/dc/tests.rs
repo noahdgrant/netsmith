@@ -2,7 +2,7 @@
 //! prototype's, ported to the solver's own types).
 
 use super::net::{
-    Element, Error, Held, Island, Kind, MAX_COMBINATIONS, Range, Which, check_interior,
+    Draw, Element, Error, Held, Island, Kind, MAX_COMBINATIONS, Range, Which, check_interior,
 };
 
 fn close(got: f64, want: f64, rel: f64) {
@@ -268,4 +268,252 @@ fn a_diode_in_front_of_a_load_that_always_draws_cannot_block() {
     assert_eq!(report.consistent, 4);
     range_is(report.range(Which::NodeVoltage(0)), 11.2, 11.4);
     range_is(report.range(Which::Current(0)), 0.1, 0.2);
+}
+
+fn switching(name: &str, from: usize, to: usize, p: Range, eff: Range) -> Element {
+    Element {
+        name: name.to_string(),
+        kind: Kind::Regulator {
+            from,
+            to,
+            draw: Draw::Switching { p, eff },
+        },
+    }
+}
+
+fn linear(name: &str, from: usize, to: usize, i: Range) -> Element {
+    Element {
+        name: name.to_string(),
+        kind: Kind::Regulator {
+            from,
+            to,
+            draw: Draw::Linear { i },
+        },
+    }
+}
+
+/// The prototype's: a 12 V source, 0.5 ohm in series and a regulator (5 V out at 1 A, 90 %).
+/// It draws `I = Pout / (eff * Vin)` with `Vin = 12 - 0.5 I`: `0.9 I (12 - 0.5 I) = 5`, so
+/// `0.45 I^2 - 10.8 I + 5 = 0`. Without the drop, `I` would be 5 / (0.9 * 12) = 0.46296 A.
+#[test]
+fn a_regulator_draws_its_power_through_the_drops_before_it() {
+    // Nodes: 0 = VIN (free), 1 = source (held 12 V), 2 = ground (held 0).
+    let island = Island {
+        free: 1,
+        held: vec![
+            held("src", Range::point(12.0)),
+            held("gnd", Range::point(0.0)),
+        ],
+        elements: vec![
+            resistor("r", 1, 0, Range::point(0.5)),
+            switching("reg", 0, 2, Range::point(5.0), Range::point(0.9)),
+        ],
+    };
+    let report = island.analyze(MAX_COMBINATIONS).unwrap();
+    let i = (10.8 - (10.8f64 * 10.8 - 4.0 * 0.45 * 5.0).sqrt()) / (2.0 * 0.45);
+    close(i, 0.47226, 1e-4);
+    range_is(report.range(Which::Current(1)), i, i);
+    range_is(report.range(Which::Current(0)), i, i);
+    // The regulator's input voltage is the drop of its element.
+    range_is(report.range(Which::Drop(1)), 12.0 - 0.5 * i, 12.0 - 0.5 * i);
+    range_is(report.range(Which::HeldDraw(0)), i, i);
+    assert!(i > 5.0 / (0.9 * 12.0) + 0.009);
+    assert!(report.collapses.is_empty());
+}
+
+/// Two regulators in a row, the second the load of the first: a 3.3 V stage (85 %) with a 0.5 A
+/// load asks `3.3 * 0.5 / (0.85 * 5)` = 0.38824 A of the 5 V output, and the 5 V stage (90 %)
+/// from the source through 0.5 ohm asks `0.9 I (12 - 0.5 I) = 5 * 0.38824`. The islands are
+/// solved the output side first, and what the output gives is the next island's load.
+#[test]
+fn a_regulator_behind_a_regulator_is_the_load_of_the_first() {
+    // Behind: the 5 V output (held) and the second regulator's input on it.
+    let behind = Island {
+        free: 0,
+        held: vec![
+            held("v5", Range::point(5.0)),
+            held("gnd", Range::point(0.0)),
+        ],
+        elements: vec![switching(
+            "b",
+            0,
+            1,
+            Range::point(3.3 * 0.5),
+            Range::point(0.85),
+        )],
+    };
+    let ib = 3.3 * 0.5 / (0.85 * 5.0);
+    let report = behind.analyze(MAX_COMBINATIONS).unwrap();
+    range_is(report.range(Which::Current(0)), ib, ib);
+    let load = report.range(Which::HeldDraw(0));
+    range_is(load, ib, ib);
+    let front = Island {
+        free: 1,
+        held: vec![
+            held("src", Range::point(12.0)),
+            held("gnd", Range::point(0.0)),
+        ],
+        elements: vec![
+            resistor("r", 1, 0, Range::point(0.5)),
+            switching("a", 0, 2, Range::point(5.0 * load.hi), Range::point(0.9)),
+        ],
+    };
+    let report = front.analyze(MAX_COMBINATIONS).unwrap();
+    let pout = 5.0 * ib;
+    let ia = (10.8 - (10.8f64 * 10.8 - 4.0 * 0.45 * pout).sqrt()) / (2.0 * 0.45);
+    range_is(report.range(Which::Current(1)), ia, ia);
+}
+
+/// The source cannot give it: 12 V through 10 ohm gives at most `12^2 / (4 * 10) = 3.6 W`, and
+/// the regulator asks for `5 / 0.9 = 5.56 W`. There is no operating point, and the report says
+/// which regulator and the voltage its input fell to.
+#[test]
+fn a_regulator_asking_for_more_than_the_source_can_give_collapses() {
+    let island = Island {
+        free: 1,
+        held: vec![
+            held("src", Range::point(12.0)),
+            held("gnd", Range::point(0.0)),
+        ],
+        elements: vec![
+            resistor("r", 1, 0, Range::point(10.0)),
+            switching("reg", 0, 2, Range::point(5.0), Range::point(0.9)),
+        ],
+    };
+    let report = island.analyze(MAX_COMBINATIONS).unwrap();
+    assert_eq!(report.consistent, 0);
+    assert_eq!(report.collapses.len(), 1);
+    assert_eq!(report.collapses[0].element, 1);
+    assert!(report.collapses[0].vin < 1e-3, "{:?}", report.collapses);
+}
+
+/// A supply of 10 V to 16 V through 10 ohm and a regulator that asks 5.56 W: at 16 V the source
+/// can give `16^2 / 40 = 6.4 W`, at 10 V only 2.5 W. One corner collapses and the other is the
+/// circuit's: the range is that of the corner that holds, and the collapse is reported with the
+/// states that gave it.
+#[test]
+fn only_the_corners_that_collapse_are_reported() {
+    let island = Island {
+        free: 1,
+        held: vec![
+            held("src", Range::new(10.0, 16.0)),
+            held("gnd", Range::point(0.0)),
+        ],
+        elements: vec![
+            resistor("r", 1, 0, Range::point(10.0)),
+            switching("reg", 0, 2, Range::point(5.0), Range::point(0.9)),
+        ],
+    };
+    let report = island.analyze(MAX_COMBINATIONS).unwrap();
+    assert_eq!(report.combinations, 2);
+    assert_eq!(report.consistent, 1);
+    assert_eq!(report.collapses.len(), 1);
+    assert_eq!(
+        report.describe(report.collapses[0].combination),
+        "src at 10V"
+    );
+    // At 16 V: `0.9 I (16 - 10 I) = 5` is `9 I^2 - 14.4 I + 5 = 0`.
+    let i = (14.4 - (14.4f64 * 14.4 - 4.0 * 9.0 * 5.0).sqrt()) / 18.0;
+    range_is(report.range(Which::Current(0)), i, i);
+}
+
+/// A diode that blocks in front of a regulator leaves it no input: that is a state that is not
+/// the circuit's, refused, and not a finding. The diode that conducts is solved: `Vin = 12 - 0.5
+/// - 1.5 I`, and `0.9 I (11.5 - 1.5 I) = 5`.
+#[test]
+fn a_blocking_diode_in_front_of_a_regulator_is_refused_and_not_a_collapse() {
+    // Nodes: 0 = after the diode (free), 1 = source, 2 = ground.
+    let island = Island {
+        free: 1,
+        held: vec![
+            held("src", Range::point(12.0)),
+            held("gnd", Range::point(0.0)),
+        ],
+        elements: vec![
+            diode("d", 1, 0, Range::point(0.5)),
+            switching("reg", 0, 2, Range::point(5.0), Range::point(0.9)),
+        ],
+    };
+    let report = island.analyze(MAX_COMBINATIONS).unwrap();
+    assert!(report.collapses.is_empty(), "{:?}", report.collapses);
+    assert_eq!(report.consistent, 1);
+    let i = 5.0 / (0.9 * 11.5);
+    range_is(report.range(Which::Current(0)), i, i);
+}
+
+/// A linear regulator draws what its output supplies: its current is the range of the load,
+/// whatever its input. 12 V through 1 ohm and a load of 0.1 A to 0.2 A: the input is
+/// `12 - I` and the chain carries the load's current.
+#[test]
+fn a_linear_regulator_passes_its_output_current() {
+    let island = Island {
+        free: 1,
+        held: vec![
+            held("src", Range::point(12.0)),
+            held("gnd", Range::point(0.0)),
+        ],
+        elements: vec![
+            resistor("r", 1, 0, Range::point(1.0)),
+            linear("reg", 0, 2, Range::new(0.1, 0.2)),
+        ],
+    };
+    let report = island.analyze(MAX_COMBINATIONS).unwrap();
+    range_is(report.range(Which::Current(0)), 0.1, 0.2);
+    range_is(report.range(Which::Drop(1)), 11.8, 11.9);
+}
+
+/// The interior check holds for a switching regulator: a point inside the ranges is inside the
+/// hull of the corners (the input current is monotone in the power, the efficiency and the
+/// supply).
+#[test]
+fn the_corners_of_a_regulator_island_cover_its_interior() {
+    let island = Island {
+        free: 1,
+        held: vec![
+            held("src", Range::new(9.0, 16.0)),
+            held("gnd", Range::point(0.0)),
+        ],
+        elements: vec![
+            resistor("r", 1, 0, tol(0.1, 0.05)),
+            switching("reg", 0, 2, Range::new(2.0, 4.0), Range::new(0.85, 0.95)),
+        ],
+    };
+    let report = island.analyze(MAX_COMBINATIONS).unwrap();
+    assert_eq!(report.combinations, 16);
+    assert_eq!(check_interior(&island, &report, 500), 0);
+}
+
+/// A regulator in an island of 15 free nodes is limited by the rounds of its fixed point too: the
+/// limit counts them, so no island takes longer than one without a regulator.
+#[test]
+fn an_island_with_a_switching_regulator_has_a_smaller_limit() {
+    let mut elements = Vec::new();
+    // 12 resistors of 1 % in a chain from the source: 13 nodes' worth of combinations.
+    for k in 0..12 {
+        elements.push(resistor(
+            &format!("r{k}"),
+            if k == 0 { 1 } else { k - 1 },
+            k,
+            tol(0.1, 0.01),
+        ));
+    }
+    elements.push(switching(
+        "reg",
+        11,
+        2,
+        Range::new(2.0, 4.0),
+        Range::new(0.85, 0.95),
+    ));
+    let island = Island {
+        free: 12,
+        held: vec![
+            held("src", Range::new(9.0, 16.0)),
+            held("gnd", Range::point(0.0)),
+        ],
+        elements,
+    };
+    assert!(matches!(
+        island.analyze(MAX_COMBINATIONS),
+        Err(Error::TooManyCombinations { .. })
+    ));
 }

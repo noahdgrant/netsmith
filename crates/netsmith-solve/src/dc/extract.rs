@@ -19,6 +19,13 @@
 //!   rail of a part with a `.current` that is never negative (a load): a current source from its
 //!   `pos` to its `neg`. A rail of a part that can give current is an output, which holds its
 //!   net's voltage and is not modelled in this stage.
+//! - **Regulators** (`dc linear_regulator`, `dc switching_regulator`, ADR 0076 amendment 3). The
+//!   output rail is an ideal source over the range of its voltage: its positive net is held over
+//!   that range and its negative net at zero, so the output side is an island of its own (a board
+//!   rail on that net is then a load, not a source). The input rail is an element, a current
+//!   that the regulator's output sets: it joins the island of the input net, and the order in
+//!   which islands are solved (`super::analyze`) is the order of the power tree, the output
+//!   side first.
 //! - **What draws nothing.** A pin that the checker says draws nothing (ADR 0027) and is not
 //!   on a connector, and a pin that connects to nothing.
 //!
@@ -38,7 +45,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use netsmith_check::{DcKind, Domain, FieldId, InstId, InstKind, Member, Model, PinKind};
 use netsmith_quantity::Dimension;
 
-use super::net::{Element, Held, Island, Kind, MIN_RESISTANCE, Range};
+use super::net::{Draw, Element, Held, Island, Kind, MIN_RESISTANCE, Range};
 
 /// A part of an island that the pass writes the results of.
 #[derive(Debug, Clone)]
@@ -56,10 +63,52 @@ pub(crate) struct Modelled {
     pub diode: bool,
 }
 
+/// A regulator of the model: the part, the net its output holds, and what it says of itself.
+#[derive(Debug, Clone)]
+pub(crate) struct Reg {
+    pub part: InstId,
+    /// The path of the output rail, for the held node's name.
+    pub name: String,
+    /// The net the output holds, and the range of its voltage.
+    pub out_net: usize,
+    pub vout: Range,
+    /// `Some` for a switching regulator.
+    pub eff: Option<Range>,
+    /// The current its output rail supplies (a negative `current`), to fall back to when the
+    /// loads on the output net are not all modelled.
+    pub out_current: Option<FieldId>,
+    /// Whether every pin on the output net is one the pass accounts for.
+    pub out_complete: bool,
+}
+
+/// What the island's regulator inputs are: the element, and which regulator it is.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Sink {
+    pub element: usize,
+    pub reg: usize,
+}
+
+/// A held node of the island that a regulator's output holds: its index in `Island::held`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct OutputNode {
+    pub held: usize,
+    pub reg: usize,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Planned {
     pub island: Island,
     pub parts: Vec<Modelled>,
+    pub sinks: Vec<Sink>,
+    pub outputs: Vec<OutputNode>,
+}
+
+/// What `extract` found: the islands, the regulators, and the regulator outputs that an island
+/// was left out of (so their load is not the sum of the islands).
+pub(crate) struct Extracted {
+    pub islands: Vec<Planned>,
+    pub regs: Vec<Reg>,
+    pub unsolved_outputs: BTreeSet<usize>,
 }
 
 /// What the held nets are measured from.
@@ -96,10 +145,12 @@ struct Item {
     drop: Option<FieldId>,
     /// The nets at its ends, in the order of the kind's fields.
     nets: Vec<usize>,
+    /// A regulator's input: which regulator.
+    reg: Option<usize>,
 }
 
 /// The islands of a model, in the order of their lowest net.
-pub(crate) fn extract(model: &Model) -> Vec<Planned> {
+pub(crate) fn extract(model: &Model) -> Extracted {
     let nets = model.nets();
     let mut net_of: HashMap<InstId, usize> = HashMap::new();
     for (i, n) in nets.iter().enumerate() {
@@ -107,6 +158,119 @@ pub(crate) fn extract(model: &Model) -> Vec<Planned> {
             net_of.insert(p, i);
         }
     }
+
+    // The regulators: what each holds on its output net, and what its input is.
+    let mut regs: Vec<Reg> = Vec::new();
+    // For each regulator: its part, the nets and fields of its input, and its pins.
+    struct RegInput {
+        net_pos: usize,
+        net_neg: usize,
+        current: Option<FieldId>,
+        voltage: FieldId,
+    }
+    let mut reg_inputs: Vec<RegInput> = Vec::new();
+    let mut reg_rails: HashSet<InstId> = HashSet::new();
+    let mut reg_pins: Vec<[InstId; 4]> = Vec::new();
+    let mut out_nets: Vec<(usize, usize)> = Vec::new();
+    for (part, dc) in model.dc_elements() {
+        let switching = match dc.kind {
+            DcKind::LinearRegulator => false,
+            DcKind::SwitchingRegulator => true,
+            _ => continue,
+        };
+        if model.instance(part).kind != InstKind::Part {
+            continue;
+        }
+        let (Some((v_in, in_pos, in_neg)), Some((v_out, out_pos, out_neg))) =
+            (model.rail_of(dc.pins[0]), model.rail_of(dc.pins[1]))
+        else {
+            continue;
+        };
+        let nets_of = [in_pos, in_neg, out_pos, out_neg].map(|p| net_of.get(&p).copied());
+        let [Some(ip), Some(ineg), Some(op), Some(oneg)] = nets_of else {
+            continue;
+        };
+        // One ground for the input and the output, and an output net of its own.
+        if ineg != oneg || ip == op || ip == ineg || op == oneg {
+            continue;
+        }
+        let range = |f: FieldId, dim: Dimension| match &model.field(f).domain {
+            Domain::Quantity(q) if q.dim() == dim && q.lo().is_finite() && q.hi().is_finite() => {
+                Some(Range::new(q.lo(), q.hi()))
+            }
+            _ => None,
+        };
+        let Some(vout) = range(v_out, Dimension::VOLTAGE).filter(|r| r.lo > 0.0) else {
+            continue;
+        };
+        let eff = if switching {
+            match range(dc.values[0], Dimension::NONE).filter(|r| r.lo > 0.0) {
+                Some(e) => Some(e),
+                None => continue,
+            }
+        } else {
+            None
+        };
+        // The input's `voltage` and `current`: the fields the pass writes.
+        if model.field(v_in).kind != netsmith_check::FieldKind::Quantity(Dimension::VOLTAGE) {
+            continue;
+        }
+        let current = model.draw_of(dc.pins[0]).map(|(f, _)| f);
+        let out_current = model.draw_of(dc.pins[1]).map(|(f, _)| f);
+        regs.push(Reg {
+            part,
+            name: model.path_of(dc.pins[1]),
+            out_net: op,
+            vout,
+            eff,
+            out_current,
+            out_complete: false,
+        });
+        reg_inputs.push(RegInput {
+            net_pos: ip,
+            net_neg: ineg,
+            current,
+            voltage: v_in,
+        });
+        reg_rails.insert(dc.pins[0]);
+        reg_rails.insert(dc.pins[1]);
+        reg_pins.push([in_pos, in_neg, out_pos, out_neg]);
+        out_nets.push((op, oneg));
+    }
+    // Two regulators on one output net share a load that no sum can tell apart: neither is
+    // modelled.
+    let claimed: Vec<usize> = regs.iter().map(|r| r.out_net).collect();
+    let keep: Vec<bool> = claimed
+        .iter()
+        .map(|n| claimed.iter().filter(|m| *m == n).count() == 1)
+        .collect();
+    let mut k = 0;
+    regs.retain(|_| {
+        k += 1;
+        keep[k - 1]
+    });
+    let mut k = 0;
+    reg_inputs.retain(|_| {
+        k += 1;
+        keep[k - 1]
+    });
+    let mut k = 0;
+    reg_pins.retain(|_| {
+        k += 1;
+        keep[k - 1]
+    });
+    let mut k = 0;
+    out_nets.retain(|_| {
+        k += 1;
+        keep[k - 1]
+    });
+    let reg_out_nets: BTreeSet<usize> = regs.iter().map(|r| r.out_net).collect();
+    let modelled_regs: HashSet<InstId> = regs.iter().map(|r| r.part).collect();
+    reg_rails.retain(|i| {
+        model
+            .owner_of(*i)
+            .is_some_and(|p| modelled_regs.contains(&p))
+    });
 
     // The sources and the nets they hold.
     let mut held: BTreeMap<usize, Held_> = BTreeMap::new();
@@ -134,6 +298,11 @@ pub(crate) fn extract(model: &Model) -> Vec<Planned> {
         let (Some(&p), Some(&n)) = (net_of.get(&pos), net_of.get(&neg)) else {
             continue;
         };
+        // A rail on a net that a regulator holds is what the regulator supplies, whatever
+        // voltage the design asks of it: a load, not a second source.
+        if reg_out_nets.contains(&p) {
+            continue;
+        }
         source_pins.insert(pos);
         source_pins.insert(neg);
         let name = model.path_of(iface);
@@ -149,6 +318,35 @@ pub(crate) fn extract(model: &Model) -> Vec<Planned> {
     let mut items: Vec<Item> = Vec::new();
     // The pins the elements and sources account for.
     let mut accounted: HashSet<InstId> = HashSet::new();
+
+    // The regulators: the output holds its net, the input is an element.
+    for (idx, reg) in regs.iter().enumerate() {
+        let (_, neg) = out_nets[idx];
+        hold_net(&mut held, neg, Hold::Ground, Range::point(0.0), &reg.name);
+        hold_net(&mut held, reg.out_net, Hold::Pos(neg), reg.vout, &reg.name);
+        accounted.extend(reg_pins[idx]);
+        let input = &reg_inputs[idx];
+        items.push(Item {
+            kind: Kind::Regulator {
+                from: 0,
+                to: 0,
+                draw: match reg.eff {
+                    Some(eff) => Draw::Switching {
+                        p: Range::EMPTY,
+                        eff,
+                    },
+                    None => Draw::Linear { i: Range::EMPTY },
+                },
+            },
+            name: model.path_of(reg.part),
+            part: Some(reg.part),
+            flipped: false,
+            current: input.current,
+            drop: Some(input.voltage),
+            nets: vec![input.net_pos, input.net_neg],
+            reg: Some(idx),
+        });
+    }
 
     // Resistors and diodes.
     let mut modelled_parts: HashSet<InstId> = HashSet::new();
@@ -202,6 +400,8 @@ pub(crate) fn extract(model: &Model) -> Vec<Planned> {
             }
             // A MOSFET as a switch is a later stage: the part is a boundary here.
             DcKind::Nmos | DcKind::Pmos => continue,
+            // Regulators are taken above.
+            DcKind::LinearRegulator | DcKind::SwitchingRegulator => continue,
         };
         // A diode between two held nets has no current the network can say (two ideal
         // sources and an ideal diode): it is left out, and so is nothing it touches that is
@@ -231,6 +431,7 @@ pub(crate) fn extract(model: &Model) -> Vec<Planned> {
                 _ => None,
             },
             nets,
+            reg: None,
         });
     }
 
@@ -266,6 +467,7 @@ pub(crate) fn extract(model: &Model) -> Vec<Planned> {
             current: None,
             drop: None,
             nets: vec![na, nb],
+            reg: None,
         });
     }
 
@@ -311,6 +513,7 @@ pub(crate) fn extract(model: &Model) -> Vec<Planned> {
                         current: None,
                         drop: None,
                         nets: vec![np, nn],
+                        reg: None,
                     });
                     accounted.insert(pos);
                     accounted.insert(neg);
@@ -344,6 +547,9 @@ pub(crate) fn extract(model: &Model) -> Vec<Planned> {
         let Some((_, pos, neg)) = model.rail_of(iface) else {
             continue;
         };
+        if reg_rails.contains(&iface) {
+            continue;
+        }
         let Some(owner) = model.owner_of(iface) else {
             continue;
         };
@@ -383,13 +589,14 @@ pub(crate) fn extract(model: &Model) -> Vec<Planned> {
             current: None,
             drop: None,
             nets: vec![np, nn],
+            reg: None,
         });
     }
 
     // The nets some pin on them may set or draw from, that nothing here models.
     let mut open: BTreeSet<usize> = outside_open;
     for (index, net) in nets.iter().enumerate() {
-        if held.contains_key(&index) {
+        if held.contains_key(&index) && !reg_out_nets.contains(&index) {
             continue;
         }
         for &t in &net.terminals {
@@ -408,6 +615,10 @@ pub(crate) fn extract(model: &Model) -> Vec<Planned> {
                 break;
             }
         }
+    }
+
+    for reg in regs.iter_mut() {
+        reg.out_complete = !open.contains(&reg.out_net);
     }
 
     // The islands: free nets that elements join. A held net is not merged into anything.
@@ -445,16 +656,19 @@ pub(crate) fn extract(model: &Model) -> Vec<Planned> {
     }
 
     let mut out = Vec::new();
+    let mut unsolved_outputs: BTreeSet<usize> = BTreeSet::new();
     for members in groups.values() {
         netsmith_core::job::checkpoint();
-        // Only an island with something to write is worth a solve.
-        if members.iter().all(|&i| items[i].part.is_none()) {
-            continue;
-        }
         let touched: BTreeSet<usize> = members
             .iter()
             .flat_map(|&i| items[i].nets.iter().copied())
             .collect();
+        let touches_output = touched.iter().any(|n| reg_out_nets.contains(n));
+        // Only an island with something to write, or that a regulator's output draws from, is
+        // worth a solve.
+        if members.iter().all(|&i| items[i].part.is_none()) && !touches_output {
+            continue;
+        }
         let free_nets: Vec<usize> = touched
             .iter()
             .copied()
@@ -465,7 +679,11 @@ pub(crate) fn extract(model: &Model) -> Vec<Planned> {
             .copied()
             .filter(|n| held.contains_key(n))
             .collect();
+        // An island left out is a load on a regulator's output that no sum has.
+        let mut left_out =
+            || unsolved_outputs.extend(touched.iter().filter(|n| reg_out_nets.contains(n)));
         if held_nets.is_empty() || free_nets.iter().any(|n| open.contains(n)) {
+            left_out();
             continue;
         }
         // One ground for everything the island is measured from.
@@ -490,6 +708,7 @@ pub(crate) fn extract(model: &Model) -> Vec<Planned> {
             }
         }
         if !consistent {
+            left_out();
             continue;
         }
         let node_of = |net: usize| -> usize {
@@ -512,6 +731,7 @@ pub(crate) fn extract(model: &Model) -> Vec<Planned> {
             elements: Vec::new(),
         };
         let mut parts = Vec::new();
+        let mut sinks = Vec::new();
         for &i in members {
             let item = &items[i];
             let n: Vec<usize> = item.nets.iter().map(|&x| node_of(x)).collect();
@@ -531,7 +751,18 @@ pub(crate) fn extract(model: &Model) -> Vec<Planned> {
                     to: n[1],
                     i: *i,
                 },
+                Kind::Regulator { draw, .. } => Kind::Regulator {
+                    from: n[0],
+                    to: n[1],
+                    draw: *draw,
+                },
             };
+            if let Some(reg) = item.reg {
+                sinks.push(Sink {
+                    element: island.elements.len(),
+                    reg,
+                });
+            }
             if let Some(part) = item.part {
                 parts.push(Modelled {
                     element: island.elements.len(),
@@ -547,9 +778,27 @@ pub(crate) fn extract(model: &Model) -> Vec<Planned> {
                 kind,
             });
         }
-        out.push(Planned { island, parts });
+        let outputs = held_nets
+            .iter()
+            .enumerate()
+            .filter_map(|(h, n)| {
+                regs.iter()
+                    .position(|r| r.out_net == *n)
+                    .map(|reg| OutputNode { held: h, reg })
+            })
+            .collect();
+        out.push(Planned {
+            island,
+            parts,
+            sinks,
+            outputs,
+        });
     }
-    out
+    Extracted {
+        islands: out,
+        regs,
+        unsolved_outputs,
+    }
 }
 
 fn hold_net(held: &mut BTreeMap<usize, Held_>, net: usize, hold: Hold, range: Range, name: &str) {
