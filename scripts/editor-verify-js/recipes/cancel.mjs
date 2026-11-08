@@ -1,7 +1,8 @@
 // Cancelling the analysis (ADR 0062): a file is changed so that the analysis of it is long, the status bar says how far the
 // solver has got (parts chosen, with the total), Cancel stops it, the views go on showing the reading before it, the bar says
 // so, and the next change to a file (or "Run again") analyses again. The fixture is the `big` board; the file written is the
-// same board with forty rails, which the solver works at for much longer than a person needs to press a button.
+// same board with 120 rails, which the solver works at for several seconds (the solver's crates are optimised in
+// the dev profile, so forty rails take under two) and about 2.7 GB of memory: more rails would take longer but too much memory.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -18,7 +19,7 @@ export async function run({ page, shot, step, expect, section, project }) {
   const api = (route) => page.evaluate((r) => fetch(r, { cache: 'no-store' }).then((x) => x.json()), route);
   const idle = () => page.waitForSelector(`${bar} .item.idle`, { timeout: 120000 });
   const startLong = async () => {
-    fs.writeFileSync(main, bigSource(40));
+    fs.writeFileSync(main, bigSource(120));
     await page.waitForSelector(`${bar} .cancel-analysis`, { timeout: 30000 });
   };
 
