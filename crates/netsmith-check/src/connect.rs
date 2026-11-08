@@ -647,6 +647,7 @@ impl Checker<'_> {
         self.analyse_mates();
         self.balance_currents();
         self.derive_bias();
+        self.derive_supply_peak();
         self.equate_bus_values();
     }
 
@@ -731,6 +732,76 @@ impl Checker<'_> {
                 span,
                 written: None,
             });
+        }
+    }
+
+    /// Give each part in a `~>` chain that has a `supply_peak` (a fuse) the `peak` of the rail
+    /// the chain starts on (ADR 0086).
+    ///
+    /// The chain carries the value, as it carries the current (ADR 0014): a part in series
+    /// is not across the rail and has no `bias`, but it sees the rail's highest voltage
+    /// through its first net. The rail is one whose `pos` is on the chain's start net, among
+    /// those the part's own scope can see (as for `derive_bias`). The rails the scope
+    /// declares itself come before the rails of what it holds, and then the first by path
+    /// stands, which keeps the choice independent of statement order. Every part of the
+    /// chain gets the same value: a part further along sees at most the start's peak, less
+    /// what the parts before it drop, and the drop is not subtracted. A chain that starts on
+    /// no rail's `pos` (a signal, a rail's `neg`) gives its parts nothing, and the fault, if
+    /// the design needs the value, is the solver's, as for a bias.
+    ///
+    /// The value is one relation, `supply_peak = rail.peak`, so one the design states too is
+    /// checked against it, and a rail that states no peak leaves the checks on it listed as
+    /// not evaluated.
+    fn derive_supply_peak(&mut self) {
+        let rails: Vec<(InstId, InstId)> = self
+            .model
+            .instances()
+            .filter_map(|(id, _)| {
+                let (_, pos, _) = self.model.rail_of(id)?;
+                self.model.peak_of(id)?;
+                Some((id, pos))
+            })
+            .collect();
+        for chain in self.model.chains.clone() {
+            let Some(scope) = self.model.instance(chain.parts[0]).parent else {
+                continue;
+            };
+            let start = self.find(chain.start.0);
+            let mut starts: Vec<(bool, String, InstId)> = Vec::new();
+            for &(rail, pos) in &rails {
+                let Some(owner) = self.model.owner_of(rail) else {
+                    continue;
+                };
+                let own = owner == scope;
+                if !own && self.model.instance(owner).parent != Some(scope) {
+                    continue;
+                }
+                if self.find(pos.0) == start {
+                    starts.push((!own, self.model.path_of(rail), rail));
+                }
+            }
+            starts.sort();
+            let Some(&(_, _, rail)) = starts.first() else {
+                continue;
+            };
+            let peak = self.model.peak_of(rail).expect("filtered above");
+            for &part in &chain.parts {
+                let Some(field) = self.model.supply_peak_of(part) else {
+                    continue;
+                };
+                let (source, span) = match self.model.field(field).narrowed_at.last() {
+                    Some(&at) => at,
+                    None => self.model.instance(part).at(),
+                };
+                std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
+                    lhs: RExpr::Field(field),
+                    op: CmpOp::EqEq,
+                    rhs: RExpr::Field(peak),
+                    source,
+                    span,
+                    written: None,
+                });
+            }
         }
     }
 

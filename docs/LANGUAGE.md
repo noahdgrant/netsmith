@@ -4494,6 +4494,7 @@ board Carrier {
     /// Supplied from outside the system.
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
+        .peak &= 3.6V
         .pos.net &= "3V3"
         .neg.net &= "GND"
         .min_track &= 0.5mm..1m
@@ -7711,9 +7712,9 @@ board Budget {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
-    --> std/parts/passive.nsm:250:5
+    --> std/parts/passive.nsm:257:5
     |
-250 |     .current <= .rated_current
+257 |     .current <= .rated_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7744,14 +7745,16 @@ error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHC
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-#### What a part in a chain does not see of its rail
+#### What a part in a chain sees of its rail
 
-A part in a `~>` chain from a rail is given the chain's current and nothing else of the rail. A part reads its own fields, and the one value the checker derives for it from a rail is `.bias`, for a part across the rail (ADR 0013). So a rating of a part in series is compared with the rail only by a line the board writes:
+A part reads its own fields, and the checker derives two values for it from a rail: `.bias` for a part across the rail (ADR 0013) and, for a part in a `~>` chain from a rail, `.supply_peak`, the `.peak` of the rail the chain starts on (ADR 0086, provisional). A `Fuse` has it, so it is checked for the highest voltage it has to interrupt, `.supply_peak <= .rated_voltage`, with no line on the board, and the catalog picks a fuse rated for it. The rail is the one whose `pos` is on the net the chain starts on; where the scope has several, the rails it declares itself come before the rails of what it holds, and the first by path stands. Every part of the chain gets the start's peak, the ones after other parts too: a part before it only drops voltage, and the drop is not subtracted. A chain that starts on no rail's `pos` (a signal, a rail's `neg`) gives its parts nothing, and a fuse in no chain from a rail has no `.supply_peak`: the board states it (`.fuse.supply_peak &= 24V`) or the check is listed as not evaluated, as is a check on a rail that states no `.peak`. A value the board states for a fuse in a chain is checked against the rail's.
 
-- A `Fuse`'s `.rated_voltage` is not compared with anything. A board that has a peak to interrupt writes `.fuse.rated_voltage >= .input.peak`.
+The rest is the board's, because only these two values reach a part:
+
 - A `Schottky` or `Diode` behind a fuse carries the draw of what is behind the chain, so its `.max_forward_current` is checked against that and not against the fuse's rating. A board that wants it rated for what the fuse lets through writes `.d.max_forward_current >= .fuse.rated_current`, and states the largest reverse voltage the input can be wired to as `.d.bias`, which is checked against `.max_reverse_voltage`. A diode in series is across no rail, so its `.bias` is unset until then, and the rating is listed as not evaluated.
+- A `Switch`'s `.rated_voltage` and a `Tvs`'s `.protected_limit` are compared with nothing the chain gives them: the board writes `.sw.rated_voltage >= .input.peak` or `.tvs.clamping_voltage <= .reg.vin_abs_max`.
 
-Each such line is checked in the worst case, and a line that waits on a `.peak` the board leaves open is listed as not evaluated. This one passes, with the library's 6 V fuses for a 5 V rail that peaks at 5.5 V:
+A rail with the peak stated and a fuse in a chain from it is checked with no further line:
 
 ```nsm evaluate
 import std::parts::passive::Fuse
@@ -7770,13 +7773,12 @@ board Interrupts {
         .neg.net &= "GND"
     }
     .fuse: Fuse {}
-    .fuse.rated_voltage >= .input.peak
     .input.pos ~> .fuse ~> .load.pos
     .input.neg ~ .load.neg
 }
 ```
 
-And a peak far above what any fuse in the library interrupts is refused by the same line:
+The library's 6 V fuses interrupt that peak. A peak far above what any fuse in the library interrupts is refused, with no line of the board's:
 
 ```nsm fails
 import std::parts::passive::Fuse
@@ -7795,18 +7797,17 @@ board Arcs {
         .neg.net &= "GND"
     }
     .fuse: Fuse {}
-    .fuse.rated_voltage >= .input.peak
     .input.pos ~> .fuse ~> .load.pos
     .input.neg ~ .load.neg
 }
 ```
 
 ```text
-error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.rated_voltage must always be at least input.peak, but 125V is not always above 5kV
-   --> main.nsm:17:5
-   |
-17 |     .fuse.rated_voltage >= .input.peak
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.supply_peak must always be at most fuse.rated_voltage, but 5kV is not always below 125V
+    --> std/parts/passive.nsm:258:5
+    |
+258 |     .supply_peak <= .rated_voltage
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 `Crystal` has `.frequency` (state it with its tolerance, `16MHz +/- 20ppm`) and `.load_capacitance`, and no relation: the two load capacitors are the design's. `FerriteBead` has `.impedance` at `.impedance_frequency`.
@@ -10366,7 +10367,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::parts::passive::Inductor` | An inductor: `.inductance`, `.saturation_current`, `.dc_resistance` and the optional `.rms_current` (a catalog column the standard rows leave empty). Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .saturation_current`. Catalog `inductor`. |
 | `std::parts::passive::FerriteBead` | A ferrite bead: `.impedance` at `.impedance_frequency`, `.rated_current`, `.dc_resistance`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current`. Catalog `ferrite_bead`. |
 | `std::parts::passive::Crystal` | A two-terminal crystal: `.frequency` (with its tolerance) and `.load_capacitance`. Pins `a`, `b`. Catalog `crystal`. |
-| `std::parts::passive::Fuse` | A fuse: `.rated_current`, `.rated_voltage`, `.resistance`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current`. Catalog `fuse`. |
+| `std::parts::passive::Fuse` | A fuse: `.rated_current`, `.rated_voltage`, `.resistance`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current` and `.supply_peak <= .rated_voltage` (`.supply_peak` is the `.peak` of the rail its chain starts on, ADR 0086). Catalog `fuse`. |
 | `std::parts::passive::Switch` | A single-pole single-throw switch or button: `.rated_current`, `.rated_voltage`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current`. |
 | `std::parts::diode::Diode` | A diode: `.forward_voltage`, `.max_reverse_voltage`, `.max_forward_current`, `.bias`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Requires `.bias <= .max_reverse_voltage` and `.current <= .max_forward_current`. |
 | `std::parts::diode::Schottky` | A Schottky diode, with the fields and ratings of `Diode`. Catalog `schottky`. |

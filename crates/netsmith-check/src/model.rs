@@ -1439,6 +1439,33 @@ impl Model {
         }
     }
 
+    /// The `supply_peak` field of a part, the highest voltage of the rail a `~>` chain it is
+    /// in starts on (see `Checker::derive_supply_peak`). A part without a `bridge`, or
+    /// without a voltage field of that name, is not given one.
+    pub fn supply_peak_of(&self, part: InstId) -> Option<FieldId> {
+        if self.instance(part).kind != InstKind::Part {
+            return None;
+        }
+        self.instance(part).bridge?;
+        match self.member(part, "supply_peak")? {
+            Member::Field(f) if self.field(f).kind == FieldKind::Quantity(Dimension::VOLTAGE) => {
+                Some(f)
+            }
+            _ => None,
+        }
+    }
+
+    /// The `peak` field of a rail: the highest voltage it reaches, transients included.
+    pub fn peak_of(&self, rail: InstId) -> Option<FieldId> {
+        self.rail_of(rail)?;
+        match self.member(rail, "peak")? {
+            Member::Field(f) if self.field(f).kind == FieldKind::Quantity(Dimension::VOLTAGE) => {
+                Some(f)
+            }
+            _ => None,
+        }
+    }
+
     /// Whether `field` is a field of a part's or module's built-in `.place` (ADR 0045). The
     /// placer and the check read such a field as a requirement on a position, so a bound on
     /// it (`>=`, `<=`) narrows it, where a bound on any other field is a claim to verify.

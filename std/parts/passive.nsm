@@ -230,6 +230,11 @@ generic Crystal {
 /// `.current` is the draw of whatever is behind it (ADR 0014), checked against the rating.
 /// `.rated_voltage` is the highest voltage it can interrupt. `.resistance` is the cold
 /// resistance, which drops `.current * .resistance`.
+///
+/// `.supply_peak` is the highest voltage the fuse has to interrupt: the `.peak` of the rail the
+/// `~>` chain it is in starts on, which the checker gives it (ADR 0086), so `.supply_peak <=
+/// .rated_voltage` is checked with no line on the board. A fuse in no chain from a rail has no
+/// `.supply_peak`, and the board states it or the check is listed as not evaluated.
 generic Fuse {
     .designator &= "F"
 
@@ -245,9 +250,12 @@ generic Fuse {
     .current: Current
     /// Voltage at a relative to b.
     .drop: Voltage
+    /// The highest voltage of the rail the chain starts on, transients included.
+    .supply_peak: Voltage
 
     .drop == .current * .resistance
     .current <= .rated_current
+    .supply_peak <= .rated_voltage
     bridge .a ~> .b
     dc resistor .a .b .resistance
 

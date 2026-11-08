@@ -30,6 +30,7 @@ mod rail_alias;
 mod row;
 mod shared;
 mod std_generics;
+mod supply_peak;
 mod system;
 mod tri_state;
 mod unused;
