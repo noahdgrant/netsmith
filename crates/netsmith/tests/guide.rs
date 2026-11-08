@@ -39,6 +39,10 @@
 //! - ` ```nsm-fragment ` is a piece of a file and is not run.
 //!
 //! Run with `GUIDE_BLESS=1` to rewrite the message blocks from what the tool prints.
+//!
+//! An example that must fail may not depend on what the standard catalogs hold: a rating just
+//! above the largest row, or a value no row has, stops failing when a row is added. Use a rating
+//! or a value far beyond any real part, or a requirement that contradicts itself.
 
 use std::collections::HashMap;
 use std::fs;
