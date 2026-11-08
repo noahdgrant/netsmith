@@ -246,10 +246,14 @@ pub struct BoardFacts {
     pub height_mm: f64,
     /// `None` when the board leaves the thickness open.
     pub thickness_mm: Option<f64>,
-    /// Parts the board house places.
+    /// Parts the board house places from its own stock (the consigned ones are in `consigned`).
     pub assembled_parts: usize,
     /// The BOM lines of those parts, each with a part number.
     pub bom: Vec<BomEntry>,
+    /// The BOM lines of the consigned parts, which the owner ships to the board house
+    /// (ADR 0084). They are not in `bom`, so the bill of materials of the order does not
+    /// count them as parts to buy.
+    pub consigned: Vec<BomEntry>,
     pub hand_solder: Vec<String>,
     pub not_fitted: Vec<String>,
     /// Parts to be assembled that have no part number (only when allowed through).
@@ -280,6 +284,17 @@ impl PanelFacts {
     }
 }
 
+/// The parts of a plan that the board house places from its own stock: the placed parts less
+/// the consigned ones.
+pub(crate) fn stock_parts(plan: &netsmith_fab::Plan) -> usize {
+    plan.assembled.len()
+        - plan
+            .consigned
+            .iter()
+            .map(|e| e.designators.len())
+            .sum::<usize>()
+}
+
 impl BoardFacts {
     pub fn of(board: &Board, package: &Package) -> Self {
         let stackup = &board.process.stackup;
@@ -288,8 +303,9 @@ impl BoardFacts {
             width_mm: board.outline.width(),
             height_mm: board.outline.height(),
             thickness_mm: stackup.chosen_thickness(),
-            assembled_parts: package.plan.assembled.len(),
+            assembled_parts: stock_parts(&package.plan),
             bom: package.plan.bom.clone(),
+            consigned: package.plan.consigned.clone(),
             hand_solder: package.plan.hand_solder.clone(),
             not_fitted: package.plan.not_fitted.clone(),
             unassembled: package.plan.unassembled.clone(),
@@ -476,6 +492,21 @@ pub fn summary_text(
                     "board"
                 },
                 facts.hand_solder.len() as u64 * u64::from(selected.quantity),
+            ));
+        }
+        if !facts.consigned.is_empty() {
+            let parts: Vec<String> = facts
+                .consigned
+                .iter()
+                .map(|e| format!("{} ({})", e.designators.join(", "), e.value))
+                .collect();
+            let count: usize = facts.consigned.iter().map(|e| e.designators.len()).sum();
+            s.push_str(&format!(
+                "    consigned: {} ({count} part{} on each {}, {} in all): ship them to the board house, which cannot go on without them\n",
+                parts.join("; "),
+                if count == 1 { "" } else { "s" },
+                if facts.panel.is_some() { "panel" } else { "board" },
+                count as u64 * u64::from(selected.quantity),
             ));
         }
         if !facts.not_fitted.is_empty() {
@@ -868,6 +899,7 @@ mod tests {
             thickness_mm: Some(1.6),
             assembled_parts: bom.iter().map(|e| e.designators.len()).sum(),
             bom,
+            consigned: vec![],
             hand_solder: vec!["J1".into(), "J2".into()],
             not_fitted: vec![],
             unassembled: vec![],

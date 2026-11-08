@@ -293,7 +293,7 @@ fn the_fixed_columns_are_checked_with_their_line() {
         ("name,checked\na,yesterday\n", "checked `yesterday`"),
         (
             "name,assembly\na,solder\n",
-            "assembly `solder` is not fab, hand or none",
+            "assembly `solder` is not fab, hand, none or consigned",
         ),
     ] {
         let text = if bad.starts_with("library") {
@@ -528,6 +528,22 @@ fn a_row_may_state_who_assembles_its_part_and_the_pick_carries_it() {
     // An empty cell is a row with nothing to say.
     let silent = solved(r#".mpn &= "ZZ9-33-D""#, &c);
     assert_eq!(silent.picks[0].assembly, None);
+}
+
+#[test]
+fn a_row_may_be_consigned_and_needs_no_lcsc_for_it() {
+    let text = file()
+        .replacen("mpn,", "assembly,mpn,", 1)
+        .replace("ZZ9-33-S,", "consigned,ZZ9-33-S,")
+        .replace("ZZ9-33-D,", ",ZZ9-33-D,");
+    let c = catalogs(&[("zz9", &text)]).unwrap();
+    let consigned = solved(r#".mpn &= "ZZ9-33-S""#, &c);
+    assert!(
+        consigned.diagnostics.is_empty(),
+        "{:?}",
+        messages(&consigned)
+    );
+    assert_eq!(consigned.picks[0].assembly.as_deref(), Some("consigned"));
 }
 
 /// A resistor row of a project's own file, with the cells the test varies: `lcsc`, `stock`.

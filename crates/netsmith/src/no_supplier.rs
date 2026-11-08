@@ -54,7 +54,7 @@ pub fn find(built: &Built, sourcing: &[Sourced]) -> Vec<Unnumbered> {
     let model = &trace.model;
     let mut found = Vec::new();
     for (i, s) in sourcing.iter().enumerate() {
-        if !s.assembled() || s.lcsc.is_some() || s.generic.is_some() {
+        if !s.needs_part_number() || s.lcsc.is_some() || s.generic.is_some() {
             continue;
         }
         let (Some(part), Some(origin)) = (built.design.parts.get(i), trace.origins.get(i)) else {
@@ -130,7 +130,7 @@ pub fn message(board: &str, parts: &[Unnumbered]) -> String {
     for u in parts {
         match &u.module {
             None => out.push_str(&format!(
-                "  {}: in the body of `board {board}` write `.{}.assembly &= AssemblyMode::Hand` (or `AssemblyMode::None` if nobody fits it)\n",
+                "  {}: in the body of `board {board}` write `.{}.assembly &= AssemblyMode::Hand` (or `AssemblyMode::None` if nobody fits it, or `AssemblyMode::Consigned` if you ship the part to the board house, which then places it)\n",
                 u.refdes, u.path
             )),
             Some(m) => {

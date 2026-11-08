@@ -317,6 +317,58 @@ fn a_part_is_assembled_by_the_fab_unless_the_design_says_otherwise() {
     );
 }
 
+#[test]
+fn a_part_the_board_marks_consigned_is_placed_by_the_board_house_and_needs_no_number() {
+    use Assembly::*;
+    let src = "import std::parts::passive::Resistor\nboard B {\n    .r: Resistor { .resistance &= 330ohm +/- 1% }\n    .s: Resistor { .resistance &= 330ohm +/- 1% .assembly &= AssemblyMode::Consigned }\n}\n";
+    let lowered = lowered_with_sourcing(src).unwrap();
+    let by: Vec<_> = lowered
+        .sourcing
+        .iter()
+        .map(|s| {
+            (
+                s.refdes.as_str(),
+                s.assembly,
+                s.assembled(),
+                s.needs_part_number(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        by,
+        [("R1", Fab, true, true), ("R2", Consigned, true, false)]
+    );
+}
+
+#[test]
+fn a_module_offers_consigned_through_its_assembly_mode() {
+    let src = "import std::parts::passive::Resistor\n\
+         module Pad {\n    .assembly_mode: AssemblyMode\n    .r: Resistor { .resistance &= 330ohm +/- 1% }\n    .r.assembly &= .assembly_mode\n}\n\
+         board B {\n    .pad: Pad { .assembly_mode &= AssemblyMode::Consigned }\n}\n";
+    let lowered = lowered_with_sourcing(src).unwrap();
+    assert_eq!(lowered.sourcing[0].assembly, Assembly::Consigned);
+    assert!(lowered.sourcing[0].assembly_stated);
+}
+
+#[test]
+fn the_projects_default_may_be_consigned_and_the_word_is_the_one_of_the_catalog_column() {
+    assert_eq!(Assembly::parse("consigned"), Some(Assembly::Consigned));
+    assert_eq!(Assembly::Consigned.word(), "consigned");
+    assert_eq!(
+        Assembly::from_variant("Consigned"),
+        Some(Assembly::Consigned)
+    );
+    assert_eq!(
+        assembly_with_default("consigned", ""),
+        [
+            ("D1".to_string(), Assembly::Consigned, true),
+            ("H1".to_string(), Assembly::None, true),
+            ("J1".to_string(), Assembly::Consigned, true),
+            ("R1".to_string(), Assembly::Consigned, true)
+        ]
+    );
+}
+
 /// [`assembly_of`] with the project's default (ADR 0028) and a mounting hole added (in a
 /// module: a board's own hole is declared in its physical file).
 fn assembly_with_default(default: &str, body: &str) -> Vec<(String, Assembly, bool)> {

@@ -15,4 +15,8 @@ enum AssemblyMode {
     /// Not fitted at all: a mounting hole, a fiducial, a pad that a cable presses on. It is
     /// on no BOM and no placement file, and the fab notes list it as not fitted.
     None,
+    /// The board house places and solders the part, and the owner ships the part to the board
+    /// house: it is a line in the BOM and in the placement file, needs no supplier part number,
+    /// and the fab notes list it as consigned (ADR 0084, provisional).
+    Consigned,
 }

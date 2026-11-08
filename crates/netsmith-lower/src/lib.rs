@@ -114,6 +114,10 @@ pub enum Assembly {
     /// Not on the BOM or the placement file at all: a mounting hole, a fiducial, a pad that
     /// a cable presses on. The fab notes list it as not fitted.
     None,
+    /// The board house places and solders it, and the owner ships the part to the board house
+    /// (JLCPCB's consigned parts): a line in the BOM and the placement file, with no supplier
+    /// part number needed. The fab notes list it as consigned (ADR 0084).
+    Consigned,
 }
 
 impl Assembly {
@@ -123,12 +127,13 @@ impl Assembly {
             Self::Fab => "fab",
             Self::Hand => "hand",
             Self::None => "none",
+            Self::Consigned => "consigned",
         }
     }
 
     /// The word for it in the catalog files and the project manifest (`"fab"`).
     pub fn parse(word: &str) -> Option<Self> {
-        [Self::Fab, Self::Hand, Self::None]
+        [Self::Fab, Self::Hand, Self::None, Self::Consigned]
             .into_iter()
             .find(|a| a.word() == word)
     }
@@ -139,12 +144,13 @@ impl Assembly {
             Self::Fab => "Fab",
             Self::Hand => "Hand",
             Self::None => "None",
+            Self::Consigned => "Consigned",
         }
     }
 
     /// The part a variant of `AssemblyMode` names.
     pub fn from_variant(variant: &str) -> Option<Self> {
-        [Self::Fab, Self::Hand, Self::None]
+        [Self::Fab, Self::Hand, Self::None, Self::Consigned]
             .into_iter()
             .find(|a| a.variant() == variant)
     }
@@ -183,7 +189,7 @@ fn assembly_of(
         let found = Assembly::from_variant(&variant);
         if found.is_none() {
             errors.push(format!(
-                "`{}` has `.assembly` {variant}, which is not `AssemblyMode::Fab`, `AssemblyMode::Hand` or `AssemblyMode::None`",
+                "`{}` has `.assembly` {variant}, which is not `AssemblyMode::Fab`, `AssemblyMode::Hand`, `AssemblyMode::None` or `AssemblyMode::Consigned`",
                 model.path_of(part)
             ));
         }
@@ -194,7 +200,7 @@ fn assembly_of(
     let found = Assembly::parse(&word);
     if found.is_none() {
         errors.push(format!(
-            "`{}` has `.assembly` \"{word}\" in its catalog row, which is not \"fab\", \"hand\" or \"none\"",
+            "`{}` has `.assembly` \"{word}\" in its catalog row, which is not \"fab\", \"hand\", \"none\" or \"consigned\"",
             model.path_of(part)
         ));
     }
@@ -721,8 +727,15 @@ pub struct Sourced {
 }
 
 impl Sourced {
-    /// Whether the manufacturer places it.
+    /// Whether the board house places it: a part it assembles from stock (`Fab`) and a part
+    /// the owner ships to it (`Consigned`). Both are in the placement file and the BOM.
     pub fn assembled(&self) -> bool {
+        matches!(self.assembly, Assembly::Fab | Assembly::Consigned)
+    }
+
+    /// Whether the board house is to buy the part, so that it needs a supplier part number:
+    /// a part it assembles from stock. A consigned part is the owner's to supply.
+    pub fn needs_part_number(&self) -> bool {
         self.assembly == Assembly::Fab
     }
 }
@@ -884,7 +897,7 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
         let found = Assembly::parse(word);
         if found.is_none() {
             errors.push(format!(
-                "the project's default assembly \"{word}\" is not \"fab\", \"hand\" or \"none\""
+                "the project's default assembly \"{word}\" is not \"fab\", \"hand\", \"none\" or \"consigned\""
             ));
         }
         found

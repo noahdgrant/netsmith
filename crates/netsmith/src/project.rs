@@ -61,8 +61,8 @@ pub struct Manifest {
     /// and the standard JLCPCB catalogs (ADR 0022).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub catalogs: Vec<String>,
-    /// Who assembles a part that nothing else speaks for: `"fab"`, `"hand"` or `"none"`
-    /// (ADR 0028). Without it a part is the board house's if it is surface mount and
+    /// Who assembles a part that nothing else speaks for: `"fab"`, `"hand"`, `"none"` or `"consigned"`
+    /// (ADR 0028, ADR 0084). Without it a part is the board house's if it is surface mount and
     /// soldered by hand if it is through hole.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assembly: Option<String>,
@@ -237,10 +237,10 @@ impl Manifest {
             ));
         }
         if let Some(word) = &self.assembly
-            && !["fab", "hand", "none"].contains(&word.as_str())
+            && !["fab", "hand", "none", "consigned"].contains(&word.as_str())
         {
             return Err(format!(
-                "{MANIFEST}: assembly = {word:?} is not one of \"fab\", \"hand\" or \"none\""
+                "{MANIFEST}: assembly = {word:?} is not one of \"fab\", \"hand\", \"none\" or \"consigned\""
             ));
         }
         if let Some(word) = &self.guidelines
@@ -1002,16 +1002,17 @@ mod tests {
     }
 
     #[test]
-    fn the_default_assembly_is_fab_hand_or_none() {
+    fn the_default_assembly_is_fab_hand_none_or_consigned() {
         let with = |word: &str| parse(&format!("[project]\nname = \"a\"\nassembly = \"{word}\"\n"));
-        for word in ["fab", "hand", "none"] {
+        for word in ["fab", "hand", "none", "consigned"] {
             let m = with(word).unwrap();
             assert_eq!(m.assembly.as_deref(), Some(word));
             assert_eq!(parse(&m.render()), Ok(m));
         }
         let e = with("solder").unwrap_err();
         assert!(
-            e.contains("assembly = \"solder\"") && e.contains("\"fab\", \"hand\" or \"none\""),
+            e.contains("assembly = \"solder\"")
+                && e.contains("\"fab\", \"hand\", \"none\" or \"consigned\""),
             "{e}"
         );
         assert_eq!(parse("[project]\nname = \"a\"\n").unwrap().assembly, None);

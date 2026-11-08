@@ -158,8 +158,8 @@ pub struct Candidate {
     /// The manufacturer's part number.
     pub mpn: Option<String>,
     pub library: Option<Library>,
-    /// Who assembles the part when the design does not say: `fab`, `hand` or `none`
-    /// (ADR 0024). The row's `assembly` cell, if it has one.
+    /// Who assembles the part when the design does not say: `fab`, `hand`, `none` or `consigned`
+    /// (ADR 0024, ADR 0084). The row's `assembly` cell, if it has one.
     pub assembly: Option<String>,
     /// Set for a generic part (ADR 0047): it has no supplier number, and a later step
     /// resolves it to a row of the catalog.
@@ -223,7 +223,7 @@ impl Catalogs {
     }
 
     /// The project's default for who assembles a part that nothing else speaks for:
-    /// `fab`, `hand` or `none` (the manifest's `assembly`, ADR 0028). The sourcing policy of
+    /// `fab`, `hand`, `none` or `consigned` (the manifest's `assembly`, ADR 0028). The sourcing policy of
     /// a project travels with its parts data, so every command that picks parts lowers with
     /// it. The caller has checked the word.
     pub fn with_default_assembly(mut self, word: Option<&str>) -> Self {
