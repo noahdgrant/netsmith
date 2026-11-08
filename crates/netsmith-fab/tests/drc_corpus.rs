@@ -2,7 +2,7 @@
 //! netsmith's design rules check finds in each, and that KiCad's check (when installed)
 //! reports the same findings at the same places (ADR 0037).
 
-mod common;
+use crate::common;
 
 use common::*;
 use netsmith_fab::drc::{self, Extras, Rule, kicad};

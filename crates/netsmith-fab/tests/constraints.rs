@@ -2,7 +2,7 @@
 //! the frame, the body box, the numbers in the messages, and what changes the severity.
 //! None of these need KiCad.
 
-mod common;
+use crate::common;
 
 use common::*;
 use netsmith_fab::artwork::Artwork;

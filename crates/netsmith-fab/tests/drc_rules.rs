@@ -2,7 +2,7 @@
 //! the messages, the limits (a track exactly at the clearance passes), what the project file
 //! changes, and what the check leaves alone. None of these need KiCad.
 
-mod common;
+use crate::common;
 
 use common::*;
 use netsmith_fab::drc::{self, Extras, Report, Rule, Severity};
