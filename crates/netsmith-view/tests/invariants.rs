@@ -5,7 +5,7 @@
 //! arms without a dot) and no two texts overlap. Run on every board the tests draw, with and
 //! without rails told. Each rule is also shown to catch a fault put into a drawing.
 
-mod common;
+use crate::common;
 
 use common::corpus::corpus;
 use netsmith_core::Design;

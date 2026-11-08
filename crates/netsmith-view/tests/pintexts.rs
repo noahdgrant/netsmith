@@ -2,7 +2,7 @@
 //! than the names are wide, are written upward (as KiCad does) and never over each other;
 //! a pin on a side edge, or alone, is written across.
 
-mod common;
+use crate::common;
 
 use netsmith_core::Design;
 use netsmith_kicad::testlib::{self, TempDir};

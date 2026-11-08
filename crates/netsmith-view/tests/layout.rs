@@ -1,6 +1,6 @@
 //! Layout: where parts and pins land, and that every net is drawn.
 
-mod common;
+use crate::common;
 
 use netsmith_kicad::{Mapping, SymbolLib, testlib};
 use netsmith_view::geom::{Dir, Pt};

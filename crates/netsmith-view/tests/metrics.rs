@@ -1,7 +1,7 @@
 //! The numbers (`netsmith_view::metrics`): counted by hand on a drawing made of wires, and
 //! sane on every board the tests draw.
 
-mod common;
+use crate::common;
 
 use common::corpus::corpus;
 use netsmith_view::geom::{Pt, Rect};

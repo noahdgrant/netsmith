@@ -1,6 +1,6 @@
 //! The SVG.
 
-mod common;
+use crate::common;
 
 use netsmith_kicad::{Mapping, SymbolLib, testlib};
 use netsmith_view::render_svg;

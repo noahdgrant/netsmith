@@ -3,7 +3,7 @@
 //! through a part, along a wire of another net, or over where another flag stands.
 //! Each case is a connector with all its pins on one side whose nets all go to another module.
 
-mod common;
+use crate::common;
 
 use common::rowcol::setup;
 use netsmith_core::Design;

@@ -3,7 +3,7 @@
 //! other, and one box for a symbol of several units. The board is invented
 //! (`tests/common/bench.rs`).
 
-mod common;
+use crate::common;
 
 use common::bench::{Bench, bench};
 use netsmith_view::geom::{Pt, Rect};

@@ -4,7 +4,7 @@
 //! symbol below, instead of a rail across the sheet. The metrics `pair_crossings`, `rail_span`
 //! and `satellite_wire` say so in numbers.
 
-mod common;
+use crate::common;
 
 use netsmith_core::Design;
 use netsmith_kicad::testlib::{self, TempDir};
