@@ -553,3 +553,45 @@ fn a_pull_up_to_an_input_pin_behind_a_regulator_carries_nothing() {
     // What the regulator supplies is the reader's supply current, 1 mA to 2 mA.
     near(range(&s, "link.current").unwrap(), (0.001, 0.002));
 }
+
+/// What flows into a net, over the corners (ADR 0076, amendment 8). A 9 V to 16 V supply behind a
+/// 0.5 ohm link feeds a switching regulator (5 W at 90 %) and a resistor of 10 ohm. The regulator
+/// draws most at 9 V and the resistor at 16 V, so the sum of each at its largest is more than the
+/// net ever carries: at 16 V the link carries 1.92 A, and 0.677 A + 1.56 A is 2.24 A.
+#[test]
+fn the_current_into_a_net_is_the_most_over_the_corners_and_not_every_load_at_its_largest() {
+    let src = board(&format!(
+        "{}    .link: Link {{ .resistance &= 0.5ohm; .rated_current &= 5A }}\n    .rl: Link {{ .resistance &= 10ohm; .rated_current &= 5A }}\n    .reg: Sw {{ .efficiency &= 0.9; .min_input &= 4.5V; .vout.voltage &= 5V }}\n{}    .supply.pos ~> .link ~> .reg.vin.pos\n    .supply.neg ~ .reg.vin.neg\n    .reg.vin.pos ~> .rl ~> .supply.neg\n    .reg.vout ~ .out\n",
+        supply("9V..16V"),
+        load("out", "V5", "1A")
+    ));
+    let s = solved(&src);
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    let total = |v: f64| {
+        let mut i = 0.0;
+        for _ in 0..200 {
+            let vx = v - 0.5 * i;
+            i = 5.0 / (0.9 * vx) + vx / 10.0;
+        }
+        i
+    };
+    let want = total(9.0).max(total(16.0));
+    let net = s
+        .model
+        .nets()
+        .iter()
+        .find(|n| n.terminals.iter().any(|&p| s.model.path_of(p) == "rl.a"))
+        .expect("the net of rl.a");
+    let found = s
+        .net_currents
+        .iter()
+        .find(|c| net.pins.contains(&c.pin))
+        .expect("the analysis solved the net");
+    assert!(
+        (found.current - want).abs() <= 2e-6 * want + 1e-9,
+        "{} vs {want}",
+        found.current
+    );
+    let plain = range(&s, "reg.vin.current").unwrap().1 + range(&s, "rl.current").unwrap().1;
+    assert!(plain > want * 1.1, "{plain} should be well above {want}");
+}

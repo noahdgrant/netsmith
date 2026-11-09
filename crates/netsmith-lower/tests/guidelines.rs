@@ -859,3 +859,96 @@ fn a_stated_min_track_narrower_than_the_known_current_needs_is_still_a_finding()
         "{out:?}"
     );
 }
+
+// ---- the width from the DC analysis' current into a net (ADR 0076, amendment 8) -----------
+
+/// A 9 V to 16 V supply behind a 0.5 ohm link feeds a switching regulator (5 W out at 90 %) and
+/// a resistor of 10 ohm. The regulator draws most at 9 V and the resistor at 16 V, so the node
+/// between the link and them carries 1.92 A at the most, and not the 2.24 A that each load at its
+/// largest adds up to. The node is drawn at the width 1.92 A needs.
+#[test]
+fn a_net_the_dc_analysis_solved_is_drawn_for_the_most_it_carries_over_the_corners() {
+    let src = r#"import std::mfg::jlcpcb::TwoLayer
+import std::sources::Rail
+
+part Link {
+    .designator &= "R"
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+    .resistance: Resistance
+    .rated_current: Current
+    .current: Current
+    .drop: Voltage
+    .drop == .current * .resistance
+    .current <= .rated_current
+    bridge .a ~> .b
+    dc resistor .a .b .resistance
+}
+
+part Sw {
+    .vin: Rail
+    .vout: Rail
+    .efficiency: Number
+    .min_input: Voltage
+    .vin.neg ~ .vout.neg
+    .vin.voltage >= .min_input
+    .designator &= "U"
+    pins {
+        .vin.pos  power "VIN"  "1"
+        .vin.neg  power "GND"  "2"
+        .vout.pos power "VOUT" "3"
+        .vout.neg power "GND2" "4"
+    }
+    dc switching_regulator .vin .vout .efficiency
+}
+
+board B {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .supply: Rail {
+        .voltage &= 9V..16V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .out: Rail {
+        .pos.net &= "V5"
+        .neg.net &= "GND"
+        .current &= 1A
+    }
+    .link: Link { .resistance &= 0.5ohm; .rated_current &= 5A }
+    .rl: Link { .resistance &= 10ohm; .rated_current &= 5A }
+    .reg: Sw { .efficiency &= 0.9; .min_input &= 4.5V; .vout.voltage &= 5V }
+    .supply.pos ~> .link ~> .reg.vin.pos
+    .supply.neg ~ .reg.vin.neg
+    .reg.vin.pos ~> .rl ~> .supply.neg
+    .reg.vout ~ .out
+}
+"#;
+    let l = lowered_of(src);
+    let node = l
+        .design
+        .nets
+        .iter()
+        .find(|n| n.name.contains("link"))
+        .expect("the node after the link has a generated name");
+    let total = |v: f64| {
+        let mut i = 0.0;
+        for _ in 0..200 {
+            let vx = v - 0.5 * i;
+            i = 5.0 / (0.9 * vx) + vx / 10.0;
+        }
+        i
+    };
+    let most = total(16.0).max(total(9.0));
+    let width = width_of(&l, &node.name).expect("the node is sized");
+    let for_most = ipc2221_width(most, 0.035, 10.0, Layer::External);
+    let for_sum = ipc2221_width(2.24, 0.035, 10.0, Layer::External);
+    assert!(
+        width >= for_most && width <= for_most + 0.011 && width < for_sum - 0.02,
+        "{width} mm for {most} A: {for_most} mm; the sum would need {for_sum} mm"
+    );
+    assert!(l.notes.is_empty(), "{:?}", l.notes);
+}
