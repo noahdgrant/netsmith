@@ -7200,9 +7200,9 @@ A capacitor is the same either way round, so its bias is the rail's voltage and 
 
 | Part | What is always true | What the design states |
 |---|---|---|
-| `std::parts::diode::Diode`, `std::parts::diode::Schottky` | `.bias <= .max_reverse_voltage`, `.current <= .max_forward_current`, `.bias >= -.forward_voltage` | The ratings. |
+| `std::parts::diode::Diode`, `std::parts::diode::Schottky` | `.bias <= .max_reverse_voltage`, `.current <= .max_forward_current`, `.bias >= -.forward_voltage`, `.supply_fault_current <= .max_forward_current`, `.supply_reverse_peak <= .max_reverse_voltage` | The ratings; the last two are from the chain (ADR 0091). |
 | `std::parts::diode::Zener` | `.bias * .current <= .max_power`, `.bias >= 0V` | `.zener_voltage` with its tolerance. For a clamp, the line `.z.bias <= .z.zener_voltage`; over a temperature range, `.temperature_shift` (below). Catalog `zener`. |
-| `std::parts::diode::Tvs` | `.bias <= .standoff_voltage`, `.clamping_voltage <= .protected_limit`, `.bias >= 0V` | The ratings, and `.protected_limit`: the absolute maximum of what is behind it. Catalog `tvs`. |
+| `std::parts::diode::Tvs` | `.bias <= .standoff_voltage`, `.clamping_voltage <= .protected_limit`, `.bias >= 0V`, `-.supply_reverse_peak >= 0V` | The ratings (the last from the chain, ADR 0091), and `.protected_limit`: the absolute maximum of what is behind it. Catalog `tvs`. |
 | `std::parts::diode::TvsBidirectional` | `.bias <= .standoff_voltage`, `.clamping_voltage <= .protected_limit` | The ratings, and `.protected_limit`. Catalog `tvs_bidirectional`. |
 
 A `Tvs` also has an optional `.breakdown_voltage`, the minimum breakdown voltage VBR: between the stand-off voltage and it the diode leaks a little, below it the diode does not conduct (ADR 0073, provisional). A design that needs a margin between the highest the line reaches and the point where the diode starts to conduct states it, `.tvs.breakdown_voltage >= .input.peak * 1.1`. It is a catalog column that only one standard row fills, the Littelfuse SMDJ36A (`data/jlcpcb/README.md`), so a design that states it is offered that row and no other standard one, and gets any other from a project's `tvs` catalog file that records the column; a file written before the column may leave it out, and a design that does not state the field picks as before and has no new check.
@@ -7322,9 +7322,9 @@ board Standoff {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 10 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
-    --> std/parts/diode.nsm:225:5
+    --> std/parts/diode.nsm:250:5
     |
-225 |     .bias <= .standoff_voltage
+250 |     .bias <= .standoff_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7399,9 +7399,9 @@ error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C
 11 |     .z.bias <= .z.zener_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: d.bias must always be at most d.max_reverse_voltage, but 11.4V..12.6V is not always below 10V
-   --> std/parts/diode.nsm:56:5
+   --> std/parts/diode.nsm:64:5
    |
-56 |     .bias <= .max_reverse_voltage
+64 |     .bias <= .max_reverse_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 4.7V..5.5V
    --> main.nsm:11:5
@@ -7434,19 +7434,19 @@ board Reversed {
 
 ```text
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C5V1 5.1V 500mW Zener SOD-123 C2117, fails because z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
-    --> std/parts/diode.nsm:168:5
+    --> std/parts/diode.nsm:188:5
     |
-168 |     .bias >= 0V
+188 |     .bias >= 0V
     |     ^^^^^^^^^^^
 error: d.bias must always be at least -d.forward_voltage, but -12.6V..-11.4V is not always above -700mV
-   --> std/parts/diode.nsm:57:5
+   --> std/parts/diode.nsm:65:5
    |
-57 |     .bias >= -.forward_voltage
+65 |     .bias >= -.forward_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
-    --> std/parts/diode.nsm:168:5
+    --> std/parts/diode.nsm:188:5
     |
-168 |     .bias >= 0V
+188 |     .bias >= 0V
     |     ^^^^^^^^^^^
 ```
 
@@ -7837,9 +7837,9 @@ board Budget {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
-    --> std/parts/passive.nsm:260:5
+    --> std/parts/passive.nsm:270:5
     |
-260 |     .current <= .rated_current
+270 |     .current <= .rated_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7872,11 +7872,16 @@ error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHC
 
 #### What a part in a chain sees of its rail
 
-A part reads its own fields, and the checker derives two values for it from a rail: `.bias` for a part across the rail (ADR 0013) and, for a part in a `~>` chain from a rail, `.supply_peak`, the `.peak` of the rail the chain starts on (ADR 0086, provisional). A `Fuse` has it, so it is checked for the highest voltage it has to interrupt, `.supply_peak <= .rated_voltage`, with no line on the board, and the catalog picks a fuse rated for it. The rail is the one whose `pos` is on the net the chain starts on; where the scope has several, the rails it declares itself come before the rails of what it holds, and the first by path stands. Every part of the chain gets the start's peak, the ones after other parts too: a part before it only drops voltage, and the drop is not subtracted. A chain that starts on no rail's `pos` (a signal, a rail's `neg`) gives its parts nothing, and a fuse in no chain from a rail has no `.supply_peak`: the board states it (`.fuse.supply_peak &= 24V`) or the check is listed as not evaluated, as is a check on a rail that states no `.peak`. A value the board states for a fuse in a chain is checked against the rail's.
+A part reads its own fields, and the checker derives values for it from a rail and from the chain it is in: `.bias` for a part across the rail (ADR 0013) and, for a part in a `~>` chain from a rail, `.supply_peak`, the `.peak` of the rail the chain starts on (ADR 0086, provisional). A `Fuse` has it, so it is checked for the highest voltage it has to interrupt, `.supply_peak <= .rated_voltage`, with no line on the board, and the catalog picks a fuse rated for it. The rail is the one whose `pos` is on the net the chain starts on; where the scope has several, the rails it declares itself come before the rails of what it holds, and the first by path stands. Every part of the chain gets the start's peak, the ones after other parts too: a part before it only drops voltage, and the drop is not subtracted. A chain that starts on no rail's `pos` (a signal, a rail's `neg`) gives its parts nothing, and a fuse in no chain from a rail has no `.supply_peak`: the board states it (`.fuse.supply_peak &= 24V`) or the check is listed as not evaluated, as is a check on a rail that states no `.peak`. A value the board states for a fuse in a chain is checked against the rail's.
 
-The rest is the board's, because only these two values reach a part:
+Two more values reach a part through the chain (ADR 0091, provisional), both for a diode behind a fuse:
 
-- A `Schottky` or `Diode` behind a fuse carries the draw of what is behind the chain, so its `.max_forward_current` is checked against that and not against the fuse's rating. A board that wants it rated for what the fuse lets through writes `.d.max_forward_current >= .fuse.rated_current`, and states the largest reverse voltage the input can be wired to as `.d.bias`, which is checked against `.max_reverse_voltage`. A diode in series is across no rail, so its `.bias` is unset until then, and the rating is listed as not evaluated.
+- **The fault current.** A `Fuse` has `.limit_current`, the most it lets through (its `.rated_current`, conservatively: a real fuse carries more for a time before it opens). A `Diode` or `Schottky` has `.supply_fault_current`, which the checker gives it as the `.limit_current` of the nearest part in front of it in its chain that has one, and states `.supply_fault_current <= .max_forward_current`. So a diode behind a fuse is rated for what the fuse lets through, and not only for the load's draw (which its `.current` is, and which is checked as before). A diode with no fuse in front of it has none, and the check is left out. The chain needs no rail for it.
+- **The reverse peak.** A `Rail` has `.reverse_peak`, the highest voltage it reaches the wrong way round, as a positive number, which a design states for its input (`.input.reverse_peak &= 100V`). The first part of a chain from the rail that has `.supply_reverse_peak` is given it: a `Diode` or `Schottky` states `.supply_reverse_peak <= .max_reverse_voltage` (a reverse-polarity diode blocks it), and a unidirectional `Tvs` states `-.supply_reverse_peak >= 0V` (it conducts when it is reversed). The parts behind that part are given nothing: a TVS diode behind a reverse-polarity diode is not found to conduct a transient that the diode stops. `.reverse_peak` is `optional` (ADR 0074): a rail that states none checks nothing and lists nothing, and a diode is as it was.
+
+The rest is the board's, because only these values reach a part:
+
+- The voltage a diode blocks in series with a load when it is not the supply's reverse peak: a board states `.d.bias`, which is checked against `.max_reverse_voltage`. A diode in series is across no rail, so its `.bias` is unset until then, and the rating is listed as not evaluated. The reverse voltage across a reverse-polarity diode is the reverse peak plus what the rail behind it holds, and the second is the board's (`.d.max_reverse_voltage >= .input.reverse_peak + .load.peak`).
 - A `Switch`'s `.rated_voltage` and a `Tvs`'s `.protected_limit` are compared with nothing the chain gives them: the board writes `.sw.rated_voltage >= .input.peak` or `.tvs.clamping_voltage <= .reg.vin_abs_max`.
 
 A rail with the peak stated and a fuse in a chain from it is checked with no further line:
@@ -7929,10 +7934,77 @@ board Arcs {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.supply_peak must always be at most fuse.rated_voltage, but 5kV is not always below 125V
-    --> std/parts/passive.nsm:261:5
+    --> std/parts/passive.nsm:271:5
     |
-261 |     .supply_peak <= .rated_voltage
+271 |     .supply_peak <= .rated_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A diode behind a fuse is rated for the fuse's rating, and a reverse-polarity diode for the rail's reverse peak, with no line of the board's:
+
+```nsm evaluate
+import std::parts::diode::Schottky
+import std::parts::passive::Fuse
+import std::sources::Rail
+
+board Protected {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .peak &= 5.5V
+        .reverse_peak &= 60V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .load: Rail {
+        .current &= 10mA..100mA
+        .pos.net &= "VPROTECTED"
+        .neg.net &= "GND"
+    }
+    .fuse: Fuse { .rated_current &= 1A }
+    .d: Schottky { .max_reverse_voltage &= 100V }
+    .input.pos ~> .fuse ~> .d ~> .load.pos
+    .input.neg ~ .load.neg
+}
+```
+
+A diode that the fuse can overload is refused:
+
+```nsm fails
+import std::parts::diode::Schottky
+import std::parts::passive::Fuse
+import std::sources::Rail
+
+board Overloaded {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .peak &= 5.5V
+        .reverse_peak &= 60V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .load: Rail {
+        .current &= 10mA..100mA
+        .pos.net &= "VPROTECTED"
+        .neg.net &= "GND"
+    }
+    .fuse: Fuse { .rated_current &= 3A }
+    .d: Schottky { .max_forward_current &= 1A }
+    .input.pos ~> .fuse ~> .d ~> .load.pos
+    .input.neg ~ .load.neg
+}
+```
+
+```text
+error: no combination of candidates satisfies `d` and `fuse` together: the closest, d = 1N5819WS 40V 1A Schottky SOD-323 C191023, fails because d.supply_fault_current must always be at most d.max_forward_current, but 3A is not always below 1A
+    --> std/parts/diode.nsm:115:5
+    |
+115 |     .supply_fault_current <= .max_forward_current
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: d.supply_fault_current must always be at most d.max_forward_current, but 3A is not always below 1A
+    --> std/parts/diode.nsm:115:5
+    |
+115 |     .supply_fault_current <= .max_forward_current
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 `Crystal` has `.frequency` (state it with its tolerance, `16MHz +/- 20ppm`) and `.load_capacitance`, and no relation: the two load capacitors are the design's. `FerriteBead` has `.impedance` at `.impedance_frequency`.
@@ -10764,9 +10836,9 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::parts::passive::Inductor` | An inductor: `.inductance`, `.saturation_current`, `.dc_resistance` and the optional `.rms_current` (a catalog column the standard rows leave empty). Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .saturation_current`. At DC it is its winding (`dc resistor .a .b .dc_resistance`). Catalog `inductor`. |
 | `std::parts::passive::FerriteBead` | A ferrite bead: `.impedance` at `.impedance_frequency`, `.rated_current`, `.dc_resistance`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current`. Catalog `ferrite_bead`. |
 | `std::parts::passive::Crystal` | A two-terminal crystal: `.frequency` (with its tolerance) and `.load_capacitance`. Pins `a`, `b`. Catalog `crystal`. |
-| `std::parts::passive::Fuse` | A fuse: `.rated_current`, `.rated_voltage`, `.resistance`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current` and `.supply_peak <= .rated_voltage` (`.supply_peak` is the `.peak` of the rail its chain starts on, ADR 0086). Catalog `fuse`. |
+| `std::parts::passive::Fuse` | A fuse: `.rated_current`, `.rated_voltage`, `.resistance`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current` and `.supply_peak <= .rated_voltage` (`.supply_peak` is the `.peak` of the rail its chain starts on, ADR 0086). `.limit_current == .rated_current` is what it lets through to a part behind it (ADR 0091). Catalog `fuse`. |
 | `std::parts::passive::Switch` | A single-pole single-throw switch or button: `.rated_current`, `.rated_voltage`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current`. |
-| `std::parts::diode::Diode` | A diode: `.forward_voltage`, `.max_reverse_voltage`, `.max_forward_current`, `.bias`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Requires `.bias <= .max_reverse_voltage`, `.current <= .max_forward_current` and, for a diode across a rail, the right way round (`.bias >= -.forward_voltage`, from `.bridge_voltage`, ADR 0088). |
+| `std::parts::diode::Diode` | A diode: `.forward_voltage`, `.max_reverse_voltage`, `.max_forward_current`, `.bias`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Requires `.bias <= .max_reverse_voltage`, `.current <= .max_forward_current` and, for a diode across a rail, the right way round (`.bias >= -.forward_voltage`, from `.bridge_voltage`, ADR 0088); behind a fuse, `.supply_fault_current <= .max_forward_current`, and first in a chain from a rail that states a `.reverse_peak`, `.supply_reverse_peak <= .max_reverse_voltage` (ADR 0091). |
 | `std::parts::diode::Schottky` | A Schottky diode, with the fields and ratings of `Diode`. Catalog `schottky`. |
 | `std::parts::diode::Zener` | A Zener diode: `.zener_voltage` (with tolerance, at `.test_current`), `.max_power`, `.bias`, and the optional catalog columns `.test_current`, `.temperature_coefficient`, `.leakage_current` and `.leakage_test_voltage`. Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias * .current <= .max_power`, and, when the design states `.temperature_shift`, defines `.voltage_over_temperature`. |
 | `std::parts::diode::Tvs` | A unidirectional TVS diode: `.standoff_voltage`, `.clamping_voltage`, `.peak_pulse_current`, `.protected_limit`, `.bias` and the optional `.breakdown_voltage` (a catalog column that only the SMDJ36A row of the standard rows fills). Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias <= .standoff_voltage` and `.clamping_voltage <= .protected_limit`. |
@@ -10786,7 +10858,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 
 | Definition | What it is |
 |---|---|
-| `std::sources::Rail` | A DC rail: pins `pos` and `neg`, a `.voltage`, a `.current` (the draw), a `.peak` (the highest voltage, transients included) and a `.min_track` (the narrowest track of its nets). |
+| `std::sources::Rail` | A DC rail: pins `pos` and `neg`, a `.voltage`, a `.current` (the draw), a `.peak` (the highest voltage, transients included), an optional `.reverse_peak` (the highest the wrong way round, as a positive number, ADR 0091) and a `.min_track` (the narrowest track of its nets). |
 | `std::parts::regulator::Buck` | What a buck converter IC says about itself: the switching node `sw` (a rail the IC supplies), the feedback pin `fb`, `vref`, `fsw`, the input range, `max_output_current`, `efficiency`, `min_inductance`, the optional `min_inductor_saturation` and `max_inductor_dcr`, and the capacitance asked for on each side. It states `-.sw.current <= .max_output_current`: the switch node supplies what the datasheet allows and no more (ADR 0076, amendment 6, provisional). A concrete IC is a part with a `.buck: Buck` member (ADR 0025). |
 | `std::logic::Levels` | The logic levels of all the lines of a bus interface, the member `.levels` of `Uart`, `Spi`, `I2c` and `Swd`: the rail `.reference` and the four voltages `.vih`, `.vil`, `.voh` and `.vol` (ADR 0064). |
 | `std::logic::Logic` | A digital line `.line`, the `.reference` rail that defines its levels, and the levels `.vih`, `.vil`, `.voh` and `.vol` a part may state (ADR 0046). |

@@ -88,3 +88,87 @@ fn a_part_without_the_field_is_left_alone() {
     );
     assert!(p.is_empty(), "{p:?}");
 }
+
+// ---- ADR 0091: the reverse peak and the fault current ----
+
+const DIODES: &str = "import std::parts::diode::{Schottky, Tvs}\nimport std::parts::passive::Fuse\nimport std::sources::Rail\n";
+
+/// Every relation that a chain gave a part, as `field = value`.
+fn gave(src: &str, board: &str, field: &str) -> Vec<String> {
+    let c = check("t.nsm", &format!("{DIODES}{src}"), &Loader::std());
+    assert!(c.is_ok(), "{}", c.render());
+    let m = &c.board(board).unwrap().model;
+    m.relations()
+        .iter()
+        .map(|r| format!("{} = {}", m.show_expr(&r.lhs), m.show_expr(&r.rhs)))
+        .filter(|s| !s.starts_with('-') && s.contains(field) && s.contains(" = "))
+        .filter(|s| !s.contains("max_"))
+        .collect()
+}
+
+#[test]
+fn the_first_part_with_a_reverse_peak_takes_the_rails_and_the_ones_behind_it_nothing() {
+    let g = gave(
+        "board B {\n    .input: Rail\n    .load: Rail\n    .fuse: Fuse\n    .d: Schottky\n    .t: Tvs\n    .input.pos ~> .fuse ~> .d ~> .t ~> .load.pos\n    .input.reverse_peak &= 100V\n}\n",
+        "B",
+        "supply_reverse_peak",
+    );
+    assert_eq!(g, ["d.supply_reverse_peak = input.reverse_peak"]);
+}
+
+#[test]
+fn a_tvs_diode_first_in_its_chain_meets_the_reverse_peak() {
+    let g = gave(
+        "board B {\n    .input: Rail\n    .t: Tvs\n    .input.pos ~> .t ~> .input.neg\n    .input.reverse_peak &= 100V\n}\n",
+        "B",
+        "supply_reverse_peak",
+    );
+    assert_eq!(g, ["t.supply_reverse_peak = input.reverse_peak"]);
+}
+
+#[test]
+fn a_part_behind_a_fuse_takes_the_fuses_limit_current() {
+    let g = gave(
+        "board B {\n    .input: Rail\n    .load: Rail\n    .fuse: Fuse\n    .d: Schottky\n    .input.pos ~> .fuse ~> .d ~> .load.pos\n}\n",
+        "B",
+        "supply_fault_current",
+    );
+    assert_eq!(g, ["d.supply_fault_current = fuse.limit_current"]);
+}
+
+#[test]
+fn the_nearest_fuse_in_front_gives_the_limit() {
+    let g = gave(
+        "board B {\n    .input: Rail\n    .load: Rail\n    .f1: Fuse\n    .f2: Fuse\n    .d: Schottky\n    .input.pos ~> .f1 ~> .f2 ~> .d ~> .load.pos\n}\n",
+        "B",
+        "supply_fault_current",
+    );
+    assert_eq!(g, ["d.supply_fault_current = f2.limit_current"]);
+}
+
+#[test]
+fn a_fuse_behind_the_diode_gives_it_nothing_and_a_chain_from_a_signal_still_has_a_limit() {
+    let g = gave(
+        "board B {\n    .input: Rail\n    .load: Rail\n    .fuse: Fuse\n    .d: Schottky\n    .input.pos ~> .d ~> .fuse ~> .load.pos\n}\n",
+        "B",
+        "supply_fault_current",
+    );
+    assert!(g.is_empty(), "{g:?}");
+    // The fault current needs no rail at the start of the chain.
+    let g = gave(
+        "board B {\n    .load: Rail\n    .r: Schottky\n    .fuse: Fuse\n    .d: Schottky\n    .r.cathode ~> .fuse ~> .d ~> .load.pos\n}\n",
+        "B",
+        "supply_fault_current",
+    );
+    assert_eq!(g, ["d.supply_fault_current = fuse.limit_current"]);
+}
+
+#[test]
+fn a_part_in_no_chain_gets_neither() {
+    let g = gave(
+        "board B {\n    .input: Rail\n    .d: Schottky\n    .input.pos ~ .d.anode\n}\n",
+        "B",
+        "supply_",
+    );
+    assert!(g.is_empty(), "{g:?}");
+}

@@ -610,8 +610,7 @@ fn a_fuse_is_checked_against_the_draw_of_its_load() {
 }
 
 /// A part in a `~>` chain from a rail has the rail's `.peak` as its `.supply_peak` (ADR 0086),
-/// so a fuse is compared with it with no line of the board's. What does not reach a part is
-/// still the board's: a diode's rating against the fuse in front of it (issue 175).
+/// so a fuse is compared with it with no line of the board's.
 #[test]
 fn a_fuse_rated_voltage_is_compared_with_the_peak_of_its_rail() {
     let board = |rated: &str, line: &str| {
@@ -650,8 +649,12 @@ fn a_fuse_on_a_rail_with_no_peak_is_not_refused() {
     ));
 }
 
+/// A part behind a fuse in a `~>` chain is given the most the fuse lets through, its rating,
+/// as `.supply_fault_current` (ADR 0091), so a diode is rated for it with no line of the
+/// board's: the load's draw alone (the chain passes one current) would pass a diode the fuse
+/// can still overload.
 #[test]
-fn a_diode_behind_a_fuse_is_rated_only_for_its_own_current_unless_the_board_says_more() {
+fn a_diode_behind_a_fuse_is_rated_for_what_the_fuse_lets_through() {
     let board = |diode_rating: &str, line: &str| {
         on_12v(
             "import std::parts::diode::Schottky\nimport std::parts::passive::Fuse",
@@ -663,19 +666,27 @@ fn a_diode_behind_a_fuse_is_rated_only_for_its_own_current_unless_the_board_says
             ),
         )
     };
-    let line = "    .d.max_forward_current >= .fuse.rated_current";
-    // The diode carries the load's draw (the chain passes one current), so 1 A is enough for
-    // that check and the diode is not found short of the fuse's 3 A.
-    clean(&board("1A", ""));
-    clean(&board("5A", line));
+    clean(&board("5A", ""));
     one(
-        &board("1A", line),
+        &board("1A", ""),
         &[
-            "d.max_forward_current must always be at least fuse.rated_current",
-            "1A",
+            "d.supply_fault_current must always be at most d.max_forward_current",
             "3A",
+            "1A",
         ],
     );
+    // The line a board wrote before still holds, and agrees with it.
+    clean(&board(
+        "5A",
+        "    .d.max_forward_current >= .fuse.rated_current",
+    ));
+    // A diode with no fuse in front of it is checked for its own current only.
+    clean(&on_12v(
+        "import std::parts::diode::Schottky",
+        "    .load: Rail { .current &= 100mA..600mA\n .pos.net &= \"VF\"\n .neg.net &= \"GND\" }\n    \
+         .d: Schottky { .max_forward_current &= 1A }\n    \
+         .supply.pos ~> .d ~> .load.pos\n    .supply.neg ~ .load.neg",
+    ));
 }
 
 #[test]
@@ -701,6 +712,72 @@ fn a_reverse_polarity_diode_blocks_the_voltage_the_board_states_and_not_one_it_l
     );
     // A diode in series is across no rail, so its bias is unset until the board states it.
     clean(&board("40V", ""));
+}
+
+/// A rail states the voltage it reaches the wrong way round, `.reverse_peak`, and the first
+/// part of a chain from it that has a `.supply_reverse_peak` is checked against it (ADR
+/// 0091): a series diode blocks it, a unidirectional TVS diode would conduct.
+#[test]
+fn a_reverse_polarity_diode_blocks_the_reverse_peak_of_its_rail() {
+    let board = |blocks: &str, reverse: &str| {
+        on_12v(
+            "import std::parts::diode::Schottky",
+            &format!(
+                "    .supply.reverse_peak &= {reverse}\n    \
+                 .load: Rail {{ .current &= 100mA..600mA\n .pos.net &= \"VF\"\n .neg.net &= \"GND\" }}\n    \
+                 .d: Schottky {{ .max_reverse_voltage &= {blocks}\n .max_forward_current &= 1A }}\n    \
+                 .supply.pos ~> .d ~> .load.pos\n    .supply.neg ~ .load.neg"
+            ),
+        )
+    };
+    clean(&board("150V", "100V"));
+    one(
+        &board("40V", "100V"),
+        &[
+            "d.supply_reverse_peak must always be at most d.max_reverse_voltage",
+            "100V",
+            "40V",
+        ],
+    );
+}
+
+#[test]
+fn a_tvs_diode_in_front_of_nothing_conducts_under_the_reverse_peak_and_one_behind_a_diode_does_not()
+{
+    let board = |chain: &str| {
+        on_12v(
+            "import std::parts::diode::{Schottky, Tvs}",
+            &format!(
+                "    .supply.reverse_peak &= 100V\n    \
+                 .load: Rail {{ .current &= 100mA..600mA\n .pos.net &= \"VF\"\n .neg.net &= \"GND\" }}\n    \
+                 .d: Schottky {{ .max_reverse_voltage &= 150V\n .max_forward_current &= 1A }}\n    \
+                 .t: Tvs {{ .standoff_voltage &= 15V\n .clamping_voltage &= 24V }}\n    \
+                 .supply.neg ~ .load.neg\n{chain}"
+            ),
+        )
+    };
+    one(
+        &board("    .supply.pos ~> .t ~> .supply.neg\n    .supply.pos ~> .d ~> .load.pos"),
+        &["-t.supply_reverse_peak must always be at least 0V", "-100V"],
+    );
+    // The diode is in front of the TVS diode, which sits on the rail behind it: that rail
+    // states no reverse peak, so nothing is checked for it.
+    clean(&board(
+        "    .supply.pos ~> .d ~> .load.pos\n    .load.pos ~> .t ~> .load.neg",
+    ));
+}
+
+/// A rail with no reverse peak checks and lists nothing, and the one number the board already
+/// had on the diode, its bias, is read as before.
+#[test]
+fn a_rail_with_no_reverse_peak_leaves_the_diode_as_it_was() {
+    clean(&on_12v(
+        "import std::parts::diode::Schottky\nimport std::parts::passive::Fuse",
+        "    .load: Rail { .current &= 100mA..600mA\n .pos.net &= \"VF\"\n .neg.net &= \"GND\" }\n    \
+         .fuse: Fuse { .rated_current &= 1A }\n    \
+         .d: Schottky { .max_reverse_voltage &= 40V\n .max_forward_current &= 1A\n .bias &= 24V }\n    \
+         .supply.pos ~> .fuse ~> .d ~> .load.pos\n    .supply.neg ~ .load.neg",
+    ));
 }
 
 #[test]

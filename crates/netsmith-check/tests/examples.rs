@@ -205,9 +205,9 @@ fn connected_interfaces_tie_their_values_together() {
         .iter()
         .map(|&(a, b)| (m.path_of_field(a), m.path_of_field(b)))
         .collect();
-    // Four joins of rails, each tying a voltage, a peak voltage and a track width, the
-    // one current a series chain passes, and the swing of the one joined logic line (ADR 0081).
-    assert_eq!(pairs.len(), 14, "{pairs:?}");
+    // Four joins of rails, each tying a voltage, a peak voltage, a reverse peak (ADR 0091) and a
+    // track width, the one current a series chain passes, and the swing of the one joined logic line (ADR 0081).
+    assert_eq!(pairs.len(), 18, "{pairs:?}");
     assert!(pairs.contains(&(
         "power_3v3.voltage".to_string(),
         "status_indicator.power.voltage".to_string()
@@ -380,8 +380,9 @@ fn rails_connected_through_the_stage_share_their_voltage() {
         .iter()
         .map(|&(a, b)| (m.path_of_field(a), m.path_of_field(b)))
         .collect();
-    // Four joins of rails, each tying a voltage, a peak voltage and a track width.
-    assert_eq!(pairs.len(), 12, "{pairs:?}");
+    // Four joins of rails, each tying a voltage, a peak voltage, a reverse peak (ADR 0091) and
+    // a track width.
+    assert_eq!(pairs.len(), 16, "{pairs:?}");
     assert!(pairs.contains(&("input.voltage".to_string(), "stage.vin.voltage".to_string())));
     assert!(pairs.contains(&(
         "stage.regulator.vout.voltage".to_string(),
