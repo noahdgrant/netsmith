@@ -313,7 +313,7 @@ fn a_resistor_to_a_rail_pulls_the_net_to_it() {
     let f = faults(&s);
     assert_eq!(f.len(), 1, "{f:?}");
     assert!(
-        f[0].contains("reaches 5.25V above its ground `GND` (a resistor to rail `s5`) but `b.in.line.abs_max` is 3.6V"),
+        f[0].contains("reaches 5.25V above its ground `GND` (the DC analysis of the network it is in) but `b.in.line.abs_max` is 3.6V"),
         "{f:?}"
     );
 }
