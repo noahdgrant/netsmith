@@ -161,6 +161,9 @@ pub struct Candidate {
     /// Who assembles the part when the design does not say: `fab`, `hand`, `none` or `consigned`
     /// (ADR 0024, ADR 0084). The row's `assembly` cell, if it has one.
     pub assembly: Option<String>,
+    /// How tall the body of the part stands above the board, in mm: the row's `height` cell,
+    /// a datasheet figure (ADR 0094). `None` when the row has none: the height is unknown.
+    pub height: Option<f64>,
     /// Set for a generic part (ADR 0047): it has no supplier number, and a later step
     /// resolves it to a row of the catalog.
     pub generic: Option<Generic>,
