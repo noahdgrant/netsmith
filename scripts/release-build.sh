@@ -31,7 +31,8 @@ fail() { echo "release-build: $*" >&2; exit 1; }
 step() { echo "release-build: $*" >&2; }
 
 # 1. The version, the target, the files that go in the archive.
-version="$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p}' Cargo.toml | head -n1)"
+# One sed command per -e: BSD sed (macOS) takes no `}` right after a flag, GNU sed does.
+version="$(sed -n -e '/^\[workspace.package\]/,/^\[/{' -e 's/^version *= *"\(.*\)"/\1/p' -e '}' Cargo.toml | head -n1)"
 [ -n "$version" ] || fail "no version under [workspace.package] in Cargo.toml"
 if [ -n "${RELEASE_TAG:-}" ] && [ "$RELEASE_TAG" != "v$version" ]; then
     fail "the tag is $RELEASE_TAG but the workspace version is $version (expected v$version)"

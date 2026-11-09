@@ -358,9 +358,15 @@ impl Scratch {
             std::process::id(),
             COUNT.fetch_add(1, Ordering::SeqCst)
         ));
-        let mut builder = std::fs::DirBuilder::new();
+        // Private to the user on Unix; Windows has no mode to set (and no `mut` to warn about).
         #[cfg(unix)]
-        std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+        let builder = {
+            let mut builder = std::fs::DirBuilder::new();
+            std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+            builder
+        };
+        #[cfg(not(unix))]
+        let builder = std::fs::DirBuilder::new();
         builder.create(&dir)?;
         Ok(Scratch(dir))
     }

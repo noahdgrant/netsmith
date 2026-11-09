@@ -16,6 +16,10 @@ name: release
 on:
   push:
     tags: ["v*"]
+  # A run by hand builds, smoke-tests and packs on the three systems of the branch it is run on,
+  # attaches nothing to any release and checks nothing against a tag: a way to try this file
+  # without cutting a release.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -69,7 +73,7 @@ jobs:
 
       - name: Build, smoke test and pack
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
         run: scripts/release-build.sh
 
       - uses: actions/upload-artifact@v4
@@ -79,6 +83,7 @@ jobs:
 
   publish:
     needs: build
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
