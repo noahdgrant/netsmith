@@ -7,6 +7,12 @@ Written on 2026-11-08 against `main` at `9f5a5b9`. Method: I read each ADR in fu
 with `grep`, `ls`, `git` and a read of the CSV files. I ran no build and no test, so a claim about behaviour is the ADR's own unless the entry says
 "checked".
 
+**Update 2026-11-09 (the ADR cleanup pilot).** ADR 0076 and ADRs 0085 to 0096 were cut to one page or folded into a three-line stub, and the
+text this digest names (sections, amendments, "Choices for the owner") moved. The ADR files keep their numbers. The text before the cut is
+`git show 20f8f0c:docs/adr/0076-a-post-pick-dc-analysis-solves-the-network-of-the-picked-parts.md` (the sections and amendments below are in it),
+and, for each of 0085 to 0096, the commit its stub names. Each entry below says where its content is now. Source files that cite "ADR 0076,
+amendment N" cite that text.
+
 **Reversal cost** is my reading from the dependents I counted, not a statement of the ADRs: **cheap** (a solver or message rule, nothing written in
 `.nsm` files depends on it), **migration** (source in `std/`, the guide or users' files must change), **hard** (users' designs change meaning, or the
 answer is a legal or interface commitment).
@@ -276,6 +282,10 @@ An open-drain line takes its high from its pull-up.
 when there is no pull-up. In std, only `Sn74lvc1g04` (`std/parts/logic.nsm:45`) states levels with a test current; it states both `voh` and `vol`.
 
 ## ADR 0076
+**Moved.** The ADR is one page: the decision, the owner's decisions of 2026-11-07, what was rejected and a "Left open" list. Its items 1 to 3 are the
+three "left to the owner at the top level" below, word for word. Behaviour is in `docs/LANGUAGE.md` ("What a part is at DC", "DC analysis"), and the
+mechanism notes (determinism, the island limit, the interior check, what is not built) are the header of `crates/netsmith-solve/src/dc/mod.rs` and
+`src/solve/dcpass.rs`. The amendments are no longer in the ADR; their "Choices for the owner" below are still open. The prototype crate `netsmith-dc` named below was removed by #305.
 A post-pick DC analysis (sections 1 to 10). The owner decided questions 1 to 7 on 2026-11-07
 (question 1: `dc` statement; 2: the datasheet's form, a level with its test current; 3: no feature
 for which states coexist; 4: narrow where unstated, check where stated; 5: a stated `.current` on a
@@ -296,6 +306,7 @@ analysis" section.
    point's convergence for a regulator with hysteresis, and the fuse's missing maximum resistance. Not choices; cheap.
 
 ## ADR 0076 amendment 1
+**Moved.** Amendment 1 is only in the text before the cut (`git show 20f8f0c:...`); the behaviour it built is in `docs/LANGUAGE.md` ("What a part is at DC", "DC analysis"). The choices below are still open.
 The syntax of `dc` and of a level with its test current.
 
 **Built.** `dc resistor|diode|nmos|pmos` and `at` in `crates/netsmith-lang` (`tests/dc.rs`) and `crates/netsmith-check/src/dc.rs`. Checked: 12 `dc`
@@ -318,6 +329,7 @@ on two lines of `std/parts/logic.nsm`; `docs/LANGUAGE.md` has 25 `dc` lines.
 **Stale.** The ADR and `docs/LANGUAGE.md:7997` say `Lt8641Buck`; the std part is `Lt8641` (`std/parts/regulator.nsm:356`).
 
 ## ADR 0076 amendment 2
+**Moved.** Amendment 2 is only in the text before the cut (`git show 20f8f0c:...`); the behaviour it built is in `docs/LANGUAGE.md` ("What a part is at DC", "DC analysis"). The choices below are still open.
 The DC analysis of the resistive islands (phase 2, stage 2a).
 
 **Built.** `dc/extract.rs`, `dc/net.rs`, `solve/dcpass.rs` (writes `.current` and `.drop`, checks stated fields). Amendment 2's text says "each is a
@@ -334,6 +346,7 @@ line to change" without numbering them; these are the ones that change behaviour
 4. **A conductance of a femtosiemens added only where the matrix is singular** (a node behind a blocking diode). Cheap.
 
 ## ADR 0076 amendment 3
+**Moved.** Amendment 3 is only in the text before the cut (`git show 20f8f0c:...`); the behaviour it built is in `docs/LANGUAGE.md` ("What a part is at DC", "DC analysis"). The choices below are still open.
 Regulators in the DC analysis (stage 2b, slice 1).
 
 **Built.** `dc/extract.rs`, `dc/net.rs`, `dcpass.rs` (`dc_collapse` line 433); `dc linear_regulator <in rail> <out rail>` and `dc switching_regulator
@@ -348,6 +361,7 @@ Regulators in the DC analysis (stage 2b, slice 1).
 4. **The hand-written equalities and the seed stay** in this slice. See amendments 5 and 6.
 
 ## ADR 0076 amendment 4
+**Moved.** Amendment 4 is only in the text before the cut (`git show 20f8f0c:...`); the behaviour it built is in `docs/LANGUAGE.md` ("What a part is at DC", "DC analysis"). The choices below are still open.
 Logic pins that drive, and MOSFETs as switches (stage 2b, slice 2). Seven choices, all numbered in the ADR.
 
 **Built.** `dc/extract.rs` (line 1130 on, the driver test; `unused_by` at 1148), `dc/net.rs`, `dcpass.rs`.
@@ -366,6 +380,7 @@ Logic pins that drive, and MOSFETs as switches (stage 2b, slice 2). Seven choice
 7. **`Sn74lvc1g04` states `at 100uA`** on `voh` and `vol` (checked, `std/parts/logic.nsm:45-46`). Cheap.
 
 ## ADR 0076 amendment 5
+**Moved.** Amendment 5 is only in the text before the cut (`git show 20f8f0c:...`); the behaviour it built is in `docs/LANGUAGE.md` ("What a part is at DC", "DC analysis"). The choices below are still open.
 A chain carries the voltage, a part can give a supply, a circle a pick waits on starts without a window
 (phase 3, slice 1, issue #153). Eight choices.
 
@@ -385,6 +400,7 @@ A chain carries the voltage, a part can give a supply, a circle a pick waits on 
 8. **The hand-written chain equalities stay valid** and are the board's to delete; std has none. Cheap.
 
 ## ADR 0076 amendment 6
+**Moved.** Amendment 6 is only in the text before the cut (`git show 20f8f0c:...`); the behaviour it built is in `docs/LANGUAGE.md` ("What a part is at DC", "DC analysis"). The choices below are still open.
 The winding of an inductor, an enclosure of the load behind a regulator, what the real board still needs
 (phase 3, slice 2). Five choices.
 
@@ -535,6 +551,7 @@ A part can be consigned: the owner ships it to the board house.
 generated types and the bundle).
 
 ## ADR 0085
+**Folded.** The ADR is a stub; the reasoning and the alternatives are in the doc comment of `.voltage_margin` in `std/parts/regulator.nsm`, the behaviour in the guide's "Switching regulators". The choices below are still open.
 A buck stage states a voltage margin for its capacitors.
 
 **Built.** `.voltage_margin: Number` with `?= 1` and four relations in `BuckStage` (`std/parts/regulator.nsm:214-247`). References: 14 in
@@ -549,6 +566,7 @@ A buck stage states a voltage margin for its capacitors.
 **Stale.** None found.
 
 ## ADR 0086
+**Cut.** The ADR is one page; the alternatives it did not take are in its "Rejected" paragraph and its "Left open" paragraph. ADR 0088 and 0091 are folded and use the same field-name convention.
 A chain carries the peak of its rail to the parts in series (extends ADR 0013 and 0014).
 
 **Built.** `crates/netsmith-check/src/connect.rs` (five references) and `model.rs`: a part with a `bridge` and a field named `.supply_peak`, in a `~>`
@@ -567,6 +585,7 @@ chain, gets the `.peak` of the rail on the chain's start net. `Fuse` is the only
 **Depends.** `examples/carrier_and_cards.nsm` has a `Fuse` in a chain from a rail that states `.peak &= 3.6V` (lines 83 to 96). Issue #175 is open.
 
 ## ADR 0087
+**Cut.** The ADR is one page; the record of what was read from the datasheet, derived and assumed is `std/libs/README.md`. The choices below are still open.
 netsmith ships its own footprints for the packages KiCad lacks. Merged as PR #255 while this digest was open. Status: provisional.
 
 **Built.** `std/libs/` (checked: `netsmith.pretty/UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA.kicad_mod`, `netsmith.kicad_sym`), embedded by `crates/netsmith-kicad/src/stdlib.rs`, and answered as library `netsmith`; one footprint, `UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA`,

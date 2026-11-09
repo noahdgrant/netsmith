@@ -21,7 +21,19 @@ interface Rail {
     /// check treats it as a voltage that must be blocked). A design states it for the input,
     /// where it can happen, and the first part of a `~>` chain from the rail that has a
     /// `.supply_reverse_peak` is checked against it (ADR 0091). Left unstated, nothing is
-    /// checked and nothing is listed as not evaluated.
+    /// checked and nothing is listed as not evaluated: the member is `optional` (ADR 0074),
+    /// because a member that is not would list one more note for every diode or TVS diode in
+    /// a chain from any rail, such as the rail behind a diode, which has no reverse peak and
+    /// needs none. It is a positive number (a datasheet says `-100V`), so that every
+    /// rating reads `<=` in the same direction as `.peak`; the number has the opposite sign to
+    /// the voltage it is. Only the first part of the chain that has the field is given it:
+    /// the part that meets the reversed supply blocks it or conducts it, and what is behind
+    /// is protected by it (a TVS diode behind a blocking diode would be found to conduct a
+    /// transient it never sees). A rail behind a blocking diode states `.reverse_peak &= 0V`
+    /// itself, since nothing derives it. The reverse voltage a diode sees is the supply's
+    /// reverse peak plus whatever voltage the rail behind it holds (a capacitor charged to the
+    /// input's voltage), which is not added: a board states `.d.max_reverse_voltage >=
+    /// .supply.reverse_peak + .load.peak`.
     .reverse_peak: Voltage optional
     /// The narrowest track the nets of this rail are routed with: a lower bound, written as
     /// a range (`.min_track &= 0.5mm..1m`). Both pins get it, since the return current is the

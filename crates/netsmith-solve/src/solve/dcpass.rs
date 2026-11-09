@@ -16,6 +16,30 @@
 //!
 //! The ranges are the hulls of the corners, widened outward a little (see `widen`) so that a
 //! rounding does not take a value out of the range it is in.
+//!
+//! The same analysis runs at three more points, each an enclosure and not the final answer (the
+//! amendments of ADR 0076 before its cut, `git show 20f8f0c:docs/adr/`, say why):
+//!
+//! - Before the picks, when a pick waits on a voltage nobody has given (a derated capacitor's
+//!   bias, a divider's draw): `dc_start` solves the network once with each part still to be
+//!   picked at the hull of what its candidates give (`enclose_loads`, `enclose_boundaries`),
+//!   and writes voltages only. `enclose_regulator_loads` first writes a regulator's load as the
+//!   sum of the loads behind it when every load has one. A stated window is used as stated.
+//! - Between two searches: a component with a part that reads such a voltage is picked after
+//!   the others (`run_groups`, `run_early` in `solve.rs`, `waiting_jobs`); the picks of the
+//!   early ones lean on an assumed window for each regulator input (`assumed_windows`), which is
+//!   taken out again before they are kept.
+//! - Inside a search, when the last part of a group is chosen: `network_trial` solves the small
+//!   island that has a part of the group, cut at the rails an earlier pass wrote (`cut_rails`),
+//!   and writes the voltage of rails nothing has given, so a pick is refused on the circuit's
+//!   own number.
+//!
+//! After the picks, `dc_field` and `dc_write_rail` write the results by the rules above, and the
+//! checks of the design's statements are `dc_check_supplies` (a supply's own `.current` is a
+//! budget the loads must be able to meet), `dc_check_efficiencies` (an efficiency is above 0 and
+//! at most 1), `dc_check_stated` (a voltage the design states on a rail the analysis solved must
+//! enclose the circuit's range) and `dc_disagree` (a worked-out current the analysis cannot
+//! share is an error that names both ranges).
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;

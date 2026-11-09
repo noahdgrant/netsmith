@@ -7346,9 +7346,9 @@ board Standoff {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 10 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
-    --> std/parts/diode.nsm:250:5
+    --> std/parts/diode.nsm:297:5
     |
-250 |     .bias <= .standoff_voltage
+297 |     .bias <= .standoff_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7423,9 +7423,9 @@ error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C
 11 |     .z.bias <= .z.zener_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: d.bias must always be at most d.max_reverse_voltage, but 11.4V..12.6V is not always below 10V
-   --> std/parts/diode.nsm:64:5
+   --> std/parts/diode.nsm:91:5
    |
-64 |     .bias <= .max_reverse_voltage
+91 |     .bias <= .max_reverse_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 4.7V..5.5V
    --> main.nsm:11:5
@@ -7458,19 +7458,19 @@ board Reversed {
 
 ```text
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C5V1 5.1V 500mW Zener SOD-123 C2117, fails because z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
-    --> std/parts/diode.nsm:188:5
+    --> std/parts/diode.nsm:221:5
     |
-188 |     .bias >= 0V
+221 |     .bias >= 0V
     |     ^^^^^^^^^^^
 error: d.bias must always be at least -d.forward_voltage, but -12.6V..-11.4V is not always above -700mV
-   --> std/parts/diode.nsm:65:5
+   --> std/parts/diode.nsm:92:5
    |
-65 |     .bias >= -.forward_voltage
+92 |     .bias >= -.forward_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
-    --> std/parts/diode.nsm:188:5
+    --> std/parts/diode.nsm:221:5
     |
-188 |     .bias >= 0V
+221 |     .bias >= 0V
     |     ^^^^^^^^^^^
 ```
 
@@ -7749,9 +7749,9 @@ error: -u.buck.sw.current must always be at most u.buck.max_output_current, but 
 136 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -stage.vout.current must always be at most stage.buck.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `stage`: -stage.inductor.current (6.402uA..3A) + -stage.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (6.402uA..3A) + stage.inductor.current (6.402uA..3A) add up to zero; net `net-stage.inductor.a`: stage.buck.sw.current (6.402uA..3A) + u.buck.sw.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:278:5
+    --> std/parts/regulator.nsm:332:5
     |
-278 |     -.vout.current <= .buck.max_output_current
+332 |     -.vout.current <= .buck.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7820,9 +7820,9 @@ board HighInput {
 
 ```text
 error: stage.on_time must always be at least stage.buck.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:287:5
+    --> std/parts/regulator.nsm:341:5
     |
-287 |     .on_time >= .buck.min_on_time
+341 |     .on_time >= .buck.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7909,7 +7909,7 @@ The IC draws current from its input for itself with nothing loaded, and the inpu
 
 The datasheet's other pins and capacitors (the two 1 uF capacitors at VIN1 and VIN2, the feedback phase-lead capacitor, the enable divider) are the board's. The package has no footprint or symbol in KiCad's libraries, so `std/kicad.toml` maps `Lt8641` in the package `UDC20(18)` to netsmith's own, `netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA` and `netsmith:LT8641` (the _Standard libraries of footprints_ paragraph below says what that is): a board built around it exports with them, with no KiCad install and no `kicad.toml`. The footprint's pads are the datasheet's recommended solder pad pitch and dimensions (p.24); a project that wants another land pattern maps the part and package to its own, as for any other part (`std/kicad.toml` and a project's `kicad.toml` may not both map one pair, so the project uses its own package name in its row).
 
-**Standard libraries of footprints** (ADR 0087, provisional). A package that KiCad's libraries lack and the generators of ADR 0043 do not make is drawn in `std/libs/`: footprints as `.kicad_mod` files in `std/libs/netsmith.pretty/` and symbols in `std/libs/netsmith.kicad_sym`, in KiCad's own formats, compiled into the binary. They are the library `netsmith`, named in a row of `std/kicad.toml` like any other (`footprint = "netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA"`), found before any KiCad install is read, and the same on every machine. A project cannot list a library called `netsmith` (`kicad.toml: library `netsmith` is the name of the standard library's own footprints and symbols ...`). When a board uses one of them, `build`, `fab` and the editor write the library into the board's output folder (`netsmith.pretty/`, `netsmith.kicad_sym`) and list it in the `fp-lib-table` and `sym-lib-table` beside the `.kicad_pro`, as they list a project's own libraries, so KiCad opens the board with the footprint in its library table. Every footprint of the folder is named by a row of `std/kicad.toml`, and a test checks each against the pin table of its part (every pad of the table is a pad of the footprint and a pin of the symbol, and the other way round). A footprint is added only from a package drawing that was read: each pad's size and place is a dimension of the manufacturer's land pattern, the ADR says which were measured and which were assumed, and a package with a dimension that cannot be read is not added.
+**Standard libraries of footprints** (ADR 0087, provisional). A package that KiCad's libraries lack and the generators of ADR 0043 do not make is drawn in `std/libs/`: footprints as `.kicad_mod` files in `std/libs/netsmith.pretty/` and symbols in `std/libs/netsmith.kicad_sym`, in KiCad's own formats, compiled into the binary. They are the library `netsmith`, named in a row of `std/kicad.toml` like any other (`footprint = "netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA"`), found before any KiCad install is read, and the same on every machine. A project cannot list a library called `netsmith` (`kicad.toml: library `netsmith` is the name of the standard library's own footprints and symbols ...`). When a board uses one of them, `build`, `fab` and the editor write the library into the board's output folder (`netsmith.pretty/`, `netsmith.kicad_sym`) and list it in the `fp-lib-table` and `sym-lib-table` beside the `.kicad_pro`, as they list a project's own libraries, so KiCad opens the board with the footprint in its library table. Every footprint of the folder is named by a row of `std/kicad.toml`, and a test checks each against the pin table of its part (every pad of the table is a pad of the footprint and a pin of the symbol, and the other way round). A footprint is added only from a package drawing that was read: each pad's size and place is a dimension of the manufacturer's land pattern, `std/libs/README.md` says which were read from the drawing and which were assumed, and a package with a dimension that cannot be read is not added.
 
 ### Current through a part
 
@@ -7938,9 +7938,9 @@ board Budget {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
-    --> std/parts/passive.nsm:270:5
+    --> std/parts/passive.nsm:287:5
     |
-270 |     .current <= .rated_current
+287 |     .current <= .rated_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8035,9 +8035,9 @@ board Arcs {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.supply_peak must always be at most fuse.rated_voltage, but 5kV is not always below 125V
-    --> std/parts/passive.nsm:271:5
+    --> std/parts/passive.nsm:288:5
     |
-271 |     .supply_peak <= .rated_voltage
+288 |     .supply_peak <= .rated_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8097,14 +8097,14 @@ board Overloaded {
 
 ```text
 error: no combination of candidates satisfies `d` and `fuse` together: the closest, d = 1N5819WS 40V 1A Schottky SOD-323 C191023, fails because d.supply_fault_current must always be at most d.max_forward_current, but 3A is not always below 1A
-    --> std/parts/diode.nsm:115:5
+    --> std/parts/diode.nsm:142:5
     |
-115 |     .supply_fault_current <= .max_forward_current
+142 |     .supply_fault_current <= .max_forward_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: d.supply_fault_current must always be at most d.max_forward_current, but 3A is not always below 1A
-    --> std/parts/diode.nsm:115:5
+    --> std/parts/diode.nsm:142:5
     |
-115 |     .supply_fault_current <= .max_forward_current
+142 |     .supply_fault_current <= .max_forward_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8143,9 +8143,9 @@ board Switch {
 
 ```text
 error: no `n_mosfet` candidate satisfies `q`: the closest of the 2 that fit, AO3400A 30V 5.7A N-MOSFET SOT-23 C20917, fails because q.gate_source_voltage must always be at least q.gate_threshold, but 285mV..315mV is not always above 650mV..1.45V
-   --> std/parts/transistor.nsm:51:5
+   --> std/parts/transistor.nsm:77:5
    |
-51 |     .gate_source_voltage >= .gate_threshold
+77 |     .gate_source_voltage >= .gate_threshold
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8179,14 +8179,14 @@ board Switch {
 
 ```text
 error: no `n_mosfet` candidate satisfies `q`: the closest of the 1 that fit, 2N7002 60V 115mA N-MOSFET SOT-23 C8545, fails because q.gate_source_voltage must always be at least q.on_resistance_vgs, but 3.135V..3.465V is not always above 5V
-   --> std/parts/transistor.nsm:52:5
+   --> std/parts/transistor.nsm:78:5
    |
-52 |     .gate_source_voltage >= .on_resistance_vgs
+78 |     .gate_source_voltage >= .on_resistance_vgs
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: q.gate_source_voltage must always be at least q.on_resistance_vgs, but 3.135V..3.465V is not always above 5V
-   --> std/parts/transistor.nsm:52:5
+   --> std/parts/transistor.nsm:78:5
    |
-52 |     .gate_source_voltage >= .on_resistance_vgs
+78 |     .gate_source_voltage >= .on_resistance_vgs
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8248,10 +8248,10 @@ board HighSide {
 
 ```text
 error: no `p_mosfet` candidate satisfies `q`: the closest of the 1 that fit, ZP-30 30V 4A P-MOSFET, fails because q.drain_source_voltage must always be at most q.max_drain_source_voltage, but 95V..105V is not always below 30V
-   --> std/parts/transistor.nsm:92:5
-   |
-92 |     .drain_source_voltage <= .max_drain_source_voltage
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    --> std/parts/transistor.nsm:118:5
+    |
+118 |     .drain_source_voltage <= .max_drain_source_voltage
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### What a part is at DC
@@ -9092,7 +9092,7 @@ A digital line is a `Logic` (`std::logic::Logic`): a pin `.line` and the rail `.
 After the rails are solved, the solver checks two things. A fault is an error; a check that cannot be made is a note `not evaluated: ...`, never a pass.
 
 - **Levels.** For every output or bidirectional `Logic` line on a net and every input or bidirectional `Logic` line on it, the output's `voh` must always be at least the input's `vih`, and its `vol` at most the input's `vil`, in the worst case of both ranges. A level with no value, or two lines whose grounds (`reference.neg`) are not on one net or in one ground group, is not evaluated. A pair in which neither line states a level is not looked at. An output that states a `vol` and no `voh` is open-drain, and the line's high is what its pull-up gives it (see "An open-drain line" below).
-- **Absolute maximum.** A pin with `.abs_min` or `.abs_max` must have a net whose worst-case voltage relative to its ground stays within them. A net that the DC analysis solved (a divider's middle, a net behind a chain of resistors and diodes: see "DC analysis") has the range of voltage the analysis finds for it over every corner of the ranges and every state of the parts around it, and the finding says `(the DC analysis of the network it is in)` (ADR 0076, amendment 12, provisional). Any other net's voltage is the hull of: its ground (0 V), each rail whose `pos` is on it, each `Logic` line that drives it (between its reference rail's `neg` and its voltage), and each rail or ground that a resistor joins it to (a pull-up or a pull-down). It is not evaluated for a pin that is not the `.line` of a `Logic` (its ground is not known), for a net that something drives that is not a `Logic` line, for a rail or driver on another ground, and for a net nothing sets.
+- **Absolute maximum.** A pin with `.abs_min` or `.abs_max` must have a net whose worst-case voltage relative to its ground stays within them. A net that the DC analysis solved (a divider's middle, a net behind a chain of resistors and diodes: see "DC analysis") has the range of voltage the analysis finds for it over every corner of the ranges and every state of the parts around it, and the finding says `(the DC analysis of the network it is in)` (ADR 0076, amendment 12, provisional). Any other net's voltage is the hull of: its ground (0 V), each rail whose `pos` is on it, each `Logic` line that drives it (between its reference rail's `neg` and its voltage), and each rail or ground that a resistor joins it to (a pull-up or a pull-down). It is not evaluated for a pin that is not the `.line` of a `Logic` (its ground is not known), for a net that something drives that is not a `Logic` line, for a rail or driver on another ground, and for a net nothing sets. A pin that nothing outside its own part is joined to (an optional pin left to float, such as the `TR/SS` of the LT8641) has no voltage to judge and is skipped, with no note; a pin with only a capacitor on it is the note "nothing sets its voltage".
 
 A 5 V rail through a divider into a pin that survives 3.6 V is judged by the voltage the divider gives, not by the rail: 10 kohm over 20 kohm from 5.25 V is at most 3.52 V, inside the maximum, and the same divider over 30 kohm is 3.96 V, which is refused. The parts are invented.
 

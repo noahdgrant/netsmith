@@ -14,6 +14,33 @@
 //! what is behind it is an island of its own, and the current it takes from the output is a range
 //! that the island in front of the regulator treats as the regulator's load (ADR 0076, section 3):
 //! the island behind is solved first, and the island in front takes its range.
+//!
+//! Notes for a maintainer, from ADR 0076 as it was before its cut (`git show 20f8f0c:docs/adr/`):
+//!
+//! - The pass is deterministic. Elements are taken in the order the model lists them, the
+//!   combinations in a fixed mixed-radix order, nodes are numbered in the order they are first
+//!   named, so no result depends on a hash order. It uses addition, subtraction,
+//!   multiplication, division and comparison only (IEEE 754 defines them to the bit), with no
+//!   transcendental function and no fused multiply-add, so a design gives the same numbers on
+//!   any target.
+//! - An island over `MAX_COMBINATIONS` (65536), or over `MAX_WORK` (2^28), is left alone with a
+//!   note that says to cut it at a node a rail holds. Cutting at a held node costs the tie
+//!   between a current and the node's voltage, so a result is wider and never narrower.
+//! - The corners are the circuit's range only for a quantity that is monotone in each value. A
+//!   power need not be: `p(r1)` of R1 from 500 to 1500 ohm over a fixed R2 of 1000 ohm peaks
+//!   inside the box (25 mW at R1 = R2, where the corners give 22.2 mW and 24 mW), and for a
+//!   resistor of 1 % the error is second order, about `(tolerance / 2)^2`. `net::check_interior`
+//!   draws points inside the ranges and counts those outside the hull (a fixed seed; tests
+//!   only). A stated margin of that size for any element with a range wider than 5 %, and a
+//!   sound enclosure by interval Newton or affine arithmetic, are not built: the owner has not
+//!   decided (ADR 0076, left open).
+//! - Not built: a cache of an island's result keyed by its netlist and boundary ranges, so an
+//!   edit solves only the island it is in; and sensitivity corners (the sign of a quantity's
+//!   derivative with respect to each value, one extra solve per value, says which end of each
+//!   range gives its extreme: `n + 2` solves a quantity for a monotone one, past 2^n).
+//! - The cost budget when this was written: at most 5 % of the solver's time, because the editor
+//!   re-solves on every edit (a debug build of the crate is optimised, `[profile.dev.package.
+//!   netsmith-solve]` in the root `Cargo.toml`).
 
 pub(crate) mod ceiling;
 mod extract;

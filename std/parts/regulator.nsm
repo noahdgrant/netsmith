@@ -198,6 +198,34 @@ interface Buck {
 ///   then that check is not evaluated) and for the rail's steady voltage, so a peak stated
 ///   too low cannot let a capacitor through that the steady voltage would not.
 ///
+/// The on-time and off-time are the duty cycle of an ideal buck converter over the switching
+/// frequency, at the worst case the ranges give: the shortest on-time is the lowest output at
+/// the highest input and the highest frequency (its tolerance included), the shortest
+/// off-time the lowest headroom at the highest frequency. A violation names the numbers
+/// (`stage.on_time must always be at least stage.buck.min_on_time, but 122ns..490.8ns is not
+/// always above 150ns`). A part states a figure with `&=` on its own `buck`
+/// (`.buck.min_on_time &= 70ns`), at the largest the datasheet gives, with the revision, page
+/// and table in its doc comment. Past either limit the part still regulates, at a lower
+/// frequency (LM61430-Q1 8.4.3 and 8.1, "frequency is reduced automatically"; LT8641, p.16),
+/// so the ripple above, computed at the programmed frequency, would not be the board's: that
+/// is why the check is an error and not a note. No std part states the two figures: the
+/// `Lt8641` keeps its own Equations 4 and 5, which include the switch drops (about 0.15 V and
+/// 0.3 V) the stage does not know, and a second, stricter relation beside them would refuse
+/// boards the datasheet's own equation accepts. Not taken: a `.max_duty_cycle` or `.dropout`
+/// member (both datasheets give a time, and a maximum duty `1 - fsw * tOFF_MIN` is right at
+/// one frequency only); the equation with the switch drops (`Buck` has no such members and
+/// the LM61430-Q1's datasheet gives none; the ideal duty cycle gives an on-time never longer
+/// than the real one, so the check can refuse a board that holds its frequency by a few
+/// percent and never accepts one that does not); evaluating at the rail's `.peak`, which is a
+/// transient where the datasheets say the part lowers its frequency and recovers (the peak
+/// stays a rating, `.vin.peak <= .vin_abs_max`); a required member (existing parts and boards
+/// would stop building, the reason ADR 0069's `required` was dropped); folding the check into
+/// each IC's own relations (each would write the same two lines, and the stage is where the
+/// output, the input and the frequency meet). A linear regulator's dropout was already
+/// checked: `LinearRegulator` states `.vin.voltage >= .vout.voltage + .dropout`. The names
+/// `.min_on_time` and `.min_off_time` (the `Lt8641` spells its own `.t_on_min`), and whether
+/// the `Lt8641` should state its 50 ns and 110 ns on `Buck` too, are the owner's to confirm.
+///
 /// The divider's current and the quiescent current of the IC are not added to the load, so
 /// the inductor carries the load: `.inductor.current == -.vout.current` (the IC's own current
 /// is in its input's, as its part writes it, ADR 0096). A design that adds
@@ -241,11 +269,37 @@ module BuckStage {
     .off_time: Time
     /// The current the feedback divider draws from the output.
     .divider_current: Current
-    /// The factor each capacitor's rating has over the highest voltage of its rail (ADR 0084,
-    /// provisional): `.input_cap.max_voltage >= .vin.peak * .voltage_margin`, and the same for
+    /// The factor each capacitor's rating has over the highest voltage of its rail (ADR 0085):
+    /// `.input_cap.max_voltage >= .vin.peak * .voltage_margin`, and the same for
     /// the steady `.voltage` and for the output. A default of 1, which asks for no more than
     /// the rail's peak; a board that derates its capacitors states it
-    /// (`.stage.voltage_margin &= 1.25`), and a module that wraps the stage forwards its own.
+    /// (`.stage.voltage_margin &= 1.25`), and a module that wraps the stage forwards its own
+    /// (`.stage.voltage_margin &= .margin`). The board's `&=` replaces the default (`?=`,
+    /// ADR 0051).
+    ///
+    /// Why it is one member of the stage. The capacitors are inside the stage, so a board
+    /// cannot reach them, and a board that wanted its own rule (every ceramic capacitor on a
+    /// power rail rated at least 1.25 times the rail's peak) had to keep a copy of the stage
+    /// with two lines changed, which had to follow every change to the std stage by hand. The
+    /// margin applies to the steady voltage as well as to the peak: a rail that states no peak
+    /// leaves the peak lines not evaluated, and a margin only on them would silently do
+    /// nothing there. A peak is never below the steady voltage, so a board that states its
+    /// peak gets the same result as with the peak lines alone. With the default 1 each line is
+    /// the one it replaced (`x * 1` is exact), so no existing board, pick or golden changes;
+    /// only the text of a failing message differs, which now quotes the product. The stage has
+    /// no bootstrap or bypass capacitor (they are inside the IC's own circuit, which a part or
+    /// module writes), so the member covers the two banks the stage has; a module that adds
+    /// such capacitors states its own bound.
+    ///
+    /// Not taken: a margin for each side (two members to state one rule); a margin on the peak
+    /// only, as a project's copy had it; exposing `.input_cap` and `.output_cap` so a board
+    /// states `.stage.input_cap.max_voltage >= ...` itself (a larger change to what the stage
+    /// exposes, and each board repeats the rule); a margin on `Rail` (every part on the rail
+    /// would read it, and a rail has no reason to know how parts are derated); a default of
+    /// 1.25 (it changes every existing board and golden). The name, the steady voltage taking
+    /// the margin too, and whether other std modules that hold capacitors across a rail take
+    /// the same member when they are added (none exists besides `BuckStage`) are the owner's
+    /// to confirm.
     .voltage_margin: Number
     .voltage_margin ?= 1
 
@@ -386,6 +440,24 @@ module BuckStage {
 ///   the board ties SYNC/MODE; a board that grounds it states the ultralow figure,
 ///   `.u.quiescent_current &= 0A .. .u.iq_max`. The 10 uA is a maximum and no minimum, so the
 ///   least the input draws is still zero: a board cannot ask for `.u.vin.current >= 10uA`.
+///   Not taken: `.vin.current >= .iq_max` (a maximum read as a minimum: it would claim the part
+///   always draws 10 uA); 10 uA as the default (true only with SYNC/MODE grounded, so a board
+///   that floats the pin, which the datasheet allows, would be judged at a twentieth of the
+///   figure for the mode it runs in); the 0.5 mA read as a limit over the junction
+///   temperature range (it is a 25 C maximum, the only figure the datasheet gives for the
+///   other modes); reading the member by name in the analysis (a part that calls it `.iq_max`
+///   would be silently not modelled, so the `dc` statement names it); one figure for each
+///   mode, picked by a member or by the voltage of the SYNC/MODE net (the language has no way
+///   for a relation to choose); adding the stage's feedback divider here (it is a load on the
+///   output, about 350 uA at 3.3 V in a test board, and `BuckStage` keeps it apart as
+///   `.divider_current`). The DC analysis solves the output side, so its input current for an
+///   unloaded stage is larger than this relation's, and a current that the balance and the
+///   analysis cannot share is an error naming both ranges (ADR 0076, amendment 15): a std
+///   stage with a 0 A output is refused for its inductor's current and for `u.vin.current`,
+///   and a sleep budget cannot be shown to pass on one. The default, the floor of zero, the
+///   0.5 mA as the upper end for modes with no figure over temperature, and whether the
+///   divider belongs in the IC's input current (it does at the physical converter) are the
+///   owner's to confirm.
 /// - `BIAS` takes at most 25 V (Absolute Maximum Ratings, p.2); the datasheet ties it to the
 ///   output for outputs of 3.3 V to 25 V, and to ground when no supply is available (Pin
 ///   Functions, p.10), so the board states `.bias_voltage` and joins the pin.
@@ -407,7 +479,21 @@ module BuckStage {
 ///   stage's divider, which the solver reads as the hull of the two resistors (from ground to
 ///   the output) when the DC analysis does not solve the output side, so a limit would refuse
 ///   every output above 4 V, a 5 V stage included. The divider holds the pin at
-///   `.buck.vref`, under 0.83 V, by its own relation.
+///   `.buck.vref`, under 0.83 V, by its own relation. Not taken: a voltage the board states,
+///   like `.bias_voltage` (a board that forgets it is not judged, the false pass of issue
+///   #290); changing the pins into `Logic` lines (`.u.sync_mode.line ~ ...`), which breaks
+///   every board that wires the part, for a limit the join inside the part states with no
+///   change; a pin-level limit with its own ground (a `Pin` member naming the rail it is
+///   measured against), the general fix that would also give `PG` and `FB` theirs and is a
+///   change to the language and the checker; a note for a pin left to float (a note on each
+///   build of a legal board); `FB` at 4 V anyway (it refuses the 5 V stage, the commonest).
+///   The solver skips a pin that nothing outside its own part is joined to, for every part
+///   and not this one only (`absolute_maximums` in `crates/netsmith-solve/src/levels.rs`): an
+///   optional input left floating has no voltage to judge, and a required one is already an
+///   error. Whether the limits are a `Logic` joined inside the part, a voltage the board
+///   states or a general pin-level limit, `PG` and `FB` left unstated until the solver can
+///   judge them, the reading of the table as voltages from `GND`, and the skip for every part
+///   are the owner's to confirm.
 ///
 /// Pins (Pin Functions, p.10 and p.11, and the Pin Configuration, p.2): 1 BIAS, 2 INTVCC,
 /// 3 BST, 4 VIN1, 5 and 12 not present, 6 and 7 GND1, 8 and 9 SW, 10 and 11 GND2, 13 VIN2,
