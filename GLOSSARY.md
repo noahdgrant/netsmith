@@ -378,7 +378,7 @@ The voltage of a rail on a node of a `~>` chain, as the analysis gives it: the s
 _Avoid_: Propagated voltage, derived voltage (a derived value is any worked-out field; this one is the node's)
 
 **Enclosure**:
-A range that holds whatever a pick later chooses, written before the picks so that a pick that reads a voltage can be judged: each part still to be picked at the hull of what its candidates give its `dc` value (or, when the design limits its current, a load of at most that limit), and a regulator's load, when it is not known, from nothing up to the limit the regulator states on what its output supplies. The pass after the picks narrows it to the circuit that was picked (ADR 0076, amendment 5, 6 and 7).
+A range that holds whatever a pick later chooses, written before the picks so that a pick that reads a voltage can be judged: each part still to be picked at the hull of what its candidates give its `dc` value (or, when the design limits its current, a load of at most that limit), and a regulator's load: the sum of what the loads on its output draw, each over every pick it could have, when every load has a current the design's relations give, and otherwise (a load that states nothing) from nothing up to the limit the regulator states on what its output supplies. The pass after the picks narrows it to the circuit that was picked (ADR 0076, amendments 5, 6, 7 and 11).
 _Avoid_: Seed, start window (those are a range the board writes by hand and states as a claim; an enclosure is worked out and is not stated), bound (the bound from Ohm's law is another, cheaper thing)
 
 **Assumed window**:
