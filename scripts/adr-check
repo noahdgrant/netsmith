@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Checks the ADRs against docs/adr/README.md: an ADR is at most 80 lines and 8000 bytes (about
+# one page), and its status word is `proposed`, `accepted`, `superseded` or `folded`. The status
+# word is the first word of the `status:` line, in the frontmatter or, for a folded stub, in its
+# first three lines; an ADR with neither has none to check.
+# The ADRs named in docs/adr/.oversize (one file name per line, `#` starts a comment) broke a
+# rule before the rules were written; they are exempt until they are cut down or folded. A name
+# on the list whose ADR now passes is an error, so the list only shrinks.
+#   scripts/adr-check
+set -eu
+
+cd "$(dirname "$0")/../docs/adr"
+max_lines=80
+max_bytes=8000
+status=0
+fail() { echo "adr-check: $*" >&2; status=1; }
+
+listed() { [ -f .oversize ] && grep -vE '^#' .oversize | grep -qxF "$1"; }
+
+for f in [0-9][0-9][0-9][0-9]-*.md; do
+    problem=
+    lines=$(wc -l < "$f")
+    bytes=$(wc -c < "$f")
+    if [ "$lines" -gt "$max_lines" ] || [ "$bytes" -gt "$max_bytes" ]; then
+        problem="is $lines lines and $bytes bytes: the limit is $max_lines lines and $max_bytes bytes"
+    fi
+    word=$(awk 'NR == 1 && $0 == "---" { fm = 1; next } fm && $0 == "---" { exit } (fm || NR <= 3) && /^status:/ { sub(/^status:[ \t]*/, ""); sub(/[^a-z].*$/, ""); print; exit } !fm && NR > 3 { exit }' "$f")
+    case "$word" in
+        "" | proposed | accepted | superseded | folded) ;;
+        *) problem="${problem:+$problem, and }has the status word \`$word\`: use proposed, accepted, superseded or folded" ;;
+    esac
+    if [ -n "$problem" ] && ! listed "$f"; then
+        fail "$f $problem (docs/adr/README.md)"
+    elif [ -z "$problem" ] && listed "$f"; then
+        fail "$f passes now: take it off docs/adr/.oversize"
+    fi
+done
+
+if [ -f .oversize ]; then
+    while IFS= read -r name; do
+        [ -f "$name" ] || fail ".oversize names $name, which is not there"
+    done < <(grep -vE '^#' .oversize)
+fi
+exit $status

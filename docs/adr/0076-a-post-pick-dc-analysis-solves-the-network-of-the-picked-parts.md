@@ -31,7 +31,7 @@ A combination whose states are not the circuit's (a diode blocking while its ano
 
 ## 2. The element models
 
-Every element is a stamp of the modified nodal analysis: node voltages and one current for each element that holds a voltage between two nodes. Prototype: `crates/netsmith-dc/src/netlist.rs` and `op.rs`.
+Every element is a stamp of the modified nodal analysis: node voltages and one current for each element that holds a voltage between two nodes. The prototype's `netlist.rs` and `op.rs` are in git history (see section 8).
 
 | Element | Model | Ranges and states tried |
 | --- | --- | --- |
@@ -108,6 +108,8 @@ The DC pass does not make it unnecessary. The bound is the fallback for an islan
 **Equations only (issue #153).** (a) `~>` over rails carries the source's voltage less the parts' drops as an equation, (b) circles start from a source's bounds. Each is a rule that does what the pass does for one shape. (a) needs the regulator's input current, which is the circle itself, and (b) leaves the seed to the solver's range search of ADR 0053. The pass is the engine that makes (a) exact, and the plan below builds (a) on it.
 
 ## 8. What the prototype shows
+
+The prototype crate `crates/netsmith-dc` was removed on 2026-11-09, once the solver had its own port (`crates/netsmith-solve/src/dc/`); it is in git history at `b504854` and before. What follows is the record of what it showed.
 
 `crates/netsmith-dc` is about 1650 lines of source and 650 of tests, with no dependencies, and nothing in the workspace depends on it, so `netsmith build` is unchanged. Its 23 tests are hand calculations (a divider, in which the corners give `4.95 V..5.05 V` and interval arithmetic `4.90 V..5.10 V`; a pull-down in each state of a pin; a fuse and a diode in a chain, and the diode blocking a reversed supply; a regulator whose input current depends on its input voltage through a 0.5 ohm drop, `0.45 I^2 - 10.8 I + 5 = 0`, `I = 0.4723 A`, against `0.463 A` without the drop; two regulators in a row; a collapse; a MOSFET off for a low gate and on for a high one; an open-drain line; a supercapacitor's divider with cell leakage) and eight islands of the real board, each checked against a closed form worked out in the test. The islands are read from what `netsmith build` prints (the bill of materials and the nets of the board) and from the catalog rows of the picked parts, by `crates/netsmith-dc/scripts/passives_from_build.py`, which prints the lines of the island for the references it is given: the value and tolerance are the picked row's, the pins are the export's. The boundary of each island (the pin's drive, the neighbour's input) is an assumption marked in the file. `cargo run --release -p netsmith-dc --example islands` prints the table below.
 
