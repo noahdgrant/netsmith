@@ -523,12 +523,12 @@ version = "0.1.0"
 dependencies = [
  "netsmith-check",
  "netsmith-core",
+ "netsmith-design",
  "netsmith-dxf",
  "netsmith-editor",
  "netsmith-fab",
  "netsmith-kicad",
  "netsmith-lang",
- "netsmith-lower",
  "netsmith-netlist",
  "netsmith-pcb",
  "netsmith-quantity",
@@ -558,6 +558,18 @@ version = "0.1.0"
 [[package]]
 name = "netsmith-dc"
 version = "0.1.0"
+
+[[package]]
+name = "netsmith-design"
+version = "0.1.0"
+dependencies = [
+ "netsmith-check",
+ "netsmith-core",
+ "netsmith-kicad",
+ "netsmith-lang",
+ "netsmith-quantity",
+ "netsmith-solve",
+]
 
 [[package]]
 name = "netsmith-dxf"
@@ -599,18 +611,6 @@ dependencies = [
 [[package]]
 name = "netsmith-lang"
 version = "0.1.0"
-
-[[package]]
-name = "netsmith-lower"
-version = "0.1.0"
-dependencies = [
- "netsmith-check",
- "netsmith-core",
- "netsmith-kicad",
- "netsmith-lang",
- "netsmith-quantity",
- "netsmith-solve",
-]
 
 [[package]]
 name = "netsmith-netlist"

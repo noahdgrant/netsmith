@@ -7,7 +7,7 @@
 #            themselves in `test` run. A change needs it when it can change what those tests see:
 #            the crates that call kicad-cli or read KiCad's libraries (netsmith-kicad, -fab, -pcb
 #            and the netsmith crate), the crates that make the files those tests check
-#            (netsmith-core, -lower, -netlist), and the data the tests read: std/ (kicad.toml maps
+#            (netsmith-core, -design, -netlist), and the data the tests read: std/ (kicad.toml maps
 #            kinds to KiCad's footprints), examples/ (the boards they build) and data/.
 #   recipes  the `recipes` job: the editor's browser recipes. They drive the `netsmith` binary
 #            (its editor, and the build, fab and order pipeline behind it, with KiCad 9 installed)
@@ -96,7 +96,7 @@ while IFS= read -r path; do
 
         crates/netsmith/src/refresh/*) rust=true recipes=true ;;
         crates/netsmith-kicad/* | crates/netsmith-core/* | crates/netsmith-fab/* | crates/netsmith-pcb/*) kicad_crate "${path#crates/*/}" "$path" ;;
-        crates/netsmith-lower/* | crates/netsmith-netlist/* | crates/netsmith/*) kicad_crate "${path#crates/*/}" "$path" ;;
+        crates/netsmith-design/* | crates/netsmith-netlist/* | crates/netsmith/*) kicad_crate "${path#crates/*/}" "$path" ;;
         crates/netsmith-editor/tests/* | crates/netsmith-view/tests/*) rust=true ;;
         crates/netsmith-editor/* | crates/netsmith-view/*) rust=true recipes=true ;;
         crates/*) rust=true ;;

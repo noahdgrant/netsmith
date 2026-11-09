@@ -227,7 +227,7 @@ impl Catalogs {
 
     /// The project's default for who assembles a part that nothing else speaks for:
     /// `fab`, `hand`, `none` or `consigned` (the manifest's `assembly`, ADR 0028). The sourcing policy of
-    /// a project travels with its parts data, so every command that picks parts lowers with
+    /// a project travels with its parts data, so every command that picks parts goes by
     /// it. The caller has checked the word.
     pub fn with_default_assembly(mut self, word: Option<&str>) -> Self {
         self.default_assembly = word.map(str::to_string);

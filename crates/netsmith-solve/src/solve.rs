@@ -72,7 +72,7 @@ pub struct Solution {
     pub seeded: Vec<Seeded>,
     pub diagnostics: Vec<Diagnostic>,
     /// The project's default for who assembles a part (`fab`, `hand` or `none`), from the
-    /// catalogs the board was solved with (ADR 0028). Lowering applies it.
+    /// catalogs the board was solved with (ADR 0028). The design stage applies it.
     pub default_assembly: Option<String>,
     /// The logic level and absolute maximum checks that could not be made, and why
     /// (ADR 0046): never a pass.
@@ -1867,7 +1867,7 @@ impl Solver<'_> {
     }
 
     /// Whether a relation is a bound on a `.place` field or a value tied to one: those are
-    /// requirements that lowering reads (ADR 0045), not claims to verify.
+    /// requirements that the design stage reads (ADR 0045), not claims to verify.
     fn place_side<'r>(&self, r: &'r Relation) -> Option<(FieldId, &'r RExpr)> {
         let is_place = |e: &RExpr| match e {
             RExpr::Field(f) if self.model.is_place_field(*f) => Some(*f),

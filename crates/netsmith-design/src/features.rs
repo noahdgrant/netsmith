@@ -647,7 +647,7 @@ fn members(path: &str, banks: &BTreeMap<String, usize>) -> Vec<String> {
 }
 
 /// Make every requirement the design states on the path of a bank hold for each capacitor of
-/// it (ADR 0052). Lowering makes one part of the design for each, with a path of its own
+/// it (ADR 0052). The design stage makes one part of the design for each, with a path of its own
 /// (`stage.output_cap#2`), and a requirement that named only the first would leave the others
 /// to sit anywhere with nothing said. So a placement (`.place`), a height and a protrusion
 /// become one for each capacitor, and a relation between two places becomes one for each pair

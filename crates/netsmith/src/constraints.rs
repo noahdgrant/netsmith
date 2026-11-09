@@ -3,15 +3,15 @@
 
 use netsmith_check::{SourceId, Sources};
 use netsmith_core::{Design, PlaceField};
+use netsmith_design::Sites;
 use netsmith_fab::drc::Severity;
 use netsmith_fab::drc::constraints::{
     Constraint, Constraints, Measure, Relation, RelationEnd, SideRule,
 };
 use netsmith_lang::Span;
-use netsmith_lower::Sites;
 
 /// Say where the design states each requirement: `widget.nsm:14`, or several places
-/// separated by commas, on the bound or the side it is about. `sites` are what lowering
+/// separated by commas, on the bound or the side it is about. `sites` are what the design stage
 /// found, and `sources` the files the spans point into.
 pub fn name_sources(design: &mut Design, sites: &Sites, sources: &Sources) {
     for (index, field, spans) in sites {

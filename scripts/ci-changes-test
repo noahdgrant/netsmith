@@ -51,7 +51,7 @@ fn t() { build_with(name, text, &loader, &catalogs, &Libraries::with_mapping(m, 
 file crates/netsmith/tests/pure.rs "$pure"
 file crates/netsmith-fab/tests/pure.rs "$pure"
 file crates/netsmith-pcb/tests/pure.rs "$pure"
-file crates/netsmith-lower/tests/pure.rs "$pure"
+file crates/netsmith-design/tests/pure.rs "$pure"
 file crates/netsmith/src/supply/tests.rs "$pure"
 file crates/netsmith-fab/src/tests.rs "$pure"
 file crates/netsmith/tests/main.rs "mod pure;"
@@ -139,7 +139,7 @@ row "1 1 1" crates/netsmith/src/main.rs
 row "1 1 1" crates/netsmith/Cargo.toml
 row "1 1 1" crates/netsmith-kicad/src/symbols.rs
 row "1 1 1" crates/netsmith-fab/src/lib.rs crates/netsmith-pcb/src/footprint.rs
-row "1 1 1" crates/netsmith-core/src/lib.rs crates/netsmith-lower/src/lib.rs crates/netsmith-netlist/src/lib.rs
+row "1 1 1" crates/netsmith-core/src/lib.rs crates/netsmith-design/src/lib.rs crates/netsmith-netlist/src/lib.rs
 row "1 1 1" crates/netsmith-fab/Cargo.toml
 row "1 1 0" crates/netsmith-kicad/examples/locate.rs crates/netsmith-fab/examples/drc.rs
 row "1 0 1" crates/netsmith/src/refresh/mod.rs
@@ -147,7 +147,7 @@ row "1 0 1" crates/netsmith/src/refresh/http.rs crates/netsmith/src/refresh/csvf
 
 # --- test files of those crates: KiCad only when the file can ask; never the recipes ----------
 row "1 0 0" crates/netsmith/tests/pure.rs
-row "1 0 0" crates/netsmith-fab/tests/pure.rs crates/netsmith-pcb/tests/pure.rs crates/netsmith-lower/tests/pure.rs
+row "1 0 0" crates/netsmith-fab/tests/pure.rs crates/netsmith-pcb/tests/pure.rs crates/netsmith-design/tests/pure.rs
 row "1 0 0" crates/netsmith/src/supply/tests.rs crates/netsmith-fab/src/tests.rs
 row "1 0 0" crates/netsmith/tests/pure.rs crates/netsmith-pcb/tests/pure.rs
 row "1 0 0" crates/netsmith/tests/message.rs crates/netsmith/tests/mapping.rs

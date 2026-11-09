@@ -6,7 +6,7 @@
 //! (`guidelines = "error"`, `--strict`), because they are advice: the part may be right.
 
 use netsmith_check::{InstId, Model};
-use netsmith_lower::guidelines::Guideline;
+use netsmith_design::guidelines::Guideline;
 use netsmith_solve::Solution;
 
 /// One finding for each `bidirectional` row of a part that states its role and has a line the

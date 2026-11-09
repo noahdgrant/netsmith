@@ -1894,11 +1894,11 @@ fn what_the_solver_has_counted_and_a_cancelled_analysis_reach_the_page() {
         }),
     });
     s.backend.tell(AnalysisEvent::Progress {
-        stage: "lower".into(),
+        stage: "design".into(),
         board: "Main".into(),
         done: 0,
         total: 1,
-        message: "lowering Main (1 of 1): 2 alternative parts re-solved".into(),
+        message: "designing Main (1 of 1): 2 alternative parts re-solved".into(),
         work: Some(Work {
             unit: "alternative parts re-solved".into(),
             done: 2,
@@ -1942,7 +1942,7 @@ fn what_the_solver_has_counted_and_a_cancelled_analysis_reach_the_page() {
         counted(next_message(&mut socket, "the count of alternatives")),
         (
             "analyse".to_string(),
-            Some("lower".to_string()),
+            Some("design".to_string()),
             Some(0),
             Some(1),
             Some("alternative parts re-solved".to_string()),

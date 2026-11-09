@@ -17,10 +17,10 @@ use std::time::Duration;
 
 use netsmith_check::Loader;
 use netsmith_core::PanelSpec;
+use netsmith_design::{Assembly, Sourced};
 use netsmith_fab::panel::{CellFacts, CellInput, Spec};
 use netsmith_fab::{BomEntry, Fit, KicadCli, Options, Package, Side, package};
 use netsmith_kicad::Mapping;
-use netsmith_lower::{Assembly, Sourced};
 use netsmith_pcb::{
     Board, RouteOptions, Trim, apply_layout, kicad_pcb, kicad_pro, place_options, route_with, svg,
 };

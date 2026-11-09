@@ -262,10 +262,10 @@ describe('the tiles', () => {
   it('counts problems by severity for the filter of the Problems tab', () => {
     const rows = problemRows('B', {
       new: [
-        { severity: 'warning', message: 'a', rendered: '', at: null, stage: 'lower' },
+        { severity: 'warning', message: 'a', rendered: '', at: null, stage: 'design' },
         { severity: 'note', message: 'b', rendered: '', at: null, stage: 'solve' },
       ],
-      resolved: [{ severity: 'warning', message: 'c', rendered: '', at: null, stage: 'lower' }],
+      resolved: [{ severity: 'warning', message: 'c', rendered: '', at: null, stage: 'design' }],
     });
     expect(severityCounts(rows)).toEqual({ all: 3, error: 0, warning: 2, note: 1 });
     expect(severityWord('warning', 1)).toBe('warning');
@@ -308,10 +308,10 @@ describe('the stage of a comparison in progress', () => {
     expect(stageText({ stage: 'solve', message: 'solving TwoBoards, 1 of 1', done: 1, total: 1 })).toBe('Solving TwoBoards, 1 of 1');
     expect(stageText({ stage: 'diff', message: '' })).toMatch(/Comparing/);
     expect(stageText({ message: '' })).toBe('Working');
-    for (const s of ['extract', 'check', 'solve', 'lower', 'draw', 'modules', 'diff']) expect(stageText({ stage: s, message: '' })).not.toMatch(/%/);
+    for (const s of ['extract', 'check', 'solve', 'design', 'draw', 'modules', 'diff']) expect(stageText({ stage: s, message: '' })).not.toMatch(/%/);
   });
   it('knows where a stage is in the order the server goes through them', () => {
-    expect(['extract', 'check', 'solve', 'lower', 'draw', 'modules', 'diff'].map(stageIndex)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(['extract', 'check', 'solve', 'design', 'draw', 'modules', 'diff'].map(stageIndex)).toEqual([0, 1, 2, 3, 4, 5, 6]);
     expect(stageIndex(undefined)).toBe(-1);
     expect(stageIndex('other')).toBe(-1);
   });

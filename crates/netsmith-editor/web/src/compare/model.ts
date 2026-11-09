@@ -698,7 +698,7 @@ const STAGES: Record<string, string> = {
   extract: 'Reading the files at the ref from git',
   check: 'Checking the sources at the ref',
   solve: 'Solving the values at the ref',
-  lower: 'Lowering the boards at the ref',
+  design: 'Designing the boards at the ref',
   draw: 'Drawing the schematics at the ref',
   modules: 'Reading the modules at the ref',
   diff: 'Comparing the two readings',
@@ -712,7 +712,7 @@ export function stageText(p: StageInfo | null): string {
 }
 
 /** The stages in the order the server goes through them, for the row of dots under the text. */
-export const STAGE_ORDER = ['extract', 'check', 'solve', 'lower', 'draw', 'modules', 'diff'] as const;
+export const STAGE_ORDER = ['extract', 'check', 'solve', 'design', 'draw', 'modules', 'diff'] as const;
 
 export const stageIndex = (stage: string | undefined): number => (stage ? STAGE_ORDER.indexOf(stage as (typeof STAGE_ORDER)[number]) : -1);
 

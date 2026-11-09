@@ -28,10 +28,12 @@ use netsmith_check::{
     Checked, Domain, FieldId, FieldKind, InstId, InstKind, Loader, Model, SourceId, Sources, check,
 };
 use netsmith_core::{Cause, Design, PanelSpec};
+use netsmith_design::guidelines::Guideline;
+use netsmith_design::{
+    Assembly, Designed, Sourced, design_board, design_panel, design_system_board,
+};
 use netsmith_kicad::{Mapping, Pinout, emit_schematic, project_file};
 use netsmith_lang::{ParseError, Span};
-use netsmith_lower::guidelines::Guideline;
-use netsmith_lower::{Assembly, Lowered, Sourced, lower, lower_panel, lower_system_board};
 use netsmith_pcb::{Subject, validate_pinout};
 use netsmith_solve::{Catalogs, Solution, solve, solve_system};
 
@@ -65,7 +67,7 @@ pub struct Built {
     /// What was decided, for a person to read.
     pub report: String,
     /// Things worth knowing that did not stop the build: what the solver decided and left
-    /// alone, then the notes of lowering (the last `lowering_notes` of them).
+    /// alone, then the notes of the design stage (the last `design_notes` of them).
     pub notes: Vec<String>,
     /// Why each of `notes` is there, in the same order (see [`Cause`]): the editor groups the
     /// notes by it.
@@ -73,8 +75,8 @@ pub struct Built {
     /// For each use of a generic on this board: the provider that stands in its place and the
     /// providers passed over (ADR 0068). Empty for a board that uses no generic.
     pub providers: Vec<ProviderNote>,
-    /// How many of the last `notes` come from lowering and not from the solver.
-    pub lowering_notes: usize,
+    /// How many of the last `notes` come from the design stage and not from the solver.
+    pub design_notes: usize,
     /// What the design does against a guideline (ADR 0036): a warning that did not stop
     /// the build. With `guidelines = "error"` or `--strict` the build stops instead and
     /// this is empty.
@@ -137,8 +139,9 @@ pub enum Stage {
     Check,
     /// The solver.
     Solve,
-    /// Lowering to parts and nets, and the checks of the schematic and footprints against it.
-    Lower,
+    /// The design stage: making the parts and nets of a solved board (the `Design`), and the
+    /// checks of the schematic and footprints against it.
+    Design,
     /// A guideline that the project makes an error (ADR 0036).
     Guideline,
     /// The power model: a rail that can draw more than its supply can give (issue #187).
@@ -309,7 +312,7 @@ impl Built {
     }
 }
 
-/// Check, solve, lower and export every board in one source file, and every board of every
+/// Check, solve, design and export every board in one source file, and every board of every
 /// system in it, reading the installed KiCad libraries. A board that a system places is
 /// built as that system's, not again alone. On failure the error is every problem,
 /// rendered with its source line.
@@ -351,9 +354,9 @@ pub fn outcome_with(
 /// What [`outcome_observed`] is about to do, for a caller that shows how far it has got.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Step<'a> {
-    /// `Solve` or `Lower`.
+    /// `Solve` or `Design`.
     pub stage: Stage,
-    /// The board or system it is about to work on (a board of a system is lowered under the
+    /// The board or system it is about to work on (a board of a system is designed under the
     /// system's name).
     pub board: &'a str,
     /// How many of the file's boards and systems are finished, and how many there are.
@@ -361,7 +364,7 @@ pub struct Step<'a> {
     pub total: usize,
 }
 
-/// [`outcome_with`], telling `observe` before it solves and before it lowers each board and
+/// [`outcome_with`], telling `observe` before it solves and before it designs each board and
 /// system of the file.
 pub fn outcome_observed(
     name: &str,
@@ -435,23 +438,23 @@ pub fn outcome_observed(
         let sources = picked
             .as_ref()
             .map_or(&checked.sources, |p| &p.checked.sources);
-        observe(step(Stage::Lower));
-        let mut lowered = lower(board, solution)
-            .map_err(|errors| lowering_problems(Some(&board.name), &board.name, &errors))?;
-        lowered
+        observe(step(Stage::Design));
+        let mut designed = design_board(board, solution)
+            .map_err(|errors| design_problems(Some(&board.name), &board.name, &errors))?;
+        designed
             .guidelines
             .extend(open_circle_findings(solution, sources, None));
-        lowered
+        designed
             .guidelines
             .extend(values::unconstrained_pick_findings(solution, sources, None));
-        lowered
+        designed
             .guidelines
             .extend(values::unstated_value_findings(solution, sources, None));
-        lowered
+        designed
             .guidelines
             .extend(bus_roles::findings(solution, None));
         if catalogs.strict_guidelines() {
-            refuse_guidelines(&board.name, &lowered.guidelines, &solution.model, sources)?;
+            refuse_guidelines(&board.name, &designed.guidelines, &solution.model, sources)?;
         }
         let power_issues = editor::power::board_tree(&solution.model, sources).issues;
         refuse_power(&board.name, &power_issues, |_| true)?;
@@ -459,14 +462,14 @@ pub fn outcome_observed(
         let mut notes = provider_lines(&provided);
         notes.extend(self::notes(solution, None));
         notes.extend(
-            stock::notes(&lowered, catalogs)
+            stock::notes(&designed, catalogs)
                 .into_iter()
                 .map(|n| (n, Cause::Pick)),
         );
         let mut one = export(
             None,
             &board.name,
-            lowered,
+            designed,
             notes,
             &solution.model,
             sources,
@@ -547,7 +550,7 @@ pub fn outcome_observed(
         let sources = picked
             .as_ref()
             .map_or(&checked.sources, |p| &p.checked.sources);
-        observe(step(Stage::Lower));
+        observe(step(Stage::Design));
         // The issues of the whole system: a rail that a port of another board supplies has a
         // source here, which the board alone does not show.
         let power_issues = editor::power::system_tree(
@@ -562,29 +565,29 @@ pub fn outcome_observed(
         .issues;
         for member in &system.boards {
             let label = format!("{}/{}", system.name, member.name);
-            let mut lowered = lower_system_board(system, member, solution)
-                .map_err(|errors| lowering_problems(Some(&label), &label, &errors))?;
-            lowered
+            let mut designed = design_system_board(system, member, solution)
+                .map_err(|errors| design_problems(Some(&label), &label, &errors))?;
+            designed
                 .guidelines
                 .extend(open_circle_findings(solution, sources, Some(member.inst)));
-            lowered
+            designed
                 .guidelines
                 .extend(values::unconstrained_pick_findings(
                     solution,
                     sources,
                     Some(member.inst),
                 ));
-            lowered.guidelines.extend(values::unstated_value_findings(
+            designed.guidelines.extend(values::unstated_value_findings(
                 solution,
                 sources,
                 Some(member.inst),
             ));
-            lowered
+            designed
                 .guidelines
                 .extend(bus_roles::findings(solution, Some(member.inst)));
             let scoped = solution.model.scoped_to(member.inst);
             if catalogs.strict_guidelines() {
-                refuse_guidelines(&label, &lowered.guidelines, &scoped, sources)?;
+                refuse_guidelines(&label, &designed.guidelines, &scoped, sources)?;
             }
             let mine = |issue: &PowerIssue| issue.board.as_deref() == Some(member.name.as_str());
             refuse_power(&label, &power_issues, mine)?;
@@ -592,14 +595,14 @@ pub fn outcome_observed(
             let mut notes = provider_lines(&provided);
             notes.extend(self::notes(solution, Some(member.inst)));
             notes.extend(
-                stock::notes(&lowered, catalogs)
+                stock::notes(&designed, catalogs)
                     .into_iter()
                     .map(|n| (n, Cause::Pick)),
             );
             let mut one = export(
                 Some(&system.name),
                 &member.name,
-                lowered,
+                designed,
                 notes,
                 &scoped,
                 sources,
@@ -629,8 +632,8 @@ pub fn outcome_observed(
     }
     let mut panels = Vec::new();
     for panel in &checked.panels {
-        let spec = lower_panel(panel)
-            .map_err(|errors| lowering_problems(None, &format!("panel {}", panel.name), &errors))?;
+        let spec = design_panel(panel)
+            .map_err(|errors| design_problems(None, &format!("panel {}", panel.name), &errors))?;
         if !built
             .iter()
             .any(|b| b.system.is_none() && b.board == spec.cell)
@@ -794,13 +797,13 @@ fn diagnostic_problems(
         .collect()
 }
 
-/// Mistakes of lowering `subject`: a board (`board` names it), or a panel.
-fn lowering_problems(board: Option<&str>, subject: &str, errors: &[String]) -> Vec<Problem> {
+/// Mistakes of the design stage for `subject`: a board (`board` names it), or a panel.
+fn design_problems(board: Option<&str>, subject: &str, errors: &[String]) -> Vec<Problem> {
     errors
         .iter()
         .map(|e| {
             let mut problem = Problem::general(
-                Stage::Lower,
+                Stage::Design,
                 format!("{subject}: {e}"),
                 format!("error: {subject}: {e}\n"),
             );
@@ -1145,30 +1148,30 @@ fn circular_note(model: &Model, group: &[FieldId]) -> String {
     )
 }
 
-/// The schematic and report of a lowered board.
+/// The schematic and report of a designed board.
 fn export(
     system: Option<&str>,
     board: &str,
-    lowered: Lowered,
+    designed: Designed,
     notes: Vec<Noted>,
     model: &Model,
     sources: &Sources,
     libraries: Option<&Libraries>,
 ) -> Result<Built, Vec<Problem>> {
     // The nets with a current that is not known, whose tracks are a lower bound (ADR 0036).
-    let lowering_notes = lowered.notes.len();
+    let design_notes = designed.notes.len();
     let (mut notes, mut note_causes): (Vec<String>, Vec<Cause>) = notes.into_iter().unzip();
-    notes.extend(lowered.notes.iter().cloned());
-    note_causes.extend(lowered.note_causes.iter().copied());
+    notes.extend(designed.notes.iter().cloned());
+    note_causes.extend(designed.note_causes.iter().copied());
     let label = match system {
         Some(system) => format!("{system}/{board}"),
         None => board.to_string(),
     };
-    let mut design = lowered.design;
-    constraints::name_sources(&mut design, &lowered.constraint_sites, sources);
-    constraints::name_offset_sources(&mut design, &lowered.offset_sites, sources);
-    constraints::name_protrusion_sources(&mut design, &lowered.protrusion_sites, sources);
-    let mut sourcing = lowered.sourcing;
+    let mut design = designed.design;
+    constraints::name_sources(&mut design, &designed.constraint_sites, sources);
+    constraints::name_offset_sources(&mut design, &designed.offset_sites, sources);
+    constraints::name_protrusion_sources(&mut design, &designed.protrusion_sites, sources);
+    let mut sourcing = designed.sourcing;
     let (schematic, project) = match libraries {
         None => (String::new(), String::new()),
         Some(libraries) => {
@@ -1185,7 +1188,7 @@ fn export(
                 let footprint = libraries.footprints.load(&mapped.footprint).map_err(|e| {
                     vec![
                         Problem::general(
-                            Stage::Lower,
+                            Stage::Design,
                             format!("{label}: {}: {e}", s.refdes),
                             format!("error: {label}: {}: {e}\n", s.refdes),
                         )
@@ -1214,7 +1217,7 @@ fn export(
                     .into_iter()
                     .map(|m| {
                         Problem::general(
-                            Stage::Lower,
+                            Stage::Design,
                             format!("{label}: {m}"),
                             format!("error: {label}: {m}\n"),
                         )
@@ -1236,7 +1239,7 @@ fn export(
                 .map_err(|e| {
                     vec![
                         Problem::general(
-                            Stage::Lower,
+                            Stage::Design,
                             format!("{label}: {e}"),
                             format!("error: {label}: {e}\n"),
                         )
@@ -1275,13 +1278,13 @@ fn export(
         notes,
         note_causes,
         providers: Vec::new(),
-        lowering_notes,
-        guidelines: lowered.guidelines,
+        design_notes,
+        guidelines: designed.guidelines,
         power: Vec::new(),
         trace: Trace {
             model: model.clone(),
             sources: sources.clone(),
-            origins: lowered.origins,
+            origins: designed.origins,
         },
     })
 }

@@ -2,12 +2,12 @@
 //!
 //! Three sources, the strongest first: the design states `.height` (the source or the physical
 //! file), else the `height` cell of the catalog row the part was picked as (a datasheet figure
-//! with its source), else the part has no height and a limit reports it unchecked. Lowering
+//! with its source), else the part has no height and a limit reports it unchecked. The design stage
 //! lists only the first; this module adds the second, once the generic parts have their rows,
 //! and keeps what it added so that a report can say where each number came from.
 
 use netsmith_core::{Design, PartHeight};
-use netsmith_lower::Sourced;
+use netsmith_design::Sourced;
 use netsmith_solve::Catalogs;
 
 use crate::resolve::resolve_generics;

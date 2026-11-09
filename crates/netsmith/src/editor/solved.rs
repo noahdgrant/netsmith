@@ -3,8 +3,8 @@
 //! row's identity. Read from the solved model, as the power tree is.
 
 use netsmith_check::{Domain, InstId, Member, Model};
+use netsmith_design::Sourced;
 use netsmith_editor::api::{Range, Rating, Solved, SolvedRow, Tolerance};
-use netsmith_lower::Sourced;
 use netsmith_quantity::{Dimension, Quantity};
 
 /// The part `inst`, which is sourced as `source`, or `None` if there is nothing to say.

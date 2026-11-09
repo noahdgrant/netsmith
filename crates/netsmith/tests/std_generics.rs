@@ -425,7 +425,7 @@ fn a_provider_of_resistor_is_picked_when_no_row_or_series_value_serves() {
         "{:?}",
         b.notes
     );
-    // What lowering makes of it: the provider's name as the kind, the generic it provides, the
+    // What the design stage makes of it: the provider's name as the kind, the generic it provides, the
     // letters the generic states, the row of the provider's own catalog.
     let part = &b.design.parts[0];
     assert_eq!(part.kind, "PrecisionThinFilm");

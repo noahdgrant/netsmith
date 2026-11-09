@@ -211,7 +211,7 @@ fn problem(severity: Severity, p: &crate::Problem) -> Problem {
             Stage::Syntax => ProblemStage::Syntax,
             Stage::Check => ProblemStage::Check,
             Stage::Solve => ProblemStage::Solve,
-            Stage::Lower => ProblemStage::Lower,
+            Stage::Design => ProblemStage::Design,
             Stage::Guideline => ProblemStage::Guideline,
             Stage::Power => ProblemStage::Power,
         }),
@@ -333,7 +333,7 @@ const MODULE_PROGRESS_EVERY: std::time::Duration = std::time::Duration::from_mil
 /// The least time between two progress lines about what the solver has counted.
 const WORK_PROGRESS_EVERY: std::time::Duration = std::time::Duration::from_millis(100);
 
-/// The solve or lowering step being worked on, which the solver's counts are told with.
+/// The solve or design step being worked on, which the solver's counts are told with.
 struct Where {
     stage: &'static str,
     board: String,
@@ -369,7 +369,7 @@ fn work_sink(live: Option<Observer>, step: &Rc<RefCell<Option<Where>>>) -> Rc<dy
         let verb = match step.stage {
             "solve" => "solving",
             "draw" => "drawing",
-            _ => "lowering",
+            _ => "designing",
         };
         let counted = match work.total {
             Some(total) => format!("{} of {total} {}", work.done, work.unit),
@@ -464,12 +464,12 @@ impl Workspace {
                             let stage = if step.stage == Stage::Solve {
                                 "solve"
                             } else {
-                                "lower"
+                                "design"
                             };
                             let verb = if step.stage == Stage::Solve {
                                 "solving"
                             } else {
-                                "lowering"
+                                "designing"
                             };
                             *current.borrow_mut() = Some(Where {
                                 stage,
@@ -599,7 +599,7 @@ impl Workspace {
                                 Some(label.clone()),
                             ));
                         }
-                        let solver_notes = built.notes.len() - built.lowering_notes;
+                        let solver_notes = built.notes.len() - built.design_notes;
                         for (n, (note, cause)) in
                             built.notes.iter().zip(&built.note_causes).enumerate()
                         {
@@ -987,7 +987,7 @@ pub(super) fn api_location(l: crate::Location) -> Location {
 /// A note of the build, at the instance it is about if it names one. A part not chosen is a
 /// warning, because the design has a hole; a relation not evaluated and a balance that is
 /// incomplete are notes, which say what the solver left alone and are mostly expected.
-fn note_problem(built: &Built, note: &str, cause: Cause, from_lowering: bool) -> Problem {
+fn note_problem(built: &Built, note: &str, cause: Cause, from_design: bool) -> Problem {
     let model = &built.trace.model;
     let at = note_path_at(model, note).map(|inst| {
         let (src, span) = model.instance(inst).at();
@@ -1005,8 +1005,8 @@ fn note_problem(built: &Built, note: &str, cause: Cause, from_lowering: bool) ->
         message: format!("{}: {note}", built.label()),
         rendered: format!("note: {}: {note}\n", built.label()),
         at,
-        stage: Some(if from_lowering {
-            ProblemStage::Lower
+        stage: Some(if from_design {
+            ProblemStage::Design
         } else {
             ProblemStage::Solve
         }),
@@ -1020,7 +1020,7 @@ fn note_problem(built: &Built, note: &str, cause: Cause, from_lowering: bool) ->
 
 /// A finding against a guideline (ADR 0036) is a warning, at the rail or part that carries
 /// the current. With `guidelines = "error"` the build fails and it is an error instead.
-fn guideline_problem(built: &Built, guideline: &netsmith_lower::guidelines::Guideline) -> Problem {
+fn guideline_problem(built: &Built, guideline: &netsmith_design::guidelines::Guideline) -> Problem {
     let model = &built.trace.model;
     let at = guideline.at.map(|inst| {
         let (src, span) = model.instance(inst).at();

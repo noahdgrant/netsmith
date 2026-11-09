@@ -5,7 +5,7 @@ export type Location = { file: string, line: number, column: number, endLine: nu
 
 export type Severity = "error" | "warning" | "note";
 
-export type ProblemStage = "syntax" | "check" | "solve" | "lower" | "guideline" | "power" | "layout";
+export type ProblemStage = "syntax" | "check" | "solve" | "design" | "guideline" | "power" | "layout";
 
 export type Cause = "not_stated" | "part_model" | "unjudged" | "circular" | "supply" | "pick" | "track" | "other";
 
@@ -25,7 +25,7 @@ rendered: string, at: Location | null,
 stage?: ProblemStage, 
 /**
  * The board it is about, as `BoardSummary::name` has it (`Demo/main` for a board of a
- * system), where the problem belongs to one board: every solver, lowering and guideline
+ * system), where the problem belongs to one board: every solver, design-stage and guideline
  * message and note, and a checker error written inside the definition of a board. A
  * parse error, and a mistake in a module or a system (which boards share), have none.
  */

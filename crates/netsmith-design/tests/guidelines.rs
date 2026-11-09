@@ -1,8 +1,8 @@
 //! Track width against current, by IPC-2221 (ADR 0036).
 
 use netsmith_check::{Loader, check};
-use netsmith_lower::guidelines::{Guideline, Layer, ipc2221_current, ipc2221_width};
-use netsmith_lower::lower;
+use netsmith_design::design_board;
+use netsmith_design::guidelines::{Guideline, Layer, ipc2221_current, ipc2221_width};
 use netsmith_solve::{Catalogs, solve};
 
 fn findings_in(loader: &Loader, src: &str) -> Vec<Guideline> {
@@ -10,7 +10,7 @@ fn findings_in(loader: &Loader, src: &str) -> Vec<Guideline> {
     assert!(c.is_ok(), "{}", c.render());
     let s = solve(&c.boards[0], &Catalogs::jlcpcb());
     assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
-    lower(&c.boards[0], &s).unwrap().guidelines
+    design_board(&c.boards[0], &s).unwrap().guidelines
 }
 
 /// A load of `current` on a rail `5V` / `GND`, joined to a supply header and a load header,
@@ -153,7 +153,7 @@ fn a_wide_enough_rail_passes_and_the_width_the_message_asks_for_passes() {
 #[test]
 fn a_rail_with_no_min_track_is_drawn_at_the_width_its_current_needs() {
     // ADR 0036, amendment: the router works the width out, so the check has nothing to say.
-    let l = lowered_of(&board(2.0, "", ""));
+    let l = designed_of(&board(2.0, "", ""));
     assert!(l.guidelines.is_empty(), "{:?}", l.guidelines);
     assert!(l.notes.is_empty(), "{:?}", l.notes);
     assert_eq!(
@@ -162,14 +162,14 @@ fn a_rail_with_no_min_track_is_drawn_at_the_width_its_current_needs() {
     );
     // 0.4 A is what a 0.1 mm track carries (450 mA at 10 K): the process's least, no entry.
     assert!(
-        lowered_of(&board(0.4, "", ""))
+        designed_of(&board(0.4, "", ""))
             .design
             .features
             .net_widths
             .is_empty()
     );
     // 0.5 A needs 0.12 mm (0.1148 rounded up).
-    let half = lowered_of(&board(0.5, "", ""));
+    let half = designed_of(&board(0.5, "", ""));
     assert_eq!(width_of(&half, "5V"), Some(0.12));
     assert!(half.guidelines.is_empty());
 }
@@ -269,7 +269,7 @@ board Chain {
     .j.p2 ~ .supply.neg
 }
 ";
-    let l = lowered_of(src);
+    let l = designed_of(src);
     // The net between the resistors is not named by the board, and is on neither rail. It
     // takes the chain's 1 A: 0.3004 mm rounded up to 0.31 mm, where it was 0.1 mm and a finding.
     let middle: Vec<&(String, f64)> = l
@@ -317,7 +317,7 @@ board Planes {
     assert!(findings(four).is_empty(), "{:?}", findings(four));
     // With only `GND` a plane, `5V` is a track again.
     let one_plane = four.replace(".inner2.net &= \"5V\"", ".inner2.net &= \"GND\"");
-    let l = lowered_of(&one_plane);
+    let l = designed_of(&one_plane);
     assert_eq!(width_of(&l, "5V"), Some(0.79));
     assert_eq!(width_of(&l, "GND"), None, "a plane is an area");
     assert!(l.guidelines.is_empty(), "{:?}", l.guidelines);
@@ -367,15 +367,15 @@ board B {{
     )
 }
 
-fn lowered_of(src: &str) -> netsmith_lower::Lowered {
+fn designed_of(src: &str) -> netsmith_design::Designed {
     let c = check("t.nsm", src, &Loader::std());
     assert!(c.is_ok(), "{}", c.render());
     let s = solve(&c.boards[0], &Catalogs::jlcpcb());
     assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
-    lower(&c.boards[0], &s).unwrap()
+    design_board(&c.boards[0], &s).unwrap()
 }
 
-fn width_of(l: &netsmith_lower::Lowered, net: &str) -> Option<f64> {
+fn width_of(l: &netsmith_design::Designed, net: &str) -> Option<f64> {
     l.design
         .features
         .net_widths
@@ -386,7 +386,7 @@ fn width_of(l: &netsmith_lower::Lowered, net: &str) -> Option<f64> {
 
 #[test]
 fn the_node_between_a_fuse_and_a_diode_is_drawn_at_the_width_its_current_needs() {
-    let l = lowered_of(&fuse_diode("        .current &= 1A..2A\n", "", ""));
+    let l = designed_of(&fuse_diode("        .current &= 1A..2A\n", "", ""));
     let node = l
         .design
         .nets
@@ -407,7 +407,7 @@ fn the_node_between_a_fuse_and_a_diode_is_drawn_at_the_width_its_current_needs()
 
 #[test]
 fn the_rails_on_such_a_chain_are_sized_too() {
-    let l = lowered_of(&fuse_diode("        .current &= 1A..2A\n", "", ""));
+    let l = designed_of(&fuse_diode("        .current &= 1A..2A\n", "", ""));
     assert_eq!(width_of(&l, "VIN"), Some(0.79));
     assert_eq!(width_of(&l, "VOUT"), Some(0.79));
     assert_eq!(width_of(&l, "GND"), Some(0.79));
@@ -415,7 +415,7 @@ fn the_rails_on_such_a_chain_are_sized_too() {
 
 #[test]
 fn a_small_current_leaves_the_net_at_the_process_least() {
-    let l = lowered_of(&fuse_diode("        .current &= 1mA..20mA\n", "", ""));
+    let l = designed_of(&fuse_diode("        .current &= 1mA..20mA\n", "", ""));
     assert!(
         l.design.features.net_widths.is_empty(),
         "{:?}",
@@ -431,7 +431,7 @@ fn the_width_follows_the_temperature_rise() {
         ".stackup.thickness &= 1.6mm",
         ".stackup.thickness &= 1.6mm\n        .max_temperature_rise &= 20K",
     );
-    let l = lowered_of(&src);
+    let l = designed_of(&src);
     assert_eq!(width_of(&l, "VOUT"), Some(0.52));
 }
 
@@ -442,7 +442,7 @@ fn a_stated_min_track_is_an_override_and_is_still_checked() {
         "",
         "",
     );
-    let l = lowered_of(&src);
+    let l = designed_of(&src);
     assert_eq!(width_of(&l, "VOUT"), Some(0.3));
     let found = about(&l.guidelines, "VOUT");
     assert_eq!(found.len(), 1, "{:?}", l.guidelines);
@@ -463,7 +463,7 @@ fn a_net_with_no_current_known_stays_at_the_process_least_and_is_named() {
     // Two rails that draw an unstated current on one net: the solver can work out neither,
     // and nothing on the net is known to size it from.
     let src = fuse_diode("", "", "");
-    let l = lowered_of(&src);
+    let l = designed_of(&src);
     assert!(
         l.design.features.net_widths.is_empty(),
         "{:?}",
@@ -488,9 +488,9 @@ fn a_net_with_no_current_known_stays_at_the_process_least_and_is_named() {
 
 #[test]
 fn the_note_of_a_net_whose_width_is_a_lower_bound_says_it_is_a_track_width_not_sized() {
-    // Every note of lowering that names a net with a current not known has the cause `Track`,
+    // Every note of the design stage that names a net with a current not known has the cause `Track`,
     // one cause for each note, in the order of the notes.
-    let l = lowered_of(&fuse_diode("", "", ""));
+    let l = designed_of(&fuse_diode("", "", ""));
     assert!(!l.notes.is_empty());
     assert_eq!(l.note_causes.len(), l.notes.len());
     assert!(
@@ -553,7 +553,7 @@ board Shared {{
 
 #[test]
 fn a_ground_shared_by_a_2_a_and_a_1_a_rail_is_sized_for_3_a() {
-    let l = lowered_of(&shared_ground("2A", "1A", ""));
+    let l = designed_of(&shared_ground("2A", "1A", ""));
     // Each supply net carries its own load: 2 A needs 0.7814 mm, 1 A needs 0.3004 mm.
     assert_eq!(width_of(&l, "5V"), Some(0.79));
     assert_eq!(width_of(&l, "3V3"), Some(0.31));
@@ -570,7 +570,7 @@ fn a_ground_shared_by_a_2_a_and_a_1_a_rail_is_sized_for_3_a() {
 fn a_stated_min_track_on_a_shared_ground_is_checked_against_the_sum() {
     // 1 mm carries 2.39 A at 10 K: more than the larger load's 2 A, less than the sum's 3 A.
     // The rail states the width, so it is the user's and it is checked, not raised.
-    let l = lowered_of(&shared_ground(
+    let l = designed_of(&shared_ground(
         "2A",
         "1A",
         "        .min_track &= 1mm..1m\n",
@@ -638,7 +638,7 @@ board Three {
     .h3.p2 ~ .c.neg
 }
 ";
-    let l = lowered_of(src);
+    let l = designed_of(src);
     // 1.5 A: A^0.725 = 1.5 / 0.13220 = 11.347, A = 28.5 mil^2, /1.378 = 20.7 mil = 0.5255 mm.
     let needs = ipc2221_width(1.5, 0.035, 10.0, Layer::External);
     assert!((needs - 0.5255).abs() < 1e-3, "{needs}");
@@ -716,7 +716,7 @@ board Converter {{
 
 #[test]
 fn a_switching_regulator_draws_its_input_from_the_power_balance_not_the_output_current() {
-    let l = lowered_of(&converter(false));
+    let l = designed_of(&converter(false));
     // 1 A at 1.746..1.854 V out, from 4.75 V in at 85 % efficiency: 1.854 / (4.75 * 0.85)
     // = 0.4592 A in. The input net carries that, and not the 1 A of the output.
     let into = 1.854 / (4.75 * 0.85);
@@ -747,7 +747,7 @@ fn width_for(amps: f64) -> f64 {
 }
 
 /// The note about net `net`, if there is one.
-fn note_of<'a>(l: &'a netsmith_lower::Lowered, net: &str) -> Option<&'a String> {
+fn note_of<'a>(l: &'a netsmith_design::Designed, net: &str) -> Option<&'a String> {
     l.notes
         .iter()
         .find(|n| n.contains(&format!("so the tracks of net `{net}` are")))
@@ -759,7 +759,7 @@ fn a_known_current_beside_an_unknown_one_sizes_the_net_for_the_known_part() {
     // solver has two unknowns on the input net. Nothing is guessed from the output current.
     // The ground returns the load's 1.2 A, which is known, plus the input's current, which is
     // not: the known part is a lower bound and is what the ground is drawn for.
-    let l = lowered_of(&converter_of(true, "1.2A", ""));
+    let l = designed_of(&converter_of(true, "1.2A", ""));
     let known = width_for(1.2);
     assert_eq!(known, 0.39, "1.2 A needs 0.3857 mm: 0.39 rounded up");
     assert_eq!(width_of(&l, "GND"), Some(known));
@@ -793,7 +793,7 @@ fn a_known_current_beside_an_unknown_one_sizes_the_net_for_the_known_part() {
 fn a_net_whose_known_current_needs_less_than_the_least_track_keeps_the_least() {
     // 5 mA is known beside an unknown current: the least track carries it, so the net is at
     // the process's least, and the note says what the least track carries.
-    let l = lowered_of(&converter_of(true, "5mA", ""));
+    let l = designed_of(&converter_of(true, "5mA", ""));
     assert_eq!(width_of(&l, "GND"), None);
     let gnd = note_of(&l, "GND").unwrap_or_else(|| panic!("{:?}", l.notes));
     assert!(
@@ -807,7 +807,7 @@ fn a_net_whose_known_current_needs_less_than_the_least_track_keeps_the_least() {
 
 #[test]
 fn a_net_whose_every_current_is_known_is_sized_as_before_and_has_no_note() {
-    let l = lowered_of(&converter_of(false, "1.2A", ""));
+    let l = designed_of(&converter_of(false, "1.2A", ""));
     let into = 1.2 * 1.854 / (4.75 * 0.85);
     assert_eq!(width_of(&l, "1V8"), Some(0.39));
     assert_eq!(width_of(&l, "VIN"), Some(width_for(into)));
@@ -818,12 +818,12 @@ fn a_net_whose_every_current_is_known_is_sized_as_before_and_has_no_note() {
 
 #[test]
 fn a_stated_min_track_wider_than_the_known_current_needs_is_respected() {
-    let l = lowered_of(&converter_of(
+    let l = designed_of(&converter_of(
         true,
         "1.2A",
         "        .min_track &= 0.9mm..1m\n",
     ));
-    // The rail decided the width of its nets: neither raised nor lowered, no finding, and no
+    // The rail decided the width of its nets: neither raised nor reduced, no finding, and no
     // note on a net whose width the board stated.
     assert_eq!(width_of(&l, "GND"), Some(0.9));
     assert_eq!(width_of(&l, "1V8"), Some(0.9));
@@ -833,7 +833,7 @@ fn a_stated_min_track_wider_than_the_known_current_needs_is_respected() {
 
 #[test]
 fn a_stated_min_track_narrower_than_the_known_current_needs_is_still_a_finding() {
-    let l = lowered_of(&converter_of(
+    let l = designed_of(&converter_of(
         true,
         "1.2A",
         "        .min_track &= 0.2mm..1m\n",
@@ -927,7 +927,7 @@ board B {
     .reg.vout ~ .out
 }
 "#;
-    let l = lowered_of(src);
+    let l = designed_of(src);
     let node = l
         .design
         .nets

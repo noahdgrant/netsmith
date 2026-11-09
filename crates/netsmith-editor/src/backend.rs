@@ -142,7 +142,7 @@ pub struct Work {
 pub enum AnalysisEvent {
     /// It began; `since` is when, in milliseconds since the Unix epoch.
     Started { since: u64 },
-    /// How far it has got: `stage` is `check`, `solve`, `lower`, `draw` or `modules`, `done`
+    /// How far it has got: `stage` is `check`, `solve`, `design`, `draw` or `modules`, `done`
     /// of `total` of what that stage works through, and `board` is the board or file it is on.
     Progress {
         stage: String,

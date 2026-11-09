@@ -6,7 +6,7 @@ A language and toolchain for describing circuits as text and turning them into f
 
 **Board**:
 One physical PCB, described as a manufacturing process, parts, and the modules placed on it.
-_Avoid_: Design, PCB
+_Avoid_: Design (for the board itself: _Design_ is the `netsmith_core::Design` that the design stage makes, and the word for that stage), PCB
 
 **System**:
 Several boards and the joins between their ports, written `system Demo { .main: MainBoard  .io: IoBoard  .main.output ~ .io.input }`. A system holds only boards and says which ports meet, or which connectors are mated; it names no nets. Each board is still made and ordered on its own.
@@ -159,7 +159,7 @@ Everything around a buck converter IC except the IC: `std::parts::regulator::Buc
 _Avoid_: Buck module, power stage
 
 **Bank**:
-Identical capacitors in parallel that stand in one place of the design, a `Capacitor` with a `.count` (ADR 0052, proposed). The count is one number the board may state (`.count &= 3`, `.stage.output_count &= 3`), a range the solver chooses from (`1..8`, the fewest that holds every check), or unset, which is one. Every other field is the value of one capacitor of the bank. Lowering makes one part for each, on the same nets, and the bill of materials lists the row once with the quantity; the second and later parts have the path of the first with `#2`, `#3`. Only the standard `Capacitor`, and a part that provides it, is a bank (a user part with a member named `count` is one part; which generics are banks is one list in the checker, ADR 0068 stage 3), and a requirement on a bank's part path in the physical file holds for each of its capacitors. A bank is not a repetition construct: the language has none.
+Identical capacitors in parallel that stand in one place of the design, a `Capacitor` with a `.count` (ADR 0052, proposed). The count is one number the board may state (`.count &= 3`, `.stage.output_count &= 3`), a range the solver chooses from (`1..8`, the fewest that holds every check), or unset, which is one. Every other field is the value of one capacitor of the bank. The design stage makes one part for each, on the same nets, and the bill of materials lists the row once with the quantity; the second and later parts have the path of the first with `#2`, `#3`. Only the standard `Capacitor`, and a part that provides it, is a bank (a user part with a member named `count` is one part; which generics are banks is one list in the checker, ADR 0068 stage 3), and a requirement on a bank's part path in the physical file holds for each of its capacitors. A bank is not a repetition construct: the language has none.
 _Avoid_: Array, capacitor slots (`cap_a`, `cap_b`), parallel group, multiplier, multiplicity
 
 **Dielectric**:
@@ -624,8 +624,12 @@ _Avoid_: Dangling wire, spur, stub (a stub is the short wire straight out of a p
 What the editor says changed in the circuit between a git ref (the base) and the files on disk (the head), or between two refs (the head is then the second ref, which is read as the first is and leaves the files on disk unread): the parts, nets, rails, ports, bill of materials and problems that differ, and what changed in the systems and on the PCB (where a part is in the layout file, the outline, the layers), each with its source line on both sides (ADR 0059). A part is the same on both sides by its path in the board, a net by its name or its pins, a rail by its net; a part that only has another designator is renumbered, not changed. It reads the ref with `git archive` and never touches the work tree. Not the _Netlist comparison_ (two designs that share no names) and not a text diff.
 _Avoid_: Diff (a diff compares lines), git diff, branch diff
 
+**Design stage**:
+The step of a build that turns a solved board into the `netsmith_core::Design` (the parts with their designators and pads, the nets, the track widths, the sourcing, the guidelines), after _check_ and _solve_ and before the exporters (`netsmith-design`; `Stage::Design`; the stage `design` in the editor's Problems dock and progress text). The stage and the type share a word, so say which is meant: _the design stage_ is the work, _the `Design`_ is what it makes. Its notes and its errors (a requirement that cannot hold, a part with no pads) are said as the stage's own.
+_Avoid_: Lower, lowering, lowered (compiler words: say _the design stage_, and _designed_ of a board it has been run on)
+
 **Checkpoint**:
-A place in a long call (the checker's instances, a trial of the solver's search, a part or a net of lowering, a sheet or a pass of the schematic's layout, a move of the placer) that asks whether the job it belongs to was cancelled, and ends the call if so. A job is cancelled with a token (`netsmith_core::job::Cancel`) that the one who started it installs for its thread; a cancelled call unwinds to him with nothing of what it made kept, and the analysis that was cancelled leaves the last reading as it was (ADR 0062). It is the _Cancel_ button's reach: a call is stopped at its next checkpoint, not at once.
+A place in a long call (the checker's instances, a trial of the solver's search, a part or a net of the design stage, a sheet or a pass of the schematic's layout, a move of the placer) that asks whether the job it belongs to was cancelled, and ends the call if so. A job is cancelled with a token (`netsmith_core::job::Cancel`) that the one who started it installs for its thread; a cancelled call unwinds to him with nothing of what it made kept, and the analysis that was cancelled leaves the last reading as it was (ADR 0062). It is the _Cancel_ button's reach: a call is stopped at its next checkpoint, not at once.
 _Avoid_: Interrupt, abort, kill (a job is never killed; it is asked, and ends where it can)
 
 **Power tree**:

@@ -84,8 +84,8 @@ export function changed(): Compare {
     },
     modules: { added: [{ path: 'stage', typeName: 'LdoStage', at: at(10) }], removed: [], changed: [{ path: 'filter', baseType: 'Pi', headType: 'Lc', at: at(14) }] },
     problems: {
-      new: [{ severity: 'warning', message: 'stage.bulk: no LCSC number\nmore', rendered: '', at: at(24), stage: 'lower', board: 'TwoBoards/power', path: 'stage.bulk' }],
-      resolved: [{ severity: 'error', message: 'C9 is not placed', rendered: '', at: at(30), stage: 'lower', board: 'TwoBoards/power' }],
+      new: [{ severity: 'warning', message: 'stage.bulk: no LCSC number\nmore', rendered: '', at: at(24), stage: 'design', board: 'TwoBoards/power', path: 'stage.bulk' }],
+      resolved: [{ severity: 'error', message: 'C9 is not placed', rendered: '', at: at(30), stage: 'design', board: 'TwoBoards/power' }],
       unchanged: 0,
     },
   });

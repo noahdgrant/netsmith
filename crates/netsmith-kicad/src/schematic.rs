@@ -588,7 +588,7 @@ mod tests {
         SymbolLib::at(testlib::sample_symbols())
     }
 
-    /// A 300 ohm resistor feeding an LED, with nets named the way the lowering names them.
+    /// A 300 ohm resistor feeding an LED, with nets named the way the design stage names them.
     fn led_design() -> Design {
         let part = |refdes: &str, kind: &str, value: &str, package: Option<&str>| Part {
             provides: Vec::new(),

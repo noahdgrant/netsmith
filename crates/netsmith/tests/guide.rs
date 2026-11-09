@@ -3,7 +3,7 @@
 //! Fenced blocks are marked by what they promise:
 //!
 //! - ` ```nsm ` is a complete file and must check.
-//! - ` ```nsm solve ` must also solve, lower and export (what `netsmith build` does).
+//! - ` ```nsm solve ` must also solve, design and export (what `netsmith build` does).
 //! - ` ```nsm solve report ` must build, and the next ` ```text ` block is the board report.
 //! - ` ```nsm evaluate ` must check and solve with nothing reported, but is not exported: for
 //!   a board of parts that have no KiCad symbol yet, whose ratings the solver still checks.

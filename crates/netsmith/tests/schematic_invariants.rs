@@ -146,7 +146,7 @@ fn no_example_has_two_texts_over_each_other_or_a_wire_over_a_text() {
 }
 
 // Notes (ADR 0060): the doc comments and `==` relations of the examples are drawn as boxes of
-// text, on the editor's own path (the checker's model, lowering, `schematic_layout`). A note lies
+// text, on the editor's own path (the checker's model, the design stage, `schematic_layout`). A note lies
 // on no symbol, text, wire, flag or other note, and its text stays in its frame.
 #[test]
 fn no_example_has_a_note_on_anything_or_text_out_of_its_frame() {

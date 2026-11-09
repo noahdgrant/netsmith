@@ -1,5 +1,5 @@
 //! What a part says about its pins, for the KiCad side: the symbol check and the viewer's
-//! fallback box. The facts are the lowered part's own ([`PartPin`]); this wraps them with
+//! fallback box. The facts are the part's own in the design ([`PartPin`]); this wraps them with
 //! the lookups the two need.
 
 use netsmith_core::{Part, PartPin};
@@ -11,7 +11,7 @@ pub struct Pinout {
 }
 
 impl Pinout {
-    /// The pinout of a lowered part, or `None` for a part that has no pin table.
+    /// The pinout of a part of the design, or `None` for a part that has no pin table.
     pub fn of(part: &Part) -> Option<Pinout> {
         (!part.pins.is_empty()).then(|| Pinout {
             pins: part.pins.clone(),

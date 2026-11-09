@@ -8,8 +8,8 @@
 
 use netsmith_check::InstId;
 use netsmith_core::Part;
-use netsmith_lower::Sourced;
-use netsmith_lower::guidelines::Guideline;
+use netsmith_design::Sourced;
+use netsmith_design::guidelines::Guideline;
 use netsmith_solve::{CHANGE_THE_VALUE, Catalogs, Solution, alternatives, resolve};
 use std::sync::{Arc, OnceLock};
 
@@ -223,7 +223,7 @@ pub fn resolve_generics(
         .map(|s| {
             let mut s = s.clone();
             // The owner supplies a consigned part, so no row of a catalog stands for it.
-            if s.assembly == netsmith_lower::Assembly::Consigned {
+            if s.assembly == netsmith_design::Assembly::Consigned {
                 return s;
             }
             let Some(generic) = s.generic.clone().filter(|_| s.lcsc.is_none()) else {
@@ -312,7 +312,7 @@ fn with_rechecks(message: &str, refdes: &str, rechecks: &Rechecks, catalogs: &Ca
 mod tests {
     use std::sync::Arc;
 
-    use netsmith_lower::Assembly;
+    use netsmith_design::Assembly;
     use netsmith_solve::{Availability, Generic, Series, Spec};
 
     use super::*;

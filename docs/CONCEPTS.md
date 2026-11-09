@@ -39,13 +39,13 @@ A catalog is not a level; it is how a `part` becomes a real component. A part li
 ## From source to files
 
 ```text
-.nsm source ──check──▶ model ──solve──▶ picks ──lower──▶ design ──┬─▶ KiCad schematic (.kicad_sch)
+.nsm source ──check──▶ model ──solve──▶ picks ──design─▶ design ──┬─▶ KiCad schematic (.kicad_sch)
  (std + project)        names, units,    real parts     one per   ├─▶ PCB: place, route (.kicad_pcb, SVG)
                         nets, relations  from catalogs  board     ├─▶ fab package: Gerber, drill, BOM, CPL
                                                                   └─▶ the editor's views
 ```
 
-A `board` is the unit that is lowered and exported: one board gives one schematic, one PCB and one fabrication package. A `system` is lowered one board at a time.
+A `board` is the unit that the design stage and the exporters work on: one board gives one schematic, one PCB and one fabrication package. A `system` is designed one board at a time. The _design stage_ is the step that makes the `Design`, the parts and nets that the exporters read; the stage and what it makes share a word.
 
 ## Library and project
 

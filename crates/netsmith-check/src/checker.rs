@@ -785,9 +785,9 @@ impl<'a> Checker<'a> {
             placed_def: placed.map(|(d, _)| d),
         });
         // Every part has a field for who assembles it (ADR 0024): the board narrows it, the
-        // catalog row may state a default, and lowering reads it. It has one for the letters
+        // catalog row may state a default, and the design stage reads it. It has one for the letters
         // of its reference designator too (ADR 0046): its kind states them, a user part or a
-        // board may narrow it, and lowering reads it.
+        // board may narrow it, and the design stage reads it.
         if kind == InstKind::Part {
             let assembly = self.assembly_mode();
             for (name, kind) in [("assembly", assembly), ("designator", FieldKind::Text)] {
@@ -795,7 +795,7 @@ impl<'a> Checker<'a> {
                 self.model.add_member(id, name, Member::Field(field));
             }
             // And one for how tall its body stands above the board (ADR 0045, "Height
-            // limits", PROVISIONAL): the part or the board states it, and lowering reads it.
+            // limits", PROVISIONAL): the part or the board states it, and the design stage reads it.
             // A part that does not has no height, which is not a height of zero.
             let field = self
                 .model

@@ -1,4 +1,4 @@
-//! The three example boards as the lowering produces them, so these tests do not need the
+//! The three example boards as the design stage produces them, so these tests do not need the
 //! whole pipeline.
 
 #![allow(dead_code)]

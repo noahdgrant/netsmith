@@ -1,13 +1,13 @@
-//! The bill of materials: the lowered sourcing, grouped as `bom.csv` is, with what the
+//! The bill of materials: the sourcing the design stage made, grouped as `bom.csv` is, with what the
 //! catalog records about each part and what the supply provider says about its price and
 //! stock (ADR 0047). A generic part is first resolved to the catalog row that stands for it.
 //! A price or stock nobody can give is unknown, and the line says why.
 
+use netsmith_design::Assembly;
 use netsmith_editor::{
     ApiError,
     api::{Bom, BomLine},
 };
-use netsmith_lower::Assembly;
 use netsmith_solve::Catalogs;
 
 use super::analysis::BoardData;

@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 
 use netsmith_check::{FieldId, FieldKind, InstId, Model, Sources};
-use netsmith_lower::guidelines::Guideline;
+use netsmith_design::guidelines::Guideline;
 use netsmith_quantity::Dimension;
 use netsmith_solve::{Solution, UnconstrainedPick};
 
