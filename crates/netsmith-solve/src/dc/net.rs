@@ -1004,11 +1004,6 @@ impl Island {
         let size = free + on.len();
         work.reset(size);
         let held = |node: usize| held_v[node - free];
-        if gmin > 0.0 {
-            for row in 0..free {
-                work.add(row, row, gmin);
-            }
-        }
         for (k, p) in points.iter().enumerate() {
             match *p {
                 Point::R { a, b, r } => {
@@ -1072,6 +1067,19 @@ impl Island {
                         }
                     }
                 }
+            }
+        }
+        // The conductance to the ground is added last, and is at least a fraction of the largest
+        // conductance on a diagonal that the rounding of a double keeps: a picoamp per megavolt
+        // is lost against the 30 S of a fuse (30 + 1e-15 is 30), and a cluster of nodes that a
+        // blocking diode leaves to a few current sources (the loads of parts still to be picked)
+        // would stay singular.
+        if gmin > 0.0 {
+            let stride = work.stride;
+            let big = (0..free).fold(0.0f64, |m, row| m.max(work.m[row * stride + row]));
+            let g = gmin.max(1e-12 * big);
+            for row in 0..free {
+                work.add(row, row, g);
             }
         }
         // Without `gmin` a pivot that is rounding and not a conductance (a cluster of nodes that
