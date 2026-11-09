@@ -69,6 +69,18 @@ const SILK_CLEAR: f64 = 0.2;
 /// Extra space round a part for each of its pads, to a most of [`MAX_ESCAPE`], in mm.
 const ESCAPE_PER_PAD: f64 = 0.03;
 const MAX_ESCAPE: f64 = 2.5;
+/// A part whose escape space is at least [`BUSY_ESCAPE`] (16 pads or more) is busy, and up to
+/// [`BUSY_MOST`] (66 pads): the escape spaces of it and of its neighbour add up, and the space
+/// between them counts for more than a plain gap. A part with more pads than that (a module of
+/// eighty pads is 2.4 mm) asks for a ring that a small board cannot give: it keeps the plain
+/// weight, as measured on the invented tight board (ADR 0031).
+const BUSY_ESCAPE: f64 = 16.0 * ESCAPE_PER_PAD;
+const BUSY_MOST: f64 = 2.0;
+/// What each mm short of the escape space between two parts costs, at the most (for two
+/// parts of [`MAX_ESCAPE`] each), on top of [`W_GAP`]: much more than a plain gap, because the
+/// pads of two parts that face each other have to leave through the space between them, and
+/// a ratsnest that pulls the parts together outweighs a plain gap (issue #3).
+const W_ESCAPE: f64 = 300.0;
 /// The moves tried for each part that is free, at most [`MAX_MOVES`] and at least 2000.
 const MOVES_PER_PART: f64 = 3000.0;
 const MAX_MOVES: usize = 300_000;
@@ -798,7 +810,7 @@ impl<'a> Engine<'a> {
         let rules = p.rules;
         let gap = GAP + if p.pours { POUR_GAP } else { 0.0 };
         let hole_gap = rules.clearance.max(rules.hole_to_hole).max(gap);
-        let reach_pad = (hole_gap.max(rules.silk_to_pad)).max(gap + MAX_ESCAPE) / 2.0 + 0.01;
+        let reach_pad = (hole_gap.max(rules.silk_to_pad)).max(gap + 2.0 * MAX_ESCAPE) / 2.0 + 0.01;
         let models: Vec<Model> = (0..n)
             .map(|i| {
                 let base = parts[i].rotation;
@@ -1910,8 +1922,16 @@ impl<'a> Engine<'a> {
             return c;
         }
         let (ca, cb) = (self.room(i), self.room(j));
+        // Each part's pads leave through the space round it. Where a busy part (16 to 66 pads)
+        // faces another the space is the same, so the escape spaces of the two add up and each
+        // mm short of them costs more than a plain gap. Other pairs keep the larger of the
+        // two spaces at the plain weight.
+        let busiest = a.escape.max(b.escape);
+        let busy = (BUSY_ESCAPE..=BUSY_MOST).contains(&busiest);
         let escape = if self.near_ok[i * self.models.len() + j] {
             0.0
+        } else if busy {
+            a.escape + b.escape
         } else {
             a.escape.max(b.escape)
         };
@@ -1922,7 +1942,12 @@ impl<'a> Engine<'a> {
         }
         .max(self.gap + escape);
         if !a.hole && !b.hole {
-            c += Self::court_cost(&ca, &cb, gap);
+            let extra = if busy {
+                W_ESCAPE * (escape / (2.0 * MAX_ESCAPE)).min(1.0)
+            } else {
+                0.0
+            };
+            c += Self::court_cost_escape(&ca, &cb, self.gap, escape, extra);
         } else {
             // A part with a hole takes room on each face by `Placed::room_on`: its courtyard,
             // or on a face its footprint draws no courtyard for, its pads. Pads are only kept
@@ -1933,6 +1958,23 @@ impl<'a> Engine<'a> {
         }
         c += self.silk_cost(sa, pa, sb, pb, &cb);
         c += self.silk_cost(sb, pb, sa, pa, &ca);
+        c
+    }
+
+    /// [`Engine::court_cost`] where `escape` of the space asked for beyond `gap` is the room
+    /// the parts' pads need to leave, each mm of which costs `extra` more than the plain gap
+    /// ([`W_ESCAPE`]).
+    fn court_cost_escape(a: &Rect, b: &Rect, gap: f64, escape: f64, extra: f64) -> Cost {
+        let mut c = Cost::default();
+        let full = penetration(a, b, gap + escape);
+        if full > 0.0 {
+            let plain = penetration(a, b, gap);
+            c.soft += W_GAP * plain + (W_GAP + extra) * (full - plain);
+            let over = penetration(a, b, 0.0);
+            if over > 1e-6 {
+                c.hard += W_HARD * (over + 0.05);
+            }
+        }
         c
     }
 

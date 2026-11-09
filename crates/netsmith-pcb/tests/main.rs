@@ -13,6 +13,7 @@ mod generated_vs_kicad;
 mod hole_faces;
 mod kicad_drc;
 mod local_clearance;
+mod mixed;
 mod protrusion;
 mod routing;
 mod synthetic;
