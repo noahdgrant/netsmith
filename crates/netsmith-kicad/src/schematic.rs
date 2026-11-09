@@ -588,11 +588,12 @@ mod tests {
         SymbolLib::at(testlib::sample_symbols())
     }
 
-    /// The standard mapping and a regulator `Ldo` drawn with the sample library's AP1117
-    /// symbol, which has a power output (an IC of the standard mapping is drawn from its pin
-    /// table, whose power pins are all inputs).
+    /// The standard mapping and two regulators: `Ldo`, drawn with the sample library's AP1117
+    /// symbol, which has a power output, and `IcLdo`, whose row names no symbol, so it is drawn
+    /// from its pin table, whose power pins are all inputs.
     fn mapping() -> Mapping {
-        let row = "[[part]]\nkind = \"Ldo\"\npackage = \"SOT-23\"\nsymbol = \"Regulator_Linear:AP1117-15\"\nfootprint = \"Package_TO_SOT_SMD:SOT-23\"\n";
+        let row = "[[part]]\nkind = \"Ldo\"\npackage = \"SOT-23\"\nsymbol = \"Regulator_Linear:AP1117-15\"\nfootprint = \"Package_TO_SOT_SMD:SOT-23\"\n\n\
+                   [[part]]\nkind = \"IcLdo\"\npackage = \"SOT-23\"\nfootprint = \"Package_TO_SOT_SMD:SOT-23\"\n";
         Mapping::standard()
             .merged(Mapping::parse(row, "test", std::path::Path::new(".")).unwrap())
             .unwrap()
@@ -939,8 +940,8 @@ mod tests {
         assert_eq!(real.find("on_board").unwrap().args()[0].text(), Some("yes"));
     }
 
-    /// `regulator_design()` with the standard mapping's own `LinearRegulator`, which names no
-    /// symbol, and the pin table its part has in the package.
+    /// `regulator_design()` with the `IcLdo` that names no symbol, and the pin table its part
+    /// has in the package.
     fn drawn_regulator_design() -> Design {
         let mut d = regulator_design();
         let pin = |name: &str, datasheet: &str, kind: PinKind, pad: &str| PartPin {
@@ -950,7 +951,7 @@ mod tests {
             pads: vec![pad.into()],
             function: None,
         };
-        d.parts[2].kind = "LinearRegulator".into();
+        d.parts[2].kind = "IcLdo".into();
         d.parts[2].pins = vec![
             pin("vin.pos", "IN", PinKind::Power, "3"),
             pin("vin.neg", "GND", PinKind::Power, "1"),
@@ -965,7 +966,7 @@ mod tests {
         // The sample library has `Regulator_Linear`; the generated symbol must not read it.
         let text = emit_schematic(&d, &mapping(), &sample()).unwrap();
         let root = Sexp::parse(&text).unwrap();
-        assert!(text.contains("(lib_id \"netsmith:LinearRegulator_SOT-23\")"));
+        assert!(text.contains("(lib_id \"netsmith:IcLdo_SOT-23\")"));
         assert!(!text.contains("Regulator_Linear"));
         let embedded: Vec<&str> = root
             .find("lib_symbols")
@@ -976,7 +977,7 @@ mod tests {
         assert_eq!(
             embedded
                 .iter()
-                .filter(|n| **n == "netsmith:LinearRegulator_SOT-23")
+                .filter(|n| **n == "netsmith:IcLdo_SOT-23")
                 .count(),
             1,
             "{embedded:?}"
@@ -997,13 +998,9 @@ mod tests {
 
     #[test]
     fn a_part_with_no_symbol_in_its_row_and_no_pin_table_is_refused_by_name() {
-        let e = emit_schematic(
-            &regulator_design_with("LinearRegulator"),
-            &mapping(),
-            &sample(),
-        )
-        .unwrap_err()
-        .to_string();
+        let e = emit_schematic(&regulator_design_with("IcLdo"), &mapping(), &sample())
+            .unwrap_err()
+            .to_string();
         assert!(
             e.contains("U1") && e.contains("no `symbol`") && e.contains("no pin table"),
             "{e}"

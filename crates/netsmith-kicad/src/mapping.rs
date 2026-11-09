@@ -551,11 +551,15 @@ mod tests {
     fn a_linear_regulator_maps_in_sot23_and_sot223() {
         let m = standard();
         let u = m.map("LinearRegulator", Some("SOT-23")).unwrap();
-        // An IC has no library symbol: it is drawn from its pin table (ADR 0097).
         assert_eq!(
             (u.lib_id.as_deref(), u.footprint.as_str()),
-            (None, "Package_TO_SOT_SMD:SOT-23")
+            (
+                Some("Regulator_Linear:AP1117-15"),
+                "Package_TO_SOT_SMD:SOT-23"
+            )
         );
+        // The ICs that name no symbol are drawn from their pin tables (ADR 0097).
+        assert_eq!(m.map("Lt8641", Some("UDC20(18)")).unwrap().lib_id, None);
         assert_eq!(
             m.map("LinearRegulator", Some("SOT-223")).unwrap().footprint,
             "Package_TO_SOT_SMD:SOT-223-3_TabPin2"

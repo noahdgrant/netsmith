@@ -62,9 +62,10 @@ The imports and doc comments are left out here; the complete file is `examples/l
 - netsmith is not on crates.io yet.
 
 `build` and `fab` read KiCad's symbol and footprint libraries for the parts netsmith does not
-generate itself, so install KiCad 9 (8 also works). The symbol of an IC (a part with a pin
-table) is one that netsmith draws from the table, so the ICs of the standard library need no
-KiCad symbol; the passives, diodes, FETs and connectors still use KiCad's (ADR 0097, step 1). netsmith finds the `symbols` and
+generate itself, so install KiCad 9 (8 also works). A row of the mapping that names no `symbol`
+is drawn by netsmith from the part's pin table, as a plain box: the LT8641, the inverter and the
+level translator of the standard library are, and need no KiCad symbol. The linear regulator,
+the passives, diodes, FETs and connectors still use KiCad's (ADR 0097, step 1). netsmith finds the `symbols` and
 `footprints` folders by itself; set `NETSMITH_KICAD_SYMBOLS` and `NETSMITH_KICAD_FOOTPRINTS`
 to name them. If it finds none, it stops and lists every place it looked (ADR 0021). What has
 been tried: Windows KiCad 9 under WSL on a real install, KiCad 9 on Linux in the CI `kicad`

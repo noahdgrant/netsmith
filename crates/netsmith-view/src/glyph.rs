@@ -1524,6 +1524,38 @@ mod tests {
     }
 
     #[test]
+    fn an_ic_whose_row_names_no_symbol_is_drawn_from_its_pin_table() {
+        let (mapping, lib) = sample();
+        let pin = |name: &str, datasheet: &str, kind: PinKind, pad: &str| PartPin {
+            name: name.into(),
+            datasheet: datasheet.into(),
+            kind,
+            pads: vec![pad.into()],
+            function: None,
+        };
+        let mut ic = part("Lt8641", Some("UDC20(18)"));
+        ic.pins = vec![
+            pin("vin.pos", "VIN1", PinKind::Power, "3"),
+            pin("vin.neg", "GND", PinKind::Power, "1"),
+            pin("en", "EN/UV", PinKind::Input, "2"),
+        ];
+        let g = Glyph::for_part(&ic, &pads(3), Pinout::of(&ic).as_ref(), &mapping, &lib);
+        assert_eq!(g.symbol.as_deref(), Some("netsmith:Lt8641_UDC20_18"));
+        assert_eq!(g.pins.len(), 3);
+        assert!(matches!(g.shapes[0], Shape::Rect { .. }));
+        // A part of that row with no pin table is the editor's box, with the reason.
+        let bare = Glyph::for_part(
+            &part("Lt8641", Some("UDC20(18)")),
+            &pads(3),
+            None,
+            &mapping,
+            &lib,
+        );
+        assert!(bare.symbol.is_none());
+        assert!(bare.missing.unwrap().contains("no pin table"));
+    }
+
+    #[test]
     fn a_label_is_a_box_that_prints_its_text() {
         let (mapping, lib) = sample();
         let mut label = part("Label", None);

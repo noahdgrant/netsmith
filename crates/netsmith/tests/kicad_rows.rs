@@ -302,12 +302,7 @@ fn every_ic_row_of_the_standard_mapping_names_no_symbol_and_is_drawn_from_its_pi
         assert_eq!(drawn, table, "{}/{}", row.kind, row.package);
         checked.push(row.kind.as_str());
     }
-    for kind in [
-        "Lt8641",
-        "LinearRegulator",
-        "LevelTranslator",
-        "Sn74lvc1g04",
-    ] {
+    for kind in ["Lt8641", "LevelTranslator", "Sn74lvc1g04"] {
         assert!(checked.contains(&kind), "{kind} still names a symbol");
     }
 }

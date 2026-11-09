@@ -450,7 +450,7 @@ const INDUCTOR_SYMBOL: &str = "(symbol \"L\" (pin_numbers (hide yes)) (pin_names
 /// The sample symbols of `testlib` and an inductor, the generators for the passives and
 /// netsmith's own library, which is in the binary: no KiCad is read. The folder is the
 /// test's, removed when `TempDir` goes.
-fn libraries(dir: &TempDir) -> Libraries {
+pub(crate) fn libraries(dir: &TempDir) -> Libraries {
     let symbols = dir.path().join("symbols");
     std::fs::create_dir_all(&symbols).unwrap();
     for entry in std::fs::read_dir(testlib::sample_symbols()).unwrap() {
@@ -489,7 +489,7 @@ fn board_with_process() -> String {
         )
 }
 
-fn built(libraries: &Libraries) -> netsmith::Built {
+pub(crate) fn built(libraries: &Libraries) -> netsmith::Built {
     let mut catalogs = Catalogs::jlcpcb();
     catalogs
         .add_file("lt8641", "catalogs/lt8641.csv", ROWS)
