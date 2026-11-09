@@ -213,6 +213,62 @@ fn every_standard_file_reads_and_every_part_in_it_has_its_source() {
     }
 }
 
+/// How many rows of the standard catalogs have a `height` (ADR 0094). Update it with the rows.
+const ROWS_WITH_HEIGHT: usize = 94;
+
+#[test]
+fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() {
+    let mut with = 0;
+    for name in CATALOGS {
+        for row in records(&format!("jlcpcb/catalog/{name}.csv")) {
+            let lcsc = &row["lcsc"];
+            let Some(cell) = row.get("height").filter(|c| !c.is_empty()) else {
+                continue;
+            };
+            with += 1;
+            let mm: f64 = cell
+                .strip_suffix("mm")
+                .and_then(|n| n.parse().ok())
+                .unwrap_or_else(|| panic!("{name} {lcsc}: height `{cell}` is not like 2.62mm"));
+            // The tallest body in the catalogs is a pin header, 8.9 mm.
+            assert!(mm > 0.0 && mm <= 9.0, "{name} {lcsc}: height {mm} mm");
+            // The `source` has a `height:` entry that begins with the number of the cell and says
+            // which document and where in it, so that a person can look the figure up.
+            let source = &row["source"];
+            let entry = source
+                .split(" ; ")
+                .find_map(|e| e.strip_prefix("height: "))
+                .unwrap_or_else(|| panic!("{name} {lcsc}: no `height:` in the source: {source}"));
+            let stated: f64 = entry
+                .split_whitespace()
+                .next()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or_else(|| {
+                    panic!("{name} {lcsc}: the entry does not begin with a number: {entry}")
+                });
+            assert!(
+                (stated - mm).abs() < 1e-9 && entry[..].contains(" mm"),
+                "{name} {lcsc}: the cell says {cell} and the source says {entry}"
+            );
+            assert!(
+                [
+                    "page",
+                    "Page",
+                    "table",
+                    "Table",
+                    "drawing",
+                    "Dimensions",
+                    "Specifications"
+                ]
+                .iter()
+                .any(|w| entry.contains(w)),
+                "{name} {lcsc}: the entry names no page, table or drawing: {entry}"
+            );
+        }
+    }
+    assert_eq!(with, ROWS_WITH_HEIGHT);
+}
+
 #[test]
 fn the_files_list_basic_parts_before_extended_ones() {
     // Nothing sorts the files. The rows were ordered Basic first, then by the unit price read

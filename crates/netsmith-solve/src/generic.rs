@@ -666,6 +666,8 @@ pub struct Orderable {
     pub library: Option<Library>,
     /// What a message calls the row.
     pub name: String,
+    /// The row's `height` in mm, if it has one (ADR 0094).
+    pub height: Option<f64>,
     /// Rows that fit but were passed over because a provider said they have no stock.
     pub passed_over: Vec<String>,
 }
@@ -852,6 +854,7 @@ pub fn resolve(
             mpn: c.mpn.clone(),
             library: c.library,
             name: c.name.clone(),
+            height: c.height,
             passed_over,
         });
     }

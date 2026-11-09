@@ -8,6 +8,7 @@ mod common;
 mod alternatives;
 mod bank;
 mod build;
+mod catalog_height;
 mod cli_help;
 mod compare;
 mod conflicts;

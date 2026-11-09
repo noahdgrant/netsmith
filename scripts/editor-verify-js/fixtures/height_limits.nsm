@@ -1,10 +1,10 @@
 //! A small board for the editor recipes. Its physical file, `height_limits.physical.nsm`, has a
 //! lid over the left half of the board that allows 3 mm on the top face, and the heights of two
-//! of the three headers. The layout file beside it puts all three under the lid, so the editor
-//! has a part that is too tall (an error), a part that states no height (a warning) and one
-//! that fits.
+//! of the three parts (the third, a part with no catalog row, has none). The layout file beside it
+//! puts all three under the lid, so the editor has a part that is too tall (an error), a part that
+//! states no height (a warning) and one that fits.
 
-import std::parts::connector::Header1x2
+import std::parts::connector::{Header1x2, Header2x3}
 import std::mfg::jlcpcb::TwoLayer
 
 board Lidded {
@@ -13,5 +13,7 @@ board Lidded {
     }
     .tall: Header1x2
     .flat: Header1x2
-    .bare: Header1x2
+    // A 2x3 header has no catalog row, so it has no height from one (ADR 0094): the 1x2 headers'
+    // rows state theirs, and this part has to be one that states none.
+    .bare: Header2x3
 }

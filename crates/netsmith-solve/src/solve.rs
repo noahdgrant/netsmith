@@ -172,6 +172,9 @@ pub struct Pick {
     pub library: Option<Library>,
     /// The row's default for who assembles the part (ADR 0024).
     pub assembly: Option<String>,
+    /// The row's `height` in mm, if it has one (ADR 0094): the part's height unless the design
+    /// states it.
+    pub height: Option<f64>,
     /// Set if the candidate is a generic part (ADR 0047): it has no part number yet, and
     /// [`crate::resolve`] finds the row that stands for it.
     pub generic: Option<crate::Generic>,
@@ -3652,6 +3655,7 @@ impl Solver<'_> {
                                 mpn: c.mpn.clone(),
                                 library: c.library,
                                 assembly: c.assembly.clone(),
+                                height: c.height,
                                 generic: c.generic.as_ref().map(|g| g.with_needs(&needs)),
                                 rejected: examined,
                                 count: count.map_or(1, |n| n as u32),
