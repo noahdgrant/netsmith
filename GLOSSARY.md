@@ -311,7 +311,7 @@ What a source rail that states its own `.current` gives at most, the magnitude o
 _Avoid_: Current limit (a part's own relation), Load rating
 
 **Absolute maximum**:
-The voltages a pin survives, `.abs_min` and `.abs_max` of the pin, relative to its ground. The solver holds them against the worst-case voltage of the pin's net (ADR 0046), which for a net the DC analysis solved is the range of its node voltage (ADR 0076, amendment 12, provisional).
+The voltages a pin survives, `.abs_min` and `.abs_max` of the pin, relative to its ground. The solver holds them against the worst-case voltage of the pin's net (ADR 0046), which for a net the DC analysis solved is the range of its node voltage (ADR 0076, amendment 12, provisional). A pin of a part that is not a `Logic` line states its limit through a `Logic` whose `.line` is joined to the pin inside the part (the `Lt8641`'s `.sync_mode_limit`, ADR 0095, provisional); a pin joined to nothing outside its part is not judged.
 _Avoid_: Rating (a rating is a field such as `.max_power`)
 
 **Terminal**:
