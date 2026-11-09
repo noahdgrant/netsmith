@@ -2239,7 +2239,7 @@ impl Solver<'_> {
         self.chosen_before = 0;
         job::report("parts chosen", 0, Some(self.to_choose as u64));
         // A circle that a pick waits on is started from the network's own bounds (ADR 0076).
-        self.dc_start(&jobs);
+        self.dc_start(&jobs, false);
         for c in self.propagate() {
             self.report(c.source, c.span, c.message);
         }
@@ -2261,44 +2261,40 @@ impl Solver<'_> {
             pending.push((position, component));
         }
         pending.sort_by_key(|(position, group)| (*position, group[0]));
+        // A part that reads a voltage that the start could not give, and the parts of its
+        // component, are chosen after the others (ADR 0076, amendment 7): the network is solved
+        // again with the others picked, and the parts that read its results are picked after it.
+        // A board with no such pick is searched in one go, as it was.
+        let waiting = self.waiting_jobs(&jobs);
+        let (late, early): (Vec<_>, Vec<_>) = pending
+            .iter()
+            .cloned()
+            .partition(|(_, group)| group.iter().any(|j| waiting.contains(j)));
         let mut steps: Vec<Step> = Vec::new();
         // Jobs that were searched together again after a failure, once: the second search is not
         // started again for them.
         let mut joined: HashSet<usize> = HashSet::new();
-        while !pending.is_empty() {
-            let next = self.next_group(&jobs, &pending);
-            let (position, group) = pending.remove(next);
-            let mark = self.mark();
-            let elsewhere: HashSet<usize> = pending
-                .iter()
-                .flat_map(|(_, g)| g.iter().copied())
-                .collect();
-            self.solve_group(&jobs, &group, &coupling, elsewhere);
-            self.chosen_before += group.len();
-            job::report(
-                "parts chosen",
-                self.chosen_before.min(self.to_choose) as u64,
-                Some(self.to_choose as u64),
-            );
-            let picks = self.picks.split_off(mark.picks);
-            let step = Step {
-                position,
-                group,
-                mark,
-                picks,
-            };
-            if self.failed(&jobs, &step) {
-                self.search_again_together(
-                    &jobs,
-                    &coupling,
-                    &mut steps,
-                    step,
-                    &pending,
-                    &mut joined,
-                );
-            } else {
-                steps.push(step);
+        if late.is_empty() || early.is_empty() {
+            self.run_groups(&mut jobs, &coupling, pending, &[], &mut steps, &mut joined);
+        } else {
+            self.run_early(&mut jobs, &coupling, early, &late, &mut steps, &mut joined);
+            self.dc_start(&jobs, true);
+            for c in self.propagate() {
+                self.report(c.source, c.span, c.message);
             }
+            // The groups after the start are searched on their own: a retry never goes back to a
+            // step before it, whose model the start has since written to.
+            let mut after: Vec<Step> = Vec::new();
+            let mut joined_after: HashSet<usize> = HashSet::new();
+            self.run_groups(
+                &mut jobs,
+                &coupling,
+                late,
+                &[],
+                &mut after,
+                &mut joined_after,
+            );
+            steps.extend(after);
         }
         let mut picked: Vec<(usize, Vec<Pick>)> = steps
             .into_iter()
@@ -2327,6 +2323,113 @@ impl Solver<'_> {
             listed.extend(picks);
         }
         self.picks.extend(listed);
+    }
+
+    /// Search the groups of `pending` one after another, each once the groups it waits for are
+    /// done (see `next_group`), and keep each step. The groups of `later` are not searched here,
+    /// but a group still waits for what one of them can set.
+    fn run_groups(
+        &mut self,
+        jobs: &mut [Job],
+        coupling: &Coupling,
+        mut pending: Vec<(usize, Vec<usize>)>,
+        later: &[(usize, Vec<usize>)],
+        steps: &mut Vec<Step>,
+        joined: &mut HashSet<usize>,
+    ) {
+        while !pending.is_empty() {
+            let next = {
+                let everyone: Vec<(usize, Vec<usize>)> = pending
+                    .iter()
+                    .cloned()
+                    .chain(later.iter().cloned())
+                    .collect();
+                self.next_group(jobs, &everyone, pending.len())
+            };
+            let (position, group) = pending.remove(next);
+            let mark = self.mark();
+            let elsewhere: HashSet<usize> = pending
+                .iter()
+                .chain(later.iter())
+                .flat_map(|(_, g)| g.iter().copied())
+                .collect();
+            self.solve_group(jobs, &group, coupling, elsewhere);
+            self.chosen_before += group.len();
+            job::report(
+                "parts chosen",
+                self.chosen_before.min(self.to_choose) as u64,
+                Some(self.to_choose as u64),
+            );
+            let picks = self.picks.split_off(mark.picks);
+            let step = Step {
+                position,
+                group,
+                mark,
+                picks,
+            };
+            if self.failed(jobs, &step) {
+                self.search_again_together(jobs, coupling, steps, step, &pending, joined);
+            } else {
+                steps.push(step);
+            }
+        }
+    }
+
+    /// Search the groups that no pick waits on. A regulator's input has no voltage yet, so a part
+    /// in series with it (a fuse, a shunt, a bead) cannot be judged on the current it carries.
+    /// The groups are first searched under the window that a valid design has the input in (the
+    /// seed a board used to write), then the window is taken out again and they are searched
+    /// once more from the model as it was, each part from the one row it was given: nothing the
+    /// window gave is left in the model, and the passes after judge the choices on the circuit.
+    fn run_early(
+        &mut self,
+        jobs: &mut [Job],
+        coupling: &Coupling,
+        early: Vec<(usize, Vec<usize>)>,
+        later: &[(usize, Vec<usize>)],
+        steps: &mut Vec<Step>,
+        joined: &mut HashSet<usize>,
+    ) {
+        let windows = self.assumed_windows();
+        if windows.is_empty() {
+            self.run_groups(jobs, coupling, early, later, steps, joined);
+            return;
+        }
+        let mark = self.mark();
+        let chosen_before = self.chosen_before;
+        for (field, window) in windows {
+            self.set_field(field, Domain::Quantity(window));
+        }
+        let _ = self.propagate();
+        let mut trial: Vec<Step> = Vec::new();
+        let mut trial_joined: HashSet<usize> = HashSet::new();
+        self.run_groups(
+            jobs,
+            coupling,
+            early.clone(),
+            later,
+            &mut trial,
+            &mut trial_joined,
+        );
+        let chosen: Vec<(InstId, String)> = trial
+            .iter()
+            .flat_map(|s| s.picks.iter())
+            .map(|p| (p.part, p.candidate.clone()))
+            .collect();
+        let parts: Vec<usize> = early.iter().flat_map(|(_, g)| g.iter().copied()).collect();
+        let complete = parts
+            .iter()
+            .all(|&j| chosen.iter().any(|(part, _)| *part == jobs[j].part));
+        self.restore(&mark);
+        self.chosen_before = chosen_before;
+        if complete {
+            for &j in &parts {
+                if let Some((_, name)) = chosen.iter().find(|(part, _)| *part == jobs[j].part) {
+                    jobs[j].catalog.candidates.retain(|c| &c.name == name);
+                }
+            }
+        }
+        self.run_groups(jobs, coupling, early, later, steps, joined);
     }
 
     /// What `search_again_together` needs to put the solver back as it was before a group.
@@ -2511,8 +2614,8 @@ impl Solver<'_> {
     ///
     /// If every group waits (they wait on each other), the first goes first and fails or
     /// not as it would have: a field that no pick can set is the design's to state.
-    fn next_group(&self, jobs: &[Job], pending: &[(usize, Vec<usize>)]) -> usize {
-        (0..pending.len())
+    fn next_group(&self, jobs: &[Job], pending: &[(usize, Vec<usize>)], eligible: usize) -> usize {
+        (0..eligible)
             .find(|&i| {
                 let others: Vec<usize> = pending
                     .iter()

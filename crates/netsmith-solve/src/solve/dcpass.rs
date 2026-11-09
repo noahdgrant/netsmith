@@ -126,7 +126,7 @@ impl Solver<'_> {
         // fields that a part's own write covers (a regulator's input voltage).
         let mut rails: Vec<(dc::RailNode, Rc<Run>)> = Vec::new();
         let mut covered: Vec<FieldId> = Vec::new();
-        for outcome in dc::analyze(&self.model, false) {
+        for outcome in dc::analyze(&self.model, false, &HashMap::new(), &HashSet::new()) {
             netsmith_core::job::checkpoint();
             summary.islands += 1;
             let dc::Outcome { planned, result } = outcome;
@@ -246,6 +246,112 @@ impl Solver<'_> {
         usize::from(self.dc_field(rail.rail, rail.field, solved, ends))
     }
 
+    /// The jobs whose pick waits on a voltage no one has given: a derated column whose bias has
+    /// no value, or a column that a relation reads together with the voltage of a rail that has
+    /// none (a divider's draw, a Zener's test voltage). Those are the parts that read the DC
+    /// analysis' results; the others are picked before it (ADR 0076, amendment 7).
+    pub(super) fn waiting_jobs(&self, jobs: &[super::Job]) -> HashSet<usize> {
+        let unset: HashSet<FieldId> = self
+            .model
+            .instances()
+            .filter_map(|(i, _)| self.model.rail_of(i))
+            .map(|(voltage, _, _)| voltage)
+            .filter(|&v| matches!(self.domain(v), Domain::Unset))
+            .collect();
+        let mut by_column: HashMap<FieldId, Vec<usize>> = HashMap::new();
+        for (j, job) in jobs.iter().enumerate() {
+            for (f, _) in &job.columns {
+                by_column.entry(*f).or_default().push(j);
+            }
+        }
+        let mut out: HashSet<usize> = jobs
+            .iter()
+            .enumerate()
+            .filter(|(_, j)| !self.unset_biases(j).is_empty())
+            .map(|(i, _)| i)
+            .collect();
+        if unset.is_empty() {
+            return out;
+        }
+        for r in self.model.relations().iter() {
+            let mut reads = Vec::new();
+            crate::eval::fields_in(&r.lhs, &mut reads);
+            crate::eval::fields_in(&r.rhs, &mut reads);
+            if reads.iter().any(|f| unset.contains(f)) {
+                for f in &reads {
+                    if let Some(js) = by_column.get(f) {
+                        out.extend(js.iter().copied());
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// The windows a trial of the early picks leans on (ADR 0076, amendment 7): for each
+    /// regulator whose input voltage has no value, between what its part and the design need of
+    /// it (`.vin.voltage >= 3V`, `>= .vout.voltage`: any design that is valid has the input at
+    /// or above the largest of them) and the highest supply that reaches it through series
+    /// elements (a drop only lowers the voltage). It is what a board wrote by hand as the seed
+    /// of a circle. It is an assumption about a valid design and not an enclosure of the
+    /// circuit, so it is never written into the model that is kept.
+    pub(super) fn assumed_windows(&self) -> Vec<(FieldId, Quantity)> {
+        use netsmith_check::DcKind;
+        use netsmith_check::RExpr;
+        use netsmith_lang::ast::CmpOp;
+        let ceilings = dc::ceiling::Ceilings::new(&self.model);
+        let mut out = Vec::new();
+        let mut seen: HashSet<FieldId> = HashSet::new();
+        for (part, element) in self.model.dc_elements() {
+            if !matches!(
+                element.kind,
+                DcKind::LinearRegulator | DcKind::SwitchingRegulator
+            ) || self.model.instance(part).kind != netsmith_check::InstKind::Part
+            {
+                continue;
+            }
+            let Some((v_in, in_pos, _)) = self.model.rail_of(element.pins[0]) else {
+                continue;
+            };
+            let class = self.equated(v_in);
+            if class
+                .iter()
+                .any(|&f| !matches!(self.domain(f), Domain::Unset))
+                || !seen.insert(v_in)
+            {
+                continue;
+            }
+            let Some(hi) = ceilings.of(in_pos) else {
+                continue;
+            };
+            let mut lo: Option<f64> = None;
+            for r in self.model.relations().iter() {
+                let bound = match (&r.op, &r.lhs, &r.rhs) {
+                    (CmpOp::Ge, RExpr::Field(g), bound) | (CmpOp::Le, bound, RExpr::Field(g))
+                        if class.contains(g) =>
+                    {
+                        bound
+                    }
+                    _ => continue,
+                };
+                if let Ok(crate::eval::Val::Q(q)) = crate::eval::eval(&self.model, bound)
+                    && q.dim() == Dimension::VOLTAGE
+                    && q.hi().is_finite()
+                {
+                    lo = Some(lo.map_or(q.hi(), |l: f64| l.max(q.hi())));
+                }
+            }
+            if let Some(lo) = lo
+                && lo > 0.0
+                && lo <= hi
+                && let Ok(window) = Quantity::interval(Dimension::VOLTAGE, lo, hi)
+            {
+                out.push((v_in, window));
+            }
+        }
+        out
+    }
+
     /// The voltages with no value that a pick reads: the rails that a relation reads together
     /// with a column of a part to be chosen (a divider's draw is its input voltage over the two
     /// resistances, and its limit cannot refuse a candidate while the voltage is unknown).
@@ -287,7 +393,7 @@ impl Solver<'_> {
     /// that has none (a bias, or a relation that reads a column and a rail's voltage), so a board
     /// with none is solved as before, and it writes voltages only (a current a pick would then
     /// judge a rating against is the later pass's).
-    pub(super) fn dc_start(&mut self, jobs: &[super::Job]) {
+    pub(super) fn dc_start(&mut self, jobs: &[super::Job], closing: bool) {
         // The start runs when a pick waits on a voltage: the bias of a derated column, or a
         // voltage that a relation reads with a column.
         if !jobs.iter().any(|j| !self.unset_biases(j).is_empty())
@@ -302,6 +408,12 @@ impl Solver<'_> {
         // The conflicts are not said here: that propagation finds them again.
         let _ = self.propagate();
         let saved = self.model.snapshot();
+        let mut hulled: HashSet<InstId> = HashSet::new();
+        let enclosed = if closing {
+            self.enclose_loads(jobs)
+        } else {
+            HashMap::new()
+        };
         // Each part still to be picked takes the hull of the values its candidates can have for
         // what its `dc` element reads. Every candidate's value is inside the hull, so what comes
         // out is an enclosure of every choice.
@@ -309,9 +421,15 @@ impl Solver<'_> {
             let Some(dc) = self.model.instance(job.part).dc.clone() else {
                 continue;
             };
+            if enclosed.contains_key(&job.part) {
+                continue;
+            }
             for &field in &dc.values {
                 if !matches!(self.domain(field), Domain::Unset) {
                     continue;
+                }
+                if closing {
+                    hulled.insert(job.part);
                 }
                 let Some((_, key)) = job.columns.iter().find(|(f, _)| *f == field) else {
                     continue;
@@ -323,7 +441,10 @@ impl Solver<'_> {
                 }
             }
         }
-        let outcomes = dc::analyze(&self.model, true);
+        if closing {
+            self.enclose_boundaries(jobs);
+        }
+        let outcomes = dc::analyze(&self.model, true, &enclosed, &hulled);
         self.model.restore(&saved);
         let mut written: Vec<(dc::RailNode, Rc<Run>)> = Vec::new();
         let mut vins: Vec<(InstId, FieldId, Rc<Run>, usize)> = Vec::new();
@@ -338,7 +459,7 @@ impl Solver<'_> {
                 island: planned.island,
                 report,
             });
-            for sink in &planned.sinks {
+            for sink in planned.sinks.iter().filter(|s| !s.behind_hull) {
                 if let Some(m) = planned.parts.iter().find(|m| m.element == sink.element)
                     && let Some(field) = m.drop
                 {
@@ -384,6 +505,108 @@ impl Solver<'_> {
             }
             done.extend(class.iter().copied());
             self.dc_write_rail(&rail, &class, &run);
+        }
+    }
+
+    /// The parts still to be picked that are resistors and that the design limits the current of
+    /// (`.divider_top.current <= .max_draw`, which `.divider_bottom.current` is held to): each is
+    /// a load of at most that limit, and not a resistor at the hull of its catalog, whose low
+    /// end (milliohms) would draw hundreds of amperes from the supply. The limit is a relation
+    /// a pick that is made must satisfy, as the limit on a regulator's output is (amendment 6).
+    fn enclose_loads(&self, jobs: &[super::Job]) -> HashMap<InstId, dc::Range> {
+        let mut out = HashMap::new();
+        for job in jobs {
+            let Some(element) = &self.model.instance(job.part).dc else {
+                continue;
+            };
+            if element.kind != netsmith_check::DcKind::Resistor
+                || !matches!(self.domain(element.values[0]), Domain::Unset)
+            {
+                continue;
+            }
+            let Some(through) = self.model.through_of(job.part) else {
+                continue;
+            };
+            if let Some(limit) = self.current_limit(through) {
+                out.insert(job.part, dc::Range::new(0.0, limit));
+            }
+        }
+        out
+    }
+
+    /// The most a relation lets a current be: the least value of `x` over the relations
+    /// `.current <= x` that the field, or a field it is held equal to, has.
+    fn current_limit(&self, current: FieldId) -> Option<f64> {
+        use netsmith_check::RExpr;
+        use netsmith_lang::ast::CmpOp;
+        let mut class = self.equated(current);
+        loop {
+            let before = class.len();
+            for r in self.model.relations().iter() {
+                if let (CmpOp::EqEq, RExpr::Field(a), RExpr::Field(b)) = (&r.op, &r.lhs, &r.rhs)
+                    && (class.contains(a) || class.contains(b))
+                {
+                    class.insert(*a);
+                    class.insert(*b);
+                }
+            }
+            if class.len() == before {
+                break;
+            }
+        }
+        let mut limit: Option<f64> = None;
+        for r in self.model.relations().iter() {
+            let bound = match (&r.op, &r.lhs, &r.rhs) {
+                (CmpOp::Le, RExpr::Field(g), bound) | (CmpOp::Ge, bound, RExpr::Field(g))
+                    if class.contains(g) =>
+                {
+                    bound
+                }
+                _ => continue,
+            };
+            if let Ok(crate::eval::Val::Q(q)) = crate::eval::eval(&self.model, bound)
+                && q.dim() == Dimension::CURRENT
+                && q.hi().is_finite()
+                && q.hi() >= 0.0
+            {
+                limit = Some(limit.map_or(q.hi(), |m| m.min(q.hi())));
+            }
+        }
+        limit
+    }
+
+    /// A part with a `bridge` and no `dc` element draws what its `.current` says, and a design
+    /// can state that as a window that reads a column of the part (a Zener's `.current &= 0A ..
+    /// .leakage_current`). The columns of such a part that are still to be picked are taken at
+    /// the hull of their candidates, the relations are worked through once, and the current has
+    /// the range every candidate lies in: without one the network it is in is open.
+    fn enclose_boundaries(&mut self, jobs: &[super::Job]) {
+        let mut any = false;
+        for job in jobs {
+            let inst = self.model.instance(job.part);
+            if inst.dc.is_some() || inst.bridge.is_none() {
+                continue;
+            }
+            let Some(current) = self.model.through_of(job.part) else {
+                continue;
+            };
+            if !matches!(self.domain(current), Domain::Unset) {
+                continue;
+            }
+            for (field, key) in &job.columns {
+                if !matches!(self.domain(*field), Domain::Unset) {
+                    continue;
+                }
+                if let Some((dim, lo, hi)) = self.column_hull(job, *field, key)
+                    && let Ok(q) = Quantity::interval(dim, lo, hi)
+                {
+                    self.model.set_domain(*field, Domain::Quantity(q));
+                    any = true;
+                }
+            }
+        }
+        if any {
+            let _ = self.propagate();
         }
     }
 
