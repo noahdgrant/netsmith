@@ -633,10 +633,14 @@ pub(crate) fn extract(
     // is modelled and the net stays open.
     // Pins that are open drain never drive high, so any number of them on a net is a wired AND
     // and no fight: they are modelled together when no pin that can drive high is on the net.
+    // A receiver that states its leakage (no high, no low) drives nothing, so it fights with
+    // no one: it is modelled with the drivers of its net, and not at all where they are not.
     let mut per_net: HashMap<usize, usize> = HashMap::new();
     let mut pushing: HashMap<usize, usize> = HashMap::new();
     for d in &drivers {
-        *per_net.entry(d.net).or_default() += 1;
+        if d.high.is_some() || d.low.is_some() {
+            *per_net.entry(d.net).or_default() += 1;
+        }
         if d.high.is_some() {
             *pushing.entry(d.net).or_default() += 1;
         }
