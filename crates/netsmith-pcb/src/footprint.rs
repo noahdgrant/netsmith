@@ -170,6 +170,10 @@ pub struct Pad {
     /// pad's turn), which the anchor's `shape` and size do not cover. The primitives
     /// themselves stay in the footprint's source and are copied to the board unchanged.
     pub extent: Option<Rect>,
+    /// The pad's own `(clearance ...)`, or its footprint's if the pad has none: the space
+    /// the pad keeps from copper of other nets when it is larger than the board's. `None` when
+    /// the file says nothing. The design rules check applies it as the router must.
+    pub clearance: Option<f64>,
 }
 
 /// How a footprint is soldered to the board.
@@ -306,8 +310,16 @@ impl Footprint {
             .to_string();
 
         let mut pads = Vec::new();
+        // A pad without a clearance of its own has its footprint's, as in KiCad.
+        let footprint_clearance = source
+            .find("clearance")
+            .and_then(|c| c.args().first())
+            .and_then(Sexp::text)
+            .and_then(|t| t.parse::<f64>().ok());
         for pad in source.find_all("pad") {
-            pads.push(read_pad(pad).map_err(invalid)?);
+            let mut pad = read_pad(pad).map_err(invalid)?;
+            pad.clearance = pad.clearance.or(footprint_clearance);
+            pads.push(pad);
         }
         let mut graphics = Vec::new();
         for item in source.args() {
@@ -619,6 +631,11 @@ fn read_pad(pad: &Sexp) -> Result<Pad, String> {
         layers,
         corner_ratio,
         extent,
+        clearance: pad
+            .find("clearance")
+            .and_then(|c| c.args().first())
+            .and_then(Sexp::text)
+            .and_then(|t| t.parse().ok()),
     })
 }
 
