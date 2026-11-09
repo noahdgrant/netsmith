@@ -130,9 +130,10 @@ pub enum DcKind {
     /// `dc pmos .gate .drain .source .gate_threshold .on_resistance`: a P-channel MOSFET as a
     /// switch. Voltages and currents of a part are magnitudes (see `std::parts::PMosfet`).
     Pmos,
-    /// `dc linear_regulator .vin .vout`: an ideal output source over the range of the output
-    /// rail's voltage, and an input that draws what the output supplies (ADR 0076, amendment 3).
-    /// The operands are the two rails, not pins.
+    /// `dc linear_regulator .vin .vout [.quiescent_current]`: an ideal output source over the
+    /// range of the output rail's voltage, and an input that draws what the output supplies and
+    /// the quiescent current, when the statement names one (ADR 0076, amendments 3 and 9). The
+    /// first two operands are the rails, not pins.
     LinearRegulator,
     /// `dc switching_regulator .vin .sw .efficiency`: an ideal output source, and an input that
     /// draws the output's power divided by the efficiency and the input voltage (ADR 0076,
@@ -193,6 +194,16 @@ impl DcKind {
         }
     }
 
+    /// The values the statement may name after the required ones, with what each is: an
+    /// operand that can be left out (ADR 0076, amendment 9). A part that leaves it out is the
+    /// element without it, as before.
+    pub fn optional_value_roles(self) -> &'static [(&'static str, Dimension)] {
+        match self {
+            Self::LinearRegulator => &[("quiescent current", Dimension::CURRENT)],
+            _ => &[],
+        }
+    }
+
     /// The values the statement names after the pins, with what each is.
     pub fn value_roles(self) -> &'static [(&'static str, Dimension)] {
         match self {
@@ -223,7 +234,8 @@ impl DcKind {
 
 /// The DC element of a part: its `dc` statement with every name resolved. A later stage builds
 /// the network of an analysis from these. `pins` are in the order of [`DcKind::pin_roles`] and
-/// `values` in the order of [`DcKind::value_roles`], so that a resistor's two terminals are
+/// `values` in the order of [`DcKind::value_roles`] and then [`DcKind::optional_value_roles`]
+/// (the optional ones the statement names), so that a resistor's two terminals are
 /// `pins[0]` and `pins[1]` and its resistance is `values[0]`, a diode's anode is `pins[0]`, and
 /// a MOSFET's gate, drain and source are `pins[0]`, `pins[1]` and `pins[2]`. A regulator's
 /// `pins` are its input rail and its output rail (interfaces, see [`DcKind::takes_rails`]).
