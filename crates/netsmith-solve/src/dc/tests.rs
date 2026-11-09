@@ -753,3 +753,95 @@ fn a_gate_inside_the_threshold_range_keeps_both_states() {
     assert_eq!(report.consistent, 2);
     range_is(report.range(Which::Current(0)), 0.0, 12.0 / 100.1);
 }
+
+/// A resistance that reaches zero is solved down to a short (ADR 0076, amendment 16): the node
+/// past a 0 to 0.2 mohm link at 90 A to 100 A is 11.98 V to 12 V, where a floor of 1 mohm gave
+/// 11.9 V to 11.91 V.
+#[test]
+fn a_link_that_reaches_zero_ohm_is_a_short_at_that_end() {
+    let island = Island {
+        free: 1,
+        held: vec![
+            held("supply", Range::point(12.0)),
+            held("ground", Range::point(0.0)),
+        ],
+        elements: vec![
+            resistor("jumper", 1, 0, Range::new(0.0, 0.2e-3)),
+            load("load", 0, 2, Range::new(90.0, 100.0)),
+        ],
+    };
+    let report = island.analyze(MAX_COMBINATIONS).unwrap();
+    range_is(report.range(Which::NodeVoltage(0)), 11.98, 12.0);
+    range_is(report.range(Which::Drop(0)), 0.0, 0.02);
+    range_is(report.range(Which::Current(0)), 90.0, 100.0);
+    assert_eq!(check_interior(&island, &report, 500), 0);
+}
+
+/// A chain of ferrite beads, each `0 ohm..70 mohm`, in front of a load of 2 A: the drops add up
+/// to the sum of the ends, which is exactly 0 V at the least. Three in series and two in
+/// parallel are the cases a loop of zero-ohm branches could break (a singular matrix).
+#[test]
+fn a_chain_of_beads_at_zero_ohm_has_no_drop_and_no_singular_matrix() {
+    let bead = Range::new(0.0, 0.07);
+    // Three in series: 12 V, bead, bead, bead, load.
+    let series = Island {
+        free: 3,
+        held: vec![
+            held("supply", Range::point(12.0)),
+            held("ground", Range::point(0.0)),
+        ],
+        elements: vec![
+            resistor("fb1", 3, 0, bead),
+            resistor("fb2", 0, 1, bead),
+            resistor("fb3", 1, 2, bead),
+            load("load", 2, 4, Range::point(2.0)),
+        ],
+    };
+    let report = series.analyze(MAX_COMBINATIONS).unwrap();
+    range_is(
+        report.range(Which::NodeVoltage(2)),
+        12.0 - 3.0 * 0.07 * 2.0,
+        12.0,
+    );
+    assert_eq!(report.consistent, report.combinations);
+    assert_eq!(check_interior(&series, &report, 500), 0);
+    // Two in parallel: both at zero ohm is a loop of two shorts, solved with the beads raised
+    // to the least resistance, and the other three corners are exact.
+    let parallel = Island {
+        free: 1,
+        held: vec![
+            held("supply", Range::point(12.0)),
+            held("ground", Range::point(0.0)),
+        ],
+        elements: vec![
+            resistor("fb1", 1, 0, bead),
+            resistor("fb2", 1, 0, bead),
+            load("load", 0, 2, Range::point(2.0)),
+        ],
+    };
+    let report = parallel.analyze(MAX_COMBINATIONS).unwrap();
+    assert_eq!(report.consistent, report.combinations);
+    // The least is 0.07 ohm in parallel with 0.07 ohm: 35 mohm and 70 mV at 2 A.
+    range_is(report.range(Which::NodeVoltage(0)), 12.0 - 0.07, 12.0);
+    assert_eq!(check_interior(&parallel, &report, 500), 0);
+}
+
+/// A resistor between two held nodes, or from a node to itself, is no branch: it is solved at
+/// the least resistance the matrix holds, as before.
+#[test]
+fn a_zero_ohm_resistor_between_held_nodes_is_not_a_branch() {
+    let island = Island {
+        free: 1,
+        held: vec![
+            held("supply", Range::point(12.0)),
+            held("ground", Range::point(0.0)),
+        ],
+        elements: vec![
+            resistor("divider", 1, 0, Range::point(100.0)),
+            resistor("across", 1, 2, Range::new(0.0, 1.0)),
+            resistor("loop", 0, 0, Range::new(0.0, 1.0)),
+        ],
+    };
+    let report = island.analyze(MAX_COMBINATIONS).unwrap();
+    assert_eq!(report.consistent, report.combinations);
+}
