@@ -126,6 +126,15 @@ pub(crate) struct Planned {
     pub outputs: Vec<OutputNode>,
     /// The rails on the island's free nodes, measured from its ground.
     pub rails: Vec<RailNode>,
+    /// The net (the place in `Model::nets`) of each free node, in the order of the node numbers,
+    /// and the net of the ground the island is measured from.
+    pub free_nets: Vec<usize>,
+    pub ground: Option<usize>,
+    /// The elements that are pins taken to be open drain by ADR 0075's inference (a `vol` and
+    /// no `voh`): they are low or high impedance and never high. The island's own words (a
+    /// current written for a part, a voltage written for a rail) are not made from them, since
+    /// the inference may call a push-pull pin that left its high out open drain.
+    pub open_drain: Vec<usize>,
 }
 
 /// What `extract` found: the islands, the regulators, and the regulator outputs that an island
@@ -535,11 +544,24 @@ pub(crate) fn extract(
     // Two pins that can drive one net may drive it apart: the states that fight are no circuit
     // anyone designs, and which pairs are never driven together is not stated, so none of them
     // is modelled and the net stays open.
+    // Pins that are open drain never drive high, so any number of them on a net is a wired AND
+    // and no fight: they are modelled together when no pin that can drive high is on the net.
     let mut per_net: HashMap<usize, usize> = HashMap::new();
+    let mut pushing: HashMap<usize, usize> = HashMap::new();
     for d in &drivers {
         *per_net.entry(d.net).or_default() += 1;
+        if !d.open_drain {
+            *pushing.entry(d.net).or_default() += 1;
+        }
     }
-    for d in drivers.into_iter().filter(|d| per_net[&d.net] == 1) {
+    let mut open_drain_names: HashSet<String> = HashSet::new();
+    for d in drivers
+        .into_iter()
+        .filter(|d| pushing.get(&d.net).is_none_or(|&p| p == 0) || per_net[&d.net] == 1)
+    {
+        if d.open_drain {
+            open_drain_names.insert(model.path_of(d.terminal));
+        }
         accounted.insert(d.terminal);
         items.push(Item {
             kind: Kind::Pin {
@@ -1192,12 +1214,24 @@ pub(crate) fn extract(
                 .collect(),
             None => Vec::new(),
         };
+        let open_drain = island
+            .elements
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| {
+                matches!(e.kind, Kind::Pin { .. }) && open_drain_names.contains(&e.name)
+            })
+            .map(|(i, _)| i)
+            .collect();
         out.push(Planned {
             island,
             parts,
             sinks,
             outputs,
             rails,
+            free_nets: free_nets.clone(),
+            ground,
+            open_drain,
         });
     }
     Extracted {
@@ -1241,6 +1275,8 @@ struct Driver {
     low: Option<Range>,
     /// Whether it can let go of the line.
     z: bool,
+    /// A pin that states a low and no high (ADR 0075): low or high impedance, never high.
+    open_drain: bool,
 }
 
 /// The drive of a logic pin, from what its part states (ADR 0076, amendment 4). A pin is
@@ -1253,9 +1289,10 @@ struct Driver {
 /// - states a `voh` and a `vol` that have a value, each with the current it is measured at
 ///   (`.voh &= .vdd.voltage - 0.4V at 2mA`): the datasheet's own form (question 2 of the ADR).
 ///
-/// A pin that states one of the two only might be an open-drain pin or a push-pull one that
-/// leaves its high out; which is a marker the language does not have (ADR 0075), so it is a
-/// boundary and not a guess.
+/// A pin that states a `vol` at a current and no `voh` at all is open drain by ADR 0075's
+/// inference, the one the levels check makes: low (through `rol`) or high impedance, never high
+/// (ADR 0076, amendment 8). A pin that states a `voh` and no `vol` is a boundary: nothing says
+/// what its low is.
 fn driver_of(
     model: &Model,
     reader: &crate::levels::Run<'_>,
@@ -1295,6 +1332,20 @@ fn driver_of(
         }
         (i.is_finite() && i > 0.0).then_some((f, Range::new(q.lo(), q.hi()), i))
     };
+    if reader.value(logic, "voh").is_none() {
+        let (_, vol_range, iol) = level("vol")?;
+        let rol = Range::new(MIN_RESISTANCE, (vol_range.hi / iol).max(MIN_RESISTANCE));
+        return Some(Driver {
+            terminal: pin,
+            net,
+            pos,
+            neg,
+            high: None,
+            low: Some(rol),
+            z: true,
+            open_drain: true,
+        });
+    }
     let (voh, voh_range, ioh) = level("voh")?;
     let (_, vol_range, iol) = level("vol")?;
     // The datasheet gives `VOH = VDD - 0.4 V at 2 mA`: when the level is written that way the
@@ -1311,6 +1362,7 @@ fn driver_of(
         high: Some(roh),
         low: Some(rol),
         z,
+        open_drain: false,
     })
 }
 
