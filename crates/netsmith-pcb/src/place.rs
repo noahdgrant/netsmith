@@ -86,6 +86,10 @@ pub struct PlaceOptions {
     /// outline) out of the zone on the faces the zone limits; a part with no stated
     /// height is not kept out (nobody knows whether it fits; the check reports it).
     pub height_zones: Vec<HeightZone>,
+    /// The keepouts that a part carries (ADR 0029, ADR 0045 section 11): each moves and turns
+    /// with its part, so the annealer keeps the other parts out of it where the part is, as
+    /// the check does (`Board::check_placement`).
+    pub carried: Vec<CarriedZone>,
     /// Constraints are warnings for this run (`--constraints warn`, ADR 0045): lines that the
     /// check before placing proves cannot all hold are listed as warnings and the placer runs
     /// as ever, instead of stopping the board. A courtyard past an edge nobody stated, or a
@@ -104,6 +108,43 @@ pub struct HeightZone {
     pub back: bool,
     /// The tallest a part may stand in it, in mm.
     pub limit: f64,
+}
+
+/// A keepout that a part carries: its box is in the part's own frame (the footprint's), and
+/// turns, mirrors and moves with the part. It keeps other parts out the way a keepout for
+/// parts does (`parts`) and limits their height the way a height zone does (`limit`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CarriedZone {
+    /// The keepout it comes from.
+    pub name: String,
+    /// The path of the part that carries it.
+    pub part: String,
+    /// The box in the part's own frame.
+    pub local: Rect,
+    /// Whether it forbids parts.
+    pub parts: bool,
+    /// The faces its height limit applies to.
+    pub front: bool,
+    pub back: bool,
+    /// The tallest a part may stand in it, in mm, if it limits height.
+    pub limit: Option<f64>,
+}
+
+impl CarriedZone {
+    /// Whether a part of `height` mm on `side` may not stand in it for its height: the
+    /// limit is below the height, on a face the limit applies to. A part with no stated
+    /// height is not ruled out (nobody knows whether it fits; the check reports it).
+    pub(crate) fn limits(&self, height: Option<f64>, side: Side) -> bool {
+        let (Some(limit), Some(height)) = (self.limit, height) else {
+            return false;
+        };
+        let on = if side == Side::Back {
+            self.back
+        } else {
+            self.front
+        };
+        on && height > limit + 0.0005
+    }
 }
 
 impl HeightZone {
@@ -1610,6 +1651,7 @@ fn refine(
         overhangs: &overhangs,
         outline: region,
         zones: &options.height_zones,
+        carried: &options.carried,
     };
     let mut outcome = anneal::anneal(parts, &problem, 1.0);
     let mut tries = 1;
@@ -1722,6 +1764,7 @@ pub(crate) fn anneal_within(
         overhangs: &overhangs,
         outline: region,
         zones: &options.height_zones,
+        carried: &options.carried,
     };
     let outcome = anneal::anneal(parts, &problem, 1.0);
     if !outcome.feasible {
@@ -1797,7 +1840,7 @@ pub fn place_subset(
     let mut keepouts: Vec<Rect> = board
         .keepout_areas()
         .into_iter()
-        .filter(|k| k.parts)
+        .filter(|k| k.parts && k.carrier.is_none())
         .map(|k| k.rect)
         .collect();
     let cutouts: Vec<Rect> = board
@@ -1808,6 +1851,7 @@ pub fn place_subset(
     keepouts.extend(cutouts.iter().copied());
     let planes: Vec<String> = board.planes.iter().map(|p| p.net.clone()).collect();
     let zones = board.height_zones();
+    let carried = board.carried_zones();
     let overhangs: Vec<overhang::Edges> = board
         .parts
         .iter()
@@ -1846,6 +1890,7 @@ pub fn place_subset(
         overhangs: &overhangs,
         outline: board.outline,
         zones: &zones,
+        carried: &carried,
     };
     // The parts are kept in the region by a keepout round it.
     let mut walls = keepouts.clone();
