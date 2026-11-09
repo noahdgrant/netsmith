@@ -43,7 +43,6 @@
 0073-a-tvs-diode-has-a-breakdown-voltage-as-an-optional-column.md
 0074-a-member-marked-optional-is-skipped-by-the-checks-that-read-it-when-nothing-states-it.md
 0075-an-open-drain-line-takes-its-high-from-its-pull-up.md
-0076-a-post-pick-dc-analysis-solves-the-network-of-the-picked-parts.md
 0077-a-module-rail-joined-to-the-rail-of-its-part-has-the-part-s-current.md
 0078-a-catalog-column-is-marked-optional-in-the-catalog-statement.md
 0079-a-pull-down-states-its-own-current.md
@@ -52,15 +51,3 @@
 0082-levels-stated-as-fractions-of-one-rail-are-compared-at-one-supply-voltage.md
 0083-a-board-states-that-a-function-is-unused.md
 0084-a-part-can-be-consigned.md
-0085-a-buck-stage-states-a-voltage-margin-for-its-capacitors.md
-0086-a-chain-carries-the-peak-of-its-rail-to-the-parts-in-series.md
-0087-netsmith-ships-its-own-footprints-for-packages-kicad-lacks.md
-0088-a-diode-across-a-rail-has-the-voltage-of-the-way-it-is-wired.md
-0089-a-bidirectional-tvs-diode-is-its-own-generic.md
-0090-an-i2c-line-is-followed-through-the-connectors-a-system-mates.md
-0091-a-chain-carries-the-reverse-peak-and-the-fault-current-to-the-parts-in-series.md
-0092-a-mosfets-on-resistance-is-checked-against-the-gate-drive-it-is-guaranteed-at.md
-0093-a-buck-stage-checks-the-ics-minimum-on-time-and-off-time-against-its-duty-cycle.md
-0094-a-parts-height-can-come-from-the-catalog-row-it-was-picked-as.md
-0095-the-lt8641-states-the-absolute-maximum-of-the-pins-the-solver-can-judge.md
-0096-a-switching-regulators-quiescent-current-is-part-of-its-input-current.md

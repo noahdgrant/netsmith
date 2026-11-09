@@ -4,6 +4,31 @@
 //! `std::bus::I2c` says which pins are the lines, and the checker looks for the resistor. A line
 //! that goes out through a connector is followed through the mates of a system to the other
 //! boards (ADR 0090).
+//!
+//! The finder reads a pull-up as a path of parts that have a `bridge` and a `resistance` from
+//! the line to a net with the `pos` of a rail: resistors in series, in parallel, a divider (a
+//! resistor to ground on a node of the path), `std::bus::PullUp` and `std::bus::I2cPullups`
+//! (their resistors are inside a module, so the nets pass through its ports). A resistor to a
+//! net no rail is on, and a line tied to a rail or pulled down, are not pull-ups. The
+//! undriven-input rule counts every passive pin as a driver, so a connector pin is one.
+//!
+//! In a `system`, a line that leaves its board through connectors is followed: from each
+//! connector pin on the line's net the mate gives the pin it meets (contact N of one is
+//! contact N of the other), and the same finder looks on the net of that pin in the other
+//! board, and through any connector there. If any of those nets has a pull-up the line is
+//! satisfied, wherever it is. If a connector on the way has no mate in the model, or the line
+//! reaches a port of a board, it goes somewhere the model does not show and is not judged. If
+//! every connector is mated and no board has a pull-up the line is an error, once for the bus
+//! and not once per board, naming the connectors it passed and the pins of the bus on every
+//! board it reaches. A board checked alone behind its connector is not judged: a mate is the
+//! one thing that says where the connector leads. A bus with no pull-up anywhere is an
+//! electrical fact (ADR 0044), so it is an error here and not a guideline. A part that is not
+//! a resistor and pulls a line up (a current source, a bus buffer with a built-in pull-up) is
+//! not found: nothing in the part says it is one, and the checker does not guess from a name.
+//! A marker for one (a `pins` row flag or an interface member) and a pull-up beyond an
+//! unmated connector (a `.pulled_up_outside` member of `I2c`) would be language changes, and
+//! the owner's to decide; nor does the undriven-input rule follow a mate, since it already
+//! counts a connector pin as a driver and has no false alarm to remove.
 
 use std::collections::HashSet;
 

@@ -243,6 +243,23 @@ generic Crystal {
 /// (conservative: a fuse carries more than its rating for a time before it opens). The checker
 /// gives it to the parts behind the fuse in the chain that have a `.supply_fault_current` (a
 /// diode), which are rated for it (ADR 0091).
+///
+/// Why `.limit_current` is a field of its own (ADR 0091): the checker could read any
+/// `.rated_current`, but a `Switch` and a `Resistor` have one that limits nothing, so a part
+/// that limits says so. A part behind the fuse that has `.supply_fault_current` is given the
+/// `.limit_current` of the nearest part in front of it that has one, as the relation
+/// `part.supply_fault_current == fuse.limit_current`. A fuse behind the part gives it nothing,
+/// and the value needs no rail, so a chain that starts on a signal has it. The nearest and not
+/// the smallest: it is never less than the smallest, so it is an upper bound and the check is
+/// conservative (the smallest would need a `min` that relations do not have), and it is
+/// pessimistic when a larger fuse sits between a small one and the diode. The rating is the
+/// current the fuse lets through, though a real fuse carries 1.35 to 2 times it for a time
+/// before it opens: that factor is the datasheet's, and the board's to state if it wants the
+/// diode rated for it (`.d.max_forward_current >= .fuse.rated_current * 1.5`, which still
+/// checks). A catalog column for the trip multiple needs a source for each row and is not
+/// built. `Diode` has no power rating in std (`.max_power` is a Zener's), so the forward drop
+/// times the fault current is not checked. `Switch` and `Inductor` are not given
+/// `.supply_fault_current`; it is one line each once the owner has taken the convention.
 generic Fuse {
     .designator &= "F"
 

@@ -26,6 +26,33 @@
 /// A rating is a bound the datasheet gives, so each is checked in the worst case:
 /// `.current <= .max_forward_current` and `.bias <= .max_reverse_voltage`. A rating the design
 /// does not reach (a current it does not state) is listed as not evaluated.
+///
+/// Why the voltage has a sign (ADR 0088). The checker gave every part with a `bridge` and a
+/// `.bias` the rail's voltage whichever end of the part was on `pos`, as a ceramic capacitor
+/// wants, so a rectifier with its anode on `pos` was given the rail's voltage as the voltage
+/// it blocks, and passed: it conducts across the rail, a short. A part that has a `bridge`
+/// and a voltage field named `.bridge_voltage` is given the voltage from the first end of its
+/// bridge to the second instead (one relation, `part.bridge_voltage == rail.voltage` or
+/// `== -rail.voltage`, with the same choice of rail as `.bias`), and is not given `.bias` by
+/// that code: its own relations define the bias from it. It is a field name the checker looks
+/// for, as ADR 0086 says, and a project's own diode part copied from this one has to add it.
+/// `.bias >= -.forward_voltage` then says the cathode is never more than a forward drop below
+/// the anode, and fails, naming the diode, for one wired to conduct across a rail. A diode in
+/// series, across no rail, has nothing derived and the board states `.bias`; `.bridge_voltage`
+/// is `optional` so that the relations reading it are dropped for it, with no note (a first
+/// version without `optional` listed them as not evaluated for every diode in series). The
+/// orientation check of a bare `Diode` compares with `.forward_voltage`, which a `Schottky`
+/// has from its catalog row and a bare `Diode` only when the design states it; without it a
+/// reversed one is not found. Not taken: a signed `.bias` for every part (a capacitor's would
+/// go negative on a reversed rail, and a bridge direction does not say which end is the
+/// cathode: the bridge of a `Diode` is the way it conducts, of a `Zener` the way it clamps);
+/// the cathode from a pin's name or a marker in the `pins` grammar (a name is a convention in
+/// the checker, a marker is a language change); syntax for the field; a checker error with its
+/// own wording for a reversed diode (the relation already says it in numbers); `.drop` as the
+/// voltage (the DC analysis reads it as the forward voltage, so deriving it from the rail
+/// would contradict the analysis for every blocking diode). A diode between two rails (an
+/// OR-ing diode) is across no rail and is not checked. The name, and a field-name convention
+/// against a keyword, are the owner's to confirm.
 part Diode {
     .designator &= "D"
 
@@ -152,6 +179,12 @@ generic Schottky {
 /// evaluated, and the row's temperature coefficient is not asked for. `.voltage_over_temperature`
 /// is the datasheet's typical figure carried over the range: a datasheet's coefficient is
 /// not a bound on a part, and the margin is the design's.
+///
+/// A Zener is a clamp, not a rectifier, so across a rail `.bias >= 0V` says it is not forward
+/// biased (ADR 0088): it fails for one with its anode on `pos`. It is `0V` and not
+/// `-.forward_voltage` because a Zener has no such field, and a datasheet's `VF`, where it
+/// exists, would allow a clamp across an AC line. The part's `.bridge_voltage` is the voltage
+/// at the cathode relative to the anode, the way it clamps, which is its `.bias`.
 generic Zener {
     .designator &= "D"
 
@@ -214,6 +247,20 @@ generic Zener {
 /// a margin from the highest the line reaches states it, `.d.breakdown_voltage >= .vin.peak *
 /// 1.1`, and the standard rows, which record no VBR, are then not offered; a project's catalog
 /// gives rows that do.
+///
+/// Across a rail, `.bias >= 0V` says that a clamp is not forward biased (ADR 0088), as for a
+/// `Zener`: it fails for one with its anode on `pos`. A `Tvs` first in a `~>` chain from a rail
+/// that states a `.reverse_peak` is given it as `.supply_reverse_peak` and states
+/// `-.supply_reverse_peak >= 0V`: a unidirectional TVS diode there conducts the reversed
+/// supply, and the finding says so with the numbers (ADR 0091). The check reads the rail's
+/// `.reverse_peak` as a voltage the diode must not be exposed to, which is the reversed
+/// battery of a miswired harness, a steady voltage that turns the diode into a short. A
+/// negative transient is clamped by the same diode at about a forward drop, which is its job,
+/// and the source limits what it carries. `Rail` has one number for both, so a design that
+/// wants the transient and not the reversal states no `.reverse_peak` on that rail; two
+/// members, a steady `.reverse_voltage` and a transient `.reverse_peak`, would be a second
+/// member on every rail, and are not built. `TvsBidirectional` is not given the field: it
+/// clamps a reverse transient as a forward one, so what to check is the owner's to say.
 generic Tvs {
     .designator &= "D"
 
@@ -273,6 +320,31 @@ generic Tvs {
 ///
 /// `.breakdown_voltage` is the minimum breakdown voltage VBR, an optional catalog column as for
 /// `Tvs` (ADR 0073, ADR 0078).
+///
+/// The pins are `.a1` and `.a2`, the names and pads of KiCad 9's `Device:D_TVS` (described there
+/// as a "Bidirectional transient-voltage-suppression diode", pins `A1` and `A2`, passive), and
+/// `std/kicad.toml` maps the five packages of `Tvs` (`D_SOD-123`, `D_SOD-323`, `D_SMA`,
+/// `D_SMB`, `D_SMC`, pads 1 and 2) to it. The catalog `tvs_bidirectional` has two rows, the
+/// Littelfuse SMDJ12CA and SMDJ36CA, each read from the SMDJ series datasheet table (revised
+/// 11/20/15) with the minimum breakdown voltage; `data/jlcpcb/README.md` records the sources.
+/// More rows (the MDD SMAJ and SMBJ bidirectional types) need the same reading of their
+/// datasheet.
+///
+/// Why a second generic and not a member of `Tvs` (ADR 0089). `std/kicad.toml` maps a kind and
+/// a package to a symbol, so a member cannot choose the symbol: the mapping would need a
+/// condition on a value, a change to the mapping's language. `Tvs`'s pins are `anode` and
+/// `cathode`, which mislead for a part that has neither, and a pin table cannot differ by a
+/// member. One catalog would hold rows of both kinds, and a design that did not say which would
+/// be offered both. The name states the difference and sorts beside `Tvs`; `BidirectionalTvs`,
+/// `TvsBi` and `TvsDual` (KiCad uses that for three-pin parts) were passed over, and renaming
+/// `Tvs` to `TvsUnidirectional` would break every board that uses it. A design that wants a
+/// bidirectional clamp writes `TvsBidirectional`; one that kept `Tvs` has the Zener symbol as
+/// before. For a part across no rail a design states `.bias` as the largest voltage the line
+/// can reach in either direction, a magnitude, so an asymmetric bidirectional part (a stand-off
+/// that differs by polarity) has no field here. Three-pin parts (`D_TVS_Dual_*`) and multi-line
+/// ESD arrays are not covered; each is its own part. The Littelfuse rows are Extended parts;
+/// no Basic bidirectional row was read. The name, the pin names and the member-or-generic
+/// choice are the owner's to confirm.
 generic TvsBidirectional {
     .designator &= "D"
 
