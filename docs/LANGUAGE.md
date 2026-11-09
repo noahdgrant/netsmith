@@ -1034,7 +1034,7 @@ What the statement does, for the interface it names and everything inside it:
 - **Its levels do not run.** A pin of it is not compared with another as a driver or a receiver, and its absolute maximum is not read against a net.
 - **Nothing else changes.** Another interface of the part keeps every check, and a board that does not write the statement gets what it got before.
 
-The statement says that nothing on the board uses the interface. A board that also uses it contradicts itself, and the error shows both lines: the connection, and the line of the `unused` statement. A pin of the interface that is on a net with a pin of another part, an interface joined to another with `~`, and a function chosen on a pin of it are all uses:
+The statement says that nothing on the board uses the interface. A board that also uses it contradicts itself, and the error shows both lines: the connection, and the line of the `unused` statement. A pin of the interface that is on a net with a pin of another part, a series fuse, resistor or ferrite bead that leads from it to such a pin (below), an interface joined to another with `~`, and a function chosen on a pin of it are all uses:
 
 ```nsm fails
 import src::processor::{Processor, Receptacle}
@@ -1087,10 +1087,43 @@ board Modem {
 }
 ```
 
+A fuse, a resistor or a ferrite bead in series from the interface to the rest of the board is a use, through however many of them: the part still feeds the board from the interface, and the interface's limits and the draw of its rails belong in the checks. The rest of the board is a net that has a pin of another part that is not `passive`. The error names the parts the use goes through and the pin it reaches:
+
+```nsm fails
+import src::processor::{Processor, Receptacle}
+import std::parts::passive::Fuse
+import std::sources::Rail
+
+board Behind {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .processor: Processor
+    .jack: Receptacle
+    .fuse: Fuse
+    .supply ~ .processor.vdd
+    .jack.usb.vbus.neg ~ .supply.neg
+    .processor.usb.vbus.pos ~> .fuse ~> .jack.usb.vbus.pos
+    unused .processor.usb
+}
+```
+
+```text
+error: `processor.usb.vbus.pos` is connected here through `fuse` (a `Fuse`) to `jack.usb.vbus.pos` (net `net-fuse.b`), but `processor.usb` is stated `unused` at main.nsm:17: the interface is either used or not; remove the connection, or remove `unused`
+   --> main.nsm:16:5
+   |
+16 |     .processor.usb.vbus.pos ~> .fuse ~> .jack.usb.vbus.pos
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A series part that leads only to test pads, to a return (a pull-down to ground proves nothing), or to another interface that is stated unused, brings no use. Only a `Resistor`, a `Fuse` and a `FerriteBead` are series parts for this rule; a capacitor, an inductor, a diode or a switch in series is not followed (it is not yet decided whether one is a use).
+
 Rules.
 
 - **A board, an interface.** Only a board states it. A part, a module, a system or a panel cannot say that a function of its own is unused, and a physical file states where things are and not what the circuit is. The path must name an interface (a pin, a value, a whole part and a whole module are errors that say so), and naming one twice is an error.
-- **A use is a net or a choice.** An interface is used when one of its pins (not the return of a supply: every ground is one net) shares a net with a pin of another part that is not `passive`, when it is joined to another interface with `~` (a rail of the board that supplies it is one), or when the board states a function for one of its pins. The pins a part's own definition joins inside it are the part's business, and a connection made inside the module that holds the interface is the module's own wiring.
+- **A use is a net or a choice.** An interface is used when one of its pins (not the return of a supply: every ground is one net) shares a net with a pin of another part that is not `passive` (also through series fuses, resistors and ferrite beads: the net at the far end of such a part counts, unless it is a return), when it is joined to another interface with `~` (a rail of the board that supplies it is one), or when the board states a function for one of its pins. The pins a part's own definition joins inside it are the part's business, and a connection made inside the module that holds the interface is the module's own wiring.
 - **Order does not matter.** The statement acts after every statement of the board is read.
 
 ### A generic part that no row can be ordered for

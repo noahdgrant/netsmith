@@ -67,6 +67,12 @@ pub enum Member {
 /// defines is (ADR 0068 open question 9: no syntax for it yet, and a list in one place).
 const BANKS: [&str; 1] = ["Capacitor"];
 
+/// The standard generics that are a series passive for the rule of `unused` (ADR 0083): a
+/// two-ended part that carries what the board feeds through it, so an interface joined through
+/// one to the rest of the board is used. The narrowest reading; a capacitor, an inductor, a
+/// diode and a switch are not in it (a decision of the owner's).
+const SERIES: [&str; 3] = ["Resistor", "Fuse", "FerriteBead"];
+
 #[derive(Debug, Clone)]
 pub struct Instance {
     pub name: String,
@@ -1283,6 +1289,18 @@ impl Model {
             }
             _ => None,
         }
+    }
+
+    /// The two ends of a series passive for `unused` (the pins of its `bridge`): a part that
+    /// stands for a standard generic in [`SERIES`], whatever its provider names its pins. None
+    /// for any other part.
+    pub fn series_ends(&self, part: InstId) -> Option<(InstId, InstId)> {
+        let inst = self.instance(part);
+        let series = inst.standard.iter().any(|g| SERIES.contains(&g.as_str()));
+        if inst.kind != InstKind::Part || !series {
+            return None;
+        }
+        inst.bridge
     }
 
     /// The `.count` of a part that is a bank (ADR 0052): the number of identical parts that

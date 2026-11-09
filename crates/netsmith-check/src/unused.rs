@@ -167,6 +167,7 @@ impl Checker<'_> {
                 .iter()
                 .filter_map(|&i| model.rail_of(i).map(|(_, _, neg)| neg))
                 .collect();
+            let grounds = grounds(model);
             let mut pins: Vec<InstId> = inside
                 .iter()
                 .copied()
@@ -200,9 +201,16 @@ impl Checker<'_> {
                         && !holder.is_some_and(|h| model.is_inside(t, h))
                         && !matches!(model.pin_kind(t), None | Some(PinKind::Passive))
                 });
-                let Some(other) = other else { continue };
+                // No pin of another part on the net: a series passive from it may lead to one.
+                let (via, other, net) = match other {
+                    Some(other) => (Vec::new(), other, net.name.clone()),
+                    None => match series_use(model, pin, holder, &grounds) {
+                        Some(found) => found,
+                        None => continue,
+                    },
+                };
                 let with = model.path_of(other);
-                let net = net.name.clone();
+                let through = Self::through(model, &via);
                 let (source, span, here) = self.where_joined(pin, holder, u);
                 // One error for a statement that joins several pins: the first one says it.
                 if here == HERE && !said_at.insert((source, span)) {
@@ -212,7 +220,7 @@ impl Checker<'_> {
                     source,
                     span,
                     format!(
-                        "`{path}` is {here} to `{with}` (net `{net}`), but `{name}` is stated `unused` at {said}: the interface is either used or not; remove the connection, or remove `unused`"
+                        "`{path}` is {here}{through} to `{with}` (net `{net}`), but `{name}` is stated `unused` at {said}: the interface is either used or not; remove the connection, or remove `unused`"
                     ),
                 ));
                 pinned = true;
@@ -256,6 +264,24 @@ impl Checker<'_> {
         }
     }
 
+    /// ` through `f` (a `Fuse`) and `r` (a `Resistor`)` for the series passives a use goes
+    /// through, empty for none.
+    fn through(model: &crate::model::Model, via: &[InstId]) -> String {
+        let named: Vec<String> = via
+            .iter()
+            .map(|&p| {
+                let inst = model.instance(p);
+                let kind = inst.placed_as.as_ref().unwrap_or(&inst.type_name);
+                format!("`{}` (a `{kind}`)", model.path_of(p))
+            })
+            .collect();
+        match named.as_slice() {
+            [] => String::new(),
+            [one] => format!(" through {one}"),
+            [init @ .., last] => format!(" through {} and {last}", init.join(", ")),
+        }
+    }
+
     /// Where the board joins `inst`, which is in an interface stated unused: the `~` statement
     /// that names it or an interface around it, when one outside the part or module that holds
     /// the interface does; else the `unused` statement, for a net that the pins' names made.
@@ -274,4 +300,69 @@ impl Checker<'_> {
             None => (u.source, u.span, "connected".to_string()),
         }
     }
+}
+
+/// The `neg` pins of every rail: a net that holds one is a return, and every return is one net.
+fn grounds(model: &crate::model::Model) -> HashSet<InstId> {
+    model
+        .instances()
+        .filter_map(|(id, _)| model.rail_of(id).map(|(_, _, neg)| neg))
+        .collect()
+}
+
+/// A use that goes through series passives (a fuse, a resistor, a ferrite bead): from `pin`,
+/// of an interface stated unused, along nets and across the two ends of such parts, to a net
+/// that has a non-passive pin of another part. Returns the parts crossed (in order), the pin
+/// reached and the name of its net. A part inside the module that holds the interface is the
+/// module's own wiring, and a net that is a return is not a use, as for a pin of the interface
+/// itself; a series part that leads only to passive pins (test pads) or to another interface
+/// stated unused finds none.
+fn series_use(
+    model: &crate::model::Model,
+    pin: InstId,
+    holder: Option<InstId>,
+    grounds: &HashSet<InstId>,
+) -> Option<(Vec<InstId>, InstId, String)> {
+    let outside = |t: InstId| {
+        model.is_terminal(t)
+            && model.unused_by(t).is_none()
+            && !holder.is_some_and(|h| model.is_inside(t, h))
+    };
+    let mut crossed: HashSet<InstId> = HashSet::new();
+    let mut queue = std::collections::VecDeque::from([(pin, Vec::<InstId>::new())]);
+    while let Some((from, via)) = queue.pop_front() {
+        if !via.is_empty() {
+            match model.net_of(from) {
+                Some(net) if !net.pins.iter().any(|p| grounds.contains(p)) => {}
+                _ => continue,
+            }
+        }
+        let mut others: Vec<InstId> = model
+            .others_on_net(from)
+            .into_iter()
+            .filter(|&t| outside(t))
+            .collect();
+        others.sort_by_key(|&t| model.path_of(t));
+        for t in &others {
+            if !via.is_empty() && !matches!(model.pin_kind(*t), None | Some(PinKind::Passive)) {
+                let net = model.net_of(from)?.name.clone();
+                return Some((via, *t, net));
+            }
+        }
+        for &t in &others {
+            let Some(part) = model.owner_of(t) else {
+                continue;
+            };
+            let Some((a, b)) = model.series_ends(part) else {
+                continue;
+            };
+            if (t != a && t != b) || !crossed.insert(part) {
+                continue;
+            }
+            let mut next = via.clone();
+            next.push(part);
+            queue.push_back((if t == a { b } else { a }, next));
+        }
+    }
+    None
 }

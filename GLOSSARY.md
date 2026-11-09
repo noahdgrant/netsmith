@@ -518,7 +518,7 @@ A value declared with the word `optional` after its type, `.max_inductor_dcr: Re
 _Avoid_: Nullable, maybe, conditional check
 
 **Unused interface**:
-An interface of a part or a module that the board states nothing on it uses, `unused .processor.usb` (ADR 0083, provisional). Its pins need no source and no connection, the relations that read only its values (a limit the datasheet states for the function) are not checked or listed as not evaluated, and its levels and absolute maximums do not run. Not "nothing is connected": a net that goes only to test pads, and the return to ground, are not uses. A board that also uses it (a pin on a net with a pin of another part that is not passive, a `~` to another interface, a function chosen on a pin) is an error that shows both lines.
+An interface of a part or a module that the board states nothing on it uses, `unused .processor.usb` (ADR 0083, provisional). Its pins need no source and no connection, the relations that read only its values (a limit the datasheet states for the function) are not checked or listed as not evaluated, and its levels and absolute maximums do not run. Not "nothing is connected": a net that goes only to test pads, and the return to ground, are not uses. A board that also uses it (a pin on a net with a pin of another part that is not passive, also through a series `Resistor`, `Fuse` or `FerriteBead`, however many; a `~` to another interface; a function chosen on a pin) is an error that shows both lines.
 _Avoid_: Disabled function, skipped port, ignored interface, `no_connect` interface
 
 **Optional column**:
