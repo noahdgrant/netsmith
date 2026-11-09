@@ -563,6 +563,127 @@ impl Solver<'_> {
         out
     }
 
+    /// The range of the fields that a field is held equal to by `~` or by an equation of two
+    /// fields (`.resistance == .resistor.resistance`), when one of them has a value: the
+    /// intersection of those that have one.
+    fn held_equal(&self, field: FieldId) -> Option<Quantity> {
+        use netsmith_check::RExpr;
+        use netsmith_lang::ast::CmpOp;
+        let mut class = HashSet::from([field]);
+        loop {
+            let before = class.len();
+            for &(a, b) in self.model.equalities() {
+                if class.contains(&a) || class.contains(&b) {
+                    class.insert(a);
+                    class.insert(b);
+                }
+            }
+            for r in self.model.relations().iter() {
+                if let (CmpOp::EqEq, RExpr::Field(a), RExpr::Field(b)) = (&r.op, &r.lhs, &r.rhs)
+                    && (class.contains(a) || class.contains(b))
+                {
+                    class.insert(*a);
+                    class.insert(*b);
+                }
+            }
+            if class.len() == before {
+                break;
+            }
+        }
+        let mut window: Option<Quantity> = None;
+        let mut members: Vec<FieldId> = class.into_iter().filter(|&f| f != field).collect();
+        members.sort_by_key(|f| f.0);
+        for f in members {
+            if let Domain::Quantity(q) = self.domain(f) {
+                window = match window {
+                    None => Some(q),
+                    Some(w) => w.intersect(&q).ok().flatten().or(Some(w)),
+                };
+            }
+        }
+        window
+    }
+
+    /// The load of each regulator, enclosed before the picks from what the loads on its output
+    /// say (ADR 0076, amendment 11). A regulator's output current is worked out by the balance of
+    /// its net when every other current on the net has a value; while a load waits on a pick (a
+    /// pull-up whose resistor is not chosen yet) the balance cannot be worked, the picks of the
+    /// parts in front of the regulator (a fuse, a shunt, a bead) are made with no current to
+    /// judge a rating against, and the first part of a catalog that has none refused is taken.
+    ///
+    /// Here the balances are worked once with every column of every part still to be picked at
+    /// the hull of its candidates, and a regulator whose output current they give (the sum of what
+    /// the loads state, each over every pick it could have) has it written as a worked-out
+    /// current, as a balance writes one: an enclosure that the balances narrow as the picks make
+    /// the loads known. A load that states nothing leaves the balance with two unknown currents
+    /// and the regulator with none: its rated limit is the enclosure the start takes, as before.
+    /// The model is put back as it was, but for those currents.
+    pub(super) fn enclose_regulator_loads(&mut self, jobs: &[super::Job]) {
+        use netsmith_check::DcKind;
+        let outs: Vec<FieldId> = self
+            .model
+            .dc_elements()
+            .filter(|(part, element)| {
+                matches!(
+                    element.kind,
+                    DcKind::LinearRegulator | DcKind::SwitchingRegulator
+                ) && self.model.instance(*part).kind == netsmith_check::InstKind::Part
+            })
+            .filter_map(|(_, element)| self.model.draw_of(element.pins[1]).map(|(f, _)| f))
+            .filter(|&f| matches!(self.domain(f), Domain::Unset))
+            .collect();
+        if outs.is_empty() || jobs.is_empty() {
+            return;
+        }
+        let mark = self.mark();
+        for job in jobs {
+            for (field, key) in &job.columns {
+                if !matches!(self.domain(*field), Domain::Unset) {
+                    continue;
+                }
+                if let Some((dim, lo, hi)) = self.column_hull(job, *field, key)
+                    && let Ok(q) = Quantity::interval(dim, lo, hi)
+                {
+                    // A value the design holds the column equal to (a pull-up's resistance, the
+                    // window of the module that holds the resistor) is a bound the hull of the
+                    // catalog has to lie in as well: every candidate that is picked does.
+                    let q = match self.held_equal(*field) {
+                        Some(w) => q.intersect(&w).ok().flatten().unwrap_or(q),
+                        None => q,
+                    };
+                    self.model.set_domain(*field, Domain::Quantity(q));
+                }
+            }
+        }
+        let _ = self.propagate();
+        let found: Vec<(FieldId, Quantity)> = outs
+            .into_iter()
+            .filter_map(|f| match self.domain(f) {
+                // The regulator supplies: its current is never above zero.
+                //
+                // A sum that is not inside the limit the regulator is rated for is no
+                // enclosure of use (a load that waits on a pick, at the hull of its catalog,
+                // is wider than what the part can supply): the limit is then the load, as the
+                // start takes it, and nothing is written.
+                Domain::Quantity(q)
+                    if q.dim() == Dimension::CURRENT
+                        && q.lo().is_finite()
+                        && q.hi().is_finite()
+                        && q.hi() <= 1e-12
+                        && dc::limit_of(&self.model, f).is_none_or(|max| -q.lo() <= max) =>
+                {
+                    Some((f, q))
+                }
+                _ => None,
+            })
+            .collect();
+        self.restore(&mark);
+        for (field, q) in found {
+            self.set_field(field, Domain::Quantity(q));
+            self.derived.insert(field);
+        }
+    }
+
     /// The start of a circle that a pick waits on (ADR 0076, amendment 5). A pick that reads a
     /// voltage no one has given yet (a capacitor's bias across a rail behind a fuse, a diode and
     /// a bead) cannot be judged, and the board used to write a window by hand to start it. The

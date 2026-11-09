@@ -16,6 +16,7 @@ mod data;
 mod dc_analysis;
 mod dc_buck;
 mod dc_chain;
+mod dc_loads;
 mod dc_open_drain;
 mod dc_regulators;
 mod dc_search;

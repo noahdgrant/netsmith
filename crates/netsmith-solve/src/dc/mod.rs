@@ -65,7 +65,7 @@ fn stated_load(model: &Model, reg: &Reg, enclosure: bool) -> Option<Range> {
 
 /// The most that a relation lets a rail's current supply: the least value of `x` over the
 /// relations `-.current <= x` that have one.
-fn limit_of(model: &Model, current: FieldId) -> Option<f64> {
+pub(crate) fn limit_of(model: &Model, current: FieldId) -> Option<f64> {
     let mut limit: Option<f64> = None;
     for r in model.relations() {
         let (larger, smaller) = match r.op {

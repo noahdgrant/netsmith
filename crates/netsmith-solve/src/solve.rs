@@ -2261,6 +2261,9 @@ impl Solver<'_> {
         self.to_choose = jobs.len();
         self.chosen_before = 0;
         job::report("parts chosen", 0, Some(self.to_choose as u64));
+        // A regulator's load is enclosed from what the loads on its output state (ADR 0076,
+        // amendment 11), so the parts in front of it are picked against a current.
+        self.enclose_regulator_loads(&jobs);
         // A circle that a pick waits on is started from the network's own bounds (ADR 0076).
         self.dc_start(&jobs, false);
         for c in self.propagate() {
