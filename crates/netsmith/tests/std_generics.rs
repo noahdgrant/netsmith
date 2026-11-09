@@ -146,14 +146,19 @@ board Filter {
         .pos.net &= \"VIN\"
         .neg.net &= \"GND\"
     }
+    .load: Rail {
+        .pos.net &= \"OUT\"
+        .neg.net &= \"GND\"
+        .current &= 1A
+    }
     .l: Inductor {
         .inductance &= 2.2uH +/- 30%
         .current &= 1A
     }
     .fb: FerriteBead { .impedance >= 100ohm }
     .xtal: Crystal { .frequency &= 16MHz +/- 30ppm }
-    .supply.pos ~ .l.a
-    .supply.neg ~ .l.b
+    .supply.pos ~> .l ~> .load.pos
+    .supply.neg ~ .load.neg
 }
 ";
 
@@ -167,12 +172,17 @@ board Saturates {
         .pos.net &= \"VIN\"
         .neg.net &= \"GND\"
     }
+    .load: Rail {
+        .pos.net &= \"OUT\"
+        .neg.net &= \"GND\"
+        .current &= 5A
+    }
     .l: Inductor {
         .inductance &= 2.2uH +/- 30%
         .current &= 5A
     }
-    .supply.pos ~ .l.a
-    .supply.neg ~ .l.b
+    .supply.pos ~> .l ~> .load.pos
+    .supply.neg ~ .load.neg
 }
 ";
 

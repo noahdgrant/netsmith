@@ -7627,7 +7627,7 @@ error: TooMuchMargin: L1: footprint `Inductor_SMD:L_1210_3225Metric` not found: 
 
 The two inductor limits are optional, as are the other numbers an IC may leave open: an IC that states `.min_inductor_saturation` (a datasheet that asks for more than the current limit, say) or `.max_inductor_dcr` has them checked against the picked inductor's `saturation_current` and `dc_resistance`, and an inductor that does not meet them is refused with the numbers. Both are `optional` members of `Buck` (ADR 0074): one that the IC leaves unstated has no such check, and the build says nothing about it, where it lists a check on any other value that nothing states as not evaluated. A limit is stated for the stage when the IC states it on its side of `.stage.buck ~ .u.buck`. A heating (RMS) rating of the inductor is not checked by the stage: `Inductor` has the optional column `rms_current`, which the standard rows leave empty (see Dielectric and package size), so a check that needed it would refuse every standard inductor.
 
-Misuse: a load larger than the IC can give (an input above its range, such as 12 V, is refused the same way, by `stage.vin.voltage must always be at most stage.buck.max_input_voltage`).
+Misuse: a load larger than the IC can give is refused twice, once on the stage's output and once on the IC's switch node (`Buck` states `-.sw.current <= .max_output_current`, ADR 0076, amendment 6, which is also the limit that encloses a load nothing states before the picks); the lower end of the current is the divider's, which the DC analysis of the stage's output side gives. An input above its range, such as 12 V, is refused the same way, by `stage.vin.voltage must always be at most stage.buck.max_input_voltage`.
 
 ```nsm fails
 import src::zbk2::Zbk2
@@ -7657,10 +7657,15 @@ board Overload {
 ```
 
 ```text
-error: -stage.vout.current must always be at most stage.buck.max_output_current, but 0A..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..0A) add up to zero; net `1V8` in `stage`: -stage.inductor.current (0A..3A) + -stage.vout.current (-3A..0A) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (0A..3A) + stage.inductor.current (0A..3A) add up to zero; net `net-stage.inductor.a`: stage.buck.sw.current (0A..3A) + u.buck.sw.current (-3A..0A) add up to zero)
-    --> std/parts/regulator.nsm:240:5
+error: -u.buck.sw.current must always be at most u.buck.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `net-stage.inductor.a`: stage.buck.sw.current (6.402uA..3A) + u.buck.sw.current (-3A..-6.402uA) add up to zero; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (6.402uA..3A) + stage.inductor.current (6.402uA..3A) add up to zero; net `1V8` in `stage`: -stage.inductor.current (6.402uA..3A) + -stage.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..-6.402uA) add up to zero)
+    --> std/parts/regulator.nsm:124:5
     |
-240 |     -.vout.current <= .buck.max_output_current
+124 |     -.sw.current <= .max_output_current
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: -stage.vout.current must always be at most stage.buck.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `stage`: -stage.inductor.current (6.402uA..3A) + -stage.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (6.402uA..3A) + stage.inductor.current (6.402uA..3A) add up to zero; net `net-stage.inductor.a`: stage.buck.sw.current (6.402uA..3A) + u.buck.sw.current (-3A..-6.402uA) add up to zero)
+    --> std/parts/regulator.nsm:243:5
+    |
+243 |     -.vout.current <= .buck.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7768,9 +7773,9 @@ board Budget {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
-    --> std/parts/passive.nsm:257:5
+    --> std/parts/passive.nsm:260:5
     |
-257 |     .current <= .rated_current
+260 |     .current <= .rated_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7860,9 +7865,9 @@ board Arcs {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.supply_peak must always be at most fuse.rated_voltage, but 5kV is not always below 125V
-    --> std/parts/passive.nsm:258:5
+    --> std/parts/passive.nsm:261:5
     |
-258 |     .supply_peak <= .rated_voltage
+261 |     .supply_peak <= .rated_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7989,7 +7994,7 @@ dc source .vbatt
 - `dc linear_regulator <input rail> <output rail>` and `dc switching_regulator <input rail> <output rail> <efficiency>` (ADR 0076, amendment 3, provisional): a regulator. The first two operands are the part's rails (a rail inside an interface is named through it: `.buck.sw`), not pins. The output rail is an ideal source over the range of its `.voltage`; the input rail draws what the output asks. A linear regulator draws what it supplies; a switching one draws `Pout / (efficiency * Vin)`, with the efficiency a number (a range, `0.85..0.95`, is taken at both ends). The regulator's own quiescent current is not modelled (no standard regulator states one).
 - `dc source <supply rail>` (ADR 0076, amendment 5, provisional): the part gives this rail from outside the board, as a connector gives the supply of a vehicle. The operand is a rail of the part. Its `pos` net is held over the range of the rail's `.voltage` that the design states, and its `neg` net at zero, as a `Rail` that the board declares itself is (see "Supplies" below). A part with a rail it takes its supply from (what a load is) does not state it.
 
-The standard `Resistor`, `Fuse`, `FerriteBead`, `Diode`, `Schottky`, `NMosfet`, `PMosfet`, `LinearRegulator`, and the two connectors that give a supply, `Obd2M` (`.vbatt`) and `UsbCPower` (`.vbus`), state theirs (a buck converter's IC is a part of the design's own, and states `dc switching_regulator` itself, as the one in "Switching regulators" does), so a provider of one of them has it on its own pins and fields without writing it. A part with a `bridge` and no `dc` statement is a boundary: a DC analysis cannot see through it. `Inductor`, `Led`, `Switch`, `Zener` and `Tvs` are boundaries for now. A module has no `dc` statement of its own: its network is the elements of the parts inside it.
+The standard `Resistor`, `Fuse`, `FerriteBead`, `Inductor` (its winding: `dc resistor .a .b .dc_resistance`, ADR 0076, amendment 6, provisional), `Diode`, `Schottky`, `NMosfet`, `PMosfet`, `LinearRegulator`, `Lt8641Buck`, and the two connectors that give a supply, `Obd2M` (`.vbatt`) and `UsbCPower` (`.vbus`), state theirs (any other buck converter's IC is a part of the design's own, and states `dc switching_regulator` itself, as the one in "Switching regulators" does), so a provider of one of them has it on its own pins and fields without writing it. A part with a `bridge` and no `dc` statement is a boundary: a DC analysis cannot see through it. An inductor is its winding at DC, so the node past a buck stage's inductor is the switch node less what the load makes the winding drop, and the output side of the stage is an island of its own. `Led`, `Switch`, `Zener` and `Tvs` are boundaries for now. A module has no `dc` statement of its own: its network is the elements of the parts inside it.
 
 The rules. A `dc` statement is in a part (or a generic that has pins); the element is one of `resistor`, `diode`, `nmos`, `pmos`, `linear_regulator`, `switching_regulator` and `source`; the pins are pins of the part (the rails of a regulator or a source are rails of the part) and are different; each value is a field of the part with the quantity of its place; a part has one `dc` statement; and when the part has a `bridge`, the element runs between the two pins the `bridge` joins (the drain and the source for a MOSFET). The order of the statements does not matter.
 
@@ -8378,7 +8383,7 @@ error: protection.vout.voltage must always be at least 4.5V, but 4.22V..4.94V is
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-**A circle that a pick waits on.** A part picked from a catalog can read a voltage that only the circuit gives: a capacitor's effective capacitance falls with the bias across it (ADR 0013), and the bias of the capacitor across a regulator's input is the voltage behind a fuse and a diode, which depends on the regulator's input current, which depends on that voltage. Nothing has a value to start from, and the board used to write a window by hand (`.reg.vin.voltage &= 7V..16V`) that was not a requirement but a start. Now, when a pick waits on a bias that has no value, the solver solves the network once before the picks, with each part still to be picked taken at the hull of the values its candidates can have (a fuse's resistance over the rows that fit what the design says of it), and gives each rail and each regulator's input the voltage range that results. The picks are then judged on that range, which holds whatever they choose; after the picks the pass narrows it to the circuit that was chosen. It starts a circle that the network can solve, and only that: the currents of the loads must be known before the picks (stated, or worked out by the balances from parts that are not still to be picked), because a pick cannot be asked to carry a current that depends on itself. A board that builds without it is solved as before, since the start runs only when a pick waits on a bias. A window stated by the board is used as stated and starts nothing, as ever.
+**A circle that a pick waits on.** A part picked from a catalog can read a voltage that only the circuit gives: a capacitor's effective capacitance falls with the bias across it (ADR 0013), and the bias of the capacitor across a regulator's input is the voltage behind a fuse and a diode, which depends on the regulator's input current, which depends on that voltage. Nothing has a value to start from, and the board used to write a window by hand (`.reg.vin.voltage &= 7V..16V`) that was not a requirement but a start. Now, when a pick waits on a bias that has no value, the solver solves the network once before the picks, with each part still to be picked taken at the hull of the values its candidates can have (a fuse's resistance over the rows that fit what the design says of it), and gives each rail and each regulator's input the voltage range that results. The picks are then judged on that range, which holds whatever they choose; after the picks the pass narrows it to the circuit that was chosen. It starts a circle that the network can solve, and only that: the network behind a regulator must be known, or enclosed, before the picks: the loads on a regulator's output are either modelled (a rail with a current, a part with a stated current, a resistor that is a pick, at the hull of its candidates) or, when one is not (a pin the analysis does not model), the regulator's own limit on what its output supplies (`-.vout.current <= .max_current` of `LinearRegulator`, `-.sw.current <= .max_output_current` of `Buck`) is the load, from nothing up to that limit. That is an enclosure of every load a pick could make, and it is wide: the pass after the picks has the loads themselves and narrows the voltage to the circuit that was picked. A regulator whose output has no such limit, and a part still to be picked whose value a catalog row leaves to the design with nothing bounding it (a generic inductor with no `.max_inductor_dcr`), has no enclosure, and its network is left to the pass after the picks, as before. The start also leaves out what cannot be enclosed without refusing parts that are fine: a resistor that is a pick has every resistance of its catalog in the hull, so the voltage behind a series resistor whose value a pick decides is not enclosed in a way a check on a rail could use, and the board keeps the equation (`.vout.voltage == .vin.voltage - .r.drop`) that lets the pick of such a resistor refuse a candidate on its drop. A board that builds without it is solved as before, since the start runs only when a pick waits on a bias. A window stated by the board is used as stated and starts nothing, as ever.
 
 The input capacitor below is picked from the catalog and states only what it must be (4 uF effective at its bias); the board writes no window for the regulator's input voltage:
 
@@ -10644,7 +10649,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::parts::connector::UsbC2` | A USB Type-C receptacle for USB 2.0: the pins `cc1`, `cc2`, `shell`, `sbu1`, `sbu2`, and the port `usb` (`Usb2`, role `UsbRole::Passthrough`). |
 | `std::parts::connector::Obd2M` | A male OBD-II (SAE J1962) 16-pin vehicle connector: rail `vbatt` (pos on pin 16, neg on pin 4), optional `signal_gnd`, `can_high`, `can_low`, `iso_k`, `iso_l`, `j1850_bus_pos`, `j1850_bus` and `p1`, `p3`, `p8`, `p9`, `p11`, `p12`, `p13`. Catalog `obd2_m`, with no standard row. |
 | `std::parts::connector::ProgrammingPads6` | Six pads `p1` to `p6` for a spring-pin programming cable. The board decides what each carries. |
-| `std::parts::passive::Inductor` | An inductor: `.inductance`, `.saturation_current`, `.dc_resistance` and the optional `.rms_current` (a catalog column the standard rows leave empty). Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .saturation_current`. Catalog `inductor`. |
+| `std::parts::passive::Inductor` | An inductor: `.inductance`, `.saturation_current`, `.dc_resistance` and the optional `.rms_current` (a catalog column the standard rows leave empty). Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .saturation_current`. At DC it is its winding (`dc resistor .a .b .dc_resistance`). Catalog `inductor`. |
 | `std::parts::passive::FerriteBead` | A ferrite bead: `.impedance` at `.impedance_frequency`, `.rated_current`, `.dc_resistance`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current`. Catalog `ferrite_bead`. |
 | `std::parts::passive::Crystal` | A two-terminal crystal: `.frequency` (with its tolerance) and `.load_capacitance`. Pins `a`, `b`. Catalog `crystal`. |
 | `std::parts::passive::Fuse` | A fuse: `.rated_current`, `.rated_voltage`, `.resistance`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current` and `.supply_peak <= .rated_voltage` (`.supply_peak` is the `.peak` of the rail its chain starts on, ADR 0086). Catalog `fuse`. |
@@ -10669,7 +10674,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | Definition | What it is |
 |---|---|
 | `std::sources::Rail` | A DC rail: pins `pos` and `neg`, a `.voltage`, a `.current` (the draw), a `.peak` (the highest voltage, transients included) and a `.min_track` (the narrowest track of its nets). |
-| `std::parts::regulator::Buck` | What a buck converter IC says about itself: the switching node `sw` (a rail the IC supplies), the feedback pin `fb`, `vref`, `fsw`, the input range, `max_output_current`, `efficiency`, `min_inductance`, the optional `min_inductor_saturation` and `max_inductor_dcr`, and the capacitance asked for on each side. A concrete IC is a part with a `.buck: Buck` member (ADR 0025). |
+| `std::parts::regulator::Buck` | What a buck converter IC says about itself: the switching node `sw` (a rail the IC supplies), the feedback pin `fb`, `vref`, `fsw`, the input range, `max_output_current`, `efficiency`, `min_inductance`, the optional `min_inductor_saturation` and `max_inductor_dcr`, and the capacitance asked for on each side. It states `-.sw.current <= .max_output_current`: the switch node supplies what the datasheet allows and no more (ADR 0076, amendment 6, provisional). A concrete IC is a part with a `.buck: Buck` member (ADR 0025). |
 | `std::logic::Levels` | The logic levels of all the lines of a bus interface, the member `.levels` of `Uart`, `Spi`, `I2c` and `Swd`: the rail `.reference` and the four voltages `.vih`, `.vil`, `.voh` and `.vol` (ADR 0064). |
 | `std::logic::Logic` | A digital line `.line`, the `.reference` rail that defines its levels, and the levels `.vih`, `.vil`, `.voh` and `.vol` a part may state (ADR 0046). |
 | `std::bus::Uart` | Pins `tx`, `rx`, `rts`, `cts`, named by the device, and `.baud`. `~` between two joins `tx` to `rx` and `rts` to `cts`; two ends make a bus (`lines limit 2`). |

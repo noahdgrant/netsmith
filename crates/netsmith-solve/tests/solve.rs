@@ -1900,17 +1900,32 @@ fn a_resistor_whose_current_is_determined_still_fails_its_power_with_the_numbers
 
 // ---- a balance is complete or it is not used for parts (ADR 0027) -------------------------
 
-/// A step-down stage in outline: an inductor from the input to the output joined with `~`
+/// A step-down stage in outline: a coil (an inductor that states no DC element) from the input to the output joined with `~`
 /// (so what it carries is not modelled), and a 100 kohm divider from the output to ground
 /// in a chain. The output net of the stage has the divider's first resistor, the stage's
 /// output port and the inductor's pin.
-const OUTLINE_STAGE: &str = r#"import std::parts::passive::{Inductor, Resistor}
+const OUTLINE_STAGE: &str = r#"import std::parts::passive::Resistor
 import std::sources::Rail
+
+/// What an inductor was before it was its winding at DC (ADR 0076, amendment 6): two pins, a
+/// `bridge`, and no `dc` statement, so the analysis cannot see through it.
+part Coil {
+    .designator &= "L"
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+    .dc_resistance: Resistance
+    .current: Current
+    .drop: Voltage
+    .drop == .current * .dc_resistance
+    bridge .a ~> .b
+}
 
 module Stage {
     .vin: Rail
     .vout: Rail
-    .l: Inductor { .inductance &= 2.2uH +/- 20% }
+    .l: Coil { .dc_resistance &= 0.1ohm }
     .r_top: Resistor { .resistance &= 100kohm +/- 1% }
     .r_bottom: Resistor { .resistance &= 100kohm +/- 1% }
 

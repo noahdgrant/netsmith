@@ -244,10 +244,16 @@ board B {{
         .pos.net &= \"3V3\"
         .neg.net &= \"GND\"
     }}
+    .load: Rail {{
+        .pos.net &= \"OUT\"
+        .neg.net &= \"GND\"
+        .current &= 100mA
+    }}
     .l: Inductor {{
         .inductance &= 2.2uH +/- 20%
 {body}    }}
-    .supply.pos ~> .l ~> .supply.neg
+    .supply.pos ~> .l ~> .load.pos
+    .supply.neg ~ .load.neg
 }}
 "
     )

@@ -64,7 +64,7 @@ fn the_standard_parts_state_their_dc_element() {
         &'static [&'static str],
         &'static [&'static str],
     );
-    let cases: [Case; 8] = [
+    let cases: [Case; 9] = [
         (
             "passive::Resistor",
             "Resistor",
@@ -82,6 +82,13 @@ fn the_standard_parts_state_their_dc_element() {
         (
             "passive::FerriteBead",
             "FerriteBead",
+            DcKind::Resistor,
+            &["a", "b"],
+            &["dc_resistance"],
+        ),
+        (
+            "passive::Inductor",
+            "Inductor",
             DcKind::Resistor,
             &["a", "b"],
             &["dc_resistance"],
@@ -135,7 +142,6 @@ fn the_other_standard_parts_with_a_bridge_state_none_yet() {
     // A part with a `bridge` and no `dc` is a boundary (ADR 0076): these are left to a
     // decision of their own, and nothing here changes how they are solved.
     for (import, name) in [
-        ("passive::Inductor", "Inductor"),
         ("passive::Capacitor", "Capacitor"),
         ("passive::Led", "Led"),
         ("passive::Switch", "Switch"),

@@ -20,10 +20,12 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use netsmith_check::{Domain, FieldId, InstId};
+use netsmith_check::{Domain, FieldId, FieldKind, InstId};
 use netsmith_quantity::{Dimension, Quantity};
 
+use crate::catalog::Value;
 use crate::dc::{self, Error, Modelled, Which};
+use crate::generic::Need;
 use crate::levels::NotEvaluated;
 
 use super::Solver;
@@ -124,7 +126,7 @@ impl Solver<'_> {
         // fields that a part's own write covers (a regulator's input voltage).
         let mut rails: Vec<(dc::RailNode, Rc<Run>)> = Vec::new();
         let mut covered: Vec<FieldId> = Vec::new();
-        for outcome in dc::analyze(&self.model) {
+        for outcome in dc::analyze(&self.model, false) {
             netsmith_core::job::checkpoint();
             summary.islands += 1;
             let dc::Outcome { planned, result } = outcome;
@@ -244,10 +246,10 @@ impl Solver<'_> {
         usize::from(self.dc_field(rail.rail, rail.field, solved, ends))
     }
 
-    /// Whether a relation reads both a value a pick sets (a column of a part to be chosen) and the
-    /// voltage of a rail that has none: a divider's draw is its input voltage over the two
-    /// resistances, and its limit cannot refuse a candidate while the voltage is unknown.
-    fn pick_reads_a_voltage(&self, jobs: &[super::Job]) -> bool {
+    /// The voltages with no value that a pick reads: the rails that a relation reads together
+    /// with a column of a part to be chosen (a divider's draw is its input voltage over the two
+    /// resistances, and its limit cannot refuse a candidate while the voltage is unknown).
+    fn voltages_picks_read(&self, jobs: &[super::Job]) -> HashSet<FieldId> {
         let columns: HashSet<FieldId> = jobs
             .iter()
             .flat_map(|j| j.columns.iter().map(|(f, _)| *f))
@@ -259,15 +261,19 @@ impl Solver<'_> {
             .map(|(voltage, _, _)| voltage)
             .filter(|&v| matches!(self.domain(v), Domain::Unset))
             .collect();
+        let mut out = HashSet::new();
         if unset.is_empty() || columns.is_empty() {
-            return false;
+            return out;
         }
-        self.model.relations().iter().any(|r| {
+        for r in self.model.relations().iter() {
             let mut reads = Vec::new();
             crate::eval::fields_in(&r.lhs, &mut reads);
             crate::eval::fields_in(&r.rhs, &mut reads);
-            reads.iter().any(|f| unset.contains(f)) && reads.iter().any(|f| columns.contains(f))
-        })
+            if reads.iter().any(|f| columns.contains(f)) {
+                out.extend(reads.into_iter().filter(|f| unset.contains(f)));
+            }
+        }
+        out
     }
 
     /// The start of a circle that a pick waits on (ADR 0076, amendment 5). A pick that reads a
@@ -282,13 +288,23 @@ impl Solver<'_> {
     /// with none is solved as before, and it writes voltages only (a current a pick would then
     /// judge a rating against is the later pass's).
     pub(super) fn dc_start(&mut self, jobs: &[super::Job]) {
+        // The start runs when a pick waits on a voltage: the bias of a derated column, or a
+        // voltage that a relation reads with a column.
         if !jobs.iter().any(|j| !self.unset_biases(j).is_empty())
-            && !self.pick_reads_a_voltage(jobs)
+            && self.voltages_picks_read(jobs).is_empty()
         {
             return;
         }
+        // What the design's own relations and balances say before any pick (a regulator's output
+        // current is at most the part's `max_output_current`, a winding's resistance at most
+        // the IC's `max_inductor_dcr`) is worked through first: the propagation that follows the
+        // start would do it all the same, and a bound it gives is a range the enclosure uses.
+        // The conflicts are not said here: that propagation finds them again.
+        let _ = self.propagate();
         let saved = self.model.snapshot();
-        // Each part still to be picked takes the hull of the values its candidates can have.
+        // Each part still to be picked takes the hull of the values its candidates can have for
+        // what its `dc` element reads. Every candidate's value is inside the hull, so what comes
+        // out is an enclosure of every choice.
         for job in jobs {
             let Some(dc) = self.model.instance(job.part).dc.clone() else {
                 continue;
@@ -300,32 +316,14 @@ impl Solver<'_> {
                 let Some((_, key)) = job.columns.iter().find(|(f, _)| *f == field) else {
                     continue;
                 };
-                let mut hull: Option<(Dimension, f64, f64)> = None;
-                let mut known = true;
-                for c in job
-                    .catalog
-                    .candidates
-                    .iter()
-                    .filter(|c| self.fits(job.part, &job.columns, c))
-                {
-                    match c.column(key) {
-                        Some(crate::catalog::Value::Quantity(q)) => {
-                            hull = Some(match hull {
-                                None => (q.dim(), q.lo(), q.hi()),
-                                Some((d, lo, hi)) => (d, lo.min(q.lo()), hi.max(q.hi())),
-                            });
-                        }
-                        _ => known = false,
-                    }
-                }
-                if let (true, Some((dim, lo, hi))) = (known, hull)
+                if let Some((dim, lo, hi)) = self.column_hull(job, field, key)
                     && let Ok(q) = Quantity::interval(dim, lo, hi)
                 {
                     self.model.set_domain(field, Domain::Quantity(q));
                 }
             }
         }
-        let outcomes = dc::analyze(&self.model);
+        let outcomes = dc::analyze(&self.model, true);
         self.model.restore(&saved);
         let mut written: Vec<(dc::RailNode, Rc<Run>)> = Vec::new();
         let mut vins: Vec<(InstId, FieldId, Rc<Run>, usize)> = Vec::new();
@@ -387,6 +385,46 @@ impl Solver<'_> {
             done.extend(class.iter().copied());
             self.dc_write_rail(&rail, &class, &run);
         }
+    }
+
+    /// The hull of the values the candidates that fit can have in one column, when every one of
+    /// them has a value: a quantity, or a generic row's (ADR 0047), which the design supplies
+    /// within what it says of the field. `None` when a candidate has none that is known (a
+    /// derated value, a text, a value that nothing bounds): no enclosure then.
+    fn column_hull(
+        &self,
+        job: &super::Job,
+        field: FieldId,
+        key: &str,
+    ) -> Option<(Dimension, f64, f64)> {
+        let FieldKind::Quantity(dim) = self.model.field(field).kind else {
+            return None;
+        };
+        let mut hull: Option<(f64, f64)> = None;
+        for c in job
+            .catalog
+            .candidates
+            .iter()
+            .filter(|c| self.fits(job.part, &job.columns, c))
+        {
+            let (lo, hi) = match c.column(key) {
+                Some(Value::Quantity(q)) if q.dim() == dim => (q.lo(), q.hi()),
+                // A generic row has no value of its own: the design supplies it, within what the
+                // design says (`.dc_resistance <= .max_inductor_dcr`).
+                Some(Value::Open(sense)) => match self.need_of(field, *sense) {
+                    Some(Need::Within { lo, hi }) => (lo, hi),
+                    Some(Need::AtMost(x)) => (0.0, x),
+                    _ => return None,
+                },
+                _ => return None,
+            };
+            hull = Some(match hull {
+                None => (lo, hi),
+                Some((l, h)) => (l.min(lo), h.max(hi)),
+            });
+        }
+        let (lo, hi) = hull?;
+        (lo.is_finite() && hi.is_finite()).then_some((dim, lo, hi))
     }
 
     /// A regulator that has no operating point in some combination of states: its output asks

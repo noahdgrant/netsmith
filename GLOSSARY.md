@@ -361,6 +361,10 @@ _Avoid_: Supply part, power source part (a source is a rail, and the part that g
 The voltage of a rail on a node of a `~>` chain, as the analysis gives it: the source's, less what each part in series drops at the current it carries. The analysis writes it into the rail's `.voltage` where nothing states one, so the board does not restate the drops (ADR 0076, amendment 5).
 _Avoid_: Propagated voltage, derived voltage (a derived value is any worked-out field; this one is the node's)
 
+**Enclosure**:
+A range that holds whatever a pick later chooses, written before the picks so that a pick that reads a voltage can be judged: each part still to be picked at the hull of what its candidates give its `dc` value, and a regulator's load, when it is not known, from nothing up to the limit the regulator states on what its output supplies. The pass after the picks narrows it to the circuit that was picked (ADR 0076, amendment 5 and 6).
+_Avoid_: Seed, start window (those are a range the board writes by hand and states as a claim; an enclosure is worked out and is not stated), bound (the bound from Ohm's law is another, cheaper thing)
+
 **Collapse**:
 A corner of an island in which a regulator's input falls to nothing because its output asks for more power than the source can give through the resistance in front of it (12 V through 10 ohm gives at most 3.6 W): the circuit has no operating point there, and the analysis reports an error that names the regulator, what it asks and the states (ADR 0076, amendment 3).
 _Avoid_: Brown-out, undervoltage (an input that is low but has an operating point is below the regulator's minimum, which its own relation reports), failure to start

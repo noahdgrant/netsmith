@@ -170,6 +170,9 @@ generic Inductor {
     .drop == .current * .dc_resistance
     .current <= .saturation_current
     bridge .a ~> .b
+    // At DC an inductor is its winding (ADR 0076, amendment 6): the node past a buck stage's
+    // inductor is the switch node less what the load makes the winding drop.
+    dc resistor .a .b .dc_resistance
 
     .package: Package
     catalog inductor { .inductance, .saturation_current, .dc_resistance, .package, .rms_current optional }
