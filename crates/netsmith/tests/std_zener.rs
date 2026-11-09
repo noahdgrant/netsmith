@@ -184,3 +184,75 @@ fn a_design_that_names_the_leakage_is_offered_only_rows_that_state_it() {
     assert!(picks.is_empty());
     assert_eq!(m.len(), 1, "{m:#?}");
 }
+
+// A Zener across a rail (issue #293, item 4). Today nothing compares the voltage of the rail
+// with the breakdown voltage, so the tests below pin what is accepted. The first one is the
+// case the owner decided is an error (the rail's least voltage is above the row's greatest
+// breakdown voltage); it is accepted today, and the test says so until a mechanism is chosen.
+
+/// The messages the checker and the solver print for a rail of `voltage` with a Zener across
+/// it, and the rows picked.
+fn across(voltage: &str, zener: &str, body: &str) -> (Vec<String>, Vec<String>) {
+    run(&on_rail(voltage, zener, body), &standard())
+}
+
+#[test]
+fn today_a_zener_that_conducts_on_its_rail_is_accepted() {
+    // 12 V +/- 5% across a 3.3 V Zener: the Zener is in breakdown all the time and nothing
+    // limits its current. The solver only lists the power limit as not evaluated.
+    let src = on_rail("12V +/- 5%", ".zener_voltage &= 3.1V..3.5V", "");
+    let (m, picks) = run(&src, &standard());
+    assert!(m.is_empty(), "{m:#?}");
+    assert_eq!(picks.len(), 1, "{picks:#?}");
+    assert!(picks[0].contains("3V3"), "{picks:#?}");
+    let checked = check("test.nsm", &src, &Loader::std());
+    let solution = solve(checked.standalone_boards().next().unwrap(), &standard());
+    let listed: Vec<String> = solution
+        .deferred
+        .iter()
+        .map(|&i| solution.model.show_expr(&solution.model.relations()[i].lhs))
+        .collect();
+    assert!(listed.iter().any(|d| d.contains("z.bias")), "{listed:#?}");
+}
+
+#[test]
+fn a_zener_across_a_rail_below_its_breakdown_is_accepted() {
+    // 3.3 V +/- 5% across a 12 V Zener: it never conducts.
+    let (m, picks) = across("3.3V +/- 5%", ".zener_voltage &= 11V..13V", "");
+    assert!(m.is_empty(), "{m:#?}");
+    assert_eq!(picks.len(), 1, "{picks:#?}");
+}
+
+#[test]
+fn a_rail_range_that_straddles_the_breakdown_is_accepted() {
+    // 4 V to 6 V against 4.7 V to 5.5 V: it may conduct, and the sure case is all a rule
+    // can refuse.
+    let (m, picks) = across("4V..6V", ".zener_voltage &= 4.7V..5.5V", "");
+    assert!(m.is_empty(), "{m:#?}");
+    assert_eq!(picks.len(), 1, "{picks:#?}");
+}
+
+#[test]
+fn a_shunt_regulator_behind_a_series_resistor_is_accepted() {
+    // The Zener's ends are not both on the rail: its voltage is the node behind the resistor,
+    // which is not a rail, so it has no `.bias` of the rail's.
+    let src = "import std::parts::diode::Zener\nimport std::parts::passive::Resistor\n\
+               import std::sources::Rail\nboard B {\n    .supply: Rail {\n        \
+               .voltage &= 12V +/- 5%\n        .pos.net &= \"VIN\"\n        \
+               .neg.net &= \"GND\"\n    }\n    .r: Resistor { .resistance &= 1kohm +/- 1% }\n    \
+               .z: Zener { .zener_voltage &= 4.7V..5.5V }\n    \
+               .supply.pos ~> .r ~> .z ~> .supply.neg\n}\n";
+    let (m, picks) = run(src, &standard());
+    assert!(m.is_empty(), "{m:#?}");
+    assert_eq!(picks.len(), 2, "{picks:#?}");
+}
+
+#[test]
+fn today_a_zener_that_states_no_voltage_across_12v_gets_the_first_row() {
+    // The report of issue #293: the first row of the catalog is a 3.3 V one, and the only
+    // output is the list of what was not evaluated.
+    let (m, picks) = across("12V +/- 5%", "", "");
+    assert!(m.is_empty(), "{m:#?}");
+    assert_eq!(picks.len(), 1, "{picks:#?}");
+    assert!(picks[0].contains("BZT52C3V3"), "{picks:#?}");
+}
