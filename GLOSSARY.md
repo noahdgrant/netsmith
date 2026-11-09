@@ -374,7 +374,7 @@ The DC analysis run inside the search of picks, with the last part of a group ch
 _Avoid_: Trial analysis, inner analysis, solver loop
 
 **Quiescent current**:
-The current a regulator draws from its input for itself, with its output unloaded: the datasheet's quiescent (or ground pin) current. `LinearRegulator` has it as the member `.quiescent_current` (default none), a part narrows it from its datasheet, the regulator's input current is the load and this, and the part's `dc linear_regulator` statement names it as its third operand, so the DC analysis draws it at the input too (ADR 0076, amendment 9). A buck IC states its own (`.iq_max` of the LT8641) and the analysis does not yet add it.
+The current a regulator draws from its input for itself, with its output unloaded: the datasheet's quiescent (or ground pin) current. `LinearRegulator` has it as the member `.quiescent_current` (default none), a part narrows it from its datasheet, the regulator's input current is the load and this, and the part's `dc linear_regulator` statement names it as its third operand, so the DC analysis draws it at the input too (ADR 0076, amendment 9). A buck IC states its own, the same member and the `dc switching_regulator` statement's optional fourth operand (the LT8641's `.quiescent_current`, from `.iq_max` in Burst Mode and `.iq_skipping_max` otherwise, ADR 0096, provisional).
 _Avoid_: Ground current, standby current, supply current (a regulator's supply current is what its input draws, the load included)
 
 **Source (at DC)**:

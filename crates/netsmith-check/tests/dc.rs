@@ -433,11 +433,32 @@ fn a_linear_regulator_may_name_its_quiescent_current() {
         m,
         "`dc linear_regulator` takes 2 pins and then 0 values and, if the part has one, the quiescent current, as in `dc linear_regulator .vin .vout .quiescent_current`; this has 4 operands"
     );
-    // A switching regulator has no optional operand: its message is the one it always was.
+}
+
+/// A switching regulator has the same optional operand after its efficiency (ADR 0096).
+#[test]
+fn a_switching_regulator_may_name_its_quiescent_current_after_the_efficiency() {
+    let c = run(&converter("dc switching_regulator .vin .vout .eff .iq"));
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(
+        element(&c, "c"),
+        Some((
+            DcKind::SwitchingRegulator,
+            names(&["vin", "vout"]),
+            names(&["eff", "iq"])
+        ))
+    );
+    // Without it the statement is what it was.
+    let c = run(&converter("dc switching_regulator .vin .vout .eff"));
+    assert!(c.is_ok(), "{}", c.render());
+    // One operand more is refused with the form that has the optional one.
     let m = only(&run(&converter(
-        "dc switching_regulator .vin .vout .eff .iq",
+        "dc switching_regulator .vin .vout .eff .iq .iq",
     )));
-    assert!(m.contains("takes 2 pins and then 1 value, as in"), "{m}");
+    assert!(
+        m.contains("takes 2 pins and then 1 value and, if the part has one, the quiescent current, as in `dc switching_regulator .vin .buck.sw .buck.efficiency .quiescent_current`"),
+        "{m}"
+    );
 }
 
 #[test]
