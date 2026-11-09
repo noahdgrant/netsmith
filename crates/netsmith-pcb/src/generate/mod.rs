@@ -213,6 +213,35 @@ mod tests {
     }
 
     #[test]
+    fn the_sc_70_family_has_0_65_mm_pitch_pads_0_65_by_0_4_mm_at_plus_or_minus_0_95() {
+        let five = generate("Package_TO_SOT_SMD:SOT-353_SC-70-5").unwrap();
+        assert_eq!(five.pad_numbers(), ["1", "2", "3", "4", "5"]);
+        let at = |n: &str| five.pads_numbered(n).next().unwrap().at;
+        assert!(near(at("1").x, -0.95) && near(at("1").y, -0.65));
+        assert!(near(at("3").y, 0.65) && near(at("4").x, 0.95) && near(at("4").y, 0.65));
+        assert!(near(at("5").y, -0.65));
+        assert!(near(five.pads[0].width, 0.65) && near(five.pads[0].height, 0.4));
+        assert_eq!(
+            five.courtyard,
+            Rect::new(Pt::new(-1.6, -1.4), Pt::new(1.6, 1.4))
+        );
+        // SOT-323: pin 3 is alone on the right, between the two on the left.
+        let three = generate("Package_TO_SOT_SMD:SOT-323_SC-70").unwrap();
+        let at3 = |n: &str| three.pads_numbered(n).next().unwrap().at;
+        assert!(near(at3("1").y, -0.65) && near(at3("2").y, 0.65));
+        assert!(near(at3("3").x, 1.0) && near(at3("3").y, 0.0));
+        // SC-70-8: 0.5 mm pitch, pads 1.0 by 0.3 mm.
+        let eight = generate("Package_TO_SOT_SMD:SC-70-8").unwrap();
+        let at8 = |n: &str| eight.pads_numbered(n).next().unwrap().at;
+        assert!(near(at8("1").y, -0.75) && near(at8("4").y, 0.75));
+        assert!(near(at8("5").y, 0.75) && near(at8("8").y, -0.75));
+        assert!(near(eight.pads[0].width, 1.0) && near(eight.pads[0].height, 0.3));
+        // The hand soldering pads are 1.5 mm long, 1.33 mm from the middle.
+        let hand = generate("Package_TO_SOT_SMD:SOT-363_SC-70-6_Handsoldering").unwrap();
+        assert!(near(hand.pads[0].width, 1.5) && near(hand.pads[0].at.x, -1.33));
+    }
+
+    #[test]
     fn soic_8_has_its_pads_numbered_counterclockwise_from_the_top_left() {
         let fp = generate("Package_SO:SOIC-8_3.9x4.9mm_P1.27mm").unwrap();
         let at = |n: &str| fp.pads_numbered(n).next().unwrap().at;
