@@ -47,6 +47,11 @@ pub struct Fabricated {
     pub facts: BoardFacts,
 }
 
+/// What `netsmith fab` says when it finds no KiCad. netsmith's own design rules check and its
+/// Gerbers need none; KiCad is only the witness of `--cross-check`, which plots the boards and
+/// runs KiCad's design rules check to compare with netsmith's own (ADR 0034, ADR 0037).
+pub const NO_KICAD_NOTE: &str = "note: KiCad is not installed, so --cross-check (KiCad's plots and design rules check, compared with netsmith's own) is not available; netsmith's own design rules check still runs";
+
 /// Build, place, route and package every board in one source file. A system's boards each
 /// get a package of their own, in `<out>/<System>/<board>/`. On failure the error is every
 /// problem found.
@@ -980,6 +985,17 @@ pub(crate) fn drc_extras(board: &Board) -> netsmith_fab::drc::Extras {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_note_without_kicad_says_netsmiths_own_check_still_runs() {
+        let note = super::NO_KICAD_NOTE;
+        assert!(note.contains("--cross-check"), "{note}");
+        assert!(
+            note.contains("netsmith's own design rules check still runs"),
+            "{note}"
+        );
+        assert!(!note.contains("none of its own"), "{note}");
+    }
+
     use super::*;
 
     fn sourced(
