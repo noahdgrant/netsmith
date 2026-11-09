@@ -509,19 +509,19 @@ fn built(libraries: &Libraries) -> netsmith::Built {
 }
 
 #[test]
-fn the_standard_mapping_gives_the_ic_the_footprint_of_its_own_and_its_symbol() {
+fn the_standard_mapping_gives_the_ic_the_footprint_of_its_own_and_no_symbol() {
     let mapped = Mapping::standard()
         .map("Lt8641", Some("UDC20(18)"))
         .unwrap();
-    assert_eq!(mapped.lib_id, "netsmith:LT8641");
+    // The symbol is drawn from the pin table (ADR 0097).
+    assert_eq!(mapped.lib_id, None);
     assert_eq!(mapped.footprint, OWN_FOOTPRINT);
-    // Both are found with no folder at all.
+    // Nothing is read from a folder.
     let libraries = Libraries::with_mapping(
         Mapping::standard(),
         SymbolLib::at("/nonexistent"),
         FootprintLibrary::at("/nonexistent"),
     );
-    assert!(libraries.symbols.symbol(&mapped.lib_id).is_ok());
     assert_eq!(
         libraries
             .footprints
@@ -538,9 +538,10 @@ fn a_board_around_the_ic_builds_with_the_symbol_and_exports_the_footprint_and_th
     let dir = TempDir::new("lt8641-libraries");
     let libraries = libraries(&dir);
     let b = built(&libraries);
-    // The schematic draws the IC with netsmith's symbol, all its pins named as the datasheet does.
+    // The schematic draws the IC with a symbol netsmith drew from the pin table, all its pins
+    // named as the datasheet does.
     assert!(
-        b.schematic.contains("\"netsmith:LT8641\""),
+        b.schematic.contains("\"netsmith:Lt8641_UDC20_18\""),
         "the schematic does not hold the symbol"
     );
     for pin in [
@@ -586,7 +587,10 @@ fn a_board_around_the_ic_builds_with_the_symbol_and_exports_the_footprint_and_th
             "../../../std/libs/netsmith.pretty/UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA.kicad_mod"
         )
     );
-    assert!(dir.join("netsmith.kicad_sym").is_file());
+    // The symbol is in the library file beside the schematic, as the schematic holds it.
+    let library = std::fs::read_to_string(dir.join("netsmith.kicad_sym")).unwrap();
+    assert!(library.contains("(symbol \"Lt8641_UDC20_18\""), "{library}");
+    assert!(library.contains("(name \"EN/UV\""), "{library}");
     let fp_table = std::fs::read_to_string(dir.join("fp-lib-table")).unwrap();
     assert!(
         fp_table.contains("(name \"netsmith\")")
@@ -598,6 +602,26 @@ fn a_board_around_the_ic_builds_with_the_symbol_and_exports_the_footprint_and_th
         sym_table.contains("${KIPRJMOD}/netsmith.kicad_sym"),
         "{sym_table}"
     );
+}
+
+/// KiCad's own electrical rules check accepts the symbol drawn from the pin table: every pin type
+/// is one it knows, no pin is off the grid and the stacked pads of a pin do not conflict. It
+/// skips where there is no `kicad-cli`.
+#[test]
+fn kicads_erc_accepts_the_symbol_drawn_from_the_pin_table() {
+    let dir = TempDir::new("lt8641-erc");
+    let libraries = libraries(&dir);
+    let b = built(&libraries);
+    let Some(found) = crate::erc::erc(&b.design.name, &b.schematic) else {
+        return;
+    };
+    // The passives are our sample libraries' and differ from the installed copies: that is
+    // about the machine and not the IC.
+    let found: Vec<String> = crate::erc::with_the_machines_libraries(found)
+        .into_iter()
+        .filter(|v| !v.starts_with("lib_symbol_mismatch"))
+        .collect();
+    assert_eq!(found, Vec::<String>::new());
 }
 
 #[test]

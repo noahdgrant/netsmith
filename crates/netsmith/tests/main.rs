@@ -34,6 +34,7 @@ mod generic_parts;
 mod guide;
 mod guidelines;
 mod height;
+mod ic_symbols;
 mod kicad_rows;
 mod lt8641;
 mod mosfet_drive;

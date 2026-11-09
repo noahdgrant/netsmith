@@ -62,8 +62,9 @@ impl std::error::Error for MapError {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Mapped {
-    /// `Device:R`
-    pub lib_id: String,
+    /// `Device:R`; `None` for a row with no `symbol`, whose part is drawn from its pin table
+    /// ([`crate::generate`], ADR 0097).
+    pub lib_id: Option<String>,
     /// `Resistor_SMD:R_0402_1005Metric`
     pub footprint: String,
     /// Where KiCad's symbol names a pin differently from the datasheet: the datasheet's
@@ -88,7 +89,9 @@ pub struct Row {
     pub package: String,
     /// Used when the part was never given a package.
     pub default: bool,
-    pub symbol: String,
+    /// The KiCad symbol that draws the part; `None` when the row has none and the part is
+    /// drawn from its pin table (ADR 0097).
+    pub symbol: Option<String>,
     pub footprint: String,
     pub pin_names: BTreeMap<String, String>,
     /// The file the row is from, for messages.
@@ -117,7 +120,7 @@ struct RawPart {
     package: String,
     #[serde(default)]
     default: bool,
-    symbol: String,
+    symbol: Option<String>,
     footprint: String,
     #[serde(default)]
     pin_names: BTreeMap<String, String>,
@@ -174,12 +177,23 @@ impl Mapping {
             if p.kind.is_empty() || p.package.is_empty() {
                 return Err(invalid(format!("{at}: kind and package must not be empty")));
             }
-            for (field, value) in [("symbol", &p.symbol), ("footprint", &p.footprint)] {
-                if !is_id(value) {
+            for (field, value) in [
+                ("symbol", p.symbol.as_ref()),
+                ("footprint", Some(&p.footprint)),
+            ] {
+                if let Some(value) = value
+                    && !is_id(value)
+                {
                     return Err(invalid(format!(
                         "{at}: {field} {value:?} is not `Library:Name`"
                     )));
                 }
+            }
+            if p.symbol.is_none() && !p.pin_names.is_empty() {
+                return Err(invalid(format!(
+                    "{at}: `pin_names` rename pins of a library symbol, and the row has no `symbol`: \
+                     a symbol drawn from the pin table uses the datasheet's names"
+                )));
             }
             if mapping
                 .rows
@@ -487,20 +501,60 @@ mod tests {
         let m = standard();
         let r = m.map("Resistor", Some("0402")).unwrap();
         assert_eq!(
-            (r.lib_id.as_str(), r.footprint.as_str()),
-            ("Device:R", "Resistor_SMD:R_0402_1005Metric")
+            (r.lib_id.as_deref(), r.footprint.as_str()),
+            (Some("Device:R"), "Resistor_SMD:R_0402_1005Metric")
         );
         let c = m.map("Capacitor", Some("0805")).unwrap();
         assert_eq!(c.footprint, "Capacitor_SMD:C_0805_2012Metric");
     }
 
     #[test]
+    fn a_row_may_leave_out_the_symbol_and_then_the_part_is_drawn_from_its_pin_table() {
+        let text = "[[part]]\nkind = \"Chip\"\npackage = \"P\"\nfootprint = \"a:Chip\"\n";
+        let m = Mapping::parse(text, "kicad.toml", Path::new(".")).unwrap();
+        let mapped = m.map("Chip", Some("P")).unwrap();
+        assert_eq!(mapped.lib_id, None);
+        assert_eq!(mapped.footprint, "a:Chip");
+        assert_eq!(m.rows()[0].symbol, None);
+        // A symbol that is named still has to be `Library:Name`.
+        let bad = Mapping::parse(
+            "[[part]]\nkind = \"Chip\"\npackage = \"P\"\nsymbol = \"Chip\"\nfootprint = \"a:Chip\"\n",
+            "kicad.toml",
+            Path::new("."),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            bad.contains("symbol \"Chip\" is not `Library:Name`"),
+            "{bad}"
+        );
+    }
+
+    #[test]
+    fn pin_names_need_a_symbol_to_rename_pins_of() {
+        let e = Mapping::parse(
+            "[[part]]\nkind = \"Chip\"\npackage = \"P\"\nfootprint = \"a:Chip\"\n\n[part.pin_names]\nIN = \"VI\"\n",
+            "kicad.toml",
+            Path::new("."),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            e.contains("part `Chip` in package `P`")
+                && e.contains("`pin_names` rename pins of a library symbol")
+                && e.contains("no `symbol`"),
+            "{e}"
+        );
+    }
+
+    #[test]
     fn a_linear_regulator_maps_in_sot23_and_sot223() {
         let m = standard();
         let u = m.map("LinearRegulator", Some("SOT-23")).unwrap();
+        // An IC has no library symbol: it is drawn from its pin table (ADR 0097).
         assert_eq!(
-            (u.lib_id.as_str(), u.footprint.as_str()),
-            ("Regulator_Linear:AP1117-15", "Package_TO_SOT_SMD:SOT-23")
+            (u.lib_id.as_deref(), u.footprint.as_str()),
+            (None, "Package_TO_SOT_SMD:SOT-23")
         );
         assert_eq!(
             m.map("LinearRegulator", Some("SOT-223")).unwrap().footprint,
@@ -581,7 +635,7 @@ SENSE = "SNS"
         let project = Mapping::parse(PROJECT, "kicad.toml", Path::new("/work/proj")).unwrap();
         let m = standard().merged(project).unwrap();
         let u = m.map("Ldo9", Some("DFN-8-EP")).unwrap();
-        assert_eq!(u.lib_id, "acme:LDO9");
+        assert_eq!(u.lib_id.as_deref(), Some("acme:LDO9"));
         assert_eq!(u.pin_names["SENSE"], "SNS");
         assert_eq!(
             m.libraries(),
@@ -766,7 +820,7 @@ SENSE = "SNS"
         // Alone, it makes both tables; the files they name are those of `stdlib::files`.
         let alone = library_tables(&[], dir, true);
         assert_eq!(alone.len(), 2);
-        let files: Vec<String> = crate::stdlib::files().into_iter().map(|f| f.0).collect();
+        let files: Vec<String> = crate::stdlib::files(&[]).into_iter().map(|f| f.0).collect();
         assert!(files.contains(&"netsmith.kicad_sym".to_string()));
         // What a netsmith build wrote is not a project library to port.
         let back = library_stanzas(Some(&tables[0].1), Some(&tables[1].1)).unwrap();

@@ -479,6 +479,10 @@ A symbol file (`.kicad_sym`) or footprint folder (`.pretty`) of a project's own,
 netsmith's own `.kicad_mod` footprints and `.kicad_sym` symbols in `std/libs/`, carried by the binary under the library name `netsmith`, for the packages and parts that KiCad's libraries lack and the generators do not make (ADR 0087). A row of `std/kicad.toml` names one as `netsmith:Name`; a board that uses one gets the library written beside its `.kicad_pro` and listed in KiCad's library tables. Each footprint is drawn from a manufacturer's package drawing, with the page and what was measured recorded.
 _Avoid_: Bundled library, built-in footprints (the generators of ADR 0043 are the generated footprints)
 
+**Generated symbol**:
+The symbol of an IC that netsmith draws from the part's pin table, a plain box with the pins on its sides, when the part's row of the mapping names no `symbol` (ADR 0097, step 1). It is in the library `netsmith`, named for the part and its package (`netsmith:Lt8641_UDC20_18`), and needs no KiCad install. Each pin has the datasheet's name, its pad and the electrical type of its kind.
+_Avoid_: Fallback box (the editor's box for a part whose symbol cannot be read), auto symbol
+
 **Unit**:
 One of the drawings of a KiCad symbol that has several, such as the two amplifiers and the supply of a dual op-amp, or the power unit and the signal unit of a processor module (`U1A`, `U1B`). The KiCad schematic places all units of a part, each with the part's reference; the editor's schematic does the same: each unit that has pins is a box of its own in the drawing, as the library draws it, with the part's reference and the unit's letter, upright, and the decoupling capacitors stand beside the power unit (ADR 0050). A pad is in one unit. The layout's own stack of two-terminal parts in a column is a different thing and is not called a unit in the docs.
 _Avoid_: Sub-part, section, gate (a unit may be a gate, an amplifier or a supply)

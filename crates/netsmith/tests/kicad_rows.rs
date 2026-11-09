@@ -69,6 +69,20 @@ fn pinout_of(kind: &str, package: &str) -> Pinout {
     panic!("no module of the standard library defines `{kind}`");
 }
 
+/// The part a row stands for, with the pin table of its kind in its package: what the symbol
+/// of a row with no `symbol` is drawn from.
+fn part_of(kind: &str, package: &str) -> netsmith_core::Part {
+    netsmith_core::Part {
+        refdes: "U1".into(),
+        kind: kind.into(),
+        provides: Vec::new(),
+        value: String::new(),
+        package: Some(package.into()),
+        path: "u1".into(),
+        pins: pinout_of(kind, package).pins,
+    }
+}
+
 /// Every problem of every row whose symbol the libraries hold (all of them, if
 /// `skip_missing` is false).
 fn problems(libraries: &Libraries, skip_missing: bool) -> (usize, Vec<String>) {
@@ -80,7 +94,9 @@ fn problems(libraries: &Libraries, skip_missing: bool) -> (usize, Vec<String>) {
             .map(&row.kind, Some(&row.package))
             .unwrap();
         let (symbol, footprint) = match (
-            libraries.symbols.symbol(&mapped.lib_id),
+            libraries
+                .symbols
+                .symbol_of(&part_of(&row.kind, &row.package), &mapped),
             libraries.footprints.load(&mapped.footprint),
         ) {
             (Ok(s), Ok(f)) => (s, f),
@@ -140,7 +156,9 @@ fn own_rows(libraries: &Libraries) -> Vec<&netsmith_kicad::Row> {
         .iter()
         .filter(|r| {
             netsmith_kicad::stdlib::is_library_id(&r.footprint)
-                || netsmith_kicad::stdlib::is_library_id(&r.symbol)
+                || r.symbol
+                    .as_deref()
+                    .is_some_and(netsmith_kicad::stdlib::is_library_id)
         })
         .collect()
 }
@@ -167,7 +185,7 @@ fn every_footprint_netsmith_ships_parses_and_agrees_with_the_pin_table_of_its_pa
             .unwrap();
         let symbol = libraries
             .symbols
-            .symbol(&mapped.lib_id)
+            .symbol_of(&part_of(&row.kind, &row.package), &mapped)
             .unwrap_or_else(|e| panic!("{}/{}: {e}", row.kind, row.package));
         let footprint = libraries
             .footprints
@@ -219,7 +237,10 @@ fn a_footprint_whose_pad_disagrees_with_the_pin_table_is_refused_by_name() {
         .mapping
         .map(&row.kind, Some(&row.package))
         .unwrap();
-    let symbol = libraries.symbols.symbol(&mapped.lib_id).unwrap();
+    let symbol = libraries
+        .symbols
+        .symbol_of(&part_of(&row.kind, &row.package), &mapped)
+        .unwrap();
     let footprint = libraries.footprints.load(&mapped.footprint).unwrap();
     let mut pinout = pinout_of(&row.kind, &row.package);
     // The pin table with pad 22 taken away from SW.
@@ -237,5 +258,73 @@ fn a_footprint_whose_pad_disagrees_with_the_pin_table_is_refused_by_name() {
             .iter()
             .any(|p| p.contains("has pad 22, which no pin of the part has")),
         "{problems:#?}"
+    );
+}
+
+// ---- symbols drawn from pin tables (ADR 0097, step 1) ----
+
+#[test]
+fn every_ic_row_of_the_standard_mapping_names_no_symbol_and_is_drawn_from_its_pin_table_with_no_kicad()
+ {
+    let libraries = bare();
+    let mut checked = Vec::new();
+    for row in libraries
+        .mapping
+        .rows()
+        .iter()
+        .filter(|r| r.symbol.is_none())
+    {
+        let part = part_of(&row.kind, &row.package);
+        assert!(
+            !part.pins.is_empty(),
+            "{}/{} names no symbol and has no pin table",
+            row.kind,
+            row.package
+        );
+        let mapped = libraries
+            .mapping
+            .map(&row.kind, Some(&row.package))
+            .unwrap();
+        // Neither a library folder nor an install is read: the symbol is made here.
+        let symbol = libraries.symbols.symbol_of(&part, &mapped).unwrap();
+        let mut drawn: Vec<(String, String)> = symbol
+            .pins()
+            .iter()
+            .map(|p| (p.number.clone(), p.name.clone()))
+            .collect();
+        let mut table: Vec<(String, String)> = part
+            .pins
+            .iter()
+            .flat_map(|p| p.pads.iter().map(|pad| (pad.clone(), p.datasheet.clone())))
+            .collect();
+        drawn.sort();
+        table.sort();
+        assert_eq!(drawn, table, "{}/{}", row.kind, row.package);
+        checked.push(row.kind.as_str());
+    }
+    for kind in [
+        "Lt8641",
+        "LinearRegulator",
+        "LevelTranslator",
+        "Sn74lvc1g04",
+    ] {
+        assert!(checked.contains(&kind), "{kind} still names a symbol");
+    }
+}
+
+#[test]
+fn a_row_with_no_symbol_for_a_part_with_no_pin_table_says_so() {
+    let libraries = bare();
+    let mapped = libraries.mapping.map("Lt8641", Some("UDC20(18)")).unwrap();
+    let mut part = part_of("Lt8641", "UDC20(18)");
+    part.pins.clear();
+    let e = libraries
+        .symbols
+        .symbol_of(&part, &mapped)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        e.contains("no `symbol`") && e.contains("`Lt8641`") && e.contains("no pin table"),
+        "{e}"
     );
 }

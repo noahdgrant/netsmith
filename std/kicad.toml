@@ -5,6 +5,11 @@
 #
 # `default = true` marks the footprint used when the part was never given a package.
 #
+# `symbol` may be left out of the row of an IC (a part that has a pin table): netsmith then
+# draws the symbol itself, a box with the pins on its sides, and the part needs no KiCad symbol
+# library (ADR 0097, step 1). A row that names a `symbol` is drawn with it. `pin_names` renames
+# the pins of a named symbol, so a row with no `symbol` has none.
+#
 # A symbol or footprint of the library `netsmith` is not KiCad's: it is one of the files in
 # `std/libs/`, which the binary carries for the packages and parts that KiCad's libraries do not
 # have (ADR 0087).
@@ -60,22 +65,12 @@ footprint = "Capacitor_SMD:C_1210_3225Metric"
 [[part]]
 kind = "LinearRegulator"
 package = "SOT-23"
-symbol = "Regulator_Linear:AP1117-15"
 footprint = "Package_TO_SOT_SMD:SOT-23"
-
-[part.pin_names]
-IN = "VI"
-OUT = "VO"
 
 [[part]]
 kind = "LinearRegulator"
 package = "SOT-223"
-symbol = "Regulator_Linear:AP1117-15"
 footprint = "Package_TO_SOT_SMD:SOT-223-3_TabPin2"
-
-[part.pin_names]
-IN = "VI"
-OUT = "VO"
 
 [[part]]
 kind = "Led"
@@ -678,28 +673,24 @@ TP = "1"
 [[part]]
 kind = "Sn74lvc1g04"
 package = "SOT-23-5"
-symbol = "74xGxx:74LVC1G04"
 footprint = "Package_TO_SOT_SMD:SOT-23-5"
 
-# KiCad's stock single-gate symbol (74LVC1G17: pins 1 NC, 2 A, 3 GND, 4 Y, 5 VCC) for a
-# `LevelTranslator`, on the two 5-pin packages its pin tables have.
+# A `LevelTranslator`, on the two 5-pin packages its pin tables have. Like every IC row here it
+# names no `symbol`: the symbol is drawn from the part's pin table (ADR 0097).
 [[part]]
 kind = "LevelTranslator"
 package = "SOT-23-5"
-symbol = "74xGxx:74LVC1G17"
 footprint = "Package_TO_SOT_SMD:SOT-23-5"
 
 [[part]]
 kind = "LevelTranslator"
 package = "SOT-353_SC-70-5"
-symbol = "74xGxx:74LVC1G17"
 footprint = "Package_TO_SOT_SMD:SOT-353_SC-70-5"
 
 # The LT8641 buck converter IC in its 18-lead 3 x 4 mm QFN (`UDC20(18)`, datasheet Rev. C p.24).
-# KiCad has neither a symbol nor a footprint of it (its `UDC-QFN-20-4EP_3x4mm_P0.5mm_EP0.41x0.25mm`
-# is the LT3033's, another exposed pad variation), so both are netsmith's own (ADR 0087).
+# KiCad has no footprint of it (its `UDC-QFN-20-4EP_3x4mm_P0.5mm_EP0.41x0.25mm` is the LT3033's,
+# another exposed pad variation), so the footprint is netsmith's own (ADR 0087).
 [[part]]
 kind = "Lt8641"
 package = "UDC20(18)"
-symbol = "netsmith:LT8641"
 footprint = "netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA"

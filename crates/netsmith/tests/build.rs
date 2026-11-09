@@ -255,7 +255,9 @@ fn the_regulator_stage_builds_with_its_catalog_pinout() {
         "{}",
         b.report
     );
-    assert!(b.schematic.contains("Regulator_Linear:AP1117-15"));
+    // The IC's symbol is drawn from its pin table, not read from KiCad's libraries (ADR 0097).
+    assert!(b.schematic.contains("netsmith:LinearRegulator_SOT-23"));
+    assert!(!b.schematic.contains("Regulator_Linear"));
 }
 
 #[test]

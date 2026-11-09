@@ -16,7 +16,7 @@ use crate::common;
 
 /// The violations ERC finds in a schematic, as `type: description`, or `None` if KiCad is
 /// not here.
-fn erc(name: &str, schematic: &str) -> Option<Vec<String>> {
+pub(crate) fn erc(name: &str, schematic: &str) -> Option<Vec<String>> {
     let Some(cli) = KicadCliExe::locate_runnable() else {
         eprintln!("skipped: no kicad-cli (set KICAD_CLI, or install KiCad)");
         return None;
@@ -122,7 +122,7 @@ fn every_example_passes_erc_with_kicads_own_symbols() {
 /// a runner that has KiCad installed but no user library table (CI) says that of every stock
 /// library, and it is about the machine, not the schematic. Every other violation stays, the
 /// ones about the embedded symbols included, wherever the table is there.
-fn with_the_machines_libraries(found: Vec<String>) -> Vec<String> {
+pub(crate) fn with_the_machines_libraries(found: Vec<String>) -> Vec<String> {
     found
         .into_iter()
         .filter(|v| !v.contains("The current configuration does not include the"))
