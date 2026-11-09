@@ -313,6 +313,56 @@ fn the_usual_wiring_of_the_pins_is_inside_every_limit_and_leaves_nothing_unjudge
     assert!(text.is_empty(), "{text}");
 }
 
+// ---- the quiescent current (Electrical Characteristics, p.2; ADR 0096) ----
+
+/// What a board that grounds SYNC/MODE (Burst Mode) states: the datasheet's 10 uA, not the
+/// several hundred uA of the pulse-skipping modes.
+const BURST: &str = "    .u.quiescent_current &= 0A .. .u.iq_max\n";
+
+#[test]
+fn the_quiescent_current_is_added_to_the_input_current_of_the_load() {
+    // 0 A to 1 mA out at 3.3 V (3.432 V at most) from 9 V at 70 % takes 544.8 uA in; the
+    // quiescent current is on top of it: 10 uA in Burst Mode, 0.5 mA by default (p.2). The
+    // input had no such term before ADR 0096.
+    let at_most = 1e-3 * 3.432 / (9.0 * 0.70);
+    let (s, text) = solved(&board("3.3V +/- 4%", "0A..1mA", BURST));
+    assert!(text.is_empty(), "{text}");
+    let drawn = range(&s, "u.vin.current");
+    assert!((drawn.hi() - (at_most + 10e-6)).abs() < 1e-8, "{drawn}");
+    // Left to its default the converter is judged in the modes that the datasheet gives no
+    // ultralow figure for: SYNC/MODE floating or high is "several hundred uA" (p.2 gives 0.5 mA
+    // at most, at 25 C, with VSYNC = 2 V).
+    let (s, text) = solved(&board("3.3V +/- 4%", "0A..1mA", ""));
+    assert!(text.is_empty(), "{text}");
+    let drawn = range(&s, "u.vin.current");
+    assert!((drawn.hi() - (at_most + 0.5e-3)).abs() < 1e-8, "{drawn}");
+}
+
+#[test]
+fn a_sleep_current_budget_of_an_unloaded_converter_is_judged_against_the_quiescent_current() {
+    // Nothing loaded: the input drew exactly 0 A before ADR 0096, and any budget passed. (The
+    // stage's feedback divider is a load that the stage's relation leaves out and the DC
+    // analysis does not, so a stage with a 0 A output is also reported as inconsistent: that
+    // is another finding, and these assertions look for the budget's.)
+    let budget = |limit: &str| format!("{BURST}    .u.vin.current <= {limit}\n");
+    let (_, text) = solved(&board("3.3V +/- 4%", "0A", &budget("5uA")));
+    assert!(
+        text.contains(
+            "u.vin.current must always be at most 5uA, but 0A..10uA is not always below 5uA"
+        ),
+        "{text}"
+    );
+    // A board that did not say it grounds SYNC/MODE does not get the 10 uA for free.
+    let src = board("3.3V +/- 4%", "0A", "    .u.vin.current <= 100uA\n");
+    let (_, text) = solved(&src);
+    assert!(
+        text.contains(
+            "u.vin.current must always be at most 100uA, but 0A..500uA is not always below 100uA"
+        ),
+        "{text}"
+    );
+}
+
 #[test]
 fn an_input_the_ic_cannot_take_is_refused_at_the_stage() {
     let (_, text) = solved(&converter().replace("9V..16V", "9V..70V"));

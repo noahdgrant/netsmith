@@ -1127,7 +1127,7 @@ impl Solver<'_> {
         let element = &planned.island.elements[c.element];
         let asks = match &element.kind {
             dc::net::Kind::Regulator {
-                draw: dc::net::Draw::Switching { p, eff },
+                draw: dc::net::Draw::Switching { p, eff, .. },
                 ..
             } => {
                 let percent = |x: f64| format!("{} %", (x * 1000.0).round() / 10.0);

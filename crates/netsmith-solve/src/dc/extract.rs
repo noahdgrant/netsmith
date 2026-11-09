@@ -79,8 +79,9 @@ pub(crate) struct Reg {
     pub vout: Range,
     /// `Some` for a switching regulator.
     pub eff: Option<Range>,
-    /// A linear regulator's quiescent current, when its statement names one: drawn at the input
-    /// besides what the output supplies (ADR 0076, amendment 9).
+    /// A regulator's quiescent current, when its statement names one: drawn at the input
+    /// besides what the output supplies (ADR 0076, amendment 9; for a switching regulator,
+    /// ADR 0096).
     pub quiescent: Option<Range>,
     /// The current its output rail supplies (a negative `current`), to fall back to when the
     /// loads on the output net are not all modelled.
@@ -274,15 +275,16 @@ pub(crate) fn extract(
         } else {
             None
         };
-        // A linear regulator's quiescent current, when the statement names it: a range of
+        // A regulator's quiescent current, when the statement names it (the first value of a
+        // linear regulator's, the one after the efficiency for a switching one): a range of
         // currents that are not negative. One the part leaves open, or one below zero, is not
         // a number to model with: the regulator is not modelled (nothing is guessed).
-        let quiescent = match dc.values.first() {
-            Some(&f) if !switching => match range(f, Dimension::CURRENT).filter(|r| r.lo >= 0.0) {
+        let quiescent = match dc.values.get(usize::from(switching)) {
+            Some(&f) => match range(f, Dimension::CURRENT).filter(|r| r.lo >= 0.0) {
                 Some(q) => Some(q),
                 None => continue,
             },
-            _ => None,
+            None => None,
         };
         // The input's `voltage` and `current`: the fields the pass writes.
         if model.field(v_in).kind != netsmith_check::FieldKind::Quantity(Dimension::VOLTAGE) {
@@ -439,6 +441,7 @@ pub(crate) fn extract(
                     Some(eff) => Draw::Switching {
                         p: Range::EMPTY,
                         eff,
+                        iq: reg.quiescent.unwrap_or(Range::point(0.0)),
                     },
                     None => Draw::Linear { i: Range::EMPTY },
                 },

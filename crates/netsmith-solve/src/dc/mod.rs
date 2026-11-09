@@ -211,9 +211,12 @@ pub(crate) fn analyze(
                                 .quiescent
                                 .map_or(load, |q| Range::new(load.lo + q.lo, load.hi + q.hi)),
                         },
+                        // What the output asks of the input, and the quiescent current on top
+                        // of it (the ends add, as for a linear regulator).
                         Draw::Switching { eff, .. } => Draw::Switching {
                             p: Range::new(reg.vout.lo * load.lo, reg.vout.hi * load.hi),
                             eff,
+                            iq: reg.quiescent.unwrap_or(Range::point(0.0)),
                         },
                     };
                 }

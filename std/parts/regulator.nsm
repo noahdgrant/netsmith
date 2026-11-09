@@ -107,7 +107,10 @@ module FeedbackDivider {
 /// - its datasheet numbers as narrowings (`.buck.fsw &= 1.2MHz +/- 15%`);
 /// - the one relation that ties its input to its output, what it draws from what it
 ///   supplies over the whole efficiency range:
-///   `.vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)`.
+///   `.vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)`,
+///   plus what the IC draws for itself with nothing loaded when its datasheet gives it, as a
+///   member of the IC (`.quiescent_current`, a range of currents, as `LinearRegulator`'s is) that
+///   `dc switching_regulator` takes as its fourth operand (ADR 0096).
 ///
 /// A switching frequency that a resistor sets is one more relation the IC writes, for example
 /// `.buck.fsw == 24GHz * 1ohm / .rt` with `.rt: Resistance` a field of the IC that the board
@@ -196,7 +199,8 @@ interface Buck {
 ///   too low cannot let a capacitor through that the steady voltage would not.
 ///
 /// The divider's current and the quiescent current of the IC are not added to the load, so
-/// the inductor carries the load: `.inductor.current == -.vout.current`. A design that adds
+/// the inductor carries the load: `.inductor.current == -.vout.current` (the IC's own current
+/// is in its input's, as its part writes it, ADR 0096). A design that adds
 /// up a quiescent budget reads the divider's share from `.divider_current`. The divider's pins
 /// are on the output net and are not modelled, so the balance there is not complete and
 /// cannot say that itself (ADR 0027).
@@ -370,8 +374,18 @@ module BuckStage {
 ///   "~0.15 V" (bottom) and "~0.3 V" (top) at maximum load (p.16). Beyond either limit the
 ///   part still regulates and lowers the frequency (p.16), so the part refuses the board
 ///   rather than letting the stage compute its ripple at a frequency the part does not hold.
-/// - Quiescent current, `.iq_max`: 10 uA over temperature, not switching, VEN/UV = 2 V,
-///   SYNC/MODE low (Electrical Characteristics, p.2; 1.7 uA typical, 4 uA at 25 C).
+/// - Quiescent current (Electrical Characteristics, p.2, "VIN Quiescent Current", ADR 0096):
+///   `.iq_max` is 10 uA over temperature, not switching, VEN/UV = 2 V, VSYNC = 0 V (1.7 uA
+///   typical, 4 uA at 25 C), which is Burst Mode, the mode "SYNC/MODE tied to ground" selects
+///   (Pin Functions, p.11). With SYNC/MODE floating (pulse-skipping), held high or clocked, "the
+///   quiescent current will be several hundred uA" (Operation, p.12), and the table gives 0.5 mA
+///   at most with VSYNC = 2 V, at 25 C only (0.3 mA typical): `.iq_skipping_max`, which has no
+///   figure over temperature. The input draws what the output asks and `.quiescent_current`,
+///   a range from zero to the largest of the mode, as `LinearRegulator`'s is added to its load.
+///   The default (`?=`) is the larger, `0A .. .iq_skipping_max`, since the part cannot see how
+///   the board ties SYNC/MODE; a board that grounds it states the ultralow figure,
+///   `.u.quiescent_current &= 0A .. .u.iq_max`. The 10 uA is a maximum and no minimum, so the
+///   least the input draws is still zero: a board cannot ask for `.u.vin.current >= 10uA`.
 /// - `BIAS` takes at most 25 V (Absolute Maximum Ratings, p.2); the datasheet ties it to the
 ///   output for outputs of 3.3 V to 25 V, and to ground when no supply is available (Pin
 ///   Functions, p.10), so the board states `.bias_voltage` and joins the pin.
@@ -464,8 +478,8 @@ part Lt8641 {
     .buck.sw.neg ~ .vin.neg
     .buck.fsw == .fsw
     .buck.min_inductance == (2 * .buck.sw.voltage - .vin.voltage) / (2.5 * .fsw * 1A)
-    .vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)
-    dc switching_regulator .vin .buck.sw .buck.efficiency
+    .vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency) + .quiescent_current
+    dc switching_regulator .vin .buck.sw .buck.efficiency .quiescent_current
 
     /// The largest peak output current, for a short time (front page, p.1).
     .peak_output_current: Current
@@ -506,9 +520,20 @@ part Lt8641 {
     .fsw <= (.buck.sw.voltage + .vsw_bottom) / (.t_on_min * (.vin.voltage - .vsw_top + .vsw_bottom))
     .vin.voltage >= (.buck.sw.voltage + .vsw_bottom) / (1 - .fsw * .t_off_min) - .vsw_bottom + .vsw_top
 
-    /// The quiescent current over temperature (Electrical Characteristics, p.2).
+    /// The quiescent current over temperature, in Burst Mode: EN/UV = 2 V, not switching,
+    /// VSYNC = 0 V (Electrical Characteristics, p.2).
     .iq_max: Current
     .iq_max &= 10uA
+    /// The largest quiescent current with VSYNC = 2 V, not switching: 0.5 mA, at 25 C only
+    /// (p.2); SYNC/MODE floating, high or clocked is "several hundred uA" (p.12).
+    .iq_skipping_max: Current
+    .iq_skipping_max &= 0.5mA
+    /// The current the IC draws from its input for itself with the output unloaded, as a range
+    /// from zero to the largest of the mode the board runs it in: by default that of the
+    /// pulse-skipping modes, and a board that grounds SYNC/MODE states
+    /// `.u.quiescent_current &= 0A .. .u.iq_max`. The part cannot see how the pin is tied.
+    .quiescent_current: Current
+    .quiescent_current ?= 0A .. .iq_skipping_max
 
     // The pins the datasheet ties together are one pin each inside the part.
     .vin2 ~ .vin.pos
