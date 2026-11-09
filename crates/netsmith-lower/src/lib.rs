@@ -1170,6 +1170,7 @@ mod tests {
             ("Schottky", "D"),
             ("Zener", "D"),
             ("Tvs", "D"),
+            ("TvsBidirectional", "D"),
             ("NMosfet", "Q"),
             ("PMosfet", "Q"),
             ("Crystal", "Y"),

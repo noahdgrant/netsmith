@@ -213,6 +213,37 @@ symbol = "Device:D_Zener"
 footprint = "Diode_SMD:D_SMC"
 
 [[part]]
+kind = "TvsBidirectional"
+package = "SOD-123"
+default = true
+symbol = "Device:D_TVS"
+footprint = "Diode_SMD:D_SOD-123"
+
+[[part]]
+kind = "TvsBidirectional"
+package = "SOD-323"
+symbol = "Device:D_TVS"
+footprint = "Diode_SMD:D_SOD-323"
+
+[[part]]
+kind = "TvsBidirectional"
+package = "SMA"
+symbol = "Device:D_TVS"
+footprint = "Diode_SMD:D_SMA"
+
+[[part]]
+kind = "TvsBidirectional"
+package = "SMB"
+symbol = "Device:D_TVS"
+footprint = "Diode_SMD:D_SMB"
+
+[[part]]
+kind = "TvsBidirectional"
+package = "SMC"
+symbol = "Device:D_TVS"
+footprint = "Diode_SMD:D_SMC"
+
+[[part]]
 kind = "Inductor"
 package = "0402"
 symbol = "Device:L"

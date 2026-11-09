@@ -229,3 +229,52 @@ generic Tvs {
     .package: Package
     catalog tvs { .standoff_voltage, .clamping_voltage, .peak_pulse_current, .package, .breakdown_voltage optional }
 }
+
+/// A bidirectional TVS diode: two avalanche junctions back to back, so it stands off the same
+/// voltage and clamps to the same voltage whichever way round it is wired, and has no anode
+/// and cathode. The fields are those of `Tvs` and mean the same, read for either polarity
+/// (ADR 0089). It is a TVS diode for a line that swings both ways or that may be wired
+/// backwards (a power input, a CAN or LIN bus line); a line that only goes positive wants the
+/// lower clamp of the unidirectional `Tvs`.
+///
+/// What is always true is that the rail across it stays below the stand-off, or it would
+/// conduct in normal use: `.bias <= .standoff_voltage`, with `.bias` taken from the rail it
+/// is across. The part is the same either way round, so the checker gives it the rail's
+/// voltage whichever pin is on `pos`, as for a capacitor (ADR 0013); a design states `.bias`
+/// for one across no rail as the largest voltage the line can reach in either direction. What
+/// it protects is the board's to say: `.protected_limit`, the lowest absolute maximum of what
+/// is behind the diode, against which `.clamping_voltage` is checked.
+///
+/// `.breakdown_voltage` is the minimum breakdown voltage VBR, an optional catalog column as for
+/// `Tvs` (ADR 0073, ADR 0078).
+generic TvsBidirectional {
+    .designator &= "D"
+
+    pins {
+        .a1 passive "A1" "1"
+        .a2 passive "A2" "2"
+    }
+
+    /// The reverse stand-off (working) voltage in either direction: the most the line may
+    /// carry without the diode conducting.
+    .standoff_voltage: Voltage
+    /// The voltage across the diode while it carries `.peak_pulse_current`, in either
+    /// direction.
+    .clamping_voltage: Voltage
+    .peak_pulse_current: Current
+    /// The minimum breakdown voltage VBR in either direction, unset until a design states it
+    /// or a catalog row does.
+    .breakdown_voltage: Voltage
+    /// The absolute maximum voltage of the part this one protects. A design states it.
+    .protected_limit: Voltage
+    /// The DC voltage across the diode, taken from the rail it is across whichever way round
+    /// it is wired.
+    .bias: Voltage
+
+    .bias <= .standoff_voltage
+    .clamping_voltage <= .protected_limit
+    bridge .a1 ~> .a2
+
+    .package: Package
+    catalog tvs_bidirectional { .standoff_voltage, .clamping_voltage, .peak_pulse_current, .package, .breakdown_voltage optional }
+}
