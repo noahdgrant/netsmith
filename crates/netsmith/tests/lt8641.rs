@@ -177,10 +177,11 @@ fn a_stage_around_it_solves_for_a_12_v_input_and_3_3_v_out() {
         "{fsw}"
     );
     // The input current: 2 A at 3.432 V (3.3 V + 4 %) from 9 V at the least efficiency, 70 %, is the most
-    // it draws.
+    // it draws. The least is the feedback divider's draw, which the DC analysis of the output side
+    // gives (the inductor is its winding there, ADR 0076, amendment 6): tens of microamperes.
     let drawn = range(&s, "u.vin.current");
     assert!(
-        drawn.lo() <= 1e-9 && (drawn.hi() - 2.0 * 3.432 / (9.0 * 0.70)).abs() < 5e-3,
+        drawn.lo() <= 1e-3 && (drawn.hi() - 2.0 * 3.432 / (9.0 * 0.70)).abs() < 5e-3,
         "{drawn}"
     );
     // The stage's input capacitor is rated for the 36 V peak, and keeps 2.2 uF at 16 V.

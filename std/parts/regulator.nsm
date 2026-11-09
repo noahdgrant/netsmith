@@ -119,6 +119,9 @@ interface Buck {
     .max_input_voltage: Voltage
     /// The largest continuous output current.
     .max_output_current: Current
+    // The switch node supplies what the datasheet allows and no more. This is also the enclosure
+    // of the load behind the regulator before any part is picked (ADR 0076, amendment 6).
+    -.sw.current <= .max_output_current
     /// The efficiency over the load range, as a range of fractions (`0.85..0.95`).
     .efficiency: Number
     /// The smallest inductance the datasheet allows (a table of recommended values is not

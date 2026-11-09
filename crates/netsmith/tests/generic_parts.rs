@@ -168,12 +168,17 @@ board Saturates {
         .pos.net &= "VIN"
         .neg.net &= "GND"
     }
+    .load: Rail {
+        .pos.net &= "OUT"
+        .neg.net &= "GND"
+        .current &= 2A
+    }
     .l: Inductor {
         .inductance &= 3.3uH +/- 20%
         .current &= 2A
     }
-    .supply.pos ~ .l.a
-    .supply.neg ~ .l.b
+    .supply.pos ~> .l ~> .load.pos
+    .supply.neg ~ .load.neg
 }
 "#,
     )

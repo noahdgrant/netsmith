@@ -306,12 +306,20 @@ fn the_board_may_state_the_count_and_the_checks_hold_it() {
 fn a_load_over_the_ics_current_or_an_input_over_its_range_is_refused_with_the_numbers() {
     let s = run(&converter(&guide_ic(), "0mA..3A", ""));
     let m = messages(&s);
-    assert_eq!(m.len(), 1, "{m:#?}");
+    // The stage says it of its output, and the IC (ADR 0076, amendment 6) of its switch node:
+    // two sides of one load.
+    assert_eq!(m.len(), 2, "{m:#?}");
     assert!(
-        m[0].contains("-stage.vout.current must always be at most stage.buck.max_output_current")
-            && m[0].contains("0A..3A is not always below 2A"),
-        "{}",
-        m[0]
+        m.iter().any(|m| m
+            .contains("-stage.vout.current must always be at most stage.buck.max_output_current")
+            && m.contains("0A..3A is not always below 2A")),
+        "{m:#?}"
+    );
+    assert!(
+        m.iter().any(|m| m
+            .contains("-u.buck.sw.current must always be at most u.buck.max_output_current")
+            && m.contains("0A..3A is not always below 2A")),
+        "{m:#?}"
     );
     let hot = converter(&guide_ic(), "0mA..1A", "").replace("5V +/- 5%", "12V +/- 5%");
     let m = messages(&run(&hot));

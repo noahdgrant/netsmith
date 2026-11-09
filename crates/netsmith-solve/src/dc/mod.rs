@@ -20,7 +20,8 @@ pub(crate) mod net;
 #[cfg(test)]
 mod tests;
 
-use netsmith_check::{Domain, Model};
+use netsmith_check::{Domain, FieldId, Model, RExpr};
+use netsmith_lang::ast::CmpOp;
 use netsmith_quantity::Dimension;
 
 pub(crate) use extract::{Modelled, Planned, RailNode, Reg, extract};
@@ -37,19 +38,51 @@ pub(crate) struct Outcome {
 /// The current a regulator's output supplies, from the field the design or the balances gave it
 /// (a negative `current` is the part supplying), when the loads on the output net are not all
 /// modelled.
-fn stated_load(model: &Model, reg: &Reg) -> Option<Range> {
+///
+/// With `enclosure` (the start before the picks, ADR 0076 amendment 6) a field with no usable
+/// range still gives one when a relation limits what the output supplies (`-.vout.current <=
+/// .max_current`): the regulator supplies, so the load is between nothing and that limit. It is
+/// an enclosure of every load a pick could make, wide and sound; the pass after the picks has
+/// the loads themselves.
+fn stated_load(model: &Model, reg: &Reg, enclosure: bool) -> Option<Range> {
     let field = model.field(reg.out_current?);
-    match &field.domain {
-        Domain::Quantity(q)
-            if q.dim() == Dimension::CURRENT
-                && q.lo().is_finite()
-                && q.hi().is_finite()
-                && q.hi() <= 1e-12 =>
-        {
-            Some(Range::new((-q.hi()).max(0.0), -q.lo()))
-        }
-        _ => None,
+    if let Domain::Quantity(q) = &field.domain
+        && q.dim() == Dimension::CURRENT
+        && q.lo().is_finite()
+        && q.hi().is_finite()
+        && q.hi() <= 1e-12
+    {
+        return Some(Range::new((-q.hi()).max(0.0), -q.lo()));
     }
+    if enclosure {
+        return limit_of(model, reg.out_current?).map(|max| Range::new(0.0, max));
+    }
+    None
+}
+
+/// The most that a relation lets a rail's current supply: the least value of `x` over the
+/// relations `-.current <= x` that have one.
+fn limit_of(model: &Model, current: FieldId) -> Option<f64> {
+    let mut limit: Option<f64> = None;
+    for r in model.relations() {
+        let (larger, smaller) = match r.op {
+            CmpOp::Ge => (&r.lhs, &r.rhs),
+            CmpOp::Le => (&r.rhs, &r.lhs),
+            _ => continue,
+        };
+        let RExpr::Neg(inner) = smaller else { continue };
+        if !matches!(&**inner, RExpr::Field(f) if *f == current) {
+            continue;
+        }
+        if let Ok(crate::eval::Val::Q(q)) = crate::eval::eval(model, larger)
+            && q.dim() == Dimension::CURRENT
+            && q.hi().is_finite()
+            && q.hi() >= 0.0
+        {
+            limit = Some(limit.map_or(q.hi(), |m| m.min(q.hi())));
+        }
+    }
+    limit
 }
 
 /// What an island is in the order of solving.
@@ -65,6 +98,7 @@ enum State {
 /// island that has a pin on the output net. `None` while an island of them waits.
 fn load_of(
     model: &Model,
+    enclosure: bool,
     reg: &Reg,
     id: usize,
     islands: &[Planned],
@@ -72,7 +106,7 @@ fn load_of(
     unsolved_output: bool,
 ) -> Option<Option<Range>> {
     if !reg.out_complete || unsolved_output {
-        return Some(stated_load(model, reg));
+        return Some(stated_load(model, reg, enclosure));
     }
     let touching: Vec<(usize, usize)> = islands
         .iter()
@@ -100,7 +134,7 @@ fn load_of(
                     hi: sum.hi + r.hi,
                 };
             }
-            _ => return Some(stated_load(model, reg)),
+            _ => return Some(stated_load(model, reg, enclosure)),
         }
     }
     // An output that takes current in (a load that pushes it back) is not a regulator's.
@@ -110,8 +144,10 @@ fn load_of(
     Some(Some(Range::new(sum.lo.max(0.0), sum.hi.max(0.0))))
 }
 
-/// Extract and solve every island of a model, in the order of the power tree.
-pub(crate) fn analyze(model: &Model) -> Vec<Outcome> {
+/// Extract and solve every island of a model, in the order of the power tree. With `enclosure`
+/// (the start before the picks) a regulator whose load is not known is given the range its own
+/// relations enclose it in.
+pub(crate) fn analyze(model: &Model, enclosure: bool) -> Vec<Outcome> {
     let extract::Extracted {
         mut islands,
         regs,
@@ -125,6 +161,7 @@ pub(crate) fn analyze(model: &Model) -> Vec<Outcome> {
             if loads[r].is_none() {
                 let found = load_of(
                     model,
+                    enclosure,
                     reg,
                     r,
                     &islands,
