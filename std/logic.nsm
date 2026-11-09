@@ -28,6 +28,13 @@ import std::sources::Rail
 /// and bounds a resistor's current; a line that states none swings from the ground to the top
 /// of its reference rail's voltage, as before (ADR 0081); with no `voh` or `vol` stated its unloaded
 /// levels are the swing's top and bottom (amendment 1). It is no load.
+///
+/// Three members are `optional` (ADR 0074) and a part states those its datasheet gives, for the
+/// DC analysis (ADR 0076, amendment 8): `.ii`, the most current the pin takes or gives when it
+/// is high impedance, at any voltage from its ground to its supply (`.ii &= 1uA`: the datasheet's
+/// `Ii`, which is a magnitude); and `.roh` and `.rol`, the output resistance when the pin drives
+/// high and when it drives low (`.rol &= 20ohm..50ohm`), which are used in place of the ones the
+/// levels' test currents give (`.voh &= .vdd.voltage - 0.4V at 2mA`) when a part states them.
 interface Logic {
     .line: Pin
     .reference: Rail
@@ -36,6 +43,9 @@ interface Logic {
     .vil: Voltage
     .voh: Voltage
     .vol: Voltage
+    .ii: Current optional
+    .roh: Resistance optional
+    .rol: Resistance optional
 }
 
 /// The logic levels of all the lines of a bus interface, as a datasheet gives them for a
@@ -54,7 +64,7 @@ interface Logic {
 /// The reference rail is a reference for the checker and not a load: a part that joins it to
 /// its supply (`.spi.levels.reference ~ .vdd`) gives the net a rail whose current nobody could
 /// state, so `Levels` states it, `.reference.current &= 0A`, and the part's draw is all in its
-/// supply's `current`.
+/// supply's `current`. The optional members `.ii`, `.roh` and `.rol` are those of `Logic`.
 interface Levels {
     .reference: Rail
     .reference.current &= 0A
@@ -63,4 +73,7 @@ interface Levels {
     .vil: Voltage
     .voh: Voltage
     .vol: Voltage
+    .ii: Current optional
+    .roh: Resistance optional
+    .rol: Resistance optional
 }

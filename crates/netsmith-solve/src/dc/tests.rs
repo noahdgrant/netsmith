@@ -527,7 +527,13 @@ fn pin(
 ) -> Element {
     Element {
         name: name.to_string(),
-        kind: Kind::Pin { node, high, low, z },
+        kind: Kind::Pin {
+            node,
+            high,
+            low,
+            z,
+            leak: None,
+        },
     }
 }
 

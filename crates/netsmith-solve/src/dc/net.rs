@@ -184,6 +184,11 @@ pub(crate) enum Kind {
         high: Option<(usize, Range)>,
         low: Option<(usize, Range)>,
         z: bool,
+        /// The leakage of the pin when it lets go (`Ii` of the datasheet, ADR 0076, amendment
+        /// 8): the node of its supply, the node of its ground, and the resistance to either.
+        /// High impedance is then an open circuit, or a leak to the supply, or one to the
+        /// ground.
+        leak: Option<(usize, usize, Range)>,
     },
 }
 
@@ -548,7 +553,13 @@ impl Island {
                     }
                     v
                 }
-                Kind::Pin { node, high, low, z } => {
+                Kind::Pin {
+                    node,
+                    high,
+                    low,
+                    z,
+                    leak,
+                } => {
                     let mut v = Vec::new();
                     for (word, side) in [("high", high), ("low", low)] {
                         let Some((to, r)) = side else { continue };
@@ -572,6 +583,20 @@ impl Island {
                                 gate: None,
                             }),
                         ));
+                        if let Some((pos, neg, r)) = leak {
+                            for (word, to) in [("supply", pos), ("ground", neg)] {
+                                for r in r.corners() {
+                                    v.push((
+                                        format!("leaking to the {word} through {}", ohms(r)),
+                                        Variant::Point(Point::R {
+                                            a: *node,
+                                            b: *to,
+                                            r,
+                                        }),
+                                    ));
+                                }
+                            }
+                        }
                     }
                     v
                 }
@@ -610,9 +635,14 @@ impl Island {
                     }
                 }
                 Kind::Mosfet { ron, .. } => 1 + if ron.is_point() { 1 } else { 2 },
-                Kind::Pin { high, low, z, .. } => {
+                Kind::Pin {
+                    high, low, z, leak, ..
+                } => {
                     let two = |r: Range| if r.is_point() { 1 } else { 2 };
-                    high.map_or(0, |(_, r)| two(r)) + low.map_or(0, |(_, r)| two(r)) + u64::from(*z)
+                    let leaking = leak.map_or(0, |(_, _, r)| 2 * two(r));
+                    high.map_or(0, |(_, r)| two(r))
+                        + low.map_or(0, |(_, r)| two(r))
+                        + if *z { 1 + leaking } else { 0 }
                 }
             };
             total = total.saturating_mul(n);
@@ -1259,7 +1289,13 @@ pub(crate) fn check_interior(island: &Island, report: &Report, samples: usize) -
                         }
                     }
                 }
-                Kind::Pin { node, high, low, z } => {
+                Kind::Pin {
+                    node,
+                    high,
+                    low,
+                    z,
+                    leak,
+                } => {
                     let mut states: Vec<Point> = Vec::new();
                     for (to, r) in [high, low].into_iter().flatten() {
                         states.push(Point::R {
@@ -1274,6 +1310,15 @@ pub(crate) fn check_interior(island: &Island, report: &Report, samples: usize) -
                             b: *node,
                             gate: None,
                         });
+                        if let Some((pos, neg, r)) = leak {
+                            for to in [pos, neg] {
+                                states.push(Point::R {
+                                    a: *node,
+                                    b: *to,
+                                    r: r.lo + (r.hi - r.lo) * rng(),
+                                });
+                            }
+                        }
                     }
                     let pick = ((rng() * states.len() as f64) as usize).min(states.len() - 1);
                     states.swap_remove(pick)
