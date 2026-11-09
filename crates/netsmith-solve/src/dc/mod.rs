@@ -15,19 +15,22 @@
 //! that the island in front of the regulator treats as the regulator's load (ADR 0076, section 3):
 //! the island behind is solved first, and the island in front takes its range.
 
+pub(crate) mod ceiling;
 mod extract;
 pub(crate) mod net;
 #[cfg(test)]
 mod tests;
 
-use netsmith_check::{Domain, FieldId, Model, RExpr};
+use std::collections::{HashMap, HashSet};
+
+use netsmith_check::{Domain, FieldId, InstId, Model, RExpr};
 use netsmith_lang::ast::CmpOp;
 use netsmith_quantity::Dimension;
 
 pub(crate) use extract::{Modelled, Planned, RailNode, Reg, extract};
-pub(crate) use net::{Collapse, Error, MAX_COMBINATIONS, Report, Which};
+pub(crate) use net::{Collapse, Error, MAX_COMBINATIONS, Range, Report, Which};
 
-use net::{Draw, Kind, Range};
+use net::{Draw, Kind};
 
 /// One island and what the analysis of it gave.
 pub(crate) struct Outcome {
@@ -147,12 +150,17 @@ fn load_of(
 /// Extract and solve every island of a model, in the order of the power tree. With `enclosure`
 /// (the start before the picks) a regulator whose load is not known is given the range its own
 /// relations enclose it in.
-pub(crate) fn analyze(model: &Model, enclosure: bool) -> Vec<Outcome> {
+pub(crate) fn analyze(
+    model: &Model,
+    enclosure: bool,
+    enclosed: &HashMap<InstId, Range>,
+    hulled: &HashSet<InstId>,
+) -> Vec<Outcome> {
     let extract::Extracted {
         mut islands,
         regs,
         unsolved_outputs,
-    } = extract(model);
+    } = extract(model, enclosed, hulled);
     let mut states: Vec<State> = islands.iter().map(|_| State::Pending).collect();
     let mut loads: Vec<Option<Option<Range>>> = vec![None; regs.len()];
     loop {

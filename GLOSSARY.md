@@ -362,8 +362,12 @@ The voltage of a rail on a node of a `~>` chain, as the analysis gives it: the s
 _Avoid_: Propagated voltage, derived voltage (a derived value is any worked-out field; this one is the node's)
 
 **Enclosure**:
-A range that holds whatever a pick later chooses, written before the picks so that a pick that reads a voltage can be judged: each part still to be picked at the hull of what its candidates give its `dc` value, and a regulator's load, when it is not known, from nothing up to the limit the regulator states on what its output supplies. The pass after the picks narrows it to the circuit that was picked (ADR 0076, amendment 5 and 6).
+A range that holds whatever a pick later chooses, written before the picks so that a pick that reads a voltage can be judged: each part still to be picked at the hull of what its candidates give its `dc` value (or, when the design limits its current, a load of at most that limit), and a regulator's load, when it is not known, from nothing up to the limit the regulator states on what its output supplies. The pass after the picks narrows it to the circuit that was picked (ADR 0076, amendment 5, 6 and 7).
 _Avoid_: Seed, start window (those are a range the board writes by hand and states as a claim; an enclosure is worked out and is not stated), bound (the bound from Ohm's law is another, cheaper thing)
+
+**Assumed window**:
+The range taken for the input of a regulator while the parts in series with it are picked, before the network can be solved: from the largest of what the part and the design need of it to the highest supply that reaches it. It is an assumption about a valid design, it is never kept (the picks are made again without it, from the one row each was given), and what the pass after the picks writes is the circuit's (ADR 0076, amendment 7).
+_Avoid_: Seed, start window (those are written by hand and stay in the model as a claim), enclosure (an enclosure holds whatever a pick chooses; an assumed window holds for the picks that a valid design allows)
 
 **Collapse**:
 A corner of an island in which a regulator's input falls to nothing because its output asks for more power than the source can give through the resistance in front of it (12 V through 10 ohm gives at most 3.6 W): the circuit has no operating point there, and the analysis reports an error that names the regulator, what it asks and the states (ADR 0076, amendment 3).
@@ -422,6 +426,10 @@ _Avoid_: Symbol table, library table
 
 **Project library**:
 A symbol file (`.kicad_sym`) or footprint folder (`.pretty`) of a project's own, listed in its `kicad.toml` as a `[[library]]`, so that its parts map to symbols and footprints KiCad does not ship.
+
+**Standard footprint library**:
+netsmith's own `.kicad_mod` footprints and `.kicad_sym` symbols in `std/libs/`, carried by the binary under the library name `netsmith`, for the packages and parts that KiCad's libraries lack and the generators do not make (ADR 0087). A row of `std/kicad.toml` names one as `netsmith:Name`; a board that uses one gets the library written beside its `.kicad_pro` and listed in KiCad's library tables. Each footprint is drawn from a manufacturer's package drawing, with the page and what was measured recorded.
+_Avoid_: Bundled library, built-in footprints (the generators of ADR 0043 are the generated footprints)
 
 **Unit**:
 One of the drawings of a KiCad symbol that has several, such as the two amplifiers and the supply of a dual op-amp, or the power unit and the signal unit of a processor module (`U1A`, `U1B`). The KiCad schematic places all units of a part, each with the part's reference; the editor's schematic does the same: each unit that has pins is a box of its own in the drawing, as the library draws it, with the part's reference and the unit's letter, upright, and the decoupling capacitors stand beside the power unit (ADR 0050). A pad is in one unit. The layout's own stack of two-terminal parts in a column is a different thing and is not called a unit in the docs.

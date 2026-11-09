@@ -39,6 +39,17 @@ pub enum FootprintError {
         library: String,
         project: PathBuf,
     },
+    /// The library is a project's own and has the name of the standard library's own
+    /// footprints (ADR 0087).
+    AmbiguousStd {
+        library: String,
+        project: PathBuf,
+    },
+    /// The standard library's own `netsmith` has no footprint of this name.
+    NoStdFootprint {
+        name: String,
+        known: Vec<String>,
+    },
     Unreadable {
         path: PathBuf,
         reason: String,
@@ -95,6 +106,18 @@ impl std::fmt::Display for FootprintError {
                 "footprint library `{library}` is both one whose footprints netsmith generates \
                  and listed in kicad.toml ({}); give the project's library another name",
                 project.display()
+            ),
+            Self::AmbiguousStd { library, project } => write!(
+                f,
+                "footprint library `{library}` is the standard library's own (std/libs/) \
+                 and also listed in kicad.toml ({}); give the project's library another name",
+                project.display()
+            ),
+            Self::NoStdFootprint { name, known } => write!(
+                f,
+                "footprint `{name}` not found in the standard library `{}` (std/libs/); it has {}",
+                netsmith_kicad::stdlib::NAME,
+                known.join(", ")
             ),
             Self::Unreadable { path, reason } => write!(f, "{}: {reason}", path.display()),
             Self::Invalid { name, reason } => write!(f, "footprint `{name}`: {reason}"),
@@ -788,7 +811,17 @@ fn read_graphic(item: &Sexp) -> Result<Option<Graphic>, String> {
     }))
 }
 
-/// Where footprints come from, in this order (ADR 0043):
+/// `Name` of the id `netsmith:Name`, the standard library's own footprints (ADR 0087).
+fn std_name(id: &str) -> Option<&str> {
+    let (library, name) = id.split_once(':')?;
+    (library == netsmith_kicad::stdlib::NAME && !name.is_empty() && !name.contains(':'))
+        .then_some(name)
+}
+
+/// Where footprints come from, in this order (ADR 0043, ADR 0087):
+///
+/// 0. the standard library's own `netsmith` footprints (`std/libs/`), in the binary, which no
+///    other library can share a name with;
 ///
 /// 1. a project's own `.pretty` folders, by their library name;
 /// 2. the generators ([`crate::generate`]), for the names they make, if the library was
@@ -864,6 +897,12 @@ impl FootprintLibrary {
     fn folder_of(&self, library: &str) -> Result<(PathBuf, bool), FootprintError> {
         let installed = self.root.join(format!("{library}.pretty"));
         match self.project.iter().find(|(n, _)| n == library) {
+            Some((_, folder)) if library == netsmith_kicad::stdlib::NAME => {
+                Err(FootprintError::AmbiguousStd {
+                    library: library.to_string(),
+                    project: folder.clone(),
+                })
+            }
             Some((_, folder)) if installed.is_dir() => Err(FootprintError::Ambiguous {
                 library: library.to_string(),
                 installed,
@@ -880,8 +919,15 @@ impl FootprintLibrary {
         }
     }
 
-    /// Where `Library:Name` should be.
+    /// Where `Library:Name` should be. For the standard library's own footprints that is the
+    /// file of the repository's `std/libs/`.
     pub fn path_of(&self, name: &str) -> Result<PathBuf, FootprintError> {
+        if let Some(footprint) = std_name(name) {
+            return Ok(PathBuf::from(format!(
+                "std/libs/{}/{footprint}.kicad_mod",
+                netsmith_kicad::stdlib::FOOTPRINT_FOLDER
+            )));
+        }
         self.locate(name).map(|(path, _)| path)
     }
 
@@ -899,6 +945,26 @@ impl FootprintLibrary {
 
     /// Read `Library:Name`.
     pub fn load(&self, name: &str) -> Result<Footprint, FootprintError> {
+        // netsmith's own library is in the binary and answers first, whatever else is set up.
+        if let Some(footprint) = std_name(name) {
+            // A project's library of the same name is refused, with both named.
+            if self
+                .project
+                .iter()
+                .any(|(n, _)| n == netsmith_kicad::stdlib::NAME)
+            {
+                self.folder_of(netsmith_kicad::stdlib::NAME)?;
+            }
+            let text = netsmith_kicad::stdlib::footprint(footprint).ok_or_else(|| {
+                FootprintError::NoStdFootprint {
+                    name: name.to_string(),
+                    known: netsmith_kicad::stdlib::footprint_names()
+                        .map(str::to_string)
+                        .collect(),
+                }
+            })?;
+            return Footprint::parse(name, text);
+        }
         let (path, project) = self.locate(name)?;
         if self.generators
             && !project
@@ -933,6 +999,114 @@ mod tests {
 
     fn fixtures() -> FootprintLibrary {
         FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
+    }
+
+    const UDC: &str = "netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA";
+
+    fn near(a: f64, b: f64) -> bool {
+        (a - b).abs() < 1e-9
+    }
+
+    /// The pads of the LT8641's package as its datasheet (Rev. C, p.24, "Recommended solder pad
+    /// pitch and dimensions" and the bottom view) gives them. The footprint is in the binary:
+    /// no KiCad and no folder are needed.
+    #[test]
+    fn the_standard_library_has_the_udc_qfn_18_of_the_lt8641_with_the_datasheets_pads() {
+        let fp = FootprintLibrary::at("/nonexistent").load(UDC).unwrap();
+        assert_eq!(fp.mount, Mount::Smd);
+        assert_eq!(
+            fp.pad_numbers(),
+            [
+                "1", "2", "3", "4", "6", "7", "8", "9", "10", "11", "13", "14", "15", "16", "17",
+                "18", "19", "20", "21", "22"
+            ]
+        );
+        let pad = |n: &str| fp.pads.iter().find(|p| p.number == n).unwrap();
+        for p in &fp.pads {
+            assert_eq!(p.kind, PadKind::Smd);
+            assert_eq!(p.layers, ["F.Cu", "F.Mask", "F.Paste"], "pad {}", p.number);
+        }
+        // The two long sides (pins 1 to 6 and 11 to 16): 0.70 long, 0.25 wide, 0.50 apart, the
+        // inner edges 2.10 apart (3.50 over the outer edges). Pins 5 and 12 are not there.
+        for (n, y) in [
+            ("1", -1.25),
+            ("2", -0.75),
+            ("3", -0.25),
+            ("4", 0.25),
+            ("6", 1.25),
+        ] {
+            let (l, r) = (pad(n), pad(&format!("{}", 17 - n.parse::<u32>().unwrap())));
+            assert_eq!((l.width, l.height), (0.7, 0.25), "pad {n}");
+            assert_eq!((r.width, r.height), (0.7, 0.25));
+            assert!(
+                near(l.at.x, -1.4) && near(l.at.y, y),
+                "pad {n} at {:?}",
+                l.at
+            );
+            assert!(near(r.at.x, 1.4) && near(r.at.y, y), "pad {n}");
+        }
+        assert!(near(
+            pad("13").at.x - pad("13").width / 2.0 - (pad("4").at.x + pad("4").width / 2.0),
+            2.1
+        ));
+        // The two short sides (pins 7 to 10 and 17 to 20): 0.25 wide, 0.70 long, the inner edges
+        // 3.10 apart (4.50 over the outer edges).
+        for (n, x) in [("7", -0.75), ("8", -0.25), ("9", 0.25), ("10", 0.75)] {
+            let (b, t) = (pad(n), pad(&format!("{}", 27 - n.parse::<u32>().unwrap())));
+            assert_eq!((b.width, b.height), (0.25, 0.7), "pad {n}");
+            assert!(near(b.at.x, x) && near(b.at.y, 1.9), "pad {n}");
+            assert!(near(t.at.x, x) && near(t.at.y, -1.9), "pad {}", t.number);
+        }
+        assert!(near(pad("7").at.y - 0.35 - (pad("20").at.y + 0.35), 3.1));
+        // The exposed pads, both SW: 0.220 wide, 0.356 and 0.400 long, 0.770 apart.
+        let (p22, p21) = (pad("22"), pad("21"));
+        assert_eq!((p22.width, p22.height), (0.22, 0.356));
+        assert_eq!((p21.width, p21.height), (0.22, 0.4));
+        assert!(near(p22.at.x, 0.0) && near(p21.at.x, 0.0));
+        assert!(near(p21.at.y - p22.at.y, 0.77), "{} {}", p22.at.y, p21.at.y);
+        // The top edge of pad 22 is 2.127 from the top edge of the 4.00 body.
+        assert!(near(p22.at.y - p22.height / 2.0 + 2.0, 2.127));
+        // The courtyard is the pads (3.50 by 4.50) and 0.25 all round.
+        assert_eq!(
+            fp.courtyard,
+            Rect::new(Pt::new(-2.0, -2.5), Pt::new(2.0, 2.5))
+        );
+    }
+
+    #[test]
+    fn a_name_the_standard_library_does_not_have_says_what_it_has() {
+        let e = FootprintLibrary::at("/nonexistent")
+            .load("netsmith:Nothing")
+            .unwrap_err();
+        assert!(matches!(e, FootprintError::NoStdFootprint { .. }), "{e}");
+        let text = e.to_string();
+        assert!(
+            text.contains("`netsmith:Nothing`")
+                && text.contains("UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA"),
+            "{text}"
+        );
+        assert_eq!(
+            FootprintLibrary::at("/nonexistent").path_of(UDC).unwrap(),
+            PathBuf::from(
+                "std/libs/netsmith.pretty/UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA.kicad_mod"
+            )
+        );
+    }
+
+    #[test]
+    fn a_project_library_named_netsmith_is_refused_with_both_named() {
+        let e = FootprintLibrary::at("/nonexistent")
+            .with_library("netsmith", "/proj/libs/mine.pretty")
+            .load(UDC)
+            .unwrap_err();
+        assert!(matches!(e, FootprintError::AmbiguousStd { .. }));
+        let text = e.to_string();
+        assert!(
+            text.contains("`netsmith`")
+                && text.contains("/proj/libs/mine.pretty")
+                && text.contains("another name"),
+            "{text}"
+        );
     }
 
     #[test]
