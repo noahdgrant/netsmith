@@ -394,7 +394,11 @@ pub(crate) fn shared_values(model: &Model) -> Vec<(FieldId, FieldId)> {
                 else {
                     continue;
                 };
-                if model.is_flow(*x) || model.is_level(*x) || model.is_role(*x) {
+                if model.is_flow(*x)
+                    || model.is_level(*x)
+                    || model.is_pin_figure(*x)
+                    || model.is_role(*x)
+                {
                     continue;
                 }
                 pairs.push((*x, y));

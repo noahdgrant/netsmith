@@ -383,6 +383,7 @@ impl Checker<'_> {
                 (Member::Field(x), Some(Member::Field(y)))
                     if !self.model.is_flow(x)
                         && !self.model.is_level(x)
+                        && !self.model.is_pin_figure(x)
                         && !self.model.is_role(x) =>
                 {
                     self.model.equalities.push((x, y))

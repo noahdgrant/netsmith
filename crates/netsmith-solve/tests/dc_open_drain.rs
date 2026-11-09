@@ -64,6 +64,65 @@ part Pad {
     }
 }
 
+/// An open-drain driver with a datasheet leakage of 1 uA.
+part OdLeaky {
+    .vdd: Rail
+    .io: Logic
+    .io.reference ~ .vdd
+    .io.vol &= 0.4V at 3mA
+    .io.ii &= 1uA
+    pins {
+        .vdd.pos   power         "VDD" "1"
+        .vdd.neg   power         "GND" "2"
+        .io.line   bidirectional "IO"  "3"
+    }
+}
+
+/// A receiver with a leakage of 1 uA that reads a high from 93 % of its supply.
+part PadLeaky {
+    .vdd: Rail
+    .io: Logic
+    .io.reference ~ .vdd
+    .io.vih &= 0.93 * .vdd.voltage
+    .io.vil &= 0.3 * .vdd.voltage
+    .io.ii &= 1uA
+    pins {
+        .vdd.pos   power "VDD" "1"
+        .vdd.neg   power "GND" "2"
+        .io.line   input "IN"  "3"
+    }
+}
+
+/// The same receiver with no leakage stated.
+part PadHigh {
+    .vdd: Rail
+    .io: Logic
+    .io.reference ~ .vdd
+    .io.vih &= 0.93 * .vdd.voltage
+    .io.vil &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos   power "VDD" "1"
+        .vdd.neg   power "GND" "2"
+        .io.line   input "IN"  "3"
+    }
+}
+
+/// An output that states its output resistances, and its levels with no test current.
+part Pp {
+    .vdd: Rail
+    .io: Logic
+    .io.reference ~ .vdd
+    .io.voh &= .vdd.voltage - 0.4V
+    .io.vol &= 0.4V
+    .io.roh &= 50ohm..60ohm
+    .io.rol &= 10ohm..20ohm
+    pins {
+        .vdd.pos   power  "VDD" "1"
+        .vdd.neg   power  "GND" "2"
+        .io.line   output "IO"  "3"
+    }
+}
+
 board B {
     .logic: Rail {
         .voltage &= 3.3V +/- 3%
@@ -186,4 +245,69 @@ fn an_open_drain_pin_with_no_test_current_is_a_boundary() {
         "{:#?}",
         notes(&s)
     );
+}
+
+fn range(s: &Solution, path: &str) -> (f64, f64) {
+    match s
+        .model
+        .domain_at(path)
+        .unwrap_or_else(|| panic!("no field {path}"))
+    {
+        Domain::Quantity(q) => (q.lo(), q.hi()),
+        other => panic!("{path} has no value: {other:?}"),
+    }
+}
+
+const PULL_100K: &str = "    .up: Resistor { .resistance &= 100kohm +/- 1% }\n    .up.a ~ .logic.pos\n    .up.b ~ .od.io.line\n";
+
+/// A pull-up of 100 kohm on a line with two pins that leak 1 uA at the supply's greatest, 3.399
+/// V: each is 3.399 Mohm to the ground, 1.7 Mohm together. The high is `3.201 V * 1.6995 Mohm /
+/// (101 kohm + 1.6995 Mohm)` = 3.021 V at the least, under the 93 % of the supply that the
+/// receiver needs (3.161 V at the most); without the leakage the high is the rail's, 3.201 V, and
+/// passes.
+#[test]
+fn the_leakage_of_the_pins_on_a_line_lowers_its_high() {
+    let body = |od: &str, pad: &str| {
+        format!(
+            "    .od: {od}\n    .pad: {pad}\n    .logic ~ .od.vdd\n    .logic ~ .pad.vdd\n    .od.io.line ~ .pad.io.line\n{PULL_100K}"
+        )
+    };
+    let s = solved(&body("Od", "PadHigh"));
+    assert_eq!(faults(&s), Vec::<String>::new());
+    let s = solved(&body("OdLeaky", "PadLeaky"));
+    let f = faults(&s);
+    assert_eq!(f.len(), 1, "{f:#?}");
+    let lo = 3.3 * 0.97 * 1.6995e6 / (101_000.0 + 1.6995e6);
+    assert!(
+        f[0].contains("the DC analysis holds the line at 3.02")
+            && f[0].contains(&format!("a high of {:.3}V", lo)),
+        "{}\nwanted {lo}",
+        f[0]
+    );
+}
+
+/// An input that states its leakage draws it: a pull-down of 100 kohm under a pad that leaks to
+/// the supply carries the supply over the pull-down and the leak, and not nothing.
+#[test]
+fn an_input_that_states_its_leakage_draws_it() {
+    let s = solved(
+        "    .pad: PadLeaky\n    .pd: Resistor { .resistance &= 100kohm +/- 1% }\n    .logic ~ .pad.vdd\n    .pad.io.line ~ .pd.a\n    .pd.b ~ .logic.neg\n",
+    );
+    assert_eq!(faults(&s), Vec::<String>::new());
+    let (_, hi) = range(&s, "pd.current");
+    let want = 3.399 / (99_000.0 + 3.399e6);
+    assert!((hi - want).abs() <= 1e-6 * want + 2e-12, "{hi} vs {want}");
+}
+
+/// A part that states `.roh` and `.rol` has the resistances it gives, with no test current on
+/// its levels: the pull-down carries the supply over the least resistances.
+#[test]
+fn stated_output_resistances_stand_in_for_the_test_currents() {
+    let s = solved(
+        "    .pp: Pp\n    .pd: Resistor { .resistance &= 10kohm +/- 1% }\n    .logic ~ .pp.vdd\n    .pp.io.line ~ .pd.a\n    .pd.b ~ .logic.neg\n",
+    );
+    assert_eq!(faults(&s), Vec::<String>::new());
+    let (_, hi) = range(&s, "pd.current");
+    let want = 3.399 / (9_900.0 + 50.0);
+    assert!((hi - want).abs() <= 1e-6 * want + 2e-12, "{hi} vs {want}");
 }
