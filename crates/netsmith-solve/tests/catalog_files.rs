@@ -530,6 +530,91 @@ fn a_row_may_state_who_assembles_its_part_and_the_pick_carries_it() {
     assert_eq!(silent.picks[0].assembly, None);
 }
 
+/// The invented regulators with a `height` cell: 1.45 mm for the small one, and nothing for the
+/// other, which is a row that gives none.
+fn file_with_heights() -> String {
+    file()
+        .replacen("mpn,", "height,mpn,", 1)
+        .replace("ZZ9-33-S,", "1.45mm,ZZ9-33-S,")
+        .replace("ZZ9-33-D,", ",ZZ9-33-D,")
+}
+
+#[test]
+fn a_row_may_state_its_height_and_the_pick_carries_it_in_mm() {
+    let c = catalogs(&[("zz9", &file_with_heights())]).unwrap();
+    let known = solved(r#".mpn &= "ZZ9-33-S""#, &c);
+    assert!(known.diagnostics.is_empty(), "{:?}", messages(&known));
+    assert_eq!(known.picks[0].height, Some(1.45));
+    // An empty cell is an unknown height, which is not zero.
+    let unknown = solved(r#".mpn &= "ZZ9-33-D""#, &c);
+    assert!(unknown.diagnostics.is_empty(), "{:?}", messages(&unknown));
+    assert_eq!(unknown.picks[0].height, None);
+    // A file with no `height` column has none either, and is read as before.
+    let plain = catalogs(&[("zz9", &file())]).unwrap();
+    assert_eq!(
+        solved(r#".mpn &= "ZZ9-33-S""#, &plain).picks[0].height,
+        None
+    );
+}
+
+#[test]
+fn a_height_is_not_a_column_of_the_part_so_it_never_picks_the_row() {
+    // The design states a height of 5 mm, the row says 1.45 mm: the row is still the one
+    // that is named, and the pick carries the row's number for the build to set aside.
+    let c = catalogs(&[("zz9", &file_with_heights())]).unwrap();
+    let s = solved(
+        r#".mpn &= "ZZ9-33-S"
+        .height &= 5mm"#,
+        &c,
+    );
+    assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
+    assert_eq!(s.picks[0].candidate, "ZZ9-33-S");
+    assert_eq!(s.picks[0].height, Some(1.45));
+}
+
+#[test]
+fn a_height_that_is_not_one_length_is_refused_with_its_file_and_line() {
+    for (cell, why) in [
+        ("1mm..2mm", "a range, and a height is one value"),
+        ("1.5mm +/- 0.1mm", "a range, and a height is one value"),
+        ("-1mm", "negative"),
+        ("3V", "a height is a length"),
+        ("tall", ""),
+    ] {
+        let text = file()
+            .replacen("mpn,", "height,mpn,", 1)
+            .replace("ZZ9-33-S,", &format!("{cell},ZZ9-33-S,"))
+            .replace("ZZ9-33-D,", ",ZZ9-33-D,");
+        let c = catalogs(&[("zz9", &text)]).unwrap();
+        let s = solved(r#".mpn &= "ZZ9-33-S""#, &c);
+        let said = messages(&s).join("\n");
+        assert!(
+            said.contains("catalogs/zz9.csv:2: `height`") && said.contains(why),
+            "{cell}: {said}"
+        );
+    }
+}
+
+#[test]
+fn a_part_that_lists_height_as_its_own_column_reads_it_as_that_column() {
+    let board = BOARD.replace(
+        "catalog zz9 by .mpn { .mpn, .vout.voltage, .dropout, .max_current, .package }",
+        "catalog zz9 by .mpn { .mpn, .vout.voltage, .dropout, .max_current, .package, .height optional }",
+    );
+    let c = catalogs(&[("zz9", &file_with_heights())]).unwrap();
+    let src = board.replace("PICK", r#".mpn &= "ZZ9-33-S""#);
+    let checked = check("test.nsm", &src, &Loader::std());
+    assert!(checked.is_ok(), "{}", checked.render());
+    let s = solve(&checked.boards[0], &c);
+    assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
+    // The part's own column sets the field; the fixed meaning is not applied twice.
+    assert_eq!(s.picks[0].height, None);
+    match s.model.domain_at("u.height") {
+        Some(netsmith_check::Domain::Quantity(q)) => assert!((q.lo() - 1.45e-3).abs() < 1e-9),
+        other => panic!("{other:?}"),
+    }
+}
+
 #[test]
 fn a_row_may_be_consigned_and_needs_no_lcsc_for_it() {
     let text = file()
