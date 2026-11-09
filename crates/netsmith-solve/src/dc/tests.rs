@@ -276,7 +276,11 @@ fn switching(name: &str, from: usize, to: usize, p: Range, eff: Range) -> Elemen
         kind: Kind::Regulator {
             from,
             to,
-            draw: Draw::Switching { p, eff },
+            draw: Draw::Switching {
+                p,
+                eff,
+                iq: Range::point(0.0),
+            },
         },
     }
 }

@@ -62,6 +62,18 @@ part Sw {
     dc switching_regulator .vin .vout .efficiency
 }
 
+/// A switching regulator that states its own quiescent current (ADR 0096).
+part Swq {
+    .vin: Rail
+    .vout: Rail
+    .efficiency: Number
+    .min_input: Voltage
+    .iq: Current
+    .vin.neg ~ .vout.neg
+    .vin.voltage >= .min_input
+    dc switching_regulator .vin .vout .efficiency .iq
+}
+
 part Mcu {
     .vdd: Rail
 }
@@ -212,6 +224,67 @@ fn an_open_quiescent_current_leaves_the_regulator_unmodelled() {
         "{}    .link: Link {{ .resistance &= 0.5ohm; .rated_current &= 2A }}\n    .reg: Ldoq {{ .min_input &= 4.5V; .vout.voltage &= 3.3V }}\n{}    .supply.pos ~> .link ~> .reg.vin.pos\n    .supply.neg ~ .reg.vin.neg\n    .reg.vout ~ .out\n",
         supply("12V"),
         load("out", "V33", "100mA..200mA")
+    ));
+    let s = solved(&src);
+    assert_eq!(s.dc.regulators, 0, "{:?}", s.dc);
+}
+
+/// The input current of the switching regulator at `iq` of quiescent current: `I = P / (eff *
+/// (12 - 0.5 I)) + iq` for the link of 0.5 ohm from 12 V, by iteration.
+fn switching_input(p: f64, eff: f64, iq: f64) -> f64 {
+    let mut i = 0.0;
+    for _ in 0..200 {
+        i = p / (eff * (12.0 - 0.5 * i)) + iq;
+    }
+    i
+}
+
+/// A switching regulator's quiescent current is drawn at its input besides what the output asks
+/// (ADR 0096): the ends add, so `0 A` to `10 uA` on top of `Pout / (eff * Vin)`, at the voltage
+/// the link before it leaves.
+#[test]
+fn a_switching_regulators_quiescent_current_adds_to_its_input() {
+    let src = board(&format!(
+        "{}    .link: Link {{ .resistance &= 0.5ohm; .rated_current &= 2A }}\n    .reg: Swq {{ .efficiency &= 0.9; .min_input &= 4.5V; .vout.voltage &= 5V; .iq &= 0A..10uA }}\n{}    .supply.pos ~> .link ~> .reg.vin.pos\n    .supply.neg ~ .reg.vin.neg\n    .reg.vout ~ .out\n",
+        supply("12V"),
+        load("out", "V5", "1A")
+    ));
+    let s = solved(&src);
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert_eq!(s.dc.regulators, 1, "{:?}", s.dc);
+    let (lo, hi) = (
+        switching_input(5.0, 0.9, 0.0),
+        switching_input(5.0, 0.9, 10e-6),
+    );
+    assert!(hi - lo > 9.9e-6, "{lo} {hi}");
+    near(range(&s, "link.current").unwrap(), (lo, hi));
+    near(range(&s, "reg.vin.current").unwrap(), (lo, hi));
+}
+
+/// With nothing loaded the converter still draws its own current from its input: the whole of the
+/// current is the quiescent one. Before ADR 0096 the DC analysis proved it drew 0 A.
+#[test]
+fn an_unloaded_switching_regulator_draws_its_quiescent_current() {
+    let src = board(&format!(
+        "{}    .link: Link {{ .resistance &= 0.5ohm; .rated_current &= 2A }}\n    .reg: Swq {{ .efficiency &= 0.9; .min_input &= 4.5V; .vout.voltage &= 5V; .iq &= 0A..10uA }}\n{}    .supply.pos ~> .link ~> .reg.vin.pos\n    .supply.neg ~ .reg.vin.neg\n    .reg.vout ~ .out\n",
+        supply("12V"),
+        load("out", "V5", "0A")
+    ));
+    let s = solved(&src);
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert_eq!(s.dc.regulators, 1, "{:?}", s.dc);
+    near(range(&s, "link.current").unwrap(), (0.0, 10e-6));
+    near(range(&s, "reg.vin.current").unwrap(), (0.0, 10e-6));
+}
+
+/// A quiescent current that the part leaves open is a number nothing can model with: the
+/// regulator is left out of the analysis, as a linear one is.
+#[test]
+fn an_open_quiescent_current_leaves_the_switching_regulator_unmodelled() {
+    let src = board(&format!(
+        "{}    .link: Link {{ .resistance &= 0.5ohm; .rated_current &= 2A }}\n    .reg: Swq {{ .efficiency &= 0.9; .min_input &= 4.5V; .vout.voltage &= 5V }}\n{}    .supply.pos ~> .link ~> .reg.vin.pos\n    .supply.neg ~ .reg.vin.neg\n    .reg.vout ~ .out\n",
+        supply("12V"),
+        load("out", "V5", "1A")
     ));
     let s = solved(&src);
     assert_eq!(s.dc.regulators, 0, "{:?}", s.dc);

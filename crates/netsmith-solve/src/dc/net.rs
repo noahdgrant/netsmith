@@ -131,8 +131,9 @@ impl Range {
 pub(crate) enum Draw {
     /// What its output supplies: a current of the range `i`.
     Linear { i: Range },
-    /// `p / (eff * v_in)` for the output power `p` and the efficiency `eff`.
-    Switching { p: Range, eff: Range },
+    /// `p / (eff * v_in) + iq` for the output power `p`, the efficiency `eff` and the quiescent
+    /// current `iq` (a point at zero for a regulator that states none).
+    Switching { p: Range, eff: Range, iq: Range },
 }
 
 /// What an element is. Nodes are numbered `0..free` for the free nodes and then the held ones.
@@ -236,12 +237,13 @@ enum Point {
         k: usize,
         vf: f64,
     },
-    /// A regulator's input that draws `p / (eff * v_in)`, found by the fixed point.
+    /// A regulator's input that draws `p / (eff * v_in) + iq`, found by the fixed point.
     Sink {
         from: usize,
         to: usize,
         p: f64,
         eff: f64,
+        iq: f64,
     },
     /// A switch that is off, a pin that lets go of its line: no current between `a` and `b`.
     /// A MOSFET's gate and threshold are kept to judge the state.
@@ -485,19 +487,31 @@ impl Island {
                             )
                         })
                         .collect(),
-                    Draw::Switching { p, eff } => {
+                    Draw::Switching { p, eff, iq } => {
                         let mut v = Vec::new();
                         for p in p.corners() {
                             for eff in eff.corners() {
-                                v.push((
-                                    format!("asking {} W out at {:.1} %", watts(p), eff * 100.0),
-                                    Variant::Point(Point::Sink {
-                                        from: *from,
-                                        to: *to,
-                                        p,
-                                        eff,
-                                    }),
-                                ));
+                                for iq in iq.corners() {
+                                    let own = if iq == 0.0 {
+                                        String::new()
+                                    } else {
+                                        format!(" and keeping {}", amps(iq))
+                                    };
+                                    v.push((
+                                        format!(
+                                            "asking {} W out at {:.1} %{own}",
+                                            watts(p),
+                                            eff * 100.0
+                                        ),
+                                        Variant::Point(Point::Sink {
+                                            from: *from,
+                                            to: *to,
+                                            p,
+                                            eff,
+                                            iq,
+                                        }),
+                                    ));
+                                }
                             }
                         }
                         v
@@ -637,7 +651,7 @@ impl Island {
                     let two = |r: Range| if r.is_point() { 1 } else { 2 };
                     match *draw {
                         Draw::Linear { i } => two(i),
-                        Draw::Switching { p, eff } => two(p) * two(eff),
+                        Draw::Switching { p, eff, iq } => two(p) * two(eff) * two(iq),
                     }
                 }
                 Kind::Mosfet { ron, .. } => 1 + if ron.is_point() { 1 } else { 2 },
@@ -830,7 +844,14 @@ impl Island {
                 let mut worst = 0.0f64;
                 let mut size = 0.0f64;
                 for &k in &sinks {
-                    let Point::Sink { from, to, p, eff } = points[k] else {
+                    let Point::Sink {
+                        from,
+                        to,
+                        p,
+                        eff,
+                        iq,
+                    } = points[k]
+                    else {
                         continue;
                     };
                     let vin = volt(&x, from) - volt(&x, to);
@@ -842,7 +863,7 @@ impl Island {
                             Op::Refused
                         });
                     }
-                    let want = p / (eff * vin);
+                    let want = p / (eff * vin) + iq;
                     let step = if round > HALF_STEP_FROM { 0.5 } else { 1.0 };
                     worst = worst.max((want - work.draw[k]).abs());
                     size = size.max(want.abs());
@@ -1284,11 +1305,12 @@ pub(crate) fn check_interior(island: &Island, report: &Report, samples: usize) -
                         to: *to,
                         i: i.lo + (i.hi - i.lo) * rng(),
                     },
-                    Draw::Switching { p, eff } => Point::Sink {
+                    Draw::Switching { p, eff, iq } => Point::Sink {
                         from: *from,
                         to: *to,
                         p: p.lo + (p.hi - p.lo) * rng(),
                         eff: eff.lo + (eff.hi - eff.lo) * rng(),
+                        iq: iq.lo + (iq.hi - iq.lo) * rng(),
                     },
                 },
                 Kind::Mosfet {

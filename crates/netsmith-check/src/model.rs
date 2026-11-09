@@ -135,9 +135,10 @@ pub enum DcKind {
     /// the quiescent current, when the statement names one (ADR 0076, amendments 3 and 9). The
     /// first two operands are the rails, not pins.
     LinearRegulator,
-    /// `dc switching_regulator .vin .sw .efficiency`: an ideal output source, and an input that
-    /// draws the output's power divided by the efficiency and the input voltage (ADR 0076,
-    /// amendment 3). The first two operands are rails.
+    /// `dc switching_regulator .vin .sw .efficiency [.quiescent_current]`: an ideal output
+    /// source, and an input that draws the output's power divided by the efficiency and the input
+    /// voltage, and the quiescent current when the statement names one (ADR 0076, amendment 3;
+    /// ADR 0096). The first two operands are rails.
     SwitchingRegulator,
     /// `dc source .vbatt`: the part gives this rail from outside the board (a connector's
     /// supply): its positive net is held over the range of the rail's voltage and its negative
@@ -199,7 +200,9 @@ impl DcKind {
     /// element without it, as before.
     pub fn optional_value_roles(self) -> &'static [(&'static str, Dimension)] {
         match self {
-            Self::LinearRegulator => &[("quiescent current", Dimension::CURRENT)],
+            Self::LinearRegulator | Self::SwitchingRegulator => {
+                &[("quiescent current", Dimension::CURRENT)]
+            }
             _ => &[],
         }
     }
