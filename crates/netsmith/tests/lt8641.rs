@@ -244,44 +244,45 @@ fn a_transient_above_the_absolute_maximum_is_refused() {
 const BURST: &str = "    .u.quiescent_current &= 0A .. .u.iq_max\n";
 
 #[test]
-fn an_unloaded_converter_draws_its_quiescent_current_from_its_input() {
-    // Burst Mode, nothing loaded: the input draws at most the 10 uA of the datasheet and was
-    // proved to draw exactly 0 A before.
-    let (s, text) = solved(&board("3.3V +/- 4%", "0A", BURST));
+fn the_quiescent_current_is_added_to_the_input_current_of_the_load() {
+    // 0 A to 1 mA out at 3.3 V (3.432 V at most) from 9 V at 70 % takes 544.8 uA in; the
+    // quiescent current is on top of it: 10 uA in Burst Mode, 0.5 mA by default (p.2). The
+    // input had no such term before ADR 0096.
+    let at_most = 1e-3 * 3.432 / (9.0 * 0.70);
+    let (s, text) = solved(&board("3.3V +/- 4%", "0A..1mA", BURST));
     assert!(text.is_empty(), "{text}");
     let drawn = range(&s, "u.vin.current");
-    assert!(
-        drawn.lo().abs() < 1e-12 && (drawn.hi() - 10e-6).abs() < 1e-12,
-        "{drawn}"
-    );
-    // Left to its default the converter is judged in the mode the datasheet gives no ultralow
-    // figure for: SYNC/MODE floating or high is "several hundred uA" (p.2 gives 0.5 mA at most,
-    // at 25 C, with VSYNC = 2 V).
-    let (s, text) = solved(&board("3.3V +/- 4%", "0A", ""));
+    assert!((drawn.hi() - (at_most + 10e-6)).abs() < 1e-8, "{drawn}");
+    // Left to its default the converter is judged in the modes that the datasheet gives no
+    // ultralow figure for: SYNC/MODE floating or high is "several hundred uA" (p.2 gives 0.5 mA
+    // at most, at 25 C, with VSYNC = 2 V).
+    let (s, text) = solved(&board("3.3V +/- 4%", "0A..1mA", ""));
     assert!(text.is_empty(), "{text}");
-    // (Its least is not zero: with the default the DC analysis also solves the stage's own
-    // feedback divider, which draws about 350 uA from the output, and its figure is kept.)
     let drawn = range(&s, "u.vin.current");
-    assert!((drawn.hi() - 0.5e-3).abs() < 1e-12, "{drawn}");
+    assert!((drawn.hi() - (at_most + 0.5e-3)).abs() < 1e-8, "{drawn}");
 }
 
 #[test]
-fn a_sleep_current_budget_is_judged_against_the_quiescent_current() {
+fn a_sleep_current_budget_of_an_unloaded_converter_is_judged_against_the_quiescent_current() {
+    // Nothing loaded: the input drew exactly 0 A before ADR 0096, and any budget passed. (The
+    // stage's feedback divider is a load that the stage's relation leaves out and the DC
+    // analysis does not, so a stage with a 0 A output is also reported as inconsistent: that
+    // is another finding, and these assertions look for the budget's.)
     let budget = |limit: &str| format!("{BURST}    .u.vin.current <= {limit}\n");
     let (_, text) = solved(&board("3.3V +/- 4%", "0A", &budget("5uA")));
     assert!(
-        text.contains("u.vin.current must always be at most 5uA"),
+        text.contains(
+            "u.vin.current must always be at most 5uA, but 0A..10uA is not always below 5uA"
+        ),
         "{text}"
     );
-    // The converter's own current is the datasheet's, in the part's relation: the stage's
-    // divider is a load on the output and is not in it (see `BuckStage`).
-    let (_, text) = solved(&board("3.3V +/- 4%", "0A", &budget("15uA")));
-    assert!(text.is_empty(), "{text}");
     // A board that did not say it grounds SYNC/MODE does not get the 10 uA for free.
-    let src = board("3.3V +/- 4%", "0A", "    .u.vin.current <= 15uA\n");
+    let src = board("3.3V +/- 4%", "0A", "    .u.vin.current <= 100uA\n");
     let (_, text) = solved(&src);
     assert!(
-        text.contains("u.vin.current must always be at most 15uA"),
+        text.contains(
+            "u.vin.current must always be at most 100uA, but 0A..500uA is not always below 100uA"
+        ),
         "{text}"
     );
 }
