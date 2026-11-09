@@ -117,7 +117,7 @@ row "1 1 1" "" crates.txt
 # --- the crates that do not reach KiCad ------------------------------------------------------
 row "1 0 0" crates/netsmith-solve/src/solve.rs
 row "1 0 0" crates/netsmith-check/src/checker.rs
-row "1 0 0" crates/netsmith-lang/src/parse.rs crates/netsmith-quantity/src/lib.rs crates/netsmith-dc/src/lib.rs
+row "1 0 0" crates/netsmith-lang/src/parse.rs crates/netsmith-quantity/src/lib.rs
 row "1 0 0" crates/netsmith-dxf/src/lib.rs
 row "1 0 0" crates/netsmith-solve/tests/main.rs
 
@@ -180,7 +180,7 @@ for f in crates/*/tests/*.rs crates/*/src/tests.rs crates/*/src/*/tests.rs; do
     if grep -qE 'skip_without_kicad_libraries|kicad_libraries_installed|locate_runnable|KicadCliExe::locate|skipped: no KiCad' "$f"; then
         checked=$((checked + 1))
         case "$f" in
-            crates/netsmith-editor/* | crates/netsmith-view/* | crates/netsmith-solve/* | crates/netsmith-check/* | crates/netsmith-lang/* | crates/netsmith-quantity/* | crates/netsmith-dc/* | crates/netsmith-dxf/*) continue ;;
+            crates/netsmith-editor/* | crates/netsmith-view/* | crates/netsmith-solve/* | crates/netsmith-check/* | crates/netsmith-lang/* | crates/netsmith-quantity/* | crates/netsmith-dxf/*) continue ;;
         esac
         got="$(printf '%s\n' "$f" | "$script" | awk -F= '$1 == "kicad" { print $2 }')"
         if [ "$got" != true ]; then

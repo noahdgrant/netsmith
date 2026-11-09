@@ -132,11 +132,6 @@
           "type": "toml",
           "path": "Cargo.lock",
           "jsonpath": "$.package[?(@.name.value == 'netsmith-dxf')].version"
-        },
-        {
-          "type": "toml",
-          "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name.value == 'netsmith-dc')].version"
         }
       ]
     }

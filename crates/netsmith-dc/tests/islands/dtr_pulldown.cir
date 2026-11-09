@@ -1,8 +1,0 @@
-# Island: a 100 kohm pull-down on a processor pin that drives a modem input (DTR). From a real 12 V
-# automotive board: R7 (100k +/-1 %, row C25741) and the nets from the export of `netsmith build`.
-# ASSUMPTIONS: the pin's output resistances and leakage (as in gate_pulldown.cir).
-# report: v(DTR) i(r7) p(r7)
-# today: `current of part r7 is not known` (2 relations not evaluated, 1 note); the board states `dtr_hold_current == logic_supply.voltage / dtr_pulldown.resistance` by hand
-V  rail  V3V3 GND 3.234..3.333
-L  pin   DTR V3V3 GND states=HLZ roh=0..200 rol=0..200 rz=3.3M
-R  r7    DTR GND 100k+-1%
