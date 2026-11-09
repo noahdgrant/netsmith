@@ -129,3 +129,113 @@ fn every_row_of_the_standard_mapping_agrees_with_the_installed_kicad_libraries()
     assert!(problems.is_empty(), "{problems:#?}");
     assert_eq!(checked, libraries.mapping.rows().len());
 }
+
+// ---- netsmith's own footprints and symbols (std/libs/, ADR 0087) ----
+
+/// The rows that name the standard library's own symbol or footprint.
+fn own_rows(libraries: &Libraries) -> Vec<&netsmith_kicad::Row> {
+    libraries
+        .mapping
+        .rows()
+        .iter()
+        .filter(|r| {
+            netsmith_kicad::stdlib::is_library_id(&r.footprint)
+                || netsmith_kicad::stdlib::is_library_id(&r.symbol)
+        })
+        .collect()
+}
+
+/// A library that reads nothing from a folder: whatever it finds is in the binary.
+fn bare() -> Libraries {
+    Libraries::with_mapping(
+        netsmith_kicad::Mapping::standard(),
+        netsmith_kicad::SymbolLib::at("/nonexistent"),
+        netsmith_pcb::FootprintLibrary::at("/nonexistent"),
+    )
+}
+
+#[test]
+fn every_footprint_netsmith_ships_parses_and_agrees_with_the_pin_table_of_its_part() {
+    let libraries = bare();
+    let rows = own_rows(&libraries);
+    assert!(!rows.is_empty());
+    let mut checked = 0;
+    for row in rows {
+        let mapped = libraries
+            .mapping
+            .map(&row.kind, Some(&row.package))
+            .unwrap();
+        let symbol = libraries
+            .symbols
+            .symbol(&mapped.lib_id)
+            .unwrap_or_else(|e| panic!("{}/{}: {e}", row.kind, row.package));
+        let footprint = libraries
+            .footprints
+            .load(&mapped.footprint)
+            .unwrap_or_else(|e| panic!("{}/{}: {e}", row.kind, row.package));
+        let subject = Subject {
+            refdes: "U1",
+            kind: &row.kind,
+            package: Some(&row.package),
+        };
+        let problems = validate_pinout(
+            &subject,
+            &pinout_of(&row.kind, &row.package),
+            &mapped,
+            &symbol,
+            &footprint,
+        );
+        assert!(problems.is_empty(), "{problems:#?}");
+        checked += 1;
+    }
+    assert!(checked >= 1);
+}
+
+#[test]
+fn every_file_of_the_footprint_library_is_named_by_a_row_so_that_it_is_checked() {
+    let libraries = bare();
+    let named: Vec<&str> = libraries
+        .mapping
+        .rows()
+        .iter()
+        .filter_map(|r| r.footprint.strip_prefix("netsmith:"))
+        .collect();
+    for name in netsmith_kicad::stdlib::footprint_names() {
+        assert!(
+            named.contains(&name),
+            "std/libs/netsmith.pretty/{name}.kicad_mod is in no row of std/kicad.toml, so no \
+             pin table is checked against its pads"
+        );
+    }
+}
+
+#[test]
+fn a_footprint_whose_pad_disagrees_with_the_pin_table_is_refused_by_name() {
+    // The datasheet's pad 22 is SW; a pinout that calls it something the footprint lacks, or a
+    // footprint with a pad that the pinout does not name, is a message that names both.
+    let libraries = bare();
+    let row = own_rows(&libraries)[0];
+    let mapped = libraries
+        .mapping
+        .map(&row.kind, Some(&row.package))
+        .unwrap();
+    let symbol = libraries.symbols.symbol(&mapped.lib_id).unwrap();
+    let footprint = libraries.footprints.load(&mapped.footprint).unwrap();
+    let mut pinout = pinout_of(&row.kind, &row.package);
+    // The pin table with pad 22 taken away from SW.
+    for pin in &mut pinout.pins {
+        pin.pads.retain(|p| p != "22");
+    }
+    let subject = Subject {
+        refdes: "U1",
+        kind: &row.kind,
+        package: Some(&row.package),
+    };
+    let problems = validate_pinout(&subject, &pinout, &mapped, &symbol, &footprint);
+    assert!(
+        problems
+            .iter()
+            .any(|p| p.contains("has pad 22, which no pin of the part has")),
+        "{problems:#?}"
+    );
+}

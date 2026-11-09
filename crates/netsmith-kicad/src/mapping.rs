@@ -213,6 +213,12 @@ impl Mapping {
                     "{at}: a library name must not be empty or contain `:`"
                 )));
             }
+            if l.name == crate::stdlib::NAME {
+                return Err(invalid(format!(
+                    "{at}: `{}` is the name of the standard library's own footprints and symbols (`std/libs/`, ADR 0087); give the library another name",
+                    l.name
+                )));
+            }
             if mapping.libraries.iter().any(|o| o.name == l.name) {
                 return Err(invalid(format!("{at} is listed twice")));
             }
@@ -336,11 +342,19 @@ impl Mapping {
 /// beside a `.kicad_pro` in `dir`, so that KiCad opens the project with the libraries its
 /// symbols and footprints come from. The paths are relative to `dir` (`${KIPRJMOD}` is the
 /// project folder), so the project moves with its libraries. Empty when there are none.
-pub fn library_tables(libraries: &[ProjectLibrary], dir: &Path) -> Vec<(&'static str, String)> {
-    let table = |head: &str, uris: Vec<(&str, &Path)>| {
+///
+/// With `with_std` the standard library's own files (`crate::stdlib`, which the caller writes
+/// into `dir` with [`crate::stdlib::files`]) are listed too, as `netsmith`, first: a board
+/// that uses one of its footprints or symbols has it in the project's library table like any
+/// other library.
+pub fn library_tables(
+    libraries: &[ProjectLibrary],
+    dir: &Path,
+    with_std: bool,
+) -> Vec<(&'static str, String)> {
+    let table = |head: &str, uris: Vec<(&str, String)>| {
         let mut out = format!("({head}\n\t(version 7)\n");
-        for (name, path) in uris {
-            let uri = relative_to(path, dir).replace('\\', "/");
+        for (name, uri) in uris {
             out.push_str(&format!(
                 "\t(lib (name {name:?})(type \"KiCad\")(uri \"${{KIPRJMOD}}/{uri}\")(options \"\")(descr \"\"))\n"
             ));
@@ -348,14 +362,29 @@ pub fn library_tables(libraries: &[ProjectLibrary], dir: &Path) -> Vec<(&'static
         out.push_str(")\n");
         out
     };
-    let symbols: Vec<(&str, &Path)> = libraries
-        .iter()
-        .filter_map(|l| Some((l.name.as_str(), l.symbols.as_deref()?)))
-        .collect();
-    let footprints: Vec<(&str, &Path)> = libraries
-        .iter()
-        .filter_map(|l| Some((l.name.as_str(), l.footprints.as_deref()?)))
-        .collect();
+    let relative = |path: &Path| relative_to(path, dir).replace('\\', "/");
+    let mut symbols: Vec<(&str, String)> = Vec::new();
+    let mut footprints: Vec<(&str, String)> = Vec::new();
+    if with_std {
+        symbols.push((
+            crate::stdlib::NAME,
+            format!("{}.kicad_sym", crate::stdlib::NAME),
+        ));
+        footprints.push((
+            crate::stdlib::NAME,
+            crate::stdlib::FOOTPRINT_FOLDER.to_string(),
+        ));
+    }
+    symbols.extend(
+        libraries
+            .iter()
+            .filter_map(|l| Some((l.name.as_str(), relative(l.symbols.as_deref()?)))),
+    );
+    footprints.extend(
+        libraries
+            .iter()
+            .filter_map(|l| Some((l.name.as_str(), relative(l.footprints.as_deref()?)))),
+    );
     let mut tables = Vec::new();
     if !symbols.is_empty() {
         tables.push(("sym-lib-table", table("sym_lib_table", symbols)));
@@ -407,7 +436,9 @@ pub fn library_stanzas(sym_table: Option<&str>, fp_table: Option<&str>) -> Resul
             let (Some(name), Some(uri)) = (field("name"), field("uri")) else {
                 return Err("a `lib` entry has no name or uri".to_string());
             };
-            if uri.starts_with("${KICAD") {
+            // KiCad's own libraries, and the standard library's own that a netsmith build
+            // writes beside the board, are read without being listed.
+            if uri.starts_with("${KICAD") || name == crate::stdlib::NAME {
                 continue;
             }
             let uri = uri
@@ -691,7 +722,7 @@ SENSE = "SNS"
     #[test]
     fn a_project_gets_library_tables_with_paths_relative_to_its_output() {
         let m = Mapping::parse(PROJECT, "kicad.toml", Path::new("/work/proj")).unwrap();
-        let tables = library_tables(m.libraries(), Path::new("/work/proj/out/Board"));
+        let tables = library_tables(m.libraries(), Path::new("/work/proj/out/Board"), false);
         assert_eq!(tables.len(), 2);
         assert_eq!(tables[0].0, "sym-lib-table");
         assert_eq!(
@@ -705,11 +736,58 @@ SENSE = "SNS"
             tables[1].1
         );
         // A project with no libraries needs no tables, and what is written reads back.
-        assert!(library_tables(&[], Path::new("/work")).is_empty());
+        assert!(library_tables(&[], Path::new("/work"), false).is_empty());
         let back = library_stanzas(Some(&tables[0].1), Some(&tables[1].1)).unwrap();
         assert!(
             back.contains("symbols = \"../../libs/acme.kicad_sym\""),
             "{back}"
+        );
+    }
+
+    #[test]
+    fn the_standard_library_is_listed_first_in_the_tables_when_a_board_uses_it() {
+        let m = Mapping::parse(PROJECT, "kicad.toml", Path::new("/work/proj")).unwrap();
+        let dir = Path::new("/work/proj/out/Board");
+        let tables = library_tables(m.libraries(), dir, true);
+        assert_eq!(tables.len(), 2);
+        assert!(
+            tables[0].1.contains(
+                "(lib (name \"netsmith\")(type \"KiCad\")(uri \"${KIPRJMOD}/netsmith.kicad_sym\")"
+            ),
+            "{}",
+            tables[0].1
+        );
+        assert!(tables[0].1.find("netsmith").unwrap() < tables[0].1.find("acme").unwrap());
+        assert!(
+            tables[1]
+                .1
+                .contains("(uri \"${KIPRJMOD}/netsmith.pretty\")")
+        );
+        // Alone, it makes both tables; the files they name are those of `stdlib::files`.
+        let alone = library_tables(&[], dir, true);
+        assert_eq!(alone.len(), 2);
+        let files: Vec<String> = crate::stdlib::files().into_iter().map(|f| f.0).collect();
+        assert!(files.contains(&"netsmith.kicad_sym".to_string()));
+        // What a netsmith build wrote is not a project library to port.
+        let back = library_stanzas(Some(&tables[0].1), Some(&tables[1].1)).unwrap();
+        assert!(!back.contains("netsmith"), "{back}");
+        assert!(back.contains("acme"), "{back}");
+    }
+
+    #[test]
+    fn a_project_cannot_list_a_library_named_like_the_standard_one() {
+        let e = Mapping::parse(
+            "[[library]]\nname = \"netsmith\"\nfootprints = \"libs/mine.pretty\"\n",
+            "kicad.toml",
+            Path::new("."),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            e.contains("kicad.toml: library `netsmith`")
+                && e.contains("standard library's own footprints and symbols")
+                && e.contains("another name"),
+            "{e}"
         );
     }
 
