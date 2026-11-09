@@ -528,6 +528,7 @@ pub(crate) fn extract(
     // amendment 4).
     let reader = crate::levels::reader(model);
     let mut drivers: Vec<Driver> = Vec::new();
+    let mut leaky_open: BTreeSet<usize> = BTreeSet::new();
     for (index, net) in nets.iter().enumerate() {
         if held.contains_key(&index) {
             continue;
@@ -538,6 +539,16 @@ pub(crate) fn extract(
             }
             if let Some(d) = driver_of(model, &reader, t, index, &net_of, &held) {
                 drivers.push(d);
+            } else {
+                // An input that states its leakage draws it, and a net with such a pin that
+                // cannot be modelled is not one that nothing is drawn from.
+                match receiver_of(model, &reader, t, index, &net_of, &held) {
+                    Some(Some(d)) => drivers.push(d),
+                    Some(None) => {
+                        leaky_open.insert(index);
+                    }
+                    None => {}
+                }
             }
         }
     }
@@ -550,7 +561,7 @@ pub(crate) fn extract(
     let mut pushing: HashMap<usize, usize> = HashMap::new();
     for d in &drivers {
         *per_net.entry(d.net).or_default() += 1;
-        if !d.open_drain {
+        if d.high.is_some() {
             *pushing.entry(d.net).or_default() += 1;
         }
     }
@@ -569,6 +580,7 @@ pub(crate) fn extract(
                 high: d.high.map(|r| (0, r)),
                 low: d.low.map(|r| (0, r)),
                 z: d.z,
+                leak: d.leak.map(|r| (0, 0, r)),
             },
             name: model.path_of(d.terminal),
             part: None,
@@ -632,6 +644,7 @@ pub(crate) fn extract(
     // which something outside may drive. A module's port adds nothing: what is inside it is
     // part pins, which are looked at themselves.
     let mut outside_open: BTreeSet<usize> = BTreeSet::new();
+    outside_open.extend(leaky_open.iter().copied());
     for (iface, inst) in model.instances() {
         if inst.kind != InstKind::Interface {
             continue;
@@ -1093,11 +1106,14 @@ pub(crate) fn extract(
                     vth: *vth,
                     ron: *ron,
                 },
-                Kind::Pin { high, low, z, .. } => Kind::Pin {
+                Kind::Pin {
+                    high, low, z, leak, ..
+                } => Kind::Pin {
                     node: n[0],
                     high: high.map(|(_, r)| (n[1], r)),
                     low: low.map(|(_, r)| (n[2], r)),
                     z: *z,
+                    leak: leak.map(|(_, _, r)| (n[1], n[2], r)),
                 },
             };
             if let Some(reg) = item.reg {
@@ -1277,6 +1293,8 @@ struct Driver {
     z: bool,
     /// A pin that states a low and no high (ADR 0075): low or high impedance, never high.
     open_drain: bool,
+    /// The resistance of its leakage to either supply when it lets go (`Ii`, amendment 8).
+    leak: Option<Range>,
 }
 
 /// The drive of a logic pin, from what its part states (ADR 0076, amendment 4). A pin is
@@ -1332,9 +1350,19 @@ fn driver_of(
         }
         (i.is_finite() && i > 0.0).then_some((f, Range::new(q.lo(), q.hi()), i))
     };
+    // The output resistances: a part that states `.roh` or `.rol` gives them, and otherwise they
+    // are the level's drop over its test current (amendment 8).
+    let stated = |name: &str| stated_resistance(reader, logic, name);
+    let leak = leakage(reader, logic, supply);
     if reader.value(logic, "voh").is_none() {
-        let (_, vol_range, iol) = level("vol")?;
-        let rol = Range::new(MIN_RESISTANCE, (vol_range.hi / iol).max(MIN_RESISTANCE));
+        reader.value(logic, "vol")?;
+        let rol = match stated("rol") {
+            Some(r) => r,
+            None => {
+                let (_, vol_range, iol) = level("vol")?;
+                Range::new(MIN_RESISTANCE, (vol_range.hi / iol).max(MIN_RESISTANCE))
+            }
+        };
         return Some(Driver {
             terminal: pin,
             net,
@@ -1344,16 +1372,28 @@ fn driver_of(
             low: Some(rol),
             z: true,
             open_drain: true,
+            leak,
         });
     }
-    let (voh, voh_range, ioh) = level("voh")?;
-    let (_, vol_range, iol) = level("vol")?;
-    // The datasheet gives `VOH = VDD - 0.4 V at 2 mA`: when the level is written that way the
-    // drop is exact, and it is what the resistance is made of. Any other form is the most the
-    // supply can be above the lowest high.
-    let drop = stated_drop(model, voh, net_of, pos).unwrap_or(supply.range.hi - voh_range.lo);
-    let roh = Range::new(MIN_RESISTANCE, (drop / ioh).max(MIN_RESISTANCE));
-    let rol = Range::new(MIN_RESISTANCE, (vol_range.hi / iol).max(MIN_RESISTANCE));
+    let roh = match stated("roh") {
+        Some(r) => r,
+        None => {
+            let (voh, voh_range, ioh) = level("voh")?;
+            // The datasheet gives `VOH = VDD - 0.4 V at 2 mA`: when the level is written that
+            // way the drop is exact, and it is what the resistance is made of. Any other form is
+            // the most the supply can be above the lowest high.
+            let drop =
+                stated_drop(model, voh, net_of, pos).unwrap_or(supply.range.hi - voh_range.lo);
+            Range::new(MIN_RESISTANCE, (drop / ioh).max(MIN_RESISTANCE))
+        }
+    };
+    let rol = match stated("rol") {
+        Some(r) => r,
+        None => {
+            let (_, vol_range, iol) = level("vol")?;
+            Range::new(MIN_RESISTANCE, (vol_range.hi / iol).max(MIN_RESISTANCE))
+        }
+    };
     Some(Driver {
         terminal: pin,
         net,
@@ -1363,7 +1403,87 @@ fn driver_of(
         low: Some(rol),
         z,
         open_drain: false,
+        leak,
     })
+}
+
+/// An output resistance that a part states (`.roh &= 20ohm..50ohm`), as a range, when it has a
+/// finite value above zero at its greatest. The least is at least the analysis's least resistance.
+fn stated_resistance(reader: &crate::levels::Run<'_>, logic: InstId, name: &str) -> Option<Range> {
+    let (_, q) = reader.value(logic, name)?;
+    (q.dim() == Dimension::RESISTANCE && q.lo().is_finite() && q.hi().is_finite() && q.hi() > 0.0)
+        .then(|| Range::new(q.lo().max(MIN_RESISTANCE), q.hi().max(MIN_RESISTANCE)))
+}
+
+/// The resistance of a pin's leakage to either of its supplies (`Ii`): the greatest voltage of
+/// the supply over the most current the pin leaks, so that the current at the supply's highest
+/// is the datasheet's and lower at a lower voltage. A leakage that is zero, or that is not
+/// stated, is none.
+fn leakage(reader: &crate::levels::Run<'_>, logic: InstId, supply: &Held_) -> Option<Range> {
+    let (_, q) = reader.value(logic, "ii")?;
+    let i = q.hi();
+    (q.dim() == Dimension::CURRENT && i.is_finite() && i > 0.0)
+        .then(|| Range::point((supply.range.hi / i).max(MIN_RESISTANCE)))
+}
+
+/// An input that states its leakage (`.ii`): it is high impedance, with the leak to its supply
+/// or its ground. `None` when it states none (it draws nothing, as before); `Some(None)` when it
+/// does and cannot be modelled (the net it is on is then not one that nothing draws from).
+fn receiver_of(
+    model: &Model,
+    reader: &crate::levels::Run<'_>,
+    pin: InstId,
+    net: usize,
+    net_of: &HashMap<InstId, usize>,
+    held: &BTreeMap<usize, Held_>,
+) -> Option<Option<Driver>> {
+    let part = model.owner_of(pin)?;
+    if model.instance(part).kind != InstKind::Part
+        || model.unused_by(pin).is_some()
+        || model.pin_kind(pin)? != PinKind::Input
+    {
+        return None;
+    }
+    let logic = reader.logic_of(pin)?;
+    reader.value(logic, "ii")?;
+    let modelled = (|| {
+        if reader.value(logic, "swing").is_some() {
+            return None;
+        }
+        let Some(Member::Inst(reference)) = model.member(logic, "reference") else {
+            return None;
+        };
+        let (_, pos_pin, neg_pin) = model.rail_of(reference)?;
+        let (&pos, &neg) = (net_of.get(&pos_pin)?, net_of.get(&neg_pin)?);
+        let (supply, ground) = (held.get(&pos)?, held.get(&neg)?);
+        if supply.hold != Hold::Pos(neg) || ground.hold != Hold::Ground {
+            return None;
+        }
+        let leak = leakage(reader, logic, supply)?;
+        Some(Driver {
+            terminal: pin,
+            net,
+            pos,
+            neg,
+            high: None,
+            low: None,
+            z: true,
+            open_drain: false,
+            leak: Some(leak),
+        })
+    })();
+    // A leakage of nothing is a pin that draws nothing.
+    match (modelled, leakage_is_zero(reader, logic)) {
+        (None, true) => None,
+        (m, _) => Some(m),
+    }
+}
+
+/// Whether the `.ii` a part states is zero at its greatest.
+fn leakage_is_zero(reader: &crate::levels::Run<'_>, logic: InstId) -> bool {
+    reader
+        .value(logic, "ii")
+        .is_some_and(|(_, q)| q.hi() <= 0.0)
 }
 
 /// The constant `c` of a `voh` that is stated as `V - c` where `V` is the voltage of a rail whose

@@ -1335,6 +1335,21 @@ impl Model {
             && (self.instance(f.owner).type_name == "Logic" || self.is_levels(f.owner))
     }
 
+    /// Whether `field` is a figure of one pin that a `Logic` or a `Levels` may state: its leakage
+    /// `ii` and its output resistances `roh` and `rol` (ADR 0076, amendment 8). Like the levels,
+    /// they belong to the part's own pin, so connecting two lines does not equate them.
+    pub fn is_pin_figure(&self, field: FieldId) -> bool {
+        let f = self.field(field);
+        let kind = match f.name.as_str() {
+            "ii" => FieldKind::Quantity(Dimension::CURRENT),
+            "roh" | "rol" => FieldKind::Quantity(Dimension::RESISTANCE),
+            _ => return false,
+        };
+        f.kind == kind
+            && self.instance(f.owner).kind == InstKind::Interface
+            && (self.instance(f.owner).type_name == "Logic" || self.is_levels(f.owner))
+    }
+
     /// Whether an instance is the `Levels` of the standard library (`std::logic::Levels`): the
     /// logic levels that a bus interface carries for all its lines (ADR 0064).
     pub fn is_levels(&self, inst: InstId) -> bool {

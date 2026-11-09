@@ -337,6 +337,10 @@ _Avoid_: Black box, unmodelled part
 The current a logic level was measured at, written after the value: `.voh &= .vdd.voltage - 0.4V at 2mA`. The statement narrows or constrains the level as it does without `at`; the checker records the current beside the level, and a later analysis derives the pin's output resistance from it (ADR 0076, amendment 1). Only `voh` and `vol` take one, and a level has one.
 _Avoid_: Load current (a part's `.current` is its draw), drive current
 
+**Leakage (`Ii`)**:
+The most current a logic pin takes or gives when it is high impedance, at any voltage between its ground and its supply, stated by a part as the optional member `.ii` of its `Logic` or `Levels` (`.io.ii &= 1uA`; ADR 0076, amendment 8, provisional). The analysis takes it as a resistance from the pin to its supply and to its ground, the greatest supply voltage over the current, each a state of the pin. A pin that states none leaks nothing. The output resistances `.roh` and `.rol` are the other optional members.
+_Avoid_: Input current (a part's `.current` is its draw), bias current, input impedance
+
 **Operating point**:
 One solution of the network of the picked parts at DC: a voltage at each node and a current in each element, for one choice of a value in each range and one state of each diode. The analysis solves every one of them in an island and keeps, for each current and voltage, the range it takes over all of them (ADR 0076).
 _Avoid_: Bias point, quiescent point, snapshot (a result is the range over the operating points, not one of them)

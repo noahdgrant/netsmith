@@ -31,21 +31,44 @@ pub fn two_columns(
     body: Body,
     courtyard: f64,
 ) -> Footprint {
-    let mut drawing = Drawing::new(library, name, Mount::Smd);
-    drawing.describe(description, tags);
+    let bounds = pad_bounds(pads);
+    let court = (
+        bounds.0.abs().max(bounds.2).max(body.width / 2.0) + courtyard,
+        bounds.1.abs().max(bounds.3).max(body.length / 2.0) + courtyard,
+    );
+    two_columns_in(library, name, description, tags, pads, body, court)
+}
+
+/// The box round the pads: (min x, min y, max x, max y).
+fn pad_bounds(pads: &[PadSpec]) -> (f64, f64, f64, f64) {
     let mut bounds = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
     for pad in pads {
-        drawing.pad(pad);
         bounds.0 = bounds.0.min(pad.at.x - pad.size.0 / 2.0);
         bounds.1 = bounds.1.min(pad.at.y - pad.size.1 / 2.0);
         bounds.2 = bounds.2.max(pad.at.x + pad.size.0 / 2.0);
         bounds.3 = bounds.3.max(pad.at.y + pad.size.1 / 2.0);
     }
+    bounds
+}
+
+/// Like [`two_columns`], with the courtyard given as its half width and half height instead
+/// of a margin: for the packages whose courtyard is recorded, not computed.
+pub fn two_columns_in(
+    library: &str,
+    name: &str,
+    description: &str,
+    tags: &str,
+    pads: &[PadSpec],
+    body: Body,
+    court: (f64, f64),
+) -> Footprint {
+    let mut drawing = Drawing::new(library, name, Mount::Smd);
+    drawing.describe(description, tags);
+    for pad in pads {
+        drawing.pad(pad);
+    }
+    let bounds = pad_bounds(pads);
     let (hw, hl) = (body.width / 2.0, body.length / 2.0);
-    let court = (
-        bounds.0.abs().max(bounds.2).max(hw) + courtyard,
-        bounds.1.abs().max(bounds.3).max(hl) + courtyard,
-    );
     drawing.courtyard(Pt::new(-court.0, -court.1), Pt::new(court.0, court.1));
 
     // The body, with the corner by pin 1 cut off by a quarter of the width.
