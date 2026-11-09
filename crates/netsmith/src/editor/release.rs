@@ -73,18 +73,9 @@ impl Workspace {
                                 say(&format!("{}: writing the schematic", b.label()));
                                 match b.write(&self.target().build_out) {
                                     Ok(dir) => {
-                                        let tables = netsmith_kicad::library_tables(
-                                            libraries.mapping.libraries(),
-                                            &dir,
-                                        );
-                                        for (name, text) in tables {
-                                            if let Err(e) = fs::write(dir.join(name), text) {
-                                                ok = false;
-                                                output.push_str(&format!(
-                                                    "{}: {e}\n",
-                                                    dir.join(name).display()
-                                                ));
-                                            }
+                                        if let Err(e) = libraries.write_tables(&dir, &b.design) {
+                                            ok = false;
+                                            output.push_str(&format!("{}: {e}\n", dir.display()));
                                         }
                                         output.push_str(&b.report);
                                         written.push(dir.display().to_string());

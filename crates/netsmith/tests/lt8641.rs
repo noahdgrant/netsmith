@@ -5,9 +5,16 @@
 //! zero is recorded): the one here is a project's file, whose `source` is the datasheet's
 //! Order Information table.
 //!
-//! Nothing here builds or exports, so nothing needs KiCad's libraries.
+//! The solver tests build nothing and need no KiCad. The last tests build a board around the
+//! IC and export it (schematic, library tables, `.kicad_pcb`) with the sample libraries of
+//! `netsmith_kicad::testlib`, the generators and netsmith's own footprint library
+//! (`std/libs/`, ADR 0087): they need no KiCad either.
 
+use netsmith::{Libraries, build_with};
 use netsmith_check::{Domain, Loader, check};
+use netsmith_kicad::testlib::{self, TempDir};
+use netsmith_kicad::{Mapping, SymbolLib};
+use netsmith_pcb::{Board, FootprintLibrary, kicad_pcb};
 use netsmith_quantity::Quantity;
 use netsmith_solve::{Catalogs, Solution, solve};
 
@@ -291,4 +298,206 @@ fn the_pins_the_datasheet_asks_for_must_be_connected() {
     let checked = check("test.nsm", &src, &Loader::std());
     assert!(!checked.is_ok());
     assert!(checked.render().contains("en_uv"), "{}", checked.render());
+}
+
+// ---- the footprint and the export (ADR 0087) ----
+
+const OWN_FOOTPRINT: &str = "netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA";
+
+/// The stock-like `Device:L` that `testlib`'s sample `Device` library lacks: a vertical
+/// two-pin passive, as KiCad draws it.
+const INDUCTOR_SYMBOL: &str = "(symbol \"L\" (pin_numbers (hide yes)) (pin_names (offset 0)) \
+    (exclude_from_sim no) (in_bom yes) (on_board yes) \
+    (property \"Reference\" \"L\" (at 2.032 0 90) (effects (font (size 1.27 1.27)))) \
+    (property \"Value\" \"L\" (at 0 0 90) (effects (font (size 1.27 1.27)))) \
+    (property \"Footprint\" \"\" (at 0 0 0) (effects (font (size 1.27 1.27)))) \
+    (property \"Datasheet\" \"~\" (at 0 0 0) (effects (font (size 1.27 1.27)))) \
+    (property \"Description\" \"\" (at 0 0 0) (effects (font (size 1.27 1.27)))) \
+    (symbol \"L_0_1\" (rectangle (start -1.016 2.54) (end 1.016 -2.54) \
+    (stroke (width 0.254) (type default)) (fill (type none)))) \
+    (symbol \"L_1_1\" \
+    (pin passive line (at 0 3.81 270) (length 1.27) (name \"~\" (effects (font (size 1.27 1.27)))) \
+    (number \"1\" (effects (font (size 1.27 1.27))))) \
+    (pin passive line (at 0 -3.81 90) (length 1.27) (name \"~\" (effects (font (size 1.27 1.27)))) \
+    (number \"2\" (effects (font (size 1.27 1.27)))))))";
+
+/// The sample symbols of `testlib` and an inductor, the generators for the passives and
+/// netsmith's own library, which is in the binary: no KiCad is read. The folder is the
+/// test's, removed when `TempDir` goes.
+fn libraries(dir: &TempDir) -> Libraries {
+    let symbols = dir.path().join("symbols");
+    std::fs::create_dir_all(&symbols).unwrap();
+    for entry in std::fs::read_dir(testlib::sample_symbols()).unwrap() {
+        let path = entry.unwrap().path();
+        let file = symbols.join(path.file_name().unwrap());
+        let mut text = std::fs::read_to_string(&path).unwrap();
+        if path.file_name().unwrap() == "Device.kicad_sym" {
+            let end = text
+                .trim_end()
+                .strip_suffix(')')
+                .expect("a library ends in `)`")
+                .len();
+            text.truncate(end);
+            text.push_str(INDUCTOR_SYMBOL);
+            text.push_str(")\n");
+        }
+        std::fs::write(file, text).unwrap();
+    }
+    Libraries::with_mapping(
+        Mapping::standard(),
+        SymbolLib::at(symbols),
+        FootprintLibrary::at(testlib::sample_footprints()).with_generators(),
+    )
+}
+
+/// The converter on a two layer board, which a PCB needs.
+fn board_with_process() -> String {
+    board("3.3V +/- 4%", "0A..2A", "")
+        .replace(
+            "import std::sources::Rail\n",
+            "import std::sources::Rail\nimport std::mfg::jlcpcb::TwoLayer\n",
+        )
+        .replace(
+            "board Converter {\n",
+            "board Converter {\n    .process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }\n",
+        )
+}
+
+fn built(libraries: &Libraries) -> netsmith::Built {
+    let mut catalogs = Catalogs::jlcpcb();
+    catalogs
+        .add_file("lt8641", "catalogs/lt8641.csv", ROWS)
+        .unwrap();
+    catalogs
+        .add_file("inductor", "catalogs/inductor.csv", INDUCTORS)
+        .unwrap();
+    build_with(
+        "converter.nsm",
+        &board_with_process(),
+        &Loader::std(),
+        &catalogs,
+        libraries,
+    )
+    .unwrap_or_else(|e| panic!("{e}"))
+    .remove(0)
+}
+
+#[test]
+fn the_standard_mapping_gives_the_ic_the_footprint_of_its_own_and_its_symbol() {
+    let mapped = Mapping::standard()
+        .map("Lt8641", Some("UDC20(18)"))
+        .unwrap();
+    assert_eq!(mapped.lib_id, "netsmith:LT8641");
+    assert_eq!(mapped.footprint, OWN_FOOTPRINT);
+    // Both are found with no folder at all.
+    let libraries = Libraries::with_mapping(
+        Mapping::standard(),
+        SymbolLib::at("/nonexistent"),
+        FootprintLibrary::at("/nonexistent"),
+    );
+    assert!(libraries.symbols.symbol(&mapped.lib_id).is_ok());
+    assert_eq!(
+        libraries
+            .footprints
+            .load(&mapped.footprint)
+            .unwrap()
+            .pads
+            .len(),
+        20
+    );
+}
+
+#[test]
+fn a_board_around_the_ic_builds_with_the_symbol_and_exports_the_footprint_and_the_library() {
+    let dir = TempDir::new("lt8641-libraries");
+    let libraries = libraries(&dir);
+    let b = built(&libraries);
+    // The schematic draws the IC with netsmith's symbol, all its pins named as the datasheet does.
+    assert!(
+        b.schematic.contains("\"netsmith:LT8641\""),
+        "the schematic does not hold the symbol"
+    );
+    for pin in [
+        "EN/UV",
+        "SYNC/MODE",
+        "TR/SS",
+        "INTVCC",
+        "GND1",
+        "GND2",
+        "VIN1",
+        "VIN2",
+    ] {
+        assert!(b.schematic.contains(&format!("\"{pin}\"")), "{pin}");
+    }
+    assert!(libraries.uses_std_library(&b.design));
+
+    // The PCB places the 20 pads of the footprint, and the `.kicad_pcb` carries it by its name.
+    let board = Board::from_design(&b.design, &libraries.mapping, &libraries.footprints)
+        .unwrap_or_else(|e| panic!("{e}"));
+    let pcb = kicad_pcb(&board);
+    assert!(
+        pcb.contains(OWN_FOOTPRINT),
+        "the board does not name the footprint"
+    );
+    let ic = board
+        .parts
+        .iter()
+        .find(|p| p.footprint.name == "UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA")
+        .expect("the IC is on the board");
+    assert_eq!(ic.footprint.pads.len(), 20);
+
+    // The output folder gets the library, and KiCad's tables list it like a project's own.
+    let out = TempDir::new("lt8641-export");
+    let dir = b.write(out.path()).unwrap();
+    libraries.write_tables(&dir, &b.design).unwrap();
+    let footprint = std::fs::read_to_string(
+        dir.join("netsmith.pretty/UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA.kicad_mod"),
+    )
+    .unwrap();
+    assert_eq!(
+        footprint,
+        include_str!(
+            "../../../std/libs/netsmith.pretty/UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA.kicad_mod"
+        )
+    );
+    assert!(dir.join("netsmith.kicad_sym").is_file());
+    let fp_table = std::fs::read_to_string(dir.join("fp-lib-table")).unwrap();
+    assert!(
+        fp_table.contains("(name \"netsmith\")")
+            && fp_table.contains("${KIPRJMOD}/netsmith.pretty"),
+        "{fp_table}"
+    );
+    let sym_table = std::fs::read_to_string(dir.join("sym-lib-table")).unwrap();
+    assert!(
+        sym_table.contains("${KIPRJMOD}/netsmith.kicad_sym"),
+        "{sym_table}"
+    );
+}
+
+#[test]
+fn a_board_without_a_part_of_the_library_gets_no_library_files() {
+    let src = "import std::parts::passive::Resistor\n\
+               import std::sources::Rail\n\n\
+               board Plain {\n\
+               \x20   .supply: Rail {\n        .voltage &= 5V +/- 5%\n        .pos.net &= \"VCC\"\n        .neg.net &= \"GND\"\n    }\n\
+               \x20   .r: Resistor { .resistance &= 1kohm +/- 1% }\n\
+               \x20   .supply.pos ~> .r ~> .supply.neg\n}\n";
+    let dir = TempDir::new("plain-libraries");
+    let libraries = libraries(&dir);
+    let b = build_with(
+        "plain.nsm",
+        src,
+        &Loader::std(),
+        &Catalogs::jlcpcb(),
+        &libraries,
+    )
+    .unwrap_or_else(|e| panic!("{e}"))
+    .remove(0);
+    assert!(!libraries.uses_std_library(&b.design));
+    let out = TempDir::new("plain-export");
+    let dir = b.write(out.path()).unwrap();
+    libraries.write_tables(&dir, &b.design).unwrap();
+    assert!(!dir.join("netsmith.pretty").exists());
+    assert!(!dir.join("netsmith.kicad_sym").exists());
+    assert!(!dir.join("fp-lib-table").exists());
 }
