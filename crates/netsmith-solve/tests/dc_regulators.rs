@@ -435,7 +435,10 @@ fn tree_by_hand() -> ((f64, f64), (f64, f64)) {
     let (mut v_lo, mut v_hi) = (f64::MAX, f64::MIN);
     for vsrc in [9.0, 16.0] {
         for vf in [0.5, 0.8] {
-            for bead in [1e-3, 0.07] {
+            // The bead's `0ohm..70mohm` is taken at its own ends: a zero resistance is a short,
+            // and not the 1 mohm that every resistance under it was once raised to (ADR 0076,
+            // amendment 16).
+            for bead in [0.0, 0.07] {
                 // The 5 V stage carries its own 0.1 A to 0.3 A and the linear regulator's input
                 // current, the 3.3 V load's 20 mA to 50 mA: 0.12 A to 0.35 A.
                 for iout5 in [0.12, 0.35] {

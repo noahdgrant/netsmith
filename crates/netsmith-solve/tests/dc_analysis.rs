@@ -318,3 +318,127 @@ fn the_same_design_gives_the_same_numbers() {
     assert_eq!(messages(&a), messages(&b));
     assert_eq!(a.dc, b.dc);
 }
+
+/// Issue #287: a current that a balance worked out and the DC analysis finds in a range that
+/// shares no value with it is a finding about the design, and not a number dropped in silence.
+/// A dropper from 12 V into a rail stated at 1.7 V to 3.6 V puts 83 mA to 104 mA through the
+/// resistor, and the balance on `VIN` (the supply gives what the LED takes) says 10 mA to 20 mA.
+const DROPPER: &str = r#"import std::sources::Rail
+import std::parts::passive::{Resistor, Led}
+import std::parts::connector::Header1x2
+
+board B {
+    .supply: Rail {
+        .voltage &= 12V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .r: Resistor { .resistance &= 100ohm +/- 1% }
+    .led: Led { .current &= 10mA..20mA }
+    .mid: Rail {
+        .voltage &= 1.7V..3.6V
+        .pos.net &= "MID"
+        .neg.net &= "GND"
+    }
+    .supply.pos ~> .r ~> .led ~> .supply.neg
+    .mid.pos ~ .r.b
+    .mid.neg ~ .supply.neg
+    .r.current <= 50mA
+    .p: Header1x2
+    .supply.pos ~ .p.p1
+    .supply.neg ~ .p.p2
+}
+"#;
+
+#[test]
+fn a_current_the_balance_and_the_analysis_cannot_both_have_is_an_error_naming_both() {
+    let s = solved(DROPPER);
+    let m = messages(&s);
+    let hit: Vec<&String> = m.iter().filter(|x| x.contains("r.current")).collect();
+    assert_eq!(hit.len(), 1, "{m:?}");
+    let x = hit[0];
+    assert!(x.contains("10mA..20mA"), "the balance's range: {x}");
+    assert!(x.contains("83.16mA..104.1mA"), "the analysis's range: {x}");
+    assert!(x.contains("inconsistent"), "{x}");
+    // The field keeps the balance's number, as before; the finding is the new thing.
+    let (lo, hi) = range(&s, "r.current").expect("a value");
+    assert!(lo > 9e-3 && hi < 21e-3, "{lo} {hi}");
+}
+
+/// The same board with a rail whose range the circuit can reach has nothing to say.
+#[test]
+fn a_current_both_agree_on_is_no_finding() {
+    let src = DROPPER
+        .replace("1.7V..3.6V", "1.7V..11.5V")
+        .replace("10mA..20mA", "10mA..120mA")
+        .replace(".r.current <= 50mA\n", "");
+    let m = messages(&solved(&src));
+    assert!(m.iter().all(|x| !x.contains("inconsistent")), "{m:?}");
+}
+
+/// Issue #288: a resistance range that reaches below 1 mohm used to be solved at 1 mohm for
+/// every value under it, so the voltage ranges left out the part's real values: the node past a
+/// 0 to 0.2 mohm link at 90 A to 100 A is 11.98 V to 12 V, and the analysis said 11.9 V to
+/// 11.91 V. A resistance is solved as it is, down to a short.
+const LINK_PARTS: &str = r#"import std::sources::Rail
+
+part Rx {
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+    .resistance: Resistance
+    .current: Current
+    .drop: Voltage
+    .drop == .current * .resistance
+    bridge .a ~> .b
+    dc resistor .a .b .resistance
+}
+
+part Load {
+    .vdd: Rail
+    pins {
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+    }
+}
+"#;
+
+fn link_board(resistance: &str, check: &str) -> String {
+    format!(
+        "{LINK_PARTS}\nboard B {{\n    .supply: Rail {{ .voltage &= 12V\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\" }}\n    .jumper: Rx {{ .resistance &= {resistance} }}\n    .l: Load {{ .vdd.current &= 90A..100A }}\n    .supply.pos ~> .jumper ~> .l.vdd.pos\n    .supply.neg ~ .l.vdd.neg\n    {check}\n}}\n"
+    )
+}
+
+fn near_abs(got: (f64, f64), want: (f64, f64)) {
+    let ok = |a: f64, b: f64| (a - b).abs() <= 1e-6 * b.abs() + 1e-8;
+    assert!(
+        ok(got.0, want.0) && ok(got.1, want.1),
+        "got {got:?}, want {want:?}"
+    );
+}
+
+#[test]
+fn a_link_that_reaches_zero_ohm_is_solved_down_to_a_short() {
+    let s = solved(&link_board("0ohm..0.2mohm", ".l.vdd.voltage >= 11.97V"));
+    assert_eq!(messages(&s), Vec::<String>::new());
+    near_abs(range(&s, "l.vdd.voltage").unwrap(), (11.98, 12.0));
+    near_abs(range(&s, "jumper.drop").unwrap(), (0.0, 0.02));
+    near_abs(range(&s, "jumper.current").unwrap(), (90.0, 100.0));
+    // A limit the true range fails is a finding: the node is 12 V when the link is 0 ohm.
+    let m = messages(&solved(&link_board(
+        "0ohm..0.2mohm",
+        ".l.vdd.voltage <= 11.95V",
+    )));
+    assert_eq!(m.len(), 1, "{m:?}");
+    assert!(m[0].contains("l.vdd.voltage"), "{m:?}");
+}
+
+/// Below the old floor but above zero: 0.5 mohm at 100 A is 50 mV, not the 100 mV of a floor
+/// of 1 mohm.
+#[test]
+fn a_resistance_under_a_milliohm_is_its_own_value() {
+    let s = solved(&link_board("0.5mohm", ".l.vdd.voltage >= 11.9V"));
+    assert_eq!(messages(&s), Vec::<String>::new());
+    near_abs(range(&s, "l.vdd.voltage").unwrap(), (11.95, 11.955));
+}
