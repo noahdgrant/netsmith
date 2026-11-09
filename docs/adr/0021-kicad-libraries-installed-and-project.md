@@ -1,5 +1,5 @@
 ---
-status: accepted (owner review 2026-11-04). The Linux, macOS, snap and flatpak library lookups are unverified (issue #6).
+status: superseded by ADR-0097
 ---
 
 # KiCad libraries: installed and project
