@@ -399,7 +399,11 @@ The factor on the highest voltage of a rail that a capacitor's rating must have:
 _Avoid_: Derating factor, safety factor, headroom
 
 **Bias**:
-The DC voltage across a part: a capacitor, a diode, a Zener or a TVS diode. A part with a `.bias` and a `bridge` placed between a rail's `pos` and `neg` has the rail's voltage as its `.bias` without being told; a design states `.bias` only for a part that is across no rail.
+The DC voltage across a part: a capacitor, a diode, a Zener or a TVS diode. A part with a `.bias` and a `bridge` placed between a rail's `pos` and `neg` has the rail's voltage as its `.bias` without being told; a design states `.bias` only for a part that is across no rail. A diode's bias is the voltage in the direction it blocks, and it is negative when the diode is wired to conduct (see **Bridge voltage**).
+
+**Bridge voltage**:
+The `.bridge_voltage` of a diode (`Diode`, `Schottky`, `Zener`, `Tvs`): the voltage from the first end of its `bridge` to the second, which the checker gives a diode across a rail without being told, with the sign of the way it is wired: the rail's voltage when the first end is on `pos`, its negative when it is on `neg` (ADR 0088, provisional). The part's own relations read it, so a diode wired the wrong way round across a rail is found and named.
+_Avoid_: Polarity, orientation (as a field)
 
 **Supply peak**:
 The `.supply_peak` of a part in a `~>` chain, a `Fuse`: the `.peak` of the rail whose `pos` the chain starts on, which the checker gives the part without being told (ADR 0086, provisional). The chain carries it as it carries the current, so a part in series, which is across no rail and has no `.bias`, is checked against the highest voltage it has to interrupt. A part in no chain from a rail has none, and a design states it.

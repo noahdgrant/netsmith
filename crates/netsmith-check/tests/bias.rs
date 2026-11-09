@@ -107,3 +107,85 @@ fn a_rail_inside_another_module_is_out_of_reach() {
     );
     assert_eq!(b, ["o.c.bias = o.inner.out.voltage"]);
 }
+
+// ---- a diode has the rail's voltage with the sign of the way it is wired (ADR 0088) ----------
+
+const DIODES: &str =
+    "import std::parts::diode::{Diode, Schottky, Tvs, Zener}\nimport std::sources::Rail\n";
+
+/// Every relation that reads a diode's `bridge_voltage`, as text.
+fn diode_voltages(src: &str) -> Vec<String> {
+    let c = check("t.nsm", &format!("{DIODES}{src}"), &Loader::std());
+    assert!(c.is_ok(), "{}", c.render());
+    let m = &c.board("B").unwrap().model;
+    m.relations()
+        .iter()
+        .map(|r| format!("{} = {}", m.show_expr(&r.lhs), m.show_expr(&r.rhs)))
+        .filter(|s| s.contains("bridge_voltage"))
+        .collect()
+}
+
+#[test]
+fn a_diode_across_a_rail_has_the_rails_voltage_with_the_sign_of_the_way_it_is_wired() {
+    // `Diode` bridges anode to cathode: the anode on `pos` is the positive way.
+    let body = |kind: &str, chain: &str| {
+        format!("board B {{\n    .rail: Rail\n    .d: {kind}\n    {chain}\n}}\n")
+    };
+    for kind in ["Diode", "Schottky"] {
+        assert_eq!(
+            diode_voltages(&body(kind, ".rail.pos ~> .d ~> .rail.neg")),
+            [
+                "d.bias = -d.bridge_voltage",
+                "d.bridge_voltage = rail.voltage"
+            ]
+        );
+        assert_eq!(
+            diode_voltages(&body(kind, ".rail.neg ~> .d ~> .rail.pos")),
+            [
+                "d.bias = -d.bridge_voltage",
+                "d.bridge_voltage = -rail.voltage"
+            ]
+        );
+    }
+    // `Zener` and `Tvs` bridge cathode to anode.
+    for kind in ["Zener", "Tvs"] {
+        assert_eq!(
+            diode_voltages(&body(kind, ".rail.pos ~> .d ~> .rail.neg")),
+            [
+                "d.bias = d.bridge_voltage",
+                "d.bridge_voltage = rail.voltage"
+            ]
+        );
+        assert_eq!(
+            diode_voltages(&body(kind, ".rail.neg ~> .d ~> .rail.pos")),
+            [
+                "d.bias = d.bridge_voltage",
+                "d.bridge_voltage = -rail.voltage"
+            ]
+        );
+    }
+}
+
+#[test]
+fn a_diode_by_pins_or_net_names_has_the_same_voltage_and_a_diode_in_series_has_none() {
+    let by_pins = diode_voltages(
+        "board B {\n    .rail: Rail\n    .d: Diode\n    .rail.pos ~ .d.cathode\n    .rail.neg ~ .d.anode\n}\n",
+    );
+    assert!(
+        by_pins.contains(&"d.bridge_voltage = -rail.voltage".to_string()),
+        "{by_pins:?}"
+    );
+    let by_names = diode_voltages(
+        "board B {\n    .rail: Rail {\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n    }\n    .d: Diode {\n        .anode.net &= \"VIN\"\n        .cathode.net &= \"GND\"\n    }\n}\n",
+    );
+    assert!(
+        by_names.contains(&"d.bridge_voltage = rail.voltage".to_string()),
+        "{by_names:?}"
+    );
+    // In series with a load: across no rail, nothing is derived, and the relations that read
+    // the optional `bridge_voltage` are dropped.
+    let series = diode_voltages(
+        "board B {\n    .rail: Rail\n    .load: Rail\n    .d: Diode\n    .rail.pos ~> .d ~> .load.pos\n    .rail.neg ~ .load.neg\n}\n",
+    );
+    assert!(series.is_empty(), "{series:?}");
+}

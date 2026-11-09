@@ -1451,6 +1451,24 @@ impl Model {
         }
     }
 
+    /// The `bridge_voltage` field of a part, the voltage from the first terminal of its
+    /// `bridge` to the second, and the two terminals. Unlike `bias` it has a sign, so a part
+    /// that has it is given the rail's voltage the way round it is wired (see
+    /// `Checker::derive_bias`). A part without a `bridge`, or without a voltage field of
+    /// that name, has none.
+    pub fn bridge_voltage_of(&self, part: InstId) -> Option<(FieldId, InstId, InstId)> {
+        if self.instance(part).kind != InstKind::Part {
+            return None;
+        }
+        let (a, b) = self.instance(part).bridge?;
+        match self.member(part, "bridge_voltage")? {
+            Member::Field(f) if self.field(f).kind == FieldKind::Quantity(Dimension::VOLTAGE) => {
+                Some((f, a, b))
+            }
+            _ => None,
+        }
+    }
+
     /// The `supply_peak` field of a part, the highest voltage of the rail a `~>` chain it is
     /// in starts on (see `Checker::derive_supply_peak`). A part without a `bridge`, or
     /// without a voltage field of that name, is not given one.

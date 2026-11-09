@@ -7192,13 +7192,15 @@ The library has the parts a two-sided four-layer board is made of, and the inter
 
 ### Voltage across a part
 
-A diode, a Zener, a TVS diode and a capacitor have a `.bias`: the DC voltage across them. A part placed between a rail's `pos` and `neg` takes it from that rail (ADR 0013), so a rating on the voltage across the part needs no line of its own. A part across no rail has no bias until the design states `.bias`. The sign of the rail is not looked at, so a diode wired the wrong way round across a rail is not found by these ratings.
+A diode, a Zener, a TVS diode and a capacitor have a `.bias`: the DC voltage across them. A part placed between a rail's `pos` and `neg` takes it from that rail (ADR 0013), so a rating on the voltage across the part needs no line of its own. A part across no rail has no bias until the design states `.bias`.
+
+A capacitor is the same either way round, so its bias is the rail's voltage and the sign is not looked at. A diode is not: its `.bias` is the voltage in the direction it blocks, the cathode relative to the anode, and the checker gives a diode across a rail the rail's voltage with the sign of the way it is wired (ADR 0088, provisional). It does so through `.bridge_voltage`, a field of `Diode`, `Schottky`, `Zener` and `Tvs`: the voltage from the first pin of the part's `bridge` to the second (the anode relative to the cathode for a `Diode` or a `Schottky`, the cathode relative to the anode for a `Zener` or a `Tvs`, whose bridge is the way they conduct when they clamp), `+` the rail's voltage when the first pin is on the rail's `pos` and its negative when it is on the `neg`. A diode with its cathode on `pos` blocks the rail and has the rail's voltage as its bias. A diode wired the other way round conducts across the rail, so its bias is negative and the part's own relation names it: a `Diode` or a `Schottky` must have `.bias >= -.forward_voltage` (it never has more than a forward drop the wrong way), and a `Zener` or a `Tvs` must have `.bias >= 0V`, the way round it is a clamp. `.bridge_voltage` is an `optional` member (ADR 0074): a diode across no rail has none, and the relations that read it are neither checked nor listed as not evaluated. A design does not write it; the ratings of the table below follow from it.
 
 | Part | What is always true | What the design states |
 |---|---|---|
-| `std::parts::diode::Diode`, `std::parts::diode::Schottky` | `.bias <= .max_reverse_voltage`, `.current <= .max_forward_current` | The ratings. |
-| `std::parts::diode::Zener` | `.bias * .current <= .max_power` | `.zener_voltage` with its tolerance. For a clamp, the line `.z.bias <= .z.zener_voltage`; over a temperature range, `.temperature_shift` (below). Catalog `zener`. |
-| `std::parts::diode::Tvs` | `.bias <= .standoff_voltage`, `.clamping_voltage <= .protected_limit` | The ratings, and `.protected_limit`: the absolute maximum of what is behind it. Catalog `tvs`. |
+| `std::parts::diode::Diode`, `std::parts::diode::Schottky` | `.bias <= .max_reverse_voltage`, `.current <= .max_forward_current`, `.bias >= -.forward_voltage` | The ratings. |
+| `std::parts::diode::Zener` | `.bias * .current <= .max_power`, `.bias >= 0V` | `.zener_voltage` with its tolerance. For a clamp, the line `.z.bias <= .z.zener_voltage`; over a temperature range, `.temperature_shift` (below). Catalog `zener`. |
+| `std::parts::diode::Tvs` | `.bias <= .standoff_voltage`, `.clamping_voltage <= .protected_limit`, `.bias >= 0V` | The ratings, and `.protected_limit`: the absolute maximum of what is behind it. Catalog `tvs`. |
 
 A `Tvs` also has an optional `.breakdown_voltage`, the minimum breakdown voltage VBR: between the stand-off voltage and it the diode leaks a little, below it the diode does not conduct (ADR 0073, provisional). A design that needs a margin between the highest the line reaches and the point where the diode starts to conduct states it, `.tvs.breakdown_voltage >= .input.peak * 1.1`. It is a catalog column that only one standard row fills, the Littelfuse SMDJ36A (`data/jlcpcb/README.md`), so a design that states it is offered that row and no other standard one, and gets any other from a project's `tvs` catalog file that records the column; a file written before the column may leave it out, and a design that does not state the field picks as before and has no new check.
 
@@ -7317,9 +7319,9 @@ board Standoff {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 10 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
-    --> std/parts/diode.nsm:195:5
+    --> std/parts/diode.nsm:225:5
     |
-195 |     .bias <= .standoff_voltage
+225 |     .bias <= .standoff_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7366,7 +7368,7 @@ board Clamp {
     .z.bias <= .z.zener_voltage
     .d: Diode { .max_reverse_voltage &= 10V }
     .input.pos ~> .z ~> .input.neg
-    .input.pos ~> .d ~> .input.neg
+    .input.neg ~> .d ~> .input.pos
 }
 ```
 
@@ -7377,15 +7379,55 @@ error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C
 11 |     .z.bias <= .z.zener_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: d.bias must always be at most d.max_reverse_voltage, but 11.4V..12.6V is not always below 10V
-   --> std/parts/diode.nsm:42:5
+   --> std/parts/diode.nsm:56:5
    |
-42 |     .bias <= .max_reverse_voltage
+56 |     .bias <= .max_reverse_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 4.7V..5.5V
    --> main.nsm:11:5
    |
 11 |     .z.bias <= .z.zener_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A diode wired the wrong way round across a rail conducts and is a short, and a rating of the voltage it blocks cannot see that by itself. The bias of one is negative, so the part's relation on `.bias` fails and names it. Here the rectifier has its anode on `pos`, and the Zener its anode on `pos` too. The rectifier's check compares with its `.forward_voltage`, which a `Schottky` has from its catalog row and a `Diode` has when the design states it; a `Diode` with none is listed as not evaluated:
+
+```nsm fails
+import std::parts::diode::{Diode, Zener}
+import std::sources::Rail
+
+board Reversed {
+    .input: Rail {
+        .voltage &= 12V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .d: Diode {
+        .max_reverse_voltage &= 40V
+        .forward_voltage &= 0.7V
+    }
+    .z: Zener { .zener_voltage &= 4.7V..5.5V }
+    .input.pos ~> .d ~> .input.neg
+    .input.neg ~> .z ~> .input.pos
+}
+```
+
+```text
+error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C5V1 5.1V 500mW Zener SOD-123 C2117, fails because z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
+    --> std/parts/diode.nsm:168:5
+    |
+168 |     .bias >= 0V
+    |     ^^^^^^^^^^^
+error: d.bias must always be at least -d.forward_voltage, but -12.6V..-11.4V is not always above -700mV
+   --> std/parts/diode.nsm:57:5
+   |
+57 |     .bias >= -.forward_voltage
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
+    --> std/parts/diode.nsm:168:5
+    |
+168 |     .bias >= 0V
+    |     ^^^^^^^^^^^
 ```
 
 ### Resistor power
@@ -10656,7 +10698,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::parts::passive::Crystal` | A two-terminal crystal: `.frequency` (with its tolerance) and `.load_capacitance`. Pins `a`, `b`. Catalog `crystal`. |
 | `std::parts::passive::Fuse` | A fuse: `.rated_current`, `.rated_voltage`, `.resistance`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current` and `.supply_peak <= .rated_voltage` (`.supply_peak` is the `.peak` of the rail its chain starts on, ADR 0086). Catalog `fuse`. |
 | `std::parts::passive::Switch` | A single-pole single-throw switch or button: `.rated_current`, `.rated_voltage`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current`. |
-| `std::parts::diode::Diode` | A diode: `.forward_voltage`, `.max_reverse_voltage`, `.max_forward_current`, `.bias`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Requires `.bias <= .max_reverse_voltage` and `.current <= .max_forward_current`. |
+| `std::parts::diode::Diode` | A diode: `.forward_voltage`, `.max_reverse_voltage`, `.max_forward_current`, `.bias`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Requires `.bias <= .max_reverse_voltage`, `.current <= .max_forward_current` and, for a diode across a rail, the right way round (`.bias >= -.forward_voltage`, from `.bridge_voltage`, ADR 0088). |
 | `std::parts::diode::Schottky` | A Schottky diode, with the fields and ratings of `Diode`. Catalog `schottky`. |
 | `std::parts::diode::Zener` | A Zener diode: `.zener_voltage` (with tolerance, at `.test_current`), `.max_power`, `.bias`, and the optional catalog columns `.test_current`, `.temperature_coefficient`, `.leakage_current` and `.leakage_test_voltage`. Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias * .current <= .max_power`, and, when the design states `.temperature_shift`, defines `.voltage_over_temperature`. |
 | `std::parts::diode::Tvs` | A unidirectional TVS diode: `.standoff_voltage`, `.clamping_voltage`, `.peak_pulse_current`, `.protected_limit`, `.bias` and the optional `.breakdown_voltage` (a catalog column that only the SMDJ36A row of the standard rows fills). Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias <= .standoff_voltage` and `.clamping_voltage <= .protected_limit`. |
