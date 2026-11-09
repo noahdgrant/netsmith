@@ -68,8 +68,14 @@ jobs:
         if: matrix.kicad == 'windows'
         run: |
           choco install kicad --yes --no-progress
-          echo "NETSMITH_KICAD_SYMBOLS=C:/Program Files/KiCad/9.0/share/kicad/symbols" >> "$GITHUB_ENV"
-          echo "NETSMITH_KICAD_FOOTPRINTS=C:/Program Files/KiCad/9.0/share/kicad/footprints" >> "$GITHUB_ENV"
+          # The package installs the latest KiCad (10.0.8 on 2026-11-09), in a folder named by its
+          # version: take whichever one is there instead of naming 9.0.
+          symbols="$(ls -d "/c/Program Files/KiCad/"*/share/kicad/symbols | sort -V | tail -n 1)"
+          [ -d "$symbols" ] || { echo "no KiCad symbols folder under C:/Program Files/KiCad" >&2; exit 1; }
+          footprints="$(dirname "$symbols")/footprints"
+          [ -d "$footprints" ] || { echo "no KiCad footprints folder beside $symbols" >&2; exit 1; }
+          echo "NETSMITH_KICAD_SYMBOLS=$(cygpath -m "$symbols")" >> "$GITHUB_ENV"
+          echo "NETSMITH_KICAD_FOOTPRINTS=$(cygpath -m "$footprints")" >> "$GITHUB_ENV"
 
       - name: Build, smoke test and pack
         env:
