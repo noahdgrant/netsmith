@@ -533,6 +533,8 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         work: 0,
         seeded: Vec::new(),
         dc_ends: Default::default(),
+        supply_draws: Vec::new(),
+        budget_failed: HashSet::new(),
         original_relations: model.relations().len(),
         extras: Vec::new(),
         surveys: Vec::new(),
@@ -619,6 +621,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
     // current and the bound proves it (never otherwise).
     let (deferred, current_bounds) = s.prove_by_ohm(deferred);
     s.verify_balances();
+    s.dc_check_supplies();
     for d in netsmith_check::pin_faults_solved(model, &s.model) {
         s.report(d.source, d.span, d.message);
     }
@@ -823,6 +826,10 @@ struct Solver<'a> {
     /// The fields the DC analysis wrote, with the states at the ends of what it wrote
     /// (ADR 0076): a failed relation that reads one says them.
     dc_ends: dcpass::DcEndsMap,
+    /// What each solved island draws from a supply that states its `.current` (amendment 13).
+    supply_draws: dcpass::SupplyDraws,
+    /// The stated currents that a balance has reported as over their budget.
+    budget_failed: HashSet<FieldId>,
     /// How many relations the design wrote: the ones after them are the solver's own
     /// (`extras`) while they are in the model.
     original_relations: usize,
@@ -1598,6 +1605,7 @@ impl Solver<'_> {
                     b.net,
                     all.join(", ")
                 );
+                self.budget_failed.insert(d.field);
                 let (source, span) = self.balance_site(&b);
                 self.report(source, span, message);
                 continue;

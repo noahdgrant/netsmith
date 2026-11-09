@@ -4,6 +4,49 @@ use std::path::PathBuf;
 
 pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--constraints warn|error]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]\nwith no file, build, fab and editor act on the project's boards (see netsmith.toml); `fab --order <name>` makes one of its orders, and `fab --order` alone lists them; `dxf import` prints the board outline, cutouts and mounting holes of an enclosure's ASCII DXF as source to paste, and with `--write` puts them, with the places of the cutouts and holes, in the `case` section of the physical file beside the source it names (ADR 0045, ADR 0048); `catalog refresh` checks the manufacturer's number and package of the rows of the project's catalogs (or the standard ones, in the netsmith repository) against LCSC's record (never JLCPCB, so JLCPCB data is not fetched), writes only the day in a `checked` column, never a price or stock, and is never run by another command";
 
+/// Every command the dispatcher accepts after `--version`, with the line `--help` shows for
+/// it. [`parse_args`] takes its commands from here, so the help cannot list one it rejects
+/// or leave one out.
+pub const COMMANDS: &[(&str, &str)] = &[
+    ("init", "scaffold a project in the current directory"),
+    ("build", "write a KiCad schematic of the boards"),
+    (
+        "fab",
+        "make the fab package (Gerbers, drill, bom.csv, cpl.csv, fab-notes.txt) or an order",
+    ),
+    ("editor", "the source and the board in a browser"),
+    ("compare", "are two designs the same circuit?"),
+    (
+        "kicad-libs",
+        "print the [[library]] stanzas for KiCad's library tables",
+    ),
+    (
+        "catalog",
+        "check catalog rows against LCSC's record (`refresh`) or list the old ones (`age`)",
+    ),
+    (
+        "dxf",
+        "print an enclosure's outline, cutouts and holes as source to paste (`import`)",
+    ),
+];
+
+/// What `netsmith --help` prints: the commands, one line each, then every command with its
+/// flags. Printed to stdout; the exit status is 0.
+pub fn help() -> String {
+    let mut text = format!(
+        "netsmith {}: electronics as code\n\ncommands:\n",
+        env!("CARGO_PKG_VERSION")
+    );
+    for (name, what) in COMMANDS {
+        text.push_str(&format!("  {name:<11} {what}\n"));
+    }
+    text.push_str("  help        print this list (also --help, -h; `<command> --help` too)\n");
+    text.push_str("  --version   print the version (also -V, version)\n\n");
+    text.push_str(USAGE);
+    text.push('\n');
+    text
+}
+
 /// The port `netsmith editor` listens on unless told otherwise.
 pub const DEFAULT_PORT: u16 = 8787;
 
@@ -37,6 +80,8 @@ pub enum OrderRequest {
 pub enum Command {
     /// `--version`, `-V` or `version`: print the version this binary was built as.
     Version,
+    /// `--help`, `-h`, `help` or `<command> --help`: print the commands and flags.
+    Help,
     /// Scaffold a project in the current directory, named `name` or after the directory.
     Init { name: Option<String> },
     /// `file` is `None` to act on the project's top-level files; `out` is `None` for the
@@ -113,8 +158,15 @@ pub fn parse_args<I>(args: I) -> Result<Command, String>
 where
     I: IntoIterator<Item = String>,
 {
-    let mut args = args.into_iter().peekable();
-    let command = args.next().ok_or_else(|| USAGE.to_string())?;
+    let args: Vec<String> = args.into_iter().collect();
+    let command = args.first().ok_or_else(|| USAGE.to_string())?.clone();
+    let known = COMMANDS.iter().any(|(name, _)| *name == command);
+    if ["--help", "-h", "help"].contains(&command.as_str())
+        || (known && args[1..].iter().any(|a| a == "--help" || a == "-h"))
+    {
+        return Ok(Command::Help);
+    }
+    let mut args = args.into_iter().skip(1).peekable();
     if ["--version", "-V", "version"].contains(&command.as_str()) {
         return match args.next() {
             None => Ok(Command::Version),
@@ -145,8 +197,10 @@ where
     if command == "dxf" {
         return parse_dxf(args.collect());
     }
-    if !["init", "build", "fab", "editor", "compare"].contains(&command.as_str()) {
-        return Err(format!("unknown command `{command}`\n{USAGE}"));
+    if !known {
+        return Err(format!(
+            "unknown command `{command}`: `netsmith --help` lists the commands\n{USAGE}"
+        ));
     }
 
     let mut files: Vec<String> = Vec::new();
@@ -394,6 +448,70 @@ mod tests {
             e.contains("`--version` takes no argument, not `build`"),
             "{e}"
         );
+    }
+
+    #[test]
+    fn help_is_asked_for_by_flag_command_or_after_a_command() {
+        for args in [
+            &["--help"][..],
+            &["-h"],
+            &["help"],
+            &["build", "--help"],
+            &["fab", "--order", "-h"],
+            &["catalog", "refresh", "--help"],
+            &["dxf", "-h"],
+            &["kicad-libs", "--help"],
+        ] {
+            assert_eq!(parse(args), Ok(Command::Help), "{args:?}");
+        }
+    }
+
+    #[test]
+    fn an_unknown_command_is_an_error_that_points_to_help() {
+        let e = parse(&["frobnicate"]).unwrap_err();
+        assert!(e.contains("unknown command `frobnicate`"), "{e}");
+        assert!(e.contains("netsmith --help"), "{e}");
+        assert!(parse(&["frobnicate", "--help"]).is_err());
+    }
+
+    #[test]
+    fn the_help_lists_every_command_the_dispatcher_accepts_and_the_flags() {
+        let text = help();
+        for (name, _) in COMMANDS {
+            assert!(text.contains(&format!("  {name} ")), "{name}: {text}");
+            // The command is accepted, not rejected as unknown: its own `--help` is help.
+            assert_eq!(parse(&[name, "--help"]), Ok(Command::Help), "{name}");
+        }
+        for flag in [
+            "--version",
+            "--out",
+            "--strict",
+            "--order",
+            "--route-timeout",
+            "--allow-drc-violations",
+            "--cross-check",
+            "--constraints",
+            "--port",
+            "--board",
+            "--by-refdes",
+            "--dry-run",
+            "--write",
+        ] {
+            assert!(text.contains(flag), "{flag}: {text}");
+        }
+        // Every command the parser has a branch for is in the table.
+        for name in [
+            "init",
+            "build",
+            "fab",
+            "editor",
+            "compare",
+            "kicad-libs",
+            "catalog",
+            "dxf",
+        ] {
+            assert!(COMMANDS.iter().any(|(n, _)| *n == name), "{name}");
+        }
     }
 
     #[test]

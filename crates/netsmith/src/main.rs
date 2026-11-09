@@ -1,4 +1,4 @@
-//! `netsmith --version`, `init`, `build`, `fab`, `editor` and `compare`.
+//! `netsmith --version`, `--help`, `init`, `build`, `fab`, `editor` and `compare`.
 
 use std::{
     env, fs,
@@ -29,6 +29,10 @@ fn main() -> ExitCode {
         }
         Ok(Command::Version) => {
             println!("netsmith {}", env!("CARGO_PKG_VERSION"));
+            ExitCode::SUCCESS
+        }
+        Ok(Command::Help) => {
+            print!("{}", netsmith::cli::help());
             ExitCode::SUCCESS
         }
         Ok(Command::Init { name }) => run_init(name.as_deref()),
@@ -444,9 +448,7 @@ fn run_fab(
             );
             return ExitCode::from(2);
         }
-        eprintln!(
-            "note: KiCad is not installed, so the design rules check cannot run (netsmith has none of its own yet)"
-        );
+        eprintln!("{}", netsmith::fab::NO_KICAD_NOTE);
     }
     let options = FabOptions {
         route_timeout: match route_timeout {

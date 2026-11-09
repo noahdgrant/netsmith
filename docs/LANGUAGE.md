@@ -4175,7 +4175,7 @@ Forcing the choice, with no pick: `.reg: Zbk9Buck { .vout.voltage &= 3.3V +/- 4%
 
 ### The standard passives are generics
 
-`Resistor`, `Capacitor`, `Led`, `Inductor`, `FerriteBead`, `Crystal` and `Fuse` (`std::parts::passive`), `Schottky`, `Zener` and `Tvs` (`std::parts::diode`), `NMosfet` and `PMosfet` (`std::parts::transistor`), `LinearRegulator` (`std::parts::regulator`) and `LevelTranslator` (`std::parts::logic`) are generics (ADR 0068, stage 2; ADR 0063 for the last two and `PMosfet`). Each is its own first provider: it has a pin table with pads and a `catalog`, so it stands for itself, with the same members, the same relations, the same catalog rows and, for a resistor, a capacitor, an inductor or an LED, the same series of values that have no row yet (ADR 0047). A design that adds no provider is read and solved exactly as when they were parts: the same picks, the same effort, the same kind names (`Resistor`) in the bill of materials and in `kicad.toml`. The parts of the standard library that have no catalog (`Diode`, `Switch`, the connectors) are not generics. The standard catalogs of `PMosfet` and `LevelTranslator` have no rows (see _Transistors_ and _Logic levels_): a project that uses either adds its own rows.
+`Resistor`, `Capacitor`, `Led`, `Inductor`, `FerriteBead`, `Crystal` and `Fuse` (`std::parts::passive`), `Schottky`, `Zener`, `Tvs` and `TvsBidirectional` (`std::parts::diode`), `NMosfet` and `PMosfet` (`std::parts::transistor`), `LinearRegulator` (`std::parts::regulator`) and `LevelTranslator` (`std::parts::logic`) are generics (ADR 0068, stage 2; ADR 0063 for the last two and `PMosfet`). Each is its own first provider: it has a pin table with pads and a `catalog`, so it stands for itself, with the same members, the same relations, the same catalog rows and, for a resistor, a capacitor, an inductor or an LED, the same series of values that have no row yet (ADR 0047). A design that adds no provider is read and solved exactly as when they were parts: the same picks, the same effort, the same kind names (`Resistor`) in the bill of materials and in `kicad.toml`. The parts of the standard library that have no catalog (`Diode`, `Switch`, the connectors) are not generics. The standard catalogs of `PMosfet` and `LevelTranslator` have no rows (see _Transistors_ and _Logic levels_): a project that uses either adds its own rows.
 
 A project adds a provider of one of them as it adds any provider: a part that says `provides Resistor`, in a file that the board's file imports. The generic's catalog and pads are its own and are not read into a provider: the provider has its own pin table and its own one-row catalog, and what the generic declares (`.resistance`, `.max_power`, `.temperature_coefficient`, `.current`, `.drop`, `.package`), what it states (`.designator &= "R"`, Ohm's law, the power rating, `bridge .a ~> .b`) and the kinds of its pins. The provider does not declare `.package` again, which a part written by hand would.
 
@@ -7159,9 +7159,10 @@ netsmith.toml:8: order `devkit` names `Unitt`, but the project has no such board
 netsmith init [--name <name>]          # a project in the current directory
 netsmith build [file.nsm] [--out dir] [--strict] # check, solve, write a KiCad schematic
 netsmith editor [file.nsm] [--port n]  # edit and view in a browser (default port 8787)
-netsmith fab [file.nsm] [--out dir] [--strict] # files for a board house (boards and panels), after a design rules check
+netsmith fab [file.nsm] [--out dir] [--route-timeout secs] [--allow-drc-violations] [--cross-check] [--strict] [--constraints warn|error] # files for a board house (boards and panels), after a design rules check
 netsmith fab --order [name] [--out dir] # a named order of boards and quantities; no name lists the orders
 netsmith compare <a> <b> [options]     # are two designs the same circuit?
+netsmith kicad-libs import <sym-lib-table> [fp-lib-table]  # the [[library]] stanzas for kicad.toml, from a KiCad project's library tables (ADR 0021)
 netsmith catalog refresh [path...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]
 netsmith catalog age [path...] [--days <n>] [--only <catalog>]  # rows whose date is older than n days (default 90)
 netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]  # an enclosure's outline, cutouts and holes as source to paste
@@ -7563,7 +7564,7 @@ An output below the reference cannot be made, because the divider can only raise
 
 ### Switching regulators
 
-A buck converter is an IC, an inductor, two capacitors and a feedback divider. The IC is the one part that differs, so the library splits the work (ADR 0025). `std::parts::regulator::Buck` is an interface of what a datasheet says: the switching node `sw` (a rail the IC supplies, joined to the inductor), the feedback pin `fb`, the reference `vref`, the switching frequency `fsw`, the input range, the largest output current, the efficiency as a range, the smallest inductance, optionally the least saturation current (`min_inductor_saturation`) and the largest DC resistance (`max_inductor_dcr`) an inductor may have, and the capacitance asked for on each side. `std::parts::regulator::BuckStage` is a module of everything else: the inductor and the two capacitors, picked from the catalogs (each capacitor rated for the `.peak` of its rail when the board states one and always for the rail's steady voltage, so a peak stated too low cannot weaken it; each side a bank of identical capacitors in parallel when one is not enough), and a `FeedbackDivider` that sets the output from the reference.
+A buck converter is an IC, an inductor, two capacitors and a feedback divider. The IC is the one part that differs, so the library splits the work (ADR 0025). `std::parts::regulator::Buck` is an interface of what a datasheet says: the switching node `sw` (a rail the IC supplies, joined to the inductor), the feedback pin `fb`, the reference `vref`, the switching frequency `fsw`, the input range, the largest output current, the efficiency as a range, the smallest inductance, optionally the least saturation current (`min_inductor_saturation`) and the largest DC resistance (`max_inductor_dcr`) an inductor may have, optionally the minimum on-time and off-time of the switch (`min_on_time`, `min_off_time`, ADR 0093), and the capacitance asked for on each side. `std::parts::regulator::BuckStage` is a module of everything else: the inductor and the two capacitors, picked from the catalogs (each capacitor rated for the `.peak` of its rail when the board states one and always for the rail's steady voltage, so a peak stated too low cannot weaken it; each side a bank of identical capacitors in parallel when one is not enough), and a `FeedbackDivider` that sets the output from the reference.
 
 A concrete IC is a `part` that writes its pin table, its datasheet numbers, one relation, the input current from the output current and the efficiency (`vin = vout * iout / efficiency` over the whole efficiency range, so it reaches the supply as any load does, ADR 0007 and ADR 0014), and what it is at DC, `dc switching_regulator .vin .buck.sw .buck.efficiency` (see "What a part is at DC" and "DC analysis": it lets the solver work out the input current through the parts in front of the IC, and the input voltage they leave it). This one is invented for this guide:
 
@@ -7725,11 +7726,84 @@ error: -u.buck.sw.current must always be at most u.buck.max_output_current, but 
 132 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -stage.vout.current must always be at most stage.buck.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `stage`: -stage.inductor.current (6.402uA..3A) + -stage.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (6.402uA..3A) + stage.inductor.current (6.402uA..3A) add up to zero; net `net-stage.inductor.a`: stage.buck.sw.current (6.402uA..3A) + u.buck.sw.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:251:5
+    --> std/parts/regulator.nsm:273:5
     |
-251 |     -.vout.current <= .buck.max_output_current
+273 |     -.vout.current <= .buck.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
+
+An IC cannot switch for less than a minimum on-time, so at a frequency the output cannot be made from an input that is too high, and a minimum off-time sets how close the input may come to the output (ADR 0093, provisional). `Buck` has both as `optional` members, `.min_on_time` and `.min_off_time` (ADR 0074), which a part states from its datasheet at the largest figure given. The stage has the two times it asks of the IC, `.on_time = vout / (vin * fsw)` and `.off_time = (vin - vout) / (vin * fsw)`, in the worst case the ranges give (the lowest output at the highest input and the highest frequency), and checks them against the IC's. An IC that states neither has no such check and the build says nothing. The checks are on the ideal duty cycle, so they are never looser than the real one, which is a little larger because of the switch drops; an IC with an equation of its own (the `Lt8641`'s Equations 4 and 5) writes that instead. Past either limit a real IC still regulates, at a lower frequency, so the ripple that the stage computes at the programmed one is not the board's. An invented IC for 4.5 V to 60 V that needs 150 ns of on-time, on a board that makes 5 V from an input that reaches 35 V at 1 MHz:
+
+```nsm module=src::zbk7
+import std::parts::regulator::Buck
+import std::sources::Rail
+
+/// A 2 A buck converter for 4.5 V to 60 V that needs 150 ns of on-time. Illustrative; not a real part.
+part Zbk7 {
+    .vin: Rail
+    .buck: Buck {
+        .vref &= 0.8V +/- 1.5%
+        .fsw &= 1MHz +/- 10%
+        .min_input_voltage &= 4.5V
+        .max_input_voltage &= 60V
+        .max_output_current &= 2A
+        .efficiency &= 0.85..0.95
+        .min_inductance &= 1.5uH
+        .min_on_time &= 150ns
+        .min_input_capacitance &= 2uF
+        .min_output_capacitance &= 10uF
+    }
+    .buck.sw.neg ~ .vin.neg
+    .vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)
+    dc switching_regulator .vin .buck.sw .buck.efficiency
+
+    pins {
+        //  pin          kind    name   pads
+        .vin.pos       power   "VIN"  "1" "2"
+        .vin.neg       power   "GND"  "3" "9"
+        .buck.sw.pos   power   "SW"   "4" "5"
+        .buck.fb       input   "FB"   "6"
+        .en            input   "EN"   "7"
+    }
+}
+```
+
+```nsm fails
+import src::zbk7::Zbk7
+import std::parts::regulator::BuckStage
+import std::sources::Rail
+
+board HighInput {
+    .input: Rail {
+        .voltage &= 12V..35V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+        .current &= 0mA..1A
+    }
+    .u: Zbk7
+    .stage: BuckStage { .vout.voltage &= 5V +/- 6% }
+
+    .input ~ .stage.vin
+    .input ~ .u.vin
+    .stage.vout ~ .output
+    .stage.buck ~ .u.buck
+    .u.en ~ .input.pos
+}
+```
+
+```text
+error: stage.on_time must always be at least stage.buck.min_on_time, but 122ns..490.8ns is not always above 150ns
+    --> std/parts/regulator.nsm:282:5
+    |
+282 |     .on_time >= .buck.min_on_time
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+The input of a 12 V board that stays under 16 V holds it (4.7 V over 16 V at 1.1 MHz is 267 ns); a datasheet that gives no figure leaves the check out. A linear regulator's dropout is checked the same way by `LinearRegulator` and by a part that states `.vin.voltage >= .vout.voltage + .dropout` (the section on `LinearRegulator`).
 
 A frequency set by a resistor is a relation the IC writes. Here `rt_value` is a field of the IC and the board states the resistor against it; the stage then uses the frequency that follows:
 
@@ -8891,6 +8965,60 @@ error: the source cannot give what `reg` asks (5W at its output, efficiency 90 %
    |     ^^^^^^^^^^^^^^^
 ```
 
+A supply that can give only so much states it as its `.current`, a negative number because a rail's current is what is drawn at its `pos` (ADR 0014): `.supply.current &= -500mA..0A` is a supply of at most 500 mA (ADR 0076, amendment 13, provisional). The loads that the analysis finds on the supply's net are held to it by the rule that ADR 0038 gives two stated ranges, which must be able to meet: the range the loads draw over every corner and the budget. An error says that they cannot, that even the least the loads draw is more than the supply gives, and names the supply, the budget, the least and the most the loads draw, and the corner that gives the least. A supply that states no `.current` has no budget, one with no negative end in its range is left to the balance of its net, and a balance that has already refused the same supply says it once. The draw is the sum over the networks on the net that the analysis solved, so a load that no network models is not in it and the finding is never made on a load that is not there. The converter is invented: at 90 % a 5 V output at 2 A asks 11.1 W, which is 0.70 A from 16 V and 1.25 A from 9 V, so even from 16 V it is more than the 500 mA the supply states.
+
+```nsm fails
+import std::sources::Rail
+
+/// Invented: a link of 0.1 ohm.
+part Link {
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+    .resistance: Resistance
+    .current: Current
+    bridge .a ~> .b
+    dc resistor .a .b .resistance
+}
+
+/// Invented: a 5 V converter.
+part Converter {
+    .vin: Rail
+    .vout: Rail
+    .efficiency: Number
+    .vin.neg ~ .vout.neg
+    dc switching_regulator .vin .vout .efficiency
+}
+
+board Small {
+    .supply: Rail {
+        .voltage &= 9V..16V
+        .current &= -500mA..0A
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .link: Link { .resistance &= 0.1ohm }
+    .reg: Converter { .efficiency &= 0.9; .vout.voltage &= 5V }
+    .out: Rail {
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+        .current &= 2A
+    }
+    .supply.pos ~> .link ~> .reg.vin.pos
+    .supply.neg ~ .reg.vin.neg
+    .reg.vout ~ .out
+}
+```
+
+```text
+error: `supply.current` is stated -500mA..0A, so the supply `supply` gives at most 500mA, but the DC analysis finds the loads on its net drawing at least 697.5mA and up to 1.252A, the least with supply at 16V
+   --> main.nsm:25:5
+   |
+25 |     .supply: Rail {
+   |     ^^^^^^^^^^^^^
+```
+
 **Limits.** The pass tries every combination of the states of the parts it sees, which is the worst case. A regulator's other pins on the nets of its input (an IC with two input pins, an enable tied to the input) are its input's and draw nothing more, and its output is held at the node its part names, which for a buck converter is the switch node: the output beyond the inductor is a little below what a stated window asks, and a window the board states is therefore not checked against the circuit. A power tree is solved only when every pin on its nets is modelled: a regulator that states no `dc` element, or a load whose current is not known, leaves the island in front of it unsolved. Nothing is solved before the picks but the start of a circle, which needs the currents of the loads to be known by then. A design cannot say that two pins are never high together, or that two loads never run together: the pass does not know, and it adds both (issue #45 asks for a way to say it). Temperature is a stated tolerance and nothing else. A capacitor is open, so nothing charges: an inrush current is not seen. A diode's reverse leakage and a MOSFET's body diode are not modelled. A regulator's efficiency is one range and not a curve over its load and its input, a switching regulator's quiescent current is not modelled (a linear regulator's is, when its `dc` statement names it), a regulator is an ideal source (its output does not sag, and a current limit is the part's own relation), and an input below its minimum is an error and not a shutdown. A logic pin has no leakage (high impedance is an open circuit: the language has no member for the datasheet's `Ii`), and a pin's output resistance is the one at the test current its level states. A regulator's output current is summed over the islands on its output net, each solved on its own, so a load whose current follows the output voltage is taken over the whole range of the output (wider, never narrower).
 
 ### Logic levels and absolute maximums
@@ -8900,7 +9028,48 @@ A digital line is a `Logic` (`std::logic::Logic`): a pin `.line` and the rail `.
 After the rails are solved, the solver checks two things. A fault is an error; a check that cannot be made is a note `not evaluated: ...`, never a pass.
 
 - **Levels.** For every output or bidirectional `Logic` line on a net and every input or bidirectional `Logic` line on it, the output's `voh` must always be at least the input's `vih`, and its `vol` at most the input's `vil`, in the worst case of both ranges. A level with no value, or two lines whose grounds (`reference.neg`) are not on one net or in one ground group, is not evaluated. A pair in which neither line states a level is not looked at. An output that states a `vol` and no `voh` is open-drain, and the line's high is what its pull-up gives it (see "An open-drain line" below).
-- **Absolute maximum.** A pin with `.abs_min` or `.abs_max` must have a net whose worst-case voltage relative to its ground stays within them. The net's voltage is the hull of: its ground (0 V), each rail whose `pos` is on it, each `Logic` line that drives it (between its reference rail's `neg` and its voltage), and each rail or ground that a resistor joins it to (a pull-up or a pull-down). It is not evaluated for a pin that is not the `.line` of a `Logic` (its ground is not known), for a net that something drives that is not a `Logic` line, for a rail or driver on another ground, and for a net nothing sets.
+- **Absolute maximum.** A pin with `.abs_min` or `.abs_max` must have a net whose worst-case voltage relative to its ground stays within them. A net that the DC analysis solved (a divider's middle, a net behind a chain of resistors and diodes: see "DC analysis") has the range of voltage the analysis finds for it over every corner of the ranges and every state of the parts around it, and the finding says `(the DC analysis of the network it is in)` (ADR 0076, amendment 12, provisional). Any other net's voltage is the hull of: its ground (0 V), each rail whose `pos` is on it, each `Logic` line that drives it (between its reference rail's `neg` and its voltage), and each rail or ground that a resistor joins it to (a pull-up or a pull-down). It is not evaluated for a pin that is not the `.line` of a `Logic` (its ground is not known), for a net that something drives that is not a `Logic` line, for a rail or driver on another ground, and for a net nothing sets.
+
+A 5 V rail through a divider into a pin that survives 3.6 V is judged by the voltage the divider gives, not by the rail: 10 kohm over 20 kohm from 5.25 V is at most 3.52 V, inside the maximum, and the same divider over 30 kohm is 3.96 V, which is refused. The parts are invented.
+
+```nsm evaluate
+import std::logic::Logic
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+/// Invented: survives -0.5 V to 3.6 V on its input.
+part Pad {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.line.abs_min &= -0.5V
+    .in.line.abs_max &= 3.6V
+    pins {
+        .vdd.pos  power "VDD" "1"
+        .vdd.neg  power "GND" "2"
+        .in.line  input "IN"  "3"
+    }
+}
+
+board Divided {
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC5"
+        .neg.net &= "GND"
+    }
+    .core: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .pad: Pad
+    .top: Resistor { .resistance &= 10kohm +/- 1% }
+    .bottom: Resistor { .resistance &= 20kohm +/- 1% }
+    .core ~ .pad.vdd
+    .supply.pos ~> .top ~> .pad.in.line
+    .pad.in.line ~> .bottom ~> .supply.neg
+}
+```
 
 Join the lines of two parts pin to pin, `.a.out.line ~ .b.in.line`, and each part's reference rail to its own supply. Joining the two `Logic`s (`.a.out ~ .b.in`) also joins their reference rails, which is right only when both parts have the same supply; it does not equate their levels, which are each pin's own.
 
