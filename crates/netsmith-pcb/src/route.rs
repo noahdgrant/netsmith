@@ -1040,7 +1040,9 @@ fn initial_obstacles(board: &Board) -> Obstacles {
                     .copied(),
                 layers: [front, back],
                 form: Form::Rect(bounds),
-                clearance: rules.clearance + MARGIN,
+                // The larger of the board's clearance and the pad's own, as the design
+                // rules check applies it.
+                clearance: rules.clearance.max(pad.clearance.unwrap_or(0.0)) + MARGIN,
             });
             // A via keeps off every pad, and keeps its hole clear of a pad's hole.
             let reach = match pad.drill {
