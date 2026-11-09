@@ -595,3 +595,56 @@ fn the_current_into_a_net_is_the_most_over_the_corners_and_not_every_load_at_its
     let plain = range(&s, "reg.vin.current").unwrap().1 + range(&s, "rl.current").unwrap().1;
     assert!(plain > want * 1.1, "{plain} should be well above {want}");
 }
+
+/// Issue #286: a part that writes its efficiency as a percentage in a plain number
+/// (`85..95` for `0.85..0.95`) is a converter that makes power, and its input current came out a
+/// hundred times too small with every rating that reads it passing. An efficiency has to be
+/// above 0 and at most 1; anything else is an error that names the part and the value.
+fn efficiency_board(efficiency: &str) -> String {
+    board(&format!(
+        "{}    .reg: Sw {{ .efficiency &= {efficiency}; .min_input &= 4.5V; .vout.voltage &= 5V +/- 2% }}\n{}    .supply.pos ~ .reg.vin.pos\n    .supply.neg ~ .reg.vin.neg\n    .reg.vout ~ .out\n    .reg.vin.current <= 100mA\n",
+        supply("9V..16V"),
+        load("out", "V5", "1A..2A")
+    ))
+}
+
+#[test]
+fn an_efficiency_above_one_is_an_error_naming_the_part_and_the_value() {
+    let s = solved(&efficiency_board("85..95"));
+    let m = messages(&s);
+    assert_eq!(m.len(), 1, "{m:?}");
+    assert!(m[0].contains("`reg`"), "{m:?}");
+    assert!(m[0].contains("efficiency"), "{m:?}");
+    assert!(m[0].contains("85..95"), "{m:?}");
+    assert!(m[0].contains("above 0 and at most 1"), "{m:?}");
+}
+
+#[test]
+fn an_efficiency_of_zero_or_below_is_an_error_too() {
+    for e in ["0..0.9", "-0.1..0.9", "0"] {
+        let m = messages(&solved(&efficiency_board(e)));
+        assert_eq!(m.len(), 1, "{e}: {m:?}");
+        assert!(m[0].contains("above 0 and at most 1"), "{e}: {m:?}");
+    }
+}
+
+/// The same board with the efficiency as a fraction or a percentage is modelled, and the rating
+/// that reads the input current fails on the number the circuit gives (the issue's own output).
+#[test]
+fn an_efficiency_as_a_fraction_or_a_percentage_is_modelled() {
+    for e in ["0.85..0.95", "85%..95%", "1", "0.5"] {
+        let s = solved(&efficiency_board(e));
+        assert_eq!(s.dc.regulators, 1, "{e}: {:?}", s.dc);
+        let m = messages(&s);
+        assert!(
+            m.iter().all(|x| !x.contains("above 0 and at most 1")),
+            "{e}: {m:?}"
+        );
+    }
+    let m = messages(&solved(&efficiency_board("0.85..0.95")));
+    assert!(
+        m.iter()
+            .any(|x| x.contains("reg.vin.current must always be at most 100mA")),
+        "{m:?}"
+    );
+}

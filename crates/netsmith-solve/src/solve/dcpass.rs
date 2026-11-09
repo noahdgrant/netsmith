@@ -185,6 +185,7 @@ impl Solver<'_> {
         Vec<super::NetCurrent>,
     ) {
         let mut net_currents: Vec<super::NetCurrent> = Vec::new();
+        self.dc_check_efficiencies();
         let mut summary = DcSummary::default();
         let mut reads = NetReads::default();
         let mut notes = Vec::new();
@@ -1070,6 +1071,49 @@ impl Solver<'_> {
         }
         let (lo, hi) = hull?;
         (lo.is_finite() && hi.is_finite()).then_some((dim, lo, hi))
+    }
+
+    /// A switching regulator's efficiency is a fraction: above 0 and at most 1. One written as a
+    /// percentage in a plain number (`85..95`) is a converter that makes power, and the input
+    /// current `Pout / (eff * Vin)` would come out a hundred times too small with every rating
+    /// that reads it passing, so it is an error that names the part and the value, and the
+    /// regulator is not modelled (ADR 0076, amendment 14). A value that is not yet a range with
+    /// finite ends is left to the extraction, which leaves the regulator alone.
+    fn dc_check_efficiencies(&mut self) {
+        let mut found: Vec<(InstId, FieldId, Quantity)> = Vec::new();
+        for (part, dc) in self.model.dc_elements() {
+            if dc.kind != netsmith_check::DcKind::SwitchingRegulator
+                || self.model.instance(part).kind != netsmith_check::InstKind::Part
+            {
+                continue;
+            }
+            let Some(&field) = dc.values.first() else {
+                continue;
+            };
+            if let Domain::Quantity(q) = &self.model.field(field).domain
+                && q.dim() == Dimension::NONE
+                && q.lo().is_finite()
+                && q.hi().is_finite()
+                && (q.lo() <= 0.0 || q.hi() > 1.0)
+            {
+                found.push((part, field, *q));
+            }
+        }
+        for (part, field, q) in found {
+            let message = format!(
+                "the efficiency of `{}` is {q}, which a switching regulator cannot have: it is a fraction above 0 and at most 1 (`0.85..0.95` or `85%..95%`), and the DC analysis does not model `{}` with it",
+                self.model.path_of(part),
+                self.model.path_of(part),
+            );
+            let (source, span) = self
+                .model
+                .field(field)
+                .narrowed_at
+                .last()
+                .copied()
+                .unwrap_or_else(|| self.model.instance(part).at());
+            self.report(source, span, message);
+        }
     }
 
     /// A regulator that has no operating point in some combination of states: its output asks
