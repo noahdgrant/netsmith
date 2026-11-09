@@ -106,6 +106,8 @@ with, the parts you solder yourself (`hand-solder:`) and the parts you ship to t
 
 ## Limitations
 
+netsmith analyzes a worst-case DC operating point of the picked parts: every voltage, current and power is checked over the ranges the design states (ADR 0076). It does not model time. Startup, inrush, ripple, filter response, AC and heating are not analyzed (a part's power rating is checked; its temperature is not computed). Closed-form checks for some of these, such as an RC time constant or a buck's output ripple, are the next step and are laid out as options in `docs/research/closed-form-checks.md`. Running a circuit simulator on demand is a later option, issue #306.
+
 - Price and stock are unknown until a supply provider is asked, and no provider asks a
   supplier yet (#8, #30). Catalogs hold only verified parts (#66). A generic part (a value
   no catalog row has) exists for resistors, ceramic capacitors, inductors and LEDs; a generic
