@@ -8013,6 +8013,8 @@ error: d.supply_fault_current must always be at most d.max_forward_current, but 
 
 `NMosfet` and `PMosfet` have the pins `gate` (an input, which must be connected), `source` and `drain`. All their voltages and currents are magnitudes. The design states the stress it puts on the part: `.drain_source_voltage`, the voltage the part blocks while off, and `.gate_source_voltage`, the voltage the gate is driven to while on. They are checked against the maxima, and the gate drive against the threshold, which is a range: the drive must be above the highest threshold.
 
+The on-resistance of a part is the datasheet's figure at the gate-source voltage its table names, and a smaller drive gives a larger resistance. `.on_resistance_vgs` is that voltage (ADR 0092, provisional) and the drive must always be at least it, so a part picked from a catalog is one whose guarantee holds at the drive the design gives. The 2N7002's 7 ohm is guaranteed at 5 V and the AO3400A's 48 mohm at 2.5 V, so a 3.3 V logic rail is given the AO3400A. A row that records no test voltage is offered all the same, and the check is not evaluated for it; a design that wants the check states a requirement on the member (`.q.on_resistance_vgs <= 3V`), and is then offered only the rows that record a voltage.
+
 ```nsm fails
 import std::parts::transistor::NMosfet
 import std::sources::Rail
@@ -8040,10 +8042,51 @@ board Switch {
 
 ```text
 error: no `n_mosfet` candidate satisfies `q`: the closest of the 2 that fit, AO3400A 30V 5.7A N-MOSFET SOT-23 C20917, fails because q.gate_source_voltage must always be at least q.gate_threshold, but 285mV..315mV is not always above 650mV..1.45V
-   --> std/parts/transistor.nsm:41:5
+   --> std/parts/transistor.nsm:51:5
    |
-41 |     .gate_source_voltage >= .gate_threshold
+51 |     .gate_source_voltage >= .gate_threshold
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A logic rail of 3.3 V is below the 5 V the 2N7002's figure holds at. A design that states the voltage it needs the figure at gets the refusal with both numbers (here with an invented 5 V; without the line, the catalog is read and a part guaranteed at 2.5 V is picked instead):
+
+```nsm fails
+import std::parts::transistor::NMosfet
+import std::sources::Rail
+
+board Switch {
+    .supply: Rail {
+        .voltage &= 12V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .logic: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "V3V3"
+        .neg.net &= "GND"
+    }
+    .q: NMosfet {
+        .drain_source_voltage &= supply.voltage
+        .gate_source_voltage &= logic.voltage
+        .on_resistance_vgs &= 5V
+    }
+    .q.gate ~ .logic.pos
+    .q.source ~ .supply.neg
+    .q.drain ~ .supply.pos
+}
+```
+
+```text
+error: no `n_mosfet` candidate satisfies `q`: the closest of the 1 that fit, 2N7002 60V 115mA N-MOSFET SOT-23 C8545, fails because q.gate_source_voltage must always be at least q.on_resistance_vgs, but 3.135V..3.465V is not always above 5V
+   --> std/parts/transistor.nsm:52:5
+   |
+52 |     .gate_source_voltage >= .on_resistance_vgs
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: q.gate_source_voltage must always be at least q.on_resistance_vgs, but 3.135V..3.465V is not always above 5V
+   --> std/parts/transistor.nsm:52:5
+   |
+52 |     .gate_source_voltage >= .on_resistance_vgs
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 `PMosfet` is a generic like `NMosfet`, with the catalog `p_mosfet` (the same columns as `n_mosfet`), and its standard catalog has no rows yet, because no P-channel part has been entered with a recorded source (`data/jlcpcb/README.md`). A project that needs one writes the rows of its parts in a file named `p_mosfet.csv` in `catalogs/`; the rows are added after the standard ones, as for any standard catalog. Without a row, a `PMosfet` is refused with the message of an empty catalog. This is a high-side switch with an invented part: the source of a P-channel MOSFET is the supply, its gate is pulled to ground to turn it on, and `.gate_source_voltage` is the magnitude of the drive.
@@ -8104,9 +8147,9 @@ board HighSide {
 
 ```text
 error: no `p_mosfet` candidate satisfies `q`: the closest of the 1 that fit, ZP-30 30V 4A P-MOSFET, fails because q.drain_source_voltage must always be at most q.max_drain_source_voltage, but 95V..105V is not always below 30V
-   --> std/parts/transistor.nsm:76:5
+   --> std/parts/transistor.nsm:92:5
    |
-76 |     .drain_source_voltage <= .max_drain_source_voltage
+92 |     .drain_source_voltage <= .max_drain_source_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10890,7 +10933,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::parts::diode::Zener` | A Zener diode: `.zener_voltage` (with tolerance, at `.test_current`), `.max_power`, `.bias`, and the optional catalog columns `.test_current`, `.temperature_coefficient`, `.leakage_current` and `.leakage_test_voltage`. Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias * .current <= .max_power`, and, when the design states `.temperature_shift`, defines `.voltage_over_temperature`. |
 | `std::parts::diode::Tvs` | A unidirectional TVS diode: `.standoff_voltage`, `.clamping_voltage`, `.peak_pulse_current`, `.protected_limit`, `.bias` and the optional `.breakdown_voltage` (a catalog column that only the SMDJ36A row of the standard rows fills). Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias <= .standoff_voltage` and `.clamping_voltage <= .protected_limit`. |
 | `std::parts::diode::TvsBidirectional` | A bidirectional TVS diode, the same either way round: `.standoff_voltage`, `.clamping_voltage`, `.peak_pulse_current`, `.protected_limit`, `.bias` and the optional `.breakdown_voltage`. Pins `a1` and `a2`, bridge `a1 ~> a2`. Requires `.bias <= .standoff_voltage` and `.clamping_voltage <= .protected_limit`. Catalog `tvs_bidirectional`. |
-| `std::parts::transistor::NMosfet` | An N-channel MOSFET: pins `gate` (input), `source`, `drain`, bridge `drain ~> source`. Maxima for drain-source voltage, drain current and gate-source voltage; `.gate_threshold`; `.on_resistance`. Requires the stresses `.drain_source_voltage` and `.gate_source_voltage` and `.current` within them, and the gate drive above the threshold. Catalog `n_mosfet`. |
+| `std::parts::transistor::NMosfet` | An N-channel MOSFET: pins `gate` (input), `source`, `drain`, bridge `drain ~> source`. Maxima for drain-source voltage, drain current and gate-source voltage; `.gate_threshold`; `.on_resistance` with `.on_resistance_vgs` (an optional catalog column), the gate-source voltage it is guaranteed at. Requires the stresses `.drain_source_voltage` and `.gate_source_voltage` and `.current` within them, the gate drive above the threshold and at least `.on_resistance_vgs` (ADR 0092). Catalog `n_mosfet`. |
 | `std::parts::transistor::PMosfet` | A P-channel MOSFET: as `NMosfet` with bridge `source ~> drain`; voltages are magnitudes. A generic with the catalog `p_mosfet`, whose standard file has no rows: a project adds its own. |
 | `std::parts::logic::Sn74lvc1g04` | A single inverter, TI SN74LVC1G04 (SCES214AF), for a supply of 3 V to 3.6 V: rail `vcc`, lines `a` (input) and `y` (output) as `Logic` with the levels and absolute maximums of the datasheet, SOT-23-5. No catalog row. |
 | `std::parts::regulator::Lt8641` | The LT8641 buck converter IC, Analog Devices (datasheet Rev. C): a `.buck: Buck` with the datasheet's numbers, the frequency from the resistor on RT (`.rt_resistance`), and a pin table for the 18-lead 3 x 4 mm QFN. A keyed catalog `lt8641` (`.mpn`) whose standard file has no row: a board adds its own. Mapped in `std/kicad.toml` to netsmith's own footprint and symbol (`netsmith:`, ADR 0087). |

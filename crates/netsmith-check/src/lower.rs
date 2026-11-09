@@ -639,6 +639,7 @@ impl Checker<'_> {
         }
         let source = self.cur_source();
         let written = self.written(c.span);
+        let own = self.in_own_definition();
         std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
             lhs: l.e,
             op: c.op,
@@ -646,6 +647,7 @@ impl Checker<'_> {
             source,
             span: c.span,
             written,
+            own,
         });
         stated
     }
@@ -709,6 +711,7 @@ impl Checker<'_> {
             RExpr::Text(s) => self.narrow(field, Domain::Text(s), span),
             other => {
                 let source = self.cur_source();
+                let own = self.in_own_definition();
                 std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
                     lhs: RExpr::Field(field),
                     op,
@@ -716,6 +719,7 @@ impl Checker<'_> {
                     source,
                     span,
                     written: None,
+                    own,
                 });
             }
         }

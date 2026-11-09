@@ -437,6 +437,10 @@ _Avoid_: Negative peak, reverse transient
 The `.limit_current` of a `Fuse` (its rating: the most it lets through) and the `.supply_fault_current` of a part behind it in a `~>` chain (a `Diode` or a `Schottky`), which the checker gives it as the `.limit_current` of the nearest part in front of it that has one (ADR 0091, provisional), so a diode is rated for what the fuse can pass before it opens, and not only for the load's draw (its `.current`).
 _Avoid_: Trip current, surge current
 
+**On-resistance test voltage**:
+The `.on_resistance_vgs` of a `NMosfet` or a `PMosfet` and the column of that name in the `n_mosfet` and `p_mosfet` catalogs: the gate-source voltage that the datasheet guarantees `.on_resistance` at, the test condition of its RDS(on) row (ADR 0092, provisional). The gate drive the design gives the part (`.gate_source_voltage`) must always be at least it. An optional column: a row that records no voltage is offered and the check is not evaluated for it, and a design that states a requirement on the member is offered only the rows that record one.
+_Avoid_: Test Vgs, drive voltage (for the member), gate rating
+
 **Marked value**:
 A capacitor's `.capacitance`: the value printed on the part and listed on a bill of materials, with its tolerance. A design states it where it means a part, such as a bypass capacitor.
 _Avoid_: Nominal

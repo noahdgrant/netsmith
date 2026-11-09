@@ -933,6 +933,7 @@ impl Checker<'_> {
                         source: decl.source,
                         span: decl.span,
                         written: None,
+                        own: false,
                     });
                 }
             }

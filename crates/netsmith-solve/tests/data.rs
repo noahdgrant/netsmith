@@ -112,6 +112,7 @@ fn columns(name: &str) -> Vec<(String, FieldKind)> {
             q("gate_threshold", Dimension::VOLTAGE),
             q("on_resistance", Dimension::RESISTANCE),
             t("package"),
+            q("on_resistance_vgs", Dimension::VOLTAGE),
         ],
         "crystal" => vec![
             q("frequency", Dimension::FREQUENCY),
@@ -141,6 +142,7 @@ fn catalog(name: &str) -> Catalog {
         ]
         .map(String::from)
         .to_vec(),
+        "n_mosfet" => vec!["on_resistance_vgs".to_string()],
         _ => Vec::new(),
     };
     Catalogs::jlcpcb()
@@ -1014,6 +1016,13 @@ fn the_fuses_the_beads_and_the_mosfets_have_their_rows() {
     let th = value(&fet, "gate_threshold");
     assert_eq!((th.lo(), th.hi()), (0.65, 1.45));
     assert_eq!(row_of("n_mosfet", "C8545").library, Some(Library::Basic));
+    // The gate-source voltage each row's on-resistance is guaranteed at (ADR 0092): the test
+    // condition of the datasheet's RDS(on) row that `on_resistance` is the maximum of.
+    for (lcsc, ohms, volts) in [("C8545", 7.0, 5.0), ("C20917", 0.048, 2.5)] {
+        let fet = row_of("n_mosfet", lcsc);
+        assert_eq!(value(&fet, "on_resistance"), quantity(ohms, "ohm"));
+        assert_eq!(value(&fet, "on_resistance_vgs"), quantity(volts, "V"));
+    }
 }
 
 #[test]

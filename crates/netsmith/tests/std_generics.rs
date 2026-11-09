@@ -279,7 +279,7 @@ two_boards/TwoBoards: trials 67 picks [led.led=KT-0603R RED LED 0603 C2286x1, le
 protect/Protected: trials 5 picks [fuse=SMD1206P100TF 1A 6V resettable fuse 1206 C20800x1, tvs=SMAJ15A 15V TVS SMA C113958x1] findings 0\n\
 behind/Behind: trials 28 picks [a_cap=10uF 20% 6.3V X5R 0402 C15525x1, z_diode=1N5819WS 40V 1A Schottky SOD-323 C191023x1] findings 0\n\
 clamp/Clamp: trials 1 picks [] findings 3\n\
-switch/Switch: trials 2 picks [load=10kΩ 1% 0603 C25804x1, q=2N7002 60V 115mA N-MOSFET SOT-23 C8545x1] findings 0\n\
+switch/Switch: trials 3 picks [load=10kΩ 1% 0603 C25804x1, q=AO3400A 30V 5.7A N-MOSFET SOT-23 C20917x1] findings 0\n\
 switch_weak/Switch: trials 2 picks [] findings 1\n\
 inductor/Filter: trials 4 picks [fb=BLM18PG221SN1D 220R 1.4A ferrite bead 0603 C80165x1, l=MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758x1, xtal=X503216MSB2GI 16MHz 20pF crystal 5032 C112572x1] findings 0\n\
 saturates/Saturates: trials 1 picks [] findings 1\n\

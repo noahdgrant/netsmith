@@ -42,6 +42,9 @@ pub(super) struct Reads {
     inside: HashMap<InstId, Vec<usize>>,
     /// For each field, the relations that name it.
     by_field: HashMap<FieldId, Vec<usize>>,
+    /// The fields that a relation of the design names, one that no part's own definition
+    /// states (`Relation::own`).
+    by_design: HashSet<FieldId>,
     /// The fields that decide what an equation of `propagate` does: its left side and its
     /// right side's fields.
     inputs: Vec<Vec<FieldId>>,
@@ -60,6 +63,7 @@ impl Reads {
         let mut inputs = Vec::new();
         let mut inside: HashMap<InstId, Vec<usize>> = HashMap::new();
         let mut by_field: HashMap<FieldId, Vec<usize>> = HashMap::new();
+        let mut by_design = HashSet::new();
         for (index, r) in model.relations().iter().enumerate() {
             fields.clear();
             fields_in(&r.rhs, &mut fields);
@@ -76,7 +80,14 @@ impl Reads {
             let mut once = fields.clone();
             once.sort();
             once.dedup();
+            let optional_member = once.iter().any(|&f| model.field(f).optional.is_some());
             for &f in &once {
+                // A relation of the part's own definition is the design's ask when it names
+                // an `optional` member: it is in the model because the design stated that
+                // member (ADR 0074), as a zener's shift asks for its coefficient.
+                if !r.own || optional_member {
+                    by_design.insert(f);
+                }
                 by_field.entry(f).or_default().push(index);
                 let mut at = Some(model.field(f).owner);
                 while let Some(inst) = at {
@@ -131,6 +142,7 @@ impl Reads {
             supply_balances,
             inside,
             by_field,
+            by_design,
             inputs,
         }
     }
@@ -190,6 +202,14 @@ impl Reads {
     /// The fields that relation `index` names, each once.
     pub(super) fn fields_of(&self, index: usize) -> &[FieldId] {
         &self.fields_of[index]
+    }
+
+    /// Whether a connection, a balance or a relation of the design names the field: `read`
+    /// without the relations that a part's own definition states.
+    pub(super) fn read_by_design(&self, field: FieldId) -> bool {
+        self.equated.contains(&field)
+            || self.summed.contains(&field)
+            || self.by_design.contains(&field)
     }
 
     /// Whether a connection, a balance or a relation names the field.
