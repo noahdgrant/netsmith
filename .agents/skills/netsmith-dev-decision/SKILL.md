@@ -22,16 +22,25 @@ Check any choice against the rules in `docs/DESIGN-RULES.md`: one correct way, s
 
 ## When to write an ADR
 
-Write one when the choice is hard to reverse, surprises a newcomer, or rejects an obvious alternative. Skip it for a bug fix or an implementation detail.
+`docs/adr/README.md` says what an ADR is. Write one only when the choice is hard to reverse, surprises a newcomer, or rejects an obvious alternative, and say in the pull request which of the three it meets. Skip it for a bug fix or an implementation detail.
+
+These are not ADRs:
+
+- A part's or a check's model rule, a threshold, a std interface detail: put it in `docs/LANGUAGE.md`, the std doc comments and a test.
+- A feature plan with stages or a to-do list: open a GitHub issue.
+- Progress ("stage 2 implemented"): the git history and the issue have it.
 
 ## ADR format
 
 File `docs/adr/NNNN-short-kebab-title.md`, numbered after the highest one in the repository and in other open branches. Look at 0005 and 0010 as models.
 
-- Optional frontmatter: `status: accepted`, or `status: superseded by ADR-00NN for ...`. A superseded ADR gets its status line when the new one lands.
+- One page at most, about 60 to 80 lines (`scripts/adr-check` fails more than 80 lines or 8000 bytes).
+- Frontmatter `status:` with one word: `proposed` (written, waiting for the owner), `accepted`, `superseded by ADR-00NN` or `folded`. Nothing else on the line.
 - A title that states the decision as a sentence: `Only a board names nets`.
-- Plain prose paragraphs, no template headings: the decision and why, what was rejected and why, the cost, how it shows in the tools, and a final `Limits` or `Left open` paragraph.
-- Short sentences. Name the files, fields and numbers involved.
+- Plain prose paragraphs, no template headings: the decision and why, what was rejected and why, the cost, and a final `Left open` paragraph. Short sentences. Name the files, fields and numbers involved.
+- No amendments. A change of mind is a new ADR, and the old one gets `status: superseded by ADR-00NN`.
+- When the guide or the code carries a decision completely, cut its ADR to the three-line `folded` stub of the README. Keep the number: source files cite it.
+- Language-design choices are the owner's: write options and a `proposed` ADR at most, never `accepted`.
 
 ## Upkeep after a decision
 
