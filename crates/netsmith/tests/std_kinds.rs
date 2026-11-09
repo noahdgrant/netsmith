@@ -313,7 +313,7 @@ fn a_diode_across_a_rail_blocks_the_rail_and_a_current_stays_in_its_rating() {
                 &imports,
                 &format!(
                     "    .d: {kind} {{ .max_reverse_voltage &= {reverse} }}\n    \
-                     .supply.pos ~> .d ~> .supply.neg"
+                     .supply.neg ~> .d ~> .supply.pos"
                 ),
             )
         };
@@ -326,12 +326,15 @@ fn a_diode_across_a_rail_blocks_the_rail_and_a_current_stays_in_its_rating() {
                 "10V",
             ],
         );
+        // The forward current is a diode in series with a load: across the rail, wired to
+        // conduct, it would be a short, which the next test finds.
         one(
             &on_12v(
                 &imports,
                 &format!(
-                    "    .d: {kind} {{ .max_forward_current &= 1A\n .current &= 1.5A }}\n    \
-                     .supply.pos ~ .d.anode\n    .supply.neg ~ .d.cathode"
+                    "    .load: Rail {{ .pos.net &= \"VF\"\n .neg.net &= \"GND\" }}\n    \
+                     .d: {kind} {{ .max_forward_current &= 1A\n .current &= 1.5A }}\n    \
+                     .supply.pos ~> .d ~> .load.pos\n    .supply.neg ~ .load.neg"
                 ),
             ),
             &[
@@ -369,6 +372,97 @@ fn a_zener_clamp_needs_the_rail_under_the_breakdown_and_its_power_is_limited() {
         imports,
         "    .z: Zener { .bias &= 5V\n .current &= 50mA\n .max_power &= 500mW }",
     ));
+}
+
+/// A board with `.d` of `kind` across the 12 V rail; `chain` is the chain that wires it.
+fn across_12v(kind: &str, fields: &str, chain: &str) -> String {
+    on_12v(
+        &format!("import std::parts::diode::{kind}"),
+        &format!("    .d: {kind} {{ {fields} }}\n    {chain}"),
+    )
+}
+
+#[test]
+fn a_diode_wired_the_wrong_way_round_across_a_rail_is_found_and_named() {
+    // `Diode` and `Schottky` conduct from anode to cathode, so the anode on `pos` is a short.
+    for kind in ["Diode", "Schottky"] {
+        let fields = ".max_reverse_voltage &= 40V\n .forward_voltage &= 0.7V";
+        clean(&across_12v(
+            kind,
+            fields,
+            ".supply.neg ~> .d ~> .supply.pos",
+        ));
+        one(
+            &across_12v(kind, fields, ".supply.pos ~> .d ~> .supply.neg"),
+            &[
+                "d.bias must always be at least -d.forward_voltage",
+                "-12.6V..-11.4V",
+                "-700mV",
+            ],
+        );
+        // By pins, in either statement order, and by net name.
+        one(
+            &across_12v(
+                kind,
+                fields,
+                ".supply.neg ~ .d.cathode\n    .supply.pos ~ .d.anode",
+            ),
+            &["d.bias must always be at least -d.forward_voltage"],
+        );
+    }
+    // `Zener` and `Tvs` conduct from cathode to anode when they clamp: cathode on `pos`.
+    for (kind, fields) in [
+        ("Zener", ".zener_voltage &= 5.1V +/- 5%"),
+        ("Tvs", ".standoff_voltage &= 15V\n .clamping_voltage &= 24V"),
+    ] {
+        clean(&across_12v(
+            kind,
+            fields,
+            ".supply.pos ~> .d ~> .supply.neg",
+        ));
+        one(
+            &across_12v(kind, fields, ".supply.neg ~> .d ~> .supply.pos"),
+            &["d.bias must always be at least 0V", "-12.6V..-11.4V"],
+        );
+    }
+}
+
+#[test]
+fn a_reversed_diode_does_not_pass_the_rating_of_the_rail_it_would_block() {
+    // The rail is 12 V and the diode blocks 10 V: wired to block, the rating fails with the
+    // rail's voltage; wired to conduct, it blocks nothing (its bias is negative) and the
+    // finding is the wiring's.
+    let fields = ".max_reverse_voltage &= 10V\n .forward_voltage &= 0.7V";
+    one(
+        &across_12v("Diode", fields, ".supply.neg ~> .d ~> .supply.pos"),
+        &["d.bias must always be at most d.max_reverse_voltage"],
+    );
+    one(
+        &across_12v("Diode", fields, ".supply.pos ~> .d ~> .supply.neg"),
+        &["d.bias must always be at least -d.forward_voltage"],
+    );
+}
+
+#[test]
+fn a_diode_across_no_rail_is_not_given_a_voltage_and_a_stated_bias_is_the_blocking_one() {
+    // In series with a load, the diode is across no rail: nothing is derived, and the bias
+    // the board states is the voltage it blocks, as before.
+    let board = |bias: &str| {
+        on_12v(
+            "import std::parts::diode::Schottky",
+            &format!(
+                "    .load: Rail {{ .pos.net &= \"VF\"\n .neg.net &= \"GND\" }}\n    \
+                 .d: Schottky {{ .max_reverse_voltage &= 40V\n .max_forward_current &= 1A\n \
+                 .forward_voltage &= 0.5V\n .bias &= {bias} }}\n    \
+                 .supply.pos ~> .d ~> .load.pos\n    .supply.neg ~ .load.neg"
+            ),
+        )
+    };
+    clean(&board("24V"));
+    one(
+        &board("60V"),
+        &["d.bias must always be at most d.max_reverse_voltage"],
+    );
 }
 
 #[test]
