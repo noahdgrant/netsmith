@@ -3,7 +3,8 @@
 
 use std::path::Path;
 
-use netsmith_kicad::{Mapping, SymbolLib, testlib};
+use netsmith_core::Design;
+use netsmith_kicad::{Mapping, SymbolLib, stdlib, testlib};
 use netsmith_pcb::FootprintLibrary;
 
 /// What `build`, `fab` and `view` read from KiCad. `check` and `solve` need none of it.
@@ -64,5 +65,39 @@ impl Libraries {
             symbols,
             footprints,
         }
+    }
+
+    /// Whether a part of `design` is drawn or carried by the standard library's own symbols or
+    /// footprints (`std/libs/`, ADR 0087).
+    pub fn uses_std_library(&self, design: &Design) -> bool {
+        design.parts.iter().any(|part| {
+            self.mapping
+                .map(&part.kind, part.package.as_deref())
+                .is_ok_and(|m| {
+                    stdlib::is_library_id(&m.lib_id) || stdlib::is_library_id(&m.footprint)
+                })
+        })
+    }
+
+    /// Write the library tables of KiCad beside a board's `.kicad_pro` in `dir`: the project's
+    /// own libraries, and, when a part of `design` uses it, the standard library's own files
+    /// with their entries, so that KiCad finds every symbol and footprint of the board like
+    /// any other library's (ADR 0021, ADR 0087). Writes nothing for a board that needs no table.
+    pub fn write_tables(&self, dir: &Path, design: &Design) -> std::io::Result<()> {
+        let with_std = self.uses_std_library(design);
+        if with_std {
+            for (path, text) in stdlib::files() {
+                let file = dir.join(path);
+                if let Some(parent) = file.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(file, text)?;
+            }
+        }
+        for (name, text) in netsmith_kicad::library_tables(self.mapping.libraries(), dir, with_std)
+        {
+            std::fs::write(dir.join(name), text)?;
+        }
+        Ok(())
     }
 }

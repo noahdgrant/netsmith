@@ -372,14 +372,11 @@ fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool) -> ExitCode {
                             return ExitCode::from(2);
                         }
                     };
-                    // The project's own libraries, so KiCad finds the symbols.
-                    let tables =
-                        netsmith_kicad::library_tables(libraries.mapping.libraries(), &dir);
-                    for (name, text) in tables {
-                        if let Err(e) = fs::write(dir.join(name), text) {
-                            eprintln!("{}: {e}", dir.join(name).display());
-                            return ExitCode::from(2);
-                        }
+                    // The project's own libraries and the standard library's own files that
+                    // the board uses, so KiCad finds the symbols.
+                    if let Err(e) = libraries.write_tables(&dir, &b.design) {
+                        eprintln!("{}: {e}", dir.display());
+                        return ExitCode::from(2);
                     }
                     print!("{}", b.report);
                     for note in &b.notes {
