@@ -35,7 +35,7 @@ Every element is a stamp of the modified nodal analysis: node voltages and one c
 
 | Element | Model | Ranges and states tried |
 | --- | --- | --- |
-| Resistor, fuse, shunt, bead | conductance `1/R` (a resistance under 1 mohm is taken as 1 mohm) | the two ends of the tolerance (`10kohm +/- 1%` is 9.9 kohm and 10.1 kohm; a bead's `0..70 mohm`) |
+| Resistor, fuse, shunt, bead | conductance `1/R` (a resistance under 1 mohm is a branch with its own resistance, down to a short: amendment 16; section 2 first said it was taken as 1 mohm) | the two ends of the tolerance (`10kohm +/- 1%` is 9.9 kohm and 10.1 kohm; a bead's `0..70 mohm`) |
 | Rail | ideal voltage source between `pos` and `neg`, and the stated `.current` as a current source on the net | the two ends of `.voltage`; a current limit is not modelled (a finding if the solution exceeds the stated `.max_current`, as today) |
 | Regulator, switching | ideal output source `Vout`; input draws `Iq + Vout * Iout / (eff * Vin)` | the ends of `Vout` and of `eff`; the fixed point below |
 | Regulator, linear | output source; input draws `Iout + Iq` | the ends of `Vout` |
@@ -625,3 +625,23 @@ Written with the code of `crates/netsmith-solve/src/solve/dcpass.rs` (`dc_field`
 2. *Currents only, and not beside a budget finding.* Taken, as above. Alternative: every field, and every disagreement (the first attempt), which is noisier and false on a switched rail.
 3. *The field keeps the balance's number.* Taken: nothing else moves, so the finding is the only change. Alternative: take the analysis's number (it models the circuit, the balance only a net's terms) and leave the finding to the other relations; that changes which relation fails in existing designs.
 4. *Where it is said.* Taken: at the part. Alternative: at the statement that narrowed the balance's loads, which names the cause and not the field.
+
+## Amendment 16 (provisional): a resistance under 1 mohm is solved as it is, down to a short (issue #288)
+
+Written with the code of `crates/netsmith-solve/src/dc/net.rs` (`Point::Branch`, `operating_point`) and `extract.rs`, and the tests in `src/dc/tests.rs`, `tests/dc_analysis.rs` and `tests/dc_regulators.rs`. Section 2 said that a resistance under 1 mohm is taken as 1 mohm, "a millivolt at an ampere is below every tolerance". A review found that the clamp is not wider-only: it removes the part's true low end. The node past a 0 to 0.2 mohm link at 90 A to 100 A is 11.98 V to 12 V, and the analysis said 11.9 V to 11.91 V, so a check the true range passes was refused and a check it fails (an upper limit between the analysis's top and 12 V) passed. At 100 A the millivolt is 0.1 V. The ferrite bead rows state `dc_resistance: 0ohm..70mohm`, so every bead the analysis solves was affected, by `I * 1 mohm` at the top of each voltage downstream.
+
+**What changes.** A resistance below 1 mohm (`MIN_RESISTANCE`, which stays the largest conductance the matrix holds: 1000 S) is no longer a conductance. It is a *branch*, as a conducting diode already is: its current is an unknown of the matrix and its equation is `V(a) - V(b) = r * I`, which holds any `r` exactly, `r = 0` (a short) included, and puts no large entry in the matrix (a smaller floor would have moved the singularity test, which is relative to the largest entry, and made a pull-up of 100 kohm look singular). The range of a resistor is no longer raised to 1 mohm at its low end, so `0ohm..0.2mohm` has two corners, a short and 0.2 mohm. The current of the part is the branch's, and its drop is `V(a) - V(b)`.
+
+**Where a branch cannot be used.** A resistor from a node to itself, or between two nodes that sources hold (no matrix row for either), has no unknown to give a branch a meaning: it is solved at 1 mohm as before. A combination whose branches make a singular matrix (a loop of shorts and ideal sources: two beads side by side at 0 ohm, whose current split nothing decides) is solved again with the branches raised to 1 mohm, as every resistance under it was, and is counted as it was. The other combinations of the same island are exact, so the bias is bounded by `I * 1 mohm` in the one corner that has the loop, and the island is not left unsolved (the first attempt had a singular matrix make the whole island `Singular`).
+
+**Not changed.** The 1 mohm floors of a MOSFET's `Rds(on)` and of a logic pin's output resistance are the same fault in principle (a 0.5 mohm power MOSFET is solved at 1 mohm) and are left: the issue is about resistors, a fuse, a bead and a winding, and the MOSFET and pin cases are one more `Branch` each when the owner wants them.
+
+**Cost and determinism.** A part that reaches zero has two corners where it had one, so an island with several beads has twice the combinations for each (a real automotive board builds in the same 2 s; numbers in the pull request). Nothing is random; the fallback is chosen by the matrix.
+
+**Existing designs.** The independent calculation in `dc_regulators::the_power_tree_is_solved_and_agrees_with_a_calculation_made_apart` took the bead at 1 mohm and 70 mohm; it takes it at 0 and 70 mohm now, and the analysis agrees to the same part in a million. The bead and shunt picks of the real board do not change.
+
+**Choices for the owner.**
+
+1. *A branch, not a smaller floor.* Taken: exact, and no change to the matrix's scale. Alternatives: (a) a floor of 1 uohm (1e6 S), which moves the singular threshold to 1e-7 S and falsely flags a node held only by a pull-up of 10 Mohm; (b) the 1 mohm floor with the ranges widened by `I * 1 mohm` at both ends of what it moves, which keeps the error but turns it into a wider range, so that the check the true range passes (`>= 11.97V` on 11.98 V to 12 V) would fail on 11.8 V to 12.01 V.
+2. *The two cases solved at 1 mohm.* Taken: as above. Alternative: merge the two nodes (a short is a short), which needs the current of a loop of shorts to be decided (split equally, or by a spanning tree) and is more code for a corner of a corner.
+3. *MOSFET and pin resistances unchanged.* Taken. Alternative: the same branch for `Rds(on)` and the pin's `roh`/`rol` when they are under 1 mohm.
