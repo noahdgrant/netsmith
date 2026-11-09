@@ -5219,9 +5219,9 @@ board Overload {
 
 ```text
 error: no `ldo` candidate satisfies `stage.regulator`: the closest of the 1 that fit, XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446, fails because -stage.regulator.vout.current must always be at most stage.regulator.max_current, but 0A..50A is not always below 100mA (the currents on net `3V3` in `stage`: stage.regulator.vout.current (-50A..0A) + -stage.vout.current (-50A..0A) add up to zero; net `3V3`: output.current (0A..50A) + stage.vout.current (-50A..0A) add up to zero)
-   --> std/parts/regulator.nsm:39:5
+   --> std/parts/regulator.nsm:40:5
    |
-39 |     -.vout.current <= .max_current
+40 |     -.vout.current <= .max_current
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7577,9 +7577,9 @@ board TooTight {
 
 ```text
 error: no combination of candidates satisfies `divider.rbottom` and `divider.rtop` together: the closest, divider.rbottom = 20kΩ 1% 0402 C25765 and divider.rtop = 56kΩ 1% 0603 C23206, fails because `divider.vout` must stay within 3.762V..3.838V, but (divider.vref * (1 + (divider.rtop.resistance / divider.rbottom.resistance))) works out to 3.707V..3.896V
-   --> std/parts/regulator.nsm:89:5
+   --> std/parts/regulator.nsm:90:5
    |
-89 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
+90 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7744,14 +7744,14 @@ board Overload {
 
 ```text
 error: -u.buck.sw.current must always be at most u.buck.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `net-stage.inductor.a`: stage.buck.sw.current (6.402uA..3A) + u.buck.sw.current (-3A..-6.402uA) add up to zero; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (6.402uA..3A) + stage.inductor.current (6.402uA..3A) add up to zero; net `1V8` in `stage`: -stage.inductor.current (6.402uA..3A) + -stage.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:132:5
+    --> std/parts/regulator.nsm:133:5
     |
-132 |     -.sw.current <= .max_output_current
+133 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -stage.vout.current must always be at most stage.buck.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `stage`: -stage.inductor.current (6.402uA..3A) + -stage.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (6.402uA..3A) + stage.inductor.current (6.402uA..3A) add up to zero; net `net-stage.inductor.a`: stage.buck.sw.current (6.402uA..3A) + u.buck.sw.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:273:5
+    --> std/parts/regulator.nsm:274:5
     |
-273 |     -.vout.current <= .buck.max_output_current
+274 |     -.vout.current <= .buck.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7820,9 +7820,9 @@ board HighInput {
 
 ```text
 error: stage.on_time must always be at least stage.buck.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:282:5
+    --> std/parts/regulator.nsm:283:5
     |
-282 |     .on_time >= .buck.min_on_time
+283 |     .on_time >= .buck.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7902,6 +7902,8 @@ board Converter {
     .u.intvcc ~> .intvcc_cap ~> .input.neg
 }
 ```
+
+The part states the absolute maximum of three pins besides VIN and BIAS, from its Absolute Maximum Ratings (p.2): `EN/UV` 65 V, `TR/SS` 4 V and `SYNC/MODE` 6 V, each as a `Logic` (`.tr_ss_limit` and the like) whose `.line` is the pin inside the part, so the solver compares the voltage of the pin's net with the limit as it does for any `Logic` input (ADR 0046, ADR 0095, provisional). A board that ties `SYNC/MODE` or `TR/SS` to a 9 V to 16 V input is refused with the net, the limit and the field that states it (`net `VIN` reaches 16V above its ground `GND` ... but `u.sync_mode_limit.line.abs_max` is 6V`). A pin left to float is not judged, and one with only a soft-start capacitor on it is a `not evaluated` note, since nothing sets its voltage. `PG` (42 V) and `FB` (4 V) have limits too and state none, for the reasons in the part's doc comment and ADR 0095.
 
 The datasheet's other pins and capacitors (the two 1 uF capacitors at VIN1 and VIN2, the feedback phase-lead capacitor, the enable divider) are the board's. The package has no footprint or symbol in KiCad's libraries, so `std/kicad.toml` maps `Lt8641` in the package `UDC20(18)` to netsmith's own, `netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA` and `netsmith:LT8641` (the _Standard libraries of footprints_ paragraph below says what that is): a board built around it exports with them, with no KiCad install and no `kicad.toml`. The footprint's pads are the datasheet's recommended solder pad pitch and dimensions (p.24); a project that wants another land pattern maps the part and package to its own, as for any other part (`std/kicad.toml` and a project's `kicad.toml` may not both map one pair, so the project uses its own package name in its row).
 

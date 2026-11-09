@@ -97,6 +97,22 @@ part Pad {
     }
 }
 
+/// Like `Pad`, but its input may float, and the limit is on a `Logic` line joined to the pad
+/// inside the part (no pad of its own), as the `Lt8641` states its pins' limits (ADR 0095).
+part FloatPad {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.reference.current &= 0A
+    .in.line ~ .tap
+    .in.line.abs_max &= 3.6V
+    pins {
+        .vdd.pos   power "VDD" "1"
+        .vdd.neg   power "GND" "2"
+        .tap       input "IN"  "3" optional
+    }
+}
+
 /// A module whose output swings to an internal 1.8 V rail that has no pad: it joins the
 /// reference rail to its battery supply for the ground, and states the swing.
 part Modem {
@@ -283,6 +299,24 @@ fn two_pins_that_state_no_level_at_all_are_not_looked_at() {
         "{S3}    .a: Bare\n    .b: Bare\n    .c: Silent\n    .s3 ~ .a.vdd\n    .s3 ~ .b.vdd\n    .s3 ~ .c.vdd\n    .c.out.line ~ .a.in.line\n    .c.out.line ~ .b.in.line\n"
     ));
     assert_eq!(notes(&s), Vec::<String>::new());
+}
+
+#[test]
+fn a_pin_that_floats_has_no_voltage_to_judge_and_one_on_a_rail_is_judged() {
+    // An optional input that nothing is joined to: no fault and no note.
+    let s = solved(&format!("{S3}    .b: FloatPad\n    .s3 ~ .b.vdd\n"));
+    assert_eq!(faults(&s), Vec::<String>::new());
+    assert_eq!(notes(&s), Vec::<String>::new());
+    // The same pin joined to a rail that nothing else is on (5.25 V at most) is judged.
+    let s = solved(&format!(
+        "{S3}{S5}    .b: FloatPad\n    .s3 ~ .b.vdd\n    .b.tap ~ .s5.pos\n"
+    ));
+    assert_eq!(faults(&s).len(), 1, "{:?}", faults(&s));
+    assert!(
+        faults(&s)[0].contains("reaches 5.25V above its ground `GND`"),
+        "{:?}",
+        faults(&s)
+    );
 }
 
 #[test]
