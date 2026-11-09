@@ -1,1 +1,1 @@
-lcsc,mpn,name,label,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate_threshold,on_resistance,package,library,price,stock,date,checked,source,notes
+lcsc,mpn,name,label,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate_threshold,on_resistance,on_resistance_vgs,package,library,price,stock,date,checked,source,notes

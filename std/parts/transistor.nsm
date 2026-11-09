@@ -14,6 +14,13 @@
 /// above `.gate_threshold` in the worst case or the channel is not on. `.gate_threshold` is a
 /// range, the datasheet's minimum and maximum; `.on_resistance` is the datasheet's, at the
 /// drive its table names.
+///
+/// `.on_resistance_vgs` is that drive: the gate-source voltage the datasheet guarantees
+/// `.on_resistance` at (ADR 0092). A smaller drive gives a larger resistance than the
+/// guarantee, so the gate drive must always be at least it. A row that records no such
+/// voltage is offered all the same and the check is not evaluated for it; a design that
+/// needs the check states a requirement on the column (`.q.on_resistance_vgs <= 3V`), and
+/// only rows that record a voltage are then offered.
 generic NMosfet {
     .designator &= "Q"
 
@@ -29,6 +36,9 @@ generic NMosfet {
     /// The gate-source voltage at which the channel starts to conduct.
     .gate_threshold: Voltage
     .on_resistance: Resistance
+    /// The gate-source voltage `.on_resistance` is guaranteed at, where the catalog row records
+    /// it (the test condition of the datasheet's table). Unset otherwise.
+    .on_resistance_vgs: Voltage
     /// The voltage the drain-source path blocks while off. A design states it.
     .drain_source_voltage: Voltage
     /// The gate-source voltage while on. A design states it.
@@ -39,18 +49,21 @@ generic NMosfet {
     .drain_source_voltage <= .max_drain_source_voltage
     .gate_source_voltage <= .max_gate_source_voltage
     .gate_source_voltage >= .gate_threshold
+    .gate_source_voltage >= .on_resistance_vgs
     .current <= .max_drain_current
     bridge .drain ~> .source
     dc nmos .gate .drain .source .gate_threshold .on_resistance
 
     .package: Package
-    catalog n_mosfet { .max_drain_source_voltage, .max_drain_current, .max_gate_source_voltage, .gate_threshold, .on_resistance, .package }
+    catalog n_mosfet { .max_drain_source_voltage, .max_drain_current, .max_gate_source_voltage, .gate_threshold, .on_resistance, .package, .on_resistance_vgs optional }
 }
 
 /// A P-channel enhancement MOSFET. Current flows from source to drain. Voltages and currents
 /// are magnitudes (see `NMosfet`), so `.gate_source_voltage` is positive for a gate that is
 /// driven below its source. A generic like `NMosfet` (ADR 0068): it is its own first
 /// provider, with the catalog `p_mosfet`, and a project's part may provide it.
+/// `.on_resistance_vgs` is the magnitude of the gate-source voltage that `.on_resistance` is
+/// guaranteed at, checked as for `NMosfet` (ADR 0092).
 generic PMosfet {
     .designator &= "Q"
 
@@ -66,6 +79,9 @@ generic PMosfet {
     /// The magnitude of the gate-source voltage at which the channel starts to conduct.
     .gate_threshold: Voltage
     .on_resistance: Resistance
+    /// The magnitude of the gate-source voltage `.on_resistance` is guaranteed at, where the
+    /// catalog row records it (the test condition of the datasheet's table). Unset otherwise.
+    .on_resistance_vgs: Voltage
     /// The magnitude of the voltage the drain-source path blocks while off. A design states it.
     .drain_source_voltage: Voltage
     /// The magnitude of the gate-source voltage while on. A design states it.
@@ -76,10 +92,11 @@ generic PMosfet {
     .drain_source_voltage <= .max_drain_source_voltage
     .gate_source_voltage <= .max_gate_source_voltage
     .gate_source_voltage >= .gate_threshold
+    .gate_source_voltage >= .on_resistance_vgs
     .current <= .max_drain_current
     bridge .source ~> .drain
     dc pmos .gate .drain .source .gate_threshold .on_resistance
 
     .package: Package
-    catalog p_mosfet { .max_drain_source_voltage, .max_drain_current, .max_gate_source_voltage, .gate_threshold, .on_resistance, .package }
+    catalog p_mosfet { .max_drain_source_voltage, .max_drain_current, .max_gate_source_voltage, .gate_threshold, .on_resistance, .package, .on_resistance_vgs optional }
 }

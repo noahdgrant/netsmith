@@ -34,6 +34,7 @@ mod guidelines;
 mod height;
 mod kicad_rows;
 mod lt8641;
+mod mosfet_drive;
 mod note_causes;
 mod open_circle;
 mod order;

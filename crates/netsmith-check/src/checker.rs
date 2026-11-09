@@ -963,6 +963,16 @@ impl<'a> Checker<'a> {
         self.model.add_member(owner, "place", Member::Inst(place));
     }
 
+    /// Whether the statement being lowered is in the definition of the part it is about, a
+    /// generic's or a project's own, and not in the block of a board or a module that uses
+    /// the part (`.q: NMosfet { ... }`): the part's own checks and the design's requirements.
+    pub(crate) fn in_own_definition(&self) -> bool {
+        self.scope.last().is_some_and(|&i| {
+            let inst = self.model.instance(i);
+            inst.kind == InstKind::Part && inst.def == self.cur_def
+        })
+    }
+
     pub(crate) fn current(&self) -> InstId {
         *self
             .scope

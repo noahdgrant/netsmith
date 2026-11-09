@@ -648,6 +648,12 @@ pub struct Relation {
     /// For a relation the author wrote (a `==`, `>=` or `<=` statement): its text as written
     /// and where. Relations the checker makes from other statements have none.
     pub written: Option<Written>,
+    /// Whether a part's own definition states it (a relation of a generic or a part, such as
+    /// `.gate_source_voltage >= .on_resistance_vgs`), as the library or a project's part
+    /// writes it, and not the design that uses the part. A row with no value in an optional
+    /// catalog column (ADR 0078) is still offered when only such a relation names the
+    /// column, because the design has said nothing about it.
+    pub own: bool,
 }
 
 /// A relation statement as the source has it.

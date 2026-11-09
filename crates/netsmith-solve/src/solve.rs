@@ -3803,7 +3803,7 @@ impl Solver<'_> {
                 // the field has no use for the value, so the row is still offered, but only
                 // for a column that a catalog may leave empty (marked `optional`, ADR 0078): an empty
                 // package or resistance is not a value that nothing needs.
-                (None, _) => self.may_be_empty(part, *f, key) && !self.asked(*f),
+                (None, _) => self.may_be_empty(part, *f, key) && !self.asked_by_design(*f),
                 (Some(Value::Open(sense)), _) => self.need_of(*f, *sense).is_some(),
                 (Some(Value::Derated(d)), domain) => match self.derated(part, d) {
                     Ok(q) => match domain {
@@ -3873,7 +3873,7 @@ impl Solver<'_> {
         let blank: Vec<String> = job
             .columns
             .iter()
-            .filter(|(f, key)| !self.may_be_empty(job.part, *f, key) || self.asked(*f))
+            .filter(|(f, key)| !self.may_be_empty(job.part, *f, key) || self.asked_by_design(*f))
             .filter_map(|(_, key)| {
                 let n = job
                     .catalog
@@ -3912,6 +3912,20 @@ impl Solver<'_> {
             return true;
         }
         self.reads().read(field)
+    }
+
+    /// Whether the design says anything about a field, as `asked`, but a relation that the
+    /// part's own definition states does not count: `.gate_source_voltage >=
+    /// .on_resistance_vgs` is the part's check of a value its row may record, not a
+    /// requirement of the design on it. A row that records no value is then offered, and that
+    /// relation is not evaluated for it (ADR 0092). A relation of the part that names an
+    /// `optional` member counts, since the design's statement of that member is why it is in
+    /// the model (ADR 0074).
+    fn asked_by_design(&self, field: FieldId) -> bool {
+        if !matches!(self.domain(field), Domain::Unset) {
+            return true;
+        }
+        self.reads().read_by_design(field)
     }
 
     /// A candidate's value after derating, at the bias the design gives its part.

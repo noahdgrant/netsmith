@@ -753,6 +753,7 @@ impl Checker<'_> {
                 source,
                 span,
                 written: None,
+                own: false,
             });
         }
     }
@@ -857,6 +858,7 @@ impl Checker<'_> {
             source,
             span,
             written: None,
+            own: false,
         });
     }
 

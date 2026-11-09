@@ -101,6 +101,7 @@ impl Solver<'_> {
                                 source: b.source,
                                 span: b.span,
                                 written: None,
+                                own: false,
                             },
                             Transfer {
                                 links: links.clone(),
