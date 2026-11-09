@@ -270,7 +270,7 @@ impl Solver<'_> {
                     }
                     if solved_any && !inferred {
                         for m in &planned.parts {
-                            summary.written += self.dc_write(m, &run);
+                            summary.written += self.dc_write(m, &run, !planned.outputs.is_empty());
                         }
                         covered.extend(planned.parts.iter().filter_map(|m| m.drop));
                         rails.extend(planned.rails.iter().map(|r| (*r, Rc::clone(&run))));
@@ -441,18 +441,19 @@ impl Solver<'_> {
         };
         let mut members: Vec<FieldId> = class.iter().copied().collect();
         members.sort();
-        let stated = members
-            .iter()
-            .copied()
-            .find(|&f| !self.model.field(f).narrowed_at.is_empty() && !self.derived.contains(&f));
-        // A voltage the design states is the design's. It is not checked here: a regulator's
-        // output is held at the node its part names, and a rail further on (past an inductor, a
-        // shunt) is a little below it, which no design states as a window of the circuit's
-        // (ADR 0076, amendment 5, "Left for the next stages").
-        if stated.is_some() {
+        // A voltage the design states on any member of the class is the design's (amendment 17).
+        // It is checked against the circuit: the range it states has to enclose the one the
+        // analysis found, and is left as stated when it does. A rail past a regulator's output
+        // is the exception (amendment 5, choice 3): the part holds the node it names, and a
+        // rail further on (past an inductor, a shunt) is a little below it, which no design
+        // states as a window of the circuit's. Its statement is left alone.
+        if let Some(by) = self.stated_in(&members) {
+            if !rail.past_regulator {
+                self.dc_check_stated(rail.rail, by, solved, &ends);
+            }
             return 0;
         }
-        let written = self.dc_field(rail.rail, rail.field, solved, ends);
+        let written = self.dc_field(rail.rail, rail.field, solved, ends, false);
         if written {
             // The members of the class that `~` joins take the range from the one written, and
             // are as much the analysis's as it is: a relation that reads one of them (a
@@ -914,7 +915,7 @@ impl Solver<'_> {
                 which: Which::Drop(element),
                 flipped: false,
             };
-            self.dc_field(part, field, solved, ends);
+            self.dc_field(part, field, solved, ends, false);
         }
         let mut done: Vec<FieldId> = Vec::new();
         for (rail, run) in written {
@@ -1157,7 +1158,7 @@ impl Solver<'_> {
     }
 
     /// Write one part's current and drop. Returns how many fields were written.
-    fn dc_write(&mut self, m: &Modelled, run: &Rc<Run>) -> usize {
+    fn dc_write(&mut self, m: &Modelled, run: &Rc<Run>, past_regulator: bool) -> usize {
         let report = &run.report;
         let mut written = 0;
         let flip = |lo: f64, hi: f64, m: &Modelled| if m.flipped { (-hi, -lo) } else { (lo, hi) };
@@ -1198,14 +1199,26 @@ impl Solver<'_> {
                 which,
                 flipped: m.flipped,
             };
-            if self.dc_field(m.part, field, solved, ends) {
+            if self.dc_field(m.part, field, solved, ends, !past_regulator) {
                 written += 1;
             }
         }
         written
     }
 
-    fn dc_field(&mut self, part: InstId, field: FieldId, solved: Quantity, ends: DcEnds) -> bool {
+    /// Write what the circuit gives a field, or check it against what the design states.
+    /// `whole_class` says whether a voltage that a statement gave another member of the field's
+    /// `~` class is a budget (amendment 17); it is not for a regulator's input past another
+    /// regulator's output, where the stated window is the rail the part holds (amendment 5,
+    /// choice 3).
+    fn dc_field(
+        &mut self,
+        part: InstId,
+        field: FieldId,
+        solved: Quantity,
+        ends: DcEnds,
+        whole_class: bool,
+    ) -> bool {
         match self.domain(field) {
             Domain::Unset => {
                 self.set_field(field, Domain::Quantity(solved));
@@ -1214,10 +1227,17 @@ impl Solver<'_> {
                 true
             }
             Domain::Quantity(d) => {
-                let stated = !self.model.field(field).narrowed_at.is_empty()
-                    && !self.derived.contains(&field);
-                if stated {
-                    self.dc_check_stated(part, field, d, solved, &ends);
+                // A voltage that a statement gave any member of the `~` class of the field is a
+                // budget as much as one on the field (amendment 17, issue #284). A current is
+                // judged on its own field: a `~>` chain joins the currents of its parts, and a
+                // worked-out current beside a stated one is amendment 15's finding.
+                let stated = if whole_class && d.dim() == Dimension::VOLTAGE {
+                    self.stated_of(field)
+                } else {
+                    self.stated_in(&[field])
+                };
+                if let Some(by) = stated {
+                    self.dc_check_stated(part, by, solved, &ends);
                     return false;
                 }
                 match d.intersect(&solved) {
@@ -1274,15 +1294,30 @@ impl Solver<'_> {
         self.dc_disagreements.push((source, span, message));
     }
 
-    /// A stated range is a budget: what the circuit needs has to lie inside it.
-    fn dc_check_stated(
-        &mut self,
-        part: InstId,
-        field: FieldId,
-        stated: Quantity,
-        solved: Quantity,
-        ends: &DcEnds,
-    ) {
+    /// The first of `members` (the fields joined by `~`) that a statement narrowed and the
+    /// analysis did not write: the one the design states.
+    fn stated_in(&self, members: &[FieldId]) -> Option<FieldId> {
+        members.iter().copied().find(|&f| {
+            !self.model.field(f).narrowed_at.is_empty()
+                && !self.derived.contains(&f)
+                && matches!(self.domain(f), Domain::Quantity(_))
+        })
+    }
+
+    /// The field of the `~` class of `field` that the design states, if any.
+    fn stated_of(&self, field: FieldId) -> Option<FieldId> {
+        let mut members: Vec<FieldId> = self.equated(field).into_iter().collect();
+        members.sort();
+        self.stated_in(&members)
+    }
+
+    /// A stated range is a budget: what the circuit needs has to lie inside it. `stated` is the
+    /// field the statement is on (it names the field and points at the line), `part` the part
+    /// or rail to point at when no statement can be found.
+    fn dc_check_stated(&mut self, part: InstId, field: FieldId, solved: Quantity, ends: &DcEnds) {
+        let Domain::Quantity(stated) = self.domain(field) else {
+            return;
+        };
         let dim = stated.dim();
         let tol = slack(
             dim,

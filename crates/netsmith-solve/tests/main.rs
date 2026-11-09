@@ -23,6 +23,7 @@ mod dc_open_drain;
 mod dc_regulators;
 mod dc_search;
 mod dc_staged;
+mod dc_stated_rail;
 mod dc_switches;
 mod defaults;
 mod derived_bounds;

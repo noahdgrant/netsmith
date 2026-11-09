@@ -160,9 +160,9 @@ fn a_relation_on_the_carried_voltage_is_judged_with_it() {
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
 }
 
-/// A voltage the board states is the board's: the analysis does not narrow it, and does not
-/// check it either (a regulator's output is held at the node its part names, so a rail past an
-/// inductor is a little below what the design states for it).
+/// A voltage the board states is the board's: the analysis does not narrow it. It is checked: a
+/// range that encloses the circuit's (here 0 V to 20 V) is accepted and kept (ADR 0076,
+/// amendment 17; `dc_stated_rail.rs` has the ones that do not enclose).
 #[test]
 fn a_stated_voltage_is_left_as_stated() {
     let s = solved(&chain_board("    .p.vout.voltage &= 0V..20V\n"));

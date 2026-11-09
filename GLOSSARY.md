@@ -314,6 +314,10 @@ _Avoid_: Computed range, dynamic range
 What a source rail that states its own `.current` gives at most, the magnitude of the low end of the stated range (`.supply.current &= -1A..0A` is 1 A): the DC analysis finds a fault when even the least the loads on the rail's net draw is more than the budget (ADR 0076, amendment 13, provisional). A rail that states no `.current` has no budget.
 _Avoid_: Current limit (a part's own relation), Load rating
 
+**Stated rail**:
+A rail whose `.voltage`, or the `.voltage` of any rail joined to it by `~`, a statement of the design narrowed (`.stage.vin.voltage &= 4.2V..5.5V`, a module port's seed or a window), on a node the DC analysis solved. The range it states has to enclose the range the analysis found, and a statement that does is kept as it is; one that does not is an error that names the field, both ranges and the states at the end that goes outside (ADR 0076, amendment 17, provisional). Not checked: a rail past a regulator's output, and a node a source holds (a source's voltage is an input).
+_Avoid_: Seed (the start window of a circle, which is one use of a stated rail), claim, assumed window (it is never kept, and is not stated)
+
 **Absolute maximum**:
 The voltages a pin survives, `.abs_min` and `.abs_max` of the pin, relative to its ground. The solver holds them against the worst-case voltage of the pin's net (ADR 0046), which for a net the DC analysis solved is the range of its node voltage (ADR 0076, amendment 12, provisional). A pin of a part that is not a `Logic` line states its limit through a `Logic` whose `.line` is joined to the pin inside the part (the `Lt8641`'s `.sync_mode_limit`, ADR 0095, provisional); a pin joined to nothing outside its part is not judged.
 _Avoid_: Rating (a rating is a field such as `.max_power`)
