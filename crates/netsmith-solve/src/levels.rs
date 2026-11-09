@@ -45,6 +45,11 @@ pub(crate) struct NetReads {
     /// and the range the line's voltage has when every pin on it that is open drain lets go
     /// of it: the high of an open-drain line, whatever its circuit makes of the pull-up.
     pub high: HashMap<usize, (usize, f64, f64)>,
+    /// By net: the net of the ground the voltage is measured from, and the range of the node's
+    /// voltage over every corner and state of the island the analysis solved it in (amendment 12).
+    /// Only the free nets of an island that has no pin taken to be open drain by inference: a held
+    /// net's voltage is its source's, which the check reads from the rail.
+    pub volts: HashMap<usize, (usize, f64, f64)>,
 }
 
 /// The readers of the logic interfaces and resistors of a model, for the passes that need
@@ -683,7 +688,13 @@ impl Run<'_> {
             let Some(ground) = self.ground_pin(logic) else {
                 continue;
             };
-            let swing = match self.net_range(index, ground) {
+            // A net the DC analysis solved has the voltage the circuit around it makes of it
+            // (amendment 12), which is the worst case of the whole network and not of one step of
+            // it: a divider's middle is not the rail it hangs from.
+            let swing = match self
+                .node_range(index, ground)
+                .map_or_else(|| self.net_range(index, ground), Ok)
+            {
                 Ok(range) => range,
                 Err(why) => {
                     self.note(
@@ -848,6 +859,18 @@ impl Run<'_> {
             }
         }
         Ok(())
+    }
+
+    /// The range the DC analysis found for a net, measured from the same ground as the pin.
+    fn node_range(&self, index: usize, ground: InstId) -> Option<Swing> {
+        let &(g, lo, hi) = self.reads?.volts.get(&index)?;
+        if self.net_index(ground) != Some(g) {
+            return None;
+        }
+        let from = "the DC analysis of the network it is in";
+        let mut swing = Swing::none();
+        swing.add(lo, hi, from);
+        Some(swing)
     }
 
     /// The worst-case voltage of a net relative to a ground, and what sets each end. The
