@@ -730,6 +730,101 @@ fn an_inductor_too_resistive_for_the_ic_is_refused_with_the_numbers() {
     );
 }
 
+// ---- the IC's minimum on-time and off-time (ADR 0093) --------------------------------
+
+/// The invented IC, but for a 12 V to 35 V input and 1 MHz (+/- 10%), with `times` added to its
+/// `buck`, on a board that makes 5 V (+/- 6%) from `vin`.
+fn high_input(times: &str, vin: &str) -> String {
+    let ic = guide_ic()
+        .replace(".max_input_voltage &= 6V", ".max_input_voltage &= 60V")
+        .replace(".fsw &= 1.2MHz +/- 15%", ".fsw &= 1MHz +/- 10%");
+    converter(&ic_with_in(&ic, times), "0mA..1A", "")
+        .replace("5V +/- 5%", vin)
+        .replace("1.8V +/- 3%", "5V +/- 6%")
+}
+
+fn ic_with_in(ic: &str, limits: &str) -> String {
+    ic.replace(
+        "        .min_input_capacitance",
+        &format!("        {limits}\n        .min_input_capacitance"),
+    )
+}
+
+#[test]
+fn an_ic_that_states_no_minimum_times_checks_none() {
+    // 35 V to 5 V at 1 MHz needs an on-time of 143 ns. An IC that states no minimum on-time has
+    // no check of it, and the build neither fails nor lists a check as not evaluated.
+    let s = run(&high_input("", "12V..35V"));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    for member in ["min_on_time", "min_off_time"] {
+        assert!(
+            relations_over(&s, member).is_empty(),
+            "{member}: {:?}",
+            relations_over(&s, member)
+        );
+        assert!(
+            !not_evaluated(&s).iter().any(|r| r.contains(member)),
+            "{member}: {:?}",
+            not_evaluated(&s)
+        );
+    }
+    // The stage still states the times, so a board or a test can read them.
+    let on = range(&s, "stage.on_time");
+    assert!(
+        (on.lo() - 4.7 / (35.0 * 1.1e6)).abs() < 1e-12
+            && (on.hi() - 5.3 / (12.0 * 0.9e6)).abs() < 1e-12,
+        "{on}"
+    );
+}
+
+#[test]
+fn a_minimum_on_time_the_highest_input_violates_is_refused_with_the_numbers() {
+    // 4.7 V out of 35 V at 1.1 MHz is 122 ns of on-time at the least: an IC that needs 150 ns
+    // cannot hold its frequency there, and the ripple the stage computes at 1 MHz would not be
+    // the board's.
+    let s = run(&high_input(".min_on_time &= 150ns", "12V..35V"));
+    let m = messages(&s);
+    assert_eq!(m.len(), 1, "{m:#?}");
+    assert!(
+        m[0].contains("stage.on_time must always be at least stage.buck.min_on_time")
+            && m[0].contains("is not always above 150ns"),
+        "{m:#?}"
+    );
+    // The same IC at 16 V in (the highest input of a 12 V board) holds it: 4.7 / (16 * 1.1M) is
+    // 267 ns.
+    let s = run(&high_input(".min_on_time &= 150ns", "9V..16V"));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert_eq!(relations_over(&s, "min_on_time").len(), 1);
+    // A figure the worst case meets (100 ns, under 122 ns) is accepted at 35 V.
+    let s = run(&high_input(".min_on_time &= 100ns", "12V..35V"));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+}
+
+#[test]
+fn a_minimum_off_time_the_lowest_headroom_violates_is_refused_with_the_numbers() {
+    // (8 - 5.3) / (8 * 1.1 MHz) is 307 ns of off-time at the least.
+    let s = run(&high_input(".min_off_time &= 250ns", "8V..35V"));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    let s = run(&high_input(".min_off_time &= 350ns", "8V..35V"));
+    let m = messages(&s);
+    assert_eq!(m.len(), 1, "{m:#?}");
+    assert!(
+        m[0].contains("stage.off_time must always be at least stage.buck.min_off_time")
+            && m[0].contains("is not always above 350ns"),
+        "{m:#?}"
+    );
+}
+
+#[test]
+fn a_minimum_time_reaches_the_stage_across_the_join_and_the_other_is_skipped() {
+    let s = run(&high_input(".min_on_time &= 100ns", "12V..35V"));
+    assert_eq!(
+        relations_over(&s, "min_on_time"),
+        ["stage.on_time >= stage.buck.min_on_time"]
+    );
+    assert!(relations_over(&s, "min_off_time").is_empty());
+}
+
 // ---- a generic inductor in a stage (ADR 0057) ----------------------------------------
 
 /// `run`, with generic parts of the E24 series offered after the catalog's rows.
