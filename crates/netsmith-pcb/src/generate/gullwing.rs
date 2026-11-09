@@ -9,6 +9,7 @@ use super::outline::{Body, dual_pads, two_columns};
 use crate::footprint::Footprint;
 
 /// One package.
+#[derive(Clone, Copy)]
 struct Package {
     name: &'static str,
     description: &'static str,
@@ -100,11 +101,33 @@ const PACKAGES: &[Package] = &[
         false,
     ),
     pkg(
+        "SOIC-14W_7.5x9mm_P1.27mm",
+        SOIC,
+        14,
+        1.27,
+        (7.5, 9.0),
+        MS013.0,
+        MS013.1,
+        MS013.2,
+        false,
+    ),
+    pkg(
         "SOIC-16W_7.5x10.3mm_P1.27mm",
         SOIC,
         16,
         1.27,
         (7.5, 10.3),
+        MS013.0,
+        MS013.1,
+        MS013.2,
+        false,
+    ),
+    pkg(
+        "SOIC-16W_7.5x12.8mm_P1.27mm",
+        SOIC,
+        16,
+        1.27,
+        (7.5, 12.8),
         MS013.0,
         MS013.1,
         MS013.2,
@@ -266,10 +289,120 @@ const PACKAGES: &[Package] = &[
     ),
 ];
 
-/// Every `Library:Name` this module generates.
-pub fn names() -> Vec<String> {
+/// The TSSOP rows beyond the first few: (name, pins, pitch, body width, body length).
+///
+/// The span over the leads is 6.4 mm for the 4.4 mm body, 8.1 mm for the 6.1 mm body and
+/// 10.0 mm for the 8.0 mm body; the leads are 0.45 to 0.75 mm long and, by pitch, 0.17 to
+/// 0.30 mm (0.65 mm), 0.17 to 0.27 mm (0.5 mm) and 0.13 to 0.23 mm (0.4 mm) wide. Only part
+/// of that is read from a drawing: TI's SN74LVC16245A datasheet (SCES062Q) gives 6.20 to
+/// 6.60 mm over the leads of a 4.4 mm body with 0.13 to 0.23 mm leads at 0.4 mm pitch (page
+/// 21, MPDS006C) and 7.90 to 8.30 mm over a 6.1 mm body with 0.17 to 0.27 mm leads at 0.5 mm
+/// pitch (page 25, MTSS003D, "within JEDEC MO-153"). The other values (the 8.0 mm body's
+/// 10.0 mm, the 0.65 mm pitch width, the 6.1 mm body at 0.65 and 0.4 mm pitch) were fitted
+/// to reproduce KiCad 9.0.0's pads and are not read from a datasheet; JEDEC MO-153 itself
+/// was not read (ADR 0043).
+#[rustfmt::skip]
+const TSSOP_ROWS: &[(&str, usize, f64, f64, f64)] = &[
+    ("TSSOP-100_6.1x20.8mm_P0.4mm", 100, 0.4, 6.1, 20.8),
+    ("TSSOP-14_4.4x3.6mm_P0.4mm", 14, 0.4, 4.4, 3.6),
+    ("TSSOP-16_4.4x3.6mm_P0.4mm", 16, 0.4, 4.4, 3.6),
+    ("TSSOP-20_4.4x5mm_P0.4mm", 20, 0.4, 4.4, 5.0),
+    ("TSSOP-20_4.4x5mm_P0.5mm", 20, 0.5, 4.4, 5.0),
+    ("TSSOP-24_4.4x5mm_P0.4mm", 24, 0.4, 4.4, 5.0),
+    ("TSSOP-24_4.4x6.5mm_P0.5mm", 24, 0.5, 4.4, 6.5),
+    ("TSSOP-24_6.1x7.8mm_P0.65mm", 24, 0.65, 6.1, 7.8),
+    ("TSSOP-28_4.4x7.8mm_P0.5mm", 28, 0.5, 4.4, 7.8),
+    ("TSSOP-28_6.1x7.8mm_P0.5mm", 28, 0.5, 6.1, 7.8),
+    ("TSSOP-28_6.1x9.7mm_P0.65mm", 28, 0.65, 6.1, 9.7),
+    ("TSSOP-28_8x9.7mm_P0.65mm", 28, 0.65, 8.0, 9.7),
+    ("TSSOP-30_4.4x7.8mm_P0.5mm", 30, 0.5, 4.4, 7.8),
+    ("TSSOP-30_6.1x9.7mm_P0.65mm", 30, 0.65, 6.1, 9.7),
+    ("TSSOP-32_4.4x6.5mm_P0.4mm", 32, 0.4, 4.4, 6.5),
+    ("TSSOP-32_6.1x11mm_P0.65mm", 32, 0.65, 6.1, 11.0),
+    ("TSSOP-32_8x11mm_P0.65mm", 32, 0.65, 8.0, 11.0),
+    ("TSSOP-36_4.4x7.8mm_P0.4mm", 36, 0.4, 4.4, 7.8),
+    ("TSSOP-36_4.4x9.7mm_P0.5mm", 36, 0.5, 4.4, 9.7),
+    ("TSSOP-36_6.1x12.5mm_P0.65mm", 36, 0.65, 6.1, 12.5),
+    ("TSSOP-36_6.1x7.8mm_P0.4mm", 36, 0.4, 6.1, 7.8),
+    ("TSSOP-36_6.1x9.7mm_P0.5mm", 36, 0.5, 6.1, 9.7),
+    ("TSSOP-36_8x12.5mm_P0.65mm", 36, 0.65, 8.0, 12.5),
+    ("TSSOP-36_8x9.7mm_P0.5mm", 36, 0.5, 8.0, 9.7),
+    ("TSSOP-38_4.4x9.7mm_P0.5mm", 38, 0.5, 4.4, 9.7),
+    ("TSSOP-38_6.1x12.5mm_P0.65mm", 38, 0.65, 6.1, 12.5),
+    ("TSSOP-40_6.1x11mm_P0.5mm", 40, 0.5, 6.1, 11.0),
+    ("TSSOP-40_6.1x14mm_P0.65mm", 40, 0.65, 6.1, 14.0),
+    ("TSSOP-40_8x11mm_P0.5mm", 40, 0.5, 8.0, 11.0),
+    ("TSSOP-40_8x14mm_P0.65mm", 40, 0.65, 8.0, 14.0),
+    ("TSSOP-44_4.4x11mm_P0.5mm", 44, 0.5, 4.4, 11.0),
+    ("TSSOP-44_6.1x11mm_P0.5mm", 44, 0.5, 6.1, 11.0),
+    ("TSSOP-48_4.4x9.7mm_P0.4mm", 48, 0.4, 4.4, 9.7),
+    ("TSSOP-48_6.1x12.5mm_P0.5mm", 48, 0.5, 6.1, 12.5),
+    ("TSSOP-48_6.1x9.7mm_P0.4mm", 48, 0.4, 6.1, 9.7),
+    ("TSSOP-48_8x12.5mm_P0.5mm", 48, 0.5, 8.0, 12.5),
+    ("TSSOP-48_8x9.7mm_P0.4mm", 48, 0.4, 8.0, 9.7),
+    ("TSSOP-50_4.4x12.5mm_P0.5mm", 50, 0.5, 4.4, 12.5),
+    ("TSSOP-52_6.1x11mm_P0.4mm", 52, 0.4, 6.1, 11.0),
+    ("TSSOP-52_8x11mm_P0.4mm", 52, 0.4, 8.0, 11.0),
+    ("TSSOP-56_4.4x11.3mm_P0.4mm", 56, 0.4, 4.4, 11.3),
+    ("TSSOP-56_6.1x12.5mm_P0.4mm", 56, 0.4, 6.1, 12.5),
+    ("TSSOP-56_6.1x14mm_P0.5mm", 56, 0.5, 6.1, 14.0),
+    ("TSSOP-56_8x12.5mm_P0.4mm", 56, 0.4, 8.0, 12.5),
+    ("TSSOP-56_8x14mm_P0.5mm", 56, 0.5, 8.0, 14.0),
+    ("TSSOP-60_8x12.5mm_P0.4mm", 60, 0.4, 8.0, 12.5),
+    ("TSSOP-64_6.1x14mm_P0.4mm", 64, 0.4, 6.1, 14.0),
+    ("TSSOP-64_6.1x17mm_P0.5mm", 64, 0.5, 6.1, 17.0),
+    ("TSSOP-64_8x14mm_P0.4mm", 64, 0.4, 8.0, 14.0),
+    ("TSSOP-68_8x14mm_P0.4mm", 68, 0.4, 8.0, 14.0),
+    ("TSSOP-80_6.1x17mm_P0.4mm", 80, 0.4, 6.1, 17.0),
+];
+
+fn tssop_row(
+    &(name, pins, pitch, body_width, body_length): &(&'static str, usize, f64, f64, f64),
+) -> Package {
+    let overall = if body_width < 5.0 {
+        6.4
+    } else if body_width < 7.0 {
+        8.1
+    } else {
+        10.0
+    };
+    let (width, description) = if pitch > 0.6 {
+        ((0.17, 0.30), TSSOP)
+    } else if pitch > 0.45 {
+        (
+            (0.17, 0.27),
+            "Thin shrink small outline package, 0.5 mm pitch",
+        )
+    } else {
+        (
+            (0.13, 0.23),
+            "Thin shrink small outline package, 0.4 mm pitch",
+        )
+    };
+    pkg(
+        name,
+        description,
+        pins,
+        pitch,
+        (body_width, body_length),
+        (overall, overall),
+        width,
+        MO153.2,
+        false,
+    )
+}
+
+/// Every package of this module.
+fn packages() -> impl Iterator<Item = Package> {
     PACKAGES
         .iter()
+        .copied()
+        .chain(TSSOP_ROWS.iter().map(tssop_row))
+}
+
+/// Every `Library:Name` this module generates.
+pub fn names() -> Vec<String> {
+    packages()
         .map(|p| format!("Package_SO:{}", p.name))
         .collect()
 }
@@ -279,8 +412,8 @@ pub fn generate(library: &str, name: &str) -> Option<Footprint> {
     if library != "Package_SO" {
         return None;
     }
-    let p = PACKAGES.iter().find(|p| p.name == name)?;
-    Some(gull_wing(p))
+    let p = packages().find(|p| p.name == name)?;
+    Some(gull_wing(&p))
 }
 
 fn gull_wing(p: &Package) -> Footprint {

@@ -152,7 +152,15 @@ fn open_drain_reads(planned: &dc::Planned, reads: &mut NetReads) {
 
 impl Solver<'_> {
     /// Run the analysis and write its results. The notes are the islands it left alone.
-    pub(super) fn dc_pass(&mut self) -> (DcSummary, Vec<NotEvaluated>, NetReads) {
+    pub(super) fn dc_pass(
+        &mut self,
+    ) -> (
+        DcSummary,
+        Vec<NotEvaluated>,
+        NetReads,
+        Vec<super::NetCurrent>,
+    ) {
+        let mut net_currents: Vec<super::NetCurrent> = Vec::new();
         let mut summary = DcSummary::default();
         let mut reads = NetReads::default();
         let mut notes = Vec::new();
@@ -187,6 +195,21 @@ impl Solver<'_> {
                     let inferred = !planned.open_drain.is_empty();
                     if inferred && solved_any {
                         open_drain_reads(&planned, &mut reads);
+                    }
+                    // The most that flows into each net the island solved, over every corner
+                    // (amendment 8), unless an inferred open-drain pin is in it.
+                    if solved_any && !inferred {
+                        for (k, &net) in planned.free_nets.iter().enumerate() {
+                            let r = report.range(Which::Through(k));
+                            let pin = self.model.nets()[net].terminals.first().copied();
+                            if let Some(pin) = pin
+                                && r.hi.is_finite()
+                                && !r.is_empty()
+                            {
+                                let (_, hi) = widen(Dimension::CURRENT, 0.0, r.hi);
+                                net_currents.push(super::NetCurrent { pin, current: hi });
+                            }
+                        }
                     }
                     let run = Rc::new(Run {
                         island: planned.island,
@@ -243,7 +266,7 @@ impl Solver<'_> {
             done.extend(class.iter().copied());
             summary.rails += self.dc_write_rail(&rail, &class, &run);
         }
-        (summary, notes, reads)
+        (summary, notes, reads, net_currents)
     }
 
     /// Give a rail the voltage of its node (a `~>` chain carries the voltage, and so the drops of

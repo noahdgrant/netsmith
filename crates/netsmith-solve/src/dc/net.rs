@@ -310,6 +310,7 @@ pub(crate) struct Report {
     variables: Vec<(String, Vec<String>)>,
     nodes: usize,
     elements: usize,
+    held: usize,
     pub combinations: u64,
     pub consistent: u64,
     /// The first combination in which each regulator collapsed, by element.
@@ -327,6 +328,10 @@ pub(crate) enum Which {
     /// The current that a held node gives into the elements of the island (the index into
     /// `Island::held`): what a regulator's output supplies to the island.
     HeldDraw(usize),
+    /// The current into a free node at one operating point: the sum of what the elements put
+    /// into it, each at that point's own value, so that the loads that follow the supply are
+    /// at their values for one corner and not each at its largest (ADR 0076, amendment 8).
+    Through(usize),
 }
 
 impl Report {
@@ -336,6 +341,7 @@ impl Report {
             Which::Current(e) => self.nodes + e,
             Which::Drop(e) => self.nodes + self.elements + e,
             Which::HeldDraw(h) => self.nodes + 2 * self.elements + h,
+            Which::Through(k) => self.nodes + 2 * self.elements + self.held + k,
         }
     }
 
@@ -682,7 +688,7 @@ impl Island {
         let variants = self.variants();
         let nodes = self.nodes();
         let n = self.elements.len();
-        let quantities = nodes + 2 * n + self.held.len();
+        let quantities = nodes + 2 * n + self.held.len() + self.free;
         let mut collapses: Vec<Collapse> = Vec::new();
         let mut ranges = vec![Range::EMPTY; quantities];
         let mut at_lo = vec![0u64; quantities];
@@ -759,6 +765,7 @@ impl Island {
             variables: names,
             nodes,
             elements: n,
+            held: held_count,
             combinations: total,
             consistent,
             collapses,
@@ -778,7 +785,7 @@ impl Island {
             }
         }
         let mut work = Work::new(self.free, self.elements.len());
-        let mut out = vec![0.0; self.nodes() + 2 * self.elements.len() + held_count];
+        let mut out = vec![0.0; self.nodes() + 2 * self.elements.len() + held_count + self.free];
         match self.operating_point(&points, &held_v, &mut work, &mut out) {
             Ok(Op::Point) => Some(out),
             _ => None,
@@ -908,6 +915,29 @@ impl Island {
                 }
             }
             out[nodes + 2 * n + h] = gives;
+        }
+        // What each free node takes in at this operating point: the sum of the currents that
+        // enter it from an element (the same as what leaves it, by the law).
+        let held_count = self.held.len();
+        for node in 0..free {
+            let mut enters = 0.0;
+            for (k, p) in points.iter().enumerate() {
+                let (first, second) = match *p {
+                    Point::R { a, b, .. } => (a, b),
+                    Point::I { from, to, .. } | Point::Sink { from, to, .. } => (from, to),
+                    Point::DiodeOn { a, k: cathode, .. }
+                    | Point::DiodeOff { a, k: cathode, .. } => (a, cathode),
+                    Point::Open { a, b, .. } => (a, b),
+                    Point::MosOn { d, s, .. } => (d, s),
+                };
+                if first == node {
+                    enters += (-currents[k]).max(0.0);
+                }
+                if second == node {
+                    enters += currents[k].max(0.0);
+                }
+            }
+            out[nodes + 2 * n + held_count + node] = enters;
         }
         Ok(Op::Point)
     }
@@ -1225,7 +1255,8 @@ pub(crate) fn check_interior(island: &Island, report: &Report, samples: usize) -
     };
     let free = island.free;
     let mut work = Work::new(free, island.elements.len());
-    let mut out = vec![0.0; island.nodes() + 2 * island.elements.len() + island.held.len()];
+    let mut out =
+        vec![0.0; island.nodes() + 2 * island.elements.len() + island.held.len() + island.free];
     let mut outside = 0;
     for _ in 0..samples {
         let held_v: Vec<f64> = island

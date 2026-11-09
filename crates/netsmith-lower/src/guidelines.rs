@@ -268,6 +268,7 @@ pub fn plan_tracks(
     process: &Process,
     features: &Features,
     bounds: &[netsmith_solve::CurrentBound],
+    net_currents: &[netsmith_solve::NetCurrent],
 ) -> TrackPlan {
     let mut plan = TrackPlan::default();
     let copper = process.stackup.copper_weight * OUNCE_OF_COPPER;
@@ -419,7 +420,18 @@ pub fn plan_tracks(
             .iter()
             .find(|(n, _)| *n == net.name)
             .map(|(_, w)| *w);
-        let (total, terms) = flow.worst();
+        let (plain, terms) = flow.worst();
+        // The DC analysis solved the net: the most that flows into it over every corner of the
+        // ranges, which is complete (every pin on it is modelled, so no current is unknown) and
+        // not larger than the sum of every current at its largest (ADR 0076, amendment 8).
+        let analysed = net_currents
+            .iter()
+            .find(|c| net.pins.contains(&c.pin))
+            .map(|c| c.current);
+        let total = analysed.unwrap_or(plain);
+        if analysed.is_some() {
+            unknown.clear();
+        }
         // The currents that are known are a lower bound on the net's current: loads only add
         // up, so a current that is not known can make the sum larger and never smaller. A net
         // is drawn at least as wide as the known part needs, which is no guess (ADR 0036,
@@ -469,6 +481,10 @@ pub fn plan_tracks(
             continue;
         }
         let what = match terms.as_slice() {
+            _ if analysed.is_some() => format!(
+                "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be {}",
+                amps(plain)
+            ),
             [(c, hi)] => match c.range {
                 Some((lo, _)) if lo >= 0.0 && lo != *hi => {
                     format!("{}: {} to {}", c.who, amps(lo), amps(*hi))

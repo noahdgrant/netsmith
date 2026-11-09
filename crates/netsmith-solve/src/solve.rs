@@ -98,6 +98,21 @@ pub struct Solution {
     /// What the DC analysis did (ADR 0076): how many islands it solved, left alone, and how many
     /// fields of parts it wrote.
     pub dc: DcSummary,
+    /// What the DC analysis found into the nets it solved (ADR 0076, amendment 8).
+    pub net_currents: Vec<NetCurrent>,
+}
+
+/// The most current that flows into a net, over every corner of the ranges of the DC analysis of
+/// the island it is in: at each corner the sum of what the elements put into the net, and the
+/// largest of those over the corners. Smaller than the sum of every current at its largest
+/// where the currents follow one voltage, never larger, and complete for the net: every pin on
+/// it is one that the analysis models.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NetCurrent {
+    /// A terminal of the net, which names it.
+    pub pin: InstId,
+    /// The largest current in amperes.
+    pub current: f64,
 }
 
 /// An upper bound on the size of a part's current, from Ohm's law over the voltages that can
@@ -554,7 +569,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
     s.check_windows();
     // The picked parts' network is solved, and what it gives is written where nothing states
     // a value (ADR 0076); the relations that waited are then judged with numbers.
-    let (dc, dc_notes, net_reads) = s.dc_pass();
+    let (dc, dc_notes, net_reads, net_currents) = s.dc_pass();
     for c in s.propagate() {
         s.report(c.source, c.span, c.message);
     }
@@ -650,6 +665,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         unstated,
         current_bounds,
         dc,
+        net_currents,
     }
 }
 
