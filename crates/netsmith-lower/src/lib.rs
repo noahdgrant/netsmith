@@ -721,6 +721,10 @@ pub struct Sourced {
     /// Whether the design or the catalog row said so. If not, the footprint decides when
     /// it is known: a through-hole footprint is soldered by hand.
     pub assembly_stated: bool,
+    /// The `height` cell of the catalog row the part was picked as, in mm (ADR 0094), if it has
+    /// one. A generic part has none until it is resolved to a row. It is the part's height only
+    /// when the design states none.
+    pub catalog_height: Option<f64>,
     /// Set for a generic part (ADR 0047): the solver chose its value and nothing else, and
     /// `lcsc`, `mpn` and `library` are empty until it is resolved to a row of a catalog.
     pub generic: Option<netsmith_solve::Generic>,
@@ -966,6 +970,7 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
                 library: pick.and_then(|p| p.library),
                 assembly,
                 assembly_stated,
+                catalog_height: pick.and_then(|p| p.height),
                 generic: pick.and_then(|p| p.generic.clone()),
             });
             parts.push(Part {
