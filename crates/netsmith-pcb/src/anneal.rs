@@ -144,6 +144,9 @@ pub(crate) struct Problem<'a> {
     /// The areas that limit how tall a part may stand (ADR 0045, "Height limits"): a part
     /// with a stated height over a zone's limit, on a face the zone limits, is kept out of it.
     pub zones: &'a [crate::place::HeightZone],
+    /// The keepouts that parts carry: each moves and turns with its part, and keeps the other
+    /// parts out as a keepout for parts (`parts`) and as a height zone (`limit`) do.
+    pub carried: &'a [crate::place::CarriedZone],
 }
 
 /// What a run ended with.
@@ -482,6 +485,17 @@ struct Model {
     no_go: Vec<Rect>,
     /// Whether the footprint draws no fabrication outline, so that its courtyard is its body.
     body_is_courtyard: bool,
+    /// The keepouts the part carries, which keep the other parts out where the part is.
+    carries: Vec<Carry>,
+}
+
+/// A keepout that a part carries, as the annealer measures it (ADR 0045 section 11).
+struct Carry {
+    /// Which of `Problem::carried` it is.
+    zone: usize,
+    /// Its box relative to the part's origin, for each of the part's shapes (the same
+    /// indices as `Model::shapes`): the box that holds it turned, and mirrored on the back.
+    boxes: Vec<Rect>,
 }
 
 /// A [`Want`] in the engine's terms, for each of the part's four turns (as the annealer
@@ -753,6 +767,18 @@ fn shape_of(
     }
 }
 
+/// The box of a keepout in a part's own frame, relative to the part's origin, with the part
+/// turned to `angle`: the box that holds it, as `Board::keepout_areas` finds it on the board.
+fn carried_box(part: &mut Placed, angle: f64, local: Rect) -> Rect {
+    let (at, rotation) = (part.at, part.rotation);
+    part.at = Pt::default();
+    part.rotation = angle;
+    let found = Rect::around(local.corners().map(|c| part.to_board(c))).unwrap_or(local);
+    part.at = at;
+    part.rotation = rotation;
+    found
+}
+
 /// How far two boxes overlap, as the least of the overlaps along the axes after growing the
 /// first by `gap`: positive when they are nearer than `gap` (and overlapping if more than
 /// `gap`).
@@ -790,6 +816,25 @@ impl<'a> Engine<'a> {
                         }
                     }
                 }
+                let path = parts[i].path.clone();
+                let carries: Vec<Carry> = p
+                    .carried
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, z)| z.part == path)
+                    .map(|(zone, z)| {
+                        let mut boxes = Vec::new();
+                        if p.fixed[i] {
+                            boxes.push(carried_box(&mut parts[i], base, z.local));
+                        } else {
+                            for &a in &angles {
+                                let at = carried_box(&mut parts[i], a, z.local);
+                                boxes.extend(ReferenceSide::ALL.iter().map(|_| at));
+                            }
+                        }
+                        Carry { zone, boxes }
+                    })
+                    .collect();
                 let kind = parts[i].kind.as_str();
                 Model {
                     shapes,
@@ -831,6 +876,7 @@ impl<'a> Engine<'a> {
                         None => Vec::new(),
                     },
                     body_is_courtyard: parts[i].footprint.body_is_courtyard,
+                    carries,
                 }
             })
             .collect();
@@ -1354,9 +1400,57 @@ impl<'a> Engine<'a> {
     }
 
     fn shape(&self, i: usize) -> &Shape {
-        let m = &self.models[i];
+        &self.models[i].shapes[self.shape_index(i)]
+    }
+
+    /// Which of the part's shapes (and carried boxes) it has in its pose.
+    fn shape_index(&self, i: usize) -> usize {
         let pose = self.poses[i];
-        &m.shapes[variant(pose.turn, pose.text).min(m.shapes.len() - 1)]
+        variant(pose.turn, pose.text).min(self.models[i].shapes.len() - 1)
+    }
+
+    /// How far part `j` is in the keepouts part `c` carries, or nearer than `gap` to them:
+    /// for each, its name, its box where it is, and the depth. A keepout that forbids parts
+    /// is measured against the part's room (its courtyard), as the check does; a height
+    /// limit the part is too tall for, against its body grown by a margin
+    /// ([`Engine::zone_box`]). The part that carries a keepout is not in it.
+    fn carried_depths(&self, c: usize, j: usize, gap: f64) -> Vec<(&'a str, Rect, f64)> {
+        let mut found = Vec::new();
+        if c == j || self.models[c].carries.is_empty() {
+            return found;
+        }
+        let at = self.shape_index(c);
+        let model = &self.models[j];
+        for carry in &self.models[c].carries {
+            let zone = &self.p.carried[carry.zone];
+            let rect = carry.boxes[at.min(carry.boxes.len() - 1)].translated(self.pos(c));
+            let mut depth = 0.0f64;
+            if zone.parts {
+                depth = depth.max(penetration(&self.room(j), &rect, gap));
+            }
+            if zone.limits(model.height, model.side) {
+                depth = depth.max(penetration(&self.zone_box(j), &rect, gap));
+            }
+            if depth > 0.0 {
+                found.push((zone.name.as_str(), rect, depth));
+            }
+        }
+        found
+    }
+
+    /// What the keepouts part `c` carries cost part `j`: soft near them, hard in them, as a
+    /// keepout for parts does.
+    fn carried_cost(&self, c: usize, j: usize) -> Cost {
+        let mut cost = Cost::default();
+        for (_, _, depth) in self.carried_depths(c, j, KEEPOUT_GAP) {
+            cost.soft += W_GAP * depth;
+        }
+        for (_, _, depth) in self.carried_depths(c, j, 0.0) {
+            if depth > 1e-6 {
+                cost.hard += W_HARD * (depth + 0.05);
+            }
+        }
+        cost
     }
 
     /// The boxes part `i` takes on `face`, as `Placed::room_on` finds them, and whether they
@@ -1791,8 +1885,19 @@ impl<'a> Engine<'a> {
         c
     }
 
-    /// What two parts cost together: courtyards, reference text and silkscreen.
+    /// What two parts cost together: courtyards, reference text and silkscreen, and the
+    /// keepouts either carries against the other.
     fn pair(&self, i: usize, j: usize) -> Cost {
+        // A keepout a part carries reaches past the part: it is not in the part's reach.
+        let mut c = self.carried_cost(i, j);
+        c += self.carried_cost(j, i);
+        c += self.pair_of_parts(i, j);
+        c
+    }
+
+    /// What two parts cost together by their own boxes: courtyards, reference text and
+    /// silkscreen.
+    fn pair_of_parts(&self, i: usize, j: usize) -> Cost {
         let mut c = Cost::default();
         if !self.reach_abs[i].overlaps(&self.reach_abs[j]) {
             return c;
@@ -2021,11 +2126,12 @@ impl<'a> Engine<'a> {
                         at: (centre.x - region.min.x, centre.y - region.min.y),
                         nearest: nearest_edge(region, centre),
                     });
-                } else if self.pair(i, j).hard > HARD_EPS {
+                } else if self.pair_of_parts(i, j).hard > HARD_EPS {
                     ended.silk += 1;
                 }
             }
         }
+        self.name_carried(names, &mut ended);
         for (k, l) in self.links.iter().enumerate() {
             let miss = self.link_miss(k);
             if miss > LINK_EPS {
@@ -2050,6 +2156,46 @@ impl<'a> Engine<'a> {
                 .then_with(|| a.part.cmp(&b.part))
         });
         ended
+    }
+
+    /// The parts that stand in a keepout another part carries, added to the parts that are
+    /// outside, each with the keepout, its carrier and where it is.
+    fn name_carried(&self, names: &[String], ended: &mut Ended) {
+        for c in 0..self.models.len() {
+            for j in 0..self.models.len() {
+                if self.models[c].fixed && self.models[j].fixed {
+                    continue;
+                }
+                for (zone, rect, depth) in self.carried_depths(c, j, 0.0) {
+                    if depth <= 1e-6 {
+                        continue;
+                    }
+                    let region = &self.p.region;
+                    let at = rect.centre();
+                    let why = format!(
+                        "{} mm into the keepout `{zone}` that {} carries, at ({:.1}, {:.1})",
+                        short(depth),
+                        names[c],
+                        at.x - region.min.x,
+                        at.y - region.min.y
+                    );
+                    match ended.outside_parts.iter_mut().find(|o| o.part == names[j]) {
+                        Some(o) => {
+                            o.why.push(why);
+                            o.worst = o.worst.max(depth);
+                        }
+                        None => {
+                            ended.outside += 1;
+                            ended.outside_parts.push(OutsideAt {
+                                part: names[j].clone(),
+                                why: vec![why],
+                                worst: depth,
+                            });
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// In what way part `i` is outside, inside the margin or in a keepout.
@@ -2679,6 +2825,7 @@ mod tests {
             fixed: &fixed,
             keepouts: &[],
             zones: &[],
+            carried: &[],
             cutouts: &[],
             pours: false,
             seed: 0,
@@ -2729,6 +2876,7 @@ mod tests {
             fixed: &fixed,
             keepouts: &[],
             zones: &[],
+            carried: &[],
             cutouts: &[],
             pours: false,
             seed: 3,
@@ -2765,6 +2913,7 @@ mod tests {
                 fixed: &fixed,
                 keepouts: &[],
                 zones: &[],
+                carried: &[],
                 cutouts: &[],
                 pours: false,
                 seed: 0,
@@ -2844,6 +2993,7 @@ mod tests {
             offsets: &[],
             overhangs: &[],
             outline: board.outline,
+            carried: &[],
         };
         anneal(&mut board.parts, &problem, 1.0).feasible
     }
@@ -2904,5 +3054,144 @@ mod tests {
     fn a_keepout_for_parts_still_keeps_the_whole_courtyard_out() {
         let (mut board, zone) = lid_beside_a_strip();
         assert!(!run_beside_strip(&mut board, &[], &[zone]));
+    }
+
+    /// Four resistors on a 26 by 12 mm board, the first (`a`) carrying a keepout of
+    /// 12 by 10 mm in its own frame, from 2 mm right of its origin; the others are named `b`,
+    /// `c` and `d`. Returns the board and the zone, as the annealer is told.
+    fn carrier_with_a_zone(parts: bool, limit: Option<f64>) -> (Board, crate::place::CarriedZone) {
+        let mut board = resistors(&["a", "b", "c", "d"]);
+        board.outline = Rect::new(Pt::new(0.0, 0.0), Pt::new(26.0, 12.0));
+        let zone = crate::place::CarriedZone {
+            name: "shadow".into(),
+            part: "a".into(),
+            local: Rect::new(Pt::new(2.0, -5.0), Pt::new(14.0, 5.0)),
+            parts,
+            front: true,
+            back: true,
+            limit,
+        };
+        board.keepouts.push(crate::board::BoardKeepout {
+            name: zone.name.clone(),
+            part: Some("a".into()),
+            at: Some(zone.local.min),
+            size: (12.0, 10.0),
+            layers: vec!["top".into(), "bottom".into()],
+            tracks: false,
+            vias: false,
+            copper: false,
+            parts,
+            max_height: limit,
+            drawn: false,
+        });
+        (board, zone)
+    }
+
+    fn run_with_carried(board: &mut Board, carried: &[crate::place::CarriedZone]) -> bool {
+        let fixed = [false; 4];
+        let problem = Problem {
+            nets: &board.nets.clone(),
+            rules: &board.rules.clone(),
+            planes: &[],
+            region: board.outline,
+            corner_radius: 0.0,
+            fixed: &fixed,
+            keepouts: &[],
+            zones: &[],
+            carried,
+            cutouts: &[],
+            pours: false,
+            seed: 0,
+            wants: &[],
+            offsets: &[],
+            overhangs: &[],
+            outline: board.outline,
+        };
+        anneal(&mut board.parts, &problem, 1.0).feasible
+    }
+
+    #[test]
+    fn a_keepout_for_parts_that_a_part_carries_keeps_the_other_parts_out_where_the_part_is() {
+        // ADR 0045 section 11 (issue 28): the check measures a carried keepout against every
+        // part but its carrier; the annealer must keep the parts out of it too, where the
+        // carrier ends up and however it is turned.
+        let (mut blind, _) = carrier_with_a_zone(true, None);
+        assert!(run_with_carried(&mut blind, &[]));
+        assert!(
+            blind
+                .check_placement()
+                .iter()
+                .any(|p| matches!(p, crate::board::PlacementProblem::InKeepout { .. })),
+            "without the zone told to the placer a part stands in it, so the test says something"
+        );
+        let (mut board, zone) = carrier_with_a_zone(true, None);
+        assert!(run_with_carried(&mut board, &[zone]));
+        assert_eq!(board.check_placement(), vec![]);
+    }
+
+    #[test]
+    fn a_keepout_that_a_part_on_the_back_carries_is_kept_clear_of_mirrored() {
+        let (mut board, zone) = carrier_with_a_zone(true, None);
+        board.parts[0].side = Side::Back;
+        assert!(run_with_carried(&mut board, &[zone]));
+        assert_eq!(board.check_placement(), vec![]);
+    }
+
+    #[test]
+    fn a_height_limit_that_a_part_carries_keeps_out_the_parts_too_tall_for_it() {
+        let tall_in_the_zone = |board: &Board| {
+            board
+                .check_placement()
+                .iter()
+                .any(|p| matches!(p, crate::board::PlacementProblem::TooTall { .. }))
+        };
+        let (mut blind, _) = carrier_with_a_zone(false, Some(3.0));
+        for part in &mut blind.parts[1..] {
+            part.height = Some(5.0);
+        }
+        assert!(run_with_carried(&mut blind, &[]));
+        assert!(
+            tall_in_the_zone(&blind),
+            "without the zone told to the placer a 5 mm part stands in it"
+        );
+        let (mut board, zone) = carrier_with_a_zone(false, Some(3.0));
+        for part in &mut board.parts[1..] {
+            part.height = Some(5.0);
+        }
+        assert!(run_with_carried(&mut board, &[zone]));
+        assert!(!tall_in_the_zone(&board), "{:?}", board.check_placement());
+        let area = board.keepout_areas()[0].rect;
+        for tall in &board.parts[1..] {
+            assert!(!tall.body().overlaps(&area), "{} stands clear", tall.refdes);
+        }
+    }
+
+    #[test]
+    fn a_keepout_a_part_carries_is_no_reason_to_refuse_the_part_itself() {
+        // The carrier is inside its own keepout and is not counted against it.
+        let (mut board, zone) = carrier_with_a_zone(true, None);
+        let fixed = [false; 4];
+        let carried = [zone];
+        let problem = Problem {
+            nets: &board.nets.clone(),
+            rules: &board.rules.clone(),
+            planes: &[],
+            region: board.outline,
+            corner_radius: 0.0,
+            fixed: &fixed,
+            keepouts: &[],
+            zones: &[],
+            carried: &carried,
+            cutouts: &[],
+            pours: false,
+            seed: 0,
+            wants: &[],
+            offsets: &[],
+            overhangs: &[],
+            outline: board.outline,
+        };
+        let e = Engine::new(&mut board.parts, &problem);
+        assert!(e.carried_depths(0, 0, 0.0).is_empty());
+        assert_eq!(e.carried_cost(0, 0).hard, 0.0);
     }
 }

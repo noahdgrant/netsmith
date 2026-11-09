@@ -79,6 +79,9 @@ pub(crate) struct Reg {
     pub vout: Range,
     /// `Some` for a switching regulator.
     pub eff: Option<Range>,
+    /// A linear regulator's quiescent current, when its statement names one: drawn at the input
+    /// besides what the output supplies (ADR 0076, amendment 9).
+    pub quiescent: Option<Range>,
     /// The current its output rail supplies (a negative `current`), to fall back to when the
     /// loads on the output net are not all modelled.
     pub out_current: Option<FieldId>,
@@ -91,6 +94,9 @@ pub(crate) struct Reg {
 pub(crate) struct Sink {
     pub element: usize,
     pub reg: usize,
+    /// Whether the input is behind a part still to be picked, with no supply of its own: its
+    /// voltage would be the hull of that part's candidates, not something a pick can lean on.
+    pub behind_hull: bool,
 }
 
 /// A held node of the island that a regulator's output holds: its index in `Island::held`.
@@ -169,7 +175,11 @@ struct Item {
 }
 
 /// The islands of a model, in the order of their lowest net.
-pub(crate) fn extract(model: &Model) -> Extracted {
+pub(crate) fn extract(
+    model: &Model,
+    enclosed: &HashMap<InstId, Range>,
+    hulled: &HashSet<InstId>,
+) -> Extracted {
     let nets = model.nets();
     let mut net_of: HashMap<InstId, usize> = HashMap::new();
     for (i, n) in nets.iter().enumerate() {
@@ -230,6 +240,16 @@ pub(crate) fn extract(model: &Model) -> Extracted {
         } else {
             None
         };
+        // A linear regulator's quiescent current, when the statement names it: a range of
+        // currents that are not negative. One the part leaves open, or one below zero, is not
+        // a number to model with: the regulator is not modelled (nothing is guessed).
+        let quiescent = match dc.values.first() {
+            Some(&f) if !switching => match range(f, Dimension::CURRENT).filter(|r| r.lo >= 0.0) {
+                Some(q) => Some(q),
+                None => continue,
+            },
+            _ => None,
+        };
         // The input's `voltage` and `current`: the fields the pass writes.
         if model.field(v_in).kind != netsmith_check::FieldKind::Quantity(Dimension::VOLTAGE) {
             continue;
@@ -242,6 +262,7 @@ pub(crate) fn extract(model: &Model) -> Extracted {
             out_net: op,
             vout,
             eff,
+            quiescent,
             out_current,
             out_complete: false,
         });
@@ -388,6 +409,9 @@ pub(crate) fn extract(model: &Model) -> Extracted {
 
     // Resistors and diodes.
     let mut modelled_parts: HashSet<InstId> = HashSet::new();
+    // The loads that stand for parts still to be picked: their name, the nets of their two
+    // terminals and the range of their current. Each goes into the island that has the nets.
+    let mut enclosed_loads: Vec<(String, usize, usize, Range)> = Vec::new();
     // The MOSFETs are decided after everything else is known (below).
     let mut switches: Vec<(InstId, &netsmith_check::DcElement)> = Vec::new();
     for (part, dc) in model.dc_elements() {
@@ -403,6 +427,18 @@ pub(crate) fn extract(model: &Model) -> Extracted {
         let net = |pin: InstId| net_of.get(&pin).copied();
         let (kind, nets, own) = match dc.kind {
             DcKind::Resistor => {
+                // A part still to be picked whose current the design limits is a load of at
+                // most that: a current source between its terminals (ADR 0076, amendment 7).
+                // Either way round, since which terminal is the higher is the circuit's.
+                if let Some(&i) = enclosed.get(&part) {
+                    let (Some(a), Some(b)) = (net(dc.pins[0]), net(dc.pins[1])) else {
+                        continue;
+                    };
+                    accounted.extend([dc.pins[0], dc.pins[1]]);
+                    modelled_parts.insert(part);
+                    enclosed_loads.push((model.path_of(part), a, b, i));
+                    continue;
+                }
                 let Some(r) = value(dc.values[0], Dimension::RESISTANCE) else {
                     continue;
                 };
@@ -947,6 +983,55 @@ pub(crate) fn extract(model: &Model) -> Extracted {
                 .collect(),
             elements: Vec::new(),
         };
+        // The nets that only a part still to be picked, at the hull of its candidates, joins to
+        // the supplies: past it, in a branch that nothing else holds up, a voltage would be that
+        // hull's (a series resistor from 25 mohm to 10 Mohm in front of a load: kilovolts).
+        let behind_hull: BTreeSet<usize> = {
+            let defining = |i: usize| {
+                matches!(
+                    items[i].kind,
+                    Kind::Resistor { .. }
+                        | Kind::Diode { .. }
+                        | Kind::Mosfet { .. }
+                        | Kind::Pin { .. }
+                )
+            };
+            let mut tainted = BTreeSet::new();
+            for &h in members {
+                let hulled_part = items[h].part.is_some_and(|p| hulled.contains(&p));
+                if !hulled_part
+                    || !matches!(items[h].kind, Kind::Resistor { .. } | Kind::Diode { .. })
+                {
+                    continue;
+                }
+                for &end in &items[h].nets[..2] {
+                    if held.contains_key(&end) {
+                        continue;
+                    }
+                    let mut seen: BTreeSet<usize> = BTreeSet::from([end]);
+                    let mut todo = vec![end];
+                    let mut reaches_supply = false;
+                    while let Some(net) = todo.pop() {
+                        for &i in members {
+                            if i == h || !defining(i) || !items[i].nets.contains(&net) {
+                                continue;
+                            }
+                            for &next in &items[i].nets {
+                                if held.contains_key(&next) {
+                                    reaches_supply = true;
+                                } else if seen.insert(next) {
+                                    todo.push(next);
+                                }
+                            }
+                        }
+                    }
+                    if !reaches_supply {
+                        tainted.extend(seen);
+                    }
+                }
+            }
+            tainted
+        };
         let mut parts = Vec::new();
         let mut sinks = Vec::new();
         for &i in members {
@@ -997,6 +1082,7 @@ pub(crate) fn extract(model: &Model) -> Extracted {
                 sinks.push(Sink {
                     element: island.elements.len(),
                     reg,
+                    behind_hull: item.nets.iter().any(|n| behind_hull.contains(n)),
                 });
             }
             if let Some(part) = item.part {
@@ -1012,6 +1098,38 @@ pub(crate) fn extract(model: &Model) -> Extracted {
             island.elements.push(Element {
                 name: item.name.clone(),
                 kind,
+            });
+        }
+        // The loads of the parts still to be picked: a current between the terminals when both
+        // are nets that something holds up, and from the one that is when the other is a node
+        // nothing else is on (the middle of a divider whose two resistors are both to be picked,
+        // which no current source can leave floating).
+        let supported: BTreeSet<usize> = members
+            .iter()
+            .filter(|&&i| {
+                matches!(
+                    items[i].kind,
+                    Kind::Resistor { .. }
+                        | Kind::Diode { .. }
+                        | Kind::Mosfet { .. }
+                        | Kind::Pin { .. }
+                )
+            })
+            .flat_map(|&i| items[i].nets.iter().copied())
+            .collect();
+        for (name, a, b, i) in &enclosed_loads {
+            let up = |n: &usize| free_nets.contains(n) && supported.contains(n);
+            // A load draws from the net that is held up. Between two such nets it may go either
+            // way, which is the circuit's to say.
+            let (from, to, i) = match (up(a), up(b)) {
+                (true, true) => (node_of(*a), node_of(*b), Range::new(-i.hi, i.hi)),
+                (true, false) => (node_of(*a), node_of(held_nets[0]), *i),
+                (false, true) => (node_of(*b), node_of(held_nets[0]), *i),
+                (false, false) => continue,
+            };
+            island.elements.push(Element {
+                name: name.clone(),
+                kind: Kind::Current { from, to, i },
             });
         }
         let outputs = held_nets
@@ -1063,7 +1181,9 @@ pub(crate) fn extract(model: &Model) -> Extracted {
         let rails = match ground {
             Some(g) => rail_candidates
                 .iter()
-                .filter(|&&(_, _, np, nn)| nn == g && supplied.contains(&np))
+                .filter(|&&(_, _, np, nn)| {
+                    nn == g && supplied.contains(&np) && !behind_hull.contains(&np)
+                })
                 .map(|&(field, rail, np, _)| RailNode {
                     field,
                     rail,

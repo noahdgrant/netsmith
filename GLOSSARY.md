@@ -350,8 +350,12 @@ One combination of the ends of the ranges an island has (a resistance at its lea
 _Avoid_: Case, scenario, worst case (the worst case is a result, an end of the range a corner makes)
 
 **Regulator (at DC)**:
-A part that states `dc linear_regulator` or `dc switching_regulator`: an ideal source on the net of its output rail, over the range of the rail's voltage, and an input rail that draws what the output asks (what it supplies for a linear one, `Pout / (efficiency * Vin)` for a switching one). It cuts the network into the island behind it and the island in front of it (ADR 0076, amendment 3).
+A part that states `dc linear_regulator` or `dc switching_regulator`: an ideal source on the net of its output rail, over the range of the rail's voltage, and an input rail that draws what the output asks (what it supplies and its **quiescent current** for a linear one, `Pout / (efficiency * Vin)` for a switching one). It cuts the network into the island behind it and the island in front of it (ADR 0076, amendment 3).
 _Avoid_: Converter model, power stage (a `BuckStage` is the module around the IC, and the IC is the regulator)
+
+**Quiescent current**:
+The current a regulator draws from its input for itself, with its output unloaded: the datasheet's quiescent (or ground pin) current. `LinearRegulator` has it as the member `.quiescent_current` (default none), a part narrows it from its datasheet, the regulator's input current is the load and this, and the part's `dc linear_regulator` statement names it as its third operand, so the DC analysis draws it at the input too (ADR 0076, amendment 9). A buck IC states its own (`.iq_max` of the LT8641) and the analysis does not yet add it.
+_Avoid_: Ground current, standby current, supply current (a regulator's supply current is what its input draws, the load included)
 
 **Source (at DC)**:
 A rail that holds its nets over the range of its voltage in the analysis: a `Rail` that the board declares itself, or the rail that a part gives with `dc source` (a connector's supply, ADR 0076, amendment 5). Its `pos` net is held over the range the design states for `.voltage` and its `neg` net at zero; the network on either side of it is an island.
@@ -362,8 +366,12 @@ The voltage of a rail on a node of a `~>` chain, as the analysis gives it: the s
 _Avoid_: Propagated voltage, derived voltage (a derived value is any worked-out field; this one is the node's)
 
 **Enclosure**:
-A range that holds whatever a pick later chooses, written before the picks so that a pick that reads a voltage can be judged: each part still to be picked at the hull of what its candidates give its `dc` value, and a regulator's load, when it is not known, from nothing up to the limit the regulator states on what its output supplies. The pass after the picks narrows it to the circuit that was picked (ADR 0076, amendment 5 and 6).
+A range that holds whatever a pick later chooses, written before the picks so that a pick that reads a voltage can be judged: each part still to be picked at the hull of what its candidates give its `dc` value (or, when the design limits its current, a load of at most that limit), and a regulator's load, when it is not known, from nothing up to the limit the regulator states on what its output supplies. The pass after the picks narrows it to the circuit that was picked (ADR 0076, amendment 5, 6 and 7).
 _Avoid_: Seed, start window (those are a range the board writes by hand and states as a claim; an enclosure is worked out and is not stated), bound (the bound from Ohm's law is another, cheaper thing)
+
+**Assumed window**:
+The range taken for the input of a regulator while the parts in series with it are picked, before the network can be solved: from the largest of what the part and the design need of it to the highest supply that reaches it. It is an assumption about a valid design, it is never kept (the picks are made again without it, from the one row each was given), and what the pass after the picks writes is the circuit's (ADR 0076, amendment 7).
+_Avoid_: Seed, start window (those are written by hand and stay in the model as a claim), enclosure (an enclosure holds whatever a pick chooses; an assumed window holds for the picks that a valid design allows)
 
 **Collapse**:
 A corner of an island in which a regulator's input falls to nothing because its output asks for more power than the source can give through the resistance in front of it (12 V through 10 ohm gives at most 3.6 W): the circuit has no operating point there, and the analysis reports an error that names the regulator, what it asks and the states (ADR 0076, amendment 3).

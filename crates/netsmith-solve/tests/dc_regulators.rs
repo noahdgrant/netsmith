@@ -40,6 +40,18 @@ part Ldo {
     dc linear_regulator .vin .vout
 }
 
+/// A linear regulator that states its own quiescent current (ADR 0076, amendment 9).
+part Ldoq {
+    .vin: Rail
+    .vout: Rail
+    .min_input: Voltage
+    .iq: Current
+    .vin.neg ~ .vout.neg
+    .vin.current == -.vout.current + .iq
+    .vin.voltage >= .min_input
+    dc linear_regulator .vin .vout .iq
+}
+
 part Sw {
     .vin: Rail
     .vout: Rail
@@ -140,6 +152,69 @@ fn a_linear_regulator_passes_the_current_of_its_load() {
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     near(range(&s, "link.current").unwrap(), (0.1, 0.2));
     near(range(&s, "reg.vin.voltage").unwrap(), (11.9, 11.95));
+}
+
+/// A linear regulator's quiescent current is drawn at its input besides the load: the link
+/// carries `0.1 A + 50 uA` to `0.2 A + 140 uA`, and the regulator's `.vin.current` is the same.
+#[test]
+fn a_linear_regulators_quiescent_current_adds_to_its_input() {
+    let src = board(&format!(
+        "{}    .link: Link {{ .resistance &= 0.5ohm; .rated_current &= 2A }}\n    .reg: Ldoq {{ .min_input &= 4.5V; .vout.voltage &= 3.3V; .iq &= 50uA..140uA }}\n{}    .supply.pos ~> .link ~> .reg.vin.pos\n    .supply.neg ~ .reg.vin.neg\n    .reg.vout ~ .out\n",
+        supply("12V"),
+        load("out", "V33", "100mA..200mA")
+    ));
+    let s = solved(&src);
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    let (lo, hi) = (0.1 + 50e-6, 0.2 + 140e-6);
+    near(range(&s, "link.current").unwrap(), (lo, hi));
+    near(range(&s, "reg.vin.current").unwrap(), (lo, hi));
+    near(
+        range(&s, "reg.vin.voltage").unwrap(),
+        (12.0 - 0.5 * hi, 12.0 - 0.5 * lo),
+    );
+    // Without a quiescent current to name, the same board has the load alone, as before.
+    let src = src
+        .replace(".reg: Ldoq", ".reg: Ldo")
+        .replace("; .iq &= 50uA..140uA", "");
+    let s = solved(&src);
+    near(range(&s, "link.current").unwrap(), (0.1, 0.2));
+}
+
+/// The quiescent current of a linear regulator is a load of the regulator before it: B (3.3 V,
+/// 0.5 A, 140 uA) behind A (switching, 5 V, 90 %), so A's output supplies `0.5 A + 140 uA`, which
+/// is `5 * 0.50014 / 0.9` of its input: `0.9 I (12 - 0.5 I) = 2.5007`. Nothing is stated at A's
+/// output: the island of the 3.3 V loads behind B is solved, and the regulators in front of it.
+#[test]
+fn the_quiescent_current_of_the_regulator_behind_is_the_load_of_the_one_before() {
+    let src = board(&format!(
+        "{}    .front: Link {{ .resistance &= 0.5ohm; .rated_current &= 2A }}\n    .a: Sw {{ .efficiency &= 0.9; .min_input &= 4.5V; .vout.voltage &= 5V }}\n    .b: Ldoq {{ .min_input &= 3.6V; .vout.voltage &= 3.3V; .iq &= 140uA }}\n{}    .supply.pos ~> .front ~> .a.vin.pos\n    .supply.neg ~ .a.vin.neg\n    .a.vout ~ .b.vin\n    .b.vout ~ .out\n",
+        supply("12V"),
+        load("out", "V33", "0.5A")
+    ));
+    let s = solved(&src);
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert_eq!(s.dc.regulators, 2, "{:?}", s.dc);
+    near(range(&s, "b.vin.current").unwrap(), (0.50014, 0.50014));
+    let p = 5.0 * 0.50014 / 0.9;
+    let ia = (12.0 - (144.0f64 - 2.0 * p).sqrt()) / 1.0;
+    near(range(&s, "front.current").unwrap(), (ia, ia));
+    near(
+        range(&s, "a.vin.voltage").unwrap(),
+        (12.0 - 0.5 * ia, 12.0 - 0.5 * ia),
+    );
+}
+
+/// A quiescent current that the part leaves open (no value at all) is a number nothing can model
+/// with: the regulator is left out of the analysis, and nothing is guessed.
+#[test]
+fn an_open_quiescent_current_leaves_the_regulator_unmodelled() {
+    let src = board(&format!(
+        "{}    .link: Link {{ .resistance &= 0.5ohm; .rated_current &= 2A }}\n    .reg: Ldoq {{ .min_input &= 4.5V; .vout.voltage &= 3.3V }}\n{}    .supply.pos ~> .link ~> .reg.vin.pos\n    .supply.neg ~ .reg.vin.neg\n    .reg.vout ~ .out\n",
+        supply("12V"),
+        load("out", "V33", "100mA..200mA")
+    ));
+    let s = solved(&src);
+    assert_eq!(s.dc.regulators, 0, "{:?}", s.dc);
 }
 
 /// A regulator behind a regulator: B (linear, 3.3 V, 0.5 A) is fed from A's 5 V output through
