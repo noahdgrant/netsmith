@@ -341,6 +341,10 @@ _Avoid_: Load current (a part's `.current` is its draw), drive current
 The most current a logic pin takes or gives when it is high impedance, at any voltage between its ground and its supply, stated by a part as the optional member `.ii` of its `Logic` or `Levels` (`.io.ii &= 1uA`; ADR 0076, amendment 8, provisional). The analysis takes it as a resistance from the pin to its supply and to its ground, the greatest supply voltage over the current, each a state of the pin. A pin that states none leaks nothing. The output resistances `.roh` and `.rol` are the other optional members.
 _Avoid_: Input current (a part's `.current` is its draw), bias current, input impedance
 
+**Net current (from the analysis)**:
+The most current that flows into a net the DC analysis solved: at each corner the sum of what the elements put into the net, and the largest of those over the corners (ADR 0076, amendment 8, provisional). It sizes the net's tracks in place of the sum of every current at its largest (ADR 0036), which is larger where the loads follow one voltage. Only a net between elements that no rail holds has one: a supply, a ground or a regulator's output is on several islands.
+_Avoid_: Corner-wise sum, worst-case current (a worst case is an end of a range, and this is a sum taken inside each corner)
+
 **Operating point**:
 One solution of the network of the picked parts at DC: a voltage at each node and a current in each element, for one choice of a value in each range and one state of each diode. The analysis solves every one of them in an island and keeps, for each current and voltage, the range it takes over all of them (ADR 0076).
 _Avoid_: Bias point, quiescent point, snapshot (a result is the range over the operating points, not one of them)
