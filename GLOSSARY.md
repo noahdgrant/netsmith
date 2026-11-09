@@ -307,7 +307,7 @@ A range whose ends are values, `0A .. .max_supply_current` (ADR 0066): a member 
 _Avoid_: Computed range, dynamic range
 
 **Absolute maximum**:
-The voltages a pin survives, `.abs_min` and `.abs_max` of the pin, relative to its ground. The solver holds them against the worst-case voltage of the pin's net (ADR 0046).
+The voltages a pin survives, `.abs_min` and `.abs_max` of the pin, relative to its ground. The solver holds them against the worst-case voltage of the pin's net (ADR 0046), which for a net the DC analysis solved is the range of its node voltage (ADR 0076, amendment 12, provisional).
 _Avoid_: Rating (a rating is a field such as `.max_power`)
 
 **Terminal**:
