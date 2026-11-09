@@ -265,7 +265,7 @@ pub(crate) fn extract(
             continue;
         };
         let eff = if switching {
-            match range(dc.values[0], Dimension::NONE).filter(|r| r.lo > 0.0) {
+            match range(dc.values[0], Dimension::NONE).filter(|r| r.lo > 0.0 && r.hi <= 1.0) {
                 Some(e) => Some(e),
                 None => continue,
             }
