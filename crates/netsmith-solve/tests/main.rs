@@ -13,6 +13,7 @@ mod conflict_core;
 mod correlated_levels;
 mod cycles;
 mod data;
+mod dc_abs_max;
 mod dc_analysis;
 mod dc_buck;
 mod dc_chain;

@@ -220,6 +220,21 @@ impl Solver<'_> {
                     if inferred && solved_any {
                         open_drain_reads(&planned, &mut reads);
                     }
+                    // The voltage of each free net, for the absolute maximum of a pin on it
+                    // (amendment 12).
+                    if solved_any
+                        && !inferred
+                        && let Some(ground) = planned.ground
+                    {
+                        for (k, &net) in planned.free_nets.iter().enumerate() {
+                            let r = report.range(Which::NodeVoltage(k));
+                            if r.is_empty() || !r.lo.is_finite() || !r.hi.is_finite() {
+                                continue;
+                            }
+                            let (lo, hi) = widen(Dimension::VOLTAGE, r.lo, r.hi);
+                            reads.volts.insert(net, (ground, lo, hi));
+                        }
+                    }
                     // The most that flows into each net the island solved, over every corner
                     // (amendment 8), unless an inferred open-drain pin is in it.
                     if solved_any && !inferred {
