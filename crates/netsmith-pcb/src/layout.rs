@@ -47,7 +47,7 @@ use netsmith_core::Design;
 
 use crate::board::{Board, BoardKeepout, ReferenceSide, Side};
 use crate::geometry::{Pt, Rect};
-use crate::place::{Fixed, HeightZone, ORIGIN, PlaceOptions};
+use crate::place::{CarriedZone, Fixed, HeightZone, ORIGIN, PlaceOptions};
 
 /// The version of the file format this reads and writes.
 pub const VERSION: u32 = 1;
@@ -497,6 +497,34 @@ pub fn height_zones(design: &Design, layout: Option<&Layout>) -> Vec<HeightZone>
         .collect()
 }
 
+/// The keepouts that parts carry, each in its part's own frame: they move and turn with the
+/// part, so the placer keeps the other parts out of them where the part is (ADR 0045
+/// section 11). One that has no `at` has no place and is left out (the check names it).
+pub fn carried_zones(design: &Design) -> Vec<CarriedZone> {
+    design
+        .features
+        .keepouts
+        .iter()
+        .filter_map(|k| {
+            let part = k.part.clone()?;
+            let at = k.at?;
+            let on = |layer: &str| k.layers.iter().any(|l| l == layer);
+            Some(CarriedZone {
+                name: k.name.clone(),
+                part,
+                local: Rect::new(
+                    Pt::new(at.0, at.1),
+                    Pt::new(at.0 + k.size.0, at.1 + k.size.1),
+                ),
+                parts: k.parts,
+                front: on("top"),
+                back: on("bottom"),
+                limit: k.max_height,
+            })
+        })
+        .collect()
+}
+
 /// The boxes of the cutouts that have a place, wherever the source or the layout file puts
 /// them: the part of [`clear_of`] to which a pad keeps the process's distance from copper to
 /// an edge as well as the courtyards keeping out.
@@ -536,6 +564,7 @@ pub fn place_options(design: &Design, layout: Option<&Layout>) -> PlaceOptions {
         keepouts: clear_of(design, layout),
         cutouts: cutouts_of(design, layout),
         height_zones: height_zones(design, layout),
+        carried: carried_zones(design),
         ..PlaceOptions::default()
     };
     if let Some(entries) = layout.and_then(|l| l.boards.get(&design.name)) {
@@ -831,6 +860,54 @@ at = [40.0, 0.0]
 [Demo.cutouts.slot]
 at = [5.0, 4.0]
 "#;
+
+    #[test]
+    fn a_keepout_a_part_carries_goes_to_the_placer_in_the_parts_frame_and_not_as_a_fixed_box() {
+        // ADR 0045 section 11 (issue 28): a carried keepout moves with its part, so it is not
+        // one of the boxes the placer keeps clear of, nor a height zone; it is a carried zone.
+        let keepout =
+            |name: &str, part: Option<&str>, parts: bool, max_height| netsmith_core::Keepout {
+                name: name.into(),
+                part: part.map(Into::into),
+                at: Some((2.0, -5.0)),
+                size: (8.0, 10.0),
+                layers: vec!["top".into()],
+                tracks: false,
+                vias: false,
+                copper: false,
+                parts,
+                max_height,
+            };
+        let mut design = Design {
+            name: "Demo".into(),
+            process: None,
+            features: Default::default(),
+            interfaces: Vec::new(),
+            notes: Vec::new(),
+            parts: Vec::new(),
+            nets: Vec::new(),
+        };
+        design.features.keepouts = vec![
+            keepout("radio.clear", Some("radio"), true, None),
+            keepout("radio.lid", Some("radio"), false, Some(3.0)),
+            keepout("lid", None, false, Some(3.0)),
+        ];
+        let options = place_options(&design, None);
+        assert!(options.keepouts.is_empty());
+        assert_eq!(options.height_zones.len(), 1, "only the board's own zone");
+        assert_eq!(options.carried.len(), 2);
+        let (clear, lid) = (&options.carried[0], &options.carried[1]);
+        assert_eq!(
+            (clear.name.as_str(), clear.part.as_str()),
+            ("radio.clear", "radio")
+        );
+        assert_eq!(
+            clear.local,
+            Rect::new(Pt::new(2.0, -5.0), Pt::new(10.0, 5.0))
+        );
+        assert!(clear.parts && clear.limit.is_none() && clear.front && !clear.back);
+        assert!(!lid.parts && lid.limit == Some(3.0));
+    }
 
     #[test]
     fn a_layout_is_read_and_written_back_the_same() {

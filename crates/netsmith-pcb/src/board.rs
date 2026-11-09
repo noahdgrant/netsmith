@@ -1193,6 +1193,11 @@ impl Board {
                 placement.height_zones.push(zone);
             }
         }
+        for zone in crate::layout::carried_zones(design) {
+            if !placement.carried.contains(&zone) {
+                placement.carried.push(zone);
+            }
+        }
         let placement = placement.clone();
 
         let mut loaded: HashMap<String, Footprint> = HashMap::new();
@@ -1718,6 +1723,26 @@ impl Board {
                     limit: k.max_height?,
                     name: k.name,
                     rect: k.rect,
+                })
+            })
+            .collect()
+    }
+
+    /// The keepouts that parts carry, each in its part's own frame, for the placer.
+    pub(crate) fn carried_zones(&self) -> Vec<crate::place::CarriedZone> {
+        self.keepouts
+            .iter()
+            .filter_map(|k| {
+                let at = k.at?;
+                let on = |layer: &str| k.layers.iter().any(|l| l == layer);
+                Some(crate::place::CarriedZone {
+                    name: k.name.clone(),
+                    part: k.part.clone()?,
+                    local: Rect::new(at, Pt::new(at.x + k.size.0, at.y + k.size.1)),
+                    parts: k.parts,
+                    front: on("top"),
+                    back: on("bottom"),
+                    limit: k.max_height,
                 })
             })
             .collect()
