@@ -178,7 +178,7 @@ fn measured() {
             eprintln!("    {l}");
         }
         if std::env::var_os("NETSMITH_PICTURE").is_some() {
-            picture(&board, &routing.left);
+            picture(&board, &routing.left, "U1");
         }
         done += usize::from(routing.left.is_empty());
         lines += routing.left.len();
@@ -190,12 +190,23 @@ fn measured() {
     );
 }
 
-/// A picture of the board round U1 in letters, for the two faces, at 0.15 mm a character:
+/// A picture of the board round part `refdes` in letters, for the two faces, at 0.15 mm a character:
 /// pads `#` (`@` for a pad with a line left), a track the letter of its net (by index), a
 /// via `o`, other parts' pads `+`.
-fn picture(board: &netsmith_pcb::Board, left: &netsmith_pcb::Ratsnest) {
+pub fn picture(board: &netsmith_pcb::Board, left: &netsmith_pcb::Ratsnest, refdes: &str) {
+    picture_step(board, left, refdes, None, 0.15);
+}
+
+/// [`picture`] at `step` mm a character; with `round` (a pad's centre) the picture is the 5 mm square about it.
+pub fn picture_step(
+    board: &netsmith_pcb::Board,
+    left: &netsmith_pcb::Ratsnest,
+    refdes: &str,
+    round: Option<netsmith_pcb::Pt>,
+    step: f64,
+) {
     use netsmith_pcb::{CopperLayer, Pt, Rect};
-    let u1 = board.part("U1").unwrap();
+    let u1 = board.part(refdes).unwrap();
     let mut area = Rect::new(u1.at, u1.at);
     for p in &u1.footprint.pads {
         let b = u1.pad_bounds(p);
@@ -204,8 +215,10 @@ fn picture(board: &netsmith_pcb::Board, left: &netsmith_pcb::Ratsnest) {
             Pt::new(area.max.x.max(b.max.x), area.max.y.max(b.max.y)),
         );
     }
-    let area = area.expanded(2.0);
-    let step = 0.15;
+    let area = match round {
+        Some(c) => netsmith_pcb::Rect::new(c, c).expanded(2.5),
+        None => area.expanded(2.0),
+    };
     let (w, h) = (
         (area.width() / step) as usize + 1,
         (area.height() / step) as usize + 1,
@@ -239,7 +252,7 @@ fn picture(board: &netsmith_pcb::Board, left: &netsmith_pcb::Ratsnest) {
                 });
                 let c = if wanted {
                     '@'
-                } else if part.refdes == "U1" {
+                } else if part.refdes == refdes {
                     '#'
                 } else {
                     '+'
