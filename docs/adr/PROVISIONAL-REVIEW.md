@@ -3,7 +3,7 @@
 A digest for issue #10. It decides nothing and changes no ADR. Each entry says what was built and where, the choices the ADR leaves to the owner (with
 the ADR's own recommendation or the option it took), and what already depends on them. Language and semantics are the owner's.
 
-Written on 2026-11-08 against `main` at `cd67501`. Method: I read each ADR in full and checked every file, symbol, count and std statement named below
+Written on 2026-11-08 against `main` at `9f5a5b9`. Method: I read each ADR in full and checked every file, symbol, count and std statement named below
 with `grep`, `ls`, `git` and a read of the CSV files. I ran no build and no test, so a claim about behaviour is the ADR's own unless the entry says
 "checked".
 
@@ -73,7 +73,7 @@ Everything else is cheap: a message, a threshold, a name nothing else uses.
 | [0084](#adr-0084) | Consigned part | 4 (7 in the ADR) |
 | [0085](#adr-0085) | Buck stage voltage margin | 4 |
 | [0086](#adr-0086) | Chain carries the peak | 4 (9 in the ADR) |
-| [0087](#adr-0087) | netsmith's own footprints (open PR) | 4 (7 in the ADR) |
+| [0087](#adr-0087) | netsmith's own footprints | 4 (7 in the ADR) |
 
 **Not covered.** Only ADRs whose status or body says *provisional* are here. These say "proposed for owner review" or "implemented ... for review" and
 are a separate batch: 0051 to 0058, 0060 to 0063, 0065 to 0068, 0070, 0071, 0072 (and the review notes inside 0049, 0050, 0059, 0061). Ask if you want
@@ -132,7 +132,7 @@ installed, so I could not re-run it and did not re-count the ADR's "468 names" a
 4. **Growth rule: a new row is added only if it agrees with KiCad within 0.01 mm.** Rows that do not agree are left to the library (nine QFNs, nine
    QFPs with an exposed pad and others). Whether a depopulated BGA grid can be a rule is open. Cheap.
 
-**Depends.** `std/kicad.toml` rows name generated footprints; every example's DRC runs with them. ADR 0087 (PR #255) adds a second source
+**Depends.** `std/kicad.toml` rows name generated footprints; every example's DRC runs with them. ADR 0087 adds a second source
 (netsmith-owned files) beside the generators.
 
 ## ADR 0045
@@ -567,11 +567,9 @@ chain, gets the `.peak` of the rail on the chain's start net. `Fuse` is the only
 **Depends.** `examples/carrier_and_cards.nsm` has a `Fuse` in a chain from a rail that states `.peak &= 3.6V` (lines 83 to 96). Issue #175 is open.
 
 ## ADR 0087
-netsmith ships its own footprints for the packages KiCad lacks. **Not on `main`:** it is in open PR #255 (head
-`815b9b3`). I read it from that branch and checked only that `std/libs/netsmith.pretty/*.kicad_mod`,
-`std/libs/netsmith.kicad_sym` and `crates/netsmith-kicad/src/stdlib.rs` exist there. Status: provisional.
+netsmith ships its own footprints for the packages KiCad lacks. Merged as PR #255 while this digest was open. Status: provisional.
 
-**Built (in the PR).** `std/libs/` embedded in the binary and answered as library `netsmith`; one footprint, `UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA`,
+**Built.** `std/libs/` (checked: `netsmith.pretty/UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA.kicad_mod`, `netsmith.kicad_sym`), embedded by `crates/netsmith-kicad/src/stdlib.rs`, and answered as library `netsmith`; one footprint, `UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA`,
 for the LT8641; `Libraries::write_tables` copies the library into a project's tables.
 
 **Choices (7 in the ADR; each cheap now and dearer once more footprints depend on it).**
@@ -582,5 +580,5 @@ for the LT8641; `Libraries::write_tables` copies the library into a project's ta
 4. **A footprint checked only against its datasheet** (KiCad has none to compare), with one person's check recommended before a board is ordered; the
    footprint's name is the package's, not the part's. Cheap.
 
-**Depends.** Nothing on `main`. The PR adds three lines to ADR 0043.
+**Depends.** One row of `std/kicad.toml` (`netsmith:LT8641`, `netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA`) and `Libraries::write_tables` (`crates/netsmith/src/libraries.rs:86`). It added three lines to ADR 0043.
 
