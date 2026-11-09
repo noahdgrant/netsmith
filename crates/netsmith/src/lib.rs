@@ -7,6 +7,7 @@ pub mod constraints;
 pub mod dxf;
 pub mod editor;
 pub mod fab;
+pub mod heights;
 pub mod init;
 pub mod layout;
 pub mod libraries;
@@ -49,6 +50,9 @@ pub struct Built {
     /// Where each part of the design comes from, in the design's order: its LCSC number,
     /// manufacturer part number and JLCPCB library, and whether the board house places it.
     pub sourcing: Vec<Sourced>,
+    /// The parts whose height is their catalog row's `height` cell, because the design states
+    /// none (ADR 0094). `design.features.heights` lists them with the heights the design states.
+    pub catalog_heights: Vec<heights::CatalogHeight>,
     /// For each generic part that no catalog row stands for, the board's checks run again
     /// with each nearest alternative in its place (ADR 0047). Nothing is solved when the
     /// board is built: `rechecks.get(catalogs)` makes the solves, for the one who shows the result.
@@ -475,6 +479,7 @@ pub fn outcome_observed(
             Box::new(move |pinned: &Catalogs| quietly(|| solve(&board, pinned)))
         });
         unresolved_generics(&mut one, &board.name, catalogs, sources)?;
+        one.catalog_heights = heights::from_catalog_rows(&mut one.design, &one.sourcing, catalogs);
         built.push(one);
     }
     let standalone = total - checked.systems.len();
@@ -607,6 +612,8 @@ pub fn outcome_observed(
                 Box::new(move |pinned: &Catalogs| quietly(|| solve_system(&system, pinned)))
             });
             unresolved_generics(&mut one, &label, catalogs, sources)?;
+            one.catalog_heights =
+                heights::from_catalog_rows(&mut one.design, &one.sourcing, catalogs);
             built.push(one);
         }
         solved.push(SolvedSystem {
@@ -1262,6 +1269,7 @@ fn export(
         project,
         design,
         sourcing,
+        catalog_heights: Vec::new(),
         rechecks: resolve::Rechecks::none(),
         schematic,
         notes,

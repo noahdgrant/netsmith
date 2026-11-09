@@ -568,6 +568,7 @@ fn fab_board(
         // is a warning (owner decision, 2026-11-03, ADR 0045 section 10).
         extras.extend(board.hangs().into_iter().map(|h| format!("warning: {h}")));
         extras.extend(unchecked.iter().map(|u| format!("warning: {u}")));
+        extras.extend(crate::heights::notes(&built.design, &built.catalog_heights));
         extras.extend(
             board
                 .trims()
@@ -1016,6 +1017,7 @@ mod tests {
             library: None,
             assembly,
             assembly_stated: false,
+            catalog_height: None,
             generic: None,
         }
     }

@@ -95,6 +95,7 @@ fn ldo_row(name: &str, package: &str) -> Candidate {
         mpn: None,
         library: None,
         assembly: None,
+        height: None,
         generic: None,
     }
 }
@@ -266,6 +267,7 @@ fn mcu_row(mpn: &str, package: &str) -> Candidate {
         mpn: None,
         library: None,
         assembly: None,
+        height: None,
         generic: None,
     }
 }
