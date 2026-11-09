@@ -2615,13 +2615,21 @@ fn the_scene_and_the_findings_carry_the_heights_and_the_limit_for_the_page() {
     assert_eq!(lid.layers, ["top"]);
     assert!(!lid.parts && !lid.tracks);
     let found = editor.pcb_findings("LedExample").unwrap();
+    // The pin header J1 is 8.9 mm tall by its catalog row (ADR 0094), so it is too tall under
+    // the lid as well; R1 is the part this test states a height for.
     let tall = found
         .findings
         .iter()
-        .find(|f| f.rule == "too_tall")
+        .find(|f| f.rule == "too_tall" && f.parts == ["R1"])
         .unwrap_or_else(|| panic!("{found:?}"));
     assert_eq!(tall.keepout.as_deref(), Some("lid"));
-    assert_eq!(tall.parts, ["R1"]);
+    assert!(
+        found
+            .findings
+            .iter()
+            .any(|f| f.rule == "too_tall" && f.parts == ["J1"]),
+        "{found:?}"
+    );
     assert!(
         tall.message.contains("the keepout `lid` allows 3.00 mm"),
         "{}",

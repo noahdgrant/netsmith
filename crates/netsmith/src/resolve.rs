@@ -234,6 +234,7 @@ pub fn resolve_generics(
                     s.lcsc = row.lcsc;
                     s.mpn = row.mpn;
                     s.library = row.library;
+                    s.catalog_height = row.height;
                 }
                 Err(message) => unresolved.push(Unresolved {
                     refdes: s.refdes.clone(),
@@ -316,9 +317,9 @@ mod tests {
 
     use super::*;
 
-    const ROWS: &str = "lcsc,mpn,resistance,max_power,package,library,source\n\
-        C900001,ZZR-A,249ohm +/- 1%,62.5mW,0402,Basic,https://example.invalid/a\n\
-        C900002,ZZR-B,249ohm +/- 1%,62.5mW,0402,Extended,https://example.invalid/b\n";
+    const ROWS: &str = "lcsc,mpn,resistance,max_power,package,library,height,source\n\
+        C900001,ZZR-A,249ohm +/- 1%,62.5mW,0402,Basic,,https://example.invalid/a\n\
+        C900002,ZZR-B,249ohm +/- 1%,62.5mW,0402,Extended,0.55mm,https://example.invalid/b\n";
 
     /// Stock by LCSC number; a number not listed is unknown.
     #[derive(Debug)]
@@ -351,6 +352,7 @@ mod tests {
             library: None,
             assembly: Assembly::Fab,
             assembly_stated: false,
+            catalog_height: None,
             generic: Some(Generic {
                 catalog: "resistor".into(),
                 package: "0402".into(),
@@ -375,6 +377,19 @@ mod tests {
         assert_eq!(resolved[0].mpn.as_deref(), Some("ZZR-A"));
         assert_eq!(resolved[1].lcsc.as_deref(), Some("C900099"));
         assert_eq!(resolved[1].mpn, None);
+    }
+
+    #[test]
+    fn a_generic_part_has_the_height_of_the_row_it_resolves_to_and_none_when_the_row_has_none() {
+        // The Basic row states no height, so a part that resolves to it has none; when that row
+        // is sold out the part resolves to the Extended row and has its 0.55 mm (ADR 0094).
+        let (resolved, _) = resolve_generics(&[generic_part("R1")], &catalogs(None));
+        assert_eq!(resolved[0].mpn.as_deref(), Some("ZZR-A"));
+        assert_eq!(resolved[0].catalog_height, None);
+        let sold_out = Stock(vec![("C900001", 0)]);
+        let (resolved, _) = resolve_generics(&[generic_part("R1")], &catalogs(Some(sold_out)));
+        assert_eq!(resolved[0].mpn.as_deref(), Some("ZZR-B"));
+        assert_eq!(resolved[0].catalog_height, Some(0.55));
     }
 
     #[test]
