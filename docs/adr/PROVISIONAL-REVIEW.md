@@ -283,8 +283,8 @@ boundary; 6: severities as recommended; 7: capacitors open). The amendments belo
 
 **Built.** `crates/netsmith-solve/src/dc/` (`extract.rs`, `net.rs`, `mod.rs`, `tests.rs`) and `crates/netsmith-solve/src/solve/dcpass.rs` (`dc_pass`
 line 122, `dc_start` line 290; called from `solve.rs:557` and `:2242`); the checker's records in `crates/netsmith-check/src/dc.rs` and `model.rs`
-(`DcKind`, `Instance::dc`, `dc_elements`, `level_tests`). The prototype `crates/netsmith-dc` (1650 lines of source) is in the workspace and **nothing
-depends on it** (checked: only its own `Cargo.toml` names it). The glossary has _Operating point_, _Island_ and _Corner_; the guide has a "DC
+(`DcKind`, `Instance::dc`, `dc_elements`, `level_tests`). The prototype `crates/netsmith-dc` was removed on 2026-11-09 (it is in git history at
+`b504854` and before). The glossary has _Operating point_, _Island_ and _Corner_; the guide has a "DC
 analysis" section.
 
 **Left to the owner at the top level.**

@@ -96,6 +96,7 @@ with, the parts you solder yourself (`hand-solder:`) and the parts you ship to t
 
 - `docs/LANGUAGE.md`: the language guide, with a quick start, every construct with a tested
   example and the real error you get when you misuse it, and the standard library.
+- `docs/PIPELINE.md`: the stages a design goes through, from source to a fab package, with diagrams.
 - `docs/CONCEPTS.md`: how parts, modules, boards and systems combine.
   `docs/PROJECT-LAYOUT.md`: a repository with several boards.
 - `GLOSSARY.md`: the vocabulary. `docs/DESIGN-RULES.md`: the rules the language follows.

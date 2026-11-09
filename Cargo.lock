@@ -556,10 +556,6 @@ name = "netsmith-core"
 version = "0.1.0"
 
 [[package]]
-name = "netsmith-dc"
-version = "0.1.0"
-
-[[package]]
 name = "netsmith-dxf"
 version = "0.1.0"
 
