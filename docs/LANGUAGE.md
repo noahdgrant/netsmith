@@ -7563,7 +7563,7 @@ An output below the reference cannot be made, because the divider can only raise
 
 ### Switching regulators
 
-A buck converter is an IC, an inductor, two capacitors and a feedback divider. The IC is the one part that differs, so the library splits the work (ADR 0025). `std::parts::regulator::Buck` is an interface of what a datasheet says: the switching node `sw` (a rail the IC supplies, joined to the inductor), the feedback pin `fb`, the reference `vref`, the switching frequency `fsw`, the input range, the largest output current, the efficiency as a range, the smallest inductance, optionally the least saturation current (`min_inductor_saturation`) and the largest DC resistance (`max_inductor_dcr`) an inductor may have, and the capacitance asked for on each side. `std::parts::regulator::BuckStage` is a module of everything else: the inductor and the two capacitors, picked from the catalogs (each capacitor rated for the `.peak` of its rail when the board states one and always for the rail's steady voltage, so a peak stated too low cannot weaken it; each side a bank of identical capacitors in parallel when one is not enough), and a `FeedbackDivider` that sets the output from the reference.
+A buck converter is an IC, an inductor, two capacitors and a feedback divider. The IC is the one part that differs, so the library splits the work (ADR 0025). `std::parts::regulator::Buck` is an interface of what a datasheet says: the switching node `sw` (a rail the IC supplies, joined to the inductor), the feedback pin `fb`, the reference `vref`, the switching frequency `fsw`, the input range, the largest output current, the efficiency as a range, the smallest inductance, optionally the least saturation current (`min_inductor_saturation`) and the largest DC resistance (`max_inductor_dcr`) an inductor may have, optionally the minimum on-time and off-time of the switch (`min_on_time`, `min_off_time`, ADR 0093), and the capacitance asked for on each side. `std::parts::regulator::BuckStage` is a module of everything else: the inductor and the two capacitors, picked from the catalogs (each capacitor rated for the `.peak` of its rail when the board states one and always for the rail's steady voltage, so a peak stated too low cannot weaken it; each side a bank of identical capacitors in parallel when one is not enough), and a `FeedbackDivider` that sets the output from the reference.
 
 A concrete IC is a `part` that writes its pin table, its datasheet numbers, one relation, the input current from the output current and the efficiency (`vin = vout * iout / efficiency` over the whole efficiency range, so it reaches the supply as any load does, ADR 0007 and ADR 0014), and what it is at DC, `dc switching_regulator .vin .buck.sw .buck.efficiency` (see "What a part is at DC" and "DC analysis": it lets the solver work out the input current through the parts in front of the IC, and the input voltage they leave it). This one is invented for this guide:
 
@@ -7725,11 +7725,84 @@ error: -u.buck.sw.current must always be at most u.buck.max_output_current, but 
 132 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -stage.vout.current must always be at most stage.buck.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `stage`: -stage.inductor.current (6.402uA..3A) + -stage.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (6.402uA..3A) + stage.inductor.current (6.402uA..3A) add up to zero; net `net-stage.inductor.a`: stage.buck.sw.current (6.402uA..3A) + u.buck.sw.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:251:5
+    --> std/parts/regulator.nsm:273:5
     |
-251 |     -.vout.current <= .buck.max_output_current
+273 |     -.vout.current <= .buck.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
+
+An IC cannot switch for less than a minimum on-time, so at a frequency the output cannot be made from an input that is too high, and a minimum off-time sets how close the input may come to the output (ADR 0093, provisional). `Buck` has both as `optional` members, `.min_on_time` and `.min_off_time` (ADR 0074), which a part states from its datasheet at the largest figure given. The stage has the two times it asks of the IC, `.on_time = vout / (vin * fsw)` and `.off_time = (vin - vout) / (vin * fsw)`, in the worst case the ranges give (the lowest output at the highest input and the highest frequency), and checks them against the IC's. An IC that states neither has no such check and the build says nothing. The checks are on the ideal duty cycle, so they are never looser than the real one, which is a little larger because of the switch drops; an IC with an equation of its own (the `Lt8641`'s Equations 4 and 5) writes that instead. Past either limit a real IC still regulates, at a lower frequency, so the ripple that the stage computes at the programmed one is not the board's. An invented IC for 4.5 V to 60 V that needs 150 ns of on-time, on a board that makes 5 V from an input that reaches 35 V at 1 MHz:
+
+```nsm module=src::zbk7
+import std::parts::regulator::Buck
+import std::sources::Rail
+
+/// A 2 A buck converter for 4.5 V to 60 V that needs 150 ns of on-time. Illustrative; not a real part.
+part Zbk7 {
+    .vin: Rail
+    .buck: Buck {
+        .vref &= 0.8V +/- 1.5%
+        .fsw &= 1MHz +/- 10%
+        .min_input_voltage &= 4.5V
+        .max_input_voltage &= 60V
+        .max_output_current &= 2A
+        .efficiency &= 0.85..0.95
+        .min_inductance &= 1.5uH
+        .min_on_time &= 150ns
+        .min_input_capacitance &= 2uF
+        .min_output_capacitance &= 10uF
+    }
+    .buck.sw.neg ~ .vin.neg
+    .vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)
+    dc switching_regulator .vin .buck.sw .buck.efficiency
+
+    pins {
+        //  pin          kind    name   pads
+        .vin.pos       power   "VIN"  "1" "2"
+        .vin.neg       power   "GND"  "3" "9"
+        .buck.sw.pos   power   "SW"   "4" "5"
+        .buck.fb       input   "FB"   "6"
+        .en            input   "EN"   "7"
+    }
+}
+```
+
+```nsm fails
+import src::zbk7::Zbk7
+import std::parts::regulator::BuckStage
+import std::sources::Rail
+
+board HighInput {
+    .input: Rail {
+        .voltage &= 12V..35V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+        .current &= 0mA..1A
+    }
+    .u: Zbk7
+    .stage: BuckStage { .vout.voltage &= 5V +/- 6% }
+
+    .input ~ .stage.vin
+    .input ~ .u.vin
+    .stage.vout ~ .output
+    .stage.buck ~ .u.buck
+    .u.en ~ .input.pos
+}
+```
+
+```text
+error: stage.on_time must always be at least stage.buck.min_on_time, but 122ns..490.8ns is not always above 150ns
+    --> std/parts/regulator.nsm:282:5
+    |
+282 |     .on_time >= .buck.min_on_time
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+The input of a 12 V board that stays under 16 V holds it (4.7 V over 16 V at 1.1 MHz is 267 ns); a datasheet that gives no figure leaves the check out. A linear regulator's dropout is checked the same way by `LinearRegulator` and by a part that states `.vin.voltage >= .vout.voltage + .dropout` (the section on `LinearRegulator`).
 
 A frequency set by a resistor is a relation the IC writes. Here `rt_value` is a field of the IC and the board states the resistor against it; the stage then uses the frequency that follows:
 

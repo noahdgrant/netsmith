@@ -144,6 +144,17 @@ interface Buck {
     /// Optional (ADR 0074): an IC that states nothing here sets no limit, and `BuckStage`
     /// checks nothing against it.
     .max_inductor_dcr: Resistance optional
+    /// The shortest time the high-side switch can stay on, the datasheet's minimum on-time,
+    /// at its largest (the worst case for the design). It bounds the lowest duty cycle, so the
+    /// highest input for an output and a frequency: `vout / (vin * fsw)` is never less than it.
+    /// Optional (ADR 0074): an IC that states nothing here has no such check from `BuckStage`
+    /// (an IC that gives its own equation, as the `Lt8641` does, writes that instead). ADR 0093.
+    .min_on_time: Time optional
+    /// The shortest time the high-side switch stays off (the low-side switch's minimum on-time
+    /// in some datasheets), at its largest. It bounds the highest duty cycle, so the least
+    /// headroom of the input over the output the IC keeps its frequency at, its dropout:
+    /// `(vin - vout) / (vin * fsw)` is never less than it. Optional, as `min_on_time`.
+    .min_off_time: Time optional
     /// The capacitance the datasheet asks for on the input and the output, as effective
     /// capacitance in use (ADR 0013).
     .min_input_capacitance: Capacitance
@@ -163,6 +174,12 @@ interface Buck {
 ///
 /// - the input stays inside the IC's range and above the output, and the load is at most its
 ///   largest output current;
+/// - the stage's `.on_time`, `vout / (vin * fsw)`, is at least the IC's `.min_on_time`, and its
+///   `.off_time`, `(vin - vout) / (vin * fsw)`, at least the IC's `.min_off_time`: the highest
+///   input and the lowest headroom at which the IC holds its switching frequency, so at which
+///   the ripple below is the ripple of the board (ADR 0093; the minimum on-time bounds the
+///   lowest duty cycle, so the highest input for an output; both are `optional`, so an IC
+///   that states neither has no such check);
 /// - the ripple current of the inductor is `(vin - vout) * vout / (vin * L * fsw)`, largest at
 ///   the highest input, and the inductor must carry the load plus half the ripple without
 ///   saturating: `isat >= iout + ripple / 2`. In a chain the inductor's `.current` is the
@@ -212,6 +229,11 @@ module BuckStage {
     .output_count: Number
     /// The peak-to-peak ripple current of the inductor.
     .ripple: Current
+    /// How long the high-side switch is on in a period, `vout / (vin * fsw)` (the ideal duty
+    /// cycle over the frequency), and how long it is off, `(vin - vout) / (vin * fsw)`: the
+    /// stage's check of the IC's `min_on_time` and `min_off_time` (ADR 0093).
+    .on_time: Time
+    .off_time: Time
     /// The current the feedback divider draws from the output.
     .divider_current: Current
     /// The factor each capacitor's rating has over the highest voltage of its rail (ADR 0084,
@@ -255,6 +277,10 @@ module BuckStage {
     .output_cap.max_voltage >= .vout.peak * .voltage_margin
 
     .ripple == (.vin.voltage - .vout.voltage) * .vout.voltage / (.vin.voltage * .inductor.inductance * .buck.fsw)
+    .on_time == .vout.voltage / (.vin.voltage * .buck.fsw)
+    .off_time == (.vin.voltage - .vout.voltage) / (.vin.voltage * .buck.fsw)
+    .on_time >= .buck.min_on_time
+    .off_time >= .buck.min_off_time
     .inductor.current + .ripple / 2 <= .inductor.saturation_current
     .inductor.inductance >= .buck.min_inductance
     .inductor.saturation_current >= .buck.min_inductor_saturation
