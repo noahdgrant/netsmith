@@ -673,6 +673,15 @@ impl Run<'_> {
             let Some(owner) = model.owner_of(pin) else {
                 continue;
             };
+            // A pin that nothing outside its own part is joined to (an optional pin left to
+            // float) has no voltage to judge, and a note that nothing sets it says nothing.
+            if model.nets()[index]
+                .pins
+                .iter()
+                .all(|&p| model.is_inside(p, owner))
+            {
+                continue;
+            }
             let path = model.path_of(pin);
             let Some(logic) = self.logic_of(pin) else {
                 self.note(

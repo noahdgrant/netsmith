@@ -418,7 +418,7 @@ impl Package {
             "{}: {} part(s) on {} BOM line(s), {} placement(s), {} file(s) in the zip\n",
             self.name,
             self.plan.assembled.len(),
-            self.plan.bom.len(),
+            self.plan.bom_rows().len(),
             self.plan.assembled.len(),
             self.gerber_files.len()
         );

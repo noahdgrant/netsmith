@@ -237,6 +237,82 @@ fn a_transient_above_the_absolute_maximum_is_refused() {
     );
 }
 
+// ---- the absolute maximum of the other pins (Absolute Maximum Ratings, p.2) ----
+
+/// The converter with SYNC/MODE tied to `to` instead of to ground.
+fn sync_tied_to(to: &str) -> String {
+    converter().replace(".u.sync_mode ~ .input.neg", &format!(".u.sync_mode ~ {to}"))
+}
+
+#[test]
+fn sync_mode_tied_to_the_input_is_refused_at_6_v() {
+    let (_, text) = solved(&sync_tied_to(".input.pos"));
+    assert!(
+        text.contains("net `VIN` reaches 16V above its ground `GND`")
+            && text.contains("`u.sync_mode_limit.line.abs_max` is 6V"),
+        "{text}"
+    );
+}
+
+#[test]
+fn tr_ss_tied_to_the_input_is_refused_at_4_v() {
+    let src = converter().replace(
+        "    .u.rt ~> .rt",
+        "    .u.tr_ss ~ .input.pos\n    .u.rt ~> .rt",
+    );
+    let (_, text) = solved(&src);
+    assert!(
+        text.contains("`u.tr_ss_limit.line.abs_max` is 4V"),
+        "{text}"
+    );
+}
+
+#[test]
+fn en_uv_on_a_rail_over_65_v_is_refused() {
+    // EN/UV is tied to its own 70 V rail (the same ground), as a board with a separate
+    // enable supply would: over the 65 V of the table. A 60 V rail is inside it.
+    let src = converter()
+        .replace(
+            "    .u.en_uv ~ .input.pos\n",
+            "    .u.en_uv ~ .enable.pos\n    .enable.neg ~ .input.neg\n",
+        )
+        .replace(
+            "    .output: Rail",
+            "    .enable: Rail {\n        .voltage &= 70V\n        .pos.net &= \"EN\"\n        \
+             .neg.net &= \"GND\"\n    }\n    .output: Rail",
+        );
+    let (_, text) = solved(&src);
+    assert!(
+        text.contains("net `EN` reaches 70V above its ground `GND`")
+            && text.contains("`u.en_uv_limit.line.abs_max` is 65V"),
+        "{text}"
+    );
+    let (_, text) = solved(&src.replace("70V", "60V"));
+    assert!(!text.contains("en_uv_limit"), "{text}");
+}
+
+#[test]
+fn the_usual_wiring_of_the_pins_is_inside_every_limit_and_leaves_nothing_unjudged() {
+    // SYNC/MODE and PG to the output (3.3 V), a soft-start capacitor on TR/SS and EN/UV to the
+    // input: all inside the limits. FB has no limit stated (see the part), so a 5 V stage's
+    // divider is not refused for the 4 V of the datasheet.
+    let src = converter()
+        .replace(".u.sync_mode ~ .input.neg", ".u.sync_mode ~ .output.pos")
+        .replace(
+            "    .u.rt ~> .rt",
+            "    .u.pg ~> .pullup ~> .output.pos\n    .u.tr_ss ~> .soft_start ~> .input.neg\n    \
+             .u.rt ~> .rt",
+        )
+        .replace(
+            "    .boost: Capacitor",
+            "    .pullup: Resistor { .resistance &= 100kohm +/- 5% }\n    \
+             .soft_start: Capacitor { .capacitance &= 10nF +/- 20% }\n    \
+             .boost: Capacitor",
+        );
+    let (_, text) = solved(&src);
+    assert!(text.is_empty(), "{text}");
+}
+
 // ---- the quiescent current (Electrical Characteristics, p.2; ADR 0096) ----
 
 /// What a board that grounds SYNC/MODE (Burst Mode) states: the datasheet's 10 uA, not the

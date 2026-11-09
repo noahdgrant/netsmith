@@ -489,12 +489,12 @@ pub(crate) fn extract(
                 let Some(r) = value(dc.values[0], Dimension::RESISTANCE) else {
                     continue;
                 };
-                // A resistance that cannot be above zero is no resistor; one that can be zero
-                // is taken as the least conductance the matrix can hold.
+                // A resistance that cannot be above zero is no resistor. One that reaches zero
+                // (a bead's `0 ohm..70 mohm`) is solved down to a short (amendment 16).
                 if r.hi <= 0.0 {
                     continue;
                 }
-                let r = Range::new(r.lo.max(MIN_RESISTANCE), r.hi.max(MIN_RESISTANCE));
+                let r = Range::new(r.lo.max(0.0), r.hi);
                 let (Some(a), Some(b)) = (net(dc.pins[0]), net(dc.pins[1])) else {
                     continue;
                 };

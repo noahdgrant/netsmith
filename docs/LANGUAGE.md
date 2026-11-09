@@ -5219,9 +5219,9 @@ board Overload {
 
 ```text
 error: no `ldo` candidate satisfies `stage.regulator`: the closest of the 1 that fit, XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446, fails because -stage.regulator.vout.current must always be at most stage.regulator.max_current, but 0A..50A is not always below 100mA (the currents on net `3V3` in `stage`: stage.regulator.vout.current (-50A..0A) + -stage.vout.current (-50A..0A) add up to zero; net `3V3`: output.current (0A..50A) + stage.vout.current (-50A..0A) add up to zero)
-   --> std/parts/regulator.nsm:39:5
+   --> std/parts/regulator.nsm:40:5
    |
-39 |     -.vout.current <= .max_current
+40 |     -.vout.current <= .max_current
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7577,9 +7577,9 @@ board TooTight {
 
 ```text
 error: no combination of candidates satisfies `divider.rbottom` and `divider.rtop` together: the closest, divider.rbottom = 20kΩ 1% 0402 C25765 and divider.rtop = 56kΩ 1% 0603 C23206, fails because `divider.vout` must stay within 3.762V..3.838V, but (divider.vref * (1 + (divider.rtop.resistance / divider.rbottom.resistance))) works out to 3.707V..3.896V
-   --> std/parts/regulator.nsm:89:5
+   --> std/parts/regulator.nsm:90:5
    |
-89 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
+90 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7744,14 +7744,14 @@ board Overload {
 
 ```text
 error: -u.buck.sw.current must always be at most u.buck.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `net-stage.inductor.a`: stage.buck.sw.current (6.402uA..3A) + u.buck.sw.current (-3A..-6.402uA) add up to zero; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (6.402uA..3A) + stage.inductor.current (6.402uA..3A) add up to zero; net `1V8` in `stage`: -stage.inductor.current (6.402uA..3A) + -stage.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:135:5
+    --> std/parts/regulator.nsm:136:5
     |
-135 |     -.sw.current <= .max_output_current
+136 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -stage.vout.current must always be at most stage.buck.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `stage`: -stage.inductor.current (6.402uA..3A) + -stage.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (6.402uA..3A) + stage.inductor.current (6.402uA..3A) add up to zero; net `net-stage.inductor.a`: stage.buck.sw.current (6.402uA..3A) + u.buck.sw.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:277:5
+    --> std/parts/regulator.nsm:278:5
     |
-277 |     -.vout.current <= .buck.max_output_current
+278 |     -.vout.current <= .buck.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7820,9 +7820,9 @@ board HighInput {
 
 ```text
 error: stage.on_time must always be at least stage.buck.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:286:5
+    --> std/parts/regulator.nsm:287:5
     |
-286 |     .on_time >= .buck.min_on_time
+287 |     .on_time >= .buck.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7902,6 +7902,8 @@ board Converter {
     .u.intvcc ~> .intvcc_cap ~> .input.neg
 }
 ```
+
+The part states the absolute maximum of three pins besides VIN and BIAS, from its Absolute Maximum Ratings (p.2): `EN/UV` 65 V, `TR/SS` 4 V and `SYNC/MODE` 6 V, each as a `Logic` (`.tr_ss_limit` and the like) whose `.line` is the pin inside the part, so the solver compares the voltage of the pin's net with the limit as it does for any `Logic` input (ADR 0046, ADR 0095, provisional). A board that ties `SYNC/MODE` or `TR/SS` to a 9 V to 16 V input is refused with the net, the limit and the field that states it (`net `VIN` reaches 16V above its ground `GND` ... but `u.sync_mode_limit.line.abs_max` is 6V`). A pin left to float is not judged, and one with only a soft-start capacitor on it is a `not evaluated` note, since nothing sets its voltage. `PG` (42 V) and `FB` (4 V) have limits too and state none, for the reasons in the part's doc comment and ADR 0095.
 
 The IC draws current from its input for itself with nothing loaded, and the input current of the part is the load's and that (ADR 0096, provisional): `.quiescent_current`, a range from zero to the largest figure of the mode the converter runs in, which the DC analysis draws at the input too (`dc switching_regulator ... .quiescent_current`), so a sleep-current budget summed from `.u.vin.current` is judged against it. The datasheet gives 10 uA over temperature in Burst Mode, with `SYNC/MODE` tied to ground (`.iq_max`, Electrical Characteristics, p.2), and "several hundred uA" with it floating, high or clocked (0.5 mA at most at 25 C, `.iq_skipping_max`). The part cannot see how the board ties the pin, so the default is the larger, and a board that grounds `SYNC/MODE` says so: `.u.quiescent_current &= 0A .. .u.iq_max`. The 10 uA is a maximum and not a minimum, so the least the input draws is still zero, and a board cannot ask for `.u.vin.current >= 10uA`. The stage's feedback divider is a load on the output and is not in this current (`.divider_current` has it).
 
@@ -8598,7 +8600,7 @@ After the parts are picked, the solver builds the network of the parts that stat
 
 What it models in this stage:
 
-- **Resistors.** A `dc resistor` part (a resistor, a fuse, a ferrite bead) is its resistance over the range of the field, `10kohm +/- 1%` taken at both ends. A resistance that can be zero (a bead's `0ohm..70mohm`) is taken as at least 1 mohm.
+- **Resistors.** A `dc resistor` part (a resistor, a fuse, a ferrite bead) is its resistance over the range of the field, `10kohm +/- 1%` taken at both ends. A resistance that can be zero (a bead's `0ohm..70mohm`) is solved at zero too, as a short (ADR 0076, amendment 16, provisional), and one under 1 mohm is its own value: a 0 to 0.2 mohm link at 90 A to 100 A leaves 11.98 V to 12 V of a 12 V supply, not the 11.9 V to 11.91 V that a floor of 1 mohm gave. The exceptions are a resistor between two nodes that a source holds, or from a node to itself, and a combination whose zero-ohm parts make a loop (two beads side by side at 0 ohm): those are solved at 1 mohm, as every resistance under it once was.
 - **Diodes.** A `dc diode` part blocks, or holds its forward voltage (both ends of the range) and carries a current of at least zero. A state that is not what the circuit says is refused and not counted: a diode in front of a load that always draws cannot block, and one with its anode below its cathode cannot conduct.
 - **Supplies.** A `Rail` that the board itself declares, with a `.voltage` that the board states, is an ideal source over that range between its `pos` and its `neg`, and so is the rail that a part says it gives with `dc source` (a connector's supply: `Obd2M` and `UsbCPower` do) when the design states its `.voltage`. Any other rail of a part or of a module is no source: a part's rail is what the part draws, and a module's is a port whose range may be a seed or a promise. A range that is not a source cannot be treated as one: the voltage of a node would then move apart from the current that makes it.
 - **Loads.** A rail of a part, or a rail of the board that is not a supply, with a `.current` that is never negative is a current source over that range from its `pos` to its `neg`. A part with a `bridge` and no `dc` statement (an LED, an inductor) that has a `.current` with a value, stated or worked out, is a current source over it between the pins of its `bridge`: this is how a board states what is behind a pin that nothing models (a boundary takes a stated `.current`). A pin that the checker says draws nothing (ADR 0027: a capacitor, an input) adds nothing, and a capacitor is open at DC.

@@ -33,9 +33,12 @@
 
 use netsmith_quantity::{Dimension, Quantity};
 
-/// The smallest resistance a resistor is given, 1 mohm: a bead's `0 ohm..70 mohm` has a lower
-/// end of zero, and a zero resistance is not a conductance a matrix can hold. A millivolt at an
-/// ampere is below every tolerance the circuits here have (ADR 0076, section 2).
+/// The smallest resistance that is a conductance of the matrix, 1 mohm (a conductance of 1000 S
+/// is the largest entry the singularity test below is made for). A resistance under it, down to
+/// zero (a bead's `0 ohm..70 mohm`), is solved as a branch with its own resistance, which holds
+/// any value exactly (ADR 0076, amendment 16); the resistance is only raised to this where a
+/// branch cannot be used (a resistor between two held nodes or from a node to itself, and a
+/// combination whose branches make a singular matrix).
 pub(crate) const MIN_RESISTANCE: f64 = 1e-3;
 
 /// A conductance from every free node to the ground, as SPICE does, added only to a combination
@@ -226,6 +229,14 @@ enum Point {
         from: usize,
         to: usize,
         i: f64,
+    },
+    /// A resistance under `MIN_RESISTANCE`, down to a short: a branch whose current is an
+    /// unknown of the matrix and whose equation is `V(a) - V(b) = r * I`, exact for any `r`
+    /// and with no large conductance in the matrix.
+    Branch {
+        a: usize,
+        b: usize,
+        r: f64,
     },
     DiodeOn {
         a: usize,
@@ -448,16 +459,26 @@ impl Island {
         }
         for e in &self.elements {
             all.push(match &e.kind {
-                Kind::Resistor { a, b, r } => r
-                    .corners()
-                    .into_iter()
-                    .map(|r| {
-                        (
-                            format!("at {}", ohms(r)),
-                            Variant::Point(Point::R { a: *a, b: *b, r }),
-                        )
-                    })
-                    .collect(),
+                Kind::Resistor { a, b, r } => {
+                    // A branch needs a node of its own to leave and one to enter, and one of
+                    // them free.
+                    let branch_ok = a != b && (*a < self.free || *b < self.free);
+                    r.corners()
+                        .into_iter()
+                        .map(|r| {
+                            let point = if r < MIN_RESISTANCE && branch_ok {
+                                Point::Branch { a: *a, b: *b, r }
+                            } else {
+                                Point::R {
+                                    a: *a,
+                                    b: *b,
+                                    r: r.max(MIN_RESISTANCE),
+                                }
+                            };
+                            (format!("at {}", ohms(r)), Variant::Point(point))
+                        })
+                        .collect()
+                }
                 Kind::Current { from, to, i } => i
                     .corners()
                     .into_iter()
@@ -677,7 +698,11 @@ impl Island {
             + self
                 .elements
                 .iter()
-                .filter(|e| matches!(e.kind, Kind::Diode { .. }))
+                .filter(|e| match e.kind {
+                    Kind::Diode { .. } => true,
+                    Kind::Resistor { r, .. } => r.lo < MIN_RESISTANCE,
+                    _ => false,
+                })
                 .count()) as u64;
         let rounds = if self.elements.iter().any(|e| {
             matches!(
@@ -816,9 +841,37 @@ impl Island {
         work: &mut Work,
         out: &mut [f64],
     ) -> Result<Op, ()> {
+        let found = self.operating_point_of(points, held_v, work, out);
+        // A combination whose branches make a matrix that cannot be solved (a loop of shorts
+        // and sources, say two beads at zero ohm side by side) is solved with the branches
+        // raised to the least conductance, as every resistance under it once was.
+        if found.is_err() && points.iter().any(|p| matches!(p, Point::Branch { .. })) {
+            let raised: Vec<Point> = points
+                .iter()
+                .map(|p| match *p {
+                    Point::Branch { a, b, r } => Point::R {
+                        a,
+                        b,
+                        r: r.max(MIN_RESISTANCE),
+                    },
+                    ref other => other.clone(),
+                })
+                .collect();
+            return self.operating_point_of(&raised, held_v, work, out);
+        }
+        found
+    }
+
+    fn operating_point_of(
+        &self,
+        points: &[Point],
+        held_v: &[f64],
+        work: &mut Work,
+        out: &mut [f64],
+    ) -> Result<Op, ()> {
         let free = self.free;
         let on: Vec<usize> = (0..points.len())
-            .filter(|&k| matches!(points[k], Point::DiodeOn { .. }))
+            .filter(|&k| matches!(points[k], Point::DiodeOn { .. } | Point::Branch { .. }))
             .collect();
         let sinks: Vec<usize> = (0..points.len())
             .filter(|&k| matches!(points[k], Point::Sink { .. }))
@@ -907,6 +960,7 @@ impl Island {
                 Point::DiodeOn { a, k: cathode, .. } => {
                     (x[branch_of(k)].max(0.0), v(a) - v(cathode))
                 }
+                Point::Branch { a, b, .. } => (x[branch_of(k)], v(a) - v(b)),
                 Point::DiodeOff { a, k: cathode, .. } => (0.0, v(a) - v(cathode)),
                 Point::Open { a, b, .. } => (0.0, v(a) - v(b)),
                 Point::MosOn { d, s, r, .. } => ((v(d) - v(s)) / r, v(d) - v(s)),
@@ -921,7 +975,7 @@ impl Island {
             let mut gives = 0.0;
             for (k, p) in points.iter().enumerate() {
                 let (first, second) = match *p {
-                    Point::R { a, b, .. } => (a, b),
+                    Point::R { a, b, .. } | Point::Branch { a, b, .. } => (a, b),
                     Point::I { from, to, .. } | Point::Sink { from, to, .. } => (from, to),
                     Point::DiodeOn { a, k: cathode, .. }
                     | Point::DiodeOff { a, k: cathode, .. } => (a, cathode),
@@ -944,7 +998,7 @@ impl Island {
             let mut enters = 0.0;
             for (k, p) in points.iter().enumerate() {
                 let (first, second) = match *p {
-                    Point::R { a, b, .. } => (a, b),
+                    Point::R { a, b, .. } | Point::Branch { a, b, .. } => (a, b),
                     Point::I { from, to, .. } | Point::Sink { from, to, .. } => (from, to),
                     Point::DiodeOn { a, k: cathode, .. }
                     | Point::DiodeOff { a, k: cathode, .. } => (a, cathode),
@@ -1038,7 +1092,9 @@ impl Island {
         }
         for p in points {
             match *p {
-                Point::R { a, b, .. } | Point::DiodeOn { a, k: b, .. } => join(&mut parent, a, b),
+                Point::R { a, b, .. }
+                | Point::Branch { a, b, .. }
+                | Point::DiodeOn { a, k: b, .. } => join(&mut parent, a, b),
                 Point::MosOn { d, s, .. } => join(&mut parent, d, s),
                 _ => {}
             }
@@ -1115,6 +1171,23 @@ impl Island {
                     if to < free {
                         work.rhs[to] += i;
                     }
+                }
+                Point::Branch { a, b: cathode, r } => {
+                    let branch = free + on.iter().position(|&o| o == k).unwrap_or(0);
+                    // The current leaves `a` and enters `cathode`; `V(a) - V(cathode) = r I`.
+                    if a < free {
+                        work.add(a, branch, 1.0);
+                        work.add(branch, a, 1.0);
+                    } else {
+                        work.rhs[branch] -= held(a);
+                    }
+                    if cathode < free {
+                        work.add(cathode, branch, -1.0);
+                        work.add(branch, cathode, -1.0);
+                    } else {
+                        work.rhs[branch] += held(cathode);
+                    }
+                    work.add(branch, branch, -r);
                 }
                 Point::DiodeOn { a, k: cathode, vf } => {
                     let branch = free + on.iter().position(|&o| o == k).unwrap_or(0);
@@ -1289,11 +1362,18 @@ pub(crate) fn check_interior(island: &Island, report: &Report, samples: usize) -
             .elements
             .iter()
             .map(|e| match &e.kind {
-                Kind::Resistor { a, b, r } => Point::R {
-                    a: *a,
-                    b: *b,
-                    r: r.lo + (r.hi - r.lo) * rng(),
-                },
+                Kind::Resistor { a, b, r } => {
+                    let r = r.lo + (r.hi - r.lo) * rng();
+                    if r < MIN_RESISTANCE && a != b && (*a < free || *b < free) {
+                        Point::Branch { a: *a, b: *b, r }
+                    } else {
+                        Point::R {
+                            a: *a,
+                            b: *b,
+                            r: r.max(MIN_RESISTANCE),
+                        }
+                    }
+                }
                 Kind::Current { from, to, i } => Point::I {
                     from: *from,
                     to: *to,

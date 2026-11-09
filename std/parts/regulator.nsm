@@ -1,5 +1,6 @@
 //! Voltage regulators.
 
+import std::logic::Logic
 import std::parts::passive::{Capacitor, Inductor, Resistor}
 import std::sources::Rail
 
@@ -388,6 +389,25 @@ module BuckStage {
 /// - `BIAS` takes at most 25 V (Absolute Maximum Ratings, p.2); the datasheet ties it to the
 ///   output for outputs of 3.3 V to 25 V, and to ground when no supply is available (Pin
 ///   Functions, p.10), so the board states `.bias_voltage` and joins the pin.
+/// - The other pins that the Absolute Maximum Ratings (p.2) give a limit for are each a `Logic`
+///   named `<pin>_limit`, whose `.line` is joined to the pin inside the part (it has no pad of
+///   its own) and has the limit as its `.abs_max`. The solver compares that with the
+///   worst-case voltage of the pin's net above the part's ground (ADR 0046), so a board that
+///   ties the pin to the input rail is refused: `EN/UV` 65 V (`.en_uv_limit`), `TR/SS` 4 V
+///   (`.tr_ss_limit`) and `SYNC/MODE` 6 V (`.sync_mode_limit`). The datasheet does not say
+///   what the ratings are measured from; they are taken from `GND`, as such a table's
+///   convention is. The pins keep their names and kinds: only the limit is stated. A pin
+///   joined to nothing (`TR/SS` and `SYNC/MODE` may float) is not judged, and one with only a
+///   capacitor on it (a soft-start capacitor) is a `not evaluated` note, as the voltage of a
+///   net that nothing sets is not known. `INTVCC`, `BST`, `RT` and the SW pads have no limit
+///   in the table and state none. Two pins have one and state none, on purpose (ADR 0095):
+///   `PG` (42 V) is an open-drain output, and the solver cannot say how far an output swings
+///   unless it is the line of a `Logic`, so a net with `PG` on it is never judged, and a limit
+///   would be a note on every board that wires the pin; and `FB` (4 V) is the tap of the
+///   stage's divider, which the solver reads as the hull of the two resistors (from ground to
+///   the output) when the DC analysis does not solve the output side, so a limit would refuse
+///   every output above 4 V, a 5 V stage included. The divider holds the pin at
+///   `.buck.vref`, under 0.83 V, by its own relation.
 ///
 /// Pins (Pin Functions, p.10 and p.11, and the Pin Configuration, p.2): 1 BIAS, 2 INTVCC,
 /// 3 BST, 4 VIN1, 5 and 12 not present, 6 and 7 GND1, 8 and 9 SW, 10 and 11 GND2, 13 VIN2,
@@ -423,6 +443,27 @@ part Lt8641 {
     /// The voltage the board puts on BIAS: the output's, or ground's.
     .bias_voltage: Voltage
     .bias_voltage <= .bias_abs_max
+
+    /// The absolute maximum of the pins that are not on a rail the part states (Absolute
+    /// Maximum Ratings, p.2), each as the `Logic` whose `.line` is the pin inside the part
+    /// (see above): `EN/UV` 65 V, `TR/SS` 4 V, `SYNC/MODE` 6 V. A `Logic`
+    /// needs a reference rail, which names the ground the voltage is measured from and
+    /// carries nothing.
+    .en_uv_limit: Logic
+    .en_uv_limit.reference ~ .vin
+    .en_uv_limit.reference.current &= 0A
+    .en_uv_limit.line ~ .en_uv
+    .en_uv_limit.line.abs_max &= 65V
+    .tr_ss_limit: Logic
+    .tr_ss_limit.reference ~ .vin
+    .tr_ss_limit.reference.current &= 0A
+    .tr_ss_limit.line ~ .tr_ss
+    .tr_ss_limit.line.abs_max &= 4V
+    .sync_mode_limit: Logic
+    .sync_mode_limit.reference ~ .vin
+    .sync_mode_limit.reference.current &= 0A
+    .sync_mode_limit.line ~ .sync_mode
+    .sync_mode_limit.line.abs_max &= 6V
 
     .buck: Buck {
         .vref &= 0.79V..0.822V

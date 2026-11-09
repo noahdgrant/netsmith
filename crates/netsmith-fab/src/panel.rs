@@ -1020,7 +1020,7 @@ impl PanelPackage {
             self.spec.rows,
             self.board,
             self.plan.assembled.len(),
-            self.plan.bom.len(),
+            self.plan.bom_rows().len(),
             self.plan.assembled.len(),
             self.gerber_files.len()
         );
