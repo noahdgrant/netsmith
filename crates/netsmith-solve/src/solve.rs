@@ -2238,6 +2238,11 @@ impl Solver<'_> {
         self.to_choose = jobs.len();
         self.chosen_before = 0;
         job::report("parts chosen", 0, Some(self.to_choose as u64));
+        // A circle that a pick waits on is started from the network's own bounds (ADR 0076).
+        self.dc_start(&jobs);
+        for c in self.propagate() {
+            self.report(c.source, c.span, c.message);
+        }
         self.fed = self.fed_by(&jobs);
         self.surveys = self.survey_picks(&jobs);
         let coupling = self.coupling(&jobs);
@@ -2559,17 +2564,20 @@ impl Solver<'_> {
             .any(|&j| jobs[j].columns.iter().any(|(f, _)| reach.contains(f)))
     }
 
-    /// The fields without a value that a job's columns need before a candidate can be judged:
-    /// the bias of a derated column the design asks for, and what the rating a generic part
-    /// leaves open is bounded by.
-    fn waits_on(&self, job: &Job) -> Vec<FieldId> {
+    /// The bias of the derated columns of a job that the design asks for and that has no value:
+    /// what a candidate cannot be judged without.
+    fn unset_biases(&self, job: &Job) -> Vec<FieldId> {
         let mut wanted: Vec<FieldId> = Vec::new();
         for (f, key) in &job.columns {
-            let mut candidates = job.catalog.candidates.iter().filter_map(|c| c.column(key));
-            let bias = candidates.clone().find_map(|v| match v {
-                Value::Derated(d) => Some(d.against.clone()),
-                _ => None,
-            });
+            let bias = job
+                .catalog
+                .candidates
+                .iter()
+                .filter_map(|c| c.column(key))
+                .find_map(|v| match v {
+                    Value::Derated(d) => Some(d.against.clone()),
+                    _ => None,
+                });
             if let Some(against) = bias
                 && self.asked(*f)
             {
@@ -2580,6 +2588,17 @@ impl Solver<'_> {
                     wanted.push(bias);
                 }
             }
+        }
+        wanted
+    }
+
+    /// The fields without a value that a job's columns need before a candidate can be judged:
+    /// the bias of a derated column the design asks for, and what the rating a generic part
+    /// leaves open is bounded by.
+    fn waits_on(&self, job: &Job) -> Vec<FieldId> {
+        let mut wanted: Vec<FieldId> = self.unset_biases(job);
+        for (f, key) in &job.columns {
+            let mut candidates = job.catalog.candidates.iter().filter_map(|c| c.column(key));
             let open = candidates.any(|v| matches!(v, Value::Open(Sense::AtLeast | Sense::AtMost)));
             if open && matches!(self.domain(*f), Domain::Unset) {
                 for r in self.model.relations() {

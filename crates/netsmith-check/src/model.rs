@@ -138,16 +138,22 @@ pub enum DcKind {
     /// draws the output's power divided by the efficiency and the input voltage (ADR 0076,
     /// amendment 3). The first two operands are rails.
     SwitchingRegulator,
+    /// `dc source .vbatt`: the part gives this rail from outside the board (a connector's
+    /// supply): its positive net is held over the range of the rail's voltage and its negative
+    /// net at zero, as a board's own supply rail is (ADR 0076, amendment 5). The operand is a
+    /// rail, not a pin.
+    Source,
 }
 
 impl DcKind {
-    pub const ALL: [DcKind; 6] = [
+    pub const ALL: [DcKind; 7] = [
         Self::Resistor,
         Self::Diode,
         Self::Nmos,
         Self::Pmos,
         Self::LinearRegulator,
         Self::SwitchingRegulator,
+        Self::Source,
     ];
 
     /// The word after `dc`.
@@ -159,13 +165,17 @@ impl DcKind {
             Self::Pmos => "pmos",
             Self::LinearRegulator => "linear_regulator",
             Self::SwitchingRegulator => "switching_regulator",
+            Self::Source => "source",
         }
     }
 
     /// Whether the first operands are rails (interfaces with a `pos`, a `neg` and a `voltage`)
     /// and not pins.
     pub fn takes_rails(self) -> bool {
-        matches!(self, Self::LinearRegulator | Self::SwitchingRegulator)
+        matches!(
+            self,
+            Self::LinearRegulator | Self::SwitchingRegulator | Self::Source
+        )
     }
 
     pub fn from_word(word: &str) -> Option<Self> {
@@ -179,6 +189,7 @@ impl DcKind {
             Self::Diode => &["anode", "cathode"],
             Self::Nmos | Self::Pmos => &["gate", "drain", "source"],
             Self::LinearRegulator | Self::SwitchingRegulator => &["input rail", "output rail"],
+            Self::Source => &["supply rail"],
         }
     }
 
@@ -191,7 +202,7 @@ impl DcKind {
                 ("gate threshold", Dimension::VOLTAGE),
                 ("on resistance", Dimension::RESISTANCE),
             ],
-            Self::LinearRegulator => &[],
+            Self::LinearRegulator | Self::Source => &[],
             Self::SwitchingRegulator => &[("efficiency", Dimension::NONE)],
         }
     }
@@ -205,6 +216,7 @@ impl DcKind {
             Self::Pmos => "dc pmos .gate .drain .source .gate_threshold .on_resistance",
             Self::LinearRegulator => "dc linear_regulator .vin .vout",
             Self::SwitchingRegulator => "dc switching_regulator .vin .buck.sw .buck.efficiency",
+            Self::Source => "dc source .vbatt",
         }
     }
 }

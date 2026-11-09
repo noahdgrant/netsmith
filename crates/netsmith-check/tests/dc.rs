@@ -261,7 +261,7 @@ fn an_unknown_element_lists_the_known_ones() {
     let m = only(&run(&part("dc coil .a .b .resistance")));
     assert_eq!(
         m,
-        "`dc` does not know the element `coil`; the elements are resistor, diode, nmos, pmos, linear_regulator and switching_regulator"
+        "`dc` does not know the element `coil`; the elements are resistor, diode, nmos, pmos, linear_regulator, switching_regulator and source"
     );
 }
 
@@ -427,6 +427,68 @@ fn a_regulator_operand_must_be_a_rail_of_the_part_and_the_efficiency_a_number() 
         m.contains("takes the efficiency here, a number, and `.vref` is a voltage"),
         "{m}"
     );
+}
+
+/// A part with a supply rail, whose body is `body`.
+fn supply_part(body: &str) -> String {
+    format!(
+        "import std::sources::Rail\npart S {{\n    .vbatt: Rail\n    .other: Rail\n    .vref: Voltage\n    {body}\n}}\nboard B {{\n    .s: S\n}}\n"
+    )
+}
+
+#[test]
+fn a_part_that_gives_a_supply_names_its_rail() {
+    let c = run(&supply_part("dc source .vbatt"));
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(
+        element(&c, "s"),
+        Some((DcKind::Source, names(&["vbatt"]), vec![]))
+    );
+}
+
+#[test]
+fn the_connectors_that_give_a_supply_state_a_source() {
+    for (import, name, rail) in [
+        ("connector::Obd2M", "Obd2M", "vbatt"),
+        ("connector::UsbCPower", "UsbCPower", "vbus"),
+    ] {
+        let src = format!("import std::parts::{import}\nboard B {{\n    .c: {name}\n}}\n");
+        let c = run(&src);
+        assert!(
+            !messages(&c).iter().any(|m| m.contains("dc")),
+            "{}",
+            c.render()
+        );
+        assert_eq!(
+            element(&c, "c"),
+            Some((DcKind::Source, names(&[rail]), vec![])),
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn a_source_operand_must_be_a_rail_of_the_part() {
+    // A pin, and a field, are not a rail.
+    let m = only(&run(&supply_part("dc source .vbatt.pos")));
+    assert_eq!(
+        m,
+        "`dc source` takes the supply rail here, a rail, and `.vbatt.pos` is not one; the statement is `dc source .vbatt`"
+    );
+    let m = only(&run(&supply_part("dc source .vref")));
+    assert!(
+        m.contains("takes the supply rail here, a rail, and `.vref` is not one"),
+        "{m}"
+    );
+    // More operands than the one rail.
+    let m = only(&run(&supply_part("dc source .vbatt .other")));
+    assert!(
+        m.contains("`dc source` takes 1 pins and then 0 values, as in `dc source .vbatt`; this has 2 operands"),
+        "{m}"
+    );
+    // One `dc` statement per part.
+    let m = only(&run(&supply_part("dc source .vbatt\n    dc source .other")));
+    assert!(m.contains("this part already has a `dc` statement"), "{m}");
 }
 
 #[test]

@@ -217,8 +217,9 @@ impl Checker<'_> {
         let channel = match el.kind {
             DcKind::Resistor | DcKind::Diode => [el.pins[0], el.pins[1]],
             DcKind::Nmos | DcKind::Pmos => [el.pins[1], el.pins[2]],
-            // A regulator is between rails, and a `bridge` is no part of it.
-            DcKind::LinearRegulator | DcKind::SwitchingRegulator => return,
+            // A regulator is between rails, a source is one rail, and a `bridge` is no part of
+            // either.
+            DcKind::LinearRegulator | DcKind::SwitchingRegulator | DcKind::Source => return,
         };
         if (channel[0] == a && channel[1] == b) || (channel[0] == b && channel[1] == a) {
             return;

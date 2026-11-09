@@ -104,7 +104,7 @@ impl Solver<'_> {
     }
 
     /// The fields that hold the value of `field`: those joined to it by `~`.
-    fn equated(&self, field: FieldId) -> HashSet<FieldId> {
+    pub(super) fn equated(&self, field: FieldId) -> HashSet<FieldId> {
         let mut class = HashSet::from([field]);
         loop {
             let before = class.len();

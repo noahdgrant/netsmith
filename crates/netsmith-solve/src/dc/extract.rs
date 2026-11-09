@@ -100,12 +100,26 @@ pub(crate) struct OutputNode {
     pub reg: usize,
 }
 
+/// A rail whose `pos` net is a free node of an island and whose `neg` net is the island's
+/// ground: its voltage is the node's (ADR 0076, amendment 5: a chain carries the voltage).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RailNode {
+    /// The rail's `.voltage` field.
+    pub field: FieldId,
+    /// The rail itself, for where an error points.
+    pub rail: InstId,
+    /// The free node of the island its `pos` is on.
+    pub node: usize,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Planned {
     pub island: Island,
     pub parts: Vec<Modelled>,
     pub sinks: Vec<Sink>,
     pub outputs: Vec<OutputNode>,
+    /// The rails on the island's free nodes, measured from its ground.
+    pub rails: Vec<RailNode>,
 }
 
 /// What `extract` found: the islands, the regulators, and the regulator outputs that an island
@@ -277,9 +291,17 @@ pub(crate) fn extract(model: &Model) -> Extracted {
             .is_some_and(|p| modelled_regs.contains(&p))
     });
 
-    // The sources and the nets they hold.
+    // The sources and the nets they hold: the supply rails a board declares, and the rails a part
+    // says it gives from outside (`dc source`: a connector's supply).
     let mut held: BTreeMap<usize, Held_> = BTreeMap::new();
     let mut source_pins: HashSet<InstId> = HashSet::new();
+    let supply_rails: HashSet<InstId> = model
+        .dc_elements()
+        .filter(|(part, dc)| {
+            dc.kind == DcKind::Source && model.instance(*part).kind == InstKind::Part
+        })
+        .map(|(_, dc)| dc.pins[0])
+        .collect();
     for (iface, inst) in model.instances() {
         if inst.kind != InstKind::Interface {
             continue;
@@ -288,7 +310,7 @@ pub(crate) fn extract(model: &Model) -> Extracted {
             continue;
         };
         let Some(parent) = inst.parent else { continue };
-        if model.instance(parent).kind != InstKind::Board {
+        if model.instance(parent).kind != InstKind::Board && !supply_rails.contains(&iface) {
             continue;
         }
         let field = model.field(voltage);
@@ -330,7 +352,18 @@ pub(crate) fn extract(model: &Model) -> Extracted {
         hold_net(&mut held, neg, Hold::Ground, Range::point(0.0), &reg.name);
         hold_net(&mut held, reg.out_net, Hold::Pos(neg), reg.vout, &reg.name);
         accounted.extend(reg_pins[idx]);
+        // The other pins of the regulator on the nets of its input are its input too (an IC
+        // with two input pins, an enable tied to the input): what they draw is the input's.
         let input = &reg_inputs[idx];
+        for net in [input.net_pos, input.net_neg] {
+            accounted.extend(
+                nets[net]
+                    .terminals
+                    .iter()
+                    .copied()
+                    .filter(|&t| model.owner_of(t) == Some(reg.part)),
+            );
+        }
         items.push(Item {
             kind: Kind::Regulator {
                 from: 0,
@@ -410,8 +443,8 @@ pub(crate) fn extract(model: &Model) -> Extracted {
                 switches.push((part, dc));
                 continue;
             }
-            // Regulators are taken above.
-            DcKind::LinearRegulator | DcKind::SwitchingRegulator => continue,
+            // Regulators are taken above, and a source is a rail that holds its nets.
+            DcKind::LinearRegulator | DcKind::SwitchingRegulator | DcKind::Source => continue,
         };
         // A diode between two held nets has no current the network can say (two ideal
         // sources and an ideal diode): it is left out, and so is nothing it touches that is
@@ -612,7 +645,7 @@ pub(crate) fn extract(model: &Model) -> Extracted {
         let Some((_, pos, neg)) = model.rail_of(iface) else {
             continue;
         };
-        if reg_rails.contains(&iface) {
+        if reg_rails.contains(&iface) || supply_rails.contains(&iface) {
             continue;
         }
         let Some(owner) = model.owner_of(iface) else {
@@ -782,6 +815,27 @@ pub(crate) fn extract(model: &Model) -> Extracted {
 
     for reg in regs.iter_mut() {
         reg.out_complete = !open.contains(&reg.out_net);
+    }
+
+    // The rails whose voltage a node of the circuit gives: any rail but the two of a regulator,
+    // whose input the pass writes as an element's drop and whose output is held.
+    let mut rail_candidates: Vec<(FieldId, InstId, usize, usize)> = Vec::new();
+    for (iface, inst) in model.instances() {
+        if inst.kind != InstKind::Interface || reg_rails.contains(&iface) {
+            continue;
+        }
+        let Some((voltage, pos, neg)) = model.rail_of(iface) else {
+            continue;
+        };
+        if model.field(voltage).kind != netsmith_check::FieldKind::Quantity(Dimension::VOLTAGE) {
+            continue;
+        }
+        let (Some(&np), Some(&nn)) = (net_of.get(&pos), net_of.get(&neg)) else {
+            continue;
+        };
+        if np != nn {
+            rail_candidates.push((voltage, iface, np, nn));
+        }
     }
 
     // The islands: free nets that elements join. A held net is not merged into anything.
@@ -969,11 +1023,61 @@ pub(crate) fn extract(model: &Model) -> Extracted {
                     .map(|reg| OutputNode { held: h, reg })
             })
             .collect();
+        // The nets a positive source reaches through resistors, diodes, switches and driving
+        // pins (not through the ground, and not through a current source): a node that none
+        // reaches has only the loads on it to set its voltage, which is no voltage.
+        let supplied: BTreeSet<usize> = {
+            let index: BTreeMap<usize, usize> =
+                touched.iter().enumerate().map(|(i, &n)| (n, i)).collect();
+            let mut group: Vec<usize> = (0..touched.len()).collect();
+            let is_ground = |n: usize| held.get(&n).is_some_and(|h| h.hold == Hold::Ground);
+            let mut join = |a: usize, b: usize| {
+                if is_ground(a) || is_ground(b) {
+                    return;
+                }
+                let (ra, rb) = (find(&mut group, index[&a]), find(&mut group, index[&b]));
+                if ra != rb {
+                    group[ra.max(rb)] = ra.min(rb);
+                }
+            };
+            for &i in members {
+                let n = &items[i].nets;
+                match items[i].kind {
+                    Kind::Resistor { .. } | Kind::Diode { .. } => join(n[0], n[1]),
+                    Kind::Mosfet { .. } => join(n[1], n[2]),
+                    Kind::Pin { .. } => join(n[0], n[1]),
+                    Kind::Current { .. } | Kind::Regulator { .. } => {}
+                }
+            }
+            let seeds: Vec<usize> = held_nets
+                .iter()
+                .filter(|n| matches!(held[n].hold, Hold::Pos(_)))
+                .map(|n| find(&mut group, index[n]))
+                .collect();
+            free_nets
+                .iter()
+                .copied()
+                .filter(|n| seeds.contains(&find(&mut group, index[n])))
+                .collect()
+        };
+        let rails = match ground {
+            Some(g) => rail_candidates
+                .iter()
+                .filter(|&&(_, _, np, nn)| nn == g && supplied.contains(&np))
+                .map(|&(field, rail, np, _)| RailNode {
+                    field,
+                    rail,
+                    node: node_of(np),
+                })
+                .collect(),
+            None => Vec::new(),
+        };
         out.push(Planned {
             island,
             parts,
             sinks,
             outputs,
+            rails,
         });
     }
     Extracted {
