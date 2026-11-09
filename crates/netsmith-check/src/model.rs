@@ -1482,17 +1482,38 @@ impl Model {
     }
 
     /// The `supply_peak` field of a part, the highest voltage of the rail a `~>` chain it is
-    /// in starts on (see `Checker::derive_supply_peak`). A part without a `bridge`, or
+    /// in starts on (see `Checker::derive_chain_values`). A part without a `bridge`, or
     /// without a voltage field of that name, is not given one.
     pub fn supply_peak_of(&self, part: InstId) -> Option<FieldId> {
+        self.chain_field_of(part, "supply_peak", Dimension::VOLTAGE)
+    }
+
+    /// The `supply_reverse_peak` field of a part, the highest voltage the supply of the `~>`
+    /// chain it is in reaches the wrong way round, as a positive number (ADR 0091).
+    pub fn supply_reverse_peak_of(&self, part: InstId) -> Option<FieldId> {
+        self.chain_field_of(part, "supply_reverse_peak", Dimension::VOLTAGE)
+    }
+
+    /// The `supply_fault_current` field of a part, the largest current that the part in front
+    /// of it in a `~>` chain, one that has a `limit_current`, lets through (ADR 0091).
+    pub fn supply_fault_current_of(&self, part: InstId) -> Option<FieldId> {
+        self.chain_field_of(part, "supply_fault_current", Dimension::CURRENT)
+    }
+
+    /// The `limit_current` field of a part, the most current it lets through whatever is
+    /// behind it: a fuse's rating (ADR 0091).
+    pub fn limit_current_of(&self, part: InstId) -> Option<FieldId> {
+        self.chain_field_of(part, "limit_current", Dimension::CURRENT)
+    }
+
+    /// A field of a part with a `bridge` that the checker reads by its name, of a quantity.
+    fn chain_field_of(&self, part: InstId, name: &str, dim: Dimension) -> Option<FieldId> {
         if self.instance(part).kind != InstKind::Part {
             return None;
         }
         self.instance(part).bridge?;
-        match self.member(part, "supply_peak")? {
-            Member::Field(f) if self.field(f).kind == FieldKind::Quantity(Dimension::VOLTAGE) => {
-                Some(f)
-            }
+        match self.member(part, name)? {
+            Member::Field(f) if self.field(f).kind == FieldKind::Quantity(dim) => Some(f),
             _ => None,
         }
     }
@@ -1501,6 +1522,19 @@ impl Model {
     pub fn peak_of(&self, rail: InstId) -> Option<FieldId> {
         self.rail_of(rail)?;
         match self.member(rail, "peak")? {
+            Member::Field(f) if self.field(f).kind == FieldKind::Quantity(Dimension::VOLTAGE) => {
+                Some(f)
+            }
+            _ => None,
+        }
+    }
+
+    /// The `reverse_peak` field of a rail: the highest voltage it reaches the wrong way round,
+    /// as a positive number (ADR 0091). A rail from outside the standard library may not
+    /// have one.
+    pub fn reverse_peak_of(&self, rail: InstId) -> Option<FieldId> {
+        self.rail_of(rail)?;
+        match self.member(rail, "reverse_peak")? {
             Member::Field(f) if self.field(f).kind == FieldKind::Quantity(Dimension::VOLTAGE) => {
                 Some(f)
             }

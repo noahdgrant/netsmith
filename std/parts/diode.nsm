@@ -49,12 +49,22 @@ part Diode {
     /// The voltage at the anode relative to the cathode. A diode across a rail takes it from
     /// the rail, the way round it is wired.
     .bridge_voltage: Voltage optional
+    /// The most current that can reach the diode through the part in front of it in its `~>`
+    /// chain that limits it (a fuse's rating), which the checker gives it (ADR 0091). A diode
+    /// with no such part in front of it has none, and the relation is left out.
+    .supply_fault_current: Current optional
+    /// The highest voltage the supply of the `~>` chain the diode is first in (to have one) reaches the
+    /// wrong way round: the `.reverse_peak` of the rail the chain starts on, as a positive
+    /// number, which the checker gives it (ADR 0091). The diode blocks it.
+    .supply_reverse_peak: Voltage optional
 
     .drop == .forward_voltage
     .current <= .max_forward_current
     .bias == -.bridge_voltage
     .bias <= .max_reverse_voltage
     .bias >= -.forward_voltage
+    .supply_fault_current <= .max_forward_current
+    .supply_reverse_peak <= .max_reverse_voltage
     bridge .anode ~> .cathode
     dc diode .anode .cathode .forward_voltage
 
@@ -88,12 +98,22 @@ generic Schottky {
     /// The voltage at the anode relative to the cathode. A diode across a rail takes it from
     /// the rail, the way round it is wired.
     .bridge_voltage: Voltage optional
+    /// The most current that can reach the diode through the part in front of it in its `~>`
+    /// chain that limits it (a fuse's rating), which the checker gives it (ADR 0091). A diode
+    /// with no such part in front of it has none, and the relation is left out.
+    .supply_fault_current: Current optional
+    /// The highest voltage the supply of the `~>` chain the diode is first in (to have one) reaches the
+    /// wrong way round: the `.reverse_peak` of the rail the chain starts on, as a positive
+    /// number, which the checker gives it (ADR 0091). The diode blocks it.
+    .supply_reverse_peak: Voltage optional
 
     .drop == .forward_voltage
     .current <= .max_forward_current
     .bias == -.bridge_voltage
     .bias <= .max_reverse_voltage
     .bias >= -.forward_voltage
+    .supply_fault_current <= .max_forward_current
+    .supply_reverse_peak <= .max_reverse_voltage
     bridge .anode ~> .cathode
     dc diode .anode .cathode .forward_voltage
 
@@ -219,10 +239,16 @@ generic Tvs {
     .bias: Voltage
     /// The voltage from the cathode to the anode: the same as `.bias`, as it is the bridge's.
     .bridge_voltage: Voltage optional
+    /// The highest voltage the supply of the `~>` chain the diode is first in (to have one)
+    /// reaches the wrong way round, as a positive number, which the checker gives it (ADR
+    /// 0091). A unidirectional TVS diode conducts when it is reversed: the voltage across it
+    /// would be `-.supply_reverse_peak`, which `-.supply_reverse_peak >= 0V` refuses.
+    .supply_reverse_peak: Voltage optional
 
     .bias == .bridge_voltage
     .bias >= 0V
     .bias <= .standoff_voltage
+    -.supply_reverse_peak >= 0V
     .clamping_voltage <= .protected_limit
     bridge .cathode ~> .anode
 

@@ -137,11 +137,12 @@ fn a_boundary_with_a_stated_current_is_a_load_on_a_divider() {
 /// ratings are judged, and the drop of each is the current through its resistance or its forward
 /// voltage. Without the pass the three relations of the fuse and the diode wait (nothing states
 /// the current: the net has the rail's and the load's). The supply states its peak, which the fuse
-/// takes (ADR 0086), so its rated voltage is judged too.
+/// takes (ADR 0086), so its rated voltage is judged too. The diode is rated for the fuse's 3 A,
+/// which the chain gives it as its fault current (ADR 0091).
 #[test]
 fn a_fuse_and_a_diode_in_front_of_a_load_are_judged_with_numbers() {
     let src = board(
-        "    .supply.peak &= 24V\n    .fuse: Fuse { .rated_current &= 3A }\n    .diode: Diode { .forward_voltage &= 0.5V..0.8V; .max_forward_current &= 1A; .max_reverse_voltage &= 40V }\n    .mcu: Mcu { .vdd.current &= 50mA..100mA }\n    .aux: Mcu { .vdd.current &= 50mA..200mA }\n    .supply.pos ~> .fuse ~> .diode ~> .mcu.vdd.pos\n    .diode.cathode ~ .aux.vdd.pos\n    .supply.neg ~ .mcu.vdd.neg\n    .supply.neg ~ .aux.vdd.neg\n",
+        "    .supply.peak &= 24V\n    .fuse: Fuse { .rated_current &= 3A }\n    .diode: Diode { .forward_voltage &= 0.5V..0.8V; .max_forward_current &= 3A; .max_reverse_voltage &= 40V }\n    .mcu: Mcu { .vdd.current &= 50mA..100mA }\n    .aux: Mcu { .vdd.current &= 50mA..200mA }\n    .supply.pos ~> .fuse ~> .diode ~> .mcu.vdd.pos\n    .diode.cathode ~ .aux.vdd.pos\n    .supply.neg ~ .mcu.vdd.neg\n    .supply.neg ~ .aux.vdd.neg\n",
     );
     let s = solved(&src);
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));

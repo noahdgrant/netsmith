@@ -16,6 +16,13 @@ interface Rail {
     /// dump). `voltage` is the steady range. Rails joined with `~` share it, and a part that
     /// limits a transient states it for the rail behind it.
     .peak: Voltage
+    /// The highest voltage the rail reaches the wrong way round, as a positive number: the
+    /// negative transient of a vehicle's supply, or what a miswired harness puts on it (the
+    /// check treats it as a voltage that must be blocked). A design states it for the input,
+    /// where it can happen, and the first part of a `~>` chain from the rail that has a
+    /// `.supply_reverse_peak` is checked against it (ADR 0091). Left unstated, nothing is
+    /// checked and nothing is listed as not evaluated.
+    .reverse_peak: Voltage optional
     /// The narrowest track the nets of this rail are routed with: a lower bound, written as
     /// a range (`.min_track &= 0.5mm..1m`). Both pins get it, since the return current is the
     /// same current. A net takes the widest of the rails on it, so `GND` is as wide as the

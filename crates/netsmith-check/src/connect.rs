@@ -647,7 +647,7 @@ impl Checker<'_> {
         self.analyse_mates();
         self.balance_currents();
         self.derive_bias();
-        self.derive_supply_peak();
+        self.derive_chain_values();
         self.equate_bus_values();
     }
 
@@ -756,8 +756,9 @@ impl Checker<'_> {
         }
     }
 
-    /// Give each part in a `~>` chain that has a `supply_peak` (a fuse) the `peak` of the rail
-    /// the chain starts on (ADR 0086).
+    /// Give the parts of each `~>` chain the values of the chain: the `peak` of the rail the
+    /// chain starts on to each part that has a `supply_peak` (a fuse), and the other two
+    /// values of ADR 0091 (see below). ADR 0086.
     ///
     /// The chain carries the value, as it carries the current (ADR 0014): a part in series
     /// is not across the rail and has no `bias`, but it sees the rail's highest voltage
@@ -773,7 +774,19 @@ impl Checker<'_> {
     /// The value is one relation, `supply_peak = rail.peak`, so one the design states too is
     /// checked against it, and a rail that states no peak leaves the checks on it listed as
     /// not evaluated.
-    fn derive_supply_peak(&mut self) {
+    ///
+    /// The rail's `reverse_peak`, the highest voltage it reaches the wrong way round, goes to
+    /// the first part of the chain that has a `supply_reverse_peak`, and to no other: that
+    /// part is the one that meets it (a diode blocks it, a TVS diode conducts), and what is
+    /// behind it is protected by it, or the part's own check names it. The relation is
+    /// `supply_reverse_peak = rail.reverse_peak`.
+    ///
+    /// A part with a `supply_fault_current` is given the `limit_current` of the nearest part
+    /// in front of it in the chain that has one (a fuse's rating): the most that can get
+    /// through to it, whatever is behind it. It needs no rail, so a chain that starts on a
+    /// signal has it. A part further in front that has a `limit_current` is not looked at: the
+    /// nearest is at least the smallest of them, so it is an upper bound.
+    fn derive_chain_values(&mut self) {
         let rails: Vec<(InstId, InstId)> = self
             .model
             .instances()
@@ -802,28 +815,48 @@ impl Checker<'_> {
                 }
             }
             starts.sort();
-            let Some(&(_, _, rail)) = starts.first() else {
-                continue;
-            };
-            let peak = self.model.peak_of(rail).expect("filtered above");
+            let rail = starts.first().map(|&(_, _, rail)| rail);
+            let peak = rail.and_then(|r| self.model.peak_of(r));
+            let reverse = rail.and_then(|r| self.model.reverse_peak_of(r));
+            let mut reverse_met = false;
+            let mut limit: Option<FieldId> = None;
             for &part in &chain.parts {
-                let Some(field) = self.model.supply_peak_of(part) else {
-                    continue;
-                };
-                let (source, span) = match self.model.field(field).narrowed_at.last() {
-                    Some(&at) => at,
-                    None => self.model.instance(part).at(),
-                };
-                std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
-                    lhs: RExpr::Field(field),
-                    op: CmpOp::EqEq,
-                    rhs: RExpr::Field(peak),
-                    source,
-                    span,
-                    written: None,
-                });
+                if let (Some(field), Some(peak)) = (self.model.supply_peak_of(part), peak) {
+                    self.relate_chain_value(part, field, peak);
+                }
+                if let Some(field) = self.model.supply_reverse_peak_of(part) {
+                    if let (Some(reverse), false) = (reverse, reverse_met) {
+                        self.relate_chain_value(part, field, reverse);
+                    }
+                    reverse_met = true;
+                }
+                if let (Some(field), Some(limit)) =
+                    (self.model.supply_fault_current_of(part), limit)
+                {
+                    self.relate_chain_value(part, field, limit);
+                }
+                if let Some(given) = self.model.limit_current_of(part) {
+                    limit = Some(given);
+                }
             }
         }
+    }
+
+    /// The relation `field = value` that a chain gives a part, pointed at the statement that
+    /// gave the part's value if the design gave one, or else at the part.
+    fn relate_chain_value(&mut self, part: InstId, field: FieldId, value: FieldId) {
+        let (source, span) = match self.model.field(field).narrowed_at.last() {
+            Some(&at) => at,
+            None => self.model.instance(part).at(),
+        };
+        std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
+            lhs: RExpr::Field(field),
+            op: CmpOp::EqEq,
+            rhs: RExpr::Field(value),
+            source,
+            span,
+            written: None,
+        });
     }
 
     /// For each net (by union-find root), how many terminals of parts are on it.
