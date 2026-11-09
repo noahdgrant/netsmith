@@ -82,7 +82,7 @@ fn a_part_the_board_marks_consigned_is_assembled_by_the_board_house_with_no_numb
     let consigned: Vec<_> = b
         .sourcing
         .iter()
-        .filter(|s| s.assembly == netsmith_lower::Assembly::Consigned)
+        .filter(|s| s.assembly == netsmith_design::Assembly::Consigned)
         .collect();
     assert_eq!(consigned.len(), 1, "{:#?}", b.sourcing);
     assert!(consigned[0].assembled() && !consigned[0].needs_part_number());

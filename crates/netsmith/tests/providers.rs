@@ -541,7 +541,7 @@ fn a_physical_requirement_keyed_by_the_uses_path_still_applies_after_a_pick() {
     assert_eq!(b.design.parts[0].kind, "BetaCoax");
     assert!(
         !b.design.features.constraints.is_empty(),
-        "the requirement on `rf` was lowered for the picked part"
+        "the requirement on `rf` reached the design for the picked part"
     );
 }
 

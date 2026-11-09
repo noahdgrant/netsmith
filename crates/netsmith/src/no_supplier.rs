@@ -4,7 +4,7 @@
 //! to say that the board house is not to assemble it (ADR 0024, `.assembly`).
 
 use netsmith_check::Sources;
-use netsmith_lower::Sourced;
+use netsmith_design::Sourced;
 
 use crate::Built;
 
@@ -172,7 +172,7 @@ pub fn message(board: &str, parts: &[Unnumbered]) -> String {
 pub fn note(sourcing: &[Sourced]) -> Option<String> {
     let left: Vec<String> = sourcing
         .iter()
-        .filter(|s| s.assembly == netsmith_lower::Assembly::Hand)
+        .filter(|s| s.assembly == netsmith_design::Assembly::Hand)
         .filter(|s| s.lcsc.is_none() && s.mpn.is_some() && s.generic.is_none())
         .map(|s| s.refdes.clone())
         .collect();

@@ -644,7 +644,7 @@ fn a_second_compare_of_a_ref_is_served_from_the_cache_by_commit_hash() {
     assert_eq!(
         stages(&events),
         [
-            "extract", "check", "solve", "lower", "draw", "modules", "diff"
+            "extract", "check", "solve", "design", "draw", "modules", "diff"
         ]
     );
     assert!(events.lock().unwrap()[0].1.contains("out of git"));
@@ -987,7 +987,7 @@ fn the_server_answers_git_and_compare_and_tells_the_socket_how_far_it_is() {
     assert_eq!(
         stages,
         [
-            "extract", "check", "solve", "lower", "draw", "modules", "diff"
+            "extract", "check", "solve", "design", "draw", "modules", "diff"
         ]
     );
     let (status, body) = asked.join().unwrap();

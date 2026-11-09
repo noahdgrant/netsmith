@@ -1,7 +1,7 @@
 //! What a long call shares with whoever started it (ADR 0062): a way to be stopped, and a way
 //! to say how far it has got.
 //!
-//! The checker, the solver, lowering, the schematic's layout and the placer are single calls of
+//! The checker, the solver, the design stage, the schematic's layout and the placer are single calls of
 //! seconds to minutes with a result at the end. Stopping one must not mean a `Result` in
 //! hundreds of functions, so the one who starts it installs a [`Cancel`] for the thread
 //! ([`scope`]), the loops of the call ask [`checkpoint`] now and then, and a checkpoint that

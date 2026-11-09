@@ -1,6 +1,6 @@
 ---
 name: netsmith-read-errors
-description: Read netsmith's checker, solver, lowering and design-rule messages and decide what to change in the .nsm file. Use when netsmith build, editor or fab prints an error or a note, or the editor's problems list shows one.
+description: Read netsmith's checker, solver, design-stage and design-rule messages and decide what to change in the .nsm file. Use when netsmith build, editor or fab prints an error or a note, or the editor's problems list shows one.
 ---
 
 # Read netsmith's messages
@@ -58,7 +58,7 @@ Fix errors one at a time, from the first one. Later errors are often caused by e
 | `... cannot be chosen from the X catalog: F:N: ...`, `F:N: the row for ... has no source` (or `... is already a row at ...`, `... library ... is not Basic ...`) | A catalog file is wrong at line N of file F: a column the part does not list, a cell in the wrong unit, a missing column or source, a repeated part. Fix the file. |
 | `pad N of X is given to both ...`, `... have no pads` | A fault in the part's `pins` table: fix the table. |
 
-## Lowering and fab messages
+## Design-stage and fab messages
 
 - `does not say how it is made`: add `import std::mfg::jlcpcb::TwoLayer` and `.process: TwoLayer`.
 - `process.inner1 ... has no net`: name the plane's net on the board.

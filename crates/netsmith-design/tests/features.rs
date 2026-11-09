@@ -1,9 +1,9 @@
-//! Board features in the lowered design: rail track widths, the outline, cutouts, pours and
+//! Board features in the design: rail track widths, the outline, cutouts, pours and
 //! keepouts (ADR 0020, ADR 0029).
 
 use netsmith_check::{Loader, check};
 use netsmith_core::Design;
-use netsmith_lower::lower;
+use netsmith_design::design_board;
 use netsmith_solve::{Catalogs, solve};
 
 /// `check` of a source that states its board's physical intent inside the board, as the
@@ -18,12 +18,12 @@ fn check_split(src: &str) -> netsmith_check::Checked {
     check("t.nsm", &circuit, &loader)
 }
 
-fn lowered(src: &str) -> Result<Design, Vec<String>> {
+fn designed(src: &str) -> Result<Design, Vec<String>> {
     let c = check_split(src);
     assert!(c.is_ok(), "{}", c.render());
     let s = solve(&c.boards[0], &Catalogs::jlcpcb());
     assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
-    lower(&c.boards[0], &s).map(|l| l.design)
+    design_board(&c.boards[0], &s).map(|l| l.design)
 }
 
 /// A four-layer board with one resistor between `VIN` and `GND`, and `extra` members.
@@ -42,24 +42,24 @@ fn board_with_process(process: &str, extra: &str) -> String {
 }
 
 fn errors_of(src: &str) -> String {
-    lowered(src).unwrap_err().join("\n")
+    designed(src).unwrap_err().join("\n")
 }
 
 #[test]
 fn a_board_with_none_of_it_has_no_features() {
-    let d = lowered(&board("")).unwrap();
+    let d = designed(&board("")).unwrap();
     assert_eq!(d.features, netsmith_core::Features::default());
 }
 
 #[test]
 fn a_part_knows_its_path() {
-    let d = lowered(&board("")).unwrap();
+    let d = designed(&board("")).unwrap();
     assert_eq!(d.parts[0].path, "r");
 }
 
 #[test]
 fn a_rail_gives_its_nets_the_bottom_of_its_min_track() {
-    let d = lowered(&board(
+    let d = designed(&board(
         "    .input: Rail {\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n        .min_track &= 0.8mm..1m\n    }\n",
     ))
     .unwrap();
@@ -71,7 +71,7 @@ fn a_rail_gives_its_nets_the_bottom_of_its_min_track() {
 
 #[test]
 fn a_net_takes_the_widest_of_its_rails() {
-    let d = lowered(&board(
+    let d = designed(&board(
         "    .input: Rail {\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n        .min_track &= 0.8mm..1m\n    }\n    .other: Rail {\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n        .min_track &= 0.5mm..2mm\n    }\n",
     ))
     .unwrap();
@@ -83,7 +83,7 @@ fn a_net_takes_the_widest_of_its_rails() {
 
 #[test]
 fn a_rail_with_no_min_track_gives_no_width() {
-    let d = lowered(&board(
+    let d = designed(&board(
         "    .input: Rail {\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n    }\n",
     ))
     .unwrap();
@@ -92,7 +92,7 @@ fn a_rail_with_no_min_track_gives_no_width() {
 
 #[test]
 fn an_outline_has_its_size_as_a_range_and_a_corner_radius() {
-    let d = lowered(&board(
+    let d = designed(&board(
         "    .outline: Outline {\n        .width &= 60mm\n        .height &= 0mm..40mm\n        .corner_radius &= 2mm\n    }\n",
     ))
     .unwrap();
@@ -128,7 +128,7 @@ fn a_corner_radius_that_cannot_fit_the_outline_is_refused_with_the_numbers() {
 
 #[test]
 fn a_cutout_has_a_size_a_radius_and_a_place_or_none() {
-    let d = lowered(&board(
+    let d = designed(&board(
         "    .slot: Cutout {\n        .x &= 10mm\n        .y &= 12.5mm\n        .width &= 8mm\n        .height &= 4mm\n        .corner_radius &= 1mm\n    }\n    .notch: Cutout {\n        .width &= 2mm\n        .height &= 2mm\n    }\n",
     ))
     .unwrap();
@@ -175,7 +175,7 @@ fn a_position_that_is_a_range_is_refused() {
 
 #[test]
 fn outer_pours_are_the_layers_whose_pour_has_a_net() {
-    let d = lowered(&board_with_process(
+    let d = designed(&board_with_process(
         "        .top.net &= \"GND\"\n        .top.stitch_pitch &= 0mm..8mm\n",
         "",
     ))
@@ -199,7 +199,7 @@ fn a_pour_on_a_net_the_board_lacks_is_refused_with_the_nets() {
 
 #[test]
 fn a_keepout_forbids_everything_everywhere_unless_told_otherwise() {
-    let d = lowered(&board(
+    let d = designed(&board(
         "    .antenna: Keepout {\n        .x &= 40mm\n        .y &= 0mm\n        .width &= 20mm\n        .height &= 12mm\n    }\n    .rf: Keepout {\n        .width &= 5mm\n        .height &= 5mm\n        .layers &= \"top, inner1\"\n        .vias &= \"allow\"\n        .parts &= \"allow\"\n    }\n",
     ))
     .unwrap();
@@ -252,7 +252,7 @@ fn a_keepout_that_allows_everything_is_refused() {
 #[test]
 fn a_part_carries_a_keepout_in_its_own_frame() {
     let src = "import std::mfg::jlcpcb::TwoLayer\nimport std::pcb::Keepout\npart Radio {\n    .package: Package\n    .antenna: Keepout {\n        .x &= -1mm\n        .y &= -9mm\n        .width &= 12mm\n        .height &= 8mm\n        .tracks &= \"forbid\"\n        .parts &= \"allow\"\n    }\n}\nboard B {\n    .process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }\n    .radio: Radio\n}\n";
-    let d = lowered(src).unwrap();
+    let d = designed(src).unwrap();
     let k = &d.features.keepouts;
     assert_eq!(k.len(), 1);
     assert_eq!(k[0].name, "radio.antenna");
@@ -284,7 +284,7 @@ fn a_keepout_in_a_module_is_refused() {
 #[test]
 fn a_module_carries_a_width_to_its_rail_through_a_connection() {
     let src = "import std::mfg::jlcpcb::TwoLayer\nimport std::parts::passive::Resistor\nimport std::sources::Rail\nmodule Stage {\n    .out: Rail\n    .r: Resistor\n    .out.pos ~ .r.a\n    .out.neg ~ .r.b\n}\nboard B {\n    .process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }\n    .stage: Stage\n    .output: Rail {\n        .pos.net &= \"3V3\"\n        .neg.net &= \"GND\"\n        .min_track &= 0.5mm..1m\n    }\n    .stage.out ~ .output\n}\n";
-    let d = lowered(src).unwrap();
+    let d = designed(src).unwrap();
     assert_eq!(
         d.features.net_widths,
         [("3V3".to_string(), 0.5), ("GND".to_string(), 0.5)]
@@ -299,7 +299,7 @@ fn label_board(fields: &str) -> String {
 
 #[test]
 fn a_label_is_a_part_whose_value_is_its_text() {
-    let d = lowered(&label_board(
+    let d = designed(&label_board(
         "        .text &= \"REV A\"\n        .text_height &= 1.5mm\n",
     ))
     .unwrap();

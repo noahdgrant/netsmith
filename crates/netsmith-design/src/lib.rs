@@ -1,4 +1,6 @@
-//! Turns a solved board into the tool-independent [`Design`] that exporters read.
+//! The design stage of a build (check, solve, design, export): turns a solved board into the
+//! tool-independent [`Design`] that exporters read. The stage and the type share a word: the
+//! stage is this crate, the [`Design`] is what it makes.
 //!
 //! Every part gets a reference designator, a value, and the pads of its terminals. Nothing
 //! here names a CAD tool: a resistor is still a `Resistor`, and an exporter decides what
@@ -744,10 +746,10 @@ impl Sourced {
     }
 }
 
-/// A board lowered: the tool-independent design and the sourcing of each of its parts, in
-/// the same order.
+/// What the design stage makes of one board: the tool-independent [`Design`] and the sourcing
+/// of each of its parts, in the same order.
 #[derive(Debug, Clone)]
-pub struct Lowered {
+pub struct Designed {
     pub design: Design,
     pub sourcing: Vec<Sourced>,
     /// The instance each part was made from, in the same order.
@@ -755,7 +757,7 @@ pub struct Lowered {
     /// What the design does against a guideline (ADR 0036): findings that a person decides
     /// about, which the project may make blocking (`guidelines = "error"`).
     pub guidelines: Vec<guidelines::Guideline>,
-    /// Things worth knowing that did not stop the lowering: the nets with a current that is
+    /// Things worth knowing that did not stop the design stage: the nets with a current that is
     /// not known, whose tracks are therefore a lower bound (ADR 0036).
     pub notes: Vec<String>,
     /// Why each of `notes` is there, in the same order (see [`netsmith_core::Cause`]).
@@ -772,7 +774,7 @@ pub struct Lowered {
 /// A panel as the specification `fab` builds it from: the board it repeats, the grid and the
 /// board house's rules (its `fab` member, read as the least the panel now allows for a lower
 /// bound and the most for an upper bound). Every mistake is one line.
-pub fn lower_panel(panel: &Panel) -> Result<PanelSpec, Vec<String>> {
+pub fn design_panel(panel: &Panel) -> Result<PanelSpec, Vec<String>> {
     let mut errors = Vec::new();
     let model = &panel.model;
     let name = &panel.name;
@@ -863,37 +865,39 @@ pub fn lower_panel(panel: &Panel) -> Result<PanelSpec, Vec<String>> {
     })
 }
 
-pub fn lower(board: &Board, solution: &Solution) -> Result<Lowered, Vec<String>> {
-    lower_model(&board.name, &solution.model, solution)
+/// The design stage for one solved board: its [`Design`] with the sourcing of each part, or
+/// every mistake the stage found.
+pub fn design_board(board: &Board, solution: &Solution) -> Result<Designed, Vec<String>> {
+    design_model(&board.name, &solution.model, solution)
 }
 
 /// One board of a solved system. The design is named after the board's definition, so the
 /// files read `PowerBoard.kicad_sch` wherever the system put them.
-pub fn lower_system_board(
+pub fn design_system_board(
     system: &System,
     member: &SystemBoard,
     solution: &Solution,
-) -> Result<Lowered, Vec<String>> {
+) -> Result<Designed, Vec<String>> {
     debug_assert!(system.boards.iter().any(|b| b.inst == member.inst));
     let model = solution.model.scoped_to(member.inst);
-    let mut lowered = lower_model(&member.type_name, &model, solution)?;
+    let mut designed = design_model(&member.type_name, &model, solution)?;
     // A mate that works turned end for end is a guideline (ADR 0040), said once, by the board
     // of the first connector the system names.
     for mate in solution.model.mates() {
         if let Some(why) = &mate.reversible
             && solution.model.board_of(mate.a) == Some(member.inst)
         {
-            lowered.guidelines.push(guidelines::Guideline {
+            designed.guidelines.push(guidelines::Guideline {
                 rule: "mating",
                 message: why.clone(),
                 at: Some(mate.a),
             });
         }
     }
-    Ok(lowered)
+    Ok(designed)
 }
 
-fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered, Vec<String>> {
+fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Designed, Vec<String>> {
     let mut errors: Vec<String> = Vec::new();
 
     // The project's default for who assembles a part nothing else speaks for (ADR 0028).
@@ -1093,7 +1097,7 @@ fn lower_model(name: &str, model: &Model, solution: &Solution) -> Result<Lowered
     let guideline_findings = plan.findings;
 
     if errors.is_empty() {
-        Ok(Lowered {
+        Ok(Designed {
             design: Design {
                 name: name.to_string(),
                 parts,

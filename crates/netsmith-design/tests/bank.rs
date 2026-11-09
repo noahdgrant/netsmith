@@ -1,10 +1,10 @@
-//! A bank of capacitors (ADR 0052) lowers to one part for each, on the same nets.
+//! A bank of capacitors (ADR 0052) becomes one part for each in the design, on the same nets.
 
 use netsmith_check::{Loader, check};
-use netsmith_lower::{Lowered, lower};
+use netsmith_design::{Designed, design_board};
 use netsmith_solve::{Catalogs, solve};
 
-fn lowered(bulk: &str, need: &str) -> Result<Lowered, Vec<String>> {
+fn designed(bulk: &str, need: &str) -> Result<Designed, Vec<String>> {
     let src = format!(
         r#"import std::parts::passive::Capacitor
 import std::sources::Rail
@@ -27,12 +27,12 @@ board B {{
     assert!(c.is_ok(), "{}", c.render());
     let s = solve(&c.boards[0], &Catalogs::jlcpcb());
     assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
-    lower(&c.boards[0], &s)
+    design_board(&c.boards[0], &s)
 }
 
 #[test]
 fn a_bank_is_one_part_for_each_capacitor_on_the_same_nets() {
-    let l = lowered(".count &= 1..8", "40uF").unwrap();
+    let l = designed(".count &= 1..8", "40uF").unwrap();
     let parts = &l.design.parts;
     assert!(parts.len() > 1, "{} parts", parts.len());
     // Numbered one after the other; the first has the path of the instance, the others add
@@ -81,7 +81,7 @@ fn a_bank_is_one_part_for_each_capacitor_on_the_same_nets() {
 
 #[test]
 fn a_bank_of_one_is_the_part_it_was() {
-    let l = lowered(".count &= 1..8", "4uF").unwrap();
+    let l = designed(".count &= 1..8", "4uF").unwrap();
     assert_eq!(l.design.parts.len(), 1);
     assert_eq!(l.design.parts[0].refdes, "C1");
     assert_eq!(l.design.parts[0].path, "bulk");
@@ -89,7 +89,7 @@ fn a_bank_of_one_is_the_part_it_was() {
 
 #[test]
 fn a_count_that_is_not_a_whole_number_is_refused_naming_the_field() {
-    // The solver reports a count with no whole number in it; lowering, which reads the
+    // The solver reports a count with no whole number in it; the design stage, which reads the
     // model whatever the solver said, refuses to draw 2.5 parts.
     let src = r#"import std::parts::passive::Capacitor
 import std::sources::Rail
@@ -107,7 +107,7 @@ board B {
     let c = check("t.nsm", src, &Loader::std());
     assert!(c.is_ok(), "{}", c.render());
     let s = solve(&c.boards[0], &Catalogs::jlcpcb());
-    let errors = lower(&c.boards[0], &s).unwrap_err();
+    let errors = design_board(&c.boards[0], &s).unwrap_err();
     assert!(
         errors.iter().any(|e| e.contains("`bulk.count` is 2.5")
             && e.contains("not a whole number of parts from 1 to 64")),
@@ -116,7 +116,7 @@ board B {
 }
 
 /// A bank (`.bulk`, several capacitors) beside a resistor, and a physical file.
-fn lowered_physical(physical: &str) -> Lowered {
+fn designed_physical(physical: &str) -> Designed {
     let src = r#"import std::parts::passive::{Capacitor, Resistor}
 import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
@@ -141,12 +141,12 @@ board B {
     assert!(c.is_ok(), "{}", c.render());
     let s = solve(&c.boards[0], &Catalogs::jlcpcb());
     assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
-    lower(&c.boards[0], &s).unwrap_or_else(|e| panic!("{e:#?}"))
+    design_board(&c.boards[0], &s).unwrap_or_else(|e| panic!("{e:#?}"))
 }
 
 const OUTLINE: &str = "import std::pcb::Outline\nphysical for B {\n    case { .outline: Outline { .width &= 40mm; .height &= 30mm } }\n";
 
-fn paths_of_bank(l: &Lowered) -> Vec<String> {
+fn paths_of_bank(l: &Designed) -> Vec<String> {
     l.design
         .parts
         .iter()
@@ -157,7 +157,7 @@ fn paths_of_bank(l: &Lowered) -> Vec<String> {
 
 #[test]
 fn a_requirement_on_a_banks_part_holds_for_every_capacitor_and_a_note_says_so() {
-    let l = lowered_physical(&format!(
+    let l = designed_physical(&format!(
         "{OUTLINE}    .bulk.place.top &= 3mm..6mm\n    .bulk.place.side &= \"bottom\"\n    .bulk.height &= 1.2mm\n}}\n"
     ));
     let bank = paths_of_bank(&l);
@@ -201,7 +201,7 @@ fn a_requirement_on_a_banks_part_holds_for_every_capacitor_and_a_note_says_so() 
 
 #[test]
 fn what_a_bank_says_of_what_it_did_has_the_cause_other() {
-    let l = lowered_physical(&format!(
+    let l = designed_physical(&format!(
         "{OUTLINE}    .bulk.place.x - .r1.place.x == 5.5mm +/- 3.5mm\n}}\n"
     ));
     assert!(!l.notes.is_empty());
@@ -217,7 +217,7 @@ fn what_a_bank_says_of_what_it_did_has_the_cause_other() {
 
 #[test]
 fn a_relation_with_a_banks_part_holds_for_every_capacitor_and_a_note_says_so() {
-    let l = lowered_physical(&format!(
+    let l = designed_physical(&format!(
         "{OUTLINE}    .bulk.place.x - .r1.place.x == 5.5mm +/- 3.5mm\n}}\n"
     ));
     let bank = paths_of_bank(&l);
@@ -246,7 +246,7 @@ fn a_relation_with_a_banks_part_holds_for_every_capacitor_and_a_note_says_so() {
 
 #[test]
 fn a_requirement_on_a_part_that_is_not_a_bank_is_left_alone_and_says_nothing() {
-    let l = lowered_physical(&format!("{OUTLINE}    .r1.place.top &= 3mm..6mm\n}}\n"));
+    let l = designed_physical(&format!("{OUTLINE}    .r1.place.top &= 3mm..6mm\n}}\n"));
     let f = &l.design.features;
     assert_eq!(f.constraints.len(), 1);
     assert_eq!(f.constraints[0].path, "r1");
@@ -284,7 +284,7 @@ board B {
     let c = check("t.nsm", src, &Loader::std());
     assert!(c.is_ok(), "{}", c.render());
     let s = solve(&c.boards[0], &Catalogs::jlcpcb());
-    let l = lower(&c.boards[0], &s).unwrap_or_else(|e| panic!("{e:#?}"));
+    let l = design_board(&c.boards[0], &s).unwrap_or_else(|e| panic!("{e:#?}"));
     assert_eq!(l.design.parts.len(), 1, "{:?}", l.design.parts);
     assert_eq!(l.design.parts[0].path, "bar");
 }

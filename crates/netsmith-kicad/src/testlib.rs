@@ -777,7 +777,7 @@ mod tests {
 /// two files that the language takes now: the circuit source, and the text of the physical
 /// file (none when the source had no physical statement).
 ///
-/// This is for tests of a later stage (the lowering, the placer, the checks) that build many
+/// This is for tests of a later stage (the design stage, the placer, the checks) that build many
 /// boards from strings and care about what is stated, not which file it is in. It splits
 /// each `board Name { ... }` at its top-level statements (four spaces in): a declaration of
 /// an `Outline`, `Cutout`, `MountingHole`, `Fiducial` or `Label` goes in the `case { }`

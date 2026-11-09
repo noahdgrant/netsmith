@@ -234,7 +234,7 @@ board Notes {
 ";
 
 #[test]
-fn a_note_is_the_solvers_or_lowerings_and_says_its_board_and_instance() {
+fn a_note_is_the_solvers_or_the_design_stages_and_says_its_board_and_instance() {
     let root = project("stage-notes", BANK);
     let analysis = open(&root).analysis();
     assert_eq!(analysis.errors, 0, "{:?}", analysis.problems);
@@ -252,14 +252,14 @@ fn a_note_is_the_solvers_or_lowerings_and_says_its_board_and_instance() {
         ),
         (Some(ProblemStage::Solve), Some("Notes"), Some("bank.a"))
     );
-    // Lowering's own note: the nets whose tracks it could not size.
-    let lowering = analysis
+    // The design stage's own note: the nets whose tracks it could not size.
+    let designed = analysis
         .problems
         .iter()
         .find(|p| p.message.contains("tracks of net `3V3` are"))
         .unwrap_or_else(|| panic!("{:?}", analysis.problems));
-    assert_eq!(lowering.stage, Some(ProblemStage::Lower));
-    assert_eq!(lowering.board.as_deref(), Some("Notes"));
+    assert_eq!(designed.stage, Some(ProblemStage::Design));
+    assert_eq!(designed.board.as_deref(), Some("Notes"));
     // Every note and warning of a built board has its board.
     assert!(
         analysis
@@ -368,10 +368,10 @@ fn a_workspace_opened_deferred_is_pending_until_its_first_analysis_which_reports
     assert_eq!(events.last(), Some(&AnalysisEvent::Finished), "{events:?}");
     assert_eq!(
         stages(&events),
-        ["check", "solve", "lower", "draw", "modules"],
+        ["check", "solve", "design", "draw", "modules"],
         "{events:?}"
     );
-    // The system is one thing to solve and lower (the file has no stand-alone board), and each
+    // The system is one thing to solve and design (the file has no stand-alone board), and each
     // of its boards is drawn.
     let counts = |wanted: &str| -> Vec<(u32, u32)> {
         events
@@ -391,7 +391,7 @@ fn a_workspace_opened_deferred_is_pending_until_its_first_analysis_which_reports
     };
     assert_eq!(counts("check"), [(0, 1)]);
     assert_eq!(counts("solve"), [(0, 1)]);
-    assert_eq!(counts("lower"), [(0, 1)]);
+    assert_eq!(counts("design"), [(0, 1)]);
     assert_eq!(counts("draw"), [(0, 2), (1, 2)]);
     assert_eq!(counts("modules"), [(0, 1)]);
     // Inside the solve step the solver says what it counts, on lines of the same step.

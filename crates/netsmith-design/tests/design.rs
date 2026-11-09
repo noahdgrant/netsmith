@@ -1,8 +1,8 @@
-//! Lowering solved boards into the tool-independent design.
+//! The design stage: solved boards into the tool-independent design.
 
 use netsmith_check::{Loader, check};
 use netsmith_core::{Design, PartPin, PinKind};
-use netsmith_lower::{Assembly, Lowered, lower, lower_system_board};
+use netsmith_design::{Assembly, Designed, design_board, design_system_board};
 use netsmith_quantity::Quantity;
 use netsmith_solve::{Candidate, Catalog, Catalogs, Library, Value, solve, solve_system};
 
@@ -11,16 +11,16 @@ const STATUS: &str = include_str!("../../../examples/status_indicator.nsm");
 const REGULATOR: &str = include_str!("../../../examples/linear_regulator.nsm");
 const FOUR_LAYER: &str = include_str!("../../../examples/four_layer.nsm");
 
-fn lowered_with_sourcing(src: &str) -> Result<Lowered, Vec<String>> {
+fn designed_with_sourcing(src: &str) -> Result<Designed, Vec<String>> {
     let c = check("t.nsm", src, &Loader::std());
     assert!(c.is_ok(), "{}", c.render());
     let s = solve(&c.boards[0], &Catalogs::jlcpcb());
     assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
-    lower(&c.boards[0], &s)
+    design_board(&c.boards[0], &s)
 }
 
-fn lowered(src: &str) -> Result<Design, Vec<String>> {
-    lowered_with_sourcing(src).map(|l| l.design)
+fn designed(src: &str) -> Result<Design, Vec<String>> {
+    designed_with_sourcing(src).map(|l| l.design)
 }
 
 fn pins(d: &Design, net: &str) -> Vec<String> {
@@ -37,7 +37,7 @@ fn pins(d: &Design, net: &str) -> Vec<String> {
 
 #[test]
 fn the_led_board_becomes_a_header_two_parts_and_three_nets() {
-    let d = lowered(LED).unwrap();
+    let d = designed(LED).unwrap();
     assert_eq!(d.name, "LedExample");
 
     let parts: Vec<_> = d
@@ -100,7 +100,7 @@ board LedExample {
 ";
     // The notes say where in the source they are, and the reordered file has no doc comment:
     // they are compared on their own, in `doc_comments_and_relations_become_notes_in_source_order`.
-    let (mut a, mut b) = (lowered(LED).unwrap(), lowered(reordered).unwrap());
+    let (mut a, mut b) = (designed(LED).unwrap(), designed(reordered).unwrap());
     a.notes.clear();
     b.notes.clear();
     assert_eq!(format!("{a:?}"), format!("{b:?}"));
@@ -108,7 +108,7 @@ board LedExample {
 
 #[test]
 fn the_status_indicator_numbers_each_kind_separately() {
-    let d = lowered(STATUS).unwrap();
+    let d = designed(STATUS).unwrap();
     let parts: Vec<_> = d
         .parts
         .iter()
@@ -143,8 +143,8 @@ fn the_status_indicator_numbers_each_kind_separately() {
 }
 
 #[test]
-fn the_regulator_stage_lowers_with_the_pads_its_catalog_entry_supplies() {
-    let d = lowered(REGULATOR).unwrap();
+fn the_regulator_stage_is_designed_with_the_pads_its_catalog_entry_supplies() {
+    let d = designed(REGULATOR).unwrap();
     let parts: Vec<_> = d
         .parts
         .iter()
@@ -179,7 +179,7 @@ board B {
     .p.a ~ .p.b
 }
 ";
-    let errors = lowered(src).unwrap_err();
+    let errors = designed(src).unwrap_err();
     assert_eq!(errors.len(), 1, "{errors:#?}");
     assert!(errors[0].contains("`p` is a `Bare`"), "{}", errors[0]);
     assert!(
@@ -206,14 +206,14 @@ board B {
     .p.a ~ .p.c
 }
 ";
-    let d = lowered(src).unwrap();
+    let d = designed(src).unwrap();
     assert_eq!(d.nets.len(), 1);
     assert_eq!(pins(&d, &d.nets[0].name), ["U1.1", "U1.2"]);
 }
 
 #[test]
 fn each_part_carries_the_sourcing_the_solver_picked() {
-    let l = lowered_with_sourcing(LED).unwrap();
+    let l = designed_with_sourcing(LED).unwrap();
     assert_eq!(l.sourcing.len(), l.design.parts.len());
     let row: Vec<_> = l
         .sourcing
@@ -268,7 +268,7 @@ fn each_part_carries_the_sourcing_the_solver_picked() {
 #[test]
 fn only_the_headers_are_left_for_hand_soldering() {
     for src in [LED, STATUS, REGULATOR] {
-        for s in lowered_with_sourcing(src).unwrap().sourcing {
+        for s in designed_with_sourcing(src).unwrap().sourcing {
             assert_eq!(s.assembled(), !s.kind.starts_with("Header"), "{}", s.refdes);
             if s.assembled() {
                 assert!(s.lcsc.is_some(), "{} has no LCSC number", s.refdes);
@@ -284,7 +284,7 @@ fn assembly_of(body: &str) -> Vec<(String, Assembly, bool)> {
         "import std::parts::connector::Header1x2\nimport std::parts::passive::{{Led, Resistor}}\n\
          board B {{\n    .d: Led\n    .j: Header1x2\n    .r: Resistor {{ .resistance &= 330ohm +/- 1% }}\n{body}}}\n"
     );
-    lowered_with_sourcing(&src)
+    designed_with_sourcing(&src)
         .unwrap()
         .sourcing
         .iter()
@@ -321,8 +321,8 @@ fn a_part_is_assembled_by_the_fab_unless_the_design_says_otherwise() {
 fn a_part_the_board_marks_consigned_is_placed_by_the_board_house_and_needs_no_number() {
     use Assembly::*;
     let src = "import std::parts::passive::Resistor\nboard B {\n    .r: Resistor { .resistance &= 330ohm +/- 1% }\n    .s: Resistor { .resistance &= 330ohm +/- 1%\n        .assembly &= AssemblyMode::Consigned\n    }\n}\n";
-    let lowered = lowered_with_sourcing(src).unwrap();
-    let by: Vec<_> = lowered
+    let designed = designed_with_sourcing(src).unwrap();
+    let by: Vec<_> = designed
         .sourcing
         .iter()
         .map(|s| {
@@ -345,9 +345,9 @@ fn a_module_offers_consigned_through_its_assembly_mode() {
     let src = "import std::parts::passive::Resistor\n\
          module Pad {\n    .assembly_mode: AssemblyMode\n    .r: Resistor { .resistance &= 330ohm +/- 1% }\n    .r.assembly &= .assembly_mode\n}\n\
          board B {\n    .pad: Pad { .assembly_mode &= AssemblyMode::Consigned }\n}\n";
-    let lowered = lowered_with_sourcing(src).unwrap();
-    assert_eq!(lowered.sourcing[0].assembly, Assembly::Consigned);
-    assert!(lowered.sourcing[0].assembly_stated);
+    let designed = designed_with_sourcing(src).unwrap();
+    assert_eq!(designed.sourcing[0].assembly, Assembly::Consigned);
+    assert!(designed.sourcing[0].assembly_stated);
 }
 
 #[test]
@@ -385,7 +385,7 @@ fn assembly_with_default(default: &str, body: &str) -> Vec<(String, Assembly, bo
         &Catalogs::jlcpcb().with_default_assembly(Some(default)),
     );
     assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
-    lower(&c.boards[0], &s)
+    design_board(&c.boards[0], &s)
         .unwrap()
         .sourcing
         .iter()
@@ -455,8 +455,8 @@ fn a_catalog_rows_assembly_beats_the_projects_default() {
     assert!(checked.is_ok(), "{}", checked.render());
     let solved = solve(&checked.boards[0], &c.with_default_assembly(Some("hand")));
     assert!(solved.diagnostics.is_empty(), "{:?}", solved.diagnostics);
-    let lowered = lower(&checked.boards[0], &solved).unwrap();
-    assert_eq!(lowered.sourcing[0].assembly, Assembly::Fab);
+    let designed = design_board(&checked.boards[0], &solved).unwrap();
+    assert_eq!(designed.sourcing[0].assembly, Assembly::Fab);
 }
 
 #[test]
@@ -491,7 +491,7 @@ fn a_catalog_row_may_state_who_assembles_its_part_and_the_design_overrides_it() 
         });
         c
     };
-    let lower_with = |assembly: Option<&str>, narrowing: &str| {
+    let design_with = |assembly: Option<&str>, narrowing: &str| {
         let src = format!(
             "import std::parts::passive::Resistor\nboard B {{\n    .r: Resistor {{ .resistance &= 330ohm +/- 1%; {narrowing} }}\n}}\n"
         );
@@ -499,20 +499,20 @@ fn a_catalog_row_may_state_who_assembles_its_part_and_the_design_overrides_it() 
         assert!(c.is_ok(), "{}", c.render());
         let s = solve(&c.boards[0], &row(assembly));
         assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
-        let l = lower(&c.boards[0], &s).unwrap();
+        let l = design_board(&c.boards[0], &s).unwrap();
         (l.sourcing[0].assembly, l.sourcing[0].assembly_stated)
     };
-    assert_eq!(lower_with(None, ""), (Assembly::Fab, false));
-    assert_eq!(lower_with(Some("hand"), ""), (Assembly::Hand, true));
+    assert_eq!(design_with(None, ""), (Assembly::Fab, false));
+    assert_eq!(design_with(Some("hand"), ""), (Assembly::Hand, true));
     assert_eq!(
-        lower_with(Some("hand"), ".assembly &= AssemblyMode::Fab"),
+        design_with(Some("hand"), ".assembly &= AssemblyMode::Fab"),
         (Assembly::Fab, true)
     );
 }
 
 #[test]
 fn the_regulator_board_is_sourced_from_the_catalog() {
-    let l = lowered_with_sourcing(REGULATOR).unwrap();
+    let l = designed_with_sourcing(REGULATOR).unwrap();
     let lcsc: Vec<_> = l
         .sourcing
         .iter()
@@ -534,7 +534,7 @@ fn the_regulator_board_is_sourced_from_the_catalog() {
 fn a_part_the_sample_catalog_picked_has_no_sourcing() {
     let c = check("t.nsm", REGULATOR, &Loader::std());
     let s = solve(&c.boards[0], &Catalogs::sample());
-    let l = lower(&c.boards[0], &s).unwrap();
+    let l = design_board(&c.boards[0], &s).unwrap();
     let u1 = l.sourcing.iter().find(|s| s.refdes == "U1").unwrap();
     assert_eq!(
         (u1.lcsc.as_deref(), u1.mpn.as_deref(), u1.library),
@@ -542,7 +542,7 @@ fn a_part_the_sample_catalog_picked_has_no_sourcing() {
     );
     assert!(
         u1.assembled(),
-        "the fab step refuses it, lowering does not hide it"
+        "the fab step refuses it, the design stage does not hide it"
     );
 }
 
@@ -555,7 +555,7 @@ fn board_with(process: &str) -> String {
 
 #[test]
 fn the_process_arrives_in_the_design_as_the_library_states_it() {
-    let d = lowered(LED).unwrap();
+    let d = designed(LED).unwrap();
     let p = d.process.expect("the LED board names a process");
     assert_eq!(
         (p.name.as_str(), p.fabricator.as_str()),
@@ -580,7 +580,7 @@ fn the_process_arrives_in_the_design_as_the_library_states_it() {
 
 #[test]
 fn a_board_that_does_not_choose_a_thickness_leaves_the_whole_range() {
-    let d = lowered(&board_with(".process: TwoLayer")).unwrap();
+    let d = designed(&board_with(".process: TwoLayer")).unwrap();
     let s = d.process.unwrap().stackup;
     assert_eq!(s.thickness, (0.4, 2.0));
     assert_eq!(s.chosen_thickness(), None);
@@ -588,7 +588,7 @@ fn a_board_that_does_not_choose_a_thickness_leaves_the_whole_range() {
 
 #[test]
 fn narrowing_a_rule_moves_the_bottom_of_its_range() {
-    let d = lowered(&board_with(
+    let d = designed(&board_with(
         ".process: TwoLayer {\n        .min_track &= 0.15mm..0.3mm\n        .min_edge_clearance &= 0.5mm..1m\n    }",
     ))
     .unwrap();
@@ -603,15 +603,15 @@ fn narrowing_a_rule_moves_the_bottom_of_its_range() {
 #[test]
 fn a_via_in_a_pad_is_what_the_process_offers_and_the_board_may_refuse_it() {
     // The library's ceiling for vias the fabricator fills and caps.
-    let d = lowered(&board_with(".process: TwoLayer")).unwrap();
+    let d = designed(&board_with(".process: TwoLayer")).unwrap();
     assert_eq!(d.process.unwrap().via_in_pad, 0.55);
     // It is an upper bound, so the board narrows it down; `0mm` is no vias in pads.
-    let d = lowered(&board_with(
+    let d = designed(&board_with(
         ".process: TwoLayer {\n        .via_in_pad &= 0mm\n    }",
     ))
     .unwrap();
     assert_eq!(d.process.unwrap().via_in_pad, 0.0);
-    let d = lowered(&board_with(
+    let d = designed(&board_with(
         ".process: TwoLayer {\n        .via_in_pad &= 0mm..0.3mm\n    }",
     ))
     .unwrap();
@@ -620,13 +620,13 @@ fn a_via_in_a_pad_is_what_the_process_offers_and_the_board_may_refuse_it() {
 
 #[test]
 fn a_board_with_no_process_has_none() {
-    let d = lowered(&board_with("")).unwrap();
+    let d = designed(&board_with("")).unwrap();
     assert_eq!(d.process, None);
 }
 
 #[test]
 fn a_process_that_is_not_one_is_refused_with_what_it_lacks() {
-    let errors = lowered(&board_with(".process: Rail")).unwrap_err();
+    let errors = designed(&board_with(".process: Rail")).unwrap_err();
     let text = errors.join("\n");
     assert!(
         text.contains("`process` is a `Rail` and has no value for `min_track`"),
@@ -636,7 +636,7 @@ fn a_process_that_is_not_one_is_refused_with_what_it_lacks() {
 
 #[test]
 fn a_four_layer_process_arrives_with_its_planes_and_build_up() {
-    let p = lowered(FOUR_LAYER).unwrap().process.unwrap();
+    let p = designed(FOUR_LAYER).unwrap().process.unwrap();
     assert_eq!(
         (p.name.as_str(), p.fabricator.as_str()),
         ("FourLayer", "JLCPCB")
@@ -662,14 +662,14 @@ fn a_four_layer_process_arrives_with_its_planes_and_build_up() {
 
 #[test]
 fn a_two_layer_process_has_no_inner_layers() {
-    let p = lowered(LED).unwrap().process.unwrap();
+    let p = designed(LED).unwrap().process.unwrap();
     assert_eq!(p.stackup.inner, None);
 }
 
 #[test]
 fn an_inner_layer_with_no_net_is_refused_and_told_how_to_name_it() {
     let source = FOUR_LAYER.replace("        .inner2.net &= \"3V3\"\n", "");
-    let errors = lowered(&source).unwrap_err();
+    let errors = designed(&source).unwrap_err();
     let text = errors.join("\n");
     assert!(
         text.contains("`process.inner2` is an inner layer of a 4-layer board and has no net")
@@ -682,7 +682,7 @@ fn an_inner_layer_with_no_net_is_refused_and_told_how_to_name_it() {
 #[test]
 fn a_plane_on_a_net_the_board_does_not_have_names_it_and_the_nets_there_are() {
     let source = FOUR_LAYER.replace(".inner2.net &= \"3V3\"", ".inner2.net &= \"5V\"");
-    let errors = lowered(&source).unwrap_err();
+    let errors = designed(&source).unwrap_err();
     let text = errors.join("\n");
     assert!(
         text.contains(
@@ -695,7 +695,7 @@ fn a_plane_on_a_net_the_board_does_not_have_names_it_and_the_nets_there_are() {
 }
 
 #[test]
-fn each_board_of_a_system_is_lowered_as_if_alone() {
+fn each_board_of_a_system_is_designed_as_if_alone() {
     let src = include_str!("../../../examples/two_boards.nsm");
     let c = check("t.nsm", src, &Loader::std());
     assert!(c.is_ok(), "{}", c.render());
@@ -706,7 +706,7 @@ fn each_board_of_a_system_is_lowered_as_if_alone() {
     let designs: Vec<Design> = system
         .boards
         .iter()
-        .map(|m| lower_system_board(system, m, &s).unwrap().design)
+        .map(|m| design_system_board(system, m, &s).unwrap().design)
         .collect();
     let [power, led] = &designs[..] else {
         panic!("two boards")
@@ -729,7 +729,7 @@ fn each_board_of_a_system_is_lowered_as_if_alone() {
     assert!(power.process.is_some() && led.process.is_some());
 
     // The regulator board alone is the same design: the system added no parts and no nets.
-    let alone = lowered(src).unwrap();
+    let alone = designed(src).unwrap();
     assert_eq!(alone.name, "PowerBoard");
     assert_eq!(alone.parts, power.parts);
     assert_eq!(alone.nets, power.nets);
@@ -755,7 +755,7 @@ fn a_board_of_a_system_can_be_four_layer_and_its_planes_are_checked_against_its_
     let designs: Vec<Design> = system
         .boards
         .iter()
-        .map(|m| lower_system_board(system, m, &s).unwrap().design)
+        .map(|m| design_system_board(system, m, &s).unwrap().design)
         .collect();
     let planes = |d: &Design| {
         d.process
@@ -781,7 +781,7 @@ fn a_board_of_a_system_can_be_four_layer_and_its_planes_are_checked_against_its_
     let c = check("t.nsm", &wrong, &Loader::std());
     let system = c.system("TwoBoards").unwrap();
     let s = solve_system(system, &Catalogs::jlcpcb());
-    let errors = lower_system_board(system, &system.boards[0], &s).unwrap_err();
+    let errors = design_system_board(system, &system.boards[0], &s).unwrap_err();
     assert!(
         errors.join("\n").contains("a plane on the net `VCC`"),
         "{errors:?}"
@@ -817,7 +817,7 @@ board B {
 ";
 
 fn multi() -> Design {
-    lowered(&format!("import std::sources::Rail\n{MULTI}")).unwrap()
+    designed(&format!("import std::sources::Rail\n{MULTI}")).unwrap()
 }
 
 #[test]
@@ -878,7 +878,7 @@ fn the_design_carries_what_each_pin_is() {
 
 #[test]
 fn the_library_parts_carry_their_pin_tables() {
-    let d = lowered(REGULATOR).unwrap();
+    let d = designed(REGULATOR).unwrap();
     let u1 = d.parts.iter().find(|p| p.refdes == "U1").unwrap();
     let rows: Vec<_> = u1
         .pins
@@ -893,7 +893,7 @@ fn the_library_parts_carry_their_pin_tables() {
             ("vout.pos", "OUT", vec!["2".to_string()])
         ]
     );
-    let r = lowered(LED).unwrap();
+    let r = designed(LED).unwrap();
     let led = r.parts.iter().find(|p| p.refdes == "D1").unwrap();
     assert_eq!(
         led.pins
@@ -907,7 +907,7 @@ fn the_library_parts_carry_their_pin_tables() {
 #[test]
 fn a_part_whose_package_was_never_chosen_says_which_packages_it_has() {
     let src = MULTI.replace(".m: Multi { .package &= \"Q\" }", ".m: Multi");
-    let errors = lowered(&format!("import std::sources::Rail\n{src}")).unwrap_err();
+    let errors = designed(&format!("import std::sources::Rail\n{src}")).unwrap_err();
     assert_eq!(errors.len(), 1, "{errors:#?}");
     assert!(
         errors[0].contains("`m` is a `Multi` and no package is chosen, so its pads are not known; its pin tables are for `Q`"),
@@ -942,7 +942,7 @@ fn exposed_assembly_of(body: &str, default: Option<&str>) -> Vec<(String, Assemb
         "an offered value left alone is not a note: {:?}",
         s.deferred
     );
-    lower(&c.boards[0], &s)
+    design_board(&c.boards[0], &s)
         .unwrap()
         .sourcing
         .iter()
@@ -985,7 +985,7 @@ fn a_module_passes_an_offered_assembly_on_through_another_module() {
         module Inner {\n    .assembly_mode: AssemblyMode\n    .j: Header1x2\n    .j.assembly &= .assembly_mode\n}\n\
         module Outer {\n    .assembly_mode: AssemblyMode\n    .inner: Inner\n    .inner.assembly_mode &= .assembly_mode\n}\n\
         board B {\n    .o: Outer\n    .o.assembly_mode &= AssemblyMode::None\n}\n";
-    let l = lowered_with_sourcing(src).unwrap();
+    let l = designed_with_sourcing(src).unwrap();
     assert_eq!(l.sourcing[0].assembly, Assembly::None);
 }
 
@@ -1031,7 +1031,7 @@ fn designators_with(body: &str) -> Result<Vec<(String, String)>, Vec<String>> {
          part Chip {{\n    pins {{ .a passive \"A\" \"1\"; .b passive \"B\" \"2\" }}\n}}\n\
          board B {{\n    .r: Resistor {{ .resistance &= 330ohm +/- 1% }}\n    .buzzer: Buzzer\n    .ic: Chip\n{body}}}\n"
     );
-    lowered(&src).map(|d| {
+    designed(&src).map(|d| {
         d.parts
             .iter()
             .map(|p| (p.path.clone(), p.refdes.clone()))
@@ -1061,7 +1061,7 @@ fn the_board_narrows_the_letters_of_a_part_that_states_none() {
 
 #[test]
 fn letters_a_kind_states_cannot_be_changed_by_the_board() {
-    // The refusal is the checker's, before lowering: the kind's letters are one value.
+    // The refusal is the checker's, before the design stage: the kind's letters are one value.
     let src = "import std::parts::passive::Resistor\nboard B {\n    .r: Resistor { .designator &= \"Z\" }\n}\n";
     let c = check("t.nsm", src, &Loader::std());
     assert!(!c.is_ok());
@@ -1130,7 +1130,7 @@ fn a_number_at_the_end_of_a_path_segment_sorts_as_a_number() {
 
 #[test]
 fn natural_order_compares_segments_in_turn_and_is_total() {
-    use netsmith_lower::natural_path_order as order;
+    use netsmith_design::natural_path_order as order;
     use std::cmp::Ordering::{Equal, Greater, Less};
     assert_eq!(order("pads.tp2", "pads.tp10"), Less);
     assert_eq!(order("pads.tp10", "pads.tp9"), Greater);
@@ -1211,7 +1211,7 @@ board SpiBoard {
 ";
 
 fn spi_board() -> Design {
-    lowered(SPI_BOARD).unwrap()
+    designed(SPI_BOARD).unwrap()
 }
 
 #[test]
@@ -1272,7 +1272,7 @@ fn interface_instances_are_listed_in_path_order() {
 
 #[test]
 fn a_board_with_no_interface_has_none_in_its_design() {
-    let d = lowered(LED).unwrap();
+    let d = designed(LED).unwrap();
     assert!(
         d.interfaces.iter().all(|i| i.type_name == "Rail"),
         "{:?}",
@@ -1329,7 +1329,7 @@ board Noted {
 #[test]
 fn doc_comments_and_relations_become_notes_in_source_order() {
     use netsmith_core::NoteKind;
-    let d = lowered(NOTED).unwrap();
+    let d = designed(NOTED).unwrap();
     let docs: Vec<(&str, &str, &[String])> = d
         .notes
         .iter()
@@ -1393,7 +1393,7 @@ fn doc_comments_and_relations_become_notes_in_source_order() {
 
 #[test]
 fn a_board_with_no_doc_comment_and_no_relation_has_no_note() {
-    let d = lowered(REGULATOR_NO_DOCS).unwrap();
+    let d = designed(REGULATOR_NO_DOCS).unwrap();
     assert!(d.notes.is_empty(), "{:?}", d.notes);
 }
 
@@ -1460,7 +1460,7 @@ fn relation_anchors(d: &Design) -> Vec<Vec<String>> {
 
 #[test]
 fn a_relation_of_rails_only_is_about_the_parts_on_their_nets() {
-    let d = lowered(&rails_only(0)).unwrap();
+    let d = designed(&rails_only(0)).unwrap();
     assert_eq!(relation_anchors(&d), [["r1"]], "{:?}", d.notes);
 }
 
@@ -1472,13 +1472,13 @@ fn the_return_net_of_a_rail_is_left_out_because_every_part_is_on_it() {
     src.push_str(
         "    .ra: Resistor { .resistance &= 10kohm +/- 1% }\n    .rb: Resistor { .resistance &= 10kohm +/- 1% }\n    .output.pos ~> .ra ~> .rb ~> .output.neg\n}\n",
     );
-    let d = lowered(&src).unwrap();
+    let d = designed(&src).unwrap();
     assert_eq!(relation_anchors(&d), [["r1", "ra"]], "{:?}", d.notes);
 }
 
 #[test]
 fn a_relation_of_rails_with_more_than_three_parts_on_them_is_the_sheets() {
-    let d = lowered(&rails_only(3)).unwrap();
+    let d = designed(&rails_only(3)).unwrap();
     assert_eq!(
         relation_anchors(&d),
         [Vec::<String>::new()],
@@ -1489,6 +1489,6 @@ fn a_relation_of_rails_with_more_than_three_parts_on_them_is_the_sheets() {
 
 #[test]
 fn a_relation_that_names_a_part_is_about_the_parts_it_names_and_not_the_rails_parts() {
-    let d = lowered(NOTED).unwrap();
+    let d = designed(NOTED).unwrap();
     assert_eq!(relation_anchors(&d), [["light.d", "light.r"]]);
 }

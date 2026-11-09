@@ -1,6 +1,6 @@
 ---
 name: netsmith-dev-extend-language
-description: Add or change a language construct in netsmith, from the parser through the checker, solver, lowering and exporters, with tests at each stage and the guide updated. Use when a change adds syntax, a check, a solver rule, or a std definition.
+description: Add or change a language construct in netsmith, from the parser through the checker, solver, design stage and exporters, with tests at each stage and the guide updated. Use when a change adds syntax, a check, a solver rule, or a std definition.
 ---
 
 # Extend the language
@@ -14,7 +14,7 @@ Work from the front of the pipeline. Finish and test each stage before the next.
 1. `crates/netsmith-lang`: lexer, parser, syntax tree, printer. A construct must print back to the source it came from (`to_source`).
 2. `crates/netsmith-check`: `checker.rs` (names, declarations), `connect.rs` (connections, nets, chains, balances), `lower.rs` (expressions, narrowing), `model.rs`. Every refusal names the field or path involved.
 3. `crates/netsmith-solve`: propagation, picking, verification. Catalog rows are CSV in `data/jlcpcb/catalog/` (`src/table.rs` reads them, `src/jlcpcb.rs` loads the embedded ones).
-4. `crates/netsmith-lower` and `crates/netsmith-core`: the tool-independent `Design`.
+4. `crates/netsmith-design` and `crates/netsmith-core`: the tool-independent `Design`.
 5. Exporters: `netsmith-kicad`, `netsmith-pcb`, `netsmith-fab`, `netsmith-view`, and the editor (`netsmith-editor`, `crates/netsmith/src/editor/`) if it shows the construct.
 6. `crates/netsmith`: commands and the project manifest.
 

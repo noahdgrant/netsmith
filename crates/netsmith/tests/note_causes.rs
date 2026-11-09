@@ -1,8 +1,8 @@
 //! Each note of a build has a cause (issue #192): the tool that makes the note says it, the
 //! editor sends it as `Problem.cause`, and the Problems dock groups the notes by it. One
-//! invented board for each kind of note; the causes that only a solver or a lowering test can
+//! invented board for each kind of note; the causes that only a solver or a design-stage test can
 //! reach (a level with no value, a pin the model cannot judge, a track width, a bank) are tested
-//! there (`netsmith-solve` `levels::`, `bus_clock::`; `netsmith-lower` `guidelines::`, `bank::`).
+//! there (`netsmith-solve` `levels::`, `bus_clock::`; `netsmith-design` `guidelines::`, `bank::`).
 
 use std::fs;
 

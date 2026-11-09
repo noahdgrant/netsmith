@@ -3,7 +3,7 @@
 
 use netsmith_check::{Loader, check};
 use netsmith_core::{PlaceField, Placement};
-use netsmith_lower::{Lowered, lower};
+use netsmith_design::{Designed, design_board};
 use netsmith_solve::{Catalogs, solve};
 
 /// `check` of a source that states its board's physical intent inside the board, as the
@@ -31,13 +31,13 @@ module Pair {
 
 ";
 
-/// The messages of the solver or the lowering for a board with `body` added.
-fn lowered(body: &str) -> Result<Lowered, Vec<String>> {
-    lowered_in(".width &= 40mm; .height &= 30mm", body)
+/// The messages of the solver or the design stage for a board with `body` added.
+fn designed(body: &str) -> Result<Designed, Vec<String>> {
+    designed_in(".width &= 40mm; .height &= 30mm", body)
 }
 
-/// [`lowered`] with the outline's members given.
-fn lowered_in(outline: &str, body: &str) -> Result<Lowered, Vec<String>> {
+/// [`designed`] with the outline's members given.
+fn designed_in(outline: &str, body: &str) -> Result<Designed, Vec<String>> {
     let src = format!(
         "{HEAD}board B {{\n    .outline: Outline {{ {outline} }}\n    .j: Header1x2\n{body}}}\n"
     );
@@ -47,10 +47,10 @@ fn lowered_in(outline: &str, body: &str) -> Result<Lowered, Vec<String>> {
     if !s.diagnostics.is_empty() {
         return Err(s.diagnostics.iter().map(|d| d.message.clone()).collect());
     }
-    lower(&c.boards[0], &s)
+    design_board(&c.boards[0], &s)
 }
 
-fn placement(l: &Lowered, path: &str) -> Placement {
+fn placement(l: &Designed, path: &str) -> Placement {
     l.design
         .features
         .constraints
@@ -72,12 +72,12 @@ fn bound(p: &Placement, f: PlaceField) -> (f64, f64) {
 
 #[test]
 fn a_board_without_requirements_has_none() {
-    assert!(lowered("").unwrap().design.features.constraints.is_empty());
+    assert!(designed("").unwrap().design.features.constraints.is_empty());
 }
 
 #[test]
 fn a_fixed_pose_is_carried_in_millimetres_and_degrees() {
-    let l = lowered(
+    let l = designed(
         "    .j.place.x &= 2mm\n    .j.place.y &= 15mm\n    .j.place.rotation &= 270\n    .j.place.side &= \"top\"\n",
     )
     .unwrap();
@@ -92,7 +92,7 @@ fn a_fixed_pose_is_carried_in_millimetres_and_degrees() {
 
 #[test]
 fn a_tolerance_is_a_window_and_two_relations_are_one_too() {
-    let l = lowered(
+    let l = designed(
         "    .j.place.x &= 2mm +/- 0.2mm\n    .j.place.y >= .outline.height / 2 - 0.1mm\n    .j.place.y <= .outline.height / 2 + 0.1mm\n",
     )
     .unwrap();
@@ -111,7 +111,7 @@ fn a_tolerance_is_a_window_and_two_relations_are_one_too() {
 
 #[test]
 fn a_bound_with_one_side_open_has_an_infinite_end() {
-    let l = lowered("    .j.place.left >= -0.5mm\n").unwrap();
+    let l = designed("    .j.place.left >= -0.5mm\n").unwrap();
     let (lo, hi) = bound(&placement(&l, "j"), PlaceField::Left);
     assert_eq!(lo, -0.5);
     assert_eq!(hi, f64::INFINITY);
@@ -119,8 +119,9 @@ fn a_bound_with_one_side_open_has_an_infinite_end() {
 
 #[test]
 fn a_module_has_a_box_and_offers_a_part_through_a_value() {
-    let l = lowered("    .p: Pair\n    .p.place.left &= 1mm\n    .p.offered_y &= 12mm +/- 0.5mm\n")
-        .unwrap();
+    let l =
+        designed("    .p: Pair\n    .p.place.left &= 1mm\n    .p.offered_y &= 12mm +/- 0.5mm\n")
+            .unwrap();
     let module = placement(&l, "p");
     assert!(module.module);
     assert_eq!(bound(&module, PlaceField::Left), (1.0, 1.0));
@@ -156,7 +157,7 @@ fn an_offer_the_board_leaves_alone_is_no_requirement_and_no_note() {
         .collect();
     assert!(!notes.iter().any(|n| n.contains("place")), "{notes:?}");
     assert!(
-        lower(&c.boards[0], &s)
+        design_board(&c.boards[0], &s)
             .unwrap()
             .design
             .features
@@ -167,7 +168,7 @@ fn an_offer_the_board_leaves_alone_is_no_requirement_and_no_note() {
 
 #[test]
 fn bounds_that_leave_no_position_name_both_with_their_numbers() {
-    let e = lowered("    .j.place.y >= 12mm\n    .j.place.y <= 3mm\n").unwrap_err();
+    let e = designed("    .j.place.y >= 12mm\n    .j.place.y <= 3mm\n").unwrap_err();
     assert_eq!(e.len(), 1, "{e:?}");
     assert!(
         e[0].contains("the requirements on `j.place.y` cannot all hold")
@@ -180,7 +181,7 @@ fn bounds_that_leave_no_position_name_both_with_their_numbers() {
 
 #[test]
 fn a_window_that_does_not_meet_a_stated_value_is_a_contradiction() {
-    let e = lowered("    .j.place.x &= 2mm\n    .j.place.x >= 5mm\n").unwrap_err();
+    let e = designed("    .j.place.x &= 2mm\n    .j.place.x >= 5mm\n").unwrap_err();
     assert!(
         e[0].contains("at least 5mm") && e[0].contains("at most 2mm"),
         "{}",
@@ -190,7 +191,7 @@ fn a_window_that_does_not_meet_a_stated_value_is_a_contradiction() {
 
 #[test]
 fn a_rotation_that_is_no_multiple_of_90_is_refused() {
-    let e = lowered("    .j.place.rotation &= 45\n").unwrap_err();
+    let e = designed("    .j.place.rotation &= 45\n").unwrap_err();
     assert_eq!(
         e,
         ["`j.place.rotation` allows 45 to 45 degrees, and a part is turned by multiples of 90"]
@@ -199,7 +200,7 @@ fn a_rotation_that_is_no_multiple_of_90_is_refused() {
 
 #[test]
 fn a_side_other_than_top_or_bottom_is_refused() {
-    let e = lowered("    .j.place.side &= \"front\"\n").unwrap_err();
+    let e = designed("    .j.place.side &= \"front\"\n").unwrap_err();
     assert_eq!(
         e,
         ["`j.place.side` is \"front\", which is not \"top\" or \"bottom\""]
@@ -208,7 +209,7 @@ fn a_side_other_than_top_or_bottom_is_refused() {
 
 #[test]
 fn a_requirement_measured_from_an_outline_that_is_not_fixed_is_refused() {
-    let e = lowered_in(
+    let e = designed_in(
         ".width &= 40mm; .height &= 25mm..35mm",
         "    .j.place.y >= .outline.height / 2 - 0.1mm\n",
     )
@@ -222,14 +223,14 @@ fn a_requirement_measured_from_an_outline_that_is_not_fixed_is_refused() {
     );
     // Width alone is fine for a requirement that does not use the height.
     assert!(
-        lowered_in(
+        designed_in(
             ".width &= 40mm; .height &= 25mm..35mm",
             "    .j.place.x >= .outline.width / 2\n",
         )
         .is_ok()
     );
     // No size at all.
-    let e = lowered_in(".width &= 40mm", "    .j.place.y <= .outline.height / 2\n").unwrap_err();
+    let e = designed_in(".width &= 40mm", "    .j.place.y <= .outline.height / 2\n").unwrap_err();
     assert!(
         e[0].contains("`outline.height` does not state one size"),
         "{}",
@@ -237,12 +238,12 @@ fn a_requirement_measured_from_an_outline_that_is_not_fixed_is_refused() {
     );
 }
 
-/// [`lowered`] with a second header `.k` and the module `Pair` as `.pair` on the board.
-fn lowered_two(body: &str) -> Result<Lowered, Vec<String>> {
-    lowered(&format!("    .k: Header1x2\n    .pair: Pair\n{body}"))
+/// [`designed`] with a second header `.k` and the module `Pair` as `.pair` on the board.
+fn designed_two(body: &str) -> Result<Designed, Vec<String>> {
+    designed(&format!("    .k: Header1x2\n    .pair: Pair\n{body}"))
 }
 
-fn offsets(l: &Lowered) -> Vec<String> {
+fn offsets(l: &Designed) -> Vec<String> {
     l.design
         .features
         .offsets
@@ -263,7 +264,7 @@ fn offsets(l: &Lowered) -> Vec<String> {
 
 #[test]
 fn a_relation_between_two_parts_is_an_offset_in_millimetres() {
-    let l = lowered_two(
+    let l = designed_two(
         "    .k.place.x - .j.place.x == 17.5mm +/- 0.05mm\n    .pair.a.place.y == .j.place.y\n",
     )
     .unwrap();
@@ -281,7 +282,7 @@ fn a_relation_between_two_parts_is_an_offset_in_millimetres() {
 
 #[test]
 fn a_bound_between_two_parts_is_a_one_sided_window() {
-    let l = lowered_two(
+    let l = designed_two(
         "    .k.place.left >= .j.place.right + 2mm\n    .k.place.top <= .j.place.top + 1mm\n",
     )
     .unwrap();
@@ -293,21 +294,21 @@ fn a_bound_between_two_parts_is_a_one_sided_window() {
 
 #[test]
 fn the_sides_of_a_relation_may_be_swapped_and_the_constants_moved() {
-    let l = lowered_two("    .j.place.x + 17.5mm == .k.place.x\n").unwrap();
+    let l = designed_two("    .j.place.x + 17.5mm == .k.place.x\n").unwrap();
     // The same relation, with the places in the order they came.
     assert_eq!(offsets(&l), ["j.x - k.x in -17.5..-17.5"]);
 }
 
 #[test]
 fn a_relation_with_an_outline_is_evaluated_for_its_constants() {
-    let l = lowered_two("    .k.place.x - .j.place.x == .outline.width / 2\n").unwrap();
+    let l = designed_two("    .k.place.x - .j.place.x == .outline.width / 2\n").unwrap();
     assert_eq!(offsets(&l), ["k.x - j.x in 20..20"]);
 }
 
 #[test]
 fn a_relation_that_is_not_two_places_along_one_axis_is_not_an_offset() {
     // A sum, two axes, a module, a turn and a product are kept as relations, not evaluated.
-    let l = lowered_two(
+    let l = designed_two(
         "    .k.place.x + .j.place.x == 30mm\n    .k.place.x - .j.place.y == 3mm\n    .pair.place.left - .j.place.left == 3mm\n    .k.place.rotation == .j.place.rotation\n    .k.place.x - .j.place.x == 2 * .k.place.x\n",
     );
     assert!(offsets(&l.unwrap()).is_empty());
@@ -315,13 +316,13 @@ fn a_relation_that_is_not_two_places_along_one_axis_is_not_an_offset() {
 
 #[test]
 fn a_relation_of_one_part_with_itself_is_not_an_offset() {
-    let l = lowered_two("    .j.place.right - .j.place.left == 5mm\n").unwrap();
+    let l = designed_two("    .j.place.right - .j.place.left == 5mm\n").unwrap();
     assert!(offsets(&l).is_empty());
 }
 
 #[test]
 fn a_relation_between_parts_is_no_bound_on_either_and_no_note() {
-    let l = lowered_two(
+    let l = designed_two(
         "    .j.place.x &= 10mm +/- 1mm\n    .k.place.x >= .j.place.x + 5mm\n    .k.place.x <= .j.place.x + 5.2mm\n",
     )
     .unwrap();
@@ -342,7 +343,8 @@ fn a_relation_between_parts_is_no_bound_on_either_and_no_note() {
 #[test]
 fn a_relation_that_can_never_be_held_names_both_places_and_the_numbers() {
     // The sum of the places has to lie in 2.5 to 1.5 mm: the left side is wider than the right.
-    let e = lowered_two("    .k.place.x - .j.place.x + (0mm..2mm) == 3mm +/- 0.5mm\n").unwrap_err();
+    let e =
+        designed_two("    .k.place.x - .j.place.x + (0mm..2mm) == 3mm +/- 0.5mm\n").unwrap_err();
     assert_eq!(e.len(), 1, "{e:?}");
     assert!(
         e[0].starts_with("`k.place.x` minus `j.place.x` cannot be held:")
@@ -354,8 +356,9 @@ fn a_relation_that_can_never_be_held_names_both_places_and_the_numbers() {
 
 #[test]
 fn two_relations_that_disagree_are_the_placers_to_report() {
-    let l = lowered_two("    .k.place.x >= .j.place.x + 5mm\n    .k.place.x <= .j.place.x + 4mm\n")
-        .unwrap();
+    let l =
+        designed_two("    .k.place.x >= .j.place.x + 5mm\n    .k.place.x <= .j.place.x + 4mm\n")
+            .unwrap();
     assert_eq!(offsets(&l).len(), 2);
 }
 

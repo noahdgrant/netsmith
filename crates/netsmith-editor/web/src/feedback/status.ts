@@ -36,7 +36,7 @@ export interface AnalysisProgress {
 const STAGE_VERB: Record<string, string> = {
   check: 'Checking',
   solve: 'Solving',
-  lower: 'Lowering',
+  design: 'Designing',
   draw: 'Drawing',
   modules: 'Checking module',
 };
@@ -44,7 +44,7 @@ const STAGE_VERB: Record<string, string> = {
 const STAGE_NOUN: Record<string, [string, string]> = {
   check: ['file', 'files'],
   solve: ['board', 'boards'],
-  lower: ['board', 'boards'],
+  design: ['board', 'boards'],
   draw: ['board', 'boards'],
   modules: ['module', 'modules'],
 };

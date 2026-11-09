@@ -1,14 +1,14 @@
 //! `cargo run --release -p netsmith --example trial_cost [parts]`
 //!
 //! Times the pieces of one provider trial (ADR 0068): a whole elaboration (`check`), a solve
-//! and a lowering of an invented board of about 60 parts, so that the cost of the trial loop
+//! and the design stage on an invented board of about 60 parts, so that the cost of the trial loop
 //! can be put against a number. Nothing in the board is a design.
 
 use std::time::Instant;
 
 use netsmith::outcome_with;
 use netsmith_check::{Loader, check};
-use netsmith_lower::lower;
+use netsmith_design::design_board;
 use netsmith_solve::{Catalogs, solve};
 
 /// An invented board: LED branches, decoupling capacitors and three LDO stages.
@@ -77,17 +77,17 @@ fn main() {
             solution.diagnostics
         );
         let t = Instant::now();
-        let lowered = lower(b, &solution).expect("lowers");
-        let t_lower = t.elapsed();
+        let designed = design_board(b, &solution).expect("designs");
+        let t_design = t.elapsed();
         let t = Instant::now();
         let outcome = outcome_with("big.nsm", &text, &loader, &catalogs, None).expect("builds");
         let t_all = t.elapsed();
         println!(
-            "round {round}: parts {}  check {:?}  solve {:?}  lower {:?}  outcome_with {:?}",
-            lowered.design.parts.len(),
+            "round {round}: parts {}  check {:?}  solve {:?}  design {:?}  outcome_with {:?}",
+            designed.design.parts.len(),
             t_check,
             t_solve,
-            t_lower,
+            t_design,
             t_all
         );
         let _ = outcome;

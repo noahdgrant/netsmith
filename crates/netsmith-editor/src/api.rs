@@ -48,9 +48,10 @@ pub enum ProblemStage {
     /// contradicts another; also the solver's notes and warnings of a build that went on (a
     /// part not chosen).
     Solve,
-    /// Lowering the solved design to parts and nets, with its notes, and the checks that the
-    /// schematic and the footprints agree with it.
-    Lower,
+    /// The design stage: making the parts and nets of the solved model (the `Design` the
+    /// exporters read), with its notes, and the checks that the schematic and the footprints
+    /// agree with it.
+    Design,
     /// A guideline (ADR 0036), a warning unless the project makes it an error.
     Guideline,
     /// The power model (issue #187): a rail that can draw more than its supply gives (an
@@ -118,7 +119,7 @@ pub struct Problem {
     #[ts(optional)]
     pub stage: Option<ProblemStage>,
     /// The board it is about, as `BoardSummary::name` has it (`Demo/main` for a board of a
-    /// system), where the problem belongs to one board: every solver, lowering and guideline
+    /// system), where the problem belongs to one board: every solver, design-stage and guideline
     /// message and note, and a checker error written inside the definition of a board. A
     /// parse error, and a mistake in a module or a system (which boards share), have none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1316,9 +1317,9 @@ pub enum ServerMessage {
     Checked { id: u32, analysis: Analysis },
     /// What a long job is doing now: `task` is `route`, `fab`, `order`, `build`, `catalog`,
     /// `analyse` or `compare`, `message` is the line the command line would print (`BoardName: placing 73
-    /// parts`). An `analyse` message also has `stage` (`check`, `solve`, `lower`, `draw` or
+    /// parts`). An `analyse` message also has `stage` (`check`, `solve`, `design`, `draw` or
     /// `modules`), and `done` of `total` of the things that stage works through (files for
-    /// `check`, boards and systems for `solve`, `lower` and `draw`, modules for `modules`). A
+    /// `check`, boards and systems for `solve`, `design` and `draw`, modules for `modules`). A
     /// `compare` message has `board` set to the ref asked for and the same `stage`, `done` and
     /// `total` (of the ref's analysis), with two stages more: `extract` (reading the ref out of
     /// git) and `diff` (comparing the two readings).

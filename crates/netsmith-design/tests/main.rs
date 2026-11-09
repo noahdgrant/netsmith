@@ -1,13 +1,13 @@
 //! The crate's integration tests, one executable. Each file of this folder is a module of it
 //! (a file per subject, as before); a new file needs a `mod` line here, or its tests do not run.
-//! Run one file's tests with `cargo test -p netsmith-lower --test main <file>::`, or with
-//! `cargo nextest run -p netsmith-lower <file>::`.
+//! Run one file's tests with `cargo test -p netsmith-design --test main <file>::`, or with
+//! `cargo nextest run -p netsmith-design <file>::`.
 
 mod bank;
 mod cancel;
+mod design;
 mod features;
 mod guidelines;
-mod lower;
 mod ohm_bound;
 mod place;
 

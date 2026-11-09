@@ -825,7 +825,7 @@ impl<'a> Run<'a> {
         let model = self.model;
         let inst = model.instance(part);
         let path = model.path_of(part);
-        // A part with no pin table has no pad for any pin, which lowering says (a part that
+        // A part with no pin table has no pad for any pin, which the design stage says (a part that
         // is not drawn from a datasheet has none to give). The tables are for packages and
         // none was chosen, or none fits: said elsewhere.
         let Pinout::Table(table) = model.pinout(part) else {

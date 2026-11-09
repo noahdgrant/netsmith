@@ -332,15 +332,15 @@ describe("the server's stage, board and instance", () => {
 
   it('are read from the fields, not from the message', () => {
     const r = rowOfProblem(
-      served({ severity: 'note', message: 'Beta: the current of part `mcu.u` is not known', stage: 'lower', board: 'Beta', path: 'mcu.u' }),
+      served({ severity: 'note', message: 'Beta: the current of part `mcu.u` is not known', stage: 'design', board: 'Beta', path: 'mcu.u' }),
       0,
     );
-    expect(r).toMatchObject({ origin: 'lower', board: 'Beta', path: 'mcu.u', message: 'the current of part `mcu.u` is not known' });
+    expect(r).toMatchObject({ origin: 'design', board: 'Beta', path: 'mcu.u', message: 'the current of part `mcu.u` is not known' });
   });
 
   it('maps every stage to its own stage in the dock', () => {
     const of = (stage: Problem['stage']) => rowOfProblem(served({ severity: 'error', message: 'x', stage }), 0).origin;
-    expect([of('syntax'), of('check'), of('solve'), of('lower'), of('guideline'), of('power'), of('layout')]).toEqual(['syntax', 'checker', 'solver', 'lower', 'guideline', 'power', 'layout']);
+    expect([of('syntax'), of('check'), of('solve'), of('design'), of('guideline'), of('power'), of('layout')]).toEqual(['syntax', 'checker', 'solver', 'design', 'guideline', 'power', 'layout']);
   });
 
   it('does not read a board out of a message whose problem the server says has none', () => {

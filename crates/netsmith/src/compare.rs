@@ -117,7 +117,7 @@ pub fn load(
     }
 }
 
-/// Lower a `.nsm` file and pick its board: the one named, or the only one. The mapping is
+/// Check, solve and design a `.nsm` file and pick its board: the one named, or the only one. The mapping is
 /// the project's, for the footprint names.
 fn design_of(path: &str, board: Option<&str>) -> Result<(Design, Mapping), String> {
     let target = Target::resolve(Some(path))?;

@@ -163,7 +163,7 @@ describe("the server's analysis", () => {
 
   it('shows the stage with its own count and no total over all of them', () => {
     expect(progressText({ stage: 'solve', board: 'Beta', done: 0, total: 1 })).toBe('Solving Beta, 1 of 1');
-    expect(progressText({ stage: 'lower', board: 'Demo/main', done: 2, total: 7 })).toBe('Lowering Demo/main, 3 of 7');
+    expect(progressText({ stage: 'design', board: 'Demo/main', done: 2, total: 7 })).toBe('Designing Demo/main, 3 of 7');
     expect(progressText({ stage: 'check', board: 'src/main.nsm', done: 0, total: 2 })).toBe('Checking src/main.nsm, 1 of 2');
     expect(progressText({ stage: 'modules', board: 'sheets/a', done: 4, total: 14 })).toBe('Checking module sheets/a, 5 of 14');
     expect(progressText({ stage: 'whatever', board: 'x', done: 0, total: 0 })).toBe('Whatever x');
@@ -176,15 +176,15 @@ describe("the server's analysis", () => {
       { type: 'analysing', since: 0 },
       { ...solve, now: 1_000, stage: 'check', board: 'a.nsm', total: 1 },
       solve,
-      { ...solve, now: 31_000, stage: 'lower' },
-      { ...solve, now: 32_000, stage: 'lower', done: 1, total: 2 },
+      { ...solve, now: 31_000, stage: 'design' },
+      { ...solve, now: 32_000, stage: 'design', done: 1, total: 2 },
     ]);
     expect(p.server?.seen.map((s) => [s.stage, s.total, s.at])).toEqual([
       ['check', 1, 1_000],
       ['solve', 1, 1_000],
-      ['lower', 2, 31_000],
+      ['design', 2, 31_000],
     ]);
-    expect(p.server?.progress).toMatchObject({ stage: 'lower', done: 1, total: 2 });
+    expect(p.server?.progress).toMatchObject({ stage: 'design', done: 1, total: 2 });
     // The same start again changes nothing.
     expect(step(p, { type: 'analysing', since: 0 })).toEqual(p);
   });
@@ -230,9 +230,9 @@ describe('what the solver has counted', () => {
   it('keeps the board\'s own count in brackets when there are several, and never makes up a total', () => {
     const p = { stage: 'solve', board: 'Beta', done: 1, total: 3, unit: 'parts chosen', unitDone: 7, unitTotal: 20 };
     expect(progressText(p)).toBe('Solving Beta (2 of 3): 7 of 20 parts chosen');
-    const open = { stage: 'lower', board: 'Beta', done: 0, total: 1, unit: 'alternative parts re-solved', unitDone: 2 };
+    const open = { stage: 'design', board: 'Beta', done: 0, total: 1, unit: 'alternative parts re-solved', unitDone: 2 };
     expect(unitText(open)).toBe('2 alternative parts re-solved');
-    expect(progressText(open)).toBe('Lowering Beta: 2 alternative parts re-solved');
+    expect(progressText(open)).toBe('Designing Beta: 2 alternative parts re-solved');
   });
 
   it('keeps the count the server last said, and drops it when the stage changes to one that counts nothing', () => {

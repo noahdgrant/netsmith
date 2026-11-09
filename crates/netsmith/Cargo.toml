@@ -19,7 +19,7 @@ netsmith-editor = { path = "../netsmith-editor" }
 netsmith-fab = { path = "../netsmith-fab" }
 netsmith-kicad = { path = "../netsmith-kicad" }
 netsmith-lang = { path = "../netsmith-lang" }
-netsmith-lower = { path = "../netsmith-lower" }
+netsmith-design = { path = "../netsmith-design" }
 netsmith-netlist = { path = "../netsmith-netlist" }
 netsmith-pcb = { path = "../netsmith-pcb" }
 netsmith-quantity = { path = "../netsmith-quantity" }
