@@ -296,7 +296,7 @@ fn a_net_an_output_rail_feeds_is_not_solved() {
 #[test]
 fn a_boundary_without_a_current_leaves_the_island_alone() {
     let src = board(
-        "    .r1: Resistor { .resistance &= 100ohm +/- 1% }\n    .coil: Inductor\n    .supply.pos ~> .r1 ~> .coil ~> .supply.neg\n",
+        "    .r1: Resistor { .resistance &= 100ohm +/- 1% }\n    .lamp: Led\n    .supply.pos ~> .r1 ~> .lamp ~> .supply.neg\n",
     );
     let s = solved(&src);
     assert_eq!(s.dc.solved, 0, "{:?}", s.dc);
