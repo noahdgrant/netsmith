@@ -400,6 +400,8 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
                     e.source.clone().unwrap_or_else(|| "hand".to_string())
                 }),
                 courtyard: sheet_box(p.courtyard()),
+                body: sheet_box(p.body()),
+                height: p.height,
                 pads: p
                     .footprint
                     .pads
@@ -454,6 +456,7 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
                 vias: k.vias,
                 copper: k.copper,
                 parts: k.parts,
+                max_height: k.max_height,
             }
         })
         .collect();

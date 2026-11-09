@@ -7201,6 +7201,7 @@ A capacitor is the same either way round, so its bias is the rail's voltage and 
 | `std::parts::diode::Diode`, `std::parts::diode::Schottky` | `.bias <= .max_reverse_voltage`, `.current <= .max_forward_current`, `.bias >= -.forward_voltage`, `.supply_fault_current <= .max_forward_current`, `.supply_reverse_peak <= .max_reverse_voltage` | The ratings; the last two are from the chain (ADR 0091). |
 | `std::parts::diode::Zener` | `.bias * .current <= .max_power`, `.bias >= 0V` | `.zener_voltage` with its tolerance. For a clamp, the line `.z.bias <= .z.zener_voltage`; over a temperature range, `.temperature_shift` (below). Catalog `zener`. |
 | `std::parts::diode::Tvs` | `.bias <= .standoff_voltage`, `.clamping_voltage <= .protected_limit`, `.bias >= 0V`, `-.supply_reverse_peak >= 0V` | The ratings (the last from the chain, ADR 0091), and `.protected_limit`: the absolute maximum of what is behind it. Catalog `tvs`. |
+| `std::parts::diode::TvsBidirectional` | `.bias <= .standoff_voltage`, `.clamping_voltage <= .protected_limit` | The ratings, and `.protected_limit`. Catalog `tvs_bidirectional`. |
 
 A `Tvs` also has an optional `.breakdown_voltage`, the minimum breakdown voltage VBR: between the stand-off voltage and it the diode leaks a little, below it the diode does not conduct (ADR 0073, provisional). A design that needs a margin between the highest the line reaches and the point where the diode starts to conduct states it, `.tvs.breakdown_voltage >= .input.peak * 1.1`. It is a catalog column that only one standard row fills, the Littelfuse SMDJ36A (`data/jlcpcb/README.md`), so a design that states it is offered that row and no other standard one, and gets any other from a project's `tvs` catalog file that records the column; a file written before the column may leave it out, and a design that does not state the field picks as before and has no new check.
 
@@ -7350,6 +7351,23 @@ error: no `tvs` candidate satisfies `tvs`: the closest of the 1 that fit, SMDJ36
    |
 12 |     .tvs.breakdown_voltage >= .input.peak * 3
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A `TvsBidirectional` is the TVS diode for a line that swings both ways or may be wired backwards, such as a power input on a vehicle (ADR 0089, provisional). It is two junctions back to back, so it has no anode and no cathode: its pins are `a1` and `a2` (KiCad's `Device:D_TVS`, drawn with two opposed triangles, where `Tvs` is drawn with the Zener symbol), and it is the same either way round. Its fields and checks are those of `Tvs`, read for either direction: the rail across it must stay under the stand-off, and the clamp under `.protected_limit`. Like a capacitor it takes the rail's voltage as its `.bias` whichever pin is on `pos`, so there is no wrong way to wire it. The standard `tvs_bidirectional` catalog has two Littelfuse rows, the SMDJ12CA and the SMDJ36CA (SMC), each with its minimum breakdown voltage from the datasheet table. The 12 V rail below reaches 12.6 V, so the picker passes over the SMDJ12CA (12 V stand-off) and chooses the SMDJ36CA, whichever way the diode is drawn into the chain:
+
+```nsm evaluate
+import std::parts::diode::TvsBidirectional
+import std::sources::Rail
+
+board Input {
+    .input: Rail {
+        .voltage &= 12V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .tvs: TvsBidirectional { .protected_limit &= 60V }
+    .input.neg ~> .tvs ~> .input.pos
+}
 ```
 
 A Zener used as a clamp, and a diode that blocks less than the rail it sits across:
@@ -10067,7 +10085,7 @@ error: net `net-a.spi.sclk` has two outputs: `a.spi.sclk`, `b.spi.sclk`
 
 A net whose part pins are all `input` has nothing that drives it, and is refused with the net and the pins (an enable pin wired to another enable pin). An `output`, a `bidirectional` pin, a `power` pin, a `passive` pin (a pull resistor, a connector), a rail the board declares, or a port of the board itself each count as a driver, and so does a pin of a part that has no pin table, which the checker knows nothing about (ADR 0044).
 
-An `I2c` bus (`std::bus::I2c`, by that name) is open-drain, so each of its two lines needs a pull-up: a resistor, or a chain of resistors, from the line to the `pos` of a rail. One resistor on a line is enough for that line, and `I2cPullups` is one on each. A line tied to the rail itself, or pulled down to `neg`, is not a pull-up. Two cases are not judged, because the pull-up may be where this board cannot see it: a bus that is a port of the board, and a line that reaches a connector (a part of several passive pins and no `bridge`). A bus with no pull-up:
+An `I2c` bus (`std::bus::I2c`, by that name) is open-drain, so each of its two lines needs a pull-up: a resistor, or a chain of resistors, from the line to the `pos` of a rail. One resistor on a line is enough for that line, and `I2cPullups` is one on each. A line tied to the rail itself, or pulled down to `neg`, is not a pull-up. Two cases are not judged, because the pull-up may be where this board cannot see it: a bus that is a port of the board, and a line that reaches a connector (a part of several passive pins and no `bridge`), except in a `system` that mates every connector the line reaches (below). A pull-up may be made of any resistors in any arrangement, in series, in parallel or in a divider, or be a `PullUp` or an `I2cPullups`; a part that pulls a line up some other way (a current source, a bus buffer) is not found, and the line is refused (ADR 0090). A bus with no pull-up:
 
 ```nsm fails
 import src::devices::Sensor
@@ -10099,6 +10117,8 @@ error: net `net-a.i2c.sda` carries the sda line of an I2C bus (`a.i2c.sda`, `b.i
 10 |     .a: Sensor
    |     ^^^^^^^^^^
 ```
+
+In a `system`, a line that goes out through a connector is followed through the mates (ADR 0040) to the board behind it, contact N to contact N, and on through any connector there. The bus is judged as one: it needs a pull-up on the board that has it or on any board it reaches, and a pull-up on either side of a mate satisfies it. If none has one, the error names the connectors the line passed (`carrier.j`, `card.h`) and is reported once for the line. A line that reaches a connector the system does not mate, or a port of a board, goes somewhere this check cannot see and is not judged, as is a board checked alone behind its own connector (ADR 0090, provisional).
 
 ### Roles and lines of a bus
 
@@ -10814,6 +10834,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::parts::diode::Schottky` | A Schottky diode, with the fields and ratings of `Diode`. Catalog `schottky`. |
 | `std::parts::diode::Zener` | A Zener diode: `.zener_voltage` (with tolerance, at `.test_current`), `.max_power`, `.bias`, and the optional catalog columns `.test_current`, `.temperature_coefficient`, `.leakage_current` and `.leakage_test_voltage`. Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias * .current <= .max_power`, and, when the design states `.temperature_shift`, defines `.voltage_over_temperature`. |
 | `std::parts::diode::Tvs` | A unidirectional TVS diode: `.standoff_voltage`, `.clamping_voltage`, `.peak_pulse_current`, `.protected_limit`, `.bias` and the optional `.breakdown_voltage` (a catalog column that only the SMDJ36A row of the standard rows fills). Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias <= .standoff_voltage` and `.clamping_voltage <= .protected_limit`. |
+| `std::parts::diode::TvsBidirectional` | A bidirectional TVS diode, the same either way round: `.standoff_voltage`, `.clamping_voltage`, `.peak_pulse_current`, `.protected_limit`, `.bias` and the optional `.breakdown_voltage`. Pins `a1` and `a2`, bridge `a1 ~> a2`. Requires `.bias <= .standoff_voltage` and `.clamping_voltage <= .protected_limit`. Catalog `tvs_bidirectional`. |
 | `std::parts::transistor::NMosfet` | An N-channel MOSFET: pins `gate` (input), `source`, `drain`, bridge `drain ~> source`. Maxima for drain-source voltage, drain current and gate-source voltage; `.gate_threshold`; `.on_resistance`. Requires the stresses `.drain_source_voltage` and `.gate_source_voltage` and `.current` within them, and the gate drive above the threshold. Catalog `n_mosfet`. |
 | `std::parts::transistor::PMosfet` | A P-channel MOSFET: as `NMosfet` with bridge `source ~> drain`; voltages are magnitudes. A generic with the catalog `p_mosfet`, whose standard file has no rows: a project adds its own. |
 | `std::parts::logic::Sn74lvc1g04` | A single inverter, TI SN74LVC1G04 (SCES214AF), for a supply of 3 V to 3.6 V: rail `vcc`, lines `a` (input) and `y` (output) as `Logic` with the levels and absolute maximums of the datasheet, SOT-23-5. No catalog row. |

@@ -24,6 +24,8 @@ ADR 0023 proposed a pin kind `open_drain` and a net rule on it. That needs a lan
 
 Not judged, because the pull-up may be on the other side: a bus that is a port of the board (`.bus: I2c` in a board), and a line that reaches a connector, which is a part of several pins that are all `passive` and has no `bridge`. A test point on the line does not hide a missing pull-up.
 
+*Amended by ADR 0090:* in a system that mates the connectors a line reaches, the line is followed through the mates to the other boards and judged there too, so a bus behind a connector with a pull-up nowhere is an error. A connector that no mate accounts for still leaves the line unjudged.
+
 ```text
 error: net `net-ctl.i2c.scl` carries the scl line of an I2C bus (`ctl.i2c.scl`, `sensor.i2c.scl`) and has no pull-up: no resistor joins it to the positive pin of a rail; add `std::bus::I2cPullups` to the bus, or a resistor from a rail's `pos` to the line
 ```

@@ -167,6 +167,15 @@ fn two_terminal_parts_have_the_pads_the_mapping_relies_on() {
     for kind in ["Diode", "Schottky", "Zener", "Tvs"] {
         assert_eq!(pins_of("std::parts::diode", kind), diode, "{kind}");
     }
+    // A bidirectional TVS diode has no anode and no cathode, and KiCad's `D_TVS` names its
+    // pins A1 and A2 (ADR 0089).
+    assert_eq!(
+        pins_of("std::parts::diode", "TvsBidirectional"),
+        vec![
+            row("a1", Passive, "A1", &["1"]),
+            row("a2", Passive, "A2", &["2"]),
+        ]
+    );
     let two = vec![
         row("a", Passive, "A", &["1"]),
         row("b", Passive, "B", &["2"]),
@@ -511,6 +520,70 @@ fn a_tvs_diode_stands_off_the_rail_and_clamps_under_the_limit() {
         "    .t: Tvs { .standoff_voltage &= 15V\n .clamping_voltage &= 24V }\n    \
          .supply.pos ~> .t ~> .supply.neg",
     ));
+}
+
+#[test]
+fn a_bidirectional_tvs_diode_is_the_same_either_way_round_across_a_rail() {
+    let imports = "import std::parts::diode::TvsBidirectional";
+    let board = |standoff: &str, chain: &str| {
+        on_12v(
+            imports,
+            &format!(
+                "    .t: TvsBidirectional {{ .standoff_voltage &= {standoff}\n .clamping_voltage &= 24V\n \
+                 .protected_limit &= 36V }}\n    {chain}"
+            ),
+        )
+    };
+    // No orientation is wrong: the rail's voltage is the same bias both ways, and the
+    // unidirectional diode's check that it is not forward biased does not apply.
+    for chain in [
+        ".supply.pos ~> .t ~> .supply.neg",
+        ".supply.neg ~> .t ~> .supply.pos",
+    ] {
+        clean(&board("15V", chain));
+        one(
+            &board("12V", chain),
+            &[
+                "t.bias must always be at most t.standoff_voltage",
+                "11.4V..12.6V",
+                "12V",
+            ],
+        );
+    }
+    // What it protects is checked as for `Tvs`.
+    one(
+        &on_12v(
+            imports,
+            "    .t: TvsBidirectional { .standoff_voltage &= 15V\n .clamping_voltage &= 24V\n \
+             .protected_limit &= 20V }\n    .supply.pos ~> .t ~> .supply.neg",
+        ),
+        &[
+            "t.clamping_voltage must always be at most t.protected_limit",
+            "24V",
+            "20V",
+        ],
+    );
+}
+
+#[test]
+fn a_bidirectional_tvs_diode_is_picked_from_its_own_catalog() {
+    // 12 V +/- 5% reaches 12.6 V, over the 12 V stand-off of the SMDJ12CA: the SMDJ36CA is the
+    // row that stands it off and clamps under the 60 V the board states.
+    let src = on_12v(
+        "import std::parts::diode::TvsBidirectional",
+        "    .t: TvsBidirectional { .protected_limit &= 60V }\n    \
+         .supply.neg ~> .t ~> .supply.pos",
+    );
+    let checked = run(&src);
+    assert!(checked.is_ok(), "{}", checked.render());
+    let s = solve(
+        checked.standalone_boards().next().unwrap(),
+        &Catalogs::jlcpcb(),
+    );
+    let msgs: Vec<_> = s.diagnostics.iter().map(|d| d.message.clone()).collect();
+    assert!(msgs.is_empty(), "{msgs:#?}");
+    let picked: Vec<_> = s.picks.iter().map(|p| p.label.clone()).collect();
+    assert_eq!(picked, ["SMDJ36CA"], "{picked:?}");
 }
 
 #[test]

@@ -50,6 +50,8 @@ const FIXTURES = {
   led_panel: 'examples/led_panel.nsm',
   // A header with a requirement on where it goes and a layout file that breaks it (ADR 0045).
   constrained: 'scripts/editor-verify-js/fixtures/constrained.nsm',
+  // Three headers under a lid that allows 3 mm, one too tall, one with no height, one that fits (ADR 0045 section 11).
+  height_limits: 'scripts/editor-verify-js/fixtures/height_limits.nsm',
   // A board whose rail is drawn too thin for its current: two guideline warnings, and it builds. For the warning markers.
   warn_bench: 'scripts/editor-verify-js/fixtures/warn_bench.nsm',
   // A project with no board: the views say where to write the first one.
@@ -414,7 +416,7 @@ function cleanup() {
 
 const commands = { doctor, launch, drive, groups, evidence, cleanup };
 if (!commands[command]) {
-  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|empty|tri_state|shared_module|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | groups | evidence | cleanup [--keep-evidence]  (launch also takes --git)');
+  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|height_limits|empty|tri_state|shared_module|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | groups | evidence | cleanup [--keep-evidence]  (launch also takes --git)');
   process.exit(2);
 }
 await commands[command]();

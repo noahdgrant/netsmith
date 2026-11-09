@@ -11,7 +11,7 @@ use netsmith_lang::parse;
 /// A pin of a contract: its name and the word of its kind.
 type Pins = &'static [(&'static str, &'static str)];
 
-const GENERICS: [(&str, &str, Pins); 14] = [
+const GENERICS: [(&str, &str, Pins); 15] = [
     ("Resistor", "passive", AB),
     ("Capacitor", "passive", AB),
     ("Led", "passive", DIODE),
@@ -22,6 +22,7 @@ const GENERICS: [(&str, &str, Pins); 14] = [
     ("Schottky", "diode", DIODE),
     ("Zener", "diode", DIODE),
     ("Tvs", "diode", DIODE),
+    ("TvsBidirectional", "diode", A1A2),
     (
         "NMosfet",
         "transistor",
@@ -64,6 +65,7 @@ const GENERICS: [(&str, &str, Pins); 14] = [
 
 const AB: &[(&str, &str)] = &[("a", "passive"), ("b", "passive")];
 const DIODE: &[(&str, &str)] = &[("anode", "passive"), ("cathode", "passive")];
+const A1A2: &[(&str, &str)] = &[("a1", "passive"), ("a2", "passive")];
 
 fn loader(files: &[(&str, &str)]) -> Loader {
     let mut loader = Loader::std();

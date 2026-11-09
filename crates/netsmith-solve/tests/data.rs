@@ -78,7 +78,7 @@ fn columns(name: &str) -> Vec<(String, FieldKind)> {
             q("leakage_current", Dimension::CURRENT),
             q("leakage_test_voltage", Dimension::VOLTAGE),
         ],
-        "tvs" => vec![
+        "tvs" | "tvs_bidirectional" => vec![
             q("standoff_voltage", Dimension::VOLTAGE),
             q("clamping_voltage", Dimension::VOLTAGE),
             q("peak_pulse_current", Dimension::CURRENT),
@@ -165,7 +165,7 @@ fn tolerance(value: f64, unit: &str, percent: f64) -> Quantity {
     Quantity::tolerance(&quantity(value, unit), &quantity(percent, "%"), true).unwrap()
 }
 
-const CATALOGS: [&str; 13] = [
+const CATALOGS: [&str; 14] = [
     "resistor",
     "capacitor",
     "led",
@@ -173,6 +173,7 @@ const CATALOGS: [&str; 13] = [
     "schottky",
     "zener",
     "tvs",
+    "tvs_bidirectional",
     "ferrite_bead",
     "inductor",
     "fuse",
@@ -678,10 +679,11 @@ fn every_resistor_has_the_power_both_suppliers_list() {
 }
 
 /// The kinds of ADR 0023 that gained a catalog (ADR 0025), with the file that holds it.
-const STD_KINDS: [(&str, &str); 8] = [
+const STD_KINDS: [(&str, &str); 9] = [
     ("schottky", "Schottky"),
     ("zener", "Zener"),
     ("tvs", "Tvs"),
+    ("tvs_bidirectional", "TvsBidirectional"),
     ("ferrite_bead", "FerriteBead"),
     ("inductor", "Inductor"),
     ("fuse", "Fuse"),
@@ -887,6 +889,26 @@ fn the_smdj36a_carries_the_littelfuse_table_row() {
     assert_eq!(value(&t, "clamping_voltage"), quantity(58.1, "V"));
     assert_eq!(value(&t, "peak_pulse_current"), quantity(51.6, "A"));
     assert_eq!(t.column("package"), Some(&Value::Text("SMC".into())));
+}
+
+/// The two Littelfuse bidirectional rows (ADR 0089), read from the table of the Littelfuse SMDJ
+/// series datasheet, where each is the "Bi" part number beside the unidirectional one of the
+/// same line. Both state the minimum breakdown voltage, as the datasheet table does.
+#[test]
+fn the_bidirectional_tvs_rows_carry_the_littelfuse_table_lines() {
+    for (lcsc, mpn, vr, vbr, vc, ipp) in [
+        ("C224064", "SMDJ12CA", 12.0, 13.3, 19.9, 150.8),
+        ("C224075", "SMDJ36CA", 36.0, 40.0, 58.1, 51.6),
+    ] {
+        let t = row_of("tvs_bidirectional", lcsc);
+        assert_eq!(t.mpn.as_deref(), Some(mpn));
+        assert_eq!(t.library, Some(Library::Extended));
+        assert_eq!(value(&t, "standoff_voltage"), quantity(vr, "V"), "{mpn}");
+        assert_eq!(value(&t, "breakdown_voltage"), quantity(vbr, "V"), "{mpn}");
+        assert_eq!(value(&t, "clamping_voltage"), quantity(vc, "V"), "{mpn}");
+        assert_eq!(value(&t, "peak_pulse_current"), quantity(ipp, "A"), "{mpn}");
+        assert_eq!(t.column("package"), Some(&Value::Text("SMC".into())));
+    }
 }
 
 #[test]

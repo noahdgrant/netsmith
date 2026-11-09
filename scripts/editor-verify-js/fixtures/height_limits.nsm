@@ -1,0 +1,17 @@
+//! A small board for the editor recipes. Its physical file, `height_limits.physical.nsm`, has a
+//! lid over the left half of the board that allows 3 mm on the top face, and the heights of two
+//! of the three headers. The layout file beside it puts all three under the lid, so the editor
+//! has a part that is too tall (an error), a part that states no height (a warning) and one
+//! that fits.
+
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+
+board Lidded {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .tall: Header1x2
+    .flat: Header1x2
+    .bare: Header1x2
+}

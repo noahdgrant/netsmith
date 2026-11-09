@@ -79,6 +79,7 @@ fn make(
         y: at.y,
         area: finding_box(area),
         parts,
+        keepout: None,
         at: None,
     }
 }
@@ -127,7 +128,7 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
                 .map(|(a, b)| a.union(&b))
                 .unwrap_or(board.outline);
             let id = ids.id(format!("placement:height_unchecked:{}", u.refdes));
-            make(
+            let mut finding = make(
                 id,
                 FindingSource::Placement,
                 Severity::Warning,
@@ -135,7 +136,9 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
                 u.to_string(),
                 area,
                 vec![u.refdes.clone()],
-            )
+            );
+            finding.keepout = Some(u.keepout.clone());
+            finding
         })
         .collect();
     board
@@ -237,6 +240,13 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
                 parts,
             );
             finding.at = at;
+            // The keepout a part is in, or too tall for: the page lights it when this is picked.
+            finding.keepout = match &problem {
+                PlacementProblem::InKeepout { keepout, .. }
+                | PlacementProblem::PadInKeepout { keepout, .. }
+                | PlacementProblem::TooTall { keepout, .. } => Some(keepout.clone()),
+                _ => None,
+            };
             finding
         })
         .chain(unchecked)
