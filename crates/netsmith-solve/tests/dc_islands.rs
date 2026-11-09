@@ -243,6 +243,83 @@ fn the_status_pulldown_carries_under_two_microamps() {
     );
 }
 
+const STATUS_LINE: &str = "    .r10: Resistor { .resistance &= 1Mohm +/- 1% }\n    .modem ~ .pin.vdd\n    .pin.gpio.line ~ .r10.a\n    .pin.gpio.line ~ .buffer.io.line\n    .r10.b ~ .logic.neg\n";
+
+fn status_line_current(pin: &str, buffer_on: &str) -> (Solution, (f64, f64)) {
+    let s = solved(&format!(
+        "{RAILS}    .pin: {pin} {{ .gpio.roh &= 0ohm..100ohm; .gpio.rol &= 0ohm..100ohm }}\n    .buffer: Pad\n    .{buffer_on} ~ .buffer.vdd\n{STATUS_LINE}"
+    ));
+    let current = range(&s, "r10.current");
+    (s, current)
+}
+
+/// The status line of the test above with a receiver that states its leakage (`.io.ii &= 1uA`)
+/// on the line, as a buffer's datasheet does: the same pull-down current, `1.89 / 990 000` =
+/// 1.909 uA at the most, and nothing when the pin is low or lets go. The pin is high at the top
+/// of its rail through no resistance and the resistor is at its least. The input's leak is `Ii`
+/// over the supply's greatest, 3.333 Mohm to its own 3.3 V rail or to the ground; the pin holds
+/// the line to within its output resistance of its rail, so the leak changes the pull-down's
+/// current by under a part in a million (the leak to the 3.3 V rail is
+/// `(3.333 - 1.89) / 3.333e6` = 0.43 uA through the pin, not through the resistor).
+#[test]
+fn a_tri_state_pin_beside_a_leaking_input_carries_the_pulldown() {
+    let (s, current) = status_line_current("Hub", "logic");
+    assert_eq!(s.dc.pins, 2, "{:?}", s.dc);
+    assert_eq!(s.dc.islands, 1, "{:?}", s.dc);
+    close_range(
+        "the pull-down's current",
+        current,
+        (0.0, 1.89 / 990_000.0),
+        1e-5,
+    );
+}
+
+/// An `output` pin is the same board with no high impedance state: high or low, so the same
+/// range (the pull-down carries nothing with the pin low).
+#[test]
+fn an_output_pin_beside_a_leaking_input_carries_the_pulldown() {
+    let (s, current) = status_line_current("Out", "logic");
+    assert_eq!(s.dc.pins, 2, "{:?}", s.dc);
+    close_range(
+        "the pull-down's current",
+        current,
+        (0.0, 1.89 / 990_000.0),
+        1e-5,
+    );
+}
+
+/// The input on the pin's own 1.8 V rail leaks `1.89 / 1 uA` = 1.89 Mohm to either end of it:
+/// the same range.
+#[test]
+fn a_leaking_input_on_the_pins_own_rail_changes_nothing_either() {
+    let (s, current) = status_line_current("Hub", "modem");
+    assert_eq!(s.dc.pins, 2, "{:?}", s.dc);
+    close_range(
+        "the pull-down's current",
+        current,
+        (0.0, 1.89 / 990_000.0),
+        1e-5,
+    );
+}
+
+/// Two pins that can drive the line still fight, and a receiver on it does not change that: no
+/// pin of the line is modelled, and the pull-down's current is not a number the analysis writes.
+#[test]
+fn two_drivers_and_a_leaking_input_on_one_line_are_still_not_modelled() {
+    let s = solved(&format!(
+        "{RAILS}    .pin: Hub {{ .gpio.roh &= 0ohm..100ohm; .gpio.rol &= 0ohm..100ohm }}\n    .other: Hub {{ .gpio.roh &= 0ohm..100ohm; .gpio.rol &= 0ohm..100ohm }}\n    .buffer: Pad\n    .modem ~ .other.vdd\n    .logic ~ .buffer.vdd\n    .other.gpio.line ~ .r10.a\n{STATUS_LINE}"
+    ));
+    assert_eq!(s.dc.pins, 0, "{:?}", s.dc);
+    assert!(
+        !matches!(
+            s.model.domain_at("r10.current"),
+            Some(Domain::Quantity(q)) if q.hi() < 1e-3
+        ),
+        "{:?}",
+        s.model.domain_at("r10.current")
+    );
+}
+
 /// A resistor divider that brings a 3.3 V processor pin (3.234 V to 3.333 V, output resistance 0
 /// to 200 ohm) down to a 1.8 V modem input (1.71 V to 1.89 V) that leaks 1 uA at most: 20 kohm
 /// +/- 1 % on top and 15 kohm +/- 1 % below. The input is 1.89 Mohm to either of its supplies
