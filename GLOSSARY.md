@@ -306,6 +306,10 @@ _Avoid_: Level shifter, voltage translator
 A range whose ends are values, `0A .. .max_supply_current` (ADR 0066): a member or an expression over members, read when both have a value, as the range from the low end's lowest value to the high end's highest. While an end has no value the statement claims nothing and is listed as not evaluated. It is how a part states its own draw from a catalog column. A tolerance (`+/-`) still needs numbers.
 _Avoid_: Computed range, dynamic range
 
+**Supply budget**:
+What a source rail that states its own `.current` gives at most, the magnitude of the low end of the stated range (`.supply.current &= -1A..0A` is 1 A): the DC analysis finds a fault when even the least the loads on the rail's net draw is more than the budget (ADR 0076, amendment 13, provisional). A rail that states no `.current` has no budget.
+_Avoid_: Current limit (a part's own relation), Load rating
+
 **Absolute maximum**:
 The voltages a pin survives, `.abs_min` and `.abs_max` of the pin, relative to its ground. The solver holds them against the worst-case voltage of the pin's net (ADR 0046).
 _Avoid_: Rating (a rating is a field such as `.max_power`)

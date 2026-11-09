@@ -27,7 +27,7 @@ use netsmith_check::{Domain, FieldId, InstId, Model, RExpr};
 use netsmith_lang::ast::CmpOp;
 use netsmith_quantity::Dimension;
 
-pub(crate) use extract::{Modelled, Planned, RailNode, Reg, extract};
+pub(crate) use extract::{Modelled, Planned, RailNode, Reg, Supply, extract};
 pub(crate) use net::{Collapse, Error, MAX_COMBINATIONS, Range, Report, Which};
 
 use net::{Draw, Kind};

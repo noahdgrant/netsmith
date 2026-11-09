@@ -192,6 +192,9 @@ impl Solver<'_> {
         // fields that a part's own write covers (a regulator's input voltage).
         let mut rails: Vec<(dc::RailNode, Rc<Run>)> = Vec::new();
         let mut covered: Vec<FieldId> = Vec::new();
+        // What each island draws from a source rail that states its own `.current`
+        // (amendment 13): the rail, the range of the draw, and the island's run.
+        let mut drawn: SupplyDraws = Vec::new();
         for outcome in dc::analyze(&self.model, false, &HashMap::new(), &HashSet::new()) {
             netsmith_core::job::checkpoint();
             summary.islands += 1;
@@ -235,10 +238,20 @@ impl Solver<'_> {
                             }
                         }
                     }
+                    let supplies = planned.supplies.clone();
                     let run = Rc::new(Run {
                         island: planned.island,
                         report,
                     });
+                    if solved_any {
+                        for sp in supplies {
+                            let r = run.report.range(Which::HeldDraw(sp.held));
+                            if r.is_empty() || !r.hi.is_finite() {
+                                continue;
+                            }
+                            drawn.push((sp, r.lo, r.hi, Rc::clone(&run)));
+                        }
+                    }
                     if solved_any && !inferred {
                         for m in &planned.parts {
                             summary.written += self.dc_write(m, &run);
@@ -275,6 +288,7 @@ impl Solver<'_> {
                 Err(_) => {}
             }
         }
+        self.supply_draws = drawn;
         // A rail whose voltage a part's drop already gives (the input of a regulator) is that
         // write's, and one class of rails joined by `~` is written once.
         let mut done: Vec<FieldId> = Vec::new();
@@ -291,6 +305,80 @@ impl Solver<'_> {
             summary.rails += self.dc_write_rail(&rail, &class, &run);
         }
         (summary, notes, reads, net_currents)
+    }
+
+    /// A source rail that states its own `.current` is a budget (ADR 0076, amendment 13): a
+    /// supply states what it gives as a negative current (ADR 0014: a rail's current is what is
+    /// drawn at its `pos`), `.supply.current &= -2A..0A`, and the loads that the analysis finds on
+    /// its net must be able to draw no more than the low end says. It is ADR 0038's rule for two
+    /// stated ranges, read with the analysis's range for the loads: the range the loads draw over
+    /// every corner and the budget must be able to meet, and the finding is that they cannot,
+    /// that even the least the loads draw is more than the supply gives. A balance that has
+    /// reported the same supply says it once.
+    ///
+    /// The draw is the sum, over the networks on the net that were solved, of each one's range:
+    /// a network that was left alone, or a pin that no network models, is not in it, so the sum
+    /// is never above what the loads draw and the finding is never made on a load that is not
+    /// there. A supply that states nothing has no budget, and a stated range with no negative
+    /// end gives nothing to compare with.
+    pub(super) fn dc_check_supplies(&mut self) {
+        let drawn = std::mem::take(&mut self.supply_draws);
+        let mut done: Vec<FieldId> = Vec::new();
+        for (sp, ..) in &drawn {
+            if done.contains(&sp.current) || self.budget_failed.contains(&sp.current) {
+                continue;
+            }
+            done.push(sp.current);
+            let mine: Vec<&(dc::Supply, f64, f64, Rc<Run>)> =
+                drawn.iter().filter(|d| d.0.current == sp.current).collect();
+            let field = self.model.field(sp.current);
+            let stated = self
+                .stated
+                .get(&sp.current)
+                .copied()
+                .or_else(|| match field.domain {
+                    Domain::Quantity(q)
+                        if !field.narrowed_at.is_empty() && !self.derived.contains(&sp.current) =>
+                    {
+                        Some(q)
+                    }
+                    _ => None,
+                });
+            let Some(stated) = stated else { continue };
+            if stated.dim() != Dimension::CURRENT || !stated.lo().is_finite() || stated.lo() >= 0.0
+            {
+                continue;
+            }
+            let budget = -stated.lo();
+            let least: f64 = mine.iter().map(|d| d.1).sum();
+            let most: f64 = mine.iter().map(|d| d.2).sum();
+            let (least, _) = widen(Dimension::CURRENT, least, least);
+            if !least.is_finite() || least <= budget + slack(Dimension::CURRENT, budget, budget) {
+                continue;
+            }
+            let rail = self.model.path_of(sp.rail);
+            let name = self.model.path_of_field(sp.current);
+            let how = if let [(one, _, _, run)] = mine.as_slice() {
+                let states = run
+                    .report
+                    .states_at(&run.island, Which::HeldDraw(one.held), false);
+                if states.is_empty() {
+                    String::new()
+                } else {
+                    format!(", the least with {states}")
+                }
+            } else {
+                format!(", summed over the {} networks on it", mine.len())
+            };
+            let message = format!(
+                "`{name}` is stated {stated}, so the supply `{rail}` gives at most {}, but the DC analysis finds the loads on its net drawing at least {} and up to {}{how}",
+                end(Dimension::CURRENT, budget),
+                end(Dimension::CURRENT, least),
+                end(Dimension::CURRENT, most),
+            );
+            let (source, span) = self.model.instance(sp.rail).at();
+            self.report(source, span, message);
+        }
     }
 
     /// Give a rail the voltage of its node (a `~>` chain carries the voltage, and so the drops of
@@ -1158,5 +1246,7 @@ impl Solver<'_> {
 fn end(dim: Dimension, v: f64) -> String {
     Quantity::point(dim, v).map_or_else(|_| format!("{v}"), |q| q.to_string())
 }
+
+pub(super) type SupplyDraws = Vec<(dc::Supply, f64, f64, Rc<Run>)>;
 
 pub(super) type DcEndsMap = HashMap<FieldId, DcEnds>;
