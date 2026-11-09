@@ -54,7 +54,7 @@ use netsmith_check::{Domain, FieldId, InstId, Model, RExpr};
 use netsmith_lang::ast::CmpOp;
 use netsmith_quantity::Dimension;
 
-pub(crate) use extract::{Modelled, Planned, RailNode, Reg, Supply, extract};
+pub(crate) use extract::{Left, Modelled, Planned, RailNode, Reg, Supply, extract};
 pub(crate) use net::{Collapse, Error, MAX_COMBINATIONS, Range, Report, Which};
 
 use net::{Draw, Kind};
@@ -64,6 +64,26 @@ pub(crate) struct Outcome {
     pub planned: Planned,
     pub result: Result<Report, Error>,
 }
+
+/// What `analyze` made of a model: the islands it solved, and what it left alone, each with the
+/// note that says so (a check that cannot run says so).
+pub(crate) struct Analysis {
+    pub outcomes: Vec<Outcome>,
+    pub left: Vec<Left>,
+}
+
+/// Why the load of a regulator is not a range.
+#[derive(Clone, Copy)]
+enum Why {
+    /// A pin on the output net is not modelled, or an island on it was not solved, and the
+    /// output's own `.current` states no range.
+    Unknown,
+    /// The islands on the output together take current in: this much at the most.
+    Pushed(f64),
+}
+
+/// The load of a regulator, and why it has none when it has none.
+type Load = (Option<Range>, Option<Why>);
 
 /// The current a regulator's output supplies, from the field the design or the balances gave it
 /// (a negative `current` is the part supplying), when the loads on the output net are not all
@@ -134,9 +154,13 @@ fn load_of(
     islands: &[Planned],
     states: &[State],
     unsolved_output: bool,
-) -> Option<Option<Range>> {
+) -> Option<Load> {
+    let stated = || {
+        let load = stated_load(model, reg, enclosure);
+        Some((load, load.is_none().then_some(Why::Unknown)))
+    };
     if !reg.out_complete || unsolved_output {
-        return Some(stated_load(model, reg, enclosure));
+        return stated();
     }
     let touching: Vec<(usize, usize)> = islands
         .iter()
@@ -164,14 +188,14 @@ fn load_of(
                     hi: sum.hi + r.hi,
                 };
             }
-            _ => return Some(stated_load(model, reg, enclosure)),
+            _ => return stated(),
         }
     }
     // An output that takes current in (a load that pushes it back) is not a regulator's.
     if sum.lo < -1e-12 || !sum.lo.is_finite() || !sum.hi.is_finite() {
-        return Some(None);
+        return Some((None, Some(Why::Pushed(-sum.lo))));
     }
-    Some(Some(Range::new(sum.lo.max(0.0), sum.hi.max(0.0))))
+    Some((Some(Range::new(sum.lo.max(0.0), sum.hi.max(0.0))), None))
 }
 
 /// Extract and solve every island of a model, in the order of the power tree. With `enclosure`
@@ -182,14 +206,16 @@ pub(crate) fn analyze(
     enclosure: bool,
     enclosed: &HashMap<InstId, Range>,
     hulled: &HashSet<InstId>,
-) -> Vec<Outcome> {
+) -> Analysis {
     let extract::Extracted {
         mut islands,
         regs,
         unsolved_outputs,
+        mut left,
     } = extract(model, enclosed, hulled, &HashSet::new());
     let mut states: Vec<State> = islands.iter().map(|_| State::Pending).collect();
     let mut loads: Vec<Option<Option<Range>>> = vec![None; regs.len()];
+    let mut whys: Vec<Option<Why>> = vec![None; regs.len()];
     loop {
         let mut progress = false;
         for (r, reg) in regs.iter().enumerate() {
@@ -203,8 +229,9 @@ pub(crate) fn analyze(
                     &states,
                     unsolved_outputs.contains(&reg.out_net),
                 );
-                if found.is_some() {
-                    loads[r] = found;
+                if let Some((load, why)) = found {
+                    loads[r] = Some(load);
+                    whys[r] = why;
                     progress = true;
                 }
             }
@@ -219,8 +246,9 @@ pub(crate) fn analyze(
             }
             progress = true;
             netsmith_core::job::checkpoint();
-            if sinks.iter().any(|s| loads[s.reg] == Some(None)) {
+            if let Some(s) = sinks.iter().find(|s| loads[s.reg] == Some(None)) {
                 states[i] = State::Skipped;
+                left.push(skipped_note(&islands[i], &regs[s.reg], whys[s.reg]));
                 continue;
             }
             for s in &sinks {
@@ -254,14 +282,75 @@ pub(crate) fn analyze(
             break;
         }
     }
-    islands
+    // An island still waiting when nothing more could be done is a cycle of regulators, each
+    // waiting for the load of the next.
+    for (planned, state) in islands.iter().zip(&states) {
+        if matches!(state, State::Pending)
+            && let Some(m) = planned.parts.first()
+        {
+            left.push(Left {
+                at: m.part,
+                involves: planned.parts.iter().map(|m| m.part).collect(),
+                cause: netsmith_core::Cause::Circular,
+                message: format!(
+                    "the DC analysis left the network of {} alone: the regulators in it wait for each other's load, and none of them has one that is known; state the current one of their outputs supplies (`.vout.current &= -200mA..0A`)",
+                    names_of(planned)
+                ),
+            });
+        }
+    }
+    let outcomes = islands
         .into_iter()
         .zip(states)
         .filter_map(|(planned, state)| match state {
             State::Solved(result) => Some(Outcome { planned, result }),
             _ => None,
         })
-        .collect()
+        .collect();
+    Analysis { outcomes, left }
+}
+
+/// The elements of an island, as a list for a message.
+pub(crate) fn names_of(planned: &Planned) -> String {
+    let names: Vec<String> = planned
+        .island
+        .elements
+        .iter()
+        .map(|e| format!("`{}`", e.name))
+        .collect();
+    match names.len() {
+        0 => "the island".to_string(),
+        1..=4 => names.join(", "),
+        n => format!("{} and {} more", names[..3].join(", "), n - 3),
+    }
+}
+
+/// The note for an island that was not solved because the load of a regulator in it has no range.
+fn skipped_note(planned: &Planned, reg: &Reg, why: Option<Why>) -> Left {
+    let cause = netsmith_core::Cause::Supply;
+    let message = match why {
+        Some(Why::Pushed(i)) => format!(
+            "the DC analysis left the network of {} alone: the loads on the output of `{}` take {} in, which no regulator supplies; a part or a resistor on that net is joined to a voltage above the output's (check what drives it), or state the current the output supplies (`{}.current &= -200mA..0A`)",
+            names_of(planned),
+            reg.name,
+            netsmith_quantity::Quantity::point(Dimension::CURRENT, i)
+                .map_or_else(|_| format!("{i} A"), |q| q.to_string()),
+            reg.name,
+        ),
+        _ => format!(
+            "the DC analysis left the network of {} alone: what the output of `{}` supplies is not known (a pin on its net is not modelled, or the network behind it was not solved) and `{}.current` states no range; state it (`{}.current &= -200mA..0A`, a supply's current is negative) or give the pin a part model",
+            names_of(planned),
+            reg.name,
+            reg.name,
+            reg.name,
+        ),
+    };
+    Left {
+        at: planned.parts.first().map_or(reg.part, |m| m.part),
+        involves: planned.parts.iter().map(|m| m.part).collect(),
+        cause,
+        message,
+    }
 }
 
 /// The islands that have one of `parts`, solved on their own and cut at the rails in `cuts` (the

@@ -163,6 +163,17 @@ pub(crate) struct Extracted {
     pub islands: Vec<Planned>,
     pub regs: Vec<Reg>,
     pub unsolved_outputs: BTreeSet<usize>,
+    /// What the extraction could not model, each with the note that says so.
+    pub left: Vec<Left>,
+}
+
+/// Something the analysis did not do, and the note that says so: the part it is at, the parts
+/// it involves, why, and what to change.
+pub(crate) struct Left {
+    pub at: InstId,
+    pub involves: Vec<InstId>,
+    pub cause: netsmith_core::Cause,
+    pub message: String,
 }
 
 /// What the held nets are measured from.
@@ -351,6 +362,7 @@ pub(crate) fn extract(
     // The sources and the nets they hold: the supply rails a board declares, and the rails a part
     // says it gives from outside (`dc source`: a connector's supply).
     let mut held: BTreeMap<usize, Held_> = BTreeMap::new();
+    let mut left: Vec<Left> = Vec::new();
     let mut source_pins: HashSet<InstId> = HashSet::new();
     let mut budgeted: BTreeMap<usize, Vec<(InstId, FieldId)>> = BTreeMap::new();
     let supply_rails: HashSet<InstId> = model
@@ -536,8 +548,30 @@ pub(crate) fn extract(
         // sources and an ideal diode): it is left out, and so is nothing it touches that is
         // free.
         if matches!(kind, Kind::Diode { .. }) && nets.iter().all(|n| held.contains_key(n)) {
-            accounted.extend(own);
+            // The current it moves is in no island, so a regulator's output that it touches is
+            // not a net whose loads are all summed: its pins stay open there, and the
+            // regulator's load is what its own `.current` states (issue #289, item 4).
+            let on_output = nets.iter().any(|n| reg_out_nets.contains(n));
+            if !on_output {
+                accounted.extend(own);
+            }
             modelled_parts.insert(part);
+            let (a, k) = (&model.nets()[nets[0]].name, &model.nets()[nets[1]].name);
+            left.push(Left {
+                at: part,
+                involves: vec![part],
+                cause: netsmith_core::Cause::Unjudged,
+                message: format!(
+                    "the DC analysis does not model the current of `{}`: it joins `{a}` and `{k}`, which sources hold, and the current an ideal diode moves between two ideal sources is not a number; {}state the current it carries (`{}.current &= 0A..100mA`) or put a resistance in series with it",
+                    model.path_of(part),
+                    if on_output {
+                        "the load of the regulator on that net is what its own `.current` states, not a sum; "
+                    } else {
+                        ""
+                    },
+                    model.path_of(part),
+                ),
+            });
             continue;
         }
         let bridge = model.instance(part).bridge;
@@ -994,10 +1028,23 @@ pub(crate) fn extract(
     let mut unsolved_outputs: BTreeSet<usize> = BTreeSet::new();
     for members in groups.values() {
         netsmith_core::job::checkpoint();
-        let touched: BTreeSet<usize> = members
+        let mut touched: BTreeSet<usize> = members
             .iter()
             .flat_map(|&i| items[i].nets.iter().copied())
             .collect();
+        // The ground a load that waits on a pick returns to is a node of the island, though no
+        // element of it is on that net: the load is drawn to it, not to some other held net
+        // (issue #289, item 3).
+        for (_, a, b, _) in &enclosed_loads {
+            for (here, there) in [(a, b), (b, a)] {
+                if touched.contains(here)
+                    && !held.contains_key(here)
+                    && held.get(there).is_some_and(|h| h.hold == Hold::Ground)
+                {
+                    touched.insert(*there);
+                }
+            }
+        }
         let touches_output = touched.iter().any(|n| reg_out_nets.contains(n));
         // Only an island with something to write, or that a regulator's output draws from, is
         // worth a solve.
@@ -1212,14 +1259,28 @@ pub(crate) fn extract(
             })
             .flat_map(|&i| items[i].nets.iter().copied())
             .collect();
+        // The other end of a load that draws from a net held up: the held net it is on, or when
+        // it is on a node nothing holds, the island's ground (not the lowest-numbered held net,
+        // which can be a regulator's output: the load would be drawn into it).
+        let other_end = |n: usize| -> usize {
+            if held_nets.contains(&n) {
+                node_of(n)
+            } else {
+                node_of(
+                    ground
+                        .filter(|g| held_nets.contains(g))
+                        .unwrap_or(held_nets[0]),
+                )
+            }
+        };
         for (name, a, b, i) in &enclosed_loads {
             let up = |n: &usize| free_nets.contains(n) && supported.contains(n);
             // A load draws from the net that is held up. Between two such nets it may go either
             // way, which is the circuit's to say.
             let (from, to, i) = match (up(a), up(b)) {
                 (true, true) => (node_of(*a), node_of(*b), Range::new(-i.hi, i.hi)),
-                (true, false) => (node_of(*a), node_of(held_nets[0]), *i),
-                (false, true) => (node_of(*b), node_of(held_nets[0]), *i),
+                (true, false) => (node_of(*a), other_end(*b), *i),
+                (false, true) => (node_of(*b), other_end(*a), *i),
                 (false, false) => continue,
             };
             island.elements.push(Element {
@@ -1327,6 +1388,7 @@ pub(crate) fn extract(
         islands: out,
         regs,
         unsolved_outputs,
+        left,
     }
 }
 
