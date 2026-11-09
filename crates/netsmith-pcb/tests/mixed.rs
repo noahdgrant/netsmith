@@ -512,10 +512,9 @@ fn the_mixed_board_the_router_cannot_finish_leaves_named_lines_and_only_copper_t
     assert_eq!(errors, Vec::<String>::new());
 }
 
-/// The aim of issue #3 for this board: every connection routed, on every seed. It does not
-/// hold yet (see `measured`: 1 of 12 seeds), so it is not run with the others.
+/// The aim of issue #3 for this board: every connection routed, on every seed (the first four
+/// are run here; `measured` prints the others).
 #[test]
-#[ignore = "fails today: the router leaves 1 to 5 lines on 11 of 12 seeds (issue #3)"]
 fn the_mixed_board_is_routed_completely() {
     for seed in 0..4 {
         let mut board = mixed_board(seed, AREA, Mix::DEFAULT).unwrap_or_else(|e| panic!("{e}"));
@@ -534,6 +533,30 @@ fn the_mixed_board_is_routed_completely() {
         );
         assert_eq!(drc_errors(&board), Vec::<String>::new(), "seed {seed}");
     }
+}
+
+/// Seed 2 is one the plain negotiation leaves two lines of; the lines ripped up one for another
+/// finish it. Nothing in that is random: the same board is routed to the same copper.
+#[test]
+fn lines_ripped_up_for_lines_ripped_up_finish_a_board_and_the_same_board_gives_the_same_copper() {
+    let route = || {
+        let mut board = mixed_board(2, AREA, Mix::DEFAULT).unwrap_or_else(|e| panic!("{e}"));
+        let routing = route_with(
+            &mut board,
+            RouteOptions {
+                retry_orders: false,
+                time_limit: Some(Duration::from_secs(120)),
+                ..RouteOptions::default()
+            },
+        );
+        assert!(!routing.stopped);
+        assert!(routing.left.is_empty(), "{:#?}", routing.left.lines);
+        board
+    };
+    let (a, b) = (route(), route());
+    assert_eq!(a.tracks, b.tracks);
+    assert_eq!(a.vias, b.vias);
+    assert_eq!(drc_errors(&a), Vec::<String>::new());
 }
 
 /// Prints, for each seed in `NETSMITH_SEEDS` (`0..8` by default), how the placer and the router
@@ -586,8 +609,13 @@ fn measured() {
             },
         );
         let took = started.elapsed();
+        // What the routed copper breaks in the design rules check (an unrouted line is not one).
+        let broken = drc_errors(&board)
+            .iter()
+            .filter(|e| !e.to_lowercase().contains("unconnected"))
+            .count();
         eprintln!(
-            "seed {seed}: {} parts, placed in {placed:.1?} (problems {}), left {} lines, tries {}, vias {}, routed in {took:.1?}",
+            "seed {seed}: {} parts, placed in {placed:.1?} (problems {}), left {} lines, tries {}, vias {}, rules broken {broken}, routed in {took:.1?}",
             board.parts.len(),
             problems.len(),
             routing.left.len(),

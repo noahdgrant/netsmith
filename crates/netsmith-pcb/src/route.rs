@@ -11,8 +11,10 @@
 //! Lines are routed shortest first, except that a line that ends on a pad deep in a
 //! fine-pitch grid of pads, which has the fewest ways out, comes before the others (see
 //! [`pad_depth`]). A line that cannot be routed is then tried again by ripping up the nets
-//! that stand in its way, routing it, and routing those again; and if lines are still left,
-//! the whole board is routed again with the lines in another order (shortest first, longest
+//! that stand in its way, routing it, and routing those again; lines still left are negotiated
+//! for, and then each is given a bounded chain of rip-ups of single lines, each of which may
+//! rip up the lines in its own way ([`Router::rip_up_chain`]). If lines are still left, the
+//! whole board is routed again with the lines in another order (shortest first, longest
 //! first, by net, in reverse net order), at most [`MOST_TRIES`] times in all. The first
 //! complete result is kept, or failing that the one that leaves fewest lines. There is no
 //! push-and-shove, so a board can still end partly routed, and what is left is returned.
@@ -63,8 +65,19 @@ const REPORT_EVERY: Duration = Duration::from_secs(2);
 /// How many rounds of negotiation the lines left over get, and what a cell the lines fought
 /// over costs for each time they did, and the most it counts.
 const NEGOTIATION_ROUNDS: usize = 6;
+
 const HISTORY_COST: i64 = 40;
 const HISTORY_MOST: u8 = 25;
+
+/// The last resort for a line that is still left ([`Router::rip_up_chain`]): how many levels of
+/// lines ripped up for lines ripped up it goes down, how many searches it may spend on one
+/// line and on all lines of one try of the board, and how far from the path (mm beyond the
+/// least the masks keep) the copper of a line may be for the line to be ripped up: first the
+/// lines the path crosses, then those within 0.1 mm of it, then within 0.25 mm.
+const CHAIN_DEPTH: usize = 4;
+const CHAIN_SEARCHES: usize = 600;
+const CHAIN_TOTAL: usize = 3000;
+const CHAIN_NEAR: [f64; 3] = [0.0, 0.1, 0.25];
 
 /// The most times the whole board is routed, each with the lines in another order. Putting
 /// the lines of a fine-pitch grid first is one more order, so the last of the others is
@@ -1133,7 +1146,8 @@ struct Router<'a> {
     in_pads: Vec<(Option<InPad>, Option<InPad>)>,
     /// How deep in a fine-pitch grid of pads the deeper end of each line is ([`pad_depth`]).
     depth: Vec<f64>,
-    /// Whether lines left over are negotiated for, and what the negotiation has learnt.
+    /// Whether lines left over are negotiated for and given a chain of rip-ups, and what the
+    /// negotiation has learnt.
     negotiate: bool,
     history: RefCell<[Vec<u8>; 2]>,
     /// When to stop, if there is a limit.
@@ -1341,30 +1355,41 @@ impl<'a> Router<'a> {
         room: f64,
         soft: bool,
     ) -> Option<(Routed, Vec<Spot>)> {
+        self.try_line_locked(line, state, ignore, room, soft, &[])
+    }
+
+    /// [`Self::try_line`], where the lines in `locked` keep their copper hard even in a soft
+    /// search: they are not to be ripped up.
+    fn try_line_locked(
+        &self,
+        line: usize,
+        state: &State,
+        ignore: &[usize],
+        room: f64,
+        soft: bool,
+        locked: &[usize],
+    ) -> Option<(Routed, Vec<Spot>)> {
         let others: Vec<&Routed> = state
             .routed
             .iter()
             .filter(|r| !ignore.contains(&self.nets[r.line]))
             .collect();
-        let (list, routed_keepouts) = self.copper_of(&others);
+        // In a soft search the locked lines' copper stays hard; the rest is crossed at a price.
+        let (fixed_others, free_others): (Vec<&Routed>, Vec<&Routed>) = if soft {
+            others.iter().partition(|r| locked.contains(&r.line))
+        } else {
+            (others.clone(), Vec::new())
+        };
+        let (list, routed_keepouts) = self.copper_of(&fixed_others);
+        let (soft_copper, soft_copper_keepouts) = self.copper_of(&free_others);
         // A soft search goes through the copper of other nets at a price, to find the nets
         // that are least in the way; what it finds is not copper that can be drawn.
-        let obstacles: Vec<&Obstacle> = if soft {
-            self.fixed.list.iter().collect()
-        } else {
-            self.fixed.list.iter().chain(list.iter()).collect()
-        };
+        let obstacles: Vec<&Obstacle> = self.fixed.list.iter().chain(list.iter()).collect();
         let routed: Vec<&Obstacle> = list.iter().collect();
-        let (hard, hard_keepouts): (&[&Obstacle], &[(Form, f64)]) = if soft {
-            (&[], &[])
-        } else {
-            (&routed, &routed_keepouts)
-        };
-        let (soft_list, soft_keepouts): (&[&Obstacle], &[(Form, f64)]) = if soft {
-            (&routed, &routed_keepouts)
-        } else {
-            (&[], &[])
-        };
+        let (hard, hard_keepouts): (&[&Obstacle], &[(Form, f64)]) = (&routed, &routed_keepouts);
+        let soft_routed: Vec<&Obstacle> = soft_copper.iter().collect();
+        let (soft_list, soft_keepouts): (&[&Obstacle], &[(Form, f64)]) =
+            (&soft_routed, &soft_copper_keepouts);
         let mut keepouts = hard_keepouts.to_vec();
         keepouts.extend(self.fixed.via_keepouts.iter().copied());
         let (from, to) = &self.ends[line];
@@ -1696,6 +1721,9 @@ impl<'a> Router<'a> {
         }
         if self.negotiate && !state.failed.is_empty() {
             self.negotiate(&mut state, ROOM_TIGHT, attempt, attempts);
+            if !state.failed.is_empty() {
+                self.finish(&mut state, ROOM_TIGHT, attempt, attempts);
+            }
         }
         state
     }
@@ -1726,6 +1754,174 @@ impl<'a> Router<'a> {
         }
         found.sort_unstable();
         Some((path, found))
+    }
+
+    /// [`Self::contested`] by line: where the line would go if the copper of other nets could
+    /// be crossed, except the copper of the lines in `locked`, and for each other line how far
+    /// its copper is from being crossed by that path, in mm (negative when the path crosses
+    /// it, which is when the masks would keep the path from the cell), nearest first.
+    fn contested_lines(
+        &self,
+        line: usize,
+        state: &State,
+        room: f64,
+        locked: &[usize],
+    ) -> Option<Vec<(usize, f64)>> {
+        let net = self.nets[line];
+        let (_, path) = self.try_line_locked(line, state, &[], room, true, locked)?;
+        let rules = &self.board.rules;
+        // The cells the masks keep a track, or a via, from, for copper of this width.
+        let track_reach = rules.clearance + MARGIN + self.width_of(line) / 2.0 + room;
+        let via_reach = rules.clearance + MARGIN + rules.via_diameter / 2.0 + room;
+        // Where the path puts a via: the cell where it changes layer.
+        let via_at: Vec<(usize, usize)> = path
+            .windows(2)
+            .filter(|w| w[0].2 != w[1].2)
+            .map(|w| (w[0].0, w[0].1))
+            .collect();
+        let mut found: Vec<(usize, f64)> = Vec::new();
+        for r in state
+            .routed
+            .iter()
+            .filter(|r| self.nets[r.line] != net && !locked.contains(&r.line))
+        {
+            let tracks = r.tracks.iter().map(|t| {
+                (
+                    Form::Segment(t.from, t.to, t.width / 2.0),
+                    [t.layer == CopperLayer::Front, t.layer == CopperLayer::Back],
+                )
+            });
+            let vias = r
+                .vias
+                .iter()
+                .map(|v| (Form::Circle(v.at, v.diameter / 2.0), [true, true]));
+            let mut least = f64::MAX;
+            for (f, layers) in tracks.chain(vias) {
+                for &(i, j, layer) in &path {
+                    if layers[layer] {
+                        least = least.min(f.distance(self.grid.centre(i, j)) - track_reach);
+                    }
+                }
+                for &(i, j) in &via_at {
+                    least = least.min(f.distance(self.grid.centre(i, j)) - via_reach);
+                }
+            }
+            if least < CHAIN_NEAR.last().copied().unwrap_or(0.0) {
+                found.push((r.line, least));
+            }
+        }
+        found.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
+        Some(found)
+    }
+
+    /// The last resort for a line that is still left: route it, ripping up the single lines
+    /// (not whole nets) in its way, and route those again, each ripping up the lines in its
+    /// way in turn, down to `CHAIN_DEPTH` levels, never touching a line that is routed for
+    /// the one above. The whole attempt costs at most `CHAIN_SEARCHES` searches and changes
+    /// `state` only if every line ends up routed. Nothing is random: the same board gives
+    /// the same copper.
+    fn rip_up_chain(
+        &self,
+        line: usize,
+        state: &mut State,
+        room: f64,
+        depth: usize,
+        locked: &[usize],
+        budget: &mut usize,
+    ) -> bool {
+        if *budget < 2 || self.out_of_time() {
+            return false;
+        }
+        *budget -= 1;
+        if let Some((routed, _)) = self.try_line(line, state, &[], room, false) {
+            state.routed.push(routed);
+            return true;
+        }
+        if depth >= CHAIN_DEPTH {
+            return false;
+        }
+        *budget -= 1;
+        let Some(blockers) = self.contested_lines(line, state, room, locked) else {
+            return false;
+        };
+        // First the lines the path crosses, then those it comes near, as one set each, and
+        // then each line it crosses alone.
+        let mut options: Vec<Vec<usize>> = Vec::new();
+        for &near in &CHAIN_NEAR {
+            let mut set: Vec<usize> = blockers
+                .iter()
+                .filter(|b| b.1 < near)
+                .map(|b| b.0)
+                .collect();
+            set.sort_unstable();
+            if !set.is_empty() && !options.contains(&set) {
+                options.push(set);
+            }
+        }
+        let crossed: Vec<usize> = blockers.iter().filter(|b| b.1 < 0.0).map(|b| b.0).collect();
+        if crossed.len() > 1 {
+            options.extend(crossed.iter().map(|&b| vec![b]));
+        }
+        for ripped in options.into_iter().filter(|o| !o.is_empty()) {
+            if *budget == 0 || self.out_of_time() {
+                return false;
+            }
+            let mut trial = state.clone();
+            let (gone, kept): (Vec<Routed>, Vec<Routed>) = trial
+                .routed
+                .drain(..)
+                .partition(|r| ripped.contains(&r.line));
+            trial.routed = kept;
+            let mut again: Vec<usize> = gone.iter().map(|r| r.line).collect();
+            again.sort_by(|&a, &b| self.lines[a].length().total_cmp(&self.lines[b].length()));
+            *budget -= 1;
+            let Some((first, _)) = self.try_line(line, &trial, &[], room, false) else {
+                continue;
+            };
+            trial.routed.push(first);
+            let mut lock = locked.to_vec();
+            lock.push(line);
+            let mut ok = true;
+            for l in again {
+                if self.rip_up_chain(l, &mut trial, room, depth + 1, &lock, budget) {
+                    lock.push(l);
+                } else {
+                    ok = false;
+                    break;
+                }
+            }
+            if ok {
+                *state = trial;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// [`Self::rip_up_chain`] for every line that is left, as far as the searches go.
+    fn finish(&self, state: &mut State, room: f64, attempt: usize, attempts: usize) {
+        let mut total = CHAIN_TOTAL;
+        for line in state.failed.clone() {
+            if self.out_of_time() || total < 2 {
+                return;
+            }
+            self.report(false, || {
+                format!(
+                    "routing, try {attempt} of {attempts}: moving lines for {}, {} not routed",
+                    self.lines[line],
+                    state.failed.len()
+                )
+            });
+            let mut trial = state.clone();
+            let mut budget = CHAIN_SEARCHES.min(total);
+            let start = budget;
+            let done = self.rip_up_chain(line, &mut trial, room, 0, &[], &mut budget);
+            total -= start - budget;
+            if done {
+                trial.failed.retain(|&f| f != line);
+                *state = trial;
+            }
+        }
     }
 
     /// The nets whose copper stands in the way of a line.
@@ -1907,8 +2103,9 @@ pub struct RouteOptions {
     pub rip_up: bool,
     /// Negotiate for lines that are still left after that: route each where it would go
     /// if nothing stood in its way, rip up what it comes near, make the cells they fought
-    /// over dearer, and route what was ripped up again, for a few rounds. Only used with
-    /// `rip_up`.
+    /// over dearer, and route what was ripped up again, for a few rounds; and then give each
+    /// line still left a bounded chain of rip-ups of single lines ([`Router::rip_up_chain`]).
+    /// Only used with `rip_up`.
     pub negotiate: bool,
     /// Give up after this long, leaving the lines not yet routed in the ratsnest. `None` is
     /// no limit.
