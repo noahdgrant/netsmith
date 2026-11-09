@@ -360,11 +360,13 @@ part Coax {
 /// B12, CC1 on A5, CC2 on B5, and the shell on S1. Such a receptacle joins A4 to B9 and B4 to
 /// A9, and A1 to B12 and B1 to A12, inside, and brings out one of each pair; KiCad's
 /// power-only symbol and its six-contact footprints have exactly these pads (ADR 0021). A device that takes 5 V from a source puts a resistor on each CC pin to ground, the
-/// specification's pull-down (`Resistor` in a chain: `.cc1 ~> .rd ~> .vbus.neg`).
+/// specification's pull-down (`Resistor` in a chain: `.cc1 ~> .rd ~> .vbus.neg`). The DC analysis
+/// takes `.vbus` as a source: its net is held over the range the design states for `.voltage`.
 part UsbCPower {
     .designator &= "J"
 
     .vbus: Rail
+    dc source .vbus
 
     pins {
         .vbus.pos power   "VBUS"  "A9" "B9"
@@ -410,11 +412,13 @@ part UsbC2 {
 /// An OBD-II (SAE J1962) 16-pin vehicle connector, male: the plug that goes into the vehicle's
 /// diagnostic socket. `.vbatt` is the supply the vehicle gives, with `pos` on battery power
 /// (pin 16) and `neg` on chassis ground (pin 4). Signal ground (pin 5) is optional. The pins
-/// J1962 leaves to the manufacturer are named by their number.
+/// J1962 leaves to the manufacturer are named by their number. The DC analysis takes `.vbatt`
+/// as a source: its net is held over the range the design states for `.voltage`.
 part Obd2M {
     .designator &= "J"
 
     .vbatt: Rail
+    dc source .vbatt
 
     pins {
         //  pin         kind           name          pad

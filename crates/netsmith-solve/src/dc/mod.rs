@@ -23,7 +23,7 @@ mod tests;
 use netsmith_check::{Domain, Model};
 use netsmith_quantity::Dimension;
 
-pub(crate) use extract::{Modelled, Planned, Reg, extract};
+pub(crate) use extract::{Modelled, Planned, RailNode, Reg, extract};
 pub(crate) use net::{Collapse, Error, MAX_COMBINATIONS, Report, Which};
 
 use net::{Draw, Kind, Range};

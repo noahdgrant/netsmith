@@ -339,22 +339,30 @@ fn a_start_ends_the_finding_and_the_limit_is_made_part_of_the_pick() {
 }
 
 #[test]
-fn nothing_else_on_the_net_is_a_circle_the_dc_analysis_closes_and_judges_the_pick_by() {
+fn nothing_else_on_the_net_is_a_circle_the_dc_analysis_starts_and_the_limit_is_part_of_the_pick() {
     // The outside draws exactly nothing, so the network is the series resistor and the
-    // divider. The equations leave the circle open and the pick unlimited (330 and 330); the DC
-    // analysis solves the network after the pick and judges the divider's limit on the draw with
-    // the numbers: 14 V to 22 V over 660 ohm is far over 40 uA, so the build fails and says so
-    // (ADR 0076: a failed rating or bound found by the pass is an error). The circle itself is
+    // divider. The equations leave the circle open, and the pick used to be unlimited (330 and
+    // 330, which the analysis then refused after the pick: 14 V to 22 V over 660 ohm is far over
+    // 40 uA). The divider's draw reads the voltage behind the series resistor, which nothing has
+    // given when the divider is picked, so the analysis solves the network before the picks with
+    // the series resistor at the hull of its candidates (ADR 0076, amendment 5) and the limit
+    // is part of the pick, as it is with a start the board writes (above). The circle itself is
     // not reported: nothing is left open.
-    let err = build(&behind("\n    .after.current &= 0A"), &Catalogs::jlcpcb())
-        .err()
-        .expect("the arbitrary pick draws more than the divider's limit");
-    assert!(
-        err.contains("divider.top.current must always be at most divider.max_draw")
-            && err.contains("the DC analysis puts `divider.top.current` at"),
-        "{err}"
+    let strict = Catalogs::jlcpcb().with_strict_guidelines(true);
+    let boards = build(&behind("\n    .after.current &= 0A"), &strict)
+        .unwrap_or_else(|e| panic!("the limit is made part of the pick: {e}"));
+    assert!(boards[0].guidelines.is_empty());
+    let parts: Vec<String> = boards[0]
+        .design
+        .parts
+        .iter()
+        .map(|p| p.value.clone())
+        .collect();
+    assert_eq!(
+        parts.iter().filter(|v| v.as_str() == "330").count(),
+        1,
+        "{parts:?}"
     );
-    assert!(!err.contains("carries"), "{err}");
 }
 
 #[test]
