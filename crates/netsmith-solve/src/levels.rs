@@ -38,11 +38,21 @@ pub struct NotEvaluated {
     pub cause: Cause,
 }
 
+/// What the DC analysis says of the nets it solved, for the levels check (ADR 0076, amendment 8).
+#[derive(Debug, Default, Clone)]
+pub(crate) struct NetReads {
+    /// By net (its place in `Model::nets`): the net of the ground the voltage is measured from,
+    /// and the range the line's voltage has when every pin on it that is open drain lets go
+    /// of it: the high of an open-drain line, whatever its circuit makes of the pull-up.
+    pub high: HashMap<usize, (usize, f64, f64)>,
+}
+
 /// The readers of the logic interfaces and resistors of a model, for the passes that need
 /// them and make no check of their own.
 pub(crate) fn reader(model: &Model) -> Run<'_> {
     Run {
         model,
+        reads: None,
         faults: Vec::new(),
         notes: Vec::new(),
         seen: BTreeSet::new(),
@@ -51,8 +61,9 @@ pub(crate) fn reader(model: &Model) -> Run<'_> {
 }
 
 /// The faults found and the checks that could not be made.
-pub(crate) fn check(model: &Model) -> (Vec<Diagnostic>, Vec<NotEvaluated>) {
+pub(crate) fn check(model: &Model, reads: &NetReads) -> (Vec<Diagnostic>, Vec<NotEvaluated>) {
     let mut run = reader(model);
+    run.reads = Some(reads);
     for index in 0..model.nets().len() {
         netsmith_core::job::checkpoint();
         run.levels(index);
@@ -71,6 +82,8 @@ struct Line {
 
 pub(crate) struct Run<'a> {
     model: &'a Model,
+    /// What the DC analysis solved, when the check has it.
+    reads: Option<&'a NetReads>,
     faults: Vec<Diagnostic>,
     notes: Vec<NotEvaluated>,
     seen: BTreeSet<String>,
@@ -302,6 +315,17 @@ impl Run<'_> {
         // is the one its pull-up gives the line (ADR 0075).
         let voh = self.output_level(d.logic, "voh");
         if self.value(d.logic, "voh").is_none() && self.value(d.logic, "vol").is_some() {
+            // The DC analysis solved the line's circuit: its voltage with every open-drain
+            // driver let go is the high, whatever sits between the rail and the line.
+            if let Some(&(ground, lo, hi)) = self
+                .net_index(d.pin)
+                .and_then(|n| self.reads.and_then(|r| r.high.get(&n)))
+                && self.net_index(dg) == Some(ground)
+            {
+                self.high_from_analysis(net, d, r, (lo, hi));
+                self.low(net, d, r);
+                return;
+            }
             match self.pullups(net, dg) {
                 Ok(pulls) if !pulls.is_empty() => {
                     self.high_from_pullups(net, d, r, &pulls);
@@ -368,6 +392,43 @@ impl Run<'_> {
             ),
         }
         self.low(net, d, r);
+    }
+
+    /// The high of an open-drain line as the DC analysis solved it: the voltage of the net with
+    /// every driver of it high impedance, in the worst case of the ranges of the rails and the
+    /// parts between them and the line. It must be read as a high by the receiver.
+    fn high_from_analysis(&mut self, net: &Net, d: &Line, r: &Line, (lo, hi): (f64, f64)) {
+        let model = self.model;
+        let Some((fi, vih)) = self.value(r.logic, "vih") else {
+            let rl = model.path_of(r.logic);
+            self.missing(
+                net,
+                d,
+                r,
+                "high",
+                [(&model.path_of(d.logic), "voh", false), (&rl, "vih", true)],
+            );
+            return;
+        };
+        if lo < vih.hi() {
+            let point = |v| Quantity::point(Dimension::VOLTAGE, v);
+            let high = match (point(lo), point(hi)) {
+                (Ok(a), Ok(b)) => {
+                    Quantity::range(&a, &b).map_or_else(|_| volts(lo), |q| q.to_string())
+                }
+                _ => volts(lo),
+            };
+            self.fault(
+                r.part,
+                format!(
+                    "net `{}`: the DC analysis holds the line at {high} with every driver of it high impedance (a driver that states `vol` and no `voh` leaves the high to its circuit) but `{}` needs {vih}: a high of {} is not always read as a high, which takes {}",
+                    net.name,
+                    model.path_of_field(fi),
+                    volts(lo),
+                    volts(vih.hi()),
+                ),
+            );
+        }
     }
 
     /// The high of an open-drain line is what its pull-up resistors hold it at: it must be

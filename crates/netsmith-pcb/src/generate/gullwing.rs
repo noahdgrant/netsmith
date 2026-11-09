@@ -291,11 +291,16 @@ const PACKAGES: &[Package] = &[
 
 /// The TSSOP rows beyond the first few: (name, pins, pitch, body width, body length).
 ///
-/// The span over the leads is JEDEC MO-153's for the 4.4 mm body (6.4 mm) and the same
-/// outline's wider bodies in the datasheets that follow it: 8.1 mm over the leads of a
-/// 6.1 mm body, 10.0 mm over those of an 8.0 mm body. The leads are 0.45 to 0.75 mm long
-/// and, by pitch, 0.17 to 0.30 mm (0.65 mm), 0.17 to 0.27 mm (0.5 mm) and 0.13 to 0.23 mm
-/// (0.4 mm) wide: the ranges that reproduce KiCad 9.0's pads, as for the QFPs (ADR 0043).
+/// The span over the leads is 6.4 mm for the 4.4 mm body, 8.1 mm for the 6.1 mm body and
+/// 10.0 mm for the 8.0 mm body; the leads are 0.45 to 0.75 mm long and, by pitch, 0.17 to
+/// 0.30 mm (0.65 mm), 0.17 to 0.27 mm (0.5 mm) and 0.13 to 0.23 mm (0.4 mm) wide. Only part
+/// of that is read from a drawing: TI's SN74LVC16245A datasheet (SCES062Q) gives 6.20 to
+/// 6.60 mm over the leads of a 4.4 mm body with 0.13 to 0.23 mm leads at 0.4 mm pitch (page
+/// 21, MPDS006C) and 7.90 to 8.30 mm over a 6.1 mm body with 0.17 to 0.27 mm leads at 0.5 mm
+/// pitch (page 25, MTSS003D, "within JEDEC MO-153"). The other values (the 8.0 mm body's
+/// 10.0 mm, the 0.65 mm pitch width, the 6.1 mm body at 0.65 and 0.4 mm pitch) were fitted
+/// to reproduce KiCad 9.0.0's pads and are not read from a datasheet; JEDEC MO-153 itself
+/// was not read (ADR 0043).
 #[rustfmt::skip]
 const TSSOP_ROWS: &[(&str, usize, f64, f64, f64)] = &[
     ("TSSOP-100_6.1x20.8mm_P0.4mm", 100, 0.4, 6.1, 20.8),

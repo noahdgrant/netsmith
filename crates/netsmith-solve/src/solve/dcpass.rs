@@ -26,7 +26,7 @@ use netsmith_quantity::{Dimension, Quantity};
 use crate::catalog::Value;
 use crate::dc::{self, Error, Modelled, Which};
 use crate::generic::Need;
-use crate::levels::NotEvaluated;
+use crate::levels::{NetReads, NotEvaluated};
 
 use super::Solver;
 
@@ -117,10 +117,44 @@ fn list(names: &[String]) -> String {
     }
 }
 
+/// The high of each line that has a pin taken to be open drain: the island solved again with
+/// every such pin high impedance, and the range of the line's voltage over it (ADR 0076,
+/// amendment 8). The ends are widened as every range the pass writes is.
+fn open_drain_reads(planned: &dc::Planned, reads: &mut NetReads) {
+    let Some(ground) = planned.ground else { return };
+    let mut island = planned.island.clone();
+    for &e in &planned.open_drain {
+        if let dc::net::Kind::Pin { low, .. } = &mut island.elements[e].kind {
+            *low = None;
+        }
+    }
+    let Ok(report) = island.analyze(dc::MAX_COMBINATIONS) else {
+        return;
+    };
+    if report.consistent == 0 {
+        return;
+    }
+    for &e in &planned.open_drain {
+        let dc::net::Kind::Pin { node, .. } = planned.island.elements[e].kind else {
+            continue;
+        };
+        let Some(&net) = planned.free_nets.get(node) else {
+            continue;
+        };
+        let r = report.range(Which::NodeVoltage(node));
+        if r.is_empty() || !r.lo.is_finite() || !r.hi.is_finite() {
+            continue;
+        }
+        let (lo, hi) = widen(Dimension::VOLTAGE, r.lo, r.hi);
+        reads.high.insert(net, (ground, lo, hi));
+    }
+}
+
 impl Solver<'_> {
     /// Run the analysis and write its results. The notes are the islands it left alone.
-    pub(super) fn dc_pass(&mut self) -> (DcSummary, Vec<NotEvaluated>) {
+    pub(super) fn dc_pass(&mut self) -> (DcSummary, Vec<NotEvaluated>, NetReads) {
         let mut summary = DcSummary::default();
+        let mut reads = NetReads::default();
         let mut notes = Vec::new();
         // The rails on the nodes of the islands, written when every island is done, and the
         // fields that a part's own write covers (a regulator's input voltage).
@@ -147,11 +181,18 @@ impl Solver<'_> {
                         self.dc_collapse(&planned, &report, c);
                     }
                     let solved_any = report.consistent > 0;
+                    // An island with a pin taken to be open drain by inference gives the levels
+                    // check the voltage of its lines, and nothing is written for its parts
+                    // (amendment 8).
+                    let inferred = !planned.open_drain.is_empty();
+                    if inferred && solved_any {
+                        open_drain_reads(&planned, &mut reads);
+                    }
                     let run = Rc::new(Run {
                         island: planned.island,
                         report,
                     });
-                    if solved_any {
+                    if solved_any && !inferred {
                         for m in &planned.parts {
                             summary.written += self.dc_write(m, &run);
                         }
@@ -202,7 +243,7 @@ impl Solver<'_> {
             done.extend(class.iter().copied());
             summary.rails += self.dc_write_rail(&rail, &class, &run);
         }
-        (summary, notes)
+        (summary, notes, reads)
     }
 
     /// Give a rail the voltage of its node (a `~>` chain carries the voltage, and so the drops of

@@ -1,13 +1,21 @@
-//! SOT-23 with three, five or six pins, and SOT-223.
+//! SOT-23 with three, five or six pins, SOT-223, and the SC-70 family (SOT-323, SOT-343,
+//! SOT-353, SOT-363, SC-70-8).
 //!
 //! The SOT-23 family follows IPC-7351B like the other gull-wing packages, from the JEDEC
 //! outlines TO-236 (SOT-23) and MO-178 (SOT-23-3, -5, -6). SOT-223 has a tab pad whose size is
 //! not a function of the lead dimensions; its pads are the ones the manufacturers' drawings
 //! recommend, as KiCad's library gives them (ADR 0043).
+//!
+//! The SC-70 family (EIAJ SC-70, also SOT-323 and, with more leads, SOT-343, -353, -363 and
+//! SC-70-8; a body about 1.25 x 2.0 mm, 0.65 mm pitch, 0.5 mm for the eight-lead one) is
+//! recorded the same way: KiCad 9.0 draws its pads by hand, with one 1.35 x 2.2 mm body for
+//! every row and a courtyard that is not a margin round the pads. The pads and the courtyard
+//! are the numbers of those footprints (facts about them, as for SOT-223); a row for
+//! reflow and one for hand soldering of each. The makers' drawings were not read.
 
 use super::draw::PadSpec;
 use super::ipc::{self, GULL_WING, Inside, Size};
-use super::outline::{Body, two_columns};
+use super::outline::{Body, two_columns, two_columns_in};
 use crate::footprint::Footprint;
 use crate::geometry::Pt;
 
@@ -83,6 +91,7 @@ pub fn names() -> Vec<String> {
         .iter()
         .map(|s| s.name)
         .chain(SOT_223.iter().map(|s| s.0))
+        .chain(SC_70.iter().map(|s| s.name))
         .map(|n| format!("{LIBRARY}:{n}"))
         .collect()
 }
@@ -94,6 +103,9 @@ pub fn generate(library: &str, name: &str) -> Option<Footprint> {
     }
     if let Some(s) = SOT_23.iter().find(|s| s.name == name) {
         return Some(sot23(s));
+    }
+    if let Some(s) = SC_70.iter().find(|s| s.name == name) {
+        return Some(sc70_footprint(s));
     }
     let (_, tab) = SOT_223.iter().find(|s| s.0 == name)?;
     Some(sot223(name, tab))
@@ -155,5 +167,178 @@ fn sot223(name: &str, tab: &str) -> Footprint {
             length: 6.7,
         },
         0.25,
+    )
+}
+
+/// An SC-70 variant, its pads recorded.
+struct Sc70 {
+    name: &'static str,
+    description: &'static str,
+    /// The number of pins, in two columns.
+    pins: usize,
+    /// The pitch along the columns.
+    pitch: f64,
+    /// The pins of a three-pin package: pin 3 is alone on the right, between the two rows
+    /// of pins 1 and 2.
+    three: bool,
+    /// The centre of the pads of each column from the middle, and the pad across the
+    /// columns (x) and along them (y).
+    column: f64,
+    pad: (f64, f64),
+    /// Half width and half height of the courtyard.
+    courtyard: (f64, f64),
+}
+
+const SC_70_BODY: Body = Body {
+    width: 1.35,
+    length: 2.2,
+};
+
+/// A row: the reflow pads, then the pads for hand soldering.
+const fn row(
+    name: &'static str,
+    description: &'static str,
+    pins: usize,
+    pitch: f64,
+    column: f64,
+    pad: (f64, f64),
+    courtyard: (f64, f64),
+) -> Sc70 {
+    Sc70 {
+        name,
+        description,
+        pins,
+        pitch,
+        three: pins == 3,
+        column,
+        pad,
+        courtyard,
+    }
+}
+
+const SC_70: [Sc70; 10] = [
+    row(
+        "SOT-323_SC-70",
+        "SOT-323, SC-70",
+        3,
+        1.3,
+        1.0,
+        (0.7, 0.45),
+        (1.7, 1.3),
+    ),
+    row(
+        "SOT-323_SC-70_Handsoldering",
+        "SOT-323, SC-70, pads for hand soldering",
+        3,
+        1.3,
+        1.33,
+        (1.5, 0.45),
+        (2.4, 1.3),
+    ),
+    row(
+        "SOT-343_SC-70-4",
+        "SOT-343, SC-70-4",
+        4,
+        1.3,
+        0.95,
+        (0.65, 0.4),
+        (1.6, 1.4),
+    ),
+    row(
+        "SOT-343_SC-70-4_Handsoldering",
+        "SOT-343, SC-70-4, pads for hand soldering",
+        4,
+        1.3,
+        1.33,
+        (1.5, 0.4),
+        (2.4, 1.4),
+    ),
+    row(
+        "SOT-353_SC-70-5",
+        "SOT-353, SC-70-5",
+        5,
+        0.65,
+        0.95,
+        (0.65, 0.4),
+        (1.6, 1.4),
+    ),
+    row(
+        "SOT-353_SC-70-5_Handsoldering",
+        "SOT-353, SC-70-5, pads for hand soldering",
+        5,
+        0.65,
+        1.33,
+        (1.5, 0.4),
+        (2.4, 1.4),
+    ),
+    row(
+        "SOT-363_SC-70-6",
+        "SOT-363, SC-70-6, SC-88",
+        6,
+        0.65,
+        0.95,
+        (0.65, 0.4),
+        (1.6, 1.4),
+    ),
+    row(
+        "SOT-363_SC-70-6_Handsoldering",
+        "SOT-363, SC-70-6, SC-88, pads for hand soldering",
+        6,
+        0.65,
+        1.33,
+        (1.5, 0.4),
+        (2.4, 1.4),
+    ),
+    row("SC-70-8", "SC70-8", 8, 0.5, 0.9, (1.0, 0.3), (1.7, 1.3)),
+    row(
+        "SC-70-8_Handsoldering",
+        "SC70-8, pads for hand soldering",
+        8,
+        0.5,
+        1.15,
+        (1.5, 0.3),
+        (2.2, 1.3),
+    ),
+];
+
+/// The pads of an SC-70 package: down the left column, then up the right one; the
+/// three-pin package has pins 1 and 2 on the left and pin 3 on the right in the middle.
+fn sc70_footprint(s: &Sc70) -> Footprint {
+    let mut pads = Vec::new();
+    if s.three {
+        let y = s.pitch / 2.0;
+        for (n, x, at_y) in [(1, -s.column, -y), (2, -s.column, y), (3, s.column, 0.0)] {
+            pads.push(PadSpec::smd(n, Pt::new(x, at_y), s.pad));
+        }
+    } else {
+        // Five pins: three on the left, two on the right at every other place of the grid.
+        let left = if s.pins == 5 { 3 } else { s.pins / 2 };
+        let right = s.pins - left;
+        let right_pitch = if s.pins == 5 { 2.0 * s.pitch } else { s.pitch };
+        let top = (left as f64 - 1.0) / 2.0 * s.pitch;
+        for i in 0..left {
+            pads.push(PadSpec::smd(
+                i + 1,
+                Pt::new(-s.column, -top + i as f64 * s.pitch),
+                s.pad,
+            ));
+        }
+        let top = (right as f64 - 1.0) / 2.0 * right_pitch;
+        for i in 0..right {
+            pads.push(PadSpec::smd(
+                left + i + 1,
+                Pt::new(s.column, top - i as f64 * right_pitch),
+                s.pad,
+            ));
+        }
+    }
+    two_columns_in(
+        LIBRARY,
+        s.name,
+        &format!("{}, pads as recorded, generated by netsmith", s.description),
+        "SC-70 SOT TO_SOT_SMD",
+        &pads,
+        SC_70_BODY,
+        s.courtyard,
     )
 }
