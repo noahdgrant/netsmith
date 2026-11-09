@@ -117,7 +117,7 @@ board B {
     .a_filter: Capacitor { .effective_capacitance >= 1uF }
     .z_diode: Schottky {}
     .supply.pos ~> .r1 ~> .a_filter ~> .supply.neg
-    .other.pos ~> .z_diode ~> .other.neg
+    .other.neg ~> .z_diode ~> .other.pos
 }
 "#;
     let s = solved(src);

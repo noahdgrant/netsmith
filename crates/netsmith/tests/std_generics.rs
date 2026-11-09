@@ -79,7 +79,7 @@ board Clamp {
     .z.bias <= .z.zener_voltage
     .d: Diode { .max_reverse_voltage &= 10V }
     .input.pos ~> .z ~> .input.neg
-    .input.pos ~> .d ~> .input.neg
+    .input.neg ~> .d ~> .input.pos
 }
 ";
 

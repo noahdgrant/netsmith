@@ -667,7 +667,8 @@ impl Checker<'_> {
         }
     }
 
-    /// Give each part with a `bias` (a capacitor) the voltage of the rail it sits across.
+    /// Give each part with a `bias` (a capacitor) the voltage of the rail it sits across, and
+    /// each part with a `bridge_voltage` (a diode) that voltage with its sign.
     ///
     /// A part is across a rail when its two bridge terminals are on the nets of the rail's
     /// `pos` and `neg`, in either order: the sign of a bias does not matter to a ceramic
@@ -681,13 +682,24 @@ impl Checker<'_> {
     /// same two nets are joined at the pins, so they are one voltage; the first by path
     /// stands for them, which keeps the choice independent of statement order. A part across
     /// no rail keeps its bias unset, and the solver says so if the design needs it.
+    ///
+    /// A part that is not symmetric has a `bridge_voltage` and not a `bias` of this kind
+    /// (ADR 0088): the voltage from the first terminal of its bridge to the second. It is
+    /// the rail's voltage when the first terminal is on the rail's `pos`, and its negative
+    /// when it is on the `neg`, so a diode wired the wrong way round across a rail is the
+    /// other sign and the part's own relations see it. Such a part's `bias` is the part's to
+    /// define from it, and is not derived here.
     fn derive_bias(&mut self) {
-        let parts: Vec<(InstId, _, InstId, InstId)> = self
+        // The part, the field to give, the two terminals, and whether the sign counts.
+        let parts: Vec<(InstId, FieldId, InstId, InstId, bool)> = self
             .model
             .instances()
             .filter_map(|(id, _)| {
+                if let Some((v, a, b)) = self.model.bridge_voltage_of(id) {
+                    return Some((id, v, a, b, true));
+                }
                 let (bias, a, b) = self.model.bias_of(id)?;
-                Some((id, bias, a, b))
+                Some((id, bias, a, b, false))
             })
             .collect();
         let rails: Vec<_> = self
@@ -695,13 +707,14 @@ impl Checker<'_> {
             .instances()
             .filter_map(|(id, _)| Some((id, self.model.rail_of(id)?)))
             .collect();
-        for (part, bias, a, b) in parts {
+        for (part, field, a, b, signed) in parts {
             let (na, nb) = (self.find(a.0), self.find(b.0));
             if na == nb {
                 continue;
             }
             let scope = self.model.instance(part).parent;
-            let mut across: Vec<(String, _)> = Vec::new();
+            // The rail's path, its voltage, and whether the first terminal is on its `neg`.
+            let mut across: Vec<(String, _, bool)> = Vec::new();
             for &(rail, (voltage, pos, neg)) in &rails {
                 let Some(owner) = self.model.owner_of(rail) else {
                     continue;
@@ -710,24 +723,32 @@ impl Checker<'_> {
                     continue;
                 }
                 let (np, nn) = (self.find(pos.0), self.find(neg.0));
-                if (np, nn) == (na, nb) || (np, nn) == (nb, na) {
-                    across.push((self.model.path_of(rail), voltage));
+                if (np, nn) == (na, nb) {
+                    across.push((self.model.path_of(rail), voltage, false));
+                } else if (np, nn) == (nb, na) {
+                    across.push((self.model.path_of(rail), voltage, true));
                 }
             }
-            across.sort();
-            let Some((_, voltage)) = across.first() else {
+            across.sort_by(|x, y| x.0.cmp(&y.0));
+            let Some(&(_, voltage, flipped)) = across.first() else {
                 continue;
             };
-            // Point at the statement that gave the bias, if the design gave one: that is
+            // Point at the statement that gave the value, if the design gave one: that is
             // where a contradiction is.
-            let (source, span) = match self.model.field(bias).narrowed_at.last() {
+            let (source, span) = match self.model.field(field).narrowed_at.last() {
                 Some(&at) => at,
                 None => self.model.instance(part).at(),
             };
+            let rail_voltage = RExpr::Field(voltage);
+            let rhs = if signed && flipped {
+                RExpr::Neg(Box::new(rail_voltage))
+            } else {
+                rail_voltage
+            };
             std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
-                lhs: RExpr::Field(bias),
+                lhs: RExpr::Field(field),
                 op: CmpOp::EqEq,
-                rhs: RExpr::Field(*voltage),
+                rhs,
                 source,
                 span,
                 written: None,
