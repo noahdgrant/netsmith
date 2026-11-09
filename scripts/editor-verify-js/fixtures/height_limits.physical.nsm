@@ -1,0 +1,24 @@
+import std::pcb::{Keepout, Outline}
+
+physical for Lidded {
+    case {
+        .outline: Outline {
+            .width &= 40mm
+            .height &= 24mm
+        }
+    }
+
+    // Datasheet heights, above the face of the board.
+    .tall.height &= 9mm
+    .flat.height &= 1.5mm
+
+    // Case drawing: the lid's ribs allow 3 mm over the left half, on the top face.
+    .lid: Keepout {
+        .x &= 0mm
+        .y &= 0mm
+        .width &= 20mm
+        .height &= 24mm
+        .layers &= "top"
+        .max_height &= 3mm
+    }
+}
