@@ -4,6 +4,10 @@
 # in both files is an error, so there is one answer.
 #
 # `default = true` marks the footprint used when the part was never given a package.
+#
+# A symbol or footprint of the library `netsmith` is not KiCad's: it is one of the files in
+# `std/libs/`, which the binary carries for the packages and parts that KiCad's libraries do not
+# have (ADR 0087).
 
 [[part]]
 kind = "Resistor"
@@ -659,3 +663,12 @@ kind = "LevelTranslator"
 package = "SOT-353_SC-70-5"
 symbol = "74xGxx:74LVC1G17"
 footprint = "Package_TO_SOT_SMD:SOT-353_SC-70-5"
+
+# The LT8641 buck converter IC in its 18-lead 3 x 4 mm QFN (`UDC20(18)`, datasheet Rev. C p.24).
+# KiCad has neither a symbol nor a footprint of it (its `UDC-QFN-20-4EP_3x4mm_P0.5mm_EP0.41x0.25mm`
+# is the LT3033's, another exposed pad variation), so both are netsmith's own (ADR 0087).
+[[part]]
+kind = "Lt8641"
+package = "UDC20(18)"
+symbol = "netsmith:LT8641"
+footprint = "netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA"

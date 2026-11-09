@@ -109,10 +109,7 @@ fn main() -> ExitCode {
             let name = &built.design.name;
             fs::write(dir.join(format!("{name}.kicad_pcb")), kicad_pcb(&board)).unwrap();
             fs::write(dir.join(format!("{name}.kicad_pro")), kicad_pro(&board)).unwrap();
-            for (table, text) in netsmith_kicad::library_tables(libraries.mapping.libraries(), &dir)
-            {
-                fs::write(dir.join(table), text).unwrap();
-            }
+            libraries.write_tables(&dir, &built.design).unwrap();
         }
     }
     ExitCode::SUCCESS
