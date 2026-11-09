@@ -2551,6 +2551,95 @@ physical for LedExample {
     (root, editor)
 }
 
+/// A project of the LED example, with a physical file that pins `r1`, 9 mm tall, under a lid
+/// that allows 3 mm on the top face, and `r2`, with no stated height, under it too.
+fn under_a_lid_project(name: &str) -> (TempDir, Workspace) {
+    let (root, _) = project(name);
+    fs::write(
+        root.join("src/main.nsm"),
+        include_str!("../../../examples/led.nsm"),
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/main.physical.nsm"),
+        "import std::pcb::{Keepout, Outline}
+
+physical for LedExample {
+    case {
+        .outline: Outline {
+            .width &= 40mm
+            .height &= 30mm
+        }
+    }
+    .r1.place.x &= 10mm
+    .r1.place.y &= 10mm
+    .r1.height &= 9mm
+    .lid: Keepout {
+        .x &= 0mm
+        .y &= 0mm
+        .width &= 25mm
+        .height &= 30mm
+        .layers &= \"top\"
+        .max_height &= 3mm
+    }
+}
+",
+    )
+    .unwrap();
+    let editor = Workspace::open(Target::resolve_from(&root, None).unwrap())
+        .unwrap_or_else(|e| panic!("{e}"));
+    (root, editor)
+}
+
+#[test]
+fn the_scene_and_the_findings_carry_the_heights_and_the_limit_for_the_page() {
+    // ADR 0045 section 11, the editor (issue 28): the page needs a part's body and stated
+    // height and a keepout's limit for the hover and the drag limit, and the keepout a finding
+    // is about to light it when the finding is picked.
+    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+        return;
+    }
+    let (_root, editor) = under_a_lid_project("under-a-lid");
+    let scene = editor.pcb_scene("LedExample").unwrap();
+    let r1 = part(&scene, "R1");
+    assert_eq!(r1.height, Some(9.0));
+    let (body, court) = (r1.body, r1.courtyard);
+    assert!(
+        body.width > 0.0
+            && body.x >= court.x - 1e-6
+            && body.x + body.width <= court.x + court.width + 1e-6,
+        "the body {body:?} is inside the courtyard {court:?} or is it"
+    );
+    let lid = scene.keepouts.iter().find(|k| k.name == "lid").unwrap();
+    assert_eq!(lid.max_height, Some(3.0));
+    assert_eq!(lid.layers, ["top"]);
+    assert!(!lid.parts && !lid.tracks);
+    let found = editor.pcb_findings("LedExample").unwrap();
+    let tall = found
+        .findings
+        .iter()
+        .find(|f| f.rule == "too_tall")
+        .unwrap_or_else(|| panic!("{found:?}"));
+    assert_eq!(tall.keepout.as_deref(), Some("lid"));
+    assert_eq!(tall.parts, ["R1"]);
+    assert!(
+        tall.message.contains("the keepout `lid` allows 3.00 mm"),
+        "{}",
+        tall.message
+    );
+    let unchecked: Vec<_> = found
+        .findings
+        .iter()
+        .filter(|f| f.rule == "height_unchecked")
+        .collect();
+    assert!(
+        unchecked
+            .iter()
+            .all(|f| f.keepout.as_deref() == Some("lid")),
+        "{unchecked:?}"
+    );
+}
+
 #[test]
 fn lines_that_cannot_hold_are_a_constraint_finding_before_any_placing() {
     // The editor shows the proof of ADR 0045 section 14 while editing: no board is placed,

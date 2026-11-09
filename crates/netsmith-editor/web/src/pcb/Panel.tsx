@@ -99,13 +99,20 @@ function PartList(props: { scene: PcbScene; onFocus: (box: PcbBox) => void }) {
             if (k.area) props.onFocus(k.area);
           }}>
             <b class="ref">{k.name}</b>
-            <span class="faint kind">{k.area ? `no ${forbidden(k)}` : 'no place yet'}</span>
+            <span class="faint kind">{k.area ? summary(k) : 'no place yet'}</span>
             <span class="tag">{{ drawn: 'drawn', placed: 'layout', part: 'part', source: 'source' }[k.origin]}</span>
           </div>
         ))}
       </div>
     </>
   );
+}
+
+/** What a keepout in the list says: what it forbids, and the height it allows where it states one. */
+function summary(k: PcbKeepout): string {
+  const what = forbidden(k);
+  const limit = k.maxHeight != null ? `max ${fmt(k.maxHeight)} mm tall` : '';
+  return [what && `no ${what}`, limit].filter(Boolean).join(', ');
 }
 
 function forbidden(k: PcbKeepout): string {
@@ -176,6 +183,7 @@ function PartInspector(props: { scene: PcbScene; parts: PcbPart[]; onPickNet: (n
             { label: 'Turn', value: `${fmt(one.rotation)}°` },
             { label: 'Face', value: one.side },
             { label: 'Placed by', value: `${one.locked ? 'locked, ' : ''}${one.placement}` },
+            { label: 'Height', value: one.height == null ? 'not stated' : `${fmt(one.height)} mm` },
           ]}
         />
       )}
@@ -260,6 +268,7 @@ function KeepoutInspector(props: { scene: PcbScene; keepout: PcbKeepout }) {
       <Defs
         rows={[
           { label: 'Size', value: `${fmt(k.width)} x ${fmt(k.height)} mm` },
+          ...(k.maxHeight != null ? [{ label: 'Max height', value: `${fmt(k.maxHeight)} mm on ${k.layers.join(', ')}` }] : []),
           ...(k.area ? [{ label: 'Position', value: `${fmt(k.area.x - sc.originX)}, ${fmt(k.area.y - sc.originY)} mm` }] : []),
         ]}
       />

@@ -77,6 +77,9 @@
 .pcb-overlay .outline-hover { stroke: var(--sel); stroke-opacity: .6; stroke-width: calc(1.25 * var(--px, .04)); stroke-dasharray: calc(5 * var(--px, .04)) calc(3 * var(--px, .04)); }
 .pcb-overlay .box-select { fill: color-mix(in srgb, var(--sel) 9%, transparent); stroke: var(--sel); stroke-width: calc(1 * var(--px, .04)); stroke-dasharray: calc(5 * var(--px, .04)) calc(3 * var(--px, .04)); }
 .pcb-overlay .k-draw, .pcb-overlay .k-preview { fill: color-mix(in srgb, var(--pcb-keepout) 14%, transparent); stroke-width: calc(1.25 * var(--px, .04)); stroke-dasharray: calc(6 * var(--px, .04)) calc(4 * var(--px, .04)); }
+/* the height limit a picked finding is about: the zone's amber (netsmith_pcb::svg::HEIGHT_LIMIT) as a solid outline, with its limit in words */
+.pcb-overlay .k-lit rect { fill: none; stroke: var(--warning); stroke-width: calc(2.5 * var(--px, .04)); stroke-dasharray: none; }
+.pcb-overlay .k-lit text { fill: var(--warning); font-family: monospace; font-weight: 600; paint-order: stroke; stroke: var(--canvas); stroke-width: calc(2.5 * var(--px, .04)); pointer-events: none; }
 .pcb-overlay .mark { stroke-width: calc(2 * var(--px, .04)); stroke-dasharray: none; fill: color-mix(in srgb, var(--danger) 8%, transparent); filter: drop-shadow(0 0 .35px var(--danger)); }
 .pcb-overlay .mark.warning { fill: color-mix(in srgb, var(--warning) 8%, transparent); filter: drop-shadow(0 0 .35px var(--warning)); }
 .pcb-overlay .mark.on { stroke-width: calc(3 * var(--px, .04)); fill: color-mix(in srgb, var(--danger) 16%, transparent); }

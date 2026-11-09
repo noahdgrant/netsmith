@@ -976,6 +976,12 @@ pub struct PcbPart {
     /// (`hand`, `auto` or `regen`).
     pub placement: String,
     pub courtyard: PcbBox,
+    /// What stands above the board: the footprint's fabrication outline, else its courtyard
+    /// (the box a height limit is measured on, ADR 0045 section 11).
+    pub body: PcbBox,
+    /// How tall the body stands, in mm, if the design states it (never a guess: `None` is
+    /// unknown).
+    pub height: Option<f64>,
     pub pads: Vec<PcbPad>,
 }
 
@@ -1007,6 +1013,8 @@ pub struct PcbKeepout {
     pub vias: bool,
     pub copper: bool,
     pub parts: bool,
+    /// The tallest a part may stand where it is, in mm, on the faces in `layers`.
+    pub max_height: Option<f64>,
 }
 
 /// A rectangular hole through the board, as drawn. The editor does not move it: the outline
@@ -1142,6 +1150,11 @@ pub struct PcbFinding {
     pub area: PcbBox,
     /// The references of the parts it is about.
     pub parts: Vec<String>,
+    /// The keepout the finding is about, by name, where it is about one (a part in it, or too
+    /// tall for its limit): the page lights it when the finding is picked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub keepout: Option<String>,
     /// The line of a physical file (or of the circuit source) that states the requirement the
     /// finding quotes, where it quotes one; the first of them if it quotes several. A point at
     /// the start of the line (`column` and `endColumn` are 1), `file` as the checker names it.

@@ -9,8 +9,10 @@ import { PanZoom } from '../components/PanZoom';
 import { hoverEnter, hoverLeave } from '../hover';
 import {
   commit,
+  findings,
   grid,
   pickKeepout,
+  pickedFinding,
   pickedKeepout,
   redo,
   select,
@@ -32,6 +34,7 @@ import {
   toggleLock,
 } from './actions';
 import { fitView } from '../sheets';
+import { heightLines, heldTip, limitMove, zonesOf } from './limits';
 import { type Drawing, SCALE, light, previewMove } from './drawing';
 import { moveParts } from './edits';
 import { type HiddenPlane, fitPlaneLabels } from './planeLabels';
@@ -59,7 +62,7 @@ export interface Tip {
 }
 
 type Gesture =
-  | { kind: 'move'; start: Pt; screen: Pt; parts: PcbPart[]; hit: PcbPart; active: boolean; extra: boolean }
+  | { kind: 'move'; start: Pt; screen: Pt; parts: PcbPart[]; hit: PcbPart; active: boolean; extra: boolean; last: Pt }
   | { kind: 'box'; start: Pt; screen: Pt; additive: boolean; active: boolean }
   | { kind: 'draw'; start: Pt }
   | { kind: 'kmove'; start: Pt; screen: Pt; name: string; box0: PcbBox; active: boolean }
@@ -130,6 +133,11 @@ export function Canvas(props: {
   const keepoutPicked = pickedKeepout.value;
   const activeTool = tool.value;
   const step = grid.value;
+  // The keepouts that limit height: all of them for the hover, the board's own for the drag (one a part carries moves with it).
+  const zones = useMemo(() => zonesOf(sc.keepouts), [sc]);
+  const dragZones = useMemo(() => zonesOf(sc.keepouts.filter((k) => k.origin !== 'part')), [sc]);
+  // The keepout the picked finding is about, lit with its limit.
+  const litKeepout = findings.value?.findings.find((f) => f.id === pickedFinding.value)?.keepout ?? null;
   const svgEl = () => holder.current?.querySelector('svg') as SVGSVGElement | null;
 
   // Nets of the selected parts are lit, unless the pointer is on a net or one is picked.
@@ -173,11 +181,17 @@ export function Canvas(props: {
 
   const keepoutAt = (name: string | null) => sc.keepouts.find((k) => k.name === name) ?? null;
 
+  /** Where a tip near the pointer goes, in the stage's own pixels. */
+  function tipNear(e: PointerEvent): { x: number; y: number } {
+    const stage = holder.current?.closest('.panzoom')?.getBoundingClientRect();
+    return stage ? { x: e.clientX - stage.left + 14, y: e.clientY - stage.top + 14 } : { x: 0, y: 0 };
+  }
+
   function describe(e: PointerEvent, p: Pt): Tip | null {
     const target = e.target as Element;
     const stage = holder.current?.closest('.panzoom')?.getBoundingClientRect();
     if (!stage) return null;
-    const at = { x: e.clientX - stage.left + 14, y: e.clientY - stage.top + 14 };
+    const at = tipNear(e) ?? { x: 0, y: 0 };
     const info = (part: PcbPart) => [`${part.value}  ${part.kind}${part.package ? ` ${part.package}` : ''}`];
     const pad = target.closest('[data-pad]');
     const owner = target.closest('[data-path]');
@@ -191,10 +205,14 @@ export function Canvas(props: {
     if (copper) return { ...at, title: `net ${copper.getAttribute('data-net')}`, lines: [] };
     if (part) {
       const how = part.locked ? 'locked' : part.placement === 'derived' ? 'placed by netsmith' : `placed by ${part.placement}`;
-      return { ...at, title: part.refdes, lines: [...info(part), `${part.side} side, ${how}`] };
+      return { ...at, title: part.refdes, lines: [...info(part), `${part.side} side, ${how}`, ...heightLines(part, zones)] };
     }
     const keepout = sc.keepouts.find((k) => k.area && distanceToEdge(k.area, p) < 0.3 && contains(expand(k.area, 0.3), p));
-    if (keepout) return { ...at, title: `keepout ${keepout.name}`, lines: [`no ${forbids(keepout)}`, `on ${keepout.layers.join(', ')}`] };
+    if (keepout) {
+      const what = forbids(keepout);
+      const limit = keepout.maxHeight != null ? [`parts at most ${Math.round(keepout.maxHeight * 100) / 100} mm tall`] : [];
+      return { ...at, title: `keepout ${keepout.name}`, lines: [...(what ? [`no ${what}`] : []), ...limit, `on ${keepout.layers.join(', ')}`] };
+    }
     return null;
   }
 
@@ -235,7 +253,7 @@ export function Canvas(props: {
       const already = picked.includes(part.path);
       if (!already) select([part.path]);
       const parts = already ? selected : [part];
-      gesture.current = { kind: 'move', start: p, screen, parts, hit: part, active: false, extra: already && parts.length > 1 };
+      gesture.current = { kind: 'move', start: p, screen, parts, hit: part, active: false, extra: already && parts.length > 1, last: NONE };
       return;
     }
     const near = sc.keepouts
@@ -280,7 +298,12 @@ export function Canvas(props: {
       // The part that was taken ends on the grid and the others keep their distance to it.
       const first = free.includes(g.hit) ? g.hit : free[0];
       const anchor = { x: first.x - sc.originX, y: first.y - sc.originY };
-      const delta = snapMove(anchor, by, step);
+      // A part too tall for a height limit stops at its edge (ADR 0045 section 11): the zones of the
+      // board, not those a part carries, which move with their part.
+      const limited = limitMove(free, dragZones, snapMove(anchor, by, step), g.last, step);
+      const delta = limited.delta;
+      g.last = delta;
+      props.onTip(limited.held ? { ...tipNear(e), ...heldTip(limited.held) } : null);
       const svg = svgEl();
       if (svg) previewMove(svg, free, delta);
       setPreview({ delta, moving: free.map((x) => x.path) });
@@ -309,6 +332,8 @@ export function Canvas(props: {
     if (!g) return;
     const pv = preview;
     setPreview({});
+    // The note of a drag held by a height limit goes with the drag.
+    if (g.kind === 'move') props.onTip(null);
     if (g.kind === 'move') {
       if (!g.active) {
         // A press on one of several selected parts, with no drag, picks that one.
@@ -525,6 +550,18 @@ export function Canvas(props: {
                     </>
                   );
                 })()}
+              </g>
+            ) : null,
+          )}
+          {sc.keepouts.map((k) =>
+            k.area && k.name === litKeepout ? (
+              <g key={`lit:${k.name}`} class="k-lit" data-testid="keepout-lit" data-keepout-lit={k.name}>
+                <rect x={k.area.x} y={k.area.y} width={k.area.width} height={k.area.height} />
+                {k.maxHeight != null && (
+                  <text x={k.area.x + 0.4} y={k.area.y + k.area.height - 0.5} font-size={Math.min(1.1, k.area.height / 4)}>
+                    {`${k.name}: at most ${Math.round(k.maxHeight * 100) / 100} mm`}
+                  </text>
+                )}
               </g>
             ) : null,
           )}

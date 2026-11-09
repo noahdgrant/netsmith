@@ -762,7 +762,17 @@ locked: boolean,
  * `derived` while the layout file has no entry for the part, else who wrote the entry
  * (`hand`, `auto` or `regen`).
  */
-placement: string, courtyard: PcbBox, pads: Array<PcbPad>, };
+placement: string, courtyard: PcbBox, 
+/**
+ * What stands above the board: the footprint's fabrication outline, else its courtyard
+ * (the box a height limit is measured on, ADR 0045 section 11).
+ */
+body: PcbBox, 
+/**
+ * How tall the body stands, in mm, if the design states it (never a guess: `None` is
+ * unknown).
+ */
+height: number | null, pads: Array<PcbPad>, };
 
 export type KeepoutOrigin = "source" | "placed" | "drawn" | "part";
 
@@ -770,7 +780,11 @@ export type PcbKeepout = { name: string, origin: KeepoutOrigin,
 /**
  * Where it is on the sheet, if it has a place.
  */
-area: PcbBox | null, width: number, height: number, layers: Array<string>, tracks: boolean, vias: boolean, copper: boolean, parts: boolean, };
+area: PcbBox | null, width: number, height: number, layers: Array<string>, tracks: boolean, vias: boolean, copper: boolean, parts: boolean, 
+/**
+ * The tallest a part may stand where it is, in mm, on the faces in `layers`.
+ */
+maxHeight: number | null, };
 
 export type PcbCutout = { name: string, area: PcbBox | null, };
 
@@ -845,6 +859,11 @@ x: number, y: number, area: PcbBox,
  * The references of the parts it is about.
  */
 parts: Array<string>, 
+/**
+ * The keepout the finding is about, by name, where it is about one (a part in it, or too
+ * tall for its limit): the page lights it when the finding is picked.
+ */
+keepout?: string, 
 /**
  * The line of a physical file (or of the circuit source) that states the requirement the
  * finding quotes, where it quotes one; the first of them if it quotes several. A point at
