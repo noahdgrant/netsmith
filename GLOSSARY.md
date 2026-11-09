@@ -295,7 +295,7 @@ The range of voltage a `Logic` line can have, `.swing` of the `Logic` or of the 
 _Avoid_: Output range, internal rail (a rail has pads)
 
 **Open-drain line**:
-A line that a device only pulls low or releases, and a resistor to a rail holds high, such as the `sda` of an `I2c` bus. The levels check (ADR 0075, provisional) recognises a driver of one by what its part states, a `vol` and no `voh`, on a net that a resistor joins to the positive pin of a rail: the line's high is that rail's voltage range, which the receivers' `vih` is judged against. There is no kind or marker for it in the language.
+A line that a device only pulls low or releases, and a resistor to a rail holds high, such as the `sda` of an `I2c` bus. The levels check (ADR 0075, provisional) recognises a driver of one by what its part states, a `vol` and no `voh`, on a net that a resistor joins to the positive pin of a rail: the line's high is that rail's voltage range, which the receivers' `vih` is judged against. When the DC analysis solves the line (every driver states `vol` at a test current), the high is the voltage of the line with every driver let go, which also sees a divider or a diode in the pull-up (ADR 0076, amendment 8, provisional). There is no kind or marker for it in the language.
 _Avoid_: Open-collector (KiCad's name for the pin type, which netsmith does not have), wired-AND
 
 **Level translator**:

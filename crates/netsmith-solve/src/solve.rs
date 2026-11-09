@@ -554,7 +554,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
     s.check_windows();
     // The picked parts' network is solved, and what it gives is written where nothing states
     // a value (ADR 0076); the relations that waited are then judged with numbers.
-    let (dc, dc_notes) = s.dc_pass();
+    let (dc, dc_notes, net_reads) = s.dc_pass();
     for c in s.propagate() {
         s.report(c.source, c.span, c.message);
     }
@@ -602,7 +602,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
     for d in netsmith_check::pin_faults_solved(model, &s.model) {
         s.report(d.source, d.span, d.message);
     }
-    let (level_faults, mut not_evaluated) = crate::levels::check(&s.model);
+    let (level_faults, mut not_evaluated) = crate::levels::check(&s.model, &net_reads);
     not_evaluated.extend(crate::busclock::notes(&s.model));
     not_evaluated.extend(dc_notes);
     // A bus on which one part states its role and another does not (ADR 0064).
