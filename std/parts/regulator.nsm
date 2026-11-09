@@ -19,17 +19,25 @@ generic LinearRegulator {
     .max_power:   Power
     .vin.voltage >= .vout.voltage + .dropout
 
-    // What the input draws is what the output supplies; the regulator's own quiescent
-    // current is ignored.
-    .vin.current == -.vout.current
+    /// The current the regulator itself draws from its input, with the output unloaded: the
+    /// datasheet's quiescent (ground pin) current, as a range, at its largest over the
+    /// conditions the design runs in. A part states it with `&=` from its datasheet; one that
+    /// states nothing has the default, none (the regulator's own current is then left out, as
+    /// it was before the member existed), and a board that knows better states it.
+    .quiescent_current: Current
+    .quiescent_current ?= 0A
+
+    // What the input draws is what the output supplies and the quiescent current.
+    .vin.current == -.vout.current + .quiescent_current
 
     // At DC the regulator holds its output rail's voltage and draws from its input what it
-    // supplies (ADR 0076, amendment 3).
-    dc linear_regulator .vin .vout
+    // supplies and the quiescent current (ADR 0076, amendments 3 and 9).
+    dc linear_regulator .vin .vout .quiescent_current
 
-    // It must be able to supply what is drawn from it, and survive the heat of doing so.
+    // It must be able to supply what is drawn from it, and survive the heat of doing so: the
+    // drop across it times the load, and the input voltage times the quiescent current.
     -.vout.current <= .max_current
-    (.vin.voltage - .vout.voltage) * (-.vout.current) <= .max_power
+    (.vin.voltage - .vout.voltage) * (-.vout.current) + .vin.voltage * .quiescent_current <= .max_power
 
     // Pad 1 is ground, 2 the output and 3 the input, in both packages.
     pins "SOT-23" {

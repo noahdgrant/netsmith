@@ -2,17 +2,26 @@
 //!
 //! Library parts state only what is always true of them; a design narrows the rest. The
 //! pads are KiCad's convention for a diode (cathode 1, anode 2), as for `Led`. A diode is
-//! not a symmetric part, so the checker does not know which way round it sits across a rail:
-//! the voltage across it, `.bias`, is a magnitude (see `Diode`).
+//! not a symmetric part, so the checker gives it the voltage of a rail it sits across with
+//! its sign, `.bridge_voltage`, and its `.bias`, the voltage it blocks, follows from that:
+//! a diode wired the wrong way round across a rail is found (ADR 0088, see `Diode`).
 
 /// A rectifier or switching diode. Current flows from anode to cathode.
 ///
-/// `.bias` is the voltage across the diode in the direction it blocks. A diode placed between
-/// a rail's `pos` and `neg` takes it from that rail, the way a capacitor does (ADR 0013); a
-/// design states it for a diode that is across no rail, such as a reverse-polarity diode on
-/// an input (the voltage it must block is the one the input can be wired to). The sign of the
-/// rail is not looked at, so a diode wired the wrong way round across a rail is not found by
-/// this rating.
+/// `.bias` is the voltage across the diode in the direction it blocks: the voltage at the
+/// cathode relative to the anode, so it is negative when the diode conducts. A diode placed
+/// between a rail's `pos` and `neg` takes it from that rail (ADR 0013, ADR 0088): the rail's
+/// voltage when the cathode is on `pos` and its negative when the anode is, so a diode wired
+/// the wrong way round across a rail has a negative bias and `.bias >= -.forward_voltage`
+/// fails, naming it. A design states `.bias` for a diode that is across no
+/// rail, such as a reverse-polarity diode on an input (the voltage it must block is the one
+/// the input can be wired to).
+///
+/// `.bridge_voltage` is the voltage at the anode relative to the cathode, the first end of
+/// the bridge relative to the second: the checker derives it from the rail the diode is
+/// across, with the sign of the way it is wired. It is `optional` (ADR 0074): a diode that is
+/// across no rail has none, and the relations that read it are then neither checked nor listed
+/// as not evaluated.
 ///
 /// A rating is a bound the datasheet gives, so each is checked in the worst case:
 /// `.current <= .max_forward_current` and `.bias <= .max_reverse_voltage`. A rating the design
@@ -34,12 +43,18 @@ part Diode {
     .current: Current
     /// Voltage at the anode relative to the cathode.
     .drop: Voltage
-    /// The DC voltage across the diode in the direction it blocks.
+    /// The DC voltage across the diode in the direction it blocks, cathode relative to anode:
+    /// negative when it conducts.
     .bias: Voltage
+    /// The voltage at the anode relative to the cathode. A diode across a rail takes it from
+    /// the rail, the way round it is wired.
+    .bridge_voltage: Voltage optional
 
     .drop == .forward_voltage
     .current <= .max_forward_current
+    .bias == -.bridge_voltage
     .bias <= .max_reverse_voltage
+    .bias >= -.forward_voltage
     bridge .anode ~> .cathode
     dc diode .anode .cathode .forward_voltage
 
@@ -67,12 +82,18 @@ generic Schottky {
     .current: Current
     /// Voltage at the anode relative to the cathode.
     .drop: Voltage
-    /// The DC voltage across the diode in the direction it blocks.
+    /// The DC voltage across the diode in the direction it blocks, cathode relative to anode:
+    /// negative when it conducts.
     .bias: Voltage
+    /// The voltage at the anode relative to the cathode. A diode across a rail takes it from
+    /// the rail, the way round it is wired.
+    .bridge_voltage: Voltage optional
 
     .drop == .forward_voltage
     .current <= .max_forward_current
+    .bias == -.bridge_voltage
     .bias <= .max_reverse_voltage
+    .bias >= -.forward_voltage
     bridge .anode ~> .cathode
     dc diode .anode .cathode .forward_voltage
 
@@ -138,9 +159,13 @@ generic Zener {
     /// Through-current in the breakdown direction, cathode to anode.
     .current: Current
     /// The DC voltage across the diode, cathode relative to anode. A Zener placed between a
-    /// rail's `pos` and `neg` takes it from that rail.
+    /// rail's `pos` and `neg` takes it from that rail, with the sign of the way it is wired.
     .bias: Voltage
+    /// The voltage from the cathode to the anode: the same as `.bias`, as it is the bridge's.
+    .bridge_voltage: Voltage optional
 
+    .bias == .bridge_voltage
+    .bias >= 0V
     .bias * .current <= .max_power
     .voltage_over_temperature == .zener_voltage + .temperature_coefficient * (.temperature_shift / 1K)
     bridge .cathode ~> .anode
@@ -189,9 +214,14 @@ generic Tvs {
     .breakdown_voltage: Voltage
     /// The absolute maximum voltage of the part this one protects. A design states it.
     .protected_limit: Voltage
-    /// The DC voltage across the diode, cathode relative to anode.
+    /// The DC voltage across the diode, cathode relative to anode. A TVS diode placed between a
+    /// rail's `pos` and `neg` takes it from that rail, with the sign of the way it is wired.
     .bias: Voltage
+    /// The voltage from the cathode to the anode: the same as `.bias`, as it is the bridge's.
+    .bridge_voltage: Voltage optional
 
+    .bias == .bridge_voltage
+    .bias >= 0V
     .bias <= .standoff_voltage
     .clamping_voltage <= .protected_limit
     bridge .cathode ~> .anode

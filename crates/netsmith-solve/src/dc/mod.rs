@@ -204,7 +204,13 @@ pub(crate) fn analyze(
                     &mut islands[i].island.elements[s.element].kind
                 {
                     *draw = match *draw {
-                        Draw::Linear { .. } => Draw::Linear { i: load },
+                        // What the output supplies and the quiescent current: both are
+                        // drawn at once, so the ends add.
+                        Draw::Linear { .. } => Draw::Linear {
+                            i: reg
+                                .quiescent
+                                .map_or(load, |q| Range::new(load.lo + q.lo, load.hi + q.hi)),
+                        },
                         Draw::Switching { eff, .. } => Draw::Switching {
                             p: Range::new(reg.vout.lo * load.lo, reg.vout.hi * load.hi),
                             eff,
