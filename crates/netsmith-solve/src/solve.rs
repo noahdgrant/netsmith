@@ -535,6 +535,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         dc_ends: Default::default(),
         supply_draws: Vec::new(),
         budget_failed: HashSet::new(),
+        dc_disagreements: Vec::new(),
         original_relations: model.relations().len(),
         extras: Vec::new(),
         surveys: Vec::new(),
@@ -621,7 +622,8 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
     // current and the bound proves it (never otherwise).
     let (deferred, current_bounds) = s.prove_by_ohm(deferred);
     s.verify_balances();
-    s.dc_check_supplies();
+    let supply_found = s.dc_check_supplies();
+    s.dc_report_disagreements(supply_found);
     for d in netsmith_check::pin_faults_solved(model, &s.model) {
         s.report(d.source, d.span, d.message);
     }
@@ -830,6 +832,9 @@ struct Solver<'a> {
     supply_draws: dcpass::SupplyDraws,
     /// The stated currents that a balance has reported as over their budget.
     budget_failed: HashSet<FieldId>,
+    /// The currents a balance worked out that the DC analysis finds in a range that shares no
+    /// value with it, said once the supplies' budgets have been judged (amendment 15).
+    dc_disagreements: Vec<(SourceId, Span, String)>,
     /// How many relations the design wrote: the ones after them are the solver's own
     /// (`extras`) while they are in the model.
     original_relations: usize,

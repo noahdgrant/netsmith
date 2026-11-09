@@ -318,3 +318,60 @@ fn the_same_design_gives_the_same_numbers() {
     assert_eq!(messages(&a), messages(&b));
     assert_eq!(a.dc, b.dc);
 }
+
+/// Issue #287: a current that a balance worked out and the DC analysis finds in a range that
+/// shares no value with it is a finding about the design, and not a number dropped in silence.
+/// A dropper from 12 V into a rail stated at 1.7 V to 3.6 V puts 83 mA to 104 mA through the
+/// resistor, and the balance on `VIN` (the supply gives what the LED takes) says 10 mA to 20 mA.
+const DROPPER: &str = r#"import std::sources::Rail
+import std::parts::passive::{Resistor, Led}
+import std::parts::connector::Header1x2
+
+board B {
+    .supply: Rail {
+        .voltage &= 12V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .r: Resistor { .resistance &= 100ohm +/- 1% }
+    .led: Led { .current &= 10mA..20mA }
+    .mid: Rail {
+        .voltage &= 1.7V..3.6V
+        .pos.net &= "MID"
+        .neg.net &= "GND"
+    }
+    .supply.pos ~> .r ~> .led ~> .supply.neg
+    .mid.pos ~ .r.b
+    .mid.neg ~ .supply.neg
+    .r.current <= 50mA
+    .p: Header1x2
+    .supply.pos ~ .p.p1
+    .supply.neg ~ .p.p2
+}
+"#;
+
+#[test]
+fn a_current_the_balance_and_the_analysis_cannot_both_have_is_an_error_naming_both() {
+    let s = solved(DROPPER);
+    let m = messages(&s);
+    let hit: Vec<&String> = m.iter().filter(|x| x.contains("r.current")).collect();
+    assert_eq!(hit.len(), 1, "{m:?}");
+    let x = hit[0];
+    assert!(x.contains("10mA..20mA"), "the balance's range: {x}");
+    assert!(x.contains("83.16mA..104.1mA"), "the analysis's range: {x}");
+    assert!(x.contains("inconsistent"), "{x}");
+    // The field keeps the balance's number, as before; the finding is the new thing.
+    let (lo, hi) = range(&s, "r.current").expect("a value");
+    assert!(lo > 9e-3 && hi < 21e-3, "{lo} {hi}");
+}
+
+/// The same board with a rail whose range the circuit can reach has nothing to say.
+#[test]
+fn a_current_both_agree_on_is_no_finding() {
+    let src = DROPPER
+        .replace("1.7V..3.6V", "1.7V..11.5V")
+        .replace("10mA..20mA", "10mA..120mA")
+        .replace(".r.current <= 50mA\n", "");
+    let m = messages(&solved(&src));
+    assert!(m.iter().all(|x| !x.contains("inconsistent")), "{m:?}");
+}
