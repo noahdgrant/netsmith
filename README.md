@@ -13,7 +13,7 @@ and routed PCB with a Gerber package for JLCPCB, on two layers or on four with g
 supply planes inside. The editor (`netsmith editor`) shows the source and the board in a
 browser.
 
-Status: early, before a first release. The examples in `examples/` build and pass KiCad's checks, except `carrier_and_cards.nsm`, whose invented parts have no KiCad symbol (it is checked and solved only). Many of the decisions behind the language are provisional and unreviewed (see Limitations).
+Status: early (v0.1). The examples in `examples/` build and pass KiCad's checks, except `carrier_and_cards.nsm`, whose invented parts have no KiCad symbol (it is checked and solved only). Many of the decisions behind the language are provisional and unreviewed (see Limitations).
 
 ## An example
 
@@ -50,17 +50,24 @@ The imports and doc comments are left out here; the complete file is `examples/l
 
 ## Install
 
-- Build from a checkout: `cargo install --path crates/netsmith`. It needs only Rust; the
-  editor's page is committed as a built bundle.
+- Build from a checkout: `cargo install --path crates/netsmith --locked`. It needs only Rust;
+  the editor's page is committed as a built bundle.
+- Or straight from GitHub, with no checkout:
+  `cargo install --git https://github.com/noahdgrant/netsmith netsmith --locked`.
 - Or take the `netsmith-<version>-<target>.tar.gz` archive (`.zip` on Windows) from the
-  releases, check it against its `.sha256` file and put the binary on your `PATH`.
-  `scripts/release-build.sh` makes the archives. No release is published yet (#7).
+  [releases](https://github.com/noahdgrant/netsmith/releases), check it against its `.sha256`
+  file and put the binary on your `PATH`. The release workflow builds them for Linux, macOS and
+  Windows (`scripts/release-build.sh` makes one) and attaches them to a release when its tag is
+  pushed. v0.1.0 has none: the workflow failed on its first run, and the failures are fixed.
+- netsmith is not on crates.io yet.
 
 `build` and `fab` read KiCad's symbol and footprint libraries for the parts netsmith does not
 generate itself, so install KiCad 9 (8 also works). netsmith finds the `symbols` and
 `footprints` folders by itself; set `NETSMITH_KICAD_SYMBOLS` and `NETSMITH_KICAD_FOOTPRINTS`
-to name them. If it finds none, it stops and lists every place it looked (ADR 0021). Only
-Windows KiCad 9 under WSL has been tried on a real install (#6). The program
+to name them. If it finds none, it stops and lists every place it looked (ADR 0021). What has
+been tried: Windows KiCad 9 under WSL on a real install, KiCad 9 on Linux in the CI `kicad`
+job, and the starter board's `init`, `build` and `fab` with KiCad 10 on macOS and Windows
+runners in the release workflow (#6). The program
 `kicad-cli` is `$KICAD_CLI`, else on `PATH`, else (under WSL only) the newest Windows KiCad in
 `/mnt/c/Program Files/KiCad/<version>/bin`; without any, the editor says
 "KiCad not found: set KICAD_CLI or install KiCad".
