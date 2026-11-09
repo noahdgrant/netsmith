@@ -126,7 +126,7 @@ fn the_standard_parts_state_their_dc_element() {
             "LinearRegulator",
             DcKind::LinearRegulator,
             &["vin", "vout"],
-            &[],
+            &["quiescent_current"],
         ),
     ];
     for (import, name, kind, pins, values) in cases {
@@ -383,7 +383,7 @@ board B {
 /// A part with two rails and an efficiency, whose body is `body`.
 fn converter(body: &str) -> String {
     format!(
-        "import std::sources::Rail\npart C {{\n    .vin: Rail\n    .vout: Rail\n    .eff: Number\n    .vref: Voltage\n    {body}\n}}\nboard B {{\n    .c: C\n}}\n"
+        "import std::sources::Rail\npart C {{\n    .vin: Rail\n    .vout: Rail\n    .eff: Number\n    .vref: Voltage\n    .iq: Current\n    {body}\n}}\nboard B {{\n    .c: C\n}}\n"
     )
 }
 
@@ -405,6 +405,39 @@ fn a_regulator_names_its_two_rails_and_a_switching_one_its_efficiency() {
         element(&c, "c"),
         Some((DcKind::LinearRegulator, names(&["vin", "vout"]), vec![]))
     );
+}
+
+/// The quiescent current is an optional operand of `dc linear_regulator` (ADR 0076, amendment 9):
+/// with it the element has one value, without it none.
+#[test]
+fn a_linear_regulator_may_name_its_quiescent_current() {
+    let c = run(&converter("dc linear_regulator .vin .vout .iq"));
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(
+        element(&c, "c"),
+        Some((
+            DcKind::LinearRegulator,
+            names(&["vin", "vout"]),
+            names(&["iq"])
+        ))
+    );
+    // It is a current of the part, and no other quantity or part's field.
+    let m = only(&run(&converter("dc linear_regulator .vin .vout .vref")));
+    assert_eq!(
+        m,
+        "`dc linear_regulator` takes the quiescent current here, a current, and `.vref` is a voltage"
+    );
+    // One operand more than the statement has is refused with the form that has the optional one.
+    let m = only(&run(&converter("dc linear_regulator .vin .vout .iq .iq")));
+    assert_eq!(
+        m,
+        "`dc linear_regulator` takes 2 pins and then 0 values and, if the part has one, the quiescent current, as in `dc linear_regulator .vin .vout .quiescent_current`; this has 4 operands"
+    );
+    // A switching regulator has no optional operand: its message is the one it always was.
+    let m = only(&run(&converter(
+        "dc switching_regulator .vin .vout .eff .iq",
+    )));
+    assert!(m.contains("takes 2 pins and then 1 value, as in"), "{m}");
 }
 
 #[test]
