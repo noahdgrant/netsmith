@@ -213,6 +213,52 @@ mod tests {
     }
 
     #[test]
+    fn the_tssop_rows_have_pads_1_475_mm_long_at_the_span_of_their_body_width() {
+        // (name, pads, centre of the left column, pad width) from the MO-153 spans:
+        // 6.4 mm over the leads of a 4.4 mm body, 8.1 mm of a 6.1 mm one, 10.0 mm of an 8 mm one.
+        for (name, pads, x, width) in [
+            ("TSSOP-20_4.4x5mm_P0.5mm", 20, 2.8625, 0.3),
+            ("TSSOP-24_6.1x7.8mm_P0.65mm", 24, 3.7125, 0.4),
+            ("TSSOP-48_6.1x9.7mm_P0.4mm", 48, 3.7125, 0.25),
+            ("TSSOP-56_8x14mm_P0.5mm", 56, 4.6625, 0.3),
+        ] {
+            let fp = generate(&format!("Package_SO:{name}")).unwrap();
+            assert_eq!(fp.pads.len(), pads, "{name}");
+            let first = &fp.pads[0];
+            assert!(near(first.at.x, -x), "{name}: {}", first.at.x);
+            assert!(
+                near(first.width, 1.475) && near(first.height, width),
+                "{name}"
+            );
+            // Pin 1 is at the top of the left column, the last pin at the top of the right.
+            let last = &fp.pads[pads - 1];
+            assert!(near(last.at.x, x) && near(last.at.y, first.at.y), "{name}");
+        }
+        let fp = generate("Package_SO:TSSOP-48_6.1x9.7mm_P0.4mm").unwrap();
+        let pitch = fp.pads[1].at.y - fp.pads[0].at.y;
+        assert!(near(pitch, 0.4), "{pitch}");
+    }
+
+    #[test]
+    fn the_wide_soic_rows_share_the_ms_013_pads() {
+        let fp = generate("Package_SO:SOIC-14W_7.5x9mm_P1.27mm").unwrap();
+        assert_eq!(fp.pads.len(), 14);
+        assert!(near(fp.pads[0].at.x, -4.65) && near(fp.pads[0].at.y, -3.81));
+        assert!(near(fp.pads[0].width, 2.05) && near(fp.pads[0].height, 0.6));
+        assert_eq!(
+            fp.courtyard,
+            Rect::new(Pt::new(-5.93, -4.75), Pt::new(5.93, 4.75))
+        );
+        assert_eq!(
+            generate("Package_SO:SOIC-16W_7.5x12.8mm_P1.27mm")
+                .unwrap()
+                .pads
+                .len(),
+            16
+        );
+    }
+
+    #[test]
     fn the_sc_70_family_has_0_65_mm_pitch_pads_0_65_by_0_4_mm_at_plus_or_minus_0_95() {
         let five = generate("Package_TO_SOT_SMD:SOT-353_SC-70-5").unwrap();
         assert_eq!(five.pad_numbers(), ["1", "2", "3", "4", "5"]);
