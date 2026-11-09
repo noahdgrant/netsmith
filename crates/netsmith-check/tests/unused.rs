@@ -353,3 +353,152 @@ fn a_rail_of_the_board_that_supplies_the_port_contradicts_the_statement() {
         ".proc.usb.vbus"
     );
 }
+
+// A series passive (a fuse, a resistor, a ferrite bead) from the interface to the rest of the
+// board is a use: the part still feeds the board from the interface.
+
+/// Zload, an invented load with a power input, so a net has a pin that is not a passive one.
+const LOAD: &str = r#"
+import std::parts::passive::{Capacitor, FerriteBead, Fuse, Resistor}
+
+part Zload {
+    pins {
+        .in power "IN" "1"
+    }
+}
+"#;
+
+fn series(body: &str) -> Checked {
+    run(&format!("{LOAD}{}", board(body)))
+}
+
+#[test]
+fn a_fuse_from_the_interface_to_a_load_is_a_use() {
+    let c = series(
+        "    .f: Fuse\n    .load: Zload\n    .proc.usb.vbus.pos ~> .f ~> .load.in\n    unused .proc.usb\n",
+    );
+    let said = messages(&c);
+    assert!(
+        said.iter().any(|m| m.contains(
+            "`proc.usb.vbus.pos` is connected here through `f` (a `Fuse`) to `load.in` (net `"
+        ) && m.contains("but `proc.usb` is stated `unused` at test.nsm:")
+            && m.contains("remove the connection, or remove `unused`")),
+        "{}",
+        c.render()
+    );
+    // The error is on the chain that joins them.
+    let at = c
+        .diagnostics
+        .iter()
+        .find(|d| d.message.contains("through `f`"))
+        .unwrap();
+    assert!(
+        c.sources.get(at.source).text[at.span.start..at.span.end].contains(".proc.usb.vbus.pos"),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn a_fuse_joined_with_pin_connections_is_a_use() {
+    let c = series(
+        "    .f: Fuse\n    .load: Zload\n    .f.a ~ .proc.usb.vbus.pos\n    .f.b ~ .load.in\n    unused .proc.usb\n",
+    );
+    assert!(
+        messages(&c)
+            .iter()
+            .any(|m| m.contains("through `f` (a `Fuse`) to `load.in`")),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn a_chain_of_a_bead_and_a_resistor_is_a_use() {
+    let c = series(
+        "    .fb: FerriteBead\n    .r: Resistor\n    .load: Zload\n    .proc.usb.vbus.pos ~> .fb ~> .r ~> .load.in\n    unused .proc.usb\n",
+    );
+    assert!(
+        messages(&c).iter().any(|m| m.contains(
+            "`proc.usb.vbus.pos` is connected here through `fb` (a `FerriteBead`) and `r` (a `Resistor`) to `load.in`"
+        )),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn a_resistor_on_a_signal_pin_to_a_load_is_a_use() {
+    let c = series(
+        "    .r: Resistor\n    .load: Zload\n    .proc.usb.dp ~> .r ~> .load.in\n    unused .proc.usb\n",
+    );
+    assert!(
+        messages(&c)
+            .iter()
+            .any(|m| m.contains("`proc.usb.dp` is connected here through `r` (a `Resistor`)")),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn a_resistor_that_leads_only_to_test_pads_is_no_use() {
+    let c = series(
+        "    .r: Resistor\n    .fb: FerriteBead\n    .r2: Resistor\n    .tp: Zpad\n    .tp2: Zpad\n    .proc.usb.dp ~> .r ~> .tp.p\n    .proc.usb.vbus.pos ~> .fb ~> .r2 ~> .tp2.p\n    unused .proc.usb\n",
+    );
+    assert!(c.is_ok(), "{}", c.render());
+}
+
+#[test]
+fn a_series_part_back_to_ground_is_no_use() {
+    // A pull-down to the return proves nothing: every ground is one net.
+    let c =
+        series("    .r: Resistor\n    .proc.usb.dp ~> .r ~> .supply.neg\n    unused .proc.usb\n");
+    assert!(c.is_ok(), "{}", c.render());
+}
+
+#[test]
+fn a_series_part_between_two_unused_interfaces_is_no_use() {
+    let c = run(&format!(
+        "{LOAD}{PARTS}\nboard B {{\n    .supply: Rail {{\n        .voltage &= 3.3V +/- 5%\n        .pos.net &= \"3V3\"\n        .neg.net &= \"GND\"\n    }}\n    .proc: Zproc\n    .jack: Zjack\n    .supply ~ .proc.vdd\n    .jack.usb.vbus.neg ~ .supply.neg\n    .r: Resistor\n    .proc.usb.dp ~> .r ~> .jack.usb.dp\n    unused .proc.usb\n    unused .jack.usb\n}}\n"
+    ));
+    assert!(c.is_ok(), "{}", c.render());
+}
+
+#[test]
+fn a_series_part_between_one_unused_interface_and_a_used_one_is_a_use() {
+    let c = run(&format!(
+        "{LOAD}{PARTS}\nboard B {{\n    .supply: Rail {{\n        .voltage &= 3.3V +/- 5%\n        .pos.net &= \"3V3\"\n        .neg.net &= \"GND\"\n    }}\n    .proc: Zproc\n    .jack: Zjack\n    .supply ~ .proc.vdd\n    .jack.usb.vbus.neg ~ .supply.neg\n    .r: Resistor\n    .proc.usb.dp ~> .r ~> .jack.usb.dp\n    unused .proc.usb\n}}\n"
+    ));
+    assert!(
+        messages(&c).iter().any(|m| m.contains(
+            "`proc.usb.dp` is connected here through `r` (a `Resistor`) to `jack.usb.dp`"
+        )),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn a_capacitor_in_series_is_not_read_as_a_use() {
+    // The narrowest reading: a fuse, a resistor and a ferrite bead. A series capacitor (or an
+    // inductor, a diode) is a question for the owner, and the checker does not follow it.
+    let c = series(
+        "    .c: Capacitor\n    .load: Zload\n    .proc.usb.dp ~> .c ~> .load.in\n    unused .proc.usb\n",
+    );
+    assert!(c.is_ok(), "{}", c.render());
+}
+
+#[test]
+fn a_series_part_inside_the_module_that_holds_the_interface_is_no_use() {
+    // The module's own wiring is not the board's use of the interface.
+    let src = format!(
+        "{LOAD}{PARTS}\nmodule Zmodem {{\n    .usb: Usb2\n    .u: Zjack\n    .r: Resistor\n    .load: Zload\n    .usb ~ .u.usb\n    .u.usb.dp ~> .r ~> .load.in\n}}\n\nboard B {{\n    .supply: Rail {{\n        .voltage &= 3.3V +/- 5%\n        .pos.net &= \"3V3\"\n        .neg.net &= \"GND\"\n    }}\n    .modem: Zmodem\n    unused .modem.usb\n}}\n"
+    );
+    let c = run(&src);
+    assert!(
+        messages(&c).iter().all(|m| !m.contains("through `r`")),
+        "{}",
+        c.render()
+    );
+}
