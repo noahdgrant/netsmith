@@ -33,6 +33,7 @@ mod guide;
 mod guidelines;
 mod height;
 mod kicad_rows;
+mod lt8641;
 mod note_causes;
 mod open_circle;
 mod order;

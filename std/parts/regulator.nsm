@@ -254,3 +254,211 @@ module BuckStage {
     .input_cap.count * .input_cap.effective_capacitance >= .buck.min_input_capacitance
     .output_cap.count * .output_cap.effective_capacitance >= .buck.min_output_capacitance
 }
+
+/// The LT8641, Analog Devices' 3 V to 65 V, 3.5 A synchronous step-down Silent Switcher, in
+/// its 18-lead (20 positions) 3 x 4 mm QFN (UDC20(18)). The automotive ordering code `#W`
+/// (`LT8641IUDC#WPBF`, and `#WTRPBF` on tape and reel, LCSC C3975089) is the same die and the
+/// same tables: the datasheet gives one set of numbers for every grade, so one part serves
+/// the `E`, `I`, `J`, `H` and `#W` codes, and the board names its ordering code with `.mpn`
+/// from its own catalog rows (a keyed catalog, as for any IC). The standard `lt8641` catalog
+/// has no row, because no row of it has a recorded stock above zero (`data/jlcpcb/README.md`).
+///
+/// Datasheet: Analog Devices LT8641, Rev. C (PDF dated 2020-12-10, 26 pages), the file that
+/// LCSC links for C3975089. Page numbers are the printed pages, which are the PDF's; "table"
+/// is the table of the heading named. Every number below was read from the PDF text, except
+/// the efficiency, which is read off the curves of the Typical Performance Characteristics
+/// (p.4) and says so.
+///
+/// - Input: 3 V to 65 V (front page p.1; Electrical Characteristics, p.2, "Minimum Input
+///   Voltage" 3.0 V maximum). The absolute maximum VIN is 65 V (Absolute Maximum Ratings,
+///   p.2), which the datasheet also allows for transients: "VIN may go as high as the
+///   absolute maximum rating of 65V regardless of the RT value" (p.16). So `.vin.peak` is
+///   bounded by 65 V and the steady `.vin.voltage` too. The datasheet has no separate
+///   transient table for `#W`: the Order Information (p.2) says only that `#W` models have
+///   controlled manufacturing for automotive use.
+/// - Reference: `.buck.vref` is 0.79 V to 0.822 V, the full temperature range at
+///   VIN = 6 V, ILOAD = 0.5 A (Electrical Characteristics, p.3; 0.804 V to 0.816 V at 25 C).
+///   The line regulation, 0.03 %/V at most over 4 V to 42 V (p.3), is not added to it.
+/// - Output current: `.buck.max_output_current` is 3.5 A, the "3.5A Maximum Continuous
+///   Output" of the front page (p.1), which also gives `.peak_output_current`, 5 A "Peak
+///   Transient Output". The top switch current limit is 6.2 A at least (`.top_current_limit_min`;
+///   8.2 A typical, 9.9 A maximum; p.3). The datasheet's `IOUT(MAX) = ILIM - dIL / 2`
+///   (Equation 8, p.17) needs the ripple of the inductor, which the stage has and the part
+///   does not: a board or module that wants it states
+///   `-.vout.current <= .u.top_current_limit_min - .stage.ripple / 2`.
+/// - Switching frequency: a resistor from RT to ground sets it, RT = 46.5 / fSW - 5.2 (kohm,
+///   MHz; Equation 3, p.15, and Table 1, p.15), so the nominal frequency is
+///   `46.5MHz * 1kohm / (.rt_resistance + 5.2kohm)`. The datasheet states the accuracy at
+///   three values of RT only (Oscillator Frequency, p.3): 665 kHz to 735 kHz at 60.4 kohm
+///   and 1.85 MHz to 2.15 MHz at 18.2 kohm (and 180 kHz to 240 kHz at 221 kohm). Between
+///   the first two the part states `.fsw_tolerance` as the widest of them against Equation 3
+///   (0.938 to 1.037 at 60.4 kohm, 0.931 to 1.082 at 18.2 kohm: 0.93 to 1.09), and refuses a
+///   resistor outside 18.2 kohm to 60.4 kohm (700 kHz to 2 MHz), where the datasheet gives no
+///   figure for the accuracy. Two bounds and not a range: a range would be the interval that
+///   `fsw` is computed from, and a window on `fsw` would be checked against all of it.
+/// - Inductor: `.buck.min_inductance` is Equation 10 (p.17), `VIN * (2 * DC - 1) / (2.5 * fSW)`
+///   with `DC = VOUT / VIN`, which is the minimum for duty cycles over 50 % (a negative
+///   figure below that asks for nothing). The saturation current needs no figure above the
+///   load and half the ripple, which the stage checks: the datasheet says the part
+///   "safely tolerates operation with a saturated inductor" in overload (p.16), so
+///   `.buck.min_inductor_saturation` is left unstated. `.buck.max_inductor_dcr` is 0.04 ohm,
+///   "to keep the efficiency high, the series resistance (DCR) should be less than 0.04 ohm"
+///   (p.16).
+/// - Capacitors: a third input capacitor of 2.2 uF or more beside the two 1 uF at VIN1 and
+///   VIN2 (Pin Functions, VIN1 and VIN2, p.10; Input Capacitors, p.17):
+///   `.buck.min_input_capacitance` is 2.2 uF, the stage's input capacitor. The two 1 uF
+///   (0402 or 0603), 1 uF or more on INTVCC (p.10) and 0.1 uF from BST to SW (p.10) are the
+///   board's. The datasheet states no minimum output capacitance ("A lower value of output
+///   capacitor can be used to save space and cost but transient performance will suffer and
+///   may cause loop instability. See the Typical Applications", p.18). Every one of its
+///   Typical Applications (p.1, p.22, p.23: 5 V, 3.3 V and 12 V, 1 MHz and 2 MHz) uses 47 uF
+///   (1210, X5R or X7R) at the output, so `.buck.min_output_capacitance` is 47 uF by default
+///   (`?=`): an application value, not a datasheet minimum, that a board replaces with
+///   `.u.buck.min_output_capacitance &= 22uF`.
+/// - Efficiency: `.buck.efficiency` is 0.70 to 0.95. The upper figure is the front page's "Up
+///   to 95% Efficiency at 1MHz, 12V to 5V" (p.1). The lower is read off the curves of the
+///   Typical Performance Characteristics (p.4): the lowest point of G01 to G04 for a load of
+///   0.5 A to 3.5 A (12 V to 48 V in, 5 V and 3.3 V out, 1 MHz to 3 MHz) is about 72 %, for
+///   48 V to 3.3 V at 0.5 A, rounded down; and G05 and G06 (1 MHz, 4.7 uH) stay above 70 %
+///   from about 0.2 mA up for every input from 12 V to 48 V, and fall to 25 % to 60 % at
+///   10 uA. The datasheet states no minimum efficiency, so these are typical curves for
+///   its own inductors, not a guarantee, and below 0.2 mA the figure is too high, where
+///   the input current is a few microamps anyway. A board of one input voltage may state a
+///   narrower range for its own conditions.
+/// - Switching frequency is held only inside two limits the datasheet gives, which keep the
+///   stage's ripple (computed at the programmed frequency) right. The highest frequency
+///   for an input is `(VOUT + VSW(BOT)) / (tON(MIN) * (VIN - VSW(TOP) + VSW(BOT)))`
+///   (Equation 4, p.16, with the minimum on-time at its 50 ns maximum, Electrical
+///   Characteristics, p.3), and the lowest input that holds the frequency is
+///   `(VOUT + VSW(BOT)) / (1 - fSW * tOFF(MIN)) - VSW(BOT) + VSW(TOP)` (Equation 5, p.16, with
+///   the minimum off-time at its 110 ns maximum, p.3). The switch drops are the datasheet's
+///   "~0.15 V" (bottom) and "~0.3 V" (top) at maximum load (p.16). Beyond either limit the
+///   part still regulates and lowers the frequency (p.16), so the part refuses the board
+///   rather than letting the stage compute its ripple at a frequency the part does not hold.
+/// - Quiescent current, `.iq_max`: 10 uA over temperature, not switching, VEN/UV = 2 V,
+///   SYNC/MODE low (Electrical Characteristics, p.2; 1.7 uA typical, 4 uA at 25 C).
+/// - `BIAS` takes at most 25 V (Absolute Maximum Ratings, p.2); the datasheet ties it to the
+///   output for outputs of 3.3 V to 25 V, and to ground when no supply is available (Pin
+///   Functions, p.10), so the board states `.bias_voltage` and joins the pin.
+///
+/// Pins (Pin Functions, p.10 and p.11, and the Pin Configuration, p.2): 1 BIAS, 2 INTVCC,
+/// 3 BST, 4 VIN1, 5 and 12 not present, 6 and 7 GND1, 8 and 9 SW, 10 and 11 GND2, 13 VIN2,
+/// 14 EN/UV, 15 RT, 16 TR/SS, 17 SYNC/MODE, 18 GND, 19 PG, 20 FB, 21 and 22 the exposed pads,
+/// which are SW. VIN1 and VIN2 are one input and the three grounds one ground, which the
+/// part joins; the datasheet says the GND1 pins, and the GND2 pins, "must be tied together".
+/// The board must connect `BIAS`, `EN/UV`, `INTVCC`, `BST` and `RT`; `SYNC/MODE` may float
+/// (pulse-skipping mode, p.11), as may `TR/SS` (p.10), and `PG` is open drain.
+///
+/// The package has no footprint in KiCad's libraries (the 4-pad `UDC-QFN-20` of KiCad is
+/// the LT3033's, with another land pattern), so `std/kicad.toml` has no row for it: a
+/// board's project maps `Lt8641` and its package to the footprint it draws from the
+/// datasheet's recommended land pattern (p.24).
+part Lt8641 {
+    .designator &= "U"
+
+    /// VIN1 (pad 4) and VIN2 (pad 13), which are one input, and the grounds GND1 (pads 6, 7),
+    /// GND2 (pads 10, 11) and GND (pad 18).
+    .vin: Rail
+    .vin.voltage >= 3V
+    .vin.voltage <= 65V
+
+    /// The absolute maximum VIN (Absolute Maximum Ratings, p.2): 65 V, the same as the
+    /// operating limit; the datasheet allows it for transients too (p.16).
+    .vin_abs_max: Voltage
+    .vin_abs_max &= 65V
+    .vin.peak <= .vin_abs_max
+
+    /// The absolute maximum BIAS (p.2): 25 V.
+    .bias_abs_max: Voltage
+    .bias_abs_max &= 25V
+    /// The voltage the board puts on BIAS: the output's, or ground's.
+    .bias_voltage: Voltage
+    .bias_voltage <= .bias_abs_max
+
+    .buck: Buck {
+        .vref &= 0.79V..0.822V
+        .min_input_voltage &= 3V
+        .max_input_voltage &= 65V
+        .max_output_current &= 3.5A
+        .efficiency &= 0.70..0.95
+        .max_inductor_dcr &= 0.04ohm
+        .min_input_capacitance &= 2.2uF
+        .min_output_capacitance ?= 47uF
+    }
+    .buck.sw.neg ~ .vin.neg
+    .buck.fsw == .fsw
+    .buck.min_inductance == (2 * .buck.sw.voltage - .vin.voltage) / (2.5 * .fsw * 1A)
+    .vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)
+    dc switching_regulator .vin .buck.sw .buck.efficiency
+
+    /// The largest peak output current, for a short time (front page, p.1).
+    .peak_output_current: Current
+    .peak_output_current &= 5A
+
+    /// The least current limit of the top switch (Electrical Characteristics, p.3).
+    .top_current_limit_min: Current
+    .top_current_limit_min &= 6.2A
+
+    /// The resistor from RT to ground and the frequency it sets. RT is bounded to the span
+    /// that the datasheet gives the oscillator's accuracy for (18.2 kohm, 2 MHz, to 60.4 kohm,
+    /// 700 kHz; p.3).
+    .rt_resistance: Resistance
+    .rt_resistance >= 18.2kohm
+    .rt_resistance <= 60.4kohm
+    /// RT = 46.5 / fSW - 5.2 (kohm, MHz; Equation 3, p.15).
+    .fsw_nominal: Frequency
+    .fsw_nominal == 46.5MHz * 1kohm / (.rt_resistance + 5.2kohm)
+    /// The accuracy of the oscillator against Equation 3 over that span (Oscillator
+    /// Frequency, p.3).
+    .fsw_tolerance: Number
+    .fsw_tolerance &= 0.93..1.09
+    .fsw: Frequency
+    .fsw == .fsw_nominal * .fsw_tolerance
+
+    /// The bottom and top switch drops at maximum load, "~0.15 V" and "~0.3 V" (p.16), and the
+    /// largest minimum on-time and off-time, 50 ns and 110 ns (p.3), of Equations 4 and 5.
+    .vsw_bottom: Voltage
+    .vsw_bottom &= 0.15V
+    .vsw_top: Voltage
+    .vsw_top &= 0.3V
+    .t_on_min: Time
+    .t_on_min &= 50ns
+    .t_off_min: Time
+    .t_off_min &= 110ns
+    // Equation 4 (p.16): the highest frequency that holds at the highest input; Equation 5
+    // (p.16): the lowest input that holds the frequency.
+    .fsw <= (.buck.sw.voltage + .vsw_bottom) / (.t_on_min * (.vin.voltage - .vsw_top + .vsw_bottom))
+    .vin.voltage >= (.buck.sw.voltage + .vsw_bottom) / (1 - .fsw * .t_off_min) - .vsw_bottom + .vsw_top
+
+    /// The quiescent current over temperature (Electrical Characteristics, p.2).
+    .iq_max: Current
+    .iq_max &= 10uA
+
+    // The pins the datasheet ties together are one pin each inside the part.
+    .vin2 ~ .vin.pos
+    .gnd1 ~ .vin.neg
+    .gnd2 ~ .vin.neg
+
+    pins {
+        //  pin          kind     name         pads
+        .bias          input    "BIAS"       "1"
+        .intvcc        passive  "INTVCC"     "2"  required
+        .bst           passive  "BST"        "3"  required
+        .vin.pos       power    "VIN1"       "4"
+        .gnd1          power    "GND1"       "6" "7"
+        .buck.sw.pos   power    "SW"         "8" "9" "21" "22"
+        .gnd2          power    "GND2"       "10" "11"
+        .vin2          power    "VIN2"       "13"
+        .en_uv         input    "EN/UV"      "14"
+        .rt            passive  "RT"         "15" required
+        .tr_ss         passive  "TR/SS"      "16"
+        .sync_mode     input    "SYNC/MODE"  "17" optional
+        .vin.neg       power    "GND"        "18"
+        .pg            output   "PG"         "19"
+        .buck.fb       input    "FB"         "20"
+    }
+
+    .mpn: String
+    .package: Package
+    catalog lt8641 by .mpn { .mpn, .package }
+}

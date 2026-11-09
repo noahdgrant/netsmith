@@ -7690,6 +7690,62 @@ part Zbk3 {
 
 What is not modelled: the divider's current and the IC's quiescent current are not added to the load, the loop and its stability are not checked (the IC's capacitor and inductor ranges stand for them), the inductor's saturation is its datasheet current at a fall of the inductance (30% for the catalog's parts) and not a curve, and the ripple current of the capacitors is not modelled, so it is not shared out between the capacitors of a bank.
 
+The library has one real buck IC, `std::parts::regulator::Lt8641`, Analog Devices' 3 V to 65 V, 3.5 A LT8641 in its 18-lead 3 x 4 mm QFN (datasheet Rev. C). It is written as above, with each number's datasheet page and table in its doc comment and in `data/jlcpcb/README.md`: the reference 0.79 V to 0.822 V, the input range, 3.5 A, the efficiency, `min_inductance` from the datasheet's Equation 10, a DCR of at most 0.04 ohm, 2.2 uF at the input, and 47 uF at the output by default (every Typical Application of the datasheet uses it; the datasheet states no minimum, so a board replaces it with `.u.buck.min_output_capacitance &= 22uF`). The switching frequency follows the resistor on RT, `.fsw == 46.5MHz * 1kohm / (.rt_resistance + 5.2kohm)` with the oscillator's accuracy (Equation 3 and Table 1); the part refuses a resistor outside 18.2 kohm to 60.4 kohm (2 MHz to 700 kHz), the span the datasheet gives the accuracy for. It also refuses an input and output at which the datasheet's Equations 4 and 5 say the frequency is no longer held, because the stage computes its ripple at the programmed frequency. The automotive ordering code `LT8641IUDC#WPBF` is the same die and tables as the other grades, so the board names its code with `.mpn`, as for any IC. The standard `lt8641` catalog has a header and no row, like `p_mosfet` (a row needs a stock above zero on a record that was read), so the board's project has the row, in its own file of that name (the part number is the datasheet's Order Information; a project adds the LCSC number it has read):
+
+```csv file=catalogs/lt8641.csv set=lt8641
+mpn,package,library,source
+LT8641IUDC#WPBF,UDC20(18),Extended,"datasheet Rev. C, Order Information p.2 (automotive products)"
+```
+
+The datasheet asks for a DC resistance of 0.04 ohm at most (p.16), and the four inductors of the standard catalog have more, so a stage around the IC needs an inductor of the project's own. This one is invented, like the part numbers of the other files of this guide:
+
+```csv file=catalogs/inductor.csv set=lt8641
+mpn,name,inductance,saturation_current,dc_resistance,package,library,source
+ZL-3R3,ZL-3R3 3.3uH 4.5A inductor 1210,3.3uH +/- 20%,4.5A,0.03ohm,1210,Extended,https://example.invalid/zl-3r3
+```
+
+The board around it: 9 V to 16 V in with a 36 V peak, 3.3 V out at up to 2 A, the stage, and what the datasheet asks for on the pins that the stage does not hold: the resistor on RT (47 kohm is 0.89 MHz, Equation 3), the boost capacitor from BST to SW, the INTVCC capacitor, EN/UV to the input, BIAS to the output, and SYNC/MODE low (Burst Mode).
+
+```nsm evaluate catalogs=lt8641
+import std::parts::passive::{Capacitor, Resistor}
+import std::parts::regulator::{BuckStage, Lt8641}
+import std::sources::Rail
+
+board Converter {
+    .input: Rail {
+        .voltage &= 9V..16V
+        .peak &= 36V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0A..2A
+    }
+    .u: Lt8641 { .mpn &= "LT8641IUDC#WPBF" }
+    .stage: BuckStage { .vout.voltage &= 3.3V +/- 4% }
+    .rt: Resistor { .resistance &= 47kohm +/- 1% }
+    .boost: Capacitor { .capacitance &= 100nF +/- 20% }
+    .intvcc_cap: Capacitor { .capacitance &= 1uF +/- 20% }
+
+    .input ~ .stage.vin
+    .input ~ .u.vin
+    .stage.vout ~ .output
+    .stage.buck ~ .u.buck
+    .u.en_uv ~ .input.pos
+    .u.bias ~ .output.pos
+    .u.bias_voltage == .output.voltage
+    .u.sync_mode ~ .input.neg
+    .u.rt ~> .rt ~> .input.neg
+    .u.rt_resistance == .rt.resistance
+    .u.bst ~> .boost ~> .u.buck.sw.pos
+    .u.intvcc ~> .intvcc_cap ~> .input.neg
+}
+```
+
+The datasheet's other pins and capacitors (the two 1 uF capacitors at VIN1 and VIN2, the feedback phase-lead capacitor, the enable divider) are the board's. The package has no footprint in KiCad's libraries, so `std/kicad.toml` has no row for `Lt8641`: a project maps the part and its package to its own footprint in its `kicad.toml` before it builds the board for KiCad, and `evaluate` here checks and solves without exporting.
+
 ### Current through a part
 
 A `Fuse`, `Inductor`, `FerriteBead`, `Switch`, `Diode`, `Schottky`, `NMosfet` and `PMosfet` have a `bridge` and a `.current`, the current through it, and state that it is at most the part's rating: `.rated_current`, `.saturation_current`, `.max_forward_current` or `.max_drain_current`. In a `~>` chain from a rail the current is the draw of what is behind the chain (ADR 0014), so a fuse is checked against the budget of its load with no line of its own. An inductor outside a chain gets its current from the design: state the largest current through it, the peak and not the average.
@@ -10605,6 +10661,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::parts::transistor::NMosfet` | An N-channel MOSFET: pins `gate` (input), `source`, `drain`, bridge `drain ~> source`. Maxima for drain-source voltage, drain current and gate-source voltage; `.gate_threshold`; `.on_resistance`. Requires the stresses `.drain_source_voltage` and `.gate_source_voltage` and `.current` within them, and the gate drive above the threshold. Catalog `n_mosfet`. |
 | `std::parts::transistor::PMosfet` | A P-channel MOSFET: as `NMosfet` with bridge `source ~> drain`; voltages are magnitudes. A generic with the catalog `p_mosfet`, whose standard file has no rows: a project adds its own. |
 | `std::parts::logic::Sn74lvc1g04` | A single inverter, TI SN74LVC1G04 (SCES214AF), for a supply of 3 V to 3.6 V: rail `vcc`, lines `a` (input) and `y` (output) as `Logic` with the levels and absolute maximums of the datasheet, SOT-23-5. No catalog row. |
+| `std::parts::regulator::Lt8641` | The LT8641 buck converter IC, Analog Devices (datasheet Rev. C): a `.buck: Buck` with the datasheet's numbers, the frequency from the resistor on RT (`.rt_resistance`), and a pin table for the 18-lead 3 x 4 mm QFN. A keyed catalog `lt8641` (`.mpn`) whose standard file has no row: a board adds its own. No KiCad mapping. |
 | `std::parts::logic::LevelTranslator` | A single-supply level translator, a buffer whose input takes a lower level than its supply and whose output swings to the supply: rail `vcc`, the `Logic` lines `a` (input) and `y` (output) and the pin `nc`, a pin table for SOT-23-5 and one for SOT-353_SC-70-5. `.vcc_min` and `.vcc_max` bound the supply; the stresses `.vcc_peak`, `.a_peak` and `.output_current` are at most `.vcc_abs_max`, `.a_abs_max` and `.max_output_current`; `.vt_plus_max` and `.vt_minus_min` are the input's `.vih` and `.vil`, and `.y` states no level; `.vcc.current` is 0 up to `.max_supply_current`, stated by the part. A generic with the catalog `level_translator`, whose standard file has no rows: a project adds its own. |
 | `std::parts::mechanical::MountingHole` | A drill with no copper. No pins. |
 | `std::parts::mechanical::PlatedHole` | A plated mounting hole. One pin `p1`, the plating, that the board joins to a net or leaves open. |
