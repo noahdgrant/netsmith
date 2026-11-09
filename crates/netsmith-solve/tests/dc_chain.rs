@@ -262,3 +262,81 @@ fn a_circle_a_pick_waits_on_starts_from_the_networks_bounds() {
         "{bias:?}"
     );
 }
+
+/// Two sheets in a chain, each with the hand-written equation of its drop (ADR 0076, amendment
+/// 5, choice 8). The monitor's shunt is written from the output to the input, so its drop is
+/// negative: the equation adds it. The load is declared before the sheets, so the analysis marks
+/// the load's voltage as its own and the sheet's output is only joined to it.
+fn two_sheets(clamp_equation: &str, monitor_equation: &str) -> String {
+    let parts = PARTS.replace(
+        "module Protect",
+        &format!(
+            r#"module Clamp {{
+    .vin: Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+    .fuse: Link {{
+        .resistance &= 0.1ohm
+        .rated_current &= 2A
+    }}
+    .vin.pos ~> .fuse ~> .vout.pos
+    {clamp_equation}
+}}
+
+module Monitor {{
+    .vin: Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+    .shunt: Link {{
+        .resistance &= 0.05ohm
+        .rated_current &= 2A
+    }}
+    .vout.pos ~> .shunt ~> .vin.pos
+    {monitor_equation}
+}}
+
+module Protect"#
+        ),
+    );
+    format!(
+        "{parts}\nboard B {{
+    .load: Rail {{ .pos.net &= \"OUT\"; .neg.net &= \"GND\"; .current &= 500mA..1A }}
+    .m: Monitor
+    .a: Clamp
+    .plug: Plug {{ .supply.voltage &= 9V..16V; .supply.pos.net &= \"VIN\"; .supply.neg.net &= \"GND\" }}
+    .plug.supply ~ .a.vin
+    .a.vout ~ .m.vin
+    .m.vout ~ .load
+}}\n"
+    )
+}
+
+/// One of the two equations deleted and the other kept is as valid as both or neither: the
+/// analysis's ranges are widened outward by a billionth and a nanovolt, and the sum of two such
+/// ranges sticks out of the voltage's own by that, which is no fault of the equation. The
+/// message of the failure was `must stay within 8.85V..15.93V, but (...) works out to
+/// 8.85V..15.93V`.
+#[test]
+fn a_hand_written_drop_stays_valid_when_the_equation_of_a_neighbour_is_deleted() {
+    let clamp = ".vout.voltage == .vin.voltage - .fuse.drop";
+    let monitor = ".vout.voltage == .vin.voltage + .shunt.drop";
+    for (clamp, monitor) in [("", ""), (clamp, ""), ("", monitor), (clamp, monitor)] {
+        let s = solved(&two_sheets(clamp, monitor));
+        assert!(
+            messages(&s).is_empty(),
+            "clamp `{clamp}`, monitor `{monitor}`: {:?}",
+            messages(&s)
+        );
+        // 9 V less 1 A through 0.15 ohm at the least, 16 V less 0.5 A through 0.15 ohm at the
+        // most (the fuse 0.1 ohm and the shunt 0.05 ohm), whichever equation is kept.
+        near(
+            range(&s, "m.vout.voltage").unwrap(),
+            (9.0 - 0.15, 16.0 - 0.075),
+        );
+    }
+    // An equation that shares no value with the circuit's is still a fault.
+    let s = solved(&two_sheets("", ".vout.voltage == .vin.voltage + 20V"));
+    let m = messages(&s);
+    assert_eq!(m.len(), 1, "{m:?}");
+    assert!(m[0].contains("m.vout.voltage"), "{}", m[0]);
+}

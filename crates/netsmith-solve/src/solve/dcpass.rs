@@ -243,7 +243,16 @@ impl Solver<'_> {
         if stated.is_some() {
             return 0;
         }
-        usize::from(self.dc_field(rail.rail, rail.field, solved, ends))
+        let written = self.dc_field(rail.rail, rail.field, solved, ends);
+        if written {
+            // The members of the class that `~` joins take the range from the one written, and
+            // are as much the analysis's as it is: a relation that reads one of them (a
+            // hand-written `.vout.voltage == .vin.voltage - .fuse.drop`) only has to share a
+            // value with it. Judged as a statement it would fail by the widening of the ranges
+            // it adds (issue #253).
+            self.derived.extend(members);
+        }
+        usize::from(written)
     }
 
     /// The jobs whose pick waits on a voltage no one has given: a derated column whose bias has
