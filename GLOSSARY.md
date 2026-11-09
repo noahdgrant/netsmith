@@ -361,6 +361,10 @@ _Avoid_: Case, scenario, worst case (the worst case is a result, an end of the r
 A part that states `dc linear_regulator` or `dc switching_regulator`: an ideal source on the net of its output rail, over the range of the rail's voltage, and an input rail that draws what the output asks (what it supplies and its **quiescent current** for a linear one, `Pout / (efficiency * Vin)` for a switching one). It cuts the network into the island behind it and the island in front of it (ADR 0076, amendment 3).
 _Avoid_: Converter model, power stage (a `BuckStage` is the module around the IC, and the IC is the regulator)
 
+**Pick-time analysis**:
+The DC analysis run inside the search of picks, with the last part of a group chosen: the island of the network that has a part of the group is solved with the picks in it, cut at the rails whose voltage an earlier pass worked out, and the rails on it that nothing gave get its voltage, so the checks that read them judge the pick. It is what a hand-written `.vout.voltage == .vin.voltage - .r.drop` did for a series resistor in front of a clamp. It solves only an island with no regulator in it (ADR 0076, amendment 10, provisional). The pass after the picks is the analysis that every pick is finally judged on.
+_Avoid_: Trial analysis, inner analysis, solver loop
+
 **Quiescent current**:
 The current a regulator draws from its input for itself, with its output unloaded: the datasheet's quiescent (or ground pin) current. `LinearRegulator` has it as the member `.quiescent_current` (default none), a part narrows it from its datasheet, the regulator's input current is the load and this, and the part's `dc linear_regulator` statement names it as its third operand, so the DC analysis draws it at the input too (ADR 0076, amendment 9). A buck IC states its own (`.iq_max` of the LT8641) and the analysis does not yet add it.
 _Avoid_: Ground current, standby current, supply current (a regulator's supply current is what its input draws, the load included)

@@ -160,7 +160,7 @@ pub(crate) fn analyze(
         mut islands,
         regs,
         unsolved_outputs,
-    } = extract(model, enclosed, hulled);
+    } = extract(model, enclosed, hulled, &HashSet::new());
     let mut states: Vec<State> = islands.iter().map(|_| State::Pending).collect();
     let mut loads: Vec<Option<Option<Range>>> = vec![None; regs.len()];
     loop {
@@ -230,6 +230,31 @@ pub(crate) fn analyze(
         .filter_map(|(planned, state)| match state {
             State::Solved(result) => Some(Outcome { planned, result }),
             _ => None,
+        })
+        .collect()
+}
+
+/// The islands that have one of `parts`, solved on their own and cut at the rails in `cuts` (the
+/// pick-time analysis, ADR 0076 amendment 10): an island that is not a resistive one (a regulator
+/// in it, or a node a regulator holds) is left out, since what it would need is the island behind
+/// the regulator, and that is the pass after the picks'.
+pub(crate) fn analyze_around(
+    model: &Model,
+    parts: &[InstId],
+    cuts: &HashSet<InstId>,
+) -> Vec<Outcome> {
+    let extract::Extracted { islands, .. } = extract(model, &HashMap::new(), &HashSet::new(), cuts);
+    islands
+        .into_iter()
+        .filter(|p| {
+            p.sinks.is_empty()
+                && p.outputs.is_empty()
+                && p.parts.iter().any(|m| parts.contains(&m.part))
+        })
+        .map(|planned| {
+            netsmith_core::job::checkpoint();
+            let result = planned.island.analyze(MAX_COMBINATIONS);
+            Outcome { planned, result }
         })
         .collect()
 }

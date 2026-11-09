@@ -135,6 +135,11 @@ pub(crate) struct Planned {
     /// current written for a part, a voltage written for a rail) are not made from them, since
     /// the inference may call a push-pull pin that left its high out open drain.
     pub open_drain: Vec<usize>,
+    /// The fields the island's numbers are read from (a resistance, a current), and whether some
+    /// of them are not listed (a pin's levels, a switch's gate): the picks that the island's
+    /// result depends on are the ones that those fields are worked out from.
+    pub reads: Vec<FieldId>,
+    pub opaque: bool,
 }
 
 /// What `extract` found: the islands, the regulators, and the regulator outputs that an island
@@ -181,13 +186,19 @@ struct Item {
     nets: Vec<usize>,
     /// A regulator's input: which regulator.
     reg: Option<usize>,
+    /// The fields the element's numbers are read from.
+    reads: Vec<FieldId>,
 }
 
-/// The islands of a model, in the order of their lowest net.
+/// The islands of a model, in the order of their lowest net. A rail in `cuts` is held at the
+/// range its voltage has, as a source is: the network is cut there, and what is on its two
+/// sides is solved on its own (the pick-time analysis of ADR 0076, amendment 10, cuts at the
+/// rails that an earlier pass worked out).
 pub(crate) fn extract(
     model: &Model,
     enclosed: &HashMap<InstId, Range>,
     hulled: &HashSet<InstId>,
+    cuts: &HashSet<InstId>,
 ) -> Extracted {
     let nets = model.nets();
     let mut net_of: HashMap<InstId, usize> = HashMap::new();
@@ -340,7 +351,9 @@ pub(crate) fn extract(
             continue;
         };
         let Some(parent) = inst.parent else { continue };
-        if model.instance(parent).kind != InstKind::Board && !supply_rails.contains(&iface) {
+        let cut = cuts.contains(&iface);
+        if model.instance(parent).kind != InstKind::Board && !supply_rails.contains(&iface) && !cut
+        {
             continue;
         }
         let field = model.field(voltage);
@@ -348,8 +361,8 @@ pub(crate) fn extract(
             continue;
         };
         // A voltage the design states: not one the solver worked out from a relation, which
-        // can be a node that a circuit sets.
-        if field.narrowed_at.is_empty() || !q.lo().is_finite() || !q.hi().is_finite() {
+        // can be a node that a circuit sets (unless the network is cut at it).
+        if (field.narrowed_at.is_empty() && !cut) || !q.lo().is_finite() || !q.hi().is_finite() {
             continue;
         }
         let (Some(&p), Some(&n)) = (net_of.get(&pos), net_of.get(&neg)) else {
@@ -413,6 +426,7 @@ pub(crate) fn extract(
             drop: Some(input.voltage),
             nets: vec![input.net_pos, input.net_neg],
             reg: Some(idx),
+            reads: Vec::new(),
         });
     }
 
@@ -520,6 +534,7 @@ pub(crate) fn extract(
             },
             nets,
             reg: None,
+            reads: vec![dc.values[0]],
         });
     }
 
@@ -589,6 +604,7 @@ pub(crate) fn extract(
             drop: None,
             nets: vec![d.net, d.pos, d.neg],
             reg: None,
+            reads: Vec::new(),
         });
     }
 
@@ -620,6 +636,7 @@ pub(crate) fn extract(
                 drop: None,
                 nets: vec![na, nb],
                 reg: None,
+                reads: vec![current],
             },
             a,
             b,
@@ -683,6 +700,7 @@ pub(crate) fn extract(
                         drop: None,
                         nets: vec![np, nn],
                         reg: None,
+                        reads: model.draw_of(iface).map(|(f, _)| f).into_iter().collect(),
                     });
                     accounted.insert(pos);
                     accounted.insert(neg);
@@ -759,6 +777,7 @@ pub(crate) fn extract(
             drop: None,
             nets: vec![np, nn],
             reg: None,
+            reads: vec![current],
         });
     }
 
@@ -857,6 +876,7 @@ pub(crate) fn extract(
                     },
                     nets: vec![g, d, s],
                     reg: None,
+                    reads: Vec::new(),
                 })
             })();
             match modelled {
@@ -1069,8 +1089,15 @@ pub(crate) fn extract(
         };
         let mut parts = Vec::new();
         let mut sinks = Vec::new();
+        let mut reads: Vec<FieldId> = Vec::new();
+        let mut opaque = false;
         for &i in members {
             let item = &items[i];
+            reads.extend(item.reads.iter().copied());
+            opaque |= matches!(
+                item.kind,
+                Kind::Pin { .. } | Kind::Mosfet { .. } | Kind::Regulator { .. }
+            );
             let n: Vec<usize> = item.nets.iter().map(|&x| node_of(x)).collect();
             let kind = match &item.kind {
                 Kind::Resistor { r, .. } => Kind::Resistor {
@@ -1248,6 +1275,8 @@ pub(crate) fn extract(
             free_nets: free_nets.clone(),
             ground,
             open_drain,
+            reads,
+            opaque,
         });
     }
     Extracted {
