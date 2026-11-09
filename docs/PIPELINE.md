@@ -34,13 +34,13 @@ flowchart TD
     end
     prov -- "no way out" --> stop2(["Stop: failed relations with numbers"])
 
-    prov -- "solved" --> lower
-    subgraph S3["3. Lower (netsmith-lower)<br/>builds the Design"]
-        lower["Solved model to the Design: the parts, nets,<br/>track widths from solved currents, sourcing, guidelines"]
+    prov -- "solved" --> design
+    subgraph S3["3. Design (netsmith-design)<br/>builds the Design"]
+        design["Solved model to the Design: the parts, nets,<br/>track widths from solved currents, sourcing, guidelines"]
     end
-    lower -- "power issue; guideline with --strict" --> stop3(["Stop: refused"])
+    design -- "power issue; guideline with --strict" --> stop3(["Stop: refused"])
 
-    lower --> export
+    design --> export
     subgraph S4["4. Export"]
         export["Map parts to KiCad symbols and footprints,<br/>check pin table against them, write the schematic"]
     end
@@ -64,8 +64,8 @@ flowchart TD
     route -- "connections left" --> inc(["Written as INCOMPLETE, run fails"])
 ```
 
-Stage 3 is called "lower" in the code, the crate (`netsmith-lower`) and the editor. The name
-is under review.
+Stage 3 was called "lower" before 2026-11-09. Code, ADRs written before that date and old issues still
+use the old word.
 
 `build` runs stages 1 to 4. The editor runs the same stages on each edit but skips the KiCad
 libraries, so it needs no KiCad. `fab` repeats stages 1 to 4 in the same process, then goes on
@@ -110,7 +110,7 @@ stateDiagram-v2
     Source --> Failed: syntax or check error
     Checked --> Solved: parts picked, relations hold
     Checked --> Failed: a relation fails
-    Solved --> Designed: lower
+    Solved --> Designed: design
     Solved --> Failed: power issue
     Designed --> Schematic: export (build ends)
     Designed --> Failed: guideline with --strict
