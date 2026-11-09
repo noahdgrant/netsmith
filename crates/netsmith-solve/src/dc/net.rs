@@ -314,7 +314,6 @@ pub(crate) struct Report {
 /// Which quantity of an element or node.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Which {
-    #[cfg_attr(not(test), allow(dead_code))]
     NodeVoltage(usize),
     /// The current through an element, from `a` to `b` (a diode: anode to cathode).
     Current(usize),
