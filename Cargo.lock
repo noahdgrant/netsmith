@@ -519,7 +519,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "netsmith-check",
  "netsmith-core",
@@ -544,7 +544,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-check"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "netsmith-core",
  "netsmith-lang",
@@ -553,19 +553,19 @@ dependencies = [
 
 [[package]]
 name = "netsmith-core"
-version = "0.0.1"
+version = "0.1.0"
 
 [[package]]
 name = "netsmith-dc"
-version = "0.0.1"
+version = "0.1.0"
 
 [[package]]
 name = "netsmith-dxf"
-version = "0.0.1"
+version = "0.1.0"
 
 [[package]]
 name = "netsmith-editor"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "axum",
  "netsmith-core",
@@ -579,7 +579,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-fab"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "netsmith-kicad",
  "serde_json",
@@ -588,7 +588,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-kicad"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "netsmith-core",
  "serde",
@@ -598,11 +598,11 @@ dependencies = [
 
 [[package]]
 name = "netsmith-lang"
-version = "0.0.1"
+version = "0.1.0"
 
 [[package]]
 name = "netsmith-lower"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "netsmith-check",
  "netsmith-core",
@@ -614,7 +614,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-netlist"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "netsmith-fab",
  "roxmltree",
@@ -622,7 +622,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-pcb"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "netsmith",
  "netsmith-check",
@@ -637,11 +637,11 @@ dependencies = [
 
 [[package]]
 name = "netsmith-quantity"
-version = "0.0.1"
+version = "0.1.0"
 
 [[package]]
 name = "netsmith-solve"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "netsmith-check",
  "netsmith-core",
@@ -651,7 +651,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-view"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "netsmith-core",
  "netsmith-kicad",
