@@ -363,6 +363,10 @@ struct Rejection {
     /// The relation that failed (its place in the model's list), if it was one and not a
     /// conflict found while propagating.
     relation: Option<usize>,
+    /// Whether the DC analysis of the group's network was part of the trial and read numbers
+    /// that are not listed in `own` (a pin's levels): the value it wrote is then worked out from
+    /// every pick of the group. The fields it did read are in `own`.
+    network: bool,
 }
 
 /// Why a part, or the parts after it, could not be chosen.
@@ -537,6 +541,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
         clock: 1,
         chosen_before: 0,
         to_choose: 0,
+        network: Default::default(),
     };
     job::checkpoint();
     s.relax_pinned();
@@ -834,6 +839,8 @@ struct Solver<'a> {
     /// choose in all: what the progress of picking is counted in (see `job::report`).
     chosen_before: usize,
     to_choose: usize,
+    /// The pick-time analysis of the group being searched (ADR 0076, amendment 10).
+    network: dcpass::NetworkTrial,
 }
 
 /// The currents in a balance that the design gave a range (`.x.current &= a..b`) and that
@@ -3090,6 +3097,7 @@ impl Solver<'_> {
     ) {
         let ordered = self.order_group(jobs, group);
         let group = &ordered[..];
+        self.network = dcpass::NetworkTrial::of(group.iter().map(|&j| jobs[j].part).collect());
         let mut search = Search {
             elsewhere,
             work_from: self.work,
@@ -3335,8 +3343,15 @@ impl Solver<'_> {
                 for &count in &counts {
                     let checkpoint = self.model.checkpoint();
                     let bank = job.count.zip(count);
-                    let outcome =
-                        self.try_candidate(job.part, &job.columns, c, bank, coupling, &later);
+                    let outcome = self.try_candidate(
+                        job.part,
+                        &job.columns,
+                        c,
+                        bank,
+                        coupling,
+                        &later,
+                        false,
+                    );
                     self.model.rollback(checkpoint);
                     match outcome {
                         Err(r)
@@ -3435,7 +3450,7 @@ impl Solver<'_> {
     ) {
         let (work, derived) = (self.work, self.derived.clone());
         let checkpoint = self.model.checkpoint();
-        let tried = self.try_candidate(job.part, &job.columns, c, None, coupling, later);
+        let tried = self.try_candidate(job.part, &job.columns, c, None, coupling, later, false);
         self.model.rollback(checkpoint);
         self.work = work;
         self.derived = derived;
@@ -3593,7 +3608,16 @@ impl Solver<'_> {
                     search.trials += 1;
                     let checkpoint = self.model.checkpoint();
                     let bank = job.count.zip(count);
-                    match self.try_candidate(job.part, &job.columns, c, bank, coupling, &later) {
+                    let leaf = depth + 1 == group.len();
+                    match self.try_candidate(
+                        job.part,
+                        &job.columns,
+                        c,
+                        bank,
+                        coupling,
+                        &later,
+                        leaf,
+                    ) {
                         Ok(accepted) if tier == 0 && !accepted.whole => {
                             // Not yet: a candidate that meets every waiting bound comes first.
                             self.model.rollback(checkpoint);
@@ -3672,6 +3696,12 @@ impl Solver<'_> {
                             let reads = coupling.earlier_jobs(group, depth, &failure_fed_by);
                             conflict.extend(reads.iter().copied());
                             core.extend(reads);
+                            // A value the DC analysis wrote is worked out from every pick of the
+                            // group.
+                            if r.network {
+                                conflict.extend(0..depth);
+                                core.extend(0..depth);
+                            }
                             // A value that a part still to be chosen feeds is judged on the range
                             // it has, so the failure is also that part's: it is named with the
                             // rest, though no choice of it is undone.
@@ -3726,10 +3756,14 @@ impl Solver<'_> {
     /// failed fails the same way; skipping it is what keeps a large catalog from being
     /// searched once per copy of the same electrical part.
     fn interchangeable(&self, job: &Job, a: &Candidate, b: &Candidate) -> bool {
+        // The DC analysis of a leaf reads the values of the part's columns that no relation
+        // names (a fuse's resistance), so two candidates are alike only when they are equal
+        // in all of them.
+        let every = self.network.active == Some(true);
         job.columns
             .iter()
             .zip(&job.used)
-            .all(|((_, key), &used)| !used || a.column(key) == b.column(key))
+            .all(|((_, key), &used)| !(used || every) || a.column(key) == b.column(key))
     }
 
     /// Whether anything but the part's own constraints reads a field: a connection joins it
@@ -3978,6 +4012,7 @@ impl Solver<'_> {
 
     /// Try one candidate. On success its values stay in the model; on failure the model
     /// is put back exactly as it was.
+    #[allow(clippy::too_many_arguments)]
     fn try_candidate(
         &mut self,
         part: InstId,
@@ -3986,13 +4021,25 @@ impl Solver<'_> {
         bank: Option<(FieldId, f64)>,
         coupling: &Coupling,
         later: &HashSet<usize>,
+        leaf: bool,
     ) -> Result<Accepted, Rejection> {
         let backup = self.model.checkpoint();
-        let result = self.try_candidate_from(part, columns, c, bank, coupling, later, &backup);
+        // What the DC analysis of a leaf writes besides the model's fields (which the rollback
+        // puts back).
+        let saved = (leaf && self.network.active != Some(false))
+            .then(|| (self.derived.clone(), self.dc_ends.clone()));
+        let result =
+            self.try_candidate_from(part, columns, c, bank, coupling, later, leaf, &backup);
         // A candidate that is refused leaves the model as it was.
         match result {
             Ok(_) => self.model.commit(backup),
-            Err(_) => self.model.rollback(backup),
+            Err(_) => {
+                self.model.rollback(backup);
+                if let Some((derived, ends)) = saved {
+                    self.derived = derived;
+                    self.dc_ends = ends;
+                }
+            }
         }
         result
     }
@@ -4006,6 +4053,7 @@ impl Solver<'_> {
         bank: Option<(FieldId, f64)>,
         coupling: &Coupling,
         later: &HashSet<usize>,
+        leaf: bool,
         backup: &Checkpoint,
     ) -> Result<Accepted, Rejection> {
         let mut needs: Vec<(String, Need)> = Vec::new();
@@ -4017,17 +4065,26 @@ impl Solver<'_> {
         {
             self.model.set_domain(field, Domain::Quantity(q));
         }
+        // What the DC analysis read, when it wrote a value this trial judges.
+        let networked: std::cell::RefCell<Option<(Vec<FieldId>, bool)>> =
+            std::cell::RefCell::new(None);
         let reject = |message: String,
                       margin: f64,
                       at: (SourceId, Span),
-                      own: Vec<FieldId>,
+                      mut own: Vec<FieldId>,
                       relation: Option<usize>| {
+            let mut network = false;
+            if let Some((reads, opaque)) = &*networked.borrow() {
+                own.extend(reads.iter().copied());
+                network = *opaque;
+            }
             Err(Rejection {
                 message,
                 margin,
                 at,
                 own,
                 relation,
+                network,
             })
         };
 
@@ -4090,6 +4147,22 @@ impl Solver<'_> {
                 conflict.fields,
                 None,
             );
+        }
+
+        // The last part of a group is chosen: the network the group is in is solved with the
+        // picks, and the voltage it gives a rail that nothing else gave is judged with the rest
+        // (ADR 0076, amendment 10).
+        if leaf && let Some(read) = self.network_trial() {
+            *networked.borrow_mut() = Some(read);
+            if let Some(conflict) = self.propagate().into_iter().next() {
+                return reject(
+                    conflict.message,
+                    1.0,
+                    (conflict.source, conflict.span),
+                    conflict.fields,
+                    None,
+                );
+            }
         }
 
         // The relations this choice can decide: those that name a field of the part, and

@@ -56,6 +56,30 @@ pub struct DcSummary {
     pub collapsed: usize,
 }
 
+/// What the pick-time analysis knows about the group being searched (ADR 0076, amendment 10).
+#[derive(Debug, Default)]
+pub(super) struct NetworkTrial {
+    /// The parts of the group.
+    parts: Vec<InstId>,
+    /// Whether the last pick of the group is judged with the analysis: unknown until the first
+    /// one is made, then whether an island with a part of the group has a rail whose voltage no
+    /// one gave and a relation reads.
+    pub(super) active: Option<bool>,
+    /// The rails whose voltage an earlier pass worked out: the network is cut at them.
+    cuts: HashSet<InstId>,
+    /// The fields that a relation reads.
+    read: HashSet<FieldId>,
+}
+
+impl NetworkTrial {
+    pub(super) fn of(parts: Vec<InstId>) -> Self {
+        Self {
+            parts,
+            ..Self::default()
+        }
+    }
+}
+
 /// An island and its result, kept to say which states give an end of a range.
 #[derive(Debug)]
 pub(super) struct Run {
@@ -317,6 +341,90 @@ impl Solver<'_> {
             self.derived.extend(members);
         }
         usize::from(written)
+    }
+
+    /// The pick-time analysis (ADR 0076, amendment 10): with the last part of a group chosen, the
+    /// island of the network that has a part of the group is solved on its own, cut at the rails
+    /// whose voltage an earlier pass worked out, and the voltage it gives a rail that no one gave
+    /// is written, so the relations that read it judge the pick. That is what a hand-written
+    /// `.vout.voltage == .vin.voltage - .r.drop` did for a resistor in series. Only an island with
+    /// no regulator in it is solved (what a regulator needs is the island behind it, which is the
+    /// pass after the picks'), and it is solved only when a relation reads such a voltage; a group
+    /// with no such island is never solved again. When it wrote something, the fields its
+    /// numbers were read from are returned (a relation that fails on what it wrote depends on
+    /// the picks that those are worked out from), and whether some are not listed.
+    pub(super) fn network_trial(&mut self) -> Option<(Vec<FieldId>, bool)> {
+        if self.network.active == Some(false) {
+            return None;
+        }
+        if self.network.active.is_none() {
+            self.network.cuts = self.cut_rails();
+            let mut read = Vec::new();
+            for r in self.model.relations() {
+                crate::eval::fields_in(&r.lhs, &mut read);
+                crate::eval::fields_in(&r.rhs, &mut read);
+            }
+            self.network.read = read.into_iter().collect();
+        }
+        let outcomes = dc::analyze_around(&self.model, &self.network.parts, &self.network.cuts);
+        let mut applicable = false;
+        let mut todo: Vec<(dc::RailNode, HashSet<FieldId>, Rc<Run>)> = Vec::new();
+        let mut reads: Vec<FieldId> = Vec::new();
+        let mut opaque = false;
+        for outcome in outcomes {
+            netsmith_core::job::checkpoint();
+            let dc::Outcome { planned, result } = outcome;
+            let Ok(report) = result else { continue };
+            let solved = report.consistent > 0;
+            let rails = planned.rails.clone();
+            let (island_reads, island_opaque) = (planned.reads.clone(), planned.opaque);
+            let run = Rc::new(Run {
+                island: planned.island,
+                report,
+            });
+            for rail in rails {
+                let class = self.equated(rail.field);
+                if class
+                    .iter()
+                    .any(|&f| !matches!(self.domain(f), Domain::Unset))
+                    || !class.iter().any(|f| self.network.read.contains(f))
+                {
+                    continue;
+                }
+                applicable = true;
+                if solved {
+                    todo.push((rail, class, Rc::clone(&run)));
+                    reads.extend(island_reads.iter().copied());
+                    opaque |= island_opaque;
+                }
+            }
+        }
+        if self.network.active.is_none() {
+            self.network.active = Some(applicable);
+        }
+        let mut done: Vec<FieldId> = Vec::new();
+        let mut wrote = false;
+        for (rail, class, run) in todo {
+            if class.iter().any(|f| done.contains(f)) {
+                continue;
+            }
+            done.extend(class.iter().copied());
+            wrote |= self.dc_write_rail(&rail, &class, &run) > 0;
+        }
+        wrote.then_some((reads, opaque))
+    }
+
+    /// The rails whose voltage a pass worked out: where the pick-time analysis cuts the network.
+    fn cut_rails(&self) -> HashSet<InstId> {
+        self.model
+            .instances()
+            .filter_map(|(i, _)| {
+                let (voltage, _, _) = self.model.rail_of(i)?;
+                (self.derived.contains(&voltage)
+                    && matches!(self.domain(voltage), Domain::Quantity(_)))
+                .then_some(i)
+            })
+            .collect()
     }
 
     /// The jobs whose pick waits on a voltage no one has given: a derated column whose bias has
