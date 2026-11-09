@@ -42,6 +42,7 @@ The surface finish is not in `order.txt` (`finish not stated`): the user chooses
 |---|---|
 | `process:` | The factory rules used. Confirm the layer count and thickness are what the user wants. |
 | `hand-solder:` | These parts are not in the BOM. Tell the user to buy and solder them. |
+| `consigned:` | Parts the user buys and ships to the board house (ADR 0084): they are in `bom.csv` (manufacturer's number as the comment, LCSC cell empty) and in `cpl.csv`, but JLCPCB's BOM has no column that marks them. Tell the user to register the parts on JLCPCB's site, ship the quantity listed with the order, and check the component matching step of the order preview before paying. |
 | `trim:` | The design states that the pins of a through-hole part protrude only so far out of the far side of the board (`.pin_protrusion`), so a person cuts them after soldering and before the covering part is fitted. It is a hand step and nothing in the files carries it: tell the user to cut the pins as the line says, then measure one protruding pin against the line's length before the covering part goes on. It is also listed in `order.txt` under "before you order". |
 | `the board house does not assemble these (hand-solder, and no LCSC part number ...)` | Parts whose catalog row has no supplier number, marked `hand`: they are not in `bom.csv`, so the user must buy them. |
 | `not fitted` | These parts (holes, fiducials, programming pads) are in neither the BOM nor the placement file. Nothing to buy. |
