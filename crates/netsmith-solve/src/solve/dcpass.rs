@@ -185,6 +185,7 @@ impl Solver<'_> {
         Vec<super::NetCurrent>,
     ) {
         let mut net_currents: Vec<super::NetCurrent> = Vec::new();
+        self.dc_check_efficiencies();
         let mut summary = DcSummary::default();
         let mut reads = NetReads::default();
         let mut notes = Vec::new();
@@ -336,7 +337,8 @@ impl Solver<'_> {
     /// is never above what the loads draw and the finding is never made on a load that is not
     /// there. A supply that states nothing has no budget, and a stated range with no negative
     /// end gives nothing to compare with.
-    pub(super) fn dc_check_supplies(&mut self) {
+    pub(super) fn dc_check_supplies(&mut self) -> bool {
+        let mut reported = false;
         let drawn = std::mem::take(&mut self.supply_draws);
         let mut done: Vec<FieldId> = Vec::new();
         for (sp, ..) in &drawn {
@@ -392,6 +394,22 @@ impl Solver<'_> {
                 end(Dimension::CURRENT, most),
             );
             let (source, span) = self.model.instance(sp.rail).at();
+            self.report(source, span, message);
+            reported = true;
+        }
+        reported
+    }
+
+    /// Say the disagreements of `dc_field` (amendment 15), unless a supply's stated `.current`
+    /// has been found over its budget: a budget narrows the balance's numbers along its chain,
+    /// so each of them misses the circuit's by the same contradiction, which the finding about
+    /// the supply has said once.
+    pub(super) fn dc_report_disagreements(&mut self, supply_found: bool) {
+        let found = std::mem::take(&mut self.dc_disagreements);
+        if supply_found || !self.budget_failed.is_empty() {
+            return;
+        }
+        for (source, span, message) in found {
             self.report(source, span, message);
         }
     }
@@ -1055,6 +1073,49 @@ impl Solver<'_> {
         (lo.is_finite() && hi.is_finite()).then_some((dim, lo, hi))
     }
 
+    /// A switching regulator's efficiency is a fraction: above 0 and at most 1. One written as a
+    /// percentage in a plain number (`85..95`) is a converter that makes power, and the input
+    /// current `Pout / (eff * Vin)` would come out a hundred times too small with every rating
+    /// that reads it passing, so it is an error that names the part and the value, and the
+    /// regulator is not modelled (ADR 0076, amendment 14). A value that is not yet a range with
+    /// finite ends is left to the extraction, which leaves the regulator alone.
+    fn dc_check_efficiencies(&mut self) {
+        let mut found: Vec<(InstId, FieldId, Quantity)> = Vec::new();
+        for (part, dc) in self.model.dc_elements() {
+            if dc.kind != netsmith_check::DcKind::SwitchingRegulator
+                || self.model.instance(part).kind != netsmith_check::InstKind::Part
+            {
+                continue;
+            }
+            let Some(&field) = dc.values.first() else {
+                continue;
+            };
+            if let Domain::Quantity(q) = &self.model.field(field).domain
+                && q.dim() == Dimension::NONE
+                && q.lo().is_finite()
+                && q.hi().is_finite()
+                && (q.lo() <= 0.0 || q.hi() > 1.0)
+            {
+                found.push((part, field, *q));
+            }
+        }
+        for (part, field, q) in found {
+            let message = format!(
+                "the efficiency of `{}` is {q}, which a switching regulator cannot have: it is a fraction above 0 and at most 1 (`0.85..0.95` or `85%..95%`), and the DC analysis does not model `{}` with it",
+                self.model.path_of(part),
+                self.model.path_of(part),
+            );
+            let (source, span) = self
+                .model
+                .field(field)
+                .narrowed_at
+                .last()
+                .copied()
+                .unwrap_or_else(|| self.model.instance(part).at());
+            self.report(source, span, message);
+        }
+    }
+
     /// A regulator that has no operating point in some combination of states: its output asks
     /// for more power than the source can give through the resistance in front of it. The states
     /// are those of the combination that is the circuit's, and not those of a refused one.
@@ -1166,11 +1227,51 @@ impl Solver<'_> {
                         self.dc_ends.insert(field, ends);
                         true
                     }
+                    // The balance's number and the circuit's share no value: the design
+                    // contradicts itself (or the model of a part does), and the relations that
+                    // read the field are judged on the balance's number alone. Say so (ADR 0076,
+                    // amendment 15); the field is left as it is.
+                    Ok(None) => {
+                        if d.dim() == Dimension::CURRENT {
+                            self.dc_disagree(part, field, d, solved, &ends);
+                        }
+                        false
+                    }
                     _ => false,
                 }
             }
             _ => false,
         }
+    }
+
+    /// A current the solver worked out (a balance, an equation) and the DC analysis find in
+    /// ranges that cannot both be true: an error that names the field, both ranges and the
+    /// states at the analysis's nearest end. It is kept until the supplies' budgets are judged
+    /// (`dc_report_disagreements`).
+    fn dc_disagree(
+        &mut self,
+        part: InstId,
+        field: FieldId,
+        worked: Quantity,
+        solved: Quantity,
+        ends: &DcEnds,
+    ) {
+        let name = self.model.path_of_field(field);
+        // The end of the analysis's range that is nearest the other range is the one that
+        // explains the miss: the low end when the analysis is above, the high end below.
+        let above = solved.lo() > worked.hi();
+        let states = ends.states(!above);
+        let nearest = if above { "least" } else { "most" };
+        let message = format!(
+            "`{name}` is inconsistent: the solver worked it out as {worked}, but the DC analysis of the circuit around it finds {solved}, and the two share no value (the {nearest} the circuit gives{})",
+            if states.is_empty() {
+                String::new()
+            } else {
+                format!(", with {states}")
+            }
+        );
+        let (source, span) = self.model.instance(part).at();
+        self.dc_disagreements.push((source, span, message));
     }
 
     /// A stated range is a budget: what the circuit needs has to lie inside it.
