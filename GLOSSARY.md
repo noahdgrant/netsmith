@@ -350,8 +350,12 @@ One combination of the ends of the ranges an island has (a resistance at its lea
 _Avoid_: Case, scenario, worst case (the worst case is a result, an end of the range a corner makes)
 
 **Regulator (at DC)**:
-A part that states `dc linear_regulator` or `dc switching_regulator`: an ideal source on the net of its output rail, over the range of the rail's voltage, and an input rail that draws what the output asks (what it supplies for a linear one, `Pout / (efficiency * Vin)` for a switching one). It cuts the network into the island behind it and the island in front of it (ADR 0076, amendment 3).
+A part that states `dc linear_regulator` or `dc switching_regulator`: an ideal source on the net of its output rail, over the range of the rail's voltage, and an input rail that draws what the output asks (what it supplies and its **quiescent current** for a linear one, `Pout / (efficiency * Vin)` for a switching one). It cuts the network into the island behind it and the island in front of it (ADR 0076, amendment 3).
 _Avoid_: Converter model, power stage (a `BuckStage` is the module around the IC, and the IC is the regulator)
+
+**Quiescent current**:
+The current a regulator draws from its input for itself, with its output unloaded: the datasheet's quiescent (or ground pin) current. `LinearRegulator` has it as the member `.quiescent_current` (default none), a part narrows it from its datasheet, the regulator's input current is the load and this, and the part's `dc linear_regulator` statement names it as its third operand, so the DC analysis draws it at the input too (ADR 0076, amendment 9). A buck IC states its own (`.iq_max` of the LT8641) and the analysis does not yet add it.
+_Avoid_: Ground current, standby current, supply current (a regulator's supply current is what its input draws, the load included)
 
 **Source (at DC)**:
 A rail that holds its nets over the range of its voltage in the analysis: a `Rail` that the board declares itself, or the rail that a part gives with `dc source` (a connector's supply, ADR 0076, amendment 5). Its `pos` net is held over the range the design states for `.voltage` and its `neg` net at zero; the network on either side of it is an island.

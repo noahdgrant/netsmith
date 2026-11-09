@@ -38,20 +38,44 @@ impl Checker<'_> {
             return;
         };
         let pin_roles = kind.pin_roles();
-        let value_roles = kind.value_roles();
-        let want = pin_roles.len() + value_roles.len();
-        if d.operands.len() != want {
+        let required = kind.value_roles();
+        let optional = kind.optional_value_roles();
+        let value_roles: Vec<(&str, Dimension)> =
+            required.iter().chain(optional).copied().collect();
+        let want = pin_roles.len() + required.len();
+        if d.operands.len() < want || d.operands.len() > want + optional.len() {
+            let operands = format!(
+                "this has {} operand{}",
+                d.operands.len(),
+                if d.operands.len() == 1 { "" } else { "s" }
+            );
+            let values = if optional.is_empty() {
+                format!(
+                    "{} value{}",
+                    required.len(),
+                    if required.len() == 1 { "" } else { "s" }
+                )
+            } else {
+                // The statement of a kind with an optional operand: name it, with the form
+                // that has it.
+                format!(
+                    "{} value{} and, if the part has one, the {}",
+                    required.len(),
+                    if required.len() == 1 { "" } else { "s" },
+                    optional[0].0
+                )
+            };
+            let example = if optional.is_empty() {
+                kind.example().to_string()
+            } else {
+                format!("{} .quiescent_current", kind.example())
+            };
             self.error(
                 d.span,
                 format!(
-                    "`dc {}` takes {} pins and then {} value{}, as in `{}`; this has {} operand{}",
+                    "`dc {}` takes {} pins and then {values}, as in `{example}`; {operands}",
                     kind.word(),
                     pin_roles.len(),
-                    value_roles.len(),
-                    if value_roles.len() == 1 { "" } else { "s" },
-                    kind.example(),
-                    d.operands.len(),
-                    if d.operands.len() == 1 { "" } else { "s" },
                 ),
             );
             return;
@@ -113,7 +137,7 @@ impl Checker<'_> {
             }
         }
         let mut values = Vec::new();
-        for (path, (role, dim)) in d.operands[pin_roles.len()..].iter().zip(value_roles) {
+        for (path, (role, dim)) in d.operands[pin_roles.len()..].iter().zip(&value_roles) {
             match self.resolve_path(path) {
                 Res::Field(f) => {
                     let field = self.model.field(f);

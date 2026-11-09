@@ -79,6 +79,9 @@ pub(crate) struct Reg {
     pub vout: Range,
     /// `Some` for a switching regulator.
     pub eff: Option<Range>,
+    /// A linear regulator's quiescent current, when its statement names one: drawn at the input
+    /// besides what the output supplies (ADR 0076, amendment 9).
+    pub quiescent: Option<Range>,
     /// The current its output rail supplies (a negative `current`), to fall back to when the
     /// loads on the output net are not all modelled.
     pub out_current: Option<FieldId>,
@@ -237,6 +240,16 @@ pub(crate) fn extract(
         } else {
             None
         };
+        // A linear regulator's quiescent current, when the statement names it: a range of
+        // currents that are not negative. One the part leaves open, or one below zero, is not
+        // a number to model with: the regulator is not modelled (nothing is guessed).
+        let quiescent = match dc.values.first() {
+            Some(&f) if !switching => match range(f, Dimension::CURRENT).filter(|r| r.lo >= 0.0) {
+                Some(q) => Some(q),
+                None => continue,
+            },
+            _ => None,
+        };
         // The input's `voltage` and `current`: the fields the pass writes.
         if model.field(v_in).kind != netsmith_check::FieldKind::Quantity(Dimension::VOLTAGE) {
             continue;
@@ -249,6 +262,7 @@ pub(crate) fn extract(
             out_net: op,
             vout,
             eff,
+            quiescent,
             out_current,
             out_complete: false,
         });
