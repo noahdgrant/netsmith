@@ -117,6 +117,9 @@ pub(crate) struct RailNode {
     pub rail: InstId,
     /// The free node of the island its `pos` is on.
     pub node: usize,
+    /// Whether a regulator's output holds a node of the island: the rail is past an output, and
+    /// the part holds what the board states for it (amendment 17).
+    pub past_regulator: bool,
 }
 
 /// A source rail of the board that states its own `.current` (ADR 0076, amendment 13): the held
@@ -1224,7 +1227,7 @@ pub(crate) fn extract(
                 kind: Kind::Current { from, to, i },
             });
         }
-        let outputs = held_nets
+        let outputs: Vec<OutputNode> = held_nets
             .iter()
             .enumerate()
             .filter_map(|(h, n)| {
@@ -1280,6 +1283,7 @@ pub(crate) fn extract(
                     field,
                     rail,
                     node: node_of(np),
+                    past_regulator: !outputs.is_empty(),
                 })
                 .collect(),
             None => Vec::new(),

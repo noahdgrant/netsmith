@@ -166,7 +166,14 @@ fn a_stated_load_lets_the_dc_analysis_judge_the_stage_and_the_notes_go() {
     // With what the output draws stated, the DC analysis solves the stage (the resistor, the
     // divider and the load) and judges the resistor's power with the numbers: nothing waits, and
     // the balance's note goes with the current it said was not set (ADR 0076).
-    let src = OUTLINE_STAGE.replace("0A..2A", "0A..20mA");
+    //
+    // The stage's output window encloses what the circuit gives (a 5 V input less a 1 ohm drop,
+    // 4.73 V to 5.25 V): a stated range the circuit goes outside of is an error of its own
+    // (ADR 0076, amendment 17), and the window the other tests state (3.3 V +/- 3%) is the
+    // outline's, which no circuit here gives.
+    let src = OUTLINE_STAGE
+        .replace("0A..2A", "0A..20mA")
+        .replace("3.3V +/- 3%", "3V..5.5V");
     let b = &built(&src)[0];
     assert!(
         !b.notes.iter().any(|n| n.contains("stage.loose.max_power")),

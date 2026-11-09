@@ -8622,7 +8622,7 @@ What it does not model, and leaves as it was: a logic pin that does not state it
 
 **What it writes.** A field of a modelled part that nothing states takes the range the circuit gives it. A range that a statement gave a field is a budget (ADR 0038): the circuit has to fit inside it, and when it needs more the error says what it needs and the states that give it. A value the solver worked out from a balance is narrowed to what both say, and when the two share no value (for a current) the design contradicts itself: an error names the field, both ranges and the states that give the analysis's nearest end (ADR 0076, amendment 15, provisional), and the field keeps the balance's number. The ranges are widened by a billionth, and by a picoampere or a nanovolt, so that a rounding does not take a value out of the range it is in.
 
-**A chain carries the voltage** (ADR 0076, amendment 5, provisional). The network of the parts in a `~>` chain is solved with the supply behind it, so a rail on a node of it has the voltage the chain leaves there: the supply's, less what each part in series drops at the current that it carries, which the loads behind it set. The pass writes that range into the rail's `.voltage` where nothing states it (a rail joined to it with `~` takes it with it), as it writes a part's `.current`: the board does not restate it with `.vout.voltage == .vin.voltage - .fuse.drop - .diode.drop`, which would list the parts of the chain a second time and go stale when one changes. A relation that reads the voltage is judged with it. A voltage that a statement gave the rail (or a rail joined to it) is the design's, and is left as it is, not checked and not narrowed: a window the board states is a claim about the rail, and the circuit's range is never taken as an answer to it (what the circuit gives is in the message of a relation that fails). The chain carries the voltage and not the `peak`: a transient is not a DC quantity, and `.vout.peak` is still stated (a `Tvs`'s `.clamping_voltage` on the rail it clamps, say), as ADR 0086 has a fuse take the rail's peak from the chain's start.
+**A chain carries the voltage** (ADR 0076, amendment 5, provisional). The network of the parts in a `~>` chain is solved with the supply behind it, so a rail on a node of it has the voltage the chain leaves there: the supply's, less what each part in series drops at the current that it carries, which the loads behind it set. The pass writes that range into the rail's `.voltage` where nothing states it (a rail joined to it with `~` takes it with it), as it writes a part's `.current`: the board does not restate it with `.vout.voltage == .vin.voltage - .fuse.drop - .diode.drop`, which would list the parts of the chain a second time and go stale when one changes. A relation that reads the voltage is judged with it. A voltage that a statement gave the rail (or any rail joined to it by `~`) is the design's, and is left as it is, not narrowed: a window the board states is a claim about the rail, and it is checked (ADR 0076, amendment 17, provisional; next to the fuse's budget below): the range it states has to enclose the range the circuit gives the node, and one that does not is an error. A window that encloses it is kept as it is, so a start window above the real range stays valid. Not checked are a rail past a regulator's output (the part holds that node, and a rail past an inductor sits a little below the window the board states for it), a node a supply holds, and a network the analysis does not solve. The chain carries the voltage and not the `peak`: a transient is not a DC quantity, and `.vout.peak` is still stated (a `Tvs`'s `.clamping_voltage` on the rail it clamps, say), as ADR 0086 has a fuse take the rail's peak from the chain's start.
 
 The chain below is invented: a vehicle's 4.75 V to 5.25 V supply (as a `Plug` gives it), a link of 0.1 ohm and a diode that drops 0.3 V to 0.5 V, in series, with a load of 0.1 A to 0.3 A at the end. The module `Protection` does not say what its output is, and the board asks for 4.5 V at least. The circuit leaves the output at 4.22 V to 4.94 V (4.75 V less 0.03 V less 0.5 V at the least), so the check fails with the voltage the chain carries:
 
@@ -8937,6 +8937,43 @@ error: `fuse.current` is stated 0A..100mA, but the DC analysis of the circuit ar
    |
 14 |     .fuse: Fuse { .rated_current &= 1A; .current &= 0A..100mA }
    |                                         ^^^^^^^^^^^^^^^^^^^^^
+```
+
+A stated voltage is a budget as well. The load below is stated to take 1.7 V to 3.6 V on its input, and the 12 V supply reaches it through a resistor that drops 1 V to 2 V at the LED's current: the circuit puts the node at 9.98 V to 11.01 V, outside the claim. The same holds when the statement is on a module's port that the board joins to a regulator's input (a seed): it is a claim about the node, and a regulator in dropout does not build. A range that encloses what the circuit gives is accepted and stays as written.
+
+```nsm fails
+import std::sources::Rail
+import std::parts::passive::{Resistor, Led}
+import std::parts::connector::Header1x2
+
+module Load {
+    .vin: Rail
+    .led: Led { .current &= 10mA..20mA }
+    .vin.pos ~> .led ~> .vin.neg
+}
+
+board Claim {
+    .supply: Rail {
+        .voltage &= 12V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .r: Resistor { .resistance &= 100ohm +/- 1% }
+    .load: Load { .vin.voltage &= 1.7V..3.6V }
+    .supply.pos ~> .r ~> .load.vin.pos
+    .supply.neg ~ .load.vin.neg
+    .p: Header1x2
+    .supply.pos ~ .p.p1
+    .supply.neg ~ .p.p2
+}
+```
+
+```text
+error: `load.vin.voltage` is stated 1.7V..3.6V, but the DC analysis of the circuit around it finds 9.98V..11.01V: at most 11.01V at the high end with r at 99Ω, load.led at 10mA
+   --> main.nsm:18:19
+   |
+18 |     .load: Load { .vin.voltage &= 1.7V..3.6V }
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A source that cannot give what a regulator asks. The link is invented, and so is the regulator (a part that states `dc switching_regulator`, as a buck converter's IC does):
