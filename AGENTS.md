@@ -21,6 +21,7 @@ A part number goes into a catalog only with a recorded source (`data/jlcpcb/READ
 ## Vocabulary and decisions
 
 - Use the terms in `GLOSSARY.md` and avoid the ones listed under _Avoid_.
+- `docs/adr/README.md` says what an ADR is and is not (one page, no stage plans or progress, no amendments); `scripts/adr-check` enforces the size and the status words.
 - Decisions that are hard to reverse are in `docs/adr/`; the language's design rules are in `docs/DESIGN-RULES.md`.
 - Language-design choices (syntax, semantics) are the owner's. Present options and ask.
 - Open work is in GitHub issues.

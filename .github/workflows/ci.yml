@@ -83,6 +83,10 @@ jobs:
       - name: Test the rules of ci-changes
         run: scripts/ci-changes-test
 
+      # The ADRs against docs/adr/README.md: size and status words (bash only, so it runs on every pull request).
+      - name: Check the ADRs
+        run: scripts/adr-check
+
       - id: flags
         run: |
           everything() { printf 'rust=true\nkicad=true\nrecipes=true\n'; }
