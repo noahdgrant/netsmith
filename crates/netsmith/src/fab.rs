@@ -548,11 +548,11 @@ fn fab_board(
             fs::write(&file, contents).map_err(|e| fail(format!("{}: {e}", file.display())))?;
         }
 
-        // The project's own libraries, so KiCad finds the footprints.
-        for (table, text) in netsmith_kicad::library_tables(libraries.mapping.libraries(), &dir) {
-            let file = dir.join(table);
-            fs::write(&file, text).map_err(|e| fail(format!("{}: {e}", file.display())))?;
-        }
+        // The project's own libraries and the standard library's own files that the board
+        // uses, so KiCad finds the footprints.
+        libraries
+            .write_tables(&dir, &built.design)
+            .map_err(|e| fail(format!("{}: {e}", dir.display())))?;
 
         let entries = bom_entries(&sourcing, &libraries.mapping).map_err(fail)?;
         // Guidelines that the design goes against (ADR 0036) are for the person ordering, so

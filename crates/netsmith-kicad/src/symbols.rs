@@ -361,8 +361,14 @@ impl SymbolLib {
         if let Some(lib) = loaded.get(library) {
             return Ok(lib.clone());
         }
-        let (path, project) = self.library_path(library)?;
-        if !path.is_file() {
+        // netsmith's own library is in the binary, whatever is installed (ADR 0087).
+        let own = library == crate::stdlib::NAME;
+        let (path, project) = if own {
+            (PathBuf::from(crate::stdlib::SYMBOL_FILE), false)
+        } else {
+            self.library_path(library)?
+        };
+        if !own && !path.is_file() {
             if let (false, Some(lookup)) = (project, &self.no_install) {
                 return Err(SymbolError::NoInstall {
                     library: library.to_string(),
@@ -375,10 +381,14 @@ impl SymbolLib {
                 project,
             });
         }
-        let text = std::fs::read_to_string(&path).map_err(|e| SymbolError::Unreadable {
-            path: path.clone(),
-            reason: e.to_string(),
-        })?;
+        let text = if own {
+            crate::stdlib::SYMBOLS.to_string()
+        } else {
+            std::fs::read_to_string(&path).map_err(|e| SymbolError::Unreadable {
+                path: path.clone(),
+                reason: e.to_string(),
+            })?
+        };
         let invalid = |reason: String| SymbolError::Invalid {
             name: format!("{library} ({})", path.display()),
             reason,

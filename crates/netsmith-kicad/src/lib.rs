@@ -5,6 +5,7 @@ pub mod mapping;
 pub mod pinout;
 pub mod schematic;
 pub mod sexp;
+pub mod stdlib;
 pub mod symbols;
 pub mod testlib;
 

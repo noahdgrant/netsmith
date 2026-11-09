@@ -347,9 +347,10 @@ module BuckStage {
 /// (pulse-skipping mode, p.11), as may `TR/SS` (p.10), and `PG` is open drain.
 ///
 /// The package has no footprint in KiCad's libraries (the 4-pad `UDC-QFN-20` of KiCad is
-/// the LT3033's, with another land pattern), so `std/kicad.toml` has no row for it: a
-/// board's project maps `Lt8641` and its package to the footprint it draws from the
-/// datasheet's recommended land pattern (p.24).
+/// the LT3033's, with another land pattern), so `std/kicad.toml` maps `Lt8641` in `UDC20(18)`
+/// to netsmith's own footprint and symbol (`std/libs/`, ADR 0087). The footprint's pads are
+/// the datasheet's recommended solder pad pitch and dimensions (p.24; pad 21 and 22 as the
+/// pin configuration, p.2, and the bottom view, p.24, have them).
 part Lt8641 {
     .designator &= "U"
 

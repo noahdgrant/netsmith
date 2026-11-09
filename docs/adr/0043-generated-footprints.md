@@ -48,6 +48,9 @@ with `Snom = Lnom - 2 Tnom` and `CS = sqrt(CL^2 + 2 CT^2)` when the datasheet gi
 
 ## Lookup order
 
+ADR 0087 adds a step before these. The footprints that netsmith ships as files in `std/libs/`, for packages that are neither in KiCad's libraries nor a rule the generators can state, answer to the library name `netsmith` and are read from the binary first (the first of them is the LT8641's QFN-18).
+
+
 `FootprintLibrary::load` takes the first of: a project's own `.pretty` library of that name; the generator for the name; the file in the installed KiCad folder. **The generator wins for the names it makes**, so a build gives the same pads on every machine whatever KiCad (or nothing) is installed, and the pads do not move with a KiCad patch release. KiCad's folder serves only the names without a generator. A project library named like a generated library (`Fuse`, `Package_SO`) is refused with both named (`FootprintError::AmbiguousGenerated`), as one named like an installed library already is. The mapping needs no change: it names footprints as before, and a row that names a generated footprint now needs no library for it. `FootprintLibrary::installed()` has the generators; `FootprintLibrary::at(root)` reads only its folder (the sample libraries of the tests, and the comparison with KiCad); `.with_generators()` adds them.
 
 ## Validation
