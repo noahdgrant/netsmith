@@ -337,7 +337,8 @@ impl Solver<'_> {
     /// is never above what the loads draw and the finding is never made on a load that is not
     /// there. A supply that states nothing has no budget, and a stated range with no negative
     /// end gives nothing to compare with.
-    pub(super) fn dc_check_supplies(&mut self) {
+    pub(super) fn dc_check_supplies(&mut self) -> bool {
+        let mut reported = false;
         let drawn = std::mem::take(&mut self.supply_draws);
         let mut done: Vec<FieldId> = Vec::new();
         for (sp, ..) in &drawn {
@@ -393,6 +394,22 @@ impl Solver<'_> {
                 end(Dimension::CURRENT, most),
             );
             let (source, span) = self.model.instance(sp.rail).at();
+            self.report(source, span, message);
+            reported = true;
+        }
+        reported
+    }
+
+    /// Say the disagreements of `dc_field` (amendment 15), unless a supply's stated `.current`
+    /// has been found over its budget: a budget narrows the balance's numbers along its chain,
+    /// so each of them misses the circuit's by the same contradiction, which the finding about
+    /// the supply has said once.
+    pub(super) fn dc_report_disagreements(&mut self, supply_found: bool) {
+        let found = std::mem::take(&mut self.dc_disagreements);
+        if supply_found || !self.budget_failed.is_empty() {
+            return;
+        }
+        for (source, span, message) in found {
             self.report(source, span, message);
         }
     }
@@ -1210,11 +1227,51 @@ impl Solver<'_> {
                         self.dc_ends.insert(field, ends);
                         true
                     }
+                    // The balance's number and the circuit's share no value: the design
+                    // contradicts itself (or the model of a part does), and the relations that
+                    // read the field are judged on the balance's number alone. Say so (ADR 0076,
+                    // amendment 15); the field is left as it is.
+                    Ok(None) => {
+                        if d.dim() == Dimension::CURRENT {
+                            self.dc_disagree(part, field, d, solved, &ends);
+                        }
+                        false
+                    }
                     _ => false,
                 }
             }
             _ => false,
         }
+    }
+
+    /// A current the solver worked out (a balance, an equation) and the DC analysis find in
+    /// ranges that cannot both be true: an error that names the field, both ranges and the
+    /// states at the analysis's nearest end. It is kept until the supplies' budgets are judged
+    /// (`dc_report_disagreements`).
+    fn dc_disagree(
+        &mut self,
+        part: InstId,
+        field: FieldId,
+        worked: Quantity,
+        solved: Quantity,
+        ends: &DcEnds,
+    ) {
+        let name = self.model.path_of_field(field);
+        // The end of the analysis's range that is nearest the other range is the one that
+        // explains the miss: the low end when the analysis is above, the high end below.
+        let above = solved.lo() > worked.hi();
+        let states = ends.states(!above);
+        let nearest = if above { "least" } else { "most" };
+        let message = format!(
+            "`{name}` is inconsistent: the solver worked it out as {worked}, but the DC analysis of the circuit around it finds {solved}, and the two share no value (the {nearest} the circuit gives{})",
+            if states.is_empty() {
+                String::new()
+            } else {
+                format!(", with {states}")
+            }
+        );
+        let (source, span) = self.model.instance(part).at();
+        self.dc_disagreements.push((source, span, message));
     }
 
     /// A stated range is a budget: what the circuit needs has to lie inside it.
