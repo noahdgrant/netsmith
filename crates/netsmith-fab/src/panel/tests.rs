@@ -524,6 +524,31 @@ fn a_refused_panel_lists_every_reason() {
 }
 
 #[test]
+fn the_panel_summary_counts_the_lines_of_bom_csv_the_consigned_ones_too() {
+    // Every resistor is consigned: `bom.csv` has one line, and none is from stock.
+    let entries = entries();
+    let input = CellInput {
+        pcb: CELL,
+        pro: None,
+        entries: &entries,
+        facts: facts(),
+    };
+    let options = Options {
+        fit: [("R1".to_string(), Fit::Consigned)].into(),
+        ..Options::default()
+    };
+    let pkg = build(&spec(2, 3, 5.0), &input, &options).unwrap_or_else(|e| panic!("{e}"));
+    let rows = pkg.bom_csv.lines().count() - 1;
+    assert_eq!(rows, 1, "{}", pkg.bom_csv);
+    assert!(
+        pkg.summary()
+            .contains(&format!("6 part(s) on {rows} BOM line(s)")),
+        "{}",
+        pkg.summary()
+    );
+}
+
+#[test]
 fn designators_carry_the_cell_and_lose_it_again() {
     assert_eq!(suffixed("R1", 3), "R1_3");
     assert_eq!(unsuffixed("R1_3"), "R1");

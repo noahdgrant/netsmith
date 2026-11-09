@@ -176,6 +176,41 @@ fn the_notes_list_consigned_parts_with_their_number_and_quantity_and_say_who_shi
     assert!(!pkg.notes.contains("unassembled"), "{}", pkg.notes);
 }
 
+/// The number the summary line gives before "BOM line(s)", and the data rows of `bom.csv`.
+fn summary_lines_and_rows(summary: &str, bom_csv: &str) -> (usize, usize) {
+    let first = summary.lines().next().unwrap();
+    let before = first.split(" BOM line(s)").next().unwrap();
+    let lines = before
+        .rsplit(' ')
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap_or_else(|_| panic!("{first}"));
+    (lines, bom_csv.lines().count() - 1)
+}
+
+#[test]
+fn the_summary_counts_the_lines_of_bom_csv_the_consigned_ones_too() {
+    // R1 is from stock and R2 is consigned, so `bom.csv` has two lines and `plan.bom` one.
+    let pcb = write_pcb("summary-lines", &all_top_board());
+    let mut bom = sample_bom();
+    bom[1] = entry(&["R2"], "ZZR-1234", None);
+    let options = Options {
+        fit: [("R2".to_string(), Fit::Consigned)].into(),
+        ..Options::default()
+    };
+    let pkg = package(&pcb, &bom, &options).unwrap();
+    let (lines, rows) = summary_lines_and_rows(&pkg.summary(), &pkg.bom_csv);
+    assert_eq!(rows, 2, "{}", pkg.bom_csv);
+    assert_eq!(lines, rows, "{}", pkg.summary());
+    assert!(
+        pkg.summary()
+            .starts_with("sample: 2 part(s) on 2 BOM line(s), 2 placement(s)"),
+        "{}",
+        pkg.summary()
+    );
+}
+
 #[test]
 fn a_part_the_design_leaves_to_hand_but_the_bom_lists_is_not_placed() {
     let board = Board::parse(SAMPLE).unwrap();
