@@ -8965,6 +8965,60 @@ error: the source cannot give what `reg` asks (5W at its output, efficiency 90 %
    |     ^^^^^^^^^^^^^^^
 ```
 
+A supply that can give only so much states it as its `.current`, a negative number because a rail's current is what is drawn at its `pos` (ADR 0014): `.supply.current &= -500mA..0A` is a supply of at most 500 mA (ADR 0076, amendment 13, provisional). The loads that the analysis finds on the supply's net are held to it by the rule that ADR 0038 gives two stated ranges, which must be able to meet: the range the loads draw over every corner and the budget. An error says that they cannot, that even the least the loads draw is more than the supply gives, and names the supply, the budget, the least and the most the loads draw, and the corner that gives the least. A supply that states no `.current` has no budget, one with no negative end in its range is left to the balance of its net, and a balance that has already refused the same supply says it once. The draw is the sum over the networks on the net that the analysis solved, so a load that no network models is not in it and the finding is never made on a load that is not there. The converter is invented: at 90 % a 5 V output at 2 A asks 11.1 W, which is 0.70 A from 16 V and 1.25 A from 9 V, so even from 16 V it is more than the 500 mA the supply states.
+
+```nsm fails
+import std::sources::Rail
+
+/// Invented: a link of 0.1 ohm.
+part Link {
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+    .resistance: Resistance
+    .current: Current
+    bridge .a ~> .b
+    dc resistor .a .b .resistance
+}
+
+/// Invented: a 5 V converter.
+part Converter {
+    .vin: Rail
+    .vout: Rail
+    .efficiency: Number
+    .vin.neg ~ .vout.neg
+    dc switching_regulator .vin .vout .efficiency
+}
+
+board Small {
+    .supply: Rail {
+        .voltage &= 9V..16V
+        .current &= -500mA..0A
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .link: Link { .resistance &= 0.1ohm }
+    .reg: Converter { .efficiency &= 0.9; .vout.voltage &= 5V }
+    .out: Rail {
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+        .current &= 2A
+    }
+    .supply.pos ~> .link ~> .reg.vin.pos
+    .supply.neg ~ .reg.vin.neg
+    .reg.vout ~ .out
+}
+```
+
+```text
+error: `supply.current` is stated -500mA..0A, so the supply `supply` gives at most 500mA, but the DC analysis finds the loads on its net drawing at least 697.5mA and up to 1.252A, the least with supply at 16V
+   --> main.nsm:25:5
+   |
+25 |     .supply: Rail {
+   |     ^^^^^^^^^^^^^
+```
+
 **Limits.** The pass tries every combination of the states of the parts it sees, which is the worst case. A regulator's other pins on the nets of its input (an IC with two input pins, an enable tied to the input) are its input's and draw nothing more, and its output is held at the node its part names, which for a buck converter is the switch node: the output beyond the inductor is a little below what a stated window asks, and a window the board states is therefore not checked against the circuit. A power tree is solved only when every pin on its nets is modelled: a regulator that states no `dc` element, or a load whose current is not known, leaves the island in front of it unsolved. Nothing is solved before the picks but the start of a circle, which needs the currents of the loads to be known by then. A design cannot say that two pins are never high together, or that two loads never run together: the pass does not know, and it adds both (issue #45 asks for a way to say it). Temperature is a stated tolerance and nothing else. A capacitor is open, so nothing charges: an inrush current is not seen. A diode's reverse leakage and a MOSFET's body diode are not modelled. A regulator's efficiency is one range and not a curve over its load and its input, a switching regulator's quiescent current is not modelled (a linear regulator's is, when its `dc` statement names it), a regulator is an ideal source (its output does not sag, and a current limit is the part's own relation), and an input below its minimum is an error and not a shutdown. A logic pin has no leakage (high impedance is an open circuit: the language has no member for the datasheet's `Ii`), and a pin's output resistance is the one at the test current its level states. A regulator's output current is summed over the islands on its output net, each solved on its own, so a load whose current follows the output voltage is taken over the whole range of the output (wider, never narrower).
 
 ### Logic levels and absolute maximums

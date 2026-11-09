@@ -118,6 +118,15 @@ pub(crate) struct RailNode {
     pub node: usize,
 }
 
+/// A source rail of the board that states its own `.current` (ADR 0076, amendment 13): the held
+/// node of the island it holds (its index in `Island::held`), the rail and its `.current` field.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Supply {
+    pub held: usize,
+    pub rail: InstId,
+    pub current: FieldId,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Planned {
     pub island: Island,
@@ -129,6 +138,8 @@ pub(crate) struct Planned {
     /// The net (the place in `Model::nets`) of each free node, in the order of the node numbers,
     /// and the net of the ground the island is measured from.
     pub free_nets: Vec<usize>,
+    /// The source rails on the held nodes that state their `.current`, one rail to a net.
+    pub supplies: Vec<Supply>,
     pub ground: Option<usize>,
     /// The elements that are pins taken to be open drain by ADR 0075's inference (a `vol` and
     /// no `voh`): they are low or high impedance and never high. The island's own words (a
@@ -336,6 +347,7 @@ pub(crate) fn extract(
     // says it gives from outside (`dc source`: a connector's supply).
     let mut held: BTreeMap<usize, Held_> = BTreeMap::new();
     let mut source_pins: HashSet<InstId> = HashSet::new();
+    let mut budgeted: BTreeMap<usize, Vec<(InstId, FieldId)>> = BTreeMap::new();
     let supply_rails: HashSet<InstId> = model
         .dc_elements()
         .filter(|(part, dc)| {
@@ -375,6 +387,15 @@ pub(crate) fn extract(
         }
         source_pins.insert(pos);
         source_pins.insert(neg);
+        // A source that states its own `.current` has a budget (amendment 13); a rail the
+        // network is cut at is a worked-out voltage, not a supply.
+        if !cut
+            && p != n
+            && let Some(Member::Field(current)) = model.member(iface, "current")
+            && !model.field(current).narrowed_at.is_empty()
+        {
+            budgeted.entry(p).or_default().push((iface, current));
+        }
         let name = model.path_of(iface);
         let range = Range::new(q.lo(), q.hi());
         hold_net(&mut held, n, Hold::Ground, Range::point(0.0), &name);
@@ -974,7 +995,10 @@ pub(crate) fn extract(
         let touches_output = touched.iter().any(|n| reg_out_nets.contains(n));
         // Only an island with something to write, or that a regulator's output draws from, is
         // worth a solve.
-        if members.iter().all(|&i| items[i].part.is_none()) && !touches_output {
+        let touches_supply = touched
+            .iter()
+            .any(|n| budgeted.get(n).is_some_and(|v| v.len() == 1));
+        if members.iter().all(|&i| items[i].part.is_none()) && !touches_output && !touches_supply {
             continue;
         }
         let free_nets: Vec<usize> = touched
@@ -1266,6 +1290,18 @@ pub(crate) fn extract(
             })
             .map(|(i, _)| i)
             .collect();
+        let supplies = held_nets
+            .iter()
+            .enumerate()
+            .filter_map(|(h, n)| match budgeted.get(n)?.as_slice() {
+                [(rail, current)] => Some(Supply {
+                    held: h,
+                    rail: *rail,
+                    current: *current,
+                }),
+                _ => None,
+            })
+            .collect();
         out.push(Planned {
             island,
             parts,
@@ -1273,6 +1309,7 @@ pub(crate) fn extract(
             outputs,
             rails,
             free_nets: free_nets.clone(),
+            supplies,
             ground,
             open_drain,
             reads,
