@@ -196,7 +196,15 @@ impl Solver<'_> {
         // What each island draws from a source rail that states its own `.current`
         // (amendment 13): the rail, the range of the draw, and the island's run.
         let mut drawn: SupplyDraws = Vec::new();
-        for outcome in dc::analyze(&self.model, false, &HashMap::new(), &HashSet::new()) {
+        let dc::Analysis { outcomes, left } =
+            dc::analyze(&self.model, false, &HashMap::new(), &HashSet::new());
+        notes.extend(left.into_iter().map(|l| NotEvaluated {
+            at: l.at,
+            involves: l.involves,
+            cause: l.cause,
+            message: l.message,
+        }));
+        for outcome in outcomes {
             netsmith_core::job::checkpoint();
             summary.islands += 1;
             let dc::Outcome { planned, result } = outcome;
@@ -301,7 +309,29 @@ impl Solver<'_> {
                         });
                     }
                 }
-                Err(_) => {}
+                // An island with no combination of states that is its circuit's, or a matrix
+                // with no solution, writes nothing: it says so, and what to look at.
+                Err(error) => {
+                    let Some(at) = planned.parts.first().map(|m| m.part) else {
+                        continue;
+                    };
+                    let involves: Vec<InstId> = planned.parts.iter().map(|m| m.part).collect();
+                    let names = dc::names_of(&planned);
+                    let message = match error {
+                        Error::NoOperatingPoint => format!(
+                            "the DC analysis found no operating point for the network of {names}: in every combination of corners and states something is refused (a switch is on while its gate is below its threshold, or off while it is above, or a diode conducts against its drop); the circuit may not be one that settles (a source follower, a switch whose own current moves its gate), and nothing is written for these parts; change the gate drive or the thresholds, or state the currents of the parts"
+                        ),
+                        _ => format!(
+                            "the DC analysis could not solve the network of {names}: its equations have no solution in some combination (a loop of ideal sources, or a node that nothing connects to a source); nothing is written for these parts; join the node to a rail or remove the loop"
+                        ),
+                    };
+                    notes.push(NotEvaluated {
+                        at,
+                        involves,
+                        cause: netsmith_core::Cause::Unjudged,
+                        message,
+                    });
+                }
             }
         }
         self.supply_draws = drawn;
@@ -868,7 +898,7 @@ impl Solver<'_> {
         if closing {
             self.enclose_boundaries(jobs);
         }
-        let outcomes = dc::analyze(&self.model, true, &enclosed, &hulled);
+        let outcomes = dc::analyze(&self.model, true, &enclosed, &hulled).outcomes;
         self.model.restore(&saved);
         let mut written: Vec<(dc::RailNode, Rc<Run>)> = Vec::new();
         let mut vins: Vec<(InstId, FieldId, Rc<Run>, usize)> = Vec::new();

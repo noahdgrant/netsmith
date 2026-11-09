@@ -849,3 +849,76 @@ fn a_zero_ohm_resistor_between_held_nodes_is_not_a_branch() {
     let report = island.analyze(MAX_COMBINATIONS).unwrap();
     assert_eq!(report.consistent, report.combinations);
 }
+
+/// Issue #289, item 3: a load enclosed for a part still to be picked, from a node to the ground,
+/// is drawn from that node to the ground. The ground is no node of the island (no element is on
+/// it), and the load was drawn to the lowest-numbered held net instead, here the output of a
+/// regulator: the current came out of the output and went back into it, so the regulator's summed
+/// load was zero, and the input current the picks in front of it are judged on with it.
+#[test]
+fn an_enclosed_load_is_drawn_to_the_net_it_is_on_and_not_to_the_lowest_held_net() {
+    use std::collections::{HashMap, HashSet};
+
+    use netsmith_check::{Loader, check};
+
+    use crate::{Catalogs, solve};
+
+    // Both orders of the nets, so that one of them has the regulator's output below the ground.
+    for out_first in [true, false] {
+        let nets = if out_first {
+            ".reg.vout.pos.net &= \"A5\"\n    .supply.neg.net &= \"B_GND\""
+        } else {
+            ".reg.vout.pos.net &= \"B5\"\n    .supply.neg.net &= \"A_GND\""
+        };
+        let src = format!(
+            r#"import std::parts::passive::Resistor
+import std::sources::Rail
+
+part Ldo {{
+    .vin: Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+    .vin.current == -.vout.current
+    dc linear_regulator .vin .vout
+}}
+
+board B {{
+    .supply: Rail {{
+        .voltage &= 12V
+        .pos.net &= "VIN"
+    }}
+    .reg: Ldo {{ .vout.voltage &= 5V }}
+    .feed: Resistor {{ .resistance &= 1kohm +/- 1% }}
+    .top: Resistor {{ .resistance &= 10kohm +/- 1% }}
+    {nets}
+    .supply.pos ~ .reg.vin.pos
+    .supply.neg ~ .reg.vin.neg
+    .reg.vout.pos ~ .feed.a
+    .feed.b ~ .top.a
+    .top.b ~ .supply.neg
+}}
+"#
+        );
+        let c = check("test.nsm", &src, &Loader::std());
+        assert!(c.is_ok(), "{}", c.render());
+        let s = solve(&c.boards[0], &Catalogs::jlcpcb());
+        let top = s
+            .model
+            .instances()
+            .find(|(id, _)| s.model.path_of(*id) == "top")
+            .map(|(id, _)| id)
+            .expect("the board has a `top`");
+        let enclosed = HashMap::from([(top, Range::new(0.0, 1e-3))]);
+        let analysis = super::analyze(&s.model, true, &enclosed, &HashSet::new());
+        let planned_outputs = analysis
+            .outcomes
+            .iter()
+            .filter(|o| !o.planned.outputs.is_empty())
+            .collect::<Vec<_>>();
+        assert_eq!(planned_outputs.len(), 1, "out_first {out_first}");
+        let o = planned_outputs[0];
+        let report = o.result.as_ref().expect("the island solves");
+        let draw = report.range(Which::HeldDraw(o.planned.outputs[0].held));
+        range_is(draw, 0.0, 1e-3);
+    }
+}
