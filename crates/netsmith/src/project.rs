@@ -920,6 +920,7 @@ impl Target {
         // A top-level file may stand outside `src/`: it has its physical file all the same.
         for file in &self.files {
             crate::physical::attach(&mut loader, &file.name, &file.path, unsaved)?;
+            crate::pins::attach(&mut loader, &file.name, &file.path, unsaved)?;
             // Its module path is the project's, not the spelling it was typed with: the
             // providers in it sort the same whichever way a person names the file (ADR 0068).
             if let Some(key) = self
@@ -959,6 +960,13 @@ impl Target {
             self.files
                 .iter()
                 .map(|f| netsmith_view::schematic_hints_path(&f.path))
+                .filter(|p| p.is_file()),
+        );
+        // The pin file of a source (ADR 0101) gives its requests their pins.
+        paths.extend(
+            self.files
+                .iter()
+                .map(|f| crate::pins::pins_path(&f.path))
                 .filter(|p| p.is_file()),
         );
         if let Some(project) = &self.project {

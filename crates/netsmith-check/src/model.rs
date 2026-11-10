@@ -905,9 +905,47 @@ pub struct Unused {
     pub span: Span,
 }
 
+/// A request for a pin by capability (`.status: .u.GPIO`, ADR 0101): the pin of the board it
+/// declares, the part it asks and what it needs the pin to offer. Which pin it gets is decided
+/// after the elaboration, in `assign.rs`.
+#[derive(Debug, Clone)]
+pub struct PinRequest {
+    /// The pin the request declares: what the board connects.
+    pub pin: InstId,
+    /// The board or module that declared it, where `target` is looked up.
+    pub block: InstId,
+    /// The path of the part that is asked, from `block` (`u`), as written.
+    pub target: Vec<String>,
+    /// What the pin must offer (`GPIO`, `UARTE1_TX`): a function a row lists or a peripheral
+    /// offers.
+    pub capability: String,
+    pub source: SourceId,
+    /// The whole declaration, and the part's and the capability's names in it.
+    pub span: Span,
+    pub target_span: Span,
+    pub capability_span: Span,
+}
+
+/// The pin a request got: from the pin file (a kept entry) or picked by a run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PinAssignment {
+    pub request: InstId,
+    pub part: InstId,
+    pub pin: InstId,
+    pub function: String,
+    /// The request's path, the key of its entry in the pin file.
+    pub key: String,
+    pub lock: bool,
+    pub source: crate::pinfile::EntrySource,
+}
+
 #[derive(Debug, Clone)]
 pub struct Model {
     pub root: InstId,
+    /// The requests for a pin by capability, in the order they were declared.
+    pub requests: Vec<PinRequest>,
+    /// The pin each request that could be served got, in the byte order of the requests' paths.
+    pub pin_assignments: Vec<PinAssignment>,
     pub(crate) instances: Vec<Instance>,
     pub(crate) fields: Vec<Field>,
     pub(crate) relations: Arc<Vec<Relation>>,
@@ -955,6 +993,8 @@ impl Model {
     pub(crate) fn new() -> Self {
         Self {
             root: InstId(0),
+            requests: Vec::new(),
+            pin_assignments: Vec::new(),
             instances: Vec::new(),
             fields: Vec::new(),
             relations: Arc::new(Vec::new()),

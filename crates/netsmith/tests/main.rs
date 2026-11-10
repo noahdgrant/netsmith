@@ -46,6 +46,7 @@ mod overhang;
 mod panel;
 mod pick_lock;
 mod pinout;
+mod pins;
 mod power_issues;
 mod precheck;
 mod project;

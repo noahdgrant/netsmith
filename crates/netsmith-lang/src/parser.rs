@@ -504,7 +504,11 @@ impl Parser {
             Tok::Colon => {
                 let name = as_path(lhs, "a name before `:`")?;
                 self.bump();
-                let ty = self.type_path()?;
+                let ty = if self.at(&Tok::LeadingDot) {
+                    self.request_type()?
+                } else {
+                    self.type_path()?
+                };
                 // `optional` after the type is a modifier of the declaration (ADR 0074), the
                 // word a pin row also uses. It is read as a plain word, so a member or a type
                 // may still be called `optional`.
@@ -714,7 +718,10 @@ impl Parser {
                     }
                     let variant = segments.pop().expect("a path has a segment");
                     Some(Expr::Variant {
-                        ty: TypePath { segments },
+                        ty: TypePath {
+                            segments,
+                            of_member: false,
+                        },
                         variant,
                         span: self.span_from(role_start),
                     })
@@ -904,7 +911,10 @@ impl Parser {
                 }
                 let variant = segments.pop().expect("a path has a segment");
                 Some(Expr::Variant {
-                    ty: TypePath { segments },
+                    ty: TypePath {
+                        segments,
+                        of_member: false,
+                    },
                     variant,
                     span: self.span_from(role_start),
                 })
@@ -1331,12 +1341,31 @@ impl Parser {
         }))
     }
 
+    /// `.u.GPIO` after the colon of a declaration: a request for a pin of the part `.u` that
+    /// offers the capability `GPIO` (the last name). It needs a part and a capability.
+    fn request_type(&mut self) -> Res<TypePath> {
+        let path = self.path()?;
+        if path.segments.len() < 2 {
+            return Err(ParseError::new(
+                path.span,
+                "a pin request names a part and a capability, such as `.u.GPIO`",
+            ));
+        }
+        Ok(TypePath {
+            segments: path.segments,
+            of_member: true,
+        })
+    }
+
     fn type_path(&mut self) -> Res<TypePath> {
         let mut segments = vec![self.ident("a type name")?];
         while self.eat(&Tok::ColonColon) {
             segments.push(self.ident("a name after `::`")?);
         }
-        Ok(TypePath { segments })
+        Ok(TypePath {
+            segments,
+            of_member: false,
+        })
     }
 
     fn path(&mut self) -> Res<Path> {
@@ -1445,7 +1474,10 @@ impl Parser {
                 }
                 let variant = segments.pop().expect("a path has a segment");
                 Ok(Expr::Variant {
-                    ty: TypePath { segments },
+                    ty: TypePath {
+                        segments,
+                        of_member: false,
+                    },
                     variant,
                     span: self.span_from(start),
                 })

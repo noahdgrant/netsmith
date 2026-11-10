@@ -460,10 +460,14 @@ pub struct Decl {
     pub span: Span,
 }
 
-/// `std::parts::Resistor`
+/// `std::parts::Resistor`, or `.u.GPIO` (a pin request, `of_member`): a member path whose last
+/// segment is a capability of the part the segments before it name.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypePath {
     pub segments: Vec<Ident>,
+    /// Written with a leading dot and joined by dots: a request for a pin of the part that
+    /// the path names, not the name of a type.
+    pub of_member: bool,
 }
 
 /// `.supply.pos` (local) or `supply.pos` (looked up outward).

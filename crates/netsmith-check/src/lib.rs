@@ -1,6 +1,7 @@
 //! Checks a parsed netsmith file: resolves imports and names, turns literals into
 //! quantities, checks dimensions, and builds a model for the solver.
 
+mod assign;
 mod buses;
 mod busnets;
 mod checker;
@@ -15,6 +16,7 @@ mod lower;
 mod mate;
 mod model;
 mod optional;
+mod pinfile;
 mod pinout;
 mod pins;
 mod providers;
@@ -22,6 +24,7 @@ mod row;
 mod shared;
 mod unused;
 
+pub use assign::{PinsOutcome, RootPins};
 pub use busnets::{BusGroup, bidirectional_rows, bus_groups, joined_without_role, unstated_roles};
 pub use checker::physical_file_name;
 pub use diag::{Diagnostic, Source, SourceId, Sources};
@@ -31,9 +34,11 @@ pub use model::{
     Balance, Catalog, Chain, Checkpoint, Contact, ContactSide, DcElement, DcKind, Domain, Draw,
     EnumId, EnumInfo, Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet, InstId,
     InstKind, Instance, LevelTest, Mate, Member, Model, Net, OptionalMark, PartRules, Peripheral,
-    PeripheralBus, PeripheralFunction, PinKind, PinRow, PinTable, Pinout, Provider, RExpr,
-    RangeEnd, Relation, Requirement, Role, SharedMember, SharedRes, Snapshot, Tie, Unused, Written,
+    PeripheralBus, PeripheralFunction, PinAssignment, PinKind, PinRequest, PinRow, PinTable,
+    Pinout, Provider, RExpr, RangeEnd, Relation, Requirement, Role, SharedMember, SharedRes,
+    Snapshot, Tie, Unused, Written,
 };
+pub use pinfile::{EntrySource, PinEntry, PinFile, PinFileError};
 
 use std::collections::BTreeMap;
 
@@ -93,6 +98,8 @@ pub struct Checked {
     /// The diagnostics that are parse errors (they are also in `diagnostics`).
     pub syntax: Vec<Diagnostic>,
     pub sources: Sources,
+    /// What the run decided about the pin file beside the source (ADR 0101).
+    pub pins: PinsOutcome,
 }
 
 impl Checked {
@@ -225,6 +232,7 @@ fn check_inner(
             _ => {}
         }
     }
+    let pins = checker.finish_pins(only.is_none());
     let (diagnostics, syntax, sources) = checker.into_diagnostics();
     Checked {
         boards,
@@ -233,5 +241,6 @@ fn check_inner(
         diagnostics,
         syntax,
         sources,
+        pins,
     }
 }

@@ -2095,7 +2095,7 @@ Rules.
 - A pin that has no row but is joined inside the part to one that has (`.vout.neg` and `.vin.neg` above) is an alias and needs no pad. A pin with no row and no alias that is on a net is an error, once for the part.
 - A pad belongs to one pin, unless the part joins the pins that share it.
 - `optional` is for a `power` or `input` pin that may float; `required` is for an `output`, `bidirectional` or `passive` pin that may not. Neither is accepted where it changes nothing.
-- `fn` lists what a pin can be. A connected pin with more than one function needs the board to choose: `.u.pa2.function &= "UART1_TX"`. There is no default function. One function cannot be chosen on two pins of a part. A function may carry its own kind, `fn GPIO:bidirectional UART1_TX:output` (next sections).
+- `fn` lists what a pin can be. A connected pin with more than one function needs the board to choose: `.u.pa2.function &= "UART1_TX"`. There is no default function. One function cannot be chosen on two pins of a part, except a class ("A peripheral on any pin"). A function may carry its own kind, `fn GPIO:bidirectional UART1_TX:output` (next sections).
 - `tie .a ~ .b` says that the board must put the two pins on one net. The tie is skipped in a package that lacks either pin.
 - The faults on a board are reported when it is checked. A rule that needs the package waits for the solver when the board does not name the package (a catalog row chooses it). The solver does not choose a catalog row whose package lacks a pin that the board connects.
 - Two `power` pins that are both supplies on one net are not checked yet.
@@ -2822,6 +2822,158 @@ error: `.p00` lists `UARTE0_TX`, which `peripheral UARTE0` already offers on eve
 4 |         .p00 bidirectional "P0.00" "1" fn APP_GPIO UARTE0_TX
   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
+
+### A pin by capability
+
+A board that does not care which pin of a microcontroller carries a signal asks for a capability and lets the tool pick the pin (ADR 0101). A request is a declaration whose type is a function of a part: `.status: .u.GPIO` declares the pin `status` of the board, and asks `u` for any pin that offers `GPIO`. What a request can ask for is what the part already says: a function that a row lists, or a function of a peripheral that is offered on the pin (`.tx: .u.UARTE1_TX`). The part declares nothing more. A request is a pin of the board, so `~` works on it as on any pin, and it is joined and checked as the pin it got.
+
+The part and the board are invented. The pins `p02` and `p03` list `ANALOG`, so a request for `ANALOG` has two pins to choose from.
+
+```nsm module=src::zmcu4
+/// Zmcu4, an invented microcontroller: four pins, two of them analog, and two UARTs of which
+/// one at a time is in use.
+part Zmcu4 {
+    peripheral UARTE0 on GPIO { UARTE0_TX:output UARTE0_RX:input }
+    peripheral UARTE1 on GPIO { UARTE1_TX:output UARTE1_RX:input }
+    shared UARTS limit 1 { UARTE0 UARTE1 }
+
+    pins {
+        .p00 bidirectional "P0.00" "3" fn GPIO
+        .p01 bidirectional "P0.01" "4" fn GPIO
+        .p02 bidirectional "P0.02" "5" fn GPIO ANALOG
+        .p03 bidirectional "P0.03" "6" fn GPIO ANALOG
+    }
+}
+```
+
+```nsm
+import src::zmcu4::Zmcu4
+import std::parts::passive::Resistor
+
+board Sensors {
+    .u: Zmcu4
+    .load: Resistor
+    .divider: Resistor
+    .console: Resistor
+
+    .status: .u.GPIO
+    .sense: .u.ANALOG
+    .tx: .u.UARTE1_TX
+
+    .status ~ .load.a
+    .sense ~ .divider.a
+    .tx ~ .console.a
+}
+```
+
+The tool gives each request a pin before the nets are made, so the schematic, the checks and the board see the pins as if the source had named them. It serves the requests in the order of their names and gives each the first pin that offers its capability in the order of the pins' names (byte order, so `p0_10` comes before `p0_2`; the order of the rows in the part never matters). Here `sense` gets `p02`, `status` gets `p00` and `tx` gets `p01`, with `UARTE1_TX` chosen on it. A pin that the source names (connected, or with a function chosen) is never given to a request.
+
+`build` and `fab` write the answer in the pin file beside the source, `main.pins.toml` for `main.nsm`, when a run picks a pin:
+
+```toml
+version = 1
+
+[Sensors.pins.sense]
+pin = "p02"
+function = "ANALOG"
+source = "auto"
+
+[Sensors.pins.status]
+pin = "p00"
+function = "GPIO"
+source = "auto"
+
+[Sensors.pins.tx]
+pin = "p01"
+function = "UARTE1_TX"
+source = "auto"
+```
+
+The file has one table for each board and one entry for each request, keyed by the request's path (`hub.scl` for a request in a module `hub`, written `[Sensors.pins."hub.scl"]`). `pin` is the pin's path in the part, not its pad. The file is the same text every time for the same entries, so a run that changes nothing leaves its bytes alone, and the pin map does not move unless the design does:
+
+- A run never changes an entry that still holds: the request exists and asks the same function, the pin offers it, nothing else holds the pin, and the part's `shared` limits still allow it. A request with no entry is served round the pins the entries hold, so a new request never moves another request's pin.
+- `lock = true` on an entry says that the pin is a promise to firmware. A locked entry that no longer holds is an error at its line in the file. An unlocked one is a note, and its request is picked again.
+- An entry whose request is gone is stale: a note when unlocked, and the file drops it; an error when locked, until it is deleted.
+- `netsmith build --locked` and `netsmith fab --locked` write nothing and stop, listing what would change, as `cargo --locked` does. Run with `--locked` in continuous integration.
+
+A request that cannot be served says which of its needs fails. A capability that nothing offers:
+
+```nsm fails
+import src::zmcu4::Zmcu4
+import std::parts::passive::Resistor
+
+board NoPwm {
+    .u: Zmcu4
+    .load: Resistor
+    .dim: .u.PWM
+    .dim ~ .load.a
+}
+```
+
+```text
+error: `dim` asks for PWM on `u` (`Zmcu4`), and no pin of `Zmcu4` offers it; the functions its rows and peripherals offer are GPIO, ANALOG, UARTE0_TX, UARTE0_RX, UARTE1_TX and UARTE1_RX
+  --> main.nsm:7:14
+  |
+7 |     .dim: .u.PWM
+  |              ^^^
+```
+
+Every pin that offers it taken, here by the source and by the request served before it (`vbat` comes before `vin`):
+
+```nsm fails
+import src::zmcu4::Zmcu4
+import std::parts::passive::Resistor
+
+board TooManyAnalog {
+    .u: Zmcu4
+    .a: Resistor
+    .b: Resistor
+    .c: Resistor
+    .vin: .u.ANALOG
+    .vbat: .u.ANALOG
+    .u.p02 ~ .a.a
+    .u.p02.function &= "GPIO"
+    .vin ~ .b.a
+    .vbat ~ .c.a
+}
+```
+
+```text
+error: `vin` asks for ANALOG on `u`, and every pin that offers it is taken: `u.p02` by the source (connected to `a.a`, function GPIO chosen at main.nsm:12), `u.p03` by `vbat` (new)
+  --> main.nsm:9:5
+  |
+9 |     .vin: .u.ANALOG
+  |     ^^^^^^^^^^^^^^^
+```
+
+A request for a function of a peripheral that a `shared` resource already gives to another unit:
+
+```nsm fails
+import src::zmcu4::Zmcu4
+import std::parts::passive::Resistor
+
+board TwoUarts {
+    .u: Zmcu4
+    .a: Resistor
+    .b: Resistor
+    .console: .u.UARTE0_TX
+    .modem: .u.UARTE1_TX
+    .console ~ .a.a
+    .modem ~ .b.a
+}
+```
+
+```text
+error: `modem` asks for UARTE1_TX on `u`, and no free pin can serve it: `UARTS` allows 1 of UARTE0 and UARTE1 at a time: UARTE0 is used on `u.p00` (`console`) as UARTE0_TX; UARTE1 is used on `u.p01` (this request) as UARTE1_TX
+  --> main.nsm:9:5
+  |
+9 |     .modem: .u.UARTE1_TX
+  |     ^^^^^^^^^^^^^^^^^^^^
+```
+
+The rules about a pin run on the result as they do on a pin the source names: a function that disagrees with its net is the usual "two outputs" error, once, at the request. A class (`GPIO` above, a function that rows list and a peripheral is `on`) can be chosen on any number of pins of a part; a function that is no class (`ANALOG`) still belongs to one pin.
+
+A request asks a part declared in its own board or module, and a part with several packages needs its package stated (`.u.package &= "QFN-32"`), as the pins differ between packages. Not built yet: a request for the end of a bus (`.dbg: .u.Uart`), and moving pins by itself when a board does not route.
 
 ### A peripheral that is an end of a bus
 

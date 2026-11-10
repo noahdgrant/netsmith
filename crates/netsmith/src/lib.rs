@@ -15,6 +15,7 @@ pub mod no_supplier;
 pub mod order;
 pub mod physical;
 pub mod pick_lock;
+pub mod pins;
 pub mod project;
 pub mod providers;
 pub mod refresh;

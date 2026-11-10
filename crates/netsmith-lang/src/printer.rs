@@ -241,12 +241,12 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
         out.push_str(&"    ".repeat(depth + 1));
         match item {
             Item::Decl(d) => {
-                let _ = write!(
-                    out,
-                    "{}: {}",
-                    d.name.to_source(),
+                let ty = if d.ty.of_member {
+                    format!(".{}", join(&d.ty.segments, "."))
+                } else {
                     join(&d.ty.segments, "::")
-                );
+                };
+                let _ = write!(out, "{}: {ty}", d.name.to_source());
                 if d.optional.is_some() {
                     out.push_str(" optional");
                 }

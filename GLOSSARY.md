@@ -283,7 +283,7 @@ _Avoid_: Interface (the type), network
 
 **Pinout**:
 The pin table of a part in one package: for each pin its kind, the name the datasheet prints, its pads, and its functions. Written as a `pins "PACKAGE" { ... }` block in the part, or an unnamed `pins { ... }` for a part whose pads do not depend on the package. A pin that a package lacks does not exist in that package. It names no CAD tool (ADR 0002, ADR 0016).
-_Avoid_: Pin map, pin assignment
+_Avoid_: Pin table, pin map (the pin map is the pins that requests got, _Pin map_)
 
 **Alias**:
 A pin with no row in the pin table that the part joins to a pin that has one (`.vin.neg ~ .vout.neg`). It is that pin, so it needs no pad of its own and adds no pin to a net in the schematic.
@@ -293,7 +293,7 @@ A pin with no row in the pin table that the part joins to a pin that has one (`.
 _Avoid_: Short, jumper
 
 **Function**:
-One of the things a pin can be, listed with `fn` in its pinout row (`fn GPIO UART1_TX`). A connected pin with more than one function needs the board to choose, `.u.pa2.function &= "UART1_TX"`; there is no default, and one function can be chosen on only one pin of a part. A function may carry its own kind after a colon (`fn GPIO:bidirectional UART1_TX:output`, ADR 0046); the net rules judge a pin by the kind of the function chosen, and the pin's kind is the default for any function without one.
+One of the things a pin can be, listed with `fn` in its pinout row (`fn GPIO UART1_TX`). A connected pin with more than one function needs the board to choose, `.u.pa2.function &= "UART1_TX"`; there is no default, and one function can be chosen on only one pin of a part, except a **class** (next paragraph), which any number of pins can be. A function may carry its own kind after a colon (`fn GPIO:bidirectional UART1_TX:output`, ADR 0046); the net rules judge a pin by the kind of the function chosen, and the pin's kind is the default for any function without one.
 A function may be listed by a peripheral instead of a row, and a **class** is a function that rows list (`fn APP_GPIO NET_GPIO`) and peripherals are `on`: the function a board chooses for a pin that a core owns names the core (ADR 0071).
 A module's own pin (`.scl: Pin`) passes a choice on to a pin of a part inside with an equation, `.mcu.p04.function == .scl.function`; `.function &=` on a module's pin that no such equation reads is an error, because it has no effect (ADR 0071, stage 0).
 _Avoid_: Alternate function, mux, mode
@@ -301,6 +301,18 @@ _Avoid_: Alternate function, mux, mode
 **Peripheral**:
 `peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }` in a part: the functions of one part that belong together (a UART's `TX` and `RX`), each with an optional kind as in a pin row. It is **in use** when the board chooses one of its functions on a pin; two of its lines are still one use. With `on CLASS`, every pin whose row lists the function `CLASS` offers its functions (so a part where any pin can carry any line keeps one row for each pin); with no `on`, only the rows that list a function by name offer it, a dedicated pin. A function belongs to one peripheral, and a peripheral and a function have different names (ADR 0071). A peripheral may be an end of a bus, `peripheral SPIM0 on APP_GPIO as Spi SpiRole::Master { SPIM0_SCK:output as sclk ... }`: it has the role, and a pin on which the board chose one of its functions is a line of the bus (ADR 0064).
 _Avoid_: Group, block, role (the **Role** of a peripheral that is a bus end is the one it names after `as`), mode, mux, unit (a unit is the hardware a `shared` resource names, not a peripheral)
+
+**Pin request**:
+`.status: .u.GPIO` in a board or a module: a pin of its own whose type is a capability of a part, a function that a row of the part lists or a peripheral offers (`.tx: .u.UARTE1_TX`). It asks for any pin of `u` that offers the capability, and the tool picks it before the nets are made and keeps the answer in the _Pin file_. The request's path is its key. It is joined and checked as the pin it got, and a pin that the source names is never given to one (ADR 0101).
+_Avoid_: Pin assignment (the word for choosing providers is _Assignment_), pin constraint, pin hint, wildcard pin
+
+**Pin file**:
+`<stem>.pins.toml` beside the top-level source: for each request of each board the pin it got (`pin`, `function`, `lock`, `source`). `build` and `fab` write it when a run picks a pin, `--locked` stops a run that would change it, and a run never changes an entry that still holds. It holds a solution and the requirements are in the source, as in the _Layout file_ (ADR 0032, ADR 0101).
+_Avoid_: Pin map file, pinout file (a _Pinout_ is a part's table), pin lock file
+
+**Pin map**:
+The pins that the requests of a board got, as the _Pin file_ lists them. The firmware export will list these with the pins the source names (issue #111).
+_Avoid_: Pinout (a part's table), pin assignment, pin table
 
 **Shared resource**:
 `shared UARTS limit 2 { UARTE0 UARTE1 UARTE2 .p10 }` in a part: the hardware that at most `limit` of its members use at a time (one without `limit`; a limit is at least 1 and fewer than the members). A member is a peripheral, a function (in use when chosen on a pin) or a pin (in use when its function is chosen or the board connects it). Using more members than allowed is an error that names the part, the resource, every use and its line; it is judged for each instance of the part, before the solve, from the functions the board chose (ADR 0071).
