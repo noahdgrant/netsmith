@@ -255,7 +255,12 @@ fn the_regulator_stage_builds_with_its_catalog_pinout() {
         "{}",
         b.report
     );
-    assert!(b.schematic.contains("Regulator_Linear:AP1117-15"));
+    // The regulator is drawn from its pin table, with the datasheet's names (ADR 0097).
+    assert!(
+        b.schematic
+            .contains("(lib_id \"netsmith:LinearRegulator_SOT-23_out2\")")
+    );
+    assert!(!b.schematic.contains("Regulator_Linear"));
 }
 
 #[test]
@@ -712,22 +717,28 @@ fn a_build_with_no_kicad_install_stops_once_and_lists_where_it_looked() {
         netsmith_kicad::SymbolLib::installed_by(&machine),
         netsmith_pcb::FootprintLibrary::installed_by(&machine),
     );
-    // The one symbol of the standard mapping that netsmith does not draw itself is KiCad's
-    // AP1117, the linear regulator's (ADR 0097).
-    let example = format!(
-        "{}/../../examples/linear_regulator.nsm",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    let text = std::fs::read_to_string(&example).unwrap();
+    // No symbol of the standard mapping is read from KiCad's libraries any more; what is left of
+    // ADR 0097 is the footprints that no generator makes and no maker's drawing is written for
+    // (step 3): the SMA connector's, KiCad's `Connector_Coaxial:SMA_Amphenol_132134_Vertical`.
+    let text = "\
+import std::parts::connector::{Coax, Header1x2}
+
+board B {
+    .rf: Coax { .assembly &= AssemblyMode::Hand }
+    .j1: Header1x2
+    .rf.signal ~ .j1.p1
+    .rf.shield ~ .j1.p2
+}
+";
     let e = build_with(
         "t.nsm",
-        &text,
+        text,
         &Loader::std(),
         &Catalogs::jlcpcb(),
         &libraries,
     )
     .err()
-    .expect("the build should fail: the regulator is a stock symbol");
+    .expect("the build should fail: the SMA connector's footprint is KiCad's");
     assert!(e.contains("no KiCad "), "{e}");
     assert!(e.contains("usr/share/kicad/"), "{e}");
     assert!(e.contains("Applications/KiCad/KiCad.app"), "{e}");

@@ -824,6 +824,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
     }
     let (level_faults, mut not_evaluated) = crate::levels::check(&s.model, &net_reads);
     not_evaluated.extend(crate::busclock::notes(&s.model));
+    not_evaluated.extend(crate::busfigures::notes(&s.model, &deferred));
     not_evaluated.extend(dc_notes);
     // A bus on which one part states its role and another does not (ADR 0064).
     for (at, message) in netsmith_check::unstated_roles(&s.model) {

@@ -9,7 +9,7 @@ pub mod corpus;
 pub mod mcu;
 pub mod rowcol;
 
-use netsmith_core::{Design, Net, Part, PinRef};
+use netsmith_core::{Design, Net, Part, PartPin, PinKind, PinRef, PowerFlow};
 
 pub fn design(
     name: &str,
@@ -88,8 +88,28 @@ pub fn status_indicator() -> Design {
     )
 }
 
+/// The pin table of a `LinearRegulator` as the design stage produces it for a solved board:
+/// the datasheet names of `std/parts/regulator.nsm` (pad 3 the input, 2 the output, 1 the
+/// ground), the input taking power and the output giving it. A part with a row of the standard
+/// mapping that names no symbol is drawn from this table (ADR 0097).
+pub fn linear_regulator_pins() -> Vec<PartPin> {
+    let pin = |name: &str, datasheet: &str, pad: &str, flow| PartPin {
+        name: name.into(),
+        datasheet: datasheet.into(),
+        kind: PinKind::Power,
+        pads: vec![pad.into()],
+        function: None,
+        power_flow: flow,
+    };
+    vec![
+        pin("vin.pos", "IN", "3", Some(PowerFlow::Takes)),
+        pin("vin.neg", "GND", "1", None),
+        pin("vout.pos", "OUT", "2", Some(PowerFlow::Gives)),
+    ]
+}
+
 pub fn regulator() -> Design {
-    design(
+    let mut d = design(
         "RegulatorExample",
         &[
             ("J1", "Header1x2", "Conn_01x02", None),
@@ -103,7 +123,13 @@ pub fn regulator() -> Design {
             ("GND", &["C1.2", "C2.2", "J1.2", "J2.2", "U1.1"]),
             ("VIN", &["C1.1", "J1.1", "U1.3"]),
         ],
-    )
+    );
+    for part in &mut d.parts {
+        if part.kind == "LinearRegulator" {
+            part.pins = linear_regulator_pins();
+        }
+    }
+    d
 }
 
 /// `modules` copies of a ten-part supply: a regulator, four capacitors, four resistors and a

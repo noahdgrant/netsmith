@@ -9,9 +9,11 @@
 # draws the symbol itself, a box with the pins on its sides, and the part needs no KiCad symbol
 # library (ADR 0097, step 1). A row that names a `symbol` is drawn with it. A `power` pin that
 # the solved design says gives power (a regulator's output) is drawn as a power output on the
-# right of the box; a power pin that takes power, or whose direction is not known, stays above.
-# The regulator still names KiCad's AP1117 symbol, which has the input on the left: the
-# schematic layout reads a part's input from the left side, and a box has its supply pins above.
+# right of the box; a power pin that takes power, of a part that also has a pin that gives
+# power (a regulator's or a converter's input), is on the left, where the schematic layout reads
+# the input of a converter; any other power pin that takes power, or whose direction is not
+# known, stays above. The linear regulator is drawn this way, from its pin table (`IN`, `OUT`,
+# `GND`).
 # A `symbol` that names a symbol that netsmith draws itself (`Device:R`, `Device:D_Schottky`,
 # `Transistor_FET:Q_NMOS_GSD`, `Connector_Generic:Conn_01x02`, `Connector:USB_C_Receptacle_*`,
 # `Connector:TestPoint`, `Mechanical:MountingHole`, ... the list is
@@ -19,7 +21,7 @@
 # is among them) is answered with netsmith's own symbol of that id, before any KiCad library is
 # read (ADR 0097, step 2): the row stays as it is, and the part needs no installed KiCad symbol
 # library. The glyph is drawn in `crates/netsmith-kicad/src/passives.rs`; the pins are where
-# KiCad's are. Only `Regulator_Linear:AP1117-15` is still read from KiCad's libraries.
+# KiCad's are. No row of this file names a symbol that is read from KiCad's libraries any more.
 # `pin_names` renames the pins of a named symbol, so a row with no `symbol` has none.
 #
 # A symbol or footprint of the library `netsmith` is not KiCad's: it is one of the files in
@@ -79,22 +81,12 @@ footprint = "Capacitor_SMD:C_1210_3225Metric"
 [[part]]
 kind = "LinearRegulator"
 package = "SOT-23"
-symbol = "Regulator_Linear:AP1117-15"
 footprint = "Package_TO_SOT_SMD:SOT-23"
-
-[part.pin_names]
-IN = "VI"
-OUT = "VO"
 
 [[part]]
 kind = "LinearRegulator"
 package = "SOT-223"
-symbol = "Regulator_Linear:AP1117-15"
 footprint = "Package_TO_SOT_SMD:SOT-223-3_TabPin2"
-
-[part.pin_names]
-IN = "VI"
-OUT = "VO"
 
 [[part]]
 kind = "Led"
