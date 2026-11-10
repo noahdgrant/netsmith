@@ -2,9 +2,9 @@
 # and the tests. The same three commands as AGENTS.md ("Build, test, lint").
 #
 # A pull request runs only the jobs its change needs. The `changes` job lists the paths the pull
-# request changes and scripts/ci-changes turns them into four flags, `rust`, `kicad`, `recipes`
-# and `no_kicad` (the rules, and why, are in that script). `fmt` always runs. `clippy` and `test`
-# need `rust`, `kicad` needs `kicad`, `recipes` needs `recipes`, `no-kicad` needs `no_kicad`: a
+# request changes and scripts/ci-changes turns them into five flags, `rust`, `kicad`, `recipes`,
+# `no_kicad` and `locks` (the rules, and why, are in that script). `fmt` always runs. `clippy` and `test`
+# need `rust`, `kicad` needs `kicad`, `recipes` needs `recipes`, `no-kicad` needs `no_kicad`, `locks` needs `locks`: a
 # change to prose only runs `fmt`. A
 # push to main, a change to the workflows or to scripts/, and a path the script does not know run
 # everything. A change to a test file of a crate turns `kicad` on only if the file can ask for
@@ -42,6 +42,11 @@
 # `netsmith` binary and runs scripts/check-no-kicad.sh, which builds and fabs every example with
 # KiCad hidden and fails if a run needs it (ADR 0097, step 4). Together they say that netsmith
 # needs no KiCad and that what it draws agrees with KiCad's where KiCad is there.
+#
+# The `locks` job runs scripts/check-example-locks.sh: `netsmith lock --check` over every example,
+# which fails when an example's committed pick lock (`<stem>.lock.toml`, ADR 0100) is stale or
+# missing, that is, when a change to a catalog, `std/` or the solver would move a pick. The fix is
+# `netsmith lock --update` in the example and a review of the diff of the lock.
 #
 # The Rust cache (Swatinem/rust-cache) is saved by pushes to main only, and a pull request
 # restores the newest of main's: the pull requests do not fill the repository's cache quota with
@@ -81,6 +86,7 @@ jobs:
       kicad: ${{ steps.flags.outputs.kicad }}
       recipes: ${{ steps.flags.outputs.recipes }}
       no_kicad: ${{ steps.flags.outputs.no_kicad }}
+      locks: ${{ steps.flags.outputs.locks }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -96,7 +102,7 @@ jobs:
 
       - id: flags
         run: |
-          everything() { printf 'rust=true\nkicad=true\nrecipes=true\nno_kicad=true\n'; }
+          everything() { printf 'rust=true\nkicad=true\nrecipes=true\nno_kicad=true\nlocks=true\n'; }
           if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
             echo "not a pull request: everything runs"
             everything >> "$GITHUB_OUTPUT"
@@ -330,6 +336,29 @@ jobs:
       - name: Build and fab every example with KiCad hidden
         run: scripts/check-no-kicad.sh target/debug/netsmith
 
+  # The examples' pick locks (ADR 0100): scripts/check-example-locks.sh runs `netsmith lock --check`
+  # over every example with no KiCad, and fails when a lock is stale or missing. It builds the same
+  # debug binary as `no-kicad`, so it shares the cache.
+  locks:
+    needs: changes
+    if: needs.changes.outputs.locks == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - run: cargo build -p netsmith
+
+      - name: Every example's pick lock is current
+        run: scripts/check-example-locks.sh target/debug/netsmith
+
   # The editor's browser recipes (.agents/skills/netsmith-dev-verify-editor/SKILL.md). The page is
   # the committed bundle, so the binary is a plain debug build and Node is only for the driver.
   # A slice runs its share of the recipes, session by session, and lists each one that failed;
@@ -448,7 +477,7 @@ jobs:
   # that does not run it.
   ci-ok:
     if: always() && github.head_ref != 'release-please--branches--main'
-    needs: [changes, fmt, clippy, test, kicad, no-kicad, recipes]
+    needs: [changes, fmt, clippy, test, kicad, no-kicad, locks, recipes]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:

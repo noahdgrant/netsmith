@@ -1,0 +1,241 @@
+# The catalog row each part of each board was picked as, written by `netsmith build` and
+# `netsmith fab` when this file does not exist. Commit it: a change to a catalog or to the
+# solver that would move a pick shows here and not only in the bill of materials. Refresh it
+# with `netsmith lock --update`. Nothing in it is edited by hand.
+version = 1
+
+[SchematicBench.parts."adc.c_filter"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[SchematicBench.parts."adc.r_bottom"]
+catalog = "resistor"
+row = "330kΩ 1% 0603 C23137"
+lcsc = "C23137"
+mpn = "0603WAF3303T5E"
+
+[SchematicBench.parts."adc.r_filter"]
+catalog = "resistor"
+row = "10kΩ 1% 0603 C25804"
+lcsc = "C25804"
+mpn = "0603WAF1002T5E"
+
+[SchematicBench.parts."adc.r_top"]
+catalog = "resistor"
+row = "generic 1200000 ohm 1% 0402 62.5 mW (E24)"
+
+[SchematicBench.parts."buck.c_boot"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[SchematicBench.parts."buck.c_in"]
+catalog = "capacitor"
+row = "10uF 10% 10V X5R 0603 C19702"
+lcsc = "C19702"
+mpn = "CL10A106KP8NNNC"
+
+[SchematicBench.parts."buck.c_out"]
+catalog = "capacitor"
+row = "22uF 20% 6.3V X5R 0603 C59461"
+lcsc = "C59461"
+mpn = "CL10A226MQ8NRNC"
+
+[SchematicBench.parts."buck.c_vcc"]
+catalog = "capacitor"
+row = "1uF 10% 25V X5R 0402 C52923"
+lcsc = "C52923"
+mpn = "CL05A105KA5NQNC"
+
+[SchematicBench.parts."buck.l"]
+catalog = "inductor"
+row = "generic 4.7 uH 20% 0402 (E24)"
+
+[SchematicBench.parts."buck.r_bottom"]
+catalog = "resistor"
+row = "33kΩ 1% 0402 C25779"
+lcsc = "C25779"
+mpn = "0402WGF3302TCE"
+
+[SchematicBench.parts."buck.r_pg"]
+catalog = "resistor"
+row = "10kΩ 1% 0603 C25804"
+lcsc = "C25804"
+mpn = "0603WAF1002T5E"
+
+[SchematicBench.parts."buck.r_rt"]
+catalog = "resistor"
+row = "10kΩ 1% 0603 C25804"
+lcsc = "C25804"
+mpn = "0603WAF1002T5E"
+
+[SchematicBench.parts."buck.r_top"]
+catalog = "resistor"
+row = "100kΩ 1% 0402 C25741"
+lcsc = "C25741"
+mpn = "0402WGF1003TCE"
+
+[SchematicBench.parts."ldo.c_in"]
+catalog = "capacitor"
+row = "1uF 10% 25V X5R 0402 C52923"
+lcsc = "C52923"
+mpn = "CL05A105KA5NQNC"
+
+[SchematicBench.parts."ldo.c_out"]
+catalog = "capacitor"
+row = "1uF 10% 25V X5R 0402 C52923"
+lcsc = "C52923"
+mpn = "CL05A105KA5NQNC"
+
+[SchematicBench.parts."mcu.bulk"]
+catalog = "capacitor"
+row = "10uF 10% 10V X5R 0603 C19702"
+lcsc = "C19702"
+mpn = "CL10A106KP8NNNC"
+
+[SchematicBench.parts."mcu.bypass"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[SchematicBench.parts."mcu.crystal"]
+catalog = "crystal"
+row = "X50328MSB2GI 8MHz 20pF crystal 5032 C115962"
+lcsc = "C115962"
+mpn = "X50328MSB2GI"
+
+[SchematicBench.parts."modem.c_a"]
+catalog = "capacitor"
+row = "10uF 10% 10V X5R 0603 C19702"
+lcsc = "C19702"
+mpn = "CL10A106KP8NNNC"
+
+[SchematicBench.parts."modem.c_b"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[SchematicBench.parts."modem.c_c"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[SchematicBench.parts."modem.cf_a"]
+catalog = "capacitor"
+row = "10nF 10% 50V X7R 0402 C15195"
+lcsc = "C15195"
+mpn = "CL05B103KB5NNNC"
+
+[SchematicBench.parts."modem.cf_b"]
+catalog = "capacitor"
+row = "10nF 10% 50V X7R 0402 C15195"
+lcsc = "C15195"
+mpn = "CL05B103KB5NNNC"
+
+[SchematicBench.parts."modem.cf_c"]
+catalog = "capacitor"
+row = "10nF 10% 50V X7R 0402 C15195"
+lcsc = "C15195"
+mpn = "CL05B103KB5NNNC"
+
+[SchematicBench.parts."modem.cf_d"]
+catalog = "capacitor"
+row = "10nF 10% 50V X7R 0402 C15195"
+lcsc = "C15195"
+mpn = "CL05B103KB5NNNC"
+
+[SchematicBench.parts."modem.cf_e"]
+catalog = "capacitor"
+row = "10nF 10% 50V X7R 0402 C15195"
+lcsc = "C15195"
+mpn = "CL05B103KB5NNNC"
+
+[SchematicBench.parts."modem.control"]
+catalog = "header"
+row = "PH2.54-1X4P-H25 4-pin 2.54mm header C42431808"
+lcsc = "C42431808"
+mpn = "PH2.54-1X4P-H25"
+
+[SchematicBench.parts."modem.led"]
+catalog = "led"
+row = "XL-1608UGC-04 GREEN LED 0603 C965804"
+lcsc = "C965804"
+mpn = "XL-1608UGC-04"
+
+[SchematicBench.parts."modem.r_cts"]
+catalog = "resistor"
+row = "10kΩ 1% 0603 C25804"
+lcsc = "C25804"
+mpn = "0603WAF1002T5E"
+
+[SchematicBench.parts."modem.r_led"]
+catalog = "resistor"
+row = "10kΩ 1% 0603 C25804"
+lcsc = "C25804"
+mpn = "0603WAF1002T5E"
+
+[SchematicBench.parts."modem.r_rts"]
+catalog = "resistor"
+row = "100Ω 1% 0402 C25076"
+lcsc = "C25076"
+mpn = "0402WGF1000TCE"
+
+[SchematicBench.parts."modem.r_rx"]
+catalog = "resistor"
+row = "10kΩ 1% 0603 C25804"
+lcsc = "C25804"
+mpn = "0603WAF1002T5E"
+
+[SchematicBench.parts."modem.r_stat"]
+catalog = "resistor"
+row = "1kΩ 1% 0402 C11702"
+lcsc = "C11702"
+mpn = "0402WGF1001TCE"
+
+[SchematicBench.parts."modem.r_tx"]
+catalog = "resistor"
+row = "10kΩ 1% 0603 C25804"
+lcsc = "C25804"
+mpn = "0603WAF1002T5E"
+
+[SchematicBench.parts."modem.rc_a"]
+catalog = "resistor"
+row = "4.7kΩ 1% 0402 C25900"
+lcsc = "C25900"
+mpn = "0402WGF4701TCE"
+
+[SchematicBench.parts."modem.rc_b"]
+catalog = "resistor"
+row = "4.7kΩ 1% 0402 C25900"
+lcsc = "C25900"
+mpn = "0402WGF4701TCE"
+
+[SchematicBench.parts."modem.rc_c"]
+catalog = "resistor"
+row = "47kΩ 1% 0402 C25792"
+lcsc = "C25792"
+mpn = "0402WGF4702TCE"
+
+[SchematicBench.parts."modem.rc_d"]
+catalog = "resistor"
+row = "47kΩ 1% 0402 C25792"
+lcsc = "C25792"
+mpn = "0402WGF4702TCE"
+
+[SchematicBench.parts."modem.rc_e"]
+catalog = "resistor"
+row = "22kΩ 1% 0402 C25768"
+lcsc = "C25768"
+mpn = "0402WGF2202TCE"
+
+[SchematicBench.parts."modem.serial"]
+catalog = "header"
+row = "PH2.54-1X4P-H25 4-pin 2.54mm header C42431808"
+lcsc = "C42431808"
+mpn = "PH2.54-1X4P-H25"
