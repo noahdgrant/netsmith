@@ -29,6 +29,8 @@ fn resistor(ohms: f64) -> Candidate {
         library: None,
         assembly: None,
         height: None,
+        temp_min: None,
+        temp_max: None,
         generic: None,
     }
 }
@@ -51,6 +53,8 @@ fn capacitor(name: &str, effective_uf: f64) -> Candidate {
         library: None,
         assembly: None,
         height: None,
+        temp_min: None,
+        temp_max: None,
         generic: None,
     }
 }

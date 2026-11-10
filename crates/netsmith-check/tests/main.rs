@@ -12,6 +12,7 @@ mod common;
 mod dc;
 mod defaults;
 mod enums;
+mod environment;
 mod errors;
 mod examples;
 mod functions;

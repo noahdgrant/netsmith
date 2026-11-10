@@ -23,6 +23,7 @@
 //! | `library` | JLCPCB's `Basic`, `Extended` or `Preferred` |
 //! | `assembly` | who assembles the part when the design does not say: `fab`, `hand`, `none` or `consigned` (ADR 0024, ADR 0084) |
 //! | `height` | how tall the part's body stands above the face of the board it is on, a length of one value (`2.4mm`), read from the datasheet or the manufacturer's drawing, with the document, its revision and the page or table in the `source` cell (ADR 0094). The part's `.height` is this when nothing in the design states one; empty means the height is unknown. A part whose `catalog` lists `.height` as a column of its own reads it as that column instead |
+//! | `temp_min`, `temp_max` | the least and the greatest temperature the part works at, each one temperature in kelvin as the datasheet prints it (`233.15K` is -40 C), with the datasheet or record and which temperature it is (ambient, junction or operating) in `source` and `notes` (ADR 0099). A design whose board states an `.environment` is checked against them: a row whose range does not cover it is not offered, and a row with an empty cell is offered and named in a guideline finding. A project's own part that states `.temp_min` or `.temp_max` in its source states it for every row |
 //! | `price`, `stock` | the board house's (JLCPCB's) snapshot, USD and pieces, entered by hand; `netsmith catalog refresh` never writes them (ADR 0039). The solver does not read them: a row is offered whatever its stock (ADR 0047), and only the bill of materials shows them, after a supply provider's answer |
 //! | `price_breaks` | the board house's price at each quantity, `1:0.0019 1000:0.0015` (pieces:USD), entered by hand; nothing reads it |
 //! | `source` | where the row was read. Required when the row has an `lcsc` or `mpn` |
@@ -44,12 +45,14 @@ use crate::catalog::{Candidate, Derating, Library, Value};
 use crate::standard::Standard;
 
 /// The columns that are about the row, not about the part.
-const FIXED: [&str; 14] = [
+const FIXED: [&str; 16] = [
     "lcsc",
     "mpn",
     "library",
     "assembly",
     "height",
+    "temp_min",
+    "temp_max",
     "price",
     "price_breaks",
     "stock",
@@ -388,6 +391,8 @@ impl Table {
                 } else {
                     row.height()?
                 },
+                temp_min: row.temperature("temp_min")?,
+                temp_max: row.temperature("temp_max")?,
                 generic: None,
             });
         }
@@ -421,6 +426,13 @@ impl Row {
         {
             return Err(format!(
                 "{at}: assembly `{assembly}` is not fab, hand, none or consigned"
+            ));
+        }
+        if let (Some(lo), Some(hi)) = (self.temperature("temp_min")?, self.temperature("temp_max")?)
+            && lo > hi
+        {
+            return Err(format!(
+                "{at}: `temp_min` is {lo}K and `temp_max` {hi}K: the lowest temperature of a part is above its highest"
             ));
         }
         if let Some(price) = self.cell("price")
@@ -494,6 +506,46 @@ impl Row {
             )));
         }
         Ok(Some((q.lo() * 1e12).round() / 1e9))
+    }
+
+    /// The `temp_min` or `temp_max` cell: a temperature the part works at, in kelvin, or `None`
+    /// when the cell is empty (ADR 0099). It is one temperature, as the datasheet prints it
+    /// (`233.15K` for -40 C): a range would make the check depend on which end was meant. The
+    /// row's `notes` say which temperature the datasheet means (ambient, junction or operating).
+    fn temperature(&self, column: &str) -> Result<Option<f64>, String> {
+        let Some(cell) = self.cell(column) else {
+            return Ok(None);
+        };
+        let bad = |why: String| format!("{}: `{column}`: {why}", self.at());
+        let q = quantity(cell).map_err(bad)?;
+        if q.dim() != Dimension::TEMPERATURE {
+            return Err(bad(format!(
+                "`{cell}` is {}, but a part's {} is a temperature in kelvin such as `358.15K` (85 C)",
+                describe(q.dim()),
+                if column == "temp_min" {
+                    "lowest temperature"
+                } else {
+                    "highest temperature"
+                },
+            )));
+        }
+        if (q.hi() - q.lo()).abs() > 1e-12 {
+            return Err(bad(format!(
+                "`{cell}` is a range, and a part's {} is one temperature: write the datasheet's figure, such as `{}K`",
+                if column == "temp_min" {
+                    "lowest temperature"
+                } else {
+                    "highest temperature"
+                },
+                (q.hi() * 1e9).round() / 1e9
+            )));
+        }
+        if q.lo() < 0.0 {
+            return Err(bad(format!(
+                "`{cell}` is below absolute zero (0K, -273.15 C)"
+            )));
+        }
+        Ok(Some((q.lo() * 1e9).round() / 1e9))
     }
 
     /// One cell as the value of a column, or `None` for an empty cell (the row has no value
