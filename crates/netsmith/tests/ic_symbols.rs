@@ -139,8 +139,11 @@ fn the_converters_switch_pin_gives_power_and_the_other_power_pins_take_it() {
         };
         root.find_all("symbol")
             .filter(|s| {
-                s.find("lib_id")
-                    .is_some_and(|l| l.args()[0].text() == Some("power:PWR_FLAG"))
+                s.find("lib_id").is_some_and(|l| {
+                    l.args()[0]
+                        .text()
+                        .is_some_and(|id| id.ends_with(":PWR_FLAG"))
+                })
             })
             .map(|s| {
                 let label = root.find_all("label").find(|l| at(l) == at(s)).unwrap();

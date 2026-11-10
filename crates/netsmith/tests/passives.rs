@@ -1,9 +1,12 @@
-//! The symbols of the passives and discrete parts are drawn by netsmith (ADR 0097, step 2):
-//! a board of resistors, capacitors, inductors, LEDs, diodes, FETs, fuses, crystals, switches
-//! and ferrite beads is written with no KiCad symbol library, and every symbol has the pins,
-//! the pin positions and the body that KiCad's own symbol of the same id has. The comparison
-//! with the installed KiCad runs where KiCad's libraries are installed and is skipped
-//! where they are not; the written table of pin geometry below runs everywhere.
+//! The symbols that netsmith draws itself are written with no KiCad symbol library (ADR 0097,
+//! step 2): the passives and discrete parts, the generic connectors, the USB-C receptacles, the
+//! coaxial connector, the test point, the mounting holes, the fiducial and the power flag. A
+//! board of resistors, capacitors, inductors, LEDs, diodes, FETs, fuses, crystals, switches,
+//! ferrite beads, headers and sockets and the rest is written with no KiCad symbol library, and
+//! every symbol has the pins, the pin positions and the body that KiCad's own symbol of the
+//! same id has. The comparison with the installed KiCad runs where KiCad's libraries are
+//! installed and is skipped where they are not; the written table of pin geometry below runs
+//! everywhere.
 
 use netsmith_core::{Design, Net, PinRef};
 use netsmith_kicad::sexp::Sexp;
@@ -42,7 +45,7 @@ type Pin = (&'static str, &'static str, &'static str, f64, f64, f64, f64);
 
 /// The pins of each symbol, in the order KiCad 9 lists them, measured on its stock library
 /// (`share/kicad/symbols`, 9.0): the geometry the layout engine and the exporter depend on.
-/// `passives_agree_with_the_installed_kicad_symbols` proves the table against the install.
+/// `generated_symbols_agree_with_the_installed_kicad_symbols` proves the table against the install.
 const KICAD_PINS: &[(&str, &[Pin])] = &[
     (
         "Device:R",
@@ -143,6 +146,200 @@ const KICAD_PINS: &[(&str, &[Pin])] = &[
             ("3", "D", "passive", 2.54, 5.08, 270.0, 2.54),
             ("2", "S", "passive", 2.54, -5.08, 90.0, 2.54),
         ],
+    ),
+    (
+        "Connector_Generic:Conn_01x02",
+        &[
+            ("1", "Pin_1", "passive", -5.08, 0.0, 0.0, 3.81),
+            ("2", "Pin_2", "passive", -5.08, -2.54, 0.0, 3.81),
+        ],
+    ),
+    (
+        "Connector_Generic:Conn_01x04",
+        &[
+            ("1", "Pin_1", "passive", -5.08, 2.54, 0.0, 3.81),
+            ("2", "Pin_2", "passive", -5.08, 0.0, 0.0, 3.81),
+            ("3", "Pin_3", "passive", -5.08, -2.54, 0.0, 3.81),
+            ("4", "Pin_4", "passive", -5.08, -5.08, 0.0, 3.81),
+        ],
+    ),
+    (
+        "Connector_Generic:Conn_01x08",
+        &[
+            ("1", "Pin_1", "passive", -5.08, 7.62, 0.0, 3.81),
+            ("2", "Pin_2", "passive", -5.08, 5.08, 0.0, 3.81),
+            ("3", "Pin_3", "passive", -5.08, 2.54, 0.0, 3.81),
+            ("4", "Pin_4", "passive", -5.08, 0.0, 0.0, 3.81),
+            ("5", "Pin_5", "passive", -5.08, -2.54, 0.0, 3.81),
+            ("6", "Pin_6", "passive", -5.08, -5.08, 0.0, 3.81),
+            ("7", "Pin_7", "passive", -5.08, -7.62, 0.0, 3.81),
+            ("8", "Pin_8", "passive", -5.08, -10.16, 0.0, 3.81),
+        ],
+    ),
+    (
+        "Connector_Generic:Conn_01x10",
+        &[
+            ("1", "Pin_1", "passive", -5.08, 10.16, 0.0, 3.81),
+            ("2", "Pin_2", "passive", -5.08, 7.62, 0.0, 3.81),
+            ("3", "Pin_3", "passive", -5.08, 5.08, 0.0, 3.81),
+            ("4", "Pin_4", "passive", -5.08, 2.54, 0.0, 3.81),
+            ("5", "Pin_5", "passive", -5.08, 0.0, 0.0, 3.81),
+            ("6", "Pin_6", "passive", -5.08, -2.54, 0.0, 3.81),
+            ("7", "Pin_7", "passive", -5.08, -5.08, 0.0, 3.81),
+            ("8", "Pin_8", "passive", -5.08, -7.62, 0.0, 3.81),
+            ("9", "Pin_9", "passive", -5.08, -10.16, 0.0, 3.81),
+            ("10", "Pin_10", "passive", -5.08, -12.7, 0.0, 3.81),
+        ],
+    ),
+    (
+        "Connector_Generic:Conn_02x03_Odd_Even",
+        &[
+            ("1", "Pin_1", "passive", -5.08, 2.54, 0.0, 3.81),
+            ("3", "Pin_3", "passive", -5.08, 0.0, 0.0, 3.81),
+            ("5", "Pin_5", "passive", -5.08, -2.54, 0.0, 3.81),
+            ("2", "Pin_2", "passive", 7.62, 2.54, 180.0, 3.81),
+            ("4", "Pin_4", "passive", 7.62, 0.0, 180.0, 3.81),
+            ("6", "Pin_6", "passive", 7.62, -2.54, 180.0, 3.81),
+        ],
+    ),
+    (
+        "Connector_Generic:Conn_02x05_Odd_Even",
+        &[
+            ("1", "Pin_1", "passive", -5.08, 5.08, 0.0, 3.81),
+            ("3", "Pin_3", "passive", -5.08, 2.54, 0.0, 3.81),
+            ("5", "Pin_5", "passive", -5.08, 0.0, 0.0, 3.81),
+            ("7", "Pin_7", "passive", -5.08, -2.54, 0.0, 3.81),
+            ("9", "Pin_9", "passive", -5.08, -5.08, 0.0, 3.81),
+            ("2", "Pin_2", "passive", 7.62, 5.08, 180.0, 3.81),
+            ("4", "Pin_4", "passive", 7.62, 2.54, 180.0, 3.81),
+            ("6", "Pin_6", "passive", 7.62, 0.0, 180.0, 3.81),
+            ("8", "Pin_8", "passive", 7.62, -2.54, 180.0, 3.81),
+            ("10", "Pin_10", "passive", 7.62, -5.08, 180.0, 3.81),
+        ],
+    ),
+    (
+        "Connector_Generic:Conn_02x10_Odd_Even",
+        &[
+            ("1", "Pin_1", "passive", -5.08, 10.16, 0.0, 3.81),
+            ("3", "Pin_3", "passive", -5.08, 7.62, 0.0, 3.81),
+            ("5", "Pin_5", "passive", -5.08, 5.08, 0.0, 3.81),
+            ("7", "Pin_7", "passive", -5.08, 2.54, 0.0, 3.81),
+            ("9", "Pin_9", "passive", -5.08, 0.0, 0.0, 3.81),
+            ("11", "Pin_11", "passive", -5.08, -2.54, 0.0, 3.81),
+            ("13", "Pin_13", "passive", -5.08, -5.08, 0.0, 3.81),
+            ("15", "Pin_15", "passive", -5.08, -7.62, 0.0, 3.81),
+            ("17", "Pin_17", "passive", -5.08, -10.16, 0.0, 3.81),
+            ("19", "Pin_19", "passive", -5.08, -12.7, 0.0, 3.81),
+            ("2", "Pin_2", "passive", 7.62, 10.16, 180.0, 3.81),
+            ("4", "Pin_4", "passive", 7.62, 7.62, 180.0, 3.81),
+            ("6", "Pin_6", "passive", 7.62, 5.08, 180.0, 3.81),
+            ("8", "Pin_8", "passive", 7.62, 2.54, 180.0, 3.81),
+            ("10", "Pin_10", "passive", 7.62, 0.0, 180.0, 3.81),
+            ("12", "Pin_12", "passive", 7.62, -2.54, 180.0, 3.81),
+            ("14", "Pin_14", "passive", 7.62, -5.08, 180.0, 3.81),
+            ("16", "Pin_16", "passive", 7.62, -7.62, 180.0, 3.81),
+            ("18", "Pin_18", "passive", 7.62, -10.16, 180.0, 3.81),
+            ("20", "Pin_20", "passive", 7.62, -12.7, 180.0, 3.81),
+        ],
+    ),
+    (
+        "Connector:Conn_01x02_Socket",
+        &[
+            ("1", "Pin_1", "passive", -5.08, 0.0, 0.0, 3.81),
+            ("2", "Pin_2", "passive", -5.08, -2.54, 0.0, 3.81),
+        ],
+    ),
+    (
+        "Connector:Conn_01x04_Socket",
+        &[
+            ("1", "Pin_1", "passive", -5.08, 2.54, 0.0, 3.81),
+            ("2", "Pin_2", "passive", -5.08, 0.0, 0.0, 3.81),
+            ("3", "Pin_3", "passive", -5.08, -2.54, 0.0, 3.81),
+            ("4", "Pin_4", "passive", -5.08, -5.08, 0.0, 3.81),
+        ],
+    ),
+    (
+        "Connector:Conn_01x08_Socket",
+        &[
+            ("1", "Pin_1", "passive", -5.08, 7.62, 0.0, 3.81),
+            ("2", "Pin_2", "passive", -5.08, 5.08, 0.0, 3.81),
+            ("3", "Pin_3", "passive", -5.08, 2.54, 0.0, 3.81),
+            ("4", "Pin_4", "passive", -5.08, 0.0, 0.0, 3.81),
+            ("5", "Pin_5", "passive", -5.08, -2.54, 0.0, 3.81),
+            ("6", "Pin_6", "passive", -5.08, -5.08, 0.0, 3.81),
+            ("7", "Pin_7", "passive", -5.08, -7.62, 0.0, 3.81),
+            ("8", "Pin_8", "passive", -5.08, -10.16, 0.0, 3.81),
+        ],
+    ),
+    (
+        "Connector:Conn_01x10_Socket",
+        &[
+            ("1", "Pin_1", "passive", -5.08, 10.16, 0.0, 3.81),
+            ("2", "Pin_2", "passive", -5.08, 7.62, 0.0, 3.81),
+            ("3", "Pin_3", "passive", -5.08, 5.08, 0.0, 3.81),
+            ("4", "Pin_4", "passive", -5.08, 2.54, 0.0, 3.81),
+            ("5", "Pin_5", "passive", -5.08, 0.0, 0.0, 3.81),
+            ("6", "Pin_6", "passive", -5.08, -2.54, 0.0, 3.81),
+            ("7", "Pin_7", "passive", -5.08, -5.08, 0.0, 3.81),
+            ("8", "Pin_8", "passive", -5.08, -7.62, 0.0, 3.81),
+            ("9", "Pin_9", "passive", -5.08, -10.16, 0.0, 3.81),
+            ("10", "Pin_10", "passive", -5.08, -12.7, 0.0, 3.81),
+        ],
+    ),
+    (
+        "Connector:USB_C_Receptacle_PowerOnly_6P",
+        &[
+            ("S1", "SHIELD", "passive", -7.62, -17.78, 90.0, 5.08),
+            ("A12", "GND", "passive", 0.0, -17.78, 90.0, 5.08),
+            ("B12", "GND", "passive", 0.0, -17.78, 90.0, 5.08),
+            ("A9", "VBUS", "passive", 15.24, 7.62, 180.0, 5.08),
+            ("B9", "VBUS", "passive", 15.24, 7.62, 180.0, 5.08),
+            ("A5", "CC1", "bidirectional", 15.24, -5.08, 180.0, 5.08),
+            ("B5", "CC2", "bidirectional", 15.24, -7.62, 180.0, 5.08),
+        ],
+    ),
+    (
+        "Connector:USB_C_Receptacle_USB2.0_16P",
+        &[
+            ("S1", "SHIELD", "passive", -7.62, -22.86, 90.0, 5.08),
+            ("A1", "GND", "passive", 0.0, -22.86, 90.0, 5.08),
+            ("A12", "GND", "passive", 0.0, -22.86, 90.0, 5.08),
+            ("B1", "GND", "passive", 0.0, -22.86, 90.0, 5.08),
+            ("B12", "GND", "passive", 0.0, -22.86, 90.0, 5.08),
+            ("A4", "VBUS", "passive", 15.24, 15.24, 180.0, 5.08),
+            ("A9", "VBUS", "passive", 15.24, 15.24, 180.0, 5.08),
+            ("B4", "VBUS", "passive", 15.24, 15.24, 180.0, 5.08),
+            ("B9", "VBUS", "passive", 15.24, 15.24, 180.0, 5.08),
+            ("A5", "CC1", "bidirectional", 15.24, 10.16, 180.0, 5.08),
+            ("B5", "CC2", "bidirectional", 15.24, 7.62, 180.0, 5.08),
+            ("A7", "D-", "bidirectional", 15.24, 2.54, 180.0, 5.08),
+            ("B7", "D-", "bidirectional", 15.24, 0.0, 180.0, 5.08),
+            ("A6", "D+", "bidirectional", 15.24, -2.54, 180.0, 5.08),
+            ("B6", "D+", "bidirectional", 15.24, -5.08, 180.0, 5.08),
+            ("A8", "SBU1", "bidirectional", 15.24, -12.7, 180.0, 5.08),
+            ("B8", "SBU2", "bidirectional", 15.24, -15.24, 180.0, 5.08),
+        ],
+    ),
+    (
+        "Connector:Conn_Coaxial",
+        &[
+            ("1", "In", "passive", -5.08, 0.0, 0.0, 2.54),
+            ("2", "Ext", "passive", 0.0, -5.08, 90.0, 2.54),
+        ],
+    ),
+    (
+        "Connector:TestPoint",
+        &[("1", "1", "passive", 0.0, 0.0, 90.0, 2.54)],
+    ),
+    ("Mechanical:MountingHole", &[]),
+    (
+        "Mechanical:MountingHole_Pad",
+        &[("1", "1", "input", 0.0, -2.54, 90.0, 2.54)],
+    ),
+    ("Mechanical:Fiducial", &[]),
+    (
+        "power:PWR_FLAG",
+        &[("1", "~", "power_out", 0.0, 0.0, 90.0, 0.0)],
     ),
 ];
 
@@ -264,12 +461,20 @@ const BODY_TOLERANCE: f64 = 0.01;
 /// The ids whose body differs from KiCad's by more, and by how much (mm), with the reason: the
 /// test fails if the difference is more than this, and if it is less than the tolerance above
 /// (so the entry cannot go stale).
-const BODY_DIFFERENCES: &[(&str, f64, &str)] = &[(
-    "Device:FerriteBead",
-    0.11,
-    "KiCad's bead is a skewed shape whose lower edge is 0.1 mm short of its upper edge; a \
-     rectangle turned 30 degrees about the origin is as far down as it is up",
-)];
+const BODY_DIFFERENCES: &[(&str, f64, &str)] = &[
+    (
+        "Device:FerriteBead",
+        0.11,
+        "KiCad's bead is a skewed shape whose lower edge is 0.1 mm short of its upper edge; a \
+         rectangle turned 30 degrees about the origin is as far down as it is up",
+    ),
+    (
+        "Connector:Conn_Coaxial",
+        0.04,
+        "KiCad's shield is two arcs through a point 1.808 mm above the axis; a circle of the \
+         radius of its right edge is 0.03 mm lower",
+    ),
+];
 
 fn body_tolerance(id: &str) -> f64 {
     BODY_DIFFERENCES
@@ -279,7 +484,7 @@ fn body_tolerance(id: &str) -> f64 {
 }
 
 #[test]
-fn passives_agree_with_the_installed_kicad_symbols() {
+fn generated_symbols_agree_with_the_installed_kicad_symbols() {
     if netsmith_kicad::testlib::skip_without_kicad_libraries() {
         return;
     }
@@ -394,17 +599,33 @@ fn every_row_with_a_generated_symbol_agrees_with_its_pin_table_with_no_kicad() {
             "{}",
             symbol.lib_id()
         );
-        // A footprint nobody generates yet (a tactile switch's, ADR 0097 step 3) needs
-        // KiCad's footprint library; its symbol still has to agree with the pin table.
+        // A footprint nobody generates yet (ADR 0097 step 3) needs KiCad's footprint library;
+        // its symbol still has to agree with the pin table, against a stand-in footprint that
+        // has the pads of the pinout.
         let Ok(footprint) = libraries.footprints.load(&mapped.footprint) else {
-            assert_eq!(kind, "Switch", "{kind}/{package}: no generated footprint");
+            assert!(
+                NO_GENERATED_FOOTPRINT.contains(&kind.as_str()),
+                "{kind}/{package}: no generated footprint"
+            );
             let pinout = pinout_of(kind, package);
-            let mut pads: Vec<&str> = pinout.pads().collect();
-            pads.sort_unstable();
-            pads.dedup();
-            let mut pins: Vec<&str> = symbol.pins().iter().map(|p| p.number.as_str()).collect();
-            pins.sort_unstable();
-            assert_eq!(pads, pins, "{kind}/{package}");
+            let pads: String = pinout
+                .pads()
+                .map(|pad| {
+                    format!("(pad \"{pad}\" smd rect (at 0 0) (size 1 1) (layers \"F.Cu\"))")
+                })
+                .collect();
+            let stand_in = netsmith_pcb::Footprint::parse(
+                &mapped.footprint,
+                &format!("(footprint \"stand-in\" (layer \"F.Cu\") {pads})"),
+            )
+            .unwrap_or_else(|e| panic!("{kind}/{package}: {e}"));
+            let subject = Subject {
+                refdes: "U1",
+                kind,
+                package: Some(package),
+            };
+            let problems = validate_pinout(&subject, &pinout, &mapped, &symbol, &stand_in);
+            assert!(problems.is_empty(), "{kind}/{package}: {problems:#?}");
             continue;
         };
         checked += 1;
@@ -425,6 +646,20 @@ fn every_row_with_a_generated_symbol_agrees_with_its_pin_table_with_no_kicad() {
     assert!(checked >= 45, "only {checked} rows were checked");
 }
 
+/// The kinds whose footprints no generator makes yet (ADR 0097, step 3): they need KiCad's
+/// footprint library, though their symbols need none.
+const NO_GENERATED_FOOTPRINT: &[&str] = &[
+    "Switch",
+    "UsbCPower",
+    "UsbC2",
+    "Coax",
+    "MountingHole",
+    "PlatedHole",
+    "TestPoint",
+    "Fiducial",
+    "ProgrammingPads6",
+];
+
 /// One part of each kind the task names, each pad on a net of its own.
 fn every_kind() -> Design {
     let mut parts = Vec::new();
@@ -440,19 +675,37 @@ fn every_kind() -> Design {
         part.refdes = refdes.clone();
         part.path = refdes.to_lowercase();
         for pin in &part.pins {
-            for pad in &pin.pads {
-                nets.push(Net {
-                    name: format!("{refdes}-{pad}"),
-                    pins: vec![PinRef {
+            // The pads of one pin are one net, as a design joins them (a USB-C receptacle's
+            // ground pads, which its symbol stacks on one point).
+            nets.push(Net {
+                name: format!("{refdes}-{}", pin.pads[0]),
+                pins: pin
+                    .pads
+                    .iter()
+                    .map(|pad| PinRef {
                         refdes: refdes.clone(),
                         pin: pad.clone(),
-                    }],
-                });
-            }
+                    })
+                    .collect(),
+            });
         }
         part.package = Some(package);
         parts.push(part);
     }
+    // An IC that takes power from two nets nothing on the board drives: the exporter puts a power
+    // flag on each, and the flag is a symbol netsmith draws too.
+    let mut ic = part_of("Sn74lvc1g04", "SOT-23-5");
+    ic.path = "u1".into();
+    for pin in &ic.pins {
+        nets.push(Net {
+            name: format!("U1-{}", pin.pads[0]),
+            pins: vec![PinRef {
+                refdes: "U1".into(),
+                pin: pin.pads[0].clone(),
+            }],
+        });
+    }
+    parts.push(ic);
     Design {
         name: "every_kind".into(),
         process: None,
@@ -468,7 +721,7 @@ fn every_kind() -> Design {
 fn a_board_of_every_kind_is_written_with_no_kicad_symbol_library() {
     let libraries = bare();
     let design = every_kind();
-    assert!(design.parts.len() >= 16, "{} parts", design.parts.len());
+    assert!(design.parts.len() >= 30, "{} parts", design.parts.len());
     let text = emit_schematic(&design, &libraries.mapping, &libraries.symbols)
         .unwrap_or_else(|e| panic!("{e}"));
     // `NETSMITH_WRITE_BOARDS=<folder>` keeps the sheet, to look at it (`scripts/check-kicad.sh`).
@@ -497,7 +750,24 @@ fn a_board_of_every_kind_is_written_with_no_kicad_symbol_library() {
         assert!(embedded.contains(&own.as_str()), "{own} is not embedded");
         assert!(text.contains(&format!("(lib_id \"{own}\")")), "{own}");
     }
-    assert!(!text.contains("(lib_id \"Device:"), "a KiCad id is left");
+    for library in [
+        "Device",
+        "Switch",
+        "Transistor_FET",
+        "Connector",
+        "Connector_Generic",
+        "Mechanical",
+        "power",
+    ] {
+        assert!(
+            !text.contains(&format!("(lib_id \"{library}:")),
+            "a KiCad id of `{library}` is left"
+        );
+    }
+    // The power flag is netsmith's own, with the pin type ERC reads, and is placed on the
+    // nets that take power and have no source.
+    let flags = text.matches("(lib_id \"netsmith:PWR_FLAG\")").count();
+    assert_eq!(flags, 2, "one flag for the supply and one for the ground");
     // The same bytes on a second run.
     assert_eq!(
         text,
@@ -540,4 +810,53 @@ fn the_types_of_the_pins_are_those_of_the_part() {
     for id in ["Transistor_FET:Q_NMOS_GSD", "Transistor_FET:Q_PMOS_GSD"] {
         assert_eq!(lib.symbol(id).unwrap().pin_type("1"), Some(PinType::Input));
     }
+}
+
+#[test]
+fn the_power_flag_is_in_the_board_s_library_only_where_the_board_places_one() {
+    let libraries = bare();
+    // A resistor between two nets: no pin takes power, so no flag and no flag symbol.
+    let mut part = part_of("Resistor", "0402");
+    part.path = "r1".into();
+    let nets = ["A", "B"]
+        .iter()
+        .zip(&part.pins)
+        .map(|(name, pin)| Net {
+            name: (*name).into(),
+            pins: vec![PinRef {
+                refdes: "U1".into(),
+                pin: pin.pads[0].clone(),
+            }],
+        })
+        .collect();
+    let design = Design {
+        name: "plain".into(),
+        process: None,
+        features: Default::default(),
+        interfaces: Vec::new(),
+        notes: Vec::new(),
+        parts: vec![part],
+        nets,
+    };
+    assert!(!netsmith_kicad::needs_power_flag(
+        &design,
+        &libraries.mapping,
+        &libraries.symbols
+    ));
+    let text = emit_schematic(&design, &libraries.mapping, &libraries.symbols).unwrap();
+    assert!(!text.contains("PWR_FLAG"));
+    let dir = TempDir::new("passives-no-flag");
+    libraries.write_tables(dir.path(), &design).unwrap();
+    let library = std::fs::read_to_string(dir.join("netsmith.kicad_sym")).unwrap();
+    assert!(!library.contains("PWR_FLAG"), "{library}");
+
+    // The flag's own pin is the power output ERC reads, and it is a power symbol.
+    let flag = libraries.symbols.symbol("power:PWR_FLAG").unwrap();
+    assert_eq!(flag.lib_id(), "netsmith:PWR_FLAG");
+    assert_eq!(flag.pin_type("1"), Some(PinType::PowerOut));
+    let text = flag.definition().to_kicad_string();
+    assert!(
+        text.contains("(power)") && text.contains("\"PWR_FLAG\""),
+        "{text}"
+    );
 }
