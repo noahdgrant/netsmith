@@ -36,9 +36,15 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Ok(Command::Init { name }) => run_init(name.as_deref()),
-        Ok(Command::Build { file, out, strict }) => {
-            run_build(file.as_deref(), out.as_deref(), strict)
-        }
+        Ok(Command::Build {
+            file,
+            out,
+            strict,
+            locked,
+        }) => match sync_pins(file.as_deref(), strict, locked) {
+            Some(code) => code,
+            None => run_build(file.as_deref(), out.as_deref(), strict),
+        },
         Ok(Command::Fab {
             file,
             out,
@@ -46,28 +52,34 @@ fn main() -> ExitCode {
             allow_drc_violations,
             cross_check,
             strict,
+            locked,
             constraints_warn,
             order,
-        }) => match order {
-            Some(request) => run_order(
-                &request,
-                out.as_deref(),
-                route_timeout,
-                allow_drc_violations,
-                cross_check,
-                strict,
-                constraints_warn,
-            ),
-            None => run_fab(
-                file.as_deref(),
-                out.as_deref(),
-                route_timeout,
-                allow_drc_violations,
-                cross_check,
-                strict,
-                constraints_warn,
-            ),
-        },
+        }) => {
+            if let Some(code) = sync_pins(file.as_deref(), strict, locked) {
+                return code;
+            }
+            match order {
+                Some(request) => run_order(
+                    &request,
+                    out.as_deref(),
+                    route_timeout,
+                    allow_drc_violations,
+                    cross_check,
+                    strict,
+                    constraints_warn,
+                ),
+                None => run_fab(
+                    file.as_deref(),
+                    out.as_deref(),
+                    route_timeout,
+                    allow_drc_violations,
+                    cross_check,
+                    strict,
+                    constraints_warn,
+                ),
+            }
+        }
         Ok(Command::Editor { file, port }) => run_editor(file.as_deref(), port),
         Ok(Command::CatalogRefresh(request)) => run_catalog_refresh(&request),
         Ok(Command::CatalogAge { paths, only, days }) => run_catalog_age(&paths, &only, days),
@@ -251,6 +263,33 @@ fn run_init(name: Option<&str>) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Write the pin file beside each source that has pin requests, when a run changes it (ADR 0100),
+/// and say what was written and what is stale. `--locked` writes nothing and stops instead. The
+/// exit code of the command when it stops, `None` to go on.
+fn sync_pins(file: Option<&str>, strict: bool, locked: bool) -> Option<ExitCode> {
+    let Ok((target, loader, _)) = target(file, strict) else {
+        // The command says it again.
+        return None;
+    };
+    for source in &target.files {
+        let Ok(text) = fs::read_to_string(&source.path) else {
+            return None;
+        };
+        match netsmith::pins::sync(&source.name, &source.path, &text, &loader, locked) {
+            Ok(synced) => {
+                for note in synced.notes {
+                    eprintln!("note: {note}");
+                }
+            }
+            Err(message) => {
+                eprint!("{message}");
+                return Some(ExitCode::FAILURE);
+            }
+        }
+    }
+    None
 }
 
 /// What a command acts on: the named file or the project's top-level files, what their
