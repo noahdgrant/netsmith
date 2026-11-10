@@ -30,6 +30,8 @@ fn resistor(ohms: f64) -> Candidate {
         library: None,
         assembly: None,
         height: None,
+        temp_min: None,
+        temp_max: None,
         generic: None,
     }
 }

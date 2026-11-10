@@ -175,6 +175,10 @@ pub struct Pick {
     /// The row's `height` in mm, if it has one (ADR 0094): the part's height unless the design
     /// states it.
     pub height: Option<f64>,
+    /// The row's `temp_min` and `temp_max` in kelvin, if it has them (ADR 0099): the part's
+    /// range unless the design states one.
+    pub temp_min: Option<f64>,
+    pub temp_max: Option<f64>,
     /// Set if the candidate is a generic part (ADR 0047): it has no part number yet, and
     /// [`crate::resolve`] finds the row that stands for it.
     pub generic: Option<crate::Generic>,
@@ -3250,6 +3254,7 @@ impl Solver<'_> {
                     [
                         self.derating_note(&jobs[j]),
                         self.package_note(&jobs[j]),
+                        self.environment_note(&jobs[j]),
                         self.blank_note(&jobs[j]),
                     ]
                 })
@@ -3283,6 +3288,7 @@ impl Solver<'_> {
             let notes: Vec<String> = [
                 self.derating_note(job),
                 self.package_note(job),
+                self.environment_note(job),
                 self.blank_note(job),
             ]
             .into_iter()
@@ -3670,6 +3676,8 @@ impl Solver<'_> {
                                 library: c.library,
                                 assembly: c.assembly.clone(),
                                 height: c.height,
+                                temp_min: c.temp_min,
+                                temp_max: c.temp_max,
                                 generic: c.generic.as_ref().map(|g| g.with_needs(&needs)),
                                 rejected: examined,
                                 count: count.map_or(1, |n| n as u32),
@@ -3821,6 +3829,9 @@ impl Solver<'_> {
         if !self.package_has_the_pins(part, c) {
             return false;
         }
+        if self.outside_environment(part, c) {
+            return false;
+        }
         columns.iter().all(|(f, key)| {
             let domain = &self.model.field(*f).domain;
             match (c.column(key), domain) {
@@ -3845,6 +3856,71 @@ impl Solver<'_> {
                 (Some(Value::Text(t)), Domain::Text(d)) => t == d,
                 _ => false,
             }
+        })
+    }
+
+    /// The range of temperatures the board's environment states for a part, in kelvin: the ends
+    /// of `.environment.temperature` of the board it is on (ADR 0099). `None` when the board has
+    /// no environment or its environment states no temperature.
+    fn environment_range(&self, part: InstId) -> Option<(f64, f64)> {
+        let field = self.model.environment_temperature_of(part)?;
+        match &self.model.field(field).domain {
+            Domain::Quantity(q) => Some((q.lo(), q.hi())),
+            _ => None,
+        }
+    }
+
+    /// The temperatures a part states for itself, in kelvin, each end the worse of its range
+    /// (a stated `.temp_max &= 350K..360K` is read as 350 K, a stated `.temp_min` as its
+    /// highest). A design that states an end speaks for the part, whatever its row says
+    /// (ADR 0099), as for the height (ADR 0094).
+    fn stated_temperatures(&self, part: InstId) -> (Option<f64>, Option<f64>) {
+        let Some((min, max)) = self.model.temperature_range_of(part) else {
+            return (None, None);
+        };
+        let end = |field: FieldId, hi: bool| match &self.model.field(field).domain {
+            Domain::Quantity(q) => Some(if hi { q.hi() } else { q.lo() }),
+            _ => None,
+        };
+        (end(min, true), end(max, false))
+    }
+
+    /// Whether a candidate's own range of temperatures, where the design states none for the
+    /// part, does not cover the environment of its board at an end the row states. A row that
+    /// states nothing is not out: it is offered, and the design stage names it (ADR 0099).
+    fn outside_environment(&self, part: InstId, c: &Candidate) -> bool {
+        if c.temp_min.is_none() && c.temp_max.is_none() {
+            return false;
+        }
+        let Some(environment) = self.environment_range(part) else {
+            return false;
+        };
+        let (stated_min, stated_max) = self.stated_temperatures(part);
+        netsmith_check::environment::Fit::of(
+            environment,
+            stated_min.or(c.temp_min),
+            stated_max.or(c.temp_max),
+        )
+        .refused()
+    }
+
+    /// What to add to a message when rows were left out because the temperatures they state
+    /// do not cover the board's environment.
+    fn environment_note(&self, job: &Job) -> Option<String> {
+        let (lo, hi) = self.environment_range(job.part)?;
+        let left_out = job
+            .catalog
+            .candidates
+            .iter()
+            .filter(|c| self.outside_environment(job.part, c))
+            .count();
+        (left_out > 0).then(|| {
+            format!(
+                "{left_out} {} left out because the temperatures {} state do not cover the board's environment, `.environment.temperature` {}: a row's `temp_min` and `temp_max` are its datasheet's",
+                if left_out == 1 { "row was" } else { "rows were" },
+                if left_out == 1 { "it" } else { "they" },
+                netsmith_check::environment::show_range(lo, hi),
+            )
         })
     }
 

@@ -44,6 +44,14 @@ _Avoid_: Frame, border, tooling edge
 The design rules and stackup of the factory that makes a board, such as `std::mfg::jlcpcb::TwoLayer`. A board has one as its `.process` member. Each rule is the least the factory can make, written as a range the board may narrow upward; the rule used is the bottom of what is left. It is an interface with no pins.
 _Avoid_: Fab house, rule set, technology
 
+**Environment**:
+What a board is exposed to, the member `.environment` of a board: an interface such as `std::env::Environment` whose `.temperature` is the range of temperatures its surroundings reach, in kelvin (ADR 0099, provisional). Every fitted part is checked against it. The manifest's `environment` names the definition a board gets when it declares none; a board with neither is not judged and says nothing. A library states no environment of its own: it is the board's, or the project's.
+_Avoid_: Conditions, operating conditions, grade (a grade is a qualification and a margin, which are not built), mission profile
+
+**Temperature range**:
+The lowest and the highest temperature a part works at: its built-in `.temp_min` and `.temp_max`, which its catalog row gives in the fixed columns `temp_min` and `temp_max` when the design states none, each one temperature as the datasheet prints it. A row that states none is offered and named, never passed (ADR 0099, provisional). It is not the part's rating at 25 C (`.max_power`), and not the board's `.environment.temperature`, which the part's range must cover.
+_Avoid_: Operating range, thermal limits, rating (for the range)
+
 **Via in pad**:
 A via whose centre is on a surface-mount pad. The fabricator fills it with epoxy and caps it with plating so that the solder stays on the pad; the process says up to what size it does that (`.via_in_pad`), and `fab-notes.txt` lists the pads that have one. The router uses one only when a pad cannot be reached any other way.
 
@@ -541,9 +549,13 @@ _Avoid_: Simulation, transient analysis, estimate
 The peak-to-peak ripple of a buck stage's output voltage, `.output_ripple` of `BuckStage`: `dI / (8 * fsw * n * C) + dI * ESR / n` for the inductor's ripple current `dI`, the bank's count `n`, one capacitor's effective capacitance `C` and the board's `.output_esr` (an **Optional member**), a **Closed-form check**. A board bounds it (`.stage.output_ripple <= 20mV`); with no ESR stated it has no value and the bound is listed as not evaluated. Not the ripple current of the inductor (`.ripple`).
 _Avoid_: Voltage ripple, output noise, ripple voltage
 
+**Bus capacitance**:
+The capacitance of one line of an I2C bus, `sda` or `scl`, as the board states it: `.bus_capacitance` of `I2cPullups`, an **Optional member**. It is the pins of the parts (each part's `.i2c.capacitance`, its datasheet's `Ci`, which `~` does not equate between two parts) plus the traces, connector and cable, which no part states; the board writes the sum (`.pullups.bus_capacitance &= .a.i2c.capacitance + .b.i2c.capacitance + (20pF..40pF)`). With it the pull-up resistance gives `.rise_time`, `0.8473 * resistance * bus_capacitance`, a **Closed-form check** between 30 % and 70 % of the supply (NXP UM10204 Rev. 7.0, section 7.1), which a board bounds with the limit of its mode. A sum that reads a part with no capacitance has no value, and the bound is listed as not evaluated. Not the capacitance of one pin (`.i2c.capacitance`).
+_Avoid_: Line capacitance, load capacitance, Cb
+
 **Temperature shift**:
 How far the temperature of a design goes from the 25 C a datasheet states, in kelvin, as a range (`.z.temperature_shift &= -65K..100K` is -40 C to 125 C). The member `.temperature_shift: Temperature optional` of a `Zener` (ADR 0080, provisional): a design that states it has `.voltage_over_temperature`, the Zener's voltage at the hot and the cold corner, from the picked row's temperature coefficient; a design that does not has no such relation. Not an absolute temperature, and not the rise of a track or a part (`.max_temperature_rise`).
-_Avoid_: Ambient, temperature range, delta T
+_Avoid_: Absolute temperature, delta T (the range of temperatures a board's surroundings reach is its _Environment_, and a part's is its _Temperature range_)
 
 **Ohm bound**:
 The largest size of the current through a resistor that Ohm's law allows when the voltage at each of its two ends lies in a range the solver knows: the largest difference between the ends over the least resistance (ADR 0026, amendment). It is used only to prove a check that waits on a current that nothing states: a relation it satisfies is made and its note goes, one it does not satisfy stays not evaluated and says nothing. It is not the part's current: the model never holds it as a value, and a pick, a range or a track width reads no current from it, except that the track note goes when the width already drawn carries the known current and every Ohm bound together (ADR 0036, amendment 4).
