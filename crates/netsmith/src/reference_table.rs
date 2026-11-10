@@ -16,138 +16,86 @@ use std::fmt::Write as _;
 use netsmith_kicad::sexp::Sexp;
 
 /// The parts a person decided must match the reference exactly (a checker fails on them): the
-/// RP2350A Minimal's list, and the default of [`MustMatch`].
+/// RP2350A Minimal board's, which a table has when no [`MustMatch`] list is given.
 pub const MUST_MATCH: [&str; 10] = [
     "J1", "J2", "J3", "J4", "SW1", "SW2", "MH1", "MH2", "MH3", "MH4",
 ];
 
-/// Which footprints of a reference board must match: the decision of a person, written per board
-/// in its example folder (`reference/must_match.toml`) and read by the program with
-/// `--must-match`. The default is the RP2350A Minimal's list ([`MUST_MATCH`]).
+/// The reference designators a board's table marks `must_match = true`. The outline and every
+/// hole are always marked; a part is marked when its designator is in the list. A board's own
+/// list is a TOML file of the example (`reference/must_match.toml`) with one key, `parts`:
 ///
 /// ```toml
-/// # the receptacles, the buttons and the headers' footprint
-/// references = ["J1", "J2", "SW1", "SW2", "U2"]
-/// # and/or every footprint whose reference is the letters, then a number: "J" is J1 and J12
-/// # but not JP1
-/// prefixes = ["J", "SW"]
+/// parts = ["J1", "SW1", "H1"]
 /// ```
+///
+/// The default list is [`MUST_MATCH`], so the table of a board without a list is as it was.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MustMatch {
-    references: Vec<String>,
-    prefixes: Vec<String>,
-    /// The built-in list, which the table's header names as "J1 to J4, SW1, SW2".
-    builtin: bool,
+    parts: Vec<String>,
+    /// `false` for the default list: the header then keeps the text it always had.
+    custom: bool,
 }
 
 impl Default for MustMatch {
     fn default() -> MustMatch {
         MustMatch {
-            references: MUST_MATCH.iter().map(|r| (*r).to_string()).collect(),
-            prefixes: Vec::new(),
-            builtin: true,
+            parts: MUST_MATCH.iter().map(|s| s.to_string()).collect(),
+            custom: false,
         }
     }
 }
 
 impl MustMatch {
-    /// The list a `must_match.toml` states: `references` and/or `prefixes`, nothing else.
+    /// The list of a `must_match.toml`. A key it does not know, a designator written twice and a
+    /// list that is empty are errors: a typo must not drop a part from the must-match set.
     pub fn from_toml(text: &str) -> Result<MustMatch, String> {
-        let table: toml::Table = text.parse().map_err(|e| format!("not TOML: {e}"))?;
-        for key in table.keys() {
-            if key != "references" && key != "prefixes" {
-                return Err(format!(
-                    "`{key}` is not a key of a must-match list (it has `references` and `prefixes`)"
-                ));
-            }
+        let table: toml::Table = text
+            .parse()
+            .map_err(|e| format!("the must-match list: {e}"))?;
+        if let Some(key) = table.keys().find(|k| k.as_str() != "parts") {
+            return Err(format!(
+                "the must-match list has the key {key}; only `parts` is read"
+            ));
         }
-        let list = |key: &str| -> Result<Vec<String>, String> {
-            let Some(value) = table.get(key) else {
-                return Ok(Vec::new());
-            };
-            value
-                .as_array()
-                .and_then(|a| {
-                    a.iter()
-                        .map(|v| v.as_str().map(str::to_string))
-                        .collect::<Option<Vec<_>>>()
-                })
-                .ok_or_else(|| format!("`{key}` is not a list of texts"))
-        };
-        let (references, prefixes) = (list("references")?, list("prefixes")?);
-        if references.is_empty() && prefixes.is_empty() {
-            return Err(
-                "the list names nothing: it needs `references` (J1, SW1, ...) or `prefixes` (J, SW, ...)"
-                    .to_string(),
-            );
-        }
-        for prefix in &prefixes {
-            if prefix.is_empty() || !prefix.chars().all(|c| c.is_ascii_alphabetic()) {
-                return Err(format!(
-                    "the prefix {prefix:?} is not letters only (`J` is J1, J2, ...; write `J1` under `references`)"
-                ));
+        let list = table
+            .get("parts")
+            .and_then(toml::Value::as_array)
+            .ok_or("the must-match list has no `parts = [...]`")?;
+        let mut parts: Vec<String> = Vec::new();
+        for item in list {
+            let name = item
+                .as_str()
+                .ok_or("the must-match list: a part is not a text")?;
+            if parts.iter().any(|p| p == name) {
+                return Err(format!("the must-match list names {name} twice"));
             }
+            parts.push(name.to_string());
+        }
+        if parts.is_empty() {
+            return Err("the must-match list is empty".to_string());
         }
         Ok(MustMatch {
-            references,
-            prefixes,
-            builtin: false,
+            parts,
+            custom: true,
         })
     }
 
-    /// Whether the footprint of this reference must match.
     pub fn contains(&self, reference: &str) -> bool {
-        if self.references.iter().any(|r| r == reference) {
-            return true;
-        }
-        let (letters, _, _) = natural_key(reference);
-        letters.len() < reference.len() && self.prefixes.contains(&letters)
+        self.parts.iter().any(|p| p == reference)
     }
-
-    /// The list is a mistake when it names a footprint the board lacks: a part that matches
-    /// nothing would be a check that never ran.
-    /// (The built-in list is the RP2350A Minimal's: it is not held to another board.)
-    fn check_against(&self, parts: &[Part], source: &str) -> Result<(), String> {
-        if self.builtin {
-            return Ok(());
-        }
-        for r in &self.references {
-            if !parts.iter().any(|p| &p.reference == r) {
-                return Err(format!(
-                    "{source}: the must-match list names {r}, and the board has no such footprint"
-                ));
-            }
-        }
-        for prefix in &self.prefixes {
-            if !parts.iter().any(|p| prefix_of(p, prefix)) {
-                return Err(format!(
-                    "{source}: the must-match prefix {prefix} matches no footprint of the board"
-                ));
-            }
-        }
-        Ok(())
-    }
-
-    /// The list as the table's header says it.
-    fn describe(&self) -> String {
-        let mut items: Vec<String> = self.references.clone();
-        items.extend(self.prefixes.iter().map(|p| format!("every {p}<number>")));
-        items.join(", ")
-    }
-}
-
-fn prefix_of(part: &Part, prefix: &str) -> bool {
-    let (letters, _, _) = natural_key(&part.reference);
-    letters.len() < part.reference.len() && letters == prefix
 }
 
 /// The table of `pcb` (the text of a `.kicad_pcb`); `source` is the file's name, written in the
-/// header. The must-match list is the RP2350A Minimal's: [`placements_toml_with`] takes another.
+/// header. The must-match parts are the RP2350A Minimal board's ([`MUST_MATCH`]); another
+/// board's list goes to [`placements_toml_with`].
 pub fn placements_toml(pcb: &str, source: &str) -> Result<String, String> {
     placements_toml_with(pcb, source, &MustMatch::default())
 }
 
-/// The table of `pcb` with the must-match list of the board it is read from.
+/// The table of `pcb` with the must-match parts of `must` (see [`MustMatch`]). A designator of
+/// the list that the board does not have is an error (the default list is not held against the
+/// board).
 pub fn placements_toml_with(pcb: &str, source: &str, must: &MustMatch) -> Result<String, String> {
     let root = Sexp::parse(pcb).map_err(|e| format!("{source}: {e}"))?;
     if root.head() != Some("kicad_pcb") {
@@ -158,10 +106,26 @@ pub fn placements_toml_with(pcb: &str, source: &str, must: &MustMatch) -> Result
         holes,
         parts,
     } = board_of(&root, source)?;
-    must.check_against(&parts, source)?;
+    // The default list is a board's own (the RP2350A Minimal's) and is not held against another
+    // file; a list a board states must name only parts that it has.
+    if must.custom
+        && let Some(missing) = must
+            .parts
+            .iter()
+            .find(|m| !parts.iter().any(|p| &p.reference == *m))
+    {
+        return Err(format!(
+            "{source}: the must-match list names {missing}, which the board does not have"
+        ));
+    }
 
     let mut out = String::new();
-    out.push_str(&header(must));
+    out.push_str(HEADER);
+    out.push_str(if must.custom {
+        MUST_MATCH_LIST_PARAGRAPH
+    } else {
+        MUST_MATCH_DEFAULT_PARAGRAPH
+    });
     let _ = writeln!(out, "\n[source]");
     let _ = writeln!(out, "file = {}", quote(source));
     for (key, value) in [
@@ -217,6 +181,9 @@ pub fn placements_toml_with(pcb: &str, source: &str, must: &MustMatch) -> Result
         let _ = writeln!(out, "x = {}", num(hole.x));
         let _ = writeln!(out, "y = {}", num(hole.y));
         let _ = writeln!(out, "drill = {}", num(hole.drill));
+        if hole.plated {
+            let _ = writeln!(out, "plated = true");
+        }
     }
 
     for part in &parts {
@@ -265,31 +232,17 @@ const HEADER: &str = "\
 #   for a pad no net names.
 ";
 
-/// The table's header: the same text for every board, but the last sentence, which names what
-/// must match.
-fn header(must: &MustMatch) -> String {
-    if must.builtin {
-        let mut text = HEADER.to_string();
-        text.push_str(
-            "# must_match = true marks what a copy of the board must reproduce (the outline, the holes,\n\
-             #   J1 to J4, SW1, SW2); false is reported, not required.\n",
-        );
-        text
-    } else {
-        let mut text = HEADER.replace("-- <file", "-- --must-match <list.toml> <file");
-        text.push_str(
-            "# The outline also holds the Edge.Cuts shapes that a footprint draws, placed on the board.\n",
-        );
-        text.push_str(
-            "# must_match = true marks what a copy of the board must reproduce (the outline, the holes\n\
-             #   and the footprints of the list given with --must-match; false is reported, not\n\
-             #   required): ",
-        );
-        text.push_str(&must.describe());
-        text.push('\n');
-        text
-    }
-}
+const MUST_MATCH_DEFAULT_PARAGRAPH: &str = "\
+# must_match = true marks what a copy of the board must reproduce (the outline, the holes,
+#   J1 to J4, SW1, SW2); false is reported, not required.
+";
+
+const MUST_MATCH_LIST_PARAGRAPH: &str = "\
+# must_match = true marks what a copy of the board must reproduce (the outline, the holes and the
+#   parts of the board's must-match list); false is reported, not required.
+# A [[hole]] with plated = true is the drilled pad (the one with the largest drill) of a
+#   MountingHole footprint of KiCad's library, which draws its hole as a plated pad.
+";
 
 /// What the table holds, as numbers: read from a `.kicad_pcb` by [`read_board`], or from a table
 /// (`placements.toml`) by [`Board::from_table`]. The parity checker compares two of them.
@@ -309,6 +262,10 @@ pub struct Hole {
     pub x: f64,
     pub y: f64,
     pub drill: f64,
+    /// `true` for the drilled pad of a `MountingHole` footprint that draws its hole plated
+    /// (`thru_hole`), as KiCad's `MountingHole_*_Pad*` footprints do; `false` for an
+    /// `np_thru_hole` pad.
+    pub plated: bool,
 }
 
 /// The board as a `.kicad_pcb` states it.
@@ -345,13 +302,48 @@ fn board_of(root: &Sexp, source: &str) -> Result<Board, String> {
                 x,
                 y,
                 drill,
+                plated: false,
             });
+        }
+        if let Some(hole) = plated_mounting_hole(part) {
+            holes.push(hole);
         }
     }
     Ok(Board {
         outline,
         holes,
         parts,
+    })
+}
+
+/// The hole of a `MountingHole` footprint of KiCad's library that has no `np_thru_hole` pad: the
+/// `MountingHole_*_Pad` family draws it as a plated `thru_hole` pad (with a ring of vias around
+/// it, all numbered like it), so the hole is the pad with the largest drill, and the vias are
+/// not holes of their own. A footprint of another name, or with a non-plated pad, is not read
+/// this way: nothing is guessed.
+fn plated_mounting_hole(part: &Part) -> Option<Hole> {
+    let library_name = part.footprint.rsplit(':').next().unwrap_or(&part.footprint);
+    if !library_name.starts_with("MountingHole")
+        || part.pads.iter().any(|p| p.kind == "np_thru_hole")
+    {
+        return None;
+    }
+    let pad = part
+        .pads
+        .iter()
+        .filter(|p| p.kind == "thru_hole" && p.drill.is_some())
+        .max_by(|a, b| {
+            a.drill
+                .partial_cmp(&b.drill)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })?;
+    let (x, y) = part.board_point(pad.x, pad.y);
+    Some(Hole {
+        reference: part.reference.clone(),
+        x,
+        y,
+        drill: pad.drill?,
+        plated: true,
     })
 }
 
@@ -406,6 +398,7 @@ impl Board {
                 x: field(h, "x", "a [[hole]]")?,
                 y: field(h, "y", "a [[hole]]")?,
                 drill: field(h, "drill", "a [[hole]]")?,
+                plated: h.get("plated").and_then(toml::Value::as_bool) == Some(true),
             });
         }
         let mut parts = Vec::new();
@@ -707,8 +700,18 @@ fn frame_of(footprint: &Sexp) -> Result<(String, f64, f64, f64), String> {
         .find_all("property")
         .find(|p| p.args().first().and_then(Sexp::text) == Some("Reference"))
         .and_then(|p| p.args().get(1))
+        // KiCad 8 and later: `(property "Reference" "R1" ...)`. KiCad 7 and earlier (format
+        // 20221018 and before): `(fp_text reference "R1" ...)`.
+        .or_else(|| {
+            footprint
+                .find_all("fp_text")
+                .find(|t| t.args().first().and_then(Sexp::text) == Some("reference"))
+                .and_then(|t| t.args().get(1))
+        })
         .and_then(Sexp::text)
-        .ok_or_else(|| format!("the footprint {name} has no Reference property"))?
+        .ok_or_else(|| {
+            format!("the footprint {name} has no Reference (neither a property nor an fp_text)")
+        })?
         .to_string();
     let at = footprint
         .find("at")

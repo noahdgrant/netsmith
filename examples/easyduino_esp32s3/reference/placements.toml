@@ -1,5 +1,5 @@
 # Reference placements, read from a KiCad board file by
-#   cargo run -p netsmith --example reference_table -- --must-match <list.toml> <file.kicad_pcb>
+#   cargo run -p netsmith --example reference_table -- <file.kicad_pcb>
 # Do not edit: run the program again. A test checks that this file is its output.
 #
 # Units are millimetres and degrees, as in the KiCad file. The origin is the file's own page
@@ -19,10 +19,10 @@
 #   [min_x, min_y, max_x, max_y] that its polygons, lines, arcs and circles span, in the pad's
 #   own frame and with each stroke's half width added; `net` is the net's name and is left out
 #   for a pad no net names.
-# The outline also holds the Edge.Cuts shapes that a footprint draws, placed on the board.
-# must_match = true marks what a copy of the board must reproduce (the outline, the holes
-#   and the footprints of the list given with --must-match; false is reported, not
-#   required): J1, J2, SW1, SW2, U2
+# must_match = true marks what a copy of the board must reproduce (the outline, the holes and the
+#   parts of the board's must-match list); false is reported, not required.
+# A [[hole]] with plated = true is the drilled pad (the one with the largest drill) of a
+#   MountingHole footprint of KiCad's library, which draws its hole as a plated pad.
 
 [source]
 file = "Easyduino_ESP32S3.kicad_pcb"

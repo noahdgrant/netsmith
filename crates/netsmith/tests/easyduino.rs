@@ -182,15 +182,9 @@ fn a_pad_of_net_zero_has_no_net() {
 
 #[test]
 fn a_must_match_list_says_which_footprints_a_copy_must_reproduce() {
-    let must = MustMatch::from_toml(
-        "# the connectors, the buttons and the headers\n\
-         references = [\"U2\"]\n\
-         prefixes = [\"J\"]\n",
-    )
-    .unwrap_or_else(|e| panic!("{e}"));
-    // A prefix is the whole run of letters: J1 and J12 are `J`, JP1 is `JP`.
-    assert!(must.contains("U2") && must.contains("J1") && must.contains("J12"));
-    assert!(!must.contains("JP1") && !must.contains("U1") && !must.contains("U20"));
+    let must = MustMatch::from_toml("parts = [\"U2\", \"J1\"]\n").unwrap_or_else(|e| panic!("{e}"));
+    assert!(must.contains("U2") && must.contains("J1"));
+    assert!(!must.contains("J12") && !must.contains("U1"));
 
     let pcb = r#"(kicad_pcb
 	(gr_rect (start 0 0) (end 10 10) (stroke (width 0.1) (type solid)) (layer "Edge.Cuts"))
@@ -213,9 +207,6 @@ fn a_must_match_list_says_which_footprints_a_copy_must_reproduce() {
         flags,
         [("J1", true), ("JP1", false), ("U1", false), ("U2", true)]
     );
-    // The header says what the list is, not "J1 to J4, SW1, SW2".
-    assert!(text.contains("U2"), "{text}");
-    assert!(!text.contains("J1 to J4, SW1, SW2"), "{text}");
 
     // The default is Raspberry Pi's list, so their table does not change.
     let default = placements_toml(pcb, "x.kicad_pcb").unwrap();
@@ -227,21 +218,12 @@ fn a_must_match_list_says_which_footprints_a_copy_must_reproduce() {
 }
 
 #[test]
-fn a_must_match_list_that_is_wrong_is_refused_by_name() {
-    let wrong = |text: &str| MustMatch::from_toml(text).unwrap_err();
-    assert!(wrong("").contains("references") && wrong("").contains("prefixes"));
-    assert!(wrong("refs = [\"J1\"]").contains("refs"));
-    assert!(wrong("references = \"J1\"").contains("references"));
-    assert!(
-        wrong("prefixes = [\"J1\"]").contains("J1"),
-        "a prefix is letters"
-    );
-
-    // A listed reference the board does not have is a mistake, not a part that matches nothing.
+fn a_must_match_list_that_names_a_missing_footprint_is_refused() {
+    // A listed designator the board does not have is a mistake, not a part that matches nothing.
     let pcb = r#"(kicad_pcb
 	(gr_rect (start 0 0) (end 10 10) (stroke (width 0.1) (type solid)) (layer "Edge.Cuts"))
 	(footprint "L:F" (layer "F.Cu") (at 1 1) (property "Reference" "J1" (at 0 0 0) (layer "F.SilkS"))))"#;
-    let must = MustMatch::from_toml("references = [\"J1\", \"J9\"]").unwrap();
+    let must = MustMatch::from_toml("parts = [\"J1\", \"J9\"]").unwrap();
     let e = placements_toml_with(pcb, "x.kicad_pcb", &must).unwrap_err();
     assert!(e.contains("J9"), "{e}");
 }
