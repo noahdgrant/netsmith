@@ -59,6 +59,11 @@ pub enum FootprintError {
         name: String,
         reason: String,
     },
+    /// A `gen:` footprint (ADR 0104) that its generator refuses.
+    BadGenerated {
+        name: String,
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for FootprintError {
@@ -121,6 +126,9 @@ impl std::fmt::Display for FootprintError {
             ),
             Self::Unreadable { path, reason } => write!(f, "{}: {reason}", path.display()),
             Self::Invalid { name, reason } => write!(f, "footprint `{name}`: {reason}"),
+            Self::BadGenerated { name, reason } => {
+                write!(f, "generated footprint `{name}`: {reason}")
+            }
         }
     }
 }
@@ -945,6 +953,16 @@ impl FootprintLibrary {
 
     /// Read `Library:Name`.
     pub fn load(&self, name: &str) -> Result<Footprint, FootprintError> {
+        // A footprint asked for by generator and parameters needs no library and no setting
+        // (ADR 0104): the id carries the parameters.
+        if let Some(spec) = netsmith_kicad::footprint_spec::FootprintSpec::from_id(name) {
+            return crate::generate::generate_spec(&spec).map_err(|reason| {
+                FootprintError::BadGenerated {
+                    name: spec.spelling(),
+                    reason,
+                }
+            });
+        }
         // netsmith's own library is in the binary and answers first, whatever else is set up.
         if let Some(footprint) = std_name(name) {
             // A project's library of the same name is refused, with both named.

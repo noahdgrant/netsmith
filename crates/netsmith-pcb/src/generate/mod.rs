@@ -107,6 +107,15 @@
 //! `.with_generators()` adds them. `build` and `fab` of a design that uses only generated
 //! packages need no footprint library at all.
 //!
+//! **By parameters (ADR 0104).** A project's `kicad.toml` may ask for a footprint by generator name and
+//! parameters, `gen:QFN(pins=48, pitch=0.5mm, ...)`, in place of a `Library:Name` id, for a package
+//! that none of the names above is. [`generate_spec`] makes it with the same code as the table row
+//! with the same numbers (`params.rs` reads the parameters and checks them, and its tests compare the
+//! pads with [`generate`] for several ids of each generator): `QFN`, `DFN`, `QFP`, `SO`, `SOT23`,
+//! `PinHeader`, `PinSocket` and `BGA` ([`GENERATORS`]). The footprint is in the library `gen` under a
+//! name made of the generator and its parameters, which [`generate`] reads back. Not exposed: the
+//! chips, diodes, crystals, the recorded pads (SOT-223, SC-70, DPAK, SOT-89) and the mechanical parts.
+//!
 //! **Validation.** `tests/generated_vs_kicad.rs` compares every generated footprint with the
 //! footprint of the same name in the installed KiCad 9.0 libraries (skipped without them): the pad
 //! count, numbers, kind, shape, layers, hole and the box of every pad (so a pad turned a quarter
@@ -186,6 +195,7 @@ mod header;
 pub mod ipc;
 mod mechanical;
 mod outline;
+mod params;
 mod qfn;
 mod qfn_rows;
 mod qfp;
@@ -194,10 +204,81 @@ mod tab;
 
 use std::sync::OnceLock;
 
+use netsmith_kicad::footprint_spec::{self, FootprintSpec};
+
 use crate::footprint::Footprint;
 
-/// The footprint that `Library:Name` names, if a generator makes it.
+/// The generators a project can ask for by name and parameters (`gen:QFN(...)`, ADR 0104).
+pub const GENERATORS: [&str; 8] = [
+    "QFN",
+    "DFN",
+    "QFP",
+    "SO",
+    "SOT23",
+    "PinHeader",
+    "PinSocket",
+    "BGA",
+];
+
+/// The footprint a `gen:` spec asks for: the generator's pads for the parameters it names,
+/// in the library `gen` under the name the spec's id gives ([`FootprintSpec::id`]). The message
+/// says what is wrong with the spec and does not say where the spec is written.
+pub fn generate_spec(spec: &FootprintSpec) -> Result<Footprint, String> {
+    let id = spec.id();
+    let name = id
+        .strip_prefix(&format!("{}:", footprint_spec::LIBRARY))
+        .expect("an id starts with its library");
+    let library = footprint_spec::LIBRARY;
+    let param_names = |known: &[&str]| params::Params::new(spec, known);
+    let made = match spec.generator.as_str() {
+        "QFN" | "DFN" => {
+            let p = param_names(&[
+                "pins",
+                "pitch",
+                "body",
+                "ep",
+                "lead_width",
+                "lead_length",
+                "paste",
+                "heel",
+            ])?;
+            qfn::from_params(&p, library, name, spec.generator == "DFN")
+        }
+        "QFP" => {
+            let p = param_names(&["pins", "body", "pitch", "lead_width", "ep", "paste"])?;
+            qfp::from_params(&p, library, name)
+        }
+        "SO" => {
+            let p = param_names(&["pins", "pitch", "body", "span", "lead_width", "lead_length"])?;
+            gullwing::from_params(&p, library, name)
+        }
+        "SOT23" => {
+            let p = param_names(&["pins", "span", "lead_width", "lead_length", "body"])?;
+            sot::from_params(&p, library, name)
+        }
+        "PinHeader" | "PinSocket" => {
+            let p = param_names(&["rows", "pins", "pitch"])?;
+            header::from_params(&p, &spec.generator, library, name)
+        }
+        "BGA" => {
+            let p = param_names(&["layout", "pitch", "body", "pad"])?;
+            bga::from_params(&p, library, name)
+        }
+        other => Err(format!(
+            "there is no generator `{other}`; the generators are {}",
+            GENERATORS.join(", ")
+        )),
+    }?;
+    params::check_pads(&made)?;
+    Ok(made)
+}
+
+/// The footprint that `Library:Name` names, if a generator makes it. A `gen:` id
+/// ([`FootprintSpec::id`]) is made from the parameters its name spells.
 pub fn generate(id: &str) -> Option<Footprint> {
+    if let Some(spec) = FootprintSpec::from_id(id) {
+        return generate_spec(&spec).ok();
+    }
     let (library, name) = id.split_once(':')?;
     chip::generate(library, name)
         .or_else(|| gullwing::generate(library, name))

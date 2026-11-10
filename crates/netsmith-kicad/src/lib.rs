@@ -1,5 +1,6 @@
 //! KiCad 9 file output for netsmith, and the KiCad libraries it reads.
 
+pub mod footprint_spec;
 pub mod generate;
 pub mod install;
 pub mod mapping;

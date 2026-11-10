@@ -6,6 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use netsmith_core::Design;
+use netsmith_kicad::install::Search;
 use netsmith_kicad::{Mapping, Symbol, SymbolLib, stdlib, testlib};
 use netsmith_pcb::FootprintLibrary;
 
@@ -14,6 +15,27 @@ pub struct Libraries {
     pub mapping: Mapping,
     pub symbols: SymbolLib,
     pub footprints: FootprintLibrary,
+}
+
+/// Make every `gen:` footprint of `mapping` (ADR 0104) once, so that a generator that refuses
+/// its parameters is named with the row and the line, before any board is read. The first
+/// refusal is the error.
+pub fn check_generated_footprints(mapping: &Mapping) -> Result<(), String> {
+    for row in mapping.rows() {
+        if let Some(spec) = netsmith_kicad::footprint_spec::FootprintSpec::from_id(&row.footprint)
+            && let Err(why) = netsmith_pcb::generate::generate_spec(&spec)
+        {
+            return Err(format!(
+                "{}:{}: part `{}` in package `{}`: footprint `{}`: {why}",
+                row.source,
+                row.line,
+                row.kind,
+                row.package,
+                spec.spelling()
+            ));
+        }
+    }
+    Ok(())
 }
 
 impl Libraries {
@@ -30,11 +52,18 @@ impl Libraries {
     /// The installed libraries and the standard mapping, plus the `kicad.toml` of the
     /// project at `root`, if there is one: its parts and its own libraries.
     pub fn for_project(root: Option<&Path>) -> Result<Libraries, String> {
+        Libraries::for_project_by(root, &Search::machine())
+    }
+
+    /// [`Libraries::for_project`] over another machine (`Search::under` an empty folder is
+    /// one with no KiCad), for tests.
+    pub fn for_project_by(root: Option<&Path>, search: &Search) -> Result<Libraries, String> {
         let mapping = Mapping::for_project(root).map_err(|e| e.to_string())?;
+        check_generated_footprints(&mapping)?;
         Ok(Libraries::with_mapping(
             mapping,
-            SymbolLib::installed(),
-            FootprintLibrary::installed(),
+            SymbolLib::installed_by(search),
+            FootprintLibrary::installed_by(search),
         ))
     }
 
