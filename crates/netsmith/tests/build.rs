@@ -712,19 +712,35 @@ fn a_build_with_no_kicad_install_stops_once_and_lists_where_it_looked() {
     use netsmith_kicad::install::Search;
     let nowhere = TempDir::new("no-install");
     let machine = Search::under(nowhere.path());
+    // No footprint or symbol of the standard mapping is read from KiCad's libraries any more
+    // (ADR 0097, steps 1 to 3), so the part that still needs KiCad's footprint library comes from
+    // a project: its `kicad.toml` maps a coaxial jack to a KiCad stock footprint that netsmith
+    // neither generates nor has in `std/libs`.
+    let id = "Connector_Audio:Jack_3.5mm_CUI_SJ1-3513N_Horizontal";
+    assert!(netsmith_pcb::generate::generate(id).is_none());
+    assert!(!netsmith_kicad::stdlib::is_library_id(id));
+    let project = TempDir::new("no-install-project");
+    std::fs::write(
+        project.path().join("kicad.toml"),
+        format!(
+            "[[part]]\nkind = \"Coax\"\npackage = \"Jack35\"\n\
+             symbol = \"Connector:Conn_Coaxial\"\nfootprint = \"{id}\"\n"
+        ),
+    )
+    .unwrap();
     let libraries = Libraries::with_mapping(
-        netsmith_kicad::Mapping::standard(),
+        Mapping::for_project(Some(project.path())).unwrap_or_else(|e| panic!("{e}")),
         netsmith_kicad::SymbolLib::installed_by(&machine),
         netsmith_pcb::FootprintLibrary::installed_by(&machine),
     );
-    // No symbol of the standard mapping is read from KiCad's libraries any more; what is left of
-    // ADR 0097 is the footprints that no generator makes and no maker's drawing is written for
-    // (step 3): the SMA connector's, KiCad's `Connector_Coaxial:SMA_Amphenol_132134_Vertical`.
     let text = "\
 import std::parts::connector::{Coax, Header1x2}
 
 board B {
-    .rf: Coax { .assembly &= AssemblyMode::Hand }
+    .rf: Coax {
+        .package &= \"Jack35\"
+        .assembly &= AssemblyMode::Hand
+    }
     .j1: Header1x2
     .rf.signal ~ .j1.p1
     .rf.shield ~ .j1.p2
@@ -738,7 +754,7 @@ board B {
         &libraries,
     )
     .err()
-    .expect("the build should fail: the SMA connector's footprint is KiCad's");
+    .expect("the build should fail: the project's footprint is KiCad's");
     assert!(e.contains("no KiCad "), "{e}");
     assert!(e.contains("usr/share/kicad/"), "{e}");
     assert!(e.contains("Applications/KiCad/KiCad.app"), "{e}");

@@ -602,35 +602,11 @@ fn every_row_with_a_generated_symbol_agrees_with_its_pin_table_with_no_kicad() {
             "{}",
             symbol.lib_id()
         );
-        // A footprint nobody generates yet (ADR 0097 step 3) needs KiCad's footprint library;
-        // its symbol still has to agree with the pin table, against a stand-in footprint that
-        // has the pads of the pinout.
-        let Ok(footprint) = libraries.footprints.load(&mapped.footprint) else {
-            assert!(
-                NO_GENERATED_FOOTPRINT.contains(&kind.as_str()),
-                "{kind}/{package}: no generated footprint"
-            );
-            let pinout = pinout_of(kind, package);
-            let pads: String = pinout
-                .pads()
-                .map(|pad| {
-                    format!("(pad \"{pad}\" smd rect (at 0 0) (size 1 1) (layers \"F.Cu\"))")
-                })
-                .collect();
-            let stand_in = netsmith_pcb::Footprint::parse(
-                &mapped.footprint,
-                &format!("(footprint \"stand-in\" (layer \"F.Cu\") {pads})"),
-            )
+        // Every footprint of the standard rows is generated or netsmith's own (ADR 0097, step 3).
+        let footprint = libraries
+            .footprints
+            .load(&mapped.footprint)
             .unwrap_or_else(|e| panic!("{kind}/{package}: {e}"));
-            let subject = Subject {
-                refdes: "U1",
-                kind,
-                package: Some(package),
-            };
-            let problems = validate_pinout(&subject, &pinout, &mapped, &symbol, &stand_in);
-            assert!(problems.is_empty(), "{kind}/{package}: {problems:#?}");
-            continue;
-        };
         checked += 1;
         let subject = Subject {
             refdes: "U1",
@@ -648,20 +624,6 @@ fn every_row_with_a_generated_symbol_agrees_with_its_pin_table_with_no_kicad() {
     }
     assert!(checked >= 45, "only {checked} rows were checked");
 }
-
-/// The kinds whose footprints no generator makes yet (ADR 0097, step 3): they need KiCad's
-/// footprint library, though their symbols need none.
-const NO_GENERATED_FOOTPRINT: &[&str] = &[
-    "Switch",
-    "UsbCPower",
-    "UsbC2",
-    "Coax",
-    "MountingHole",
-    "PlatedHole",
-    "TestPoint",
-    "Fiducial",
-    "ProgrammingPads6",
-];
 
 /// One part of each kind the task names, each pad on a net of its own.
 fn every_kind() -> Design {

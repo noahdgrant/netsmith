@@ -30,12 +30,22 @@ pub const FOOTPRINT_FOLDER: &str = "netsmith.pretty";
 /// `std/libs/netsmith.pretty/` is listed here (a test fails until it is).
 const FOOTPRINTS: &[(&str, &str)] = &[
     (
+        "SMA_Amphenol_132134_Vertical",
+        include_str!("../../../std/libs/netsmith.pretty/SMA_Amphenol_132134_Vertical.kicad_mod"),
+    ),
+    (
         "SW_SPST_CK_RS-282G05A3-SM",
         include_str!("../../../std/libs/netsmith.pretty/SW_SPST_CK_RS-282G05A3-SM.kicad_mod"),
     ),
     (
         "SW_SPST_Omron_B3U-1000P",
         include_str!("../../../std/libs/netsmith.pretty/SW_SPST_Omron_B3U-1000P.kicad_mod"),
+    ),
+    (
+        "Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical",
+        include_str!(
+            "../../../std/libs/netsmith.pretty/Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical.kicad_mod"
+        ),
     ),
     (
         "UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA",

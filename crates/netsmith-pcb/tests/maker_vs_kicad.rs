@@ -87,6 +87,28 @@ const PAIRS: &[Pair] = &[
         courtyard: 0.0,
         why: "the lands (1.5 x 1.5 at 7.8 between centres) and the courtyard agree",
     },
+    Pair {
+        ours: "netsmith:SMA_Amphenol_132134_Vertical",
+        kicad: "Connector_Coaxial:SMA_Amphenol_132134_Vertical",
+        centre: 0.0,
+        size: 0.05,
+        courtyard: 0.25,
+        why: "the holes (one 1.5, four 1.7 on a 5.08 square) and their numbers agree with \
+              KiCad's; the pads differ because the drawing gives none and ours are derived \
+              (hole + 2 x 0.05 + 0.50, IPC-2221 land rule, density level B): 2.10 and 2.30 \
+              against KiCad's 2.05 and 2.25, 0.05 larger each, and the courtyard is the copper \
+              and 0.25 (KiCad's is its own, 0.23 farther out)",
+    },
+    Pair {
+        ours: "netsmith:Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical",
+        kicad: "Connector:Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical",
+        centre: 0.0,
+        size: 0.0,
+        courtyard: 0.25,
+        why: "pads, holes, numbers and positions agree with KiCad's; the drawing's 0.787 and \
+              0.991 are the inch labels .0310 and .0390 rounded, which KiCad has as 0.7874 and \
+              0.9906 (0.0004 apart); only the courtyard differs (ours is the copper and 0.25)",
+    },
 ];
 
 struct Report {

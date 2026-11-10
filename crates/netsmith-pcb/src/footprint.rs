@@ -1107,12 +1107,19 @@ mod tests {
         name: &str,
         expected: &[Expected],
         courtyard: (f64, f64, f64, f64),
-        body: (f64, f64, f64, f64),
+        body: Option<(f64, f64, f64, f64)>,
     ) {
         let fp = FootprintLibrary::at("/nonexistent")
             .load(&format!("netsmith:{name}"))
             .unwrap();
-        assert_eq!(fp.mount, Mount::Smd, "{name}");
+        // The receptacles and switches are `attr smd`, whatever their shell holes; the SMA jack
+        // is through hole.
+        let mount = if name.starts_with("SMA_") {
+            Mount::ThroughHole
+        } else {
+            Mount::Smd
+        };
+        assert_eq!(fp.mount, mount, "{name}");
         assert_eq!(fp.pads.len(), expected.len(), "{name}: pad count");
         let mut left: Vec<&Pad> = fp.pads.iter().collect();
         for (number, kind, (x, y), (w, h), drill) in expected {
@@ -1138,7 +1145,10 @@ mod tests {
                 (None, None) => {}
                 (got, want) => panic!("{name}: pad {number} drill {got:?}, wanted {want:?}"),
             }
+            // A surface pad of a maker's drawing has paste, except where the drawing forbids it
+            // (the Tag-Connect contact pads).
             let layers: &[&str] = match kind {
+                PadKind::Smd if name.starts_with("Tag-Connect") => &["F.Cu", "F.Mask"],
                 PadKind::Smd => &["F.Cu", "F.Mask", "F.Paste"],
                 _ => &["*.Cu", "*.Mask"],
             };
@@ -1152,7 +1162,10 @@ mod tests {
             Rect::new(Pt::new(x0, y0), Pt::new(x1, y1)),
             "{name}: courtyard"
         );
-        let (x0, y0, x1, y1) = body;
+        let Some((x0, y0, x1, y1)) = body else {
+            assert!(fp.body_is_courtyard, "{name}: no body is drawn on F.Fab");
+            return;
+        };
         let fab = fp.body;
         assert!(!fp.body_is_courtyard, "{name}: the body is drawn on F.Fab");
         assert!(
@@ -1190,7 +1203,7 @@ mod tests {
             "USB_C_Receptacle_GCT_USB4125_6P_TopMnt_Horizontal",
             &pads,
             (-5.12, -3.0, 5.12, 4.75),
-            (-4.47, -2.58, 4.47, 4.5),
+            Some((-4.47, -2.58, 4.47, 4.5)),
         );
     }
 
@@ -1260,7 +1273,7 @@ mod tests {
             "USB_C_Receptacle_GCT_USB4105_16P_TopMnt_Horizontal",
             &pads,
             (-5.17, -3.49, 5.17, 4.94),
-            (-4.47, -3.24, 4.47, 4.69),
+            Some((-4.47, -3.24, 4.47, 4.69)),
         );
     }
 
@@ -1278,7 +1291,7 @@ mod tests {
             "USB_C_Receptacle_HRO_TYPE-C-31-M-12",
             &pads,
             (-5.175, -3.48, 5.175, 4.45),
-            (-4.47, -3.23, 4.47, 4.2),
+            Some((-4.47, -3.23, 4.47, 4.2)),
         );
     }
 
@@ -1293,7 +1306,7 @@ mod tests {
                 ("1", Smd, (1.7, 0.0), (0.8, 1.7), None),
             ],
             (-2.35, -1.5, 2.35, 1.5),
-            (-1.5, -1.25, 1.5, 1.25),
+            Some((-1.5, -1.25, 1.5, 1.25)),
         );
     }
 
@@ -1307,7 +1320,66 @@ mod tests {
                 ("2", Smd, (3.9, 0.0), (1.5, 1.5), None),
             ],
             (-4.9, -2.05, 4.9, 2.05),
-            (-3.0, -1.8, 3.0, 1.8),
+            Some((-3.0, -1.8, 3.0, 1.8)),
+        );
+    }
+
+    #[test]
+    fn the_amphenol_132134_has_the_holes_of_its_drawing_and_pads_derived_by_the_land_rule() {
+        // Customer outline drawing of 132134, sheet 3 of 3: one hole of 1.5 in the middle and
+        // four of 1.7 on a 5.08 square. The pads are derived (hole + 2 x 0.05 + 0.50, density
+        // level B of the IPC-2221 land rule): 2.10 and 2.30. The pad is a through hole with no
+        // paste, as `*.Cu` and `*.Mask` say.
+        let mut pads: Vec<Expected> =
+            vec![("1", ThruHole, (0.0, 0.0), (2.1, 2.1), Some((1.5, 1.5)))];
+        for x in [-2.54, 2.54] {
+            for y in [-2.54, 2.54] {
+                pads.push(("2", ThruHole, (x, y), (2.3, 2.3), Some((1.7, 1.7))));
+            }
+        }
+        assert_maker_footprint(
+            "SMA_Amphenol_132134_Vertical",
+            &pads,
+            (-3.94, -3.94, 3.94, 3.94),
+            Some((-3.5, -3.5, 3.5, 3.5)),
+        );
+        let fp = FootprintLibrary::at("/nonexistent")
+            .load("netsmith:SMA_Amphenol_132134_Vertical")
+            .unwrap();
+        // The ring each pad leaves round its hole stays above what JLCPCB asks of a plated
+        // through hole on a 2-layer board (0.25 mm recommended with 1 oz copper, 0.254 with
+        // 2 oz; the absolute minimum is 0.18).
+        for pad in &fp.pads {
+            let ring = (pad.width - pad.drill.unwrap().width) / 2.0;
+            assert!(ring >= 0.254, "pad {} has a ring of {ring}", pad.number);
+        }
+    }
+
+    #[test]
+    fn the_tag_connect_tc2030_has_the_pads_and_alignment_holes_of_its_drawing() {
+        // Drawing TC2030-IDC-NL-FP Rev B, sheet 1 ("PCB top layer"): six round contact pads of
+        // 0.787 at 1.27 pitch in two rows 1.27 apart, no paste, and three non-plated alignment
+        // holes of 0.991: one 2.54 to the left of the middle, two 2.54 to the right and
+        // 2.032 (2 x 1.016) apart. Pads 1, 3, 5 are the lower row, 2, 4, 6 the upper one.
+        let mut pads: Vec<Expected> = Vec::new();
+        for (n, x, y) in [
+            ("1", -1.27, 0.635),
+            ("2", -1.27, -0.635),
+            ("3", 0.0, 0.635),
+            ("4", 0.0, -0.635),
+            ("5", 1.27, 0.635),
+            ("6", 1.27, -0.635),
+        ] {
+            pads.push((n, Smd, (x, y), (0.787, 0.787), None));
+        }
+        for (x, y) in [(-2.54, 0.0), (2.54, -1.016), (2.54, 1.016)] {
+            pads.push(("", NpThruHole, (x, y), (0.991, 0.991), Some((0.991, 0.991))));
+        }
+        assert_maker_footprint(
+            "Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical",
+            &pads,
+            (-3.2855, -1.7615, 3.2855, 1.7615),
+            None,
         );
     }
 

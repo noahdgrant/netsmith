@@ -243,6 +243,24 @@ fn every_footprint_netsmith_ships_parses_and_agrees_with_the_pin_table_of_its_pa
     assert!(checked >= 1);
 }
 
+/// ADR 0097, step 3: every footprint of the standard mapping is generated or one of netsmith's
+/// own files, so a library that reads nothing from a folder answers all of them.
+#[test]
+fn every_footprint_of_the_standard_mapping_is_answered_with_no_kicad_footprint_library() {
+    let libraries = Libraries::with_mapping(
+        netsmith_kicad::Mapping::standard(),
+        netsmith_kicad::SymbolLib::at("/nonexistent").with_generators(),
+        netsmith_pcb::FootprintLibrary::at("/nonexistent").with_generators(),
+    );
+    let mut missing = Vec::new();
+    for row in libraries.mapping.rows() {
+        if let Err(e) = libraries.footprints.load(&row.footprint) {
+            missing.push(format!("{}/{}: {e}", row.kind, row.package));
+        }
+    }
+    assert!(missing.is_empty(), "{missing:#?}");
+}
+
 #[test]
 fn every_file_of_the_footprint_library_is_named_by_a_row_so_that_it_is_checked() {
     let libraries = bare();
