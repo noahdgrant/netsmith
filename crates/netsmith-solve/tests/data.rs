@@ -269,6 +269,85 @@ fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() 
     assert_eq!(with, ROWS_WITH_HEIGHT);
 }
 
+/// How many rows of the standard catalogs state `temp_min` and `temp_max` (ADR 0099): the four
+/// crystals, whose figure is the JLCPCB listing text, and 297 rows read from a datasheet.
+/// Update it with the rows.
+const ROWS_WITH_TEMPERATURE: usize = 301;
+
+/// A temperature cell such as `233.15K`, in kelvin.
+fn kelvin(name: &str, lcsc: &str, column: &str, cell: &str) -> f64 {
+    cell.strip_suffix('K')
+        .and_then(|n| n.parse().ok())
+        .unwrap_or_else(|| panic!("{name} {lcsc}: {column} `{cell}` is not like 233.15K"))
+}
+
+#[test]
+fn every_temperature_range_is_two_kelvin_figures_and_its_row_names_the_datasheet() {
+    let mut with = 0;
+    for name in CATALOGS {
+        for row in records(&format!("jlcpcb/catalog/{name}.csv")) {
+            let lcsc = &row["lcsc"];
+            let cell = |column: &str| row.get(column).map_or("", String::as_str);
+            let (min, max) = (cell("temp_min"), cell("temp_max"));
+            // Both ends or neither: half a range says nothing about the other end.
+            assert_eq!(
+                min.is_empty(),
+                max.is_empty(),
+                "{name} {lcsc}: one end of the temperature range is empty"
+            );
+            if min.is_empty() {
+                continue;
+            }
+            with += 1;
+            let (lo, hi) = (
+                kelvin(name, lcsc, "temp_min", min),
+                kelvin(name, lcsc, "temp_max", max),
+            );
+            assert!(
+                lo < hi,
+                "{name} {lcsc}: temp_min {lo} K is not below temp_max {hi} K"
+            );
+            for k in [lo, hi] {
+                assert!(
+                    (200.0..=500.0).contains(&k),
+                    "{name} {lcsc}: {k} K is not a plausible temperature"
+                );
+            }
+            // The `source` has a `temp_min, temp_max:` entry that begins with the range in
+            // degrees Celsius that the cells say, and the `notes` name the datasheet (the crystals,
+            // whose range is the listing text of the records, say so instead).
+            let source = &row["source"];
+            let entry = source
+                .split(" ; ")
+                .find_map(|e| e.strip_prefix("temp_min, temp_max: "))
+                .unwrap_or_else(|| panic!("{name} {lcsc}: no `temp_min, temp_max:` in the source"));
+            let notes = &row["notes"];
+            if name == "crystal" {
+                assert!(entry.contains("JLCPCB listing"), "{name} {lcsc}: {entry}");
+                assert!(notes.contains("JLCPCB lists"), "{name} {lcsc}: {notes}");
+                continue;
+            }
+            let (lo_c, hi_c) = (lo - 273.15, hi - 273.15);
+            let stated = format!("{lo_c:+.0} C to {hi_c:+.0} C");
+            assert!(
+                entry.starts_with(&stated),
+                "{name} {lcsc}: the cells say {stated} and the source says {entry}"
+            );
+            assert!(
+                ["page", "Page", "sheet 1/1"]
+                    .iter()
+                    .any(|w| entry.contains(w)),
+                "{name} {lcsc}: the entry names no page or sheet: {entry}"
+            );
+            assert!(
+                notes.contains("datasheet") && notes.contains("temp_min and temp_max"),
+                "{name} {lcsc}: the notes do not name the datasheet: {notes}"
+            );
+        }
+    }
+    assert_eq!(with, ROWS_WITH_TEMPERATURE);
+}
+
 #[test]
 fn the_files_list_basic_parts_before_extended_ones() {
     // Nothing sorts the files. The rows were ordered Basic first, then by the unit price read
