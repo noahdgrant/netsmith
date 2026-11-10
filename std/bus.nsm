@@ -111,12 +111,21 @@ enum I2cRole {
 /// resistor to a rail's positive pin (ADR 0044). `frequency` is the clock of the bus, as for
 /// `Spi`. A bus may have several controllers and targets, so no `limit` is stated, and the
 /// address of a target is not judged.
+///
+/// `capacitance` is the capacitance of this part's own pin, each of `sda` and `scl`: the datasheet's
+/// `Ci` (the I2C-bus specification, UM10204 Rev. 7.0, Table 10, allows at most 10 pF per pin; a
+/// multiplexer or switch may exceed it, its datasheet says). It is `optional` (ADR 0074): a part
+/// whose datasheet states none leaves it out, and a board that adds up the pins of its bus
+/// (`I2cPullups.bus_capacitance`) then has no sum. Like the levels it is the part's own, so `~`
+/// between two interfaces does not equate it. It states what one pin adds and not the bus's: the
+/// capacitance of the whole line is `I2cPullups.bus_capacitance`.
 interface I2c {
     .role: I2cRole
     .sda: Pin
     .scl: Pin
     .levels: Levels
     .frequency: Frequency
+    .capacitance: Capacitance optional
 
     lines I2cRole::Controller {
         .sda bidirectional
@@ -250,6 +259,39 @@ module PullUp {
 /// it. There is one pair for the whole bus, wherever it sits; two pairs on one bus are in
 /// parallel and the board's concern.
 ///
+/// The rise time of the lines is a closed-form check (`docs/research/closed-form-checks.md`,
+/// check 5): `.rise_time` is `0.8473 * resistance * bus_capacitance`, the time an `RC` charge
+/// takes from 30 % to 70 % of the supply, `ln(7/3) = 0.8473`, between which the I2C-bus
+/// specification measures the rise time (UM10204 Rev. 7.0, section 7.1, which has the same
+/// `0.8473 * RC`). Its Table 11 has the limits: `tr <= 1000ns` (Standard-mode), `300ns`
+/// (Fast-mode), `120ns` (Fast-mode Plus), and `Cb <= 400pF` (550 pF in Fast-mode Plus). A board
+/// states the limit of the mode it runs, `.pullups.rise_time <= 300ns` and
+/// `.pullups.bus_capacitance <= 400pF`: the module builds none in, since the mode is the board's
+/// choice and a mode table in `std::bus` is the owner's to decide. A bound holds in the worst
+/// case, the highest resistance (its tolerance) and the highest capacitance; the supply does not
+/// enter, since both points are fractions of it.
+///
+/// `bus_capacitance` is the capacitance of one line, `sda` or `scl`, as the board states it: the
+/// pins of the parts (`I2c.capacitance` of each, from the datasheets) and the traces, connector
+/// and cable, which no part states and the board estimates. The board writes the sum, so a part
+/// that states no pin capacitance leaves the sum unstated and a bound on the rise time is listed
+/// as not evaluated, never passed:
+/// `.pullups.bus_capacitance &= .ctl.i2c.capacitance + .sensor.i2c.capacitance + (20pF..40pF)`
+/// (a range binds looser than `+`, so the traces' range is in parentheses). Both
+/// `bus_capacitance` and the pins' are `optional` (ADR 0074): a board that states no capacitance
+/// has no rise time, and a board that bounds the rise time with no capacitance is told the check
+/// was not made.
+///
+/// What it assumes: one pull-up resistor of `resistance` on the line charges it and nothing else
+/// (two pairs on a bus are in parallel, and the board states the parallel value; a current-source
+/// pull-up or a bus buffer is not an `RC`); the driver releases the line and no device holds it;
+/// the two points are 30 % and 70 % of the supply, as the specification measures, whatever the
+/// levels a part states. Optimistic when the capacitance is underestimated, which is usual:
+/// traces, connectors and cable are the large part, and a part's pin capacitance is a maximum
+/// that its datasheet gives under its own conditions. Not in it: the lower bound of the
+/// resistance from the sink current of the drivers (`(supply - VOL) / IOL`, UM10204 section 7.1),
+/// which needs a sink current that `I2c` does not state.
+///
 /// The module states what it draws from `supply`, so the net it is on has every current it
 /// needs (ADR 0026): a pull-up carries nothing while its line is released or its driver is off,
 /// and at most the supply voltage over its resistance while the line is held low (the lowest the
@@ -281,6 +323,9 @@ module I2cPullups {
     .overdrive ?= 0V
     .supply_top: Voltage
     .supply_top ?= .supply.voltage
+    .bus_capacitance: Capacitance optional
+    .rise_time: Time
+    .rise_time == 0.8473 * .resistance * .bus_capacitance
     .sda_pullup.current == (.sda_low * .supply_top - .overdrive) / .sda_pullup.resistance
     .scl_pullup.current == (.scl_low * .supply_top - .overdrive) / .scl_pullup.resistance
 }

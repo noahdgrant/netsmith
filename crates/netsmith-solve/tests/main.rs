@@ -8,6 +8,7 @@ mod bank;
 mod buck_ripple;
 mod bus_clock;
 mod bus_levels;
+mod bus_rise_time;
 mod cancel;
 mod catalog_files;
 mod conflict_core;

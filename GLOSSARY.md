@@ -537,6 +537,10 @@ _Avoid_: Simulation, transient analysis, estimate
 The peak-to-peak ripple of a buck stage's output voltage, `.output_ripple` of `BuckStage`: `dI / (8 * fsw * n * C) + dI * ESR / n` for the inductor's ripple current `dI`, the bank's count `n`, one capacitor's effective capacitance `C` and the board's `.output_esr` (an **Optional member**), a **Closed-form check**. A board bounds it (`.stage.output_ripple <= 20mV`); with no ESR stated it has no value and the bound is listed as not evaluated. Not the ripple current of the inductor (`.ripple`).
 _Avoid_: Voltage ripple, output noise, ripple voltage
 
+**Bus capacitance**:
+The capacitance of one line of an I2C bus, `sda` or `scl`, as the board states it: `.bus_capacitance` of `I2cPullups`, an **Optional member**. It is the pins of the parts (each part's `.i2c.capacitance`, its datasheet's `Ci`, which `~` does not equate between two parts) plus the traces, connector and cable, which no part states; the board writes the sum (`.pullups.bus_capacitance &= .a.i2c.capacitance + .b.i2c.capacitance + (20pF..40pF)`). With it the pull-up resistance gives `.rise_time`, `0.8473 * resistance * bus_capacitance`, a **Closed-form check** between 30 % and 70 % of the supply (NXP UM10204 Rev. 7.0, section 7.1), which a board bounds with the limit of its mode. A sum that reads a part with no capacitance has no value, and the bound is listed as not evaluated. Not the capacitance of one pin (`.i2c.capacitance`).
+_Avoid_: Line capacitance, load capacitance, Cb
+
 **Temperature shift**:
 How far the temperature of a design goes from the 25 C a datasheet states, in kelvin, as a range (`.z.temperature_shift &= -65K..100K` is -40 C to 125 C). The member `.temperature_shift: Temperature optional` of a `Zener` (ADR 0080, provisional): a design that states it has `.voltage_over_temperature`, the Zener's voltage at the hot and the cold corner, from the picked row's temperature coefficient; a design that does not has no such relation. Not an absolute temperature, and not the rise of a track or a part (`.max_temperature_rise`).
 _Avoid_: Ambient, temperature range, delta T
