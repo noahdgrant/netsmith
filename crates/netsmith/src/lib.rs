@@ -19,6 +19,7 @@ pub mod pin_swap;
 pub mod pins;
 pub mod project;
 pub mod providers;
+pub mod reference_table;
 pub mod refresh;
 pub mod resolve;
 mod stock;

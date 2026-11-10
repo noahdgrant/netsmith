@@ -1,0 +1,6 @@
+[project]
+name = "rp2350_minimal"
+top_level = ["src/main.nsm"]
+out = "out"
+fab = "fab"
+kicad = 9
