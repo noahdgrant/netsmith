@@ -20,6 +20,67 @@
 //! The file can only move things, never rewire, and an entry that cannot be honoured is a
 //! finding ([`HintFinding::unusable`]) and is ignored, so that a hint can make a drawing ugly
 //! and cannot make it wrong.
+//!
+//! **Where each hint is applied.** `rotate` and `mirror` each replace their own half of the
+//! automatic orientation ("automatic" is the engine's first choice, `orientations`): `rotate`
+//! alone keeps the automatic mirror. The engine's own searches skip a part that has one: a pair
+//! satellite is tried in that orientation only, a series satellite and a part of a spine are not
+//! turned again. A part that is turned **leaves its stack**: the parts of a stack stand one above
+//! the other by their pads, which a chosen turn would no longer be (a turned LED and its resistor
+//! are two pieces joined by a wire). `dx`, `dy` and `pin` carry the **block** after every block
+//! has its place in the rows and **before any wire is routed**; for a satellite or a part that
+//! stands alone the block is the unit of parts it stands in (a stack moves as one). A satellite's
+//! own entry is applied after its block's, as an offset from where its block puts it. The block
+//! keeps its **slot in the rows**: the rest of the sheet is laid out as if the block were where
+//! the engine put it, so a hinted block is a fixed piece of the arrangement and nothing else
+//! re-flows for it (what does shift is what the move changes in the drawing's own decisions, a
+//! net whose wire grew long being named, which takes room). `pin = [x, y]` puts the block's origin
+//! at `x, y` from the sheet's **reference part** where the engine put it, whatever the block's
+//! own place is; the frame starts at that place, not at where a moved reference part ends. A board
+//! drawn as one picture (16 parts or fewer) still has the reference part of the entry's own
+//! sheet, and a sheet cut into numbered boxes has one for each box. A note's `dx`, `dy` move its
+//! frame after the notes are placed, to a place free of everything else; the notes without an
+//! entry are placed first, as if there were no file.
+//!
+//! **What stays.** The engine decides some things by trying a sheet: which nets are drawn as names
+//! and which of its few `Tuning` choices is kept (the order in which the satellites of a pin are
+//! placed, for one). A drawing with the file is made with the choices of the drawing without it,
+//! so that a moved part does not change them for the rest of the sheet: the first drawing is the
+//! one there is without the file, the second is that drawing with the file's turns, moves and
+//! notes applied, and a net is named besides only when it touches a part the file moved or
+//! turned and its wire grew long. A file none of whose entries is honoured gives the first
+//! drawing, byte for byte.
+//!
+//! **A safety net, not the normal path.** `check`'s rules and the symbol overlaps must hold for
+//! any file. When a drawing with the file breaks a rule that the drawing without it does not break
+//! (for each kind of rule, more of it) or has two parts lie on each other, it is drawn again
+//! with the entries in the order of [`keys`] (the parts by path, then the notes), keeping each one
+//! that breaks none; the others are findings (`the drawing with it breaks a rule
+//! (wire-through-body); it is ignored`). It costs one drawing for each entry and only a drawing
+//! that breaks a rule pays it. A move that is refused leaves the entry's turn in force.
+//!
+//! **A part with several units** (ADR 0050): the entry moves the **primary** unit's box (the one
+//! with most pins) and the other units follow, each with its block, by the same steps. `rotate`
+//! and `mirror` turn the primary box alone: the other units stay as the library draws them,
+//! upright.
+//!
+//! **The findings the engine raises**, all [`HintFinding::unusable`], end `it is ignored`: its
+//! block (or the part, for a satellite) would lie on the part `<path>` at the place the file
+//! gives it, or once the other entries are applied; its block would stand more than [`REACH`]
+//! (127 mm) outside the drawing; the sheet has no reference part to pin it to; the note would lie
+//! on a part, a wire, a text or another note, or stand outside the drawing; the drawing with it
+//! breaks a rule.
+//!
+//! **Measured** (`crates/netsmith-view/tests/hinted.rs`): moving the block of one main part by
+//! four steps, on the three boards of several sheets, moves that block (five parts on average) and
+//! nothing else of its sheet in the sheet's own frame (65 of 65 other parts stay, the wires of the
+//! block are routed again). Seeded random files (offsets, pins, turns, mirrors, note offsets,
+//! stale entries) on every board the tests draw, with and without rails: 104 drawings, 646
+//! entries, 0 rules broken, each drawing the same twice and with the design listed the other way
+//! round. Known limits: a turn that is not the engine's own takes a part out of its stack, so the
+//! sheet may re-flow more than for a move; and the page puts each sheet's box at its place in the
+//! arrangement, so a block that was the leftmost thing of its sheet shifts the box's edge and the
+//! whole sheet moves by the same steps on the page.
 
 use std::collections::{BTreeMap, BTreeSet};
 

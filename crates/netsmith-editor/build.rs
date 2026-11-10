@@ -11,6 +11,21 @@
 //! its files embedded with `include_bytes!`, and `WEB_STATUS`, the reason there is no bundle when
 //! there is none. The editor prints that reason when it is started. `NETSMITH_SKIP_WEB=1` skips
 //! all of it. `scripts/web-bundle` makes the committed bundle and checks that it is current.
+//!
+//! **Why Node is part of the build (ADR 0019).** The page's source editor is CodeMirror 6, which
+//! has done well the work of undo that survives a file switch, selections, search, a gutter
+//! that scrolls with the text, squiggles and bracket matching. A small editor of our own (a
+//! `<textarea>` painted over by a `<pre>`) would have to do that work again, and the editor is
+//! the product. The grammar for `.nsm` is ours either way (`web/src/nsm.ts`). The cost is
+//! Node 20 or newer, found on `PATH` or in `~/.nvm/versions/node/*/bin` (`web/.nvmrc` says 22),
+//! for a change to `web/`; the committed bundle keeps every other build free of it. `web/dist`
+//! and `node_modules` are not committed. Packages are installed again when `node_modules` was
+//! not installed by this build, from this lockfile and under this Node major, or lacks `tsc` or
+//! `vite`. When a step fails, the reason (the command, the directory, the Node and npm versions,
+//! the start of `PATH`, the exit code and the last lines of its output) is printed as cargo
+//! warnings and compiled into the binary: `netsmith editor` prints it with the manual command,
+//! and the build runs again next time even if no file changed. Building needs the npm registry
+//! once; running never does.
 
 use std::{
     env, fs,

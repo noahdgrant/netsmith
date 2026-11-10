@@ -1,8 +1,43 @@
 //! The types of `GET /api/git`, `GET /api/compare` and `GET /api/git/file`: what the project
 //! can be compared with, and what changed in the circuit since (ADR 0059).
 //!
-//! Every list is sorted and keyed by a path in the design, so the page can mark a drawing
-//! with it. A field that says nothing is left out of the JSON, not `null`.
+//! Every list is sorted (boards by name; parts by path; nets by name; rails by net; problems by
+//! severity, board and message) and keyed by a path or a name the page already knows, so a
+//! drawing can be marked with it: `data-ref` by designator (`designatorHead`, `designatorBase`),
+//! and the PCB by `data-path`. A field that says nothing is left out of the JSON, not `null`.
+//!
+//! **Why the circuit and not the lines.** In a code-first tool the design lives in git, so the
+//! question about a branch is "what did it change in the circuit?" and not "which lines?". The
+//! comparison reduces the project at a git ref (the base) and the files on disk (the head), or
+//! a second ref, to parts, nets, rails, ports, systems, the PCB, the bill of materials and
+//! problems, and says what differs. It is the one view that is about two readings of the
+//! project; every other endpoint describes the last one. The identity rules, the sentence and
+//! the defaults the owner has not reviewed are in `crates/netsmith/src/editor/diff.rs`; how a
+//! ref is read, kept and limited is in `git.rs` and `compare.rs` beside it.
+//!
+//! **The requests.**
+//!
+//! | Request | Answer |
+//! |---|---|
+//! | `GET /api/git` | [`GitInfo`]: `available` (and `reason` when not: not in a work tree, git not installed), `root`, `projectDir`, `branch`, `head`, `dirty`, `projectDirty`, `refs` (HEAD, the upstream, the default branch, up to 50 local branches by recent commit, up to 30 tags newest first, each once, with its commit) and the last 30 `commits`. Needs no analysis. |
+//! | `GET /api/compare?ref=<rev>&board=<name>` | [`Compare`]: `ref` as asked, `base` (the commit), `head` (`commit`, `dirty`, `errors`), `error` and `baseProblems` when the ref cannot be compared, `cached`, `elapsedMs`, a one-line `summary`, `changed`, `source`, `boards` (by name), `systems` and the `problems` that name no board. `404` for a ref that is not a commit, `400` for one that is not a name, `422` with `git_unavailable` for a project not in a work tree. `board` limits `boards` to one (`404` if neither side has it), and a board asked for alone has no systems. It waits for the first analysis, as the views do, and is told `503` pending to a request that asks (`X-Netsmith-Pending`). |
+//! | `GET /api/compare?ref=A&against=B` | The same, with the commit `A` as the base and `B` as the head instead of the files on disk. Both names are resolved before anything is read, so a name that is no commit is a `404` (a hostile one a `400`) at once. `against` is in the answer, `head.commit` is `B`, `source` is `git diff --numstat A B` with no untracked files, and the `N errors on disk:` prefix of the sentence is not written. A side that does not analyse ends the answer at once, as a ref does. |
+//! | `GET /api/git/file?ref=<rev>&path=<path>` | [`FileContent`] with `readonly` set and the commit's hash as its stamp; a path inside the project that ends `.nsm`, `.toml` or `.csv`, else `403`. With `ref=:worktree` the file is read from disk (a regular file, never a link), with the stamp `worktree`; `:worktree` is no name a ref can have (git refuses a colon). The editor does not list a board's layout file among its files, so `GET /api/file` answers `404` for it, and a comparison asks for the files it does not have through this route. |
+//!
+//! `source` has the numbers of `git diff --stat` for the project's folder between the commit and
+//! the files on disk (`--numstat --no-renames`, untracked files counted as all added), per file
+//! and in all.
+//!
+//! **Progress.** The comparison is one request answered when it is done, as `fab` is, and the
+//! socket carries `progress` with `task: "compare"` and `board` the ref as asked, with `stage`
+//! (`extract`, then the analysis's `check`, `solve`, `design`, `draw`, `modules`, then `diff`)
+//! and `done` of `total` of that stage. For two refs the stages of each ref's reading come in
+//! turn, then `diff`. A start and a poll was rejected: the long jobs of the editor (`fab`,
+//! `route`) are one request with progress on the socket, and a compare is one more.
+//!
+//! **Limits.** Panels are not compared, and the schematic of the base is not drawn (the page
+//! marks the head's drawing). The scratch folder of a server killed in the middle of a compare
+//! is left until the next editor starts.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;

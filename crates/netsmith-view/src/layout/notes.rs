@@ -26,6 +26,75 @@
 //! boxes, the texts, the wires and the thick lines of buses, power symbols, flags, dots, X marks
 //! and the notes already placed, with a clearance, so the drawing's wires are never moved for a
 //! note and a note never lies on one. A sheet with no notes is left exactly as it was.
+//!
+//! **Why (ADR 0060).** An engineer's hand-drawn schematic carries its reasons: a framed box with
+//! the calculation that gave a resistor its value, a line that says where a circuit was taken
+//! from, a warning that two connectors must be 22 mm apart. netsmith's source has the same
+//! writing (the `///` above a part, a module or an interface, and the `==` lines such as
+//! `.led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance`) and the schematic
+//! dropped it. This is a drawing convention and not a change of the language: the checker's model
+//! already kept every doc comment, and each relation statement keeps its own text.
+//!
+//! **What becomes a note** (`netsmith-design`, `notes_of`, in the source's order, from
+//! `Instance::docs`, `Instance::def_docs` and `Relation::written`): the doc comments of the board
+//! and of each module that has a part, of each part declaration (a note about that part) and of
+//! each interface declaration with parts on its nets (about those parts, or the sheet's when more
+//! than three); and each `==` relation of a board or a module body, as written, about the parts
+//! whose fields it names. A relation of rails only (`.cards.voltage == .supply.voltage * 0.9`) is
+//! about the parts on the nets of the pins of each interface it names, as the doc comment of an
+//! interface is: none when there are more than three, and with the return net left out (ground has
+//! every part, so counting it would make every such relation the sheet's). **Not drawn:** an
+//! ordinary `//` comment (the lexer drops it before the model); the docs of the standard library
+//! and the relations inside it or inside any part's own definition (the part's model, not the
+//! design); a relation of a physical file (it says where parts go on the board); the `//!` of a
+//! file; the docs of an interface or a module that nothing drawn is in (a manufacturing process);
+//! a relation `>=` or `<=`.
+//!
+//! **Where, in numbers.** A note of a part stands beside it, a side no pin leaves by before one a
+//! pin leaves by, nearest first and sliding along the side. A note with no free place within
+//! [`NEAR`] (40 mm) of its part, or [`AROUND`] (50 mm) of the middle of its parts, goes to a
+//! margin, a column to its right (level with its part as far as the notes above allow) or a strip
+//! under the drawing, whichever leaves the sheet nearer its aim of 1.6 wide for each high. A note
+//! is a rounded frame, 25 to about 90 mm wide, text wrapped at word boundaries by the page's
+//! letter widths. The tie-breaks are fixed (distance, then position), so a drawing is the same
+//! every time.
+//!
+//! **What `check` and the metrics do.** A note is no conductor: it is left out of the netlist the
+//! check rebuilds. Two rules are new: `note-overlap` (a note's frame lies on a symbol, text, wire,
+//! thick line of a bus, power symbol, flag, dot, X or another note) and `note-text-overflow` (a
+//! line of text, measured as it is drawn, escapes its frame). The metrics count `notes`,
+//! `note_area` and `note_overlaps` (target 0); their columns are printed only for a board that
+//! has a note.
+//!
+//! **In the SVG.** `<g class="note note-doc|note-relation" data-note="<path>" data-n="<index>"
+//! data-ref="<reference of the first part on this sheet>" data-anchors="<reference> ...">` and
+//! `data-at="<file>:<line>"`, a `note-frame` rect, a `note-heading` text and one selectable
+//! `note-text` text with a tspan for each line; a default look in the embedded style, written
+//! only into a drawing that has a note. `data-anchors` has the references of all the parts of the
+//! design's note (`Note::anchors`), each once, also those on another sheet, empty for the note of a
+//! sheet. The page lights a note with any of its parts and the parts of a note that has the focus
+//! from this list. Nets are not marked: a note lighting the nets it is about would be a new thing
+//! for the owner to decide (which net of a rail, and what a note of ground lights).
+//!
+//! **Rejected.** Reconstructing a relation from the solver's expression tree (constants and paths
+//! lose the way the author wrote them); reading `//` comments for "TODO" or "NOTE:" lines (not
+//! source information the language states); a leader line from a note to its part (the owner
+//! wants none: nearness says it); notes as obstacles to the router before routing (it moves wires,
+//! and every existing drawing would change; room is found in what is drawn, and the margin takes
+//! the rest).
+//!
+//! **Cost.** A sheet with notes is bigger by the margin or the strip. A note beside a part may
+//! stand where a later change of the drawing would want room.
+//!
+//! **Left open, for the owner (the status of ADR 0060 was proposed: the owner decided on
+//! 2026-11-05 that `///` doc comments and `==` relations may be drawn as notes, and "the rules
+//! for what is drawn, where and how many are for the owner to review").** Whether a relation of
+//! a library module (a `BuckStage` feedback relation) should be drawn. Whether `>=` and `<=`
+//! relations should (they state a claim to verify, not what the circuit is). Whether a module's
+//! doc comment should say which module it is when a small board draws modules as one sheet: the
+//! proposal is a heading with the module's path on the note of a module that is not on a sheet of
+//! its own, and it needs the drawing to know whether it holds one module or several, which no
+//! layout entry point passes down today, so it is a change of the layout's interface.
 
 use std::collections::HashMap;
 

@@ -19,6 +19,118 @@
 //! drawn. A pin whose kind the part's pin table gives has an arrowhead on its entry. When a bus
 //! cannot be drawn its nets are drawn as they were before (a flag or a name each, or a wire).
 //! ADR 0049 and ADR 0067.
+//!
+//! **Words.** This is the **Bus drawing** (GLOSSARY): how the schematic draws the members of
+//! interfaces. A **Bus** in GLOSSARY is the interfaces of one definition that share a net, the
+//! thing ADR 0064 counts roles on. The drawing follows the interface a design states, not the
+//! roles; the two do not depend on each other. All of what follows is a drawing convention of
+//! the schematic view: the language, the checker, the design stage and `Design` are not touched.
+//!
+//! **A flag says where the bus goes.** The flag of a bus that leaves a sheet has a third line,
+//! `→ modem.uart: {rx, tx, cts, rts}`: the path of the instance at the other end, and what that
+//! instance calls the members, in the order this sheet lists them (the modem's `tx` is the
+//! processor's `rx`, so the lists differ). The instance is found as for a two-ended bus: another
+//! instance, of another module, with most of the same nets; for a flag also one that belongs to
+//! no part on this sheet. `Bus::other_path` has the path and the SVG puts it as `data-other` on
+//! the `bus-flag`. A net has one name in the model, so the two names an interface has on two
+//! sheets (`uart0` and `uart`, `tx` and `rx`) are two instances and not one net named two ways. Two
+//! nets that a part joins (a level translator, an ESD array) are two nets and two buses: a bus
+//! that follows a signal through such a part is not built. Measured on `UartSheets`: the sheets
+//! together 231x141 mm before and 231x157 mm after (the trunk to the flag is longer, so the third
+//! line has room along it), the length ratio 0.79 to 0.84, bends, crossings and every rule of
+//! `check` the same. Rejected: the other sheet's name (the engine draws one sheet and does not
+//! know what the others are called), and a list only when the names differ (a bus whose names
+//! are the same on both sides still needs to say which sheet it goes to).
+//!
+//! **The direction of a member** is the pin kind, because the interface does not say who drives
+//! a member (`std/bus.nsm` says so itself, and ADR 0016 puts it in the pin kind of the part).
+//! Each entry whose pin is an `output` has an arrowhead pointing away from the part, an `input`
+//! one pointing at it, a `bidirectional` pin two (a third and two thirds along the entry); a pin
+//! of any other kind, and a part with no pin table, has none. The arrowheads are triangles 1.1 mm
+//! long and 1.0 mm wide on the entry's own wire (`BusEntry::arrows`, `BusEntry::flow` with
+//! `MemberFlow::Gives`, `Takes`, `Both`), filled with the wire's colour; the SVG has
+//! `<polygon class="bus-arrow bus-arrow-out|in|inout" data-net="…">` and writes the look into
+//! the style only for a drawing that has one. No arrow is on the thick line: the members of one
+//! bus go both ways (a UART's `tx` and `rx`), and the arrows at the entries say what a part does
+//! with each. Rejected: reading the flow of the KiCad symbol's pin (the library's guess, not what
+//! the language says); arrows in the member list (`tx→ rx←`: the second end's arrows would need a
+//! second list); an arrow on the line for a bus whose members all go one way (rare, and the
+//! entries say it).
+//!
+//! **A nested interface is one bus with dotted names.** An interface instance that sits inside
+//! another listed instance (`mcu.link.data`, an `Spi`, inside `mcu.link`, a `Link` that also has
+//! `irq`) gives its members to the outer one under its path from it: `data.sclk`, `data.mosi`,
+//! `irq`, `data.miso`. The outer interface is one bus with the count 4 and the list in the order
+//! of the first end's pins; drawn as it was, `data` was a bus of three and `irq` a net with a
+//! flag of its own, and the reader could not tell that they were one `Link`. A nested `Rail` is
+//! power and is not a member. The inner instance stays a candidate of its own and is used only for
+//! nets the outer one does not take (a tie goes to the outer: more members, then the shallower
+//! path); the nets are counted for the threshold as one set. A sheet keeps the instances around
+//! one that has a member on it, even with none of their own, so the nest has the same name on
+//! every sheet. The design stage lists an instance only when it has members of its own on nets,
+//! so an interface that only nests others (`Bridge` with a `.a: Uart` and a `.b: Spi` and no pin
+//! of its own) has no instance and its parts are two buses named by their own leaf; listing such a
+//! container is a change to `netsmith-design` that is not made, and the drawing is ready for it.
+//! Rejected: a thick line for the outer interface with thinner lines branching off for the inner
+//! (the engine has one weight of thick line, and the reader gains the same from the dotted
+//! names); one bus for each level; the inner name in braces (`{irq, data{sclk, mosi}}`: the
+//! members are listed in the order of the pins, so the groups would not be contiguous).
+//!
+//! **A bus shared by several parts.** A net is a candidate when every one of its pins on the
+//! sheet is a pin of a main part, with one pin on each of two or more parts (or one part when the
+//! net goes on to another sheet), none hidden. Per interface instance, the candidates with the
+//! same set of parts, the same flag and the same side of each part are one bus when there are
+//! [`MIN_MEMBERS`] (three) members between two places, and [`MIN_MEMBERS_SHARED`] (two) between
+//! three or more: a shared I2C is `sda` and `scl` on three parts. At most [`MAX_ENDS`] (eight)
+//! parts are at the ends of one bus. A member whose pin is on another side of a part than the
+//! others' stays out, and so does a net with a part beside a pin (a pull-up, a series resistor).
+//! The drawing is one thick line that is a tree: each part has its entries and spine as before;
+//! the first end is the part in the instance's own module, the others follow in the order of their
+//! paths; the trunk joins the spines of the first two ends, and each further spine runs to the
+//! nearest node of the line already drawn (`Grid::route` with the nodes of the line as its targets)
+//! and ends on it, where a branch meets a bus without a dot. When the members go on to another
+//! sheet the flag leaves the first spine straight out. The count, the name and the list are
+//! written once, along the longest run of the line with room. The check treats the thick line as
+//! before: no conductor, each entry joins the net of its name, and the rules `bus-member` and
+//! the wire rules hold for any number of ends. Each part of the bus declares the same members, so
+//! the instances that could name it are all equal: the first by path names it (`mcu.spi` before
+//! `sensor1.spi`), which is deterministic and not the controller; naming it by the part whose pins
+//! are outputs on the clock would be a guess from the pin kinds.
+//!
+//! Measured on the test boards of `crates/netsmith-view/tests/common/bus.rs`, before (each shared
+//! net a name at every pin, no line) and after:
+//!
+//! | board | buses | bends | crossings | wire length / half perimeters | size mm |
+//! |---|---|---|---|---|---|
+//! | `SpiShared` (one processor, three sensors, three lines) | 0 → 1 (3 members, 4 ends) | 14 → 19 | 2 → 6 | 0.55 → 0.91 | 118x121 → 160x65 |
+//! | `I2cShared` (two sensors, two lines) | 0 → 1 (2 members, 3 ends) | 10 → 15 | 2 → 5 | 0.84 → 0.91 | 118x60 → 118x62 |
+//! | `SpiSharedSheets` (two sheets) | 0 → 2 (3 members each, 3 and 2 ends, one flag each) | 18 → 24 | 2 → 6 | 0.43 → 0.63 | 154x295 → 213x268 |
+//!
+//! The bends and crossings go up. The cause is the supply: a pin of the power rail at the bottom
+//! of a part is wired to the rail at the top of the sheet, and that wire crosses the thick line,
+//! which runs across the sheet between the spines. Named stubs crossed nothing. A hand-drawn
+//! schematic crosses the same wires, and the owner chose the bus for the two-ended case knowing the
+//! same cost (ADR 0049); but it is a cost. No rule of `check` is broken on any board.
+//!
+//! **Left open, for the owner (the status of ADR 0067 was proposed: "the four gaps that ADR 0049
+//! left open in the drawing are closed; the choices below (the arrowheads, dotted names for a
+//! nested interface, the thresholds of a shared bus, the text at a flag) are for the owner to
+//! review; nothing in the language changes").**
+//! - *A pull-up on a shared bus.* An I2C bus always has pull-ups (ADR 0044), and a net with a
+//!   pull-up beside a pin is not a member, so an I2C bus whose pull-ups are on the same sheet as
+//!   its devices is still drawn as nets. When the pull-ups are in a module of their own, drawn by
+//!   module (`I2cPullups`), the sheet with the devices has the nets continue (a flag) and is drawn
+//!   as a bus. A pull-up as a branch off the thick line (a resistor whose signal pin ends on the
+//!   line like an entry) is the way to close it; it needs the engine to place a small part beside
+//!   a line and not beside a pin, which it does not do.
+//! - *Pure containers* of interfaces (above).
+//! - *The thresholds* (three members between two places, two among three, eight parts) and the
+//!   rule that a part beside a pin keeps a net out.
+//! - *Which instance names a shared bus* (above).
+//! - *A bus through a part*: a level translator or an ESD array that joins two nets.
+//! - *The direction as a role*, if ADR 0064 is accepted.
+//! - *Whether the arrowheads should be a setting* (a very busy bus of bidirectional pins, a
+//!   processor's GPIO, has two on each entry).
 
 use super::*;
 

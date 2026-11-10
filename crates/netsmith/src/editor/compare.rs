@@ -2,6 +2,43 @@
 //! scratch folder, analysed by a `Workspace` of their own with the code the live project is,
 //! reduced to a [`Digest`], and compared with the digest of the files on disk. What was read
 //! of a ref is kept by commit hash.
+//!
+//! **What is analysed.** The scratch folder gets a `Workspace` of its own, which runs the analysis
+//! the live project goes through (`Workspace::analyze`: check, solve, design, draw, modules) with
+//! the same catalogs, so a part is sourced as it is for the live board. The result is reduced to
+//! a digest and the workspace and the folder are dropped. The head is the live workspace as it is
+//! on disk now, uncommitted changes included: `compare?ref=HEAD` is the diff of the work tree.
+//! With `against`, the head is a second commit, read as the first is and never the files on disk.
+//! Keeping the whole `Snapshot` of a ref was rejected: it holds the drawings and the models,
+//! megabytes per board, for what the digest holds in kilobytes.
+//!
+//! **What is kept.** A ref's reading is kept in memory by commit hash (8 refs, the oldest out),
+//! so a second compare of a ref, by whatever name, runs only the `diff` stage: 35 ms against 1.1 s
+//! for the small example, and about the seconds an analysis takes for a big board. A ref that
+//! failed to read is kept too (it will fail the same way). One ref is read at a time, so two
+//! requests for it analyse it once; compares wait for each other and a fourth waiting one is
+//! refused with `429`. The head is read each time, because the files move. A PCB's digest is
+//! made while the compare reads, never under the live state's lock, and the ref's digest (with
+//! its PCBs) is cached by hash as the rest is.
+//!
+//! **A ref that does not analyse** is not a failure of the request: the answer is `200`, `error`
+//! is a sentence, `baseProblems` are the errors the compiler gave at the ref, and `boards` is
+//! empty. So is a ref where the project's folder or `netsmith.toml` did not exist yet, or lists
+//! a top-level file that is not there: a comparison with half the project missing would show
+//! boards that are not new, so any error at the ref is the whole answer. Only a fault of this
+//! machine (git or `tar` failing, no scratch folder) is a `500`. A panic in the analysis of a
+//! ref does not stop the server: that analysis ends with an error problem that names the panic
+//! and asks for a report.
+//!
+//! **Cancelling.** A compare is cancelled between boards and between the two refs (`job::checkpoint`,
+//! ADR 0062); a cancel between the two readings keeps the first, and each reading's scratch
+//! folder goes with it.
+//!
+//! **Limits.** The head is the files on disk or one ref, never more. Layout findings of the
+//! schematic are left out (a layout note is about how the circuit is drawn, not what it is). A
+//! project's folder that holds large trees under other names than those left out is archived
+//! with them, up to the 256 MB. The `at` lines of the base side are in the ref's file as it was
+//! at the commit, which `GET /api/git/file` reads; they are not shifted to where the line is now.
 
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},

@@ -15,6 +15,76 @@
 //! A checkpoint outside any scope costs one thread-local read; inside one, one more relaxed
 //! atomic load. The results of a call that is not cancelled are the same bytes as without the
 //! checkpoints: they only read.
+//!
+//! **Why the call is stopped by unwinding and not by a `Result`.** The long calls are `check`,
+//! `solve`, the design stage and the layout, each a tree of hundreds of functions that return
+//! values, not results. A `Result` through them would change every signature in five crates
+//! and every test, to carry one case that stops the call and drops everything it made. The
+//! unwind does exactly that, and drops it correctly because the crates keep no state outside the
+//! call: no cache, no lock, no thread, no global (the only interior mutability is a `RefCell` or
+//! a `Cell` local to one function's work). It needs `panic = "unwind"`, the default; the release
+//! profile does not change it. The editor's `analysis::contained`, which turns a panic of the
+//! analysis into a problem, passes a cancellation on. The token is a thread-local and not a
+//! `&Cancel` parameter, for the same reason: `solve(board, catalogs)` is called from `fab`,
+//! `build`, the editor, the examples and a hundred tests, and none of them has a token to pass.
+//! The thread-local is set by one scope at the top of a job and nothing else reads it.
+//!
+//! **Where the checkpoints are, and what they cost.** One for each unit of work of about a
+//! millisecond or more: each trial of the solver's search, each sweep of propagation and each
+//! relation or balance it visits, each part and net of the design stage and of the pin checks,
+//! each instance the checker makes, each sheet, pass and block of the layout and each of its
+//! rule checks, each move of the placer and each test of the router for its time. The ones that
+//! matter are in the search; the others are there so that no stage is a place a cancel waits at.
+//! Measured in a debug build on generated boards of the `big` fixture's shape
+//! (`scripts/editor-verify-js/fixtures/big.mjs` with more rails; a throwaway timer):
+//!
+//! | Stage | 8 rails (89 parts) | 24 rails | 40 rails |
+//! |---|---|---|---|
+//! | check (file and modules) | 14 ms | 39 ms | 71 ms |
+//! | solve | 2.6 s | 19.0 s | 51.8 s |
+//! | design stage (with its export) | 5 ms | 23 ms | 68 ms |
+//! | draw | 0.31 s | 0.44 s | 0.59 s |
+//!
+//! The solve is more than 99 % of the time that is not drawing, and inside it picking parts is
+//! all of it: the 24-rail board has one group of 120 parts that share relations, and the search
+//! over that group takes 18.3 s of the 19.0 (the coupling and the grouping 0.9 s, propagation,
+//! verification and the level checks together under 0.1 s). Each trial of the search copies the
+//! model and propagates, so the cost grows with the square of the board. A board with generic
+//! parts adds the alternatives `recheck_alternatives` solves again, each a whole solve. A call
+//! whose token is not cancelled gives the same bytes (the corpus drawings, the metrics and the
+//! solver's picks are compared byte for byte in the `cancel.rs` tests of the crates).
+//!
+//! **One token for each job, and a job never stops another.** A scope replaces the token of the
+//! scope around it. The analysis of the live project runs under a token of its own, which the
+//! backend's `cancel_analysis` sets; it is not the token of the request that happened to
+//! trigger it. A compare, a build, a fab and an order each run under the token of their
+//! request, and the analysis a compare makes of a ref runs under the compare's.
+//!
+//! **Progress.** The solver counts what it can count as it goes, each count growing with a known
+//! total: **parts prepared** (read from their catalogs, the first seconds of a big board),
+//! **fields scanned** (finding which parts share relations, which takes seconds on a big board
+//! and is done twice) and then **parts chosen**, of the parts to choose in the board (`41 of 118
+//! parts chosen`). Measured on the 40-rail board in a debug build: the first line at 0 s, 0 of
+//! 441 parts prepared; the search begins at 6 s and then counts about ten parts a second, slower
+//! as the model grows. The search backs up, so the count is the most parts chosen at once, which
+//! only grows: it stalls while the search backs up and does not go back. The groups of parts that
+//! share relations are searched one after the other and the count runs over all of them. The
+//! re-solves for generic parts (ADR 0047), made when the bill of materials or `fab` shows an
+//! unresolved part and not when the board is analysed, report **alternative parts re-solved**
+//! with no total, because the number of alternatives is not known before they are made; the
+//! solve those make of the board does not report its own count, so the count of the board's
+//! solve is not told again from zero. The drawing counts **sheets drawn**. A line is sent at most
+//! once in 100 ms, except the first and the last of a step. No percentage is made up from them,
+//! and none is shown.
+//!
+//! **Limits.** A call is stopped at its next checkpoint, so the latency is the longest stretch
+//! between two: a trial of the search, and for a solver that is slower per trial than the board
+//! measured here, longer. Nothing inside a single `try_candidate`, a single sheet's wire routing
+//! or a single placer move is interruptible, and a cancel that arrives while the analysis is
+//! writing its result (after its last checkpoint) is too late and is not applied: the analysis is
+//! published whole, and `cancelled` in the answer of the route was true for a job that ended
+//! anyway. The drawing of a sheet of a real board can be long between two checkpoints (the
+//! layout's inner routing has none); its latency is not measured on a board of that kind.
 
 use std::{
     cell::{Cell, RefCell},

@@ -2,6 +2,42 @@
 //! writes. Each command is told not to take the index's lock (`GIT_OPTIONAL_LOCKS=0`), so a
 //! `git status` here never touches the repository, and a ref is read out with `git archive`
 //! into a scratch folder, never checked out.
+//!
+//! **How a ref is read.** Through the `git` command line, as `std::process::Command`, and never
+//! through a library: libgit2 or gitoxide would be a large dependency for six commands, and none
+//! of them gives what the analysis needs, a folder of files. A ref is resolved to a commit
+//! (`git rev-parse --verify <rev>^{commit}`; a name that starts with `-` or has a control
+//! character is a `400`, a name that is no commit a `404`). Its files are written with
+//! `git archive --format=tar <hash> -- <project folder> | tar -x` into a scratch folder in the
+//! system's temporary directory (`netsmith-compare-<pid>-<n>-<time>`, mode 0700, removed when
+//! the comparison ends, however it ends), so the work tree, the index and the repository's refs
+//! are never touched. Every git command runs with `GIT_OPTIONAL_LOCKS=0`, so not even
+//! `git status` rewrites the index. The project may be a folder of the repository
+//! (`hardware/board`): only that folder is archived, and the paths in the answer are the
+//! project's. A project with no `netsmith.toml` (`netsmith editor file.nsm`) compares that file
+//! and the files beside it that start with its name (its physical file, its layout). `git
+//! archive` honours `export-ignore` in `.gitattributes`, so a project that excludes its sources
+//! from archives is read without them: that is the repository's choice and the cost of not
+//! using a checkout.
+//!
+//! **A ref is not trusted: its files are analysed, so what they can reach is limited.** After
+//! `tar -x` the scratch folder is walked without following links, and every symbolic link,
+//! every file that is not a regular file and every file over 8 MB is removed. The answer for a
+//! ref that then does not read says what was left out, so a link is never read and a link to a
+//! device cannot be opened. A ref whose project files add up to more than 256 MB (their sizes
+//! are read from the tree, before anything is written) is refused. Only the project's folder is
+//! archived, and a project at the top of the repository leaves out `out/`, `target/` and
+//! `node_modules/` at any depth, the folders the tools and other programs write. A server that
+//! is killed in the middle of a compare (`kill -9`; Ctrl-C ends the process without
+//! destructors too) leaves its scratch folder: when the editor starts, [`sweep_scratch`]
+//! removes every `netsmith-compare-<pid>-...` folder whose process no longer runs (Linux: no
+//! `/proc/<pid>`; where processes cannot be listed, a folder over a day old), and never the
+//! folder of a live process. No signal handler is installed, so there is no dependency for one.
+//! Untracked files that git does not ignore are counted line by line through a bounded read
+//! (500 files, 32 MB), never through a link.
+//!
+//! **Rejected:** `git worktree add` or a checkout in a temporary folder, which write to `.git`
+//! (`worktrees/`, the index, hooks) and may run filters and hooks.
 
 use std::{
     io::Read,

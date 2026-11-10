@@ -3,6 +3,41 @@
 //! current, and `NETSMITH_WRITE_API_TS=1 cargo test -p netsmith-editor` rewrites it).
 //!
 //! Lines and columns are 1-based, a column counts characters.
+//!
+//! **Written once, in Rust.** `ts-rs` generates `web/src/api.ts` from these plain serde types
+//! (`ts-rs` and not `specta`: it is a derive on the types as they are, with no registry to keep
+//! in step), so the page does not hand-copy a schema. Every change since the first is additive:
+//! an optional field is left out of the JSON when it has nothing to say, so a page written
+//! before it reads the rest as it did.
+//!
+//! **A diagnostic is a value, not text.** The checker and the solver report each mistake with
+//! a file, a span and a message. A [`Problem`] carries those, the text the command line prints,
+//! and the stage that made it, so the page puts a squiggle under the span and lists the real
+//! message, and reads no stage, board or instance out of a sentence. A problem in a module is
+//! reported at the module's file, wherever the importing board is. What the build does not stop
+//! for is a warning (a part not chosen: the design has a hole) or a note (what the solver left
+//! alone, mostly expected); the dock lists errors, then warnings, and the notes only once their
+//! toggle is on.
+//!
+//! **Source and elements are tied by declaration spans.** Every instance in the checked model
+//! records the member declaration that made it (`.r1: Resistor`, with its file and span), and
+//! the design stage numbers the parts from the instances, so a part of a built board knows
+//! the instance it came from. The page gets for each part the line of its declaration and of
+//! the declarations that contain it (`.stage: LdoStage` for the regulator in the stage): a click
+//! on a part opens the file at the innermost one, and the cursor on a line lights every part
+//! whose declarations include it. Nets are tied to their parts and not to a line: only the board
+//! names them (ADR 0005), and the statement that names a net may be one of several.
+//!
+//! **A running analysis is told to the page, not only its result.** `analysing` says when one
+//! begins, and `progress` carries the stage and the counts of what the stage works through (the
+//! top-level files for `check`, the boards and systems for `solve` and design, the modules), so
+//! a page says "solving 3 of 7" and never a percentage of the whole, which is not known before
+//! the checker has found the boards. `rebuilt` ends it and has `elapsedMs`. The page's clock
+//! runs from `analysing.since`, the server's own start, so an edit made outside the editor shows
+//! it too. A page that sends the pending header can show the tree and the source while it
+//! waits, and loads the views on `rebuilt`; it asks again only as a safety (every 30 s with the
+//! socket open, 1, 2, 4 and 5 s without it, since each is a failed request in the browser's
+//! console).
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
