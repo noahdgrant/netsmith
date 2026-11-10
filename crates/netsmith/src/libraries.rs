@@ -52,9 +52,10 @@ pub enum Wanted {
 }
 
 /// The message of a run that stops because a part names a KiCad id that netsmith cannot answer
-/// and no installed library has: the part, the id, the `kicad.toml` line, where it looked (only
-/// when `looked` says it did) and the three ways out. `kind` and `package` are the part's;
-/// `origin` is the row's `file line N` ([`Mapped::origin`]).
+/// (it is asked only after the generators and `std/libs/` have not) and no installed library has
+/// it: the part, the id, the `kicad.toml` line, where it looked (only when `looked` says it did)
+/// and the three ways out. `kind` and `package` are the part's; `origin` is the row's
+/// `file line N` ([`Mapped::origin`]).
 pub fn needs_kicad(
     wanted: Wanted,
     refdes: &str,
@@ -79,8 +80,8 @@ pub fn needs_kicad(
         None => format!("part `{kind}`"),
     };
     format!(
-        "{refdes}: {part} needs KiCad's {noun} `{id}` ({origin}), which netsmith does not make \
-         and no installed KiCad library has.\n{looked}\n\
+        "{refdes}: {part} needs KiCad's {noun} `{id}` ({origin}), and no installed KiCad \
+         library has it.\n{looked}\n\
          Three ways out: install KiCad 9, so that netsmith reads its libraries; supply the file \
          through a `[[library]]` of kicad.toml; or {third}."
     )
