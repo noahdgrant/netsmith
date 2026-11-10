@@ -49,7 +49,7 @@ What a board is exposed to, the member `.environment` of a board: an interface s
 _Avoid_: Conditions, operating conditions, grade (a grade is a qualification and a margin, which are not built), mission profile
 
 **Temperature range**:
-The lowest and the highest temperature a part works at: its built-in `.temp_min` and `.temp_max`, which its catalog row gives in the fixed columns `temp_min` and `temp_max` when the design states none, each one temperature as the datasheet prints it. A row that states none is offered and named, never passed (ADR 0099, provisional). It is not the part's rating at 25 C (`.max_power`), and not the board's `.environment.temperature`, which the part's range must cover.
+The lowest and the highest temperature a part works at: its built-in `.temp_min` and `.temp_max`, which its catalog row gives in the fixed columns `temp_min` and `temp_max` when the design states none, each one temperature as the datasheet prints it. A row that states none is offered and named, never passed (ADR 0099, provisional). A figure that is a junction range (a diode's `TJ`) is accepted as the part's range and the part is judged by it; the part's own heating is not computed, which is the limit of the check. It is not the part's rating at 25 C (`.max_power`), and not the board's `.environment.temperature`, which the part's range must cover.
 _Avoid_: Operating range, thermal limits, rating (for the range)
 
 **Via in pad**:

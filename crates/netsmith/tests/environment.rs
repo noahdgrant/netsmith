@@ -309,6 +309,56 @@ fn a_cell_may_be_written_in_degc_or_in_kelvin_and_is_the_same_temperature() {
     );
 }
 
+/// A Schottky diode across a 12 V rail, in an environment `low..high`. The standard SS34 row is
+/// the one rated 3 A: its datasheet gives a junction range, -55 to +125 degC (`TJ`).
+fn diode_board(low: &str, high: &str) -> String {
+    format!(
+        "\
+import std::env::Environment
+import std::parts::diode::Schottky
+import std::sources::Rail
+
+board Clamp {{
+    .environment: Environment {{ .temperature &= {low}..{high} }}
+    .supply: Rail {{
+        .voltage &= 12V +/- 5%
+        .pos.net &= \"VIN\"
+        .neg.net &= \"GND\"
+    }}
+    .d: Schottky {{
+        .max_reverse_voltage &= 40V
+        .max_forward_current &= 3A
+    }}
+    .supply.neg ~> .d ~> .supply.pos
+}}
+"
+    )
+}
+
+#[test]
+fn a_junction_range_is_the_parts_range_and_a_range_that_covers_the_environment_passes() {
+    // -55 to +125 degC covers -40 to 125 degC: the diode is judged by it and is not named, and
+    // the self-heating of the diode is not computed.
+    let b = build(&diode_board("-40degC", "125degC"), &jlcpcb()).unwrap();
+    assert!(
+        b.sourcing.iter().any(|s| s.mpn.as_deref() == Some("SS34")),
+        "{:?}",
+        b.sourcing
+    );
+    let findings = environment_findings(&b);
+    assert!(
+        findings.iter().all(|f| !f.contains("`d`")),
+        "the diode states its junction range and must not be named: {findings:#?}"
+    );
+    // The same figure refuses a hotter environment, as any stated range does.
+    let e = refused(&diode_board("-40degC", "130degC"), &jlcpcb());
+    assert!(
+        e.contains("the `schottky` catalog has nothing for `d`")
+            && e.contains("left out because the temperatures they state do not cover"),
+        "{e}"
+    );
+}
+
 // ---- the manifest's default (ADR 0099) -------------------------------------------------
 
 use netsmith::project::{Manifest, Target};
