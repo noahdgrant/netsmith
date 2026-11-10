@@ -16,6 +16,7 @@ pub mod order;
 pub mod parity;
 pub mod physical;
 pub mod pick_lock;
+pub mod pin_export;
 pub mod pin_swap;
 pub mod pins;
 pub mod project;
